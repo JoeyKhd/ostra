@@ -8,7 +8,7 @@ const poolsToken =
   "Select the pool, then **New token** under **Join tokens**. The token is shown once and stored only as a hash, so copy it now.";
 
 describe("the search index's text", () => {
-  it("F-058: a snippet is the text a reader sees, with no Markdown: no emphasis marks, backticks, alert markers or table pipes", () => {
+  it("F-058/c1: a snippet is the text a reader sees, with no Markdown: no emphasis marks, backticks, alert markers or table pipes", () => {
     expect(plainText(poolsToken)).toBe(
       "Select the pool, then New token under Join tokens. The token is shown once and stored only as a hash, so copy it now.",
     );
@@ -32,7 +32,7 @@ describe("the search index's text", () => {
     );
   });
 
-  it("F-058: a heading keeps its text as written, a step's number and its case included", () => {
+  it("F-058/c1: a heading keeps its text as written, a step's number and its case included", () => {
     expect(plainHeading("6. Connect a runner")).toBe("6. Connect a runner");
     expect(plainHeading("Run `ostra runner` as a service")).toBe("Run ostra runner as a service");
     expect(headingTitlesOf("/docs/install/setup", { headings: [{ id: "connect-a-runner", content: "6. Connect a runner" }], contents: [] })).toEqual({

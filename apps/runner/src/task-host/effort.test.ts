@@ -119,7 +119,7 @@ const setEffort = (h: Harness, spec: TaskSpec, level: EffortLevel, changeId?: st
 };
 
 describe.each(placements)("reasoning effort over ACP on $name (F-137)", (placement) => {
-  it("F-137: the level is set after session/new, before the first prompt, and turn.started names it", async () => {
+  it("F-137/c5,c14: the level is set after session/new, before the first prompt, and turn.started names it", async () => {
     const { h, taskId, boxId } = await runnerFor(placement);
     const spec = taskOn(h, taskId, fakeMarker("effort"), "high");
     h.dispatch(spec, boxId);
@@ -134,7 +134,7 @@ describe.each(placements)("reasoning effort over ACP on $name (F-137)", (placeme
     expect(started).not.toHaveProperty("adjustedFrom");
   }, 120_000);
 
-  it("F-137: a level the agent doesn't advertise is clamped, and turn.started carries the level and adjustedFrom", async () => {
+  it("F-137/c9,c14: a level the agent doesn't advertise is clamped, and turn.started carries the level and adjustedFrom", async () => {
     const { h, taskId, boxId } = await runnerFor(placement);
     // `xhigh` sits between `high` and `max`: the higher of two equally near.
     const spec = taskOn(h, taskId, fakeMarker("effort"), "xhigh");
@@ -144,7 +144,7 @@ describe.each(placements)("reasoning effort over ACP on $name (F-137)", (placeme
     expect(h.ofKind(spec, "turn.started")[0]).toMatchObject({ effort: "max", adjustedFrom: "xhigh" });
   }, 120_000);
 
-  it("F-137: the launch gets the model's own controls and real limits from the spec, and none it doesn't carry", async () => {
+  it("F-137/c10: the launch gets the model's own controls and real limits from the spec, and none it doesn't carry", async () => {
     const { h, taskId, boxId } = await runnerFor(placement);
     const limits = { contextWindow: 1_000_000, maxOutputTokens: 128_000 };
     const spec = h.taskFor(fakeMarker("effort"), {
@@ -167,7 +167,7 @@ describe.each(placements)("reasoning effort over ACP on $name (F-137)", (placeme
     expect(launched).not.toHaveProperty("limits");
   }, 120_000);
 
-  it("F-137: Default sets nothing on a new session; the turn runs at the agent's default", async () => {
+  it("F-137/c5: Default sets nothing on a new session; the turn runs at the agent's default", async () => {
     const { h, taskId, boxId } = await runnerFor(placement);
     const spec = taskOn(h, taskId, fakeMarker("effort"), "default");
     h.dispatch(spec, boxId);
@@ -177,7 +177,7 @@ describe.each(placements)("reasoning effort over ACP on $name (F-137)", (placeme
     expect(h.ofKind(spec, "turn.started")[0]?.effort).toBe("default");
   }, 120_000);
 
-  it("F-137: a set-effort during a turn changes nothing of that turn; it's applied before the next prompt", async () => {
+  it("F-137/c8,c14: a set-effort during a turn changes nothing of that turn; it's applied before the next prompt", async () => {
     const { h, taskId, boxId } = await runnerFor(placement);
     // `plain` has no mid-turn steering: the message waits for the next turn.
     const spec = taskOn(h, taskId, fakeMarker("long", "2"), "high", "fake-acp-agent-plain-effort");
@@ -196,7 +196,7 @@ describe.each(placements)("reasoning effort over ACP on $name (F-137)", (placeme
     expect(messages(h, spec)).toContain("effort: low set: high,low");
   }, 120_000);
 
-  it("F-137: a set-effort while the session waits is applied at once, and reaches the next prompt", async () => {
+  it("F-137/c8,c14: a set-effort while the session waits is applied at once, and reaches the next prompt", async () => {
     const { h, taskId, boxId } = await runnerFor(placement);
     const spec = taskOn(h, taskId, fakeMarker("say"), "high");
     h.dispatch(spec, boxId);
@@ -211,7 +211,7 @@ describe.each(placements)("reasoning effort over ACP on $name (F-137)", (placeme
     expect(h.ofKind(spec, "turn.started").map((event) => event.effort)).toEqual(["high", "medium"]);
   }, 120_000);
 
-  it("F-137: a replayed set-effort is applied once, and never undoes a later change", async () => {
+  it("F-137/c8,c14: a replayed set-effort is applied once, and never undoes a later change", async () => {
     const { h, taskId, boxId } = await runnerFor(placement);
     const spec = taskOn(h, taskId, fakeMarker("say"), "high");
     h.dispatch(spec, boxId);
@@ -228,7 +228,7 @@ describe.each(placements)("reasoning effort over ACP on $name (F-137)", (placeme
     expect(messages(h, spec)).toContain("effort: medium set: high,low,medium");
   }, 120_000);
 
-  it("F-137: an agent with none gets no call, and its turns run at its default", async () => {
+  it("F-137/c13,c14: an agent with none gets no call, and its turns run at its default", async () => {
     const { h, taskId, boxId } = await runnerFor(placement);
     const spec = taskOn(h, taskId, fakeMarker("effort"), "high", "fake-acp-agent-none-advertising");
     h.dispatch(spec, boxId);
@@ -268,7 +268,7 @@ const serve = (h: Harness, spec: TaskSpec, from: Harness): void => {
 };
 
 describe("reasoning effort after session/load (F-137)", () => {
-  it("F-137: a reopen in the kept box loads the session and sets the task's level before the first prompt", async () => {
+  it("F-137/c5: a reopen in the kept box loads the session and sets the task's level before the first prompt", async () => {
     const { h, taskId, boxId } = await runnerFor(placements[0] ?? { name: "host", executorKind: "host", sidecar: false });
     const spec = taskOn(h, taskId, fakeMarker("say"), "high");
     h.dispatch(spec, boxId);
@@ -286,7 +286,7 @@ describe("reasoning effort after session/load (F-137)", () => {
     expect(h.ofKind(next, "turn.started").map((event) => event.effort)).toEqual(["low"]);
   }, 180_000);
 
-  it("F-137: a loaded session that holds another level is set back to Default when the task's level is Default", async () => {
+  it("F-137/c5: a loaded session that holds another level is set back to Default when the task's level is Default", async () => {
     const { h, taskId, boxId } = await runnerFor(placements[0] ?? { name: "host", executorKind: "host", sidecar: false });
     const spec = taskOn(h, taskId, fakeMarker("say"), "high");
     h.dispatch(spec, boxId);
@@ -300,7 +300,7 @@ describe("reasoning effort after session/load (F-137)", () => {
     expect(h.ofKind(next, "turn.started").map((event) => event.effort)).toEqual(["default"]);
   }, 180_000);
 
-  it("F-137: a runner restarted mid-task resumes at the task's level, on a fresh box from the archive", async () => {
+  it("F-137/c5,c8: a runner restarted mid-task resumes at the task's level, on a fresh box from the archive", async () => {
     const first = await runnerFor(placements[0] ?? { name: "host", executorKind: "host", sidecar: false });
     const spec = taskOn(first.h, first.taskId, fakeMarker("say"), "high");
     first.h.dispatch(spec, first.boxId);

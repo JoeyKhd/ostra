@@ -57,7 +57,7 @@ const serverEnv = (settings: Record<string, string>): NodeJS.ProcessEnv => ({
 });
 
 describe("the secrets key's check at start (Q136)", () => {
-  it("F-001: an empty database starts and stores the check, and the same key starts again", async () => {
+  it("F-001/c7: an empty database starts and stores the check, and the same key starts again", async () => {
     const first = await openSecretStore(test.db, { secretsKey: null, dataDir }, context);
     const stored = await checkRows();
     expect(stored).toHaveLength(1);
@@ -76,7 +76,7 @@ describe("the secrets key's check at start (Q136)", () => {
     }
   });
 
-  it("F-001: another key refuses to start, with the message, and changes nothing", async () => {
+  it("F-001/c7: another key refuses to start, with the message, and changes nothing", async () => {
     await openSecretStore(test.db, { secretsKey: null, dataDir }, context);
     const before = await checkRows();
     const keptKey = await readFile(path.join(dataDir, SECRETS_KEY_FILE), "utf8");
@@ -100,7 +100,7 @@ describe("the secrets key's check at start (Q136)", () => {
     expect(await readFile(path.join(dataDir, SECRETS_KEY_FILE), "utf8")).toBe(keptKey);
   });
 
-  it("F-001: an install with secrets from before the check refuses a key that can't read them, and stores no check", async () => {
+  it("F-001/c7: an install with secrets from before the check refuses a key that can't read them, and stores no check", async () => {
     const original = await openSecretStore(test.db, { secretsKey: null, dataDir }, context);
     await original.put({ organizationId: fixture.a.organization.id, purpose: "test.token" }, "an-old-value");
     // The install as it was before the check existed: its secrets, and no check row.
@@ -115,7 +115,7 @@ describe("the secrets key's check at start (Q136)", () => {
     expect(await checkRows()).toHaveLength(1);
   });
 
-  it("F-001: core's process refuses to start with another key, and says so with the two fixes", async () => {
+  it("F-001/c7: core's process refuses to start with another key, and says so with the two fixes", async () => {
     await openSecretStore(test.db, { secretsKey: null, dataDir }, context);
     const child = spawn(process.execPath, [path.join(here, "main.ts")], {
       env: serverEnv({ DATABASE_URL: test.url, OSTRA_DATA_DIR: dataDir, OSTRA_SECRETS_KEY: generateSecretsKey(), OSTRA_CORE_PORT: "1" }),
@@ -135,7 +135,7 @@ describe("the secrets key's check at start (Q136)", () => {
     expect(stderr).not.toContain("core is listening");
   });
 
-  it("F-001: two processes racing on an empty database end with one check value that both read", async () => {
+  it("F-001/c8: two processes racing on an empty database end with one check value that both read", async () => {
     const key = generateSecretsKey();
     const lineSchema = z.union([
       z.strictObject({ ready: z.literal(true) }),
@@ -192,7 +192,7 @@ describe("the secrets key's check at start (Q136)", () => {
     }
   });
 
-  it("F-001: two processes with different keys racing on an empty database: the one that stores the check starts, and the other reads it and refuses", async () => {
+  it("F-001/c8: two processes with different keys racing on an empty database: the one that stores the check starts, and the other reads it and refuses", async () => {
     // The race, made certain: this test holds the lock the check takes, so both processes find no
     // value on their first read and queue on the lock; then it lets go.
     const locked = Promise.withResolvers<undefined>();

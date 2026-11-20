@@ -70,7 +70,7 @@ const seedBox = async (projectId: ProjectId, runnerId: RunnerId, input: { readon
 };
 
 describe("the Box sizes page's counts (F-095)", () => {
-  it("F-095: boxes of each size now, the projects on each, the largest offer, and which runners enforce sizes", async () => {
+  it("F-095/c1: boxes of each size now, the projects on each, the largest offer, and which runners enforce sizes", async () => {
     const admin = await harness.as(harness.fixture.a.admin);
     const before = await admin.fleetUse.boxSizes();
     const pool = await seedPool("sizes");
@@ -109,7 +109,7 @@ describe("the Box sizes page's counts (F-095)", () => {
 });
 
 describe("a project's use of its pools (F-086)", () => {
-  it("F-086: each listed pool's executors, cap, the boxes the project holds there and whether it needs a registry; the pools not listed; admins only", async () => {
+  it("F-086/c1: each listed pool's executors, cap, the boxes the project holds there and whether it needs a registry; the pools not listed; admins only", async () => {
     const admin = await harness.as(harness.fixture.a.admin);
     const docker = await seedPool("use-docker", 6);
     const k8s = await seedPool("use-k8s", 20);

@@ -31,7 +31,7 @@ const outcomesAt = async (serverMinor: number): Promise<readonly (readonly [numb
 };
 
 describe("the compatibility matrix (F-061)", () => {
-  it("F-061: the matrix: a server at minor 4 accepts the recorded builds of minors 3, 4 and 5 and refuses 2 and 6", async () => {
+  it("F-061/c1: the matrix: a server at minor 4 accepts the recorded builds of minors 3, 4 and 5 and refuses 2 and 6", async () => {
     expect(RECORDED_SERVER_MINOR).toBe(4);
     expect(await outcomesAt(RECORDED_SERVER_MINOR)).toEqual([
       [2, "refused"],
@@ -73,7 +73,7 @@ describe("the compatibility matrix (F-061)", () => {
     expect(minorWindow(PROTOCOL_MINOR)).toEqual({ min: 5, max: 7 });
   });
 
-  it("F-061: each accepted build's frames are read at its minor, and the server writes down to exactly what that build reads", async () => {
+  it("F-061/c1: each accepted build's frames are read at its minor, and the server writes down to exactly what that build reads", async () => {
     for (const minor of [3, 4, 5] as const) {
       const build = await readRecordedBuild(minor);
       const negotiated = build.negotiated ?? -1;
@@ -105,7 +105,7 @@ describe("the compatibility matrix (F-061)", () => {
     expect(parseUpFrame(JSON.stringify(minor4.status), 4).ok).toBe(true);
   });
 
-  it("F-061: the refusal's words name the runner's minor, the window and the version to install", async () => {
+  it("F-061/c1: the refusal's words name the runner's minor, the window and the version to install", async () => {
     const build = await readRecordedBuild(2);
     const hello = helloSchema.parse(build.hello);
     const negotiation = negotiate(RECORDED_SERVER_MINOR, hello.protocolMajor, hello.protocolMinor);

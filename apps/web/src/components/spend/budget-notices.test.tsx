@@ -20,12 +20,12 @@ const warn: BudgetNotice = {
 const reached: BudgetNotice = { ...warn, notificationId: notificationIdSchema.parse("01900000-0000-7000-8000-0000000000a2"), threshold: "reached", scope: { kind: "organization" }, percent: 104 };
 
 describe("budget notices (F-037)", () => {
-  it("F-037: the warning names the project and its share; the reached notice names the budget", () => {
+  it("F-037/c3: the warning names the project and its share; the reached notice names the budget", () => {
     expect(budgetNoticeText(warn)).toBe("test1 is at 91% of its budget");
     expect(budgetNoticeText(reached)).toBe("The organization reached its budget");
   });
 
-  it("F-037: an organization admin's row opens Spend with the budget selected; a project admin's opens the project", () => {
+  it("F-037/c3: an organization admin's row opens Spend with the budget selected; a project admin's opens the project", () => {
     const admin = renderToStaticMarkup(<BudgetNoticeRows notices={[warn, reached]} organizationAdmin />);
     expect(admin).toContain(`href="/organization/spend?project=${projectId}"`);
     expect(admin).toContain('href="/organization/spend?project=organization"');

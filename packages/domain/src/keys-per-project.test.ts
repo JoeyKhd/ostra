@@ -43,7 +43,7 @@ describe("the model by name", () => {
 });
 
 describe("the resolution", () => {
-  it("F-135: resolves by the choice, else the only provider, and refuses none, two with no choice, and a chosen row no longer listed", () => {
+  it("F-135/c5: resolves by the choice, else the only provider, and refuses none, two with no choice, and a chosen row no longer listed", () => {
     const cases = [
       { name: "a choice", list: [p1, p2], choices: [{ modelKey: modelNameKey(sonnet), modelId: m2.modelId }], models: [m1, m2], expected: { ok: true, providerId: p2, modelId: m2.modelId } },
       { name: "the only provider", list: [p1], choices: [], models: [m1, m2], expected: { ok: true, providerId: p1, modelId: m1.modelId } },
@@ -84,7 +84,7 @@ describe("the resolution", () => {
     expect(planProviderChange({ list: [p1], choices: [] }, [p1, p2], [batch, plain, m2]).keep).toEqual([{ modelKey: modelNameKey(sonnet), modelId: plain.modelId }]);
   });
 
-  it("F-135: the keep rule records the provider serving a model when a list gains a second one", () => {
+  it("F-135/c6: the keep rule records the provider serving a model when a list gains a second one", () => {
     const plan = planProviderChange({ list: [p1], choices: [] }, [p1, p2], [m1, m2]);
     expect(plan.keep).toEqual([{ modelKey: modelNameKey(sonnet), modelId: m1.modelId }]);
     expect(plan.lines).toEqual([{ name: sonnet, before: { providerId: p1, modelId: m1.modelId }, after: { providerId: p1, modelId: m1.modelId }, change: "keeps" }]);
@@ -101,7 +101,7 @@ describe("the resolution", () => {
     ]);
   });
 
-  it("F-135: the keep rule holds on a provider's refresh that starts listing a model another provider serves", () => {
+  it("F-135/c6: the keep rule holds on a provider's refresh that starts listing a model another provider serves", () => {
     const lists = [{ id: "default", list: [p1, p2], choices: [] }, { id: "own", list: [p2], choices: [] }] as const;
     // Before the refresh only p1 listed it; after it, p2 does too.
     const result = keepChoicesOnRefresh(lists, [m1], [m1, m2]);
@@ -111,7 +111,7 @@ describe("the resolution", () => {
     ]);
   });
 
-  it("F-135: checks every turn start: open, moved to another provider, or none", () => {
+  it("F-135/c10: checks every turn start: open, moved to another provider, or none", () => {
     const session = { providerId: p1, modelId: m1.modelId, modelName: sonnet };
     expect(providerGate(session, { list: [p1], choices: [], models: [m1, m2] })).toEqual({ kind: "open" });
     expect(providerGate(session, { list: [p2], choices: [], models: [m1, m2] })).toEqual({ kind: "moved", providerId: p2, modelId: m2.modelId });

@@ -36,7 +36,7 @@ const readTask = async (taskId: string): Promise<z.infer<typeof factsSchema>> =>
   return factsSchema.parse(JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}"));
 };
 
-test("F-097: a member types a prompt in a project with no tracker, and the task starts with no ticket", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-097/c1,c2,c3: a member types a prompt in a project with no tracker, and the task starts with no ticket", { tag: "@desktop-only" }, async ({ page }) => {
   const origins = watchOrigins(page);
   await signIn(page);
   await page.goto("/tasks/new");

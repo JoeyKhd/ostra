@@ -88,7 +88,7 @@ const textOf = (result: unknown): string => {
 const listed = async (client: Client): Promise<readonly string[]> => (await client.listTools()).tools.map((tool) => tool.name);
 
 describe("ostra's tools per task kind (tickets 22 and 23)", () => {
-  it("F-099, F-100, F-113: each kind's tool sets list exactly their tools, and a spec without tools lists milestone 4's", async () => {
+  it("F-099/c4, F-100, F-113/c2: each kind's tool sets list exactly their tools, and a spec without tools lists milestone 4's", async () => {
     const expected: Readonly<Record<keyof typeof toolSetsByKind, readonly string[]>> = {
       code: [SET_PR_TEXT_TOOL, ...MEMORY_TOOLS],
       refine: [SUBMIT_DRAFT_TOOL, ...MEMORY_TOOLS],
@@ -108,7 +108,7 @@ describe("ostra's tools per task kind (tickets 22 and 23)", () => {
     expect([...(await listed(client))].sort()).toEqual([SET_PR_TEXT_TOOL, ...MEMORY_TOOLS].sort());
   });
 
-  it("F-099: submit_draft reaches the fake core with the runner's token and comes back as the saved version", async () => {
+  it("F-099/c4: submit_draft reaches the fake core with the runner's token and comes back as the saved version", async () => {
     const { core, client, logs } = await start(toolSetsByKind.refine);
     const first = await client.callTool({ name: SUBMIT_DRAFT_TOOL, arguments: sampleDraft });
     expect(first.isError).not.toBe(true);
@@ -127,7 +127,7 @@ describe("ostra's tools per task kind (tickets 22 and 23)", () => {
     expect(logs.some((record) => record.message === "draft submitted" && record.fields["version"] === 2)).toBe(true);
   });
 
-  it("F-099: each draft refusal reaches the agent in the protocol's words, and nothing is saved", async () => {
+  it("F-099/c4: each draft refusal reaches the agent in the protocol's words, and nothing is saved", async () => {
     const { core, client } = await start(toolSetsByKind.refine);
     for (const code of ["wrong-kind", "invalid", "limit-reached"] as const) {
       core.team.refusals.draft = { code };
@@ -151,7 +151,7 @@ describe("ostra's tools per task kind (tickets 22 and 23)", () => {
     expect(core.team.drafts).toEqual([]);
   });
 
-  it("F-100: submit_review names each finding's repo by ID for core, and each refusal reaches the agent", async () => {
+  it("F-100/c2: submit_review names each finding's repo by ID for core, and each refusal reaches the agent", async () => {
     const { core, client, logs } = await start(toolSetsByKind.review);
     const saved = await client.callTool({ name: SUBMIT_REVIEW_TOOL, arguments: sampleReview(repo) });
     expect(saved.isError).not.toBe(true);
@@ -179,7 +179,7 @@ describe("ostra's tools per task kind (tickets 22 and 23)", () => {
     expect(logs.some((record) => record.message === "review submitted" && record.fields["blocking"] === 1 && record.fields["findings"] === 2)).toBe(true);
   });
 
-  it("F-113: propose_environment reaches the fake core by repo ID, and each refusal reaches the agent", async () => {
+  it("F-113/c2: propose_environment reaches the fake core by repo ID, and each refusal reaches the agent", async () => {
     const { core, client, logs } = await start(toolSetsByKind.onboarding);
     const saved = await client.callTool({ name: PROPOSE_ENVIRONMENT_TOOL, arguments: sampleProposal(repo) });
     expect(saved.isError).not.toBe(true);
@@ -198,7 +198,7 @@ describe("ostra's tools per task kind (tickets 22 and 23)", () => {
     expect(JSON.stringify(logs)).not.toContain("pnpm install --frozen-lockfile");
   });
 
-  it("F-099, F-100: a tool the task's sets don't name can't be called", async () => {
+  it("F-099, F-100/c2: a tool the task's sets don't name can't be called", async () => {
     const { core, client } = await start(toolSetsByKind.code);
     const draft = await client.callTool({ name: SUBMIT_DRAFT_TOOL, arguments: sampleDraft });
     expect(draft.isError).toBe(true);

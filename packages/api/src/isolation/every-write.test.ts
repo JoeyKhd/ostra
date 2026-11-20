@@ -203,7 +203,7 @@ const ADMIN_ROUTERS: readonly string[] = [
 ];
 
 describe("an organization admin manages the organization (F-003)", () => {
-  it("F-003: every write of members, connections, model providers, runner pools, agent profiles, budgets and projects refuses an organization member and a project admin, and lets an organization admin through", async () => {
+  it("F-003/c2: every write of members, connections, model providers, runner pools, agent profiles, budgets and projects refuses an organization member and a project admin, and lets an organization admin through", async () => {
     const listed = Object.values(ORGANIZATION_ADMIN_WRITES).flat();
     const paths = mutationPaths();
     // The guard: the list names only writes that exist, and every write of the admin routers.
@@ -242,7 +242,7 @@ describe("an organization admin manages the organization (F-003)", () => {
     expect(blocked).toEqual([]);
   });
 
-  it("F-003: an organization admin invites a member, starts a connection, adds a model provider, a runner pool, an agent profile, a budget and a project", async () => {
+  it("F-003/c2: an organization admin invites a member, starts a connection, adds a model provider, a runner pool, an agent profile, a budget and a project", async () => {
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);
     const member = await harness.as(a.member);
@@ -329,7 +329,7 @@ describe("an organization admin manages the organization (F-003)", () => {
 });
 
 describe("a project admin manages its project (F-003, F-087)", () => {
-  it("F-003, F-087: a project admin edits its repos, boards, environment, automations, memory and defaults, and a project member of it is refused each", async () => {
+  it("F-003/c3, F-087/c2: a project admin edits its repos, boards, environment, automations, memory and defaults, and a project member of it is refused each", async () => {
     const { projectId, projectAdmin, driver } = await restrictedProject("project-admin");
     const organizationId = harness.fixture.a.organization.id;
     const asAdmin = await harness.as(projectAdmin);
@@ -436,7 +436,7 @@ describe("a project admin manages its project (F-003, F-087)", () => {
 });
 
 describe("members work tasks, and no task is private (F-003, F-087)", () => {
-  it("F-003, F-087: a project member who is no admin starts a task, drives and steers it, a colleague takes it over and stops it, and the first reopens it", async () => {
+  it("F-003/c4, F-087/c3: a project member who is no admin starts a task, drives and steers it, a colleague takes it over and stops it, and the first reopens it", async () => {
     const { projectId, driver, colleague } = await restrictedProject("members-work");
     const asDriver = await harness.as(driver);
     const asColleague = await harness.as(colleague);
@@ -486,7 +486,7 @@ describe("members work tasks, and no task is private (F-003, F-087)", () => {
     ).toMatchObject({ state: "queued", driverMemberId: driver.id });
   });
 
-  it("F-003, F-087: every member who can open the project sees each task and its conversation; nobody else does, and a task can't be made private", async () => {
+  it("F-003/c4,c5, F-087/c3: every member who can open the project sees each task and its conversation; nobody else does, and a task can't be made private", async () => {
     const { projectId, projectAdmin, driver, colleague } = await restrictedProject("no-private");
     const created = await (
       await harness.as(driver)

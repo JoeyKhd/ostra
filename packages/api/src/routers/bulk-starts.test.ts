@@ -61,7 +61,7 @@ afterAll(async () => {
 });
 
 describe("the Inbox's bulk start (F-107)", () => {
-  it("F-107, F-010: 50 tickets start at once from the Inbox, and 51 are refused with nothing written", async () => {
+  it("F-107/c1, F-010/c2: 50 tickets start at once from the Inbox, and 51 are refused with nothing written", async () => {
     const tickets = await seedMany(51, "BLK");
     harness.fakes.jobs.clear();
     const refused = await trpcFailure((await member()).inbox.startMany({ projectId, ticketIds: tickets, kind: "code", agentProfileId: null, requestKey: "fifty-one" }));
@@ -79,7 +79,7 @@ describe("the Inbox's bulk start (F-107)", () => {
     expect(await harness.test.db.task.count({ where: { bulkStartId, kind: "code" } })).toBe(50);
   });
 
-  it("F-107: a replayed request key returns the same bulk start, and starts nothing twice", async () => {
+  it("F-107/c1: a replayed request key returns the same bulk start, and starts nothing twice", async () => {
     const tickets = await seedMany(3, "RPL");
     harness.fakes.jobs.clear();
     const request = { projectId, ticketIds: tickets, kind: "code" as const, agentProfileId: null, requestKey: "double-click" };
@@ -95,7 +95,7 @@ describe("the Inbox's bulk start (F-107)", () => {
     expect(await harness.test.db.task.count({ where: { ticketId: { in: tickets } } })).toBe(3);
   });
 
-  it("F-107: each item's outcome streams to the panel as it's decided: started, or skipped with its reason", async () => {
+  it("F-107/c1: each item's outcome streams to the panel as it's decided: started, or skipped with its reason", async () => {
     const [fresh, held] = await seedMany(2, "STR");
     if (fresh === undefined || held === undefined) throw new Error("no tickets");
     // A member's own task already holds one of them.
@@ -134,7 +134,7 @@ describe("the Inbox's bulk start (F-107)", () => {
     expect(byTicket.get(held)).toMatchObject({ state: "skipped", reason: "has-task", task: null });
   });
 
-  it("F-107: a bulk start is the project's: a member who can't open it starts and reads nothing", async () => {
+  it("F-107/c1: a bulk start is the project's: a member who can't open it starts and reads nothing", async () => {
     const { a, b } = harness.fixture;
     const [ticket] = await seedMany(1, "ACC");
     if (ticket === undefined) throw new Error("no ticket");
@@ -152,7 +152,7 @@ describe("the Inbox's bulk start (F-107)", () => {
 });
 
 describe("the Inbox's sub-issues (F-077, F-010)", () => {
-  it("F-077, F-010: the Inbox says how many tasks a code start on a parent starts: one per leaf on the project's boards", async () => {
+  it("F-077/c2, F-010/c2: the Inbox says how many tasks a code start on a parent starts: one per leaf on the project's boards", async () => {
     const parent = await seedTicket(harness, { projectId, boardId, connectionId, key: "PAR-1", title: "An epic" });
     const parentRow = await harness.test.db.ticket.findUniqueOrThrow({ where: { id: parent } });
     const childOf = async (key: string, parentExternalId: string, fields: { readonly open?: boolean; readonly board?: BoardId } = {}) => {

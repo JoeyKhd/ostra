@@ -53,7 +53,7 @@ const group = (reasoning: ModelReasoning, over: { custom?: boolean; canEdit?: bo
   );
 
 describe("the Models tab", () => {
-  it("F-137: each model's levels and their source, the override's Use the catalog's, and an unset custom model", () => {
+  it("F-137/c2: each model's levels and their source, the override's Use the catalog's, and an unset custom model", () => {
     const html = renderToStaticMarkup(
       <ModelsTable
         rows={[
@@ -78,7 +78,7 @@ describe("the Models tab", () => {
     expect(html).toContain(t("models.reasoning.customModel"));
   });
 
-  it("F-137: the reasoning-price mark and its footnote show only for a model whose catalog prices reasoning apart", () => {
+  it("F-137/c12: the reasoning-price mark and its footnote show only for a model whose catalog prices reasoning apart", () => {
     const marked = renderToStaticMarkup(<ModelsTable rows={[tableRow({ reasoning: override })]} selectedId={null} loading={false} onSelect={() => undefined} onUseCatalog={null} />);
     expect(marked).toContain(t("models.reasoning.priceMark"));
     expect(marked).toContain(t("models.reasoning.priceFootnote"));
@@ -155,7 +155,7 @@ describe("the model's Reasoning in the panel", () => {
 });
 
 describe("the Models page's reading of providers.models", () => {
-  it("F-137: a custom model nobody set reads Not set, not Doesn't reason; a source keeps its controls", () => {
+  it("F-137/c2: a custom model nobody set reads Not set, not Doesn't reason; a source keeps its controls", () => {
     const base = { controls: { supported: false } as const, catalog: null, levels: [{ level: "default" as const, labelKey: "effort.levels.default" }], reasoningPriceDiffers: false };
     expect(modelReasoningOf({ reasoning: { ...base, source: null } }).controls).toBeNull();
     expect(reasoningLine(modelReasoningOf({ reasoning: { ...base, source: null } }).controls).text).toBe(t("models.reasoning.notSet"));

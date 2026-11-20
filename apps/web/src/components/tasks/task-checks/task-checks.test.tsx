@@ -183,7 +183,7 @@ describe("a task across several repos (F-098)", () => {
     return index;
   };
 
-  it("F-098: a turn has a section per repo in the project's order, each with the commit its checks ran on there and its own summary, then the workspace root's", () => {
+  it("F-098/c3: a turn has a section per repo in the project's order, each with the commit its checks ran on there and its own summary, then the workspace root's", () => {
     expect(repoSectionsOf(turn4, repos)?.map((section) => [section.repo, section.sha, section.checks.map((one) => one.name)])).toEqual([
       [web, "c1c1c1c1c1c1c1", ["web-tests", "web-lint"]],
       [api, "b0b0b0b0b0b0b0", ["api-tests"]],
@@ -212,14 +212,14 @@ describe("a task across several repos (F-098)", () => {
     expect(html).toContain(esc(t("checks.fix.several", { n: 2, agent: "OpenCode" })));
   });
 
-  it("F-098: a task with one repo keeps one list, with the turn's commit in its header", () => {
+  it("F-098/c3: a task with one repo keeps one list, with the turn's commit in its header", () => {
     expect(repoSectionsOf(turn4, [web])).toBeNull();
     const html = renderToStaticMarkup(<TurnSection turn={turn4} newest now={now} repos={[web]} fix={null} />);
     expect(html).not.toContain("data-repo-section");
     expect(html).toContain("aaaaaaa");
   });
 
-  it("F-098: the tab gives each turn the task's repos, and names each repo's PR", () => {
+  it("F-098/c3: the tab gives each turn the task's repos, and names each repo's PR", () => {
     const html = renderToStaticMarkup(
       <ChecksBody
         load={{

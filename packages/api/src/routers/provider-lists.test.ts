@@ -93,7 +93,7 @@ const row = (providerId: ProviderId, endpointModelId: string): ModelId => {
 };
 
 describe("F-135: provider lists in the API", () => {
-  it("F-135: a project reads its providers by name and which serves each model; the preview and the save, a stale preview refused", async () => {
+  it("F-135/c1,c2,c6,c15: a project reads its providers by name and which serves each model; the preview and the save, a stale preview refused", async () => {
     const { a } = harness.fixture;
     const projectId: ProjectId = a.openProject.id;
     const caller = await admin();
@@ -166,7 +166,7 @@ describe("F-135: provider lists in the API", () => {
     await caller.providers.setDefaultList({ providerIds: [providerA], version: reset.version });
   });
 
-  it("F-135: the access matrix: organization admin, project admin, member, and an outsider of a restricted project", async () => {
+  it("F-135/c1,c15: the access matrix: organization admin, project admin, member, and an outsider of a restricted project", async () => {
     const { a } = harness.fixture;
     const restricted = a.restrictedProject.id;
     const outcome = async (call: () => Promise<unknown>): Promise<string> => {
@@ -218,7 +218,7 @@ describe("F-135: provider lists in the API", () => {
     expect(JSON.stringify(await other.providers.list())).not.toContain(providerA);
   });
 
-  it("F-135: an upgrade's marked choice is confirmed, or changed to another provider on the list", async () => {
+  it("F-135/c6: an upgrade's marked choice is confirmed, or changed to another provider on the list", async () => {
     const { a } = harness.fixture;
     const caller = await admin();
     // The default list holds both; the upgrade left the shared model on B, marked to confirm.
@@ -243,7 +243,7 @@ describe("F-135: provider lists in the API", () => {
     await caller.providers.setDefaultList({ providerIds: [providerA], version: reset.version });
   });
 
-  it("F-135: no view holds a token, searched by value", async () => {
+  it("F-135/c15: no view holds a token, searched by value", async () => {
     const { a } = harness.fixture;
     const caller = await admin();
     const member = await harness.as(a.member);
@@ -265,7 +265,7 @@ describe("F-135: provider lists in the API", () => {
     expect(text).not.toContain(TOKEN_B.slice(-16));
   });
 
-  it("F-135: spend per provider equals the sum of its sessions' spend, through the real ingest", async () => {
+  it("F-135/c13,c15: spend per provider equals the sum of its sessions' spend, through the real ingest", async () => {
     const { a } = harness.fixture;
     const caller = await admin();
     for (const model of [row(providerA, "shared-model"), row(providerB, "shared-model")]) {
@@ -326,7 +326,7 @@ describe("F-135: provider lists in the API", () => {
     expect((tasksAfter.get(providerB) ?? 0) - (tasksBefore.get(providerB) ?? 0)).toBe(1);
   });
 
-  it("F-135: a profile saved by model name, and its options", async () => {
+  it("F-135/c3,c11: a profile saved by model name, and its options", async () => {
     const { a } = harness.fixture;
     const caller = await admin();
     const options = await caller.agentProfiles.modelOptions();
@@ -364,7 +364,7 @@ describe("F-135: provider lists in the API", () => {
 });
 
 describe("F-135: a catalog model's logo", () => {
-  it("F-135: a catalog model carries its display name and logo in the project's providers and the plan lines", async () => {
+  it("F-135/c15: a catalog model carries its display name and logo in the project's providers and the plan lines", async () => {
     const { a } = harness.fixture;
     const caller = await admin();
     const URL_C = "https://client-c-models.example.com/v1";

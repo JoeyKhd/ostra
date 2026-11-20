@@ -29,7 +29,7 @@ const post = (body: string | Uint8Array | null, headers: Record<string, string> 
   new Request("http://panel.test/api/agent-profiles/skill-files", { method: "POST", headers, body });
 
 describe("a skill's file, uploaded from the profile editor", () => {
-  it("F-021: an organization admin's file is stored for the organization as a skill file, and the answer names its blob", async () => {
+  it("F-021/c1: an organization admin's file is stored for the organization as a skill file, and the answer names its blob", async () => {
     const before = harness.uploads.length;
     const response = await serveSkillFileUpload(await harness.contextOf(harness.fixture.a.admin), post("2026-11-19: example line\n"));
     expect(response.status).toBe(200);
@@ -39,7 +39,7 @@ describe("a skill's file, uploaded from the profile editor", () => {
     expect(harness.uploads.at(-1)).toMatchObject({ organizationId: harness.fixture.a.organization.id, purpose: "skill-file", size: 25 });
   });
 
-  it("F-021: a member who is not an admin, another organization's member and a stranger store nothing", async () => {
+  it("F-021/c1: a member who is not an admin, another organization's member and a stranger store nothing", async () => {
     const before = harness.uploads.length;
     expect((await serveSkillFileUpload(await harness.contextOf(harness.fixture.a.member), post("x"))).status).toBe(403);
     expect((await serveSkillFileUpload(await harness.contextOf(harness.fixture.a.insider), post("x"))).status).toBe(403);
@@ -48,7 +48,7 @@ describe("a skill's file, uploaded from the profile editor", () => {
     expect(harness.uploads).toHaveLength(before);
   });
 
-  it("F-021: a file over 1 MiB is refused whether it declares its size or streams past the limit, and an empty one is refused", async () => {
+  it("F-021/c1: a file over 1 MiB is refused whether it declares its size or streams past the limit, and an empty one is refused", async () => {
     const admin = await harness.contextOf(harness.fixture.a.admin);
     const before = harness.uploads.length;
     // Declared: the header alone refuses it before a byte is read.
@@ -130,7 +130,7 @@ describe("the panel's uploader", () => {
     expect(createPanelBlobTokens(secret).verify(token, 61_000)).toBeNull();
   });
 
-  it("F-021: a core that answers another digest, an error or nothing is unavailable, and a 413 is too large", async () => {
+  it("F-021/c1: a core that answers another digest, an error or nothing is unavailable, and a 413 is too large", async () => {
     const bytes = new TextEncoder().encode("hello skill");
     const asking = (respond: () => Promise<Response>) => corePanelUploader({ coreUrl: "http://core.test", secret, logger: silentLogger, fetch: respond })({ organizationId: organizationId(), purpose: "skill-file", bytes });
     expect(await asking(() => Promise.resolve(Response.json({ blobId: "01900000-0000-7000-8000-0000000000ee", size: 11, sha256: "0".repeat(64) })))).toEqual({ kind: "unavailable" });

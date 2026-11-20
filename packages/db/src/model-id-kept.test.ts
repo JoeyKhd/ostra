@@ -14,7 +14,7 @@ import { Prisma } from "./generated/prisma/client.ts";
 const migrationsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "prisma", "migrations");
 
 describe("AgentProfile.modelId stays until a later release", () => {
-  it("F-135: no migration drops agent_profile's modelId, and the profile still has the column", async () => {
+  it("F-135/c19: no migration drops agent_profile's modelId, and the profile still has the column", async () => {
     const folders = (await readdir(migrationsDir, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
     expect(folders.length).toBeGreaterThan(0);
     const dropping: string[] = [];

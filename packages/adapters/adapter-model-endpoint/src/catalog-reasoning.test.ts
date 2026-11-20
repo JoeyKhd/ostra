@@ -61,12 +61,12 @@ describe("the catalog's reasoning controls (F-137)", () => {
     { name: "a control type ostra doesn't know", model: { reasoning_options: [{ type: "dial", steps: 3 }, { type: "toggle" }] }, controls: { supported: true, toggle: true } },
   ];
 
-  it.each(rows)("F-137: the conversion: $name", ({ model, controls }) => {
+  it.each(rows)("F-137/c3: the conversion: $name", ({ model, controls }) => {
     const [entry] = entriesOf({ m: liveShaped("m", model) });
     expect(entry?.reasoning).toEqual(controls);
   });
 
-  it("F-137: the bundled copy holds the controls research section 2.2 lists, with its fetch date", async () => {
+  it("F-137/c3: the bundled copy holds the controls research section 2.2 lists, with its fetch date", async () => {
     const { fetchedAt, entries } = await loadBundledCatalog();
     expect(Date.parse(fetchedAt)).toBeGreaterThanOrEqual(Date.parse("2026-11-19"));
     const byId = reasoningById(entries);
@@ -87,7 +87,7 @@ describe("the catalog's reasoning controls (F-137)", () => {
     expect(entries.filter((entry) => entry.reasoning.supported && entry.reasoning.effort !== undefined).length).toBeGreaterThan(3000);
   });
 
-  it("F-137: a malformed reasoning_options refuses the reasoning alone, and logs a count, never the entry's text", () => {
+  it("F-137/c3: a malformed reasoning_options refuses the reasoning alone, and logs a count, never the entry's text", () => {
     const logger = recordingLogger();
     const parsed = parseModelsDevCatalog(
       {
@@ -116,7 +116,7 @@ describe("the catalog's reasoning controls (F-137)", () => {
     expect(JSON.stringify(logger.records)).not.toMatch(/warp-speed|Secret Broken|broken/);
   });
 
-  it("F-137: reasoningPriceDiffers for alibaba/qwen3-32b, and not for a model whose two prices match", async () => {
+  it("F-137/c12: reasoningPriceDiffers for alibaba/qwen3-32b, and not for a model whose two prices match", async () => {
     const { entries } = await loadBundledCatalog();
     const byId = new Map(entries.map((entry) => [entry.catalogId, entry] as const));
     expect(byId.get("alibaba/qwen3-32b")?.reasoningPriceDiffers).toBe(true);

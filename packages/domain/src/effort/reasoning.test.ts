@@ -12,7 +12,7 @@ import { clampEffort, effectiveReasoning } from "./reasoning.ts";
 const { effort: catalog, toggle: admin, none } = reasoningControlsFixtures;
 
 describe("effectiveReasoning", () => {
-  it("F-137: the admin's controls, else the catalog's, else none", () => {
+  it("F-137/c4: the admin's controls, else the catalog's, else none", () => {
     expect(effectiveReasoning({ adminReasoning: admin, catalogReasoning: catalog })).toEqual(admin);
     expect(effectiveReasoning({ adminReasoning: null, catalogReasoning: catalog })).toEqual(catalog);
     expect(effectiveReasoning({ adminReasoning: admin, catalogReasoning: null })).toEqual(admin);
@@ -36,7 +36,7 @@ describe("canSetTaskEffort", () => {
     projectRoles: new Map(),
   });
 
-  it("F-137: only the task's driver sets its level: not a watcher, not an admin, not another organization", () => {
+  it("F-137/c7: only the task's driver sets its level: not a watcher, not an admin, not another organization", () => {
     expect(canSetTaskEffort(scope("member-driver", "member"), { organizationId, driverMemberId: driverId })).toBe(true);
     expect(canSetTaskEffort(scope("member-watcher", "member"), { organizationId, driverMemberId: driverId })).toBe(false);
     expect(canSetTaskEffort(scope("member-admin", "admin"), { organizationId, driverMemberId: driverId })).toBe(false);

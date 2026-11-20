@@ -326,7 +326,7 @@ const runFake = async (
 };
 
 describe("the fake ACP agents, for the capabilities OpenCode lacks (F-019)", () => {
-  it("F-019: the rich fake declares native plan updates and reject-and-continue, which OpenCode lacks, and both reach ostra", async () => {
+  it("F-019/c7: the rich fake declares native plan updates and reject-and-continue, which OpenCode lacks, and both reach ostra", async () => {
     await runFake("rich", async (adapter, session, events) => {
       expect(adapter.capabilities).toMatchObject({ nativePlan: true, rejectAndContinue: true, steerMidTurn: true });
       expect(await adapter.prompt(session, turnOf(1), fakeMarker("plan"))).toEqual({ ok: true, value: { stopReason: "end_turn" } });
@@ -337,7 +337,7 @@ describe("the fake ACP agents, for the capabilities OpenCode lacks (F-019)", () 
     });
   }, 60_000);
 
-  it("F-019: the plain fake declares neither and can't steer: no plan update, a deny ends the turn, and a steer is refused", async () => {
+  it("F-019/c7: the plain fake declares neither and can't steer: no plan update, a deny ends the turn, and a steer is refused", async () => {
     await runFake("plain", async (adapter, session, events) => {
       expect(adapter.capabilities).toMatchObject({ nativePlan: false, rejectAndContinue: false, steerMidTurn: false });
       expect(session.connection.steeringAdvertised).toBe(false);
@@ -358,7 +358,7 @@ const said = (events: readonly TaskEvent[], from: number): string =>
   events.slice(from).flatMap((event) => (event.kind === "agent.message" ? [event.text] : [])).join("");
 
 describe("the fake ACP agents and project memory (F-110)", () => {
-  it("F-110: the memory block goes with the profile's instructions into the task's config folder, and no repo changes", async () => {
+  it("F-110/c1: the memory block goes with the profile's instructions into the task's config folder, and no repo changes", async () => {
     const memory = { block: sampleMemoryBlock(true), tools: true };
     await runFake(
       "rich",
@@ -379,7 +379,7 @@ describe("the fake ACP agents and project memory (F-110)", () => {
     );
   }, 60_000);
 
-  it("F-110: an agent with MCP calls memory_search, memory_read and memory_propose, each through the fake core", async () => {
+  it("F-110/c2: an agent with MCP calls memory_search, memory_read and memory_propose, each through the fake core", async () => {
     const memory = { block: sampleMemoryBlock(true), tools: true };
     await runFake(
       "plain",
@@ -410,7 +410,7 @@ describe("the fake ACP agents and project memory (F-110)", () => {
     );
   }, 60_000);
 
-  it("F-110: an agent without MCP gets the index and no tools", async () => {
+  it("F-110/c3: an agent without MCP gets the index and no tools", async () => {
     const memory = { block: sampleMemoryBlock(false), tools: true };
     await runFake(
       "plain",
@@ -433,7 +433,7 @@ describe("the fake ACP agents and project memory (F-110)", () => {
 });
 
 describe("the fake ACP agents and ADR 0035's canary (F-073)", () => {
-  it("F-073: a shell call that reads a file outside the workspace is in the event log, with its full input and output", async () => {
+  it("F-073/c3: a shell call that reads a file outside the workspace is in the event log, with its full input and output", async () => {
     const outside = await mkdtemp(path.join(tmpdir(), "ostra-canary-"));
     roots.push(outside);
     const file = path.join(outside, "canary.txt");
@@ -461,7 +461,7 @@ describe("F-137 on the scripted fakes", () => {
     reasoning: { supported: true, toggle: true, effort: ["low", "high"] },
   };
 
-  it("F-137: the session-option fake advertises a thought_level option with the model's levels and records each value set; a level it lacks is clamped first", async () => {
+  it("F-137/c9,c13: the session-option fake advertises a thought_level option with the model's levels and records each value set; a level it lacks is clamped first", async () => {
     let turns = 0;
     await runFake(
       "rich",
@@ -485,7 +485,7 @@ describe("F-137 on the scripted fakes", () => {
     );
   }, 60_000);
 
-  it("F-137: the fakes that declare none advertise no level, and setEffort leaves them at default", async () => {
+  it("F-137/c13: the fakes that declare none advertise no level, and setEffort leaves them at default", async () => {
     for (const profile of ["rich", "plain"] as const) {
       await runFake(profile, async (adapter, session) => {
         const effortModel = effortModelOf(model);

@@ -82,7 +82,7 @@ afterAll(async () => {
 });
 
 describe("the device-code grant", () => {
-  it("F-103: ends in a CLI session whose token is shown once, stored hashed, and used once", async () => {
+  it("F-103/c1: ends in a CLI session whose token is shown once, stored hashed, and used once", async () => {
     const started = await call(cliPaths.device, { method: "POST", body: { name: "alex-laptop", version: "0.3.0" } });
     expect(started.status).toBe(200);
     const grant = cliDeviceResponseSchema.parse(await started.json());
@@ -121,7 +121,7 @@ describe("the device-code grant", () => {
     expect(await harness.test.db.cliSession.count({ where: { userId: member.userId, name: "alex-laptop" } })).toBe(1);
   });
 
-  it("F-103: a denied code and an expired one end the poll, and an unknown device code is expired", async () => {
+  it("F-103/c1: a denied code and an expired one end the poll, and an unknown device code is expired", async () => {
     const make = async () => {
       const started = await call(cliPaths.device, { method: "POST", body: { name: "denied-laptop", version: "0.3.0" } });
       return cliDeviceResponseSchema.parse(await started.json());
@@ -144,7 +144,7 @@ describe("the device-code grant", () => {
     expect(cliHttpErrorSchema.parse(await bad.json()).error.code).toBe("bad-request");
   });
 
-  it("F-103: the grant is no login: better-auth's device endpoint trades it for nothing, as the CLI's client or a runner's", async () => {
+  it("F-103/c1: the grant is no login: better-auth's device endpoint trades it for nothing, as the CLI's client or a runner's", async () => {
     const started = await call(cliPaths.device, { method: "POST", body: { name: "sneaky", version: "0.3.0" } });
     const grant = cliDeviceResponseSchema.parse(await started.json());
     await harness.test.db.deviceCode.updateMany({ where: { deviceCode: grant.deviceCode }, data: { status: "approved", userId: harness.fixture.a.member.userId } });
@@ -157,7 +157,7 @@ describe("the device-code grant", () => {
 });
 
 describe("the branches of a task", () => {
-  it("F-103: resolve a ticket key, a task ID and a task URL to the same repos, branches and clone URLs", async () => {
+  it("F-103/c2: resolve a ticket key, a task ID and a task URL to the same repos, branches and clone URLs", async () => {
     const member = harness.fixture.a.member;
     const session = await sessionFor(member);
     const refs = [{ ref: "OST-142", task: ticketTask }, { ref: ticketTask.taskId, task: ticketTask }, { ref: `${origin}/tasks/${ticketTask.taskId}`, task: ticketTask }, { ref: promptTask.taskId, task: promptTask }];
@@ -183,7 +183,7 @@ describe("the branches of a task", () => {
     expect(JSON.stringify(await (await call(cliPaths.taskBranches("OST-142"), { token: session.token })).json())).not.toMatch(/token|secret|x-access/i);
   });
 
-  it("F-103: another organization's task, a restricted project the member is not on and a nonsense ref are all not found", async () => {
+  it("F-103/c2: another organization's task, a restricted project the member is not on and a nonsense ref are all not found", async () => {
     const restricted = await seedTask(harness, { organizationId: orgA, projectId: harness.fixture.a.restrictedProject.id, title: "Hidden" });
     const outsider = await sessionFor(harness.fixture.b.admin);
     for (const ref of [promptTask.taskId, "OST-142", `${origin}/tasks/${promptTask.taskId}`]) {
@@ -209,7 +209,7 @@ describe("a session belongs to one organization", () => {
     return existing ?? harness.test.db.member.create({ data: { id: randomUUID(), organizationId: orgB, userId, role: "member", createdAt: new Date() }, select: { id: true, userId: true } });
   };
 
-  it("F-103: a session made in organization A can't check out a task in organization B, even when the same user is a member of B", async () => {
+  it("F-103/c2: a session made in organization A can't check out a task in organization B, even when the same user is a member of B", async () => {
     const aMember = harness.fixture.a.member;
     const bProject = harness.fixture.b.project.id;
     const orgB = harness.fixture.b.organization.id;
@@ -234,7 +234,7 @@ describe("a session belongs to one organization", () => {
     expect((await call(cliPaths.taskBranches(promptTask.taskId), { token: sessionA.token })).status).toBe(200);
   });
 
-  it("F-103: a grant approved in an organization makes a session of that organization's member, and its audit entry lands there", async () => {
+  it("F-103/c1: a grant approved in an organization makes a session of that organization's member, and its audit entry lands there", async () => {
     const aMember = harness.fixture.a.member;
     const orgB = harness.fixture.b.organization.id;
     const inB = await memberOfB();
@@ -251,7 +251,7 @@ describe("a session belongs to one organization", () => {
 });
 
 describe("a CLI session's life", () => {
-  it("F-103: a missing, unknown, revoked or expired session is refused with 401 and the CLI's own words", async () => {
+  it("F-103/c4: a missing, unknown, revoked or expired session is refused with 401 and the CLI's own words", async () => {
     const path = cliPaths.taskBranches("OST-142");
     const missing = await call(path);
     expect(missing.status).toBe(401);
@@ -278,7 +278,7 @@ describe("a CLI session's life", () => {
     expect(cliHttpErrorSchema.parse(await afterExpiry.json()).error).toEqual({ code: "session-expired", message: cliSessionMessages["session-expired"] });
   });
 
-  it("F-103: logout revokes the session it is made with, and the session is then refused", async () => {
+  it("F-103/c4: logout revokes the session it is made with, and the session is then refused", async () => {
     const session = await sessionFor(harness.fixture.a.member);
     const out = await call(cliPaths.session, { method: "DELETE", token: session.token });
     expect(out.status).toBe(200);
@@ -289,7 +289,7 @@ describe("a CLI session's life", () => {
     expect(cliHttpErrorSchema.parse(await after.json()).error.code).toBe("session-revoked");
   });
 
-  it("F-103: a CLI session can do nothing else: every tRPC procedure refuses it, a read and a write alike", async () => {
+  it("F-103/c4: a CLI session can do nothing else: every tRPC procedure refuses it, a read and a write alike", async () => {
     const session = await sessionFor(harness.fixture.a.member);
     const context = await createContext(harness.deps, { headers: new Headers({ authorization: `Bearer ${session.token}` }), resHeaders: new Headers() });
     // The real context: better-auth finds no login session behind the token.
@@ -312,7 +312,7 @@ describe("a CLI session's life", () => {
 });
 
 describe("a bare install", () => {
-  it("F-103: a request for an address the CLI does not have is a 404 in the CLI's error shape", async () => {
+  it("F-103/c4: a request for an address the CLI does not have is a 404 in the CLI's error shape", async () => {
     const response = await call("/api/cli/v1/elsewhere");
     expect(response.status).toBe(404);
     expect(cliHttpErrorSchema.parse(await response.json()).error.code).toBe("not-found");
@@ -321,7 +321,7 @@ describe("a bare install", () => {
 
 // A harness with no organization is enough to prove the grant needs an account behind it.
 describe("a grant approved by an account with no organization", () => {
-  it("F-103: ends in a refusal and not a session", async () => {
+  it("F-103/c1: ends in a refusal and not a session", async () => {
     const bare = await createBareHarness();
     try {
       const started = await handleCliRequest(bare.deps, request(cliPaths.device, { method: "POST", body: { name: "orphan", version: "0.3.0" } }));

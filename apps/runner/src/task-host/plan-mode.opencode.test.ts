@@ -110,7 +110,7 @@ const planAnswer = (h: Harness, spec: TaskSpec, decision: "approve" | "revise", 
   h.command("plan-answer", { sessionId: spec.sessionId, decision, text });
 
 describe("plan mode on OpenCode, with the stub models (F-063)", () => {
-  it("F-063: a plan turn changes no file and sends one plan.proposed; approve goes on in build mode", async () => {
+  it("F-063/c1,c2,c4: a plan turn changes no file and sends one plan.proposed; approve goes on in build mode", async () => {
     const h = await start();
     const { spec } = taskOn(h, `${stubMarker("plan-turn")} Plan the notes change.`, true);
     h.dispatch(spec);
@@ -138,7 +138,7 @@ describe("plan mode on OpenCode, with the stub models (F-063)", () => {
     expect(await shared.upstream.fileAt("ostra-test/test1", `refs/heads/${spec.branchName}`, "notes.txt")).toContain("notes, as planned");
   }, 300_000);
 
-  it("F-063: revise stays in plan mode on OpenCode, and proposes again", async () => {
+  it("F-063/c2: revise stays in plan mode on OpenCode, and proposes again", async () => {
     const h = await start();
     const { spec } = taskOn(h, `${stubMarker("plan-turn")} Plan the notes change.`, true);
     h.dispatch(spec);
@@ -153,7 +153,7 @@ describe("plan mode on OpenCode, with the stub models (F-063)", () => {
 });
 
 describe("the steer probe on the pinned OpenCode (F-024, ADR 0032)", () => {
-  it("F-024: OpenCode advertises mid-turn steering, and a message sent during a tool step reaches its next model call", async () => {
+  it("F-024/c2: OpenCode advertises mid-turn steering, and a message sent during a tool step reaches its next model call", async () => {
     const h = await start();
     const { spec } = taskOn(h, `${stubMarker("slow-step")} Sleep, then answer.`, false);
     h.dispatch(spec);

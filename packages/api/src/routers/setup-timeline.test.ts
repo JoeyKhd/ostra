@@ -28,7 +28,7 @@ describe("the checklist without Linear (F-076)", () => {
     await harness.dispose();
   });
 
-  it("F-076: setup completes without Linear, and ticks Linear when it's connected", async () => {
+  it("F-076/c1: setup completes without Linear, and ticks Linear when it's connected", async () => {
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);
     const linearOf = async () => (await admin.setup.status()).steps.find((step) => step.id === "linear")?.state;
@@ -61,7 +61,7 @@ describe("the checklist without Linear (F-076)", () => {
     expect(await admin.setup.status()).toMatchObject({ next: "runner", complete: false });
   });
 
-  it("F-076: each step links to its page in the docs, under OSTRA_DOCS_URL, and the page and heading exist", async () => {
+  it("F-076/c1: each step links to its page in the docs, under OSTRA_DOCS_URL, and the page and heading exist", async () => {
     const steps = (await (await harness.as(harness.fixture.a.member)).setup.status()).steps;
     expect(steps.map((step) => step.id)).toEqual([...setupStepIds]);
     const slug = (heading: string): string =>

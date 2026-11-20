@@ -182,7 +182,7 @@ describe("runners.list and runners.mine", () => {
 });
 
 describe("a runner's containment (ticket 42)", () => {
-  it("F-014: runners.mine and runners.list return the containment each runner reported, null before it did", async () => {
+  it("F-014/c8: runners.mine and runners.list return the containment each runner reported, null before it did", async () => {
     const { a } = harness.fixture;
     const tree = await seedPersonalRunner(harness, a.member.id, "contain-tree");
     const job = await seedPersonalRunner(harness, a.member.id, "contain-job");

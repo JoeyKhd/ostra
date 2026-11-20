@@ -64,7 +64,7 @@ const blob = async (size: number) => {
 };
 
 describe("agentProfiles.save and .archive (F-021)", () => {
-  it("F-021, F-063: an organization admin creates, edits and archives a profile; a member can't", async () => {
+  it("F-021/c1, F-063/c1: an organization admin creates, edits and archives a profile; a member can't", async () => {
     const a = await admin();
     const created = await a.agentProfiles.save(base({ name: "Reviewer", instructions: "Be terse.", planFirst: true }));
     const got = await a.agentProfiles.get({ profileId: created.profileId });
@@ -120,7 +120,7 @@ describe("agentProfiles.save and .archive (F-021)", () => {
     await expect(a.agentProfiles.save(base({ name: "   " }))).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
-  it("F-026: a rule whose match doesn't fit its tool is refused, and rules are stored as the protocol parses them", async () => {
+  it("F-026/c1: a rule whose match doesn't fit its tool is refused, and rules are stored as the protocol parses them", async () => {
     const a = await admin();
     await expect(
       a.agentProfiles.save(base({ approvalRules: [{ ruleId: crypto.randomUUID(), name: "Bad", tool: "edit", match: { kind: "command-prefix", prefixes: ["pnpm add"] } }] })),
@@ -131,7 +131,7 @@ describe("agentProfiles.save and .archive (F-021)", () => {
     expect(got.rules).toEqual([{ ruleId: good.ruleId, name: "Dependencies", tool: "execute", preset: "dependency", match: good.match }]);
   });
 
-  it("F-021: skills and MCP servers are validated, and a skill's files must be uploaded blobs of at most 1 MiB", async () => {
+  it("F-021/c1: skills and MCP servers are validated, and a skill's files must be uploaded blobs of at most 1 MiB", async () => {
     const a = await admin();
     const small = await blob(10);
     const big = await blob(2 * 1024 * 1024);
@@ -159,7 +159,7 @@ describe("agentProfiles.save and .archive (F-021)", () => {
     await expect(a.agentProfiles.save(base({ mcpServers: [{ transport: "stdio", name: "x", command: "  ", args: [], env: {} }] }))).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
-  it("F-021: a file uploaded for a skill is the blob its profile saves with, and the profile reads back with its path and size", async () => {
+  it("F-021/c1: a file uploaded for a skill is the blob its profile saves with, and the profile reads back with its path and size", async () => {
     const a = await admin();
     const sent = await serveSkillFileUpload(
       await harness.contextOf(harness.fixture.a.admin),
@@ -173,7 +173,7 @@ describe("agentProfiles.save and .archive (F-021)", () => {
     ]);
   });
 
-  it("F-021: an MCP header's value goes to the secret store and never comes back; only its name and that it is set do", async () => {
+  it("F-021/c1: an MCP header's value goes to the secret store and never comes back; only its name and that it is set do", async () => {
     const a = await admin();
     const secretValue = "Bearer sk-mcp-header-value-0123456789";
     const saved = await a.agentProfiles.save(
@@ -227,7 +227,7 @@ describe("an MCP header's value (F-021)", () => {
   const withHeader = (value: string) =>
     base({ mcpServers: [{ transport: "http", name: "search", url: "https://mcp.example.com/mcp", headers: [{ name: "Authorization", value }] }] });
 
-  it("F-021: a header value holding a line break or another control character is refused on save, and a trailing newline is trimmed before it is stored", async () => {
+  it("F-021/c1: a header value holding a line break or another control character is refused on save, and a trailing newline is trimmed before it is stored", async () => {
     const a = await admin();
     const profilesBefore = await harness.test.db.agentProfile.count();
     for (const bad of [`Bearer abc\nx-injected: 1`, `Bearer abc\rx`, `Bearer ab\u0000c`, `Bearer ab\u007fc`]) {
@@ -242,7 +242,7 @@ describe("an MCP header's value (F-021)", () => {
 });
 
 describe("who may use a profile (F-021)", () => {
-  it("F-021: a listed profile is invisible to an unlisted member and refused to start a task, and works for a listed one", async () => {
+  it("F-021/c2,c4: a listed profile is invisible to an unlisted member and refused to start a task, and works for a listed one", async () => {
     const a = await admin();
     const secret = await a.agentProfiles.save(base({ name: "Secret team", access: { kind: "listed", members: [harness.fixture.a.insider.id] } }));
     const got = await a.agentProfiles.get({ profileId: secret.profileId });
@@ -301,7 +301,7 @@ describe("who may use a profile (F-021)", () => {
 });
 
 describe("a project's default profile (F-021)", () => {
-  it("F-021: a default must be open to the project's members, and only a project admin sets it", async () => {
+  it("F-021/c3: a default must be open to the project's members, and only a project admin sets it", async () => {
     const a = await admin();
     const open = await a.agentProfiles.save(base({ name: "Open default" }));
     const listed = await a.agentProfiles.save(base({ name: "Listed", access: { kind: "listed", members: [harness.fixture.a.insider.id] } }));
@@ -331,7 +331,7 @@ describe("a project's default profile (F-021)", () => {
     await expect((await harness.as(harness.fixture.b.admin)).projects.setDefaultProfile({ projectId, kind: "code", profileId: open.profileId })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("F-021, Q189: archiving a profile moves the defaults on it to the built-in profile, and tasks keep the profile they started with", async () => {
+  it("F-021/c3, Q189: archiving a profile moves the defaults on it to the built-in profile, and tasks keep the profile they started with", async () => {
     const a = await admin();
     const mine = await a.agentProfiles.save(base({ name: "Soon archived" }));
     await a.projects.setDefaultProfile({ projectId, kind: "refine", profileId: mine.profileId });
@@ -354,7 +354,7 @@ describe("a project's default profile (F-021)", () => {
 });
 
 describe("the editor's helpers (F-026)", () => {
-  it("F-026: ruleCoverage says what a rule covers: asks for `pnpm add`, not for `pnpm test`", async () => {
+  it("F-026/c1: ruleCoverage says what a rule covers: asks for `pnpm add`, not for `pnpm test`", async () => {
     const m = await member();
     const dependency = rule({ name: "Dependencies", tool: "execute", match: { kind: "command-prefix", prefixes: ["pnpm add", "npm install"] } });
     const paths = rule({ name: "Manifests", tool: "edit", match: { kind: "path-glob", glob: "**/package.json" } });
@@ -373,14 +373,14 @@ describe("the editor's helpers (F-026)", () => {
     expect(byRule.get(mcp.ruleId)?.unmatched.map((s) => s.value)).toEqual(["docs/call"]);
   });
 
-  it("F-026: a path rule's coverage names a near miss first: asks for `config/settings.json`, not for `src/config.ts`", async () => {
+  it("F-026/c1: a path rule's coverage names a near miss first: asks for `config/settings.json`, not for `src/config.ts`", async () => {
     const config = rule({ name: "Config files", tool: "edit", match: { kind: "path-glob", glob: "config/**" } });
     const [coverage] = await (await member()).agentProfiles.ruleCoverage({ rules: [config] });
     expect(coverage?.matched.map((s) => s.value)).toEqual(["config/settings.json"]);
     expect(coverage?.unmatched[0]?.value).toBe("src/config.ts");
   });
 
-  it("F-021: the start picker's options carry each profile's rule count, as the editor shows the rules", async () => {
+  it("F-021/c3: the start picker's options carry each profile's rule count, as the editor shows the rules", async () => {
     const a = await admin();
     // A rule's globs are stored one per rule; the editor shows them as one rule, and so does the count.
     const globs = ["**/migrations/**", "**/*.sql"].map((glob) => rule({ name: "One", tool: "edit", match: { kind: "path-glob", glob } }));

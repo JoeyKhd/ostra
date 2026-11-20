@@ -222,7 +222,7 @@ afterAll(async () => {
 });
 
 describe("snapshots (F-051)", () => {
-  it("F-051: a docker runner builds the snapshot over the protocol: the command, its credentials, its result", async () => {
+  it("F-051/c2,c4: a docker runner builds the snapshot over the protocol: the command, its credentials, its result", async () => {
     const harness = await startGateway(
       test.db,
       test.url,
@@ -299,7 +299,7 @@ describe("snapshots (F-051)", () => {
     }
   });
 
-  it("F-051: each trigger queues one build: the environment's change, a lockfile pushed to the default branch, the nightly when the branch moved", async () => {
+  it("F-051/c2: each trigger queues one build: the environment's change, a lockfile pushed to the default branch, the nightly when the branch moved", async () => {
     const runner = await dockerRunner();
     // The environment changed (the panel enqueues it, ticket 40): one job, one build, one command.
     const changed = await trigger("environment-changed");
@@ -345,7 +345,7 @@ describe("snapshots (F-051)", () => {
     expect(await buildCommands()).toHaveLength(3);
   });
 
-  it("F-051: two triggers within a minute queue one build", async () => {
+  it("F-051/c2: two triggers within a minute queue one build", async () => {
     await dockerRunner();
     const changed = await trigger("environment-changed");
     const lockfile = await trigger("lockfile-changed");
@@ -356,7 +356,7 @@ describe("snapshots (F-051)", () => {
     expect(await buildCommands()).toHaveLength(1);
   });
 
-  it("F-051: a failed build keeps the previous snapshot in use", async () => {
+  it("F-051/c4: a failed build keeps the previous snapshot in use", async () => {
     const runner = await dockerRunner();
     const previous = await readySnapshot(runner, "e");
     await work(await trigger("rebuild"));

@@ -105,7 +105,7 @@ const surfaces = ["--bg", "--side", "--surface", "--raise", "--sel"];
 const unthemed = new Set(["--shell", "--ink", "--mist", "--fs-xs", "--fs-sm", "--fs-ui", "--fs-body", "--fs-lede", "--fs-title"]);
 
 describe("the panel's light theme", () => {
-  it("F-082: the light tokens are light-home.md's table, the same in [data-theme=light] and in match my system's media query", async () => {
+  it("F-082/c2: the light tokens are light-home.md's table, the same in [data-theme=light] and in match my system's media query", async () => {
     const { light, system, table } = await read();
     expect(table.size).toBeGreaterThanOrEqual(20);
     for (const [name, value] of table) {
@@ -122,7 +122,7 @@ describe("the panel's light theme", () => {
     }
   });
 
-  it("F-082: every text colour passes AA (4.5:1) on every surface, and fills carry their text, in both themes", async () => {
+  it("F-082/c2: every text colour passes AA (4.5:1) on every surface, and fills carry their text, in both themes", async () => {
     const { dark, light } = await read();
     for (const [theme, tokens] of [
       ["dark", dark],

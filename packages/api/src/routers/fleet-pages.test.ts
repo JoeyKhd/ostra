@@ -48,7 +48,7 @@ const seedBox = async (projectId: ProjectId, runnerId: RunnerId, state: "creatin
 };
 
 describe("a pool's projects against their shares (F-092)", () => {
-  it("F-092: pools.get counts each project's boxes that hold a slot on the pool's runners, and no other pool's or stopped box", async () => {
+  it("F-092/c2: pools.get counts each project's boxes that hold a slot on the pool's runners, and no other pool's or stopped box", async () => {
     const poolId = await seedPool("shared-boxes");
     const other = await seedPool("other-boxes");
     const runner = await seedRunner(poolId, "shared-01");
@@ -73,7 +73,7 @@ describe("a pool's projects against their shares (F-092)", () => {
 });
 
 describe("a runner's page, for the admin who approves it (F-091)", () => {
-  it("F-091: runners.get names the key by its SHA-256 fingerprint, never the key, and who made the token it joined with", async () => {
+  it("F-091/c6: runners.get names the key by its SHA-256 fingerprint, never the key, and who made the token it joined with", async () => {
     const a = harness.fixture.a;
     const admin = await harness.as(a.admin);
     const made = await admin.pools.create({ name: "keyed-fleet", requiresApproval: true });

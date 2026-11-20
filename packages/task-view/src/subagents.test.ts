@@ -75,7 +75,7 @@ const treeEvents = (): TaskEvent[] => [
 ];
 
 describe("the subagent tree, from events (F-138)", () => {
-  it("F-138: a turn's subagents fold into a tree under the main agent: parents, depth, types, prompts, states, calls and answers", () => {
+  it("F-138/c2,c3: a turn's subagents fold into a tree under the main agent: parents, depth, types, prompts, states, calls and answers", () => {
     const messages = foldTaskEvents(storeEvents(treeEvents()), []);
     const tree = treeOf(messages);
     expect(tree?.nodes.map((node) => [node.description, node.parentId, node.depth, node.type])).toEqual([
@@ -131,7 +131,7 @@ describe("the subagent tree, from events (F-138)", () => {
     expect(closed?.type === "tool-execute" ? closed.state : null).toBe("approval-responded");
   });
 
-  it("F-138: a failed subagent keeps its error, an interrupted one and one whose session ended are stopped, and one outlives its turn as running", () => {
+  it("F-138/c5: a failed subagent keeps its error, an interrupted one and one whose session ended are stopped, and one outlives its turn as running", () => {
     const failed = [...treeEvents(), { kind: "subagent.status", subagentId: sub("ses_b"), status: "failed", error: "the model endpoint returned 500" } satisfies TaskEvent];
     const afterTurn: TaskEvent[] = [...treeEvents(), { kind: "turn.ended", turnId: turn, stopReason: "end_turn" }];
     expect(nodeBy(treeOf(foldTaskEvents(storeEvents(failed), [])), "Write version row test")).toMatchObject({ state: "failed", error: "the model endpoint returned 500" });
@@ -162,7 +162,7 @@ describe("the subagent tree, from events (F-138)", () => {
     expect(threadTexts(messages)).toContain("The version comes from package.json.");
   });
 
-  it("F-138: a reload rebuilds the same tree: the whole log at once, again, or as it arrived with the previous fold", () => {
+  it("F-138/c6: a reload rebuilds the same tree: the whole log at once, again, or as it arrived with the previous fold", () => {
     const events = storeEvents(treeEvents());
     const once = foldTaskEvents(events, []);
     expect(foldTaskEvents(events, [])).toEqual(once);
@@ -265,7 +265,7 @@ const runTurn = async (adapter: AgentAdapter, prompt: string, io: AgentIo | "spa
 };
 
 describe("the subagent tree, from each agent (F-138)", () => {
-  it("F-138: the fake agent with subagents: its three subagents, one nested under its parent, fold into the tree with their calls and answers", async () => {
+  it("F-138/c2: the fake agent with subagents: its three subagents, one nested under its parent, fold into the tree with their calls and answers", async () => {
     const { stored } = await runTurn(new FakeAgentAdapter("rich"), fakeMarker("subagent-tree"), "spawn");
     const messages = foldTaskEvents(stored, []);
     const tree = treeOf(messages);
@@ -288,7 +288,7 @@ describe("the subagent tree, from each agent (F-138)", () => {
     expect(stored.filter((item) => item.event.kind === "subagent.status" && item.event.status === "completed")).toHaveLength(3);
   }, 60_000);
 
-  it("F-138: the same agent without the capability shows its subagents' calls flat, as today", async () => {
+  it("F-138/c7: the same agent without the capability shows its subagents' calls flat, as today", async () => {
     const { stored } = await runTurn(new FakeAgentAdapter("plain"), fakeMarker("subagent-tree"), "spawn");
     const messages = foldTaskEvents(stored, []);
     expect(treeOf(messages)).toBeUndefined();
@@ -298,7 +298,7 @@ describe("the subagent tree, from each agent (F-138)", () => {
     expect(threadCalls(messages).length).toBeGreaterThan(2);
   }, 60_000);
 
-  it("F-138: an approval inside a subagent names it: the request carries the subagent, the thread asks, and the window's node waits", async () => {
+  it("F-138/c4: an approval inside a subagent names it: the request carries the subagent, the thread asks, and the window's node waits", async () => {
     const { stored, permissions } = await runTurn(new FakeAgentAdapter("rich"), fakeMarker("subagent-tree", "ask"), "spawn");
     const t = FAKE_SUBAGENT_TREE;
     const general = treeOf(foldTaskEvents(stored, []))?.nodes.find((node) => node.description === t.general.description);
@@ -312,13 +312,13 @@ describe("the subagent tree, from each agent (F-138)", () => {
     expect(asked?.type === "tool-execute" ? asked.state : null).toBe("approval-requested");
   }, 60_000);
 
-  it("F-138: a failing subagent fails on the tree with its agent's error", async () => {
+  it("F-138/c3: a failing subagent fails on the tree with its agent's error", async () => {
     const { stored } = await runTurn(new FakeAgentAdapter("rich"), fakeMarker("subagent-tree", "fail"), "spawn");
     const general = nodeBy(treeOf(foldTaskEvents(stored, [])), FAKE_SUBAGENT_TREE.general.description);
     expect(general).toMatchObject({ state: "failed", error: FAKE_SUBAGENT_TREE.error });
   }, 60_000);
 
-  it("F-138: OpenCode's recorded child-session updates become the tree: two subagents with their parents, types, prompts, states, calls and answers (run B)", async () => {
+  it("F-138/c1,c3: OpenCode's recorded child-session updates become the tree: two subagents with their parents, types, prompts, states, calls and answers (run B)", async () => {
     const run = await readRecordedRun("B");
     const replay = replayAgent(run);
     try {
@@ -339,7 +339,7 @@ describe("the subagent tree, from each agent (F-138)", () => {
     }
   }, 60_000);
 
-  it("F-138: OpenCode's recorded subagent that outlives its prompt keeps reporting into the tree until it's done, and the agent's wake-up stays its own (run D)", async () => {
+  it("F-138/c5: OpenCode's recorded subagent that outlives its prompt keeps reporting into the tree until it's done, and the agent's wake-up stays its own (run D)", async () => {
     const run = await readRecordedRun("D");
     const replay = replayAgent(run);
     try {
@@ -352,7 +352,7 @@ describe("the subagent tree, from each agent (F-138)", () => {
     }
   }, 60_000);
 
-  it("F-138: OpenCode's recorded approval inside a subagent names it (run I, without the extension: by the child's own meta)", async () => {
+  it("F-138/c4: OpenCode's recorded approval inside a subagent names it (run I, without the extension: by the child's own meta)", async () => {
     const run = await readRecordedRun("I");
     const replay = replayAgent(run);
     try {
@@ -370,7 +370,7 @@ describe("the subagent tree, from each agent (F-138)", () => {
     }
   }, 60_000);
 
-  it("F-138: OpenCode against the stub model: its explore and general subagents become the tree, with their calls and answers out of the thread", async () => {
+  it("F-138/c1,c3: OpenCode against the stub model: its explore and general subagents become the tree, with their calls and answers out of the thread", async () => {
     const brain = createScenarioBrain({
       "two-subagents": ({ step }) => {
         if (step === 0) {

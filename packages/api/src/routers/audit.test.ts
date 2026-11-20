@@ -79,7 +79,7 @@ afterAll(async () => {
 const actions = (entries: readonly AuditEntryView[]) => entries.map((entry) => entry.action);
 
 describe("audit.list", () => {
-  it("F-073: an organization admin sees every entry, newest first across pages, and filters each way", async () => {
+  it("F-073/c2,c3: an organization admin sees every entry, newest first across pages, and filters each way", async () => {
     const all = await listAll(admin, {});
     expect(all.length).toBeGreaterThanOrEqual(8);
     expect(all.map((entry) => entry.at)).toEqual([...all.map((entry) => entry.at)].sort((x, y) => y - x));
@@ -101,7 +101,7 @@ describe("audit.list", () => {
     expect(await trpcFailure(admin.audit.list({ action: "made.up" }))).toMatchObject({ code: "BAD_REQUEST" });
   });
 
-  it("F-073: a project admin sees only their project's entries, and a member none", async () => {
+  it("F-073/c2: a project admin sees only their project's entries, and a member none", async () => {
     const asProjectAdmin = await harness.as(projectAdmin);
     const theirs = await listAll(asProjectAdmin, { projectId: restrictedId });
     expect(theirs.length).toBeGreaterThan(0);
@@ -114,7 +114,7 @@ describe("audit.list", () => {
     expect(await trpcFailure(member.audit.list({ projectId: restrictedId }))).toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("F-073: an entry names its entity: the live record's label, the label its data recorded once the record is gone, else the ID", async () => {
+  it("F-073/c2: an entry names its entity: the live record's label, the label its data recorded once the record is gone, else the ID", async () => {
     const { a } = harness.fixture;
     const keyed = await seedTask(harness, { organizationId: orgA, projectId: openId, title: "Add a square root key" });
     await harness.test.db.task.update({ where: { id: keyed.taskId }, data: { ticketKey: "CALC-161" } });
@@ -147,14 +147,14 @@ describe("audit.list", () => {
     expect(again.map((entry) => entry.entityLabel)).toEqual([harness.fixture.b.project.id]);
   });
 
-  it("F-073: the Actor filter's Runners and System choices read every runner's entries, and the system's", async () => {
+  it("F-073/c2: the Actor filter's Runners and System choices read every runner's entries, and the system's", async () => {
     expect(actions(await listAll(admin, { actorKind: "runner" }))).toEqual(["runner.registered"]);
     expect(actions(await listAll(admin, { actorKind: "system" }))).toEqual(["pr.merged"]);
     const response = await exportAs(harness.fixture.a.admin, "?actorKind=system");
     expect(parseCsv(await response.text()).slice(1).map((row) => row[4])).toEqual(["pr.merged"]);
   });
 
-  it("F-073: another organization's entries never appear, and its project is NOT_FOUND", async () => {
+  it("F-073/c2: another organization's entries never appear, and its project is NOT_FOUND", async () => {
     const { b } = harness.fixture;
     const all = await listAll(admin, {}, 50);
     expect(all.some((entry) => entry.actor.id === b.admin.id)).toBe(false);
@@ -180,7 +180,7 @@ const exportAs = async (who: SeededMember | null, query: string): Promise<Respon
 };
 
 describe("the CSV export", () => {
-  it("F-073: the export's rows equal the list's for the same filters, behind the same access check", async () => {
+  it("F-073/c2: the export's rows equal the list's for the same filters, behind the same access check", async () => {
     for (const [query, filter] of [
       ["", {}],
       ["?action=budget.", { action: "budget." }],
@@ -228,7 +228,7 @@ describe("the CSV export", () => {
 });
 
 describe("tasks.eventLog", () => {
-  it("F-073: returns every event in order with a tool call's full input for execute, read, search, edit and fetch, failures and approvals", async () => {
+  it("F-073/c3: returns every event in order with a tool call's full input for execute, read, search, edit and fetch, failures and approvals", async () => {
     const at = { organizationId: orgA, projectId: openId };
     const task = await seedTask(harness, at);
     const turnId = turnIdSchema.parse("turn-1");
@@ -264,7 +264,7 @@ describe("tasks.eventLog", () => {
     expect(rest.nextAfterSeq).toBeNull();
   });
 
-  it("F-073: a member who can't open the task's project gets NOT_FOUND", async () => {
+  it("F-073/c3: a member who can't open the task's project gets NOT_FOUND", async () => {
     const task = await seedTask(harness, { organizationId: orgA, projectId: restrictedId });
     expect(await trpcFailure((await harness.as(harness.fixture.a.member)).tasks.eventLog({ taskId: task.taskId }))).toMatchObject({ code: "NOT_FOUND" });
     expect((await (await harness.as(harness.fixture.a.insider)).tasks.eventLog({ taskId: task.taskId })).events).toEqual([]);

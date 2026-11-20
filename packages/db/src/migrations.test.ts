@@ -128,7 +128,7 @@ describe("milestone 2's migrations", () => {
     expect(columns.rows).toEqual([{ data_type: "jsonb", is_nullable: "YES" }]);
   });
 
-  it("F-016: apply to a database holding milestone 1's demo data, and keep every row and branch as it was", async () => {
+  it("F-016/c3: apply to a database holding milestone 1's demo data, and keep every row and branch as it was", async () => {
     const names = await migrationNames();
     const cut = names.indexOf(LAST_OF_MILESTONE_1);
     expect(cut).toBeGreaterThanOrEqual(0);
@@ -154,7 +154,7 @@ describe("milestone 2's migrations", () => {
     ).rejects.toThrow(/task_project_branch_unique/);
   });
 
-  it("F-016: stop on two tasks of a project that share a branch, name them, and rename nothing", async () => {
+  it("F-016/c3: stop on two tasks of a project that share a branch, name them, and rename nothing", async () => {
     const names = await migrationNames();
     const cut = names.indexOf(LAST_OF_MILESTONE_1);
     const database = await emptyDatabase();

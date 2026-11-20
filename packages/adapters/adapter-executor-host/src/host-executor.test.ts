@@ -128,7 +128,7 @@ describe("the host executor", () => {
     });
   });
 
-  it("F-095: the host executor counts slots only: it offers no CPU or memory, refuses a box size, and makes no box for it", async () => {
+  it("F-095/c4: the host executor counts slots only: it offers no CPU or memory, refuses a box size, and makes no box for it", async () => {
     expect(executor.capacity()).toBeNull();
     const box = newBox();
     const refused = await executor.create({ ...box, spec: twoRepoSpec(box, null), proxies, size: { cpuMillis: 2000, memoryMiB: 4096 } });
@@ -218,7 +218,7 @@ describe("the host executor", () => {
     expect(await executor.state(box)).toEqual({ ok: true, value: "released" });
   });
 
-  it("F-050: writes repo A's secret into repo A only, and never commits it", async () => {
+  it("F-050/c5: writes repo A's secret into repo A only, and never commits it", async () => {
     const box = newBox();
     const spec = twoRepoSpec(box, null);
     const created = await executor.create({ ...box, spec, proxies });
@@ -238,7 +238,7 @@ describe("the host executor", () => {
     await executor.release(box);
   });
 
-  it("F-050: a key both repos need reaches each checkout with its own repo's value, and no other", async () => {
+  it("F-050/c5,c6: a key both repos need reaches each checkout with its own repo's value, and no other", async () => {
     const box = newBox();
     const spec = twoRepoSpec(box, null);
     const created = await executor.create({ ...box, spec, proxies });
@@ -259,7 +259,7 @@ describe("the host executor", () => {
     await executor.release(box);
   });
 
-  it("F-078: puts the trailer on the agent's own commits too, and the bot authors them", async () => {
+  it("F-078/c2: puts the trailer on the agent's own commits too, and the bot authors them", async () => {
     const box = newBox();
     const spec = twoRepoSpec(box, null);
     const created = await executor.create({ ...box, spec, proxies });
@@ -369,7 +369,7 @@ describe("git on Windows, where a path over 260 characters needs core.longpaths"
   const SEGMENT = "a-deep-folder-".padEnd(40, "x");
   const deepFolder = [SEGMENT, SEGMENT, SEGMENT].join("/");
 
-  it("F-014: gives the task's config and every checkout's config core.longpaths, on any system", async () => {
+  it("F-014/c9: gives the task's config and every checkout's config core.longpaths, on any system", async () => {
     const box = newBox();
     const spec = twoRepoSpec(box, null);
     const created = await executor.create({ ...box, spec, proxies });
@@ -456,7 +456,7 @@ describe("the executor's git, where the agent controls the checkout", () => {
   const HARDENING = ["-c", "core.fsmonitor=false", "-c", "core.sshCommand=", "-c", "protocol.ext.allow=never", "-c", "core.longpaths=true"];
   const subcommand = (call: GitRun): string | undefined => call.args.slice(HARDENING.length)[0];
 
-  it("F-014: runs every git command, the sidecar's included, through the processes seam, each with the hardening and core.longpaths on", async () => {
+  it("F-014/c9: runs every git command, the sidecar's included, through the processes seam, each with the hardening and core.longpaths on", async () => {
     const calls: GitRun[] = [];
     const recorded = recordingExecutor(calls);
     const box = newBox();
@@ -526,7 +526,7 @@ describe("a workspace per task (F-016)", () => {
     return { spec, workspaceDir: created.value.workspaceDir };
   };
 
-  it("F-016: every repo of the task is checked out side by side in its workspace, all on the task's one branch", async () => {
+  it("F-016/c1: every repo of the task is checked out side by side in its workspace, all on the task's one branch", async () => {
     const box = newBox();
     const { spec, workspaceDir } = await prepared(box);
     expect((await readdir(workspaceDir)).sort()).toEqual(["test1", "test2"]);
@@ -540,7 +540,7 @@ describe("a workspace per task (F-016)", () => {
   });
 
 
-  it("F-016: the task's branch is made in each repo it changes, and in no other", async () => {
+  it("F-016/c2: the task's branch is made in each repo it changes, and in no other", async () => {
     const box = newBox();
     const { spec, workspaceDir } = await prepared(box);
     const [one, two] = spec.repos;
@@ -561,7 +561,7 @@ describe("a workspace per task (F-016)", () => {
     expect(await upstream.treeFiles(two.fullName, `refs/heads/${spec.branchName}`)).toContain("TWO.md");
     await executor.release(box);
   });
-  it("F-016: two tasks never share a workspace, a working tree or a branch, and one's release leaves the other whole", async () => {
+  it("F-016/c3: two tasks never share a workspace, a working tree or a branch, and one's release leaves the other whole", async () => {
     const one = newBox();
     const two = newBox();
     const first = await prepared(one);
@@ -606,7 +606,7 @@ describe("a workspace per task (F-016)", () => {
     await executor.release(two);
   });
 
-  it("F-016: a box serves one task: its ID can't be created twice, and a released box isn't prepared again", async () => {
+  it("F-016/c3: a box serves one task: its ID can't be created twice, and a released box isn't prepared again", async () => {
     const box = newBox();
     const spec = twoRepoSpec(box, null);
     expect((await executor.create({ ...box, spec, proxies })).ok).toBe(true);
@@ -617,7 +617,7 @@ describe("a workspace per task (F-016)", () => {
 });
 
 describe("a push the code host refuses", () => {
-  it("F-006: names GitHub's refusal of a workflow change in words a member can act on, and keeps another refusal's reason", () => {
+  it("F-006/c5: names GitHub's refusal of a workflow change in words a member can act on, and keeps another refusal's reason", () => {
     // `git push --porcelain` as GitHub answers an App without the `workflows` permission.
     const workflows = [
       "To https://github.com/ostra-test/test1.git",

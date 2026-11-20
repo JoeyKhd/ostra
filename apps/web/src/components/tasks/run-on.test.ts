@@ -11,7 +11,7 @@ type Machine = Choices["personal"][number];
 const machine = (reason: Machine["reason"]): Machine => ({ runnerId: runnerIdSchema.parse("01900000-0000-7000-8000-000000000009"), name: "sam-laptop", canRun: reason === null, reason, busy: 2, slots: 2 });
 
 describe("the runner picker", () => {
-  it("F-069: a machine that can't take the task is disabled with its reason, except a busy one, which waits its turn", () => {
+  it("F-069/c2: a machine that can't take the task is disabled with its reason, except a busy one, which waits its turn", () => {
     expect(personalBlocked(machine("offline"))).toBe(true);
     expect(personalBlocked(machine("needs-services"))).toBe(true);
     expect(personalBlocked(machine("provider-not-allowed"))).toBe(true);

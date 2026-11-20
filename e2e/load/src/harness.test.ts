@@ -10,7 +10,7 @@ import { taskIdSchema } from "@ostra/protocol";
 // Ticket 34 (F-117): the load test's own parts, each against a known answer.
 
 describe("the steer timer", () => {
-  it("F-117: measures a steer against a known delay, and counts one that never arrives as lost", async () => {
+  it("F-117/c2: measures a steer against a known delay, and counts one that never arrives as lost", async () => {
     const timer = createSteerTimer();
     // Known delays, 1 to 100 ms, on recorded timestamps.
     for (let delay = 1; delay <= 100; delay += 1) {
@@ -48,7 +48,7 @@ describe("the steer timer", () => {
 });
 
 describe("the CPU sampler", () => {
-  it("F-117: reads the test's own process's CPU and memory from the OS", async () => {
+  it("F-117/c4: reads the test's own process's CPU and memory from the OS", async () => {
     const before = await sampleProcess(process.pid);
     const nodeBefore = process.cpuUsage();
     // Burn until Node itself counts 1.2 s of CPU, not for a wall-clock time: on a busy CI machine
@@ -76,7 +76,7 @@ describe("the CPU sampler", () => {
     expect(after.processes).toBeGreaterThanOrEqual(1);
   }, 60_000);
 
-  it("F-117: parses Linux's /proc stat and ps's time", () => {
+  it("F-117/c4: parses Linux's /proc stat and ps's time", () => {
     // pid (comm with a space) state ppid ... utime=250 stime=50 ... rss=1000 pages
     const fields = ["S", "7", ...Array.from({ length: 9 }, () => "0"), "250", "50", ...Array.from({ length: 8 }, () => "0"), "1000"];
     expect(parseProcStat(`42 (postgres: writer) ${fields.join(" ")}`)).toEqual({ pid: 42, ppid: 7, cpuMs: 3_000, rssBytes: 1000 * 4096 });
@@ -87,7 +87,7 @@ describe("the CPU sampler", () => {
 });
 
 describe("the event mix", () => {
-  it("F-117: draws rates within spike 10's recorded range, half under its median, at its byte size", () => {
+  it("F-117/c2: draws rates within spike 10's recorded range, half under its median, at its byte size", () => {
     let seed = 1;
     const random = (): number => {
       seed = (seed * 16_807) % 2_147_483_647;
@@ -142,7 +142,7 @@ const step = (tasks: number, overrides: Partial<StepResult> = {}): StepResult =>
 });
 
 describe("the summary's verdict", () => {
-  it("F-117: names the largest step that held every bar and how the next one failed", () => {
+  it("F-117/c2: names the largest step that held every bar and how the next one failed", () => {
     const recorded = runResultsSchema.parse({
       machine: "test",
       steps: [

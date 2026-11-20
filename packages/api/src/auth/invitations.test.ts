@@ -104,14 +104,14 @@ afterEach(() => {
 });
 
 describe("sign-up through an invitation", () => {
-  it("F-002: sign-up is refused without an invitation, and leaves no account behind", async () => {
+  it("F-002/c3: sign-up is refused without an invitation, and leaves no account behind", async () => {
     const before = await harness.test.db.user.count();
     const refused = await signUp(fresh("stranger"));
     expect(refused).toMatchObject({ status: 403, body: { code: "SIGN_UP_CLOSED" } });
     expect(await harness.test.db.user.count()).toBe(before);
   });
 
-  it("F-002: an invitation's ID lets one sign-up through: the account, the membership, its project grants and the acceptance together", async () => {
+  it("F-002/c3,c4: an invitation's ID lets one sign-up through: the account, the membership, its project grants and the acceptance together", async () => {
     const who = fresh("sam");
     const invited = await inviteOf(who.email, { projectGrants: [{ projectId: harness.fixture.a.restrictedProject.id, role: "admin" }] });
     expect(invited.link).toBe(`${BASE}/invite/${invited.invitationId}`);
@@ -134,7 +134,7 @@ describe("sign-up through an invitation", () => {
     expect(projects.map((project) => project.id)).toContain(harness.fixture.a.restrictedProject.id);
   });
 
-  it("F-002: a stranger who knows only the address is refused", async () => {
+  it("F-002/c4: a stranger who knows only the address is refused", async () => {
     const who = fresh("known");
     await inviteOf(who.email);
     expect(await signUp(who)).toMatchObject({ status: 403, body: { code: "SIGN_UP_CLOSED" } });
@@ -142,7 +142,7 @@ describe("sign-up through an invitation", () => {
     expect(await harness.test.db.user.count({ where: { email: who.email } })).toBe(0);
   });
 
-  it("F-002: an invitation works once", async () => {
+  it("F-002/c5: an invitation works once", async () => {
     const first = fresh("once");
     const invited = await inviteOf(first.email);
     expect((await signUp({ ...first, invitationId: invited.invitationId })).status).toBe(200);
@@ -151,7 +151,7 @@ describe("sign-up through an invitation", () => {
     expect(await harness.test.db.user.count({ where: { email: second.email } })).toBe(0);
   });
 
-  it("F-002: two sign-ups with one invitation at once make one account and one membership", async () => {
+  it("F-002/c5: two sign-ups with one invitation at once make one account and one membership", async () => {
     const a = fresh("race-a");
     const b = fresh("race-b");
     const invited = await inviteOf(a.email);
@@ -162,7 +162,7 @@ describe("sign-up through an invitation", () => {
     expect(await harness.test.db.user.count({ where: { email: { in: [a.email, b.email] } } })).toBe(1);
   });
 
-  it("F-002: an invitation is refused after 7 days, by the clock", async () => {
+  it("F-002/c5: an invitation is refused after 7 days, by the clock", async () => {
     const who = fresh("late");
     const invited = await inviteOf(who.email);
     expect(invited.expiresAt - Date.now()).toBeGreaterThan(7 * DAY - 60_000);
@@ -174,7 +174,7 @@ describe("sign-up through an invitation", () => {
     expect((await signUp({ ...who, invitationId: invited.invitationId })).status).toBe(200);
   });
 
-  it("F-002: an invitation is refused after an admin revokes it", async () => {
+  it("F-002/c5: an invitation is refused after an admin revokes it", async () => {
     const who = fresh("revoked");
     const invited = await inviteOf(who.email);
     await admin.members.revokeInvitation({ handle: invited.handle });
@@ -204,7 +204,7 @@ describe("sign-up through an invitation", () => {
     expect(await harness.test.db.invitation.count({ where: { email: who.email } })).toBe(0);
   });
 
-  it("F-002: the link is returned once: no later read of the invitation holds it", async () => {
+  it("F-002/c3: the link is returned once: no later read of the invitation holds it", async () => {
     const who = fresh("shown");
     const invited = await inviteOf(who.email, { role: "admin" });
     const listed = await admin.members.invitations();
@@ -239,7 +239,7 @@ describe("sign-up through an invitation", () => {
     expect(await from("203.0.113.10").invitations.preview({ invitationId: "guess-31" })).toEqual({ state: "not-found" });
   });
 
-  it("F-002: a forged leading X-Forwarded-For value opens no new window: the proxy's last hop is the address", async () => {
+  it("F-002/c4: a forged leading X-Forwarded-For value opens no new window: the proxy's last hop is the address", async () => {
     // What a proxy forwards: whatever the client sent, a new value each time, then the address it saw.
     const forged = (attempt: number) =>
       harness
@@ -264,7 +264,7 @@ describe("with email set up", () => {
     harness.emailSwitch.on = true;
   });
 
-  it("F-002: the address must be the invitation's, the membership waits for its verification, and the link alone activates nothing", async () => {
+  it("F-002/c3,c6: the address must be the invitation's, the membership waits for its verification, and the link alone activates nothing", async () => {
     const who = fresh("verify");
     const invited = await inviteOf(who.email);
     // The invitation itself is mailed: an account mail by its ID, never its link.
@@ -296,7 +296,7 @@ describe("with email set up", () => {
     expect(Array.isArray(await now.projects.list())).toBe(true);
   });
 
-  it("F-002: the mailed verification link's token activates the membership once, only with its own invitation", async () => {
+  it("F-002/c6: the mailed verification link's token activates the membership once, only with its own invitation", async () => {
     const who = fresh("mailed");
     const invited = await inviteOf(who.email);
     const signedUp = await signUp({ ...who, invitationId: invited.invitationId });
@@ -323,7 +323,7 @@ describe("with email set up", () => {
     expect(await anonymous.invitations.verify({ invitationId: invited.invitationId, token })).toEqual({ state: "invalid" });
   });
 
-  it("F-002: an expired verification token activates nothing", async () => {
+  it("F-002/c6: an expired verification token activates nothing", async () => {
     const who = fresh("late");
     const invited = await inviteOf(who.email);
     await signUp({ ...who, invitationId: invited.invitationId });
@@ -334,7 +334,7 @@ describe("with email set up", () => {
     expect(await harness.test.db.member.findUniqueOrThrow({ where: { id: member.id } })).toMatchObject({ state: "pending_verification" });
   });
 
-  it("F-002: Send it again enqueues one more verification mail for the waiting membership, and its delivery goes again", async () => {
+  it("F-002/c10: Send it again enqueues one more verification mail for the waiting membership, and its delivery goes again", async () => {
     const who = fresh("again");
     const invited = await inviteOf(who.email);
     await signUp({ ...who, invitationId: invited.invitationId });
@@ -352,7 +352,7 @@ describe("with email set up", () => {
 });
 
 describe("an existing account", () => {
-  it("F-002: joins by accepting while signed in, without a second account", async () => {
+  it("F-002/c3: joins by accepting while signed in, without a second account", async () => {
     // B's admin has an account already, in another organization.
     const existing: SeededMember = harness.fixture.b.admin;
     const account = await harness.test.db.user.findUniqueOrThrow({ where: { id: existing.userId } });
@@ -373,7 +373,7 @@ describe("an existing account", () => {
     expect(await trpcFailure(caller.invitations.accept({ invitationId: invited.invitationId }))).toMatchObject({ code: "CONFLICT" });
   });
 
-  it("F-002: with email set up, a signed-in account with another address can't accept", async () => {
+  it("F-002/c6: with email set up, a signed-in account with another address can't accept", async () => {
     harness.emailSwitch.on = true;
     const invited = await inviteOf(fresh("someone-else").email);
     const insider = await harness.test.db.user.findUniqueOrThrow({ where: { id: harness.fixture.a.insider.userId } });
@@ -422,7 +422,7 @@ describe("better-auth's own organization and admin routes", () => {
     return { member, cookie: cookieHeaderFrom(signedUp.headers) };
   };
 
-  it("F-002: a removed admin's cookie, and an unverified admin's, are refused better-auth's invite, invitation list and rename routes", async () => {
+  it("F-002/c3: a removed admin's cookie, and an unverified admin's, are refused better-auth's invite, invitation list and rename routes", async () => {
     const removed = await signedUpMember("removed-admin", "admin");
     expect(removed.member).toMatchObject({ state: "active", role: "admin" });
     expect(await harness.test.db.authSession.count({ where: { userId: removed.member.userId, activeOrganizationId: organizationId } })).toBeGreaterThan(0);
@@ -445,7 +445,7 @@ describe("better-auth's own organization and admin routes", () => {
     expect(await harness.test.db.auditEntry.count({ where: { organizationId } })).toBe(auditBefore);
   });
 
-  it("F-003: a member's cookie is refused better-auth's member list and full organization, which would show every address", async () => {
+  it("F-003/c2: a member's cookie is refused better-auth's member list and full organization, which would show every address", async () => {
     const { cookie } = await signedUpMember("plain-member", "member");
     const routes = [
       ["GET", `/organization/list-members?organizationId=${organizationId}`, null],
@@ -456,7 +456,7 @@ describe("better-auth's own organization and admin routes", () => {
     expect(await answersOf(cookie, routes)).toEqual(refusals(routes));
   });
 
-  it("F-003: better-auth's admin routes are refused over HTTP: the last instance admin keeps the role, and no account is made without an invitation", async () => {
+  it("F-003/c2: better-auth's admin routes are refused over HTTP: the last instance admin keeps the role, and no account is made without an invitation", async () => {
     const self = harness.fixture.a.admin.userId;
     if ((await harness.test.db.account.count({ where: { userId: self, providerId: "credential" } })) === 0) {
       await givePassword(self);
@@ -486,7 +486,7 @@ describe("better-auth's own organization and admin routes", () => {
 describe("a reset link", () => {
   const NEW_PASSWORD = "a-brand-new-passphrase-2026";
 
-  it("F-002, F-115: the instance admin's link works once within 24 hours, signs out the other sessions and revokes CLI sessions", async () => {
+  it("F-002/c7,c8, F-115/c3: the instance admin's link works once within 24 hours, signs out the other sessions and revokes CLI sessions", async () => {
     const target = harness.fixture.a.member;
     const account = await harness.test.db.user.findUniqueOrThrow({ where: { id: target.userId } });
     await givePassword(target.userId);
@@ -526,7 +526,7 @@ describe("a reset link", () => {
     expect(await call("POST", "/reset-password", { token: laterToken, newPassword: "yet-another-passphrase-2" })).toMatchObject({ status: 400, body: { code: "INVALID_TOKEN" } });
   });
 
-  it("F-002: a member who isn't the instance admin can't create one, an organization admin included", async () => {
+  it("F-002/c7: a member who isn't the instance admin can't create one, an organization admin included", async () => {
     // B's admin is an organization admin and not the instance admin.
     const orgAdmin = await harness.as(harness.fixture.b.admin);
     expect(await trpcFailure(orgAdmin.accounts.createResetLink({ userId: harness.fixture.b.admin.userId }))).toMatchObject({ code: "FORBIDDEN" });
@@ -564,7 +564,7 @@ describe("a reset link", () => {
 });
 
 describe("what never reaches a log line or a job", () => {
-  it("F-002: no invitation link, reset token or address is in a log line or a job's payload", async () => {
+  it("F-002/c4: no invitation link, reset token or address is in a log line or a job's payload", async () => {
     harness.emailSwitch.on = true;
     const who = fresh("secretive");
     const invited = await inviteOf(who.email);

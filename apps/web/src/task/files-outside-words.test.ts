@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { filesOutsideText } from "./files-outside-words";
 
 describe("the thread's line for files outside the repos", () => {
-  it("F-016: names the files and says what to do: reply to have them moved, or dismiss", () => {
+  it("F-016/c4: names the files and says what to do: reply to have them moved, or dismiss", () => {
     expect(filesOutsideText({ paths: ["notes.md", "plan.txt"], more: 0 })).toBe(
       "The agent left 2 files outside the repositories: notes.md, plan.txt. Reply to have them moved into a repository, or dismiss.",
     );
@@ -15,7 +15,7 @@ describe("the thread's line for files outside the repos", () => {
     );
   });
 
-  it("F-016: says when none are left", () => {
+  it("F-016/c4: says when none are left", () => {
     expect(filesOutsideText({ paths: [], more: 0 })).toBe("No files are left outside the repositories now.");
   });
 });

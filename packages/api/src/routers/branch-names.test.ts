@@ -57,7 +57,7 @@ const branchesOf = async (taskId: TaskId) => {
 };
 
 describe("a task's branch name (ticket 46)", () => {
-  it("F-016: two tasks forced to the same name, with a faked ID suffix, end with different branches", async () => {
+  it("F-016/c3: two tasks forced to the same name, with a faked ID suffix, end with different branches", async () => {
     const naming = fakedSuffix(8);
     const first = await create(naming);
     const second = await create(naming);
@@ -98,7 +98,7 @@ describe("a task's branch name (ticket 46)", () => {
     expect(await harness.test.db.task.count({ where: { projectId, branchName: { in: [taken, "pending"] } } })).toBe(1);
   });
 
-  it("F-016: two creates at the same moment don't block each other on the placeholder", async () => {
+  it("F-016/c3: two creates at the same moment don't block each other on the placeholder", async () => {
     let release: () => void = () => undefined;
     const held = new Promise<void>((resolve) => {
       release = resolve;

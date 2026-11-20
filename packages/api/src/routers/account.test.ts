@@ -53,7 +53,7 @@ const giveClientSecret = async () => {
 };
 
 describe("the member's CLI sessions", () => {
-  it("F-103: lists only the member's own working sessions, newest first, with when each ends and how long they last", async () => {
+  it("F-103/c4: lists only the member's own working sessions, newest first, with when each ends and how long they last", async () => {
     const alex = harness.fixture.a.member;
     const sam = harness.fixture.a.insider;
     const first = await sessionFor(alex, "alex-laptop");
@@ -77,7 +77,7 @@ describe("the member's CLI sessions", () => {
     expect((await (await harness.as(sam)).account.cliSessions.list()).sessions.map((session) => session.name)).toEqual(["sam-laptop"]);
   });
 
-  it("F-103: a member revokes their own session and no one else's; another organization's is not found either", async () => {
+  it("F-103/c4: a member revokes their own session and no one else's; another organization's is not found either", async () => {
     const alex = await harness.as(harness.fixture.a.member);
     const sam = await harness.as(harness.fixture.a.insider);
     const outsider = await harness.as(harness.fixture.b.admin);
@@ -94,7 +94,7 @@ describe("the member's CLI sessions", () => {
     expect(await harness.test.db.auditEntry.count({ where: { action: "cli-session.revoked", entityId: harness.fixture.a.member.id } })).toBeGreaterThanOrEqual(1);
   });
 
-  it("F-103: the device page learns the purpose and the machine's name of a code the member opened, and of no other", async () => {
+  it("F-103/c4: the device page learns the purpose and the machine's name of a code the member opened, and of no other", async () => {
     const alex = harness.fixture.a.member;
     await harness.test.db.deviceCode.create({
       data: { id: "dc-1", deviceCode: "device-code-for-the-page-0123456789", userCode: "PAGECODE", expiresAt: new Date(Date.now() + 600_000), status: "pending", userId: alex.userId, clientId: "ostra-cli", purpose: "cli", machineName: "alex-laptop" },
@@ -107,7 +107,7 @@ describe("the member's CLI sessions", () => {
 });
 
 describe("the verified GitHub link", () => {
-  it("F-119: needs the App's OAuth client: without a client secret the install cannot link, and the page says so", async () => {
+  it("F-119/c1: needs the App's OAuth client: without a client secret the install cannot link, and the page says so", async () => {
     const alex = await harness.as(harness.fixture.a.member);
     expect(await alex.account.github.get()).toEqual({ connected: false, link: null });
     expect(await startGitHubLink(await harness.contextOf(harness.fixture.a.member))).toEqual({ kind: "not-connected" });
@@ -117,7 +117,7 @@ describe("the verified GitHub link", () => {
     expect(await startGitHubLink({ ...(await harness.contextOf(harness.fixture.a.member)), user: null, member: null })).toEqual({ kind: "sign-in" });
   });
 
-  it("F-119: links the verified ID and login, keeps no token, and uses the state once", async () => {
+  it("F-119/c1,c2: links the verified ID and login, keeps no token, and uses the state once", async () => {
     harness.fakes.codeHost.linkStarts.length = 0;
     const alex = harness.fixture.a.member;
     const context = await harness.contextOf(alex, "browser-session-1");
@@ -154,7 +154,7 @@ describe("the verified GitHub link", () => {
     expect(JSON.stringify(harness.logs)).not.toContain(state);
   });
 
-  it("F-119: a state from another session, an expired one and a declined consent link nothing", async () => {
+  it("F-119/c1: a state from another session, an expired one and a declined consent link nothing", async () => {
     const sam = harness.fixture.a.insider;
     const own = await harness.contextOf(sam, "sam-browser");
     const stateOf = async (context = own) => {
@@ -183,7 +183,7 @@ describe("the verified GitHub link", () => {
     expect((await harness.test.db.user.findUniqueOrThrow({ where: { id: sam.userId } })).githubUserId).toBeNull();
   });
 
-  it("F-119: refuses a GitHub account that another ostra account has linked, and a token GitHub would not confirm revoked", async () => {
+  it("F-119/c2: refuses a GitHub account that another ostra account has linked, and a token GitHub would not confirm revoked", async () => {
     const sam = harness.fixture.a.insider;
     const own = await harness.contextOf(sam, "sam-browser-2");
     const linkAs = async (code: string) => {
@@ -204,7 +204,7 @@ describe("the verified GitHub link", () => {
     expect(await linkAs("unknown-code")).toEqual({ outcome: "failed", login: null });
   });
 
-  it("F-119: unlinking clears the link, so the next commit credits the ostra name again; unlinking twice is refused", async () => {
+  it("F-119/c2: unlinking clears the link, so the next commit credits the ostra name again; unlinking twice is refused", async () => {
     const alex = await harness.as(harness.fixture.a.member);
     await alex.account.github.unlink();
     const user = await harness.test.db.user.findUniqueOrThrow({ where: { id: harness.fixture.a.member.userId } });

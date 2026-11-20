@@ -159,7 +159,7 @@ describe("ostra runner: refusals", () => {
     expect(status.lines.join("")).toMatch(/Last refusal +\S+ revoked:/);
   });
 
-  it("F-013: a clock an hour behind the server's is named with its offset, and sign-in hands over to the connection instead of exiting", async () => {
+  it("F-013/c5: a clock an hour behind the server's is named with its offset, and sign-in hands over to the connection instead of exiting", async () => {
     const fake = await start();
     await runner(fake);
     const skewed = await runnerWithClock(fake, -HOUR);
@@ -212,7 +212,7 @@ describe("ostra runner: refusals", () => {
     expect(again.lines.join("")).not.toContain("refused");
   });
 
-  it("F-061: against a server before minor 2, a 401 without a reason is told as such and handed to the connection, never an exit", async () => {
+  it("F-061/c1: against a server before minor 2, a 401 without a reason is told as such and handed to the connection, never an exit", async () => {
     const fake = await start();
     await runner(fake);
     // A minor-1 server's 401: ostra's error body, with no reason.
@@ -324,7 +324,7 @@ describe("the CLI's commands", () => {
     expect(result.lines.join("")).toContain("not signed in");
   });
 
-  it("F-013: shows the carrier of the last connection, and why it fell back to HTTP", async () => {
+  it("F-013/c4: shows the carrier of the last connection, and why it fell back to HTTP", async () => {
     await updateStatus(dataDir, { carrier: { at: Date.now(), carrier: "http", fallback: "no-welcome" } });
     const fellBack = (await run(["runner", "status", "--data-dir", dataDir])).lines.join("");
     expect(fellBack).toContain("Carrier         HTTP, fell back because the WebSocket upgrade succeeded but no welcome came within 10 s");

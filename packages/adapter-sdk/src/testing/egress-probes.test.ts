@@ -32,7 +32,7 @@ const unreachable: ConnectOutcome = { kind: "error", code: "EHOSTUNREACH" };
 const refused: ConnectOutcome = { kind: "error", code: "ECONNREFUSED" };
 
 describe("the egress probes' verdicts (F-116)", () => {
-  it("F-116: a probe is blocked only when its control connected and the network refused it; reachable when it connected or the far end answered; a timeout is inconclusive, never blocked", () => {
+  it("F-116/c6: a probe is blocked only when its control connected and the network refused it; reachable when it connected or the far end answered; a timeout is inconclusive, never blocked", () => {
     expect(judgeProbe(connected, unreachable).verdict).toBe("blocked");
     expect(judgeProbe(connected, { kind: "error", code: "ENETUNREACH" }).verdict).toBe("blocked");
     expect(judgeProbe(connected, connected).verdict).toBe("reachable");
@@ -41,7 +41,7 @@ describe("the egress probes' verdicts (F-116)", () => {
     expect(judgeProbe(connected, { kind: "error", code: "ENOTFOUND" }).verdict).toBe("inconclusive");
   });
 
-  it("F-116: a positive control that fails makes the probe inconclusive, whatever the probe would show, and the probe isn't tried", async () => {
+  it("F-116/c6: a positive control that fails makes the probe inconclusive, whatever the probe would show, and the probe isn't tried", async () => {
     for (const control of [timeout, unreachable, refused]) {
       for (const probe of [connected, unreachable, timeout]) {
         expect(judgeProbe(control, probe).verdict, `${JSON.stringify(control)} then ${JSON.stringify(probe)}`).toBe("inconclusive");
@@ -59,7 +59,7 @@ describe("the egress probes' verdicts (F-116)", () => {
     expect(baselineHeld(results)).toBe(false);
   });
 
-  it("F-116: the plan probes every routable range of the one list, the metadata address, the box network's gateway and another box's sidecar ports, each with its control", () => {
+  it("F-116/c6: the plan probes every routable range of the one list, the metadata address, the box network's gateway and another box's sidecar ports, each with its control", () => {
     const sidecar = { host: "sidecar", port: 7101 };
     const plan = egressProbePlan({ executor: "docker", control: sidecar, gateway: "172.30.0.1", otherBox: { host: "172.30.0.9", ports: [7101, 7102] } });
     const ranges = plan.filter((probe) => probe.id.startsWith("range ")).map((probe) => probe.id.slice("range ".length));
@@ -82,7 +82,7 @@ describe("the egress probes' verdicts (F-116)", () => {
     expect(pod.some((probe) => probe.id === "range fc00::/7")).toBe(true);
   });
 
-  it("F-116: a control pod tells a cluster that enforces NetworkPolicy from one whose network plugin ignores it", () => {
+  it("F-116/c6: a control pod tells a cluster that enforces NetworkPolicy from one whose network plugin ignores it", () => {
     expect(clusterEnforcesPolicy(connected, unreachable)).toBe("enforced");
     expect(clusterEnforcesPolicy(connected, connected)).toBe("not-enforced");
     expect(clusterEnforcesPolicy(connected, timeout)).toBe("inconclusive");
@@ -90,7 +90,7 @@ describe("the egress probes' verdicts (F-116)", () => {
     expect(clusterEnforcesPolicy(timeout, unreachable)).toBe("inconclusive");
   });
 
-  it("F-116: the probe script, run with node, reports a connection, a refusal and a timeout as the verdicts read them", async () => {
+  it("F-116/c6: the probe script, run with node, reports a connection, a refusal and a timeout as the verdicts read them", async () => {
     const server: Server = createServer((socket) => socket.end());
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const open = portOf(server);
@@ -120,7 +120,7 @@ describe("the egress probes' verdicts (F-116)", () => {
     expect(parseProbeOutput("garbage")).toEqual({ kind: "error", code: "no-answer" });
   }, 30_000);
 
-  it("F-116: the canary's read shows in the event log by its path or its marker, and an event log without it doesn't pass", () => {
+  it("F-116/c7: the canary's read shows in the event log by its path or its marker, and an event log without it doesn't pass", () => {
     const canary = canaryFile("/etc/ostra-canary", "ostra-canary-5f1e2d3c");
     expect(canary.command).toEqual(["cat", "/etc/ostra-canary"]);
     const events = [

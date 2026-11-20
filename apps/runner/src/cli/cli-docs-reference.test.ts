@@ -76,7 +76,7 @@ const pageRows = (text: string): readonly (readonly string[])[] =>
 const code = (cell: string | undefined): string | undefined => /^`([^`]+)`$/.exec(cell ?? "")?.[1];
 
 describe("the docs site's CLI reference", () => {
-  it("F-058: the CLI reference page lists every command and runner flag `ostra --help` prints, in its words", async () => {
+  it("F-058/c1: the CLI reference page lists every command and runner flag `ostra --help` prints, in its words", async () => {
     const lines = await helpOutput();
     const rows = pageRows(await readFile(page, "utf8"));
 

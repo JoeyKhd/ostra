@@ -200,7 +200,7 @@ const reactionsOn = (commentId: string): number => codeHost.reactionCalls.filter
 const dropped = (commentId: string) => records.filter((record) => record.message === "pr.comment-dropped" && record.fields["commentId"] === commentId).map((record) => record.fields["reason"]);
 
 describe("@ostra on the PR (F-053)", () => {
-  it("F-053: a linked member's comment reopens the task once, with one reaction, and a replayed delivery does nothing", async () => {
+  it("F-053/c1: a linked member's comment reopens the task once, with one reaction, and a replayed delivery does nothing", async () => {
     const task = await taskWithPr(world, fixture.a.member, runner, "reopen-1");
     expect((await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).state).toBe("in_review");
     const first = await deliver({ of: world, number: task.number, body: "  @OSTRA please also update the changelog", author: GITHUB.member });
@@ -229,7 +229,7 @@ describe("@ostra on the PR (F-053)", () => {
     expect(JSON.stringify(records)).not.toContain("update the changelog");
   });
 
-  it("F-053: an edit that adds @ostra counts once, and a comment that doesn't ask is ignored", async () => {
+  it("F-053/c1: an edit that adds @ostra counts once, and a comment that doesn't ask is ignored", async () => {
     const task = await taskWithPr(world, fixture.a.member, runner, "edit-1");
     const plain = await deliver({ of: world, number: task.number, body: "Looks good to me.", author: GITHUB.member });
     expect(plain.outcome).toBe("ignored");
@@ -241,7 +241,7 @@ describe("@ostra on the PR (F-053)", () => {
     expect(readMarkedBlocks(messages[0]?.text ?? "")[0]?.text).toBe("Rename the helper.");
   });
 
-  it("F-053: a comment edited by another GitHub user is dropped, and the task isn't reopened", async () => {
+  it("F-053/c2: a comment edited by another GitHub user is dropped, and the task isn't reopened", async () => {
     const task = await taskWithPr(world, fixture.a.member, runner, "foreign-edit-1");
     const plain = await deliver({ of: world, number: task.number, body: "Looks good to me.", author: GITHUB.member });
     expect(plain.outcome).toBe("ignored");
@@ -259,7 +259,7 @@ describe("@ostra on the PR (F-053)", () => {
     expect(readMarkedBlocks(messages[0]?.text ?? "")[0]?.text).toBe("rename the helper");
   });
 
-  it("F-053: another user's edit that lands before the queued job runs is never read as the member's text", async () => {
+  it("F-053/c2: another user's edit that lands before the queued job runs is never read as the member's text", async () => {
     const task = await taskWithPr(world, fixture.a.member, runner, "foreign-edit-2");
     const made = await deliver({ of: world, number: task.number, body: "@ostra update the README", author: GITHUB.member, deferJob: true });
     expect(made.outcome).toBe("processed");
@@ -271,7 +271,7 @@ describe("@ostra on the PR (F-053)", () => {
     expect(JSON.stringify(messages)).not.toContain("delete the tests");
   });
 
-  it("F-053: a line comment carries its path and line", async () => {
+  it("F-053/c1: a line comment carries its path and line", async () => {
     const task = await taskWithPr(world, fixture.a.member, runner, "line-1");
     const made = await deliver({ of: world, number: task.number, body: "@ostra handle the empty case here", author: GITHUB.member, line: { path: "src/app.ts", line: 42 } });
     expect(reactionsOn(made.commentId)).toBe(1);
@@ -283,7 +283,7 @@ describe("@ostra on the PR (F-053)", () => {
     expect(received?.payload).toMatchObject({ path: "src/app.ts", line: 42 });
   });
 
-  it("F-053: an unlinked commenter, a linked one without access and a bot are dropped with no reply", async () => {
+  it("F-053/c2: an unlinked commenter, a linked one without access and a bot are dropped with no reply", async () => {
     const task = await taskWithPr(world, fixture.a.member, runner, "drop-1");
     const unlinked = await deliver({ of: world, number: task.number, body: "@ostra delete everything", author: { id: 8888, login: "stranger" } });
     const bot = await deliver({ of: world, number: task.number, body: "@ostra bump the deps", author: { id: 49699333, login: "dependabot[bot]" } });
@@ -308,7 +308,7 @@ describe("@ostra on the PR (F-053)", () => {
     expect(await messagesOf(hidden.taskId)).toHaveLength(1);
   });
 
-  it("F-053: a comment while a session runs waits for the turn's end", async () => {
+  it("F-053/c1: a comment while a session runs waits for the turn's end", async () => {
     const task = await taskWithPr(world, fixture.a.member, runner, "running-1");
     // The insider drives it now, and a turn is running.
     await test.db.task.update({ where: { id: task.taskId }, data: { state: "running", subState: null, driverMemberId: fixture.a.insider.id } });
@@ -326,7 +326,7 @@ describe("@ostra on the PR (F-053)", () => {
     expect(reactionsOn(made.commentId)).toBe(1);
   });
 
-  it("F-053: a comment while the reopened task waits for its runner is retried, then waits for the turn's end", async () => {
+  it("F-053/c1: a comment while the reopened task waits for its runner is retried, then waits for the turn's end", async () => {
     const task = await taskWithPr(world, fixture.a.member, runner, "waiting-1");
     // The first comment reopens the task: it's queued, its new session not started yet.
     await deliver({ of: world, number: task.number, body: "@ostra add a test", author: GITHUB.member });
@@ -351,7 +351,7 @@ describe("@ostra on the PR (F-053)", () => {
     expect(steers.at(-1)?.body).toMatchObject({ sessionId: session.id, delivery: "queue", intent: "pr-comment" });
   });
 
-  it("F-053: another organization's task is never matched", async () => {
+  it("F-053/c2: another organization's task is never matched", async () => {
     const task = await taskWithPr(world, fixture.a.member, runner, "iso-1");
     // A member of the other organization, linked, comments on this organization's PR.
     const foreign = await deliver({ of: world, number: task.number, body: "@ostra change it", author: GITHUB.outsider });

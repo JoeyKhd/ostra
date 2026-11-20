@@ -442,7 +442,7 @@ describe("welcome's pool (minor 4)", () => {
 });
 
 describe("a box's wait as a runner event (minor 4)", () => {
-  it("F-093: box.waiting and box.scheduled travel in a runner-event frame at minor 4, and are refused in one below it", () => {
+  it("F-093/c3: box.waiting and box.scheduled travel in a runner-event frame at minor 4, and are refused in one below it", () => {
     for (const kind of runnerAdded) {
       const frame: UpFrame = { type: "runner-event", at: 1_700_000_000_000, event: eventFixtures[kind] };
       expect(parseUpFrame(encodeUpFrame(frame, 4), 4)).toEqual({ ok: true, frame });

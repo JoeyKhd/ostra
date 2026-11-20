@@ -44,7 +44,7 @@ const pick = async (page: Page, filter: string, option: string): Promise<void> =
 
 const rowsOf = (page: Page) => page.getByTestId("audit-row");
 
-test("F-073: an admin filters by actor and action and exports the same rows", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-073/c2: an admin filters by actor and action and exports the same rows", { tag: "@desktop-only" }, async ({ page }) => {
   const world = await seedM4World(m4World);
   await signIn(page);
   await page.goto("/organization/audit");
@@ -84,7 +84,7 @@ test("F-073: an admin filters by actor and action and exports the same rows", { 
   await expectNoHorizontalScroll(page);
 });
 
-test("F-073: a task entry opens the event log at that task, and a tool call's command and folder show in full", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-073/c4: a task entry opens the event log at that task, and a tool call's command and folder show in full", { tag: "@desktop-only" }, async ({ page }) => {
   const world = await seedM4World(m4World);
   await signIn(page);
   await page.goto("/organization/audit?action=task.created");

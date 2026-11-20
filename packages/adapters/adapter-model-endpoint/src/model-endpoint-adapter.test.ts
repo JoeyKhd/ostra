@@ -306,7 +306,7 @@ describe("the model endpoint adapter", () => {
       expect(parseModelsDevCatalog({})).toMatchObject({ ok: false });
     });
 
-    it("F-037: a catalog model without cache prices, or without any, gets null for each, never a missing price", () => {
+    it("F-037/c1: a catalog model without cache prices, or without any, gets null for each, never a missing price", () => {
       const parsed = parseModelsDevCatalog({
         acme: { models: { half: { id: "half", cost: { input: 2, output: 8 } }, bare: { id: "bare" } } },
       });

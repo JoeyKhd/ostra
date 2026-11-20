@@ -143,7 +143,7 @@ const waitingTask = async (): Promise<LoopTask> => {
 };
 
 describe("F-102: who reviews", () => {
-  it("F-102: reviewers come from the requested users and CODEOWNERS for the changed paths, matched by the link; a team is kept and not expanded; an unlinked user is listed with no member", async () => {
+  it("F-102/c3: reviewers come from the requested users and CODEOWNERS for the changed paths, matched by the link; a team is kept and not expanded; an unlinked user is listed with no member", async () => {
     const task = await seedTaskInCi(h);
     const pr = firstPr(task);
     seedReviewers(pr);
@@ -185,7 +185,7 @@ describe("F-102: who reviews", () => {
     expect(JSON.stringify(h.records)).not.toContain("The repo's owners");
   });
 
-  it("F-102: a PR's opening and the reconcile each ask for its reviewers, and a host without the capabilities reads nothing", async () => {
+  it("F-102/c3: a PR's opening and the reconcile each ask for its reviewers, and a host without the capabilities reads nothing", async () => {
     const task = await seedTaskInCi(h);
     const pr = firstPr(task);
     h.jobs.jobs.length = 0;
@@ -205,7 +205,7 @@ describe("F-102: who reviews", () => {
 });
 
 describe("F-102: the reviewers' needs-you", () => {
-  it("F-102: a task waiting for a reviewer is its matched reviewers' needs-you, and each one's review clears their own", async () => {
+  it("F-102/c3: a task waiting for a reviewer is its matched reviewers' needs-you, and each one's review clears their own", async () => {
     const task = await waitingTask();
     const pr = firstPr(task);
     seedReviewers(pr, { codeOwners: false });
@@ -245,7 +245,7 @@ describe("F-102: the reviewers' needs-you", () => {
     expect(await h.db.needsYouItem.findUniqueOrThrow({ where: { id: itemId } })).toMatchObject({ state: "answered", resolvedByMemberId: h.fixture.a.insider.id });
   });
 
-  it("F-102: with nobody matched, the task waiting for a reviewer is its driver's", async () => {
+  it("F-102/c3: with nobody matched, the task waiting for a reviewer is its driver's", async () => {
     const task = await waitingTask();
     const pr = firstPr(task);
     // Only an unlinked user and a team are asked.
@@ -261,7 +261,7 @@ describe("F-102: the reviewers' needs-you", () => {
     expect(notified.map((row) => [row.memberId, row.kind])).toEqual([[driverMemberId, "review_requested"]]);
   });
 
-  it("F-102: a task that stops waiting for a reviewer dismisses its item", async () => {
+  it("F-102/c3: a task that stops waiting for a reviewer dismisses its item", async () => {
     const task = await waitingTask();
     const item = await h.db.needsYouItem.findFirstOrThrow({ where: { taskId: task.taskId, reason: "waiting_for_reviewer" } });
     expect(item.state).toBe("open");

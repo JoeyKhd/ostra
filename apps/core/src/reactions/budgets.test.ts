@@ -241,7 +241,7 @@ const steersInOrder = async (): Promise<readonly string[]> =>
   );
 
 describe("budget.check (F-037)", () => {
-  it("F-037: one notice per budget, month and threshold, also when budget.check runs twice", async () => {
+  it("F-037/c3: one notice per budget, month and threshold, also when budget.check runs twice", async () => {
     const budgetId = await seedBudget(projectId, 1);
     await seedSpend(850_000n);
     await check(budgetId, "warn");
@@ -263,7 +263,7 @@ describe("budget.check (F-037)", () => {
     expect(await budgetNotifications("budget_reached")).toHaveLength(2);
   });
 
-  it("F-037: the audiences: an organization budget's admins, and a project budget's also its project's admins; mail on by default, a member's choice wins", async () => {
+  it("F-037/c3: the audiences: an organization budget's admins, and a project budget's also its project's admins; mail on by default, a member's choice wins", async () => {
     const organizationBudget = await seedBudget(null, 1);
     await seedSpend(900_000n);
     await check(organizationBudget, "warn");
@@ -286,7 +286,7 @@ describe("budget.check (F-037)", () => {
     expect(await test.db.notification.count({ where: { memberId: { in: [fixture.a.member.id, fixture.b.admin.id] }, kind: { in: ["budget_warning", "budget_reached"] } } })).toBe(0);
   });
 
-  it("F-037: saving a budget below what's spent enqueues its budget.check at once", async () => {
+  it("F-037/c2: saving a budget below what's spent enqueues its budget.check at once", async () => {
     await seedSpend(3_000_000n);
     const saved = await setBudget(m4Deps(), adminScope, { projectId, monthlyMicroUsd: 2_000_000n });
     if (!saved.ok || saved.budgetId === null) throw new Error("the budget wasn't saved");
@@ -300,7 +300,7 @@ describe("budget.check (F-037)", () => {
 });
 
 describe("budget.release (F-037)", () => {
-  it("F-037: a raise releases held turns in the order they were held", async () => {
+  it("F-037/c2,c4: a raise releases held turns in the order they were held", async () => {
     const budgetId = await seedBudget(projectId, 1);
     const first = await idleTask();
     const second = await idleTask();
@@ -333,7 +333,7 @@ describe("budget.release (F-037)", () => {
     expect((await steersInOrder()).slice(steersBefore.length)).toHaveLength(3);
   });
 
-  it("F-037: a raise that's still below the spend releases nothing", async () => {
+  it("F-037/c4: a raise that's still below the spend releases nothing", async () => {
     const budgetId = await seedBudget(projectId, 1);
     const task = await idleTask();
     await seedSpend(3_000_000n);
@@ -348,7 +348,7 @@ describe("budget.release (F-037)", () => {
     expect(await test.db.event.count({ where: { taskId: task.taskId, kind: "turn.released" } })).toBe(0);
   });
 
-  it("F-037: a new month releases them all: a held message, a held reopen and a new task waiting at the gate", async () => {
+  it("F-037/c4: a new month releases them all: a held message, a held reopen and a new task waiting at the gate", async () => {
     const budgetId = await seedBudget(projectId, 1);
     const talking = await idleTask();
     const reopening = await idleTask();
@@ -392,7 +392,7 @@ describe("budget.release (F-037)", () => {
 });
 
 describe("the new month's schedule (F-037)", () => {
-  it("F-037: core schedules the new month's release for 00:05 UTC on the 1st", async () => {
+  it("F-037/c4: core schedules the new month's release for 00:05 UTC on the 1st", async () => {
     await ensureBudgetNewMonthSchedule(jobs);
     const rows = z.array(z.object({ cron: z.string(), timezone: z.string().nullable() })).parse(await test.db.$queryRaw`SELECT cron, timezone FROM pgboss.schedule WHERE name = 'budget.new-month'`);
     expect(rows.map((row) => row.cron)).toEqual(["5 0 1 * *"]);
@@ -403,7 +403,7 @@ describe("the new month's schedule (F-037)", () => {
 describe("the budget mails (F-115)", () => {
   const projectName = async () => (await test.db.project.findUniqueOrThrow({ where: { id: projectId } })).name;
 
-  it("F-115, F-037: the budget warning renders and goes through Resend's fake, to the admins of the budget, linking to Spend", async () => {
+  it("F-115/c1, F-037/c3: the budget warning renders and goes through Resend's fake, to the admins of the budget, linking to Spend", async () => {
     const deps = notifyDeps();
     expect(await saveEmailSettings(deps, instanceAdmin(), { provider: "resend", fromAddress: "ostra@mail.example", fromName: "ostra", apiKey: resend.apiKey })).toMatchObject({ ok: true });
     const before = resend.received.length;
@@ -427,7 +427,7 @@ describe("the budget mails (F-115)", () => {
     deps.close();
   });
 
-  it("F-115: the budget reached mail renders and goes through SMTP's fake, with its Raise the budget button", async () => {
+  it("F-115/c1: the budget reached mail renders and goes through SMTP's fake, with its Raise the budget button", async () => {
     const deps = notifyDeps();
     expect(
       await saveEmailSettings(deps, instanceAdmin(), {

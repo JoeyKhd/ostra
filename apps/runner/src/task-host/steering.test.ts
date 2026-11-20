@@ -41,7 +41,7 @@ const send = (h: Harness, spec: TaskSpec, text: string, delivery: "queue" | "int
   h.command("steer", { sessionId: spec.sessionId, clientMessageId: id, text, delivery, intent: "message" });
 
 describe("steering on the fake agents (F-024)", () => {
-  it("F-024: \"Send\" gives an agent that declares mid-turn steering the message in the running turn", async () => {
+  it("F-024/c2: \"Send\" gives an agent that declares mid-turn steering the message in the running turn", async () => {
     const h = await start();
     const { spec } = taskOn(h, "rich", fakeMarker("steerable"));
     h.dispatch(spec);
@@ -52,7 +52,7 @@ describe("steering on the fake agents (F-024)", () => {
     expect(h.ofKind(spec, "turn.started")).toHaveLength(1);
   }, 120_000);
 
-  it("F-024: for an agent that doesn't, \"Send\" is queued and delivered as the next turn when the turn ends", async () => {
+  it("F-024/c3: for an agent that doesn't, \"Send\" is queued and delivered as the next turn when the turn ends", async () => {
     const h = await start();
     const { spec } = taskOn(h, "plain", fakeMarker("long", "1.5"));
     h.dispatch(spec);
@@ -65,7 +65,7 @@ describe("steering on the fake agents (F-024)", () => {
     expect(messages(h, spec)).toContain("I'll remember the queued note.");
   }, 120_000);
 
-  it.each(["rich", "plain"] as const)("F-024: \"Interrupt and send\" cancels the %s agent's turn and sends the message as the next prompt", async (profile) => {
+  it.each(["rich", "plain"] as const)("F-024/c4: \"Interrupt and send\" cancels the %s agent's turn and sends the message as the next prompt", async (profile) => {
     const h = await start();
     const { spec } = taskOn(h, profile, fakeMarker("long", "60"));
     h.dispatch(spec);

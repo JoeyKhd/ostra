@@ -34,7 +34,7 @@ afterAll(async () => {
 });
 
 describe("the instance admin role", () => {
-  it("F-003: the last instance admin can't revoke the role, and two revokes at once leave one", async () => {
+  it("F-003/c2: the last instance admin can't revoke the role, and two revokes at once leave one", async () => {
     const self = userIdSchema.parse(harness.fixture.a.admin.userId);
     expect(await trpcFailure(instanceAdmin.instance.revokeAdmin({ userId: self }))).toMatchObject({ code: "CONFLICT" });
 
@@ -58,7 +58,7 @@ describe("the instance admin role", () => {
     await harness.test.db.user.update({ where: { id: secondId }, data: { role: "user" } });
   });
 
-  it("F-003: an account that isn't the instance admin is refused every instance.* procedure, an organization admin included", async () => {
+  it("F-003/c2: an account that isn't the instance admin is refused every instance.* procedure, an organization admin included", async () => {
     const someone = userIdSchema.parse(harness.fixture.a.member.userId);
     const calls: Record<string, (caller: AppCaller) => Promise<unknown>> = {
       "instance.accounts.search": (c) => c.instance.accounts.search({ query: "" }),
@@ -79,7 +79,7 @@ describe("the instance admin role", () => {
     expect(await harness.test.db.user.findUniqueOrThrow({ where: { id: someone } })).toMatchObject({ role: null });
   });
 
-  it("F-003: the instance admin sees no project or task of an organization it isn't a member of", async () => {
+  it("F-003/c2: the instance admin sees no project or task of an organization it isn't a member of", async () => {
     const { b } = harness.fixture;
     const task = await seedTask(harness, { organizationId: b.organization.id, projectId: b.project.id });
     expect(await trpcFailure(instanceAdmin.projects.get({ projectId: b.project.id }))).toMatchObject({ code: "NOT_FOUND" });
@@ -100,7 +100,7 @@ describe("the instance admin role", () => {
 });
 
 describe("instance.accounts.search", () => {
-  it("F-003: finds accounts by a prefix of the username, the address or the name, case-insensitive, sorted by name, 50 a page", async () => {
+  it("F-003/c2: finds accounts by a prefix of the username, the address or the name, case-insensitive, sorted by name, 50 a page", async () => {
     const organizationId = harness.fixture.a.organization.id;
     for (let index = 0; index < 60; index += 1) {
       await seedAccount(`Quill${String(index).padStart(2, "0")}-${randomUUID().slice(0, 4)}`, index % 2 === 0 ? organizationId : null);

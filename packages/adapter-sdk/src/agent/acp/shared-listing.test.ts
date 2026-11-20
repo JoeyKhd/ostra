@@ -39,7 +39,7 @@ const child: ProcessInfo = { pid: NO_SUCH_PID, ppid: agent.pid, name: "child", s
 const stranger: ProcessInfo = { ...child, startedAt: 3_000 };
 
 describe("the machine's process listing, shared", () => {
-  it("F-014: a hundred concurrent listings and tree snapshots run one listing at a time", async () => {
+  it("F-014/c6: a hundred concurrent listings and tree snapshots run one listing at a time", async () => {
     const fake = countingListing([[agent, child]]);
     const listing = sharedListing(fake.listOnce);
     const watches = Array.from({ length: 50 }, () => watchProcessTree(agent.pid, 1_500, listing));
@@ -48,7 +48,7 @@ describe("the machine's process listing, shared", () => {
     expect(fake.calls(), "listings in all").toBeLessThanOrEqual(2);
   });
 
-  it("F-014: a caller that decides what to end waits for a listing that starts after it asks; a snapshot shares the one in flight", async () => {
+  it("F-014/c6: a caller that decides what to end waits for a listing that starts after it asks; a snapshot shares the one in flight", async () => {
     const first: readonly ProcessInfo[] = [agent, child];
     const second: readonly ProcessInfo[] = [agent, stranger];
     const fake = countingListing([first, second]);
@@ -64,7 +64,7 @@ describe("the machine's process listing, shared", () => {
     expect(fake.peak()).toBe(1);
   });
 
-  it("F-014: a reap a moment after a snapshot spares the stranger that got a seen child's PID", async () => {
+  it("F-014/c6: a reap a moment after a snapshot spares the stranger that got a seen child's PID", async () => {
     // The snapshot sees the child; it exits and another process gets its PID. A reap that took the
     // snapshot's listing, a few ms old, would end that process by its PID.
     const fake = countingListing([[agent, child], [agent, stranger]], 5);
@@ -89,7 +89,7 @@ describe("the machine's process listing, shared", () => {
     expect(calls).toBe(2);
   });
 
-  it("F-014: concurrent listings of this machine share one listing", async () => {
+  it("F-014/c6: concurrent listings of this machine share one listing", async () => {
     const results = await Promise.all(Array.from({ length: 20 }, async () => listProcesses()));
     expect(new Set(results).size, "distinct listings").toBeLessThanOrEqual(2);
     expect(results[0]?.some((p) => p.pid === process.pid)).toBe(true);
@@ -97,7 +97,7 @@ describe("the machine's process listing, shared", () => {
 });
 
 describe("a listing command's time limit", () => {
-  it("F-014: a listing command that hangs is killed at its time limit, and the listing fails", async () => {
+  it("F-014/c6: a listing command that hangs is killed at its time limit, and the listing fails", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "ostra-listing-"));
     const pidFile = path.join(dir, "pid");
     const hang = `require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(() => {}, 1000);`;

@@ -212,7 +212,7 @@ describe("the Linear adapter", () => {
     expect(everything).not.toContain("Entity not found");
   });
 
-  it("F-036: finds an active user by email, and their mention, posted in a comment, mentions them in Linear", async () => {
+  it("F-036/c2: finds an active user by email, and their mention, posted in a comment, mentions them in Linear", async () => {
     const maya = fake.addUser({ name: "Maya Brook", email: "maya@example.test", displayName: "maya" });
     const found = await adapter.findUsersByEmail(board(), ["Maya@Example.test"]);
     expect(found).toEqual({
@@ -227,7 +227,7 @@ describe("the Linear adapter", () => {
     expect(fake.issueView(issue.id).comments.find((comment) => comment.id === posted.value.commentId)?.mentions).toEqual([maya.id]);
   });
 
-  it("F-036: leaves out deactivated users, unknown emails and blank ones, and asks in batches", async () => {
+  it("F-036/c2: leaves out deactivated users, unknown emails and blank ones, and asks in batches", async () => {
     const gone = fake.addUser({ name: "Gone", email: "gone@example.test" });
     fake.setUserActive(gone.id, false);
     const many = Array.from({ length: 120 }, (_, index) => `nobody-${String(index)}@example.test`);
@@ -238,7 +238,7 @@ describe("the Linear adapter", () => {
     expect(fake.apiCalls()["users"] ?? 0).toBe(before + 3);
   });
 
-  it("F-036: keeps every email out of its log lines, and reports Linear's failure as an error", async () => {
+  it("F-036/c2: keeps every email out of its log lines, and reports Linear's failure as an error", async () => {
     fake.addUser({ name: "Quiet", email: "quiet.person@example.test" });
     fake.injectFaults([{ kind: "http500" }]);
     const failed = await adapter.findUsersByEmail(board(), ["quiet.person@example.test"]);
@@ -247,7 +247,7 @@ describe("the Linear adapter", () => {
     expect(JSON.stringify([failed, context.logger.records])).not.toContain("quiet.person");
   });
 
-  it("F-036: writes a mention whose display name can't break the link, and none for a URL that isn't Linear's", () => {
+  it("F-036/c2: writes a mention whose display name can't break the link, and none for a URL that isn't Linear's", () => {
     expect(linearMention({ displayName: "a](https://evil.test)[b", url: "https://linear.app/ostra-test/profiles/a" })).toBe(
       String.raw`[@a\]\(https://evil.test\)\[b](https://linear.app/ostra-test/profiles/a)`,
     );

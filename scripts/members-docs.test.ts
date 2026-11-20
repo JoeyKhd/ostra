@@ -20,7 +20,7 @@ const paragraphLed = (markdown: string, lead: string): string => {
 const readJson = async (file: string): Promise<unknown> => JSON.parse(await readFile(file, "utf8"));
 
 describe("the members docs page", () => {
-  it("F-002: the docs say to send an invitation's link privately, and that with email set up the address must match and be verified", async () => {
+  it("F-002/c6: the docs say to send an invitation's link privately, and that with email set up the address must match and be verified", async () => {
     const docs = path.join(repoRoot, "apps", "docs", "content", "using-ostra");
     const page = await readFile(path.join(docs, "members.mdx"), "utf8");
 

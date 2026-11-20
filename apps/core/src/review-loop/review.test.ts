@@ -111,7 +111,7 @@ const submit = (reviewTaskId: TaskId, findings: readonly Finding[], summary = "T
   );
 
 describe("F-100: the review task", () => {
-  it("F-100: one review task per code task, reopened per round, in its own box, on the PR's head, read-only, on the review profile and its model", async () => {
+  it("F-100/c1: one review task per code task, reopened per round, in its own box, on the PR's head, read-only, on the review profile and its model", async () => {
     const task = await reviewed();
     const pr = firstPr(task);
     const review = await reviewTaskOf(task);
@@ -168,7 +168,7 @@ describe("F-100: the review task", () => {
     expect(await stateOf(h, task.taskId)).toBe("in_review/waiting_for_reviewer");
   });
 
-  it("F-100: AI review off skips it: CI passing goes straight to waiting for a reviewer", async () => {
+  it("F-100/c5: AI review off skips it: CI passing goes straight to waiting for a reviewer", async () => {
     await h.db.project.update({ where: { id: h.world.projectId }, data: { aiReview: false } });
     const task = await seedTaskInCi(h);
     checkRun(h, firstPr(task), "test", "success");
@@ -180,7 +180,7 @@ describe("F-100: the review task", () => {
 });
 
 describe("F-100: findings and the posted review", () => {
-  it("F-100: findings typed with severity, file and line; one COMMENT review per PR; off-diff findings in its body", async () => {
+  it("F-100/c2,c3: findings typed with severity, file and line; one COMMENT review per PR; off-diff findings in its body", async () => {
     const task = await reviewed();
     const pr = firstPr(task);
     const review = await reviewTaskOf(task);
@@ -221,7 +221,7 @@ describe("F-100: findings and the posted review", () => {
     expect(JSON.stringify(h.records)).not.toContain(offDiff);
   });
 
-  it("F-100: no blocking finding sends the code task on to its reviewer", async () => {
+  it("F-100/c3: no blocking finding sends the code task on to its reviewer", async () => {
     const task = await reviewed();
     const pr = firstPr(task);
     const review = await reviewTaskOf(task);
@@ -233,7 +233,7 @@ describe("F-100: findings and the posted review", () => {
     expect(recorded(h, "round.start")).toEqual([]);
   });
 
-  it("F-100: a code task's token can't post a review; the review task's can, once, while its round runs", async () => {
+  it("F-100/c2: a code task's token can't post a review; the review task's can, once, while its round runs", async () => {
     const task = await reviewed();
     const pr = firstPr(task);
     const review = await reviewTaskOf(task);
@@ -261,7 +261,7 @@ describe("F-100: findings and the posted review", () => {
     expect(reviewResponseSchema.parse(many.body)).toEqual({ code: "invalid" });
   });
 
-  it("F-100: a head a person moves during the review ends it, and CI starts again on the new head", async () => {
+  it("F-100/c1: a head a person moves during the review ends it, and CI starts again on the new head", async () => {
     const task = await reviewed();
     const pr = firstPr(task);
     const review = await reviewTaskOf(task);
@@ -280,7 +280,7 @@ describe("F-100: findings and the posted review", () => {
 });
 
 describe("F-111: a finding as a source", () => {
-  it("F-111: Remember this on a finding makes a proposal with the finding as its source", async () => {
+  it("F-111/c1: Remember this on a finding makes a proposal with the finding as its source", async () => {
     const task = await reviewed();
     const pr = firstPr(task);
     const review = await reviewTaskOf(task);

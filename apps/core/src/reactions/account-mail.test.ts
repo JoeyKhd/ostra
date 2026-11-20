@@ -192,7 +192,7 @@ const expectLinkNowhereElse = async (link: string, secret: string, secretIsRecor
 describe("each purpose, through Resend and SMTP", () => {
   const providers = ["resend", "smtp"] as const;
 
-  it.each(providers)("F-002, F-115: an invitation sends one mail, its link in both parts, through %s", async (provider) => {
+  it.each(providers)("F-002/c3, F-115/c1: an invitation sends one mail, its link in both parts, through %s", async (provider) => {
     const email = address("sam");
     const invitationId = await newInvitation({ email });
     // Through the real queue, so its payload row is there to search.
@@ -236,7 +236,7 @@ describe("each purpose, through Resend and SMTP", () => {
     await expectLinkNowhereElse(link, token, false);
   });
 
-  it.each(providers)("F-002, F-115: a reset sends one mail whose token better-auth's reset takes and the grant keeps only hashed, through %s", async (provider) => {
+  it.each(providers)("F-002, F-115/c1: a reset sends one mail whose token better-auth's reset takes and the grant keeps only hashed, through %s", async (provider) => {
     const grant = await resetGrant();
     const base = countOf(provider);
     expect(await send(provider, "password_reset", grant.grantId)).toBe("ok");
@@ -256,7 +256,7 @@ describe("each purpose, through Resend and SMTP", () => {
     await expectLinkNowhereElse(link, token, false);
   });
 
-  it.each(providers)("F-002, F-115: a replayed job sends nothing twice, through %s", async (provider) => {
+  it.each(providers)("F-002, F-115/c1: a replayed job sends nothing twice, through %s", async (provider) => {
     const invitationId = await newInvitation();
     const base = countOf(provider);
     expect(await send(provider, "invitation", invitationId)).toBe("ok");
@@ -268,7 +268,7 @@ describe("each purpose, through Resend and SMTP", () => {
 });
 
 describe("records no longer pending", () => {
-  it("F-002: a revoked invitation sends nothing", async () => {
+  it("F-002/c3: a revoked invitation sends nothing", async () => {
     const invitationId = await newInvitation({ status: "canceled", revokedAt: new Date(now - 1_000) });
     const base = countOf("smtp");
     expect(await send("smtp", "invitation", invitationId)).toBe("ok");
@@ -315,7 +315,7 @@ describe("records no longer pending", () => {
 });
 
 describe("mail off and failures", () => {
-  it("F-115: with email off, nothing is sent and the row says so", async () => {
+  it("F-115/c1: with email off, nothing is sent and the row says so", async () => {
     const invitationId = await newInvitation();
     const before = { resend: countOf("resend"), smtp: countOf("smtp") };
     expect(await send("off", "invitation", invitationId)).toBe("ok");
@@ -324,7 +324,7 @@ describe("mail off and failures", () => {
     expect(await deliveryOf("invitation", invitationId)).toMatchObject({ state: "skipped", error: "email is off" });
   });
 
-  it("F-002: a refused address fails for good, with the provider's words on the row for the invitation's admin", async () => {
+  it("F-002/c3: a refused address fails for good, with the provider's words on the row for the invitation's admin", async () => {
     const invitationId = await newInvitation({ email: REFUSED });
     expect(await send("smtp", "invitation", invitationId)).toBe("ok");
     const row = await deliveryOf("invitation", invitationId);
@@ -333,7 +333,7 @@ describe("mail off and failures", () => {
     expect(row?.error).not.toContain(invitationId);
   });
 
-  it("F-115: a provider that's down is retried with the queue's backoff, and the mail goes once it's back", async () => {
+  it("F-115/c1: a provider that's down is retried with the queue's backoff, and the mail goes once it's back", async () => {
     const invitationId = await newInvitation();
     const down: EmailAdapterFactories = { ...factories, resend: (options, context) => new ResendEmailAdapter({ ...options, baseUrl: "http://127.0.0.1:1" }, context) };
     const channel = createEmailChannel({ db: test.db, secretStore: new FakeSecretStore(), clock, logger, publicUrl: PUBLIC_URL, stallMinutes: 30, fromSettings: fromSettings("resend"), factories: down });

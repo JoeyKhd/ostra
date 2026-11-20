@@ -128,7 +128,7 @@ afterAll(async () => {
 });
 
 describe("the git proxy with stock git", () => {
-  it("F-090: clones, fetches and pushes the task's branch and its hidden ref, with the repo's token added upstream", async () => {
+  it("F-090/c1: clones, fetches and pushes the task's branch and its hidden ref, with the repo's token added upstream", async () => {
     const proxy = await startProxy();
     const { dir, run } = await clone(proxy.urlFor(repo), "work");
     expect(run.code, run.stderr).toBe(0);
@@ -144,7 +144,7 @@ describe("the git proxy with stock git", () => {
     expect(await upstream.refSha(repo, hiddenRef)).toBe(head);
   }, 60_000);
 
-  it("F-090: refuses a push to the default branch in git's words, forwarding nothing", async () => {
+  it("F-090/c2,c6: refuses a push to the default branch in git's words, forwarding nothing", async () => {
     const proxy = await startProxy();
     const { dir } = await clone(proxy.urlFor(repo), "to-main");
     await commitFile(dir, "sneaky.txt", "not allowed\n");
@@ -157,7 +157,7 @@ describe("the git proxy with stock git", () => {
     expect(await upstream.refSha(repo, "refs/heads/main")).toBe(mainBefore);
   }, 60_000);
 
-  it("F-090: refuses a delete, even of the task's own branch", async () => {
+  it("F-090/c2: refuses a delete, even of the task's own branch", async () => {
     const proxy = await startProxy();
     const { dir } = await clone(proxy.urlFor(repo), "delete");
     const before = receivePacks(repo);
@@ -168,7 +168,7 @@ describe("the git proxy with stock git", () => {
     expect(await upstream.refSha(repo, `refs/heads/${branch}`)).not.toBeNull();
   }, 60_000);
 
-  it("F-090: refuses a push that carries the task's branch beside main, and every look-alike of its refs, forwarding nothing", async () => {
+  it("F-090/c2: refuses a push that carries the task's branch beside main, and every look-alike of its refs, forwarding nothing", async () => {
     const proxy = await startProxy();
     const { dir } = await clone(proxy.urlFor(repo), "mixed");
     await commitFile(dir, "mixed.txt", "x\n");
@@ -194,7 +194,7 @@ describe("the git proxy with stock git", () => {
     expect(await upstream.refSha(repo, `refs/heads/${branch}`)).toBe(branchBefore);
   }, 60_000);
 
-  it("F-090: refuses a push to another repo in git's words, and no request for it reaches the code host", async () => {
+  it("F-090/c2: refuses a push to another repo in git's words, and no request for it reaches the code host", async () => {
     const proxy = await startProxy();
     const { dir } = await clone(proxy.urlFor(repo), "other-repo");
     await commitFile(dir, "elsewhere.txt", "x\n");
@@ -207,7 +207,7 @@ describe("the git proxy with stock git", () => {
     expect(upstream.requests.filter((request) => request.repo === otherRepo)).toEqual([]);
   }, 60_000);
 
-  it("F-090: names the code host's refusal by status, and logs the status without the body", async () => {
+  it("F-090/c6: names the code host's refusal by status, and logs the status without the body", async () => {
     const proxy = await startProxy();
     const saved = token;
     token = "ghs_expired_or_unknown_token_value";
@@ -232,7 +232,7 @@ describe("a refused push's answer and its cost", () => {
   const receivePack = (proxy: GitProxy, body: Buffer): Promise<Response> =>
     fetch(`${proxy.urlFor(repo)}/git-receive-pack`, { method: "POST", headers: { "content-type": "application/x-git-receive-pack-request" }, body });
 
-  it("F-090: answers a plain 403 with the reason only when the client asked for no report, and sends nothing upstream", async () => {
+  it("F-090/c6: answers a plain 403 with the reason only when the client asked for no report, and sends nothing upstream", async () => {
     const proxy = await startProxy();
     const before = receivePacks(repo);
     const plain = await receivePack(proxy, commands("refs/heads/main", "agent=git/2.53"));
@@ -245,7 +245,7 @@ describe("a refused push's answer and its cost", () => {
     expect(receivePacks(repo)).toBe(before);
   });
 
-  it("F-090: reads every command of a push, so the task's branch first and main after it is refused whole, forwarding nothing", async () => {
+  it("F-090/c2: reads every command of a push, so the task's branch first and main after it is refused whole, forwarding nothing", async () => {
     const proxy = await startProxy();
     const before = receivePacks(repo);
     // An agent with a shell can write the command list in any order, unlike stock git.
@@ -265,7 +265,7 @@ describe("a refused push's answer and its cost", () => {
     expect(receivePacks(repo)).toBe(before);
   });
 
-  it("F-090: reads at most its cap of a refused push, then closes the connection; the cap is 1 GiB", async () => {
+  it("F-090/c6: reads at most its cap of a refused push, then closes the connection; the cap is 1 GiB", async () => {
     expect(MAX_DISCARD_BYTES).toBe(1024 * 1024 * 1024);
     const cap = 256 * 1024;
     const proxy = await startProxy("read-write", cap);
@@ -306,7 +306,7 @@ describe("a refused push's answer and its cost", () => {
 });
 
 describe("LFS through the proxy", () => {
-  it("F-090: uploads and downloads with git-lfs, and the signed URL and its header never reach the client", async () => {
+  it("F-090/c6: uploads and downloads with git-lfs, and the signed URL and its header never reach the client", async () => {
     const proxy = await startProxy();
     const { dir } = await clone(proxy.urlFor(repo), "lfs");
     expect((await runGit(["lfs", "install", "--local"], dir)).code).toBe(0);
@@ -335,7 +335,7 @@ describe("LFS through the proxy", () => {
     expect(oid).toMatch(/^[0-9a-f]{64}$/);
   }, 120_000);
 
-  it("F-090: refuses an object whose action points at a host it doesn't allow, with an error and no actions", async () => {
+  it("F-090/c6: refuses an object whose action points at a host it doesn't allow, with an error and no actions", async () => {
     // The storage host lfs.example.test is allowed, so the host check itself must refuse its
     // plain-http URL and its look-alike, besides the metadata address, loopback and localhost.
     const proxy = await startProxy("read-write", undefined, ["lfs.example.test"]);
@@ -366,7 +366,7 @@ describe("read-only mode", () => {
   const post = (url: string, body: unknown): Promise<Response> =>
     fetch(url, { method: "POST", headers: { "content-type": "application/vnd.git-lfs+json" }, body: JSON.stringify(body) });
 
-  it("F-090: read-only clones, and refuses the push advertisement, LFS uploads, lock checks and non-GET actions", async () => {
+  it("F-090/c4,c6: read-only clones, and refuses the push advertisement, LFS uploads, lock checks and non-GET actions", async () => {
     const proxy = await startProxy("read-only");
     const { dir, run } = await clone(proxy.urlFor(repo), "read-only");
     expect(run.code, run.stderr).toBe(0);
@@ -422,7 +422,7 @@ describe("read-only mode", () => {
 });
 
 describe("the User-Agent", () => {
-  it("F-090: is required by the upstream, and the proxy always sends one", async () => {
+  it("F-090/c6: is required by the upstream, and the proxy always sends one", async () => {
     const proxy = await startProxy();
     const bare = (url: string): Promise<number> =>
       new Promise((resolve) => {

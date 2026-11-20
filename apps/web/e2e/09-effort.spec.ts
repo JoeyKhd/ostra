@@ -41,7 +41,7 @@ const shoot = async (page: Page, name: string): Promise<void> => {
 const levels = (page: Page): Promise<(string | null)[]> =>
   page.getByTestId("profile-effort").locator("[data-level]").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-level")));
 
-test("F-137: Careful on GPT-5.5 offers its five levels and Default, and a model that doesn't reason offers no control", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-137/c1,c2: Careful on GPT-5.5 offers its five levels and Default, and a model that doesn't reason offers no control", { tag: "@desktop-only" }, async ({ page }) => {
   const { profileId } = await seed();
   await signIn(page);
   await page.goto(`/organization/agent-profiles/${profileId}`);
@@ -68,7 +68,7 @@ test("F-137: Careful on GPT-5.5 offers its five levels and Default, and a model 
   await expect(field.locator('[data-chosen="true"]')).toHaveAttribute("data-level", "high");
 });
 
-test("F-137: the driver changes a running task's level and sees that it applies from the next turn", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-137/c7,c8: the driver changes a running task's level and sees that it applies from the next turn", { tag: "@desktop-only" }, async ({ page }) => {
   const { taskId } = await seed();
   await signIn(page);
   await page.goto(`/tasks/${taskId}`);
@@ -89,7 +89,7 @@ test("F-137: the driver changes a running task's level and sees that it applies 
   await shoot(page, "task-effort");
 });
 
-test("F-137: a member who isn't the driver sees the level and no control", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-137/c7: a member who isn't the driver sees the level and no control", { tag: "@desktop-only" }, async ({ page }) => {
   const { taskId } = await seed();
   await signIn(page, MEMBER);
   await page.goto(`/tasks/${taskId}`);
@@ -97,7 +97,7 @@ test("F-137: a member who isn't the driver sees the level and no control", { tag
   await expect(page.getByTestId("task-effort-trigger")).toHaveCount(0);
 });
 
-test("F-137: Models shows each model's levels and their source", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-137/c2: Models shows each model's levels and their source", { tag: "@desktop-only" }, async ({ page }) => {
   await seed();
   await signIn(page);
   await page.goto("/organization/models");

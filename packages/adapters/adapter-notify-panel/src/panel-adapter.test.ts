@@ -76,7 +76,7 @@ const setup = () => {
 };
 
 describe("the panel notification adapter", () => {
-  it("F-115: refuses an account mail as unsupported, and delivers no row", async () => {
+  it("F-115/c1: refuses an account mail as unsupported, and delivers no row", async () => {
     const { adapter, rows, row } = setup();
     const id = row();
     const mail = sampleAccountMail("newcomer@example.com");
@@ -92,7 +92,7 @@ describe("the panel notification adapter", () => {
     expect(await adapter.health()).toEqual({ status: "ok" });
   });
 
-  it("F-036: delivers the row once, stamped with the adapter's clock, and answers its ID", async () => {
+  it("F-036/c2: delivers the row once, stamped with the adapter's clock, and answers its ID", async () => {
     const { adapter, rows, context, ada, row, notification } = setup();
     const id = row();
     context.clock.advance(5000);
@@ -124,7 +124,7 @@ describe("the panel notification adapter", () => {
     expect(await adapter.update(notification([ada], foreign), foreign)).toMatchObject({ ok: false, error: { code: "not-found" } });
   });
 
-  it("F-036: an answer moves the row's state and its line in place; a dismissal too", async () => {
+  it("F-036/c2: an answer moves the row's state and its line in place; a dismissal too", async () => {
     const { adapter, rows, ada, row, notification } = setup();
     const id = row();
     await adapter.send(notification([ada], id));

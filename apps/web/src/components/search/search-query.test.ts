@@ -6,7 +6,7 @@ import { joinQuery, pendingKey, pendingValue, periodAfter, splitQuery, tokenOf }
 // F-080 (ticket 35): the query as the panel draws it, and where a result opens, without a browser.
 
 describe("the query's tokens", () => {
-  it("F-080: a finished known token becomes a chip, an unknown one and the word being typed stay text", () => {
+  it("F-080/c1: a finished known token becomes a chip, an unknown one and the word being typed stay text", () => {
     expect(splitQuery("repo:calculator-web status:in-review history")).toEqual({ tokens: [{ key: "repo", value: "calculator-web" }, { key: "status", value: "in-review" }], text: "history" });
     expect(splitQuery("foo:bar repo:x")).toEqual({ tokens: [], text: "foo:bar repo:x" });
     expect(splitQuery("foo:bar repo:x ")).toEqual({ tokens: [{ key: "repo", value: "x" }], text: "foo:bar " });

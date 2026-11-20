@@ -97,7 +97,7 @@ describe("the checklist's Linear step", () => {
 });
 
 describe("the checklist's links to the docs", () => {
-  it("F-076: every step links to its page in the docs, in a new tab, done or not, for every member", () => {
+  it("F-076/c1: every step links to its page in the docs, in a new tab, done or not, for every member", () => {
     for (const admin of [true, false]) {
       const html = renderToStaticMarkup(<SetupSteps steps={steps("open")} next="project" admin={admin} skip={skip} />);
       for (const step of steps("open")) {

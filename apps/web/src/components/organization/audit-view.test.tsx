@@ -30,7 +30,7 @@ const entry = (over: Partial<Entry>): Entry => ({
 const noop = () => undefined;
 
 describe("the audit log's entity (F-073)", () => {
-  it("F-073: the Entity column shows the kind and the entity's label, not its ID", () => {
+  it("F-073/c2: the Entity column shows the kind and the entity's label, not its ID", () => {
     const task = renderToStaticMarkup(<EntityCell entry={entry({})} />);
     expect(task).toContain(">task<");
     expect(task).toContain(">CALC-161<");
@@ -45,7 +45,7 @@ describe("the audit log's entity (F-073)", () => {
     expect(renderToStaticMarkup(<EntityCell entry={entry({ entity: null, entityId: null, entityLabel: null })} />)).toContain("—");
   });
 
-  it("F-073: the panel names the entity as Task CALC-161, linked to its page, and Entries about this pool by the kind's word", () => {
+  it("F-073/c2: the panel names the entity as Task CALC-161, linked to its page, and Entries about this pool by the kind's word", () => {
     const task = renderToStaticMarkup(<EntryPanel entry={entry({})} onEntity={noop} />);
     expect(task).toMatch(/data-testid="audit-entity-link"[^>]*>Task <span[^>]*>CALC-161<\/span><\/a>/);
     expect(task).toContain(`href="/tasks/${TASK_ID}"`);
@@ -59,7 +59,7 @@ describe("the audit log's entity (F-073)", () => {
     expect(pool).not.toContain("0196f1a0-aaaa");
   });
 
-  it("F-073: the entity filter's chip reads the label an entry about it carries, and its short ID before any is listed", () => {
+  it("F-073/c2: the entity filter's chip reads the label an entry about it carries, and its short ID before any is listed", () => {
     expect(renderToStaticMarkup(<EntityChipText entity="task" entityId={TASK_ID} entries={[entry({})]} />)).toContain(">CALC-161<");
     const unlisted = renderToStaticMarkup(<EntityChipText entity="task" entityId={TASK_ID} entries={[]} />);
     expect(unlisted).toContain(">0196f1a0…<");

@@ -422,7 +422,7 @@ afterAll(async () => {
 });
 
 describe("refine drafts (F-099)", () => {
-  it("F-099: the built-in Refine profile exists in every organization on its default model, can't be archived, and is each project's refine default", async () => {
+  it("F-099/c1,c3,c8: the built-in Refine profile exists in every organization on its default model, can't be archived, and is each project's refine default", async () => {
     for (const org of [fixture.a.organization.id, fixture.b.organization.id]) {
       const opencode = await test.db.agentProfile.findFirstOrThrow({
         where: { organizationId: org, builtIn: true },
@@ -472,7 +472,7 @@ describe("refine drafts (F-099)", () => {
     expect(await test.db.ticketWrite.count({ where: { taskId } })).toBe(0);
   });
 
-  it("F-099: a code task's token posting a draft is refused; a refine task's drafts are stored with their typed fields, one version each", async () => {
+  it("F-099/c1,c4: a code task's token posting a draft is refused; a refine task's drafts are stored with their typed fields, one version each", async () => {
     const code = await refineTask("linear", "code");
     expect(await submit(code.taskId, code.token, draft())).toEqual({
       status: 409,
@@ -509,7 +509,7 @@ describe("refine drafts (F-099)", () => {
     expect((await submit(code.taskId, token, draft())).status).toBe(403);
   });
 
-  it("F-099: a turn that handed in a draft puts the task in front of its owner; a turn without one doesn't", async () => {
+  it("F-099/c5: a turn that handed in a draft puts the task in front of its owner; a turn without one doesn't", async () => {
     const quiet = await refineTask();
     expect(await turnEnds(quiet.taskId, quiet.sessionId)).toMatchObject({
       ok: true,
@@ -528,7 +528,7 @@ describe("refine drafts (F-099)", () => {
     expect(item.audience).toBe("driver");
   });
 
-  it("F-099: nothing reaches the tracker before a member acts; Update ticket writes the description, attaches the images and creates the sub-issues once under a replayed job", async () => {
+  it("F-099/c6,c7,c8: nothing reaches the tracker before a member acts; Update ticket writes the description, attaches the images and creates the sub-issues once under a replayed job", async () => {
     const { taskId, sessionId, token, ticket } = await refineTask();
     await submit(taskId, token, draft());
     await turnEnds(taskId, sessionId);
@@ -615,7 +615,7 @@ describe("refine drafts (F-099)", () => {
     });
   });
 
-  it("F-099: Mark ready moves the ticket to the board's ready status through the ticket outbox", async () => {
+  it("F-099/c6: Mark ready moves the ticket to the board's ready status through the ticket outbox", async () => {
     const { taskId, sessionId, token, ticket } = await refineTask();
     await submit(taskId, token, draft());
     await turnEnds(taskId, sessionId);
@@ -667,7 +667,7 @@ describe("refine drafts (F-099)", () => {
     }
   });
 
-  it("F-099: on the Jira fake, the criteria go to their own field, the sub-tickets become sub-tasks, and Mark ready goes through its transitions", async () => {
+  it("F-099/c6: on the Jira fake, the criteria go to their own field, the sub-tickets become sub-tasks, and Mark ready goes through its transitions", async () => {
     useJira = true;
     const { taskId, sessionId, token, ticket } = await refineTask("jira");
     await submit(taskId, token, draft());

@@ -105,14 +105,14 @@ describe("minor 3's spec, command and events", () => {
     expect(encodeTaskSpecForMinor(taskSpecEffortFixture, 3)).toEqual(taskSpecEffortFixture);
   });
 
-  it("F-137: a level other than default needs a minor-3 runner; default, the controls and the limits don't", () => {
+  it("F-137/c9: a level other than default needs a minor-3 runner; default, the controls and the limits don't", () => {
     expect(taskSpecNeedsMinor3(taskSpecEffortFixture)).toBe(true);
     const atDefault = { ...taskSpecEffortFixture, agent: { ...taskSpecEffortFixture.agent, effort: "default" as const } };
     expect(taskSpecNeedsMinor3(atDefault)).toBe(false);
     expect(taskSpecNeedsMinor3(taskSpecMinor2Fixture)).toBe(false);
   });
 
-  it("F-137: set-effort is minor 3's, refuses unknown fields and levels, and is never encoded for a minor-2 peer", () => {
+  it("F-137/c8: set-effort is minor 3's, refuses unknown fields and levels, and is never encoded for a minor-2 peer", () => {
     const command = commandFixtures["set-effort"];
     expect(commandSchema.parse(roundTrip(command))).toEqual(command);
     expect(commandKindSupportedAt("set-effort", 3)).toBe(true);
@@ -136,7 +136,7 @@ describe("minor 3's spec, command and events", () => {
     expect(taskEventSchema.safeParse({ ...minor3FieldFixtures["usage.recorded"], reasoningTokens: -1 }).success).toBe(false);
   });
 
-  it("F-137: a minor-2 encoding of turn.started and usage.recorded drops the new fields", () => {
+  it("F-137/c8: a minor-2 encoding of turn.started and usage.recorded drops the new fields", () => {
     const turn = encodeEventForMinor(minor3FieldFixtures["turn.started"], 2);
     expect(turn).toEqual({ kind: "turn.started", turnId: ids.turn, mode: "build" });
     const usage = encodeEventForMinor(minor3FieldFixtures["usage.recorded"], 2);
@@ -211,11 +211,11 @@ describe("the clamp", () => {
     expect(rows).toHaveLength((clampTable.length + commonSets.length) * columns.length);
   });
 
-  it.each(rows)("F-137: $name: $requested runs at $level", ({ offered, requested, level }) => {
+  it.each(rows)("F-137/c9: $name: $requested runs at $level", ({ offered, requested, level }) => {
     expect(clampEffort(requested, offered)).toEqual({ level, adjusted: level !== requested });
   });
 
-  it("F-137: never returns a level the model doesn't offer, other than default", () => {
+  it("F-137/c9: never returns a level the model doesn't offer, other than default", () => {
     for (const { offered, requested } of rows) {
       const { level } = clampEffort(requested, offered);
       expect(level === "default" || offered.includes(level)).toBe(true);

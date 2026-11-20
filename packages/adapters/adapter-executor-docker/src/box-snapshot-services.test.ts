@@ -58,7 +58,7 @@ const postgres = {
 const cache = { name: "cache", image: "redis:7", port: 6379, variables: [], healthCheck: null } as const;
 
 describe("a box from a snapshot (F-051)", () => {
-  it("F-051: the agent's container starts from the snapshot image, made before the sidecar so the image fills the new task volume, and nothing is mounted over the workspace", async () => {
+  it("F-051/c7: the agent's container starts from the snapshot image, made before the sidecar so the image fills the new task volume, and nothing is mounted over the workspace", async () => {
     const created = await boxes.createBox({ ...input, snapshotImage: SNAPSHOT });
     if (!created.ok) throw new Error(created.error.message);
     const agent = named("agent");
@@ -76,7 +76,7 @@ describe("a box from a snapshot (F-051)", () => {
     expect(agent?.body["Labels"]).toMatchObject({ "ostra.snapshot-image": SNAPSHOT });
   });
 
-  it("F-051: without a snapshot the sidecar's image seeds the volume first, as milestone 1 does, on the environment's base image", async () => {
+  it("F-051/c7: without a snapshot the sidecar's image seeds the volume first, as milestone 1 does, on the environment's base image", async () => {
     const created = await boxes.createBox(input);
     if (!created.ok) throw new Error(created.error.message);
     expect([...engine.containers.values()].map((container) => container.name)).toEqual([`ostra-box-${input.boxId}-sidecar`, `ostra-box-${input.boxId}-agent`]);
@@ -85,7 +85,7 @@ describe("a box from a snapshot (F-051)", () => {
 });
 
 describe("services (F-094)", () => {
-  it("F-094: each service is a container on the box's private network by its name, with its variables and health check, started before the agent and removed with the box", async () => {
+  it("F-094/c2: each service is a container on the box's private network by its name, with its variables and health check, started before the agent and removed with the box", async () => {
     const created = await boxes.createBox({ ...input, services: [postgres, cache] });
     if (!created.ok) throw new Error(created.error.message);
     const db = named("svc-postgres");
@@ -115,7 +115,7 @@ describe("services (F-094)", () => {
     expect(engine.networks.has(`ostra-box-${input.boxId}`)).toBe(false);
   });
 
-  it("F-094: the services' health is polled until each is healthy: Docker's health check, or the port reached from the box's sidecar", async () => {
+  it("F-094/c3: the services' health is polled until each is healthy: Docker's health check, or the port reached from the box's sidecar", async () => {
     const created = await boxes.createBox({ ...input, services: [postgres, cache] });
     if (!created.ok) throw new Error(created.error.message);
     let probes = 0;
@@ -139,7 +139,7 @@ describe("services (F-094)", () => {
     expect(engine.execs.every((each) => each.user === "1000:1000")).toBe(true);
   });
 
-  it("F-094: a service that exits, or isn't healthy in time, failed, with words and never its output", async () => {
+  it("F-094/c3: a service that exits, or isn't healthy in time, failed, with words and never its output", async () => {
     const created = await boxes.createBox({ ...input, services: [postgres, cache] });
     if (!created.ok) throw new Error(created.error.message);
     engine.exec = () => ({ exitCode: 1, output: "connection refused" });

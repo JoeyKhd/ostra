@@ -31,7 +31,7 @@ const shoot = async (page: Page, name: string): Promise<void> => {
   await page.evaluate(() => { document.documentElement.setAttribute("data-theme", "dark"); });
 };
 
-test("F-113: a project admin starts the onboarding task, reads the proposing fake's proposal, edits it and accepts it", async ({ page }) => {
+test("F-113/c1,c2,c3: a project admin starts the onboarding task, reads the proposing fake's proposal, edits it and accepts it", async ({ page }) => {
   test.setTimeout(120_000);
   await signIn(page);
   await ensureGitHub(page);

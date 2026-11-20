@@ -65,7 +65,7 @@ const saveOnB = async (name: string): Promise<AgentProfileId> => {
 };
 
 describe("the profile's provider through the API", () => {
-  it("F-135, F-021: saving stores the provider, only one that lists the model, and the views name it", async () => {
+  it("F-135/c3,c19, F-021/c1: saving stores the provider, only one that lists the model, and the views name it", async () => {
     const admin = await harness.as(harness.fixture.a.admin);
     const profileId = await saveOnB("On client B");
     const row = await harness.test.db.agentProfile.findUniqueOrThrow({ where: { id: profileId } });
@@ -98,7 +98,7 @@ describe("the profile's provider through the API", () => {
     await expect((await harness.as(harness.fixture.a.member)).agentProfiles.providerOptions()).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("F-135, F-021: New task and a project's defaults offer only profiles whose provider the project allows", async () => {
+  it("F-135/c4, F-021: New task and a project's defaults offer only profiles whose provider the project allows", async () => {
     const { projectId } = await seedProject(harness, world, "pinned-offers");
     const profileId = await saveOnB("Offered on B");
     const member = await harness.as(harness.fixture.a.member);
@@ -115,7 +115,7 @@ describe("the profile's provider through the API", () => {
     expect((await harness.test.db.project.findUniqueOrThrow({ where: { id: projectId } })).defaultCodeProfileId).toBe(profileId);
   });
 
-  it("F-135, F-021: a start on a profile whose provider the project doesn't allow is refused in words, and its organization admins see why", async () => {
+  it("F-135/c4, F-021: a start on a profile whose provider the project doesn't allow is refused in words, and its organization admins see why", async () => {
     const { projectId } = await seedProject(harness, world, "pinned-refused");
     const profileId = await saveOnB("Refused on B");
     const member = await harness.as(harness.fixture.a.member);

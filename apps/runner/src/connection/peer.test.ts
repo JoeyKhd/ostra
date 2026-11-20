@@ -474,7 +474,7 @@ describe("another process connected as this runner", () => {
     }
   });
 
-  it("F-013: its own earlier connection, half open and evicted for its new one, doesn't stop the runner", async () => {
+  it("F-013/c5: its own earlier connection, half open and evicted for its new one, doesn't stop the runner", async () => {
     const { server: fake, gateway: gw } = await setup({ pingMs: 20 });
     const refused: RefusedReason[] = [];
     const connection = await connect(fake, { timers: { deadMs: 200 }, hooks: { onRefused: (reason) => refused.push(reason) } });
@@ -494,7 +494,7 @@ describe("another process connected as this runner", () => {
     expect(gw.connected()).toBe(true);
   });
 
-  it("F-013: a hello of its own that the server takes late, after its next connection's, doesn't stop the runner; another process then does", async () => {
+  it("F-013/c5: a hello of its own that the server takes late, after its next connection's, doesn't stop the runner; another process then does", async () => {
     const { server: fake, gateway: gw } = await setup({ pingMs: 20 });
     gw.holdWelcomes = true;
     const refused: RefusedReason[] = [];
@@ -542,7 +542,7 @@ describe("another process connected as this runner", () => {
 });
 
 describe("a refused access token", () => {
-  it("F-013: a clock an hour behind the server's is retried with the backoff and logged with its offset, and the runner connects once the clocks agree", async () => {
+  it("F-013/c5: a clock an hour behind the server's is retried with the backoff and logged with its offset, and the runner connects once the clocks agree", async () => {
     const { server: fake, gateway: gw } = await setup();
     let offsetMs = -HOUR;
     const { connection, log, refused } = await connectSigned(fake, await signedTokens(fake, () => Date.now() + offsetMs));
@@ -585,7 +585,7 @@ describe("a refused access token", () => {
     expect(refused).toEqual(["revoked"]);
   });
 
-  it("F-013: a replayed nonce is asked again at once with a fresh assertion, and the runner connects", async () => {
+  it("F-013/c5: a replayed nonce is asked again at once with a fresh assertion, and the runner connects", async () => {
     const { server: fake, gateway: gw } = await setup();
     const tokens = await signedTokens(fake);
     fake.tokenRefusals.push({ status: 401, body: { error: { code: "unauthorized", message: "used", reason: "replayed" } } });
@@ -597,7 +597,7 @@ describe("a refused access token", () => {
     expect(log.records.some((record) => record.level === "warn")).toBe(false);
   });
 
-  it("F-061: against a server before minor 2, a 401 without a reason is retried with the backoff, never the end", async () => {
+  it("F-061/c1: against a server before minor 2, a 401 without a reason is retried with the backoff, never the end", async () => {
     const { server: fake, gateway: gw } = await setup();
     const tokens = await signedTokens(fake);
     for (let index = 0; index < 3; index += 1) {
@@ -644,7 +644,7 @@ describe("live text", () => {
 });
 
 describe("a runner's own events (minor 2)", () => {
-  it("F-051: a snapshot's result goes up in a runner-event frame, and goes again on the next connection, with one recorded while it was down", async () => {
+  it("F-051/c1: a snapshot's result goes up in a runner-event frame, and goes again on the next connection, with one recorded while it was down", async () => {
     const { server: fake, gateway: gw } = await setup();
     const connection = await connect(fake);
     await gw.waitFor(() => gw.connected());

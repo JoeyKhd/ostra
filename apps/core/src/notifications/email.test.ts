@@ -197,7 +197,7 @@ const emailsOf = async (itemId: NeedsYouItemId) => (await deliveriesOf(itemId)).
 const addressOf = async (member: SeededMember): Promise<string> => (await test.db.user.findUniqueOrThrow({ where: { id: member.userId } })).email;
 
 describe("mail that is off", () => {
-  it("F-115: with mail off, every email delivery is skipped in words and the panel's are sent", async () => {
+  it("F-115/c3: with mail off, every email delivery is skipped in words and the panel's are sent", async () => {
     const deps = depsFor();
     const { taskId, projectId } = await makeTask({ driver: null });
     const itemId = await newItem(taskId, projectId, "approval", "project_members");
@@ -215,7 +215,7 @@ describe("mail that is off", () => {
 });
 
 describe("Resend on the fake API", () => {
-  it("F-115: a mail waits its delay, then a due delivery sends once to the member's address, and a replay sends nothing twice", async () => {
+  it("F-115/c1, F-036/c2: a mail waits its delay, then a due delivery sends once to the member's address, and a replay sends nothing twice", async () => {
     const deps = depsFor();
     expect(await saveEmailSettings(deps, admin(), resendSettings())).toMatchObject({ ok: true, provider: "resend" });
     const { taskId, projectId } = await makeTask({ driver: fixture.a.member, title: "Fix the login page" });
@@ -248,7 +248,7 @@ describe("Resend on the fake API", () => {
     deps.close();
   });
 
-  it("F-115: a member who read the notification in the panel, and an item answered meanwhile, are skipped when the mail is due", async () => {
+  it("F-115/c1, F-036/c2: a member who read the notification in the panel, and an item answered meanwhile, are skipped when the mail is due", async () => {
     const deps = depsFor();
     await saveEmailSettings(deps, admin(), resendSettings());
     const { taskId, projectId } = await makeTask({ driver: null });
@@ -279,7 +279,7 @@ describe("Resend on the fake API", () => {
     deps.close();
   });
 
-  it("F-115: a mail carries the allowed fields and nothing the agent or the ticket said", async () => {
+  it("F-115/c1: a mail carries the allowed fields and nothing the agent or the ticket said", async () => {
     const deps = depsFor();
     await saveEmailSettings(deps, admin(), resendSettings());
     const { taskId, projectId } = await makeTask({ driver: fixture.a.member, title: "Fix the login page" });
@@ -301,7 +301,7 @@ describe("Resend on the fake API", () => {
     deps.close();
   });
 
-  it("F-115: no moment's mail quotes the agent: a question's words, a plan's steps and message, and an approval's item stay out", async () => {
+  it("F-115/c1: no moment's mail quotes the agent: a question's words, a plan's steps and message, and an approval's item stay out", async () => {
     const deps = depsFor();
     await saveEmailSettings(deps, admin(), resendSettings());
     const { taskId, projectId } = await makeTask({ driver: fixture.a.member, title: "Fix the login page" });
@@ -344,7 +344,7 @@ describe("Resend on the fake API", () => {
 });
 
 describe("switching providers", () => {
-  it("F-115: switching to SMTP sends the next mail through SMTP, on the same running channel", async () => {
+  it("F-115/c2: switching to SMTP sends the next mail through SMTP, on the same running channel", async () => {
     const deps = depsFor();
     await saveEmailSettings(deps, admin(), resendSettings());
     const { taskId, projectId } = await makeTask({ driver: fixture.a.member });
@@ -368,7 +368,7 @@ describe("switching providers", () => {
     deps.close();
   });
 
-  it("F-115: an SMTP relay with no user and no password sends: a saved row with no secret is complete", async () => {
+  it("F-115/c2: an SMTP relay with no user and no password sends: a saved row with no secret is complete", async () => {
     const relay = await startFakeSmtpServer({ starttls: "none", auth: null });
     const deps = depsFor();
     try {
@@ -388,7 +388,7 @@ describe("switching providers", () => {
     }
   });
 
-  it("F-115: secrets go into the secret store, and the row, the audit entry and the logs keep none", async () => {
+  it("F-115/c2: secrets go into the secret store, and the row, the audit entry and the logs keep none", async () => {
     const deps = depsFor();
     await saveEmailSettings(deps, admin(), { ...smtpSettings, port: smtp.port });
     const row = await test.db.emailSettings.findUniqueOrThrow({ where: { id: "instance" } });
@@ -412,7 +412,7 @@ describe("switching providers", () => {
     deps.close();
   });
 
-  it("F-115: the form refuses what can't work, in words, and an ordinary member can't save it", async () => {
+  it("F-115/c2: the form refuses what can't work, in words, and an ordinary member can't save it", async () => {
     const deps = depsFor();
     expect(await saveEmailSettings(deps, admin(false), resendSettings())).toMatchObject({ ok: false, error: "forbidden" });
     expect(await saveEmailSettings(deps, admin(), { ...resendSettings(), fromAddress: "not an address" })).toMatchObject({ ok: false, error: "invalid-input" });
@@ -424,7 +424,7 @@ describe("switching providers", () => {
 });
 
 describe("the install's own settings", () => {
-  it("F-115: OSTRA_EMAIL_PROVIDER locks the saved row, wins over it, and sends through its own provider", async () => {
+  it("F-115/c2: OSTRA_EMAIL_PROVIDER locks the saved row, wins over it, and sends through its own provider", async () => {
     const fromSettings: EmailFromSettings = { source: "settings", provider: "resend", from: "ostra@settings.example", fromName: "ostra", apiKey: resend.apiKey };
     const deps = depsFor(fromSettings);
     await syncEmailSettingsRow(test.db, fromSettings);
@@ -460,7 +460,7 @@ describe("the install's own settings", () => {
 });
 
 describe("what never reaches a log", () => {
-  it("F-115: no mail body, subject or address, and no key or password, is in any log line", () => {
+  it("F-115/c2: no mail body, subject or address, and no key or password, is in any log line", () => {
     const lines = JSON.stringify(records);
     expect(lines).not.toContain("@example.com");
     expect(lines).not.toContain("Fix the login page");
@@ -483,7 +483,7 @@ describe("the runner notices (milestone 5, ticket 12)", () => {
   const runnerMails = (runnerId: RunnerId) =>
     test.db.notificationDelivery.findMany({ where: { channel: "email", idempotencyKey: { contains: `:${runnerId}:` } }, include: { notification: true }, orderBy: { id: "asc" } });
 
-  it("F-091: mails both runner notices to each admin with the runner's facts and no token, and skips the approval's once it's answered", async () => {
+  it("F-091/c7: mails both runner notices to each admin with the runner's facts and no token, and skips the approval's once it's answered", async () => {
     const deps = depsFor();
     expect(await saveEmailSettings(deps, admin(), resendSettings())).toMatchObject({ ok: true, provider: "resend" });
     const scope = { organizationId, memberId: memberIdSchema.parse(fixture.a.admin.id), role: "admin" as const, projectRoles: new Map() };

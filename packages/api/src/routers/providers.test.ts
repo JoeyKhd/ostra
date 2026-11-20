@@ -181,7 +181,7 @@ describe("providers.list, update and the organization boundary", () => {
     expect((await harness.test.db.modelProvider.findUniqueOrThrow({ where: { id: first.id } })).allowOnPersonalRunners).toBe(false);
   });
 
-  it("F-088: an admin sets a provider's sessions-at-once cap and 'allow on personal runners' (off by default), with an audit entry", async () => {
+  it("F-088/c5: an admin sets a provider's sessions-at-once cap and 'allow on personal runners' (off by default), with an audit entry", async () => {
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);
     const [first] = await admin.providers.list();

@@ -358,7 +358,7 @@ const messageText = (events: readonly TaskEvent[]): string =>
   events.flatMap((event) => (event.kind === "agent.message" ? [event.text] : [])).join("");
 
 describe("F-019 on the pinned OpenCode", () => {
-  it("F-019: OpenCode runs a turn over ostra's ACP driver, and its initialize advertises steering, so a steer mid-turn reaches its next model call", async () => {
+  it("F-019/c1,c4,c7: OpenCode runs a turn over ostra's ACP driver, and its initialize advertises steering, so a steer mid-turn reaches its next model call", async () => {
     const opened = await openOpenCode("anthropic-messages");
     try {
       expect(opened.adapter.name).toBe("opencode");
@@ -380,7 +380,7 @@ describe("F-019 on the pinned OpenCode", () => {
     }
   }, 120_000);
 
-  it("F-019: the OpenCode adapter refuses a steer, as unsupported, on an agent whose initialize doesn't advertise steering", async () => {
+  it("F-019/c4: the OpenCode adapter refuses a steer, as unsupported, on an agent whose initialize doesn't advertise steering", async () => {
     // The plain fake ACP agent answers `initialize` without `_meta.steering`; OpenCode's adapter
     // drives it, so the check that refuses is the one OpenCode's sessions go through.
     const root = await mkdtemp(path.join(tmpdir(), "ostra-opencode-plain-"));
@@ -426,7 +426,7 @@ describe("F-019 on the pinned OpenCode", () => {
     }
   }, 60_000);
 
-  it("F-019: OpenCode's todowrite call reaches ostra as plan.updated, mapped inside the adapter, and never as a tool row", async () => {
+  it("F-019/c3,c5: OpenCode's todowrite call reaches ostra as plan.updated, mapped inside the adapter, and never as a tool row", async () => {
     const opened = await openOpenCode("openai-compatible");
     try {
       expect(opened.adapter.capabilities.nativePlan).toBe(false);
@@ -522,7 +522,7 @@ const docsAndFiles = (mcpUrl: (name: string) => string): PrepareLaunchInput["mcp
 ];
 
 describe("milestone 3 on the pinned OpenCode", () => {
-  it("F-026: OpenCode asks, from its own permissions, only for what a rule covers: a path, a command and a writing MCP tool", async () => {
+  it("F-026/c7: OpenCode asks, from its own permissions, only for what a rule covers: a path, a command and a writing MCP tool", async () => {
     const probe = await openProfiled({});
     const servers = docsAndFiles(probe.mcpUrl);
     await probe.stop();
@@ -558,7 +558,7 @@ describe("milestone 3 on the pinned OpenCode", () => {
     }
   }, 180_000);
 
-  it("F-021: a repo's own opencode.json that allows everything and adds an MCP server changes neither: the rule asks, and its server never reaches the model", async () => {
+  it("F-021/c5: a repo's own opencode.json that allows everything and adds an MCP server changes neither: the rule asks, and its server never reaches the model", async () => {
     const evil = await startTestMcpHttp("search");
     mcpServers.push(evil);
     const profiled = await openProfiled({ approvalRules: [rule("guard", "edit", { kind: "path-glob", glob: "guarded.txt" })] }, async (workspaceDir) => {
@@ -577,7 +577,7 @@ describe("milestone 3 on the pinned OpenCode", () => {
     }
   }, 120_000);
 
-  it("F-021: the repo's own AGENTS.md and skills reach OpenCode beside the profile's instructions and skill, with the repo's config off", async () => {
+  it("F-021/c6: the repo's own AGENTS.md and skills reach OpenCode beside the profile's instructions and skill, with the repo's config off", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "ostra-opencode-told-"));
     roots.push(root);
     const agentDir = path.join(root, "agent");
@@ -608,7 +608,7 @@ describe("milestone 3 on the pinned OpenCode", () => {
     }
   }, 180_000);
 
-  it("F-063: a plan-first task starts in OpenCode's plan agent, which refuses a write, a command off the read-only list and a writing MCP tool, and set_mode makes it build", async () => {
+  it("F-063/c1: a plan-first task starts in OpenCode's plan agent, which refuses a write, a command off the read-only list and a writing MCP tool, and set_mode makes it build", async () => {
     const probe = await openProfiled({});
     const servers = docsAndFiles(probe.mcpUrl);
     await probe.stop();
@@ -640,7 +640,7 @@ describe("milestone 3 on the pinned OpenCode", () => {
 // Milestone 4 on the pinned OpenCode (ticket 07, ADR 0044): where the memory block sits.
 
 describe("milestone 4 on the pinned OpenCode", () => {
-  it("F-110: the memory block reaches OpenCode's prompt after the profile's instructions and before the repos' own AGENTS.md", async () => {
+  it("F-110/c1: the memory block reaches OpenCode's prompt after the profile's instructions and before the repos' own AGENTS.md", async () => {
     const profiled = await openProfiled(
       {
         instructions: "PROFILE-INSTRUCTIONS-MARKER: write tests first.",
@@ -663,7 +663,7 @@ describe("milestone 4 on the pinned OpenCode", () => {
     }
   }, 120_000);
 
-  it("F-110: OpenCode lists ostra's memory tools by name, and memory_search, memory_read and memory_propose each reach core with the task's token", async () => {
+  it("F-110/c2: OpenCode lists ostra's memory tools by name, and memory_search, memory_read and memory_propose each reach core with the task's token", async () => {
     const profiled = await openProfiled({ memory: { block: "## Project memory", tools: true } });
     const core = profiled.core;
     if (core === undefined) throw new Error("the fixture starts the fake core");
@@ -777,7 +777,7 @@ const openEffort = async (format: ApiFormat, model: Partial<PrepareLaunchInput["
 };
 
 describe("ticket 57 on the pinned OpenCode", () => {
-  it("F-137: on the pinned OpenCode, each level's request carries it, and Default carries none, in both formats", async () => {
+  it("F-137/c5,c6: on the pinned OpenCode, each level's request carries it, and Default carries none, in both formats", async () => {
     const none = { effort: null, thinking: null, budget: null };
     // OpenAI-compatible: `reasoning_effort`.
     const openai = await openEffort("openai-compatible", { endpointModelId: "gpt-5.5", reasoning: { supported: true, effort: ["none", "low", "high", "xhigh"] } });
@@ -814,7 +814,7 @@ describe("ticket 57 on the pinned OpenCode", () => {
     }
   }, 180_000);
 
-  it("F-137: OpenCode's request asks for the model's own output limit, and 16,000 only when none is known", async () => {
+  it("F-137/c10: OpenCode's request asks for the model's own output limit, and 16,000 only when none is known", async () => {
     const known = await openEffort("openai-compatible", { limits: { contextWindow: 1_000_000, maxOutputTokens: 128_000 } });
     try {
       expect((await known.turnAt(null)).maxTokens).toBe(128_000);
@@ -829,7 +829,7 @@ describe("ticket 57 on the pinned OpenCode", () => {
     }
   }, 120_000);
 
-  it("F-137: a level OpenCode doesn't advertise is clamped to the nearest it does and never sent, and the level survives a kill and session/load", async () => {
+  it("F-137/c5,c8,c9: a level OpenCode doesn't advertise is clamped to the nearest it does and never sent, and the level survives a kill and session/load", async () => {
     const reasoning = { supported: true, effort: ["low", "high", "max"] } as const;
     const model = { endpointModelId: "gpt-5.5", reasoning: { ...reasoning, effort: [...reasoning.effort] } };
     const first = await openEffort("openai-compatible", model);
@@ -856,7 +856,7 @@ describe("ticket 57 on the pinned OpenCode", () => {
     expect(bodies.map((body) => wireReasoningOf(body).effort)).not.toContain("xhigh");
   }, 120_000);
 
-  it("F-137: with the catalog file decoding, OpenCode fetches no model catalog, and runs at the model's levels", async () => {
+  it("F-137/c1: with the catalog file decoding, OpenCode fetches no model catalog, and runs at the model's levels", async () => {
     const proxy = await startRecordingProxy();
     try {
       const proxied = { HTTPS_PROXY: proxy.url, HTTP_PROXY: proxy.url, https_proxy: proxy.url, http_proxy: proxy.url };
@@ -911,14 +911,14 @@ describe("milestone 6 on the pinned OpenCode", () => {
     }
   };
 
-  it("F-100: a code task's OpenCode offers none of submit_draft, submit_review and propose_environment, and a review task's offers submit_review only, even from a server that lists them all", async () => {
+  it("F-100/c2: a code task's OpenCode offers none of submit_draft, submit_review and propose_environment, and a review task's offers submit_review only, even from a server that lists them all", async () => {
     expect(await listed({ kind: "code", tools: ["pr-text", "memory"] })).toEqual([]);
     expect(await listed({ kind: "review", tools: ["memory", "review"] })).toEqual(["submit_review"]);
     expect(await listed({ kind: "refine", tools: ["memory", "draft"] })).toEqual(["submit_draft"]);
     expect(await listed({ kind: "code", tools: ["pr-text", "memory", "environment"] })).toEqual(["propose_environment"]);
   }, 180_000);
 
-  it("F-100: a review task's OpenCode refuses an edit, and runs a command in its box", async () => {
+  it("F-100/c1: a review task's OpenCode refuses an edit, and runs a command in its box", async () => {
     const profiled = await openProfiled({ kind: "review", tools: ["memory", "review"] });
     try {
       expect(await profiled.prompt(`${stubMarker("ask-path", "review-edit.txt")} write it`)).toBe("end_turn");
@@ -933,7 +933,7 @@ describe("milestone 6 on the pinned OpenCode", () => {
     }
   }, 120_000);
 
-  it("F-099: a refine task's OpenCode edits only when its profile allows prototyping", async () => {
+  it("F-099/c2: a refine task's OpenCode edits only when its profile allows prototyping", async () => {
     for (const [allowPrototyping, wrote] of [
       [false, false],
       [true, true],
@@ -950,7 +950,7 @@ describe("milestone 6 on the pinned OpenCode", () => {
     }
   }, 120_000);
 
-  it("F-099: a shell command that exits non-zero, such as a refused push, reaches ostra as a failed call", async () => {
+  it("F-099/c2: a shell command that exits non-zero, such as a refused push, reaches ostra as a failed call", async () => {
     const profiled = await openProfiled({});
     try {
       expect(await profiled.prompt(`${stubMarker("ask-command", `node -e "process.exit(3)"`)} run it`)).toBe("end_turn");
@@ -1003,7 +1003,7 @@ describe("milestone 6's automatic turn on the pinned OpenCode", () => {
     }
   };
 
-  it("F-101: OpenCode's question in an automatic turn gets the fixed neutral reply in every field, and the turn carries on with it", async () => {
+  it("F-101/c5: OpenCode's question in an automatic turn gets the fixed neutral reply in every field, and the turn carries on with it", async () => {
     const answered = await askedTurn((request) => ({ outcome: "answered", answers: Object.fromEntries(request.fields.map((field) => [field.id, NEUTRAL_REPLY])) }));
     // OpenCode's question tool reaches ostra as one ACP elicitation, which the runner answers itself.
     expect(answered.asked).toHaveLength(1);

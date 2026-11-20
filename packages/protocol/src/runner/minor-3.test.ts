@@ -236,7 +236,7 @@ describe("the task spec at minor 3", () => {
     expect(taskSpecSchemaV0.parse(roundTrip(encodeTaskSpecForMinor(taskSpecMinor3Fixture, 0)))).toBeTruthy();
   });
 
-  it("F-136: a spec with a git identity per repo round-trips, and its minor-2 encoding keeps only the top-level one", () => {
+  it("F-136/c10: a spec with a git identity per repo round-trips, and its minor-2 encoding keeps only the top-level one", () => {
     const [first, second] = taskSpecMinor3Fixture.repos;
     expect(first?.gitIdentity).toEqual(taskSpecFixture.gitIdentity);
     expect(second?.gitIdentity?.name).toBe("client-app[bot]");
@@ -249,7 +249,7 @@ describe("the task spec at minor 3", () => {
     expect(down.repos.map((repo) => repo.repoId)).toEqual([ids.repo, ids.secondRepo]);
   });
 
-  it("F-136: says a spec whose repos have different bots needs a minor-3 runner", () => {
+  it("F-136/c10: says a spec whose repos have different bots needs a minor-3 runner", () => {
     expect(taskSpecNeedsMinor3(taskSpecMinor3Fixture)).toBe(true);
     expect(taskSpecNeedsMinor3(taskSpecMinor2Fixture)).toBe(false);
     // The same bot on every repo needs nothing new.

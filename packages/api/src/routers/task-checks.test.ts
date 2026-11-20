@@ -91,7 +91,7 @@ const newTask = async (title: string, over: { readonly driver?: string | null; r
 };
 
 describe("tasks.checks", () => {
-  it("F-054: lists each turn's runs newest first with the output's end, the commit, the counts and a link only where the full output was saved", async () => {
+  it("F-054/c2: lists each turn's runs newest first with the output's end, the commit, the counts and a link only where the full output was saved", async () => {
     const task = await newTask("two-turns");
     await runTurn(task, 1, [
       { check: lint, status: "passed", exitCode: 0, tail: "lint ok" },
@@ -142,7 +142,7 @@ describe("tasks.checks", () => {
     expect(view.pullRequests).toEqual([]);
   });
 
-  it("F-054: another organization's task and a task in a restricted project are not found; a project with no checks says so", async () => {
+  it("F-054/c2: another organization's task and a task in a restricted project are not found; a project with no checks says so", async () => {
     const task = await newTask("hidden-checks");
     const outsider = await harness.as(harness.fixture.b.admin);
     await expect(outsider.tasks.checks({ taskId: task.taskId })).rejects.toMatchObject({ code: "NOT_FOUND" });
@@ -155,7 +155,7 @@ describe("tasks.checks", () => {
     expect(none).toMatchObject({ configured: false, checks: [], turns: [], pullRequests: [], fix: { available: false, failing: 0, turnNumber: null } });
   });
 
-  it("F-054: a draft PR is reported with whether ostra made it a draft, and all the PRs of a repo are listed", async () => {
+  it("F-054/c3: a draft PR is reported with whether ostra made it a draft, and all the PRs of a repo are listed", async () => {
     const task = await newTask("drafts");
     const taskRepo = await harness.test.db.taskRepo.findFirstOrThrow({ where: { taskId: task.taskId } });
     await harness.test.db.taskPullRequest.create({ data: { organizationId: orgA, projectId: project, taskRepoId: taskRepo.id, number: 483, url: "https://github.com/ostra-test/test1/pull/483", branchName: "ostra/drafts", state: "open", draft: true, draftByOstra: true } });
@@ -165,7 +165,7 @@ describe("tasks.checks", () => {
 });
 
 describe("tasks.checks across several repos", () => {
-  it("F-098: names the task's repos in the project's order, and a turn's run of a check per repo with its repo and its commit there", async () => {
+  it("F-098/c3: names the task's repos in the project's order, and a turn's run of a check per repo with its repo and its commit there", async () => {
     const { projectId, repoId: first } = await seedProject(harness, world, "two-repos");
     const at = { organizationId: orgA, projectId };
     const firstRow = await harness.test.db.repo.findUniqueOrThrow({ where: { id: first } });
@@ -222,7 +222,7 @@ describe("tasks.checks across several repos", () => {
 });
 
 describe("tasks.fixChecks", () => {
-  it("F-054: sends the failing checks as one message, once, to the driver's session; another member is told to take over", async () => {
+  it("F-054/c2: sends the failing checks as one message, once, to the driver's session; another member is told to take over", async () => {
     const task = await newTask("fix", { state: "running" });
     await runTurn(task, 1, [
       { check: lint, status: "passed", exitCode: 0, tail: "ok" },
@@ -244,7 +244,7 @@ describe("tasks.fixChecks", () => {
     expect(await harness.test.db.event.count({ where: { taskId: task.taskId, kind: "user.message" } })).toBe(1);
   });
 
-  it("F-054: with every check passing there is nothing to fix", async () => {
+  it("F-054/c2: with every check passing there is nothing to fix", async () => {
     const task = await newTask("all-pass");
     await runTurn(task, 1, [{ check: lint, status: "passed", exitCode: 0, tail: "ok" }]);
     await expect((await harness.as(harness.fixture.a.member)).tasks.fixChecks({ taskId: task.taskId })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
@@ -252,7 +252,7 @@ describe("tasks.fixChecks", () => {
 });
 
 describe("a check's full output", () => {
-  it("F-054: is served as plain text and an attachment to members of the project, and to no one else", async () => {
+  it("F-054/c2: is served as plain text and an attachment to members of the project, and to no one else", async () => {
     const task = await newTask("download");
     await runTurn(task, 1, [{ check: settings, status: "failed", exitCode: 1, tail: "tail", blob: "line one\n<script>alert(1)</script>\n\u001b[31mred\u001b[0m" }]);
     const view = await (await harness.as(harness.fixture.a.insider)).tasks.checks({ taskId: task.taskId });
@@ -276,7 +276,7 @@ describe("a check's full output", () => {
     expect((await serveCheckOutput(asMember, task.taskId, randomUUID())).status).toBe(404);
   });
 
-  it("F-054: a run in a restricted project is not served to a member who is not on it, and a blob kept elsewhere is said so", async () => {
+  it("F-054/c2: a run in a restricted project is not served to a member who is not on it, and a blob kept elsewhere is said so", async () => {
     const restrictedTask = await seedTask(harness, { organizationId: orgA, projectId: harness.fixture.a.restrictedProject.id, title: "restricted output" });
     const runId = randomUUID();
     const blobId = randomUUID();
@@ -292,7 +292,7 @@ describe("a check's full output", () => {
 });
 
 describe("take it local", () => {
-  it("F-028: names the ostra checkout line by the ticket's key or the task's ID, the login line, and the plain git commands per repo", async () => {
+  it("F-028/c1: names the ostra checkout line by the ticket's key or the task's ID, the login line, and the plain git commands per repo", async () => {
     const linear = await seedLinearConnection(harness);
     const board = await seedBoard(harness, { projectId: project, connectionId: linear, key: "OST" });
     const ticketId = await seedTicket(harness, { projectId: project, boardId: board, connectionId: linear, key: "OST-142" });
@@ -330,7 +330,7 @@ describe("take it local", () => {
     await expect((await harness.as(harness.fixture.b.admin)).tasks.local({ taskId: prompt.taskId })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("F-028: a branch name that a shell would read is quoted, and nothing is pushed before the first turn", async () => {
+  it("F-028/c1: a branch name that a shell would read is quoted, and nothing is pushed before the first turn", async () => {
     const task = await newTask("quoting");
     await harness.test.db.taskRepo.updateMany({ where: { taskId: task.taskId }, data: { branchName: "ostra/it's; rm -rf ~", headSha: null, state: "no_branch" } });
     const local = await (await harness.as(harness.fixture.a.member)).tasks.local({ taskId: task.taskId });
@@ -339,7 +339,7 @@ describe("take it local", () => {
 });
 
 describe("tasks.get", () => {
-  it("F-084: returns the task's tokens in four kinds, spend and agent time, in total and per turn, with estimates marked", async () => {
+  it("F-084/c1,c3: returns the task's tokens in four kinds, spend and agent time, in total and per turn, with estimates marked", async () => {
     const task = await newTask("usage");
     const caller = await harness.as(harness.fixture.a.insider);
     const empty = await caller.tasks.get({ taskId: task.taskId });
@@ -356,7 +356,7 @@ describe("tasks.get", () => {
     ]);
   });
 
-  it("F-070, F-066: carries each repo's behind count and every PR it has had", async () => {
+  it("F-070/c1, F-066/c1: carries each repo's behind count and every PR it has had", async () => {
     const task = await newTask("behind");
     const taskRepo = await harness.test.db.taskRepo.findFirstOrThrow({ where: { taskId: task.taskId } });
     await harness.test.db.taskRepo.update({ where: { id: taskRepo.id }, data: { behindBy: 3, behindCheckedAt: new Date() } });
@@ -378,7 +378,7 @@ describe("tasks.get", () => {
 });
 
 describe("tasks.updateBranch", () => {
-  it("F-070: sends one message naming the repo that is behind and its base, once however often it is pressed; a task behind nowhere refuses it", async () => {
+  it("F-070/c1: sends one message naming the repo that is behind and its base, once however often it is pressed; a task behind nowhere refuses it", async () => {
     const task = await newTask("update", { state: "running" });
     const taskRepo = await harness.test.db.taskRepo.findFirstOrThrow({ where: { taskId: task.taskId } });
     const driver = await harness.as(harness.fixture.a.member);
@@ -396,7 +396,7 @@ describe("tasks.updateBranch", () => {
     expect(harness.fakes.outbox.commands.filter((command) => command.kind === "steer")).toHaveLength(1);
   });
 
-  it("F-070: another member is told to take over while a session is going, and another organization's task is not found", async () => {
+  it("F-070/c1: another member is told to take over while a session is going, and another organization's task is not found", async () => {
     const task = await newTask("update-other", { state: "running" });
     await harness.test.db.taskRepo.updateMany({ where: { taskId: task.taskId }, data: { behindBy: 1, behindCheckedAt: new Date() } });
     await expect((await harness.as(harness.fixture.a.insider)).tasks.updateBranch({ taskId: task.taskId })).rejects.toMatchObject({ code: "FORBIDDEN", message: "Take over to send" });
@@ -413,7 +413,7 @@ describe("a ticket closed while the task ran", () => {
     return task;
   };
 
-  it("F-066: \"Keep working\" dismisses the item and sends \"Carry on\" once; a second press finds nothing waiting; another member is told to take over", async () => {
+  it("F-066/c3: \"Keep working\" dismisses the item and sends \"Carry on\" once; a second press finds nothing waiting; another member is told to take over", async () => {
     const task = await closedTask("keep-going");
     await expect((await harness.as(harness.fixture.a.insider)).tasks.keepWorking({ taskId: task.taskId })).rejects.toMatchObject({ code: "FORBIDDEN", message: "Take over to send" });
     const driver = await harness.as(harness.fixture.a.member);
@@ -427,7 +427,7 @@ describe("a ticket closed while the task ran", () => {
     await expect(driver.tasks.keepWorking({ taskId: task.taskId })).rejects.toMatchObject({ code: "CONFLICT" });
   });
 
-  it("F-101: at a round limit, Keep working answers the cap's item, resets the round counters and sends the cap's words once", async () => {
+  it("F-101/c4: at a round limit, Keep working answers the cap's item, resets the round counters and sends the cap's words once", async () => {
     const task = await newTask("cap-keep-going", { state: "running" });
     await harness.test.db.task.update({ where: { id: task.taskId }, data: { state: "needs_you", needsYouReason: "round_cap", ciRounds: 2, automaticTurns: 3 } });
     await harness.test.db.$transaction((tx) => createNeedsYouItemInTx(harness.deps.ports, tx, { ...place(), taskId: task.taskId, reason: "round_cap", audience: "driver" }));
@@ -441,7 +441,7 @@ describe("a ticket closed while the task ran", () => {
     await expect(driver.tasks.keepWorking({ taskId: task.taskId })).rejects.toMatchObject({ code: "CONFLICT" });
   });
 
-  it("F-066: \"Stop the task\" is the other answer: the task stops as requested, and \"Keep working\" is then refused", async () => {
+  it("F-066/c3: \"Stop the task\" is the other answer: the task stops as requested, and \"Keep working\" is then refused", async () => {
     const task = await closedTask("stop-it");
     const driver = await harness.as(harness.fixture.a.member);
     await driver.tasks.stop({ taskId: task.taskId });

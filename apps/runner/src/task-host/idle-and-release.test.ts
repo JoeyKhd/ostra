@@ -114,7 +114,7 @@ describe("the idle timer (F-096)", () => {
 });
 
 describe("release (F-079)", () => {
-  it("F-110: removes the box, its workspace, the agent's folder and its temp files, and a second release still acks done", async () => {
+  it("F-110/c7: removes the box, its workspace, the agent's folder and its temp files, and a second release still acks done", async () => {
     const h = await start();
     const { spec } = h.taskFor(fakeMarker("say"), { limits: { turnMaxMinutes: 30, idleMinutes: 15 } });
     const boxId = h.dispatch(spec);

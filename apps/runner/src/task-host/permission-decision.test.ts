@@ -38,7 +38,7 @@ describe("decidePermission", () => {
     expect(decidePermission({ ...base, taskRules: [forTask], request: request(edit("migrations/002.sql")) }).kind).toBe("ask");
   });
 
-  it("F-026: without a rule, a request the runner reads needs nobody, for a native agent too; only a native agent's request it can't read still asks", () => {
+  it("F-026/c2: without a rule, a request the runner reads needs nobody, for a native agent too; only a native agent's request it can't read still asks", () => {
     expect(decidePermission({ ...base, request: request(edit("src/a.ts")) })).toEqual({ kind: "allow" });
     // A native agent's settings ask for a superset of a rule (ticket 08): the over-ask costs no person.
     expect(decidePermission({ ...base, permissionRules: "native", request: request(edit("src/a.ts")) })).toEqual({ kind: "allow" });
@@ -48,7 +48,7 @@ describe("decidePermission", () => {
     expect(decidePermission({ ...base, request: request(null, "read") })).toEqual({ kind: "allow" });
   });
 
-  it("F-026: a rule asks however the request hides what it covers: a chain, a substitution, a path leaving the workspace", () => {
+  it("F-026/c1: a rule asks however the request hides what it covers: a chain, a substitution, a path leaving the workspace", () => {
     const allowlist: ApprovalRule = {
       ruleId: approvalRuleIdSchema.parse("rule-allowlist"),
       name: "Commands outside an allowlist",

@@ -24,7 +24,7 @@ const results: SearchResultItem[] = [
 const headings = { "/docs/install/setup#connect-a-runner": "6. Connect a runner" };
 
 describe("the search dialog's results", () => {
-  it("F-058: a text match's heading row shows its heading as written, a step's number and its case included", () => {
+  it("F-058/c1: a text match's heading row shows its heading as written, a step's number and its case included", () => {
     const [group] = groupResults(results, "connect runner", headings);
     expect(group?.path).toBe("Install › Setup in the panel");
     expect(group?.rows.map((row) => [row.kind, row.title, row.url])).toEqual([

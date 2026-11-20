@@ -58,7 +58,7 @@ const until = async (check: () => Promise<boolean>, what: string): Promise<void>
 };
 
 describe("a box's wait (ticket 20)", () => {
-  it("F-093: box.waiting and box.scheduled from the box's runner keep the wait on its row and the task's timeline, once each", async () => {
+  it("F-093/c3: box.waiting and box.scheduled from the box's runner keep the wait on its row and the task's timeline, once each", async () => {
     const { runner, task } = await kubernetesTask(fixture.a.member, fixture.a.openProject.id);
     const peer = await connect(harness, runner, { executor: "kubernetes" });
     await peer.next("welcome");
@@ -82,7 +82,7 @@ describe("a box's wait (ticket 20)", () => {
     peer.close();
   });
 
-  it("F-093: another runner's word on a box moves nothing, in this organization or another", async () => {
+  it("F-093/c3: another runner's word on a box moves nothing, in this organization or another", async () => {
     const { task } = await kubernetesTask(fixture.a.member, fixture.a.openProject.id);
     const stranger = await registerPersonal(harness, test.db, fixture.b.admin);
     const ours = await registerPersonal(harness, test.db, fixture.a.member);

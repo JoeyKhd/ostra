@@ -61,7 +61,7 @@ const textOf = (result: unknown): string => {
 };
 
 describe("ostra's MCP tools", () => {
-  it("F-030, F-078: lists the tool, whose description carries the repo's PR template and the title rule", async () => {
+  it("F-030/c4, F-078/c1: lists the tool, whose description carries the repo's PR template and the title rule", async () => {
     const { tools: server } = await start();
     const client = await connect(server);
     const listed = await client.listTools();
@@ -74,7 +74,7 @@ describe("ostra's MCP tools", () => {
     expect(tool?.inputSchema.required).toEqual(["repo", "title", "body"]);
   });
 
-  it("F-030: emits pr.text_set for a call naming one of the task's repos", async () => {
+  it("F-030/c4: emits pr.text_set for a call naming one of the task's repos", async () => {
     const { tools: server, events } = await start();
     const client = await connect(server);
     const result = await client.callTool({
@@ -172,7 +172,7 @@ const startWithMemory = async (
 };
 
 describe("ostra's memory tools (ticket 20)", () => {
-  it("F-110: a read of a note this turn's search found is memory.used via search, and via read after the turn ends", async () => {
+  it("F-110/c5: a read of a note this turn's search found is memory.used via search, and via read after the turn ends", async () => {
     const { link, calls } = memoryLinkStub();
     const { tools: server, used } = await startWithMemory(link);
     const client = await connect(server);
@@ -194,7 +194,7 @@ describe("ostra's memory tools (ticket 20)", () => {
     ]);
   });
 
-  it("F-110: input the protocol's schemas refuse never reaches core, and a refusal is the tool's error text", async () => {
+  it("F-110/c2: input the protocol's schemas refuse never reaches core, and a refusal is the tool's error text", async () => {
     const { link, calls } = memoryLinkStub();
     const { tools: server, used } = await startWithMemory(link);
     const client = await connect(server);
@@ -218,7 +218,7 @@ describe("ostra's memory tools (ticket 20)", () => {
     expect(used).toEqual([]);
   });
 
-  it("F-111: a proposal goes to core as the protocol's request, and each refusal's words reach the agent", async () => {
+  it("F-111/c1: a proposal goes to core as the protocol's request, and each refusal's words reach the agent", async () => {
     const { link, calls } = memoryLinkStub();
     const { tools: server } = await startWithMemory(link);
     const client = await connect(server);
@@ -248,7 +248,7 @@ describe("ostra's memory tools (ticket 20)", () => {
     }
   });
 
-  it("F-110: with core unreachable, every tool says memory is unavailable, and no query or note text is logged", async () => {
+  it("F-110/c2: with core unreachable, every tool says memory is unavailable, and no query or note text is logged", async () => {
     const { link } = memoryLinkStub({ down: true });
     const { tools: server, logs, used } = await startWithMemory(link);
     const client = await connect(server);
@@ -270,7 +270,7 @@ describe("ostra's memory tools (ticket 20)", () => {
     }
   });
 
-  it("F-110: the real link answers unavailable for a server that isn't there, and core's words for a 404", async () => {
+  it("F-110/c2: the real link answers unavailable for a server that isn't there, and core's words for a 404", async () => {
     const tokens = { get: () => Promise.resolve({ ok: true as const, token: "ostra-task-t", expiresAt: Date.now() + 60_000 }), invalidate: () => undefined };
     const nowhere = memoryLink({ serverUrl: "http://127.0.0.1:9", tokens });
     expect(await nowhere.search(taskIdSchema.parse("task-mcp"), { query: "pnpm", limit: 5 })).toEqual({ ok: false, failure: { kind: "unavailable" } });

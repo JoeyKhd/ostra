@@ -66,7 +66,7 @@ const levelsOf = (mark: string, later: readonly string[]): readonly (string | nu
     .map((call) => wireReasoningOf(call.body).effort);
 
 describe("reasoning effort on OpenCode, with the stub models (F-137)", () => {
-  it("F-137: OpenCode's requests carry the session's level; a change mid-turn waits for the next turn, one while idle reaches the next prompt", async () => {
+  it("F-137/c5,c8: OpenCode's requests carry the session's level; a change mid-turn waits for the next turn, one while idle reaches the next prompt", async () => {
     harness = await startHarness(shared, { agents: defaultAgents() });
     const h = harness;
     const first = `first-turn-${String(Date.now())}`;

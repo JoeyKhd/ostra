@@ -5,7 +5,7 @@ import { m4World, seedM4World, shoot, shootPhone, signedInPage } from "./m4.ts";
 
 // F-087, F-003 (ticket 33): a project's access in its settings, and the instance's Accounts page.
 
-test("F-003: the Accounts page and its Instance group render for the instance admin only, and the last instance admin's own row has no Remove", { tag: "@desktop-only" }, async ({ page, browser }) => {
+test("F-003/c2: the Accounts page and its Instance group render for the instance admin only, and the last instance admin's own row has no Remove", { tag: "@desktop-only" }, async ({ page, browser }) => {
   await seedM4World(m4World);
   await signIn(page);
   const nav = page.getByRole("navigation", { name: "Navigation" });
@@ -35,7 +35,7 @@ test("F-003: the Accounts page and its Instance group render for the instance ad
   await member.context().close();
 });
 
-test("F-087: a restricted project disappears from an unlisted member's sidebar at once", { tag: "@desktop-only" }, async ({ page, browser }) => {
+test("F-087/c4: a restricted project disappears from an unlisted member's sidebar at once", { tag: "@desktop-only" }, async ({ page, browser }) => {
   const world = await seedM4World(m4World);
   const member = await signedInPage(browser, m4World.by);
   const memberNav = member.getByRole("navigation", { name: "Navigation" });

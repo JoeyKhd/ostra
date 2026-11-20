@@ -318,7 +318,7 @@ afterAll(async () => {
 });
 
 describe("ostra runner against core", () => {
-  it("F-013: a personal runner signs in with a device code the member approves, connects out over a WebSocket, and reports its executor, capacity, labels and version", async () => {
+  it("F-013/c1,c2,c3,c6: a personal runner signs in with a device code the member approves, connects out over a WebSocket, and reports its executor, capacity, labels and version", async () => {
     const { runnerId } = await signInPersonal("laptop");
     const id = runnerIdSchema.parse(runnerId);
 
@@ -337,7 +337,7 @@ describe("ostra runner against core", () => {
     expect(core?.gateway.connections.status(id)).toMatchObject({ executor: "host", capacity: 2, labels: ["gpu", "fast"], version: pkg.version });
   });
 
-  it("F-013: the device session is used once, traded for the runner's own key and revoked, and the runner still connects and takes its commands", async () => {
+  it("F-013/c7: the device session is used once, traded for the runner's own key and revoked, and the runner still connects and takes its commands", async () => {
     const { runner, runnerId, deviceToken } = await signInPersonal("desk");
     await waitFor("the runner online", async () => (await runnerRow(runnerId)).state === "online");
 
@@ -373,7 +373,7 @@ describe("ostra runner against core", () => {
     expect((await runnerRow(runnerId)).ackedCommandSeq).toBeGreaterThanOrEqual(sent.seq);
   });
 
-  it("F-013: a pool runner joins with its pool's join token, with no device code", async () => {
+  it("F-013/c2: a pool runner joins with its pool's join token, with no device code", async () => {
     const coreData = await mkdtemp(path.join(tmpdir(), "ostra-f013-core-"));
     try {
       await ensureBootstrapJoinToken(test.db, coreData, silentLogger);
@@ -398,7 +398,7 @@ describe("ostra runner against core", () => {
     }
   });
 
-  it("F-013: it reconnects on its own when its connection drops, and comes back online", async () => {
+  it("F-013/c5: it reconnects on its own when its connection drops, and comes back online", async () => {
     const { runnerId } = await signInPersonal("roamer");
     await waitFor("the runner online", async () => (await runnerRow(runnerId)).state === "online");
     const first = await test.db.runnerPresence.findUniqueOrThrow({ where: { runnerId } });
@@ -415,7 +415,7 @@ describe("ostra runner against core", () => {
     expect(again.disconnectedAt).toBeNull();
   });
 
-  it("F-013: when core's clock and its own disagree, it says by how much, keeps asking, and connects once they agree", async () => {
+  it("F-013/c5: when core's clock and its own disagree, it says by how much, keeps asking, and connects once they agree", async () => {
     const { runner, runnerId } = await signInPersonal("clock");
     await waitFor("the runner online", async () => (await runnerRow(runnerId)).state === "online");
     const first = await test.db.runnerPresence.findUniqueOrThrow({ where: { runnerId } });

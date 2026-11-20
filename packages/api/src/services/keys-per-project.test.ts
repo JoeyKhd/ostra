@@ -82,7 +82,7 @@ describe("keys per project's use cases", () => {
     await test.db.providerListEntry.create({ data: { organizationId: fixture.a.organization.id, projectId: null, providerId: providers.one.providerId } });
   });
 
-  it("F-135: every use case writes its audit entry, and a rollback leaves none", async () => {
+  it("F-135/c5,c6,c16: every use case writes its audit entry, and a rollback leaves none", async () => {
     const organizationId = fixture.a.organization.id;
     const project = projectIdSchema.parse(fixture.a.openProject.id);
     const choiceOf = (projectId: string | null) => test.db.modelChoice.findFirst({ where: { organizationId, projectId, modelKey: "catalog:anthropic/claude-sonnet" } });
@@ -141,7 +141,7 @@ describe("keys per project's use cases", () => {
     expect(await test.db.auditEntry.count({ where: { organizationId } })).toBe(total);
   });
 
-  it("F-135: refuses a member, and a list naming another organization's provider", async () => {
+  it("F-135/c17: refuses a member, and a list naming another organization's provider", async () => {
     const theirs = await seedProviders(fixture.b.organization.id);
     expect(await setDefaultProviders(deps(), scopeOf(fixture.a.member, "member"), { providerIds: [providers.one.providerId] })).toMatchObject({ ok: false, error: "forbidden" });
     expect(await setDefaultProviders(deps(), admin(), { providerIds: [theirs.one.providerId] })).toMatchObject({ ok: false, error: "not-found" });
@@ -180,7 +180,7 @@ describe("the upgrade", () => {
     await withClient(serverUrl, (client) => client.query(`DROP DATABASE IF EXISTS ${client.escapeIdentifier(name)} WITH (FORCE)`));
   });
 
-  it("F-135: after it, every existing task resolves the provider it used before, over two organizations", async () => {
+  it("F-135/c18: after it, every existing task resolves the provider it used before, over two organizations", async () => {
     await withClient(serverUrl, (client) => client.query(`CREATE DATABASE ${client.escapeIdentifier(name)}`));
     const all = (await readdir(migrationsDir, { withFileTypes: true }))
       .filter((entry) => entry.isDirectory())

@@ -270,7 +270,7 @@ describe("F-089: the key proxy", () => {
     { format: "anthropic-messages", scheme: "x-api-key", path: "/messages", chunks: SSE_CHUNKS, usage: { inputTokens: 11, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 } },
   ] as const;
 
-  it("F-089: swaps in the real key, passes the stream through byte for byte in both API formats, and records each call's tokens", async () => {
+  it("F-089/c2: swaps in the real key, passes the stream through byte for byte in both API formats, and records each call's tokens", async () => {
     for (const { format, scheme, path, chunks, usage } of formats) {
       const upstream = await startRawUpstream(200, undefined, chunks);
       const harness = await startProxy(upstream.baseUrl, format, scheme);
@@ -287,7 +287,7 @@ describe("F-089: the key proxy", () => {
     }
   });
 
-  it("F-089: passes each chunk of a stream on as it comes, before the provider has sent the rest, in both API formats", async () => {
+  it("F-089/c2: passes each chunk of a stream on as it comes, before the provider has sent the rest, in both API formats", async () => {
     for (const { format, scheme, path, chunks } of formats) {
       const [firstChunk] = chunks;
       if (firstChunk === undefined) {
@@ -364,7 +364,7 @@ describe("F-089: the key proxy", () => {
     }
   });
 
-  it("F-089: its count equals what the endpoint reports, in both formats, streamed or not", async () => {
+  it("F-089/c3: its count equals what the endpoint reports, in both formats, streamed or not", async () => {
     for (const { format, scheme, path } of formats) {
       for (const stream of [true, false]) {
         const server = await stub(format, () => ({ text: "Counted to the token, in every format and both ways." }));
@@ -386,7 +386,7 @@ describe("F-089: the key proxy", () => {
     }
   });
 
-  it("F-089: counts every call it carries, title calls and other calls with no tools included", async () => {
+  it("F-089/c2,c7: counts every call it carries, title calls and other calls with no tools included", async () => {
     const server = await stub("openai-compatible", () => ({ text: "A short title" }));
     const harness = await startProxy(server.baseUrl, "openai-compatible", "bearer");
     // A title call (no tools, not streamed), a tool-less streamed call, and a turn's call with tools.
@@ -399,7 +399,7 @@ describe("F-089: the key proxy", () => {
     expect(harness.usage.map((event) => event.outputTokens)).toEqual(server.calls.map((item) => item.billed?.outputTokens));
   });
 
-  it("F-089: records fresh input, output, cache-read and cache-write tokens for each call", async () => {
+  it("F-089/c6: records fresh input, output, cache-read and cache-write tokens for each call", async () => {
     const upstream = await startRawUpstream(200, undefined, CACHING_SSE_CHUNKS);
     const harness = await startProxy(upstream.baseUrl, "anthropic-messages", "x-api-key");
     await call(harness, "/messages", anthropicBody(true));
@@ -412,7 +412,7 @@ describe("F-089: the key proxy", () => {
     expect(harness.proxy.totals().usage).toMatchObject({ input: 42, output: 18, cacheRead: 8000, cacheWrite: 1024 });
   });
 
-  it("F-089: estimates a call whose endpoint reported no usage, and marks the count as an estimate", async () => {
+  it("F-089/c5: estimates a call whose endpoint reported no usage, and marks the count as an estimate", async () => {
     for (const { format, scheme, path } of formats) {
       const server = await stub(format, () => ({ text: "This answer carries no usage at all, so it is estimated.", reportUsage: false }));
       const harness = await startProxy(server.baseUrl, format, scheme);
@@ -426,7 +426,7 @@ describe("F-089: the key proxy", () => {
     }
   });
 
-  it("F-089: reports a rate-limit answer with the provider's retry time, and passes the answer on", async () => {
+  it("F-089/c4: reports a rate-limit answer with the provider's retry time, and passes the answer on", async () => {
     for (const { format, scheme, path } of formats) {
       const server = await stub(format, () => ({ error: { status: 429, message: "slow down", retryAfterSeconds: 7 } }));
       const harness = await startProxy(server.baseUrl, format, scheme);
@@ -666,7 +666,7 @@ describe("F-137: the key proxy's reasoning tokens", () => {
   it.each([
     { format: "openai-compatible", scheme: "bearer", path: "/chat/completions", chunks: OPENAI_REASONING_CHUNKS, body: openAiBody(true), output: 90, reasoning: 64 },
     { format: "anthropic-messages", scheme: "x-api-key", path: "/messages", chunks: ANTHROPIC_REASONING_CHUNKS, body: anthropicBody(true), output: 120, reasoning: 80 },
-  ] as const)("F-137: usage.recorded carries the reasoning tokens an endpoint reports in $format, inside its output", async ({ format, scheme, path, chunks, body, output, reasoning }) => {
+  ] as const)("F-137/c11: usage.recorded carries the reasoning tokens an endpoint reports in $format, inside its output", async ({ format, scheme, path, chunks, body, output, reasoning }) => {
     const upstream = await startRawUpstream(200, undefined, chunks);
     const harness = await startProxy(upstream.baseUrl, format, scheme);
     expect((await call(harness, path, body)).status).toBe(200);
@@ -675,7 +675,7 @@ describe("F-137: the key proxy's reasoning tokens", () => {
     expect(harness.proxy.totals().usage).toMatchObject({ output, reasoning });
   });
 
-  it("F-137: a call that reports no reasoning carries none", async () => {
+  it("F-137/c11: a call that reports no reasoning carries none", async () => {
     const upstream = await startRawUpstream(200, undefined, OPENAI_SSE_CHUNKS);
     const harness = await startProxy(upstream.baseUrl, "openai-compatible", "bearer");
     await call(harness, "/chat/completions", openAiBody(true));

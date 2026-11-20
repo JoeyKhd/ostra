@@ -36,7 +36,7 @@ const log: readonly StoredEvent[] = [
 describe("buildRows", () => {
   const rows = buildRows(log, names);
 
-  it("F-073: one row per tool call, its completion folded in, with the full input as stored and the error of a failed call", () => {
+  it("F-073/c4: one row per tool call, its completion folded in, with the full input as stored and the error of a failed call", () => {
     expect(rows.map((row) => row.seq)).toEqual([1, 2, 3, 6, 8, 9, 10, 13, 14]);
     const exec = rows.find((row) => row.seq === 6);
     expect(exec?.word).toBe("execute");
@@ -52,7 +52,7 @@ describe("buildRows", () => {
     expect(read?.body?.error).toBe("ENOENT: no such file");
   });
 
-  it("F-073: an approval keeps the command it was asked about, its answer says who, and the refused call reads refused", () => {
+  it("F-073/c4: an approval keeps the command it was asked about, its answer says who, and the refused call reads refused", () => {
     expect(rows.find((row) => row.seq === 9)?.text).toEqual({ lead: "Asked to run", mono: "pnpm add json5" });
     expect(rows.find((row) => row.seq === 10)?.text.lead).toBe("Declined by Alex Kim");
     const refused = rows.find((row) => row.seq === 8);

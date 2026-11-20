@@ -83,7 +83,7 @@ const sendEvents = async (peer: FakePeer, task: QueuedTask, events: readonly Tas
 };
 
 describe("a task that crashes", () => {
-  it("F-047: frees its runner's slot: a capacity-1 runner takes the next task, and the crash keeps its needs-you item and its events", async () => {
+  it("F-047/c1: frees its runner's slot: a capacity-1 runner takes the next task, and the crash keeps its needs-you item and its events", async () => {
     const runner: RegisteredRunner = await registerPersonal(harness, test.db, fixture.a.member);
     expect((await test.db.runner.findUniqueOrThrow({ where: { id: runner.runnerId } })).capacity).toBe(1);
     const peer = await connect(harness, runner);

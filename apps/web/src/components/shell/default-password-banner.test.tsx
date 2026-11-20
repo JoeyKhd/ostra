@@ -9,7 +9,7 @@ import { DefaultPasswordBanner } from "./default-password-banner";
 // (change-password.md, "The banner").
 
 describe("the default-password banner", () => {
-  it("F-001: shows as a labelled region, not an alert, with a link to change it", () => {
+  it("F-001/c6: shows as a labelled region, not an alert, with a link to change it", () => {
     const html = renderToStaticMarkup(<DefaultPasswordBanner passwordChange="suggested" path="/" />);
     expect(html).toContain('role="region"');
     expect(html).not.toContain('role="alert"');
@@ -28,7 +28,7 @@ describe("the default-password banner", () => {
     expect(renderToStaticMarkup(<DefaultPasswordBanner passwordChange="required" path="/" />)).toContain(t("banner.defaultPassword.action"));
   });
 
-  it("F-001: is gone once the account has its own password", () => {
+  it("F-001/c6: is gone once the account has its own password", () => {
     expect(renderToStaticMarkup(<DefaultPasswordBanner passwordChange="none" path="/" />)).toBe("");
   });
 });

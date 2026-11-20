@@ -73,7 +73,7 @@ const pickerNames = async (page: Page, project: string): Promise<string[]> => {
   return names;
 };
 
-test("F-021, F-026, F-063: an admin makes a profile with a preset rule, plan first and a member limit; only a listed member can pick it; the project's default comes first", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-021/c1,c2,c3, F-026/c1, F-063/c1,c3: an admin makes a profile with a preset rule, plan first and a member limit; only a listed member can pick it; the project's default comes first", { tag: "@desktop-only" }, async ({ page }) => {
   test.setTimeout(180_000);
   const origins = watchOrigins(page);
   const { projectName } = await seedWorld();
@@ -183,7 +183,7 @@ const readSkillFiles = async (profileName: string): Promise<z.infer<typeof skill
 
 const SKILLED = "Skilled e2e";
 
-test("F-021: an admin adds a skill with one file in the skill Sheet; it goes to core's blob store on pick, saves with the profile and is there after a reload", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-021/c1: an admin adds a skill with one file in the skill Sheet; it goes to core's blob store on pick, saves with the profile and is there after a reload", { tag: "@desktop-only" }, async ({ page }) => {
   test.setTimeout(180_000);
   const origins = watchOrigins(page);
   // The model the new profile starts with is the built-in profile's: seeded when no earlier spec left one.

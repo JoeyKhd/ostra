@@ -37,7 +37,7 @@ const seedAs = (index: number) =>
   });
 
 describe("a race of server starts on an empty install", () => {
-  it("F-001: six server starts racing on an empty install seed exactly one admin and one organization", async () => {
+  it("F-001/c5: six server starts racing on an empty install seed exactly one admin and one organization", async () => {
     const results = await Promise.all(Array.from({ length: CONCURRENT_STARTS }, (_, index) => seedAs(index)));
     expect(results.filter((seeded) => seeded !== null)).toHaveLength(1);
     expect(await harness.test.db.user.count()).toBe(1);
@@ -52,7 +52,7 @@ describe("a race of server starts on an empty install", () => {
     expect(await harness.test.db.user.count()).toBe(1);
   });
 
-  it("F-095: the seeded organization starts with its three box sizes", async () => {
+  it("F-095/c1: the seeded organization starts with its three box sizes", async () => {
     const sizes = await harness.test.db.boxSize.findMany({ orderBy: { cpuMillis: "asc" }, select: { name: true, cpuMillis: true, memoryMiB: true } });
     expect(sizes).toEqual([
       { name: "small", cpuMillis: 2000, memoryMiB: 4096 },

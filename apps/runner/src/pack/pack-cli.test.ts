@@ -48,7 +48,7 @@ const manifestSchema = z.looseObject({
 });
 
 describe("the npm CLI (F-013)", () => {
-  it("F-013: the packed CLI installs from its tarball alone, needs Node 24.5, and its ostra runner starts and signs in", async () => {
+  it("F-013/c1: the packed CLI installs from its tarball alone, needs Node 24.5, and its ostra runner starts and signs in", async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), "ostra-pack-"));
     folders.push(dir);
     const packed = await packCli({ outDir: path.join(dir, "stage"), name: "ostra" });
@@ -87,7 +87,7 @@ describe("the npm CLI (F-013)", () => {
 
 // Milestone 7's ticket 30 (F-039's publishing): the manifest packCli writes is what npm publishes.
 describe("the CLI's published package", () => {
-  it("F-039: the CLI publishes its bundle and LICENSE only, public, with npm's provenance, the repository and the licensor", () => {
+  it("F-039/c2: the CLI publishes its bundle and LICENSE only, public, with npm's provenance, the repository and the licensor", () => {
     expect(cliManifest("ostra", { version: "1.0.0", license: "Apache-2.0", engines: { node: ">=24.5" } })).toMatchObject({
       name: "ostra",
       version: "1.0.0",

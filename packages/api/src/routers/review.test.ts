@@ -155,7 +155,7 @@ afterAll(async () => {
 });
 
 describe("the review screen (F-102, ticket 28)", () => {
-  it("F-102: the screen of a task with two PRs: each PR's diff and files, its findings with their state, its CI and its reviewers; the ticket's criteria; the round line", async () => {
+  it("F-102/c1: the screen of a task with two PRs: each PR's diff and files, its findings with their state, its CI and its reviewers; the ticket's criteria; the round line", async () => {
     const task = await reviewedTask("two-prs");
     const member = await harness.as(harness.fixture.a.member);
     const screen = await member.review.screen({ taskId: task.taskId });
@@ -192,7 +192,7 @@ describe("the review screen (F-102, ticket 28)", () => {
     expect(await codeOf((await harness.as(harness.fixture.b.admin)).review.screen({ taskId: task.taskId }))).toBe("NOT_FOUND");
   });
 
-  it("F-102: Fix this puts the finding on its line as the member's draft comment, once, on the head it was found on; a finding off the diff has no line", async () => {
+  it("F-102/c1: Fix this puts the finding on its line as the member's draft comment, once, on the head it was found on; a finding off the diff has no line", async () => {
     const task = await reviewedTask("fix-this");
     const member = await harness.as(harness.fixture.a.member);
     const fixed = await member.review.fixThis({ findingId: task.blocking });
@@ -214,7 +214,7 @@ describe("the review screen (F-102, ticket 28)", () => {
     expect(await harness.test.db.diffComment.count({ where: { taskId: task.taskId } })).toBe(1);
   });
 
-  it("F-102: line comments go to the agent as one prompt: a finding sent with Fix this and the driver's own comment, in one message", async () => {
+  it("F-102/c2: line comments go to the agent as one prompt: a finding sent with Fix this and the driver's own comment, in one message", async () => {
     const task = await reviewedTask("one-prompt");
     const driver = await harness.as(harness.fixture.a.admin);
     await driver.review.fixThis({ findingId: task.blocking });
@@ -261,7 +261,7 @@ describe("the task's rounds (F-035, F-101, ticket 28)", () => {
 });
 
 describe("Review settings (F-100, ticket 28)", () => {
-  it("F-035: each repo's CI as ostra last saw it, on the newest head a task pushed there, and a repo no task pushed to has none", async () => {
+  it("F-035/c1: each repo's CI as ostra last saw it, on the newest head a task pushed there, and a repo no task pushed to has none", async () => {
     const task = await reviewedTask("ci-seen", { appliedDraft: false });
     const member = await harness.as(harness.fixture.a.member);
     const settings = await member.projects.reviewSettings({ projectId });
@@ -277,7 +277,7 @@ describe("Review settings (F-100, ticket 28)", () => {
   });
 
 
-  it("F-100: the AI review switch is a project admin's only, audited; the round limits are shown and the install's", async () => {
+  it("F-100/c5: the AI review switch is a project admin's only, audited; the round limits are shown and the install's", async () => {
     const member = await harness.as(harness.fixture.a.member);
     const settings = await member.projects.reviewSettings({ projectId });
     expect(settings).toMatchObject({ aiReview: true, canChange: false, limits: { ciRounds: 2, reviewRounds: 2, automaticTurns: 4 }, codeHost: { ciResults: harness.fakes.codeHost.capabilities.ciResults, reviewComments: harness.fakes.codeHost.capabilities.reviewComments } });

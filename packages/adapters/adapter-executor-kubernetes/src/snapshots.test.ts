@@ -109,7 +109,7 @@ const rig = async (options: { readonly buildPolicy?: boolean } = {}): Promise<Ri
 const pushRef = (registry: FakeOciRegistry): string => `${registry.host}/ostra/snapshots/${projectId}:${snapshotId}`;
 
 describe("snapshots on kubernetes (ticket 08)", () => {
-  it("F-120: the build pod: context, rootless BuildKit to an OCI tarball, the scan, then the push; each step mounts only its own secret, and BuildKit's unjustified settings are off", () => {
+  it("F-120/c4: the build pod: context, rootless BuildKit to an OCI tarball, the scan, then the push; each step mounts only its own secret, and BuildKit's unjustified settings are off", () => {
     const objects = buildObjects(
       {
         snapshotId,
@@ -165,7 +165,7 @@ describe("snapshots on kubernetes (ticket 08)", () => {
     expect(switched?.env).toContainEqual({ name: "BUILDKITD_FLAGS", value: "--oci-worker-no-process-sandbox" });
   });
 
-  it("F-120, F-051: builds in the build namespace, scans, and pushes a clean image with the push credential; the digest comes back and the build's objects are gone", async () => {
+  it("F-120/c2,c4, F-051/c8: builds in the build namespace, scans, and pushes a clean image with the push credential; the digest comes back and the build's objects are gone", async () => {
     const { cluster, registry, upstream, executor } = await rig();
     const before = cluster.fake.requests().length;
     const built = await executor.buildSnapshot({
@@ -193,7 +193,7 @@ describe("snapshots on kubernetes (ticket 08)", () => {
     expect(cluster.fake.list("secrets", BUILDS)).toEqual([]);
   });
 
-  it("F-120: a scan hit pushes nothing: the build fails as secret-found, naming the secret, and the registry saw no push", async () => {
+  it("F-120/c2: a scan hit pushes nothing: the build fails as secret-found, naming the secret, and the registry saw no push", async () => {
     const { registry, upstream, executor, cluster } = await rig();
     const built = await executor.buildSnapshot({
       snapshotId,
@@ -214,7 +214,7 @@ describe("snapshots on kubernetes (ticket 08)", () => {
     expect(cluster.fake.list("pods", BUILDS)).toEqual([]);
   });
 
-  it("F-120, F-051: a kubernetes runner refuses a build with no registry push, and builds nothing without the build namespace's egress policy", async () => {
+  it("F-120/c4, F-051/c8: a kubernetes runner refuses a build with no registry push, and builds nothing without the build namespace's egress policy", async () => {
     const { registry, upstream, executor, cluster } = await rig({ buildPolicy: false });
     const input = {
       snapshotId,
@@ -231,7 +231,7 @@ describe("snapshots on kubernetes (ticket 08)", () => {
     expect(registry.requests().filter((request) => request.action === "push")).toEqual([]);
   });
 
-  it("F-116, F-051: the build namespace's policy lets a build reach DNS, the registry and the code and package hosts, and nothing else", () => {
+  it("F-116, F-051/c8: the build namespace's policy lets a build reach DNS, the registry and the code and package hosts, and nothing else", () => {
     const policy = buildEgressPolicy({ namespace: BUILDS, registry: { addresses: ["203.0.113.7"], port: 443 }, packageHosts: ["104.16.0.0/13"], codeHosts: ["140.82.112.0/20"] });
     expect(policy.spec?.podSelector).toEqual({ matchLabels: { "ostra.dev/role": BUILD_ROLE } });
     expect(policy.spec?.policyTypes).toEqual(["Egress", "Ingress"]);

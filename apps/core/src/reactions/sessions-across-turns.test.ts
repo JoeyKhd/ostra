@@ -245,7 +245,7 @@ describe("a session across turns (F-096, F-030, F-065)", () => {
     await untouched(other);
   });
 
-  it("F-065, F-036, F-062: two turns that end without changes leave one open no-changes item, the second's, and dismiss the first with its fan-out", async () => {
+  it("F-065/c2, F-036/c2, F-062/c2: two turns that end without changes leave one open no-changes item, the second's, and dismiss the first with its fan-out", async () => {
     const task = await runningTask();
     await turn(task, 1, false);
     const first = await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: task.taskId, reason: "no_changes" } });

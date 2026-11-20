@@ -64,7 +64,7 @@ const everything = (value: unknown): string => JSON.stringify(value);
 const secretValues = (): string[] => [...harness.fakes.secretStore.entries.values()].map((entry) => entry.value);
 
 describe("email.settings", () => {
-  it("F-115: only an instance admin reads or changes the install's email", async () => {
+  it("F-115/c2: only an instance admin reads or changes the install's email", async () => {
     const { a, b } = harness.fixture;
     // An organization admin who is not the instance admin, and plain members.
     for (const who of [b.admin, a.member, a.insider]) {
@@ -87,7 +87,7 @@ describe("email.settings", () => {
     expect(refused).toMatchObject({ ok: false, error: "forbidden" });
   });
 
-  it("F-115: starts off, and says so to every member", async () => {
+  it("F-115/c3: starts off, and says so to every member", async () => {
     const admin = await instanceAdmin();
     const initial = await admin.email.settings.get();
     expect(initial).toMatchObject({ provider: "off", source: "panel", lockedBySettings: false, lockedBy: [], ready: false, delaySeconds: 120, lastTest: null, lastAudit: null });
@@ -97,7 +97,7 @@ describe("email.settings", () => {
     }
   });
 
-  it("F-115: saves Resend with its key in the secret store, and the key never comes back", async () => {
+  it("F-115/c2: saves Resend with its key in the secret store, and the key never comes back", async () => {
     const admin = await instanceAdmin();
     const saved = await admin.email.settings.save({ provider: "resend", fromAddress: "ostra@example.com", fromName: "ostra", apiKey: RESEND_KEY });
     expect(saved).toEqual({ provider: "resend" });
@@ -137,7 +137,7 @@ describe("email.settings", () => {
     expect(secretValues()).not.toContain(RESEND_KEY);
   });
 
-  it("F-115: SMTP keeps its password as a secret too, and a user-less server stores none", async () => {
+  it("F-115/c2: SMTP keeps its password as a secret too, and a user-less server stores none", async () => {
     const admin = await instanceAdmin();
     await admin.email.settings.save({ provider: "smtp", fromAddress: "ostra@example.com", fromName: "ostra", host: "smtp.example.com", port: 587, secure: "starttls", user: "mailer", password: SMTP_PASSWORD });
     const view = await admin.email.settings.get();
@@ -201,7 +201,7 @@ describe("email.settings", () => {
 });
 
 describe("email.sendTest", () => {
-  it("F-115: says mail is off when it is, and keeps the result", async () => {
+  it("F-115/c3: says mail is off when it is, and keeps the result", async () => {
     const admin = await instanceAdmin();
     await admin.email.settings.save({ provider: "off" });
     const result = await admin.email.sendTest();
@@ -210,7 +210,7 @@ describe("email.sendTest", () => {
     expect(mail.sent).toHaveLength(0);
   });
 
-  it("F-115: sends the test mail to the admin's own address through the provider's adapter, with the key it was saved with", async () => {
+  it("F-115/c1: sends the test mail to the admin's own address through the provider's adapter, with the key it was saved with", async () => {
     const admin = await instanceAdmin();
     await admin.email.settings.save({ provider: "resend", fromAddress: "ostra@example.com", fromName: "ostra", apiKey: RESEND_KEY });
     const before = mail.sent.length;

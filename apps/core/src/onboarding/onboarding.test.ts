@@ -99,7 +99,7 @@ const proposed = async (taskId: TaskId, token: string, body: EnvironmentProposal
 };
 
 describe("F-113: starting the onboarding task", () => {
-  it("F-113: a project admin starts the onboarding task from the built-in template, a member can't, and a project has one open at a time", async () => {
+  it("F-113/c1: a project admin starts the onboarding task from the built-in template, a member can't, and a project has one open at a time", async () => {
     expect(await startOnboarding(onboardingDeps(), member(), { projectId: h.world.projectId })).toMatchObject({ ok: false, error: "forbidden" });
     const taskId = await start();
     const task = await h.db.task.findUniqueOrThrow({ where: { id: taskId } });
@@ -113,7 +113,7 @@ describe("F-113: starting the onboarding task", () => {
     expect(await startOnboarding(onboardingDeps(), admin(), { projectId: h.world.projectId })).toMatchObject({ ok: false, error: "already-running" });
   });
 
-  it("F-113: with no environment saved, the onboarding task starts from the draft detected in the repos", async () => {
+  it("F-113/c1: with no environment saved, the onboarding task starts from the draft detected in the repos", async () => {
     await h.db.environment.update({ where: { projectId: h.world.projectId }, data: { status: "draft" } });
     h.codeHost.repoFiles.set(`${REPO}@main:package.json`, JSON.stringify({ name: "test1", packageManager: "pnpm@11.0.0" }));
     h.codeHost.repoFiles.set(`${REPO}@main:pnpm-lock.yaml`, "lockfileVersion: '9.0'\n");
@@ -123,7 +123,7 @@ describe("F-113: starting the onboarding task", () => {
     expect(prompt).not.toContain("make bootstrap");
   });
 
-  it("F-113: its spec has no snapshot, the proposal's and the PR text's tools and only AGENTS.md to commit; on host it says services aren't available", async () => {
+  it("F-113/c1: its spec has no snapshot, the proposal's and the PR text's tools and only AGENTS.md to commit; on host it says services aren't available", async () => {
     // A ready snapshot on the harness's runner, which any other code task of the project would start from.
     const environment = await h.db.environment.findUniqueOrThrow({ where: { projectId: h.world.projectId } });
     await h.db.snapshot.create({
@@ -154,7 +154,7 @@ describe("F-113: starting the onboarding task", () => {
     expect(hostSpec.spec.prompt).toContain(ONBOARDING_HOST_LINE);
   });
 
-  it("F-113: only AGENTS.md reaches a PR, and only for repos without one (with ticket 23's commit)", async () => {
+  it("F-113/c3: only AGENTS.md reaches a PR, and only for repos without one (with ticket 23's commit)", async () => {
     const taskId = await start();
     await lease(taskId);
     const spec = await buildTaskSpec({ db: h.db, codeHost: h.codeHost, secretStore: h.secretStore }, { taskId, runnerId: h.runner.runnerId, leaseEpoch: leaseEpochSchema.parse(1) });
@@ -170,7 +170,7 @@ describe("F-113: starting the onboarding task", () => {
 });
 
 describe("F-113: the proposal", () => {
-  it("F-113: a proposal holding a secret's value is refused, naming the kind, and nothing is stored", async () => {
+  it("F-113/c2: a proposal holding a secret's value is refused, naming the kind, and nothing is stored", async () => {
     const taskId = await start();
     const { token } = await lease(taskId);
     // The environment's own secret's value, pasted into a script.
@@ -185,7 +185,7 @@ describe("F-113: the proposal", () => {
     expect(JSON.stringify(h.records)).not.toContain(ENV_SECRET);
   });
 
-  it("F-113: an onboarding task's proposal is stored for the project's admins, and a newer one supersedes it; another task's is the wrong kind", async () => {
+  it("F-113/c2: an onboarding task's proposal is stored for the project's admins, and a newer one supersedes it; another task's is the wrong kind", async () => {
     const taskId = await start();
     const { token } = await lease(taskId);
     const first = await proposed(taskId, token);
@@ -207,7 +207,7 @@ describe("F-113: the proposal", () => {
 });
 
 describe("F-113: the decision", () => {
-  it("F-113: accept saves the environment's next version, keeping its secrets, and only a project admin decides", async () => {
+  it("F-113/c2: accept saves the environment's next version, keeping its secrets, and only a project admin decides", async () => {
     const taskId = await start();
     const { token } = await lease(taskId);
     const proposalId = await proposed(taskId, token);
@@ -244,7 +244,7 @@ describe("F-113: the decision", () => {
     expect(await decideEnvironmentProposal(decideDeps(), admin(), { proposalId, decision: { kind: "reject", reason: "late" } })).toMatchObject({ ok: false, error: "already-decided" });
   });
 
-  it("F-113: edit and accept saves the admin's edit; reject leaves the environment as it was", async () => {
+  it("F-113/c2: edit and accept saves the admin's edit; reject leaves the environment as it was", async () => {
     const taskId = await start();
     const { token } = await lease(taskId);
     const edited = await proposed(taskId, token);

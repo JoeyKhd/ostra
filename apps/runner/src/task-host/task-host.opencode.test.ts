@@ -256,7 +256,7 @@ const pause = (ms: number): Promise<void> =>
   });
 
 describe("the task host with OpenCode", () => {
-  it("F-019: runs a task on OpenCode, the agent the runner ships, over ostra's ACP driver: it edits the repo through the proxies and leaves a PR-ready branch, counting the model's tokens", async () => {
+  it("F-019/c1: runs a task on OpenCode, the agent the runner ships, over ostra's ACP driver: it edits the repo through the proxies and leaves a PR-ready branch, counting the model's tokens", async () => {
     const h = await harness("stub");
     try {
       const spec = dispatchTask(h, "stub", `${stubMarker("edit-readme")} Edit the README.`, { baseUrl: stub.baseUrl, token: STUB_TOKEN, endpointModelId: "stub-model" });
@@ -282,7 +282,7 @@ describe("the task host with OpenCode", () => {
     }
   }, 180_000);
 
-  it("F-089, F-084: a subagent's model calls go through the key proxy, and each one is counted", async () => {
+  it("F-089/c7, F-084/c1: a subagent's model calls go through the key proxy, and each one is counted", async () => {
     const h = await harness("subagent");
     const before = stub.calls.length;
     try {
@@ -314,7 +314,7 @@ describe("the task host with OpenCode", () => {
 // Subagents (2026-11-20, `research/opencode-subagents.md`): OpenCode 2.3.2 runs each subagent in the
 // background and tells the agent to end its turn; the subagent's report wakes the agent later.
 describe("the task host with OpenCode's subagents", () => {
-  it("F-023, F-138: a task doesn't end while its agent's subagent runs: the agent's answer, woken by the subagent's report, is the turn's", async () => {
+  it("F-023/c1, F-138/c5: a task doesn't end while its agent's subagent runs: the agent's answer, woken by the subagent's report, is the turn's", async () => {
     const h = await harness("bg-subagent");
     try {
       const spec = dispatchTask(h, "bg-subagent", `${stubMarker("bg-subagent")} Have a subagent read the README.`, { baseUrl: stub.baseUrl, token: STUB_TOKEN, endpointModelId: "stub-model" });
@@ -344,7 +344,7 @@ describe("the task host with OpenCode's subagents", () => {
     }
   }, 180_000);
 
-  it("F-023: a subagent that never ends ends its turn at the wait's bound: its starting call fails, and the runner logs the bound with IDs only", async () => {
+  it("F-023/c1: a subagent that never ends ends its turn at the wait's bound: its starting call fails, and the runner logs the bound with IDs only", async () => {
     const waitMs = 6_000;
     const h = await harness("hung-subagent", { subagentWaitMs: waitMs });
     const before = stub.calls.length;
@@ -376,7 +376,7 @@ describe("the task host with OpenCode's subagents", () => {
     }
   }, 180_000);
 
-  it("F-025: a stop while the agent's subagent runs stops both: the turn ends cancelled at once, and the subagent calls the model no more", async () => {
+  it("F-025/c1: a stop while the agent's subagent runs stops both: the turn ends cancelled at once, and the subagent calls the model no more", async () => {
     const h = await harness("stop-subagent");
     const before = stub.calls.length;
     try {
@@ -410,7 +410,7 @@ describe("the task host with OpenCode's subagents", () => {
     }
   }, 180_000);
 
-  it("F-026: OpenCode's explore subagent stays read-only: its edit and its shell write are refused, and the repo is unchanged", async () => {
+  it("F-026/c7: OpenCode's explore subagent stays read-only: its edit and its shell write are refused, and the repo is unchanged", async () => {
     const h = await harness("explore");
     const before = stub.calls.length;
     try {

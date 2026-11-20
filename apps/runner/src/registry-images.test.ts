@@ -158,7 +158,7 @@ const dispatchWithImage = (boxId: string) =>
 const boxStarted = (): boolean => [...engine.containers.values()].filter((container) => container.status === "running").length >= 2;
 
 describe("snapshot pushes and image pulls on docker (ticket 21)", () => {
-  it("F-120: a build that pushes fetches the push credential for that build, pushes only after the scan passed, and reports the registry's digest", async () => {
+  it("F-120/c2: a build that pushes fetches the push credential for that build, pushes only after the scan passed, and reports the registry's digest", async () => {
     server.registry.pushes.set(snapshotId, PUSH);
     const events: TaskEvent[] = [];
     const snapshots = createDockerSnapshots({ engine: createEngine(engine.address), workDir: root, defaultBaseImage: "ostra/base:test", git: fakeGit, builder: fakeBuild() });
@@ -180,7 +180,7 @@ describe("snapshot pushes and image pulls on docker (ticket 21)", () => {
     expect((await dataFiles()).some((text) => text.includes(PUSH.token))).toBe(false);
   }, 60_000);
 
-  it("F-120: a scan hit pushes nothing, though the build had its push credential", async () => {
+  it("F-120/c2: a scan hit pushes nothing, though the build had its push credential", async () => {
     server.registry.pushes.set(snapshotId, PUSH);
     const events: TaskEvent[] = [];
     const snapshots = createDockerSnapshots({ engine: createEngine(engine.address), workDir: root, defaultBaseImage: "ostra/base:test", git: fakeGit, builder: fakeBuild({ "task/snapshot/workspace/.env": "API_TOKEN=sk-setup-secret-for-the-scan" }) });
@@ -191,7 +191,7 @@ describe("snapshot pushes and image pulls on docker (ticket 21)", () => {
     expect(events).toMatchObject([{ kind: "snapshot.failed", snapshotId, reason: "secret-found" }]);
   }, 60_000);
 
-  it("F-120: without a registry the runner builds and keeps its own snapshot, and asks for no push credential", async () => {
+  it("F-120/c3: without a registry the runner builds and keeps its own snapshot, and asks for no push credential", async () => {
     const events: TaskEvent[] = [];
     const snapshots = createDockerSnapshots({ engine: createEngine(engine.address), workDir: root, defaultBaseImage: "ostra/base:test", git: fakeGit, builder: fakeBuild() });
     const dispatcher = makeDispatcher(events, { snapshots, snapshotCredentials: () => Promise.resolve({ ok: true, value: credentials() }) });
@@ -205,7 +205,7 @@ describe("snapshot pushes and image pulls on docker (ticket 21)", () => {
     expect(events[0]).toMatchObject({ kind: "snapshot.built", snapshotId, imageDigest: kept.ok ? kept.value?.imageDigest : "" });
   }, 60_000);
 
-  it("F-120: a box from the registry pulls its image by digest with the pull credential for its lease, which is in no file of the runner's data folder", async () => {
+  it("F-120/c2: a box from the registry pulls its image by digest with the pull credential for its lease, which is in no file of the runner's data folder", async () => {
     server.registry.pulls.set(taskSpecFixture.taskId, { leaseEpoch: taskSpecFixture.leaseEpoch, credential: PULL });
     const dispatcher = makeDispatcher([]);
     expect(await dispatcher.handlers.dispatch(dispatchWithImage("box-from-registry"))).toEqual({ result: "accepted" });
@@ -224,7 +224,7 @@ describe("snapshot pushes and image pulls on docker (ticket 21)", () => {
     expect((await dataFiles()).some((text) => text.includes(PULL.token))).toBe(false);
   }, 60_000);
 
-  it("F-120: when core has no pull credential for the lease (the cluster's own identity), the box's pull goes without one", async () => {
+  it("F-120/c2: when core has no pull credential for the lease (the cluster's own identity), the box's pull goes without one", async () => {
     server.registry.pulls.set(taskSpecFixture.taskId, { leaseEpoch: taskSpecFixture.leaseEpoch, credential: null });
     const dispatcher = makeDispatcher([]);
     await dispatcher.handlers.dispatch(dispatchWithImage("box-node-auth"));

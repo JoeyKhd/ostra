@@ -104,7 +104,7 @@ const stored = (task: LeasedTask) => test.db.event.count({ where: { taskId: task
 const commands = (frames: readonly DownFrame[]) => frames.flatMap((frame) => (frame.type === "command" ? [frame] : []));
 
 describe("the HTTP carrier", () => {
-  it("F-013: over HTTP, a batch whose commit failed has no ack, and sent again it's stored once and acked", async () => {
+  it("F-013/c4: over HTTP, a batch whose commit failed has no ack, and sent again it's stored once and acked", async () => {
     const { runner, token, task } = await world();
     const peer = await httpPeer(a.url, token, runner.runnerId);
     expect(await test.db.runnerPresence.findUniqueOrThrow({ where: { runnerId: runner.runnerId } })).toMatchObject({ carrier: "http", connectionEpoch: peer.connectionEpoch });
@@ -125,7 +125,7 @@ describe("the HTTP carrier", () => {
     expect(await stored(task)).toBe(3);
   });
 
-  it("F-013: over HTTP, a batch past a gap is answered resendFrom, and nothing past the gap is stored", async () => {
+  it("F-013/c4: over HTTP, a batch past a gap is answered resendFrom, and nothing past the gap is stored", async () => {
     const { runner, token, task } = await world();
     const peer = await httpPeer(a.url, token, runner.runnerId);
     expect((await peer.up([batch(task, 1, 2)])).frames).toEqual([{ type: "ack", sessionId: task.sessionId, upTo: 2 }]);
@@ -137,7 +137,7 @@ describe("the HTTP carrier", () => {
     expect(next.helloFrames).toEqual([{ type: "ack", sessionId: task.sessionId, upTo: 2 }]);
   });
 
-  it("F-013: a held down poll is woken by a command within 500 ms, and the commands up to after are acked", async () => {
+  it("F-013/c4: a held down poll is woken by a command within 500 ms, and the commands up to after are acked", async () => {
     const { runner, token, task } = await world();
     const peer = await httpPeer(a.url, token, runner.runnerId);
     const started = Date.now();
@@ -161,7 +161,7 @@ describe("the HTTP carrier", () => {
     expect(await test.db.runner.findUniqueOrThrow({ where: { id: runner.runnerId } })).toMatchObject({ ackedCommandSeq: command.seq });
   });
 
-  it("F-013: a steer from another replica reaches the HTTP peer held on this one", async () => {
+  it("F-013/c4: a steer from another replica reaches the HTTP peer held on this one", async () => {
     const { runner, token, task } = await world();
     // Hello on replica a; the poll lands on replica b; the steer is written by neither.
     const peer = await httpPeer(a.url, token, runner.runnerId);
@@ -174,7 +174,7 @@ describe("the HTTP carrier", () => {
     expect(commands(woken.frames).map((command) => command.kind)).toEqual(["steer"]);
   });
 
-  it("F-013: a superseded epoch is refused with 409 on up and down, its held poll ends, and a newer connection on either carrier wins", async () => {
+  it("F-013/c4: a superseded epoch is refused with 409 on up and down, its held poll ends, and a newer connection on either carrier wins", async () => {
     const { runner, token, task } = await world();
     const first = await httpPeer(a.url, token, runner.runnerId);
     const held = first.down(0, { baseUrl: b.url });
@@ -198,7 +198,7 @@ describe("the HTTP carrier", () => {
     expect((await third.up([batch(task, 1, 1)])).status).toBe(200);
   });
 
-  it("F-013: a revoked runner's still-valid access token is refused on every HTTP call, and its held poll ends", async () => {
+  it("F-013/c4: a revoked runner's still-valid access token is refused on every HTTP call, and its held poll ends", async () => {
     const { runner, token } = await world();
     const peer = await httpPeer(a.url, token, runner.runnerId);
     const held = peer.down(0, { baseUrl: b.url });
@@ -213,7 +213,7 @@ describe("the HTTP carrier", () => {
     expect((await postHello(a.url, token, httpHelloFrame(runner.runnerId))).status).toBe(403);
   });
 
-  it("F-013: a runner minor outside the window is refused at hello with the fix", async () => {
+  it("F-013/c4: a runner minor outside the window is refused at hello with the fix", async () => {
     const { runner, token } = await world();
     const refused = await postHello(a.url, token, httpHelloFrame(runner.runnerId, { minor: PROTOCOL_MINOR + 2 }));
     expect(refused.status).toBe(426);
@@ -226,7 +226,7 @@ describe("the HTTP carrier", () => {
     expect(behind.minor).toBe(PROTOCOL_MINOR - 1);
   });
 
-  it("F-013: an HTTP connection is alive while a down poll is open or ended under the dead time, and then goes offline", async () => {
+  it("F-013/c4: an HTTP connection is alive while a down poll is open or ended under the dead time, and then goes offline", async () => {
     const { runner, token } = await world();
     // A replica with short timers: dead after 1.5 s without a poll, presence written every 200 ms.
     const quick = await startGateway(test.db, test.url, { signingKey, timers: { deadMs: 1_500, presenceMs: 200, sweepMs: 200, longPollMs: 2_500 } });

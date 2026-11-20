@@ -204,7 +204,7 @@ describe("usage parsing: other shapes", () => {
     });
   });
 
-  it("F-137: reads Anthropic's thinking tokens from the final message_delta, as a part of the output", () => {
+  it("F-137/c11: reads Anthropic's thinking tokens from the final message_delta, as a part of the output", () => {
     const meter = createUsageMeter("anthropic-messages", true);
     const events = [
       { type: "message_start", message: { model: "claude-sonnet-5", usage: { input_tokens: 40, output_tokens: 1 } } },

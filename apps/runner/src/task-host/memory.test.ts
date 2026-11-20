@@ -105,7 +105,7 @@ const listTools = async (url: string, bearer: string): Promise<string[]> => {
 };
 
 describe("the memory block at launch (F-110)", () => {
-  it("F-110: the spec's memory block reaches the fake agent, and memory.used reports the always and index notes once", async () => {
+  it("F-110/c1,c4,c6: the spec's memory block reaches the fake agent, and memory.used reports the always and index notes once", async () => {
     const { h } = await runner();
     const { spec } = h.taskFor(fakeMarker("instructions"), { memory: memoryOf(true) });
     h.dispatch(spec);
@@ -128,7 +128,7 @@ describe("the memory block at launch (F-110)", () => {
     expect(kinds.indexOf("memory.used")).toBeLessThan(kinds.indexOf("turn.started"));
   }, 120_000);
 
-  it("F-110: a memory_read reports memory.used as a read, and the note reaches the agent", async () => {
+  it("F-110/c2,c4: a memory_read reports memory.used as a read, and the note reaches the agent", async () => {
     const { h } = await runner();
     const { spec } = h.taskFor(fakeMarker("memory-read", pnpmNote.noteId), { memory: memoryOf(true) });
     h.dispatch(spec);
@@ -143,7 +143,7 @@ describe("the memory block at launch (F-110)", () => {
     expect(h.ofKind(spec, "memory.used").filter((event) => event.via === "read")).toHaveLength(1);
   }, 120_000);
 
-  it("F-110: with the spec's tools off, the sidecar offers no memory tool and the agent gets the block alone", async () => {
+  it("F-110/c3: with the spec's tools off, the sidecar offers no memory tool and the agent gets the block alone", async () => {
     const { h, mcp } = await runner();
     const { spec } = h.taskFor(fakeMarker("memory-tools"), { memory: memoryOf(false) });
     h.dispatch(spec);
@@ -157,7 +157,7 @@ describe("the memory block at launch (F-110)", () => {
     expect(h.server.memory.calls).toEqual([]);
   }, 120_000);
 
-  it("F-110: with the tools on, the sidecar offers memory_search, memory_read and memory_propose beside the PR tool", async () => {
+  it("F-110/c2: with the tools on, the sidecar offers memory_search, memory_read and memory_propose beside the PR tool", async () => {
     const { h, mcp } = await runner();
     const { spec } = h.taskFor(fakeMarker("memory-tools"), { memory: memoryOf(true) });
     h.dispatch(spec);
@@ -180,7 +180,7 @@ describe("the memory block at launch (F-110)", () => {
 });
 
 describe("memory proposals through the sidecar (F-111)", () => {
-  it("F-111: a proposal reaches the fake core with the task's token, and the agent never sees the token or the proposal", async () => {
+  it("F-111/c1,c2: a proposal reaches the fake core with the task's token, and the agent never sees the token or the proposal", async () => {
     const { h, mcp } = await runner();
     const { spec } = h.taskFor(fakeMarker("memory-propose", "Run the linter before the tests"), { memory: memoryOf(true) });
     h.dispatch(spec);
@@ -204,7 +204,7 @@ describe("memory proposals through the sidecar (F-111)", () => {
     expect(h.server.memory.calls.every((call) => call.bearer === ACCESS_TOKEN && call.taskId === spec.taskId)).toBe(true);
   }, 120_000);
 
-  it("F-111: a secret refusal's words reach the agent, and nothing is recorded", async () => {
+  it("F-111/c1: a secret refusal's words reach the agent, and nothing is recorded", async () => {
     const { h } = await runner();
     h.server.memory.refusals.push({ code: "secret-found", found: ["a GitHub token", "a model-control token"] });
     const { spec } = h.taskFor(fakeMarker("memory-propose", "The deploy token"), { memory: memoryOf(true) });
@@ -229,7 +229,7 @@ describe("memory proposals through the sidecar (F-111)", () => {
 });
 
 describe("the task's token (ticket 20)", () => {
-  it("F-110: the task's token is in no file of the workspace or the agent's folders, in no event and in no log line, after every memory tool ran", async () => {
+  it("F-110/c2: the task's token is in no file of the workspace or the agent's folders, in no event and in no log line, after every memory tool ran", async () => {
     const { h } = await runner();
     const { spec } = h.taskFor(fakeMarker("memory-search", "pnpm install"), { memory: memoryOf(true) });
     h.dispatch(spec);

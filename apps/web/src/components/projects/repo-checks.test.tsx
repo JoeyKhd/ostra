@@ -177,7 +177,7 @@ describe("a repo's installation", () => {
     installation: { accountLogin, accountKind: "organization", state },
   });
 
-  it("F-136: a repo whose installation was unlinked says so first, on its account, and reads Not usable in red", () => {
+  it("F-136/c7: a repo whose installation was unlinked says so first, on its account, and reads Not usable in red", () => {
     const unlinked = on(ready, "globex", "unlinked", "globex/billing");
     expect(repoVerdict(unlinked)).toBe("notLinked");
     expect(checkLines(unlinked)[0]).toEqual({ kind: "notLinked", account: "globex", how: "unlinked" });

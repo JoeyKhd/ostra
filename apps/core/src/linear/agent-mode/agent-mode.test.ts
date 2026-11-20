@@ -343,7 +343,7 @@ afterAll(async () => {
 });
 
 describe("a delegation (F-012)", () => {
-  it("F-012: a delegation from a matched member starts their task, with its first thought in the outbox in the same transaction, and no runner waited for", async () => {
+  it("F-012/c1: a delegation from a matched member starts their task, with its first thought in the outbox in the same transaction, and no runner waited for", async () => {
     const { sessionId } = await delegate(matchedUserId);
     const session = await sessionRow(sessionId);
     expect(session).toMatchObject({
@@ -375,7 +375,7 @@ describe("a delegation (F-012)", () => {
     });
   });
 
-  it("F-012: a replayed created, under another delivery, starts one task and posts one thought", async () => {
+  it("F-012/c1: a replayed created, under another delivery, starts one task and posts one thought", async () => {
     const { sessionId } = await delegate(matchedUserId);
     const created = fake
       .sessionEvents()
@@ -390,7 +390,7 @@ describe("a delegation (F-012)", () => {
     expect(await test.db.agentActivity.count({ where: { agentSessionId: session.id } })).toBe(1);
   });
 
-  it("F-012: a delegation from outside waits for approval, and the team with no agent-mode board gets an error, and the session ends", async () => {
+  it("F-012/c1: a delegation from outside waits for approval, and the team with no agent-mode board gets an error, and the session ends", async () => {
     const { sessionId } = await delegate(outsideUserId);
     const outside = await sessionRow(sessionId);
     expect(outside).toMatchObject({ state: "awaiting_approval", matchedMemberId: null });
@@ -409,7 +409,7 @@ describe("a delegation (F-012)", () => {
 });
 
 describe("prompted: a stop and a follow-up (F-012)", () => {
-  it("F-012: a stop from Linear stops the turn through the lease's runner, posts one final response, and nothing after it", async () => {
+  it("F-012/c2,c3: a stop from Linear stops the turn through the lease's runner, posts one final response, and nothing after it", async () => {
     const { sessionId } = await delegate(matchedUserId);
     const taskId = taskIdSchema.parse((await sessionRow(sessionId)).taskId);
     const runner = await running(taskId, fixture.a.member);
@@ -451,7 +451,7 @@ describe("prompted: a stop and a follow-up (F-012)", () => {
     expect(types).not.toContain("elicitation");
   });
 
-  it("F-012: a follow-up from a matched member reaches the next turn as their message; from someone outside, nothing reaches the agent", async () => {
+  it("F-012/c2: a follow-up from a matched member reaches the next turn as their message; from someone outside, nothing reaches the agent", async () => {
     const { sessionId } = await delegate(matchedUserId);
     const taskId = taskIdSchema.parse((await sessionRow(sessionId)).taskId);
     await running(taskId, fixture.a.member);
@@ -491,7 +491,7 @@ describe("the outbox and the heartbeat (F-012)", () => {
     return sessionRow(sessionId);
   };
 
-  it("F-012: the heartbeat comes after 20 silent minutes, and none while posts flow", async () => {
+  it("F-012/c3: the heartbeat comes after 20 silent minutes, and none while posts flow", async () => {
     const clock = manualClock(Date.now());
     const session = await quietSession(clock);
     expect(session.heartbeatDueAt?.getTime()).toBe(clock.now() + HEARTBEAT_MS);
@@ -555,7 +555,7 @@ describe("the outbox and the heartbeat (F-012)", () => {
     expect(await heartbeats()).toBe(0);
   });
 
-  it("F-012: OSTRA_LINEAR_HEARTBEAT_KIND=thought posts a plain thought, and a heartbeat that keeps failing is given up after 5 minutes", async () => {
+  it("F-012/c3: OSTRA_LINEAR_HEARTBEAT_KIND=thought posts a plain thought, and a heartbeat that keeps failing is given up after 5 minutes", async () => {
     const clock = manualClock(Date.now());
     const session = await quietSession(clock);
     clock.advance(HEARTBEAT_MS + 1);
@@ -578,7 +578,7 @@ describe("the outbox and the heartbeat (F-012)", () => {
     expect(fake.session(session.externalSessionId)?.activities).toHaveLength(1);
   });
 
-  it("F-012: no activity is ever posted with a personal key: the sender refuses the connection, and Linear refuses the key", async () => {
+  it("F-012/c4: no activity is ever posted with a personal key: the sender refuses the connection, and Linear refuses the key", async () => {
     const { sessionId } = await delegate(matchedUserId);
     const row = await sessionRow(sessionId);
     expect(linearActivities(sessionId)).toEqual(["thought"]);
@@ -625,7 +625,7 @@ describe("the outbox and the heartbeat (F-012)", () => {
     expect(linearActivities(sessionId)).toEqual(["thought"]);
   });
 
-  it("F-012: a stop pressed in ostra's panel posts the final response with the app's token", async () => {
+  it("F-012/c2,c4: a stop pressed in ostra's panel posts the final response with the app's token", async () => {
     const before = calls.length;
     const { sessionId } = await delegate(matchedUserId);
     const taskId = taskIdSchema.parse((await sessionRow(sessionId)).taskId);
@@ -727,7 +727,7 @@ describe("turning agent mode on (F-012)", () => {
     );
   };
 
-  it("F-012: the install route is refused without an admin session; the consent asks for agent mode's scopes on the existing install; a token without them is refused", async () => {
+  it("F-012/c3: the install route is refused without an admin session; the consent asks for agent mode's scopes on the existing install; a token without them is refused", async () => {
     const admin = scopeOf(fixture.a.admin, "admin");
     const member = scopeOf(fixture.a.member, "member");
     const refused = await test.db.$transaction((tx) =>
@@ -819,7 +819,7 @@ describe("turning agent mode on (F-012)", () => {
     }
   });
 
-  it('F-012: "Start from Linear" is a project admin\'s switch, on one board per team', async () => {
+  it('F-012/c3: "Start from Linear" is a project admin\'s switch, on one board per team', async () => {
     const deps = {
       db: test.db,
       jobs,
@@ -879,7 +879,7 @@ describe("turning agent mode on (F-012)", () => {
     }
   });
 
-  it("F-012: the app's token is refreshed with its rotating refresh token, and a refresh whose answer was lost is retried within Linear's window", async () => {
+  it("F-012/c5: the app's token is refreshed with its rotating refresh token, and a refresh whose answer was lost is retried within Linear's window", async () => {
     const refreshDeps = {
       db: test.db,
       jobs,

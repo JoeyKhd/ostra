@@ -33,7 +33,7 @@ const readSchemaModels = async (): Promise<readonly SchemaModel[]> => {
 };
 
 describe("the isolation model list (F-049)", () => {
-  it("F-049: every model with organizationId has a fixture builder, every other is on the allowlist with its reason, and none is on both", async () => {
+  it("F-049/c1,c2,c5: every model with organizationId has a fixture builder, every other is on the allowlist with its reason, and none is on both", async () => {
     const models = await readSchemaModels();
     // The parse sees exactly the client's models.
     expect(new Set(models.map((model) => model.name))).toEqual(new Set(Object.values(Prisma.ModelName)));
@@ -51,7 +51,7 @@ describe("the isolation model list (F-049)", () => {
     }
   });
 
-  it("F-049, F-087: every model with a required projectId is built inside a project, and every model built inside one has the column", async () => {
+  it("F-049/c1, F-087/c4: every model with a required projectId is built inside a project, and every model built inside one has the column", async () => {
     const schema = await readFile(path.resolve(import.meta.dirname, "..", "prisma", "schema.prisma"), "utf8");
     const required = [...schema.matchAll(/^model\s+(\w+)\s*\{([\s\S]*?)^\}/gm)]
       .filter((match) => /^\s+projectId\s+String\s/m.test(match[2] ?? ""))
@@ -77,7 +77,7 @@ describe("every builder makes a valid row (F-049, F-087)", () => {
     await test.dispose();
   });
 
-  it("F-049: builds every listed model in two organizations and in a restricted project, each row in its own organization and project", async () => {
+  it("F-049/c1,c5: builds every listed model in two organizations and in a restricted project, each row in its own organization and project", async () => {
     const { a, b } = fixture;
     const rowsA = await buildIsolationRows(test.db, { organizationId: a.organization.id, memberId: a.admin.id, userId: a.admin.userId }, [a.openProject.id, a.restrictedProject.id]);
     const rowsB = await buildIsolationRows(test.db, { organizationId: b.organization.id, memberId: b.admin.id, userId: b.admin.userId }, [b.project.id]);

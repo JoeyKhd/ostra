@@ -90,7 +90,7 @@ afterAll(async () => {
 });
 
 describe("drafts (F-099, ticket 27)", () => {
-  it("F-099: a member's version is saved after the agent's, with its source, and a stale one is refused", async () => {
+  it("F-099/c6: a member's version is saved after the agent's, with its source, and a stale one is refused", async () => {
     const { taskId } = await refineTask();
     const member = await harness.as(harness.fixture.a.member);
     const first = await member.drafts.get({ taskId, version: null });
@@ -115,7 +115,7 @@ describe("drafts (F-099, ticket 27)", () => {
     expect(await harness.test.db.auditEntry.count({ where: { entityId: taskId, action: "draft.edited", actorId: harness.fixture.a.member.id } })).toBe(1);
   });
 
-  it("F-099: a member's autosaves of their own latest version stay one version; another member's edit, or one after the agent's, is a new one", async () => {
+  it("F-099/c6: a member's autosaves of their own latest version stay one version; another member's edit, or one after the agent's, is a new one", async () => {
     const { taskId } = await refineTask();
     const member = await harness.as(harness.fixture.a.member);
     const first = await member.drafts.save({ taskId, baseVersion: 1, fields: draft({ description: "One." }) });
@@ -132,7 +132,7 @@ describe("drafts (F-099, ticket 27)", () => {
     expect((await member.drafts.save({ taskId, baseVersion: 4, fields: draft({ description: "Mine again." }) })).version).toBe(5);
   });
 
-  it("F-099: the preview is the description as the tracker will hold it, with the criteria in the tracker's own field where it has one", async () => {
+  it("F-099/c6: the preview is the description as the tracker will hold it, with the criteria in the tracker's own field where it has one", async () => {
     const { taskId } = await refineTask();
     const member = await harness.as(harness.fixture.a.member);
     // The harness's tracker is the Jira fake: the criteria go to their own field.
@@ -146,7 +146,7 @@ describe("drafts (F-099, ticket 27)", () => {
     expect(view.readyStatus).toBe(true);
   });
 
-  it("F-099: images over the limit are refused, by size and by count; one taken off makes room, and a member's version keeps them", async () => {
+  it("F-099/c7: images over the limit are refused, by size and by count; one taken off makes room, and a member's version keeps them", async () => {
     const { taskId } = await refineTask();
     const member = await harness.as(harness.fixture.a.member);
     expect(await codeOf(member.drafts.addImage({ taskId, name: "huge.png", contentType: "image/png", data: png(10 * 1024 * 1024 + 1) }))).toBe("PAYLOAD_TOO_LARGE");
@@ -169,7 +169,7 @@ describe("drafts (F-099, ticket 27)", () => {
     expect((await member.drafts.get({ taskId, version: null })).draft?.images.map((image) => image.name)).toEqual(["b.png", "c.png"]);
   });
 
-  it("F-099: Update ticket and Mark ready each happen once: the task is done, Mark ready may follow Update ticket, and every action after is refused", async () => {
+  it("F-099/c6: Update ticket and Mark ready each happen once: the task is done, Mark ready may follow Update ticket, and every action after is refused", async () => {
     const member = await harness.as(harness.fixture.a.member);
 
     const applied = await refineTask();
@@ -206,7 +206,7 @@ describe("drafts (F-099, ticket 27)", () => {
     expect(await harness.test.db.auditEntry.count({ where: { entityId: ready.taskId, action: "draft.marked-ready" } })).toBe(1);
   });
 
-  it("F-099: the editor gets the agent's newest version beside a member's, and once core wrote a version, the ticket and sub-issues it made", async () => {
+  it("F-099/c6: the editor gets the agent's newest version beside a member's, and once core wrote a version, the ticket and sub-issues it made", async () => {
     const { taskId } = await refineTask();
     const member = await harness.as(harness.fixture.a.member);
     await member.drafts.save({ taskId, baseVersion: 1, fields: draft({ acceptanceCriteria: ["The footer renders in under 500 ms", "No layout shift"] }) });
@@ -238,7 +238,7 @@ describe("drafts (F-099, ticket 27)", () => {
     expect((await member.drafts.get({ taskId, version: 1 })).written).toBeNull();
   });
 
-  it("F-099: Create ticket makes one ticket from a prompt refine task's latest version, and a ticket's draft updates its ticket instead", async () => {
+  it("F-099/c6: Create ticket makes one ticket from a prompt refine task's latest version, and a ticket's draft updates its ticket instead", async () => {
     const member = await harness.as(harness.fixture.a.member);
     const prompt = await refineTask({ source: "prompt" });
     expect(await codeOf(member.drafts.updateTicket({ taskId: prompt.taskId, version: 1 }))).toBe("PRECONDITION_FAILED");
@@ -257,7 +257,7 @@ describe("drafts (F-099, ticket 27)", () => {
     expect(await codeOf(member.drafts.createTicket({ taskId: ticket.taskId, version: 1, boardId }))).toBe("PRECONDITION_FAILED");
   });
 
-  it("F-099: who may read, edit and apply a draft is who may open the project; another organization and a restricted project's outsiders get NOT_FOUND", async () => {
+  it("F-099/c6: who may read, edit and apply a draft is who may open the project; another organization and a restricted project's outsiders get NOT_FOUND", async () => {
     const restricted = await refineTask({ projectId: harness.fixture.a.restrictedProject.id });
     const outsider = await harness.as(harness.fixture.a.member);
     const other = await harness.as(harness.fixture.b.admin);
@@ -282,7 +282,7 @@ describe("drafts (F-099, ticket 27)", () => {
     expect(await codeOf(insider.drafts.get({ taskId: taskIdSchema.parse(code.id), version: null }))).toBe("NOT_FOUND");
   });
 
-  it("F-099: the built-in Refine profile is edited through the panel's profile API, read-only and on the organization's model, and can't be archived", async () => {
+  it("F-099/c3: the built-in Refine profile is edited through the panel's profile API, read-only and on the organization's model, and can't be archived", async () => {
     const world = await seedConnectionAndModel(harness);
     const profiles = await harness.test.db.$transaction((tx) => ensureBuiltInKindProfilesInTx(tx, organizationId));
     const admin = await harness.as(harness.fixture.a.admin);

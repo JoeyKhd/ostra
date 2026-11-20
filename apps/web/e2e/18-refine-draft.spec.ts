@@ -49,7 +49,7 @@ const shoot = async (page: Page, name: string): Promise<void> => {
 /** A 1×1 PNG, as a member's mock-up. */
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 
-test("F-099: a member edits the agent's draft, uploads an image, then Update ticket and Mark ready write it to the fake Linear", async ({ page }) => {
+test("F-099/c6,c7: a member edits the agent's draft, uploads an image, then Update ticket and Mark ready write it to the fake Linear", async ({ page }) => {
   test.setTimeout(150_000);
   const world = await seed();
   const { linear } = await readStack();
@@ -121,7 +121,7 @@ test("F-099: a member edits the agent's draft, uploads an image, then Update tic
   await expectNoHorizontalScroll(page);
 });
 
-test("F-099: Needs you lists the draft as a draft ready, and the draft reads on a phone", async ({ page }) => {
+test("F-099/c5: Needs you lists the draft as a draft ready, and the draft reads on a phone", async ({ page }) => {
   const world = await seed();
   await signIn(page);
   await page.goto("/needs-you");

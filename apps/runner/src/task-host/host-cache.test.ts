@@ -29,7 +29,7 @@ afterEach(async () => {
 const SETUP = ['if [ -f "$OSTRA_DEPENDENCY_CACHE/installed" ]; then echo warm; else sleep 1; echo cold; fi', 'touch "$OSTRA_DEPENDENCY_CACHE/installed"', ""].join("\n");
 
 describe("the host cache through the task host (F-051)", () => {
-  it("F-051: the project's second task reports a warm dependency cache with its setup's duration", async () => {
+  it("F-051/c5: the project's second task reports a warm dependency cache with its setup's duration", async () => {
     harness = await startHarness(shared);
     const h = harness;
     const projectId = projectIdSchema.parse("project-runner-cache");

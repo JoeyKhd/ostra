@@ -50,7 +50,7 @@ describe("home.overview", () => {
     expect(home.runners.map((runner) => runner.name)).toEqual(["admin-laptop"]);
   });
 
-  it("leaves out a restricted project the member isn't on, and another organization", async () => {
+  it("F-062/c1: leaves out a restricted project the member isn't on, and another organization", async () => {
     const { a } = harness.fixture;
     const home = await (await harness.as(a.member)).home.overview();
     expect(home.needsYou.rows.map((r) => r.title)).toEqual(["Crash in the share sheet"]);

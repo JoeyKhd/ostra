@@ -166,7 +166,7 @@ const graceJobs = async (task: Boxed) =>
   (await jobs.find("task.grace", { organizationId: task.organizationId, taskId: task.taskId, leaseEpoch: task.leaseEpoch })).filter((job) => job.state === "created");
 
 describe("the task token", () => {
-  it("F-015: a box's sidecar connects with its task token, sends its task's events, receives a stop and fetches its credentials", async () => {
+  it("F-015/c3: a box's sidecar connects with its task token, sends its task's events, receives a stop and fetches its credentials", async () => {
     const task = await boxedTask();
     const token = await taskTokenFor(task);
     const peer = await sidecar(task, token);
@@ -188,7 +188,7 @@ describe("the task token", () => {
     expect(await test.db.sidecarCommand.count({ where: { taskId: task.taskId, boxId: task.boxId, kind: "stop" } })).toBe(1);
   });
 
-  it("F-015: the same token is refused for another task's spec, credentials and events, and for another organization", async () => {
+  it("F-015/c4: the same token is refused for another task's spec, credentials and events, and for another organization", async () => {
     const task = await boxedTask();
     const other = await boxedTask();
     const token = await taskTokenFor(task);
@@ -219,7 +219,7 @@ describe("the task token", () => {
     expect((await specOf(task, tampered)).status).toBe(401);
   });
 
-  it("F-015: a token whose lease ended by a stop is refused everywhere with the stale-lease answer", async () => {
+  it("F-015/c4: a token whose lease ended by a stop is refused everywhere with the stale-lease answer", async () => {
     const task = await boxedTask();
     const token = await taskTokenFor(task);
     const peer = await sidecar(task, token);
@@ -244,7 +244,7 @@ describe("the task token", () => {
     await expect(connectPeer(harness.url, token, poolRunner, { peer: { kind: "sidecar", taskId: task.taskId, boxId: task.boxId, leaseEpoch: 1 } })).rejects.toThrow("409");
   });
 
-  it("F-015, F-045: a token whose lease ended by the grace, or by a new dispatch, is refused", async () => {
+  it("F-015/c3, F-045/c2: a token whose lease ended by the grace, or by a new dispatch, is refused", async () => {
     // The grace: the sidecar went and stayed away.
     const lost = await boxedTask();
     const lostToken = await taskTokenFor(lost);
@@ -288,7 +288,7 @@ describe("the task token", () => {
     expect((await specOf(again, await taskTokenFor(again), 2)).status).toBe(200);
   });
 
-  it("F-015: a runner's token gets no credentials for a boxed lease, and still gets them for a host lease", async () => {
+  it("F-015/c4: a runner's token gets no credentials for a boxed lease, and still gets them for a host lease", async () => {
     const boxed = await boxedTask();
     const refused = await credentialsOf(boxed, runnerToken());
     expect(refused.status).toBe(403);
@@ -306,7 +306,7 @@ describe("the task token", () => {
     expect((await postJson(`${harness.url}${runnerPaths.taskToken(hosted.taskId)}`, { leaseEpoch: 1 }, runnerToken(laptop.runnerId))).status).toBe(400);
   });
 
-  it("F-015: a second connection of a box evicts the first with 4409", async () => {
+  it("F-015/c3: a second connection of a box evicts the first with 4409", async () => {
     const task = await boxedTask();
     const token = await taskTokenFor(task);
     const first = await sidecar(task, token);
@@ -319,7 +319,7 @@ describe("the task token", () => {
     expect(box).toMatchObject({ sidecarConnectionEpoch: 2, sidecarDisconnectedAt: null });
   });
 
-  it("F-015, F-045: the runner's connection closes while its box's sidecar stays: the task carries on and no grace starts", async () => {
+  it("F-015/c3, F-045/c1: the runner's connection closes while its box's sidecar stays: the task carries on and no grace starts", async () => {
     const task = await boxedTask();
     const token = await taskTokenFor(task);
     const runner = await connectPeer(harness.url, runnerToken(), poolRunner);
@@ -361,7 +361,7 @@ describe("the task token", () => {
     await test.db.runnerPresence.update({ where: { runnerId: poolRunner }, data: { disconnectedAt: null } });
   });
 
-  it("F-015: the task token reaches no log line", async () => {
+  it("F-015/c4: the task token reaches no log line", async () => {
     const task = await boxedTask();
     const token = await taskTokenFor(task);
     const peer = await sidecar(task, token);

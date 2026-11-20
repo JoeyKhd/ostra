@@ -55,7 +55,7 @@ const compile = (samples: readonly Sample[]): readonly string[] => {
 };
 
 describe("the docs site's adapter guide", () => {
-  it("F-058: the adapter guide's code samples typecheck against @ostra/adapter-sdk", async () => {
+  it("F-058/c1: the adapter guide's code samples typecheck against @ostra/adapter-sdk", async () => {
     const samples = samplesOf(await readFile(guide, "utf8"));
     expect(samples.map((sample) => sample.fileName)).toEqual(
       expect.arrayContaining(["memory-secret-store.ts", "memory-secret-store.test.ts"]),
@@ -63,7 +63,7 @@ describe("the docs site's adapter guide", () => {
     expect(compile(samples)).toEqual([]);
   });
 
-  it("F-058: a sample that misuses the SDK fails to compile, so the check is real", () => {
+  it("F-058/c1: a sample that misuses the SDK fails to compile, so the check is real", () => {
     const broken = samplesOf(
       [
         "```ts",

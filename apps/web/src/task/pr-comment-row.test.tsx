@@ -18,7 +18,7 @@ const render = (context: TaskContextValue): string =>
   );
 
 describe("an accepted @ostra comment in the thread (F-111)", () => {
-  it("F-111: the row names the commenter, the line and the comment's link, with Remember this where the page can propose", () => {
+  it("F-111/c1: the row names the commenter, the line and the comment's link, with Remember this where the page can propose", () => {
     const html = render({ ...base, rememberPrComment: () => Promise.resolve({ kind: "proposed" }) });
     expect(html).toContain('data-part="pr-comment"');
     expect(html).toContain("ostra-test-member asked through an @ostra comment on the pull request");

@@ -137,7 +137,7 @@ describe("a kept box resumed (ADR 0039, resumed)", () => {
     }
   }, 60_000);
 
-  it("F-103: a reopen in a kept box starts from the branch as it is, with a member's pushed commit", async () => {
+  it("F-103/c3: a reopen in a kept box starts from the branch as it is, with a member's pushed commit", async () => {
     const box = newBox();
     const spec = specFor(box);
     const dirs = await ready(box, spec);

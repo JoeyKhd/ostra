@@ -123,7 +123,7 @@ describe("dispatch", () => {
     expect(await dispatch(dispatchPayload(task))).toMatchObject({ ok: true, runnerId: ours.runnerId });
   });
 
-  it("F-088: a provider's sessions-at-once cap holds a dispatch while it is reached, and lets it go once a session stops", async () => {
+  it("F-088/c5: a provider's sessions-at-once cap holds a dispatch while it is reached, and lets it go once a session stops", async () => {
     // Other cases leave leases on this provider: end them, so the count starts at zero.
     await test.db.lease.updateMany({ where: { organizationId: world.organizationId, state: "active" }, data: { state: "ended" } });
     const runner = await seedOnlineRunner(test.db, fixture.a.organization.id, { kind: "personal", memberId: fixture.a.member.id }, 8);
@@ -244,7 +244,7 @@ describe("the spec and the credentials", () => {
 
   const specUrl = (epoch: number) => `${harness.url}${runnerPaths.taskSpec(task.taskId)}?leaseEpoch=${String(epoch)}`;
 
-  it("F-078: hands the lease holder the spec: bot, co-author, template, LFS hosts, branch, variables and files, no secret", async () => {
+  it("F-078/c1,c2: hands the lease holder the spec: bot, co-author, template, LFS hosts, branch, variables and files, no secret", async () => {
     const token = await accessToken(harness, runner);
     const response = await fetch(specUrl(1), { headers: { authorization: `Bearer ${token.accessToken}` } });
     expect(response.status).toBe(200);
@@ -271,7 +271,7 @@ describe("the spec and the credentials", () => {
     expect(stale.status).toBe(409);
   });
 
-  it("F-119: a member with a verified GitHub link is credited by their no-reply address, and by their ostra name and email again once unlinked", async () => {
+  it("F-119/c3: a member with a verified GitHub link is credited by their no-reply address, and by their ostra name and email again once unlinked", async () => {
     const token = await accessToken(harness, runner);
     const coAuthors = async () => taskSpecSchema.parse(JSON.parse(await (await fetch(specUrl(1), { headers: { authorization: `Bearer ${token.accessToken}` } })).text())).coAuthors;
     const user = { where: { id: fixture.a.member.userId } };
@@ -284,7 +284,7 @@ describe("the spec and the credentials", () => {
     expect(await coAuthors()).toEqual([{ name: "Ada Admin", email: "ada@example.com" }]);
   });
 
-  it("F-073, F-090: issues the credentials after the lease check, with a token narrowed to the one repo, records who and when, and logs none of them", async () => {
+  it("F-073/c1, F-090/c1,c6: issues the credentials after the lease check, with a token narrowed to the one repo, records who and when, and logs none of them", async () => {
     records.length = 0;
     const token = await accessToken(harness, runner);
     const response = await postJson(`${harness.url}${runnerPaths.taskCredentials(task.taskId)}`, { taskId: task.taskId, leaseEpoch: 1 }, token.accessToken);
@@ -310,7 +310,7 @@ describe("the spec and the credentials", () => {
     expect(entry?.createdAt).toBeInstanceOf(Date);
   });
 
-  it("F-099, F-100: a refine or a review task's git token can only read the repo, never write to it", async () => {
+  it("F-099/c2, F-100/c1: a refine or a review task's git token can only read the repo, never write to it", async () => {
     const token = await accessToken(harness, runner);
     try {
       for (const kind of ["refine", "review"] as const) {
@@ -342,7 +342,7 @@ describe("the spec and the credentials", () => {
     expect((await postJson(`${harness.url}${runnerPaths.taskCredentials(task.taskId)}`, { taskId: task.taskId, leaseEpoch: 1 })).status).toBe(401);
   });
 
-  it("F-090: the lease check refuses a lease that ended, though the task's epoch is still the one it held", async () => {
+  it("F-090/c1: the lease check refuses a lease that ended, though the task's epoch is still the one it held", async () => {
     const token = await accessToken(harness, runner);
     // The session ends: core releases the lease, and the task's epoch stays where it was.
     await test.db.$transaction((tx) => releaseLeaseInTx(tx, task.taskId, new Date(), "released"));

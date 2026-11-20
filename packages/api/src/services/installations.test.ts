@@ -53,7 +53,7 @@ const connectionFor = async (organizationId: string, ownerAccountId: string | nu
   );
 
 describe("linked installations", () => {
-  it("F-136: installationUsable is false for a removed or unknown installation", async () => {
+  it("F-136/c4: installationUsable is false for a removed or unknown installation", async () => {
     expect(installationUsable(null)).toBe(false);
     expect(installationUsable({ state: "removed", removedAt: new Date() })).toBe(false);
     expect(installationUsable({ state: "linked", removedAt: new Date() })).toBe(false);
@@ -62,7 +62,7 @@ describe("linked installations", () => {
     expect(installationUsable(await rowOf(connectionId, "never-seen"))).toBe(false);
   });
 
-  it("F-136: links the App owner's own installation when seen, and leaves any other waiting", async () => {
+  it("F-136/c4: links the App owner's own installation when seen, and leaves any other waiting", async () => {
     const connectionId = await connectionFor(fixture.a.organization.id, "100");
     const own = { installationId: "own-1", accountId: "100", accountLogin: "ostra-test", accountKind: "organization" } as const;
     const stranger = { installationId: "client-1", accountId: "200", accountLogin: "client-org", accountKind: "organization" } as const;
@@ -90,7 +90,7 @@ describe("linked installations", () => {
     });
   });
 
-  it("F-136: each use case writes its audit entry, and a rollback leaves none", async () => {
+  it("F-136/c5,c11: each use case writes its audit entry, and a rollback leaves none", async () => {
     const connectionId = await connectionFor(fixture.a.organization.id, "100");
     const client = { installationId: "client-2", accountId: "200", accountLogin: "client-org", accountKind: "organization" } as const;
 
@@ -146,7 +146,7 @@ describe("linked installations", () => {
     expect(await connectExistingApp(deps(), admin(), app)).toMatchObject({ ok: false, error: "already-connected" });
   });
 
-  it("F-136: a task whose repos have different bots needs a minor-3 runner", () => {
+  it("F-136/c10: a task whose repos have different bots needs a minor-3 runner", () => {
     expect(requiredRunnerMinor(taskSpecMinor3Fixture)).toBe(3);
     expect(requiredRunnerMinor(taskSpecMinor2Fixture)).toBe(2);
     expect(requiredRunnerMinor(taskSpecFixture)).toBe(0);

@@ -9,7 +9,7 @@ import { baselineEgressPolicy } from "./egress.ts";
 // `OSTRA_EGRESS_ALLOW` as its only exceptions (DNS too on `kubernetes`, ADR 0060).
 
 describe("the egress baseline on both executors (F-116)", () => {
-  it("F-116: docker's rules and the kubernetes NetworkPolicy are built from the one list and close the same ranges, with the server's address on the same port and OSTRA_EGRESS_ALLOW as their only exceptions", () => {
+  it("F-116/c1,c2: docker's rules and the kubernetes NetworkPolicy are built from the one list and close the same ranges, with the server's address on the same port and OSTRA_EGRESS_ALLOW as their only exceptions", () => {
     const allow = ["10.20.0.5"];
     const serverPort = 8787;
     const rules = egressRuleSet({ egressSubnet: "172.30.0.0/16", egressSubnetV6: "fd00:ab::/64", server: "10.96.0.10", serverPort, allow });

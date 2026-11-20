@@ -24,7 +24,7 @@ const box = (id: string, key: string | null, title: string) => ({
 });
 
 describe("a runner's Capacity and Boxes", () => {
-  it("F-092: CPU and memory show a bar and what the boxes take of what the runner offers", () => {
+  it("F-092/c2: CPU and memory show a bar and what the boxes take of what the runner offers", () => {
     const html = renderToStaticMarkup(
       <Capacity page={{ busy: 3, slots: 4, executor: "docker", resources: { cpuMillis: 15_000, memoryMiB: 30_720 }, used: { cpuMillis: 8000, memoryMiB: 16_384 } }} />,
     );
@@ -35,14 +35,14 @@ describe("a runner's Capacity and Boxes", () => {
     expect(html).toContain('aria-label="Memory" aria-valuemin="0" aria-valuemax="30720" aria-valuenow="16384"');
   });
 
-  it("F-092: a slots-only runner shows the Slots bar alone", () => {
+  it("F-092/c2: a slots-only runner shows the Slots bar alone", () => {
     const html = renderToStaticMarkup(<Capacity page={{ busy: 1, slots: 2, executor: "host", resources: null, used: null }} />);
     expect(html).toContain("1 of 2 busy");
     expect(html).not.toContain("vCPU");
     expect(html).toContain("host counts slots only");
   });
 
-  it("F-092: each box shows its task's key and title, and its size with its limits", () => {
+  it("F-092/c2: each box shows its task's key and title, and its size with its limits", () => {
     const html = renderToStaticMarkup(
       <Boxes page={{ executor: "docker", state: "online", resources: { cpuMillis: 15_000, memoryMiB: 30_720 }, boxes: [box("0b01", "CALC-212", "Fix the rounding"), box("0b02", null, "Add a dark mode")] }} now={now} />,
     );
@@ -55,7 +55,7 @@ describe("a runner's Capacity and Boxes", () => {
     expect(html).toMatch(/CALC-212<\/span><span class="truncate text-text">Fix the rounding</);
   });
 
-  it("F-092: the size reads slot on host and the bare name without limits", () => {
+  it("F-092/c2: the size reads slot on host and the bare name without limits", () => {
     const sized = { size: "medium", cpuMillis: 4000, memoryMiB: 8192 };
     expect(boxSizeText(sized, "docker")).toBe("medium · 4 vCPU · 8 GiB");
     expect(boxSizeText({ size: "small", cpuMillis: 1500, memoryMiB: 3072 }, "kubernetes")).toBe("small · 1.5 vCPU · 3 GiB");

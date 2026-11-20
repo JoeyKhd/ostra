@@ -150,7 +150,7 @@ const runningTicketTask = async (title: string): Promise<{ readonly task: Driven
 };
 
 describe("a ticket closed while its task runs (F-066)", () => {
-  it("F-066: a ticket cancelled mid-turn interrupts once and raises one item; Keep working carries on", async () => {
+  it("F-066/c3: a ticket cancelled mid-turn interrupts once and raises one item; Keep working carries on", async () => {
     const { task, issue } = await runningTicketTask("Cancelled while running");
     const moved = await person.updateStatus({ externalId: fake.team.id }, issue.identifier, stateOf("canceled"));
     expect(moved.ok).toBe(true);
@@ -184,7 +184,7 @@ describe("a ticket closed while its task runs (F-066)", () => {
     expect(await keepWorking(deps, {}, driver(), { taskId: task.taskId })).toMatchObject({ ok: false, error: "not-waiting" });
   });
 
-  it("F-066: a ticket closed after the task's PR merged does nothing", async () => {
+  it("F-066/c3: a ticket closed after the task's PR merged does nothing", async () => {
     const { task, issue } = await runningTicketTask("Closed after the merge");
     await test.db.task.update({ where: { id: task.taskId }, data: { state: "merged", subState: null } });
     await person.updateStatus({ externalId: fake.team.id }, issue.identifier, stateOf("completed"));
@@ -194,7 +194,7 @@ describe("a ticket closed while its task runs (F-066)", () => {
     expect(await test.db.event.count({ where: { taskId: task.taskId, kind: "ticket.closed" } })).toBe(0);
   });
 
-  it("F-066: ostra's own move of the ticket to done is never a close while running", async () => {
+  it("F-066/c3: ostra's own move of the ticket to done is never a close while running", async () => {
     const { task, issue } = await runningTicketTask("Moved by ostra itself");
     await person.updateStatus({ externalId: fake.team.id }, issue.identifier, stateOf("completed"));
     // The app's own user sent it: an echo of ostra's write.

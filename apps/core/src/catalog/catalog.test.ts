@@ -169,7 +169,7 @@ describe("catalog.refresh", () => {
     expect(entries.map((entry) => entry.catalogId)).toEqual(["acme/acme-1"]);
   });
 
-  it("F-137: the daily fetch keeps each model's reasoning controls, in the stored copy and the entries it serves", async () => {
+  it("F-137/c3: the daily fetch keeps each model's reasoning controls, in the stored copy and the entries it serves", async () => {
     mode = "reasoning";
     expect(await refreshCatalog(deps())).toBe("stored");
     const stored: unknown = JSON.parse(await readFile(path.join(dataDir, CATALOG_FILE), "utf8"));
@@ -199,7 +199,7 @@ describe("F-088: the catalog on the server", () => {
       .parse(await test.db.$queryRaw<readonly unknown[]>`SELECT key, cron FROM pgboss.schedule WHERE name = ${name}`);
   const refreshJob = () => ({ job: "catalog.refresh" as const, jobId: jobIdSchema.parse(randomUUID()), key: "daily", retryCount: 0, payload: {}, logger: silentLogger });
 
-  it("F-088: the server fetches the catalog on a daily schedule, keeps it, and keeps the logos of the providers its models matched", async () => {
+  it("F-088/c4: the server fetches the catalog on a daily schedule, keeps it, and keeps the logos of the providers its models matched", async () => {
     // The schedule core sets at start: one `catalog.refresh`, every day at one fixed time.
     await ensureSchedules({ db: test.db, jobs, catalogFetch: true });
     const [schedule] = await scheduleOf("catalog.refresh");
@@ -221,7 +221,7 @@ describe("F-088: the catalog on the server", () => {
     expect((await catalogSource(deps())()).map((entry) => entry.logoPath)).toEqual(["/model-logos/acme.svg"]);
   });
 
-  it("F-088: one setting, OSTRA_CATALOG_FETCH=false, turns the fetch off: no request, no schedule, and the bundled copy is served", async () => {
+  it("F-088/c4: one setting, OSTRA_CATALOG_FETCH=false, turns the fetch off: no request, no schedule, and the bundled copy is served", async () => {
     const parsed = parseServerSettings({ OSTRA_CATALOG_FETCH: "false" });
     if (!parsed.ok) {
       throw new Error(parsed.errors.join("\n"));

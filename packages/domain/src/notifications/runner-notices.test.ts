@@ -59,19 +59,19 @@ const carriesNoSecret = (kind: Kind): void => {
 };
 
 describe("F-091: the runner notices", () => {
-  it("F-091: runner_joined renders the runner, its pool, its executor, the token's label and its page in the panel and both parts of the mail", () => {
+  it("F-091/c7: runner_joined renders the runner, its pool, its executor, the token's label and its page in the panel and both parts of the mail", () => {
     rendersTheFacts("runner_joined");
   });
 
-  it("F-091: runner_awaiting_approval renders the runner, its pool, its executor, the token's label and its page in the panel and both parts of the mail", () => {
+  it("F-091/c7: runner_awaiting_approval renders the runner, its pool, its executor, the token's label and its page in the panel and both parts of the mail", () => {
     rendersTheFacts("runner_awaiting_approval");
   });
 
-  it("F-091: runner_joined carries no join token and no key in any part", () => {
+  it("F-091/c7: runner_joined carries no join token and no key in any part", () => {
     carriesNoSecret("runner_joined");
   });
 
-  it("F-091: runner_awaiting_approval carries no join token and no key in any part", () => {
+  it("F-091/c7: runner_awaiting_approval carries no join token and no key in any part", () => {
     carriesNoSecret("runner_awaiting_approval");
   });
 

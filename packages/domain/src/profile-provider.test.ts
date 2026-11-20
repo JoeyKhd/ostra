@@ -27,7 +27,7 @@ const onB = row("mb", b);
 const choiceA = [{ modelKey: "catalog:anthropic/claude-sonnet", modelId: onA.modelId }];
 
 describe("a profile's model on its own provider", () => {
-  it("F-135, F-021: runs on the profile's provider even where the list chose another for the name, and never falls back", () => {
+  it("F-135/c4,c5, F-021: runs on the profile's provider even where the list chose another for the name, and never falls back", () => {
     // The list allows both and chose A for the name: the profile on B still runs on B.
     expect(resolveProfileModel([a, b], choiceA, [onA, onB], sonnet, b)).toEqual({ ok: true, providerId: b, modelId: onB.modelId });
     // By name (no provider), the list's choice serves it: today's rule, unchanged.
@@ -43,7 +43,7 @@ describe("a profile's model on its own provider", () => {
     expect(resolveProfileModel([b], [], [batch, row("mb9", b, true, "claude-sonnet")], sonnet, b)).toMatchObject({ ok: true, modelId: "mb9" });
   });
 
-  it("F-135, F-021: the turn-start gate keeps a pinned session on its provider: open while allowed and listed, else none, never moved", () => {
+  it("F-135/c4, F-021: the turn-start gate keeps a pinned session on its provider: open while allowed and listed, else none, never moved", () => {
     const session = { providerId: b, modelId: onB.modelId, modelName: sonnet, pinned: true };
     const project = { list: [a, b], choices: choiceA, models: [onA, onB] };
     expect(providerGate(session, project)).toEqual({ kind: "open" });
@@ -53,7 +53,7 @@ describe("a profile's model on its own provider", () => {
     expect(providerGate(session, { ...project, models: [onA] })).toEqual({ kind: "none", modelName: sonnet });
   });
 
-  it("F-135, F-021: the no-key wait names the profile's provider and why, and a wait without one still parses", () => {
+  it("F-135/c4, F-021: the no-key wait names the profile's provider and why, and a wait without one still parses", () => {
     const wait = dispatchWaitSchema.parse({ code: "no-provider-for-model", modelName: "anthropic/claude-sonnet", provider: { name: "dev endpoint", reason: "not-allowed" } });
     expect(dispatchNoteFor(wait)).toBe("The profile runs on dev endpoint, which this project's list doesn't allow: an organization admin adds it in Models and keys.");
     expect(dispatchNoteFor(dispatchWaitSchema.parse({ code: "no-provider-for-model", modelName: "anthropic/claude-sonnet", provider: { name: "dev endpoint", reason: "not-listed" } }))).toBe(

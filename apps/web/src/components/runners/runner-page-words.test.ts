@@ -4,7 +4,7 @@ import { runnerActions } from "./runner-actions";
 import { consequenceLine, fingerprintShort, ownLabels, versionFix } from "./runner-page-words";
 
 describe("a runner's page in words", () => {
-  it("F-061: a runner one minor behind gets the fix its install calls for; a current one none", () => {
+  it("F-061/c3: a runner one minor behind gets the fix its install calls for; a current one none", () => {
     expect(versionFix("current", "image", "0.5.0", 4, 4)).toBeNull();
     expect(versionFix("behind", "image", "0.5.0", 3, 4)).toContain("run the v0.5.0 image and restart it");
     expect(versionFix("behind", "npm", "0.5.0", 3, 4)).toContain("it installs v0.5.0 at start");

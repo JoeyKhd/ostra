@@ -37,7 +37,7 @@ const hungInit = async (deadlineMs: number): Promise<{ readonly bridge: Bridge; 
 };
 
 describe("the bridge's deadlines", () => {
-  it("F-017: every request to an init that never answers fails at its deadline, and the sidecar goes on", async () => {
+  it("F-017/c6: every request to an init that never answers fails at its deadline, and the sidecar goes on", async () => {
     const deadlineMs = 300;
     const { bridge, received } = await hungInit(deadlineMs);
     const requests: readonly (readonly [string, () => Promise<unknown>])[] = [

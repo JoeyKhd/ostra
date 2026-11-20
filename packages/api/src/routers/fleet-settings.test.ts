@@ -90,7 +90,7 @@ const makeProjectAdmin = async (projectId: ProjectId): Promise<void> => {
 const auditCount = (action: string): Promise<number> => harness.test.db.auditEntry.count({ where: { organizationId, action } });
 
 describe("box sizes (F-095)", () => {
-  it("F-095: an admin updates a size, with an audit entry; a member is refused, and so is a size below the minimum", async () => {
+  it("F-095/c1: an admin updates a size, with an audit entry; a member is refused, and so is a size below the minimum", async () => {
     const admin = await harness.as(harness.fixture.a.admin);
     const member = await harness.as(harness.fixture.a.member);
     expect((await member.boxSizes.list()).map((size) => [size.name, size.cpuMillis, size.memoryMiB])).toEqual([
@@ -123,7 +123,7 @@ describe("box sizes (F-095)", () => {
     expect((await other.boxSizes.list()).find((size) => size.name === "large")).toMatchObject({ memoryMiB: 16_384 });
   });
 
-  it("F-095: a project's admins pick its default size and clear it; a member is refused, and another organization's admin finds no project", async () => {
+  it("F-095/c2: a project's admins pick its default size and clear it; a member is refused, and another organization's admin finds no project", async () => {
     const { projectId } = await seedProject(harness, world, unique("sized"));
     const admin = await harness.as(harness.fixture.a.admin);
     expect(await admin.projects.runners({ projectId })).toMatchObject({ defaultBoxSize: null });
@@ -142,7 +142,7 @@ describe("box sizes (F-095)", () => {
 });
 
 describe("a project's pools (F-086)", () => {
-  it("F-086, F-091: the project's pools are in the list's order with their shares, its admins set them, and the pools' admission looks again", async () => {
+  it("F-086/c1, F-091/c1: the project's pools are in the list's order with their shares, its admins set them, and the pools' admission looks again", async () => {
     const { projectId } = await seedProject(harness, world, unique("pooled"));
     const first = await seedPool("first");
     const second = await seedPool("second");
@@ -198,7 +198,7 @@ describe("a project's pools (F-086)", () => {
     ]);
   });
 
-  it("F-086: another organization's pool, a pool twice, a member and another organization's admin are refused, and the list stays", async () => {
+  it("F-086/c1: another organization's pool, a pool twice, a member and another organization's admin are refused, and the list stays", async () => {
     const { projectId } = await seedProject(harness, world, unique("guarded"));
     const mine = await seedPool("mine");
     const theirs = await seedPool("theirs", harness.fixture.b.organization.id);
@@ -236,7 +236,7 @@ describe("a project's pools (F-086)", () => {
 });
 
 describe("a profile's runner labels (F-069)", () => {
-  it("F-069: an admin sets a profile's labels, sorted and once each; reserved and malformed ones are refused, as are a member and another organization", async () => {
+  it("F-069/c1: an admin sets a profile's labels, sorted and once each; reserved and malformed ones are refused, as are a member and another organization", async () => {
     const admin = await harness.as(harness.fixture.a.admin);
     const saved = await admin.agentProfiles.save({
       name: unique("Labelled"),
@@ -286,7 +286,7 @@ describe("New task's runner picker (F-069, F-014)", () => {
     return { projectId, fast, empty, profileId: agentProfileIdSchema.parse(builtIn.id) };
   };
 
-  it("F-069: lists the project's pools in its order, each with whether it could take the task now and why not", async () => {
+  it("F-069/c1: lists the project's pools in its order, each with whether it could take the task now and why not", async () => {
     const { projectId, fast, empty, profileId } = await pickerWorld();
     const member = await harness.as(harness.fixture.a.member);
     const admin = await harness.as(harness.fixture.a.admin);
@@ -316,7 +316,7 @@ describe("New task's runner picker (F-069, F-014)", () => {
     await expect((await harness.as(harness.fixture.b.admin)).tasks.runnerChoices({ projectId })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("F-014, F-069: offers only the member's own personal runners, each with whether it can and why not: offline, busy, no services, the provider not allowed", async () => {
+  it("F-014/c3, F-069/c2: offers only the member's own personal runners, each with whether it can and why not: offline, busy, no services, the provider not allowed", async () => {
     const { projectId } = await pickerWorld();
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);
@@ -356,7 +356,7 @@ describe("New task's runner picker (F-069, F-014)", () => {
     }
   });
 
-  it("F-014: tasks.create refuses another member's personal runner and makes nothing; the member's own is taken", async () => {
+  it("F-014/c3: tasks.create refuses another member's personal runner and makes nothing; the member's own is taken", async () => {
     const { projectId } = await pickerWorld();
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);

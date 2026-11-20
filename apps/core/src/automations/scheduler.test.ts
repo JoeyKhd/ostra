@@ -110,7 +110,7 @@ afterAll(async () => {
 });
 
 describe("scheduler.tick (F-106)", () => {
-  it("F-106: each occurrence is inserted once with its job in one transaction, and a rolled-back transaction leaves neither", async () => {
+  it("F-106/c3: each occurrence is inserted once with its job in one transaction, and a rolled-back transaction leaves neither", async () => {
     const automationId = await save(prompt());
     const other = await save(prompt());
     const nine = at("2026-03-02T09:00:00Z");
@@ -143,7 +143,7 @@ describe("scheduler.tick (F-106)", () => {
     expect(await test.db.automationRun.count({ where: { organizationId: fixture.b.organization.id } })).toBe(0);
   });
 
-  it("F-106: ticks in parallel on three replicas start each occurrence once, and a tick that finds its occurrence recorded adds nothing", async () => {
+  it("F-106/c2,c3: ticks in parallel on three replicas start each occurrence once, and a tick that finds its occurrence recorded adds nothing", async () => {
     const replicas = [test.db, createDb(test.url), createDb(test.url)];
     const automationId = await save(prompt({ schedule: "0 * * * *" }));
     const fired: number[] = [];
@@ -171,7 +171,7 @@ describe("scheduler.tick (F-106)", () => {
     await Promise.all(replicas.slice(1).map((db) => db.$disconnect()));
   });
 
-  it("F-106: an occurrence 3 hours late fires; one 7 hours late is recorded missed, with one audit entry per catch-up", async () => {
+  it("F-106/c5: an occurrence 3 hours late fires; one 7 hours late is recorded missed, with one audit entry per catch-up", async () => {
     const automationId = await save(prompt());
     // 3 hours late: under the 6-hour limit, it fires.
     now = at("2026-03-02T12:00:00Z");
@@ -198,7 +198,7 @@ describe("scheduler.tick (F-106)", () => {
     ]);
   });
 
-  it("F-106: a pause, an edit and a delete act at the next tick, and an occurrence queued before them is skipped", async () => {
+  it("F-106/c7: a pause, an edit and a delete act at the next tick, and an occurrence queued before them is skipped", async () => {
     // A pause: the queued occurrence is skipped, nothing fires while paused, and a resume never fires a past time.
     const paused = await save(prompt({ schedule: "0 * * * *" }));
     now = at("2026-03-02T09:00:10Z");
@@ -236,7 +236,7 @@ describe("scheduler.tick (F-106)", () => {
     expect(await test.db.task.count({ where: { automationId: edited } })).toBe(0);
   });
 
-  it("F-106: with skip-while-open on, an occurrence starts nothing until the last one's task is merged, done or stopped", async () => {
+  it("F-106/c1: with skip-while-open on, an occurrence starts nothing until the last one's task is merged, done or stopped", async () => {
     const skipping = await save(prompt({ schedule: "0 * * * *" }));
     const always = await save(prompt({ schedule: "0 * * * *", skipWhileOpen: false }));
     const hour = (h: number) => Date.UTC(2026, 2, 2, h);
@@ -258,7 +258,7 @@ describe("scheduler.tick (F-106)", () => {
     expect(await test.db.task.count({ where: { automationId: always } })).toBe(3);
   });
 
-  it("F-106: a prompt schedule starts its task, and a filter schedule starts each match it hasn't started, through the workers", async () => {
+  it("F-106/c1: a prompt schedule starts its task, and a filter schedule starts each match it hasn't started, through the workers", async () => {
     const connectionId = await seedTrackerConnection(test.db, new FakeSecretStore(), organizationId);
     const boardId = await seedBoard(test.db, { organizationId, projectId, connectionId, externalId: "team-sched", key: "SCH", mapping: null });
     const matching = await seedTicketRow(test.db, { organizationId, projectId, boardId, connectionId, ticket: trackerTicket("SCH-1", { labels: ["Deps"] }) });
@@ -300,7 +300,7 @@ describe("scheduler.tick (F-106)", () => {
     expect(JSON.stringify(records)).not.toMatch(/pnpm up|rm -rf|curl evil|Ticket SCH/);
   });
 
-  it("F-106: the tick is one pg-boss schedule a minute, whichever replicas register it, and a tick seconds after a due time fires it", async () => {
+  it("F-106/c6: the tick is one pg-boss schedule a minute, whichever replicas register it, and a tick seconds after a due time fires it", async () => {
     // Two replicas start their workers: one schedule, once a minute.
     const other = createJobs({ databaseUrl: test.url, role: "worker", pollingIntervalSeconds: 0.5 });
     await other.start();
@@ -321,7 +321,7 @@ describe("scheduler.tick (F-106)", () => {
     expect(await occurrenceJobs(automationId, at("2026-03-02T09:30:00Z"))).toBe(1);
   });
 
-  it("F-106: an occurrence's start passes the budget, its pool labels reach admission, and the project's share of a pool holds it queued with each reason", async () => {
+  it("F-106/c2: an occurrence's start passes the budget, its pool labels reach admission, and the project's share of a pool holds it queued with each reason", async () => {
     const automationId = await save(prompt({ poolLabels: ["gpu"] }));
     now = at("2026-03-02T09:00:05Z");
     await tick();
@@ -330,7 +330,7 @@ describe("scheduler.tick (F-106)", () => {
     await expectStartGates({ db: test.db, jobs, clock, organizationId, projectId }, taskId, ["gpu"]);
   });
 
-  it("F-135: an occurrence in a project whose list serves no model makes its task, queued with the no-key reason and the admins' needs-you item, and counts as started", async () => {
+  it("F-135/c11: an occurrence in a project whose list serves no model makes its task, queued with the no-key reason and the admins' needs-you item, and counts as started", async () => {
     const automationId = await save(prompt());
     const nine = at("2026-03-02T09:00:00Z");
     // An organization admin gives the project a list of its own, with no provider on it.

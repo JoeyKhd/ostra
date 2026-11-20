@@ -21,7 +21,7 @@ afterAll(() => rm(temp, { recursive: true, force: true }));
 describe("each image's notices, from this checkout's install", () => {
   const all = Promise.all(imageNames.map((name) => checkoutNotices(name)));
 
-  it("F-039: the notices list every package each image bundles, each with its license, and the runner's no agent", async () => {
+  it("F-039/c1: the notices list every package each image bundles, each with its license, and the runner's no agent", async () => {
     for (const image of await all) {
       expect(image.problems, image.image).toEqual([]);
       expect(image.bundled.length, image.image).toBeGreaterThan(0);
@@ -46,7 +46,7 @@ describe("each image's notices, from this checkout's install", () => {
     expect(runner?.packages.some(isAgentPackage)).toBe(false);
   });
 
-  it("F-039: a bundled package left out of the notices fails, naming it", async () => {
+  it("F-039/c1: a bundled package left out of the notices fails, naming it", async () => {
     const dropped = await checkoutNotices("runner", (packages) => renderNotices("runner", packages.filter((item) => item.name !== "ws")));
     expect(dropped.problems.map((problem) => problem.message)).toEqual([expect.stringMatching(/^ws@\S+ is bundled but missing from the notices$/)]);
     expect(dropped.problems[0]?.rule).toBe("notices");
@@ -92,7 +92,7 @@ const writeJson = async (file: string, value: unknown): Promise<string> => {
 const MIT = "MIT License\n\nCopyright (c) a maker";
 
 describe("the generator an image's build runs", () => {
-  it("F-039: the notices list every package of the install with its license and license file, and match its store", async () => {
+  it("F-039/c1: the notices list every package of the install with its license and license file, and match its store", async () => {
     const { store, report } = await pnpmInstall("complete", [
       { name: "left-pad", version: "1.3.0", license: "MIT", text: MIT },
       { name: "@scope/thing", version: "2.0.0", license: "(MIT OR CC0-1.0)", text: "CC0 text" },
@@ -109,7 +109,7 @@ describe("the generator an image's build runs", () => {
     expect((await installedInPnpmStore(store)).map(refOf).sort()).toEqual(["@scope/thing@2.0.0", "left-pad@1.3.0", "no-file@0.1.0"]);
   });
 
-  it("F-039: a package in the install that pnpm's report leaves out fails the build", async () => {
+  it("F-039/c1: a package in the install that pnpm's report leaves out fails the build", async () => {
     const { store, report } = await pnpmInstall("left-out", [
       { name: "kept", version: "1.0.0", license: "MIT", text: MIT },
       { name: "forgotten", version: "4.5.6", license: "MIT", text: MIT },
@@ -119,7 +119,7 @@ describe("the generator an image's build runs", () => {
     expect(result).toEqual({ code: 1, lines: ["notices: forgotten@4.5.6 is bundled but missing from the notices"] });
   });
 
-  it("F-039: an unknown license fails the build: GPL, SSPL, a missing license and an expression with an unknown id", async () => {
+  it("F-039/c1: an unknown license fails the build: GPL, SSPL, a missing license and an expression with an unknown id", async () => {
     for (const license of ["GPL-3.0-only", "SSPL-1.0", "Unknown", "(MIT OR WTFPL)", "MIT AND AGPL-3.0-or-later"]) {
       const { store, report } = await pnpmInstall(`unknown-${String(license.length)}-${license.replaceAll(/\W/g, "")}`, [{ name: "odd", version: "1.0.0", license, text: "text" }]);
       const result = await runNotices(["--image", "base", "--pnpm-licenses", await writeJson(path.join(temp, `u-${license.replaceAll(/\W/g, "")}.json`), report), "--pnpm-store", store, "--out", path.join(temp, "u", "N")]);
@@ -132,7 +132,7 @@ describe("the generator an image's build runs", () => {
     expect(isKnownBundledLicense(null)).toBe(false);
   });
 
-  it("F-039: the runner's build fails when OpenCode is in its install", async () => {
+  it("F-039/c1: the runner's build fails when OpenCode is in its install", async () => {
     const { store, report } = await pnpmInstall("agent", [
       { name: "@opencode/cli", version: "2.3.2", license: "MIT", text: MIT },
       { name: "zod", version: "4.6.7", license: "MIT", text: MIT },
@@ -142,7 +142,7 @@ describe("the generator an image's build runs", () => {
     expect((await runNotices(args)).code).toBe(0);
   });
 
-  it("F-039: the base image's notices add OpenCode's npm install, nested packages included, and the catalog's MIT notice", async () => {
+  it("F-039/c1: the base image's notices add OpenCode's npm install, nested packages included, and the catalog's MIT notice", async () => {
     const modules = path.join(temp, "opencode", "node_modules");
     await writePackage(path.join(modules, "@opencode", "cli"), { name: "@opencode/cli", version: "2.3.2", license: "MIT" }, MIT);
     await writePackage(path.join(modules, "@opencode", "cli-linux-x64"), { name: "@opencode/cli-linux-x64", version: "2.3.2", license: { type: "MIT" } });
@@ -160,7 +160,7 @@ describe("the generator an image's build runs", () => {
     expect(listedInNotices(await readFile(out, "utf8")).map(refOf)).toEqual(["@opencode/cli@2.3.2", "@opencode/cli-linux-x64@2.3.2", "models.dev@catalog", "nested@0.0.1", "zod@4.6.7"]);
   });
 
-  it("F-039: an extra notice is ostra's own format: an unknown field fails", async () => {
+  it("F-039/c1: an extra notice is ostra's own format: an unknown field fails", async () => {
     const file = await writeJson(path.join(temp, "extra.json"), { name: "x", version: "1", license: "MIT", homepage: "https://x", licenseFile: "x.LICENSE", note: "extra" });
     await expect(readExtraNotice(file)).rejects.toThrow(/must have exactly/);
   });

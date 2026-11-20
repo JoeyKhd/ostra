@@ -37,7 +37,7 @@ const seedRunner = async (name: string, executor: "docker" | "kubernetes" | "hos
 };
 
 describe("the Registry page's reads (F-120)", () => {
-  it("F-120: who set each credential, the docker pools, where each snapshot was built and today's issued credentials; no credential's value; admins only", async () => {
+  it("F-120/c1: who set each credential, the docker pools, where each snapshot was built and today's issued credentials; no credential's value; admins only", async () => {
     const admin = await harness.as(harness.fixture.a.admin);
     expect(await admin.registryUse.get()).toMatchObject({ credentials: { push: null, pull: null }, issuedToday: { pull: 0, push: 0 } });
 

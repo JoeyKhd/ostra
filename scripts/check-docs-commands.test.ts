@@ -48,7 +48,7 @@ const page = [
 ].join("\n");
 
 describe("extractRunBlocks", () => {
-  it("F-058: finds the sh blocks marked run, and only those, with their page and line", () => {
+  it("F-058/c1: finds the sh blocks marked run, and only those, with their page and line", () => {
     expect(extractRunBlocks(page, "install/a.mdx")).toEqual([
       { page: "install/a.mdx", line: 3, code: "mkdir ostra && cd ostra\necho one" },
       { page: "install/a.mdx", line: 26, code: "echo two" },
@@ -76,7 +76,7 @@ describe("the docs' own pages", () => {
   const repo = path.resolve(import.meta.dirname, "..");
   const content = path.join(repo, "apps", "docs", "content");
 
-  it("F-058: the commands that need the reader's own values name only settings, flags and scripts ostra has", async () => {
+  it("F-058/c1: the commands that need the reader's own values name only settings, flags and scripts ostra has", async () => {
     const configuration = await readFile(path.join(repo, "docs", "configuration.md"), "utf8");
     const pkg: unknown = JSON.parse(await readFile(path.join(repo, "package.json"), "utf8"));
     const scripts =
@@ -109,7 +109,7 @@ describe("the docs' own pages", () => {
     expect(unknown).toEqual([]);
   });
 
-  it("F-058: the install guide's commands come first, from compose file to a healthy stack", async () => {
+  it("F-058/c1: the install guide's commands come first, from compose file to a healthy stack", async () => {
     const blocks = await loadRunBlocks(content);
     expect(blocks.length).toBeGreaterThan(0);
     expect(blocks[0]?.page).toBe("install/docker-compose.mdx");
@@ -164,7 +164,7 @@ describe("runBlocks", () => {
     );
   };
 
-  it("F-058: runs the blocks in the navigation's order in one shell, so a cd holds for the next block", async () => {
+  it("F-058/c1: runs the blocks in the navigation's order in one shell, so a cd holds for the next block", async () => {
     await writePages("mkdir ostra && cd ostra", "pwd > where.txt");
     const blocks = await loadRunBlocks(content);
     expect(blocks.map((block) => block.page)).toEqual(["install/first.mdx", "install/second.mdx"]);
@@ -177,7 +177,7 @@ describe("runBlocks", () => {
     );
   });
 
-  it("F-058: a page's broken command fails the run, names its block, and stops the blocks after it", async () => {
+  it("F-058/c1: a page's broken command fails the run, names its block, and stops the blocks after it", async () => {
     await writePages(
       "echo started > started.txt\nfalse\necho after > after.txt",
       "echo next > next.txt",

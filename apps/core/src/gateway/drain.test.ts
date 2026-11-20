@@ -148,7 +148,7 @@ const retire = async (runnerId: RunnerId): Promise<void> => {
 };
 
 describe("a drain", () => {
-  it("F-092: a drained runner gets no offer while a task it holds finishes", async () => {
+  it("F-092/c4: a drained runner gets no offer while a task it holds finishes", async () => {
     const { a } = api.fixture;
     const runner = await joined("drain-holds");
     const peer = await connected(runner);
@@ -182,7 +182,7 @@ describe("a drain", () => {
     await retire(runner.runnerId);
   });
 
-  it("F-092: stays draining through a disconnect, the runner's restart and a server restart", async () => {
+  it("F-092/c4: stays draining through a disconnect, the runner's restart and a server restart", async () => {
     const { a } = api.fixture;
     const runner = await joined("drain-restarts");
     const peer = await connected(runner);
@@ -211,7 +211,7 @@ describe("a drain", () => {
     await retire(runner.runnerId);
   });
 
-  it("F-092: a member is refused, even for their own personal runner, and nothing changes", async () => {
+  it("F-092/c4: a member is refused, even for their own personal runner, and nothing changes", async () => {
     const { a, b } = api.fixture;
     const own = await seedOnlineRunner(api.test.db, organizationIdSchema.parse(a.organization.id), { kind: "personal", memberId: a.member.id });
     expect(await drainRunner(deps(), scopeOf(a.member, "member"), { runnerId: own.runnerId })).toMatchObject({ ok: false, error: "forbidden" });
@@ -230,7 +230,7 @@ describe("a drain", () => {
 });
 
 describe("a resume", () => {
-  it("F-092: resumes a connected runner to online, sends resume once, and asks its pool's queue again", async () => {
+  it("F-092/c4: resumes a connected runner to online, sends resume once, and asks its pool's queue again", async () => {
     const { a } = api.fixture;
     const runner = await joined("resume-online");
     const peer = await connected(runner);
@@ -262,7 +262,7 @@ describe("a resume", () => {
     await retire(runner.runnerId);
   });
 
-  it("F-092: resumes a runner that isn't connected to offline, and it goes online at its next hello", async () => {
+  it("F-092/c4: resumes a runner that isn't connected to offline, and it goes online at its next hello", async () => {
     const { a } = api.fixture;
     const runner = await joined("resume-offline");
     const peer = await connected(runner);
@@ -279,7 +279,7 @@ describe("a resume", () => {
     await retire(runner.runnerId);
   });
 
-  it("F-092: a minor-3 runner gets no resume command, and the result says so", async () => {
+  it("F-092/c4: a minor-3 runner gets no resume command, and the result says so", async () => {
     const { a } = api.fixture;
     const runner = await joined("resume-minor-3");
     // Milestone 6's server is at minor 5, whose window starts at 4: a minor-3 runner talks to a minor-4 server.

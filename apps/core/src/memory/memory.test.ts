@@ -183,7 +183,7 @@ const propose = (task: QueuedTask, body: Partial<Record<string, unknown>> = {}, 
   );
 
 describe("F-110: memory in the task spec", () => {
-  it("F-110: the section carries the always notes, then the index in ADR 0044's order, cut at the limits", async () => {
+  it("F-110/c1,c5,c6: the section carries the always notes, then the index in ADR 0044's order, cut at the limits", async () => {
     const task = await leasedTask();
     const day = 86_400_000;
     const base = Date.parse("2026-11-01T00:00:00Z");
@@ -224,7 +224,7 @@ describe("F-110: memory in the task spec", () => {
     expect(roomy.memory?.omitted).toBe(0);
   });
 
-  it("F-110: a minor-2 runner gets the block folded into its instructions, without the tools, and no section", async () => {
+  it("F-110/c1: a minor-2 runner gets the block folded into its instructions, without the tools, and no section", async () => {
     const task = await leasedTask();
     await note({ title: "Run the linter first", body: "pnpm lint", always: true });
     await test.db.agentProfile.update({ where: { id: world.profileId }, data: { instructions: "Be brief." } });
@@ -255,7 +255,7 @@ describe("F-110: memory in the task spec", () => {
     }
   });
 
-  it("F-110: an index-only agent gets the block and no tools, even on a minor-3 runner; no notes, no section", async () => {
+  it("F-110/c3: an index-only agent gets the block and no tools, even on a minor-3 runner; no notes, no section", async () => {
     const task = await leasedTask();
     expect((await specOf(task, 3)).memory).toBeNull();
     await note({ title: "Use the dev database" });
@@ -264,7 +264,7 @@ describe("F-110: memory in the task spec", () => {
     expect(spec.memory?.block).not.toContain("memory_search");
   });
 
-  it("F-110: an archived note is in neither the index nor a search, nor read", async () => {
+  it("F-110/c2: an archived note is in neither the index nor a search, nor read", async () => {
     const task = await leasedTask();
     const archived = await note({ title: `Archived ${QUERY_WORD}`, body: `The old way: ${QUERY_WORD}.`, status: "archived" });
     const active = await note({ title: `Active ${QUERY_WORD}`, body: `The way: ${QUERY_WORD} with care.` });
@@ -279,7 +279,7 @@ describe("F-110: memory in the task spec", () => {
     expect(memoryNoteResponseSchema.parse(ok.body)).toMatchObject({ noteId: active, version: 1, scope: "project" });
   });
 
-  it("F-109, F-110: search ranks matches, matches word prefixes, shows the matching line, and logs no query or text", async () => {
+  it("F-109/c3,c6, F-110/c2: search ranks matches, matches word prefixes, shows the matching line, and logs no query or text", async () => {
     const task = await leasedTask();
     const strong = await note({ title: `${QUERY_WORD} setup`, body: `First line.\nRun ${QUERY_WORD} before the tests.\nLast line.` });
     const weak = await note({ title: "Something else", body: `Mentions ${QUERY_WORD} once.` });
@@ -299,7 +299,7 @@ describe("F-110: memory in the task spec", () => {
     expect(logged).toContain(task.taskId);
   });
 
-  it("F-110: another project's and another organization's notes are never returned by search or read", async () => {
+  it("F-110/c2: another project's and another organization's notes are never returned by search or read", async () => {
     const task = await leasedTask();
     const ours = await note({ title: `Ours ${QUERY_WORD}` });
     const otherProject = await note({ projectId: fixture.a.restrictedProject.id, title: `Restricted ${QUERY_WORD}`, body: QUERY_WORD });
@@ -313,7 +313,7 @@ describe("F-110: memory in the task spec", () => {
     expect((await read(task, ours)).status).toBe(200);
   });
 
-  it("F-110: a token for another task is refused, and so is a runner with no lease of the task", async () => {
+  it("F-110/c2: a token for another task is refused, and so is a runner with no lease of the task", async () => {
     const ours = await leasedTask();
     const theirs = await seedQueuedTask(test.db, world, fixture.a.member, runner.runnerId);
     const boxed = await leaseTo(theirs, runner.runnerId, "docker");
@@ -345,7 +345,7 @@ describe("F-110: memory.used", () => {
       ingestEvents({ tx, jobs, notices: postgresChangeNotices, clock: systemClock }, { runnerId: runner.runnerId, events: [runnerEvent(task, seq, event)] }),
     );
 
-  it("F-110: index and always store their rows and leave a note's last use alone; read and search move it", async () => {
+  it("F-110/c5: index and always store their rows and leave a note's last use alone; read and search move it", async () => {
     const task = await leasedTask();
     const listed = await note({ title: "Listed" });
     const carried = await note({ title: "Carried", always: true });
@@ -378,7 +378,7 @@ describe("F-110: memory.used", () => {
 });
 
 describe("F-111: an agent's proposals", () => {
-  it("F-111: a proposal is stored as proposed, in the thread and the audit log, and reaches no later spec", async () => {
+  it("F-111/c1,c2: a proposal is stored as proposed, in the thread and the audit log, and reaches no later spec", async () => {
     const task = await leasedTask();
     const related = await note({ title: "Tests run offline" });
     records.length = 0;
@@ -412,7 +412,7 @@ describe("F-111: an agent's proposals", () => {
     expect(spec.memory?.indexNoteIds).toEqual([related]);
   });
 
-  it("F-111: a secret, a credential shape or a model-control token is refused with its kind, and nothing is stored", async () => {
+  it("F-111/c1: a secret, a credential shape or a model-control token is refused with its kind, and nothing is stored", async () => {
     const task = await leasedTask();
     const cases: readonly [Record<string, string>, string][] = [
       [{ body: `Use the key ${ENV_SECRET} for staging.` }, "one of the organization's secrets"],
@@ -432,7 +432,7 @@ describe("F-111: an agent's proposals", () => {
     expect(memoryProposalResponseSchema.parse((await propose(task, { body: "Use the staging key from the vault." })).body)).toHaveProperty("proposalId");
   });
 
-  it("F-111: the 21st proposal of a task is refused, and a malformed one is invalid", async () => {
+  it("F-111/c1: the 21st proposal of a task is refused, and a malformed one is invalid", async () => {
     const task = await leasedTask();
     for (let index = 0; index < 20; index += 1) {
       const answer = memoryProposalResponseSchema.parse((await propose(task, { title: `Proposal ${String(index)}` })).body);

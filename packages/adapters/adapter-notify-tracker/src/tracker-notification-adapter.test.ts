@@ -152,7 +152,7 @@ describe.each(trackers)("the tracker notification adapter on $name", ({ make }) 
     return { ...subject, context, idempotency, adapter, ticket, comments, notify };
   };
 
-  it("F-091: refuses both runner notices on send and on update, and comments nothing on the ticket", async () => {
+  it("F-091/c7: refuses both runner notices on send and on update, and comments nothing on the ticket", async () => {
     const { adapter, comments, ticket, dispose } = await setup();
     for (const kind of ["runner_joined", "runner_awaiting_approval"] as const) {
       const notification = { ...sampleRunnerNotice(kind, [ada]).notification, ticket: { externalId: ticket.externalId } };
@@ -163,7 +163,7 @@ describe.each(trackers)("the tracker notification adapter on $name", ({ make }) 
     await dispose();
   });
 
-  it("F-036: posts one comment per key, however many times the send is retried", async () => {
+  it("F-036/c2: posts one comment per key, however many times the send is retried", async () => {
     const { adapter, comments, notify, dispose } = await setup();
     const notification = notify([ada]);
     const first = await adapter.send(notification);
@@ -177,7 +177,7 @@ describe.each(trackers)("the tracker notification adapter on $name", ({ make }) 
     await dispose();
   });
 
-  it("F-036: the comment says the moment, quotes the task's title, mentions the recipients that have one and links the task", async () => {
+  it("F-036/c2: the comment says the moment, quotes the task's title, mentions the recipients that have one and links the task", async () => {
     const { adapter, comments, notify, dispose } = await setup();
     const notification = notify([ada, noMention, grace]);
     await adapter.send(notification);
@@ -199,7 +199,7 @@ describe.each(trackers)("the tracker notification adapter on $name", ({ make }) 
     await dispose();
   });
 
-  it("F-036: update edits the comment in place: the same comment, a new moment's words, an answered state", async () => {
+  it("F-036/c2: update edits the comment in place: the same comment, a new moment's words, an answered state", async () => {
     const { adapter, comments, notify, dispose } = await setup();
     const sent = await adapter.send(notify([ada]));
     if (!sent.ok || sent.value.providerMessageId === null) throw new Error("the send failed");
@@ -259,7 +259,7 @@ describe.each(trackers)("the tracker notification adapter on $name", ({ make }) 
     await dispose();
   });
 
-  it("F-036: the comment can't be made to say more than ostra means: a hostile title stays inside its quotes as plain text", async () => {
+  it("F-036/c2: the comment can't be made to say more than ostra means: a hostile title stays inside its quotes as plain text", async () => {
     const { adapter, comments, notify, dispose } = await setup();
     const hostile = '"\n# Heading\n[click](https://evil.example/) @everyone `rm -rf /` <img src=x onerror=alert(1)> https://evil.example/x';
     await adapter.send(notify([ada], { subject: hostile }));
@@ -332,7 +332,7 @@ describe("the tracker notification adapter on a tracker that can't edit comments
 });
 
 describe("the tracker notification adapter and account mails", () => {
-  it("F-115: refuses an account mail as unsupported, and posts no comment with its link", async () => {
+  it("F-115/c1: refuses an account mail as unsupported, and posts no comment with its link", async () => {
     const subject = jiraSubject();
     const adapter = new TrackerNotificationAdapter({ tracker: subject.tracker, board: subject.suite.board }, memoryAdapterContext());
     const ticket = await subject.suite.seedTicket({ title: "Add CONTRIBUTING.md" });

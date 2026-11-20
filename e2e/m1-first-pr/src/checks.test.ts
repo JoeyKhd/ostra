@@ -204,14 +204,14 @@ describe("judgeAgentEnvironment", () => {
 describe("judgeLeftovers", () => {
   const kept = { name: "01a1f252-b203-71b0-8eb7-1bb74d80bbbb", boxStates: ["stopped"] };
 
-  it("F-096: passes once every session ended, with no agent left and only kept boxes' folders", () => {
+  it("F-096/c7: passes once every session ended, with no agent left and only kept boxes' folders", () => {
     const result = judgeLeftovers({ folders: [kept, { ...kept, name: "01a1f253-0a12-77db-8f75-8d43bb6b26f6" }], openSessions: 0, agents: 0 });
     expect(result.ok).toBe(true);
     expect(result.detail).toContain("2 task folders left, 2 of kept (stopped) boxes");
     expect(judgeLeftovers({ folders: [], openSessions: 0, agents: 0 }).ok).toBe(true);
   });
 
-  it("F-096: fails a box still warm on its slot, or an agent still running after its session", () => {
+  it("F-096/c7: fails a box still warm on its slot, or an agent still running after its session", () => {
     expect(judgeLeftovers({ folders: [{ ...kept, boxStates: ["idle"] }], openSessions: 1, agents: 1 }).ok).toBe(false);
     expect(judgeLeftovers({ folders: [kept], openSessions: 1, agents: 0 }).ok).toBe(false);
     const agent = judgeLeftovers({ folders: [kept], openSessions: 0, agents: 1 });
@@ -220,7 +220,7 @@ describe("judgeLeftovers", () => {
     expect(judgeLeftovers({ folders: [kept], openSessions: 0, agents: null }).ok).toBe(false);
   });
 
-  it("F-096: fails a folder of a released or failed box, or of no task on this stack", () => {
+  it("F-096/c7: fails a folder of a released or failed box, or of no task on this stack", () => {
     for (const boxStates of [["released"], ["failed"], []]) {
       const result = judgeLeftovers({ folders: [kept, { name: "left", boxStates }], openSessions: 0, agents: 0 });
       expect(result.ok).toBe(false);

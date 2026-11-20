@@ -171,7 +171,7 @@ afterAll(async () => {
 });
 
 describe("the profile a task starts with", () => {
-  it("F-021: the member's choice, else the project's default for the kind, else the organization's built-in profile", async () => {
+  it("F-021/c3: the member's choice, else the project's default for the kind, else the organization's built-in profile", async () => {
     const model = await modelOf(world.profileId);
     const careful = await makeProfile(test.db, world.organizationId, model, { name: `Careful ${randomBytes(2).toString("hex")}` });
     const projectDefault = await makeProfile(test.db, world.organizationId, model, { name: `Default ${randomBytes(2).toString("hex")}` });
@@ -195,7 +195,7 @@ describe("the profile a task starts with", () => {
     }
   });
 
-  it("F-021: a listed profile is for its members and admins; an archived one, or another organization's, starts nothing", async () => {
+  it("F-021/c3: a listed profile is for its members and admins; an archived one, or another organization's, starts nothing", async () => {
     const model = await modelOf(world.profileId);
     const listed = await makeProfile(test.db, world.organizationId, model, { name: `Listed ${randomBytes(2).toString("hex")}`, access: "listed" });
     await test.db.agentProfileMember.create({ data: { organizationId: world.organizationId, profileId: listed, memberId: fixture.a.insider.id } });
@@ -224,7 +224,7 @@ describe("the profile a task starts with", () => {
     expect(await test.db.task.count({ where: { agentProfileId: theirs } })).toBe(0);
   });
 
-  it("F-021: a reopen keeps the task's profile, archived since or not, and refuses a member who may not use it", async () => {
+  it("F-021/c4: a reopen keeps the task's profile, archived since or not, and refuses a member who may not use it", async () => {
     const model = await modelOf(world.profileId);
     const listed = await makeProfile(test.db, world.organizationId, model, { name: `Kept ${randomBytes(2).toString("hex")}`, access: "listed" });
     await test.db.agentProfileMember.create({ data: { organizationId: world.organizationId, profileId: listed, memberId: fixture.a.insider.id } });
@@ -289,7 +289,7 @@ describe("the spec's agent section", () => {
     return { status: response.status, text: await response.text() };
   };
 
-  it("F-021: carries the profile's skills as the task's blobs, its MCP servers behind the proxy, its rules, the task's rules and plan first", async () => {
+  it("F-021/c1,c4: carries the profile's skills as the task's blobs, its MCP servers behind the proxy, its rules, the task's rules and plan first", async () => {
     const task = await started(fixture.a.member, { agentProfileId: careful, runnerId: runner.runnerId });
     const taskRule = await test.db.taskApprovalRule.create({
       data: { organizationId: world.organizationId, projectId: world.projectId, taskId: task.taskId, tool: "edit", pattern: "config/settings.json", createdByMemberId: fixture.a.member.id },
@@ -327,7 +327,7 @@ describe("the spec's agent section", () => {
     expect(before).toBe(2);
   });
 
-  it("F-021: the MCP headers are in the credentials for the sidecar, and in no spec, event or log line", async () => {
+  it("F-021/c4: the MCP headers are in the credentials for the sidecar, and in no spec, event or log line", async () => {
     records.length = 0;
     const task = await started(fixture.a.member, { agentProfileId: careful, runnerId: runner.runnerId });
     expect(await dispatch(world.organizationId, task)).toMatchObject({ ok: true });
@@ -354,7 +354,7 @@ describe("the spec's agent section", () => {
     expect(records.some((record) => record.message === "task.credentials-issued")).toBe(true);
   });
 
-  it("F-021: a header stored with a trailing newline reaches the sidecar trimmed; one with a line break inside fails the credentials, not the runner", async () => {
+  it("F-021/c4: a header stored with a trailing newline reaches the sidecar trimmed; one with a line break inside fails the credentials, not the runner", async () => {
     const put = async (value: string) => {
       const stored = await secretStore.put({ organizationId: world.organizationId, purpose: "agent-profile.mcp-header" }, value);
       if (!stored.ok) {
@@ -384,7 +384,7 @@ describe("the spec's agent section", () => {
     expect(await inside.text()).not.toContain(MCP_TOKEN);
   });
 
-  it("F-021: plan mode only on the task's first session before a plan; an archived profile still dispatches its tasks", async () => {
+  it("F-021/c4: plan mode only on the task's first session before a plan; an archived profile still dispatches its tasks", async () => {
     const task = await started(fixture.a.member, { agentProfileId: careful, runnerId: runner.runnerId });
     await test.db.agentProfile.update({ where: { id: careful }, data: { archivedAt: new Date() } });
     try {
@@ -405,7 +405,7 @@ describe("the spec's agent section", () => {
     }
   });
 
-  it("F-021: a minor-1 runner isn't offered a task whose profile needs minor 2, and the task says why", async () => {
+  it("F-021/c4: a minor-1 runner isn't offered a task whose profile needs minor 2, and the task says why", async () => {
     const old = await personalRunner(fixture.a.member, 1);
     const needing = await started(fixture.a.member, { agentProfileId: careful, runnerId: old.runnerId });
     expect(await dispatch(world.organizationId, needing)).toMatchObject({ ok: false, error: "no-runner", message: "needs-protocol" });
@@ -421,7 +421,7 @@ describe("the spec's agent section", () => {
     expect(await dispatch(world.organizationId, needing)).toMatchObject({ ok: true, runnerId: old.runnerId });
   });
 
-  it("F-021: a session naming another organization's profile is never dispatched or specced with it", async () => {
+  it("F-021/c4: a session naming another organization's profile is never dispatched or specced with it", async () => {
     const task = await started(fixture.a.member, { runnerId: runner.runnerId });
     // Only a broken row could name it: the dispatch and the spec still read profiles by organization.
     await test.db.session.update({ where: { id: task.sessionId }, data: { agentProfileId: otherWorld.profileId } });

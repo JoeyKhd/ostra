@@ -5,7 +5,7 @@ import { ostraMentionText } from "./pr-comments.ts";
 // Ticket 25 (F-053): which comments ask `@ostra`, and what they ask. Pure.
 
 describe("an @ostra comment", () => {
-  it("F-053: starts with @ostra after whitespace, in any case, or holds it on a line of its own", () => {
+  it("F-053/c1: starts with @ostra after whitespace, in any case, or holds it on a line of its own", () => {
     expect(ostraMentionText("@ostra add a test")).toBe("add a test");
     expect(ostraMentionText("\n  @OSTRA: add a test\nfor the empty case")).toBe("add a test\nfor the empty case");
     expect(ostraMentionText("Nice work.\n@ostra\nRename the helper.")).toBe("Rename the helper.");

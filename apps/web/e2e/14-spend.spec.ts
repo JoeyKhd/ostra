@@ -38,7 +38,7 @@ const MONTH = new Intl.DateTimeFormat("en-US", { month: "long", timeZone: "UTC" 
 
 test.describe.configure({ mode: "serial" });
 
-test("F-037: an admin sets a project budget below the spend, a new task in it shows the reason before Start, a message to an idle task shows as held, and raising the budget starts both", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-037/c1,c4: an admin sets a project budget below the spend, a new task in it shows the reason before Start, a message to an idle task shows as held, and raising the budget starts both", { tag: "@desktop-only" }, async ({ page }) => {
   test.setTimeout(150_000);
   await signIn(page);
   // The seeded repo joins the stack's GitHub connection, never a stand-in one later specs would trip on.
@@ -108,7 +108,7 @@ test("F-037: an admin sets a project budget below the spend, a new task in it sh
   await expect(page.getByTestId("task-budget-wait")).toHaveCount(0);
 });
 
-test("F-037: Spend reads at phone width with no sideways scroll, and the project page shows its month", async ({ page }) => {
+test("F-037/c1: Spend reads at phone width with no sideways scroll, and the project page shows its month", async ({ page }) => {
   await signIn(page);
   await ensureGitHub(page);
   const world = await seed();

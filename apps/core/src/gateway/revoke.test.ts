@@ -121,7 +121,7 @@ const onlineRunner = async (): Promise<{ readonly runner: RegisteredRunner; read
 };
 
 describe("revoking a connected runner (Q131)", () => {
-  it("F-091: closes its socket with 4403 at once, stops its tasks as runner_lost with their epochs raised, and refuses its still-valid token everywhere", async () => {
+  it("F-091/c5: closes its socket with 4403 at once, stops its tasks as runner_lost with their epochs raised, and refuses its still-valid token everywhere", async () => {
     const { runner, peer } = await onlineRunner();
     const task = await seedQueuedTask(test.db, world, fixture.a.member, runner.runnerId);
     expect(await dispatch(task)).toMatchObject({ ok: true, runnerId: runner.runnerId, leaseEpoch: 1 });
@@ -189,7 +189,7 @@ describe("revoking a connected runner (Q131)", () => {
     peer.close();
   });
 
-  it("F-091: a reopened task of a revoked runner dispatches to another runner", async () => {
+  it("F-091/c5: a reopened task of a revoked runner dispatches to another runner", async () => {
     const pool = await test.db.runnerPool.create({ data: { organizationId: fixture.a.organization.id, name: "revoke-reopen" }, select: { id: true } });
     await test.db.projectPool.create({ data: { organizationId: fixture.a.organization.id, projectId: world.projectId, poolId: pool.id } });
     const first = await seedOnlineRunner(test.db, fixture.a.organization.id, { kind: "pool", poolId: pool.id });
@@ -257,7 +257,7 @@ describe("revoking a runner that isn't connected (Q131)", () => {
     },
   );
 
-  it("F-091: another organization's admin, and a member who doesn't own the runner, are refused and change nothing", async () => {
+  it("F-091/c5: another organization's admin, and a member who doesn't own the runner, are refused and change nothing", async () => {
     const { runner, peer } = await onlineRunner();
     const task = await seedQueuedTask(test.db, world, fixture.a.member, runner.runnerId);
     expect(await dispatch(task)).toMatchObject({ ok: true });

@@ -56,7 +56,7 @@ const taskId = taskIdSchema.parse(randomUUID());
 const reviewRunId = reviewRunIdSchema.parse(randomUUID());
 
 describe("milestone 6's lifecycles", () => {
-  it("F-011, F-106: an automation pauses, resumes and is deleted, and nothing moves a deleted one", () => {
+  it("F-011, F-106/c7: an automation pauses, resumes and is deleted, and nothing moves a deleted one", () => {
     const enabled: AutomationLifecycle = { state: "enabled" };
     const paused: AutomationLifecycle = { state: "paused", reason: "hourly_limit", at };
     const deleted: AutomationLifecycle = { state: "deleted", at };
@@ -249,7 +249,7 @@ describe("milestone 6's jobs", () => {
   };
   const head = "a".repeat(40);
 
-  it("F-106: names every milestone 6 job, each with its key rule and how it's sent", () => {
+  it("F-106/c3: names every milestone 6 job, each with its key rule and how it's sent", () => {
     const names = [
       "scheduler.tick",
       "automation.occurrence",
@@ -370,7 +370,7 @@ describe("milestone 6's prompts", () => {
     }
   });
 
-  it("F-101, F-105: a round's prompt fits a steer whole, with every finding and comment in it, however long their text", () => {
+  it("F-101/c1, F-105/c1: a round's prompt fits a steer whole, with every finding and comment in it, however long their text", () => {
     const long = "y".repeat(4096);
     const many = Array.from({ length: 30 }, (_, index) => ({ ...finding, path: `src/f${String(index)}.ts`, title: `Finding ${String(index)}`, body: long, severity: "blocking" as const }));
     const findingsPrompt = fixFindingsPrompt(many);
@@ -389,7 +389,7 @@ describe("milestone 6's prompts", () => {
     expect(readMarkedBlocks(prompts.fixFindings).every((block) => !block.text.includes("Cut here"))).toBe(true);
   });
 
-  it("F-101: the findings round lists nits after the blocking findings, and says they needn't be acted on", () => {
+  it("F-101/c2: the findings round lists nits after the blocking findings, and says they needn't be acted on", () => {
     const labels = readMarkedBlocks(prompts.fixFindings).map((block) => block.label);
     expect(labels).toEqual(["finding", "nit"]);
     expect(prompts.fixFindings).toContain("1 blocking; 1 nit is listed after them, and you don't have to act on it.");

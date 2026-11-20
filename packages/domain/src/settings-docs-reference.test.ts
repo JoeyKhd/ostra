@@ -11,7 +11,7 @@ import { devOnlyEnvNames, settingNames } from "./settings.ts";
 // The docs site renders `docs/configuration.md` with this parser (ADR 0063). This test holds the page
 // to the code: a setting the code reads and the page doesn't list, or lists without a default, fails.
 describe("the docs site's configuration reference", () => {
-  it("F-058: the configuration reference page lists every setting the settings test knows, with its default", async () => {
+  it("F-058/c1: the configuration reference page lists every setting the settings test knows, with its default", async () => {
     const reference = parseConfigurationReference(
       await readFile(path.join(repoRoot, "docs", "configuration.md"), "utf8"),
     );

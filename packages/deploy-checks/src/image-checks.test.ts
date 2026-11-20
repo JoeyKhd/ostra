@@ -24,13 +24,13 @@ const withDockerfile = (name: "server" | "runner" | "base", from: string | RegEx
 };
 
 describe("the repo's deploy files", () => {
-  it("F-039: the three Dockerfiles and the compose file pass every check", () => {
+  it("F-039/c1: the three Dockerfiles and the compose file pass every check", () => {
     expect(checkImages(files)).toEqual([]);
   });
 });
 
 describe("every FROM", () => {
-  it("F-039: every FROM has a digest: a tag alone fails, and an earlier stage's name passes", () => {
+  it("F-039/c1: every FROM has a digest: a tag alone fails, and an earlier stage's name passes", () => {
     for (const name of ["server", "runner", "base"] as const) {
       const froms = [...files.dockerfiles[name].matchAll(/^FROM\s+(\S+)/gm)].map((match) => match[1] ?? "");
       expect(froms.length, name).toBeGreaterThan(1);
@@ -51,7 +51,7 @@ describe("every FROM", () => {
 });
 
 describe("OpenCode's checksum", () => {
-  it("F-039: the checksum comes from the repo's pin: each architecture's expected SHA-256 is pinnedChecksums', fed to sha256sum -c", () => {
+  it("F-039/c1: the checksum comes from the repo's pin: each architecture's expected SHA-256 is pinnedChecksums', fed to sha256sum -c", () => {
     const base = files.dockerfiles.base;
     expect(base).toContain(`@opencode/cli@${OPENCODE_VERSION}`);
     expect(base).toContain(`pkg=cli-linux-x64; sum=${pinnedChecksums["@opencode/cli-linux-x64"] ?? "missing"}`);
@@ -62,7 +62,7 @@ describe("OpenCode's checksum", () => {
     expect(rulesOf(withDockerfile("base", x64, flipped))).toContain("opencode-pin");
   });
 
-  it("F-039: a checksum taken from the downloaded files fails, however it's read", () => {
+  it("F-039/c1: a checksum taken from the downloaded files fails, however it's read", () => {
     const x64 = pinnedChecksums["@opencode/cli-linux-x64"] ?? "";
     // Computed from the binary the build just fetched: it always matches, so it checks nothing.
     const computed = withDockerfile("base", `sum=${x64}`, 'sum=$(sha256sum "/opt/opencode/node_modules/@opencode/cli-linux-x64/bin/opencode" | cut -c1-64)');
@@ -75,14 +75,14 @@ describe("OpenCode's checksum", () => {
     expect(rulesOf(withDockerfile("base", "sha256sum -c -", 'sha256sum "$bin"'))).toContain("opencode-pin");
   });
 
-  it("F-039: OpenCode is installed at the adapter's version with its install scripts off", () => {
+  it("F-039/c1: OpenCode is installed at the adapter's version with its install scripts off", () => {
     expect(rulesOf(withDockerfile("base", " --ignore-scripts", ""))).toContain("opencode-pin");
     expect(rulesOf(withDockerfile("base", `@opencode/cli@${OPENCODE_VERSION}`, "@opencode/cli@latest"))).toContain("opencode-pin");
   });
 });
 
 describe("secrets", () => {
-  it("F-039: no secret-shaped ARG: an ARG or ENV named like a credential, or one set in a RUN, fails", () => {
+  it("F-039/c1: no secret-shaped ARG: an ARG or ENV named like a credential, or one set in a RUN, fails", () => {
     expect(rulesOf(withDockerfile("server", "FROM base AS build\n", "FROM base AS build\nARG NPM_TOKEN\n"))).toContain("secret");
     expect(rulesOf(withDockerfile("runner", "FROM base AS build\n", "FROM base AS build\nARG GITHUB_AUTH=none\n"))).toContain("secret");
     expect(rulesOf(withDockerfile("base", "ENV PNPM_HOME=/pnpm", "ENV OSTRA_SECRETS_KEY=x PNPM_HOME=/pnpm"))).toContain("secret");
@@ -99,7 +99,7 @@ describe("secrets", () => {
 });
 
 describe("the compose file and the build", () => {
-  it("F-039: the compose file runs the images the build tags", () => {
+  it("F-039/c2: the compose file runs the images the build tags", () => {
     const compose = parseYaml(files.compose);
     for (const build of buildPlan(files.releaseVersion)) {
       expect(yamlAt(compose, "services", build.name, "image")).toBe(build.tag);
@@ -120,7 +120,7 @@ describe("the compose file and the build", () => {
     expect(rulesOf({ compose: files.compose.replace("  base:\n", "  basic:\n") })).toContain("compose-images");
   });
 
-  it("F-039: the build plan tags each image with the release version, as docker's arguments, and refuses a version that isn't one", () => {
+  it("F-039/c2: the build plan tags each image with the release version, as docker's arguments, and refuses a version that isn't one", () => {
     expect(buildPlan("1.2.3").map((build) => build.args)).toEqual([
       ["build", "--file", "deploy/Dockerfile.server", "--tag", "ostra/server:1.2.3", "--label", "org.opencontainers.image.version=1.2.3", "."],
       ["build", "--file", "deploy/Dockerfile.runner", "--tag", "ostra/runner:1.2.3", "--label", "org.opencontainers.image.version=1.2.3", "."],
@@ -149,7 +149,7 @@ describe("the compose file and the build", () => {
 });
 
 describe("each image's own rules", () => {
-  it("F-039: the server runs as ostra-server web, core or all with a health check, and as a non-root user", () => {
+  it("F-039/c1: the server runs as ostra-server web, core or all with a health check, and as a non-root user", () => {
     expect(rulesOf(withDockerfile("server", "USER node\n", ""))).toContain("non-root");
     expect(rulesOf(withDockerfile("server", "USER node\n", "USER root\n"))).toContain("non-root");
     expect(rulesOf(withDockerfile("server", /HEALTHCHECK [^\n]*\n/, ""))).toContain("health-check");
@@ -157,13 +157,13 @@ describe("each image's own rules", () => {
     expect(rulesOf({ entrypoint: files.entrypoint.replace("  health)", "  check)") })).toContain("entrypoint");
   });
 
-  it("F-039: the runner is the ostra CLI, as a non-root user", () => {
+  it("F-039/c1: the runner is the ostra CLI, as a non-root user", () => {
     expect(rulesOf(withDockerfile("runner", "USER node\n", "USER 0\n"))).toContain("non-root");
     expect(rulesOf(withDockerfile("runner", 'ENTRYPOINT ["ostra"]', 'ENTRYPOINT ["node", "/app/apps/runner/src/main.ts"]'))).toContain("entrypoint");
     expect(files.dockerfiles.runner).toContain("exec node /app/apps/runner/src/main.ts");
   });
 
-  it("F-039: the base image has the catalog as a file with the fetch off, its init under tini, and downloads nothing when a box starts", () => {
+  it("F-039/c1: the base image has the catalog as a file with the fetch off, its init under tini, and downloads nothing when a box starts", () => {
     expect(files.dockerfiles.base).toContain("/opt/ostra/init/main.ts");
     expect(rulesOf(withDockerfile("base", "OPENCODE_DISABLE_MODELS_FETCH=1", "OPENCODE_DISABLE_MODELS_FETCH=0"))).toContain("catalog");
     expect(rulesOf(withDockerfile("base", /COPY packages\/adapters\/adapter-model-endpoint[^\n]*\n/, ""))).toContain("catalog");
@@ -181,7 +181,7 @@ describe("the YAML reader", () => {
 
 // Milestone 7's ticket 29: each image writes its THIRD_PARTY_NOTICES in its build and carries them.
 describe("the notices in each image", () => {
-  it("F-039: each image writes its notices from its own install and copies them to the same path; the runner installs no agent", () => {
+  it("F-039/c1: each image writes its notices from its own install and copies them to the same path; the runner installs no agent", () => {
     for (const name of ["server", "runner", "base"] as const) {
       expect(files.dockerfiles[name], name).toContain(`/opt/notices/out/THIRD_PARTY_NOTICES ${NOTICES_PATH}`);
       expect(rulesOf(withDockerfile(name, ` ${NOTICES_PATH}`, " /THIRD_PARTY_NOTICES")), name).toContain("notices");

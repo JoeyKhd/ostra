@@ -116,7 +116,7 @@ describe("the subagent on the agent's output (F-138)", () => {
     }
   });
 
-  it("F-138: a minor-5 peer gets the call flat: its codec drops the subagent and keeps the rest", () => {
+  it("F-138/c7: a minor-5 peer gets the call flat: its codec drops the subagent and keeps the rest", () => {
     for (const kind of grown) {
       const event = minor6FieldFixtures[kind];
       expect(encodeEventForMinor(event, 6)).toEqual(event);

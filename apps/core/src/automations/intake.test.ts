@@ -155,7 +155,7 @@ afterAll(async () => {
 });
 
 describe("intake rules (F-011)", () => {
-  it("F-011: each filter field starts what it matches, and a near miss starts nothing", async () => {
+  it("F-011/c1: each filter field starts what it matches, and a near miss starts nothing", async () => {
     const cases: readonly { readonly name: string; readonly filter: IntakeFilter; readonly hit: () => ExternalTicketId; readonly miss: () => ExternalTicketId; readonly board?: BoardId }[] = [
       { name: "labels, any of", filter: labelFilter(["bug"]), hit: () => issue({ labels: ["Bug"] }), miss: () => issue({ labels: ["bugs"] }) },
       { name: "labels, all of", filter: labelFilter(["bug", "ui"], { labels: { mode: "all", names: ["bug", "ui"] } }), hit: () => issue({ labels: ["ui", "bug"] }), miss: () => issue({ labels: ["bug"] }) },
@@ -185,7 +185,7 @@ describe("intake rules (F-011)", () => {
     expect(await test.db.automationRun.count({ where: { organizationId: fixture.b.organization.id } })).toBe(0);
   });
 
-  it("F-011: once per ticket per rule, under a replayed webhook, a poll racing the webhook, two workers and a ticket that stops matching and matches again", async () => {
+  it("F-011/c1: once per ticket per rule, under a replayed webhook, a poll racing the webhook, two workers and a ticket that stops matching and matches again", async () => {
     await clearRules();
     const automationId = await rule(labelFilter(["deps"]));
     const externalId = issue({ labels: ["deps"] });
@@ -222,7 +222,7 @@ describe("intake rules (F-011)", () => {
     expect(await tasksOf(automationId)).toHaveLength(1);
   });
 
-  it("F-011: the rule's kind, profile and pool labels reach the task and admission, and a rule names no repo", async () => {
+  it("F-011/c2: the rule's kind, profile and pool labels reach the task and admission, and a rule names no repo", async () => {
     await clearRules();
     const model = await test.db.model.create({ data: { organizationId, providerId: world.providerId, endpointModelId: "rule-model" } });
     const profile = await test.db.agentProfile.create({ data: { organizationId, name: "Rule's profile", adapter: "opencode", modelId: model.id } });
@@ -264,7 +264,7 @@ describe("intake rules (F-011)", () => {
     await expectStartGates({ db: test.db, jobs, clock: systemClock, organizationId, projectId }, taskIdSchema.parse(codeTask?.id), ["big", "gpu"]);
   });
 
-  it("F-011: the start over the hourly limit pauses the rule, records the match skipped and tells the project's admins", async () => {
+  it("F-011/c1: the start over the hourly limit pauses the rule, records the match skipped and tells the project's admins", async () => {
     await clearRules();
     const automationId = await rule(labelFilter(["flood"]));
     const issues = [0, 1, 2, 3].map(() => issue({ labels: ["flood"] }));
@@ -294,7 +294,7 @@ describe("intake rules (F-011)", () => {
     expect(await test.db.automationRun.count({ where: { automationId } })).toBe(4);
   });
 
-  it("F-011: a rule that waits for approval starts its tasks awaiting a member's approval, whoever made the ticket", async () => {
+  it("F-011/c1: a rule that waits for approval starts its tasks awaiting a member's approval, whoever made the ticket", async () => {
     await clearRules();
     const automationId = await rule(labelFilter(["careful"]), { requireApproval: true });
     const externalId = issue({ labels: ["careful"] });
@@ -310,7 +310,7 @@ describe("intake rules (F-011)", () => {
     expect(fetches).toEqual([]);
   });
 
-  it("F-135: a rule's match in a project whose list serves no model makes its task, queued with the no-key reason and the admins' needs-you item, and keeps the match", async () => {
+  it("F-135/c11: a rule's match in a project whose list serves no model makes its task, queued with the no-key reason and the admins' needs-you item, and keeps the match", async () => {
     await clearRules();
     const automationId = await rule(labelFilter(["keyless"]));
     // An organization admin gives the project a list of its own, with no provider on it.

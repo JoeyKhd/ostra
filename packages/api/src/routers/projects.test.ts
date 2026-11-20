@@ -62,12 +62,12 @@ const form = (over: Record<string, unknown> = {}) => ({
 });
 
 describe("projects.create", () => {
-  it("F-086: projects.create is for organization admins: a member is FORBIDDEN and nothing is created", async () => {
+  it("F-086/c1: projects.create is for organization admins: a member is FORBIDDEN and nothing is created", async () => {
     await expect((await harness.as(harness.fixture.a.member)).projects.create(form())).rejects.toMatchObject({ code: "FORBIDDEN" });
     expect(await harness.test.db.project.count({ where: { slug: "test-one" } })).toBe(0);
   });
 
-  it("F-086: an admin creates the project, links the repo, the default pool and profile, and drafts the environment from the repo", async () => {
+  it("F-086/c1: an admin creates the project, links the repo, the default pool and profile, and drafts the environment from the repo", async () => {
     const { a } = harness.fixture;
     const created = await (await harness.as(a.admin)).projects.create(form());
 
@@ -109,7 +109,7 @@ describe("projects.create", () => {
     }
   });
 
-  it("F-086: refuses a slug that exists, a repo the installation doesn't include, and another organization's connection", async () => {
+  it("F-086/c1: refuses a slug that exists, a repo the installation doesn't include, and another organization's connection", async () => {
     const { a, b } = harness.fixture;
     const admin = await harness.as(a.admin);
     await expect(admin.projects.create(form())).rejects.toMatchObject({ code: "CONFLICT" });

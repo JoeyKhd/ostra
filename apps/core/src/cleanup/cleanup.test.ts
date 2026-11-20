@@ -283,7 +283,7 @@ describe("retention (F-079, spec section 11, item 11)", () => {
 });
 
 describe("needs-you items that outlived their task (F-036, F-062)", () => {
-  it("F-036, F-062: the daily clean-up closes items left open on stopped and merged tasks, owes their fan-out, and leaves the rest", async () => {
+  it("F-036/c2, F-062/c2: the daily clean-up closes items left open on stopped and merged tasks, owes their fan-out, and leaves the rest", async () => {
     /** A task in `state` with one item in `itemState`, as a release before stopping closed items left it. */
     const seed = async (target: World, state: "stopped" | "merged" | "needs_you", itemState: "open" | "answered" = "open") => {
       const creator = target === world ? fixture.a.member : fixture.b.admin;
@@ -320,7 +320,7 @@ describe("needs-you items that outlived their task (F-036, F-062)", () => {
     expect((await runRetention(cleanupDeps())).itemsClosed).toBe(0);
   });
 
-  it("F-036, F-062, F-065: the clean-up keeps the newest open item of a superseding reason on each task, dismisses the older with their fan-out, and leaves approvals, questions and plans stacked", async () => {
+  it("F-036/c2, F-062/c2, F-065/c2: the clean-up keeps the newest open item of a superseding reason on each task, dismisses the older with their fan-out, and leaves approvals, questions and plans stacked", async () => {
     const task = await seedQueuedTask(test.db, world, fixture.a.member, null);
     await test.db.task.update({ where: { id: task.taskId }, data: { state: "needs_you", needsYouReason: "no_changes" } });
     const other = await seedQueuedTask(test.db, otherWorld, fixture.b.admin, null);

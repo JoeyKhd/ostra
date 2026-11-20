@@ -92,7 +92,7 @@ test("Connect a runner: the command, the device approval, the runner online and 
   await expect(page.locator('[data-step="first-task"]')).toHaveAttribute("data-done", "false");
 });
 
-test("F-076: with the runner online, the checklist's last step starts the first task from a prompt, and setup is done without Linear", async ({ page }) => {
+test("F-076/c1: with the runner online, the checklist's last step starts the first task from a prompt, and setup is done without Linear", async ({ page }) => {
   await signIn(page);
   await page.goto("/");
   const checklist = page.getByTestId("setup-checklist");

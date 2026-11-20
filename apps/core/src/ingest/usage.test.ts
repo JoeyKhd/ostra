@@ -154,7 +154,7 @@ const usageOf = async (task: DrivenTask) => {
 };
 
 describe("usage per turn and per task (F-084)", () => {
-  it("F-084: the totals equal the sum of the task's usage events across two sessions, and each turn keeps its own", async () => {
+  it("F-084/c1,c2: the totals equal the sum of the task's usage events across two sessions, and each turn keeps its own", async () => {
     const modelId = await modelOf(world);
     await setPrices(modelId, true);
     const task = await freshTask();
@@ -210,7 +210,7 @@ describe("usage per turn and per task (F-084)", () => {
     await setPrices(modelId, false);
   });
 
-  it("F-084: agent time is each turn's start to its end, and leaves out the time between turns", async () => {
+  it("F-084/c1: agent time is each turn's start to its end, and leaves out the time between turns", async () => {
     const task = await freshTask();
     await sendAt(task, T0, turnStarted(1));
     await sendAt(task, T0 + 90_000, turnEnded(1));
@@ -229,7 +229,7 @@ describe("usage per turn and per task (F-084)", () => {
     expect(running.totals.agentMs).toBe(150_000);
   });
 
-  it("F-084: an estimated count marks its turn and the task, and no other turn", async () => {
+  it("F-084/c3: an estimated count marks its turn and the task, and no other turn", async () => {
     const modelId = await modelOf(world);
     const task = await freshTask();
     await sendAt(task, T0, turnStarted(1));
@@ -247,7 +247,7 @@ describe("usage per turn and per task (F-084)", () => {
     expect(read.totals).toMatchObject({ inputTokens: 305, outputTokens: 35 });
   });
 
-  it("F-084, F-037: a call that ends after its turn, a subagent still working, counts to the task, its session, that turn and the project's day", async () => {
+  it("F-084/c1, F-037/c1: a call that ends after its turn, a subagent still working, counts to the task, its session, that turn and the project's day", async () => {
     // OpenCode runs every subagent in the background: the main agent may end its turn while the
     // subagent's calls go on through the key proxy (`context/research/opencode-subagents.md`).
     const modelId = await modelOf(world);
@@ -279,7 +279,7 @@ describe("usage per turn and per task (F-084)", () => {
     await setPrices(modelId, false);
   });
 
-  it("F-084: a model with no price shows its tokens and no spend", async () => {
+  it("F-084/c1: a model with no price shows its tokens and no spend", async () => {
     const modelId = await modelOf(world);
     await setPrices(modelId, false);
     const task = await freshTask();
@@ -294,7 +294,7 @@ describe("usage per turn and per task (F-084)", () => {
     expect((await usageOf(quiet)).totals).toMatchObject({ inputTokens: 0, spentMicroUsd: 0, agentMs: 0, estimated: false });
   });
 
-  it("F-084: another organization's usage is invisible, and its own never mixes into ours", async () => {
+  it("F-084/c1: another organization's usage is invisible, and its own never mixes into ours", async () => {
     const modelId = await modelOf(world);
     const otherModelId = await modelOf(otherWorld);
     const ours = await freshTask();

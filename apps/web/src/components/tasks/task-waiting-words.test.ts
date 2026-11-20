@@ -19,7 +19,7 @@ const context: WaitContext = {
 const reason = (value: object): Reason => dispatchWaitSchema.parse(value);
 
 describe("the waiting line", () => {
-  it("F-069: words each milestone 5 reason, naming the pool, the project, the labels and the size", () => {
+  it("F-069/c1: words each milestone 5 reason, naming the pool, the project, the labels and the size", () => {
     expect(waitReasonText(reason({ code: "needs-registry", poolId: pool }), context)).toBe("build-fleet needs a registry for snapshots: an admin sets one under Registry.");
     expect(waitReasonText(reason({ code: "needs-services" }), context)).toBe("The environment has services, and no runner of test1's pools can start them.");
     expect(waitReasonText(reason({ code: "no-runner-with-labels", labels: ["gpu"] }), context)).toBe("No runner in build-fleet or Default has the label gpu.");
@@ -31,7 +31,7 @@ describe("the waiting line", () => {
     expect(waitReasonText(reason({ code: "personal-runner-unavailable" }), { ...context, personal: { name: "sam-laptop", busy: 0, slots: 2 } })).toBe("sam-laptop is offline: the task starts when it connects.");
   });
 
-  it("F-067: the place in the pool's queue comes first, and `queued` says nothing the place doesn't", () => {
+  it("F-067/c2: the place in the pool's queue comes first, and `queued` says nothing the place doesn't", () => {
     expect([1, 2, 3, 4, 11, 22].map(ordinal)).toEqual(["1st", "2nd", "3rd", "4th", "11th", "22nd"]);
     const queue: QueuePlace = { poolId: pool, poolName: "build-fleet", place: 3, length: 6 };
     expect(queuePlaceText(queue)).toBe("3rd in build-fleet's queue");

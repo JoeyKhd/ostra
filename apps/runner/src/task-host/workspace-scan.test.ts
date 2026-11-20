@@ -10,7 +10,7 @@ if (base === undefined) {
 const spec = { repos: [base, { ...base, checkoutDir: "test2" }] };
 
 describe("the workspace root's scan", () => {
-  it("F-016: leaves out the repos' checkouts and ostra's own folder, sorted, at most 50 with how many more", () => {
+  it("F-016/c4: leaves out the repos' checkouts and ostra's own folder, sorted, at most 50 with how many more", () => {
     const checkout = taskSpecFixture.repos[0]?.checkoutDir ?? "";
     expect(filesOutsideRepos([checkout, "test2", ".ostra", "plan.txt", "notes.md"], spec)).toEqual({ paths: ["notes.md", "plan.txt"], more: 0 });
     expect(filesOutsideRepos([checkout, "test2", ".ostra"], spec)).toEqual({ paths: [], more: 0 });
@@ -21,7 +21,7 @@ describe("the workspace root's scan", () => {
     expect(found.more).toBe(3);
   });
 
-  it("F-016: sees a change past the first 50, and none when only the order changed", () => {
+  it("F-016/c4: sees a change past the first 50, and none when only the order changed", () => {
     const many = Array.from({ length: 51 }, (_, index) => `file-${String(index).padStart(2, "0")}.txt`);
     expect(outsideKey(many, spec)).toBe(outsideKey([...many].reverse(), spec));
     expect(outsideKey(many, spec)).not.toBe(outsideKey([...many.slice(0, 50), "other.txt"], spec));

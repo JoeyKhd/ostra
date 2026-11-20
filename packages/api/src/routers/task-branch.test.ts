@@ -18,7 +18,7 @@ afterAll(async () => {
 });
 
 describe("a task's branch", () => {
-  it("F-016: a prompt task's one branch name is named from its prompt, and every repo of its project gets that name", async () => {
+  it("F-016/c2: a prompt task's one branch name is named from its prompt, and every repo of its project gets that name", async () => {
     const world = await seedConnectionAndModel(harness);
     const { projectId, repoId } = await seedProject(harness, world, "two-repos");
     const first = await harness.test.db.repo.findUniqueOrThrow({ where: { id: repoId } });

@@ -32,7 +32,7 @@ const waitUntil = async (check: () => boolean, timeoutMs: number): Promise<boole
 };
 
 describe("the job object's layouts and prototypes", () => {
-  it("F-014: lays out JOBOBJECT_EXTENDED_LIMIT_INFORMATION as 64-bit Windows does, with only LimitFlags set", () => {
+  it("F-014/c6: lays out JOBOBJECT_EXTENDED_LIMIT_INFORMATION as 64-bit Windows does, with only LimitFlags set", () => {
     const info = encodeExtendedLimitInformation(JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE);
     expect(EXTENDED_LIMIT_INFORMATION_BYTES).toBe(144);
     expect(LIMIT_FLAGS_OFFSET).toBe(16);
@@ -41,7 +41,7 @@ describe("the job object's layouts and prototypes", () => {
     expect([...info].filter((byte, index) => byte !== 0 && (index < 16 || index >= 20))).toEqual([]);
   });
 
-  it("F-014: reads JOBOBJECT_BASIC_PROCESS_ID_LIST: two counts, then 8-byte PIDs", () => {
+  it("F-014/c6: reads JOBOBJECT_BASIC_PROCESS_ID_LIST: two counts, then 8-byte PIDs", () => {
     const buffer = processIdListBuffer(4);
     expect(buffer.length).toBe(8 + 32);
     buffer.writeUInt32LE(3, 0);
@@ -54,7 +54,7 @@ describe("the job object's layouts and prototypes", () => {
     expect(decodeProcessIdList(buffer).pids).toHaveLength(4);
   });
 
-  it("F-014: declares the seven kernel32 functions with fixed prototypes", () => {
+  it("F-014/c6: declares the seven kernel32 functions with fixed prototypes", () => {
     expect(kernel32Prototypes).toEqual({
       CreateJobObjectW: { result: "HANDLE", args: ["void *", "str16"] },
       SetInformationJobObject: { result: "bool", args: ["HANDLE", "int", "void *", "uint32_t"] },
@@ -68,7 +68,7 @@ describe("the job object's layouts and prototypes", () => {
 });
 
 describe("koffi's loading", () => {
-  it("F-014: koffi isn't imported on Linux or macOS", async () => {
+  it("F-014/c6: koffi isn't imported on Linux or macOS", async () => {
     for (const platform of ["linux", "darwin"] as const) {
       let imported = false;
       const load = await loadJobObjects({
@@ -90,7 +90,7 @@ describe("koffi's loading", () => {
     }
   });
 
-  it("F-014: a koffi that can't load is a reason, not a throw", async () => {
+  it("F-014/c8: a koffi that can't load is a reason, not a throw", async () => {
     const load = await loadJobObjects({ platform: "win32", importKoffi: () => Promise.reject(new Error("blocked by policy")) });
     expect(load.ok).toBe(false);
     expect(load.ok ? "" : load.reason).toContain("koffi didn't load");

@@ -225,7 +225,7 @@ afterAll(async () => {
 
 describe("agent mode's fast lane (F-012)", () => {
   it(
-    "F-012: over 50 delegations with no runner online, each is acknowledged in under 5 s and its first thought posted in under 10 s",
+    "F-012/c1,c3: over 50 delegations with no runner online, each is acknowledged in under 5 s and its first thought posted in under 10 s",
     { timeout: 180_000 },
     async () => {
       expect(await test.db.runner.count({ where: { state: "online" } })).toBe(0);
@@ -269,7 +269,7 @@ describe("agent mode's fast lane (F-012)", () => {
     },
   );
 
-  it("F-012: the claim and its job commit before the 200; an insert that fails answers non-2xx and leaves no job, and the same delivery again starts nothing", async () => {
+  it("F-012/c3: the claim and its job commit before the 200; an insert that fails answers non-2xx and leaves no job, and the same delivery again starts nothing", async () => {
     const issue = await fake.createIssue({ title: "Claimed first" });
     const { sessionId } = await fake.delegateToApp(issue.id, fake.admin.id);
     const body = fake.sessionEvents().find((one) => one.sessionId === sessionId)?.body;

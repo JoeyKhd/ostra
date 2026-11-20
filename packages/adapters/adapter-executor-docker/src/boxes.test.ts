@@ -58,11 +58,11 @@ describe("a box's resources", () => {
     expect(envOf(agent).map((line) => line.split("=")[0])).toEqual(["OSTRA_BOX_ID", "OSTRA_BRIDGE_NONCE", "OSTRA_BRIDGE_ADDR", "OSTRA_AGENT_UID", "OSTRA_AGENT_GID"]);
   });
 
-  it("F-050: uses the environment's own base image when it names one", () => {
+  it("F-050/c1: uses the environment's own base image when it names one", () => {
     expect(boxResources({ ...input, baseImage: "node:24-bookworm" }, { images }).agent.body.Image).toBe("node:24-bookworm");
   });
 
-  it("F-017: gives the sidecar the token file, read-only, and the server; the agent gets neither", () => {
+  it("F-017/c3: gives the sidecar the token file, read-only, and the server; the agent gets neither", () => {
     const resources = boxResources(input, { images, runtime: "runsc" });
     const sidecar = resources.sidecar.body;
     expect(sidecar.Image).toBe(images.runner);

@@ -8,7 +8,7 @@ import { e2eModelToken, e2eStubBaseUrl } from "./settings.ts";
 
 test.describe.configure({ mode: "serial" });
 
-test("F-076: a new organization's Home shows the checklist in its order, and its next step opens the model provider page", async ({ page }) => {
+test("F-076/c1: a new organization's Home shows the checklist in its order, and its next step opens the model provider page", async ({ page }) => {
   await signIn(page);
   await page.goto("/");
   const checklist = page.getByTestId("setup-checklist");
@@ -109,7 +109,7 @@ test("Connect GitHub refuses an App it can't read, in words", async ({ page }) =
   await expect(page.locator('[data-testid="github-app"]')).toHaveCount(0);
 });
 
-test("F-006: Create a new App shows the manifest's permissions, leaves workflows out, and says it gets no webhook without a public address", async ({ page }) => {
+test("F-006/c1,c4: Create a new App shows the manifest's permissions, leaves workflows out, and says it gets no webhook without a public address", async ({ page }) => {
   await signIn(page);
   await page.goto("/organization/github");
   await page.getByRole("tab", { name: "Create a new App" }).click();

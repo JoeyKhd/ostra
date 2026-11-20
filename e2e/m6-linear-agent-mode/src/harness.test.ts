@@ -30,7 +30,7 @@ afterAll(async () => {
 });
 
 describe("without the app token (ticket 38)", () => {
-  it("F-012: the harness says skipped: no app token, ends 0, and calls nothing", async () => {
+  it("F-012/c6: the harness says skipped: no app token, ends 0, and calls nothing", async () => {
     const config = path.join(dir, "skip");
     await rm(config, { recursive: true, force: true });
     await import("node:fs/promises").then((fs) => fs.mkdir(config, { recursive: true }));
@@ -67,7 +67,7 @@ describe("without the app token (ticket 38)", () => {
     expect(await harnessSettings({ OSTRA_DEV_CONFIG_DIR: config })).toEqual({ kind: "skip", reason: "no app token" });
   });
 
-  it("F-012: with the token but not the rest, it names what's missing and starts nothing", async () => {
+  it("F-012/c6: with the token but not the rest, it names what's missing and starts nothing", async () => {
     const config = path.join(dir, "incomplete");
     await import("node:fs/promises").then((fs) => fs.mkdir(config, { recursive: true }));
     await writeFile(path.join(config, "linear.env"), "LINEAR_REFRESH_TOKEN=lin_refresh_x\nLINEAR_API_KEY=lin_api_x\n");
@@ -78,7 +78,7 @@ describe("without the app token (ticket 38)", () => {
 });
 
 describe("the rotated refresh token (ticket 38)", () => {
-  it("F-012: is written back in place: the old token gone, every other line kept, nothing printed", async () => {
+  it("F-012/c6: is written back in place: the old token gone, every other line kept, nothing printed", async () => {
     const file = path.join(dir, "linear.env");
     const before = "# the test workspace\r\nLINEAR_API_KEY=lin_api_x\r\nLINEAR_REFRESH_TOKEN=old-token\r\nexport LINEAR_TEST_TEAM_KEY='OST'\r\n";
     await writeFile(file, before);
@@ -105,7 +105,7 @@ describe("the rotated refresh token (ticket 38)", () => {
 });
 
 describe("the four bullets' judges (ticket 38)", () => {
-  it("F-012: the install passes the app's own user with the agent scopes, and fails a person's token or missing scopes", () => {
+  it("F-012/c6: the install passes the app's own user with the agent scopes, and fails a person's token or missing scopes", () => {
     // REAL [1]: "The app installed as its own user, with the scopes app:assignable, app:mentionable, read and write, and it's a different user from the admin."
     const real = { viewerIsApp: true, appUserId: "app-user", adminUserId: "admin", scopes: ["app:assignable", "app:mentionable", "read", "write"] };
     expect(bulletOutcome(judgeInstall(real))).toBe("pass");
@@ -114,7 +114,7 @@ describe("the four bullets' judges (ticket 38)", () => {
     expect(bulletOutcome(judgeInstall({ ...real, scopes: ["read", "write"] }))).toBe("fail");
   });
 
-  it("F-012: 50 delegations pass at spike 5's real figures, and fail a slow 200, a slow first thought, a runner online or a stale session", () => {
+  it("F-012/c6: 50 delegations pass at spike 5's real figures, and fail a slow 200, a slow first thought, a runner online or a stale session", () => {
     // REAL [2]: server-side acks p50 1.1 ms, max 5.8 ms; first thoughts p50 90 ms, p95 227 ms, max 463 ms; all 50 active.
     const at = 1_800_000_000_000;
     const real: DelegationSample[] = Array.from({ length: 50 }, (_unused, index) => ({
@@ -136,7 +136,7 @@ describe("the four bullets' judges (ticket 38)", () => {
     expect(judge(one({ ackedAt: at + 7 * 250 - 40 }))).toBe("pass");
   });
 
-  it("F-012: the stop passes one final response after signal: stop, and without a person's press is not run, never passed", () => {
+  it("F-012/c6: the stop passes one final response after signal: stop, and without a person's press is not run, never passed", () => {
     const pressed = { pressed: true as const, signalStop: true, turnStopped: true, finalResponses: 1, postsAfterFinal: 0, taskState: "stopped" };
     expect(bulletOutcome(judgeStop(pressed))).toBe("pass");
     expect(bulletOutcome(judgeStop({ ...pressed, postsAfterFinal: 1 }))).toBe("fail");
@@ -146,7 +146,7 @@ describe("the four bullets' judges (ticket 38)", () => {
     expect(bulletOutcome(judgeStop({ pressed: false, waitedMinutes: 30 }))).toBe("not-run");
   });
 
-  it("F-012: 35 silent minutes pass at spike 5's real run, and fail a stale read, no heartbeat, a slow watch or a short turn", () => {
+  it("F-012/c6: 35 silent minutes pass at spike 5's real run, and fail a stale read, no heartbeat, a slow watch or a short turn", () => {
     // REAL [4]: 35.1 minutes, 0 stale episodes, one ephemeral heartbeat (at minute 20), ended complete.
     const polls: { atMs: number; status: string }[] = [];
     for (let atMs = 0; atMs < 35 * 60_000; atMs += pollIntervalMs(atMs)) polls.push({ atMs, status: "active" });

@@ -10,7 +10,7 @@ import { aiReviewWords, capBody, capOf, findingsSentWords, findingsSummary, stag
 const limits = { ciRounds: 2, reviewRounds: 2, automaticTurns: 4 };
 
 describe("the review loop's words (ticket 35)", () => {
-  it("F-101: the stage line marks the current stage, the stages that happened this pass done, and the rest ahead", () => {
+  it("F-101/c3: the stage line marks the current stage, the stages that happened this pass done, and the rest ahead", () => {
     const fixingFindings = stagesOf({ subState: "fixing_findings", aiReview: true, ci: { used: 0, limit: 2 }, review: { used: 1, limit: 2 } });
     expect(fixingFindings.map((stage) => [stage.words, stage.state])).toEqual([
       ["CI running", "done"],
@@ -27,7 +27,7 @@ describe("the review loop's words (ticket 35)", () => {
     ]);
   });
 
-  it("F-102: the round line's dot is the viewer's own review: amber to review, green once approved, else anyone's wait", () => {
+  it("F-102/c1: the round line's dot is the viewer's own review: amber to review, green once approved, else anyone's wait", () => {
     const me = memberIdSchema.parse("m1");
     const reviewers = (state: string | null) => [{ state: "pr_open" as const, reviewers: [{ login: "alex", team: null, member: { memberId: me, name: "Alex" }, source: "codeowners" as const, state }] }];
     expect(viewerReview(reviewers("commented"), "m1")).toBe("to-review");
@@ -39,7 +39,7 @@ describe("the review loop's words (ticket 35)", () => {
     expect(findingsSummary(true, [{ state: "open", severity: "nit" }, { state: "resolved", severity: "blocking" }])).toBe("1 nit open · 1 resolved");
   });
 
-  it("F-101: a findings round names the blocking findings it sent and lists the nits; the cap names its limit", () => {
+  it("F-101/c4: a findings round names the blocking findings it sent and lists the nits; the cap names its limit", () => {
     expect(findingsSentWords([{ title: "Escape the name", severity: "blocking" }, { title: "An unused import", severity: "nit" }])).toBe(
       "Sent 1 blocking finding: Escape the name. 1 nit listed, not required.",
     );

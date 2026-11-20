@@ -48,7 +48,7 @@ const boxOn = async (
 const kinds = (heard: readonly BoxWaitChange[]): string[] => heard.map((change) => (change.kind === "waiting" ? `waiting:${change.reason}` : `scheduled:${String(change.afterMs)}`));
 
 describe("waiting for a node and an image (ticket 08)", () => {
-  it("F-093: an unschedulable pod with a scale-up under way waits for its node, says so, and says when it's scheduled with how long it took", async () => {
+  it("F-093/c3: an unschedulable pod with a scale-up under way waits for its node, says so, and says when it's scheduled with how long it took", async () => {
     const { heard, prepared, executor } = await boxOn((kube, now) => {
       if (now === 0) {
         kube.setPod(POD, { scheduled: unschedulable });
@@ -62,7 +62,7 @@ describe("waiting for a node and an image (ticket 08)", () => {
     expect(executor.failureOf(box)).toBeNull();
   });
 
-  it("F-093: past OSTRA_K8S_NODE_WAIT_MINUTES with no node the box fails as no-node, for core to queue again, and its pod is deleted", async () => {
+  it("F-093/c3: past OSTRA_K8S_NODE_WAIT_MINUTES with no node the box fails as no-node, for core to queue again, and its pod is deleted", async () => {
     const { heard, prepared, executor, kube } = await boxOn((pods, now) => {
       if (now === 0) {
         pods.setPod(POD, { scheduled: unschedulable });
@@ -77,7 +77,7 @@ describe("waiting for a node and an image (ticket 08)", () => {
     expect(kube.deleted).toEqual([POD]);
   });
 
-  it("F-093: the node wait is OSTRA_K8S_NODE_WAIT_MINUTES: a node at 4 minutes is too late for a 3-minute wait", async () => {
+  it("F-093/c3: the node wait is OSTRA_K8S_NODE_WAIT_MINUTES: a node at 4 minutes is too late for a 3-minute wait", async () => {
     const { prepared, executor } = await boxOn(
       (kube, now) => {
         if (now === 0) {
@@ -92,7 +92,7 @@ describe("waiting for a node and an image (ticket 08)", () => {
     expect(executor.failureOf(box)).toBe("no-node");
   });
 
-  it("F-093: unschedulable with no scale-up fails at once as no-room, after the autoscaler's grace, not after the node wait", async () => {
+  it("F-093/c3: unschedulable with no scale-up fails at once as no-room, after the autoscaler's grace, not after the node wait", async () => {
     const { heard, prepared, executor } = await boxOn((kube, now) => {
       if (now === 0) {
         kube.setPod(POD, { scheduled: unschedulable });
@@ -104,7 +104,7 @@ describe("waiting for a node and an image (ticket 08)", () => {
     expect(heard).toEqual([]);
   });
 
-  it("F-093: a pull still under way past 10 s says the box waits for its image, then that it's ready; a quick pull says nothing", async () => {
+  it("F-093/c3: a pull still under way past 10 s says the box waits for its image, then that it's ready; a quick pull says nothing", async () => {
     const slow = await boxOn((kube, now) => {
       if (now === 0) {
         kube.setPod(POD, { scheduled, initContainers: [containerStatus("sidecar", "waiting", "PodInitializing")] });
@@ -133,7 +133,7 @@ describe("waiting for a node and an image (ticket 08)", () => {
     expect(quick.heard).toEqual([]);
   });
 
-  it("F-094: a service still not ready when the services' wait ends is reported failed; one that got ready is healthy", async () => {
+  it("F-094/c4: a service still not ready when the services' wait ends is reported failed; one that got ready is healthy", async () => {
     const services = [
       { name: "postgres", image: "postgres:18.6-bookworm", port: 5432, variables: [], healthCheck: "pg_isready" },
       { name: "redis", image: "redis:8.2", port: 6379, variables: [], healthCheck: null },

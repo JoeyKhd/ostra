@@ -35,7 +35,7 @@ const setOwnList = async (projectId: ProjectId, providerIds: readonly string[]):
 };
 
 describe("keys per project at a task's start", () => {
-  it("F-135: New task is refused with the no-key reason when nothing on the project's list serves the model, before anything is made", async () => {
+  it("F-135/c7,c11: New task is refused with the no-key reason when nothing on the project's list serves the model, before anything is made", async () => {
     const { projectId } = await seedProject(harness, world, "keys-new-task");
     // The organization's first provider is on the default list, so the project serves the model.
     expect(await harness.test.db.providerListEntry.count({ where: { organizationId: harness.fixture.a.organization.id, projectId: null, providerId: world.providerId } })).toBe(1);
@@ -53,7 +53,7 @@ describe("keys per project at a task's start", () => {
     expect(await harness.test.db.session.findUniqueOrThrow({ where: { id: created.sessionId } })).toMatchObject({ providerId: world.providerId, modelId: world.modelId });
   });
 
-  it("F-135: a ticket task no provider serves any more waits queued with the reason, and its needs-you item is for organization admins, not members", async () => {
+  it("F-135/c11: a ticket task no provider serves any more waits queued with the reason, and its needs-you item is for organization admins, not members", async () => {
     const { projectId } = await seedProject(harness, world, "keys-ticket");
     const linear = await seedLinearConnection(harness);
     const boardId = await seedBoard(harness, { projectId, connectionId: linear, key: "KEY" });
@@ -121,7 +121,7 @@ describe("keys per project at a task's start", () => {
     expect(await harness.test.db.session.findUniqueOrThrow({ where: { id: started.sessionId } })).toMatchObject({ providerId: world.providerId, modelId: world.modelId });
   });
 
-  it("F-135: the composer's message at a turn start on a provider the project dropped starts a fresh session, and a running turn still takes it", async () => {
+  it("F-135/c10: the composer's message at a turn start on a provider the project dropped starts a fresh session, and a running turn still takes it", async () => {
     const organizationId = organizationIdSchema.parse(harness.fixture.a.organization.id);
     const { projectId } = await seedProject(harness, world, "keys-send");
     const runnerId = await seedPersonalRunner(harness, harness.fixture.a.admin.id, "keys-send-runner");

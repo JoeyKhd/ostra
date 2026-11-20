@@ -125,7 +125,7 @@ describe("the runner endpoints", () => {
 });
 
 describe("the token endpoint's refusals (minor 2)", () => {
-  it("F-061: name their reason and the server's time to a minor-2 runner, and leave both out for a minor-1 one", () => {
+  it("F-061/c1: name their reason and the server's time to a minor-2 runner, and leave both out for a minor-1 one", () => {
     expect(tokenRefusalReasonSchema.options).toEqual(["clock-skew", "unknown-key", "revoked", "replayed"]);
     const refusal = {
       error: { code: "unauthorized", message: "the clocks disagree", reason: "clock-skew", serverTime: 1_900_000_000_000 },

@@ -28,7 +28,7 @@ const chainOf = (rule: EgressRule): string | undefined => rule.args[1];
 const target = (rule: EgressRule): string | undefined => rule.args[rule.args.indexOf("-j") + 1];
 
 describe("docker's egress rules (F-116)", () => {
-  it("F-116: the rules are built from the baseline's one list: a reject per range in IPv4 and IPv6, the metadata address and the host closed, the server on its port and OSTRA_EGRESS_ALLOW the only accepts", () => {
+  it("F-116/c1,c2: the rules are built from the baseline's one list: a reject per range in IPv4 and IPv6, the metadata address and the host closed, the server on its port and OSTRA_EGRESS_ALLOW the only accepts", () => {
     const rules = egressRuleSet(input);
     const rejected = (program: EgressRule["program"]) =>
       rules.filter((rule) => rule.program === program && chainOf(rule) === "DOCKER-USER" && target(rule) === "REJECT").map(destinationOf);
@@ -118,7 +118,7 @@ describe("deploy/egress-baseline.sh (F-116)", () => {
       });
     });
 
-  it("F-116: the script applies exactly the rules egressRuleSet builds, in order, and refuses anything that isn't an address or a port", async () => {
+  it("F-116/c1,c2: the script applies exactly the rules egressRuleSet builds, in order, and refuses anything that isn't an address or a port", async () => {
     const ran = await runScript([input.egressSubnet, input.server, String(input.serverPort), ...input.allow], { EGRESS_SUBNET_V6: input.egressSubnetV6 ?? "" });
     expect(ran.code).toBe(0);
     const lines = ran.log.split("\n").filter((line) => line.trim() !== "");

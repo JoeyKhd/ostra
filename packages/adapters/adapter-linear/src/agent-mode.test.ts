@@ -36,7 +36,7 @@ describe("Linear's agent sessions, sub-issues and drafts, on the fake Linear", (
 
   const lastEventBody = (sessionId: string): unknown => fake.sessionEvents().filter((event) => event.sessionId === sessionId).at(-1)?.body;
 
-  it("F-012: reads a created event from a delegation and a mention, and a prompted one with and without the stop signal", async () => {
+  it("F-012/c2: reads a created event from a delegation and a mention, and a prompted one with and without the stop signal", async () => {
     const issue = await fake.createIssue({ title: "Delegate me" });
     const { sessionId } = await fake.delegateToApp(issue.id);
     expect(parseLinearAgentSessionEvent(lastEventBody(sessionId))).toEqual({
@@ -71,7 +71,7 @@ describe("Linear's agent sessions, sub-issues and drafts, on the fake Linear", (
     expect(read.ok && read.value.prompt?.endsWith("can you look?")).toBe(true);
   });
 
-  it("F-012: reads Linear's payload loosely: unknown fields, a missing email and the SDK's other shapes", () => {
+  it("F-012/c2: reads Linear's payload loosely: unknown fields, a missing email and the SDK's other shapes", () => {
     const payload = {
       type: "AgentSessionEvent",
       action: "prompted",
@@ -124,7 +124,7 @@ describe("Linear's agent sessions, sub-issues and drafts, on the fake Linear", (
     }
   });
 
-  it("F-012: posts each kind with its content shape and ephemeral flag, and twice with one key posts once", async () => {
+  it("F-012/c2: posts each kind with its content shape and ephemeral flag, and twice with one key posts once", async () => {
     const issue = await fake.createIssue({ title: "Progress" });
     const { sessionId } = await fake.delegateToApp(issue.id);
     const thought = { kind: "thought", body: "Reading the code", ephemeral: true, idempotencyKey: "task-1:turn-1:thought" } as const;
@@ -155,7 +155,7 @@ describe("Linear's agent sessions, sub-issues and drafts, on the fake Linear", (
     expect(activityIdFor("session-1", "task-1:response")).not.toBe(id);
   });
 
-  it("F-012: finds an activity already posted with its key, and posts nothing more", async () => {
+  it("F-012/c2: finds an activity already posted with its key, and posts nothing more", async () => {
     // A retry after a post Linear applied but whose answer was lost: the lookup finds it.
     const issue = await fake.createIssue({ title: "Lost answer" });
     const { sessionId } = await fake.delegateToApp(issue.id);
@@ -166,7 +166,7 @@ describe("Linear's agent sessions, sub-issues and drafts, on the fake Linear", (
     expect(fake.session(sessionId)?.activities.map((one) => one.body)).toEqual(["Done"]);
   });
 
-  it("F-012: a personal key's post is refused as unauthorized, and never retried", async () => {
+  it("F-012/c4: a personal key's post is refused as unauthorized, and never retried", async () => {
     const issue = await fake.createIssue({ title: "Key" });
     const { sessionId } = await fake.delegateToApp(issue.id);
     const before = fake.apiCalls()["agentActivityCreate"] ?? 0;
@@ -178,7 +178,7 @@ describe("Linear's agent sessions, sub-issues and drafts, on the fake Linear", (
     expect(fake.session(sessionId)?.activities).toEqual([]);
   });
 
-  it("F-012: links the session to the task, and refuses a link that isn't a URL", async () => {
+  it("F-012/c2: links the session to the task, and refuses a link that isn't a URL", async () => {
     const issue = await fake.createIssue({ title: "Link" });
     const { sessionId } = await fake.delegateToApp(issue.id);
     expect(await app.setAgentSessionLink(sessionId, "https://ostra.example.test/tasks/0196f1a0")).toEqual({ ok: true, value: undefined });
@@ -244,7 +244,7 @@ describe("Linear's agent sessions, sub-issues and drafts, on the fake Linear", (
     }
   });
 
-  it("F-040: reads a person by ID, with the address when the token can read it, and an unknown one is not-found", async () => {
+  it("F-040/c1: reads a person by ID, with the address when the token can read it, and an unknown one is not-found", async () => {
     const ada = fake.addUser({ name: "Ada Lovelace", email: "ada@example.test" });
     expect(await app.getUser(ada.id)).toEqual({ ok: true, value: { userId: ada.id, name: "Ada Lovelace", email: "ada@example.test", active: true } });
     fake.setUserActive(ada.id, false);
@@ -265,7 +265,7 @@ describe("Linear's agent sessions, sub-issues and drafts, on the fake Linear", (
     expect(await postThreadReply({ apiUrl: fake.apiUrl, apiKey: "lin_api_wrong", sessionId: delegated.sessionId, body: "x" })).toEqual({ ok: false, reason: "refused" });
   });
 
-  it("F-077: creates sub-issues three levels deep, and reads the tree in one query per ticket read", async () => {
+  it("F-077/c1,c2: creates sub-issues three levels deep, and reads the tree in one query per ticket read", async () => {
     const root = await fake.createIssue({ title: "Root" });
     const child = await app.createTicket(board(), { title: "Child", description: "Part one", parent: { externalId: root.id } });
     if (!child.ok) throw new Error(child.error.message);
@@ -314,7 +314,7 @@ describe("Linear's agent sessions, sub-issues and drafts, on the fake Linear", (
     return state.id;
   };
 
-  it("F-099: writes a draft's description as it is, and refuses criteria Linear has no field for", async () => {
+  it("F-099/c6: writes a draft's description as it is, and refuses criteria Linear has no field for", async () => {
     const issue = await fake.createIssue({ title: "Refine", description: "Vague" });
     const description = "## What\n\nShow the version.\n\n## Acceptance criteria\n\n- [ ] `$(whoami)` stays text";
     expect(await app.updateTicket(board(), { externalId: issue.id }, { description })).toEqual({ ok: true, value: undefined });
@@ -325,7 +325,7 @@ describe("Linear's agent sessions, sub-issues and drafts, on the fake Linear", (
     expect(fake.apiCalls()["issueUpdate"] ?? 0).toBe(writes);
   });
 
-  it("F-099: attaches a file through Linear's upload, which downloads back byte for byte, with no token sent to the upload URL", async () => {
+  it("F-099/c7: attaches a file through Linear's upload, which downloads back byte for byte, with no token sent to the upload URL", async () => {
     const issue = await fake.createIssue({ title: "Mock-up" });
     const attached = await app.attachFile(board(), { externalId: issue.id }, { name: "version mock.png", contentType: "image/png", bytes: PNG });
     if (!attached.ok) throw new Error(attached.error.message);
@@ -347,7 +347,7 @@ describe("Linear's agent sessions, sub-issues and drafts, on the fake Linear", (
     expect(fake.apiCalls()["fileUpload"] ?? 0).toBe(uploads);
   });
 
-  it("F-099: drafts the board's ready status as its first unstarted one by position", async () => {
+  it("F-099/c6: drafts the board's ready status as its first unstarted one by position", async () => {
     const listed = await app.listStatuses(board());
     if (!listed.ok) throw new Error(listed.error.message);
     expect(defaultReadyStatus(listed.value)?.name).toBe("Todo");

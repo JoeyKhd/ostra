@@ -34,7 +34,7 @@ const check = (budgetId: string, threshold: "warn" | "reached") =>
   );
 
 describe("budget notices in the panel (F-037)", () => {
-  it("F-037: a project budget's warning reaches the organization's admins in the panel, naming the project and its share, and not a member", async () => {
+  it("F-037/c3: a project budget's warning reaches the organization's admins in the panel, naming the project and its share, and not a member", async () => {
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);
     // $9.10 spent against $10.00: 91%, past the warn line.

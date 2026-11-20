@@ -36,7 +36,7 @@ const ticket = (n: number, over: Partial<InboxTicket> = {}): InboxTicket => ({
 });
 
 describe("a bulk start's plan (inbox-bulk-start.md)", () => {
-  it("F-107: counts one task per plain ticket, one per sub-issue for a parent's code start, and none for a ticket that has a task", () => {
+  it("F-107/c1: counts one task per plain ticket, one per sub-issue for a parent's code start, and none for a ticket that has a task", () => {
     const plain = ticket(1);
     const held = ticket(2, { task: { id: task(2), state: "queued", active: true, shortId: "a17be093" } });
     const parent = ticket(3, { subIssues: 3, codeStart: { tasks: 3, overLimit: false } });
@@ -82,7 +82,7 @@ const child = (n: number, state: NonNullable<Child["task"]>["state"] | null, ove
 });
 
 describe("a parent's progress (ticket-parent.md)", () => {
-  it("F-077: merged fills first, then in review or running; a stopped child keeps the parent unfinished, and a closed or mid-level one isn't counted", () => {
+  it("F-077/c2: merged fills first, then in review or running; a stopped child keeps the parent unfinished, and a closed or mid-level one isn't counted", () => {
     const progress = progressOf([
       child(1, "merged"),
       child(2, "in_review"),

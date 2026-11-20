@@ -63,7 +63,7 @@ const rows: readonly (readonly [string, EffortModel, readonly EffortLevel[]])[] 
 ];
 
 describe("OpenCode's reasoning levels", () => {
-  it.each(rows)("F-137: the levels mirror OpenCode 2.3.2's Variant.resolve: %s", (_name, effortModel, levels) => {
+  it.each(rows)("F-137/c1: the levels mirror OpenCode 2.3.2's Variant.resolve: %s", (_name, effortModel, levels) => {
     // Checked on this version: a bump must be checked again (the contract suite runs it on the binary).
     expect(OPENCODE_VERSION).toBe("2.3.2");
     expect(adapter().effortLevels(effortModel)).toEqual(levels);
@@ -78,7 +78,7 @@ describe("OpenCode's reasoning levels", () => {
     }
   });
 
-  it("F-137: OpenCode declares the session-option capability", () => {
+  it("F-137/c13: OpenCode declares the session-option capability", () => {
     expect(adapter().capabilities.reasoningEffort).toBe("session-option");
   });
 });
@@ -113,13 +113,13 @@ const catalogModel = async (overrides: Partial<PrepareLaunchInput["model"]>): Pr
 };
 
 describe("OpenCode's config: the model's controls and limits", () => {
-  it("F-137: the config carries the model's controls as capabilities.reasoning, and { supported: false } when it has none", async () => {
+  it("F-137/c5: the config carries the model's controls as capabilities.reasoning, and { supported: false } when it has none", async () => {
     expect(await configModel({ reasoning: BOTH })).toMatchObject({ capabilities: { reasoning: BOTH } });
     expect(await configModel({ reasoning: BUDGET })).toMatchObject({ capabilities: { reasoning: BUDGET } });
     expect(await configModel({})).toMatchObject({ capabilities: { reasoning: { supported: false } } });
   });
 
-  it("F-137: the config's limit is the model's real one, each falling back alone to 128,000 and 16,000", async () => {
+  it("F-137/c10: the config's limit is the model's real one, each falling back alone to 128,000 and 16,000", async () => {
     expect(await configModel({ limits: { contextWindow: 1_000_000, maxOutputTokens: 128_000 } })).toMatchObject({ limit: { context: 1_000_000, output: 128_000 } });
     expect(await configModel({ limits: { contextWindow: 200_000, maxOutputTokens: null } })).toMatchObject({ limit: { context: 200_000, output: 16_000 } });
     expect(await configModel({ limits: { contextWindow: null, maxOutputTokens: 64_000 } })).toMatchObject({ limit: { context: 128_000, output: 64_000 } });

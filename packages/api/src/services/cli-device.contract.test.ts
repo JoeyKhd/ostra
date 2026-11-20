@@ -34,7 +34,7 @@ const post = (path: string, body: unknown) =>
   handleCliRequest(harness.deps, new Request(`http://localhost:3000${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
 
 describe("a device sign-in for the CLI (RFC 8628)", () => {
-  it("F-103: the member approves the code in the browser, and the CLI's poll then gets a session that acts as that member", async () => {
+  it("F-103/c1: the member approves the code in the browser, and the CLI's poll then gets a session that acts as that member", async () => {
     const { headers } = await harness.auth.api.signInUsername({ body: { username: "ada", password: TEST_PASSWORD }, returnHeaders: true });
     const browser = cookieHeaderFrom(headers);
 
@@ -59,7 +59,7 @@ describe("a device sign-in for the CLI (RFC 8628)", () => {
     expect(await harness.test.db.authSession.count({ where: { token: session.token } })).toBe(0);
   });
 
-  it("F-103: a code the member denies ends the poll in a refusal, and no session is made", async () => {
+  it("F-103/c1: a code the member denies ends the poll in a refusal, and no session is made", async () => {
     const { headers } = await harness.auth.api.signInUsername({ body: { username: "ada", password: TEST_PASSWORD }, returnHeaders: true });
     const browser = cookieHeaderFrom(headers);
     const before = await harness.test.db.cliSession.count();
@@ -71,7 +71,7 @@ describe("a device sign-in for the CLI (RFC 8628)", () => {
     expect(await harness.test.db.cliSession.count()).toBe(before);
   });
 
-  it("F-103: the code approved while signed into a second organization makes a session of that organization", async () => {
+  it("F-103/c1: the code approved while signed into a second organization makes a session of that organization", async () => {
     const ada = await harness.test.db.user.findFirstOrThrow({ where: { username: "ada" } });
     const second = await harness.test.db.organization.create({ data: { id: randomUUID(), name: "Second Co", slug: `second-${randomUUID().slice(0, 8)}`, createdAt: new Date() } });
     const secondMember = await harness.test.db.member.create({ data: { id: randomUUID(), organizationId: second.id, userId: ada.id, role: "member", createdAt: new Date() } });

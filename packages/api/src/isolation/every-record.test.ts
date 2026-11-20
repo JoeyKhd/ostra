@@ -366,7 +366,7 @@ const queryPaths = (): readonly string[] =>
     .sort();
 
 describe("the guards (F-049)", () => {
-  it("F-049: every query procedure of the router has a row in this suite, and no row names a procedure that's gone", () => {
+  it("F-049/c5: every query procedure of the router has a row in this suite, and no row names a procedure that's gone", () => {
     const paths = queryPaths();
     expect(paths.filter((path) => !Object.hasOwn(procedures, path)), "a new query procedure: add its row (and its readers)").toEqual([]);
     expect(Object.keys(procedures).filter((path) => !paths.includes(path))).toEqual([]);
@@ -413,7 +413,7 @@ const targetOf = (role: Role): Target =>
 const seesRestricted = (role: Role): boolean => role === "organization admin" || role === "project admin" || role === "project member";
 
 describe("no query crosses organizations, or opens a restricted project (F-049, F-087)", () => {
-  it.each(roles)("F-049, F-087: every query procedure, called by the %s, returns no row of another organization, nor of a project they can't open", async (role) => {
+  it.each(roles)("F-049/c4,c5, F-087/c4: every query procedure, called by the %s, returns no row of another organization, nor of a project they can't open", async (role) => {
     const caller = await harness.as(memberOf(role));
     const target = targetOf(role);
     const crossed: string[] = [];
@@ -432,7 +432,7 @@ describe("no query crosses organizations, or opens a restricted project (F-049, 
     expect(hidden).toEqual([]);
   });
 
-  it("F-049: every query procedure, called by an admin of A with B's IDs, finds nothing of B's", async () => {
+  it("F-049/c4,c5: every query procedure, called by an admin of A with B's IDs, finds nothing of B's", async () => {
     const caller = await harness.as(harness.fixture.a.admin);
     const target: Target = { rows: other, projectId: harness.fixture.b.project.id };
     const crossed: string[] = [];
@@ -448,7 +448,7 @@ describe("no query crosses organizations, or opens a restricted project (F-049, 
     expect(crossed).toEqual([]);
   });
 
-  it("F-049, F-087: the live stream sends a member no change notice of another organization's, nor of a project they can't open", async () => {
+  it("F-049/c4,c5, F-087/c4: the live stream sends a member no change notice of another organization's, nor of a project they can't open", async () => {
     const { a, b } = harness.fixture;
     const context = await harness.contextOf(a.member);
     const scope = context.member?.scope;
@@ -489,7 +489,7 @@ describe("no query crosses organizations, or opens a restricted project (F-049, 
     expect(text).not.toContain(ofRestricted);
   });
 
-  it("F-049, F-087: search returns a member no task of another organization's, nor of a project they can't open", async () => {
+  it("F-049/c4,c5, F-087/c4: search returns a member no task of another organization's, nor of a project they can't open", async () => {
     const { a } = harness.fixture;
     const scopeOf = (memberId: string, role: "admin" | "member", projectRoles: MemberScope["projectRoles"]): MemberScope => ({
       organizationId: organizationIdSchema.parse(a.organization.id),
@@ -507,7 +507,7 @@ describe("no query crosses organizations, or opens a restricted project (F-049, 
     expect(leaked(asInsider, idsOfB)).toEqual([]);
   });
 
-  it("F-087: the fixture holds every kind of project record in the restricted project, so the calls above cover each", () => {
+  it("F-087/c4: the fixture holds every kind of project record in the restricted project, so the calls above cover each", () => {
     for (const model of isolationProjectModels) {
       expect(restricted.get(model), model).toEqual(expect.any(String));
     }
@@ -651,7 +651,7 @@ const matrix: Readonly<Record<string, readonly [Outcome, Outcome, Outcome, Outco
 };
 
 describe("the matrix of procedures and roles (F-003, F-087)", () => {
-  it("F-003, F-087: every query procedure, called by each role, gives the result the table says", async () => {
+  it("F-003/c1,c3, F-087/c4: every query procedure, called by each role, gives the result the table says", async () => {
     const actual: Record<string, Outcome[]> = {};
     for (const [path, procedure] of Object.entries(procedures)) {
       const results: Outcome[] = [];
@@ -664,7 +664,7 @@ describe("the matrix of procedures and roles (F-003, F-087)", () => {
     expect(actual).toEqual(matrix);
   });
 
-  it("F-003, F-087: a project admin reads what only a project admin may, a project member can't, and neither is an organization admin", () => {
+  it("F-003/c3, F-087: a project admin reads what only a project admin may, a project member can't, and neither is an organization admin", () => {
     const admins = Object.entries(matrix).filter(([, row]) => row[2] === "ok" && row[3] === "FORBIDDEN").map(([path]) => path);
     expect(admins).toContain("projects.getTicketTemplate");
     const organizationOnly = Object.entries(matrix).filter(([, row]) => row[0] === "ok" && row[2] === "FORBIDDEN").map(([path]) => path);

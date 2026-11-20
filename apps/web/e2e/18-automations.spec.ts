@@ -20,7 +20,7 @@ const addValue = async (page: Page, n: number, value: string): Promise<void> => 
   await input.press("Enter");
 };
 
-test("F-011, F-107: an admin creates a rule, sees its dry run, starts all of it, and sees its history", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-011/c1,c3, F-107/c1: an admin creates a rule, sees its dry run, starts all of it, and sees its history", { tag: "@desktop-only" }, async ({ page }) => {
   const world = await seedAutomationsWorld(viewer);
   await signIn(page);
   await page.goto(`/projects/${world.projectId}/automations`);
@@ -79,7 +79,7 @@ test("F-011, F-107: an admin creates a rule, sees its dry run, starts all of it,
   await shootM6(page, "automation-history");
 });
 
-test("F-106: an admin creates a schedule from a preset in a zone, sees its next occurrences, and pauses it", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-106/c1,c7: an admin creates a schedule from a preset in a zone, sees its next occurrences, and pauses it", { tag: "@desktop-only" }, async ({ page }) => {
   const world = await seedAutomationsWorld(viewer);
   await signIn(page);
   await page.goto(`/projects/${world.projectId}/automations/new?starts=schedule`);
@@ -135,7 +135,7 @@ test("F-106: an admin creates a schedule from a preset in a zone, sees its next 
   await expect(page.getByTestId("pause-notice")).toHaveCount(0);
 });
 
-test("F-011: a member reads the automations, with no switch to flip and nothing to edit", { tag: "@desktop-only" }, async ({ browser }) => {
+test("F-011/c1: a member reads the automations, with no switch to flip and nothing to edit", { tag: "@desktop-only" }, async ({ browser }) => {
   const world = await seedAutomationsWorld(viewer);
   const page = await signedInPage(browser, viewer);
   await page.goto(`/projects/${world.projectId}/automations`);
@@ -148,7 +148,7 @@ test("F-011: a member reads the automations, with no switch to flip and nothing 
   await page.context().close();
 });
 
-test("F-011: a rule its hourly limit paused waits on Home for the project's admins until it's resumed", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-011/c1: a rule its hourly limit paused waits on Home for the project's admins until it's resumed", { tag: "@desktop-only" }, async ({ page }) => {
   const paused = await seedPausedRule("Docs fixes");
   await signIn(page);
   const homeRow = page.getByTestId("paused-rule").filter({ hasText: "Docs fixes paused after 20 starts in an hour" });

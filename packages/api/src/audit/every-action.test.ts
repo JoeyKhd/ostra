@@ -344,7 +344,7 @@ const entriesOf = (action: AuditAction, since: Date) =>
   harness.test.db.auditEntry.findMany({ where: { organizationId: orgA(), action, createdAt: { gte: since } }, orderBy: { createdAt: "desc" } });
 
 describe("every action is recorded with who and when, in its change's transaction (F-073)", () => {
-  it.each(cases.map((one) => [one.action, one] as const))("F-073: %s is recorded with who and when", async (_action, one) => {
+  it.each(cases.map((one) => [one.action, one] as const))("F-073/c1: %s is recorded with who and when", async (_action, one) => {
     const actor = one.actor();
     const account = await harness.test.db.user.findUniqueOrThrow({ where: { id: actor.userId } });
 
@@ -369,7 +369,7 @@ describe("every action is recorded with who and when, in its change's transactio
     expect(await entriesOf(one.action, since)).toEqual([]);
   });
 
-  it("F-073: an entry keeps the actor's name as it was, so a removed member's entries still read", async () => {
+  it("F-073/c1: an entry keeps the actor's name as it was, so a removed member's entries still read", async () => {
     const before = new Date(Date.now() - 1);
     await (await harness.as(admin())).pools.create({ name: unique("named") });
     const [entry] = await entriesOf("pool.created", before);
@@ -383,7 +383,7 @@ describe("every action is recorded with who and when, in its change's transactio
     }
   });
 
-  it("F-073: no entry's data holds content: the prompts, the join tokens and the model token are in none, by value", async () => {
+  it("F-073/c1: no entry's data holds content: the prompts, the join tokens and the model token are in none, by value", async () => {
     expect(content.length).toBeGreaterThan(3);
     const all = JSON.stringify(await harness.test.db.auditEntry.findMany());
     for (const value of [...content, "sk-world-model-token-0123456789abcdef", "WORLD-KEY-BODY-0123456789", "whsec-world-0123456789"]) {
@@ -393,7 +393,7 @@ describe("every action is recorded with who and when, in its change's transactio
 });
 
 describe("who acted (F-073)", () => {
-  it("F-073: a runner's entry carries the runner's name, and the system's carries ostra's", async () => {
+  it("F-073/c1: a runner's entry carries the runner's name, and the system's carries ostra's", async () => {
     const name = unique("named-runner");
     const runnerId = await seedPersonalRunner(harness, harness.fixture.a.admin.id, name);
     const organizationId = organizationIdSchema.parse(orgA());
@@ -408,7 +408,7 @@ describe("who acted (F-073)", () => {
 });
 
 describe("append-only (F-073, ADR 0054)", () => {
-  it("F-073: milestone 2's retention sweep deletes a finished task's history and leaves every audit entry, however old", async () => {
+  it("F-073/c1: milestone 2's retention sweep deletes a finished task's history and leaves every audit entry, however old", async () => {
     const organizationId = organizationIdSchema.parse(orgA());
     const old = new Date(Date.now() - 400 * 86_400_000);
     const task = await seedTask(harness, { organizationId: orgA(), projectId, state: "stopped" });

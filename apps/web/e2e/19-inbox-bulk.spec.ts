@@ -11,7 +11,7 @@ import { chooseTheme, seedBulkWorld, shootM6 } from "./m6.ts";
 
 const tick = (page: Page, key: string) => page.getByRole("checkbox", { name: `Select ${key}` }).click();
 
-test("F-107, F-010: a member ticks four tickets and starts them in one action, and the one that has a task is skipped with its reason", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-107/c1, F-010/c2: a member ticks four tickets and starts them in one action, and the one that has a task is skipped with its reason", { tag: "@desktop-only" }, async ({ page }) => {
   const { projectId, keys } = await seedBulkWorld();
   await signIn(page);
   await page.goto(`/projects/${projectId}/inbox`);
@@ -40,7 +40,7 @@ test("F-107, F-010: a member ticks four tickets and starts them in one action, a
   for (const key of [keys.two, keys.three, keys.four]) await expect(page.locator(`[data-ticket="${key}"]`)).toContainText(/Queued|Preparing|Running/);
 });
 
-test("F-077: a parent starts one task per sub-issue, and its page follows its children as they move", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-077/c2: a parent starts one task per sub-issue, and its page follows its children as they move", { tag: "@desktop-only" }, async ({ page }) => {
   const { projectId, parentTicketId, keys } = await seedBulkWorld();
   await signIn(page);
   await page.goto(`/projects/${projectId}/inbox?ticket=${keys.parent}`);

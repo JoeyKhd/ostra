@@ -27,7 +27,7 @@ const paragraphLed = (markdown: string, lead: string): string => {
 };
 
 describe("the compose file's runner and the Docker socket", () => {
-  it("F-001: the compose pool runner mounts the Docker socket, and the docs say it is root on that machine and pools belong on dedicated hosts", async () => {
+  it("F-001/c3: the compose pool runner mounts the Docker socket, and the docs say it is root on that machine and pools belong on dedicated hosts", async () => {
     const compose = await readFile(path.join(repoRoot, "deploy", "compose.yaml"), "utf8");
     const runner = serviceBlock(compose, "runner");
     expect(runner).toMatch(/OSTRA_RUNNER_EXECUTOR: docker\n/);

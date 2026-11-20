@@ -160,7 +160,7 @@ describe("a budget's month", () => {
 describe("the review check", () => {
   const pending: ReviewCheckLifecycle = { state: "pending", headSha: head, reason: "x" };
 
-  it("F-104: moves both ways per head, a new head is pending again, and an old head's evaluation is refused", () => {
+  it("F-104/c6: moves both ways per head, a new head is pending again, and an old head's evaluation is refused", () => {
     const passed = transitionReviewCheck(pending, { type: "evaluated", headSha: head, verdict: { passed: true, approverMemberId: member("r") } });
     expect(passed).toEqual({ ok: true, state: { state: "passed", headSha: head, approverMemberId: member("r") } });
     const back = passed.ok ? transitionReviewCheck(passed.state, { type: "evaluated", headSha: head, verdict: { passed: false, reason: "changes requested" } }) : passed;
@@ -258,7 +258,7 @@ describe("the budget gate", () => {
     expect([...turnOrigins]).toEqual(["dispatch", "reopen", "message", "diff-comments", "update-branch", "pr-comment", "keep-working", "closing-turn", "automatic-round", "changes-requested", "linear-follow-up"]);
   });
 
-  it("F-037: every origin is open at 79%, 80% and 99%, held at 100%, and open again across a month's end", () => {
+  it("F-037/c4: every origin is open at 79%, 80% and 99%, held at 100%, and open again across a month's end", () => {
     for (const origin of turnOrigins) {
       expectGate(origin);
     }
@@ -303,7 +303,7 @@ describe("Insights' six figures", () => {
     { taskId: t2, repoId: r2, openedAt: day(20), mergedAt: day(21), closedUnmergedAt: null },
   ];
 
-  it("F-108: counts PRs opened, merged and closed, and the merge rate, over a fixture", () => {
+  it("F-108/c1: counts PRs opened, merged and closed, and the merge rate, over a fixture", () => {
     expect(prsOpened(prs, period)).toBe(4);
     expect(prsMerged(prs, period)).toBe(2);
     expect(prsClosedUnmerged(prs, period)).toBe(1);
@@ -311,7 +311,7 @@ describe("Insights' six figures", () => {
     expect(mergeRate(prs, { start: day(1), end: day(2) })).toBeNull();
   });
 
-  it("F-108: takes the median time to a first PR over code tasks whose first PR opened in the period", () => {
+  it("F-108/c1: takes the median time to a first PR over code tasks whose first PR opened in the period", () => {
     const tasks = [
       { taskId: t1, kind: "code", createdAt: day(10) },
       { taskId: t2, kind: "code", createdAt: day(7) },
@@ -324,7 +324,7 @@ describe("Insights' six figures", () => {
     expect(median([])).toBeNull();
   });
 
-  it("F-108: totals the time waiting on people, with the median per item and per reason", () => {
+  it("F-108/c1: totals the time waiting on people, with the median per item and per reason", () => {
     const hour = 3_600_000;
     const figure = timeWaiting(
       [
@@ -343,7 +343,7 @@ describe("Insights' six figures", () => {
     expect(figure.byReason.has("plan")).toBe(false);
   });
 
-  it("F-108: sums tokens and spend from SpendDaily, by project and by model", () => {
+  it("F-108/c1: sums tokens and spend from SpendDaily, by project and by model", () => {
     const m1 = modelIdSchema.parse("m1");
     const m2 = modelIdSchema.parse("m2");
     const p2 = projectIdSchema.parse("p2");
@@ -387,7 +387,7 @@ describe("the secret scan", () => {
     expect(Object.keys(samples).sort()).toEqual(credentialShapes.map((shape) => shape.kind).sort());
   });
 
-  it("F-109: refuses every credential shape and every model-control token, naming the kind and never the value", () => {
+  it("F-109/c4: refuses every credential shape and every model-control token, naming the kind and never the value", () => {
     for (const [kind, text] of Object.entries(samples)) {
       const result = scanMemoryText([text], []);
       expect(result.ok, kind).toBe(false);
@@ -401,13 +401,13 @@ describe("the secret scan", () => {
     }
   });
 
-  it("F-109: refuses the organization's own secret values, exactly, and never names which", () => {
+  it("F-109/c4: refuses the organization's own secret values, exactly, and never names which", () => {
     expect(scanMemoryText(["the staging password is s3cr3t-staging-value"], ["s3cr3t-staging-value"])).toEqual({ ok: false, found: [ORGANIZATION_SECRET_KIND] });
     // A value too short to be told from ordinary text is ignored.
     expect(scanMemoryText(["use the dev db"], ["dev"]).ok).toBe(true);
   });
 
-  it("F-109: saves the negative controls: notes that talk about secrets and prompts in plain words", () => {
+  it("F-109/c4: saves the negative controls: notes that talk about secrets and prompts in plain words", () => {
     const controls = [
       "Never commit a GitHub token: tokens live in the environment's secrets.",
       "The system prompt tells the agent to search memory first; the system block is rendered by core.",
@@ -438,7 +438,7 @@ const blockNote = (overrides: Partial<BlockNote> & Pick<BlockNote, "noteId">): B
 });
 
 describe("the memory index and block", () => {
-  it("F-110: orders project first, then by last read, then never-read notes by last edit", () => {
+  it("F-110/c5: orders project first, then by last read, then never-read notes by last edit", () => {
     const notes = [
       blockNote({ noteId: note("org-read"), scope: "organization", lastUsedAt: 900 }),
       // Only ever seen in the index: never read, so its recent edit ranks it below a read note.
@@ -452,7 +452,7 @@ describe("the memory index and block", () => {
     expect(built.omitted).toBe(0);
   });
 
-  it("F-110: cuts the index at its count and size, counting what's left out, and keeps \"always\" notes within theirs", () => {
+  it("F-110/c5: cuts the index at its count and size, counting what's left out, and keeps \"always\" notes within theirs", () => {
     const many = Array.from({ length: 12 }, (_, i) => blockNote({ noteId: note(`n-${String(i).padStart(2, "0")}`), updatedAt: 100 - i }));
     const byCount = buildMemoryIndex(many, { indexMaxNotes: 10, indexMaxBytes: 8192, alwaysMaxBytes: 8192 });
     expect(byCount.index).toHaveLength(10);
@@ -468,7 +468,7 @@ describe("the memory index and block", () => {
     expect(built.index.map((entry) => entry.noteId)).toEqual(["always-3"]);
   });
 
-  it("F-110: renders the block as the approved notes, each with its source, and the standing instruction", () => {
+  it("F-110/c6: renders the block as the approved notes, each with its source, and the standing instruction", () => {
     const built = buildMemoryIndex(
       [
         blockNote({ noteId: note("a1"), always: true, title: "Say client, not customer", body: "Always say client.", kind: "term", scope: "organization", source: { kind: "member", memberName: "Ada" } }),
@@ -502,7 +502,7 @@ describe("the memory index and block", () => {
     expect(foldMemoryIntoInstructions(null, noTools)).toBe(noTools.block);
   });
 
-  it("F-109: refuses a stale expected version, saying who saved and which version", () => {
+  it("F-109/c5: refuses a stale expected version, saying who saved and which version", () => {
     expect(checkNoteVersion({ version: 3, lastEditedBy: member("grace") }, 3)).toEqual({ ok: true, nextVersion: 4 });
     expect(checkNoteVersion({ version: 4, lastEditedBy: member("grace") }, 3)).toEqual({ ok: false, code: "conflict", currentVersion: 4, savedBy: "grace" });
   });
@@ -595,7 +595,7 @@ describe("the independent-review evaluator", () => {
   });
   const verdict = (reviews: readonly ReviewLite[]) => evaluateIndependentReview({ reviews, drivers, links, headSha: head });
 
-  it("F-104: passes on a linked non-driver's approval of the current head", () => {
+  it("F-104/c4: passes on a linked non-driver's approval of the current head", () => {
     expect(verdict([review({})])).toEqual({ status: "passed", approverMemberId: "reviewer", approverLogin: "reviewer" });
     // A later comment doesn't change the standing.
     expect(verdict([review({}), review({ state: "commented", submittedAt: 20 })]).status).toBe("passed");
@@ -611,7 +611,7 @@ describe("the independent-review evaluator", () => {
     ["changes requested after an approval", [review({}), review({ state: "changes_requested", submittedAt: 20 })], "changes-requested"],
   ] as const;
 
-  it("F-104: stays pending on a stale, dismissed, bot's, driver's or unlinked approval, and on changes requested after one", () => {
+  it("F-104/c4: stays pending on a stale, dismissed, bot's, driver's or unlinked approval, and on changes requested after one", () => {
     for (const [name, reviews, reason] of pendingCases) {
       expect(verdict(reviews), name).toEqual({ status: "pending", reason });
       expect(pendingReasonWords(reason).length).toBeGreaterThan(0);
@@ -662,7 +662,7 @@ describe("milestone 4's mails", () => {
 // ---------- jobs ----------
 
 describe("milestone 4's jobs", () => {
-  it("F-002: an account mail's job key, which log lines carry, holds no invitation ID: the link's secret", () => {
+  it("F-002/c4: an account mail's job key, which log lines carry, holds no invitation ID: the link's secret", () => {
     const invitationId = "Fk3yqY0d1sJ2bE8xH5tQ-w";
     const key = jobKey("account-mail.send", { organizationId, purpose: "invitation", recordId: invitationId });
     expect(key).not.toContain(invitationId);

@@ -72,7 +72,7 @@ describe("CI's verdict", () => {
 describe("the rounds and their caps", () => {
   const at = (ciRounds: number, reviewRounds: number, automaticTurns: number): RoundCounters => ({ ciRounds, reviewRounds, automaticTurns });
 
-  it("F-101: allows 2 CI rounds and 2 findings rounds, and 4 automatic turns together, before a person has to act", () => {
+  it("F-101/c3: allows 2 CI rounds and 2 findings rounds, and 4 automatic turns together, before a person has to act", () => {
     expect(roundAllowed(NO_ROUNDS, "ci")).toEqual({ kind: "allowed" });
     expect(roundAllowed(at(1, 0, 1), "ci")).toEqual({ kind: "allowed" });
     expect(roundAllowed(at(2, 0, 2), "ci")).toEqual({ kind: "capped", reason: "rounds" });
@@ -90,7 +90,7 @@ describe("the rounds and their caps", () => {
     expect(roundAllowed(counters, "findings").kind).toBe("capped");
   });
 
-  it("F-101: a person's action resets the counters, and a changes-requested round is one", () => {
+  it("F-101/c3: a person's action resets the counters, and a changes-requested round is one", () => {
     const capped = at(2, 2, 4);
     expect(roundAllowed(capped, "ci").kind).toBe("capped");
     expect(resetOnPersonAction()).toEqual(NO_ROUNDS);
@@ -136,7 +136,7 @@ describe("placing findings on a PR", () => {
     expect(body).toContain("doesn't approve or request changes");
   });
 
-  it("F-100: a review's body stays under what GitHub takes, however long the findings off the diff, and counts the ones left out", () => {
+  it("F-100/c3: a review's body stays under what GitHub takes, however long the findings off the diff, and counts the ones left out", () => {
     const long = "x".repeat(4096);
     const findings = Array.from({ length: 30 }, (_, index) => finding({ path: `docs/f${String(index)}.md`, line: 1, title: `Finding ${String(index)}`, body: long }));
     const placed = placeFindings(findings, diff);

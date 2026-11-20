@@ -84,7 +84,7 @@ afterAll(async () => {
 });
 
 describe("services, checks and the snapshot through the API", () => {
-  it("F-094: a project admin edits the services, a member only reads them, and a secret is stored as a reference and never returned", async () => {
+  it("F-094/c1: a project admin edits the services, a member only reads them, and a secret is stored as a reference and never returned", async () => {
     const admin = await harness.as(harness.fixture.a.admin);
     const member = await harness.as(harness.fixture.a.member);
     await expect(member.environments.services.save(service())).rejects.toMatchObject({ code: "FORBIDDEN" });
@@ -127,7 +127,7 @@ describe("services, checks and the snapshot through the API", () => {
     expect(JSON.stringify(harness.logs)).not.toContain(NEW_PASSWORD);
   });
 
-  it("F-051: a service's change, an environment's save and Rebuild each queue one snapshot build; a check's change queues none", async () => {
+  it("F-051/c2: a service's change, an environment's save and Rebuild each queue one snapshot build; a check's change queues none", async () => {
     const admin = await harness.as(harness.fixture.a.admin);
     const { serviceId } = await admin.environments.services.save(service({ name: "cache", image: "redis:7", port: 6379, variables: [], healthCheck: null }));
     await admin.environments.services.save(service({ serviceId, name: "cache", image: "redis:7.4", port: 6379, variables: [], healthCheck: null }));
@@ -148,7 +148,7 @@ describe("services, checks and the snapshot through the API", () => {
     await expect(member.environments.snapshot.rebuild({ projectId })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("F-054: checks list in their order with their repo and timeout; a project admin adds one last, reorders, edits and removes them", async () => {
+  it("F-054/c1: checks list in their order with their repo and timeout; a project admin adds one last, reorders, edits and removes them", async () => {
     const admin = await harness.as(harness.fixture.a.admin);
     const member = await harness.as(harness.fixture.a.member);
     await harness.test.db.check.deleteMany({ where: { projectId } });
@@ -238,7 +238,7 @@ describe("services, checks and the snapshot through the API", () => {
     expect(await member.environments.snapshot.get({ projectId })).toMatchObject({ kind: "host-cache" });
   });
 
-  it("F-094: environments.get flags services with no runner that can start them, with the pools, the runners that can and the executors online, and each service's health on its last box", async () => {
+  it("F-094/c3: environments.get flags services with no runner that can start them, with the pools, the runners that can and the executors online, and each service's health on its last box", async () => {
     const admin = await harness.as(harness.fixture.a.admin);
     const member = await harness.as(harness.fixture.a.member);
     await harness.test.db.service.deleteMany({ where: { projectId } });
@@ -276,7 +276,7 @@ describe("services, checks and the snapshot through the API", () => {
     expect((await member.environments.services.list({ projectId }))[0]).toMatchObject({ serviceId, lastBox: { state: "failed", runnerName: "build-02", reason: "health check timed out" } });
   });
 
-  it("F-094: another organization's environments are invisible", async () => {
+  it("F-094/c1: another organization's environments are invisible", async () => {
     const theirs = await harness.as(harness.fixture.b.admin);
     await expect(theirs.environments.services.list({ projectId })).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(theirs.environments.checks.list({ projectId })).rejects.toMatchObject({ code: "NOT_FOUND" });

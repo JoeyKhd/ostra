@@ -118,7 +118,7 @@ afterAll(async () => {
 });
 
 describe("services and where a task may run (F-094)", () => {
-  it("F-094: a task with a service is never offered to a host runner: it waits, with the online runners in its reason", async () => {
+  it("F-094/c5: a task with a service is never offered to a host runner: it waits, with the online runners in its reason", async () => {
     const host = await runnerOf({ kind: "personal", memberId: fixture.a.member.id }, "host");
     const task = await seedQueuedTask(test.db, world, fixture.a.member, host.runnerId);
     expect(await dispatch(task)).toMatchObject({ ok: false, error: "no-runner" });
@@ -132,7 +132,7 @@ describe("services and where a task may run (F-094)", () => {
     expect(await test.db.command.count({ where: { runnerId: host.runnerId } })).toBe(0);
   });
 
-  it("F-094: in the project's pools, a host runner is passed over and a docker runner gets the task; with only host runners it waits", async () => {
+  it("F-094/c5: in the project's pools, a host runner is passed over and a docker runner gets the task; with only host runners it waits", async () => {
     const poolId = await onlyPool("build-fleet");
     const host = await runnerOf({ kind: "pool", poolId }, "host");
     const waiting = await seedQueuedTask(test.db, world, fixture.a.member, null);

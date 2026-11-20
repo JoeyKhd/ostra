@@ -381,7 +381,7 @@ describe("two web processes on one database (ADR 0035)", () => {
 });
 
 describe("a project restricted under a member", () => {
-  it("F-087: reaches the member once as a change to that project, so the panel drops it at once, and nothing of it after", async () => {
+  it("F-087/c4: reaches the member once as a change to that project, so the panel drops it at once, and nothing of it after", async () => {
     const { a } = harness.fixture;
     const project = await harness.test.db.project.create({ data: { organizationId: a.organization.id, name: "soon-restricted", slug: `soon-restricted-${randomUUID().slice(0, 6)}`, access: "open" } });
     const member = watch(await harness.contextOf(a.member), {});

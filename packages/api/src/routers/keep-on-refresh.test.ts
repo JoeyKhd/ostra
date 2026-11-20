@@ -47,7 +47,7 @@ afterAll(async () => {
 });
 
 describe("the keep rule on a provider's refresh", () => {
-  it("F-135: a refresh that makes a second provider on the list serve a model keeps the one serving it, recorded as kept", async () => {
+  it("F-135/c6: a refresh that makes a second provider on the list serve a model keeps the one serving it, recorded as kept", async () => {
     const { a } = harness.fixture;
     const organizationId = a.organization.id;
     const admin = await harness.as(a.admin);

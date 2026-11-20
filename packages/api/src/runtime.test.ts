@@ -81,7 +81,7 @@ describe("a fresh install with no setting", () => {
     install = await freshInstall();
   });
 
-  it("F-001, F-049: a fresh install with no setting seeds demo@demo.com / demo, the instance admin of a first organization named Demo", async () => {
+  it("F-001/c2,c4, F-049/c3: a fresh install with no setting seeds demo@demo.com / demo, the instance admin of a first organization named Demo", async () => {
     const { logs } = await start(install);
     const { db } = install.test;
     const user = await db.user.findUniqueOrThrow({ where: { email: "demo@demo.com" } });
@@ -107,7 +107,7 @@ describe("a fresh install with no setting", () => {
     expect(lines).not.toContain('"demo"');
   });
 
-  it("F-001: stores the default password hashed, and signs in with it although it is under the length rule", async () => {
+  it("F-001/c4: stores the default password hashed, and signs in with it although it is under the length rule", async () => {
     const account = await install.test.db.account.findFirstOrThrow({ where: { providerId: "credential" } });
     expect(account.password).not.toBeNull();
     expect(account.password).not.toContain("demo");
@@ -123,7 +123,7 @@ describe("a fresh install with no setting", () => {
     }
   });
 
-  it("F-001: never seeds again: a restart finds the account and creates nothing", async () => {
+  it("F-001/c4: never seeds again: a restart finds the account and creates nothing", async () => {
     const { logs } = await start(install);
     expect(seededLines(logs)).toEqual([]);
     expect(await install.test.db.user.count()).toBe(1);
@@ -138,7 +138,7 @@ describe("a fresh install with no setting", () => {
 });
 
 describe("two replicas starting at once on a fresh install", () => {
-  it("F-001, F-049: two replicas starting at once on a fresh install seed exactly one admin, one organization and one member", async () => {
+  it("F-001/c5, F-049/c3: two replicas starting at once on a fresh install seed exactly one admin, one organization and one member", async () => {
     const install = await freshInstall();
     const started = await Promise.all([start(install), start(install)]);
     expect(started.flatMap(({ logs }) => seededLines(logs))).toHaveLength(1);
@@ -151,7 +151,7 @@ describe("two replicas starting at once on a fresh install", () => {
 });
 
 describe("a fresh install with OSTRA_ADMIN_* set", () => {
-  it("F-001: a fresh install with OSTRA_ADMIN_* set seeds that account and organization, with no forced change, and the routers work at once", async () => {
+  it("F-001/c4: a fresh install with OSTRA_ADMIN_* set seeds that account and organization, with no forced change, and the routers work at once", async () => {
     const install = await freshInstall();
     const { runtime } = await start(install, {
       OSTRA_ADMIN_EMAIL: "Ada@Example.com",
@@ -210,7 +210,7 @@ describe("an install upgraded with the retired OSTRA_OPEN_SIGNUP_* settings stil
     started = await start(install, { ...retired, ...admin });
   });
 
-  it("F-002: starts with them set, warns once for each that it ignores it, and still refuses sign-up to anyone", async () => {
+  it("F-002/c3: starts with them set, warns once for each that it ignores it, and still refuses sign-up to anyone", async () => {
     const { runtime, logs } = started;
     expect(logs.filter((record) => record.message === "settings.retired_ignored").map((record) => [record.level, record.fields["setting"]])).toEqual([
       ["warn", "OSTRA_OPEN_SIGNUP_ACCOUNTS"],

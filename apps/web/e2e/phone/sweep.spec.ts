@@ -65,12 +65,12 @@ const sweep = async (page: Page, routes: readonly PanelRoute[]): Promise<Problem
   return problems;
 };
 
-test("F-075: the sweep names every route of the panel", async () => {
+test("F-075/c1: the sweep names every route of the panel", async () => {
   const named = new Set([...memberRoutes(world), ...visitorRoutes(world)].map((route) => route.pattern));
   expect((await appRoutePatterns()).filter((pattern) => !named.has(pattern))).toEqual([]);
 });
 
-test("F-075: no route scrolls sideways at 390 px, and every control is at least 44 px tall to touch", async ({ page }) => {
+test("F-075/c1: no route scrolls sideways at 390 px, and every control is at least 44 px tall to touch", async ({ page }) => {
   test.setTimeout(240_000);
   await signIn(page, world.username);
   const member = await sweep(page, memberRoutes(world));
@@ -82,7 +82,7 @@ test("F-075: no route scrolls sideways at 390 px, and every control is at least 
   expect.soft(problems.filter((problem) => problem.small.length > 0), "a control is under 44 px").toEqual([]);
 });
 
-test("F-075: the navigation drawer scrolls, so its last row, the account menu, is in reach by tap", async ({ page }) => {
+test("F-075/c1: the navigation drawer scrolls, so its last row, the account menu, is in reach by tap", async ({ page }) => {
   // A small phone, 320 × 568: an admin's drawer holds more rows than its screen does.
   await page.setViewportSize({ width: 320, height: 568 });
   await signIn(page, world.username);
@@ -104,7 +104,7 @@ const expectTaskState = async (page: Page, taskId: string, state: string): Promi
   await expect(page.getByTestId("task-doing")).toHaveAttribute("data-state", state);
 };
 
-test("F-075: approve, answer and reopen work by tap from Needs you to the task's new state", async ({ page }) => {
+test("F-075/c1: approve, answer and reopen work by tap from Needs you to the task's new state", async ({ page }) => {
   await signIn(page, world.username);
 
   // Approve: the approval opens in the list; one tap on "Approve once".

@@ -43,7 +43,7 @@ const taskOn = (h: Harness, prompt: string, approvalRules: readonly ApprovalRule
   h.taskFor(prompt, { agent: { ...taskSpecFixture.agent, adapter: "fake-acp-agent-rich", apiFormat: "anthropic-messages", approvalRules: [...approvalRules] } });
 
 describe("subagents on the wire (F-138)", () => {
-  it("F-138: a subagent's start, states, calls and words reach the server as its own, and an approval inside it names it", async () => {
+  it("F-138/c4: a subagent's start, states, calls and words reach the server as its own, and an approval inside it names it", async () => {
     const h = await start();
     const { spec } = taskOn(h, fakeMarker("subagent-tree", "ask"), [TESTS_RULE]);
     h.dispatch(spec);
@@ -70,7 +70,7 @@ describe("subagents on the wire (F-138)", () => {
     expect(h.gateway.protocolErrors).toEqual([]);
   }, 120_000);
 
-  it("F-138: a minor-5 server gets no subagent's start or state and no subagent field: the calls arrive flat, and the session's numbers have no gap", async () => {
+  it("F-138/c7: a minor-5 server gets no subagent's start or state and no subagent field: the calls arrive flat, and the session's numbers have no gap", async () => {
     const h = await start({ serverMinor: 5 });
     const { spec } = taskOn(h, fakeMarker("subagent-tree"));
     h.dispatch(spec);

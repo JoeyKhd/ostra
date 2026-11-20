@@ -113,7 +113,7 @@ const makeDispatcher = (spec: TaskSpec, extra: Partial<BoxDispatcherOptions> = {
   });
 
 describe("a pool runner's box with services (F-094)", () => {
-  it("F-094: the services get their secrets with the box's task token, start on the box's network with them, and their health reaches the sidecar in the token folder", async () => {
+  it("F-094/c2: the services get their secrets with the box's task token, start on the box's network with them, and their health reaches the sidecar in the token folder", async () => {
     const asked: Asked[] = [];
     const dispatcher = makeDispatcher(servicesSpec, {
       serviceSecrets: (taskId, leaseEpoch, taskToken) => {
@@ -150,7 +150,7 @@ describe("a pool runner's box with services (F-094)", () => {
     expect(await readdir(path.join(root, "boxes"))).toEqual([]);
   }, 30_000);
 
-  it("F-094: a service that isn't healthy in time is reported failed to the sidecar, with words", async () => {
+  it("F-094/c3: a service that isn't healthy in time is reported failed to the sidecar, with words", async () => {
     const dispatcher = makeDispatcher(servicesSpec, { serviceSecrets: () => Promise.resolve({ ok: true, value: secrets }), servicesWithinMs: 300 });
     await dispatcher.handlers.dispatch(dispatchOf("box-slow"));
     const file = path.join(root, "boxes", "box-slow", "services.json");
@@ -161,7 +161,7 @@ describe("a pool runner's box with services (F-094)", () => {
     await Promise.all(dispatcher.boxes());
   }, 30_000);
 
-  it("F-094: no box when the services' secrets can't be read, or there's no way to read them", async () => {
+  it("F-094/c2: no box when the services' secrets can't be read, or there's no way to read them", async () => {
     for (const serviceSecrets of [
       (): Promise<LinkResult<readonly ServiceSecrets[]>> => Promise.resolve({ ok: false, failure: { kind: "stale-lease", message: "stale" } }),
       undefined,
@@ -173,7 +173,7 @@ describe("a pool runner's box with services (F-094)", () => {
     }
   }, 30_000);
 
-  it("F-094: a spec without services asks for no secrets and writes no report", async () => {
+  it("F-094/c2: a spec without services asks for no secrets and writes no report", async () => {
     let asked = 0;
     const dispatcher = makeDispatcher(taskSpecFixture, {
       serviceSecrets: () => {
@@ -200,7 +200,7 @@ const fakeSnapshots = (build: () => Promise<SnapshotBuildResult>, built: Snapsho
 });
 
 describe("a pool runner's box from a snapshot (F-051)", () => {
-  it("F-051: the agent's container starts from the snapshot this host keeps, by its digest; one it doesn't keep, or of another digest, starts from the base image", async () => {
+  it("F-051/c3: the agent's container starts from the snapshot this host keeps, by its digest; one it doesn't keep, or of another digest, starts from the base image", async () => {
     const cases = [
       { spec: specWith({ snapshot: { kind: "image", snapshotId, imageRef: "ostra-snapshot/project:ready", digest: DIGEST } }), image: DIGEST },
       { spec: specWith({ snapshot: { kind: "image", snapshotId, imageRef: "ostra-snapshot/project:ready", digest: imageDigestSchema.parse(`sha256:${"e".repeat(64)}`) } }), image: "ostra/base:test" },
@@ -254,7 +254,7 @@ describe("a snapshot build on a pool runner (F-051)", () => {
     return command;
   };
 
-  it("F-051: a build is accepted at once, built once however often it's sent, and its result goes up as a runner event", async () => {
+  it("F-051/c1: a build is accepted at once, built once however often it's sent, and its result goes up as a runner event", async () => {
     const events: TaskEvent[] = [];
     const built: SnapshotId[] = [];
     let finish: (result: SnapshotBuildResult) => void = () => undefined;

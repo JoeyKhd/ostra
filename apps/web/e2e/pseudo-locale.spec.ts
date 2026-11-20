@@ -106,7 +106,7 @@ const pass = async (page: Page, routes: readonly PanelRoute[]): Promise<Leftover
   return leftovers;
 };
 
-test("F-083: the pseudo-locale pass finds no unwrapped text on any route", async ({ page }) => {
+test("F-083/c1: the pseudo-locale pass finds no unwrapped text on any route", async ({ page }) => {
   await signIn(page, world.username);
   const member = await pass(page, [...memberRoutes(world), { pattern: "/tasks/[task-id] (an approval)", path: `/tasks/${world.approval.taskId}` }, { pattern: "/tasks/[task-id] (a question)", path: `/tasks/${world.question.taskId}` }]);
   await page.context().clearCookies();
@@ -114,7 +114,7 @@ test("F-083: the pseudo-locale pass finds no unwrapped text on any route", async
   expect([...member, ...visitor]).toEqual([]);
 });
 
-test("F-083: a refusal the panel shows reaches it as a code, worded through t: a role refusal and a budget stop", async ({ page }) => {
+test("F-083/c1: a refusal the panel shows reaches it as a code, worded through t: a role refusal and a budget stop", async ({ page }) => {
   // A budget stop: the task stopped at its spend cap (`stopReason: spend_cap`, a code), and the
   // page words it in its limit block.
   await signIn(page, world.username);

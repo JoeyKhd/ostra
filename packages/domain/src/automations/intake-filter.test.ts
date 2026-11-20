@@ -24,14 +24,14 @@ const ticket: FilterTicket = {
 const filter = (fields: Partial<Record<keyof IntakeFilter, unknown>>): IntakeFilter => intakeFilterSchema.parse(fields);
 
 describe("an intake rule's filter", () => {
-  it("F-011: matches labels, any of or all of, case-folded, with a near miss for each", () => {
+  it("F-011/c1: matches labels, any of or all of, case-folded, with a near miss for each", () => {
     expect(matchesFilter(ticket, filter({ labels: { mode: "any", names: ["bug", "frontend"] } }))).toBe(true);
     expect(matchesFilter(ticket, filter({ labels: { mode: "any", names: ["frontend", "docs"] } }))).toBe(false);
     expect(matchesFilter(ticket, filter({ labels: { mode: "all", names: ["BUG", " backend "] } }))).toBe(true);
     expect(matchesFilter(ticket, filter({ labels: { mode: "all", names: ["bug", "frontend"] } }))).toBe(false);
   });
 
-  it("F-011: a label exclusion keeps a ticket out, whatever else matches", () => {
+  it("F-011/c1: a label exclusion keeps a ticket out, whatever else matches", () => {
     const included = filter({ labels: { mode: "any", names: ["bug"] } });
     expect(matchesFilter(ticket, included)).toBe(true);
     expect(matchesFilter(ticket, filter({ labels: { mode: "any", names: ["bug"] }, excludeLabels: ["Backend"] }))).toBe(false);
@@ -42,7 +42,7 @@ describe("an intake rule's filter", () => {
     expect(matchesFilter({ ...ticket, labels: ["docs"] }, filter({ excludeLabels: ["backend"] }))).toBe(true);
   });
 
-  it("F-011: matches a status by ID or by category, with a near miss for each", () => {
+  it("F-011/c1: matches a status by ID or by category, with a near miss for each", () => {
     expect(matchesFilter(ticket, filter({ status: { by: "id", ids: ["status-todo"] } }))).toBe(true);
     expect(matchesFilter(ticket, filter({ status: { by: "id", ids: ["status-doing"] } }))).toBe(false);
     expect(matchesFilter(ticket, filter({ status: { by: "category", categories: ["open", "started"] } }))).toBe(true);
@@ -50,7 +50,7 @@ describe("an intake rule's filter", () => {
     expect(matchesFilter({ ...ticket, statusId: null, statusCategory: null }, filter({ status: { by: "category", categories: ["open"] } }))).toBe(false);
   });
 
-  it("F-011: matches an assignee, nobody, or ostra's app, with a near miss for each", () => {
+  it("F-011/c1: matches an assignee, nobody, or ostra's app, with a near miss for each", () => {
     expect(matchesFilter(ticket, filter({ assignees: [{ kind: "user", userId: "user-ana" }] }))).toBe(true);
     expect(matchesFilter(ticket, filter({ assignees: [{ kind: "user", userId: "user-bo" }] }))).toBe(false);
     expect(matchesFilter({ ...ticket, assigneeId: null }, filter({ assignees: [{ kind: "unassigned" }] }))).toBe(true);
@@ -61,7 +61,7 @@ describe("an intake rule's filter", () => {
     expect(matchesFilter(ticket, app, { appUserId: "user-ostra" })).toBe(false);
   });
 
-  it("F-011: matches a board and the tracker's own project, with a near miss for each", () => {
+  it("F-011/c1: matches a board and the tracker's own project, with a near miss for each", () => {
     expect(matchesFilter(ticket, filter({ boardIds: [boardA] }))).toBe(true);
     expect(matchesFilter(ticket, filter({ boardIds: [boardB] }))).toBe(false);
     expect(matchesFilter(ticket, filter({ trackerProjectIds: ["proj-payments"] }))).toBe(true);
@@ -69,7 +69,7 @@ describe("an intake rule's filter", () => {
     expect(matchesFilter({ ...ticket, trackerProjectId: null }, filter({ trackerProjectIds: ["proj-payments"] }))).toBe(false);
   });
 
-  it("F-011: needs every condition it names, and never matches a closed ticket", () => {
+  it("F-011/c1: needs every condition it names, and never matches a closed ticket", () => {
     const all = filter({ labels: { mode: "any", names: ["bug"] }, status: { by: "category", categories: ["open"] }, boardIds: [boardA] });
     expect(matchesFilter(ticket, all)).toBe(true);
     expect(matchesFilter({ ...ticket, boardId: boardB }, all)).toBe(false);

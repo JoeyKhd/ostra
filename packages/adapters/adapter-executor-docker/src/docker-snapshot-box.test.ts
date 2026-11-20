@@ -103,7 +103,7 @@ const commitUpstream = async (file: string): Promise<string> => {
 const exists = async (file: string): Promise<boolean> => (await stat(file).catch(() => null)) !== null;
 
 describe("a docker box from a snapshot (F-051)", () => {
-  it("F-051: a box whose volume came from its snapshot starts from the checkouts, at the default branch's current head, with an incremental setup; one without it falls back to a full setup and says so", async () => {
+  it("F-051/c3,c7: a box whose volume came from its snapshot starts from the checkouts, at the default branch's current head, with an incremental setup; one without it falls back to a full setup and says so", async () => {
     const taskRoot = path.join(root, "task-a");
     const executor = new DockerExecutor({ taskRoot, bridge });
     await fillVolumeFromSnapshot(taskRoot, snapshotId);
@@ -142,7 +142,7 @@ describe("a docker box from a snapshot (F-051)", () => {
     await executor.release(other, "requested");
   }, 120_000);
 
-  it("F-051: a volume filled from another snapshot isn't used: the box falls back", async () => {
+  it("F-051/c3: a volume filled from another snapshot isn't used: the box falls back", async () => {
     const taskRoot = path.join(root, "task-b");
     const executor = new DockerExecutor({ taskRoot, bridge });
     await fillVolumeFromSnapshot(taskRoot, "an-older-snapshot");
@@ -155,7 +155,7 @@ describe("a docker box from a snapshot (F-051)", () => {
     await executor.release(box, "requested");
   }, 120_000);
 
-  it("F-120: the executor hands a build's push to the runner's snapshots, and without one builds as milestone 3 did", async () => {
+  it("F-120/c2,c3: the executor hands a build's push to the runner's snapshots, and without one builds as milestone 3 did", async () => {
     const pushes: (string | null)[] = [];
     const executor = new DockerExecutor({
       taskRoot: path.join(root, "task-push"),
@@ -179,7 +179,7 @@ describe("a docker box from a snapshot (F-051)", () => {
 describe("a docker box's services (F-094)", () => {
   const db: TaskSpecService = { name: "postgres", image: "postgres:17", port: 5432, variables: [], healthCheck: "pg_isready" };
 
-  it("F-094: the sidecar waits for the pool runner's report of each service before the setup, and a failed service stops the setup", async () => {
+  it("F-094/c3: the sidecar waits for the pool runner's report of each service before the setup, and a failed service stops the setup", async () => {
     const taskRoot = path.join(root, "task-c");
     const servicesFile = path.join(root, "token-c", "services.json");
     await mkdir(path.dirname(servicesFile), { recursive: true });
@@ -213,7 +213,7 @@ describe("a docker box's services (F-094)", () => {
     await executor.release(failing, "requested");
   }, 120_000);
 
-  it("F-094: with no report in time, the service failed with the reason ostra shows", async () => {
+  it("F-094/c3: with no report in time, the service failed with the reason ostra shows", async () => {
     const taskRoot = path.join(root, "task-d");
     const executor = new DockerExecutor({ taskRoot, bridge, servicesFile: path.join(root, "token-d", "services.json"), servicesWaitMs: 500 });
     const box = newBox();

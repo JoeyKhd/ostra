@@ -8,7 +8,7 @@ const NOW = new Date(2026, 10, 19, 14, 7, 33).getTime();
 const DAY = 24 * 60 * 60 * 1000;
 
 describe("the audit log's filters", () => {
-  it("F-073: a period is a range of whole days in the viewer's zone, and custom days include the last", () => {
+  it("F-073/c2: a period is a range of whole days in the viewer's zone, and custom days include the last", () => {
     const today = new Date(2026, 10, 19).getTime();
     expect(periodRange("today", NOW, { from: null, to: null })).toEqual({ from: today });
     expect(periodRange("7d", NOW, { from: null, to: null })).toEqual({ from: new Date(2026, 10, 13).getTime() });
@@ -53,7 +53,7 @@ describe("the audit log's words", () => {
 describe("what an entry's entity is called (audit-log.md, the Entity column)", () => {
   const id = "0196f1a0-5b2c-7d3e-8f40-123456789abc";
 
-  it("F-073: the label the API gives, mono for a ticket key and pool, runner and provider names, sans for people, notes, projects and a task's title", () => {
+  it("F-073/c2: the label the API gives, mono for a ticket key and pool, runner and provider names, sans for people, notes, projects and a task's title", () => {
     expect(entityLabelOf({ entity: "task", entityId: id, entityLabel: "CALC-161" })).toEqual({ text: "CALC-161", full: "CALC-161", mono: true });
     expect(entityLabelOf({ entity: "task", entityId: id, entityLabel: "Fix the cart total" })).toEqual({ text: "Fix the cart total", full: "Fix the cart total", mono: false });
     expect(entityLabelOf({ entity: "member", entityId: id, entityLabel: "Sam Rivera" })).toMatchObject({ text: "Sam Rivera", mono: false });
@@ -70,13 +70,13 @@ describe("what an entry's entity is called (audit-log.md, the Entity column)", (
     expect(entityLabelOf({ entity: null, entityId: null, entityLabel: null })).toBeNull();
   });
 
-  it("F-073: a kind is named by the target's word, and the panel's leads with a capital", () => {
+  it("F-073/c2: a kind is named by the target's word, and the panel's leads with a capital", () => {
     expect(["runner-pool", "model-provider", "memory-note", "agent-profile", "task", "member", "budget"].map(entityKindWord)).toEqual(["pool", "provider", "note", "profile", "task", "member", "budget"]);
     expect(entityKindTitle("task")).toBe("Task");
     expect(entityKindTitle("runner-pool")).toBe("Pool");
   });
 
-  it("F-073: a pool, a provider, a profile and a note link to their pages, by the kinds the log stores", () => {
+  it("F-073/c2: a pool, a provider, a profile and a note link to their pages, by the kinds the log stores", () => {
     expect(entityHref({ entity: "runner-pool", entityId: id, taskId: null })).toBe("/organization/runners");
     expect(entityHref({ entity: "model-provider", entityId: id, taskId: null })).toBe("/organization/models");
     expect(entityHref({ entity: "agent-profile", entityId: id, taskId: null })).toBe(`/organization/agent-profiles/${id}`);
@@ -85,7 +85,7 @@ describe("what an entry's entity is called (audit-log.md, the Entity column)", (
 });
 
 describe("the Actor filter (audit-log.md, Filters)", () => {
-  it("F-073: lists the members, removed ones last with (removed), then Runners and System", () => {
+  it("F-073/c2: lists the members, removed ones last with (removed), then Runners and System", () => {
     const choices = actorChoices([{ memberId: "m-1", name: "Sam Rivera" }], [{ memberId: "m-2", name: "Rae Okafor" }]);
     expect(choices.map((choice) => [choice.value, choice.label, choice.muted ?? false])).toEqual([
       ["m-1", "Sam Rivera", false],
@@ -95,7 +95,7 @@ describe("the Actor filter (audit-log.md, Filters)", () => {
     ]);
   });
 
-  it("F-073: a member's choice filters by the member, Runners by every runner and System by the system", () => {
+  it("F-073/c2: a member's choice filters by the member, Runners by every runner and System by the system", () => {
     expect(actorFilterOf(null)).toBeNull();
     expect(actorFilterOf("m-1")).toEqual({ actorId: "m-1" });
     expect(actorFilterOf(ACTOR_KIND_CHOICES.runners)).toEqual({ actorKind: "runner" });

@@ -135,7 +135,7 @@ const restrictedTask = async (modelId: ModelId = catalogModelId): Promise<Seeded
 };
 
 describe("the access matrix (F-137)", () => {
-  it("F-137: providers.updateModel's reasoning and the model list are an organization admin's alone", async () => {
+  it("F-137/c4: providers.updateModel's reasoning and the model list are an organization admin's alone", async () => {
     const controls: ReasoningControls = { supported: true, effort: ["low", "high"] };
     await expect((await admin()).providers.updateModel({ modelId: customModelId, reasoning: controls })).resolves.toEqual({ id: customModelId });
     for (const who of [projectAdmin, harness.fixture.a.insider, nonDriver, harness.fixture.a.member]) {
@@ -166,7 +166,7 @@ describe("the access matrix (F-137)", () => {
     expect((await (await admin()).agentProfiles.get({ profileId: saved.profileId })).effort).toBe("high");
   });
 
-  it("F-137: tasks.get and tasks.setEffort: the driver changes the level; admins and other members are refused; an outsider sees nothing", async () => {
+  it("F-137/c7: tasks.get and tasks.setEffort: the driver changes the level; admins and other members are refused; an outsider sees nothing", async () => {
     const task = await restrictedTask();
     const driver = await harness.as(harness.fixture.a.insider);
     const seen = await driver.tasks.get({ taskId: task.taskId });
@@ -196,7 +196,7 @@ describe("the access matrix (F-137)", () => {
 });
 
 describe("levels the model doesn't have (F-137)", () => {
-  it("F-137: a level outside the model's is refused on a save and on setEffort, naming the levels", async () => {
+  it("F-137/c9: a level outside the model's is refused on a save and on setEffort, naming the levels", async () => {
     const a = await admin();
     // GPT-5.5 has no max.
     await expect(a.agentProfiles.save(profileInput({ effort: "max" }))).rejects.toMatchObject({
@@ -220,7 +220,7 @@ describe("levels the model doesn't have (F-137)", () => {
     expect(await harness.test.db.event.count({ where: { taskId: task.taskId, kind: "effort.changed" } })).toBe(0);
   });
 
-  it("F-137: a stored level the model lost shows the level it runs at", async () => {
+  it("F-137/c9: a stored level the model lost shows the level it runs at", async () => {
     const a = await admin();
     const saved = await a.agentProfiles.save(profileInput({ effort: "xhigh" }));
     // An admin narrows the controls: xhigh is gone, and the clamp moves it to the nearest, high.
@@ -231,7 +231,7 @@ describe("levels the model doesn't have (F-137)", () => {
 });
 
 describe("a model's controls (F-137)", () => {
-  it("F-137: a custom model that doesn't reason has no levels until an admin says it does", async () => {
+  it("F-137/c2,c4,c13: a custom model that doesn't reason has no levels until an admin says it does", async () => {
     const a = await admin();
     const before = await a.agentProfiles.effortLevels({ adapter: "opencode", modelId: customModelId });
     expect(before).toMatchObject({ reasoningSource: null, customModel: true, agentTakesEffort: true });
@@ -259,7 +259,7 @@ describe("a model's controls (F-137)", () => {
     expect(levelsOf((await a.agentProfiles.effortLevels({ adapter: "opencode", modelId: customModelId })).levels)).toEqual(["default"]);
   });
 
-  it("F-137: an admin's override survives a catalog refresh, and null returns to the catalog's", async () => {
+  it("F-137/c4: an admin's override survives a catalog refresh, and null returns to the catalog's", async () => {
     const a = await admin();
     const catalogRow = async () => (await a.providers.models({ providerId: catalogProviderId })).find((model) => model.id === catalogModelId);
     expect((await catalogRow())?.reasoning).toMatchObject({ controls: gptControls, source: "catalog", catalog: gptControls });
@@ -280,7 +280,7 @@ describe("a model's controls (F-137)", () => {
     expect(await harness.test.db.auditEntry.count({ where: { action: "model.reasoning-changed", entityId: catalogModelId } })).toBeGreaterThanOrEqual(2);
   });
 
-  it("F-137: the model list marks a catalog model that prices reasoning apart", async () => {
+  it("F-137/c12: the model list marks a catalog model that prices reasoning apart", async () => {
     const a = await admin();
     expect((await a.providers.models({ providerId: catalogProviderId }))[0]?.reasoning.reasoningPriceDiffers).toBe(false);
     // Ticket 58's field on the catalog entry.
@@ -296,7 +296,7 @@ describe("a model's controls (F-137)", () => {
 });
 
 describe("the task page (F-137)", () => {
-  it("F-137: tasks.get carries each turn's level, adjustedFrom and reasoning tokens", async () => {
+  it("F-137/c8,c9,c11: tasks.get carries each turn's level, adjustedFrom and reasoning tokens", async () => {
     const task = await restrictedTask();
     const restricted = harness.fixture.a.restrictedProject.id;
     await harness.test.db.turn.createMany({
@@ -314,7 +314,7 @@ describe("the task page (F-137)", () => {
     expect(seen.usage?.totals).toMatchObject({ outputTokens: 1200, reasoningTokens: 720 });
   });
 
-  it("F-137: the driver's change reaches the runner and the live stream carries effort.changed", async () => {
+  it("F-137/c8: the driver's change reaches the runner and the live stream carries effort.changed", async () => {
     const task = await restrictedTask();
     const restricted = harness.fixture.a.restrictedProject.id;
     const runnerId = await seedPersonalRunner(harness, harness.fixture.a.insider.id, `effort-runner-${randomUUID().slice(0, 6)}`);
@@ -359,7 +359,7 @@ describe("the task page (F-137)", () => {
 });
 
 describe("the agent's own levels (F-137)", () => {
-  it("F-137: the levels are the ones OpenCode sends for the model, not the controls read alone", async () => {
+  it("F-137/c1,c2: the levels are the ones OpenCode sends for the model, not the controls read alone", async () => {
     const a = await admin();
     // An OpenAI-compatible model whose only control is a toggle: OpenCode's chat package sends no
     // level for it, so the panel offers Default alone, not Off and On.
@@ -404,7 +404,7 @@ describe("the agent's own levels (F-137)", () => {
 });
 
 describe("an agent that takes no level (F-137)", () => {
-  it("F-137: a task whose agent declares none offers Default alone on the task page, and a level is refused", async () => {
+  it("F-137/c13: a task whose agent declares none offers Default alone on the task page, and a level is refused", async () => {
     const a = await admin();
     // No shipped agent declares none, and a profile names only an installed one: the row is moved
     // to an agent no adapter declares, which the port reads as none.

@@ -148,7 +148,7 @@ describe("github.detect (F-112, before a project exists)", () => {
 });
 
 describe("github.appRequest", () => {
-  it("F-006: lists the manifest's permissions in its order, leaves workflows out, and says when no webhook is possible", async () => {
+  it("F-006/c2,c3: lists the manifest's permissions in its order, leaves workflows out, and says when no webhook is possible", async () => {
     const request = await (await harness.as(harness.fixture.b.admin)).github.appRequest();
     expect(request.permissions.map((row) => `${row.name} ${row.level}`)).toEqual([
       "contents write",
@@ -163,7 +163,7 @@ describe("github.appRequest", () => {
     expect(request.webhookPossible).toBe(false);
   });
 
-  it("F-006: says a webhook is possible when the server's address is public", async () => {
+  it("F-006/c4: says a webhook is possible when the server's address is public", async () => {
     const context = await harness.contextOf(harness.fixture.b.admin);
     const caller = harness.callerFor({
       ...context,
@@ -199,7 +199,7 @@ describe("the manifest flow", () => {
     harness.fakes.codeHost.manifestCodes.set("good-code", created);
   });
 
-  it("F-006: builds the manifest with no webhook for a private address, and says so", async () => {
+  it("F-006/c4: builds the manifest with no webhook for a private address, and says so", async () => {
     const started = await (await harness.as(harness.fixture.b.admin)).github.startManifest({ ownerLogin: "ostra-test" });
     expect(started.webhookEnabled).toBe(false);
     expect(started.createUrl).toContain("github");
@@ -227,7 +227,7 @@ describe("the manifest flow", () => {
     await expect((await harness.as(harness.fixture.a.member)).github.startManifest({ ownerLogin: null })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("F-006: can't be completed from another session, even the same admin's", async () => {
+  it("F-006/c1: can't be completed from another session, even the same admin's", async () => {
     const { b } = harness.fixture;
     const started = await (await harness.as(b.admin)).github.startManifest({ ownerLogin: null });
     const elsewhere = harness.callerFor(await harness.contextOf(b.admin, "another-session"));

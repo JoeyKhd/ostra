@@ -11,7 +11,7 @@ import { seedPushedSnapshot, seedWaitWorld, shoot, taskOf } from "./m5-settings.
 
 const sam = "e2e-wait-sam";
 
-test("F-067, F-069: a queued task's page says why it waits, for each reason, its place in its pool's queue, a node wait and who cancelled it", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-067/c2, F-069/c1: a queued task's page says why it waits, for each reason, its place in its pool's queue, a node wait and who cancelled it", { tag: "@desktop-only" }, async ({ page }) => {
   const world = await seedWaitWorld(sam);
   await signIn(page);
   const lines: readonly (readonly [string, string])[] = [
@@ -46,7 +46,7 @@ test("F-067, F-069: a queued task's page says why it waits, for each reason, its
   await expect(page.getByTestId("task-wait-line")).toHaveText(`Cancelled by ${world.adminName}`);
 });
 
-test("F-069, F-014: New task offers A pool and Your machine, each machine that can't take it disabled with its reason", { tag: "@desktop-only" }, async ({ browser }) => {
+test("F-069/c2, F-014/c3: New task offers A pool and Your machine, each machine that can't take it disabled with its reason", { tag: "@desktop-only" }, async ({ browser }) => {
   const world = await seedWaitWorld(sam);
   const page = await signedInPage(browser, sam);
   await page.goto("/tasks/new");
@@ -74,7 +74,7 @@ test("F-069, F-014: New task offers A pool and Your machine, each machine that c
   await page.context().close();
 });
 
-test("F-120: an admin sets the registry and both credentials, the check answers, and no credential's value is in the page or an answer", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-120/c1: an admin sets the registry and both credentials, the check answers, and no credential's value is in the page or an answer", { tag: "@desktop-only" }, async ({ page }) => {
   await seedWaitWorld(sam);
   const registry = await startFakeOciRegistry();
   const secrets = [registry.push.password, registry.pull.password];

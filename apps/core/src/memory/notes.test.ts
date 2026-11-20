@@ -161,7 +161,7 @@ const specOf = async (task: QueuedTask) => {
 };
 
 describe("F-109: notes", () => {
-  it("F-109: a note of each kind and each scope is saved as version 1, with its version row and audit entry", async () => {
+  it("F-109/c1,c2,c6: a note of each kind and each scope is saved as version 1, with its version row and audit entry", async () => {
     const kinds: readonly MemoryKind[] = ["convention", "command", "gotcha", "decision", "preference", "term"];
     for (const kind of kinds) {
       for (const scope of ["project", "organization"] as const) {
@@ -177,7 +177,7 @@ describe("F-109: notes", () => {
     expect((await saveNote(deps, admin(), newNote({ scope: "project", projectId: null }))).ok).toBe(false);
   });
 
-  it("F-109: each edit writes the next version, gap-free, with its audit entry; a saved note keeps its scope", async () => {
+  it("F-109/c3,c6: each edit writes the next version, gap-free, with its audit entry; a saved note keeps its scope", async () => {
     const noteId = await created(member(), { always: false });
     for (const [expectedVersion, title] of [
       [1, "Check scripts with node"],
@@ -198,7 +198,7 @@ describe("F-109: notes", () => {
     expect(moved).toMatchObject({ ok: false, error: "invalid-input" });
   });
 
-  it("F-109: a stale edit is refused with CONFLICT, naming who saved which version, and writes no version", async () => {
+  it("F-109/c5: a stale edit is refused with CONFLICT, naming who saved which version, and writes no version", async () => {
     const noteId = await created(admin());
     expect((await saveNote(deps, member(), newNote({ noteId, expectedVersion: 1, body: "Ada's edit." }))).ok).toBe(true);
     const stale = await saveNote(deps, admin(), newNote({ noteId, expectedVersion: 1, body: "Bo's edit, on version 1." }));
@@ -218,7 +218,7 @@ describe("F-109: notes", () => {
     expect(versions.map((row) => row.version)).toEqual([1, 2, 3]);
   });
 
-  it("F-109: each secret shape and model-control token is refused by kind, never echoed, and nothing is stored", async () => {
+  it("F-109/c4: each secret shape and model-control token is refused by kind, never echoed, and nothing is stored", async () => {
     const cases: readonly [string, string][] = [
       [`Staging uses ${ENV_SECRET}.`, "one of the organization's secrets"],
       [`ghp_${"b".repeat(36)}`, "a GitHub token"],
@@ -253,7 +253,7 @@ describe("F-109: notes", () => {
     expect((await saveNote(deps, admin(), newNote({ body: "Staging keys live in the vault." }))).ok).toBe(true);
   });
 
-  it("F-109: archiving is the author's or an admin's, writes its audit entry, and takes the note out of the next spec", async () => {
+  it("F-109/c1,c6: archiving is the author's or an admin's, writes its audit entry, and takes the note out of the next spec", async () => {
     const task = await leasedTask();
     const byMember = await created(member(), { title: `Member's ${WORD}` });
     const byAdmin = await created(admin(), { title: `Admin's ${WORD}` });
@@ -268,7 +268,7 @@ describe("F-109: notes", () => {
     expect(await saveNote(deps, member(), newNote({ noteId: byMember, expectedVersion: 1 }))).toMatchObject({ ok: false, error: "forbidden" });
   });
 
-  it("F-109: a member who can't open the project can't write, read or archive its notes; another organization sees none", async () => {
+  it("F-109/c1: a member who can't open the project can't write, read or archive its notes; another organization sees none", async () => {
     const restricted = await created(insider(), { projectId: restrictedProject(), title: "Restricted runbook" });
     expect((await readNoteForMember(test.db, insider(), restricted))?.title).toBe("Restricted runbook");
     for (const scope of [member(), outsider()]) {
@@ -287,7 +287,7 @@ describe("F-109: notes", () => {
 });
 
 describe("F-111: a proposal's decision", () => {
-  it("F-111: approve makes a note at version 1 with the proposal as its source, and the next spec holds it", async () => {
+  it("F-111/c2: approve makes a note at version 1 with the proposal as its source, and the next spec holds it", async () => {
     const task = await leasedTask();
     const proposalId = await agentProposal(task, `Approve ${WORD}`, "Run the dev database first.");
     expect((await specOf(task)).memory).toBeNull();
@@ -303,7 +303,7 @@ describe("F-111: a proposal's decision", () => {
     expect((await specOf(task)).memory?.indexNoteIds).toEqual([approved.noteId]);
   });
 
-  it("F-111: approve and archive replaces a note; reject stores no note; each writes its audit entry", async () => {
+  it("F-111/c2: approve and archive replaces a note; reject stores no note; each writes its audit entry", async () => {
     const task = await leasedTask();
     const old = await created(admin(), { title: "The old way" });
     const replacing = await agentProposal(task, "The new way", "Use the new script.");
@@ -323,7 +323,7 @@ describe("F-111: a proposal's decision", () => {
     expect((await specOf(task)).memory?.block ?? "").not.toContain("Skip the tests.");
   });
 
-  it("F-111: merge writes the note's next version with the member's text and the proposal named", async () => {
+  it("F-111/c2: merge writes the note's next version with the member's text and the proposal named", async () => {
     const task = await leasedTask();
     const into = await created(admin());
     const proposalId = await agentProposal(task, "Check with node --check", "Also check JSON with `node -e`.");
@@ -349,7 +349,7 @@ describe("F-111: a proposal's decision", () => {
     expect((await test.db.memoryNote.findUniqueOrThrow({ where: { id: into } })).version).toBe(2);
   });
 
-  it("F-111: a decided proposal can't be decided again, by anyone, in any way", async () => {
+  it("F-111/c2: a decided proposal can't be decided again, by anyone, in any way", async () => {
     const task = await leasedTask();
     const into = await created(admin());
     const proposalId = await agentProposal(task, "Decided once", "Once.");
@@ -378,7 +378,7 @@ describe("F-111: a proposal's decision", () => {
     expect(await decideProposal(deps, outsider(), { proposalId: fresh, decision: "reject" })).toMatchObject({ ok: false, error: "not-found" });
   });
 
-  it("F-111: a merge into a note that moved on is refused with CONFLICT, and nothing is written", async () => {
+  it("F-111/c4: a merge into a note that moved on is refused with CONFLICT, and nothing is written", async () => {
     const task = await leasedTask();
     const into = await created(admin());
     const proposalId = await agentProposal(task, "Merge me", "Merge.");
@@ -392,7 +392,7 @@ describe("F-111: a proposal's decision", () => {
     expect((await decideProposal(deps, member(), { proposalId, decision: "merge", intoNoteId: into, expectedVersion: 2, title: "Merged", body: "Merged." })).ok).toBe(true);
   });
 
-  it("F-111: related notes are the declared one, then the three best-ranked active notes of the scope", async () => {
+  it("F-111/c3: related notes are the declared one, then the three best-ranked active notes of the scope", async () => {
     const task = await leasedTask();
     const declared = await created(admin(), { title: "Declared relation", body: "Unrelated words entirely." });
     // Ranked by how much of the proposal's text each matches: best, second, third, then fourth.
@@ -448,7 +448,7 @@ describe("F-111: Remember this", () => {
     return diffCommentIdSchema.parse(row.id);
   };
 
-  it("F-111, F-109: from a diff comment, a proposal by the member with the comment as its source, which a merge carries to the note", async () => {
+  it("F-111/c1, F-109/c2: from a diff comment, a proposal by the member with the comment as its source, which a merge carries to the note", async () => {
     const task = await leasedTask();
     const commentId = await diffComment(task, "Print a newline at the end");
     const result = await proposeRememberThis(deps, member(), {
@@ -478,7 +478,7 @@ describe("F-111: Remember this", () => {
     expect(await test.db.memoryNote.findUniqueOrThrow({ where: { id: into } })).toMatchObject({ version: 2, sourceKind: "diff_comment", sourceRef: commentId });
   });
 
-  it("F-111, F-109: from an accepted @ostra PR comment, a proposal with its URL as the source, approved as a note that names it", async () => {
+  it("F-111/c1, F-109/c2: from an accepted @ostra PR comment, a proposal with its URL as the source, approved as a note that names it", async () => {
     const task = await leasedTask();
     const url = `https://github.com/ostra-test/test1/pull/7#issuecomment-${String(Date.now())}`;
     await test.db.$transaction((tx) =>
@@ -529,7 +529,7 @@ describe("F-111: the closing turn", () => {
     (await test.db.command.findMany({ where: { taskId: task.taskId, kind: "steer" } })).filter((row) => JSON.stringify(row.body).includes("closing-turn-"));
   const setSwitch = (on: boolean) => test.db.agentProfile.update({ where: { id: world.profileId }, data: { closingTurn: on } });
 
-  it("F-111: the switch is off by default, and a turn with changes then sends nothing", async () => {
+  it("F-111/c6: the switch is off by default, and a turn with changes then sends nothing", async () => {
     expect((await test.db.agentProfile.findUniqueOrThrow({ where: { id: world.profileId } })).closingTurn).toBe(false);
     const task = await leasedTask();
     await ingest(task, 1, { kind: "turn.started", turnId: turnIdSchema.parse("t1") }, savedEvent(head("a")));
@@ -537,7 +537,7 @@ describe("F-111: the closing turn", () => {
     expect(await test.db.event.count({ where: { taskId: task.taskId, kind: "user.message" } })).toBe(0);
   });
 
-  it("F-111: with the switch on, a turn with changes gets one closing turn, once; no changes or a closing turn's own save gets none", async () => {
+  it("F-111/c6: with the switch on, a turn with changes gets one closing turn, once; no changes or a closing turn's own save gets none", async () => {
     await setSwitch(true);
     try {
       const task = await leasedTask();
@@ -592,7 +592,7 @@ describe("F-111: the closing turn", () => {
     }
   });
 
-  it("F-111: a closing turn goes through the budget gate, and a closed gate holds it", async () => {
+  it("F-111/c6: a closing turn goes through the budget gate, and a closed gate holds it", async () => {
     await setSwitch(true);
     const budget = await test.db.budget.create({ data: { organizationId: world.organizationId, projectId: world.projectId, monthlyMicroUsd: 0n } });
     try {

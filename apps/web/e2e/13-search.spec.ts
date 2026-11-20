@@ -8,7 +8,7 @@ import { m4World, seedM4World, shoot, shootPhone } from "./m4.ts";
 
 const AGENT_SEQ = 7;
 
-test("F-080: the palette opens with the keys, finds a task by a word from its agent message, filters by repo:, and Enter opens the task at the matched event", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-080/c1: the palette opens with the keys, finds a task by a word from its agent message, filters by repo:, and Enter opens the task at the matched event", { tag: "@desktop-only" }, async ({ page }) => {
   const world = await seedM4World(m4World);
   await signIn(page);
   await page.keyboard.press("Control+KeyK");
@@ -52,7 +52,7 @@ test("F-080: the palette opens with the keys, finds a task by a word from its ag
   expect(first <= AGENT_SEQ && AGENT_SEQ <= last).toBe(true);
 });
 
-test("F-080: the search page's filters round-trip through the URL", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-080/c1: the search page's filters round-trip through the URL", { tag: "@desktop-only" }, async ({ page }) => {
   const world = await seedM4World(m4World);
   await signIn(page);
   await page.goto(`/search?q=${m4World.word}&repo=m4calc&state=stopped&period=any`);

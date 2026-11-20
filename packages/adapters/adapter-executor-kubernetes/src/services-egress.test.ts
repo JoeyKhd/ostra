@@ -47,7 +47,7 @@ const withServices: TaskSpec = {
 };
 
 describe("services and the egress baseline on kubernetes (ticket 08)", () => {
-  it("F-093, F-094: a box with two services has them as native sidecars after the sidecar, in order, each with its health check, its port and its own limits, reachable by name", async () => {
+  it("F-093/c1, F-094/c2,c4: a box with two services has them as native sidecars after the sidecar, in order, each with its health check, its port and its own limits, reachable by name", async () => {
     const cluster = await start();
     const executor = executorOn(cluster, { serviceLimits: { cpuMillis: 750, memoryMiB: 512 } });
     const created = await executor.create({ ...box, spec: withServices, proxies });
@@ -79,7 +79,7 @@ describe("services and the egress baseline on kubernetes (ticket 08)", () => {
     await executor.release(box, "requested");
   });
 
-  it("F-094: a service whose container ends before it's healthy is reported failed, by name, and the box goes on", async () => {
+  it("F-094/c4: a service whose container ends before it's healthy is reported failed, by name, and the box goes on", async () => {
     const cluster = await start();
     const executor = executorOn(cluster);
     await executor.create({ ...box, spec: withServices, proxies });
@@ -95,7 +95,7 @@ describe("services and the egress baseline on kubernetes (ticket 08)", () => {
     await executor.release(box, "requested");
   });
 
-  it("F-116: health() refuses a namespace without the egress baseline, or with a policy that lets boxes reach private ranges, and names the fix", async () => {
+  it("F-116/c1,c2: health() refuses a namespace without the egress baseline, or with a policy that lets boxes reach private ranges, and names the fix", async () => {
     const bare = await start(false);
     const missing = await executorOn(bare).health();
     expect(missing).toEqual({
@@ -110,7 +110,7 @@ describe("services and the egress baseline on kubernetes (ticket 08)", () => {
     expect(await executorOn(guarded).health()).toEqual({ status: "ok" });
   });
 
-  it("F-116: the baseline allows DNS at the cluster's resolver, the server's address on its port, the admin's allowed addresses, and the internet without its private ranges; no ingress", () => {
+  it("F-116/c1,c2: the baseline allows DNS at the cluster's resolver, the server's address on its port, the admin's allowed addresses, and the internet without its private ranges; no ingress", () => {
     const policy = baselineEgressPolicy({ namespace: NS, server: { kind: "cidr", cidr: "10.20.0.5", port: 443 }, allow: ["10.30.0.0/24"] });
     expect(policy.metadata?.name).toBe("ostra-egress-baseline");
     expect(policy.spec?.podSelector).toEqual({ matchLabels: { "ostra.dev/role": "box" } });

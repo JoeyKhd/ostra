@@ -7,7 +7,7 @@ import { editedProposal, lineDiff } from "./proposal-words";
 // an admin's edits make for "Edit and accept".
 
 describe("the environment proposal's words (ticket 36)", () => {
-  it("F-113: the setup script's diff marks the added and removed lines and folds a long unchanged run", () => {
+  it("F-113/c2: the setup script's diff marks the added and removed lines and folds a long unchanged run", () => {
     expect(lineDiff("make bootstrap", "corepack enable\nmake bootstrap\npnpm install")).toEqual([
       { sign: "+", text: "corepack enable" },
       { sign: " ", text: "make bootstrap" },
@@ -22,7 +22,7 @@ describe("the environment proposal's words (ticket 36)", () => {
     expect(lineDiff(`x\n${long}\ny`, `x2\n${long}\ny2`).filter((row) => row.sign === "fold")).toEqual([{ sign: "fold", lines: 4 }]);
   });
 
-  it("F-113: Edit and accept sends the proposal with the admin's script and commands, and the rest as proposed", () => {
+  it("F-113/c2: Edit and accept sends the proposal with the admin's script and commands, and the rest as proposed", () => {
     const repoId = repoIdSchema.parse("r1");
     const body = {
       repos: [{ repoId, setupScript: "pnpm install", checks: [{ name: "test", command: "pnpm test", timeoutSeconds: 600 }], variableNames: ["DATABASE_URL"] }],

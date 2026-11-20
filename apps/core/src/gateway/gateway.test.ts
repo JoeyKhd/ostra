@@ -123,7 +123,7 @@ describe("register with a device session", () => {
     expect(audit).toMatchObject({ organizationId: fixture.a.organization.id, actorKind: "member", actorId: fixture.a.member.id });
   });
 
-  it("F-013: a device session is used once, even by registers that race with it: one runner, and the others are refused", async () => {
+  it("F-013/c7: a device session is used once, even by registers that race with it: one runner, and the others are refused", async () => {
     const session = await seedDeviceSession(test.db, fixture.a.member);
     const keys = await Promise.all([makeRunnerKey(), makeRunnerKey(), makeRunnerKey()]);
     // The race, made certain: this test holds the session's row, so every register reads the
@@ -302,7 +302,7 @@ describe("refused tokens", () => {
     }
   });
 
-  it("F-061: a runner before minor 2 sends no minor and gets minor 1's refusal body, and still gets its token; a server at minor 1 names no reason", async () => {
+  it("F-061/c1: a runner before minor 2 sends no minor and gets minor 1's refusal body, and still gets its token; a server at minor 1 names no reason", async () => {
     const runner = await registerPersonal(harness, test.db, fixture.a.member);
     const url = `${harness.url}${runnerPaths.token}`;
     const stale = (): TokenAssertion => signAssertion(runner.key, runner.runnerId, Date.now() - 5 * 60_000);
@@ -511,7 +511,7 @@ describe("the WebSocket", () => {
     );
   });
 
-  it("F-014: stores the containment a runner reports, and keeps it when a status leaves it out", async () => {
+  it("F-014/c8: stores the containment a runner reports, and keeps it when a status leaves it out", async () => {
     const peer = track(await connect(harness, runner));
     await peer.next("welcome");
     const stored = async () => (await test.db.runner.findUniqueOrThrow({ where: { id: runner.runnerId } })).processContainment;

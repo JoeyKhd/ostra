@@ -64,7 +64,7 @@ const filesUnder = async (dir: string): Promise<readonly { readonly file: string
 };
 
 describe.each(["rich", "plain"] as const)("the profile at launch on the %s fake agent (F-021)", (profile) => {
-  it("F-021: a skill reaches the agent from the task's agent folder, never from the repo", async () => {
+  it("F-021/c4: a skill reaches the agent from the task's agent folder, never from the repo", async () => {
     const h = await start();
     const made = h.taskFor(fakeMarker("skills"), { agent: { ...taskSpecFixture.agent, adapter: `fake-acp-agent-${profile}`, apiFormat: "anthropic-messages" } });
     const skillBlob = h.server.putBlob(made.spec.taskId, Buffer.from("# The review skill\nRead the diff twice.\n"), "text/markdown");
@@ -93,7 +93,7 @@ describe.each(["rich", "plain"] as const)("the profile at launch on the %s fake 
 });
 
 describe("a skill that can't come down whole (F-021)", () => {
-  it("F-021: a skill whose file doesn't match its digest, or can't be fetched, is left out; the task starts without it", async () => {
+  it("F-021/c4: a skill whose file doesn't match its digest, or can't be fetched, is left out; the task starts without it", async () => {
     const h = await start();
     const made = h.taskFor(fakeMarker("skills"), { agent: { ...taskSpecFixture.agent, adapter: "fake-acp-agent-rich", apiFormat: "anthropic-messages" } });
     const good = h.server.putBlob(made.spec.taskId, Buffer.from("# Good skill\n"), "text/markdown");
@@ -129,7 +129,7 @@ describe("MCP servers at launch (F-021)", () => {
     { name: "local", transport: "stdio", command: process.execPath, args: ["-e", "0"], env: { LOCAL_MODE: "plain" }, readOnly: false },
   ];
 
-  it("F-021: the profile's MCP servers reach the agent at the sidecar's proxy, and no server credential is in its launch", async () => {
+  it("F-021/c4: the profile's MCP servers reach the agent at the sidecar's proxy, and no server credential is in its launch", async () => {
     const h = await start();
     const made = h.taskFor(fakeMarker("mcp"), { agent: { ...taskSpecFixture.agent, adapter: "fake-acp-agent-rich", apiFormat: "anthropic-messages", mcpServers: servers } });
     const credentials = taskCredentialsSchema.parse({
@@ -145,7 +145,7 @@ describe("MCP servers at launch (F-021)", () => {
     expect(everything).not.toContain("mcp.example.test");
   }, 120_000);
 
-  it("F-021: a stdio server whose command isn't on the box's PATH is refused before the agent starts, naming the server", async () => {
+  it("F-021/c4: a stdio server whose command isn't on the box's PATH is refused before the agent starts, naming the server", async () => {
     const h = await start();
     const missing: TaskSpecMcpServer = { name: "ghost", transport: "stdio", command: "ostra-no-such-mcp-server-9f3e", args: [], env: {}, readOnly: false };
     const { spec } = h.taskFor(fakeMarker("say"), { agent: { ...taskSpecFixture.agent, adapter: "fake-acp-agent-rich", apiFormat: "anthropic-messages", mcpServers: [missing] } });
@@ -181,7 +181,7 @@ describe("the repo's own agent config (F-021, Q171)", () => {
     });
   };
 
-  it("F-021: an agent that obeys the repo's config doesn't see it: the rule still asks, and the file is back in the branch, unchanged", async () => {
+  it("F-021/c5: an agent that obeys the repo's config doesn't see it: the rule still asks, and the file is back in the branch, unchanged", async () => {
     const h = await start();
     const { spec } = cfgTask(h, "plain");
     h.dispatch(spec);
@@ -198,7 +198,7 @@ describe("the repo's own agent config (F-021, Q171)", () => {
     expect(tree.some((file) => file.endsWith(".ostra-hidden"))).toBe(false);
   }, 120_000);
 
-  it("F-021: an agent whose own config wins keeps the repo's config where it is", async () => {
+  it("F-021/c5: an agent whose own config wins keeps the repo's config where it is", async () => {
     const h = await start();
     const { spec } = cfgTask(h, "rich");
     h.dispatch(spec);

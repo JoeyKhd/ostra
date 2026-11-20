@@ -52,7 +52,7 @@ const form = (name: string, baseUrl: string, apiFormat: ApiFormat, authScheme: A
 });
 
 describe("model providers, against a real endpoint of each format", () => {
-  it("F-088: an organization admin adds a provider as an API base URL and a token, in either API format", async () => {
+  it("F-088/c1: an organization admin adds a provider as an API base URL and a token, in either API format", async () => {
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);
     for (const { format, scheme, stub } of endpoints()) {
@@ -70,7 +70,7 @@ describe("model providers, against a real endpoint of each format", () => {
     expect(await harness.test.db.modelProvider.count({ where: { name: "by-a-member" } })).toBe(0);
   });
 
-  it("F-088: Test connection checks the endpoint and detects its format; the admin's correction is what is saved", async () => {
+  it("F-088/c2: Test connection checks the endpoint and detects its format; the admin's correction is what is saved", async () => {
     const admin = await harness.as(harness.fixture.a.admin);
     for (const { format, scheme, stub } of endpoints()) {
       expect(await admin.providers.testConnection({ baseUrl: stub.baseUrl, token: TOKEN })).toMatchObject({ ok: true, apiFormat: format, authScheme: scheme });
@@ -89,7 +89,7 @@ describe("model providers, against a real endpoint of each format", () => {
     expect(await harness.test.db.modelProvider.count({ where: { name: "refused" } })).toBe(0);
   });
 
-  it("F-088: the models are the endpoint's own list, with names, logos, limits and prices from the models.dev catalog", async () => {
+  it("F-088/c3: the models are the endpoint's own list, with names, logos, limits and prices from the models.dev catalog", async () => {
     const admin = await harness.as(harness.fixture.a.admin);
     const entry = harness.catalogEntries.find((candidate) => candidate.aliases.includes(KNOWN));
     if (entry === undefined) {

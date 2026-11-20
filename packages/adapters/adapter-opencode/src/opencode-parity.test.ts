@@ -8,13 +8,13 @@ import { OpenCodeAdapter } from "./opencode-adapter.ts";
 // and every capability it declares, or lacks, has a case that runs that way on it.
 
 describe("adapter parity, OpenCode", () => {
-  it("F-019: OpenCode has an entry for every row, naming cases that exist and run the way it declares each capability", async () => {
+  it("F-019/c3: OpenCode has an entry for every row, naming cases that exist and run the way it declares each capability", async () => {
     const adapter = new OpenCodeAdapter();
     expect(adapter.name).toBe("opencode");
     expect(await checkParity([adapter])).toEqual([]);
   });
 
-  it("F-019: OpenCode's check fails when a row is deleted from its entry", async () => {
+  it("F-019/c3: OpenCode's check fails when a row is deleted from its entry", async () => {
     const adapter = new OpenCodeAdapter();
     const rest = Object.fromEntries(Object.entries(parityTable["opencode"] ?? {}).filter(([feature]) => feature !== "F-062 Questions"));
     expect(await checkParity([adapter], { opencode: rest })).toEqual([

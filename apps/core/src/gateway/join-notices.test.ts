@@ -171,7 +171,7 @@ const dispatch = (payload: ReturnType<typeof dispatchPayload>) =>
   api.test.db.$transaction((tx) => dispatchTask({ tx, jobs, outbox: postgresCommandOutbox, notices: postgresChangeNotices, clock: systemClock, logger }, payload));
 
 describe("join tokens", () => {
-  it("F-091: a live token joins, and an expired, a revoked and an unknown one are refused with their reason and write nothing", async () => {
+  it("F-091/c2,c4: a live token joins, and an expired, a revoked and an unknown one are refused with their reason and write nothing", async () => {
     const pool = await newPool("token-states");
     const expiring = await tokenFor(pool.poolId, { days: 1 });
     const revoked = await tokenFor(pool.poolId);
@@ -207,7 +207,7 @@ describe("join tokens", () => {
     expect(await joinNoticeJobs()).toBe(queued + 1);
   });
 
-  it("F-091: a token's expiry is read from core's clock: accepted until it, refused from it", async () => {
+  it("F-091/c2,c3: a token's expiry is read from core's clock: accepted until it, refused from it", async () => {
     const pool = await newPool("clocked");
     const token = await tokenFor(pool.poolId, { days: 1 });
     shiftMs = DAY_MS - 60_000;
@@ -219,7 +219,7 @@ describe("join tokens", () => {
     expect(await api.test.db.runner.count({ where: { poolId: pool.poolId } })).toBe(1);
   });
 
-  it("F-091: a join token is stored as its hash and returned once, with its lifetime from the admin, the pool or the setting", async () => {
+  it("F-091/c3,c4: a join token is stored as its hash and returned once, with its lifetime from the admin, the pool or the setting", async () => {
     const before = Date.now();
     const pool = await newPool("lifetimes", { joinTokenDays: 7 });
     const week = before + 7 * DAY_MS;
@@ -251,7 +251,7 @@ describe("join tokens", () => {
     expect(await createJoinToken(deps(), scopeOf(api.fixture.b.admin), { poolId: pool.poolId, label: null })).toMatchObject({ ok: false, error: "not-found" });
   });
 
-  it("F-091: a rotation keeps a joined runner connected: the old token is revoked, the runner stays, and the new token joins", async () => {
+  it("F-091/c4,c5: a rotation keeps a joined runner connected: the old token is revoked, the runner stays, and the new token joins", async () => {
     const pool = await newPool("rotation");
     const runner = await joined(pool.joinToken.token, "steady");
     const peer = await connected(runner);
@@ -274,7 +274,7 @@ describe("join tokens", () => {
     expect(await api.test.db.runner.count({ where: { poolId: pool.poolId, revokedAt: null } })).toBe(2);
   });
 
-  it("F-091: a runner in a pool that requires approval is offered no task until it's approved", async () => {
+  it("F-091/c6: a runner in a pool that requires approval is offered no task until it's approved", async () => {
     const poolId = await api.test.db.$transaction((tx) => ensureDefaultPool(tx, organizationId));
     expect(await updatePool(deps(), admin(), { poolId, requiresApproval: true })).toMatchObject({ ok: true });
     const token = await tokenFor(poolId);
@@ -296,7 +296,7 @@ describe("join tokens", () => {
     expect(await updatePool(deps(), admin(), { poolId, requiresApproval: false })).toMatchObject({ ok: true });
   });
 
-  it("F-091: turning approval on keeps the pool's working runners taking tasks; only a runner still joining waits", async () => {
+  it("F-091/c6: turning approval on keeps the pool's working runners taking tasks; only a runner still joining waits", async () => {
     const poolId = await api.test.db.$transaction((tx) => ensureDefaultPool(tx, organizationId));
     const token = await tokenFor(poolId);
     const working = await joined(token.token, "already-working");
@@ -315,7 +315,7 @@ describe("join tokens", () => {
     expect(await updatePool(deps(), admin(), { poolId, requiresApproval: false })).toMatchObject({ ok: true });
   });
 
-  it("F-091: a joining runner hears in its welcome that it waits for approval in its pool, and a resume when an admin approves it", async () => {
+  it("F-091/c6: a joining runner hears in its welcome that it waits for approval in its pool, and a resume when an admin approves it", async () => {
     const pool = await newPool("needs-a-yes", { requiresApproval: true });
     const runner = await joined(pool.joinToken.token, "waiting-one");
     const token = await accessToken(gateway, runner);
@@ -333,7 +333,7 @@ describe("join tokens", () => {
     expect((await again.next("welcome")).pool).toEqual({ poolId: pool.poolId, name: "needs-a-yes", awaitingApproval: false });
   });
 
-  it("F-091: the join's audit entry and its notice's job commit with it: a rollback leaves neither", async () => {
+  it("F-091/c7: the join's audit entry and its notice's job commit with it: a rollback leaves neither", async () => {
     const pool = await newPool("all-or-nothing");
     const entries = await joinedEntries();
     const queued = await joinNoticeJobs();
@@ -412,7 +412,7 @@ describe("the join notice", () => {
   const activeAdmins = async (): Promise<readonly string[]> =>
     (await api.test.db.member.findMany({ where: { organizationId, role: "admin", state: "active" }, select: { id: true } })).map((row) => row.id).sort();
 
-  it("F-091: tells the admins, opens the approval for them, and the approval and the reject answer it", async () => {
+  it("F-091/c6,c7: tells the admins, opens the approval for them, and the approval and the reject answer it", async () => {
     const admins = await activeAdmins();
     const pool = await newPool("needs-approval", { requiresApproval: true });
     const token = await tokenFor(pool.poolId, { label: "rack 4" });
@@ -465,7 +465,7 @@ describe("the join notice", () => {
     expect(later.panel.sent.filter((notification) => notification.idempotencyKey.includes(`:${rejected.runnerId}:`) && notification.kind === "runner_awaiting_approval")).toHaveLength(0);
   });
 
-  it("F-091: a pool without approval tells the admins a runner joined, and opens nothing", async () => {
+  it("F-091/c7: a pool without approval tells the admins a runner joined, and opens nothing", async () => {
     const admins = await activeAdmins();
     const pool = await newPool("open-door");
     const runner = await joined(pool.joinToken.token, "walk-in");

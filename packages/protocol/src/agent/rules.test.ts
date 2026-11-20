@@ -115,7 +115,7 @@ describe("paths", () => {
     ["src/a.(ts)", "src/a.ts", false],
     ["**/package.json", "../package.json", true],
     ["docs/**", "/etc/passwd", true],
-  ] as const)("F-026: the glob %s against %s is %s", (glob, input, expected) => {
+  ] as const)("F-026/c1: the glob %s against %s is %s", (glob, input, expected) => {
     expect(pathMatchesGlob(input, glob)).toBe(expected);
   });
 });
@@ -150,7 +150,7 @@ describe("commands", () => {
     ["pnpm addx", false],
     ["echo pnpm add zod", false],
     ["", false],
-  ] as const)("F-026: the prefixes `pnpm add`, `npm install` against %j is %s", (line, expected) => {
+  ] as const)("F-026/c1: the prefixes `pnpm add`, `npm install` against %j is %s", (line, expected) => {
     expect(commandMatchesPrefix(line, ["pnpm add", "npm install"])).toBe(expected);
   });
 
@@ -166,7 +166,7 @@ describe("commands", () => {
     ["ls `git push`", true],
     ["git push", true],
     ["", false],
-  ] as const)("F-026: the allowlist `git status`, `pnpm test`, `ls` against %j: outside is %s", (line, expected) => {
+  ] as const)("F-026/c1: the allowlist `git status`, `pnpm test`, `ls` against %j: outside is %s", (line, expected) => {
     expect(commandOutsideAllowlist(line, ["git status", "pnpm test", "ls"])).toBe(expected);
   });
 });

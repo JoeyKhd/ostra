@@ -83,7 +83,7 @@ const surfaces = async (who: Member) => {
 };
 
 describe("one rule for what waits", () => {
-  it("F-025, F-065, F-062, F-036: stopping a task whose no-changes item is open closes the item, and Home, the Needs you page and the sidebar all show 0", async () => {
+  it("F-025, F-065, F-062/c2, F-036/c2: stopping a task whose no-changes item is open closes the item, and Home, the Needs you page and the sidebar all show 0", async () => {
     const { member } = harness.fixture.a;
     // A session ended without changes: the task needs its driver, with a `no_changes` item for them.
     const task = await seedTask(harness, { organizationId: orgA, projectId: open, title: "hiiiiiiiii", state: "needs_you", driverMemberId: member.id, sessionState: "ended" });
@@ -109,7 +109,7 @@ describe("one rule for what waits", () => {
     expect(done.rows.find((row) => row.view.itemId === itemId)).toMatchObject({ state: "dismissed", view: { outcome: { kind: "closed" } } });
   });
 
-  it("F-036, F-062: a move that ends the task, its runner lost or its last PR merged, dismisses its open items, and a move that doesn't keeps them", async () => {
+  it("F-036/c2, F-062/c2: a move that ends the task, its runner lost or its last PR merged, dismisses its open items, and a move that doesn't keeps them", async () => {
     const { member } = harness.fixture.a;
     const lost = await seedTask(harness, { organizationId: orgA, projectId: open, title: "runner lost", state: "needs_you", driverMemberId: member.id });
     const merged = await seedTask(harness, { organizationId: orgA, projectId: open, title: "merged", state: "in_review", driverMemberId: member.id });
@@ -137,7 +137,7 @@ describe("one rule for what waits", () => {
     await harness.test.db.$transaction((tx) => resolveNeedsYouItemsInTx(harness.deps.ports, tx, { id: items.queued }, { state: "answered", at: new Date(), byMemberId: null }));
   });
 
-  it("F-024, F-065, F-062: a message that starts the task's next turn answers its no-changes item, and leaves an approval waiting on its own answer", async () => {
+  it("F-024, F-065, F-062/c2: a message that starts the task's next turn answers its no-changes item, and leaves an approval waiting on its own answer", async () => {
     const { a } = harness.fixture;
     const world = await seedConnectionAndModel(harness);
     const projectId = (await seedProject(harness, world, "next-turn")).projectId;
@@ -160,7 +160,7 @@ describe("one rule for what waits", () => {
     expect(after.homeTotal).toBe(after.pageTotal);
   });
 
-  it("F-036, F-062, F-065: a second no-changes ending on a task supersedes the first: one open item, the newer, and Home, the page and the sidebar show one row", async () => {
+  it("F-036/c2, F-062/c2, F-065/c2: a second no-changes ending on a task supersedes the first: one open item, the newer, and Home, the page and the sidebar show one row", async () => {
     const { member } = harness.fixture.a;
     // Before the task: a task in needs you with no item yet is a row of its own.
     const baseline = await surfaces(member);
@@ -189,7 +189,7 @@ describe("one rule for what waits", () => {
     expect(await caller.tasks.stop({ taskId: task.taskId })).toEqual({ stopped: true });
   });
 
-  it("F-036, F-062: approvals, questions and plans wait on their own requests: two of each on one task all stay open, beside one no-changes item", async () => {
+  it("F-036/c2, F-062/c2: approvals, questions and plans wait on their own requests: two of each on one task all stay open, beside one no-changes item", async () => {
     const { member } = harness.fixture.a;
     const baseline = await surfaces(member);
     const task = await seedTask(harness, { organizationId: orgA, projectId: open, title: "many asks", state: "needs_you", driverMemberId: member.id, sessionState: "waiting" });
@@ -208,7 +208,7 @@ describe("one rule for what waits", () => {
     expect(await caller.tasks.stop({ taskId: task.taskId })).toEqual({ stopped: true });
   });
 
-  it("F-102, F-036: a task waiting for a reviewer is in each matched reviewer's needs-you until their review is in, and the driver's when nobody matched", async () => {
+  it("F-102/c3, F-036: a task waiting for a reviewer is in each matched reviewer's needs-you until their review is in, and the driver's when nobody matched", async () => {
     const { admin, member, insider } = harness.fixture.a;
     const db = harness.test.db;
     const connection = await db.connection.create({ data: { organizationId: orgA, kind: "github", appId: `app-${randomUUID().slice(0, 6)}`, slug: "ostra-test" } });
@@ -255,7 +255,7 @@ describe("one rule for what waits", () => {
     }
   });
 
-  it("F-062, F-036: for every mix of item and task states, Home's total and rows, the page's Open tab and its count, and the sidebar's count agree", async () => {
+  it("F-062/c2, F-036/c2: for every mix of item and task states, Home's total and rows, the page's Open tab and its count, and the sidebar's count agree", async () => {
     const { a, b } = harness.fixture;
     const taskStates = ["needs_you", "running", "in_review", "stopped", "merged"] as const;
     const itemStates = ["open", "answered", "dismissed"] as const;

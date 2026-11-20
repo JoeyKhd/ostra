@@ -130,7 +130,7 @@ const steersOf = async (taskId: TaskId) =>
   );
 
 describe("F-105: a linked member's changes reopen the task", () => {
-  it("F-105: a linked member's changes_requested reopens the task with the review's body and its line comments as one prompt, and a replayed webhook reopens once", async () => {
+  it("F-105/c1: a linked member's changes_requested reopens the task with the review's body and its line comments as one prompt, and a replayed webhook reopens once", async () => {
     const task = await waitingTask();
     const pr = firstPr(task);
     const before = await h.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
@@ -175,7 +175,7 @@ describe("F-105: a linked member's changes reopen the task", () => {
     expect(JSON.stringify(h.records)).not.toContain("while (true)");
   });
 
-  it("F-105: a review from anyone else, a bot or an unlinked user is ignored, with no reply", async () => {
+  it("F-105/c3: a review from anyone else, a bot or an unlinked user is ignored, with no reply", async () => {
     const task = await waitingTask();
     const pr = firstPr(task);
     const reactions = h.codeHost.reactionCalls.length;
@@ -201,7 +201,7 @@ describe("F-105: a linked member's changes reopen the task", () => {
     expect(h.codeHost.reviewCalls.length).toBe(reviews);
   });
 
-  it("F-105: it waits for the running turn; no round cap applies, so two in a row both run, and the counters reset", async () => {
+  it("F-105/c1,c2: it waits for the running turn; no round cap applies, so two in a row both run, and the counters reset", async () => {
     const task = await seedTaskInCi(h);
     const pr = firstPr(task);
     // A turn is going, and every cap is used up: a fixing round's turn, as ticket 18 leaves it.
@@ -227,7 +227,7 @@ describe("F-105: a linked member's changes reopen the task", () => {
 });
 
 describe("F-105: what still holds it", () => {
-  it("F-105: the task's spend cap holds the reopen", async () => {
+  it("F-105/c2: the task's spend cap holds the reopen", async () => {
     const task = await waitingTask();
     const pr = firstPr(task);
     await h.db.task.update({ where: { id: task.taskId }, data: { spentMicroUsd: 25_000_000 } });
@@ -238,7 +238,7 @@ describe("F-105: what still holds it", () => {
     expect(recorded(h, "task.dispatch")).toEqual([]);
   });
 
-  it("F-105: at 100% of the budget the reopen is saved and its turn held, with the origin changes-requested", async () => {
+  it("F-105/c2: at 100% of the budget the reopen is saved and its turn held, with the origin changes-requested", async () => {
     const model = await h.db.agentProfile.findUniqueOrThrow({ where: { id: h.world.profileId }, select: { modelId: true } });
     if (model.modelId === null) throw new Error("the profile has no model");
     const budget = await h.db.budget.create({ data: { organizationId: h.world.organizationId, projectId: h.world.projectId, monthlyMicroUsd: 1_000_000n } });
@@ -260,7 +260,7 @@ describe("F-105: what still holds it", () => {
     }
   });
 
-  it("F-105: the reviewer gets no co-author trailer, and the independent-review check then passes on their approval", async () => {
+  it("F-105/c1: the reviewer gets no co-author trailer, and the independent-review check then passes on their approval", async () => {
     const task = await waitingTask();
     const pr = firstPr(task);
     await submit(pr, alice);

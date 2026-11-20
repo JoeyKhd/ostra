@@ -209,7 +209,7 @@ const snapshot = async () => ({
 const run = () => insightsComputeHandler({ db: test.db, clock })(jobContext("insights.compute", {}, logger));
 
 describe("the Insights job (F-108)", () => {
-  it("F-108: each stored day equals ticket 06's reference, for the organization and each project, across midnight's edges", async () => {
+  it("F-108/c1,c2: each stored day equals ticket 06's reference, for the organization and each project, across midnight's edges", async () => {
     await run();
     for (const { organization, projectId } of scopes()) {
       for (const day of [D0 - DAY, D0, D1, D2]) {
@@ -228,7 +228,7 @@ describe("the Insights job (F-108)", () => {
     expect(await test.db.insightRun.findUniqueOrThrow({ where: { organizationId } })).toMatchObject({ lastRunAt: new Date(now) });
   });
 
-  it("F-108: the six figures over a period, read from the stored rows, equal the reference's", async () => {
+  it("F-108/c1: the six figures over a period, read from the stored rows, equal the reference's", async () => {
     const period = { start: D0, end: D2 + DAY };
     const { prs, items, tasks } = await sourceRows(fixture.a.organization.id, null);
     const days = await test.db.insightDaily.findMany({ where: { organizationId, projectId: null, day: { gte: new Date(period.start), lt: new Date(period.end) } } });
@@ -256,7 +256,7 @@ describe("the Insights job (F-108)", () => {
     expect(durations.length % 2 === 1 ? durations[(durations.length - 1) / 2] : Math.floor(((durations[durations.length / 2 - 1] ?? 0) + (durations[durations.length / 2] ?? 0)) / 2)).toBe(firstPr.medianMs);
   });
 
-  it("F-108: each touched task's metric equals its own rows", async () => {
+  it("F-108/c1: each touched task's metric equals its own rows", async () => {
     const tasks = await test.db.task.findMany({ where: { organizationId }, include: { repos: { include: { pullRequests: true } }, needsYouItems: true } });
     for (const row of tasks) {
       const prs = row.repos.flatMap((repo) => repo.pullRequests);
@@ -274,7 +274,7 @@ describe("the Insights job (F-108)", () => {
     }
   });
 
-  it("F-108: a second run over the same data changes nothing", async () => {
+  it("F-108/c2: a second run over the same data changes nothing", async () => {
     const before = await snapshot();
     now = at(D2, 12, 5);
     const second = await computeInsights({ db: test.db, clock }, { organizationId });
@@ -282,7 +282,7 @@ describe("the Insights job (F-108)", () => {
     expect(await snapshot()).toEqual(before);
   });
 
-  it("F-108: two runs at once take the organization's lock: neither fails, and the rows come out the same", async () => {
+  it("F-108/c2: two runs at once take the organization's lock: neither fails, and the rows come out the same", async () => {
     const before = await snapshot();
     await test.db.insightDaily.deleteMany({ where: { organizationId } });
     await test.db.taskMetric.deleteMany({ where: { organizationId } });
@@ -298,7 +298,7 @@ describe("the Insights job (F-108)", () => {
     expect(facts(after)).toEqual(facts(before));
   });
 
-  it("F-108: a PR merged after the run appears after the next one, even when its day is no longer today or yesterday", async () => {
+  it("F-108/c2: a PR merged after the run appears after the next one, even when its day is no longer today or yesterday", async () => {
     const restrictedPr = await test.db.taskPullRequest.findFirstOrThrow({ where: { projectId: restricted.projectId } });
     expect(await storedDay(fixture.a.organization.id, restricted.projectId, D2)).toMatchObject({ prsMerged: 0 });
     // Three days on, a reconcile learns the PR was merged on D2.
@@ -315,7 +315,7 @@ describe("the Insights job (F-108)", () => {
     expect(await test.db.taskMetric.findUniqueOrThrow({ where: { taskId } })).toMatchObject({ prsMerged: 1 });
   });
 
-  it("F-108: the schedule runs every OSTRA_INSIGHTS_INTERVAL_MINUTES", async () => {
+  it("F-108/c2: the schedule runs every OSTRA_INSIGHTS_INTERVAL_MINUTES", async () => {
     expect(insightsCron(5)).toBe("*/5 * * * *");
     expect(insightsCron(1)).toBe("* * * * *");
     expect(insightsCron(120)).toBe("0 */2 * * *");

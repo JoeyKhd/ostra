@@ -192,7 +192,7 @@ describe("the queue", () => {
 });
 
 describe("labels", () => {
-  it("F-069: a runner fits when it carries every label, compared exactly", () => {
+  it("F-069/c1: a runner fits when it carries every label, compared exactly", () => {
     expect(labelsMatch(["gpu", "tier:fast"], ["gpu", "tier:fast", "os:linux"])).toBe(true);
     expect(labelsMatch([], [])).toBe(true);
     // One label short, or a near spelling: no.
@@ -286,7 +286,7 @@ describe("choosing a runner", () => {
     },
   ];
 
-  it.each(cases.map((item) => [item.name, item] as const))("F-069: %s waits with its reason, and its near miss runs", (_name, item) => {
+  it.each(cases.map((item) => [item.name, item] as const))("F-069/c1: %s waits with its reason, and its near miss runs", (_name, item) => {
     expect(chooseRunner(item.waits())).toEqual({ kind: "waits", reason: item.reason });
     expect(chooseRunner(item.nearMiss())).toMatchObject({ kind: "runner", poolId: poolA });
   });
@@ -299,7 +299,7 @@ describe("choosing a runner", () => {
     });
   });
 
-  it("F-069: takes the project's pools in its order, and the next pool when the first has no room", () => {
+  it("F-069/c1: takes the project's pools in its order, and the next pool when the first has no room", () => {
     const inA = runner();
     const inB = runner({ poolId: poolB });
     expect(chooseRunner(input({ runners: [inA, inB] }))).toEqual({ kind: "runner", runnerId: inA.id, poolId: poolA });
@@ -341,7 +341,7 @@ describe("choosing a runner", () => {
     expect(result).toEqual({ kind: "waits", reason: { code: "queued", poolId: poolB, place: 2 } });
   });
 
-  it("F-069: a member's own personal runner only for a task they started and picked it for", () => {
+  it("F-069/c2,c3: a member's own personal runner only for a task they started and picked it for", () => {
     const personal = runner({ kind: "personal", poolId: null, executor: "host", resources: null, slots: 2, capabilities: hostCapabilities });
     const pooled = runner();
     const picked = task({ personalRunnerId: personal.id, startedByMember: true, size: null });
@@ -366,7 +366,7 @@ describe("choosing a runner", () => {
     });
   });
 
-  it("F-069: services never go to host, on a pool or a personal runner", () => {
+  it("F-069/c4: services never go to host, on a pool or a personal runner", () => {
     const host = runner({ executor: "host", resources: null, capabilities: hostCapabilities });
     const docker = runner({ poolId: poolB });
     const services = task({ needsServices: true, size: null });

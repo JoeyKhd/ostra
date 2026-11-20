@@ -109,7 +109,7 @@ const scopeOf = (): MemberScope => ({ organizationId: h.world.organizationId, me
 const capItem = (taskId: string) => h.db.needsYouItem.findFirst({ where: { taskId, reason: "round_cap", state: "open" } });
 
 describe("F-101: the findings round", () => {
-  it("F-101: blocking findings as one prompt, nits listed only, as an automatic turn on the warm box", async () => {
+  it("F-101/c1,c2: blocking findings as one prompt, nits listed only, as an automatic turn on the warm box", async () => {
     const task = await seedTaskInCi(h);
     const nit = `Rename x ${randomBytes(3).toString("hex")}`;
     await reviewRound(task, [finding(task), finding(task, { path: "src/util.ts", line: 9, title: "Handle the empty list", body: "It throws." }), finding(task, { severity: "nit", line: 12, title: nit, body: "A clearer name." })]);
@@ -135,7 +135,7 @@ describe("F-101: the findings round", () => {
     expect(JSON.stringify(h.records)).not.toContain(nit);
   });
 
-  it("F-101: 2 review rounds, then the task needs its driver", async () => {
+  it("F-101/c1,c4: 2 review rounds, then the task needs its driver", async () => {
     const task = await seedTaskInCi(h);
     await reviewRound(task, [finding(task)]);
     await agentPushes(h, task);
@@ -152,7 +152,7 @@ describe("F-101: the findings round", () => {
     expect(capped.payload).toMatchObject({ round: "findings", reason: "rounds" });
   });
 
-  it("F-101: CI, review, CI, review are 4 automatic turns, then the task needs you", async () => {
+  it("F-101/c3,c4: CI, review, CI, review are 4 automatic turns, then the task needs you", async () => {
     // Each kind's own cap above the run, so the automatic turns are what stops it.
     h.limits = { ciRounds: 3, reviewRounds: 3, automaticTurns: 4 };
     const task = await seedTaskInCi(h);
@@ -174,7 +174,7 @@ describe("F-101: the findings round", () => {
     expect((await capItem(task.taskId))?.summary).toContain("4 automatic turns");
   });
 
-  it("F-101: a member's message resets the count", async () => {
+  it("F-101/c3: a member's message resets the count", async () => {
     const task = await seedTaskInCi(h);
     await failCi(task);
     await agentPushes(h, task);
@@ -205,7 +205,7 @@ describe("F-101: the findings round", () => {
 });
 
 describe("F-035: the CI round", () => {
-  it("F-035: the failing checks and their log files reach the agent, on a fresh box", async () => {
+  it("F-035/c1: the failing checks and their log files reach the agent, on a fresh box", async () => {
     const task = await seedTaskInCi(h);
     const marker = `AssertionError ${randomBytes(3).toString("hex")}`;
     await failCi(task, { log: `running 12 tests\n${marker}: expected 2 to be 3` });
@@ -233,7 +233,7 @@ describe("F-035: the CI round", () => {
     expect(spec.spec.contextFiles?.filter((file) => file.folder === "ci")).toEqual([{ blobId: blob.id, path: `${blob.id}.log`, contentType: "text/plain", size: blob.size, folder: "ci" }]);
   });
 
-  it("F-035: 2 CI rounds, then the task needs its driver", async () => {
+  it("F-035/c1,c2: 2 CI rounds, then the task needs its driver", async () => {
     const task = await seedTaskInCi(h);
     await failCi(task);
     expect(await stateOf(h, task.taskId)).toBe("in_review/fixing_ci");
@@ -251,7 +251,7 @@ describe("F-035: the CI round", () => {
 });
 
 describe("F-101: the spend cap, the budget and old runners", () => {
-  it("F-101, F-035: an automatic turn stops at the task's spend cap", async () => {
+  it("F-101/c3, F-035/c2: an automatic turn stops at the task's spend cap", async () => {
     const task = await seedTaskInCi(h);
     await h.db.task.update({ where: { id: task.taskId }, data: { spentMicroUsd: 25_000_000 } });
     await failCi(task);
@@ -260,7 +260,7 @@ describe("F-101: the spend cap, the budget and old runners", () => {
     expect(await counters(task.taskId)).toMatchObject({ automaticTurns: 0 });
   });
 
-  it("F-101, F-035: an automatic turn waits at 100% of the budget, and the held rounds are released in order", async () => {
+  it("F-101/c3, F-035/c2: an automatic turn waits at 100% of the budget, and the held rounds are released in order", async () => {
     const model = await h.db.agentProfile.findUniqueOrThrow({ where: { id: h.world.profileId }, select: { modelId: true } });
     if (model.modelId === null) throw new Error("the profile has no model");
     const budget = await h.db.budget.create({ data: { organizationId: h.world.organizationId, projectId: h.world.projectId, monthlyMicroUsd: 1_000_000n } });
@@ -300,7 +300,7 @@ describe("F-101: the spend cap, the budget and old runners", () => {
     }
   });
 
-  it("F-101, F-035: a held round released after the task reached its spend cap starts no turn, and the driver hears it", async () => {
+  it("F-101/c3, F-035/c2: a held round released after the task reached its spend cap starts no turn, and the driver hears it", async () => {
     const model = await h.db.agentProfile.findUniqueOrThrow({ where: { id: h.world.profileId }, select: { modelId: true } });
     if (model.modelId === null) throw new Error("the profile has no model");
     const budget = await h.db.budget.create({ data: { organizationId: h.world.organizationId, projectId: h.world.projectId, monthlyMicroUsd: 1_000_000n } });
@@ -333,7 +333,7 @@ describe("F-101: the spend cap, the budget and old runners", () => {
     }
   });
 
-  it("F-101: a round on an old runner goes to a fresh box, offered only to a runner at minor 5", async () => {
+  it("F-101/c1: a round on an old runner goes to a fresh box, offered only to a runner at minor 5", async () => {
     await h.db.runnerPresence.update({ where: { runnerId: h.runner.runnerId }, data: { minor: 4 } });
     const task = await seedTaskInCi(h);
     await failCi(task);

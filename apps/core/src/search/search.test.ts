@@ -146,28 +146,28 @@ const ids = async (input: Partial<Parameters<typeof searchTasks>[2]>, scope: Mem
   (await searchTasks(test.db, scope, { ...none, ...input })).map((result) => result.taskId);
 
 describe("finding a task (F-080)", () => {
-  it("F-080: finds a task by its ticket, and not the ticket whose key only starts the same", async () => {
+  it("F-080/c1: finds a task by its ticket, and not the ticket whose key only starts the same", async () => {
     expect(await ids({ ticketKey: "ENG-12" })).toEqual([found.taskId]);
     expect(await ids({ ticketKey: "ENG-121" })).toEqual([nearMiss.taskId]);
     expect(await ids({ text: "ENG-12" })).toContain(found.taskId);
   });
 
-  it("F-080: finds a task by its repo, and not the task on the other repo", async () => {
+  it("F-080/c1: finds a task by its repo, and not the task on the other repo", async () => {
     expect(await ids({ repoId: test1 })).toEqual([found.taskId]);
     expect(await ids({ repoId: test2 })).toEqual([nearMiss.taskId]);
   });
 
-  it("F-080: finds a task by its member (creator, driver or a message's author), and not another member's", async () => {
+  it("F-080/c1: finds a task by its member (creator, driver or a message's author), and not another member's", async () => {
     expect(await ids({ memberId: memberIdSchema.parse(fixture.a.member.id) })).toEqual([found.taskId]);
     expect(await ids({ memberId: memberIdSchema.parse(fixture.a.insider.id) })).toEqual([nearMiss.taskId]);
   });
 
-  it("F-080: finds a task by its state, and not a task in another state", async () => {
+  it("F-080/c1: finds a task by its state, and not a task in another state", async () => {
     expect(await ids({ state: "running" })).toEqual([found.taskId]);
     expect(await ids({ state: "stopped" })).toEqual([nearMiss.taskId]);
   });
 
-  it("F-080: finds a word of a message, the last word as a prefix, and not a near miss", async () => {
+  it("F-080/c1: finds a word of a message, the last word as a prefix, and not a near miss", async () => {
     expect(await ids({ text: "priceSource" })).toEqual([found.taskId]);
     expect(await ids({ text: "pricesou" })).toEqual([found.taskId]);
     expect(await ids({ text: "README aktualisieren" })).toEqual([found.taskId]);
@@ -177,25 +177,25 @@ describe("finding a task (F-080)", () => {
     expect(await ids({ text: "schema migr" })).toEqual([found.taskId]);
   });
 
-  it("F-080: finds a command, and not the near miss whose command only starts the same", async () => {
+  it("F-080/c1: finds a command, and not the near miss whose command only starts the same", async () => {
     expect(await ids({ text: "vitest" })).toEqual([found.taskId]);
     // "vite" as a prefix finds both; as a phrase, only the build.
     expect(new Set(await ids({ text: "vite" }))).toEqual(new Set([found.taskId, nearMiss.taskId]));
     expect(await ids({ text: "\"vite build\"" })).toEqual([nearMiss.taskId]);
   });
 
-  it("F-080: finds a path and a URL a tool call touched, and not the near misses", async () => {
+  it("F-080/c1: finds a path and a URL a tool call touched, and not the near misses", async () => {
     expect(await ids({ text: "schema.prisma" })).toEqual([found.taskId]);
     expect(await ids({ text: "seed.ts" })).toEqual([nearMiss.taskId]);
     expect(await ids({ text: "docs.example.com" })).toEqual([found.taskId]);
   });
 
-  it("F-080: a thought, a tool's output and partial text are never searched", async () => {
+  it("F-080/c1: a thought, a tool's output and partial text are never searched", async () => {
     expect(await ids({ text: "zebrafish" })).toEqual([]);
     expect(await test.db.searchEntry.count({ where: { taskId: found.taskId, text: { contains: "zebrafish" } } })).toBe(0);
   });
 
-  it("F-080: results are tasks, each once, best first, with at most three snippets that say what matched and where", async () => {
+  it("F-080/c1: results are tasks, each once, best first, with at most three snippets that say what matched and where", async () => {
     const [first, ...rest] = await searchTasks(test.db, memberOfA(), { ...none, text: "redirect" });
     expect(rest.map((result) => result.taskId)).not.toContain(first?.taskId);
     const [result] = await searchTasks(test.db, memberOfA(), { ...none, text: "priceSource" });
@@ -208,13 +208,13 @@ describe("finding a task (F-080)", () => {
     expect(result?.matched).toEqual(result?.snippets.map((one) => one.entryId));
   });
 
-  it("F-080: a query of filters only lists the member's tasks by recency", async () => {
+  it("F-080/c1: a query of filters only lists the member's tasks by recency", async () => {
     expect(await ids({})).toEqual([nearMiss.taskId, found.taskId]);
   });
 });
 
 describe("access is in the query (F-080, F-049, F-087)", () => {
-  it("F-080: a hidden project's task and another organization's are never returned, ranked or counted", async () => {
+  it("F-080/c1: a hidden project's task and another organization's are never returned, ranked or counted", async () => {
     for (const text of ["priceSource", "migrate", "vitest", "schema.prisma", "README", "login redirect"]) {
       const found = await ids({ text });
       expect(found).not.toContain(hidden.taskId);
@@ -232,14 +232,14 @@ describe("access is in the query (F-080, F-049, F-087)", () => {
 });
 
 describe("the entries (F-080)", () => {
-  it("F-080: an entry is cut at 8 KiB with the cut marked, in characters and bytes", () => {
+  it("F-080/c1: an entry is cut at 8 KiB with the cut marked, in characters and bytes", () => {
     const cut = cutSearchText("ü".repeat(9000));
     expect(Buffer.byteLength(cut, "utf8")).toBeLessThanOrEqual(8192);
     expect(cut.endsWith(SEARCH_CUT_MARK)).toBe(true);
     expect(cutSearchText("short")).toBe("short");
   });
 
-  it("F-080: a ticket's new title updates its entry, and search finds the new title", async () => {
+  it("F-080/c1: a ticket's new title updates its entry, and search finds the new title", async () => {
     // The fixture's tasks have a key but no cached ticket; one is made for this case.
     const board = await test.db.board.create({
       data: { organizationId: orgA, projectId: open, connectionId: (await test.db.connection.create({ data: { organizationId: orgA, kind: "linear", appId: "lin" } })).id, externalId: "team", name: "Eng", statusMap: {}, key: "ENG" },
@@ -255,7 +255,7 @@ describe("the entries (F-080)", () => {
 });
 
 describe("search.backfill (F-080)", () => {
-  it("F-080: the backfill writes an old task's entries once, run twice, and a later boot enqueues nothing for it", async () => {
+  it("F-080/c1: the backfill writes an old task's entries once, run twice, and a later boot enqueues nothing for it", async () => {
     const old = await seedLeasedTask(test.db, runnerA, open, { state: "running", creatorMemberId: fixture.a.member.id });
     await test.db.task.update({ where: { id: old.taskId }, data: { title: "An old task from before search" } });
     // Its events, as milestone 3 stored them: no entries.

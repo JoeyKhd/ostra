@@ -23,7 +23,7 @@ const noop = (): void => undefined;
 const propose = () => Promise.resolve({ kind: "proposed" as const });
 
 describe("Remember this (F-111)", () => {
-  it("F-111: a sent diff comment offers Remember this; a draft doesn't, nor a page that can't propose", () => {
+  it("F-111/c1: a sent diff comment offers Remember this; a draft doesn't, nor a page that can't propose", () => {
     expect(renderToStaticMarkup(<CommentBlock comment={sent} onEdit={noop} onDelete={noop} onRemember={propose} />)).toContain('data-action="remember-this"');
     expect(renderToStaticMarkup(<CommentBlock comment={{ ...sent, state: "draft" }} onEdit={noop} onDelete={noop} onRemember={propose} />)).not.toContain("remember-this");
     expect(renderToStaticMarkup(<CommentBlock comment={sent} onEdit={noop} onDelete={noop} />)).not.toContain("remember-this");

@@ -50,7 +50,7 @@ afterAll(async () => {
 });
 
 describe("notes", () => {
-  it("F-109: each procedure's access per scope: a restricted project's notes are NOT_FOUND to a member who can't open it", async () => {
+  it("F-109/c1,c2,c6: each procedure's access per scope: a restricted project's notes are NOT_FOUND to a member who can't open it", async () => {
     const { a, b } = harness.fixture;
     const insider = await harness.as(a.insider);
     const member = await harness.as(a.member);
@@ -103,7 +103,7 @@ describe("notes", () => {
     expect(audit.map((entry) => entry.action).sort()).toEqual(["memory.note-archived", "memory.note-created"]);
   });
 
-  it("F-109: a search finds a scope's notes by their words, ranked, and nothing of another scope", async () => {
+  it("F-109/c1,c3: a search finds a scope's notes by their words, ranked, and nothing of another scope", async () => {
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);
     const save = (title: string, body: string, kind: "gotcha" | "command" = "gotcha") =>
@@ -121,7 +121,7 @@ describe("notes", () => {
     expect(await harness.test.db.memoryNote.count()).toBeGreaterThan(0);
   });
 
-  it("F-109: a secret is refused as BAD_REQUEST naming its kind, never its value, and nothing is stored", async () => {
+  it("F-109/c4: a secret is refused as BAD_REQUEST naming its kind, never its value, and nothing is stored", async () => {
     const { a } = harness.fixture;
     const before = await harness.test.db.memoryNote.count();
     const error: unknown = await (await harness.as(a.member)).memory
@@ -134,7 +134,7 @@ describe("notes", () => {
     expect(await harness.test.db.memoryNote.count()).toBe(before);
   });
 
-  it("F-109: a stale save is a CONFLICT naming who saved which version, and the note keeps its versions", async () => {
+  it("F-109/c3,c5: a stale save is a CONFLICT naming who saved which version, and the note keeps its versions", async () => {
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);
     const member = await harness.as(a.member);
@@ -155,7 +155,7 @@ describe("notes", () => {
 });
 
 describe("proposals", () => {
-  it("F-111: each decision: approve, approve and archive, merge (stale is CONFLICT), reject, and no second decision", async () => {
+  it("F-111/c2,c3,c4,c5: each decision: approve, approve and archive, merge (stale is CONFLICT), reject, and no second decision", async () => {
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);
     const member = await harness.as(a.member);
@@ -211,7 +211,7 @@ describe("proposals", () => {
     expect(await harness.test.db.memoryProposal.findUniqueOrThrow({ where: { id: hidden }, select: { state: true } })).toEqual({ state: "proposed" });
   });
 
-  it("F-111: Remember this on a diff comment and on an accepted @ostra comment proposes a project note with the comment as its source", async () => {
+  it("F-111/c1: Remember this on a diff comment and on an accepted @ostra comment proposes a project note with the comment as its source", async () => {
     const { a } = harness.fixture;
     const member = await harness.as(a.member);
     const world = await seedConnectionAndModel(harness);
@@ -269,7 +269,7 @@ describe("proposals", () => {
 });
 
 describe("tasks.memory", () => {
-  it("F-110: tasks.memory lists what the session's MemoryUse rows say, and the proposals the task made", async () => {
+  it("F-110/c4: tasks.memory lists what the session's MemoryUse rows say, and the proposals the task made", async () => {
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);
     const task = await seedTask(harness, { organizationId: a.organization.id, projectId: a.openProject.id });
@@ -307,7 +307,7 @@ describe("tasks.memory", () => {
 });
 
 describe("the profile's closing turn", () => {
-  it("F-111: an agent profile's closing turn is switched on and off by its save, kept when a save leaves it out", async () => {
+  it("F-111/c6: an agent profile's closing turn is switched on and off by its save, kept when a save leaves it out", async () => {
     const caller = await harness.as(harness.fixture.a.admin);
     const base = { adapter: "opencode", modelId: null, instructions: null, approvalRules: [], planFirst: false, access: { kind: "everyone" as const }, mcpServers: [], skills: [] };
     const created = await caller.agentProfiles.save({ ...base, name: "Learns", closingTurn: true });

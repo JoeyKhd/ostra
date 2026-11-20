@@ -28,7 +28,7 @@ describe("the token the panel gives core to store a member's file", () => {
     expect(tokens.verify(token, NOW + 60_000)).toBeNull();
   });
 
-  it("F-021: a token made under another key, or changed by one character in its claims, is refused", () => {
+  it("F-021/c1: a token made under another key, or changed by one character in its claims, is refused", () => {
     const token = createPanelBlobTokens(SECRET).issue(claims());
     expect(createPanelBlobTokens("b".repeat(64)).verify(token, NOW)).toBeNull();
     // A forger swaps in a bigger organization or size and keeps the old signature.

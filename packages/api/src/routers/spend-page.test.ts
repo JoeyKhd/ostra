@@ -57,7 +57,7 @@ afterAll(async () => {
 });
 
 describe("spend.month for the Spend page", () => {
-  it("F-037: a budget carries this month's notices, the turns it holds now and who set it", async () => {
+  it("F-037/c1: a budget carries this month's notices, the turns it holds now and who set it", async () => {
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);
     const { budgetId } = await admin.budgets.set({ projectId: a.openProject.id, monthlyUsd: 4 });
@@ -118,7 +118,7 @@ describe("spend.month for the Spend page", () => {
     expect(past.budgets.find((row) => row.budgetId === budgetId)).toMatchObject({ warnedAt: Date.parse(`${LAST_MONTH}-20T00:00:00Z`), reachedAt: null });
   });
 
-  it("F-037: a new task the gate keeps queued counts as a queued task of the budget its dispatch note names", async () => {
+  it("F-037/c1: a new task the gate keeps queued counts as a queued task of the budget its dispatch note names", async () => {
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);
     const queuedOf = async (): Promise<{ readonly project: number; readonly organization: number }> => {
@@ -140,7 +140,7 @@ describe("spend.month for the Spend page", () => {
     expect(await queuedOf()).toEqual({ project: before.project + 1, organization: before.organization + 1 });
   });
 
-  it("F-037: each model line says whether it's custom, with the catalog's logo for one that isn't", async () => {
+  it("F-037/c1: each model line says whether it's custom, with the catalog's logo for one that isn't", async () => {
     const view = await (await harness.as(harness.fixture.a.admin)).spend.month({ month: MONTH });
     const sonnet = view.byModel.find((line) => line.modelId === priced);
     const custom = view.byModel.find((line) => line.modelId === unpriced);
@@ -151,7 +151,7 @@ describe("spend.month for the Spend page", () => {
 });
 
 describe("spend.modelPrice", () => {
-  it("F-037: a model's four prices, where they came from, and its unpriced tokens this month", async () => {
+  it("F-037/c1: a model's four prices, where they came from, and its unpriced tokens this month", async () => {
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);
     expect(await admin.spend.modelPrice({ modelId: unpriced, month: MONTH })).toEqual({
@@ -183,7 +183,7 @@ describe("spend.modelPrice", () => {
     expect(listed).toMatchObject({ inputPricePerMTok: 0.2, outputPricePerMTok: 0.8, cacheReadPricePerMTok: 0.02, cacheWritePricePerMTok: null, priceSource: "admin", priceChangedAt: saved.priceChangedAt });
   });
 
-  it("F-037: a member can't read a model's price form, nor another organization's model", async () => {
+  it("F-037/c1: a member can't read a model's price form, nor another organization's model", async () => {
     const { a, b } = harness.fixture;
     await expect((await harness.as(a.member)).spend.modelPrice({ modelId: priced, month: MONTH })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect((await harness.as(b.admin)).spend.modelPrice({ modelId: priced, month: MONTH })).rejects.toMatchObject({ code: "NOT_FOUND" });

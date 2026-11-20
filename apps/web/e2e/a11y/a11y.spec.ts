@@ -175,7 +175,7 @@ test.beforeEach(async ({ page }) => {
   await prepareA11y(page);
 });
 
-test("F-081: the walk and the contrast check name every route of the panel", async () => {
+test("F-081/c2: the walk and the contrast check name every route of the panel", async () => {
   const { member, visitor } = visits(world);
   const named = new Set([...member, ...visitor].map((visit) => visit.pattern));
   expect((await appRoutePatterns()).filter((pattern) => !named.has(pattern)), "a route of src/app the checks don't open").toEqual([]);
@@ -197,12 +197,12 @@ const checkEverything = async (page: Page, theme: Theme, testInfo: TestInfo): Pr
   expect.soft(report.contrast, "the contrast check").toEqual([]);
 };
 
-test("F-081: the keyboard walk and the contrast check pass on every route, dialog, menu and palette step, dark theme", async ({ page }, testInfo) => {
+test("F-081/c2: the keyboard walk and the contrast check pass on every route, dialog, menu and palette step, dark theme", async ({ page }, testInfo) => {
   test.setTimeout(1_500_000);
   await checkEverything(page, "dark", testInfo);
 });
 
-test("F-081: the keyboard walk and the contrast check pass on every route, dialog, menu and palette step, light theme", async ({ page }, testInfo) => {
+test("F-081/c2: the keyboard walk and the contrast check pass on every route, dialog, menu and palette step, light theme", async ({ page }, testInfo) => {
   test.setTimeout(1_500_000);
   await checkEverything(page, "light", testInfo);
 });

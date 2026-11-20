@@ -10,7 +10,7 @@ import { chartNames, requiredPaths, runnerValuesSchema, serverValuesSchema, valu
 const reference = await readRepoFile("docs/configuration.md");
 
 describe("the charts' values", () => {
-  it("F-118: values.yaml and each example parse against the Zod schema, and values.yaml lacks exactly the required values", async () => {
+  it("F-118/c3: values.yaml and each example parse against the Zod schema, and values.yaml lacks exactly the required values", async () => {
     for (const chart of chartNames) {
       expect(await checkValues(chart), chart).toEqual([]);
       const defaults = await readDefaults(chart);
@@ -25,7 +25,7 @@ describe("the charts' values", () => {
     }
   });
 
-  it("F-118: a mistyped key, a missing required value or both database sources at once is refused", async () => {
+  it("F-118/c3: a mistyped key, a missing required value or both database sources at once is refused", async () => {
     const server = (await readDefaults("ostra-server")).values;
     const runner = (await readDefaults("ostra-runner")).values;
     const database = { database: { url: "postgres://ostra@db:5432/ostra" } };
@@ -41,7 +41,7 @@ describe("the charts' values", () => {
     expect(runnerValuesSchema.safeParse(mergeValues(runner, { ...runnerRequired, server: { url: "http://core:8787", egress: { cidr: "10.0.0.5", namespace: "ostra", port: 1 } } })).success).toBe(false);
   });
 
-  it("F-118: the generated values.schema.json matches the committed one", async () => {
+  it("F-118/c3: the generated values.schema.json matches the committed one", async () => {
     for (const chart of chartNames) {
       expect(await checkSchemaFile(chart), chart).toEqual([]);
       const committed: unknown = JSON.parse(await readRepoFile(schemaFile(chart)));
@@ -52,7 +52,7 @@ describe("the charts' values", () => {
     }
   });
 
-  it("F-118: every value is in the configuration reference, with (required) exactly where values.yaml has no default", async () => {
+  it("F-118/c3: every value is in the configuration reference, with (required) exactly where values.yaml has no default", async () => {
     for (const chart of chartNames) {
       const defaults = (await readDefaults(chart)).values;
       expect(checkReference(chart, reference, defaults), chart).toEqual([]);
@@ -69,7 +69,7 @@ describe("the charts' values", () => {
     expect(checkReference("ostra-runner", unmarked, defaults).map((problem) => problem.message)).toContain("server.url's default must say (required)");
   });
 
-  it("F-118: both charts are versioned with the release and need Kubernetes 1.29, for native sidecars", async () => {
+  it("F-118/c3: both charts are versioned with the release and need Kubernetes 1.29, for native sidecars", async () => {
     for (const chart of chartNames) {
       expect(await checkChartYaml(chart), chart).toEqual([]);
     }

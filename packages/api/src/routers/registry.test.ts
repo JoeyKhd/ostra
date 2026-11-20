@@ -83,7 +83,7 @@ const seedPushedSnapshot = async (registryId: string): Promise<{ readonly snapsh
 };
 
 describe("the registry (F-120)", () => {
-  it("F-120: an admin sets it and reads it back: the address, prefix and auth kind, each credential as set, never its value", async () => {
+  it("F-120/c1: an admin sets it and reads it back: the address, prefix and auth kind, each credential as set, never its value", async () => {
     await seedKubernetesRunner(`k8s-${randomBytes(3).toString("hex")}`);
     const caller = await admin();
     const before = await caller.registry.get();
@@ -102,7 +102,7 @@ describe("the registry (F-120)", () => {
     expectNoSecretIn(harness.logs);
   });
 
-  it("F-120: a member and another organization's admin can't read, set, check or clear it, and another organization's settings are its own", async () => {
+  it("F-120/c1: a member and another organization's admin can't read, set, check or clear it, and another organization's settings are its own", async () => {
     const caller = await admin();
     await caller.registry.set({ ...SETTINGS, push: PUSH, pull: PULL });
     const member = await harness.as(harness.fixture.a.member);
@@ -122,7 +122,7 @@ describe("the registry (F-120)", () => {
     expect((await caller.registry.get()).registry).toMatchObject({ url: "registry.example.com", pushSet: true });
   });
 
-  it("F-120: no credential's value is in a refusal", async () => {
+  it("F-120/c1: no credential's value is in a refusal", async () => {
     const caller = await admin();
     const bad = await trpcFailure(caller.registry.set({ ...SETTINGS, url: "not a host!", push: PUSH, pull: PULL }));
     expect(bad.code).toBe("BAD_REQUEST");
@@ -135,7 +135,7 @@ describe("the registry (F-120)", () => {
     expectNoSecretIn(harness.logs);
   });
 
-  it("F-120: a credential left out keeps the stored one; one given replaces it, and the old value leaves the store", async () => {
+  it("F-120/c1: a credential left out keeps the stored one; one given replaces it, and the old value leaves the store", async () => {
     const caller = await admin();
     await caller.registry.set({ ...SETTINGS, push: PUSH, pull: PULL });
     const first = await harness.test.db.registry.findUniqueOrThrow({ where: { organizationId } });
@@ -156,7 +156,7 @@ describe("the registry (F-120)", () => {
     expect(harness.fakes.secretStore.values().some((value) => value.includes(NEW_PUSH.token))).toBe(true);
   });
 
-  it("F-120: the check is queued once per settings' version, and returns at once", async () => {
+  it("F-120/c1: the check is queued once per settings' version, and returns at once", async () => {
     const caller = await admin();
     await caller.registry.set({ ...SETTINGS, push: PUSH, pull: PULL });
     // The set queued the check for its version; asking again joins it.
@@ -175,7 +175,7 @@ describe("the registry (F-120)", () => {
     expect(checksQueued()).toHaveLength(2);
   });
 
-  it("F-120: lists the organization's snapshots in it, and the environment's snapshot says where it was pushed, what built it and on which runner", async () => {
+  it("F-120/c1: lists the organization's snapshots in it, and the environment's snapshot says where it was pushed, what built it and on which runner", async () => {
     const caller = await admin();
     await seedKubernetesRunner(`k8s-${randomBytes(3).toString("hex")}`);
     const view = await caller.registry.set({ ...SETTINGS, push: PUSH, pull: PULL });

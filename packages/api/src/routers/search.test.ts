@@ -93,7 +93,7 @@ afterAll(async () => {
 });
 
 describe("search.tasks", () => {
-  it("F-080: each filter token narrows the search, and its near miss doesn't match", async () => {
+  it("F-080/c1: each filter token narrows the search, and its near miss doesn't match", async () => {
     const member = await harness.as(harness.fixture.a.member);
     const memberName = (await harness.test.db.user.findUniqueOrThrow({ where: { id: harness.fixture.a.member.userId } })).username;
     // ticket: OST-12, never OST-120.
@@ -121,7 +121,7 @@ describe("search.tasks", () => {
     expect(await found(member, `project:${projectSlug} migration`)).toEqual(["migration"]);
   });
 
-  it("F-080: text matches with the last word as a prefix, in titles and in the thread, with snippets that link to the event", async () => {
+  it("F-080/c1: text matches with the last word as a prefix, in titles and in the thread, with snippets that link to the event", async () => {
     const member = await harness.as(harness.fixture.a.member);
     expect(await found(member, "migr")).toEqual(["elsewhere", "migration"]);
     expect(await found(member, "migration")).toEqual(["migration"]);
@@ -135,7 +135,7 @@ describe("search.tasks", () => {
     expect(snippet?.parts.some((part) => part.match && part.text.toLowerCase() === "apiversion")).toBe(true);
   });
 
-  it("F-080: results come only from the projects the member can open in the active organization, for a member, a listed member and an admin", async () => {
+  it("F-080/c1: results come only from the projects the member can open in the active organization, for a member, a listed member and an admin", async () => {
     const { a } = harness.fixture;
     expect(await found(await harness.as(a.member), "migration")).toEqual(["migration"]);
     expect(await found(await harness.as(a.insider), "migration")).toEqual(["hidden", "migration"]);
@@ -145,7 +145,7 @@ describe("search.tasks", () => {
     expect(await found(await harness.as(a.admin), "Their")).toEqual([]);
   });
 
-  it("F-080: a hidden task's text never appears in a snippet or a count", async () => {
+  it("F-080/c1: a hidden task's text never appears in a snippet or a count", async () => {
     const member = await harness.as(harness.fixture.a.member);
     for (const query of ["secret", "migration plan", "ticket:OST-12", "status:running"]) {
       const answer = await member.search.tasks({ query });
@@ -157,7 +157,7 @@ describe("search.tasks", () => {
     expect((await (await harness.as(harness.fixture.a.admin)).search.tasks({ query: "secret" })).total).toBe(1);
   });
 
-  it("F-080: suggest gives the top 8 with the same access, and no search text reaches a log line", async () => {
+  it("F-080/c1: suggest gives the top 8 with the same access, and no search text reaches a log line", async () => {
     const member = await harness.as(harness.fixture.a.member);
     const suggestions = await member.search.suggest({ query: "migr" });
     expect(suggestions.results.length).toBeLessThanOrEqual(8);
@@ -174,7 +174,7 @@ describe("search.tasks", () => {
 });
 
 describe("search.tasks, a repo in several projects", () => {
-  it("F-080: repo: matches a task in any project that lists the repo, not only the first project's", async () => {
+  it("F-080/c1: repo: matches a task in any project that lists the repo, not only the first project's", async () => {
     // The same repo, ostra-test/test1, listed by a second project: a row of its own there.
     const second = await seedProject(harness, world, "search-shop-two");
     await seed("second-project", { organizationId: orgA, projectId: second.projectId, title: "Paint the logo", creatorMemberId: harness.fixture.a.member.id, createdAt: new Date("2026-11-12T12:00:00Z"), repo: second.repoId });

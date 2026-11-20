@@ -61,7 +61,7 @@ const leasedTo = async (runnerId: RunnerId) => {
 };
 
 describe("runners.revoke (Q131)", () => {
-  it("F-091, F-092: an admin revokes an online runner at once: its leases end, its tasks stop as runner_lost with their epochs raised, in one transaction", async () => {
+  it("F-091/c5, F-092/c4: an admin revokes an online runner at once: its leases end, its tasks stop as runner_lost with their epochs raised, in one transaction", async () => {
     const { a } = harness.fixture;
     const runnerId = await runnerIn(a.organization.id, { kind: "pool" }, "online");
     const first = await leasedTo(runnerId);
@@ -100,7 +100,7 @@ describe("runners.revoke (Q131)", () => {
     expect((await harness.test.db.auditEntry.findFirstOrThrow({ where: { action: "runner.revoked", entityId: runnerId } })).data).toMatchObject({ from: state });
   });
 
-  it("F-091: a runner already revoked answers the same and changes nothing", async () => {
+  it("F-091/c5: a runner already revoked answers the same and changes nothing", async () => {
     const { a } = harness.fixture;
     const runnerId = await runnerIn(a.organization.id, { kind: "pool" }, "revoked");
     const before = await harness.test.db.runner.findUniqueOrThrow({ where: { id: runnerId } });
@@ -116,7 +116,7 @@ describe("runners.revoke (Q131)", () => {
     expect(await harness.test.db.auditEntry.count({ where: { action: "runner.revoked", entityId: live } })).toBe(1);
   });
 
-  it("F-091: a member revokes their own personal runner, and no one else's", async () => {
+  it("F-091/c5: a member revokes their own personal runner, and no one else's", async () => {
     const { a, b } = harness.fixture;
     const own = await runnerIn(a.organization.id, { kind: "personal", memberId: a.member.id }, "online");
     const task = await leasedTo(own);

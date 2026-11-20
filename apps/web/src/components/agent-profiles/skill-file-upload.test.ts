@@ -21,7 +21,7 @@ describe("uploading a skill's file", () => {
     expect(sent).toEqual({ ok: true, file: { path: "examples/one.md", size: 12, blobId: BLOB } });
   });
 
-  it("F-021: a 413 says the file is over the limit, and any other failure says to try again; nothing is added", async () => {
+  it("F-021/c1: a 413 says the file is over the limit, and any other failure says to try again; nothing is added", async () => {
     expect(await uploadSkillFile(file("x"), () => Promise.resolve(Response.json({ error: "big" }, { status: 413 })))).toEqual({ ok: false, key: "agentProfiles.skill.errorSize" });
     expect(await uploadSkillFile(file("x"), () => Promise.resolve(Response.json({ error: "down" }, { status: 503 })))).toEqual({ ok: false, key: "agentProfiles.skill.errorUpload" });
     expect(await uploadSkillFile(file("x"), () => Promise.resolve(Response.json({ surprise: true })))).toEqual({ ok: false, key: "agentProfiles.skill.errorUpload" });

@@ -5,7 +5,7 @@ import { bodySize, conflictOf, secretFoundOf, sourceFilterOf } from "./memory-wo
 // F-109, F-111 (ticket 38): the words Memory builds from the API's refusals, and the Source filter.
 
 describe("memory words", () => {
-  it("F-109: a secret refusal names its kind from the API's message, and a stale save who saved first", () => {
+  it("F-109/c4: a secret refusal names its kind from the API's message, and a stale save who saved first", () => {
     expect(secretFoundOf("This note holds a GitHub token, so it wasn't saved. Remove it and save again.")).toBe("a GitHub token");
     expect(secretFoundOf("This note holds a GitHub token, an AWS access key, so it wasn't saved. Remove it and save again.")).toBe("a GitHub token, an AWS access key");
     expect(secretFoundOf("Version 3 was saved by Sam Rivera since you opened this note.")).toBeNull();

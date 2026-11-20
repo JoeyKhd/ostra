@@ -87,7 +87,7 @@ afterAll(async () => {
 
 describe("the Linear agent-mode harness's rehearsal (ticket 38)", () => {
   it(
-    "F-012: the harness's four bullets pass against ostra's core on the fake Linear: the install, 50 delegations, a follow-up and a stop, and 35 silent minutes",
+    "F-012/c6: the harness's four bullets pass against ostra's core on the fake Linear: the install, 50 delegations, a follow-up and a stop, and 35 silent minutes",
     async () => {
       const organizationId = fixture.a.organization.id;
       const projectId = fixture.a.openProject.id;

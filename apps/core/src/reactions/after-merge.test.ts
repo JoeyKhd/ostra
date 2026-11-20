@@ -226,7 +226,7 @@ const nextSession = async (task: DrivenTask): Promise<DrivenTask> => {
 };
 
 describe("behind (F-070)", () => {
-  it("F-070: a push to main updates behindBy once, for this organization's task repos only", async () => {
+  it("F-070/c1: a push to main updates behindBy once, for this organization's task repos only", async () => {
     const task = await runningTask();
     await turn(task, 1, [{ repoId: repo(), head: "behind-1" }]);
     codeHost.setCompare("ostra-test/test1", sha("behind-1"), compareOf(3), "main");
@@ -251,7 +251,7 @@ describe("behind (F-070)", () => {
 });
 
 describe("Update branch (F-070)", () => {
-  it("F-070: update branch sends one message naming only the repos behind; nothing behind refuses it", async () => {
+  it("F-070/c1: update branch sends one message naming only the repos behind; nothing behind refuses it", async () => {
     const task = await runningTask([repo(), secondRepoId]);
     await turn(task, 1, [
       { repoId: repo(), head: "upd-1a" },
@@ -276,7 +276,7 @@ describe("Update branch (F-070)", () => {
 });
 
 describe("after the merge (F-066)", () => {
-  it("F-066: a reopen after a merge makes -2 from the base, keeps the merged PR, and leaves an unmerged repo's branch alone", async () => {
+  it("F-066/c1,c2: a reopen after a merge makes -2 from the base, keeps the merged PR, and leaves an unmerged repo's branch alone", async () => {
     const task = await runningTask([repo(), secondRepoId]);
     await turn(task, 1, [
       { repoId: repo(), head: "am-1a" },
@@ -299,7 +299,7 @@ describe("after the merge (F-066)", () => {
     expect((await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).branchName).toBe(branchName);
   });
 
-  it("F-066: after a partial merge the task spec gives the merged repo its fresh branch, and the other repo the task's", async () => {
+  it("F-066/c2: after a partial merge the task spec gives the merged repo its fresh branch, and the other repo the task's", async () => {
     const task = await runningTask([repo(), secondRepoId]);
     await turn(task, 1, [
       { repoId: repo(), head: "ps-1a" },
@@ -330,7 +330,7 @@ describe("after the merge (F-066)", () => {
     expect(spec.agent.instructions).toContain(`branch: \`${branchName}-2\``);
   });
 
-  it("F-066: a merged task reopens on -2, its first push opens a new PR, and a second merge and reopen makes -3", async () => {
+  it("F-066/c1: a merged task reopens on -2, its first push opens a new PR, and a second merge and reopen makes -3", async () => {
     const task = await runningTask();
     await turn(task, 1, [{ repoId: repo(), head: "mm-1" }]);
     const { branchName } = await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } });

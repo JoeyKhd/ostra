@@ -268,7 +268,7 @@ describe("a project's branch names (ticket 46)", () => {
       data: { organizationId, projectId, kind: "code", source: "prompt", title: "Nightly", prompt: "p", branchName },
     });
 
-  it("F-016: the index refuses a hand-made duplicate in a project, and allows it in another project and for the placeholder", async () => {
+  it("F-016/c3: the index refuses a hand-made duplicate in a project, and allows it in another project and for the placeholder", async () => {
     const branch = `ostra/${randomBytes(4).toString("hex")}-nightly`;
     await named(fixture.a.openProject.id, branch);
     await expect(named(fixture.a.openProject.id, branch)).rejects.toThrow(/task_project_branch_unique|Unique constraint/);

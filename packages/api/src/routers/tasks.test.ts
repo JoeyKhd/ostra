@@ -37,7 +37,7 @@ describe("tasks.create (F-097)", () => {
     expect(await harness.test.db.task.findUniqueOrThrow({ where: { id: code.taskId }, select: { kind: true } })).toEqual({ kind: "code" });
   });
 
-  it("F-030, F-078, F-097: starts a code task from a prompt, in one transaction, with no ticket", async () => {
+  it("F-030/c2, F-078/c2, F-097/c1: starts a code task from a prompt, in one transaction, with no ticket", async () => {
     const { a } = harness.fixture;
     const prompt = "Add a short CONTRIBUTING.md that explains how to run the tests\nUse the repo's own words.";
     const created = await (await harness.as(a.member)).tasks.create({ projectId, prompt });
@@ -87,7 +87,7 @@ describe("tasks.create (F-097)", () => {
     expect(JSON.stringify(harness.logs)).not.toContain("CONTRIBUTING");
   });
 
-  it("F-097: a prompt task in a project with a tracker board makes no ticket and writes nothing to the tracker", async () => {
+  it("F-097/c2: a prompt task in a project with a tracker board makes no ticket and writes nothing to the tracker", async () => {
     const { a } = harness.fixture;
     const tracked = (await seedProject(harness, world, "tracked")).projectId;
     const connection = await harness.test.db.connection.create({ data: { organizationId: orgA(), kind: "linear", appId: "linear-app-test" } });
@@ -110,7 +110,7 @@ describe("tasks.create (F-097)", () => {
     expect(harness.fakes.jobs.jobs.filter((job) => job.job.startsWith("ticket."))).toEqual([]);
   });
 
-  it("F-019: a prompt task runs on the default agent: the organization's built-in OpenCode profile, which the project starts with", async () => {
+  it("F-019/c1: a prompt task runs on the default agent: the organization's built-in OpenCode profile, which the project starts with", async () => {
     const created = await (await harness.as(harness.fixture.a.member)).tasks.create({ projectId, prompt: "which agent runs me" });
     const session = await harness.test.db.session.findUniqueOrThrow({ where: { id: created.sessionId } });
     const profile = await harness.test.db.agentProfile.findUniqueOrThrow({ where: { id: session.agentProfileId ?? "none" } });
@@ -349,7 +349,7 @@ describe("tasks.history pages by turn, newest first (ADR 0036)", () => {
 });
 
 describe("tasks.stop (F-025)", () => {
-  it("F-025: stops a task that is running: any member of the project, a stop command for the runner holding its lease", async () => {
+  it("F-025/c1: stops a task that is running: any member of the project, a stop command for the runner holding its lease", async () => {
     const { a } = harness.fixture;
     const project = (await seedProject(harness, world, "stopping")).projectId;
     const place = { organizationId: orgA(), projectId: project };
@@ -519,7 +519,7 @@ describe("approvals.answer (F-026, ADR 0036)", () => {
     return { task, project, runnerId, approvals };
   };
 
-  it("F-026: lets any member of the project answer, and commits the answer, the command and the task's move", async () => {
+  it("F-026/c4: lets any member of the project answer, and commits the answer, the command and the task's move", async () => {
     const { task, runnerId, approvals } = await prepare("approve-1");
     const first = approvalIdSchema.parse(approvals[0]);
     harness.fakes.outbox.clear();
@@ -569,7 +569,7 @@ describe("approvals.answer (F-026, ADR 0036)", () => {
     expect(await harness.test.db.event.count({ where: { taskId: task.taskId, kind: "approval.closed" } })).toBe(0);
   });
 
-  it("F-026: refuses a decision the agent didn't offer, another organization, and a restricted project's outsiders", async () => {
+  it("F-026/c4: refuses a decision the agent didn't offer, another organization, and a restricted project's outsiders", async () => {
     const { a, b } = harness.fixture;
     const { approvals } = await prepare("approve-4", 1);
     const target = approvalIdSchema.parse(approvals[0]);

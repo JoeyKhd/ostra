@@ -33,7 +33,7 @@ const openTask = async (page: Page, taskId: string, name: string) => {
 };
 
 test.describe("F-081: the core actions by keyboard", { tag: "@desktop-only" }, () => {
-  test("F-081: jump to needs you, approve, answer, take over and reopen, each from the palette with the keyboard only", async ({ page }) => {
+  test("F-081/c1: jump to needs you, approve, answer, take over and reopen, each from the palette with the keyboard only", async ({ page }) => {
     const approval = await seedKeysTask("approval", title("palette approval"));
     const question = await seedKeysTask("question", title("palette question"));
     const other = await seedKeysTask("running-other", title("palette take over"));
@@ -93,7 +93,7 @@ test.describe("F-081: the core actions by keyboard", { tag: "@desktop-only" }, (
     await expectFacts(stopped.taskId, (facts) => facts.state === "queued" && (facts.events["user.message"] ?? 0) >= 2);
   });
 
-  test("F-081: the ? sheet lists every shortcut of the registry, and every line on it is a working shortcut", async ({ page }) => {
+  test("F-081/c1: the ? sheet lists every shortcut of the registry, and every line on it is a working shortcut", async ({ page }) => {
     await signIn(page);
     await page.keyboard.press("?");
     const sheet = page.getByTestId("shortcut-sheet");
@@ -195,7 +195,7 @@ test.describe("F-081: the core actions by keyboard", { tag: "@desktop-only" }, (
     }
   });
 
-  test("F-081: no shortcut fires while typing in the composer, a field or the palette", async ({ page }) => {
+  test("F-081/c1: no shortcut fires while typing in the composer, a field or the palette", async ({ page }) => {
     const seeded = await seedKeysTask("approval", title("typing"));
     await signIn(page);
     await openTask(page, seeded.taskId, title("typing"));
@@ -219,7 +219,7 @@ test.describe("F-081: the core actions by keyboard", { tag: "@desktop-only" }, (
     await expectFacts(seeded.taskId, (facts) => facts.approvals[0]?.state === "open" && facts.state === "needs_you");
   });
 
-  test("F-081: approve, answer, take over and reopen with Tab, arrows and Enter alone on their screens", async ({ page }) => {
+  test("F-081/c2: approve, answer, take over and reopen with Tab, arrows and Enter alone on their screens", async ({ page }) => {
     const approval = await seedKeysTask("approval", title("tab approve"));
     const listed = await seedKeysTask("approval", title("list approve"));
     const question = await seedKeysTask("question", title("tab answer"));
@@ -285,7 +285,7 @@ test.describe("F-081: the core actions by keyboard", { tag: "@desktop-only" }, (
     await expectFacts(stopped.taskId, (facts) => facts.state === "queued" && (facts.events["user.message"] ?? 0) >= 2);
   });
 
-  test("F-081: focus returns to its trigger after every dialog: the palette, the sheet, Stop's confirmation and the account menu", async ({ page }) => {
+  test("F-081/c2: focus returns to its trigger after every dialog: the palette, the sheet, Stop's confirmation and the account menu", async ({ page }) => {
     const seeded = await seedKeysTask("approval", title("focus return"));
     await signIn(page);
 
@@ -323,7 +323,7 @@ test.describe("F-081: the core actions by keyboard", { tag: "@desktop-only" }, (
     await expect.poll(() => focusedMark(page)).toBe("user-menu");
   });
 
-  test("F-081: the live region announces a new needs-you item", async ({ page }) => {
+  test("F-081/c2: the live region announces a new needs-you item", async ({ page }) => {
     await signIn(page);
     await expect(page.locator("[data-action='open-palette']")).toBeVisible();
     // Let the shell read the count once, then something new waits.

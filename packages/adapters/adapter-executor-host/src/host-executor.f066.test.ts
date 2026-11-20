@@ -83,7 +83,7 @@ afterAll(async () => {
 });
 
 describe("a repo on a branch of its own (F-066)", () => {
-  it("F-066: in a two-repo task with one repo merged, the merged repo pushes to its fresh branch and the other keeps the task's", async () => {
+  it("F-066/c2: in a two-repo task with one repo merged, the merged repo pushes to its fresh branch and the other keeps the task's", async () => {
     const box = newBox();
     const spec = specFor(box, undefined);
     const fresh = `${spec.branchName}-2`;
@@ -137,7 +137,7 @@ describe("a repo on a branch of its own (F-066)", () => {
     await executor.release(box, "requested");
   }, 300_000);
 
-  it("F-066: a fresh box checks the repo out on its own branch from the base, and the others on the task's", async () => {
+  it("F-066/c1: a fresh box checks the repo out on its own branch from the base, and the others on the task's", async () => {
     const box = newBox();
     const base = specFor(box, undefined);
     const fresh = `${base.branchName}-2`;

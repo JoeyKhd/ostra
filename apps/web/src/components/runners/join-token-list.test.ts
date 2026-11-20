@@ -9,7 +9,7 @@ const day = 86_400_000;
 const now = Date.UTC(2026, 10, 20, 12, 0, 0);
 
 describe("a join token's line", () => {
-  it("F-091: a live token gives its expiry, an expired one says it expired, a revoked one when it was revoked", () => {
+  it("F-091/c4: a live token gives its expiry, an expired one says it expired, a revoked one when it was revoked", () => {
     expect(tokenDetail({ expiresAt: now + 30 * day, lastUsedAt: null, revokedAt: null, uses: 0 }, now)).toBe("expires 2026-12-20 · never used");
     expect(tokenDetail({ expiresAt: now - 60_000, lastUsedAt: null, revokedAt: null, uses: 0 }, now)).toBe("expired 2026-11-20 · never used");
     expect(tokenDetail({ expiresAt: null, lastUsedAt: null, revokedAt: null, uses: 2 }, now)).toBe("never expires · never used · 2 runners");

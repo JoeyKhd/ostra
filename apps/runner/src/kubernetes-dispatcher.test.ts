@@ -148,7 +148,7 @@ const filesUnder = async (dir: string): Promise<readonly string[]> => {
 };
 
 describe("kubernetes boxes from the runner (ticket 20)", () => {
-  it("F-093: the runner accepts a dispatch at once, before its pod is scheduled: a pod held unschedulable for three minutes doesn't time the offer out", async () => {
+  it("F-093/c3: the runner accepts a dispatch at once, before its pod is scheduled: a pod held unschedulable for three minutes doesn't time the offer out", async () => {
     const { cluster, make } = await setup(false);
     const dispatcher = make();
     cluster.fake.holdUnschedulable(180_000);
@@ -173,7 +173,7 @@ describe("kubernetes boxes from the runner (ticket 20)", () => {
     expect(await leftOf(cluster)).toBe(0);
   }, 30_000);
 
-  it("F-093, F-015: box.waiting while the pod waits for a node, box.scheduled once it's placed, as runner events; and nothing of the box is left once its task ends", async () => {
+  it("F-093/c3, F-015/c2: box.waiting while the pod waits for a node, box.scheduled once it's placed, as runner events; and nothing of the box is left once its task ends", async () => {
     const { cluster, events, make } = await setup(false);
     const dispatcher = make();
     cluster.fake.holdUnschedulable(1_500);
@@ -197,7 +197,7 @@ describe("kubernetes boxes from the runner (ticket 20)", () => {
     expect(dispatcher.status().running).toEqual([]);
   }, 30_000);
 
-  it("F-015, F-093: the box's sidecar connects on the task token from its mounted file, and stays connected while the runner restarts and adopts its pod", async () => {
+  it("F-015/c3,c4, F-093: the box's sidecar connects on the task token from its mounted file, and stays connected while the runner restarts and adopts its pod", async () => {
     server = await startFakeServer();
     const fakeGateway = startFakeGateway(server);
     gateway = fakeGateway;
@@ -233,7 +233,7 @@ describe("kubernetes boxes from the runner (ticket 20)", () => {
     expect(await readdir(path.join(root, "runner", "kubernetes-boxes"))).toEqual([]);
 
   }, 120_000);
-  it("F-093, F-092: ostra runner --executor kubernetes checks its cluster, joins, and reports a pod per box: 20 slots, the registry required and the node wait", async () => {
+  it("F-093/c5, F-092: ostra runner --executor kubernetes checks its cluster, joins, and reports a pod per box: 20 slots, the registry required and the node wait", async () => {
     server = await startFakeServer({ joinTokens: ["ostra_jt_kubernetes"] });
     const fakeGateway = startFakeGateway(server);
     gateway = fakeGateway;
@@ -262,7 +262,7 @@ describe("kubernetes boxes from the runner (ticket 20)", () => {
     expect(await running).toBe(exitCodes.ok);
   }, 60_000);
 
-  it("F-093: ostra runner --executor kubernetes refuses to start on a cluster older than 1.29", async () => {
+  it("F-093/c5: ostra runner --executor kubernetes refuses to start on a cluster older than 1.29", async () => {
     server = await startFakeServer({ joinTokens: ["ostra_jt_kubernetes"] });
     const cluster = await startFakeCluster({ namespaces: [NS], minor: 28 });
     clusters.push(cluster);
@@ -290,7 +290,7 @@ describe("registry images and snapshot pushes on kubernetes (ticket 21)", () => 
   const dispatchImage = (id: string) =>
     commandOf("dispatch", 1, { taskId: spec.taskId, sessionId: spec.sessionId, boxId: boxIdSchema.parse(id), leaseEpoch: spec.leaseEpoch, box: { size: null, image: { ref: imageRef, digest } } });
 
-  it("F-120: on kubernetes a box's image is pulled by digest with the lease's pull credential, which goes into the box's pull secret only; with the cluster's own identity there is none", async () => {
+  it("F-120/c2: on kubernetes a box's image is pulled by digest with the lease's pull credential, which goes into the box's pull secret only; with the cluster's own identity there is none", async () => {
     const answers: (typeof PULL | null)[] = [PULL, null];
     const asked: string[] = [];
     const { cluster, make } = await setup(false, "https://ostra.example", {
@@ -328,7 +328,7 @@ describe("registry images and snapshot pushes on kubernetes (ticket 21)", () => 
     expect(cluster.fake.list("secrets", NS).filter((item) => JSON.stringify(item).includes("ostra-box-"))).toEqual([]);
   }, 60_000);
 
-  it("F-120: a snapshot build on kubernetes fetches its credentials and its push credential, builds with BuildKit, scans, pushes, and reports the registry's digest", async () => {
+  it("F-120/c4: a snapshot build on kubernetes fetches its credentials and its push credential, builds with BuildKit, scans, pushes, and reports the registry's digest", async () => {
     const upstream = await startGitUpstream(path.join(root, "upstream"));
     upstreams.push(upstream);
     await upstream.createRepo("ostra-test/test1", { "README.md": "# test1\n" });

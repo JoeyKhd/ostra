@@ -24,7 +24,7 @@ const render = (choice: EffortChoice, value: EffortLevel, readOnly = false): str
 const levelRows = (html: string): string[] => [...html.matchAll(/data-level="(\w+)"/g)].map((match) => match[1] ?? "");
 
 describe("the profile's effort", () => {
-  it("F-137: offers exactly the model's levels, Default first, each with its hint, the saved one chosen", () => {
+  it("F-137/c1: offers exactly the model's levels, Default first, each with its hint, the saved one chosen", () => {
     const html = render(gpt55, "high");
     expect(levelRows(html)).toEqual(["default", "none", "low", "medium", "high", "xhigh"]);
     expect(html).toContain("How long GPT-5.5 thinks before it acts. Its own levels.");
@@ -36,13 +36,13 @@ describe("the profile's effort", () => {
     expect(html).not.toContain("Minimal");
   });
 
-  it("F-137: the list is rebuilt from another model's levels, and Extra high reads apart from Max", () => {
+  it("F-137/c1: the list is rebuilt from another model's levels, and Extra high reads apart from Max", () => {
     const html = render(deepseek, "high");
     expect(levelRows(html)).toEqual(["default", "low", "high", "max"]);
     expect(render({ kind: "levels", modelName: "M", levels: ["default", "xhigh", "max"] }, "xhigh")).toContain(t("effort.hints.xhighBesideMax"));
   });
 
-  it("F-137: a stored level the model lacks names the level new tasks run at, with none chosen", () => {
+  it("F-137/c1: a stored level the model lacks names the level new tasks run at, with none chosen", () => {
     const view = effortFieldView(deepseek, "xhigh");
     expect(view).toEqual({ kind: "list", levels: deepseek.levels, chosen: null, stored: { saved: "xhigh", runAt: "max" } });
     const html = render(deepseek, "xhigh");
@@ -51,7 +51,7 @@ describe("the profile's effort", () => {
     expect(render(deepseek, "medium")).toContain("so new tasks run at High.");
   });
 
-  it("F-137: a model that doesn't reason offers no control, and the panel reads Default", () => {
+  it("F-137/c2: a model that doesn't reason offers no control, and the panel reads Default", () => {
     const html = render(haiku, "high");
     expect(levelRows(html)).toEqual([]);
     expect(html).toContain("Claude Haiku 5 doesn't take an effort level. Tasks run at the endpoint's default.");
@@ -59,7 +59,7 @@ describe("the profile's effort", () => {
     expect(panelEffort(gpt55, "high")).toBe("high");
   });
 
-  it("F-137: a custom model nobody set links an admin to Models, and a member reads the sentence alone", () => {
+  it("F-137/c2: a custom model nobody set links an admin to Models, and a member reads the sentence alone", () => {
     const admin = render({ kind: "unset-custom", modelName: "acme/sql-coder-ft", modelsHref: "/organization/models?tab=models" }, "default");
     expect(admin).toContain("Nobody has said whether acme/sql-coder-ft reasons, so tasks run without an effort level.");
     expect(admin).toContain('href="/organization/models?tab=models"');
@@ -98,7 +98,7 @@ describe("the choice from agentProfiles.effortLevels", () => {
   });
   const names = { model: "DeepSeek V4 Pro", agent: "OpenCode" };
 
-  it("F-137: the router's levels become the list; an agent with none, and a custom model nobody set, become their lines", () => {
+  it("F-137/c1: the router's levels become the list; an agent with none, and a custom model nobody set, become their lines", () => {
     expect(effortChoiceOf(undefined, names, null)).toEqual({ kind: "loading" });
     expect(effortChoiceOf(options({}), names, null)).toEqual({ kind: "levels", modelName: "DeepSeek V4 Pro", levels: ["default", "low", "high", "max"] });
     expect(effortChoiceOf(options({ agentTakesEffort: false }), names, null)).toEqual({ kind: "agent-none", agentName: "OpenCode" });

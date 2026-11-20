@@ -43,7 +43,7 @@ const savedFormat = async (page: Page, name: string): Promise<Locator> => {
   return page.getByTestId("provider-settings");
 };
 
-test("F-088: the add-provider form asks only for what any model endpoint has, in either API format, and the admin corrects the detected one", async ({ page }, testInfo) => {
+test("F-088/c1,c2,c6: the add-provider form asks only for what any model endpoint has, in either API format, and the admin corrects the detected one", async ({ page }, testInfo) => {
   const origins = watchOrigins(page);
   await signIn(page);
   const suffix = testInfo.project.name;

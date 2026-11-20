@@ -60,7 +60,7 @@ const sendDispatch = async (runnerId: RunnerId): Promise<void> => {
 };
 
 describe("the version window on both carriers (F-061)", () => {
-  it("F-061: the matrix: the recorded builds of minors 3, 4 and 5 connect on the WebSocket and over HTTP and are written to in their own minor; 2 and 6 are refused with the fix", async () => {
+  it("F-061/c1: the matrix: the recorded builds of minors 3, 4 and 5 connect on the WebSocket and over HTTP and are written to in their own minor; 2 and 6 are refused with the fix", async () => {
     expect(RECORDED_SERVER_MINOR).toBe(4);
     const seen: (readonly [number, string, number | string])[] = [];
     for (const minor of recordedMinors) {
@@ -124,7 +124,7 @@ describe("the version window on both carriers (F-061)", () => {
     ]);
   });
 
-  it("F-061: a refused runner is kept once with its version and minor, and the fleet view reads it as outdated", async () => {
+  it("F-061/c3: a refused runner is kept once with its version and minor, and the fleet view reads it as outdated", async () => {
     const { runner, token } = await fresh();
     const before = await test.db.runner.findUniqueOrThrow({ where: { id: runner.runnerId } });
     expect(before.lastSeenAt).toBeNull();
@@ -159,7 +159,7 @@ describe("the version window on both carriers (F-061)", () => {
 });
 
 describe("GET /runner/v1/info (F-061)", () => {
-  it("F-061: info's shape: the server's version, its window and where the pin installs from, at minor 4; minor 3's strict shape without the header", async () => {
+  it("F-061/c2: info's shape: the server's version, its window and where the pin installs from, at minor 4; minor 3's strict shape without the header", async () => {
     const atFour = await fetch(`${harness.url}${runnerPaths.info}`, { headers: { [runnerHeaders.minor]: "4" } });
     expect(atFour.status).toBe(200);
     const body = infoResponseSchema.parse(await atFour.json());

@@ -20,7 +20,7 @@ afterAll(async () => {
 });
 
 describe("account.setTheme", () => {
-  it("F-082: setTheme saves the choice and sets the cookie; another member's theme is untouched", async () => {
+  it("F-082/c2: setTheme saves the choice and sets the cookie; another member's theme is untouched", async () => {
     const { member, insider } = harness.fixture.a;
     const context = await harness.contextOf(member);
     const caller = harness.callerFor(context);
@@ -47,7 +47,7 @@ describe("account.setTheme", () => {
     expect((await harness.test.db.user.findUniqueOrThrow({ where: { id: insider.userId } })).theme).toBe("dark");
   });
 
-  it("F-082: refuses a theme other than the three, and any way of naming another account", async () => {
+  it("F-082/c2: refuses a theme other than the three, and any way of naming another account", async () => {
     const { member, insider } = harness.fixture.a;
     const caller = await harness.as(member);
     // @ts-expect-error: a theme the type refuses, sent as any client could send it
@@ -61,7 +61,7 @@ describe("account.setTheme", () => {
 });
 
 describe("the theme in the session's payload", () => {
-  it("F-082: a signed-in session carries the saved theme through better-auth, which no profile update can set", async () => {
+  it("F-082/c1: a signed-in session carries the saved theme through better-auth, which no profile update can set", async () => {
     const bare = await createBareHarness();
     try {
       const seeded = await ensureFirstAdmin({

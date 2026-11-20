@@ -6,7 +6,7 @@ import type { RunnerState } from "./runner-words";
 const states = ["joining", "online", "offline", "draining", "revoked"] as const satisfies readonly RunnerState[];
 
 describe("runner words", () => {
-  it("F-013: has a word for every state, never the raw name of an unmapped one", () => {
+  it("F-013/c6: has a word for every state, never the raw name of an unmapped one", () => {
     expect(states.map(runnerStateText)).toEqual(["joining", "online", "offline", "draining", "revoked"]);
   });
 
@@ -57,14 +57,14 @@ describe("the admin lede", () => {
 describe("the line under Your machine", () => {
   const plain = "Personal runners use the host executor: the agent runs as a process on your machine, not isolated.";
 
-  it("F-014: says a detached process isn't contained when a runner reports process-tree, whatever its system", () => {
+  it("F-014/c7: says a detached process isn't contained when a runner reports process-tree, whatever its system", () => {
     expect(hostNote([{ processContainment: "process-tree" }])).toBe(`${plain} A process the agent detaches isn't contained.`);
     expect(hostNote([{ processContainment: "job-object" }, { processContainment: "process-tree" }])).toBe(
       `${plain} A process the agent detaches isn't contained.`,
     );
   });
 
-  it("F-014: says only the plain line for a job object, a cgroup, no report yet, or no runner", () => {
+  it("F-014/c7: says only the plain line for a job object, a cgroup, no report yet, or no runner", () => {
     for (const mine of [[{ processContainment: "job-object" as const }], [{ processContainment: "cgroup" as const }], [{ processContainment: null }], [], undefined]) {
       expect(hostNote(mine)).toBe(plain);
     }

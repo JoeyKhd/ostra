@@ -132,7 +132,7 @@ afterAll(async () => {
 });
 
 describe("spend.month", () => {
-  it("F-037: the month's totals equal the sum of its tasks' spend, by project and model, inside the month only", async () => {
+  it("F-037/c1: the month's totals equal the sum of its tasks' spend, by project and model, inside the month only", async () => {
     const view = await (await harness.as(harness.fixture.a.admin)).spend.month({ month: MONTH });
     const inMonth = taskSpend.filter((row) => row.day.startsWith(MONTH));
     expect(view.total.spentMicroUsd).toBe(inMonth.reduce((sum, row) => sum + row.micro, 0));
@@ -162,7 +162,7 @@ describe("spend.month", () => {
     ).toBe(42_000_000);
   });
 
-  it("F-037: a hidden project's spend shows only as Other projects", async () => {
+  it("F-037/c1: a hidden project's spend shows only as Other projects", async () => {
     const { a } = harness.fixture;
     const view = await (await harness.as(a.member)).spend.month({ month: MONTH });
     const text = JSON.stringify(view);
@@ -194,7 +194,7 @@ describe("spend.month", () => {
 });
 
 describe("budgets and prices", () => {
-  it("F-037: a member can't set a budget or a price, nor clear one", async () => {
+  it("F-037/c2: a member can't set a budget or a price, nor clear one", async () => {
     const { a } = harness.fixture;
     for (const actor of [a.member, a.insider]) {
       const caller = await harness.as(actor);
@@ -236,7 +236,7 @@ describe("budgets and prices", () => {
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("F-037: a budget is the organization's or a project's only: no member's or agent profile's, which come later (F-131)", async () => {
+  it("F-037/c5: a budget is the organization's or a project's only: no member's or agent profile's, which come later (F-131)", async () => {
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);
     const base: Parameters<typeof admin.budgets.set>[0] = { projectId: null, monthlyUsd: 10 };
@@ -251,7 +251,7 @@ describe("budgets and prices", () => {
     );
   });
 
-  it("F-037: an admin's price takes all four, from now on, with its audit entry", async () => {
+  it("F-037/c1: an admin's price takes all four, from now on, with its audit entry", async () => {
     const { a } = harness.fixture;
     const saved = await (
       await harness.as(a.admin)
@@ -281,7 +281,7 @@ describe("budgets and prices", () => {
     expect(audit?.actorId).toBe(a.admin.id);
   });
 
-  it("F-037: a budget set below the spend reports reached at once, and enqueues its notices", async () => {
+  it("F-037/c2: a budget set below the spend reports reached at once, and enqueues its notices", async () => {
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);
     // The month's spend is the clock's month: put this month's spend on the restricted project.
@@ -345,7 +345,7 @@ describe("budgets and prices", () => {
     ).toBe(2);
   });
 
-  it("F-037: an admin's price comes last in the order: a catalog refresh keeps it", async () => {
+  it("F-037/c1: an admin's price comes last in the order: a catalog refresh keeps it", async () => {
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);
     const entry: CatalogEntry = {

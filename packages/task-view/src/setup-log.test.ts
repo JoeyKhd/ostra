@@ -10,7 +10,7 @@ import type { TaskUIPart } from "./ui-types.ts";
 const setupParts = (parts: readonly TaskUIPart[]) => parts.flatMap((part) => (part.type === "data-setup" ? [part] : []));
 
 describe("the setup log", () => {
-  it("F-050: the setup's output, stdout and stderr in order, and how it ended make one setup row of the session", () => {
+  it("F-050/c3: the setup's output, stdout and stderr in order, and how it ended make one setup row of the session", () => {
     const events = storeEvents([
       { kind: "environment.setup_started" },
       { kind: "environment.setup_output", stream: "stdout", text: "Installing...\n" },
@@ -37,7 +37,7 @@ describe("the setup log", () => {
     });
   });
 
-  it("F-050: a failing setup shows as failed, with its exit code and its output", () => {
+  it("F-050/c3: a failing setup shows as failed, with its exit code and its output", () => {
     const events = storeEvents([
       { kind: "environment.setup_started" },
       { kind: "environment.setup_output", stream: "stderr", text: "pnpm: command not found\n" },

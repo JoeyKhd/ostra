@@ -94,7 +94,7 @@ const defaultPool = async (requiresApproval: boolean): Promise<PoolId> => {
 };
 
 describe("join tokens an admin makes", () => {
-  it("F-091: a token made through pools.createJoinToken registers a runner, and the join's audit entry names the token", async () => {
+  it("F-091/c2,c7: a token made through pools.createJoinToken registers a runner, and the join's audit entry names the token", async () => {
     const { a } = api.fixture;
     const admin = await api.as(a.admin);
     const { poolId } = await admin.pools.create({ name: "panel-made" });
@@ -113,7 +113,7 @@ describe("join tokens an admin makes", () => {
     expect((await api.test.db.joinToken.findUniqueOrThrow({ where: { id: made.joinTokenId } })).lastUsedAt).not.toBeNull();
   });
 
-  it("F-091: an expired join token and a revoked one register nothing", async () => {
+  it("F-091/c2,c4: an expired join token and a revoked one register nothing", async () => {
     const { a } = api.fixture;
     const admin = await api.as(a.admin);
     const { poolId } = await admin.pools.create({ name: "lapsed" });
@@ -126,7 +126,7 @@ describe("join tokens an admin makes", () => {
     expect(await api.test.db.runner.count({ where: { poolId } })).toBe(0);
   });
 
-  it("F-091: a second runner of the same name in the pool is refused", async () => {
+  it("F-091/c2: a second runner of the same name in the pool is refused", async () => {
     const { a } = api.fixture;
     const admin = await api.as(a.admin);
     const { poolId } = await admin.pools.create({ name: "one-name" });
@@ -137,7 +137,7 @@ describe("join tokens an admin makes", () => {
     expect(await api.test.db.runner.count({ where: { poolId } })).toBe(1);
   });
 
-  it("F-091: joins that race with one name in a pool make one runner, and the others are refused", async () => {
+  it("F-091/c2: joins that race with one name in a pool make one runner, and the others are refused", async () => {
     const admin = await api.as(api.fixture.a.admin);
     const { poolId } = await admin.pools.create({ name: "racing-names" });
     const made = await admin.pools.createJoinToken({ poolId });
@@ -175,7 +175,7 @@ describe("join tokens an admin makes", () => {
     }
   });
 
-  it("F-091: a token of another organization registers nothing in this one", async () => {
+  it("F-091/c2: a token of another organization registers nothing in this one", async () => {
     const { a, b } = api.fixture;
     const before = await api.test.db.runner.count({ where: { organizationId: a.organization.id } });
     const theirs = await (await api.as(b.admin)).pools.create({ name: "theirs" });
@@ -193,7 +193,7 @@ describe("join tokens an admin makes", () => {
 });
 
 describe("a pool that requires approval", () => {
-  it("F-091: keeps a joined runner joining across reconnects with no task, and runners.approve puts it online to take one", async () => {
+  it("F-091/c6: keeps a joined runner joining across reconnects with no task, and runners.approve puts it online to take one", async () => {
     const { a } = api.fixture;
     const poolId = await defaultPool(true);
     const made = await (await api.as(a.admin)).pools.createJoinToken({ poolId });
@@ -229,7 +229,7 @@ describe("a pool that requires approval", () => {
     await api.test.db.runner.update({ where: { id: runner.runnerId }, data: { state: "draining" } });
   });
 
-  it("F-091: a runner approved while it isn't connected goes online at its next hello", async () => {
+  it("F-091/c6: a runner approved while it isn't connected goes online at its next hello", async () => {
     const { a } = api.fixture;
     const poolId = await defaultPool(true);
     const made = await (await api.as(a.admin)).pools.createJoinToken({ poolId });
@@ -241,7 +241,7 @@ describe("a pool that requires approval", () => {
     await api.test.db.runner.update({ where: { id: runner.runnerId }, data: { state: "draining" } });
   });
 
-  it("F-091: runners.reject revokes a connected joining runner, closes it with 4403, and its next token request fails", async () => {
+  it("F-091/c5,c6: runners.reject revokes a connected joining runner, closes it with 4403, and its next token request fails", async () => {
     const { a, b } = api.fixture;
     const poolId = await defaultPool(true);
     const made = await (await api.as(a.admin)).pools.createJoinToken({ poolId });
@@ -269,7 +269,7 @@ describe("a pool that requires approval", () => {
 });
 
 describe("a pool without the switch", () => {
-  it("F-091: puts a joined runner online at its first hello, as before", async () => {
+  it("F-091/c6: puts a joined runner online at its first hello, as before", async () => {
     const { a } = api.fixture;
     const poolId = await defaultPool(false);
     const made = await (await api.as(a.admin)).pools.createJoinToken({ poolId });

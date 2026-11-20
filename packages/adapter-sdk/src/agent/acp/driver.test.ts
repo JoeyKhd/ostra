@@ -325,7 +325,7 @@ describe("the ACP driver, in process", () => {
 describe("the ACP driver, with background subagents", () => {
   const background: ConnectOptions = { subagents: "background" };
 
-  it("F-023: a turn waits for its subagent and for the turn its report wakes: the agent's real answer is in it", async () => {
+  it("F-023/c1: a turn waits for its subagent and for the turn its report wakes: the agent's real answer is in it", async () => {
     const peer = await connectInProcess("rich", {}, { idlePollMs: 50 }, {}, background);
     const id = await newSession(peer);
     const result = await peer.connection.prompt(id, fakeMarker("subagent-bg", "400"));
@@ -336,7 +336,7 @@ describe("the ACP driver, with background subagents", () => {
     expect(peer.updates.every((entry) => entry.agentSessionId === id)).toBe(true);
   });
 
-  it("F-023: without the capability declared, the turn ends with its prompt's answer, and the subagent's updates never come", async () => {
+  it("F-023/c1: without the capability declared, the turn ends with its prompt's answer, and the subagent's updates never come", async () => {
     const peer = await connectInProcess("rich", {}, { idlePollMs: 50 });
     const id = await newSession(peer);
     const result = await peer.connection.prompt(id, fakeMarker("subagent-bg", "400"));
@@ -360,7 +360,7 @@ describe("the ACP driver, with background subagents", () => {
     expect(peer.updates.slice(count)).toEqual([]);
   });
 
-  it("F-025: a cancel while the turn waits on a subagent ends it cancelled within 5 s, the subagent stopped and nothing after", async () => {
+  it("F-025/c1: a cancel while the turn waits on a subagent ends it cancelled within 5 s, the subagent stopped and nothing after", async () => {
     const peer = await connectInProcess("rich", {}, { idlePollMs: 50 }, {}, background);
     const id = await newSession(peer);
     const turn = peer.connection.prompt(id, fakeMarker("subagent-bg", "hang"));
@@ -377,7 +377,7 @@ describe("the ACP driver, with background subagents", () => {
     expect(await peer.connection.prompt(id, fakeMarker("say"))).toEqual({ ok: true, value: { stopReason: "end_turn" } });
   });
 
-  it("F-024: a steer while the agent idles on its subagent becomes the turn's next prompt, inside the turn", async () => {
+  it("F-024/c2: a steer while the agent idles on its subagent becomes the turn's next prompt, inside the turn", async () => {
     const peer = await connectInProcess("rich", {}, { idlePollMs: 50 }, {}, background);
     const id = await newSession(peer);
     const turn = peer.connection.prompt(id, fakeMarker("subagent-bg", "700"));
@@ -436,7 +436,7 @@ describe("the ACP driver, naming each subagent's work (F-138)", () => {
     expect(main.filter((entry) => entry.update.sessionUpdate === "agent_message_chunk")).toHaveLength(2);
   });
 
-  it("F-138: a subagent's permission request names it", async () => {
+  it("F-138/c4: a subagent's permission request names it", async () => {
     const peer = await connectInProcess("rich", naming().handlers, { idlePollMs: 50 }, {}, background);
     const id = await newSession(peer);
     expect(await peer.connection.prompt(id, fakeMarker("subagent-tree", "ask"))).toEqual({ ok: true, value: { stopReason: "end_turn" } });
@@ -455,7 +455,7 @@ describe("the ACP driver, naming each subagent's work (F-138)", () => {
     expect(peer.permissions[0]?.subagentId).toBeUndefined();
   });
 
-  it("F-138: a subagent the driver stops on a cancel is reported interrupted, since the agent no longer reports it", async () => {
+  it("F-138/c5: a subagent the driver stops on a cancel is reported interrupted, since the agent no longer reports it", async () => {
     const seen = naming();
     const peer = await connectInProcess("rich", seen.handlers, { idlePollMs: 50 }, {}, background);
     const id = await newSession(peer);

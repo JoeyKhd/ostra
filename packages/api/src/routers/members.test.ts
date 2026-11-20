@@ -89,7 +89,7 @@ const outcomeOf = async (call: Promise<unknown>): Promise<string> => {
 };
 
 describe("the access matrix (ADR 0026, ADR 0053)", () => {
-  it("F-003: every new procedure answers each role as the matrix says; another organization's records are NOT_FOUND", async () => {
+  it("F-003/c1,c2,c3: every new procedure answers each role as the matrix says; another organization's records are NOT_FOUND", async () => {
     const { a } = harness.fixture;
     const restricted = a.restrictedProject.id;
     const restrictedTask = await seedTask(harness, { organizationId: orgA, projectId: restricted });
@@ -133,7 +133,7 @@ describe("the access matrix (ADR 0026, ADR 0053)", () => {
 });
 
 describe("roles and the last admin", () => {
-  it("F-003: two admins removing each other at once leave one admin, and so do two demotions", async () => {
+  it("F-003/c1: two admins removing each other at once leave one admin, and so do two demotions", async () => {
     const organization = await harness.test.db.organization.create({ data: { id: randomUUID(), name: "race", slug: label("race"), createdAt: new Date() } });
     for (const kind of ["remove", "demote"] as const) {
       const first = await seedMember(organization.id, "admin");
@@ -151,7 +151,7 @@ describe("roles and the last admin", () => {
     }
   });
 
-  it("F-003: the last admin can't be demoted or removed, and an admin can't remove themselves", async () => {
+  it("F-003/c1: the last admin can't be demoted or removed, and an admin can't remove themselves", async () => {
     const organization = await harness.test.db.organization.create({ data: { id: randomUUID(), name: "alone", slug: label("alone"), createdAt: new Date() } });
     const only = await seedMember(organization.id, "admin");
     const other = await seedMember(organization.id, "member");
@@ -168,7 +168,7 @@ describe("roles and the last admin", () => {
 });
 
 describe("project access (F-087)", () => {
-  it("F-087: a project member can't edit the environment and a project admin can", async () => {
+  it("F-087/c2: a project member can't edit the environment and a project admin can", async () => {
     const { projectId } = await seedProject(harness, world, label("env"));
     const admin = await harness.as(harness.fixture.a.admin);
     await admin.projects.setAccess({ projectId, access: "restricted" });
@@ -189,7 +189,7 @@ describe("project access (F-087)", () => {
     expect(await trpcFailure(asProjectAdmin.members.invite({ email: `${label("x")}@example.com`, role: "member", projectGrants: [] }))).toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("F-087: restricting a project hides its records from an unlisted member at once, keeps its admins listed and lists who restricted it", async () => {
+  it("F-087/c1,c4: restricting a project hides its records from an unlisted member at once, keeps its admins listed and lists who restricted it", async () => {
     const { projectId } = await seedProject(harness, world, label("hide"));
     const task = await seedTask(harness, { organizationId: orgA, projectId });
     const lister = await seedMember(orgA, "member");
@@ -272,7 +272,7 @@ describe("removing a member (F-002, ADR 0053)", () => {
     return { leaver, runnerId, cliId: cli.id, task, itemId: item.id, draftId, invitationId: invitation.id };
   };
 
-  it("F-002: a removal ends each effect in one transaction: membership, project roles, runners, CLI sessions, driving, drafts, invitations, with its entry", async () => {
+  it("F-002/c3: a removal ends each effect in one transaction: membership, project roles, runners, CLI sessions, driving, drafts, invitations, with its entry", async () => {
     await seedProject(harness, world, label("drafts"));
     const seeded = await seedLeaver();
     const admin = await harness.as(harness.fixture.a.admin);
@@ -297,7 +297,7 @@ describe("removing a member (F-002, ADR 0053)", () => {
     expect(await db.user.count({ where: { id: seeded.leaver.userId } })).toBe(1);
   });
 
-  it("F-002: a removal that fails part-way leaves everything as it was", async () => {
+  it("F-002/c3: a removal that fails part-way leaves everything as it was", async () => {
     const seeded = await seedLeaver();
     const scope = (await harness.contextOf(harness.fixture.a.admin)).member?.scope;
     if (scope === undefined) throw new Error("no scope");
@@ -317,7 +317,7 @@ describe("removing a member (F-002, ADR 0053)", () => {
     expect(await db.invitation.findUniqueOrThrow({ where: { id: seeded.invitationId } })).toMatchObject({ status: "pending" });
   });
 
-  it("F-002: a removed member's next call is refused, and their open stream ends at once", async () => {
+  it("F-002/c3: a removed member's next call is refused, and their open stream ends at once", async () => {
     const leaver = await seedMember(orgA, "member");
     const caller = await harness.as(leaver);
     expect(Array.isArray(await caller.projects.list())).toBe(true);
@@ -347,14 +347,14 @@ describe("removing a member (F-002, ADR 0053)", () => {
     controller.abort();
   });
 
-  it("F-002: a removed member's panel learns they're no longer a member, and an active member's has an organization", async () => {
+  it("F-002/c3: a removed member's panel learns they're no longer a member, and an active member's has an organization", async () => {
     const leaver = await seedMember(orgA, "member");
     expect(await (await harness.as(leaver)).me.get()).toMatchObject({ noMembership: null, organization: { id: orgA } });
     await (await harness.as(harness.fixture.a.admin)).members.remove({ memberId: leaver.id });
     expect(await (await harness.as(leaver)).me.get()).toMatchObject({ noMembership: "removed", organization: null });
   });
 
-  it("F-002: history shows the removed member's name followed by (removed)", async () => {
+  it("F-002/c3: history shows the removed member's name followed by (removed)", async () => {
     const leaver = await seedMember(orgA, "member", label("history"));
     const admin = await harness.as(harness.fixture.a.admin);
     // Something they did, in the audit log.
@@ -381,7 +381,7 @@ describe("removing a member (F-002, ADR 0053)", () => {
 });
 
 describe("members.list", () => {
-  it("F-003: addresses for admins only, and a member sees only the restricted projects they can open", async () => {
+  it("F-003/c2: addresses for admins only, and a member sees only the restricted projects they can open", async () => {
     const { a } = harness.fixture;
     const asAdmin = (await (await harness.as(a.admin)).members.list()).find((member) => member.memberId === a.insider.id);
     const asMember = (await (await harness.as(a.member)).members.list()).find((member) => member.memberId === a.insider.id);
@@ -396,7 +396,7 @@ describe("members.list", () => {
 });
 
 describe("members.list for the panel (members.md)", () => {
-  it("F-002: an admin sees who invited a member, what removing them ends, and who removed them; a member sees none of it", async () => {
+  it("F-002/c3: an admin sees who invited a member, what removing them ends, and who removed them; a member sees none of it", async () => {
     const { a } = harness.fixture;
     const db = harness.test.db;
     const joiner = await seedMember(orgA, "member", label("joiner"));

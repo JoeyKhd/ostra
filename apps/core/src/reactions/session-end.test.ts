@@ -135,7 +135,7 @@ const openPrs = async (task: QueuedTask): Promise<void> => {
 const theRepo = (): RepoId => repoIdSchema.parse(world.repoId);
 
 describe("a session that ends with changes", () => {
-  it("F-030, F-078: opens one PR per changed repo, once, even when the job runs twice, and the task goes to review", async () => {
+  it("F-030/c1,c2,c4, F-078/c3: opens one PR per changed repo, once, even when the job runs twice, and the task goes to review", async () => {
     const task = await runningTask();
     await send(
       task,
@@ -211,7 +211,7 @@ describe("a plan-first task's PR (F-063)", () => {
 });
 
 describe("a task with several repos", () => {
-  it("F-030: opens one PR for each repo the task changed and none for the one it didn't, each body linking the task and its other PRs", async () => {
+  it("F-030/c1,c3: opens one PR for each repo the task changed and none for the one it didn't, each body linking the task and its other PRs", async () => {
     const task = await runningTask();
     const first = await test.db.repo.findUniqueOrThrow({ where: { id: world.repoId } });
     const { branchName } = await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
@@ -280,7 +280,7 @@ describe("a task with several repos", () => {
 });
 
 describe("a prompt task in a project with no tracker (F-097, Q31)", () => {
-  it("F-097: goes from a member's prompt to an opened PR with no tracker and no ticket", async () => {
+  it("F-097/c3: goes from a member's prompt to an opened PR with no tracker and no ticket", async () => {
     expect(await test.db.board.count({ where: { projectId: world.projectId } })).toBe(0);
     const scope: MemberScope = { organizationId: fixture.a.organization.id, memberId: fixture.a.member.id, role: "member", projectRoles: new Map() };
     const prompt = "Add a docs/numbers.md that lists one to ten";
@@ -328,7 +328,7 @@ describe("a prompt task in a project with no tracker (F-097, Q31)", () => {
 });
 
 describe("a session that ends without changes", () => {
-  it("F-065: opens no PR and puts the task in needs you with the agent's summary", async () => {
+  it("F-065/c1,c2: opens no PR and puts the task in needs you with the agent's summary", async () => {
     const task = await runningTask();
     const before = codeHost.pulls.length;
     // The agent speaks twice: the summary of what happened is its last message, not its first.
@@ -383,7 +383,7 @@ describe("stop and crash", () => {
     expect(await test.db.auditEntry.findFirst({ where: { entityId: task.taskId, action: "task.stopped", actorId: fixture.a.member.id } })).not.toBeNull();
   });
 
-  it("F-025: a member's stop, answered as the runner answers it, ends the session stopped with the branch and the hidden ref recorded and no PR", async () => {
+  it("F-025/c1,c2: a member's stop, answered as the runner answers it, ends the session stopped with the branch and the hidden ref recorded and no PR", async () => {
     const task = await runningTask();
     const scope: MemberScope = { organizationId: fixture.a.organization.id, memberId: fixture.a.member.id, role: "member", projectRoles: new Map() };
     const stopped = await test.db.$transaction((tx) =>
@@ -542,7 +542,7 @@ describe.skipIf(Object.values(live).some((value) => value === undefined || value
 describe("files left outside every repo (ticket 44)", () => {
   const items = (task: QueuedTask) => test.db.needsYouItem.findMany({ where: { taskId: task.taskId, reason: "files_outside_repos" }, orderBy: { createdAt: "asc" } });
 
-  it("F-016: raises one item for the driver with the names, updates it as the set changes, and closes it when they're gone", async () => {
+  it("F-016/c4: raises one item for the driver with the names, updates it as the set changes, and closes it when they're gone", async () => {
     const task = await runningTask();
     await send(task, task.next, { kind: "workspace.files_outside_repos", paths: ["notes.md", "plan.txt"], more: 0 });
     expect(await items(task)).toMatchObject([{ state: "open", audience: "driver", summary: "notes.md, plan.txt" }]);
@@ -566,7 +566,7 @@ describe("files left outside every repo (ticket 44)", () => {
     ]);
   });
 
-  it("F-016: is for the project's members when the task has no driver", async () => {
+  it("F-016/c4: is for the project's members when the task has no driver", async () => {
     const task = await runningTask();
     await test.db.task.update({ where: { id: task.taskId }, data: { driverMemberId: null } });
     await send(task, task.next, { kind: "workspace.files_outside_repos", paths: ["scratch"], more: 0 });

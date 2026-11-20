@@ -96,7 +96,7 @@ afterAll(async () => {
 });
 
 describe("bulk starts (F-107)", () => {
-  it("F-107: 50 tickets start at once, and 51 are refused with nothing written", async () => {
+  it("F-107/c1: 50 tickets start at once, and 51 are refused with nothing written", async () => {
     const fiftyOne = await tickets(51);
     expect(await bulk(fiftyOne)).toMatchObject({ ok: false, error: "too-many" });
     expect(await test.db.bulkStart.count()).toBe(0);
@@ -110,7 +110,7 @@ describe("bulk starts (F-107)", () => {
     expect(await test.db.auditEntry.findFirst({ where: { entityId: bulkStartId, action: "bulk-start.created" } })).toMatchObject({ data: { source: "inbox", tickets: 50, kind: "code" } });
   });
 
-  it("F-107: a replayed request, and a replayed item's job, start nothing twice", async () => {
+  it("F-107/c1: a replayed request, and a replayed item's job, start nothing twice", async () => {
     const three = await tickets(3);
     const requestKey = randomUUID();
     // The same request three times, two of them at once: one bulk start.
@@ -130,7 +130,7 @@ describe("bulk starts (F-107)", () => {
     expect((await bulkStartOutcomes(deps(), { organizationId, bulkStartId })).map((row) => row.state)).toEqual(["started", "started", "started"]);
   });
 
-  it("F-107: each started task goes through the budget, admission and the project's share of a pool, and waits queued with its reason", async () => {
+  it("F-107/c2: each started task goes through the budget, admission and the project's share of a pool, and waits queued with its reason", async () => {
     const [ticketId] = await tickets(1);
     if (ticketId === undefined) throw new Error("seeded one");
     const bulkStartId = okId(await bulk([ticketId]));
@@ -140,7 +140,7 @@ describe("bulk starts (F-107)", () => {
     await expectStartGates({ db: test.db, jobs, clock: systemClock, organizationId, projectId }, taskIdSchema.parse(outcome?.taskId), []);
   });
 
-  it("F-107: the outcome per ticket: started, has a task, no access and off the board", async () => {
+  it("F-107/c1: the outcome per ticket: started, has a task, no access and off the board", async () => {
     const [fresh, busy, gone] = await tickets(3);
     if (fresh === undefined || busy === undefined || gone === undefined) throw new Error("seeded three");
     await activeTask(busy, "running");
@@ -168,7 +168,7 @@ describe("bulk starts (F-107)", () => {
     expect(await bulkStartOutcomes(deps(), { organizationId: fixture.b.organization.id, bulkStartId })).toEqual([]);
   });
 
-  it("F-107, F-011: a dry run lists what a start would do, and its Start all starts exactly those, with the rule as each task's origin", async () => {
+  it("F-107/c1,c2, F-011/c3: a dry run lists what a start would do, and its Start all starts exactly those, with the rule as each task's origin", async () => {
     const admin = scopeOf(fixture.a.admin, "admin");
     const saved = await saveAutomation(deps(), admin, {
       projectId,

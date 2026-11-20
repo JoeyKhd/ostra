@@ -15,7 +15,7 @@ test.beforeAll(async () => {
   await seedFleet();
 });
 
-test("F-091: an admin makes a pool and sees its join token once; a reload doesn't show it again", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-091/c3: an admin makes a pool and sees its join token once; a reload doesn't show it again", { tag: "@desktop-only" }, async ({ page }) => {
   await signIn(page);
   await page.goto("/organization/runners");
   await page.getByRole("button", { name: "New pool" }).click();
@@ -42,7 +42,7 @@ test("F-091: an admin makes a pool and sees its join token once; a reload doesn'
   expect(await page.content()).not.toContain(token);
 });
 
-test("F-092: the fleet's counts change as a seeded runner takes a task", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-092/c2: the fleet's counts change as a seeded runner takes a task", { tag: "@desktop-only" }, async ({ page }) => {
   const { fleetPoolId } = await seedFleet();
   await signIn(page);
   await page.goto(`/organization/runners/pools/${fleetPoolId}`);
@@ -57,7 +57,7 @@ test("F-092: the fleet's counts change as a seeded runner takes a task", { tag: 
   await expect(page.locator('[data-project="e2e-fleet-app"]')).toContainText("5 / 8");
 });
 
-test("F-067: the pool's queue is in priority order, and Cancel takes a task out of it", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-067/c2: the pool's queue is in priority order, and Cancel takes a task out of it", { tag: "@desktop-only" }, async ({ page }) => {
   const { queuePoolId } = await seedFleet();
   await signIn(page);
   await page.goto(`/organization/runners/pools/${queuePoolId}`);
@@ -78,7 +78,7 @@ test("F-067: the pool's queue is in priority order, and Cancel takes a task out 
   await expect(rows.nth(1).locator("td").first()).toHaveText("2");
 });
 
-test("F-092, F-014: a member sees Your machine and not the pools' details", async ({ browser }) => {
+test("F-092/c1, F-014: a member sees Your machine and not the pools' details", async ({ browser }) => {
   const { fleetPoolId } = await seedFleet();
   await seedPersonal(MEMBER, MEMBER_RUNNER);
   const page = await signedInPage(browser, MEMBER);
@@ -93,7 +93,7 @@ test("F-092, F-014: a member sees Your machine and not the pools' details", asyn
   await page.context().close();
 });
 
-test("F-092: at phone width the Runners page and a pool's page never scroll sideways; their tables scroll inside", async ({ page }) => {
+test("F-092/c1,c3: at phone width the Runners page and a pool's page never scroll sideways; their tables scroll inside", async ({ page }) => {
   const { fleetPoolId } = await seedFleet();
   await signIn(page);
   await page.goto("/organization/runners");

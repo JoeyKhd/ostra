@@ -139,7 +139,7 @@ afterAll(async () => {
 });
 
 describe("capacity (F-067, F-095)", () => {
-  it("F-067, F-095: a runner's capacity is its slots, and where sizes apply its CPU and memory, counted from its boxes", async () => {
+  it("F-067/c1, F-095/c2: a runner's capacity is its slots, and where sizes apply its CPU and memory, counted from its boxes", async () => {
     await test.db.project.update({ where: { id: projectA }, data: { defaultBoxSize: "small" } });
     // small: 2 vCPU and 4 GiB, plus the sidecar's 1 vCPU and 256 MiB: 3000m and 4352 MiB a box.
     const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId: projectA }] });
@@ -178,7 +178,7 @@ describe("capacity (F-067, F-095)", () => {
     expect((await admit(poolId)).admitted.map((entry) => entry.runnerId)).toEqual([byCpu]);
   });
 
-  it("F-067: a runner without resources (slots only) counts slots, as milestone 1 did", async () => {
+  it("F-067/c1: a runner without resources (slots only) counts slots, as milestone 1 did", async () => {
     await test.db.project.update({ where: { id: projectA }, data: { defaultBoxSize: "large" } });
     const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId: projectA }] });
     const host = await connected({ organizationId, poolId, executor: "host", slots: 2, resources: null, capabilities: { ...dockerCapabilities, isolation: "none", services: false, boxSizes: false, snapshots: "host-cache", registry: "none" } });
@@ -191,7 +191,7 @@ describe("capacity (F-067, F-095)", () => {
     expect(boxes.map((box) => box.size)).toEqual([null, null]);
   });
 
-  it("F-067: a personal runner runs two at once unless its member sets another number, outside any pool", async () => {
+  it("F-067/c1: a personal runner runs two at once unless its member sets another number, outside any pool", async () => {
     const owner = fixture.a.member;
     const personal = await connected({ organizationId, ownerMemberId: memberIdSchema.parse(owner.id), executor: "host", slots: 1 });
     // Not reported yet: the server's default, OSTRA_PERSONAL_RUNNER_CAPACITY (2).
@@ -215,7 +215,7 @@ describe("capacity (F-067, F-095)", () => {
 });
 
 describe("the pool queue and its admission (F-067)", () => {
-  it("F-067: the queue's order is priority, then the time first queued, then the ID, and each waiting task has its place", async () => {
+  it("F-067/c2: the queue's order is priority, then the time first queued, then the ID, and each waiting task has its place", async () => {
     const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId: projectA }] });
     const runner = await dockerRunner(poolId, 1);
     const base = Date.now() - 60_000;
@@ -242,7 +242,7 @@ describe("the pool queue and its admission (F-067)", () => {
     expect((await admit(poolId)).admitted.map((entry) => entry.taskId)).toEqual([low.taskId]);
   });
 
-  it("F-067: a task another pool's pass holds is never jumped: the pass stops there, and the queue's order holds", async () => {
+  it("F-067/c2: a task another pool's pass holds is never jumped: the pass stops there, and the queue's order holds", async () => {
     const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId: projectA }] });
     await dockerRunner(poolId, 4);
     const base = Date.now() - 60_000;
@@ -281,7 +281,7 @@ describe("the pool queue and its admission (F-067)", () => {
     }
   });
 
-  it("F-067: room that frees during a pass goes to the head of the queue, never to a task behind one that waited for its share", async () => {
+  it("F-067/c2: room that frees during a pass goes to the head of the queue, never to a task behind one that waited for its share", async () => {
     const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId: projectA, maxBoxes: 1 }] });
     await dockerRunner(poolId, 4);
     const base = Date.now() - 60_000;
@@ -313,7 +313,7 @@ describe("the pool queue and its admission (F-067)", () => {
     }
   });
 
-  it("F-067, F-095: a project at its share of a pool is passed over, and another project's task starts", async () => {
+  it("F-067/c3, F-095/c3: a project at its share of a pool is passed over, and another project's task starts", async () => {
     const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId: projectA, maxBoxes: 1 }, { projectId: projectB }] });
     await dockerRunner(poolId, 4);
     const base = Date.now() - 60_000;
@@ -328,7 +328,7 @@ describe("the pool queue and its admission (F-067)", () => {
     expect(await liveBoxes(poolId, projectB)).toBe(1);
   });
 
-  it("F-067, F-095: fifty admissions raced from three core replicas never exceed a project's share or the pool's cap, counted from rows", async () => {
+  it("F-067/c1,c3,c4, F-095/c3: fifty admissions raced from three core replicas never exceed a project's share or the pool's cap, counted from rows", async () => {
     const replicas = [test.db, createDb(test.url), createDb(test.url)];
     try {
       const { poolId } = await seedPool(test.db, { organizationId, maxBoxes: 6, projects: [{ projectId: projectA, maxBoxes: 2 }, { projectId: projectB, maxBoxes: 3 }] });
@@ -395,7 +395,7 @@ describe("the pool queue and its admission (F-067)", () => {
     }
   });
 
-  it("F-067: a requeue keeps its place: a declined offer, a revoked pool runner's offer and a box with no node", async () => {
+  it("F-067/c2: a requeue keeps its place: a declined offer, a revoked pool runner's offer and a box with no node", async () => {
     const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId: projectA }] });
     const runner = await dockerRunner(poolId, 1);
     const base = Date.now() - 60_000;
@@ -453,7 +453,7 @@ describe("the pool queue and its admission (F-067)", () => {
     expect((await admit(poolId)).admitted.map((entry) => entry.taskId)).toEqual([older.taskId]);
   });
 
-  it("F-067: the queue keeps the order tasks were started in, however late and out of order their dispatch jobs run", async () => {
+  it("F-067/c2: the queue keeps the order tasks were started in, however late and out of order their dispatch jobs run", async () => {
     const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId: projectA }] });
     await dockerRunner(poolId, 1);
     const first = await queued(projectA);
@@ -470,7 +470,7 @@ describe("the pool queue and its admission (F-067)", () => {
     expect((await admit(poolId)).admitted.map((entry) => entry.taskId)).toEqual([first.taskId]);
   });
 
-  it("F-067: queueing a task sets its priority, its profile's labels and its first time, and a requeue keeps that time", async () => {
+  it("F-067/c2: queueing a task sets its priority, its profile's labels and its first time, and a requeue keeps that time", async () => {
     const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId: projectA }] });
     await test.db.agentProfile.update({ where: { id: world.profileId }, data: { runnerLabels: ["region:eu", "gpu"] } });
     try {
@@ -497,7 +497,7 @@ describe("cancelling a queued task (F-067)", () => {
   const cancel = (taskId: TaskId, scope: MemberScope) =>
     cancelQueuedTask({ db: test.db, jobs, outbox: postgresCommandOutbox, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock, adapters }, scope, { taskId });
 
-  it("F-067: an admin cancels any queued task, a member their own, and another member is refused", async () => {
+  it("F-067/c2: an admin cancels any queued task, a member their own, and another member is refused", async () => {
     const mine = await queued(projectA, { creator: fixture.a.member });
     const theirs = await queued(projectA, { creator: fixture.a.member });
     // Another member of the organization, not the task's: refused, nothing changes.
@@ -524,7 +524,7 @@ describe("cancelling a queued task (F-067)", () => {
     expect(await cancel(theirs.taskId, scopeOf(fixture.a.admin, "admin"))).toMatchObject({ ok: false, error: "not-queued" });
   });
 
-  it("F-067: cancelling a task whose offer is out ends the offer, so the runner's late answer is stale", async () => {
+  it("F-067/c2: cancelling a task whose offer is out ends the offer, so the runner's late answer is stale", async () => {
     const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId: projectA }] });
     await dockerRunner(poolId, 1);
     const task = await queued(projectA);

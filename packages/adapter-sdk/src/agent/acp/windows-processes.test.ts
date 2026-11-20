@@ -13,7 +13,7 @@ import { decodeProcessEntries, loadWindowsProcessLister, ntdllPrototypes, STATUS
 const filetime = (unixMs: number, extra = 0n): bigint => (BigInt(unixMs) + 11_644_473_600_000n) * 10_000n + extra;
 
 describe("ntdll's process list: layout and prototype", () => {
-  it("F-014: reads SYSTEM_PROCESS_INFORMATION as 64-bit Windows lays it out: the PID, the parent's, the image name and the creation time", () => {
+  it("F-014/c6: reads SYSTEM_PROCESS_INFORMATION as 64-bit Windows lays it out: the PID, the parent's, the image name and the creation time", () => {
     const buffer = Buffer.alloc(0x300);
     const address = 0x7ff6_1234_0000n;
     // The idle process: no name, no creation time.
@@ -47,7 +47,7 @@ describe("ntdll's process list: layout and prototype", () => {
 });
 
 describe("ntdll's process list: loading koffi", () => {
-  it("F-014: koffi isn't imported on Linux, macOS or 32-bit Windows", async () => {
+  it("F-014/c6: koffi isn't imported on Linux, macOS or 32-bit Windows", async () => {
     let imported = 0;
     const importKoffi = (): Promise<unknown> => {
       imported += 1;

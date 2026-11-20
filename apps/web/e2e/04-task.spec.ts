@@ -8,7 +8,7 @@ import { expectNoHorizontalScroll, seedTask, signIn, watchOrigins } from "./help
 test.describe.configure({ mode: "serial" });
 
 // Desktop only: the phone project leaves out tests tagged @desktop-only (playwright.config.ts).
-test("F-023: two tabs show the messages, tool calls and file changes live; a reload mid-turn brings back the history and the partial text", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-023/c1: two tabs show the messages, tool calls and file changes live; a reload mid-turn brings back the history and the partial text", { tag: "@desktop-only" }, async ({ page }) => {
   const origins = watchOrigins(page);
   await signIn(page);
   const taskId = await seedTask("mid-turn");
@@ -75,7 +75,7 @@ test("F-023: two tabs show the messages, tool calls and file changes live; a rel
   expect(origins.foreign()).toEqual([]);
 });
 
-test("F-025: Stop stops the task, optimistically, and the page shows it stopped", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-025/c1: Stop stops the task, optimistically, and the page shows it stopped", { tag: "@desktop-only" }, async ({ page }) => {
   await signIn(page);
   const taskId = await seedTask("mid-turn");
   await page.goto(`/tasks/${taskId}`);
@@ -111,7 +111,7 @@ test("the default view of a 5,000-event task renders, and the time is recorded",
   expect(ms).toBeLessThan(15_000);
 });
 
-test("F-089: the task page shows the key proxy's count, and says so when a call's count is an estimate", async ({ page }) => {
+test("F-089/c5: the task page shows the key proxy's count, and says so when a call's count is an estimate", async ({ page }) => {
   await signIn(page);
   // Every call reported its usage: a plain count.
   const exact = await seedTask("usage");

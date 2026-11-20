@@ -341,7 +341,7 @@ describe("the ACP mapping of subagents (F-138)", () => {
     expect(events.map((event) => event.kind)).toEqual(["tool.called", "tool.completed"]);
   });
 
-  it("F-138: each subagent's words are its own segment, never streamed, and never cut by the main agent's updates", () => {
+  it("F-138/c3: each subagent's words are its own segment, never streamed, and never cut by the main agent's updates", () => {
     const live: LiveTextDelta[] = [];
     const mapper = createAcpMapper({ onLiveText: (delta) => live.push(delta) });
     const events = [

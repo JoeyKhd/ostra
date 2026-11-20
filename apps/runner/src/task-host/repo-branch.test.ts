@@ -28,7 +28,7 @@ afterEach(async () => {
 }, 60_000);
 
 describe("a repo on a branch of its own (F-066)", () => {
-  it("F-066: a merged repo pushes to its fresh branch and the other keeps the task's, in the events and on the host", async () => {
+  it("F-066/c2: a merged repo pushes to its fresh branch and the other keeps the task's, in the events and on the host", async () => {
     harness = await startHarness(shared);
     const h = harness;
     const [first] = taskSpecFixture.repos;

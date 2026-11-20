@@ -69,7 +69,7 @@ const delivery = async (event: string, payload: Record<string, unknown>): Promis
 };
 
 describe("F-035: the verdict", () => {
-  it("F-035: passed, failed and pending, with ostra's own check left out", async () => {
+  it("F-035/c1: passed, failed and pending, with ostra's own check left out", async () => {
     const passing = await seedTaskInCi(h);
     const pr = firstPr(passing);
     checkRun(h, pr, "test", "success");
@@ -104,7 +104,7 @@ describe("F-035: the verdict", () => {
     expect((await ciRun(firstPr(status)))?.state).toBe("failed");
   });
 
-  it("F-035: no CI at the deadline, with no webhook, moves the task on", async () => {
+  it("F-035/c1: no CI at the deadline, with no webhook, moves the task on", async () => {
     const task = await seedTaskInCi(h);
     await h.drain(["ci.evaluate"]);
     expect((await ciRun(firstPr(task)))?.state).toBe("pending");
@@ -120,7 +120,7 @@ describe("F-035: the verdict", () => {
     expect(await stateOf(h, task.taskId)).toBe("in_review/ai_review");
   });
 
-  it("F-035: the wait limit: CI still running after it starts the AI review, with no fixing round", async () => {
+  it("F-035/c1: the wait limit: CI still running after it starts the AI review, with no fixing round", async () => {
     const task = await seedTaskInCi(h);
     checkRun(h, firstPr(task), "e2e", "in_progress");
     await h.drain(["ci.evaluate"]);
@@ -136,7 +136,7 @@ describe("F-035: the verdict", () => {
 });
 
 describe("F-035: the logs", () => {
-  it("F-035: a failed verdict's log tails are stored as blobs, capped, at most five, and never logged", async () => {
+  it("F-035/c1: a failed verdict's log tails are stored as blobs, capped, at most five, and never logged", async () => {
     const task = await seedTaskInCi(h);
     const marker = `secret-log-line-${randomBytes(4).toString("hex")}`;
     for (let index = 0; index < 7; index += 1) {
@@ -164,7 +164,7 @@ describe("F-035: the logs", () => {
 });
 
 describe("F-035: hints and replays", () => {
-  it("F-035: a replayed webhook writes nothing new, and ostra's own check is no hint", async () => {
+  it("F-035/c1: a replayed webhook writes nothing new, and ostra's own check is no hint", async () => {
     const task = await seedTaskInCi(h);
     const pr = firstPr(task);
     h.jobs.jobs.length = 0;
@@ -199,7 +199,7 @@ describe("F-035: hints and replays", () => {
     expect(h.jobs.jobs.length).toBe(before);
   });
 
-  it("F-035: a PR's new head and the reconcile each ask for its CI, without the check events", async () => {
+  it("F-035/c1: a PR's new head and the reconcile each ask for its CI, without the check events", async () => {
     const task = await seedTaskInCi(h);
     const pr = firstPr(task);
     h.jobs.jobs.length = 0;
@@ -210,7 +210,7 @@ describe("F-035: hints and replays", () => {
 });
 
 describe("F-035: two PRs", () => {
-  it("F-035: the sub-state follows two PRs' verdicts: both green moves on, one red asks for a CI round", async () => {
+  it("F-035/c1: the sub-state follows two PRs' verdicts: both green moves on, one red asks for a CI round", async () => {
     const task = await seedTaskInCi(h, { repos: 2 });
     const [one, two] = task.prs;
     if (one === undefined || two === undefined) throw new Error("two PRs expected");

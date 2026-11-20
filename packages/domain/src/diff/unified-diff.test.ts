@@ -51,7 +51,7 @@ const compare = (files: readonly CompareFile[], extra: Partial<CompareResult> = 
 });
 
 describe("the unified-diff parser", () => {
-  it("F-027: reads a GitHub patch into hunks, with each line's old and new numbers", () => {
+  it("F-027/c1: reads a GitHub patch into hunks, with each line's old and new numbers", () => {
     const parsed = parseUnifiedDiff(MODIFIED);
     expect(parsed.hunks).toHaveLength(2);
     const [first, second] = parsed.hunks;

@@ -53,12 +53,12 @@ const hitsOf = async (pattern: RegExp, keep: (file: string) => boolean): Promise
 };
 
 describe("the audit log is append-only (F-073)", () => {
-  it("F-073: no code, tests included, updates, upserts or deletes an audit entry, outside the migrations", async () => {
+  it("F-073/c1: no code, tests included, updates, upserts or deletes an audit entry, outside the migrations", async () => {
     expect(await hitsOf(changes, () => true)).toEqual([]);
     expect(await hitsOf(changesInSql, () => true)).toEqual([]);
   });
 
-  it("F-073: every audit write goes through recordAudit: no other source file creates an entry", async () => {
+  it("F-073/c1: every audit write goes through recordAudit: no other source file creates an entry", async () => {
     const port = path.join(repoRoot, "packages", "domain", "src", "audit", "record-audit.ts");
     // Tests, and the test seams under a `testing/` folder (Vitest only), seed entries; nothing else may.
     const hits = await hitsOf(creates, (file) => file !== port && !/\.test\.tsx?$/.test(file) && !file.split(path.sep).includes("testing"));

@@ -38,7 +38,7 @@ const pageSlugs = async (): Promise<string[]> => {
 };
 
 describe("the docs site's static export", () => {
-  it("F-058: the export builds with no server route: every route is a file in out/, and no page is rendered on request", async () => {
+  it("F-058/c1: the export builds with no server route: every route is a file in out/, and no page is rendered on request", async () => {
     expect((await readJson(path.join(app, ".next", "export-detail.json"), exportSchema)).success).toBe(true);
     const routes = Object.values(await readJson(path.join(app, ".next", "app-path-routes-manifest.json"), routesSchema));
     const prerender = await readJson(path.join(app, ".next", "prerender-manifest.json"), prerenderSchema);
@@ -62,14 +62,14 @@ describe("the docs site's static export", () => {
     }
   });
 
-  it("F-058: the search index is built with the export, as a static file holding the pages and the settings", async () => {
+  it("F-058/c1: the search index is built with the export, as a static file holding the pages and the settings", async () => {
     const index = await readFile(path.join(out, "api", "search"), "utf8");
     expect(JSON.parse(index)).toMatchObject({ type: "advanced" });
     expect(index).toContain("/docs/install/docker-compose");
     expect(index).toContain("OSTRA_JOIN_TOKEN_FILE");
   });
 
-  it("F-058: the search index holds plain text, and every heading a text record sits under is in the headings file, as written", async () => {
+  it("F-058/c1: the search index holds plain text, and every heading a text record sits under is in the headings file, as written", async () => {
     // The index and the headings file are the export's own files; only the fields read here are checked.
     const recordSchema = z.looseObject({ type: z.string(), url: z.string(), content: z.string() });
     const indexSchema = z.looseObject({ docs: z.looseObject({ docs: z.record(z.string(), recordSchema) }) });
@@ -94,7 +94,7 @@ describe("the docs site's static export", () => {
     expect(token.map((record) => record.content).join("\n")).toContain("Select the pool, then New token under Join tokens.");
   });
 
-  it("F-058: the configuration reference page lists every setting of docs/configuration.md, with its default", async () => {
+  it("F-058/c1: the configuration reference page lists every setting of docs/configuration.md, with its default", async () => {
     const html = await readFile(path.join(out, "docs", "reference", "configuration", "index.html"), "utf8");
     const rows = settingsOf(parseConfigurationReference(await readFile(path.join(app, "..", "..", "docs", "configuration.md"), "utf8")));
     expect(rows.length).toBeGreaterThan(50);
@@ -108,7 +108,7 @@ describe("the docs site's static export", () => {
     }
   });
 
-  it("F-058: the agent, using, security, reference and contributing pages are written, built, and linked from their section", async () => {
+  it("F-058/c1: the agent, using, security, reference and contributing pages are written, built, and linked from their section", async () => {
     const metaSchema = z.looseObject({ pages: z.array(z.string()) });
     for (const section of ["agents-and-models", "using-ostra", "security", "reference", "contributing"]) {
       const { pages } = await readJson(path.join(app, "content", section, "meta.json"), metaSchema);

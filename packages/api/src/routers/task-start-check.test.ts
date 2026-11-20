@@ -19,7 +19,7 @@ afterAll(async () => {
   await harness.dispose();
 });
 
-it("F-037, F-135: startCheck gives each reason: open, a project's and the organization's budget reached, no price, and no key", async () => {
+it("F-037/c2, F-135/c11: startCheck gives each reason: open, a project's and the organization's budget reached, no price, and no key", async () => {
   const { a } = harness.fixture;
   const world = await seedConnectionAndModel(harness);
   const admin = await harness.as(a.admin);

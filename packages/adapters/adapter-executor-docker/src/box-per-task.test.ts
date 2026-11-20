@@ -46,7 +46,7 @@ const holdingsOf = (input: BoxInput) => {
 };
 
 describe("a box per task on docker", () => {
-  it("F-016, F-017: each task's box is its agent's container and its sidecar on a private network of their own, and two boxes share none of it", async () => {
+  it("F-016/c3, F-017/c1: each task's box is its agent's container and its sidecar on a private network of their own, and two boxes share none of it", async () => {
     const one = boxFor(1);
     const two = boxFor(2);
     expect((await boxes.createBox(one)).ok).toBe(true);
@@ -71,7 +71,7 @@ describe("a box per task on docker", () => {
     }
   });
 
-  it("F-016: each task's workspace is its own box's task volume, which the agent's container and the sidecar mount at the same path", async () => {
+  it("F-016/c1: each task's workspace is its own box's task volume, which the agent's container and the sidecar mount at the same path", async () => {
     const one = boxFor(1);
     expect((await boxes.createBox(one)).ok).toBe(true);
     for (const container of holdingsOf(one).containers) {
@@ -82,7 +82,7 @@ describe("a box per task on docker", () => {
     }
   });
 
-  it("F-017: a box serves one task: a box ID in use is refused, and the box that holds it keeps running, whole", async () => {
+  it("F-017/c2: a box serves one task: a box ID in use is refused, and the box that holds it keeps running, whole", async () => {
     const one = boxFor(1);
     expect((await boxes.createBox(one)).ok).toBe(true);
     const before = holdingsOf(one).containers.map((container) => container.id).sort();
@@ -99,7 +99,7 @@ describe("a box per task on docker", () => {
     expect(await boxes.boxState(one.boxId)).toBe("ready");
   });
 
-  it("F-017: a released box is gone whole, and the next task's box is made new, never the old one", async () => {
+  it("F-017/c2: a released box is gone whole, and the next task's box is made new, never the old one", async () => {
     const one = boxFor(1);
     expect((await boxes.createBox(one)).ok).toBe(true);
     const oldIds = holdingsOf(one).containers.map((container) => container.id);

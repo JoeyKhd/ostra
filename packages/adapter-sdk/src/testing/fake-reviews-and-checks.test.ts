@@ -32,7 +32,7 @@ const hostWithPr = async (mode: BranchProtectionMode | null) => {
 };
 
 describe("the fake code host's branch protection", () => {
-  it("F-104: on the fake host, a required check in progress blocks a merge when in_progress blocks, and lets it through when only a failing check blocks", async () => {
+  it("F-104/c7: on the fake host, a required check in progress blocks a merge when in_progress blocks, and lets it through when only a failing check blocks", async () => {
     const blocking = await hostWithPr("in_progress-blocks");
     expect(await blocking.host.publishCheckRun(access, checkRunInput(blocking.headSha, CHECK))).toMatchObject({ ok: true });
     expect(blocking.host.mergePullRequest(repo, blocking.number)).toMatchObject({ merged: false });
@@ -44,7 +44,7 @@ describe("the fake code host's branch protection", () => {
     expect(await lenient.host.getPullRequest(access, lenient.number)).toMatchObject({ ok: true, value: { state: "merged", merged: true } });
   });
 
-  it("F-104: on the fake host, a required check that never ran, or needs action, blocks a merge in both modes, and a passed one lets it through", async () => {
+  it("F-104/c3: on the fake host, a required check that never ran, or needs action, blocks a merge in both modes, and a passed one lets it through", async () => {
     for (const mode of ["in_progress-blocks", "only-failing-blocks"] as const) {
       const { host, number, headSha } = await hostWithPr(mode);
       expect(host.mergePullRequest(repo, number), `${mode}: never ran`).toMatchObject({ merged: false });
@@ -64,7 +64,7 @@ describe("the fake code host's branch protection", () => {
 });
 
 describe("the fake code host's reviews and check runs", () => {
-  it("F-104: the fake host lists a PR's reviews oldest first, keeps a dismissed one as dismissed, and tells a bot apart", async () => {
+  it("F-104/c4: the fake host lists a PR's reviews oldest first, keeps a dismissed one as dismissed, and tells a bot apart", async () => {
     const { host, number } = await hostWithPr(null);
     const first = host.reviewsAndChecks.addReview(repo, number, { userId: "1", login: "grace", isBot: false, state: "approved", commitId: "a".repeat(40), submittedAt: 1 });
     host.reviewsAndChecks.addReview(repo, number, { userId: "2", login: "helper[bot]", isBot: true, state: "approved", commitId: "a".repeat(40), submittedAt: 2 });
@@ -78,7 +78,7 @@ describe("the fake code host's reviews and check runs", () => {
     expect(await host.listReviews(access, number + 1)).toMatchObject({ ok: false, error: { code: "not-found" } });
   });
 
-  it("F-104: the fake host publishes one check run per head and name, and an update changes its status and conclusion", async () => {
+  it("F-104/c1: the fake host publishes one check run per head and name, and an update changes its status and conclusion", async () => {
     const { host, headSha } = await hostWithPr(null);
     const first = await host.publishCheckRun(access, checkRunInput(headSha, CHECK));
     if (!first.ok) throw new Error(first.error.message);

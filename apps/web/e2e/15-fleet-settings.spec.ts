@@ -7,7 +7,7 @@ import { seedSizesWorld, shoot } from "./m5-settings.ts";
 // F-095, F-086, F-069 (milestone 5's ticket 32): Box sizes, a project's Runners tab, and a
 // profile's runner labels, through the panel, its API and the database.
 
-test("F-095: an admin edits a size, sees where no runner offers it, saves it, and a member reads it only", { tag: "@desktop-only" }, async ({ page, browser }) => {
+test("F-095/c1: an admin edits a size, sees where no runner offers it, saves it, and a member reads it only", { tag: "@desktop-only" }, async ({ page, browser }) => {
   await seedSizesWorld();
   await signIn(page);
   await page.goto("/organization/box-sizes");
@@ -54,7 +54,7 @@ test("F-095: an admin edits a size, sees where no runner offers it, saves it, an
   await member.context().close();
 });
 
-test("F-086, F-069, F-095: a project admin reorders the pools with the keyboard, sets a share, and picks the default size", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-086/c1, F-069, F-095/c2: a project admin reorders the pools with the keyboard, sets a share, and picks the default size", { tag: "@desktop-only" }, async ({ page }) => {
   const world = await seedSizesWorld();
   await signIn(page);
   await page.goto(`/projects/${world.projectId}/settings/runners`);
@@ -110,7 +110,7 @@ test("F-086, F-069, F-095: a project admin reorders the pools with the keyboard,
   await expect(page.getByRole("radio", { name: /medium/ })).toBeChecked();
 });
 
-test("F-069: a profile's runner label with a reserved prefix is refused inline, and an allowed one is kept", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-069/c1: a profile's runner label with a reserved prefix is refused inline, and an allowed one is kept", { tag: "@desktop-only" }, async ({ page }) => {
   const world = await seedSizesWorld();
   await signIn(page);
   await page.goto(`/organization/agent-profiles/${world.profileId}`);

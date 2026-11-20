@@ -81,7 +81,7 @@ const idleBridge: Bridge = {
 };
 
 describe("a box's size on Docker (F-095)", () => {
-  it("F-095: the agent's container gets exactly the size, with swap equal to memory and a pids cap; the sidecar and each service get their fixed limits", async () => {
+  it("F-095/c4: the agent's container gets exactly the size, with swap equal to memory and a pids cap; the sidecar and each service get their fixed limits", async () => {
     const size = { cpuMillis: 2000, memoryMiB: 4096 };
     const input = boxInput("sized", {
       size,
@@ -103,7 +103,7 @@ describe("a box's size on Docker (F-095)", () => {
     ]);
   });
 
-  it("F-095: the fixed limits are the runner's settings, and a box with no size limits only the sidecar and the services", async () => {
+  it("F-095/c4: the fixed limits are the runner's settings, and a box with no size limits only the sidecar and the services", async () => {
     const tuned = createDockerBoxes(createEngine(engine.address), {
       images,
       limits: { sidecar: { cpuMillis: 500, memoryMiB: 128 }, service: { cpuMillis: 750, memoryMiB: 512 } },
@@ -117,7 +117,7 @@ describe("a box's size on Docker (F-095)", () => {
     expect(limits.find((each) => each.role === "service")).toMatchObject({ cpuMillis: 750, memoryMiB: 512, memorySwapMiB: 512 });
   });
 
-  it("F-095: the executor takes box sizes, and its offer is the Engine's CPUs and memory less the reserve, with the slots setting or half the CPUs", async () => {
+  it("F-095/c4: the executor takes box sizes, and its offer is the Engine's CPUs and memory less the reserve, with the slots setting or half the CPUs", async () => {
     engine.info.cpus = 16;
     engine.info.memoryBytes = 32 * 1024 * 1024 * 1024;
     const executor = (slots?: number) =>
@@ -147,7 +147,7 @@ describe("a box's size on Docker (F-095)", () => {
 });
 
 describe("a box from the registry (F-120)", () => {
-  it("F-120: pulls ref@digest before anything of the box is made, with the credential in the Engine call's header only; the credential is in no container and no file", async () => {
+  it("F-120/c2: pulls ref@digest before anything of the box is made, with the credential in the Engine call's header only; the credential is in no container and no file", async () => {
     const input = boxInput("from-registry", { image });
     const callsBefore = engine.calls.length;
     const created = await boxes.createBox(input);
@@ -168,7 +168,7 @@ describe("a box from the registry (F-120)", () => {
     }
   });
 
-  it("F-120: a refused pull makes nothing of the box, and its words carry no credential", async () => {
+  it("F-120/c2: a refused pull makes nothing of the box, and its words carry no credential", async () => {
     engine.failNext.set("pull", 401);
     const input = boxInput("refused-pull", { image });
     const created = await boxes.createBox(input);
@@ -181,7 +181,7 @@ describe("a box from the registry (F-120)", () => {
     expect(engine.volumes.size).toBe(0);
   });
 
-  it("F-120: with no registry image, the host's own snapshot stays the path, and nothing is pulled", async () => {
+  it("F-120/c3: with no registry image, the host's own snapshot stays the path, and nothing is pulled", async () => {
     const input = boxInput("local-snapshot", { snapshotImage: "ostra-snapshot/project-a:snap-1" });
     const created = await boxes.createBox(input);
     if (!created.ok) throw new Error(created.error.message);
@@ -191,7 +191,7 @@ describe("a box from the registry (F-120)", () => {
 });
 
 describe("the task token on Docker (F-015)", () => {
-  it("F-015: the executor writes the task token into a folder that only the sidecar's container mounts, read-only, and nowhere else", async () => {
+  it("F-015/c4: the executor writes the task token into a folder that only the sidecar's container mounts, read-only, and nowhere else", async () => {
     const executor = new DockerExecutor({
       taskRoot: path.join(root, "task"),
       bridge: idleBridge,

@@ -67,7 +67,7 @@ afterAll(async () => {
 });
 
 describe("an account", () => {
-  it("F-002: every account has a unique username and an email address", async () => {
+  it("F-002/c1: every account has a unique username and an email address", async () => {
     const bob = await createAccount({ email: "bob@example.com", username: "bob" });
     expect(bob.user).toMatchObject({ email: "bob@example.com" });
 
@@ -93,7 +93,7 @@ describe("an account", () => {
     ]);
   });
 
-  it("F-002: a member signs in with the username or the email, and the password, and not with a wrong one", async () => {
+  it("F-002/c2,c12: a member signs in with the username or the email, and the password, and not with a wrong one", async () => {
     for (const attempt of ["username", "email"] as const) {
       const { headers } =
         attempt === "username"
@@ -106,7 +106,7 @@ describe("an account", () => {
     await expect(harness.auth.api.signInEmail({ body: { email: "bob@example.com", password: "not-the-password-at-all" } })).rejects.toThrow();
   });
 
-  it("F-002: with no email set up, an account signs in with an address nobody verified, and no verification mail can be asked for", async () => {
+  it("F-002/c10: with no email set up, an account signs in with an address nobody verified, and no verification mail can be asked for", async () => {
     expect(await harness.test.db.user.findUniqueOrThrow({ where: { username: "bob" }, select: { emailVerified: true } })).toEqual({ emailVerified: false });
     const session = await harness.auth.api.getSession({ headers: await signIn("bob") });
     expect(session?.user).toMatchObject({ email: "bob@example.com", emailVerified: false });
@@ -115,7 +115,7 @@ describe("an account", () => {
     expect(harness.fakes.jobs.jobs.filter((job) => job.job === "account-mail.send")).toEqual([]);
   });
 
-  it("F-002: the password is the only way in: no social, magic-link or anonymous sign-in is on", async () => {
+  it("F-002/c11,c12: the password is the only way in: no social, magic-link or anonymous sign-in is on", async () => {
     expect(await refusalOf(() => harness.auth.api.signInSocial({ body: { provider: "github" } }))).toMatchObject({ status: 404 });
     // Over HTTP too, as a browser would ask.
     for (const route of ["sign-in/social", "sign-in/magic-link", "sign-in/anonymous", "sign-in/email-otp", "sign-in/passkey"]) {
@@ -140,7 +140,7 @@ describe("an account", () => {
 });
 
 describe("a reset link", () => {
-  it("F-002: using a reset link sets the new password, signs out the account's other sessions, and works once", async () => {
+  it("F-002/c8: using a reset link sets the new password, signs out the account's other sessions, and works once", async () => {
     const elsewhere = await signIn("bob");
     expect(await harness.auth.api.getSession({ headers: elsewhere })).not.toBeNull();
 
@@ -166,7 +166,7 @@ describe("a reset link", () => {
 });
 
 describe("organization roles", () => {
-  it("F-002: only admin and member exist: an invitation, a new member or a role change to owner or any other role is refused", async () => {
+  it("F-002/c9: only admin and member exist: an invitation, a new member or a role change to owner or any other role is refused", async () => {
     // better-auth refuses a name it doesn't know; "owner" and a list holding it are ones it knows, which ostra's hook refuses.
     for (const [role, code] of [["owner", "ROLE_NOT_FOUND"], ["admin,owner", "ROLE_NOT_FOUND"], ["superadmin", undefined]] as const) {
       const refusal = await refusalOf(() =>
@@ -201,7 +201,7 @@ describe("organization roles", () => {
 });
 
 describe("an invitation", () => {
-  it("F-002: an invitation expires after 7 days, and an admin can revoke it", async () => {
+  it("F-002/c5: an invitation expires after 7 days, and an admin can revoke it", async () => {
     const before = Date.now();
     const invitation = await harness.auth.api.createInvitation({ body: { email: "erin@example.com", role: "member", organizationId }, headers: admin });
     const sevenDays = 7 * 24 * 60 * 60 * 1000;

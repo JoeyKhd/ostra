@@ -289,7 +289,7 @@ const steer = (runner: Runner, task: LeasedTask, text: string) =>
   );
 
 describe("the runner's HTTP fallback", () => {
-  it("F-013: through a CONNECT proxy, with and without Basic auth, the runner stays on the WebSocket", async () => {
+  it("F-013/c4: through a CONNECT proxy, with and without Basic auth, the runner stays on the WebSocket", async () => {
     const open = await connectProxyTo(front.port);
     const auth = { user: "runner", pass: "s3cret-proxy" };
     const guarded = await connectProxyTo(front.port, auth);
@@ -307,7 +307,7 @@ describe("the runner's HTTP fallback", () => {
     }
   }, 30_000);
 
-  it("F-013: a proxy that refuses the WebSocket upgrade with its own page makes the runner fall back to HTTP within 30 s", async () => {
+  it("F-013/c4: a proxy that refuses the WebSocket upgrade with its own page makes the runner fall back to HTTP within 30 s", async () => {
     const proxy = await inspectingProxy("block");
     const runner = await startRunner({ network: viaProxy(proxy) });
     await until("on HTTP", onHttp(runner), 30_000);
@@ -317,7 +317,7 @@ describe("the runner's HTTP fallback", () => {
     expect(await presence(runner)).toEqual({ carrier: "http", disconnectedAt: null });
   }, 40_000);
 
-  it("F-013: a TLS-inspecting proxy that answers 101 and holds the frames makes the runner fall back on the missing welcome within 30 s", async () => {
+  it("F-013/c4: a TLS-inspecting proxy that answers 101 and holds the frames makes the runner fall back on the missing welcome within 30 s", async () => {
     const proxy = await inspectingProxy("hold");
     const runner = await startRunner({ network: viaProxy(proxy) });
     await until("on HTTP", onHttp(runner), 30_000);
@@ -330,7 +330,7 @@ describe("the runner's HTTP fallback", () => {
     expect(runner.carriers.map(({ carrier, fallback }) => ({ carrier, fallback }))).toEqual([{ carrier: "http", fallback: "no-welcome" }]);
   }, 40_000);
 
-  it("F-013: a WebSocket that dies within 10 s of opening three times in a row makes the runner fall back to HTTP within 30 s", async () => {
+  it("F-013/c4: a WebSocket that dies within 10 s of opening three times in a row makes the runner fall back to HTTP within 30 s", async () => {
     front.mode = { kind: "kill", afterMs: 1_000 };
     const proxy = await connectProxyTo(front.port);
     const runner = await startRunner({ network: viaProxy(proxy) });
@@ -342,7 +342,7 @@ describe("the runner's HTTP fallback", () => {
     expect(front.upgrades).toBeGreaterThanOrEqual(3);
   }, 40_000);
 
-  it("F-013: behind nginx's defaults, which drop the Upgrade header, the runner falls back to HTTP and its long poll gets through", async () => {
+  it("F-013/c4: behind nginx's defaults, which drop the Upgrade header, the runner falls back to HTTP and its long poll gets through", async () => {
     const nginxCert = await issueTestCert(serverCa, [HOST, "localhost"]);
     const nginx = await startNginxDefaults({ upstream: () => ({ host: "127.0.0.1", port: Number(new URL(core.url).port) }), cert: nginxCert.cert, key: nginxCert.key, upstreamCa: null });
     cleanups.push(() => nginx.close());
@@ -357,7 +357,7 @@ describe("the runner's HTTP fallback", () => {
     expect(await presence(runner)).toEqual({ carrier: "http", disconnectedAt: null });
   }, 45_000);
 
-  it("F-013: a connection that goes silent after its welcome reconnects on the WebSocket and never falls back", async () => {
+  it("F-013/c4: a connection that goes silent after its welcome reconnects on the WebSocket and never falls back", async () => {
     front.mode = { kind: "silence", afterMs: 500 };
     const proxy = await connectProxyTo(front.port);
     const runner = await startRunner({ network: viaProxy(proxy), timers: { deadMs: 1_500, checkMs: 100 } });
@@ -369,7 +369,7 @@ describe("the runner's HTTP fallback", () => {
     expect(runner.connection.report().fallback).toBeNull();
   }, 50_000);
 
-  it("F-013: on HTTP, an auto runner tries the WebSocket again after its retry time and goes back to it once the proxy lets it through", async () => {
+  it("F-013/c4: on HTTP, an auto runner tries the WebSocket again after its retry time and goes back to it once the proxy lets it through", async () => {
     const proxy = await inspectingProxy("block");
     const runner = await startRunner({ network: viaProxy(proxy), timers: { wsRetryMs: 3_000 } });
     await until("on HTTP", onHttp(runner), 30_000);
@@ -381,7 +381,7 @@ describe("the runner's HTTP fallback", () => {
     expect(await presence(runner)).toEqual({ carrier: "websocket", disconnectedAt: null });
   }, 60_000);
 
-  it("F-013: every event is stored once across a switch from the WebSocket to HTTP", async () => {
+  it("F-013/c4: every event is stored once across a switch from the WebSocket to HTTP", async () => {
     const proxy = await connectProxyTo(front.port);
     const ref = await seedRunner(test.db, fixture.a.organization.id, fixture.a.member.id);
     const task = await seedLeasedTask(test.db, ref, projectIdSchema.parse(fixture.a.openProject.id), { state: "running" });
@@ -406,7 +406,7 @@ describe("the runner's HTTP fallback", () => {
     expect(rows.map((row) => row.sessionSeq)).toEqual(Array.from({ length: 40 }, (_, index) => index + 1));
   }, 60_000);
 
-  it("F-013: a steer arrives over HTTP within a second, and its ack reaches core", async () => {
+  it("F-013/c4: a steer arrives over HTTP within a second, and its ack reaches core", async () => {
     const proxy = await connectProxyTo(front.port);
     const ref = await seedRunner(test.db, fixture.a.organization.id, fixture.a.member.id);
     const task = await seedLeasedTask(test.db, ref, projectIdSchema.parse(fixture.a.openProject.id), { state: "running" });

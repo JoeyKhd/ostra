@@ -133,7 +133,7 @@ const bodyOf = (fullName: string, number: number | null) => codeHost.pulls.find(
 const linkDeps = () => ({ db: test.db, clock: systemClock, notices: postgresChangeNotices, adapters: { codeHost, secretStore }, logger });
 
 describe("F-098: a project's repos", () => {
-  it("F-098: the spec holds both repos in the project's order, each with its folder and base, on one branch name", async () => {
+  it("F-098/c1,c2: the spec holds both repos in the project's order, each with its folder and base, on one branch name", async () => {
     const task = await taskAhead([]);
     const runnerRef = await runner();
     const box = await test.db.box.create({ data: { organizationId: world.organizationId, projectId, taskId: task.taskId, runnerId: runnerRef.runnerId, executor: "host", state: "preparing" } });
@@ -158,7 +158,7 @@ describe("F-098: a project's repos", () => {
     expect(spec.spec.agent.instructions ?? "").toContain("`test2/`: ostra-test/test2 (base: trunk)");
   });
 
-  it("F-098: adding is a project admin's, within the limit, of a repo the App reaches, at the next position, with its audit entry", async () => {
+  it("F-098/c1: adding is a project admin's, within the limit, of a repo the App reaches, at the next position, with its audit entry", async () => {
     const member = scopeOf(fixture.a.member, "member");
     const THIRD = repoFullNameSchema.parse("ostra-test/test3");
     expect(await addProjectRepo(repoDeps(), member, { projectId, fullName: THIRD })).toMatchObject({ ok: false, error: "forbidden" });
@@ -173,7 +173,7 @@ describe("F-098: a project's repos", () => {
     expect((await test.db.repo.findUniqueOrThrow({ where: { id: secondRepoId } })).position).toBe(0);
   });
 
-  it("F-098: a repo an unfinished task has a branch in can't be removed, and the refusal names the task", async () => {
+  it("F-098/c1: a repo an unfinished task has a branch in can't be removed, and the refusal names the task", async () => {
     const task = await taskAhead([secondRepoId]);
     await test.db.task.update({ where: { id: task.taskId }, data: { title: "Print the release" } });
     const refused = await removeProjectRepo(repoDeps(), admin(), { projectId, repoId: secondRepoId });
@@ -198,14 +198,14 @@ describe("F-098: a project's repos", () => {
 });
 
 describe("F-098: a task across several repos", () => {
-  it("F-098: a task that changes one repo opens one PR", async () => {
+  it("F-098/c2: a task that changes one repo opens one PR", async () => {
     const task = await taskAhead([world.repoId]);
     const result = await open(task);
     expect(result.opened.filter((pr) => !pr.reused)).toHaveLength(1);
     expect((await prsOf(task.taskId)).map((pr) => pr.repo.fullName)).toEqual([FIRST]);
   });
 
-  it("F-098: two PRs each list the other in a Related section, after a replayed webhook too, keeping the rest of each body", async () => {
+  it("F-098/c2: two PRs each list the other in a Related section, after a replayed webhook too, keeping the rest of each body", async () => {
     const task = await taskAhead([world.repoId, secondRepoId]);
     await open(task);
     const prs = await prsOf(task.taskId);
@@ -262,7 +262,7 @@ describe("F-098: a task across several repos", () => {
     expect(await test.db.event.count({ where: { taskId: task.taskId, kind: "pr.related_updated" } })).toBe(2);
   });
 
-  it("F-098: a ticket task's ticket links both PRs", async () => {
+  it("F-098/c2: a ticket task's ticket links both PRs", async () => {
     const task = await taskAhead([world.repoId, secondRepoId]);
     const connection = await test.db.connection.create({ data: { organizationId: world.organizationId, kind: "linear", appId: `client-${randomUUID().slice(0, 8)}`, state: "active", webhookMode: "polling" } });
     const board = await test.db.board.create({ data: { organizationId: world.organizationId, projectId, connectionId: connection.id, externalId: `team-${randomUUID()}`, name: "Board", statusMap: {} } });
@@ -298,7 +298,7 @@ describe("F-098: a task across several repos", () => {
     }
   });
 
-  it("F-098: one PR merged and the other closed unmerged gives a merged task, in both orders; both closed unmerged gives stopped", async () => {
+  it("F-098/c4,c5: one PR merged and the other closed unmerged gives a merged task, in both orders; both closed unmerged gives stopped", async () => {
     const connection = await test.db.repo.findUniqueOrThrow({ where: { id: world.repoId }, select: { connectionId: true } });
     const cases = [
       [["merge", "close"], "merged"],
@@ -331,7 +331,7 @@ describe("F-098: a task across several repos", () => {
     }
   });
 
-  it("F-098: a repo added joins the task's next session with no branch, never its open one", async () => {
+  it("F-098/c3: a repo added joins the task's next session with no branch, never its open one", async () => {
     const task = await seedQueuedTask(test.db, world, fixture.a.member, null);
     const { branchName } = await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
     await test.db.taskRepo.create({ data: { organizationId: world.organizationId, projectId, taskId: task.taskId, repoId: secondRepoId, branchName, baseBranch: "trunk" } });

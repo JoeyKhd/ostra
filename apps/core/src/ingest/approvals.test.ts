@@ -134,7 +134,7 @@ afterAll(async () => {
 });
 
 describe("an approval requested", () => {
-  it("F-026: a request raises one item for the driver, needs you and one fan-out, even when its frame is sent again", async () => {
+  it("F-026/c3: a request raises one item for the driver, needs you and one fan-out, even when its frame is sent again", async () => {
     const { task, seq } = await runningTask();
     const approvalId = newApprovalId();
     const sent = frame(runnerEvent(task, seq(), requested(approvalId)));
@@ -158,7 +158,7 @@ describe("an approval requested", () => {
     expect(JSON.stringify(records)).not.toContain("config/settings.json");
   });
 
-  it("F-026: a task with no driver raises the item for the project's members", async () => {
+  it("F-026/c3: a task with no driver raises the item for the project's members", async () => {
     const { task, seq } = await runningTask(ours, null);
     await ingest(ours, frame(runnerEvent(task, seq(), requested(newApprovalId()))));
     expect(await test.db.needsYouItem.findMany({ where: { taskId: task.taskId } })).toMatchObject([{ reason: "approval", audience: "project_members" }]);
@@ -176,7 +176,7 @@ describe("an approval requested", () => {
 });
 
 describe("a member's answer", () => {
-  it("F-026: two members answering at once: one wins, the other is refused, and one command goes", async () => {
+  it("F-026/c4,c5: two members answering at once: one wins, the other is refused, and one command goes", async () => {
     const { task, seq } = await runningTask();
     const approvalId = newApprovalId();
     await ingest(ours, frame(runnerEvent(task, seq(), requested(approvalId))));
@@ -204,7 +204,7 @@ describe("a member's answer", () => {
     expect((await test.db.session.findUniqueOrThrow({ where: { id: task.sessionId } })).state).toBe("running");
   });
 
-  it("F-026: for this task writes one task rule, even answered twice in a race, and sends it in the command", async () => {
+  it("F-026/c5,c6: for this task writes one task rule, even answered twice in a race, and sends it in the command", async () => {
     const { task, seq } = await runningTask();
     const approvalId = newApprovalId();
     await ingest(ours, frame(runnerEvent(task, seq(), requested(approvalId))));
@@ -230,7 +230,7 @@ describe("a member's answer", () => {
     expect((await test.db.approval.findUniqueOrThrow({ where: { id: chained } })).state).toBe("open");
   });
 
-  it("F-026: a new task rule answering a held request closes its item: two open, one for this task answer, neither left open", async () => {
+  it("F-026/c6: a new task rule answering a held request closes its item: two open, one for this task answer, neither left open", async () => {
     const { task, seq } = await runningTask();
     const first = newApprovalId();
     const second = newApprovalId();
@@ -255,7 +255,7 @@ describe("a member's answer", () => {
     expect(await test.db.needsYouItem.count({ where: { taskId: task.taskId } })).toBe(2);
   });
 
-  it("F-026: a deny's reason reaches the command and the event, and never the audit entry or a log line", async () => {
+  it("F-026/c8: a deny's reason reaches the command and the event, and never the audit entry or a log line", async () => {
     records.length = 0;
     const { task, seq } = await runningTask();
     const approvalId = newApprovalId();
@@ -324,7 +324,7 @@ describe("expiry", () => {
     expect(await answer(fixture.a.member, approvalId, ONCE, "allow_once")).toMatchObject({ ok: false, error: "already-answered" });
   });
 
-  it("F-026: a cancelled approval can't be answered", async () => {
+  it("F-026/c8: a cancelled approval can't be answered", async () => {
     const { task, seq } = await runningTask();
     const approvalId = newApprovalId();
     await ingest(ours, frame(runnerEvent(task, seq(), requested(approvalId)), runnerEvent(task, seq(), { kind: "approval.closed", approvalId, reason: "cancelled" })));
@@ -334,7 +334,7 @@ describe("expiry", () => {
 });
 
 describe("isolation", () => {
-  it("F-026: another organization's approval can't be answered, and our runner can't raise one on their task", async () => {
+  it("F-026/c4: another organization's approval can't be answered, and our runner can't raise one on their task", async () => {
     const other = await seedLeasedTask(test.db, theirs, fixture.b.project.id, { state: "running", creatorMemberId: fixture.b.admin.id });
     await ingest(theirs, frame(runnerEvent(other, 1, { kind: "turn.started", turnId })));
     const approvalId = newApprovalId();

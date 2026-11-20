@@ -17,7 +17,7 @@ const fakes: readonly ParitySubject[] = [
 ];
 
 describe("adapter parity, the scripted fakes", () => {
-  it("F-019: every scripted fake has an entry for every row, naming cases that exist and run the way it declares each capability", async () => {
+  it("F-019/c3: every scripted fake has an entry for every row, naming cases that exist and run the way it declares each capability", async () => {
     expect(fakes.map((fake) => fake.name)).toEqual([
       "fake-acp-agent-rich",
       "fake-acp-agent-plain",
@@ -29,7 +29,7 @@ describe("adapter parity, the scripted fakes", () => {
     expect(pendingParity().every((line) => line.includes("milestone 6"))).toBe(true);
   });
 
-  it("F-019: the check fails when a row is deleted from an adapter's entry, a case doesn't exist, or a declared capability has only its fallback", async () => {
+  it("F-019/c3: the check fails when a row is deleted from an adapter's entry, a case doesn't exist, or a declared capability has only its fallback", async () => {
     const [rich, plain] = fakes;
     if (rich === undefined || plain === undefined) throw new Error("the fakes are listed");
     const richEntries = parityTable[rich.name] ?? {};

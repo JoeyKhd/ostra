@@ -141,7 +141,7 @@ const rowOf = (pr: TaskPr, head: GitSha = pr.head) => test.db.reviewCheck.findUn
 const checkEvents = (pr: TaskPr) => test.db.event.findMany({ where: { taskId: pr.taskId, kind: "review.check_updated" }, orderBy: { seq: "asc" } });
 
 describe("F-104: the independent-review check", () => {
-  it("F-104: a new PR's check waits, and an approval by a linked member who didn't drive the task passes it, naming them", async () => {
+  it("F-104/c1,c2,c7: a new PR's check waits, and an approval by a linked member who didn't drive the task passes it, naming them", async () => {
     const pr = await taskWithPr();
     expect((await evaluate(pr)).outcome).toBe("published");
     const waiting = runOf(pr.head);
@@ -163,7 +163,7 @@ describe("F-104: the independent-review check", () => {
     ]);
   });
 
-  it("F-104: an approval by a driver, a bot, an unlinked user, another organization's or a removed member waits, saying why", async () => {
+  it("F-104/c2,c4,c5: an approval by a driver, a bot, an unlinked user, another organization's or a removed member waits, saying why", async () => {
     const cases: readonly [keyof typeof GH, Parameters<typeof pendingReasonWords>[0]][] = [
       ["driver", "only-drivers-approved"],
       ["bot", "only-bots-approved"],
@@ -188,7 +188,7 @@ describe("F-104: the independent-review check", () => {
     }
   });
 
-  it("F-104: a driver is every member credited with a trailer on the task", async () => {
+  it("F-104/c5: a driver is every member credited with a trailer on the task", async () => {
     const pr = await taskWithPr();
     await test.db.taskCoAuthor.create({
       data: { organizationId: world.organizationId, projectId: world.projectId, taskId: pr.taskId, memberId: fixture.a.insider.id, name: "Sam Second", email: "9003+sam@users.noreply.github.com" },
@@ -200,7 +200,7 @@ describe("F-104: the independent-review check", () => {
     expect((await evaluate(pr)).verdict).toMatchObject({ status: "passed", approverMemberId: fixture.a.admin.id });
   });
 
-  it("F-104: a new head waits for an approval of that head, and the old head's check keeps its result", async () => {
+  it("F-104/c4,c6: a new head waits for an approval of that head, and the old head's check keeps its result", async () => {
     const pr = await taskWithPr();
     review(pr, "other", "approved");
     expect((await evaluate(pr)).verdict.status).toBe("passed");
@@ -216,7 +216,7 @@ describe("F-104: the independent-review check", () => {
     expect((await evaluate(pr, next)).verdict.status).toBe("passed");
   });
 
-  it("F-104: a dismissal, a withdrawn approval, or changes requested after it set a passed check back to waiting, on the same run", async () => {
+  it("F-104/c4,c6: a dismissal, a withdrawn approval, or changes requested after it set a passed check back to waiting, on the same run", async () => {
     const pr = await taskWithPr();
     const approval = review(pr, "other", "approved");
     await evaluate(pr);
@@ -234,7 +234,7 @@ describe("F-104: the independent-review check", () => {
     expect(runOf(pr.head)).toMatchObject({ checkRunId: runId, status: "in_progress", summary: pendingReasonWords("changes-requested") });
   });
 
-  it("F-104: a replayed review webhook enqueues the same keyed evaluation, which writes nothing the second time", async () => {
+  it("F-104/c6: a replayed review webhook enqueues the same keyed evaluation, which writes nothing the second time", async () => {
     const pr = await taskWithPr();
     review(pr, "other", "approved");
     const connection = await test.db.repo.findUniqueOrThrow({ where: { id: world.repoId }, select: { connectionId: true, hostRepoId: true } });
@@ -283,7 +283,7 @@ describe("F-104: the independent-review check", () => {
     expect((await deliver()).outcome).toBe("ignored");
   });
 
-  it("F-104: under branch protection, a waiting check blocks a merge in both modes, by in_progress or by action_required", async () => {
+  it("F-104/c3,c7: under branch protection, a waiting check blocks a merge in both modes, by in_progress or by action_required", async () => {
     const pr = await taskWithPr();
     const base = "main";
     // GitHub blocks on an in-progress required check: the default.
@@ -330,7 +330,7 @@ const prDeps = (): PullRequestStateDeps => ({ db: test.db, jobs, notices: postgr
 describe("F-104: what enqueues an evaluation", () => {
   const evaluations = () => enqueued.filter((entry) => entry.job === "review.evaluate").map((entry) => entry.payload);
 
-  it("F-104: a new head on the PR (synchronize) and the PR reconcile each enqueue an evaluation on the new head", async () => {
+  it("F-104/c6: a new head on the PR (synchronize) and the PR reconcile each enqueue an evaluation on the new head", async () => {
     const pr = await taskWithPr();
     const next = sha("d");
     codeHost.pushHead(REPO, pr.number, next);
@@ -353,7 +353,7 @@ describe("F-104: what enqueues an evaluation", () => {
     expect(evaluations()).toContainEqual({ organizationId: world.organizationId, taskRepoId: pr.taskRepoId, prNumber: pr.number, headSha: next });
   });
 
-  it("F-104: linking or unlinking a GitHub account enqueues an evaluation of each open task PR of the member's organization", async () => {
+  it("F-104/c2: linking or unlinking a GitHub account enqueues an evaluation of each open task PR of the member's organization", async () => {
     const pr = await taskWithPr();
     const ports = { db: test.db, jobs, outbox: postgresCommandOutbox, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock, adapters: { codeHost, secretStore, modelProvider: new FakeModelProvider() } };
     const unlinked = await unlinkGitHubUser(ports, { userId: fixture.a.insider.userId });
@@ -366,7 +366,7 @@ describe("F-104: what enqueues an evaluation", () => {
     expect(evaluations().every((payload) => JSON.stringify(payload).includes(world.organizationId))).toBe(true);
   });
 
-  it("F-104: a PR ostra opens gets its check enqueued on its head, and the job publishes it there as waiting", async () => {
+  it("F-104/c1: a PR ostra opens gets its check enqueued on its head, and the job publishes it there as waiting", async () => {
     const task = await seedQueuedTask(test.db, world, fixture.a.member, null);
     const head = sha("e");
     await test.db.taskRepo.updateMany({ where: { taskId: task.taskId }, data: { ahead: true, headSha: head, state: "branch_pushed" } });

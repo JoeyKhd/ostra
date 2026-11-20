@@ -46,7 +46,7 @@ const create = async (slug: string) =>
   (await harness.as(harness.fixture.a.admin)).projects.create({ name: slug, slug, access: "open", repo: { connectionId, installationId, fullName: "ostra-test/shop" } });
 
 describe("environment detection", () => {
-  it("F-112: creating a project drafts its environment from the repo's lockfiles, tool versions, .env.example, devcontainer.json and compose files, with no agent and no model", async () => {
+  it("F-112/c1: creating a project drafts its environment from the repo's lockfiles, tool versions, .env.example, devcontainer.json and compose files, with no agent and no model", async () => {
     const tasksBefore = await harness.test.db.task.count();
     const sessionsBefore = await harness.test.db.session.count();
     const created = await create("shop");
@@ -80,7 +80,7 @@ describe("environment detection", () => {
     expect(harness.fakes.modelProvider.testedTokens).toEqual([]);
   });
 
-  it("F-050, F-112: the draft stays a draft until a project admin saves it, edited, and a member can't", async () => {
+  it("F-050/c1, F-112/c2: the draft stays a draft until a project admin saves it, edited, and a member can't", async () => {
     const created = await create("shop-two");
     const projectId = projectIdSchema.parse(created.projectId);
     const member = await harness.as(harness.fixture.a.member);

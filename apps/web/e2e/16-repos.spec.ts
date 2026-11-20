@@ -34,7 +34,7 @@ let projectId: string | null = null;
 
 test.describe.configure({ mode: "serial" });
 
-test("F-098: a project admin adds a second repo and reorders", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-098/c3: a project admin adds a second repo and reorders", { tag: "@desktop-only" }, async ({ page }) => {
   await signIn(page);
   await ensureGitHub(page);
   const suffix = Date.now().toString(36);
@@ -64,7 +64,7 @@ test("F-098: a project admin adds a second repo and reorders", { tag: "@desktop-
   await expect(page.getByTestId("project-repo-panel")).toContainText("2 of 2");
 });
 
-test("F-098, F-104: a removal of a repo in use is refused with the task named", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-098/c3, F-104/c7: a removal of a repo in use is refused with the task named", { tag: "@desktop-only" }, async ({ page }) => {
   expect(projectId).not.toBeNull();
   const { databaseUrl } = await readStack();
   const { stdout } = await run(process.execPath, [path.join(import.meta.dirname, "seed-repos-world.ts"), JSON.stringify({ databaseUrl, password: e2eAdmin.password, projectId })], { cwd });
@@ -96,7 +96,7 @@ test("F-098, F-104: a removal of a repo in use is refused with the task named", 
   await expect(second.getByTestId("review-check")).toHaveAttribute("data-state", "passed");
 });
 
-test("F-104, F-098: a task with two PRs shows both with their check states, at phone width too", async ({ page }) => {
+test("F-104/c7, F-098/c3: a task with two PRs shows both with their check states, at phone width too", async ({ page }) => {
   await signIn(page);
   const { databaseUrl } = await readStack();
   // The phone project runs after the desktop one: the newest project its first case made.

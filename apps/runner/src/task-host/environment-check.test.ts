@@ -16,7 +16,7 @@ const credentials = taskCredentialsSchema.parse({
 });
 
 describe("the launch's credential check (F-021)", () => {
-  it("F-021: an MCP server's header in the agent's environment or in a file its launch writes refuses the launch", () => {
+  it("F-021/c4: an MCP server's header in the agent's environment or in a file its launch writes refuses the launch", () => {
     expect(checkLaunchEnvironment({ DOCS: "Bearer docs-header-token-abcdef" }, credentials)).toEqual({ ok: false, variable: "DOCS", holds: "an MCP server's header" });
     expect(checkLaunchFiles([{ path: "/agent/config.json", content: '{"headers":{"authorization":"Bearer docs-header-token-abcdef"}}' }], credentials)).toEqual({
       ok: false,

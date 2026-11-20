@@ -74,7 +74,7 @@ describe("the server's settings", () => {
     expect(parseServerSettings({ OSTRA_LINEAR_API_URL: "ftp://linear.example" }).ok).toBe(false);
   });
 
-  it("F-090: takes the LFS storage hosts from OSTRA_GITHUB_LFS_HOSTS, GitHub.com's by default, and refuses what isn't a host name", () => {
+  it("F-090/c7: takes the LFS storage hosts from OSTRA_GITHUB_LFS_HOSTS, GitHub.com's by default, and refuses what isn't a host name", () => {
     const fallback = parseServerSettings({});
     expect(fallback.ok && fallback.settings.githubLfsHosts).toEqual(["github-cloud.githubusercontent.com", "github-cloud.s3.amazonaws.com", "lfs.github.com"]);
     const ghes = parseServerSettings({ OSTRA_GITHUB_LFS_HOSTS: " LFS.ghes.example.com, *.storage.example.com " });
@@ -138,7 +138,7 @@ describe("the server's settings", () => {
 describe("the retired open sign-up settings (removed 2026-11-19)", () => {
   const retired = { OSTRA_OPEN_SIGNUP_ACCOUNTS: "true", OSTRA_OPEN_SIGNUP_ORGANIZATIONS: "yes" } as const;
 
-  it("F-002: an install upgraded with OSTRA_OPEN_SIGNUP_* still set starts, and the settings it gets are the defaults: nothing opens sign-up", () => {
+  it("F-002/c3: an install upgraded with OSTRA_OPEN_SIGNUP_* still set starts, and the settings it gets are the defaults: nothing opens sign-up", () => {
     const fresh = parseServerSettings({});
     expect(fresh.ok).toBe(true);
     // Whatever an old env file says, also a value no boolean takes, the server starts.

@@ -138,7 +138,7 @@ const messages = (h: Harness, spec: TaskSpec): string => h.ofKind(spec, "agent.m
 const answer = (h: Harness, spec: TaskSpec, body: Record<string, unknown>): string => h.command("approval-answer", { sessionId: spec.sessionId, ...body });
 
 describe("approvals on OpenCode, with the stub models (F-026)", () => {
-  it("F-026: a rule asks, OpenCode's request is held with the rule and its path, and the answer lets the edit through", async () => {
+  it("F-026/c3: a rule asks, OpenCode's request is held with the rule and its path, and the answer lets the edit through", async () => {
     const h = await start();
     const { spec } = taskOn(h, `${stubMarker("edit-notes")} Edit the notes.`, [NOTES_RULE]);
     h.dispatch(spec);
@@ -153,7 +153,7 @@ describe("approvals on OpenCode, with the stub models (F-026)", () => {
     expect(await shared.upstream.fileAt("ostra-test/test1", `refs/heads/${spec.branchName}`, "notes.txt")).toContain("notes, from OpenCode");
   }, 240_000);
 
-  it("F-026: \"for this task\" answers the request, and its task rule answers the next two with no person", async () => {
+  it("F-026/c6: \"for this task\" answers the request, and its task rule answers the next two with no person", async () => {
     const h = await start();
     const { spec } = taskOn(h, `${stubMarker("two-commands")} Run two commands.`, [NODE_RULE]);
     h.dispatch(spec);
@@ -174,7 +174,7 @@ describe("approvals on OpenCode, with the stub models (F-026)", () => {
     expect(h.ofKind(spec, "approval.auto_answered")).toHaveLength(2);
   }, 240_000);
 
-  it("F-026: a deny ends OpenCode's turn before its next request, and re-prompts with the member's reason", async () => {
+  it("F-026/c8: a deny ends OpenCode's turn before its next request, and re-prompts with the member's reason", async () => {
     const h = await start();
     const { spec } = taskOn(h, `${stubMarker("edit-pair")} Edit both files.`, [NOTES_RULE, README_RULE]);
     h.dispatch(spec);

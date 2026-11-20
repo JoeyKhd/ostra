@@ -120,7 +120,7 @@ const takeOver = (scope: MemberScope, task: LeasedTask) =>
   });
 
 describe("setTaskEffort", () => {
-  it("F-137: setTaskEffort is refused for a member who isn't the driver, and writes nothing", async () => {
+  it("F-137/c7: setTaskEffort is refused for a member who isn't the driver, and writes nothing", async () => {
     const task = await leasedTask();
     for (const scope of [watcher, admin]) {
       expect(await setTaskEffort(deps, scope, { taskId: task.taskId, level: "high", changeId: changeId() })).toMatchObject({
@@ -132,7 +132,7 @@ describe("setTaskEffort", () => {
     expect(await traces(task.taskId)).toEqual({ effort: "default", events: [], audits: [], commands: [] });
   });
 
-  it("F-137: the driver's change writes the level, effort.changed, the audit entry and a set-effort, in one transaction", async () => {
+  it("F-137/c8,c15: the driver's change writes the level, effort.changed, the audit entry and a set-effort, in one transaction", async () => {
     const task = await leasedTask();
     const id = changeId();
     expect(await setTaskEffort(deps, driver, { taskId: task.taskId, level: "high", changeId: id })).toEqual({
@@ -152,7 +152,7 @@ describe("setTaskEffort", () => {
     expect((await traces(task.taskId)).audits).toHaveLength(1);
   });
 
-  it("F-137: a minor-2 runner is never sent set-effort; the next session starts at the level", async () => {
+  it("F-137/c8: a minor-2 runner is never sent set-effort; the next session starts at the level", async () => {
     const task = await leasedTask(2);
     expect(await setTaskEffort(deps, driver, { taskId: task.taskId, level: "low", changeId: changeId() })).toMatchObject({ ok: true, sentToRunner: false });
     const after = await traces(task.taskId);
@@ -161,7 +161,7 @@ describe("setTaskEffort", () => {
     expect(after.events).toHaveLength(1);
   });
 
-  it("F-137: a take-over racing the driver's change, 50 times: each change committed before the take-over, or was refused", async () => {
+  it("F-137/c7: a take-over racing the driver's change, 50 times: each change committed before the take-over, or was refused", async () => {
     const levels: readonly EffortLevel[] = ["low", "high", "max", "medium", "none"];
     for (let round = 0; round < 50; round += 1) {
       const task = await leasedTask();
@@ -194,7 +194,7 @@ describe("a model's reasoning controls", () => {
   };
   const reasoningOf = async (modelId: ModelId) => mapModel(await test.db.model.findUniqueOrThrow({ where: { id: modelId } }));
 
-  it("F-137: only an organization admin sets a model's controls; null goes back to the catalog's", async () => {
+  it("F-137/c4,c15: only an organization admin sets a model's controls; null goes back to the catalog's", async () => {
     const modelId = await modelOf();
     const controls: ReasoningControls = reasoningControlsFixtures.effortNoLow;
     expect(await setModelReasoning(deps, driver, { modelId, controls })).toMatchObject({ ok: false, error: "forbidden" });
@@ -210,7 +210,7 @@ describe("a model's reasoning controls", () => {
     expect((await reasoningOf(modelId)).adminReasoning).toBeNull();
   });
 
-  it("F-137: a catalog refresh's value never replaces an admin's", async () => {
+  it("F-137/c4: a catalog refresh's value never replaces an admin's", async () => {
     const modelId = await modelOf();
     const controls: ReasoningControls = reasoningControlsFixtures.toggle;
     expect(await setModelReasoning(deps, admin, { modelId, controls })).toMatchObject({ ok: true });
@@ -254,7 +254,7 @@ describe("the profile's level", () => {
   const auditsOf = (profileId: string) =>
     test.db.auditEntry.findMany({ where: { entityId: profileId, action: { startsWith: "agent-profile." } }, orderBy: { createdAt: "asc" }, select: { action: true, data: true } });
 
-  it("F-137: a profile's save stores its level, its audit entry carries it, and a rollback leaves neither", async () => {
+  it("F-137/c15: a profile's save stores its level, its audit entry carries it, and a rollback leaves neither", async () => {
     const created = await saveAgentProfile(profileDeps(), admin, { ...(await input("Thinks hard")), effort: "high" });
     if (!created.ok) {
       throw new Error(created.message);
@@ -281,7 +281,7 @@ describe("the profile's level", () => {
 });
 
 describe("the audit entries", () => {
-  it("F-137: every use case writes its audit entry in its transaction, and a rollback leaves none", async () => {
+  it("F-137/c15: every use case writes its audit entry in its transaction, and a rollback leaves none", async () => {
     const task = await leasedTask();
     const modelId = modelIdSchema.parse((await test.db.model.findFirstOrThrow({ where: { providerId: world.providerId, endpointModelId: "dev-model-1" } })).id);
     const before = await test.db.model.findUniqueOrThrow({ where: { id: modelId }, select: { adminReasoning: true } });

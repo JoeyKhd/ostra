@@ -36,7 +36,7 @@ describe("runningClusterPort", () => {
 });
 
 describe("demoDatabase", () => {
-  it("F-089: the demo's token checks read the stack's own cluster when only the panel and core URLs name the stack", async () => {
+  it("F-089/c8: the demo's token checks read the stack's own cluster when only the panel and core URLs name the stack", async () => {
     // The failing live run: a stack on port 54601, the demo's shell without OSTRA_DEV_PG_PORT. The
     // checks read the default port's database, another stack's, and found the task's session nowhere.
     const found = await demoDatabase({ OSTRA_E2E_PANEL_URL: "http://localhost:3401", OSTRA_E2E_CORE_URL: "http://localhost:9001" }, await writePid("54601"));

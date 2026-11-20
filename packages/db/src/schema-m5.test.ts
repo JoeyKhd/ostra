@@ -123,7 +123,7 @@ describe("the milestone 5 migration", () => {
     expect(snapshot).toMatchObject({ registryId: a.registry.id, builder: "buildkit", pushedAt: null });
   });
 
-  it("F-095: keeps one box size of a name, and one registry, per organization", async () => {
+  it("F-095/c1: keeps one box size of a name, and one registry, per organization", async () => {
     const small = await test.db.boxSize.create({ data: { organizationId: a.organizationId, name: "small", cpuMillis: 2000, memoryMiB: 4096 } });
     expect(mapBoxSize(small)).toMatchObject({ name: "small", cpuMillis: 2000, memoryMiB: 4096, updatedByMemberId: null });
     await expect(test.db.boxSize.create({ data: { organizationId: a.organizationId, name: "small", cpuMillis: 1000, memoryMiB: 1024 } })).rejects.toMatchObject({ code: "P2002" });

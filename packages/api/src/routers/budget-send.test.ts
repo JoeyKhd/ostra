@@ -44,7 +44,7 @@ const steersFor = (messageId: ClientMessageId) =>
   harness.fakes.outbox.commands.filter((command) => command.kind === "steer" && Reflect.get(command.body, "clientMessageId") === messageId);
 
 describe("the composer's message and the budget gate (F-037)", () => {
-  it("F-037: a message to an idle session past the budget is saved and held, and no steer goes out", async () => {
+  it("F-037/c4: a message to an idle session past the budget is saved and held, and no steer goes out", async () => {
     const task = await taskWith("idle");
     const messageId = newMessageId();
     const sent = await (await harness.as(harness.fixture.a.member)).tasks.send({ taskId: task.taskId, clientMessageId: messageId, text: "One more thing" });
@@ -57,7 +57,7 @@ describe("the composer's message and the budget gate (F-037)", () => {
     expect(await harness.test.db.event.count({ where: { taskId: task.taskId, kind: "turn.held" } })).toBe(1);
   });
 
-  it("F-037: a message to a running turn is delivered whatever the budget says", async () => {
+  it("F-037/c4: a message to a running turn is delivered whatever the budget says", async () => {
     const task = await taskWith("running");
     const messageId = newMessageId();
     const sent = await (await harness.as(harness.fixture.a.member)).tasks.send({ taskId: task.taskId, clientMessageId: messageId, text: "Also this" });

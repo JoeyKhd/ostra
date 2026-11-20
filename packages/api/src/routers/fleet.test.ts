@@ -91,7 +91,7 @@ const capabilities = (executor: "docker" | "host" | "kubernetes") => ({
 });
 
 describe("the fleet's counts (F-092)", () => {
-  it("F-092: a pool's busy boxes are its runners' boxes that hold a slot, against the slots of its working runners", async () => {
+  it("F-092/c1,c2: a pool's busy boxes are its runners' boxes that hold a slot, against the slots of its working runners", async () => {
     const poolId = await seedPool("counted-fleet");
     const projectId = await seedProjectOn(poolId, "counted");
     const one = await seedRunner(poolId, { name: "fleet-01", slots: 3, version: "0.5.0", labels: ["tier:fast", "executor:docker"] });
@@ -131,7 +131,7 @@ describe("the fleet's counts (F-092)", () => {
     ]);
   });
 
-  it("F-092: each runner's capability lines: not isolated on host, direct internet access on kubernetes, same user on a host pool in development", async () => {
+  it("F-092/c3: each runner's capability lines: not isolated on host, direct internet access on kubernetes, same user on a host pool in development", async () => {
     const poolId = await seedPool("lined-fleet");
     const host = await seedRunner(poolId, { name: "line-host", executor: "host", minor: 4, capabilities: capabilities("host") });
     const kube = await seedRunner(poolId, { name: "line-kube", executor: "kubernetes", minor: 4, capabilities: capabilities("kubernetes") });
@@ -166,7 +166,7 @@ describe("the fleet's counts (F-092)", () => {
     expect((await sameUser.runners.get({ runnerId: host })).lines).toEqual(["not-isolated", "same-user-development"]);
   });
 
-  it("F-092: members see their own personal runner and the pools' names, admins everything", async () => {
+  it("F-092/c1: members see their own personal runner and the pools' names, admins everything", async () => {
     const { a, b } = harness.fixture;
     const poolId = await seedPool("seen-fleet");
     const pooled = await seedRunner(poolId, { name: "seen-01" });
@@ -188,7 +188,7 @@ describe("the fleet's counts (F-092)", () => {
     expect((await (await harness.as(b.admin)).pools.names()).map((row) => row.id)).not.toContain(poolId);
   });
 
-  it("F-092: a runner's page has the token it joined with, who approved it, its boxes now and its last 20 audit entries", async () => {
+  it("F-092/c2: a runner's page has the token it joined with, who approved it, its boxes now and its last 20 audit entries", async () => {
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);
     const made = await admin.pools.create({ name: "paged-fleet", requiresApproval: true });
@@ -217,7 +217,7 @@ describe("the fleet's counts (F-092)", () => {
     expect(JSON.stringify(page)).not.toContain(made.joinToken.token);
   });
 
-  it("F-092: a runner's page counts the CPU and memory its slot-holding boxes take against what it offers, with each box's size and task key", async () => {
+  it("F-092/c2: a runner's page counts the CPU and memory its slot-holding boxes take against what it offers, with each box's size and task key", async () => {
     const poolId = await seedPool("sized-fleet");
     const projectId = await seedProjectOn(poolId, "sized");
     const runnerId = await seedRunner(poolId, { name: "sized-01", slots: 4, minor: 4 });
@@ -250,7 +250,7 @@ describe("the fleet's counts (F-092)", () => {
 });
 
 describe("drain, resume and revoke (F-092)", () => {
-  it("F-092: an admin drains, resumes and revokes a runner, with the counts the confirms show; a member is refused each", async () => {
+  it("F-092/c4: an admin drains, resumes and revokes a runner, with the counts the confirms show; a member is refused each", async () => {
     const { a, b } = harness.fixture;
     const poolId = await seedPool("drained-fleet");
     const projectId = await seedProjectOn(poolId, "drained");
@@ -283,7 +283,7 @@ describe("drain, resume and revoke (F-092)", () => {
 });
 
 describe("the queue (F-067)", () => {
-  it("F-067, F-092: a pool's queue is in ticket priority order, then by when each was queued, and a member sees their own task's place", async () => {
+  it("F-067/c2, F-092/c2: a pool's queue is in ticket priority order, then by when each was queued, and a member sees their own task's place", async () => {
     const { a } = harness.fixture;
     const poolId = await seedPool("queued-fleet");
     const projectId = await seedProjectOn(poolId, "queued");
@@ -313,7 +313,7 @@ describe("the queue (F-067)", () => {
     expect((await admin.pools.list()).find((row) => row.id === poolId)?.queueLength).toBe(4);
   });
 
-  it("F-067: an admin cancels any queued task and its member their own; another member is refused", async () => {
+  it("F-067/c2: an admin cancels any queued task and its member their own; another member is refused", async () => {
     const { a } = harness.fixture;
     const poolId = await seedPool("cancelled-fleet");
     const projectId = await seedProjectOn(poolId, "cancelled");

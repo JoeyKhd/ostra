@@ -537,7 +537,7 @@ describe("the GitHub adapter", () => {
       ownerLogin: "acme",
     };
 
-    it("F-006: asks for exactly the permissions GitHub accepted, `checks: write` and `actions: read` among them, and no `email_addresses` or `workflows`", () => {
+    it("F-006/c2,c3,c5: asks for exactly the permissions GitHub accepted, `checks: write` and `actions: read` among them, and no `email_addresses` or `workflows`", () => {
       const { manifest } = adapter.appManifest(input);
       expect(manifest["default_permissions"]).toEqual({
         contents: "write",
@@ -552,13 +552,13 @@ describe("the GitHub adapter", () => {
       expect(JSON.stringify(manifest)).not.toContain("workflows");
     });
 
-    it("F-006: sends the webhook and its events when the URL is public", () => {
+    it("F-006/c4: sends the webhook and its events when the URL is public", () => {
       const { manifest } = adapter.appManifest(input);
       expect(manifest["hook_attributes"]).toEqual({ url: input.webhookUrl, active: true });
       expect(manifest["default_events"]).toContain("pull_request_review");
     });
 
-    it("F-006: leaves out the webhook and its events for a loopback or private URL, which GitHub refuses", () => {
+    it("F-006/c4: leaves out the webhook and its events for a loopback or private URL, which GitHub refuses", () => {
       for (const webhookUrl of [
         "http://localhost:8787/hooks/x",
         "http://127.0.0.1:8787/hooks/x",
@@ -573,7 +573,7 @@ describe("the GitHub adapter", () => {
       }
     });
 
-    it("F-006: posts to the organization's page, or the admin's own", () => {
+    it("F-006/c1: posts to the organization's page, or the admin's own", () => {
       expect(adapter.appManifest(input).createUrl).toBe("https://github.example/organizations/acme/settings/apps/new");
       expect(adapter.appManifest({ ...input, ownerLogin: null }).createUrl).toBe("https://github.example/settings/apps/new");
     });
@@ -603,7 +603,7 @@ describe("the GitHub adapter", () => {
   });
 
   describe("tokens", () => {
-    it("F-090: mints a token for one repo with only the permissions asked", async () => {
+    it("F-090/c6: mints a token for one repo with only the permissions asked", async () => {
       const minted = await adapter.mintRepoToken(fixture.access, { contents: "write" });
       expect(minted.ok).toBe(true);
       if (!minted.ok) {
@@ -618,7 +618,7 @@ describe("the GitHub adapter", () => {
       expect(await adapter.mintRepoToken(fixture.access, {})).toMatchObject({ ok: false, error: { code: "invalid-input" } });
     });
 
-    it("F-090: gives a token that can't read another repo of the installation", async () => {
+    it("F-090/c6: gives a token that can't read another repo of the installation", async () => {
       const minted = await adapter.mintRepoToken(fixture.access, { contents: "read", metadata: "read" });
       if (!minted.ok) {
         throw new Error("mint failed");
@@ -628,7 +628,7 @@ describe("the GitHub adapter", () => {
       expect((await fetch(`${fake.apiUrl}/repos/fake-org/test2`, { headers })).status).toBe(404);
     });
 
-    it("F-090: asks only for the permissions each step needs", async () => {
+    it("F-090/c6: asks only for the permissions each step needs", async () => {
       const before = fake.tokens.size;
       const { access } = fixture;
       await adapter.listTree(access, "main");
@@ -709,7 +709,7 @@ describe("the GitHub adapter", () => {
       expect(found.ok && found.value?.number).toBe(opened.ok ? opened.value.number : -1);
     });
 
-    it("F-030: changes a PR's body as the App, with the text as data, and refuses a PR that isn't there", async () => {
+    it("F-030/c3: changes a PR's body as the App, with the text as data, and refuses a PR that isn't there", async () => {
       const opened = await adapter.openPullRequest({ access: fixture.access, head: "ostra/fourth", base: "main", title: "Fourth", body: "first text", draft: false });
       if (!opened.ok) {
         throw new Error("open failed");
@@ -1070,7 +1070,7 @@ describe("the GitHub adapter", () => {
   });
 
   describe("compare (F-027, F-070)", () => {
-    it("F-027: reads each file's status, rename, counts and patch, a binary file as whole, and the merge base", async () => {
+    it("F-027/c1: reads each file's status, rename, counts and patch, a binary file as whole, and the merge base", async () => {
       const compared = await adapter.compare(fixture.access, "main", "ostra/contract");
       if (!compared.ok) throw new Error(compared.error.message);
       expect(compared.value).toMatchObject({ aheadBy: 2, behindBy: 0, mergeBase: "b".repeat(40), filesTruncated: false, limits: { maxFiles: 300, maxPatchBytes: 512_000 } });
@@ -1084,7 +1084,7 @@ describe("the GitHub adapter", () => {
       ]);
     });
 
-    it("F-027: reports GitHub's limits: a patch it left out over 500 KB is truncated, and a list of 300 files is cut", async () => {
+    it("F-027/c1: reports GitHub's limits: a patch it left out over 500 KB is truncated, and a list of 300 files is cut", async () => {
       const compared = await adapter.compare(fixture.access, "main", "ostra/review");
       if (!compared.ok) throw new Error(compared.error.message);
       expect(compared.value.filesTruncated).toBe(true);
@@ -1093,7 +1093,7 @@ describe("the GitHub adapter", () => {
       expect(compared.value.files.slice(1).every((file) => !file.truncated && file.patch !== null)).toBe(true);
     });
 
-    it("F-027, F-070: compares with a read-only token for the one repo, reads how far behind a branch is, slashes in its name included", async () => {
+    it("F-027/c1, F-070/c1: compares with a read-only token for the one repo, reads how far behind a branch is, slashes in its name included", async () => {
       const fresh = new GitHubAdapter({ apiUrl: fake.apiUrl, webUrl: fake.webUrl });
       const before = fake.tokens.size;
       expect(await fresh.compare(fixture.access, "main", "ostra/third")).toMatchObject({ ok: true, value: { aheadBy: 2, behindBy: 1, files: [] } });
@@ -1106,7 +1106,7 @@ describe("the GitHub adapter", () => {
       expect(fake.requests.some((request) => request.path.startsWith("/repos/fake-org/test1/compare/"))).toBe(true);
     });
 
-    it("F-027: refuses a ref that could change what's compared, and reports a missing one as not found", async () => {
+    it("F-027/c1: refuses a ref that could change what's compared, and reports a missing one as not found", async () => {
       for (const ref of ["", "main...evil", "a..b", "x y", "a:b", "a\u0000b"]) {
         expect(await adapter.compare(fixture.access, ref, "main"), JSON.stringify(ref)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
       }
@@ -1115,7 +1115,7 @@ describe("the GitHub adapter", () => {
   });
 
   describe("drafts (F-054)", () => {
-    it("F-054: makes a PR a draft and ready again through GraphQL, and an asked-for state already there writes nothing", async () => {
+    it("F-054/c3: makes a PR a draft and ready again through GraphQL, and an asked-for state already there writes nothing", async () => {
       const opened = await adapter.openPullRequest({ access: fixture.access, head: "ostra/drafts", base: "main", title: "drafts", body: "", draft: false });
       if (!opened.ok) throw new Error(opened.error.message);
       const { number } = opened.value;
@@ -1132,7 +1132,7 @@ describe("the GitHub adapter", () => {
       expect(fake.draftChanges()).toBe(before + 2);
     });
 
-    it("F-054: reads a PR's description as it is now and whether it's a draft, so a person's edits and drafts are kept", async () => {
+    it("F-054/c3: reads a PR's description as it is now and whether it's a draft, so a person's edits and drafts are kept", async () => {
       const opened = await adapter.openPullRequest({ access: fixture.access, head: "ostra/read-back", base: "main", title: "read back", body: "ostra's text", draft: true });
       if (!opened.ok) throw new Error(opened.error.message);
       const { number } = opened.value;
@@ -1145,7 +1145,7 @@ describe("the GitHub adapter", () => {
       expect(await adapter.getPullRequest(fixture.access, number)).toMatchObject({ ok: true, value: { draft: false, body: "ostra's text\n\nA person's note." } });
     });
 
-    it("F-054: switches with a token that can write contents and PRs, as GitHub's mutations need, and reads a refusal as forbidden", async () => {
+    it("F-054/c3: switches with a token that can write contents and PRs, as GitHub's mutations need, and reads a refusal as forbidden", async () => {
       const opened = await adapter.openPullRequest({ access: fixture.access, head: "ostra/draft-token", base: "main", title: "draft token", body: "", draft: false });
       if (!opened.ok) throw new Error(opened.error.message);
       const fresh = new GitHubAdapter({ apiUrl: fake.apiUrl, webUrl: fake.webUrl });
@@ -1160,7 +1160,7 @@ describe("the GitHub adapter", () => {
       expect(fake.pulls.find((pr) => pr.number === opened.value.number)?.draft).toBe(true);
     });
 
-    it("F-054: refuses a closed PR, and a number that isn't a PR", async () => {
+    it("F-054/c3: refuses a closed PR, and a number that isn't a PR", async () => {
       const opened = await adapter.openPullRequest({ access: fixture.access, head: "ostra/closing", base: "main", title: "closing", body: "", draft: false });
       if (!opened.ok) throw new Error(opened.error.message);
       fake.finishPullRequest("fake-org/test1", opened.value.number, "closed");
@@ -1171,7 +1171,7 @@ describe("the GitHub adapter", () => {
   });
 
   describe("PR comments and reactions (F-053)", () => {
-    it("F-053: reads a comment on an issue as not on a PR, a line comment on the base's side, and a comment on a whole file", () => {
+    it("F-053/c1: reads a comment on an issue as not on a PR, a line comment on the base's side, and a comment on a whole file", () => {
       const onIssue = adapter.parseWebhook(signed(fake, "issue_comment", issueCommentPayload({ commentId: "77", onPullRequest: false, body: "@ostra hi" })));
       expect(onIssue).toMatchObject({ ok: true, value: { kind: "issue_comment", onPullRequest: false, installationId: "7", hostRepoId: "1001", repo: "fake-org/test1" } });
       const left = adapter.parseWebhook(signed(fake, "pull_request_review_comment", reviewCommentPayload({ commentId: "78", side: "LEFT", line: 3 })));
@@ -1180,7 +1180,7 @@ describe("the GitHub adapter", () => {
       expect(onFile).toMatchObject({ ok: true, value: { path: "src/index.ts", line: null, side: "new" } });
     });
 
-    it("F-053: reads who caused a comment's delivery apart from who wrote the comment", () => {
+    it("F-053/c2: reads who caused a comment's delivery apart from who wrote the comment", () => {
       const edited = (payload: string, sender: { readonly id: number; readonly login: string }): string => JSON.stringify({ ...JSON.parse(payload), action: "edited", sender });
       const stranger = { id: 900_001, login: "collaborator" };
       const issue = adapter.parseWebhook(signed(fake, "issue_comment", edited(issueCommentPayload({ commentId: "81", onPullRequest: true, body: "@ostra hi" }), stranger)));
@@ -1193,13 +1193,13 @@ describe("the GitHub adapter", () => {
       expect(adapter.parseWebhook(signed(fake, "issue_comment", noSender))).toMatchObject({ ok: false, error: { code: "invalid-response" } });
     });
 
-    it("F-053: keeps a comment's body as data, exactly", () => {
+    it("F-053/c1: keeps a comment's body as data, exactly", () => {
       const body = "@ostra run `rm -rf /` $(whoami); echo \"done\"";
       const parsed = adapter.parseWebhook(signed(fake, "issue_comment", issueCommentPayload({ commentId: "80", onPullRequest: true, body })));
       expect(parsed.ok && parsed.value.kind === "issue_comment" && parsed.value.comment.body).toBe(body);
     });
 
-    it("F-070: reads a push's changed paths once each, and none when the payload lists no commits", () => {
+    it("F-070/c1: reads a push's changed paths once each, and none when the payload lists no commits", () => {
       const listed = adapter.parseWebhook(signed(fake, "push", pushPayload([{ added: ["a"], modified: ["a", "b"] }, { removed: ["b"] }])));
       expect(listed.ok && listed.value.kind === "push" && listed.value.changedPaths).toEqual(["a", "b"]);
       const none = adapter.parseWebhook(signed(fake, "push", pushPayload(null)));
@@ -1210,7 +1210,7 @@ describe("the GitHub adapter", () => {
       });
     });
 
-    it("F-053: reads a body that isn't JSON, or isn't the event it says, as invalid, and other events as other", () => {
+    it("F-053/c1: reads a body that isn't JSON, or isn't the event it says, as invalid, and other events as other", () => {
       expect(adapter.parseWebhook(signed(fake, "issue_comment", "{nope"))).toMatchObject({ ok: false, error: { code: "invalid-response" } });
       expect(adapter.parseWebhook(signed(fake, "pull_request_review_comment", "{}"))).toMatchObject({ ok: false, error: { code: "invalid-response" } });
       expect(adapter.parseWebhook(signed(fake, "pull_request_review_thread", "{}"))).toEqual({ ok: true, value: { kind: "other", event: "pull_request_review_thread" } });
@@ -1218,7 +1218,7 @@ describe("the GitHub adapter", () => {
       expect(adapter.parseWebhook(signed(fake, "pull_request_review", "{}"))).toMatchObject({ ok: false, error: { code: "invalid-response" } });
     });
 
-    it("F-053: reacts 👀 to a line comment once, with a PR-scoped token, and refuses a comment that isn't there", async () => {
+    it("F-053/c1: reacts 👀 to a line comment once, with a PR-scoped token, and refuses a comment that isn't there", async () => {
       const commentId = fake.addComment("fake-org/test1", "review");
       const fresh = new GitHubAdapter({ apiUrl: fake.apiUrl, webUrl: fake.webUrl });
       const before = fake.tokens.size;
@@ -1235,7 +1235,7 @@ describe("the GitHub adapter", () => {
   });
 
   describe("the verified link (F-119)", () => {
-    it("F-119: sends the member to GitHub's sign-in with the App's client ID, the state and the callback, and no scope or secret", () => {
+    it("F-119/c1: sends the member to GitHub's sign-in with the App's client ID, the state and the callback, and no scope or secret", () => {
       const url = adapter.userAuthorizeUrl(fake.oauthClient, "state-abc", linkRedirect);
       if (!url.ok) throw new Error(url.error.message);
       const parsed = new URL(url.value);
@@ -1246,7 +1246,7 @@ describe("the GitHub adapter", () => {
       expect(adapter.userAuthorizeUrl(fake.oauthClient, "s", "javascript:alert(1)")).toMatchObject({ ok: false, error: { code: "invalid-input" } });
     });
 
-    it("F-119: answers the account's ID and login, and holds no token after: the one it got is revoked", async () => {
+    it("F-119/c1,c2,c4: answers the account's ID and login, and holds no token after: the one it got is revoked", async () => {
       const code = fake.issueUserCode({ userId: "1234", login: "maya" }, { singleUse: true });
       const live = fake.liveUserTokens();
       const revoked = fake.revokedUserTokens();
@@ -1257,7 +1257,7 @@ describe("the GitHub adapter", () => {
       expect(await adapter.exchangeUserCode(fake.oauthClient, code, linkRedirect)).toMatchObject({ ok: false, error: { code: "unauthorized" } });
     });
 
-    it("F-119: revokes the token even when reading the account fails, and links nothing", async () => {
+    it("F-119/c2: revokes the token even when reading the account fails, and links nothing", async () => {
       const code = fake.issueUserCode({ userId: "1235", login: "noor" });
       const live = fake.liveUserTokens();
       fake.failures.push({ pathPattern: /^\/user$/, method: "GET", status: 500 });
@@ -1265,7 +1265,7 @@ describe("the GitHub adapter", () => {
       expect(fake.liveUserTokens()).toBe(live);
     });
 
-    it("F-119: links nothing when the revocation fails, or the client or the callback is wrong", async () => {
+    it("F-119/c2: links nothing when the revocation fails, or the client or the callback is wrong", async () => {
       const code = fake.issueUserCode({ userId: "1236", login: "ida" }, { redirectUri: linkRedirect });
       fake.failRevocations(1);
       expect(await adapter.exchangeUserCode(fake.oauthClient, code, linkRedirect)).toMatchObject({ ok: false, error: { code: "unavailable" } });
@@ -1277,7 +1277,7 @@ describe("the GitHub adapter", () => {
       expect(await adapter.exchangeUserCode(fake.oauthClient, "bad code!", linkRedirect)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
     });
 
-    it("F-119: keeps the code, the client secret and the token out of every answer and log line", async () => {
+    it("F-119/c2: keeps the code, the client secret and the token out of every answer and log line", async () => {
       const code = fake.issueUserCode({ userId: "1237", login: "lee" });
       const answers = [await adapter.exchangeUserCode(fake.oauthClient, code, linkRedirect)];
       fake.failRevocations(1);
@@ -1288,7 +1288,7 @@ describe("the GitHub adapter", () => {
       expect(everything).not.toContain("ghu_");
     });
 
-    it("F-119: puts the link's callback in a new App's manifest", () => {
+    it("F-119/c1: puts the link's callback in a new App's manifest", () => {
       const { manifest } = adapter.appManifest({
         name: "ostra acme",
         homepageUrl: "https://ostra.acme.dev/",
@@ -1299,7 +1299,7 @@ describe("the GitHub adapter", () => {
       expect(manifest["callback_urls"]).toEqual(["https://ostra.acme.dev/api/auth/callback/github", "https://ostra.acme.dev/api/github/link/callback"]);
     });
 
-    it("F-119: reads the member's ID and login from `GET /user` alone, and the App asks for no `email_addresses`", async () => {
+    it("F-119/c4: reads the member's ID and login from `GET /user` alone, and the App asks for no `email_addresses`", async () => {
       const code = fake.issueUserCode({ userId: "1238", login: "ana" });
       const before = fake.requests.length;
       expect(await adapter.exchangeUserCode(fake.oauthClient, code, linkRedirect)).toEqual({ ok: true, value: { userId: "1238", login: "ana" } });
@@ -1363,7 +1363,7 @@ describe("the GitHub adapter", () => {
       ownerLogin: "acme",
     };
 
-    it("F-136: the manifest is private with the panel as homepage by default or when asked, and public with ostra's project page when asked; the OAuth callbacks stay the install's", () => {
+    it("F-136/c2,c3,c12: the manifest is private with the panel as homepage by default or when asked, and public with ostra's project page when asked; the OAuth callbacks stay the install's", () => {
       for (const asked of [{}, { public: false }] as const) {
         const { manifest } = adapter.appManifest({ ...input, ...asked });
         expect(manifest["public"]).toBe(false);
@@ -1378,7 +1378,7 @@ describe("the GitHub adapter", () => {
       expect(manifest["redirect_url"]).toBe(input.redirectUrl);
     });
 
-    it("F-136: reads the App's owner and each installation's account ID; a stranger's installation mints tokens for its own repos only", async () => {
+    it("F-136/c4: reads the App's owner and each installation's account ID; a stranger's installation mints tokens for its own repos only", async () => {
       expect(await adapter.readApp(fixture.app)).toMatchObject({ ok: true, value: { owner: { login: "fake-org", accountId: "6001" } } });
       const listed = await adapter.listInstallations(fixture.app);
       expect(listed.ok && listed.value.find((item) => item.installationId === "91")).toEqual({
@@ -1398,7 +1398,7 @@ describe("the GitHub adapter", () => {
       expect((await adapter.getDefaultBranch({ ...strangers, repo: test1 })).ok).toBe(false);
     });
 
-    it("F-136: a removal sends one DELETE /app/installations/{id} as the App; an unknown or removed one is not-found, and a malformed ID never reaches GitHub", async () => {
+    it("F-136/c5: a removal sends one DELETE /app/installations/{id} as the App; an unknown or removed one is not-found, and a malformed ID never reaches GitHub", async () => {
       const removable = await createFakeGitHub({ repos: [], otherAccounts: [ANOTHER] });
       try {
         const local = new GitHubAdapter({ apiUrl: removable.apiUrl, webUrl: removable.webUrl, oauthUrl: removable.apiUrl });
@@ -1457,7 +1457,7 @@ describe("the GitHub adapter", () => {
       }
     });
 
-    it("F-136: reads each installation event from GitHub's documented payloads, whatever GitHub adds, and refuses one it can't read", () => {
+    it("F-136/c4: reads each installation event from GitHub's documented payloads, whatever GitHub adds, and refuses one it can't read", () => {
       // GitHub's example payloads ("Webhook events and payloads": installation, installation_repositories), trimmed, with a field ostra doesn't read.
       const account = { login: "octocat", id: 1, node_id: "MDQ6VXNlcjE=", type: "User", site_admin: false, a_field_github_adds_later: true };
       const installation = {
@@ -1501,7 +1501,7 @@ describe("the GitHub adapter", () => {
     const head = "1".repeat(40);
     const access = (): CodeHostFixture["access"] => fixture.access;
 
-    it("F-104: lists every page of a PR's reviews, oldest first, each with its author's ID and login, whether a bot wrote it, its lower-cased state, commit and time", async () => {
+    it("F-104/c4: lists every page of a PR's reviews, oldest first, each with its author's ID and login, whether a bot wrote it, its lower-cased state, commit and time", async () => {
       const number = 41;
       for (let index = 0; index < 130; index += 1) {
         fake.addReview(repo, number, {
@@ -1538,7 +1538,7 @@ describe("the GitHub adapter", () => {
       expect(await adapter.listReviews(access(), 9999)).toMatchObject({ ok: false, error: { code: "not-found" } });
     });
 
-    it("F-104: publishes a check run with a token for the one repo and `checks: write`, in progress with no conclusion, its words and its external ID", async () => {
+    it("F-104/c1: publishes a check run with a token for the one repo and `checks: write`, in progress with no conclusion, its words and its external ID", async () => {
       const before = new Set(fake.tokens.keys());
       const published = await adapter.publishCheckRun(access(), {
         name: "ostra/independent-review",
@@ -1570,7 +1570,7 @@ describe("the GitHub adapter", () => {
       expect(await adapter.updateCheckRun(access(), "999999", input)).toMatchObject({ ok: false, error: { code: "not-found" } });
     });
 
-    it("F-104: reads a review webhook whatever GitHub adds to it, a bot's review as a bot's, and refuses one it can't read", () => {
+    it("F-104/c6: reads a review webhook whatever GitHub adds to it, a bot's review as a bot's, and refuses one it can't read", () => {
       const body = (review: Readonly<Record<string, unknown>>): string =>
         JSON.stringify({
           action: "submitted",
@@ -1607,7 +1607,7 @@ describe("the GitHub adapter", () => {
     const old = "b".repeat(40);
     const minute = (m: number): string => new Date(Date.UTC(2026, 10, 18, 12, m)).toISOString();
 
-    it("F-104: reads each review the check tells apart: the App's own comment, the driver's approval, another member's, one of an older commit, one withdrawn by a change request", async () => {
+    it("F-104/c4: reads each review the check tells apart: the App's own comment, the driver's approval, another member's, one of an older commit, one withdrawn by a change request", async () => {
       const number = 42;
       const add = (login: string, userId: number, state: string, commitId: string, m: number, userType: "User" | "Bot" = "User") =>
         fake.addReview(repo, number, { userId, login, userType, state, commitId, submittedAt: minute(m) });
@@ -1633,7 +1633,7 @@ describe("the GitHub adapter", () => {
       expect(listed.value.map((review) => review.submittedAt)).toEqual([...listed.value.map((review) => review.submittedAt)].sort((a, b) => (a ?? 0) - (b ?? 0)));
     });
 
-    it("F-105: reads a review's body and its page, for the changes-requested prompt", async () => {
+    it("F-105/c1: reads a review's body and its page, for the changes-requested prompt", async () => {
       const number = 43;
       const added = fake.addReview(repo, number, { userId: 2, login: "reviewer", userType: "User", state: "CHANGES_REQUESTED", commitId: head, submittedAt: minute(1), body: "Rename the helper." });
       fake.addReview(repo, number, { userId: 3, login: "other", userType: "User", state: "APPROVED", commitId: head, submittedAt: minute(2) });
@@ -1645,7 +1645,7 @@ describe("the GitHub adapter", () => {
       ]);
     });
 
-    it("F-104: a correctly signed pull_request_review webhook is read; one with a bad signature or none is refused", () => {
+    it("F-104/c6: a correctly signed pull_request_review webhook is read; one with a bad signature or none is refused", () => {
       const body = JSON.stringify({
         action: "submitted",
         review: { id: 1, state: "approved", user: { id: 2, login: "reviewer", type: "User" }, commit_id: head, submitted_at: minute(1) },
@@ -1663,7 +1663,7 @@ describe("the GitHub adapter", () => {
 });
 
 describe("the configuration reference", () => {
-  it("F-090: names the hosts each code host's LFS actions may call, and says a cleaned-up task's LFS objects stay", async () => {
+  it("F-090/c7: names the hosts each code host's LFS actions may call, and says a cleaned-up task's LFS objects stay", async () => {
     const text = await readFile(new URL("../../../../docs/configuration.md", import.meta.url), "utf8");
     const line = (start: string): string => text.split("\n").find((row) => row.startsWith(start)) ?? "";
     const hostsIn = (row: string): readonly string[] => [...row.matchAll(/`([a-z0-9.*-]+\.[a-z]{2,})`/g)].flatMap((match) => (match[1] === undefined ? [] : [match[1]]));
@@ -1696,7 +1696,7 @@ describe("the GitHub adapter's milestone 6: CI, reviews and the App's events (ti
   const head = "a".repeat(40);
   const access = (): CodeHostFixture["access"] => fixture.access;
 
-  it("F-035: reads another app's check run's log from its summary and text, and an Actions job's log without sending the token to the download", async () => {
+  it("F-035/c1: reads another app's check run's log from its summary and text, and an Actions job's log without sending the token to the download", async () => {
     const preview = fake.addCheckRun(repo, { headSha: head, name: "preview", appSlug: "vercel", status: "completed", conclusion: "failure", summary: "Build failed", text: "Error: missing env NEXT_PUBLIC_X" });
     expect(await adapter.getCiLog(access(), { kind: "check-run", checkRunId: String(preview.id) }, 1_000)).toEqual({
       ok: true,
@@ -1731,7 +1731,7 @@ describe("the GitHub adapter's milestone 6: CI, reviews and the App's events (ti
     expect(hunkRanges("Binary files differ")).toEqual({ new: [], old: [] });
   });
 
-  it("F-035: warns, naming them, when the App doesn't subscribe to the review loop's events, and is ok once it does", async () => {
+  it("F-035/c1: warns, naming them, when the App doesn't subscribe to the review loop's events, and is ok once it does", async () => {
     fake.setAppEvents(["pull_request"]);
     const warned = await adapter.appHealth(fixture.app);
     expect(warned.status).toBe("degraded");
@@ -1744,7 +1744,7 @@ describe("the GitHub adapter's milestone 6: CI, reviews and the App's events (ti
     expect(missingAppEvents(appEvents)).toEqual([]);
   });
 
-  it("F-102: reads a PR's requested reviewers, people and teams, and CODEOWNERS from the first place GitHub looks", async () => {
+  it("F-102/c3: reads a PR's requested reviewers, people and teams, and CODEOWNERS from the first place GitHub looks", async () => {
     const number = fixture.commentReview?.number ?? 0;
     expect(await adapter.listRequestedReviewers(access(), number)).toEqual({ ok: true, value: { users: [{ userId: "888", login: "grace" }], teams: [{ slug: "web-reviewers" }] } });
     expect(await adapter.listRequestedReviewers(access(), 0)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
@@ -1756,7 +1756,7 @@ describe("the GitHub adapter's milestone 6: CI, reviews and the App's events (ti
     expect(await adapter.readCodeOwners(access(), "a..b")).toMatchObject({ ok: false, error: { code: "invalid-input" } });
   });
 
-  it("F-100 and F-105: reads one review's line comments with their lines and sides, from the PR's comments, and only that review's", async () => {
+  it("F-100/c3 and F-105/c1: reads one review's line comments with their lines and sides, from the PR's comments, and only that review's", async () => {
     const number = fixture.commentReview?.number ?? 0;
     const first = await adapter.createReview(access(), number, { event: "COMMENT", commitId: "1".repeat(40), body: "first", comments: [{ path: "src/banner.ts", line: 11, side: "new", body: "one" }] });
     const second = await adapter.createReview(access(), number, { event: "COMMENT", commitId: "1".repeat(40), body: "second", comments: [{ path: "src/banner.ts", line: 10, side: "old", body: "two" }] });

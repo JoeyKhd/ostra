@@ -22,7 +22,7 @@ const PROVIDER = providerIdSchema.parse("01900000-0000-7000-8000-0000000000cc");
 const filled = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({ ...newDraft("opencode", MODEL, PROVIDER), name: "Careful", ...over });
 
 describe("the profile editor's draft", () => {
-  it("F-021, F-063: saves the name, model, plan first, the listed members and the preset's rules as the router takes them", () => {
+  it("F-021/c1, F-063: saves the name, model, plan first, the listed members and the preset's rules as the router takes them", () => {
     const rules = groupRules(presetRules("dependency", newId));
     const input = saveInputOf(filled({ planFirst: true, access: "listed", members: [member], rules, instructions: "  " }), null, newId);
     expect(input).toMatchObject({ name: "Careful", adapter: "opencode", modelId: null, modelName: MODEL, planFirst: true, instructions: null, access: { kind: "listed", members: [member] } });
@@ -33,7 +33,7 @@ describe("the profile editor's draft", () => {
     expect(saveInputOf(filled(), profileId, newId)).toMatchObject({ profileId, access: { kind: "everyone" } });
   });
 
-  it("F-021: a stored header keeps its secret unless a new value is typed; nothing else is sent for it", () => {
+  it("F-021/c1: a stored header keeps its secret unless a new value is typed; nothing else is sent for it", () => {
     const server: ServerDraft = {
       key: "s",
       transport: "http",
@@ -50,7 +50,7 @@ describe("the profile editor's draft", () => {
     expect(saved).toEqual({ name: "release-names", transport: "http", url: "https://names.acme.internal/mcp", readOnly: true, headers: [{ name: "Authorization", value: null }, { name: "X-Team", value: "typed now" }] });
   });
 
-  it("F-063: a new profile starts with plan first off, open to everyone, with the built-in profile's model", () => {
+  it("F-063/c3: a new profile starts with plan first off, open to everyone, with the built-in profile's model", () => {
     expect(newDraft("opencode", MODEL)).toMatchObject({ planFirst: false, access: "everyone", members: [], model: MODEL, rules: [], skills: [], servers: [] });
     expect(saveInputOf(filled(), null, newId).planFirst).toBe(false);
   });
@@ -108,7 +108,7 @@ describe("the start picker and the project's defaults", () => {
     expect(startFacts(offered({ modelName: null }))).toBe("no model yet · no rules");
   });
 
-  it("F-021: a project may default only to an active profile open to everyone, or the one it has", () => {
+  it("F-021/c3: a project may default only to an active profile open to everyone, or the one it has", () => {
     const row = (id: string, access: "everyone" | "listed", archivedAt: number | null = null) => ({
       id: agentProfileIdSchema.parse(`01900000-0000-7000-8000-${id.padStart(12, "0")}`),
       access: access === "everyone" ? ({ kind: "everyone" } as const) : ({ kind: "listed", members: [] } as const),
@@ -124,7 +124,7 @@ describe("the start picker and the project's defaults", () => {
 describe("a file picked for a skill", () => {
   const stored = (path: string): SkillFileDraft => ({ path, size: 3, blobId: "b" });
 
-  it("F-021: SKILL.md, an empty file, a file over 1 MiB and a 21st file are each refused with their own message", () => {
+  it("F-021/c1: SKILL.md, an empty file, a file over 1 MiB and a 21st file are each refused with their own message", () => {
     expect(pickedFileProblem([], { name: "SKILL.md", size: 5 })?.key).toBe("agentProfiles.skill.errorReserved");
     expect(pickedFileProblem([], { name: "a.txt", size: 0 })?.key).toBe("agentProfiles.skill.errorEmpty");
     expect(pickedFileProblem([], { name: "a.txt", size: 1024 * 1024 })).toBeNull();
@@ -150,7 +150,7 @@ describe("a file picked for a skill", () => {
 });
 
 describe("the profile's effort in the save", () => {
-  it("F-137: a chosen level is saved; an unchanged stored level is left out, so the model lacking it keeps it", () => {
+  it("F-137/c1: a chosen level is saved; an unchanged stored level is left out, so the model lacking it keeps it", () => {
     expect(saveInputOf(filled({ effort: "high" }), null, newId).effort).toBe("high");
     expect(saveInputOf(filled(), null, newId)).not.toHaveProperty("effort");
     expect(saveInputOf(filled({ effort: "xhigh" }), null, newId, "xhigh")).not.toHaveProperty("effort");
@@ -158,7 +158,7 @@ describe("the profile's effort in the save", () => {
   });
 
 describe("the closing turn (F-111)", () => {
-  it("F-111: Ask what the next task should know saves with the profile, off for a new one", () => {
+  it("F-111/c6: Ask what the next task should know saves with the profile, off for a new one", () => {
     expect(newDraft("opencode", MODEL).closingTurn).toBe(false);
     expect(saveInputOf({ ...newDraft("opencode", MODEL), name: "Careful", closingTurn: true }, null, () => "id").closingTurn).toBe(true);
     const saved = newDraft("opencode", MODEL);

@@ -253,7 +253,7 @@ describe("the milestone 4 migration", () => {
     expect(await test.db.$queryRaw`SELECT id FROM search_entry WHERE vector @@ plainto_tsquery('simple', ${query})`).toEqual([]);
   });
 
-  it("F-109: finds a memory note and a proposal by @@ on their vectors, over title and body", async () => {
+  it("F-109/c3: finds a memory note and a proposal by @@ on their vectors, over title and body", async () => {
     const byTitle = "pnpm";
     const notes = z
       .array(z.object({ id: z.string() }))

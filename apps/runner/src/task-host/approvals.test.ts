@@ -61,7 +61,7 @@ const messages = (h: Harness, spec: TaskSpec): string => h.ofKind(spec, "agent.m
 const answer = (h: Harness, spec: TaskSpec, body: Record<string, unknown>): string => h.command("approval-answer", { sessionId: spec.sessionId, ...body });
 
 describe.each(profiles)("approvals on the %s fake agent (F-026)", (profile) => {
-  it("F-026: a rule asks, the request is held with its rule and subject, and a person's answer goes through", async () => {
+  it("F-026/c3,c4: a rule asks, the request is held with its rule and subject, and a person's answer goes through", async () => {
     const h = await start();
     const { spec } = taskOn(h, profile, fakeMarker("ask-path", "notes.txt"), [NOTES_RULE]);
     h.dispatch(spec);
@@ -78,7 +78,7 @@ describe.each(profiles)("approvals on the %s fake agent (F-026)", (profile) => {
     expect(h.kinds(spec)).not.toContain("approval.auto_answered");
   }, 120_000);
 
-  it("F-026: without a rule that covers it, the agent works freely: no person is asked", async () => {
+  it("F-026/c2: without a rule that covers it, the agent works freely: no person is asked", async () => {
     const h = await start();
     const { spec } = taskOn(h, profile, fakeMarker("ask-path", "free.txt"), [NOTES_RULE]);
     h.dispatch(spec);
@@ -87,7 +87,7 @@ describe.each(profiles)("approvals on the %s fake agent (F-026)", (profile) => {
     expect(messages(h, spec)).toContain("Wrote free.txt.");
   }, 120_000);
 
-  it("F-026: \"for this task\" answers the agent once, the task rule answers the other held request and the next one", async () => {
+  it("F-026/c4,c6: \"for this task\" answers the agent once, the task rule answers the other held request and the next one", async () => {
     const h = await start();
     const { spec } = taskOn(h, profile, fakeMarker("ask-commands", "pnpm add zod; pnpm add vitest"), [DEPENDENCY_RULE]);
     h.dispatch(spec);
@@ -109,7 +109,7 @@ describe.each(profiles)("approvals on the %s fake agent (F-026)", (profile) => {
     expect(messages(h, spec)).toContain("Ran pnpm add tsx.");
   }, 120_000);
 
-  it("F-026: a deny ends the turn, closes the other held requests as cancelled, and re-prompts with the member's reason", async () => {
+  it("F-026/c8: a deny ends the turn, closes the other held requests as cancelled, and re-prompts with the member's reason", async () => {
     const h = await start();
     const { spec } = taskOn(h, profile, fakeMarker("ask-pair"), [PAIR_RULE]);
     h.dispatch(spec);
@@ -130,7 +130,7 @@ describe.each(profiles)("approvals on the %s fake agent (F-026)", (profile) => {
     expect(JSON.stringify(h.logs)).not.toContain(reason);
   }, 120_000);
 
-  it("F-026: an answer for a request that's gone is refused", async () => {
+  it("F-026/c4: an answer for a request that's gone is refused", async () => {
     const h = await start();
     const { spec } = taskOn(h, profile, fakeMarker("say"), []);
     h.dispatch(spec);

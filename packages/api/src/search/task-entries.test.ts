@@ -23,7 +23,7 @@ afterAll(async () => {
 });
 
 describe("a new task's entries (F-080)", () => {
-  it("F-080: tasks.create writes the task's title, prompt and first message as entries, and search finds it by them", async () => {
+  it("F-080/c1: tasks.create writes the task's title, prompt and first message as entries, and search finds it by them", async () => {
     const { a } = harness.fixture;
     const created = await (await harness.as(a.member)).tasks.create({ projectId, prompt: "Teach the calculator about hexadecimal input", title: "Hexadecimal calculator" });
     const entries = await harness.test.db.searchEntry.findMany({ where: { taskId: created.taskId }, orderBy: { kind: "asc" } });

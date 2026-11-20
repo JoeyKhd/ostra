@@ -189,7 +189,7 @@ describe("up frames across minors", () => {
 });
 
 describe("files outside every repo (ticket 44)", () => {
-  it("F-016: names entries of the workspace root only, at most 50, with how many more", () => {
+  it("F-016/c4: names entries of the workspace root only, at most 50, with how many more", () => {
     const event = { kind: "workspace.files_outside_repos", paths: ["notes.md", ".scratch", "a b.txt"], more: 3 };
     expect(taskEventSchema.parse(event)).toEqual(event);
     for (const name of ["../escape", "dir/file.md", "dir\\file.md", "..", ".", "", "nul\u0000name"]) {
@@ -217,7 +217,7 @@ describe("the status's process containment (ticket 42)", () => {
     processContainment: "job-object",
   };
 
-  it("F-014: round-trips at minor 1, with each kind and without one", () => {
+  it("F-014/c8: round-trips at minor 1, with each kind and without one", () => {
     expect(parseUpFrame(encodeUpFrame(status, 1), 1)).toEqual({ ok: true, frame: status });
     for (const kind of processContainmentSchema.options) {
       const frame = { ...status, processContainment: kind };
@@ -227,7 +227,7 @@ describe("the status's process containment (ticket 42)", () => {
     expect(parseUpFrame(encodeUpFrame(without, 1), 1)).toEqual({ ok: true, frame: without });
   });
 
-  it("F-014: refuses an unknown kind, and a minor-0 peer never sees the field", () => {
+  it("F-014/c8: refuses an unknown kind, and a minor-0 peer never sees the field", () => {
     expect(parseUpFrame(JSON.stringify({ ...status, processContainment: "chroot" }), 1).ok).toBe(false);
     const text = encodeUpFrame(status, 0);
     expect(text).not.toContain("processContainment");

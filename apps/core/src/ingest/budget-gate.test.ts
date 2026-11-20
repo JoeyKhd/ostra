@@ -180,7 +180,7 @@ const dispatch = async (taskId: TaskId, sessionId: DrivenTask["sessionId"]) => {
 };
 
 describe("the spend rollup (F-037)", () => {
-  it("F-037: the rollup equals the sum of the tasks' spend for a month across sessions and a month's end", async () => {
+  it("F-037/c1: the rollup equals the sum of the tasks' spend for a month across sessions and a month's end", async () => {
     const first = await freshTask();
     const second = await freshTask();
     const lastOfMonth = Date.UTC(2026, 10, 30, 23, 59, 30);
@@ -220,7 +220,7 @@ describe("the spend rollup (F-037)", () => {
     expect(rows.map((row) => row.day.toISOString().slice(0, 10)).sort()).toEqual(["2026-11-30", "2026-12-01"]);
   });
 
-  it("F-037: an unpriced call is counted in unpricedTokens and moves no money", async () => {
+  it("F-037/c1: an unpriced call is counted in unpricedTokens and moves no money", async () => {
     await test.db.model.update({ where: { id: modelId }, data: UNPRICED });
     const task = await freshTask();
     const at = Date.UTC(2026, 10, 19, 10, 0, 0);
@@ -254,7 +254,7 @@ describe("the spend rollup (F-037)", () => {
 });
 
 describe("the budget gate (F-037)", () => {
-  it.each(["project", "organization"] as const)("F-037: every origin is held at 100%% and passes at 99%% (the %s's budget)", async (scopeOf) => {
+  it.each(["project", "organization"] as const)("F-037/c4: every origin is held at 100%% and passes at 99%% (the %s's budget)", async (scopeOf) => {
     expect(turnOrigins).toContain("automatic-round");
     const budgetId = await setBudget(scopeOf === "project" ? projectId : null, 100);
     await seedSpend(projectId, 99_000_000n);
@@ -283,7 +283,7 @@ describe("the budget gate (F-037)", () => {
     expect(budgetMonthOf(Date.now())).not.toBe(budgetMonthOf(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 28)));
   });
 
-  it("F-037: another project's budget holds nothing here", async () => {
+  it("F-037/c4: another project's budget holds nothing here", async () => {
     await setBudget(otherProjectId, 0);
     await seedSpend(otherProjectId, 5_000_000n);
     expect(await gate("message")).toEqual({ kind: "open" });
@@ -292,7 +292,7 @@ describe("the budget gate (F-037)", () => {
     expect(offered.ok).toBe(true);
   });
 
-  it("F-037: a new task stays queued with the dispatch note, and its dispatch offers nothing", async () => {
+  it("F-037/c4: a new task stays queued with the dispatch note, and its dispatch offers nothing", async () => {
     await setBudget(projectId, 1);
     await seedSpend(projectId, 1_000_000n);
     const task = await seedQueuedTask(test.db, world, fixture.a.member, runner.runnerId);
@@ -304,7 +304,7 @@ describe("the budget gate (F-037)", () => {
     expect(await test.db.lease.count({ where: { taskId: task.taskId } })).toBe(0);
   });
 
-  it("F-037: an unpriced model waits only where a budget applies", async () => {
+  it("F-037/c4: an unpriced model waits only where a budget applies", async () => {
     await test.db.model.update({ where: { id: modelId }, data: UNPRICED });
     const free = await seedQueuedTask(test.db, world, fixture.a.member, runner.runnerId);
     expect((await dispatch(free.taskId, free.sessionId)).ok).toBe(true);
@@ -316,7 +316,7 @@ describe("the budget gate (F-037)", () => {
     expect(row.dispatchNote).toBe("This model has no price, so the budget can't count it");
   });
 
-  it("F-037: a running turn finishes past 100%, and a steer to it is still delivered", async () => {
+  it("F-037/c4: a running turn finishes past 100%, and a steer to it is still delivered", async () => {
     const budgetId = await setBudget(projectId, 1);
     const task = await freshTask();
     await task.send(turnStarted(1), usage({ input: 400_000, output: 0, read: 0, write: 0 }));
@@ -335,7 +335,7 @@ describe("the budget gate (F-037)", () => {
     expect(await test.db.heldTurn.count({ where: { budgetId } })).toBe(0);
   });
 
-  it("F-037: a held message to an idle session is saved, holds the turn and starts nothing", async () => {
+  it("F-037/c4: a held message to an idle session is saved, holds the turn and starts nothing", async () => {
     const budgetId = await setBudget(projectId, 1);
     const task = await freshTask();
     await task.send(turnStarted(1), usage({ input: 400_000, output: 0, read: 0, write: 0 }), turnEnded(1));
@@ -351,7 +351,7 @@ describe("the budget gate (F-037)", () => {
     expect(event.payload).toMatchObject({ kind: "turn.held", origin: "message", budgetId, scope: "project" });
   });
 
-  it("F-037: a reopen past 100% is saved and held, and dispatches nothing", async () => {
+  it("F-037/c4: a reopen past 100% is saved and held, and dispatches nothing", async () => {
     const budgetId = await setBudget(null, 1);
     const task = await freshTask();
     await task.send(turnStarted(1), usage({ input: 400_000, output: 0, read: 0, write: 0 }), turnEnded(1));

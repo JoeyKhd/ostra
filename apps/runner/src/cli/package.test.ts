@@ -32,7 +32,7 @@ const atLeast = (version: readonly [number, number], minimum: readonly [number, 
   version[0] > minimum[0] || (version[0] === minimum[0] && version[1] >= minimum[1]);
 
 describe("the ostra program", () => {
-  it("F-013: the npm package's one command is ostra, whose runner command is the runner, and the runner image runs the same program", async () => {
+  it("F-013/c1: the npm package's one command is ostra, whose runner command is the runner, and the runner image runs the same program", async () => {
     const pkg = await readPackage();
     expect(pkg.bin).toEqual({ ostra: "./src/main.ts" });
 
@@ -53,7 +53,7 @@ describe("the ostra program", () => {
     // It starts the real program cold, which takes several seconds on a busy CI machine.
   }, 30_000);
 
-  it("F-013: the CLI needs Node 24.5 or later: its engines say so, and the runner image's Node meets it", async () => {
+  it("F-013/c8: the CLI needs Node 24.5 or later: its engines say so, and the runner image's Node meets it", async () => {
     const pkg = await readPackage();
     const minimum = minimumOf(pkg.engines.node);
     expect(minimum).toEqual([24, 5]);

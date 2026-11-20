@@ -34,14 +34,14 @@ const repoWith = async (files: Readonly<Record<string, string>>): Promise<string
 };
 
 describe("a commit's paths", () => {
-  it("F-113: keeps exact paths and globs, everything when the list is null", () => {
+  it("F-113/c3: keeps exact paths and globs, everything when the list is null", () => {
     const changed = ["AGENTS.md", "docs/AGENTS.md", "src/index.ts", "src/deep/x.ts", "package.json"];
     expect(splitByCommitPaths(changed, null)).toEqual({ kept: changed, dropped: [] });
     expect(splitByCommitPaths(changed, ["AGENTS.md"])).toEqual({ kept: ["AGENTS.md"], dropped: ["docs/AGENTS.md", "src/index.ts", "src/deep/x.ts", "package.json"] });
     expect(splitByCommitPaths(changed, ["**/AGENTS.md", "src/*.ts"]).kept).toEqual(["AGENTS.md", "docs/AGENTS.md", "src/index.ts"]);
   });
 
-  it("F-113: a turn's commit with commitPaths stages only those; the other changes stay in the workspace, uncommitted and counted", async () => {
+  it("F-113/c3: a turn's commit with commitPaths stages only those; the other changes stay in the workspace, uncommitted and counted", async () => {
     const repo = await repoWith({ "AGENTS.md": "# Agents\n", "src/setup.ts": "export {};\n", "notes.txt": "scratch\n" });
     await writeFile(path.join(repo, "README.md"), "# repo, edited\n");
     const staged = await stageCommitPaths(repo, ["AGENTS.md"]);
@@ -55,7 +55,7 @@ describe("a commit's paths", () => {
     expect(left).toEqual(["README.md", "notes.txt", "src/setup.ts"]);
   });
 
-  it("F-113: the dropped paths are cut to the protocol's limit, with their full count", async () => {
+  it("F-113/c3: the dropped paths are cut to the protocol's limit, with their full count", async () => {
     const many = Object.fromEntries(Array.from({ length: runnerLimits.commitFilteredPathsMax + 7 }, (_, index) => [`gen/file-${String(index)}.txt`, "x\n"]));
     const repo = await repoWith({ ...many, "AGENTS.md": "# Agents\n" });
     const staged = await stageCommitPaths(repo, ["AGENTS.md"]);

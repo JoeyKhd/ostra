@@ -116,7 +116,7 @@ const statusOutput = async (dataDir: string): Promise<string> => {
 };
 
 describe("a pool runner's start (ticket 19)", () => {
-  it("F-091, F-092, F-013: the real ostra runner joins with its pool's token, waits as joining and says so in its status, reports what it offers, and is online once an admin approves it", async () => {
+  it("F-091/c2,c6, F-092, F-013/c6: the real ostra runner joins with its pool's token, waits as joining and says so in its status, reports what it offers, and is online once an admin approves it", async () => {
     // A `host` pool runs the agent as a separate user, which this machine has none of: the
     // development switch runs it as the runner's own (ticket 10). The start is the same.
     vi.stubEnv("OSTRA_DEV_HOST_POOL_SAME_USER", "true");
@@ -167,7 +167,7 @@ describe("a pool runner's start (ticket 19)", () => {
     ["expired", "it has expired"],
     ["revoked", "it was revoked"],
     ["unknown", "the server doesn't know it"],
-  ] as const)("F-091: a %s join token is refused with its reason, and ostra runner exits non-zero", async (reason, words) => {
+  ] as const)("F-091/c2: a %s join token is refused with its reason, and ostra runner exits non-zero", async (reason, words) => {
     const pool = await newPool(`refusing-${reason}`, false, 1);
     let token = pool.joinToken.token;
     if (reason === "expired") {

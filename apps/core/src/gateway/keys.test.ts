@@ -51,7 +51,7 @@ const replica = async (env: Record<string, string>): Promise<GatewayHarness> => 
 };
 
 describe("the runner-token key (Q136)", () => {
-  it("F-001: two cores with separate data folders and the same OSTRA_RUNNER_TOKEN_KEY accept each other's tokens", async () => {
+  it("F-001/c9: two cores with separate data folders and the same OSTRA_RUNNER_TOKEN_KEY accept each other's tokens", async () => {
     const shared = { OSTRA_RUNNER_TOKEN_KEY: randomBytes(32).toString("base64") };
     const a = await replica(shared);
     const b = await replica(shared);
@@ -67,7 +67,7 @@ describe("the runner-token key (Q136)", () => {
     onA.close();
   });
 
-  it("F-001: without the setting, each core makes its own key and refuses the other's tokens", async () => {
+  it("F-001/c9: without the setting, each core makes its own key and refuses the other's tokens", async () => {
     const a = await replica({});
     const b = await replica({});
     const runner = await registerPersonal(a, test.db, fixture.a.member);

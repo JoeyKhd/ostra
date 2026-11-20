@@ -160,7 +160,7 @@ afterAll(async () => {
 });
 
 describe("the draft's preview (F-099, ticket 27)", () => {
-  it("F-099: the preview equals what Update ticket writes to Linear: the criteria in the description, the image attached", async () => {
+  it("F-099/c6: the preview equals what Update ticket writes to Linear: the criteria in the description, the image attached", async () => {
     use(linear);
     const { taskId, externalId } = await refineTaskOn("linear");
     written.length = 0;
@@ -176,7 +176,7 @@ describe("the draft's preview (F-099, ticket 27)", () => {
     expect(fake.issueView(externalTicketIdSchema.parse(externalId)).attachments).toHaveLength(1);
   });
 
-  it("F-099: the preview equals what Update ticket writes to the Jira fake: the criteria in their own field", async () => {
+  it("F-099/c6: the preview equals what Update ticket writes to the Jira fake: the criteria in their own field", async () => {
     use(jira);
     const { taskId, externalId } = await refineTaskOn("jira");
     written.length = 0;
@@ -189,7 +189,7 @@ describe("the draft's preview (F-099, ticket 27)", () => {
     expect(read.value.ticket.acceptanceCriteria).toContain("The footer renders in under 1 s");
   });
 
-  it("F-099: Create ticket on a prompt refine task makes the ticket, then writes its draft's sub-tickets under it", async () => {
+  it("F-099/c6: Create ticket on a prompt refine task makes the ticket, then writes its draft's sub-tickets under it", async () => {
     use(linear);
     const { a } = harness.fixture;
     const task = await harness.test.db.task.create({

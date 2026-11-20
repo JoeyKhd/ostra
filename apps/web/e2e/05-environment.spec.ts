@@ -8,7 +8,7 @@ import { e2eRepo } from "./settings.ts";
 // reviews and edits it, and only then saves it. The page says what environments are for. GitHub was
 // connected by the setup spec before this one; each viewport makes its own project.
 
-test("F-050, F-112: the admin reviews the drafted environment, edits it and saves it, and the page says it's for dev and test credentials", async ({ page }, info) => {
+test("F-050/c1,c4, F-112/c1,c2: the admin reviews the drafted environment, edits it and saves it, and the page says it's for dev and test credentials", async ({ page }, info) => {
   test.setTimeout(90_000);
   await signIn(page);
   const name = `env-${info.project.name}`;

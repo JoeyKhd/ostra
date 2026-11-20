@@ -32,7 +32,7 @@ const byId = (id: PaletteAction["id"]): PaletteAction => {
 };
 
 describe("the palette's actions and shortcuts (F-081)", () => {
-  it("F-081: holds every action of spec section 12, item 11, each with a scope, a role, a message key and what it calls", () => {
+  it("F-081/c1: holds every action of spec section 12, item 11, each with a scope, a role, a message key and what it calls", () => {
     expect(paletteActions.map((entry) => entry.id).sort()).toEqual(
       [
         "go-needs-you",
@@ -63,7 +63,7 @@ describe("the palette's actions and shortcuts (F-081)", () => {
     expect(registryProblems(paletteActions)).toEqual([]);
   });
 
-  it("F-081: gives the spec's shortcuts, no two shared in one scope, and none with a modifier", () => {
+  it("F-081/c1: gives the spec's shortcuts, no two shared in one scope, and none with a modifier", () => {
     const shortcuts = Object.fromEntries(paletteActions.map((entry) => [entry.id, entry.shortcut === null ? null : shortcutText(entry.shortcut)]));
     expect(shortcuts).toEqual({
       "go-needs-you": "g n",
@@ -87,7 +87,7 @@ describe("the palette's actions and shortcuts (F-081)", () => {
     expect(paletteActions.filter((entry) => entry.confirm).map((entry) => entry.id)).toEqual(["stop"]);
   });
 
-  it("F-081: a duplicate shortcut fails the registry, in its scope and against a global one", () => {
+  it("F-081/c1: a duplicate shortcut fails the registry, in its scope and against a global one", () => {
     const sameScope: PaletteAction = { ...byId("reopen"), id: "steer", shortcut: ["t"] };
     expect(shortcutClashes([...paletteActions.filter((entry) => entry.id !== "steer"), sameScope])).toEqual([
       { scope: "task", actions: ["take-over", "steer"], keys: "t" },
@@ -107,7 +107,7 @@ describe("the palette's actions and shortcuts (F-081)", () => {
     expect(shortcutClashes([...paletteActions.filter((entry) => entry.id !== "steer"), otherScope])).toEqual([]);
   });
 
-  it("F-081: refuses a key with a modifier, a blank key and an action without its words", () => {
+  it("F-081/c1: refuses a key with a modifier, a blank key and an action without its words", () => {
     const modifier: PaletteAction = { ...byId("steer"), shortcut: ["Ctrl+m"] };
     const blank: PaletteAction = { ...byId("toggle-theme"), shortcut: [" "] };
     const wordless: PaletteAction = { ...byId("new-project"), messageKey: "palette.actions." };
@@ -119,7 +119,7 @@ describe("the palette's actions and shortcuts (F-081)", () => {
     expect(registryProblems([byId("stop"), byId("stop")])).toContain("stop: listed twice");
   });
 
-  it("F-081: offers each action only where its scope is present and to the role it names, and a shortcut fires only what is offered", () => {
+  it("F-081/c1: offers each action only where its scope is present and to the role it names, and a shortcut fires only what is offered", () => {
     const member: PaletteContext = { role: "member", scopes: ["global"] };
     const onTask: PaletteContext = { role: "member", scopes: ["global", "task"] };
     const onItem: PaletteContext = { role: "member", scopes: ["global", "needs-you-item"] };
@@ -196,7 +196,7 @@ describe("setup's timeline (F-076)", () => {
 });
 
 describe("the theme (F-082)", () => {
-  it("F-082: a theme other than the three is refused", () => {
+  it("F-082/c2: a theme other than the three is refused", () => {
     expect(themePreferences).toEqual(["dark", "light", "system"]);
     for (const theme of themePreferences) {
       expect(parseSetThemeInput({ theme })).toEqual({ ok: true, value: { theme } });
@@ -206,7 +206,7 @@ describe("the theme (F-082)", () => {
     }
   });
 
-  it("F-082: a new member's theme is dark, and so is a cookie ostra didn't write", () => {
+  it("F-082/c1: a new member's theme is dark, and so is a cookie ostra didn't write", () => {
     expect(DEFAULT_THEME).toBe("dark");
     expect(themeFromCookie(undefined)).toBe("dark");
     expect(themeFromCookie("sepia")).toBe("dark");

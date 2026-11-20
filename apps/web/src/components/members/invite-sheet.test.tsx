@@ -23,7 +23,7 @@ const created = {
 const text = (html: string): string => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 
 describe("the invite sheet's link (F-115, F-002)", () => {
-  it("F-115: with mail off, the sheet shows the invitation's link to copy and says mail is off; with mail on, it names the address mailed", () => {
+  it("F-115/c3: with mail off, the sheet shows the invitation's link to copy and says mail is off; with mail on, it names the address mailed", () => {
     const off = text(renderToStaticMarkup(<CreatedBody created={created} organization="Acme" inviterName="Alex Kim" emailOn={false} projects={[]} />));
     expect(off).toContain(created.link);
     expect(off).toContain("Copy link");

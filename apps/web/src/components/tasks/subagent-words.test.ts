@@ -30,7 +30,7 @@ const tree = (nodes: readonly SubagentNode[]): SubagentTree => {
 };
 
 describe("the subagents' words (F-138)", () => {
-  it("F-138: the badge reads the count, nested ones included, then approval, failure, running or stopped, in that order", () => {
+  it("F-138/c2: the badge reads the count, nested ones included, then approval, failure, running or stopped, in that order", () => {
     const four = tree([node("a"), node("b"), node("c", { state: "running" }), node("d", { parentId: "c", depth: 2 })]);
     expect(subagentCount(4)).toBe("4 subagents");
     expect(subagentCount(1)).toBe("1 subagent");

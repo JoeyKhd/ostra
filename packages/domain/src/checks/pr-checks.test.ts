@@ -39,7 +39,7 @@ describe("the PR's checks section", () => {
     expect(outputLines("\u001b[1;31mred\u001b[0m\u0007 bell\u0000")).toBe("red bell");
   });
 
-  it("F-054: the section is replaced in place, put before ostra's trailers, and a person's text stays", () => {
+  it("F-054/c2: the section is replaced in place, put before ostra's trailers, and a person's text stays", () => {
     const first = checksSection([{ name: "test", status: "failed", outputTail: `boom ${CHECKS_SECTION_END}` }]);
     const second = checksSection([{ name: "test", status: "passed", outputTail: null }]);
     const body = pullRequestBody("The change.", "http://localhost:3000/tasks/t1", [], "Closes OST-1", first);

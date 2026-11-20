@@ -176,7 +176,7 @@ const deliveriesOf = (itemId: NeedsYouItemId) =>
 const notificationsOf = (itemId: NeedsYouItemId) => test.db.notification.findMany({ where: { needsYouItemId: itemId }, orderBy: { memberId: "asc" } });
 
 describe("the helpers that write a needs-you item", () => {
-  it("F-036: an item and its fan-out job commit together, and a rolled-back item leaves no job", async () => {
+  it("F-036/c1: an item and its fan-out job commit together, and a rolled-back item leaves no job", async () => {
     const b = await bench();
     const { taskId, projectId } = await b.task({ driver: fixture.a.member });
     const rolledBack: { id: string | null } = { id: null };
@@ -195,7 +195,7 @@ describe("the helpers that write a needs-you item", () => {
     expect(await fanoutChangesOf(test.db, kept)).toEqual(["created"]);
   });
 
-  it("F-036: an answer or a dismissal owes one fan-out for each item it closes, and none for an item already closed", async () => {
+  it("F-036/c1: an answer or a dismissal owes one fan-out for each item it closes, and none for an item already closed", async () => {
     const b = await bench();
     const { taskId, projectId } = await b.task({ driver: fixture.a.member });
     const first = await newItem(taskId, projectId, "approval", "driver");
@@ -217,7 +217,7 @@ describe("the helpers that write a needs-you item", () => {
 });
 
 describe("fan-out and delivery", () => {
-  it("F-036: one item reaches every audience member once per channel, and a replayed job sends nothing twice", async () => {
+  it("F-036/c1: one item reaches every audience member once per channel, and a replayed job sends nothing twice", async () => {
     const b = await bench();
     const { taskId, projectId, externalId } = await b.task({ driver: null });
     // Two of the three members have a tracker user with their address; the admin has none.
@@ -272,7 +272,7 @@ describe("fan-out and delivery", () => {
     expect(lookup).toHaveBeenCalledTimes(1);
   });
 
-  it("F-036: a member who can't open the project gets nothing", async () => {
+  it("F-036/c1: a member who can't open the project gets nothing", async () => {
     const b = await bench();
     // A restricted project: the admin and the listed insider can open it, the other member can't.
     const restricted = await b.task({ project: "restricted", driver: null });
@@ -288,7 +288,7 @@ describe("fan-out and delivery", () => {
     expect(await deliveriesOf(own)).toEqual([]);
   });
 
-  it("F-036: another organization's members never get a notification", async () => {
+  it("F-036/c1: another organization's members never get a notification", async () => {
     const b = await bench();
     const { taskId, projectId } = await b.task({ driver: null });
     const itemId = await newItem(taskId, projectId);
@@ -302,7 +302,7 @@ describe("fan-out and delivery", () => {
     expect(await test.db.notification.count({ where: { memberId: fixture.b.admin.id } })).toBe(0);
   });
 
-  it("F-036: turning a channel off for a kind stops it for that member only", async () => {
+  it("F-036/c1: turning a channel off for a kind stops it for that member only", async () => {
     const b = await bench();
     const { taskId, projectId } = await b.task({ driver: null });
     for (const channel of ["tracker", "email"] as const) {
@@ -331,7 +331,7 @@ describe("fan-out and delivery", () => {
     expect((await deliveriesOf(other)).filter((row) => row.notification.memberId === fixture.a.admin.id).map((row) => row.channel).sort()).toEqual(["email", "panel", "tracker"]);
   });
 
-  it("F-036: the ticket's comment is edited within the coalescing window and posted after it", async () => {
+  it("F-036/c2: the ticket's comment is edited within the coalescing window and posted after it", async () => {
     const b = await bench();
     const { taskId, projectId, externalId } = await b.task({ driver: fixture.a.member });
     const issue = externalIdOf(externalId);
@@ -376,7 +376,7 @@ describe("fan-out and delivery", () => {
     expect(b.channels.panel.sent.filter((notification) => notification.kind === "plan")).toHaveLength(1);
   });
 
-  it("F-036: a failing tracker leaves the panel and email delivered, and is retried then failed in words", async () => {
+  it("F-036/c2: a failing tracker leaves the panel and email delivered, and is retried then failed in words", async () => {
     const b = await bench();
     const { taskId, projectId } = await b.task({ driver: fixture.a.member });
     const notifier = trackerNotifier(b);
@@ -428,7 +428,7 @@ describe("fan-out and delivery", () => {
     expect(rows.find((row) => row.channel === "email")?.state).toBe("sent");
   });
 
-  it("F-036: a tracker that stays down is failed once the queue's retries are used up, with its error in words", async () => {
+  it("F-036/c2: a tracker that stays down is failed once the queue's retries are used up, with its error in words", async () => {
     const b = await bench();
     const { taskId, projectId } = await b.task({ driver: fixture.a.member });
     const notifier = trackerNotifier(b);
@@ -442,7 +442,7 @@ describe("fan-out and delivery", () => {
     expect(rows.find((row) => row.channel === "panel")?.state).toBe("sent");
   });
 
-  it("F-036: a moment answered before its ticket comment goes out posts none, and one answered while it's posted is edited at once", async () => {
+  it("F-036/c2: a moment answered before its ticket comment goes out posts none, and one answered while it's posted is edited at once", async () => {
     const b = await bench();
     const { taskId, projectId, externalId } = await b.task({ driver: fixture.a.member });
     const issue = externalIdOf(externalId);
@@ -473,7 +473,7 @@ describe("fan-out and delivery", () => {
     expect(commentsOf(b.site, issue)[0]).toMatch(/answered by member-a/);
   });
 
-  it("F-036: a task with no ticket gets no ticket comment, and a reason with no moment notifies nobody", async () => {
+  it("F-036/c2: a task with no ticket gets no ticket comment, and a reason with no moment notifies nobody", async () => {
     const b = await bench();
     const plain = await b.task({ driver: fixture.a.member, ticket: false });
     const item = await newItem(plain.taskId, plain.projectId, "crashed", "driver");
@@ -492,7 +492,7 @@ describe("fan-out and delivery", () => {
     expect(notified[0]).toMatchObject({ memberId: fixture.a.member.id, kind: "pr_ready" });
   });
 
-  it("F-036: a notification change tells the live stream, for the member, and reading marks only the member's own", async () => {
+  it("F-036/c2: a notification change tells the live stream, for the member, and reading marks only the member's own", async () => {
     const b = await bench();
     const { taskId, projectId } = await b.task({ driver: fixture.a.member });
     const before = await test.db.changeNotice.count({ where: { organizationId: fixture.a.organization.id, entity: "member", entityId: fixture.a.member.id } });
@@ -518,7 +518,7 @@ describe("fan-out and delivery", () => {
     expect(await test.db.changeNotice.count({ where: { organizationId: fixture.a.organization.id, entity: "member", entityId: fixture.a.member.id } })).toBe(before + 3);
   });
 
-  it("F-036: through the real panel and ticket adapters, a moment lands in the panel and on the ticket, and an answer closes both", async () => {
+  it("F-036/c2: through the real panel and ticket adapters, a moment lands in the panel and on the ticket, and an answer closes both", async () => {
     const b = await bench();
     // The real adapters of tickets 11 and 20: the panel on the Notification table, the ticket on the Jira fake.
     const deps: NotifyDeps = { ...b.deps, channels: createNotificationChannels(test.db, { logger, clock: adapterClock }) };
@@ -558,7 +558,7 @@ describe("fan-out and delivery", () => {
     expect(after[0]).toMatch(/answered by member-a/);
   });
 
-  it("F-036: the reviewer audience reaches the panel, the ticket and email, by the member's choices (milestone 6)", async () => {
+  it("F-036/c1,c2: the reviewer audience reaches the panel, the ticket and email, by the member's choices (milestone 6)", async () => {
     const b = await bench();
     const organizationId = fixture.a.organization.id;
     const { taskId, projectId, externalId } = await b.task({ driver: fixture.a.member });
@@ -611,7 +611,7 @@ describe("fan-out and delivery", () => {
     expect((await notificationsOf(fallback)).map((row) => row.memberId)).toEqual([fixture.a.member.id]);
   });
 
-  it("F-036: nothing in the logs carries a comment, an address or a title", () => {
+  it("F-036/c2: nothing in the logs carries a comment, an address or a title", () => {
     const lines = JSON.stringify(records);
     expect(lines).not.toContain("Login page is broken");
     expect(lines).not.toContain("@example.com");

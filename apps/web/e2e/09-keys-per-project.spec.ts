@@ -61,7 +61,7 @@ const sonnetRow = (page: Page) => page.locator('tr[data-model="anthropic/claude-
 
 test.describe.configure({ mode: "serial" });
 
-test("F-135: an organization admin gives a project its own list, and sees the preview before the save", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-135/c1,c6: an organization admin gives a project its own list, and sees the preview before the save", { tag: "@desktop-only" }, async ({ page }) => {
   const world = await seedWorld();
   await signIn(page);
   await page.goto(`/projects/${world.calculator}/settings/models`);
@@ -123,15 +123,15 @@ const readsKeysOnly = async (page: Page, who: "keys-padmin" | "keys-member"): Pr
   await signOut(page);
 };
 
-test("F-135: a project admin sees the keys by name, with no edit and no token", async ({ page }) => {
+test("F-135/c15: a project admin sees the keys by name, with no edit and no token", async ({ page }) => {
   await readsKeysOnly(page, "keys-padmin");
 });
 
-test("F-135: a member sees the keys by name, with no edit and no token", async ({ page }) => {
+test("F-135/c15: a member sees the keys by name, with no edit and no token", async ({ page }) => {
   await readsKeysOnly(page, "keys-member");
 });
 
-test("F-135: New task shows no key with Start disabled", async ({ page }) => {
+test("F-135/c11: New task shows no key with Start disabled", async ({ page }) => {
   const world = await seedWorld();
   await signIn(page, "keys-member");
   await page.goto("/tasks/new");
@@ -157,7 +157,7 @@ test("F-135: New task shows no key with Start disabled", async ({ page }) => {
   await signOut(page);
 });
 
-test("F-135: the needs-you row shows for an organization admin and not for a member", async ({ page }) => {
+test("F-135/c11: the needs-you row shows for an organization admin and not for a member", async ({ page }) => {
   const world = await seedWorld();
   await signIn(page);
   const row = page.locator(`[data-testid="needs-you-row"][data-task="${world.queuedTaskId}"]`);
@@ -171,7 +171,7 @@ test("F-135: the needs-you row shows for an organization admin and not for a mem
   await signOut(page);
 });
 
-test("F-135: the task page names its key, and a task queued with no key says why", async ({ page }) => {
+test("F-135/c11,c15: the task page names its key, and a task queued with no key says why", async ({ page }) => {
   const world = await seedWorld();
   await signIn(page, "keys-member");
   await page.goto(`/tasks/${world.ranTaskId}`);

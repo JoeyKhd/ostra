@@ -133,7 +133,7 @@ describe("the diff's rows", () => {
     expect(rows[label + 1]?.kind === "comment" && rows[label + 1]?.key.endsWith(":o:c3")).toBe(true);
   });
 
-  it("F-102: an AI review's findings sit on their line before its comments, newest round first; off the diff at the file's top; outdated after its last hunk", () => {
+  it("F-102/c1: an AI review's findings sit on their line before its comments, newest round first; off the diff at the file's top; outdated after its last hunk", () => {
     const finding = (id: string, line: number, round: number, state: "open" | "resolved" | "outdated" = "open") => ({ id, taskRepoId: "r1", path: "src/calculator/state.ts", side: "new" as const, line, state, round });
     const rows = rowsOf([web], [sent, draft], new Set(), null, [finding("f1", 40, 1, "resolved"), finding("f2", 40, 2), finding("f3", 99, 2), finding("f4", 41, 1, "outdated")]);
     const at40 = rows.findIndex((row) => row.kind === "line" && row.line.kind === "add" && row.line.new === 40);

@@ -69,7 +69,7 @@ const baseInput = (dataDir: string, registry: string, out: string): PinInput => 
 });
 
 describe("the pin (F-061)", () => {
-  it("F-061: an npm install whose version differs installs the server's version from the registry into its data folder, and runs it once with the same arguments and environment", async () => {
+  it("F-061/c2: an npm install whose version differs installs the server's version from the registry into its data folder, and runs it once with the same arguments and environment", async () => {
     const registry = await startFakeNpmRegistry([await recordingCli("1.4.0"), await recordingCli("1.4.1")]);
     servers.push(registry);
     const dataDir = await tempDir();
@@ -83,7 +83,7 @@ describe("the pin (F-061)", () => {
     expect(registry.requests().map((request) => request.path)).toEqual(expect.arrayContaining(["/ostra", "/ostra/-/ostra-1.4.1.tgz"]));
   }, 180_000);
 
-  it("F-061: the integrity check refuses a tampered tarball: nothing of it runs, and the installed version starts instead", async () => {
+  it("F-061/c2: the integrity check refuses a tampered tarball: nothing of it runs, and the installed version starts instead", async () => {
     const good = await recordingCli("1.4.1");
     const tampered = await recordingCli("6.6.6");
     // The registry's packument names 1.4.1's integrity, and it serves another tarball under it.
@@ -97,7 +97,7 @@ describe("the pin (F-061)", () => {
     expect(await exists(path.join(dataDir, "versions", "1.4.1"))).toBe(false);
   }, 180_000);
 
-  it("F-061: the loop guard: the version a pin started never pins again", async () => {
+  it("F-061/c2: the loop guard: the version a pin started never pins again", async () => {
     const registry = await startFakeNpmRegistry([await recordingCli("1.4.1")]);
     servers.push(registry);
     const dataDir = await tempDir();
@@ -107,7 +107,7 @@ describe("the pin (F-061)", () => {
     expect(registry.requests()).toEqual([]);
   });
 
-  it("F-061: from the image or from source it installs nothing; OSTRA_RUNNER_PIN=false and the same version do nothing", async () => {
+  it("F-061/c2: from the image or from source it installs nothing; OSTRA_RUNNER_PIN=false and the same version do nothing", async () => {
     const registry = await startFakeNpmRegistry([await recordingCli("1.4.1")]);
     servers.push(registry);
     const dataDir = await tempDir();
@@ -121,7 +121,7 @@ describe("the pin (F-061)", () => {
     expect(await exists(path.join(dataDir, "versions"))).toBe(false);
   });
 
-  it("F-061: OSTRA_RUNNER_NPM_REGISTRY wins over the server's registry", async () => {
+  it("F-061/c2: OSTRA_RUNNER_NPM_REGISTRY wins over the server's registry", async () => {
     const mirror = await startFakeNpmRegistry([await recordingCli("1.4.1")]);
     servers.push(mirror);
     const dataDir = await tempDir();
@@ -131,7 +131,7 @@ describe("the pin (F-061)", () => {
     expect(mirror.requests().map((request) => request.path)).toContain("/ostra/-/ostra-1.4.1.tgz");
   }, 180_000);
 
-  it("F-061: only a sha512 integrity that matches passes", () => {
+  it("F-061/c2: only a sha512 integrity that matches passes", () => {
     const bytes = Buffer.from("the tarball");
     const integrity = sha512Integrity(bytes);
     expect(integrityMatches(integrity, sha512Integrity(bytes))).toBe(true);
@@ -140,7 +140,7 @@ describe("the pin (F-061)", () => {
     expect(integrityMatches("sha1-abc", "sha1-abc")).toBe(false);
   });
 
-  it("F-061: `ostra runner` installed from npm reads the server's version from /runner/v1/info and runs it in its place, with its arguments", async () => {
+  it("F-061/c2: `ostra runner` installed from npm reads the server's version from /runner/v1/info and runs it in its place, with its arguments", async () => {
     const registry = await startFakeNpmRegistry([await packFakeCli("1.4.0"), await recordingCli("1.4.1")]);
     servers.push(registry);
     const fake = await startFakeServer({ info: { serverVersion: "1.4.1", npm: { package: "ostra", registry: registry.url } } });

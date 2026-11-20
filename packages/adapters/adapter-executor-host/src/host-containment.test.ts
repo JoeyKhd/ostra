@@ -118,7 +118,7 @@ const preparedBox = async (executor: HostExecutor, spec: TaskSpec) => {
 };
 
 describe("a host task's processes (ticket 42)", () => {
-  it("F-014: a detached grandchild whose parent exited ends when the task stops", async () => {
+  it("F-014/c6: a detached grandchild whose parent exited ends when the task stops", async () => {
     const executor = await HostExecutor.start({ dataDir: path.join(root, "runner-detached") });
     const { box, created } = await preparedBox(executor, specWith(null));
     const pidFile = path.join(created.agentDir, "helper.pid");
@@ -137,7 +137,7 @@ describe("a host task's processes (ticket 42)", () => {
     await executor.release(box);
   }, 60_000);
 
-  it("F-014: a daemon the setup script leaves behind ends with the task", async () => {
+  it("F-014/c6: a daemon the setup script leaves behind ends with the task", async () => {
     const executor = await HostExecutor.start({ dataDir: path.join(root, "runner-setup") });
     const scripts = path.join(root, "scripts");
     await mkdir(scripts, { recursive: true });
@@ -157,7 +157,7 @@ describe("a host task's processes (ticket 42)", () => {
     await executor.release(box);
   }, 60_000);
 
-  it("F-014: a runner killed hard leaves no process of its task", async () => {
+  it("F-014/c6: a runner killed hard leaves no process of its task", async () => {
     const dataDir = path.join(root, "runner-killed");
     const child = spawn(process.execPath, [path.join(here, "testing", "child-runner.ts")], {
       env: { ...process.env, OSTRA_TEST_DATA_DIR: dataDir, OSTRA_TEST_GIT_ORIGIN: upstream.origin },
@@ -185,7 +185,7 @@ describe("a host task's processes (ticket 42)", () => {
     expect(await goneWithin(report.helper, 15_000)).toBe(true);
   }, 90_000);
 
-  it("F-014: with koffi faked to fail, the executor falls back to the tree, says why in its log, and reports process-tree", async () => {
+  it("F-014/c8: with koffi faked to fail, the executor falls back to the tree, says why in its log, and reports process-tree", async () => {
     const logger = recordingLogger();
     const executor = await HostExecutor.start({ dataDir: path.join(root, "runner-fallback") }, { logger, clock: systemClock }, {
       platform: "win32",
@@ -206,7 +206,7 @@ describe("a host task's processes (ticket 42)", () => {
     await executor.release(box);
   }, 60_000);
 
-  it("F-014: gives the agent and the setup script the task's marker, the same for both", async () => {
+  it("F-014/c7: gives the agent and the setup script the task's marker, the same for both", async () => {
     const executor = await HostExecutor.start({ dataDir: path.join(root, "runner-marker") });
     const scripts = path.join(root, "scripts");
     await mkdir(scripts, { recursive: true });
@@ -254,7 +254,7 @@ describe.runIf(process.platform === "linux")("a Linux runner without a cgroup of
 });
 
 describe("the marker sweep's readers", () => {
-  it("F-014: finds the processes whose /proc environ holds the marker, and no other", async () => {
+  it("F-014/c7: finds the processes whose /proc environ holds the marker, and no other", async () => {
     const proc = path.join(root, "fake-proc");
     const marker = "ostra-unit-0123456789abcdef01234567";
     const write = async (pid: string, environ: readonly string[]): Promise<void> => {
@@ -269,7 +269,7 @@ describe("the marker sweep's readers", () => {
     expect([...(await markedInProc(proc, marker, null))].sort()).toEqual([101]);
   });
 
-  it("F-014: finds the processes `ps -E` shows with the marker, and no other", () => {
+  it("F-014/c7: finds the processes `ps -E` shows with the marker, and no other", () => {
     const marker = "ostra-unit-0123456789abcdef01234567";
     const output = [
       `  201 node -e x PATH=/usr/bin ${TASK_UNIT_ENV}=${marker} HOME=/Users/a`,

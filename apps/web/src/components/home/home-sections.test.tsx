@@ -67,7 +67,7 @@ const rowKeys = (rows: readonly NeedsYouRow[]): readonly (string | null)[] => {
 };
 
 describe("Home's Needs you rows", () => {
-  it("F-062, F-036: two rows for one task have distinct keys, each its item's", () => {
+  it("F-062/c2, F-036/c2: two rows for one task have distinct keys, each its item's", () => {
     const keys = rowKeys([approval, question]);
     expect(keys).toEqual([approval.itemId, question.itemId]);
     expect(new Set(keys).size).toBe(2);
@@ -77,14 +77,14 @@ describe("Home's Needs you rows", () => {
     expect([...html.matchAll(/data-item="([^"]+)"/g)].map((match) => match[1])).toEqual([approval.itemId, question.itemId]);
   });
 
-  it("F-062: a task from before items keys by its task, beside another task's items", () => {
+  it("F-062/c2: a task from before items keys by its task, beside another task's items", () => {
     const before = row(null, { reason: "crashed" }, now - 10_000, taskIdSchema.parse("01a1f6b2-0000-7000-8000-00000000000b"));
     const keys = rowKeys([approval, before, question]);
     expect(keys).toEqual([approval.itemId, before.taskId, question.itemId]);
     expect(needsYouRowKey(before)).toBe(before.taskId);
   });
 
-  it("F-062: only the approval that waited longest is amber, not every row of its task", () => {
+  it("F-062/c2: only the approval that waited longest is amber, not every row of its task", () => {
     expect(amberRow([question, secondApproval, approval])).toBe(approval.itemId);
     const html = renderToStaticMarkup(<NeedsYouSection load={{ kind: "ready", data: { total: 3, rows: [secondApproval, question, approval] } }} now={now} />);
     // One filled amber action (the section's amber dot is not a link).

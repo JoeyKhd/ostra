@@ -11,7 +11,7 @@ import { chooseTheme, seedAgentWorld, shootM6 } from "./m6.ts";
 // stack can't reach: the seed leaves the token as the consent would (agent mode's scopes granted),
 // and "Turn on agent mode" turns it on through `linear.enableAgentMode`.
 
-test("F-012, F-040: an admin turns on agent mode, switches a board on, and approves one outside task and rejects another", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-012/c1, F-040/c1: an admin turns on agent mode, switches a board on, and approves one outside task and rejects another", { tag: "@desktop-only" }, async ({ page }) => {
   const world = await seedAgentWorld();
   await signIn(page);
 

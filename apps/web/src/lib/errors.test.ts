@@ -17,12 +17,12 @@ afterEach(() => {
 });
 
 describe("a refusal is a code the panel words", () => {
-  it("F-083: a role refusal is worded through t, not the server's message", () => {
+  it("F-083/c1: a role refusal is worded through t, not the server's message", () => {
     expect(errorText(roleRefusal)).toBe(t("errors.forbidden"));
     expect(errorText(roleRefusal)).not.toContain("You may not");
   });
 
-  it("F-083: under the pseudo-locale, a role refusal comes back pseudo", async () => {
+  it("F-083/c1: under the pseudo-locale, a role refusal comes back pseudo", async () => {
     vi.stubEnv("OSTRA_PSEUDO_LOCALE", "1");
     vi.resetModules();
     const errors = await import("./errors");

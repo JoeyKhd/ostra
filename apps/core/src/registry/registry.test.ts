@@ -217,7 +217,7 @@ afterAll(async () => {
 });
 
 describe("the snapshot registry (F-120)", () => {
-  it("F-120: setting the registry keeps the credentials in the secret store, audits it and queues a check; only an admin may", async () => {
+  it("F-120/c1: setting the registry keeps the credentials in the secret store, audits it and queues a check; only an admin may", async () => {
     const forbidden = await setRegistry(registryDeps(), { ...admin(), memberId: memberIdSchema.parse(fixture.a.member.id), role: "member" }, {
       url: registry.url,
       repositoryPrefix: "ostra",
@@ -262,7 +262,7 @@ describe("the snapshot registry (F-120)", () => {
     });
   });
 
-  it("F-120: the check's three results: push and pull allowed, pull only, refused; nothing is pushed", async () => {
+  it("F-120/c1: the check's three results: push and pull allowed, pull only, refused; nothing is pushed", async () => {
     const both = await runCheck(await setTo(registry, { push: registry.push, pull: registry.pull }));
     expect(both.result).toMatchObject({ result: "push-and-pull" });
     expect(both.checkedAt).not.toBeNull();
@@ -285,7 +285,7 @@ describe("the snapshot registry (F-120)", () => {
     expect(JSON.stringify(records)).not.toContain(registry.push.password);
   });
 
-  it("F-120: the check reads an existing snapshot's manifest with the pull credential, on a Basic-auth registry too", async () => {
+  it("F-120/c1: the check reads an existing snapshot's manifest with the pull credential, on a Basic-auth registry too", async () => {
     const basic = await startFakeOciRegistry({ auth: "basic" });
     try {
       const registryId = await setTo(basic, { push: basic.push, pull: basic.pull });
@@ -307,7 +307,7 @@ describe("the snapshot registry (F-120)", () => {
     }
   });
 
-  it("F-120: with a registry, a build pushes: the command names the ref, and the push credential goes to the builder only, while it builds", async () => {
+  it("F-120/c2: with a registry, a build pushes: the command names the ref, and the push credential goes to the builder only, while it builds", async () => {
     const registryId = await setTo(registry, { push: registry.push, pull: registry.pull });
     const builder = await poolRunner("docker");
     const stranger = await poolRunner("docker");
@@ -351,7 +351,7 @@ describe("the snapshot registry (F-120)", () => {
     expect(JSON.stringify(records)).not.toContain(registry.push.password);
   });
 
-  it("F-120: a kubernetes pool's runner builds with BuildKit and pushes, ahead of a docker runner", async () => {
+  it("F-120/c4: a kubernetes pool's runner builds with BuildKit and pushes, ahead of a docker runner", async () => {
     await setTo(registry, { push: registry.push, pull: registry.pull });
     await poolRunner("docker");
     const cluster = await poolRunner("kubernetes");
@@ -363,7 +363,7 @@ describe("the snapshot registry (F-120)", () => {
     expect(command?.body).toMatchObject({ builder: "buildkit", push: { ref: `${registry.host}/ostra/${world.projectId}:${row?.id ?? ""}` } });
   });
 
-  it("F-120: the pull credential goes to the runner holding the task's current lease, and is refused at a stale epoch", async () => {
+  it("F-120/c2: the pull credential goes to the runner holding the task's current lease, and is refused at a stale epoch", async () => {
     const registryId = await setTo(registry, { push: registry.push, pull: registry.pull });
     const snapshotId = await pushedSnapshot(registryId, digest("d"));
     const holder = await poolRunner("kubernetes");
@@ -410,7 +410,7 @@ describe("the snapshot registry (F-120)", () => {
     expect(JSON.stringify(records)).not.toContain(registry.pull.password);
   });
 
-  it("F-113: an onboarding task's box starts from the base image on a pool that pulls from the registry, never the project's snapshot", async () => {
+  it("F-113/c1: an onboarding task's box starts from the base image on a pool that pulls from the registry, never the project's snapshot", async () => {
     const registryId = await setTo(registry, { push: registry.push, pull: registry.pull });
     await pushedSnapshot(registryId, digest("e"));
     for (const executor of ["kubernetes", "docker"] as const) {
@@ -428,7 +428,7 @@ describe("the snapshot registry (F-120)", () => {
     }
   });
 
-  it("F-113: an onboarding task is offered only to a runner at minor 5, which reads its tools and its commit paths", async () => {
+  it("F-113/c3: an onboarding task is offered only to a runner at minor 5, which reads its tools and its commit paths", async () => {
     const older = await poolRunner("docker");
     const task = await seedQueuedTask(test.db, world, fixture.a.member, null);
     await test.db.task.update({ where: { id: task.taskId }, data: { onboarding: true, origin: "onboarding" } });
@@ -443,7 +443,7 @@ describe("the snapshot registry (F-120)", () => {
     await test.db.runner.update({ where: { id: older.runnerId }, data: { state: "offline" } });
   });
 
-  it("F-120: a kubernetes pool without a registry builds nothing, and its task waits for one", async () => {
+  it("F-120/c4: a kubernetes pool without a registry builds nothing, and its task waits for one", async () => {
     // The project's one pool holds one kubernetes runner and nothing else.
     const cluster = await test.db.runnerPool.create({ data: { organizationId: world.organizationId, name: "cluster" }, select: { id: true } });
     await test.db.projectPool.deleteMany({ where: { projectId: world.projectId } });
@@ -463,7 +463,7 @@ describe("the snapshot registry (F-120)", () => {
     await test.db.projectPool.create({ data: { organizationId: world.organizationId, projectId: world.projectId, poolId } });
   });
 
-  it("F-120: a docker runner without a registry still builds and keeps its own snapshot (milestone 3's path)", async () => {
+  it("F-120/c3: a docker runner without a registry still builds and keeps its own snapshot (milestone 3's path)", async () => {
     const builder = await poolRunner("docker");
     await scheduleBuild();
     const [command] = await buildCommands();

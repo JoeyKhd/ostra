@@ -31,7 +31,7 @@ beforeEach(() => {
 });
 
 describe("email.on", () => {
-  it("F-002: says whether the install mails, to a visitor who isn't signed in", async () => {
+  it("F-002/c7: says whether the install mails, to a visitor who isn't signed in", async () => {
     expect(await harness.anonymous().email.on()).toEqual({ on: false });
     harness.emailSwitch.on = true;
     expect(await harness.anonymous().email.on()).toEqual({ on: true });
@@ -47,7 +47,7 @@ describe("accounts.resetPreview", () => {
     return token;
   };
 
-  it("F-002: a working link names its account's address; a used, an expired and an unknown one say which", async () => {
+  it("F-002/c7: a working link names its account's address; a used, an expired and an unknown one say which", async () => {
     const visitor = harness.anonymous();
     const account = await harness.test.db.user.findUniqueOrThrow({ where: { id: harness.fixture.a.member.userId } });
     const valid = await grantFor({ expiresAt: new Date(Date.now() + HOUR) });
@@ -59,7 +59,7 @@ describe("accounts.resetPreview", () => {
     expect(await visitor.accounts.resetPreview({ token: "not-a-token-anyone-made" })).toEqual({ state: "unknown" });
   });
 
-  it("F-002: the instance admin's link opens the reset page, whose preview finds it", async () => {
+  it("F-002/c7: the instance admin's link opens the reset page, whose preview finds it", async () => {
     const created = await instanceAdmin.accounts.createResetLink({ userId: harness.fixture.a.member.userId });
     const url = new URL(created.link);
     expect(url.pathname).toBe("/reset/new");
@@ -69,7 +69,7 @@ describe("accounts.resetPreview", () => {
 });
 
 describe("instance.admins", () => {
-  it("F-003: lists the instance admins, for the instance admin only", async () => {
+  it("F-003/c2: lists the instance admins, for the instance admin only", async () => {
     const admins = await instanceAdmin.instance.admins();
     expect(admins.map((admin) => admin.userId)).toEqual([harness.fixture.a.admin.userId]);
     expect(admins[0]?.since).toEqual(expect.any(Number));

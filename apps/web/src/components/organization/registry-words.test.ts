@@ -20,7 +20,7 @@ describe("the registry's words", () => {
     expect(shortDigest(`sha256:9f3c1e${"0".repeat(54)}b82a`)).toBe("sha256:9f3c1e…b82a");
   });
 
-  it("F-120: the check's three outcomes, and an unreachable registry", () => {
+  it("F-120/c1: the check's three outcomes, and an unreachable registry", () => {
     expect(checkLine({ result: "push-and-pull", status: null, detail: "" }, "ostra", "registry.acme.dev")).toBe("Push and pull both allowed for ostra/");
     expect(checkLine({ result: "pull-only", status: 403, detail: "" }, "ostra", "registry.acme.dev")).toContain("Pull allowed, push refused for ostra/.");
     expect(checkLine({ result: "refused", status: 401, detail: "The push credential was refused (401)." }, "ostra", "registry.acme.dev")).toBe("Refused: The push credential was refused (401).");

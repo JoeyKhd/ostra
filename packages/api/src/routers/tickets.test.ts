@@ -69,7 +69,7 @@ afterAll(async () => {
 const keyOf = (name: string): string => issues[name]?.identifier ?? name;
 
 describe("a parent ticket (F-077)", () => {
-  it("F-077: Start sub-issues on a three-level tree starts only its leaves, and lists the child on another team", async () => {
+  it("F-077/c1: Start sub-issues on a three-level tree starts only its leaves, and lists the child on another team", async () => {
     const started = await (await member()).tickets.startSubIssues({ ticketId: parentId, requestKey: "start-1" });
     expect(started.result).toBe("started");
     expect(started.outcomes.map((outcome) => [outcome.key, outcome.state]).sort()).toEqual([[keyOf("C2"), "started"], [keyOf("H1"), "started"]].sort());
@@ -87,7 +87,7 @@ describe("a parent ticket (F-077)", () => {
     expect((await trpcFailure((await member()).tasks.startFromTicket({ projectId, ticketId: parentId }))).code).toBe("PRECONDITION_FAILED");
   });
 
-  it("F-077: the parent's page lists its three levels with each child's task, the children on no board, and its refine task", async () => {
+  it("F-077/c2: the parent's page lists its three levels with each child's task, the children on no board, and its refine task", async () => {
     // The parent's own refine task, a member's.
     const refine = await harness.test.db.task.create({
       data: { organizationId: harness.fixture.a.organization.id, projectId, kind: "refine", source: "ticket", ticketId: parentId, ticketKey: keyOf("P"), boardId, title: "Refine the billing epic", branchName: "ostra/refine-billing", state: "needs_you", needsYouReason: "draft_ready" },
@@ -126,7 +126,7 @@ describe("a parent ticket (F-077)", () => {
     });
   });
 
-  it("F-077: with the tracker out of reach, the page reads the cache, and still names what a start would start", async () => {
+  it("F-077/c2: with the tracker out of reach, the page reads the cache, and still names what a start would start", async () => {
     await harness.test.db.connection.update({ where: { id: connectionId }, data: { state: "failed" } });
     try {
       const page = await (await member()).tickets.parent({ ticketId: parentId });
@@ -139,7 +139,7 @@ describe("a parent ticket (F-077)", () => {
     }
   });
 
-  it("F-077: a parent's page is the project's: another organization's member, and one who can't open the project, see nothing", async () => {
+  it("F-077/c2: a parent's page is the project's: another organization's member, and one who can't open the project, see nothing", async () => {
     const { a, b } = harness.fixture;
     const other = await harness.as(b.admin);
     expect((await trpcFailure(other.tickets.parent({ ticketId: parentId }))).code).toBe("NOT_FOUND");

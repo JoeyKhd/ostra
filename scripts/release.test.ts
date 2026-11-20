@@ -50,7 +50,7 @@ beforeAll(async () => {
 });
 
 describe("the published packages", () => {
-  it("F-039: every published package has its license, only its build and LICENSE as its files, npm's provenance and the repository", async () => {
+  it("F-039/c2: every published package has its license, only its build and LICENSE as its files, npm's provenance and the repository", async () => {
     expect(await releaseProblems(root)).toEqual([]);
     const published = (await readWorkspace(root)).filter((item) => isPublishedDir(item.dir));
     expect(published.map((item) => item.manifest.name)).toEqual(expect.arrayContaining(["@ostra/protocol", "@ostra/adapter-sdk", "@ostra/adapter-opencode", "@ostra/adapter-github", "@ostra/adapter-linear"]));
@@ -64,7 +64,7 @@ describe("the published packages", () => {
     // The CLI's own package, which `pack:cli` writes beside its bundle, is checked in apps/runner (pack-cli.test.ts).
   });
 
-  it("F-039: no server package is publishable: one made public fails, and a published one without provenance or with its source fails", async () => {
+  it("F-039/c2: no server package is publishable: one made public fails, and a published one without provenance or with its source fails", async () => {
     expect(await messages(pristine)).toEqual([]);
     const core = await copyCheckout("core-public");
     await edit(core, "apps/core/package.json", /\n\s*"private": true,/, "");
@@ -79,7 +79,7 @@ describe("the published packages", () => {
     expect(await messages(source)).toEqual(['packages/adapters/adapter-github/package.json: must publish only its build and its LICENSE: "files": ["dist", "LICENSE"]']);
   });
 
-  it("F-039: a published package imports at run time only what it declares", async () => {
+  it("F-039/c2: a published package imports at run time only what it declares", async () => {
     expect(runtimeImports('import { z } from "zod";\nimport type { X } from "vitest";\nexport { a } from "./a.ts";\nimport "@scope/side/effect";\nconst m = await import("node:fs");')).toEqual(["zod", "@scope/side"]);
     const undeclared = await copyCheckout("undeclared");
     await edit(undeclared, "packages/adapters/adapter-email-smtp/package.json", /,\n\s*"zod": "4\.6\.7"/, "");
@@ -88,7 +88,7 @@ describe("the published packages", () => {
 });
 
 describe("one version", () => {
-  it("F-039: the version script sets one version on every package.json, the root's (the images' tags) and the CLI's included, and refuses one that isn't a version", async () => {
+  it("F-039/c2: the version script sets one version on every package.json, the root's (the images' tags) and the CLI's included, and refuses one that isn't a version", async () => {
     const checkout = await copyCheckout("version");
     const before = await readFile(path.join(checkout, "packages/protocol/package.json"), "utf8");
     const files = await setVersion(checkout, "1.2.3-rc.1");
@@ -107,7 +107,7 @@ describe("one version", () => {
 });
 
 describe("the licensor line", () => {
-  it("F-039: every licensor line matches and NOTICE is current: a changed LICENSE, NOTICE or published author fails", async () => {
+  it("F-039/c2: every licensor line matches and NOTICE is current: a changed LICENSE, NOTICE or published author fails", async () => {
     const license = await copyCheckout("licensor-license");
     await edit(license, "LICENSE", `Licensor and copyright holder: ${LICENSOR}`, "Licensor and copyright holder: Someone Else");
     expect(await messages(license)).toEqual([`LICENSE: must say "Licensor and copyright holder: ${LICENSOR}"`, 'LICENSE: names "Someone Else" as the licensor, not "' + LICENSOR + '"']);
@@ -144,7 +144,7 @@ const agreementPattern = async (): Promise<RegExp> => {
 };
 
 describe("the contributor agreement's box", () => {
-  it("F-039: the pull request template's box, ticked, matches the agreement check's pattern; a reworded or unticked box fails", async () => {
+  it("F-039/c2: the pull request template's box, ticked, matches the agreement check's pattern; a reworded or unticked box fails", async () => {
     const ticked = await agreementPattern();
     const template = await readFile(path.join(root, ".github", "pull_request_template.md"), "utf8");
     const box = template.split(/\r?\n/).find((line) => line.startsWith("- [ ] I agree"));
@@ -159,7 +159,7 @@ describe("the contributor agreement's box", () => {
 });
 
 describe("the release workflow", () => {
-  it("F-039: release.yml runs by hand only, pins every action by SHA, holds three permissions and no npm token, and its dry run publishes nothing", async () => {
+  it("F-039/c2: release.yml runs by hand only, pins every action by SHA, holds three permissions and no npm token, and its dry run publishes nothing", async () => {
     const workflow = await readFile(path.join(root, ".github", "workflows", "release.yml"), "utf8");
     const ci = await readFile(path.join(root, ".github", "workflows", "ci.yml"), "utf8");
     expect(releaseWorkflowProblems(workflow, ci)).toEqual([]);
@@ -177,7 +177,7 @@ describe("the release workflow", () => {
     expect(releaseWorkflowProblems(workflow, `${ci}\n      - run: pnpm images:build\n`).map((problem) => problem.message)).toEqual(["ci.yml never runs the release, a publish or an image build (the maintainer's CI scope)"]);
   });
 
-  it("F-039: the release notes carry the changelog, each image by its digest and each package at the release's version", () => {
+  it("F-039/c2: the release notes carry the changelog, each image by its digest and each package at the release's version", () => {
     const digest = `sha256:${"a".repeat(64)}`;
     const notes = releaseNotes({ version: "1.0.0", commits: ["✨ add the release workflow", "🐛 fix a thing"], digests: [`ghcr.io/x/server@${digest}`], packages: ["@ostra/protocol@1.0.0", "ostra@1.0.0"] });
     expect(notes).toContain(`- \`ghcr.io/x/server@${digest}\``);

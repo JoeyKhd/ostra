@@ -87,7 +87,7 @@ afterAll(async () => {
 }, 60_000);
 
 describe("the host cache (F-051)", () => {
-  it("F-051: the second task's setup reads a warm cache, and a second project's task doesn't see it", async () => {
+  it("F-051/c5: the second task's setup reads a warm cache, and a second project's task doesn't see it", async () => {
     const first = await ready(projectA);
     expect(first.dependencyCache).toEqual({ cacheKey: projectA, reused: false });
     expect(first.output).toContain("cache: cold");
@@ -128,7 +128,7 @@ describe("the host cache (F-051)", () => {
     await executor.release(plain.box, "requested");
   }, 60_000);
 
-  it("F-051: a new cache key starts the dependency cache again and keeps the mirrors", async () => {
+  it("F-051/c5: a new cache key starts the dependency cache again and keeps the mirrors", async () => {
     const project = projectIdSchema.parse("project-cache-key");
     const input = (cacheKey: string) => ({
       projectId: project,
@@ -147,7 +147,7 @@ describe("the host cache (F-051)", () => {
     expect(await exists(path.join(cacheDir(project), `${repoId}.git`, "HEAD"))).toBe(true);
   }, 60_000);
 
-  it("F-051: a cache unused for 30 days goes, a removed project's goes at once, and never while its box is live", async () => {
+  it("F-051/c5: a cache unused for 30 days goes, a removed project's goes at once, and never while its box is live", async () => {
     const idle = projectIdSchema.parse("project-cache-idle");
     const kept = projectIdSchema.parse("project-cache-kept");
     for (const projectId of [idle, kept]) {
@@ -188,7 +188,7 @@ describe("checks on host (F-054)", () => {
   });
   const helpers = trackedPids();
 
-  it("F-054: checks pass, fail and time out in the worktree, and the timeout leaves no process behind", async () => {
+  it("F-054/c2: checks pass, fail and time out in the worktree, and the timeout leaves no process behind", async () => {
     const box = newBox();
     const outputDir = path.join(root, "checks-output", box.taskId);
     const pidFile = path.join(root, `${box.taskId}-helper.pid`).replaceAll("\\", "/");
@@ -242,7 +242,7 @@ describe("checks on host (F-054)", () => {
 });
 
 describe("services on host (F-094)", () => {
-  it("F-094: a spec with services is refused with the reason ostra shows, and no box is made", async () => {
+  it("F-094/c5: a spec with services is refused with the reason ostra shows, and no box is made", async () => {
     const box = newBox();
     const spec = specFor(box, projectA, { services: [{ name: "db", image: "postgres:17", port: 5432, variables: [], healthCheck: "pg_isready" }] });
     expect(await executor.create({ ...box, spec, proxies })).toEqual({ ok: false, error: { code: "unsupported", message: HOST_SERVICES_REASON } });

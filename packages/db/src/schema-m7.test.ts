@@ -99,7 +99,7 @@ describe("the milestone 7 migration", () => {
     expect(column.rows).toEqual([{ udt_name: "ThemePreference", is_nullable: "NO", column_default: "'dark'::\"ThemePreference\"" }]);
   });
 
-  it("F-082: applies on a database at the head before it, and changes no existing row: every account starts dark", async () => {
+  it("F-082/c1: applies on a database at the head before it, and changes no existing row: every account starts dark", async () => {
     const names = await migrationNames();
     const url = await emptyDatabase();
     await apply(url, names.filter((name) => name < m7Migration));
@@ -123,7 +123,7 @@ describe("the milestone 7 migration", () => {
     expect({ ...after, user: withoutTheme }).toEqual(before);
   });
 
-  it("F-082: a new account's theme is dark, and only the three themes are taken", async () => {
+  it("F-082/c1: a new account's theme is dark, and only the three themes are taken", async () => {
     const id = randomUUID();
     const user = await test.db.user.create({ data: { id, name: "New", email: `new-${id}@example.com`, username: `new-${id.slice(0, 8)}` } });
     expect(user.theme).toBe("dark");

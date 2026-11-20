@@ -118,7 +118,7 @@ const savedToken = async (): Promise<string> => {
 };
 
 describe("ostra login, checkout and logout (F-103)", () => {
-  it("F-103: `ostra login` signs in with the device code, saves the session for its owner only, and a second login replaces the first", async () => {
+  it("F-103/c1: `ostra login` signs in with the device code, saves the session for its owner only, and a second login replaces the first", async () => {
     const first = await run(["login", "--server", server.url]);
     expect(first.code, first.out).toBe(exitCodes.ok);
     expect(first.out).toContain("WDJB-MJHT");
@@ -136,7 +136,7 @@ describe("ostra login, checkout and logout (F-103)", () => {
     expect(await savedToken()).not.toBe(token);
   }, 60_000);
 
-  it("F-103: a denied code signs nobody in", async () => {
+  it("F-103/c1: a denied code signs nobody in", async () => {
     server.grant = { outcome: "deny", pendingPolls: 0 };
     const before = await savedToken().catch(() => "");
     const denied = await run(["login", "--server", server.url]);
@@ -145,7 +145,7 @@ describe("ostra login, checkout and logout (F-103)", () => {
     expect(await savedToken().catch(() => "")).toBe(before);
   }, 60_000);
 
-  it("F-103: `ostra checkout` puts a two-repo task's branches into an existing clone and a fresh one, tracking the remote", async () => {
+  it("F-103/c2: `ostra checkout` puts a two-repo task's branches into an existing clone and a fresh one, tracking the remote", async () => {
     expect((await run(["login", "--server", server.url])).code).toBe(exitCodes.ok);
     const work = path.join(root, "work");
     await mkdir(work, { recursive: true });
@@ -168,7 +168,7 @@ describe("ostra login, checkout and logout (F-103)", () => {
     expect(await gitIn(test2, "rev-parse", "HEAD")).toBe(heads["test2"]);
   }, 120_000);
 
-  it("F-103: a clone with uncommitted changes is refused, naming the repo, and nothing is changed", async () => {
+  it("F-103/c2: a clone with uncommitted changes is refused, naming the repo, and nothing is changed", async () => {
     expect((await run(["login", "--server", server.url])).code).toBe(exitCodes.ok);
     const work = path.join(root, "dirty");
     await mkdir(work, { recursive: true });
@@ -182,7 +182,7 @@ describe("ostra login, checkout and logout (F-103)", () => {
     await expect(stat(path.join(work, "test2"))).rejects.toThrow();
   }, 120_000);
 
-  it("F-103: an unknown task and a revoked session are refused in words, the server's own for the session", async () => {
+  it("F-103/c4: an unknown task and a revoked session are refused in words, the server's own for the session", async () => {
     expect((await run(["login", "--server", server.url])).code).toBe(exitCodes.ok);
     const unknown = await run(["checkout", "OST-999"]);
     expect(unknown.code).toBe(exitCodes.failed);
@@ -193,7 +193,7 @@ describe("ostra login, checkout and logout (F-103)", () => {
     expect(revoked.out).toContain(cliSessionMessages["session-revoked"]);
   }, 60_000);
 
-  it("F-103: `ostra logout` revokes the session on the server and removes the file; checkout then says to log in", async () => {
+  it("F-103/c4: `ostra logout` revokes the session on the server and removes the file; checkout then says to log in", async () => {
     expect((await run(["login", "--server", server.url])).code).toBe(exitCodes.ok);
     const token = await savedToken();
     const out = await run(["logout"]);

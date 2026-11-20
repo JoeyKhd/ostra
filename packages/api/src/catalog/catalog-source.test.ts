@@ -57,7 +57,7 @@ describe("the catalog source (F-088)", () => {
     expect(fetchLatest).toHaveBeenCalledTimes(1);
   });
 
-  it("F-088: the panel's catalog is fetched again once a day, and not before", async () => {
+  it("F-088/c4: the panel's catalog is fetched again once a day, and not before", async () => {
     const clock = manualClock();
     const fetchLatest = vi.fn(() => Promise.resolve(fresh));
     // The panel's own settings: no ttl given, so the default.
@@ -71,7 +71,7 @@ describe("the catalog source (F-088)", () => {
     expect(fetchLatest).toHaveBeenCalledTimes(2);
   });
 
-  it("F-088: makes no request at all when the fetch is off, and serves the bundled copy", async () => {
+  it("F-088/c4: makes no request at all when the fetch is off, and serves the bundled copy", async () => {
     const { source, fetchLatest, loadBundled, clock } = setup({ fetchEnabled: false });
     expect(await source.entries()).toEqual(bundled);
     clock.advance(10 * 24 * 60 * 60 * 1000);

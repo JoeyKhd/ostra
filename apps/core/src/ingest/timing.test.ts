@@ -15,7 +15,7 @@ const runner: RunnerRef = {
 };
 
 describe("ingest timing", () => {
-  it("F-117: each frame's ingest time lands in its bucket, and one line sums an interval", async () => {
+  it("F-117/c2: each frame's ingest time lands in its bucket, and one line sums an interval", async () => {
     const records: LogRecord[] = [];
     const logger = createLogger((record) => records.push(record));
     let clock = 0;

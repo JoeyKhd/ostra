@@ -186,7 +186,7 @@ const send = (task: { readonly taskId: TaskId }, text: string) =>
   );
 
 describe("keys per project at the dispatch and the credentials", () => {
-  it("F-135: a task in one project never gets the token of a provider allowed only in another", async () => {
+  it("F-135/c7,c8,c9: a task in one project never gets the token of a provider allowed only in another", async () => {
     const projectA = await projectWith([world.providerId]);
     const projectB = await projectWith([providerB]);
     const taskA = await seedQueuedTask(test.db, projectA, fixture.a.member, runner.runnerId);
@@ -238,7 +238,7 @@ describe("keys per project at the dispatch and the credentials", () => {
 });
 
 describe("keys per project at every turn start", () => {
-  it("F-135: a turn start after a list change: open steers into the box, moved starts in a fresh box on the new provider, none holds the message with the reason", async () => {
+  it("F-135/c10,c11: a turn start after a list change: open steers into the box, moved starts in a fresh box on the new provider, none holds the message with the reason", async () => {
     const project = await projectWith([world.providerId]);
     // open: nothing changed, the message is a steer into the going session.
     const task = await goingTask(project);
@@ -291,7 +291,7 @@ describe("keys per project at every turn start", () => {
     expect(await test.db.event.count({ where: { sessionId: held.sessionId, kind: "user.message" } })).toBeGreaterThan(0);
   });
 
-  it("F-135: after a list change idle boxes holding the removed key are released at once, and a running turn's box after its turn", async () => {
+  it("F-135/c10: after a list change idle boxes holding the removed key are released at once, and a running turn's box after its turn", async () => {
     const project = await projectWith([world.providerId]);
     const idle = await goingTask(project);
     const busy = await goingTask(project);
@@ -316,7 +316,7 @@ describe("keys per project at every turn start", () => {
     expect(await releaseProviderBoxes(deps, { organizationId: world.organizationId, projectId: keeps.projectId })).toMatchObject({ released: 0, waiting: 0 });
   });
 
-  it("F-135: a rate limit, a cap and an endpoint error each leave the task on its provider", async () => {
+  it("F-135/c12: a rate limit, a cap and an endpoint error each leave the task on its provider", async () => {
     const project = await projectWith([world.providerId]);
     // Another project serves the same model from provider B: nothing moves a task there.
     await projectWith([providerB]);
@@ -354,7 +354,7 @@ describe("keys per project at every turn start", () => {
     expect(await test.db.session.count({ where: { taskId: going.taskId } })).toBe(1);
   });
 
-  it("F-135: a provider's cap counts its sessions in every project, and personal runners are refused in every project", async () => {
+  it("F-135/c14: a provider's cap counts its sessions in every project, and personal runners are refused in every project", async () => {
     const here = await projectWith([world.providerId]);
     const there = await projectWith([world.providerId]);
     // Earlier cases leave leases: end them, so the count starts at zero.
@@ -399,7 +399,7 @@ describe("keys per project at every turn start", () => {
 });
 
 describe("spend per provider", () => {
-  it("F-135: usage is priced from each session's own model row and counted against its provider, and a mismatched usage event is logged and counted as the session's", async () => {
+  it("F-135/c13: usage is priced from each session's own model row and counted against its provider, and a mismatched usage event is logged and counted as the session's", async () => {
     const onA = await projectWith([world.providerId]);
     const onB = await projectWith([providerB]);
     const taskA = await goingTask(onA);

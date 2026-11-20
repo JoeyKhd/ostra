@@ -21,7 +21,7 @@ describe("the repos' folders", () => {
     expect(checkRepoFolders({ repos: [first], agent: { instructions: null } })).toEqual({ ok: true });
   });
 
-  it("F-098: refuses two repos in one folder, case aside, and a list in another order or with other folders", () => {
+  it("F-098/c1: refuses two repos in one folder, case aside, and a list in another order or with other folders", () => {
     expect(checkRepoFolders({ repos: [first, { ...second, checkoutDir: "TEST1" }], agent: { instructions: null } })).toEqual({ ok: false, error: "two of the task's repos share the folder TEST1" });
     expect(checkRepoFolders({ repos: [first, second], agent: { instructions: reposSection([second, first], "ostra/work") } })).toMatchObject({ ok: false });
     expect(checkRepoFolders({ repos: [first, second], agent: { instructions: reposSection([first], "ostra/work") } })).toMatchObject({ ok: false });

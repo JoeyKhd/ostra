@@ -231,7 +231,7 @@ const fetchOnly = async (kind: "refine" | "review"): Promise<void> => {
 };
 
 describe("the task host", () => {
-  it("F-090, F-078: runs a dispatch to a PR-ready branch, committing what the agent left with the bot and the trailer, and every event is stored once", async () => {
+  it("F-090/c5, F-078/c2: runs a dispatch to a PR-ready branch, committing what the agent left with the bot and the trailer, and every event is stored once", async () => {
     const { dataDir, dispatch } = await start();
     // One repo: the agent starts in its checkout (F-025), so a relative path lands in the repo.
     const made = taskFor("[[fake:write CONTRIBUTING.md]]", "echo setting up\n");
@@ -286,7 +286,7 @@ describe("the task host", () => {
     expect(await upstream.treeFiles("ostra-test/test1", `refs/heads/${spec.branchName}`)).toContain("docs/numbers.md");
   }, 120_000);
 
-  it("F-065: ends a session with no changes as without-changes, pushing nothing", async () => {
+  it("F-065/c1: ends a session with no changes as without-changes, pushing nothing", async () => {
     const { dispatch } = await start();
     const { spec } = taskFor("[[fake:say]]");
     dispatch(spec);
@@ -297,7 +297,7 @@ describe("the task host", () => {
     expect(await upstream.refSha("ostra-test/test1", `refs/heads/${spec.branchName}`)).toBeNull();
   }, 120_000);
 
-  it("F-006: a change to .github/workflows/ fails on the code host, and the task says why", async () => {
+  it("F-006/c5: a change to .github/workflows/ fails on the code host, and the task says why", async () => {
     const { dispatch } = await start();
     const { spec } = taskFor("[[fake:write .github/workflows/ci.yml]]");
     dispatch(spec);
@@ -311,7 +311,7 @@ describe("the task host", () => {
     expect(await upstream.refSha("ostra-test/test1", `refs/heads/${spec.branchName}`)).toBeNull();
   }, 120_000);
 
-  it("F-025: stops a running turn: the agent's turn ends cancelled, and no session.ended is sent", async () => {
+  it("F-025/c1: stops a running turn: the agent's turn ends cancelled, and no session.ended is sent", async () => {
     const { dataDir, dispatch } = await start();
     const { spec } = taskFor("[[fake:silent]]");
     dispatch(spec);
@@ -337,7 +337,7 @@ describe("the task host", () => {
     expect(everyEventOnce()).toBe(true);
   }, 120_000);
 
-  it("F-025: a stopped task's branch and hidden ref hold its unfinished work, and stay after its workspace is released", async () => {
+  it("F-025/c2: a stopped task's branch and hidden ref hold its unfinished work, and stay after its workspace is released", async () => {
     const { dataDir, dispatch } = await start();
     const { spec } = taskFor("[[fake:silent]]");
     dispatch(spec);
@@ -380,7 +380,7 @@ describe("the task host", () => {
     expect(everyEventOnce()).toBe(true);
   }, 120_000);
 
-  it("F-047: a run whose agent crashes frees the runner's one slot, and the next dispatch is accepted and starts", async () => {
+  it("F-047/c1: a run whose agent crashes frees the runner's one slot, and the next dispatch is accepted and starts", async () => {
     const { dispatch } = await start();
     const { spec: crashing } = taskFor("[[fake:crash]]");
     dispatch(crashing);
@@ -446,7 +446,7 @@ describe("the task host", () => {
     expect(await gitAs(launch, ["config", "--get-regexp", "^url[.].*[.]insteadof$"])).toContain("https://github.com/");
   }, 120_000);
 
-  it("F-090: the agent's own git clones, fetches and pushes through the proxy, which adds the repo's token; its push to main is refused", async () => {
+  it("F-090/c1,c2: the agent's own git clones, fetches and pushes through the proxy, which adds the repo's token; its push to main is refused", async () => {
     const { dispatch } = await start();
     launches.length = 0;
     const { spec } = taskFor("[[fake:silent]]");
@@ -484,15 +484,15 @@ describe("the task host", () => {
     expect(await upstream.refSha("ostra-test/test1", "refs/heads/main")).toBe(mainBefore);
   }, 120_000);
 
-  it("F-090: a refine task's proxy lets the agent's git fetch but not push", async () => {
+  it("F-090/c4: a refine task's proxy lets the agent's git fetch but not push", async () => {
     await fetchOnly("refine");
   }, 120_000);
 
-  it("F-090: a review task's proxy lets the agent's git fetch but not push", async () => {
+  it("F-090/c4: a review task's proxy lets the agent's git fetch but not push", async () => {
     await fetchOnly("review");
   }, 120_000);
 
-  it("F-089: the agent gets a base URL that points at the key proxy and a fake key valid for its one task, never the real key", async () => {
+  it("F-089/c1: the agent gets a base URL that points at the key proxy and a fake key valid for its one task, never the real key", async () => {
     const { dispatch } = await start();
     const endpointOf = (launch: AgentLaunch | undefined): { readonly baseUrl: string; readonly key: string } => {
       const baseUrl = launch?.env["FAKE_AGENT_BASE_URL"];
@@ -585,7 +585,7 @@ describe("the task host", () => {
     expect(kinds(leaky)).not.toContain("turn.started");
   }, 120_000);
 
-  it("F-089: reports a model provider's rate limit as an event with its retry time, once for a burst of 429s", async () => {
+  it("F-089/c4: reports a model provider's rate limit as an event with its retry time, once for a burst of 429s", async () => {
     const { dispatch } = await start();
     const limited = await startAnthropicStub({
       realKey: MODEL_TOKEN,
@@ -623,7 +623,7 @@ describe("the task host", () => {
     }
   }, 120_000);
 
-  it("F-090: keeps every real credential out of the agent's environment, the task root, the event stream and the logs", async () => {
+  it("F-090/c3: keeps every real credential out of the agent's environment, the task root, the event stream and the logs", async () => {
     const { dataDir, dispatch } = await start();
     const { spec } = taskFor("[[fake:silent]]");
     launches.length = 0;
@@ -664,7 +664,7 @@ describe("the task host", () => {
 });
 
 describe("the environment prepares the box (F-050)", () => {
-  it("F-050: the box is prepared by the environment before the agent starts, and the setup's output goes out as the task's events", async () => {
+  it("F-050/c1,c3: the box is prepared by the environment before the agent starts, and the setup's output goes out as the task's events", async () => {
     const { dispatch } = await start();
     launches.length = 0;
     const { spec, credentials } = taskFor("[[fake:silent]]", 'echo "prepared with $NODE_ENV"\necho "$NODE_ENV" > prepared.txt\necho "a warning" >&2\n');
@@ -724,7 +724,7 @@ describe("files outside every repo (ticket 44)", () => {
   const outsideEvents = (spec: TaskSpec) =>
     eventsOf(spec).flatMap((item) => (item.event.kind === "workspace.files_outside_repos" ? [{ paths: item.event.paths, more: item.event.more }] : []));
 
-  it("F-016: reports a file left at the root once, with its name, never a repo's folder or ostra's own, and an empty set once a later turn moved it", async () => {
+  it("F-016/c4: reports a file left at the root once, with its name, never a repo's folder or ostra's own, and an empty set once a later turn moved it", async () => {
     const { dataDir, dispatch } = await start();
     const spec = await twoRepoTask("[[fake:silent]]");
     dispatch(spec);
@@ -758,7 +758,7 @@ describe("files outside every repo (ticket 44)", () => {
     expect(everyEventOnce()).toBe(true);
   }, 120_000);
 
-  it("F-016: reports a turn that changed a repo and left a file too, and no name in any log line", async () => {
+  it("F-016/c4: reports a turn that changed a repo and left a file too, and no name in any log line", async () => {
     const { dispatch } = await start();
     const spec = await twoRepoTask("[[fake:write plan.txt test1/change.md]]");
     logs.length = 0;

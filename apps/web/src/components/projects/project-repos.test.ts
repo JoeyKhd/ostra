@@ -5,7 +5,7 @@ import { dropRepo, moveRepo } from "./project-repos";
 // F-098 (ticket 39): the order the repos page saves after a key press or a drop.
 
 describe("the repos' order (F-098)", () => {
-  it("F-098: ↑ and ↓ on a handle move its repo one place, and never past either end", () => {
+  it("F-098/c3: ↑ and ↓ on a handle move its repo one place, and never past either end", () => {
     expect(moveRepo(["a", "b", "c"], "c", -1)).toEqual(["a", "c", "b"]);
     expect(moveRepo(["a", "b", "c"], "a", 1)).toEqual(["b", "a", "c"]);
     expect(moveRepo(["a", "b", "c"], "a", -1)).toEqual(["a", "b", "c"]);

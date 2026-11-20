@@ -128,7 +128,7 @@ const newTask = async (projectId: string) =>
   });
 
 describe("project scope in the schema", () => {
-  it("F-086: every task belongs to exactly one project, which it can't leave empty or take from another organization", async () => {
+  it("F-086/c2: every task belongs to exactly one project, which it can't leave empty or take from another organization", async () => {
     const catalog = await readCatalog();
     expect(catalog.projectIdColumns.get("task")).toEqual({ nullable: false });
     expect(catalog.foreignKeys.filter((key) => key.table === "task" && key.references === "project").map((key) => [...key.columns].sort())).toEqual([
@@ -155,7 +155,7 @@ describe("project scope in the schema", () => {
     expect((await newTask(fixture.a.openProject.id)).projectId).toBe(fixture.a.openProject.id);
   });
 
-  it("F-086: every record inside a project carries the project, and its links to other records in it include the project", async () => {
+  it("F-086/c2: every record inside a project carries the project, and its links to other records in it include the project", async () => {
     const catalog = await readCatalog();
     const inside = tablesInsideAProject(catalog);
     // The tables a task's work writes are all here: a sanity check that the walk found the project's records.
@@ -175,7 +175,7 @@ describe("project scope in the schema", () => {
     expect(linksWithoutProject).toEqual([]);
   });
 
-  it("F-086: a record that may sit outside a project can't link to a record inside one without carrying its project", async () => {
+  it("F-086/c2: a record that may sit outside a project can't link to a record inside one without carrying its project", async () => {
     const catalog = await readCatalog();
     const inside = tablesInsideAProject(catalog);
     const unguarded: string[] = [];

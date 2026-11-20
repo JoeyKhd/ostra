@@ -184,7 +184,7 @@ afterAll(async () => {
 });
 
 describe("outside tasks wait for a member's approval (F-040)", () => {
-  it("F-040: an unmatched starter's task waits for approval, and nothing runs before it", async () => {
+  it("F-040/c1: an unmatched starter's task waits for approval, and nothing runs before it", async () => {
     const started = await start(openProject);
     expect(started.awaitingApproval).toBe(true);
     expect(started.rule).toEqual({ outside: true, needsApproval: true, poolOnly: true, profile: "project-default" });
@@ -211,7 +211,7 @@ describe("outside tasks wait for a member's approval (F-040)", () => {
     expect(new Set(notified.map((row) => row.memberId))).toEqual(new Set([fixture.a.admin.id, fixture.a.member.id, fixture.a.insider.id]));
   });
 
-  it("F-040: an outside task runs the project's default profile for its kind, and only on one of the project's pools", async () => {
+  it("F-040/c1: an outside task runs the project's default profile for its kind, and only on one of the project's pools", async () => {
     // The project's default for code is a second profile, not the organization's built-in one.
     const model = await test.db.model.findFirstOrThrow({ where: { organizationId } });
     const projectDefault = await test.db.agentProfile.create({ data: { organizationId, name: `Project default ${randomUUID().slice(0, 4)}`, adapter: "opencode", modelId: model.id } });
@@ -243,7 +243,7 @@ describe("outside tasks wait for a member's approval (F-040)", () => {
     }
   });
 
-  it("F-040: admission never offers a poolOnly task to a personal runner, whatever its row names", async () => {
+  it("F-040/c1: admission never offers a poolOnly task to a personal runner, whatever its row names", async () => {
     const started = await start(openProject);
     expect((await approveOutsideTask(deps(), scopeOf(fixture.a.admin, "admin"), { taskId: started.taskId })).ok).toBe(true);
     // Even a row that names a member and their personal runner (as a member's own start would) stays on pools.
@@ -259,7 +259,7 @@ describe("outside tasks wait for a member's approval (F-040)", () => {
     expect(admitted.admitted).toContainEqual(expect.objectContaining({ taskId: started.taskId, runnerId: poolRunner }));
   });
 
-  it("F-040: any member who can open the project approves or rejects it, and someone without access can't", async () => {
+  it("F-040/c1: any member who can open the project approves or rejects it, and someone without access can't", async () => {
     const insiderScope = scopeOf(fixture.a.insider, "member", new Map([[restrictedProject, "member"]]));
     // A member who isn't on the restricted project can't see the task, so can't answer it.
     const waiting = await start(restrictedProject);
@@ -293,7 +293,7 @@ describe("outside tasks wait for a member's approval (F-040)", () => {
     expect(jobsFor(rejected.taskId).filter((name) => name === "ticket.fetch-context" || name === "task.dispatch")).toEqual([]);
   });
 
-  it("F-040: the first answer wins", async () => {
+  it("F-040/c1: the first answer wins", async () => {
     const started = await start(openProject);
     const [approve, reject] = await Promise.all([
       approveOutsideTask(deps(), scopeOf(fixture.a.admin, "admin"), { taskId: started.taskId }),
@@ -311,7 +311,7 @@ describe("outside tasks wait for a member's approval (F-040)", () => {
     expect(await test.db.agentActivity.count({ where: { agentSessionId: started.agentSessionId } })).toBe(1);
   });
 
-  it("F-040: each answer and each change of the switch is an audit entry naming the member", async () => {
+  it("F-040/c2: each answer and each change of the switch is an audit entry naming the member", async () => {
     const approved = await start(openProject);
     await approveOutsideTask(deps(), scopeOf(fixture.a.member, "member"), { taskId: approved.taskId });
     const rejected = await start(openProject);
@@ -331,7 +331,7 @@ describe("outside tasks wait for a member's approval (F-040)", () => {
     expect(JSON.stringify(entries)).not.toContain("a reason nobody logs");
   });
 
-  it("F-040: the approval is on by default, and only an organization admin switches it off", async () => {
+  it("F-040/c2: the approval is on by default, and only an organization admin switches it off", async () => {
     const fresh = await test.db.project.create({ data: { organizationId, name: `Fresh ${randomUUID().slice(0, 4)}`, slug: `fresh-${randomUUID().slice(0, 8)}`, access: "open" }, select: { id: true, outsideApproval: true } });
     expect(fresh.outsideApproval).toBe(true);
     const projectId = projectIdSchema.parse(fresh.id);
@@ -348,7 +348,7 @@ describe("outside tasks wait for a member's approval (F-040)", () => {
     expect(await setOutsideApproval(deps(), scopeOf(fixture.a.admin, "admin"), { projectId, on: true })).toMatchObject({ ok: true, on: true });
   });
 
-  it("F-040: with the switch off an outside task starts at once, still only on a pool, on the default profile", async () => {
+  it("F-040/c2: with the switch off an outside task starts at once, still only on a pool, on the default profile", async () => {
     await setOutsideApproval(deps(), scopeOf(fixture.a.admin, "admin"), { projectId: openProject, on: false });
     const started = await start(openProject);
     expect(started.awaitingApproval).toBe(false);
@@ -360,7 +360,7 @@ describe("outside tasks wait for a member's approval (F-040)", () => {
     expect(await renderAndDispatch(started.taskId)).toMatchObject({ ok: false, error: "no-runner" });
   });
 
-  it("F-040: a matched member's start never waits, and is theirs", async () => {
+  it("F-040/c1: a matched member's start never waits, and is theirs", async () => {
     // Linear gives the member's address in another case, with spaces: the folded compare matches it.
     const member = await test.db.member.findUniqueOrThrow({ where: { id: fixture.a.member.id }, select: { user: { select: { email: true } } } });
     const match = await test.db.$transaction((tx) =>

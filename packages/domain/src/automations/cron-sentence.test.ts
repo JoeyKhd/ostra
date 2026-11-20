@@ -6,7 +6,7 @@ import { cronSentence, ordinal, zoneWords } from "./cron-sentence.ts";
 // each row of its table, the zone's words, and the fallback for an expression it has no words for.
 
 describe("the cron sentence", () => {
-  it("F-106: says each of the editor's examples in its zone's words", () => {
+  it("F-106/c1: says each of the editor's examples in its zone's words", () => {
     const table: readonly (readonly [string, string])[] = [
       ["0 * * * *", "Every hour, on the hour"],
       ["30 */2 * * *", "Every 2 hours at :30"],

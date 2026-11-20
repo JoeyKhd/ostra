@@ -44,7 +44,7 @@ const SCAN_TIMEOUT_MS = 60_000;
 const rel = (file: string): string => path.relative(root, file).split(path.sep).join("/");
 
 describe("every write of a needs-you item enqueues its fan-out", () => {
-  it("F-036: no code writes the needs-you table except the helpers that enqueue the fan-out", async () => {
+  it("F-036/c1: no code writes the needs-you table except the helpers that enqueue the fan-out", async () => {
     const files = [...(await sourceFiles(path.join(root, "apps"))), ...(await sourceFiles(path.join(root, "packages"))), ...(await sourceFiles(path.join(root, "e2e")))];
     const writers: string[] = [];
     for (const file of files) {

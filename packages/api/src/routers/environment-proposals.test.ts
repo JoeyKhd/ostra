@@ -113,7 +113,7 @@ afterAll(async () => {
 });
 
 describe("the onboarding task (F-113, ticket 29)", () => {
-  it("F-113: a project admin starts it and a member can't; one onboarding task is open at a time", async () => {
+  it("F-113/c1: a project admin starts it and a member can't; one onboarding task is open at a time", async () => {
     await closeOnboarding();
     const member = await harness.as(harness.fixture.a.member);
     expect(await codeOf(member.environments.startOnboarding({ projectId }))).toBe("FORBIDDEN");
@@ -131,7 +131,7 @@ describe("the onboarding task (F-113, ticket 29)", () => {
     expect(await harness.test.db.task.count({ where: { projectId, onboarding: true } })).toBe(2);
   });
 
-  it("F-113: the page reads the newest onboarding task, its AGENTS.md PR and what its commits left out, and who may start one now", async () => {
+  it("F-113/c1,c3: the page reads the newest onboarding task, its AGENTS.md PR and what its commits left out, and who may start one now", async () => {
     await closeOnboarding();
     await harness.test.db.environmentProposal.updateMany({ where: { projectId, state: "proposed" }, data: { state: "rejected" } });
     const admin = await harness.as(harness.fixture.a.admin);
@@ -162,7 +162,7 @@ describe("the onboarding task (F-113, ticket 29)", () => {
     await harness.test.db.environmentProposal.updateMany({ where: { projectId, state: "proposed" }, data: { state: "rejected" } });
   });
 
-  it("F-113: the open proposal is shown per repo against the environment as saved: its script, its checks and the variables it needs, then the services", async () => {
+  it("F-113/c2: the open proposal is shown per repo against the environment as saved: its script, its checks and the variables it needs, then the services", async () => {
     await closeOnboarding();
     const admin = await harness.as(harness.fixture.a.admin);
     const member = await harness.as(harness.fixture.a.member);
@@ -197,7 +197,7 @@ describe("the onboarding task (F-113, ticket 29)", () => {
     expect(await codeOf((await harness.as(harness.fixture.b.admin)).environments.proposal({ projectId }))).toBe("NOT_FOUND");
   });
 
-  it("F-113: only a project admin decides: accept saves the next version once; reject and a bare edit are their own", async () => {
+  it("F-113/c2: only a project admin decides: accept saves the next version once; reject and a bare edit are their own", async () => {
     await closeOnboarding();
     const admin = await harness.as(harness.fixture.a.admin);
     const member = await harness.as(harness.fixture.a.member);
@@ -223,7 +223,7 @@ describe("the onboarding task (F-113, ticket 29)", () => {
     expect((await harness.test.db.environment.findFirstOrThrow({ where: { projectId } })).setupScript).toBe(before.setupScript);
   });
 
-  it("F-113: an admin's edit that adds a secret's value is refused by the scan, and nothing is saved; a clean edit is accepted", async () => {
+  it("F-113/c2: an admin's edit that adds a secret's value is refused by the scan, and nothing is saved; a clean edit is accepted", async () => {
     await closeOnboarding();
     const admin = await harness.as(harness.fixture.a.admin);
     const { taskId } = await admin.environments.startOnboarding({ projectId });

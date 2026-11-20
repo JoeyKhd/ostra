@@ -83,7 +83,7 @@ const credentials: SnapshotCredentials = snapshotCredentialsSchema.parse({
 });
 
 describe("the snapshot's Dockerfile (F-051)", () => {
-  it("F-051: a two-repo environment with setup secrets: each checkout copied, the setup once per repo, each secret mounted for its own repo's step only and in no file", () => {
+  it("F-051/c1,c4: a two-repo environment with setup secrets: each checkout copied, the setup once per repo, each secret mounted for its own repo's step only and in no file", () => {
     const planned = planSnapshotBuild({ snapshotId, projectId, environment: environment(), credentials, defaultBaseImage: "ghcr.io/ostra/base:0.0.0" });
     if (!planned.ok) throw new Error(planned.detail);
     const { dockerfile, contextFiles, secrets, scanFor } = planned.plan;
@@ -128,7 +128,7 @@ describe("the snapshot's Dockerfile (F-051)", () => {
     expect(snapshotTag(projectId, snapshotId)).toBe("ostra-snapshot/0196f1a0-project-a:0196f1a0-snapshot-17");
   });
 
-  it("F-051: a base image a FROM line can't carry as one word is refused", () => {
+  it("F-051/c1: a base image a FROM line can't carry as one word is refused", () => {
     const refused = planSnapshotBuild({ snapshotId, projectId, environment: { ...environment(), baseImage: "node:24\nRUN curl evil" }, credentials, defaultBaseImage: "ghcr.io/ostra/base:0.0.0" });
     expect(refused).toEqual({ ok: false, detail: "the environment's base image isn't an image name" });
   });
@@ -160,7 +160,7 @@ describe("the scan before use (F-051)", () => {
     { name: ".npmrc", value: NPMRC },
   ];
 
-  it("F-051: the scan finds a planted setup secret in a plain, a gzip and a zstd layer, raw and in base64, and passes a clean image (its negative control)", async () => {
+  it("F-051/c6: the scan finds a planted setup secret in a plain, a gzip and a zstd layer, raw and in base64, and passes a clean image (its negative control)", async () => {
     // The negative control: the values planted in an image the scan must fail.
     const raw = await archive("raw.tar", [layer({ "task/snapshot/workspace/test1/.env.local": `API_TOKEN=${API_TOKEN}\n` })]);
     expect((await scanImageArchive(raw, targets)).found).toEqual(["API_TOKEN"]);
@@ -186,7 +186,7 @@ describe("the scan before use (F-051)", () => {
     expect(passed.bytesScanned).toBeGreaterThan(0);
   });
 
-  it("F-051: a value under 6 characters isn't searched for, and a file that isn't a tar fails the scan", async () => {
+  it("F-051/c6: a value under 6 characters isn't searched for, and a file that isn't a tar fails the scan", async () => {
     expect(needlesOf("abc12")).toEqual([]);
     expect(needlesOf("abcdef").length).toBeGreaterThan(0);
     const notTar = path.join(dir, "not.tar");
@@ -249,7 +249,7 @@ describe("a snapshot built and kept on this host (F-051)", () => {
     };
   };
 
-  it("F-051: a snapshot is built from the repos' checkouts with its secrets mounted, scanned clean, kept by its ID, and its staging and secret files gone", async () => {
+  it("F-051/c1: a snapshot is built from the repos' checkouts with its secrets mounted, scanned clean, kept by its ID, and its staging and secret files gone", async () => {
     const seen: { secretsDuringBuild?: Record<string, string>; contextFiles?: string[] } = {};
     const { snapshots, run } = build(fakeBuildKit(seen));
     expect(await snapshots.hasSnapshot(snapshotId)).toEqual({ ok: true, value: null });
@@ -268,7 +268,7 @@ describe("a snapshot built and kept on this host (F-051)", () => {
     expect(engine.calls.some((call) => call.startsWith("GET /images/") && call.endsWith("/get"))).toBe(true);
   }, 120_000);
 
-  it("F-051: an image that holds a setup secret fails the build with secret-found, names the secret and never its value, and is deleted", async () => {
+  it("F-051/c4,c6: an image that holds a setup secret fails the build with secret-found, names the secret and never its value, and is deleted", async () => {
     const output: string[] = [];
     const { snapshots, run } = build(fakeBuildKit({}, (secrets) => ({ "task/snapshot/workspace/test1/.env.cache": `API_TOKEN=${secrets["s0_0"] ?? ""}` })), output);
     const built = await run();
@@ -284,7 +284,7 @@ describe("a snapshot built and kept on this host (F-051)", () => {
   const PUSH_TOKEN = "ostra_push_cred_1f2e3d4c5b6a7980";
   const push = { ref: `registry.ostra-test.invalid/ostra/${projectId}:${snapshotId}`, credential: { username: "ostra-pusher", token: PUSH_TOKEN } };
 
-  it("F-120: with a push, the scanned image is tagged and pushed with the push credential only after its scan, and the registry's digest comes back", async () => {
+  it("F-120/c2: with a push, the scanned image is tagged and pushed with the push credential only after its scan, and the registry's digest comes back", async () => {
     const { snapshots } = build(fakeBuildKit({}));
     const built = await snapshots.buildSnapshot({ snapshotId, projectId, environment: environment(upstream.origin), credentials, push, onOutput: () => undefined });
     if (!built.ok) throw new Error(built.error.message);
@@ -302,7 +302,7 @@ describe("a snapshot built and kept on this host (F-051)", () => {
     expect(await readdir(path.join(root, "runner", "snapshots"))).toEqual([]);
   }, 120_000);
 
-  it("F-120: an image the scan refuses is never pushed, and a refused push fails the build without the credential's value", async () => {
+  it("F-120/c2: an image the scan refuses is never pushed, and a refused push fails the build without the credential's value", async () => {
     const planted = build(fakeBuildKit({}, (secrets) => ({ "task/snapshot/workspace/test1/.env.cache": `API_TOKEN=${secrets["s0_0"] ?? ""}` })));
     const refused = await planted.snapshots.buildSnapshot({ snapshotId, projectId, environment: environment(upstream.origin), credentials, push, onOutput: () => undefined });
     expect(refused).toMatchObject({ ok: true, value: { outcome: "failed", reason: "secret-found" } });
@@ -317,7 +317,7 @@ describe("a snapshot built and kept on this host (F-051)", () => {
     }
   }, 120_000);
 
-  it("F-051: a failing setup is setup-failed, and a secret the build prints is hidden from its output", async () => {
+  it("F-051/c4: a failing setup is setup-failed, and a secret the build prints is hidden from its output", async () => {
     const output: string[] = [];
     const { run } = build(fakeBuildKit({}, undefined, 1, `npm ERR! token ${API_TOKEN} refused\n${SETUP_FAILED_MARKER}\n`), output);
     const built = await run();

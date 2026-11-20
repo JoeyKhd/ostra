@@ -138,7 +138,7 @@ describe("sub-issues (F-077)", () => {
   let parentTicketId: TicketId;
   const keys: Record<string, string> = {};
 
-  it("F-077: a code start on a three-level tree starts only its leaves; a child elsewhere is listed and skipped", async () => {
+  it("F-077/c1: a code start on a three-level tree starts only its leaves; a child elsewhere is listed and skipped", async () => {
     // P ─ A (leaf), B ─ B1 (leaf), B2 ─ B2a (leaf, the third level); C closed; D on another team; E made after the poll.
     parent = await linearIssue("Parent");
     const a = await linearIssue("A", { parentId: parent.id });
@@ -178,7 +178,7 @@ describe("sub-issues (F-077)", () => {
     expect(await test.db.task.count({ where: { parentTicketId } })).toBe(4);
   });
 
-  it("F-077: the parent never gets a code task, by a member's start, a rule's or an outside delegation's; a refine start refines the parent itself", async () => {
+  it("F-077/c2: the parent never gets a code task, by a member's start, a rule's or an outside delegation's; a refine start refines the parent itself", async () => {
     const refused = await test.db.$transaction((tx) => startTicketTask({ tx, scope: member, publicUrl: PUBLIC_URL, jobs, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock }, { projectId, ticketId: parentTicketId }));
     expect(refused).toMatchObject({ ok: false, error: "has-sub-issues" });
     const byRule = await test.db.$transaction((tx) =>
@@ -207,7 +207,7 @@ describe("sub-issues (F-077)", () => {
     expect(await test.db.task.count({ where: { ticketId: parentTicketId, kind: "refine" } })).toBe(1);
   });
 
-  it("F-077: more than 50 leaves start nothing, and the caller gets the count", async () => {
+  it("F-077/c1: more than 50 leaves start nothing, and the caller gets the count", async () => {
     const big = await linearIssue("Big parent");
     for (let index = 0; index < 51; index += 1) {
       await linearIssue(`Leaf ${String(index)}`, { parentId: big.id });
@@ -219,7 +219,7 @@ describe("sub-issues (F-077)", () => {
     expect(await test.db.task.count({ where: { parentTicketId: bigId } })).toBe(0);
   });
 
-  it("F-077, F-031: the parent's one progress comment lists each child, and is edited, not posted again, as they move", async () => {
+  it("F-077/c2, F-031: the parent's one progress comment lists each child, and is edited, not posted again, as they move", async () => {
     await syncWritesTo(parentTicketId);
     const [first] = ostraCommentsOn(parent.id);
     expect(ostraCommentsOn(parent.id)).toHaveLength(1);
@@ -241,7 +241,7 @@ describe("sub-issues (F-077)", () => {
     expect(await test.db.ticketWrite.count({ where: { ticketId: parentTicketId, state: { not: "done" } } })).toBe(0);
   });
 
-  it("F-077: a child's prompt holds its own ticket and its parent's accepted acceptance criteria", async () => {
+  it("F-077/c1: a child's prompt holds its own ticket and its parent's accepted acceptance criteria", async () => {
     const refineTask = await test.db.task.findFirstOrThrow({ where: { ticketId: parentTicketId, kind: "refine" } });
     await test.db.refineDraft.create({
       data: { organizationId, projectId, taskId: refineTask.id, version: 1, description: "The split", acceptanceCriteria: ["The login page loads in 1 s", "Errors show inline"], source: "agent", appliedAt: new Date() },
@@ -258,7 +258,7 @@ describe("sub-issues (F-077)", () => {
     expect(prompt).toContain("Errors show inline");
   });
 
-  it("F-077: the Jira fake's sub-tasks start the same way", async () => {
+  it("F-077/c1: the Jira fake's sub-tasks start the same way", async () => {
     const project = site.projects[0]?.id ?? "";
     const jiraParent = site.createIssue(project, { summary: "A Jira parent" });
     const subtasks = [site.createIssue(project, { summary: "Sub-task one" }), site.createIssue(project, { summary: "Sub-task two" })];

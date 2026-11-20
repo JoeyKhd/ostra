@@ -134,7 +134,7 @@ const runTurn = async (agent: Agent): Promise<readonly StoredEvent[]> => {
 const partsOf = (messages: readonly TaskUIMessage[]) => messages.flatMap((message) => message.parts);
 
 describe("the task page's fold, for every agent (F-023)", () => {
-  it.each(agents)("F-023: $name's turn folds into the same rows: its message, its reads, edits and commands, and the edit's files", async (agent) => {
+  it.each(agents)("F-023/c1: $name's turn folds into the same rows: its message, its reads, edits and commands, and the edit's files", async (agent) => {
     const stored = await runTurn(agent);
     const parts = partsOf(foldTaskEvents(stored, []));
     const types = new Set(parts.map((part) => part.type));

@@ -48,7 +48,7 @@ const uploader = (secret = SECRET) => corePanelUploader({ coreUrl: harness.url, 
 const bytesOf = (text: string): Uint8Array => new TextEncoder().encode(text);
 
 describe("core's endpoint for the panel's files", () => {
-  it("F-021: stores a skill's file for the organization, as a blob with no task, and the bytes read back whole", async () => {
+  it("F-021/c1: stores a skill's file for the organization, as a blob with no task, and the bytes read back whole", async () => {
     const text = "2026-11-19: example line\nsecond line\n";
     const stored = await uploader()({ organizationId: organizationId(), purpose: "skill-file", bytes: bytesOf(text) });
     expect(stored.kind).toBe("stored");
@@ -63,7 +63,7 @@ describe("core's endpoint for the panel's files", () => {
     expect(JSON.stringify(records)).not.toContain("second line");
   });
 
-  it("F-021: a file over a skill file's limit is refused as too large and nothing is stored", async () => {
+  it("F-021/c1: a file over a skill file's limit is refused as too large and nothing is stored", async () => {
     const before = await test.db.blob.count({ where: { organizationId: organizationId(), purpose: "skill-file" } });
     const answer = await uploader()({ organizationId: organizationId(), purpose: "skill-file", bytes: new Uint8Array(profileLimits.skillFileMaxBytes + 1) });
     expect(answer).toEqual({ kind: "too-large" });
@@ -78,7 +78,7 @@ describe("core's endpoint for the panel's files", () => {
     expect(await test.db.blob.count()).toBe(before);
   });
 
-  it("F-021: a token is good for the bytes it names and for nothing else, and an expired one for nothing", async () => {
+  it("F-021/c1: a token is good for the bytes it names and for nothing else, and an expired one for nothing", async () => {
     const tokens = createPanelBlobTokens(SECRET);
     const digest = (text: string) => sha256HexSchema.parse(createHash("sha256").update(text).digest("hex"));
     const issue = (over: { size?: number; sha256?: string; expiresAt?: number }) =>

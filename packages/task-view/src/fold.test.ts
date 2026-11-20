@@ -857,7 +857,7 @@ describe("reasoning effort in the thread (F-137)", () => {
   const otherTurn = turnIdSchema.parse("01900000-0000-7000-8000-0000000000b2");
   const effortOf = (messages: readonly TaskUIMessage[]) => partsOf(messages).find((part) => part.type === "data-effort");
 
-  it("F-137: a turn keeps the level it ran at, the level asked for when clamped, and its reasoning tokens", () => {
+  it("F-137/c8: a turn keeps the level it ran at, the level asked for when clamped, and its reasoning tokens", () => {
     const clamped = foldTaskEvents(storeEvents([
       { ...f["turn.started"], effort: "max", adjustedFrom: "xhigh" },
       { ...f["usage.recorded"], outputTokens: 9_100, reasoningTokens: 6_400 },
@@ -879,7 +879,7 @@ describe("reasoning effort in the thread (F-137)", () => {
     expect(meta?.usage).not.toHaveProperty("reasoningTokens");
   });
 
-  it("F-137: a change during a turn applies from the next turn, between turns it doesn't say so, and it sits in time order", () => {
+  it("F-137/c8: a change during a turn applies from the next turn, between turns it doesn't say so, and it sits in time order", () => {
     const during = foldTaskEvents(storeEvents([f["turn.started"], f["agent.message"], { ...f["effort.changed"], from: "xhigh", to: "low" }]), []);
     expect(effortOf(during)).toMatchObject({ data: { from: "xhigh", to: "low", memberId: fixtureIds.member, duringTurn: true } });
     expect(during.map((message) => message.role)).toEqual(["assistant", "system"]);
@@ -888,7 +888,7 @@ describe("reasoning effort in the thread (F-137)", () => {
     expect(between.map((message) => message.role)).toEqual(["assistant", "system", "assistant"]);
   });
 
-  it("F-137: the state follows the task's level, the running turn's level and the reasoning tokens", () => {
+  it("F-137/c11: the state follows the task's level, the running turn's level and the reasoning tokens", () => {
     const events = storeEvents([
       { ...f["turn.started"], effort: "max", adjustedFrom: "xhigh" },
       { ...f["usage.recorded"], reasoningTokens: 6_400 },
@@ -1010,7 +1010,7 @@ describe("queued messages (ticket 19)", () => {
   const queued = clientMessageIdSchema.parse("01900000-0000-7000-8000-0000000000c2");
   const steered = clientMessageIdSchema.parse("01900000-0000-7000-8000-0000000000c3");
 
-  it("F-024: a queued message reads queued to every viewer until its turn starts, then delivered after the turn", () => {
+  it("F-024/c3: a queued message reads queued to every viewer until its turn starts, then delivered after the turn", () => {
     const log = [
       stored(1, { kind: "turn.started", turnId: turnIdSchema.parse("t-1") }),
       stored(2, { kind: "user.message", memberId, clientMessageId: queued, text: "Also the key", delivery: "queued" }),
@@ -1035,7 +1035,7 @@ describe("held turns (F-037)", () => {
   const budgetId = f["turn.held"].budgetId;
   const authorOf = (messages: readonly TaskUIMessage[], id: string) => messages.find((one) => one.id === `user:${id}`)?.metadata?.author;
 
-  it("F-037: a message the budget held reads held, with the held row after it, until the release lets its turn start", () => {
+  it("F-037/c4: a message the budget held reads held, with the held row after it, until the release lets its turn start", () => {
     const log = [
       stored(1, { kind: "turn.started", turnId: turnIdSchema.parse("t-1") }),
       stored(2, { kind: "turn.ended", turnId: turnIdSchema.parse("t-1"), stopReason: "end_turn" }),
@@ -1054,7 +1054,7 @@ describe("held turns (F-037)", () => {
     expect(authorOf(started, message)).toMatchObject({ deliveryState: "delivered-after-turn" });
   });
 
-  it("F-037: a queued message under a running turn isn't held, and a held dispatch holds no message", () => {
+  it("F-037/c4: a queued message under a running turn isn't held, and a held dispatch holds no message", () => {
     const log = [
       stored(1, { kind: "turn.started", turnId: turnIdSchema.parse("t-1") }),
       stored(2, { kind: "user.message", memberId, clientMessageId: later, text: "Then the docs", delivery: "queued" }),
@@ -1066,7 +1066,7 @@ describe("held turns (F-037)", () => {
 });
 
 describe("memory proposals (F-111)", () => {
-  it("F-111: an agent's proposal is a row in the thread with its title, and a note's use is none", () => {
+  it("F-111/c1: an agent's proposal is a row in the thread with its title, and a note's use is none", () => {
     const sessionId = sessionIdSchema.parse("01900000-0000-7000-8000-0000000000e4");
     const stored = (seq: number, event: TaskEvent): StoredEvent => storedEventSchema.parse({ taskId: "01900000-0000-7000-8000-0000000000d4", seq, sessionId, sessionSeq: seq, at: seq * 1000, event });
     const messages = foldTaskEvents(
@@ -1086,7 +1086,7 @@ describe("memory proposals (F-111)", () => {
 });
 
 describe("an accepted @ostra comment (F-111)", () => {
-  it("F-111: pr.comment_received is a row with its seq, URL, login and line, for Remember this, and its neighbours draw none", () => {
+  it("F-111/c1: pr.comment_received is a row with its seq, URL, login and line, for Remember this, and its neighbours draw none", () => {
     const sessionId = sessionIdSchema.parse("01900000-0000-7000-8000-0000000000e5");
     const stored = (seq: number, event: TaskEvent): StoredEvent => storedEventSchema.parse({ taskId: "01900000-0000-7000-8000-0000000000d5", seq, sessionId, sessionSeq: seq, at: seq * 1000, event });
     const parts = foldTaskEvents([stored(1, { kind: "turn.started", turnId: turnIdSchema.parse("t-1") }), stored(5, f["diff.comments_sent"]), stored(6, f["ticket.closed"]), stored(7, f["pr.comment_received"])], []).flatMap((message) => message.parts);

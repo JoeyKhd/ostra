@@ -11,7 +11,7 @@ test.describe.configure({ mode: "serial" });
 
 const panelPages = ["/", "/organization/models", "/organization/github", "/organization/runners", "/projects/new", "/tasks/new"] as const;
 
-test("F-001: with OSTRA_ALLOW_DEFAULT_PASSWORD the default password opens the panel, with a banner on every page until it changes", async ({ page }) => {
+test("F-001/c6: with OSTRA_ALLOW_DEFAULT_PASSWORD the default password opens the panel, with a banner on every page until it changes", async ({ page }) => {
   await page.goto("/sign-in");
   // Text filled in before React hydrates the form never reaches it (`hydrated`).
   await hydrated(page.getByLabel("Username or email"));

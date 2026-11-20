@@ -95,7 +95,7 @@ const notify = (recipients: readonly NotificationRecipient[], extra: Partial<Mom
 });
 
 describe("the Resend email adapter", () => {
-  it("F-115: mails an account mail once to its one address, the link in the HTML and the text and never in a log line, an error or the answer", async () => {
+  it("F-115/c1: mails an account mail once to its one address, the link in the HTML and the text and never in a log line, an error or the answer", async () => {
     const api = await start();
     api.refuse.add("refused-newcomer@example.com");
     const context = memoryAdapterContext();
@@ -130,7 +130,7 @@ describe("the Resend email adapter", () => {
     expect(await adapter.update(notify([ada]), "any")).toMatchObject({ ok: false, error: { code: "unsupported" } });
   });
 
-  it("F-115: sends the rendered subject, HTML and text from the configured name and address, one message per recipient", async () => {
+  it("F-115/c2: sends the rendered subject, HTML and text from the configured name and address, one message per recipient", async () => {
     const api = await start();
     const notification = notify([ada, grace]);
     const sent = await adapterFor(api, { fromName: "Acme ostra" }).send(notification);
@@ -149,7 +149,7 @@ describe("the Resend email adapter", () => {
     expect(sent.value).toEqual({ providerMessageId: api.received[0]?.id, refused: [] });
   });
 
-  it("F-115: sets Resend's idempotency key from the notification's key and the recipient, so a retry mails nobody twice", async () => {
+  it("F-115/c2: sets Resend's idempotency key from the notification's key and the recipient, so a retry mails nobody twice", async () => {
     const api = await start();
     const adapter = adapterFor(api);
     const notification = notify([ada, grace]);
@@ -173,7 +173,7 @@ describe("the Resend email adapter", () => {
     expect(resendIdempotencyKey("short", "member-1")).toBe("short:member-1");
   });
 
-  it("F-115: reports a recipient with no address, an invalid one or one Resend refuses, and still mails the others; one address once", async () => {
+  it("F-115/c2: reports a recipient with no address, an invalid one or one Resend refuses, and still mails the others; one address once", async () => {
     const api = await start();
     api.refuse.add("bad@example.com");
     const invalid: NotificationRecipient = { ...suiteRecipient("odd", { email: false, mention: false }), email: "not an address" };
@@ -201,7 +201,7 @@ describe("the Resend email adapter", () => {
     expect(api.calls()).toBe(0);
   });
 
-  it("F-115: turns Resend's 429 into rate-limited with its retry time, the default without one, and a used-up quota into a long wait", async () => {
+  it("F-115/c2: turns Resend's 429 into rate-limited with its retry time, the default without one, and a used-up quota into a long wait", async () => {
     const api = await start();
     const adapter = adapterFor(api);
     api.rateLimitNext(7);
@@ -214,7 +214,7 @@ describe("the Resend email adapter", () => {
     expect(quota.ok ? 0 : quota.error.retryAfterMs).toBeGreaterThanOrEqual(60 * 60 * 1000);
   });
 
-  it("F-115: a refused key is the adapter's failure, in words that never hold the key", async () => {
+  it("F-115/c2: a refused key is the adapter's failure, in words that never hold the key", async () => {
     const api = await start();
     const secret = "re_live_never_in_a_message_9f8e7d6c";
     const context = memoryAdapterContext();
@@ -250,7 +250,7 @@ describe("the Resend email adapter", () => {
     expect(await unreachable.health()).toEqual({ status: "down", reason: "Resend couldn't be reached or failed" });
   });
 
-  it("F-115: a send that stops half way names its error, and the retry mails only who wasn't mailed", async () => {
+  it("F-115/c2: a send that stops half way names its error, and the retry mails only who wasn't mailed", async () => {
     const api = await start();
     const adapter = adapterFor(api);
     const notification = notify([ada, grace]);
@@ -316,7 +316,7 @@ describe("the Resend email adapter's health", () => {
     expect(await adapterFor(api, { from: "onboarding@resend.dev" }).health()).toEqual({ status: "ok" });
   });
 
-  it("F-115: is down, in words, for a domain that isn't set up, isn't verified yet or isn't an address", async () => {
+  it("F-115/c2: is down, in words, for a domain that isn't set up, isn't verified yet or isn't an address", async () => {
     const api = await start();
     expect(await adapterFor(api, { from: "ostra@stranger.test" }).health()).toEqual({
       status: "down",
@@ -362,7 +362,7 @@ const sendAndReadBack = async (options: { readonly baseUrl: string; readonly api
 };
 
 describe("the Resend email adapter: the live case's send and read-back", () => {
-  it("F-115: sends one mail to the test recipient and reads its delivery back (on the fake)", async () => {
+  it("F-115/c2: sends one mail to the test recipient and reads its delivery back (on the fake)", async () => {
     const api = await start();
     const { notification, id, delivery } = await sendAndReadBack({ baseUrl: api.url, apiKey: api.apiKey, from: FROM, to: "delivered@resend.dev" });
     expect(delivery).toMatchObject({ id, to: ["delivered@resend.dev"], subject: notification.rendered?.subject, last_event: "delivered" });

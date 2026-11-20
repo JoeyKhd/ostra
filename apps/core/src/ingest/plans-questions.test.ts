@@ -124,7 +124,7 @@ afterAll(async () => {
 });
 
 describe("plan first", () => {
-  it("F-037: a plan's approval past 100% of the budget holds the build turn, and the release sends the answer", async () => {
+  it("F-037/c4: a plan's approval past 100% of the budget holds the build turn, and the release sends the answer", async () => {
     const { task } = await planned();
     const organizationId = fixture.a.organization.id;
     const provider = await test.db.modelProvider.create({
@@ -161,7 +161,7 @@ describe("plan first", () => {
     }
   });
 
-  it("F-063: a plan raises one item for the driver, sets planState to proposed, and the task needs you", async () => {
+  it("F-063/c2: a plan raises one item for the driver, sets planState to proposed, and the task needs you", async () => {
     const { task, seq } = await planned();
     const row = await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
     expect(row).toMatchObject({ planState: "proposed", state: "needs_you", needsYouReason: "plan" });
@@ -175,7 +175,7 @@ describe("plan first", () => {
     expect(JSON.stringify(records)).not.toContain("releaseName");
   });
 
-  it("F-063: approve as shown writes plan.answered and a plan-answer with the approved plan in a marked block", async () => {
+  it("F-063/c2: approve as shown writes plan.answered and a plan-answer with the approved plan in a marked block", async () => {
     const { task } = await planned();
     expect(await answerPlan(deps, scopeOf(fixture.a.member), { taskId: task.taskId, decision: "approve", entries, message: MESSAGE })).toEqual({ ok: true, reopened: false });
     const [answered] = await eventsOf(task.taskId, "plan.answered");
@@ -196,7 +196,7 @@ describe("plan first", () => {
     expect(await answerPlan(deps, scopeOf(fixture.a.member), { taskId: task.taskId, decision: "approve", entries, message: MESSAGE })).toMatchObject({ ok: false, error: "no-plan" });
   });
 
-  it("F-063: edit and approve sends the edited plan, marked as edited", async () => {
+  it("F-063/c2: edit and approve sends the edited plan, marked as edited", async () => {
     const { task } = await planned();
     const edited: PlanEntry[] = [entries[0] ?? { content: "", priority: "high", status: "pending" }, { content: "Add releaseName, sorted with the other keys", priority: "medium", status: "pending" }];
     expect(await answerPlan(deps, scopeOf(fixture.a.member), { taskId: task.taskId, decision: "approve", entries: edited, message: MESSAGE })).toMatchObject({ ok: true });
@@ -207,7 +207,7 @@ describe("plan first", () => {
     expect(prompt).toContain("sorted with the other keys");
   });
 
-  it("F-063: ask for changes writes a revise and its command, and leaves planState proposed until the next plan", async () => {
+  it("F-063/c2: ask for changes writes a revise and its command, and leaves planState proposed until the next plan", async () => {
     const { task, seq } = await planned();
     const request = "Also say which tool gave the name";
     expect(await answerPlan(deps, scopeOf(fixture.a.member), { taskId: task.taskId, decision: "revise", request })).toEqual({ ok: true, reopened: false });
@@ -224,7 +224,7 @@ describe("plan first", () => {
     expect(await answerPlan(deps, scopeOf(fixture.a.member), { taskId: task.taskId, decision: "revise", request: "   " })).toMatchObject({ ok: false, error: "invalid-input" });
   });
 
-  it("F-063: a member who isn't the driver is refused, and nothing is written", async () => {
+  it("F-063/c2: a member who isn't the driver is refused, and nothing is written", async () => {
     const { task } = await planned();
     expect(await answerPlan(deps, scopeOf(fixture.a.insider), { taskId: task.taskId, decision: "approve", entries, message: MESSAGE })).toEqual({
       ok: false,
@@ -236,7 +236,7 @@ describe("plan first", () => {
     expect((await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).planState).toBe("proposed");
   });
 
-  it("F-063: an answer after the box idled out reopens the task, an approve in build mode and a revise in plan mode", async () => {
+  it("F-063/c2: an answer after the box idled out reopens the task, an approve in build mode and a revise in plan mode", async () => {
     const approving = await planned();
     await idleOut(approving.task);
     expect(await answerPlan(deps, scopeOf(fixture.a.member), { taskId: approving.task.taskId, decision: "approve", entries, message: MESSAGE })).toEqual({ ok: true, reopened: true });
@@ -258,7 +258,7 @@ describe("plan first", () => {
     expect(await firstTurnModeOf(revising.task.taskId, revisedSessions[1]?.id ?? "")).toBe("plan");
   });
 
-  it("F-063: another organization's task is untouched", async () => {
+  it("F-063/c2: another organization's task is untouched", async () => {
     const task = await seedLeasedTask(test.db, theirs, fixture.b.project.id, { state: "running", creatorMemberId: fixture.b.admin.id });
     await ingest(theirs, frame(runnerEvent(task, 1, { kind: "turn.started", turnId }), runnerEvent(task, 2, proposed)));
     const outsider = scopeOf(fixture.a.admin);

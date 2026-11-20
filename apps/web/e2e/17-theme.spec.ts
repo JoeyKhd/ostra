@@ -115,7 +115,7 @@ const shoot = async (page: Page, name: string): Promise<void> => {
   await page.screenshot({ path: path.join(shots, `m7-${name}-final.png`) });
 };
 
-test("F-082: a new member sees dark, before and after signing in", async ({ page }, info) => {
+test("F-082/c1: a new member sees dark, before and after signing in", async ({ page }, info) => {
   const username = await member("new", info);
   await page.goto("/sign-in");
   expect(await themeOf(page)).toBe("dark");
@@ -133,7 +133,7 @@ test("F-082: a new member sees dark, before and after signing in", async ({ page
   }
 });
 
-test("F-082: Light survives a reload with no dark frame: the first screenshot after navigation is light", async ({ page, browser }, info) => {
+test("F-082/c2: Light survives a reload with no dark frame: the first screenshot after navigation is light", async ({ page, browser }, info) => {
   const username = await member("light", info);
   await signIn(page, username);
   await page.goto("/account");
@@ -169,7 +169,7 @@ test("F-082: Light survives a reload with no dark frame: the first screenshot af
   await other.context().close();
 });
 
-test("F-082: Match my system follows the emulated scheme both ways", async ({ page }, info) => {
+test("F-082/c2: Match my system follows the emulated scheme both ways", async ({ page }, info) => {
   const username = await member("system", info);
   await page.emulateMedia({ colorScheme: "dark" });
   await signIn(page, username);
@@ -192,7 +192,7 @@ test("F-082: Match my system follows the emulated scheme both ways", async ({ pa
   await expect(page.getByTestId("system-now")).toHaveText("Your system is dark now.");
 });
 
-test("F-082: the choice is per member: one member's light leaves another's dark, even in the same browser", async ({ page, browser }, info) => {
+test("F-082/c2: the choice is per member: one member's light leaves another's dark, even in the same browser", async ({ page, browser }, info) => {
   const first = await member("one", info);
   const second = await member("two", info);
   await signIn(page, first);
@@ -219,7 +219,7 @@ test("F-082: the choice is per member: one member's light leaves another's dark,
   expect(await themeOf(page)).toBe("dark");
 });
 
-test("F-082: a save that fails puts the previous theme back and says so", async ({ page }, info) => {
+test("F-082/c2: a save that fails puts the previous theme back and says so", async ({ page }, info) => {
   const username = await member("fail", info);
   await signIn(page, username);
   await page.goto("/account");
@@ -309,7 +309,7 @@ const settle = async (page: Page): Promise<void> => {
   await page.evaluate(() => Promise.all(document.getAnimations().filter((animation) => animation instanceof CSSTransition).map((animation) => animation.finished)));
 };
 
-test("F-082: Home, a task waiting on an approval and Account in light: every text passes AA", async ({ page }, info) => {
+test("F-082/c2: Home, a task waiting on an approval and Account in light: every text passes AA", async ({ page }, info) => {
   const username = await member("contrast", info);
   const taskId = await seedTask("approval");
   await page.setViewportSize(info.project.name === "phone" ? { width: 412, height: 915 } : { width: 1440, height: 956 });

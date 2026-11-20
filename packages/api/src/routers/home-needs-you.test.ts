@@ -111,7 +111,7 @@ const everyReason = {
 const isReason = (value: string): value is DbEnum.NeedsYouReason => value in everyReason;
 
 describe("the member's needs-you list", () => {
-  it("F-062: every reason renders, each seeded once, newest first", async () => {
+  it("F-062/c2: every reason renders, each seeded once, newest first", async () => {
     const reasons = Object.keys(everyReason).filter(isReason);
     const made: { readonly reason: DbEnum.NeedsYouReason; readonly item: NeedsYouItemId; readonly task: SeededTask }[] = [];
     for (const reason of reasons) {
@@ -164,14 +164,14 @@ describe("the member's needs-you list", () => {
     expect(sample?.key).toHaveLength(8);
   });
 
-  it("F-062: Home shows the first five, with the total of all", async () => {
+  it("F-062/c2: Home shows the first five, with the total of all", async () => {
     const home = await (await harness.as(harness.fixture.a.admin)).home.overview();
     expect(home.needsYou.total).toBe(19);
     expect(home.needsYou.rows).toHaveLength(5);
     expect(home.needsYou.rows.map((row) => row.reason)).toEqual(["awaiting_approval", "runner_awaiting_approval", "no_provider_for_model", "files_outside_repos", "unstorable_event"]);
   });
 
-  it("F-062: a task with two open items shows both", async () => {
+  it("F-062/c2: a task with two open items shows both", async () => {
     const task = await needsTask("Two things at once", open, { reason: "approval" });
     const approval = await harness.test.db.approval.create({ data: { ...place(open), taskId: task.taskId, sessionId: task.sessionId, toolCallId: "t-two", options: [...options], subjectKind: "path", subjectValue: "src/a.ts" } });
     const first = await makeItem(task, open, { reason: "approval", approvalId: approval.id });
@@ -181,7 +181,7 @@ describe("the member's needs-you list", () => {
     expect(rows.map((row) => row.reason).sort()).toEqual(["approval", "question"]);
   });
 
-  it("F-062: pages with a cursor, each item once, in order", async () => {
+  it("F-062/c2: pages with a cursor, each item once, in order", async () => {
     const admin = await harness.as(harness.fixture.a.admin);
     const everyone = (await admin.home.needsYou({ limit: 50 })).rows.map((row) => row.itemId);
     const seen: (NeedsYouItemId | null)[] = [];
@@ -197,7 +197,7 @@ describe("the member's needs-you list", () => {
     expect(seen).toEqual(everyone);
   });
 
-  it("F-062: shows a member only their projects' items, what they are the audience of, and every approval", async () => {
+  it("F-062/c1: shows a member only their projects' items, what they are the audience of, and every approval", async () => {
     const { a, b } = harness.fixture;
     // A restricted project's item, a driver's question on a task another member drives, another organization's item.
     const hidden = await needsTask("Secret plan", restricted, { reason: "plan" });
@@ -252,7 +252,7 @@ describe("the member's needs-you list", () => {
 });
 
 describe("notifications", () => {
-  it("F-036: the list, the unread count and 'mark read' are the member's own, and move on read and on answer", async () => {
+  it("F-036/c2: the list, the unread count and 'mark read' are the member's own, and move on read and on answer", async () => {
     const { a, b } = harness.fixture;
     const task = await needsTask("Notify me", open, { driver: a.member.id, reason: "approval" });
     const approval = await harness.test.db.approval.create({ data: { ...place(open), taskId: task.taskId, sessionId: task.sessionId, toolCallId: "t-notify", options: [...options], subjectKind: "command", subjectValue: "pnpm test" } });
@@ -305,7 +305,7 @@ describe("notifications", () => {
     expect(done.nextCursor).toBeNull();
   });
 
-  it("F-036: a notification of a project the member can no longer open, and a test mail, never show or count", async () => {
+  it("F-036/c2: a notification of a project the member can no longer open, and a test mail, never show or count", async () => {
     const { a } = harness.fixture;
     const task = await needsTask("Soon hidden", restricted, { reason: "question" });
     const itemId = await makeItem(task, restricted, { reason: "question", audience: "project_members" });
@@ -332,7 +332,7 @@ describe("notifications", () => {
     expect((await back.notifications.list({ tab: "open" })).rows.every((row) => row.kind !== "test")).toBe(true);
   });
 
-  it("F-036: shows a member's own failed deliveries under the notification, and pages the Done tab by cursor", async () => {
+  it("F-036/c2: shows a member's own failed deliveries under the notification, and pages the Done tab by cursor", async () => {
     const { a } = harness.fixture;
     const task = await needsTask("Mail trouble", open, { reason: "question" });
     const itemId = await makeItem(task, open, { reason: "question", audience: "project_members" });

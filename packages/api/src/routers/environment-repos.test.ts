@@ -51,7 +51,7 @@ afterAll(async () => {
 const environment = (entries: EnvironmentConfig["entries"]): EnvironmentConfig => ({ baseImage: null, setupScript: null, envFiles: [], entries });
 
 describe("an environment's entries and their repos", () => {
-  it("F-050: every variable, secret and file is stored for one repo of the project, and an entry for another project's repo is refused", async () => {
+  it("F-050/c2: every variable, secret and file is stored for one repo of the project, and an entry for another project's repo is refused", async () => {
     const admin = await harness.as(harness.fixture.a.admin);
     await admin.environments.save({
       projectId,
@@ -81,7 +81,7 @@ describe("an environment's entries and their repos", () => {
     expect(await harness.test.db.environmentEntry.count({ where: { repoId: otherProjectRepo } })).toBe(0);
   });
 
-  it("F-050: a key two repos need is stored in each, apart, and reaches the runner grouped by its repo, never across", async () => {
+  it("F-050/c5,c6: a key two repos need is stored in each, apart, and reaches the runner grouped by its repo, never across", async () => {
     const admin = await harness.as(harness.fixture.a.admin);
     await admin.environments.save({
       projectId,

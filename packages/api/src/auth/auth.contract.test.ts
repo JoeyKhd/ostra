@@ -63,7 +63,7 @@ describe("the pinned version", () => {
 });
 
 describe("the first account", () => {
-  it("F-002: the first account can't be made through better-auth's sign-up route: it is closed before any account exists", async () => {
+  it("F-002/c3: the first account can't be made through better-auth's sign-up route: it is closed before any account exists", async () => {
     const refusal = await refusedWith(() =>
       harness.auth.api.signUpEmail({ body: { name: "mallory", email: "mallory@example.com", password: TEST_PASSWORD, username: "mallory" } }),
     );
@@ -71,7 +71,7 @@ describe("the first account", () => {
     expect(await harness.test.db.user.count()).toBe(0);
   });
 
-  it("F-001: the first account is seeded by the server: the instance admin of the first organization, created with it", async () => {
+  it("F-001/c2: the first account is seeded by the server: the instance admin of the first organization, created with it", async () => {
     const seeded = await ensureFirstAdmin({
       db: harness.test.db,
       settings: { firstAdmin: { ...firstAdmin, password: firstAdmin.password } },
@@ -107,7 +107,7 @@ describe("the first account", () => {
     ]);
   });
 
-  it("F-002: signs in by username and by email, and the session has the role", async () => {
+  it("F-002/c2: signs in by username and by email, and the session has the role", async () => {
     for (const attempt of ["username", "email"] as const) {
       const { headers, response } =
         attempt === "username"
@@ -119,7 +119,7 @@ describe("the first account", () => {
     }
   });
 
-  it("F-002: keeps sign-up closed once the first account exists", async () => {
+  it("F-002/c3: keeps sign-up closed once the first account exists", async () => {
     const refusal = await refusedWith(() =>
       harness.auth.api.signUpEmail({
         body: { name: "latecomer", email: "late@example.com", password: TEST_PASSWORD, username: "latecomer" },
@@ -166,7 +166,7 @@ describe("the organization roles (ADR 0026)", () => {
     expect(await harness.test.db.runnerPool.count({ where: { organizationId: created.id, isDefault: true } })).toBe(1);
   });
 
-  it("F-002: the organization roles accept admin and member, and refuse owner", async () => {
+  it("F-002/c9: the organization roles accept admin and member, and refuse owner", async () => {
     const { headers } = await harness.auth.api.signInUsername({ body: { username: "ada", password: TEST_PASSWORD }, returnHeaders: true });
     const browser = cookieHeaderFrom(headers);
     const organization = await harness.test.db.organization.findFirstOrThrow();

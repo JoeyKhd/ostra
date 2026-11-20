@@ -54,7 +54,7 @@ const joined = async (token: string, name: string): Promise<RunnerId> => {
 const hashOf = (token: string): string => createHash("sha256").update(token).digest("hex");
 
 describe("pools (F-091)", () => {
-  it("F-091: pools.create, update, list and get as an admin; a member is FORBIDDEN and another organization's admin NOT_FOUND", async () => {
+  it("F-091/c1: pools.create, update, list and get as an admin; a member is FORBIDDEN and another organization's admin NOT_FOUND", async () => {
     const { a, b } = harness.fixture;
     const admin = await harness.as(a.admin);
     const made = await admin.pools.create({
@@ -136,7 +136,7 @@ describe("pools (F-091)", () => {
     });
   });
 
-  it("F-091, F-086: a pool made for projects goes at the end of each one's list, after the default pool", async () => {
+  it("F-091/c1, F-086: a pool made for projects goes at the end of each one's list, after the default pool", async () => {
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);
     const { poolId } = await admin.pools.create({
@@ -157,7 +157,7 @@ describe("pools (F-091)", () => {
 });
 
 describe("join tokens (F-091)", () => {
-  it("F-091: the token is returned once, by the call that makes it, and never by list, get, an audit entry or a log line", async () => {
+  it("F-091/c3,c4: the token is returned once, by the call that makes it, and never by list, get, an audit entry or a log line", async () => {
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);
     const pool = await admin.pools.create({ name: "shown-once" });
@@ -196,7 +196,7 @@ describe("join tokens (F-091)", () => {
     ).toBe(hashOf(second.token));
   });
 
-  it("F-091: joinTokens.create, revoke and list as an admin; a member is FORBIDDEN and another organization's admin NOT_FOUND", async () => {
+  it("F-091/c4: joinTokens.create, revoke and list as an admin; a member is FORBIDDEN and another organization's admin NOT_FOUND", async () => {
     const { a, b } = harness.fixture;
     const admin = await harness.as(a.admin);
     const { poolId } = await admin.pools.create({ name: "guarded-tokens" });
@@ -240,7 +240,7 @@ describe("join tokens (F-091)", () => {
     ).toMatchObject({ state: "revoked", revokedBy: { memberId: a.admin.id } });
   });
 
-  it("F-091: in a rotation both tokens work until the first is revoked, and the runner that joined with it stays", async () => {
+  it("F-091/c5: in a rotation both tokens work until the first is revoked, and the runner that joined with it stays", async () => {
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);
     const pool = await admin.pools.create({ name: "rotating" });
@@ -279,7 +279,7 @@ describe("approval (F-091)", () => {
     return { poolId: made.poolId, token: made.joinToken.token };
   };
 
-  it("F-091: an admin approves a joining runner; a repeat answers the same and changes nothing", async () => {
+  it("F-091/c6: an admin approves a joining runner; a repeat answers the same and changes nothing", async () => {
     const { a, b } = harness.fixture;
     const { token } = await approvalPool("approving");
     const runnerId = await joined(token, "wants-in");
@@ -332,7 +332,7 @@ describe("approval (F-091)", () => {
     ).toBeNull();
   });
 
-  it("F-091: an admin rejects a joining runner; a repeat, or an approve after, answers the same and changes nothing", async () => {
+  it("F-091/c6: an admin rejects a joining runner; a repeat, or an approve after, answers the same and changes nothing", async () => {
     const { a, b } = harness.fixture;
     const { token } = await approvalPool("rejecting");
     const runnerId = await joined(token, "turned-away");

@@ -35,24 +35,24 @@ const readAllowed = async () => allowedSchema.parse(JSON.parse(await readFile(pa
 const readMessages = async (): Promise<unknown> => JSON.parse(await readFile(path.join(webDir, "messages", "en.json"), "utf8"));
 
 describe("the message-file check", () => {
-  it("F-083: no JSX text, aria-label, title, placeholder, alt or toast in apps/web and task-view bypasses t", async () => {
+  it("F-083/c1: no JSX text, aria-label, title, placeholder, alt or toast in apps/web and task-view bypasses t", async () => {
     const allowed = await readAllowed();
     const findings = (await readSources()).filter(({ file }) => file.endsWith(".tsx")).flatMap(({ file, source }) => checkSource(file, source, allowed));
     expect(findings.map((finding) => `${finding.file}:${String(finding.line)} ${finding.kind}${finding.attribute === undefined ? "" : `[${finding.attribute}]`} ${JSON.stringify(finding.text)}`)).toEqual([]);
   });
 
-  it("F-083: every key of en.json is used somewhere, and none is unused", async () => {
+  it("F-083/c1: every key of en.json is used somewhere, and none is unused", async () => {
     expect(unusedKeys(await readMessages(), await readSources())).toEqual([]);
   });
 
-  it("F-083: every allowed literal is still in a source, with its reason", async () => {
+  it("F-083/c1: every allowed literal is still in a source, with its reason", async () => {
     const allowed = await readAllowed();
     const sources = (await readSources()).filter(({ file }) => file.endsWith(".tsx"));
     const all = sources.flatMap(({ file, source }) => checkSource(file, source));
     expect(allowed.filter((entry) => !all.some((finding) => finding.text === entry.text)).map((entry) => entry.text)).toEqual([]);
   });
 
-  it("F-083: the check finds a planted literal in JSX text, in a shown expression and in an attribute", () => {
+  it("F-083/c1: the check finds a planted literal in JSX text, in a shown expression and in an attribute", () => {
     const planted = [
       "export const A = () => <p>Hello there</p>;",
       'export const B = ({ ok }: { ok: boolean }) => <p>{ok ? "Saved" : t("common.no")}</p>;',
@@ -84,7 +84,7 @@ describe("the message-file check", () => {
     expect(checkSource("clean.tsx", clean, [{ text: "⌘K", reason: "A keyboard shortcut." }])).toEqual([]);
   });
 
-  it("F-083: the check finds an unused key, and a template that spells a key's start counts as using it", () => {
+  it("F-083/c1: the check finds an unused key, and a template that spells a key's start counts as using it", () => {
     const messages = { common: { save: "Save", gone: "Gone" }, reason: { one: "One", two: "Two" } };
     const sources = [
       { file: "a.tsx", source: 'export const A = () => <p>{t("common.save")}</p>;' },

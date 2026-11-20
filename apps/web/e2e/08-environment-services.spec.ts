@@ -38,7 +38,7 @@ const createProject = async (page: Page, name: string): Promise<string> => {
   return projectId;
 };
 
-test("F-094, F-054: a check and a service are saved; with only a host runner online the page warns, and a task of the project waits with the note", async ({ page }, info) => {
+test("F-094/c1,c5, F-054/c1: a check and a service are saved; with only a host runner online the page warns, and a task of the project waits with the note", async ({ page }, info) => {
   test.setTimeout(120_000);
   await signIn(page);
   const projectId = await createProject(page, `svc-${info.project.name}`);

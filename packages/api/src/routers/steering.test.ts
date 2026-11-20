@@ -56,7 +56,7 @@ const steersFor = (messageId: ClientMessageId) =>
   harness.fakes.outbox.commands.filter((command) => command.kind === "steer" && Reflect.get(command.body, "clientMessageId") === messageId);
 
 describe("the driver race (ADR 0036)", () => {
-  it("F-024: a take-over and a send at the same moment, 50 times: each send committed before the take-over, as the old driver's, or was refused", async () => {
+  it("F-024/c5,c6: a take-over and a send at the same moment, 50 times: each send committed before the take-over, as the old driver's, or was refused", async () => {
     const { member, insider } = harness.fixture.a;
     const [driver, taker] = [await harness.as(member), await harness.as(insider)];
     const outcomes = { before: 0, refused: 0 };
@@ -90,7 +90,7 @@ describe("the driver race (ADR 0036)", () => {
     expect(outcomes.before + outcomes.refused).toBe(ROUNDS);
   });
 
-  it("F-024: a take-over and an interrupt at the same moment, 50 times: each interrupt committed before the take-over or was refused", async () => {
+  it("F-024/c4,c6: a take-over and an interrupt at the same moment, 50 times: each interrupt committed before the take-over or was refused", async () => {
     const { member, insider } = harness.fixture.a;
     const [driver, taker] = [await harness.as(member), await harness.as(insider)];
     for (let round = 0; round < ROUNDS; round += 1) {
@@ -115,7 +115,7 @@ describe("the driver race (ADR 0036)", () => {
     }
   });
 
-  it("F-024: a watcher's send and interrupt are refused by the API, and write nothing", async () => {
+  it("F-024/c1,c5: a watcher's send and interrupt are refused by the API, and write nothing", async () => {
     const task = await runningTask();
     const watcher = await harness.as(harness.fixture.a.insider);
     const before = (await logOf(task)).length;
@@ -131,7 +131,7 @@ describe("the driver race (ADR 0036)", () => {
     await expect((await harness.as(harness.fixture.a.member)).tasks.send({ taskId: task.taskId, clientMessageId: newMessageId(), text: "mine" })).resolves.toMatchObject({ duplicate: false });
   });
 
-  it("F-024: only a member who can open the project takes over: a restricted project's outsider and another organization are not found, and the driver stays", async () => {
+  it("F-024/c5: only a member who can open the project takes over: a restricted project's outsider and another organization are not found, and the driver stays", async () => {
     const { a, b } = harness.fixture;
     // A task in the restricted project, driven by the insider, who is on it.
     const task = await seedTask(harness, { organizationId: orgA(), projectId: a.restrictedProject.id, state: "running", driverMemberId: a.insider.id, sessionState: "running" });
@@ -148,7 +148,7 @@ describe("the driver race (ADR 0036)", () => {
 });
 
 describe("queued messages and intents", () => {
-  it("F-024: a no-steer agent's message is queued for every viewer, and delivered after the turn once the next one starts", async () => {
+  it("F-024/c3: a no-steer agent's message is queued for every viewer, and delivered after the turn once the next one starts", async () => {
     const task = await runningTask("scripted-no-steer");
     const messageId = newMessageId();
     await (await harness.as(harness.fixture.a.member)).tasks.send({ taskId: task.taskId, clientMessageId: messageId, text: "Also mention the ticket's key" });
@@ -165,7 +165,7 @@ describe("queued messages and intents", () => {
     expect((await deliveriesOf(task)).get(messageId)).toBe("delivered-after-turn");
   });
 
-  it("F-024: an agent that steers mid-turn takes the message at once, and the composer says so", async () => {
+  it("F-024/c2,c4: an agent that steers mid-turn takes the message at once, and the composer says so", async () => {
     const task = await runningTask("opencode");
     const messageId = newMessageId();
     const member = await harness.as(harness.fixture.a.member);
@@ -185,7 +185,7 @@ describe("queued messages and intents", () => {
     expect((await deliveriesOf(idle)).get(nextId)).toBe("queued");
   });
 
-  it("F-024: an intent reaches the steer command and the message, and an unknown intent is refused", async () => {
+  it("F-024/c1: an intent reaches the steer command and the message, and an unknown intent is refused", async () => {
     const task = await runningTask();
     const member = await harness.as(harness.fixture.a.member);
     const messageId = newMessageId();

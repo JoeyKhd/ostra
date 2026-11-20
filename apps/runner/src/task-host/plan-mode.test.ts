@@ -52,7 +52,7 @@ const planAnswer = (h: Harness, spec: TaskSpec, decision: "approve" | "revise", 
   h.command("plan-answer", { sessionId: spec.sessionId, decision, text });
 
 describe.each(profiles)("plan mode on the %s fake agent (F-063)", (profile) => {
-  it("F-063: a plan turn changes no file, pushes nothing and sends one plan.proposed with the plan and the last message", async () => {
+  it("F-063/c1,c4: a plan turn changes no file, pushes nothing and sends one plan.proposed with the plan and the last message", async () => {
     const h = await start();
     const { spec } = planTask(h, profile, fakeMarker("plan-turn"));
     h.dispatch(spec);
@@ -75,7 +75,7 @@ describe.each(profiles)("plan mode on the %s fake agent (F-063)", (profile) => {
     expect(h.kinds(spec)).not.toContain("session.crashed");
   }, 120_000);
 
-  it("F-063: approve continues in build mode with the plan as approved, edited, as data", async () => {
+  it("F-063/c2: approve continues in build mode with the plan as approved, edited, as data", async () => {
     const h = await start();
     const { spec } = planTask(h, profile, fakeMarker("plan-turn"));
     h.dispatch(spec);
@@ -100,7 +100,7 @@ describe.each(profiles)("plan mode on the %s fake agent (F-063)", (profile) => {
     expect(JSON.stringify(h.logs)).not.toContain("changelog");
   }, 120_000);
 
-  it("F-063: revise stays in plan mode, with the request as data, and proposes again", async () => {
+  it("F-063/c2: revise stays in plan mode, with the request as data, and proposes again", async () => {
     const h = await start();
     const { spec } = planTask(h, profile, fakeMarker("plan-turn"));
     h.dispatch(spec);
@@ -121,7 +121,7 @@ describe.each(profiles)("plan mode on the %s fake agent (F-063)", (profile) => {
 });
 
 describe("plan answers and plan mode failing (F-063)", () => {
-  it("F-063: a plan answer with no plan waiting is refused", async () => {
+  it("F-063/c2: a plan answer with no plan waiting is refused", async () => {
     const h = await start();
     const { spec } = h.taskFor(fakeMarker("say"), { agent: { ...taskSpecFixture.agent, adapter: "fake-acp-agent-rich", apiFormat: "anthropic-messages" } });
     h.dispatch(spec);
@@ -134,7 +134,7 @@ describe("plan answers and plan mode failing (F-063)", () => {
     });
   }, 120_000);
 
-  it("F-063: an agent that ends its turn on a refused request is told why and finishes its plan: one plan.proposed", async () => {
+  it("F-063/c2: an agent that ends its turn on a refused request is told why and finishes its plan: one plan.proposed", async () => {
     const h = await start();
     // `plain` has no reject-and-continue: the runner's refusal of the edit ends its turn.
     const { spec } = planTask(h, "plain", fakeMarker("ask-path", "notes.txt"));
@@ -148,7 +148,7 @@ describe("plan answers and plan mode failing (F-063)", () => {
     expect(await shared.upstream.fileAt("ostra-test/test1", `refs/heads/${spec.branchName}`, "notes.txt")).toBeNull();
   }, 120_000);
 
-  it("F-063: a plan turn that changes a file is plan mode failing: turn.failed names the path, and nothing is committed", async () => {
+  it("F-063/c1: a plan turn that changes a file is plan mode failing: turn.failed names the path, and nothing is committed", async () => {
     const h = await start();
     // The fake's `write` writes without asking anyone: an agent whose plan mode let a write through.
     const { spec } = planTask(h, "plain", fakeMarker("write", "leaked.txt"));
@@ -163,7 +163,7 @@ describe("plan answers and plan mode failing (F-063)", () => {
     expect(await shared.upstream.fileAt("ostra-test/test1", `refs/heads/${spec.branchName}`, "leaked.txt")).toBeNull();
   }, 120_000);
 
-  it("F-063: a plan turn that writes at the workspace root, outside every repo, is plan mode failing too", async () => {
+  it("F-063/c1: a plan turn that writes at the workspace root, outside every repo, is plan mode failing too", async () => {
     await shared.upstream.createRepo("ostra-test/test2", { "README.md": "# test2\n" }).catch(() => undefined);
     const h = await start();
     const [first] = taskSpecFixture.repos;

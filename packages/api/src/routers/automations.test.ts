@@ -80,7 +80,7 @@ afterAll(async () => {
 });
 
 describe("automations: who may do what (F-011, F-106)", () => {
-  it("F-011, F-106: a project admin writes automations, a member who can open the project reads them, and another project's member sees nothing", async () => {
+  it("F-011/c1, F-106/c7: a project admin writes automations, a member who can open the project reads them, and another project's member sees nothing", async () => {
     const { a } = harness.fixture;
     // A project admin who isn't an organization admin writes.
     const made = await (await projectAdmin()).automations.create({ projectId, settings: bugRule("Bugs in, tasks out") });
@@ -138,7 +138,7 @@ describe("automations: who may do what (F-011, F-106)", () => {
     expect(await harness.test.db.automation.count({ where: { projectId, name: { in: ["A member's rule", "Somebody else's rule"] } } })).toBe(0);
   });
 
-  it("F-011: a rule names a kind, a profile every member of the project may use and pool labels, and never a repo", async () => {
+  it("F-011/c2: a rule names a kind, a profile every member of the project may use and pool labels, and never a repo", async () => {
     const { a } = harness.fixture;
     const asAdmin = await admin();
     // A repo is no field of a rule: the input is refused before anything is read.
@@ -178,7 +178,7 @@ describe("automations: who may do what (F-011, F-106)", () => {
 });
 
 describe("automations: schedules (F-106)", () => {
-  it("F-106: the schedule preview gives the sentence and the next three occurrences, and refuses a schedule under the minimum interval", async () => {
+  it("F-106/c1: the schedule preview gives the sentence and the next three occurrences, and refuses a schedule under the minimum interval", async () => {
     const asMember = await member();
     const preview = await asMember.automations.previewSchedule({ cron: "0 9 * * 1", timeZone: "Europe/Amsterdam" });
     expect(preview).toMatchObject({ sentence: "Every Monday at 09:00, Amsterdam time", described: true, refusal: null, minIntervalMinutes: 60 });
@@ -199,7 +199,7 @@ describe("automations: schedules (F-106)", () => {
     expect(await harness.test.db.automation.count({ where: { name: "Too often" } })).toBe(0);
   });
 
-  it("F-106: a pause stops a schedule at once, and a resume acts from now, never firing a time it missed", async () => {
+  it("F-106/c7: a pause stops a schedule at once, and a resume acts from now, never firing a time it missed", async () => {
     const asAdmin = await admin();
     const made = await asAdmin.automations.create({ projectId, settings: mondays("Monday deps") });
     expect(made.schedule).toMatchObject({ cron: "0 9 * * 1", timeZone: "UTC", sentence: "Every Monday at 09:00, UTC", does: "prompt", title: "Update the dependencies" });
@@ -243,7 +243,7 @@ describe("automations: the dry run, Start all and the history (F-011, F-107)", (
     ruleId = (await (await admin()).automations.create({ projectId, settings: bugRule("Bug sweep") })).id;
   });
 
-  it("F-011, F-107: a dry run lists what Start all then starts, exactly, and a second press starts nothing twice", async () => {
+  it("F-011/c3, F-107/c1: a dry run lists what Start all then starts, exactly, and a second press starts nothing twice", async () => {
     const dry = await (await member()).automations.dryRun({ projectId, automationId: ruleId });
     const byKey = new Map(dry.rows.map((row) => [row.key, row.outcome] as const));
     expect([...byKey.keys()].sort()).toEqual(["ENG-101", "ENG-102", "ENG-103"]);
@@ -287,7 +287,7 @@ describe("automations: the dry run, Start all and the history (F-011, F-107)", (
     expect(listed?.lastRun?.ticketKey).toBe(runs[0]?.ticket?.key ?? null);
   });
 
-  it("F-011: Home lists a rule its hourly limit paused to the project's admins only, and resuming it clears the row", async () => {
+  it("F-011/c1: Home lists a rule its hourly limit paused to the project's admins only, and resuming it clears the row", async () => {
     const paused = await (await admin()).automations.create({ projectId, settings: bugRule("Limit reached") });
     await harness.test.db.automation.update({ where: { id: paused.id }, data: { pausedAt: new Date(), pausedReason: "hourly_limit" } });
     const byMember = await (await admin()).automations.pause({ automationId: (await (await admin()).automations.create({ projectId, settings: bugRule("Paused by hand") })).id });
@@ -303,7 +303,7 @@ describe("automations: the dry run, Start all and the history (F-011, F-107)", (
     expect((await (await member()).automations.list({ projectId })).limits).toEqual({ startsPerHour: 20, bulkStartMax: 50, missedHours: 6, minIntervalMinutes: 60 });
   });
 
-  it("F-011, F-106: a delete is soft: the automation leaves the list and starts nothing, and its history and tasks stay", async () => {
+  it("F-011, F-106/c7: a delete is soft: the automation leaves the list and starts nothing, and its history and tasks stay", async () => {
     const asAdmin = await admin();
     const before = await (await member()).automations.history({ automationId: ruleId });
     expect(before.runs.length).toBeGreaterThan(0);

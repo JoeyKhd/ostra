@@ -93,7 +93,7 @@ test.beforeAll(async () => {
   await seedInsights();
 });
 
-test("F-108: the figures on the page equal insights.get's for the picked period, and changing the period changes the URL and the figures", async ({ page }) => {
+test("F-108/c1: the figures on the page equal insights.get's for the picked period, and changing the period changes the URL and the figures", async ({ page }) => {
   await signIn(page);
   await page.goto("/organization/insights");
   await expect(page.getByRole("heading", { name: "Insights", level: 1 })).toBeVisible();
@@ -133,7 +133,7 @@ test("F-108: the figures on the page equal insights.get's for the picked period,
 
 const projectsSchema = z.object({ result: z.object({ data: z.array(z.object({ id: z.string(), name: z.string() })) }) });
 
-test("F-108: a project's Insights show insights.get's figures for that project", async ({ page }) => {
+test("F-108/c1: a project's Insights show insights.get's figures for that project", async ({ page }) => {
   await signIn(page);
   const listed = projectsSchema.parse(await (await page.request.get("/api/trpc/projects.list")).json()).result.data;
   const project = listed.find((row) => row.name === "insights-b");
@@ -147,7 +147,7 @@ test("F-108: a project's Insights show insights.get's figures for that project",
   await expect(page.getByText("By project")).toHaveCount(0);
 });
 
-test("F-108: the PR chart has a table view with the same days", async ({ page }) => {
+test("F-108/c1: the PR chart has a table view with the same days", async ({ page }) => {
   await signIn(page);
   await page.goto("/organization/insights?period=7d");
   await expect(page.getByTestId("pr-chart")).toBeVisible();

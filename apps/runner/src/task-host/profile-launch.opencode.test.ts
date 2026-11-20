@@ -135,7 +135,7 @@ const textUnder = async (dir: string): Promise<string> => {
 };
 
 describe("skills on OpenCode, with the stub models (F-021)", () => {
-  it("F-021: the profile's skill, written into the agent folder by the runner, reaches OpenCode beside the repo's own", async () => {
+  it("F-021/c6: the profile's skill, written into the agent folder by the runner, reaches OpenCode beside the repo's own", async () => {
     const h = await start();
     const [base] = taskSpecFixture.repos;
     if (base === undefined) {
@@ -157,7 +157,7 @@ describe("skills on OpenCode, with the stub models (F-021)", () => {
 });
 
 describe("MCP servers on OpenCode, with the stub models (F-021)", () => {
-  it("F-021: the server refuses a call without its token; OpenCode's call through the proxy is answered, and the token is in none of its environment, files or events", async () => {
+  it("F-021/c4: the server refuses a call without its token; OpenCode's call through the proxy is answered, and the token is in none of its environment, files or events", async () => {
     // Without the token, the server refuses.
     const direct = await fetch(mcpServer.urlFor("docs"), {
       method: "POST",
@@ -193,7 +193,7 @@ describe("MCP servers on OpenCode, with the stub models (F-021)", () => {
     expect(JSON.stringify([h.eventsOf(made.spec), h.logs])).not.toContain(TOKEN);
   }, 300_000);
 
-  it("F-021: a stdio server starts as OpenCode's child, answers its call, and stops when the agent stops", async () => {
+  it("F-021/c4: a stdio server starts as OpenCode's child, answers its call, and stops when the agent stops", async () => {
     const h = await start();
     const script = path.join(shared.root, "pid-mcp-stdio.mjs");
     const pidFile = path.join(shared.root, `stdio-${String(Date.now())}.pid`);

@@ -158,7 +158,7 @@ const dispatchedSpec = async (task: QueuedTask, runner: RunnerRef): Promise<Task
 };
 
 describe("the spec", () => {
-  it("F-137: the spec of a task on a catalog model with a 1,000,000-token window and a 128,000-token output carries both", async () => {
+  it("F-137/c10: the spec of a task on a catalog model with a 1,000,000-token window and a 128,000-token output carries both", async () => {
     const runner = await runnerAt(3);
     const { profileId } = await modelAndProfile({
       catalogId: "openai/gpt-5.5",
@@ -172,7 +172,7 @@ describe("the spec", () => {
     expect(spec.agent.effort).toBe("high");
   });
 
-  it("F-137: a custom model with no limits carries null for each, and no reasoning", async () => {
+  it("F-137/c10: a custom model with no limits carries null for each, and no reasoning", async () => {
     const runner = await runnerAt(3);
     const { profileId } = await modelAndProfile({});
     const spec = await dispatchedSpec(await queuedAt("high", profileId, runner.runnerId), runner);
@@ -182,7 +182,7 @@ describe("the spec", () => {
     expect(spec.agent.effort).toBe("default");
   });
 
-  it("F-137: an admin's controls win over the catalog's in the spec", async () => {
+  it("F-137/c4: an admin's controls win over the catalog's in the spec", async () => {
     const runner = await runnerAt(3);
     const { profileId } = await modelAndProfile({ catalogReasoning: reasoningControlsFixtures.effort, adminReasoning: reasoningControlsFixtures.effortNoLow });
     const spec = await dispatchedSpec(await queuedAt("low", profileId, runner.runnerId), runner);
@@ -191,7 +191,7 @@ describe("the spec", () => {
     expect(spec.agent.effort).toBe("medium");
   });
 
-  it("F-137: the spec carries the clamped level after the profile's model moved to one without it", async () => {
+  it("F-137/c9: the spec carries the clamped level after the profile's model moved to one without it", async () => {
     const runner = await runnerAt(3);
     const first = await modelAndProfile({ catalogReasoning: reasoningControlsFixtures.effort });
     const task = await queuedAt("xhigh", first.profileId, runner.runnerId);
@@ -207,7 +207,7 @@ describe("the spec", () => {
 });
 
 describe("the dispatch", () => {
-  it("F-137: a minor-2 runner is never offered a task with a level; a minor-3 runner is", async () => {
+  it("F-137/c14: a minor-2 runner is never offered a task with a level; a minor-3 runner is", async () => {
     const old = await runnerAt(2);
     const { profileId } = await modelAndProfile({ catalogReasoning: reasoningControlsFixtures.effort });
     const task = await queuedAt("high", profileId, old.runnerId);
@@ -235,7 +235,7 @@ describe("the dispatch", () => {
     }
   });
 
-  it("F-137: a level the model can't take at all clamps to default, and goes to a minor-2 runner", async () => {
+  it("F-137/c9: a level the model can't take at all clamps to default, and goes to a minor-2 runner", async () => {
     const old = await runnerAt(2);
     const { profileId } = await modelAndProfile({});
     expect(await dispatch(await queuedAt("high", profileId, old.runnerId))).toMatchObject({ ok: true, runnerId: old.runnerId });
@@ -257,7 +257,7 @@ describe("a driver's change", () => {
     return { task, runner };
   };
 
-  it("F-137: setTaskEffort refuses a level the session's model doesn't offer, naming the levels", async () => {
+  it("F-137/c7: setTaskEffort refuses a level the session's model doesn't offer, naming the levels", async () => {
     const { profileId } = await modelAndProfile({ catalogReasoning: reasoningControlsFixtures.effortNoLow });
     const { task } = await idleWithoutBox(profileId);
     const refused = await setTaskEffort(deps, driver, { taskId: task.taskId, level: "low", changeId: changeId() });
@@ -267,7 +267,7 @@ describe("a driver's change", () => {
     expect(await test.db.auditEntry.count({ where: { entityId: task.taskId, action: "task.effort-changed" } })).toBe(0);
   });
 
-  it("F-137: nothing is sent to a runner when the session is idle with no box; the next session's spec carries the level", async () => {
+  it("F-137/c8: nothing is sent to a runner when the session is idle with no box; the next session's spec carries the level", async () => {
     const { profileId } = await modelAndProfile({ catalogReasoning: reasoningControlsFixtures.effortNoLow });
     const { task, runner } = await idleWithoutBox(profileId);
     expect(await setTaskEffort(deps, driver, { taskId: task.taskId, level: "xhigh", changeId: changeId() })).toMatchObject({
@@ -282,7 +282,7 @@ describe("a driver's change", () => {
     expect(await test.db.auditEntry.count({ where: { entityId: task.taskId, action: "task.effort-changed" } })).toBe(1);
   });
 
-  it("F-137: a reopen in a fresh box and a rebuild-template session start at the task's level", async () => {
+  it("F-137/c8: a reopen in a fresh box and a rebuild-template session start at the task's level", async () => {
     const { profileId } = await modelAndProfile({ catalogReasoning: reasoningControlsFixtures.effortNoLow });
     const { task } = await idleWithoutBox(profileId);
     expect(await setTaskEffort(deps, driver, { taskId: task.taskId, level: "xhigh", changeId: changeId() })).toMatchObject({ ok: true, sentToRunner: false });
@@ -335,7 +335,7 @@ describe("a driver's change", () => {
 });
 
 describe("the catalog sync", () => {
-  it("F-137: a refresh writes each model's catalog controls from its entry, and never an admin's", async () => {
+  it("F-137/c4: a refresh writes each model's catalog controls from its entry, and never an admin's", async () => {
     const tokenRef = await secretStore.put({ organizationId: world.organizationId, purpose: "model-provider.token" }, "sk-sync");
     if (!tokenRef.ok) {
       throw new Error("the fake secret store refused");
@@ -394,7 +394,7 @@ describe("the catalog sync", () => {
 });
 
 describe("ingest", () => {
-  it("F-137: a turn stores its level and its reasoning tokens, and the session sums them; spend prices all output at the output price", async () => {
+  it("F-137/c8,c11,c12: a turn stores its level and its reasoning tokens, and the session sums them; spend prices all output at the output price", async () => {
     const runner = await runnerAt(3);
     const { modelId, profileId } = await modelAndProfile({ catalogReasoning: reasoningControlsFixtures.effortNoLow });
     await test.db.model.update({ where: { id: modelId }, data: { inputPricePerMTok: 1, outputPricePerMTok: 10 } });

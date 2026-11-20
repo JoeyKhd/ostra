@@ -106,7 +106,7 @@ const addService = async (): Promise<void> => {
 };
 
 describe("choosing a runner (F-069)", () => {
-  it("F-069: the project's pools in its order: the first pool's runner, then the next pool when the first has no room", async () => {
+  it("F-069/c1: the project's pools in its order: the first pool's runner, then the next pool when the first has no room", async () => {
     const first = await seedPool(test.db, { organizationId });
     const second = await seedPool(test.db, { organizationId });
     // Listed second-then-first in rows, ordered first-then-second by position.
@@ -121,7 +121,7 @@ describe("choosing a runner (F-069)", () => {
     expect(await dispatchOf(b)).toMatchObject({ ok: true, runnerId: inSecond });
   });
 
-  it("F-069: a runner must carry every label the task's profile asks for, matched exactly", async () => {
+  it("F-069/c1: a runner must carry every label the task's profile asks for, matched exactly", async () => {
     await test.db.agentProfile.update({ where: { id: world.profileId }, data: { runnerLabels: ["gpu", "region:eu"] } });
     const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId }] });
     const oneShort = await connected({ organizationId, poolId, slots: 4, labels: ["gpu", "executor:docker"], capabilities: docker });
@@ -136,7 +136,7 @@ describe("choosing a runner (F-069)", () => {
     expect((await admit(poolId)).admitted.map((entry) => entry.runnerId)).toEqual([fits]);
   });
 
-  it("F-069: each reason a task waits comes from the rows, the nearest miss across the pools", async () => {
+  it("F-069/c1: each reason a task waits comes from the rows, the nearest miss across the pools", async () => {
     const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId }] });
     const task = await queued();
     const reason = async (): Promise<unknown> => {
@@ -185,7 +185,7 @@ describe("choosing a runner (F-069)", () => {
     expect(await runnerOfLease(task.taskId)).toBe(plain);
   });
 
-  it("F-069: a task whose environment has services never goes to a host runner, in a pool or on a personal runner", async () => {
+  it("F-069/c4: a task whose environment has services never goes to a host runner, in a pool or on a personal runner", async () => {
     await addService();
     const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId }] });
     const onHost = await connected({ organizationId, poolId, executor: "host", slots: 4, resources: null, capabilities: host });
@@ -204,7 +204,7 @@ describe("choosing a runner (F-069)", () => {
 });
 
 describe("who may use a personal runner (F-069)", () => {
-  it("F-069: a member's personal runner takes only the tasks that member started and picked it for", async () => {
+  it("F-069/c2: a member's personal runner takes only the tasks that member started and picked it for", async () => {
     const owner = fixture.a.member;
     const personal = await connected({ organizationId, ownerMemberId: memberIdSchema.parse(owner.id), executor: "host", slots: 4, capabilities: host });
     const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId }] });
@@ -222,7 +222,7 @@ describe("who may use a personal runner (F-069)", () => {
     expect(await test.db.lease.count({ where: { runnerId: personal } })).toBe(1);
   });
 
-  it("F-069: a task no member started goes to the pools only, never to a personal runner, even when its member is known", async () => {
+  it("F-069/c3: a task no member started goes to the pools only, never to a personal runner, even when its member is known", async () => {
     const owner = fixture.a.member;
     const personal = await connected({ organizationId, ownerMemberId: memberIdSchema.parse(owner.id), executor: "host", slots: 4, capabilities: host });
     const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId }] });
@@ -243,7 +243,7 @@ describe("who may use a personal runner (F-069)", () => {
 });
 
 describe("the pick among fitting runners (F-069)", () => {
-  it("F-069: the most free room wins, then the runner holding the project's snapshot, then the one offered least recently", async () => {
+  it("F-069/c1: the most free room wins, then the runner holding the project's snapshot, then the one offered least recently", async () => {
     const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId }] });
     const small = await connected({ organizationId, poolId, slots: 2, capabilities: docker });
     const big = await connected({ organizationId, poolId, slots: 3, capabilities: docker });

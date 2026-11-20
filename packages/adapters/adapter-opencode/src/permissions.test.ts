@@ -79,7 +79,7 @@ const request = (title: string, toolKind: string, rawInput: unknown, locations: 
 });
 
 describe("the profile's rules as OpenCode's permissions", () => {
-  it("F-026: ostra writes every rule into OpenCode's own permissions as ask, between its allow and its deny, and relies on none of OpenCode's defaults", () => {
+  it("F-026/c7: ostra writes every rule into OpenCode's own permissions as ask, between its allow and its deny, and relies on none of OpenCode's defaults", () => {
     const permissions = buildPermissions({
       approvalRules: [
         rule("deps", "edit", { kind: "path-glob", glob: "**/package.json" }),
@@ -108,7 +108,7 @@ describe("the profile's rules as OpenCode's permissions", () => {
     expect(permissions.slice(1, -1).every((permission) => permission.effect === "ask")).toBe(true);
   });
 
-  it("F-026: without a rule, the agent works freely inside its box, and never outside it", () => {
+  it("F-026/c2: without a rule, the agent works freely inside its box, and never outside it", () => {
     const permissions = buildPermissions({ approvalRules: [], mcpServers: servers });
     expect(permissions).toEqual([
       { action: "*", resource: "*", effect: "allow" },
@@ -119,7 +119,7 @@ describe("the profile's rules as OpenCode's permissions", () => {
     expect(decide(permissions, "external_directory", "/etc/*")).toBe("deny");
   });
 
-  it("F-026: asks for at least everything a rule covers, however the request spells it: an over-ask costs a round trip, an under-ask a person", () => {
+  it("F-026/c7: asks for at least everything a rule covers, however the request spells it: an over-ask costs a round trip, an under-ask a person", () => {
     const rules = [
       rule("deps", "edit", { kind: "path-glob", glob: "**/package.json" }),
       rule("migrations", "edit", { kind: "path-glob", glob: "db/migrations/*.sql" }),
@@ -199,7 +199,7 @@ describe("OpenCode's explore subagent (2026-11-20)", () => {
     ...explorePermissions(approvalRules),
   ];
 
-  it("F-026: explore stays read-only: no edit, no command outside the read-only list, no subagent, no MCP tool, nothing outside the workspace", () => {
+  it("F-026/c7: explore stays read-only: no edit, no command outside the read-only list, no subagent, no MCP tool, nothing outside the workspace", () => {
     const explore = exploreOf([]);
     expect(decide(explore, "edit", "README.md")).toBe("deny");
     expect(decide(explore, "shell", "node -e \"require('fs').writeFileSync('x','y')\"")).toBe("deny");
@@ -249,7 +249,7 @@ describe("the profile's side of the launch", () => {
     });
   });
 
-  it("F-021: points OpenCode at the profile's skill folders, then the repos' own, names the profile's in the instructions, and refuses one outside the agent folder", async () => {
+  it("F-021/c6: points OpenCode at the profile's skill folders, then the repos' own, names the profile's in the instructions, and refuses one outside the agent folder", async () => {
     const skillDir = path.join(agentDir, "ostra-skills", "release-notes");
     const adapter = newAdapter();
     const prepared = await adapter.prepareLaunch(input({ instructions: "Prefer small commits.\n", skills: [{ name: "release-notes", dir: skillDir }] }));
@@ -269,7 +269,7 @@ describe("the profile's side of the launch", () => {
     }
   });
 
-  it("F-021: never reads the repo's own OpenCode config, in the agent and in every other OpenCode command", async () => {
+  it("F-021/c5: never reads the repo's own OpenCode config, in the agent and in every other OpenCode command", async () => {
     const prepared = await newAdapter().prepareLaunch(input());
     if (!prepared.ok) throw new Error(prepared.error.message);
     expect(prepared.value.env["OPENCODE_DISABLE_PROJECT_CONFIG"]).toBe("1");
@@ -278,7 +278,7 @@ describe("the profile's side of the launch", () => {
     expect(newAdapter().capabilities.projectConfigOverride).toBe(true);
   });
 
-  it("F-063: starts a plan-first task in OpenCode's plan agent, with the plan agent's denies, and a build task in its build agent", async () => {
+  it("F-063/c1: starts a plan-first task in OpenCode's plan agent, with the plan agent's denies, and a build task in its build agent", async () => {
     const adapter = newAdapter();
     const plan = await configOf(adapter, { mode: "plan", mcpServers: servers });
     expect(plan["default_agent"]).toBe("plan");
@@ -297,7 +297,7 @@ describe("the profile's side of the launch", () => {
 });
 
 describe("what an OpenCode permission request touches", () => {
-  it("F-026: reads an edit's path, a command and a fetch's URL, and an MCP tool as its profile server and tool", async () => {
+  it("F-026/c7: reads an edit's path, a command and a fetch's URL, and an MCP tool as its profile server and tool", async () => {
     const adapter = new Describing({ resolveBinary: () => Promise.resolve(ok(fakeBinary)) }, memoryAdapterContext());
     await adapter.prepareLaunch(input({ mcpServers: [...servers, { name: "docs-v2", transport: "http", url: "http://127.0.0.1:7/mcp/v2", readOnly: true }] }));
     // As OpenCode 2.3.2 sent them (the probe in the README).
@@ -327,7 +327,7 @@ describe("what an OpenCode permission request touches", () => {
 describe("milestone 6: the read-only kinds and ostra's tools on OpenCode (ticket 09)", () => {
   const editRule = rule("m6-edit", "edit", { kind: "path-glob", glob: "src/**" });
 
-  it("F-100: a review task's agent never edits, whatever a rule asks, and still runs commands in its box, never outside it", () => {
+  it("F-100/c1: a review task's agent never edits, whatever a rule asks, and still runs commands in its box, never outside it", () => {
     const rules = buildPermissions({ approvalRules: [editRule], mcpServers: [], kind: "review" });
     expect(decide(rules, "edit", "src/banner.ts")).toBe("deny");
     expect(decide(rules, "edit", "README.md")).toBe("deny");
@@ -337,7 +337,7 @@ describe("milestone 6: the read-only kinds and ostra's tools on OpenCode (ticket
     expect(rules.at(-1)).toEqual({ action: "external_directory", resource: "*", effect: "deny" });
   });
 
-  it("F-099: a refine task edits only when its profile allows prototyping; the built-in Refine profile doesn't, and a code task always may", () => {
+  it("F-099/c3: a refine task edits only when its profile allows prototyping; the built-in Refine profile doesn't, and a code task always may", () => {
     expect(decide(buildPermissions({ approvalRules: [], mcpServers: [], kind: "refine" }), "edit", "src/a.ts")).toBe("deny");
     expect(decide(buildPermissions({ approvalRules: [], mcpServers: [], kind: "refine", allowPrototyping: false }), "edit", "src/a.ts")).toBe("deny");
     expect(decide(buildPermissions({ approvalRules: [], mcpServers: [], kind: "refine", allowPrototyping: true }), "edit", "src/a.ts")).toBe("allow");
@@ -349,7 +349,7 @@ describe("milestone 6: the read-only kinds and ostra's tools on OpenCode (ticket
     expect(decide(buildPermissions({ approvalRules: [], mcpServers: [], kind: "refine", allowPrototyping: true }), "external_directory", "/tmp/x")).toBe("deny");
   });
 
-  it("F-100: a code task's config offers none of submit_draft, submit_review and propose_environment, and a review task's only submit_review", async () => {
+  it("F-100/c2: a code task's config offers none of submit_draft, submit_review and propose_environment, and a review task's only submit_review", async () => {
     const adapter = newAdapter();
     const permissionsOf = async (setup: Partial<PrepareLaunchInput>): Promise<readonly OpenCodePermission[]> => permissionsSchema.parse((await configOf(adapter, setup))["permissions"]);
     const offered = async (setup: Partial<PrepareLaunchInput>): Promise<readonly string[]> => {

@@ -34,7 +34,7 @@ const signedIn = async () => {
 };
 
 describe("the first-run checklist, walked (F-076)", () => {
-  it("F-076: a new organization's checklist runs admin, model provider, GitHub App, project, runner, first task, and each step ticks only once done", async () => {
+  it("F-076/c1: a new organization's checklist runs admin, model provider, GitHub App, project, runner, first task, and each step ticks only once done", async () => {
     const seeded = await ensureFirstAdmin({
       db: harness.test.db,
       settings: { firstAdmin: { email: "walker@example.com", username: "walker", password: TEST_PASSWORD, organizationName: "Walk Co" } },

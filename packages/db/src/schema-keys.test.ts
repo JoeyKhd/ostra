@@ -42,7 +42,7 @@ const providerOf = async (organizationId: string, name: string) => {
 };
 
 describe("the keys-per-project migration", () => {
-  it("F-135: refuses a list or a choice naming another organization's provider or model", async () => {
+  it("F-135/c17: refuses a list or a choice naming another organization's provider or model", async () => {
     const a = fixture.a.organization.id;
     const theirs = await providerOf(fixture.b.organization.id, "client-b");
     const attempts: readonly (() => Promise<unknown>)[] = [
@@ -139,7 +139,7 @@ describe("upgrading a milestone 4 database", () => {
     await withClient(serverUrl, (client) => client.query(`DROP DATABASE IF EXISTS ${client.escapeIdentifier(name)} WITH (FORCE)`));
   });
 
-  it("F-135: puts every provider on its default list, names each profile's model, records each session's provider, and marks a model two profiles named on different providers", async () => {
+  it("F-135/c18: puts every provider on its default list, names each profile's model, records each session's provider, and marks a model two profiles named on different providers", async () => {
     await withClient(serverUrl, (client) => client.query(`CREATE DATABASE ${client.escapeIdentifier(name)}`));
     const all = (await readdir(migrationsDir, { withFileTypes: true }))
       .filter((entry) => entry.isDirectory())

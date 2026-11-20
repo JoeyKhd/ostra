@@ -25,7 +25,7 @@ const row = (effort: TaskEffort | null, who = driver, error: string | null = nul
   renderToStaticMarkup(<TaskEffortRow effort={effort} viewer={who} onChange={() => undefined} onTakeOver={() => undefined} pending={false} error={error} />);
 
 describe("the task's effort in the properties panel", () => {
-  it("F-137: the driver changed it during a turn: the new level, and the running turn's under it", () => {
+  it("F-137/c8: the driver changed it during a turn: the new level, and the running turn's under it", () => {
     const effort = { level: "low", levels: deepseek, runningTurn: "max" } as const;
     expect(taskEffortView(effort, driver)).toEqual({ kind: "control", level: "low", levels: deepseek, runsAt: "max" });
     const html = row(effort);
@@ -63,7 +63,7 @@ describe("the task's effort in the properties panel", () => {
     expect(row(null)).toContain("animate-pulse");
   });
 
-  it("F-137: the Reasoning row sums the turns' reasoning tokens, or a dash", () => {
+  it("F-137/c11: the Reasoning row sums the turns' reasoning tokens, or a dash", () => {
     expect(renderToStaticMarkup(<ReasoningRow tokens={19_000} />)).toContain("19k tokens");
     expect(renderToStaticMarkup(<ReasoningRow tokens={0} />)).toContain("—");
   });
@@ -73,14 +73,14 @@ describe("the task's effort in the thread", () => {
   const plain = { inputTokens: 48_000, outputTokens: 9_100, cacheReadTokens: 0, cacheWriteTokens: 0, estimated: false };
   const usage = { ...plain, reasoningTokens: 6_400 };
 
-  it("F-137: a turn's usage line carries its level and reasoning tokens", () => {
+  it("F-137/c11: a turn's usage line carries its level and reasoning tokens", () => {
     expect(turnUsageText({ effort: "max", usage })).toBe("Max · 48k in · 9.1k out · 6.4k reasoning");
     expect(turnUsageText({ usage: plain })).toBe("48k in · 9.1k out");
     expect(turnUsageText({ effort: "default", usage: plain })).toBe("48k in · 9.1k out");
     expect(turnUsageText({ effort: "max" })).toBeNull();
   });
 
-  it("F-137: a clamped turn says what it ran at and why", () => {
+  it("F-137/c9: a clamped turn says what it ran at and why", () => {
     expect(clampText({ effort: "max", adjustedFrom: "xhigh" })).toBe("Ran at Max: this model has no Extra high.");
     expect(clampText({ adjustedFrom: "high" })).toBe(t("tasks.effort.ranAtDefault"));
     expect(clampText({ effort: "max" })).toBeNull();
@@ -89,7 +89,7 @@ describe("the task's effort in the thread", () => {
     expect(html).toContain('data-part="turn-clamp"');
   });
 
-  it("F-137: the marker names who set which level, and from the next turn only during one", () => {
+  it("F-137/c8: the marker names who set which level, and from the next turn only during one", () => {
     const data: EffortChangeData = { from: "xhigh", to: "low", memberId: memberIdSchema.parse("01900000-0000-7000-8000-00000000a001"), duringTurn: true, at: Date.UTC(2026, 10, 19, 14, 11) };
     expect(effortMarkerText(data, "Alex Kim")).toBe("Alex Kim set effort to Low, from the next turn");
     expect(effortMarkerText({ ...data, duringTurn: false }, "Alex Kim")).toBe("Alex Kim set effort to Low");

@@ -50,7 +50,7 @@ const deps = () => ({ db: test.db, jobs: memoryJobQueue(), audit: postgresAuditL
 const bootstrapRows = () => test.db.joinToken.findMany({ where: { bootstrap: true }, orderBy: { createdAt: "asc" } });
 
 describe("the bootstrap join token", () => {
-  it("F-091: a bootstrap token an admin revokes stays revoked: core's next start makes no other and writes nothing", async () => {
+  it("F-091/c4: a bootstrap token an admin revokes stays revoked: core's next start makes no other and writes nothing", async () => {
     expect(await ensureBootstrapJoinToken(test.db, dataDir, silentLogger)).toBe("created");
     const [made] = await bootstrapRows();
     expect(made).toBeDefined();
@@ -75,7 +75,7 @@ describe("the bootstrap join token", () => {
     await expect(readFile(path.join(dataDir, BOOTSTRAP_JOIN_TOKEN_FILE), "utf8")).rejects.toThrow();
   });
 
-  it("F-091: a live bootstrap token whose file no longer matches is replaced, the old one revoked, both audited as the system's", async () => {
+  it("F-091/c4: a live bootstrap token whose file no longer matches is replaced, the old one revoked, both audited as the system's", async () => {
     expect(await ensureBootstrapJoinToken(test.db, dataDir, silentLogger)).toBe("created");
     await writeFile(path.join(dataDir, BOOTSTRAP_JOIN_TOKEN_FILE), "ostra-join-restored-from-an-old-backup");
     expect(await ensureBootstrapJoinToken(test.db, dataDir, silentLogger)).toBe("created");

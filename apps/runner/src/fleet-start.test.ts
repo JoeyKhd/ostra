@@ -81,7 +81,7 @@ const connect = async (peer: "runner" | "sidecar", status: () => PeerStatus): Pr
 };
 
 describe("what a runner reports (F-092)", () => {
-  it("F-092, F-013: hello and each status carry the executor, its capabilities, what it offers, its labels and how it was installed, and the gateway's parser takes them", async () => {
+  it("F-092, F-013/c6: hello and each status carry the executor, its capabilities, what it offers, its labels and how it was installed, and the gateway's parser takes them", async () => {
     const resources = { slots: 4, cpuMillis: 7000, memoryMiB: 14_336 };
     const fake = await connect("runner", () => ({
       executor: "docker",
@@ -138,7 +138,7 @@ describe("what a runner reports (F-092)", () => {
 });
 
 describe("a runner's slots (F-014)", () => {
-  it("F-067, F-014: a personal runner holds two tasks at once unless OSTRA_RUNNER_SLOTS says otherwise", () => {
+  it("F-067/c1, F-014: a personal runner holds two tasks at once unless OSTRA_RUNNER_SLOTS says otherwise", () => {
     expect(PERSONAL_SLOTS).toBe(2);
     expect(hostSlots({})).toBe(2);
     expect(hostSlots({ slots: 3 })).toBe(3);
@@ -152,7 +152,7 @@ describe("drain and resume on offers (F-092)", () => {
   const dispatchOf = (seq: number, boxId: string): CommandOf<"dispatch"> =>
     commandOf("dispatch", seq, { taskId: taskSpecFixture.taskId, sessionId: sessionIdSchema.parse(`session-${boxId}`), boxId: boxIdSchema.parse(boxId), leaseEpoch: taskSpecFixture.leaseEpoch });
 
-  it("F-092: a drained runner answers offers with no free slots and refuses them, and resume takes them again", async () => {
+  it("F-092/c4: a drained runner answers offers with no free slots and refuses them, and resume takes them again", async () => {
     engine = await startFakeEngine();
     const boxes = createDockerBoxes(createEngine(engine.address), { images: { base: "ostra/base:test", runner: "ostra/runner:test" } });
     const dispatcher = createBoxDispatcher({

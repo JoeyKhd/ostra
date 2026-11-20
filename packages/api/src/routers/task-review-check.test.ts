@@ -17,7 +17,7 @@ afterAll(async () => {
   await harness.dispose();
 });
 
-it("F-104: the check's state and reason on tasks.get, per repo and head", async () => {
+it("F-104/c1: the check's state and reason on tasks.get, per repo and head", async () => {
   const { a } = harness.fixture;
   const world = await seedConnectionAndModel(harness);
   const app = harness.fakes.codeHost.apps.get(GITHUB_APP_ID);

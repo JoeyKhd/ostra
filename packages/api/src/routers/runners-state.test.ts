@@ -20,7 +20,7 @@ afterAll(async () => {
 });
 
 describe("runners.list and runners.mine", () => {
-  it("F-013: give each runner's own state, executor, capacity, labels and version, as core stored them", async () => {
+  it("F-013/c6: give each runner's own state, executor, capacity, labels and version, as core stored them", async () => {
     const { a } = harness.fixture;
     const states = ["joining", "online", "offline", "draining"] as const;
     const ids: RunnerId[] = [];

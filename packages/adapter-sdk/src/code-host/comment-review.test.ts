@@ -24,7 +24,7 @@ const fakeHost = async () => {
 };
 
 describe("a comment-type review", () => {
-  it("F-100: the interface takes COMMENT and nothing else: APPROVE and REQUEST_CHANGES don't compile, and the fake host refuses them at runtime, posting nothing", async () => {
+  it("F-100/c4: the interface takes COMMENT and nothing else: APPROVE and REQUEST_CHANGES don't compile, and the fake host refuses them at runtime, posting nothing", async () => {
     const { host, ci, number } = await fakeHost();
     const comment: CommentReviewInput = { commitId: "1".repeat(40), body: "One nit", event: "COMMENT", comments: [{ path: "src/a.ts", line: 2, side: "new", body: "A nit" }] };
     // @ts-expect-error An approval isn't a comment-type review (ADR 0028).
@@ -42,7 +42,7 @@ describe("a comment-type review", () => {
     expect(await host.listReviews(access, number)).toMatchObject({ ok: true, value: [{ state: "commented", isBot: true }] });
   });
 
-  it("F-100: a host without comment-type reviews says unsupported, and the base class can't be asked for another event either", async () => {
+  it("F-100/c4: a host without comment-type reviews says unsupported, and the base class can't be asked for another event either", async () => {
     const host: CodeHostAdapter = new TinyCodeHost({ app, installationId: "7", repos: [{ hostRepoId: "1001", fullName: repo, defaultBranch: "main", files: {}, branches: ["main"] }] });
     expect(host.capabilities.reviewComments).toBe(false);
     expect(await host.createReview(access, 1, { commitId: "1".repeat(40), body: "x", event: "COMMENT", comments: [] })).toMatchObject({ ok: false, error: { code: "unsupported" } });
@@ -50,7 +50,7 @@ describe("a comment-type review", () => {
 });
 
 describe("a CI log's tail", () => {
-  it("F-035: keeps at most the cap from the end, cut on a whole character, with the size before the cut", () => {
+  it("F-035/c1: keeps at most the cap from the end, cut on a whole character, with the size before the cut", () => {
     const text = `start\n${"x".repeat(20)}\nend: café ✓`;
     const size = new TextEncoder().encode(text).length;
     expect(logTail(text, size)).toEqual({ text, truncated: false, totalBytes: size });

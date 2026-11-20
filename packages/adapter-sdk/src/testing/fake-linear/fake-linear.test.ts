@@ -298,7 +298,7 @@ describe("the fake Linear's agent sessions", () => {
     agentActivity: z.looseObject({ content: z.looseObject({ type: z.string(), body: z.string() }), signal: z.string().optional() }).optional(),
   });
 
-  it("F-012: a delegation and a mention each make a session and a signed created event; a reply is prompted, a stop is prompted with signal stop", async () => {
+  it("F-012/c4: a delegation and a mention each make a session and a signed created event; a reply is prompted, a stop is prompted with signal stop", async () => {
     const { fake, app } = await installed();
     received.length = 0;
     const issue = await fake.createIssue({ title: "Delegate me" });
@@ -352,7 +352,7 @@ describe("the fake Linear's agent sessions", () => {
     expect(read.agentSession.activities.nodes.map((node) => node.content.type)).toEqual(["thought", "response"]);
   });
 
-  it("F-012: a session silent for more than 30 minutes goes stale, and its next activity recovers it", async () => {
+  it("F-012/c3: a session silent for more than 30 minutes goes stale, and its next activity recovers it", async () => {
     const { fake, auth } = await installed();
     const issue = await fake.createIssue({ title: "Silent" });
     const { sessionId } = await fake.delegateToApp(issue.id);
@@ -365,7 +365,7 @@ describe("the fake Linear's agent sessions", () => {
     expect(fake.session(sessionId)).toMatchObject({ status: "active", staleEpisodes: 1 });
   });
 
-  it("F-012: a session with an activity every 20 minutes never goes stale", async () => {
+  it("F-012/c3: a session with an activity every 20 minutes never goes stale", async () => {
     const { fake, auth } = await installed();
     const issue = await fake.createIssue({ title: "Heartbeat" });
     const { sessionId } = await fake.delegateToApp(issue.id);
@@ -377,7 +377,7 @@ describe("the fake Linear's agent sessions", () => {
     expect(fake.session(sessionId)?.staleEpisodes).toBe(0);
   });
 
-  it("F-012: a personal API key's agentActivityCreate is refused 403, as spike 5's real run saw, and nothing is recorded", async () => {
+  it("F-012/c4: a personal API key's agentActivityCreate is refused 403, as spike 5's real run saw, and nothing is recorded", async () => {
     const { fake } = await installed();
     const issue = await fake.createIssue({ title: "Keyed" });
     const { sessionId } = await fake.delegateToApp(issue.id);

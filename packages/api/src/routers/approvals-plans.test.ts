@@ -91,7 +91,7 @@ const requestApproval = async (prepared: Prepared, subject: ApprovalSubject | nu
 const commandsOf = (kind: string) => harness.fakes.outbox.commands.filter((command) => command.kind === kind);
 
 describe("approvals.preview and the card's data", () => {
-  it("F-026: the preview names the rule that asked, the subject, and the pattern \"for this task\" would add; the answer writes exactly that rule and sends it", async () => {
+  it("F-026/c4,c6: the preview names the rule that asked, the subject, and the pattern \"for this task\" would add; the answer writes exactly that rule and sends it", async () => {
     const prepared = await prepare();
     const approvalId = await requestApproval(prepared, { kind: "command", value: "pnpm add left-pad" }, { name: "Adds a dependency" });
     const insider = await harness.as(harness.fixture.a.insider);
@@ -121,7 +121,7 @@ describe("approvals.preview and the card's data", () => {
     expect(page.taskRules[0]?.createdBy?.name).toBeTruthy();
   });
 
-  it("F-026: a subject that gives no safe pattern has none previewed, and \"for this task\" is refused", async () => {
+  it("F-026/c4,c6: a subject that gives no safe pattern has none previewed, and \"for this task\" is refused", async () => {
     const prepared = await prepare();
     // Two commands in one line, and a path that leaves the root: no pattern for either.
     const chained = await requestApproval(prepared, { kind: "command", value: "pnpm add left-pad && rm -rf /" });
@@ -133,7 +133,7 @@ describe("approvals.preview and the card's data", () => {
     expect((await harness.test.db.approval.findUniqueOrThrow({ where: { id: chained } })).state).toBe("open");
   });
 
-  it("F-026: the preview is for members of the project; another organization's and a restricted project's approvals are not found", async () => {
+  it("F-026/c4: the preview is for members of the project; another organization's and a restricted project's approvals are not found", async () => {
     const prepared = await prepare();
     const approvalId = await requestApproval(prepared, { kind: "path", value: "src/index.ts" });
     await expect((await harness.as(harness.fixture.b.admin)).approvals.preview({ approvalId })).rejects.toMatchObject({ code: "NOT_FOUND" });
@@ -146,7 +146,7 @@ describe("approvals.preview and the card's data", () => {
     await expect((await harness.as(harness.fixture.a.insider)).approvals.preview({ approvalId: approvalIdSchema.parse(approval.id) })).resolves.toMatchObject({ state: "open" });
   });
 
-  it("F-026: tasks.get returns the open approval with its rule, subject and options, and a deny's reason to every member, never to the audit or a log", async () => {
+  it("F-026/c3,c4,c8: tasks.get returns the open approval with its rule, subject and options, and a deny's reason to every member, never to the audit or a log", async () => {
     const prepared = await prepare();
     const approvalId = await requestApproval(prepared, { kind: "path", value: "migrations/0002_add_theme.sql" }, { name: "Writes a migration" });
     const reason = "Use the existing settings table instead, it already has a theme column.";
@@ -164,7 +164,7 @@ describe("approvals.preview and the card's data", () => {
     expect(JSON.stringify(harness.logs)).not.toContain(reason);
   });
 
-  it("F-026: an approval that expired while nobody answered is offered \"Answer anyway\" while its item is open", async () => {
+  it("F-026/c3: an approval that expired while nobody answered is offered \"Answer anyway\" while its item is open", async () => {
     const prepared = await prepare();
     const approvalId = await requestApproval(prepared, { kind: "path", value: "src/late.ts" });
     await harness.test.db.approval.update({ where: { id: approvalId }, data: { state: "closed", closedReason: "expired", resolvedAt: new Date() } });
@@ -197,7 +197,7 @@ describe("questions.answer", () => {
     { id: "why", label: "Anything else?", type: "text" },
   ] as const;
 
-  it("F-026: tasks.get lists the open question with its fields; the driver answers once, and the command goes once", async () => {
+  it("F-026/c3: tasks.get lists the open question with its fields; the driver answers once, and the command goes once", async () => {
     const prepared = await prepare();
     const questionId = await askQuestion(prepared, fields);
     const driver = await harness.as(harness.fixture.a.member);
@@ -217,7 +217,7 @@ describe("questions.answer", () => {
     expect(commandsOf("question-answer")).toHaveLength(1);
   });
 
-  it("F-024: only the driver answers; another member is told to take over, and after taking over the capability and the answer follow", async () => {
+  it("F-024/c5: only the driver answers; another member is told to take over, and after taking over the capability and the answer follow", async () => {
     const prepared = await prepare();
     const questionId = await askQuestion(prepared, fields);
     const other = await harness.as(harness.fixture.a.insider);
@@ -237,7 +237,7 @@ describe("questions.answer", () => {
     await other.questions.answer({ taskId: prepared.task.taskId, questionId, answers: { keep: "yes", why: "x" } });
   });
 
-  it("F-026: an answer is checked against the question's fields; an unknown question and another organization's task are not found", async () => {
+  it("F-026/c3: an answer is checked against the question's fields; an unknown question and another organization's task are not found", async () => {
     const prepared = await prepare();
     const questionId = await askQuestion(prepared, fields);
     const driver = await harness.as(harness.fixture.a.member);
@@ -251,7 +251,7 @@ describe("questions.answer", () => {
     expect(await harness.test.db.event.count({ where: { taskId: prepared.task.taskId, kind: "question.answered" } })).toBe(0);
   });
 
-  it("F-026: two answers at once from the driver make one answer and one conflict", async () => {
+  it("F-026/c3: two answers at once from the driver make one answer and one conflict", async () => {
     const prepared = await prepare();
     const questionId = await askQuestion(prepared, fields);
     const driver = await harness.as(harness.fixture.a.member);
@@ -279,7 +279,7 @@ const proposePlan = async (prepared: Prepared) => {
 };
 
 describe("plans.answer", () => {
-  it("F-063: tasks.get returns the pending plan; the driver approves it edited, and the page then shows the approved plan with the changed steps marked", async () => {
+  it("F-063/c2: tasks.get returns the pending plan; the driver approves it edited, and the page then shows the approved plan with the changed steps marked", async () => {
     const prepared = await prepare();
     await proposePlan(prepared);
     const driver = await harness.as(harness.fixture.a.member);
@@ -307,7 +307,7 @@ describe("plans.answer", () => {
     expect(JSON.stringify(harness.logs)).not.toContain("Header only, please.");
   });
 
-  it("F-063: \"Ask for changes\" sends the request and keeps the plan proposed; only the driver may, and another organization never", async () => {
+  it("F-063/c2: \"Ask for changes\" sends the request and keeps the plan proposed; only the driver may, and another organization never", async () => {
     const prepared = await prepare();
     await proposePlan(prepared);
     const other = await harness.as(harness.fixture.a.insider);
@@ -325,7 +325,7 @@ describe("plans.answer", () => {
     expect(page.plan).toMatchObject({ approved: null, revision: { request: "Smaller steps, one per file." } });
   });
 
-  it("F-063: an answer needs a plan waiting, steps, and words; an approved plan cannot be answered again", async () => {
+  it("F-063/c2: an answer needs a plan waiting, steps, and words; an approved plan cannot be answered again", async () => {
     const prepared = await prepare();
     const driver = await harness.as(harness.fixture.a.member);
     // No plan yet.
@@ -340,7 +340,7 @@ describe("plans.answer", () => {
 });
 
 describe("answers at the same moment", () => {
-  it("F-063: two approvals of one plan at once make one answer and one refusal, and one command", async () => {
+  it("F-063/c2: two approvals of one plan at once make one answer and one refusal, and one command", async () => {
     const prepared = await prepare();
     await proposePlan(prepared);
     const driver = await harness.as(harness.fixture.a.member);
@@ -354,7 +354,7 @@ describe("answers at the same moment", () => {
     expect(await harness.test.db.event.count({ where: { taskId: prepared.task.taskId, kind: "plan.answered" } })).toBe(1);
   });
 
-  it("F-026: two members answering one approval at once: one wins, the other has a conflict, and one command goes", async () => {
+  it("F-026/c4,c5: two members answering one approval at once: one wins, the other has a conflict, and one command goes", async () => {
     const prepared = await prepare();
     const approvalId = await requestApproval(prepared, { kind: "path", value: "src/race.ts" });
     const results = await Promise.allSettled([

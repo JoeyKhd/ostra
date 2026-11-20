@@ -74,7 +74,7 @@ afterAll(async () => {
 });
 
 describe("a simulated runner", () => {
-  it("F-117: speaks the real protocol against a real core, one task end to end", async () => {
+  it("F-117/c2: speaks the real protocol against a real core, one task end to end", async () => {
     const serverUrl = `http://127.0.0.1:${String(core.port)}`;
     const pool = await api.admin.pools.create({ name: "load", requiresApproval: true, projectIds: [world.projectId] });
     const registered = await registerSimRunner({ serverUrl, joinToken: pool.joinToken.token, name: "load-0", slots: 2 });

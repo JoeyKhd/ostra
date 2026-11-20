@@ -37,7 +37,7 @@ describe("notifications.preferences", () => {
     expect(view).toMatchObject({ emailOn: false, tracker: null, emailDelaySeconds: 120, lastSavedAt: null, isInstanceAdmin: false });
   });
 
-  it("F-036: a member's choices save and read back, with defaults for the rest", async () => {
+  it("F-036/c2: a member's choices save and read back, with defaults for the rest", async () => {
     const member = await harness.as(harness.fixture.a.member);
     const saved = await member.notifications.preferences.save({
       choices: [
@@ -61,7 +61,7 @@ describe("notifications.preferences", () => {
     expect(await harness.test.db.notificationPreference.count({ where: { memberId: harness.fixture.a.member.id, kind: "approval", channel: "email" } })).toBe(1);
   });
 
-  it("F-036: the panel can't be turned off, and a refused save changes nothing", async () => {
+  it("F-036/c2: the panel can't be turned off, and a refused save changes nothing", async () => {
     const member = await harness.as(harness.fixture.a.insider);
     await expect(
       member.notifications.preferences.save({
@@ -91,7 +91,7 @@ describe("notifications.preferences", () => {
     await expect(harness.anonymous().notifications.preferences.get()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
-  it("F-115: shows whether mail is on for the install, the connected tracker and the mail's delay", async () => {
+  it("F-115/c1: shows whether mail is on for the install, the connected tracker and the mail's delay", async () => {
     const { a } = harness.fixture;
     await harness.test.db.user.update({ where: { id: a.admin.userId }, data: { role: "admin" } });
     const admin = await harness.as(a.admin);

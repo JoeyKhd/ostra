@@ -59,7 +59,7 @@ const trail = (events: readonly TaskEvent[]): readonly string[] =>
   });
 
 describe("checks after a turn (F-054)", () => {
-  it("F-054: two checks run in order after a turn with changes, with their output uploaded, and none after a turn without", async () => {
+  it("F-054/c2: two checks run in order after a turn with changes, with their output uploaded, and none after a turn without", async () => {
     harness = await startHarness(shared);
     const h = harness;
     const checks = [check("lint", "echo linting; echo the lint output"), check("unit", `${node} -e 'console.log("unit: " + require("node:fs").readFileSync("one.txt", "utf8"))'`, { repoId: taskSpecFixture.repos[0]?.repoId ?? null })];
@@ -120,7 +120,7 @@ describe("checks after a turn (F-054)", () => {
     expect(logged).not.toContain("unit: ");
   }, 300_000);
 
-  it("F-054: a failing check is reported and the push goes on", async () => {
+  it("F-054/c2: a failing check is reported and the push goes on", async () => {
     harness = await startHarness(shared);
     const h = harness;
     const { spec } = h.taskFor(fakeMarker("write", "failing.txt"), { checks: [check("tests", "echo 2 tests failed; exit 1")] });
@@ -138,7 +138,7 @@ describe("checks after a turn (F-054)", () => {
     expect(await shared.upstream.treeFiles("ostra-test/test1", `refs/heads/${spec.branchName}`)).toContain("failing.txt");
   }, 300_000);
 
-  it("F-054: a check gets the environment's variables and the committed tree, never a model key or a git token, and what it leaves isn't pushed", async () => {
+  it("F-054/c2: a check gets the environment's variables and the committed tree, never a model key or a git token, and what it leaves isn't pushed", async () => {
     harness = await startHarness(shared);
     const h = harness;
     const printEnv = `${node} -e 'process.stdout.write(JSON.stringify(process.env))'`;
@@ -163,7 +163,7 @@ describe("checks after a turn (F-054)", () => {
     expect(files).not.toContain("check-left.log");
   }, 300_000);
 
-  it("F-054: in a two-repo task, a check naming the repo the turn didn't change doesn't run; one naming the changed repo and one with no repo do", async () => {
+  it("F-054/c2: in a two-repo task, a check naming the repo the turn didn't change doesn't run; one naming the changed repo and one with no repo do", async () => {
     harness = await startHarness(shared);
     const h = harness;
     const [first] = taskSpecFixture.repos;
@@ -207,7 +207,7 @@ describe("the checks' limits on host (F-054)", () => {
     await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }, 60_000);
 
-  it("F-054: a check past its timeout is timed out, and past the checks' total the rest are timed out without running", async () => {
+  it("F-054/c2: a check past its timeout is timed out, and past the checks' total the rest are timed out without running", async () => {
     const box: BoxRef = { taskId: taskIdSchema.parse("task-turn-checks-limits"), boxId: boxIdSchema.parse("box-turn-checks-limits") };
     const checks = [
       check("slow", `${node} -e 'setTimeout(() => {}, 60000)'`, { timeoutSeconds: 1 }),

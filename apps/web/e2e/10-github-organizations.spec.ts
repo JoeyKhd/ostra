@@ -22,7 +22,7 @@ const offeredRepos = async (page: Page): Promise<string[]> => {
   return list.locator("[data-repo]").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-repo") ?? ""));
 };
 
-test("F-136: a waiting installation is shown with Link and Remove, and its repos aren't offered until it's linked", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-136/c4,c6: a waiting installation is shown with Link and Remove, and its repos aren't offered until it's linked", { tag: "@desktop-only" }, async ({ page }) => {
   await signIn(page);
   await page.goto("/organization/github");
   const waiting = page.locator(`[data-testid="installation"][data-account="${e2eGitHubOrgB.login}"]`);
@@ -57,7 +57,7 @@ test("F-136: a waiting installation is shown with Link and Remove, and its repos
   await expectNoHorizontalScroll(page);
 });
 
-test("F-136: Connect another App shows the webhook address and the secret once", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-136/c3,c8: Connect another App shows the webhook address and the secret once", { tag: "@desktop-only" }, async ({ page }) => {
   const { githubB } = await readStack();
   await signIn(page);
   await page.goto("/organization/github");
@@ -143,10 +143,10 @@ const sendsAnswer = async (page: Page, label: string): Promise<boolean> => {
   return z.object({ "0": z.object({ public: z.boolean() }) }).parse(await sent)["0"].public;
 };
 
-test("F-136: the setup form sends the answer it was given (private)", async ({ page }) => {
+test("F-136/c2,c3: the setup form sends the answer it was given (private)", async ({ page }) => {
   expect(await sendsAnswer(page, "No, only this account's repos")).toBe(false);
 });
 
-test("F-136: the setup form sends the answer it was given (public)", async ({ page }) => {
+test("F-136/c2: the setup form sends the answer it was given (public)", async ({ page }) => {
   expect(await sendsAnswer(page, "Yes, other GitHub organizations install it too")).toBe(true);
 });

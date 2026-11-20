@@ -48,7 +48,7 @@ const openTask = async (page: Page, taskId: string): Promise<void> => {
 const thread = (page: Page) => page.locator('[data-part="thread"]');
 const window = (page: Page) => page.getByTestId("subagents-window");
 
-test("F-138: the agent's turn carries the badge, 4 subagents · 1 running, and the thread shows its own Subagent rows and none of the subagents' calls or answers", async ({ page }) => {
+test("F-138/c1,c2: the agent's turn carries the badge, 4 subagents · 1 running, and the thread shows its own Subagent rows and none of the subagents' calls or answers", async ({ page }) => {
   const { running } = await seed();
   await openTask(page, running);
   const badge = page.getByTestId("subagents-badge");
@@ -71,7 +71,7 @@ test("F-138: the agent's turn carries the badge, 4 subagents · 1 running, and t
   await shoot(page, "badge");
 });
 
-test("F-138: the badge opens the window: the tree under OpenCode, the running subagent selected with what it was asked, its calls and no answer yet, the nested one under its parent", async ({ page }) => {
+test("F-138/c2,c3: the badge opens the window: the tree under OpenCode, the running subagent selected with what it was asked, its calls and no answer yet, the nested one under its parent", async ({ page }) => {
   const { running } = await seed();
   await openTask(page, running);
   await page.getByTestId("subagents-badge").click();
@@ -187,7 +187,7 @@ test("F-138: a failed subagent: the badge reads 1 failed, its node is red, and i
   await page.keyboard.press("Escape");
 });
 
-test("F-138: a subagent's call that waits on an approval asks in the thread, naming the subagent; the badge reads 1 needs approval", async ({ page }) => {
+test("F-138/c4: a subagent's call that waits on an approval asks in the thread, naming the subagent; the badge reads 1 needs approval", async ({ page }) => {
   const { approval } = await seed();
   await openTask(page, approval);
   const badge = page.getByTestId("subagents-badge");

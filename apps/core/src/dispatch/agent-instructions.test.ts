@@ -12,7 +12,7 @@ describe("agentInstructions", () => {
     expect(agentInstructions("Be brief.", one, branch)).toBe("Be brief.");
   });
 
-  it("F-098: names each repo's folder, base branch and the task's branch when the task has several", () => {
+  it("F-098/c1: names each repo's folder, base branch and the task's branch when the task has several", () => {
     const text = agentInstructions(null, two, branch);
     expect(text).toContain("- `test1/`: ostra-test/test1 (base: main)");
     expect(text).toContain("- `test2/`: ostra-test/test2 (base: develop)");
@@ -31,7 +31,7 @@ describe("agentInstructions", () => {
     expect(text).toContain("- `test2/`: ostra-test/test2");
   });
 
-  it("F-110: a minor-2 runner's memory block comes last, kept whole when the profile's text is cut", () => {
+  it("F-110/c1: a minor-2 runner's memory block comes last, kept whole when the profile's text is cut", () => {
     const block = "## Memory\n\nnotes";
     expect(agentInstructions("Be brief.", one, branch, block)).toBe("Be brief.\n\n## Memory\n\nnotes");
     expect(agentInstructions(null, one, branch, block)).toBe(block);

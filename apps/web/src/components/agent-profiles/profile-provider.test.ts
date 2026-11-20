@@ -36,7 +36,7 @@ const options: readonly ModelOption[] = [
 ];
 
 describe("the profile editor's provider", () => {
-  it("F-135, F-021: the model picker offers only the chosen provider's models, each with that provider's listing alone", () => {
+  it("F-135/c3, F-021: the model picker offers only the chosen provider's models, each with that provider's listing alone", () => {
     const onDev = modelsOfProvider(options, devEndpoint);
     expect(onDev.map((entry) => entry.text)).toEqual(["deepseek/deepseek-v4.1-flash", "acme/sql-coder-ft"]);
     expect(onDev.flatMap((entry) => entry.providers.map((provider) => provider.providerId))).toEqual([devEndpoint, devEndpoint]);
@@ -53,7 +53,7 @@ describe("the profile editor's provider", () => {
     expect([...disambiguatorsOf(modelsOfProvider(twice, devEndpoint)).values()]).toEqual(["flash-a", "flash-b"]);
   });
 
-  it("F-135, F-021: changing the provider keeps a model it lists and clears one it doesn't; the save sends the provider", () => {
+  it("F-135/c3, F-021: changing the provider keeps a model it lists and clears one it doesn't; the save sends the provider", () => {
     const draft = { ...newDraft("opencode", flash, devEndpoint), name: "Builder" };
     expect(withProvider(draft, clientB, options)).toMatchObject({ providerId: clientB, model: flash });
     const onInHouse = { ...draft, model: inHouse };
@@ -63,7 +63,7 @@ describe("the profile editor's provider", () => {
     expect(isDirty(withProvider(draft, clientB, options), draft)).toBe(true);
   });
 
-  it("F-135, F-021: a profile saved before, with no provider, loads with none and can't be saved until one is picked", () => {
+  it("F-135/c3, F-021: a profile saved before, with no provider, loads with none and can't be saved until one is picked", () => {
     const detail: ProfileDetail = {
       id: agentProfileIdSchema.parse("01900000-0000-7000-8000-0000000000a1"),
       name: "Old",
@@ -98,7 +98,7 @@ describe("the profile editor's provider", () => {
     expect(draftProblem(withProvider(loaded, devEndpoint, options))).toBeNull();
   });
 
-  it("F-135, F-021: a project's default choices leave out a profile on a provider its list doesn't allow", () => {
+  it("F-135/c4, F-021: a project's default choices leave out a profile on a provider its list doesn't allow", () => {
     const row = (id: string, providerId: typeof devEndpoint | null) => ({
       id: agentProfileIdSchema.parse(`01900000-0000-7000-8000-${id.padStart(12, "0")}`),
       access: { kind: "everyone" } as const,

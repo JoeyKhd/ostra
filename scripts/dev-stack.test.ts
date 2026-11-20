@@ -69,7 +69,7 @@ describe("pnpm dev's pieces", () => {
     expect(devApps("/repo").map((app) => app.label)).toEqual(["core", "web"]);
   });
 
-  it("F-001: a stack on other ports tells the panel and core their own public addresses, so sign-in accepts the panel's origin", () => {
+  it("F-001/c10: a stack on other ports tells the panel and core their own public addresses, so sign-in accepts the panel's origin", () => {
     const [core, web] = devApps("/repo");
     const env = { OSTRA_WEB_PORT: "3710", OSTRA_CORE_PORT: "9310" };
     // Both pieces get both: the panel's origin is what sign-in trusts, and core sends runners there

@@ -59,7 +59,7 @@ describe("the OpenCode adapter's launch", () => {
     expect(launched.cwd).toBe(input().workspaceDir);
   });
 
-  it("F-019: writes the provider, the model, the todo tool and the MCP server into the task's own config", async () => {
+  it("F-019/c2: writes the provider, the model, the todo tool and the MCP server into the task's own config", async () => {
     const { files } = await launch();
     const config = jsonFile(files, "opencode.json");
     expect(config["model"]).toBe("ostra/acme/model-1");
@@ -88,7 +88,7 @@ describe("the OpenCode adapter's launch", () => {
     expect(ostra).not.toHaveProperty("compatibility");
   });
 
-  it("F-019: writes the permission rules into the task's own config: edit and shell allowed in the worktree, `external_directory` denied", async () => {
+  it("F-019/c2: writes the permission rules into the task's own config: edit and shell allowed in the worktree, `external_directory` denied", async () => {
     const config = jsonFile((await launch()).files, "opencode.json");
     expect(config["permissions"]).toEqual([
       { action: "*", resource: "*", effect: "allow" },
@@ -96,7 +96,7 @@ describe("the OpenCode adapter's launch", () => {
     ]);
   });
 
-  it("F-026: writes the profile's rules into OpenCode's own permissions as ask on what each covers, with `external_directory` denied last; a task rule or a plan turn adds none", async () => {
+  it("F-026/c7: writes the profile's rules into OpenCode's own permissions as ask on what each covers, with `external_directory` denied last; a task rule or a plan turn adds none", async () => {
     const withRules = jsonFile(
       (
         await launch({
@@ -142,7 +142,7 @@ describe("the OpenCode adapter's launch", () => {
     expect(config["instructions"]).toEqual([written?.path, ...repoInstructionGlobs(input().workspaceDir)]);
   });
 
-  it("F-110: writes the memory block after the profile's instructions and its skills, in the task's config folder, named before the repos' own AGENTS.md", async () => {
+  it("F-110/c1: writes the memory block after the profile's instructions and its skills, in the task's config folder, named before the repos' own AGENTS.md", async () => {
     const block = "## Project memory\nAlways:\n- Use pnpm, never npm: run pnpm install at the root.";
     const skillDir = path.join(input().agentDir, "ostra-skills", "release-notes");
     const { files } = await launch({ instructions: "Prefer small commits.", skills: [{ name: "release-notes", dir: skillDir }], memory: { block, tools: true }, repoDirs: ["web", "api"] });
@@ -172,7 +172,7 @@ describe("the OpenCode adapter's launch", () => {
     expect(blockOnly.files.find((file) => file.path.endsWith("instructions.md"))?.content).toBe("## Project memory");
   });
 
-  it("F-019: writes the model catalog as a file, and points OpenCode at it with its own fetch off", async () => {
+  it("F-019/c6: writes the model catalog as a file, and points OpenCode at it with its own fetch off", async () => {
     const { files, env } = await launch();
     const catalog = jsonFile(files, "models.json");
     expect(catalog["ostra"]).toMatchObject({ npm: "@ai-sdk/openai-compatible", models: { "acme/model-1": { tool_call: true } } });
@@ -180,7 +180,7 @@ describe("the OpenCode adapter's launch", () => {
     expect(env["OPENCODE_DISABLE_MODELS_FETCH"]).toBe("1");
   });
 
-  it("F-110: keeps every file and folder under the task's own agent folder and never reads `.claude`, so nothing OpenCode keeps for itself is outside the task", async () => {
+  it("F-110/c7: keeps every file and folder under the task's own agent folder and never reads `.claude`, so nothing OpenCode keeps for itself is outside the task", async () => {
     const { files, env } = await launch();
     // OpenCode has no memory of its own (research/project-memory.md); what it keeps (sessions, its
     // config and state) is under the agent folder the release removes, and Claude Code's memory
@@ -258,7 +258,7 @@ describe("the OpenCode adapter's launch", () => {
 });
 
 describe("the OpenCode adapter's capabilities", () => {
-  it("F-019: declares steering, session load, elicitation and the base URL, and no native plan or reject-and-continue", () => {
+  it("F-019/c3: declares steering, session load, elicitation and the base URL, and no native plan or reject-and-continue", () => {
     expect(adapter().capabilities).toEqual({
       steerMidTurn: true,
       sessionLoad: true,
@@ -376,7 +376,7 @@ describe("the pinned binary", () => {
     expect(resolved).toMatchObject({ ok: true, value: { path: binary, packageName, packageVersion: OPENCODE_VERSION } });
   });
 
-  it("F-019: refuses a binary that changed, and says so without starting it", async () => {
+  it("F-019/c2: refuses a binary that changed, and says so without starting it", async () => {
     const { from, packageName, binary } = await install("the genuine binary");
     const pinned = await sha256File(binary);
     await writeFile(binary, "a tampered binary");
@@ -397,7 +397,7 @@ describe("the pinned binary", () => {
     expect(!refused.ok && refused.error.message).toContain("pinned to");
   });
 
-  it("F-019: finds this machine's real binary of the pinned version and checks it against its SHA-256", async () => {
+  it("F-019/c6: finds this machine's real binary of the pinned version and checks it against its SHA-256", async () => {
     const resolved = await resolveOpenCodeBinary();
     expect(resolved, "the installed OpenCode binary matches its pinned SHA-256").toMatchObject({ ok: true });
   });

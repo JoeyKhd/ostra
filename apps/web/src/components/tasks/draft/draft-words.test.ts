@@ -8,7 +8,7 @@ import { footnote, lineCount, markItems, moveItem, onLinearRows, shownChips, sib
 // rows follow what core wrote.
 
 describe("the refine draft's words (F-099, ticket 34)", () => {
-  it("F-099: marks an edited item with the agent's words, an added one, and the agent's removed ones, whatever moved", () => {
+  it("F-099/c6: marks an edited item with the agent's words, an added one, and the agent's removed ones, whatever moved", () => {
     const agent = ["The footer shows the version", "GET /version returns the version", "The About dialog shows it"];
     const { marks, removed } = markItems(["The footer shows the version", "GET /version returns the version and the SHA", "The About dialog shows it"], agent);
     expect(marks).toEqual([{ kind: "same" }, { kind: "edited", agent: "GET /version returns the version" }, { kind: "same" }]);

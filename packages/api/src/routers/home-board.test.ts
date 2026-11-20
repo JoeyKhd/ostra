@@ -70,7 +70,7 @@ const makeTask = async (seed: StateSeed): Promise<SeededTask> => {
 const titles = (cards: readonly { readonly title: string }[]) => cards.map((card) => card.title);
 
 describe("home.board", () => {
-  it("F-062: groups the member's tasks by state into five columns, each with its total and status line data", async () => {
+  it("F-062/c3: groups the member's tasks by state into five columns, each with its total and status line data", async () => {
     const { a } = harness.fixture;
     const runner = await seedPersonalRunner(harness, a.admin.id, "alex-laptop");
 
@@ -178,7 +178,7 @@ describe("home.board", () => {
     expect(titles(insider.columns.find((candidate) => candidate.column === "running")?.cards ?? [])).toContain("Secret work");
   });
 
-  it("F-062: a project filter narrows every column to that project, and a project the member can't open is not found", async () => {
+  it("F-062/c3: a project filter narrows every column to that project, and a project the member can't open is not found", async () => {
     const { a } = harness.fixture;
     const member = await harness.as(a.member);
     const narrowed = await member.home.board({ projectId: open });
@@ -190,7 +190,7 @@ describe("home.board", () => {
     await expect(member.home.board({ projectId: harness.fixture.b.project.id })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("F-062: pages a column with its own cursor, the total apart from the page", async () => {
+  it("F-062/c3: pages a column with its own cursor, the total apart from the page", async () => {
     const { a } = harness.fixture;
     for (let index = 0; index < 24; index += 1) {
       await makeTask({ state: "in_review", title: `Review ${String(index).padStart(2, "0")}`, ageMs: index * 1000 });

@@ -110,7 +110,7 @@ const userMessages = async (task: SeededTask) => {
 };
 
 describe("diff.get", () => {
-  it("F-027: a member reads each repo's branch against its base: files with parsed hunks, and a note for the ones the diff does not draw", async () => {
+  it("F-027/c1: a member reads each repo's branch against its base: files with parsed hunks, and a note for the ones the diff does not draw", async () => {
     const task = await makeTask("read", { behindBy: 2 });
     await storeDiff(task.head, readme("one"));
     await appendEvent(harness, task, { organizationId: orgA, projectId: project }, {
@@ -136,7 +136,7 @@ describe("diff.get", () => {
     expect(byPath.get("docs/moved.md")).toMatchObject({ kind: "renamed-unchanged", previousPath: "docs/old.md", hunks: [] });
   });
 
-  it("F-027: a head that is not fetched yet answers loading and queues one diff.fetch, however many members ask; a repo with nothing pushed queues none", async () => {
+  it("F-027/c1: a head that is not fetched yet answers loading and queues one diff.fetch, however many members ask; a repo with nothing pushed queues none", async () => {
     harness.fakes.jobs.clear();
     const pending = await makeTask("loading", { head: sha("not-yet-fetched") });
     const nothing = await makeTask("nothing", { head: null });
@@ -150,7 +150,7 @@ describe("diff.get", () => {
     expect(fetches[0]?.payload).toMatchObject({ taskId: pending.taskId, repoId, headSha: pending.head });
   });
 
-  it("F-027: another organization's task, and a task in a project the member isn't on, are not found", async () => {
+  it("F-027/c1: another organization's task, and a task in a project the member isn't on, are not found", async () => {
     const task = await makeTask("hidden");
     await storeDiff(task.head, readme("two"));
     const outsider = await harness.as(harness.fixture.b.admin);
@@ -164,7 +164,7 @@ describe("diff.get", () => {
 });
 
 describe("diff.comments", () => {
-  it("F-072: a member reads another's sent comments and not their drafts; a draft's text and author are the author's own", async () => {
+  it("F-072/c1: a member reads another's sent comments and not their drafts; a draft's text and author are the author's own", async () => {
     const task = await makeTask("private");
     await storeDiff(task.head, readme("three"));
     const driver = await harness.as(harness.fixture.a.member);
@@ -196,7 +196,7 @@ describe("diff.comments", () => {
     await expect(driver.diff.comments.delete({ taskId: task.taskId, commentId: theirs?.commentId ?? sentOne.commentId })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("F-072: save checks the line exists in that head's diff, edits only the author's own draft, and deletes only a draft", async () => {
+  it("F-072/c1: save checks the line exists in that head's diff, edits only the author's own draft, and deletes only a draft", async () => {
     const task = await makeTask("save");
     await storeDiff(task.head, readme("four"));
     const driver = await harness.as(harness.fixture.a.member);
@@ -235,7 +235,7 @@ describe("diff.comments", () => {
     await expect(outsider.diff.comments.delete({ taskId: task.taskId, commentId: kept.commentId })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("F-072: send is one message for a set of drafts: two sends at once make one message, and the sequence it returns is the message's", async () => {
+  it("F-072/c2: send is one message for a set of drafts: two sends at once make one message, and the sequence it returns is the message's", async () => {
     const task = await makeTask("send");
     await storeDiff(task.head, readme("five"));
     const driver = await harness.as(harness.fixture.a.member);
@@ -260,7 +260,7 @@ describe("diff.comments", () => {
     expect(messages[0]?.text).toContain("First.");
   });
 
-  it("F-072: a member who isn't the driver is told to take over while a session is going; a task with no session reopens", async () => {
+  it("F-072/c2: a member who isn't the driver is told to take over while a session is going; a task with no session reopens", async () => {
     const running = await makeTask("not-driver");
     await storeDiff(running.head, readme("six"));
     const other = await harness.as(harness.fixture.a.insider);
@@ -284,7 +284,7 @@ describe("diff.comments", () => {
     expect((await harness.test.db.task.findUniqueOrThrow({ where: { id: stopped.taskId } })).state).not.toBe("stopped");
   });
 
-  it("F-072: a later head that changes a commented line marks the comment outdated, and the list returns the line as it was", async () => {
+  it("F-072/c1: a later head that changes a commented line marks the comment outdated, and the list returns the line as it was", async () => {
     const task = await makeTask("outdated");
     await storeDiff(task.head, readme("eight"));
     const driver = await harness.as(harness.fixture.a.member);
@@ -295,7 +295,7 @@ describe("diff.comments", () => {
     expect(listed.comments[0]).toMatchObject({ outdated: true, quoted: { kind: "add", text: "new eight" }, headSha: task.head });
   });
 
-  it("F-072: a comment's words reach no log line", async () => {
+  it("F-072/c1: a comment's words reach no log line", async () => {
     const task = await makeTask("logs");
     await storeDiff(task.head, readme("nine"));
     const driver = await harness.as(harness.fixture.a.member);

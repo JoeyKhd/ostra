@@ -258,7 +258,7 @@ describe("ingest", () => {
     expect(await test.db.changeNotice.count({ where: { entity: "task", entityId: task.taskId } })).toBeGreaterThan(0);
   });
 
-  it("F-089: stores each call's fresh input, output, cache-read and cache-write tokens apart, and sums each kind on the session", async () => {
+  it("F-089/c5,c6: stores each call's fresh input, output, cache-read and cache-write tokens apart, and sums each kind on the session", async () => {
     const task = await newTask("running");
     const usage = (inputTokens: number, outputTokens: number, cacheReadTokens: number, cacheWriteTokens: number, estimated = false): TaskEvent => ({
       kind: "usage.recorded",
@@ -302,7 +302,7 @@ describe("ingest", () => {
     expect(await test.db.lease.findFirstOrThrow({ where: { taskId: task.taskId } })).toMatchObject({ state: "ended", endReason: "released" });
   });
 
-  it("F-047: a setup that fails ends the lease too, so the slot frees, and the box fails as crashed", async () => {
+  it("F-047/c1: a setup that fails ends the lease too, so the slot frees, and the box fails as crashed", async () => {
     // As the seed leaves it: preparing, the session starting, the box preparing.
     const task = await newTask("preparing");
     await ingest(ours, frame(runnerEvent(task, 1, { kind: "session.crashed", error: "the environment's setup failed" })));
@@ -617,7 +617,7 @@ describe("the task grace", () => {
     await test.db.runnerPresence.delete({ where: { runnerId: ours.runnerId } });
   });
 
-  it("F-045: a grace and ingests at the same moment never store a row behind the fence", async () => {
+  it("F-045/c4,c5: a grace and ingests at the same moment never store a row behind the fence", async () => {
     // The same moment, pinned rather than left to timers: a blocker holds the task's row until
     // five ingests and the grace all wait on it (each sent once the one before is waiting), then
     // lets them go together. Postgres grants the row in whatever order it likes, so the checks
@@ -674,7 +674,7 @@ describe("the task grace", () => {
     expect((await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).leaseEpoch).toBe(2);
   });
 
-  it("F-045: a batch that waited on the task's lock reads the cursor the batch before it left", async () => {
+  it("F-045/c4: a batch that waited on the task's lock reads the cursor the batch before it left", async () => {
     // One batch waits on the row while the transaction holding it saves the event before it, the
     // way an ingest of the same session does. Only one waits, so there's no order to leave open.
     const task = await newTask("running");

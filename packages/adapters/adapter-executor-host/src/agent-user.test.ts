@@ -66,7 +66,7 @@ const readLog = async (file: string): Promise<readonly Logged[]> =>
     });
 
 describe("a host pool's agent user (F-015)", () => {
-  it("F-015: every process of a pool's task runs through sudo -n -u <agent user> --, as an argument array: the git of its worktree, its setup script, its checks and the agent", async () => {
+  it("F-015/c5: every process of a pool's task runs through sudo -n -u <agent user> --, as an argument array: the git of its worktree, its setup script, its checks and the agent", async () => {
     const log = path.join(root, "sudo-calls.log");
     const sudo: SudoProgram = { command: process.execPath, args: [FAKE_SUDO, log] };
     const handedOver: string[] = [];
@@ -129,7 +129,7 @@ describe("a host pool's agent user (F-015)", () => {
     expect(calls.some((call) => call.command === "rm" && call.args[0] === "-rf" && call.args[1] === "--")).toBe(true);
   }, 120_000);
 
-  it("F-015: the sudo call is the command and its arguments as they are, each one argument, and the environment by name only", () => {
+  it("F-015/c5: the sudo call is the command and its arguments as they are, each one argument, and the environment by name only", () => {
     const invoked = sudoInvocation(AGENT, "/usr/bin/git", ["commit", "-m", "a message; rm -rf /"], { PATH: "/usr/bin", OSTRA_TASK_UNIT: "ostra-unit-1", "BAD NAME": "x" });
     expect(invoked).toEqual({
       command: "/usr/bin/sudo",
@@ -138,7 +138,7 @@ describe("a host pool's agent user (F-015)", () => {
     expect(sudoInvocation(AGENT, "true", [], {})).toEqual({ command: "/usr/bin/sudo", args: ["-n", "-u", AGENT, "--", "true"] });
   });
 
-  it("F-015: health() checks sudo works for the agent's user and no other, and that the user can't read the runner's key", async () => {
+  it("F-015/c5: health() checks sudo works for the agent's user and no other, and that the user can't read the runner's key", async () => {
     const answers = (codes: (command: string, user: string, args: readonly string[]) => number): RunCommand => (command, args) => {
       const user = args[2] ?? "";
       const at = args.indexOf("--");
@@ -160,14 +160,14 @@ describe("a host pool's agent user (F-015)", () => {
 describe("where a host pool starts (F-014, F-015)", () => {
   const settings = { agentUser: AGENT, env: {}, platform: "linux" as const, runnerUser: "ostra-runner" };
 
-  it("F-015, F-014: a host pool runner on Windows refuses to start, with the reason", async () => {
+  it("F-015/c5, F-014: a host pool runner on Windows refuses to start, with the reason", async () => {
     expect(hostPoolAgentUser({ ...settings, platform: "win32" })).toEqual({ ok: false, reason: HOST_POOL_WINDOWS_REASON });
     expect(HOST_POOL_WINDOWS_REASON).toBe("A host pool runs the agent as a separate OS user, which this release supports on Linux and macOS");
     const started = await HostExecutor.startPool({ dataDir: path.join(root, "windows-pool"), agentUser: AGENT, platform: "win32", env: { PATH: process.env["PATH"] ?? "" } });
     expect(started).toEqual({ ok: false, reason: HOST_POOL_WINDOWS_REASON });
   });
 
-  it("F-015: a host pool runner without its agent user refuses to start, with the fix", async () => {
+  it("F-015/c5: a host pool runner without its agent user refuses to start, with the fix", async () => {
     expect(hostPoolAgentUser({ ...settings, agentUser: undefined })).toEqual({ ok: false, reason: HOST_POOL_NO_USER_REASON });
     expect(HOST_POOL_NO_USER_REASON).toContain("OSTRA_HOST_POOL_AGENT_USER");
     const started = await HostExecutor.startPool({ dataDir: path.join(root, "no-user-pool"), agentUser: undefined, platform: "linux", env: { PATH: process.env["PATH"] ?? "" } });
@@ -178,7 +178,7 @@ describe("where a host pool starts (F-014, F-015)", () => {
     expect(hostPoolAgentUser(settings)).toEqual({ ok: true, value: { kind: "separate", user: AGENT } });
   });
 
-  it("F-015, F-014: the development switch is refused when NODE_ENV is production, and otherwise runs the pool as the runner's own user, which health() reports", async () => {
+  it("F-015/c5, F-014: the development switch is refused when NODE_ENV is production, and otherwise runs the pool as the runner's own user, which health() reports", async () => {
     expect(hostPoolAgentUser({ ...settings, env: { OSTRA_DEV_HOST_POOL_SAME_USER: "true", NODE_ENV: "production" } })).toEqual({ ok: false, reason: HOST_POOL_SAME_USER_PRODUCTION_REASON });
     const refused = await HostExecutor.startPool({
       dataDir: path.join(root, "production-pool"),
@@ -218,7 +218,7 @@ describe("containment with the agent's user (F-014)", () => {
     return { calls, run };
   };
 
-  it("F-014: on macOS the marker sweep lists the agent user's processes and ends them, both as that user", async () => {
+  it("F-014/c7: on macOS the marker sweep lists the agent user's processes and ends them, both as that user", async () => {
     const { calls, run } = recording((round) =>
       round === 1 ? `  101 /usr/bin/node agent.js ${TASK_UNIT_ENV}=${marker} HOME=/x\n  102 /bin/sh other ${TASK_UNIT_ENV}=ostra-unit-other\n` : "",
     );
@@ -232,7 +232,7 @@ describe("containment with the agent's user (F-014)", () => {
     expect(calls.every((call) => call.command === "/usr/bin/sudo")).toBe(true);
   });
 
-  it("F-014: on Linux without a cgroup the sweep reads the agent user's /proc as that user, and ends what carries the marker", async () => {
+  it("F-014/c7: on Linux without a cgroup the sweep reads the agent user's /proc as that user, and ends what carries the marker", async () => {
     const { calls, run } = recording((round) => (round === 1 ? "201\n202\n" : ""));
     const ended = await agentUserMarkerSweep(AGENT, { platform: "linux", run, node: "/usr/bin/node" })(marker);
     expect(ended).toBe(2);

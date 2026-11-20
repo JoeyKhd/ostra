@@ -121,7 +121,7 @@ defineNotificationContractSuite({
 });
 
 describe("the SMTP email adapter", () => {
-  it("F-115: mails an account mail once to its one address, the link in the HTML and the text and never in a log line or the answer", async () => {
+  it("F-115/c1: mails an account mail once to its one address, the link in the HTML and the text and never in a log line or the answer", async () => {
     const server = await startServer({ starttls: "offered", rejectRecipients: { "refused-newcomer@example.com": "550 5.1.1 No such user" } });
     const context = memoryAdapterContext();
     const adapter = adapterFor(server, {}, context);
@@ -152,7 +152,7 @@ describe("the SMTP email adapter", () => {
     expect(await adapter.update(notify([ada]), "any")).toMatchObject({ ok: false, error: { code: "unsupported" } });
   });
 
-  it("F-115: with STARTTLS accepted, sends over TLS after signing in, one message per recipient with the rendered parts", async () => {
+  it("F-115/c2: with STARTTLS accepted, sends over TLS after signing in, one message per recipient with the rendered parts", async () => {
     const server = await startServer({ starttls: "offered", requireTls: true });
     const notification = notify([ada, grace]);
     const sent = await adapterFor(server, { fromName: "Acme ostra" }).send(notification);
@@ -172,7 +172,7 @@ describe("the SMTP email adapter", () => {
     expect(server.commands.filter((command) => command.startsWith("STARTTLS"))).not.toHaveLength(0);
   });
 
-  it("F-091: mails both runner notices with the runner's facts in the HTML and the text parts", async () => {
+  it("F-091/c7: mails both runner notices with the runner's facts in the HTML and the text parts", async () => {
     const server = await startServer({ starttls: "offered", requireTls: true });
     const adapter = adapterFor(server);
     for (const kind of ["runner_joined", "runner_awaiting_approval"] as const) {
@@ -189,7 +189,7 @@ describe("the SMTP email adapter", () => {
     expect(server.received).toHaveLength(2);
   });
 
-  it("F-115: with STARTTLS refused, sends nothing and never signs in, so the password never crosses in clear", async () => {
+  it("F-115/c2: with STARTTLS refused, sends nothing and never signs in, so the password never crosses in clear", async () => {
     const server = await startServer({ starttls: "refused" });
     const sent = await adapterFor(server).send(notify([ada]));
     expect(sent).toMatchObject({ ok: false, error: { code: "unavailable" } });
@@ -209,7 +209,7 @@ describe("the SMTP email adapter", () => {
     expect(server.commands.some((command) => command.startsWith("AUTH"))).toBe(false);
   });
 
-  it("F-115: a certificate it doesn't trust stops the send before any sign-in", async () => {
+  it("F-115/c2: a certificate it doesn't trust stops the send before any sign-in", async () => {
     const server = await startServer({ starttls: "offered" });
     // The server's throwaway certificate isn't among the system's, and no CA was added.
     const adapter = new SmtpEmailAdapter({ ...optionsFor(server), tlsCa: "-----BEGIN CERTIFICATE-----\nnot a certificate\n-----END CERTIFICATE-----" });
@@ -223,14 +223,14 @@ describe("the SMTP email adapter", () => {
     expect(server.commands.some((command) => command.startsWith("AUTH"))).toBe(false);
   });
 
-  it("F-115: in tls mode (SMTPS), is encrypted from the first byte", async () => {
+  it("F-115/c2: in tls mode (SMTPS), is encrypted from the first byte", async () => {
     const server = await startServer({ implicitTls: true });
     const sent = await adapterFor(server, { secure: "tls" }).send(notify([ada]));
     expect(sent).toMatchObject({ ok: true });
     expect(server.received).toMatchObject([{ to: ["ada@example.com"], tls: true, user: USER }]);
   });
 
-  it("F-115: in none mode, to this machine only, signs in and sends in plain text, even when the server offers STARTTLS", async () => {
+  it("F-115/c2: in none mode, to this machine only, signs in and sends in plain text, even when the server offers STARTTLS", async () => {
     const server = await startServer({ starttls: "offered" });
     const sent = await adapterFor(server, { secure: "none" }).send(notify([ada]));
     expect(sent).toMatchObject({ ok: true });
@@ -238,7 +238,7 @@ describe("the SMTP email adapter", () => {
     expect(server.commands.some((command) => command.startsWith("STARTTLS"))).toBe(false);
   });
 
-  it("F-115: none is refused for a host that isn't this machine, before any connection", async () => {
+  it("F-115/c2: none is refused for a host that isn't this machine, before any connection", async () => {
     const options: SmtpEmailAdapterOptions = { host: "smtp.example.com", port: 25, secure: "none", user: USER, password: PASS, from: FROM };
     expect(smtpSettingsProblem(options)).toMatch(/only allowed to this machine/);
     const adapter = new SmtpEmailAdapter(options, memoryAdapterContext());
@@ -277,7 +277,7 @@ describe("the SMTP email adapter", () => {
     expect(server.received).toMatchObject([{ user: null, tls: true }]);
   });
 
-  it("F-115: gives each message an ID made from the notification's key and the recipient, the same on a retry", async () => {
+  it("F-115/c2: gives each message an ID made from the notification's key and the recipient, the same on a retry", async () => {
     const server = await startServer();
     const context = { logger: memoryAdapterContext().logger, clock: memoryAdapterContext().clock };
     // Without an idempotency store every send goes out, so a retry shows what it would send again.
@@ -305,7 +305,7 @@ describe("the SMTP email adapter", () => {
     expect(headerOf(first, "x-ostra-notification")).not.toContain(notification.idempotencyKey);
   });
 
-  it("F-115: mails a notification once when it is sent again with the same key", async () => {
+  it("F-115/c2: mails a notification once when it is sent again with the same key", async () => {
     const server = await startServer();
     const adapter = adapterFor(server);
     const notification = notify([ada, grace]);
@@ -315,7 +315,7 @@ describe("the SMTP email adapter", () => {
     expect(server.received).toHaveLength(2);
   });
 
-  it("F-115: reports a recipient with no address, an invalid one or one the server refuses with a 5xx, and still mails the others", async () => {
+  it("F-115/c2: reports a recipient with no address, an invalid one or one the server refuses with a 5xx, and still mails the others", async () => {
     const server = await startServer({ rejectRecipients: { "bad@example.com": "550 5.1.1 No such user" } });
     const invalid: NotificationRecipient = { ...suiteRecipient("odd", { email: false, mention: false }), email: "not an address" };
     const sent = await adapterFor(server).send(notify([ada, noEmail, invalid, bad, grace, { ...ada, email: "ADA@example.com" }]));
@@ -340,7 +340,7 @@ describe("the SMTP email adapter", () => {
     expect(server.commands).toEqual([]);
   });
 
-  it("F-115: a 4xx reply is retryable, with a time to wait, and the retry mails only who wasn't mailed", async () => {
+  it("F-115/c2: a 4xx reply is retryable, with a time to wait, and the retry mails only who wasn't mailed", async () => {
     const busy: Record<string, string> = { "grace@example.com": "450 4.2.1 Mailbox busy" };
     const server = await startServer({ rejectRecipients: busy });
     const adapter = adapterFor(server);
@@ -356,7 +356,7 @@ describe("the SMTP email adapter", () => {
     expect(server.received.map((mail) => mail.to[0])).toEqual(["ada@example.com", "grace@example.com"]);
   });
 
-  it("F-115: a refused sign-in is the adapter's failure (unauthorized), in words that never hold the password", async () => {
+  it("F-115/c2: a refused sign-in is the adapter's failure (unauthorized), in words that never hold the password", async () => {
     const server = await startServer();
     const adapter = adapterFor(server, { password: "wrong-password-xyz" });
     const sent = await adapter.send(notify([ada]));
@@ -380,7 +380,7 @@ describe("the SMTP email adapter", () => {
     expect(JSON.stringify([sent, health])).not.toContain(PASS);
   });
 
-  it("F-115: logs the kind and counts, never an address, the password or a word of the mail", async () => {
+  it("F-115/c2: logs the kind and counts, never an address, the password or a word of the mail", async () => {
     const server = await startServer();
     const context = memoryAdapterContext();
     const notification = notify([ada, noEmail], { subject: "Quiet secret subject" });

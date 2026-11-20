@@ -91,7 +91,7 @@ afterAll(async () => {
 });
 
 describe("Linear agent mode's switches (F-012)", () => {
-  it("F-012: enableAgentMode answers the consent URL with agent mode's scopes, only from an organization admin's own session", async () => {
+  it("F-012/c3: enableAgentMode answers the consent URL with agent mode's scopes, only from an organization admin's own session", async () => {
     expect((await trpcFailure(harness.anonymous().linear.enableAgentMode())).code).toBe("UNAUTHORIZED");
     expect((await trpcFailure((await member()).linear.enableAgentMode())).code).toBe("FORBIDDEN");
     expect((await trpcFailure((await projectAdmin()).linear.enableAgentMode())).code).toBe("FORBIDDEN");
@@ -129,7 +129,7 @@ describe("Linear agent mode's switches (F-012)", () => {
     expect(await harness.test.db.auditEntry.count({ where: { action: "linear.agent-mode-enabled", entityId: connectionId } })).toBe(1);
   });
 
-  it("F-012: Start from Linear takes one board per team, and refuses a second naming the project that holds it", async () => {
+  it("F-012/c1: Start from Linear takes one board per team, and refuses a second naming the project that holds it", async () => {
     // A member, and an admin of another project, may not switch this project's board.
     expect((await trpcFailure((await member()).linear.setBoardAgentMode({ boardId, on: true }))).code).toBe("FORBIDDEN");
     expect((await trpcFailure((await projectAdmin()).linear.setBoardAgentMode({ boardId: otherBoardId, on: true }))).code).toBe("FORBIDDEN");
@@ -158,7 +158,7 @@ describe("Linear agent mode's switches (F-012)", () => {
 });
 
 describe("outside tasks and their approval (F-040)", () => {
-  it("F-040: Needs approval lists an outside task with who started it, its ticket, profile and pools, and never the starter's address", async () => {
+  it("F-040/c1: Needs approval lists an outside task with who started it, its ticket, profile and pools, and never the starter's address", async () => {
     const taskId = await delegated(projectId, boardId);
     const listed = await (await member()).tasks.needsApproval({ projectId });
     const row = listed.tasks.find((task) => task.taskId === taskId);
@@ -188,7 +188,7 @@ describe("outside tasks and their approval (F-040)", () => {
     expect(JSON.stringify(status)).not.toContain(OUTSIDER.email);
   });
 
-  it("F-040: any member who can open the project approves or rejects it, the first answer winning, and nobody else answers", async () => {
+  it("F-040/c1: any member who can open the project approves or rejects it, the first answer winning, and nobody else answers", async () => {
     const first = await delegated(projectId, boardId);
     // Someone who can't open the project can't answer.
     expect((await trpcFailure((await harness.as(harness.fixture.b.admin)).tasks.approve({ taskId: first }))).code).toBe("NOT_FOUND");
@@ -226,7 +226,7 @@ describe("outside tasks and their approval (F-040)", () => {
     expect((await (await member()).tasks.needsApproval({ projectId })).tasks.map((task) => task.taskId)).not.toEqual(expect.arrayContaining([second, third]));
   });
 
-  it("F-040: only an organization admin switches outside approval off; a project admin and a member are refused", async () => {
+  it("F-040/c2: only an organization admin switches outside approval off; a project admin and a member are refused", async () => {
     expect((await trpcFailure((await projectAdmin()).projects.setOutsideApproval({ projectId, on: false }))).code).toBe("FORBIDDEN");
     expect((await trpcFailure((await member()).projects.setOutsideApproval({ projectId, on: false }))).code).toBe("FORBIDDEN");
     expect((await trpcFailure((await harness.as(harness.fixture.b.admin)).projects.setOutsideApproval({ projectId, on: false }))).code).toBe("NOT_FOUND");

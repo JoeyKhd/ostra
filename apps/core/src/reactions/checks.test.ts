@@ -204,7 +204,7 @@ const pullOf = (task: DrivenTask, fullName = "ostra-test/test1") => {
 const sections = (body: string): number => body.split(CHECKS_SECTION_START).length - 1;
 
 describe("checks before the PR (F-054)", () => {
-  it("F-054: the task spec carries the environment's checks in their order, with their repos and timeouts", async () => {
+  it("F-054/c1: the task spec carries the environment's checks in their order, with their repos and timeouts", async () => {
     const task = await runningTask();
     const row = await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
     const spec = await buildTaskSpec({ db: test.db, codeHost, secretStore }, { taskId: task.taskId, runnerId: runner.runnerId, leaseEpoch: leaseEpochSchema.parse(row.leaseEpoch) });
@@ -216,7 +216,7 @@ describe("checks before the PR (F-054)", () => {
     ]);
   });
 
-  it("F-054: a passing turn opens a ready PR with the Checks section, and each check's run is kept", async () => {
+  it("F-054/c2: a passing turn opens a ready PR with the Checks section, and each check's run is kept", async () => {
     const task = await runningTask();
     await turn(task, 1, [{ repoId: repo(), head: "pass-1" }], [lint("passed"), unit("passed")]);
     const pull = pullOf(task);
@@ -235,7 +235,7 @@ describe("checks before the PR (F-054)", () => {
     expect(await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).toMatchObject({ state: "in_review" });
   });
 
-  it("F-054: a failing turn opens a draft; a later pass marks it ready; the section is edited, not appended", async () => {
+  it("F-054/c2,c3: a failing turn opens a draft; a later pass marks it ready; the section is edited, not appended", async () => {
     const task = await runningTask();
     await turn(task, 1, [{ repoId: repo(), head: "fail-1" }], [lint("passed"), unit("failed", "FAIL src/app.test.ts\nexpected 2, got 3")]);
     let pull = pullOf(task);
@@ -268,7 +268,7 @@ describe("checks before the PR (F-054)", () => {
     expect(await test.db.checkRun.count({ where: { taskId: task.taskId } })).toBe(6);
   });
 
-  it("F-054: a check that timed out, or couldn't run, fails the PR as a failure does: a draft, its output shown, ready once it passes", async () => {
+  it("F-054/c3: a check that timed out, or couldn't run, fails the PR as a failure does: a draft, its output shown, ready once it passes", async () => {
     const task = await runningTask();
     // Every other check passed: the timeout alone makes the PR a draft.
     await turn(task, 1, [{ repoId: repo(), head: "slow-1" }], [lint("passed"), unit("timed-out", "still running after 300 s")]);
@@ -287,7 +287,7 @@ describe("checks before the PR (F-054)", () => {
     expect(await test.db.taskPullRequest.findFirst({ where: { taskRepo: { taskId: task.taskId } } })).toMatchObject({ draft: true, draftByOstra: true });
   });
 
-  it("F-054: a PR a person made a draft stays a draft when the checks pass, and a person's edit of the description stays", async () => {
+  it("F-054/c3: a PR a person made a draft stays a draft when the checks pass, and a person's edit of the description stays", async () => {
     const task = await runningTask();
     await turn(task, 1, [{ repoId: repo(), head: "person-1" }], [lint("passed"), unit("passed")]);
     const opened = pullOf(task);
@@ -309,7 +309,7 @@ describe("checks before the PR (F-054)", () => {
     expect(await test.db.taskPullRequest.findFirst({ where: { taskRepo: { taskId: task.taskId } } })).toMatchObject({ draft: true, draftByOstra: false });
   });
 
-  it("F-054: check output with markdown and HTML is escaped in a code block, cut to its last 40 lines", async () => {
+  it("F-054/c2: check output with markdown and HTML is escaped in a code block, cut to its last 40 lines", async () => {
     const task = await runningTask();
     const lines = Array.from({ length: 60 }, (_, index) => `line ${String(index + 1)}`);
     const hostile = [...lines, "```", "</details><script>alert(1)</script> @JoeyKhd [click](https://evil.example)", CHECKS_SECTION_END, "\u001b[31mred\u001b[0m"].join("\n");
@@ -333,7 +333,7 @@ describe("checks before the PR (F-054)", () => {
     expect(sections(body)).toBe(1);
   });
 
-  it("F-054: a two-repo task where one repo changed drafts only that repo's PR for a failing repo-less check", async () => {
+  it("F-054/c3: a two-repo task where one repo changed drafts only that repo's PR for a failing repo-less check", async () => {
     const task = await runningTask([repo(), secondRepoId]);
     await turn(
       task,
@@ -395,7 +395,7 @@ describe("checks before the PR (F-054)", () => {
     expect(await test.db.checkRun.count({ where: { organizationId: otherWorld.organizationId } })).toBe(0);
   });
 
-  it("F-054: an environment with no checks opens its PR as milestone 2 did, with no section", async () => {
+  it("F-054/c4: an environment with no checks opens its PR as milestone 2 did, with no section", async () => {
     await test.db.check.deleteMany({ where: { projectId: world.projectId } });
     const task = await runningTask();
     await turn(task, 1, [{ repoId: repo(), head: `none-${randomBytes(2).toString("hex")}` }], []);

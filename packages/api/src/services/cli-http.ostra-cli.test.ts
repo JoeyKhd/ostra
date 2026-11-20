@@ -186,7 +186,7 @@ const run = async (args: readonly string[], cwd = root): Promise<Run> => {
 const sessionFile = (): string => (process.platform === "win32" ? path.join(root, "appdata", "ostra", "cli.json") : path.join(root, "xdg", "ostra", "cli.json"));
 
 describe("the ostra CLI against the CLI route on a real database (F-103)", () => {
-  it("F-103: login through the device page, a two-repo checkout into an existing clone and a fresh one, a dirty clone refused, a revoked session refused in the server's words, then logout", async () => {
+  it("F-103/c1,c2,c4: login through the device page, a two-repo checkout into an existing clone and a fresh one, a dirty clone refused, a revoked session refused in the server's words, then logout", async () => {
     // Login: the device code, approved on the device page, ends in a CLI session for this machine.
     const login = await run(["login", "--server", serverUrl]);
     expect(login.code, login.out).toBe(exitCodes.ok);

@@ -184,7 +184,7 @@ const installationDelivery = (action: string, installationId: number, account: {
 };
 
 describe("deliveries from linked installations only", () => {
-  it("F-136: a delivery from an unlinked or removed installation stores no WebhookDelivery and changes nothing, and one from a linked installation is processed", async () => {
+  it("F-136/c6: a delivery from an unlinked or removed installation stores no WebhookDelivery and changes nothing, and one from a linked installation is processed", async () => {
     const before = await test.db.webhookDelivery.count();
     // A stranger's installation, never linked.
     const stranger = codeHost.pullRequestDelivery("stranger/repo", 1, "opened", { installationId: "990001" });
@@ -214,7 +214,7 @@ describe("deliveries from linked installations only", () => {
 });
 
 describe("the App owner's own installation", () => {
-  it("F-136: the owner's own installation is linked when an installation event shows it, another account's waits, and an uninstall removes a linked one", async () => {
+  it("F-136/c4: the owner's own installation is linked when an installation event shows it, another account's waits, and an uninstall removes a linked one", async () => {
     codeHost.owner = { login: "ostra-test", accountId: "4100" };
     try {
       const run = webhookProcessHandler({ db: test.db, clock: systemClock, handlers: { linear: githubWebhookHandler(prDeps()), github: githubWebhookHandler(prDeps()) } });
@@ -245,7 +245,7 @@ describe("the App owner's own installation", () => {
 });
 
 describe("no mint through an installation that isn't linked", () => {
-  it("F-136: nothing is minted for an unlinked or removed installation, at every call site", async () => {
+  it("F-136/c6,c7: nothing is minted for an unlinked or removed installation, at every call site", async () => {
     // A task dispatched while its installation was linked, then the installation is removed.
     const task = await seedQueuedTask(test.db, world, fixture.a.member, runner.runnerId);
     expect(await dispatch(task)).toMatchObject({ ok: true });
@@ -332,7 +332,7 @@ describe("no mint through an installation that isn't linked", () => {
 });
 
 describe("a bot per repo", () => {
-  it("F-136: a task across two Apps' repos has each repo's bot in its spec and opens each PR as its own App, and a minor-2 runner gets no offer for it", async () => {
+  it("F-136/c1,c10: a task across two Apps' repos has each repo's bot in its spec and opens each PR as its own App, and a minor-2 runner gets no offer for it", async () => {
     // A client's App, connected beside the organization's own, with its own key, bot and installation.
     const organizationId = world.organizationId;
     const appB = "4242999";

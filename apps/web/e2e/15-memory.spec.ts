@@ -39,7 +39,7 @@ const newNote = async (page: Page, projectId: string, title: string, body: strin
 };
 
 
-test("F-109: a member writes a note and finds it by a word", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-109/c1,c3: a member writes a note and finds it by a word", { tag: "@desktop-only" }, async ({ page }) => {
   const { projectId } = await seed();
   await signIn(page);
   await newNote(page, projectId, "Check JavaScript with node", "Run `node --check <file>` on every JavaScript file you change.");
@@ -64,7 +64,7 @@ test("F-109: a member writes a note and finds it by a word", { tag: "@desktop-on
   await expect(panel.getByTestId("note-body").locator("code")).toHaveText("node --check <file>");
 });
 
-test("F-109: a note with a fake token is refused with the kind named, and nothing is saved", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-109/c4: a note with a fake token is refused with the kind named, and nothing is saved", { tag: "@desktop-only" }, async ({ page }) => {
   const { projectId } = await seed();
   await signIn(page);
   const token = `ghp_${"A".repeat(36)}`;
@@ -82,7 +82,7 @@ test("F-109: a note with a fake token is refused with the kind named, and nothin
   await expect(page.getByTestId("memory-no-match")).toBeVisible();
 });
 
-test("F-109: a save from a stale version says who saved first and keeps the text", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-109/c5: a save from a stale version says who saved first and keeps the text", { tag: "@desktop-only" }, async ({ page }) => {
   const { projectId, noteId } = await seed();
   await signIn(page);
   await page.goto(`/projects/${projectId}/memory/${noteId}`);
@@ -97,7 +97,7 @@ test("F-109: a save from a stale version says who saved first and keeps the text
   await expect(body).toHaveValue("New keys in `config/settings.json` are camelCase. Older keys are renamed when touched.");
 });
 
-test("F-111, F-109: a proposal is approved and appears as a note with its source", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-111/c3,c5, F-109/c2: a proposal is approved and appears as a note with its source", { tag: "@desktop-only" }, async ({ page }) => {
   const { projectId, taskId } = await seed();
   await signIn(page);
   await page.goto(`/projects/${projectId}/memory`);
@@ -122,7 +122,7 @@ test("F-111, F-109: a proposal is approved and appears as a note with its source
   await expect(page.getByTestId("proposals-empty")).toHaveText("No proposals waiting.");
 });
 
-test("F-111: Remember this on a diff comment makes a proposal with the comment as its source", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-111/c1: Remember this on a diff comment makes a proposal with the comment as its source", { tag: "@desktop-only" }, async ({ page }) => {
   const { projectId, taskId, diffCommentId } = await seed();
   expect(diffCommentId, "the setup spec links the fake GitHub's installation first").not.toBeNull();
   await signIn(page);
@@ -141,7 +141,7 @@ test("F-111: Remember this on a diff comment makes a proposal with the comment a
   await expect(page.getByTestId("proposal-task")).toHaveText("Rename the releaseName key");
 });
 
-test("F-111: Remember this on an accepted @ostra comment makes a proposal in the member's words", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-111/c1: Remember this on an accepted @ostra comment makes a proposal in the member's words", { tag: "@desktop-only" }, async ({ page }) => {
   const { projectId, taskId } = await seed();
   await signIn(page);
   await page.goto(`/tasks/${taskId}`);
@@ -163,7 +163,7 @@ test("F-111: Remember this on an accepted @ostra comment makes a proposal in the
   await expect(page.getByTestId("proposal-detail")).toContainText("Every line added to CHANGELOG.md starts with the date as YYYY-MM-DD.");
 });
 
-test("F-111: a merge into a note that moved on says who saved first and keeps the merged text", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-111/c4: a merge into a note that moved on says who saved first and keeps the merged text", { tag: "@desktop-only" }, async ({ page }) => {
   const { projectId, noteId } = await seed();
   const { proposalId } = z.object({ proposalId: z.string() }).parse(JSON.parse(await seedScript({ proposal: noteId })));
   await signIn(page);
@@ -184,7 +184,7 @@ test("F-111: a merge into a note that moved on says who saved first and keeps th
   await expect(page.locator('[data-proposal="Settings keys say what they hold"]')).toBeVisible();
 });
 
-test("F-110, F-111: the task panel's Memory lists the notes its session used and the proposals it made", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-110/c4, F-111/c1: the task panel's Memory lists the notes its session used and the proposals it made", { tag: "@desktop-only" }, async ({ page }) => {
   const { taskId } = await seed();
   await signIn(page);
   await page.goto(`/tasks/${taskId}`);
@@ -196,7 +196,7 @@ test("F-110, F-111: the task panel's Memory lists the notes its session used and
   await expect(memory.getByTestId("task-memory-proposal").filter({ hasText: "Proposed: Settings keys are single lowercase words" })).toBeVisible();
 });
 
-test("F-109: Memory reads at phone width with no sideways scroll", async ({ page }) => {
+test("F-109/c1: Memory reads at phone width with no sideways scroll", async ({ page }) => {
   const { projectId } = await seed();
   await signIn(page);
   await page.goto(`/projects/${projectId}/memory`);

@@ -16,7 +16,7 @@ const where = (overrides: Partial<Parameters<typeof runnerNote>[0]> = {}): Param
 });
 
 describe("the environment's services and checks, in words", () => {
-  it("F-054: a check's timeout reads in whole minutes, otherwise in seconds", () => {
+  it("F-054/c1: a check's timeout reads in whole minutes, otherwise in seconds", () => {
     expect(timeoutText(600)).toBe("10 min");
     expect(timeoutText(60)).toBe("1 min");
     expect(timeoutText(90)).toBe("90 s");
@@ -34,7 +34,7 @@ describe("the environment's services and checks, in words", () => {
     ).toBe("3 · 1 secret");
   });
 
-  it("F-094: the runner note names the pools and who can start services, and turns into the blocker when no runner can", () => {
+  it("F-094/c5: the runner note names the pools and who can start services, and turns into the blocker when no runner can", () => {
     expect(runnerNote(where({ services: 0 }))).toBeNull();
     expect(runnerNote(where())).toEqual({
       kind: "note",
@@ -53,7 +53,7 @@ describe("the environment's services and checks, in words", () => {
     });
   });
 
-  it("F-094: a service's last box reads healthy with its time, failed, or started with no check", () => {
+  it("F-094/c3: a service's last box reads healthy with its time, failed, or started with no check", () => {
     expect(healthOf(null)).toBeNull();
     expect(healthOf({ state: "healthy", at: 0, runnerName: "build-01", afterMs: 4_000, reason: null })).toEqual({ tone: "green", word: "healthy", extra: "4s" });
     expect(healthOf({ state: "failed", at: 0, runnerName: null, afterMs: null, reason: "image not found" })).toEqual({ tone: "red", word: "failed", extra: null });
@@ -65,7 +65,7 @@ describe("the environment's services and checks, in words", () => {
     expect(servicesWaitText([])).toBe("Waiting for a runner that can start services. None is online.");
   });
 
-  it("F-054: reordering moves one check and keeps the rest in order", () => {
+  it("F-054/c1: reordering moves one check and keeps the rest in order", () => {
     expect(moved(["a", "b", "c"], 0, 2)).toEqual(["b", "c", "a"]);
     expect(moved(["a", "b", "c"], 2, 0)).toEqual(["c", "a", "b"]);
     expect(moved(["a", "b", "c"], 1, 5)).toEqual(["a", "b", "c"]);

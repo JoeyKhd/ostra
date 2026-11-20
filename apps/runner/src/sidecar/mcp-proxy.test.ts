@@ -41,7 +41,7 @@ const post = (url: string, body: string, headers: Record<string, string> = {}): 
   fetch(url, { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream", ...headers }, body });
 
 describe("the sidecar's MCP proxy (F-021)", () => {
-  it("F-021: the server refuses a call without its token, and takes the same call through the proxy, which adds it", async () => {
+  it("F-021/c4: the server refuses a call without its token, and takes the same call through the proxy, which adds it", async () => {
     const { upstream: server, proxy: mcp, logs } = await start();
     const call = rpc(1, "tools/call", { name: "lookup", arguments: {} });
     const direct = await post(server.urlFor("docs"), call);
@@ -66,7 +66,7 @@ describe("the sidecar's MCP proxy (F-021)", () => {
     expect(JSON.stringify(logs)).not.toContain(new URL(server.urlFor("docs")).host);
   });
 
-  it("F-021: the reply stream (SSE) comes through as it's sent, not when it ends", async () => {
+  it("F-021/c4: the reply stream (SSE) comes through as it's sent, not when it ends", async () => {
     const { proxy: mcp } = await start();
     const answer = await fetch(mcp.urlFor("/mcp/docs"), { headers: { accept: "text/event-stream" } });
     expect(answer.status).toBe(200);
@@ -85,7 +85,7 @@ describe("the sidecar's MCP proxy (F-021)", () => {
     expect(rest).toContain('{"second":true}');
   });
 
-  it("F-021: any other path or method is refused, and nothing reaches a server", async () => {
+  it("F-021/c4: any other path or method is refused, and nothing reaches a server", async () => {
     const { upstream: server, proxy: mcp } = await start();
     const base = mcp.urlFor("/mcp/docs");
     const prefix = base.slice(0, base.length - "/mcp/docs".length);
@@ -99,7 +99,7 @@ describe("the sidecar's MCP proxy (F-021)", () => {
     expect(server.requests).toEqual([]);
   });
 
-  it("F-021: a header value Node refuses (a line break) answers 502 and the process goes on", async () => {
+  it("F-021/c4: a header value Node refuses (a line break) answers 502 and the process goes on", async () => {
     upstream = await startTokenMcpServer({ token: TOKEN, tool: "lookup" });
     const logs: LogRecord[] = [];
     proxy = await startMcpProxy({
@@ -121,7 +121,7 @@ x-injected: 1` } },
     expect((await post(proxy.urlFor("/mcp/docs"), rpc(2, "tools/call", { name: "lookup", arguments: {} }))).status).toBe(200);
   });
 
-  it("F-021: a server that can't be reached answers 502, and the proxy goes on", async () => {
+  it("F-021/c4: a server that can't be reached answers 502, and the proxy goes on", async () => {
     const { upstream: server, proxy: mcp, logs } = await start();
     const real = server.urlFor("docs");
     await server.close();

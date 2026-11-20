@@ -76,7 +76,7 @@ const secretData = (cluster: FakeCluster, name: string): Record<string, string> 
 const surfaceOf = (cluster: FakeCluster, pod: KubeObject) => podSurface(cluster.fake, NS, pod);
 
 describe("the kubernetes executor's boxes (ticket 07)", () => {
-  it("F-093, F-095: the pod's shape, field by field: a native sidecar first, the size as the agent's requests and limits, the registry image by digest, no token, no host namespaces", async () => {
+  it("F-093/c1,c2, F-095/c4: the pod's shape, field by field: a native sidecar first, the size as the agent's requests and limits, the registry image by digest, no token, no host namespaces", async () => {
     const cluster = await startCluster();
     const executor = executorOn(cluster, { runtimeClassName: "gvisor", sidecarLimits: { cpuMillis: 500, memoryMiB: 256 } });
     const box = newBox();
@@ -169,7 +169,7 @@ describe("the kubernetes executor's boxes (ticket 07)", () => {
     await executor.release(box, "requested");
   });
 
-  it("F-095: a box without a size has no limits of its own, and the environment's base image when no registry image is given", () => {
+  it("F-095/c4: a box without a size has no limits of its own, and the environment's base image when no registry image is given", () => {
     const objects = boxObjects(
       { box: newBox(), spec: { ...taskSpecFixture, environment: { ...taskSpecFixture.environment, baseImage: "node:24" } }, size: null, image: null, nonce: "n".repeat(43), taskToken: null },
       { images: { runner: "r", base: "b" }, serverUrl: "https://ostra.example", runtimeClassName: null, sidecarLimits: { cpuMillis: 1000, memoryMiB: 256 }, serviceLimits: { cpuMillis: 1000, memoryMiB: 1024 }, bridgePort: 7101, initCommand: ["init"], sidecarCommand: ["sidecar"] },
@@ -182,7 +182,7 @@ describe("the kubernetes executor's boxes (ticket 07)", () => {
     expect(objects.pod.spec?.imagePullSecrets).toBeUndefined();
   });
 
-  it("F-015: the task token is in the sidecar's token volume and in no other container's environment, volumes or arguments", async () => {
+  it("F-015/c4: the task token is in the sidecar's token volume and in no other container's environment, volumes or arguments", async () => {
     const cluster = await startCluster();
     const executor = executorOn(cluster);
     const box = newBox();
@@ -198,7 +198,7 @@ describe("the kubernetes executor's boxes (ticket 07)", () => {
     await executor.release(box, "requested");
   });
 
-  it("F-093: a cluster under 1.29 is refused, with the reason; 1.29 is accepted", async () => {
+  it("F-093/c5: a cluster under 1.29 is refused, with the reason; 1.29 is accepted", async () => {
     const old = await startCluster(28);
     expect(await executorOn(old).health()).toEqual({
       status: "down",
@@ -208,7 +208,7 @@ describe("the kubernetes executor's boxes (ticket 07)", () => {
     expect(await executorOn(current).health()).toEqual({ status: "ok" });
   });
 
-  it("F-093: health() refuses a missing namespace and a service account without the rights it needs", async () => {
+  it("F-093/c2: health() refuses a missing namespace and a service account without the rights it needs", async () => {
     const cluster = await startCluster();
     const missing = await executorOn(cluster, { namespace: "nowhere" }).health();
     expect(missing.status).toBe("down");
@@ -217,7 +217,7 @@ describe("the kubernetes executor's boxes (ticket 07)", () => {
     expect(await executorOn(cluster).health()).toEqual({ status: "down", reason: "The runner's service account may not delete secrets in ostra-boxes: its role needs it." });
   });
 
-  it("F-093: nothing outside the box namespace is touched: every request and every access review names it", async () => {
+  it("F-093/c2: nothing outside the box namespace is touched: every request and every access review names it", async () => {
     const cluster = await startCluster();
     const reviewed: (string | null)[] = [];
     cluster.fake.denyAccess((attributes) => {
@@ -244,7 +244,7 @@ describe("the kubernetes executor's boxes (ticket 07)", () => {
     expect(all.slice(before).every((request) => request.namespace === NS)).toBe(true);
   });
 
-  it("F-015: release deletes the pod and both secrets, found by the box's label; nothing of the box is left", async () => {
+  it("F-015/c2: release deletes the pod and both secrets, found by the box's label; nothing of the box is left", async () => {
     const cluster = await startCluster();
     const executor = executorOn(cluster);
     const box = newBox();
@@ -269,7 +269,7 @@ describe("the kubernetes executor's boxes (ticket 07)", () => {
     await executor.release(other, "requested");
   });
 
-  it("F-015: on a pool runner the executor only makes and removes the box's pod: the task's own calls are the sidecar's, in the pod", async () => {
+  it("F-015/c2: on a pool runner the executor only makes and removes the box's pod: the task's own calls are the sidecar's, in the pod", async () => {
     const cluster = await startCluster();
     const executor = executorOn(cluster);
     const box = newBox();
@@ -289,7 +289,7 @@ describe("the kubernetes executor's boxes (ticket 07)", () => {
     await executor.release(box, "requested");
   });
 
-  it("F-093: stop deletes the pod, so a stopped box is never kept running (ADR 0039)", async () => {
+  it("F-093/c1: stop deletes the pod, so a stopped box is never kept running (ADR 0039)", async () => {
     const cluster = await startCluster();
     const executor = executorOn(cluster);
     const box = newBox();
@@ -301,7 +301,7 @@ describe("the kubernetes executor's boxes (ticket 07)", () => {
     await executor.release(box, "requested");
   });
 
-  it("F-093: create returns once the pod exists, before a node is found; prepare then says it waits for a node and when it's scheduled", async () => {
+  it("F-093/c3: create returns once the pod exists, before a node is found; prepare then says it waits for a node and when it's scheduled", async () => {
     const cluster = await startCluster();
     const executor = executorOn(cluster);
     const box = newBox();
@@ -338,7 +338,7 @@ describe("the kubernetes executor's boxes (ticket 07)", () => {
     await executor.release(box, "requested");
   });
 
-  it("F-095: capacity offers the quota's CPU and memory less the namespace's other pods, and the settings without a quota", async () => {
+  it("F-095/c4: capacity offers the quota's CPU and memory less the namespace's other pods, and the settings without a quota", async () => {
     const cluster = await startCluster();
     const executor = executorOn(cluster, { slots: 7, resources: { cpuMillis: 8000, memoryMiB: 16_384 } });
     expect(await executor.refreshCapacity()).toEqual({ slots: 7, cpuMillis: 8000, memoryMiB: 16_384 });

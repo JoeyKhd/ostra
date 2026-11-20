@@ -139,7 +139,7 @@ const chooseA = (projectId: ProjectId) =>
   });
 
 describe("the profile's provider at the dispatch and the credentials", () => {
-  it("F-135, F-021: a task runs on its profile's provider, its key and base URL, never another provider's that serves the same model name", async () => {
+  it("F-135/c4, F-021: a task runs on its profile's provider, its key and base URL, never another provider's that serves the same model name", async () => {
     // Both providers are on the project's list and list the model; the project's choice is A.
     const project = await projectWith([world.providerId, providerB]);
     await chooseA(project.projectId);
@@ -164,7 +164,7 @@ describe("the profile's provider at the dispatch and the credentials", () => {
     expect(JSON.stringify(issuedByName.body).includes(TOKEN_B)).toBe(false);
   });
 
-  it("F-135, F-021: a project whose list doesn't allow the profile's provider can't start it, and its organization admins hear why", async () => {
+  it("F-135/c4, F-021/c1: a project whose list doesn't allow the profile's provider can't start it, and its organization admins hear why", async () => {
     // Only A is allowed here, and A lists the same model by name: the profile on B still never runs on A.
     const project = await projectWith([world.providerId]);
     const profileId = await profileOn(providerB);

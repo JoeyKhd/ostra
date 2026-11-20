@@ -8,7 +8,7 @@ import { parseSearchQuery } from "./parse-query.ts";
 const none = { repo: null, project: null, ticket: null, status: null, by: null, after: null, before: null };
 
 describe("parseSearchQuery", () => {
-  it("F-080: each filter token becomes its filter, and the rest is text", () => {
+  it("F-080/c1: each filter token becomes its filter, and the rest is text", () => {
     expect(parseSearchQuery("repo:test1 migration")).toEqual({ ...none, text: "migration", repo: "test1" });
     expect(parseSearchQuery("project:shop")).toEqual({ ...none, text: "", project: "shop" });
     expect(parseSearchQuery("ticket:OST-12 flaky test")).toEqual({ ...none, text: "flaky test", ticket: "OST-12" });
@@ -24,7 +24,7 @@ describe("parseSearchQuery", () => {
     });
   });
 
-  it("F-080: an unknown token, or a known one with a value it can't read, stays text", () => {
+  it("F-080/c1: an unknown token, or a known one with a value it can't read, stays text", () => {
     expect(parseSearchQuery("lang:ts https://example.com")).toEqual({ ...none, text: "lang:ts https://example.com" });
     expect(parseSearchQuery("status:sleeping repo:")).toEqual({ ...none, text: "status:sleeping repo:" });
     expect(parseSearchQuery("after:2026-02-31 before:yesterday")).toEqual({ ...none, text: "after:2026-02-31 before:yesterday" });

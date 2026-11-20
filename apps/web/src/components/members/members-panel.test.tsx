@@ -31,7 +31,7 @@ const sam = {
 const text = (html: string): string => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 
 describe("the member panel and the removal dialog (F-002)", () => {
-  it("F-002: the panel names who invited them and counts what removal ends", () => {
+  it("F-002/c3: the panel names who invited them and counts what removal ends", () => {
     const html = text(renderToStaticMarkup(<MemberProperties member={sam} now={at} />));
     expect(html).toContain("Invited by Alex Kim");
     expect(html).toContain("On their behalf Personal runners 1 CLI sessions 2 Tasks they drive 3");
@@ -41,7 +41,7 @@ describe("the member panel and the removal dialog (F-002)", () => {
     expect(first).not.toContain("On their behalf");
   });
 
-  it("F-002: the removal dialog lists each effect with its count, and only the counts that aren't zero", () => {
+  it("F-002/c3: the removal dialog lists each effect with its count, and only the counts that aren't zero", () => {
     expect(removalLines("Acme Corp", sam.onBehalf)).toEqual([
       "They lose access to Acme Corp and its projects.",
       "1 personal runner revoked.",
@@ -57,7 +57,7 @@ describe("the member panel and the removal dialog (F-002)", () => {
     ]);
   });
 
-  it("F-002: a removed row names who removed them", () => {
+  it("F-002/c3: a removed row names who removed them", () => {
     expect(removedText(Date.UTC(2026, 10, 14, 12), "Alex Kim")).toBe("removed 14 Nov by Alex Kim");
     expect(removedText(Date.UTC(2026, 10, 14, 12), null)).toBe("removed 14 Nov");
   });

@@ -154,7 +154,7 @@ describe("LFS action hosts", () => {
 });
 
 describe("refusal words", () => {
-  it("F-090: words an upstream refusal by its status and by who refused", () => {
+  it("F-090/c6: words an upstream refusal by its status and by who refused", () => {
     expect(describeUpstreamRefusal(401, "code-host")).toBe("ostra: the code host refused the task's credential (status 401)");
     expect(describeUpstreamRefusal(403, "code-host")).toBe("ostra: the code host refused the task's credential (status 403)");
     expect(describeUpstreamRefusal(403, "lfs-host")).toBe("ostra: the LFS storage host refused the transfer (status 403)");

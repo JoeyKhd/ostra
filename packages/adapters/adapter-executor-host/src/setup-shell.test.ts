@@ -25,7 +25,7 @@ const GIT_EXEC_PATH = "C:/Program Files/Git/mingw64/libexec/git-core";
 const WSL_BASH = "C:\\Windows\\System32\\bash.exe";
 
 describe("the setup shell on Windows", () => {
-  it("F-050: the bare name bash resolves to Git for Windows' bin\\bash.exe from git --exec-path", async () => {
+  it("F-050/c3: the bare name bash resolves to Git for Windows' bin\\bash.exe from git --exec-path", async () => {
     // The WSL launcher comes first on PATH, and Git's own bin isn't on it at all: only git's cmd.
     const probe = windows(
       [GIT_BASH, WSL_BASH, "C:\\Program Files\\Git\\cmd\\git.exe"],
@@ -36,7 +36,7 @@ describe("the setup shell on Windows", () => {
     expect(await resolveSetupShell("bash.exe", probe)).toEqual({ kind: "found", command: GIT_BASH });
   });
 
-  it("F-050: with only System32\\bash.exe to find and no Git bash, the health check is down with the fix", async () => {
+  it("F-050/c3: with only System32\\bash.exe to find and no Git bash, the health check is down with the fix", async () => {
     const probe = windows([WSL_BASH], { PATH: "C:\\Windows\\System32", SystemRoot: "C:\\Windows" }, undefined);
     expect(await resolveSetupShell("bash", probe)).toEqual({ kind: "missing", reason: MISSING_SHELL_REASON_WINDOWS });
 
@@ -53,7 +53,7 @@ describe("the setup shell on Windows", () => {
     }
   });
 
-  it("F-050: a Git install with no bash falls back to a bash on PATH that isn't the WSL launcher", async () => {
+  it("F-050/c3: a Git install with no bash falls back to a bash on PATH that isn't the WSL launcher", async () => {
     const msysBash = "C:\\msys64\\usr\\bin\\bash.exe";
     const probe = windows(
       [WSL_BASH, msysBash],
@@ -63,7 +63,7 @@ describe("the setup shell on Windows", () => {
     expect(await resolveSetupShell("bash", probe)).toEqual({ kind: "found", command: msysBash });
   });
 
-  it("F-050: a full path is used as given, the WSL launcher's included, and so is another name", async () => {
+  it("F-050/c3: a full path is used as given, the WSL launcher's included, and so is another name", async () => {
     const probe = windows([GIT_BASH], { PATH: "" }, GIT_EXEC_PATH);
     expect(await resolveSetupShell(WSL_BASH, probe)).toEqual({ kind: "found", command: WSL_BASH });
     expect(await resolveSetupShell("D:\\tools\\sh.exe", probe)).toEqual({ kind: "found", command: "D:\\tools\\sh.exe" });
@@ -72,7 +72,7 @@ describe("the setup shell on Windows", () => {
 });
 
 describe("the setup shell on Linux and macOS", () => {
-  it("F-050: bash comes from PATH as before, without asking git", async () => {
+  it("F-050/c3: bash comes from PATH as before, without asking git", async () => {
     for (const platform of ["linux", "darwin"] as const) {
       let asked = false;
       const probe: ShellProbe = {

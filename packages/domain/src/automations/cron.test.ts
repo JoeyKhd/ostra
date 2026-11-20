@@ -78,7 +78,7 @@ const reference = (c: Cron, zone: string, from: number, to: number): readonly nu
 const iso = (instant: number): string => new Date(instant).toISOString().replace(":00.000Z", "Z");
 
 describe("the cron evaluator", () => {
-  it("F-106: parses five fields with ranges, steps, lists and names, and refuses seconds, L, W and #", () => {
+  it("F-106/c1: parses five fields with ranges, steps, lists and names, and refuses seconds, L, W and #", () => {
     const c = cron("0,30 9-17/2 1,15 jan-mar,DEC mon-fri");
     expect(c.minutes).toEqual([0, 30]);
     expect(c.hours).toEqual([9, 11, 13, 15, 17]);
@@ -113,19 +113,19 @@ describe("the cron evaluator", () => {
     }
   };
 
-  it("F-106: matches the minute-by-minute reference over a year in UTC, across both daylight-saving changes", () => {
+  it("F-106/c1: matches the minute-by-minute reference over a year in UTC, across both daylight-saving changes", () => {
     matchesReference("UTC");
   }, YEAR_TIMEOUT_MS);
 
-  it("F-106: matches the minute-by-minute reference over a year in Europe/Amsterdam, across both daylight-saving changes", () => {
+  it("F-106/c1: matches the minute-by-minute reference over a year in Europe/Amsterdam, across both daylight-saving changes", () => {
     matchesReference("Europe/Amsterdam");
   }, YEAR_TIMEOUT_MS);
 
-  it("F-106: matches the minute-by-minute reference over a year in America/New_York, across both daylight-saving changes", () => {
+  it("F-106/c1: matches the minute-by-minute reference over a year in America/New_York, across both daylight-saving changes", () => {
     matchesReference("America/New_York");
   }, YEAR_TIMEOUT_MS);
 
-  it("F-106: a skipped local time fires at the next valid minute, and a repeated hour fires once", () => {
+  it("F-106/c1: a skipped local time fires at the next valid minute, and a repeated hour fires once", () => {
     const daily = cron("30 2 * * *");
     const hourly = cron("0 * * * *");
     // Amsterdam, 29 March 2026: 02:00 local jumps to 03:00. 02:30 doesn't exist; it fires at 03:00 local (01:00Z).
@@ -162,7 +162,7 @@ describe("the cron evaluator", () => {
     expect(iso(nextOccurrence(cron("0 0 29 2 *"), "UTC", Date.UTC(2026, 0, 1)) ?? 0)).toBe("2028-02-29T00:00Z");
   });
 
-  it("F-106: holds a schedule to the minimum interval", () => {
+  it("F-106/c7: holds a schedule to the minimum interval", () => {
     expect(minimumIntervalOk(cron("0 * * * *"), 60, "UTC")).toBe(true);
     expect(minimumIntervalOk(cron("30 * * * *"), 60, "UTC")).toBe(true);
     expect(minimumIntervalOk(cron("*/30 * * * *"), 60, "UTC")).toBe(false);
@@ -176,7 +176,7 @@ describe("the cron evaluator", () => {
     expect(minimumIntervalOk(cron("* * * * *"), 2, "UTC")).toBe(false);
   });
 
-  it("F-106: holds a schedule to the minimum interval as it fires in its zone, across a daylight-saving change", () => {
+  it("F-106/c1: holds a schedule to the minimum interval as it fires in its zone, across a daylight-saving change", () => {
     // 01:30 and 02:30 are an hour apart on the wall clock, but on the spring-forward day 02:30
     // doesn't exist and fires at 03:00, half an hour after 01:30.
     expect(minimumIntervalOk(cron("30 1,2 * * *"), 60, "UTC")).toBe(true);
@@ -191,7 +191,7 @@ describe("the cron evaluator", () => {
     }
   });
 
-  it("F-106: fires the latest missed occurrence under 6 hours late, and skips the older ones", () => {
+  it("F-106/c5: fires the latest missed occurrence under 6 hours late, and skips the older ones", () => {
     const hourly = cron("0 * * * *");
     const since = Date.UTC(2026, 4, 1, 0);
     // A normal tick: one occurrence, seconds late.

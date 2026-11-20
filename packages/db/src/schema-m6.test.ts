@@ -135,7 +135,7 @@ describe("the milestone 6 migration", () => {
     expect(profile.builtInKind).toBeNull();
   });
 
-  it("F-106: refuses a second occurrence row for the same automation and time", async () => {
+  it("F-106/c3: refuses a second occurrence row for the same automation and time", async () => {
     const occurrenceAt = new Date("2026-11-20T10:00:00Z");
     const occurrence = { organizationId: world.organizationId, projectId: world.projectId, automationId: world.schedule.id, kind: "occurrence" as const, occurrenceAt };
     await test.db.automationRun.create({ data: { ...occurrence, state: "started", taskId: world.task.id } });
@@ -147,7 +147,7 @@ describe("the milestone 6 migration", () => {
     expect(await test.db.automationRun.count({ where: { automationId: world.schedule.id } })).toBe(2);
   });
 
-  it("F-011: refuses a second match for the same rule and ticket, and lets another rule match it", async () => {
+  it("F-011/c1: refuses a second match for the same rule and ticket, and lets another rule match it", async () => {
     const match = { organizationId: world.organizationId, projectId: world.projectId, kind: "ticket_match" as const };
     await test.db.automationRun.create({ data: { ...match, automationId: world.rule.id, ticketId: world.ticket.id, state: "started", taskId: world.task.id } });
     // The same ticket matching the same rule again, by webhook, by poll or after its label came back.
@@ -274,7 +274,7 @@ describe("the milestone 6 migration", () => {
     }
   });
 
-  it("F-106: reads due schedules and due heartbeats through their indexes", async () => {
+  it("F-106/c3: reads due schedules and due heartbeats through their indexes", async () => {
     const plans = await test.db.$transaction(async (tx) => {
       await tx.$executeRaw`SET LOCAL enable_seqscan = off`;
       const planSchema = z.array(z.object({ "QUERY PLAN": z.string() }));

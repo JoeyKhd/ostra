@@ -39,7 +39,7 @@ afterEach(() => {
 });
 
 describe("a cancelled turn's reap", () => {
-  it("F-014: ends the unit's processes born during the turn, outside the agent's tree too, and spares the older ones", async () => {
+  it("F-014/c6: ends the unit's processes born during the turn, outside the agent's tree too, and spares the older ones", async () => {
     const agent = idle();
     const older = idle();
     // Start times are kept to the second on some systems: the turn starts clearly after `older`.

@@ -51,7 +51,7 @@ const boxWith = async (health: readonly ServiceHealth[]): Promise<{ readonly har
 };
 
 describe("a docker box's services through the task host (F-094)", () => {
-  it("F-094: each service's health is reported, in the spec's order, before the setup runs", async () => {
+  it("F-094/c3: each service's health is reported, in the spec's order, before the setup runs", async () => {
     const box = await boxWith([
       { name: "postgres", outcome: "healthy", afterMs: 2_400 },
       { name: "cache", outcome: "healthy", afterMs: 300 },
@@ -70,7 +70,7 @@ describe("a docker box's services through the task host (F-094)", () => {
     expect(kinds).not.toContain("service.failed");
   }, 180_000);
 
-  it("F-094: a service that didn't start is reported with its words, and the setup and the agent never run", async () => {
+  it("F-094/c3: a service that didn't start is reported with its words, and the setup and the agent never run", async () => {
     const box = await boxWith([
       { name: "postgres", outcome: "failed", reason: "The service's health check kept failing." },
       { name: "cache", outcome: "healthy", afterMs: 300 },

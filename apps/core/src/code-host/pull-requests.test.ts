@@ -271,7 +271,7 @@ describe("PR states", () => {
     expect(late.outcome.outcome).toBe("processed");
   });
 
-  it("F-108: the PR's own row follows a merge, a close and a reopen, with its time, for Insights", async () => {
+  it("F-108/c2: the PR's own row follows a merge, a close and a reopen, with its time, for Insights", async () => {
     const seeded = await taskInReview(world, 2);
     const repos = await test.db.taskRepo.findMany({ where: { taskId: seeded.taskId }, orderBy: { createdAt: "asc" } });
     for (const repo of repos) {

@@ -48,7 +48,7 @@ const seedWorld = async (page: Page): Promise<World> => {
   return { ...worldSchema.parse(JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}")), projectId };
 };
 
-test("F-102, F-111, F-035: a reviewer reads the PR with its findings and CI, Fix this and Send to agent send it as one prompt, and Remember this proposes it", async ({ page }) => {
+test("F-102/c1,c4, F-111/c1, F-035/c1: a reviewer reads the PR with its findings and CI, Fix this and Send to agent send it as one prompt, and Remember this proposes it", async ({ page }) => {
   test.setTimeout(120_000);
   await signIn(page);
   const world = await seedWorld(page);
@@ -103,7 +103,7 @@ test("F-102, F-111, F-035: a reviewer reads the PR with its findings and CI, Fix
   await expectNoHorizontalScroll(page);
 });
 
-test("F-101: at the CI round limit the driver sees the cap and Keep working sends the agent on", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-101/c4: at the CI round limit the driver sees the cap and Keep working sends the agent on", { tag: "@desktop-only" }, async ({ page }) => {
   await signIn(page);
   const world = await seedWorld(page);
   await page.goto(`/tasks/${world.cappedTaskId}`);
@@ -119,7 +119,7 @@ test("F-101: at the CI round limit the driver sees the cap and Keep working send
   await expect(page.getByTestId("rounds-group")).toContainText("0 of 2");
 });
 
-test("F-100: a project admin turns the AI review off and on; the limits and each repo's CI show", async ({ page }) => {
+test("F-100/c5: a project admin turns the AI review off and on; the limits and each repo's CI show", async ({ page }) => {
   await signIn(page);
   const world = await seedWorld(page);
   await page.goto(`/projects/${world.projectId}/settings/review`);

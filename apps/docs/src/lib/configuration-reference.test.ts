@@ -14,7 +14,7 @@ const namesInFile = (text: string): string[] => {
 };
 
 describe("the configuration reference's parser", () => {
-  it("F-058: reads every setting of docs/configuration.md, in the file's order, each with its default", async () => {
+  it("F-058/c1: reads every setting of docs/configuration.md, in the file's order, each with its default", async () => {
     const text = await readFile(configurationPath, "utf8");
     const rows = settingsOf(parseConfigurationReference(text));
     expect(rows.map((row) => row.name)).toEqual(namesInFile(text));
@@ -39,7 +39,7 @@ describe("the configuration reference's parser", () => {
     expect(reference.lede).toMatch(/^Every setting ostra reads/);
   });
 
-  it("F-058: refuses a settings table whose columns it doesn't know, so a changed header can't drop rows", () => {
+  it("F-058/c1: refuses a settings table whose columns it doesn't know, so a changed header can't drop rows", () => {
     const changed = "# Configuration reference\n\nIntro.\n\n## The server\n\n| Setting | Value | Notes |\n|---|---|---|\n| `OSTRA_WEB_PORT` | `3000` | The port. |\n";
     expect(() => parseConfigurationReference(changed)).toThrow(/columns this parser doesn't know/);
   });

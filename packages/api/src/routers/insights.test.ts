@@ -155,7 +155,7 @@ const PERIOD = { kind: "range", from: "2026-10-01", to: "2026-10-07" } as const;
 const PERIOD_MS: InsightPeriod = { start: at("2026-10-01T00:00:00Z"), end: at("2026-10-08T00:00:00Z") };
 
 describe("insights.get", () => {
-  it("F-108: each figure equals ticket 06's reference for the organization over the period", async () => {
+  it("F-108/c1: each figure equals ticket 06's reference for the organization over the period", async () => {
     const view = await (await harness.as(harness.fixture.a.admin)).insights.get({ projectId: null, period: PERIOD });
     expect(view.period).toEqual(PERIOD_MS);
     expect(view.prsOpened).toBe(prsOpened(fixture.prs, PERIOD_MS));
@@ -204,7 +204,7 @@ describe("insights.get", () => {
     expect(view.tokens.byProject.some((row) => row.line.kind === "project" && row.line.name === SECRET_NAME)).toBe(true);
   });
 
-  it("F-108: the medians' counts, and a series per day of PRs opened and merged", async () => {
+  it("F-108/c1: the medians' counts, and a series per day of PRs opened and merged", async () => {
     const view = await (await harness.as(harness.fixture.a.member)).insights.get({ projectId: null, period: PERIOD });
     expect(view.timeToFirstPr.count).toBe(4);
     expect(view.waiting.count).toBe(4);
@@ -214,7 +214,7 @@ describe("insights.get", () => {
     expect(view.series.map((row) => row.prsMerged)).toEqual([1, 1, 0, 0, 1, 1, 0]);
   });
 
-  it("F-108: each day of the series carries the sparklines' figures, from the job's rows and the rollup alone", async () => {
+  it("F-108/c1: each day of the series carries the sparklines' figures, from the job's rows and the rollup alone", async () => {
     const view = await (await harness.as(harness.fixture.a.admin)).insights.get({ projectId: null, period: PERIOD });
     view.series.forEach((row, i) => {
       const day: InsightPeriod = { start: PERIOD_MS.start + i * DAY, end: PERIOD_MS.start + (i + 1) * DAY };
@@ -231,7 +231,7 @@ describe("insights.get", () => {
     expect(view.intervalMinutes).toBe(5);
   });
 
-  it("F-108: the repo count covers the projects the member can open, or the one project", async () => {
+  it("F-108/c1: the repo count covers the projects the member can open, or the one project", async () => {
     const { a } = harness.fixture;
     const member = await harness.as(a.member);
     expect((await member.insights.get({ projectId: null, period: PERIOD })).repoCount).toBe(0);
@@ -242,7 +242,7 @@ describe("insights.get", () => {
     expect((await member.insights.get({ projectId: a.openProject.id, period: PERIOD })).repoCount).toBe(0);
   });
 
-  it("F-108: a project's figures cover its own rows only", async () => {
+  it("F-108/c1: a project's figures cover its own rows only", async () => {
     const { a } = harness.fixture;
     const view = await (await harness.as(a.member)).insights.get({ projectId: a.openProject.id, period: PERIOD });
     const prs = fixture.prs.filter((pr) => pr.projectId === a.openProject.id);
@@ -256,14 +256,14 @@ describe("insights.get", () => {
     expect(view.tokens.total.spentMicroUsd).toBe(129_000);
   });
 
-  it("F-108: the merge rate is null, the page's dash, when no PR closed in the period", async () => {
+  it("F-108/c1: the merge rate is null, the page's dash, when no PR closed in the period", async () => {
     const view = await (await harness.as(harness.fixture.a.member)).insights.get({ projectId: null, period: { kind: "range", from: "2026-10-07", to: "2026-10-07" } });
     expect(view.prsMerged + view.prsClosedUnmerged).toBe(0);
     expect(view.mergeRate).toBeNull();
     expect(view.timeToFirstPr).toEqual({ medianMs: null, count: 0 });
   });
 
-  it("F-108: a hidden project's name never appears; its share is one line, Other projects", async () => {
+  it("F-108/c1: a hidden project's name never appears; its share is one line, Other projects", async () => {
     const { a } = harness.fixture;
     const view = await (await harness.as(a.member)).insights.get({ projectId: null, period: PERIOD });
     const text = JSON.stringify(view);
@@ -282,14 +282,14 @@ describe("insights.get", () => {
     await expect((await harness.as(harness.fixture.b.admin)).insights.get({ projectId: a.openProject.id, period: PERIOD })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("F-108: computedAt is the job's last run, and another organization sees none of these rows", async () => {
+  it("F-108/c3: computedAt is the job's last run, and another organization sees none of these rows", async () => {
     const view = await (await harness.as(harness.fixture.a.member)).insights.get({ projectId: null, period: PERIOD });
     expect(view.computedAt).toBe(LAST_RUN.getTime());
     const other = await (await harness.as(harness.fixture.b.admin)).insights.get({ projectId: null, period: PERIOD });
     expect(other).toMatchObject({ prsOpened: 0, computedAt: null, tokens: { total: { spentMicroUsd: 0 } } });
   });
 
-  it("F-108: reads only the job's rows, so a task created since its run changes nothing until it runs again", async () => {
+  it("F-108/c3: reads only the job's rows, so a task created since its run changes nothing until it runs again", async () => {
     const { a } = harness.fixture;
     const member = await harness.as(a.member);
     const before = await member.insights.get({ projectId: null, period: PERIOD });

@@ -15,7 +15,7 @@ test.beforeAll(async () => {
   await seedFleet();
 });
 
-test("F-091: an admin approves a joining seeded runner from its Needs you row", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-091/c6: an admin approves a joining seeded runner from its Needs you row", { tag: "@desktop-only" }, async ({ page }) => {
   const { runnerId } = await seedJoiner("e2e-joiner-01");
   await signIn(page);
   await page.goto("/needs-you");
@@ -41,7 +41,7 @@ test("F-091: an admin approves a joining seeded runner from its Needs you row", 
   await expect(page.locator('[data-runner-approval="e2e-joiner-01"]')).toHaveCount(0);
 });
 
-test("F-092: an admin drains, then resumes, a seeded runner, and its state follows", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-092/c4: an admin drains, then resumes, a seeded runner, and its state follows", { tag: "@desktop-only" }, async ({ page }) => {
   await seedFleet();
   await signIn(page);
   await page.goto("/organization/runners");
@@ -62,7 +62,7 @@ test("F-092: an admin drains, then resumes, a seeded runner, and its state follo
   await expect(page.getByTestId("runner-history")).toContainText("Resumed by");
 });
 
-test("F-092, F-091: an admin revokes a runner, and the confirm counts the tasks that stop", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-092/c4, F-091/c5: an admin revokes a runner, and the confirm counts the tasks that stop", { tag: "@desktop-only" }, async ({ page }) => {
   await seedFleet();
   await signIn(page);
   await page.goto("/organization/runners");
@@ -76,7 +76,7 @@ test("F-092, F-091: an admin revokes a runner, and the confirm counts the tasks 
   await expect(page.getByRole("button", { name: "Drain", exact: true })).toHaveCount(0);
 });
 
-test("F-092, F-014: a member's own runner page has Revoke and no Drain", async ({ browser }) => {
+test("F-092/c4, F-014: a member's own runner page has Revoke and no Drain", async ({ browser }) => {
   const { runnerId } = await seedPersonal(MEMBER, MEMBER_RUNNER);
   const page = await signedInPage(browser, MEMBER);
   await page.goto(`/organization/runners/${runnerId}`);
@@ -88,7 +88,7 @@ test("F-092, F-014: a member's own runner page has Revoke and no Drain", async (
   await page.context().close();
 });
 
-test("F-092, F-061: a runner's page shows its carrier, its version against the server's, and the fix", async ({ page }) => {
+test("F-092/c2, F-061/c3: a runner's page shows its carrier, its version against the server's, and the fix", async ({ page }) => {
   await seedFleet();
   await signIn(page);
   await page.goto("/organization/runners");

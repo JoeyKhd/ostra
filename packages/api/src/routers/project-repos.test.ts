@@ -43,7 +43,7 @@ const admin = (): Promise<AppCaller> => harness.as(harness.fixture.a.admin);
 const repoOf = (name: string) => ({ connectionId: world.connectionId, installationId: world.installationId, fullName: repoFullNameSchema.parse(`ostra-test/${name}`) });
 
 describe("F-098: a project's repos", () => {
-  it("F-098: a project created with two repos has both, in order, each in its own folder", async () => {
+  it("F-098/c1: a project created with two repos has both, in order, each in its own folder", async () => {
     const created = await (await admin()).projects.create({ name: "Two", slug: "two", access: "open", repo: repoOf("test1"), moreRepos: [repoOf("test2")] });
     projectId = created.projectId;
     const repos = await (await harness.as(harness.fixture.a.member)).projects.repos({ projectId });
@@ -61,7 +61,7 @@ describe("F-098: a project's repos", () => {
     expect(await harness.test.db.project.count({ where: { slug: { in: ["twice", "unknown"] } } })).toBe(0);
   });
 
-  it("F-098: a project admin adds, reorders and removes repos; a member can't, and an outsider gets NOT_FOUND", async () => {
+  it("F-098/c1: a project admin adds, reorders and removes repos; a member can't, and an outsider gets NOT_FOUND", async () => {
     const { a } = harness.fixture;
     const caller = await admin();
     const added = await caller.projects.addRepo({ projectId, fullName: repoFullNameSchema.parse("ostra-test/test3") });
@@ -107,7 +107,7 @@ describe("F-098: a project's repos", () => {
     await expect((await harness.as(harness.fixture.b.admin)).projects.repos({ projectId })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("F-098: the limit holds at creation and at an add", async () => {
+  it("F-098/c1: the limit holds at creation and at an add", async () => {
     const context = await harness.contextOf(harness.fixture.a.admin);
     const limited = harness.callerFor({ ...context, deps: { ...context.deps, settings: { ...context.deps.settings, projectMaxRepos: 2 } } });
     await expect(limited.projects.create({ name: "Three", slug: "three", access: "open", repo: repoOf("test1"), moreRepos: [repoOf("test2"), repoOf("test3")] })).rejects.toMatchObject({
@@ -121,7 +121,7 @@ describe("F-098: a project's repos", () => {
     expect((await limited.projects.repos({ projectId })).length).toBe(2);
   });
 
-  it("F-098: a removal is refused while an unfinished task has a branch in the repo, naming the tasks; and the last repo stays", async () => {
+  it("F-098/c1: a removal is refused while an unfinished task has a branch in the repo, naming the tasks; and the last repo stays", async () => {
     const { a } = harness.fixture;
     const caller = await admin();
     const repos = await caller.projects.repos({ projectId });

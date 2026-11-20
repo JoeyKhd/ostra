@@ -134,7 +134,7 @@ const userMessages = async (taskId: TaskId) => {
 };
 
 describe("the diff", () => {
-  it("F-027: many readers of a head cost one compare, and a head that hasn't changed is never fetched again", async () => {
+  it("F-027/c1: many readers of a head cost one compare, and a head that hasn't changed is never fetched again", async () => {
     const head = sha("diff-head-1");
     codeHost.setCompare("ostra-test/test1", head, compareOf(readmePatch("one")));
     const task = await runningTask(head);
@@ -156,7 +156,7 @@ describe("the diff", () => {
     expect((await taskDiffs(deps, outsider, { taskId: task.taskId })).ok).toBe(false);
   });
 
-  it("F-027: a patch over the size limit is kept as too large, with the PR's files link", async () => {
+  it("F-027/c1: a patch over the size limit is kept as too large, with the PR's files link", async () => {
     const head = sha("diff-head-big");
     const big = `@@ -1 +1 @@\n-${"x".repeat(4000)}\n+${"y".repeat(4000)}`;
     codeHost.setCompare("ostra-test/test1", head, compareOf(big));
@@ -174,7 +174,7 @@ describe("the diff", () => {
 });
 
 describe("diff comments", () => {
-  it("F-072: drafts are private to their member until sent, and a send makes one message and marks every draft sent", async () => {
+  it("F-072/c1,c2: drafts are private to their member until sent, and a send makes one message and marks every draft sent", async () => {
     const head = sha("comments-head-1");
     codeHost.setCompare("ostra-test/test1", head, compareOf(readmePatch("alpha")));
     const task = await runningTask(head);
@@ -231,7 +231,7 @@ describe("diff comments", () => {
     }
   });
 
-  it("F-072: a member who isn't the driver is told to take over while a session is going; with none going, a send reopens", async () => {
+  it("F-072/c2: a member who isn't the driver is told to take over while a session is going; with none going, a send reopens", async () => {
     const head = sha("comments-head-2");
     codeHost.setCompare("ostra-test/test1", head, compareOf(readmePatch("beta")));
     const task = await runningTask(head);
@@ -256,7 +256,7 @@ describe("diff comments", () => {
     expect(message).toMatchObject({ reopen: true, memberId: other.memberId });
   });
 
-  it("F-072: a comment on a line that changed is outdated and one on an untouched line isn't", async () => {
+  it("F-072/c1: a comment on a line that changed is outdated and one on an untouched line isn't", async () => {
     const first = sha("outdated-head-1");
     const second = sha("outdated-head-2");
     codeHost.setCompare("ostra-test/test1", first, compareOf(readmePatch("gamma")));
@@ -283,7 +283,7 @@ describe("diff comments", () => {
     expect(shown?.map((row) => [row.line, row.outdated])).toEqual([[2, true]]);
   });
 
-  it("F-072: another organization's comments are invisible, and its members can't comment or send", async () => {
+  it("F-072/c1: another organization's comments are invisible, and its members can't comment or send", async () => {
     const head = sha("isolation-head");
     codeHost.setCompare("ostra-test/test1", head, compareOf(readmePatch("eps")));
     const task = await runningTask(head);

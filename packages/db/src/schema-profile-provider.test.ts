@@ -40,7 +40,7 @@ describe("upgrading to the profile's provider", () => {
     await withClient(serverUrl, (client) => client.query(`DROP DATABASE IF EXISTS ${client.escapeIdentifier(name)} WITH (FORCE)`));
   });
 
-  it("F-135, F-021: gives each profile the provider that serves its model today when exactly one does, and leaves it null where several or none do", async () => {
+  it("F-135/c20, F-021: gives each profile the provider that serves its model today when exactly one does, and leaves it null where several or none do", async () => {
     await withClient(serverUrl, (client) => client.query(`CREATE DATABASE ${client.escapeIdentifier(name)}`));
     const all = (await readdir(migrationsDir, { withFileTypes: true }))
       .filter((entry) => entry.isDirectory())

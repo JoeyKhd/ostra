@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`the mails > F-115: the approval mail's subject, HTML and text 1`] = `
+exports[`the mails > F-115/c1: the approval mail's subject, HTML and text 1`] = `
 {
   "html": "<!doctype html>
 <html lang="en">
@@ -85,7 +85,7 @@ ostra for Acme Corp · ostra.acme.dev
 }
 `;
 
-exports[`the mails > F-115: the crashed mail's subject, HTML and text 1`] = `
+exports[`the mails > F-115/c1: the crashed mail's subject, HTML and text 1`] = `
 {
   "html": "<!doctype html>
 <html lang="en">
@@ -170,7 +170,7 @@ ostra for Acme Corp · ostra.acme.dev
 }
 `;
 
-exports[`the mails > F-115: the no_changes mail's subject, HTML and text 1`] = `
+exports[`the mails > F-115/c1: the no_changes mail's subject, HTML and text 1`] = `
 {
   "html": "<!doctype html>
 <html lang="en">
@@ -255,7 +255,7 @@ ostra for Acme Corp · ostra.acme.dev
 }
 `;
 
-exports[`the mails > F-115: the plan mail's subject, HTML and text 1`] = `
+exports[`the mails > F-115/c1: the plan mail's subject, HTML and text 1`] = `
 {
   "html": "<!doctype html>
 <html lang="en">
@@ -340,7 +340,7 @@ ostra for Acme Corp · ostra.acme.dev
 }
 `;
 
-exports[`the mails > F-115: the pr_ready mail's subject, HTML and text 1`] = `
+exports[`the mails > F-115/c1: the pr_ready mail's subject, HTML and text 1`] = `
 {
   "html": "<!doctype html>
 <html lang="en">
@@ -425,7 +425,7 @@ ostra for Acme Corp · ostra.acme.dev
 }
 `;
 
-exports[`the mails > F-115: the question mail's subject, HTML and text 1`] = `
+exports[`the mails > F-115/c1: the question mail's subject, HTML and text 1`] = `
 {
   "html": "<!doctype html>
 <html lang="en">
@@ -510,7 +510,7 @@ ostra for Acme Corp · ostra.acme.dev
 }
 `;
 
-exports[`the mails > F-115: the setup_failed mail's subject, HTML and text 1`] = `
+exports[`the mails > F-115/c1: the setup_failed mail's subject, HTML and text 1`] = `
 {
   "html": "<!doctype html>
 <html lang="en">
@@ -595,7 +595,7 @@ ostra for Acme Corp · ostra.acme.dev
 }
 `;
 
-exports[`the mails > F-115: the spend_cap mail's subject, HTML and text 1`] = `
+exports[`the mails > F-115/c1: the spend_cap mail's subject, HTML and text 1`] = `
 {
   "html": "<!doctype html>
 <html lang="en">
@@ -680,7 +680,7 @@ ostra for Acme Corp · ostra.acme.dev
 }
 `;
 
-exports[`the mails > F-115: the stalled mail's subject, HTML and text 1`] = `
+exports[`the mails > F-115/c1: the stalled mail's subject, HTML and text 1`] = `
 {
   "html": "<!doctype html>
 <html lang="en">
@@ -765,7 +765,7 @@ ostra for Acme Corp · ostra.acme.dev
 }
 `;
 
-exports[`the mails > F-115: the test mail's subject, HTML and text 1`] = `
+exports[`the mails > F-115/c1: the test mail's subject, HTML and text 1`] = `
 {
   "html": "<!doctype html>
 <html lang="en">
@@ -847,7 +847,7 @@ ostra for Acme Corp · ostra.acme.dev
 }
 `;
 
-exports[`the mails > F-115: the ticket_closed mail's subject, HTML and text 1`] = `
+exports[`the mails > F-115/c1: the ticket_closed mail's subject, HTML and text 1`] = `
 {
   "html": "<!doctype html>
 <html lang="en">

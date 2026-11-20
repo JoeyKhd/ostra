@@ -74,7 +74,7 @@ afterAll(async () => {
 const connectionsNow = async () => (await admin()).github.connections();
 
 describe("F-136: GitHub organizations in the API", () => {
-  it("F-136: two Apps are listed, the organization's own first, each with its own webhook address and its installations", async () => {
+  it("F-136/c4,c8,c9: two Apps are listed, the organization's own first, each with its own webhook address and its installations", async () => {
     const views = await connectionsNow();
     expect(views.map((view) => [view.connectionId, view.slug, view.ownerLogin, view.own])).toEqual([
       [own, "ostra-own", "ostra-test", true],
@@ -97,7 +97,7 @@ describe("F-136: GitHub organizations in the API", () => {
     expect(clientView?.ownerKind).toBe("organization");
   });
 
-  it("F-136: a waiting installation's repos are offered nowhere, and projects.addRepo and projects.create refuse them", async () => {
+  it("F-136/c1,c6: a waiting installation's repos are offered nowhere, and projects.addRepo and projects.create refuse them", async () => {
     const caller = await admin();
     const views = await connectionsNow();
     expect(views[0]?.installations.find((installation) => installation.installationId === "9002")?.repos).toEqual([]);
@@ -127,7 +127,7 @@ describe("F-136: GitHub organizations in the API", () => {
     expect(await harness.test.db.repo.findUniqueOrThrow({ where: { id: added.repoId }, select: { connectionId: true, installationId: true } })).toEqual({ connectionId: client, installationId: "9101" });
   });
 
-  it("F-136: link, unlink and remove are an organization admin's, each with its audit entry", async () => {
+  it("F-136/c4,c5,c11: link, unlink and remove are an organization admin's, each with its audit entry", async () => {
     const { a, b } = harness.fixture;
     const caller = await admin();
     const target = { connectionId: own, installationId: "9002" };
@@ -172,7 +172,7 @@ describe("F-136: GitHub organizations in the API", () => {
     expect((await connectionsNow())[0]?.installations.find((installation) => installation.installationId === "9002")).toMatchObject({ state: "removed", repoSelection: null, repos: [] });
   });
 
-  it("F-136: the webhook secret ostra generates is shown once, stored in the secret store, and in no view after", async () => {
+  it("F-136/c8,c11: the webhook secret ostra generates is shown once, stored in the secret store, and in no view after", async () => {
     expect(clientSecret).toMatch(/^[0-9a-f]{64}$/);
     if (clientSecret === null) {
       throw new Error("a generated secret");
@@ -191,7 +191,7 @@ describe("F-136: GitHub organizations in the API", () => {
     expect(await harness.test.db.auditEntry.count({ where: { organizationId: harness.fixture.a.organization.id, action: "connection.added", entityId: client } })).toBe(1);
   });
 
-  it("F-136: createApp and startManifest take public, private unless the admin says", async () => {
+  it("F-136/c2: createApp and startManifest take public, private unless the admin says", async () => {
     const caller = await admin();
     const host = harness.fakes.codeHost;
     await caller.github.createApp({ ownerLogin: "ostra-test", public: true });

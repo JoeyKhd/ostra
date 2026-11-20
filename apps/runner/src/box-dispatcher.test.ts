@@ -179,7 +179,7 @@ describe("the box dispatcher", () => {
     expect(dispatcher.status().freeSlots).toBe(1);
   });
 
-  it("F-015: asks for the box's task token once, with its lease epoch, and never rewrites the token file", async () => {
+  it("F-015/c3: asks for the box's task token once, with its lease epoch, and never rewrites the token file", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"], shouldAdvanceTime: true });
     try {
       let issued = 0;
@@ -214,7 +214,7 @@ describe("the box dispatcher", () => {
     }
   }, 30_000);
 
-  it("F-015: makes no box when core gives no task token", async () => {
+  it("F-015/c3: makes no box when core gives no task token", async () => {
     const boxes = createDockerBoxes(createEngine(engine.address), { images: { base: "ostra/base:test", runner: "ostra/runner:test" } });
     const dispatcher = createBoxDispatcher({
       boxes,
