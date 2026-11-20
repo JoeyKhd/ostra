@@ -36,8 +36,8 @@ Plain, precise and calm, like engineers talking to engineers:
 
 - **Mood:** calm, precise, built to last.
 - **Visual axes:** mostly restrained (25), mostly geometric (25), halfway between familiar and experimental (50).
-- **Dark mode first.** The maintainer: "we want more of a darkmode btw". Abyss is the default background for the README and social images. Light mode still exists and still works.
-- **The panel and the docs are the exception:** their chrome is neutral graphite, and the brand colours are only accents there (`app-design.md`, chosen 2026-11-18 after Abyss made the app look muddy). The docs site moved to the panel's graphite on 2026-11-20, by the maintainer's word, so the two read as one product (`app-targets/m7/docs-home.md`, "Tokens"). Their light theme is graphite too: the dark greys turned light, with graphite ink, not Shell and Abyss (`app-targets/m7/light-home.md`, "The light tokens").
+- **Dark mode first.** The maintainer: "we want more of a darkmode btw". Abyss is the default background for the social images. Light mode still exists and still works.
+- **The panel and the docs are the exception:** their chrome is neutral graphite, and the brand colours are only accents there (`app-design.md`, chosen 2026-11-18 after Abyss made the app look muddy). The docs site moved to the panel's graphite on 2026-11-20, by the maintainer's word, so the two read as one product (`app-targets/m7/docs-home.md`, "Tokens"), and the README banner followed the same day (B-025 in `assets.md`). Their light theme is graphite too: the dark greys turned light, with graphite ink, not Shell and Abyss (`app-targets/m7/light-home.md`, "The light tokens").
 
 ## Colour direction
 
