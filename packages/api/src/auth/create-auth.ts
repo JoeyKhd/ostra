@@ -240,6 +240,12 @@ export const createAuth = (input: CreateAuthInput) => {
         await db.$transaction(async (tx) => {
           const waiting = await tx.member.findMany({ where: { userId: user.id, state: "pending_verification" }, select: { id: true, organizationId: true } });
           for (const member of waiting) {
+            // The first mail's delivery is done (sent, or given up on): asked again, it goes again.
+            // The job sends only a pending delivery, so a replay still sends nothing twice.
+            await tx.accountMailDelivery.updateMany({
+              where: { purpose: "email_verification", recordId: member.id, state: { not: "pending" } },
+              data: { state: "pending", error: null },
+            });
             await accounts.jobs.enqueueInTx(tx, "account-mail.send", {
               organizationId: organizationIdSchema.parse(member.organizationId),
               purpose: "email_verification",

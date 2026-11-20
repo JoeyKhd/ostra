@@ -276,15 +276,20 @@ describe("with email set up", () => {
     expect(Array.isArray(await now.projects.list())).toBe(true);
   });
 
-  it("F-002: \"Send it again\" enqueues one more verification mail for the waiting membership", async () => {
+  it("F-002: Send it again enqueues one more verification mail for the waiting membership, and its delivery goes again", async () => {
     const who = fresh("again");
     const invited = await inviteOf(who.email);
     await signUp({ ...who, invitationId: invited.invitationId });
+    const member = await memberOf(who.email);
+    if (member === null) throw new Error("no membership");
+    // The first verification mail went out: its delivery is done.
+    await harness.test.db.accountMailDelivery.create({ data: { organizationId, purpose: "email_verification", recordId: member.id, state: "sent", attempts: 1 } });
     harness.fakes.jobs.clear();
     const sent = await call("POST", "/send-verification-email", { email: who.email });
     expect(sent.status).toBe(200);
-    const member = await memberOf(who.email);
-    expect(harness.fakes.jobs.jobs).toEqual([expect.objectContaining({ job: "account-mail.send", payload: { organizationId, purpose: "email_verification", recordId: member?.id } })]);
+    expect(harness.fakes.jobs.jobs).toEqual([expect.objectContaining({ job: "account-mail.send", payload: { organizationId, purpose: "email_verification", recordId: member.id } })]);
+    // The job sends only a pending delivery: asked again, it is pending again, so the mail goes.
+    expect(await harness.test.db.accountMailDelivery.findFirstOrThrow({ where: { purpose: "email_verification", recordId: member.id } })).toMatchObject({ state: "pending" });
   });
 });
 
