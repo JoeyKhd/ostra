@@ -28,6 +28,7 @@ import { TaskThread } from "@/task/task-thread";
 import { useTaskLog } from "@/task/use-task-log";
 
 import { monthWord } from "./budget-reason";
+import { TaskPrs } from "./task-prs";
 import { HeldNoKey, KeyRow, NoKeySentence, WhoPicks } from "./no-key";
 import { adminNames } from "./no-key-words";
 import type { NoKey } from "./no-key";
@@ -465,6 +466,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
             </span>
             {log.state.connection === "reconnecting" ? <><Sep /><span className="text-muted">{t("taskPage.reconnecting")}</span></> : null}
           </p>
+          <TaskPrs repos={data.repos} />
           {data.waiting?.kind === "no-runner" && data.waiting.reason.code === "needs-services-runner" ? (
             <p className="mt-1.5 text-ui text-muted" data-testid="task-dispatch-note">{servicesWaitText(data.waiting.reason.online)}</p>
           ) : null}

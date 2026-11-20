@@ -15,7 +15,7 @@ export const ProjectSettingsTabs = ({ projectId, admin }: { readonly projectId: 
   const pathname = usePathname();
   const base = `/projects/${projectId}`;
   const tabs = [
-    ...(admin ? [{ href: `${base}/settings/ticket-template`, label: t("projectSettings.ticketTemplate") }, { href: `${base}/repos`, label: t("projectSettings.repos") }] : []),
+    ...(admin ? [{ href: `${base}/settings/ticket-template`, label: t("projectSettings.ticketTemplate") }, { href: `${base}/settings/repos`, label: t("projectSettings.repos") }] : []),
     { href: `${base}/settings/models`, label: t("projectSettings.models") },
     { href: `${base}/settings/access`, label: t("projectSettings.access") },
     // Milestone 5 (project-runners.md): the pools and shares are an admin's settings.

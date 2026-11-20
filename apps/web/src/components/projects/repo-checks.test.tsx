@@ -161,7 +161,7 @@ describe("where a task starts", () => {
   it("F-060: an unprotected branch warns, and links to why", () => {
     const html = renderToStaticMarkup(<ComposerRepoNotes projectId="p1" repos={[warning]} />);
     expect(html).toContain("default branch isn&#x27;t protected");
-    expect(html).toContain(`/projects/p1/repos?repo=${warning.repoId}`);
+    expect(html).toContain(`/projects/p1/settings/repos?repo=${warning.repoId}`);
   });
 
   it("a check ostra couldn't make says nothing there, and ready repos neither", () => {

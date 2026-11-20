@@ -3671,7 +3671,8 @@
     "access": "Access",
     "audit": "Audit log",
     "settings": "Settings",
-    "runners": "Runners"
+    "runners": "Runners",
+    "title": "Settings"
   },
   "access": {
     "title": "Access",
@@ -4391,6 +4392,45 @@
       "lost": "Lost its connection",
       "versionRefused": "Refused: its version is outside the window",
       "labelsDropped": "Reserved labels dropped"
+    }
+  },
+  "projectRepos": {
+    "title": "Repos",
+    "lede": "Every session checks these repos out side by side, in this order.",
+    "add": "Add repo",
+    "addFilter": "Filter the App's repos",
+    "addNone": "No other repo the App reaches.",
+    "position": "Position",
+    "positionOf": "{n} of {of}",
+    "folder": "Folder",
+    "noOpenTasks": "No open tasks",
+    "inUse": {
+      "one": "In use by 1 task",
+      "other": "In use by {n} tasks"
+    },
+    "cantRemove": "This repo can't be removed while a task that isn't merged, stopped or done has a branch in it.",
+    "remove": "Remove from project",
+    "removeRefused": "Not removed: these tasks still have a branch in it.",
+    "orderTitle": "Order",
+    "orderBody": "Sessions check repos out in this order, and the agent's instructions list them in it. The order changes nothing for a running session.",
+    "move": "Move {repo}: press ↑ or ↓",
+    "help": "Drag a repo by its handle, or focus the handle and press ↑ or ↓. A repo you add joins each open task at its next session. A project holds up to {max} repos."
+  },
+  "taskPrs": {
+    "draft": "draft",
+    "review": {
+      "waiting": "Waiting for an independent reviewer",
+      "changesRequested": "A reviewer asked for changes",
+      "onlyBots": "Only bots approved",
+      "onlyUnlinked": "Approved by an unlinked GitHub account",
+      "onlyDrivers": "Only drivers approved",
+      "stale": "The approval is of an earlier commit",
+      "approvedBy": "Approved by {name}"
+    },
+    "state": {
+      "open": "open",
+      "merged": "merged",
+      "closed_unmerged": "closed"
     }
   }
 }

@@ -129,6 +129,8 @@ const main = async (): Promise<void> => {
           "README.md": "# test1\n",
         },
       },
+      // F-098 (ticket 39): a second repo of the same installation, for a project with several repos.
+      { id: 4_003, owner: e2eRepo.owner, name: "test2", defaultBranch: "main", branches: ["main"], files: { "README.md": "# test2\n" } },
     ],
   });
 

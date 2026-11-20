@@ -99,7 +99,7 @@ export const ComposerRepoNotes = ({ projectId, repos }: { readonly projectId: st
           <BanIcon aria-hidden className="mt-[3px] size-[13px] shrink-0 stroke-[1.75] text-red" />
           <span>
             <WithRepo text={t("repos.composer.unsupported")} repo={repo.fullName} />{" "}
-            <Link href={`/projects/${projectId}/repos?repo=${repo.repoId}`} className="text-teal hover:underline">
+            <Link href={`/projects/${projectId}/settings/repos?repo=${repo.repoId}`} className="text-teal hover:underline">
               {t("repos.composer.seeRepos")}
             </Link>
           </span>
@@ -110,7 +110,7 @@ export const ComposerRepoNotes = ({ projectId, repos }: { readonly projectId: st
           <TriangleAlertIcon aria-hidden className="mt-[3px] size-[13px] shrink-0 stroke-[1.75] text-muted" />
           <span>
             <WithRepo text={t("repos.composer.unprotected")} repo={repo.fullName} />{" "}
-            <Link href={`/projects/${projectId}/repos?repo=${repo.repoId}`} className="text-teal hover:underline">
+            <Link href={`/projects/${projectId}/settings/repos?repo=${repo.repoId}`} className="text-teal hover:underline">
               {t("repos.composer.why")}
             </Link>
           </span>

@@ -1,22 +1,12 @@
-import { notFound } from "next/navigation";
-import { Suspense } from "react";
+import { notFound, redirect } from "next/navigation";
 
 import { projectIdSchema } from "@ostra/protocol";
 
-import { RepoChecksView } from "@/components/projects/repo-checks";
-import { t } from "@/lib/messages";
-
-export const metadata = { title: t("repos.title") };
-
+/** The repos page lives under Settings (ticket 39, decided 2026-11-19); the old address leads there. */
 const ReposPage = async ({ params }: { readonly params: Promise<{ "project-id": string }> }) => {
-  // The route's text is parsed once, here; the page below only holds a `ProjectId`.
   const projectId = projectIdSchema.safeParse((await params)["project-id"]);
   if (!projectId.success) notFound();
-  return (
-    <Suspense>
-      <RepoChecksView projectId={projectId.data} />
-    </Suspense>
-  );
+  redirect(`/projects/${projectId.data}/settings/repos`);
 };
 
 export default ReposPage;

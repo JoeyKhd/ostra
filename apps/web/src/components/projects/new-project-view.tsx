@@ -95,7 +95,8 @@ export const NewProjectView = () => {
   // waiting or removed installation's repos are offered nowhere.
   const groups = useQuery({ ...trpc.github.reposByAccount.queryOptions(), enabled: connected !== null });
   const [name, setName] = useState("");
-  const [picked, setPicked] = useState<string | null>(null);
+  // F-098: one repo or several, in the order picked; the first drafts the environment.
+  const [picked, setPicked] = useState<readonly string[]>([]);
   const [query, setQuery] = useState("");
 
   const client = useTRPCClient();
@@ -157,15 +158,16 @@ export const NewProjectView = () => {
   const shownGroups = (groups.data ?? [])
     .map((group) => ({ group, repos: filterRepos(listed.filter((repo) => repo.group === group), query) }))
     .filter((entry) => entry.repos.length > 0);
-  const chosen = listed.find((repo) => repo.key === picked) ?? null;
+  const chosenAll = picked.flatMap((key) => listed.filter((repo) => repo.key === key));
+  const chosen = chosenAll[0] ?? null;
   const draftRepo: DraftRepo | null = chosen === null ? null : { installationId: chosen.group.installationId, fullName: chosen.fullName, defaultBranch: chosen.defaultBranch };
   const [onlyGroup] = groups.data ?? [];
   const single = groups.data?.length === 1 ? onlyGroup : undefined;
   const busy = create.isPending;
 
   const pick = (key: string, repoName: string, checked: boolean) => {
-    // One repo in milestone 1 (F-086): checking one unchecks the other.
-    setPicked(checked ? key : null);
+    // Milestone 4 (F-098): a project holds several repos; the first picked is first in its order.
+    setPicked((current) => (checked ? [...current.filter((one) => one !== key), key] : current.filter((one) => one !== key)));
     if (checked && name.trim() === "") setName(repoName.split("/")[1] ?? "");
   };
 
@@ -176,6 +178,9 @@ export const NewProjectView = () => {
       name: name.trim(),
       slug,
       repo: { connectionId: chosen.group.connectionId, installationId: chosen.group.installationId, fullName: chosen.fullName },
+      ...(chosenAll.length > 1
+        ? { moreRepos: chosenAll.slice(1).map((repo) => ({ connectionId: repo.group.connectionId, installationId: repo.group.installationId, fullName: repo.fullName })) }
+        : {}),
     });
   };
 
@@ -199,7 +204,7 @@ export const NewProjectView = () => {
 
           <FormSection
             title={t("projects.repos")}
-            note={t("projects.reposSelected", { n: chosen === null ? 0 : 1 })}
+            note={t("projects.reposSelected", { n: chosenAll.length })}
           >
             {groups.error === null ? null : <ErrorLine>{errorText(groups.error)}</ErrorLine>}
             <div className="relative mb-2.5">
@@ -242,13 +247,15 @@ export const NewProjectView = () => {
                         </div>
                         <ul className="rows">
                           {repos.map((repo) => {
-                            const checked = repo.key === picked;
+                            const checked = picked.includes(repo.key);
+                            const order = picked.indexOf(repo.key);
                             return (
                               <li key={repo.key} data-repo={repo.fullName}>
                                 <label className={cn("flex h-[38px] cursor-pointer items-center gap-3 px-3 hover:bg-raise", checked && "bg-sel hover:bg-sel")}>
                                   <Checkbox checked={checked} onCheckedChange={(value) => { pick(repo.key, repo.fullName, value === true); }} />
                                   <span className="min-w-0 truncate font-mono text-ui text-text">{repo.fullName}</span>
                                   {repo.private ? <LockIcon aria-label={t("projects.private")} className="size-3 shrink-0 stroke-[1.75] text-faint" /> : null}
+                                  {checked && picked.length > 1 ? <span className="shrink-0 font-mono text-xs text-faint" data-testid="repo-order">{order + 1}</span> : null}
                                   <span className="ml-auto shrink-0 font-mono text-sm text-faint">{repo.defaultBranch}</span>
                                 </label>
                               </li>
