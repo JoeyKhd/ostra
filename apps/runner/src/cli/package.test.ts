@@ -50,7 +50,8 @@ describe("the ostra program", () => {
     expect(dockerfile).toContain('CMD ["runner"]');
     // Ticket 19: it says it's the image, so the pin installs nothing there (ADR 0034).
     expect(dockerfile).toContain("ENV OSTRA_INSTALL=image");
-  });
+    // It starts the real program cold, which takes several seconds on a busy CI machine.
+  }, 30_000);
 
   it("F-013: the CLI needs Node 24.5 or later: its engines say so, and the runner image's Node meets it", async () => {
     const pkg = await readPackage();
