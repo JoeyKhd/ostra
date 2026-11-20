@@ -1,6 +1,6 @@
 import type { Db } from "@ostra/db";
 import { Prisma } from "@ostra/db";
-import type { ProjectId, SearchEntryId, TaskId } from "@ostra/protocol";
+import type { ProjectId, RepoId, SearchEntryId, TaskId } from "@ostra/protocol";
 import { projectIdSchema, searchEntryIdSchema, taskIdSchema } from "@ostra/protocol";
 import { z } from "zod";
 
@@ -18,6 +18,11 @@ import type { SearchTasksInput } from "../use-cases/m4-signatures.ts";
 /** The filters beyond the signature's (ticket 11): a project and a period, on the task. */
 export type SearchFilters = SearchTasksInput & {
   readonly projectId?: ProjectId | null;
+  /**
+   * Every repo row a `repo:` filter names. A repo of the org has a row in each project that lists
+   * it, so `repo:test2` names several: a task matches if it uses any of them.
+   */
+  readonly repoIds?: readonly RepoId[] | null;
   /** The task's creation, in ms since the epoch: from, inclusive, and to, exclusive. */
   readonly from?: number | null;
   readonly to?: number | null;
@@ -111,6 +116,9 @@ const taskFilters = (scope: MemberScope, visible: readonly string[], input: Sear
   }
   if (input.repoId !== null) {
     parts.push(Prisma.sql`EXISTS (SELECT 1 FROM "task_repo" r WHERE r."taskId" = t.id AND r."repoId" = ${input.repoId})`);
+  }
+  if (input.repoIds !== undefined && input.repoIds !== null) {
+    parts.push(Prisma.sql`EXISTS (SELECT 1 FROM "task_repo" r WHERE r."taskId" = t.id AND r."repoId" = ANY(${[...input.repoIds]}::text[]))`);
   }
   if (input.memberId !== null) {
     parts.push(

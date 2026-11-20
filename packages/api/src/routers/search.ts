@@ -67,13 +67,14 @@ const resolveFilters = async (db: Db, scope: MemberScope, query: string): Promis
     if (project === undefined) return NOTHING;
     projectId = project.id;
   }
-  let repoId: RepoId | null = null;
+  // A repo has a row in each project that lists it: `repo:test2` names every one of them.
+  let repoIds: readonly RepoId[] | null = null;
   if (parsed.repo !== null) {
     const wanted = parsed.repo.toLowerCase();
     const repos = await db.repo.findMany({ where: { organizationId, projectId: { in: projects.map((project) => project.id) } }, select: { id: true, fullName: true } });
-    const repo = repos.find((candidate) => candidate.fullName.toLowerCase() === wanted || candidate.fullName.toLowerCase().split("/").at(-1) === wanted);
-    if (repo === undefined) return NOTHING;
-    repoId = repoIdSchema.parse(repo.id);
+    const named = repos.filter((candidate) => candidate.fullName.toLowerCase() === wanted || candidate.fullName.toLowerCase().split("/").at(-1) === wanted);
+    if (named.length === 0) return NOTHING;
+    repoIds = named.map((repo) => repoIdSchema.parse(repo.id));
   }
   let memberId: MemberId | null = null;
   if (parsed.by !== null) {
@@ -88,7 +89,8 @@ const resolveFilters = async (db: Db, scope: MemberScope, query: string): Promis
   return {
     text: parsed.text === "" ? null : parsed.text,
     ticketKey: parsed.ticket,
-    repoId,
+    repoId: null,
+    repoIds,
     memberId,
     state: parsed.status,
     projectId,

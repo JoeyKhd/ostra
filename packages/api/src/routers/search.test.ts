@@ -16,6 +16,7 @@ let projectId: ProjectId;
 let projectSlug: string;
 let repoId: RepoId;
 let otherProjectId: ProjectId;
+let world: Awaited<ReturnType<typeof seedConnectionAndModel>>;
 
 type Made = { readonly task: SeededTask; readonly projectId: ProjectId; readonly organizationId: OrganizationId };
 const made: Record<string, Made> = {};
@@ -73,7 +74,7 @@ const found = async (caller: AppCaller, query: string): Promise<string[]> =>
 beforeAll(async () => {
   harness = await createApiHarness();
   orgA = harness.fixture.a.organization.id;
-  const world = await seedConnectionAndModel(harness);
+  world = await seedConnectionAndModel(harness);
   const project = await seedProject(harness, world, "search-shop");
   projectId = project.projectId;
   repoId = project.repoId;
@@ -169,5 +170,17 @@ describe("search.tasks", () => {
       expect(logged).not.toContain(text);
     }
     expect(harness.logs.some((line) => JSON.stringify(line).includes("queryLength"))).toBe(true);
+  });
+});
+
+describe("search.tasks, a repo in several projects", () => {
+  it("F-080: repo: matches a task in any project that lists the repo, not only the first project's", async () => {
+    // The same repo, ostra-test/test1, listed by a second project: a row of its own there.
+    const second = await seedProject(harness, world, "search-shop-two");
+    await seed("second-project", { organizationId: orgA, projectId: second.projectId, title: "Paint the logo", creatorMemberId: harness.fixture.a.member.id, createdAt: new Date("2026-11-12T12:00:00Z"), repo: second.repoId });
+    const member = await harness.as(harness.fixture.a.member);
+    expect(await found(member, "repo:test1")).toEqual(["migration", "second-project"]);
+    expect(await found(member, "repo:ostra-test/test1 logo")).toEqual(["second-project"]);
+    expect(await found(member, "repo:test1 status:in-review")).toEqual([]);
   });
 });
