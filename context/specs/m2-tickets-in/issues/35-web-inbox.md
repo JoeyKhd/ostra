@@ -1,6 +1,6 @@
 # 35: Web: the Inbox
 
-Status: ready-for-agent
+Status: done
 Builder: web
 Blocked by: 29, 32 (the targets' approval, for the UI)
 Features: F-010, F-007
@@ -30,7 +30,7 @@ The lead, on the maintainer's delegation, settled the open points the milestone 
 ## Done when
 
 - [x] Component tests: rows, filters in the URL, the existing task, start, the empty state ("no boards yet" and "nothing open").
-- [ ] A Playwright run against the fake Linear server: a ticket created in the fake shows without a reload and starts a task.
+- [x] A Playwright run against the fake Linear server: a ticket created in the fake shows without a reload and starts a task.
 - [x] Committed as `✨ add the Inbox`.
 
 ## Comments
@@ -41,4 +41,7 @@ The lead, on the maintainer's delegation, settled the open points the milestone 
   - Pages are fetched with the plain tRPC client inside `useInfiniteQuery`, because tRPC's infinite options add a `direction` that `inbox.list`'s strict input refuses.
   - The project's navigation gains `Inbox` (with `projects.list`'s `inboxCount`) between Tasks and Environment.
   - **Not built yet:** "Live" is a 10 s refetch of the first page and the selected ticket, not a change-notice subscription (the stream has no project-scoped notices for the panel yet); below `xl` the panel stacks under the list rather than opening as a right `Sheet`, and at phone width there's no bottom `Sheet` (`phone-inbox`); `↑`/`↓` don't move the selection; the Kind select shows `Code` only and the profile is read-only. **The Playwright run against the fake Linear server** has ticket 33's blocker (no setting points the panel at another Linear) and also needs core's ingest (ticket 14).
-
+- 2026-11-20, m2-linear-e2e: the Playwright run is in (`✅ prove Connect Linear and the Inbox end to end`, `bd3b538`, on `✨ follow OSTRA_LINEAR_API_URL in Connect Linear`, `d7ebfae`). Every box holds.
+  - `apps/web/e2e/22-linear-inbox.spec.ts`, second case (`F-007/c1, F-010/c1,c2, F-042/c1`), after the first connects Linear: **the board is attached through the panel** (the project's Boards page, the fake's team `OST`, its mapping drafted), not seeded. With the Inbox open, a ticket is made on the fake through the shipped adapter; it reaches the cache by core's poll (the connection polls: core is on loopback) and shows with no reload or navigation. The text filter narrows the list to it; its panel offers Start task with `Code` and the project's own default profile prefilled; Start task makes the task (`Queued` on the row, `Open task`), whose page shows the ticket and the profile.
+  - **Live is two paths now:** the project's change notice, which core's poll sends, invalidates the Inbox (`task/change-scopes.ts`, milestone 6), and the 10 s refetch backs it up. The break-it cut both (`inbox-view.tsx`, `change-scopes.ts`), and the case failed; cutting only the refetch didn't.
+  - F-010 is `done` (`context/proof/F-010.md`). F-042's row stays `partial`: the case doesn't measure the 60-second bound.
