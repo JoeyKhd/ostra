@@ -161,6 +161,14 @@ export * from "./lifecycles/m6.ts";
 export * from "./automations/cron.ts";
 export * from "./automations/intake-filter.ts";
 export * from "./starts/start-task.ts";
+// Milestone 6, tickets 10 and 11: the one start's body, bulk starts, intake rules and the scheduler.
+export * from "./starts/start-task-body.ts";
+export * from "./starts/bulk.ts";
+export * from "./automations/intake.ts";
+export * from "./automations/intake-enqueue.ts";
+export * from "./automations/manage.ts";
+export * from "./tickets/ticket-outbox.ts";
+export * from "./starts/origin-labels.ts";
 export * from "./review-loop/ci-verdict.ts";
 export * from "./review-loop/rounds.ts";
 export * from "./review-loop/place-findings.ts";

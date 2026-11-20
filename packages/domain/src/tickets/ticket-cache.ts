@@ -5,6 +5,7 @@ import type { BoardId, ExternalTicketId, TicketId, TicketKey } from "@ostra/prot
 
 import type { IngestTicketHint, IngestTicketHintResult } from "../use-cases/tickets.ts";
 import { updateTicketSearchEntries } from "../search/entries.ts";
+import { enqueueIntakeMatchesInTx } from "../automations/intake-enqueue.ts";
 import { isOpenCategory } from "./contracts.ts";
 
 // The ticket cache (F-010, F-042, F-044, ticket 14): ostra's copy of each ticket per board, keyed by
@@ -46,8 +47,15 @@ export const upsertTicketCacheInTx = async (
   tx: Tx,
   boards: readonly CacheBoard[],
   ticket: TrackerTicket,
-): Promise<{ readonly ticketIds: readonly TicketId[]; readonly changed: number; readonly closed: readonly TicketId[] }> => {
+): Promise<{
+  readonly ticketIds: readonly TicketId[];
+  readonly changed: number;
+  readonly closed: readonly TicketId[];
+  /** Milestone 6 (F-011): the rows this read created or changed, which intake rules are matched against. */
+  readonly changedTicketIds: readonly TicketId[];
+}> => {
   const ticketIds: TicketId[] = [];
+  const changedTicketIds: TicketId[] = [];
   const closed: TicketId[] = [];
   let changed = 0;
   const columns = columnsOf(ticket);
@@ -69,6 +77,7 @@ export const upsertTicketCacheInTx = async (
         select: { id: true },
       });
       ticketIds.push(ticketIdSchema.parse(created.id));
+      changedTicketIds.push(ticketIdSchema.parse(created.id));
       changed += 1;
       continue;
     }
@@ -83,12 +92,13 @@ export const upsertTicketCacheInTx = async (
     await tx.ticket.update({ where: { id: existing.id }, data: columns });
     // Search (ticket 11): the ticket's tasks find it by its new key and title.
     await updateTicketSearchEntries(tx, { organizationId: organizationIdSchema.parse(board.organizationId), ticketId: existing.id, key: columns.key, title: columns.title });
+    changedTicketIds.push(ticketIdSchema.parse(existing.id));
     changed += 1;
     if (!isOpenCategory(ticket.status.category) && (existing.statusCategory === null || isOpenCategory(existing.statusCategory))) {
       closed.push(ticketIdSchema.parse(existing.id));
     }
   }
-  return { ticketIds, changed, closed };
+  return { ticketIds, changed, closed, changedTicketIds };
 };
 
 /**
@@ -200,6 +210,10 @@ export const ingestTicketHintBody: IngestTicketHint = async (deps, change) => {
   const elsewhere = boards.filter((board) => board.externalId !== found.team);
   const result = await db.$transaction(async (tx) => {
     const upserted = await upsertTicketCacheInTx(tx, onTeam, ticket);
+    // Milestone 6 (F-011): intake rules see the change in the same transaction; ostra's own echo isn't acted on.
+    if (deps.jobs !== undefined && !ownEcho) {
+      await enqueueIntakeMatchesInTx({ jobs: deps.jobs }, tx, upserted.changedTicketIds);
+    }
     // A ticket that moved to a team no board of this connection holds: its old copies are marked.
     const removed = await markTicketRemovedInTx(tx, elsewhere.map((board) => board.id), ticket.externalId, now, { key: ticket.key });
     if (upserted.changed > 0 || removed.length > 0) {

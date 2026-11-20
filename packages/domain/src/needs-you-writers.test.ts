@@ -105,6 +105,8 @@ describe("every write of a needs-you item enqueues its fan-out", () => {
       "apps/core/src/linear/agent-mode/events.ts",
       // Milestone 6's ticket 18 (F-101): a round's cap, and the spend cap it stops at, for the driver.
       "packages/domain/src/review-loop/start-round.ts",
+      // Milestone 6's ticket 11: a start that waits for approval (a rule's "wait for approval", F-040's path).
+      "packages/domain/src/starts/start-task-body.ts",
     ];
     const unknown = callers.filter((caller) => !known.includes(caller));
     expect(unknown).toEqual([]);

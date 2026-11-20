@@ -23,6 +23,7 @@ import type { ProfileProviderRefusal } from "../providers/session-model.ts";
 import type { ReopenStep } from "./reopen.ts";
 import { boxFootprint } from "../fleet/capacity.ts";
 import { queuePriorityFor } from "../fleet/queue.ts";
+import { requiredLabelsInTx } from "../starts/origin-labels.ts";
 import type { FleetRunner } from "../fleet/capacity.ts";
 import { chooseRunner } from "../fleet/choose.ts";
 import type { ChooseResult, ChooseTask } from "../fleet/choose.ts";
@@ -290,7 +291,8 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   let requiredLabels: readonly string[] = task.requiredLabels;
   if (task.queuedAt === null) {
     const ticket = task.ticketId === null ? null : await tx.ticket.findFirst({ where: { id: task.ticketId }, select: { priority: true } });
-    requiredLabels = [...new Set(profile.runnerLabels)].sort();
+    // Milestone 6 (F-011, F-106): with the pool labels of the automation that started it.
+    requiredLabels = await requiredLabelsInTx(tx, task, profile.runnerLabels);
     await tx.task.update({
       where: { id: task.id },
       data: { queuedAt: new Date(now), queuePriority: queuePriorityFor(ticket?.priority), requiredLabels: [...requiredLabels] },

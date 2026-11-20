@@ -1,7 +1,7 @@
 import type { Logger, Ticket } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
-import { boardsOnSameTeam, ingestTicketHint, markTicketRemovedInTx, recordTicketsClosed, upsertTicketCacheInTx } from "@ostra/domain";
-import type { ChangeNotices, Clock, TicketClosedDeps } from "@ostra/domain";
+import { boardsOnSameTeam, enqueueIntakeMatchesInTx, ingestTicketHint, markTicketRemovedInTx, recordTicketsClosed, upsertTicketCacheInTx } from "@ostra/domain";
+import type { ChangeNotices, Clock, JobQueue, TicketClosedDeps } from "@ostra/domain";
 import type { JobHandler, Jobs } from "@ostra/jobs";
 import { boardIdSchema, connectionIdSchema, organizationIdSchema, projectIdSchema } from "@ostra/protocol";
 import type { BoardId, OrganizationId } from "@ostra/protocol";
@@ -45,6 +45,8 @@ export type TrackerIngestDeps = {
    * the turn and raise `ticket_closed`. Without it, a closed ticket only updates the cache.
    */
   readonly closed?: Omit<TicketClosedDeps, "db" | "notices" | "clock">;
+  /** Milestone 6 (F-011, ticket 11): the queue `intake.match` is sent on with each upsert. Without it, no rule sees a change. */
+  readonly jobs?: JobQueue;
 };
 
 /** The tickets a read moved to done or cancelled: each running task on one hears it. */
@@ -76,7 +78,10 @@ export const trackerWebhookHandler =
     if (hint.value.subject === "other" || (hint.value.ticketExternalId === null && hint.value.ticketKey === null)) {
       return { outcome: "ignored", reason: `not about a ticket (${hint.value.event.slice(0, 64)})`, ticketKey: hint.value.ticketKey };
     }
-    const ingested = await ingestTicketHint({ db: deps.db, tracker, notices: deps.notices, clock: deps.clock }, { source: "webhook", hint: hint.value });
+    const ingested = await ingestTicketHint(
+      { db: deps.db, tracker, notices: deps.notices, clock: deps.clock, ...(deps.jobs === undefined ? {} : { jobs: deps.jobs }) },
+      { source: "webhook", hint: hint.value },
+    );
     if (!ingested.ok) {
       // A rate limit or a tracker that didn't answer: the job retries, with its backoff.
       throw new Error(ingested.message);
@@ -160,6 +165,10 @@ export const pollBoard = async (
       for (const ticket of listed) {
         const upserted = await upsertTicketCacheInTx(tx, teamBoards, ticket);
         count += upserted.changed;
+        // Milestone 6 (F-011): intake rules see the change in the page's transaction.
+        if (deps.jobs !== undefined) {
+          await enqueueIntakeMatchesInTx({ jobs: deps.jobs }, tx, upserted.changedTicketIds);
+        }
         closedHere.push(...upserted.closed);
         // A ticket listed here that a copy on another team's board holds has moved: marked there.
         const others = await tx.ticket.findMany({

@@ -152,6 +152,15 @@ export const auditActions = {
   "memory.proposal-approved": "memory-proposal",
   "memory.proposal-merged": "memory-proposal",
   "memory.proposal-rejected": "memory-proposal",
+  // ---- automations and bulk starts (milestone 6, F-011, F-106, F-107, ADR 0056) ----
+  "automation.created": "automation",
+  "automation.updated": "automation",
+  "automation.paused": "automation",
+  "automation.resumed": "automation",
+  "automation.deleted": "automation",
+  /** A tick found occurrences more than `OSTRA_SCHEDULE_MISSED_HOURS` late: one entry per catch-up, with the count. */
+  "automation.occurrences-missed": "automation",
+  "bulk-start.created": "bulk-start",
 } as const;
 
 export type AuditAction = keyof typeof auditActions;

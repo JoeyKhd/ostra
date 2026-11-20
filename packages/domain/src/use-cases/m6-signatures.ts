@@ -19,6 +19,8 @@ import type {
   RefineDraft,
   RepoId,
   ReviewRunId,
+  RunnerId,
+  SessionId,
   SubmitReviewInput,
   TaskId,
   TaskKind,
@@ -158,15 +160,44 @@ export type StartTaskInput = {
   readonly title: string | null;
   readonly agentProfileId: AgentProfileId | null;
   readonly poolLabels: readonly string[];
+  /** Ticket 11: the member's own personal runner, or unset to pick from the project's pools. Refused for a pool-only task. */
+  readonly runnerId?: RunnerId | null;
 };
 
-export type StartTaskError = "forbidden" | "not-found" | "invalid-input" | "no-default-profile" | OneActiveTaskError["code"];
+export type StartTaskError =
+  | "forbidden"
+  | "not-found"
+  | "invalid-input"
+  | "no-default-profile"
+  | OneActiveTaskError["code"]
+  // Ticket 11: the refusals milestones 1 to 4's starts already had, which now come from here.
+  | "no-agent-profile"
+  | "no-repo"
+  | "runner-not-yours"
+  | "provider-not-allowed-on-personal-runners"
+  | "no-provider-for-model"
+  | "repo-unsupported";
+
+/** What a start may add to its ports (ticket 11): each optional, so a caller with only the ports starts a task. */
+export type StartTaskOptions = {
+  /** The member's scope, for a member's own start: the profile they chose must be one they may use (ADR 0049). */
+  readonly scope?: MemberScope;
+  /** The panel's address: the link to the task that goes on the ticket. */
+  readonly publicUrl?: string;
+  /** A prompt task's branch naming; a test fakes it to force two tasks onto one name. */
+  readonly branchNameFor?: (taskId: TaskId, title: string, digits: number) => string;
+};
+
+export type StartTaskResult =
+  | UseCaseResult<
+      { readonly taskId: TaskId; readonly rule: StartRule; readonly sessionId: SessionId; readonly branchName: string },
+      Exclude<StartTaskError, OneActiveTaskError["code"]>
+    >
+  /** The one-active-task rule (F-010): the ticket's active code task. */
+  | { readonly ok: false; readonly error: OneActiveTaskError["code"]; readonly message: string; readonly taskId: TaskId };
 
 /** Every start goes through here: the outside rule, the one-active-task rule, then the queue. */
-export type StartTask = (
-  deps: M6TxDeps,
-  input: StartTaskInput,
-) => Promise<UseCaseResult<{ readonly taskId: TaskId; readonly rule: StartRule }, StartTaskError>>;
+export type StartTask = (deps: M6TxDeps & StartTaskOptions, input: StartTaskInput) => Promise<StartTaskResult>;
 
 /** A code start on a parent ticket: its leaves, as a bulk start; the parent never runs (F-077). */
 export type StartSubIssues = (

@@ -27,6 +27,7 @@ import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
 import { replicaIdSchema } from "@ostra/protocol";
 
+import { startAutomationWorkers } from "./automations/automations.ts";
 import { createBlobService } from "./blobs/blob-service.ts";
 import type { BlobService } from "./blobs/blob-service.ts";
 import { agentEffortLevels } from "./agents/effort-levels.ts";
@@ -407,7 +408,7 @@ export const startCore = async (
     logger,
     ...(options.linearApiUrl === undefined ? {} : { linearApiUrl: options.linearApiUrl }),
   });
-  const ingestDeps = { db, trackers, notices, clock: systemClock, logger, closed: { jobs, outbox: postgresCommandOutbox, audit: postgresAuditLog } };
+  const ingestDeps = { db, trackers, notices, clock: systemClock, logger, jobs, closed: { jobs, outbox: postgresCommandOutbox, audit: postgresAuditLog } };
   // PR states (ticket 16): the App's webhooks and a reconcile per GitHub connection agree.
   const prDeps = {
     db,
@@ -599,6 +600,17 @@ export const startCore = async (
   // Keys per project (F-135): a list change releases the boxes that hold a key it removed.
   await jobs.work("providers.release-boxes", providerBoxesHandler(cleanupDeps), { localConcurrency: 2 });
   await jobs.work("retention.sweep", retentionSweepHandler(cleanupDeps), { localConcurrency: 1 });
+  // Milestone 6 (tickets 10 and 11): the scheduler's tick, occurrences, intake rules and bulk starts.
+  await startAutomationWorkers(jobs, {
+    db,
+    jobs,
+    outbox: postgresCommandOutbox,
+    notices,
+    audit: postgresAuditLog,
+    clock: systemClock,
+    publicUrl: settings.publicUrl,
+    team: settings.team,
+  });
   // A ticket task's context, images and first prompt, then its dispatch (ticket 18).
   await jobs.work("ticket.fetch-context", fetchContextHandler({ db, jobs, notices, clock: systemClock, trackers, blobs, logger }), { localConcurrency: 4 });
   // Search (ticket 11): the entries of tasks from before milestone 4, once per task.

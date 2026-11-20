@@ -9,6 +9,7 @@ import { dispatchWaitColumns, dispatchWaitFromDb } from "../dispatch-wait.ts";
 import type { DispatchWait } from "../dispatch-wait.ts";
 import type { AgentEffortLevels } from "../effort/levels.ts";
 import { queuePriorityFor } from "../fleet/queue.ts";
+import { requiredLabelsInTx } from "../starts/origin-labels.ts";
 import type { Ports } from "../ports.ts";
 import { DEFAULT_PERSONAL_RUNNER_SLOTS, projectPoolsInTx } from "./fleet-rows.ts";
 import { dispatchTask, TASK_BUSY } from "./dispatch-task.ts";
@@ -85,6 +86,7 @@ export const queueTask: QueueTask = async (deps, input) => {
       poolOnly: true,
       queuedAt: true,
       agentProfileId: true,
+      automationId: true,
       ticket: { select: { priority: true } },
       sessions: { where: { state: "starting" }, select: { agentProfileId: true, startedAt: true }, orderBy: { startedAt: "desc" }, take: 1 },
     },
@@ -102,7 +104,8 @@ export const queueTask: QueueTask = async (deps, input) => {
     where: { id: input.taskId },
     data: {
       queuePriority,
-      requiredLabels: [...new Set(profile?.runnerLabels ?? [])].sort(),
+      // Milestone 6 (F-011, F-106): with the pool labels of the automation that started it.
+      requiredLabels: [...(await requiredLabelsInTx(tx, { organizationId: input.organizationId, automationId: row.automationId }, profile?.runnerLabels ?? []))],
       // A requeue keeps its first time, so it keeps its place. A task's first time is when its start
       // was asked for (its starting session's), not when this job ran: dispatch jobs run late and in
       // any order, and the queue keeps the order tasks came in.

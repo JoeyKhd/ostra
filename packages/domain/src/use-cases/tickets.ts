@@ -6,7 +6,6 @@ import {
   organizationIdSchema,
   projectIdSchema,
   runnerIdSchema,
-  sessionIdSchema,
   taskIdSchema,
   ticketIdSchema,
   ticketWriteIdSchema,
@@ -16,20 +15,14 @@ import { z } from "zod";
 
 import { requireProjectAccess } from "../access.ts";
 import type { MemberScope } from "../access.ts";
-import { branchSlugFor } from "../branch-name.ts";
-import { writeTaskSearchEntries } from "../search/entries.ts";
-import { taskToColumns } from "../lifecycles/mapping.ts";
-import { newTask } from "../lifecycles/task.ts";
 import type { Ports } from "../ports.ts";
+import { startTask } from "../starts/start-task-body.ts";
 import { ingestTicketHintBody } from "../tickets/ticket-cache.ts";
-import { ticketWriteKey } from "../tickets/contracts.ts";
 import type { TicketWritePayload, TicketWriteStep } from "../tickets/contracts.ts";
+import { writeTicketOutboxInTx } from "../tickets/ticket-outbox.ts";
+import type { TicketWriteTarget } from "../tickets/ticket-outbox.ts";
 import type { UseCaseResult } from "./common.ts";
-import { claimBranchNameInTx } from "./create-prompt-task.ts";
 import type { ConnectionTracker } from "./linear-connection.ts";
-import { signedCommitRefusal, unsupportedRepos } from "./repo-checks.ts";
-import { resolveStartProfileInTx } from "./task-profile.ts";
-import { noProviderMessage, resolveProfileModelInTx } from "../providers/session-model.ts";
 
 // Tickets in (F-010, F-042, F-064, F-097, spec section 4, "A ticket change" and "A ticket becomes a
 // task"). A ticket's text is untrusted throughout: it's data in the cache and the prompt, never a
@@ -63,6 +56,8 @@ export type IngestTicketHintResult = UseCaseResult<
 export type IngestTicketHintDeps = Pick<Ports, "notices" | "clock"> & {
   readonly db: Db;
   readonly tracker: ConnectionTracker;
+  /** Milestone 6 (F-011): the queue for `intake.match`, sent with the upsert. Without it, no rule sees the change. */
+  readonly jobs?: Ports["jobs"];
 };
 
 /**
@@ -112,53 +107,23 @@ export type StartTicketTaskDeps = Pick<Ports, "jobs" | "notices" | "audit" | "cl
   readonly publicUrl: string;
 };
 
-const TERMINAL_TASK_STATES = ["stopped", "merged", "done"] as const;
-
 /**
  * Writes one `TicketWrite` and sends its `ticket.sync` job in the caller's transaction (F-031,
  * F-046). The idempotency key is fixed by the task and the step, so a replay finds the row.
  */
-const writeTicket = async (
+const writeTicket = (
   deps: Pick<StartTicketTaskDeps, "tx" | "jobs">,
-  at: {
-    readonly organizationId: string;
-    readonly projectId: string;
-    readonly taskId: TaskId;
-    readonly boardId: string;
-    readonly ticketId: string | null;
-    readonly connectionId: string;
-  },
+  at: TicketWriteTarget,
   step: TicketWriteStep,
   payload: TicketWritePayload,
-): Promise<TicketWriteId> => {
-  const row = await deps.tx.ticketWrite.create({
-    data: {
-      organizationId: at.organizationId,
-      projectId: at.projectId,
-      taskId: at.taskId,
-      boardId: at.boardId,
-      ticketId: at.ticketId,
-      kind: payload.kind,
-      payload,
-      idempotencyKey: ticketWriteKey(at.taskId, step),
-    },
-    select: { id: true },
-  });
-  const ticketWriteId = ticketWriteIdSchema.parse(row.id);
-  // Throttled per connection: a tracker's rate limit is the connection's (ADR 0037).
-  await deps.jobs.enqueueInTx(
-    deps.tx,
-    "ticket.sync",
-    { organizationId: organizationIdSchema.parse(at.organizationId), ticketWriteId },
-    { group: { id: at.connectionId } },
-  );
-  return ticketWriteId;
-};
+): Promise<TicketWriteId> => writeTicketOutboxInTx(deps, at, step, payload);
 
 /**
  * Creates the task (source `ticket`, the ticket's ID and key, the branch with the key) under the
  * partial unique index, writes the ticket's "started" writes to the outbox, and enqueues
- * `ticket.fetch-context`, which renders the prompt and dispatches.
+ * `ticket.fetch-context`, which renders the prompt and dispatches. Milestone 6's ticket 11 moved
+ * the body onto the one start (`starts/start-task-body.ts`): this checks the member's access and
+ * hands it over.
  */
 export type StartTicketTask = (deps: StartTicketTaskDeps, input: StartTicketTaskInput) => Promise<StartTicketTaskResult>;
 
@@ -166,14 +131,10 @@ type StartRefusal = Exclude<Extract<StartTicketTaskResult, { readonly ok: false 
 
 const refuseStart = (error: StartRefusal, message: string): StartTicketTaskResult => ({ ok: false, error, message });
 
-/** A ticket task's branch: the ticket's key, the last digits of the task's ID, the title's slug (spec section 11, item 5). */
-const ticketBranchWith = (key: string) => (taskId: TaskId, title: string, digits: number) =>
-  `ostra/${key.toLowerCase()}-${taskId.replaceAll("-", "").slice(-digits)}-${branchSlugFor(title)}`;
-
 export const startTicketTask: StartTicketTask = async (deps, input) => {
   const { tx, scope } = deps;
   const organizationId = scope.organizationId;
-  const project = await tx.project.findFirst({ where: { id: input.projectId, organizationId } });
+  const project = await tx.project.findFirst({ where: { id: input.projectId, organizationId }, select: { id: true, access: true } });
   if (project === null) {
     return refuseStart("not-found", "No such project");
   }
@@ -182,137 +143,43 @@ export const startTicketTask: StartTicketTask = async (deps, input) => {
   if (!access.ok) {
     return access.code === "not-found" ? refuseStart("not-found", "No such project") : refuseStart("forbidden", "You may not start a task in this project");
   }
-
-  // The ticket row is locked for this transaction: two members starting the same ticket at once
-  // queue up here, and the second one finds the first one's task (the partial unique index is the backstop).
-  const locked: unknown = await tx.$queryRaw`
-    SELECT "id" FROM "ticket" WHERE "id" = ${input.ticketId} AND "projectId" = ${project.id} AND "organizationId" = ${organizationId} FOR UPDATE`;
-  if (!Array.isArray(locked) || locked.length === 0) {
-    return refuseStart("not-found", "No such ticket in this project");
-  }
-  const ticket = await tx.ticket.findUniqueOrThrow({ where: { id: input.ticketId } });
-  const board = await tx.board.findFirst({ where: { id: ticket.boardId, projectId: project.id, organizationId }, include: { connection: { select: { state: true } } } });
-  if (ticket.removedAt !== null || board?.detachedAt !== null || board.connection.state === "revoked") {
-    return refuseStart("not-found", "That ticket's board is detached, or the ticket left it: no new task starts from it");
-  }
-
-  const existing = await tx.task.findFirst({
-    where: { projectId: project.id, organizationId, ticketId: ticket.id, kind: "code", state: { notIn: [...TERMINAL_TASK_STATES] } },
-    select: { id: true },
-  });
-  if (existing !== null) {
-    const taskId = taskIdSchema.parse(existing.id);
-    return { ok: false, error: "ticket-has-task", message: `This ticket already has an active task, ${taskId}.`, taskId };
-  }
-
-  // F-021: the member's pick, else the project's default for code tasks, else the built-in profile.
-  const resolved = await resolveStartProfileInTx(tx, scope, { project, kind: input.kind ?? "code", chosen: input.agentProfileId });
-  if (!resolved.ok) {
-    return refuseStart(resolved.error, resolved.message);
-  }
-  const { profile } = resolved;
-  // Milestone 4 (F-135, ADR 0065): the provider the project's list serves the profile's model from,
-  // checked before anything is made. The session records it; nothing falls back to another key.
-  const served = await resolveProfileModelInTx(tx, { organizationId, projectId: projectIdSchema.parse(project.id), profileId: profile.id });
-  if (!served.ok) {
-    return served.modelName === null
-      ? refuseStart("no-agent-profile", "The task's agent profile has no model yet: an admin picks one under Models")
-      : refuseStart("no-provider-for-model", noProviderMessage(served.modelName, served.provider));
-  }
-  const repos = await tx.repo.findMany({ where: { projectId: project.id, organizationId }, orderBy: { createdAt: "asc" } });
-  if (repos.length === 0) {
-    return refuseStart("no-repo", "The project has no repo");
-  }
-  // F-055: the router refreshed the stored check just before this transaction; `unknown` never refuses.
-  const unsupported = await unsupportedRepos(tx, organizationId, projectIdSchema.parse(project.id));
-  if (unsupported.length > 0) {
-    return refuseStart("repo-unsupported", signedCommitRefusal(unsupported));
-  }
-  if (input.runnerId !== undefined) {
-    const runner = await tx.runner.findFirst({
-      where: { id: input.runnerId, organizationId, kind: "personal", ownerMemberId: scope.memberId, state: { not: "revoked" } },
-      select: { id: true },
-    });
-    if (runner === null) {
-      return refuseStart("runner-not-yours", "That isn't one of your personal runners");
-    }
-    if (!served.allowOnPersonalRunners) {
-      return refuseStart(
-        "provider-not-allowed-on-personal-runners",
-        "The project's model provider isn't allowed on personal runners: an admin turns it on under Models",
-      );
-    }
-  }
-
-  const title = ticket.title.replace(/\s+/g, " ").trim().slice(0, 512) || ticket.key;
-  const created = await tx.task.create({
-    data: {
+  const started = await startTask(
+    { tx, jobs: deps.jobs, notices: deps.notices, audit: deps.audit, clock: deps.clock, scope, publicUrl: deps.publicUrl },
+    {
       organizationId,
-      projectId: project.id,
-      source: "ticket",
-      title,
-      // The prompt is the rendered ticket: `ticket.fetch-context` writes it, with the first message.
-      branchName: "pending",
-      ticketId: ticket.id,
-      ticketKey: ticket.key,
-      boardId: board.id,
-      driverMemberId: scope.memberId,
-      creatorMemberId: scope.memberId,
+      projectId: projectIdSchema.parse(project.id),
+      origin: { kind: "member", memberId: scope.memberId },
+      kind: input.kind ?? "code",
+      ticketId: input.ticketId,
+      prompt: null,
+      title: null,
+      agentProfileId: input.agentProfileId ?? null,
+      poolLabels: [],
       runnerId: input.runnerId ?? null,
-      agentProfileId: profile.id,
-      // F-137 (ADR 0066): the profile's level, copied once; a later edit of the profile changes new tasks only.
-      effort: profile.effort,
-      ...taskToColumns(newTask("code", false)),
     },
-    select: { id: true },
-  });
-  const taskId = taskIdSchema.parse(created.id);
-  // Search (ticket 11): the ticket's key and title, and the task's title. The prompt is the rendered
-  // ticket, written later by `ticket.fetch-context` as the first message, which search finds as one.
-  await writeTaskSearchEntries(tx, {
-    organizationId,
-    projectId: projectIdSchema.parse(project.id),
-    taskId,
-    title,
-    prompt: null,
-    ticket: { key: ticket.key, title: ticket.title },
-    creatorMemberId: scope.memberId,
-  });
-  const branchName = await claimBranchNameInTx(tx, { id: taskId, title }, ticketBranchWith(ticket.key));
-  await tx.taskRepo.createMany({
-    data: repos.map((repo) => ({ organizationId, projectId: project.id, taskId, repoId: repo.id, branchName, baseBranch: repo.defaultBranch })),
-  });
-  const member = await tx.member.findFirstOrThrow({ where: { id: scope.memberId, organizationId }, select: { user: { select: { name: true, email: true } } } });
-  await tx.taskCoAuthor.create({
-    data: { organizationId, projectId: project.id, taskId, memberId: scope.memberId, name: member.user.name, email: member.user.email },
-  });
-  const session = await tx.session.create({
-    data: { organizationId, projectId: project.id, taskId, agentProfileId: profile.id, origin: "new", state: "starting", providerId: served.providerId, modelId: served.modelId },
-    select: { id: true },
-  });
-  const sessionId = sessionIdSchema.parse(session.id);
-
-  // The ticket's "started" writes (spec section 3, step 4), in the same transaction: the move to the
-  // mapped status, one comment from the app with a link to the task, and a link attachment to it.
-  const at = { organizationId, projectId: project.id, taskId, boardId: board.id, ticketId: ticket.id, connectionId: board.connectionId };
-  const taskUrl = `${deps.publicUrl.replace(/\/+$/, "")}/tasks/${taskId}`;
-  await writeTicket(deps, at, { kind: "move", target: "started" }, { kind: "move", target: "started" });
-  await writeTicket(deps, at, { kind: "comment" }, { kind: "comment", markdown: `ostra is working on this: ${taskUrl}` });
-  await writeTicket(deps, at, { kind: "link_task" }, { kind: "link_task", url: taskUrl, title: `ostra task: ${title}`.slice(0, 256), subtitle: null });
-
-  // The prompt is rendered from the ticket's full context, which the job reads: it then dispatches.
-  await deps.jobs.enqueueInTx(tx, "ticket.fetch-context", { organizationId: organizationIdSchema.parse(organizationId), taskId, sessionId });
-  await deps.audit.recordInTx(tx, {
-    organizationId,
-    projectId: projectIdSchema.parse(project.id),
-    actor: { kind: "member", id: scope.memberId },
-    action: "task.created",
-    entity: "task",
-    entityId: taskId,
-    data: { kind: "code", source: "ticket", onPersonalRunner: input.runnerId !== undefined },
-  });
-  await deps.notices.emitInTx(tx, { organizationId, projectId: projectIdSchema.parse(project.id), entity: "task", entityId: taskId });
-  return { ok: true, taskId, sessionId, branchName };
+  );
+  if (started.ok) {
+    return { ok: true, taskId: started.taskId, sessionId: started.sessionId, branchName: started.branchName };
+  }
+  switch (started.error) {
+    case "ticket-has-active-task":
+      return { ok: false, error: "ticket-has-task", message: `This ticket already has an active task, ${started.taskId}.`, taskId: started.taskId };
+    case "not-found":
+    case "forbidden":
+    case "runner-not-yours":
+    case "provider-not-allowed-on-personal-runners":
+    case "no-provider-for-model":
+    case "no-agent-profile":
+    case "no-repo":
+    case "repo-unsupported":
+      return refuseStart(started.error, started.message);
+    // A member's ticket start has its ticket and its own profile choice: neither comes back for it.
+    case "invalid-input":
+    case "no-default-profile":
+      return refuseStart("not-found", started.message);
+    default:
+      return started satisfies never;
+  }
 };
 
 // ---------- "Create ticket" (F-097, ticket 29) ----------

@@ -3,6 +3,8 @@ import type { Tx } from "@ostra/db";
 import type {
   AgentProfileId,
   ApprovalId,
+  AutomationId,
+  BulkStartId,
   ChangeEntity,
   CommandBody,
   CommandId,
@@ -103,7 +105,10 @@ export type EntityId =
   // An account, for what happens to it at the install's level (a reset link, the instance admin role).
   | UserId
   // Milestone 5 (F-120): the organization's snapshot registry, in its audit entries.
-  | RegistryId;
+  | RegistryId
+  // Milestone 6 (F-011, F-106, F-107): an automation and a bulk start, in their audit entries.
+  | AutomationId
+  | BulkStartId;
 
 /** A change to tell the panel's live views about: IDs only (ADR 0035). */
 export type ChangeNoticeInput = {
