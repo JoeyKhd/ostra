@@ -878,16 +878,25 @@ export const agentProfilesRouter = router({
         if (!model.listed) {
           throw new TRPCError({ code: "CONFLICT", message: "The endpoint no longer lists that model" });
         }
-        const profile = await tx.agentProfile.findFirst({ where: { organizationId, builtIn: true, adapter: "opencode" }, select: { id: true } });
+        const profile = await tx.agentProfile.findFirst({ where: { organizationId, builtIn: true, adapter: "opencode" }, select: { id: true, modelId: true } });
         if (profile === null) {
           throw new TRPCError({ code: "NOT_FOUND", message: "This organization has no built-in OpenCode profile" });
         }
         const profileId = agentProfileIdSchema.parse(profile.id);
         // F-135 (ADR 0065 amended 2026-11-20): a provider's listing names the model and its provider.
         const name = modelNameOfModel(model);
-        await tx.agentProfile.update({
-          where: { id: profile.id },
-          data: { modelId: model.id, providerId: model.providerId, ...modelNameColumns(name) },
+        const columns = { modelId: model.id, providerId: model.providerId, ...modelNameColumns(name) };
+        await tx.agentProfile.update({ where: { id: profile.id }, data: columns });
+        // Milestone 6 (F-099, F-100): the built-in Refine and Review profiles run on the organization's
+        // default model. Seeded with the first admin, before any model exists, they have none: those
+        // with no model, or still on the old default, follow it, so a fresh install can refine and review.
+        await tx.agentProfile.updateMany({
+          where: {
+            organizationId,
+            builtInKind: { not: null },
+            OR: [{ modelId: null, modelCatalogId: null, modelCustomName: null }, ...(profile.modelId === null ? [] : [{ modelId: profile.modelId }])],
+          },
+          data: columns,
         });
         await ports.audit.recordInTx(tx, {
           organizationId,

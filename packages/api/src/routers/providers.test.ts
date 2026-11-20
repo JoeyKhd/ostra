@@ -1,4 +1,4 @@
-import { ensureBuiltInAgentProfile, jobKey } from "@ostra/domain";
+import { ensureBuiltInAgentProfile, ensureBuiltInKindProfilesInTx, jobKey } from "@ostra/domain";
 import { modelIdSchema, providerIdSchema } from "@ostra/protocol";
 import type { CatalogEntry } from "@ostra/adapter-sdk";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -268,4 +268,23 @@ describe("custom models and the built-in profile's model", () => {
     // Organization B's profile has no model, and B sees nothing of A's.
     expect((await (await harness.as(b.admin)).agentProfiles.list())[0]?.model).toBeNull();
   });
+  it("F-099, F-100: the default model reaches the built-in Refine and Review profiles seeded before any model existed", async () => {
+    const { a } = harness.fixture;
+    const admin = await harness.as(a.admin);
+    // As the first admin's seed leaves them: Refine and Review made before the admin picked a model.
+    const seeded = await harness.test.db.$transaction((tx) => ensureBuiltInKindProfilesInTx(tx, a.organization.id));
+    const kinds = () => harness.test.db.agentProfile.findMany({ where: { id: { in: [seeded.refine, seeded.review] } }, select: { modelId: true, providerId: true } });
+    await harness.test.db.agentProfile.updateMany({ where: { id: { in: [seeded.refine, seeded.review] } }, data: { modelId: null, providerId: null, modelCatalogId: null, modelCustomName: null } });
+    expect((await kinds()).map((row) => row.modelId)).toEqual([null, null]);
+    const provider = await providerOf();
+    const listed = (await admin.providers.models({ providerId: provider.id })).find((model) => model.listed);
+    if (listed === undefined) throw new Error("expected a listed model");
+    await admin.agentProfiles.setDefaultModel({ modelId: listed.id });
+    // Both now start: a refine or review task finds a model on its profile.
+    expect(await kinds()).toEqual([
+      { modelId: listed.id, providerId: provider.id },
+      { modelId: listed.id, providerId: provider.id },
+    ]);
+  });
+
 });
