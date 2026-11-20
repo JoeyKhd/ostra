@@ -9,7 +9,7 @@ import type { TaskInput } from "../lifecycles/task.ts";
 import type { ChangeNotices, JobQueue } from "../ports.ts";
 import { recordTicketProgressInTx } from "../tickets/ticket-writes.ts";
 import { momentOfMove, recordAgentSessionMomentInTx } from "../linear/agent-session-moments.ts";
-import { closeItemsOfEndedTaskInTx, isEndedTaskState } from "./needs-you-items.ts";
+import { closeItemsOfEndedTaskInTx, createNeedsYouItemInTx, isEndedTaskState, resolveNeedsYouItemsInTx } from "./needs-you-items.ts";
 
 // Moving a task or a session by its lifecycle's transition, in the caller's transaction: the row is
 // written only when the transition allows the input. A refusal is an expected answer (a late event,
@@ -64,6 +64,8 @@ export const moveTaskInTx = async (deps: TaskMoveDeps, task: TaskRow, input: Tas
   }
   if (isEndedTaskState(columns.state)) {
     await closeItemsOfEndedTaskInTx(deps, deps.tx, task.id, { at: new Date(), byMemberId: null });
+  } else {
+    await followReviewerWaitInTx(deps, task, columns);
   }
   // Milestone 6 (F-012, ticket 13): a task Linear started tells its agent session, in this move's transaction.
   await tellAgentSessionOfMoveInTx(deps, task, columns);
@@ -74,6 +76,25 @@ export const moveTaskInTx = async (deps: TaskMoveDeps, task: TaskRow, input: Tas
     entityId: task.id,
   });
   return true;
+};
+
+/**
+ * Milestone 6 (F-102, F-036, ADR 0058): a code task that starts waiting for a reviewer writes its
+ * needs-you item (`waiting_for_reviewer`, for its matched reviewers, or its driver when nobody is
+ * matched), in the move's transaction; one that stops waiting dismisses it, so the item never
+ * outlives its reason.
+ */
+const followReviewerWaitInTx = async (deps: TaskMoveDeps, task: TaskRow, columns: ReturnType<typeof taskToColumns>): Promise<void> => {
+  const waitsNow = columns.state === "in_review" && columns.subState === "waiting_for_reviewer";
+  const waitedBefore = task.state === "in_review" && task.subState === "waiting_for_reviewer";
+  if (waitsNow === waitedBefore || task.kind !== "code") {
+    return;
+  }
+  if (waitsNow) {
+    await createNeedsYouItemInTx(deps, deps.tx, { organizationId: task.organizationId, projectId: task.projectId, taskId: task.id, reason: "waiting_for_reviewer", audience: "reviewer" });
+    return;
+  }
+  await resolveNeedsYouItemsInTx(deps, deps.tx, { taskId: task.id, reason: "waiting_for_reviewer" }, { state: "dismissed", at: new Date(), byMemberId: null });
 };
 
 /** The move's moment in the task's open Linear agent session, if it has one (ADR 0057). */

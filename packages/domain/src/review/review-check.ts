@@ -8,6 +8,7 @@ import type { ChangeNotices, Clock, JobQueue, ServerAdapters } from "../ports.ts
 import { repoAccessFor } from "../use-cases/repo-access.ts";
 import type { EvaluateReviewCheck } from "../use-cases/m4-signatures.ts";
 import { appendServerEvent } from "../use-cases/server-events.ts";
+import { recordReviewerStatesInTx } from "../review-loop/reviewers.ts";
 import { evaluateIndependentReview, INDEPENDENT_REVIEW_CHECK_NAME, pendingReasonWords } from "./independent-review.ts";
 import type { IndependentReviewVerdict, ReviewLite } from "./independent-review.ts";
 
@@ -49,6 +50,8 @@ export type ReviewCheckDeps = {
   readonly logger?: Logger | undefined;
   /** Tests only: the other answer to ADR 0040's open question. */
   readonly waiting?: "in_progress" | "action_required";
+  /** Milestone 6 (F-102): with it, each reviewer's latest review is kept and clears their needs-you notification. */
+  readonly jobs?: JobQueue;
 };
 
 export type EvaluateReviewCheckResult =
@@ -92,6 +95,11 @@ export const evaluateReviewCheck = (async (
   const listed = await codeHost.listReviews(access.access, input.prNumber);
   if (!listed.ok) {
     throw new Error(`review.evaluate: the code host couldn't list the reviews (${listed.error.code})`);
+  }
+  if (deps.jobs !== undefined) {
+    // Milestone 6 (F-102, ticket 19): each reviewer's latest state, and a reviewer's review clears their own item.
+    const jobs = deps.jobs;
+    await db.$transaction((tx) => recordReviewerStatesInTx({ jobs, notices: deps.notices }, tx, { organizationId: input.organizationId, taskRepoId: taskRepo.id, reviews: listed.value, now: deps.clock.now() }));
   }
   const reviews = listed.value.flatMap((review) => {
     const lite = liteOf(review);

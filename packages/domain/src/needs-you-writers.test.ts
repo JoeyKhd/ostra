@@ -109,6 +109,8 @@ describe("every write of a needs-you item enqueues its fan-out", () => {
       "packages/domain/src/starts/start-task-body.ts",
       // Ticket 15 (F-099): a refine draft's item, and its answer.
       "packages/domain/src/use-cases/refine-drafts.ts",
+      // Milestone 6's ticket 19 (F-102): a reviewer's review answers the item once every matched reviewer reviewed.
+      "packages/domain/src/review-loop/reviewers.ts",
     ];
     const unknown = callers.filter((caller) => !known.includes(caller));
     expect(unknown).toEqual([]);
@@ -121,7 +123,9 @@ describe("every write of a needs-you item enqueues its fan-out", () => {
     expect(notificationKindOfReason("awaiting_approval")).toBe("task_approval");
     expect(notificationKindOfReason("approval")).toBe("approval");
     expect(notificationKindOfReason("spend_cap")).toBe("spend_cap");
-    for (const silent of ["round_cap", "waiting_for_reviewer", "environment_proposal", "restore_conflict", "unstorable_event", "files_outside_repos"] as const) {
+    // Milestone 6 (F-102): a task waiting for a reviewer is its reviewers' moment.
+    expect(notificationKindOfReason("waiting_for_reviewer")).toBe("review_requested");
+    for (const silent of ["round_cap", "environment_proposal", "restore_conflict", "unstorable_event", "files_outside_repos"] as const) {
       expect(notificationKindOfReason(silent)).toBeNull();
     }
   });

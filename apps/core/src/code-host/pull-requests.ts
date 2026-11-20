@@ -9,6 +9,8 @@ import type { ConnectionId, OrganizationId } from "@ostra/protocol";
 
 import { ciHintEvent, recordTaskPrHead } from "../review-loop/ci.ts";
 import type { CiHintDeps } from "../review-loop/ci.ts";
+import { enqueueReviewersRefresh, reviewersHintEvent } from "../review-loop/reviewers.ts";
+import type { ReviewersHintDeps } from "../review-loop/reviewers.ts";
 import type { WebhookDeliveryContext, WebhookHandler, WebhookOutcome } from "../webhooks/process.ts";
 
 // PR states (F-031, F-044, F-046, F-079, ticket 16). Two ways a PR's state reaches its task, which
@@ -135,8 +137,8 @@ export const githubWebhookHandler =
       return ciHintEvent(ciDeps(deps), context, event);
     }
     if (event.kind === "pull_request_reviewers") {
-      // Milestone 6's hint (ADR 0058): read once core watches reviewers (its ticket 19).
-      return { outcome: "ignored", reason: `a ${event.kind} hint, not read yet` };
+      // Milestone 6 (F-102, ticket 19): the PR's requested reviewers changed, read through `reviewers.refresh`.
+      return reviewersHintEvent(reviewersDeps(deps), context, event);
     }
     if (event.kind !== "pull_request") {
       return { outcome: "ignored", reason: `not a pull_request event (${event.event.slice(0, 64)})` };
@@ -161,6 +163,8 @@ export const githubWebhookHandler =
       if (head.moved || head.enqueued) context.logger.info("pr.head", { number: event.number, reviewEnded: head.moved, ciEnqueued: head.enqueued });
       // Milestone 4 (F-104, ticket 18): a new head (`synchronize`) waits for an approval of it.
       const taskRepoId = result.taskRepoId;
+      // Milestone 6 (F-102, ticket 19): an opening or a push changes the paths CODEOWNERS is read for.
+      await enqueueReviewersRefresh(reviewersDeps(deps), { organizationId: context.organizationId, taskRepoId, connectionId: context.connectionId });
       await deps.db.$transaction((tx) =>
         enqueueReviewEvaluationsInTx(deps.jobs, tx, {
           organizationId: context.organizationId,
@@ -175,6 +179,13 @@ export const githubWebhookHandler =
 
 /** What CI's hints and heads need of the PR state's deps. */
 const ciDeps = (deps: PullRequestStateDeps): CiHintDeps => ({ db: deps.db, jobs: deps.jobs, notices: deps.notices, adapters: { codeHost: deps.codeHost, secretStore: deps.secretStore } });
+
+/** What reviewers' hints need of the PR state's deps: a host that reads requested reviewers or CODEOWNERS. */
+const reviewersDeps = (deps: PullRequestStateDeps): ReviewersHintDeps => ({
+  db: deps.db,
+  jobs: deps.jobs,
+  capable: deps.codeHost.capabilities.requestedReviewers || deps.codeHost.capabilities.codeOwners,
+});
 
 /** The `pull_request` actions that give a task PR a head to evaluate its independent-review check on. */
 const REVIEW_ACTIONS: ReadonlySet<string> = new Set(["opened", "reopened", "synchronize", "ready_for_review"]);
@@ -236,6 +247,8 @@ export const reconcilePullRequests = async (
       const headSha = details.value.headSha;
       // Milestone 6 (F-035, ticket 16): the head's CI, for an App without the check events too.
       await recordTaskPrHead(ciDeps(deps), { organizationId: input.organizationId, taskRepoId: taskRepo.id, headSha });
+      // Milestone 6 (F-102, ticket 19): the PR's reviewers, for an App without the reviewer events too.
+      await enqueueReviewersRefresh(reviewersDeps(deps), { organizationId: input.organizationId, taskRepoId: taskRepo.id, connectionId: input.connectionId });
       await deps.db.$transaction((tx) =>
         enqueueReviewEvaluationsInTx(deps.jobs, tx, {
           organizationId: input.organizationId,

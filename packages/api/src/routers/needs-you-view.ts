@@ -417,7 +417,8 @@ export type OpenNeedsYouScope = { readonly organizationId: OrganizationId; reado
 /**
  * The one rule for what waits on a member (F-062, F-036). An open item of a project they can open
  * that they are the audience of (a driver's item is the driver's, or every member's when the task
- * has none; a project-wide item is every member's; an admins' item is an admin's) or can answer
+ * has none; a project-wide item is every member's; an admins' item is an admin's; a reviewer's item
+ * is each matched reviewer's until their review is in, or the driver's when nobody matched) or can answer
  * (every approval: any member answers one). And a task in `needs_you` with no open item (one from
  * before items), so nothing that waits is hidden. Home's section and its total, the Needs you page's
  * Open tab and its count, and the sidebar's count all read this, so they never disagree. An item
@@ -433,6 +434,13 @@ export const openNeedsYouWhere = (scope: OpenNeedsYouScope, projectIds: readonly
       { audience: "project_members" as const },
       { reason: "approval" as const },
       { audience: "driver" as const, task: { OR: [{ driverMemberId: memberId }, { driverMemberId: null }] } },
+      // Milestone 6 (F-102, F-036): a task waiting for a reviewer is each matched reviewer's until their review is in,
+      { audience: "reviewer" as const, task: { repos: { some: { taskReviewers: { some: { memberId } } } } }, notifications: { none: { memberId, state: { not: "open" as const } } } },
+      // and the driver's when nobody is matched.
+      {
+        audience: "reviewer" as const,
+        task: { OR: [{ driverMemberId: memberId }, { driverMemberId: null }], repos: { none: { taskReviewers: { some: { memberId: { not: null } } } } } },
+      },
       // Milestone 4 (F-135): what only an organization admin can fix (no provider serves a model) is theirs alone.
       ...(scope.role === "admin" ? [{ audience: "organization_admins" as const }] : []),
     ],

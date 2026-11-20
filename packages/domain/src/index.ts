@@ -181,6 +181,7 @@ export * from "./review-loop/loop.ts";
 export * from "./review-loop/evaluate-ci.ts";
 export * from "./review-loop/start-round.ts";
 export * from "./review-loop/review.ts";
+export * from "./review-loop/reviewers.ts";
 export * from "./linear/agent-session-copy.ts";
 export * from "./prompts/m6.ts";
 export * from "./use-cases/m6-signatures.ts";

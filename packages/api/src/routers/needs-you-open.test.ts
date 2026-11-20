@@ -1,5 +1,8 @@
+import { randomUUID } from "node:crypto";
+
 import { createNeedsYouItemInTx, fanOutNotification, moveTaskInTx, resolveNeedsYouItemsInTx } from "@ostra/domain";
 import { mapTask } from "@ostra/db";
+import { seedInstallation } from "@ostra/db/testing";
 import type { DbEnum } from "@ostra/db";
 import { clientMessageIdSchema } from "@ostra/protocol";
 import type { NeedsYouItemId, OrganizationId, ProjectId } from "@ostra/protocol";
@@ -203,6 +206,53 @@ describe("one rule for what waits", () => {
     expect(seen.sidebar).toBe(baseline.sidebar + 7);
     const caller = await harness.as(member);
     expect(await caller.tasks.stop({ taskId: task.taskId })).toEqual({ stopped: true });
+  });
+
+  it("F-102, F-036: a task waiting for a reviewer is in each matched reviewer's needs-you until their review is in, and the driver's when nobody matched", async () => {
+    const { admin, member, insider } = harness.fixture.a;
+    const db = harness.test.db;
+    const connection = await db.connection.create({ data: { organizationId: orgA, kind: "github", appId: `app-${randomUUID().slice(0, 6)}`, slug: "ostra-test" } });
+    await seedInstallation(db, { organizationId: orgA, connectionId: connection.id, installationId: "1" });
+    const repo = await db.repo.create({
+      data: { organizationId: orgA, projectId: open, connectionId: connection.id, installationId: "1", hostRepoId: `host-${randomUUID()}`, fullName: `ostra-test/r-${randomUUID().slice(0, 6)}`, defaultBranch: "main", checkoutDir: "r" },
+    });
+    const waiting = async (title: string) => {
+      const task = await seedTask(harness, { organizationId: orgA, projectId: open, title, state: "in_review", driverMemberId: member.id });
+      const taskRepo = await db.taskRepo.create({ data: { organizationId: orgA, projectId: open, taskId: task.taskId, repoId: repo.id, branchName: `ostra/${randomUUID().slice(0, 8)}`, baseBranch: "main", state: "pr_open", prNumber: 7 } });
+      return { task, taskRepoId: taskRepo.id };
+    };
+    // The admin and the insider are its matched reviewers; an unlinked user and a team are listed too.
+    const reviewed = await waiting("waits for two reviewers");
+    await db.taskReviewer.createMany({
+      data: [
+        { organizationId: orgA, projectId: open, taskRepoId: reviewed.taskRepoId, githubUserId: "1001", login: "alice", memberId: admin.id, source: "requested" },
+        { organizationId: orgA, projectId: open, taskRepoId: reviewed.taskRepoId, githubUserId: "1002", login: "bob", memberId: insider.id, source: "codeowners" },
+        { organizationId: orgA, projectId: open, taskRepoId: reviewed.taskRepoId, githubUserId: "1003", login: "carol", memberId: null, source: "requested" },
+        { organizationId: orgA, projectId: open, taskRepoId: reviewed.taskRepoId, teamSlug: "backend", source: "team" },
+      ],
+    });
+    const itemId = await raise(reviewed.task, open, { reason: "waiting_for_reviewer", audience: "reviewer" });
+    expect((await surfaces(admin)).listRows).toContain(itemId);
+    expect((await surfaces(insider)).pageRows).toContain(itemId);
+    expect((await surfaces(member)).listRows).not.toContain(itemId);
+    // The admin's review is in (their notification answered, as `review.evaluate` does): the item leaves their needs-you only.
+    await db.notification.updateMany({ where: { needsYouItemId: itemId, memberId: admin.id }, data: { state: "answered" } });
+    expect((await surfaces(admin)).listRows).not.toContain(itemId);
+    const insiderSees = await surfaces(insider);
+    expect(insiderSees.listRows).toContain(itemId);
+    expect(insiderSees.sidebar).toBe(insiderSees.homeTotal);
+
+    // Nobody matched: it's the driver's.
+    const unmatched = await waiting("waits for nobody we know");
+    await db.taskReviewer.create({ data: { organizationId: orgA, projectId: open, taskRepoId: unmatched.taskRepoId, githubUserId: "1003", login: "carol", memberId: null, source: "requested" } });
+    const fallback = await raise(unmatched.task, open, { reason: "waiting_for_reviewer", audience: "reviewer" });
+    expect((await surfaces(member)).listRows).toContain(fallback);
+    expect((await surfaces(admin)).listRows).not.toContain(fallback);
+
+    // Closed, so the next tests start from nothing.
+    for (const id of [itemId, fallback]) {
+      await db.$transaction((tx) => resolveNeedsYouItemsInTx(harness.deps.ports, tx, { id }, { state: "dismissed", at: new Date(), byMemberId: null }));
+    }
   });
 
   it("F-062, F-036: for every mix of item and task states, Home's total and rows, the page's Open tab and its count, and the sidebar's count agree", async () => {

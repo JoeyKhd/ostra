@@ -1,6 +1,6 @@
 # 19: Core: reviewers and their needs-you
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: 06, 08
 Features: F-102, F-036 (the reviewer audience)
@@ -15,10 +15,19 @@ Spec: `../spec.md`, section 4 ("Reviewers"); ADR 0050, ADR 0058
 
 ## Done when
 
-- [ ] Tests named `it("F-102: ...")`: reviewers from requested users and from CODEOWNERS for the changed paths, matched by the link; a team kept and not expanded; an unlinked reviewer listed with no member; the needs-you item for the matched reviewers; the driver when none matched.
-- [ ] A test named `it("F-036: ...")`: the reviewer audience reaches the panel, the ticket and email, by the member's choices.
-- [ ] Break-it: CODEOWNERS' last-match rule reversed fails its test; recorded in `context/proof/F-102.md`.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add reviewers`.
+- [x] Tests named `it("F-102: ...")`: reviewers from requested users and from CODEOWNERS for the changed paths, matched by the link; a team kept and not expanded; an unlinked reviewer listed with no member; the needs-you item for the matched reviewers; the driver when none matched.
+- [x] A test named `it("F-036: ...")`: the reviewer audience reaches the panel, the ticket and email, by the member's choices.
+- [x] Break-it: CODEOWNERS' last-match rule reversed fails its test; recorded in `context/proof/F-102.md`.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add reviewers`.
 
 ## Comments
+
+- 2026-11-20, committed as `✨ add reviewers`. `refreshReviewers` (`packages/domain/src/review-loop/reviewers.ts`) and `reviewers.refresh` (`apps/core/src/review-loop/reviewers.ts`), asked for by the `pull_request_reviewers` hint, a PR's opening or push and the reconcile. Choices made here:
+  - A CODEOWNERS user has only a login. They're keyed by the requested user of that login, else the linked account's `githubLogin`, else `login:<login>` in `githubUserId` (`codeOwnerLoginKey`), listed with no member.
+  - A team is kept by its slug in small letters, the `org/` prefix dropped, so a requested team and the same CODEOWNERS team are one row.
+  - The changed paths come from `compare(base, head)` (a rename counts both paths). With no `compare` capability, CODEOWNERS isn't read.
+  - A row whose user reviewed stays when GitHub drops their request on review. Each user's latest review state is kept by milestone 4's `review.evaluate` (`recordReviewerStatesInTx`, called when its deps carry `jobs`).
+  - The item: `moveTaskInTx` writes the `waiting_for_reviewer` item (audience `reviewer`, moment `review_requested`) when a code task starts waiting for a reviewer, and dismisses it when the task stops waiting. "Clears their own item" is per member: a reviewer's review since the item answers their own notification, and the item is answered once every matched reviewer's notification is closed. The panel's one rule (`openNeedsYouWhere` in `packages/api`) shows a reviewer item to each matched reviewer without a closed notification of it, and to the driver when nobody matched.
+  - A change to the reviewer set while the task waits enqueues the item's `notify.fanout` again, which writes only the new reviewers' notifications.
+  - The mail's footer says "a member of the project" for a reviewer (`AudienceReason` unchanged).

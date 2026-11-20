@@ -46,6 +46,8 @@ export type AudienceInput = {
   readonly driverMemberId: MemberId | null;
   /** The members who can open the task's project now. Nobody else is ever notified. */
   readonly projectMembers: readonly MemberId[];
+  /** Milestone 6 (F-102): the task's matched reviewers, for the `reviewer` audience. Missing means none. */
+  readonly reviewers?: readonly MemberId[];
 };
 
 /** Why a member got a notification, for the mail's footer line. */
@@ -55,24 +57,30 @@ export type Recipient = { readonly memberId: MemberId; readonly reason: Audience
 
 /**
  * An item's audience as members (ADR 0050): the driver, or the project's members when the task has
- * no driver. Until reviewers exist (milestone 6), a PR ready for review goes to the driver, and the
- * `reviewer` audience reaches nobody, so nothing is sent to a guess. A member who can no longer open
- * the project gets nothing.
+ * no driver. A draft PR ready for review goes to its driver. Milestone 6 (F-102, ADR 0058): the
+ * `reviewer` audience is the task's matched reviewers who can open the project, each once, or the
+ * driver when none is matched. A member who can no longer open the project gets nothing.
  */
 export const resolveAudience = (input: AudienceInput): readonly Recipient[] => {
   const canOpen = new Set<string>(input.projectMembers);
   const audience: ItemAudience = input.kind === "pr_ready" ? "driver" : input.audience;
-  switch (audience) {
-    case "driver": {
-      if (input.driverMemberId === null) {
-        return input.projectMembers.map((memberId) => ({ memberId, reason: "project_member" }));
-      }
-      return canOpen.has(input.driverMemberId) ? [{ memberId: input.driverMemberId, reason: "driver" }] : [];
+  const driver = (): readonly Recipient[] => {
+    if (input.driverMemberId === null) {
+      return input.projectMembers.map((memberId) => ({ memberId, reason: "project_member" }));
     }
+    return canOpen.has(input.driverMemberId) ? [{ memberId: input.driverMemberId, reason: "driver" }] : [];
+  };
+  switch (audience) {
+    case "driver":
+      return driver();
     case "project_members":
       return input.projectMembers.map((memberId) => ({ memberId, reason: "project_member" }));
-    case "reviewer":
-      return [];
+    case "reviewer": {
+      const reviewers = [...new Set(input.reviewers ?? [])].filter((memberId) => canOpen.has(memberId));
+      return reviewers.length === 0
+        ? driver()
+        : reviewers.map((memberId) => ({ memberId, reason: memberId === input.driverMemberId ? "driver" : "project_member" }));
+    }
     default:
       return audience satisfies never;
   }

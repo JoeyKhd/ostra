@@ -8,6 +8,7 @@ import { resolveAudience } from "../notifications/choices.ts";
 import type { UseCaseResult } from "./common.ts";
 import type { DeliverySkipReason, M3Deps } from "./m3-signatures.ts";
 import { notificationKindOfReason } from "./needs-you-items.ts";
+import { reviewerMembersInTx } from "../review-loop/reviewers.ts";
 import type { ItemChange } from "./needs-you-items.ts";
 
 // Notifications (F-036, F-115, ADR 0050; ticket 20). Fan-out writes before anything is sent: one
@@ -104,6 +105,8 @@ export const fanOutNotification = async (deps: M3Deps, input: FanOutInput): Prom
       kind,
       driverMemberId: task.driverMemberId === null ? null : memberIdSchema.parse(task.driverMemberId),
       projectMembers,
+      // Milestone 6 (F-102): a reviewer item's audience is the task's matched reviewers.
+      ...(audience === "reviewer" ? { reviewers: await reviewerMembersInTx(tx, item.taskId) } : {}),
     });
     if (recipients.length === 0) {
       return nothing;

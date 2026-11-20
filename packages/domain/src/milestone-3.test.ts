@@ -254,7 +254,7 @@ describe("the audience", () => {
   const other = memberIdSchema.parse("other");
   const members = [driver, other];
 
-  it("F-036: the driver; the project's members with no driver; nobody who can't open the project; nobody for reviewers yet", () => {
+  it("F-036: the driver; the project's members with no driver; nobody who can't open the project; the reviewers, else the driver (milestone 6)", () => {
     expect(
       resolveAudience({
         audience: "driver",
@@ -287,14 +287,25 @@ describe("the audience", () => {
         projectMembers: members,
       }),
     ).toHaveLength(2);
+    // Milestone 6 (F-102): the matched reviewers who can open the project, else the driver.
     expect(
       resolveAudience({
         audience: "reviewer",
-        kind: "approval",
+        kind: "review_requested",
         driverMemberId: driver,
         projectMembers: members,
       }),
-    ).toEqual([]);
+    ).toEqual([{ memberId: driver, reason: "driver" }]);
+    const reviewer = members.find((memberId) => memberId !== driver) ?? driver;
+    expect(
+      resolveAudience({
+        audience: "reviewer",
+        kind: "review_requested",
+        driverMemberId: driver,
+        projectMembers: members,
+        reviewers: [reviewer, reviewer, memberIdSchema.parse("gone")],
+      }),
+    ).toEqual([{ memberId: reviewer, reason: "project_member" }]);
     // Until reviewers exist, a PR ready for review goes to the driver (Q172).
     expect(
       resolveAudience({

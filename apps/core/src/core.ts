@@ -43,6 +43,7 @@ import { handleMemoryEndpoint } from "./memory/endpoints.ts";
 import { blobCiLogStore, ciEvaluateHandler } from "./review-loop/ci.ts";
 import { reviewPostHandler, reviewStartHandler } from "./review-loop/review.ts";
 import { roundStartHandler } from "./review-loop/rounds.ts";
+import { reviewersRefreshHandler } from "./review-loop/reviewers.ts";
 import { handleReviewEndpoint } from "./runner-http/review.ts";
 import { ensureBootstrapJoinToken } from "./gateway/bootstrap-join-token.ts";
 import { postgresDeviceSessions } from "./gateway/device-sessions.ts";
@@ -429,7 +430,7 @@ export const startCore = async (
   };
   await jobs.work("github.reconcile-prs", reconcileHandler(prDeps), { localConcurrency: 2 });
   // Milestone 4 (F-104, ticket 18): the independent-review check, on each task PR's head.
-  await jobs.work("review.evaluate", reviewEvaluateHandler({ db, notices, clock: systemClock, adapters }), { localConcurrency: 2 });
+  await jobs.work("review.evaluate", reviewEvaluateHandler({ db, notices, clock: systemClock, adapters, jobs }), { localConcurrency: 2 });
   // Milestone 4 (F-098, ticket 17): a task's PRs list each other in their "Related" sections.
   await jobs.work("pr.link-related", linkRelatedHandler({ db, notices, clock: systemClock, adapters }), { localConcurrency: 2 });
   await jobs.work(
@@ -460,6 +461,8 @@ export const startCore = async (
   await jobs.work("review.start", reviewStartHandler({ ...loopPorts, adapters }), { localConcurrency: 2 });
   await jobs.work("review.post", reviewPostHandler({ ...loopPorts, adapters }), { localConcurrency: 2 });
   const roundSpendCap = { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap };
+  // Milestone 6 (F-102, ticket 19): a task PR's requested reviewers and code owners.
+  await jobs.work("reviewers.refresh", reviewersRefreshHandler({ db, jobs, notices, clock: systemClock, adapters }), { localConcurrency: 2 });
   await jobs.work("round.start", roundStartHandler({ ...loopPorts, limits: settings.team.roundLimits, spendCap: roundSpendCap }), { localConcurrency: 2 });
   const reconcileSchedules = createReconcileSchedules({ db, jobs, reconcileMinutes: settings.reconcileMinutes });
   const webhookHandlers: WebhookHandlers = {

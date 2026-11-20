@@ -11,6 +11,8 @@ import type {
   CreatedReview,
   CreateReviewError,
   DiffFileLines,
+  RequestedReviewers,
+  ReviewComment,
   Result,
   CheckRunInput,
   PublishedCheckRun,
@@ -104,7 +106,7 @@ export class FakeCodeHost extends CodeHostAdapter {
    */
   reviewLoop = false;
   get capabilities(): CodeHostCapabilities {
-    return { checkRuns: true, prTemplates: true, lfsActionHosts: ["lfs.example.test"], branchRules: false, compare: true, draftPullRequests: true, prComments: true, userLink: false, reviews: true, installableByOtherAccounts: false, ciResults: this.reviewLoop, ciLogs: this.reviewLoop, reviewComments: this.reviewLoop, requestedReviewers: false, codeOwners: false };
+    return { checkRuns: true, prTemplates: true, lfsActionHosts: ["lfs.example.test"], branchRules: false, compare: true, draftPullRequests: true, prComments: true, userLink: false, reviews: true, installableByOtherAccounts: false, ciResults: this.reviewLoop, ciLogs: this.reviewLoop, reviewComments: this.reviewLoop, requestedReviewers: this.reviewLoop, codeOwners: this.reviewLoop };
   }
   /** Milestone 6: the heads' check runs and statuses from other apps, their logs, the PRs' diffs and the App's reviews. */
   readonly ci = new FakeCiHost();
@@ -348,6 +350,31 @@ export class FakeCodeHost extends CodeHostAdapter {
   override diffLines(access: RepoAccess, number: number): Promise<AdapterResult<readonly DiffFileLines[]>> {
     if (!this.known(access.app)) return Promise.resolve(adapterError("unauthorized", "refused"));
     return Promise.resolve(ok(this.ci.diff(repoFullNameSchema.parse(access.repo), number) ?? []));
+  }
+
+  // ---------- milestone 6 (tickets 19, 20): reviewers, CODEOWNERS and a review's comments, from `ci` ----------
+
+  /** Fail the next `listRequestedReviewers` this many times, as a flaky host would. */
+  failReviewerLists = 0;
+
+  override listRequestedReviewers(access: RepoAccess, number: number): Promise<AdapterResult<RequestedReviewers>> {
+    if (!this.known(access.app)) return Promise.resolve(adapterError("unauthorized", "refused"));
+    if (this.failReviewerLists > 0) {
+      this.failReviewerLists -= 1;
+      return Promise.resolve(adapterError("unavailable", "the fake host is down"));
+    }
+    return Promise.resolve(ok(this.ci.requestedReviewers(repoFullNameSchema.parse(access.repo), number)));
+  }
+
+  override readCodeOwners(access: RepoAccess, ref: string): Promise<AdapterResult<string | null>> {
+    if (!this.known(access.app)) return Promise.resolve(adapterError("unauthorized", "refused"));
+    return Promise.resolve(ok(this.ci.codeOwners(repoFullNameSchema.parse(access.repo), ref)));
+  }
+
+  override listReviewComments(access: RepoAccess, number: number, reviewId: string): Promise<AdapterResult<readonly ReviewComment[]>> {
+    if (!this.known(access.app)) return Promise.resolve(adapterError("unauthorized", "refused"));
+    const review = this.ci.review(repoFullNameSchema.parse(access.repo), number, reviewId);
+    return Promise.resolve(review === undefined ? adapterError("not-found", "no such review") : ok(review.comments));
   }
 
   /** Someone pushes to a PR's branch: its head moves (a `synchronize`, F-104). */
@@ -597,6 +624,10 @@ export class FakeCodeHost extends CodeHostAdapter {
       typeof updatedAt !== "string"
     ) {
       return adapterError("invalid-response", "not a pull_request event");
+    }
+    if (action === "review_requested" || action === "review_request_removed") {
+      // Milestone 6 (F-102): a hint, read as GitHub's adapter reads it.
+      return ok({ kind: "pull_request_reviewers", action, installationId: typeof installation === "number" ? String(installation) : null, hostRepoId: String(repoId), repo: repo.data, number, headSha });
     }
     return ok({
       kind: "pull_request",

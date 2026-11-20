@@ -235,7 +235,9 @@ describe("a session across turns (F-096, F-030, F-065)", () => {
     expect(stopped.stoppedAt).not.toBeNull();
     expect(await state(task)).toMatchObject({ state: "in_review" });
     expect(codeHost.pulls.slice(before)).toHaveLength(1);
-    expect(await test.db.needsYouItem.count({ where: { taskId: task.taskId, state: "open", reason: { not: "no_changes" } } })).toBe(0);
+    // Milestone 6 (F-102): a task in review waits for its reviewer, and has that one item; nothing else waits.
+    expect(await test.db.needsYouItem.count({ where: { taskId: task.taskId, state: "open", reason: { notIn: ["no_changes", "waiting_for_reviewer"] } } })).toBe(0);
+    expect(await test.db.needsYouItem.count({ where: { taskId: task.taskId, state: "open", reason: "waiting_for_reviewer" } })).toBe(1);
     // The session's timer is gone with it.
     const timer = await jobs.find("session.max-duration", { organizationId: task.organizationId, taskId: task.taskId, sessionId: task.sessionId });
     expect(timer.every((job) => job.state === "cancelled")).toBe(true);

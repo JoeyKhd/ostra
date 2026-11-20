@@ -20,6 +20,8 @@ import type { LiveTextWriter } from "../ingest/live-text.ts";
 import { blobCiLogStore, ciEvaluateHandler } from "../review-loop/ci.ts";
 import { reviewPostHandler, reviewStartHandler } from "../review-loop/review.ts";
 import { roundStartHandler } from "../review-loop/rounds.ts";
+import { reviewersRefreshHandler } from "../review-loop/reviewers.ts";
+import { reviewEvaluateHandler } from "../reactions/review-check.ts";
 import { FakeCodeHost, FakeSecretStore } from "./fake-adapters.ts";
 import { drive, jobContext } from "./turns.ts";
 import type { DrivenTask } from "./turns.ts";
@@ -29,7 +31,7 @@ import type { QueuedTask, World } from "./world.ts";
 // Milestone 6's review loop (tickets 16 to 18), against Postgres and the fake code host with its CI
 // and comment-type reviews on: a code task in review on a runner at minor 5, its PRs open on the
 // fake host, core's real ingest for the agent's turns, and the loop's jobs (`ci.evaluate`,
-// `round.start`, `review.start`, `review.post`) run from a recorded queue by `drain`, so a test
+// `round.start`, `review.start`, `review.post`; ticket 19's `reviewers.refresh` and milestone 4's `review.evaluate`) run from a recorded queue by `drain`, so a test
 // steps through the loop one job at a time. The clock is the test's.
 
 export type LoopHarness = {
@@ -53,9 +55,9 @@ export type LoopHarness = {
   readonly stop: () => Promise<void>;
 };
 
-export type LoopJob = "ci.evaluate" | "round.start" | "review.start" | "review.post";
+export type LoopJob = "ci.evaluate" | "round.start" | "review.start" | "review.post" | "reviewers.refresh" | "review.evaluate";
 
-const loopJobs: readonly string[] = ["ci.evaluate", "round.start", "review.start", "review.post"] satisfies readonly LoopJob[];
+const loopJobs: readonly string[] = ["ci.evaluate", "round.start", "review.start", "review.post", "reviewers.refresh", "review.evaluate"] satisfies readonly LoopJob[];
 const isLoopJob = (name: string): name is LoopJob => loopJobs.includes(name);
 
 export type RecordedJob = { readonly job: JobName; readonly key: string; readonly payload: unknown; readonly options: EnqueueOptions | undefined };
@@ -171,6 +173,13 @@ export const startLoopHarness = async (options: { readonly codeHost?: FakeCodeHo
         return;
       case "review.post":
         await reviewPostHandler({ ...ports, adapters })(jobContext(job, jobPayloadSchemas[job].parse(payload), logger));
+        return;
+      // Milestone 6 (ticket 19): the PR's reviewers, and milestone 4's check that keeps each one's review.
+      case "reviewers.refresh":
+        await reviewersRefreshHandler({ db: test.db, jobs, notices: postgresChangeNotices, clock, adapters })(jobContext(job, jobPayloadSchemas[job].parse(payload), logger));
+        return;
+      case "review.evaluate":
+        await reviewEvaluateHandler({ db: test.db, jobs, notices: postgresChangeNotices, clock, adapters })(jobContext(job, jobPayloadSchemas[job].parse(payload), logger));
         return;
       default:
         job satisfies never;

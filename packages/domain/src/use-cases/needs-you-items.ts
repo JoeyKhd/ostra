@@ -35,8 +35,10 @@ export const notificationKindOfReason = (reason: DbEnum.NeedsYouReason, taskKind
     // Milestone 6 (F-040): an outside task waits for a member's approval.
     case "awaiting_approval":
       return "task_approval";
-    case "round_cap":
+    // Milestone 6 (F-102, F-036): a code task waiting for a reviewer is its reviewers' moment.
     case "waiting_for_reviewer":
+      return "review_requested";
+    case "round_cap":
     case "environment_proposal":
     case "restore_conflict":
     case "unstorable_event":

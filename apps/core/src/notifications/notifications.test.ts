@@ -4,7 +4,7 @@ import { createLogger, systemClock as adapterClock } from "@ostra/adapter-sdk";
 import type { LogRecord, TrackerAdapter } from "@ostra/adapter-sdk";
 import { createJiraSite, JiraFakeAdapter } from "@ostra/adapter-sdk/testing";
 import type { JiraSite } from "@ostra/adapter-sdk/testing";
-import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
+import { createTestDatabase, seedInstallation, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, SeededMember, TestDatabase } from "@ostra/db/testing";
 import {
   createNeedsYouItemInTx,
@@ -556,6 +556,59 @@ describe("fan-out and delivery", () => {
     const after = commentsOf(b.site, issue);
     expect(after).toHaveLength(1);
     expect(after[0]).toMatch(/answered by member-a/);
+  });
+
+  it("F-036: the reviewer audience reaches the panel, the ticket and email, by the member's choices (milestone 6)", async () => {
+    const b = await bench();
+    const organizationId = fixture.a.organization.id;
+    const { taskId, projectId, externalId } = await b.task({ driver: fixture.a.member });
+    // The task's PR has two matched reviewers (the admin and the insider), an unlinked user and a team.
+    const connection = await test.db.connection.create({ data: { organizationId, kind: "github", appId: `app-${randomUUID().slice(0, 6)}`, slug: "ostra-test" } });
+    await seedInstallation(test.db, { organizationId, connectionId: connection.id, installationId: "1" });
+    const repo = await test.db.repo.create({
+      data: { organizationId, projectId, connectionId: connection.id, installationId: "1", hostRepoId: `host-${randomUUID()}`, fullName: `ostra-test/r-${randomUUID().slice(0, 6)}`, defaultBranch: "main", checkoutDir: "r" },
+    });
+    const taskRepo = await test.db.taskRepo.create({ data: { organizationId, projectId, taskId, repoId: repo.id, branchName: "ostra/x", baseBranch: "main", state: "pr_open", prNumber: 7 } });
+    await test.db.taskReviewer.createMany({
+      data: [
+        { organizationId, projectId, taskRepoId: taskRepo.id, githubUserId: "1001", login: "alice", memberId: fixture.a.admin.id, source: "requested" },
+        { organizationId, projectId, taskRepoId: taskRepo.id, githubUserId: "1002", login: "bob", memberId: fixture.a.insider.id, source: "codeowners" },
+        { organizationId, projectId, taskRepoId: taskRepo.id, githubUserId: "1003", login: "carol", memberId: null, source: "requested" },
+        { organizationId, projectId, taskRepoId: taskRepo.id, teamSlug: "backend", source: "team" },
+      ],
+    });
+    // The insider turned mail off for this moment: the panel and the ticket still reach them.
+    await test.db.notificationPreference.create({ data: { organizationId, memberId: fixture.a.insider.id, kind: "review_requested", channel: "email", enabled: false } });
+
+    const itemId = await test.db.$transaction((tx) => createNeedsYouItemInTx({ jobs }, tx, { organizationId, projectId, taskId, reason: "waiting_for_reviewer", audience: "reviewer" }));
+    await fanout(itemId, "created", b.deps);
+    // The matched reviewers, not the driver: the unlinked user and the team reach nobody.
+    const notified = await notificationsOf(itemId);
+    expect(notified.map((row) => row.memberId).sort()).toEqual([fixture.a.admin.id, fixture.a.insider.id].sort());
+    expect(notified.every((row) => row.kind === "review_requested")).toBe(true);
+    const rows = await deliveriesOf(itemId);
+    const channelsOf = (memberId: string) =>
+      rows
+        .filter((row) => row.notification.memberId === memberId)
+        .map((row) => row.channel)
+        .sort();
+    expect(channelsOf(fixture.a.admin.id)).toEqual(["email", "panel", "tracker"]);
+    expect(channelsOf(fixture.a.insider.id)).toEqual(["panel", "tracker"]);
+    expect(channelsOf(fixture.a.member.id)).toEqual([]);
+
+    const mailsBefore = b.email.calls();
+    await deliverQueued(b.deps);
+    const panelTo = b.channels.panel.sent.flatMap((sent) => (sent.category === "account" || sent.kind !== "review_requested" ? [] : sent.recipients.map((one) => one.memberId)));
+    expect(panelTo.sort()).toEqual([fixture.a.admin.id, fixture.a.insider.id].sort());
+    expect(commentsOf(b.site, externalIdOf(externalId))).toHaveLength(1);
+    // The mail goes to the admin alone.
+    expect(b.email.calls() - mailsBefore).toBe(1);
+
+    // Nobody matched: the driver is the audience.
+    await test.db.taskReviewer.deleteMany({ where: { taskRepoId: taskRepo.id, memberId: { not: null } } });
+    const fallback = await test.db.$transaction((tx) => createNeedsYouItemInTx({ jobs }, tx, { organizationId, projectId, taskId, reason: "waiting_for_reviewer", audience: "reviewer" }));
+    await fanout(fallback, "created", b.deps);
+    expect((await notificationsOf(fallback)).map((row) => row.memberId)).toEqual([fixture.a.member.id]);
   });
 
   it("F-036: nothing in the logs carries a comment, an address or a title", () => {
