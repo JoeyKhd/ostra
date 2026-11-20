@@ -35,6 +35,7 @@ import {
   repoBranchName,
   runnerLimits,
   serviceNameSchema,
+  taskSpecToolSets,
   truncateBytes,
   turnIdSchema,
 } from "@ostra/protocol";
@@ -275,6 +276,22 @@ export const porcelainPaths = (output: string): readonly string[] => {
 };
 
 const errorName = (error: unknown): string => (error instanceof Error ? error.name : "unknown");
+
+/**
+ * Whether the runner commits and pushes a task's work (milestone 6, ticket 22, Q221): a code task's
+ * branch and hidden ref, yes; a refine or a review task's, never. Their git proxy is read-only too.
+ */
+export const pushesWork = (spec: Pick<TaskSpec, "kind">): boolean => {
+  switch (spec.kind) {
+    case "code":
+      return true;
+    case "refine":
+    case "review":
+      return false;
+    default:
+      return spec.kind satisfies never;
+  }
+};
 
 const deferred = <T>(): { readonly promise: Promise<T>; readonly resolve: (value: T) => void } => {
   let resolve: (value: T) => void = () => undefined;
@@ -1105,17 +1122,21 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     unsaved = false;
     const startedAt = now();
     const ordinal = Math.max(1, turnOrdinal);
+    // Milestone 6 (ticket 22, Q221): a refine or review task pushes nothing, not its branch and not
+    // its hidden ref; its git proxy refuses every push anyway. Only the session archive goes up, so
+    // a reopen restores the conversation (what the agent prototyped in the box isn't kept).
+    const pushes = pushesWork(currentSpec);
     // 0. The commit, then the checks, whatever they find: a failing check never holds the push.
-    const checked = await commitAndCheck(currentSpec, message, ordinal);
+    const checked = pushes ? await commitAndCheck(currentSpec, message, ordinal) : { committed: false, checks: undefined };
     // 1. The task's branch in every repo: what the PR is made of.
-    const pushed = await pushWork(currentSpec, message, { hiddenRefEvent: false, pushOnly: checked.committed });
+    const pushed = pushes ? await pushWork(currentSpec, message, { hiddenRefEvent: false, pushOnly: checked.committed }) : ({ ok: true, repos: [] } as const);
     if (pushed.ok) {
       lastPushed = pushed.repos;
     } else {
       log.warn("pushing the branch after the turn failed", { turnOrdinal: ordinal, error: pushed.error.slice(0, 200) });
     }
     // 2. Each repo's working tree to the hidden ref, forced (uncommitted and untracked work included).
-    const wip = await deps.executor.saveWorkInProgress({ box, turnOrdinal: ordinal });
+    const wip = pushes ? await deps.executor.saveWorkInProgress({ box, turnOrdinal: ordinal }) : ({ ok: true, value: [] } as const);
     if (!wip.ok) {
       log.warn("saving the hidden ref failed", { turnOrdinal: ordinal, code: wip.error.code, reason: wip.error.message.slice(0, 200) });
     }
@@ -1453,7 +1474,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     gitProxy = await startGitProxy({
       taskId: taskSpec.taskId,
       branch: taskSpec.branchName,
-      mode: taskSpec.kind === "code" ? "read-write" : "read-only",
+      // Milestone 1's read-only mode for a refine or review task (F-099, F-100): every push refused.
+      mode: pushesWork(taskSpec) ? "read-write" : "read-only",
       repos: taskSpec.repos.map((repo) => ({
         repoId: repo.repoId,
         fullName: repo.fullName,
@@ -1491,6 +1513,9 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       onPrText: (event) => {
         void emit(event);
       },
+      // Minor 5 (tickets 22 and 23): exactly the tool sets the spec names, and core's endpoints for the new ones.
+      tools: taskSpecToolSets(taskSpec),
+      team: deps.link.team,
       // Minor 3 (ticket 20, F-110): the memory tools, when the spec offers them.
       ...(taskSpec.memory?.tools === true
         ? {
@@ -1918,6 +1943,9 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       mcpServers: launchMcpServers(taskSpec),
       // Milestone 4 (ticket 20, F-110): the block core rendered, and whether the tools are offered.
       memory: taskSpec.memory === undefined || taskSpec.memory === null ? null : { block: taskSpec.memory.block, tools: taskSpec.memory.tools },
+      // Milestone 6 (ticket 22, ADR 0028): the kind, so a review task's agent never edits, and the tool sets it's offered.
+      kind: taskSpec.kind,
+      ...(taskSpec.tools === undefined ? {} : { tools: taskSpec.tools }),
     });
     if (!launch.ok) {
       return { ok: false, error: `the agent couldn't be launched: ${launch.error.message}` };
@@ -2074,7 +2102,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         if (taskSpec === undefined) {
           break;
         }
-        const pushed = await pushWork(taskSpec, taskSpec.title);
+        const pushed = pushesWork(taskSpec) ? await pushWork(taskSpec, taskSpec.title) : ({ ok: true, repos: taskSpec.repos.map((repo) => ({ repoId: repo.repoId, headSha: null, ahead: false })) } as const);
         if (!pushed.ok) {
           await crash(pushed.error);
           break;
@@ -2089,7 +2117,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         if (taskSpec !== undefined) {
           await scanOutsideRepos(taskSpec);
         }
-        if (taskSpec !== undefined && boxPrepared) {
+        if (taskSpec !== undefined && boxPrepared && pushesWork(taskSpec)) {
           const pushed = await pushWork(taskSpec, `${taskSpec.title} (stopped: unfinished work)`);
           if (!pushed.ok) {
             log.warn("pushing a stopped task's work failed", { error: pushed.error.slice(0, 200) });
@@ -2099,7 +2127,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       }
       case "crashed": {
         await endAgent();
-        if (taskSpec !== undefined && boxPrepared) {
+        if (taskSpec !== undefined && boxPrepared && pushesWork(taskSpec)) {
           const pushed = await pushWork(taskSpec, `${taskSpec.title} (crashed: unfinished work)`);
           if (!pushed.ok) {
             log.warn("pushing a crashed task's work failed", { error: pushed.error.slice(0, 200) });

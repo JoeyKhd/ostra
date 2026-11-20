@@ -46,7 +46,7 @@ import type {
   WipDeps,
 } from "@ostra/adapter-sdk";
 import { gitShaSchema, repoBranchName, SETUP_OUTPUT_MAX_CHARS } from "@ostra/protocol";
-import type { BoxReleaseReason, BoxState, GitPerson, ProjectId, RepoId, RepoSecret, TaskId, TaskSpec } from "@ostra/protocol";
+import type { BoxReleaseReason, BoxState, GitPerson, ProjectId, RepoId, RepoSecret, TaskId, TaskSpec, TaskSpecReviewRepo } from "@ostra/protocol";
 import { cgroupPrefix, detectContainment, newUnitMarker, processTreeContainment, sweepLeftovers, TASK_UNIT_ENV } from "./containment.ts";
 import {
   agentUserMarkerSweep,
@@ -224,6 +224,10 @@ const AGENT_COMMAND_OUTPUT_MAX = 64 * 1024;
 
 /** A folder name for a task's root: its ID, with anything odd replaced. */
 const folderOf = (taskId: TaskId): string => taskId.replace(/[^A-Za-z0-9._-]/g, "_");
+
+/** Milestone 6 (F-100): a review task's checkout of the repo, from the spec's `review`, or `null`. */
+export const reviewRepoOf = (spec: Pick<TaskSpec, "review">, repoId: RepoId): TaskSpecReviewRepo | null =>
+  spec.review?.repos.find((repo) => repo.repoId === repoId) ?? null;
 
 /** A `Co-authored-by` trailer, as git and GitHub read it. */
 export const coAuthorTrailer = (person: GitPerson): string => `Co-authored-by: ${person.name} <${person.email}>`;
@@ -873,6 +877,15 @@ export class HostExecutor extends ExecutorAdapter {
           }
         }
         await writeFile(path.join(checkout, ".git", "ostra-trailers"), record.spec.coAuthors.map((person) => `${coAuthorTrailer(person)}\n`).join(""));
+        // Milestone 6 (F-100): a review task reopened for its next round moves to the round's heads.
+        const reviewed = reviewRepoOf(record.spec, repo.repoId);
+        if (reviewed !== null) {
+          const atHead = await this.#checkoutReviewHead(record, checkout, reviewed);
+          if (!atHead.ok) {
+            return atHead;
+          }
+          continue;
+        }
         // F-066: a repo that merged while the task carried on has a fresh branch now; its checkout
         // moves onto it, from the base's current head, before anything is taken from the host.
         const moved = await this.#moveToRepoBranch(record, checkout, repo);
@@ -1479,15 +1492,24 @@ export class HostExecutor extends ExecutorAdapter {
         return adapterError("unavailable", `configuring the checkout failed (${key})`);
       }
     }
-    const branch = repoBranchName(record.spec, repo);
-    const defaultBranch = repo.defaultBranch;
-    const remote = await this.#git(record, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${branch}`], checkout);
-    const checkedOut =
-      remote.code === 0
-        ? await this.#git(record, ["checkout", "--quiet", "-b", branch, `refs/remotes/origin/${branch}`], checkout)
-        : await this.#git(record, ["checkout", "--quiet", "-b", branch, `refs/remotes/origin/${defaultBranch}`], checkout);
-    if (checkedOut.code !== 0) {
-      return adapterError("unavailable", "checking out the task's branch failed");
+    // Milestone 6 (F-100, ticket 22): a review task's repo sits at its PR's head, detached, with the base fetched too.
+    const reviewed = reviewRepoOf(record.spec, repo.repoId);
+    if (reviewed !== null) {
+      const atHead = await this.#checkoutReviewHead(record, checkout, reviewed);
+      if (!atHead.ok) {
+        return atHead;
+      }
+    } else {
+      const branch = repoBranchName(record.spec, repo);
+      const defaultBranch = repo.defaultBranch;
+      const remote = await this.#git(record, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${branch}`], checkout);
+      const checkedOut =
+        remote.code === 0
+          ? await this.#git(record, ["checkout", "--quiet", "-b", branch, `refs/remotes/origin/${branch}`], checkout)
+          : await this.#git(record, ["checkout", "--quiet", "-b", branch, `refs/remotes/origin/${defaultBranch}`], checkout);
+      if (checkedOut.code !== 0) {
+        return adapterError("unavailable", "checking out the task's branch failed");
+      }
     }
     const gitDir = path.join(checkout, ".git");
     // ostra's own folder (`.ostra/`: the ticket's files, ticket 26) never lands in a commit or the hidden ref.
@@ -1497,6 +1519,36 @@ export class HostExecutor extends ExecutorAdapter {
     await writeFile(hook, PREPARE_COMMIT_MSG_HOOK);
     await chmod(hook, 0o755);
     await writeFile(path.join(gitDir, "ostra-trailers"), record.spec.coAuthors.map((person) => `${coAuthorTrailer(person)}\n`).join(""));
+    return ok(undefined);
+  }
+
+  /**
+   * Milestone 6 (F-100, ADR 0058): a review task's checkout of one repo. The PR's head and its base
+   * are fetched by SHA through the git proxy (read-only, as for any fetch), and the head is checked
+   * out detached, so the agent can diff `baseSha...headSha` and has no branch to commit on. A head
+   * the remote doesn't give by SHA comes from the PR's own ref, `refs/pull/<number>/head`.
+   */
+  async #checkoutReviewHead(record: BoxRecord, checkout: string, reviewed: TaskSpecReviewRepo): Promise<AdapterResult<void>> {
+    const has = async (sha: string): Promise<boolean> => (await this.#git(record, ["cat-file", "-e", `${sha}^{commit}`], checkout)).code === 0;
+    for (const sha of [reviewed.headSha, reviewed.baseSha]) {
+      if (await has(sha)) {
+        continue;
+      }
+      const bySha = await this.#git(record, ["fetch", "--quiet", "--no-tags", "origin", sha], checkout);
+      if (bySha.code !== 0 || !(await has(sha))) {
+        await this.#git(record, ["fetch", "--quiet", "--no-tags", "origin", `+refs/pull/${String(reviewed.prNumber)}/head:refs/remotes/origin/pull/${String(reviewed.prNumber)}`], checkout);
+      }
+      if (!(await has(sha))) {
+        this.plumbing.logger.warn("a review head couldn't be fetched", { taskId: record.ref.taskId, repoId: reviewed.repoId, prNumber: reviewed.prNumber });
+        return adapterError("unavailable", `fetching pull request #${String(reviewed.prNumber)}'s ${sha === reviewed.headSha ? "head" : "base"} through the git proxy failed`);
+      }
+    }
+    const detached = await this.#git(record, ["checkout", "--quiet", "--force", "--detach", reviewed.headSha], checkout);
+    if (detached.code !== 0) {
+      return adapterError("unavailable", `checking out pull request #${String(reviewed.prNumber)}'s head failed`);
+    }
+    // The base as a ref of its own, so `git diff ostra/base...HEAD` reads it by name.
+    await this.#git(record, ["update-ref", "refs/ostra/review-base", reviewed.baseSha], checkout);
     return ok(undefined);
   }
 

@@ -6,6 +6,12 @@ import {
   blobChunkQuerySchema,
   blobUploadFinishRequestSchema,
   blobUploadStartRequestSchema,
+  draftIdSchema,
+  draftRequestSchema,
+  draftResponseSchema,
+  environmentProposalIdSchema,
+  environmentProposalRequestSchema,
+  environmentProposalResponseSchema,
   encodeRunnerHttpErrorForMinor,
   minorFromHeader,
   memoryNoteResponseSchema,
@@ -23,6 +29,9 @@ import {
   pushCredentialResponseSchema,
   PROTOCOL_MINOR,
   registerRequestSchema,
+  reviewRequestSchema,
+  reviewResponseSchema,
+  reviewRunIdSchema,
   runnerHeaders,
   runnerIdSchema,
   runnerLimits,
@@ -32,7 +41,16 @@ import {
   tokenAssertionSchema,
 } from "@ostra/protocol";
 import type {
+  DraftRefusal,
+  DraftRequestBody,
+  DraftResponse,
+  EnvironmentProposal,
+  EnvironmentProposalRefusal,
+  EnvironmentProposalResponse,
   InfoResponse,
+  ReviewRefusal,
+  ReviewRequestBody,
+  ReviewResponse,
   MemoryNote,
   MemoryProposalInput,
   MemoryProposalRefusal,
@@ -111,6 +129,23 @@ export type FakeMemory = {
   down: boolean;
 };
 
+/**
+ * Milestone 6 (tickets 22 and 23): core's draft, review and environment proposal endpoints for the
+ * sidecar, by the protocol's schemas (minor 5): each saved with the task and the token it came with,
+ * or refused as the switch says, as a `200` with its `code`, the way core answers.
+ */
+export type FakeTeam = {
+  readonly drafts: { readonly taskId: string; readonly bearer: string; readonly body: DraftRequestBody }[];
+  readonly reviews: { readonly taskId: string; readonly bearer: string; readonly body: ReviewRequestBody }[];
+  readonly proposals: { readonly taskId: string; readonly bearer: string; readonly body: EnvironmentProposal }[];
+  /** Each endpoint's answer: `null` saves, a refusal refuses. */
+  readonly refusals: { draft: DraftRefusal | null; review: ReviewRefusal | null; environment: EnvironmentProposalRefusal | null };
+  /** Every call, in order: its endpoint and the token it carried. */
+  readonly calls: { readonly endpoint: "draft" | "review" | "environment"; readonly taskId: string; readonly bearer: string }[];
+  /** While true, every call fails as a server error: core is down. */
+  down: boolean;
+};
+
 export type FakeServer = {
   readonly url: string;
   readonly runners: Map<RunnerId, FakeRunner>;
@@ -136,6 +171,8 @@ export type FakeServer = {
   readonly blobs: Map<string, FakeBlob>;
   /** Milestone 4: the memory endpoints' notes, proposals and calls. */
   readonly memory: FakeMemory;
+  /** Milestone 6: the draft, review and proposal endpoints' records and switches. */
+  readonly team: FakeTeam;
   readonly bulkFaults: BulkFaults;
   /** Every bulk-path call, by kind: `start`, `chunk`, `finish`, `download`. */
   readonly bulkCalls: string[];
@@ -211,6 +248,7 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
   const bulkFaults: BulkFaults = { dropChunks: 0, refuseUploads: false, failDownloads: new Set(), corruptDownloads: new Set() };
   const bulkCalls: string[] = [];
   const memory: FakeMemory = { notes: [], proposals: [], calls: [], refusals: [], down: false };
+  const team: FakeTeam = { drafts: [], reviews: [], proposals: [], refusals: { draft: null, review: null, environment: null }, calls: [], down: false };
   const seenNonces = new Set<string>();
   let counter = 0;
   let url = "";
@@ -286,6 +324,71 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
       return;
     }
     ostraError(response, 404, "not-found", "no such endpoint");
+  };
+
+  // Milestone 6 (tickets 22 and 23): the draft, the review and the proposal, as minor 5 says them.
+  const handleTeam = async (request: IncomingMessage, response: ServerResponse, taskId: string, endpoint: "draft" | "review" | "environment"): Promise<void> => {
+    const bearer = bearerOf(request);
+    if (bearer === undefined || !accessTokens.has(bearer)) {
+      ostraError(response, 401, "unauthorized", "a valid access token is required");
+      return;
+    }
+    if (!tasks.has(taskId) || request.method !== "POST") {
+      ostraError(response, 404, "not-found", "no such task");
+      return;
+    }
+    team.calls.push({ endpoint, taskId, bearer });
+    if (team.down) {
+      ostraError(response, 503, "unavailable", "core is down");
+      return;
+    }
+    const body = await readBody(request);
+    switch (endpoint) {
+      case "draft": {
+        const parsed = draftRequestSchema.safeParse(body);
+        let answer: DraftResponse;
+        if (!parsed.success) {
+          answer = { code: "invalid" };
+        } else if (team.refusals.draft !== null) {
+          answer = team.refusals.draft;
+        } else {
+          team.drafts.push({ taskId, bearer, body: parsed.data });
+          answer = { draftId: draftIdSchema.parse(`draft-${String(team.drafts.length)}`), version: team.drafts.length };
+        }
+        send(response, 200, draftResponseSchema.parse(answer));
+        return;
+      }
+      case "review": {
+        const parsed = reviewRequestSchema.safeParse(body);
+        let answer: ReviewResponse;
+        if (!parsed.success) {
+          answer = { code: "invalid" };
+        } else if (team.refusals.review !== null) {
+          answer = team.refusals.review;
+        } else {
+          team.reviews.push({ taskId, bearer, body: parsed.data });
+          answer = { reviewRunId: reviewRunIdSchema.parse(`review-run-${String(team.reviews.length)}`) };
+        }
+        send(response, 200, reviewResponseSchema.parse(answer));
+        return;
+      }
+      case "environment": {
+        const parsed = environmentProposalRequestSchema.safeParse(body);
+        let answer: EnvironmentProposalResponse;
+        if (!parsed.success) {
+          answer = { code: "invalid" };
+        } else if (team.refusals.environment !== null) {
+          answer = team.refusals.environment;
+        } else {
+          team.proposals.push({ taskId, bearer, body: parsed.data });
+          answer = { proposalId: environmentProposalIdSchema.parse(`environment-proposal-${String(team.proposals.length)}`) };
+        }
+        send(response, 200, environmentProposalResponseSchema.parse(answer));
+        return;
+      }
+      default:
+        endpoint satisfies never;
+    }
   };
 
   // The bulk path (ADR 0043, ticket 12's endpoints, as the protocol's schemas say them).
@@ -558,6 +661,12 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
       await handleBlobs(request, response, blobMatch);
       return;
     }
+    const teamMatch = /^\/runner\/v1\/tasks\/([^/?]+)\/(draft|review|environment-proposal)$/.exec(path);
+    if (teamMatch !== null) {
+      const which = teamMatch[2] === "draft" ? "draft" : teamMatch[2] === "review" ? "review" : "environment";
+      await handleTeam(request, response, decodeURIComponent(teamMatch[1] ?? ""), which);
+      return;
+    }
     const memoryMatch = /^\/runner\/v1\/tasks\/([^/?]+)\/memory\/(search|notes\/[^/?]+|proposals)$/.exec(path);
     if (memoryMatch !== null) {
       await handleMemory(request, response, decodeURIComponent(memoryMatch[1] ?? ""), memoryMatch[2] ?? "");
@@ -662,6 +771,7 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
     credentialsIssued,
     blobs,
     memory,
+    team,
     bulkFaults,
     bulkCalls,
     putBlob: (taskId, bytes, contentType, given) => {

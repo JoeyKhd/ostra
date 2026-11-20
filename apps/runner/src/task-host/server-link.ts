@@ -1,4 +1,6 @@
 import {
+  draftResponseSchema,
+  environmentProposalResponseSchema,
   memoryNoteResponseSchema,
   memoryProposalResponseSchema,
   memorySearchResponseSchema,
@@ -12,9 +14,16 @@ import {
   pullCredentialResponseSchema,
   pushCredentialResponseSchema,
   registryCredentialRefusalSchema,
+  reviewResponseSchema,
 } from "@ostra/protocol";
 import type {
   BlobRef,
+  DraftRequestBody,
+  DraftResponse,
+  EnvironmentProposal,
+  EnvironmentProposalResponse,
+  ReviewRequestBody,
+  ReviewResponse,
   LeaseEpoch,
   MemoryNoteResponse,
   MemoryProposalRequest,
@@ -69,6 +78,19 @@ export type MemoryLink = {
   readonly propose: (taskId: TaskId, request: MemoryProposalRequest) => Promise<MemoryCallResult<MemoryProposalResponse>>;
 };
 
+/**
+ * Milestone 6 (tickets 22 and 23, protocol minor 5): the sidecar's draft, review and environment
+ * proposal endpoints on core (`/runner/v1/tasks/:taskId/{draft,review,environment-proposal}`), with
+ * the link's own token, as memory's are. Core answers a refusal as a `200` with its `code`, which the
+ * tool hands the agent in the protocol's words; a failure is a network failure, a timeout or another
+ * status. Nothing of a body is ever logged.
+ */
+export type TeamLink = {
+  readonly draft: (taskId: TaskId, body: DraftRequestBody) => Promise<MemoryCallResult<DraftResponse>>;
+  readonly review: (taskId: TaskId, body: ReviewRequestBody) => Promise<MemoryCallResult<ReviewResponse>>;
+  readonly environmentProposal: (taskId: TaskId, body: EnvironmentProposal) => Promise<MemoryCallResult<EnvironmentProposalResponse>>;
+};
+
 export type ServerLink = {
   readonly fetchSpec: (taskId: TaskId, leaseEpoch: LeaseEpoch) => Promise<LinkResult<TaskSpec>>;
   /** The task's credentials, after the server checks the lease. Held in memory only. */
@@ -81,6 +103,8 @@ export type ServerLink = {
   readonly downloadBlob: (input: DownloadInput) => Promise<BulkResult<Downloaded>>;
   /** Minor 3 (milestone 4): the memory tools' calls, on behalf of the task. */
   readonly memory: MemoryLink;
+  /** Minor 5 (milestone 6): `submit_draft`, `submit_review` and `propose_environment`'s calls, on behalf of the task. */
+  readonly team: TeamLink;
 };
 
 /** How long a memory call may take before the tool says memory is unavailable. */
@@ -282,6 +306,7 @@ export const runnerServerLink = (input: {
     },
     openSession: (ref) => input.connection.openSession(ref),
     memory: memoryLink({ serverUrl: input.serverUrl, tokens: input.tokens }),
+    team: teamLink({ serverUrl: input.serverUrl, tokens: input.tokens }),
     uploadBlob: (upload) => bulk.upload(upload),
     downloadBlob: (download) => bulk.download(download),
     statusChanged: () => {
@@ -316,5 +341,39 @@ export const memoryLink = (input: { readonly serverUrl: string; readonly tokens:
     search: (taskId, request) => call(runnerPaths.taskMemorySearch(taskId), memorySearchResponseSchema, request),
     read: (taskId, noteId) => call(runnerPaths.taskMemoryNote(taskId, noteId), memoryNoteResponseSchema),
     propose: (taskId, request) => call(runnerPaths.taskMemoryProposals(taskId), memoryProposalResponseSchema, request),
+  };
+};
+
+/** How long a draft, review or proposal call may take before the tool says core is unreachable. */
+const TEAM_TIMEOUT_MS = 30_000;
+
+/** A team tool's failure: core's own words for a 4xx, else unavailable. */
+const teamFailureOf = (failure: Parameters<typeof describeFailure>[0]): MemoryCallFailure =>
+  failure.kind === "refused" && failure.status >= 400 && failure.status < 500
+    ? { kind: "refused", status: failure.status, message: (failure.error?.message ?? `ostra refused the call (status ${String(failure.status)}).`).slice(0, 500) }
+    : { kind: "unavailable" };
+
+/** The milestone 6 tools' endpoints with the link's token (minor 5). Never logs: a draft's, a finding's and a proposal's text stay out. */
+export const teamLink = (input: { readonly serverUrl: string; readonly tokens: TokenSource }): TeamLink => {
+  const post = async <Schema extends z.ZodType>(url: string, schema: Schema, body: unknown): Promise<MemoryCallResult<z.infer<Schema>>> => {
+    const token = await input.tokens.get();
+    if (!token.ok) {
+      return { ok: false, failure: { kind: "unavailable" } };
+    }
+    const result = await callJson({
+      url: joinUrl(input.serverUrl, url),
+      method: "POST",
+      schema,
+      body,
+      bearer: token.token,
+      headers: { [runnerHeaders.minor]: String(PROTOCOL_MINOR) },
+      timeoutMs: TEAM_TIMEOUT_MS,
+    });
+    return result.ok ? { ok: true, value: result.value } : { ok: false, failure: teamFailureOf(result.failure) };
+  };
+  return {
+    draft: (taskId, body) => post(runnerPaths.taskDraft(taskId), draftResponseSchema, body),
+    review: (taskId, body) => post(runnerPaths.taskReview(taskId), reviewResponseSchema, body),
+    environmentProposal: (taskId, body) => post(runnerPaths.taskEnvironmentProposal(taskId), environmentProposalResponseSchema, body),
   };
 };

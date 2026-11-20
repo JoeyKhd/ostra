@@ -6,18 +6,47 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Logger } from "@ostra/adapter-sdk";
 import {
+  defaultOstraToolSets,
+  draftResultText,
+  environmentProposalRequestFromTool,
+  environmentProposalResultText,
   memoryKindSchema,
   memoryProposalRequestSchema,
   memoryScopeSchema,
   memorySearchRequestSchema,
   noteIdSchema,
   parseJson,
+  PROPOSE_ENVIRONMENT_TOOL,
+  proposeEnvironmentDescription,
+  proposeEnvironmentInputSchema,
   proposalRelationSchema,
+  reviewRequestFromTool,
+  reviewResultText,
   runnerLimits,
+  SUBMIT_DRAFT_TOOL,
+  SUBMIT_REVIEW_TOOL,
+  submitDraftDescription,
+  submitDraftInputSchema,
+  submitReviewDescription,
+  submitReviewInputSchema,
+  unknownRepoText,
 } from "@ostra/protocol";
-import type { MemoryNoteResponse, MemoryProposalResponse, MemorySearchResponse, NoteId, RepoFullName, RepoId, TaskEventOf, TaskId } from "@ostra/protocol";
+import type {
+  MemoryNoteResponse,
+  MemoryProposalResponse,
+  MemorySearchResponse,
+  NoteId,
+  OstraToolSet,
+  ProposeEnvironmentInput,
+  RepoFullName,
+  RepoId,
+  SubmitDraftInput,
+  SubmitReviewInput,
+  TaskEventOf,
+  TaskId,
+} from "@ostra/protocol";
 import { z } from "zod";
-import type { MemoryCallFailure, MemoryLink } from "../task-host/server-link.ts";
+import type { MemoryCallFailure, MemoryLink, TeamLink } from "../task-host/server-link.ts";
 import { RUNNER_VERSION } from "../version.ts";
 
 // ostra's MCP tools for one task (ticket 20, F-030, F-078): an MCP server over Streamable HTTP
@@ -36,6 +65,15 @@ import { RUNNER_VERSION } from "../version.ts";
 // refusal from core goes back as the tool's error text, a network failure as "Memory is unavailable
 // right now". A read is reported as `memory.used` (`search` when the note came from a search in the
 // same turn). A query, a note's text and a proposal's text are never logged: counts and IDs only.
+//
+// Milestone 6 (tickets 22 and 23, protocol minor 5): the server serves exactly the tool sets the
+// spec's `tools` names (`taskSpecToolSets`): `pr-text` is `set_pull_request_text`, `memory` the three
+// memory tools, `draft` is `submit_draft`, `review` is `submit_review` and `environment` is
+// `propose_environment`. Each new tool's input is checked against the protocol's own schema
+// (`mcp/tools.ts`), its repos named by `owner/name` and turned into IDs here, and the call is
+// forwarded to core's `/runner/v1/tasks/:taskId/{draft,review,environment-proposal}` with the link's
+// token. Core's answer, a refusal included, goes back in the protocol's words. A draft's, a
+// finding's and a proposal's text are never logged: counts and IDs only.
 
 export const SET_PR_TEXT_TOOL = "set_pull_request_text";
 export const MEMORY_SEARCH_TOOL = "memory_search";
@@ -74,6 +112,10 @@ export type McpToolsOptions = {
   readonly onPrText: (event: TaskEventOf<"pr.text_set">) => void;
   /** Minor 3: the memory tools, when the spec's `memory.tools` is true. Absent: no memory tools. */
   readonly memory?: McpMemoryOptions;
+  /** Minor 5: the tool sets served (the spec's `tools`). Absent: milestone 4's, `defaultOstraToolSets`. */
+  readonly tools?: readonly OstraToolSet[];
+  /** Minor 5: core's draft, review and proposal endpoints, for the `draft`, `review` and `environment` sets. */
+  readonly team?: TeamLink;
 };
 
 export type McpMemoryOptions = {
@@ -211,6 +253,9 @@ const proposalText = (response: MemoryProposalResponse): ToolAnswer => {
   }
 };
 
+/** What a milestone 6 tool says when core can't be reached: nothing was saved. */
+export const TEAM_TOOL_UNAVAILABLE = "ostra can't be reached right now, so nothing was saved. Try the call again in a moment.";
+
 /** The most one MCP request may carry: the tool's caps, with room for JSON-RPC. */
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
 
@@ -304,14 +349,100 @@ export const startMcpTools = async (options: McpToolsOptions): Promise<McpTools>
     return proposalText(result.value);
   };
 
+  // ---- milestone 6: the draft, the review and the proposal (minor 5) ----
+  const toolRepos = options.repos.map((repo) => ({ repoId: repo.repoId, fullName: repo.fullName }));
+  const teamFailed = (tool: string, failure: MemoryCallFailure): ToolAnswer => {
+    log.info("tool call failed", { tool, failure: failure.kind, ...(failure.kind === "refused" ? { status: failure.status } : {}) });
+    return failure.kind === "unavailable" ? answer(TEAM_TOOL_UNAVAILABLE, true) : answer(failure.message, true);
+  };
+
+  const submitDraft = async (team: TeamLink, input: SubmitDraftInput): Promise<ToolAnswer> => {
+    const result = await team.draft(options.taskId, input);
+    if (!result.ok) {
+      return teamFailed(SUBMIT_DRAFT_TOOL, result.failure);
+    }
+    const response = result.value;
+    if ("draftId" in response) {
+      log.info("draft submitted", { draftId: response.draftId, version: response.version, acceptanceCriteria: input.acceptanceCriteria.length, subTickets: input.subTickets.length });
+      return answer(draftResultText(response));
+    }
+    log.info("draft refused", { code: response.code });
+    return answer(draftResultText(response), true);
+  };
+
+  const submitReview = async (team: TeamLink, input: SubmitReviewInput): Promise<ToolAnswer> => {
+    const mapped = reviewRequestFromTool(input, toolRepos);
+    if (!mapped.ok) {
+      log.info("tool call refused", { tool: SUBMIT_REVIEW_TOOL, reason: "unknown-repo" });
+      return answer(unknownRepoText(mapped.unknownRepo), true);
+    }
+    const result = await team.review(options.taskId, mapped.value);
+    if (!result.ok) {
+      return teamFailed(SUBMIT_REVIEW_TOOL, result.failure);
+    }
+    const response = result.value;
+    if ("reviewRunId" in response) {
+      const blocking = input.findings.filter((finding) => finding.severity === "blocking").length;
+      log.info("review submitted", { reviewRunId: response.reviewRunId, findings: input.findings.length, blocking });
+      return answer(reviewResultText(response));
+    }
+    log.info("review refused", { code: response.code });
+    return answer(reviewResultText(response), true);
+  };
+
+  const proposeEnvironment = async (team: TeamLink, input: ProposeEnvironmentInput): Promise<ToolAnswer> => {
+    const mapped = environmentProposalRequestFromTool(input, toolRepos);
+    if (!mapped.ok) {
+      log.info("tool call refused", { tool: PROPOSE_ENVIRONMENT_TOOL, reason: "unknown-repo" });
+      return answer(unknownRepoText(mapped.unknownRepo), true);
+    }
+    const result = await team.environmentProposal(options.taskId, mapped.value);
+    if (!result.ok) {
+      return teamFailed(PROPOSE_ENVIRONMENT_TOOL, result.failure);
+    }
+    const response = result.value;
+    if ("proposalId" in response) {
+      log.info("environment proposed", { proposalId: response.proposalId, repos: input.repos.length, services: input.services.length });
+      return answer(environmentProposalResultText(response));
+    }
+    log.info("environment proposal refused", { code: response.code });
+    return answer(environmentProposalResultText(response), true);
+  };
+
+  const toolSets: ReadonlySet<OstraToolSet> = new Set(options.tools ?? defaultOstraToolSets);
+
   const newServer = (): McpServer => {
     const server = new McpServer({ name: "ostra", version: RUNNER_VERSION });
-    server.registerTool(
-      SET_PR_TEXT_TOOL,
-      { title: "Set the pull request's title and body", description, inputSchema },
-      (input) => setPrText(input),
-    );
-    const memory = options.memory;
+    if (toolSets.has("pr-text")) {
+      server.registerTool(
+        SET_PR_TEXT_TOOL,
+        { title: "Set the pull request's title and body", description, inputSchema },
+        (input) => setPrText(input),
+      );
+    }
+    const team = options.team;
+    if (team !== undefined && toolSets.has("draft")) {
+      server.registerTool(
+        SUBMIT_DRAFT_TOOL,
+        { title: "Hand in the refined ticket", description: submitDraftDescription, inputSchema: submitDraftInputSchema },
+        (input) => submitDraft(team, input),
+      );
+    }
+    if (team !== undefined && toolSets.has("review")) {
+      server.registerTool(
+        SUBMIT_REVIEW_TOOL,
+        { title: "Hand in the review", description: submitReviewDescription, inputSchema: submitReviewInputSchema },
+        (input) => submitReview(team, input),
+      );
+    }
+    if (team !== undefined && toolSets.has("environment")) {
+      server.registerTool(
+        PROPOSE_ENVIRONMENT_TOOL,
+        { title: "Propose the environment", description: proposeEnvironmentDescription, inputSchema: proposeEnvironmentInputSchema },
+        (input) => proposeEnvironment(team, input),
+      );
+    }
+    const memory = toolSets.has("memory") ? options.memory : undefined;
     if (memory !== undefined) {
       server.registerTool(MEMORY_SEARCH_TOOL, { title: "Search memory", description: SEARCH_DESCRIPTION, inputSchema: memorySearchInputSchema }, (input) =>
         memorySearch(memory, input),
