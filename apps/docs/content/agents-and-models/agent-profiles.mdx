@@ -1,18 +1,18 @@
 ---
 title: "Agent profiles"
 description: "An agent, a model and its settings, chosen per task."
-summary: "An agent, its model, and what it works with: instructions, skills, MCP servers and approval rules."
+summary: "An agent, its provider and model, and what it works with: instructions, skills, MCP servers and approval rules."
 ---
 
-An agent profile is a named setup of an agent: its model, its instructions, its tools, and how much it may do without asking. Every task runs on one profile. Profiles belong to the organization, and an organization admin manages them under **Agent profiles**.
+An agent profile is a named setup of an agent: its model provider and model, its instructions, its tools, and how much it may do without asking. Every task runs on one profile. Profiles belong to the organization, and an organization admin manages them under **Agent profiles**.
 
-ostra starts with a built-in OpenCode profile, which uses the model you chose as the default under **Models**.
+ostra starts with a built-in OpenCode profile, which uses the model you chose as the default under **Models**, on the provider that lists it.
 
 ## Make a profile
 
 Press **New profile** and fill in its sections.
 
-- **Agent and model.** The agent (OpenCode in v1) and the model, picked from the models your providers serve. A profile without a model can't start a task. Set its reasoning effort here too: one of the levels the model has, or Default, which leaves the endpoint's own.
+- **Agent and model.** The agent (OpenCode in v1), then the **Provider**, one of your organization's [model providers](/docs/agents-and-models/model-providers) by name, then the **Model**, picked from the models that provider lists. Changing the provider clears a model it doesn't list. The profile's tasks use that provider's key and base URL and no other, so a profile runs only in projects whose list allows its provider (see below). A profile without a provider or a model can't be saved. Set its reasoning effort here too: one of the levels the model has, or Default, which leaves the endpoint's own.
 - **Instructions.** What every task with this profile should know. They're added beside each repo's `AGENTS.md`, never replacing it.
 - **Skills.** A skill is a `SKILL.md` and up to 20 files, at most 1 MiB each, that the agent reads when it needs them. Skills are written to the task's own config folder, never to the repo.
 - **MCP servers.** An HTTP server by its URL and headers, or a stdio command that's in the image. They're reached through the runner's MCP proxy, so no header value or secret enters the box. A server can be marked read-only.
@@ -24,6 +24,12 @@ A profile's permissions and MCP servers win over a repo's own agent config. Its 
 
 A profile you no longer use can be archived. Archived profiles stay listed under **Show archived profiles**.
 
+## Where a profile runs
+
+A project's list of providers, under the project's **Settings › Models and keys**, decides which profiles run there: those whose provider it allows. **New task**, and a project's defaults, offer only those. A task on a profile whose provider the project doesn't allow (from a ticket, an automation or a reopen) waits with the reason, such as "The profile runs on dev endpoint, which this project's list doesn't allow", and Home's **Needs you** shows it to the organization's admins, who can allow the provider there. The editor's panel shows, for the provider you pick, each project and whether it allows it.
+
+A profile saved before ostra named profiles' providers may have none yet: each project's own key then serves its model, as before. The editor says so, and asks for a provider the next time you save it. An upgrade gives a profile its provider on its own when exactly one provider served its model.
+
 ## Defaults per project
 
-Each project picks a default profile for each task kind: refine, code and review. The table on **Agent profiles** shows, under **Default for**, which projects use each one. A member starting a task, and an intake rule, can choose another profile among those they may use.
+Each project picks a default profile for each task kind: refine, code and review, among the profiles whose provider its list allows. The table on **Agent profiles** shows, under **Default for**, which projects use each one. A member starting a task, and an intake rule, can choose another profile among those they may use.

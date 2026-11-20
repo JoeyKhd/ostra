@@ -39,6 +39,6 @@ When the detection is wrong, correct the **API format** by hand. The agent never
 
 Names, context sizes, limits and prices come from the [models.dev](https://models.dev) catalog, which core fetches daily (`OSTRA_CATALOG_FETCH`; `false` uses the copy bundled with ostra). A model the catalog doesn't have is shown as **custom**: give it a name and its input and output prices per million tokens, so its spend can be counted.
 
-An agent profile names its model by its model name, not by one provider's listing of it. In each project each model is served by exactly one provider on the project's list. Nothing but an organization admin's save moves a project's model to another provider, and no task ever falls back to another provider by itself.
+An agent profile names its provider, then one of that provider's models by its model name. Its tasks use that provider's key and base URL alone, and only in projects whose list allows it: a project's list decides which profiles run there (see [Agent profiles](/docs/agents-and-models/agent-profiles)). For a profile saved before profiles named their provider, each project serves the model from exactly one provider on its list, and nothing but an organization admin's save moves it to another. No task ever falls back to another provider by itself.
 
 Spend is counted at the key proxy, call by call, in four token kinds: fresh input, output, cache reads and cache writes, each priced on its own. See [Budgets](/docs/using-ostra/budgets).
