@@ -51,6 +51,7 @@ import { createIngest } from "./ingest/ingest.ts";
 import { ensureStallSweepSchedule, maxDurationHandler, stallSweepHandler } from "./limits/limits.ts";
 import type { LimitDeps } from "./limits/limits.ts";
 import { createLiveTextWriter } from "./ingest/live-text.ts";
+import { timedIngest } from "./ingest/timing.ts";
 import { createEmailChannel, createNotificationChannels, notifyDeliverHandler, notifyFanoutHandler, realEmailFactories } from "./notifications/index.ts";
 import type { NotifyDeps } from "./notifications/index.ts";
 import { accountMailSendHandler } from "./reactions/account-mail.ts";
@@ -231,6 +232,11 @@ export const startCore = async (
     logger,
   };
   const signingKey = await loadRunnerTokenKey(settings);
+  // Ticket 34: each frame's ingest is timed, and an `ingest.timing` line every 10 s says how long they took.
+  const ingest = timedIngest(
+    createIngest({ db, jobs, notices, clock: systemClock, liveText, logger, timers, outbox: postgresCommandOutbox, budgetWarnPercent: settings.budgetWarnPercent }),
+    logger,
+  );
   const gateway = createGateway({
     db,
     databaseUrl: settings.databaseUrl,
@@ -243,7 +249,7 @@ export const startCore = async (
     deviceSessions: postgresDeviceSessions(db),
     ports: { notices, audit: postgresAuditLog, clock: systemClock, jobs },
     hooks: {
-      ingest: createIngest({ db, jobs, notices, clock: systemClock, liveText, logger, timers, outbox: postgresCommandOutbox, budgetWarnPercent: settings.budgetWarnPercent }),
+      ingest: ingest.ingest,
       liveText: liveText.write,
       onConnectedInTx: (tx, runner) => cancelGraceInTx(graceDeps, tx, runner),
       onDisconnectedInTx: (tx, runner) => startGraceInTx(graceDeps, tx, runner),
@@ -625,6 +631,7 @@ export const startCore = async (
       clearInterval(scheduleTimer);
       await gateway.stop();
       await server.close();
+      ingest.stop();
       await liveText.stop();
       await jobs.stop({ graceful: true, timeoutMs: 10_000 });
       s3?.close();

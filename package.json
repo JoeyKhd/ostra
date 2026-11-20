@@ -36,6 +36,7 @@
     "e2e:m2": "node e2e/m2-tickets-in/src/demo.ts --checks",
     "e2e:m2:failures": "node e2e/m2-failure-suite/src/suite.ts",
     "e2e:m3": "node e2e/m3-step-in/src/demo.ts",
+    "load:run": "node e2e/load/src/run.ts",
     "ostra": "node apps/runner/src/main.ts"
   },
   "devDependencies": {

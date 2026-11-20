@@ -122,6 +122,8 @@ export type ConnectionHooks = {
    * admin's approval. `null` for a personal runner, a sidecar, or a server below minor 4.
    */
   readonly onWelcome?: (pool: WelcomePool | null) => void;
+  /** The server acked a session's events up to `upTo`, after its commit. Observation only (the load test's ack latency, ticket 34). */
+  readonly onAcked?: (sessionId: SessionId, upTo: number) => void;
 };
 
 export type ConnectionTimers = {
@@ -579,6 +581,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
       log.info("server asked to resend", { sessionId: session.sessionId, from: session.sendPointer });
     }
     await session.spool.ack(upTo);
+    hooks.onAcked?.(session.sessionId, upTo);
     session.sendPointer = Math.max(session.sendPointer, session.spool.ackedUpTo() + 1);
     wakeQuota();
     await settleDrained(session);

@@ -1,6 +1,6 @@
 # 34: The load test
 
-Status: ready-for-agent
+Status: done
 Builder: core (lead)
 Blocked by: 11, 13, 18, 19
 Features: F-117
@@ -21,8 +21,15 @@ Ported from `spikes/runner-transport/src/loadgen/loadgen.ts`, `src/harness/clust
 
 ## Done when
 
-- [ ] Tests named for `F-117`: a simulated runner speaks the real protocol against a real core (one task end to end); the steer timer against a known delay; the CPU sampler on the test's own process; the summary's verdict from recorded results.
-- [ ] `pnpm load:run --ramp` ran on this machine, its summary kept in `context/specs/m5-the-fleet/demo/load-windows.md` with the machine's description, as live evidence for the rows it shows and as the record of the scale it held.
-- [ ] Committed as `✅ add the load test`.
+- [x] Tests named for `F-117`: a simulated runner speaks the real protocol against a real core (one task end to end); the steer timer against a known delay; the CPU sampler on the test's own process; the summary's verdict from recorded results.
+- [x] `pnpm load:run --ramp` ran on this machine, its summary kept in `context/specs/m5-the-fleet/demo/load-windows.md` with the machine's description, as live evidence for the rows it shows and as the record of the scale it held.
+- [x] Committed as `✅ add the load test`.
 
 ## Comments
+
+- 2026-11-20: built in `e2e/load/` (`@ostra/e2e-load`, `pnpm load:run`), committed as `✅ add the load test`. On this machine, shared with three other builds' agents, the ramp held **250 tasks**; 500 failed (3 tasks not dispatched in time, a steer at 3.4 s p99), with every event stored once and no steer lost at every step. The record is `../demo/load-windows.md`; F-117 stays `building` for ticket 38's 1,000-task run on Linux. Where the build departs from the ticket:
+  - The simulated runners join as `host` runners: on `docker` and `kubernetes` a task's events and commands travel on its box's sidecar connection (a steer goes to the sidecar's command queue), which a script can't stand in for without the sidecar's task token. A runner has 1 slot by default (`--slots`), so the fleet has one connection per task, as a sidecar fleet does.
+  - The spool is `apps/runner`'s real disk spool in a temp folder per runner, not an in-memory one, so nothing in the runner is changed for the test. `apps/runner` exports `register`, `generateRunnerKeyPair` and `createAccessTokens`, and its connection takes an optional `onAcked` hook (observation only) for the ack latency.
+  - Ingest time comes from core: each frame's ingest is timed (`apps/core/src/ingest/timing.ts`) and an `ingest.timing` line every 10 s gives counts in fixed buckets, so the harness merges replicas and intervals (p50 and p99 at the bucket's bound).
+  - `packages/api` runs in the harness's own process, composed as `apps/web` does it, signed in as the first admin through better-auth; the project, its repo row and a model row are seeded straight to the database, since nothing measured calls them. The panel serves the browsers only.
+  - Only the window's steers are timed against the bar; the 20 sent after the reconnect storm are counted as lost or not. A ramp stops at its first failed step.

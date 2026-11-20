@@ -1,0 +1,34 @@
+{
+  "name": "@ostra/e2e-load",
+  "version": "0.0.0",
+  "description": "The load test (ticket 34, F-117): simulated runners on the real protocol against three core replicas, one Postgres and real browsers. Never in the production build",
+  "private": true,
+  "license": "LicenseRef-Sustainable-Use-1.0",
+  "type": "module",
+  "scripts": {
+    "load:run": "node src/run.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run --maxWorkers=2"
+  },
+  "dependencies": {
+    "@ostra/adapter-github": "workspace:*",
+    "@ostra/adapter-model-endpoint": "workspace:*",
+    "@ostra/adapter-sdk": "workspace:*",
+    "@ostra/adapter-secret-store-builtin": "workspace:*",
+    "@ostra/api": "workspace:*",
+    "@ostra/db": "workspace:*",
+    "@ostra/domain": "workspace:*",
+    "@ostra/jobs": "workspace:*",
+    "@ostra/protocol": "workspace:*",
+    "@ostra/runner": "workspace:*",
+    "@playwright/test": "1.65.1",
+    "embedded-postgres": "18.6.0-beta.19",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@ostra/core": "workspace:*",
+    "eslint": "10.15.0",
+    "vitest": "5.1.1"
+  }
+}

@@ -344,6 +344,58 @@ importers:
         specifier: 5.1.1
         version: 5.1.1(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
+  e2e/load:
+    dependencies:
+      '@ostra/adapter-github':
+        specifier: workspace:*
+        version: link:../../packages/adapters/adapter-github
+      '@ostra/adapter-model-endpoint':
+        specifier: workspace:*
+        version: link:../../packages/adapters/adapter-model-endpoint
+      '@ostra/adapter-sdk':
+        specifier: workspace:*
+        version: link:../../packages/adapter-sdk
+      '@ostra/adapter-secret-store-builtin':
+        specifier: workspace:*
+        version: link:../../packages/adapters/adapter-secret-store-builtin
+      '@ostra/api':
+        specifier: workspace:*
+        version: link:../../packages/api
+      '@ostra/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@ostra/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
+      '@ostra/jobs':
+        specifier: workspace:*
+        version: link:../../packages/jobs
+      '@ostra/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
+      '@ostra/runner':
+        specifier: workspace:*
+        version: link:../../apps/runner
+      '@playwright/test':
+        specifier: 1.65.1
+        version: 1.65.1
+      embedded-postgres:
+        specifier: 18.6.0-beta.19
+        version: 18.6.0-beta.19
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@ostra/core':
+        specifier: workspace:*
+        version: link:../../apps/core
+      eslint:
+        specifier: 10.15.0
+        version: 10.15.0(jiti@2.7.0)
+      vitest:
+        specifier: 5.1.1
+        version: 5.1.1(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+
   e2e/m1-first-pr:
     dependencies:
       '@octokit/auth-app':
