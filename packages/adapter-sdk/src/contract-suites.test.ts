@@ -16,6 +16,7 @@ import type { ExecutorFixture, FleetFixture } from "./testing/executor-suite.ts"
 import { defineBlobStoreFirstCases } from "./testing/blob-store-suite.ts";
 import { defineNotificationContractSuite, suiteRecipient } from "./testing/notification-suite.ts";
 import { createJiraFakeSuiteSubject } from "./testing/jira-fake.ts";
+import { FakeCiHost } from "./testing/fake-ci-host.ts";
 import { defineTrackerContractSuite, defineTrackerFirstCases, defineTrackerMentionSuite, defineTrackerMilestone6Suite } from "./testing/tracker-suite.ts";
 import { defineModelProviderContractSuite } from "./testing/model-provider-suite.ts";
 import { defineSecretStoreContractSuite } from "./testing/secret-store-suite.ts";
@@ -194,9 +195,44 @@ const smallFile = { path: "src/a.ts", previousPath: null, status: "modified" as 
 const oauthClient = { clientId: "Iv1.tiny", clientSecret: "tiny-client-secret" };
 const linkedUser = { userId: "777", login: "member" };
 
+// Milestone 6 (ticket 03): GitHub's CI and review-request webhooks, in its shape.
+const ciRepository = { id: 1001, full_name: "test-org/test1" };
+const ciHead = "8".repeat(40);
+const checkRunBody = JSON.stringify({ action: "completed", installation: { id: 7 }, repository: ciRepository, check_run: { id: 70_001, head_sha: ciHead, app: { slug: "github-actions" } } });
+const checkSuiteBody = JSON.stringify({ action: "completed", installation: { id: 7 }, repository: ciRepository, check_suite: { id: 71_001, head_sha: ciHead, app: { slug: "circleci-checks" } } });
+const statusBody = JSON.stringify({ installation: { id: 7 }, repository: ciRepository, sha: ciHead, context: "ci/jenkins", state: "pending" });
+const reviewRequestBody = (action: "review_requested" | "review_request_removed") =>
+  JSON.stringify({
+    action,
+    installation: { id: 7 },
+    repository: ciRepository,
+    pull_request: { number: 3, state: "open", merged: false, updated_at: "2026-11-20T10:00:00Z", head: { ref: "ostra/contract", sha: ciHead } },
+    requested_reviewer: { id: 888, login: "grace" },
+  });
+const ciHint = (event: "check_run" | "check_suite" | "status", appSlug: string | null) =>
+  ({ kind: "ci", event, action: event === "status" ? null : "completed", installationId: "7", hostRepoId: "1001", repo, headSha: ciHead, appSlug }) as const;
+const reviewersHint = (action: "review_requested" | "review_request_removed") =>
+  ({ kind: "pull_request_reviewers", action, installationId: "7", hostRepoId: "1001", repo, number: 3, headSha: ciHead }) as const;
+const ciWebhooks = [
+  { input: signed("check_run", checkRunBody), expected: ciHint("check_run", "github-actions") },
+  { input: signed("check_suite", checkSuiteBody), expected: ciHint("check_suite", "circleci-checks") },
+  { input: signed("status", statusBody), expected: ciHint("status", null) },
+  { input: signed("pull_request", reviewRequestBody("review_requested")), expected: reviewersHint("review_requested") },
+  { input: signed("pull_request", reviewRequestBody("review_request_removed")), expected: reviewersHint("review_request_removed") },
+];
+
+/** A CI log with a line no error may carry, and a character of more than one byte near the cut. */
+const ciLogText = ["##[group]Run pnpm test", "TOKEN-LIKE-LINE do-not-echo-0b7f", "FAIL src/banner.test.ts > shows the name", "Expected: \"Ada\"", "Received: \"Adé\"", "##[error]Process completed with exit code 1."].join("\n");
+
+/**
+ * The tiny code host's suite. Without `ci` it declares none of milestone 6's capabilities; with
+ * it, it's the fake code host, and holds the CI, reviews, reviewers and `CODEOWNERS` the suite reads.
+ */
+const defineTinyCodeHostSuite = (name: string, withCi: boolean): void => {
 defineCodeHostContractSuite({
-  name: "tiny code host",
+  name,
   create: async () => {
+    const ci = withCi ? new FakeCiHost() : undefined;
     const host = new TinyCodeHost({
       app,
       installationId: "7",
@@ -206,7 +242,7 @@ defineCodeHostContractSuite({
           fullName: repo,
           defaultBranch: "main",
           files: { "package.json": "{}", ".github/pull_request_template.md": "## What\n" },
-          branches: ["main", "ostra/contract", "signed", "ostra/reviewed"],
+          branches: ["main", "ostra/contract", "signed", "ostra/reviewed", "ostra/commented"],
           rules: {
             main: { protected: true, requiresSignedCommits: false, reasons: [] },
             signed: { protected: true, requiresSignedCommits: true, reasons: [] },
@@ -236,7 +272,7 @@ defineCodeHostContractSuite({
         { installationId: "91", accountLogin: "stranger-co", accountId: "9100", accountKind: "organization", repositorySelection: "selected" },
         { installationId: "92", accountLogin: "another-co", accountId: "9200", accountKind: "organization", repositorySelection: "all" },
       ],
-    });
+    }, ci === undefined ? {} : { ci });
     // Milestone 4: a PR with reviews: a changes request later dismissed, a bot's comment and an approval.
     const reviewed = await host.openPullRequest({
       access: { app: { appId: app.appId, privateKey: app.privateKey }, installationId: "7", repo },
@@ -252,9 +288,66 @@ defineCodeHostContractSuite({
     host.reviewsAndChecks.addReview(repo, reviewedNumber, { userId: "999", login: "ci-helper[bot]", isBot: true, state: "commented", commitId: "1".repeat(40), submittedAt: 2_000 });
     host.reviewsAndChecks.addReview(repo, reviewedNumber, { userId: "777", login: "ada", isBot: false, state: "approved", commitId: "1".repeat(40), submittedAt: 3_000 });
     host.reviewsAndChecks.dismissReview(repo, reviewedNumber, asked.reviewId);
+    // Milestone 6: other apps' CI on a head, a diff, requested reviewers and CODEOWNERS.
+    const milestone6 =
+      ci === undefined
+        ? {}
+        : await (async () => {
+            // Its own PR, so the review the suite posts doesn't join milestone 4's reviewed PR's list.
+            const commented = await host.openPullRequest({
+              access: { app: { appId: app.appId, privateKey: app.privateKey }, installationId: "7", repo },
+              head: "ostra/commented",
+              base: "main",
+              title: "Commented",
+              body: "",
+              draft: false,
+            });
+            if (!commented.ok) throw new Error(commented.error.message);
+            const commentedNumber = commented.value.number;
+            const actions = ci.addCheckRun(repo, { headSha: ciHead, name: "test", appSlug: "github-actions", status: "completed", conclusion: "failure", detailsUrl: "https://code-host.invalid/runs/1", startedAt: 1_000, completedAt: 2_000, log: { text: ciLogText } });
+            const queued = ci.addCheckRun(repo, { headSha: ciHead, name: "deploy-preview", appSlug: "vercel", status: "queued", conclusion: null });
+            const expired = ci.addCheckRun(repo, { headSha: ciHead, name: "lint", appSlug: "github-actions", status: "completed", conclusion: "success", log: "expired" });
+            ci.setStatus(repo, ciHead, { context: "ci/jenkins", state: "pending", targetUrl: "https://jenkins.invalid/job/1", description: "Waiting for an executor" });
+            ci.setStatus(repo, ciHead, { context: "ci/legacy", state: "success", targetUrl: null, description: "Passed" });
+            const diff = [{ path: "src/banner.ts", new: [{ start: 10, end: 14 }], old: [{ start: 10, end: 12 }] }];
+            ci.setDiff(repo, commentedNumber, diff);
+            ci.requestReviewers(repo, commentedNumber, { users: [{ userId: "888", login: "grace" }], teams: [{ slug: "web-reviewers" }] });
+            ci.setFile(repo, "main", ".github/CODEOWNERS", "* @test-org/web-reviewers\n");
+            ci.setFile(repo, "ostra/contract", "docs/CODEOWNERS", "/docs/ @grace\n");
+            const runView = (run: typeof actions) => ({ id: run.id, name: run.name, appSlug: run.appSlug, status: run.status, conclusion: run.conclusion, detailsUrl: run.detailsUrl, startedAt: run.startedAt, completedAt: run.completedAt });
+            return {
+              ci: {
+                headSha: ciHead,
+                expected: { checkRuns: [runView(actions), runView(queued), runView(expired)], statuses: ci.statuses(repo, ciHead) },
+              },
+              ciLogs: {
+                checkRunId: actions.id,
+                log: ciLogText,
+                secretLine: "TOKEN-LIKE-LINE do-not-echo-0b7f",
+                expiredCheckRunId: expired.id,
+                status: { headSha: ciHead, context: "ci/jenkins", words: "Waiting for an executor" },
+              },
+              commentReview: {
+                number: commentedNumber,
+                headSha: "1".repeat(40),
+                expectedLines: diff,
+                onDiff: { path: "src/banner.ts", line: 12, side: "new" as const, body: "**Blocking:** the name isn't escaped" },
+                offDiff: { path: "src/banner.ts", line: 40, side: "new" as const, body: "**Nit:** a far line" },
+                reviewCount: () => Promise.resolve(ci.reviews(repo, commentedNumber).length),
+              },
+              requestedReviewers: { number: commentedNumber, expected: { users: [{ userId: "888", login: "grace" }], teams: [{ slug: "web-reviewers" }] } },
+              codeOwners: {
+                first: { ref: "main", text: "* @test-org/web-reviewers\n" },
+                later: { ref: "ostra/contract", text: "/docs/ @grace\n" },
+                none: "ostra/reviewed",
+              },
+            };
+          })();
     return {
       adapter: host,
       fixture: {
+        ...milestone6,
+        ciWebhooks,
         app: { appId: app.appId, privateKey: app.privateKey },
         wrongApp: { appId: app.appId, privateKey: "wrong" },
         installationId: "7",
@@ -354,6 +447,9 @@ defineCodeHostContractSuite({
     };
   },
 });
+};
+defineTinyCodeHostSuite("tiny code host", false);
+defineTinyCodeHostSuite("the fake code host (the tiny host with CI, reviews and reviewers)", true);
 
 defineAgentContractSuite({
   name: "tiny agent on a scripted driver",

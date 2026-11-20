@@ -128,6 +128,10 @@ export const githubWebhookHandler =
     if (event.kind === "installation_repositories") {
       return { outcome: "ignored", reason: "an installation's repos are read when a project adds one" };
     }
+    if (event.kind === "ci" || event.kind === "pull_request_reviewers") {
+      // Milestone 6's hints (ADR 0058): read once core watches CI and reviewers (its tickets 16 and 19).
+      return { outcome: "ignored", reason: `a ${event.kind} hint, not read yet` };
+    }
     if (event.kind !== "pull_request") {
       return { outcome: "ignored", reason: `not a pull_request event (${event.event.slice(0, 64)})` };
     }

@@ -3,7 +3,7 @@ import type { GitPerson, RepoFullName } from "@ostra/protocol";
 import { createPlumbing, defaultAdapterContext } from "../common/context.ts";
 import type { AdapterContext, Plumbing } from "../common/context.ts";
 import { adapterError } from "../common/result.ts";
-import type { AdapterResult, HealthReport } from "../common/result.ts";
+import type { AdapterError, AdapterResult, HealthReport, Result } from "../common/result.ts";
 import type { CodeHostCapabilities } from "./capabilities.ts";
 
 // The code host kind (ADR 0025, ADR 0040): GitHub first. The organization's own App opens every
@@ -291,6 +291,33 @@ export type CodeHostWebhookEvent =
       readonly reposAdded: readonly InstallationRepo[];
       readonly reposRemoved: readonly InstallationRepo[];
     }
+    // ---- milestone 6 (F-035, F-102): hints core reads the host's state by ----
+  /**
+   * CI changed on a head: a check run (`check_run`), a check suite (`check_suite`) or a commit
+   * status (`status`). A hint: core reads `listCiResults` for the head, never the payload's own verdict.
+   */
+  | {
+      readonly kind: "ci";
+      readonly event: "check_run" | "check_suite" | "status";
+      /** The host's action (`created`, `completed`, `rerequested`, …); `null` for a status, which has none. */
+      readonly action: string | null;
+      readonly installationId: string | null;
+      readonly hostRepoId: string;
+      readonly repo: RepoFullName;
+      readonly headSha: string;
+      /** The app that made the check run or suite, so core leaves out ostra's own; `null` for a status. */
+      readonly appSlug: string | null;
+    }
+  /** A PR's requested reviewers changed. A hint: core reads `listRequestedReviewers`. */
+  | {
+      readonly kind: "pull_request_reviewers";
+      readonly action: "review_requested" | "review_request_removed";
+      readonly installationId: string | null;
+      readonly hostRepoId: string;
+      readonly repo: RepoFullName;
+      readonly number: number;
+      readonly headSha: string;
+    }
   /** Every other event: recorded and not acted on. */
   | { readonly kind: "other"; readonly event: string };
 
@@ -402,6 +429,128 @@ export type CheckRunInput = CheckRunState & {
 };
 
 export type PublishedCheckRun = { readonly checkRunId: string };
+
+// ---------- milestone 6 (spec section 5.2, ADR 0058): CI, comment-type reviews, reviewers ----------
+
+/** A check run's status, as GitHub names them. */
+export type CiCheckRunStatus = "queued" | "in_progress" | "completed" | "waiting" | "requested" | "pending";
+
+/** A completed check run's conclusion, as GitHub names them. */
+export type CiConclusion = "success" | "failure" | "neutral" | "cancelled" | "skipped" | "timed_out" | "action_required" | "stale" | "startup_failure";
+
+/** A check run on a head, any app's: ostra's own are told apart by `appSlug`. */
+export type CiCheckRun = {
+  readonly id: string;
+  readonly name: string;
+  /** The app that made it (`github-actions`, ostra's own App's slug); `null` when the host doesn't say. */
+  readonly appSlug: string | null;
+  readonly status: CiCheckRunStatus;
+  readonly conclusion: CiConclusion | null;
+  readonly detailsUrl: string | null;
+  /** In ms since the epoch. */
+  readonly startedAt: number | null;
+  readonly completedAt: number | null;
+};
+
+export type CiStatusState = "error" | "failure" | "pending" | "success";
+
+/** A commit status (the older CI API), by its context. */
+export type CiStatus = {
+  readonly context: string;
+  readonly state: CiStatusState;
+  readonly targetUrl: string | null;
+  /** The status's words. Untrusted text. */
+  readonly description: string | null;
+};
+
+/** What `listCiResults` reads for a head. */
+export type CiResults = { readonly checkRuns: readonly CiCheckRun[]; readonly statuses: readonly CiStatus[] };
+
+/** Which log `getCiLog` reads: a check run's, or a status's words. */
+export type CiLogRef = { readonly kind: "check-run"; readonly checkRunId: string } | { readonly kind: "status"; readonly headSha: string; readonly context: string };
+
+/**
+ * A log's tail: at most the caller's byte cap, from the end, cut on a character, with its size
+ * before the cut. Its text is untrusted, never logged, and never in an error. Or no log, with why:
+ * the host expired it, or the check has none.
+ */
+export type CiLog =
+  | { readonly found: true; readonly text: string; readonly truncated: boolean; readonly totalBytes: number }
+  | { readonly found: false; readonly reason: "expired" | "no-log" };
+
+/** A side of a diff: the head's (`new`) or the base's (`old`). */
+export type DiffSide = "new" | "old";
+
+/** A line comment in a comment-type review. Its body is ostra's words around a finding: never logged. */
+export type ReviewLineComment = {
+  readonly path: string;
+  readonly line: number;
+  readonly side: DiffSide;
+  readonly body: string;
+};
+
+/**
+ * A comment-type review (ADR 0028, F-100). The event is `"COMMENT"` by its type: no caller can
+ * approve or request changes through this interface, and an adapter refuses any other event.
+ */
+export type CommentReviewInput = {
+  /** The head the review is of. */
+  readonly commitId: string;
+  readonly body: string;
+  readonly event: "COMMENT";
+  readonly comments: readonly ReviewLineComment[];
+};
+
+export type CreatedReview = { readonly reviewId: string; readonly url: string };
+
+/**
+ * Why `createReview` failed: the shared errors, or a line comment the host refused because its
+ * line isn't in the diff (GitHub's 422), naming the comment, so core moves it into the body and
+ * tries once more. Nothing was posted.
+ */
+export type CreateReviewError = AdapterError | { readonly code: "line-outside-diff"; readonly message: string; readonly commentIndex: number };
+
+/** Lines from `start` to `end`, both included. */
+export type LineRange = { readonly start: number; readonly end: number };
+
+/** The lines a line comment may sit on in one file of a PR's diff, per side. */
+export type DiffFileLines = { readonly path: string; readonly new: readonly LineRange[]; readonly old: readonly LineRange[] };
+
+export type RequestedReviewers = {
+  readonly users: readonly { readonly userId: string; readonly login: string }[];
+  readonly teams: readonly { readonly slug: string }[];
+};
+
+/** A review's line comment, as `listReviewComments` reads it. Its body is untrusted, never logged. */
+export type ReviewComment = {
+  readonly id: string;
+  readonly path: string;
+  /** `null` for a comment on a whole file. */
+  readonly line: number | null;
+  readonly side: DiffSide;
+  readonly body: string;
+  readonly userId: string;
+};
+
+/** Whether a line is inside one of the ranges. */
+export const lineInRanges = (ranges: readonly LineRange[], line: number): boolean => ranges.some((range) => line >= range.start && line <= range.end);
+
+/**
+ * A log's tail of at most `maxBytes` UTF-8 bytes, from the end, cut forward to a whole character,
+ * with the size before the cut. Shared, so every adapter cuts the same way.
+ */
+export const logTail = (text: string, maxBytes: number): { readonly text: string; readonly truncated: boolean; readonly totalBytes: number } => {
+  const bytes = new TextEncoder().encode(text);
+  if (bytes.length <= maxBytes) {
+    return { text, truncated: false, totalBytes: bytes.length };
+  }
+  let start = bytes.length - Math.max(0, maxBytes);
+  // A UTF-8 continuation byte is 10xxxxxx: step past them to the next character's first byte.
+  while (start < bytes.length && ((bytes[start] ?? 0) & 0xc0) === 0x80) {
+    start += 1;
+  }
+  return { text: new TextDecoder().decode(bytes.subarray(start)), truncated: true, totalBytes: bytes.length };
+};
 
 export abstract class CodeHostAdapter {
   readonly kind = "code-host" as const;
@@ -592,5 +741,52 @@ export abstract class CodeHostAdapter {
   removeInstallation(app: CodeHostAppCredentials, installationId: string): Promise<AdapterResult<void>> {
     this.plumbing.logger.debug("removeInstallation is not supported", { appId: app.appId, installationId });
     return Promise.resolve(adapterError("unsupported", `${this.name} can't remove an installation`));
+  }
+
+  // ---------- milestone 6: additive, so each answers `unsupported` until an adapter has it ----------
+
+  /** A head's check runs, every app's, and its commit statuses (F-035). Needs `ciResults`. */
+  listCiResults(access: RepoAccess, headSha: string): Promise<AdapterResult<CiResults>> {
+    this.plumbing.logger.debug("listCiResults is not supported", { repo: access.repo, headSha });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't read CI results`));
+  }
+
+  /**
+   * The tail of a check run's log (an Actions job's log; another app's summary and text) or a
+   * status's words, at most `maxBytes` (F-035). Needs `ciLogs`.
+   */
+  getCiLog(access: RepoAccess, ref: CiLogRef, maxBytes: number): Promise<AdapterResult<CiLog>> {
+    this.plumbing.logger.debug("getCiLog is not supported", { repo: access.repo, kind: ref.kind, maxBytes });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't read a CI log`));
+  }
+
+  /** Posts a comment-type review with line comments (F-100, ADR 0028). Needs `reviewComments`. */
+  createReview(access: RepoAccess, number: number, review: CommentReviewInput): Promise<Result<CreatedReview, CreateReviewError>> {
+    this.plumbing.logger.debug("createReview is not supported", { repo: access.repo, number, comments: review.comments.length });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't post a review`));
+  }
+
+  /** The lines of a PR's diff a line comment may sit on, per file and side. Needs `reviewComments`. */
+  diffLines(access: RepoAccess, number: number): Promise<AdapterResult<readonly DiffFileLines[]>> {
+    this.plumbing.logger.debug("diffLines is not supported", { repo: access.repo, number });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't read a diff's lines`));
+  }
+
+  /** A review's line comments (F-105). Needs `reviewComments`. */
+  listReviewComments(access: RepoAccess, number: number, reviewId: string): Promise<AdapterResult<readonly ReviewComment[]>> {
+    this.plumbing.logger.debug("listReviewComments is not supported", { repo: access.repo, number, reviewId });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't read a review's comments`));
+  }
+
+  /** A PR's requested reviewers, people and teams (F-102). Needs `requestedReviewers`. */
+  listRequestedReviewers(access: RepoAccess, number: number): Promise<AdapterResult<RequestedReviewers>> {
+    this.plumbing.logger.debug("listRequestedReviewers is not supported", { repo: access.repo, number });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't read requested reviewers`));
+  }
+
+  /** The repo's `CODEOWNERS` text at a ref, from where the host looks first, or `null` (F-102). Needs `codeOwners`. */
+  readCodeOwners(access: RepoAccess, ref: string): Promise<AdapterResult<string | null>> {
+    this.plumbing.logger.debug("readCodeOwners is not supported", { repo: access.repo, refLength: ref.length });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't read CODEOWNERS`));
   }
 }

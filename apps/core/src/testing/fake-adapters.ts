@@ -90,7 +90,7 @@ export type OpenedPull = PullRequest & { readonly repo: string; readonly body: s
 
 export class FakeCodeHost extends CodeHostAdapter {
   readonly name = "fake-code-host";
-  readonly capabilities: CodeHostCapabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: ["lfs.example.test"], branchRules: false, compare: true, draftPullRequests: true, prComments: true, userLink: false, reviews: true, installableByOtherAccounts: false };
+  readonly capabilities: CodeHostCapabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: ["lfs.example.test"], branchRules: false, compare: true, draftPullRequests: true, prComments: true, userLink: false, reviews: true, installableByOtherAccounts: false, ciResults: false, ciLogs: false, reviewComments: false, requestedReviewers: false, codeOwners: false };
   /** Milestone 4 (F-104, ticket 18): the PRs' reviews and the check runs, in memory. */
   readonly reviewsAndChecks = new FakeReviewsAndChecks();
   /** Fail the next `listReviews` this many times, as a flaky host would. */

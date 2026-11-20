@@ -5,6 +5,10 @@ import type {
   AppOwner,
   BranchRules,
   CheckRunInput,
+  CiResults,
+  DiffFileLines,
+  RequestedReviewers,
+  ReviewLineComment,
   CodeHostAdapter,
   CodeHostWebhookEvent,
   CodeHostAppCredentials,
@@ -113,6 +117,38 @@ export type CodeHostFixture = {
    * (added, removed) webhooks, each with what it must read as. Absent: skipped.
    */
   readonly installationWebhooks?: readonly { readonly input: WebhookInput; readonly expected: InstallationEvent }[];
+  // ---- milestone 6 (ticket 03, ADR 0058): absent, the case is skipped; without the capability, the call must be `unsupported` ----
+  /** A head with other apps' check runs and statuses (a run that stays `queued`, a status that never completes), and what `listCiResults` reads. */
+  readonly ci?: { readonly headSha: string; readonly expected: CiResults };
+  /** Logs: a run with a long one (and a line no error may hold), one whose log expired, and a status. */
+  readonly ciLogs?: {
+    readonly checkRunId: string;
+    readonly log: string;
+    /** A line of the log that no error message, from any call, may carry. */
+    readonly secretLine: string;
+    readonly expiredCheckRunId: string;
+    readonly status: { readonly headSha: string; readonly context: string; readonly words: string };
+  };
+  /** A PR with a diff: what `diffLines` reads, a comment on a line of it, one off it, and how to read a posted review's comments back. */
+  readonly commentReview?: {
+    readonly number: number;
+    readonly headSha: string;
+    readonly expectedLines: readonly DiffFileLines[];
+    readonly onDiff: ReviewLineComment;
+    readonly offDiff: ReviewLineComment;
+    /** How many reviews the host holds on the PR, to see a refused one posted nothing. */
+    readonly reviewCount: () => Promise<number>;
+  };
+  /** A PR with requested people and teams. */
+  readonly requestedReviewers?: { readonly number: number; readonly expected: RequestedReviewers };
+  /** A ref whose `CODEOWNERS` is in the host's first place, a ref with one only in a later place, and a ref with none. */
+  readonly codeOwners?: {
+    readonly first: { readonly ref: string; readonly text: string };
+    readonly later: { readonly ref: string; readonly text: string };
+    readonly none: string;
+  };
+  /** Signed `check_run`, `check_suite`, `status` and `pull_request` review-request webhooks, and what each reads as. */
+  readonly ciWebhooks?: readonly { readonly input: WebhookInput; readonly expected: Extract<CodeHostWebhookEvent, { readonly kind: "ci" | "pull_request_reviewers" }> }[];
 };
 
 /** Milestone 4 (F-136): the two installation webhooks, as the suite expects them read. */
@@ -160,6 +196,166 @@ export const defineCodeHostContractSuite = (options: ContractSuiteOptions<CodeHo
       userLink: "boolean",
       reviews: "boolean",
       installableByOtherAccounts: "boolean",
+      ciResults: "boolean",
+      ciLogs: "boolean",
+      reviewComments: "boolean",
+      requestedReviewers: "boolean",
+      codeOwners: "boolean",
+    });
+
+    // ---- milestone 6 (ticket 03, ADR 0058): CI, comment-type reviews, reviewers and CODEOWNERS ----
+
+    it("F-035: lists a head's check runs and statuses, other apps' included, a queued run and a status that never completes among them", async (context) => {
+      const { adapter, fixture } = subject();
+      if (!adapter.capabilities.ciResults) {
+        expect(await adapter.listCiResults(fixture.access, "0".repeat(40))).toMatchObject({ ok: false, error: { code: "unsupported" } });
+        return;
+      }
+      const ci = fixture.ci;
+      if (ci === undefined) {
+        context.skip();
+        return;
+      }
+      // The fixture must hold what the verdict reads past: another app's run left queued, and a status still pending.
+      expect(ci.expected.checkRuns.some((run) => run.status === "queued")).toBe(true);
+      expect(ci.expected.statuses.some((status) => status.state === "pending")).toBe(true);
+      expect(new Set(ci.expected.checkRuns.map((run) => run.appSlug)).size).toBeGreaterThan(1);
+      expect(await adapter.listCiResults(fixture.access, ci.headSha)).toEqual({ ok: true, value: ci.expected });
+      expect(await adapter.listCiResults(fixture.access, "f".repeat(40))).toEqual({ ok: true, value: { checkRuns: [], statuses: [] } });
+      expect((await adapter.listCiResults({ ...fixture.access, app: fixture.wrongApp }, ci.headSha)).ok).toBe(false);
+    });
+
+    it("F-035: reads a log's tail up to the cap, from the end, with its size; an expired log is none, with why; no log line reaches an error", async (context) => {
+      const { adapter, fixture } = subject();
+      if (!adapter.capabilities.ciLogs) {
+        expect(await adapter.getCiLog(fixture.access, { kind: "check-run", checkRunId: "1" }, 1024)).toMatchObject({ ok: false, error: { code: "unsupported" } });
+        return;
+      }
+      const logs = fixture.ciLogs;
+      if (logs === undefined) {
+        context.skip();
+        return;
+      }
+      const size = new TextEncoder().encode(logs.log).length;
+      expect(size).toBeGreaterThan(64);
+      const whole = await adapter.getCiLog(fixture.access, { kind: "check-run", checkRunId: logs.checkRunId }, size + 10);
+      expect(whole).toEqual({ ok: true, value: { found: true, text: logs.log, truncated: false, totalBytes: size } });
+      const tail = await adapter.getCiLog(fixture.access, { kind: "check-run", checkRunId: logs.checkRunId }, 64);
+      if (!tail.ok || !tail.value.found) throw new Error("no tail");
+      expect(tail.value).toMatchObject({ truncated: true, totalBytes: size });
+      expect(new TextEncoder().encode(tail.value.text).length).toBeLessThanOrEqual(64);
+      expect(logs.log.endsWith(tail.value.text)).toBe(true);
+      expect(await adapter.getCiLog(fixture.access, { kind: "check-run", checkRunId: logs.expiredCheckRunId }, 1024)).toEqual({
+        ok: true,
+        value: { found: false, reason: "expired" },
+      });
+      const status = await adapter.getCiLog(fixture.access, { kind: "status", headSha: logs.status.headSha, context: logs.status.context }, 4096);
+      expect(status.ok && status.value.found && status.value.text).toContain(logs.status.words);
+      // A refusal never carries the log: not for a bad cap, an unknown run or a stranger's App.
+      for (const refused of [
+        await adapter.getCiLog(fixture.access, { kind: "check-run", checkRunId: logs.checkRunId }, 0),
+        await adapter.getCiLog(fixture.access, { kind: "check-run", checkRunId: "404404" }, 1024),
+        await adapter.getCiLog({ ...fixture.access, app: fixture.wrongApp }, { kind: "check-run", checkRunId: logs.checkRunId }, 1024),
+      ]) {
+        expect(refused.ok).toBe(false);
+        expect(JSON.stringify(refused)).not.toContain(logs.secretLine);
+      }
+    });
+
+    it("F-100: posts a comment-type review with line comments, and refuses a line off the diff by naming it, posting nothing", async (context) => {
+      const { adapter, fixture } = subject();
+      const review = fixture.commentReview;
+      if (!adapter.capabilities.reviewComments) {
+        const input = { commitId: "0".repeat(40), body: "Findings", event: "COMMENT", comments: [] } as const;
+        expect(await adapter.createReview(fixture.access, review?.number ?? 1, input)).toMatchObject({ ok: false, error: { code: "unsupported" } });
+        expect(await adapter.diffLines(fixture.access, review?.number ?? 1)).toMatchObject({ ok: false, error: { code: "unsupported" } });
+        expect(await adapter.listReviewComments(fixture.access, review?.number ?? 1, "1")).toMatchObject({ ok: false, error: { code: "unsupported" } });
+        return;
+      }
+      if (review === undefined) {
+        context.skip();
+        return;
+      }
+      expect(await adapter.diffLines(fixture.access, review.number)).toEqual({ ok: true, value: review.expectedLines });
+      const before = await review.reviewCount();
+      const refused = await adapter.createReview(fixture.access, review.number, {
+        commitId: review.headSha,
+        body: "Two findings",
+        event: "COMMENT",
+        comments: [review.onDiff, review.offDiff],
+      });
+      expect(refused).toMatchObject({ ok: false, error: { code: "line-outside-diff", commentIndex: 1 } });
+      expect(await review.reviewCount()).toBe(before);
+      const posted = await adapter.createReview(fixture.access, review.number, { commitId: review.headSha, body: "One finding", event: "COMMENT", comments: [review.onDiff] });
+      if (!posted.ok) throw new Error(posted.error.message);
+      expect(posted.value.url).toMatch(/^https:\/\//);
+      expect(await review.reviewCount()).toBe(before + 1);
+      const comments = await adapter.listReviewComments(fixture.access, review.number, posted.value.reviewId);
+      expect(comments.ok && comments.value.map((comment) => ({ path: comment.path, line: comment.line, side: comment.side, body: comment.body }))).toEqual([review.onDiff]);
+    });
+
+    it("F-100: createReview refuses any event but COMMENT at runtime too: no approval, no change request", async (context) => {
+      const { adapter, fixture } = subject();
+      const review = fixture.commentReview;
+      if (!adapter.capabilities.reviewComments || review === undefined) {
+        context.skip();
+        return;
+      }
+      const before = await review.reviewCount();
+      for (const event of ["APPROVE", "REQUEST_CHANGES"] as const) {
+        // @ts-expect-error The interface takes "COMMENT" and nothing else (ADR 0028).
+        const input: Parameters<CodeHostAdapter["createReview"]>[2] = { commitId: review.headSha, body: "Looks good", event, comments: [] };
+        expect(await adapter.createReview(fixture.access, review.number, input)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+      }
+      expect(await review.reviewCount()).toBe(before);
+    });
+
+    it("F-102: lists a PR's requested reviewers, people and teams", async (context) => {
+      const { adapter, fixture } = subject();
+      const requested = fixture.requestedReviewers;
+      if (!adapter.capabilities.requestedReviewers) {
+        expect(await adapter.listRequestedReviewers(fixture.access, requested?.number ?? 1)).toMatchObject({ ok: false, error: { code: "unsupported" } });
+        return;
+      }
+      if (requested === undefined) {
+        context.skip();
+        return;
+      }
+      expect(requested.expected.users.length).toBeGreaterThan(0);
+      expect(requested.expected.teams.length).toBeGreaterThan(0);
+      expect(await adapter.listRequestedReviewers(fixture.access, requested.number)).toEqual({ ok: true, value: requested.expected });
+      expect((await adapter.listRequestedReviewers(fixture.access, 404_404)).ok).toBe(false);
+    });
+
+    it("F-102: reads CODEOWNERS at a ref from the first place the host looks, a later place, or none", async (context) => {
+      const { adapter, fixture } = subject();
+      const owners = fixture.codeOwners;
+      if (!adapter.capabilities.codeOwners) {
+        expect(await adapter.readCodeOwners(fixture.access, fixture.defaultBranch)).toMatchObject({ ok: false, error: { code: "unsupported" } });
+        return;
+      }
+      if (owners === undefined) {
+        context.skip();
+        return;
+      }
+      expect(await adapter.readCodeOwners(fixture.access, owners.first.ref)).toEqual({ ok: true, value: owners.first.text });
+      expect(await adapter.readCodeOwners(fixture.access, owners.later.ref)).toEqual({ ok: true, value: owners.later.text });
+      expect(await adapter.readCodeOwners(fixture.access, owners.none)).toEqual({ ok: true, value: null });
+    });
+
+    it("F-035: reads the check_run, check_suite and status hints, and a review request's, from their signed webhooks", (context) => {
+      const { adapter, fixture } = subject();
+      const hooks = fixture.ciWebhooks;
+      if (hooks === undefined) {
+        context.skip();
+        return;
+      }
+      const seen = new Set(hooks.map((hook) => (hook.expected.kind === "ci" ? hook.expected.event : hook.expected.action)));
+      expect([...seen].sort()).toEqual(["check_run", "check_suite", "review_request_removed", "review_requested", "status"]);
+      for (const hook of hooks) {
+        expect(adapter.verifyWebhook(hook.input)).toBe(true);
+        expect(adapter.parseWebhook(hook.input)).toEqual({ ok: true, value: hook.expected });
+      }
     });
 
     it("builds a manifest that points the App's webhooks at the given address", () => {

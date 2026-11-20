@@ -1203,6 +1203,12 @@ describe("the GitHub adapter", () => {
         reviews: true,
         // Milestone 4 (ticket 47).
         installableByOtherAccounts: true,
+        // Milestone 6: none yet, until its ticket 08.
+        ciResults: false,
+        ciLogs: false,
+        reviewComments: false,
+        requestedReviewers: false,
+        codeOwners: false,
       });
     });
   });

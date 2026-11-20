@@ -236,6 +236,12 @@ export class GitHubAdapter extends CodeHostAdapter {
       reviews: true,
       // Milestone 4 (ticket 47): a public App, its installation events and removing one.
       installableByOtherAccounts: true,
+      // Milestone 6: CI, comment-type reviews, reviewers and CODEOWNERS come with its ticket 08.
+      ciResults: false,
+      ciLogs: false,
+      reviewComments: false,
+      requestedReviewers: false,
+      codeOwners: false,
     };
   }
 

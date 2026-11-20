@@ -32,4 +32,15 @@ export type CodeHostCapabilities = {
    * uninstalls one, and the webhooks carry `installation` and `installation_repositories`.
    */
   readonly installableByOtherAccounts: boolean;
+  // ---- milestone 6 (F-035, F-100, F-102, F-105, ADR 0058) ----
+  /** `listCiResults` reads a head's check runs and commit statuses, other apps' included. */
+  readonly ciResults: boolean;
+  /** `getCiLog` reads the tail of a check run's log (or a status's words). */
+  readonly ciLogs: boolean;
+  /** `createReview` posts a comment-type review with line comments, `diffLines` says where one may sit, and `listReviewComments` reads a review's. */
+  readonly reviewComments: boolean;
+  /** `listRequestedReviewers` reads a PR's requested people and teams. */
+  readonly requestedReviewers: boolean;
+  /** `readCodeOwners` reads the repo's `CODEOWNERS` file at a ref. */
+  readonly codeOwners: boolean;
 };

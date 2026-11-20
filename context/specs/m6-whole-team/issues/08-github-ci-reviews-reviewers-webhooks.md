@@ -27,3 +27,5 @@ Spec: `../spec.md`, sections 4 ("CI", "The AI review", "Reviewers", "Changes req
 - [ ] Committed as `✨ add CI, reviews and reviewers on GitHub`.
 
 ## Comments
+
+- 2026-11-20 (from ticket 03): GitHub's adapter declares the five capabilities `false` until this ticket sets them. Use `logTail` from `@ostra/adapter-sdk` for the log's cut, return `{ code: "line-outside-diff", commentIndex }` for the 422, and route `pull_request` deliveries whose action is `review_requested` or `review_request_removed` to the `pull_request_reviewers` hint. The suite's new fixture fields (`ci`, `ciLogs`, `commentReview`, `requestedReviewers`, `codeOwners`, `ciWebhooks`) are skipped until the GitHub fake gives them; `contract-suites.test.ts` shows them filled for the fake code host.

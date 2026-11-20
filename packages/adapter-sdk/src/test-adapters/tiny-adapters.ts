@@ -55,12 +55,24 @@ import type {
   UpdatePullRequestBodyInput,
   WebhookInput,
 } from "../code-host/base.ts";
-import { pullRequestReviewStates } from "../code-host/base.ts";
+import { logTail, pullRequestReviewStates } from "../code-host/base.ts";
+import type {
+  CiLog,
+  CiLogRef,
+  CiResults,
+  CommentReviewInput,
+  CreatedReview,
+  CreateReviewError,
+  DiffFileLines,
+  RequestedReviewers,
+  ReviewComment,
+} from "../code-host/base.ts";
+import type { FakeCiHost } from "../testing/fake-ci-host.ts";
 import { FakeReviewsAndChecks } from "../testing/fake-reviews-and-checks.ts";
 import type { FakeMergeOutcome } from "../testing/fake-reviews-and-checks.ts";
 import type { CodeHostCapabilities } from "../code-host/capabilities.ts";
-import { adapterError, ok } from "../common/result.ts";
-import type { AdapterResult, HealthReport } from "../common/result.ts";
+import { adapterError, err, ok } from "../common/result.ts";
+import type { AdapterResult, HealthReport, Result } from "../common/result.ts";
 import type { AdapterContext } from "../common/context.ts";
 import { ExecutorAdapter } from "../executor/base.ts";
 import type {
@@ -383,20 +395,18 @@ type TinyPullRequest = PullRequest & {
   body: string;
 };
 
+/**
+ * Milestone 6 (ticket 03): the tiny host's options. With `ci`, it's the fake code host: it serves
+ * CI, comment-type reviews, requested reviewers and `CODEOWNERS` from that state, and declares
+ * them. Without it, it declares none of them, so core's paths for a host without them are tested.
+ */
+export type TinyCodeHostOptions = { readonly ci?: FakeCiHost };
+
 export class TinyCodeHost extends CodeHostAdapter {
   readonly name = "tiny-code-host";
-  readonly capabilities: CodeHostCapabilities = {
-    checkRuns: true,
-    prTemplates: true,
-    lfsActionHosts: [],
-    branchRules: true,
-    compare: true,
-    draftPullRequests: true,
-    prComments: true,
-    userLink: true,
-    reviews: true,
-    installableByOtherAccounts: true,
-  };
+  readonly capabilities: CodeHostCapabilities;
+  /** Milestone 6: the CI and reviewers state, when this is the fake code host. */
+  readonly ci: FakeCiHost | undefined;
   /** Milestone 4, for tests: the PRs' reviews, the check runs and branch protection. */
   readonly reviewsAndChecks = new FakeReviewsAndChecks();
   readonly #world: MemoryHostWorld;
@@ -417,9 +427,28 @@ export class TinyCodeHost extends CodeHostAdapter {
     return this.#reactions.size;
   }
 
-  constructor(world: MemoryHostWorld) {
+  constructor(world: MemoryHostWorld, options: TinyCodeHostOptions = {}) {
     super();
     this.#world = world;
+    this.ci = options.ci;
+    const milestone6 = options.ci !== undefined;
+    this.capabilities = {
+      checkRuns: true,
+      prTemplates: true,
+      lfsActionHosts: [],
+      branchRules: true,
+      compare: true,
+      draftPullRequests: true,
+      prComments: true,
+      userLink: true,
+      reviews: true,
+      installableByOtherAccounts: true,
+      ciResults: milestone6,
+      ciLogs: milestone6,
+      reviewComments: milestone6,
+      requestedReviewers: milestone6,
+      codeOwners: milestone6,
+    };
     for (const repo of world.repos) {
       this.#refs.set(repo.fullName, new Set(repo.refs ?? []));
     }
@@ -658,7 +687,10 @@ export class TinyCodeHost extends CodeHostAdapter {
       event !== "push" &&
       event !== "pull_request_review" &&
       event !== "installation" &&
-      event !== "installation_repositories"
+      event !== "installation_repositories" &&
+      event !== "check_run" &&
+      event !== "check_suite" &&
+      event !== "status"
     ) {
       return ok({ kind: "other", event });
     }
@@ -667,6 +699,9 @@ export class TinyCodeHost extends CodeHostAdapter {
       body = JSON.parse(input.body);
     } catch {
       return adapterError("invalid-response", "the webhook's body isn't JSON");
+    }
+    if (event === "check_run" || event === "check_suite" || event === "status") {
+      return parseCiEvent(event, body);
     }
     if (event === "pull_request_review") {
       return parseReview(body);
@@ -685,6 +720,18 @@ export class TinyCodeHost extends CodeHostAdapter {
     const fullName = repoFullNameSchema.safeParse(repository.full_name);
     if (!fullName.success) {
       return adapterError("invalid-response", "the repo's name couldn't be read");
+    }
+    // Milestone 6 (F-102): a review request is a hint about the PR's reviewers, not its state.
+    if (action === "review_requested" || action === "review_request_removed") {
+      return ok({
+        kind: "pull_request_reviewers",
+        action,
+        installationId: installation === undefined ? null : String(installation.id),
+        hostRepoId: String(repository.id),
+        repo: fullName.data,
+        number: pr.number,
+        headSha: pr.head.sha,
+      });
     }
     return ok({
       kind: "pull_request",
@@ -860,7 +907,171 @@ export class TinyCodeHost extends CodeHostAdapter {
       this.reviewsAndChecks.update(access.repo, checkRunId, input) ? ok(undefined) : adapterError("not-found", "no such check run"),
     );
   }
+
+  // ---------- milestone 6 (ticket 03): served from `ci` when this is the fake code host ----------
+
+  /** The repo, through the App's installation, when this host has the milestone 6 state. */
+  #ciRepo(access: RepoAccess, what: string): AdapterResult<FakeCiHost> {
+    if (this.ci === undefined) {
+      return adapterError("unsupported", `${what}: not in this test adapter`);
+    }
+    const repo = this.#repo(access);
+    return repo.ok ? ok(this.ci) : repo;
+  }
+
+  #hasPr(access: RepoAccess, number: number): boolean {
+    return this.#prs.some((candidate) => candidate.repo === access.repo && candidate.number === number);
+  }
+
+  override listCiResults(access: RepoAccess, headSha: string): Promise<AdapterResult<CiResults>> {
+    const ci = this.#ciRepo(access, "listCiResults");
+    if (!ci.ok) {
+      return Promise.resolve(ci);
+    }
+    return Promise.resolve(
+      ok({
+        checkRuns: ci.value.checkRuns(access.repo, headSha).map((run) => ({
+          id: run.id,
+          name: run.name,
+          appSlug: run.appSlug,
+          status: run.status,
+          conclusion: run.conclusion,
+          detailsUrl: run.detailsUrl,
+          startedAt: run.startedAt,
+          completedAt: run.completedAt,
+        })),
+        statuses: ci.value.statuses(access.repo, headSha),
+      }),
+    );
+  }
+
+  override getCiLog(access: RepoAccess, ref: CiLogRef, maxBytes: number): Promise<AdapterResult<CiLog>> {
+    const ci = this.#ciRepo(access, "getCiLog");
+    if (!ci.ok) {
+      return Promise.resolve(ci);
+    }
+    if (!Number.isInteger(maxBytes) || maxBytes < 1) {
+      return Promise.resolve(adapterError("invalid-input", "the cap must be a whole number of bytes, at least 1"));
+    }
+    if (ref.kind === "status") {
+      const status = ci.value.statuses(access.repo, ref.headSha).find((one) => one.context === ref.context);
+      if (status === undefined) {
+        return Promise.resolve(adapterError("not-found", "no such status on the head"));
+      }
+      const words = [status.description, status.targetUrl].filter((part) => part !== null).join("\n");
+      return Promise.resolve(ok(words === "" ? { found: false, reason: "no-log" } : { found: true, ...logTail(words, maxBytes) }));
+    }
+    const run = ci.value.checkRun(access.repo, ref.checkRunId);
+    if (run === undefined) {
+      return Promise.resolve(adapterError("not-found", "no such check run"));
+    }
+    if (run.log === null) {
+      return Promise.resolve(ok({ found: false, reason: "no-log" }));
+    }
+    if (run.log === "expired") {
+      return Promise.resolve(ok({ found: false, reason: "expired" }));
+    }
+    return Promise.resolve(ok({ found: true, ...logTail(run.log.text, maxBytes) }));
+  }
+
+  override createReview(access: RepoAccess, number: number, review: CommentReviewInput): Promise<Result<CreatedReview, CreateReviewError>> {
+    const ci = this.#ciRepo(access, "createReview");
+    if (!ci.ok) {
+      return Promise.resolve(ci);
+    }
+    if (!this.#hasPr(access, number)) {
+      return Promise.resolve(adapterError("not-found", "no such PR"));
+    }
+    const made = ci.value.createReview(access.repo, number, review, `bot-${this.#world.app.appId}`);
+    if ("kind" in made) {
+      switch (made.kind) {
+        case "event":
+          return Promise.resolve(adapterError("invalid-input", "a review from ostra is a comment, never an approval or a change request"));
+        case "line-outside-diff":
+          return Promise.resolve(err({ code: "line-outside-diff", message: `line comment ${String(made.commentIndex)} isn't on a line of the diff`, commentIndex: made.commentIndex }));
+        default:
+          return made satisfies never;
+      }
+    }
+    // The review shows among the PR's reviews, as the App's bot's comment (F-104 never counts it).
+    this.reviewsAndChecks.addReview(access.repo, number, {
+      userId: `bot-${this.#world.app.appId}`,
+      login: `${this.#world.app.slug}[bot]`,
+      isBot: true,
+      state: "commented",
+      commitId: review.commitId,
+      submittedAt: Date.now(),
+    });
+    return Promise.resolve(ok({ reviewId: made.reviewId, url: `https://code-host.invalid/${access.repo}/pull/${String(number)}#pullrequestreview-${made.reviewId}` }));
+  }
+
+  override diffLines(access: RepoAccess, number: number): Promise<AdapterResult<readonly DiffFileLines[]>> {
+    const ci = this.#ciRepo(access, "diffLines");
+    if (!ci.ok) {
+      return Promise.resolve(ci);
+    }
+    const diff = ci.value.diff(access.repo, number);
+    return Promise.resolve(diff === undefined || !this.#hasPr(access, number) ? adapterError("not-found", "no such PR") : ok(diff));
+  }
+
+  override listReviewComments(access: RepoAccess, number: number, reviewId: string): Promise<AdapterResult<readonly ReviewComment[]>> {
+    const ci = this.#ciRepo(access, "listReviewComments");
+    if (!ci.ok) {
+      return Promise.resolve(ci);
+    }
+    const review = ci.value.review(access.repo, number, reviewId);
+    return Promise.resolve(review === undefined ? adapterError("not-found", "no such review on the PR") : ok(review.comments));
+  }
+
+  override listRequestedReviewers(access: RepoAccess, number: number): Promise<AdapterResult<RequestedReviewers>> {
+    const ci = this.#ciRepo(access, "listRequestedReviewers");
+    if (!ci.ok) {
+      return Promise.resolve(ci);
+    }
+    return Promise.resolve(this.#hasPr(access, number) ? ok(ci.value.requestedReviewers(access.repo, number)) : adapterError("not-found", "no such PR"));
+  }
+
+  override readCodeOwners(access: RepoAccess, ref: string): Promise<AdapterResult<string | null>> {
+    const ci = this.#ciRepo(access, "readCodeOwners");
+    return Promise.resolve(ci.ok ? ok(ci.value.codeOwners(access.repo, ref)) : ci);
+  }
 }
+
+// ---------- milestone 6: the CI webhooks, in GitHub's shape, read loosely ----------
+
+const ciEventSchema = z.looseObject({
+  action: z.string().optional(),
+  installation: z.looseObject({ id: z.number() }).optional(),
+  repository: z.looseObject({ id: z.number(), full_name: z.string() }),
+  // `status`: the commit's SHA at the top.
+  sha: z.string().optional(),
+  check_run: z.looseObject({ head_sha: z.string(), app: z.looseObject({ slug: z.string() }).nullish() }).optional(),
+  check_suite: z.looseObject({ head_sha: z.string(), app: z.looseObject({ slug: z.string() }).nullish() }).optional(),
+});
+
+const parseCiEvent = (event: "check_run" | "check_suite" | "status", body: unknown): AdapterResult<CodeHostWebhookEvent> => {
+  const parsed = ciEventSchema.safeParse(body);
+  const fullName = repoFullNameSchema.safeParse(parsed.success ? parsed.data.repository.full_name : undefined);
+  if (!parsed.success || !fullName.success) {
+    return adapterError("invalid-response", `the ${event} event couldn't be read`);
+  }
+  const { data } = parsed;
+  const source = event === "check_run" ? data.check_run : event === "check_suite" ? data.check_suite : undefined;
+  const headSha = event === "status" ? data.sha : source?.head_sha;
+  if (headSha === undefined) {
+    return adapterError("invalid-response", `the ${event} event names no head`);
+  }
+  return ok({
+    kind: "ci",
+    event,
+    action: event === "status" ? null : (data.action ?? null),
+    installationId: data.installation === undefined ? null : String(data.installation.id),
+    hostRepoId: String(data.repository.id),
+    repo: fullName.data,
+    headSha,
+    appSlug: source?.app?.slug ?? null,
+  });
+};
 
 // ---------- milestone 3: the comment and push webhooks, in GitHub's shape, read loosely ----------
 

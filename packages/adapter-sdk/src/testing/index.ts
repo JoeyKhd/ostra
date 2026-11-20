@@ -3,6 +3,7 @@
 export * from "./memory.ts";
 export * from "./common-cases.ts";
 export * from "./code-host-suite.ts";
+export * from "./fake-ci-host.ts";
 export * from "./fake-reviews-and-checks.ts";
 export * from "./agent-suite.ts";
 export * from "./agent-memory-cases.ts";
