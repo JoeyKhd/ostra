@@ -22,8 +22,6 @@ export type PageFrameProps = {
   /** The 320px properties panel (380px when it holds a form). Stacks below at phone width. */
   readonly properties?: ReactNode;
   readonly wideProperties?: boolean;
-  /** The right column is decorative (Home's first-run picture): no padding, no label, hidden below `xl`. */
-  readonly decorative?: boolean;
   /** Pages that scroll their own content (the task thread) pass false. */
   readonly padded?: boolean;
   readonly children: ReactNode;
@@ -35,7 +33,7 @@ export type PageFrameProps = {
  * form; padding 20px 18px), which stacks under the page below `xl`. The sizes are the approved
  * pictures' (app-targets/m1/README.md, "Scale").
  */
-export const PageFrame = ({ crumbs, actions, properties, wideProperties = false, decorative = false, padded = true, children }: PageFrameProps) => {
+export const PageFrame = ({ crumbs, actions, properties, wideProperties = false, padded = true, children }: PageFrameProps) => {
   const { openNavigation, openSearch, passwordChange } = useShell();
   const path = usePathname();
   return (
@@ -96,11 +94,7 @@ export const PageFrame = ({ crumbs, actions, properties, wideProperties = false,
         )}
       >
         <main className={cn("min-w-0 min-h-0 xl:overflow-y-auto", padded && "px-4 pb-8 pt-6 sm:px-9 sm:pt-7")}>{children}</main>
-        {properties === undefined ? null : decorative ? (
-          <div aria-hidden className="relative hidden overflow-hidden border-l border-line bg-side xl:block">
-            {properties}
-          </div>
-        ) : (
+        {properties === undefined ? null : (
           <aside
             aria-label={t("shell.properties")}
             className="min-w-0 border-t border-line px-4 py-5 sm:px-[18px] xl:overflow-y-auto xl:border-l xl:border-t-0"

@@ -21,7 +21,6 @@ import { ActivitySection, NeedsYouSection, ProjectsSection } from "./home-sectio
 import type { Load } from "./home-sections";
 import { summaryText } from "./home-words";
 import { SetupChecklist } from "./setup-checklist";
-import { FirstRunIllustration } from "./setup-steps";
 
 type Overview = RouterOutputs["home"]["overview"];
 
@@ -33,7 +32,7 @@ const REFRESH_MS = 30_000;
 /**
  * The organization's Home (home.md, F-062): Needs you, Projects and Recent activity, with PRs,
  * spend and runners in the right panel. While setup isn't done (F-076), the checklist takes Needs
- * you's place and the panel gives way to the Deep water picture (home-first-run.md).
+ * you's place and the right panel stays (the maintainer, 2026-11-20: the first-run picture is gone).
  */
 export const HomeView = () => {
   const trpc = useTRPC();
@@ -70,11 +69,7 @@ export const HomeView = () => {
           <PlusIcon /> {t("shell.newTask")}
         </Link>
       }
-      {...(setupDone
-        ? { properties: <HomePanel overview={overview.data} now={now} /> }
-        : firstRun
-          ? { properties: <FirstRunIllustration />, decorative: true }
-          : {})}
+      {...(setup.data === undefined ? {} : { properties: <HomePanel overview={overview.data} now={now} /> })}
     >
       <PageHeading eyebrow={<span suppressHydrationWarning>{today(now)}</span>} title={organization?.name ?? t("home.title")} lede={lede} />
       {firstRun ? null : (

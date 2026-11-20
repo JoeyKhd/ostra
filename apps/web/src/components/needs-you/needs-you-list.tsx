@@ -482,7 +482,7 @@ export const DoneList = ({ rows, now, onMore, hasMore }: { readonly rows: readon
 /** The Open tab with nothing in it: the Deep water picture and two lines. */
 export const OpenEmpty = () => (
   <div className="mt-10 flex flex-col items-center text-center" data-open-empty>
-    <img src="/inbox-empty-illustration.webp" alt="" width={560} height={373} className="aspect-[560/373] w-full max-w-[560px] rounded-lg object-cover" />
+    <img src="/inbox-empty-illustration.webp" alt="" width={560} height={373} className="aspect-[560/373] w-full max-w-[560px]" />
     <p className="mt-6 text-lede font-semibold text-text">{t("needsYouPage.empty")}</p>
     <p className="mt-2 text-sm text-muted">{t("needsYouPage.emptyBody")}</p>
   </div>

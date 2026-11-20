@@ -536,7 +536,7 @@ export const InsightsView = (props: InsightsViewProps) => {
       )}
       {neverComputed ? (
         <div className="mx-auto mt-10 flex max-w-[560px] flex-col items-center text-center" data-testid="insights-empty">
-          <img src="/inbox-empty-illustration.webp" alt="" width={560} height={373} className="w-full max-w-[560px] rounded-md" />
+          <img src="/inbox-empty-illustration.webp" alt="" width={560} height={373} className="h-auto w-full max-w-[560px]" />
           <h2 className="mt-4 text-[15px] font-semibold">{t("insights.empty")}</h2>
           <p className="mt-1 text-sm text-muted">{t("insights.emptyBody", { n: data.intervalMinutes })}</p>
         </div>

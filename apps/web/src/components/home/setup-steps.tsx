@@ -129,8 +129,3 @@ export const SetupStepsLoading = () => (
     ))}
   </ul>
 );
-
-/** The decorative right column while the checklist shows: the Deep water stone, no text. */
-export const FirstRunIllustration = () => (
-  <div className="absolute inset-0 bg-[url(/sign-in-illustration-1200.webp)] bg-[length:162.5%_auto] bg-[position:50%_0] bg-no-repeat opacity-85" />
-);
