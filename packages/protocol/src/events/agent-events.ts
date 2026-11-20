@@ -3,12 +3,15 @@ import { z } from "zod";
 import {
   approvalIdSchema,
   approvalRuleIdSchema,
+  automationIdSchema,
   blobIdSchema,
   boxIdSchema,
   budgetIdSchema,
   checkIdSchema,
   clientMessageIdSchema,
   diffCommentIdSchema,
+  draftIdSchema,
+  environmentProposalIdSchema,
   memberIdSchema,
   modelIdSchema,
   noteIdSchema,
@@ -17,12 +20,14 @@ import {
   providerIdSchema,
   questionIdSchema,
   repoIdSchema,
+  reviewRunIdSchema,
   runnerIdSchema,
   segmentIdSchema,
   sessionIdSchema,
   snapshotIdSchema,
   taskApprovalRuleIdSchema,
   taskIdSchema,
+  ticketKeySchema,
   toolCallIdSchema,
   turnIdSchema,
 } from "../ids.ts";
@@ -311,11 +316,11 @@ export const turnModeSchema = z.enum(["plan", "build"]);
 export type TurnMode = z.infer<typeof turnModeSchema>;
 
 /**
- * Why a member's message was written (milestone 3): typed in the composer, or rendered by ostra
- * from diff comments, "Update branch", a plan revision, an `@ostra` comment, "Ask the agent to
- * fix" or "Keep working". The thread draws each with its own marker.
+ * Why a member's message was written, minors 2 to 4 (milestone 3): typed in the composer, or
+ * rendered by ostra from diff comments, "Update branch", a plan revision, an `@ostra` comment,
+ * "Ask the agent to fix" or "Keep working". Kept for the codecs of a minor-4 peer.
  */
-export const messageIntentSchema = z.enum([
+export const messageIntentSchemaV4 = z.enum([
   "message",
   "diff-comments",
   "update-branch",
@@ -324,7 +329,27 @@ export const messageIntentSchema = z.enum([
   "fix-checks",
   "keep-working",
 ]);
+
+/**
+ * Why a message was written, at the current minor (5): minor 2's, with milestone 6's rounds and
+ * follow-ups (ADR 0041, ADR 0057, ADR 0058): a failing CI's round (`fix-ci`), an AI review's
+ * blocking findings (`fix-findings`), a reviewer's "changes requested" on the code host
+ * (`changes-requested`), and a member's follow-up from the tracker's agent session
+ * (`linear-follow-up`). The thread draws each with its own marker. A minor-4 peer is sent none
+ * of the new four: its `steer` loses the intent, which reads as `message`.
+ */
+export const messageIntentSchema = z.enum([
+  ...messageIntentSchemaV4.options,
+  "fix-ci",
+  "fix-findings",
+  "changes-requested",
+  "linear-follow-up",
+]);
 export type MessageIntent = z.infer<typeof messageIntentSchema>;
+
+/** Whether a peer at `minor` knows an intent: milestone 6's four are new in minor 5. */
+export const messageIntentSupportedAt = (intent: MessageIntent, minor: number): boolean =>
+  minor >= 5 || messageIntentSchemaV4.safeParse(intent).success;
 
 /** A check's result (ADR 0052, F-054). */
 export const checkStatusSchema = z.enum(["passed", "failed", "timed-out", "error"]);
@@ -401,8 +426,15 @@ const approvalAnswered = approvalAnsweredV1.extend({
   taskRule: taskRuleSchema.nullable().optional(),
 });
 
+/** `user.message` at minors 2 to 4: minor 1's, with milestone 3's intents. */
 const userMessageV2 = userMessage.extend({
   /** Minor 2: why the message was written. Missing means `message`. */
+  intent: messageIntentSchemaV4.optional(),
+});
+
+/** `user.message` at the current minor (5): minor 2's, with milestone 6's intents. */
+const userMessageV5 = userMessage.extend({
+  /** Minor 2: why the message was written. Missing means `message`. Minor 5 adds four intents. */
   intent: messageIntentSchema.optional(),
 });
 
@@ -674,6 +706,157 @@ const minor4NewEventOptions = [
   z.strictObject({ kind: z.literal("runner.resumed"), memberId: memberIdSchema }),
 ] as const;
 
+// ---------- protocol minor 5's vocabularies (milestone 6) ----------
+
+/**
+ * A head's CI result (F-035, ADR 0058): still running, passed, failed, `none` (no check appeared
+ * within `OSTRA_CI_NONE_SECONDS` of the push) or `timed_out` (still pending after
+ * `OSTRA_CI_WAIT_MINUTES`). ostra's own checks are left out.
+ */
+export const ciStateSchema = z.enum(["pending", "passed", "failed", "none", "timed_out"]);
+export type CiState = z.infer<typeof ciStateSchema>;
+
+/** A failing check of a head, by its name and the code host's own conclusion word. Never its log. */
+export const failingCheckSchema = z.strictObject({
+  name: z.string().min(1).max(200),
+  conclusion: z.string().min(1).max(64),
+});
+export type FailingCheck = z.infer<typeof failingCheckSchema>;
+
+/**
+ * What a fixing round answers (ADR 0041, ADR 0058): a failing CI, an AI review's blocking findings,
+ * or a reviewer's "changes requested".
+ */
+export const roundKindSchema = z.enum(["ci", "findings", "changes-requested"]);
+export type RoundKind = z.infer<typeof roundKindSchema>;
+
+/** Why a round didn't start: its kind's rounds are used, or the automatic turns are (ADR 0041). */
+export const roundCapReasonSchema = z.enum(["rounds", "automatic-turns"]);
+export type RoundCapReason = z.infer<typeof roundCapReasonSchema>;
+
+/**
+ * What a tracker's agent session sent (F-012, ADR 0013, ADR 0057): a delegation or a mention
+ * (`created`), a follow-up in its thread, or a person's stop.
+ */
+export const trackerSessionActionSchema = z.enum(["created", "follow-up", "stop"]);
+export type TrackerSessionAction = z.infer<typeof trackerSessionActionSchema>;
+
+/** A name as the tracker gave it: shown in the thread, never matched on. */
+const trackerNameSchema = z.string().min(1).max(200);
+
+/** A repo-relative path, as `commit.filtered` lists it. */
+const filteredPathSchema = z.string().min(1).max(1024);
+
+const prNumberSchemaV5 = z.number().int().positive();
+
+// ---------- the events new in minor 5 ----------
+
+const minor5NewEventOptions = [
+  // ---- automatic turns (F-101, ADR 0041, Q160) ----
+  /**
+   * The runner answered an agent's question in an automatic turn with the fixed neutral reply
+   * (`NEUTRAL_REPLY`), and the turn carried on. The reply is ostra's own words.
+   */
+  z.strictObject({
+    kind: z.literal("question.auto_answered"),
+    questionId: questionIdSchema,
+    reply: z.string().min(1).max(2000),
+  }),
+  // ---- the onboarding commit (F-113, ADR 0038) ----
+  /**
+   * A turn's commit kept only the task's `commitPaths`: the paths it committed, and at most
+   * `commitFilteredPathsMax` of the paths it left uncommitted, with their count.
+   */
+  z.strictObject({
+    kind: z.literal("commit.filtered"),
+    repoId: repoIdSchema,
+    kept: z.array(filteredPathSchema).max(runnerLimits.commitFilteredPathsMax),
+    dropped: z.array(filteredPathSchema).max(runnerLimits.commitFilteredPathsMax),
+    droppedCount: z.number().int().nonnegative(),
+  }),
+  // ---- server-only (milestone 6) ----
+  /** An automation started this task (F-011, F-106): an occurrence's time, or `null` for a rule's match. */
+  z.strictObject({
+    kind: z.literal("automation.started"),
+    automationId: automationIdSchema,
+    occurrenceAt: epochMsSchema.nullable(),
+  }),
+  /** A task from outside waits for a member's approval (F-040, ADR 0057). */
+  z.strictObject({
+    kind: z.literal("task.approval_requested"),
+    by: z.strictObject({ kind: z.literal("tracker-user"), name: trackerNameSchema }),
+  }),
+  z.strictObject({ kind: z.literal("task.approved"), memberId: memberIdSchema }),
+  /** The member's reason is shown to the project's members, and never logged. */
+  z.strictObject({ kind: z.literal("task.rejected"), memberId: memberIdSchema, reason: z.string().max(2000) }),
+  /**
+   * The tracker's agent session sent something (F-012). `action` is the session event's kind (the
+   * spec's `kind`, renamed: `kind` names the event). A member's follow-up is a `user.message` of
+   * its own; its text is never in this event and never logged.
+   */
+  z.strictObject({
+    kind: z.literal("tracker.session_event"),
+    action: trackerSessionActionSchema,
+    byName: trackerNameSchema,
+    matchedMemberId: memberIdSchema.nullable(),
+  }),
+  /** A refine task's agent handed in a draft (F-099). Its text is the draft's row, never the event's. */
+  z.strictObject({ kind: z.literal("draft.submitted"), draftId: draftIdSchema, version: z.number().int().positive() }),
+  /** A member wrote the draft to the ticket (F-099): the ticket and the sub-tickets it created. */
+  z.strictObject({
+    kind: z.literal("draft.applied"),
+    draftId: draftIdSchema,
+    ticketKey: ticketKeySchema,
+    subTickets: z.array(ticketKeySchema).max(runnerLimits.draftSubTicketsMax),
+  }),
+  /** A head's CI result changed (F-035). The failing checks by name, never their logs. */
+  z.strictObject({
+    kind: z.literal("ci.updated"),
+    repoId: repoIdSchema,
+    prNumber: prNumberSchemaV5,
+    headSha: gitShaSchema,
+    state: ciStateSchema,
+    failing: z.array(failingCheckSchema).max(50),
+  }),
+  /**
+   * A fixing round started (F-035, F-101, F-105): its kind (`round`, the spec's `kind`), its number
+   * within its kind, and whether it's automatic.
+   */
+  z.strictObject({
+    kind: z.literal("round.started"),
+    round: roundKindSchema,
+    number: z.number().int().positive(),
+    automatic: z.boolean(),
+  }),
+  /** A round didn't start: a cap was reached, and the task needs a person (F-101). */
+  z.strictObject({ kind: z.literal("round.capped"), round: roundKindSchema, reason: roundCapReasonSchema }),
+  /** The review task handed in its review (F-100): the findings' counts, never their text. */
+  z.strictObject({
+    kind: z.literal("review.submitted"),
+    reviewRunId: reviewRunIdSchema,
+    blocking: z.number().int().nonnegative(),
+    nits: z.number().int().nonnegative(),
+  }),
+  /** ostra posted the review on one PR, as a comment-type review (F-100). */
+  z.strictObject({
+    kind: z.literal("review.posted"),
+    reviewRunId: reviewRunIdSchema,
+    repoId: repoIdSchema,
+    prNumber: prNumberSchemaV5,
+    url: httpUrlSchema,
+  }),
+  /** A PR's reviewers changed (F-102): the matched members, and the code host's logins. */
+  z.strictObject({
+    kind: z.literal("reviewers.updated"),
+    repoId: repoIdSchema,
+    prNumber: prNumberSchemaV5,
+    memberIds: z.array(memberIdSchema).max(100),
+    logins: z.array(z.string().min(1).max(100)).max(100),
+  }),
+  /** The onboarding task proposed an environment (F-113). Its scripts are the proposal's row, never the event's. */
+  z.strictObject({ kind: z.literal("environment.proposed"), proposalId: environmentProposalIdSchema }),
+] as const;
+
 // ---------- the events every minor shares ----------
 
 const sharedEventOptions = [
@@ -814,8 +997,32 @@ const sharedEventOptions = [
   }),
 ] as const;
 
-/** The event union at the current minor (4). */
+/** The event union at the current minor (5). */
 export const taskEventSchema = z.discriminatedUnion("kind", [
+  userMessageV5,
+  sessionRestoredV2,
+  sessionCrashed,
+  sessionSavedV2,
+  sessionLimitReached,
+  ticketFilesReadyV2,
+  workspaceFilesOutsideRepos,
+  turnStarted,
+  usageRecorded,
+  approvalRequested,
+  approvalAnswered,
+  setupFinished,
+  ...minor2NewEventOptions,
+  ...minor3NewEventOptions,
+  ...minor4NewEventOptions,
+  ...minor5NewEventOptions,
+  ...sharedEventOptions,
+]);
+
+/**
+ * Minor 4's event union, kept for the codecs (ADR 0034): a minor-4 peer's events parse with it,
+ * and it refuses minor 5's kinds and intents.
+ */
+export const taskEventSchemaV4 = z.discriminatedUnion("kind", [
   userMessageV2,
   sessionRestoredV2,
   sessionCrashed,
@@ -950,6 +1157,15 @@ export const minor4EventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKin
 );
 
 /**
+ * The kinds minor 5 added (milestone 6). A minor-5 runner talking to a minor-4 server sends no
+ * `question.auto_answered` or `commit.filtered`: a minor-4 server gives it no automatic turn and
+ * no `commitPaths`. The rest are the server's own.
+ */
+export const minor5EventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind>(
+  minor5NewEventOptions.map((option) => option.shape.kind.value),
+);
+
+/**
  * The kinds a runner may also send outside a task, in a `runner-event` frame: a snapshot build's
  * result when no task triggered the build (F-051), and (minor 4) a box's wait before its sidecar
  * holds the task's session (F-093): `box.waiting` and `box.scheduled`.
@@ -963,6 +1179,9 @@ export const runnerScopedEventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEv
 
 /** The lowest minor that carries an event kind. */
 export const eventKindMinMinor = (kind: TaskEventKind): number => {
+  if (minor5EventKinds.has(kind)) {
+    return 5;
+  }
   if (minor4EventKinds.has(kind)) {
     return 4;
   }
@@ -989,6 +1208,19 @@ const sessionSavedStripV1 = z.object(sessionSaved.shape);
 const sessionRestoredStripV1 = z.object(sessionRestored.shape);
 const ticketFilesReadyStripV1 = z.object(ticketFilesReady.shape);
 const setupFinishedStripV1 = z.object(setupFinishedV1.shape);
+
+/**
+ * An event without what minor 5 added to an existing kind: a `user.message` whose intent is one of
+ * milestone 6's loses it, which a minor-4 reader reads as `message`.
+ */
+const dropMinor5Fields = (event: TaskEvent): TaskEvent => {
+  if (event.kind === "user.message" && event.intent !== undefined && !messageIntentSupportedAt(event.intent, 4)) {
+    const minor4 = { ...event };
+    Reflect.deleteProperty(minor4, "intent");
+    return minor4;
+  }
+  return event;
+};
 
 // Minor 2's shapes of the events that grew in minor 3, as stripping objects.
 const turnStartedStripV2 = z.object(turnStartedV2.shape);
@@ -1041,10 +1273,14 @@ const dropMinor2Fields = (event: TaskEvent): TaskEvent => {
  * that peer refuses it: senders check `eventKindSupportedAt` first.
  */
 export const encodeEventForMinor = (event: TaskEvent, minor: number): TaskEvent => {
-  if (minor >= 3) {
+  if (minor >= 5) {
     return event;
   }
-  const v2 = dropMinor3Fields(event);
+  const v4 = dropMinor5Fields(event);
+  if (minor >= 3) {
+    return v4;
+  }
+  const v2 = dropMinor3Fields(v4);
   if (minor >= 2) {
     return v2;
   }
@@ -1108,6 +1344,21 @@ export const serverOnlyKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind
   "task.cancelled",
   "runner.drained",
   "runner.resumed",
+  // Minor 5 (milestone 6):
+  "automation.started",
+  "task.approval_requested",
+  "task.approved",
+  "task.rejected",
+  "tracker.session_event",
+  "draft.submitted",
+  "draft.applied",
+  "ci.updated",
+  "round.started",
+  "round.capped",
+  "review.submitted",
+  "review.posted",
+  "reviewers.updated",
+  "environment.proposed",
 ]);
 
 // ---------- the read side ----------
@@ -1163,6 +1414,13 @@ export const runnerEventSchema = z.strictObject({
   }),
 });
 export type RunnerEvent = z.infer<typeof runnerEventSchema>;
+
+/** Minor 4's `runnerEventSchema`, for the up codec of a minor-4 peer. */
+export const runnerEventSchemaV4 = runnerEventSchema.extend({
+  event: taskEventSchemaV4.refine((event) => !serverOnlyKinds.has(event.kind), {
+    message: "only the server writes this kind",
+  }),
+});
 
 /** Minor 3's `runnerEventSchema`, for the up codec of a minor-3 peer. */
 export const runnerEventSchemaV3 = runnerEventSchema.extend({

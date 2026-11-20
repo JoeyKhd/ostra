@@ -30,6 +30,7 @@ import {
   taskSpecSchemaV0,
   taskSpecSchemaV1,
   taskSpecSchemaV2,
+  taskSpecSchemaV3,
 } from "../task/spec.ts";
 import {
   commandFixtures,
@@ -374,7 +375,7 @@ describe("the task spec at minor 2", () => {
     expect(taskSpecResponseSchemaFor(0)).toBe(taskSpecSchemaV0);
     expect(taskSpecResponseSchemaFor(1)).toBe(taskSpecSchemaV1);
     expect(taskSpecResponseSchemaFor(2)).toBe(taskSpecSchemaV2);
-    expect(taskSpecResponseSchemaFor(3)).toBe(taskSpecSchema);
+    expect(taskSpecResponseSchemaFor(3)).toBe(taskSpecSchemaV3);
   });
 
   it("F-063: says when a spec needs a minor-2 runner", () => {

@@ -12,6 +12,9 @@ import { z } from "zod";
 // - Minor 5 is synthetic, as spike 6's was: minor 4 with one more optional field in `hello`
 //   (`spoolLimitBytes`), which a minor-4 server ignores; it then speaks minor 4.
 // - Minors 2 and 6 are outside the window: a `hello` only, which the server refuses with the fix.
+// - Milestone 6 moved the server to minor 5, whose window is minors 4 to 6: the files above stay as
+//   they were recorded against a minor-4 server (`negotiated` is that server's answer), and minor 7
+//   (synthetic, a `hello` only) is two ahead of a minor-5 server. Minor 6's file is one ahead of it.
 
 /** One recorded build. The frames are raw JSON, as they went over the wire. */
 export const recordedBuildSchema = z.strictObject({
@@ -27,9 +30,9 @@ export const recordedBuildSchema = z.strictObject({
 export type RecordedBuild = z.infer<typeof recordedBuildSchema>;
 
 /** The recorded minors, oldest first. */
-export const recordedMinors = [2, 3, 4, 5, 6] as const;
+export const recordedMinors = [2, 3, 4, 5, 6, 7] as const;
 
-/** The server minor the recordings were made against. */
+/** The server minor the recordings were made against: `negotiated` in each file is that server's answer. */
 export const RECORDED_SERVER_MINOR = 4;
 
 /** Reads one recorded build. */

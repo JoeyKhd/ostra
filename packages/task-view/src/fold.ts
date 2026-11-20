@@ -881,6 +881,24 @@ export const foldTaskEvents = (
       case "runner.resumed":
         // Protocol minor 4. No row until the milestone 5 task page draws them (ticket 33).
         break;
+      case "question.auto_answered":
+      case "commit.filtered":
+      case "automation.started":
+      case "task.approval_requested":
+      case "task.approved":
+      case "task.rejected":
+      case "tracker.session_event":
+      case "draft.submitted":
+      case "draft.applied":
+      case "ci.updated":
+      case "round.started":
+      case "round.capped":
+      case "review.submitted":
+      case "review.posted":
+      case "reviewers.updated":
+      case "environment.proposed":
+        // Protocol minor 5. No row until the milestone 6 task page draws them (tickets 30 to 36).
+        break;
       case "session.config_changed":
       case "runner.connected":
       case "runner.lost":

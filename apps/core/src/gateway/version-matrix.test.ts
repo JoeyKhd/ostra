@@ -1,7 +1,7 @@
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
 import { postgresCommandOutbox, runnerRowVersionState } from "@ostra/domain";
-import { closeCodes, helloSchema, infoResponseSchema, infoResponseSchemaV3, PROTOCOL_MINOR, runnerHeaders, runnerPaths } from "@ostra/protocol";
+import { closeCodes, helloSchema, infoResponseSchema, infoResponseSchemaV3, runnerHeaders, runnerPaths } from "@ostra/protocol";
 import type { Hello, RunnerId } from "@ostra/protocol";
 import { minor4CommandFixtures, readRecordedBuild, RECORDED_SERVER_MINOR, recordedMinors } from "@ostra/protocol/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -27,7 +27,9 @@ const sockets: FakePeer[] = [];
 beforeAll(async () => {
   test = await createTestDatabase();
   fixture = await seedIsolationFixture(test.db);
-  harness = await startGateway(test.db, test.url, { serverVersion: SERVER_VERSION, runnerNpm: { package: "ostra", registry: "http://127.0.0.1:14873" } });
+  // The recordings were made against a minor-4 server (`RECORDED_SERVER_MINOR`): this gateway speaks it. Today's
+  // minor-5 window over the same recordings is `packages/protocol`'s `version-matrix.test.ts`.
+  harness = await startGateway(test.db, test.url, { serverMinor: RECORDED_SERVER_MINOR, serverVersion: SERVER_VERSION, runnerNpm: { package: "ostra", registry: "http://127.0.0.1:14873" } });
 });
 
 afterAll(async () => {
@@ -59,13 +61,13 @@ const sendDispatch = async (runnerId: RunnerId): Promise<void> => {
 
 describe("the version window on both carriers (F-061)", () => {
   it("F-061: the matrix: the recorded builds of minors 3, 4 and 5 connect on the WebSocket and over HTTP and are written to in their own minor; 2 and 6 are refused with the fix", async () => {
-    expect(PROTOCOL_MINOR).toBe(RECORDED_SERVER_MINOR);
+    expect(RECORDED_SERVER_MINOR).toBe(4);
     const seen: (readonly [number, string, number | string])[] = [];
     for (const minor of recordedMinors) {
       const build = await readRecordedBuild(minor);
       // The WebSocket.
       const ws = await fresh();
-      const peer = await connectPeer(harness.url, ws.token, ws.runner.runnerId, { minor: build.negotiated ?? PROTOCOL_MINOR, skipHello: true });
+      const peer = await connectPeer(harness.url, ws.token, ws.runner.runnerId, { minor: build.negotiated ?? RECORDED_SERVER_MINOR, skipHello: true });
       sockets.push(peer);
       peer.sendText(JSON.stringify(await helloOf(minor, ws.runner.runnerId, "websocket")));
       if (build.negotiated === undefined) {
@@ -115,6 +117,8 @@ describe("the version window on both carriers (F-061)", () => {
       [5, "http", 4],
       [6, "websocket", "refused"],
       [6, "http", "refused"],
+      [7, "websocket", "refused"],
+      [7, "http", "refused"],
     ]);
   });
 
@@ -127,7 +131,7 @@ describe("the version window on both carriers (F-061)", () => {
     const refused = await test.db.runner.findUniqueOrThrow({ where: { id: runner.runnerId } });
     expect(refused).toMatchObject({ minor: 2, version: "0.3.0", kind: "personal" });
     expect(refused.lastSeenAt).not.toBeNull();
-    expect(runnerRowVersionState({ minor: PROTOCOL_MINOR, version: SERVER_VERSION }, refused)).toBe("outside");
+    expect(runnerRowVersionState({ minor: RECORDED_SERVER_MINOR, version: SERVER_VERSION }, refused)).toBe("outside");
     // No row of its own, and no presence: it never connected.
     expect(await test.db.runner.count({ where: { ownerMemberId: fixture.a.member.id, publicKey: before.publicKey } })).toBe(1);
     expect(await test.db.runnerPresence.findUnique({ where: { runnerId: runner.runnerId } })).toBeNull();
@@ -148,7 +152,7 @@ describe("the version window on both carriers (F-061)", () => {
     await updated.next("welcome");
     const current = await test.db.runner.findUniqueOrThrow({ where: { id: runner.runnerId } });
     expect(current).toMatchObject({ minor: 3, version: "0.4.0" });
-    expect(runnerRowVersionState({ minor: PROTOCOL_MINOR, version: SERVER_VERSION }, current)).toBe("behind");
+    expect(runnerRowVersionState({ minor: RECORDED_SERVER_MINOR, version: SERVER_VERSION }, current)).toBe("behind");
   });
 });
 
@@ -169,7 +173,7 @@ describe("GET /runner/v1/info (F-061)", () => {
     const old = await fetch(`${harness.url}${runnerPaths.info}`);
     expect(infoResponseSchemaV3.safeParse(await old.json()).success).toBe(true);
     // A server that names no package (before milestone 7) answers `npm: null`.
-    const plain = await startGateway(test.db, test.url, { serverVersion: SERVER_VERSION });
+    const plain = await startGateway(test.db, test.url, { serverMinor: RECORDED_SERVER_MINOR, serverVersion: SERVER_VERSION });
     try {
       const answer = infoResponseSchema.parse(await (await fetch(`${plain.url}${runnerPaths.info}`, { headers: { [runnerHeaders.minor]: "4" } })).json());
       expect(answer.npm).toBeNull();

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import type { Db } from "@ostra/db";
 import type { SeededMember } from "@ostra/db/testing";
-import { registerResponseSchema, runnerPaths, tokenResponseSchema } from "@ostra/protocol";
+import { PROTOCOL_MINOR, registerResponseSchema, runnerPaths, tokenResponseSchema } from "@ostra/protocol";
 import type { CommandAck, DownFrame, LeaseEpoch, RunnerEvent, RunnerId, SessionId, TaskEvent, TaskId } from "@ostra/protocol";
 import { z } from "zod";
 
@@ -237,7 +237,7 @@ export const spoolingRunner = (registered: RegisteredAt): SpoolingRunner => {
         throw new Error(`token answered ${String(token.status)}`);
       }
       const next = await connectPeer(url, tokenResponseSchema.parse(token.body).accessToken, registered.runnerId, {
-        minor: 3,
+        minor: PROTOCOL_MINOR - 1,
         lastCommandSeq,
         sessions: [...sessions.values()].map((place) => ({
           taskId: place.taskId,

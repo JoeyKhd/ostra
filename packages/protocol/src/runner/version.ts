@@ -32,9 +32,16 @@ export const PROTOCOL_MAJOR = 1;
  * and `status`. A minor-3 peer still works inside the window: it never receives `resume`, the
  * dispatch's `box` or the build's `push` and `builder`, and it sends no `box.waiting`,
  * `box.scheduled`, `resources`, `capabilities` or `install`. A `kubernetes` runner needs minor 4
- * (`refuseHelloExecutor`). A minor-2 peer is outside the window and refused at `hello`.
+ * (`refuseHelloExecutor`). Milestone 6 ships minor 5: the refine, review and onboarding tasks'
+ * spec sections (`review`, `tools`, `commitPaths`), automatic turns (`automatic` on the dispatch,
+ * the steer and the spec, and `question.auto_answered`), the onboarding commit's
+ * `commit.filtered`, the rounds' and the follow-ups' intents, and the sidecar's draft, review and
+ * environment-proposal endpoints. A minor-4 peer still works inside the window: it's never sent
+ * the new spec sections, `automatic` or a new intent, and it's never offered a refine, review or
+ * onboarding task or an automatic round (`isTaskOfferable`). A minor-3 peer is outside the window
+ * and refused at `hello`.
  */
-export const PROTOCOL_MINOR = 4;
+export const PROTOCOL_MINOR = 5;
 
 /** The URL prefix of every runner endpoint. */
 export const RUNNER_PATH_PREFIX = `/runner/v${String(PROTOCOL_MAJOR)}`;

@@ -282,13 +282,19 @@ describe("a resume", () => {
   it("F-092: a minor-3 runner gets no resume command, and the result says so", async () => {
     const { a } = api.fixture;
     const runner = await joined("resume-minor-3");
-    const peer = await connected(runner, { minor: 3 });
-    expect(await drainRunner(deps(), scopeOf(a.admin, "admin"), { runnerId: runner.runnerId })).toMatchObject({ ok: true });
-    await nextCommand(peer, "drain");
-    expect(await resumeRunner(deps(), scopeOf(a.admin, "admin"), { runnerId: runner.runnerId })).toEqual({ ok: true, state: "online", commandSent: false });
-    expect(await api.test.db.command.count({ where: { runnerId: runner.runnerId, kind: "resume" } })).toBe(0);
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(commandKinds(peer)).not.toContain("resume");
-    await retire(runner.runnerId);
+    // Milestone 6's server is at minor 5, whose window starts at 4: a minor-3 runner talks to a minor-4 server.
+    const older = await startGateway(api.test.db, api.test.url, { serverMinor: 4 });
+    try {
+      const peer = await connected(runner, { minor: 3 }, older);
+      expect(await drainRunner(deps(), scopeOf(a.admin, "admin"), { runnerId: runner.runnerId })).toMatchObject({ ok: true });
+      await nextCommand(peer, "drain");
+      expect(await resumeRunner(deps(), scopeOf(a.admin, "admin"), { runnerId: runner.runnerId })).toEqual({ ok: true, state: "online", commandSent: false });
+      expect(await api.test.db.command.count({ where: { runnerId: runner.runnerId, kind: "resume" } })).toBe(0);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(commandKinds(peer)).not.toContain("resume");
+      await retire(runner.runnerId);
+    } finally {
+      await older.stop();
+    }
   });
 });

@@ -569,27 +569,33 @@ describe("the version window", () => {
   });
 
   it("F-093: refuses a kubernetes runner below minor 4 with its own reason, and welcomes one at minor 4", async () => {
-    const runner = await registerPersonal(harness, test.db, fixture.a.member);
-    const old = track(await connect(harness, runner, { minor: 3, executor: "kubernetes" }));
-    const error = await old.next("error");
-    expect(error).toMatchObject({ code: "version-unsupported", supported: { min: 4, max: PROTOCOL_MINOR + 1 } });
-    expect(error.message).toContain("The kubernetes executor needs protocol 1.4");
-    expect(error.message).toContain("Fix:");
-    expect(await old.closed).toBe(closeCodes.upgradeRequired);
-    // The same runner at minor 3 on docker is inside the window.
-    const docker = track(await connect(harness, runner, { minor: 3, executor: "docker" }));
-    expect((await docker.next("welcome")).minor).toBe(3);
-    docker.close();
-    await docker.closed;
-    const current = track(await connect(harness, runner, { minor: 4, executor: "kubernetes" }));
-    expect((await current.next("welcome")).minor).toBe(4);
-    current.close();
-    await current.closed;
-    // A minor-3 runner's hello names no executor: the one it registered with is refused.
-    await test.db.runner.update({ where: { id: runner.runnerId }, data: { executor: "kubernetes" } });
-    const registeredOld = track(await connect(harness, runner, { minor: 3 }));
-    expect(await registeredOld.next("error")).toMatchObject({ code: "version-unsupported" });
-    expect(await registeredOld.closed).toBe(closeCodes.upgradeRequired);
+    // A minor-3 runner is inside a minor-4 server's window only: milestone 6's server is at minor 5.
+    const older = await startGateway(test.db, test.url, { serverMinor: 4 });
+    try {
+      const runner = await registerPersonal(older, test.db, fixture.a.member);
+      const old = track(await connect(older, runner, { minor: 3, executor: "kubernetes" }));
+      const error = await old.next("error");
+      expect(error).toMatchObject({ code: "version-unsupported", supported: { min: 4, max: 5 } });
+      expect(error.message).toContain("The kubernetes executor needs protocol 1.4");
+      expect(error.message).toContain("Fix:");
+      expect(await old.closed).toBe(closeCodes.upgradeRequired);
+      // The same runner at minor 3 on docker is inside the window.
+      const docker = track(await connect(older, runner, { minor: 3, executor: "docker" }));
+      expect((await docker.next("welcome")).minor).toBe(3);
+      docker.close();
+      await docker.closed;
+      const current = track(await connect(older, runner, { minor: 4, executor: "kubernetes" }));
+      expect((await current.next("welcome")).minor).toBe(4);
+      current.close();
+      await current.closed;
+      // A minor-3 runner's hello names no executor: the one it registered with is refused.
+      await test.db.runner.update({ where: { id: runner.runnerId }, data: { executor: "kubernetes" } });
+      const registeredOld = track(await connect(older, runner, { minor: 3 }));
+      expect(await registeredOld.next("error")).toMatchObject({ code: "version-unsupported" });
+      expect(await registeredOld.closed).toBe(closeCodes.upgradeRequired);
+    } finally {
+      await older.stop();
+    }
   });
 });
 

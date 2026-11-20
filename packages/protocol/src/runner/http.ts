@@ -1,6 +1,15 @@
 import { z } from "zod";
 
-import { noteIdSchema, poolIdSchema, runnerIdSchema, snapshotIdSchema, taskIdSchema } from "../ids.ts";
+import {
+  draftIdSchema,
+  environmentProposalIdSchema,
+  noteIdSchema,
+  poolIdSchema,
+  reviewRunIdSchema,
+  runnerIdSchema,
+  snapshotIdSchema,
+  taskIdSchema,
+} from "../ids.ts";
 import {
   epochMsSchema,
   executorKindSchema,
@@ -17,6 +26,7 @@ import {
   memoryProposalRefSchema,
   memoryScopeSchema,
 } from "../memory/notes.ts";
+import { environmentProposalSchema, findingSchema, refineDraftSchema, reviewSummarySchema } from "../mcp/tools.ts";
 import { snapshotCredentialsSchema, taskCredentialsSchema } from "../task/credentials.ts";
 import { taskSpecSchema } from "../task/spec.ts";
 import { downFrameCodec, errorFrameSchema, helloSchema, protocolErrorCodeSchema, upFrameCodec } from "./messages.ts";
@@ -74,6 +84,14 @@ export const runnerPaths = {
   /** `POST`: the push credential for a snapshot build, for the runner the build was given to. */
   snapshotPushCredential: (snapshotId: string): string =>
     `${RUNNER_PATH_PREFIX}/snapshots/${encodeURIComponent(snapshotId)}/push-credential`,
+  // Minor 5 (milestone 6): the sidecar's draft, review and proposal tools, with the task token.
+  /** `POST`: a refine task's draft (F-099). */
+  taskDraft: (taskId: string): string => `${RUNNER_PATH_PREFIX}/tasks/${encodeURIComponent(taskId)}/draft`,
+  /** `POST`: a review task's review (F-100). */
+  taskReview: (taskId: string): string => `${RUNNER_PATH_PREFIX}/tasks/${encodeURIComponent(taskId)}/review`,
+  /** `POST`: an onboarding task's environment proposal (F-113). */
+  taskEnvironmentProposal: (taskId: string): string =>
+    `${RUNNER_PATH_PREFIX}/tasks/${encodeURIComponent(taskId)}/environment-proposal`,
 } as const;
 
 /** Headers the HTTP carrier uses (ADR 0034). */
@@ -558,3 +576,64 @@ export const registryCredentialRefusalSchema = z.strictObject({
   }),
 });
 export type RegistryCredentialRefusal = z.infer<typeof registryCredentialRefusalSchema>;
+
+// ---------- the sidecar's milestone 6 tools (minor 5, ADR 0028, ADR 0038, ADR 0058) ----------
+//
+// The sidecar's `submit_draft`, `submit_review` and `propose_environment`, on behalf of one task,
+// with its task token. The shapes are `mcp/tools.ts`'s; a refusal's words are what the tool
+// returns to the agent (`draftResultText`, `reviewResultText`, `environmentProposalResultText`).
+// Nothing of a body is ever logged: counts and IDs only.
+
+/** `POST /runner/v1/tasks/:taskId/draft`'s body: the draft. */
+export const draftRequestSchema = refineDraftSchema;
+export type DraftRequestBody = z.infer<typeof draftRequestSchema>;
+
+/** `POST /runner/v1/tasks/:taskId/review`'s body: the summary and the findings, by repo ID. */
+export const reviewRequestSchema = z
+  .strictObject({ summary: reviewSummarySchema, findings: z.array(findingSchema).max(runnerLimits.reviewFindingsMax) })
+  .describe("A review. Its text is never logged.");
+export type ReviewRequestBody = z.infer<typeof reviewRequestSchema>;
+
+/** `POST /runner/v1/tasks/:taskId/environment-proposal`'s body. */
+export const environmentProposalRequestSchema = environmentProposalSchema;
+
+/** Why core refused a draft: not a refine task, a draft that doesn't parse, or the task's drafts are at their cap. */
+export const draftRefusalSchema = z.strictObject({ code: z.enum(["wrong-kind", "invalid", "limit-reached"]) });
+export type DraftRefusal = z.infer<typeof draftRefusalSchema>;
+
+/** A saved draft: its ID and its version within the task, from 1. */
+export const draftSavedSchema = z.strictObject({ draftId: draftIdSchema, version: z.number().int().positive() });
+export const draftResponseSchema = z.union([draftSavedSchema, draftRefusalSchema]);
+export type DraftResponse = z.infer<typeof draftResponseSchema>;
+
+/**
+ * Why core refused a review: not a review task, a review that doesn't parse, the round already has
+ * its review, or the code task is no longer in review.
+ */
+export const reviewRefusalSchema = z.strictObject({
+  code: z.enum(["wrong-kind", "invalid", "limit-reached", "not-in-review"]),
+});
+export type ReviewRefusal = z.infer<typeof reviewRefusalSchema>;
+
+export const reviewSavedSchema = z.strictObject({ reviewRunId: reviewRunIdSchema });
+export const reviewResponseSchema = z.union([reviewSavedSchema, reviewRefusalSchema]);
+export type ReviewResponse = z.infer<typeof reviewResponseSchema>;
+
+/**
+ * Why core refused a proposal: a secret's value was found (`found` names each kind, never the
+ * value), not an onboarding task, or a proposal that doesn't parse.
+ */
+export const environmentProposalRefusalSchema = z.discriminatedUnion("code", [
+  z.strictObject({
+    code: z.literal("secret-found"),
+    /** What was found, by kind, such as `a GitHub token`. Never the value. */
+    found: z.array(z.string().min(1).max(100)).min(1).max(20),
+  }),
+  z.strictObject({ code: z.literal("wrong-kind") }),
+  z.strictObject({ code: z.literal("invalid") }),
+]);
+export type EnvironmentProposalRefusal = z.infer<typeof environmentProposalRefusalSchema>;
+
+export const environmentProposalSavedSchema = z.strictObject({ proposalId: environmentProposalIdSchema });
+export const environmentProposalResponseSchema = z.union([environmentProposalSavedSchema, environmentProposalRefusalSchema]);
+export type EnvironmentProposalResponse = z.infer<typeof environmentProposalResponseSchema>;

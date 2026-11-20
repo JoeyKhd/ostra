@@ -8,7 +8,7 @@ import { approveRunner, createPool, postgresAuditLog, postgresChangeNotices, rev
 import type { Clock, MemberScope } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
-import { memberIdSchema, organizationIdSchema, runnerIdSchema } from "@ostra/protocol";
+import { memberIdSchema, organizationIdSchema, PROTOCOL_MINOR, runnerIdSchema } from "@ostra/protocol";
 import type { OrganizationId } from "@ostra/protocol";
 import { createCapturingTerminal, exitCodes, runCli, runSignedInRunner } from "@ostra/runner";
 import type { CliDeps } from "@ostra/runner";
@@ -137,7 +137,7 @@ describe("a pool runner's start (ticket 19)", () => {
     const reported = await api.test.db.runner.findUniqueOrThrow({ where: { id: row.id } });
     expect(reported).toMatchObject({
       install: "source",
-      minor: 4,
+      minor: PROTOCOL_MINOR,
       slots: 2,
       cpuMillis: null,
       memoryMiB: null,

@@ -102,16 +102,18 @@ const minor3Status: Status = {
 };
 
 describe("the version", () => {
-  it("F-061: is minor 4; a minor-3 peer is inside the window and a minor-2 peer is outside it", () => {
-    expect(PROTOCOL_MINOR).toBe(4);
-    expect(minorWindow(PROTOCOL_MINOR)).toEqual({ min: 3, max: 5 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 3)).toEqual({ ok: true, minor: 3 });
+  it("F-061: a minor-4 server took minors 3 to 5, and minor 4 stays in the codecs after minor 5", () => {
+    // Milestone 6 moved the build to minor 5 (`minor-5.test.ts`); a minor-4 build's window is as it was.
+    expect(PROTOCOL_MINOR).toBe(5);
+    expect(minorWindow(4)).toEqual({ min: 3, max: 5 });
+    expect(negotiate(4, PROTOCOL_MAJOR, 3)).toEqual({ ok: true, minor: 3 });
+    expect(negotiate(4, PROTOCOL_MAJOR, 4)).toEqual({ ok: true, minor: 4 });
+    expect(negotiate(4, PROTOCOL_MAJOR, 2)).toEqual({ ok: false, reason: "minor", window: { min: 3, max: 5 } });
+    // A minor-4 runner against a minor-3 server speaks minor 3, and against today's server minor 4.
+    expect(negotiate(3, PROTOCOL_MAJOR, 4)).toEqual({ ok: true, minor: 3 });
     expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 4)).toEqual({ ok: true, minor: 4 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 2)).toEqual({ ok: false, reason: "minor", window: { min: 3, max: 5 } });
-    // A minor-4 runner against a minor-3 server speaks minor 3.
-    expect(negotiate(3, PROTOCOL_MAJOR, PROTOCOL_MINOR)).toEqual({ ok: true, minor: 3 });
-    expect(upFrameCodec.minors).toEqual([0, 1, 2, 3, 4]);
-    expect(downFrameCodec.minors).toEqual([0, 1, 2, 3, 4]);
+    expect(upFrameCodec.minors).toContain(4);
+    expect(downFrameCodec.minors).toContain(4);
   });
 
   it("F-093: a kubernetes hello below minor 4 is refused with its own reason, at the window's edges", () => {
@@ -119,8 +121,8 @@ describe("the version", () => {
     expect(executorMinMinor("docker")).toBe(0);
     expect(executorMinMinor("host")).toBe(0);
     const kubernetes = (protocolMinor: number): Hello => ({ ...minor4HelloFixture, protocolMinor });
-    // A minor-3 kubernetes runner is inside the window, and still refused.
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 3)).toMatchObject({ ok: true });
+    // A minor-3 kubernetes runner was inside a minor-4 server's window, and still refused.
+    expect(negotiate(4, PROTOCOL_MAJOR, 3)).toMatchObject({ ok: true });
     expect(refuseHelloExecutor(kubernetes(3), 3)).toEqual({ reason: "executor-needs-minor", executor: "kubernetes", minMinor: 4 });
     // A minor-4 kubernetes runner against a minor-3 server speaks minor 3: refused too.
     expect(refuseHelloExecutor(kubernetes(4), 3)).toEqual({ reason: "executor-needs-minor", executor: "kubernetes", minMinor: 4 });

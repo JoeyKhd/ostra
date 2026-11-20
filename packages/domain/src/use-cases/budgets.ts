@@ -240,6 +240,14 @@ export const turnOriginOfIntent = (intent: MessageIntent | undefined): TurnOrigi
       return "pr-comment";
     case "keep-working":
       return "keep-working";
+    // Milestone 6's rounds are automatic turns (ADR 0041, F-101). "Changes requested" and a
+    // Linear follow-up get origins of their own with ticket 06; until then they gate as a message.
+    case "fix-ci":
+    case "fix-findings":
+      return "automatic-round";
+    case "changes-requested":
+    case "linear-follow-up":
+      return "message";
     default:
       return intent satisfies never;
   }

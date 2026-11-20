@@ -29,6 +29,8 @@ import {
   approvalDecisionSchema,
   denyReasonSchema,
   messageIntentSchema,
+  messageIntentSchemaV4,
+  messageIntentSupportedAt,
   planTextSchema,
 } from "../events/agent-events.ts";
 import {
@@ -89,12 +91,19 @@ export const dispatchBoxSchema = z.strictObject({
 });
 export type DispatchBox = z.infer<typeof dispatchBoxSchema>;
 
-/**
- * `dispatch` at the current minor (4): an offer of a task. The peer answers `accepted` or
- * `rejected` within the offer timeout. A minor-3 peer never sees `box`.
- */
-export const dispatchBodySchema = dispatchBodySchemaV3.extend({
+/** `dispatch` at minor 4: minor 3's, with the box. A minor-3 peer never sees `box`. */
+export const dispatchBodySchemaV4 = dispatchBodySchemaV3.extend({
   box: dispatchBoxSchema.optional(),
+});
+
+/**
+ * `dispatch` at the current minor (5): an offer of a task. The peer answers `accepted` or
+ * `rejected` within the offer timeout. Minor 5: whether the session's first turn is an automatic
+ * round (F-101, ADR 0041), so the runner answers its questions with the neutral reply. Missing
+ * means `false`. A minor-4 peer never sees it: core starts an automatic round on a minor-5 runner.
+ */
+export const dispatchBodySchema = dispatchBodySchemaV4.extend({
+  automatic: z.boolean().optional(),
 });
 
 /**
@@ -109,10 +118,23 @@ export const steerBodySchemaV1 = z.strictObject({
   delivery: z.enum(["queue", "interrupt"]),
 });
 
-/** `steer` at the current minor (2): minor 1's, with the message's intent. */
+/** `steer` at minors 2 to 4: minor 1's, with the message's intent. */
+export const steerBodySchemaV4 = steerBodySchemaV1.extend({
+  /** Minor 2: why the message was written, for the thread's marker. Missing means `message`. */
+  intent: messageIntentSchemaV4.optional(),
+});
+
+/**
+ * `steer` at the current minor (5): minor 2's, with milestone 6's intents and whether the turn it
+ * starts is an automatic round (F-101, ADR 0041). Missing `automatic` means `false`. The text of a
+ * `fix-ci`, `fix-findings`, `changes-requested` or `linear-follow-up` message is ostra's prompt
+ * around untrusted text, and is never logged.
+ */
 export const steerBodySchema = steerBodySchemaV1.extend({
   /** Minor 2: why the message was written, for the thread's marker. Missing means `message`. */
   intent: messageIntentSchema.optional(),
+  /** Minor 5: the turn is an automatic round: the runner answers its questions with the neutral reply. */
+  automatic: z.boolean().optional(),
 });
 
 /** `interrupt`: cancel the session's current turn, keep the session. */
@@ -363,7 +385,7 @@ const steerV1 = z.strictObject({ ...envelope, kind: z.literal("steer"), body: st
 const approvalAnswerV1 = z.strictObject({ ...envelope, kind: z.literal("approval-answer"), body: approvalAnswerBodySchemaV1 });
 const release = z.strictObject({ ...envelope, kind: z.literal("release"), body: releaseBodySchema });
 const dispatchV3 = z.strictObject({ ...envelope, kind: z.literal("dispatch"), body: dispatchBodySchemaV3 });
-const steer = z.strictObject({ ...envelope, kind: z.literal("steer"), body: steerBodySchema });
+const steerV4 = z.strictObject({ ...envelope, kind: z.literal("steer"), body: steerBodySchemaV4 });
 const approvalAnswer = z.strictObject({ ...envelope, kind: z.literal("approval-answer"), body: approvalAnswerBodySchema });
 const questionAnswer = z.strictObject({ ...envelope, kind: z.literal("question-answer"), body: questionAnswerBodySchema });
 const planAnswer = z.strictObject({ ...envelope, kind: z.literal("plan-answer"), body: planAnswerBodySchema });
@@ -375,7 +397,7 @@ const snapshotBuildV3 = z.strictObject({ ...envelope, kind: z.literal("snapshot-
 const minor2CommandOptions = [
   ...sharedCommandOptions,
   dispatchV3,
-  steer,
+  steerV4,
   approvalAnswer,
   release,
   questionAnswer,
@@ -383,21 +405,38 @@ const minor2CommandOptions = [
   snapshotBuildV3,
 ] as const;
 
-/** Commands at the current minor (4): minor 3's, with `resume`, the dispatch's `box` and the build's `push` and `builder`. */
+const snapshotBuild = z.strictObject({ ...envelope, kind: z.literal("snapshot-build"), body: snapshotBuildBodySchema });
+const resume = z.strictObject({ ...envelope, kind: z.literal("resume"), body: resumeBodySchema });
+
+/** Commands at the current minor (5): minor 4's, with the dispatch's and the steer's `automatic` and the steer's new intents. */
 export const commandSchema = z.discriminatedUnion("kind", [
   ...sharedCommandOptions,
   z.strictObject({ ...envelope, kind: z.literal("dispatch"), body: dispatchBodySchema }),
-  steer,
+  z.strictObject({ ...envelope, kind: z.literal("steer"), body: steerBodySchema }),
   approvalAnswer,
   release,
   questionAnswer,
   planAnswer,
-  z.strictObject({ ...envelope, kind: z.literal("snapshot-build"), body: snapshotBuildBodySchema }),
+  snapshotBuild,
   setEffort,
-  z.strictObject({ ...envelope, kind: z.literal("resume"), body: resumeBodySchema }),
+  resume,
 ]);
 export type Command = z.infer<typeof commandSchema>;
 export type CommandOf<K extends CommandKind> = Extract<Command, { kind: K }>;
+
+/** Minor 4's commands, kept for the down codec: minor 3's, with `resume`, the dispatch's `box` and the build's `push` and `builder`. */
+export const commandSchemaV4 = z.discriminatedUnion("kind", [
+  ...sharedCommandOptions,
+  z.strictObject({ ...envelope, kind: z.literal("dispatch"), body: dispatchBodySchemaV4 }),
+  steerV4,
+  approvalAnswer,
+  release,
+  questionAnswer,
+  planAnswer,
+  snapshotBuild,
+  setEffort,
+  resume,
+]);
 
 /** Minor 3's commands, kept for the down codec: minor 2's, with `set-effort`; no `resume`. */
 export const commandSchemaV3 = z.discriminatedUnion("kind", [...minor2CommandOptions, setEffort]);
@@ -412,13 +451,30 @@ export const commandSchemaV1 = z.discriminatedUnion("kind", [...sharedCommandOpt
 export const commandSchemaV0 = z.discriminatedUnion("kind", [...sharedCommandOptions, dispatchV3, steerV1, approvalAnswerV1]);
 
 /**
- * A command as a peer at `minor` reads it: below minor 4, `dispatch` loses `box` and
+ * A command as a peer at `minor` reads it: below minor 5, `dispatch` and `steer` lose
+ * `automatic`, and a steer's intent of milestone 6's is dropped (it reads as `message`); below
+ * minor 4, `dispatch` loses `box` and
  * `snapshot-build` loses `push` and `builder`; below minor 2, `steer` loses `intent` and
  * `approval-answer` loses `reason` and `taskRule`. Minor 3 added a kind only (`set-effort`), no
  * field. A kind the minor lacks is returned as it is,
  * and that peer refuses it: the outbox checks `commandKindSupportedAt` first.
  */
 export const encodeCommandForMinor = (command: Command, minor: number): Command => {
+  if (minor >= 5) {
+    return command;
+  }
+  if (command.kind === "dispatch" && minor >= 4) {
+    return { ...command, body: dispatchBodyStripV4.parse(command.body) };
+  }
+  if (command.kind === "steer") {
+    // Below minor 5 a steer loses `automatic`, and an intent of milestone 6's reads as `message`.
+    const body = { ...command.body };
+    Reflect.deleteProperty(body, "automatic");
+    if (body.intent !== undefined && !messageIntentSupportedAt(body.intent, 4)) {
+      Reflect.deleteProperty(body, "intent");
+    }
+    return minor >= 2 ? { ...command, body } : { ...command, body: steerBodyStripV1.parse(body) };
+  }
   if (minor >= 4) {
     return command;
   }
@@ -431,14 +487,14 @@ export const encodeCommandForMinor = (command: Command, minor: number): Command 
   if (minor >= 2) {
     return command;
   }
-  if (command.kind === "steer") {
-    return { ...command, body: steerBodyStripV1.parse(command.body) };
-  }
   if (command.kind === "approval-answer") {
     return { ...command, body: approvalAnswerBodyStripV1.parse(command.body) };
   }
   return command;
 };
+
+// Minor 4's dispatch as a stripping object: parsing a current body keeps minor 4's fields only.
+const dispatchBodyStripV4 = z.object(dispatchBodySchemaV4.shape);
 
 // Minor 3's bodies as stripping objects: parsing a current body keeps minor 3's fields only.
 const dispatchBodyStripV3 = z.object(dispatchBodySchemaV3.shape);

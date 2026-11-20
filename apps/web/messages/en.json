@@ -3370,7 +3370,11 @@
       "pr-comment": "from a PR comment",
       "fix-checks": "fix checks",
       "keep-working": "keep working",
-      "message": "message"
+      "message": "message",
+      "fix-ci": "fix CI",
+      "fix-findings": "fix review findings",
+      "changes-requested": "changes requested",
+      "linear-follow-up": "from Linear"
     },
     "tabs": {
       "activity": "Activity",

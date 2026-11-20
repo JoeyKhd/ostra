@@ -1,4 +1,5 @@
 import { runnerLimits } from "../runner/limits.ts";
+import { CI_FILES_DIR } from "../task/spec.ts";
 import type { PlanEntry } from "../events/agent-events.ts";
 
 // The prompts the runner sends on its own (ADR 0032, ADR 0049, protocol minor 2), and the marked
@@ -132,6 +133,58 @@ export const denyPrompt = (reason: string | null): string => {
     markedBlock("deny-reason", trimmed.slice(0, runnerLimits.denyReasonMaxChars)),
   ].join("\n\n");
 };
+
+// ---------- automatic turns and rounds (ADR 0041, ADR 0058, Q160, Q190; milestone 6) ----------
+
+/**
+ * The fixed reply the runner gives an agent's question in an automatic turn, when nobody is there
+ * to answer (spike 10, section 10): the turn carries on, and the thread records it as
+ * `question.auto_answered`.
+ */
+export const NEUTRAL_REPLY = "No one is available to answer. Use your best judgment, say what you assumed, and carry on.";
+
+/** The line every round's prompt carries before its quoted text (the same rule as `DATA_LINE`). */
+export const ROUND_DATA_LINE = DATA_LINE;
+
+/**
+ * The framing lines of the rounds' prompts, which core renders around the untrusted text
+ * (`packages/domain`'s prompts): what happened and what to do, then `ROUND_DATA_LINE`, then each
+ * piece of text in its own marked block. A CI log, a finding and a reviewer's comment are data,
+ * never instructions, and are never logged.
+ */
+export const roundFraming = {
+  "fix-ci": {
+    opening: `CI failed on your pull request. The failing checks are below; each one's log tail is in the file ${CI_FILES_DIR}/<check>.log of your workspace.`,
+    task: "Read the logs, fix what made the checks fail, and push. Don't change the CI configuration itself: you can't push workflow files.",
+  },
+  "fix-findings": {
+    opening: "An AI review of your pull request found blocking problems. Each finding is below, with its file and line.",
+    task: "Fix each blocking finding, or say in your reply why it's wrong, and push. A member reads the review too.",
+  },
+  "changes-requested": {
+    opening: "A reviewer requested changes on your pull request. Their review and its line comments are below.",
+    task: "Make the changes they asked for, or say in your reply why not, and push.",
+  },
+} as const;
+export type RoundFramingKind = keyof typeof roundFraming;
+
+/** One piece of untrusted text a round's prompt quotes, with the block's label (`ci-log`, `finding`, `review-comment`). */
+export type RoundQuote = { readonly label: string; readonly text: string };
+
+/**
+ * A round's prompt: the framing lines of its kind, then each quote as a marked block. `opening` may
+ * be extended by core with words of its own (the folder of the logs, a count), never with quoted text.
+ */
+export const roundPrompt = (
+  kind: RoundFramingKind,
+  input: { readonly opening?: string; readonly quotes: readonly RoundQuote[] },
+): string =>
+  [
+    input.opening ?? roundFraming[kind].opening,
+    roundFraming[kind].task,
+    ROUND_DATA_LINE,
+    ...input.quotes.map((quote) => markedBlock(quote.label, quote.text)),
+  ].join("\n\n");
 
 // ---------- helpers ----------
 

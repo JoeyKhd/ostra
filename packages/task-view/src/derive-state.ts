@@ -255,6 +255,22 @@ export const deriveTaskState = (
       case "task.cancelled":
       case "runner.drained":
       case "runner.resumed":
+      case "question.auto_answered":
+      case "commit.filtered":
+      case "automation.started":
+      case "task.approval_requested":
+      case "task.approved":
+      case "task.rejected":
+      case "tracker.session_event":
+      case "draft.submitted":
+      case "draft.applied":
+      case "ci.updated":
+      case "round.started":
+      case "round.capped":
+      case "review.submitted":
+      case "review.posted":
+      case "reviewers.updated":
+      case "environment.proposed":
       case "user.message":
       case "tool.progress":
       case "plan.updated":

@@ -1,6 +1,6 @@
 # 01: Protocol: minor 5
 
-Status: ready-for-agent
+Status: done
 Builder: core (contracts, first)
 Blocked by: none (milestone 5's minor lands first)
 Features: F-099, F-100, F-101, F-035, F-105, F-113, F-011, F-106, F-012, F-040 (their wire shapes)
@@ -23,9 +23,18 @@ Every change is additive. The schema is written once, Zod first; the types are `
 
 ## Done when
 
-- [ ] Tests: every new shape round-trips; the previous minor's specs still parse; a minor-4 peer's codec drops the new fields; `isTaskOfferable` refuses each new kind for a minor-4 peer and allows it for minor 5; a strict object refuses an unknown field; the server-only set includes every new server kind; each tool's schema refuses a finding over the limit, a draft over its limits and a proposal with a variable's value; the fixtures in `src/testing/` cover each new kind, command field and endpoint.
-- [ ] Every caller in the repo still compiles, and no existing schema changed shape.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add protocol minor 5`.
+- [x] Tests: every new shape round-trips; the previous minor's specs still parse; a minor-4 peer's codec drops the new fields; `isTaskOfferable` refuses each new kind for a minor-4 peer and allows it for minor 5; a strict object refuses an unknown field; the server-only set includes every new server kind; each tool's schema refuses a finding over the limit, a draft over its limits and a proposal with a variable's value; the fixtures in `src/testing/` cover each new kind, command field and endpoint.
+- [x] Every caller in the repo still compiles, and no existing schema changed shape.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add protocol minor 5`.
 
 ## Comments
+
+- 2026-11-20, core: built as `✨ add protocol minor 5`. Readings and differences:
+  - **The number:** `main` had milestone 5's minor 4 (`201b71aa`), so this is minor 5; the window is 4 to 6, and a minor-3 runner is refused at `hello`. Minor 4's codecs stay beside minor 5's (`taskEventSchemaV4`, `commandSchemaV4`, `taskSpecSchemaV3` for minors 3 and 4, `messageIntentSchemaV4`).
+  - **`kind` inside an event:** `tracker.session_event`'s `kind` is `action`, and `round.started`'s and `round.capped`'s is `round`, since `kind` names the event in the union.
+  - **The tools name a repo by `owner/name`,** as `set_pull_request_text` does; the HTTP bodies carry `repoId`. `reviewRequestFromTool` and `environmentProposalRequestFromTool` map one to the other for the sidecar (ticket 22). The endpoints' bodies are in `runner/http.ts`; the shapes, descriptions and result texts in `mcp/tools.ts`.
+  - **CI logs:** a context file gains `folder: "ticket" | "ci"`, since a file name is one segment; `ci` files go under `CI_FILES_DIR` (`.ostra/ci`). A minor-4 runner is sent none.
+  - **`isTaskOfferable(spec, peerMinor)`** returns the reason and the minor; `taskNotOfferableWords` is the dispatch note. A refine, review or onboarding task (a code task with `environment` or `commitPaths`), an automatic round, or a CI round's files need minor 5. `taskSpecMinMinor` folds in minors 2 and 3.
+  - **The fixed prompts:** `NEUTRAL_REPLY`, `roundFraming` (opening and task lines per round kind) and `roundPrompt`, which quotes each piece of untrusted text in a marked block.
+  - **Callers:** the budget gate maps `fix-ci` and `fix-findings` to `automatic-round`, and `changes-requested` and `linear-follow-up` to `message` until ticket 06 gives them their own origins; the fold and the ingest store the 16 new kinds with no row yet; the panel's intent tags gain four words. Tests that drove a minor-3 peer now run it against a minor-4 gateway (`serverMinor: 4`), and core's recorded matrix runs at `RECORDED_SERVER_MINOR`; `packages/protocol`'s matrix adds today's window over the same recordings and a synthetic minor 7.

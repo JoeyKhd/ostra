@@ -2,6 +2,7 @@ import {
   agentProfileIdSchema,
   approvalIdSchema,
   approvalRuleIdSchema,
+  automationIdSchema,
   blobIdSchema,
   boxIdSchema,
   budgetIdSchema,
@@ -9,7 +10,9 @@ import {
   clientMessageIdSchema,
   commandIdSchema,
   diffCommentIdSchema,
+  draftIdSchema,
   effortChangeIdSchema,
+  environmentProposalIdSchema,
   memberIdSchema,
   modelIdSchema,
   noteIdSchema,
@@ -21,6 +24,7 @@ import {
   questionIdSchema,
   replicaIdSchema,
   repoIdSchema,
+  reviewRunIdSchema,
   runnerIdSchema,
   segmentIdSchema,
   sessionIdSchema,
@@ -51,7 +55,13 @@ import type {
   MemoryProposalResponse,
   MemorySearchRequest,
   MemorySearchResponse,
+  DraftRequestBody,
+  DraftResponse,
+  EnvironmentProposalResponse,
+  ReviewRequestBody,
+  ReviewResponse,
 } from "../runner/http.ts";
+import type { EnvironmentProposal, ProposeEnvironmentInput, RefineDraft, SubmitReviewInput } from "../mcp/tools.ts";
 import { snapshotCredentialsSchema, taskCredentialsSchema } from "../task/credentials.ts";
 import type { SnapshotCredentials, TaskCredentials } from "../task/credentials.ts";
 import type { TaskSpec } from "../task/spec.ts";
@@ -107,6 +117,14 @@ export const fixtureIds = {
   effortChange: effortChangeIdSchema.parse("0196f1a0-0000-7000-8000-000000000020"),
   // Minor 4 (milestone 5).
   secondBox: boxIdSchema.parse("0196f1a0-0000-7000-8000-000000000021"),
+  // Minor 5 (milestone 6).
+  automation: automationIdSchema.parse("0196f1a0-0000-7000-8000-000000000022"),
+  draft: draftIdSchema.parse("0196f1a0-0000-7000-8000-000000000023"),
+  reviewRun: reviewRunIdSchema.parse("0196f1a0-0000-7000-8000-000000000024"),
+  environmentProposal: environmentProposalIdSchema.parse("0196f1a0-0000-7000-8000-000000000025"),
+  codeTask: taskIdSchema.parse("0196f1a0-0000-7000-8000-000000000026"),
+  ciLogBlob: blobIdSchema.parse("0196f1a0-0000-7000-8000-000000000027"),
+  subTicketKey: ticketKeySchema.parse("OST-13"),
 } as const;
 
 const ids = fixtureIds;
@@ -362,6 +380,52 @@ export const eventFixtures: { readonly [K in TaskEventKind]: TaskEventOf<K> } = 
   "task.cancelled": { kind: "task.cancelled", memberId: ids.member },
   "runner.drained": { kind: "runner.drained", memberId: ids.member },
   "runner.resumed": { kind: "runner.resumed", memberId: ids.member },
+  // Minor 5 (milestone 6).
+  "question.auto_answered": {
+    kind: "question.auto_answered",
+    questionId: ids.question,
+    reply: "No one is available to answer. Use your best judgment, say what you assumed, and carry on.",
+  },
+  "commit.filtered": {
+    kind: "commit.filtered",
+    repoId: ids.repo,
+    kept: ["AGENTS.md"],
+    dropped: ["package.json", "scripts/setup.sh"],
+    droppedCount: 2,
+  },
+  "automation.started": { kind: "automation.started", automationId: ids.automation, occurrenceAt: 1_900_000_000_000 },
+  "task.approval_requested": { kind: "task.approval_requested", by: { kind: "tracker-user", name: "Robin Outside" } },
+  "task.approved": { kind: "task.approved", memberId: ids.member },
+  "task.rejected": { kind: "task.rejected", memberId: ids.member, reason: "Not ours to do." },
+  "tracker.session_event": { kind: "tracker.session_event", action: "created", byName: "Robin Outside", matchedMemberId: null },
+  "draft.submitted": { kind: "draft.submitted", draftId: ids.draft, version: 1 },
+  "draft.applied": { kind: "draft.applied", draftId: ids.draft, ticketKey: ids.ticketKey, subTickets: [ids.subTicketKey] },
+  "ci.updated": {
+    kind: "ci.updated",
+    repoId: ids.repo,
+    prNumber: 7,
+    headSha: "c".repeat(40),
+    state: "failed",
+    failing: [{ name: "test", conclusion: "failure" }],
+  },
+  "round.started": { kind: "round.started", round: "ci", number: 1, automatic: true },
+  "round.capped": { kind: "round.capped", round: "findings", reason: "automatic-turns" },
+  "review.submitted": { kind: "review.submitted", reviewRunId: ids.reviewRun, blocking: 1, nits: 2 },
+  "review.posted": {
+    kind: "review.posted",
+    reviewRunId: ids.reviewRun,
+    repoId: ids.repo,
+    prNumber: 7,
+    url: "https://github.com/ostra-test/test1/pull/7#pullrequestreview-1",
+  },
+  "reviewers.updated": {
+    kind: "reviewers.updated",
+    repoId: ids.repo,
+    prNumber: 7,
+    memberIds: [ids.otherMember],
+    logins: ["ostra-test-reviewer"],
+  },
+  "environment.proposed": { kind: "environment.proposed", proposalId: ids.environmentProposal },
 };
 
 /**
@@ -1008,3 +1072,152 @@ export const registryCredentialRefusalFixtures = {
 } as const satisfies {
   readonly [K in RegistryCredentialRefusal["error"]["code"]]: RegistryCredentialRefusal & { readonly error: { readonly code: K } };
 };
+
+// ---------- minor 5 (milestone 6) ----------
+
+/** Minor 5's command fields, present: `automatic` and the new intents. */
+export const minor5CommandFixtures = {
+  "dispatch, an automatic round": {
+    ...commandEnvelope,
+    seq: 20,
+    kind: "dispatch",
+    body: { taskId: ids.task, sessionId: ids.session, boxId: ids.box, leaseEpoch: 2, box: { size: null, image: null }, automatic: true },
+  },
+  "steer, fix-ci": {
+    ...commandEnvelope,
+    seq: 21,
+    kind: "steer",
+    body: { sessionId: ids.session, clientMessageId: ids.clientMessage, text: "CI failed on your pull request.", delivery: "queue", intent: "fix-ci", automatic: true },
+  },
+  "steer, fix-findings": {
+    ...commandEnvelope,
+    seq: 22,
+    kind: "steer",
+    body: { sessionId: ids.session, clientMessageId: ids.clientMessage, text: "An AI review found blocking problems.", delivery: "queue", intent: "fix-findings", automatic: true },
+  },
+  "steer, changes-requested": {
+    ...commandEnvelope,
+    seq: 23,
+    kind: "steer",
+    body: { sessionId: ids.session, clientMessageId: ids.clientMessage, text: "A reviewer requested changes.", delivery: "queue", intent: "changes-requested", automatic: false },
+  },
+  "steer, linear-follow-up": {
+    ...commandEnvelope,
+    seq: 24,
+    kind: "steer",
+    body: { sessionId: ids.session, clientMessageId: ids.clientMessage, text: "Also update the README.", delivery: "queue", intent: "linear-follow-up" },
+  },
+} as const satisfies Readonly<Record<string, Command>>;
+
+/** Minor 5's `user.message` intents, one event each. */
+export const minor5IntentFixtures = {
+  "fix-ci": { ...eventFixtures["user.message"], intent: "fix-ci" },
+  "fix-findings": { ...eventFixtures["user.message"], intent: "fix-findings" },
+  "changes-requested": { ...eventFixtures["user.message"], intent: "changes-requested" },
+  "linear-follow-up": { ...eventFixtures["user.message"], intent: "linear-follow-up" },
+} as const satisfies Readonly<Record<string, TaskEventOf<"user.message">>>;
+
+const headSha = "d".repeat(40);
+const baseSha = "e".repeat(40);
+
+/** A refine task's spec: read-only, with the draft tool and no PR text. */
+export const taskSpecRefineFixture: TaskSpec = {
+  ...taskSpecMinor3Fixture,
+  kind: "refine",
+  tools: ["draft", "memory"],
+};
+
+/** A review task's spec: each repo at its PR's head, with the review tool. */
+export const taskSpecReviewFixture: TaskSpec = {
+  ...taskSpecMinor3Fixture,
+  kind: "review",
+  review: { codeTaskId: ids.codeTask, round: 1, repos: [{ repoId: ids.repo, prNumber: 7, baseSha, headSha }] },
+  tools: ["review", "memory"],
+};
+
+/** An onboarding task's spec: a code task that proposes its environment and commits only `AGENTS.md`. */
+export const taskSpecOnboardingFixture: TaskSpec = {
+  ...taskSpecMinor3Fixture,
+  kind: "code",
+  tools: ["environment", "pr-text"],
+  commitPaths: ["AGENTS.md"],
+};
+
+/** A CI round's spec: an automatic first turn, with a failing check's log tail as a `ci` file. */
+export const taskSpecCiRoundFixture: TaskSpec = {
+  ...taskSpecMinor3Fixture,
+  automatic: true,
+  contextFiles: [
+    ...(taskSpecMinor3Fixture.contextFiles ?? []),
+    { blobId: ids.ciLogBlob, path: "test.log", contentType: "text/plain", size: 2048, folder: "ci" },
+  ],
+};
+
+/** A refine draft, as `submit_draft` takes it. */
+export const refineDraftFixture: RefineDraft = {
+  description: "Show the app's version in the footer, read from package.json at build time.",
+  acceptanceCriteria: ["The footer shows `v` and the version on every page.", "The version matches package.json."],
+  edgeCases: ["A build without a version shows nothing, not `vundefined`."],
+  openQuestions: ["Should the version link to the changelog?"],
+  subTickets: [
+    { title: "Read the version at build time", description: "Expose package.json's version to the app." },
+    { title: "Show it in the footer", description: "Render `v<version>` at the footer's right." },
+  ],
+};
+
+/** A review, as `submit_review` takes it: one blocking finding and one nit. */
+export const submitReviewInputFixture: SubmitReviewInput = {
+  summary: "One blocking problem, one nit.",
+  findings: [
+    { repo: "ostra-test/test1", path: "src/index.ts", line: 3, side: "new", severity: "blocking", title: "Unhandled error", body: "This throws on an empty list.", suggestion: null },
+    { repo: "ostra-test/test1", path: "README.md", line: 1, side: "new", severity: "nit", title: "Typo", body: "\"teh\" for \"the\".", suggestion: "# The app" },
+  ],
+};
+
+/** An environment proposal, as `propose_environment` takes it. */
+export const proposeEnvironmentInputFixture: ProposeEnvironmentInput = {
+  repos: [
+    {
+      repo: "ostra-test/test1",
+      setupScript: "pnpm install --frozen-lockfile",
+      checks: [{ name: "test", command: "pnpm test", timeoutSeconds: 600 }],
+      variableNames: ["DATABASE_URL"],
+    },
+  ],
+  services: [],
+  notes: "The setup needed pnpm 11; the tests pass after it.",
+};
+
+/** The sidecar's three endpoints of minor 5, a request and an answer each, and every refusal. */
+export const minor5HttpFixtures = {
+  draftRequest: refineDraftFixture satisfies DraftRequestBody,
+  draftSaved: { draftId: ids.draft, version: 1 } satisfies DraftResponse,
+  reviewRequest: {
+    summary: submitReviewInputFixture.summary,
+    findings: [
+      { repoId: ids.repo, path: "src/index.ts", line: 3, side: "new", severity: "blocking", title: "Unhandled error", body: "This throws on an empty list.", suggestion: null },
+      { repoId: ids.repo, path: "README.md", line: 1, side: "new", severity: "nit", title: "Typo", body: "\"teh\" for \"the\".", suggestion: "# The app" },
+    ],
+  } satisfies ReviewRequestBody,
+  reviewSaved: { reviewRunId: ids.reviewRun } satisfies ReviewResponse,
+  environmentProposalRequest: {
+    repos: [
+      {
+        repoId: ids.repo,
+        setupScript: "pnpm install --frozen-lockfile",
+        checks: [{ name: "test", command: "pnpm test", timeoutSeconds: 600 }],
+        variableNames: ["DATABASE_URL"],
+      },
+    ],
+    services: [],
+    notes: proposeEnvironmentInputFixture.notes,
+  } satisfies EnvironmentProposal,
+  environmentProposalSaved: { proposalId: ids.environmentProposal } satisfies EnvironmentProposalResponse,
+  draftRefusals: [{ code: "wrong-kind" }, { code: "invalid" }, { code: "limit-reached" }] satisfies readonly DraftResponse[],
+  reviewRefusals: [{ code: "wrong-kind" }, { code: "invalid" }, { code: "limit-reached" }, { code: "not-in-review" }] satisfies readonly ReviewResponse[],
+  environmentProposalRefusals: [
+    { code: "secret-found", found: ["a GitHub token"] },
+    { code: "wrong-kind" },
+    { code: "invalid" },
+  ] satisfies readonly EnvironmentProposalResponse[],
+} as const;

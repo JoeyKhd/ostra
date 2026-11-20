@@ -279,3 +279,49 @@ export type BoxSizeId = z.infer<typeof boxSizeIdSchema>;
 /** The ID of an organization's snapshot registry (F-120, ADR 0060). */
 export const registryIdSchema = idBase.brand<"RegistryId">();
 export type RegistryId = z.infer<typeof registryIdSchema>;
+
+// ---------- milestone 6 ----------
+
+/** The ID of one run of an automation: an occurrence of a schedule, or a rule's match of a ticket (F-011, F-106). */
+export const automationRunIdSchema = idBase.brand<"AutomationRunId">();
+export type AutomationRunId = z.infer<typeof automationRunIdSchema>;
+
+/** The ID of a bulk start: many tickets started in one action (F-107). */
+export const bulkStartIdSchema = idBase.brand<"BulkStartId">();
+export type BulkStartId = z.infer<typeof bulkStartIdSchema>;
+
+/** The ID of one ticket of a bulk start (F-107). */
+export const bulkStartItemIdSchema = idBase.brand<"BulkStartItemId">();
+export type BulkStartItemId = z.infer<typeof bulkStartItemIdSchema>;
+
+/** The ID of ostra's row for a tracker's agent session (F-012, ADR 0013). */
+export const agentSessionIdSchema = idBase.brand<"AgentSessionId">();
+export type AgentSessionId = z.infer<typeof agentSessionIdSchema>;
+
+/** The ID of one post to a tracker's agent session, in ostra's outbox (F-012). */
+export const agentActivityIdSchema = idBase.brand<"AgentActivityId">();
+export type AgentActivityId = z.infer<typeof agentActivityIdSchema>;
+
+/** The ID of an image a member added to a refine draft (F-099). */
+export const draftImageIdSchema = idBase.brand<"DraftImageId">();
+export type DraftImageId = z.infer<typeof draftImageIdSchema>;
+
+/** The ID of the CI result of one head of a task's PR (F-035). */
+export const ciRunIdSchema = idBase.brand<"CiRunId">();
+export type CiRunId = z.infer<typeof ciRunIdSchema>;
+
+/** The ID of a fixing round of a task: CI, findings or "changes requested" (F-035, F-101, F-105). */
+export const taskRoundIdSchema = idBase.brand<"TaskRoundId">();
+export type TaskRoundId = z.infer<typeof taskRoundIdSchema>;
+
+/** The ID of one AI review of a code task's PRs (F-100). */
+export const reviewRunIdSchema = idBase.brand<"ReviewRunId">();
+export type ReviewRunId = z.infer<typeof reviewRunIdSchema>;
+
+/** The ID of a reviewer of a task's PR (F-102). */
+export const taskReviewerIdSchema = idBase.brand<"TaskReviewerId">();
+export type TaskReviewerId = z.infer<typeof taskReviewerIdSchema>;
+
+/** The ID of an environment an onboarding task proposed (F-113, ADR 0038). */
+export const environmentProposalIdSchema = idBase.brand<"EnvironmentProposalId">();
+export type EnvironmentProposalId = z.infer<typeof environmentProposalIdSchema>;

@@ -19,6 +19,7 @@ import {
   runnerEventSchemaV1,
   runnerEventSchemaV2,
   runnerEventSchemaV3,
+  runnerEventSchemaV4,
   runnerScopedEventKinds,
   taskEventSchema,
 } from "../events/agent-events.ts";
@@ -30,6 +31,7 @@ import {
   commandSchemaV1,
   commandSchemaV2,
   commandSchemaV3,
+  commandSchemaV4,
   encodeCommandForMinor,
 } from "./commands.ts";
 import { runnerLimits } from "./limits.ts";
@@ -184,6 +186,11 @@ export const eventsFrameSchema = z.strictObject({
 });
 export type EventsFrame = z.infer<typeof eventsFrameSchema>;
 
+/** Minor 4's `events` frame: its events refuse minor 5's kinds and intents. */
+const eventsFrameSchemaV4 = eventsFrameSchema.extend({
+  events: z.array(runnerEventSchemaV4).min(1).max(runnerLimits.eventsPerFrameMax),
+});
+
 /** Minor 3's `events` frame: its events refuse minor 4's kinds. */
 const eventsFrameSchemaV3 = eventsFrameSchema.extend({
   events: z.array(runnerEventSchemaV3).min(1).max(runnerLimits.eventsPerFrameMax),
@@ -289,9 +296,17 @@ export const liveTextSchema = z.strictObject({
 });
 export type LiveText = z.infer<typeof liveTextSchema>;
 
-const upFrameV4 = z.discriminatedUnion("type", [
+const upFrameV5 = z.discriminatedUnion("type", [
   helloSchema,
   eventsFrameSchema,
+  commandAckSchema,
+  statusSchema,
+  liveTextSchema,
+  runnerEventFrameSchema,
+]);
+const upFrameV4 = z.discriminatedUnion("type", [
+  helloSchema,
+  eventsFrameSchemaV4,
   commandAckSchema,
   statusSchema,
   liveTextSchema,
@@ -327,7 +342,7 @@ const upFrameV0 = z.discriminatedUnion("type", [
   statusSchemaV0,
   liveTextSchema,
 ]);
-export type UpFrame = z.infer<typeof upFrameV4>;
+export type UpFrame = z.infer<typeof upFrameV5>;
 export type UpFrameType = UpFrame["type"];
 
 // ---------- down: server to peer ----------
@@ -440,11 +455,20 @@ export const evictSchema = z.strictObject({
 });
 export type Evict = z.infer<typeof evictSchema>;
 
-const downFrameV4 = z.discriminatedUnion("type", [
+const downFrameV5 = z.discriminatedUnion("type", [
   welcomeSchema,
   ackSchema,
   creditSchema,
   commandSchema,
+  goawaySchema,
+  errorFrameSchema,
+  evictSchema,
+]);
+const downFrameV4 = z.discriminatedUnion("type", [
+  welcomeSchema,
+  ackSchema,
+  creditSchema,
+  commandSchemaV4,
   goawaySchema,
   errorFrameSchema,
   evictSchema,
@@ -485,7 +509,7 @@ const downFrameV0 = z.discriminatedUnion("type", [
   errorFrameSchema,
   evictSchema,
 ]);
-export type DownFrame = z.infer<typeof downFrameV4>;
+export type DownFrame = z.infer<typeof downFrameV5>;
 export type DownFrameType = DownFrame["type"];
 
 // ---------- codecs and parsing ----------
@@ -554,7 +578,8 @@ export const upFrameCodec = createVersionedCodec<UpFrame>([
   { minor: 1, decode: upFrameV1, encode: encodeUpFrameFor(1) },
   { minor: 2, decode: upFrameV2, encode: encodeUpFrameFor(2) },
   { minor: 3, decode: upFrameV3, encode: encodeUpFrameFor(3) },
-  { minor: 4, decode: upFrameV4, encode: (frame) => frame },
+  { minor: 4, decode: upFrameV4, encode: encodeUpFrameFor(4) },
+  { minor: 5, decode: upFrameV5, encode: (frame) => frame },
 ]);
 
 /**
@@ -562,14 +587,16 @@ export const upFrameCodec = createVersionedCodec<UpFrame>([
  * commands and two command fields, which a lower minor's encode drops and its decode refuses.
  * Minor 3 added `set-effort` (F-137), which minor 2's decode refuses and the outbox never sends
  * it (`commandKindSupportedAt`). Minor 4 added `resume`, the dispatch's `box` and the snapshot
- * build's `push` and `builder`.
+ * build's `push` and `builder`. Minor 5 added the dispatch's and the steer's `automatic` and
+ * the steer's four new intents, which minor 4's encode drops and its decode refuses.
  */
 export const downFrameCodec = createVersionedCodec<DownFrame>([
   { minor: 0, decode: downFrameV0, encode: encodeDownFrameFor(0) },
   { minor: 1, decode: downFrameV1, encode: encodeDownFrameFor(1) },
   { minor: 2, decode: downFrameV2, encode: encodeDownFrameFor(2) },
   { minor: 3, decode: downFrameV3, encode: encodeDownFrameFor(3) },
-  { minor: 4, decode: downFrameV4, encode: (frame) => frame },
+  { minor: 4, decode: downFrameV4, encode: encodeDownFrameFor(4) },
+  { minor: 5, decode: downFrameV5, encode: (frame) => frame },
 ]);
 
 /** Parse a frame a peer sent at `minor`. Never throws; the error names paths, never values. */

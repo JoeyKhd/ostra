@@ -8,7 +8,7 @@ import { postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, systemC
 import type { SessionTimers } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
-import { blobIdSchema, boxIdSchema, commandIdSchema, commandSeqSchema, releaseBodySchema, repoIdSchema, segmentIdSchema, taskIdSchema, turnIdSchema } from "@ostra/protocol";
+import { blobIdSchema, boxIdSchema, commandIdSchema, commandSeqSchema, PROTOCOL_MINOR, releaseBodySchema, repoIdSchema, segmentIdSchema, taskIdSchema, turnIdSchema } from "@ostra/protocol";
 import type { BlobRef, BoxId, OrganizationId, RepoId, TaskId } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -183,7 +183,7 @@ describe("releasing a box (F-079)", () => {
     const harness = await startGateway(test.db, test.url, { hooks: { ingest, liveText: liveText.write } });
     try {
       const registered = await registerPersonal(harness, test.db, fixture.a.member);
-      const first = await connect(harness, registered, { minor: 3 });
+      const first = await connect(harness, registered, { minor: PROTOCOL_MINOR - 1 });
       await first.next("welcome");
       first.close();
       await first.closed;
@@ -196,7 +196,7 @@ describe("releasing a box (F-079)", () => {
         jobContext("box.release", { organizationId, taskId: taskIdSchema.parse(task.id), boxId: boxIdSchema.parse(box.id), reason: "prs-closed" }, logger),
       );
       expect(await test.db.box.findUniqueOrThrow({ where: { id: box.id } })).toMatchObject({ state: "released", releasedAt: null });
-      const again = await connect(harness, registered, { minor: 3 });
+      const again = await connect(harness, registered, { minor: PROTOCOL_MINOR - 1 });
       const delivered = await again.next("command");
       expect(delivered).toMatchObject({ kind: "release", body: { boxId: box.id, reason: "prs-closed" } });
       expect(await releaseCommands(box.id)).toHaveLength(1);

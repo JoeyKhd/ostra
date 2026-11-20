@@ -26,7 +26,7 @@ import type { AdmitDeps, MemberScope } from "@ostra/domain";
 import { seedPool, seedQueuedTask as seedQueued, seedRunner } from "@ostra/domain/testing";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
-import { commandIdSchema, commandSeqSchema, leaseEpochSchema, memberIdSchema, sessionIdSchema } from "@ostra/protocol";
+import { commandIdSchema, commandSeqSchema, leaseEpochSchema, memberIdSchema, PROTOCOL_MINOR, sessionIdSchema } from "@ostra/protocol";
 import type { OrganizationId, PoolId, ProjectId, RunnerCapabilities, RunnerId, SessionId, TaskId } from "@ostra/protocol";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -531,7 +531,7 @@ describe("what a runner reports (F-067, F-069)", () => {
         {
           runnerId: runner,
           organizationId,
-          minor: 4,
+          minor: PROTOCOL_MINOR,
           version: "0.5.0",
           slots: 3,
           resources: { slots: 6, cpuMillis: 12_000, memoryMiB: 24_000 },
@@ -555,7 +555,7 @@ describe("what a runner reports (F-067, F-069)", () => {
       cpuMillis: 12_000,
       memoryMiB: 24_000,
       install: "npm",
-      minor: 4,
+      minor: PROTOCOL_MINOR,
       capabilities: dockerCapabilities,
     });
     const line = records.find((record) => record.message === "runner.reserved-labels-dropped");

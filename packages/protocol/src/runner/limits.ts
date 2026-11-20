@@ -148,6 +148,46 @@ export const runnerLimits = {
   searchEntryMaxBytes: 8 * KiB,
   /** ADR 0027, F-098: the most repos a project holds (`OSTRA_PROJECT_MAX_REPOS`), and so a PR's "Related" list. */
   projectReposMax: 10,
+
+  // ---- milestone 6, protocol minor 5 (working values, spec section 5.1) ----
+  /** ADR 0028, F-099: a refine draft's description, in UTF-8 bytes. */
+  draftDescriptionMaxBytes: 32 * KiB,
+  /** ADR 0028, F-099: the most acceptance criteria a draft holds. */
+  draftAcceptanceCriteriaMax: 30,
+  /** ADR 0028, F-099: the most edge cases a draft holds. */
+  draftEdgeCasesMax: 30,
+  /** ADR 0028, F-099: the most open questions a draft holds. */
+  draftOpenQuestionsMax: 30,
+  /** ADR 0028, F-099: one acceptance criterion, edge case or open question, in characters. */
+  draftItemMaxChars: 2000,
+  /** ADR 0028, F-099: the most sub-tickets a draft proposes. */
+  draftSubTicketsMax: 20,
+  /** ADR 0028, F-099: a sub-ticket's description, in UTF-8 bytes. */
+  draftSubTicketMaxBytes: 8 * KiB,
+  /** ADR 0028, F-099: a sub-ticket's title, in characters. */
+  draftSubTicketTitleMaxChars: 256,
+  /** ADR 0058, F-100: the most findings one review hands in (`OSTRA_REVIEW_FINDINGS_MAX`). */
+  reviewFindingsMax: 30,
+  /** ADR 0058, F-100: a finding's body, in UTF-8 bytes. */
+  findingBodyMaxBytes: 4 * KiB,
+  /** ADR 0058, F-100: a finding's title, in characters. */
+  findingTitleMaxChars: 200,
+  /** ADR 0058, F-100: a finding's suggested replacement, in UTF-8 bytes. */
+  findingSuggestionMaxBytes: 4 * KiB,
+  /** ADR 0058, F-100: a review's summary, in UTF-8 bytes. */
+  reviewSummaryMaxBytes: 8 * KiB,
+  /** ADR 0058, F-035: a CI log tail handed to the agent, in bytes (`OSTRA_CI_LOG_TAIL_KIB`). */
+  ciLogTailMaxBytes: 64 * KiB,
+  /** ADR 0058, F-035: the most failing checks one CI round carries (`OSTRA_CI_LOG_CHECKS`). */
+  ciLogChecksMax: 5,
+  /** ADR 0038, F-113: an environment proposal, in UTF-8 bytes of its JSON. */
+  environmentProposalMaxBytes: 256 * KiB,
+  /** ADR 0038, F-113: an environment proposal's notes, in UTF-8 bytes. */
+  environmentProposalNotesMaxBytes: 16 * KiB,
+  /** ADR 0038, F-113: the most paths `commit.filtered` lists; the rest are counted. */
+  commitFilteredPathsMax: 50,
+  /** ADR 0038, F-113: the most paths or globs a task may commit (`commitPaths`). */
+  commitPathsMax: 50,
 } as const;
 
 export type RunnerLimits = typeof runnerLimits;

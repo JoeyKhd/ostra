@@ -593,6 +593,25 @@ const applyEffects = async (
       case "task.cancelled":
       case "runner.drained":
       case "runner.resumed":
+      // Protocol minor 5 (milestone 6): stored for the task page. `question.auto_answered` and
+      // `commit.filtered` come from a runner's automatic or onboarding turn and move nothing here
+      // (tickets 18 and 21 read them); the server-only ones never come from a runner.
+      case "question.auto_answered":
+      case "commit.filtered":
+      case "automation.started":
+      case "task.approval_requested":
+      case "task.approved":
+      case "task.rejected":
+      case "tracker.session_event":
+      case "draft.submitted":
+      case "draft.applied":
+      case "ci.updated":
+      case "round.started":
+      case "round.capped":
+      case "review.submitted":
+      case "review.posted":
+      case "reviewers.updated":
+      case "environment.proposed":
         // Stored for the task page; nothing else moves.
         break;
       default:
