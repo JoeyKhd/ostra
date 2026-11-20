@@ -717,7 +717,7 @@ const AddCondition = ({ used, boardCount, onAdd }: { readonly used: ReadonlySet<
   const free = fields.filter((field) => (!used.has(field) || field === "labels") && (field !== "board" || boardCount > 1));
   return (
     <Select value="" onValueChange={(value) => { const field = fields.find((one) => one === value); if (field !== undefined) onAdd(field); }}>
-      <SelectTrigger className="h-[30px] w-auto border-transparent text-muted hover:text-text [&>svg:last-child]:hidden" aria-label={t("automations.editor.addCondition")}>
+      <SelectTrigger className="h-[30px] w-auto text-muted hover:text-text [&>svg:last-child]:hidden" aria-label={t("automations.editor.addCondition")}>
         <PlusIcon aria-hidden /> {t("automations.editor.addCondition")}
       </SelectTrigger>
       <SelectContent>
@@ -743,7 +743,7 @@ const PoolLabels = ({ labels, disabled, onChange }: { readonly labels: readonly 
   };
   return (
     <>
-      <div className="flex min-h-[34px] flex-wrap items-center gap-1.5 rounded-md border border-control-line bg-surface px-1.5 py-1">
+      <div className="focus-box flex min-h-[34px] flex-wrap items-center gap-1.5 rounded-md border border-control-line bg-surface px-1.5 py-1">
         {labels.map((label) => (
           <Chip key={label} className="h-[24px] bg-bg font-mono text-[12.5px] text-text" data-testid="pool-label">
             {label}

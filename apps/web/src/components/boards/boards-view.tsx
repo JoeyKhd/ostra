@@ -259,7 +259,8 @@ const OpenPicker = ({ board, value, onChange }: { readonly board: BoardView; rea
         ))}
       </div>
       <Popover>
-        <PopoverTrigger aria-label={t("boards.mapping.addStatus")} className="grid size-7 shrink-0 place-items-center rounded-sm text-muted hover:bg-sel hover:text-text">
+        {/* No statuses read from Linear: nothing to add, so the button rests rather than open an empty panel that holds the focus. */}
+        <PopoverTrigger disabled={groupStatuses(board).length === 0} aria-label={t("boards.mapping.addStatus")} className="grid size-7 shrink-0 place-items-center rounded-sm text-muted hover:bg-sel hover:text-text disabled:pointer-events-none disabled:opacity-50">
           <ChevronDownIcon aria-hidden className="size-4 stroke-[1.75]" />
         </PopoverTrigger>
         <PopoverContent className="w-[280px]">

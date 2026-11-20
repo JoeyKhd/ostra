@@ -150,7 +150,8 @@ export const FilterMenu = ({ label, options, selected, onChange }: { readonly la
   const names = options.filter((option) => selected.includes(option.value)).map((option) => option.label);
   return (
     <Popover>
-      <PopoverTrigger className={cn(buttonVariants({ size: "sm" }), "h-[30px] bg-transparent px-3 text-ui")}>
+      {/* Nothing to pick (no ticket has a label yet): the button rests, and says so, rather than open an empty panel that holds the focus. */}
+      <PopoverTrigger disabled={options.length === 0} title={options.length === 0 ? t("inbox.filter.none") : undefined} className={cn(buttonVariants({ size: "sm" }), "h-[30px] bg-transparent px-3 text-ui")}>
         {label}
         {names.length === 0 ? null : (
           <>
@@ -160,7 +161,6 @@ export const FilterMenu = ({ label, options, selected, onChange }: { readonly la
         <ChevronDownIcon aria-hidden className="size-3! text-faint" />
       </PopoverTrigger>
       <PopoverContent className="w-[240px]">
-        {options.length === 0 ? <p className="px-2 py-1.5 text-ui text-faint">{t("inbox.filter.none")}</p> : null}
         {options.map((option) => {
           const on = selected.includes(option.value);
           return (
