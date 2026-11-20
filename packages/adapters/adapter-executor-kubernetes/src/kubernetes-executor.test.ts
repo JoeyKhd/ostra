@@ -306,9 +306,19 @@ describe("the kubernetes executor's boxes (ticket 07)", () => {
     const executor = executorOn(cluster);
     const box = newBox();
     const heard: BoxWaitChange[] = [];
+    const heardAt: number[] = [];
     cluster.fake.holdUnschedulable(1500);
     const started = Date.now();
-    const created = await executor.create({ ...box, spec: taskSpecFixture, proxies, taskToken: TOKEN, onWaiting: (change) => heard.push(change) });
+    const created = await executor.create({
+      ...box,
+      spec: taskSpecFixture,
+      proxies,
+      taskToken: TOKEN,
+      onWaiting: (change) => {
+        heard.push(change);
+        heardAt.push(Date.now());
+      },
+    });
     expect(created.ok).toBe(true);
     expect(Date.now() - started, "create didn't wait for the node").toBeLessThan(1000);
     expect(await executor.state(box)).toEqual({ ok: true, value: "creating" });
@@ -316,8 +326,14 @@ describe("the kubernetes executor's boxes (ticket 07)", () => {
     expect((await executor.prepare({ box, spec: taskSpecFixture, secrets: [], onSetupOutput: () => undefined })).ok).toBe(true);
     expect(heard.map((change) => change.kind)).toEqual(["waiting", "scheduled"]);
     expect(heard[0]).toMatchObject({ kind: "waiting", reason: "node" });
+    // Scheduled no sooner than the 1.5 s hold allows, by the test's own clock. The executor's
+    // `afterMs` starts when it first sees the wait, late on a busy CI machine (1383 ms in run
+    // 44783768396), so it's only checked to be a real wait no longer than the test saw.
     const scheduled = heard[1];
-    expect(scheduled?.kind === "scheduled" ? scheduled.afterMs : 0).toBeGreaterThanOrEqual(1400);
+    const scheduledAt = heardAt[1] ?? started;
+    expect(scheduledAt - started).toBeGreaterThanOrEqual(1450);
+    expect(scheduled?.kind === "scheduled" ? scheduled.afterMs : 0).toBeGreaterThan(0);
+    expect(scheduled?.kind === "scheduled" ? scheduled.afterMs : Number.POSITIVE_INFINITY).toBeLessThanOrEqual(scheduledAt - started + 50);
     expect(await executor.state(box)).toEqual({ ok: true, value: "ready" });
     await executor.release(box, "requested");
   });
