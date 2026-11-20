@@ -39,7 +39,7 @@ One prompt and the agent's full response to it within a session. The response in
 _Avoid_: message, step, round
 
 **Subagent**:
-An agent the task's agent starts for part of its work, in a child session of its own, such as OpenCode's `general` and its read-only `explore`. It belongs to the turn that started it, and stops when that turn is cancelled (ADR 0067).
+An agent the task's agent starts for part of its work, in a child session of its own, such as OpenCode's `general` and its read-only `explore`. It belongs to the turn that started it, and stops when that turn is cancelled (ADR 0067). The task page shows a turn's subagents as a badge on the turn and a tree in their window, each under the agent that started it; their calls and answers are theirs, never the agent's in the thread (F-138).
 _Avoid_: child agent, worker, sub-task
 
 **Event**:

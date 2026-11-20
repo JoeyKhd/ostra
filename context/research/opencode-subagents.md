@@ -82,6 +82,16 @@ The maintainer approved the fix for sections 2 and 3 ("yes"). Each claim below i
 
   In a real run, explore isn't offered `edit` or `write`, and its edit and its shell write both fail (`task-host.opencode.test.ts`, "F-026: OpenCode's explore subagent stays read-only …"). `general` keeps the task's permissions and the profile's asks.
 
+## 6. What the task page shows since F-138 (2026-11-20, milestone 7's ticket 39)
+
+Each claim is checked by a test that names F-138 (`context/proof/F-138.md`).
+
+- **The protocol** (minor 6, `packages/protocol/src/events/agent-events.ts`): `subagent.started` (the starting call, the subagent's ID, its parent, its depth, its type, description and prompt) and `subagent.status` (`created`, `running`, `completed`, `failed` with its error, `interrupted`), and `subagentId` on `agent.message`, `agent.thought`, `tool.called`, `plan.updated` and `approval.requested`. A minor-5 server gets neither kind and no field: the runner leaves out what the negotiated minor can't read, and the codec drops the field, so the calls arrive flat (`apps/runner/src/task-host/subagents.test.ts`).
+- **The driver** names each child's update, state and approval from `opencode/session/child_update` (its `childSessionId`, `parentSessionId` and `depth`) and, without the extension, from the update's own `_meta["opencode/child-session"]`; a permission request names it from `toolCall._meta` (section 1, run I). The mapper joins a child to its starting call through `rawOutput.metadata.sessionID` and the call's `rawInput` (`agent`, `description`, `prompt`), and keeps each subagent's words in a segment of its own, never streamed into the thread. The driver reports `interrupted` itself for the subagents it stops, since OpenCode no longer follows the session then (section 5).
+- **The fold** (`packages/task-view`) builds each turn's tree from the stored events: the subagents in start order, each under its parent, with its rounds (a follow-up adds one: inferred from the source, section 1), its calls and its last message as its answer. A subagent whose start never arrived stays under the main agent, marked. With no state reported, a subagent is done once its turn is over if it answered, and stopped if it didn't (run I has no states).
+- **Replayed:** runs B, D and I of [EV] played to the real `OpenCodeAdapter` give the tree (`packages/task-view/src/subagents.test.ts`), as does a real run of the pinned binary against the stub model. The cleaned log gives a child's calls no kind or input, and run F's nested `subagent` call no output to join, so nesting is proved on the scripted fake agent that plays OpenCode at depth 2.
+- **Tokens per subagent** are still not given (section 4, item 4): the window shows none, until an ADR decides attribution at the key proxy.
+
 ## Unverified
 
 - Whether a subagent's question (`question` tool, an elicitation) reaches ostra as it does from the main agent.

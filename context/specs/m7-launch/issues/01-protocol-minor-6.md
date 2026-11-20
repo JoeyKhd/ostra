@@ -31,3 +31,4 @@ Every change is additive. The schema is written once, Zod first; the types are `
 ## Comments
 
 - 2026-11-19, lead: set `wontfix`. Claude Code (F-018) moved after v1 on the maintainer's word, and this ticket waits for it.
+- 2026-11-20: minor 6 went to F-138's subagents (ticket 39, commit `0d1b2b9d`): `subagent.started`, `subagent.status` and an optional `subagentId` on `tool.called`, `agent.message`, `agent.thought`, `plan.updated` and `approval.requested`, in place of this ticket's `parentToolCallId`. When F-018 comes back, its changes take the next minor, and Claude Code's subagents map onto these events.

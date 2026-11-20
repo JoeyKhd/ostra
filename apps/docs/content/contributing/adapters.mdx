@@ -65,7 +65,7 @@ export const capabilities = {
 } as const satisfies AgentCapabilities;
 ```
 
-ostra then queues a member's message until the turn ends, reopens through the rebuild template, appends skills to the agent's instructions, hides the repo's own agent config from it, has the runner check every permission request, gives it memory's index without the memory tools, runs every task at the agent's default reasoning level, with no effort control in the panel, and ends a turn with its prompt's answer, since no subagent of its runs on past it. Plan first can't run on it, and the panel says so. `modelBaseUrlAndPlaceholderKey` is the one an agent can't do without: every model call must go through the key proxy.
+ostra then queues a member's message until the turn ends, reopens through the rebuild template, appends skills to the agent's instructions, hides the repo's own agent config from it, has the runner check every permission request, gives it memory's index without the memory tools, runs every task at the agent's default reasoning level, with no effort control in the panel, and ends a turn with its prompt's answer, since no subagent of its runs on past it; whatever subagents it has show their calls in the thread as its own, with no subagents window. Plan first can't run on it, and the panel says so. `modelBaseUrlAndPlaceholderKey` is the one an agent can't do without: every model call must go through the key proxy.
 
 ## The agent kind
 

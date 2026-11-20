@@ -61,6 +61,10 @@ The agent contract suite runs both ways, and the parity table names the case for
 - "an agent without background subagents ends its turn with its prompt's answer"
 - "a cancel while a subagent runs stops it with the turn …"
 
+## Since F-138 (2026-11-20, milestone 7's ticket 39)
+
+The subagents' updates are no longer mapped flat. Protocol minor 6 carries a subagent's start and states (`subagent.started`, `subagent.status`) and names the subagent on the agent's output and its approvals; the driver reads them from the same child-session notices this decision asked for, and reports `interrupted` itself for the subagents it stops on a cancel or past the wait's bound. An adapter with `subagents: "none"` names no subagent, and a minor-5 server gets none of it: either way the calls show flat, as before (`research/opencode-subagents.md`, section 6).
+
 ## What it costs
 
 - A turn with subagents ends later: at the agent's real answer.
