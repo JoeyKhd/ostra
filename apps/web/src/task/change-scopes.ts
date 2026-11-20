@@ -4,13 +4,15 @@ import type { ChangeEntity } from "@ostra/protocol";
 // over `ChangeEntity`, so a new kind of notice fails the build until the panel says what it refreshes.
 
 /** A top-level tRPC router whose cached queries a notice can invalidate. */
-export type QueryScope = "tasks" | "projects" | "runners" | "pools" | "providers" | "agentProfiles" | "environments" | "github" | "organization" | "me" | "boxSizes" | "fleetUse" | "registry" | "registryUse" | "automations" | "inbox" | "tickets";
+export type QueryScope = "tasks" | "projects" | "runners" | "pools" | "providers" | "agentProfiles" | "environments" | "github" | "organization" | "me" | "boxSizes" | "fleetUse" | "registry" | "registryUse" | "automations" | "inbox" | "tickets" | "diff";
 
 export const queryScopesOf = (entity: ChangeEntity): readonly QueryScope[] => {
   switch (entity) {
     case "task":
-      // Milestone 6: a task's move shows in the Inbox's rows and a parent ticket's page.
-      return ["tasks", "projects", "fleetUse", "inbox", "tickets"];
+      // Milestone 6: a task's move shows in the Inbox's rows and a parent ticket's page. Milestone 3
+      // (ticket 46): `diff.fetch` sends the task's notice once a new head's diff is in and the
+      // comments it outdated are marked, so an open Changes tab shows both.
+      return ["tasks", "projects", "fleetUse", "inbox", "tickets", "diff"];
     case "runner":
     case "runner-pool":
       // Milestone 5: the Box sizes page counts runners, and a project's Runners tab its pools' boxes.

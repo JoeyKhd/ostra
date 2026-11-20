@@ -22,6 +22,10 @@ describe("queryScopesOf", () => {
     for (const entity of ["runner", "project", "task"] as const) expect(queryScopesOf(entity)).toContain("fleetUse");
   });
 
+  it("F-072/c1: a task's notice refreshes its diff and its comments, so a new head's outdated marks show on an open Changes tab", () => {
+    expect(queryScopesOf("task")).toContain("diff");
+  });
+
   it("refreshes the organization and the member's own view for a member or organization change", () => {
     for (const entity of ["member", "organization"] as const) {
       expect(queryScopesOf(entity)).toEqual(expect.arrayContaining(["organization", "me"]));
