@@ -12,7 +12,7 @@ import { dataPaths, signInAgainAdvice, updateStatus } from "./identity/store.ts"
 import { kubernetesCluster } from "./kubernetes-cluster.ts";
 import { createKubernetesDispatcher } from "./kubernetes-dispatcher.ts";
 import { defaultAgents } from "./task-host/agents.ts";
-import { fetchServiceSecrets, fetchSnapshotCredentials, fetchTaskToken, runnerServerLink } from "./task-host/server-link.ts";
+import { fetchPullCredential, fetchPushCredential, fetchServiceSecrets, fetchSnapshotCredentials, fetchTaskToken, runnerServerLink } from "./task-host/server-link.ts";
 import { createTaskHost } from "./task-host/task-host.ts";
 import { approvalHooks, DOCKER_CAPABILITIES, withApprovalStatus } from "./pool-approval.ts";
 import { hostSlots, reportedCapabilities } from "./reports.ts";
@@ -160,6 +160,9 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
         serviceSecrets: fetchServiceSecrets({ serverUrl: config.serverUrl }),
         snapshots: createDockerSnapshots({ engine, workDir: path.resolve(dataDir), defaultBaseImage: imagesOf(config).base, logger }),
         snapshotCredentials: fetchSnapshotCredentials({ serverUrl: config.serverUrl, tokens: signedIn.tokens }),
+        // Milestone 5 (F-120, ticket 21): the registry's credentials, each for one pull or one build.
+        pullCredential: fetchPullCredential({ serverUrl: config.serverUrl, tokens: signedIn.tokens }),
+        pushCredential: fetchPushCredential({ serverUrl: config.serverUrl, tokens: signedIn.tokens }),
         reportRunnerEvent: (event) => {
           holder.connection?.sendRunnerEvent(event);
         },
@@ -208,6 +211,10 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
         namespace,
         link,
         taskToken: fetchTaskToken({ serverUrl: config.serverUrl, tokens: signedIn.tokens }),
+        // Milestone 5 (F-120, ticket 21): the pull credential into the box's pull secret, and builds that push.
+        pullCredential: fetchPullCredential({ serverUrl: config.serverUrl, tokens: signedIn.tokens }),
+        snapshotCredentials: fetchSnapshotCredentials({ serverUrl: config.serverUrl, tokens: signedIn.tokens }),
+        pushCredential: fetchPushCredential({ serverUrl: config.serverUrl, tokens: signedIn.tokens }),
         dataDir: path.resolve(dataDir),
         labels: config.labels,
         logger,

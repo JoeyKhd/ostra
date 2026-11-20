@@ -7,6 +7,7 @@ import type {
   BoxId,
   CommandOf,
   LeaseEpoch,
+  RegistryCredential,
   RunnerLabel,
   ServiceSecrets,
   SessionId,
@@ -16,6 +17,7 @@ import type {
   TaskId,
   TaskSpec,
 } from "@ostra/protocol";
+import type { BoxImage } from "@ostra/adapter-sdk";
 import type { CommandHandlers, CommandOutcome, PeerStatus } from "./connection/peer.ts";
 import type { LinkResult, ServerLink } from "./task-host/server-link.ts";
 
@@ -97,6 +99,13 @@ export type BoxDispatcherOptions = {
   readonly snapshotCredentials?: (snapshotId: SnapshotId) => Promise<LinkResult<SnapshotCredentials>>;
   /** Sends a runner's own event up: the connection's `sendRunnerEvent`. */
   readonly reportRunnerEvent?: (event: TaskEvent) => void;
+  /**
+   * Milestone 5 (F-120): the pull credential for a lease's registry image (`fetchPullCredential`),
+   * `null` when the registry has none to give. Without it, a dispatch that names an image makes no box.
+   */
+  readonly pullCredential?: (taskId: TaskId, leaseEpoch: LeaseEpoch) => Promise<LinkResult<RegistryCredential | null>>;
+  /** Milestone 5 (F-120): the push credential for a build that pushes (`fetchPushCredential`). */
+  readonly pushCredential?: (snapshotId: SnapshotId) => Promise<LinkResult<RegistryCredential>>;
 };
 
 export type BoxDispatcher = {
@@ -222,6 +231,40 @@ export const createBoxDispatcher = (options: BoxDispatcherOptions): BoxDispatche
     options.reportRunnerEvent?.(event);
   };
 
+  /**
+   * Milestone 5 (F-120): the registry image a dispatch names, with its pull credential for this
+   * lease, for the Engine's pull call only: never kept, never written, never logged.
+   */
+  const imageOf = async (body: CommandOf<"dispatch">["body"]): Promise<{ readonly ok: true; readonly value: BoxImage | null } | { readonly ok: false; readonly reason: string }> => {
+    const wanted = body.box?.image ?? null;
+    if (wanted === null) {
+      return { ok: true, value: null };
+    }
+    if (options.pullCredential === undefined) {
+      return { ok: false, reason: "no-pull-credential-source" };
+    }
+    const credential = await options.pullCredential(body.taskId, body.leaseEpoch);
+    if (!credential.ok) {
+      return { ok: false, reason: credential.failure.kind };
+    }
+    return { ok: true, value: { ref: wanted.ref, digest: wanted.digest, pull: credential.value === null ? null : { username: credential.value.username, token: credential.value.token } } };
+  };
+
+  /** Milestone 5 (F-120): the push credential for a build that pushes, or why there's none. */
+  const pushOf = async (
+    body: CommandOf<"snapshot-build">["body"],
+  ): Promise<{ readonly ok: true; readonly value: { readonly ref: string; readonly credential: { readonly username: string; readonly token: string } } | null } | { readonly ok: false; readonly takenBack: boolean }> => {
+    const push = body.push ?? null;
+    if (push === null) {
+      return { ok: true, value: null };
+    }
+    const credential = await options.pushCredential?.(body.snapshotId);
+    if (credential?.ok !== true) {
+      return { ok: false, takenBack: credential?.failure.kind === "stale-lease" };
+    }
+    return { ok: true, value: { ref: push.ref, credential: { username: credential.value.username, token: credential.value.token } } };
+  };
+
   const buildSnapshot = async (body: CommandOf<"snapshot-build">["body"], snapshots: DockerSnapshots): Promise<void> => {
     const buildLog = log.child({ snapshotId: body.snapshotId, projectId: body.projectId });
     const credentials = await options.snapshotCredentials?.(body.snapshotId);
@@ -236,6 +279,16 @@ export const createBoxDispatcher = (options: BoxDispatcherOptions): BoxDispatche
       }
       return;
     }
+    // Milestone 5 (F-120): a build that pushes gets its push credential for this build only; the
+    // scan runs before the push, and a scan hit pushes nothing (ADR 0038).
+    const push = await pushOf(body);
+    if (!push.ok) {
+      buildLog.warn("no push credential for the snapshot build", { takenBack: push.takenBack });
+      if (!push.takenBack) {
+        report({ kind: "snapshot.failed", snapshotId: body.snapshotId, reason: "build-failed", detail: "The runner couldn't read the build's push credential from the server." });
+      }
+      return;
+    }
     // The build's output is the setup script's: never logged, and not sent up (only its result is).
     const built = await snapshots.buildSnapshot({
       snapshotId: body.snapshotId,
@@ -243,6 +296,7 @@ export const createBoxDispatcher = (options: BoxDispatcherOptions): BoxDispatche
       environment: body.environment,
       credentials: credentials.value,
       onOutput: () => undefined,
+      ...(push.value === null ? {} : { push: push.value }),
     });
     if (!built.ok) {
       buildLog.warn("the snapshot build failed", { code: built.error.code });
@@ -252,8 +306,9 @@ export const createBoxDispatcher = (options: BoxDispatcherOptions): BoxDispatche
     const result = built.value;
     switch (result.outcome) {
       case "built":
-        buildLog.info("snapshot built", { durationMs: result.durationMs });
-        report({ kind: "snapshot.built", snapshotId: body.snapshotId, imageDigest: result.imageDigest, durationMs: result.durationMs });
+        buildLog.info("snapshot built", { durationMs: result.durationMs, pushed: push.value !== null });
+        // A pushed image is named by the registry's digest, which boxes pull by; a kept one by its ID here.
+        report({ kind: "snapshot.built", snapshotId: body.snapshotId, imageDigest: push.value === null ? result.imageDigest : (result.digest ?? result.imageDigest), durationMs: result.durationMs });
         return;
       case "failed":
         buildLog.info("snapshot build failed", { reason: result.reason });
@@ -289,7 +344,14 @@ export const createBoxDispatcher = (options: BoxDispatcherOptions): BoxDispatche
         boxLog.warn("no secrets for the box's services: no box", { reason: services.reason });
         return;
       }
-      const snapshotImage = await snapshotImageOf(spec.value);
+      // Milestone 5 (F-120): the registry's image by digest wins over a snapshot this host keeps.
+      const image = await imageOf(body);
+      if (!image.ok) {
+        boxLog.warn("no pull credential for the box's image: no box", { reason: image.reason });
+        return;
+      }
+      const snapshotImage = image.value === null ? await snapshotImageOf(spec.value) : null;
+      const size = body.box?.size ?? null;
       await makeTokenDir(tokenDir);
       await writeBoxFile(path.join(tokenDir, "token"), token.value);
       const created = await options.boxes.createBox({
@@ -303,12 +365,15 @@ export const createBoxDispatcher = (options: BoxDispatcherOptions): BoxDispatche
         ...(access.kind === "group" ? { tokenGroup: access.gid } : {}),
         ...(snapshotImage === null ? {} : { snapshotImage }),
         ...(services.value.length === 0 ? {} : { services: services.value }),
+        // Milestone 5: the project's size as the agent's container's limits (F-095), and the image.
+        ...(size === null ? {} : { size: { cpuMillis: size.cpuMillis, memoryMiB: size.memoryMiB } }),
+        ...(image.value === null ? {} : { image: image.value }),
       });
       if (!created.ok) {
         boxLog.error("creating the box failed", { status: created.error.status });
         return;
       }
-      boxLog.info("box created", { services: services.value.length, fromSnapshot: snapshotImage !== null });
+      boxLog.info("box created", { services: services.value.length, fromSnapshot: snapshotImage !== null, fromRegistry: image.value !== null, sized: size !== null });
       if (services.value.length > 0) {
         // While the sidecar clones: it waits for this report before the setup script.
         const health = await options.boxes.waitForServices(body.boxId, services.value, {

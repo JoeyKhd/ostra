@@ -9,6 +9,9 @@ import {
   taskCredentialsResponseSchema,
   taskSpecResponseSchema,
   taskTokenResponseSchema,
+  pullCredentialResponseSchema,
+  pushCredentialResponseSchema,
+  registryCredentialRefusalSchema,
 } from "@ostra/protocol";
 import type {
   BlobRef,
@@ -22,6 +25,7 @@ import type {
   ServiceSecrets,
   SnapshotCredentials,
   SnapshotId,
+  RegistryCredential,
   TaskCredentials,
   TaskId,
   TaskSpec,
@@ -117,6 +121,66 @@ export const fetchTaskToken =
       timeoutMs: 30_000,
     });
     return result.ok ? { ok: true, value: result.value.taskToken } : { ok: false, failure: failureOf(result.failure) };
+  };
+
+/** Core's `409` code on a registry credential request, when its body says one. */
+const registryRefusalOf = (failure: Parameters<typeof describeFailure>[0]): string | null => {
+  if (failure.kind !== "refused" || failure.status !== 409) {
+    return null;
+  }
+  const parsed = registryCredentialRefusalSchema.safeParse(failure.body);
+  return parsed.success ? parsed.data.error.code : null;
+};
+
+/**
+ * Milestone 5 (F-120, ADR 0060): the pull credential for the lease's registry image, asked with the
+ * runner's own access token. `null` when core has none to give (`no-image`: the registry is pulled
+ * with the cluster's own identity, `node` auth). The runner hands it to its engine's pull or the
+ * box's pull secret, and keeps it nowhere. Never logged.
+ */
+export const fetchPullCredential =
+  (input: { readonly serverUrl: string; readonly tokens: TokenSource }) =>
+  async (taskId: TaskId, leaseEpoch: LeaseEpoch): Promise<LinkResult<RegistryCredential | null>> => {
+    const token = await input.tokens.get();
+    if (!token.ok) {
+      return { ok: false, failure: { kind: "unavailable", message: token.message } };
+    }
+    const result = await callJson({
+      url: joinUrl(input.serverUrl, runnerPaths.taskPullCredential(taskId)),
+      method: "POST",
+      schema: pullCredentialResponseSchema,
+      body: { leaseEpoch },
+      bearer: token.token,
+      headers: { [runnerHeaders.minor]: String(PROTOCOL_MINOR) },
+      timeoutMs: 30_000,
+    });
+    if (result.ok) {
+      return { ok: true, value: result.value };
+    }
+    return registryRefusalOf(result.failure) === "no-image" ? { ok: true, value: null } : { ok: false, failure: failureOf(result.failure) };
+  };
+
+/**
+ * Milestone 5 (F-120): the push credential for a snapshot build this runner was given, while it's
+ * building. A `409` (`not-the-builder`) means core took the build back. Never logged.
+ */
+export const fetchPushCredential =
+  (input: { readonly serverUrl: string; readonly tokens: TokenSource }) =>
+  async (snapshotId: SnapshotId): Promise<LinkResult<RegistryCredential>> => {
+    const token = await input.tokens.get();
+    if (!token.ok) {
+      return { ok: false, failure: { kind: "unavailable", message: token.message } };
+    }
+    const result = await callJson({
+      url: joinUrl(input.serverUrl, runnerPaths.snapshotPushCredential(snapshotId)),
+      method: "POST",
+      schema: pushCredentialResponseSchema,
+      body: {},
+      bearer: token.token,
+      headers: { [runnerHeaders.minor]: String(PROTOCOL_MINOR) },
+      timeoutMs: 30_000,
+    });
+    return result.ok ? { ok: true, value: result.value } : { ok: false, failure: failureOf(result.failure) };
   };
 
 /**

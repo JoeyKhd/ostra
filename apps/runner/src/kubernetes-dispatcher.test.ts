@@ -2,12 +2,16 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { boxNames, boxSelector, KubernetesExecutor } from "@ostra/adapter-executor-kubernetes";
+import { boxNames, boxSelector, buildEgressPolicy, KubernetesExecutor } from "@ostra/adapter-executor-kubernetes";
 import type { KubernetesExecutorOptions } from "@ostra/adapter-executor-kubernetes";
 import { startFakeCluster } from "@ostra/adapter-executor-kubernetes/testing";
 import type { FakeCluster } from "@ostra/adapter-executor-kubernetes/testing";
 import { silentLogger } from "@ostra/adapter-sdk";
-import { boxIdSchema, runnerIdSchema } from "@ostra/protocol";
+import { startGitUpstream } from "@ostra/adapter-sdk/testing";
+import type { GitUpstream } from "@ostra/adapter-sdk/testing";
+import { startFakeOciRegistry } from "@ostra/adapter-sdk/testing/net";
+import type { FakeOciRegistry } from "@ostra/adapter-sdk/testing/net";
+import { boxIdSchema, imageDigestSchema, projectIdSchema, repoIdSchema, runnerIdSchema, sha256HexSchema, snapshotCredentialsSchema, snapshotIdSchema } from "@ostra/protocol";
 import type { CommandKind, CommandOf, TaskEvent } from "@ostra/protocol";
 import { taskCredentialsFixture, taskSpecFixture } from "@ostra/protocol/testing";
 import { writeFile } from "node:fs/promises";
@@ -16,7 +20,7 @@ import { exitCodes, runCli } from "./cli/cli.ts";
 import { createCapturingTerminal } from "./cli/terminal.ts";
 import { runSignedInRunner } from "./run-runner.ts";
 import { createKubernetesDispatcher } from "./kubernetes-dispatcher.ts";
-import type { KubernetesDispatcher } from "./kubernetes-dispatcher.ts";
+import type { KubernetesDispatcher, KubernetesDispatcherOptions } from "./kubernetes-dispatcher.ts";
 import { makeCommand, startFakeGateway } from "./testing/fake-gateway.ts";
 import type { FakeGateway } from "./testing/fake-gateway.ts";
 import { startFakeServer } from "./testing/fake-server.ts";
@@ -32,6 +36,8 @@ import type { FakeServer } from "./testing/fake-server.ts";
 const NS = "ostra-boxes";
 const TASK_TOKEN = "ostra_tt_kubernetes-dispatcher-task-token-7f3a";
 const RUNNER_MAIN = fileURLToPath(new URL("./main.ts", import.meta.url));
+const BUILD_MAIN = fileURLToPath(new URL("../../../packages/adapters/adapter-executor-kubernetes/src/build-main.ts", import.meta.url));
+const FAKE_BUILDKIT = fileURLToPath(new URL("../../../packages/adapters/adapter-executor-kubernetes/src/testing/fake-buildkit.ts", import.meta.url));
 const INIT = fileURLToPath(new URL("../../../packages/adapters/adapter-executor-docker/src/init/main.ts", import.meta.url));
 
 let root = "";
@@ -39,6 +45,8 @@ const clusters: FakeCluster[] = [];
 const dispatchers: KubernetesDispatcher[] = [];
 let server: FakeServer | undefined;
 let gateway: FakeGateway | undefined;
+const upstreams: GitUpstream[] = [];
+const registries: FakeOciRegistry[] = [];
 
 beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), "ostra-k8s-dispatcher-"));
@@ -49,6 +57,8 @@ afterEach(async () => {
   for (const dispatcher of dispatchers.splice(0)) dispatcher.detach();
   server?.holdSpecs.clear();
   await Promise.all(clusters.splice(0).map((cluster) => cluster.close()));
+  await Promise.all(upstreams.splice(0).map((upstream) => upstream.close()));
+  await Promise.all(registries.splice(0).map((registry) => registry.close()));
   await gateway?.close();
   await server?.close();
   gateway = undefined;
@@ -80,7 +90,7 @@ const box = { taskId: spec.taskId, boxId };
 
 type Setup = { readonly cluster: FakeCluster; readonly events: TaskEvent[]; readonly make: (options?: Partial<KubernetesExecutorOptions>) => KubernetesDispatcher };
 
-const setup = async (processMode: boolean, serverUrl = "https://ostra.example"): Promise<Setup> => {
+const setup = async (processMode: boolean, serverUrl = "https://ostra.example", extra: Partial<KubernetesDispatcherOptions> = {}, commands: Readonly<Record<string, readonly string[]>> = { ostra: [process.execPath, RUNNER_MAIN] }): Promise<Setup> => {
   const cluster = await startFakeCluster({
     namespaces: [NS],
     ...(processMode
@@ -88,7 +98,7 @@ const setup = async (processMode: boolean, serverUrl = "https://ostra.example"):
           processMode: {
             root: path.join(root, "pods"),
             // The runner image's `ostra` is this checkout's CLI: the box's sidecar is the real one.
-            commands: { ostra: [process.execPath, RUNNER_MAIN] },
+            commands,
             log: () => undefined,
           },
         }
@@ -112,6 +122,7 @@ const setup = async (processMode: boolean, serverUrl = "https://ostra.example"):
       logger: silentLogger,
       reportRunnerEvent: (event) => events.push(event),
       watchMs: 50,
+      ...extra,
     });
     dispatchers.push(dispatcher);
     return dispatcher;
@@ -270,4 +281,105 @@ describe("kubernetes boxes from the runner (ticket 20)", () => {
     expect(code).toBe(exitCodes.failed);
     expect(terminal.lines().join("")).toContain("1.29 or later");
   }, 60_000);
+});
+
+describe("registry images and snapshot pushes on kubernetes (ticket 21)", () => {
+  const PULL = { registry: "registry.ostra-test.invalid", username: "ostra-puller", token: "ostra_pull_cred_k8s_5e4d3c2b1a09", expiresAt: Date.now() + 600_000 };
+  const imageRef = "registry.ostra-test.invalid/ostra/snapshots/project-a";
+  const digest = imageDigestSchema.parse(`sha256:${"c".repeat(64)}`);
+  const dispatchImage = (id: string) =>
+    commandOf("dispatch", 1, { taskId: spec.taskId, sessionId: spec.sessionId, boxId: boxIdSchema.parse(id), leaseEpoch: spec.leaseEpoch, box: { size: null, image: { ref: imageRef, digest } } });
+
+  it("F-120: on kubernetes a box's image is pulled by digest with the lease's pull credential, which goes into the box's pull secret only; with the cluster's own identity there is none", async () => {
+    const answers: (typeof PULL | null)[] = [PULL, null];
+    const asked: string[] = [];
+    const { cluster, make } = await setup(false, "https://ostra.example", {
+      pullCredential: (taskId, leaseEpoch) => {
+        asked.push(`${taskId}@${String(leaseEpoch)}`);
+        return Promise.resolve({ ok: true, value: answers.shift() ?? null });
+      },
+    });
+    const dispatcher = make();
+    const ids = ["box-pull-secret", "box-node-identity"];
+    // One at a time, so the credentials' order is the boxes'.
+    expect(await dispatcher.handlers.dispatch(dispatchImage(ids[0] ?? ""))).toEqual({ result: "accepted" });
+    const names = ids.map((id) => boxNames({ taskId: spec.taskId, boxId: boxIdSchema.parse(id) }));
+    await until(() => cluster.fake.get("pods", NS, names[0]?.pod ?? "") !== undefined, "the first pod");
+    expect(await dispatcher.handlers.dispatch(dispatchImage(ids[1] ?? ""))).toEqual({ result: "accepted" });
+    await until(() => cluster.fake.get("pods", NS, names[1]?.pod ?? "") !== undefined, "the second pod");
+    expect(asked).toEqual([`${spec.taskId}@${String(spec.leaseEpoch)}`, `${spec.taskId}@${String(spec.leaseEpoch)}`]);
+    const [withSecret, withNode] = names;
+    if (withSecret === undefined || withNode === undefined) throw new Error("no names");
+    const podOf = (name: string): string => JSON.stringify(cluster.fake.get("pods", NS, name));
+    // The image by digest, the credential in the pull secret alone: not in the pod, not on the runner.
+    expect(podOf(withSecret.pod)).toContain(`${imageRef}@${digest}`);
+    expect(podOf(withSecret.pod)).toContain(withSecret.pullSecret);
+    expect(podOf(withSecret.pod)).not.toContain(PULL.token);
+    const secret = JSON.stringify(cluster.fake.get("secrets", NS, withSecret.pullSecret));
+    expect(Buffer.from(/"\.dockerconfigjson":"([^"]+)"/.exec(secret)?.[1] ?? "", "base64").toString("utf8")).toContain(PULL.token);
+    expect((await filesUnder(path.join(root, "runner"))).some((text) => text.includes(PULL.token))).toBe(false);
+    // The cluster's own identity: no pull secret, and the pod names none.
+    expect(cluster.fake.get("secrets", NS, withNode.pullSecret)).toBeUndefined();
+    expect(podOf(withNode.pod)).not.toContain("imagePullSecrets");
+    for (const [index, id] of ids.entries()) {
+      await dispatcher.handlers.release(commandOf("release", 10 + index, { taskId: spec.taskId, boxId: boxIdSchema.parse(id), reason: "prs-closed" }));
+    }
+    await Promise.all(dispatcher.boxes());
+    expect(cluster.fake.list("secrets", NS).filter((item) => JSON.stringify(item).includes("ostra-box-"))).toEqual([]);
+  }, 60_000);
+
+  it("F-120: a snapshot build on kubernetes fetches its credentials and its push credential, builds with BuildKit, scans, pushes, and reports the registry's digest", async () => {
+    const upstream = await startGitUpstream(path.join(root, "upstream"));
+    upstreams.push(upstream);
+    await upstream.createRepo("ostra-test/test1", { "README.md": "# test1\n" });
+    const GIT_TOKEN = "ghs_k8sRunnerBuildToken0123456789abcdef";
+    upstream.tokens.set(GIT_TOKEN, Date.now() + 3_600_000);
+    const registry = await startFakeOciRegistry();
+    registries.push(registry);
+    const snapshotId = snapshotIdSchema.parse("snap-k8s-runner");
+    const projectId = projectIdSchema.parse("project-a");
+    const repoId = repoIdSchema.parse("repo-web");
+    const pushRef = `${registry.host}/ostra/snapshots/${projectId}:${snapshotId}`;
+    const asked: string[] = [];
+    const { cluster, events, make } = await setup(
+      true,
+      "https://ostra.example",
+      {
+        snapshotCredentials: (id) => {
+          asked.push(`credentials:${id}`);
+          return Promise.resolve({ ok: true, value: snapshotCredentialsSchema.parse({ snapshotId: id, repos: [{ repoId, gitToken: GIT_TOKEN, expiresAt: Date.now() + 3_600_000 }], secrets: [] }) });
+        },
+        pushCredential: (id) => {
+          asked.push(`push:${id}`);
+          return Promise.resolve({ ok: true, value: { registry: registry.host, username: registry.push.username, token: registry.push.password, expiresAt: Date.now() + 600_000 } });
+        },
+      },
+      { ostra: [process.execPath, BUILD_MAIN], "buildctl-daemonless.sh": [process.execPath, FAKE_BUILDKIT] },
+    );
+    await cluster.createNamespace(`${NS}-builds`);
+    await cluster.applyPolicy(`${NS}-builds`, buildEgressPolicy({ namespace: `${NS}-builds`, registry: { addresses: ["127.0.0.1"], port: 443 }, packageHosts: [], codeHosts: ["140.82.112.0/20"] }));
+    const dispatcher = make();
+    const command = commandOf("snapshot-build", 3, {
+      snapshotId,
+      projectId,
+      environment: {
+        baseImage: "node:24-bookworm",
+        setupScript: "npm ci\n",
+        repos: [{ repoId, fullName: "ostra-test/test1", cloneUrl: "https://github.com/ostra-test/test1.git", defaultBranch: "main", checkoutDir: "test1", variables: [], files: [], envFile: ".env", setupSecrets: { variables: [], files: [] } }],
+        inputsHash: sha256HexSchema.parse("b".repeat(64)),
+      },
+      push: { ref: pushRef },
+      builder: "buildkit",
+    });
+    // The git upstream is local: the build clones it, as a cluster's build clones the code host.
+    const local = { ...command, body: { ...command.body, environment: { ...command.body.environment, repos: command.body.environment.repos.map((repo) => ({ ...repo, cloneUrl: upstream.cloneUrl("ostra-test/test1") })) } } };
+    expect(await dispatcher.handlers["snapshot-build"](local)).toEqual({ result: "accepted" });
+    await dispatcher.builds();
+    expect(asked).toEqual([`credentials:${snapshotId}`, `push:${snapshotId}`]);
+    const held = registry.manifest(`ostra/snapshots/${projectId}`, snapshotId);
+    expect(held).toBeDefined();
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ kind: "snapshot.built", snapshotId, imageDigest: held?.digest });
+    expect(new Set(registry.requests().filter((request) => request.action === "push").map((request) => request.user))).toEqual(new Set([registry.push.username]));
+  }, 120_000);
 });

@@ -4,7 +4,7 @@ import { BOX_ROLE, boxNames, boxSelector, LABELS } from "@ostra/adapter-executor
 import type { KubeApi, KubernetesExecutor, PodView } from "@ostra/adapter-executor-kubernetes";
 import type { BoxImage, BoxWaitChange, Logger, TaskProxies } from "@ostra/adapter-sdk";
 import { boxIdSchema, leaseEpochSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
-import type { BoxId, BoxReleaseReason, CommandOf, LeaseEpoch, RegistryCredential, RunnerLabel, TaskEvent, TaskId } from "@ostra/protocol";
+import type { BoxId, BoxReleaseReason, CommandOf, LeaseEpoch, RegistryCredential, RunnerLabel, SnapshotCredentials, SnapshotId, TaskEvent, TaskId } from "@ostra/protocol";
 import { z } from "zod";
 import type { CommandHandlers, CommandOutcome, PeerStatus } from "./connection/peer.ts";
 import { reportedCapabilities } from "./reports.ts";
@@ -54,6 +54,10 @@ export type KubernetesDispatcherOptions = {
   readonly taskToken: (taskId: TaskId, leaseEpoch: LeaseEpoch) => Promise<LinkResult<string>>;
   /** Milestone 5 (F-120, ticket 21): the pull credential for the lease's registry image. */
   readonly pullCredential?: (taskId: TaskId, leaseEpoch: LeaseEpoch) => Promise<LinkResult<RegistryCredential | null>>;
+  /** Milestone 5 (F-120, ticket 21): a snapshot build's credentials, for this runner only (`fetchSnapshotCredentials`). */
+  readonly snapshotCredentials?: (snapshotId: SnapshotId) => Promise<LinkResult<SnapshotCredentials>>;
+  /** Milestone 5 (F-120, ticket 21): the push credential for a build (`fetchPushCredential`). */
+  readonly pushCredential?: (snapshotId: SnapshotId) => Promise<LinkResult<RegistryCredential>>;
   /** Holds `kubernetes-boxes/`, the boxes this runner made. */
   readonly dataDir: string;
   readonly labels: readonly RunnerLabel[];
@@ -70,6 +74,8 @@ export type KubernetesDispatcher = {
   readonly adopt: () => Promise<number>;
   /** Every box's lifetime, for tests. */
   readonly boxes: () => readonly Promise<void>[];
+  /** Resolves once every snapshot build accepted so far is over, for tests. */
+  readonly builds: () => Promise<void>;
   /** The runner stops: its boxes' pods stay, for the next start to adopt. */
   readonly detach: () => void;
 };
@@ -251,6 +257,60 @@ export const createKubernetesDispatcher = (options: KubernetesDispatcherOptions)
 
   const slots = (): number => options.executor.capacity().slots;
 
+  // ---------- snapshot builds (F-120, ticket 21) ----------
+
+  const building = new Set<SnapshotId>();
+  let buildChain: Promise<void> = Promise.resolve();
+
+  /**
+   * A build on the cluster: rootless BuildKit in the build namespace, the scan, then the push with
+   * the push credential fetched for this build (the executor's `buildSnapshot`, ticket 08). A
+   * `kubernetes` runner keeps nothing itself, so it builds only with a registry to push to.
+   */
+  const buildOnCluster = async (body: CommandOf<"snapshot-build">["body"], push: { readonly ref: string }): Promise<void> => {
+    const buildLog = log.child({ snapshotId: body.snapshotId, projectId: body.projectId });
+    const failed = (detail: string): void => {
+      options.reportRunnerEvent({ kind: "snapshot.failed", snapshotId: body.snapshotId, reason: "build-failed", detail });
+    };
+    const credentials = await options.snapshotCredentials?.(body.snapshotId);
+    const pushCredential = credentials?.ok === true ? await options.pushCredential?.(body.snapshotId) : undefined;
+    if (credentials?.ok !== true || pushCredential?.ok !== true) {
+      const takenBack = (credentials?.ok === false && credentials.failure.kind === "stale-lease") || (pushCredential?.ok === false && pushCredential.failure.kind === "stale-lease");
+      buildLog.warn("no credentials for the snapshot build", { takenBack });
+      // A 409: core took the build back or gave it to another runner, so there's nothing to report.
+      if (!takenBack) {
+        failed("The runner couldn't read the build's credentials from the server.");
+      }
+      return;
+    }
+    const built = await options.executor.buildSnapshot({
+      snapshotId: body.snapshotId,
+      projectId: body.projectId,
+      environment: body.environment,
+      credentials: credentials.value,
+      push: { ref: push.ref, credential: { username: pushCredential.value.username, token: pushCredential.value.token } },
+      onOutput: () => undefined,
+    });
+    if (!built.ok) {
+      buildLog.warn("the snapshot build failed", { code: built.error.code });
+      failed(built.error.message.slice(0, 2000));
+      return;
+    }
+    const result = built.value;
+    switch (result.outcome) {
+      case "built":
+        buildLog.info("snapshot built and pushed", { durationMs: result.durationMs });
+        options.reportRunnerEvent({ kind: "snapshot.built", snapshotId: body.snapshotId, imageDigest: result.digest ?? result.imageDigest, durationMs: result.durationMs });
+        return;
+      case "failed":
+        buildLog.info("snapshot build failed", { reason: result.reason });
+        options.reportRunnerEvent({ kind: "snapshot.failed", snapshotId: body.snapshotId, reason: result.reason, detail: result.detail });
+        return;
+      default:
+        result satisfies never;
+    }
+  };
+
   const handlers: CommandHandlers = {
     // Accepted at once: the box is made after the answer (ADR 0029).
     dispatch: (command) => {
@@ -303,8 +363,31 @@ export const createKubernetesDispatcher = (options: KubernetesDispatcherOptions)
     "question-answer": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
     "plan-answer": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
     "set-effort": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
-    // Ticket 21: built with BuildKit and pushed to the organization's registry.
-    "snapshot-build": () => done({ result: "rejected", reason: "not-supported" }),
+    // Ticket 21 (F-120): accepted at once, built in turn with BuildKit, and pushed to the registry.
+    "snapshot-build": (command) => {
+      const push = command.body.push ?? null;
+      if (push === null || options.snapshotCredentials === undefined || options.pushCredential === undefined) {
+        return done({ result: "rejected", reason: "not-supported" });
+      }
+      const { snapshotId } = command.body;
+      if (building.has(snapshotId)) {
+        return done({ result: "accepted" });
+      }
+      if (draining) {
+        return done({ result: "rejected", reason: "draining" });
+      }
+      building.add(snapshotId);
+      buildChain = buildChain
+        .then(() => buildOnCluster(command.body, push))
+        .catch((error: unknown) => {
+          log.error("a snapshot build failed", { snapshotId, error: error instanceof Error ? error.name : "unknown" });
+          options.reportRunnerEvent({ kind: "snapshot.failed", snapshotId, reason: "build-failed", detail: "The runner's build stopped on an unexpected error." });
+        })
+        .finally(() => {
+          building.delete(snapshotId);
+        });
+      return done({ result: "accepted" });
+    },
   };
 
   return {
@@ -356,6 +439,7 @@ export const createKubernetesDispatcher = (options: KubernetesDispatcherOptions)
       return adopted;
     },
     boxes: () => [...running.values()].map((entry) => entry.done),
+    builds: () => buildChain,
     detach: () => {
       detached = true;
     },

@@ -17,6 +17,10 @@ import {
   parseJson,
   proposalIdSchema,
   PROTOCOL_MAJOR,
+  pullCredentialRequestSchema,
+  pullCredentialResponseSchema,
+  pushCredentialRequestSchema,
+  pushCredentialResponseSchema,
   PROTOCOL_MINOR,
   registerRequestSchema,
   runnerHeaders,
@@ -34,6 +38,7 @@ import type {
   MemoryProposalRefusal,
   MemoryProposalResponse,
   RegisterRequest,
+  RegistryCredential,
   RunnerHttpError,
   RunnerId,
   TaskCredentials,
@@ -141,6 +146,16 @@ export type FakeServer = {
   readonly setInfo: (info: Partial<InfoResponse>) => void;
   /** Milestone 5 (ticket 20): tasks whose spec request waits while they're here, so their run stays at its start. */
   readonly holdSpecs: Set<string>;
+  /**
+   * Milestone 5 (ticket 21, F-120): the registry credentials core would issue, as minor 4 says them:
+   * a pull credential per task (`null`: core answers `no-image`, as with `node` auth), a push
+   * credential per snapshot (absent: `not-the-builder`), and every request, in order.
+   */
+  readonly registry: {
+    readonly pulls: Map<string, { readonly leaseEpoch: number; readonly credential: RegistryCredential | null }>;
+    readonly pushes: Map<string, RegistryCredential>;
+    readonly requests: { readonly kind: "pull" | "push"; readonly id: string; readonly bearer: string | undefined }[];
+  };
   readonly close: () => Promise<void>;
 };
 
@@ -188,6 +203,7 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
   const tasks = new Map<string, { readonly spec: TaskSpec; readonly credentials: TaskCredentials }>();
   const credentialsIssued = new Map<string, number>();
   const holdSpecs = new Set<string>();
+  const registry: FakeServer["registry"] = { pulls: new Map(), pushes: new Map(), requests: [] };
   const devices = new Map<string, { polls: number }>();
   const blobs = new Map<string, FakeBlob>();
   type Upload = { readonly taskId: string; readonly sha256: string; readonly size: number; readonly contentType: string; readonly purpose: string; held: Buffer };
@@ -547,6 +563,40 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
       await handleMemory(request, response, decodeURIComponent(memoryMatch[1] ?? ""), memoryMatch[2] ?? "");
       return;
     }
+    // Milestone 5 (ticket 21): the registry's credentials, for a runner's access token.
+    const registryMatch = /^\/runner\/v1\/(tasks|snapshots)\/([^/?]+)\/(pull-credential|push-credential)$/.exec(path);
+    if (registryMatch !== null && request.method === "POST") {
+      const bearer = bearerOf(request);
+      const id = decodeURIComponent(registryMatch[2] ?? "");
+      const pull = registryMatch[3] === "pull-credential";
+      registry.requests.push({ kind: pull ? "pull" : "push", id, bearer });
+      if (bearer === undefined || !accessTokens.has(bearer)) {
+        ostraError(response, 401, "unauthorized", "a valid access token is required");
+        return;
+      }
+      if (pull) {
+        const parsed = pullCredentialRequestSchema.safeParse(await readBody(request));
+        const held = registry.pulls.get(id);
+        if (!parsed.success || parsed.data.leaseEpoch !== held?.leaseEpoch) {
+          send(response, 409, { error: { code: "stale-lease", message: "stale" } });
+          return;
+        }
+        if (held.credential === null) {
+          send(response, 409, { error: { code: "no-image", message: "the registry is pulled with the cluster's own identity: there's no pull credential" } });
+          return;
+        }
+        send(response, 200, pullCredentialResponseSchema.parse(held.credential));
+        return;
+      }
+      const parsed = pushCredentialRequestSchema.safeParse(await readBody(request));
+      const credential = registry.pushes.get(id);
+      if (!parsed.success || credential === undefined) {
+        send(response, 409, { error: { code: "not-the-builder", message: "not this runner's build" } });
+        return;
+      }
+      send(response, 200, pushCredentialResponseSchema.parse(credential));
+      return;
+    }
     const taskMatch = /^\/runner\/v1\/tasks\/([^/?]+)\/(spec|credentials)(?:\?(.*))?$/.exec(path);
     if (taskMatch !== null) {
       const bearer = bearerOf(request);
@@ -624,6 +674,7 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
       infoOverride = next;
     },
     holdSpecs,
+    registry,
     close: () =>
       new Promise<void>((resolve) => {
         server.closeAllConnections();
