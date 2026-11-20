@@ -16,10 +16,11 @@ import { isoDate, shortDate } from "./runner-words";
 
 type JoinToken = RouterOutputs["joinTokens"]["list"][number];
 
-/** A token's second line: `expires 2026-12-19 · used 3h ago · 2 runners`, or `revoked 12 Nov`. */
+/** A token's second line: `expires 2026-12-19 · used 3h ago · 2 runners`, `expired 2026-11-20 · …`, or `revoked 12 Nov`. */
 export const tokenDetail = (token: Pick<JoinToken, "expiresAt" | "lastUsedAt" | "revokedAt" | "uses">, now: number = Date.now()): string => {
   if (token.revokedAt !== null) return t("runners.revokedOn", { date: shortDate(token.revokedAt) });
-  const expires = token.expiresAt === null ? t("runners.neverExpires") : t("runners.expires", { date: isoDate(token.expiresAt) });
+  const expires =
+    token.expiresAt === null ? t("runners.neverExpires") : token.expiresAt <= now ? t("runners.expiredOn", { date: isoDate(token.expiresAt) }) : t("runners.expires", { date: isoDate(token.expiresAt) });
   const age = token.lastUsedAt === null ? null : formatAge(token.lastUsedAt, now);
   const used = age === null ? t("runners.neverUsed") : age === "now" ? t("runners.usedJustNow") : t("runners.usedAgo", { age });
   const runners = token.uses === 0 ? null : token.uses === 1 ? t("runners.join.oneRunner") : t("runners.join.runners", { n: token.uses });
@@ -62,7 +63,8 @@ export const JoinTokenList = ({ poolId, onRevoked }: { readonly poolId: string; 
       ) : null}
       <ul className="divide-y divide-line border-b border-line">
         {tokens.data?.map((token) => {
-          const revoked = token.revokedAt !== null;
+          // An expired token joins nothing more, as a revoked one: struck through, with no Revoke.
+          const revoked = token.revokedAt !== null || token.state === "expired";
           return (
             <li key={token.id} data-token={token.label ?? t("runners.joinToken")} className="flex min-h-[54px] items-start gap-3 py-2">
               <div className="min-w-0 flex-1">

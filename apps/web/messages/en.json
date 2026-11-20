@@ -888,6 +888,7 @@
     "usedJustNow": "used just now",
     "neverUsed": "never used",
     "revokedOn": "revoked {date}",
+    "expiredOn": "expired {date}",
     "revokeTitle": "Revoke this join token?",
     "revokeBody": "Runners that already joined stay connected. No new runner can join with it.",
     "noPoolSelected": "Select a pool to see its join tokens.",
@@ -1033,7 +1034,7 @@
     "machine": {
       "connected": "Connected",
       "notConnected": "Not connected",
-      "contained": "contained by {how}",
+      "contained": "contained by a {how}",
       "oneAtOnce": "1 task at once",
       "atOnce": "{n} tasks at once"
     },

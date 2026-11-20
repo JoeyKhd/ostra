@@ -56,5 +56,6 @@ export const TaskWaiting = ({ projectId, project, waiting, queue, boxWaiting, ru
       </p>
     );
   }
-  return line === null ? null : <p className="mt-1.5 text-ui text-muted" data-testid="task-wait-line">{line}</p>;
+  // Until the project's name has loaded, a line that names it would read "· is at its share".
+  return line === null || project === "" ? null : <p className="mt-1.5 text-ui text-muted" data-testid="task-wait-line">{line}</p>;
 };
