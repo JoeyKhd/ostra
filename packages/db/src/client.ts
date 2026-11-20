@@ -36,9 +36,21 @@ export const utcConnectionString = (databaseUrl: string): string => {
   return url.toString();
 };
 
+/**
+ * How long an interactive transaction waits for one of the pool's connections before it fails
+ * (P2028, "Unable to start a transaction in the given time"). Prisma's own default is 2 s, which
+ * turns any burst the pool can't start within 2 s into errors instead of a queue: on CI's runner,
+ * 50 answers at once on 10 connections lost their tail (ticket 38's rehearsal, F-012), and core's
+ * jobs went back to the queue's backoff. `pg`'s pool hands out connections first come, first
+ * served, so waiting its turn is right; a caller with a deadline of its own (the webhook inbox's
+ * insert) passes its own `maxWait`. Once started, a transaction still has Prisma's 5 s `timeout`.
+ */
+export const TRANSACTION_MAX_WAIT_MS = 10_000;
+
 /** A client for the database at `databaseUrl`. The URL holds credentials: never log it. */
 export const createDb = (databaseUrl: string, options: CreateDbOptions = {}): Db =>
   new PrismaClient({
+    transactionOptions: { maxWait: TRANSACTION_MAX_WAIT_MS },
     adapter: new PrismaPg({
       connectionString: utcConnectionString(databaseUrl),
       ...(options.maxConnections === undefined ? {} : { max: options.maxConnections }),
