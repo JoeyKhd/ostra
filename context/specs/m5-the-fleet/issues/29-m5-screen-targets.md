@@ -25,10 +25,11 @@ Notes for some targets:
 
 ## Done when
 
-- [ ] The eight targets exist in `context/brand/app-targets/m5/`, three files each, with the README.
+- [x] The eight targets exist in `context/brand/app-targets/m5/`, three files each, with the README.
 - [x] They're approved, recorded under `## Comments` with the date. Until then, tickets 30 to 33 build their data and tests, not their UI.
-- [ ] Committed as `🎨 add milestone 5 screen targets`.
+- [x] Committed. Planned as `🎨 add milestone 5 screen targets`; they landed in four commits instead (46dcbb24, 821f4534, 0bf070ac, 930f12ec), recorded under `## Comments` on 2026-11-20.
 
 ## Comments
 
 - 2026-11-19, lead: the targets are in `context/brand/app-targets/m5/`. The lead reviewed each picture by eye and approved them for the build on the maintainer's delegation, pending the maintainer's own review; the folder's README records it.
+- 2026-11-20, review fix: the first and third boxes were left unticked although the work was done. The eight targets (24 files: `<screen>.webp`, `.md` and `.prompt.txt` for `pool`, `pool-new`, `pool-join`, `runner`, `runner-approval`, `box-sizes`, `project-runners`, `registry`) landed on 2026-11-19 in three commits rather than the planned single `🎨 add milestone 5 screen targets`: 46dcbb24 `📝 add milestone 5 targets: project-runners, registry`, 821f4534 `📝 add milestone 5 targets: runner, runner-approval, box-sizes` and 0bf070ac `📝 add milestone 5 targets: pool, pool-new, pool-join`. The README and the approval came in 930f12ec `📝 approve the milestone 5 and 6 targets`. `scripts/m5-tickets.test.ts` now fails for any milestone 5 ticket marked `done` or `resolved` with an unticked "Done when" box, and checks that the 24 target files and the README are there.
