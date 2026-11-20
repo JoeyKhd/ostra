@@ -32,3 +32,4 @@ Spec: `../spec.md`, sections 3 (steps 6, 7, 8, 12 and 13) and 12
   - The address accepts `http://` only for `localhost` and `127.0.0.1` (the dev registry); `https://` pasted in is dropped. The prefix is sent without its trailing `/`, as `setRegistry` stores it.
   - The check's result arrives by the organization's change notice, which now refreshes `registry` and `registryUse` (`apps/web/src/task/change-scopes.ts`); no polling.
   - "pull-only" on the pull credential's row isn't shown: the check answers for the push credential's rights, not the pull credential's.
+- 2026-11-20: commit e263b979 (`✨ add the registry and the waiting line`).

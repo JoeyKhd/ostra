@@ -26,3 +26,4 @@ Spec: `../spec.md`, sections 3 (steps 1, 5 and 7) and 12
   - Reorder by drag uses the handle's pointer events and no new dependency; the keyboard model and its live region are as the target says.
   - A profile's runner labels apply at once through `agentProfiles.setRunnerLabels`, apart from the editor's Save; a new profile asks to be saved first. Reserved prefixes are refused inline, as ticket 27 refuses them.
   - The change notices refresh `boxSizes` and `fleetUse` (`apps/web/src/task/change-scopes.ts`).
+- 2026-11-20: commit b3b41644 (`✨ add sizes, project runners and labels`).
