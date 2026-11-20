@@ -15,7 +15,19 @@ const length = (size: number): Buffer => {
 export const tlv = (tag: number, content: Buffer): Buffer => Buffer.concat([Buffer.from([tag]), length(content.length), content]);
 export const sequence = (...items: readonly Buffer[]): Buffer => tlv(0x30, Buffer.concat(items));
 export const set = (...items: readonly Buffer[]): Buffer => tlv(0x31, Buffer.concat(items));
-export const integer = (value: Buffer): Buffer => tlv(0x02, (value[0] ?? 0) >= 0x80 ? Buffer.concat([Buffer.from([0]), value]) : value);
+/**
+ * A DER INTEGER, positive and in its shortest form: redundant leading zero bytes go (OpenSSL refuses
+ * them as "illegal padding", about one random serial in 512), and a 0 byte goes in front when the
+ * top bit would read as negative. Same rule as `derInteger` in `../self-signed-cert.ts` (4f1a7e7f).
+ */
+export const integer = (value: Buffer): Buffer => {
+  let start = 0;
+  while (start < value.length - 1 && value[start] === 0 && (value[start + 1] ?? 0) < 0x80) {
+    start += 1;
+  }
+  const trimmed = value.subarray(start);
+  return tlv(0x02, (trimmed[0] ?? 0) >= 0x80 ? Buffer.concat([Buffer.from([0]), trimmed]) : trimmed);
+};
 export const utf8 = (text: string): Buffer => tlv(0x0c, Buffer.from(text, "utf8"));
 export const bitString = (content: Buffer): Buffer => tlv(0x03, Buffer.concat([Buffer.from([0]), content]));
 export const octetString = (content: Buffer): Buffer => tlv(0x04, content);
