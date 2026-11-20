@@ -1,0 +1,49 @@
+# Generation 1 (kept: task-subagents-tree.webp). References: task-subagents-badge.png (generation 1 of this target, the page underneath), app-targets/m7/shortcut-sheet.webp (the panel's dialog), and the maintainer's reference for the tree's shape (a screenshot of Claude Code's agent tree, 2026-11-20, not kept in the repo)
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode, of "ostra", a self-hosted control panel for coding agents. The FIRST attached image is this exact page: keep everything underneath EXACTLY as it is there (sidebar, top bar, the task header "Show the app version in Settings", the tabs, the thread with the "4 subagents · 1 running" badge, the composer, the properties panel), DIMMED under a flat black scrim at 60% opacity. Over it the SUBAGENTS WINDOW is open, the window the badge opens: this is the subject, fully bright, crisp and legible. Its frame is the panel's dialog style, as the SECOND attached image's sheet: #17181B fill, 1px #2A2C30 border, radius 12px, no shadow. It is 1200px wide, centred on the 1440px window, about 580px tall, its top edge 180px from the top. The THIRD attached image shows only the SHAPE of the tree to draw (cards in columns, joined by thin elbow lines from each parent to its children); do not copy its colours, its words or its font.
+
+THE WINDOW, top to bottom:
+
+1) HEADER ROW 52px, padding 0 20px, a hairline #1F2023 under it: bright 15px semibold "Subagents"; 12px after it faint 13px "4 in OpenCode's turn at 14:02 · 1 running"; at the far right a small key cap "esc" then faint 12px "Close".
+
+2) BODY, two panes side by side, separated by a vertical hairline #1F2023.
+
+LEFT PANE, the TREE, 840px wide, padding 28px 24px. Node CARDS in three columns, read left to right, each card 232px wide and 72px tall, fill #131416, 1px #2A2C30 border, radius 8px, padding 10px 12px, holding three lines:
+   line 1: a 7px status dot, then white 13.5px weight-500 text;
+   line 2: faint mono 12px;
+   line 3: faint mono 12px.
+ Column 1, at the left edge, vertically level with the middle card of column 2: the ROOT card: a teal dot, white "OpenCode" and faint " main agent"; line 2 "Claude Sonnet 5.5"; line 3 "6m 10s · 22 calls".
+ Column 2, 44px to the right of column 1, three cards stacked with 24px between them:
+   card A: a green dot, "Find the version source"; line 2 "explore · 1m 12s · 14 calls"; line 3 "96.4k tokens · $0.31"
+   card B: a green dot, "List settings tests"; line 2 "explore · 31s · 6 calls"; line 3 "41.2k tokens · $0.13"
+   card C, the SELECTED one: fill #1A1B1E and a 1px #8B8E93 border; instead of a dot a tiny teal open ring (a spinner, 9px); "Write version row test"; line 2 "general · 2m 04s · 9 calls"; line 3 "88.0k tokens · $0.29"
+ Column 3, 44px to the right of column 2, level with card C: card D: a green dot, "Find test helpers"; line 2 "explore · 22s · 5 calls"; line 3 "30.1k tokens · $0.09".
+ CONNECTOR LINES, 1px #34363A, square elbows, no arrows: from the middle of the root card's right edge a short horizontal line to one vertical trunk that runs from the middle of card A down to the middle of card C, with a short horizontal branch into the middle of the left edge of each of A, B and C; and from the middle of card C's right edge one straight horizontal line into the middle of card D's left edge. Under the tree the pane is empty.
+
+RIGHT PANE, the SELECTED SUBAGENT (card C), 360px wide, padding 20px:
+ - a small mono chip "general" (11.5px, 1px #2A2C30 border, radius 4px, 20px tall), then 8px later a tiny teal open ring and teal 12.5px "running"
+ - 10px below: bright 16px semibold "Write version row test"
+ - faint mono 12px, two lines: "started 14:04:12 · 2m 04s · 9 calls" and "88.0k tokens · $0.29"
+ - 18px below: faint 12px weight-500 label "Asked by OpenCode"
+ - grey #B4B7BB 13.5px text, three lines: "Add a test for the version row in src/settings/version-row.test.tsx. Use the render helpers the other settings tests use. Run pnpm test settings and report what fails."
+ - 18px below: faint 12px weight-500 label "Calls"
+ - five rows, 28px each, in a strict grid: a 14px grey line icon, a verb in faint grey in a fixed 64px column, a mono subject, the result inline right after the subject:
+     file icon, "Read", mono "test/render.tsx"
+     search icon, "Searched", mono "renderWithProviders", faint mono "4 matches"
+     layers icon, "Subagent", mono "explore" + grey " · Find test helpers", a small green check
+     pencil icon, "Edited", mono "version-row.test.tsx", green mono "+38"
+     terminal icon, "Ran", mono "pnpm test settings", a tiny teal open ring + teal "running"
+ - 18px below: faint 12px weight-500 label "Answer"
+ - faint 13px "Still working. Its answer shows here when it's done."
+
+3) A hairline, then a FOOTER 44px, padding 0 20px: on the left a small faint info icon and faint 12.5px "Subagents run in the task's box, on its model and key. Their tokens are in the task's spend."; on the right faint mono 12px "255.7k tokens · $0.82 in subagents".
+
+No amber anywhere in the window. Amber appears only on the dimmed page underneath (the sidebar's small "2" pill).
+
+
+PALETTE (flat, exact hex): page background #0D0E10; sidebar #0A0B0C; dialog #17181B; cards and chips #131416; selected card #1A1B1E; hairlines #1F2023; control borders and key caps #2A2C30; connector lines #34363A; text #F2F3F4; secondary text #B4B7BB; faint text #8B8E93; running and links teal #6FB8AA; done and additions green #4FB286; failures red #E5675C. Buoy amber #FFB224 means "needs you" and nothing else. No gradients, no glow, no purple, no blue tint, no drop shadows, no illustrations, no robot or bot faces, no emoji, no third-party logos.
+
+TYPE: IBM Plex Sans (body 14.5px, dense rows 14px, secondary 13px, small labels 12px; titles weight 600); IBM Plex Mono for agent types, file paths, commands, counts, times, tokens, money and keyboard keys. KEY CAPS: a small rounded rectangle (radius 4px, 1px #2A2C30 border, #0D0E10 fill, 20px tall) holding one mono 11.5px faint key. Icons: thin Lucide line icons, 14px, stroke 1.75, grey.
+
+Not a mockup, no device frame, no perspective, no window shadow. Calm, precise and dense like Linear or Raycast in a dark pro console. Everything aligned on a strict grid, crisp small legible text, every column aligned, every word spelled exactly as written above.

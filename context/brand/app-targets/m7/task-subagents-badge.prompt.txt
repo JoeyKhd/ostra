@@ -1,0 +1,42 @@
+# Generation 1 (kept: task-subagents-badge.webp). References: app-targets/m1/task.png (the approved 2048 original of app-targets/m1/task), app-targets/m3/task-approval.webp, kit/logo/export/ostra-hinge-single-color-2048.png
+# gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
+
+A flat, straight-on, pixel-crisp screenshot of one desktop web app screen, 1440x960 CSS pixels rendered at 2x, dark mode. It is the page of one task in "ostra", a self-hosted control panel for coding agents, while the coding agent OpenCode works it. OpenCode can start SUBAGENTS (helper agents it hands part of the work to). The thread does NOT list the subagents' own reads and searches: the agent's turn carries one small BADGE that counts its subagents, and clicking it opens a separate window (not shown here). The FIRST attached image is this same product's approved task page: copy its sidebar, top bar, header (key line, title, status line), thread rows with a 28px round outlined icon in a 40px gutter, the tool rows' strict grid (icon, verb in a fixed column, mono path, inline result right after the path), the composer pinned at the bottom and the right properties panel EXACTLY, at the same small, dense scale. The SECOND attached image shows the same page with its tab row (Activity, Changes, Checks): copy that tab row. It must look like the same product.
+
+1. SIDEBAR exactly as the first image: "Acme Corp" with the hinge logo mark, the search field "Search" with "⌘K" and a small square "+" button; "Home", "Needs you" (hand icon) with a small amber pill "2", "My tasks" "7". Faint label "Projects": "calculator" (teal 8px square) expanded, indented: "Tasks" (SELECTED, #1A1B1E) faint "17", "Inbox" "4", "Environment", "Automations", "Memory" "2", "Repos", "Settings"; then "billing-platform", "web-storefront", "mobile-app", "data-pipeline" each with its own small colour square and NO dot, "13 more". Faint label "Organization": "Runner pools" "238", "Models", "Agent profiles", "Insights", "Memory", "Members", "Audit log", "Background work", "Settings". Bottom: avatar "AK" and "Alex Kim".
+
+2. TOP BAR 46px: breadcrumbs "calculator  ›  Tasks  ›  CALC-188" (last white). Right: a small ghost link icon, then an outlined button with a square icon "Stop".
+
+3. MAIN COLUMN (padding 28px 36px):
+- Mono faint line: "CALC-188 · from Linear"
+- Title: "Show the app version in Settings"
+- Status line: a 7px TEAL dot + white weight-500 "Running", faint middle dot, grey "6 min on" + faint mono "build-fleet-07".
+- TAB ROW as the second image: "Activity" selected (white, a 2px off-white underline), "Changes" with a faint count "2", "Checks". A hairline under the row.
+- THE THREAD:
+  a) Row: outlined circle with a user icon in the gutter; "Alex Kim" semibold + faint mono "14:02"; text "Show the app version and the commit in Settings, read at build time."
+  b) Row: outlined circle with a small terminal-prompt icon ">_" in the gutter; the turn's header line: "OpenCode" semibold + faint mono "14:02 · Claude Sonnet 5.5 ·" + teal mono "working", then 12px later, ON THE SAME LINE, THE SUBAGENT BADGE: a small pill-shaped button 24px tall, radius 6px, fill #131416, 1px #2A2C30 border, padding 0 9px, holding: a tiny grey "layers" icon (three stacked rhombuses, 13px), white 12.5px weight-500 "4 subagents", a faint middle dot, a tiny teal spinning-circle icon (11px, an open ring) and teal 12.5px "1 running". It is the only new element on this page and must be crisp and clearly readable.
+     Under the header, the text: "I'll have subagents find where the build info is read and how the settings tests are set up, then add the version row."
+  c) Tool rows in the strict grid, 28px each, verbs grey in a fixed 72px column, subjects in mono, results inline right after the subject:
+     - file icon, "Read", mono "src/settings/page.tsx"
+     - layers icon, "Subagent", white "explore" + grey " · Find the version source", then faint mono "14 calls · 1m 12s", a small green check
+     - layers icon, "Subagent", white "explore" + grey " · List settings tests", then faint mono "6 calls · 31s", a small green check
+     - layers icon, "Subagent", white "general" + grey " · Write version row test", then faint mono "9 calls", a tiny teal spinning ring + teal "running"
+     - pencil icon, "Edited", mono "src/settings/page.tsx", green mono "+24", red mono "−3"
+     - pencil icon, "Edited", mono "src/lib/build-info.ts", green mono "+9"
+  Nothing is nested under the Subagent rows: no indented calls, no chevrons.
+- Quiet empty space, then the COMPOSER pinned at the bottom: one rounded box #131416 with border #2A2C30, placeholder "Message the agent…", bottom row: faint info icon + "Send reaches OpenCode at its next step. Interrupt and send stops the turn first." and on the right an outlined "Interrupt and send" with a pause icon and an off-white filled button "Send" with an arrow-up icon.
+
+4. RIGHT PROPERTIES PANEL 320px, as the first image:
+- "Properties": "Status" teal dot "Running"; "Driver" 18px avatar "AK" "Alex Kim"; "Profile" "Default"; "Agent" "OpenCode"; "Model" "Claude Sonnet 5.5"; "Runner" mono "build-fleet-07" and under it two small outlined chips "Pool" "docker"; "Tokens" mono "214k in · 18k out"; "Spend" mono "$1.12"; "Agent time" mono "6 min".
+- hairline. "Code": "Repo" mono "acme/calculator-web"; "Branch" mono "calc-188-app-version"; "PR" faint mono "None yet".
+
+Nothing on this page is amber except the sidebar's "2" pill. No needs-you block on this page.
+
+
+PALETTE (flat, exact hex): page background #0D0E10; sidebar #0A0B0C; raised surfaces (inputs, code blocks, the composer, outline buttons, the badge) #131416; selected row and selected nav item #1A1B1E; hairlines #1F2023; control borders #2A2C30; text #F2F3F4; sidebar rows #D6D8DB; secondary text #B4B7BB; faint text #8B8E93; running and links teal #6FB8AA; success and additions green #4FB286; errors, failures and deletions red #E5675C; primary button filled off-white #F3F0E8 with dark #0C1D21 text, at most ONE primary button on the page. Buoy amber #FFB224 means "needs you" and nothing else. No gradients, no glow, no purple, no blue tint, no drop shadows, no cards inside cards, no illustrations, no robot or bot faces, no emoji.
+
+TYPE: page title Manrope Bold 26px; everything else IBM Plex Sans (body 14.5px, dense rows 14px, secondary 13px, small labels 12px; nav and buttons weight 500, section titles weight 600); IBM Plex Mono for task keys, repo names, branches, file paths, commands, counts, times and all code. Icons: thin Lucide line icons, 15px, stroke 1.75, grey.
+
+SHELL (copy the FIRST attached screenshot's shell exactly, at the same scale): SIDEBAR 234px, #0A0B0C, a 1px #1F2023 line on its right: the attached hinge logo mark (a rounded square split by one diagonal channel) small and off-white, then "Acme Corp" semibold and an up-down chevron; rows 28px. TOP BAR 46px with a bottom hairline. Right PROPERTIES PANEL 320px, #0D0E10, a 1px #1F2023 line on its left, padding 20px 18px, small faint group labels (12px weight 500), key/value rows 30px with grey keys in a fixed column and white values, groups separated by hairlines, no boxes.
+
+Not a mockup, no device frame, no perspective, no window shadow. Calm, precise and dense like Linear or GitHub's pull request review. Everything aligned on a strict grid, crisp small legible text, code perfectly monospaced and aligned, every word spelled exactly as written above.

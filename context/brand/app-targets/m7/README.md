@@ -8,6 +8,8 @@ The design targets for milestone 7's screens (Launch; `context/specs/m7-launch/s
 
 **Postponed 2026-11-19:** Claude Code (F-018) moved after v1 on the maintainer's word, so its targets wait with it: `agent-profile-claude-code`, `runner-agents`, `task-subagent` and `task-subagent-preparing`. Their files stay here, unchanged, for when F-018 is built. Nothing in v1 builds them.
 
+**Waiting for the maintainer's approval, 2026-11-20:** `task-subagents-badge` and `task-subagents-tree`, an agent's subagents on the task page as a badge on its turn and a window with their tree (`task-subagents-tree.md`; the data in `context/research/opencode-subagents.md`). Nothing builds them until the maintainer approves the pictures.
+
 ## Screens
 
 | Screen | Target |
@@ -23,6 +25,7 @@ The design targets for milestone 7's screens (Launch; `context/specs/m7-launch/s
 | A Claude Code task with subagents, and while it prepares (postponed with F-018) | `task-subagent`, `task-subagent-preparing` |
 | Account > Appearance | `account-appearance` |
 | Home and the task page in the light theme | `light-home`, `light-task` |
+| An agent's subagents: the badge on its turn, and the tree it opens (waiting for the maintainer's approval) | `task-subagents-badge`, `task-subagents-tree` |
 
 The screens that only grow (spec section 13's second list) get no new picture: their changes go into the building ticket's `## Comments` as a short list against the existing target.
 
