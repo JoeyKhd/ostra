@@ -148,15 +148,18 @@ export const unstorableCase = (world: World, runner: SuiteRunner): Promise<CaseR
     await waitForSession(world, task.taskId, ["idle"], 120_000);
     const placeholders = async (): Promise<number> =>
       (await world.db.event.findMany({ where: { taskId: task.taskId, kind: "agent.unknown" }, select: { payload: true } })).filter((row) => JSON.stringify(row.payload).includes("event-refused")).length;
+    // The runner's events only (numbered in their session): core's own keep coming after the PR
+    // opens (since milestone 6, `ci.updated` and `review.check_updated` as GitHub's checks run).
+    const runnerEvents = (): Promise<number> => world.db.event.count({ where: { taskId: task.taskId, sessionSeq: { not: null } } });
     const before = await placeholders();
-    const stored = await world.db.event.count({ where: { taskId: task.taskId } });
+    const stored = await runnerEvents();
     // Past a reconnect's worth of time: a runner still resending would have been refused again.
     await new Promise((resolve) => setTimeout(resolve, 20_000));
     const after = await placeholders();
-    const storedAfter = await world.db.event.count({ where: { taskId: task.taskId } });
+    const storedAfter = await runnerEvents();
     const items = await world.db.needsYouItem.count({ where: { taskId: task.taskId, reason: "unstorable_event" } });
     c.check("it's refused once, with a needs-you item", before === 1 && items === 1, `${String(before)} placeholder event, ${String(items)} unstorable_event item (${item.state})`);
-    c.check("the runner stops resending it", after === before && storedAfter === stored, `${String(after)} placeholder and ${String(storedAfter)} events 20 s later (were ${String(stored)})`);
+    c.check("the runner stops resending it", after === before && storedAfter === stored, `${String(after)} placeholder and ${String(storedAfter)} runner events 20 s later (were ${String(stored)})`);
     const row = await taskRow(world, task.taskId);
     c.check("the task carries on past it", row.state === "in_review" || row.state === "needs_you", `the task is ${row.state}, its PR open`);
     c.add(await checkEventsOnce(world, task.taskId));
