@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import { secretRefSchema } from "@ostra/adapter-sdk";
-import type { SecretRef, TrackerAdapter } from "@ostra/adapter-sdk";
+import type { SecretRef, TrackerAdapter, TrackerCapabilities } from "@ostra/adapter-sdk";
 import type { Db, Tx } from "@ostra/db";
 import { connectionIdSchema, organizationIdSchema } from "@ostra/protocol";
 import type { ConnectionId, OrganizationId } from "@ostra/protocol";
@@ -103,15 +103,21 @@ export type LinearAppKit = {
   readonly checkAppToken: (accessToken: string) => Promise<LinearKitResult<LinearAppIdentity>>;
   /** Revokes an access or refresh token at Linear. */
   readonly revokeToken: (token: string) => Promise<LinearKitResult<null>>;
+  /** What Linear's adapter declares about agent mode (its `agentSessions` and `agentScopes`). */
+  readonly capabilities: AgentModeCapabilities;
 };
 
 // ---------- the addresses ----------
 
-/** Milestone 6 (F-012, ADR 0013): the scopes agent mode adds to the install (`app:assignable` for a delegation, `app:mentionable` for a mention). */
-export const LINEAR_AGENT_MODE_SCOPES: readonly string[] = ["app:assignable", "app:mentionable"];
+/** The tracker's declarations agent mode reads (F-012, ADR 0013, ADR 0025): whether it has agent sessions, and the scopes they need. */
+export type AgentModeCapabilities = Pick<TrackerCapabilities, "agentSessions" | "agentScopes">;
 
-/** The agent-mode scopes a granted set lacks. */
-export const missingAgentModeScopes = (granted: readonly string[]): readonly string[] => LINEAR_AGENT_MODE_SCOPES.filter((wanted) => !granted.includes(wanted));
+/**
+ * The agent-mode scopes a granted set lacks, by the tracker's own `agentScopes`, or `null` when the
+ * tracker declares no agent sessions, so agent mode can't be turned on whatever was granted.
+ */
+export const missingAgentModeScopes = (capabilities: AgentModeCapabilities, granted: readonly string[]): readonly string[] | null =>
+  capabilities.agentSessions ? capabilities.agentScopes.filter((wanted) => !granted.includes(wanted)) : null;
 
 /** The `state` prefix of a consent for agent mode: the callback knows it by the state it stored. */
 export const AGENT_MODE_STATE_PREFIX = "agent-mode.";
@@ -334,6 +340,9 @@ export const createLinearAuthorizeUrl = async (
   const organizationId = scope.organizationId;
   const denied = adminOnly(scope, "forbidden" as const);
   if (denied !== null) return denied;
+  if (options.agentMode === true && !deps.linear.capabilities.agentSessions) {
+    return { ok: false, error: "not-ready", message: "This tracker has no agent sessions" };
+  }
   const connection = await tx.connection.findFirst({ where: { id: input.connectionId, organizationId, kind: "linear" } });
   if (connection === null || connection.state === "revoked") {
     return { ok: false, error: "not-found", message: "No such Linear connection" };
@@ -363,7 +372,7 @@ export const createLinearAuthorizeUrl = async (
   const authorizeUrl = deps.linear.authorizeUrl({
     clientId: connection.appId,
     redirectUri: linearCallbackUrl(deps.publicUrl),
-    scopes: options.agentMode === true ? [...new Set([...deps.linear.scopes, ...LINEAR_AGENT_MODE_SCOPES])] : deps.linear.scopes,
+    scopes: options.agentMode === true ? [...new Set([...deps.linear.scopes, ...deps.linear.capabilities.agentScopes])] : deps.linear.scopes,
     state,
     codeChallenge: createHash("sha256").update(verifier).digest("base64url"),
     ...(options.agentMode === true ? { updateExistingToken: true } : {}),
@@ -485,7 +494,8 @@ export const authorizeLinear: AuthorizeLinear = async (deps, input) => {
   // isn't kept, and the connection stays as it was.
   const agentMode = input.state.startsWith(AGENT_MODE_STATE_PREFIX);
   const granted = exchanged.value.scopes ?? null;
-  if (agentMode && (granted === null || missingAgentModeScopes(granted).length > 0)) {
+  const missing = granted === null ? null : missingAgentModeScopes(deps.linear.capabilities, granted);
+  if (agentMode && (missing === null || missing.length > 0)) {
     return refuseAuthorize("missing-scopes", "Linear didn't grant the scopes agent mode needs. Authorize again and accept them");
   }
   const access = await deps.adapters.secretStore.put({ organizationId, purpose: "linear-access-token" }, exchanged.value.accessToken);

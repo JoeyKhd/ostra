@@ -39,6 +39,7 @@ import type { CiVerdict } from "../review-loop/ci-verdict.ts";
 import type { TaskRoundKind } from "../review-loop/rounds.ts";
 import type { Leaves, OneActiveTaskError, StartOrigin, StartRule } from "../starts/start-task.ts";
 import type { UseCaseResult } from "./common.ts";
+import type { AgentModeCapabilities } from "./linear-connection.ts";
 
 // Milestone 6's use cases (spec section 5.4; ADR 0056, ADR 0057, ADR 0058): each one's input, result
 // and signature, with its ports. The signature is the contract the routers, core's workers and the
@@ -213,10 +214,11 @@ export type StartSubIssues = (
 
 /** An organization admin turns agent mode on for the Linear connection, after the app's Authorize. */
 export type EnableAgentMode = (
-  deps: M6Deps,
+  /** `tracker`: what the connection's tracker declares about agent sessions (`LinearAppKit.capabilities`). */
+  deps: M6Deps & { readonly tracker: AgentModeCapabilities },
   scope: MemberScope,
   input: { readonly connectionId: ConnectionId },
-) => Promise<UseCaseResult<{ readonly agentModeAt: number }, "forbidden" | "not-found" | "missing-scopes">>;
+) => Promise<UseCaseResult<{ readonly agentModeAt: number }, "forbidden" | "not-found" | "missing-scopes" | "unsupported">>;
 
 /** "Start from Linear" on a board: at most one board per team per organization. */
 export type SetBoardAgentMode = (

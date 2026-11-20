@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 
-import { LINEAR_AGENT_MODE_SCOPES, startTask } from "@ostra/domain";
+import { LINEAR_AGENT_SCOPES } from "@ostra/adapter-linear";
+import { startTask } from "@ostra/domain";
 import { agentSessionIdSchema } from "@ostra/protocol";
 import type { BoardId, ConnectionId, ProjectId, TaskId } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -101,7 +102,7 @@ describe("Linear agent mode's switches (F-012)", () => {
     if (asked.kind !== "consent") throw new Error("expected a consent URL");
     const url = new URL(asked.authorizeUrl);
     const scopes = (url.searchParams.get("scope") ?? "").split(/[ ,]/);
-    for (const scope of LINEAR_AGENT_MODE_SCOPES) {
+    for (const scope of LINEAR_AGENT_SCOPES) {
       expect(scopes).toContain(scope);
     }
     expect(url.searchParams.get("actor")).toBe("app");
@@ -119,12 +120,12 @@ describe("Linear agent mode's switches (F-012)", () => {
     await harness.test.db.connection.update({ where: { id: connectionId }, data: { webhookMode: "webhooks" } });
 
     // A token that already holds the scopes is turned on at once, with its audit entry.
-    await harness.test.db.connection.update({ where: { id: connectionId }, data: { scopes: { push: [...LINEAR_AGENT_MODE_SCOPES] } } });
+    await harness.test.db.connection.update({ where: { id: connectionId }, data: { scopes: { push: [...LINEAR_AGENT_SCOPES] } } });
     const on = await (await admin()).linear.enableAgentMode();
     expect(on.kind).toBe("on");
     const status = await (await admin()).linear.status();
     if (status.state !== "active") throw new Error("expected an active connection");
-    expect(status.agentMode).toMatchObject({ on: true, grantedScopes: [...LINEAR_AGENT_MODE_SCOPES], missingScopes: [] });
+    expect(status.agentMode).toMatchObject({ on: true, grantedScopes: [...LINEAR_AGENT_SCOPES], missingScopes: [] });
     expect(status.agentMode?.turnedOnByName).toBe((await harness.test.db.user.findUniqueOrThrow({ where: { id: harness.fixture.a.admin.userId } })).name);
     expect(await harness.test.db.auditEntry.count({ where: { action: "linear.agent-mode-enabled", entityId: connectionId } })).toBe(1);
   });

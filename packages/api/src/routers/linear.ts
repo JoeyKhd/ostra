@@ -8,7 +8,6 @@ import {
   disconnectLinear,
   disconnectLinearInputSchema,
   enableAgentMode,
-  LINEAR_AGENT_MODE_SCOPES,
   LINEAR_REFRESH_MARGIN_MS,
   linearAppName,
   linearCallbackUrl,
@@ -227,6 +226,8 @@ const agentModeOf = async (
   const now = deps.ports.clock.now();
   const startOfDay = new Date(Math.floor(now / DAY_MS) * DAY_MS);
   const reach = deps.linear.checkPublicUrl(deps.settings.corePublicUrl);
+  // The scopes are the tracker's own declaration (`agentScopes`), not a list of the panel's.
+  const agentMode = deps.linear.capabilities;
   const [turnedOn, boards, open, awaiting, posted, sessions] = await Promise.all([
     db.auditEntry.findFirst({ where: { organizationId, action: "linear.agent-mode-enabled", entityId: row.id }, orderBy: { createdAt: "desc" }, select: { actorId: true } }),
     db.board.findMany({ where: { organizationId, connectionId: row.id, detachedAt: null }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, key: true, agentMode: true, project: { select: { id: true, name: true } } } }),
@@ -246,8 +247,8 @@ const agentModeOf = async (
     on: row.agentModeAt !== null,
     since: row.agentModeAt?.getTime() ?? null,
     turnedOnByName: turnedOnBy?.user.name ?? null,
-    grantedScopes: LINEAR_AGENT_MODE_SCOPES.filter((scope) => row.scopes.includes(scope)),
-    missingScopes: [...missingAgentModeScopes(row.scopes)],
+    grantedScopes: agentMode.agentScopes.filter((scope) => row.scopes.includes(scope)),
+    missingScopes: [...(missingAgentModeScopes(agentMode, row.scopes) ?? [])],
     reachable: row.webhookMode === "webhooks" && reach.public,
     unreachableReason: row.webhookMode === "polling" ? "The connection polls: Linear's webhooks don't reach it" : reach.public ? null : reach.reason,
     nextRenewalAt: expiresAt === null ? null : Math.max(now + 60_000, expiresAt - LINEAR_REFRESH_MARGIN_MS),
@@ -395,8 +396,17 @@ export const linearRouter = router({
         throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Agent mode needs Linear's webhooks: set OSTRA_CORE_PUBLIC_URL to a public https address" });
       }
       const connectionId = connectionIdSchema.parse(row.id);
-      if (missingAgentModeScopes(row.scopes).length === 0) {
-        const on = unwrap(await enableAgentMode({ db, ...ports }, ctx.scope, { connectionId }), { forbidden: "FORBIDDEN", "not-found": "NOT_FOUND", "missing-scopes": "PRECONDITION_FAILED" });
+      const missing = missingAgentModeScopes(linear.capabilities, row.scopes);
+      if (missing === null) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "This tracker has no agent sessions" });
+      }
+      if (missing.length === 0) {
+        const on = unwrap(await enableAgentMode({ db, ...ports, tracker: linear.capabilities }, ctx.scope, { connectionId }), {
+          forbidden: "FORBIDDEN",
+          "not-found": "NOT_FOUND",
+          "missing-scopes": "PRECONDITION_FAILED",
+          unsupported: "PRECONDITION_FAILED",
+        });
         return { kind: "on" as const, agentModeAt: on.agentModeAt };
       }
       const mode = modeOf(ctx.deps);

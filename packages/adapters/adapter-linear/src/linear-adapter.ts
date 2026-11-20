@@ -230,30 +230,36 @@ export const linearMention = (user: { readonly displayName: string; readonly url
 
 const present = <T,>(values: readonly (T | null)[]): T[] => values.flatMap((value) => (value === null ? [] : [value]));
 
+/**
+ * What Linear's adapter declares (ADR 0025). Exported so code that holds no connection's token, such
+ * as the panel's agent-mode switch, reads the same declaration the adapter answers with.
+ */
+export const LINEAR_CAPABILITIES: TrackerCapabilities = {
+  // `findUsersByEmail`: a profile link in a comment's markdown notifies the user (F-036).
+  mentions: true,
+  // Linear's agent sessions (F-012, ADR 0013): delegations, mentions, follow-ups and stops.
+  agentSessions: true,
+  // A ticket's parent is read, so a sub-issue is told from a ticket.
+  subIssues: true,
+  statusGraph: false,
+  // Signed deliveries, verified and read by `app/webhooks.ts` (ticket 08).
+  webhooks: true,
+  commentEdit: true,
+  // Linear takes file copies as attachments (ADR 0043), used from milestone 6.
+  attachments: true,
+  // Linear sets a status directly.
+  transitions: false,
+  // Agent mode's scopes (ADR 0013): the install re-authorizes with them ("Turn on agent mode").
+  agentScopes: LINEAR_AGENT_SCOPES,
+  // `agentSessionUpdate(externalUrls)` links the session to the task.
+  agentSessionLink: true,
+  // Linear has no field of its own for acceptance criteria: they go into the description.
+  ticketFields: { acceptanceCriteria: false },
+};
+
 export class LinearAdapter extends TrackerAdapter {
   readonly name = "linear";
-  readonly capabilities: TrackerCapabilities = {
-    // `findUsersByEmail`: a profile link in a comment's markdown notifies the user (F-036).
-    mentions: true,
-    // Linear's agent sessions (F-012, ADR 0013): delegations, mentions, follow-ups and stops.
-    agentSessions: true,
-    // A ticket's parent is read, so a sub-issue is told from a ticket.
-    subIssues: true,
-    statusGraph: false,
-    // Signed deliveries, verified and read by `app/webhooks.ts` (ticket 08).
-    webhooks: true,
-    commentEdit: true,
-    // Linear takes file copies as attachments (ADR 0043), used from milestone 6.
-    attachments: true,
-    // Linear sets a status directly.
-    transitions: false,
-    // Agent mode's scopes (ADR 0013): the install re-authorizes with them ("Turn on agent mode").
-    agentScopes: LINEAR_AGENT_SCOPES,
-    // `agentSessionUpdate(externalUrls)` links the session to the task.
-    agentSessionLink: true,
-    // Linear has no field of its own for acceptance criteria: they go into the description.
-    ticketFields: { acceptanceCriteria: false },
-  };
+  readonly capabilities: TrackerCapabilities = LINEAR_CAPABILITIES;
 
   readonly #auth: LinearAuth;
   readonly #apiUrl: string;

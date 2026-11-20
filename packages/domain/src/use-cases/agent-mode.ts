@@ -9,8 +9,10 @@ import type { EnableAgentMode, SetBoardAgentMode } from "./m6-signatures.ts";
 // re-authorized with agent mode's scopes by `createLinearAuthorizeUrl(..., { agentMode: true })` and
 // its callback (`authorizeLinear`), which keeps the granted scopes and sets `agentModeAt`, or refuses
 // a token without them. `enableAgentMode` is the same check on what is stored, for a connection
-// whose token already has them. "Start from Linear" is then a board's: one board per team in the
-// organization (the partial unique index), so a delegation in a team has one project to start in.
+// whose token already has them. Both read the scopes from the tracker's own declaration
+// (`agentSessions` and `agentScopes`), never a list of their own. "Start from Linear" is then a
+// board's: one board per team in the organization (the partial unique index), so a delegation in a
+// team has one project to start in.
 
 /** Agent mode on for the connection: its stored token was granted agent mode's scopes. An organization admin's. */
 export const enableAgentMode: EnableAgentMode = (deps, scope, input) =>
@@ -35,7 +37,11 @@ export const enableAgentMode: EnableAgentMode = (deps, scope, input) =>
     if (connection === null) {
       return { ok: false, error: "not-found", message: "No such Linear connection" };
     }
-    if (missingAgentModeScopes(connection.scopes).length > 0) {
+    const missing = missingAgentModeScopes(deps.tracker, connection.scopes);
+    if (missing === null) {
+      return { ok: false, error: "unsupported", message: "This tracker has no agent sessions" };
+    }
+    if (missing.length > 0) {
       return {
         ok: false,
         error: "missing-scopes",

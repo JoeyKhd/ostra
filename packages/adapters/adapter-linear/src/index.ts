@@ -1,4 +1,4 @@
-export { LinearAdapter, linearStateCategory, MAX_ATTACHMENT_BYTES } from "./linear-adapter.ts";
+export { LINEAR_CAPABILITIES, LinearAdapter, linearStateCategory, MAX_ATTACHMENT_BYTES } from "./linear-adapter.ts";
 export type { LinearAdapterOptions, LinearAuth } from "./linear-adapter.ts";
 export { activityIdFor, defaultReadyStatus, parseLinearAgentSessionEvent } from "./agent-sessions.ts";
 export { postThreadReply } from "./thread-reply.ts";

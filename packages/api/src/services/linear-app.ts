@@ -4,6 +4,7 @@ import {
   checkPublicUrl,
   exchangeCode,
   LINEAR_APP_SCOPES,
+  LINEAR_CAPABILITIES,
   linearAppEndpoints,
   linearAppManifest,
   OSTRA_RESOURCE_TYPES,
@@ -60,6 +61,8 @@ export const createLinearAppKit = (options: LinearAppKitOptions = {}): LinearApp
   return {
     scopes: linearScopes,
     webhookEvents: linearWebhookEvents,
+    // Agent mode reads Linear's adapter's own declaration, not a list of the panel's.
+    capabilities: { agentSessions: LINEAR_CAPABILITIES.agentSessions, agentScopes: LINEAR_CAPABILITIES.agentScopes },
 
     checkPublicUrl: (url) => {
       const checked = checkPublicUrl(url);

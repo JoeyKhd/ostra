@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createLogger, silentLogger } from "@ostra/adapter-sdk";
 import type { LogRecord } from "@ostra/adapter-sdk";
 import { refreshToken as refreshLinearToken } from "@ostra/adapter-linear";
-import { LinearAdapter } from "@ostra/adapter-linear";
+import { LINEAR_CAPABILITIES, LinearAdapter } from "@ostra/adapter-linear";
 import { createFakeLinear, manualClock } from "@ostra/adapter-sdk/testing";
 import type { FakeLinear, FakeLinearApp, ManualClock } from "@ostra/adapter-sdk/testing";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
@@ -21,7 +21,13 @@ import {
   stopTask,
   systemClock,
 } from "@ostra/domain";
-import type { Clock, LinearAppKit, MemberScope, ProjectRole } from "@ostra/domain";
+import type {
+  AgentModeCapabilities,
+  Clock,
+  LinearAppKit,
+  MemberScope,
+  ProjectRole,
+} from "@ostra/domain";
 import { mapTask } from "@ostra/db";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
@@ -689,10 +695,17 @@ describe("the outbox and the heartbeat (F-012)", () => {
 });
 
 describe("turning agent mode on (F-012)", () => {
+  /** Linear's adapter's own declaration, as the panel's kit carries it. */
+  const declared: AgentModeCapabilities = LINEAR_CAPABILITIES;
+
   /** The panel's Linear kit over the fake: consent with the scopes the test grants. */
-  const kit = (granted: readonly string[] | null): LinearAppKit => ({
+  const kit = (
+    granted: readonly string[] | null,
+    capabilities: AgentModeCapabilities = declared,
+  ): LinearAppKit => ({
     scopes: ["read", "write", "issues:create", "comments:create"],
     webhookEvents: [],
+    capabilities,
     checkPublicUrl: () => ({ public: true }),
     manifestUrl: () => "https://linear.example/manifest",
     authorizeUrl: (input) => {
@@ -727,12 +740,16 @@ describe("turning agent mode on (F-012)", () => {
     revokeToken: () => Promise.resolve({ ok: true, value: null }),
   });
 
-  const authorizeDeps = (scope: MemberScope, granted: readonly string[] | null) => ({
+  const authorizeDeps = (
+    scope: MemberScope,
+    granted: readonly string[] | null,
+    capabilities: AgentModeCapabilities = declared,
+  ) => ({
     scope,
     authSessionId: "panel-session",
     corePublicUrl: PUBLIC_URL,
     publicUrl: PUBLIC_URL,
-    linear: kit(granted),
+    linear: kit(granted, capabilities),
     jobs,
     notices: postgresChangeNotices,
     audit: postgresAuditLog,
@@ -740,10 +757,14 @@ describe("turning agent mode on (F-012)", () => {
     adapters: { secretStore, codeHost, modelProvider: new FakeModelProvider() },
   });
 
-  const consent = async (scope: MemberScope, granted: readonly string[] | null) => {
+  const consent = async (
+    scope: MemberScope,
+    granted: readonly string[] | null,
+    capabilities: AgentModeCapabilities = declared,
+  ) => {
     const made = await test.db.$transaction((tx) =>
       createLinearAuthorizeUrl(
-        { tx, ...authorizeDeps(scope, granted) },
+        { tx, ...authorizeDeps(scope, granted, capabilities) },
         { connectionId },
         { agentMode: true },
       ),
@@ -751,10 +772,71 @@ describe("turning agent mode on (F-012)", () => {
     if (!made.ok) return made;
     const state = new URL(made.authorizeUrl).searchParams.get("state") ?? "";
     return authorizeLinear(
-      { db: test.db, ...authorizeDeps(scope, granted) },
+      { db: test.db, ...authorizeDeps(scope, granted, capabilities) },
       { code: "code-from-linear", state },
     );
   };
+
+  /** `enableAgentMode`'s ports, with the tracker's declaration. */
+  const enableDeps = (tracker: AgentModeCapabilities = declared) => ({
+    db: test.db,
+    jobs,
+    outbox: postgresCommandOutbox,
+    notices: postgresChangeNotices,
+    audit: postgresAuditLog,
+    clock: systemClock,
+    adapters: { secretStore, codeHost, modelProvider: new FakeModelProvider() },
+    tracker,
+  });
+
+  it("F-012/c3: agent mode asks for, and checks, the scopes the tracker declares, and is refused for a tracker without agent sessions", async () => {
+    const admin = scopeOf(fixture.a.admin, "admin");
+    // The connection holds Linear's two agent scopes; a tracker that declared a third needs it too.
+    const wider: AgentModeCapabilities = {
+      agentSessions: true,
+      agentScopes: [...declared.agentScopes, "app:extra"],
+    };
+    const none: AgentModeCapabilities = { agentSessions: false, agentScopes: [] };
+    expect(await enableAgentMode(enableDeps(wider), admin, { connectionId })).toMatchObject({
+      ok: false,
+      error: "missing-scopes",
+    });
+    expect(await enableAgentMode(enableDeps(none), admin, { connectionId })).toMatchObject({
+      ok: false,
+      error: "unsupported",
+    });
+    expect(await enableAgentMode(enableDeps(), admin, { connectionId })).toMatchObject({
+      ok: true,
+    });
+    const made = await test.db.$transaction((tx) =>
+      createLinearAuthorizeUrl(
+        { tx, ...authorizeDeps(admin, null, wider) },
+        { connectionId },
+        { agentMode: true },
+      ),
+    );
+    if (!made.ok) throw new Error(made.message);
+    expect(new URL(made.authorizeUrl).searchParams.get("scope")?.split(",")).toContain("app:extra");
+    expect(
+      await test.db.$transaction((tx) =>
+        createLinearAuthorizeUrl(
+          { tx, ...authorizeDeps(admin, null, none) },
+          { connectionId },
+          { agentMode: true },
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: "not-ready" });
+    // A consent that granted Linear's two scopes but not the declared third is refused, and kept nothing.
+    const before = await test.db.connection.findUniqueOrThrow({ where: { id: connectionId } });
+    expect(await consent(admin, AGENT_SCOPES, wider)).toMatchObject({
+      ok: false,
+      error: "missing-scopes",
+    });
+    expect(
+      (await test.db.connection.findUniqueOrThrow({ where: { id: connectionId } }))
+        .accessTokenSecretRef,
+    ).toBe(before.accessTokenSecretRef);
+  });
 
   it("F-012/c3: the install route is refused without an admin session; the consent asks for agent mode's scopes on the existing install; a token without them is refused", async () => {
     const admin = scopeOf(fixture.a.admin, "admin");
@@ -767,21 +849,10 @@ describe("turning agent mode on (F-012)", () => {
       ),
     );
     expect(refused).toMatchObject({ ok: false, error: "forbidden" });
-    expect(
-      await enableAgentMode(
-        {
-          db: test.db,
-          jobs,
-          outbox: postgresCommandOutbox,
-          notices: postgresChangeNotices,
-          audit: postgresAuditLog,
-          clock: systemClock,
-          adapters: { secretStore, codeHost, modelProvider: new FakeModelProvider() },
-        },
-        member,
-        { connectionId },
-      ),
-    ).toMatchObject({ ok: false, error: "forbidden" });
+    expect(await enableAgentMode(enableDeps(), member, { connectionId })).toMatchObject({
+      ok: false,
+      error: "forbidden",
+    });
 
     const made = await test.db.$transaction((tx) =>
       createLinearAuthorizeUrl(
