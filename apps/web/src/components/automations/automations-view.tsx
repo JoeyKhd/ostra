@@ -70,7 +70,7 @@ const ordered = (rows: readonly Automation[]): Automation[] =>
 
 const th = "h-[30px] pr-3 text-left text-[12.5px] font-medium text-faint";
 
-export const AutomationsView = ({ projectId }: { readonly projectId: ProjectId }) => {
+export const AutomationsView = ({ projectId, organizationAdmin }: { readonly projectId: ProjectId; readonly organizationAdmin: boolean }) => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -160,7 +160,7 @@ export const AutomationsView = ({ projectId }: { readonly projectId: ProjectId }
     <PageFrame
       crumbs={[{ label: projectName, href: `/projects/${projectId}` }, { label: t("automations.title") }]}
       actions={actions}
-      {...(empty || data === undefined ? {} : { properties: selected === null ? null : <AutomationPanel automation={selected} canEdit={canEdit} names={names} startsPerHour={startsPerHour} projectId={projectId} onToggle={toggle} /> })}
+      {...(empty || data === undefined ? {} : { properties: selected === null ? null : <AutomationPanel automation={selected} canEdit={canEdit} organizationAdmin={organizationAdmin} names={names} startsPerHour={startsPerHour} projectId={projectId} onToggle={toggle} /> })}
     >
       <PageHeading title={t("automations.title")} lede={t("automations.lede", { project: projectName })} />
       {list.isError ? (
@@ -395,9 +395,27 @@ const EmptyState = ({ projectId, canEdit, noBoard }: { readonly projectId: Proje
   </div>
 );
 
+/** `Created {date} by {name}`, and ` · edited {age} by {name}` when it was (automations.md). */
+export const madeLine = (automation: Pick<Automation, "createdAt" | "updatedAt" | "createdByName" | "updatedByName">, date: string, age: string): string => {
+  const made = automation.createdByName === null ? t("automations.panel.created", { date }) : t("automations.panel.createdBy", { date, name: automation.createdByName });
+  if (automation.updatedAt - automation.createdAt <= 60_000) return made;
+  return `${made} · ${automation.updatedByName === null ? t("automations.panel.edited", { age }) : t("automations.panel.editedBy", { age, name: automation.updatedByName })}`;
+};
+
+/** The rule's profile: a link to the profile for organization admins, who can open it; its name for the rest. */
+export const ProfileValue = ({ profile, organizationAdmin }: { readonly profile: Automation["agentProfile"]; readonly organizationAdmin: boolean }) =>
+  profile === null ? (
+    <span className="truncate">{t("automations.defaultProfile")}</span>
+  ) : organizationAdmin ? (
+    <Link href={`/organization/agent-profiles/${profile.id}`} className="truncate text-teal hover:underline">{profile.name}</Link>
+  ) : (
+    <span className="truncate">{profile.name}</span>
+  );
+
 const AutomationPanel = ({
   automation,
   canEdit,
+  organizationAdmin,
   names,
   startsPerHour,
   projectId,
@@ -405,6 +423,7 @@ const AutomationPanel = ({
 }: {
   readonly automation: Automation;
   readonly canEdit: boolean;
+  readonly organizationAdmin: boolean;
   readonly names: FilterNames;
   readonly startsPerHour: number;
   readonly projectId: ProjectId;
@@ -458,7 +477,7 @@ const AutomationPanel = ({
       <PropGroup title={t("automations.panel.starts")}>
         <PropRow label={t("automations.panel.kind")}>{taskKindLong(automation.taskKind)}</PropRow>
         <PropRow label={t("automations.panel.profile")}>
-          <span className="truncate">{automation.agentProfile?.name ?? t("automations.defaultProfile")}</span>
+          <ProfileValue profile={automation.agentProfile} organizationAdmin={organizationAdmin} />
         </PropRow>
         <PropRow label={t("automations.panel.poolLabels")}>
           {automation.poolLabels.length === 0 ? <span className="text-faint">—</span> : automation.poolLabels.map((label) => <Chip key={label} className="font-mono text-[12.5px] text-text">{label}</Chip>)}
@@ -493,9 +512,8 @@ const AutomationPanel = ({
           )}
         </div>
       ) : null}
-      <p className="text-[12.5px] text-faint" suppressHydrationWarning>
-        {t("automations.panel.created", { date: dayText(automation.createdAt) })}
-        {automation.updatedAt - automation.createdAt > 60_000 ? ` · ${t("automations.panel.edited", { age: formatAge(automation.updatedAt) })}` : ""}
+      <p className="text-[12.5px] text-faint" suppressHydrationWarning data-testid="automation-made">
+        {madeLine(automation, dayText(automation.createdAt), formatAge(automation.updatedAt))}
       </p>
     </div>
   );

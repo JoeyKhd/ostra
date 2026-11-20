@@ -5336,7 +5336,9 @@
       "editSchedule": "Edit schedule",
       "dryRun": "Dry run",
       "created": "Created {date}",
-      "edited": "edited {age} ago"
+      "createdBy": "Created {date} by {name}",
+      "edited": "edited {age} ago",
+      "editedBy": "edited {age} ago by {name}"
     },
     "words": {
       "everyTicket": "every open ticket",
@@ -5582,7 +5584,10 @@
       "missed": "Missed",
       "reason": {
         "has_task": "It already has a task",
+        "hasTaskLinked": "It already has a task,",
         "last_open": "The last task was still open",
+        "waitedFor": "Waited for",
+        "stillState": "still {state}",
         "paused": "The automation was paused",
         "hourly_limit": "The rule reached {n} starts in an hour and paused",
         "over_limit": "Over the {n} a time limit: it starts next time",

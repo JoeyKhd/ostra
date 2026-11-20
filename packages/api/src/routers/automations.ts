@@ -26,7 +26,7 @@ import {
   taskIdSchema,
   ticketIdSchema,
 } from "@ostra/protocol";
-import type { AgentProfileId, AutomationId, OrganizationId, ProjectId } from "@ostra/protocol";
+import type { AgentProfileId, AutomationId, OrganizationId, ProjectId, TaskId } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -123,6 +123,9 @@ const automationSchema = z.object({
   deleted: z.boolean(),
   createdAt: z.number().int(),
   updatedAt: z.number().int(),
+  /** Who made it and who last changed it, by name: the panel's `Created {date} by {name}` line. */
+  createdByName: z.string().nullable(),
+  updatedByName: z.string().nullable(),
 });
 type AutomationView = z.infer<typeof automationSchema>;
 
@@ -189,7 +192,7 @@ const viewOf = async (
 ): Promise<AutomationView[]> => {
   const ids = rows.map((row) => row.id);
   const profileIds = rows.flatMap((row) => (row.agentProfileId === null ? [] : [row.agentProfileId]));
-  const pauserIds = rows.flatMap((row) => (row.pausedReason === "member" && row.updatedByMemberId !== null ? [row.updatedByMemberId] : []));
+  const pauserIds = [...new Set(rows.flatMap((row) => [row.createdByMemberId, row.updatedByMemberId].flatMap((id) => (id === null ? [] : [id]))))];
   const [profiles, pausers, lastRuns, byState, lastHour] = await Promise.all([
     db.agentProfile.findMany({ where: { organizationId, id: { in: profileIds } }, select: { id: true, name: true } }),
     db.member.findMany({ where: { organizationId, id: { in: pauserIds } }, select: { id: true, user: { select: { name: true } } } }),
@@ -246,6 +249,8 @@ const viewOf = async (
         row.pausedAt === null || row.pausedReason === null
           ? null
           : { at: row.pausedAt.getTime(), reason: row.pausedReason, byName: row.pausedReason === "member" && row.updatedByMemberId !== null ? (pauserName.get(row.updatedByMemberId) ?? null) : null },
+      createdByName: row.createdByMemberId === null ? null : (pauserName.get(row.createdByMemberId) ?? null),
+      updatedByName: row.updatedByMemberId === null ? null : (pauserName.get(row.updatedByMemberId) ?? null),
       nextOccurrenceAt: row.nextOccurrenceAt?.getTime() ?? null,
       lastOccurrenceAt: row.lastOccurrenceAt?.getTime() ?? null,
       lastRun:
@@ -630,6 +635,11 @@ export const automationsRouter = router({
             at: z.number().int(),
             ticket: z.object({ id: ticketIdSchema, key: z.string(), title: z.string() }).nullable(),
             task: z.object({ id: taskIdSchema, shortId: z.string(), title: z.string(), state: z.string() }).nullable(),
+            /**
+             * A skip's task (automation-history.md): the ticket's task a `has_task` match met, or the
+             * automation's last task a `last_open` occurrence waited for, as it is now.
+             */
+            blockedBy: z.object({ id: taskIdSchema, shortId: z.string(), state: z.string() }).nullable(),
             bulkStartId: bulkStartIdSchema.nullable(),
           }),
         ),
@@ -653,6 +663,15 @@ export const automationsRouter = router({
       });
       const page = runs.slice(0, HISTORY_PAGE);
       const last = page.at(-1);
+      // The task each skip was about: the newest one made before it, of the ticket or of the automation.
+      const blockedBy = new Map<string, { readonly id: TaskId; readonly shortId: string; readonly state: string }>();
+      for (const run of page) {
+        if (run.state !== "skipped" || (run.skipReason !== "has_task" && run.skipReason !== "last_open")) continue;
+        const scope = run.skipReason === "has_task" ? (run.ticketId === null ? null : { ticketId: run.ticketId }) : { automationId: run.automationId };
+        if (scope === null) continue;
+        const blocking = await db.task.findFirst({ where: { organizationId, ...scope, createdAt: { lte: run.createdAt } }, orderBy: { createdAt: "desc" }, select: { id: true, state: true } });
+        if (blocking !== null) blockedBy.set(run.id, { id: taskIdSchema.parse(blocking.id), shortId: shortIdOf(blocking.id), state: blocking.state });
+      }
       return {
         runs: page.map((run) => ({
           id: run.id,
@@ -663,6 +682,7 @@ export const automationsRouter = router({
           at: run.createdAt.getTime(),
           ticket: run.ticket === null ? null : { id: ticketIdSchema.parse(run.ticket.id), key: run.ticket.key, title: run.ticket.title },
           task: run.task === null ? null : { id: taskIdSchema.parse(run.task.id), shortId: shortIdOf(run.task.id), title: run.task.title, state: run.task.state },
+          blockedBy: blockedBy.get(run.id) ?? null,
           bulkStartId: run.bulkStartId === null ? null : bulkStartIdSchema.parse(run.bulkStartId),
         })),
         nextCursor: runs.length > HISTORY_PAGE && last !== undefined ? encodeCursor(last.createdAt, last.id) : null,

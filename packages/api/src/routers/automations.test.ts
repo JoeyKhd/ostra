@@ -87,6 +87,9 @@ describe("automations: who may do what (F-011, F-106)", () => {
     expect(made).toMatchObject({ name: "Bugs in, tasks out", kind: "intake_rule", taskKind: "code", filter: { labels: { mode: "any", names: ["bug"] } }, paused: null, deleted: false });
     const updated = await (await projectAdmin()).automations.update({ automationId: made.id, settings: bugRule("Bugs in, tasks out", { requireApproval: true }) });
     expect(updated.requireApproval).toBe(true);
+    // The panel's "Created {date} by {name}" and its edit's name (ticket 41).
+    const insiderName = (await harness.test.db.user.findUniqueOrThrow({ where: { id: a.insider.userId } })).name;
+    expect(updated).toMatchObject({ createdByName: insiderName, updatedByName: insiderName });
 
     // A member who can open the project reads the list, the automation, its dry run and its history.
     const asMember = await member();
@@ -281,13 +284,19 @@ describe("automations: the dry run, Start all and the history (F-011, F-107)", (
     // The history has the press and the ticket it matched, with its task.
     const history = await (await member()).automations.history({ automationId: ruleId });
     expect(history.runs.map((run) => run.kind).sort()).toEqual(["start_all", "ticket_match"]);
-    expect(history.runs.find((run) => run.kind === "ticket_match")).toMatchObject({ state: "started", ticket: { key: "ENG-101" }, task: { id: started.id }, bulkStartId: pressed.bulkStartId });
+    expect(history.runs.find((run) => run.kind === "ticket_match")).toMatchObject({ state: "started", ticket: { key: "ENG-101" }, task: { id: started.id }, bulkStartId: pressed.bulkStartId, blockedBy: null });
 
     // The list says what the screen's row and panel show: the counts, this hour's starts, the last start's key.
     const listed = (await (await member()).automations.list({ projectId })).automations.find((row) => row.id === ruleId);
     expect(listed?.counts).toEqual({ started: 1, skipped: 0, missed: 0, lastHour: 1 });
     const runs = await harness.test.db.automationRun.findMany({ where: { automationId: ruleId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], include: { ticket: { select: { key: true } } } });
     expect(listed?.lastRun?.ticketKey).toBe(runs[0]?.ticket?.key ?? null);
+    // A match skipped because its ticket had a task names that task (ticket 41: the history links it).
+    await harness.test.db.automationRun.create({
+      data: { organizationId: harness.fixture.a.organization.id, projectId, automationId: ruleId, kind: "ticket_match", ticketId: withTask, state: "skipped", skipReason: "has_task" },
+    });
+    const skipped = (await (await member()).automations.history({ automationId: ruleId })).runs.find((run) => run.skipReason === "has_task");
+    expect(skipped?.blockedBy).toMatchObject({ id: held.id, shortId: held.id.replaceAll("-", "").slice(-8) });
   });
 
   it("F-011/c1: Home lists a rule its hourly limit paused to the project's admins only, and resuming it clears the row", async () => {

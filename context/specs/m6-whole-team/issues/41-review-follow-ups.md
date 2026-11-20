@@ -33,7 +33,7 @@ Each line is a difference from a build spec that the building ticket didn't reco
 - [ ] **Refine draft:** no "Retry sync" for a failed write, and no partly-applied state.
 - [ ] **Review screen:** no "A new review is running on {sha7}" line; "Resolved" doesn't say its round.
 - [ ] **Task rounds:** the Code group has no Head and CI rows; the status doesn't name the sub-state; a released hold's line and the "pushed, CI passed" outcome after each card are missing.
-- [ ] **Automations:** "Created {date}" names nobody; the profile isn't a link for organization admins. The history's skip reasons don't link the task.
+- [x] **Automations:** "Created {date}" names nobody; the profile isn't a link for organization admins. The history's skip reasons don't link the task. *Done 2026-11-20: who made and edited it, the profile a link for organization admins, and each skip's task linked (`automations-view.tsx`, `automation-history.tsx`, `automations.history`'s `blockedBy`); proof in `context/proof/F-011.md` (c1).*
 - [ ] **Environment proposal:** a decided proposal now shows its outcome after a reload, but not its read-only diff for 7 days.
 - [ ] **The switch's colour:** the targets disagree (teal in `automations.md`, `--shell` in `review-settings.md`, green in `linear-agent-mode.md`); the app's `Switch` is green. One answer for every screen is the maintainer's.
 

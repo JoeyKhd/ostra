@@ -96,6 +96,7 @@ const run = (over: Partial<HistoryRun>): HistoryRun => ({
   at: 0,
   ticket: null,
   task: null,
+  blockedBy: null,
   bulkStartId: null,
   ...over,
 });

@@ -388,8 +388,40 @@ const TaskCell = ({ run, limits }: { readonly run: HistoryRun; readonly limits: 
     );
   }
   if (run.state === "missed") return <span className="text-faint">{missedText(run, limits.missedHours)}</span>;
-  if (run.skipReason !== null) return <span className="text-faint">{skipReasonText(run.skipReason, limits)}</span>;
+  if (run.skipReason !== null) return <SkipReason run={run} limits={limits} />;
   return null;
+};
+
+/**
+ * A skip's reason, with the task it was about a link (automation-history.md): `It already has a
+ * task, a17be093`, `Waited for 7c1e04d2, still in review`.
+ */
+export const SkipReason = ({ run, limits }: { readonly run: Pick<HistoryRun, "skipReason" | "blockedBy">; readonly limits: { readonly startsPerHour: number; readonly bulkStartMax: number } }) => {
+  if (run.skipReason === null) return null;
+  const blocking = run.blockedBy;
+  const link =
+    blocking === null ? null : (
+      <Link href={`/tasks/${blocking.id}`} onClick={(event) => { event.stopPropagation(); }} className="font-mono text-[12.5px] text-teal hover:underline">
+        {blocking.shortId}
+      </Link>
+    );
+  if (run.skipReason === "has_task" && link !== null) {
+    return (
+      <span className="text-faint" data-testid="skip-reason">
+        {t("automations.history.reason.hasTaskLinked")} {link}
+      </span>
+    );
+  }
+  if (run.skipReason === "last_open" && link !== null && blocking !== null) {
+    const state = taskStateOf(blocking.state);
+    return (
+      <span className="text-faint" data-testid="skip-reason">
+        {t("automations.history.reason.waitedFor")} {link}
+        {state === null ? null : `, ${t("automations.history.reason.stillState", { state: taskStateText(state).toLowerCase() })}`}
+      </span>
+    );
+  }
+  return <span className="text-faint" data-testid="skip-reason">{skipReasonText(run.skipReason, limits)}</span>;
 };
 
 const taskStates = ["queued", "preparing", "running", "awaiting_approval", "needs_you", "in_review", "stopped", "merged", "done"] as const;
@@ -420,7 +452,7 @@ const RunPanel = ({ run, automation, limits }: { readonly run: HistoryRun; reado
           </>
         )}
         {run.state === "missed" ? <PropRow label={t("automations.history.panelReason")}><span className="whitespace-normal">{missedText(run, limits.missedHours)}</span></PropRow> : null}
-        {run.skipReason === null ? null : <PropRow label={t("automations.history.panelReason")}><span className="whitespace-normal">{skipReasonText(run.skipReason, limits)}</span></PropRow>}
+        {run.skipReason === null ? null : <PropRow label={t("automations.history.panelReason")}><span className="whitespace-normal"><SkipReason run={run} limits={limits} /></span></PropRow>}
       </PropGroup>
       {run.task === null ? null : (
         <PropGroup title={t("automations.history.panelTasks")}>
