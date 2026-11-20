@@ -23,6 +23,7 @@ const finding: ReviewFinding = {
   suggestion: null,
   postedAs: "line_comment",
   state: "open",
+  resolvedInRound: null,
 };
 
 const actions = (prOpen: boolean): FindingActions => ({

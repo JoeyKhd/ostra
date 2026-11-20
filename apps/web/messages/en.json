@@ -174,7 +174,8 @@
       "running": "AI review running",
       "failed": "AI review round {n} failed",
       "nothingBlocking": "AI review round {n}: nothing blocking",
-      "blocking": "AI review round {n}: {b} blocking"
+      "blocking": "AI review round {n}: {b} blocking",
+      "newRunning": "A new review is running on {sha}. These findings are from round {n}."
     },
     "pr": {
       "open": "open",
@@ -196,6 +197,7 @@
       "nit": "Nit",
       "open": "Open",
       "resolved": "Resolved",
+      "resolvedIn": "Resolved in round {n}",
       "outdated": "Outdated",
       "line": "line {n}",
       "suggested": "Suggested",

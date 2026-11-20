@@ -99,7 +99,7 @@ const nit = fakeReview.findings.find((finding) => finding.severity === "nit");
 const blocking = fakeReview.findings.find((finding) => finding.severity === "blocking");
 if (nit === undefined || blocking === undefined) throw new Error("the reviewing fake's sample has no nit or blocking finding");
 await db.finding.create({
-  data: { organizationId, projectId, reviewRunId: run1.id, taskRepoId: taskRepo.id, path: "src/version.ts", line: 2, side: "new", severity: "blocking", title: "Read the version at build time", body: "`process.env` isn't defined in the browser bundle.", suggestion: null, postedAs: "line_comment", state: "resolved" },
+  data: { organizationId, projectId, reviewRunId: run1.id, taskRepoId: taskRepo.id, path: "src/version.ts", line: 2, side: "new", severity: "blocking", title: "Read the version at build time", body: "`process.env` isn't defined in the browser bundle.", suggestion: null, postedAs: "line_comment", state: "resolved", resolvedInRunId: run2.id },
 });
 const openNit = await db.finding.create({
   data: { organizationId, projectId, reviewRunId: run2.id, taskRepoId: taskRepo.id, path: "src/settings/about-section.tsx", line: 4, side: "new", severity: "nit", title: nit.title, body: nit.body, suggestion: nit.suggestion, postedAs: "line_comment", state: "open" },

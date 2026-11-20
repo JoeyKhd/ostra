@@ -192,6 +192,27 @@ describe("the review screen (F-102, ticket 28)", () => {
     expect(await codeOf((await harness.as(harness.fixture.b.admin)).review.screen({ taskId: task.taskId }))).toBe("NOT_FOUND");
   });
 
+  it("F-102/c1: a resolved finding names the round that resolved it, and a review running on a newer head says which head", async () => {
+    const task = await reviewedTask("resolved-round");
+    const { db } = harness.test;
+    const head3 = sha("resolved-round-3");
+    // Round 2 found round 1's blocking finding fixed; round 3 runs on the next head of the first PR.
+    const second = await db.reviewRun.create({
+      data: { organizationId: orgA, projectId, codeTaskId: task.taskId, round: 2, state: "posted", postedAt: new Date(), heads: [{ repoId: repo1, prNumber: 7, baseSha: "e".repeat(40), headSha: task.head1 }] },
+      select: { id: true },
+    });
+    await db.finding.update({ where: { id: task.blocking }, data: { state: "resolved", resolvedInRunId: second.id } });
+    await db.reviewRun.create({ data: { organizationId: orgA, projectId, codeTaskId: task.taskId, round: 3, state: "running", heads: [{ repoId: repo1, prNumber: 7, baseSha: "e".repeat(40), headSha: head3 }] } });
+    const screen = await (await harness.as(harness.fixture.a.member)).review.screen({ taskId: task.taskId });
+    expect(screen.prs[0]?.findings).toMatchObject([{ findingId: task.blocking, round: 1, state: "resolved", resolvedInRound: 2 }]);
+    expect(screen.prs[1]?.findings).toMatchObject([{ findingId: task.nit, state: "open", resolvedInRound: null }]);
+    expect(screen.reviewRuns.map((run) => [run.round, run.state, run.heads])).toEqual([
+      [1, "posted", [{ repoId: repo1, headSha: task.head1 }, { repoId: repo2, headSha: task.head2 }]],
+      [2, "posted", [{ repoId: repo1, headSha: task.head1 }]],
+      [3, "running", [{ repoId: repo1, headSha: head3 }]],
+    ]);
+  });
+
   it("F-102/c1: Fix this puts the finding on its line as the member's draft comment, once, on the head it was found on; a finding off the diff has no line", async () => {
     const task = await reviewedTask("fix-this");
     const member = await harness.as(harness.fixture.a.member);

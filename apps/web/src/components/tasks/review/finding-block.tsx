@@ -55,7 +55,7 @@ export const FindingBlock = ({ finding, actions }: { readonly finding: ReviewFin
         </span>
         <span className={cn("inline-flex h-[22px] items-center gap-1 rounded-sm border border-line-2 px-2 text-xs", finding.state === "outdated" ? "text-faint" : "text-muted")}>
           {finding.state === "resolved" ? <CheckIcon aria-hidden className="size-3 text-green" /> : null}
-          {findingStateWords(finding.state)}
+          {findingStateWords(finding)}
         </span>
         {finding.postedAs === "review_body" ? <span className="font-mono text-xs text-faint">{t("review.finding.line", { n: finding.line })}</span> : null}
       </div>

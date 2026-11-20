@@ -132,18 +132,33 @@ export const reviewerStateWords = (reviewer: Pick<ReviewPr["reviewers"][number],
   return t("review.reviewer.requested");
 };
 
-/** A finding's state chip. */
-export const findingStateWords = (state: ReviewFinding["state"]): string => {
-  switch (state) {
+/** A finding's state chip: a resolved one names the round that found it fixed (`Resolved in round 2`). */
+export const findingStateWords = (finding: Pick<ReviewFinding, "state" | "resolvedInRound">): string => {
+  switch (finding.state) {
     case "open":
       return t("review.finding.open");
     case "resolved":
-      return t("review.finding.resolved");
+      return finding.resolvedInRound === null ? t("review.finding.resolved") : t("review.finding.resolvedIn", { n: finding.resolvedInRound });
     case "outdated":
       return t("review.finding.outdated");
     default:
-      return state satisfies never;
+      return finding.state satisfies never;
   }
+};
+
+/**
+ * The line above the diff while a new review runs (review-screen.md, "AI review running"): `A new
+ * review is running on 3f9c21a. These findings are from round 2.`, with the head it runs on for the
+ * PR's repo and the last finished round's number. `null` when no review runs on this PR, or none
+ * finished before it (no findings to explain).
+ */
+export const reviewRunningText = (runs: readonly Pick<ReviewRun, "round" | "state" | "heads">[], repoId: string): string | null => {
+  const last = runs.at(-1);
+  if (last?.state !== "running") return null;
+  const head = last.heads.find((one) => one.repoId === repoId);
+  const finished = runs.findLast((run) => run.round < last.round && (run.state === "posted" || run.state === "submitted"));
+  if (head === undefined || finished === undefined) return null;
+  return t("review.ai.newRunning", { sha: head.headSha.slice(0, 7), n: finished.round });
 };
 
 /** The AI review's line in the PR's panel group: what's open and what's resolved. */

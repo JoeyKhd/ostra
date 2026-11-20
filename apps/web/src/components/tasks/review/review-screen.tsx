@@ -26,7 +26,7 @@ import { ChangesTab } from "../task-changes/changes-tab";
 import { middleTruncate } from "../task-changes/task-changes";
 import type { DiffFindingView } from "../task-changes/diff-words";
 import { FindingBlock } from "./finding-block";
-import { aiReviewWords, ciWords, findingsSummary, reviewerStateWords, subStateWords, viewerReview } from "./review-words";
+import { aiReviewWords, ciWords, findingsSummary, reviewerStateWords, reviewRunningText, subStateWords, viewerReview } from "./review-words";
 import type { ReviewFinding, ReviewPr, ReviewScreen as Screen } from "./review-words";
 
 // The review screen (app-targets/m6/review-screen.md; F-102, F-100, F-111, ticket 35): a tab per
@@ -264,6 +264,8 @@ export const ReviewScreen = ({ taskId }: { readonly taskId: TaskId }) => {
   ].map((crumb) => (crumb.href === undefined ? { label: crumb.label } : { label: crumb.label, href: crumb.href }));
   const viewer = data === undefined ? "other" : viewerReview(data.prs, meId);
   const filesUrl = pr?.prUrl === null || pr?.prUrl === undefined ? null : safeHref(`${pr.prUrl}/files`);
+  // A new review running on the PR: the findings shown are the last finished round's.
+  const runningLine = data === undefined || pr === undefined ? null : reviewRunningText(data.reviewRuns, pr.repoId);
 
   return (
     <PageFrame
@@ -326,6 +328,7 @@ export const ReviewScreen = ({ taskId }: { readonly taskId: TaskId }) => {
           </p>
         ) : pr === undefined || task.data === undefined ? null : (
           <div className="min-h-0 flex-1">
+            {runningLine === null ? null : <p className="mt-3 text-xs text-faint" data-testid="review-running">{runningLine}</p>}
             <ChangesTab
               key={pr.taskRepoId}
               taskId={taskId}

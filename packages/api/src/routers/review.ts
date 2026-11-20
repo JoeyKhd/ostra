@@ -150,6 +150,7 @@ export const reviewRouter = router({
           suggestion: true,
           postedAs: true,
           state: true,
+          resolvedInRunId: true,
           reviewRun: { select: { id: true, round: true, state: true } },
         },
       }),
@@ -158,7 +159,7 @@ export const reviewRouter = router({
         orderBy: [{ updatedAt: "asc" }],
         select: { taskRepoId: true, githubUserId: true, login: true, teamSlug: true, memberId: true, source: true, lastReviewState: true },
       }),
-      db.reviewRun.findMany({ where: { organizationId, codeTaskId: task.id }, orderBy: { round: "asc" }, select: { id: true, round: true, state: true, summary: true, blocking: true, nits: true, postedAt: true } }),
+      db.reviewRun.findMany({ where: { organizationId, codeTaskId: task.id }, orderBy: { round: "asc" }, select: { id: true, round: true, state: true, summary: true, blocking: true, nits: true, postedAt: true, heads: true } }),
     ]);
     const names = await nameMap(ctx, organizationId, reviewers.map((reviewer) => reviewer.memberId));
     const ticket = task.ticketId === null ? null : await db.ticket.findFirst({ where: { id: task.ticketId, organizationId }, select: { key: true, title: true, url: true, description: true } });
@@ -197,6 +198,8 @@ export const reviewRouter = router({
         blocking: run.blocking,
         nits: run.nits,
         postedAt: run.postedAt?.getTime() ?? null,
+        /** Ticket 41: the head of each repo it reviews, so a running review says which head it's on. */
+        heads: (reviewHeadsSchema.safeParse(run.heads).data ?? []).map((head) => ({ repoId: head.repoId, headSha: head.headSha })),
       })),
       prs: repos.map((repo) => {
         const entry = diffs.repos.find((candidate) => candidate.taskRepoId === repo.id);
@@ -238,6 +241,8 @@ export const reviewRouter = router({
             /** Where the review put it: a line comment, or the review's body (off the diff). */
             postedAs: finding.postedAs,
             state: finding.state,
+            /** Ticket 41: the round of the review run that found it resolved (`Resolved in round {n}`). */
+            resolvedInRound: finding.state === "resolved" ? (runs.find((run) => run.id === finding.resolvedInRunId)?.round ?? null) : null,
           })),
           reviewers: reviewers
             .filter((reviewer) => reviewer.taskRepoId === repo.id)

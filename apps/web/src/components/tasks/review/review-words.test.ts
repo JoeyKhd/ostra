@@ -1,7 +1,7 @@
-import { memberIdSchema } from "@ostra/protocol";
+import { gitShaSchema, memberIdSchema, repoIdSchema } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
-import { aiReviewWords, capBody, capOf, findingsSentWords, findingsSummary, stagesOf, viewerReview } from "./review-words";
+import { aiReviewWords, capBody, capOf, findingStateWords, findingsSentWords, findingsSummary, reviewRunningText, stagesOf, viewerReview } from "./review-words";
 
 // F-035, F-101, F-102 (ticket 35): the review loop's words, each on its own. The stage line marks a
 // stage done only when it happened in this pass, the round line's dot speaks to a reviewer still to
@@ -37,6 +37,25 @@ describe("the review loop's words (ticket 35)", () => {
     expect(aiReviewWords(true, [{ round: 2, state: "posted", blocking: 0 }])).toBe("AI review round 2: nothing blocking");
     expect(aiReviewWords(true, [{ round: 1, state: "posted", blocking: 1 }, { round: 2, state: "running", blocking: 0 }])).toBe("AI review running");
     expect(findingsSummary(true, [{ state: "open", severity: "nit" }, { state: "resolved", severity: "blocking" }])).toBe("1 nit open · 1 resolved");
+  });
+
+  it("F-102/c1: a resolved finding says its round, and a review running on a new head says which head and whose findings show", () => {
+    expect(findingStateWords({ state: "resolved", resolvedInRound: 2 })).toBe("Resolved in round 2");
+    expect(findingStateWords({ state: "resolved", resolvedInRound: null })).toBe("Resolved");
+    expect(findingStateWords({ state: "open", resolvedInRound: null })).toBe("Open");
+    const repo = repoIdSchema.parse("01900000-0000-7000-8000-0000000000a1");
+    const other = repoIdSchema.parse("01900000-0000-7000-8000-0000000000a2");
+    const head = (sha: string) => [{ repoId: repo, headSha: gitShaSchema.parse(sha.repeat(40 / sha.length)) }];
+    const runs = [
+      { round: 1, state: "posted" as const, heads: head("a1") },
+      { round: 2, state: "posted" as const, heads: head("b2") },
+      { round: 3, state: "running" as const, heads: head("3f9c21a0") },
+    ];
+    expect(reviewRunningText(runs, repo)).toBe("A new review is running on 3f9c21a. These findings are from round 2.");
+    // Not on this PR's repo, nothing running, or nothing finished before it: no line.
+    expect(reviewRunningText(runs, other)).toBeNull();
+    expect(reviewRunningText(runs.slice(0, 2), repo)).toBeNull();
+    expect(reviewRunningText(runs.slice(2), repo)).toBeNull();
   });
 
   it("F-101/c4: a findings round names the blocking findings it sent and lists the nits; the cap names its limit", () => {
