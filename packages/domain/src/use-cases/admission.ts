@@ -190,7 +190,16 @@ export const admitQueued = async (
   const queue = await poolQueueInTx(deps.db, input.organizationId, input.poolId);
   const admitted: { readonly taskId: TaskId; readonly runnerId: RunnerId; readonly leaseEpoch: LeaseEpoch }[] = [];
   const passed: TaskId[] = [];
+  // Once a task waits because this pool is full, or its project is at its share of this pool, no
+  // task behind it in this pass takes that room: a slot that frees during the pass goes to the head
+  // of the queue at the next pass, not to whichever task the pass reaches next.
+  let poolFull = false;
+  const atShare = new Set<string>();
   for (const entry of queue) {
+    if (poolFull || atShare.has(entry.projectId)) {
+      passed.push(entry.taskId);
+      continue;
+    }
     const payload = {
       organizationId: input.organizationId,
       taskId: entry.taskId,
@@ -235,6 +244,13 @@ export const admitQueued = async (
       admitted.push({ taskId: entry.taskId, runnerId: result.runnerId, leaseEpoch: result.leaseEpoch });
     } else if (result.error === "no-runner") {
       passed.push(entry.taskId);
+      const row = await deps.db.task.findUnique({ where: { id: entry.taskId }, select: { dispatchWait: true } });
+      const wait = row === null ? null : dispatchWaitFromDb(row.dispatchWait);
+      if (wait?.code === "pool-full" && wait.poolId === input.poolId) {
+        poolFull = true;
+      } else if (wait?.code === "project-share-reached" && wait.poolId === input.poolId) {
+        atShare.add(entry.projectId);
+      }
     }
   }
   const reasons =

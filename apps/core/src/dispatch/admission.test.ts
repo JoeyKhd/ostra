@@ -281,6 +281,38 @@ describe("the pool queue and its admission (F-067)", () => {
     }
   });
 
+  it("F-067: room that frees during a pass goes to the head of the queue, never to a task behind one that waited for its share", async () => {
+    const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId: projectA, maxBoxes: 1 }] });
+    await dockerRunner(poolId, 4);
+    const base = Date.now() - 60_000;
+    const running = await queued(projectA, { queuedAt: new Date(base) });
+    expect((await admit(poolId)).admitted.map((entry) => entry.taskId)).toEqual([running.taskId]);
+    const head = await queued(projectA, { priority: 1, queuedAt: new Date(base + 1_000) });
+    const behind = await queued(projectA, { queuedAt: new Date(base + 2_000) });
+    // The running task's box stops while the pass is between the head (which waits for the share) and the task behind it.
+    const other = createDb(test.url);
+    let freed = false;
+    const notices = {
+      emitInTx: async (...args: Parameters<typeof postgresChangeNotices.emitInTx>) => {
+        if (!freed) {
+          freed = true;
+          await other.box.updateMany({ where: { taskId: running.taskId }, data: { state: "stopped", stoppedAt: new Date() } });
+        }
+        return postgresChangeNotices.emitInTx(...args);
+      },
+    };
+    try {
+      const pass = await admitQueued({ ...deps(), notices }, { organizationId, poolId });
+      expect(freed).toBe(true);
+      expect(pass.admitted).toEqual([]);
+      expect(await test.db.lease.count({ where: { taskId: behind.taskId } })).toBe(0);
+      // The next pass gives the freed room to the head.
+      expect((await admit(poolId)).admitted.map((entry) => entry.taskId)).toEqual([head.taskId]);
+    } finally {
+      await other.$disconnect();
+    }
+  });
+
   it("F-067, F-095: a project at its share of a pool is passed over, and another project's task starts", async () => {
     const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId: projectA, maxBoxes: 1 }, { projectId: projectB }] });
     await dockerRunner(poolId, 4);
