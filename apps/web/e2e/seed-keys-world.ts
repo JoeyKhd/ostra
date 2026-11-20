@@ -52,7 +52,9 @@ const provider = async (name: string, models: readonly { readonly endpointModelI
 
 const sonnet = { endpointModelId: "claude-sonnet-4-5", catalogId: CATALOG_ID, displayName: "Claude Sonnet 4.5" };
 const clientA = await provider("client-a", [sonnet]);
-const clientB = await provider("client-b", [sonnet, { endpointModelId: "local-coder-7b", catalogId: null, displayName: null }]);
+// client-b's custom model has a name of its own: 02-setup makes the stub's custom model,
+// `local-coder-7b`, the built-in profile's, and a key that listed it would move it in every preview.
+const clientB = await provider("client-b", [sonnet, { endpointModelId: "client-b-coder", catalogId: null, displayName: null }]);
 const modelOnA = clientA.modelIds[0] ?? "";
 
 // The profile names the model by its catalog ID, saved before the profile's provider (ADR 0065
@@ -113,15 +115,20 @@ await db.needsYouItem.create({ data: { organizationId, projectId: vault, taskId:
 
 // Home shows needs-you only once setup is done (F-076). Run alone, this spec finishes the setup the
 // setup specs would have: a GitHub connection, Linear skipped and a runner online. A full run has
-// them already, and this adds nothing.
+// the first two already. The runner is this spec's own, online whatever else is: setup's runner
+// step counts the runners online now, and another spec's seeded runner that is online at this
+// seed can be closed by core's presence sweep seconds later, which brings the checklist back.
 if ((await db.connection.count({ where: { organizationId, kind: "github" } })) === 0) {
   await db.connection.create({ data: { organizationId, kind: "github", appId: "e2e-keys", slug: "e2e-keys" } });
 }
 await db.organizationSetting.upsert({ where: { organizationId }, create: { organizationId, linearSkippedAt: new Date() }, update: {} });
-if ((await db.runner.count({ where: { organizationId, state: "online" } })) === 0) {
+const keysRunner = await db.runner.findFirst({ where: { organizationId, name: "e2e-keys-runner" }, select: { id: true } });
+if (keysRunner === null) {
   await db.runner.create({
     data: { organizationId, kind: "personal", ownerMemberId: admin.id, name: "e2e-keys-runner", publicKey: `e2e-keys-${randomUUID()}`, executor: "host", capacity: 1, version: "0.0.0", state: "online", lastSeenAt: new Date() },
   });
+} else {
+  await db.runner.update({ where: { id: keysRunner.id }, data: { state: "online", lastSeenAt: new Date() } });
 }
 
 process.stdout.write(
