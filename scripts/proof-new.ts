@@ -1,17 +1,26 @@
 // Writes a feature's proof file, `context/proof/F-nnn.md`, from its "done when" in
 // `context/features.md` (`context/proof/README.md`).
 //
-// - A new file gets one row per condition, each `missing`.
-// - An existing file keeps its rows, in the order of the "done when", and gains a `missing` row
-//   for each condition it lacks. A row whose condition is no longer a sentence of the "done when"
-//   stays at the end, for you to move its proof to the new wording and delete it.
+// - A new file gets one row per condition, each with its key (`c1`, `c2` ...) and `missing`.
+// - An existing file keeps its rows and their keys, in the order of the "done when", and gains a
+//   `missing` row for each condition it lacks, under a key no row had. A row whose condition is no
+//   longer a sentence of the "done when" stays at the end, for you to move its proof to the new
+//   wording (give the new row the old key, if it is the same condition reworded) and delete it.
+//
+// Then it writes the Tests and Status cells from the tests, as `pnpm proof:sync` does.
 //
 // Run with `pnpm proof:new F-024 [F-025 ...]`.
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { parseFeatures, parseProofFile, renderProofFile, updateProofFile } from "./check-proof.ts";
+import {
+  parseFeatures,
+  parseProofFile,
+  renderProofFile,
+  syncProofs,
+  updateProofFile,
+} from "./check-proof.ts";
 import type { Feature } from "./check-proof.ts";
 
 export type ProofFileChange =
@@ -69,6 +78,7 @@ const main = async (): Promise<void> => {
     return;
   }
   const features = parseFeatures(await readFile(path.join(root, "context", "features.md"), "utf8"));
+  const found: string[] = [];
   for (const id of ids) {
     const feature = features.find((candidate) => candidate.id === id);
     if (feature === undefined) {
@@ -77,6 +87,10 @@ const main = async (): Promise<void> => {
       continue;
     }
     console.log(describeChange(await writeProofFile(root, feature)));
+    found.push(id);
+  }
+  for (const file of await syncProofs({ root, ids: found })) {
+    console.log(`proof:new: wrote the tests and statuses of ${file}`);
   }
 };
 

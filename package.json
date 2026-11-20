@@ -21,6 +21,7 @@
     "check:helm": "node packages/deploy-checks/src/check-helm.ts",
     "check:release": "node scripts/release.ts",
     "proof:new": "node scripts/proof-new.ts",
+    "proof:sync": "node scripts/check-proof.ts --write",
     "format": "prettier --write .",
     "db:dev": "node packages/db/scripts/dev-postgres.ts",
     "db:migrate": "node packages/db/scripts/migrate.ts",

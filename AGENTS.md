@@ -24,7 +24,7 @@ Source-available, self-hostable control panel that connects an organization's tr
 A change is done, and ready to commit, when every line that applies holds in that one commit:
 
 - **Checks:** sized to the change (the table under this list), on the packages it touches.
-- **Proof:** every condition of a feature's "done when" has a proof in `context/proof/`: a test that exercises it for real, would fail if it broke (a break-it check shows it), and names the feature's ID, or live evidence kept in the repo. `pnpm check:proof` keeps it so, and fails for a `done` row without it. How to add one: `context/proof/README.md`.
+- **Proof:** every condition of a feature's "done when" has a proof in `context/proof/`: a test named with the condition's key (`it("F-025/c1: ...")`) that exercises it for real and would fail if it broke (a break-it check shows it), or live evidence kept in the repo. `pnpm proof:sync` writes the proof files' test lists and statuses from the code, and `pnpm check:proof` fails for a `done` row without proof. How to add one: `context/proof/README.md`.
 - **Adapter parity:** a feature that touches trackers, agents or code hosts works through the shared interface for every shipped adapter. The alternative is that the interface declares it an optional capability, and each adapter states whether it has it. A feature that works only for Linear or only for OpenCode, without that declaration, is a bug.
 - **Runner parity:** a task behaves the same on a personal runner and a pool runner, and on every executor (`docker`, `host`, `kubernetes`). A difference is a bug unless an ADR records it (ADR 0029 records the allowed differences: three for the `host` executor and one for `kubernetes`).
 - **Self-hosting:** a fresh install with only the required settings still works. A new setting ships with a working default and its line in the configuration reference.
@@ -39,8 +39,8 @@ A change is done, and ready to commit, when every line that applies holds in tha
 |---|---|---|
 | Docs: plan, research, ADRs | Nothing | No |
 | A fix or small change | Typecheck and lint of the packages it touches; a test when the code it covers changed | Only when the code can't settle it |
-| A feature, a new screen, a new adapter | Typecheck, lint and tests of the touched packages, `pnpm check:proof`, plus a ticket → task → PR run against the test workspaces | Yes |
-| A feature's status or "done when", a proof file, or a test a proof cites | `pnpm check:proof` | No |
+| A feature, a new screen, a new adapter | Typecheck, lint and tests of the touched packages, `pnpm proof:sync`, plus a ticket → task → PR run against the test workspaces | Yes |
+| A feature's status or "done when", a proof file, or a test whose name gives a condition key | `pnpm proof:sync` | No |
 | Auth, credentials, the schema, the runner protocol, anything that runs agent output | All checks for the whole repo | As the change needs |
 
 ## Commits

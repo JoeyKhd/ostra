@@ -9,11 +9,15 @@ import {
   findTests,
   parseFeatures,
   parseProofFile,
+  proofFileIntro,
   renderReport,
   splitSentences,
   stripNotes,
+  syncProofs,
+  titleKeys,
 } from "./check-proof.ts";
 import type { FeatureReport, Problem, ProofReport } from "./check-proof.ts";
+import { migrateProofs, renameSnapshotKey } from "./proof-migrate.ts";
 import { writeProofFile } from "./proof-new.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
@@ -171,6 +175,37 @@ describe("findTests", () => {
   });
 });
 
+describe("titleKeys", () => {
+  it("reads the keys of each feature from the head of a test's name", () => {
+    expect(titleKeys("F-025/c1: stops the agent")).toEqual({
+      features: [{ id: "F-025", keys: ["c1"] }],
+      malformed: false,
+    });
+    expect(titleKeys("F-099/c1,c3, F-100/c2 and F-113: the tools")).toEqual({
+      features: [
+        { id: "F-099", keys: ["c1", "c3"] },
+        { id: "F-100", keys: ["c2"] },
+        { id: "F-113", keys: [] },
+      ],
+      malformed: false,
+    });
+    expect(titleKeys("F-021, Q189: archiving keeps the profile").features).toEqual([
+      { id: "F-021", keys: [] },
+    ]);
+  });
+
+  it("reads no key outside the head, and flags a key it can't read", () => {
+    expect(titleKeys("stops the agent (F-025/c1)")).toEqual({ features: [], malformed: true });
+    expect(titleKeys("F-025/c1 stops the agent")).toEqual({ features: [], malformed: true });
+    expect(titleKeys("F-025/2: stops the agent").malformed).toBe(true);
+    expect(titleKeys("F-025: keeps F-033/c2's branches").malformed).toBe(true);
+    expect(titleKeys("F-025: keeps F-033's branches")).toEqual({
+      features: [{ id: "F-025", keys: [] }],
+      malformed: false,
+    });
+  });
+});
+
 // A throwaway repo: a ledger, proof files, tests and evidence, checked through checkProofs.
 describe("checkProofs", () => {
   let root = "";
@@ -188,6 +223,7 @@ describe("checkProofs", () => {
     await mkdir(path.dirname(path.join(root, relative)), { recursive: true });
     await writeFile(path.join(root, relative), text);
   };
+  const read = (relative: string): Promise<string> => readFile(path.join(root, relative), "utf8");
 
   type Row = { id: string; title?: string; doneWhen: string; status: string };
   const ledger = async (...rows: Row[]): Promise<void> => {
@@ -212,8 +248,8 @@ describe("checkProofs", () => {
       [
         `# ${id}`,
         "",
-        "| Condition | Proved by | Kind | Break-it | Status |",
-        "|---|---|---|---|---|",
+        "| Key | Condition | Tests | Live | Break-it | Status |",
+        "|---|---|---|---|---|---|",
         ...rows,
         "",
         "Notes.",
@@ -227,70 +263,126 @@ describe("checkProofs", () => {
     write(relative, names.map((name) => `it(${JSON.stringify(name)}, () => {});`).join("\n"));
 
   const check = (): Promise<ProofReport> => checkProofs({ root });
+  const sync = (): Promise<string[]> => syncProofs({ root });
   const reportOf = async (id: string): Promise<FeatureReport | undefined> =>
     (await check()).features.find((entry) => entry.feature.id === id);
   const problemsOf = async (id: string): Promise<Problem[]> => (await reportOf(id))?.problems ?? [];
   const errorsOf = async (): Promise<number> => renderReport(await check()).errors;
 
   const twoConditions = "A member stops it. Its branches stay.";
+  const stopTests = ["F-025/c1: stops the agent", "F-025/c2: keeps the branches"] as const;
   const provedRows = [
-    '| A member stops it. | `src/stop.test.ts` > "F-025: stops the agent" | integration | dropped the call to `stop` | proved |',
-    '| Its branches stay. | `src/stop.test.ts` > "F-025: keeps the branches"<br>live: `evidence/run.log` | integration, live | deleted the branch in `stop` | proved |',
+    '| c1 | A member stops it. | `src/stop.test.ts` > "F-025/c1: stops the agent" | — | dropped the call to `stop` | proved |',
+    '| c2 | Its branches stay. | `src/stop.test.ts` > "F-025/c2: keeps the branches" | `evidence/run.log` | deleted the branch in `stop` | proved |',
   ];
-
-  it("passes a done row whose every condition is proved by a test that exists, runs and names the row", async () => {
+  const provedLedger = async (status = "done"): Promise<void> => {
     await ledger({
       id: "F-025",
       doneWhen: `${twoConditions} *Done 2026-11-19: the demo.*`,
-      status: "done",
+      status,
     });
-    await tests("src/stop.test.ts", "F-025: stops the agent", "F-025: keeps the branches");
+    await tests("src/stop.test.ts", ...stopTests);
     await write("evidence/run.log", "ok\n");
     await proof("F-025", ...provedRows);
+  };
+
+  it("passes a done row whose every condition is proved by a keyed test that runs, or by live evidence", async () => {
+    await provedLedger();
     const report = await check();
     expect(report.ledgerProblems).toEqual([]);
     expect(report.features).toMatchObject([
       { feature: { id: "F-025" }, enforced: true, problems: [], proved: 2 },
     ]);
+    expect(report.features[0]?.synced).toBeUndefined();
     expect(renderReport(report).errors).toBe(0);
   });
 
-  it("fails a done row with no proof file, and names the command that writes one", async () => {
+  it("writes each row's tests and status from the code, and keeps what people wrote", async () => {
     await ledger({ id: "F-025", doneWhen: twoConditions, status: "done" });
-    expect(await problemsOf("F-025")).toEqual([
-      { kind: "no-proof-file", file: "context/proof/F-025.md" },
+    await tests(
+      "src/stop.test.ts",
+      "F-025/c2: keeps the branches",
+      "F-025: names the feature without a condition",
+      "F-025/c1,c2, F-033: stops the agent and keeps the branches",
+    );
+    await tests("src/a/stop.spec.ts", "F-025/c1: Stop stops the task");
+    await proof(
+      "F-025",
+      "| c1 | A member stops it. | — | — | dropped the call to `stop` | missing |",
+      "| c2 | Its branches stay. | — | — | deleted the branch in `stop` | missing: waits for a run |",
+    );
+    expect(await sync()).toEqual(["context/proof/F-025.md"]);
+    const text = await read("context/proof/F-025.md");
+    expect(text.split("\n").slice(4, 9)).toEqual([
+      '| c1 | A member stops it. | `src/a/stop.spec.ts` > "F-025/c1: Stop stops the task"<br>`src/stop.test.ts` > "F-025/c1,c2, F-033: stops the agent and keeps the branches" | — | dropped the call to `stop` | proved |',
+      '| c2 | Its branches stay. | `src/stop.test.ts` > "F-025/c2: keeps the branches"<br>`src/stop.test.ts` > "F-025/c1,c2, F-033: stops the agent and keeps the branches" | — | deleted the branch in `stop` | proved |',
+      "",
+      "Notes.",
+      "",
     ]);
-    expect(renderReport(await check()).lines.join("\n")).toContain("pnpm proof:new F-025");
+    expect(await problemsOf("F-025")).toEqual([]);
+    expect(await sync()).toEqual([]);
+  });
+
+  it("break-it: a test renamed away from its key, or deleted, fails the check until proof:sync, and then its condition is missing", async () => {
+    await provedLedger();
+    expect(await errorsOf()).toBe(0);
+
+    await tests("src/stop.test.ts", "stops the agent", stopTests[1]);
+    expect(await problemsOf("F-025")).toEqual([
+      { kind: "not-proved", line: 5, condition: "A member stops it.", status: "missing" },
+      { kind: "stale-tests", line: 5, key: "c1", added: 0, gone: 1 },
+      {
+        kind: "stale-status",
+        line: 5,
+        key: "c1",
+        written: "proved",
+        status: "missing",
+      },
+    ]);
+    expect(await errorsOf()).toBe(3);
+
+    await sync();
+    expect(await problemsOf("F-025")).toEqual([
+      { kind: "not-proved", line: 5, condition: "A member stops it.", status: "missing" },
+    ]);
     expect(await errorsOf()).toBe(1);
-  });
 
-  it("fails a done row when a condition has no row, or a row quotes a sentence the done-when no longer has", async () => {
-    await ledger({
-      id: "F-025",
-      doneWhen: "A member stops it. Its branches and its hidden ref stay.",
-      status: "done",
-    });
-    await tests("src/stop.test.ts", "F-025: stops the agent", "F-025: keeps the branches");
-    await write("evidence/run.log", "ok\n");
-    await proof("F-025", ...provedRows);
+    // c2 keeps its live evidence when its test goes, so only its list is out of date.
+    await rm(path.join(root, "src/stop.test.ts"));
     expect(await problemsOf("F-025")).toEqual([
-      { kind: "row-not-a-condition", line: 6, condition: "Its branches stay." },
-      { kind: "condition-without-row", condition: "Its branches and its hidden ref stay." },
+      { kind: "not-proved", line: 5, condition: "A member stops it.", status: "missing" },
+      { kind: "stale-tests", line: 6, key: "c2", added: 0, gone: 1 },
     ]);
   });
 
-  it("fails a done row whose rows are missing or partial, and only warns for a building row", async () => {
+  it("fails a renamed test that keeps its key only until proof:sync writes its new name", async () => {
+    await provedLedger();
+    await tests("src/stop.test.ts", "F-025/c1: stops the agent at once", stopTests[1]);
+    expect(await problemsOf("F-025")).toEqual([
+      { kind: "stale-tests", line: 5, key: "c1", added: 1, gone: 1 },
+    ]);
+    await sync();
+    expect(await problemsOf("F-025")).toEqual([]);
+    expect(await read("context/proof/F-025.md")).toContain('"F-025/c1: stops the agent at once"');
+  });
+
+  it("fails a done row whose conditions are missing or partial, and only warns for a building row, except for its out-of-date cells", async () => {
     await ledger(
       { id: "F-025", doneWhen: twoConditions, status: "done" },
       { id: "F-026", doneWhen: twoConditions, status: "building" },
     );
-    await tests("src/stop.test.ts", "F-025: stops the agent");
-    const rows = [
-      '| A member stops it. | `src/stop.test.ts` > "F-025: stops the agent" | unit | returned early from `stop` | partial |',
-      "| Its branches stay. | — | — | — | missing |",
+    await tests("src/stop.test.ts", "F-025/c1: stops the agent", "F-026/c1: stops the agent");
+    const rows = (id: string): string[] => [
+      `| c1 | A member stops it. | \`src/stop.test.ts\` > "${id}/c1: stops the agent" | — | returned early from \`stop\` | partial: only the API |`,
+      "| c2 | Its branches stay. | — | — | — | missing |",
     ];
-    await proof("F-025", ...rows);
-    await proof("F-026", ...rows);
+    await proof("F-025", ...rows("F-025"));
+    await proof(
+      "F-026",
+      "| c1 | A member stops it. | — | — | broke it | partial |",
+      rows("F-026")[1] ?? "",
+    );
     expect(await problemsOf("F-025")).toEqual([
       { kind: "not-proved", line: 5, condition: "A member stops it.", status: "partial" },
       { kind: "not-proved", line: 6, condition: "Its branches stay.", status: "missing" },
@@ -300,127 +392,174 @@ describe("checkProofs", () => {
       ["F-025", true],
       ["F-026", false],
     ]);
-    // F-026's own citation lacks its ID, which is a warning too.
-    expect(renderReport(report)).toMatchObject({ errors: 2, warnings: 3 });
+    // F-026's c1 has a test its file doesn't list yet: an error even though the row is building.
+    expect(renderReport(report)).toMatchObject({ errors: 3, warnings: 2 });
   });
 
-  it("fails a citation of a test file that doesn't exist, a test it doesn't hold, or a name without the row's ID", async () => {
-    await ledger({ id: "F-025", doneWhen: twoConditions, status: "done" });
-    await tests(
-      "src/stop.test.ts",
-      "F-025: stops the agent",
-      "keeps the branches",
-      "F-0251: other row",
-    );
+  it("holds a partial row back whatever its tests, and keeps a missing row's reason while it lacks evidence", async () => {
+    await ledger({ id: "F-025", doneWhen: twoConditions, status: "building" });
+    await tests("src/stop.test.ts", "F-025/c1: stops the agent");
     await proof(
       "F-025",
-      '| A member stops it. | `src/gone.test.ts` > "F-025: stops the agent"<br>`src/stop.test.ts` > "F-025: stops the agen" | unit | dropped the call | proved |',
-      '| Its branches stay. | `src/stop.test.ts` > "keeps the branches"<br>`src/stop.test.ts` > "F-0251: other row" | unit | dropped the call | proved |',
+      "| c1 | A member stops it. | — | — | returned early | partial:   the panel isn't built |",
+      "| c2 | Its branches stay. | — | — | — | missing: waits for the Linux run |",
     );
-    expect(await problemsOf("F-025")).toEqual([
-      { kind: "test-file-missing", line: 5, file: "src/gone.test.ts" },
-      { kind: "test-not-found", line: 5, file: "src/stop.test.ts", name: "F-025: stops the agen" },
-      { kind: "test-name-lacks-id", line: 6, name: "keeps the branches" },
-      { kind: "test-name-lacks-id", line: 6, name: "F-0251: other row" },
+    await sync();
+    const rows = parseProofFile(await read("context/proof/F-025.md"));
+    expect(rows.ok && rows.rows.map(({ status }) => status)).toEqual([
+      "partial: the panel isn't built",
+      "missing: waits for the Linux run",
+    ]);
+    await write("evidence/run.log", "ok\n");
+    await proof(
+      "F-025",
+      '| c1 | A member stops it. | `src/stop.test.ts` > "F-025/c1: stops the agent" | — | returned early | partial: the panel isn\'t built |',
+      "| c2 | Its branches stay. | — | `evidence/run.log` | — | missing: waits for the Linux run |",
+    );
+    await sync();
+    const after = parseProofFile(await read("context/proof/F-025.md"));
+    expect(after.ok && after.rows.map(({ status }) => status)).toEqual([
+      "partial: the panel isn't built",
+      "proved",
     ]);
   });
 
-  it("fails a citation of a skipped or conditional test, of a file that isn't a test, or of a path outside the repo", async () => {
+  it("proves nothing with a test lacking a break-it, or live evidence that is neither in the repo nor https", async () => {
+    await ledger({
+      id: "F-030",
+      doneWhen: "It opens a PR. Its title holds the ID. Its body links it.",
+      status: "done",
+    });
+    await tests("src/pr.test.ts", "F-030/c1: opens a PR");
+    await write("context/specs/demo/run-1.log", "PR opened\n");
+    await proof(
+      "F-030",
+      '| c1 | It opens a PR. | `src/pr.test.ts` > "F-030/c1: opens a PR" | `context/specs/demo/run-1.log` | — | missing |',
+      "| c2 | Its title holds the ID. | — | https://github.com/ostra-test/test1/pull/7 | — | proved |",
+      "| c3 | Its body links it. | — | http://example.com/pr<br>`../outside.log` | — | missing |",
+    );
+    expect(await problemsOf("F-030")).toEqual([
+      { kind: "not-proved", line: 5, condition: "It opens a PR.", status: "missing" },
+      { kind: "no-break-it", line: 5 },
+      { kind: "not-proved", line: 7, condition: "Its body links it.", status: "missing" },
+      { kind: "evidence-missing", line: 7, evidence: "http://example.com/pr" },
+      { kind: "evidence-missing", line: 7, evidence: "../outside.log" },
+    ]);
+  });
+
+  it("lists no skipped, conditional or expected-to-fail test, and names each one", async () => {
     await ledger({ id: "F-025", doneWhen: twoConditions, status: "done" });
     await write(
       "src/stop.test.ts",
-      'it.skip("F-025: stops the agent", () => {});\nit.runIf(process.env.LIVE)("F-025: keeps the branches", () => {});\n',
+      [
+        'it.skip("F-025/c1: stops the agent", () => {});',
+        'it.runIf(process.env.LIVE)("F-025/c2: keeps the branches", () => {});',
+        'it("F-025/c2: keeps the branches on host", () => {});',
+      ].join("\n"),
     );
-    await write("src/stop.ts", 'it("F-025: in source", () => {});\n');
     await proof(
       "F-025",
-      '| A member stops it. | `src/stop.test.ts` > "F-025: stops the agent"<br>`src/stop.ts` > "F-025: in source" | unit | dropped the call | proved |',
-      '| Its branches stay. | `src/stop.test.ts` > "F-025: keeps the branches"<br>`../outside.test.ts` > "F-025: x" | unit | dropped the call | proved |',
+      "| c1 | A member stops it. | — | — | — | missing |",
+      '| c2 | Its branches stay. | `src/stop.test.ts` > "F-025/c2: keeps the branches on host" | — | broke it | proved |',
     );
     expect(await problemsOf("F-025")).toEqual([
+      { kind: "not-proved", line: 5, condition: "A member stops it.", status: "missing" },
       {
         kind: "test-does-not-run",
         line: 5,
         file: "src/stop.test.ts",
-        name: "F-025: stops the agent",
+        name: "F-025/c1: stops the agent",
         run: "skipped",
       },
-      { kind: "not-a-test-file", line: 5, file: "src/stop.ts" },
       {
         kind: "test-does-not-run",
         line: 6,
         file: "src/stop.test.ts",
-        name: "F-025: keeps the branches",
+        name: "F-025/c2: keeps the branches",
         run: "conditional",
       },
-      { kind: "test-file-missing", line: 6, file: "../outside.test.ts" },
     ]);
   });
 
-  it("fails a proved row with no break-it, no citation, an unknown kind or status, or a kind that doesn't match what it cites", async () => {
-    await ledger({ id: "F-025", doneWhen: "One. Two. Three. Four. Five.", status: "done" });
-    await tests("src/a.test.ts", "F-025: a");
+  it("fails a bad or second key, a key no row has, and a test that keys an unknown feature or a key it can't read", async () => {
+    await ledger({ id: "F-025", doneWhen: "One. Two. Three.", status: "done" });
+    await tests(
+      "src/a.test.ts",
+      "F-025/c1: one",
+      "F-025/c9: nine",
+      "F-404/c1: nobody",
+      "F-025/1: typo",
+    );
+    await tests("node_modules/x/a.test.ts", "F-404/c2: installed, not ours");
     await proof(
       "F-025",
-      '| One. | `src/a.test.ts` > "F-025: a" | unit | — | proved |',
-      "| Two. | — | unit | broke it | proved |",
-      '| Three. | `src/a.test.ts` > "F-025: a" | smoke | broke it | done |',
-      "| Four. | live: `evidence/gone.png` | unit | — | proved |",
-      "| Five. | src/a.test.ts F-025: a | e2e | broke it | proved |",
+      '| c1 | One. | `src/a.test.ts` > "F-025/c1: one" | — | broke it | proved |',
+      "| 2 | Two. | — | — | — | missing |",
+      "| c1 | Three. | — | — | — | missing |",
     );
-    expect(await problemsOf("F-025")).toEqual([
-      { kind: "no-break-it", line: 5 },
-      { kind: "no-citation", line: 6 },
-      { kind: "kind-mismatch", line: 6, reason: "its kind says unit, but it cites no test" },
-      { kind: "bad-status", line: 7, status: "done" },
-      { kind: "kind-mismatch", line: 8, reason: "its kind says unit, but it cites no test" },
+    const report = await check();
+    expect(report.ledgerProblems).toEqual([
+      { kind: "malformed-test-key", file: "src/a.test.ts", line: 4, name: "F-025/1: typo" },
       {
-        kind: "kind-mismatch",
-        line: 8,
-        reason: "it cites live evidence, so its kind includes live",
+        kind: "test-key-unknown-feature",
+        file: "src/a.test.ts",
+        line: 3,
+        name: "F-404/c1: nobody",
+        id: "F-404",
       },
-      { kind: "evidence-missing", line: 8, evidence: "evidence/gone.png" },
-      { kind: "bad-citation", line: 9, text: "src/a.test.ts F-025: a" },
-      { kind: "kind-mismatch", line: 9, reason: "its kind says e2e, but it cites no test" },
+    ]);
+    expect(await problemsOf("F-025")).toEqual([
+      { kind: "bad-key", line: 6, key: "2" },
+      { kind: "duplicate-key", line: 7, key: "c1" },
+      { kind: "condition-without-row", condition: "Two." },
+      { kind: "condition-without-row", condition: "Three." },
+      { kind: "unknown-key", key: "c9", file: "src/a.test.ts", name: "F-025/c9: nine" },
     ]);
   });
 
-  it("accepts live evidence as a file in the repo or an https link, and nothing else", async () => {
+  it("fails a done row when a condition has no row, or a row quotes a sentence the done-when no longer has", async () => {
+    await provedLedger();
     await ledger({
-      id: "F-030",
-      doneWhen: "It opens a PR. Its title holds the ID. Its body links the task.",
+      id: "F-025",
+      doneWhen: "A member stops it. Its branches and its hidden ref stay.",
       status: "done",
     });
-    await write("context/specs/demo/run-1.log", "PR opened\n");
-    await proof(
-      "F-030",
-      "| It opens a PR. | live: `context/specs/demo/run-1.log` | live | — | proved |",
-      "| Its title holds the ID. | live: https://github.com/ostra-test/test1/pull/7 | live | — | proved |",
-      "| Its body links the task. | live: http://example.com/pr | live | — | proved |",
-    );
-    expect(await problemsOf("F-030")).toEqual([
-      { kind: "evidence-missing", line: 7, evidence: "http://example.com/pr" },
+    expect(await problemsOf("F-025")).toEqual([
+      { kind: "row-not-a-condition", line: 6, condition: "Its branches stay." },
+      { kind: "condition-without-row", condition: "Its branches and its hidden ref stay." },
     ]);
   });
 
-  it("fails a second row for the same condition, and a table it can't read", async () => {
+  it("fails a second row for the same condition, and a table it can't read, naming the migration for a former one", async () => {
     await ledger(
       { id: "F-025", doneWhen: "One.", status: "done" },
       { id: "F-026", doneWhen: "One.", status: "done" },
+      { id: "F-027", doneWhen: "One.", status: "done" },
     );
-    await tests("src/a.test.ts", "F-025: a");
-    const row = '| One. | `src/a.test.ts` > "F-025: a" | unit | broke it | proved |';
-    await proof("F-025", row, row);
+    await proof(
+      "F-025",
+      "| c1 | One. | — | — | — | missing |",
+      "| c2 | One. | — | — | — | missing |",
+    );
     await write(
       "context/proof/F-026.md",
       "# F-026\n\n| Condition | Proof |\n|---|---|\n| One. | yes |\n",
     );
+    await write(
+      "context/proof/F-027.md",
+      "# F-027\n\n| Condition | Proved by | Kind | Break-it | Status |\n|---|---|---|---|---|\n| One. | — | — | — | missing |\n",
+    );
     expect(await problemsOf("F-025")).toEqual([
+      { kind: "not-proved", line: 5, condition: "One.", status: "missing" },
       { kind: "duplicate-row", line: 6, condition: "One." },
     ]);
     expect(await problemsOf("F-026")).toMatchObject([
       { kind: "unreadable-proof-file", file: "context/proof/F-026.md" },
     ]);
+    const [former] = await problemsOf("F-027");
+    expect(former?.kind === "unreadable-proof-file" && former.reason).toContain(
+      "scripts/proof-migrate.ts",
+    );
   });
 
   it("only warns for a done row in the baseline, and fails once it is proved, so the baseline shrinks", async () => {
@@ -428,15 +567,14 @@ describe("checkProofs", () => {
     await baseline("F-025");
     await proof(
       "F-025",
-      "| A member stops it. | — | — | — | missing |",
-      "| Its branches stay. | — | — | — | missing |",
+      "| c1 | A member stops it. | — | — | — | missing |",
+      "| c2 | Its branches stay. | — | — | — | missing |",
     );
     expect(await reportOf("F-025")).toMatchObject({ enforced: false, baselined: true });
     expect(renderReport(await check())).toMatchObject({ errors: 0, warnings: 2 });
 
-    await tests("src/stop.test.ts", "F-025: stops the agent", "F-025: keeps the branches");
-    await write("evidence/run.log", "ok\n");
-    await proof("F-025", ...provedRows);
+    await provedLedger();
+    await baseline("F-025");
     expect((await check()).ledgerProblems).toEqual([{ kind: "baseline-proved", id: "F-025" }]);
     expect(await errorsOf()).toBe(1);
   });
@@ -463,16 +601,27 @@ describe("checkProofs", () => {
     ]);
   });
 
-  it("checks a planned row's proof file as warnings, and leaves rows with no proof file alone unless done", async () => {
+  it("warns about a planned row's proof file and its keys without one, and leaves the other rows alone unless done", async () => {
     await ledger(
       { id: "F-017", doneWhen: twoConditions, status: "planned" },
       { id: "F-018", doneWhen: twoConditions, status: "planned" },
       { id: "F-019", doneWhen: twoConditions, status: "dropped" },
+      { id: "F-020", doneWhen: twoConditions, status: "building" },
     );
-    await proof("F-017", "| A member stops it. | — | — | — | missing |");
+    await tests("src/a.test.ts", "F-020/c1: one", "F-020/c2: two");
+    await proof("F-017", "| c1 | A member stops it. | — | — | — | missing |");
     const report = await check();
-    expect(report.features.map(({ feature }) => feature.id)).toEqual(["F-017"]);
-    expect(renderReport(report)).toMatchObject({ errors: 0, warnings: 2 });
+    expect(report.features.map(({ feature }) => feature.id)).toEqual(["F-017", "F-020"]);
+    expect(await problemsOf("F-020")).toEqual([
+      { kind: "keys-without-proof-file", file: "context/proof/F-020.md", tests: 2 },
+    ]);
+    expect(renderReport(report)).toMatchObject({ errors: 0, warnings: 3 });
+  });
+
+  it("warns about a row that isn't done though every condition is proved", async () => {
+    await provedLedger("building");
+    expect(await problemsOf("F-025")).toEqual([{ kind: "could-be-done" }]);
+    expect(renderReport(await check())).toMatchObject({ errors: 0, warnings: 1 });
   });
 
   it("reports each problem of an enforced row with its condition, and sums up the rows that only warn", async () => {
@@ -480,13 +629,12 @@ describe("checkProofs", () => {
       { id: "F-025", title: "Stop", doneWhen: twoConditions, status: "done" },
       { id: "F-026", title: "Approvals", doneWhen: twoConditions, status: "building" },
     );
-    await tests("src/a.test.ts", "F-025: a", "F-026: a");
-    const rows = (id: string): string[] => [
-      "| A member stops it. | — | — | — | missing |",
-      `| Its branches stay. | \`src/a.test.ts\` > "${id}: a" | unit | broke it | partial |`,
+    const rows = [
+      "| c1 | A member stops it. | — | — | — | missing |",
+      "| c2 | Its branches stay. | — | — | — | partial |",
     ];
-    await proof("F-025", ...rows("F-025"));
-    await proof("F-026", ...rows("F-026"));
+    await proof("F-025", ...rows);
+    await proof("F-026", ...rows);
     const { lines } = renderReport(await check());
     expect(lines).toEqual([
       "error  F-025 Stop (done), context/proof/F-025.md: 0 of 2 conditions proved",
@@ -501,28 +649,25 @@ describe("checkProofs", () => {
   });
 
   describe("proof:new", () => {
-    it("writes a proof file with every condition missing, which check:proof reads back", async () => {
+    it("writes a proof file with every condition keyed and missing, which check:proof reads back", async () => {
       await ledger({
         id: "F-025",
         doneWhen: `${twoConditions} *Changed 2026-11-18: renamed.*`,
         status: "building",
       });
-      const [feature] = parseFeatures(
-        await readFile(path.join(root, "context", "features.md"), "utf8"),
-      );
-      expect(feature).toBeDefined();
-      if (feature === undefined) return;
+      const [feature] = parseFeatures(await read("context/features.md"));
+      if (feature === undefined) throw new Error("no feature");
       expect(await writeProofFile(root, feature)).toEqual({
         kind: "created",
         file: "context/proof/F-025.md",
         conditions: 2,
       });
-      const parsed = parseProofFile(
-        await readFile(path.join(root, "context", "proof", "F-025.md"), "utf8"),
-      );
-      expect(parsed.ok && parsed.rows.map(({ condition, status }) => [condition, status])).toEqual([
-        ["A member stops it.", "missing"],
-        ["Its branches stay.", "missing"],
+      const parsed = parseProofFile(await read("context/proof/F-025.md"));
+      expect(
+        parsed.ok && parsed.rows.map(({ key, condition, status }) => [key, condition, status]),
+      ).toEqual([
+        ["c1", "A member stops it.", "missing"],
+        ["c2", "Its branches stay.", "missing"],
       ]);
       expect(await problemsOf("F-025")).toMatchObject([
         { kind: "not-proved", status: "missing" },
@@ -534,16 +679,14 @@ describe("checkProofs", () => {
       });
     });
 
-    it("brings an existing file up to a changed done-when, keeping its proofs, its stale rows and its notes", async () => {
+    it("brings an existing file up to a changed done-when under new keys, keeping its rows, their keys and its notes", async () => {
       await ledger({
         id: "F-025",
         doneWhen: "A member stops it. Its branches \\| refs stay. A third.",
         status: "building",
       });
       await proof("F-025", provedRows[1] ?? "", provedRows[0] ?? "");
-      const [feature] = parseFeatures(
-        await readFile(path.join(root, "context", "features.md"), "utf8"),
-      );
+      const [feature] = parseFeatures(await read("context/features.md"));
       if (feature === undefined) throw new Error("no feature");
       expect(await writeProofFile(root, feature)).toEqual({
         kind: "updated",
@@ -551,17 +694,113 @@ describe("checkProofs", () => {
         added: 2,
         stale: 1,
       });
-      const text = await readFile(path.join(root, "context", "proof", "F-025.md"), "utf8");
+      const text = await read("context/proof/F-025.md");
       expect(text.split("\n").slice(4, 9)).toEqual([
         provedRows[0],
-        "| Its branches \\| refs stay. | — | — | — | missing |",
-        "| A third. | — | — | — | missing |",
+        "| c3 | Its branches \\| refs stay. | — | — | — | missing |",
+        "| c4 | A third. | — | — | — | missing |",
         provedRows[1],
         "",
       ]);
       expect(text).toContain("Notes.");
       const parsed = parseProofFile(text);
       expect(parsed.ok && parsed.rows[1]?.condition).toBe("Its branches | refs stay.");
+    });
+  });
+
+  describe("proof-migrate", () => {
+    it("converts a former proof file: keys its rows, renames the cited tests and their snapshots, and proves nothing that wasn't", async () => {
+      await ledger({ id: "F-025", doneWhen: "One. Two. Three.", status: "done" });
+      await write(
+        "src/stop.test.ts",
+        [
+          'describe("stop", () => {',
+          '  it("F-025: one", () => { expect(1).toMatchSnapshot(); });',
+          "  it('F-025, F-033: one and two', () => {});",
+          '  it("on host: the third", () => {});',
+          "});",
+        ].join("\r\n"),
+      );
+      await write("src/__snapshots__/stop.test.ts.snap", "exports[`stop > F-025: one 1`] = `1`;\n");
+      await write("evidence/run.log", "ok\n");
+      await write(
+        "context/proof/F-025.md",
+        [
+          "# F-025: A feature",
+          "",
+          `The proof of F-025's "done when" in \`context/features.md\`: one row per condition, quoted verbatim. The rules are in \`context/proof/README.md\`, and \`pnpm check:proof\` checks this file.`,
+          "",
+          "| Condition | Proved by | Kind | Break-it | Status |",
+          "|---|---|---|---|---|",
+          '| One. | `src/stop.test.ts` > "F-025: one"<br>`src/stop.test.ts` > "F-025, F-033: one and two" | unit | dropped it | proved |',
+          '| Two. | `src/stop.test.ts` > "F-025, F-033: one and two"<br>live: `evidence/run.log` | unit, live | dropped it | proved |',
+          '| Three. | `src/stop.test.ts` > "on host: the third" | unit | broke it | missing |',
+          "",
+          "Notes.",
+          "",
+        ].join("\n"),
+      );
+      expect(await migrateProofs(root)).toEqual({
+        files: ["context/proof/F-025.md"],
+        renamedTests: 3,
+        unmatched: [],
+      });
+      expect((await read("src/stop.test.ts")).split("\r\n")).toEqual([
+        'describe("stop", () => {',
+        '  it("F-025/c1: one", () => { expect(1).toMatchSnapshot(); });',
+        "  it('F-025/c1,c2, F-033: one and two', () => {});",
+        '  it("F-025/c3: on host: the third", () => {});',
+        "});",
+      ]);
+      expect(await read("src/__snapshots__/stop.test.ts.snap")).toBe(
+        "exports[`stop > F-025/c1: one 1`] = `1`;\n",
+      );
+      const text = await read("context/proof/F-025.md");
+      expect(text.split("\n").slice(2, 10)).toEqual([
+        proofFileIntro("F-025"),
+        "",
+        "| Key | Condition | Tests | Live | Break-it | Status |",
+        "|---|---|---|---|---|---|",
+        '| c1 | One. | `src/stop.test.ts` > "F-025/c1: one"<br>`src/stop.test.ts` > "F-025/c1,c2, F-033: one and two" | — | dropped it | proved |',
+        '| c2 | Two. | `src/stop.test.ts` > "F-025/c1,c2, F-033: one and two" | `evidence/run.log` | dropped it | proved |',
+        '| c3 | Three. | `src/stop.test.ts` > "F-025/c3: on host: the third" | — | broke it | partial |',
+        "",
+      ]);
+      expect(await problemsOf("F-025")).toEqual([
+        { kind: "not-proved", line: 9, condition: "Three.", status: "partial" },
+      ]);
+      expect(await migrateProofs(root)).toEqual({ files: [], renamedTests: 0, unmatched: [] });
+    });
+
+    it("matches a cited name the code already keys, as after a rebase onto the keyed form", async () => {
+      await ledger({ id: "F-025", doneWhen: "One. Two.", status: "building" });
+      await tests("src/a.test.ts", "F-025/c1: one");
+      await write(
+        "context/proof/F-025.md",
+        [
+          "| Condition | Proved by | Kind | Break-it | Status |",
+          "|---|---|---|---|---|",
+          "| One. | — | — | — | missing |",
+          '| Two. | `src/a.test.ts` > "F-025: one" | unit | broke it | proved |',
+          "",
+        ].join("\n"),
+      );
+      expect(await migrateProofs(root)).toMatchObject({ renamedTests: 1, unmatched: [] });
+      expect(await read("src/a.test.ts")).toBe('it("F-025/c1,c2: one", () => {});');
+    });
+
+    it("renames the snapshots of an it.each test, whose keys fill in its placeholders, and no other", () => {
+      const rename = { from: "F-115: the %s mail, $kind", length: 5, head: "F-115/c1" };
+      expect(
+        renameSnapshotKey("exports[`the mails > F-115: the plan mail, pr 1`] = `", rename),
+      ).toBe("exports[`the mails > F-115/c1: the plan mail, pr 1`] = `");
+      expect(renameSnapshotKey("exports[`F-115: the plan mail, pr 2`] = `", rename)).toBe(
+        "exports[`F-115/c1: the plan mail, pr 2`] = `",
+      );
+      expect(
+        renameSnapshotKey("exports[`the mails > F-116: the plan mail, pr 1`] = `", rename),
+      ).toBeUndefined();
+      expect(renameSnapshotKey('  "subject": "F-115: the plan mail",', rename)).toBeUndefined();
     });
   });
 });
