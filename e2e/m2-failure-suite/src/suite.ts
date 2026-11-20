@@ -31,6 +31,7 @@ import type { CaseResult } from "./cases/case.ts";
 import { cutCase, longCutCase } from "./cases/cut-cases.ts";
 import { revokeRunnerCase } from "./cases/revoke-case.ts";
 import { killAgentCase, killRunnerCase, loseBoxCase, unstorableCase } from "./cases/runner-cases.ts";
+import { scheduleHuntCase } from "./cases/schedule-hunt-case.ts";
 import { coreFakesCase, dropWebhooksCase, limitsCase, replayWebhooksCase, restartServerCase, retryLiveCase } from "./cases/server-cases.ts";
 import { cleanUpRun } from "./clean-up.ts";
 import { panelApi } from "./live/api.ts";
@@ -54,6 +55,8 @@ import { cloudflaredPath, startTunnel, waitForTunnel } from "./tools/tunnel.ts";
  * (2026-11-19), and the two 5-minute cuts alone take 22 minutes: the working value is 45.
  */
 const BUDGET_MINUTES = 45;
+/** Milestone 6's schedule hunt (ticket 37) adds about 25 minutes of its own: the bar with it. */
+const HUNT_MINUTES = 25;
 
 const main = async (): Promise<void> => {
   const startedAt = Date.now();
@@ -161,6 +164,8 @@ const main = async (): Promise<void> => {
       { name: "cut-reset-5m", mode: "reset", ms: 5 * 60_000 },
     ];
     if (wanted("core-on-fakes")) results.push(await coreFakesCase(path.join(logDir, "core-on-fakes.log")));
+    // Milestone 6 (ticket 37): spike 8's schedule hunt against the scheduler tick, on core's own processes.
+    if (wanted("schedule-hunt")) results.push(await scheduleHuntCase(logDir));
     if (wanted("kill-runner")) results.push(await killRunnerCase(live, mainRunner));
     if (wanted("kill-agent")) results.push(await killAgentCase(live, mainRunner));
     if (wanted("lose-box")) results.push(await loseBoxCase(live, mainRunner));
@@ -188,7 +193,7 @@ const main = async (): Promise<void> => {
     const minutes = Math.round((Date.now() - startedAt) / 6000) / 10;
     const ok = results.length > 0 && results.every((one) => one.ok) && after.every((one) => one.ok);
     for (const one of after) say(`${one.ok ? "PASS" : "FAIL"} ${one.name}: ${one.detail}`);
-    say(`failure suite: ${String(results.filter((one) => one.ok).length)} of ${String(results.length)} cases passed in ${String(minutes)} min${settings.long ? " (--long)" : ` (the bar: ${String(BUDGET_MINUTES)} min)`}`);
+    say(`failure suite: ${String(results.filter((one) => one.ok).length)} of ${String(results.length)} cases passed in ${String(minutes)} min${settings.long ? " (--long)" : ` (the bar: ${String(BUDGET_MINUTES + (wanted("schedule-hunt") ? HUNT_MINUTES : 0))} min)`}`);
     for (const one of results) say(`  ${one.ok ? "PASS" : "FAIL"} ${one.name} (${String(one.seconds)} s): ${one.row}`);
     await writeFile(path.join(settings.stateDir, "result.json"), JSON.stringify({ ok, minutes, long: settings.long, results, after }, null, 2)).catch(() => undefined);
     if (!ok) process.exitCode = 1;

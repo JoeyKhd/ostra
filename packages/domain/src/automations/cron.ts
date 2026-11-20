@@ -308,6 +308,10 @@ export const occurrencesBetween = (cron: Cron, timeZone: string, from: number, t
  * on the wall clock: over a leap year and a month, which holds every pattern five fields can make.
  */
 export const minimumIntervalOk = (cron: Cron, minutes: number): boolean => {
+  // Two occurrences are always at least a minute apart: nothing to walk.
+  if (minutes <= 1) {
+    return true;
+  }
   const from = Date.UTC(2028, 0, 1);
   const to = Date.UTC(2029, 1, 1);
   let previous: number | null = null;

@@ -22,7 +22,7 @@ import {
   systemClock,
   warnIgnoredSettings,
 } from "@ostra/domain";
-import type { ServerAdapters, ServerSettings, SessionTimers } from "@ostra/domain";
+import type { Clock, ServerAdapters, ServerSettings, SessionTimers } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
 import { blobIdSchema, replicaIdSchema } from "@ostra/protocol";
@@ -155,6 +155,9 @@ export type RunningCore = {
   readonly stop: () => Promise<void>;
 };
 
+/** The system clock moved by `offsetMs` (tests only). */
+const offsetClock = (offsetMs: number): Clock => ({ now: () => systemClock.now() + offsetMs });
+
 export const startCore = async (
   settings: ServerSettings,
   logger: Logger,
@@ -172,6 +175,11 @@ export const startCore = async (
      * milliseconds instead of the settings' minutes, so the runaway cases run in seconds.
      */
     readonly limitsMs?: { readonly sessionMaxMs?: number; readonly stallMs?: number };
+    /**
+     * Tests only (ticket 37's schedule hunt): the scheduler's clock this far ahead of the system
+     * clock, as if the install had been down that long.
+     */
+    readonly schedulerClockOffsetMs?: number;
   } = {},
 ): Promise<RunningCore> => {
   // An upgraded install may still set a retired setting: core starts, and says it ignores it.
@@ -650,7 +658,7 @@ export const startCore = async (
     outbox: postgresCommandOutbox,
     notices,
     audit: postgresAuditLog,
-    clock: systemClock,
+    clock: options.schedulerClockOffsetMs === undefined ? systemClock : offsetClock(options.schedulerClockOffsetMs),
     publicUrl: settings.publicUrl,
     team: settings.team,
   });

@@ -38,6 +38,8 @@ coverage/
 *.log
 # The release's dry-run logs are evidence kept in the repo (milestone 7's ticket 30).
 !context/specs/m7-launch/demo/*.log
+# Milestone 6's run records: the schedule hunt (ticket 37) and the Linear agent-mode harness (ticket 38).
+!context/specs/m6-whole-team/demo/*.log
 .env
 .env.*
 .DS_Store

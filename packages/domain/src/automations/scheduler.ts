@@ -28,7 +28,18 @@ export type SchedulerOptions = StartTaskOptions & {
   readonly scheduleMissedHours?: number;
   /** `OSTRA_BULK_START_MAX`: the most matches one occurrence of a filter schedule starts. */
   readonly bulkStartMax?: number;
+  /**
+   * A test seam (ticket 37's schedule hunt): called inside a step's transaction, just before it
+   * commits, so a failure-suite process can end itself there (core's kill points). `tick.written`:
+   * a schedule's occurrence, its job and its next time are written; `occurrence.started`: the
+   * occurrence's task is started and recorded on its row. Core passes its kill points, which do
+   * nothing unless a test process armed one.
+   */
+  readonly onStep?: (step: SchedulerStep) => void;
 };
+
+/** Where `onStep` is called: the last moment of a tick's or an occurrence's transaction. */
+export type SchedulerStep = "tick.written" | "occurrence.started";
 
 /** The ports a scheduler step takes inside its transaction. */
 type TickTxDeps = Pick<M6Deps, "jobs" | "audit" | "notices" | "clock"> & SchedulerOptions;
@@ -102,6 +113,9 @@ export const tickAutomationInTx = async (deps: TickTxDeps, tx: Tx, automationId:
     data: { nextOccurrenceAt: plan.next === null ? null : new Date(plan.next), ...(last === null ? {} : { lastOccurrenceAt: new Date(last) }) },
   });
   await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "project", entityId: projectId });
+  if (fired !== null) {
+    deps.onStep?.("tick.written");
+  }
   return { fired, missed: plan.missedCount };
 };
 
@@ -190,6 +204,7 @@ export const runOccurrence = async (deps: StartPorts & SchedulerOptions, input: 
       return { ok: true, state: "started", taskId: null };
     }
     await tx.automationRun.update({ where: { id: run.id }, data: { taskId: started.taskId } });
+    deps.onStep?.("occurrence.started");
     return { ok: true, state: "started", taskId: started.taskId };
   });
   if (!decided.ok || decided.state !== "filter") {

@@ -6,15 +6,24 @@
 // (or the suite's fault-injecting proxy in front of the real one), and CORE_TEST_SESSION_MAX_MS and
 // CORE_TEST_STALL_MS shorten the runaway timers to seconds. Once listening it prints one JSON line,
 // `{ "listening": <port> }`. Logs go to stderr, one JSON object per line, IDs and fields only.
+//
+// Ticket 37's schedule hunt adds three: CORE_TEST_KILL_POINT_HIT arms the point for its Nth pass,
+// CORE_TEST_SCHEDULER_CLOCK_OFFSET_MS moves the scheduler's clock ahead (the install "down" that
+// long), and CORE_TEST_CONTROL_STDIN=1 reads one JSON command a line from stdin:
+// `{ "arm": <point or null>, "hit": <n> }` arms (or disarms) a kill point now, and `{ "stop": true }`
+// stops core gracefully, which a signal can't do on Windows.
+
+import { createInterface } from "node:readline";
 
 import { createLogger } from "@ostra/adapter-sdk";
 import { parseServerSettings } from "@ostra/domain";
+import { z } from "zod";
 
 import { startCore } from "../core.ts";
 import { armKillPoint, isKillPointName } from "../kill-points.ts";
 
 const point = process.env["CORE_TEST_KILL_POINT"] ?? "";
-armKillPoint(isKillPointName(point) ? point : null);
+armKillPoint(isKillPointName(point) ? point : null, Number.parseInt(process.env["CORE_TEST_KILL_POINT_HIT"] ?? "1", 10) || 1);
 
 const parsed = parseServerSettings(process.env);
 if (!parsed.ok) {
@@ -41,12 +50,14 @@ const linearApiUrl = process.env["CORE_TEST_LINEAR_API_URL"];
 const devBlockWebhooks = process.env["OSTRA_DEV_BLOCK_WEBHOOKS"];
 const sessionMaxMs = millis("CORE_TEST_SESSION_MAX_MS");
 const stallMs = millis("CORE_TEST_STALL_MS");
+const schedulerClockOffsetMs = millis("CORE_TEST_SCHEDULER_CLOCK_OFFSET_MS");
 const core = await startCore(parsed.settings, logger, {
   host: process.env["CORE_TEST_HOST"] ?? "127.0.0.1",
   jobIntervals: { pollingIntervalSeconds: 0.5, superviseIntervalSeconds: 1 },
   ...(linearApiUrl === undefined || linearApiUrl === "" ? {} : { linearApiUrl }),
   ...(devBlockWebhooks === undefined || devBlockWebhooks === "" ? {} : { devBlockWebhooks }),
   limitsMs: { ...(sessionMaxMs === undefined ? {} : { sessionMaxMs }), ...(stallMs === undefined ? {} : { stallMs }) },
+  ...(schedulerClockOffsetMs === undefined ? {} : { schedulerClockOffsetMs }),
 });
 process.stdout.write(`${JSON.stringify({ listening: core.port })}\n`);
 
@@ -58,3 +69,30 @@ const stop = (): void => {
 };
 process.on("SIGTERM", stop);
 process.on("SIGINT", stop);
+
+const commandSchema = z.union([
+  z.strictObject({ arm: z.string().nullable(), hit: z.number().int().positive().optional() }),
+  z.strictObject({ stop: z.literal(true) }),
+]);
+
+if (process.env["CORE_TEST_CONTROL_STDIN"] === "1") {
+  createInterface({ input: process.stdin }).on("line", (line) => {
+    let json: unknown;
+    try {
+      json = JSON.parse(line);
+    } catch {
+      return;
+    }
+    const command = commandSchema.safeParse(json);
+    if (!command.success) {
+      return;
+    }
+    if ("stop" in command.data) {
+      stop();
+      return;
+    }
+    const name = command.data.arm;
+    armKillPoint(name !== null && isKillPointName(name) ? name : null, command.data.hit ?? 1);
+    process.stdout.write(`${JSON.stringify({ armed: name, hit: command.data.hit ?? 1 })}\n`);
+  });
+}

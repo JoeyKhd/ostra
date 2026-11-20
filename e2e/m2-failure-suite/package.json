@@ -17,6 +17,7 @@
   },
   "scripts": {
     "suite": "node src/suite.ts",
+    "schedule-hunt": "node src/schedule-hunt.ts",
     "clean-up": "node src/clean-up-cli.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",

@@ -1,7 +1,9 @@
 import type { Db } from "@ostra/db";
 import { EVERY_MINUTE_CRON, matchIntakeRules, runOccurrence, startBulkItem, tickScheduler } from "@ostra/domain";
-import type { AuditLog, ChangeNotices, Clock, CommandOutbox, JobQueue, TeamSettings } from "@ostra/domain";
+import type { AuditLog, ChangeNotices, Clock, CommandOutbox, JobQueue, SchedulerStep, TeamSettings } from "@ostra/domain";
 import type { JobHandler, Jobs } from "@ostra/jobs";
+
+import { killPoint } from "../kill-points.ts";
 
 // Automations' workers (F-011, F-106, F-107, ADR 0056; milestone 6's tickets 10 and 11):
 // `scheduler.tick` (a pg-boss schedule, once a minute), `automation.occurrence`, `intake.match` and
@@ -20,7 +22,22 @@ export type AutomationJobDeps = {
   readonly team: Pick<TeamSettings, "scheduleMissedHours" | "intakeStartsPerHour" | "bulkStartMax">;
 };
 
+/** The scheduler's steps, as core's kill points (ticket 37's hunt): nothing unless a test process armed one. */
+const schedulerKillPoint = (step: SchedulerStep): void => {
+  switch (step) {
+    case "tick.written":
+      killPoint("scheduler.tick-written");
+      return;
+    case "occurrence.started":
+      killPoint("automation.occurrence-started");
+      return;
+    default:
+      step satisfies never;
+  }
+};
+
 const options = (deps: AutomationJobDeps) => ({
+  onStep: schedulerKillPoint,
   publicUrl: deps.publicUrl,
   scheduleMissedHours: deps.team.scheduleMissedHours,
   intakeStartsPerHour: deps.team.intakeStartsPerHour,
@@ -40,6 +57,7 @@ export const occurrenceHandler =
   (deps: AutomationJobDeps): JobHandler<"automation.occurrence"> =>
   async (context) => {
     const result = await runOccurrence({ ...deps, ...options(deps) }, context.payload);
+    killPoint("automation.occurrence-committed");
     context.logger.info("automation.occurrence", {
       automationId: context.payload.automationId,
       occurrenceAt: context.payload.occurrenceAt,

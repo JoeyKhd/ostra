@@ -139,6 +139,14 @@ pnpm e2e:m2:failures            # --long adds the 11-minute cut; --only kill-run
 
 Its runners' folders are in the system temp folder (`ostra-f38/`), its logs, screenshots and `result.json` in `.ostra-dev/e2e-m2-failures/`. After the run it archives its tickets in `OST` (their titles start "Failure suite:"), closes its PRs on `test1` and deletes their branches and hidden refs, and deletes its webhook; `pnpm --filter @ostra/e2e-m2-failures clean-up` does the same after an interrupted run. Never run it on a checkout whose dev stack you want to keep: its first step empties `.ostra-dev/`.
 
+**The schedule hunt** (milestone 6, ticket 37; F-106, F-048). Spike 8's C4 hunt against ostra's scheduler tick, which the failure suite also runs as its `schedule-hunt` case. It needs no secret and no live service: `apps/core/src/schedule-hunt.test.ts` (with `OSTRA_SCHEDULE_HUNT=1`) creates 200 automations at runtime on an embedded Postgres, runs three core processes, and for each tick arms every replica but one at a kill point inside the scheduler's work (`scheduler.tick-written`, `automation.occurrence-started`, `automation.occurrence-committed` in `apps/core/src/kill-points.ts`): the replica holding the work ends itself there, and the harness kills the other at once. Every (automation, occurrence) pair must start exactly once; then, after 7 hours down on the scheduler's clock, each automation fires once for the latest occurrence. Beside it, the control runs the same 200 schedules on pg-boss's own cron with its defaults, hunted as spike 8 hunted it, and must show starts late or twice. About 25 minutes, most of it the control waiting for pg-boss to free a stranded batch:
+
+```
+pnpm e2e:schedule-hunt                  # --runs 3 runs it three times in a row; --record keeps the last run's log in context/specs/m6-whole-team/demo/
+```
+
+Each run's log (IDs, counts and times only) is in `.ostra-dev/e2e-schedule-hunt/`. `OSTRA_SCHEDULE_HUNT_SCHEDULES`, `OSTRA_SCHEDULE_HUNT_MAX_TICKS` and `OSTRA_SCHEDULE_HUNT_CONTROL=0` make a quick run for a look; the record needs the defaults.
+
 ## Database
 
 ostra keeps everything in Postgres. In development you don't need to install one: `packages/db` starts an embedded Postgres (the `embedded-postgres` package, a development dependency only, ADR 0007).

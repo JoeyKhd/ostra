@@ -171,6 +171,9 @@ describe("the cron evaluator", () => {
     // The 31st and the 1st at midnight are a day apart; 23:30 and 00:15 are 45 minutes apart.
     expect(minimumIntervalOk(cron("0 0 31,1 * *"), 24 * 60)).toBe(true);
     expect(minimumIntervalOk(cron("15,30 0,23 * * *"), 60)).toBe(false);
+    // At one minute (the hunt's every-minute schedules, ticket 37) every schedule passes at once.
+    expect(minimumIntervalOk(cron("* * * * *"), 1)).toBe(true);
+    expect(minimumIntervalOk(cron("* * * * *"), 2)).toBe(false);
   });
 
   it("F-106: fires the latest missed occurrence under 6 hours late, and skips the older ones", () => {
