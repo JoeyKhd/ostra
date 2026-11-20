@@ -104,8 +104,10 @@ export const actionKey = (reason: NeedsYouReason): MessageKey => {
     case "unstorable_event":
     case "files_outside_repos":
     case "runner_awaiting_approval":
-    case "awaiting_approval":
       return "home.action.openTask";
+    // F-040: an outside task's "Approve" opens the project's Needs approval with the task open.
+    case "awaiting_approval":
+      return "home.action.approve";
     case "no_provider_for_model":
       return "home.action.pickKey";
     default:
@@ -118,7 +120,11 @@ export const actionKey = (reason: NeedsYouReason): MessageKey => {
  * organization admin fixes in the project's Models and keys.
  */
 export const actionHref = (reason: NeedsYouReason, projectId: string, taskId: string): string =>
-  reason === "no_provider_for_model" ? `/projects/${projectId}/settings/models` : `/tasks/${taskId}`;
+  reason === "no_provider_for_model"
+    ? `/projects/${projectId}/settings/models`
+    : reason === "awaiting_approval"
+      ? `/projects/${projectId}/needs-approval?task=${taskId}`
+      : `/tasks/${taskId}`;
 
 /**
  * A needs-you row's identity: its item, or its task for a task in needs you from before items. A

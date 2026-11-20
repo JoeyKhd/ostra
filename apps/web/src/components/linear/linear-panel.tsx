@@ -283,7 +283,7 @@ const ModeValue = ({ status, now }: { readonly status: LinearConnection; readonl
 };
 
 /** States 4 to 7: the connection, its events, its token and Disconnect. */
-const ConnectedSections = ({ status, actions, now, justConnected }: { readonly status: LinearConnection; readonly actions: LinearActions; readonly now: number; readonly justConnected: boolean }) => {
+const ConnectedSections = ({ status, actions, now, justConnected, agentMode }: { readonly status: LinearConnection; readonly actions: LinearActions; readonly now: number; readonly justConnected: boolean; readonly agentMode?: ReactNode }) => {
   const tone = connectionTone(status.state);
   const polling = status.mode === "polling";
   const apiKey = status.credentialKind === "api_key";
@@ -312,6 +312,8 @@ const ConnectedSections = ({ status, actions, now, justConnected }: { readonly s
           </li>
         </ul>
       </Section>
+
+      {agentMode}
 
       <Section title={t("linear.events.title")}>
         <ul className="rows">
@@ -448,10 +450,12 @@ export type LinearBodyProps = {
   readonly now: number;
   /** Back from Linear with `?connected=1`. */
   readonly justConnected: boolean;
+  /** Milestone 6 (F-012): agent mode's sections, under the connection's. */
+  readonly agentMode?: ReactNode;
 };
 
 /** The Linear page under its heading: the connect steps, or the connection's state (connect-linear.md). */
-export const LinearBody = ({ status, actions, now, justConnected }: LinearBodyProps) => {
+export const LinearBody = ({ status, actions, now, justConnected, agentMode }: LinearBodyProps) => {
   if (status === undefined)
     return (
       <Section title={t("linear.connection.title")}>
@@ -465,7 +469,7 @@ export const LinearBody = ({ status, actions, now, justConnected }: LinearBodyPr
         </ul>
       </Section>
     );
-  if (status.state === "active" || status.state === "failed") return <ConnectedSections status={status} actions={actions} now={now} justConnected={justConnected} />;
+  if (status.state === "active" || status.state === "failed") return <ConnectedSections status={status} actions={actions} now={now} justConnected={justConnected} {...(agentMode === undefined ? {} : { agentMode })} />;
   return <ConnectSection status={status} actions={actions} now={now} />;
 };
 

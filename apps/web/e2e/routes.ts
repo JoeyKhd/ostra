@@ -90,6 +90,7 @@ export const memberRoutes = (world: RoutesWorld): readonly PanelRoute[] => {
     { pattern: "/projects/[project-id]/inbox", path: `/projects/${p}/inbox` },
     { pattern: "/projects/[project-id]/insights", path: `/projects/${p}/insights` },
     { pattern: "/projects/[project-id]/memory", path: `/projects/${p}/memory` },
+    { pattern: "/projects/[project-id]/needs-approval", path: `/projects/${p}/needs-approval` },
     { pattern: "/projects/[project-id]/memory/new", path: `/projects/${p}/memory/new` },
     { pattern: "/projects/[project-id]/memory/proposals", path: `/projects/${p}/memory/proposals` },
     { pattern: "/projects/[project-id]/memory/[note-id]", path: `/projects/${p}/memory/${world.projectNoteId}` },

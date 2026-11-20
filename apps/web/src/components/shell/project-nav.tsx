@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { BookOpenIcon, BoxIcon, ChartNoAxesColumnIcon, InboxIcon, ListChecksIcon, LockIcon, SettingsIcon, SquareKanbanIcon, ZapIcon } from "lucide-react";
+import { BookOpenIcon, BoxIcon, ChartNoAxesColumnIcon, InboxIcon, ListChecksIcon, LockIcon, SettingsIcon, ShieldQuestionIcon, SquareKanbanIcon, ZapIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -21,6 +21,9 @@ export const ProjectNav = ({ onNavigate }: { readonly onNavigate: () => void }) 
   const trpc = useTRPC();
   const pathname = usePathname();
   const projects = useQuery(trpc.projects.list.queryOptions());
+  // F-040: the tasks waiting for a member's approval, counted per project for the amber pill.
+  const approvals = useQuery({ ...trpc.tasks.needsApproval.queryOptions({ projectId: null }), refetchInterval: 30_000 });
+  const waiting = (projectId: string): number => (approvals.data?.tasks ?? []).filter((task) => task.project.id === projectId).length;
   const openProject = /^\/projects\/([^/]+)/.exec(pathname)?.[1];
   return (
     <>
@@ -53,6 +56,23 @@ export const ProjectNav = ({ onNavigate }: { readonly onNavigate: () => void }) 
                     : {})}
                 >
                   {t("shell.tasks")}
+                </NavLink>
+                <NavLink
+                  sub
+                  href={`/projects/${project.id}/needs-approval`}
+                  icon={<ShieldQuestionIcon />}
+                  onNavigate={onNavigate}
+                  {...(waiting(project.id) > 0
+                    ? {
+                        end: (
+                          <span className="rounded-full bg-amber px-1.5 font-mono text-xs font-semibold text-on-amber" aria-label={t("shell.needsApprovalCount", { n: waiting(project.id) })} data-testid="needs-approval-count">
+                            {waiting(project.id)}
+                          </span>
+                        ),
+                      }
+                    : {})}
+                >
+                  {t("shell.needsApproval")}
                 </NavLink>
                 <NavLink
                   sub

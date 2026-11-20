@@ -11,6 +11,7 @@ import { errorText } from "@/lib/errors";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 
+import { AgentModeSections, AgentSessionsGroup } from "./agent-mode";
 import { ErrorLine, LinearBody, LinearProperties } from "./linear-panel";
 import type { LinearActions } from "./linear-panel";
 import { linearWorkspaceUrl } from "./linear-status";
@@ -93,12 +94,23 @@ export const LinearView = () => {
           </a>
         ) : undefined
       }
-      properties={<LinearProperties status={data} />}
+      properties={
+        <>
+          <LinearProperties status={data} />
+          <AgentSessionsGroup agent={data !== undefined && data.state !== "none" ? data.agentMode : null} />
+        </>
+      }
     >
       <PageHeading title={t("linear.title")} lede={t("linear.lede")} />
       {error === null ? null : <ErrorLine className="mt-3">{error}</ErrorLine>}
       {status.isError ? <ErrorLine className="mt-6">{errorText(status.error)}</ErrorLine> : null}
-      <LinearBody status={data} actions={actions} now={now} justConnected={params.get("connected") === "1"} />
+      <LinearBody
+        status={data}
+        actions={actions}
+        now={now}
+        justConnected={params.get("connected") === "1"}
+        agentMode={data !== undefined && data.state !== "none" ? <AgentModeSections status={data} now={now} justTurnedOn={params.get("agent-mode") === "1"} /> : undefined}
+      />
     </PageFrame>
   );
 };

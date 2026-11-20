@@ -40,6 +40,10 @@ export type BulkWorld = z.infer<typeof inboxSchema>;
 /** The project `e2e-bulk`, its tickets on the fake Linear, one with a task, and a parent with two sub-issues (`inbox`). */
 export const seedBulkWorld = async () => inboxSchema.parse(await seed({ scenario: "inbox" }));
 
+const agentSchema = z.object({ projectId: z.string(), boardName: z.string(), tasks: z.array(z.object({ id: z.string(), key: z.string() })) });
+/** The project `e2e-agent`, its board, and three outside tasks waiting for approval (`agent-mode`). */
+export const seedAgentWorld = async () => agentSchema.parse(await seed({ scenario: "agent-mode" }));
+
 /** The final screenshot of a screen, for the by-eye check against its target (`m6-<screen>-final.png`). */
 export const shootM6 = async (page: Page, name: string): Promise<void> => {
   if (shots === undefined) return;

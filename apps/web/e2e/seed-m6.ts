@@ -13,6 +13,12 @@
 // - `inbox`: the project `e2e-bulk` on `test1` with the fake's team `OST` as its board, and tickets
 //   made on the fake and cached: four to start, one holding an active task already, and a parent
 //   with two open sub-issues. It prints each one's key. Idempotent by the project's slug.
+// - `agent-mode`: the connection's token as the agent-mode consent leaves it (its scopes hold
+//   `app:assignable` and `app:mentionable`, agent mode not yet turned on), the project `e2e-agent`
+//   with a board for the fake's team `OST`, and three outside tasks waiting for approval as core's
+//   `linear.agent-event` writes them: started in Linear by Casey Moore and Dana Ortiz, who match no
+//   member, on the project's default profile and only on its pool `e2e-agent-pool`, each with its
+//   agent session and its needs-you item for the project's members.
 
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -39,6 +45,7 @@ const argsSchema = z.discriminatedUnion("scenario", [
   z.strictObject({ scenario: z.literal("automations"), ...stackShape, username: z.string() }),
   z.strictObject({ scenario: z.literal("paused"), ...stackShape, name: z.string() }),
   z.strictObject({ scenario: z.literal("inbox"), ...stackShape }),
+  z.strictObject({ scenario: z.literal("agent-mode"), ...stackShape }),
 ]);
 const args = argsSchema.parse(JSON.parse(process.argv[2] ?? "{}"));
 const db = createDb(args.databaseUrl);
@@ -270,6 +277,112 @@ const inbox = async () => {
   return keysOf(project.id);
 };
 
+const agentMode = async () => {
+  const slug = "e2e-agent";
+  const connection = await linearConnection();
+  // The consent's token: agent mode's scopes granted; turning it on is the panel's press.
+  await db.connection.update({
+    where: { id: connection.id },
+    data: { scopes: ["read", "write", "issues:create", "comments:create", "app:assignable", "app:mentionable"], appUserName: connection.appUserName ?? "ostra", webhookMode: "webhooks" },
+  });
+  const found = await db.project.findFirst({ where: { organizationId, slug } });
+  const keysOf = async (projectId: string) => {
+    const tasks = await db.task.findMany({ where: { projectId, state: "awaiting_approval" }, orderBy: { createdAt: "asc" }, select: { id: true, ticketKey: true } });
+    const board = await db.board.findFirstOrThrow({ where: { projectId } });
+    return { projectId, boardName: board.name, tasks: tasks.map((task) => ({ id: task.id, key: task.ticketKey ?? "" })) };
+  };
+  if (found !== null) return keysOf(found.id);
+  await db.agentProfile.updateMany({ where: { organizationId, builtIn: true, modelId: null, modelCatalogId: null, modelCustomName: null }, data: { modelCustomName: "local-coder-7b" } });
+  const project = await db.project.create({ data: { organizationId, name: slug, slug, access: "open" } });
+  await githubRepo(project.id);
+  const pool = (await db.runnerPool.findFirst({ where: { organizationId, name: "e2e-agent-pool" } })) ?? (await db.runnerPool.create({ data: { organizationId, name: "e2e-agent-pool" } }));
+  await db.projectPool.create({ data: { organizationId, projectId: project.id, poolId: pool.id, position: 0 } });
+  const profile = await db.agentProfile.findFirstOrThrow({ where: { organizationId, builtIn: true }, orderBy: { createdAt: "asc" } });
+  const linear = new LinearAdapter({ apiUrl: args.linear.apiUrl, auth: { kind: "api-key", token: args.linear.apiKey } });
+  const team = { externalId: args.linear.teamId };
+  const board = await db.board.create({
+    data: {
+      organizationId,
+      projectId: project.id,
+      connectionId: connection.id,
+      // Its own team ID, so this board's switch never meets another project's board of `OST`.
+      externalId: `${args.linear.teamId}-agent`,
+      name: "Agent",
+      key: "AGT",
+      statusMap: { open: ["s-backlog", "s-todo"], started: "s-progress", inReview: "s-review", done: "s-done", doneBy: "ostra", magicWord: "Closes" },
+    },
+  });
+  const outside = async (title: string, by: string, minutes: number) => {
+    const made = await linear.createTicket(team, { title, description: "Delegated to ostra in Linear." });
+    if (!made.ok) throw new Error(`the fake Linear made no ticket: ${made.error.message}`);
+    const ticket = await db.ticket.create({
+      data: {
+        organizationId,
+        projectId: project.id,
+        boardId: board.id,
+        connectionId: connection.id,
+        externalId: made.value.externalId,
+        key: made.value.key,
+        title,
+        description: "Delegated to ostra in Linear.",
+        statusId: "s-todo",
+        statusName: "Todo",
+        statusCategory: "open",
+        labels: [],
+        url: made.value.url,
+        open: true,
+        trackerUpdatedAt: new Date(),
+      },
+    });
+    const task = await db.task.create({
+      data: {
+        organizationId,
+        projectId: project.id,
+        kind: "code",
+        source: "ticket",
+        ticketId: ticket.id,
+        ticketKey: ticket.key,
+        boardId: board.id,
+        title,
+        prompt: title,
+        branchName: `ostra/${randomBytes(4).toString("hex")}-outside`,
+        state: "awaiting_approval",
+        agentProfileId: profile.id,
+        trackerActorId: `linear-user-${by.toLowerCase().replace(" ", "-")}`,
+        trackerActorName: by,
+        poolOnly: true,
+        createdAt: new Date(Date.now() - minutes * 60_000),
+      },
+    });
+    await db.agentSession.create({
+      data: {
+        organizationId,
+        connectionId: connection.id,
+        externalSessionId: `session-${randomBytes(6).toString("hex")}`,
+        projectId: project.id,
+        ticketId: ticket.id,
+        taskId: task.id,
+        boardId: board.id,
+        state: "awaiting_approval",
+        creatorExternalId: `linear-user-${by.toLowerCase().replace(" ", "-")}`,
+        creatorName: by,
+        createdAt: new Date(Date.now() - minutes * 60_000),
+      },
+    });
+    await db.needsYouItem.create({ data: { organizationId, projectId: project.id, taskId: task.id, reason: "awaiting_approval", audience: "project_members" } });
+  };
+  await outside("Retry failed invoice exports", "Casey Moore", 30);
+  await outside("Invoice PDF shows the wrong locale", "Dana Ortiz", 20);
+  await outside("Add VAT to the CSV export", "Casey Moore", 10);
+  // Home shows needs-you only once setup is done (F-076): run alone, finish what the setup specs would have.
+  if ((await db.runner.count({ where: { organizationId, state: "online" } })) === 0) {
+    await db.runner.create({
+      data: { organizationId, kind: "personal", ownerMemberId: admin.id, name: "e2e-agent-runner", publicKey: `e2e-agent-${randomBytes(8).toString("hex")}`, executor: "host", capacity: 1, version: "0.0.0", state: "online", lastSeenAt: new Date("2099-01-01T00:00:00Z") },
+    });
+  }
+  return keysOf(project.id);
+};
+
 switch (args.scenario) {
   case "automations":
     process.stdout.write(`${JSON.stringify(await automations(args.username, args.password))}\n`);
@@ -279,6 +392,9 @@ switch (args.scenario) {
     break;
   case "inbox":
     process.stdout.write(`${JSON.stringify(await inbox())}\n`);
+    break;
+  case "agent-mode":
+    process.stdout.write(`${JSON.stringify(await agentMode())}\n`);
     break;
   default:
     args satisfies never;

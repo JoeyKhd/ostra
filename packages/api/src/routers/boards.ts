@@ -52,6 +52,8 @@ const boardViewSchema = z.object({
   statusesError: z.string().nullable(),
   /** Mapped statuses the team no longer has: the page asks for another. */
   missingStatuses: z.array(z.string()),
+  /** Milestone 6 (F-012): "Start from Linear": a delegation in this board's team starts a task here. */
+  startFromLinear: z.boolean(),
 });
 
 const boardsViewSchema = z.object({
@@ -64,6 +66,8 @@ const boardsViewSchema = z.object({
       state: z.enum(["pending", "active", "failed", "revoked"]),
       /** Polling mode's interval, in seconds. */
       pollSeconds: z.number().int(),
+      /** Milestone 6 (F-012): agent mode is on, so a board's "Start from Linear" can be switched. */
+      agentMode: z.boolean(),
     })
     .nullable(),
   /** The caller may attach, edit and detach: a project admin. */
@@ -202,6 +206,7 @@ export const boardsRouter = router({
             statusGroups: statusList === null ? null : groupStatuses(statusList),
             statusesError: found.ok ? (statuses?.ok === false ? `The tracker did not list the team's statuses: ${statuses.error.message}` : null) : found.message,
             missingStatuses: statusList === null || mapping === null ? [] : [...unknownMappedStatuses(mapping, statusList)],
+            startFromLinear: row.agentMode,
           };
         }),
       );
@@ -212,6 +217,7 @@ export const boardsRouter = router({
           mode: connection.webhookMode,
           state: connection.state,
           pollSeconds: settings.trackerPollSeconds,
+          agentMode: connection.agentModeAt !== null,
         },
         canEdit,
         boards,

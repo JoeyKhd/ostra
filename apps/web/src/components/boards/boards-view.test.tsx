@@ -38,9 +38,10 @@ const board: BoardView = {
   ],
   statusesError: null,
   missingStatuses: [],
+  startFromLinear: false,
 };
 
-const view: BoardsData = { connection: { connectionId: connectionIdSchema.parse("01900000-0000-7000-8000-0000000000c1"), workspaceName: "acme", mode: "webhooks", state: "active", pollSeconds: 60 }, canEdit: true, boards: [board] };
+const view: BoardsData = { connection: { connectionId: connectionIdSchema.parse("01900000-0000-7000-8000-0000000000c1"), workspaceName: "acme", mode: "webhooks", state: "active", pollSeconds: 60, agentMode: false }, canEdit: true, boards: [board] };
 
 const form = (mapping: Mapping, canEdit = true) => renderToStaticMarkup(<MappingForm board={board} mapping={mapping} canEdit={canEdit} onChange={() => undefined} />);
 

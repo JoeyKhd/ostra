@@ -45,6 +45,8 @@ import { ChecksTabMarker } from "./task-checks/task-checks";
 import { ReasoningRow, TaskEffortRow } from "./task-effort";
 import type { TaskEffort } from "./task-effort";
 import { TakeItLocal } from "./take-it-local";
+import { AwaitingApprovalBanner, StartedInLinear } from "@/components/approvals/approval-block";
+
 import { TaskWaiting } from "./task-waiting";
 import { boxSizeText } from "./task-waiting-words";
 import type { LocalLoad } from "./take-it-local";
@@ -291,6 +293,9 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const me = useQuery(trpc.me.get.queryOptions());
   const members = useQuery(trpc.organization.members.queryOptions());
   const project = useQuery(trpc.projects.get.queryOptions(task.data === undefined ? skipToken : { projectId: task.data.projectId }));
+  // F-040: an outside task waiting for approval shows its block, from the project's Needs approval.
+  const outsideApprovals = useQuery(trpc.tasks.needsApproval.queryOptions(task.data?.state === "awaiting_approval" ? { projectId: task.data.projectId } : skipToken));
+  const waitingTask = outsideApprovals.data?.tasks.find((one) => one.taskId === taskId);
   const log = useTaskLog(taskId);
   const view = useMemo(() => deriveTaskState(log.state.events), [log.state.events]);
   const [stopping, setStopping] = useState(false);
@@ -581,6 +586,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
         <div className="shrink-0">
           <div className="flex items-center gap-2.5 font-mono text-sm text-faint">
             <span>{data.key} · {data.source === "prompt" ? t("taskPage.fromPrompt") : t("taskPage.fromTicket")}</span>
+            {waitingTask?.startedBy.kind === "outside" ? <span className="font-sans text-ui">· <StartedInLinear task={waitingTask} /></span> : null}
             {data.kind === "code" ? null : <Chip className="font-mono text-muted">{data.kind === "refine" ? t("draft.chipRefine") : t("draft.chipReview")}</Chip>}
           </div>
           <h1 className="page-title my-1.5 break-words">{data.title}</h1>
@@ -597,6 +603,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           </p>
           {inLoop ? <StageLine subState={data.subState} aiReview={aiReview} counts={data.roundCounts} needsYou={cap !== null && isDriver} held={heldNow} /> : null}
           <TaskPrs repos={data.repos} />
+          {data.state === "awaiting_approval" ? <AwaitingApprovalBanner task={waitingTask} /> : null}
           {data.waiting?.kind === "no-runner" && data.waiting.reason.code === "needs-services-runner" ? (
             <p className="mt-1.5 text-ui text-muted" data-testid="task-dispatch-note">{servicesWaitText(data.waiting.reason.online)}</p>
           ) : null}
@@ -653,7 +660,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
               dismiss={{ run: () => { dismiss.mutate({ taskId, itemId: conflict.id }); }, pending: dismiss.isPending }}
             />
           )}
-          {data.group === "needs-you" && !shownInThread(data.reason) && data.limit === null && data.reason !== "crashed" && conflict === undefined && ticketClosed === undefined && data.reason !== "plan" && data.reason !== "approval" && data.reason !== "question" && !(isRefine && data.reason === "draft_ready") && data.reason !== "round_cap" ? (
+          {data.group === "needs-you" && !shownInThread(data.reason) && data.limit === null && data.reason !== "crashed" && conflict === undefined && ticketClosed === undefined && data.reason !== "plan" && data.reason !== "approval" && data.reason !== "question" && !(isRefine && data.reason === "draft_ready") && data.reason !== "round_cap" && data.state !== "awaiting_approval" ? (
             <NeedsYou title={t("taskPage.needsYou")} className="mt-4">
               <p className="whitespace-pre-wrap">{summary ?? t("taskPage.needsYouDefault")}</p>
             </NeedsYou>

@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { Dot } from "@/components/ui/status";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/cn";
@@ -123,10 +124,12 @@ export type AttachedRowsProps = {
   readonly onDetach: (board: BoardView) => void;
   readonly detaching: boolean;
   readonly now: number;
+  /** Milestone 6 (F-012): "Start from Linear" per board, while the organization's agent mode is on. */
+  readonly agentMode?: { readonly onChange: (board: BoardView, on: boolean) => void; readonly pending: boolean };
 };
 
 /** The attached boards: one row each; a click selects it for the mapping and the panel. */
-export const AttachedRows = ({ view, selectedId, onSelect, onDetach, detaching, now }: AttachedRowsProps) => (
+export const AttachedRows = ({ view, selectedId, onSelect, onDetach, detaching, now, agentMode }: AttachedRowsProps) => (
   <ul data-testid="boards" className="border-t border-line">
     {view.boards.map((board) => (
       <li
@@ -146,6 +149,18 @@ export const AttachedRows = ({ view, selectedId, onSelect, onDetach, detaching, 
           <span className="font-mono">{board.openTickets}</span> {plural(board.openTickets, "boards.attached.tickets.one", "boards.attached.tickets.other")}
         </span>
         <span className="hidden min-w-0 sm:block">{view.connection === null ? null : <Activity board={board} mode={view.connection.mode} now={now} />}</span>
+        <span className="flex items-center gap-2">
+        {view.connection?.agentMode === true && agentMode !== undefined ? (
+          <label className="flex items-center gap-2 text-sm text-muted">
+            <span className="hidden md:inline">{t("agentMode.boardsTitle")}</span>
+            <Switch
+              checked={board.startFromLinear}
+              disabled={!view.canEdit || agentMode.pending}
+              aria-label={t("agentMode.boardSwitch", { board: board.name })}
+              onCheckedChange={(on) => { agentMode.onChange(board, on); }}
+            />
+          </label>
+        ) : null}
         {view.canEdit ? (
           <AlertDialog>
             <AlertDialogTrigger asChild>
@@ -164,6 +179,7 @@ export const AttachedRows = ({ view, selectedId, onSelect, onDetach, detaching, 
         ) : (
           <span />
         )}
+        </span>
       </li>
     ))}
   </ul>
@@ -527,6 +543,7 @@ export const BoardsView = ({ projectId, admin }: { readonly projectId: ProjectId
     }),
   );
   const detach = useMutation(trpc.boards.detach.mutationOptions({ onSuccess: refresh }));
+  const startFromLinear = useMutation(trpc.linear.setBoardAgentMode.mutationOptions({ onSuccess: refresh, onError: refresh }));
   const save = useMutation(
     trpc.boards.saveMapping.mutationOptions({
       onSuccess: async (_, input) => {
@@ -593,13 +610,13 @@ export const BoardsView = ({ projectId, admin }: { readonly projectId: ProjectId
           <Section title={t("boards.attached.title")} count={view.boards.length} className="mt-6">
             {view.boards.length === 0 ? <p className="text-body text-muted">{t("boards.attached.none")}</p> : null}
             {view.boards.length === 0 ? null : (
-              <AttachedRows view={view} selectedId={board?.id} onSelect={(item) => { select(item.id); }} onDetach={(item) => { detach.mutate({ boardId: item.id }); }} detaching={detach.isPending} now={now} />
+              <AttachedRows view={view} selectedId={board?.id} onSelect={(item) => { select(item.id); }} onDetach={(item) => { detach.mutate({ boardId: item.id }); }} detaching={detach.isPending} now={now} agentMode={{ onChange: (item, on) => { startFromLinear.mutate({ boardId: item.id, on }); }, pending: startFromLinear.isPending }} />
             )}
             {canEdit ? (
               <AttachLine
                 teams={available.data}
                 pending={attach.isPending}
-                error={errorText(available.error ?? attach.error ?? detach.error)}
+                error={errorText(available.error ?? attach.error ?? detach.error ?? startFromLinear.error)}
                 onAttach={(team) => { attach.mutate({ projectId, teamExternalId: team.externalId }); }}
               />
             ) : null}
