@@ -1,87 +1,65 @@
 "use client";
 
 import { useHighlightQuery, useStaticSearch } from "fumadocs-core/search/client";
-import type { SearchResultItem } from "fumadocs-core/search/client";
 import { CircleAlert, CornerDownLeft, FileText, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import { z } from "zod";
 
+import { groupResults } from "@/lib/search-results";
+import type { HeadingTitles, SearchRow } from "@/lib/search-results";
 import { basePath, startHere } from "@/lib/site";
 
-type Row =
-  | { readonly kind: "page"; readonly id: string; readonly url: string; readonly title: string; readonly snippet: string }
-  | { readonly kind: "heading"; readonly id: string; readonly url: string; readonly title: string; readonly snippet: string; readonly mono: boolean };
+// The headings file is ostra's own format, so the schema rejects anything else.
+const headingTitlesSchema = z.record(z.string(), z.string());
 
-type Group = { readonly key: string; readonly path: string; readonly rows: Row[] };
+type Row = SearchRow;
 
-const SETTING = /^[A-Z][A-Z0-9_]+$/;
-
-const pageOf = (url: string): string => url.split("#")[0] ?? url;
-
-/** A window of the text around the first matched word, with an ellipsis at each cut end. */
-const snippetOf = (text: string, query: string): string => {
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const at = Math.max(0, ...words.map((word) => text.toLowerCase().indexOf(word)));
-  const start = at < 60 ? 0 : text.lastIndexOf(" ", at - 30) + 1;
-  const end = Math.min(text.length, at + 90);
-  return `${start > 0 ? "…" : ""}${text.slice(start, end)}${end < text.length ? "…" : ""}`;
+/** The export's headings, fetched once per visit beside the index (search-text.ts). */
+let headingsRequest: Promise<HeadingTitles> | undefined;
+const loadHeadings = (): Promise<HeadingTitles> => {
+  headingsRequest ??= fetch(`${basePath}/api/search-headings`)
+    .then(async (response) => {
+      if (!response.ok) {
+        throw new Error(`api/search-headings answered ${String(response.status)}`);
+      }
+      return headingTitlesSchema.parse(await response.json());
+    })
+    .catch((error: unknown) => {
+      headingsRequest = undefined;
+      throw error;
+    });
+  return headingsRequest;
 };
 
-const titleMatches = (title: string, query: string): boolean =>
-  query
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(Boolean)
-    .some((word) => title.toLowerCase().split(/[^a-z0-9_]+/).some((part) => part.startsWith(word)));
+type HeadingsState = { readonly headings: HeadingTitles | undefined; readonly failed: boolean };
 
-/** Groups the index's results by page, in the order of each page's best hit (docs-search.md). */
-const groupResults = (items: readonly SearchResultItem[], query: string): Group[] => {
-  const groups = new Map<string, Group>();
-  const short = query.trim().length <= 2;
-  for (const item of items) {
-    if ("type" in item && item.type === "table") {
-      continue;
+/** The headings file, once the dialog has opened: `undefined` while it loads. */
+const useHeadings = (open: boolean, attempt: number): HeadingsState => {
+  const [state, setState] = useState<HeadingsState>({ headings: undefined, failed: false });
+  useEffect(() => {
+    if (!open) {
+      return;
     }
-    if (!("url" in item)) {
-      continue;
-    }
-    const key = pageOf(item.url);
-    let group = groups.get(key);
-    if (group === undefined) {
-      const crumbs = item.breadcrumbs ?? [];
-      group = { key, path: crumbs.join(" › "), rows: [] };
-      groups.set(key, group);
-    }
-    const content = item.content;
-    if (item.type === "page") {
-      group = { ...group, path: [...(item.breadcrumbs ?? []), content].join(" › ") };
-      groups.set(key, group);
-      if (titleMatches(content, query)) {
-        group.rows.unshift({ kind: "page", id: item.id, url: item.url, title: content, snippet: "" });
-      }
-    } else if (item.type === "heading") {
-      if (!short || SETTING.test(content) || titleMatches(content, query)) {
-        group.rows.push({ kind: "heading", id: item.id, url: item.url, title: content, snippet: "", mono: SETTING.test(content) });
-      }
-    } else if (!short) {
-      const owner = group.rows.find((row) => row.url === item.url);
-      const index = owner === undefined ? -1 : group.rows.indexOf(owner);
-      if (owner?.snippet === "") {
-        group.rows[index] = { ...owner, snippet: snippetOf(content, query) };
-      } else if (owner === undefined && item.url === key) {
-        // The page's own text: its description under the page row, or a row of its own.
-        const pageRow = group.rows.find((row) => row.kind === "page");
-        if (pageRow?.snippet === "") {
-          group.rows[group.rows.indexOf(pageRow)] = { ...pageRow, snippet: content };
+    let live = true;
+    loadHeadings().then(
+      (headings) => {
+        if (live) {
+          setState({ headings, failed: false });
         }
-      } else if (owner === undefined) {
-        const title = decodeURIComponent(item.url.split("#")[1] ?? "").replace(/-/g, " ");
-        group.rows.push({ kind: "heading", id: item.id, url: item.url, title, snippet: snippetOf(content, query), mono: SETTING.test(title) });
-      }
-    }
-  }
-  return [...groups.values()].filter((group) => group.rows.length > 0).slice(0, 8);
+      },
+      () => {
+        if (live) {
+          setState({ headings: undefined, failed: true });
+        }
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [open, attempt]);
+  return state;
 };
 
 const EmptyState = ({ query }: { readonly query: string }) => (
@@ -109,9 +87,14 @@ export const SearchDialog = ({ open, onOpenChange }: { readonly open: boolean; r
   const router = useRouter();
   const listId = useId();
   const highlight = useHighlightQuery(search);
+  const [attempt, setAttempt] = useState(0);
+  const { headings, failed } = useHeadings(open, attempt);
 
   const query = search.trim();
-  const groups = useMemo(() => (query === "" || data === undefined ? [] : groupResults(data.items, query)), [data, query]);
+  const groups = useMemo(
+    () => (query === "" || data === undefined || headings === undefined ? [] : groupResults(data.items, query, headings)),
+    [data, query, headings],
+  );
   const rows: Row[] =
     query === ""
       ? startHere.map((page) => ({ kind: "page", id: `start-${page.url}`, url: page.url, title: page.title, snippet: "" }))
@@ -208,7 +191,9 @@ export const SearchDialog = ({ open, onOpenChange }: { readonly open: boolean; r
   };
 
   const status = query === "" ? "" : `${String(count)} ${count === 1 ? "result" : "results"}`;
-  const noResults = query !== "" && data !== undefined && !isLoading && count === 0 && error === undefined;
+  const loadFailed = error !== undefined || failed;
+  const loaded = data !== undefined && headings !== undefined;
+  const noResults = query !== "" && loaded && !isLoading && count === 0 && !loadFailed;
   return (
     <div className="search-root">
       <div className="search-overlay" aria-hidden="true" onClick={close} />
@@ -235,7 +220,7 @@ export const SearchDialog = ({ open, onOpenChange }: { readonly open: boolean; r
         </div>
         {/* Keyed by the results, so the highlight's ref runs again on the new rows. */}
         <div className="search-results" ref={highlight} key={`${query}-${String(data?.items.length ?? 0)}`}>
-          {error !== undefined ? (
+          {loadFailed ? (
             <p className="search-error">
               <CircleAlert size={16} strokeWidth={1.75} aria-hidden="true" />
               <span>Search couldn&apos;t load. Check your connection and try again.</span>
@@ -243,6 +228,7 @@ export const SearchDialog = ({ open, onOpenChange }: { readonly open: boolean; r
                 type="button"
                 className="text-button"
                 onClick={() => {
+                  setAttempt((value) => value + 1);
                   onSearchChange(`${search} `);
                   onSearchChange(search);
                 }}
@@ -252,7 +238,7 @@ export const SearchDialog = ({ open, onOpenChange }: { readonly open: boolean; r
             </p>
           ) : noResults ? (
             <EmptyState query={query} />
-          ) : query !== "" && data === undefined ? (
+          ) : query !== "" && !loaded ? (
             <div className="search-skeleton" aria-hidden="true">
               <span />
               <span />

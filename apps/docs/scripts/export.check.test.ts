@@ -69,6 +69,31 @@ describe("the docs site's static export", () => {
     expect(index).toContain("OSTRA_JOIN_TOKEN_FILE");
   });
 
+  it("F-058: the search index holds plain text, and every heading a text record sits under is in the headings file, as written", async () => {
+    // The index and the headings file are the export's own files; only the fields read here are checked.
+    const recordSchema = z.looseObject({ type: z.string(), url: z.string(), content: z.string() });
+    const indexSchema = z.looseObject({ docs: z.looseObject({ docs: z.record(z.string(), recordSchema) }) });
+    const records = Object.values((await readJson(path.join(out, "api", "search"), indexSchema)).docs.docs);
+    const headings = await readJson(path.join(out, "api", "search-headings"), z.record(z.string(), z.string()));
+    expect(records.length).toBeGreaterThan(500);
+    for (const record of records) {
+      // Bold marks around words, backticks, alert markers, link targets, quote and table lines. A glob
+      // such as `**/migrations/**` is text, and stays.
+      expect(record.content, `${record.url} keeps Markdown in the index`).not.toMatch(
+        /(^|\s)\*\*[\w`]|[\w`]\*\*($|[\s.,;:])|`|^> |\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]|\]\(|^\|/m,
+      );
+      if (record.type === "text" && record.url.includes("#")) {
+        expect(headings[record.url], `${record.url} has no heading in api/search-headings`).toBeDefined();
+      }
+      if (record.type === "heading") {
+        expect(headings[record.url], record.url).toBe(record.content);
+      }
+    }
+    expect(headings["/docs/install/setup#connect-a-runner"]).toBe("6. Connect a runner");
+    const token = records.filter((record) => record.url === "/docs/runners/pools#make-a-join-token" && record.type === "text");
+    expect(token.map((record) => record.content).join("\n")).toContain("Select the pool, then New token under Join tokens.");
+  });
+
   it("F-058: the configuration reference page lists every setting of docs/configuration.md, with its default", async () => {
     const html = await readFile(path.join(out, "docs", "reference", "configuration", "index.html"), "utf8");
     const rows = settingsOf(parseConfigurationReference(await readFile(path.join(app, "..", "..", "docs", "configuration.md"), "utf8")));

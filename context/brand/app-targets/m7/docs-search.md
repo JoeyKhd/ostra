@@ -81,10 +81,10 @@ A `listbox`, padding `8px 10px`. Grouped by page, in the index's rank order of e
 
 ## Wrong in the image (build from this file)
 
-The pictures are captures of the build since 2026-11-20, so they show what the build does. Two things in the capture differ from this file, and are the build's to fix (ticket 21):
-- **Snippets carry raw Markdown:** `**New token**` and backticks show as typed. Build the snippet as plain text.
-- **Some heading rows lose their text's form:** the setup page's `6. Connect a runner` shows as `connect a runner`. Build the heading as written.
+The pictures are captures of the build since 2026-11-20, so they show what the build does. The first capture showed two faults, both fixed in the build on 2026-11-20 (ticket 21), and `docs-search.webp` was captured again after the fix:
+- **Snippets carried raw Markdown** (`**New token**`, backticks). The index now holds plain text: the export reads each record with a Markdown parser (`apps/docs/src/lib/search-text.ts`).
+- **Some heading rows lost their text's form:** a text match under the setup page's `6. Connect a runner` showed `connect a runner`, the words of its address. The export now writes every heading, as written, to `api/search-headings`, and the dialog takes a heading row's text from it.
 
-The results' order and count (24 for `join token`) are the index's, as this file says; the generated picture showed six. Its other faults (an invented page behind, Kelp borders, smaller empty-state text, the model's wordmark) are gone with it.
+The results' order and count (25 for `join token`) are the index's, as this file says; the generated picture showed six. Its other faults (an invented page behind, Kelp borders, smaller empty-state text, the model's wordmark) are gone with it.
 
 Right as drawn: the dialog shape with the `esc` chip, results grouped under page paths, page and `#` heading rows with snippets, the selected row with its `↵` chip, the footer's key hints and "searched in your browser", the empty state with the Deep water stone and `Browse the sections →`, and no amber.
