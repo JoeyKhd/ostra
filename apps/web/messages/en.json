@@ -4370,6 +4370,17 @@
     "removedName": "{name} (removed)",
     "runner": "runner",
     "system": "System",
+    "runners": "Runners",
+    "kind": {
+      "pool": "pool",
+      "provider": "provider",
+      "note": "note",
+      "proposal": "proposal",
+      "profile": "profile",
+      "joinToken": "join token",
+      "emailSettings": "email settings",
+      "bulkStart": "bulk start"
+    },
     "noMatch": "No entries match these filters.",
     "clearFilters": "Clear filters",
     "noneSelected": "No entry selected.",

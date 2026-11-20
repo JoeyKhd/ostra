@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { actionPrefix, dayLabel, entityHref, flattenData, isAuditPeriod, periodRange } from "./audit-words";
+import { ACTOR_KIND_CHOICES, actionPrefix, actorChoices, actorFilterOf, dayLabel, entityHref, entityKindTitle, entityKindWord, entityLabelOf, flattenData, isAuditPeriod, periodRange } from "./audit-words";
 
 // F-073 (ticket 34): the audit log's filters and words, without a browser.
 
@@ -47,5 +47,58 @@ describe("the audit log's words", () => {
     expect(entityHref({ entity: "task", entityId: "t-1", taskId: "t-1" })).toBe("/tasks/t-1");
     expect(entityHref({ entity: "member", entityId: "m-1", taskId: null })).toBe("/organization/members");
     expect(entityHref({ entity: "budget", entityId: "b-1", taskId: null })).toBeNull();
+  });
+});
+
+describe("what an entry's entity is called (audit-log.md, the Entity column)", () => {
+  const id = "0196f1a0-5b2c-7d3e-8f40-123456789abc";
+
+  it("F-073: the label the API gives, mono for a ticket key and pool, runner and provider names, sans for people, notes, projects and a task's title", () => {
+    expect(entityLabelOf({ entity: "task", entityId: id, entityLabel: "CALC-161" })).toEqual({ text: "CALC-161", full: "CALC-161", mono: true });
+    expect(entityLabelOf({ entity: "task", entityId: id, entityLabel: "Fix the cart total" })).toEqual({ text: "Fix the cart total", full: "Fix the cart total", mono: false });
+    expect(entityLabelOf({ entity: "member", entityId: id, entityLabel: "Sam Rivera" })).toMatchObject({ text: "Sam Rivera", mono: false });
+    expect(entityLabelOf({ entity: "project", entityId: id, entityLabel: "calculator" })).toMatchObject({ text: "calculator", mono: false });
+    expect(entityLabelOf({ entity: "memory-note", entityId: id, entityLabel: "Settings keys" })).toMatchObject({ text: "Settings keys", mono: false });
+    for (const entity of ["runner-pool", "runner", "model-provider"]) {
+      expect(entityLabelOf({ entity, entityId: id, entityLabel: "build-01" })).toMatchObject({ text: "build-01", mono: true });
+    }
+  });
+
+  it("F-073: an entity with no label shows its ID, short and mono, with the whole ID in its title; an entry about nothing has none", () => {
+    expect(entityLabelOf({ entity: "budget", entityId: id, entityLabel: id })).toEqual({ text: "0196f1a0…", full: id, mono: true });
+    expect(entityLabelOf({ entity: "budget", entityId: id, entityLabel: null })).toEqual({ text: "0196f1a0…", full: id, mono: true });
+    expect(entityLabelOf({ entity: null, entityId: null, entityLabel: null })).toBeNull();
+  });
+
+  it("F-073: a kind is named by the target's word, and the panel's leads with a capital", () => {
+    expect(["runner-pool", "model-provider", "memory-note", "agent-profile", "task", "member", "budget"].map(entityKindWord)).toEqual(["pool", "provider", "note", "profile", "task", "member", "budget"]);
+    expect(entityKindTitle("task")).toBe("Task");
+    expect(entityKindTitle("runner-pool")).toBe("Pool");
+  });
+
+  it("F-073: a pool, a provider, a profile and a note link to their pages, by the kinds the log stores", () => {
+    expect(entityHref({ entity: "runner-pool", entityId: id, taskId: null })).toBe("/organization/runners");
+    expect(entityHref({ entity: "model-provider", entityId: id, taskId: null })).toBe("/organization/models");
+    expect(entityHref({ entity: "agent-profile", entityId: id, taskId: null })).toBe(`/organization/agent-profiles/${id}`);
+    expect(entityHref({ entity: "memory-note", entityId: id, taskId: null })).toBe(`/organization/memory/${id}`);
+  });
+});
+
+describe("the Actor filter (audit-log.md, Filters)", () => {
+  it("F-073: lists the members, removed ones last with (removed), then Runners and System", () => {
+    const choices = actorChoices([{ memberId: "m-1", name: "Sam Rivera" }], [{ memberId: "m-2", name: "Rae Okafor" }]);
+    expect(choices.map((choice) => [choice.value, choice.label, choice.muted ?? false])).toEqual([
+      ["m-1", "Sam Rivera", false],
+      ["m-2", "Rae Okafor (removed)", true],
+      [ACTOR_KIND_CHOICES.runners, "Runners", false],
+      [ACTOR_KIND_CHOICES.system, "System", false],
+    ]);
+  });
+
+  it("F-073: a member's choice filters by the member, Runners by every runner and System by the system", () => {
+    expect(actorFilterOf(null)).toBeNull();
+    expect(actorFilterOf("m-1")).toEqual({ actorId: "m-1" });
+    expect(actorFilterOf(ACTOR_KIND_CHOICES.runners)).toEqual({ actorKind: "runner" });
+    expect(actorFilterOf(ACTOR_KIND_CHOICES.system)).toEqual({ actorKind: "system" });
   });
 });

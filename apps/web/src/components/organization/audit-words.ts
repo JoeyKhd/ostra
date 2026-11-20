@@ -1,4 +1,7 @@
 import { t } from "@/lib/messages";
+import type { MessageKey } from "@/lib/messages";
+
+import type { FilterOption } from "./filter-menu";
 
 // The audit log's words and the pure rules behind its filters (audit-log.md), apart from the view so
 // each one is tested without a browser.
@@ -107,6 +110,7 @@ export const actionPrefix = (action: string): string => `${action.split(".")[0] 
 export const entityHref = (entry: { readonly entity: string | null; readonly entityId: string | null; readonly taskId: string | null }): string | null => {
   if (entry.taskId !== null && (entry.entity === "task" || entry.entity === null)) return `/tasks/${entry.taskId}`;
   if (entry.entityId === null) return null;
+  // The kinds as the log's writers store them (`entity` on `AuditEntry`).
   switch (entry.entity) {
     case "task":
       return `/tasks/${entry.entityId}`;
@@ -115,14 +119,16 @@ export const entityHref = (entry: { readonly entity: string | null; readonly ent
     case "member":
     case "invitation":
       return "/organization/members";
-    case "provider":
+    case "model-provider":
     case "model":
       return "/organization/models";
-    case "pool":
+    case "runner-pool":
     case "runner":
       return "/organization/runners";
-    case "agent_profile":
+    case "agent-profile":
       return `/organization/agent-profiles/${entry.entityId}`;
+    case "memory-note":
+      return `/organization/memory/${entry.entityId}`;
     case null:
     default:
       return null;
@@ -131,3 +137,78 @@ export const entityHref = (entry: { readonly entity: string | null; readonly ent
 
 /** A short form of a long ID: its first 8 characters. */
 export const shortId = (id: string): string => (id.length > 12 ? `${id.slice(0, 8)}…` : id);
+
+/** The kinds the Entity column names by a word of their own (audit-log.md: `pool`, `provider`, `note`, …). */
+const kindWords: ReadonlyMap<string, MessageKey> = new Map([
+  ["runner-pool", "audit.kind.pool"],
+  ["model-provider", "audit.kind.provider"],
+  ["memory-note", "audit.kind.note"],
+  ["memory-proposal", "audit.kind.proposal"],
+  ["agent-profile", "audit.kind.profile"],
+  ["join-token", "audit.kind.joinToken"],
+  ["email-settings", "audit.kind.emailSettings"],
+  ["bulk-start", "audit.kind.bulkStart"],
+] as const);
+
+/** An entity's kind as the log shows it: its word, or the kind as stored (`task`, `member`, `project`, `budget`, …). */
+export const entityKindWord = (entity: string): string => {
+  const key = kindWords.get(entity);
+  return key === undefined ? entity : t(key);
+};
+
+/** The kind leading the panel's Entity value: `Task CALC-161`. */
+export const entityKindTitle = (entity: string): string => {
+  const word = entityKindWord(entity);
+  return `${word.charAt(0).toUpperCase()}${word.slice(1)}`;
+};
+
+/** Whose labels are names drawn in Plex Mono (audit-log.md): pools, runners and providers. */
+const MONO_KINDS: ReadonlySet<string> = new Set(["runner-pool", "runner", "model-provider"]);
+/** A tracker's ticket key (`CALC-161`), which a task's label is when it has a ticket. */
+const TICKET_KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
+
+export type EntityLabel = {
+  /** What the cell shows. */
+  readonly text: string;
+  /** The whole label, for its `title`. */
+  readonly full: string;
+  readonly mono: boolean;
+};
+
+/**
+ * What an entry's entity is called (audit-log.md, the Entity column): the API's `entityLabel`, a
+ * task's ticket key or title and a name for the rest, as recorded for an entity since gone. Keys and
+ * pool, runner and provider names are mono; people, notes and projects sans. An entity with no
+ * label falls back to its ID, short and mono. `null` for an entry about no entity.
+ */
+export const entityLabelOf = (entry: { readonly entity: string | null; readonly entityId: string | null; readonly entityLabel: string | null }): EntityLabel | null => {
+  if (entry.entity === null) return null;
+  const label = entry.entityLabel ?? entry.entityId ?? "";
+  if (label === entry.entityId) return { text: shortId(label), full: label, mono: true };
+  return { text: label, full: label, mono: MONO_KINDS.has(entry.entity) || (entry.entity === "task" && TICKET_KEY.test(label)) };
+};
+
+/** The Actor filter's choices beyond the members: every runner's entries, and the system's. */
+export const ACTOR_KIND_CHOICES = { runners: "kind:runner", system: "kind:system" } as const;
+
+/** The list's actor filter for the Actor menu's value: a member's ID, or every runner's or the system's entries. */
+export const actorFilterOf = (value: string | null): { readonly actorId: string } | { readonly actorKind: "runner" | "system" } | null => {
+  if (value === null) return null;
+  if (value === ACTOR_KIND_CHOICES.runners) return { actorKind: "runner" };
+  if (value === ACTOR_KIND_CHOICES.system) return { actorKind: "system" };
+  return { actorId: value };
+};
+
+/**
+ * The Actor menu's choices (audit-log.md, "Filters"): the organization's members, removed ones last
+ * with ` (removed)`; then `Runners` (any runner) and `System`.
+ */
+export const actorChoices = (
+  active: readonly { readonly memberId: string; readonly name: string }[],
+  removed: readonly { readonly memberId: string; readonly name: string }[],
+): readonly FilterOption[] => [
+  ...active.map((member) => ({ value: member.memberId, label: member.name })),
+  ...removed.map((member) => ({ value: member.memberId, label: t("audit.removedName", { name: member.name }), muted: true })),
+  { value: ACTOR_KIND_CHOICES.runners, label: t("audit.runners") },
+  { value: ACTOR_KIND_CHOICES.system, label: t("audit.system") },
+];

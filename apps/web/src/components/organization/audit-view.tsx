@@ -21,8 +21,8 @@ import type { RouterInputs, RouterOutputs } from "@/lib/trpc";
 import { projectIdSchema } from "@ostra/protocol";
 import type { ProjectId } from "@ostra/protocol";
 
-import { actionPrefix, dayKey, dayLabel, entityHref, flattenData, fullTime, isAuditPeriod, periodLabel, periodRange, auditPeriods, shortId, timeOfDay } from "./audit-words";
-import type { AuditPeriod } from "./audit-words";
+import { actionPrefix, actorChoices, actorFilterOf, dayKey, dayLabel, entityHref, entityKindTitle, entityKindWord, entityLabelOf, flattenData, fullTime, isAuditPeriod, periodLabel, periodRange, auditPeriods, timeOfDay } from "./audit-words";
+import type { AuditPeriod, EntityLabel } from "./audit-words";
 import { FilterMenu } from "./filter-menu";
 import type { FilterOption } from "./filter-menu";
 
@@ -60,22 +60,60 @@ const ActorName = ({ entry }: { readonly entry: Entry }): ReactNode => {
   }
 };
 
-const EntityCell = ({ entry }: { readonly entry: Entry }) =>
-  entry.entity === null ? (
+/** An entity's label: Plex Mono for keys and pool, runner and provider names, sans for the rest (audit-log.md). */
+const LabelText = ({ label, className }: { readonly label: EntityLabel; readonly className?: string }) => (
+  <span className={cn("truncate", label.mono ? "font-mono text-[13px]" : "", className)} title={label.full} data-testid="audit-entity-label" translate={label.mono ? "no" : undefined}>
+    {label.text}
+  </span>
+);
+
+/** The Entity column: the kind in `--faint`, then what the entity is called in `--text`. */
+export const EntityCell = ({ entry }: { readonly entry: Pick<Entry, "entity" | "entityId" | "entityLabel"> }) => {
+  const label = entityLabelOf(entry);
+  return entry.entity === null || label === null ? (
     <span className="text-faint">—</span>
   ) : (
     <span className="flex min-w-0 items-center gap-1.5">
-      {/* The entity's kind and the action are codes the log stores and its filters take (ADR 0054), not words. */}
-      <span className="shrink-0 text-faint" translate="no">{entry.entity}</span>
-      <span className="truncate font-mono text-[13px] text-text">{entry.entityId === null ? "" : shortId(entry.entityId)}</span>
+      <span className="shrink-0 text-faint">{entityKindWord(entry.entity)}</span>
+      <LabelText label={label} className="text-text" />
     </span>
   );
+};
+
+/** The entity filter's chip (`task CALC-161`): the label a listed entry about it carries, else its short ID. */
+export const EntityChipText = ({
+  entity,
+  entityId,
+  entries,
+}: {
+  readonly entity: string;
+  readonly entityId: string | null;
+  readonly entries: readonly Pick<Entry, "entity" | "entityId" | "entityLabel">[];
+}) => {
+  const about = entries.find((entry) => entry.entity === entity && entry.entityId === entityId);
+  const label = entityLabelOf(about ?? { entity, entityId, entityLabel: null });
+  return (
+    <>
+      <span className="shrink-0 text-faint">{entityKindWord(entity)}</span>
+      {label === null ? null : <LabelText label={label} className="text-text" />}
+    </>
+  );
+};
 
 /** The selected entry (audit-log.md, "Properties panel"). */
-const EntryPanel = ({ entry, onEntity }: { readonly entry: Entry; readonly onEntity: () => void }) => {
+export const EntryPanel = ({ entry, onEntity }: { readonly entry: Entry; readonly onEntity: () => void }) => {
   const href = entityHref(entry);
   const lines = flattenData(entry.data);
-  const entityText = entry.entity === null ? "—" : `${entry.entity} ${entry.entityId === null ? "" : shortId(entry.entityId)}`;
+  const label = entityLabelOf(entry);
+  // `Task CALC-161`: the kind's word, then the label as the table draws it.
+  const entityText =
+    entry.entity === null || label === null ? (
+      "—"
+    ) : (
+      <>
+        {entityKindTitle(entry.entity)} <LabelText label={label} />
+      </>
+    );
   return (
     <div data-testid="audit-panel">
       <PropGroup title={<span translate="no">{entry.action}</span>}>
@@ -88,9 +126,11 @@ const EntryPanel = ({ entry, onEntity }: { readonly entry: Entry; readonly onEnt
         </PropRow>
         <PropRow label={t("audit.entity")} labelWidth={96}>
           {href === null ? (
-            <span className="truncate" translate="no">{entityText}</span>
+            <span className="flex min-w-0 items-center gap-1 text-text">{entityText}</span>
           ) : (
-            <Link href={href} className="truncate text-teal" data-testid="audit-entity-link" translate="no">{entityText}</Link>
+            <Link href={href} className="flex min-w-0 items-center gap-1 text-teal" data-testid="audit-entity-link">
+              {entityText}
+            </Link>
           )}
         </PropRow>
         <PropRow label={t("audit.project")} labelWidth={96}>
@@ -99,7 +139,7 @@ const EntryPanel = ({ entry, onEntity }: { readonly entry: Entry; readonly onEnt
       </PropGroup>
       {entry.entity === null || entry.entityId === null ? null : (
         <Button variant="link" className="-mt-2 mb-3.5 text-sm" onClick={onEntity}>
-          {t("audit.entriesAbout", { entity: entry.entity })}
+          {t("audit.entriesAbout", { entity: entityKindWord(entry.entity) })}
         </Button>
       )}
       <div className="mb-3.5 border-b border-line pb-3.5">
@@ -181,7 +221,7 @@ export const AuditView = ({ organization, project, canExport, tabs }: AuditViewP
   const range = periodRange(period, now, { from: customFrom, to: customTo });
   const input: ListInput = {
     ...(project === undefined ? (pickedProject.success ? { projectId: pickedProject.data } : {}) : { projectId: project.id }),
-    ...(actor === null ? {} : { actorId: actor }),
+    ...actorFilterOf(actor),
     ...(action === null ? {} : { action }),
     ...(entity === null ? {} : { entity }),
     ...(entityId === null ? {} : { entityId }),
@@ -249,10 +289,7 @@ export const AuditView = ({ organization, project, canExport, tabs }: AuditViewP
   // The filters' choices.
   const activeMembers = (members.data ?? []).filter((member) => member.state !== "removed");
   const removedMembers = (members.data ?? []).filter((member) => member.state === "removed");
-  const actorOptions: FilterOption[] = [
-    ...activeMembers.map((member) => ({ value: member.memberId, label: member.name })),
-    ...removedMembers.map((member) => ({ value: member.memberId, label: member.name, muted: true })),
-  ];
+  const actorOptions = actorChoices(activeMembers, removedMembers);
   const actionOptions: FilterOption[] = useMemo(() => {
     const groups = new Map<string, string[]>();
     for (const row of actions.data ?? []) {
@@ -338,10 +375,9 @@ export const AuditView = ({ organization, project, canExport, tabs }: AuditViewP
           }
         />
         {entity === null ? null : (
-          <span className="inline-flex h-[30px] items-center gap-1.5 rounded-[7px] border border-line-2 pl-2.5 pr-1.5 text-ui" data-testid="audit-entity-chip">
-            <span className="text-faint">{entity}</span>
-            <span className="font-mono text-[13px] text-text">{entityId === null ? "" : shortId(entityId)}</span>
-            <button type="button" aria-label={t("audit.filterClear", { label: entity })} onClick={() => { setParams({ entity: null, entityId: null }); }} className="grid size-5 place-items-center text-faint hover:text-text">
+          <span className="inline-flex h-[30px] max-w-full items-center gap-1.5 rounded-[7px] border border-line-2 pl-2.5 pr-1.5 text-ui" data-testid="audit-entity-chip">
+            <EntityChipText entity={entity} entityId={entityId} entries={entries} />
+            <button type="button" aria-label={t("audit.filterClear", { label: entityKindWord(entity) })} onClick={() => { setParams({ entity: null, entityId: null }); }} className="grid size-5 place-items-center text-faint hover:text-text">
               <XIcon aria-hidden className="size-[14px] stroke-[1.75]" />
             </button>
           </span>
