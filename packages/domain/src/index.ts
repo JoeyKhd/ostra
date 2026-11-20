@@ -182,6 +182,7 @@ export * from "./review-loop/loop.ts";
 export * from "./review-loop/evaluate-ci.ts";
 export * from "./review-loop/start-round.ts";
 export * from "./review-loop/review.ts";
+export * from "./review-loop/review-settings.ts";
 export * from "./review-loop/reviewers.ts";
 export * from "./review-loop/changes-requested.ts";
 export * from "./onboarding/onboarding.ts";

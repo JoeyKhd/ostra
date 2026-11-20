@@ -137,6 +137,8 @@ export const auditActions = {
   "project.created": "project",
   "project.default-profile-set": "project",
   "project.ticket-template-saved": "project",
+  // Milestone 6 (F-100, ticket 28): a project's AI review switch.
+  "project.ai-review-set": "project",
   "project.repo-added": "project",
   "project.repo-removed": "project",
   "project.repos-reordered": "project",

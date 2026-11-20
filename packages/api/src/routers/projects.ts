@@ -27,6 +27,7 @@ import { detectionViewSchema } from "./environments.ts";
 import { projectReposProcedures } from "./project-repos.ts";
 import { projectProviderProcedures } from "./project-providers.ts";
 import { projectRunnerProcedures } from "./project-runners.ts";
+import { projectReviewProcedures } from "./review.ts";
 
 // F-086, ticket 32: projects. A project is one repo linked through the organization's App, with its
 // one environment. Another organization's projects, and a restricted one a member isn't on, are
@@ -169,6 +170,8 @@ export const projectsRouter = router({
   // F-135 (ticket 50): the project's providers, by name, and an organization admin's changes to them.
   ...projectProviderProcedures,
   ...projectRunnerProcedures,
+  // F-100, F-101 (milestone 6's ticket 28): the project's "Review" settings.
+  ...projectReviewProcedures,
 
   /**
    * Creates a project on one or more repos the App's installations include (`repo` first, then

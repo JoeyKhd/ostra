@@ -36,6 +36,7 @@ import { endSessionTimersInTx } from "../use-cases/sessions-m2.ts";
 import type { SessionTimers } from "../use-cases/sessions-m2.ts";
 import { openTaskPrsInTx, reviewRoundsInTx } from "./loop.ts";
 import { placeFindings, REVIEW_FINDINGS_MAX, reviewBody } from "./place-findings.ts";
+import { acceptedCriteriaOfTicketInTx } from "./review-settings.ts";
 
 // The AI review (F-100, F-111, ADR 0028 amended, ADR 0058, Q223; milestone 6's ticket 17). Each
 // code task has one review task (`reviewOfTaskId`), made at its first review and reopened per
@@ -88,12 +89,9 @@ const reviewProfileInTx = async (tx: Tx, project: { readonly organizationId: str
  * newest first, else `null`, and the ticket's own text, which the prompt holds, says them.
  */
 const acceptedCriteriaInTx = async (tx: Tx, ticketId: string | null): Promise<string | null> => {
-  if (ticketId === null) {
-    return null;
-  }
-  const draft = await tx.refineDraft.findFirst({ where: { appliedAt: { not: null }, task: { ticketId } }, orderBy: { appliedAt: "desc" }, select: { acceptanceCriteria: true } });
-  const criteria = z.array(z.string()).safeParse(draft?.acceptanceCriteria);
-  return criteria.success && criteria.data.length > 0 ? criteria.data.map((line) => `- ${line}`).join("\n") : null;
+  // The review screen reads the same list (ticket 28): `acceptedCriteriaOfTicketInTx`.
+  const criteria = await acceptedCriteriaOfTicketInTx(tx, ticketId);
+  return criteria === null ? null : criteria.map((line) => `- ${line}`).join("\n");
 };
 
 /**

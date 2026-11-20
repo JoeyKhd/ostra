@@ -59,6 +59,7 @@ import { TRPCError } from "@trpc/server";
 import { startCheckProcedure } from "./task-start-check.ts";
 import { runnerChoicesProcedure } from "./task-runner-choices.ts";
 import { taskMemoryProcedure } from "./memory.ts";
+import { taskRoundsProcedure } from "./review.ts";
 import { z } from "zod";
 
 import { loadAgentProfileView } from "./agent-profile-view.ts";
@@ -172,6 +173,9 @@ export const tasksRouter = router({
 
   /** F-110, F-111 (ticket 29): the notes each session used and how, and the proposals the task made. */
   memory: taskMemoryProcedure,
+
+  /** F-035, F-101, F-105 (milestone 6's ticket 28): the task's CI, findings and changes-requested rounds. */
+  rounds: taskRoundsProcedure,
 
   /**
    * Cancels a queued task (F-067, Q248): an organization admin any, the task's member their own. It

@@ -86,7 +86,8 @@ export type CiLogEntry = z.infer<typeof ciLogEntrySchema>;
 const storedChecksSchema = z.array(z.looseObject({ name: z.string(), conclusion: z.string() }));
 
 /** The conclusions a failing check is stored with (`evaluate-ci.ts`). */
-const FAILING_WORDS: ReadonlySet<string> = new Set(["failure", "timed_out", "action_required", "startup_failure", "error"]);
+export const CI_FAILING_CONCLUSIONS: ReadonlySet<string> = new Set(["failure", "timed_out", "action_required", "startup_failure", "error"]);
+const FAILING_WORDS = CI_FAILING_CONCLUSIONS;
 
 /** A CI log's file name under `ci/`: from its blob, never from the check's name. */
 export const ciLogFileName = (blobId: BlobId): string => `${blobId}.log`;

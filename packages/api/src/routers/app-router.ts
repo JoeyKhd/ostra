@@ -3,6 +3,7 @@ import { automationsRouter } from "./automations.ts";
 import { boardsRouter } from "./boards.ts";
 import { diffRouter } from "./diff.ts";
 import { draftsRouter } from "./drafts.ts";
+import { reviewRouter } from "./review.ts";
 import { emailRouter } from "./email.ts";
 import { environmentsRouter } from "./environments.ts";
 import { githubRouter } from "./github.ts";
@@ -79,6 +80,7 @@ export const appRouter = router({
   budgets: budgetsRouter,
   memory: memoryRouter,
   drafts: draftsRouter,
+  review: reviewRouter,
 });
 
 export type AppRouter = typeof appRouter;

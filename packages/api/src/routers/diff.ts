@@ -31,6 +31,22 @@ const fileKindOf = (file: StoredDiff["files"][number]): FileKind => {
   return (file.status === "renamed" || file.status === "copied") && file.additions === 0 && file.deletions === 0 ? "renamed-unchanged" : "binary";
 };
 
+/** A stored diff's files as the Changes tab and the review screen draw them (F-027, F-102). */
+export const diffFileViews = (diff: StoredDiff | null) =>
+  (diff?.files ?? []).map((file) => {
+    const kind = fileKindOf(file);
+    return {
+      path: file.path,
+      previousPath: file.previousPath,
+      status: file.status,
+      additions: file.additions,
+      deletions: file.deletions,
+      kind,
+      /** The parsed patch; empty for a file the diff does not draw. */
+      ...(kind === "text" ? parseUnifiedDiff(file.patch) : { hunks: [], oldNoNewlineAtEnd: false, newNoNewlineAtEnd: false }),
+    };
+  });
+
 const commentsRouter = router({
   /**
    * The member's own drafts and every sent comment on the task, oldest first, with who wrote each,
@@ -197,19 +213,7 @@ export const diffRouter = router({
           filesTruncated: diff?.filesTruncated ?? false,
           /** The page on the code host that shows the whole diff. */
           hostUrl: diff?.hostUrl ?? null,
-          files: (diff?.files ?? []).map((file) => {
-            const kind = fileKindOf(file);
-            return {
-              path: file.path,
-              previousPath: file.previousPath,
-              status: file.status,
-              additions: file.additions,
-              deletions: file.deletions,
-              kind,
-              /** The parsed patch; empty for a file the diff does not draw. */
-              ...(kind === "text" ? parseUnifiedDiff(file.patch) : { hunks: [], oldNoNewlineAtEnd: false, newNoNewlineAtEnd: false }),
-            };
-          }),
+          files: diffFileViews(diff),
         },
       ];
     });
