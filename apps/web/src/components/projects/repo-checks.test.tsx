@@ -28,6 +28,7 @@ const repo = (n: number, protectedCheck: RepoDetail["defaultBranchProtected"], s
   checkedAt: now - 2 * 60_000,
   defaultBranchProtected: protectedCheck,
   signedCommitsRequired: signed,
+  installation: { accountLogin: "acme", accountKind: "organization", state: "linked" },
 });
 
 const ready = repo(1, yes, no);

@@ -86,6 +86,27 @@ describe("the panel's call sites and an installation that isn't linked", () => {
   });
 });
 
+describe("a project's repos and their installation", () => {
+  it("F-136: projects.get names each repo's installation account and says when it was unlinked or removed", async () => {
+    const member = await harness.as(harness.fixture.a.member);
+    const row = await harness.test.db.codeHostInstallation.findFirstOrThrow({ where: { organizationId: harness.fixture.a.organization.id, installationId } });
+    const account = { accountLogin: row.accountLogin, accountKind: row.accountKind };
+    const stateOf = async () => (await member.projects.get({ projectId })).repos.find((repo) => repo.repoId === repoId)?.installation;
+    expect(await stateOf()).toEqual({ ...account, state: "linked" });
+    const at = { organizationId: harness.fixture.a.organization.id, installationId };
+    try {
+      // An admin unlinked it: the member who unlinked it is kept.
+      await harness.test.db.codeHostInstallation.updateMany({ where: at, data: { state: "removed", removedAt: new Date(), removedByMemberId: harness.fixture.a.admin.id } });
+      expect(await stateOf()).toEqual({ ...account, state: "unlinked" });
+      // GitHub said the App was uninstalled there: no member.
+      await harness.test.db.codeHostInstallation.updateMany({ where: at, data: { removedByMemberId: null } });
+      expect(await stateOf()).toEqual({ ...account, state: "removed" });
+    } finally {
+      await harness.test.db.codeHostInstallation.updateMany({ where: at, data: { state: "linked", removedAt: null, removedByMemberId: null } });
+    }
+  });
+});
+
 describe("the App owner's own installation, from a listing", () => {
   it("F-136: the owner's own installation is linked when the installations listing shows it, and another account's waits", async () => {
     const host = harness.fakes.codeHost;

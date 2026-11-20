@@ -19,6 +19,7 @@ import { agentProfileIdSchema, environmentIdSchema, memberIdSchema, poolIdSchema
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import type { Context } from "../trpc/context.ts";
 import { adminProcedure, memberProcedure, projectProcedure, router, unwrap } from "../trpc/init.ts";
 import { inboxCounts } from "./inbox.ts";
 import { agentProfileViewSchema, loadAgentProfileView } from "./agent-profile-view.ts";
@@ -65,9 +66,34 @@ const repoDetailSchema = z.object({
   checkedAt: z.number().int().nullable(),
   defaultBranchProtected: branchRuleCheckSchema,
   signedCommitsRequired: branchRuleCheckSchema,
+  /**
+   * F-136 (ticket 54): the App installation the repo is reached through, on `accountLogin`.
+   * `linked`: ostra uses it. `unlinked`: an admin unlinked it. `removed`: the App was uninstalled
+   * there. While it isn't linked, new tasks on the repo wait until an admin links it again.
+   * `null` when the repo's row is gone between the two reads.
+   */
+  installation: z
+    .object({ accountLogin: z.string(), accountKind: z.enum(["organization", "user"]).nullable(), state: z.enum(["linked", "unlinked", "removed"]) })
+    .nullable(),
 });
 
-const repoDetailOf = (checked: RepoChecked) => ({
+type InstallationOfRepo = {
+  readonly accountLogin: string;
+  readonly accountKind: "organization" | "user" | null;
+  readonly state: "linked" | "removed";
+  readonly removedByMemberId: string | null;
+};
+
+/** Each repo's installation, by repo ID (F-136). */
+const installationsOfRepos = async (db: Context["deps"]["db"], organizationId: string, projectId: string): Promise<ReadonlyMap<string, InstallationOfRepo>> => {
+  const rows = await db.repo.findMany({
+    where: { organizationId, projectId },
+    select: { id: true, installation: { select: { accountLogin: true, accountKind: true, state: true, removedByMemberId: true } } },
+  });
+  return new Map(rows.map((row) => [row.id, row.installation] as const));
+};
+
+const repoDetailOf = (checked: RepoChecked, installation: InstallationOfRepo | undefined) => ({
   repoId: checked.repoId,
   fullName: checked.fullName,
   defaultBranch: checked.defaultBranch,
@@ -75,6 +101,14 @@ const repoDetailOf = (checked: RepoChecked) => ({
   checkedAt: checked.checkedAt,
   defaultBranchProtected: checked.rules.protected,
   signedCommitsRequired: checked.rules.signedCommits,
+  installation:
+    installation === undefined
+      ? null
+      : {
+          accountLogin: installation.accountLogin,
+          accountKind: installation.accountKind,
+          state: installation.state === "linked" ? ("linked" as const) : installation.removedByMemberId === null ? ("removed" as const) : ("unlinked" as const),
+        },
 });
 
 const projectDetailSchema = projectSummarySchema.extend({
@@ -215,6 +249,7 @@ export const projectsRouter = router({
       const profile = await loadAgentProfileView(db, organizationId, project.defaultCodeProfileId);
       // Read at every page load, and reused for 10 minutes (`BRANCH_RULES_CACHE_MS`).
       const checkedRepos = await checkProjectRepos({ db, clock: ctx.deps.ports.clock, adapters: ctx.deps.ports.adapters }, { organizationId, projectId: input.projectId, force: false });
+      const installationOf = await installationsOfRepos(db, organizationId, input.projectId);
       const [needsYou, running, active] = await Promise.all([
         db.task.count({ where: { organizationId, projectId: project.id, state: "needs_you" } }),
         db.task.count({ where: { organizationId, projectId: project.id, state: { in: ["running", "preparing"] } } }),
@@ -226,7 +261,7 @@ export const projectsRouter = router({
         slug: project.slug,
         access: project.access,
         role: ctx.project.role,
-        repos: checkedRepos.map(repoDetailOf),
+        repos: checkedRepos.map((checked) => repoDetailOf(checked, installationOf.get(checked.repoId))),
         needsYouCount: needsYou,
         runningCount: running,
         activeCount: active,
@@ -261,7 +296,8 @@ export const projectsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { db, ports } = ctx.deps;
       const checked = await checkProjectRepos({ db, clock: ports.clock, adapters: ports.adapters }, { organizationId: ctx.scope.organizationId, projectId: input.projectId, force: true });
-      return checked.map(repoDetailOf);
+      const installationOf = await installationsOfRepos(db, ctx.scope.organizationId, input.projectId);
+      return checked.map((repo) => repoDetailOf(repo, installationOf.get(repo.repoId)));
     }),
 
   /** The project's ticket template: the saved text, and the built-in one it falls back to (F-064). */

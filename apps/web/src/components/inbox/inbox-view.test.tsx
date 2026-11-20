@@ -137,6 +137,7 @@ describe("the panel", () => {
       checkedAt: now,
       defaultBranchProtected: { result: true },
       signedCommitsRequired: { result: true },
+      installation: null,
     } as const;
     const html = panel(detail, { repos: [repo] });
     expect(html).toContain("acme/x requires signed commits");
