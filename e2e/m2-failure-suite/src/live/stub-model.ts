@@ -1,5 +1,5 @@
-import { createScenarioBrain, startAnthropicStub, stubMarker } from "@ostra/adapter-sdk/testing";
-import type { Scenario, StubReply, StubServer } from "@ostra/adapter-sdk/testing";
+import { conversationText, createScenarioBrain, startAnthropicStub, stubMarker } from "@ostra/adapter-sdk/testing";
+import type { Scenario, StubBrain, StubReply, StubServer } from "@ostra/adapter-sdk/testing";
 
 // The model the suite's OpenCode talks to (ticket 38, spec section 8: "OpenCode runs the same suite
 // against the stub models"). A local stub in Anthropic's format, behind the runner's real key proxy,
@@ -26,7 +26,13 @@ const number = (text: string | undefined, fallback: number): number => {
 };
 
 /** The scripts the suite's tickets name. */
-export type ScriptName = "write" | "slow" | "busy" | "stall" | "spend" | "unstorable";
+export type ScriptName = "write" | "slow" | "busy" | "stall" | "spend" | "unstorable" | "recall";
+
+/** What `recall` says when the conversation it was shown holds the earlier turn's file. */
+export const rememberWords = (earlier: string): string => `I remember ${earlier} from an earlier turn.`;
+
+/** What `recall` says when it doesn't. */
+export const forgotWords = (earlier: string): string => `I don't remember ${earlier}.`;
 
 const scenarios: Readonly<Record<ScriptName, Scenario>> = {
   /** `write <file>`: writes the file, then says so. */
@@ -63,6 +69,22 @@ const scenarios: Readonly<Record<ScriptName, Scenario>> = {
     if (step === 0) return write(args, contentOf(args));
     return step === 1 ? { text: `Wrote ${args}. A broken character: \ud800 and the end.` } : undefined;
   },
+  /**
+   * `recall <file> <earlier> <steps> <ms>`: `slow`'s reads and write, then an answer that says
+   * whether the conversation before this turn's message holds `earlier`, an earlier turn's file:
+   * the context a restored session must bring back (ticket 41). The marked message itself names
+   * `earlier`, so only the messages before it count.
+   */
+  recall: ({ step, args, request, since }) => {
+    const [file = "RECALL.md", earlier = "", stepsText, msText] = args.split(/\s+/);
+    const steps = number(stepsText, 0);
+    if (step < steps) return read(number(msText, 3000));
+    if (step === steps) return write(file, contentOf(file));
+    if (step !== steps + 1) return undefined;
+    const before = request.messages.slice(0, Math.max(0, request.messages.length - since.length - 1));
+    const remembered = earlier !== "" && conversationText(before).includes(earlier);
+    return { text: `Wrote ${file}. ${remembered ? rememberWords(earlier) : forgotWords(earlier)}` };
+  },
 };
 
 /** The prompt's marker for `script` with its arguments. */
@@ -74,12 +96,16 @@ export const STUB_KEY = "sk-failure-suite-stub-model";
 /** Linear stores a description's brackets escaped (`\[\[stub:…\]\]`): the marker is read with them unescaped. */
 export const unescapeMarkers = (text: string): string => text.replaceAll(String.raw`\[\[`, "[[").replaceAll(String.raw`\]\]`, "]]");
 
-export const startStubModel = (): Promise<StubServer> => {
+/** The suite's brain: the scripts above, with a marker Linear escaped read unescaped. */
+export const suiteBrain = (): StubBrain => {
   const brain = createScenarioBrain(scenarios);
-  return startAnthropicStub({
+  return (request) => brain({ ...request, messages: request.messages.map((message) => ({ ...message, text: unescapeMarkers(message.text) })) });
+};
+
+export const startStubModel = (): Promise<StubServer> =>
+  startAnthropicStub({
     realKey: STUB_KEY,
     models: [STUB_MODEL_ID],
-    brain: (request) => brain({ ...request, messages: request.messages.map((message) => ({ ...message, text: unescapeMarkers(message.text) })) }),
+    brain: suiteBrain(),
     host: "127.0.0.1",
   });
-};

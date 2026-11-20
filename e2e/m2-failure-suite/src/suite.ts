@@ -4,8 +4,8 @@
 // webhooks, the stub model, and the fault proxies in front of Linear and GitHub. It sets the stack
 // up as milestone 1's and 2's demos do (the first admin, the model provider, the test App, the
 // project on `test1`, the Linear connection from the maintainer's key, team OST attached), signs in
-// one personal runner on the `host` executor behind the cut proxy, and runs every case, one at a time. Each
-// case states what it does, does it, and checks it; the result and the timings go to
+// one personal runner on the `host` executor behind the cut proxy, and runs every case, one at a time
+// (ticket 41's case signs in one more, and revokes it). Each case states what it does, does it, and checks it; the result and the timings go to
 // `.ostra-dev/e2e-m2-failures/result.json`. `--long` adds the 11-minute cut; `--only a,b` runs those
 // cases; `--keep` leaves the run's tickets, PRs and branches for a look.
 //
@@ -29,6 +29,7 @@ import type { Browser } from "@playwright/test";
 
 import type { CaseResult } from "./cases/case.ts";
 import { cutCase, longCutCase } from "./cases/cut-cases.ts";
+import { revokeRunnerCase } from "./cases/revoke-case.ts";
 import { killAgentCase, killRunnerCase, loseBoxCase, unstorableCase } from "./cases/runner-cases.ts";
 import { coreFakesCase, dropWebhooksCase, limitsCase, replayWebhooksCase, restartServerCase, retryLiveCase } from "./cases/server-cases.ts";
 import { cleanUpRun } from "./clean-up.ts";
@@ -165,6 +166,7 @@ const main = async (): Promise<void> => {
     if (wanted("lose-box")) results.push(await loseBoxCase(live, mainRunner));
     if (wanted("unstorable")) results.push(await unstorableCase(live, mainRunner));
     if (wanted("retry-after-commit")) results.push(await retryLiveCase(live, mainRunner));
+    if (wanted("revoke-runner")) results.push(await revokeRunnerCase(live, mainRunner, { dataDir: path.join(settings.runnersDir, "fs-revoke"), logDir }));
     for (const lane of lanes) {
       if (wanted(lane.name)) results.push(await cutCase(live, mainRunner, lane.mode, lane.ms));
     }

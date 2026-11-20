@@ -136,6 +136,7 @@ Ticket 39 runs it and records the result under its `## Comments` and in `demo.md
 | A batch the server can't store | the fake agent emits an event the server refuses | It's refused once, with a needs-you item, and the runner stops resending it |
 | Stall, maximum duration, spend cap | the scripted fake agent, with the timers at seconds and the cap at cents | Each stops the session cleanly, and the task needs you with the right reason |
 | Kill a replica mid-job | spike 8's three kill points (before the side effect, after it and before completion, after completion) on a fake GitHub that counts idempotency keys, for `task.open-pull-requests` and `ticket.sync` | One side effect per key; the job runs on the survivor |
+| Revoke a runner mid-turn (ticket 41) | an admin's `runners.revoke` on a second personal runner while its turn runs | Its socket closes with `4403` and its task stops as `runner_lost` at once; its late events are refused, also when it's started again; the reopen goes to the other runner and restores the session with its context |
 
 **What waits for the Linux machine,** written into ticket 39's comments: the same cases on `docker` (a sidecar dropping out, a stopped box kept and resumed in place, released when its host needs the space), and `kill -9` with POSIX semantics.
 
