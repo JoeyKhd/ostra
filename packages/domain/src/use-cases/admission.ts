@@ -226,7 +226,10 @@ export const admitQueued = async (
         throw error;
       });
     if (result === null) {
-      continue;
+      // The pass ends here: a task behind it in the queue never starts first. That writer grants
+      // it or records its reason, and the next pass (the sweep, or the next change of room) goes on
+      // from there. Found by milestone 5's demo: two pools' passes reordered a project's prompts.
+      break;
     }
     if (result.ok) {
       admitted.push({ taskId: entry.taskId, runnerId: result.runnerId, leaseEpoch: result.leaseEpoch });

@@ -242,6 +242,45 @@ describe("the pool queue and its admission (F-067)", () => {
     expect((await admit(poolId)).admitted.map((entry) => entry.taskId)).toEqual([low.taskId]);
   });
 
+  it("F-067: a task another pool's pass holds is never jumped: the pass stops there, and the queue's order holds", async () => {
+    const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId: projectA }] });
+    await dockerRunner(poolId, 4);
+    const base = Date.now() - 60_000;
+    const first = await queued(projectA, { queuedAt: new Date(base) });
+    const second = await queued(projectA, { queuedAt: new Date(base + 1_000) });
+    // Another writer (the pass of the project's other pool, on another replica) holds the first task.
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let locked: () => void = () => undefined;
+    const isLocked = new Promise<void>((resolve) => {
+      locked = resolve;
+    });
+    const other = createDb(test.url);
+    try {
+      const holder = other.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT 1 FROM "task" WHERE "id" = ${first.taskId} FOR UPDATE`;
+          locked();
+          await held;
+        },
+        { timeout: 30_000 },
+      );
+      await isLocked;
+      const pass = await admit(poolId);
+      expect(pass.admitted).toEqual([]);
+      expect(await test.db.lease.count({ where: { taskId: second.taskId } })).toBe(0);
+      release();
+      await holder;
+      // The next pass takes them in the queue's order.
+      expect((await admit(poolId)).admitted.map((entry) => entry.taskId)).toEqual([first.taskId, second.taskId]);
+    } finally {
+      release();
+      await other.$disconnect();
+    }
+  });
+
   it("F-067, F-095: a project at its share of a pool is passed over, and another project's task starts", async () => {
     const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId: projectA, maxBoxes: 1 }, { projectId: projectB }] });
     await dockerRunner(poolId, 4);
