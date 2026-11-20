@@ -93,9 +93,11 @@ export const versionFix = (state: VersionState | null, install: Page["install"],
     case "ahead":
       return t("runner.version.fixAhead");
     case "outside":
-      return t("runner.version.fixOutside", { minor: minor ?? 0, low: Math.max(0, serverMinor - 1), high: serverMinor, version: serverVersion });
+      // The server accepts one minor either way (F-061).
+      return t("runner.version.fixOutside", { minor: minor ?? 0, low: Math.max(0, serverMinor - 1), high: serverMinor + 1, version: serverVersion });
     case "behind": {
-      const head = t("runner.version.behindHead");
+      // Below minor 4 a runner gets no `resume` and applies no box size; from it on, only the update is due.
+      const head = minor !== null && minor < 4 ? t("runner.version.behindHead") : t("runner.version.behindHeadUpdate");
       switch (install) {
         case "image":
           return `${head} ${t("runner.version.fixImage", { version: serverVersion })}`;

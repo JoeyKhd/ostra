@@ -9,7 +9,10 @@ describe("a runner's page in words", () => {
     expect(versionFix("behind", "image", "0.5.0", 3, 4)).toContain("run the v0.5.0 image and restart it");
     expect(versionFix("behind", "npm", "0.5.0", 3, 4)).toContain("it installs v0.5.0 at start");
     expect(versionFix("behind", "source", "0.5.0", 3, 4)).toContain("Pull and rebuild ostra at v0.5.0");
-    expect(versionFix("outside", null, "0.5.0", 2, 4)).toBe("It speaks protocol 1.2; this server accepts 1.3 to 1.4. Update it to v0.5.0.");
+    expect(versionFix("outside", null, "0.5.0", 2, 4)).toBe("It speaks protocol 1.2; this server accepts 1.3 to 1.5. Update it to v0.5.0.");
+    // A minor-3 runner lacks resume and box sizes; one at minor 4 behind a minor-5 server only needs the update.
+    expect(versionFix("behind", "source", "0.5.0", 3, 4)).toContain("gets no resume command");
+    expect(versionFix("behind", "source", "0.5.0", 4, 5)).toBe("One minor behind the server: it runs tasks. Update it when you can. Pull and rebuild ostra at v0.5.0.");
   });
 
   it("F-091: shortens the key's fingerprint to its first and last 4 characters", () => {

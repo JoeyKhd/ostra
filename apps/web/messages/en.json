@@ -4547,6 +4547,7 @@
       "protocol": "protocol 1.{minor} of 1.{server}",
       "protocolServer": "server protocol 1.{server}",
       "behindHead": "One minor behind the server: it runs tasks, but gets no resume command and doesn't enforce box sizes.",
+      "behindHeadUpdate": "One minor behind the server: it runs tasks. Update it when you can.",
       "fixImage": "It came from the runner image, so it doesn't update itself: run the v{version} image and restart it.",
       "fixNpm": "Restart it: it installs v{version} at start, unless it was started with the pin off.",
       "fixSource": "Pull and rebuild ostra at v{version}.",
