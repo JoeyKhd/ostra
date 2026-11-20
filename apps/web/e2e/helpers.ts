@@ -104,3 +104,21 @@ export const checklistSteps = (page: Page): Promise<string[]> =>
     .getByTestId("setup-checklist")
     .locator("[data-step]")
     .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-step") ?? ""));
+
+/**
+ * Connects the stack's GitHub App (`stack.ts`) when no spec before this one has (a spec run alone):
+ * the GitHub page's first-connection form, as `03-first-run` fills it.
+ */
+export const ensureGitHub = async (page: Page): Promise<void> => {
+  const { github } = await readStack();
+  await page.goto("/organization/github");
+  const connect = page.getByRole("button", { name: "Connect the App" });
+  const connected = page.locator(`[data-testid="github-app"][data-slug="${github.slug}"]`);
+  await expect(connect.or(connected)).toBeVisible();
+  if (await connected.isVisible()) return;
+  await page.getByLabel("App ID").fill(github.appId);
+  await page.getByLabel("Private key", { exact: true }).fill(github.privateKey);
+  await page.getByLabel("Webhook secret").fill(github.webhookSecret);
+  await connect.click();
+  await expect(connected).toBeVisible();
+};

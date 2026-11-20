@@ -41,17 +41,11 @@ if (old !== null) {
 }
 const project = await db.project.create({ data: { organizationId, name: PROJECT, slug: PROJECT, access: "open", ownProviders: true, defaultCodeProfileId: profile.id } });
 await db.providerListEntry.create({ data: { organizationId, projectId: project.id, providerId: provider.id } });
-// A repo, through a linked installation of the GitHub connection (a full run has one already).
-const connection =
-  (await db.connection.findFirst({ where: { organizationId, kind: "github" } })) ??
-  (await db.connection.create({ data: { organizationId, kind: "github", appId: "e2e-budget", slug: "e2e-budget" } }));
-await db.codeHostInstallation.upsert({
-  where: { connectionId_installationId: { connectionId: connection.id, installationId: "e2e-budget-installation" } },
-  create: { organizationId, connectionId: connection.id, installationId: "e2e-budget-installation", accountLogin: "ostra-test", accountKind: "organization" },
-  update: {},
-});
+// A repo, through the GitHub connection's own installation (the spec connects the stack's App first).
+const connection = await db.connection.findFirstOrThrow({ where: { organizationId, kind: "github" }, orderBy: { createdAt: "asc" } });
+const installation = await db.codeHostInstallation.findFirstOrThrow({ where: { organizationId, connectionId: connection.id }, orderBy: { createdAt: "asc" } });
 await db.repo.create({
-  data: { organizationId, projectId: project.id, connectionId: connection.id, installationId: "e2e-budget-installation", hostRepoId: `e2e-budget-${randomUUID().slice(0, 8)}`, fullName: "ostra-test/budgets", defaultBranch: "main", checkoutDir: "budgets" },
+  data: { organizationId, projectId: project.id, connectionId: connection.id, installationId: installation.installationId, hostRepoId: `e2e-budget-${randomUUID().slice(0, 8)}`, fullName: "ostra-test/budgets", defaultBranch: "main", checkoutDir: "budgets" },
 });
 
 // $50.00 spent today, in the rollup every figure reads.

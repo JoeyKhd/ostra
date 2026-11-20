@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import { expect, test } from "@playwright/test";
 import { z } from "zod";
 
-import { expectNoHorizontalScroll, readStack, signIn } from "./helpers.ts";
+import { ensureGitHub, expectNoHorizontalScroll, readStack, signIn } from "./helpers.ts";
 
 // F-037 (ticket 36): spend and budgets in the panel. The project, its $50.00 of spend this month and
 // an idle task are seeded (`seed-budget-world.ts`); core runs in the stack, so the dispatch, the gate
@@ -40,8 +40,10 @@ test.describe.configure({ mode: "serial" });
 
 test("F-037: an admin sets a project budget below the spend, a new task in it shows the reason before Start, a message to an idle task shows as held, and raising the budget starts both", { tag: "@desktop-only" }, async ({ page }) => {
   test.setTimeout(150_000);
-  const world = await seed();
   await signIn(page);
+  // The seeded repo joins the stack's GitHub connection, never a stand-in one later specs would trip on.
+  await ensureGitHub(page);
+  const world = await seed();
 
   // Spend: the project's month from the rollup, with no budget yet.
   await page.goto("/organization/spend");
@@ -107,8 +109,9 @@ test("F-037: an admin sets a project budget below the spend, a new task in it sh
 });
 
 test("F-037: Spend reads at phone width with no sideways scroll, and the project page shows its month", async ({ page }) => {
-  const world = await seed();
   await signIn(page);
+  await ensureGitHub(page);
+  const world = await seed();
   await page.goto("/organization/spend");
   await expect(page.getByTestId("spend-summary")).toBeVisible();
   await expectNoHorizontalScroll(page);

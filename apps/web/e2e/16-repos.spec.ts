@@ -6,7 +6,7 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { z } from "zod";
 
-import { expectNoHorizontalScroll, readStack, signIn } from "./helpers.ts";
+import { ensureGitHub, expectNoHorizontalScroll, readStack, signIn } from "./helpers.ts";
 import { e2eAdmin, e2eRepo } from "./settings.ts";
 
 // F-098, F-104 (ticket 39): several repos in the panel, on the fake GitHub (`stack.ts`: one
@@ -17,21 +17,6 @@ const run = promisify(execFile);
 const cwd = path.resolve(import.meta.dirname, "..");
 const repo1 = `${e2eRepo.owner}/test1`;
 const repo2 = `${e2eRepo.owner}/test2`;
-
-/** Connects the stack's GitHub App when no earlier spec has (a run of this spec alone). */
-const ensureGitHub = async (page: Page): Promise<void> => {
-  const { github } = await readStack();
-  await page.goto("/organization/github");
-  const connect = page.getByRole("button", { name: "Connect the App" });
-  const connected = page.getByTestId("github-app").first();
-  await expect(connect.or(connected)).toBeVisible();
-  if (await connected.isVisible()) return;
-  await page.getByLabel("App ID").fill(github.appId);
-  await page.getByLabel("Private key", { exact: true }).fill(github.privateKey);
-  await page.getByLabel("Webhook secret").fill(github.webhookSecret);
-  await connect.click();
-  await expect(connected).toBeVisible();
-};
 
 /** New project with these repos, in this order; returns its ID. */
 const createProject = async (page: Page, name: string, repos: readonly string[]): Promise<string> => {
