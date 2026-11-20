@@ -807,8 +807,10 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
     it("F-093: a box that waits for a node says so, then that it was scheduled, before it's ready; an executor that never waits says nothing", async (context) => {
       const { adapter, fixture } = subject();
       const heard: BoxWaitChange[] = [];
+      const heardAt: number[] = [];
       const onWaiting = (change: BoxWaitChange): void => {
         heard.push(change);
+        heardAt.push(performance.now());
       };
       const box = newBox();
       if (!adapter.capabilities.nodeWait) {
@@ -825,6 +827,7 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
       }
       const hold = needed(fixture.fleet.holdNextBox, "a node wait");
       const HOLD_MS = 400;
+      const heldAt = performance.now();
       hold(HOLD_MS);
       const created = await adapter.create({ ...box, spec: fixture.spec, proxies: fixture.proxies, onWaiting });
       try {
@@ -832,8 +835,13 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
         const prepared = await adapter.prepare({ box, spec: fixture.spec, secrets: [], onSetupOutput: () => undefined });
         if (!prepared.ok) throw new Error(prepared.error.message);
         expect(heard.map((change) => (change.kind === "waiting" ? `waiting:${change.reason}` : change.kind))).toEqual(["waiting:node", "scheduled"]);
+        // Scheduled no sooner than the hold allows, by the test's own clock. The executor's own
+        // `afterMs` starts when it first sees the wait, which a slow CI machine sees late, so it's
+        // only checked to be a real wait no longer than the test saw (run 44740700430 and before).
         const scheduled = heard[1];
-        expect(scheduled?.kind === "scheduled" && scheduled.afterMs >= HOLD_MS - 50).toBe(true);
+        const scheduledAt = heardAt[1] ?? heldAt;
+        expect(scheduledAt - heldAt).toBeGreaterThanOrEqual(HOLD_MS - 50);
+        expect(scheduled?.kind === "scheduled" && scheduled.afterMs > 0 && scheduled.afterMs <= scheduledAt - heldAt + 50).toBe(true);
         expect(await adapter.state(box)).toEqual({ ok: true, value: "ready" });
       } finally {
         await adapter.release(box, "requested");
