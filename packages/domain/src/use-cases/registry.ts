@@ -102,7 +102,8 @@ export const setRegistry = (async (deps: RegistryDeps, scope: MemberScope, input
   const pullSecretId = input.auth === "node" ? null : (pullRef ?? existing?.pullSecretId ?? null);
   const now = deps.clock.now();
   const registryId = await deps.db.$transaction(async (tx) => {
-    const data = { url, repositoryPrefix, auth: input.auth, pushSecretId, pullSecretId, updatedByMemberId: scope.memberId, checkedAt: null, checkResult: Prisma.DbNull };
+    // `updatedAt` is the settings' version: the check this queues, and one an admin asks for later, share its key.
+    const data = { url, repositoryPrefix, auth: input.auth, pushSecretId, pullSecretId, updatedByMemberId: scope.memberId, checkedAt: null, checkResult: Prisma.DbNull, updatedAt: new Date(now) };
     const row = await tx.registry.upsert({
       where: { organizationId },
       create: { organizationId, ...data },
