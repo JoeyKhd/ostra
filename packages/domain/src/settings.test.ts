@@ -74,6 +74,14 @@ describe("the server's settings", () => {
     expect(parseServerSettings({ OSTRA_LINEAR_API_URL: "ftp://linear.example" }).ok).toBe(false);
   });
 
+  it("F-115: points Resend at OSTRA_RESEND_API_URL, Resend's own by default, and refuses a URL that isn't http(s)", () => {
+    const fallback = parseServerSettings({});
+    expect(fallback.ok && fallback.settings.resendApiUrl).toBe("https://api.resend.com");
+    const fake = parseServerSettings({ OSTRA_RESEND_API_URL: "http://127.0.0.1:4200/" });
+    expect(fake.ok && fake.settings.resendApiUrl).toBe("http://127.0.0.1:4200");
+    expect(parseServerSettings({ OSTRA_RESEND_API_URL: "ftp://resend.example" }).ok).toBe(false);
+  });
+
   it("F-090/c7: takes the LFS storage hosts from OSTRA_GITHUB_LFS_HOSTS, GitHub.com's by default, and refuses what isn't a host name", () => {
     const fallback = parseServerSettings({});
     expect(fallback.ok && fallback.settings.githubLfsHosts).toEqual(["github-cloud.githubusercontent.com", "github-cloud.s3.amazonaws.com", "lfs.github.com"]);

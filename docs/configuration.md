@@ -53,6 +53,7 @@ Read by `apps/core` and `apps/web` through `parseServerSettings` (`packages/doma
 | `OSTRA_EMAIL_FROM` | unset; required with `OSTRA_EMAIL_PROVIDER=resend` or `smtp` | The address mail comes from, such as `ostra@example.com`. Its domain must be one the provider sends for. |
 | `OSTRA_EMAIL_FROM_NAME` | `ostra` | The name mail comes from. |
 | `OSTRA_RESEND_API_KEY` | unset; required with `OSTRA_EMAIL_PROVIDER=resend` | Resend's API key. Never logged. Read only when the provider is `resend`. |
+| `OSTRA_RESEND_API_URL` | `https://api.resend.com` | Resend's API the panel and core send mail through. Set it only to a fake Resend in tests. |
 | `OSTRA_SMTP_HOST` | unset; required with `OSTRA_EMAIL_PROVIDER=smtp` | The SMTP server's host. Read only when the provider is `smtp`. |
 | `OSTRA_SMTP_PORT` | `587` | The SMTP server's port. Read only when the provider is `smtp`. |
 | `OSTRA_SMTP_SECURE` | `starttls` | How SMTP is secured: `starttls` (upgrade a plain connection, port 587), `tls` (TLS from the start, port 465) or `none` (a local relay only). Read only when the provider is `smtp`. |

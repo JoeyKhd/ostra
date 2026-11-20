@@ -67,7 +67,7 @@ export const EmailView = () => {
   if (me.data !== undefined && !instanceAdmin) {
     return (
       <PageFrame crumbs={[{ label: t("shell.email") }]}>
-        <PageHeading title={t("shell.email")} />
+        <PageHeading title={t("shell.email")} lede={t("email.lede")} />
         <LockBlock lockedBy="read-only" />
       </PageFrame>
     );
@@ -75,7 +75,7 @@ export const EmailView = () => {
   if (view === undefined || saved === null || draft === null) {
     return (
       <PageFrame crumbs={[{ label: t("shell.email") }]}>
-        <PageHeading title={t("shell.email")} />
+        <PageHeading title={t("shell.email")} lede={t("email.lede")} />
         {settings.error === null ? null : <p role="alert" className="text-red">{errorText(settings.error)}</p>}
       </PageFrame>
     );
@@ -96,7 +96,7 @@ export const EmailView = () => {
   };
   return (
     <PageFrame crumbs={[{ label: t("shell.email") }]} properties={<EmailPanel facts={factsOf(view)} now={now} />}>
-      <PageHeading title={t("shell.email")} />
+      <PageHeading title={t("shell.email")} lede={t("email.lede")} />
       {locked ? <LockBlock lockedBy={view.lockedBy} /> : null}
       <EmailForm
         draft={draft}

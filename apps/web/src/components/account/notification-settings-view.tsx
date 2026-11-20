@@ -43,7 +43,7 @@ export const NotificationSettingsView = () => {
         />
       }
     >
-      <PageHeading title={t("shell.notifications")} />
+      <PageHeading title={t("shell.notifications")} lede={t("notificationSettings.lede")} />
       {data !== undefined && !data.emailOn ? <MailOffNotice instanceAdmin={data.isInstanceAdmin} /> : null}
       <MomentsSection>
         <MomentsTable

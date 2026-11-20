@@ -9,8 +9,8 @@ import path from "node:path";
 
 import { createFakeGitHub } from "@ostra/adapter-github/testing";
 import type { FakeGitHub } from "@ostra/adapter-github/testing";
-import { createFakeLinear, createScenarioBrain, startAnthropicStub, startOpenAiStub } from "@ostra/adapter-sdk/testing";
-import type { FakeLinear } from "@ostra/adapter-sdk/testing";
+import { createFakeLinear, createScenarioBrain, startAnthropicStub, startFakeResendApi, startOpenAiStub } from "@ostra/adapter-sdk/testing";
+import type { FakeLinear, FakeResendApi } from "@ostra/adapter-sdk/testing";
 
 import { e2eChangesHeads, e2eGitHubOrgB, e2eModelToken, e2eOpenAiStubPort, e2eRepo, e2eStubModels, e2eStubPort } from "./settings.ts";
 
@@ -18,6 +18,8 @@ export type E2eFakes = {
   readonly github: FakeGitHub;
   /** Milestone 6 (ticket 34): the fake Linear the panel and core reach through OSTRA_LINEAR_API_URL. */
   readonly linear: FakeLinear;
+  /** Milestone 3 (ticket 45): the fake Resend API the panel and core send mail through (OSTRA_RESEND_API_URL). */
+  readonly resend: FakeResendApi;
   readonly close: () => Promise<void>;
 };
 
@@ -91,20 +93,24 @@ export const startFakes = async (): Promise<E2eFakes> => {
   // core wrote, as the refine draft's "Update ticket" and "Mark ready" do.
   const linear = await createFakeLinear();
 
+  // Milestone 3 (ticket 45): a fake Resend API, whose key the email settings spec types into the panel.
+  const resend = await startFakeResendApi();
+
   const close = async (): Promise<void> => {
+    await resend.close().catch(() => undefined);
     await linear.close().catch(() => undefined);
     await github.close().catch(() => undefined);
     await stub.close().catch(() => undefined);
     await openAiStub.close().catch(() => undefined);
   };
-  return { github, linear, close };
+  return { github, linear, resend, close };
 };
 
 /**
  * The stack file the specs read (`readStack` in helpers.ts, gitignored): the database's address and
  * the fake GitHub's two Apps.
  */
-export const writeStackFile = async (file: string, databaseUrl: string, github: FakeGitHub, linear: FakeLinear, dataDir: string | null = null): Promise<void> => {
+export const writeStackFile = async (file: string, databaseUrl: string, github: FakeGitHub, linear: FakeLinear, resend: FakeResendApi, dataDir: string | null = null): Promise<void> => {
   await writeFile(
     file,
     JSON.stringify({
@@ -112,6 +118,7 @@ export const writeStackFile = async (file: string, databaseUrl: string, github: 
       // The server's data folder (its secrets key), for a seed that stores a secret; `null` for an outside stack.
       dataDir,
       linear: { apiUrl: linear.apiUrl, apiKey: linear.adminApiKey, teamId: linear.team.id, teamKey: linear.team.key },
+      resend: { apiUrl: resend.url, apiKey: resend.apiKey },
       github: { appId: github.appId, privateKey: github.privateKey, webhookSecret: github.webhookSecret, slug: github.appSlug },
       githubB: {
         login: e2eGitHubOrgB.login,
@@ -127,8 +134,8 @@ export const writeStackFile = async (file: string, databaseUrl: string, github: 
 const main = async (): Promise<void> => {
   const fakes = await startFakes();
   // An outside stack's database is its own; a spec that seeds rows needs OSTRA_E2E_DATABASE_URL.
-  await writeStackFile(path.join(import.meta.dirname, ".stack.json"), process.env["OSTRA_E2E_DATABASE_URL"] ?? "", fakes.github, fakes.linear);
-  await writeFile(path.join(import.meta.dirname, ".fakes.env"), `OSTRA_GITHUB_API_URL=${fakes.github.apiUrl}\nOSTRA_LINEAR_API_URL=${fakes.linear.apiUrl}\n`);
+  await writeStackFile(path.join(import.meta.dirname, ".stack.json"), process.env["OSTRA_E2E_DATABASE_URL"] ?? "", fakes.github, fakes.linear, fakes.resend);
+  await writeFile(path.join(import.meta.dirname, ".fakes.env"), `OSTRA_GITHUB_API_URL=${fakes.github.apiUrl}\nOSTRA_LINEAR_API_URL=${fakes.linear.apiUrl}\nOSTRA_RESEND_API_URL=${fakes.resend.url}\n`);
   console.log(`the fakes are up: GitHub at ${fakes.github.apiUrl}, the model stubs on ports ${String(e2eStubPort)} and ${String(e2eOpenAiStubPort)}`);
   const stop = (): void => {
     void fakes.close().then(() => process.exit(0));

@@ -28,11 +28,11 @@ export type EmailAdapterFactories = {
   readonly smtp: (options: SmtpEmailAdapterOptions, context: AdapterContext) => NotificationAdapter;
 };
 
-/** The real adapters: Resend (ticket 12) and SMTP (ticket 13). */
-export const realEmailFactories: EmailAdapterFactories = {
-  resend: (options, context) => new ResendEmailAdapter(options, context),
+/** The real adapters: Resend (ticket 12) at `OSTRA_RESEND_API_URL`, and SMTP (ticket 13). */
+export const realEmailFactories = (resendApiUrl: string): EmailAdapterFactories => ({
+  resend: (options, context) => new ResendEmailAdapter({ ...options, baseUrl: resendApiUrl }, context),
   smtp: (options, context) => new SmtpEmailAdapter(options, context),
-};
+});
 
 /**
  * The provider an account mail goes through now (milestone 4, ticket 19), or why there's none: mail

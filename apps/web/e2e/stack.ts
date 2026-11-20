@@ -15,13 +15,15 @@ import { errnoCode } from "@ostra/protocol";
 import EmbeddedPostgres from "embedded-postgres";
 
 import { startFakes, writeStackFile } from "./fakes.ts";
-import { e2eCorePort, e2ePort } from "./settings.ts";
+import { e2eCorePort, e2eLockedEmail, e2ePort } from "./settings.ts";
 
 const clustersDir = path.join(devDataDir, "test");
 /** F-001: the second stack runs with the default password allowed (`06-default-password.spec.ts`). */
 const allowDefaultPassword = process.env["OSTRA_ALLOW_DEFAULT_PASSWORD"] === "true";
 /** F-083: the pseudo-locale stack serves the `.next-pseudo` build (`playwright.pseudo.config.ts`). */
 const pseudoLocale = process.env["OSTRA_PSEUDO_LOCALE"] === "1";
+/** F-115 (ticket 45): OSTRA_E2E_EMAIL_LOCKED=1 sets the install's email by its settings (`e2eLockedEmail`). */
+const emailSettings = process.env["OSTRA_E2E_EMAIL_LOCKED"] === "1" ? e2eLockedEmail : {};
 const webDir = path.resolve(import.meta.dirname, "..");
 const repoRoot = path.resolve(webDir, "..", "..");
 
@@ -95,7 +97,7 @@ const main = async (): Promise<void> => {
   // The stub model endpoints and the fake GitHub the panel and core talk to through
   // OSTRA_GITHUB_API_URL (ticket 37), shared with an outside stack's run (`fakes.ts`).
   const fakes = await startFakes();
-  const { github, linear } = fakes;
+  const { github, linear, resend } = fakes;
 
   // The specs read the database's address and the fake GitHub's Apps from here (gitignored).
   // The second stack (OSTRA_ALLOW_DEFAULT_PASSWORD, playwright.config.ts) keeps its own.
@@ -104,6 +106,7 @@ const main = async (): Promise<void> => {
     databaseUrl,
     github,
     linear,
+    resend,
     dataDir,
   );
 
@@ -127,6 +130,8 @@ const main = async (): Promise<void> => {
       OSTRA_CATALOG_FETCH: "false",
       OSTRA_GITHUB_API_URL: github.apiUrl,
       OSTRA_LINEAR_API_URL: linear.apiUrl,
+      OSTRA_RESEND_API_URL: resend.url,
+      ...emailSettings,
       // The stub model endpoint above listens on loopback, which the server refuses unless told.
       OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE: "true",
       // Core as the panel reaches it: the panel hands core the files a member uploads (a skill's files, ticket 42).
@@ -150,6 +155,8 @@ const main = async (): Promise<void> => {
       OSTRA_CATALOG_FETCH: "false",
       OSTRA_GITHUB_API_URL: github.apiUrl,
       OSTRA_LINEAR_API_URL: linear.apiUrl,
+      OSTRA_RESEND_API_URL: resend.url,
+      ...emailSettings,
       OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE: "true",
     },
   });

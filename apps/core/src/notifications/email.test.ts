@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import { ResendEmailAdapter } from "@ostra/adapter-email-resend";
 import { SmtpEmailAdapter } from "@ostra/adapter-email-smtp";
 import { createLogger, systemClock as adapterClock } from "@ostra/adapter-sdk";
 import type { LogRecord } from "@ostra/adapter-sdk";
@@ -37,7 +36,7 @@ import { createConnectionTrackers } from "../tracker/connections.ts";
 import { createNotificationChannels } from "./channels.ts";
 import { notifyDeliverHandler } from "./deliver.ts";
 import type { NotifyDeps } from "./deliver.ts";
-import { createEmailChannel } from "./email.ts";
+import { createEmailChannel, realEmailFactories } from "./email.ts";
 import type { EmailAdapterFactories } from "./email.ts";
 import { notifyFanoutHandler } from "./fanout.ts";
 
@@ -91,9 +90,10 @@ afterEach(async () => {
   mailBase.smtp = smtp.received.length;
 });
 
-// The real adapters, pointed at the fakes.
+// The real adapters, pointed at the fakes: Resend through core's own factory at the fake's address,
+// as OSTRA_RESEND_API_URL sets it (ticket 45), so every Resend case proves core sends there.
 const factories: EmailAdapterFactories = {
-  resend: (options, context) => new ResendEmailAdapter({ ...options, baseUrl: resend.url }, context),
+  resend: (options, context) => realEmailFactories(resend.url).resend(options, context),
   smtp: (options, context) => new SmtpEmailAdapter({ ...options, tlsCa: smtp.cert }, context),
 };
 

@@ -85,3 +85,18 @@ export const e2eOpenAiStubBaseUrl = `http://127.0.0.1:${String(e2eOpenAiStubPort
 export const e2eModelToken = "e2e-model-token-not-a-real-key";
 /** One model the bundled catalog knows, and one it doesn't (a custom model). */
 export const e2eStubModels = ["claude-sonnet-4-5", "local-coder-7b"] as const;
+
+/**
+ * F-115 (ticket 45): the second stack's email, set by its settings, which lock the panel's email
+ * page (`06-email-locked.spec.ts`; `stack.ts` with OSTRA_E2E_EMAIL_LOCKED=1). SMTP on a reserved
+ * `.example` host, so nothing is ever sent; no password, so the stack holds no secret.
+ */
+export const e2eLockedEmail = {
+  OSTRA_EMAIL_PROVIDER: "smtp",
+  OSTRA_EMAIL_FROM: "ostra@e2e.example",
+  OSTRA_EMAIL_FROM_NAME: "ostra e2e",
+  OSTRA_SMTP_HOST: "smtp.e2e.example",
+  OSTRA_SMTP_PORT: "2525",
+  OSTRA_SMTP_SECURE: "starttls",
+  OSTRA_SMTP_USER: "ostra",
+} as const;

@@ -2973,6 +2973,7 @@
     }
   },
   "notificationSettings": {
+    "lede": "When a task needs you, ostra tells you here, on the ticket and by mail. Choose which moments reach you where.",
     "mailOff": "Mail is off on this install.",
     "mailOffBody": " Your email choices are kept, and apply once an instance admin sets up mail.",
     "setUpEmail": "Set up email",

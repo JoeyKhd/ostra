@@ -69,6 +69,7 @@ export const settingNames = [
   "OSTRA_EMAIL_FROM",
   "OSTRA_EMAIL_FROM_NAME",
   "OSTRA_RESEND_API_KEY",
+  "OSTRA_RESEND_API_URL",
   "OSTRA_SMTP_HOST",
   "OSTRA_SMTP_PORT",
   "OSTRA_SMTP_SECURE",
@@ -295,6 +296,10 @@ export const settingFields = {
   OSTRA_RESEND_API_KEY: {
     default: "unset; required with OSTRA_EMAIL_PROVIDER=resend",
     description: "Resend's API key. Never logged. Read only when the provider is resend.",
+  },
+  OSTRA_RESEND_API_URL: {
+    default: "https://api.resend.com",
+    description: "Resend's API the panel and core send mail through: a fake Resend in tests.",
   },
   OSTRA_SMTP_HOST: {
     default: "unset; required with OSTRA_EMAIL_PROVIDER=smtp",
@@ -612,6 +617,7 @@ const rawSettingsSchema = z.strictObject({
   OSTRA_EMAIL_FROM: z.email().max(320).optional().describe(describe("OSTRA_EMAIL_FROM")),
   OSTRA_EMAIL_FROM_NAME: z.string().trim().min(1).max(100).regex(/^[^\r\n<>"]+$/, "one line, no angle brackets or quotes").default("ostra").describe(describe("OSTRA_EMAIL_FROM_NAME")),
   OSTRA_RESEND_API_KEY: z.string().min(1).max(512).optional().describe(describe("OSTRA_RESEND_API_KEY")),
+  OSTRA_RESEND_API_URL: url.default("https://api.resend.com").describe(describe("OSTRA_RESEND_API_URL")),
   OSTRA_SMTP_HOST: z.string().min(1).max(253).regex(/^[A-Za-z0-9.-]+$/, "a host name").optional().describe(describe("OSTRA_SMTP_HOST")),
   OSTRA_SMTP_PORT: port.default(587).describe(describe("OSTRA_SMTP_PORT")),
   OSTRA_SMTP_SECURE: z.enum(["starttls", "tls", "none"]).default("starttls").describe(describe("OSTRA_SMTP_SECURE")),
@@ -680,6 +686,8 @@ export type ServerSettings = {
   readonly githubApiUrl: string;
   /** OSTRA_LINEAR_API_URL: Linear's GraphQL endpoint the trackers use (ticket 34: the e2e stack's fake Linear). */
   readonly linearApiUrl: string;
+  /** OSTRA_RESEND_API_URL: Resend's API, without a trailing slash (ticket 45: the e2e stack's fake Resend). */
+  readonly resendApiUrl: string;
   /** OSTRA_GITHUB_LFS_HOSTS: where a task's git proxy may send LFS transfers, besides the code host itself. */
   readonly githubLfsHosts: readonly string[];
   readonly dataDir: string;
@@ -945,6 +953,7 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
       coreInternalUrl: (value.OSTRA_CORE_INTERNAL_URL ?? `http://127.0.0.1:${String(value.OSTRA_CORE_PORT)}`).replace(/\/+$/, ""),
       githubApiUrl: value.OSTRA_GITHUB_API_URL.replace(/\/+$/, ""),
       linearApiUrl: value.OSTRA_LINEAR_API_URL,
+      resendApiUrl: value.OSTRA_RESEND_API_URL.replace(/\/+$/, ""),
       githubLfsHosts: value.OSTRA_GITHUB_LFS_HOSTS,
       dataDir: value.OSTRA_DATA_DIR ?? (production ? "/var/lib/ostra" : path.join(devDataDir, "server")),
       secretsKey: value.OSTRA_SECRETS_KEY ?? null,

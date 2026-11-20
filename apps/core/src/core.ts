@@ -579,7 +579,7 @@ export const startCore = async (
     stallMinutes: settings.sessionStallMinutes,
     intakeStartsPerHour: settings.team.intakeStartsPerHour,
     fromSettings: settings.email,
-    factories: realEmailFactories,
+    factories: realEmailFactories(settings.resendApiUrl),
   });
   const notifyDeps: NotifyDeps = {
     db,

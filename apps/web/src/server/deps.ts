@@ -161,7 +161,7 @@ const build = async (): Promise<ApiRuntime> => {
     email: {
       adapterFor: (config) =>
         config.provider === "resend"
-          ? new ResendEmailAdapter({ apiKey: config.apiKey, from: config.fromAddress, fromName: config.fromName }, context)
+          ? new ResendEmailAdapter({ apiKey: config.apiKey, from: config.fromAddress, fromName: config.fromName, baseUrl: settings.resendApiUrl }, context)
           : new SmtpEmailAdapter(
               {
                 host: config.host,
