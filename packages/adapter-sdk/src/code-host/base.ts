@@ -120,7 +120,8 @@ export type RepoAccess = {
   readonly repo: RepoFullName;
 };
 
-export type RepoPermission = "contents" | "pull_requests" | "metadata" | "checks" | "actions" | "workflows";
+/** Milestone 6 adds `statuses`, which reads a head's commit statuses (F-035). */
+export type RepoPermission = "contents" | "pull_requests" | "metadata" | "checks" | "actions" | "workflows" | "statuses";
 export type PermissionLevel = "read" | "write";
 
 /** A token for one repo only, with the named permissions (ADR 0030). Never logged. */
