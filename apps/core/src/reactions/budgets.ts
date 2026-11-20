@@ -1,6 +1,6 @@
 import type { Db } from "@ostra/db";
 import { checkBudgetNotice, releaseForNewMonth, releaseHeldTurns } from "@ostra/domain";
-import type { ChangeNotices, Clock, CommandOutbox, JobQueue } from "@ostra/domain";
+import type { ChangeNotices, Clock, CommandOutbox, JobQueue, SpendCapSettings } from "@ostra/domain";
 import type { JobHandler, Jobs } from "@ostra/jobs";
 
 // Budget notices and their release (F-037, F-115, ADR 0055, ADR 0050; ticket 13): the workers of
@@ -17,6 +17,8 @@ export type BudgetJobDeps = {
   readonly budgetWarnPercent: number;
   /** `OSTRA_EMAIL_DELAY_SECONDS`, which the instance's saved delay overrides. */
   readonly emailDelaySeconds: number;
+  /** The task's spend cap, which a released automatic round checks (F-101). */
+  readonly spendCap?: SpendCapSettings;
 };
 
 /** A new month begins at 00:00 UTC on the 1st; its release runs five minutes later. */

@@ -300,6 +300,39 @@ describe("F-101: the spend cap, the budget and old runners", () => {
     }
   });
 
+  it("F-101, F-035: a held round released after the task reached its spend cap starts no turn, and the driver hears it", async () => {
+    const model = await h.db.agentProfile.findUniqueOrThrow({ where: { id: h.world.profileId }, select: { modelId: true } });
+    if (model.modelId === null) throw new Error("the profile has no model");
+    const budget = await h.db.budget.create({ data: { organizationId: h.world.organizationId, projectId: h.world.projectId, monthlyMicroUsd: 1_000_000n } });
+    const spend = await h.db.spendDaily.create({
+      data: { organizationId: h.world.organizationId, projectId: h.world.projectId, day: utcDayOf(h.clock.now()), modelId: model.modelId, spentMicroUsd: 1_000_000n },
+    });
+    try {
+      const task = await seedTaskInCi(h);
+      await failCi(task);
+      expect(await h.db.taskRound.findFirstOrThrow({ where: { taskId: task.taskId } })).toMatchObject({ state: "held", kind: "ci" });
+      // While it waits, the task's spend reaches its cap (25 USD in the harness).
+      await h.db.task.update({ where: { id: task.taskId }, data: { spentMicroUsd: 25_000_000 } });
+      await h.db.budget.update({ where: { id: budget.id }, data: { monthlyMicroUsd: 100_000_000n } });
+      await h.db.$transaction((tx) =>
+        releaseHeldTurnsInTx(
+          { jobs: h.jobs, outbox: postgresCommandOutbox, notices: postgresChangeNotices, clock: h.clock, spendCap: { capMicroUsd: 25_000_000, capTokens: 10_000_000 } },
+          tx,
+          { organizationId: h.world.organizationId, budgetId: budgetIdSchema.parse(budget.id) },
+        ),
+      );
+      expect(await stateOf(h, task.taskId)).toBe("needs_you/spend_cap");
+      expect(await h.db.taskRound.findFirstOrThrow({ where: { taskId: task.taskId } })).toMatchObject({ state: "capped" });
+      expect(await steersOf(task.taskId)).toEqual([]);
+      expect(recorded(h, "task.dispatch").map((one) => jobPayloadSchemas["task.dispatch"].parse(one)).filter((one) => one.taskId === task.taskId)).toEqual([]);
+      expect(await counters(task.taskId)).toMatchObject({ ciRounds: 0, automaticTurns: 0 });
+      expect(await h.db.needsYouItem.findFirst({ where: { taskId: task.taskId, reason: "spend_cap", state: "open" } })).not.toBeNull();
+    } finally {
+      await h.db.spendDaily.delete({ where: { id: spend.id } });
+      await h.db.budget.delete({ where: { id: budget.id } });
+    }
+  });
+
   it("F-101: a round on an old runner goes to a fresh box, offered only to a runner at minor 5", async () => {
     await h.db.runnerPresence.update({ where: { runnerId: h.runner.runnerId }, data: { minor: 4 } });
     const task = await seedTaskInCi(h);

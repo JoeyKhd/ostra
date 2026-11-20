@@ -31,6 +31,7 @@ import { BUDGET_WARN_PERCENT_DEFAULT, budgetsForProjectInTx, checkBudget, monthS
 import type { M4Deps, SetBudget } from "./m4-signatures.ts";
 import { planAnswerCommandInTx } from "./plans-questions.ts";
 import { appendServerEvent } from "./server-events.ts";
+import type { SpendCapSettings } from "./spend.ts";
 import { releaseHeldRoundInTx } from "../review-loop/start-round.ts";
 
 // Budget notices and their release (F-037, F-115, ADR 0055, ADR 0050; ticket 13). `budget.check`
@@ -249,7 +250,7 @@ const afterBudgetChangeInTx = async (
  * above the spend enqueues the release, and a removal lets its held turns go through the gate now.
  */
 export const setBudget = async (
-  deps: M4Deps & { readonly budgetWarnPercent?: number },
+  deps: M4Deps & { readonly budgetWarnPercent?: number; readonly spendCap?: SpendCapSettings },
   scope: MemberScope,
   input: Parameters<SetBudget>[2],
 ): ReturnType<SetBudget> => {
@@ -327,7 +328,10 @@ const steerPayloadSchema = z.looseObject({ kind: z.literal("user.message"), clie
 
 const GOING_SESSION_STATES = ["starting", "running", "waiting", "idle"] as const;
 
-export type ReleaseDeps = Pick<Ports, "jobs" | "outbox" | "notices" | "clock">;
+export type ReleaseDeps = Pick<Ports, "jobs" | "outbox" | "notices" | "clock"> & {
+  /** The task's spend cap (`OSTRA_TASK_SPEND_CAP_USD`, `OSTRA_TASK_TOKEN_CAP`), which a released automatic round checks. */
+  readonly spendCap?: SpendCapSettings;
+};
 
 /**
  * The budget's held turns, oldest first, each through the gate again in its task's lock: one that

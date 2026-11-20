@@ -615,6 +615,7 @@ export const startCore = async (
     clock: systemClock,
     budgetWarnPercent: settings.budgetWarnPercent,
     emailDelaySeconds: settings.emailDelaySeconds,
+    spendCap: { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap },
   };
   // Milestone 5 (F-091, ticket 12): a pool runner's join tells the admins, and opens its approval.
   await jobs.work(

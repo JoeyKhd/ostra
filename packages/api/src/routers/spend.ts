@@ -506,7 +506,7 @@ export const budgetsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { db, ports, settings } = ctx.deps;
       unwrap(
-        await setBudget({ db, ...ports, budgetWarnPercent: settings.budgetWarnPercent }, ctx.scope, {
+        await setBudget({ db, ...ports, budgetWarnPercent: settings.budgetWarnPercent, spendCap: { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap } }, ctx.scope, {
           projectId: input.projectId,
           monthlyMicroUsd: null,
         }),

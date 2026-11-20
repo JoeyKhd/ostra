@@ -305,6 +305,25 @@ const roundStartedInTx = async (tx: Tx, input: { readonly organizationId: Organi
   });
 };
 
+/** Whether the task has reached its spend cap, priced on its latest session's model. */
+const roundSpendCapReachedInTx = async (tx: Tx, settings: SpendCapSettings, task: ReturnType<typeof mapTask>, modelId: string | null): Promise<boolean> => {
+  const model = modelId === null ? null : await tx.model.findFirst({ where: { id: modelId, organizationId: task.organizationId } });
+  return spendCapReached(spendCapFor(settings, model === null ? null : modelTokenPrices(model), { microUsd: task.spentMicroUsd, tokens: await taskTokensInTx(tx, task.id) }));
+};
+
+/** A round's turn the spend cap stops: the task needs its driver, with the cap's words. */
+const spendCapNeedsYouInTx = async (deps: Parameters<typeof moveTaskInTx>[0], task: ReturnType<typeof mapTask>): Promise<void> => {
+  await moveTaskInTx(deps, task, { type: "needs_you", reason: "spend_cap" });
+  await createNeedsYouItemInTx(deps, deps.tx, {
+    organizationId: organizationIdSchema.parse(task.organizationId),
+    projectId: projectIdSchema.parse(task.projectId),
+    taskId: task.id,
+    reason: "spend_cap",
+    audience: "driver",
+    summary: limitSummary("spend-cap", 0),
+  });
+};
+
 /** `round.start`: one round, if its caps, the budget and the spend cap allow. One transaction. */
 export const startRound = (deps: StartRoundDeps, input: StartRoundInput): Promise<StartRoundResult> =>
   deps.db.$transaction((tx) => startRoundInTx(deps, tx, input), { timeout: 20_000 });
@@ -394,16 +413,11 @@ export const startRoundInTx = async (deps: StartRoundDeps, tx: Tx, input: StartR
   }
 
   // 3. The task's spend cap: reached, the round's turn doesn't start and the driver hears it.
-  if (deps.spendCap !== undefined && latest !== null) {
-    const model = latest.modelId === null ? null : await tx.model.findFirst({ where: { id: latest.modelId, organizationId } });
-    const cap = spendCapFor(deps.spendCap, model === null ? null : modelTokenPrices(model), { microUsd: moved.spentMicroUsd, tokens: await taskTokensInTx(tx, task.id) });
-    if (spendCapReached(cap)) {
-      await tx.taskRound.create({ data: { organizationId, projectId, taskId: task.id, kind: input.kind, number, automatic: true, causeRef: input.causeRef, state: "capped" } });
-      await moveTaskInTx(moveDeps, moved, { type: "needs_you", reason: "spend_cap" });
-      await createNeedsYouItemInTx(deps, tx, { organizationId, projectId, taskId: task.id, reason: "spend_cap", audience: "driver", summary: limitSummary("spend-cap", 0) });
-      deps.logger?.info("round.spend-cap", { taskId: task.id, kind: input.kind });
-      return { ok: true, verdict, held: false, outcome: "spend-cap" };
-    }
+  if (deps.spendCap !== undefined && latest !== null && (await roundSpendCapReachedInTx(tx, deps.spendCap, moved, latest.modelId))) {
+    await tx.taskRound.create({ data: { organizationId, projectId, taskId: task.id, kind: input.kind, number, automatic: true, causeRef: input.causeRef, state: "capped" } });
+    await spendCapNeedsYouInTx(moveDeps, moved);
+    deps.logger?.info("round.spend-cap", { taskId: task.id, kind: input.kind });
+    return { ok: true, verdict, held: false, outcome: "spend-cap" };
   }
 
   // 4. The turn.
@@ -423,11 +437,13 @@ export const startRoundInTx = async (deps: StartRoundDeps, tx: Tx, input: StartR
 
 /**
  * A held round's release (`budget.release`, in the task's lock): the round starts, its counters
- * rise, and its saved message goes as an automatic turn, on the warm box or a fresh one. Returns
- * `false` when the task has no held round, so the release sends the message as any other.
+ * rise, and its saved message goes as an automatic turn, on the warm box or a fresh one. The spend
+ * cap is checked here too, as `round.start` checks it after the budget gate: a task that reached
+ * it meanwhile gets no turn, the round is capped and the driver hears it. Returns `false` when the
+ * task has no held round, so the release sends the message as any other.
  */
 export const releaseHeldRoundInTx = async (
-  deps: Pick<StartRoundDeps, "jobs" | "outbox" | "notices" | "clock" | "timers">,
+  deps: Pick<StartRoundDeps, "jobs" | "outbox" | "notices" | "clock" | "timers" | "spendCap">,
   tx: Tx,
   input: { readonly taskId: TaskId; readonly pendingMessageSeq: number | null },
 ): Promise<boolean> => {
@@ -443,6 +459,14 @@ export const releaseHeldRoundInTx = async (
   const task = mapTask(await tx.task.findUniqueOrThrow({ where: { id: input.taskId } }));
   const organizationId = organizationIdSchema.parse(task.organizationId);
   const projectId = projectIdSchema.parse(task.projectId);
+  if (deps.spendCap !== undefined) {
+    const latest = await tx.session.findFirst({ where: { taskId: task.id }, orderBy: [{ startedAt: "desc" }, { id: "desc" }], select: { modelId: true } });
+    if (await roundSpendCapReachedInTx(tx, deps.spendCap, task, latest?.modelId ?? null)) {
+      await tx.taskRound.update({ where: { id: round.id }, data: { state: "capped" } });
+      await spendCapNeedsYouInTx({ tx, notices: deps.notices, jobs: deps.jobs }, task);
+      return true;
+    }
+  }
   await tx.taskRound.update({ where: { id: round.id }, data: { state: "started" } });
   await countRoundInTx(tx, task.id, round.kind);
   await roundStartedInTx(tx, { organizationId, projectId, taskId: task.id, kind: round.kind, number: round.number, at: deps.clock.now() });
