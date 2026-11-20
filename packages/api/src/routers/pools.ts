@@ -1,7 +1,9 @@
 import {
   createJoinToken,
   createPool,
+  dispatchWaitFromDb,
   joinTokenFromColumns,
+  poolQueueInTx,
   revokeJoinToken,
   updatePool,
 } from "@ostra/domain";
@@ -18,7 +20,8 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import type { ApiDeps } from "../trpc/context.ts";
-import { adminProcedure, router, unwrap } from "../trpc/init.ts";
+import { adminProcedure, memberProcedure, router, unwrap } from "../trpc/init.ts";
+import { poolFleetOf, poolIdsOf, QUEUE_VIEW_MAX } from "./fleet-view.ts";
 
 // F-091 (milestone 5's ticket 25): runner pools and their join tokens, for organization admins.
 // Every write goes through the domain's use cases (`createPool`, `updatePool`, `createJoinToken`,
@@ -165,9 +168,10 @@ const revokeToken = async (
 
 export const poolsRouter = router({
   /**
-   * The organization's runner pools, with their runners and projects counted: the boxes in use and
-   * the slots of the runners that take work (online or draining), the executors and versions its
-   * runners run, and the first project that uses it, by name.
+   * The organization's runner pools, with their runners and projects counted (F-092): the boxes in
+   * use (its runners' `Box` rows that hold a slot) against the slots of its runners that take or
+   * finish work, its queue's length, the executors, versions (and their range) and labels of its
+   * runners, the lines their capabilities call for, and the first project that uses it, by name.
    */
   list: adminProcedure.query(async ({ ctx }) => {
     const organizationId = ctx.scope.organizationId;
@@ -176,50 +180,97 @@ export const poolsRouter = router({
       orderBy: [{ isDefault: "desc" }, { name: "asc" }],
       include: {
         _count: { select: { projectPools: true } },
-        runners: {
-          where: { state: { not: "revoked" } },
-          select: {
-            state: true,
-            capacity: true,
-            executor: true,
-            version: true,
-            _count: { select: { leases: { where: { state: "active" } } } },
-          },
-        },
-        joinTokens: { where: { revokedAt: null }, select: { id: true } },
-        projectPools: {
-          orderBy: { project: { name: "asc" } },
-          take: 1,
-          select: { project: { select: { name: true } } },
-        },
+        joinTokens: { where: { revokedAt: null }, select: { expiresAt: true } },
+        projectPools: { orderBy: { project: { name: "asc" } }, take: 1, select: { project: { select: { name: true } } } },
       },
     });
+    const fleet = await poolFleetOf(ctx.deps, organizationId, poolIdsOf(pools));
+    const now = ctx.deps.ports.clock.now();
     return pools.map((pool) => {
-      const working = pool.runners.filter(
-        (runner) => runner.state === "online" || runner.state === "draining",
-      );
+      const poolId = poolIdSchema.parse(pool.id);
+      const use = fleet.get(poolId);
       return {
-        id: poolIdSchema.parse(pool.id),
+        id: poolId,
         name: pool.name,
         isDefault: pool.isDefault,
         requiresApproval: pool.requiresApproval,
         maxBoxes: pool.maxBoxes,
         joinTokenDays: pool.joinTokenDays,
-        runnerCount: pool.runners.length,
-        onlineCount: pool.runners.filter((runner) => runner.state === "online").length,
+        runnerCount: use?.runnerCount ?? 0,
+        onlineCount: use?.onlineCount ?? 0,
+        /** Runners that joined and wait for an admin's approval (F-091). */
+        awaitingApproval: use?.awaitingApproval ?? 0,
         projectCount: pool._count.projectPools,
         firstProjectName: pool.projectPools[0]?.project.name ?? null,
-        activeJoinTokens: pool.joinTokens.length,
-        /** Boxes in use on the runners that take work, and their summed capacity (F-092). */
-        busy: working.reduce((sum, runner) => sum + runner._count.leases, 0),
-        slots: working.reduce((sum, runner) => sum + runner.capacity, 0),
-        executors: [...new Set(pool.runners.map((runner) => runner.executor))].sort((x, y) =>
-          x.localeCompare(y),
-        ),
-        versions: [...new Set(pool.runners.map((runner) => runner.version))].sort((x, y) =>
-          x.localeCompare(y, "en", { numeric: true }),
-        ),
+        /** Tokens neither revoked nor expired. */
+        activeJoinTokens: pool.joinTokens.filter((token) => token.expiresAt === null || token.expiresAt.getTime() > now).length,
+        busy: use?.busy ?? 0,
+        slots: use?.slots ?? 0,
+        /** How many tasks wait in its queue (F-067). */
+        queueLength: use?.queueLength ?? 0,
+        executors: use?.executors ?? [],
+        versions: use?.versions ?? [],
+        /** The oldest and newest version its runners run: equal when they agree, `null` with no runner. */
+        versionRange: use?.versionRange ?? null,
+        labels: use?.labels ?? [],
+        lines: use?.lines ?? [],
       };
+    });
+  }),
+
+  /** The pools' names, for every member: what a member sees of the fleet besides their own runner (F-092). */
+  names: memberProcedure.query(async ({ ctx }) => {
+    const rows = await ctx.deps.db.runnerPool.findMany({
+      where: { organizationId: ctx.scope.organizationId },
+      orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+      select: { id: true, name: true, isDefault: true },
+    });
+    return rows.map((row) => ({ id: poolIdSchema.parse(row.id), name: row.name, isDefault: row.isDefault }));
+  }),
+
+  /**
+   * A pool's queue (F-067, ADR 0059): the queued tasks the pool could run, in its order (ticket
+   * priority, then when queued), each with its project, priority, queued time, why it waits and its
+   * place. Admins only: a member sees their own task's place on the task (`tasks.get`).
+   */
+  queue: adminProcedure.input(z.strictObject({ poolId: poolIdSchema })).query(async ({ ctx, input }) => {
+    const organizationId = ctx.scope.organizationId;
+    await poolOrNotFound(ctx.deps, organizationId, input.poolId);
+    const entries = await poolQueueInTx(ctx.deps.db, organizationId, input.poolId, QUEUE_VIEW_MAX);
+    const rows = await ctx.deps.db.task.findMany({
+      where: { organizationId, id: { in: entries.map((entry) => entry.taskId) } },
+      select: {
+        id: true,
+        title: true,
+        ticketKey: true,
+        dispatchWait: true,
+        creatorMemberId: true,
+        project: { select: { id: true, name: true } },
+      },
+    });
+    const byId = new Map(rows.map((row) => [row.id, row] as const));
+    const creatorIds = [...new Set(rows.flatMap((row) => (row.creatorMemberId === null ? [] : [row.creatorMemberId])))];
+    const creators = await ctx.deps.db.member.findMany({ where: { organizationId, id: { in: creatorIds } }, select: { id: true, user: { select: { name: true } } } });
+    const nameOf = new Map(creators.map((member) => [member.id, member.user.name] as const));
+    return entries.flatMap((entry, index) => {
+      const row = byId.get(entry.taskId);
+      return row === undefined
+        ? []
+        : [
+            {
+              place: index + 1,
+              taskId: entry.taskId,
+              title: row.title,
+              ticketKey: row.ticketKey,
+              project: { id: projectIdSchema.parse(row.project.id), name: row.project.name },
+              /** 1 Urgent, 2 High, 3 Medium (and prompt tasks), 4 Low. */
+              priority: entry.queuePriority,
+              queuedAt: entry.queuedAt?.getTime() ?? null,
+              /** Why it waits, as the admission last recorded it; `null` before its first pass. */
+              waitReason: dispatchWaitFromDb(row.dispatchWait),
+              createdBy: row.creatorMemberId === null ? null : { memberId: memberIdSchema.parse(row.creatorMemberId), name: nameOf.get(row.creatorMemberId) ?? null },
+            },
+          ];
     });
   }),
 

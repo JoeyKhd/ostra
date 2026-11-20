@@ -16,6 +16,7 @@ const row = (overrides: Partial<TaskRow>): TaskRow => ({
   stoppedReason: null,
   group: "running",
   waiting: null,
+  queue: null,
   doing: null,
   runner: { id: runnerIdSchema.parse("01a1f173-0000-7000-8000-000000000001"), name: "alex-mbp", kind: "personal", executor: "host", isolated: false },
   driver: { memberId: memberIdSchema.parse("m-1"), name: "Alex Kim" },

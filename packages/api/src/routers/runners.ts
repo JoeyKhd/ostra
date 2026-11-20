@@ -1,16 +1,18 @@
 import { processContainmentFromDb } from "@ostra/db";
 import type { Db } from "@ostra/db";
-import { approveRunner, rejectRunner, revokeRunner, revokeRunnerInputSchema } from "@ostra/domain";
-import { memberIdSchema, poolIdSchema, runnerIdSchema } from "@ostra/protocol";
+import { approveRunner, drainRunner, rejectRunner, requireOrganizationAdmin, resumeRunner, revokeRunner, revokeRunnerInputSchema, slotHoldingBoxStates, DEFAULT_PERSONAL_RUNNER_SLOTS } from "@ostra/domain";
+import { joinTokenIdSchema, memberIdSchema, poolIdSchema, projectIdSchema, runnerIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { RunnerId } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import type { ApiDeps } from "../trpc/context.ts";
 import { adminProcedure, memberProcedure, router, unwrap } from "../trpc/init.ts";
+import { busyBoxesByRunner, fleetRunnerSelect, runnerViewOf } from "./fleet-view.ts";
 
-// F-013, F-014, F-091 (first slice), ticket 33: runners, runner pools and their join tokens. A
-// personal runner shows as "personal, not isolated" in the panel (ADR 0029). Join tokens are shown
-// once, when they are made, and are stored hashed: no procedure returns one again.
+// F-013, F-014, F-091, F-092 (milestone 2's ticket 33, milestone 5's tickets 25 and 26): runners.
+// A personal runner shows as "personal, not isolated" in the panel (ADR 0029). Pools and their join
+// tokens are in `pools.ts`.
 
 const osSchema = z.object({ platform: z.string(), arch: z.string(), release: z.string() }).nullable();
 
@@ -48,6 +50,12 @@ const decidedAlready = async (db: Db, organizationId: string, runnerId: RunnerId
   return { runnerId, state: row.state, changed: false };
 };
 
+/** How many audit entries a runner's page shows. */
+const RUNNER_AUDIT_ENTRIES = 20;
+
+/** What the fleet view's lines and slots read from the settings. */
+const viewSettings = (deps: ApiDeps) => ({ sameUser: deps.settings.devHostPoolSameUser, personalSlots: DEFAULT_PERSONAL_RUNNER_SLOTS });
+
 export const runnersRouter = router({
   /** The member's own personal runners: the "run on" picker and the checklist's "runner online" step. */
   mine: memberProcedure.query(async ({ ctx }) => {
@@ -75,34 +83,128 @@ export const runnersRouter = router({
     }));
   }),
 
-  /** Every runner of the organization, for admins: pool and personal. */
+  /**
+   * Every runner of the organization, for admins: pool and personal (F-092). Each with its state
+   * and connection, carrier, executor, containment, install, version state, slots and resources,
+   * labels, busy boxes (its `Box` rows that hold a slot) and the lines its capabilities call for.
+   */
   list: adminProcedure.query(async ({ ctx }) => {
+    const organizationId = ctx.scope.organizationId;
     const rows = await ctx.deps.db.runner.findMany({
-      where: { organizationId: ctx.scope.organizationId },
+      where: { organizationId },
       orderBy: [{ kind: "asc" }, { createdAt: "asc" }],
-      select: {
-        ...runnerRowSelect,
-        pool: { select: { id: true, name: true } },
-        owner: { select: { id: true, user: { select: { name: true } } } },
-      },
+      select: { ...fleetRunnerSelect, os: true, owner: { select: { id: true, user: { select: { name: true } } } } },
     });
+    const busy = await busyBoxesByRunner(ctx.deps.db, organizationId, rows.map((row) => row.id));
+    const settings = viewSettings(ctx.deps);
     return rows.map((row) => ({
-      id: runnerIdSchema.parse(row.id),
-      name: row.name,
-      kind: row.kind,
-      executor: row.executor,
-      isolated: row.executor !== "host",
-      processContainment: row.processContainment === null ? null : processContainmentFromDb[row.processContainment],
-      state: row.state,
+      ...runnerViewOf(row, busy.get(row.id) ?? 0, settings),
       capacity: row.capacity,
-      labels: row.labels,
-      version: row.version,
       os: parseOs(row.os),
-      lastSeenAt: row.lastSeenAt === null ? null : row.lastSeenAt.getTime(),
-      busy: row._count.leases,
       pool: row.pool === null ? null : { id: poolIdSchema.parse(row.pool.id), name: row.pool.name },
       owner: row.owner === null ? null : { memberId: memberIdSchema.parse(row.owner.id), name: row.owner.user.name },
     }));
+  }),
+
+  /**
+   * A runner's page (F-092): the fleet view's row, the token it joined with, who approved it, its
+   * boxes now and its last 20 audit entries. An admin reads any runner of the organization; a
+   * member only their own personal runner, and any other is `NOT_FOUND`.
+   */
+  get: memberProcedure.input(z.strictObject({ runnerId: runnerIdSchema })).query(async ({ ctx, input }) => {
+    const organizationId = ctx.scope.organizationId;
+    const admin = requireOrganizationAdmin(ctx.scope, organizationId).ok;
+    const row = await ctx.deps.db.runner.findFirst({
+      where: { id: input.runnerId, organizationId, ...(admin ? {} : { kind: "personal" as const, ownerMemberId: ctx.scope.memberId }) },
+      select: {
+        ...fleetRunnerSelect,
+        os: true,
+        approvedByMemberId: true,
+        drainedByMemberId: true,
+        joinToken: { select: { id: true, label: true, revokedAt: true } },
+        owner: { select: { id: true, user: { select: { name: true } } } },
+      },
+    });
+    if (row === null) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "No such runner" });
+    }
+    const [boxes, audit, deciders] = await Promise.all([
+      ctx.deps.db.box.findMany({
+        where: { organizationId, runnerId: row.id, state: { in: [...slotHoldingBoxStates] } },
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          state: true,
+          size: true,
+          createdAt: true,
+          waitingReason: true,
+          task: { select: { id: true, title: true, project: { select: { id: true, name: true } } } },
+        },
+      }),
+      ctx.deps.db.auditEntry.findMany({
+        where: { organizationId, entity: "runner", entityId: row.id },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: RUNNER_AUDIT_ENTRIES,
+        select: { id: true, action: true, actorKind: true, actorName: true, createdAt: true },
+      }),
+      ctx.deps.db.member.findMany({
+        where: { organizationId, id: { in: [row.approvedByMemberId, row.drainedByMemberId].filter((id): id is string => id !== null) } },
+        select: { id: true, user: { select: { name: true } } },
+      }),
+    ]);
+    const who = (id: string | null) => {
+      const member = id === null ? undefined : deciders.find((one) => one.id === id);
+      return id === null ? null : { memberId: memberIdSchema.parse(id), name: member?.user.name ?? null };
+    };
+    return {
+      ...runnerViewOf(row, boxes.length, viewSettings(ctx.deps)),
+      capacity: row.capacity,
+      os: parseOs(row.os),
+      pool: row.pool === null ? null : { id: poolIdSchema.parse(row.pool.id), name: row.pool.name },
+      owner: row.owner === null ? null : { memberId: memberIdSchema.parse(row.owner.id), name: row.owner.user.name },
+      /** The join token it joined with, by label: never the token. */
+      joinToken: row.joinToken === null ? null : { id: joinTokenIdSchema.parse(row.joinToken.id), label: row.joinToken.label, revoked: row.joinToken.revokedAt !== null },
+      approvedAt: row.approvedAt?.getTime() ?? null,
+      approvedBy: who(row.approvedByMemberId),
+      drainedBy: who(row.drainedByMemberId),
+      createdAt: row.createdAt.getTime(),
+      boxes: boxes.map((box) => ({
+        id: box.id,
+        state: box.state,
+        size: box.size,
+        waitingReason: box.waitingReason,
+        createdAt: box.createdAt.getTime(),
+        task: { id: taskIdSchema.parse(box.task.id), title: box.task.title, project: { id: projectIdSchema.parse(box.task.project.id), name: box.task.project.name } },
+      })),
+      audit: audit.map((entry) => ({ id: entry.id, action: entry.action, actorKind: entry.actorKind, actorName: entry.actorName, at: entry.createdAt.getTime() })),
+    };
+  }),
+
+  /**
+   * An admin drains a runner (F-092): it takes no new task, and the ones it runs finish. The answer
+   * counts the tasks it still runs, which the confirm showed.
+   */
+  drain: adminProcedure.input(z.strictObject({ runnerId: runnerIdSchema })).mutation(async ({ ctx, input }) => {
+    const drained = unwrap(await drainRunner({ db: ctx.deps.db, ...ctx.deps.ports }, ctx.scope, input), {
+      forbidden: "FORBIDDEN",
+      "not-found": "NOT_FOUND",
+      "not-allowed-in-state": "CONFLICT",
+    });
+    const busy = await busyBoxesByRunner(ctx.deps.db, ctx.scope.organizationId, [input.runnerId]);
+    return { runnerId: input.runnerId, state: drained.state, runningTasks: busy.get(input.runnerId) ?? 0 };
+  }),
+
+  /**
+   * An admin lifts a drain (F-092): online when it's connected, offline otherwise. A runner below
+   * minor 4 gets no `resume` command (`commandSent: false`), and takes tasks after it restarts.
+   */
+  resume: adminProcedure.input(z.strictObject({ runnerId: runnerIdSchema })).mutation(async ({ ctx, input }) => {
+    const resumed = unwrap(await resumeRunner({ db: ctx.deps.db, ...ctx.deps.ports }, ctx.scope, input), {
+      forbidden: "FORBIDDEN",
+      "not-found": "NOT_FOUND",
+      "not-draining": "CONFLICT",
+    });
+    return { runnerId: input.runnerId, state: resumed.state, commandSent: resumed.commandSent };
   }),
 
   /**

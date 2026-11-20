@@ -32,6 +32,7 @@ import {
   taskFromColumns,
   taskToColumns,
   transitionTask,
+  cancelQueuedTask,
 } from "@ostra/domain";
 import type { TaskLifecycle, Waiting } from "@ostra/domain";
 import { effortLevelFromDb, mapEventToStored, mapTask } from "@ostra/db";
@@ -67,6 +68,7 @@ import { loadUsageView } from "./task-usage.ts";
 import { levelRefusal, loadModelEffort, toLevelViews } from "../services/agent-effort.ts";
 import type { ApiDeps } from "../trpc/context.ts";
 import { loadTaskExtras, prStateOf } from "./task-extras.ts";
+import { queuePlacesOf } from "./fleet-view.ts";
 import { loadProjectAccess, memberProcedure, projectProcedure, router, taskProcedure, unwrap } from "../trpc/init.ts";
 
 // F-097, F-023, F-025, F-014 (picking the runner), ticket 33: tasks. A task is visible to every
@@ -166,6 +168,20 @@ export const tasksRouter = router({
 
   /** F-110, F-111 (ticket 29): the notes each session used and how, and the proposals the task made. */
   memory: taskMemoryProcedure,
+
+  /**
+   * Cancels a queued task (F-067, Q248): an organization admin any, the task's member their own. It
+   * stops as `cancelled`, can be reopened like any stopped task, and the audit log has
+   * `task.cancelled`.
+   */
+  cancelQueued: taskProcedure("read", taskInput).mutation(async ({ ctx, input }) => {
+    const cancelled = unwrap(await cancelQueuedTask({ db: ctx.deps.db, ...ctx.deps.ports }, ctx.scope, { taskId: input.taskId }), {
+      forbidden: "FORBIDDEN",
+      "not-found": "NOT_FOUND",
+      "not-queued": "CONFLICT",
+    });
+    return { taskId: input.taskId, state: cancelled.state };
+  }),
 
   /** Starts a code task from a prompt (F-097): no ticket is created. */
   create: projectProcedure("read", createPromptTaskInputSchema).mutation(async ({ ctx, input }) => {
@@ -267,6 +283,7 @@ export const tasksRouter = router({
     const leaseOf = new Map(leases.map((lease) => [lease.taskId, lease] as const));
     const driverName = new Map(members.map((member) => [member.id, member.user.name] as const));
 
+    const places = await queuePlacesOf(db, organizationId, rows);
     const summaries = rows.map((row) => {
       const runner = runnerById.get(leaseRunner.get(row.id) ?? row.runnerId ?? "");
       const id = taskIdSchema.parse(row.id);
@@ -286,6 +303,8 @@ export const tasksRouter = router({
           const lease = leaseOf.get(row.id);
           return waitingFor(row, lease === undefined ? null : { ...lease, runner: runnerById.get(lease.runnerId) });
         })(),
+        /** Milestone 5 (F-067): its place in its pool's queue now, or `null`. */
+        queue: places.get(row.id) ?? null,
         doing: doing.get(id) ?? null,
         runner: runner === undefined ? null : { id: runnerIdSchema.parse(runner.id), name: runner.name, kind: runner.kind, executor: runner.executor, isolated: runner.executor !== "host" },
         driver: row.driverMemberId === null ? null : { memberId: memberIdSchema.parse(row.driverMemberId), name: driverName.get(row.driverMemberId) ?? "" },
@@ -387,6 +406,8 @@ export const tasksRouter = router({
       group: groupOf(state),
       /** Why a queued task waits (Q132): data the panel words, never a sentence. */
       waiting: waitingFor(task, lease),
+      /** Milestone 5 (F-067): its place in its pool's queue now, or `null`. */
+      queue: (await queuePlacesOf(db, organizationId, [task])).get(task.id) ?? null,
       branchName: task.branchName,
       /** The newest event's seq: the live tail resumes after what a history page returned. */
       headSeq: task.eventSeq,
