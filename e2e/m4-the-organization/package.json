@@ -1,0 +1,27 @@
+{
+  "name": "@ostra/e2e-m4",
+  "version": "0.0.0",
+  "description": "Milestone 4's end-to-end demo against the dev stack, the test org and the test Linear workspace (ticket 41)",
+  "private": true,
+  "license": "LicenseRef-Sustainable-Use-1.0",
+  "type": "module",
+  "scripts": {
+    "demo": "node src/demo.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run --maxWorkers=4 --passWithNoTests"
+  },
+  "dependencies": {
+    "@ostra/db": "workspace:*",
+    "@ostra/dev-tools": "workspace:*",
+    "@ostra/e2e-m1": "workspace:*",
+    "@ostra/e2e-m2": "workspace:*",
+    "@ostra/protocol": "workspace:*",
+    "@playwright/test": "1.65.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "eslint": "10.15.0",
+    "vitest": "5.1.1"
+  }
+}
