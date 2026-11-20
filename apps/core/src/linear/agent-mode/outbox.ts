@@ -25,7 +25,8 @@ import type { ConnectionTrackers } from "../../tracker/connections.ts";
 // (a personal API key can't post an agent activity, spike 5): idempotent by its key, which the
 // adapter sends with it, so a retry after a lost answer finds the first post. A failure the
 // tracker may get over is retried with the queue's backoff; one it won't (a refusal) marks the row
-// failed. Every post sent moves the session's heartbeat on.
+// failed. Every post sent moves the session's heartbeat on. A session's first post links the
+// session to its task's page in the panel (`setAgentSessionLink`), where the tracker has the link.
 //
 // `linear.heartbeat`, a sweep once a minute, posts a heartbeat for each open session whose
 // `heartbeatDueAt` has passed: so a session that hears nothing for OSTRA_LINEAR_HEARTBEAT_MINUTES
@@ -80,7 +81,13 @@ export const sendActivity = async (
       attempts: true,
       createdAt: true,
       agentSession: {
-        select: { id: true, externalSessionId: true, connectionId: true, taskId: true },
+        select: {
+          id: true,
+          externalSessionId: true,
+          connectionId: true,
+          taskId: true,
+          lastPostAt: true,
+        },
       },
     },
   });
@@ -127,11 +134,11 @@ export const sendActivity = async (
     });
     return;
   }
-  const body =
-    session.taskId === null
-      ? activity.body
-      : withTaskUrl(activity.body, taskPageUrl(deps.publicUrl, taskIdSchema.parse(session.taskId)));
-  const posted = await lookup.value.tracker.postAgentActivity(session.externalSessionId, {
+  const taskUrl =
+    session.taskId === null ? null : taskPageUrl(deps.publicUrl, taskIdSchema.parse(session.taskId));
+  const body = taskUrl === null ? activity.body : withTaskUrl(activity.body, taskUrl);
+  const tracker = lookup.value.tracker;
+  const posted = await tracker.postAgentActivity(session.externalSessionId, {
     kind: activity.kind,
     body,
     ephemeral: activity.ephemeral,
@@ -156,6 +163,25 @@ export const sendActivity = async (
       attempts: activity.attempts + 1,
     });
     throw new Error(`the tracker didn't take the activity (${posted.error.code})`);
+  }
+  if (taskUrl !== null && session.lastPostAt === null && tracker.capabilities.agentSessionLink) {
+    // The session's first post: its link to the task's page goes with it (F-012), before the post
+    // is marked sent, so a link worth retrying is retried with it (the post itself, by its key,
+    // isn't made twice). A refusal leaves the session unlinked and its posts flowing.
+    const linked = await tracker.setAgentSessionLink(session.externalSessionId, taskUrl);
+    if (!linked.ok) {
+      if (!PERMANENT.has(linked.error.code)) {
+        logger.info("linear.session.link-retry", {
+          agentSessionId: session.id,
+          code: linked.error.code,
+        });
+        throw new Error(`the tracker didn't link the session (${linked.error.code})`);
+      }
+      logger.warn("linear.session.link-refused", {
+        agentSessionId: session.id,
+        code: linked.error.code,
+      });
+    }
   }
   const sentAt = new Date(deps.clock.now());
   await deps.db.$transaction(async (tx) => {

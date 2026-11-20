@@ -88,13 +88,20 @@ const logger = createLogger((record) => {
 });
 /** Every `postAgentActivity` the adapter was asked for. */
 const calls: { readonly sessionId: string; readonly kind: string; readonly key: string }[] = [];
+/** Every `setAgentSessionLink` the adapter was asked for. */
+const links: { readonly sessionId: string; readonly url: string }[] = [];
 
-/** The shipped adapter, its `postAgentActivity` calls recorded. */
+/** The shipped adapter, its `postAgentActivity` and `setAgentSessionLink` calls recorded. */
 const recorded = (adapter: LinearAdapter): LinearAdapter => {
   const post = adapter.postAgentActivity.bind(adapter);
   adapter.postAgentActivity = (sessionId, activity) => {
     calls.push({ sessionId, kind: activity.kind, key: activity.idempotencyKey });
     return post(sessionId, activity);
+  };
+  const link = adapter.setAgentSessionLink.bind(adapter);
+  adapter.setAgentSessionLink = (sessionId, url) => {
+    links.push({ sessionId, url });
+    return link(sessionId, url);
   };
   return adapter;
 };
@@ -373,6 +380,28 @@ describe("a delegation (F-012)", () => {
       byName: "Mia Member",
       matchedMemberId: fixture.a.member.id,
     });
+  });
+
+  it("F-012/c2: the session's first post links it to its task's page, once; a session with no task isn't linked", async () => {
+    const { sessionId } = await delegate(outsideUserId);
+    const session = await sessionRow(sessionId);
+    const taskUrl = `${PUBLIC_URL}/tasks/${session.taskId ?? "none"}`;
+    expect(fake.session(sessionId)?.externalUrls).toEqual([{ label: "Open in ostra", url: taskUrl }]);
+    // A later post in the session links nothing again.
+    await fake.promptSession(sessionId, "Is it done?", { byUserId: outsideUserId });
+    await deliver(lastEventBody());
+    await sendPending();
+    expect(linearActivities(sessionId)).toEqual(["thought", "prompt", "thought"]);
+    expect(links.filter((link) => link.sessionId === sessionId)).toEqual([
+      { sessionId, url: taskUrl },
+    ]);
+    const team = fake.addTeam("LNK", "Unlinked");
+    const issue = await fake.createIssue({ teamId: team.id, title: "No board takes this" });
+    const { sessionId: lonely } = await fake.delegateToApp(issue.id, matchedUserId);
+    await deliver(lastEventBody());
+    await sendPending();
+    expect(fake.session(lonely)?.externalUrls).toEqual([]);
+    expect(links.some((link) => link.sessionId === lonely)).toBe(false);
   });
 
   it("F-012/c1: a replayed created, under another delivery, starts one task and posts one thought", async () => {
