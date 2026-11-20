@@ -63,12 +63,13 @@ test("F-012/c1, F-040/c1: an admin turns on agent mode, switches a board on, and
   await block.getByRole("button", { name: "Approve" }).click();
   await expect(rows.filter({ hasText: first.key }).getByTestId("approval-answered")).toHaveText("Approved by you. It's queued on e2e-agent-pool.");
 
-  // Reject the second, with a reason for the person in Linear.
+  // A collapsed row answers in place: its Reject and Approve, no chevron.
+  await expect(rows.filter({ hasText: third.key }).getByRole("button", { name: `Approve ${third.key}` })).toBeVisible();
+  // Reject the second from its row, with a reason for the person in Linear.
   const secondRow = rows.filter({ hasText: second.key });
-  await secondRow.getByRole("button", { name: `Show ${second.key}` }).click();
-  await secondRow.getByRole("button", { name: "Reject" }).click();
+  await secondRow.getByRole("button", { name: `Reject ${second.key}` }).click();
   await secondRow.getByRole("textbox", { name: "Why, for the person in Linear (optional)" }).fill("Billing doesn't take outside work this week.");
-  await secondRow.getByRole("button", { name: "Reject" }).click();
+  await secondRow.getByTestId("approval-block").getByRole("button", { name: "Reject" }).click();
   await expect(secondRow.getByTestId("approval-answered")).toHaveText("Rejected by you.");
 
   // Both answers stand: a reload lists only the third, and the tasks moved on.

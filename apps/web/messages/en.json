@@ -5880,7 +5880,8 @@
     "approved": "Approved by you. It's queued on {pool}.",
     "rejected": "Rejected by you.",
     "done": "Done",
-    "expand": "Show {key}",
+    "rejectKey": "Reject {key}",
+    "approveKey": "Approve {key}",
     "collapse": "Hide {key}",
     "startedBy": "Started in Linear by {name}",
     "panel": {

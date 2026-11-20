@@ -51,12 +51,27 @@ export const poolOf = (task: WaitingTask): string => task.pools[0] ?? t("approva
 
 type Answer = { readonly kind: "approved" | "rejected" };
 
-export const ApprovalBlock = ({ task, onAnswered, className }: { readonly task: WaitingTask; readonly onAnswered?: (answer: Answer) => void; readonly className?: string }) => {
+export const ApprovalBlock = ({
+  task,
+  onAnswered,
+  className,
+  startRejecting = false,
+  answered = null,
+}: {
+  readonly task: WaitingTask;
+  readonly onAnswered?: (answer: Answer) => void;
+  readonly className?: string;
+  /** Opened by a collapsed row's Reject: the reason's input shows at once. */
+  readonly startRejecting?: boolean;
+  /** Answered from the collapsed row: the block shows the outcome. */
+  readonly answered?: Answer["kind"] | null;
+}) => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
-  const [rejecting, setRejecting] = useState(false);
+  const [rejecting, setRejecting] = useState(startRejecting);
   const [reason, setReason] = useState("");
-  const [answer, setAnswer] = useState<Answer | null>(null);
+  const [own, setAnswer] = useState<Answer | null>(null);
+  const answer = own ?? (answered === null ? null : { kind: answered });
   const settled = (kind: Answer["kind"]) => () => {
     setAnswer({ kind });
     onAnswered?.({ kind });

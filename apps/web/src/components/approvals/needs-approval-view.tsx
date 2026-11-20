@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDownIcon, ChevronUpIcon, InfoIcon, ShieldOffIcon } from "lucide-react";
+import { ChevronUpIcon, InfoIcon, LoaderCircleIcon, ShieldOffIcon } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 
@@ -165,6 +165,49 @@ export const NeedsApprovalView = ({ projectId, organizationAdmin }: { readonly p
   );
 };
 
+/**
+ * A row's action cell (needs-approval.md): a collapsed row answers in place, `Reject` (ghost, which
+ * opens the row on its reason) and `Approve` (outline); an expanded row closes with `chevron-up`;
+ * an answered one says so.
+ */
+export const RowActions = ({
+  name,
+  expanded,
+  answered,
+  busy,
+  onToggle,
+  onReject,
+  onApprove,
+}: {
+  readonly name: string;
+  readonly expanded: boolean;
+  readonly answered: "approved" | "rejected" | null;
+  readonly busy: boolean;
+  readonly onToggle: () => void;
+  readonly onReject: () => void;
+  readonly onApprove: () => void;
+}) => {
+  if (answered !== null) return <span className="text-xs text-faint">{t("approvals.done")}</span>;
+  if (expanded) {
+    return (
+      <Button variant="ghost" size="icon" className="size-7" aria-label={t("approvals.collapse", { key: name })} aria-expanded onClick={onToggle}>
+        <ChevronUpIcon />
+      </Button>
+    );
+  }
+  return (
+    <span className="flex items-center gap-2" data-testid="row-actions">
+      <Button variant="ghost" size="sm" className="h-[26px]" disabled={busy} onClick={onReject} aria-label={t("approvals.rejectKey", { key: name })}>
+        {t("approvals.reject")}
+      </Button>
+      <Button size="sm" className="h-[26px]" disabled={busy} onClick={onApprove} aria-label={t("approvals.approveKey", { key: name })}>
+        {busy ? <LoaderCircleIcon className="animate-spin" /> : null}
+        {t("approvals.approve")}
+      </Button>
+    </span>
+  );
+};
+
 const ApprovalRow = ({
   task,
   expanded,
@@ -178,6 +221,18 @@ const ApprovalRow = ({
   readonly onToggle: () => void;
   readonly onAnswered: (kind: "approved" | "rejected") => void;
 }) => {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const [rejectFirst, setRejectFirst] = useState(false);
+  const approve = useMutation(
+    trpc.tasks.approve.mutationOptions({
+      onSuccess: () => {
+        onAnswered("approved");
+        void queryClient.invalidateQueries({ queryKey: trpc.tasks.pathKey() });
+        void queryClient.invalidateQueries({ queryKey: trpc.projects.pathKey() });
+      },
+    }),
+  );
   const key = task.ticket?.key ?? task.shortId;
   return (
     <li className="border-b border-line" data-testid="approval-row" data-key={key}>
@@ -191,16 +246,19 @@ const ApprovalRow = ({
         <span className="hidden truncate font-mono text-[12.5px] text-muted md:block">{`${task.profile?.name ?? "–"} · ${poolOf(task)}`}</span>
         <span className="hidden font-mono text-xs text-faint md:block" suppressHydrationWarning>{formatAge(task.createdAt)}</span>
         <span className="flex justify-end">
-          {answered !== null ? (
-            <span className="text-xs text-faint">{t("approvals.done")}</span>
-          ) : (
-            <Button variant="ghost" size="icon" className="size-7" aria-label={expanded ? t("approvals.collapse", { key }) : t("approvals.expand", { key })} aria-expanded={expanded} onClick={onToggle}>
-              {expanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
-            </Button>
-          )}
+          <RowActions
+            name={key}
+            expanded={expanded}
+            answered={answered}
+            busy={approve.isPending}
+            onToggle={() => { setRejectFirst(false); onToggle(); }}
+            onReject={() => { setRejectFirst(true); onToggle(); }}
+            onApprove={() => { approve.mutate({ taskId: task.taskId }); }}
+          />
         </span>
       </div>
-      {expanded || answered !== null ? <ApprovalBlock task={task} className="mb-3 md:ml-[96px]" onAnswered={(answer) => { onAnswered(answer.kind); }} /> : null}
+      {approve.isError ? <p role="alert" className="mb-2 text-[12.5px] text-red md:ml-[96px]">{errorText(approve.error)}</p> : null}
+      {expanded || answered !== null ? <ApprovalBlock task={task} className="mb-3 md:ml-[96px]" startRejecting={rejectFirst} answered={answered} onAnswered={(answer) => { onAnswered(answer.kind); }} /> : null}
     </li>
   );
 };
