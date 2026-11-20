@@ -89,6 +89,8 @@ const connectionSchema = commonSchema.extend({
       /** Linear can reach the install: webhooks mode, and the address passes milestone 2's pre-check. */
       reachable: z.boolean(),
       unreachableReason: z.string().nullable(),
+      /** The address Linear's webhooks need (`OSTRA_CORE_PUBLIC_URL`), shown in the Public address row. */
+      publicAddress: z.string(),
       /** When core renews the app's token next: an hour before it expires. */
       nextRenewalAt: z.number().int().nullable(),
       /** Each board of the connection, and whether a delegation in its team starts a task in its project. */
@@ -250,6 +252,7 @@ const agentModeOf = async (
     grantedScopes: agentMode.agentScopes.filter((scope) => row.scopes.includes(scope)),
     missingScopes: [...(missingAgentModeScopes(agentMode, row.scopes) ?? [])],
     reachable: row.webhookMode === "webhooks" && reach.public,
+    publicAddress: deps.settings.corePublicUrl,
     unreachableReason: row.webhookMode === "polling" ? "The connection polls: Linear's webhooks don't reach it" : reach.public ? null : reach.reason,
     nextRenewalAt: expiresAt === null ? null : Math.max(now + 60_000, expiresAt - LINEAR_REFRESH_MARGIN_MS),
     boards: boards.map((board) => ({

@@ -56,6 +56,44 @@ const outcomeOf = (event: SessionEvent): string => {
 const takenBy = (board: Board, boards: readonly Board[]): Board | undefined =>
   board.teamKey === null || board.startFromLinear ? undefined : boards.find((other) => other.boardId !== board.boardId && other.teamKey === board.teamKey && other.startFromLinear);
 
+/**
+ * Agent mode's State (linear-agent-mode.md): `On` with when and by whom, `On, not receiving` when
+ * Linear can't reach the install's address, or `Off`.
+ */
+export const AgentModeState = ({ agent, justTurnedOn }: { readonly agent: AgentMode; readonly justTurnedOn: boolean }) =>
+  agent.on ? (
+    <>
+      {agent.reachable ? <Status tone="green" className="text-green">{t("agentMode.on")}</Status> : <Status tone="red" className="text-text">{t("agentMode.onNotReceiving")}</Status>}
+      <span className="text-muted">
+        {agent.since === null ? "" : agent.turnedOnByName === null ? t("agentMode.onSince", { date: day(agent.since) }) : t("agentMode.onSinceBy", { date: day(agent.since), name: agent.turnedOnByName })}
+      </span>
+      {justTurnedOn ? (
+        <span className="ml-auto flex items-center gap-1 text-faint">
+          <CheckIcon aria-hidden className="size-[14px] stroke-[1.75] text-green" />
+          {t("agentMode.justOn")}
+        </span>
+      ) : null}
+    </>
+  ) : (
+    <Status tone="grey">{t("agentMode.off")}</Status>
+  );
+
+/** The Public address row: the address Linear's webhooks arrive at, or why Linear can't reach it. */
+export const PublicAddress = ({ agent }: { readonly agent: AgentMode }) =>
+  agent.reachable ? (
+    <>
+      <CheckIcon aria-hidden className="size-[14px] stroke-[1.75] text-green" />
+      <span className="min-w-0 break-all font-mono text-text">{agent.publicAddress}</span>
+      <span className="text-muted">{t("agentMode.reachable")}</span>
+    </>
+  ) : (
+    <>
+      <TriangleAlertIcon aria-hidden className="size-[14px] stroke-[1.75] text-red" />
+      <span>{t("agentMode.unreachable")}</span>
+      {agent.unreachableReason === null ? null : <span className="text-muted">· {agent.unreachableReason}</span>}
+    </>
+  );
+
 export const AgentModeSections = ({ status, now, justTurnedOn }: { readonly status: Connection; readonly now: number; readonly justTurnedOn: boolean }) => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
@@ -95,36 +133,10 @@ export const AgentModeSections = ({ status, now, justTurnedOn }: { readonly stat
         <p className="mb-1 text-[12.5px] text-muted">{t("agentMode.lede")}</p>
         <ul className="border-t border-line" data-testid="agent-mode">
           <KeyRow label={t("agentMode.state")} testId="agent-mode-state">
-            {agent.on ? (
-              <>
-                <Status tone="green" className="text-green">{t("agentMode.on")}</Status>
-                <span className="text-muted">
-                  {agent.since === null ? "" : agent.turnedOnByName === null ? t("agentMode.onSince", { date: day(agent.since) }) : t("agentMode.onSinceBy", { date: day(agent.since), name: agent.turnedOnByName })}
-                </span>
-                {justTurnedOn ? (
-                  <span className="ml-auto flex items-center gap-1 text-faint">
-                    <CheckIcon aria-hidden className="size-[14px] stroke-[1.75] text-green" />
-                    {t("agentMode.justOn")}
-                  </span>
-                ) : null}
-              </>
-            ) : (
-              <Status tone="grey">{t("agentMode.off")}</Status>
-            )}
+            <AgentModeState agent={agent} justTurnedOn={justTurnedOn} />
           </KeyRow>
-          <KeyRow label={t("agentMode.address")}>
-            {agent.reachable ? (
-              <>
-                <CheckIcon aria-hidden className="size-[14px] stroke-[1.75] text-green" />
-                <span className="text-muted">{t("agentMode.reachable")}</span>
-              </>
-            ) : (
-              <>
-                <TriangleAlertIcon aria-hidden className="size-[14px] stroke-[1.75] text-red" />
-                <span>{t("agentMode.unreachable")}</span>
-                {agent.unreachableReason === null ? null : <span className="text-muted">· {agent.unreachableReason}</span>}
-              </>
-            )}
+          <KeyRow label={t("agentMode.address")} testId="agent-mode-address">
+            <PublicAddress agent={agent} />
           </KeyRow>
           <KeyRow label={t("agentMode.appUser")}>
             <span className="font-mono">{status.appUserName ?? "–"}</span>
@@ -200,6 +212,7 @@ export const AgentModeSections = ({ status, now, justTurnedOn }: { readonly stat
           </Section>
 
           <Section title={t("agentMode.eventsTitle")}>
+            {agent.reachable ? null : <p className="mb-1 text-[12.5px] text-muted" data-testid="agent-events-unreachable">{t("agentMode.unreachableNote")}</p>}
             {agent.lastSessionEvents.length === 0 ? (
               <p className="h-9 text-[13px] text-faint">{t("agentMode.eventsNone")}</p>
             ) : (

@@ -5793,6 +5793,7 @@
     "lede": "People in Linear delegate a ticket to ostra or @mention it, and follow the work in the ticket's agent session.",
     "state": "State",
     "on": "On",
+    "onNotReceiving": "On, not receiving",
     "off": "Off",
     "onSince": " · turned on {date}",
     "onSinceBy": " · turned on {date} by {name}",
