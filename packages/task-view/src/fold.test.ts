@@ -504,16 +504,18 @@ const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
       expect(typesOf(m)).not.toContain("data-system");
     },
   },
+  // F-138: the turn's subagent tree, in the turn's metadata; nothing in the thread.
   "subagent.started": {
-    prefix: [],
+    prefix: turnPrefix,
     check: (m) => {
+      expect(lastTurnMeta(m)?.subagents?.nodes.map((node) => [node.id, node.type, node.description])).toEqual([[fixtureIds.subagent, "general", "inspect readme"]]);
       expect(typesOf(m)).not.toContain("data-system");
     },
   },
   "subagent.status": {
-    prefix: [],
+    prefix: turnPrefix,
     check: (m) => {
-      expect(typesOf(m)).not.toContain("data-system");
+      expect(lastTurnMeta(m)?.subagents?.nodes.map((node) => [node.id, node.state, node.error])).toEqual([[fixtureIds.subagent, "failed", "the model endpoint returned 500"]]);
     },
   },
   "pr.opened": {

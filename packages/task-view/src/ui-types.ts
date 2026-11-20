@@ -225,6 +225,69 @@ export type TokenCounts = {
   readonly reasoningTokens?: number;
 };
 
+/**
+ * F-138: a subagent's state on the page, from its agent's reports: at work, waiting on a person
+ * for one of its calls, done, failed, or stopped (interrupted, or its box ended).
+ */
+export type SubagentState = "running" | "needs-approval" | "done" | "failed" | "stopped";
+
+/** A tool call's part, as the thread draws it: what a subagent's calls are, in its window. */
+export type TaskToolPart = Extract<TaskUIPart, { toolCallId: string }>;
+
+/** One round of a subagent: what it was asked, its calls and its answer. A follow-up adds one. */
+export type SubagentRound = {
+  /** The call that asked it, or `null` when its start never arrived. */
+  readonly toolCallId: string | null;
+  readonly prompt: string;
+  /** When it was asked, in ms since the epoch. */
+  readonly askedAt: number | null;
+  readonly calls: readonly TaskToolPart[];
+  /** Its last message: the answer. `null` until it says one. */
+  readonly answer: string | null;
+};
+
+/** One subagent of a turn, for the badge and the window (F-138). */
+export type SubagentNode = {
+  readonly id: string;
+  /** The subagent that started it; `null`: the main agent. */
+  readonly parentId: string | null;
+  readonly depth: number;
+  /** The agent's own name for its kind (`explore`, `general`); `null` when its start never arrived. */
+  readonly type: string | null;
+  readonly description: string;
+  readonly state: SubagentState;
+  /** A failed subagent's error, in its agent's words. */
+  readonly error?: string;
+  readonly startedAt: number | null;
+  /** When it ended; `null` while it runs. */
+  readonly endedAt: number | null;
+  /** The call that started it (its first round's). */
+  readonly startedBy: string | null;
+  readonly rounds: readonly SubagentRound[];
+  /** Its calls, every round's. */
+  readonly callCount: number;
+  /** The subagents it started, in start order. */
+  readonly children: readonly string[];
+  /** Its start never arrived: it shows under the main agent, with a note, so nothing is lost. */
+  readonly orphan: boolean;
+};
+
+/** A turn's subagents, nested ones included, as one tree under the main agent. */
+export type SubagentTree = {
+  /** Depth first, each parent before its children, in start order: the window's order. */
+  readonly nodes: readonly SubagentNode[];
+  /** The main agent's own calls in the turn. */
+  readonly rootCalls: number;
+  readonly counts: {
+    readonly total: number;
+    readonly running: number;
+    readonly needsApproval: number;
+    readonly failed: number;
+    readonly stopped: number;
+    readonly done: number;
+  };
+};
+
 export type TaskMessageMeta = {
   firstSeq: number;
   lastSeq: number;
@@ -258,6 +321,10 @@ export type TaskMessageMeta = {
   usage?: TokenCounts;
   /** The agent's own context figure, once per turn: the context meter only (Q124). */
   context?: { used: number; size: number };
+  /** When the turn ended, in ms since the epoch: its time in the subagents' window (F-138). */
+  endedAt?: number;
+  /** F-138: the subagents the turn started, as a tree. Missing when it started none. */
+  subagents?: SubagentTree;
 };
 
 export type TaskUIMessage = UIMessage<TaskMessageMeta, TaskDataParts, TaskUITools>;

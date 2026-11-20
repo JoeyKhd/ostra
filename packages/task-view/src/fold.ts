@@ -16,6 +16,8 @@ import type {
   SessionId,
   StopReason,
   StoredEvent,
+  SubagentId,
+  SubagentStatus,
   ToolCallId,
   ToolKind,
   TurnId,
@@ -30,7 +32,11 @@ import type {
   QuestionStatus,
   SetupData,
   SetupOutputLine,
+  SubagentNode,
+  SubagentState,
+  SubagentTree,
   TaskMessageMeta,
+  TaskToolPart,
   TaskUIMessage,
   TaskUIPart,
   TokenCounts,
@@ -71,6 +77,44 @@ type ToolRecord = {
   cancelled: boolean;
   approval?: ApprovalRecord;
   owner: Builder;
+  /** F-138: the subagent whose call it is; missing for the main agent's. */
+  subagentId?: SubagentId;
+  /** F-138: it's in the thread (the main agent's, or a subagent's that asked for an approval). */
+  inThread?: boolean;
+};
+
+/** F-138: one round of a subagent, as the fold builds it. */
+type RoundRecord = {
+  toolCallId: ToolCallId | null;
+  prompt: string;
+  askedAt: number | null;
+  calls: ToolRecord[];
+  answer: string | null;
+};
+
+/** F-138: one subagent, as the fold builds it, until the tree is made at the end. */
+type SubagentRecord = {
+  id: SubagentId;
+  parentId: SubagentId | null;
+  depth: number;
+  type: string | null;
+  description: string;
+  /** Its last reported state; `null` while its agent reported none. */
+  status: SubagentStatus | null;
+  error?: string;
+  startedAt: number | null;
+  endedAt: number | null;
+  startedBy: ToolCallId | null;
+  rounds: RoundRecord[];
+  children: SubagentId[];
+  orphan: boolean;
+  /** The turn whose tree it's in: the one that started it, or its parent's. */
+  turn: Builder;
+  sessionId: SessionId;
+  /** Its session ended or crashed while it ran: it's stopped. */
+  boxEnded: boolean;
+  /** Its place in start order. */
+  order: number;
 };
 
 type QuestionRecord = {
@@ -105,6 +149,8 @@ type Builder = {
   meta: TaskMessageMeta;
   planSlot?: Extract<Slot, { t: "plan" }>;
   compactionSlot?: Extract<Slot, { t: "compaction" }>;
+  /** F-138: the turn's subagents, nested ones included. */
+  subagents?: SubagentRecord[];
 };
 
 // ---- tool parts -------------------------------------------------------------------------
@@ -382,6 +428,88 @@ export const heldMessages = (events: readonly StoredEvent[]): ReadonlySet<Client
   return held;
 };
 
+// ---- subagents (F-138) -------------------------------------------------------------------
+
+const isToolPart = (part: TaskUIPart): part is TaskToolPart =>
+  part.type === "dynamic-tool" || part.type === "tool-read" || part.type === "tool-edit" || part.type === "tool-execute";
+
+const toolPartOf = (rec: ToolRecord): TaskToolPart => {
+  const part = toolPart(rec);
+  if (!isToolPart(part)) throw new Error("a tool record's part is a tool part");
+  return part;
+};
+
+/** A subagent's state on the page, from its last report, its calls and its turn (`SubagentState`). */
+const stateOf = (record: SubagentRecord): SubagentState => {
+  switch (record.status) {
+    case "failed":
+      return "failed";
+    case "interrupted":
+      return "stopped";
+    case "completed":
+      return "done";
+    case "created":
+    case "running":
+    case null: {
+      const round = record.rounds.at(-1);
+      if (round?.calls.some((call) => call.approval?.status.state === "pending" && call.outcome === undefined && !call.cancelled) === true) {
+        return "needs-approval";
+      }
+      if (record.boxEnded) return "stopped";
+      // An agent that reports no states (its start alone, or a peer that sent none): once its turn
+      // is over, it's done when it answered, and stopped when it didn't.
+      if (record.status === null && record.turn.meta.turnState !== "running") {
+        return round?.answer === null || round === undefined ? "stopped" : "done";
+      }
+      return "running";
+    }
+    default:
+      return record.status satisfies never;
+  }
+};
+
+/** A turn's subagents as the tree the badge and the window read: depth first, in start order. */
+const treeOf = (turn: Builder, records: readonly SubagentRecord[]): SubagentTree => {
+  const byId = new Map(records.map((record) => [record.id, record] as const));
+  const ordered = [...records].sort((a, b) => a.order - b.order);
+  const nodes: SubagentNode[] = [];
+  const seen = new Set<SubagentId>();
+  const visit = (record: SubagentRecord): void => {
+    if (seen.has(record.id)) return;
+    seen.add(record.id);
+    const state = stateOf(record);
+    nodes.push({
+      id: record.id,
+      parentId: record.parentId !== null && byId.has(record.parentId) ? record.parentId : null,
+      depth: record.depth,
+      type: record.type,
+      description: record.description,
+      state,
+      ...(record.error === undefined ? {} : { error: record.error }),
+      startedAt: record.startedAt,
+      endedAt: state === "running" || state === "needs-approval" ? null : record.endedAt,
+      startedBy: record.startedBy,
+      rounds: record.rounds.map((round) => ({ toolCallId: round.toolCallId, prompt: round.prompt, askedAt: round.askedAt, calls: round.calls.map(toolPartOf), answer: round.answer })),
+      callCount: record.rounds.reduce((sum, round) => sum + round.calls.length, 0),
+      children: [...record.children].filter((child) => byId.has(child)).sort((a, b) => (byId.get(a)?.order ?? 0) - (byId.get(b)?.order ?? 0)),
+      orphan: record.orphan,
+    });
+    for (const child of [...record.children].sort((a, b) => (byId.get(a)?.order ?? 0) - (byId.get(b)?.order ?? 0))) {
+      const next = byId.get(child);
+      if (next !== undefined) visit(next);
+    }
+  };
+  // The main agent's subagents first, then any whose parent is in another turn's tree.
+  for (const record of ordered) if (record.parentId === null || !byId.has(record.parentId)) visit(record);
+  for (const record of ordered) visit(record);
+  const count = (state: SubagentState): number => nodes.filter((node) => node.state === state).length;
+  return {
+    nodes,
+    rootCalls: turn.slots.filter((slot) => slot.t === "tool" && slot.rec.subagentId === undefined).length,
+    counts: { total: nodes.length, running: count("running"), needsApproval: count("needs-approval"), failed: count("failed"), stopped: count("stopped"), done: count("done") },
+  };
+};
+
 // ---- the fold ---------------------------------------------------------------------------
 
 /**
@@ -404,6 +532,8 @@ export const foldTaskEvents = (
   const prTitles = new Map<RepoId, string>();
   const committedSegments = new Set<SegmentId>();
   const committedClientIds = new Set<ClientMessageId>();
+  // F-138: every subagent of the task, by its ID, and the call that started each one.
+  const subagents = new Map<SubagentId, SubagentRecord>();
   // Where each member message stands, the same for every viewer (ticket 19): "queued" until the
   // turn that carries it starts, then "delivered after the turn".
   const deliveries = messageDeliveries(events);
@@ -467,6 +597,68 @@ export const foldTaskEvents = (
     state,
   });
 
+  /**
+   * F-138: a subagent's record, made when its first event comes. One whose start hasn't come yet is
+   * an orphan under the main agent of `turn`, until its `subagent.started` places it.
+   */
+  const subagentOf = (id: SubagentId, turn: Builder, sessionId: SessionId): SubagentRecord => {
+    const existing = subagents.get(id);
+    if (existing !== undefined) return existing;
+    const record: SubagentRecord = {
+      id,
+      parentId: null,
+      depth: 1,
+      type: null,
+      description: "",
+      status: null,
+      startedAt: null,
+      endedAt: null,
+      startedBy: null,
+      rounds: [{ toolCallId: null, prompt: "", askedAt: null, calls: [], answer: null }],
+      children: [],
+      orphan: true,
+      turn,
+      sessionId,
+      boxEnded: false,
+      order: subagents.size,
+    };
+    subagents.set(id, record);
+    turn.subagents = [...(turn.subagents ?? []), record];
+    return record;
+  };
+
+  /** The current round of a subagent: where its calls and its answer go. */
+  const roundOf = (record: SubagentRecord): RoundRecord => {
+    const round = record.rounds.at(-1);
+    if (round !== undefined) return round;
+    const first: RoundRecord = { toolCallId: null, prompt: "", askedAt: null, calls: [], answer: null };
+    record.rounds.push(first);
+    return first;
+  };
+
+  /** Moves a record into another turn's tree (its parent's), keeping its place in start order. */
+  const moveTo = (record: SubagentRecord, turn: Builder): void => {
+    if (record.turn === turn) return;
+    record.turn.subagents = (record.turn.subagents ?? []).filter((other) => other !== record);
+    record.turn = turn;
+    turn.subagents = [...(turn.subagents ?? []), record];
+    for (const child of record.children) {
+      const next = subagents.get(child);
+      if (next !== undefined) moveTo(next, turn);
+    }
+  };
+
+  /** F-138: the session ended or crashed: what of its subagents still ran is stopped. */
+  const stopSubagentsOf = (sessionId: SessionId, endedAt: number): void => {
+    for (const record of subagents.values()) {
+      if (record.sessionId === sessionId && (record.status === null || record.status === "created" || record.status === "running")) {
+        record.boxEnded = true;
+        record.endedAt ??= endedAt;
+      }
+    }
+  };
+
+
   const setupOf = (sessionId: SessionId, seq: number): SetupRecord => {
     const existing = setups.get(sessionId);
     if (existing !== undefined) {
@@ -526,12 +718,15 @@ export const foldTaskEvents = (
         const turn = ensureTurn(event.turnId, sessionId, seq);
         turn.meta.turnState = "ended";
         turn.meta.stopReason = event.stopReason satisfies StopReason;
+        turn.meta.endedAt = stored.at;
         if (event.stopReason === "cancelled") {
-          for (const slot of turn.slots) {
-            if (slot.t === "tool" && slot.rec.outcome === undefined) {
-              slot.rec.cancelled = true;
-              if (slot.rec.approval?.status.state === "pending") {
-                slot.rec.approval.status = { state: "closed", reason: "cancelled" };
+          // F-138: the turn's subagents' calls stop with it, as its own do.
+          const subagentCalls = (turn.subagents ?? []).flatMap((record) => record.rounds.flatMap((round) => round.calls));
+          for (const rec of [...turn.slots.flatMap((slot) => (slot.t === "tool" ? [slot.rec] : [])), ...subagentCalls]) {
+            if (rec.outcome === undefined) {
+              rec.cancelled = true;
+              if (rec.approval?.status.state === "pending") {
+                rec.approval.status = { state: "closed", reason: "cancelled" };
               }
             }
           }
@@ -542,11 +737,18 @@ export const foldTaskEvents = (
         const turn = ensureTurn(event.turnId, sessionId, seq);
         turn.meta.turnState = "failed";
         turn.meta.error = event.error;
+        turn.meta.endedAt = stored.at;
         break;
       }
       case "agent.message": {
         committedSegments.add(event.segmentId);
-        ensureTurn(event.turnId, sessionId, seq).slots.push({
+        const turn = ensureTurn(event.turnId, sessionId, seq);
+        if (event.subagentId !== undefined) {
+          // F-138: a subagent's words are its own, in its window: never the main agent's in the thread.
+          roundOf(subagentOf(event.subagentId, turn, sessionId)).answer = event.text;
+          break;
+        }
+        turn.slots.push({
           t: "part",
           part: text(event.text, "done"),
         });
@@ -554,7 +756,13 @@ export const foldTaskEvents = (
       }
       case "agent.thought": {
         committedSegments.add(event.segmentId);
-        ensureTurn(event.turnId, sessionId, seq).slots.push({
+        const turn = ensureTurn(event.turnId, sessionId, seq);
+        if (event.subagentId !== undefined) {
+          // F-138: a subagent's thinking stays with it; the window shows its calls and its answer.
+          subagentOf(event.subagentId, turn, sessionId);
+          break;
+        }
+        turn.slots.push({
           t: "part",
           part: reasoning(event.text, "done"),
         });
@@ -601,6 +809,15 @@ export const foldTaskEvents = (
           owner: turn,
         };
         tools.set(event.toolCallId, rec);
+        if (event.subagentId !== undefined) {
+          // F-138: a subagent's call is in its window, not the thread.
+          rec.subagentId = event.subagentId;
+          const record = subagentOf(event.subagentId, turn, sessionId);
+          rec.owner = record.turn;
+          roundOf(record).calls.push(rec);
+          break;
+        }
+        rec.inThread = true;
         turn.slots.push({ t: "tool", rec });
         break;
       }
@@ -632,6 +849,12 @@ export const foldTaskEvents = (
           status: { state: "pending" },
         };
         approvals.set(event.approvalId, rec);
+        if (rec.subagentId !== undefined && rec.inThread !== true) {
+          // F-138: a subagent's call that asks asks in the thread too, where it was asked: one
+          // answer, from either place, closes both.
+          rec.inThread = true;
+          rec.owner.slots.push({ t: "tool", rec });
+        }
         break;
       }
       case "approval.answered":
@@ -687,6 +910,11 @@ export const foldTaskEvents = (
       }
       case "plan.updated": {
         const turn = ensureTurn(event.turnId, sessionId, seq);
+        if (event.subagentId !== undefined) {
+          // F-138: a subagent's plan is its own, not the turn's.
+          subagentOf(event.subagentId, turn, sessionId);
+          break;
+        }
         if (turn.planSlot === undefined) {
           turn.planSlot = { t: "plan", id: `plan:${event.turnId}`, entries: event.entries };
           turn.slots.push(turn.planSlot);
@@ -765,6 +993,7 @@ export const foldTaskEvents = (
         break;
       }
       case "session.ended": {
+        stopSubagentsOf(sessionId, stored.at);
         row(seq, sessionId, {
           type: "data-session-end",
           id: `session-end:${sessionId}`,
@@ -902,16 +1131,70 @@ export const foldTaskEvents = (
       case "environment.proposed":
         // Protocol minor 5. No row until the milestone 6 task page draws them (tickets 30 to 36).
         break;
-      case "subagent.started":
-      case "subagent.status":
-        // Protocol minor 6 (F-138): the turn's subagent tree.
+      case "subagent.started": {
+        // F-138: placed in the tree of its parent's turn, or of the turn of the call that started it.
+        const parent = event.parentSubagentId === undefined ? undefined : subagents.get(event.parentSubagentId);
+        const starter = tools.get(event.toolCallId);
+        const turn = parent?.turn ?? starter?.owner ?? lastTurnBySession.get(sessionId);
+        if (turn === undefined) {
+          problem(seq, sessionId, `subagent ${event.subagentId} started before any turn`);
+          break;
+        }
+        touch(turn, seq);
+        const known = subagents.get(event.subagentId);
+        const record = known ?? subagentOf(event.subagentId, turn, sessionId);
+        if (known !== undefined && !known.orphan) {
+          // A follow-up: the same subagent asked again, a round of its own.
+          record.rounds.push({ toolCallId: event.toolCallId, prompt: event.prompt, askedAt: stored.at, calls: [], answer: null });
+          record.status = null;
+          record.endedAt = null;
+        } else {
+          const first = roundOf(record);
+          first.toolCallId = event.toolCallId;
+          first.prompt = event.prompt;
+          first.askedAt = stored.at;
+          record.orphan = false;
+          record.startedBy = event.toolCallId;
+          record.parentId = event.parentSubagentId ?? null;
+          record.depth = event.depth;
+          record.type = event.type;
+          record.description = event.description;
+          record.startedAt ??= stored.at;
+          moveTo(record, turn);
+          if (event.parentSubagentId !== undefined) {
+            const parentRecord = parent ?? subagentOf(event.parentSubagentId, turn, sessionId);
+            if (!parentRecord.children.includes(record.id)) parentRecord.children.push(record.id);
+          }
+        }
         break;
+      }
+      case "subagent.status": {
+        const turn = lastTurnBySession.get(sessionId);
+        const known = subagents.get(event.subagentId);
+        if (known === undefined && turn === undefined) {
+          problem(seq, sessionId, `subagent ${event.subagentId} reported before any turn`);
+          break;
+        }
+        const record = known ?? (turn === undefined ? undefined : subagentOf(event.subagentId, turn, sessionId));
+        if (record === undefined) break;
+        touch(record.turn, seq);
+        record.status = event.status;
+        if (event.status === "created" || event.status === "running") {
+          record.startedAt ??= stored.at;
+          record.endedAt = null;
+        } else {
+          record.endedAt = stored.at;
+        }
+        if (event.status === "failed" && event.error !== undefined) record.error = event.error;
+        break;
+      }
       case "session.config_changed":
       case "runner.connected":
       case "runner.lost":
       case "session.restored":
       case "session.crashed":
       case "turn.cancel_requested": {
+        if (event.kind === "session.crashed") stopSubagentsOf(sessionId, stored.at);
         row(seq, sessionId, {
           type: "data-system",
           id: `system:${String(seq)}`,
@@ -970,10 +1253,12 @@ export const foldTaskEvents = (
   for (const message of options.previous ?? []) previousById.set(message.id, message);
 
   return builders.map((builder): TaskUIMessage => {
+    // F-138: the turn's subagents, as a tree, made once every event is in.
+    const records = builder.subagents ?? [];
     const message: TaskUIMessage = {
       id: builder.id,
       role: builder.role,
-      metadata: builder.meta,
+      metadata: records.length === 0 ? builder.meta : { ...builder.meta, subagents: treeOf(builder, records) },
       parts: builder.slots.map(slotToPart),
     };
     const previous = previousById.get(message.id);
