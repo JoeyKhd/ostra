@@ -17,7 +17,10 @@ const DEV_ONLY = "development only";
 /** GitHub.com's LFS storage hosts (Q119, spike 4): the default of OSTRA_GITHUB_LFS_HOSTS. */
 export const GITHUB_COM_LFS_HOSTS = ["github-cloud.githubusercontent.com", "github-cloud.s3.amazonaws.com", "lfs.github.com"] as const;
 
-const lfsHostPattern = /^(?:\*\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+/** The published docs site (ADR 0063, ticket 21's `siteUrl`): the default of OSTRA_DOCS_URL. */
+export const DOCS_SITE_URL = "https://joeykhd.github.io/ostra/";
+
+const lfsHostPattern =/^(?:\*\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 /** Every setting's variable. `settingFields` must hold exactly these: the compiler refuses a missing or an extra one. */
 export const settingNames = [
@@ -94,6 +97,8 @@ export const settingNames = [
   "OSTRA_PERSONAL_RUNNER_CAPACITY",
   "OSTRA_QUEUE_SWEEP_SECONDS",
   "OSTRA_DEV_HOST_POOL_SAME_USER",
+  // Milestone 7 (spec section 5.4).
+  "OSTRA_DOCS_URL",
 ] as const;
 
 export type SettingName = (typeof settingNames)[number];
@@ -375,6 +380,10 @@ export const settingFields = {
     default: "false",
     description: "Development and tests only: lets a host pool runner run the agent as its own OS user, labelled \"not isolated, same user (development only)\". Refused as true unless NODE_ENV is development or test.",
   },
+  OSTRA_DOCS_URL: {
+    default: DOCS_SITE_URL,
+    description: "The docs site's address, which the panel's help links point at. Set it to a copy you host yourself, such as one for your own version.",
+  },
 } as const satisfies Record<SettingName, { readonly default: string; readonly description: string }>;
 
 /**
@@ -531,6 +540,8 @@ const rawSettingsSchema = z.strictObject({
   OSTRA_PERSONAL_RUNNER_CAPACITY: whole(1, 64).default(2).describe(describe("OSTRA_PERSONAL_RUNNER_CAPACITY")),
   OSTRA_QUEUE_SWEEP_SECONDS: whole(1, 3600).default(5).describe(describe("OSTRA_QUEUE_SWEEP_SECONDS")),
   OSTRA_DEV_HOST_POOL_SAME_USER: flag.default(false).describe(describe("OSTRA_DEV_HOST_POOL_SAME_USER")),
+  // Milestone 7.
+  OSTRA_DOCS_URL: url.default(DOCS_SITE_URL).describe(describe("OSTRA_DOCS_URL")),
 });
 
 /** The server's settings, resolved: every default filled in. Holds secrets: never logged whole. */
@@ -633,6 +644,8 @@ export type ServerSettings = {
   readonly queueSweepSeconds: number;
   /** OSTRA_DEV_HOST_POOL_SAME_USER: only ever true in development and tests. */
   readonly devHostPoolSameUser: boolean;
+  /** OSTRA_DOCS_URL: the docs site, always ending in one slash, so a page's path is appended to it. */
+  readonly docsUrl: string;
 };
 
 /**
@@ -825,6 +838,7 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
       personalRunnerCapacity: value.OSTRA_PERSONAL_RUNNER_CAPACITY,
       queueSweepSeconds: value.OSTRA_QUEUE_SWEEP_SECONDS,
       devHostPoolSameUser: value.OSTRA_DEV_HOST_POOL_SAME_USER,
+      docsUrl: `${value.OSTRA_DOCS_URL.replace(/\/+$/, "")}/`,
     },
   };
 };

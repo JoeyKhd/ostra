@@ -53,6 +53,8 @@ export const auditActions = {
   "reset-link.created": "user",
   "reset-link.used": "user",
   "password.changed": "user",
+  // Milestone 7 (F-082): a member chose dark, light or the system's theme.
+  "account.theme_changed": "user",
   "github.linked": "member",
   "github.unlinked": "member",
   // ---- the organization and its settings ----

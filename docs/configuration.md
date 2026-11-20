@@ -79,6 +79,7 @@ Read by `apps/core` and `apps/web` through `parseServerSettings` (`packages/doma
 | `OSTRA_PERSONAL_RUNNER_CAPACITY` | `2` | How many tasks a personal runner runs at once, unless its member sets another number on the runner (F-014, F-067). |
 | `OSTRA_QUEUE_SWEEP_SECONDS` | `5` | How often each pool's queue is swept for tasks that now fit, besides the admission every change of room starts (F-067). |
 | `OSTRA_DEV_HOST_POOL_SAME_USER` | `false` | Development and tests only: lets a `host` pool runner run the agent as its own OS user, labelled "not isolated, same user (development only)". The server refuses to start with it `true` unless `NODE_ENV` is `development` or `test`. |
+| `OSTRA_DOCS_URL` | `https://joeykhd.github.io/ostra/` | The docs site's address, which the panel's help links point at (F-058). Set it to a copy you host yourself, such as one for your own version. |
 
 Booleans take `true`, `false`, `1`, `0`, `on`, `off`, `yes` or `no`.
 
