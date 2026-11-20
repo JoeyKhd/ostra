@@ -20,12 +20,14 @@ import type {
   QuestionAnswer,
   QuestionRequest,
   RepoPushResult,
+  StagedCommitPaths,
 } from "@ostra/adapter-sdk";
 import {
   approvalIdSchema,
   approvedPlanPrompt,
   denyPrompt,
   firstMatchingTaskRule,
+  NEUTRAL_REPLY,
   noReasoning,
   PLAN_MODE_REFUSED_LINE,
   planRevisionPrompt,
@@ -50,6 +52,7 @@ import type {
   EffortLevel,
   PlanEntry,
   QuestionId,
+  RepoId,
   RuleContext,
   TaskRule,
   TurnMode,
@@ -80,7 +83,7 @@ import { checkRepoFolders } from "./repo-folders.ts";
 import type { ServerLink } from "./server-link.ts";
 import { allowOnce, decidePermission, rejectOnce, TASK_RULE_NAME } from "./permission-decision.ts";
 import { loadSessionArchive, saveSessionArchive } from "./session-archive.ts";
-import { writeTicketFiles } from "./ticket-files.ts";
+import { writeCiFiles, writeTicketFiles } from "./ticket-files.ts";
 import type { ArchiveContext } from "./session-archive.ts";
 import { writeSkills } from "./skills.ts";
 import { commandInBox } from "./stdio-command.ts";
@@ -278,6 +281,13 @@ export const porcelainPaths = (output: string): readonly string[] => {
 const errorName = (error: unknown): string => (error instanceof Error ? error.name : "unknown");
 
 /**
+ * The answers an automatic turn gives a question (F-101, Q160): the neutral reply in every text
+ * field, and a select's first option, since a select can't take free text.
+ */
+export const neutralAnswers = (request: Pick<QuestionRequest, "fields">): Readonly<Record<string, string>> =>
+  Object.fromEntries(request.fields.map((field) => [field.id, field.type === "select" ? (field.options?.[0] ?? NEUTRAL_REPLY) : NEUTRAL_REPLY]));
+
+/**
  * Whether the runner commits and pushes a task's work (milestone 6, ticket 22, Q221): a code task's
  * branch and hidden ref, yes; a refine or a review task's, never. Their git proxy is read-only too.
  */
@@ -349,7 +359,12 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   let credentials: TaskCredentials | undefined;
   let ending: Ending | undefined;
   const endingSignal = new AbortController();
-  const steers: string[] = [];
+  /** Messages for the next turn, each with whether it's an automatic round's (minor 5, F-101). Never logged. */
+  const steers: { readonly text: string; readonly automatic: boolean }[] = [];
+  /** Whether the running turn is an automatic round (F-101, ADR 0041): its questions get the neutral reply. */
+  let turnAutomatic = false;
+  /** Whether the text `takeQueued` last gave is an automatic round's only: no person's message is in it. */
+  let queuedAutomatic = false;
   const stopDone = deferred<CommandOutcome>();
   /** The running turn's own abort: its time ran out, or it was cancelled to end the session. */
   let turnAbort = new AbortController();
@@ -387,6 +402,11 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   let effortQueue: Promise<void> = Promise.resolve();
   /** A reopen's pending messages, each a turn of its own, in order (F-047). Never logged. */
   const pending: string[] = [];
+  /**
+   * Whether the session's first turn is an automatic round (F-101, minor 5): the spec's `automatic`,
+   * which a box's sidecar reads as the runner does, or the dispatch's.
+   */
+  const firstTurnAutomatic = (taskSpec: TaskSpec): boolean => taskSpec.automatic === true || dispatch.automatic === true;
   /** The idle limit of a session across turns, in ms. */
   const idleMs = (taskSpec: TaskSpec): number => (taskSpec.limits.idleMinutes ?? runnerLimits.idleMinutes) * 60_000;
   /** Wakes the session waiting between turns: a message came, or the session is ending. */
@@ -633,6 +653,14 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       return { outcome: "cancelled" };
     }
     const questionId = questionIdSchema.parse(randomUUID());
+    // F-101 (ADR 0041, Q160): in an automatic turn nobody is there to answer. The fixed neutral reply
+    // goes back at once, as an answer and never a decline (spike 10: a decline ends OpenCode's turn),
+    // and the thread records it by the question's ID. The question's text is never logged.
+    if (turnAutomatic && channel?.supports("question.auto_answered") === true) {
+      void emit({ kind: "question.auto_answered", questionId, reply: NEUTRAL_REPLY });
+      log.info("a question in an automatic turn got the neutral reply", { questionId, fields: request.fields.length });
+      return { outcome: "answered", answers: neutralAnswers(request) };
+    }
     void emit({ kind: "question.asked", turnId: currentTurn, questionId, message: request.message, fields: [...request.fields] });
     // A turn that waits on a person follows the idle timer too (ADR 0039, ticket 23): when it fires,
     // the turn is cancelled, its work saved, and the session ends. The needs-you item stays on the server.
@@ -898,7 +926,11 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
 
   // ---------- one turn ----------
 
-  const runTurn = async (text: string, currentSpec: TaskSpec): Promise<{ readonly crashed: string | null; readonly turnId: TurnId; readonly stopReason: StopReason | null }> => {
+  const runTurn = async (
+    text: string,
+    currentSpec: TaskSpec,
+    automatic = false,
+  ): Promise<{ readonly crashed: string | null; readonly turnId: TurnId; readonly stopReason: StopReason | null }> => {
     if (agent === undefined || session === undefined || agentProcess === undefined) {
       return { crashed: "the agent isn't running", turnId: turnIdSchema.parse(randomUUID()), stopReason: null };
     }
@@ -908,6 +940,10 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     const turnId = turnIdSchema.parse(randomUUID());
     turn = turnId;
     turnOrdinal += 1;
+    turnAutomatic = automatic;
+    if (automatic) {
+      log.info("an automatic turn starts", { turnOrdinal });
+    }
     mcp?.turnStarted();
     unsaved = true;
     turnRunning = true;
@@ -937,6 +973,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       // Nothing outlives its turn: a request the agent left open is closed with it.
       closeHeld("cancelled");
       turnRunning = false;
+      turnAutomatic = false;
       effortHeld = false;
       turn = undefined;
     }
@@ -1009,6 +1046,20 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
 
   // ---------- endings ----------
 
+  /**
+   * F-113 (minor 5): a commit that kept only the spec's `commitPaths` and left changes out says so,
+   * per repo, with what it kept and at most 50 of what it left. Paths only, never a file's content.
+   */
+  const reportFiltered = async (repos: readonly { readonly repoId: RepoId; readonly filtered?: StagedCommitPaths }[]): Promise<void> => {
+    for (const repo of repos) {
+      const filtered = repo.filtered;
+      if (filtered === undefined || filtered.droppedCount === 0 || channel?.supports("commit.filtered") !== true) {
+        continue;
+      }
+      await emit({ kind: "commit.filtered", repoId: repo.repoId, kept: [...filtered.kept], dropped: [...filtered.dropped], droppedCount: filtered.droppedCount });
+    }
+  };
+
   const pushWork = async (
     currentSpec: TaskSpec,
     message: string,
@@ -1028,6 +1079,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     if (!pushed.ok) {
       return { ok: false, error: `pushing the task's work failed: ${pushed.error.message}`.slice(0, ERROR_MAX) };
     }
+    await reportFiltered(pushed.value);
     for (const repo of pushed.value) {
       if (repo.ahead && repo.headSha !== null) {
         // F-066: each repo's own branch, which differs from the task's after a partial merge.
@@ -1091,6 +1143,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       log.warn("committing the turn before its checks failed: no checks", { turnOrdinal: ordinal, code: committed.error.code });
       return { committed: false, checks: undefined };
     }
+    await reportFiltered(committed.value);
     const changedRepoIds = committed.value.filter((repo) => repo.changed).map((repo) => repo.repoId);
     if (changedRepoIds.length === 0) {
       return { committed: true, checks: undefined };
@@ -1185,13 +1238,24 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
 
   /** The next turn's prompt: a reopen's pending message, one at a time, then the messages queued while a turn ran. */
   const takeQueued = (): string | undefined => {
+    queuedAutomatic = false;
     // The runner's own prompt first: a deny's re-prompt answers the turn the deny ended.
     if (ownPrompt !== undefined) {
       const own = ownPrompt;
       ownPrompt = undefined;
       return own;
     }
-    return pending.shift() ?? (steers.length > 0 ? steers.splice(0).join("\n\n") : undefined);
+    const message = pending.shift();
+    if (message !== undefined) {
+      return message;
+    }
+    if (steers.length === 0) {
+      return undefined;
+    }
+    // F-101: a turn is automatic only when every message in it is an automatic round's; one from a person makes it theirs.
+    const taken = steers.splice(0);
+    queuedAutomatic = taken.every((steer) => steer.automatic);
+    return taken.map((steer) => steer.text).join("\n\n");
   };
 
   /**
@@ -1250,8 +1314,13 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     const opening = restored === undefined || restored.origin === "rebuilt" ? taskSpec.prompt : takeQueued();
     // F-063: a plan turn's prompt is the plan-mode preamble, then the task's own.
     let next: string | undefined = opening !== undefined && mode === "plan" && restored === undefined ? planTurnPrompt(opening) : opening;
+    // F-101 (minor 5): an automatic round that starts a fresh session says so in the spec (and the dispatch).
+    let automaticNext = firstTurnAutomatic(taskSpec) || queuedAutomatic;
     while (ending === undefined) {
-      next ??= await nextTurn(taskSpec);
+      if (next === undefined) {
+        next = await nextTurn(taskSpec);
+        automaticNext = queuedAutomatic;
+      }
       if (next === undefined) {
         break;
       }
@@ -1273,8 +1342,9 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       const outsideBefore = planTurn ? await outsideNow(taskSpec) : new Set<string>();
       // F-137: a level changed during the last turn, or while the session waited, before this prompt.
       await effortBeforePrompt();
-      const result = await runTurn(next, taskSpec);
+      const result = await runTurn(next, taskSpec, automaticNext && !planTurn);
       next = undefined;
+      automaticNext = false;
       if (result.crashed !== null) {
         end({ kind: "crashed", error: result.crashed });
       }
@@ -1298,6 +1368,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
           ownPrompt = PLAN_MODE_REFUSED_LINE;
           log.info("a plan turn ended on a refused request: re-prompting", { planRefusals });
           next = takeQueued();
+          automaticNext = queuedAutomatic;
           continue;
         }
         // A plan turn cancelled otherwise (an interrupt) proposes nothing: the next message is planned again.
@@ -1312,6 +1383,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
           break;
         }
         next = takeQueued();
+        automaticNext = queuedAutomatic;
         continue;
       }
       await scanOutsideRepos(taskSpec);
@@ -1321,6 +1393,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         end({ kind: "crashed", error: saved.pushError });
       }
       next = takeQueued();
+      automaticNext = queuedAutomatic;
     }
   };
 
@@ -1776,7 +1849,20 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
    * opens on, before the agent starts. A file that fails is skipped and named; the turn starts anyway.
    */
   const placeTicketFiles = async (taskSpec: TaskSpec): Promise<void> => {
-    const files = taskSpec.contextFiles ?? [];
+    const all = taskSpec.contextFiles ?? [];
+    // F-035 (minor 5): a CI round's log tails go under `.ostra/ci/`, beside the ticket's files, never into a repo's commit.
+    const ciFiles = all.filter((file) => file.folder === "ci");
+    if (ciFiles.length > 0 && dirsCache !== undefined) {
+      await writeCiFiles({
+        link: deps.link,
+        taskId: taskSpec.taskId,
+        leaseEpoch: taskSpec.leaseEpoch,
+        files: ciFiles,
+        sessionDir: agentCwd(dirsCache.workspaceDir, taskSpec.repos),
+        logger: log,
+      });
+    }
+    const files = all.filter((file) => file.folder !== "ci");
     if (files.length === 0 || dirsCache === undefined || channel?.supports("ticket.files_ready") !== true) {
       return;
     }
@@ -2083,15 +2169,18 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     }
     // Milestone 1 (a minor-0 spec): the turn, and any messages queued for after it.
     let next: string | undefined = taskSpec?.prompt;
+    let automaticNext = taskSpec !== undefined && firstTurnAutomatic(taskSpec);
     while (ending === undefined && taskSpec !== undefined && next !== undefined) {
       await effortBeforePrompt();
-      const result = await runTurn(next, taskSpec);
+      const result = await runTurn(next, taskSpec, automaticNext);
+      automaticNext = false;
       if (result.crashed !== null) {
         end({ kind: "crashed", error: result.crashed });
         break;
       }
       await scanOutsideRepos(taskSpec);
       next = takeQueued();
+      automaticNext = queuedAutomatic;
     }
     end({ kind: "finished" });
     const how: Ending = ending ?? { kind: "finished" };
@@ -2184,16 +2273,20 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       log.info("a message for the session", { delivery: body.delivery, intent: body.intent ?? "message", turnRunning, mode });
       if (!turnRunning) {
         // Between turns (milestone 2): the message is the next turn.
-        steers.push(body.text);
+        steers.push({ text: body.text, automatic: body.automatic === true });
         nudge();
         return { result: "accepted" };
       }
       if (body.delivery === "queue" && agent.capabilities.steerMidTurn && session.connection.steeringAdvertised) {
+        // A person's message into a running automatic turn: a person is there now (F-101).
+        if (body.automatic !== true) {
+          turnAutomatic = false;
+        }
         const steered = await agent.steer(session, body.text);
         return steered.ok ? { result: "done" } : { result: "rejected", reason: steered.error.code };
       }
       // Queued for after the turn; an interrupt cancels the turn first.
-      steers.push(body.text);
+      steers.push({ text: body.text, automatic: body.automatic === true });
       if (body.delivery === "interrupt") {
         await cancelTurn();
       }

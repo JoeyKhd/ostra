@@ -11,6 +11,7 @@ import {
   restoreWorkInProgressIn,
   runChecksWith,
   saveWorkInProgressIn,
+  splitByCommitPaths,
 } from "@ostra/adapter-sdk";
 import type {
   AdapterContext,
@@ -41,11 +42,12 @@ import type {
   RunOneCheck,
   SavedRepoWork,
   SaveWorkInProgressInput,
+  StagedCommitPaths,
   StopInput,
   TaskProxies,
   WipDeps,
 } from "@ostra/adapter-sdk";
-import { gitShaSchema, repoBranchName, SETUP_OUTPUT_MAX_CHARS } from "@ostra/protocol";
+import { gitShaSchema, repoBranchName, runnerLimits, SETUP_OUTPUT_MAX_CHARS } from "@ostra/protocol";
 import type { BoxReleaseReason, BoxState, GitPerson, ProjectId, RepoId, RepoSecret, TaskId, TaskSpec, TaskSpecReviewRepo } from "@ostra/protocol";
 import { cgroupPrefix, detectContainment, newUnitMarker, processTreeContainment, sweepLeftovers, TASK_UNIT_ENV } from "./containment.ts";
 import {
@@ -224,6 +226,26 @@ const AGENT_COMMAND_OUTPUT_MAX = 64 * 1024;
 
 /** A folder name for a task's root: its ID, with anything odd replaced. */
 const folderOf = (taskId: TaskId): string => taskId.replace(/[^A-Za-z0-9._-]/g, "_");
+
+/**
+ * The changed paths of `git status --porcelain=v1 -z`, tracked and untracked: a rename counts as its
+ * new path, and its old one, the next entry, isn't a change of its own.
+ */
+export const porcelainZPaths = (output: string): readonly string[] => {
+  const entries = output.split("\0");
+  const paths: string[] = [];
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index] ?? "";
+    if (entry.length < 4) {
+      continue;
+    }
+    paths.push(entry.slice(3));
+    if (entry.startsWith("R") || entry.startsWith("C")) {
+      index += 1;
+    }
+  }
+  return paths;
+};
 
 /** Milestone 6 (F-100): a review task's checkout of the repo, from the spec's `review`, or `null`. */
 export const reviewRepoOf = (spec: Pick<TaskSpec, "review">, repoId: RepoId): TaskSpecReviewRepo | null =>
@@ -633,16 +655,19 @@ export class HostExecutor extends ExecutorAdapter {
     const commit = input.pushOnly === true ? null : await this.#commitMessage(record, input);
     for (const repo of record.spec.repos) {
       const checkout = path.join(record.workspaceDir, repo.checkoutDir);
+      let filtered: StagedCommitPaths | null = null;
       if (commit !== null) {
         const committed = await this.#commitLeft(record, repo, commit);
         if (!committed.ok) {
           return committed;
         }
+        filtered = committed.value;
       }
+      // F-113: a repo whose commit kept nothing of the turn's isn't ahead, so it isn't pushed.
       const count = await this.#git(record, ["rev-list", "--count", `refs/remotes/origin/${repo.defaultBranch}..HEAD`], checkout);
       const ahead = count.code === 0 && Number(count.stdout.trim()) > 0;
       if (!ahead) {
-        results.push({ repoId: repo.repoId, headSha: null, ahead: false });
+        results.push({ repoId: repo.repoId, headSha: null, ahead: false, ...(filtered === null ? {} : { filtered }) });
         continue;
       }
       const head = gitShaSchema.safeParse((await this.#git(record, ["rev-parse", "HEAD"], checkout)).stdout.trim());
@@ -657,7 +682,7 @@ export class HostExecutor extends ExecutorAdapter {
         this.plumbing.logger.warn("push failed", { taskId: record.ref.taskId, repoId: repo.repoId, code: pushed.code });
         return adapterError("unavailable", `pushing ${repo.fullName} through the git proxy failed${this.#reason(pushed)}`);
       }
-      results.push({ repoId: repo.repoId, headSha: head.data, ahead: true });
+      results.push({ repoId: repo.repoId, headSha: head.data, ahead: true, ...(filtered === null ? {} : { filtered }) });
     }
     this.plumbing.logger.info("pushed", { taskId: record.ref.taskId, ahead: results.filter((item) => item.ahead).length });
     return ok(results);
@@ -680,7 +705,8 @@ export class HostExecutor extends ExecutorAdapter {
         return committed;
       }
       const head = await this.#headOf(record, repo);
-      results.push({ repoId: repo.repoId, headSha: head, changed: head === null || head !== record.turnBase.get(repo.repoId) });
+      const filtered = committed.value;
+      results.push({ repoId: repo.repoId, headSha: head, changed: head === null || head !== record.turnBase.get(repo.repoId), ...(filtered === null ? {} : { filtered }) });
       if (head !== null) {
         record.turnBase.set(repo.repoId, head);
       }
@@ -1330,7 +1356,28 @@ export class HostExecutor extends ExecutorAdapter {
   }
 
   /** Commits everything the turn left in one repo: changed, new and untracked files (the env files are excluded). */
+  /**
+   * Commits what the turn left in one repo. With the spec's `commitPaths` (F-113, ADR 0038), only
+   * the allowed paths: their changes are staged and committed, and the rest stay in the working
+   * tree. When the branch's own commits (the agent's) already touch another path, its tip is rebuilt
+   * as one commit on the base with the allowed paths' content: a mixed reset to the base keeps every
+   * change in the tree, and only the allowed ones are committed again. Answers what was kept and left
+   * out, or `null` when the spec commits everything.
+   */
   async #commitLeft(
+    record: BoxRecord,
+    repo: TaskSpec["repos"][number],
+    commit: { readonly file: string; readonly env: Readonly<Record<string, string>> },
+  ): Promise<AdapterResult<StagedCommitPaths | null>> {
+    const commitPaths = record.spec.commitPaths ?? null;
+    if (commitPaths !== null) {
+      return this.#commitAllowed(record, repo, commit, commitPaths);
+    }
+    const committedAll = await this.#commitAll(record, repo, commit);
+    return committedAll.ok ? ok(null) : committedAll;
+  }
+
+  async #commitAll(
     record: BoxRecord,
     repo: TaskSpec["repos"][number],
     commit: { readonly file: string; readonly env: Readonly<Record<string, string>> },
@@ -1348,6 +1395,66 @@ export class HostExecutor extends ExecutorAdapter {
       }
     }
     return ok(undefined);
+  }
+
+  /** F-113: the commit of `#commitLeft` with `commitPaths`. Paths from git only; none is ever logged. */
+  async #commitAllowed(
+    record: BoxRecord,
+    repo: TaskSpec["repos"][number],
+    commit: { readonly file: string; readonly env: Readonly<Record<string, string>> },
+    commitPaths: readonly string[],
+  ): Promise<AdapterResult<StagedCommitPaths>> {
+    const checkout = path.join(record.workspaceDir, repo.checkoutDir);
+    const baseRef = `refs/remotes/origin/${repo.defaultBranch}`;
+    const mergeBase = await this.#git(record, ["merge-base", "HEAD", baseRef], checkout);
+    const base = gitShaSchema.safeParse(mergeBase.stdout.trim());
+    if (mergeBase.code !== 0 || !base.success) {
+      return adapterError("unavailable", `reading ${repo.fullName}'s base failed`);
+    }
+    const branchPaths = async (): Promise<readonly string[] | null> => {
+      const diff = await this.#git(record, ["diff", "--name-only", "--no-renames", "-z", base.data, "HEAD"], checkout);
+      return diff.code === 0 ? diff.stdout.split("\0").filter((entry) => entry !== "") : null;
+    };
+    // 1. The branch's own commits: one that touched another path is undone, its changes kept in the tree.
+    const committed = await branchPaths();
+    if (committed === null) {
+      return adapterError("unavailable", `reading ${repo.fullName}'s commits failed`);
+    }
+    const rebuilt = splitByCommitPaths(committed, commitPaths).dropped.length > 0;
+    if (rebuilt) {
+      const reset = await this.#git(record, ["reset", "--quiet", "--mixed", base.data], checkout);
+      if (reset.code !== 0) {
+        return adapterError("unavailable", `rebuilding ${repo.fullName}'s branch on its base failed`);
+      }
+    }
+    // 2. The tree's changes: only the allowed ones are staged and committed.
+    const status = await this.#git(record, ["status", "--porcelain=v1", "-z", "--untracked-files=all"], checkout);
+    if (status.code !== 0) {
+      return adapterError("unavailable", `reading ${repo.fullName}'s changes failed`);
+    }
+    const split = splitByCommitPaths(porcelainZPaths(status.stdout), commitPaths);
+    for (let start = 0; start < split.kept.length; start += 200) {
+      // A pathspec of its own per path, read literally, so a path's own `*` isn't a glob to git.
+      const added = await this.#git(record, ["add", "--all", "--", ...split.kept.slice(start, start + 200).map((file) => `:(literal)${file}`)], checkout);
+      if (added.code !== 0) {
+        return adapterError("unavailable", `staging ${repo.fullName}'s allowed changes failed`);
+      }
+    }
+    const staged = await this.#git(record, ["diff", "--cached", "--quiet"], checkout);
+    if (staged.code === 1) {
+      const made = await this.#git(record, ["commit", "--quiet", "--no-verify", "--file", commit.file], checkout, commit.env);
+      if (made.code !== 0) {
+        return adapterError("unavailable", `committing ${repo.fullName}'s allowed changes failed${this.#reason(made)}`);
+      }
+    }
+    // 3. What the branch holds now, against its base: the allowed paths only.
+    const kept = (await branchPaths()) ?? [];
+    this.plumbing.logger.info("commit filtered", { taskId: record.ref.taskId, repoId: repo.repoId, kept: kept.length, dropped: split.dropped.length, rebuilt });
+    return ok({
+      kept: kept.slice(0, runnerLimits.commitFilteredPathsMax),
+      dropped: split.dropped.slice(0, runnerLimits.commitFilteredPathsMax),
+      droppedCount: split.dropped.length,
+    });
   }
 
   /** A checkout's head, or `null` when it has none or can't be read. */
