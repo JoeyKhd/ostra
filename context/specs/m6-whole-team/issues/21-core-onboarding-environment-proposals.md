@@ -33,3 +33,4 @@ Spec: `../spec.md`, section 4 ("The onboarding task"); ADR 0038 (amended)
   - On `host`, the line is added to the prompt in the spec, where the box's executor is known. "Not tested here" for services is the panel's (tickets 29, 36), from the task's box.
   - The `environment.propose` job isn't used: the item is written in the endpoint's transaction.
   - The `AGENTS.md` PR itself needs ticket 23's runner commit. The test shows core's half (the spec's `commitPaths` through ticket 04's `splitByCommitPaths`, and the prompt naming only the repos without one).
+- 2026-11-20: landed on main as 3f850ee9.
