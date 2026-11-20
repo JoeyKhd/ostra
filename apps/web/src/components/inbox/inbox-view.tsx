@@ -367,9 +367,13 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
   const project = useQuery(trpc.projects.get.queryOptions({ projectId }));
   const options = useQuery(trpc.inbox.filters.queryOptions({ projectId }));
   const runners = useQuery(trpc.runners.mine.queryOptions());
-  const { chosen, runner, setRunOn } = useRunOn(runners.data);
   // The member's profiles for this project, its default first (F-021).
   const profiles = useStartProfile(projectId);
+  // Milestone 5 (F-069): whether "A pool" and each "Your machine" can take it now, and why not.
+  const choices = useQuery(
+    trpc.tasks.runnerChoices.queryOptions(profiles.options === undefined ? skipToken : { projectId, ...(profiles.chosen === null ? {} : { profileId: profiles.chosen.profileId }) }),
+  );
+  const { chosen, runner, setRunOn } = useRunOn(runners.data, choices.data);
   // F-037: the budget gate's reason before Start, for the chosen profile.
   const check = useQuery(
     trpc.tasks.startCheck.queryOptions(profiles.options === undefined ? skipToken : { projectId, ...(profiles.chosen === null ? {} : { profileId: profiles.chosen.profileId }) }, { retry: false }),
@@ -469,7 +473,7 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
             profiles.options !== undefined && profiles.chosen === null ? null : (
               <ProfilePicker options={profiles.options} chosen={profiles.chosen} onPick={profiles.pick} disabled={start.isPending} className="-ml-2" />
             ),
-          runOn: <RunOnPicker runners={runners.data} runner={runner} onPick={setRunOn} disabled={start.isPending} />,
+          runOn: <RunOnPicker runners={runners.data} runner={runner} onPick={setRunOn} disabled={start.isPending} choices={choices.data} project={project.data?.name ?? ""} />,
           starting: start.isPending,
           error: errorText(start.error),
           budgetWait,

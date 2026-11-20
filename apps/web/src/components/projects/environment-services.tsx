@@ -710,7 +710,21 @@ const SnapshotRows = ({ snapshot, pressed }: { readonly snapshot: SnapshotView; 
             {ready.durationMs === null ? null : <> · <span className="font-mono">{formatDuration(ready.durationMs)}</span></>}
           </span>
         </Row>
-        {ready.runnerName === null ? null : <Row label={t("environment.snap.onRunner")}><span className="truncate font-mono">{ready.runnerName}</span></Row>}
+        {ready.runnerName === null ? null : (
+          <Row label={t("envSnapshot.builtOn")}>
+            <span className="truncate" data-testid="snapshot-built-on">
+              {ready.builder === null ? <span className="font-mono">{ready.runnerName}</span> : t("envSnapshot.builtOnValue", { runner: ready.runnerName, builder: ready.builder === "buildkit" ? "BuildKit" : "docker" })}
+            </span>
+          </Row>
+        )}
+        {/* Milestone 5 (F-120, ticket 33): where the registry holds it, by digest; a host's own image says so. */}
+        {ready.registry === null ? (
+          ready.digest === null || ready.runnerName === null ? null : <Row label={t("envSnapshot.registryRef")}><span className="truncate text-muted">{t("envSnapshot.local", { runner: ready.runnerName })}</span></Row>
+        ) : (
+          <Row label={t("envSnapshot.registryRef")}>
+            <span className="truncate font-mono text-sm" title={ready.registry.ref} data-testid="snapshot-registry-ref">{ready.registry.ref}</span>
+          </Row>
+        )}
         <Row label={t("environment.snap.why")}><span className="truncate">{snapshotReasonText(ready.reason, ready.requestedBy)}</span></Row>
         {ready.secretScan === null ? null : (
           <Row label={t("environment.snap.secretScan")}>

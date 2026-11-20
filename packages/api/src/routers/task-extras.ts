@@ -191,7 +191,7 @@ export const loadTaskExtras = async (deps: ApiDeps, task: TaskRow, profileModelI
             /** Milestone 5 (F-095): the size it was made with, or `null` where sizes don't apply. */
             size: sizeOf(box),
             /** Milestone 5 (F-093): why it's still being made, and since when (epoch ms), or `null`. */
-            waiting: box.waitingReason === null || box.waitingSince === null ? null : { reason: box.waitingReason, since: box.waitingSince.getTime() },
+            waiting: box.waitingReason === null || box.waitingSince === null ? null : { reason: box.waitingReason === "node" ? ("node" as const) : ("image-pull" as const), since: box.waitingSince.getTime() },
           },
     spend,
     /** The limit that stopped the newest session, if one did. */

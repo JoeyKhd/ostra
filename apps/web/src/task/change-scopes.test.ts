@@ -17,6 +17,8 @@ describe("queryScopesOf", () => {
 
   it("F-095: refreshes the box sizes and the fleet's counts for an organization, a runner, a project or a task change", () => {
     expect(queryScopesOf("organization")).toEqual(expect.arrayContaining(["boxSizes", "fleetUse"]));
+    // F-120: a registry check's result arrives as an organization notice.
+    expect(queryScopesOf("organization")).toEqual(expect.arrayContaining(["registry", "registryUse"]));
     for (const entity of ["runner", "project", "task"] as const) expect(queryScopesOf(entity)).toContain("fleetUse");
   });
 

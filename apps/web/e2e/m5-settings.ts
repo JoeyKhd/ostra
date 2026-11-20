@@ -31,6 +31,28 @@ export type SizesWorld = z.infer<typeof runnersSchema>;
 /** The `e2e-sizes-app` project on three pools, and the profile `e2e-sizes-fast` (seed-m5-settings.ts, `runners`). */
 export const seedSizesWorld = async (): Promise<SizesWorld> => runnersSchema.parse(await seed({ scenario: "runners" }));
 
+const waitsSchema = z.object({
+  projectId: z.string(),
+  poolId: z.string(),
+  tasks: z.array(z.object({ id: z.string(), title: z.string() })),
+  adminName: z.string(),
+  personal: z.object({ offline: z.string(), online: z.string() }),
+});
+export type WaitWorld = z.infer<typeof waitsSchema>;
+/** `e2e-wait-app`, a task per wait reason, the queue, a node wait, a cancel, and `username`'s two machines (`waits`). */
+export const seedWaitWorld = async (username: string): Promise<WaitWorld> => waitsSchema.parse(await seed({ scenario: "waits", username }));
+
+/** The task of a title in the wait world. */
+export const taskOf = (world: WaitWorld, title: string): string => {
+  const task = world.tasks.find((item) => item.title === title);
+  if (task === undefined) throw new Error(`no seeded task "${title}"`);
+  return task.id;
+};
+
+const snapshotSchema = z.object({ snapshotId: z.string(), digest: z.string(), projectId: z.string() });
+/** A snapshot of `e2e-wait-app` pushed to the registry, built with BuildKit (`snapshot`). */
+export const seedPushedSnapshot = async () => snapshotSchema.parse(await seed({ scenario: "snapshot" }));
+
 /** The final screenshot of a screen, for the by-eye check against its target (`m5-<screen>-final.png`). */
 export const shoot = async (page: Page, name: string): Promise<void> => {
   if (shots === undefined) return;

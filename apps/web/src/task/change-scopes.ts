@@ -4,7 +4,7 @@ import type { ChangeEntity } from "@ostra/protocol";
 // over `ChangeEntity`, so a new kind of notice fails the build until the panel says what it refreshes.
 
 /** A top-level tRPC router whose cached queries a notice can invalidate. */
-export type QueryScope = "tasks" | "projects" | "runners" | "pools" | "providers" | "agentProfiles" | "environments" | "github" | "organization" | "me" | "boxSizes" | "fleetUse";
+export type QueryScope = "tasks" | "projects" | "runners" | "pools" | "providers" | "agentProfiles" | "environments" | "github" | "organization" | "me" | "boxSizes" | "fleetUse" | "registry" | "registryUse";
 
 export const queryScopesOf = (entity: ChangeEntity): readonly QueryScope[] => {
   switch (entity) {
@@ -27,7 +27,7 @@ export const queryScopesOf = (entity: ChangeEntity): readonly QueryScope[] => {
     case "member":
     case "organization":
       // A role or a name change shows in the organization's pages and in the signed-in member's own view.
-      return ["organization", "me", "boxSizes", "fleetUse"];
+      return ["organization", "me", "boxSizes", "fleetUse", "registry", "registryUse"];
     default:
       return entity satisfies never;
   }

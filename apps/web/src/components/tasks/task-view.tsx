@@ -42,6 +42,8 @@ import { ChecksTabMarker } from "./task-checks/task-checks";
 import { ReasoningRow, TaskEffortRow } from "./task-effort";
 import type { TaskEffort } from "./task-effort";
 import { TakeItLocal } from "./take-it-local";
+import { TaskWaiting } from "./task-waiting";
+import { boxSizeText } from "./task-waiting-words";
 import type { LocalLoad } from "./take-it-local";
 import { UnderlineTabs } from "@/components/ui/underline-tabs";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -49,6 +51,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 type Task = RouterOutputs["tasks"]["get"];
 
 type TaskTab = "activity" | "changes" | "checks" | "events";
+
+/** The wait reasons milestones 3 and 4 word in their own blocks on this page (the waiting line skips them). */
+const wordedElsewhere: ReadonlySet<string> = new Set(["needs-services-runner", "provider-not-allowed", "installation-not-linked", "no-provider-for-model"]);
 
 /** Records how long the fold of the default view took, for ADR 0036's render bar (the e2e reads it). */
 const recordFold = (ms: number, messages: number): void => {
@@ -127,6 +132,7 @@ const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, t
   const usage = task.usage?.totals ?? { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, spentMicroUsd: null, agentMs: 0, estimated: false };
   const input = Math.max(tokens.inputTokens, task.session?.inputTokens ?? 0);
   const output = Math.max(tokens.outputTokens, task.session?.outputTokens ?? 0);
+  const boxSize = task.box?.size ?? null;
   return (
     <div data-testid="task-properties">
       <PropGroup title={t("taskPage.properties")}>
@@ -199,6 +205,7 @@ const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, t
           </PropRow>
         )}
         {task.box === null ? null : <PropRow label={t("taskPage.box.label")}><span className="truncate">{boxText(task.box, now)}</span></PropRow>}
+        {boxSize === null ? null : <PropRow label={t("waitLine.panelBoxSize")}><Mono><span data-testid="task-box-size">{boxSizeText(boxSize)}</span></Mono></PropRow>}
         <PropRow label={t("taskPage.spend")}>
           <Mono className={task.spend.reached ? "text-amber" : ""}>{spendText(task.spend)}</Mono>
         </PropRow>
@@ -372,6 +379,9 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   // A task that ran before and lost its key holds the member's message (section 3): the marker under it.
   const heldNoKey = noKey !== null && log.state.events.some(({ event }) => event.kind === "turn.started");
   const activity = idleHeader(data.box, now) ?? headerActivity(view.activity);
+  // F-067: a queued task an admin or its member cancelled names who did.
+  const cancelled = data.state === "stopped" ? log.state.events.findLast(({ event }) => event.kind === "task.cancelled")?.event : undefined;
+  const cancelledBy = cancelled?.kind === "task.cancelled" ? ((members.data ?? []).find((member) => member.memberId === cancelled.memberId)?.name ?? null) : undefined;
   const mode = composerMode(composerInputOf(data));
   const conflict = data.needsYou.find((item) => item.reason === "restore_conflict");
   const ticketClosed = data.needsYou.find((item) => item.reason === "ticket_closed");
@@ -476,6 +486,16 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           {data.waiting?.kind === "no-runner" && data.waiting.reason.code === "installation-not-linked" ? (
             <p className="mt-1.5 text-ui text-muted" data-testid="task-dispatch-note">{t("githubOrgs.installationWait", { repo: data.waiting.reason.repo })}</p>
           ) : null}
+          <TaskWaiting
+            projectId={data.projectId}
+            project={project.data?.name ?? ""}
+            waiting={data.waiting?.kind === "no-runner" && wordedElsewhere.has(data.waiting.reason.code) ? null : data.waiting}
+            queue={data.queue}
+            boxWaiting={data.box?.waiting ?? null}
+            runnerId={data.runner?.kind === "personal" ? data.runner.id : null}
+            cancelledBy={cancelledBy}
+            now={now}
+          />
           {noKey === null ? null : (
             <div className="mt-2.5 border-l-2 border-line-2 pl-3" data-testid="task-no-key">
               <p className="text-body text-text"><NoKeySentence noKey={noKey} /></p>

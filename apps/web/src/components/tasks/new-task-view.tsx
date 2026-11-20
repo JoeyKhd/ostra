@@ -49,6 +49,7 @@ import type { BudgetWait } from "./budget-reason";
 import { KeyRow, NoKeyNext, NoKeyReason, ProjectKeys } from "./no-key";
 import type { NoKey } from "./no-key";
 import { POOLS, RunOnPicker, Trigger, useRunOn } from "./run-on";
+import { boxSizeText } from "./task-waiting-words";
 import { doingText, taskStateText } from "./task-words";
 
 type ProjectSummary = RouterOutputs["projects"]["list"][number];
@@ -288,8 +289,10 @@ const PanelSkeleton = () => (
   </div>
 );
 
-const Properties = ({ project, profile, runner, noKey, servingKey }: {
+const Properties = ({ project, profile, runner, boxSize, noKey, servingKey }: {
   readonly project: ProjectSummary;
+  /** F-095: the project's default box size, which a task on a pool gets; `null` for none. */
+  readonly boxSize: { readonly name: string; readonly cpuMillis: number; readonly memoryMiB: number } | null;
   /** F-135: the key that serves the profile's model in the project, from the New task check. */
   readonly servingKey: string | null;
   /** F-135: no key on the project's list serves the profile's model. */
@@ -333,8 +336,13 @@ const Properties = ({ project, profile, runner, noKey, servingKey }: {
       <PropGroup title={t("newTask.runsOn")}>
         {runner === null ? (
           <>
-            <PropRow label={t("newTask.keyRunner")}><ServerIcon aria-hidden /><span className="truncate">{t("newTask.pools")}</span></PropRow>
+            <PropRow label={t("newTask.keyRunner")}><ServerIcon aria-hidden /><span className="truncate">{t("runPicker.aPool")}</span></PropRow>
             <PropRow label={t("newTask.keyState")}><span className="text-muted">{t("newTask.stateLater")}</span></PropRow>
+            <PropRow label={t("runPicker.boxSize")}>
+              <span className="truncate font-mono text-ui" data-testid="new-task-box-size">
+                {boxSize === null ? t("runPicker.boxSizeNone") : boxSizeText(boxSize)}
+              </span>
+            </PropRow>
           </>
         ) : (
           <>
@@ -349,6 +357,7 @@ const Properties = ({ project, profile, runner, noKey, servingKey }: {
             <PropRow label={t("newTask.keyExecutor")}>
               <span className="text-muted">{runner.executor}{runner.isolated ? "" : ` · ${t("newTask.notIsolated")}`}</span>
             </PropRow>
+            <PropRow label={t("runPicker.boxSize")}><span className="truncate text-muted">{t("runPicker.personalNoSize")}</span></PropRow>
           </>
         )}
       </PropGroup>
@@ -382,10 +391,18 @@ export const NewTaskView = () => {
   const tasks = useQuery(trpc.tasks.list.queryOptions(projectId === undefined ? skipToken : { projectId }));
   const recent = useMemo(() => (tasks.data ?? []).flatMap((group) => group.tasks), [tasks.data]);
 
-  const { chosen, runner, setRunOn } = useRunOn(runners.data);
   // The member's profiles for this project, its default first (F-021).
   const profiles = useStartProfile(projectId);
   const profile = profiles.options === undefined ? undefined : profiles.chosen;
+  // Milestone 5 (F-069, F-014): whether "A pool" and each "Your machine" can take it now, and why not.
+  const choices = useQuery(
+    trpc.tasks.runnerChoices.queryOptions(projectId === undefined || profile === undefined ? skipToken : { projectId, ...(profile === null ? {} : { profileId: profile.profileId }) }),
+  );
+  const { chosen, runner, setRunOn } = useRunOn(runners.data, choices.data);
+  // F-095: the size its box gets on a pool: the project's default.
+  const projectRunners = useQuery(trpc.projects.runners.queryOptions(projectId === undefined ? skipToken : { projectId }));
+  const sizes = useQuery(trpc.boxSizes.list.queryOptions());
+  const defaultSize = sizes.data?.find((size) => size.name === projectRunners.data?.defaultBoxSize) ?? null;
   const agentName = profile?.agentName ?? t("task.agent");
   const slug = prompt.trim() === "" ? null : branchSlugFor(titleFromPrompt(prompt.trim()));
 
@@ -452,7 +469,7 @@ export const NewTaskView = () => {
     <PageFrame
       crumbs={crumbs}
       wideProperties
-      properties={project === undefined ? <PanelSkeleton /> : <Properties project={project} profile={profile} runner={runner} noKey={noKey} servingKey={check.data?.kind === "open" && check.data.providerName !== "" ? check.data.providerName : null} />}
+      properties={project === undefined ? <PanelSkeleton /> : <Properties project={project} profile={profile} runner={runner} boxSize={defaultSize} noKey={noKey} servingKey={check.data?.kind === "open" && check.data.providerName !== "" ? check.data.providerName : null} />}
     >
       <div className="max-w-[760px]">
         <PageHeading
@@ -494,7 +511,7 @@ export const NewTaskView = () => {
               <>
                 <ProjectPicker projects={projects.data} project={project} onPick={setPicked} disabled={starting} />
                 <ProfilePicker options={profiles.options} chosen={profiles.chosen} onPick={profiles.pick} disabled={starting} />
-                <RunOnPicker runners={runners.data} runner={runner} onPick={setRunOn} disabled={starting} />
+                <RunOnPicker runners={runners.data} runner={runner} onPick={setRunOn} disabled={starting} choices={choices.data} project={project.name} />
               </>
             )}
             <span className="ml-auto flex items-center gap-3">
