@@ -330,12 +330,25 @@ export const severalReposCases = (mode: SeveralReposMode) => {
     ownTokenPerRepo: async (): Promise<void> => {
       const h = await runner();
       const spec = taskOn(h, fakeMarker("say"), ["test1", "test2"], { test2: "ghs_aTokenTheCodeHostDoesNotKnow0123456789" });
+      // The upstream is the file's: this task's requests are the ones from here on.
+      const from = upstream().requests.length;
       h.dispatch(spec);
       await waitFor(h, spec, "session.crashed");
       const [crashed] = h.ofKind(spec, "session.crashed");
       expect(crashed?.error).toContain("cloning ostra-test/test2 through the git proxy failed");
-      // test1 came first, with its own token, and was cloned.
-      expect(await exists(path.join(workspaceOf(h, spec), "test1", ".git"))).toBe(true);
+      // test1 came first, with its own token, and was cloned: the code host took every request of its
+      // clone and sent its objects, before test2's first. Not the workspace: a box that never got
+      // ready is released as the session ends, right after `session.crashed` (ADR 0039).
+      const seen = upstream()
+        .requests.slice(from)
+        .map((request) => ({ repo: request.repo, endpoint: request.endpoint, authorized: request.authorized }));
+      const firstOfTest2 = seen.findIndex((request) => request.repo === "ostra-test/test2");
+      expect(firstOfTest2, JSON.stringify(seen)).toBeGreaterThan(0);
+      const ofTest1 = seen.slice(0, firstOfTest2);
+      expect(ofTest1).toContainEqual({ repo: "ostra-test/test1", endpoint: "git-upload-pack", authorized: true });
+      expect(ofTest1.filter((request) => request.repo !== "ostra-test/test1" || !request.authorized)).toEqual([]);
+      // Then test2, with its own token, which the code host refused; and nothing after it.
+      expect(seen.slice(firstOfTest2).filter((request) => request.repo !== "ostra-test/test2" || request.authorized)).toEqual([]);
     },
 
     /** Each task's workspace holds its own repos and nothing of another task's; the agent starts at its own. */
