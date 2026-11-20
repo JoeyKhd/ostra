@@ -27,7 +27,7 @@ export const PausedRuleRows = ({ rules }: { readonly rules: readonly PausedRule[
     <ul className="rows" data-testid="paused-rules">
       {rules.map((rule) => (
         <li key={rule.id} className="flex min-h-[38px] items-center gap-2.5 border-b border-line py-1.5" data-testid="paused-rule">
-          <CirclePauseIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-amber" />
+          <CirclePauseIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-amber-text" />
           <span aria-hidden className="size-2 shrink-0 rounded-[2px]" style={{ background: projectColour(rule.projectId) }} />
           <span className="min-w-0 flex-1 truncate text-text">{t("automations.home.paused", { rule: rule.name, n: rule.startsPerHour })}</span>
           <Link href={`/projects/${rule.projectId}/automations?automation=${rule.id}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7 shrink-0 text-ui font-normal")}>
