@@ -215,12 +215,15 @@ describe("the onboarding task (F-113, ticket 29)", () => {
     expect((await harness.test.db.environment.findFirstOrThrow({ where: { projectId } })).setupScript).toContain("pnpm install --frozen-lockfile");
     expect(await codeOf(projectAdmin.environments.decideProposal({ proposalId, decision: "reject", edited: null, reason: "Too late." }))).toBe("CONFLICT");
     expect(await member.environments.proposal({ projectId })).toBeNull();
+    // The page reads what became of it, after a reload too.
+    expect((await member.environments.onboarding({ projectId })).decision).toMatchObject({ kind: "accepted", version: decided.resultVersion });
 
     // A rejected one leaves the environment as it was.
     const before = await harness.test.db.environment.findFirstOrThrow({ where: { projectId } });
     const rejected = await agentProposes(taskId, proposal({ setupScript: "make rejected" }));
     expect(await admin.environments.decideProposal({ proposalId: rejected, decision: "reject", edited: null, reason: "We don't run make here." })).toEqual({ resultVersion: null });
     expect((await harness.test.db.environment.findFirstOrThrow({ where: { projectId } })).setupScript).toBe(before.setupScript);
+    expect((await member.environments.onboarding({ projectId })).decision).toMatchObject({ kind: "rejected", version: null });
   });
 
   it("F-113/c2: an admin's edit that adds a secret's value is refused by the scan, and nothing is saved; a clean edit is accepted", async () => {

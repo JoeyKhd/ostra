@@ -21,8 +21,8 @@ import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import { safeHref } from "@/task/renderers";
 
-import { changesOf, editedProposal, lineDiff, taskStateWords } from "./proposal-words";
-import type { DiffRow, Onboarding, ProposalView } from "./proposal-words";
+import { changesOf, decidedOf, editedProposal, lineDiff, taskStateWords } from "./proposal-words";
+import type { Decided, DiffRow, Onboarding, ProposalView } from "./proposal-words";
 
 // The environment page's Proposal tab (app-targets/m6/environment-proposal.md; F-113, ticket 36):
 // the onboarding task's line, then its proposal as a diff per repo against the environment as
@@ -249,7 +249,10 @@ export const EnvironmentProposalTab = ({ projectId, projectName, onboarding, now
   const [editing, setEditing] = useState(false);
   const [edits, setEdits] = useState<ReadonlyMap<string, { readonly setupScript: string; readonly commands: ReadonlyMap<string, string> }>>(new Map());
   const [reason, setReason] = useState("");
-  const [decided, setDecided] = useState<{ readonly kind: "accepted"; readonly version: number | null } | { readonly kind: "rejected" } | null>(null);
+  const data = proposal.data;
+  const [justDecided, setDecided] = useState<Decided | null>(null);
+  // What was decided here a moment ago, else what the server says was decided (after a reload too).
+  const decided = decidedOf(justDecided, data === null ? (onboarding?.decision ?? null) : null);
   const decide = useMutation(
     trpc.environments.decideProposal.mutationOptions({
       onSettled: async () => {
@@ -261,7 +264,6 @@ export const EnvironmentProposalTab = ({ projectId, projectName, onboarding, now
       },
     }),
   );
-  const data = proposal.data;
 
   if (proposal.error !== null) {
     return (

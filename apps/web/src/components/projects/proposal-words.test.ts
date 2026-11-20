@@ -1,7 +1,7 @@
 import { repoIdSchema } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
-import { editedProposal, lineDiff } from "./proposal-words";
+import { decidedOf, editedProposal, lineDiff } from "./proposal-words";
 
 // F-113 (ticket 36): the proposal's setup script as a diff against the saved one, and the proposal
 // an admin's edits make for "Edit and accept".
@@ -32,5 +32,14 @@ describe("the environment proposal's words (ticket 36)", () => {
     const edited = editedProposal(body, new Map([[repoId, { setupScript: "corepack enable\npnpm install", commands: new Map([["test", "pnpm test --run"]]) }]]));
     expect(edited.repos[0]).toEqual({ repoId, setupScript: "corepack enable\npnpm install", checks: [{ name: "test", command: "pnpm test --run", timeoutSeconds: 600 }], variableNames: ["DATABASE_URL"] });
     expect(editedProposal(body, new Map())).toEqual(body);
+  });
+});
+
+describe("the proposal's decision (environment-proposal.md)", () => {
+  it("F-113/c2: the tab says what was decided, from the server after a reload, and what was just decided on the page first", () => {
+    expect(decidedOf(null, { kind: "accepted", version: 5, at: 1 })).toEqual({ kind: "accepted", version: 5 });
+    expect(decidedOf(null, { kind: "rejected", version: null, at: 1 })).toEqual({ kind: "rejected" });
+    expect(decidedOf(null, null)).toBeNull();
+    expect(decidedOf({ kind: "rejected" }, { kind: "accepted", version: 5, at: 1 })).toEqual({ kind: "rejected" });
   });
 });

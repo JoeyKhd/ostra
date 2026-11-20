@@ -79,6 +79,16 @@ export const onboardingProcedures = {
     });
     const open = task !== null && !ENDED_STATES.includes(task.state);
     const proposalOpen = (await db.environmentProposal.count({ where: { organizationId, projectId: input.projectId, state: "proposed" } })) > 0;
+    // The task's last decided proposal, so the page says what became of it after a reload too.
+    const decidedRow =
+      task === null
+        ? null
+        : await db.environmentProposal.findFirst({
+            where: { organizationId, taskId: task.id, state: { in: ["accepted", "rejected"] }, decidedAt: { not: null } },
+            orderBy: { decidedAt: "desc" },
+            select: { state: true, resultVersion: true, decidedAt: true },
+          });
+    const decidedAt = decidedRow?.decidedAt ?? null;
     const filtered =
       task === null
         ? []
@@ -101,6 +111,13 @@ export const onboardingProcedures = {
               /** The `AGENTS.md` pull requests it opened, by repo. */
               prs: task.repos.flatMap((repo) => (repo.prNumber === null || repo.prUrl === null ? [] : [{ repo: repo.repo.fullName, number: repo.prNumber, url: repo.prUrl, state: repo.state }])),
             },
+      /** What a project admin decided on the task's last proposal: accepted (as a version) or rejected; `null` when none was decided. */
+      decision:
+        decidedRow === null || decidedAt === null
+          ? null
+          : decidedRow.state === "accepted"
+            ? { kind: "accepted" as const, version: decidedRow.resultVersion, at: decidedAt.getTime() }
+            : { kind: "rejected" as const, version: null, at: decidedAt.getTime() },
       /** The paths its commits left out: only `AGENTS.md` is committed. */
       notCommitted: [...new Set(filtered)].slice(0, 50),
       /** A project admin starts one while none is open and no proposal waits. */

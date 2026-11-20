@@ -95,3 +95,14 @@ export const editedProposal = (
     };
   }),
 });
+
+/** What a project admin decided on a proposal, as the tab says it. */
+export type Decided = { readonly kind: "accepted"; readonly version: number | null } | { readonly kind: "rejected" };
+
+/**
+ * The decision the tab shows: the one just made on this page, else the one the server keeps for the
+ * onboarding task's last proposal, so a reload still says "Accepted as version N" rather than that
+ * the task ended without a proposal.
+ */
+export const decidedOf = (justDecided: Decided | null, kept: Onboarding["decision"] | null): Decided | null =>
+  justDecided ?? (kept === null ? null : kept.kind === "accepted" ? { kind: "accepted", version: kept.version } : { kind: "rejected" });
