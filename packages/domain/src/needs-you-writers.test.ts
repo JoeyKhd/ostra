@@ -15,7 +15,7 @@ import { notificationKindOfReason } from "./use-cases/needs-you-items.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
-const skipDirs = new Set(["node_modules", "generated", "dist", ".next", ".turbo", "coverage", "test-results", ".git", "spikes", "context"]);
+const skipDirs = new Set(["node_modules", "generated", "dist", ".next", ".next-pseudo", ".turbo", "coverage", "test-results", ".git", "spikes", "context"]);
 
 const sourceFiles = async (dir: string): Promise<readonly string[]> => {
   const entries = await readdir(dir, { withFileTypes: true });

@@ -19,7 +19,7 @@ The final check of F-075 over every screen milestones 1 to 7 built: every route 
 
 ## Comments
 
-- 2026-11-20: done in the commit `✅ check every screen at phone width` (its hash is on `origin/main`; this ticket's next edit records it).
+- 2026-11-20: done in 931d86cf, `✅ check every screen at phone width`.
   - **The sweep** is its own Playwright project, `phone-sweep` (Chromium as a touch phone at 390 × 844), in `apps/web/e2e/phone/sweep.spec.ts`. It seeds its own admin and world (`e2e/seed-routes-world.ts`: an approval, a question and a no-changes task each with its notification, notes, a pool and runner, an invitation), so it runs alone after `next build` and doesn't wait on the desktop specs, several of which fail on `main` today (the checklist's Linear step, ticket 24's work). Every `page.tsx` must be listed in `e2e/routes.ts`, or the naming test fails; ticket 20's pseudo-locale pass walks the same list.
   - **What failed, and the fix:** no route scrolled sideways, but every route had controls under 44 px (30 px buttons, 26 px small ones, 34 px fields, 40 px tabs). The fix is one rule in `globals.css` under `@media (pointer: coarse)`: buttons, links drawn as buttons (`data-slot="button"`, now on `Button`), fields, selects, tabs and comboboxes are at least 44 px tall on a touch screen, and a mouse keeps the desktop's dense sizes. A checkbox, a switch or a radio is pressed through its row.
   - **By tap:** "Approve once" on Needs you leaves the task `running`; "Send answer" queues its next turn (no runner holds the seeded session, so the answer reopens it); the no-changes row's "Open task", then the composer's Reopen, leave it `queued`; Done lists both answers. The task page's state line now carries `data-state` for the check.

@@ -38,7 +38,7 @@ jobs:
   e2e:
     if: inputs.jobs != 'fleet'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -76,6 +76,9 @@ jobs:
 
       # The output also goes to a file, whose end the job summary shows when the suite fails.
       - run: set -o pipefail; pnpm --filter @ostra/web test:e2e 2>&1 | tee e2e.log
+      # F-083 (ticket 20): the pseudo-locale pass, on a build of its own (.next-pseudo) in which
+      # every message reads ⟦…⟧; any visible text outside the brackets bypassed `t`.
+      - run: set -o pipefail; (OSTRA_PSEUDO_LOCALE=1 pnpm --filter @ostra/web exec next build && OSTRA_PSEUDO_LOCALE=1 pnpm --filter @ostra/web exec playwright test -c playwright.pseudo.config.ts) 2>&1 | tee -a e2e.log
 
       - if: failure()
         run: |

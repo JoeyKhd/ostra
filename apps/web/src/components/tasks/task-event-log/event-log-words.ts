@@ -278,10 +278,10 @@ export const isFailed = (row: LogRow): boolean => row.status?.tone === "failed";
 /** `0.1 s`, `12 s`, `2 min 5 s`, `3 min`; `–` for none. */
 export const durationText = (ms: number | null): string => {
   if (ms === null) return "–";
-  if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)} s`;
+  if (ms < 60_000) return t("units.secondsSpaced", { n: (ms / 1000).toFixed(ms < 10_000 ? 1 : 0) });
   const minutes = Math.floor(ms / 60_000);
   const seconds = Math.round((ms % 60_000) / 1000);
-  return seconds === 0 ? `${String(minutes)} min` : `${String(minutes)} min ${String(seconds)} s`;
+  return seconds === 0 ? t("units.minutes", { n: minutes }) : t("units.minutesSecondsSpaced", { m: minutes, s: seconds });
 };
 
 const pad = (n: number): string => String(n).padStart(2, "0");

@@ -185,6 +185,7 @@ Read by the dev setup and the live test cases, never by an install (`docs/develo
 | `OSTRA_DEV_REGISTRY_AUTH` | `bearer` | `bearer` (Docker's token flow) or `basic`: how the fake registry asks for its credentials. |
 | `OSTRA_DEV_NPM_REGISTRY_PORT` | `14873` | The port of `pnpm dev:npm-registry`, the fake npm registry, on loopback. |
 | `OSTRA_DEV_NET_PROXIES_PORT` | `13128` | The first of the four ports of `pnpm dev:net-proxies` on loopback: the CONNECT proxy, the TLS-inspecting proxy, nginx's defaults, then the control port. |
+| `OSTRA_PSEUDO_LOCALE` | (none: English) | `1` at `next build` and `next start` of `apps/web`: the pseudo-locale, every message of the panel wrapped as `⟦…⟧` with its letters accented, so a word that bypasses the message file shows (F-083). It builds into `.next-pseudo`, beside the ordinary build. The e2e pass `e2e/pseudo-locale.spec.ts` uses it; never set it on an install. |
 
 Variables named `OSTRA_SPIKE_*` belong to the spikes in `spikes/`. The server neither reads nor refuses them, so the dev env files can be loaded before `pnpm dev`.
 

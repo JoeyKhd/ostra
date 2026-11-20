@@ -4,3 +4,4 @@ next-env.d.ts
 /playwright-report/
 /e2e/.stack.json
 /e2e/.stack-default-password.json
+/e2e/.stack-pseudo.json

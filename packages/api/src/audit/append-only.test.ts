@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 // the tests that seed one.
 
 const repoRoot = path.resolve(import.meta.dirname, "../../../..");
-const skipped = new Set(["node_modules", ".git", "generated", "dist", ".next", ".turbo", ".ostra-dev", "coverage", "spikes"]);
+const skipped = new Set(["node_modules", ".git", "generated", "dist", ".next", ".next-pseudo", ".turbo", ".ostra-dev", "coverage", "spikes"]);
 const migrations = path.join(repoRoot, "packages", "db", "prisma", "migrations");
 const thisFile = path.resolve(import.meta.filename);
 

@@ -65,7 +65,8 @@ const EntityCell = ({ entry }: { readonly entry: Entry }) =>
     <span className="text-faint">—</span>
   ) : (
     <span className="flex min-w-0 items-center gap-1.5">
-      <span className="shrink-0 text-faint">{entry.entity}</span>
+      {/* The entity's kind and the action are codes the log stores and its filters take (ADR 0054), not words. */}
+      <span className="shrink-0 text-faint" translate="no">{entry.entity}</span>
       <span className="truncate font-mono text-[13px] text-text">{entry.entityId === null ? "" : shortId(entry.entityId)}</span>
     </span>
   );
@@ -77,7 +78,7 @@ const EntryPanel = ({ entry, onEntity }: { readonly entry: Entry; readonly onEnt
   const entityText = entry.entity === null ? "—" : `${entry.entity} ${entry.entityId === null ? "" : shortId(entry.entityId)}`;
   return (
     <div data-testid="audit-panel">
-      <PropGroup title={entry.action}>
+      <PropGroup title={<span translate="no">{entry.action}</span>}>
         <PropRow label={t("audit.when")} labelWidth={96}>
           <span title={new Date(entry.at).toISOString()}>{fullTime(entry.at)}</span>
         </PropRow>
@@ -87,9 +88,9 @@ const EntryPanel = ({ entry, onEntity }: { readonly entry: Entry; readonly onEnt
         </PropRow>
         <PropRow label={t("audit.entity")} labelWidth={96}>
           {href === null ? (
-            <span className="truncate">{entityText}</span>
+            <span className="truncate" translate="no">{entityText}</span>
           ) : (
-            <Link href={href} className="truncate text-teal" data-testid="audit-entity-link">{entityText}</Link>
+            <Link href={href} className="truncate text-teal" data-testid="audit-entity-link" translate="no">{entityText}</Link>
           )}
         </PropRow>
         <PropRow label={t("audit.project")} labelWidth={96}>

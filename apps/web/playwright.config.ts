@@ -21,7 +21,7 @@ export default defineConfig({
     {
       name: "desktop",
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
-      testIgnore: ["**/06-default-password.spec.ts", "phone/**"],
+      testIgnore: ["**/06-default-password.spec.ts", "phone/**", "**/pseudo-locale.spec.ts"],
     },
     // The setup specs write data and run once, at desktop width; the phone project leaves them out,
     // and a test tagged `@desktop-only` (it changes state once: the seeded admin's default password).
@@ -29,7 +29,7 @@ export default defineConfig({
       name: "phone",
       use: { ...devices["Pixel 7"] },
       dependencies: ["desktop"],
-      testIgnore: ["**/02-setup.spec.ts", "**/03-first-run.spec.ts", "**/06-default-password.spec.ts", "phone/**"],
+      testIgnore: ["**/02-setup.spec.ts", "**/03-first-run.spec.ts", "**/06-default-password.spec.ts", "phone/**", "**/pseudo-locale.spec.ts"],
       grepInvert: /@desktop-only/,
     },
     // F-075 (ticket 19): the phone sweep, every route on a touch phone at 390 × 844. It seeds its

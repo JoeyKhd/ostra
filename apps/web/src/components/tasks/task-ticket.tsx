@@ -26,7 +26,7 @@ type SyncWrite = TaskDetail["sync"][number];
 /** `11 min`, `2 h`. */
 const left = (at: number, now: number): string => {
   const minutes = Math.max(1, Math.round((at - now) / 60_000));
-  return minutes < 60 ? `${String(minutes)} min` : `${String(Math.round(minutes / 60))} h`;
+  return minutes < 60 ? t("units.minutes", { n: minutes }) : t("units.hours", { n: Math.round(minutes / 60) });
 };
 
 const releaseReasonKey: Readonly<Record<string, MessageKey>> = {
@@ -155,7 +155,7 @@ export const TicketProperties = ({ task, now, retry, createTicket }: {
         </PropRow>
         <PropRow label={t("taskPage.ticketStatus")}>{task.ticket.status.name ?? "–"}</PropRow>
         <PropRow label={t("taskPage.synced")}>
-          <span className="font-mono">{Math.max(0, Math.round((now - task.ticket.cachedAt) / 1000)) < 60 ? `${String(Math.max(0, Math.round((now - task.ticket.cachedAt) / 1000)))} s ago` : `${String(Math.round((now - task.ticket.cachedAt) / 60_000))} min ago`}</span>
+          <span className="font-mono">{Math.max(0, Math.round((now - task.ticket.cachedAt) / 1000)) < 60 ? t("taskPage.syncedSeconds", { n: Math.max(0, Math.round((now - task.ticket.cachedAt) / 1000)) }) : t("taskPage.syncedMinutes", { n: Math.round((now - task.ticket.cachedAt) / 60_000) })}</span>
         </PropRow>
       </PropGroup>
     )}

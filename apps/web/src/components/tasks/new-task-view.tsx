@@ -236,7 +236,7 @@ const RecentState = ({ task }: { readonly task: TaskSummary }) => {
 /** What happened, in a few words: its PR, or what the agent is doing now. */
 const RecentWhat = ({ task, agentName }: { readonly task: TaskSummary; readonly agentName: string }) => {
   const pr = task.prs[0];
-  if (pr !== undefined) return <>PR <span className="font-mono">#{pr.number}</span></>;
+  if (pr !== undefined) return <>{t("newTask.recentPr")} <span className="font-mono">#{pr.number}</span></>;
   const doing = doingText(task.doing);
   return doing === "" ? null : <>{agentName} · {doing}</>;
 };

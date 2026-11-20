@@ -70,10 +70,10 @@ export const listInputOf = (projectId: ListInput["projectId"], filters: InboxFil
 /** `3m`, `2h`, `1d`: the age of a row's last change. */
 export const rowAge = (at: number, now: number): string => {
   const minutes = Math.max(0, Math.floor((now - at) / 60_000));
-  if (minutes < 1) return "now";
-  if (minutes < 60) return `${String(minutes)}m`;
+  if (minutes < 1) return t("units.now");
+  if (minutes < 60) return t("units.minutesShort", { n: minutes });
   const hours = Math.floor(minutes / 60);
-  return hours < 48 ? `${String(hours)}h` : `${String(Math.floor(hours / 24))}d`;
+  return hours < 48 ? t("units.hoursShort", { n: hours }) : t("units.daysShort", { n: Math.floor(hours / 24) });
 };
 
 /** `8s ago`, `4 min ago`, `2 h ago`: the cache's age in the lede. */

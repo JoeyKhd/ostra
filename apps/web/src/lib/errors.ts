@@ -22,12 +22,16 @@ const issueLine = (message: string): string | null => {
   }
 };
 
-/** One line for a failed request: the server's own message, or a plain one for its code. */
+/** One line for a failed request: the server's own message, or a plain one for its code (always for a role refusal). */
 export const errorText = (error: ErrorLike): string | null => {
   if (error === null) return null;
   const code = error.data?.code;
   if (code === "BAD_REQUEST") return issueLine(error.message) ?? error.message;
   if (code === "UNAUTHORIZED") return t("errors.signedOut");
+  // A role refusal (F-083, ticket 20): the server's FORBIDDEN is a code, worded here, never its English.
+  if (code === "FORBIDDEN") return t("errors.forbidden");
+  // So is a NOT_FOUND, which by design never says whether the thing exists (ADR 0026).
+  if (code === "NOT_FOUND") return t("errors.notFound");
   if (code === "INTERNAL_SERVER_ERROR") return t("errors.server");
   if (error.message.length > 0 && error.message.length < 300) return error.message;
   return t("errors.unknown");

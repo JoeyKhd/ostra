@@ -102,7 +102,7 @@ export const healthOf = (lastBox: ServiceView["lastBox"]): { readonly tone: "gre
   if (lastBox === null) return null;
   switch (lastBox.state) {
     case "healthy":
-      return { tone: "green", word: t("environment.svc.healthy"), extra: lastBox.afterMs === null ? null : `${String(Math.max(1, Math.round(lastBox.afterMs / 1000)))}s` };
+      return { tone: "green", word: t("environment.svc.healthy"), extra: lastBox.afterMs === null ? null : t("units.seconds", { n: Math.max(1, Math.round(lastBox.afterMs / 1000)) }) };
     case "failed":
       return { tone: "red", word: t("environment.svc.failed"), extra: null };
     case "started":

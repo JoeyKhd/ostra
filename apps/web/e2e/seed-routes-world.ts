@@ -33,6 +33,10 @@ const username = `routes-${args.tag}`;
 const seeded = await seedMember({ db, hashPassword, env: { NODE_ENV: "test" } }, { username, email: `${username}@example.com`, password: args.password, role: "admin" });
 if (!seeded.ok) throw new Error(`seeding ${username} failed: ${seeded.error}`);
 await db.user.update({ where: { id: seeded.seeded.userId }, data: { role: "admin" } });
+// And a member who isn't an admin, for the pages that refuse them (ticket 20's role refusal).
+const memberUsername = `${username}-m`;
+const plain = await seedMember({ db, hashPassword, env: { NODE_ENV: "test" } }, { username: memberUsername, email: `${memberUsername}@example.com`, password: args.password, role: "member" });
+if (!plain.ok) throw new Error(`seeding ${memberUsername} failed: ${plain.error}`);
 const admin = await db.member.findUniqueOrThrow({ where: { id: seeded.seeded.memberId }, include: { user: true, organization: true } });
 const organizationId = admin.organizationId;
 // The members and the organization are the install's own data, never the panel's words.
@@ -113,6 +117,8 @@ const createTask = async (title: string, state: "needs_you" | "running", reason:
     },
   });
   await appendEvents(task.id, session.id, parse([{ kind: "user.message", memberId: admin.id, clientMessageId: randomUUID(), text: title, delivery: "immediate" }]));
+  // A prompt task's key is its ID's last eight hex digits (the API's `keyOf`): data, not a word.
+  data(task.id.replaceAll("-", "").slice(-8));
   return { taskId: task.id, sessionId: session.id };
 };
 
@@ -184,6 +190,8 @@ const reopen = await (async () => {
 const capped = await (async () => {
   const made = await createTask("Rewrite the parser", "needs_you", "spend_cap", "ended");
   await db.task.update({ where: { id: made.taskId }, data: { spentMicroUsd: 2_000_000_000 } });
+  // Its session ended at the cap, so the page shows the limit block (ticket 20's budget stop).
+  await db.session.update({ where: { id: made.sessionId }, data: { limitReached: "spend_cap" } });
   return { taskId: made.taskId };
 })();
 
@@ -234,6 +242,10 @@ const profile =
   (await db.agentProfile.create({ data: { organizationId, name: `routes-profile-${args.tag}`, adapter: "opencode" } }));
 // Every profile's name is a member's own words, the built-in ones' included (they can be renamed).
 for (const row of await db.agentProfile.findMany({ where: { organizationId }, select: { name: true } })) data(row.name);
+// So are the install's own rows an admin names or sees as stored: every pool (the default one's
+// "default" included) and every box size (small, medium, large).
+for (const row of await db.runnerPool.findMany({ where: { organizationId }, select: { name: true } })) data(row.name);
+for (const row of await db.boxSize.findMany({ where: { organizationId }, select: { name: true } })) data(row.name);
 
 // A pending invitation, for the invitation page a new member opens.
 const invitation = await db.invitation.create({
@@ -254,6 +266,7 @@ process.stdout.write(
     profileId: profile.id,
     invitationId: invitation.id,
     username,
+    memberUsername,
     userData: [...userData],
   })}\n`,
 );

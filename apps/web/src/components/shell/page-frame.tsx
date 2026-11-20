@@ -163,7 +163,7 @@ export const PropRow = ({ label, children, labelWidth, labelClassName }: { reado
   </div>
 );
 
-export const PropGroup = ({ title, children }: { readonly title: string; readonly children: ReactNode }) => (
+export const PropGroup = ({ title, children }: { readonly title: ReactNode; readonly children: ReactNode }) => (
   <div className="mb-3.5 border-b border-line pb-3.5 last:border-b-0">
     <h3 className="mb-2 text-xs font-medium text-faint">{title}</h3>
     {children}

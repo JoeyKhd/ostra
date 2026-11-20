@@ -12,12 +12,8 @@
     "saved": "Saved",
     "copy": "Copy",
     "copied": "Copied",
-    "edit": "Edit",
     "remove": "Remove",
-    "loading": "Loading…",
-    "none": "None",
     "yes": "Yes",
-    "no": "No",
     "unknown": "Unknown",
     "adminsOnly": "Only an admin of the organization can see this page.",
     "instanceAdminsOnly": "Only an admin of this ostra instance can see this page."
@@ -26,6 +22,7 @@
     "signedOut": "You're signed out. Sign in again.",
     "server": "Something went wrong on the server. The log has the details.",
     "unknown": "That didn't work. Try again.",
+    "forbidden": "Your role here doesn't allow this. An admin can do it.",
     "notFound": "There's nothing here, or you can't see it."
   },
   "shell": {
@@ -50,14 +47,11 @@
     "needsYouHere": "{n} waiting on you",
     "activeTasks": "Active tasks: {n}",
     "search": "Search",
-    "searchPlaceholder": "Go to a project or a page…",
-    "searchEmpty": "Nothing matches.",
     "switchOrganization": "Switch organization",
     "organizations": "Organizations",
     "current": "Current",
     "linear": "Linear",
     "storage": "Storage",
-    "repos": "Repos",
     "settings": "Settings",
     "boards": "Boards",
     "inbox": "Inbox",
@@ -220,7 +214,6 @@
       "today": "today",
       "chart": "Pull requests opened per day, the last 7 days: {counts}",
       "spend": "Spend, {month}",
-      "noSpend": "No priced usage yet",
       "runners": "Runners",
       "runnersFigure": "{busy} busy · {queued} queued",
       "noRunners": "No runner yet.",
@@ -336,12 +329,9 @@
       "pending": "Started: paste the app's values and authorize to finish.",
       "continue": "Continue",
       "failed": "Linear refused the token. Authorize the app again.",
-      "authorizeAgain": "Authorize again",
-      "later": "milestone 2"
+      "authorizeAgain": "Authorize again"
     },
-    "skippedStep": "Skipped",
-    "loadFailed": "Couldn't load this.",
-    "retry": "Retry"
+    "skippedStep": "Skipped"
   },
   "models": {
     "title": "Models",
@@ -350,7 +340,6 @@
     "addTitle": "Add a model provider",
     "addEyebrow": "New provider",
     "addLede": "Test the connection first: ostra detects the API format and lists the models.",
-    "providers": "Providers",
     "noProviders": "No provider yet. Add one in the panel on the right.",
     "enabled": "Models",
     "provider": "Provider",
@@ -366,7 +355,6 @@
     "test": "Test connection",
     "testing": "Testing…",
     "connected": "Connected · {format}",
-    "connectedShort": "Connected",
     "foundOne": "found {n} model",
     "foundMany": "found {n} models",
     "countOne": "{n} model",
@@ -402,8 +390,6 @@
     "inputPrice": "Input $/M",
     "outputPrice": "Output $/M",
     "reasoning": {
-      "tabKeys": "Keys",
-      "tabModels": "Models",
       "model": "Model",
       "listedBy": "Listed by",
       "window": "Window",
@@ -417,14 +403,7 @@
       "priceMark": "reasoning priced apart",
       "priceFootnote": "Reasoning priced apart: the catalog lists a separate price for this model's reasoning tokens. In v1, ostra prices reasoning tokens as output.",
       "customModel": "custom model",
-      "customModelLabel": "Custom model",
-      "modelLabel": "Model",
-      "listedByLine": "Listed by {keys} · {format}",
       "more": "+{n}",
-      "limits": "Limits",
-      "contextWindow": "Context window",
-      "outputLimit": "Output limit",
-      "limitFromCatalog": "from the catalog",
       "reasons": "Reasons",
       "no": "No",
       "yes": "Yes",
@@ -435,11 +414,9 @@
       "catalogSays": "The catalog says: {levels}.",
       "catalogSaysNone": "The catalog says it doesn't reason.",
       "edit": "Edit",
-      "confirmCatalogTitle": "Use the catalog's levels?",
       "confirmCatalog": "Use the catalog's levels for {model}? Profiles and tasks on it will offer {levels}.",
       "droppedOne": "1 profile is set to {level}. Its tasks will run at {runAt}.",
       "droppedMany": "{n} profiles are set to {level}. Their tasks will run at {runAt}.",
-      "confirmSaveTitle": "Save {model}'s levels?",
       "priceNote": "Its catalog prices reasoning apart from output. ostra v1 prices it as output.",
       "empty": "No model yet. Add a provider, and the models its key lists show here.",
       "reasonsNoLevels": "Reasons, with no levels"
@@ -473,8 +450,6 @@
       "noProjects": "No project uses it. Add it to the default list or to a project's list.",
       "onlyAdmins": "Only an organization admin changes which projects use a key.",
       "modelsItLists": "Models it lists",
-      "serves": "serves {projects}",
-      "servesNone": "serves no project",
       "thisMonthLabel": "This month",
       "spent": "Spent",
       "tasks": "Tasks",
@@ -499,7 +474,6 @@
   "github": {
     "title": "GitHub",
     "lede": "A GitHub App opens every pull request, as its own bot, with the member as co-author. ostra mints a token for one repo at a time and never hands it to an agent.",
-    "connectTitle": "Connect a GitHub App",
     "existingTitle": "Use an existing App",
     "newTitle": "Create a new App",
     "appId": "App ID",
@@ -514,14 +488,7 @@
     "create": "Create the App on GitHub",
     "preparing": "Preparing…",
     "createHelp": "GitHub asks you to confirm, then sends you back here.",
-    "connection": "Connection",
     "connected": "Connected",
-    "installations": "Installations",
-    "noInstallations": "The App isn't installed anywhere yet. Install it on GitHub, on the org that holds your repos.",
-    "organization": "organization",
-    "user": "user",
-    "allRepos": "All repositories",
-    "selectedRepos": "Selected repositories",
     "app": "App",
     "slug": "Slug",
     "bot": "Bot",
@@ -531,17 +498,7 @@
     "createSection": "Connect a GitHub App",
     "noPublicAddress": "This server's address isn't public, so the App is created without a webhook and receives no events. Set {setting} to turn them on.",
     "chooseKeyFile": "Choose a .pem file",
-    "justConnected": "Just connected",
     "openOnGitHub": "Open on GitHub",
-    "installElsewhere": "Install on another account",
-    "configure": "Configure",
-    "installOnGitHub": "Install on GitHub",
-    "repositories": "Repositories",
-    "fromAccount": "from {login}",
-    "private": "Private",
-    "public": "Public",
-    "reposFailed": "GitHub did not list the installation's repos",
-    "permissionsHelp": "checks and actions are asked for from the start, so no install re-approves later.",
     "asksFor": "The App asks for",
     "notAskedFor": "Not asked for",
     "off": "off",
@@ -560,7 +517,6 @@
     "name": "Name",
     "nameHelp": "Lowercase letters, digits and hyphens make its slug.",
     "slug": "Slug: {slug}",
-    "installation": "Installation",
     "repo": "Repository",
     "noRepos": "The App sees no repository in this installation. Add one on GitHub.",
     "private": "Private",
@@ -580,7 +536,6 @@
     "envSaved": "Saved",
     "envDraft": "Draft: review it",
     "pools": "Pools",
-    "agent": "Agent",
     "created": "Created",
     "repository": "Repository",
     "repoKey": "Repo",
@@ -729,7 +684,6 @@
       "addSecret": "Secret",
       "secretSet": "Set: type to replace it",
       "secretNew": "Value",
-      "secretWord": "set",
       "healthCheckLabel": "Health check",
       "healthCheckHelp": "Runs in the service's container. Healthy when it exits 0.",
       "failedOn": "Failed on {runner}, {age}: {reason}",
@@ -845,8 +799,6 @@
       "projects": "Projects",
       "version": "Version",
       "state": "State",
-      "name": "Name",
-      "age": "Seen",
       "labels": "Labels",
       "queue": "Queue"
     },
@@ -882,7 +834,6 @@
     "noProjects": "None",
     "joinTokens": "Join tokens",
     "newToken": "New token",
-    "shownOnce": "Shown once. Stored only as a hash.",
     "expires": "expires {date}",
     "neverExpires": "never expires",
     "usedAgo": "used {age} ago",
@@ -897,7 +848,6 @@
     "poolName": "Name",
     "poolRequiresApproval": "Require approval for new runners",
     "poolMaxBoxes": "Max boxes",
-    "poolMaxBoxesHelp": "Across the pool. Empty for no limit.",
     "createPool": "Create pool",
     "creatingPool": "Creating…",
     "poolNameTaken": "A pool with that name exists.",
@@ -1232,7 +1182,6 @@
       "replayed": "{n} updates replayed",
       "workRestored": "unfinished work restored",
       "workConflict": "the unfinished work conflicts with the branch",
-      "previousKept": "the box was kept",
       "previousReleased": "a fresh box",
       "previousLost": "the box before it was lost",
       "boxLost": "The box was lost before the agent answered."
@@ -1242,9 +1191,7 @@
       "placeholder": "Message the agent…",
       "hint": "Send queues. Interrupt and send stops the current turn.",
       "send": "Send",
-      "interruptAndSend": "Interrupt and send",
-      "notDriver": "{name} is driving. Take over to send messages.",
-      "noDriver": "Nobody is driving. Take over to send messages."
+      "interruptAndSend": "Interrupt and send"
     },
     "saved": "Work saved after turn {n}",
     "savedArchive": "archive {size}",
@@ -1307,7 +1254,6 @@
   },
   "tasks": {
     "none": "No tasks yet. Type a prompt above.",
-    "loadFailed": "The tasks didn't load.",
     "row": {
       "approval": "Approval:",
       "question": "Question:",
@@ -1361,7 +1307,6 @@
     },
     "waitingOnYou": "{n} waiting on you",
     "runningCount": "{n} running",
-    "group": "{group}, {n}",
     "effort": {
       "label": "Effort",
       "nextTurn": "From the next turn.",
@@ -1381,12 +1326,10 @@
   "newTask": {
     "title": "New task",
     "lede": "Type what the agent should do. It works on its own branch and opens a pull request.",
-    "project": "Project",
     "noProject": "There's no project yet.",
     "prompt": "Prompt",
     "placeholder": "Add a short CONTRIBUTING.md that explains how to run the tests",
     "runOn": "Run on",
-    "personalRunner": "{name} (yours, {state})",
     "pools": "The project's pools",
     "start": "Start the task",
     "starting": "Starting…",
@@ -1400,7 +1343,6 @@
     "filterProjects": "Find a project…",
     "runOnPick": "Pick where it runs",
     "online": "online",
-    "offline": "offline",
     "nextTitle": "What happens next",
     "nextWorktree": "A worktree of {repo} from {base}, on {runner}",
     "nextBox": "A box of {repo} from {base}, on one of the project's pools",
@@ -1426,7 +1368,7 @@
     "keyRunner": "Runner",
     "keyState": "State",
     "keyExecutor": "Executor",
-    "failed": "Failed"
+    "recentPr": "PR"
   },
   "taskPage": {
     "properties": "Properties",
@@ -1462,7 +1404,6 @@
     "on": "on",
     "copyLink": "Copy the link",
     "linkCopied": "Link copied",
-    "ticketFrom": "from Linear",
     "openInLinear": "Open in Linear",
     "ticketRemoved": "removed from Linear",
     "agentGot": "What the agent got",
@@ -1492,8 +1433,6 @@
     },
     "spend": "Spend",
     "spendOf": "{spent} of {cap}",
-    "spendReached": "at its cap",
-    "startedAt": "Started",
     "ticketGroup": "Ticket",
     "ticketKey": "Key",
     "ticketStatus": "Status",
@@ -1547,7 +1486,6 @@
       "reopenPlaceholder": "Reopen with a message…",
       "reopen": "Reopen",
       "reopening": "Reopening…",
-      "startingHint": "The task is starting. You can send once the agent is ready.",
       "mergedHint": "Its pull requests are merged. Start a new task from the ticket to change it again.",
       "openInInbox": "Open the ticket in the Inbox",
       "spendCap": "This task reached its spend cap. It can't be reopened until the cap is raised.",
@@ -1557,7 +1495,9 @@
     "servicesWaitNone": "Waiting for a runner that can start services. None is online.",
     "waitBudgetProject": "Queued: {project}’s budget for {month} is reached. It starts once an admin raises it, or when the month ends.",
     "waitBudgetOrganization": "Queued: the organization’s budget for {month} is reached. It starts once an admin raises it, or when the month ends.",
-    "waitUnpriced": "Queued: this task’s model has no price, so the budget can’t count it. It starts once an admin enters its price."
+    "waitUnpriced": "Queued: this task’s model has no price, so the budget can’t count it. It starts once an admin enters its price.",
+    "syncedSeconds": "{n} s ago",
+    "syncedMinutes": "{n} min ago"
   },
   "linear": {
     "title": "Linear",
@@ -1642,7 +1582,6 @@
       "noExpiry": " · it doesn't expire",
       "failed": "Linear refused the refresh. Polling and writes have stopped.",
       "authorizeAgain": "Authorize again",
-      "memberAuthorize": "An admin authorizes the app again.",
       "refresh": "Refresh token",
       "inSecretStore": "In the secret store",
       "apiKey": "API key",
@@ -1722,7 +1661,6 @@
     "panel": {
       "configuration": "Configuration",
       "unset": "unset",
-      "overridden": "overridden",
       "sweeps": "Sweeps",
       "retention": "Retention",
       "daily": "daily",
@@ -1734,7 +1672,8 @@
       "neverChanged": "Never changed. Retention is off by default.",
       "setTo": "Set to {days} days, {date}",
       "turnedOff": "Turned off, {date}",
-      "fromEnv": "Set by OSTRA_RETENTION_DAYS to {days} days."
+      "fromEnv": "Set by OSTRA_RETENTION_DAYS to {days} days.",
+      "keep": "keep"
     }
   },
   "boxSizes": {
@@ -1787,7 +1726,6 @@
     "noRunnerEnforces": "No runner enforces sizes yet: every runner is host.",
     "bounds": "Bounds",
     "smallest": "Smallest",
-    "largest": "Largest",
     "boundValue": "{cpu} vCPU · {memory} GiB",
     "lastChange": "Last change",
     "lastChangeLine": "{size} set to {cpu} vCPU · {memory} GiB by {name}, {date}",
@@ -1849,7 +1787,6 @@
       "other": "Its {n} queued tasks there move to the next pool in the list."
     },
     "removeNothing": "Nothing of {project}'s runs there now.",
-    "removeLast": "{project} will have no pool. Its tasks wait until one is added.",
     "removeLastRefused": "A project keeps at least one pool: add another before removing {pool}.",
     "defaultSize": "Default box size",
     "defaultSizeLede": "Every task in {project} gets this size. A task can't pick another.",
@@ -1875,8 +1812,7 @@
     "lastChange": "Last change",
     "changedPools": "{name} changed {project}'s pools",
     "changedSize": "{name} set the default size to {size}",
-    "auditLog": "Audit log",
-    "notAdmin": "Only {project}'s admins see its runners."
+    "auditLog": "Audit log"
   },
   "runnerLabels": {
     "title": "Runner labels",
@@ -1934,14 +1870,11 @@
     "cancelledBy": "Cancelled by {name}",
     "cancelledBySomeone": "Cancelled from its pool's queue",
     "size": "{name} · {cpu} vCPU · {memory} GiB",
-    "panelRunner": "Runner",
-    "panelBoxSize": "Box size",
-    "notStarted": "not started"
+    "panelBoxSize": "Box size"
   },
   "runPicker": {
     "aPool": "A pool",
     "yourMachine": "Your machine",
-    "aPoolHint": "The project's pools, in its order",
     "poolWaits": "Waits: {reason}",
     "busy": "busy ({busy} of {slots}): it waits its turn",
     "offline": "offline",
@@ -1949,7 +1882,6 @@
     "providerNotAllowed": "the model provider isn't allowed on personal runners",
     "noPools": "{project} has no pool",
     "boxSize": "Box size",
-    "boxSizeValue": "{name} · {cpu} vCPU · {memory} GiB",
     "boxSizeNone": "Slots only",
     "personalNoSize": "Your machine counts slots: no size applies"
   },
@@ -1975,7 +1907,6 @@
     "set": "Set",
     "notSet": "Not set",
     "setBy": "by {name}, {date}",
-    "pullOnly": "pull-only",
     "replace": "Replace",
     "add": "Add",
     "cancel": "Cancel",
@@ -2033,17 +1964,13 @@
     "lastChange": "Last change",
     "changed": "{name} changed the registry",
     "cleared": "{name} removed the registry",
-    "auditLog": "Audit log",
-    "leave": "You have unsaved changes to the registry."
+    "auditLog": "Audit log"
   },
   "envSnapshot": {
     "registryRef": "Image",
-    "digest": "Digest",
     "builtOn": "Built on",
     "builtOnValue": "{runner}, {builder}",
-    "local": "Kept on {runner}: no registry set",
-    "notPushed": "not pushed",
-    "copyReference": "Copy the image reference"
+    "local": "Kept on {runner}: no registry set"
   },
   "repos": {
     "title": "Repos",
@@ -2141,7 +2068,6 @@
     "resetTitle": "Go back to the built-in template?",
     "resetBody": "Your custom template is replaced. Tasks already started keep the prompt they got.",
     "resetAction": "Reset",
-    "leaveTitle": "Leave without saving the template?",
     "editor": {
       "title": "Template",
       "note": "placeholders in {{ }}, sections in {{#…}} {{/…}}",
@@ -2156,7 +2082,7 @@
     "placeholders": {
       "title": "Placeholders",
       "insert": "Insert {name}",
-      "items": "Inside: {fields}",
+      "withFields": "{description}: {fields}",
       "describe": {
         "ticket_key": "The ticket's key",
         "ticket_title": "Its title",
@@ -2496,9 +2422,6 @@
     }
   },
   "notificationSettings": {
-    "title": "Notifications",
-    "lede": "When a task needs you, ostra tells you here, on the ticket and by mail. Choose which moments reach you where.",
-    "save": "Save choices",
     "mailOff": "Mail is off on this install.",
     "mailOffBody": " Your email choices are kept, and apply once an instance admin sets up mail.",
     "setUpEmail": "Set up email",
@@ -2513,7 +2436,6 @@
     "footnote": "The panel always shows every moment. Ticket comments go only to tasks with a ticket.",
     "reset": "Reset to defaults",
     "saved": "Saved.",
-    "loadFailed": "Couldn't load your choices.",
     "yourAddress": "Your address",
     "addressHint": "Your sign-in address.",
     "addressHintTracker": "Your sign-in address. {tracker} mentions use it too.",
@@ -2616,10 +2538,6 @@
     "replace": "Replace"
   },
   "taskTabs": {
-    "label": "Task views",
-    "activity": "Activity",
-    "changes": "Changes",
-    "checks": "Checks",
     "checksFailing": "{n} failing",
     "checksPassed": "All passed",
     "checksRunning": "Running"
@@ -2685,13 +2603,7 @@
     "notYet": "Checks run after the first turn that changes the code.",
     "oldRunner": "This task's runner doesn't run checks. Update the runner to get them.",
     "loadFailed": "The checks couldn't be loaded: {error}",
-    "tryAgain": "Try again",
-    "property": "Checks",
-    "propertyFailing": "{n} failed",
-    "propertyPassed": " · {n} passed",
-    "propertyAll": "All {n} passed",
-    "propertyRunning": "Running",
-    "draft": " · draft"
+    "tryAgain": "Try again"
   },
   "takeLocal": {
     "button": "Take it local",
@@ -2709,9 +2621,7 @@
     "copyRefused": "Select the text and copy it"
   },
   "account": {
-    "title": "Account",
     "lede": "Your theme, your GitHub account, and the machines where you ran ostra login. Only you see this page.",
-    "loadFailed": "Couldn't load your account.",
     "appearance": {
       "title": "Appearance",
       "note": "saved to your account, so every browser you sign in to follows it",
@@ -2900,34 +2810,12 @@
     "rememberThis": "Remember this",
     "remembered": "Proposed for memory"
   },
-  "intent": {
-    "diffComments": {
-      "one": " · {n} comment on the diff",
-      "other": " · {n} comments on the diff"
-    },
-    "diffCommentsNoCount": " · comments on the diff",
-    "updateBranch": " · update branch",
-    "prComment": " · from a PR comment",
-    "fixChecks": " · fix the checks",
-    "keepWorking": " · keep working",
-    "planRevision": " · changes to the plan"
-  },
-  "afterMerge": {
-    "freshBranch": "Reopened after the merge on a fresh branch, {branch}, from {base}.",
-    "prs": "Pull requests",
-    "merged": "merged",
-    "open": "open",
-    "closed": "closed",
-    "draft": "draft"
-  },
   "needsYouPage": {
-    "heading": "Needs you",
     "lede": "What waits on you across your projects. {n} unread.",
     "ledeNone": "What waits on you across your projects.",
     "tabsLabel": "Notifications",
     "open": "Open",
     "done": "Done",
-    "markAll": "Mark all as read",
     "unread": "Unread",
     "collapse": "Collapse",
     "empty": "Nothing waits on you",
@@ -3087,9 +2975,7 @@
       "providerNotAllowedInMany": "{n} projects don't allow {provider}: tasks on this profile can't start there.",
       "providerNoModels": "{provider} lists no model yet.",
       "pickModelPlaceholder": "Pick a model",
-      "noModels": "No models yet",
       "addProvider": "Add a provider under Models",
-      "custom": "custom",
       "instructions": "Instructions",
       "instructionsNote": "added beside the repo's AGENTS.md, never replacing it",
       "instructionsPlaceholder": "What every task with this profile should know, on top of the repo's own instructions.",
@@ -3155,7 +3041,6 @@
         "noKeyIn": "No key in {projects}",
         "noKeyInMany": "No key in {n} projects",
         "noKeyLists": "No key lists this model now",
-        "noKeyListsNow": "No key lists {model} now. Tasks on this profile wait until one does.",
         "inEachProject": "{model} in each project",
         "noKey": "No key",
         "cantStartOne": "{project}'s tasks on this profile can't start until an organization admin adds a key that lists it.",
@@ -3198,7 +3083,6 @@
       "notFor": "not for",
       "matchesNone": "Matches none of the sample paths.",
       "matchesNoneCommands": "Matches none of the sample commands.",
-      "matchesAll": "Asks for every request of this tool.",
       "errorName": "Give the rule a name.",
       "errorGlobs": "Give the rule at least one glob.",
       "errorGlob": "Not a valid glob: {reason}",
@@ -3290,7 +3174,6 @@
       "archiveTitle": "Archive {name}?",
       "archiveBody": "It leaves every picker, and nobody can start a task with it. Tasks that used it keep their record.",
       "archiveMoves": "{project} defaults to it for {kind}: those start with {builtIn} until an admin picks another.",
-      "effort": "Effort",
       "closingTurn": "Ask what the next task should know",
       "closingTurnHelp": "When a task ends, the agent gets one short turn to propose notes for the project's memory. Nothing reaches an agent until a member approves it."
     },
@@ -3405,9 +3288,7 @@
       "profile": "Profile",
       "none": "None",
       "turn": "{input} in · {output} out",
-      "turnSpend": "{spend}",
       "rules": "Approval rules",
-      "fromProfile": "profile",
       "fromTask": "this task · {name}"
     },
     "planning": "Planning",
@@ -3484,7 +3365,6 @@
       "title": "Models its profiles use",
       "model": "Model",
       "servedBy": "Served by",
-      "profiles": "Profiles",
       "change": "Change",
       "changeFor": "Change the key for {model}",
       "servedByLabel": "The key that serves {model} here",
@@ -3528,8 +3408,6 @@
       "keys": "Keys",
       "own": "Own list",
       "default": "The default list",
-      "changedBy": "Changed by",
-      "lastChange": "Last change",
       "auditLog": "Audit log"
     }
   },
@@ -3550,20 +3428,12 @@
     "noKeyYet": "{project} has no key yet.",
     "noneLists": "None of them lists {model}.",
     "queued": "Queued · no key",
-    "waiting": "Waiting · no key for {model}",
     "next": {
       "nothing": "Nothing starts until {project} has a key that lists {model}.",
       "otherProfile": "Or pick a profile whose model has a key here.",
       "draftStays": "Your text stays here while you wait."
     },
-    "profileKey": "Key · {key}",
-    "profileNoKey": "No key here",
     "held": "Held: no key for {model} in {project}. An organization admin picks one in Models and keys.",
-    "freshBox": "Started in a fresh box on {key}.",
-    "startedOn": "Started on {key}.",
-    "needsYouTitle": "No key for {model}",
-    "needsYouReasonOne": "{n} task waits in {project}. Pick a key in Models and keys.",
-    "needsYouReasonMany": "{n} tasks wait in {project}. Pick a key in Models and keys.",
     "keyPrefix": "Key ·",
     "providerNotAllowed": "Its key left {project}'s list. It starts again on a key that lists its model."
   },
@@ -3665,9 +3535,6 @@
       "organization": "organization",
       "user": "user"
     },
-    "unlinkedRepo": "Its installation on {account} was unlinked",
-    "unlinkedWait": "New tasks here wait until an admin links it again.",
-    "notUsable": "Not usable",
     "installationWait": "Waiting: the GitHub installation that holds {repo} isn't linked. An organization admin links it on the GitHub page."
   },
   "members": {
@@ -3694,7 +3561,6 @@
     "openProjects": "Open projects",
     "projectCountOne": "1 project",
     "projectCountOther": "{n} projects",
-    "noProjects": "No projects",
     "waitingCheck": "Waiting on the address check",
     "now": "now",
     "ago": "{age} ago",
@@ -3896,7 +3762,6 @@
     "members": "Members",
     "colMember": "Member",
     "colRole": "Project role",
-    "colAdded": "Added",
     "admin": "Admin",
     "member": "Member",
     "invited": "invited",
@@ -4110,8 +3975,6 @@
       "pr": "Pull request"
     },
     "palette": {
-      "title": "Search tasks",
-      "placeholder": "Search tasks, or type repo: status: by:",
       "tasks": "Tasks",
       "matchOne": "1 match",
       "matchOther": "{n} matches",
@@ -4210,8 +4073,7 @@
     "noSpendEver": "Spend shows here once agents run. Prices come from each provider and models.dev; a model with no price is counted in tokens until it has one.",
     "modelsLink": "Models",
     "pick": "Pick a project, a model or the organization's budget.",
-    "used": "{share} used",
-    "meterLabel": "{name}: {spent} of {budget}"
+    "used": "{share} used"
   },
   "budgets": {
     "eyebrowProject": "Project budget",
@@ -4778,5 +4640,20 @@
       "needs-you-item": "focused in a list",
       "task": "on its page"
     }
+  },
+  "units": {
+    "now": "now",
+    "minutesShort": "{n}m",
+    "hoursShort": "{n}h",
+    "daysShort": "{n}d",
+    "seconds": "{n}s",
+    "minutesSeconds": "{m}m {s}s",
+    "minutes": "{n} min",
+    "hours": "{n} h",
+    "hoursMinutes": "{h} h {m} min",
+    "days": "{n} d",
+    "secondsSpaced": "{n} s",
+    "minutesSecondsSpaced": "{m} min {s} s",
+    "hoursMinutesShort": "{h}h {m}m"
   }
 }

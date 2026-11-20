@@ -19,9 +19,9 @@ export const shortDate = (at: number): string => {
 export const lastActiveText = (at: number, now: number): string => {
   const since = Math.max(0, now - at);
   if (since < 2 * minute) return t("members.now");
-  if (since < hour) return t("members.ago", { age: `${String(Math.floor(since / minute))}m` });
-  if (since < day) return t("members.ago", { age: `${String(Math.floor(since / hour))}h` });
-  if (since < 7 * day) return t("members.ago", { age: `${String(Math.floor(since / day))}d` });
+  if (since < hour) return t("members.ago", { age: t("units.minutesShort", { n: Math.floor(since / minute) }) });
+  if (since < day) return t("members.ago", { age: t("units.hoursShort", { n: Math.floor(since / hour) }) });
+  if (since < 7 * day) return t("members.ago", { age: t("units.daysShort", { n: Math.floor(since / day) }) });
   return shortDate(at);
 };
 

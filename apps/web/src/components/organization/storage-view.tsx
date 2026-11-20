@@ -202,7 +202,7 @@ export const StorageProperties = ({ storage, now }: { readonly storage: Storage 
         "OSTRA_RETENTION_DAYS",
         value((data) =>
           data.retention.source === "env" ? (
-            <Mono className="text-ui">{data.retention.days === null ? "keep" : String(data.retention.days)}</Mono>
+            <Mono className="text-ui">{data.retention.days === null ? t("storage.panel.keep") : String(data.retention.days)}</Mono>
           ) : data.retention.source === "default" ? (
             <Mono className="text-ui text-faint">{t("storage.panel.unset")}</Mono>
           ) : (

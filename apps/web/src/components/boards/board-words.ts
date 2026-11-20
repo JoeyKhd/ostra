@@ -85,11 +85,11 @@ export const nextTaskLines = (board: BoardView, mapping: Mapping): readonly { re
 /** `2m`, `40s`, `3h`: the short ages the board rows show. */
 export const shortAge = (at: number, now: number): string => {
   const seconds = Math.max(0, Math.round((now - at) / 1000));
-  if (seconds < 60) return `${String(seconds)}s`;
+  if (seconds < 60) return t("units.seconds", { n: seconds });
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${String(minutes)}m`;
+  if (minutes < 60) return t("units.minutesShort", { n: minutes });
   const hours = Math.round(minutes / 60);
-  return hours < 48 ? `${String(hours)}h` : `${String(Math.round(hours / 24))}d`;
+  return hours < 48 ? t("units.hoursShort", { n: hours }) : t("units.daysShort", { n: Math.round(hours / 24) });
 };
 
 /** A magic line's sample: `Closes CALC-142`. */

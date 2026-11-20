@@ -28,6 +28,8 @@ const worldSchema = z.object({
   invitationId: z.string(),
   /** The member who opens the routes, an organization and instance admin (its password: `e2eAdmin.password`). */
   username: z.string(),
+  /** A member of the organization who isn't an admin (the same password). */
+  memberUsername: z.string(),
   userData: z.array(z.string()),
 });
 export type RoutesWorld = z.infer<typeof worldSchema>;

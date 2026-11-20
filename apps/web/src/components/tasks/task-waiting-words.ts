@@ -128,10 +128,10 @@ export const boxWaitText = (waiting: { readonly reason: BoxWaitingReason; readon
 /** How long a box has waited: `40s`, `3m`, `1h 5m`. */
 export const waitedFor = (ms: number): string => {
   const seconds = Math.max(0, Math.floor(ms / 1000));
-  if (seconds < 60) return `${String(seconds)}s`;
+  if (seconds < 60) return t("units.seconds", { n: seconds });
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${String(minutes)}m`;
-  return `${String(Math.floor(minutes / 60))}h ${String(minutes % 60)}m`;
+  if (minutes < 60) return t("units.minutesShort", { n: minutes });
+  return t("units.hoursMinutesShort", { h: Math.floor(minutes / 60), m: minutes % 60 });
 };
 
 /** `small · 2 vCPU · 4 GiB` for the properties panel. */

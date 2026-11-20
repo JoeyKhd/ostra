@@ -55,6 +55,8 @@ export default defineConfig(
     "**/node_modules/**",
     "**/dist/**",
     "**/.next/**",
+    // The panel's pseudo-locale build (F-083, apps/web/next.config.ts).
+    "**/.next-pseudo/**",
     "**/.turbo/**",
     "**/coverage/**",
     // The docs site's generated collections (fumadocs-mdx) and its static export.

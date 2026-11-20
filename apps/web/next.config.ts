@@ -2,8 +2,16 @@ import type { NextConfig } from "next/types";
 
 // The panel (ADR 0016, ticket 35). Every header that holds for every response is here; the Content
 // Security Policy needs a nonce per request, so `src/proxy.ts` sets it.
+// F-083 (ticket 20): the pseudo-locale, for development and tests only. `OSTRA_PSEUDO_LOCALE=1` at
+// build time wraps every message as `⟦…⟧` (src/lib/messages.ts), in a build of its own
+// (`.next-pseudo`), so the ordinary build beside it is never the pseudo one. `next start` takes the
+// same variable to serve it.
+const pseudoLocale = process.env["OSTRA_PSEUDO_LOCALE"] === "1";
+
 const config: NextConfig = {
   reactStrictMode: true,
+  ...(pseudoLocale ? { distDir: ".next-pseudo" } : {}),
+  env: { OSTRA_PSEUDO_LOCALE: pseudoLocale ? "1" : "" },
   poweredByHeader: false,
   // Next's dev-only badge sits bottom left by default, over the sidebar's account row. Bottom right
   // keeps it clear of the shell; it never ships in a production build.

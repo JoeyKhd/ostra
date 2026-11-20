@@ -93,7 +93,7 @@ export const placeholderRows = (vocabulary: TemplateView["vocabulary"]): readonl
         name,
         insert: `{{#${name}}}{{/${name}}}`,
         label: `{{#${name}}}`,
-        description: inside === "" ? describe(name) : `${describe(name)}: ${inside}`,
+        description: inside === "" ? describe(name) : t("ticketTemplate.placeholders.withFields", { description: describe(name), fields: inside }),
       };
     }),
   ];

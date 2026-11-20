@@ -26,7 +26,9 @@ describe("errorText", () => {
   });
 
   it("keeps the server's own words and hides an internal error", () => {
-    expect(errorText({ message: "No such project", data: { code: "NOT_FOUND" } })).toBe("No such project");
+    expect(errorText({ message: "A pool by that name exists", data: { code: "CONFLICT" } })).toBe("A pool by that name exists");
+    // F-083 (ticket 20): a NOT_FOUND and a role refusal are codes the panel words itself.
+    expect(errorText({ message: "No such project", data: { code: "NOT_FOUND" } })).toBe(t("errors.notFound"));
     expect(errorText({ message: "boom", data: { code: "INTERNAL_SERVER_ERROR" } })).toBe(t("errors.server"));
     expect(errorText(null)).toBeNull();
   });

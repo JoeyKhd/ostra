@@ -32,6 +32,7 @@ packages/db/src/generated/
 node_modules/
 .turbo/
 .next/
+.next-pseudo/
 dist/
 coverage/
 *.log

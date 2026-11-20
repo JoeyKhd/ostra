@@ -1,5 +1,7 @@
 import messages from "../../messages/en.json";
 
+import { pseudoLocale, pseudoText } from "./pseudo-locale";
+
 // Every string of the panel lives in `messages/en.json` (F-083), read through `t`. A key that's
 // missing from the file fails the typecheck. English only in v1; another language is another file
 // of the same shape.
@@ -21,7 +23,8 @@ const lookup = (key: string): string => {
     if (typeof node !== "object" || node === null) return key;
     node = Reflect.get(node, segment);
   }
-  return typeof node === "string" ? node : key;
+  if (typeof node !== "string") return key;
+  return pseudoLocale ? pseudoText(node) : node;
 };
 
 /** The English string for `key`, with `{name}` placeholders filled from `params`. */

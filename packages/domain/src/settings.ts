@@ -511,6 +511,8 @@ export const devOnlyEnvNames = [
   "OSTRA_DEV_REGISTRY_AUTH",
   "OSTRA_DEV_NPM_REGISTRY_PORT",
   "OSTRA_DEV_NET_PROXIES_PORT",
+  // Milestone 7 (F-083, ticket 20): the panel's pseudo-locale build, for its e2e pass.
+  "OSTRA_PSEUDO_LOCALE",
 ] as const;
 
 /**

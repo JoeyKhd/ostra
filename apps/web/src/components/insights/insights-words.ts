@@ -70,12 +70,12 @@ export const formatTokenCount = (n: number): string => {
 
 /** A span: `52 min`, `2.4 h`, `1.2 d`; under a minute is `1 min`, and nothing is `0 min`. */
 export const formatSpan = (ms: number): string => {
-  if (ms <= 0) return "0 min";
+  if (ms <= 0) return t("units.minutes", { n: 0 });
   const minutes = ms / 60_000;
-  if (minutes < 60) return `${String(Math.max(1, Math.round(minutes)))} min`;
+  if (minutes < 60) return t("units.minutes", { n: Math.max(1, Math.round(minutes)) });
   const hours = minutes / 60;
-  if (hours < 48) return `${hours < 10 ? hours.toFixed(1) : String(Math.round(hours))} h`;
-  return `${(hours / 24).toFixed(1)} d`;
+  if (hours < 48) return t("units.hours", { n: hours < 10 ? hours.toFixed(1) : Math.round(hours) });
+  return t("units.days", { n: (hours / 24).toFixed(1) });
 };
 
 /** The merge rate as `87%`, or `—` when no PR closed. */
@@ -84,10 +84,10 @@ export const formatRate = (rate: number | null): string => (rate === null ? "—
 /** `3 min`, `1 h`, `2 d`: how long ago the job ran. */
 export const formatAgo = (since: number, now: number): string => {
   const minutes = Math.max(0, Math.round((now - since) / 60_000));
-  if (minutes < 60) return `${String(Math.max(1, minutes))} min`;
+  if (minutes < 60) return t("units.minutes", { n: Math.max(1, minutes) });
   const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${String(hours)} h`;
-  return `${String(Math.round(hours / 24))} d`;
+  if (hours < 48) return t("units.hours", { n: hours });
+  return t("units.days", { n: Math.round(hours / 24) });
 };
 
 /** Older than three of the job's intervals: the job hasn't run since (insights.md, "Stale"). */

@@ -40,9 +40,9 @@ export const formatAgo = (at: number, now: number): string => {
 /** How long until a time: `21 h`, `40 min`. */
 export const formatLeft = (at: number, now: number): string => {
   const minutes = Math.max(1, Math.round((at - now) / 60_000));
-  if (minutes < 60) return `${String(minutes)} min`;
+  if (minutes < 60) return t("units.minutes", { n: minutes });
   const hours = Math.round(minutes / 60);
-  return hours < 48 ? `${String(hours)} h` : `${String(Math.round(hours / 24))} d`;
+  return hours < 48 ? t("units.hours", { n: hours }) : t("units.days", { n: Math.round(hours / 24) });
 };
 
 /** The polling sentence, with the reason when the pre-check gave one; `{setting}` stays for the caller to set in mono. */
