@@ -1246,6 +1246,21 @@ describe("the GitHub adapter", () => {
       expect(adapter.userAuthorizeUrl(fake.oauthClient, "s", "javascript:alert(1)")).toMatchObject({ ok: false, error: { code: "invalid-input" } });
     });
 
+    it("F-119/c1: with only an API address, the sign-in and the code's exchange go to its own website: GitHub.com's, a GitHub Enterprise Server's, or a fake's", async () => {
+      const signIn = (apiUrl?: string): string => {
+        const url = new GitHubAdapter(apiUrl === undefined ? {} : { apiUrl }).userAuthorizeUrl(fake.oauthClient, "state-abc", linkRedirect);
+        if (!url.ok) throw new Error(url.error.message);
+        const parsed = new URL(url.value);
+        return `${parsed.origin}${parsed.pathname}`;
+      };
+      expect(signIn()).toBe("https://github.com/login/oauth/authorize");
+      expect(signIn("https://api.github.com/")).toBe("https://github.com/login/oauth/authorize");
+      expect(signIn("https://ghe.example.com/api/v3")).toBe("https://ghe.example.com/login/oauth/authorize");
+      // The panel builds its adapter with the API address alone: the link's exchange reaches that GitHub, not github.com.
+      const code = fake.issueUserCode({ userId: "4321", login: "lee" }, { singleUse: true });
+      expect(await new GitHubAdapter({ apiUrl: fake.apiUrl }).exchangeUserCode(fake.oauthClient, code, linkRedirect)).toEqual({ ok: true, value: { userId: "4321", login: "lee" } });
+    });
+
     it("F-119/c1,c2,c4: answers the account's ID and login, and holds no token after: the one it got is revoked", async () => {
       const code = fake.issueUserCode({ userId: "1234", login: "maya" }, { singleUse: true });
       const live = fake.liveUserTokens();

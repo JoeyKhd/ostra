@@ -118,7 +118,10 @@ import type { GitHubReview } from "./schemas.ts";
 export type GitHubAdapterOptions = {
   /** The REST API. Default `https://api.github.com`; a GitHub Enterprise Server's, or a test's. */
   readonly apiUrl?: string;
-  /** The website, where the manifest form is posted. Default `https://github.com`. */
+  /**
+   * The website: where the manifest form is posted and the verified link's sign-in starts. Default:
+   * the API's own (`webUrlOf`), so a GitHub Enterprise Server's API gives its own website.
+   */
   readonly webUrl?: string;
   /**
    * Where the verified link trades a sign-in's code for a token (`/login/oauth/access_token`).
@@ -141,6 +144,17 @@ export const GITHUB_COM_LFS_ACTION_HOSTS = ["github-cloud.githubusercontent.com"
 const DEFAULT_API_URL = "https://api.github.com";
 const DEFAULT_WEB_URL = "https://github.com";
 const DEFAULT_USER_AGENT = "ostra-github-adapter/0.0.0";
+
+/**
+ * The website that goes with a REST API address: GitHub.com's for `https://api.github.com`, a GitHub
+ * Enterprise Server's own host for its `https://<host>/api/v3`, and the address itself for anything
+ * else (a fake GitHub serves the website's OAuth routes beside the API).
+ */
+export const webUrlOf = (apiUrl: string): string => {
+  const api = apiUrl.replace(/\/+$/, "");
+  if (api === DEFAULT_API_URL) return DEFAULT_WEB_URL;
+  return api.replace(/\/api\/v3$/, "");
+};
 
 /** Re-mint a cached token when it has less than this left. */
 const TOKEN_REFRESH_MARGIN_MS = 5 * 60_000;
@@ -245,7 +259,7 @@ export class GitHubAdapter extends CodeHostAdapter {
   constructor(options: GitHubAdapterOptions = {}, context?: AdapterContext) {
     super(context);
     this.#apiUrl = (options.apiUrl ?? DEFAULT_API_URL).replace(/\/+$/, "");
-    this.#webUrl = (options.webUrl ?? DEFAULT_WEB_URL).replace(/\/+$/, "");
+    this.#webUrl = (options.webUrl ?? webUrlOf(this.#apiUrl)).replace(/\/+$/, "");
     this.#oauthUrl = (options.oauthUrl ?? this.#webUrl).replace(/\/+$/, "");
     this.#userAgent = options.userAgent ?? DEFAULT_USER_AGENT;
     // Where an LFS batch answer may send the git proxy (Q119, spike 4).
