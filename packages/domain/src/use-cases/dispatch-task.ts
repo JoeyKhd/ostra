@@ -630,7 +630,9 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   const boxSize = runner.sizes && size !== null ? { name: size.name, cpuMillis: size.limits.cpuMillis, memoryMiB: size.limits.memoryMiB } : null;
   // Milestone 5 (F-120): a runner that pulls from the registry starts the box from the project's ready
   // snapshot there, by digest. The pull credential is fetched for this lease, never put in the command.
-  const image = runner.pullsFromRegistry && plan.step !== "resumed" ? await registryImageForProject(tx, { organizationId, projectId }) : null;
+  // Milestone 6 (F-113, ADR 0038): an onboarding task tests the environment from the base image, so
+  // it never starts from a snapshot, on any executor.
+  const image = runner.pullsFromRegistry && plan.step !== "resumed" && !task.onboarding ? await registryImageForProject(tx, { organizationId, projectId }) : null;
   // `resumed`: the same box, on the runner that kept it. Every other step makes a fresh one.
   const boxId =
     plan.step === "resumed"

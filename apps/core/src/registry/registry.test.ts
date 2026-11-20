@@ -410,6 +410,23 @@ describe("the snapshot registry (F-120)", () => {
     expect(JSON.stringify(records)).not.toContain(registry.pull.password);
   });
 
+  it("F-113: an onboarding task's box starts from the base image on a pool that pulls from the registry, never the project's snapshot", async () => {
+    const registryId = await setTo(registry, { push: registry.push, pull: registry.pull });
+    await pushedSnapshot(registryId, digest("e"));
+    for (const executor of ["kubernetes", "docker"] as const) {
+      const holder = await poolRunner(executor);
+      const task = await seedQueuedTask(test.db, world, fixture.a.member, null);
+      await test.db.task.update({ where: { id: task.taskId }, data: { onboarding: true, origin: "onboarding" } });
+      const offered = await test.db.$transaction((tx) =>
+        dispatchTask({ tx, jobs, outbox: postgresCommandOutbox, notices: postgresChangeNotices, clock: systemClock, logger }, dispatchPayload(task, 1)),
+      );
+      expect(offered).toMatchObject({ ok: true, runnerId: holder.runnerId });
+      const dispatch = await test.db.command.findFirstOrThrow({ where: { organizationId: world.organizationId, kind: "dispatch", taskId: task.taskId } });
+      expect(dispatchBodySchema.parse(dispatch.body).box?.image ?? null).toBeNull();
+      await test.db.runner.update({ where: { id: holder.runnerId }, data: { state: "offline" } });
+    }
+  });
+
   it("F-120: a kubernetes pool without a registry builds nothing, and its task waits for one", async () => {
     // The project's one pool holds one kubernetes runner and nothing else.
     const cluster = await test.db.runnerPool.create({ data: { organizationId: world.organizationId, name: "cluster" }, select: { id: true } });
