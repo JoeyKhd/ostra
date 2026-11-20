@@ -1,6 +1,6 @@
 # 17: Core: the registry, and snapshots for `kubernetes` pools
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: 05, 06
 Features: F-120, F-051 (grown), F-093
@@ -17,9 +17,11 @@ Spec: `../spec.md`, section 4 ("A snapshot with a registry"); ADR 0060, ADR 0038
 
 ## Done when
 
-- [ ] Tests against the fake OCI registry, named for `F-120`: the check's three results (both allowed, pull only, refused); the push credential to the builder only and only while building; the pull credential to the lease holder only and refused with a stale epoch; a `kubernetes` pool's task waiting without a registry; a `docker` host without one still building its own (milestone 3's test kept).
-- [ ] Break-it: answering the pull credential to any runner of the organization fails its test; recorded in `context/proof/F-120.md`.
-- [ ] The whole-repo checks pass (spec section 9).
-- [ ] Committed as `✨ add the snapshot registry`.
+- [x] Tests against the fake OCI registry, named for `F-120`: the check's three results (both allowed, pull only, refused); the push credential to the builder only and only while building; the pull credential to the lease holder only and refused with a stale epoch; a `kubernetes` pool's task waiting without a registry; a `docker` host without one still building its own (milestone 3's test kept).
+- [x] Break-it: answering the pull credential to any runner of the organization fails its test; recorded in `context/proof/F-120.md`.
+- [x] The whole-repo checks pass (spec section 9).
+- [x] Committed as `✨ add the snapshot registry`.
 
 ## Comments
+
+- 2026-11-20: built. `setRegistry`, `checkRegistry`, `issuePushCredential` and `issuePullCredential` in `packages/domain/src/use-cases/registry.ts`; the `registry.check` job, its probe (core's own `fetch` calls to the distribution API: `/v2/`, the token flow, an upload started and cancelled, an existing manifest or the tag list) and the two credential endpoints in `apps/core/src/registry/`. `planSnapshotBuild` (domain's `snapshots.ts`) replaces the build's runner pick: with a registry, a `kubernetes` runner with `builder: "buildkit"`, else a `docker` runner at minor 4, each with `push.ref`; without one, milestone 3's `docker` path. The dispatch names the ready pushed snapshot (`box.image`, by digest) to a runner whose executor pulls from the registry, and the box row keeps `imageRef` and `imageDigest`. Tests in `apps/core/src/registry/registry.test.ts` (eight, F-120) against ticket 06's fake OCI registry, bearer and Basic; milestone 3's `snapshots.test.ts` passes unchanged. Break-its: dropping the lease's `runnerId` from the pull credential's check (the other runner got 200), dropping the builder check from the push credential's, and collapsing the probe's pull-only into push-and-pull each failed their test; recorded in `context/proof/F-120.md`. Departures: the check's result for a registry that refuses the pull is `refused` whatever the push did, as the three results allow; a `node` registry answers the pull credential with `no-image` (the protocol's refusal codes have no other), and a stale `registry.check` writes what it finds for the row as it is now. Decisions of today: none applies here (one organization per install doesn't change the per-organization rows). Commit: 6b90768e.
