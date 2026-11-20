@@ -416,7 +416,7 @@ export const settingFields = {
   },
   OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES: {
     default: "60",
-    description: "The fewest minutes between two occurrences of a schedule (F-106). A schedule that fires more often is refused when it's saved.",
+    description: "The fewest minutes between two occurrences of a schedule (F-106). A schedule that fires more often is refused when it's saved, and one saved under a lower value fires at most once in that many minutes, checked at each tick.",
   },
   OSTRA_SCHEDULE_MISSED_HOURS: {
     default: "6",

@@ -236,6 +236,28 @@ describe("scheduler.tick (F-106)", () => {
     expect(await test.db.task.count({ where: { automationId: edited } })).toBe(0);
   });
 
+  it("F-106/c1: a schedule saved under a lower minimum interval is held to the setting at each tick once it rises", async () => {
+    // Saved while the install allowed one minute apart (the demo's setting): every quarter hour.
+    const saved = await saveAutomation({ ...deps(), scheduleMinIntervalMinutes: 1 }, admin, { projectId, automationId: null, settings: prompt({ schedule: "*/15 * * * *" }) });
+    if (!saved.ok) throw new Error(`save refused: ${saved.error}`);
+    const { automationId } = saved;
+    const tickAt = (time: string, minutes: number) => {
+      now = at(`2026-03-02T${time}:05Z`);
+      return tickScheduler({ ...deps(), scheduleMinIntervalMinutes: minutes });
+    };
+    // Under the setting it was saved with, each quarter fires.
+    expect(await tickAt("08:15", 1)).toEqual({ occurrences: 1, missed: 0 });
+    expect(await tickAt("08:30", 1)).toEqual({ occurrences: 1, missed: 0 });
+    // The setting rises to an hour: at most one an hour, counted from the last one fired.
+    for (const time of ["08:45", "09:00", "09:15", "09:30", "09:45", "10:00", "10:15", "10:30", "10:45"]) {
+      await tickAt(time, 60);
+    }
+    expect((await runsOf(automationId)).map((row) => row.occurrenceAt?.toISOString().slice(11, 16))).toEqual(["08:15", "08:30", "09:30", "10:30"]);
+    expect((await test.db.automation.findUniqueOrThrow({ where: { id: automationId } })).nextOccurrenceAt?.toISOString()).toBe("2026-03-02T11:30:00.000Z");
+    // A save under the new setting refuses the same pattern.
+    expect(await saveAutomation(deps(), admin, { projectId, automationId, settings: prompt({ name: "Again", schedule: "*/15 * * * *" }) })).toMatchObject({ ok: false, error: "schedule-too-often" });
+  });
+
   it("F-106/c1: with skip-while-open on, an occurrence starts nothing until the last one's task is merged, done or stopped", async () => {
     const skipping = await save(prompt({ schedule: "0 * * * *" }));
     const always = await save(prompt({ schedule: "0 * * * *", skipWhileOpen: false }));

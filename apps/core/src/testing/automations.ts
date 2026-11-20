@@ -68,5 +68,5 @@ export const automationJobDeps = (db: Db, jobs: Jobs, clock: Clock, team: Partia
   audit: postgresAuditLog,
   clock,
   publicUrl: "https://ostra.example",
-  team: { scheduleMissedHours: 6, intakeStartsPerHour: 20, bulkStartMax: 50, ...team },
+  team: { scheduleMissedHours: 6, scheduleMinIntervalMinutes: 60, intakeStartsPerHour: 20, bulkStartMax: 50, ...team },
 });

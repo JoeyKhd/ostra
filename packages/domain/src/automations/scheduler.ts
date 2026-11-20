@@ -6,9 +6,11 @@ import type { M6Deps, RunOccurrence, StartTaskOptions, TickScheduler } from "../
 import { startTask } from "../starts/start-task-body.ts";
 import type { StartPorts } from "../starts/start-task-body.ts";
 import { BULK_START_MAX_DEFAULT } from "../starts/bulk.ts";
-import { parseCron, planOccurrences } from "./cron.ts";
+import { minimumIntervalOk, nextOccurrence, parseCron, planOccurrences } from "./cron.ts";
+import type { Cron } from "./cron.ts";
 import { filterTicketOf } from "./intake.ts";
 import { matchesFilter, parseIntakeFilter } from "./intake-filter.ts";
+import { SCHEDULE_MIN_INTERVAL_MINUTES_DEFAULT } from "./manage.ts";
 
 // The scheduler (F-106, ADR 0037 amended, ADR 0056, Q211; milestone 6's ticket 10). `scheduler.tick`
 // is a pg-boss schedule once a minute; it's idempotent, so pg-boss's own cron is enough for the tick
@@ -19,13 +21,38 @@ import { matchesFilter, parseIntakeFilter } from "./intake-filter.ts";
 // `OSTRA_SCHEDULE_MISSED_HOURS` late are recorded `missed` with one audit entry per catch-up; of
 // those under it only the latest fires. The row is inserted as `started` with no task: the
 // occurrence's job sets its task, or moves it to `skipped`. A prompt schedule's prompt is never logged.
+//
+// The minimum interval (`OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES`) is checked at each tick as well as
+// at the save (ticket 41): a schedule saved under a lower setting keeps its pattern, and fires at
+// most once in that many minutes after the setting rises.
 
 /** `OSTRA_SCHEDULE_MISSED_HOURS`'s default. */
 export const SCHEDULE_MISSED_HOURS_DEFAULT = 6;
 
+const MINUTE_MS = 60_000;
+
+/** `minimumIntervalOk` walks a year of occurrences (about 0.1 s for an hourly one): its answer, kept per pattern, zone and setting. */
+const intervalAnswers = new Map<string, boolean>();
+
+const holdsMinimumInterval = (cron: Cron, minutes: number, timeZone: string): boolean => {
+  const key = `${String(minutes)}\u0000${timeZone}\u0000${cron.source}`;
+  const known = intervalAnswers.get(key);
+  if (known !== undefined) {
+    return known;
+  }
+  if (intervalAnswers.size >= 1_000) {
+    intervalAnswers.clear();
+  }
+  const answer = minimumIntervalOk(cron, minutes, timeZone);
+  intervalAnswers.set(key, answer);
+  return answer;
+};
+
 export type SchedulerOptions = StartTaskOptions & {
   /** `OSTRA_SCHEDULE_MISSED_HOURS`. */
   readonly scheduleMissedHours?: number;
+  /** `OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES`, held at each tick. */
+  readonly scheduleMinIntervalMinutes?: number;
   /** `OSTRA_BULK_START_MAX`: the most matches one occurrence of a filter schedule starts. */
   readonly bulkStartMax?: number;
   /**
@@ -77,17 +104,26 @@ export const tickAutomationInTx = async (deps: TickTxDeps, tx: Tx, automationId:
     now,
     missedHours: deps.scheduleMissedHours ?? SCHEDULE_MISSED_HOURS_DEFAULT,
   });
+  // A schedule that fires more often than the install allows now (saved under a lower setting) is
+  // held to it: an occurrence closer than the interval to the last one fired doesn't fire, and the
+  // next one due is the first the interval allows.
+  const minIntervalMs = (deps.scheduleMinIntervalMinutes ?? SCHEDULE_MIN_INTERVAL_MINUTES_DEFAULT) * MINUTE_MS;
+  const held = !holdsMinimumInterval(parsed.cron, minIntervalMs / MINUTE_MS, row.timeZone);
+  const lastFired = row.lastOccurrenceAt?.getTime() ?? null;
+  const fire = plan.fire !== null && held && lastFired !== null && plan.fire - lastFired < minIntervalMs ? null : plan.fire;
+  const since = fire ?? lastFired;
+  const next = held && since !== null ? nextOccurrence(parsed.cron, row.timeZone, Math.max(now, since + minIntervalMs - 1)) : plan.next;
   const at = new Date(now);
   let fired: number | null = null;
-  if (plan.fire !== null) {
+  if (fire !== null) {
     const [inserted] = await tx.automationRun.createManyAndReturn({
-      data: [{ organizationId, projectId, automationId, kind: "occurrence", occurrenceAt: new Date(plan.fire), state: "started", createdAt: at }],
+      data: [{ organizationId, projectId, automationId, kind: "occurrence", occurrenceAt: new Date(fire), state: "started", createdAt: at }],
       skipDuplicates: true,
       select: { id: true },
     });
     if (inserted !== undefined) {
-      await deps.jobs.enqueueInTx(tx, "automation.occurrence", { organizationId, automationId, occurrenceAt: plan.fire });
-      fired = plan.fire;
+      await deps.jobs.enqueueInTx(tx, "automation.occurrence", { organizationId, automationId, occurrenceAt: fire });
+      fired = fire;
     }
   }
   if (plan.missed.length > 0) {
@@ -107,10 +143,10 @@ export const tickAutomationInTx = async (deps: TickTxDeps, tx: Tx, automationId:
       data: { missed: plan.missedCount, firstMissedAt: plan.missed[0] ?? null, lastMissedAt: plan.missed.at(-1) ?? null },
     });
   }
-  const last = plan.fire ?? plan.missed.at(-1) ?? null;
+  const last = fire ?? plan.missed.at(-1) ?? null;
   await tx.automation.update({
     where: { id: row.id },
-    data: { nextOccurrenceAt: plan.next === null ? null : new Date(plan.next), ...(last === null ? {} : { lastOccurrenceAt: new Date(last) }) },
+    data: { nextOccurrenceAt: next === null ? null : new Date(next), ...(last === null ? {} : { lastOccurrenceAt: new Date(last) }) },
   });
   await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "project", entityId: projectId });
   if (fired !== null) {

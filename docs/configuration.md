@@ -81,7 +81,7 @@ Read by `apps/core` and `apps/web` through `parseServerSettings` (`packages/doma
 | `OSTRA_BOOTSTRAP_JOIN_TOKEN` | `true` | Make the bootstrap join token at first start: one token for the default pool, written to `OSTRA_DATA_DIR` for the compose file's pool runner (F-013). It's made once, and one an admin revokes stays revoked. `false`: make none. The Helm chart sets `false`, since its runner chart joins with a token from the panel. |
 | `OSTRA_PERSONAL_RUNNER_CAPACITY` | `2` | How many tasks a personal runner runs at once, unless its member sets another number on the runner (F-014, F-067). |
 | `OSTRA_QUEUE_SWEEP_SECONDS` | `5` | How often each pool's queue is swept for tasks that now fit, besides the admission every change of room starts (F-067). |
-| `OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES` | `60` | The fewest minutes between two occurrences of a schedule (F-106). A schedule that fires more often is refused when it's saved. |
+| `OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES` | `60` | The fewest minutes between two occurrences of a schedule (F-106). A schedule that fires more often is refused when it's saved, and one saved under a lower value fires at most once in that many minutes, checked at each tick. |
 | `OSTRA_SCHEDULE_MISSED_HOURS` | `6` | How late an occurrence may be and still fire, after the install was down (F-106). Only the latest due one fires; older ones are skipped and audited. |
 | `OSTRA_INTAKE_STARTS_PER_HOUR` | `20` | The most tasks one intake rule starts in an hour (F-011). The next match pauses the rule and tells the project's admins. |
 | `OSTRA_BULK_START_MAX` | `50` | The most tickets a member starts at once, from the Inbox or a dry run's "Start all" (F-107). |

@@ -124,6 +124,8 @@ export const runScheduleHunt = async (input: HuntInput): Promise<HuntResult> => 
       ...input.env,
       OSTRA_CORE_PORT: String(ports.get(name) ?? 0),
       OSTRA_SCHEDULE_MISSED_HOURS: String(input.missedHours),
+      // The hunt's schedules fire every minute: the tick holds a schedule to this setting too (ticket 41).
+      OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES: "1",
       CORE_TEST_CONTROL_STDIN: "1",
       ...(clockOffsetMs === 0 ? {} : { CORE_TEST_SCHEDULER_CLOCK_OFFSET_MS: String(clockOffsetMs) }),
     },

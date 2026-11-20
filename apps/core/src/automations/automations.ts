@@ -19,7 +19,7 @@ export type AutomationJobDeps = {
   readonly clock: Clock;
   /** The panel's address: the link to a ticket task that goes on its ticket. */
   readonly publicUrl: string;
-  readonly team: Pick<TeamSettings, "scheduleMissedHours" | "intakeStartsPerHour" | "bulkStartMax">;
+  readonly team: Pick<TeamSettings, "scheduleMissedHours" | "scheduleMinIntervalMinutes" | "intakeStartsPerHour" | "bulkStartMax">;
 };
 
 /** The scheduler's steps, as core's kill points (ticket 37's hunt): nothing unless a test process armed one. */
@@ -40,6 +40,7 @@ const options = (deps: AutomationJobDeps) => ({
   onStep: schedulerKillPoint,
   publicUrl: deps.publicUrl,
   scheduleMissedHours: deps.team.scheduleMissedHours,
+  scheduleMinIntervalMinutes: deps.team.scheduleMinIntervalMinutes,
   intakeStartsPerHour: deps.team.intakeStartsPerHour,
   bulkStartMax: deps.team.bulkStartMax,
 });
