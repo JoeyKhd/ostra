@@ -118,13 +118,14 @@ export const addModelProvider = async (page: Page, settings: DemoSettings): Prom
     await page.getByRole("button", { name: "Save provider" }).click();
     await page.getByTestId("provider-settings").waitFor({ timeout: 30_000 });
   }
-  // The only runner is personal: the provider must allow it (off by default).
-  const allow = await openProvider(page).then(() => page.getByLabel("Allow on personal runners"));
+  // The only runner is personal: the provider must allow it (off by default). Since milestone 4's
+  // keys per project, its switch is in the provider sheet's edit mode.
+  const allow = await openProviderSettings(page);
   if ((await allow.getAttribute("data-state")) !== "checked") {
     say("step 3: allow the provider on personal runners");
     await allow.click();
     await page.waitForResponse((response) => response.url().includes("providers.update"));
-    await openProvider(page);
+    await openProviderSettings(page);
     await page.locator('#settings-personal[data-state="checked"]').waitFor();
   }
   const row = page.locator(`tr[data-model="${settings.modelId}"]`);
@@ -148,6 +149,15 @@ export const openProvider = async (page: Page): Promise<void> => {
   await page.getByTestId("provider-settings").waitFor();
 };
 
+/** The provider sheet in its edit mode ("Edit provider"), where its limits are: answers the personal runners switch. */
+const openProviderSettings = async (page: Page) => {
+  await openProvider(page);
+  await page.getByTestId("provider-settings").getByRole("button", { name: "Edit provider" }).click();
+  const allow = page.locator("#settings-personal");
+  await allow.waitFor();
+  return allow;
+};
+
 export const connectGitHub = async (page: Page, settings: DemoSettings): Promise<void> => {
   if (await stepDone(page, "github")) {
     say("step 4: GitHub is connected");
@@ -159,9 +169,17 @@ export const connectGitHub = async (page: Page, settings: DemoSettings): Promise
   await page.locator("#private-key").fill(await readFile(settings.githubPrivateKeyPath, "utf8"));
   await page.locator("#webhook-secret").fill(settings.githubWebhookSecret);
   await page.getByRole("button", { name: "Connect the App" }).click();
-  await page.getByTestId("github-connection").waitFor({ timeout: 60_000 });
-  // The installations load after the connection: the test org's row, not the sidebar's org name.
-  await page.locator("ul.rows li", { hasText: settings.githubOrg }).first().waitFor({ timeout: 30_000 });
+  // Milestone 4's page (F-136): the App's section, then its installation on the test org, which a
+  // delivery or a repo needs linked. The installations load after the connection.
+  await page.getByTestId("github-app").first().waitFor({ timeout: 60_000 });
+  const installation = (state?: string) =>
+    page.locator(`li[data-testid="installation"][data-account="${settings.githubOrg}"]${state === undefined ? "" : `[data-state="${state}"]`}`).first();
+  await installation().waitFor({ timeout: 60_000 });
+  if ((await installation().getAttribute("data-state")) === "waiting") {
+    say("step 4: link the App's installation on the test org");
+    await installation().getByRole("button", { name: "Link", exact: true }).click();
+  }
+  await installation("linked").waitFor({ timeout: 60_000 });
   await screenshot(page, settings, "github-connected");
 };
 
