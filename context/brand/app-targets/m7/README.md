@@ -8,7 +8,7 @@ The design targets for milestone 7's screens (Launch; `context/specs/m7-launch/s
 
 **Postponed 2026-11-19:** Claude Code (F-018) moved after v1 on the maintainer's word, so its targets wait with it: `agent-profile-claude-code`, `runner-agents`, `task-subagent` and `task-subagent-preparing`. Their files stay here, unchanged, for when F-018 is built. Nothing in v1 builds them.
 
-**Waiting for the maintainer's approval, 2026-11-20:** `task-subagents-badge` and `task-subagents-tree`, an agent's subagents on the task page as a badge on its turn and a window with their tree (`task-subagents-tree.md`; the data in `context/research/opencode-subagents.md`). Nothing builds them until the maintainer approves the pictures.
+**Approved by the maintainer, 2026-11-20 ("Yes"):** `task-subagents-badge` and `task-subagents-tree`, an agent's subagents on the task page as a badge on its turn and a window with their tree (`task-subagents-tree.md`; the data in `context/research/opencode-subagents.md`). Ticket 39 builds them (F-138); the faults each image's `.md` lists under "Wrong in the image" are not copied.
 
 ## Screens
 
