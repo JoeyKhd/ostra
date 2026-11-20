@@ -17,6 +17,7 @@ import { hashPassword } from "better-auth/crypto";
 
 import { createDb } from "@ostra/db";
 import { seedMember } from "@ostra/domain";
+import { PROTOCOL_MINOR } from "@ostra/protocol";
 import { z } from "zod";
 
 const argsSchema = z.discriminatedUnion("scenario", [
@@ -132,7 +133,8 @@ const fleet = async () => {
   if (found === null) {
     const token = await db.joinToken.create({ data: { organizationId, poolId: fleetPool.id, tokenHash: createHash("sha256").update(randomUUID()).digest("hex"), label: "ci-bootstrap", createdByMemberId: admin.id, useCount: 4 } });
     await runner({ poolId: fleetPool.id, name: "e2e-fleet-01", state: "online", slots: 3, labels: ["tier:fast", "region:eu"], carrier: "http", joinTokenId: token.id });
-    await runner({ poolId: fleetPool.id, name: "e2e-fleet-old", state: "online", slots: 4, version: "0.4.2", minor: 3, install: "image", joinTokenId: token.id });
+    // One minor behind this build's, so it stays inside the window (outdated, not refused) as the minor moves on.
+    await runner({ poolId: fleetPool.id, name: "e2e-fleet-old", state: "online", slots: 4, version: "0.4.2", minor: PROTOCOL_MINOR - 1, install: "image", joinTokenId: token.id });
     const drain = await runner({ poolId: fleetPool.id, name: "e2e-drain-01", state: "online", slots: 2, joinTokenId: token.id });
     const revoke = await runner({ poolId: fleetPool.id, name: "e2e-revoke-01", state: "online", slots: 2, joinTokenId: token.id });
     await box(app.id, drain.id, "Prorate seat changes");
