@@ -57,12 +57,14 @@ describe("every write of a needs-you item enqueues its fan-out", () => {
     // 7's keyboard specs, ticket 13, and its route sweep, ticket 19, seed the items they show; milestone
     // 6's refine draft, ticket 34, seeds its draft_ready item, and its review screens, ticket 35, their
     // reviewer's and round cap's items, and its agent mode and approval screens, ticket 33, an outside
-    // task's awaiting_approval item), and the isolation
+    // task's awaiting_approval item; milestone 3's Needs you, ticket 44, its approvals with the
+    // member's notification, as fan-out writes them), and the isolation
     // suite's fixture rows (milestone 4, ticket 09), which notify no one.
     expect(writers.sort()).toEqual([
       "apps/web/e2e/seed-keys-world.ts",
       "apps/web/e2e/seed-keys.ts",
       "apps/web/e2e/seed-m6.ts",
+      "apps/web/e2e/seed-needs-you-world.ts",
       "apps/web/e2e/seed-refine-world.ts",
       "apps/web/e2e/seed-review-world.ts",
       "apps/web/e2e/seed-routes-world.ts",
