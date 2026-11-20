@@ -1,4 +1,5 @@
 import { TRPCError } from "@trpc/server";
+import { redirect } from "next/navigation";
 
 import { AcceptInvite, UnusableInvitation } from "@/components/auth/accept-invite";
 import type { InviteViewer } from "@/components/auth/accept-invite";
@@ -19,6 +20,15 @@ const InvitePage = async ({ params, searchParams }: Props) => {
   const { "invitation-id": invitationId } = await params;
   const query = await searchParams;
   const { caller, signedIn } = await getServerApi();
+  // The verification mail's link (`?verify=<token>`, ADR 0053): the address is proven, and the
+  // membership waiting on it is active. Signed in (the sign-up's browser), Home; otherwise sign in.
+  const verifyToken = query["verify"];
+  let verificationFailed = typeof query["error"] === "string";
+  if (typeof verifyToken === "string" && verifyToken !== "") {
+    const verified = await caller.invitations.verify({ invitationId, token: verifyToken }).catch(() => ({ state: "invalid" as const }));
+    if (verified.state === "verified") redirect(signedIn ? "/" : "/sign-in");
+    verificationFailed = true;
+  }
   const [preview, email] = await Promise.all([
     caller.invitations.preview({ invitationId }).catch((error: unknown) =>
       error instanceof TRPCError && error.code === "TOO_MANY_REQUESTS" ? ({ state: "too-many" } as const) : ({ state: "failed" } as const),
@@ -40,7 +50,7 @@ const InvitePage = async ({ params, searchParams }: Props) => {
           preview={preview}
           viewer={viewer}
           emailOn={email.on}
-          verificationFailed={typeof query["error"] === "string"}
+          verificationFailed={verificationFailed}
         />
       ) : (
         <UnusableInvitation preview={preview} />

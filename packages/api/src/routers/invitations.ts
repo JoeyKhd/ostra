@@ -1,4 +1,4 @@
-import { acceptInvitation, invitationLifecycleOf } from "@ostra/domain";
+import { acceptInvitation, invitationLifecycleOf, verifyMembership } from "@ostra/domain";
 import { invitationIdSchema, memberIdSchema, organizationIdSchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -79,6 +79,24 @@ export const invitationsRouter = router({
         days: settings.invitationDays,
         verificationPending: acceptor?.state === "pending_verification",
       };
+    }),
+
+  /**
+   * The verification mail's link (`/invite/<id>?verify=<token>`, ADR 0053): the address is proven,
+   * and the membership waiting on it becomes active. Public, as the link may open in a browser with
+   * no session, and rate-limited by the client's address with the preview. The token is a secret: it
+   * is never logged, and only its hash is stored.
+   */
+  verify: publicProcedure
+    .input(z.strictObject({ invitationId: z.string().min(1).max(128), token: z.string().min(1).max(256) }))
+    .output(z.object({ state: z.enum(["verified", "invalid"]) }))
+    .mutation(async ({ ctx, input }) => {
+      const { db, ports } = ctx.deps;
+      if (!previews.allow(clientAddressOf(ctx.headers), ports.clock.now())) {
+        throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Too many tries: wait a minute" });
+      }
+      const verified = await db.$transaction((tx) => verifyMembership(ports, tx, input));
+      return { state: verified.ok ? ("verified" as const) : ("invalid" as const) };
     }),
 
   /**

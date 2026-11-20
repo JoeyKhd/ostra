@@ -6,6 +6,7 @@ import type { InvitationId, MemberId, OrganizationId, UserId } from "@ostra/prot
 import { z } from "zod";
 
 import { requireOrganizationAdmin } from "../access.ts";
+import { accountTokenHash, membershipVerificationIdentifier } from "../mail/account-mail-links.ts";
 import type { OrganizationRole } from "../access.ts";
 import { membershipOnAccept, transitionInvitation } from "../lifecycles/m4.ts";
 import type { InvitationLifecycle } from "../lifecycles/m4.ts";
@@ -316,6 +317,41 @@ export const activateVerifiedMemberships = async (
     activated.push({ memberId, organizationId });
   }
   return activated;
+};
+
+/**
+ * The verification mail's link opened (F-002, ADR 0053): its token, by its hash, names a membership
+ * waiting on its address, and the invitation in the link must be the one that account accepted. The
+ * address is then verified, every membership waiting on it becomes active (`member.verified`), and
+ * the token is used up. Anything else, an expired or used token included, is `invalid`, in words
+ * that say nothing of which part was wrong.
+ */
+export const verifyMembership = async (
+  deps: Pick<M4Deps, "audit" | "notices" | "clock">,
+  tx: Tx,
+  input: { readonly invitationId: string; readonly token: string },
+): Promise<{ readonly ok: true; readonly userId: UserId } | { readonly ok: false }> => {
+  const invitationId = invitationIdSchema.safeParse(input.invitationId);
+  if (!invitationId.success || input.token === "") {
+    return { ok: false };
+  }
+  const row = await tx.verification.findFirst({
+    where: { identifier: membershipVerificationIdentifier(accountTokenHash(input.token)), expiresAt: { gt: new Date(deps.clock.now()) } },
+    select: { id: true, value: true },
+  });
+  if (row === null) {
+    return { ok: false };
+  }
+  const member = await tx.member.findUnique({ where: { id: row.value }, select: { userId: true, organizationId: true, state: true } });
+  const invitation = await tx.invitation.findUnique({ where: { id: invitationId.data }, select: { acceptedUserId: true, organizationId: true } });
+  if (member?.state !== "pending_verification" || invitation?.acceptedUserId !== member.userId || invitation.organizationId !== member.organizationId) {
+    return { ok: false };
+  }
+  const userId = userIdSchema.parse(member.userId);
+  await tx.verification.delete({ where: { id: row.id } });
+  await tx.user.update({ where: { id: userId }, data: { emailVerified: true } });
+  await activateVerifiedMemberships(deps, tx, userId);
+  return { ok: true, userId };
 };
 
 /** The `invitation.expire` sweep: pending invitations past their expiry are marked `expired`. */

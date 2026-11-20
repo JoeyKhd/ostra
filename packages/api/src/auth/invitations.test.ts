@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { SeededMember } from "@ostra/db/testing";
-import { hashCliToken, inviteMember } from "@ostra/domain";
+import { hashCliToken, inviteMember, mintMembershipVerification } from "@ostra/domain";
 import { createEmailVerificationToken } from "better-auth/api";
 import { hashPassword } from "better-auth/crypto";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -274,6 +274,44 @@ describe("with email set up", () => {
     expect(await harness.test.db.auditEntry.count({ where: { organizationId, action: "member.verified", entityId: member.id } })).toBe(1);
     const now = await callerWithCookie(cookieHeaderFrom(signedUp.headers));
     expect(Array.isArray(await now.projects.list())).toBe(true);
+  });
+
+  it("F-002: the mailed verification link's token activates the membership once, only with its own invitation", async () => {
+    const who = fresh("mailed");
+    const invited = await inviteOf(who.email);
+    const signedUp = await signUp({ ...who, invitationId: invited.invitationId });
+    const member = await memberOf(who.email);
+    if (member === null) throw new Error("no membership");
+    expect(member).toMatchObject({ state: "pending_verification" });
+    // The token core's account mail mints for the link (`/invite/<id>?verify=<token>`).
+    const mint = () => harness.test.db.$transaction((tx) => mintMembershipVerification(tx, { memberId: member.id, expiresAt: new Date(Date.now() + 60_000) }));
+    const token = await mint();
+    const other = await inviteOf(fresh("other").email);
+    const anonymous = harness.anonymous();
+    // Another invitation's ID with the token, or a made-up token: nothing happens.
+    expect(await anonymous.invitations.verify({ invitationId: other.invitationId, token })).toEqual({ state: "invalid" });
+    expect(await anonymous.invitations.verify({ invitationId: invited.invitationId, token: `${token}x` })).toEqual({ state: "invalid" });
+    expect(await harness.test.db.member.findUniqueOrThrow({ where: { id: member.id } })).toMatchObject({ state: "pending_verification" });
+
+    expect(await anonymous.invitations.verify({ invitationId: invited.invitationId, token })).toEqual({ state: "verified" });
+    expect(await harness.test.db.member.findUniqueOrThrow({ where: { id: member.id } })).toMatchObject({ state: "active" });
+    expect(await harness.test.db.user.findUniqueOrThrow({ where: { email: who.email } })).toMatchObject({ emailVerified: true });
+    expect(await harness.test.db.auditEntry.count({ where: { organizationId, action: "member.verified", entityId: member.id } })).toBe(1);
+    // The session the sign-up made now opens the organization; the link works once.
+    const caller = await callerWithCookie(cookieHeaderFrom(signedUp.headers));
+    expect(Array.isArray(await caller.projects.list())).toBe(true);
+    expect(await anonymous.invitations.verify({ invitationId: invited.invitationId, token })).toEqual({ state: "invalid" });
+  });
+
+  it("F-002: an expired verification token activates nothing", async () => {
+    const who = fresh("late");
+    const invited = await inviteOf(who.email);
+    await signUp({ ...who, invitationId: invited.invitationId });
+    const member = await memberOf(who.email);
+    if (member === null) throw new Error("no membership");
+    const token = await harness.test.db.$transaction((tx) => mintMembershipVerification(tx, { memberId: member.id, expiresAt: new Date(Date.now() - 1000) }));
+    expect(await harness.anonymous().invitations.verify({ invitationId: invited.invitationId, token })).toEqual({ state: "invalid" });
+    expect(await harness.test.db.member.findUniqueOrThrow({ where: { id: member.id } })).toMatchObject({ state: "pending_verification" });
   });
 
   it("F-002: Send it again enqueues one more verification mail for the waiting membership, and its delivery goes again", async () => {
