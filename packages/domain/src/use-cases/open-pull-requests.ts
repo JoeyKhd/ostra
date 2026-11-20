@@ -24,6 +24,7 @@ import { lastAgentMessageInTx } from "./record-session-end.ts";
 import { latestCheckRunsInTx, prChecksFor } from "./checks.ts";
 import { repoAccessFor } from "./repo-access.ts";
 import { writePullRequestSearchEntry } from "../search/entries.ts";
+import { recordAgentSessionMomentInTx } from "../linear/agent-session-moments.ts";
 import { appendServerEvent } from "./server-events.ts";
 import { INSTALLATION_NOT_LINKED, installationStateSelect, installationUsable } from "../code-host/installations.ts";
 
@@ -240,6 +241,15 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
       // A ticket task's ticket links the PR, moves to in review at the first one, and its
       // progress comment is edited (F-031); each write is keyed, so a rerun writes nothing new.
       await writeTicketStepsInTx({ tx }, { taskId: task.id, trigger: { kind: "pr-opened", repoId, url: pr.url } });
+      // Milestone 6 (F-012, ticket 13): a task Linear started posts the PR in its session, once per PR.
+      await recordAgentSessionMomentInTx(deps, tx, {
+        organizationId,
+        taskId: task.id,
+        moment: { kind: "pr-opened", repo: repo.fullName, number: pr.number, url: pr.url },
+        key: `${repoId}:${String(pr.number)}`,
+        final: false,
+        at: deps.clock.now(),
+      });
       await deps.audit.recordInTx(tx, {
         organizationId,
         projectId,

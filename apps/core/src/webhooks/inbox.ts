@@ -154,7 +154,7 @@ const toJson = (value: unknown): JsonIn | undefined => {
 };
 
 /** A verified body as a stored payload: a JSON object or array, never a bare `null`. */
-const toPayload = (value: unknown): Prisma.InputJsonValue | null => {
+export const toPayload = (value: unknown): Prisma.InputJsonValue | null => {
   return toJson(value) ?? null;
 };
 
@@ -168,6 +168,9 @@ const linearEventOf = (body: unknown): string => {
   }
   return "unknown";
 };
+
+/** Whether a Linear delivery is an agent session's event (`AgentSessionEvent.created`, `.prompted`). */
+export const isAgentSessionEvent = (event: string): boolean => event === "AgentSessionEvent" || event.startsWith("AgentSessionEvent.");
 
 export const createWebhookInbox = (deps: WebhookInboxDeps) => {
   const secrets = new Map<string, { readonly value: string; readonly until: number }>();
@@ -278,11 +281,15 @@ export const createWebhookInbox = (deps: WebhookInboxDeps) => {
         if (inserted.count === 0) {
           return false;
         }
-        await deps.jobs.sendInTx(tx, "webhook.process", {
-          organizationId: connection.organizationId,
-          connectionId: connection.id,
-          deliveryId: verified.deliveryId,
-        });
+        const ids = { organizationId: connection.organizationId, connectionId: connection.id, deliveryId: verified.deliveryId };
+        // Milestone 6 (F-012, ticket 13): a Linear agent session's event is agent mode's fast lane,
+        // its own job; any other delivery is a hint for the ticket cache. Either job commits with the
+        // claim, so a claim that fails leaves no job, and a job never runs without its claim.
+        if (isAgentSessionEvent(verified.event)) {
+          await deps.jobs.sendInTx(tx, "linear.agent-event", ids);
+        } else {
+          await deps.jobs.sendInTx(tx, "webhook.process", ids);
+        }
         return true;
       },
       { maxWait: deps.insertDeadlineMs, timeout: deps.insertDeadlineMs },

@@ -118,9 +118,13 @@ export const auditActions = {
   "linear.disconnected": "connection",
   "linear.token-refreshed": "connection",
   "linear.token-refresh-failed": "connection",
+  // Milestone 6 (F-012, ticket 13): agent mode turned on, after the re-authorization with its scopes.
+  "linear.agent-mode-enabled": "connection",
   "board.attached": "project",
   "board.mapping-saved": "project",
   "board.detached": "project",
+  // Milestone 6 (F-012): "Start from Linear" on a board, one board per team.
+  "board.agent-mode-changed": "project",
   // ---- projects, repos and environments ----
   "project.created": "project",
   "project.default-profile-set": "project",

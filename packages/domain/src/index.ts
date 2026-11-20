@@ -170,3 +170,5 @@ export * from "./prompts/m6.ts";
 export * from "./use-cases/m6-signatures.ts";
 export * from "./use-cases/agent-sessions.ts";
 export * from "./use-cases/outside-tasks.ts";
+export * from "./linear/agent-session-moments.ts";
+export * from "./use-cases/agent-mode.ts";

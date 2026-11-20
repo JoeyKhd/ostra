@@ -8,6 +8,7 @@ import { transitionTask } from "../lifecycles/task.ts";
 import type { TaskInput } from "../lifecycles/task.ts";
 import type { ChangeNotices, JobQueue } from "../ports.ts";
 import { recordTicketProgressInTx } from "../tickets/ticket-writes.ts";
+import { momentOfMove, recordAgentSessionMomentInTx } from "../linear/agent-session-moments.ts";
 import { closeItemsOfEndedTaskInTx, isEndedTaskState } from "./needs-you-items.ts";
 
 // Moving a task or a session by its lifecycle's transition, in the caller's transaction: the row is
@@ -63,6 +64,8 @@ export const moveTaskInTx = async (deps: TaskMoveDeps, task: TaskRow, input: Tas
   if (isEndedTaskState(columns.state)) {
     await closeItemsOfEndedTaskInTx(deps, deps.tx, task.id, { at: new Date(), byMemberId: null });
   }
+  // Milestone 6 (F-012, ticket 13): a task Linear started tells its agent session, in this move's transaction.
+  await tellAgentSessionOfMoveInTx(deps, task, columns);
   await deps.notices.emitInTx(deps.tx, {
     organizationId: task.organizationId,
     projectId: task.projectId,
@@ -70,6 +73,23 @@ export const moveTaskInTx = async (deps: TaskMoveDeps, task: TaskRow, input: Tas
     entityId: task.id,
   });
   return true;
+};
+
+/** The move's moment in the task's open Linear agent session, if it has one (ADR 0057). */
+const tellAgentSessionOfMoveInTx = async (deps: TaskMoveDeps, task: TaskRow, columns: ReturnType<typeof taskToColumns>): Promise<void> => {
+  const open = await deps.tx.agentSession.count({ where: { taskId: task.id, state: { not: "ended" } } });
+  if (open === 0) {
+    return;
+  }
+  const [turns, pullRequests] = await Promise.all([
+    deps.tx.session.count({ where: { taskId: task.id } }),
+    deps.tx.taskPullRequest.count({ where: { taskRepo: { taskId: task.id } } }),
+  ]);
+  const told = momentOfMove(task.state, columns, { turns, pullRequests });
+  if (told === null) {
+    return;
+  }
+  await recordAgentSessionMomentInTx(deps, deps.tx, { organizationId: task.organizationId, taskId: task.id, moment: told.moment, key: told.key, final: told.final, at: Date.now() });
 };
 
 type SessionRow = Pick<Session, "id" | "taskId" | "state" | "outcome">;

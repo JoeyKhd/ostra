@@ -40,7 +40,9 @@ export type AgentSessionMoment =
   /** A follow-up from a member: sent to the agent after its running turn. */
   | { readonly kind: "follow-up-queued" }
   /** The ticket's team has no board with "Start from Linear" on. */
-  | { readonly kind: "no-board" };
+  | { readonly kind: "no-board" }
+  /** Milestone 6's ticket 13: the board's project couldn't start a task (no profile, no repo, no provider). */
+  | { readonly kind: "not-started"; readonly projectUrl: string };
 
 export type AgentActivityCopy = { readonly kind: AgentActivityKind; readonly body: string; readonly ephemeral: boolean };
 
@@ -118,6 +120,12 @@ export const agentSessionCopy = (moment: AgentSessionMoment): AgentActivityCopy 
         kind: "error",
         ephemeral: false,
         body: "No project in ostra takes tickets from this team. A project admin turns on \"Start from Linear\" on one board for it.",
+      };
+    case "not-started":
+      return {
+        kind: "error",
+        ephemeral: false,
+        body: `ostra couldn't start a task for this ticket. A project admin can see why in ostra: ${moment.projectUrl}`,
       };
     default:
       return moment satisfies never;

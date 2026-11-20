@@ -266,6 +266,7 @@ export const linearRouter = router({
         "exchange-failed": "BAD_GATEWAY",
         "not-app-user": "BAD_REQUEST",
         forbidden: "FORBIDDEN",
+        "missing-scopes": "PRECONDITION_FAILED",
       });
       return { connectionId: connected.connectionId, workspaceName: connected.workspaceName, appUserName: connected.appUserName, mode: connected.mode };
     }),

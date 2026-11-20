@@ -35,6 +35,11 @@ export type LinearTokens = {
   readonly refreshToken: string | null;
   /** When the access token expires, in ms since the epoch. */
   readonly expiresAt: number;
+  /**
+   * Milestone 6 (F-012): the scopes the token answer granted, when it says. Linear has no field that
+   * reads a token's scopes back, so this is how ostra knows agent mode's were granted.
+   */
+  readonly scopes?: readonly string[];
 };
 
 /** Who a token belongs to, checked through `viewer`. */
@@ -81,6 +86,11 @@ export type LinearAppKit = {
     readonly scopes: readonly string[];
     readonly state: string;
     readonly codeChallenge: string;
+    /**
+     * Milestone 6 ("Turn on agent mode"): re-authorizes the existing install with the whole set
+     * (`update_scopes_on_existing_token=true`), so its token gains the new scopes.
+     */
+    readonly updateExistingToken?: boolean;
   }) => string;
   readonly exchangeCode: (input: {
     readonly clientId: string;
@@ -96,6 +106,15 @@ export type LinearAppKit = {
 };
 
 // ---------- the addresses ----------
+
+/** Milestone 6 (F-012, ADR 0013): the scopes agent mode adds to the install (`app:assignable` for a delegation, `app:mentionable` for a mention). */
+export const LINEAR_AGENT_MODE_SCOPES: readonly string[] = ["app:assignable", "app:mentionable"];
+
+/** The agent-mode scopes a granted set lacks. */
+export const missingAgentModeScopes = (granted: readonly string[]): readonly string[] => LINEAR_AGENT_MODE_SCOPES.filter((wanted) => !granted.includes(wanted));
+
+/** The `state` prefix of a consent for agent mode: the callback knows it by the state it stored. */
+export const AGENT_MODE_STATE_PREFIX = "agent-mode.";
 
 /** Where Linear delivers this connection's webhooks (spec section 11, item 2). */
 export const linearWebhookUrl = (corePublicUrl: string, connectionId: ConnectionId): string =>
@@ -308,6 +327,8 @@ export type AuthorizeUrlInput = z.infer<typeof authorizeUrlInputSchema>;
 export const createLinearAuthorizeUrl = async (
   deps: ConnectLinearDeps,
   input: AuthorizeUrlInput,
+  /** Milestone 6 (F-012): "Turn on agent mode" asks for agent mode's scopes too, on the existing install. */
+  options: { readonly agentMode?: boolean } = {},
 ): Promise<UseCaseResult<{ readonly authorizeUrl: string }, "not-found" | "forbidden" | "not-ready">> => {
   const { tx, scope } = deps;
   const organizationId = scope.organizationId;
@@ -321,7 +342,8 @@ export const createLinearAuthorizeUrl = async (
     return { ok: false, error: "not-ready", message: "Save the app's client ID and secret first" };
   }
 
-  const state = randomBytes(32).toString("base64url");
+  // The state's prefix says what the consent was for; the callback trusts it only by the stored hash.
+  const state = `${options.agentMode === true ? AGENT_MODE_STATE_PREFIX : ""}${randomBytes(32).toString("base64url")}`;
   const verifier = randomBytes(48).toString("base64url");
   const stored = await deps.adapters.secretStore.put({ organizationId, purpose: "linear-pkce-verifier" }, verifier);
   if (!stored.ok) {
@@ -341,9 +363,10 @@ export const createLinearAuthorizeUrl = async (
   const authorizeUrl = deps.linear.authorizeUrl({
     clientId: connection.appId,
     redirectUri: linearCallbackUrl(deps.publicUrl),
-    scopes: deps.linear.scopes,
+    scopes: options.agentMode === true ? [...new Set([...deps.linear.scopes, ...LINEAR_AGENT_MODE_SCOPES])] : deps.linear.scopes,
     state,
     codeChallenge: createHash("sha256").update(verifier).digest("base64url"),
+    ...(options.agentMode === true ? { updateExistingToken: true } : {}),
   });
   return { ok: true, authorizeUrl };
 };
@@ -384,6 +407,8 @@ export type AuthorizeLinearResult = UseCaseResult<
   /** The token isn't the app's own user: Linear ignored `actor=app`. */
   | "not-app-user"
   | "forbidden"
+  /** Milestone 6 (F-012): "Turn on agent mode" came back without agent mode's scopes. */
+  | "missing-scopes"
 >;
 
 export type AuthorizeLinearDeps = Pick<Ports, "notices" | "audit" | "clock" | "jobs"> & {
@@ -456,6 +481,13 @@ export const authorizeLinear: AuthorizeLinear = async (deps, input) => {
       : refuseAuthorize("exchange-failed", `Linear did not confirm the token: ${identity.error.message}`);
   }
 
+  // Milestone 6 (F-012): a consent for agent mode must grant its scopes; without them the new token
+  // isn't kept, and the connection stays as it was.
+  const agentMode = input.state.startsWith(AGENT_MODE_STATE_PREFIX);
+  const granted = exchanged.value.scopes ?? null;
+  if (agentMode && (granted === null || missingAgentModeScopes(granted).length > 0)) {
+    return refuseAuthorize("missing-scopes", "Linear didn't grant the scopes agent mode needs. Authorize again and accept them");
+  }
   const access = await deps.adapters.secretStore.put({ organizationId, purpose: "linear-access-token" }, exchanged.value.accessToken);
   if (!access.ok) {
     throw new Error(`the secret store refused the Linear access token: ${access.error.code}`);
@@ -488,8 +520,20 @@ export const authorizeLinear: AuthorizeLinear = async (deps, input) => {
         appUserId: identity.value.appUserId,
         appUserName: identity.value.appUserName,
         activatedAt: new Date(now),
+        ...(granted === null ? {} : { scopes: [...granted] }),
+        ...(agentMode ? { agentModeAt: new Date(now) } : {}),
       },
     });
+    if (agentMode) {
+      await deps.audit.recordInTx(tx, {
+        organizationId,
+        projectId: null,
+        actor: { kind: "member", id: scope.memberId },
+        action: "linear.agent-mode-enabled",
+        entity: "connection",
+        entityId: connectionIdSchema.parse(connection.id),
+      });
+    }
     // The token is refreshed before it expires: one delayed job per connection (ADR 0037).
     await deps.jobs.enqueueInTx(
       tx,

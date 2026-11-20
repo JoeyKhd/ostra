@@ -90,7 +90,7 @@ export const createLinearAppKit = (options: LinearAppKitOptions = {}): LinearApp
     exchangeCode: async (input) => {
       const exchanged = await exchangeCode({ ...input, tokenUrl: endpoints.tokenUrl });
       return exchanged.ok
-        ? { ok: true, value: { accessToken: exchanged.value.accessToken, refreshToken: exchanged.value.refreshToken, expiresAt: exchanged.value.expiresAt } }
+        ? { ok: true, value: { accessToken: exchanged.value.accessToken, refreshToken: exchanged.value.refreshToken, expiresAt: exchanged.value.expiresAt, scopes: exchanged.value.scopes } }
         : { ok: false, error: failure(exchanged.error) };
     },
 

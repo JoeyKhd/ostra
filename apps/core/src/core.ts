@@ -74,6 +74,8 @@ import { createPollSchedules, pollBoardHandler, trackerWebhookHandler } from "./
 import { ensureTokenRefreshes, refreshTokenHandler } from "./tracker/refresh-token.ts";
 import { fetchContextHandler } from "./tracker/context.ts";
 import { drainTicketWrites, ticketSyncHandler } from "./tracker/writer.ts";
+import { agentEventHandler } from "./linear/agent-mode/events.ts";
+import { activitySendHandler, ensureHeartbeatSchedule, heartbeatHandler } from "./linear/agent-mode/outbox.ts";
 import { applyBoxRunnerEvent } from "./dispatch/box-waits.ts";
 import { handleSnapshotEndpoint } from "./snapshots/endpoints.ts";
 import { registryCheckHandler } from "./registry/check.ts";
@@ -448,6 +450,31 @@ export const startCore = async (
   });
   const refreshDeps = { db, jobs, secretStore: adapters.secretStore, trackers, notices, audit: postgresAuditLog, clock: systemClock, logger };
   await jobs.work("linear.refresh-token", refreshTokenHandler(refreshDeps), { localConcurrency: 1 });
+  // Milestone 6 (F-012, ticket 13): Linear agent mode. The inbox claims a session's event before
+  // its 200; `linear.agent-event` acts on it; the outbox posts with the app's token; the heartbeat
+  // sweeps once a minute.
+  const heartbeatMs = settings.team.linearHeartbeatMs;
+  await jobs.work(
+    "linear.agent-event",
+    agentEventHandler({
+      db,
+      jobs,
+      outbox: postgresCommandOutbox,
+      notices,
+      audit: postgresAuditLog,
+      clock: systemClock,
+      trackers,
+      publicUrl: settings.publicUrl,
+      logger,
+      heartbeatMs,
+      spendCap: { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap },
+      timers,
+    }),
+    { localConcurrency: 4 },
+  );
+  await jobs.work("linear.activity.send", activitySendHandler({ db, trackers, clock: systemClock, publicUrl: settings.publicUrl, logger, heartbeatMs }), { localConcurrency: 4 });
+  await jobs.work("linear.heartbeat", heartbeatHandler({ db, jobs, clock: systemClock, heartbeatMs, heartbeatKind: settings.team.linearHeartbeatKind }), { localConcurrency: 1 });
+  await ensureHeartbeatSchedule(jobs);
   const trackerTick = async (): Promise<void> => {
     await pollSchedules.ensure().catch((error: unknown) => {
       logger.warn("tracker.schedules-failed", { error: error instanceof Error ? error.name : "unknown" });
