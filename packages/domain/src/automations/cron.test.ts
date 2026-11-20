@@ -163,17 +163,32 @@ describe("the cron evaluator", () => {
   });
 
   it("F-106: holds a schedule to the minimum interval", () => {
-    expect(minimumIntervalOk(cron("0 * * * *"), 60)).toBe(true);
-    expect(minimumIntervalOk(cron("30 * * * *"), 60)).toBe(true);
-    expect(minimumIntervalOk(cron("*/30 * * * *"), 60)).toBe(false);
-    expect(minimumIntervalOk(cron("0,59 * * * *"), 60)).toBe(false);
-    expect(minimumIntervalOk(cron("0 9 * * 1"), 60)).toBe(true);
+    expect(minimumIntervalOk(cron("0 * * * *"), 60, "UTC")).toBe(true);
+    expect(minimumIntervalOk(cron("30 * * * *"), 60, "UTC")).toBe(true);
+    expect(minimumIntervalOk(cron("*/30 * * * *"), 60, "UTC")).toBe(false);
+    expect(minimumIntervalOk(cron("0,59 * * * *"), 60, "UTC")).toBe(false);
+    expect(minimumIntervalOk(cron("0 9 * * 1"), 60, "UTC")).toBe(true);
     // The 31st and the 1st at midnight are a day apart; 23:30 and 00:15 are 45 minutes apart.
-    expect(minimumIntervalOk(cron("0 0 31,1 * *"), 24 * 60)).toBe(true);
-    expect(minimumIntervalOk(cron("15,30 0,23 * * *"), 60)).toBe(false);
+    expect(minimumIntervalOk(cron("0 0 31,1 * *"), 24 * 60, "UTC")).toBe(true);
+    expect(minimumIntervalOk(cron("15,30 0,23 * * *"), 60, "UTC")).toBe(false);
     // At one minute (the hunt's every-minute schedules, ticket 37) every schedule passes at once.
-    expect(minimumIntervalOk(cron("* * * * *"), 1)).toBe(true);
-    expect(minimumIntervalOk(cron("* * * * *"), 2)).toBe(false);
+    expect(minimumIntervalOk(cron("* * * * *"), 1, "UTC")).toBe(true);
+    expect(minimumIntervalOk(cron("* * * * *"), 2, "UTC")).toBe(false);
+  });
+
+  it("F-106: holds a schedule to the minimum interval as it fires in its zone, across a daylight-saving change", () => {
+    // 01:30 and 02:30 are an hour apart on the wall clock, but on the spring-forward day 02:30
+    // doesn't exist and fires at 03:00, half an hour after 01:30.
+    expect(minimumIntervalOk(cron("30 1,2 * * *"), 60, "UTC")).toBe(true);
+    expect(minimumIntervalOk(cron("30 1,2 * * *"), 60, "America/New_York")).toBe(false);
+    expect(minimumIntervalOk(cron("30 1,2 * * *"), 60, "Europe/Amsterdam")).toBe(false);
+    // Tokyo keeps no daylight saving: the same pattern stays an hour apart there.
+    expect(minimumIntervalOk(cron("30 1,2 * * *"), 60, "Asia/Tokyo")).toBe(true);
+    // Hourly and daily schedules stay an hour apart in every zone.
+    for (const zone of ["UTC", "Europe/Amsterdam", "America/New_York"]) {
+      expect(minimumIntervalOk(cron("0 * * * *"), 60, zone)).toBe(true);
+      expect(minimumIntervalOk(cron("0 9 * * *"), 60, zone)).toBe(true);
+    }
   });
 
   it("F-106: fires the latest missed occurrence under 6 hours late, and skips the older ones", () => {

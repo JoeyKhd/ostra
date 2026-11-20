@@ -305,9 +305,11 @@ export const occurrencesBetween = (cron: Cron, timeZone: string, from: number, t
 
 /**
  * Whether consecutive occurrences are always at least `minutes` apart (`OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES`),
- * on the wall clock: over a leap year and a month, which holds every pattern five fields can make.
+ * as they fire in the schedule's zone: over a leap year and a month, which holds every pattern five
+ * fields can make and both daylight-saving changes, where a skipped local time fires at the gap's
+ * end and can bring two occurrences closer than the pattern says.
  */
-export const minimumIntervalOk = (cron: Cron, minutes: number): boolean => {
+export const minimumIntervalOk = (cron: Cron, minutes: number, timeZone: string): boolean => {
   // Two occurrences are always at least a minute apart: nothing to walk.
   if (minutes <= 1) {
     return true;
@@ -317,7 +319,7 @@ export const minimumIntervalOk = (cron: Cron, minutes: number): boolean => {
   let previous: number | null = null;
   let cursor = from - MINUTE_MS;
   for (;;) {
-    const next = nextOccurrence(cron, "UTC", cursor);
+    const next = nextOccurrence(cron, timeZone, cursor);
     if (next === null || next > to) {
       return true;
     }

@@ -57,7 +57,7 @@ export const scheduleColumnsAt = (schedule: string, timeZone: string, now: numbe
   if (!isTimeZone(timeZone)) {
     return { ok: false, error: "invalid-input", message: "The time zone isn't one ostra knows" };
   }
-  if (!minimumIntervalOk(parsed.cron, minIntervalMinutes)) {
+  if (!minimumIntervalOk(parsed.cron, minIntervalMinutes, timeZone)) {
     return { ok: false, error: "schedule-too-often", message: `A schedule runs at most once every ${String(minIntervalMinutes)} minutes` };
   }
   const next = nextOccurrence(parsed.cron, timeZone, now);

@@ -595,7 +595,7 @@ export const automationsRouter = router({
       if (!isTimeZone(input.timeZone)) {
         return { ...empty, refusal: { code: "invalid-time-zone" as const, message: "That time zone isn't one ostra knows." } };
       }
-      if (!minimumIntervalOk(parsed.cron, minIntervalMinutes)) {
+      if (!minimumIntervalOk(parsed.cron, minIntervalMinutes, input.timeZone)) {
         return { ...empty, refusal: { code: "too-often" as const, message: `Occurrences must be at least ${String(minIntervalMinutes)} minutes apart.` } };
       }
       const next: number[] = [];
