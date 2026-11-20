@@ -12,6 +12,7 @@ import { agentInstructions } from "./agent-instructions.ts";
 import { specChecks, specServices, specSnapshot } from "./environment-spec.ts";
 import { profileSpecParts } from "./profile-spec.ts";
 import { specMilestone2Parts } from "./restore-spec.ts";
+import { specReviewLoopParts } from "./review-loop-spec.ts";
 
 // `GET /runner/v1/tasks/:taskId/spec` (ticket 26, ADR 0034): what a dispatch hands the runner once it
 // accepted the offer, for the lease holder only. References and the task's text, never a secret:
@@ -236,6 +237,8 @@ export const buildTaskSpec = async (
   const checks = await specChecks(db, task, taskRepos.map(({ repo }) => repo.id));
   // Milestone 3 (ticket 26): the snapshot this runner holds, or the host's dependency cache.
   const snapshot = await specSnapshot(db, task, lease);
+  // Milestone 6 (tickets 17, 18): a review task's checkout and tools; an automatic round's flag and CI logs.
+  const team = await specReviewLoopParts(db, task, session);
   // Milestone 4 (ticket 15, F-110): the project's and the organization's approved notes. A minor-3
   // runner gets the section, with the tools for an MCP agent; a minor-2 one gets the block, rendered
   // without the tools, at the end of its instructions.
@@ -257,7 +260,7 @@ export const buildTaskSpec = async (
     title: task.title,
     prompt: extras.prompt ?? task.prompt ?? "",
     ticket: extras.ticket,
-    contextFiles: extras.contextFiles,
+    contextFiles: [...extras.contextFiles, ...team.ciFiles],
     ...(extras.restore === undefined ? {} : { restore: extras.restore }),
     branchName: task.branchName,
     leaseEpoch: input.leaseEpoch,
@@ -312,6 +315,9 @@ export const buildTaskSpec = async (
     ...(services.length === 0 ? {} : { services }),
     ...(snapshot === undefined ? {} : { snapshot }),
     ...(minor >= 3 ? { memory } : {}),
+    ...(team.review === undefined ? {} : { review: team.review }),
+    ...(team.tools === undefined ? {} : { tools: team.tools }),
+    ...(team.automatic === undefined ? {} : { automatic: true }),
   });
   return { ok: true, spec };
 };

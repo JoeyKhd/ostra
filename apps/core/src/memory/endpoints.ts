@@ -43,16 +43,19 @@ export type MemoryEndpointDeps = {
   readonly proposalsPerTask?: number;
 };
 
-/** The task a memory call is for, once its token and lease checked out. */
-type TaskContext = {
+/** The task a memory call is for, once its token and lease checked out. Milestone 6: any sidecar call's. */
+export type TaskContext = {
   readonly organizationId: OrganizationId;
   readonly projectId: ProjectId;
   readonly taskId: TaskId;
   readonly sessionId: SessionId | null;
 };
 
-/** Checks the caller, as the credentials endpoint does; answers the refusal itself and returns `null`. */
-const authorize = async (deps: MemoryEndpointDeps, request: IncomingMessage, response: ServerResponse, taskId: TaskId): Promise<TaskContext | null> => {
+/**
+ * Checks the caller, as the credentials endpoint does; answers the refusal itself and returns
+ * `null`. Milestone 6: the sidecar's other task calls (`submit_review`, ticket 17) check it the same way.
+ */
+export const authorizeTaskCall = async (deps: Pick<MemoryEndpointDeps, "db" | "tokens" | "taskTokens" | "clock">, request: IncomingMessage, response: ServerResponse, taskId: TaskId): Promise<TaskContext | null> => {
   const token = bearerToken(request.headers.authorization);
   let boxId: string;
   let organizationId: OrganizationId;
@@ -63,7 +66,7 @@ const authorize = async (deps: MemoryEndpointDeps, request: IncomingMessage, res
       return null;
     }
     if (claims.taskId !== taskId) {
-      sendError(response, 403, "unauthorized", "a task token is for its own task's memory only");
+      sendError(response, 403, "unauthorized", "a task token is for its own task only");
       return null;
     }
     const check = await checkTaskLease(deps.db, claims);
@@ -136,7 +139,7 @@ export const handleMemoryEndpoint =
       sendError(response, 404, "not-found", "no such task");
       return true;
     }
-    const context = await authorize(deps, request, response, taskId.data);
+    const context = await authorizeTaskCall(deps, request, response, taskId.data);
     if (context === null) {
       return true;
     }

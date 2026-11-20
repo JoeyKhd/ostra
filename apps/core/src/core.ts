@@ -42,6 +42,7 @@ import { handleMemoryEndpoint } from "./memory/endpoints.ts";
 import { blobCiLogStore, ciEvaluateHandler } from "./review-loop/ci.ts";
 import { reviewPostHandler, reviewStartHandler } from "./review-loop/review.ts";
 import { roundStartHandler } from "./review-loop/rounds.ts";
+import { handleReviewEndpoint } from "./runner-http/review.ts";
 import { ensureBootstrapJoinToken } from "./gateway/bootstrap-join-token.ts";
 import { postgresDeviceSessions } from "./gateway/device-sessions.ts";
 import { createGateway } from "./gateway/gateway.ts";
@@ -359,6 +360,17 @@ export const startCore = async (
     logger,
     proposalsPerTask: settings.memoryProposalsPerTask,
   });
+  // Milestone 6 (ticket 17): the sidecar's `submit_review`, by the task's token.
+  const reviewEndpoints = handleReviewEndpoint({
+    db,
+    tokens: gateway.context.tokens,
+    taskTokens: gateway.context.taskTokens,
+    jobs,
+    notices,
+    clock: systemClock,
+    logger,
+    findingsMax: settings.team.reviewFindingsMax,
+  });
   const snapshotEndpoints = handleSnapshotEndpoint({ db, tokens: gateway.context.tokens, adapters, audit: postgresAuditLog, clock: systemClock, logger });
   // Milestone 5 (F-120, ticket 17): the registry's push and pull credentials, by the runner's token.
   const registryEndpoints = handleRegistryEndpoint({ db, tokens: gateway.context.tokens, adapters, audit: postgresAuditLog, clock: systemClock, logger });
@@ -609,7 +621,7 @@ export const startCore = async (
     });
   }, TICKET_DRAIN_MS);
   drain.unref();
-  const server = createCoreServer({ routes: [gateway.handleRequest, taskEndpoints, memoryEndpoints, snapshotEndpoints, registryEndpoints, blobEndpoints, panelBlobEndpoints, inbox.handle], upgrade: gateway.handleUpgrade, logger });
+  const server = createCoreServer({ routes: [gateway.handleRequest, taskEndpoints, memoryEndpoints, reviewEndpoints, snapshotEndpoints, registryEndpoints, blobEndpoints, panelBlobEndpoints, inbox.handle], upgrade: gateway.handleUpgrade, logger });
   await gateway.start();
   const port = await server.listen(settings.corePort, options.host);
 
