@@ -13,18 +13,20 @@ import { FAKE_TOKEN } from "./steps-memory.ts";
 /** Every list read a member's panel makes with no project named, and the ones of each open project. */
 const sweepCalls = (projectIds: readonly string[]): readonly { readonly procedure: string; readonly input?: unknown }[] => [
   { procedure: "projects.list" },
-  { procedure: "home.needsYou" },
-  { procedure: "home.board" },
-  { procedure: "notifications.list" },
+  { procedure: "home.overview" },
+  { procedure: "home.needsYou", input: {} },
+  { procedure: "home.board", input: {} },
+  { procedure: "notifications.list", input: { tab: "open" } },
+  { procedure: "notifications.list", input: { tab: "done" } },
   { procedure: "members.list" },
-  { procedure: "memory.notes", input: { scope: { kind: "organization" } } },
-  { procedure: "search.tasks", input: { q: "VAULT" } },
-  { procedure: "search.tasks", input: { q: "notes.txt" } },
-  { procedure: "search.suggest", input: { q: "VAULT-ONLY" } },
-  { procedure: "insights.organization", input: { period: { kind: "days", days: 30 } } },
+  { procedure: "memory.notes", input: { scope: "organization" } },
+  { procedure: "search.tasks", input: { query: "VAULT" } },
+  { procedure: "search.tasks", input: { query: "notes.txt" } },
+  { procedure: "search.suggest", input: { query: "VAULT-ONLY" } },
+  { procedure: "insights.get", input: { projectId: null, period: { kind: "preset", days: 30 } } },
   ...projectIds.flatMap((projectId) => [
     { procedure: "tasks.list", input: { projectId } },
-    { procedure: "memory.notes", input: { scope: { kind: "project", projectId } } },
+    { procedure: "memory.notes", input: { scope: "project", projectId } },
   ]),
 ];
 
@@ -32,17 +34,27 @@ const sweepCalls = (projectIds: readonly string[]): readonly { readonly procedur
 export const sweepFor = async (d: Demo, page: Page, label: string): Promise<void> => {
   const vault = d.id("project:vault");
   const vaultTasks = (await d.db.task.findMany({ where: { projectId: vault }, select: { id: true } })).map((task) => task.id);
-  const open = (await d.db.project.findMany({ where: { access: "open" }, select: { id: true } })).map((project) => project.id);
+  // Every project but vault: a restricted one the member isn't listed on answers NOT_FOUND.
+  const others = (await d.db.project.findMany({ where: { id: { not: vault } }, select: { id: true } })).map((project) => project.id);
   const leaks: string[] = [];
+  const malformed: string[] = [];
   let answered = 0;
-  for (const call of sweepCalls(open)) {
+  const calls = sweepCalls(others);
+  for (const call of calls) {
     const answer = await d.query(page, call.procedure, call.input);
-    if (!answer.ok) continue;
+    if (!answer.ok) {
+      if (answer.code !== "NOT_FOUND") malformed.push(`${call.procedure} ${answer.code}`);
+      continue;
+    }
     answered += 1;
     const text = JSON.stringify(answer.data);
     if (text.includes(vault) || vaultTasks.some((id) => text.includes(id)) || text.includes("VAULT-ONLY-7731")) leaks.push(call.procedure);
   }
-  d.check(`after: the sweep of list procedures as ${label} returns none of vault's IDs`, leaks.length === 0 && answered > 0, leaks.length === 0 ? `${String(answered)} reads answered, none name vault` : `vault in ${leaks.join(", ")}`);
+  d.check(
+    `after: the sweep of list procedures as ${label} returns none of vault's IDs`,
+    leaks.length === 0 && malformed.length === 0 && answered > calls.length / 2,
+    leaks.length > 0 ? `vault in ${leaks.join(", ")}` : malformed.length > 0 ? `refused: ${malformed.join(", ")}` : `${String(answered)} of ${String(calls.length)} reads answered, none name vault`,
+  );
 };
 
 const filesUnder = async (dir: string, depth = 0): Promise<string[]> => {

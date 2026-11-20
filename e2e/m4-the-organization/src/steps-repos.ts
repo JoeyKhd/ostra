@@ -138,16 +138,23 @@ export const reviewCheck = async (d: Demo): Promise<void> => {
     d.run.notes["step5-protection"] = tried;
     say(`step 5: branch protection ${tried}`);
   }
+  // The approvals (the maintainer's user, then the reviewer user linked to Sam), the dismissal and
+  // the refused merge need ticket 42's GITHUB_TEST_TOKEN and GITHUB_TEST_REVIEWER_TOKEN.
+  if (settings.testToken === null || settings.reviewerToken === null) {
+    d.run.notes["step5-approvals"] = "not run: no GITHUB_TEST_TOKEN or GITHUB_TEST_REVIEWER_TOKEN (ticket 42); the evaluator's cases are core's tests";
+  }
   // Demo reopens the task: the new head's check waits again.
-  await sendMessage(demo, taskId, "Also mention `apiVersion` in test1's README");
-  await waitFor("the reopened turn", 5 * 60_000, async () => ((await d.db.turn.count({ where: { taskId } })) >= 2 ? true : null), 3000);
-  await settled(d, taskId);
   const number = Number(d.id(`pr:step4:${settings.githubRepo}`));
-  const after = await waitFor("the check on the new head", 5 * 60_000, async () => {
+  const before = await checkOnHead(d, settings.githubRepo, number);
+  const turns = await d.db.turn.count({ where: { taskId } });
+  await sendMessage(demo, taskId, "Also mention `apiVersion` in test1's README");
+  await waitFor("the reopened turn", 5 * 60_000, async () => ((await d.db.turn.count({ where: { taskId } })) > turns ? true : null), 3000);
+  await settled(d, taskId);
+  const after = await waitFor("the check on the new head", 6 * 60_000, async () => {
     const found = await checkOnHead(d, settings.githubRepo, number);
-    return found.status === null ? null : found;
+    return found.sha !== before.sha && found.status !== null ? found : null;
   }, 5000).catch(() => null);
-  d.check("step 5: after the reopen, the new head's check waits again", after !== null && after.status !== "completed", after === null ? "no check" : `${after.sha.slice(0, 7)}: ${after.status ?? ""}`);
+  d.check("step 5: after the reopen, the new head's check waits again", after !== null && after.status !== "completed", after === null ? `no new head (was ${before.sha.slice(0, 7)})` : `${before.sha.slice(0, 7)} → ${after.sha.slice(0, 7)}: ${after.status ?? ""}, ${after.title ?? ""}`);
   await demo.goto(`/tasks/${taskId}`);
   await demo.waitForLoadState("networkidle");
   await d.shot(demo, "step05-reopened");
@@ -178,28 +185,4 @@ export const mergeBoth = async (d: Demo): Promise<void> => {
   await demo.goto(`/tasks/${taskId}`);
   await demo.waitForLoadState("networkidle");
   await d.shot(demo, "step05-merged");
-};
-
-/**
- * Step 5's reopen, on step 8's task: step 4's task was merged before its reopen ran (the composer's
- * "Reopen" wasn't the script's "Send"), so the new head's check is shown on test1's PR of step 8.
- */
-export const reopenCheck = async (d: Demo): Promise<void> => {
-  const { demo, settings } = d;
-  const taskId = d.id("task:step8");
-  const pr = await d.db.taskPullRequest.findFirst({ where: { taskRepo: { taskId, repo: { fullName: `${settings.githubOrg}/${settings.githubRepo}` } } }, select: { number: true } });
-  if (pr === null) throw new Error("step 8's task has no PR in test1");
-  const before = await checkOnHead(d, settings.githubRepo, pr.number);
-  const turns = await d.db.turn.count({ where: { taskId } });
-  await sendMessage(demo, taskId, "Also mention the `release` key in test1's README");
-  await waitFor("the reopened turn", 8 * 60_000, async () => ((await d.db.turn.count({ where: { taskId } })) > turns ? true : null), 3000);
-  await settled(d, taskId);
-  const after = await waitFor("the check on the new head", 5 * 60_000, async () => {
-    const found = await checkOnHead(d, settings.githubRepo, pr.number);
-    return found.sha !== before.sha && found.status !== null ? found : null;
-  }, 5000).catch(() => null);
-  d.check("step 5: after a reopen, the new head's check waits again", after !== null && after.status !== "completed", after === null ? `no new head (was ${before.sha.slice(0, 7)})` : `${before.sha.slice(0, 7)} → ${after.sha.slice(0, 7)}: ${after.status ?? ""}, ${after.title ?? ""}`);
-  await demo.goto(`/tasks/${taskId}`);
-  await demo.waitForLoadState("networkidle");
-  await d.shot(demo, "step05-reopened");
 };

@@ -16,15 +16,17 @@ import path from "node:path";
 import { say } from "@ostra/e2e-m1/setup";
 
 import { nothingLeaked, sweepFor } from "./checks.ts";
+import { cleanUp } from "./clean-up.ts";
 import { openDemo } from "./context.ts";
 import type { Demo } from "./context.ts";
 import { removalAndResets, third } from "./steps-accounts.ts";
 import { audit, search } from "./steps-audit.ts";
+import { effort } from "./steps-effort.ts";
 import { noKey, twoKeys } from "./steps-keys.ts";
 import { notes, proposal, reachesNextTask } from "./steps-memory.ts";
 import { budget, insights } from "./steps-money.ts";
 import { invitation, roles } from "./steps-people.ts";
-import { acrossRepos, mergeBoth, reopenCheck, reviewCheck, secondRepo } from "./steps-repos.ts";
+import { acrossRepos, mergeBoth, reviewCheck, secondRepo } from "./steps-repos.ts";
 import { setup } from "./steps-setup.ts";
 
 type Step = { readonly name: string; readonly run: (d: Demo) => Promise<void>; readonly once: boolean };
@@ -37,11 +39,10 @@ const steps: readonly Step[] = [
   { name: "across-repos", run: acrossRepos, once: true },
   { name: "review-check", run: reviewCheck, once: true },
   { name: "merge", run: mergeBoth, once: true },
+  { name: "budget", run: budget, once: true },
   { name: "notes", run: notes, once: true },
   { name: "proposal", run: proposal, once: true },
-  { name: "reopen-check", run: reopenCheck, once: true },
   { name: "next-task", run: reachesNextTask, once: true },
-  { name: "budget", run: budget, once: true },
   { name: "audit", run: audit, once: true },
   { name: "search", run: search, once: true },
   {
@@ -56,6 +57,7 @@ const steps: readonly Step[] = [
   { name: "removal", run: removalAndResets, once: true },
   { name: "two-keys", run: twoKeys, once: true },
   { name: "no-key", run: noKey, once: true },
+  { name: "effort", run: effort, once: true },
   {
     name: "after",
     run: async (d) => {
@@ -64,6 +66,7 @@ const steps: readonly Step[] = [
     },
     once: false,
   },
+  { name: "clean-up", run: cleanUp, once: true },
 ];
 
 const main = async (): Promise<void> => {

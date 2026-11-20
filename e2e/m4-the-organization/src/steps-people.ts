@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { newestMailTo } from "@ostra/dev-tools/mail-box";
+import { mailsTo } from "@ostra/dev-tools/mail-box";
 import type { SunkMail } from "@ostra/dev-tools/mail-box";
 import type { Page } from "@playwright/test";
 import { z } from "zod";
@@ -22,12 +22,11 @@ const tookAt = (file: string): number => {
   return Date.parse(`${day}T${hours}:${minutes}:${secs}.${millis}Z`);
 };
 
-/** The newest mail to `address` whose subject matches, once it's newer than `after`. */
+/** The newest mail to `address` whose subject matches, taken no earlier than `after`. */
 export const mailTo = async (d: Demo, address: string, subject: RegExp, after: number, timeoutMs = 120_000): Promise<SunkMail> =>
   waitFor(`a mail to ${address} matching ${subject.source}`, timeoutMs, async () => {
-    const mail = await newestMailTo(address, d.settings.mailDir);
-    if (mail === null || !subject.test(mail.subject)) return null;
-    return tookAt(mail.file) >= after - 2000 ? mail : null;
+    const mails = await mailsTo(address, d.settings.mailDir);
+    return mails.find((mail) => subject.test(mail.subject) && tookAt(mail.file) >= after - 2000) ?? null;
   }, 1500);
 
 const auditActions = async (d: Demo, since: number): Promise<readonly string[]> =>
@@ -57,7 +56,8 @@ export const invite = async (d: Demo, person: Person, grants: readonly string[],
     await demo.getByRole("alertdialog").getByRole("button", { name: "Revoke" }).click();
     await waiting.first().waitFor({ state: "detached", timeout: 15_000 });
   }
-  await demo.getByRole("button", { name: "Invite" }).click();
+  // The sheet opens from its URL (`?invite=1`), as the page's Invite button sets it.
+  await demo.goto("/organization/members?invite=1");
   await demo.getByLabel("Address").fill(person.email);
   for (const projectId of grants) await demo.locator(`#grant-${projectId}`).click();
   await d.shot(demo, `${shotName}-sheet`);

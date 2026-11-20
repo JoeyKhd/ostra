@@ -5,9 +5,9 @@ import { readMail } from "@ostra/adapter-email-smtp/read-mail";
 
 import { defaultMailDir } from "./mail-sink.ts";
 
-// The mail box helper (milestone 4, ticket 40; spec section 8): reads the newest mail the dev mail
-// sink wrote to an address, and returns its subject and its links, for the end-to-end demo to open
-// an invitation, a verification or a reset link the way the person would.
+// The mail box helper (milestone 4, ticket 40; spec section 8): reads the mails the dev mail sink
+// wrote to an address, newest first, and returns each one's subject and its links, for the
+// end-to-end demo to open an invitation, a verification or a reset link the way the person would.
 
 export type SunkMail = {
   readonly file: string;
@@ -34,22 +34,26 @@ const recipientsOf = (header: string): readonly string[] =>
     .map((part) => (/<([^>]+)>/.exec(part)?.[1] ?? part).trim().toLowerCase())
     .filter((address) => address !== "");
 
-/** The newest mail to an address in the sink's folder, or `null` when there is none. */
-export const newestMailTo = async (address: string, dir: string = defaultMailDir): Promise<SunkMail | null> => {
+/** Every mail to an address in the sink's folder, newest first; none when the folder is missing. */
+export const mailsTo = async (address: string, dir: string = defaultMailDir): Promise<readonly SunkMail[]> => {
   let files: string[];
   try {
     files = (await readdir(dir)).filter((name) => name.endsWith(".eml"));
   } catch {
-    return null;
+    return [];
   }
   const wanted = address.trim().toLowerCase();
+  const found: SunkMail[] = [];
   // The names start with the time the sink took them, so the newest sorts last.
   for (const name of files.sort().reverse()) {
     const file = path.join(dir, name);
     const mail = readMail(await readFile(file, "utf8"));
     if (recipientsOf(mail.headers["to"] ?? "").includes(wanted)) {
-      return { file, to: wanted, subject: mail.subject, text: mail.text, html: mail.html, links: linksOf(mail.text, mail.html) };
+      found.push({ file, to: wanted, subject: mail.subject, text: mail.text, html: mail.html, links: linksOf(mail.text, mail.html) });
     }
   }
-  return null;
+  return found;
 };
+
+/** The newest mail to an address in the sink's folder, or `null` when there is none. */
+export const newestMailTo = async (address: string, dir: string = defaultMailDir): Promise<SunkMail | null> => (await mailsTo(address, dir))[0] ?? null;

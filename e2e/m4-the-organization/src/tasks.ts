@@ -97,16 +97,45 @@ export const startPromptTask = async (page: Page, projectId: string, prompt: str
   return taskId;
 };
 
-/** Sends a message to the task's agent from its page. */
+/** New task (`/tasks/new`) with the project picked: the form, once its start check has answered. */
+export const openNewTask = async (page: Page, projectName: string, prompt: string, profile?: string): Promise<void> => {
+  await page.goto("/tasks/new");
+  await page.getByTestId("pick-project").click({ timeout: 30_000 });
+  await page.getByRole("listbox", { name: "Pick the project" }).getByRole("button", { name: projectName, exact: true }).click();
+  await page.getByTestId("pick-project").filter({ hasText: projectName }).waitFor({ timeout: 15_000 });
+  if (profile !== undefined) {
+    await page.getByTestId("agent-profile").click({ timeout: 30_000 });
+    await page.locator(`[role="menuitem"][data-profile="${profile}"]`).click();
+    await page.getByTestId("agent-profile-name").filter({ hasText: profile }).waitFor({ timeout: 15_000 });
+  }
+  await page.locator("#new-task-prompt").fill(prompt);
+  await page.waitForLoadState("networkidle");
+};
+
+/** Starts a task from New task, on the named runner and profile; the task's ID. */
+export const startNewTask = async (page: Page, projectName: string, prompt: string, runnerName: string, profile?: string): Promise<string> => {
+  await openNewTask(page, projectName, prompt, profile);
+  await page.getByTestId("run-on").click({ timeout: 30_000 });
+  await page.locator(`[role="menuitem"][data-runner="${runnerName}"]`).click({ timeout: 30_000 });
+  await page.locator('[data-action="start-task"]').click({ timeout: 30_000 });
+  await page.waitForURL((url) => /^\/tasks\/[0-9a-f-]{36}$/.test(url.pathname), { timeout: 60_000 });
+  const taskId = new URL(page.url()).pathname.split("/").at(-1) ?? "";
+  say(`task ${taskId} started in ${projectName}${profile === undefined ? "" : ` with ${profile}`}`);
+  return taskId;
+};
+
+/** Sends a message to the task's agent from its page: "Send" on a live task, "Reopen" on one at rest. */
 export const sendMessage = async (page: Page, taskId: string, text: string): Promise<void> => {
   await page.goto(`/tasks/${taskId}`);
+  await page.waitForLoadState("networkidle");
   const box = page.getByLabel("Message the agent");
+  await box.waitFor({ timeout: 30_000 });
   await box.fill(text);
-  // A task at rest reopens with the message ("Reopen"); a live one sends it.
-  const send = page.locator('[data-action="send"]');
-  if ((await send.count()) > 0) await send.click();
-  else await page.getByRole("button", { name: "Reopen" }).click();
-  await page.waitForTimeout(1500);
+  const button = page.locator('[data-action="send"], [data-action="reopen"]').filter({ visible: true }).first();
+  await button.waitFor({ timeout: 30_000 });
+  await button.click({ timeout: 30_000 });
+  // The composer empties once the message is taken.
+  await waitFor("the message to be taken", 30_000, async () => ((await box.inputValue().catch(() => "")) === "" ? true : null), 500);
 };
 
 /** The audit actions written since `since`, oldest first. */
@@ -116,3 +145,20 @@ export const auditSince = async (d: Demo, since: number) =>
 /** One attribute of every element a locator matches, in order. */
 export const attributes = async (locator: Locator, name: string): Promise<readonly string[]> =>
   Promise.all((await locator.all()).map(async (one) => (await one.getAttribute(name)) ?? ""));
+
+/** Merges every open PR of the task with the App's token (no test token, ticket 42), then waits for the task to read merged. */
+export const mergeTaskPrs = async (d: Demo, taskId: string): Promise<string> => {
+  const { github } = d;
+  const prs = await d.db.taskPullRequest.findMany({ where: { taskRepo: { taskId } }, select: { number: true, taskRepo: { select: { repo: { select: { fullName: true } } } } } });
+  for (const pr of prs) {
+    const [owner = "", repo = ""] = pr.taskRepo.repo.fullName.split("/");
+    const pull = await github.octokit.rest.pulls.get({ owner, repo, pull_number: pr.number });
+    if (pull.data.merged || pull.data.state !== "open") continue;
+    await github.octokit.rest.pulls.merge({ owner, repo, pull_number: pr.number, merge_method: "squash" });
+    say(`merged ${repo}#${String(pr.number)}`);
+  }
+  return waitFor(`task ${taskId} merged`, 6 * 60_000, async () => {
+    const row = await d.db.task.findUniqueOrThrow({ where: { id: taskId }, select: { state: true } });
+    return row.state === "merged" || row.state === "done" ? row.state : null;
+  }, 5000).catch(() => "not merged");
+};

@@ -14,7 +14,7 @@ import { auditSince, sendMessage, settled, startPromptTask, taskRow } from "./ta
 // (ticket 48's tests). Without a second GitHub organization, `portal` has `test2` only.
 
 export const CLIENT_B = "client-b";
-const BUILDER = "Builder";
+export const BUILDER = "Builder";
 
 const planSchema = z.looseObject({
   version: z.string(),

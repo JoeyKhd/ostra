@@ -111,8 +111,8 @@ export const search = async (d: Demo): Promise<void> => {
   const demoVault = await paletteResults(d, demo, "VAULT-ONLY-7731");
   d.check("step 11: VAULT-ONLY-7731 finds the vault task for Demo", demoVault.includes(vaultTask), `${String(demoVault.length)} results`);
   await d.shot(demo, "step11-demo-vault");
-  const api = await d.query(sam, "search.tasks", { q: "VAULT-ONLY-7731" });
+  const api = await d.query(sam, "search.tasks", { query: "VAULT-ONLY-7731" });
   const parsed = api.ok ? searchSchema.safeParse(api.data) : null;
   const ids = parsed?.success === true ? [...(parsed.data.results ?? []), ...(parsed.data.tasks ?? [])].map((one) => one.taskId) : [];
-  d.check("step 11: search.tasks as Sam returns no vault task", !ids.includes(vaultTask), api.ok ? `${String(ids.length)} results` : api.code);
+  d.check("step 11: search.tasks as Sam returns no vault task", api.ok && !ids.includes(vaultTask), api.ok ? `${String(ids.length)} results` : api.code);
 };

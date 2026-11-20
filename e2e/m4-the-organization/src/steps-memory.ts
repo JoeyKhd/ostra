@@ -4,10 +4,11 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import type { Page } from "@playwright/test";
+import { z } from "zod";
 
 import type { Demo } from "./context.ts";
 import { waitFor } from "./state.ts";
-import { auditSince, sendMessage, settled, startFromInbox, startPromptTask, ticket } from "./tasks.ts";
+import { auditSince, mergeTaskPrs, sendMessage, settled, startFromInbox, startPromptTask, ticket } from "./tasks.ts";
 
 // Spec section 3, steps 7 to 9: memory notes, a proposal approved, and memory reaching the next task.
 
@@ -115,6 +116,71 @@ export const proposal = async (d: Demo): Promise<void> => {
   d.check("step 8: Sam's approval makes it a note", after.state === "approved" && after.resultNoteId !== null, after.state);
   const actions = (await auditSince(d, since)).map((entry) => entry.action);
   d.check("step 8: the audit log has the decision", actions.includes("memory.proposal-approved"), actions.join(", "));
+  // Step 9 prints the `release` key: step 8's rename is merged first, so it's on main.
+  d.run.notes["step8-merged"] = await mergeTaskPrs(d, taskId);
+};
+
+const diffSchema = z.looseObject({
+  repos: z.array(z.looseObject({ taskRepoId: z.string(), repo: z.string(), headSha: z.string().nullable(), state: z.string(), files: z.array(z.looseObject({ path: z.string(), status: z.string() })) })),
+});
+const noteSchema = z.looseObject({ version: z.number() });
+
+/** Step 9's end: Sam's comment on a line, "Remember this", and Demo's merge into the command note. */
+const rememberThis = async (d: Demo, sam: Page, taskId: string): Promise<void> => {
+  const { demo, settings } = d;
+  const diff = await waitFor("step 9's diff", 3 * 60_000, async () => {
+    const answer = await d.query(sam, "diff.get", { taskId });
+    const parsed = answer.ok ? diffSchema.safeParse(answer.data) : null;
+    const repo = parsed?.success === true ? parsed.data.repos.find((one) => one.repo.endsWith(`/${settings.githubRepo}`) && one.state === "ready") : undefined;
+    return repo ?? null;
+  }, 5000);
+  const file = diff.files.find((one) => one.path.endsWith("print-release.js")) ?? diff.files[0];
+  if (file === undefined || diff.headSha === null) throw new Error("step 9's diff has no file to comment on");
+  const saved = await d.mutate(sam, "diff.comments.save", { taskId, taskRepoId: diff.taskRepoId, path: file.path, side: "new", line: 1, headSha: diff.headSha, body: "Print a newline at the end" });
+  if (!saved.ok) throw new Error(`the comment: ${saved.code} ${saved.message}`);
+  const commentId = z.object({ commentId: z.string() }).parse(saved.data).commentId;
+  const turns = await d.db.turn.count({ where: { taskId } });
+  const sent = await d.mutate(sam, "diff.comments.send", { taskId });
+  d.check("step 9: Sam's comment on a line goes to the agent", sent.ok, sent.ok ? `on ${file.path}:1` : sent.code);
+  await waitFor("the comment's turn", 8 * 60_000, async () => ((await d.db.turn.count({ where: { taskId } })) > turns ? true : null), 3000).catch(() => undefined);
+  await settled(d, taskId);
+  // "Remember this" on the sent comment, in Sam's Changes tab.
+  await sam.goto(`/tasks/${taskId}?tab=changes`);
+  await sam.waitForLoadState("networkidle");
+  const comment = sam.locator(`[data-comment="${commentId}"]`);
+  await comment.waitFor({ timeout: 60_000 });
+  await comment.locator('[data-action="remember-this"]').click({ timeout: 30_000 });
+  await comment.getByTestId("remembered").waitFor({ timeout: 30_000 });
+  await d.shot(sam, "step09-remember-this");
+  const made = await waitFor("the comment's proposal", 60_000, async () => d.db.memoryProposal.findFirst({ where: { taskId, state: "proposed" }, orderBy: { createdAt: "desc" }, select: { id: true, body: true } }), 2000).catch(() => null);
+  d.check("step 9: Remember this on that comment makes a proposal", made !== null, made === null ? "none" : "proposed");
+  if (made === null) return;
+  // Demo merges it into the command note: version 2, with the comment as its source.
+  const note = await d.db.memoryNote.findFirstOrThrow({ where: { title: NOTE_NODE }, select: { id: true, body: true } });
+  const current = await d.query(demo, "memory.note", { noteId: note.id });
+  const version = current.ok ? noteSchema.parse(current.data).version : 1;
+  await demo.goto(`/projects/${d.id("project:test1")}/memory/proposals`);
+  await demo.waitForLoadState("networkidle");
+  await d.shot(demo, "step09-proposal-to-merge");
+  const merged = await d.mutate(demo, "memory.decide", {
+    proposalId: made.id,
+    decision: "merge",
+    intoNoteId: note.id,
+    expectedVersion: version,
+    title: NOTE_NODE,
+    body: `${note.body}\nEvery script prints a newline at the end of its output.`,
+  });
+  const after = await d.db.memoryNote.findUniqueOrThrow({ where: { id: note.id }, select: { version: true } });
+  const latest = await d.db.memoryNoteVersion.findFirst({ where: { noteId: note.id, version: after.version }, select: { proposalId: true } });
+  const source = latest?.proposalId === null || latest === null ? null : await d.db.memoryProposal.findUnique({ where: { id: latest.proposalId }, select: { sourceKind: true, sourceRef: true } });
+  d.check(
+    "step 9: Demo merges it into the command note, which becomes version 2 with the comment as its source",
+    merged.ok && after.version === version + 1 && latest?.proposalId === made.id && source?.sourceKind === "diff_comment",
+    `${merged.ok ? "merged" : merged.code}: version ${String(after.version)}, source ${source?.sourceKind ?? "none"}`,
+  );
+  await demo.goto(`/projects/${d.id("project:test1")}/memory?note=${note.id}`);
+  await demo.waitForLoadState("networkidle");
+  await d.shot(demo, "step09-note-version-2");
 };
 
 /** Step 9: Sam's task gets the index and the always note, uses the command note, and leaves no memory file. */
@@ -167,4 +233,5 @@ export const reachesNextTask = async (d: Demo): Promise<void> => {
   await sam.goto(`/tasks/${taskId}`);
   await sam.waitForLoadState("networkidle");
   await d.shot(sam, "step09-task-memory");
+  await rememberThis(d, sam, taskId);
 };

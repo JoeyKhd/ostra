@@ -5,7 +5,7 @@ import type { Demo } from "./context.ts";
 import { mailTo } from "./steps-people.ts";
 import { PROFILE } from "./steps-setup.ts";
 import { sleep, waitFor } from "./state.ts";
-import { running, sendMessage, settled, startPromptTask, taskRow, turnRunning } from "./tasks.ts";
+import { openNewTask, running, sendMessage, settled, startNewTask, taskRow, turnRunning } from "./tasks.ts";
 
 // Spec section 3, steps 6 and 13: costs and a budget, and Insights.
 
@@ -67,7 +67,6 @@ const warnBudget = (spentMicro: number): number => {
 export const budget = async (d: Demo): Promise<void> => {
   const { demo, settings } = d;
   const test1 = d.id("project:test1");
-  const test2 = d.id("project:test2");
   const step4 = d.id("task:step4");
   await demo.goto(`/tasks/${step4}`);
   await demo.waitForLoadState("networkidle");
@@ -108,7 +107,7 @@ export const budget = async (d: Demo): Promise<void> => {
   d.check("step 6: the 80% mail reaches Demo", warnMail !== null, warnMail === null ? "no mail" : `subject "${warnMail.subject}"`);
   // A Careful task: the plan, approved after about a minute; the budget lowered during the build turn.
   if (d.run.ids["task:step6"] === undefined) {
-    d.run.ids["task:step6"] = await startPromptTask(demo, test1, "Add a `CONTRIBUTING.md` with three short rules", settings.runnerName, PROFILE);
+    d.run.ids["task:step6"] = await startNewTask(demo, "test1", "Add a `CONTRIBUTING.md` with three short rules", settings.runnerName, PROFILE);
     await d.save();
   }
   const taskId = d.id("task:step6");
@@ -122,39 +121,39 @@ export const budget = async (d: Demo): Promise<void> => {
     await demo.locator('[data-action="approve-plan"]').first().click({ timeout: 30_000 });
   }
   await running(d, taskId).catch(() => undefined);
+  const reachedSince = Date.now();
   if (await turnRunning(d, taskId)) {
     const sofar = await test1Spent(d);
     const lowUsd = Math.max(0.01, Math.floor(sofar * 0.9 / 10_000) / 100);
     d.run.notes["step6-budget-2"] = `$${lowUsd.toFixed(2)} (spend so far ${dollars(sofar)})`;
     await setBudget(d, lowUsd, "step06-budget-90");
+    d.check("step 6: the budget was lowered while the build turn ran", await turnRunning(d, taskId), d.run.notes["step6-budget-2"]);
   } else {
     d.check("step 6: the budget was lowered while the build turn ran", false, "the build turn wasn't running");
   }
-  const reachedSince = Date.now();
   const after = await settled(d, taskId);
   say(`step 6: the build turn ended: ${after}`);
   const reached = await waitFor("the 100% notice", 180_000, async () => (await d.db.budgetNotice.findFirst({ where: { threshold: "reached" }, select: { sentAt: true } })) ?? null, 3000).catch(() => null);
   d.check("step 6: test1 reached its budget: the notice is written", reached !== null, reached === null ? "none" : "written");
-  const reachedMail = await mailTo(d, settings.adminEmail, /reached|budget/i, reachedSince - 60_000).catch(() => null);
+  const reachedMail = await mailTo(d, settings.adminEmail, /reached/i, reachedSince).catch(() => null);
   d.check("step 6: the 100% mail reaches Demo", reachedMail !== null && /reached/i.test(`${reachedMail.subject} ${reachedMail.text}`), reachedMail === null ? "no mail" : `subject "${reachedMail.subject}"`);
   await demo.goto("/needs-you");
   await demo.waitForLoadState("networkidle");
   await d.shot(demo, "step06-needs-you-reached");
   // A held message.
   await sendMessage(demo, taskId, "Also add a line about tests");
-  const held = await waitFor("the held message", 60_000, async () => ((await demo.getByTestId("message-held").count()) > 0 ? true : null), 2000).catch(() => false);
+  const held = await waitFor("the held message", 60_000, async () => ((await demo.locator('[data-part="held"]').count()) > 0 ? true : null), 2000).catch(() => false);
   const heldLine = await demo.locator('[data-part="held"]').first().innerText().catch(() => "");
   d.check("step 6: Demo's message is held, and the thread says why", held && /Held: test1.s budget for .* is reached/.test(heldLine), heldLine || "no held row");
   await d.shot(demo, "step06-held");
   // A new task in test1 waits, with the reason before Start.
-  await demo.goto(`/projects/${test1}`);
-  await demo.getByTestId("new-task").locator("textarea").fill("Add a `docs/budget.md` saying what a budget is");
-  await demo.waitForTimeout(1500);
+  await openNewTask(demo, "test1", "Add a `docs/budget.md` saying what a budget is");
+  await demo.getByTestId("budget-reason").first().waitFor({ timeout: 30_000 }).catch(() => undefined);
   const reason = await demo.getByTestId("budget-reason").first().innerText().catch(() => "");
   d.check("step 6: the New task form shows the budget's reason before Start", /budget/i.test(reason), reason || "no reason shown");
   await d.shot(demo, "step06-new-task-reason");
   if (d.run.ids["task:step6-queued"] === undefined) {
-    d.run.ids["task:step6-queued"] = await startPromptTask(demo, test1, "Add a `docs/budget.md` saying what a budget is", settings.runnerName);
+    d.run.ids["task:step6-queued"] = await startNewTask(demo, "test1", "Add a `docs/budget.md` saying what a budget is", settings.runnerName);
     await d.save();
   }
   const queued = d.id("task:step6-queued");
@@ -166,7 +165,7 @@ export const budget = async (d: Demo): Promise<void> => {
   await d.shot(demo, "step06-queued");
   // A task in test2 still starts.
   if (d.run.ids["task:step6-test2"] === undefined) {
-    d.run.ids["task:step6-test2"] = await startPromptTask(demo, test2, "Add a `docs/budget.md` with one line: test2 has no budget", settings.runnerName);
+    d.run.ids["task:step6-test2"] = await startNewTask(demo, "test2", "Add a `docs/budget.md` with one line: test2 has no budget", settings.runnerName);
     await d.save();
   }
   const other = d.id("task:step6-test2");
@@ -174,10 +173,11 @@ export const budget = async (d: Demo): Promise<void> => {
   d.check("step 6: a task in test2 still starts", otherStarted, otherStarted ? "its first turn started" : "no turn");
   await settled(d, other).catch(() => undefined);
   // Raise the budget: the held message's turn starts, and the waiting task starts.
-  await setBudget(d, Math.max(5, warnUsd * 20), "step06-budget-raised");
+  const turnsHeld = await d.db.turn.count({ where: { taskId } });
+  await setBudget(d, Math.max(50, warnUsd * 20), "step06-budget-raised");
   const released = await waitFor("the held turn released", 3 * 60_000, async () => ((await d.db.heldTurn.count({ where: { taskId, releasedAt: { not: null } } })) > 0 ? true : null), 3000).catch(() => false);
   d.check("step 6: raising the budget releases the held message", released, released ? "released" : "still held");
-  const resumed = await waitFor("the held message's turn", 8 * 60_000, async () => ((await d.db.turn.count({ where: { taskId } })) >= 3 ? true : null), 3000).catch(() => false);
+  const resumed = await waitFor("the held message's turn", 8 * 60_000, async () => ((await d.db.turn.count({ where: { taskId } })) > turnsHeld ? true : null), 3000).catch(() => false);
   d.check("step 6: the held message starts its turn", resumed, `${String(await d.db.turn.count({ where: { taskId } }))} turns`);
   const queuedStarted = await waitFor("the waiting task to start", 10 * 60_000, async () => ((await d.db.turn.count({ where: { taskId: queued } })) > 0 ? true : null), 5000).catch(() => false);
   d.check("step 6: the waiting task starts", queuedStarted, (await taskRow(d, queued)).state);
@@ -196,7 +196,7 @@ export const budget = async (d: Demo): Promise<void> => {
   await demo.goto("/organization/spend");
   await demo.waitForLoadState("networkidle");
   await d.shot(demo, "step06-overshoot");
-  await setBudget(d, Math.max(5, warnUsd * 20), "step06-budget-final");
+  await setBudget(d, Math.max(50, warnUsd * 20), "step06-budget-final");
 };
 
 /** Step 13: Insights for the organization and test1, and Sam's view with vault folded. */

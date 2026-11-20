@@ -4,6 +4,7 @@ import { devDataDir } from "@ostra/db/dev";
 import { addModelProvider, connectGitHub, createProject, say } from "@ostra/e2e-m1/setup";
 import { seedLinear } from "@ostra/e2e-m2/seed-linear";
 import type { Page } from "@playwright/test";
+import { z } from "zod";
 
 import { runnerCode } from "./context.ts";
 import type { Demo } from "./context.ts";
@@ -15,6 +16,8 @@ import type { Demo } from "./context.ts";
 
 export const PROFILE = "Careful";
 export const CLIENT_A = "client-a";
+/** Dollars per million tokens: the demo's prices for the dev model (see `setup`). */
+export const DEMO_PRICES = { inputPerMTok: 20, outputPerMTok: 60, cacheReadPerMTok: 2, cacheWritePerMTok: 20 } as const;
 
 /** The project's ID from its sidebar link (`/projects/<id>`). */
 export const projectIdOf = (href: string): string => href.split("/")[2] ?? "";
@@ -113,8 +116,69 @@ const careful = async (d: Demo): Promise<void> => {
   await demo.getByRole("status").filter({ hasText: "Saved." }).first().waitFor({ timeout: 30_000 });
 };
 
+/** The files the demo's tasks add, per repo: an earlier run's merged copies are deleted first. */
+const ADDED_FILES: Readonly<Record<string, readonly string[]>> = {
+  test1: ["CONTRIBUTING.md", "docs/budget.md", "docs/client.md", "docs/effort.md", "scripts/print-release.js"],
+  test2: ["docs/budget.md", "notes.txt", "HELLO.md"],
+};
+
+const API_LINE = "API version is now 2";
+
+const contentSchema = z.object({ sha: z.string(), content: z.string() });
+
+/**
+ * The test repos as the demo's tickets expect them (an earlier run merged its PRs on `main`):
+ * test1's `config/settings.json` holds `releaseName` and no `apiVersion`, test2's changelog has no
+ * "API version is now 2" line, and no file a task adds is there. One commit per file, by the App,
+ * on the test repos only, once per data folder.
+ */
+const resetFixtures = async (d: Demo): Promise<void> => {
+  if (d.run.notes["fixtures-reset"] !== undefined) return;
+  const { github, settings } = d;
+  const { owner, octokit } = github;
+  const read = async (repo: string, file: string) =>
+    octokit.rest.repos.getContent({ owner, repo, path: file }).then(
+      (answer) => {
+        const parsed = contentSchema.safeParse(answer.data);
+        return parsed.success ? { sha: parsed.data.sha, text: Buffer.from(parsed.data.content, "base64").toString("utf8") } : null;
+      },
+      () => null,
+    );
+  const write = async (repo: string, file: string, sha: string, text: string) => {
+    await octokit.rest.repos.createOrUpdateFileContents({ owner, repo, path: file, sha, message: `Reset ${file} for the milestone 4 demo`, content: Buffer.from(text, "utf8").toString("base64") });
+  };
+  const done: string[] = [];
+  const settingsFile = await read(settings.githubRepo, "config/settings.json");
+  if (settingsFile !== null) {
+    const json = z.record(z.string(), z.unknown()).parse(JSON.parse(settingsFile.text));
+    const name = typeof json["releaseName"] === "string" ? json["releaseName"] : typeof json["release"] === "string" ? json["release"] : "Quiet Heron";
+    const wanted = `${JSON.stringify({ releaseName: name }, null, 2)}\n`;
+    if (settingsFile.text !== wanted) {
+      await write(settings.githubRepo, "config/settings.json", settingsFile.sha, wanted);
+      done.push(`${settings.githubRepo}/config/settings.json`);
+    }
+  }
+  const changelog = await read(settings.githubOtherRepo, "CHANGELOG.md");
+  if (changelog?.text.includes(API_LINE) === true) {
+    await write(settings.githubOtherRepo, "CHANGELOG.md", changelog.sha, changelog.text.split("\n").filter((line) => !line.includes(API_LINE)).join("\n"));
+    done.push(`${settings.githubOtherRepo}/CHANGELOG.md`);
+  }
+  for (const [repo, files] of Object.entries(ADDED_FILES)) {
+    for (const file of files) {
+      const found = await read(repo, file);
+      if (found === null) continue;
+      await octokit.rest.repos.deleteFile({ owner, repo, path: file, sha: found.sha, message: `Remove ${file} for the milestone 4 demo` });
+      done.push(`${repo}/${file} removed`);
+    }
+  }
+  d.run.notes["fixtures-reset"] = done.length === 0 ? "nothing to reset" : done.join(", ");
+  say(`before: the test repos' fixtures: ${d.run.notes["fixtures-reset"]}`);
+  await d.save();
+};
+
 export const setup = async (d: Demo): Promise<void> => {
   const { demo, settings } = d;
+  await resetFixtures(d);
   if (d.run.ids["project:test1"] === undefined || d.run.ids["project:test2"] === undefined) {
     if ((await d.db.modelProvider.count()) === 0) {
       // Milestone 1's helper adds it through the form; its later clicks (personal runners, the
@@ -146,6 +210,11 @@ export const setup = async (d: Demo): Promise<void> => {
   const model = await d.db.model.findFirstOrThrow({ where: { providerId: provider.id, endpointModelId: settings.modelId }, select: { id: true } });
   const defaulted = await d.mutate(demo, "agentProfiles.setDefaultModel", { modelId: model.id });
   if (!defaulted.ok) throw new Error(`the default model: ${defaulted.code}`);
+  // The four prices (F-037): the dev model's own prices make a task cost under a cent, too little
+  // for a budget in whole cents, so the demo prices it at a frontier model's rates.
+  const priced = await d.mutate(demo, "providers.setModelPrice", { modelId: model.id, ...DEMO_PRICES });
+  if (!priced.ok) throw new Error(`the model's prices: ${priced.code}`);
+  d.run.notes["prices"] = `${settings.modelId} priced at ${String(DEMO_PRICES.inputPerMTok)} input, ${String(DEMO_PRICES.outputPerMTok)} output, ${String(DEMO_PRICES.cacheReadPerMTok)} cache read and ${String(DEMO_PRICES.cacheWritePerMTok)} cache write, in dollars per million tokens`;
   const seeded = await seedLinear({
     db: d.db,
     tool: d.tool,
