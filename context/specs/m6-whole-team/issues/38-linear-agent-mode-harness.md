@@ -1,6 +1,6 @@
 # 38: The Linear agent-mode harness on real Linear
 
-Status: ready-for-agent
+Status: ready-for-human
 Builder: core
 Blocked by: 13, 26; and ticket 40's step 1 (the maintainer's Authorize click) for the real run
 Features: F-012
@@ -25,7 +25,17 @@ Spike 5's real-run harness, ported to run against ostra itself (core, Postgres, 
 ## Done when
 
 - [ ] With the app token: the install, the 50 delegations, the follow-up and the 35 minutes pass, the stop passes with the maintainer's press, and the log is kept and cited in `context/proof/F-012.md`.
-- [ ] Without it: the harness skips cleanly, and F-012's proof file says which conditions wait for the token.
+- [x] Without it: the harness skips cleanly, and F-012's proof file says which conditions wait for the token.
 - [ ] Committed as `✅ add the Linear agent-mode harness`, and the record as `📝 record the Linear agent-mode run`.
 
 ## Comments
+
+- 2026-11-20, core: the harness built as `✅ add the Linear agent-mode harness`; `📝 record the Linear agent-mode run` waits for the live run, which waits for the maintainer's Authorize click (ticket 40's step 1). So the first and third boxes stay open, and the second is ticked.
+  - **What's there:** `e2e/m6-linear-agent-mode/` and `pnpm e2e:linear-agent-mode`. It reads `linear.env` and `tunnel.env` itself. Without `LINEAR_REFRESH_TOKEN` it prints `skipped: no app token` and ends 0 before anything touches Linear (run on this machine on 2026-11-20). With it, it refreshes the app's token and writes the rotated refresh token back to `linear.env` without printing it, starts its own stack (the failure suite's `startStack`, on 3231, 8831 and 54431), sets it up as milestone 1's demo does, renames the project `agent-mode-load`, seeds the app's connection (`credentialKind: app_oauth`, the agent scopes) and "Start from Linear" on OST's board with outside approval on, then runs the four bullets and keeps the log with `--record`.
+  - **Proof:** `src/rehearsal.test.ts` runs every phase through the same code against core as its own process and the fake Linear (ticket 02), in CI; `src/harness.test.ts` holds the skip, the write-back and the judges fed spike 5's real-run figures. Rows in `context/proof/F-012.md` (row 6 `partial`, with the live run's plan). Break-its: no heartbeat (the silent session went stale), no write-back, and the skip not ending the run, each failing its test.
+  - **Differences from the ticket, each noted in F-012.md:**
+    - The follow-up's session starts from a mention of the app, not a delegation: a delegation's session hangs from no comment, so there's no thread to reply in (the fake says so; real Linear isn't checked).
+    - A follow-up on a task still queued is dropped by core (`not-reopenable`, `linear.follow-up-refused`, nothing posted to the session). So the live run signs a runner in before bullet 3 and gives the follow-up's and the stop's tickets a turn on the stub model, and replies once the turn runs. The rehearsal has no runner and reports that one check "not run". The drop itself is ticket 13's path and isn't changed here.
+    - "One heartbeat posted" is judged as at least one, nothing else posted: the rehearsal's sped-up clock can't place core's minute-grained heartbeat sweep to give exactly one, and the live run's 20 minutes give one in 35.
+    - The live run needs `LINEAR_APP_CONNECTION_ID`, the ID at the end of the app's webhook URL, so Linear's events reach the harness's own connection; the ticket didn't name it.
+    - The bulk reject answers each waiting task with `rejectOutsideTask` at once, as the panel's "Reject" does; there's no bulk reject API.

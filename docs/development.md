@@ -147,6 +147,15 @@ pnpm e2e:schedule-hunt                  # --runs 3 runs it three times in a row;
 
 Each run's log (IDs, counts and times only) is in `.ostra-dev/e2e-schedule-hunt/`. `OSTRA_SCHEDULE_HUNT_SCHEDULES`, `OSTRA_SCHEDULE_HUNT_MAX_TICKS` and `OSTRA_SCHEDULE_HUNT_CONTROL=0` make a quick run for a look; the record needs the defaults.
 
+**The Linear agent-mode harness** (milestone 6, ticket 38; F-012). Spike 5's real run against ostra itself: the install, 50 delegations with no runner online and one bulk reject, a follow-up (a thread reply by the key's user) and a stop a person presses, and a 35-minute silent turn on the stub model. It reads `linear.env` and `tunnel.env` itself. Without `LINEAR_REFRESH_TOKEN` (the refresh token ostra shows once after the maintainer's Authorize, milestone 6's ticket 40) it prints `skipped: no app token` and ends. With it, it refreshes the app's token and writes the rotated refresh token back to `linear.env`, and also needs `LINEAR_APP_CONNECTION_ID` (the ID at the end of the app's webhook URL) and a tunnel in `tunnel.env` that forwards to its core (`OSTRA_HARNESS_CORE_PORT`, 8831 by default; the panel on 3231 and Postgres on 54431). Like the failure suite it empties this checkout's `.ostra-dev/` first. When it asks, press "Send stop request" in Linear on the ticket it names (it waits 30 minutes):
+
+```
+set -a; . ~/.config/ostra-dev/github.env; . ~/.config/ostra-dev/github-test.env; set +a
+pnpm e2e:linear-agent-mode              # --record keeps the log in context/specs/m6-whole-team/demo/linear-agent-mode.log
+```
+
+Its rehearsal, the same phases against core and the fake Linear on a clock 10 times the wall clock, is `e2e/m6-linear-agent-mode/src/rehearsal.test.ts`, in the package's tests.
+
 ## Database
 
 ostra keeps everything in Postgres. In development you don't need to install one: `packages/db` starts an embedded Postgres (the `embedded-postgres` package, a development dependency only, ADR 0007).

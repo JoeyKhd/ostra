@@ -1,0 +1,34 @@
+{
+  "name": "@ostra/e2e-m6-linear-agent-mode",
+  "version": "0.0.0",
+  "description": "Milestone 6's Linear agent-mode harness (ticket 38): spike 5's real run against ostra itself, and its rehearsal on the fake Linear. Never in the production build",
+  "private": true,
+  "license": "LicenseRef-Sustainable-Use-1.0",
+  "type": "module",
+  "scripts": {
+    "harness": "node src/harness.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run --maxWorkers=2"
+  },
+  "dependencies": {
+    "@ostra/adapter-github": "workspace:*",
+    "@ostra/adapter-linear": "workspace:*",
+    "@ostra/adapter-model-endpoint": "workspace:*",
+    "@ostra/adapter-sdk": "workspace:*",
+    "@ostra/adapter-secret-store-builtin": "workspace:*",
+    "@ostra/db": "workspace:*",
+    "@ostra/domain": "workspace:*",
+    "@ostra/e2e-m1": "workspace:*",
+    "@ostra/e2e-m2": "workspace:*",
+    "@ostra/e2e-m2-failures": "workspace:*",
+    "@ostra/jobs": "workspace:*",
+    "@ostra/protocol": "workspace:*",
+    "@playwright/test": "1.65.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "eslint": "10.15.0",
+    "vitest": "5.1.1"
+  }
+}
