@@ -1,6 +1,7 @@
 # 39: The end-to-end demo and the ledger
 
-Status: ready-for-agent
+Status: needs-triage
+Held: the end-to-end demo runs once, at the launch gate, over the finished product. The maintainer, 2026-11-20: "i think this 'demo' thing you are doing is taking a loooooong time".
 Builder: core (lead), with each builder on call for their part
 Blocked by: 20, 33, 34, 35, 36, 37, 38
 Features: every F-ID in the spec's section 2
@@ -39,3 +40,4 @@ The lead, on the maintainer's delegation, settled the open points the milestone 
   - **Not done:** the reopen "a day later" with a refreshed token, and step 1's real Authorize, are the maintainer's morning run (ticket 40); ticket 38's suite isn't built, so box 3 waits on it and on the repo checks (ticket 40's public repos or paid plan); box 5: the whole repo's checks passed after the record (typecheck and lint, 53 turbo tasks and the root's; tests, 27 turbo tasks, 21 run fresh, and the root's; `check:licenses`). The ledger rows are `building` with dated notes, not `done`: none has its proof file yet, and several rest on ticket 38.
   - **Commits:** `8e0b82d` (the demo), `312193d` (the record and the ledger).
   - **Dependencies:** none added. `@ostra/e2e-m1` gained an exports map and `setup.ts` (milestone 1's demo steps, shared).
+- 2026-11-20: held for the launch gate on the maintainer's word.
