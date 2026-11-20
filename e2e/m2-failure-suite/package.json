@@ -5,6 +5,16 @@
   "private": true,
   "license": "LicenseRef-Sustainable-Use-1.0",
   "type": "module",
+  "exports": {
+    "./api": "./src/live/api.ts",
+    "./clean-up": "./src/clean-up.ts",
+    "./procs": "./src/tools/procs.ts",
+    "./stack": "./src/live/stack.ts",
+    "./stub-model": "./src/live/stub-model.ts",
+    "./tasks": "./src/live/tasks.ts",
+    "./tunnel": "./src/tools/tunnel.ts",
+    "./world": "./src/live/world.ts"
+  },
   "scripts": {
     "suite": "node src/suite.ts",
     "clean-up": "node src/clean-up-cli.ts",

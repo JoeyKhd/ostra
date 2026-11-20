@@ -571,6 +571,24 @@ importers:
       '@ostra/adapter-sdk':
         specifier: workspace:*
         version: link:../../packages/adapter-sdk
+      '@ostra/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@ostra/e2e-m1':
+        specifier: workspace:*
+        version: link:../m1-first-pr
+      '@ostra/e2e-m2':
+        specifier: workspace:*
+        version: link:../m2-tickets-in
+      '@ostra/e2e-m2-failures':
+        specifier: workspace:*
+        version: link:../m2-failure-suite
+      '@ostra/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
+      '@playwright/test':
+        specifier: 1.65.1
+        version: 1.65.1
       zod:
         specifier: 4.6.7
         version: 4.6.7

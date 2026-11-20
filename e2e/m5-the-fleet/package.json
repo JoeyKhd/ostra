@@ -1,11 +1,12 @@
 {
   "name": "@ostra/e2e-m5",
   "version": "0.0.0",
-  "description": "Milestone 5's dev tools: the fake cluster, the registries and the proxies (ticket 36). Never in the production build",
+  "description": "Milestone 5: the dev tools (ticket 36) and the end-to-end demo (ticket 37), against a fresh dev stack. Never in the production build",
   "private": true,
   "license": "LicenseRef-Sustainable-Use-1.0",
   "type": "module",
   "scripts": {
+    "demo": "node src/demo/demo.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run --maxWorkers=4"
@@ -13,6 +14,12 @@
   "dependencies": {
     "@ostra/adapter-executor-kubernetes": "workspace:*",
     "@ostra/adapter-sdk": "workspace:*",
+    "@ostra/db": "workspace:*",
+    "@ostra/e2e-m1": "workspace:*",
+    "@ostra/e2e-m2": "workspace:*",
+    "@ostra/e2e-m2-failures": "workspace:*",
+    "@ostra/protocol": "workspace:*",
+    "@playwright/test": "1.65.1",
     "zod": "4.6.7"
   },
   "devDependencies": {
