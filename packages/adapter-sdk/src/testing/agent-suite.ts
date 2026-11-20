@@ -619,6 +619,9 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
         await new Promise((resolve) => setTimeout(resolve, 3000));
         expect(events.slice(count).filter((event) => event.kind !== "session.config_changed")).toEqual([]);
         expect(probed.childCalls?.(), "the subagent called the model after the cancel").toBe(calls);
+        // The session goes on: "interrupt and send" sends the member's message as its next turn.
+        const next = await adapter.prompt(running, turn(9), subject().fixture.simplePrompt);
+        expect(next).toEqual({ ok: true, value: { stopReason: "end_turn" } });
       } finally {
         await adapter.close(running);
         await started.stop();

@@ -292,6 +292,9 @@ const startedChildSchema = z.looseObject({
 /** How long the probe may take before the agent counts as at work. */
 const PROBE_TIMEOUT_MS = 5000;
 
+/** How long a prompt waits for its session to be attached again after a cancel stopped its subagents. */
+const RESUME_WAIT_MS = 30_000;
+
 /** The steering probe's prompt: OpenCode refuses it before it reaches the session (`ACPPrompt.prepare`). */
 const IDLE_PROBE_PROMPT = [{ type: "image", mimeType: "image/png", data: "" }] as const;
 
@@ -652,6 +655,8 @@ const connectAgent = async (
 
   // Each session's folder and MCP servers, to attach it again after its subagents were stopped.
   const sessionInputs = new Map<string, { readonly cwd: string; readonly mcpServers: readonly McpServer[] }>();
+  // A `session/resume` still in flight past a cancel's budget: the session's next prompt waits for it.
+  const resuming = new Map<string, Promise<void>>();
 
   /** Waits for `work` until `until` (ms since the epoch) at most, or the agent's end. What it stops may be gone already: a failure is no matter. */
   const within = async (work: Promise<unknown>, until: number): Promise<void> => {
@@ -702,10 +707,14 @@ const connectAgent = async (
     await within(closeSession(agentSessionId), until);
     const input = sessionInputs.get(agentSessionId);
     if (input !== undefined) {
-      await within(
-        connection.agent.request(acp.methods.agent.session.resume, { sessionId: agentSessionId, cwd: input.cwd, mcpServers: mcp(input.mcpServers) }),
-        until,
-      );
+      const resumed = connection.agent
+        .request(acp.methods.agent.session.resume, { sessionId: agentSessionId, cwd: input.cwd, mcpServers: mcp(input.mcpServers) })
+        .then(() => undefined, () => undefined)
+        .finally(() => {
+          resuming.delete(agentSessionId);
+        });
+      resuming.set(agentSessionId, resumed);
+      await within(resumed, until);
     }
     // Their end won't be reported now: OpenCode no longer follows the session.
     for (const child of open) {
@@ -890,6 +899,11 @@ const connectAgent = async (
     },
 
     prompt: async (agentSessionId, text) => {
+      // A session attached again after a cancel takes its next prompt once it's back.
+      const pending = resuming.get(agentSessionId);
+      if (pending !== undefined) {
+        await Promise.race([pending, delay(RESUME_WAIT_MS), endedSignal]);
+      }
       let expire: () => void = () => undefined;
       const graceExpired = new Promise<void>((resolve) => {
         expire = resolve;
