@@ -610,8 +610,8 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           ) : null}
           <PrButtons prs={prs} />
           {data.capabilities.stop && !stopped ? (
-            <Button data-action="stop" onClick={() => { stop.mutate({ taskId }); }} disabled={stopping || stop.isPending}>
-              <SquareIcon /> {stopping ? t("taskPage.stopping") : t("taskPage.stop")}
+            <Button data-action="stop" onClick={() => { stop.mutate({ taskId }); }} disabled={stopping || stop.isPending} aria-label={stopping ? t("taskPage.stopping") : t("taskPage.stop")}>
+              <SquareIcon aria-hidden /> <span className="max-sm:hidden">{stopping ? t("taskPage.stopping") : t("taskPage.stop")}</span>
             </Button>
           ) : null}
         </>
