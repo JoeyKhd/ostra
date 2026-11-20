@@ -86,7 +86,7 @@ export const waitForPr = async (world: World, taskId: TaskId, timeoutMs = 180_00
   });
 
 export const sessionsOf = (world: World, taskId: TaskId) =>
-  world.db.session.findMany({ where: { taskId }, orderBy: [{ startedAt: "asc" }, { id: "asc" }], select: { id: true, state: true, origin: true, archiveBlobId: true, limitReached: true, startedAt: true, endedAt: true } });
+  world.db.session.findMany({ where: { taskId }, orderBy: [{ startedAt: "asc" }, { id: "asc" }], select: { id: true, state: true, origin: true, boxId: true, archiveBlobId: true, limitReached: true, startedAt: true, endedAt: true } });
 
 /** Waits until the task's newest session is in one of `states`. */
 export const waitForSession = async (world: World, taskId: TaskId, states: readonly string[], timeoutMs: number, minSessions = 1) =>

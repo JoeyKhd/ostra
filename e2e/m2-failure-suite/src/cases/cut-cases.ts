@@ -1,7 +1,7 @@
 import type { CutMode } from "../tools/cut-proxy.ts";
 import { checkEventsOnce, checkNoDoubles } from "../live/checks.ts";
 import { marker } from "../live/stub-model.ts";
-import { caseFile, newTicketTask, reopen, sessionsOf, taskRow, waitForFileOnBranch, waitForPr, waitForSession, waitUntil } from "../live/tasks.ts";
+import { caseFile, fileOnBranch, newTicketTask, reopen, sessionsOf, taskRow, waitForFileOnBranch, waitForPr, waitForSession, waitUntil } from "../live/tasks.ts";
 import type { SuiteRunner, World } from "../live/world.ts";
 import { runCase, seconds } from "./case.ts";
 import type { CaseResult } from "./case.ts";
@@ -12,7 +12,10 @@ import type { CaseResult } from "./case.ts";
 //    in the spool, and after the cut they arrive, every one once, and the PR opens.
 // 2. A second cut while the session idles; a reopen message is sent during it, and arrives after.
 // `--long` adds a cut past the grace (10 min): the task stops cleanly as `runner_lost`, the runner's
-// stale writes are refused, and the task reopens on a fresh box with its context.
+// stale writes are refused, and the task reopens with its context. The grace leaves the box
+// `stopped`, which a reopen resumes in place while its runner is back (ADR 0039's first step, the
+// domain model's `resumed`), and the runner is back here once the cut ends; a fresh box (`restored`
+// or `rebuilt`) is the path when it isn't. Either way the first turn's file must be on the branch.
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -109,7 +112,15 @@ export const longCutCase = (world: World, runner: SuiteRunner, cutMs: number): P
     await waitForFileOnBranch(world, task.branch, second, 300_000);
     const sessions = await sessionsOf(world, task.taskId);
     const last = sessions.at(-1);
-    c.check("it reopens on a fresh box with its context", last !== undefined && last.origin !== "resumed", `the new session is ${last?.origin ?? "missing"}; ${second} on the branch ${String(seconds(restoredAt))} s after the cut ended`);
+    // `resumed` only on the stopped session's own box; `restored` and `rebuilt` only on a fresh one.
+    const sameBox = last !== undefined && lastSession !== undefined && last.boxId !== null && last.boxId === lastSession.boxId;
+    const rightBox = last !== undefined && (last.origin === "resumed" ? sameBox : last.origin !== "new" && !sameBox);
+    const firstKept = await fileOnBranch(world, task.branch, first);
+    c.check(
+      "it reopens with its context",
+      rightBox && firstKept,
+      `the new session is ${last?.origin ?? "missing"} on ${sameBox ? "the stopped box, its runner back" : "a fresh box"}; ${first} ${firstKept ? "is" : "is not"} on the branch, and ${second} is, ${String(seconds(restoredAt))} s after the cut ended`,
+    );
     c.add(await checkEventsOnce(world, task.taskId));
     c.add(await checkNoDoubles(world, task));
   });
