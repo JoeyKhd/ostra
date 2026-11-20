@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { expectNoHorizontalScroll, signIn } from "./helpers.ts";
+import { expectNoHorizontalScroll, pageStatus, signIn } from "./helpers.ts";
 import { m4World, seedM4World, shoot, shootPhone, signedInPage } from "./m4.ts";
 
 // F-087, F-003 (ticket 33): a project's access in its settings, and the instance's Accounts page.
@@ -47,7 +47,7 @@ test("F-087: a restricted project disappears from an unlisted member's sidebar a
   await shoot(page, "project-access");
   await page.getByRole("radio", { name: /Restricted/ }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Restrict" }).click();
-  await expect(page.getByRole("status")).toContainText("restricted");
+  await expect(pageStatus(page)).toContainText("restricted");
 
   // The member's open page drops it without a reload.
   await expect(memberNav.getByRole("link", { name: "m4calc" })).toHaveCount(0, { timeout: 15_000 });

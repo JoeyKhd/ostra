@@ -7,7 +7,7 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { z } from "zod";
 
-import { readStack, signIn, watchOrigins } from "./helpers.ts";
+import { pageStatus, readStack, signIn, watchOrigins } from "./helpers.ts";
 import { e2eAdmin } from "./settings.ts";
 
 // F-021, F-026, F-063 (ticket 42): an admin makes an agent profile with a preset rule, plan first and
@@ -59,7 +59,7 @@ const startProfile = async (page: Page, name: string): Promise<void> => {
 const saveProfile = async (page: Page): Promise<void> => {
   await page.locator('[data-action="save-profile"]').click();
   await page.waitForURL(/\/organization\/agent-profiles\/[0-9a-f-]{36}$/);
-  await expect(page.getByRole("status")).toHaveText(/^\s*Saved\./);
+  await expect(pageStatus(page)).toHaveText(/^\s*Saved\./);
 };
 
 /** New task's picker, in the e2e repo's project: the offered profiles' names, in order. */

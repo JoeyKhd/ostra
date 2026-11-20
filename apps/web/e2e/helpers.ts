@@ -25,6 +25,13 @@ export const watchOrigins = (page: Page): { readonly foreign: () => readonly str
   return { foreign: () => foreign };
 };
 
+/**
+ * The page's own status line. The shell holds a second status on every page, its toast
+ * (`shell-toast`): the one polite live region that says what a palette action did and announces
+ * a new needs-you item (milestone 7, ticket 16), empty until then.
+ */
+export const pageStatus = (page: Page): Locator => page.getByRole("status").and(page.locator(':not([data-testid="shell-toast"])'));
+
 /** No horizontal scroll at this width (F-075). */
 export const expectNoHorizontalScroll = async (page: Page): Promise<void> => {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

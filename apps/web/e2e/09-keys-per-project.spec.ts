@@ -6,7 +6,7 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { z } from "zod";
 
-import { expectNoHorizontalScroll, readStack, signIn } from "./helpers.ts";
+import { expectNoHorizontalScroll, pageStatus, readStack, signIn } from "./helpers.ts";
 import { e2eAdmin } from "./settings.ts";
 
 // F-135 (ticket 53): keys per project in the panel. An organization admin gives a project its own
@@ -216,7 +216,7 @@ test("F-135, F-021: a profile picks its provider first, then one of that provide
   await page.getByRole("option", { name: /local-coder-7b/ }).click();
   await expect(page.getByTestId("profile-model")).toContainText("local-coder-7b");
   await page.locator('[data-action="save-profile"]').click();
-  await expect(page.getByRole("status")).toContainText("doesn't allow client-b yet");
+  await expect(pageStatus(page)).toContainText("doesn't allow client-b yet");
   await page.reload();
   await expect(page.getByTestId("profile-provider")).toContainText("client-b");
   await expect(page.getByTestId("profile-model")).toContainText("local-coder-7b");
@@ -228,7 +228,7 @@ test("F-135, F-021: a profile picks its provider first, then one of that provide
   await page.getByTestId("profile-model").click();
   await page.getByRole("option", { name: /Claude Sonnet 4.5/ }).click();
   await page.locator('[data-action="save-profile"]').click();
-  await expect(page.getByRole("status")).toContainText("Saved.");
+  await expect(pageStatus(page)).toContainText("Saved.");
   // Put the profile back, with no provider, for the phone run's cases.
   await seedWorld(true);
 });
