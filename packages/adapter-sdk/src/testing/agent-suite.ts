@@ -16,6 +16,8 @@ import type {
 import { defineAgentEffortCases } from "./agent-effort-cases.ts";
 import type { AgentEffortProbes } from "./agent-effort-cases.ts";
 import { defineAgentMemoryCases } from "./agent-memory-cases.ts";
+import { defineAgentParityCases } from "./agent-parity-cases.ts";
+import type { AgentParityProbes } from "./agent-parity-cases.ts";
 import type { AgentCanaryProbe, AgentMemoryProbes } from "./agent-memory-cases.ts";
 import { defineAgentProfileCases } from "./agent-profile-cases.ts";
 import type { AgentProfileProbes } from "./agent-profile-cases.ts";
@@ -118,6 +120,8 @@ export type AgentFixture = {
   readonly canary?: AgentCanaryProbe;
   /** Milestone 4 (ADR 0066, F-137): the reasoning effort cases. Absent: skipped. */
   readonly effort?: AgentEffortProbes;
+  /** Milestone 7 (ticket 03): the cases every agent is checked for before launch. Absent: skipped. */
+  readonly parity?: AgentParityProbes;
 };
 
 const turn = (n: number) => turnIdSchema.parse(`contract-turn-${String(n)}`);
@@ -559,6 +563,9 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
 
     // Milestone 4: reasoning effort, the research's probe (ADR 0066).
     defineAgentEffortCases(subject);
+
+    // Milestone 7: the launch, the key proxy, a repo's config, "for this task", slash commands and the checksum.
+    defineAgentParityCases(subject);
   });
 };
 

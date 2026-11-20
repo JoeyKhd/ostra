@@ -27,3 +27,7 @@ export * from "./fake-acp-agent/fake-agent-adapter.ts";
 export * from "./git-upstream.ts";
 export * from "./tracked-pids.ts";
 export * from "./egress-probes.ts";
+// Milestone 7 (ticket 03): the suite by adapter, its new cases, and the parity table.
+export * from "./run-agent-suite.ts";
+export * from "./agent-parity-cases.ts";
+export * from "./parity.ts";

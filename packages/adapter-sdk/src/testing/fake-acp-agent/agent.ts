@@ -173,8 +173,25 @@ export const fakeScripts = [
   "memory-propose",
   /** ADR 0035's canary: a shell call (`cat`) that reads the absolute path given, with its full input. */
   "shell-read",
+  // Milestone 7 (ticket 03).
+  /** A title call and then the number given of calls that offer tools, to its base URL; the turn reports its own usage. */
+  "model-calls",
+  /** What a prompt that starts with `/` runs: says `Ran the slash command /<name>.` */
+  "slash",
 ] as const;
 export type FakeScript = (typeof fakeScripts)[number];
+
+/** A turn's own usage, as ACP's prompt answer carries it (milestone 7, ticket 03). */
+export type FakeTurnUsage = { inputTokens: number; outputTokens: number; totalTokens: number; cachedReadTokens: number };
+
+/**
+ * Milestone 7 (ticket 03): the variable that makes the fake send a notification no one knows
+ * after `initialize`, as a newer agent might.
+ */
+export const FAKE_AGENT_UNKNOWN_NOTIFICATION_ENV = "FAKE_AGENT_UNKNOWN_NOTIFICATION";
+
+/** The method of that notification. */
+export const FAKE_AGENT_UNKNOWN_NOTIFICATION = "_future/announcement";
 
 export const fakeMarker = (script: FakeScript, args = ""): string => `[[fake:${script}${args === "" ? "" : ` ${args}`}]]`;
 
@@ -301,7 +318,14 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
       return false;
     }
     try {
-      const parsed = z.looseObject({ permission: z.string() }).safeParse(JSON.parse(await readFile(path.join(cwd, FAKE_AGENT_REPO_CONFIG), "utf8")));
+      const parsed = z
+        .looseObject({ permission: z.string().optional(), hook: z.string().optional() })
+        .safeParse(JSON.parse(await readFile(path.join(cwd, FAKE_AGENT_REPO_CONFIG), "utf8")));
+      // Milestone 7 (ticket 03): a hook in the repo's config runs when the session starts, as a
+      // real agent's would: it writes its marker where it says. The runner's hiding is what stops it.
+      if (parsed.success && parsed.data.hook !== undefined) {
+        await writeFile(parsed.data.hook, "the repo's hook ran\n");
+      }
       return parsed.success && parsed.data.permission === "allow";
     } catch {
       return false;
@@ -379,6 +403,10 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
       ...(capabilities.steerMidTurn ? { _meta: { steering: { supported: true } } } : {}),
     }))
     .onRequest(acp.methods.agent.session.new, async (ctx) => {
+      // Milestone 7 (ticket 03): a notification of a method no client knows, after `initialize`.
+      if (options.env[FAKE_AGENT_UNKNOWN_NOTIFICATION_ENV] === "1") {
+        await ctx.client.notify<{ readonly detail: string }>(FAKE_AGENT_UNKNOWN_NOTIFICATION, { detail: "something a newer agent says" });
+      }
       counter += 1;
       const id = `fake-session-${String(counter)}`;
       const cwd: unknown = Reflect.get(Object(ctx.params), "cwd");
@@ -470,7 +498,9 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
   app.onRequest(acp.methods.agent.session.prompt, async (ctx) => {
     const session = sessionOf(ctx.params.sessionId);
     const text = promptText(ctx.params.prompt);
-    const { script, args } = parsePrompt(text);
+    // Milestone 7 (ticket 03): a prompt that starts with `/` is a slash command, as a real agent
+    // reads it; ostra's own prompts never start with a ticket's text, so a ticket can't name one.
+    const { script, args } = text.startsWith("/") ? { script: "slash", args: /^\/(\S*)/.exec(text)?.[1] ?? "" } : parsePrompt(text);
     session.cancel = new AbortController();
     session.running = true;
     const { signal } = session.cancel;
@@ -488,11 +518,16 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
         { sessionId: session.id, update: body },
       );
     };
+    const usage: { value: FakeTurnUsage | undefined } = { value: undefined };
     try {
-      const stopReason = await play(script, args, { say, update, signal, session, ctx, text });
+      const stopReason = await play(script, args, { say, update, signal, session, ctx, text, usage });
       // A cancelled turn ends `cancelled`, whatever the script was doing (ACP), but for the agent
-      // that ignores a cancel on purpose.
-      return { stopReason: signal.aborted && script !== "silent-deaf" ? "cancelled" : stopReason };
+      // that ignores a cancel on purpose. A turn that called the model reports its own usage, as
+      // OpenCode's prompt answer does (milestone 7, ticket 03).
+      return {
+        stopReason: signal.aborted && script !== "silent-deaf" ? "cancelled" : stopReason,
+        ...(usage.value === undefined ? {} : { usage: usage.value }),
+      };
     } finally {
       session.running = false;
       session.steer = undefined;
@@ -508,6 +543,8 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
     readonly ctx: { readonly client: acp.AgentContext };
     /** The turn's whole prompt text. */
     readonly text: string;
+    /** Milestone 7: the turn's own usage, set by a script that calls the model. */
+    readonly usage: { value: FakeTurnUsage | undefined };
   };
 
   const promptTextOf = (io: Play): string => io.text;
@@ -1031,6 +1068,59 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
         }
         await update({ sessionUpdate: "tool_call_update", toolCallId, status: "completed", content: [{ type: "content", content: { type: "text", text: content } }] });
         await say(`Read ${String(content.length)} characters.`);
+        return "end_turn";
+      }
+
+      // Milestone 7 (ticket 03).
+      case "slash":
+        await say(`Ran the slash command /${args}.`);
+        return "end_turn";
+
+      case "model-calls": {
+        // As a real agent's turn: a title call with no tools, then the turn's calls that offer
+        // tools, each to the base URL it was given with the task's key, and nowhere else. The
+        // turn's own usage counts the tool calls only, as OpenCode's does.
+        const count = Math.max(1, Math.min(5, Number.parseInt(args, 10) || 2));
+        const baseUrl = (options.env["FAKE_AGENT_BASE_URL"] ?? "").replace(/\/+$/, "");
+        const key = options.env["FAKE_AGENT_API_KEY"] ?? "";
+        const call = async (withTools: boolean, n: number): Promise<FakeTurnUsage | null> => {
+          try {
+            const answer = await fetch(`${baseUrl}/chat/completions`, {
+              method: "POST",
+              headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+              body: JSON.stringify({
+                model: "stub-model",
+                stream: false,
+                messages: [{ role: "user", content: `${withTools ? "step" : "title"} ${String(n)}: ${"word ".repeat(40 * n)}` }],
+                ...(withTools ? { tools: [{ type: "function", function: { name: "read", description: "Reads a file", parameters: { type: "object", properties: {} } } }] } : {}),
+              }),
+              signal,
+            });
+            const parsed = z
+              .looseObject({ usage: z.looseObject({ prompt_tokens: z.number(), completion_tokens: z.number(), prompt_tokens_details: z.looseObject({ cached_tokens: z.number() }).optional() }) })
+              .safeParse(await answer.json());
+            if (!parsed.success) return null;
+            const cached = parsed.data.usage.prompt_tokens_details?.cached_tokens ?? 0;
+            const input = parsed.data.usage.prompt_tokens - cached;
+            const output = parsed.data.usage.completion_tokens;
+            return { inputTokens: input, outputTokens: output, totalTokens: input + output + cached, cachedReadTokens: cached };
+          } catch {
+            return null;
+          }
+        };
+        await call(false, 0);
+        const turnUsage: FakeTurnUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedReadTokens: 0 };
+        for (let n = 1; n <= count; n += 1) {
+          const used = await call(true, n);
+          if (used !== null) {
+            turnUsage.inputTokens += used.inputTokens;
+            turnUsage.outputTokens += used.outputTokens;
+            turnUsage.totalTokens += used.totalTokens;
+            turnUsage.cachedReadTokens += used.cachedReadTokens;
+          }
+        }
+        io.usage.value = turnUsage;
+        await say(`Called the model ${String(count)} times.`);
         return "end_turn";
       }
 

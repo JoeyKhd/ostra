@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -19,9 +21,9 @@ import type {
 } from "../../agent/base.ts";
 import type { AgentCapabilities } from "../../agent/capabilities.ts";
 import type { AdapterContext } from "../../common/context.ts";
-import { ok } from "../../common/result.ts";
+import { adapterError, ok } from "../../common/result.ts";
 import type { AdapterResult, HealthReport } from "../../common/result.ts";
-import { FAKE_AGENT_REPO_CONFIG, fakeAgentCapabilities } from "./agent.ts";
+import { FAKE_AGENT_REPO_CONFIG, FAKE_AGENT_UNKNOWN_NOTIFICATION_ENV, fakeAgentCapabilities } from "./agent.ts";
 import type { FakeAgentConfig, FakeAgentProfile } from "./agent.ts";
 import type { EffortLevel } from "@ostra/protocol";
 
@@ -41,6 +43,16 @@ export type FakeAgentMemory = "mcp" | "index-only";
 export type FakeAgentEffort = "session-option" | "none";
 
 /**
+ * Milestone 7 (ticket 03): what a fake adds for the parity cases. `unknownNotification` sends a
+ * notification no client knows after `initialize`. `pinnedSha256` is the checksum its program
+ * must have, as OpenCode's binary has one: a mismatch refuses the launch.
+ */
+export type FakeAgentParity = { readonly unknownNotification?: boolean; readonly pinnedSha256?: string };
+
+/** The SHA-256 of the fake's program, as a pin would name it. */
+export const fakeAgentProgramSha256 = async (): Promise<string> => createHash("sha256").update(await readFile(MAIN)).digest("hex");
+
+/**
  * The scripted fake ACP agent, run through ostra's driver like any agent (ADR 0032). It declares
  * what OpenCode lacks, native plan updates and reject-and-continue, with steering (`rich`), or none
  * of them (`plain`), so both composer paths stay tested.
@@ -55,6 +67,7 @@ export class FakeAgentAdapter extends AgentAdapter {
   readonly capabilities: AgentCapabilities;
   override readonly repoConfigPaths: readonly string[] = [FAKE_AGENT_REPO_CONFIG];
   readonly #profile: FakeAgentProfile;
+  readonly #parity: FakeAgentParity;
 
   constructor(
     profile: FakeAgentProfile,
@@ -62,10 +75,12 @@ export class FakeAgentAdapter extends AgentAdapter {
     context?: AdapterContext,
     memory: FakeAgentMemory = "mcp",
     effort: FakeAgentEffort = "none",
+    parity: FakeAgentParity = {},
   ) {
     super(driver, context);
     this.#profile = profile;
-    this.name = `fake-acp-agent-${profile}${memory === "mcp" ? "" : "-index-only"}${effort === "none" ? "" : "-effort"}`;
+    this.#parity = parity;
+    this.name = `fake-acp-agent-${profile}${memory === "mcp" ? "" : "-index-only"}${effort === "none" ? "" : "-effort"}${parity.unknownNotification === true ? "-unknown-notification" : ""}`;
     const declared = fakeAgentCapabilities[profile];
     this.capabilities = {
       ...declared,
@@ -178,7 +193,10 @@ export class FakeAgentAdapter extends AgentAdapter {
     return Promise.resolve({ status: "ok" });
   }
 
-  prepareLaunch(input: PrepareLaunchInput): Promise<AdapterResult<AgentLaunch>> {
+  async prepareLaunch(input: PrepareLaunchInput): Promise<AdapterResult<AgentLaunch>> {
+    if (this.#parity.pinnedSha256 !== undefined && (await fakeAgentProgramSha256()) !== this.#parity.pinnedSha256) {
+      return adapterError("conflict", "the fake agent's program does not match its pinned SHA-256: it is not started");
+    }
     const env: Record<string, string> = {};
     for (const name of PASSTHROUGH) {
       const value = process.env[name];
@@ -195,17 +213,16 @@ export class FakeAgentAdapter extends AgentAdapter {
       FAKE_AGENT_BASE_URL: input.model.baseUrl,
       FAKE_AGENT_API_KEY: input.model.placeholderKey,
       FAKE_AGENT_CONFIG: FakeAgentAdapter.configPathOf(input.agentDir),
+      ...(this.#parity.unknownNotification === true ? { [FAKE_AGENT_UNKNOWN_NOTIFICATION_ENV]: "1" } : {}),
       ...input.extraEnv,
     });
-    return Promise.resolve(
-      ok({
-        command: process.execPath,
-        args: [MAIN, `--profile=${this.#profile}`],
-        env,
-        cwd: input.workspaceDir,
-        files: [{ path: FakeAgentAdapter.configPathOf(input.agentDir), content: JSON.stringify(this.#config(input)) }],
-      }),
-    );
+    return ok({
+      command: process.execPath,
+      args: [MAIN, `--profile=${this.#profile}`],
+      env,
+      cwd: input.workspaceDir,
+      files: [{ path: FakeAgentAdapter.configPathOf(input.agentDir), content: JSON.stringify(this.#config(input)) }],
+    });
   }
 
   protected mapUpdate(): MappedUpdate {

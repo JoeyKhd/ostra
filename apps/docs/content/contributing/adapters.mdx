@@ -14,7 +14,7 @@ The base classes, the contract suites and the shared plumbing are in `@ostra/ada
 |---|---|---|---|
 | Tracker | `TrackerAdapter` | `defineTrackerContractSuite` | Linear |
 | Code host | `CodeHostAdapter` | `defineCodeHostContractSuite` | GitHub |
-| Agent | `AgentAdapter` | `defineAgentContractSuite` | OpenCode |
+| Agent | `AgentAdapter` | `runAgentSuite` | OpenCode |
 | Executor | `ExecutorAdapter` | `defineExecutorContractSuite` | `docker`, `host` |
 | Model provider | `ModelProviderAdapter` | `defineModelProviderContractSuite` | any base URL and token, in either API format |
 | Notification | `NotificationAdapter` | `defineNotificationContractSuite` | the panel, the ticket, Resend and SMTP email |
@@ -84,6 +84,8 @@ Each kind has one contract suite, in `@ostra/adapter-sdk/testing`, and every ada
 The suites run against fakes in CI: a fake Linear, a fake GitHub for reviews and checks, a scripted ACP agent, stub model servers, an in-memory email server. Beside them, an adapter keeps live cases against the vendor itself, skipped when the vendor's credentials aren't in the environment.
 
 Where a case depends on a capability, the suite reads your declaration and checks the path ostra takes without it, such as an `unsupported` answer. So declare what the adapter really does, and never edit a suite to pass it.
+
+An agent adapter runs the suite by passing itself: `runAgentSuite(new MyAgentAdapter(), { model: "stub", fixture })`, with `model: "live"` for a run against the provider in `OSTRA_DEV_MODEL_*`, which is skipped when it isn't loaded. Its fixture says how to start the agent and which prompts make it do each thing the cases ask, including the variables its launch may hold, written out. Then add the agent's entry to the parity table (`packages/adapter-sdk/src/testing/parity.ts`): for every feature that touches agents, the case that proves it on your agent, or the capability it lacks and the fallback case. `checkParity` fails until every row has one, every case named exists, and every capability you declare, or don't, has a case that runs that way.
 
 ## A worked example
 

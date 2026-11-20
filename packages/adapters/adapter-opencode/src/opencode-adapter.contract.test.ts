@@ -8,11 +8,11 @@ import { effortModelOf } from "@ostra/adapter-sdk";
 import type { AgentSession, PrepareLaunchInput } from "@ostra/adapter-sdk";
 import {
   createScenarioBrain,
-  defineAgentContractSuite,
   FakeAgentAdapter,
   fakeMarker,
   memoryNoteFixtures,
   runAgentCommand,
+  runAgentSuite,
   spawnAgentProcess,
   startFakeMemoryCore,
   startStubModelServer,
@@ -25,6 +25,7 @@ import type { ApiFormat, ApprovalRule, EffortLevel, TaskEvent } from "@ostra/pro
 import { fixtureIds } from "@ostra/protocol/testing";
 import { afterAll, describe, expect, it } from "vitest";
 
+import { platformPackages, resolveOpenCodeBinary } from "./binary.ts";
 import { OpenCodeAdapter } from "./opencode-adapter.ts";
 import { scenarios } from "./stub-scenarios.ts";
 import { startTestMcpHttp, writeTestMcpStdio } from "./test-mcp-servers.ts";
@@ -170,14 +171,49 @@ const fixtureFor = async (format: ApiFormat): Promise<AgentFixture> => {
       modelIds: format === "anthropic-messages" ? ["claude-sonnet-5", "claude-sonnet-4-5", "claude-mythos-5"] : ["gpt-5.5"],
       requests: () => stub.calls.filter((call) => call.toolNames.length > 0).map((call) => call.body),
     },
+    // Milestone 7 (ticket 03): the parity cases on the pinned binary.
+    parity: {
+      // OpenCode's launch, written out: its task folders, its switches, the task's key and git's guard.
+      envAllowlist: {
+        always: [
+          "HOME",
+          "USERPROFILE",
+          "APPDATA",
+          "LOCALAPPDATA",
+          "XDG_DATA_HOME",
+          "XDG_CONFIG_HOME",
+          "XDG_CACHE_HOME",
+          "XDG_STATE_HOME",
+          "TMP",
+          "TEMP",
+          "TMPDIR",
+          "OPENCODE_MODELS_PATH",
+          "OPENCODE_DISABLE_MODELS_FETCH",
+          "OPENCODE_DISABLE_AUTOUPDATE",
+          "OPENCODE_DISABLE_CLAUDE_CODE",
+          "OPENCODE_DISABLE_FREE_MODELS",
+          "OPENCODE_DISABLE_PROJECT_CONFIG",
+          "OSTRA_MODEL_API_KEY",
+          "GIT_TERMINAL_PROMPT",
+          "GCM_INTERACTIVE",
+        ],
+        ifSet:
+          process.platform === "win32"
+            ? ["PATH", "Path", "PATHEXT", "SystemRoot", "SystemDrive", "windir", "ComSpec", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "OS"]
+            : ["PATH", "LANG", "LC_ALL"],
+      },
+      // A turn of several calls that offer tools: OpenCode reports the turn's usage in its prompt answer.
+      modelCalls: { prompt: `${stubMarker("tools")} work`, calls: () => stub.calls },
+      // The same OpenCode, pinned to a checksum its binary doesn't have.
+      mismatchedChecksum: () =>
+        new OpenCodeAdapter({ resolveBinary: () => resolveOpenCodeBinary({ checksums: Object.fromEntries(platformPackages().map((name) => [name, "0".repeat(64)])) }) }),
+    },
   };
 };
 
+// Milestone 7 (ticket 03): the suite by adapter, as every agent runs it.
 describe.each(["openai-compatible", "anthropic-messages"] as const)("OpenCode, %s stub", (format) => {
-  defineAgentContractSuite({
-    name: `opencode against a ${format} stub`,
-    create: async () => ({ adapter: new OpenCodeAdapter(), fixture: await fixtureFor(format) }),
-  });
+  runAgentSuite(new OpenCodeAdapter(), { model: "stub", variant: `${format} stub`, fixture: () => fixtureFor(format) });
 });
 
 // F-019's own cases, against the pinned binary: what the contract suite checks for every agent,

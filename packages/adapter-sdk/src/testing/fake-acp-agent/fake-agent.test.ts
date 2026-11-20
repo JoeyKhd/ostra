@@ -13,24 +13,28 @@ import { effortModelOf } from "../../agent/base.ts";
 import type { AgentSession } from "../../agent/base.ts";
 
 import { sampleMemoryBlock } from "../agent-memory-cases.ts";
-import { defineAgentContractSuite } from "../agent-suite.ts";
 import type { PrepareLaunchInput } from "../../agent/base.ts";
 import type { AgentFixture } from "../agent-suite.ts";
 import { memoryNoteFixtures, startFakeMemoryCore } from "../fake-memory-core.ts";
 import type { FakeMemoryCore } from "../fake-memory-core.ts";
+import { runAgentSuite } from "../run-agent-suite.ts";
 import { runAgentCommand, spawnAgentProcess } from "../spawn-agent.ts";
-import { FAKE_AGENT_MCP_TOOL, FAKE_AGENT_REPO_CONFIG, fakeMarker } from "./agent.ts";
+import { startStubModelServer } from "../stub-models/server.ts";
+import type { StubServer } from "../stub-models/server.ts";
+import { FAKE_AGENT_MCP_TOOL, FAKE_AGENT_REPO_CONFIG, FAKE_AGENT_UNKNOWN_NOTIFICATION, FAKE_AGENT_UNKNOWN_NOTIFICATION_ENV, fakeMarker } from "./agent.ts";
 import type { FakeAgentProfile } from "./agent.ts";
 import { FakeAgentAdapter } from "./fake-agent-adapter.ts";
-import type { FakeAgentEffort, FakeAgentMemory } from "./fake-agent-adapter.ts";
+import type { FakeAgentEffort, FakeAgentMemory, FakeAgentParity } from "./fake-agent-adapter.ts";
 
 // The agent contract suite, against the scripted fake ACP agent in both profiles, as a real child
 // process through ostra's ACP driver (ticket 10).
 
 const roots: string[] = [];
 const cores: FakeMemoryCore[] = [];
+const stubs: StubServer[] = [];
 afterAll(async () => {
   await Promise.all(cores.map((core) => core.close()));
+  await Promise.all(stubs.map((stub) => stub.close()));
   await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
 });
 
@@ -38,7 +42,10 @@ afterAll(async () => {
 const REPOS = ["test1", "test2"] as const;
 const run = promisify(execFile);
 
-const fixtureFor = async (memory: FakeAgentMemory = "mcp"): Promise<AgentFixture> => {
+/** The fake's key for its one task: the stub endpoint, standing where the key proxy is, takes it. */
+const TASK_KEY = "ostra-fake-key-for-this-task";
+
+const fixtureFor = async (memory: FakeAgentMemory = "mcp", parity: FakeAgentParity = {}): Promise<AgentFixture> => {
   const root = await mkdtemp(path.join(tmpdir(), "ostra-fake-agent-"));
   roots.push(root);
   const workspaceDir = path.join(root, "workspace");
@@ -55,6 +62,9 @@ const fixtureFor = async (memory: FakeAgentMemory = "mcp"): Promise<AgentFixture
       ? await startFakeMemoryCore({ taskId: fixtureIds.task, taskToken: "ostra-task-fake-token", mcpBearer: "fake-mcp-bearer", notes: memoryNoteFixtures })
       : undefined;
   if (core !== undefined) cores.push(core);
+  // Milestone 7 (ticket 03): a stub endpoint where the key proxy would be, counting every call.
+  const stub = await startStubModelServer({ format: "openai-compatible", realKey: TASK_KEY, models: ["stub-model"], brain: () => ({ text: "Noted." }) });
+  stubs.push(stub);
   const base: PrepareLaunchInput = {
     taskId: fixtureIds.task,
     sessionId: fixtureIds.session,
@@ -63,8 +73,8 @@ const fixtureFor = async (memory: FakeAgentMemory = "mcp"): Promise<AgentFixture
     model: {
       endpointModelId: "stub-model",
       apiFormat: "openai-compatible",
-      baseUrl: "http://127.0.0.1:9/key-proxy/v1",
-      placeholderKey: "ostra-fake-key-for-this-task",
+      baseUrl: stub.baseUrl,
+      placeholderKey: TASK_KEY,
     },
     mcp: core === undefined ? { url: "http://127.0.0.1:9/mcp" } : { url: core.mcpUrl, bearer: core.mcpBearer },
     instructions: null,
@@ -97,6 +107,7 @@ const fixtureFor = async (memory: FakeAgentMemory = "mcp"): Promise<AgentFixture
           "FAKE_AGENT_BASE_URL",
           "FAKE_AGENT_API_KEY",
           "FAKE_AGENT_CONFIG",
+          ...(parity.unknownNotification === true ? [FAKE_AGENT_UNKNOWN_NOTIFICATION_ENV] : []),
           "NODE_ENV",
           // Windows adds these to every process it starts, from the ones above.
           "HOMEDRIVE",
@@ -151,28 +162,48 @@ const fixtureFor = async (memory: FakeAgentMemory = "mcp"): Promise<AgentFixture
     canary: { prompt: (absolutePath) => fakeMarker("shell-read", absolutePath) },
     // Milestone 4 (F-137): no model behind the fake, so it says its level instead.
     effort: { modelIds: [base.model.endpointModelId], sayEffort: fakeMarker("effort") },
+    // Milestone 7 (ticket 03): the parity cases.
+    parity: {
+      envAllowlist: {
+        always: [
+          "HOME",
+          "USERPROFILE",
+          "TEMP",
+          "TMP",
+          "FAKE_AGENT_DATA",
+          "FAKE_AGENT_BASE_URL",
+          "FAKE_AGENT_API_KEY",
+          "FAKE_AGENT_CONFIG",
+          ...(parity.unknownNotification === true ? [FAKE_AGENT_UNKNOWN_NOTIFICATION_ENV] : []),
+        ],
+        ifSet: process.platform === "win32" ? ["PATH", "Path", "SystemRoot"] : ["PATH", "LANG"],
+      },
+      ...(parity.unknownNotification === true ? { unknownNotification: { method: FAKE_AGENT_UNKNOWN_NOTIFICATION } } : {}),
+      modelCalls: { prompt: fakeMarker("model-calls", "3"), calls: () => stub.calls },
+      repoConfigHook: (marker) => ({ path: FAKE_AGENT_REPO_CONFIG, content: `${JSON.stringify({ permission: "allow", hook: marker }, null, 2)}
+` }),
+      slashCommand: { ran: (name) => `Ran the slash command /${name}.` },
+      mismatchedChecksum: () => new FakeAgentAdapter("plain", undefined, undefined, memory, "none", { ...parity, pinnedSha256: "0".repeat(64) }),
+    },
   };
 };
 
+// Milestone 7 (ticket 03): each fake by name through `runAgentSuite`, as OpenCode's suite runs.
 for (const profile of ["rich", "plain"] as const satisfies readonly FakeAgentProfile[]) {
-  defineAgentContractSuite({
-    name: `the scripted fake ACP agent, ${profile} profile`,
-    create: async () => ({ adapter: new FakeAgentAdapter(profile), fixture: await fixtureFor() }),
-  });
+  runAgentSuite(new FakeAgentAdapter(profile), { model: "stub", fixture: () => fixtureFor() });
 }
 
-// Milestone 4 (ticket 02): the third fake, which can't reach an MCP server and takes the memory block alone.
-defineAgentContractSuite({
-  name: "the scripted fake ACP agent, plain profile, index-only memory",
-  create: async () => ({ adapter: new FakeAgentAdapter("plain", undefined, undefined, "index-only"), fixture: await fixtureFor("index-only") }),
+// Milestone 4 (ticket 02): the third fake, which can't reach an MCP server and takes the memory
+// block alone. Milestone 7 (ticket 03): it also sends a notification no client knows after
+// `initialize`, so the driver's tolerance of one runs on a fake that sends it.
+runAgentSuite(new FakeAgentAdapter("plain", undefined, undefined, "index-only", "none", { unknownNotification: true }), {
+  model: "stub",
+  fixture: () => fixtureFor("index-only", { unknownNotification: true }),
 });
 
 // Milestone 4 (ticket 57, F-137): the fake that takes a reasoning level as a `thought_level`
 // session option, beside the fakes above, which declare `none`.
-defineAgentContractSuite({
-  name: "the scripted fake ACP agent, rich profile, session-option effort",
-  create: async () => ({ adapter: new FakeAgentAdapter("rich", undefined, undefined, "mcp", "session-option"), fixture: await fixtureFor() }),
-});
+runAgentSuite(new FakeAgentAdapter("rich", undefined, undefined, "mcp", "session-option"), { model: "stub", fixture: () => fixtureFor() });
 
 // F-019: the fakes stand for what OpenCode lacks. `rich` declares native plan updates and
 // reject-and-continue, and both happen; `plain` declares neither, and can't be steered.

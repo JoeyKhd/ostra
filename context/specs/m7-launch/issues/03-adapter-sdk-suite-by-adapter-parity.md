@@ -1,6 +1,6 @@
 # 03: Adapter SDK: the suite by adapter, the new cases, and the parity test
 
-Status: ready-for-agent
+Status: resolved
 Builder: adapters
 Blocked by: none (it was 02, which is `wontfix` since 2026-11-19)
 Features: F-019 (adapter parity)
@@ -17,9 +17,11 @@ Note: changed 2026-11-19. Claude Code (F-018) moved after v1, so this ticket kee
 
 ## Done when
 
-- [ ] The suite runs on OpenCode and on the scripted fakes with every new case, and each case's control fails as it should (break-it: the allowlist check skipped; the hidden file not restored).
-- [ ] The parity test passes for OpenCode and the fakes, and fails when a row is deleted from an adapter's entry (break-it, recorded in `context/proof/F-019.md`).
-- [ ] The whole-repo checks pass (spec section 10).
-- [ ] Committed as `✅ run the agent suite on every adapter`.
+- [x] The suite runs on OpenCode and on the scripted fakes with every new case, and each case's control fails as it should (break-it: the allowlist check skipped; the hidden file not restored).
+- [x] The parity test passes for OpenCode and the fakes, and fails when a row is deleted from an adapter's entry (break-it, recorded in `context/proof/F-019.md`).
+- [x] The whole-repo checks pass (spec section 10).
+- [x] Committed as `✅ run the agent suite on every adapter`.
 
 ## Comments
+
+- 2026-11-20, adapters: built. `runAgentSuite(adapter, { model: "stub" | "live", fixture, variant? })` (`src/testing/run-agent-suite.ts`; a live run with no `OSTRA_DEV_MODEL_*` loaded is listed as skipped) now runs the suite on OpenCode in both API formats and on the four scripted fakes. The new cases are in `src/testing/agent-parity-cases.ts`, read from the fixture's new `parity` probes: the unknown notification (the index-only fake now also sends `_future/announcement` after `initialize`, so the driver's tolerance runs on a fake that sends one); every model call at the stub endpoint with the task's key and nothing through a recording proxy set as `HTTP(S)_PROXY`; the usage match (the stub's billed tokens for the turn's tool-offering calls against the agent's own `usage` in its `session/prompt` answer, which OpenCode 2.3.2 sends, within 2%); the launch's environment equal to an allowlist the fixture writes out, with a canary of the runner's own reaching neither the launch nor the process; the repo config hidden with its hook never run and restored byte for byte (the plain fakes, which declare no `projectConfigOverride`; the fake now runs a `hook` its repo config names, as the control shows); "allow for this task" across a relaunch with nothing of it in the repo; ticket text starting with `/` never sent first (the fakes now run a prompt that starts with `/` as a slash command, the control); and a checksum mismatch refusing the launch (OpenCode with a wrong pin; the fakes take a `pinnedSha256`). Every new case runs on OpenCode but the repo-config one (OpenCode declares `projectConfigOverride`, so its parity entry names the allows-everything case) and the slash command's control (no stub scenario makes OpenCode run a command; the wire check runs). The parity table is `src/testing/parity.ts`, run by `src/testing/parity.test.ts` for the fakes and by `packages/adapters/adapter-opencode/src/opencode-parity.test.ts` for OpenCode, which `packages/adapter-sdk` can't import. Rows that name a runner or core test (the git proxy, the sidecar's MCP tools, the limits) are the same for every agent. Milestone 6's four rows (refine and review, start from Linear, automatic turns, onboarding) are `waits` entries naming milestone 6's tickets, which are being built; `pendingParity` lists them and the parity test checks nothing else waits. Spec difference: section 5.2 puts `parity.test.ts` in `src/testing/`; OpenCode's half lives in its own package. Break-its (in `context/proof/F-019.md`): the launch taking the runner's whole environment failed the allowlist case on every fake and on OpenCode; skipping the restore's rename failed the hidden-config case; deleting a row from OpenCode's and from the plain fake's entry failed each parity test. The adapter guide (`apps/docs/content/contributing/adapters.mdx`) says how a new agent runs the suite and joins the table. Checks: whole-repo typecheck and lint through turbo; tests of `packages/adapter-sdk`, `packages/adapters/adapter-opencode`, `apps/runner`, `packages/task-view` and `apps/docs`; `check:licenses`; `check:proof`.
