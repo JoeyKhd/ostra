@@ -15,7 +15,7 @@ export const SelectGroup = SelectPrimitive.Group;
 export const SelectTrigger = ({ className, children, ...props }: ComponentProps<typeof SelectPrimitive.Trigger>) => (
   <SelectPrimitive.Trigger
     className={cn(
-      "inline-flex h-[30px] min-w-0 items-center gap-2 rounded-md border border-line-2 bg-transparent px-2.5 text-left text-body text-text outline-none hover:bg-raise focus-visible:border-faint disabled:opacity-50 data-[placeholder]:text-faint [&_svg]:size-[15px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75]",
+      "inline-flex h-[30px] min-w-0 items-center gap-2 rounded-md border border-line-2 bg-transparent px-2.5 text-left text-body text-text outline-none hover:bg-hover focus-visible:border-faint disabled:opacity-50 data-[placeholder]:text-faint [&_svg]:size-[15px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75]",
       className,
     )}
     {...props}
@@ -33,7 +33,7 @@ export const SelectContent = ({ className, children, position = "popper", sideOf
       position={position}
       sideOffset={sideOffset}
       className={cn(
-        "z-50 max-h-[var(--radix-select-content-available-height)] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-md border border-line-2 bg-raise p-1 text-body text-text shadow-[0_8px_24px_rgba(0,0,0,0.45)]",
+        "z-50 max-h-[var(--radix-select-content-available-height)] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-md border border-line-2 bg-raise p-1 text-body text-text shadow-(--shadow-pop)",
         className,
       )}
       {...props}

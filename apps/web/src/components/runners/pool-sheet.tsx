@@ -88,7 +88,7 @@ const FieldError = ({ id, children }: { readonly id: string; readonly children: 
   children === null ? null : <p id={id} role="alert" className="mt-1.5 text-sm text-red">{children}</p>;
 
 /** The Shell-on switch of the sheet (pool-new.md: Shell track with an Abyss knob when on). */
-const shellSwitch = "data-[state=checked]:border-shell data-[state=checked]:bg-shell";
+const shellSwitch = "data-[state=checked]:border-primary data-[state=checked]:bg-primary";
 
 /** How long a pool's tokens last, as the three radio rows choose it. */
 type Lifetime = { readonly kind: "default" } | { readonly kind: "days"; readonly days: string } | { readonly kind: "none" };
@@ -128,7 +128,7 @@ const LifetimeRows = ({ lifetime, onChange, defaultDays, disabled, error, idPref
   readonly idPrefix: string;
 }) => {
   const daysRef = useRef<HTMLInputElement>(null);
-  const radioClass = "size-4 data-[state=checked]:border-shell data-[state=checked]:bg-shell [&>span]:bg-ink";
+  const radioClass = "size-4 data-[state=checked]:border-primary data-[state=checked]:bg-primary [&>span]:bg-on-primary";
   return (
     <>
       <RadioGroup

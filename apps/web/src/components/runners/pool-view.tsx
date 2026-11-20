@@ -162,7 +162,7 @@ const RunnersTable = ({ pool, runners }: { readonly pool: Pool; readonly runners
 /** The `.meter`: 120 × 4px, Mist on `--line-2`. */
 const Meter = ({ value, max }: { readonly value: number; readonly max: number }) => (
   <span role="meter" aria-valuemin={0} aria-valuemax={max} aria-valuenow={value} className="relative inline-block h-1 w-[120px] shrink-0 overflow-hidden rounded-full bg-line-2">
-    <span className="absolute inset-y-0 left-0 rounded-full bg-[var(--chart)]" style={{ width: `${String(max === 0 ? 0 : Math.min(100, (value / max) * 100))}%` }} />
+    <span className="absolute inset-y-0 left-0 rounded-full bg-meter" style={{ width: `${String(max === 0 ? 0 : Math.min(100, (value / max) * 100))}%` }} />
   </span>
 );
 
@@ -245,8 +245,8 @@ const CancelQueued = ({ entry }: { readonly entry: Queued }) => {
     <Dialog.Root open={open} onOpenChange={(next) => { if (!cancel.isPending) { setOpen(next); if (!next) cancel.reset(); } }}>
       <Dialog.Trigger className="text-ui text-teal hover:underline">{t("runners.queue.cancel")}</Dialog.Trigger>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/60" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(400px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line-2 bg-raise p-5 shadow-[0_8px_24px_rgba(0,0,0,0.45)] focus:outline-none">
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-(--scrim)" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(400px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line-2 bg-raise p-5 shadow-(--shadow-pop) focus:outline-none">
           <Dialog.Title className="text-[16.5px] font-semibold text-text">{t("runners.queue.cancelTitle")}</Dialog.Title>
           <Dialog.Description className="mt-1.5 text-body text-muted">
             {entry.ticketKey === null ? t("runners.queue.cancelBodyPrompt") : t("runners.queue.cancelBody", { key: entry.ticketKey })}
@@ -364,7 +364,7 @@ const ApprovalSwitch = ({ pool, onError }: { readonly pool: Pool; readonly onErr
           aria-label={t("runners.poolRequiresApproval")}
           checked={on}
           disabled={update.isPending}
-          className="data-[state=checked]:border-shell data-[state=checked]:bg-shell"
+          className="data-[state=checked]:border-primary data-[state=checked]:bg-primary"
           onCheckedChange={(next) => { setOptimistic(next); update.mutate({ poolId: pool.id, requiresApproval: next }); }}
         />
         {on ? t("runners.pool.required") : t("runners.approvalNotRequired")}

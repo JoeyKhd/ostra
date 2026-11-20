@@ -134,7 +134,7 @@ export const AttachedRows = ({ view, selectedId, onSelect, onDetach, detaching, 
         data-selected={board.id === selectedId}
         className={cn(
           "grid min-h-[38px] grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-line px-2 sm:grid-cols-[24px_minmax(0,1fr)_72px_140px_minmax(0,1fr)_auto]",
-          board.id === selectedId ? "rounded-md bg-sel" : "hover:bg-raise",
+          board.id === selectedId ? "rounded-md bg-sel" : "hover:bg-hover",
         )}
       >
         <SquareKanbanIcon aria-hidden className="size-[15px] stroke-[1.75] text-faint" />

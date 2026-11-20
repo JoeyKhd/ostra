@@ -67,7 +67,7 @@ export const RepoBlock = ({ repo, selected, onSelect }: { readonly repo: RepoDet
         data-verdict={verdict}
         onClick={onSelect}
         className={cn(
-          "my-1 block w-full rounded-md px-3 py-2 text-left hover:bg-raise focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted",
+          "my-1 block w-full rounded-md px-3 py-2 text-left hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted",
           selected && "bg-sel hover:bg-sel",
         )}
       >

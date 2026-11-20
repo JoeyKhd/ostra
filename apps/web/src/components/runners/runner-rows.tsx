@@ -24,7 +24,7 @@ type Mine = RouterOutputs["runners"]["mine"][number];
 export const runnerGrid = "grid grid-cols-[124px_122px_minmax(0,166px)_92px_92px_112px_minmax(80px,1fr)_96px_30px] items-center";
 
 const dotClass: Record<RunnerDot, string> = {
-  green: "bg-green shadow-[0_0_0_3px_rgba(79,178,134,0.15)]",
+  green: "bg-green shadow-(--dot-green)",
   half: "border border-faint bg-[linear-gradient(90deg,var(--faint)_50%,transparent_50%)]",
   ring: "border-[1.5px] border-faint bg-transparent",
   grey: "bg-faint",

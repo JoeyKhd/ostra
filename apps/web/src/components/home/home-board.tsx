@@ -27,7 +27,7 @@ const icon = "size-[15px] shrink-0 stroke-[1.75]";
 const ColumnMark = ({ column }: { readonly column: BoardColumnId }) => {
   switch (column) {
     case "needs-you":
-      return <span aria-hidden className="size-[7px] shrink-0 rounded-full bg-amber" />;
+      return <span aria-hidden className="size-[7px] shrink-0 rounded-full bg-amber shadow-(--dot-amber)" />;
     case "queued":
       return <CircleDashedIcon aria-hidden className={cn(icon, "text-muted")} />;
     case "running":
@@ -85,7 +85,7 @@ export const TaskCard = ({ card, now }: { readonly card: BoardCard; readonly now
       <Link
         href={`/tasks/${card.taskId}`}
         data-card={card.taskId}
-        className="flex flex-col gap-1.5 rounded-lg border border-line bg-surface p-3 hover:border-line-2 hover:bg-raise"
+        className="flex flex-col gap-1.5 rounded-lg border border-line bg-surface p-3 hover:border-line-2 hover:bg-hover"
       >
         <span className="flex h-5 items-center gap-2">
           <span aria-hidden className="size-2 shrink-0 rounded-[2px]" style={{ background: projectColour(card.project.id) }} />

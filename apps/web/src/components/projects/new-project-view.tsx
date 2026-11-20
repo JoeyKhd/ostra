@@ -251,7 +251,7 @@ export const NewProjectView = () => {
                             const order = picked.indexOf(repo.key);
                             return (
                               <li key={repo.key} data-repo={repo.fullName}>
-                                <label className={cn("flex h-[38px] cursor-pointer items-center gap-3 px-3 hover:bg-raise", checked && "bg-sel hover:bg-sel")}>
+                                <label className={cn("flex h-[38px] cursor-pointer items-center gap-3 px-3 hover:bg-hover", checked && "bg-sel hover:bg-sel")}>
                                   <Checkbox checked={checked} onCheckedChange={(value) => { pick(repo.key, repo.fullName, value === true); }} />
                                   <span className="min-w-0 truncate font-mono text-ui text-text">{repo.fullName}</span>
                                   {repo.private ? <LockIcon aria-label={t("projects.private")} className="size-3 shrink-0 stroke-[1.75] text-faint" /> : null}

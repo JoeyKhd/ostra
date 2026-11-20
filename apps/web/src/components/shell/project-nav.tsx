@@ -37,7 +37,7 @@ export const ProjectNav = ({ onNavigate }: { readonly onNavigate: () => void }) 
               <span className="min-w-0 truncate">{project.name}</span>
               {project.access === "restricted" ? <LockIcon aria-label={t("shell.restrictedProject")} className="size-3 shrink-0 stroke-[1.75] text-faint" /> : null}
               {project.needsYouCount > 0 ? (
-                <span className="ml-auto size-1.5 rounded-full bg-amber" aria-label={t("shell.needsYouHere", { n: project.needsYouCount })} />
+                <span className="ml-auto size-1.5 rounded-full bg-amber shadow-(--dot-amber)" aria-label={t("shell.needsYouHere", { n: project.needsYouCount })} />
               ) : null}
             </Link>
             {open ? (

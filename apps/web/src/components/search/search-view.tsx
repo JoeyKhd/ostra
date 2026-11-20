@@ -74,7 +74,7 @@ const ResultPanel = ({ result }: { readonly result: Result }) => {
             <li key={index}>
               <Link
                 href={snippet.eventSeq === null ? `/tasks/${result.taskId}` : `/tasks/${result.taskId}?event=${String(snippet.eventSeq)}`}
-                className="flex h-[30px] items-center gap-2 rounded-sm text-ui hover:bg-raise"
+                className="flex h-[30px] items-center gap-2 rounded-sm text-ui hover:bg-hover"
               >
                 <span className="w-[96px] shrink-0 truncate text-xs text-faint">{snippetLabel(snippet)}</span>
                 <Highlight parts={snippet.parts} lead={12} className={cn("min-w-0 flex-1 truncate text-muted", isCodeSnippet(snippet) && "font-mono text-[13px]")} />
@@ -306,7 +306,7 @@ export const SearchView = ({ organization }: { readonly organization: string }) 
                   onClick={() => { setParams({ task: result.taskId }); }}
                   onDoubleClick={() => { router.push(resultHref(result.taskId, result.snippets)); }}
                   onKeyDown={(event) => { onListKey(event, result); }}
-                  className={cn("block cursor-default rounded-md border-b border-line px-3.5 py-3 outline-none hover:bg-raise focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted", isSelected && "bg-sel hover:bg-sel")}
+                  className={cn("block cursor-default rounded-md border-b border-line px-3.5 py-3 outline-none hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted", isSelected && "bg-sel hover:bg-sel")}
                 >
                   <div className="flex h-[22px] items-center gap-3">
                     <span className="w-[110px] shrink-0 truncate text-sm text-muted">{stateWord(result.state)}</span>

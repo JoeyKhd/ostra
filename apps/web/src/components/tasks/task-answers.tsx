@@ -229,8 +229,8 @@ export const QuestionCard = ({
   const card = useFocusOnAppear<HTMLDivElement>(true);
   const set = (id: string, value: string) => { setValues((now) => ({ ...now, [id]: value })); };
   return (
-    <div ref={card} tabIndex={-1} role="group" aria-label={t("task.question.title")} className="my-2.5 border-l-2 border-amber pl-3 focus:outline-2 focus:outline-offset-2 focus:outline-teal" data-testid="question" data-item={question.questionId}>
-      <div className="flex items-center gap-2 text-body font-semibold text-amber">
+    <div ref={card} tabIndex={-1} role="group" aria-label={t("task.question.title")} className="my-2.5 border-l-(length:--rule-needs-you) border-amber pl-3 focus:outline-2 focus:outline-offset-2 focus:outline-teal" data-testid="question" data-item={question.questionId}>
+      <div className="flex items-center gap-2 text-body font-semibold text-amber-text">
         <MessageCircleQuestionIcon aria-hidden className="size-[14px] stroke-[1.75]" /> {t("task.question.title")}
       </div>
       <p className="mt-1 whitespace-pre-wrap font-medium">{question.message}</p>

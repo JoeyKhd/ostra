@@ -29,12 +29,12 @@ export const ShortcutSheet = ({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50" />
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-(--scrim)" />
         <Dialog.Content
           aria-describedby={undefined}
           data-testid="shortcut-sheet"
           {...(onCloseAutoFocus === undefined ? {} : { onCloseAutoFocus })}
-          className="fixed left-1/2 top-[12vh] z-50 flex max-h-[min(80vh,720px)] w-[min(760px,calc(100vw-32px))] -translate-x-1/2 flex-col overflow-hidden rounded-xl border border-line-2 bg-raise shadow-[0_16px_48px_rgba(0,0,0,0.5)] focus:outline-none"
+          className="fixed left-1/2 top-[12vh] z-50 flex max-h-[min(80vh,720px)] w-[min(760px,calc(100vw-32px))] -translate-x-1/2 flex-col overflow-hidden rounded-xl border border-line-2 bg-raise shadow-(--shadow-palette) focus:outline-none"
         >
           <div className="flex h-[52px] shrink-0 items-center border-b border-line px-5">
             <Dialog.Title className="text-[15px] font-semibold text-text">{t("shortcuts.title")}</Dialog.Title>

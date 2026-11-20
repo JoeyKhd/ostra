@@ -32,7 +32,7 @@ const OrganizationSwitcher = ({ me }: { readonly me: Me }) => {
         className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-sel data-[state=open]:bg-sel"
         aria-label={t("shell.switchOrganization")}
       >
-        <img src="/brand/ostra-mark-fit.svg" alt="" width={22} height={22} className="size-[22px] shrink-0" />
+        <span aria-hidden className="logo-mark size-[22px] shrink-0" />
         <b className="min-w-0 truncate text-[15px] font-semibold text-text">{name}</b>
         <ChevronsUpDownIcon aria-hidden className="ml-auto size-[14px] shrink-0 stroke-[1.75] text-faint" />
       </DropdownMenuTrigger>
@@ -40,7 +40,7 @@ const OrganizationSwitcher = ({ me }: { readonly me: Me }) => {
         <DropdownMenuLabel>{t("shell.organizations")}</DropdownMenuLabel>
         {me.organization === null ? null : (
           <DropdownMenuItem>
-            <img src="/brand/ostra-mark-fit.svg" alt="" width={16} height={16} className="size-4 shrink-0" />
+            <span aria-hidden className="logo-mark size-4 shrink-0" />
             <span className="min-w-0 truncate">{me.organization.name}</span>
             <CheckIcon aria-label={t("shell.current")} className="ml-auto" />
           </DropdownMenuItem>
@@ -88,7 +88,7 @@ export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
           onClick={onNavigate}
           aria-label={t("shell.newTask")}
           title={t("shell.newTask")}
-          className="grid size-[30px] shrink-0 place-items-center rounded-md bg-shell text-ink hover:bg-[#e6e2d8]"
+          className="grid size-[30px] shrink-0 place-items-center rounded-md bg-primary text-on-primary hover:bg-primary/88"
         >
           <PlusIcon aria-hidden className="size-4 stroke-[1.75]" />
         </Link>
@@ -101,7 +101,7 @@ export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
         href="/needs-you"
         icon={<BellIcon />}
         onNavigate={onNavigate}
-        end={count === 0 ? undefined : <span data-testid="needs-you-count" className="grid h-[18px] min-w-[18px] place-items-center rounded-full bg-amber px-1 font-mono text-[11px] font-semibold text-ink">{count}</span>}
+        end={count === 0 ? undefined : <span data-testid="needs-you-count" className="grid h-[18px] min-w-[18px] place-items-center rounded-full bg-amber px-1 font-mono text-[11px] font-semibold text-on-amber">{count}</span>}
       >
         {t("needsYouPage.pageTitle")}
       </NavLink>

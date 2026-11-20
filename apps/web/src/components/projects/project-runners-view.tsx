@@ -52,7 +52,7 @@ const ShareMeter = ({ project, pool, held, share }: { readonly project: string; 
         aria-label={t("projectRunners.meterLabel", { project, pool })}
         className="relative block h-1.5 w-[120px] shrink-0 overflow-hidden rounded-[3px] bg-line"
       >
-        <span className="absolute inset-y-0 left-0 rounded-[3px] bg-[var(--chart)]" style={{ width: held === 0 ? 0 : `max(4px, ${String(ratio * 100)}%)` }} />
+        <span className="absolute inset-y-0 left-0 rounded-[3px] bg-meter" style={{ width: held === 0 ? 0 : `max(4px, ${String(ratio * 100)}%)` }} />
       </span>
     </Tooltip>
   );
@@ -325,7 +325,7 @@ export const ProjectRunnersView = ({ projectId }: { readonly projectId: ProjectI
                               aria-roledescription="sortable"
                               aria-disabled={pools.length < 2}
                               aria-pressed={lifted}
-                              className={cn("grid size-6 touch-none place-items-center rounded-md text-faint hover:bg-raise focus-visible:outline focus-visible:outline-1 focus-visible:outline-line-2", pools.length < 2 ? "cursor-default opacity-50" : "cursor-grab")}
+                              className={cn("grid size-6 touch-none place-items-center rounded-md text-faint hover:bg-hover focus-visible:outline focus-visible:outline-1 focus-visible:outline-line-2", pools.length < 2 ? "cursor-default opacity-50" : "cursor-grab")}
                               onKeyDown={(event) => { onHandleKey(event, index); }}
                               onPointerDown={(event) => { onPointerDown(event, pool.poolId); }}
                               onPointerMove={onPointerMove}
@@ -464,7 +464,7 @@ export const ProjectRunnersView = ({ projectId }: { readonly projectId: ProjectI
             >
               {(sizes.data ?? []).map((size) => (
                 <label key={size.name} htmlFor={`size-${size.name}`} className={cn("flex h-9 cursor-pointer items-center gap-3 rounded-md border-b border-line px-2.5", chosenSize === size.name && "bg-sel")}>
-                  <RadioGroupItem id={`size-${size.name}`} value={size.name satisfies BoxSizeName} disabled={setSize.isPending} className="size-4 data-[state=checked]:border-shell data-[state=checked]:bg-shell [&>span]:bg-ink" />
+                  <RadioGroupItem id={`size-${size.name}`} value={size.name satisfies BoxSizeName} disabled={setSize.isPending} className="size-4 data-[state=checked]:border-primary data-[state=checked]:bg-primary [&>span]:bg-on-primary" />
                   <span className="w-[90px] text-ui font-medium text-text">{size.name}</span>
                   {runners.data === undefined ? <Skeleton className="w-[100px]" /> : <span className="font-mono text-[12.5px] text-muted">{sizeValue(size.cpuMillis, size.memoryMiB)}</span>}
                 </label>

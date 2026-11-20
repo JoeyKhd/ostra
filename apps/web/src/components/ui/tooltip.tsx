@@ -14,7 +14,7 @@ export const Tooltip = ({ content, children }: { readonly content: ReactNode; re
       <TooltipPrimitive.Portal>
         <TooltipPrimitive.Content
           sideOffset={6}
-          className="z-50 max-w-[280px] rounded-md border border-line-2 bg-raise px-2.5 py-1.5 text-sm text-text shadow-[0_8px_24px_rgba(0,0,0,0.45)]"
+          className="z-50 max-w-[280px] rounded-md border border-line-2 bg-raise px-2.5 py-1.5 text-sm text-text shadow-(--shadow-pop)"
         >
           {content}
         </TooltipPrimitive.Content>

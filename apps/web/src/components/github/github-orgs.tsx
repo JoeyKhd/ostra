@@ -191,7 +191,7 @@ export const AppSection = ({ app, selected, onSelectApp, onSelectInstallation, o
               data-state={installation.state}
               className={cn(
                 "relative grid min-h-[42px] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 border-b border-line px-2 py-1 sm:grid-cols-[200px_120px_minmax(0,1fr)_170px_auto]",
-                "rounded-[6px] hover:bg-raise",
+                "rounded-[6px] hover:bg-hover",
                 on && "bg-sel hover:bg-sel",
                 removed && "text-faint",
               )}

@@ -98,9 +98,9 @@ const NoteRow = ({ row }: { readonly row: Extract<DiffRow, { kind: "note" }> }) 
 const lineTone = (line: DiffLine): { readonly fill: string; readonly mark: string; readonly sign: string } => {
   switch (line.kind) {
     case "add":
-      return { fill: "bg-add-bg", mark: "text-green", sign: "+" };
+      return { fill: "bg-diff-add", mark: "text-green", sign: "+" };
     case "del":
-      return { fill: "bg-del-bg", mark: "text-red", sign: minus };
+      return { fill: "bg-diff-del", mark: "text-red", sign: minus };
     case "context":
     case "no-newline":
       return { fill: "", mark: "text-faint", sign: "" };

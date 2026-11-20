@@ -63,7 +63,7 @@ const StatusRow = ({ label, children, note, testId }: { readonly label: string; 
 /** A capacity bar: 220 × 6px, Mist on `--line`; never red or amber, a full runner is working. */
 const Bar = ({ value, max, label }: { readonly value: number; readonly max: number; readonly label: string }) => (
   <span role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={max} aria-valuenow={value} className="relative inline-block h-1.5 w-[220px] max-w-full shrink overflow-hidden rounded-[3px] bg-line">
-    <span className="absolute inset-y-0 left-0 rounded-[3px] bg-[var(--chart)]" style={{ width: `${String(max === 0 ? 0 : Math.min(100, (value / max) * 100))}%` }} />
+    <span className="absolute inset-y-0 left-0 rounded-[3px] bg-meter" style={{ width: `${String(max === 0 ? 0 : Math.min(100, (value / max) * 100))}%` }} />
   </span>
 );
 

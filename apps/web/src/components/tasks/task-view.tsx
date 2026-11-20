@@ -209,7 +209,7 @@ const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, t
         {task.box === null ? null : <PropRow label={t("taskPage.box.label")}><span className="truncate">{boxText(task.box, now)}</span></PropRow>}
         {boxSize === null ? null : <PropRow label={t("waitLine.panelBoxSize")}><Mono><span data-testid="task-box-size">{boxSizeText(boxSize)}</span></Mono></PropRow>}
         <PropRow label={t("taskPage.spend")}>
-          <Mono className={task.spend.reached ? "text-amber" : ""}>{spendText(task.spend)}</Mono>
+          <Mono className={task.spend.reached ? "text-amber-text" : ""}>{spendText(task.spend)}</Mono>
         </PropRow>
         <PropRow label={t("taskAnswers.usage.agentTime")}><Mono><span data-testid="task-agent-time">{formatDuration(usage.agentMs)}</span></Mono></PropRow>
         <PropRow label={t("taskPage.time")}><Mono>{formatElapsed(task.createdAt, now)}</Mono></PropRow>

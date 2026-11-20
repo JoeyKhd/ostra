@@ -5,8 +5,8 @@ import { cn } from "@/lib/cn";
 export type Tone = "green" | "amber" | "red" | "grey" | "teal";
 
 const dotTone: Record<Tone, string> = {
-  green: "bg-green shadow-[0_0_0_3px_rgba(79,178,134,0.15)]",
-  amber: "bg-amber shadow-[0_0_0_3px_rgba(255,178,36,0.15)]",
+  green: "bg-green shadow-(--dot-green)",
+  amber: "bg-amber shadow-(--dot-amber)",
   red: "bg-red",
   grey: "bg-faint",
   teal: "bg-teal",
@@ -14,7 +14,7 @@ const dotTone: Record<Tone, string> = {
 
 /**
  * The 7px dot alone (graphite.css `.dot`), for a place whose words are beside it already: a group
- * band, a section title. Amber and green carry their 3px ring. It's decoration: the words say it.
+ * band, a section title. Amber and green carry their edge (`--dot-amber`, `--dot-green`: a 3px halo in dark, and in light a 1px inner ring on amber). It's decoration: the words say it.
  */
 export const Dot = ({ tone, className }: { readonly tone: Tone; readonly className?: string }) => (
   <span aria-hidden className={cn("inline-block size-[7px] shrink-0 rounded-full", dotTone[tone], className)} />

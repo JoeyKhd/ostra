@@ -152,8 +152,8 @@ describe("the diff's view", () => {
   it("F-027: lines draw their numbers, signs and diff colours, code as plain text", () => {
     const html = renderToStaticMarkup(<DiffView rows={rowsOf([web], [], new Set(), null)} canComment actions={actions} scrollTo={null} onTopFile={noop} initialHeight={4000} />);
     expect(html).toContain("@@ -38,8 +38,14 @@ export const calculatorReducer");
-    expect(html).toContain("bg-add-bg");
-    expect(html).toContain("bg-del-bg");
+    expect(html).toContain("bg-diff-add");
+    expect(html).toContain("bg-diff-del");
     expect(html).toContain("−");
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).not.toContain("<script>");

@@ -4,6 +4,7 @@ import { CheckIcon, GitPullRequestIcon as GithubIcon, ShieldIcon, TerminalIcon }
 import Link from "next/link";
 import { AlertDialog as Dialog } from "radix-ui";
 import { useState } from "react";
+import type { ReactNode } from "react";
 
 import { CopyLink } from "@/components/runners/copy-link";
 import { PropGroup, PropRow, Section } from "@/components/shell/page-frame";
@@ -38,8 +39,8 @@ const Line = ({ tone, children, role }: { readonly tone: "green" | "red" | "mute
 const Confirm = ({ open, onOpenChange, title, body, action, busyLabel, state, onConfirm }: { readonly open: boolean; readonly onOpenChange: (open: boolean) => void; readonly title: string; readonly body: string; readonly action: string; readonly busyLabel: string; readonly state: DialogState; readonly onConfirm: () => void }) => (
   <Dialog.Root open={open} onOpenChange={onOpenChange}>
     <Dialog.Portal>
-      <Dialog.Overlay className="fixed inset-0 z-40 bg-black/60" />
-      <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(400px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line-2 bg-raise p-5 shadow-[0_8px_24px_rgba(0,0,0,0.45)] focus:outline-none">
+      <Dialog.Overlay className="fixed inset-0 z-40 bg-(--scrim)" />
+      <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(400px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line-2 bg-raise p-5 shadow-(--shadow-pop) focus:outline-none">
         <Dialog.Title className="text-[16.5px] font-semibold text-text">{title}</Dialog.Title>
         <Dialog.Description className="mt-1.5 text-body text-muted">{body}</Dialog.Description>
         {state.kind === "failed" ? (
@@ -298,10 +299,12 @@ export type AccountPanelProps = {
   readonly github: GitHubLinkView | undefined;
   readonly sessions: number | undefined;
   readonly days: number;
+  /** Milestone 7: the Appearance group, after You (account-appearance.md). */
+  readonly appearance?: ReactNode;
 };
 
-/** The properties panel: you, the GitHub link while linked, and the CLI sessions. */
-export const AccountPanel = ({ me, github, sessions, days }: AccountPanelProps) => {
+/** The properties panel: you, your appearance, the GitHub link while linked, and the CLI sessions. */
+export const AccountPanel = ({ me, github, sessions, days, appearance }: AccountPanelProps) => {
   const link = github?.link ?? null;
   return (
     <div className="text-[12.5px]">
@@ -321,6 +324,7 @@ export const AccountPanel = ({ me, github, sessions, days }: AccountPanelProps) 
           </Link>
         </PropRow>
       </PropGroup>
+      {appearance}
       {link === null ? null : (
         <PropGroup title={t("account.panel.githubLink")}>
           <PropRow label={t("account.panel.login")} labelWidth={96}>

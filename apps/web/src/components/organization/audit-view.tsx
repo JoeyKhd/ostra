@@ -401,7 +401,7 @@ export const AuditView = ({ organization, project, canExport, tabs }: AuditViewP
                       data-entity-id={entry.entityId ?? ""}
                       onClick={() => { select(entry); }}
                       onKeyDown={(event) => { onRowKey(event, entry); }}
-                      className={cn("absolute left-0 top-0 grid h-[38px] w-full grid-cols-[56px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-3 border-b border-line text-left text-ui hover:bg-raise", grid, picked && "bg-sel hover:bg-sel")}
+                      className={cn("absolute left-0 top-0 grid h-[38px] w-full grid-cols-[56px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-3 border-b border-line text-left text-ui hover:bg-hover", grid, picked && "bg-sel hover:bg-sel")}
                       style={style}
                     >
                       <span className="pl-2 font-mono text-[13px] text-faint">{timeOfDay(entry.at)}</span>

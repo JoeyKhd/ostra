@@ -81,7 +81,7 @@ export const Trigger = ({ className, children, chevron = true, ...props }: Compo
   <button
     type="button"
     className={cn(
-      "inline-flex h-[30px] min-w-0 items-center gap-[7px] rounded-md px-2 text-ui font-medium text-text enabled:hover:bg-raise disabled:cursor-default data-[state=open]:bg-raise [&_svg]:size-[15px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75] [&_svg]:text-muted",
+      "inline-flex h-[30px] min-w-0 items-center gap-[7px] rounded-md px-2 text-ui font-medium text-text enabled:hover:bg-hover disabled:cursor-default data-[state=open]:bg-hover [&_svg]:size-[15px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75] [&_svg]:text-muted",
       className,
     )}
     {...props}

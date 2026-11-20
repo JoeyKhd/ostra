@@ -248,7 +248,7 @@ export const InviteSheet = ({ organization, inviterName, emailOn, days, projects
               <RadioGroup value={role} onValueChange={(value) => { if (value === "admin" || value === "member") setRole(value); }} className="divide-y divide-line border-b border-line">
                 {(["member", "admin"] as const).map((value) => (
                   <label key={value} htmlFor={`invite-role-${value}`} className="flex min-h-[52px] cursor-pointer items-start gap-3 py-2.5">
-                    <RadioGroupItem id={`invite-role-${value}`} value={value} className="mt-1 size-4 data-[state=checked]:border-shell data-[state=checked]:bg-shell [&>span]:bg-ink" />
+                    <RadioGroupItem id={`invite-role-${value}`} value={value} className="mt-1 size-4 data-[state=checked]:border-primary data-[state=checked]:bg-primary [&>span]:bg-on-primary" />
                     <span>
                       <span className="block text-ui text-text">{value === "admin" ? t("members.admin") : t("members.member")}</span>
                       <span className="block text-[12.5px] text-faint">{value === "admin" ? t("members.sheet.adminHint") : t("members.sheet.memberHint")}</span>

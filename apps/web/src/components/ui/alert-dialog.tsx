@@ -29,10 +29,10 @@ export type AlertDialogContentProps = {
 
 export const AlertDialogContent = ({ title, body, cancel, action, onAction, pending, onCloseAutoFocus }: AlertDialogContentProps) => (
   <Dialog.Portal>
-    <Dialog.Overlay className="fixed inset-0 z-40 bg-black/60" />
+    <Dialog.Overlay className="fixed inset-0 z-40 bg-(--scrim)" />
     <Dialog.Content
       {...(onCloseAutoFocus === undefined ? {} : { onCloseAutoFocus })}
-      className="fixed left-1/2 top-1/2 z-50 w-[min(400px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line-2 bg-raise p-5 shadow-[0_8px_24px_rgba(0,0,0,0.45)] focus:outline-none">
+      className="fixed left-1/2 top-1/2 z-50 w-[min(400px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line-2 bg-raise p-5 shadow-(--shadow-pop) focus:outline-none">
       <Dialog.Title className="text-[16.5px] font-semibold text-text">{title}</Dialog.Title>
       <Dialog.Description asChild>
         <div className="mt-1.5 text-body text-muted">{body}</div>

@@ -102,7 +102,7 @@ const ProfileTableRow = ({ profile, selected, onSelect, onOpen }: {
       data-profile={profile.name}
       onClick={onSelect}
       onDoubleClick={onOpen}
-      className={cn("h-[52px] cursor-pointer border-b border-line hover:bg-raise sm:h-10", selected && "bg-sel hover:bg-sel")}
+      className={cn("h-[52px] cursor-pointer border-b border-line hover:bg-hover sm:h-10", selected && "bg-sel hover:bg-sel")}
     >
       <td className="pl-1 pr-3">
         <button

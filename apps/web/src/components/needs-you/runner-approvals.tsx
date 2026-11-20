@@ -36,7 +36,7 @@ export const RunnerApprovalsBand = ({ runners, selected, onSelect, now }: {
     <ul>
       {runners.map((runner) => (
         <li key={runner.id} className="border-b border-line" data-runner-approval={runner.name} aria-selected={selected === runner.id}>
-          <div className={cn("grid min-h-10 grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 py-1.5 md:py-0", ROW_GRID, selected === runner.id ? "bg-sel" : "hover:bg-raise")}>
+          <div className={cn("grid min-h-10 grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 py-1.5 md:py-0", ROW_GRID, selected === runner.id ? "bg-sel" : "hover:bg-hover")}>
             <span className="flex justify-center"><span role="img" aria-label={t("needsYouPage.unread")} className="size-1.5 rounded-full bg-text" /></span>
             <div className="flex min-w-0 items-center gap-2 md:contents">
               <span className="shrink-0 truncate font-mono text-xs text-faint">{runner.name}</span>

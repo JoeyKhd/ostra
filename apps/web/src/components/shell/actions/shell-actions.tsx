@@ -14,6 +14,7 @@ import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
 import { ShortcutSheet } from "../shortcut-sheet";
+import { useSystemScheme, useTheme } from "../theme-provider";
 
 import { KeyCap } from "./kbd-sequence";
 import type { PaletteStep } from "./palette-step";
@@ -39,14 +40,6 @@ export const useShellActions = (): ShellActionsValue => useContext(ShellActionsC
 /** How long the toast stays. */
 const TOAST_MS = 5_000;
 
-/** The theme on screen: the page's `data-theme`, or the system's when it follows the system. */
-const shownThemeNow = (): "dark" | "light" => {
-  if (typeof document === "undefined") return "dark";
-  const set = document.documentElement.dataset["theme"];
-  if (set === "light" || set === "dark") return set;
-  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
-};
-
 /** The project a page belongs to, from its address, for `g` then `t`. */
 const projectOfPath = (path: string): string | null => /^\/projects\/([^/]+)/.exec(path)?.[1] ?? null;
 
@@ -63,8 +56,11 @@ export const ShellActions = ({ me, children }: { readonly me: RouterOutputs["me"
   const [sheetOpen, setSheetOpen] = useState(false);
   const [stopping, setStopping] = useState<TaskScope | null>(null);
   const [toast, setToast] = useState<{ readonly id: number; readonly text: string } | null>(null);
-  const [shownTheme, setShownTheme] = useState<"dark" | "light">("dark");
-  useEffect(() => { setShownTheme(shownThemeNow()); }, []);
+  // The theme on screen: the member's, or the system's when they follow it. The switch goes through
+  // the one ThemeProvider (F-082), so Account's Appearance and the member menu show it too.
+  const { theme, choose } = useTheme();
+  const system = useSystemScheme();
+  const shownTheme: "dark" | "light" = theme === "system" ? (system ?? "dark") : theme;
 
   const announce = useCallback((text: string) => { setToast({ id: Date.now(), text }); }, []);
   useEffect(() => {
@@ -77,7 +73,6 @@ export const ShellActions = ({ me, children }: { readonly me: RouterOutputs["me"
   const approve = useMutation(trpc.approvals.answer.mutationOptions(settle));
   const takeOver = useMutation(trpc.tasks.takeOver.mutationOptions(settle));
   const stop = useMutation(trpc.tasks.stop.mutationOptions(settle));
-  const setTheme = useMutation(trpc.account.setTheme.mutationOptions());
   const refused = (error: { readonly message: string; readonly data?: { readonly code?: string } | null | undefined }) => {
     announce(error.data?.code === "CONFLICT" ? t("palette.step.answeredFirst") : (errorText(error) ?? t("errors.unknown")));
   };
@@ -138,14 +133,9 @@ export const ShellActions = ({ me, children }: { readonly me: RouterOutputs["me"
       case "new-project":
         router.push("/projects/new");
         return;
-      case "toggle-theme": {
-        const next = shownThemeNow() === "dark" ? "light" : "dark";
-        document.documentElement.dataset["theme"] = next;
-        document.documentElement.style.colorScheme = next;
-        setShownTheme(next);
-        setTheme.mutate({ theme: next });
+      case "toggle-theme":
+        choose(shownTheme === "dark" ? "light" : "dark");
         return;
-      }
       case "approve":
         if (item?.kind !== "approval") return;
         approve.mutate({ approvalId: item.approvalId, decision: "allow_once" }, { onSuccess: () => { announce(t("palette.toast.approved", { key: item.key })); }, onError: refused });
@@ -224,7 +214,7 @@ export const ShellActions = ({ me, children }: { readonly me: RouterOutputs["me"
       {/* One polite live region: what an action did, and a new needs-you item. */}
       <div role="status" aria-live="polite" data-testid="shell-toast" className="pointer-events-none fixed bottom-4 right-4 z-50 max-w-[min(420px,calc(100vw-32px))]">
         {toast === null ? null : (
-          <p key={toast.id} className="rounded-lg border border-line-2 bg-raise px-3.5 py-2.5 text-ui text-text shadow-[0_8px_24px_rgba(0,0,0,0.45)]">{toast.text}</p>
+          <p key={toast.id} className="rounded-lg border border-line-2 bg-raise px-3.5 py-2.5 text-ui text-text shadow-(--shadow-pop)">{toast.text}</p>
         )}
       </div>
       {pending === null ? null : (

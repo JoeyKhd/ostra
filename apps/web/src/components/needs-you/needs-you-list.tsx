@@ -370,7 +370,7 @@ export const NotificationRow = ({
         data-testid="needs-you-row"
         aria-label={`${row.key} ${row.title}`}
         onKeyDown={(event) => onKeyDown?.(event, row)}
-        className={cn("grid min-h-10 grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 py-1.5 outline-none hover:bg-raise focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted md:py-0", ROW_GRID)}
+        className={cn("grid min-h-10 grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 py-1.5 outline-none hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted md:py-0", ROW_GRID)}
       >
         <span className="flex justify-center">{unreadDot ? <span role="img" aria-label={t("needsYouPage.unread")} className="size-1.5 rounded-full bg-text" /> : null}</span>
         <div className="flex min-w-0 items-center gap-2 md:contents">

@@ -310,11 +310,11 @@ export const RegistryView = () => {
                     className="col-span-full flex flex-col gap-2 sm:col-span-2 sm:flex-row sm:items-center sm:gap-5"
                   >
                     <label htmlFor="pull-basic" className="flex cursor-pointer items-center gap-2 text-ui text-text">
-                      <RadioGroupItem id="pull-basic" value="basic" className="size-4 data-[state=checked]:border-shell data-[state=checked]:bg-shell [&>span]:bg-ink" />
+                      <RadioGroupItem id="pull-basic" value="basic" className="size-4 data-[state=checked]:border-primary data-[state=checked]:bg-primary [&>span]:bg-on-primary" />
                       {t("registryPage.pullCredential")}
                     </label>
                     <label htmlFor="pull-node" className="flex cursor-pointer flex-wrap items-center gap-2 text-ui text-text">
-                      <RadioGroupItem id="pull-node" value="node" className="size-4 data-[state=checked]:border-shell data-[state=checked]:bg-shell [&>span]:bg-ink" />
+                      <RadioGroupItem id="pull-node" value="node" className="size-4 data-[state=checked]:border-primary data-[state=checked]:bg-primary [&>span]:bg-on-primary" />
                       {t("registryPage.clusterIdentity")}
                       <span className="text-[12.5px] text-faint">{tNodes("registryPage.kubernetesOnly", { kubernetes: <span className="font-mono">kubernetes</span> })}</span>
                     </label>

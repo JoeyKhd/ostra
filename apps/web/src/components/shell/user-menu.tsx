@@ -1,14 +1,32 @@
 "use client";
 
-import { BellIcon, KeyRoundIcon, LogOutIcon, UserIcon } from "lucide-react";
+import { BellIcon, KeyRoundIcon, LogOutIcon, MonitorIcon, MoonIcon, SunIcon, UserIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { themePreferences } from "@ostra/domain/theme";
+import type { ThemePreference } from "@ostra/domain/theme";
+
+import { themeLabel } from "@/components/account/theme-choice";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { authClient } from "@/lib/auth-client";
 import { t } from "@/lib/messages";
 import type { RouterOutputs } from "@/lib/trpc";
+
+import { useTheme } from "./theme-provider";
 
 /** Up to two initials of a name, for its 22px avatar. */
 export const initials = (name: string): string =>
@@ -19,7 +37,48 @@ export const initials = (name: string): string =>
     .map((part) => part.charAt(0).toUpperCase())
     .join("") || "?";
 
-/** The signed-in member at the foot of the sidebar (graphite.css `.bottom`); its menu signs out. */
+const themeIcon = (theme: ThemePreference) => {
+  switch (theme) {
+    case "dark":
+      return <MoonIcon aria-hidden />;
+    case "light":
+      return <SunIcon aria-hidden />;
+    case "system":
+      return <MonitorIcon aria-hidden />;
+    default:
+      return theme satisfies never;
+  }
+};
+
+const isTheme = (value: string): value is ThemePreference => themePreferences.some((theme) => theme === value);
+
+/** The member menu's quick theme toggle (account-appearance.md, "The sidebar's quick toggle"). */
+const ThemeSubmenu = () => {
+  const { theme, choose } = useTheme();
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger data-testid="theme-menu">
+        {themeIcon(theme)} {t("shell.theme")}
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent>
+        <DropdownMenuRadioGroup
+          value={theme}
+          onValueChange={(value) => {
+            if (isTheme(value)) choose(value);
+          }}
+        >
+          {themePreferences.map((choice) => (
+            <DropdownMenuRadioItem key={choice} value={choice}>
+              {themeIcon(choice)} {themeLabel(choice)}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  );
+};
+
+/** The signed-in member at the foot of the sidebar (graphite.css `.bottom`); its menu signs out, and holds the theme. */
 export const UserMenu = ({ me }: { readonly me: RouterOutputs["me"]["get"] }) => {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -40,6 +99,7 @@ export const UserMenu = ({ me }: { readonly me: RouterOutputs["me"]["get"] }) =>
       <DropdownMenuContent side="top" align="start" className="w-[212px]">
         <DropdownMenuLabel className="truncate font-normal">{me.email}</DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <ThemeSubmenu />
         <DropdownMenuItem asChild>
           <Link href="/account">
             <UserIcon aria-hidden /> {t("shell.account")}

@@ -94,7 +94,7 @@ const Row = ({ task, now }: { readonly task: TaskRow; readonly now: number }) =>
   <li data-task={task.id} data-state={task.state} className="border-b border-line">
     <Link
       href={`/tasks/${task.id}`}
-      className={cn(rowGrid, "h-10 pl-[5px] pr-1.5 hover:bg-raise focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted")}
+      className={cn(rowGrid, "h-10 pl-[5px] pr-1.5 hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted")}
     >
       <span className="grid place-items-center">
         <Mark mark={taskMark(task.state)} />
@@ -174,7 +174,7 @@ const GroupSection = ({ group, now }: { readonly group: Group; readonly now: num
     <Collapsible.Root open={open} onOpenChange={setOpen} asChild>
       <section data-group={group.group} className="mt-[18px] first:mt-0">
         <h2 className="text-body">
-          <Collapsible.Trigger className={cn(bandClass, "hover:bg-raise")}>
+          <Collapsible.Trigger className={cn(bandClass, "hover:bg-hover")}>
             <BandLabel group={group.group} count={group.tasks.length} open={open} />
           </Collapsible.Trigger>
         </h2>

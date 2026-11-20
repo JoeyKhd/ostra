@@ -147,7 +147,7 @@ export const NeedsYouSection = ({ load, now, budget }: {
 // ---------- Projects ----------
 
 const Count = ({ n, amber = false }: { readonly n: number; readonly amber?: boolean }) =>
-  n === 0 ? <span className="text-faint">–</span> : <span className={amber ? "text-amber" : undefined}>{n}</span>;
+  n === 0 ? <span className="text-faint">–</span> : <span className={amber ? "text-amber-text" : undefined}>{n}</span>;
 
 /** Projects (home.md): a table, sorted by needs you then running, the whole row a link. */
 export const ProjectsSection = ({ load, admin, now }: { readonly load: Load<Overview["projects"]>; readonly admin: boolean; readonly now: Date }) => {
@@ -179,7 +179,7 @@ export const ProjectsSection = ({ load, admin, now }: { readonly load: Load<Over
             {load.data.rows.map((project) => (
               <TableRow
                 key={project.id}
-                className="cursor-pointer hover:bg-raise"
+                className="cursor-pointer hover:bg-hover"
                 onClick={() => {
                   router.push(`/projects/${project.id}`);
                 }}

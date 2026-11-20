@@ -253,7 +253,7 @@ export const EventLogTab = ({ taskId, names, executor, seq }: { readonly taskId:
             aria-pressed={chip === value}
             data-chip={value}
             onClick={() => { setChip(value); }}
-            className={cn("inline-flex h-[26px] items-center gap-1.5 rounded-md border border-line-2 px-2.5 text-[13px]", chip === value ? "bg-raise text-text" : "text-muted hover:bg-raise")}
+            className={cn("inline-flex h-[26px] items-center gap-1.5 rounded-md border border-line-2 px-2.5 text-[13px]", chip === value ? "bg-raise text-text" : "text-muted hover:bg-hover")}
           >
             {chipWord(value)}
             <span className="font-mono text-xs text-faint">{loading ? "–" : (counts.get(value) ?? 0)}</span>
@@ -323,7 +323,7 @@ export const EventLogTab = ({ taskId, names, executor, seq }: { readonly taskId:
                     onKeyDown={(event) => { onKey(event, row); }}
                     className={cn(
                       "grid min-h-[34px] w-full grid-cols-[16px_44px_minmax(0,1fr)_auto] items-center gap-x-2 text-left md:grid-cols-[16px_44px_84px_112px_minmax(0,1fr)_120px_56px]",
-                      isOpen || picked === row.seq ? "bg-sel" : "hover:bg-raise",
+                      isOpen || picked === row.seq ? "bg-sel" : "hover:bg-hover",
                     )}
                   >
                     <span className="flex justify-center text-muted">

@@ -103,7 +103,7 @@ const NoteRow = ({ note, selected, onSelect, now, archived }: { readonly note: N
       }
     }}
     className={cn(
-      "grid min-h-10 cursor-pointer grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-x-3.5 border-b border-line px-2 py-1.5 hover:bg-raise focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted md:grid-cols-[16px_minmax(0,1fr)_110px_170px_70px] md:py-0",
+      "grid min-h-10 cursor-pointer grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-x-3.5 border-b border-line px-2 py-1.5 hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted md:grid-cols-[16px_minmax(0,1fr)_110px_170px_70px] md:py-0",
       selected && "rounded-[6px] bg-sel hover:bg-sel",
     )}
   >

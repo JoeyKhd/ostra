@@ -80,7 +80,7 @@ export const PoolsTable = ({ pools, selectedId, onSelect }: { readonly pools: re
                 data-state={selected ? "selected" : undefined}
                 onClick={() => { onSelect(pool.id); }}
                 onKeyDown={keyed(pool.id)}
-                className={cn("h-10 cursor-pointer border-b border-line hover:bg-raise", selected && "bg-sel hover:bg-sel")}
+                className={cn("h-10 cursor-pointer border-b border-line hover:bg-hover", selected && "bg-sel hover:bg-sel")}
               >
                 <td className="pl-2.5 pr-3">
                   <span className="flex min-w-0 items-center gap-2.5">

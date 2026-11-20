@@ -602,7 +602,7 @@ export const SearchPalette = ({
       }}
     >
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50" />
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-(--scrim)" />
         <Dialog.Content
           aria-describedby={undefined}
           data-testid="search-palette"
@@ -616,7 +616,7 @@ export const SearchPalette = ({
               event.preventDefault();
             }
           }}
-          className="fixed left-1/2 top-[14vh] z-50 flex max-h-[min(560px,70vh)] w-[min(680px,calc(100vw-32px))] -translate-x-1/2 flex-col overflow-hidden rounded-xl border border-line-2 bg-raise shadow-[0_16px_48px_rgba(0,0,0,0.5)] focus:outline-none max-sm:top-[58px]"
+          className="fixed left-1/2 top-[14vh] z-50 flex max-h-[min(560px,70vh)] w-[min(680px,calc(100vw-32px))] -translate-x-1/2 flex-col overflow-hidden rounded-xl border border-line-2 bg-raise shadow-(--shadow-palette) focus:outline-none max-sm:top-[58px]"
         >
           <Dialog.Title className="sr-only">{t("palette.title")}</Dialog.Title>
           <div className="relative flex min-h-[52px] shrink-0 flex-wrap items-center gap-2 border-b border-line px-4 py-2">

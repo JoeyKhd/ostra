@@ -45,7 +45,7 @@ export const PrChart = ({ days }: { readonly days: readonly Day[] }) => {
         const labelled = today || (i === peakIndex && day.count > 0);
         return (
           <g key={day.day}>
-            {h === 0 ? null : <rect x={x} y={base - h} width={bar} height={h} rx={2} fill={today ? "var(--line-2)" : "var(--mist)"} />}
+            {h === 0 ? null : <rect x={x} y={base - h} width={bar} height={h} rx={2} fill={today ? "var(--chart-now)" : "var(--chart)"} />}
             {labelled ? (
               <text x={x + bar / 2} y={base - h - 4} textAnchor="middle" className="fill-muted font-mono text-xs">
                 {day.count}

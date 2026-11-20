@@ -13,6 +13,6 @@ export const Switch = ({ className, ...props }: ComponentProps<typeof SwitchPrim
     )}
     {...props}
   >
-    <SwitchPrimitive.Thumb className="block size-3 translate-x-[2px] rounded-full bg-text transition-transform data-[state=checked]:translate-x-[15px] data-[state=checked]:bg-ink" />
+    <SwitchPrimitive.Thumb className="block size-3 translate-x-[2px] rounded-full bg-text transition-transform data-[state=checked]:translate-x-[15px] data-[state=checked]:bg-on-primary" />
   </SwitchPrimitive.Root>
 );

@@ -15,10 +15,12 @@ import { AccountPanel, CliSessionsSection, GitHubSection } from "./account";
 import type { DialogState } from "./account";
 import { linkReturnOf } from "./account-words";
 import type { LinkReturn } from "./account-words";
+import { AppearancePanelGroup, AppearanceSection } from "./theme-choice";
 
 // Ticket 47 wired (account.md; F-119, F-103): the member's GitHub link through
 // `/api/github/link/start` and `account.github.*`, and their CLI sessions through
 // `account.cliSessions.*`. `?github=…` after the link's callback is read once and cleared.
+// Milestone 7 (account-appearance.md, F-082): Appearance first, and its group in the panel.
 
 export const AccountView = () => {
   const trpc = useTRPC();
@@ -60,11 +62,13 @@ export const AccountView = () => {
                 github={github.data}
                 sessions={sessions.data?.sessions.length}
                 days={days}
+                appearance={<AppearancePanelGroup />}
               />
             ),
           })}
     >
-      <PageHeading title={t("shell.account")} />
+      <PageHeading title={t("shell.account")} lede={t("account.lede")} />
+      <AppearanceSection />
       <GitHubSection
         github={github.data}
         admin={organization?.role === "admin"}

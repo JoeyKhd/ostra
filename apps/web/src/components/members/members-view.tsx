@@ -393,7 +393,7 @@ export const MembersView = ({ admin, emailOn, invitationDays }: { readonly admin
               },
             }
           : {})}
-        className={cn(grid, "grid-cols-[minmax(0,1fr)_auto] border-b border-line py-2 text-ui md:h-11 md:py-0", admin && "cursor-default hover:bg-raise", picked && "bg-sel hover:bg-sel")}
+        className={cn(grid, "grid-cols-[minmax(0,1fr)_auto] border-b border-line py-2 text-ui md:h-11 md:py-0", admin && "cursor-default hover:bg-hover", picked && "bg-sel hover:bg-sel")}
       >
         <span className="flex min-w-0 items-center gap-2.5 pl-2">
           <MemberAvatar name={member.name} />

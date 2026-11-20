@@ -11,6 +11,8 @@
 // - `without-changes`: a finished session with no changes, in "needs you" with the agent's summary.
 // - `long`: 5,000 events, for the render budget.
 // - `usage`, `estimated-usage`: a turn with two counted model calls; in the second, one is an estimate (F-089).
+// - `approval`: a running turn with a plan, an edit with its diff and a command waiting on an approval
+//   (light-task.md's state, F-082).
 
 import { randomUUID } from "node:crypto";
 
@@ -22,7 +24,7 @@ import { z } from "zod";
 
 const argsSchema = z.strictObject({
   databaseUrl: z.string(),
-  scenario: z.enum(["mid-turn", "live-edit", "rest", "without-changes", "long", "usage", "estimated-usage"]),
+  scenario: z.enum(["mid-turn", "live-edit", "rest", "without-changes", "long", "usage", "estimated-usage", "approval"]),
   taskId: taskIdSchema.optional(),
 });
 
@@ -72,7 +74,7 @@ const appendEvents = async (taskId: string, events: readonly TaskEvent[]): Promi
   await db.$executeRaw`SELECT pg_notify(${notifyChannels.taskEvents}, ${JSON.stringify({ taskId, seq })})`;
 };
 
-const createTask = async (title: string, state: "running" | "needs_you"): Promise<string> => {
+const createTask = async (title: string, state: "running" | "needs_you", reason: "no_changes" | "approval" = "no_changes"): Promise<string> => {
   const member = await db.member.findFirstOrThrow({ where: { role: "admin" }, orderBy: { createdAt: "asc" } });
   const organizationId = member.organizationId;
   const project =
@@ -88,7 +90,7 @@ const createTask = async (title: string, state: "running" | "needs_you"): Promis
       prompt: title,
       branchName: `ostra/${randomUUID().slice(0, 8)}-replay`,
       state,
-      ...(state === "needs_you" ? { needsYouReason: "no_changes" as const } : {}),
+      ...(state === "needs_you" ? { needsYouReason: reason } : {}),
       driverMemberId: member.id,
       creatorMemberId: member.id,
     },
@@ -99,7 +101,7 @@ const createTask = async (title: string, state: "running" | "needs_you"): Promis
       projectId: project.id,
       taskId: task.id,
       origin: "new",
-      ...(state === "running" ? { state: "running" as const } : { state: "ended" as const, outcome: "without_changes" as const, endedAt: new Date() }),
+      ...(state === "running" || reason === "approval" ? { state: "running" as const } : { state: "ended" as const, outcome: "without_changes" as const, endedAt: new Date() }),
     },
   });
   await appendEvents(task.id, [
@@ -175,6 +177,55 @@ const main = async (): Promise<void> => {
           summary: "No changes: the tests live in test/, one file per module.",
         },
       });
+      process.stdout.write(`${JSON.stringify({ taskId })}\n`);
+      break;
+    }
+    case "approval": {
+      const taskId = await createTask("Add a state migration and run it", "needs_you", "approval");
+      const turnId = randomUUID();
+      const edit = "toolu_approval_edit";
+      const run = "toolu_approval_run";
+      const patch = [
+        "--- a/src/state.ts",
+        "+++ b/src/state.ts",
+        "@@ -12,7 +12,9 @@ export type CalcState = {",
+        "   readonly display: string;",
+        "   readonly memory: number;",
+        "-  readonly history: string[];",
+        "+  readonly history: readonly Entry[];",
+        "+  /** The schema version this state was saved at. */",
+        "+  readonly version: 2;",
+        " };",
+      ].join("\n");
+      await appendEvents(
+        taskId,
+        [
+          { kind: "turn.started", turnId },
+          { kind: "agent.message", turnId, segmentId: "seg-approval-1", text: "I'll version the saved state, then migrate the database so old rows load." },
+          {
+            kind: "plan.updated",
+            turnId,
+            entries: [
+              { content: "Version the saved state", priority: "high", status: "completed" },
+              { content: "Run the migration", priority: "high", status: "in_progress" },
+              { content: "Run the tests", priority: "medium", status: "pending" },
+            ],
+          },
+          { kind: "tool.called", turnId, toolCallId: edit, toolKind: "edit", title: "edit", input: { paths: ["src/state.ts"] } },
+          { kind: "tool.completed", toolCallId: edit, output: { files: [{ path: "src/state.ts", added: 3, removed: 1, patch }] } },
+          { kind: "tool.called", turnId, toolCallId: run, toolKind: "execute", title: "pnpm db:migrate", input: { command: "pnpm db:migrate" } },
+          {
+            kind: "approval.requested",
+            turnId,
+            approvalId: randomUUID(),
+            toolCallId: run,
+            options: [
+              { optionId: "allow-once", label: "Approve once", kind: "allow-once", decision: "allow_once" },
+              { optionId: "reject-once", label: "Deny", kind: "reject-once", decision: "deny" },
+            ],
+          },
+        ].map((event) => taskEventSchema.parse(event)),
+      );
       process.stdout.write(`${JSON.stringify({ taskId })}\n`);
       break;
     }

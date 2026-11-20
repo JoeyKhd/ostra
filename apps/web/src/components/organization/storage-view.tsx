@@ -245,8 +245,8 @@ const ConfirmRetention = ({ days, draft, open, onOpenChange, onConfirm, pending,
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/60" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(460px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line-2 bg-raise p-5 shadow-[0_8px_24px_rgba(0,0,0,0.45)] focus:outline-none">
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-(--scrim)" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(460px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line-2 bg-raise p-5 shadow-(--shadow-pop) focus:outline-none">
           <Dialog.Title className="text-[16.5px] font-semibold text-text">{words.title}</Dialog.Title>
           <Dialog.Description asChild>
             <div className="mt-1.5 space-y-1 text-ui text-muted">

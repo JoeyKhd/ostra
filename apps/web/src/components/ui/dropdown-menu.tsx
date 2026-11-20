@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckIcon } from "lucide-react";
+import { CheckIcon, ChevronRightIcon } from "lucide-react";
 import { DropdownMenu as Menu } from "radix-ui";
 import type { ComponentProps } from "react";
 
@@ -15,7 +15,7 @@ export const DropdownMenuContent = ({ className, sideOffset = 4, ...props }: Com
     <Menu.Content
       sideOffset={sideOffset}
       className={cn(
-        "z-50 min-w-[200px] rounded-md border border-line-2 bg-raise p-1 text-body text-text shadow-[0_8px_24px_rgba(0,0,0,0.45)] focus:outline-none",
+        "z-50 min-w-[200px] rounded-md border border-line-2 bg-raise p-1 text-body text-text shadow-(--shadow-pop) focus:outline-none",
         className,
       )}
       {...props}
@@ -57,4 +57,30 @@ export const DropdownMenuRadioItem = ({ className, children, ...props }: Compone
       <CheckIcon aria-hidden className="text-text" />
     </Menu.ItemIndicator>
   </Menu.RadioItem>
+);
+
+/** A submenu (the member menu's Theme): its row opens a second panel beside the first. */
+export const DropdownMenuSub = Menu.Sub;
+
+export const DropdownMenuSubTrigger = ({ className, children, ...props }: ComponentProps<typeof Menu.SubTrigger>) => (
+  <Menu.SubTrigger
+    className={cn(
+      "flex h-[28px] cursor-default select-none items-center gap-[9px] rounded-sm px-2 text-text outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-sel data-[state=open]:bg-sel [&_svg]:size-[14px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75] [&_svg]:text-muted",
+      className,
+    )}
+    {...props}
+  >
+    {children}
+    <ChevronRightIcon aria-hidden className="ml-auto" />
+  </Menu.SubTrigger>
+);
+
+export const DropdownMenuSubContent = ({ className, sideOffset = 6, ...props }: ComponentProps<typeof Menu.SubContent>) => (
+  <Menu.Portal>
+    <Menu.SubContent
+      sideOffset={sideOffset}
+      className={cn("z-50 min-w-[180px] rounded-md border border-line-2 bg-raise p-1 text-body text-text shadow-(--shadow-pop) focus:outline-none", className)}
+      {...props}
+    />
+  </Menu.Portal>
 );

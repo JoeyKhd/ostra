@@ -12,8 +12,8 @@ import { cn } from "@/lib/cn";
 export const Checkbox = ({ className, tone = "shell", ...props }: ComponentProps<typeof CheckboxPrimitive.Root> & { readonly tone?: "shell" | "teal" }) => (
   <CheckboxPrimitive.Root
     className={cn(
-      "peer inline-grid size-3.5 shrink-0 place-items-center rounded-[4px] border border-faint bg-surface text-ink outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal disabled:cursor-default disabled:opacity-50",
-      tone === "shell" ? "data-[state=checked]:border-shell data-[state=checked]:bg-shell" : "data-[state=checked]:border-teal data-[state=checked]:bg-teal",
+      "peer inline-grid size-3.5 shrink-0 place-items-center rounded-[4px] border border-faint bg-surface text-on-primary outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal disabled:cursor-default disabled:opacity-50",
+      tone === "shell" ? "data-[state=checked]:border-primary data-[state=checked]:bg-primary" : "data-[state=checked]:border-teal data-[state=checked]:bg-teal",
       className,
     )}
     {...props}

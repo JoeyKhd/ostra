@@ -75,7 +75,7 @@ export const RunnerLabelsSection = ({ profileId, labels, readOnly }: { readonly 
                       aria-label={t("runnerLabels.remove", { label })}
                       disabled={save.isPending}
                       onClick={() => { setSaved(null); save.mutate({ profileId, labels: shown.filter((item) => item !== label) }); }}
-                      className="grid size-5 place-items-center rounded-sm text-faint hover:bg-raise hover:text-text"
+                      className="grid size-5 place-items-center rounded-sm text-faint hover:bg-hover hover:text-text"
                     >
                       <XIcon aria-hidden className="size-3 stroke-[1.75]" />
                     </button>

@@ -66,7 +66,7 @@ export const PlaceholderList = ({ rows, onInsert }: { readonly rows: readonly Pl
             {onInsert === null ? (
               <div className={grid}>{cells}</div>
             ) : (
-              <button type="button" className={cn(grid, "hover:bg-raise")} aria-label={t("ticketTemplate.placeholders.insert", { name: row.label })} onClick={() => { onInsert(row); }}>
+              <button type="button" className={cn(grid, "hover:bg-hover")} aria-label={t("ticketTemplate.placeholders.insert", { name: row.label })} onClick={() => { onInsert(row); }}>
                 {cells}
               </button>
             )}

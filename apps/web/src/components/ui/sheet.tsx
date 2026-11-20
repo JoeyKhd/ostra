@@ -23,7 +23,7 @@ export type SheetContentProps = ComponentProps<typeof Dialog.Content> & {
 
 export const SheetContent = ({ side = "right", title, closeButton = true, className, children, ...props }: SheetContentProps) => (
   <Dialog.Portal>
-    <Dialog.Overlay className="fixed inset-0 z-40 bg-black/60" />
+    <Dialog.Overlay className="fixed inset-0 z-40 bg-(--scrim)" />
     <Dialog.Content
       aria-describedby={undefined}
       className={cn(

@@ -208,8 +208,8 @@ export const LimitBlock = ({ task, reopen }: { readonly task: LimitState; readon
           : t("taskPage.limit.spend-capTokens", { spent: formatTokens(task.spend.spent), cap: formatTokens(task.spend.cap) })
         : t(`taskPage.limit.${what}Body`);
   return (
-    <div role="region" aria-label={t("taskPage.limit.title", { what: t(`taskPage.limit.${what}`) })} className="mt-4 rounded-r-md border-l-2 border-amber bg-surface px-4 py-3" data-testid="limit-block" data-limit={what}>
-      <div className="flex items-center gap-2 text-ui font-semibold text-amber">
+    <div role="region" aria-label={t("taskPage.limit.title", { what: t(`taskPage.limit.${what}`) })} className="mt-4 rounded-r-md border-l-(length:--rule-needs-you) border-amber bg-surface px-4 py-3" data-testid="limit-block" data-limit={what}>
+      <div className="flex items-center gap-2 text-ui font-semibold text-amber-text">
         <CircleAlertIcon aria-hidden className="size-[14px] stroke-[1.75]" />
         {t("taskPage.limit.title", { what: t(`taskPage.limit.${what}`) })}
       </div>
@@ -227,8 +227,8 @@ export const LimitBlock = ({ task, reopen }: { readonly task: LimitState; readon
 
 /** A restore conflict waiting on the driver: show the saved work, or carry on without it. */
 export const RestoreConflict = ({ savedWorkUrl, canAnswer, dismiss }: { readonly savedWorkUrl: string | null; readonly canAnswer: boolean; readonly dismiss: { readonly run: () => void; readonly pending: boolean } }) => (
-  <div role="region" aria-label={t("taskPage.restoreConflict.title")} className={cn("mt-4 rounded-r-md border-l-2 bg-surface px-4 py-3", canAnswer ? "border-amber" : "border-line-2")} data-testid="restore-conflict">
-    <div className={cn("flex items-center gap-2 text-ui font-semibold", canAnswer ? "text-amber" : "text-muted")}>
+  <div role="region" aria-label={t("taskPage.restoreConflict.title")} className={cn("mt-4 rounded-r-md bg-surface px-4 py-3", canAnswer ? "border-l-(length:--rule-needs-you) border-amber" : "border-l-2 border-line-2")} data-testid="restore-conflict">
+    <div className={cn("flex items-center gap-2 text-ui font-semibold", canAnswer ? "text-amber-text" : "text-muted")}>
       <GitMergeIcon aria-hidden className="size-[14px] stroke-[1.75]" />
       {t("taskPage.restoreConflict.title")}
     </div>

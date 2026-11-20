@@ -14,5 +14,6 @@ export const getServerApi = async () => {
   const requestHeaders = await headers();
   const deps = await getApiDeps();
   const context = await createContext(deps, { headers: requestHeaders, resHeaders: new Headers() });
-  return { caller: createCaller(context), signedIn: context.user !== null };
+  // F-082: the session's theme, which the root layout paints before the first frame.
+  return { caller: createCaller(context), signedIn: context.user !== null, theme: context.user?.theme ?? null };
 };

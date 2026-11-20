@@ -146,7 +146,7 @@ const KeyBlock = ({ provider, selected, onSelect }: { readonly provider: Provide
         aria-pressed={selected}
         onClick={onSelect}
         data-testid="key-block"
-        className={cn("block w-full rounded-[6px] px-3 py-2.5 text-left hover:bg-raise", selected && "bg-sel hover:bg-sel")}
+        className={cn("block w-full rounded-[6px] px-3 py-2.5 text-left hover:bg-hover", selected && "bg-sel hover:bg-sel")}
       >
         <span className="flex min-h-7 items-center gap-3">
           <KeyLogo host={provider.host} />
@@ -227,8 +227,8 @@ const ConfirmRow = ({ row, onDone }: { readonly row: ToConfirm; readonly onDone:
   const busy = confirm.isPending;
   return (
     <li className="border-b border-line" data-testid="confirm-row">
-      <div className="flex min-h-11 flex-wrap items-center gap-3 border-l-2 border-amber py-1.5 pl-3">
-        <HandIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-amber" />
+      <div className="flex min-h-11 flex-wrap items-center gap-3 border-l-(length:--rule-needs-you) border-amber py-1.5 pl-3">
+        <HandIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-amber-text" />
         <span className="min-w-0 flex-1">
           <span className="block text-[13.5px] font-semibold text-text">{choiceTitle(row)}</span>
           <span className="block text-sm text-muted">

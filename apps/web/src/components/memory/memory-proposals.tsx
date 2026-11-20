@@ -273,7 +273,7 @@ export const MemoryProposals = ({ memoryRef, projectName, organizationName }: { 
               onClick={() => { go({ proposal: proposal.proposalId }); }}
               onKeyDown={(event) => { if (event.key === "Enter") go({ proposal: proposal.proposalId }); }}
               className={cn(
-                "grid min-h-10 cursor-pointer grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-line px-2 py-1.5 hover:bg-raise md:grid-cols-[18px_minmax(0,1fr)_minmax(0,260px)_110px_44px]",
+                "grid min-h-10 cursor-pointer grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-line px-2 py-1.5 hover:bg-hover md:grid-cols-[18px_minmax(0,1fr)_minmax(0,260px)_110px_44px]",
                 proposal.proposalId === selected?.proposalId && "rounded-[6px] bg-sel hover:bg-sel",
               )}
             >

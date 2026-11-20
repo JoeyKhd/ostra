@@ -103,7 +103,7 @@ export const ModelsTable = ({ rows, selectedId, loading, onSelect, onUseCatalog 
                 data-model={row.name}
                 aria-selected={on}
                 onClick={() => { onSelect(row.id); }}
-                className={cn("h-14 cursor-pointer border-b border-line hover:bg-raise", on && "bg-sel hover:bg-sel")}
+                className={cn("h-14 cursor-pointer border-b border-line hover:bg-hover", on && "bg-sel hover:bg-sel")}
               >
                 <td className="py-2 pr-3 pl-1">
                   <span className="flex items-center gap-3">

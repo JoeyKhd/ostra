@@ -45,6 +45,7 @@
     "models": "Models",
     "github": "GitHub",
     "signOut": "Sign out",
+    "theme": "Theme",
     "changePassword": "Change the password",
     "needsYouHere": "{n} waiting on you",
     "activeTasks": "Active tasks: {n}",
@@ -2709,8 +2710,29 @@
   },
   "account": {
     "title": "Account",
-    "lede": "Your GitHub account, and the machines where you ran ostra login. Only you see this page.",
+    "lede": "Your theme, your GitHub account, and the machines where you ran ostra login. Only you see this page.",
     "loadFailed": "Couldn't load your account.",
+    "appearance": {
+      "title": "Appearance",
+      "note": "saved to your account, so every browser you sign in to follows it",
+      "choices": "Theme",
+      "dark": "Dark",
+      "light": "Light",
+      "system": "Match my system",
+      "systemNow": {
+        "dark": "Your system is dark now.",
+        "light": "Your system is light now."
+      },
+      "failed": "Your theme couldn't be saved: {error}. It's back to {previous}.",
+      "word": {
+        "dark": "dark",
+        "light": "light",
+        "system": "match my system"
+      },
+      "press": "Press",
+      "anywhere": "anywhere to see every keyboard shortcut.",
+      "shortcuts": "Keyboard shortcuts"
+    },
     "github": {
       "title": "GitHub",
       "note": "for co-author credit, and for @ostra on a pull request",
@@ -2786,7 +2808,12 @@
         "other": "{n} days"
       },
       "canRead": "Can read",
-      "canReadValue": "Branches and clone URLs"
+      "canReadValue": "Branches and clone URLs",
+      "appearance": "Appearance",
+      "theme": "Theme",
+      "now": "Now",
+      "shortcuts": "Shortcuts",
+      "showAll": "Show all"
     }
   },
   "changes": {

@@ -131,19 +131,58 @@ const running = (part: ToolLikePart): boolean =>
 const ToolStatus = ({ part }: { readonly part: ToolLikePart }) => {
   if (part.state === "output-error") return <span className="font-sans text-red">{part.errorText === "cancelled" ? t("task.tool.cancelled") : t("task.tool.failed")}</span>;
   if (part.state === "output-denied") return <span className="font-sans text-red">{t("task.tool.denied")}</span>;
-  if (part.state === "approval-requested") return <span className="font-sans text-amber">{t("task.tool.needsApproval")}</span>;
+  if (part.state === "approval-requested") return <span className="font-sans text-amber-text">{t("task.tool.needsApproval")}</span>;
   if (running(part)) return <span className="font-sans text-faint">{t("task.tool.running")}</span>;
   return null;
 };
 
-/** A unified diff, as text: additions green, deletions red, never HTML. */
+type PatchLine = "add" | "del" | "hunk" | "header" | "context";
+
+const patchLineOf = (line: string): PatchLine =>
+  line.startsWith("+++") || line.startsWith("---") || line.startsWith("diff ") || line.startsWith("index ")
+    ? "header"
+    : line.startsWith("@@")
+      ? "hunk"
+      : line.startsWith("+")
+        ? "add"
+        : line.startsWith("-")
+          ? "del"
+          : "context";
+
+/**
+ * A unified diff, as text, never HTML (light-task.md, "Code and diffs"): added and removed lines on
+ * their fills with a green `+` or a red `-` and the code in `--text`; headers `--muted`, hunks `--faint`.
+ */
 const Diff = ({ patch }: { readonly patch: string }) => (
-  <pre className="my-1 ml-[104px] max-h-80 overflow-auto rounded-lg border border-line bg-surface px-3 py-2 font-mono text-sm leading-[1.6]">
-    {patch.split("\n").map((line, i) => (
-      <div key={i} className={line.startsWith("+") && !line.startsWith("+++") ? "text-green" : line.startsWith("-") && !line.startsWith("---") ? "text-red" : "text-muted"}>
-        {line === "" ? " " : line}
-      </div>
-    ))}
+  <pre className="my-1 ml-[104px] max-h-80 overflow-auto rounded-lg border border-line bg-surface py-2 font-mono text-sm leading-[1.6] text-text">
+    {patch.split("\n").map((line, i) => {
+      const kind = patchLineOf(line);
+      switch (kind) {
+        case "add":
+        case "del":
+          return (
+            <div key={i} data-line={kind} className={kind === "add" ? "bg-diff-add px-3" : "bg-diff-del px-3"}>
+              <span className={kind === "add" ? "text-green" : "text-red"}>{line.charAt(0)}</span>
+              {line.slice(1)}
+            </div>
+          );
+        case "hunk":
+        case "header":
+          return (
+            <div key={i} data-line={kind} className={kind === "hunk" ? "px-3 text-faint" : "px-3 text-muted"}>
+              {line}
+            </div>
+          );
+        case "context":
+          return (
+            <div key={i} data-line={kind} className="px-3">
+              {line === "" ? " " : line}
+            </div>
+          );
+        default:
+          return kind satisfies never;
+      }
+    })}
   </pre>
 );
 

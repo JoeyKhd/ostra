@@ -69,7 +69,7 @@ export const TicketRow = ({ ticket, several, tasks = true, selected, onSelect, n
       aria-pressed={selected}
       onClick={onSelect}
       onKeyDown={(event) => { if (event.key === "Enter") onSelect(); }}
-      className={cn(rowGrid(several, tasks), "cursor-default rounded-md px-2 outline-none hover:bg-raise focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted", selected && "bg-sel hover:bg-sel")}
+      className={cn(rowGrid(several, tasks), "cursor-default rounded-md px-2 outline-none hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted", selected && "bg-sel hover:bg-sel")}
     >
       <span title={priorityText(ticket.priority)} className="text-muted">
         <PriorityIcon priority={ticket.priority} />

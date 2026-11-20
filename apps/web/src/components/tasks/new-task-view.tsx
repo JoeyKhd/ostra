@@ -121,7 +121,7 @@ const ProjectPicker = ({ projects, project, onPick, disabled }: {
         <Popover.Content
           align="start"
           sideOffset={4}
-          className="z-50 w-[240px] rounded-md border border-line-2 bg-raise p-1 text-body text-text shadow-[0_8px_24px_rgba(0,0,0,0.45)] focus:outline-none"
+          className="z-50 w-[240px] rounded-md border border-line-2 bg-raise p-1 text-body text-text shadow-(--shadow-pop) focus:outline-none"
         >
           <input
             autoFocus
@@ -482,7 +482,7 @@ export const NewTaskView = () => {
           noValidate
           aria-label={t("newTask.title")}
           data-testid="new-task"
-          className="mt-6 flex min-h-[250px] cursor-text flex-col rounded-[10px] border border-line-2 bg-surface px-4 pb-2.5 pt-3.5 focus-within:border-[#34363a]"
+          className="mt-6 flex min-h-[250px] cursor-text flex-col rounded-[10px] border border-line-2 bg-surface px-4 pb-2.5 pt-3.5 focus-within:border-line-3"
           onClick={(event) => { if (event.target === event.currentTarget) textarea.current?.focus(); }}
         >
           <label htmlFor="new-task-prompt" className="sr-only">{t("newTask.prompt")}</label>

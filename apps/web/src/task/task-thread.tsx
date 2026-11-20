@@ -83,7 +83,7 @@ const MessageHeader = ({ message }: { readonly message: TaskUIMessage }) => {
         <span className="min-w-0">
           {time === null ? null : <Meta dot={false}>{time}</Meta>}
           {agent.model === null ? null : <Meta dot={time !== null}>{agent.model}</Meta>}
-          {meta?.turnMode === "plan" ? <Meta className="text-amber">{t("taskAnswers.planning")}</Meta> : null}
+          {meta?.turnMode === "plan" ? <Meta className="text-amber-text">{t("taskAnswers.planning")}</Meta> : null}
           {meta?.turnState === "running" ? <Meta className="text-teal">{t("task.working")}</Meta> : null}
           {meta?.turnState === "failed" ? <Meta className="text-red">{t("task.turnFailed")}</Meta> : null}
           {meta?.stopReason === "cancelled" ? <Meta>{t("task.turnStopped")}</Meta> : null}
@@ -183,7 +183,7 @@ const Composer = ({ interrupt, onSend, reopen = false, hint = null }: { readonly
     );
   };
   return (
-    <ComposerPrimitive.Root data-part="composer" className="rounded-lg border border-line-2 bg-surface px-3.5 py-3 focus-within:border-[#34363a]" onSubmit={(event) => { event.preventDefault(); send(false); }}>
+    <ComposerPrimitive.Root data-part="composer" className="rounded-lg border border-line-2 bg-surface px-3.5 py-3 focus-within:border-line-3" onSubmit={(event) => { event.preventDefault(); send(false); }}>
       <ComposerPrimitive.Input
         onKeyDown={(event) => {
           // Ticket 16: Escape leaves the composer (Enter sends, Shift+Enter is a new line).

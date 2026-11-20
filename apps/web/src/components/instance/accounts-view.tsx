@@ -255,7 +255,7 @@ export const AccountsView = ({ emailOn, hours }: { readonly emailOn: boolean; re
                           type="button"
                           aria-pressed={selected?.userId === account.userId}
                           onClick={() => { setPicked(account.userId); }}
-                          className={cn(grid, "h-[38px] w-full border-b border-line text-left text-ui hover:bg-raise", selected?.userId === account.userId && "bg-sel hover:bg-sel")}
+                          className={cn(grid, "h-[38px] w-full border-b border-line text-left text-ui hover:bg-hover", selected?.userId === account.userId && "bg-sel hover:bg-sel")}
                         >
                           <span className="flex min-w-0 items-center gap-2 pl-2">
                             <span className="truncate text-text">{account.name}</span>

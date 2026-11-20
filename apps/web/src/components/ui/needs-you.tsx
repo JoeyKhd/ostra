@@ -55,11 +55,11 @@ export const NeedsYou = ({ title, children, actions, footer, className, item, fo
       role="group"
       aria-labelledby={titleId}
       tabIndex={focusOnAppear ? -1 : undefined}
-      className={cn("border-l-2 border-amber pl-3 focus:outline-2 focus:outline-offset-2 focus:outline-teal", className)}
+      className={cn("border-l-(length:--rule-needs-you) border-amber pl-3 focus:outline-2 focus:outline-offset-2 focus:outline-teal", className)}
       data-testid={rest["data-testid"] ?? "needs-you"}
       data-item={item}
     >
-      <div id={titleId} className="flex items-center gap-2 text-body font-semibold text-amber">
+      <div id={titleId} className="flex items-center gap-2 text-body font-semibold text-amber-text">
         <HandIcon aria-hidden className="size-[14px] stroke-[1.75]" />
         {title}
       </div>

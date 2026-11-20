@@ -1,8 +1,11 @@
 @import "tailwindcss";
 
 /*
- * The graphite console (context/brand/app-design.md), dark first, as Tailwind 4 theme tokens. A
- * light theme is left for later: it redefines the same variables under [data-theme="light"].
+ * The graphite console (context/brand/app-design.md), dark first, as Tailwind 4 theme tokens. The
+ * light theme (F-082, ticket 18) redefines the colour variables under [data-theme="light"], and again
+ * under `prefers-color-scheme: light` for "match my system" (no `data-theme`). Its values are
+ * context/brand/app-targets/m7/light-home.md's table; theme-tokens.test.ts keeps both blocks equal to
+ * it. `[data-theme="dark"]` takes the dark set too, so a preview can show dark inside a light page.
  *
  * Sizes and contrast follow the approved pictures in context/brand/app-targets/, which are drawn
  * larger and brighter than graphite.css: where a picture and its .md disagree on size, spacing or
@@ -11,7 +14,8 @@
  * (`.auth-scale`).
  */
 
-:root {
+:root,
+[data-theme="dark"] {
   --bg: #0d0e10;
   --side: #0a0b0c;
   --surface: #131416;
@@ -28,15 +32,41 @@
   --green: #4fb286;
   --red: #e5675c;
   --amber: #ffb224;
+  /* Amber as text or a line icon (an approval's title, Home's Needs you numbers): amber itself in
+     dark, a darker amber in light, where amber is only ever a fill (light-home.md, rule 2). */
+  --amber-text: #ffb224;
+  /* Text and icons on an amber fill, and on the one primary fill (`New task`, `Send`). */
+  --on-amber: #0c1d21;
+  --primary: #f3f0e8;
+  --on-primary: #0c1d21;
   --shell: #f3f0e8;
   --ink: #0c1d21;
   --mist: #cfd8d4;
-  /* Chart marks (insights.md): Mist for the main series, a quieter grey above 3:1 for the second. */
+  /* Chart marks (insights.md): Mist for the main series, a quieter grey above 3:1 for the second;
+     Home's "today" bar is `--chart-now`. Meters are a `--meter` fill on a `--line` or `--line-2` track. */
   --chart: #cfd8d4;
   --chart-2: #62656b;
+  --chart-now: #2a2c30;
+  --meter: #cfd8d4;
   /* The diff's line fills (task-changes.md): --green and --red at 10%. */
-  --add-bg: rgba(79, 178, 134, 0.1);
-  --del-bg: rgba(229, 103, 92, 0.1);
+  --diff-add: rgba(79, 178, 134, 0.1);
+  --diff-del: rgba(229, 103, 92, 0.1);
+  /* A field's border while it has focus (the composers). */
+  --line-3: #34363a;
+  /* A row's hover where the row sits on the page (`--raise` in dark, invisible on the light page). */
+  --hover: #17181b;
+  /* The dots' edge: a 3px halo in dark; in light a 1px inner ring, so a 7px dot keeps its edge. */
+  --dot-amber: 0 0 0 3px rgba(255, 178, 36, 0.15);
+  --dot-green: 0 0 0 3px rgba(79, 178, 134, 0.15);
+  /* The needs-you rule on the left of an approval, a question or a cap: 2px dark, 3px light. */
+  --rule-needs-you: 2px;
+  /* Overlays only (menus, popovers, dialogs, tooltips; the palette's is larger), and a dialog's scrim. */
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-palette: 0 16px 48px rgba(0, 0, 0, 0.5);
+  --scrim: rgba(0, 0, 0, 0.6);
+  /* The Hinge and the lockup: the Shell exports on dark, the Abyss ones on light. */
+  --logo-mark: url("/brand/ostra-mark-fit.svg");
+  --logo-lockup: url("/brand/lockup-horizontal-shell.svg");
 
   /* The type scale. Body is 14.5px, secondary 13px, small 12px; mono uses the same steps. */
   --fs-xs: 12px;
@@ -46,6 +76,88 @@
   --fs-lede: 15px;
   --fs-title: 26px;
   color-scheme: dark;
+}
+
+/* The light theme (F-082): light-home.md's table, the dark graphite turned light. The same block
+   twice, for a member who chose light and for "match my system" on a light system. */
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #fafafb;
+  --side: #f3f3f5;
+  --surface: #f3f3f5;
+  --raise: #ffffff;
+  --line: #e3e4e7;
+  --line-2: #d0d2d6;
+  --text: #141518;
+  --text-2: #2b2d32;
+  --muted: #4a4d53;
+  --faint: #62656b;
+  --sel: #e8e9ec;
+  --teal: #1f6b5e;
+  --green: #25734f;
+  --red: #b4382d;
+  --amber: #ffb224;
+  --amber-text: #8a5300;
+  --on-amber: #141518;
+  --primary: #141518;
+  --on-primary: #fafafb;
+  --chart: #7f8288;
+  --chart-2: #4a4d53;
+  --chart-now: rgba(127, 130, 136, 0.45);
+  --meter: #4a4d53;
+  --diff-add: #e6f2ea;
+  --diff-del: #fbe9e6;
+  --line-3: #9a9da3;
+  --hover: rgba(232, 233, 236, 0.6);
+  --dot-amber: inset 0 0 0 1px rgba(138, 83, 0, 0.55);
+  --dot-green: 0 0 0 3px rgba(37, 115, 79, 0.15);
+  --rule-needs-you: 3px;
+  --shadow-pop: 0 8px 24px rgba(13, 14, 16, 0.12);
+  --shadow-palette: 0 16px 48px rgba(13, 14, 16, 0.16);
+  --scrim: rgba(13, 14, 16, 0.4);
+  --logo-mark: url("/brand/ostra-mark-fit-abyss.svg");
+  --logo-lockup: url("/brand/lockup-horizontal-abyss.svg");
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+    --bg: #fafafb;
+    --side: #f3f3f5;
+    --surface: #f3f3f5;
+    --raise: #ffffff;
+    --line: #e3e4e7;
+    --line-2: #d0d2d6;
+    --text: #141518;
+    --text-2: #2b2d32;
+    --muted: #4a4d53;
+    --faint: #62656b;
+    --sel: #e8e9ec;
+    --teal: #1f6b5e;
+    --green: #25734f;
+    --red: #b4382d;
+    --amber: #ffb224;
+    --amber-text: #8a5300;
+    --on-amber: #141518;
+    --primary: #141518;
+    --on-primary: #fafafb;
+    --chart: #7f8288;
+    --chart-2: #4a4d53;
+    --chart-now: rgba(127, 130, 136, 0.45);
+    --meter: #4a4d53;
+    --diff-add: #e6f2ea;
+    --diff-del: #fbe9e6;
+    --line-3: #9a9da3;
+    --hover: rgba(232, 233, 236, 0.6);
+    --dot-amber: inset 0 0 0 1px rgba(138, 83, 0, 0.55);
+    --dot-green: 0 0 0 3px rgba(37, 115, 79, 0.15);
+    --rule-needs-you: 3px;
+    --shadow-pop: 0 8px 24px rgba(13, 14, 16, 0.12);
+    --shadow-palette: 0 16px 48px rgba(13, 14, 16, 0.16);
+    --scrim: rgba(13, 14, 16, 0.4);
+    --logo-mark: url("/brand/ostra-mark-fit-abyss.svg");
+    --logo-lockup: url("/brand/lockup-horizontal-abyss.svg");
+  }
 }
 
 @theme inline {
@@ -64,11 +176,18 @@
   --color-green: var(--green);
   --color-red: var(--red);
   --color-amber: var(--amber);
+  --color-amber-text: var(--amber-text);
+  --color-on-amber: var(--on-amber);
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+  --color-meter: var(--meter);
+  --color-line-3: var(--line-3);
+  --color-hover: var(--hover);
   --color-shell: var(--shell);
   --color-ink: var(--ink);
   --color-mist: var(--mist);
-  --color-add-bg: var(--add-bg);
-  --color-del-bg: var(--del-bg);
+  --color-diff-add: var(--diff-add);
+  --color-diff-del: var(--diff-del);
 
   /* The faces come from next/font (src/app/fonts.ts), which sets these variables on <html>. */
   --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
@@ -121,6 +240,26 @@
     --fs-lede: 13.5px;
     --fs-title: 24px;
     font-size: var(--fs-body);
+  }
+  /* In light, the auth pages keep their scale and take the light set's text colours. */
+  [data-theme="light"] .auth-scale {
+    --text: #141518;
+    --muted: #4a4d53;
+    --faint: #62656b;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme]) .auth-scale {
+      --text: #141518;
+      --muted: #4a4d53;
+      --faint: #62656b;
+      }
+  }
+  /* The logos, drawn from the theme's tokens, so the right one paints first (no swap on hydration). */
+  .logo-mark {
+    background: var(--logo-mark) center / contain no-repeat;
+  }
+  .logo-lockup {
+    background: var(--logo-lockup) left center / contain no-repeat;
   }
   :focus-visible {
     outline: 2px solid var(--teal);

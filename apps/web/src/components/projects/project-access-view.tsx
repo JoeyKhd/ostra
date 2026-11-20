@@ -229,7 +229,7 @@ export const ProjectAccessView = ({ projectId }: { readonly projectId: ProjectId
               >
                 {(["open", "restricted"] as const).map((value) => (
                   <label key={value} htmlFor={`access-${value}`} className={cn("flex min-h-12 cursor-pointer flex-wrap items-center gap-x-3 gap-y-0.5 rounded-md px-2.5 py-2", mode === value && "bg-sel")}>
-                    <RadioGroupItem id={`access-${value}`} value={value} disabled={setAccess.isPending} className="size-4 data-[state=checked]:border-shell data-[state=checked]:bg-shell [&>span]:bg-ink" />
+                    <RadioGroupItem id={`access-${value}`} value={value} disabled={setAccess.isPending} className="size-4 data-[state=checked]:border-primary data-[state=checked]:bg-primary [&>span]:bg-on-primary" />
                     <span className="flex items-center gap-1.5 text-ui font-medium text-text">
                       {value === "restricted" ? <LockIcon aria-hidden className="size-[13px] stroke-[1.75]" /> : null}
                       {value === "open" ? t("access.open") : t("access.restricted")}

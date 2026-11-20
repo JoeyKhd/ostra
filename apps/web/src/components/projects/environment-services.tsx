@@ -73,7 +73,7 @@ const RemoveButton = ({ label, onClick }: { readonly label: string; readonly onC
   <button
     type="button"
     aria-label={label}
-    className="inline-grid size-6 place-items-center rounded-sm text-faint hover:bg-raise hover:text-red"
+    className="inline-grid size-6 place-items-center rounded-sm text-faint hover:bg-hover hover:text-red"
     onClick={(event) => {
       event.stopPropagation();
       onClick();
@@ -94,7 +94,7 @@ const AddButton = ({ children, onClick }: { readonly children: ReactNode; readon
 const openProps = (open: () => void, label: string) => ({
   tabIndex: 0,
   "aria-label": label,
-  className: "cursor-pointer hover:bg-raise focus-visible:bg-raise focus-visible:outline-none",
+  className: "cursor-pointer hover:bg-hover focus-visible:bg-hover focus-visible:outline-none",
   onClick: open,
   onKeyDown: (event: KeyboardEvent<HTMLTableRowElement>) => {
     if (event.key === "Enter") {
@@ -527,7 +527,7 @@ export const ServicesAndChecks = ({ projectId, view, admin }: { readonly project
                       },
                     }
                   : {})}
-                className={cn("cursor-pointer hover:bg-raise focus-visible:bg-raise focus-visible:outline-none", dragging === index && "opacity-50")}
+                className={cn("cursor-pointer hover:bg-hover focus-visible:bg-hover focus-visible:outline-none", dragging === index && "opacity-50")}
               >
                 <TableCell className="h-10">
                   {reorderable ? (

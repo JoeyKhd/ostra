@@ -94,7 +94,7 @@ const AddRepo = ({ projectId, taken, full }: { readonly projectId: ProjectId; re
                   aria-selected={false}
                   disabled={add.isPending}
                   onClick={() => { add.mutate({ projectId, fullName: repo.fullName }); }}
-                  className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left hover:bg-raise"
+                  className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left hover:bg-hover"
                 >
                   <span className="min-w-0 flex-1 truncate font-mono text-ui text-text">{repo.fullName}</span>
                   {repo.private ? <LockIcon aria-hidden className="size-3 text-faint" /> : null}
@@ -281,7 +281,7 @@ export const ProjectReposView = ({ projectId, maxRepos }: { readonly projectId: 
                     setDragging(null);
                   }}
                 >
-                  <div className={cn("my-1 flex items-start gap-2 rounded-md px-1.5 py-2 hover:bg-raise", selected?.repo.repoId === repo.repoId && "bg-sel hover:bg-sel")}>
+                  <div className={cn("my-1 flex items-start gap-2 rounded-md px-1.5 py-2 hover:bg-hover", selected?.repo.repoId === repo.repoId && "bg-sel hover:bg-sel")}>
                     {admin ? (
                       <button
                         type="button"

@@ -520,7 +520,7 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
                               {admin ? (
                                 <button
                                   type="button"
-                                  className="inline-grid size-6 place-items-center rounded-sm text-faint hover:bg-raise hover:text-red"
+                                  className="inline-grid size-6 place-items-center rounded-sm text-faint hover:bg-hover hover:text-red"
                                   aria-label={t("common.remove")}
                                   onClick={() => { setRows((current) => current.filter((r) => r.key !== row.key)); }}
                                 >

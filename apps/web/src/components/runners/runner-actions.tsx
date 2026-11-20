@@ -120,8 +120,8 @@ export const RunnerConfirm = ({ runner, action, own, onClose }: { readonly runne
   return (
     <Dialog.Root open={action !== null} onOpenChange={(open) => { if (!open && !busy) { current?.reset(); onClose(); } }}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/60" />
-        <Dialog.Content data-testid="runner-confirm" className="fixed left-1/2 top-1/2 z-50 w-[min(420px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line-2 bg-raise p-5 shadow-[0_8px_24px_rgba(0,0,0,0.45)] focus:outline-none">
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-(--scrim)" />
+        <Dialog.Content data-testid="runner-confirm" className="fixed left-1/2 top-1/2 z-50 w-[min(420px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line-2 bg-raise p-5 shadow-(--shadow-pop) focus:outline-none">
           <Dialog.Title className="text-[16.5px] font-semibold text-text">{words?.title}</Dialog.Title>
           <Dialog.Description className="mt-1.5 text-sm text-muted">{words?.body}</Dialog.Description>
           {current?.error === null || current === null ? null : <p role="alert" className="mt-3 text-[12.5px] text-red">{errorText(current.error)}</p>}

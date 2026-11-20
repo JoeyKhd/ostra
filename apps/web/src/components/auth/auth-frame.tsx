@@ -16,7 +16,7 @@ export const AuthFrame = ({ children }: { readonly children: ReactNode }) => (
   <div className="auth-scale grid h-dvh min-[960px]:grid-cols-[clamp(440px,41%,600px)_minmax(0,1fr)]">
     <div className="flex min-h-0 min-w-0 flex-col bg-bg min-[960px]:border-r min-[960px]:border-line">
       <header className="shrink-0 px-[16px] pt-[16px] min-[420px]:px-[32px] min-[420px]:pt-[32px]">
-        <img src="/brand/lockup-horizontal-shell.svg" alt="ostra" className="block h-[22px] w-auto" />
+        <span role="img" aria-label="ostra" className="logo-lockup block h-[22px] w-[104px]" />
       </header>
       {/* A size container: the form's guide is half of what's left of this row after the 300px box. */}
       <main className="min-h-0 flex-1 overflow-y-auto px-[16px] [container-type:size]">

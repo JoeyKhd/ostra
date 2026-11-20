@@ -155,7 +155,7 @@ export const PrChart = ({ days, endsToday, narrow }: { readonly days: readonly P
       {activeDay === undefined || active === null ? null : (
         <div
           role="status"
-          className="pointer-events-none absolute top-0 z-10 rounded-md border border-line-2 bg-raise px-2.5 py-1.5 text-sm shadow-[0_8px_24px_rgba(0,0,0,0.45)]"
+          className="pointer-events-none absolute top-0 z-10 rounded-md border border-line-2 bg-raise px-2.5 py-1.5 text-sm shadow-(--shadow-pop)"
           style={{ left: `${String(Math.min(82, Math.max(0, ((active + 0.5) / count) * 100 - 8)))}%` }}
           data-testid="pr-chart-tip"
         >
@@ -203,12 +203,12 @@ export const PrTable = ({ days }: { readonly days: readonly PrDay[] }) => (
   </div>
 );
 
-/** A 4px meter: `--chart` on `--line-2`. */
+/** A 4px meter: `--meter` on `--line-2`. */
 export const Meter = ({ value, max, className }: { readonly value: number; readonly max: number; readonly className?: string }) => {
   const share = max <= 0 ? 0 : Math.min(1, value / max);
   return (
     <div className={cn("h-1 w-full overflow-hidden rounded-[2px] bg-line-2", className)} role="presentation">
-      <div className="h-full rounded-[2px] bg-[var(--chart)]" style={{ width: `${String(Math.round(share * 1000) / 10)}%` }} />
+      <div className="h-full rounded-[2px] bg-meter" style={{ width: `${String(Math.round(share * 1000) / 10)}%` }} />
     </div>
   );
 };

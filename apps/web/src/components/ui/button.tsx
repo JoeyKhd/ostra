@@ -15,8 +15,8 @@ export const buttonVariants = cva(
     variants: {
       variant: {
         outline: "border-line-2 bg-surface text-text hover:bg-sel",
-        primary: "border-shell bg-shell font-semibold text-ink hover:bg-[#e6e2d8]",
-        amber: "border-amber bg-amber font-semibold text-ink hover:brightness-95",
+        primary: "border-primary bg-primary font-semibold text-on-primary hover:border-primary/88 hover:bg-primary/88",
+        amber: "border-amber bg-amber font-semibold text-on-amber hover:brightness-95",
         danger: "border-line-2 bg-surface text-red hover:bg-sel",
         ghost: "border-transparent bg-transparent text-muted hover:bg-sel hover:text-text",
         link: "h-auto border-transparent bg-transparent p-0 text-teal hover:underline",

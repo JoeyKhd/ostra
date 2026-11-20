@@ -115,7 +115,7 @@ export const BudgetBar = ({ spent, budget, warnPercent, height, label }: { reado
       data-state={budget === null ? "none" : reached ? "reached" : "under"}
     >
       {budget === null ? null : (
-        <span className={cn("absolute inset-y-0 left-0", height === 8 ? "rounded-[4px]" : "rounded-[3px]", reached ? "w-full bg-red" : "bg-[var(--chart)]")} style={reached ? undefined : { width: `${String(Math.round(share * 1000) / 10)}%` }} />
+        <span className={cn("absolute inset-y-0 left-0", height === 8 ? "rounded-[4px]" : "rounded-[3px]", reached ? "w-full bg-red" : "bg-meter")} style={reached ? undefined : { width: `${String(Math.round(share * 1000) / 10)}%` }} />
       )}
       {tick === null ? null : (
         <span aria-hidden className={cn("absolute -inset-y-[3px] w-px", reached ? "bg-text" : "bg-faint")} style={{ left: `${String(Math.round(tick * 1000) / 10)}%` }} />
@@ -216,7 +216,7 @@ const ProjectsTable = ({ rows, selected, onSelect, warnPercent, past }: {
                   select();
                 }
               }}
-              className={cn("h-10", id !== null && "cursor-pointer hover:bg-raise", isSelected && "bg-sel hover:bg-sel")}
+              className={cn("h-10", id !== null && "cursor-pointer hover:bg-hover", isSelected && "bg-sel hover:bg-sel")}
             >
               <TableCell className="pl-1">
                 <span className="flex min-w-0 items-center gap-2.5">
@@ -337,7 +337,7 @@ const ModelsTable = ({ lines, selected, onSelect }: { readonly lines: readonly M
                   select();
                 }
               }}
-              className={cn("h-9 cursor-pointer hover:bg-raise", isSelected && "bg-sel hover:bg-sel")}
+              className={cn("h-9 cursor-pointer hover:bg-hover", isSelected && "bg-sel hover:bg-sel")}
             >
               <TableCell className="pl-1">
                 <ModelName line={line} />

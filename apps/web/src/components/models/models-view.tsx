@@ -204,7 +204,7 @@ export const ModelsView = () => {
                       key={model.id}
                       data-model={model.endpointModelId}
                       onClick={() => { setSelection({ kind: "model", providerId: provider.id, modelId: model.id }); }}
-                      className={cn("h-10 cursor-pointer border-b border-line hover:bg-raise", on && "bg-sel hover:bg-sel")}
+                      className={cn("h-10 cursor-pointer border-b border-line hover:bg-hover", on && "bg-sel hover:bg-sel")}
                     >
                       <td className="pr-3">
                         <span className="flex items-center gap-2.5">

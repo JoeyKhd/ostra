@@ -35,13 +35,13 @@ describe("the checklist's Linear step", () => {
     expect(row).toContain('data-tick="current"');
     expect(row).toContain(t("checklist.linear.skip"));
     expect(row).toContain('href="/organization/linear"');
-    expect(row).toContain("bg-shell");
+    expect(row).toContain("bg-primary");
   });
 
   it("open but not next: an outline button", () => {
     const row = linearRow(render("open", "model-provider"));
     expect(row).toContain('data-tick="later"');
-    expect(row).not.toContain("bg-shell");
+    expect(row).not.toContain("bg-primary");
     expect(row).toContain(t("checklist.linear.skip"));
   });
 
@@ -62,7 +62,7 @@ describe("the checklist's Linear step", () => {
     const row = linearRow(render("failed", "linear"));
     expect(row).toContain(t("checklist.linear.failed"));
     expect(row).toContain(t("checklist.linear.authorizeAgain"));
-    expect(row).not.toContain("bg-shell");
+    expect(row).not.toContain("bg-primary");
   });
 
   it("skipped: a dashed circle, the skipped body and a link to connect it later", () => {
@@ -70,7 +70,7 @@ describe("the checklist's Linear step", () => {
     expect(row).toContain('data-tick="skipped"');
     expect(row).toContain(t("checklist.linear.skipped"));
     expect(row).toContain('href="/organization/linear"');
-    expect(row).not.toContain("bg-shell");
+    expect(row).not.toContain("bg-primary");
   });
 
   it("done: ticked, no action", () => {
