@@ -105,7 +105,11 @@ export const approvalReceipt = (approval: ApprovalView): string | null => {
         return approval.decision satisfies never;
     }
   }
-  if (approval.state === "answered_by_rule") return approval.rule === null ? t("taskAnswers.receipt.byRule") : t("taskAnswers.receipt.byNamedRule", { rule: approval.rule.name });
+  // Answered by a task rule: that rule's pattern, from the row's `ruleId` (ticket 43's decision), not the rule that asked.
+  if (approval.state === "answered_by_rule") {
+    if (approval.byTaskRule !== null) return t("taskAnswers.receipt.byNamedRule", { rule: approval.byTaskRule.pattern });
+    return approval.rule === null ? t("taskAnswers.receipt.byRule") : t("taskAnswers.receipt.byNamedRule", { rule: approval.rule.name });
+  }
   if (approval.state === "closed") return approval.closedReason === "expired" ? t("taskAnswers.receipt.expired") : t("taskAnswers.receipt.cancelled");
   return null;
 };

@@ -98,6 +98,11 @@ export const loadApprovalsAndPlan = async (deps: ApiDeps, task: TaskRow) => {
   const nameOf = (memberId: string | null): { readonly memberId: ReturnType<typeof memberIdSchema.parse>; readonly name: string } | null =>
     memberId === null ? null : { memberId: memberIdSchema.parse(memberId), name: members.find((member) => member.id === memberId)?.user.name ?? "" };
 
+  const byTaskRuleOf = (row: (typeof approvals)[number]): { readonly tool: string; readonly pattern: string } | null => {
+    if (row.state !== "answered_by_rule" || row.ruleSource !== "task" || row.ruleId === null) return null;
+    const rule = taskRules.find((one) => one.id === row.ruleId);
+    return rule === undefined ? null : { tool: rule.tool, pattern: rule.pattern };
+  };
   const view = (row: (typeof approvals)[number]) => {
     const requestedEvent = requestOf.get(row.id);
     const options = z.array(approvalOptionSchema).safeParse(row.options);
@@ -116,6 +121,11 @@ export const loadApprovalsAndPlan = async (deps: ApiDeps, task: TaskRow) => {
       options: options.success ? options.data : [],
       /** The rule "Approve for this task" would add, or `null` when the subject gives none (the card then offers no such button). */
       forThisTask: taskRulePreviewOf(subject),
+      /**
+       * The task rule that answered it (`answered_by_rule` from `approval.auto_answered`, whose `ruleId`
+       * the row keeps): its tool and pattern, for "Approved by this task's rule …" (ticket 43). `null` otherwise.
+       */
+      byTaskRule: byTaskRuleOf(row),
       decision: row.decision,
       answeredBy: nameOf(row.answeredByMemberId),
       /** A deny's reason: shown to every member who can open the task (ticket 35's decision). */
