@@ -117,15 +117,17 @@ export const createEmailChannel = (deps: EmailChannelDeps): EmailChannel & { rea
       return { fingerprint: "off", config: { provider: "off" } };
     }
     const fingerprint = `${row.provider}:${String(row.updatedAt.getTime())}`;
-    if (row.fromAddress === null || row.secretsOrganizationId === null) {
+    if (row.fromAddress === null) {
       return { failed: "the email settings are incomplete" };
     }
     const from = row.fromAddress;
     const fromName = row.fromName ?? settings.fromName;
-    const organizationId = organizationIdSchema.parse(row.secretsOrganizationId);
+    // Set only once a secret was saved: an SMTP relay with no password (a local relay, the dev mail
+    // sink) has none, and needs none.
+    const organizationId = row.secretsOrganizationId === null ? null : organizationIdSchema.parse(row.secretsOrganizationId);
     const secret = async (value: string | null): Promise<string | null> => {
       const ref = value === null ? null : secretRefSchema.safeParse(value);
-      if (ref?.success !== true) {
+      if (ref?.success !== true || organizationId === null) {
         return null;
       }
       const read = await deps.secretStore.get(organizationId, ref.data);

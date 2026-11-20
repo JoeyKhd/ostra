@@ -368,6 +368,26 @@ describe("switching providers", () => {
     deps.close();
   });
 
+  it("F-115: an SMTP relay with no user and no password sends: a saved row with no secret is complete", async () => {
+    const relay = await startFakeSmtpServer({ starttls: "none", auth: null });
+    const deps = depsFor();
+    try {
+      const saved = await saveEmailSettings(deps, admin(), { ...smtpSettings, port: relay.port, secure: "none", user: null, password: null });
+      expect(saved).toMatchObject({ ok: true, provider: "smtp" });
+      const row = await test.db.emailSettings.findUniqueOrThrow({ where: { id: "instance" } });
+      expect(row.smtpPasswordSecretRef).toBeNull();
+      const { taskId, projectId } = await makeTask({ driver: fixture.a.member });
+      const item = await newItem(taskId, projectId, "question", "driver");
+      await fanout(item, "created", deps);
+      await deliverQueued(deps);
+      expect(relay.received).toHaveLength(1);
+      expect((await emailsOf(item))[0]).toMatchObject({ state: "sent", adapter: "smtp" });
+    } finally {
+      deps.close();
+      await relay.close();
+    }
+  });
+
   it("F-115: secrets go into the secret store, and the row, the audit entry and the logs keep none", async () => {
     const deps = depsFor();
     await saveEmailSettings(deps, admin(), { ...smtpSettings, port: smtp.port });
