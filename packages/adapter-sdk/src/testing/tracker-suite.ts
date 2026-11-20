@@ -251,6 +251,8 @@ const defineMilestone6Cases = (subject: () => { readonly adapter: TrackerAdapter
     const { adapter, fixture } = subject();
     const { seedTicket } = fixture;
     if (seedTicket === undefined || fixture.hooks === undefined) {
+      // An adapter that declares sub-issues gives the suite what it needs to check them.
+      expect(adapter.capabilities.subIssues, "an adapter that declares subIssues gives the suite seedTicket and its hooks").toBe(false);
       context.skip();
       return;
     }

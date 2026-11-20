@@ -130,7 +130,8 @@ export class TinyTracker extends TrackerAdapter {
   readonly name: string = "tiny-tracker";
   readonly capabilities = {
     agentSessions: false,
-    subIssues: true,
+    // Its `createTicket` and `getTicketContext` answer `unsupported`: no sub-issues either.
+    subIssues: false,
     statusGraph: true,
     webhooks: false,
     commentEdit: false,
