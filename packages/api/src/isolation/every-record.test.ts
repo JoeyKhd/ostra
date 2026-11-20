@@ -142,6 +142,9 @@ const procedures: Readonly<Record<string, { readonly input: InputOf; readonly ab
   "boards.available": { input: project, about: "project" },
   "boards.get": { input: project, about: "project" },
   "diff.comments.list": { input: task, about: "project" },
+  // Milestone 6 (ticket 27): the fixture's task is a code task, which has no draft: `NOT_FOUND`. The drafts
+  // tests call it on refine tasks of another organization and of a restricted project.
+  "drafts.get": { input: (target) => ({ taskId: row(target, "Task"), version: null }), about: "project" },
   "diff.get": { input: task, about: "project" },
   "email.on": { input: none, about: "organization" },
   "email.settings.get": { input: none, about: "organization" },
@@ -311,8 +314,8 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   BulkStartItem: [],
   AgentSession: [],
   AgentActivity: [],
-  RefineDraft: [],
-  RefineDraftImage: [],
+  RefineDraft: ["drafts.get"],
+  RefineDraftImage: ["drafts.get"],
   CiRun: [],
   TaskRound: [],
   ReviewRun: [],
@@ -546,6 +549,8 @@ const matrix: Readonly<Record<string, readonly [Outcome, Outcome, Outcome, Outco
   "boards.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "diff.comments.list": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "diff.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  // The fixture's task is a code task: it has no draft for anyone (ticket 27's tests hold the roles on a refine task).
+  "drafts.get": ["NOT_FOUND", "NOT_FOUND", "NOT_FOUND", "NOT_FOUND", "NOT_FOUND"],
   "email.on": ["ok", "ok", "ok", "ok", "ok"],
   "email.settings.get": ["FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "email.status": ["ok", "ok", "ok", "ok", "ok"],

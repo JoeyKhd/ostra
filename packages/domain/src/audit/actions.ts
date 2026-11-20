@@ -23,6 +23,8 @@ export const auditActions = {
   "draft.edited": "task",
   "draft.applied": "task",
   "draft.marked-ready": "task",
+  // Milestone 6 (F-099, ticket 27): "Create ticket" from a prompt refine task's draft.
+  "draft.ticket-created": "task",
   "task.rejected": "task",
   "checks.fix-asked": "task",
   "diff.comments-sent": "task",

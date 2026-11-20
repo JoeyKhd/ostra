@@ -15,8 +15,8 @@ import { z } from "zod";
 /** Where core takes the panel's blobs. */
 export const PANEL_BLOB_PATH = "/panel/v1/blobs";
 
-/** What the panel may store for a member: a skill's file, today. A word, never content. */
-export const PANEL_BLOB_PURPOSES = ["skill-file"] as const;
+/** What the panel may store for a member: a skill's file, or a refine draft's image (ticket 27). A word, never content. */
+export const PANEL_BLOB_PURPOSES = ["skill-file", "draft-image"] as const;
 export type PanelBlobPurpose = (typeof PANEL_BLOB_PURPOSES)[number];
 
 /** How long a token lives: a working value. The panel asks core the moment it has made one. */

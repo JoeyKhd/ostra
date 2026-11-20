@@ -27,6 +27,7 @@ import { BUILT_IN_PROFILE_ADAPTER, ensureBuiltInAgentProfile } from "./agent-pro
 import type { UseCaseResult } from "./common.ts";
 import type {
   ApplyDraft,
+  CreateTicketFromDraft,
   EditDraft,
   M6TxDeps,
   MarkTicketReady,
@@ -34,6 +35,8 @@ import type {
   SeedBuiltInProfiles,
 } from "./m6-signatures.ts";
 import { moveTaskInTx } from "./moves.ts";
+import { createTicketForTask } from "./tickets.ts";
+import { draftAsDescription } from "../prompts/m6.ts";
 import { createNeedsYouItemInTx, resolveNeedsYouItemsInTx } from "./needs-you-items.ts";
 import { appendServerEvent } from "./server-events.ts";
 
@@ -48,6 +51,9 @@ import { appendServerEvent } from "./server-events.ts";
 
 /** How many versions one refine task's drafts may have: the agent's and the members' (a working value). */
 export const DRAFT_VERSIONS_MAX = 50;
+
+/** An image of a draft, at most: milestone 2's ticket-image cap (spec section 5.4, `OSTRA_DRAFT_IMAGES_MAX`). */
+export const DRAFT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 
 /** The built-in profiles' names, as the panel shows them. */
 export const BUILT_IN_REFINE_NAME = "Refine";
@@ -312,7 +318,14 @@ type DraftTask = {
   readonly projectId: ProjectId;
   readonly ticketId: string | null;
   readonly boardId: string | null;
+  /** The task is done: its draft went to the tracker, and nothing more changes it (ticket 27). */
+  readonly done: boolean;
+  readonly source: "prompt" | "ticket";
+  readonly title: string;
 };
+
+/** What a member's draft action gets once the task is done (ticket 27): reopen it first. */
+const DONE_MESSAGE = "This refine task is done: reopen it to change its draft";
 
 /** The refine task, locked, and the scope's right to it: any member who can open its project. */
 const lockRefineTaskInTx = async (
@@ -337,6 +350,9 @@ const lockRefineTaskInTx = async (
             projectId: true,
             ticketId: true,
             boardId: true,
+            state: true,
+            source: true,
+            title: true,
             project: { select: { access: true } },
           },
         });
@@ -362,6 +378,9 @@ const lockRefineTaskInTx = async (
       projectId,
       ticketId: task.ticketId,
       boardId: task.boardId,
+      done: task.state === "done",
+      source: task.source,
+      title: task.title,
     },
   };
 };
@@ -374,6 +393,7 @@ export const editDraft: EditDraft = (deps, scope, input) =>
   deps.db.$transaction(async (tx) => {
     const found = await lockRefineTaskInTx(tx, scope, input.taskId);
     if (!found.ok) return found;
+    if (found.task.done) return { ok: false, error: "task-done", message: DONE_MESSAGE };
     const latest = await latestDraftInTx(tx, found.task.id);
     if (latest?.version !== input.baseVersion) {
       return {
@@ -457,11 +477,15 @@ export const addDraftImage = (
   },
   limits: { readonly max: number },
 ): Promise<
-  UseCaseResult<{ readonly version: number }, "forbidden" | "not-found" | "limit-reached">
+  UseCaseResult<
+    { readonly version: number; readonly imageId: string },
+    "forbidden" | "not-found" | "limit-reached" | "task-done"
+  >
 > =>
   deps.db.$transaction(async (tx) => {
     const found = await lockRefineTaskInTx(tx, scope, input.taskId);
     if (!found.ok) return found;
+    if (found.task.done) return { ok: false, error: "task-done", message: DONE_MESSAGE };
     const latest = await latestDraftInTx(tx, found.task.id);
     const blob = await tx.blob.findFirst({
       where: { id: input.blobId, organizationId: scope.organizationId },
@@ -477,7 +501,8 @@ export const addDraftImage = (
         message: `A draft holds at most ${String(limits.max)} images`,
       };
     }
-    await tx.refineDraftImage.create({
+    const image = await tx.refineDraftImage.create({
+      select: { id: true },
       data: {
         organizationId: scope.organizationId,
         projectId: found.task.projectId,
@@ -488,6 +513,37 @@ export const addDraftImage = (
         size: input.size,
       },
     });
+    await deps.notices.emitInTx(tx, {
+      organizationId: scope.organizationId,
+      projectId: found.task.projectId,
+      entity: "task",
+      entityId: found.task.id,
+    });
+    return { ok: true, version: latest.version, imageId: image.id };
+  });
+
+/** A member takes an image off the latest version (ticket 27): its blob stays, as milestone 2's do. */
+export const removeDraftImage = (
+  deps: Pick<M6TxDeps, "notices"> & {
+    readonly db: { readonly $transaction: <T>(run: (tx: Tx) => Promise<T>) => Promise<T> };
+  },
+  scope: MemberScope,
+  input: { readonly taskId: TaskId; readonly imageId: string },
+): Promise<UseCaseResult<{ readonly version: number }, "forbidden" | "not-found" | "task-done">> =>
+  deps.db.$transaction(async (tx) => {
+    const found = await lockRefineTaskInTx(tx, scope, input.taskId);
+    if (!found.ok) return found;
+    if (found.task.done) return { ok: false, error: "task-done", message: DONE_MESSAGE };
+    const latest = await latestDraftInTx(tx, found.task.id);
+    const removed =
+      latest === null
+        ? { count: 0 }
+        : await tx.refineDraftImage.deleteMany({
+            where: { id: input.imageId, draftId: latest.id, organizationId: scope.organizationId },
+          });
+    if (latest === null || removed.count === 0) {
+      return { ok: false, error: "not-found", message: "No such image on the draft" };
+    }
     await deps.notices.emitInTx(tx, {
       organizationId: scope.organizationId,
       projectId: found.task.projectId,
@@ -523,6 +579,7 @@ export const applyDraft: ApplyDraft = (deps, scope, input) =>
   deps.db.$transaction(async (tx) => {
     const found = await lockRefineTaskInTx(tx, scope, input.taskId);
     if (!found.ok) return found;
+    if (found.task.done) return { ok: false, error: "task-done", message: DONE_MESSAGE };
     const latest = await latestDraftInTx(tx, found.task.id);
     if (latest?.version !== input.version) {
       return {
@@ -574,6 +631,7 @@ export const markTicketReady: MarkTicketReady = (deps, scope, input) =>
   deps.db.$transaction(async (tx) => {
     const found = await lockRefineTaskInTx(tx, scope, input.taskId);
     if (!found.ok) return found;
+    if (found.task.done) return { ok: false, error: "task-done", message: DONE_MESSAGE };
     const latest = await latestDraftInTx(tx, found.task.id);
     if (latest === null) {
       return { ok: false, error: "not-applied", message: "There's no draft yet" };
@@ -638,4 +696,72 @@ export const markTicketReady: MarkTicketReady = (deps, scope, input) =>
       entityId: found.task.id,
     });
     return { ok: true, readyAt: latest.readyAt?.getTime() ?? now };
+  });
+
+/**
+ * "Create ticket" on a prompt refine task (F-097's path, ticket 27): the version becomes a new
+ * ticket on one of the project's boards through milestone 2's `create` ticket write. The version is
+ * marked applied, so once `ticket.sync` has made the ticket and linked the task to it, core's
+ * `draft.apply` writes the rest (the images, and the sub-tickets under it). The task is done.
+ */
+export const createTicketFromDraft: CreateTicketFromDraft = (deps, scope, input) =>
+  deps.db.$transaction(async (tx) => {
+    const found = await lockRefineTaskInTx(tx, scope, input.taskId);
+    if (!found.ok) return found;
+    if (found.task.done) return { ok: false, error: "task-done", message: DONE_MESSAGE };
+    if (found.task.source !== "prompt" || found.task.ticketId !== null) {
+      return {
+        ok: false,
+        error: "has-ticket",
+        message: "This draft is of a ticket: update the ticket instead",
+      };
+    }
+    const latest = await latestDraftInTx(tx, found.task.id);
+    if (latest?.version !== input.version) {
+      return {
+        ok: false,
+        error: "stale-version",
+        message: "A newer version of the draft exists: review it first",
+      };
+    }
+    const draft = draftOfRow(latest);
+    if (draft === null) {
+      return { ok: false, error: "not-found", message: "The draft can't be read" };
+    }
+    const made = await createTicketForTask(
+      { ...deps, tx, scope, publicUrl: input.publicUrl },
+      {
+        taskId: found.task.id,
+        boardId: input.boardId,
+        title: found.task.title,
+        description: draftAsDescription(draft, { acceptanceCriteriaField: false }),
+      },
+    );
+    if (!made.ok) {
+      return made.error === "forbidden" || made.error === "not-found"
+        ? { ok: false, error: made.error, message: made.message }
+        : { ok: false, error: "has-ticket", message: made.message };
+    }
+    const now = deps.clock.now();
+    await tx.refineDraft.update({
+      where: { id: latest.id },
+      data: { appliedAt: new Date(now), appliedByMemberId: scope.memberId },
+    });
+    await deps.audit.recordInTx(tx, {
+      organizationId: scope.organizationId,
+      projectId: found.task.projectId,
+      actor: { kind: "member", id: scope.memberId },
+      action: "draft.ticket-created",
+      entity: "task",
+      entityId: found.task.id,
+      data: { version: latest.version, boardId: input.boardId },
+    });
+    await finishRefineInTx(deps, tx, found.task.id, scope.memberId);
+    await deps.notices.emitInTx(tx, {
+      organizationId: scope.organizationId,
+      projectId: found.task.projectId,
+      entity: "task",
+      entityId: found.task.id,
+    });
+    return { ok: true, ticketWriteId: made.ticketWriteId };
   });

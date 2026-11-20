@@ -557,7 +557,7 @@ export const startCore = async (
   trackerTimer.unref();
   // The tracker writer (ticket 15): `ticket.sync` applies each outbox row; the drain sends the rows
   // written where no queue was at hand (a task's move), every 2 s.
-  await jobs.work("ticket.sync", ticketSyncHandler({ db, trackers, clock: systemClock, publicUrl: settings.publicUrl, logger }), { localConcurrency: 4 });
+  await jobs.work("ticket.sync", ticketSyncHandler({ db, trackers, clock: systemClock, publicUrl: settings.publicUrl, logger, jobs }), { localConcurrency: 4 });
   // Notifications (ticket 20): a needs-you moment fans out to its audience, and each channel delivers on its own.
   // Mail goes through the install's own settings when they set it (they lock the panel's choice), else the saved row.
   await syncEmailSettingsRow(db, settings.email);

@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { createLogger, silentLogger } from "@ostra/adapter-sdk";
 import type { CatalogEntry, LogRecord, ModelProviderAdapter, TrackerAdapter } from "@ostra/adapter-sdk";
 import { createJiraSite, JiraFakeAdapter } from "@ostra/adapter-sdk/testing";
-import { parseServerSettings, postgresAuditLog, postgresChangeNotices, profileLimits, systemClock } from "@ostra/domain";
+import { DRAFT_IMAGE_MAX_BYTES, parseServerSettings, postgresAuditLog, postgresChangeNotices, profileLimits, systemClock } from "@ostra/domain";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, SeededMember, TestDatabase } from "@ostra/db/testing";
 import { hashPassword } from "better-auth/crypto";
@@ -36,6 +36,7 @@ import type { MemoryJobQueue, MemoryOutbox } from "./memory-ports.ts";
 // panel does, through the same procedures, middleware and access checks.
 
 const callerFactory = createCallerFactory(appRouter);
+
 
 /** A router caller: what a test calls procedures on. */
 export type AppCaller = ReturnType<typeof callerFactory>;
@@ -178,7 +179,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       read: postgresBlobReader(test.db),
       // Core's blob service stands behind this in a real install: here it is a row, as core writes one.
       upload: async ({ organizationId, purpose, bytes }) => {
-        if (bytes.length > profileLimits.skillFileMaxBytes) {
+        if (bytes.length > (purpose === "draft-image" ? DRAFT_IMAGE_MAX_BYTES : profileLimits.skillFileMaxBytes)) {
           return { kind: "too-large" };
         }
         const row = await test.db.blob.create({

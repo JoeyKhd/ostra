@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { Logger } from "@ostra/adapter-sdk";
-import { createPanelBlobTokens, PANEL_BLOB_PATH, profileLimits } from "@ostra/domain";
+import { createPanelBlobTokens, DRAFT_IMAGE_MAX_BYTES, PANEL_BLOB_PATH, profileLimits } from "@ostra/domain";
 import type { Clock, PanelBlobPurpose, PanelBlobResponse, PanelBlobTokens } from "@ostra/domain";
 
 import { bearerToken } from "../gateway/access-token.ts";
@@ -24,8 +24,8 @@ export type PanelBlobEndpointDeps = {
   readonly logger: Logger;
 };
 
-/** What each purpose may hold, at most: a skill's file is the profile limit's. */
-const capOf = { "skill-file": profileLimits.skillFileMaxBytes } as const satisfies Record<PanelBlobPurpose, number>;
+/** What each purpose may hold, at most: a skill's file is the profile limit's, a draft's image 10 MiB. */
+const capOf = { "skill-file": profileLimits.skillFileMaxBytes, "draft-image": DRAFT_IMAGE_MAX_BYTES } as const satisfies Record<PanelBlobPurpose, number>;
 
 export const handlePanelBlobEndpoint = (deps: PanelBlobEndpointDeps) => {
   const logger = deps.logger.child({ component: "panel-blob-endpoint" });

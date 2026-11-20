@@ -2,8 +2,8 @@ import type { Logger, Ticket, TrackerAdapter } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
 import {
   appendServerEvent,
-  draftAsDescription,
   draftOfRow,
+  draftTicketText,
   seedBuiltInProfiles,
   taskPageUrl,
 } from "@ostra/domain";
@@ -166,17 +166,16 @@ export const draftApplyHandler =
       });
     }
 
-    // 1. The description, with the criteria in their own field where the tracker has one.
-    const criteriaField = caps.ticketFields.acceptanceCriteria;
-    const imagesLine =
-      unattached.length === 0
-        ? ""
-        : `\n\n## Images\n${unattached.map((name) => `- ${name} (in ostra: ${taskUrl})`).join("\n")}`;
+    // 1. The description, with the criteria in their own field where the tracker has one: the
+    // domain's `draftTicketText`, the same text the panel's preview shows (ticket 27).
+    const text = draftTicketText(draft, {
+      acceptanceCriteriaField: caps.ticketFields.acceptanceCriteria,
+      unattachedImages: unattached,
+      taskUrl,
+    });
     const updated = await tracker.updateTicket(boardRef, ref, {
-      description: `${draftAsDescription(draft, { acceptanceCriteriaField: criteriaField })}${imagesLine}`,
-      ...(criteriaField && draft.acceptanceCriteria.length > 0
-        ? { acceptanceCriteria: draft.acceptanceCriteria.map((item) => `- ${item}`).join("\n") }
-        : {}),
+      description: text.description,
+      ...(text.acceptanceCriteria === null ? {} : { acceptanceCriteria: text.acceptanceCriteria }),
     });
     if (!updated.ok) fail("writing the description", updated.error.code);
 

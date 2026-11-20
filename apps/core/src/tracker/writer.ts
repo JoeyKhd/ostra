@@ -13,10 +13,10 @@ import {
   ticketWritePayloadSchema,
   writeTicketStepsInTx,
 } from "@ostra/domain";
-import type { Clock, TicketWritePayload } from "@ostra/domain";
+import type { Clock, JobQueue, TicketWritePayload } from "@ostra/domain";
 import { queueSettings } from "@ostra/jobs";
 import type { JobHandler, Jobs } from "@ostra/jobs";
-import { connectionIdSchema, externalTicketIdSchema, organizationIdSchema, taskIdSchema, ticketKeySchema, ticketWriteIdSchema } from "@ostra/protocol";
+import { connectionIdSchema, draftIdSchema, externalTicketIdSchema, organizationIdSchema, taskIdSchema, ticketKeySchema, ticketWriteIdSchema } from "@ostra/protocol";
 import type { OrganizationId, TicketWriteId } from "@ostra/protocol";
 
 import { z } from "zod";
@@ -43,6 +43,11 @@ export type TicketWriterDeps = {
   /** The panel's address, for the task's link and the progress comment. */
   readonly publicUrl: string;
   readonly logger: Logger;
+  /**
+   * The jobs a write leads to: a prompt refine task's "Create ticket" (F-099, ticket 27) sends its
+   * draft's `draft.apply` once the ticket exists. Without it, no follow-up job is sent.
+   */
+  readonly jobs?: Pick<JobQueue, "enqueueInTx">;
   /** The organization's idempotency store; the default is Postgres. */
   readonly idempotency?: (organizationId: OrganizationId) => IdempotencyStore;
   /**
@@ -407,6 +412,20 @@ const adoptCreatedTicket = async (
       const taskId = taskIdSchema.parse(row.taskId);
       // The new ticket gets the task's link and the progress comment, written with the link.
       await writeTicketStepsInTx({ tx }, { taskId, trigger: { kind: "task-started", taskUrl: taskUrlOf(deps.publicUrl, taskId), taskTitle: ticket.title } });
+      // A refine task's draft a member sent with "Create ticket": the rest of it (its images and its
+      // sub-tickets under the new ticket) goes out now, through `draft.apply`, once per version.
+      const draft = await tx.refineDraft.findFirst({
+        where: { taskId, organizationId: row.organizationId, appliedAt: { not: null }, task: { kind: "refine" } },
+        orderBy: { version: "desc" },
+        select: { id: true, version: true },
+      });
+      if (draft !== null && deps.jobs !== undefined) {
+        await deps.jobs.enqueueInTx(tx, "draft.apply", {
+          organizationId: organizationIdSchema.parse(row.organizationId),
+          draftId: draftIdSchema.parse(draft.id),
+          version: draft.version,
+        });
+      }
     }
   });
 };

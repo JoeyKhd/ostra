@@ -48,7 +48,8 @@ export type ApiSettings = Pick<
   // Milestone 7: the setup checklist's links to the docs (ticket 24).
   | "docsUrl"
   // Milestone 6: the schedule editor's minimum interval, the bulk start's and the sub-issues' limits
-  // (tickets 24 and 25), with the rest of milestone 6's working values.
+  // (tickets 24 and 25), with the rest of milestone 6's working values: the refine draft's image limit (ticket 27) and
+  // the review settings' round limits (ticket 28).
   | "team"
 >;
 

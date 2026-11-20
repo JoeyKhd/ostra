@@ -27,6 +27,7 @@ import type {
   TaskRepoId,
   TicketId,
   TicketKey,
+  TicketWriteId,
 } from "@ostra/protocol";
 
 import type { MemberScope } from "../access.ts";
@@ -273,26 +274,26 @@ export type EditDraft = (
   deps: M6Deps,
   scope: MemberScope,
   input: { readonly taskId: TaskId; readonly baseVersion: number; readonly draft: RefineDraft },
-) => Promise<UseCaseResult<{ readonly draftId: DraftId; readonly version: number }, "forbidden" | "not-found" | "conflict" | "invalid-input">>;
+) => Promise<UseCaseResult<{ readonly draftId: DraftId; readonly version: number }, "forbidden" | "not-found" | "conflict" | "invalid-input" | "task-done">>;
 
 /** "Update ticket": the version, through the ticket outbox; sub-tickets as sub-issues. */
 export type ApplyDraft = (
   deps: M6Deps,
   scope: MemberScope,
   input: { readonly taskId: TaskId; readonly version: number },
-) => Promise<UseCaseResult<{ readonly appliedAt: number }, "forbidden" | "not-found" | "stale-version" | "no-ticket">>;
+) => Promise<UseCaseResult<{ readonly appliedAt: number }, "forbidden" | "not-found" | "stale-version" | "no-ticket" | "task-done">>;
 
 export type MarkTicketReady = (
   deps: M6Deps,
   scope: MemberScope,
   input: { readonly taskId: TaskId },
-) => Promise<UseCaseResult<{ readonly readyAt: number }, "forbidden" | "not-found" | "not-applied" | "no-ready-status">>;
+) => Promise<UseCaseResult<{ readonly readyAt: number }, "forbidden" | "not-found" | "not-applied" | "no-ready-status" | "task-done">>;
 
 export type CreateTicketFromDraft = (
   deps: M6Deps,
   scope: MemberScope,
-  input: { readonly taskId: TaskId; readonly version: number; readonly boardId: BoardId },
-) => Promise<UseCaseResult<{ readonly ticketKey: TicketKey }, "forbidden" | "not-found" | "stale-version">>;
+  input: { readonly taskId: TaskId; readonly version: number; readonly boardId: BoardId; readonly publicUrl: string },
+) => Promise<UseCaseResult<{ readonly ticketWriteId: TicketWriteId }, "forbidden" | "not-found" | "stale-version" | "has-ticket" | "task-done">>;
 
 // ---------- the review loop (F-035, F-100, F-101, F-102, F-105, F-111; tickets 16 to 20) ----------
 

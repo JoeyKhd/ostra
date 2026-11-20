@@ -2,6 +2,7 @@ import { router } from "../trpc/init.ts";
 import { automationsRouter } from "./automations.ts";
 import { boardsRouter } from "./boards.ts";
 import { diffRouter } from "./diff.ts";
+import { draftsRouter } from "./drafts.ts";
 import { emailRouter } from "./email.ts";
 import { environmentsRouter } from "./environments.ts";
 import { githubRouter } from "./github.ts";
@@ -75,6 +76,7 @@ export const appRouter = router({
   spend: spendRouter,
   budgets: budgetsRouter,
   memory: memoryRouter,
+  drafts: draftsRouter,
 });
 
 export type AppRouter = typeof appRouter;

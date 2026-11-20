@@ -195,3 +195,39 @@ export const draftAsDescription = (draft: RefineDraft, options: { readonly accep
   ].filter((part): part is string => part !== null && part !== "");
   return truncateBytes(parts.join("\n\n"), runnerLimits.draftDescriptionMaxBytes + 16 * 1024);
 };
+
+/** What "Update ticket" writes to the ticket, and what the panel's preview shows (F-099, ticket 27). */
+export type DraftTicketText = {
+  /** The ticket's description, as the tracker will hold it. */
+  readonly description: string;
+  /** The criteria as the tracker's own field takes them, or `null` when they're in the description. */
+  readonly acceptanceCriteria: string | null;
+};
+
+/**
+ * A draft as the ticket will read once it's written: the description with a section per field the
+ * tracker can't hold, the images it can't attach named with the task's link, and the criteria in
+ * their own field where it has one. `draft.apply` writes exactly this and the panel previews it, so
+ * the preview is what the tracker gets.
+ */
+export const draftTicketText = (
+  draft: RefineDraft,
+  options: {
+    readonly acceptanceCriteriaField: boolean;
+    /** The images named in the description: the tracker takes no files, or a blob is gone. */
+    readonly unattachedImages: readonly string[];
+    readonly taskUrl: string;
+  },
+): DraftTicketText => {
+  const imagesLine =
+    options.unattachedImages.length === 0
+      ? ""
+      : `\n\n## Images\n${options.unattachedImages.map((name) => `- ${name} (in ostra: ${options.taskUrl})`).join("\n")}`;
+  return {
+    description: `${draftAsDescription(draft, { acceptanceCriteriaField: options.acceptanceCriteriaField })}${imagesLine}`,
+    acceptanceCriteria:
+      options.acceptanceCriteriaField && draft.acceptanceCriteria.length > 0
+        ? draft.acceptanceCriteria.map((item) => `- ${item}`).join("\n")
+        : null,
+  };
+};
