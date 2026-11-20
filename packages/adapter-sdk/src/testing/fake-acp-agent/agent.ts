@@ -178,6 +178,23 @@ export const fakeScripts = [
   "model-calls",
   /** What a prompt that starts with `/` runs: says `Ran the slash command /<name>.` */
   "slash",
+  // Milestone 6 (ticket 04).
+  /**
+   * Asks a question as an ACP elicitation in its turn, and carries on with whatever answer comes,
+   * saying `carried on with: <answer>`; declined or cancelled, it ends the turn `cancelled`, as
+   * OpenCode's question tool did in spike 10.
+   */
+  "ask-and-continue",
+  /** The drafting fake: calls `submit_draft` with the draft its args hold (`fakeToolArgs`), and says the tool's answer. */
+  "submit-draft",
+  /** The reviewing fake: calls `submit_review` with its args' summary and findings, and says the answer. */
+  "submit-review",
+  /** The proposing fake: calls `propose_environment` with its args' proposal, and says the answer. */
+  "propose-environment",
+  /** Runs `git push origin HEAD:refs/heads/<branch>` in the repo folder given, and says `pushed` or `push refused`. */
+  "git-push",
+  /** Says each git repo's HEAD under the session's folder, one `<folder> <sha>` line each. */
+  "heads",
 ] as const;
 export type FakeScript = (typeof fakeScripts)[number];
 
@@ -194,6 +211,20 @@ export const FAKE_AGENT_UNKNOWN_NOTIFICATION_ENV = "FAKE_AGENT_UNKNOWN_NOTIFICAT
 export const FAKE_AGENT_UNKNOWN_NOTIFICATION = "_future/announcement";
 
 export const fakeMarker = (script: FakeScript, args = ""): string => `[[fake:${script}${args === "" ? "" : ` ${args}`}]]`;
+
+/** Milestone 6: a tool's JSON arguments as one marker argument (base64url, so no `]` ends the marker early). */
+export const fakeToolArgs = (value: unknown): string => Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+
+const readToolArgs = (args: string): unknown => {
+  try {
+    return JSON.parse(Buffer.from(args, "base64url").toString("utf8"));
+  } catch {
+    return {};
+  }
+};
+
+/** Milestone 6: the field the asking fake's question has, which an answer fills. */
+export const FAKE_AGENT_QUESTION_FIELD = "approach";
 
 const MARKER = /\[\[fake:([a-z-]+)(?:\s+([^\]]*))?\]\]/;
 
@@ -1068,6 +1099,99 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
         }
         await update({ sessionUpdate: "tool_call_update", toolCallId, status: "completed", content: [{ type: "content", content: { type: "text", text: content } }] });
         await say(`Read ${String(content.length)} characters.`);
+        return "end_turn";
+      }
+
+      // ---- milestone 6 (ticket 04): the asking, drafting, reviewing and proposing fakes ----
+      case "ask-and-continue": {
+        const answer = await io.ctx.client.request(acp.methods.client.elicitation.create, {
+          sessionId: session.id,
+          mode: "form",
+          message: "Should I keep the old banner's markup, or replace it?",
+          requestedSchema: { type: "object", properties: { [FAKE_AGENT_QUESTION_FIELD]: { type: "string", title: "Approach" } } },
+        });
+        if (answer.action !== "accept") {
+          // Spike 10: OpenCode's question tool ends the turn when the question is declined.
+          return "cancelled";
+        }
+        const content = z.record(z.string(), z.unknown()).safeParse(answer.content);
+        const given = content.success ? content.data[FAKE_AGENT_QUESTION_FIELD] : undefined;
+        await say(`carried on with: ${typeof given === "string" ? given : JSON.stringify(answer.content ?? {})}`);
+        return "end_turn";
+      }
+
+      case "submit-draft":
+      case "submit-review":
+      case "propose-environment": {
+        const config = await readConfig();
+        const tool = script === "submit-draft" ? "submit_draft" : script === "submit-review" ? "submit_review" : "propose_environment";
+        if (config.ostraMcp === undefined) {
+          await say(`${tool}: no such tool`);
+          return "end_turn";
+        }
+        const toolArgs = readToolArgs(args);
+        const toolCallId = `t-${script}`;
+        await update({ sessionUpdate: "tool_call", toolCallId, title: `ostra/${tool}`, kind: "other", status: "in_progress", rawInput: { mcpServer: "ostra", tool } });
+        const result = z
+          .looseObject({ content: z.array(z.looseObject({ type: z.string(), text: z.string().optional() })), isError: z.boolean().optional() })
+          .safeParse(await mcpCall(config.ostraMcp, "tools/call", { name: tool, arguments: toolArgs }));
+        const text = result.success ? result.data.content.map((part) => part.text ?? "").join("") : "no such tool";
+        const failed = !result.success || result.data.isError === true;
+        await update({ sessionUpdate: "tool_call_update", toolCallId, status: failed ? "failed" : "completed", content: [{ type: "content", content: { type: "text", text } }] });
+        await say(`${tool}: ${text}`);
+        return "end_turn";
+      }
+
+      case "git-push": {
+        const root = session.cwd;
+        const [repo = ".", branch = "ostra/fake-push"] = args.split(/\s+/).filter((each) => each !== "");
+        if (root === null) {
+          await say("No folder to push from.");
+          return "end_turn";
+        }
+        const cwd = path.resolve(root, repo);
+        const command = `git push origin HEAD:refs/heads/${branch}`;
+        const toolCallId = "t-git-push";
+        await update({ sessionUpdate: "tool_call", toolCallId, title: command, kind: "execute", status: "in_progress", rawInput: { command, cwd } });
+        const code = await new Promise<number | null>((resolve) => {
+          const child = spawn("git", ["push", "origin", `HEAD:refs/heads/${branch}`], { cwd, stdio: "ignore", windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } });
+          child.on("error", () => {
+            resolve(null);
+          });
+          child.on("exit", (exitCode) => {
+            resolve(exitCode);
+          });
+        });
+        await update({ sessionUpdate: "tool_call_update", toolCallId, status: code === 0 ? "completed" : "failed" });
+        await say(code === 0 ? "pushed" : "push refused");
+        return "end_turn";
+      }
+
+      case "heads": {
+        const root = session.cwd;
+        if (root === null) {
+          await say("No folder.");
+          return "end_turn";
+        }
+        const names = args.split(/\s+/).filter((each) => each !== "");
+        const lines: string[] = [];
+        for (const name of names) {
+          const head = await new Promise<string>((resolve) => {
+            let out = "";
+            const child = spawn("git", ["rev-parse", "HEAD"], { cwd: path.resolve(root, name), windowsHide: true });
+            child.stdout.on("data", (chunk: Buffer) => {
+              out += chunk.toString("utf8");
+            });
+            child.on("error", () => {
+              resolve("none");
+            });
+            child.on("exit", () => {
+              resolve(out.trim() === "" ? "none" : out.trim());
+            });
+          });
+          lines.push(`${name} ${head}`);
+        }
+        await say(lines.join("\n"));
         return "end_turn";
       }
 

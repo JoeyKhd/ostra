@@ -23,3 +23,4 @@ Spec: `../spec.md`, sections 5.2 and 8
 - [ ] Committed as `✨ give OpenCode the read-only kinds`.
 
 ## Comments
+- 2026-11-20 (from ticket 04): OpenCode's suite fixture (`opencode-adapter.contract.test.ts`) runs the new cases once it passes a `team` probe set (`AgentTeamProbes` in `packages/adapter-sdk/src/testing/agent-team-cases.ts`; the fakes' are in `fake-agent.test.ts`'s `teamProbes`). Then switch OpenCode's three milestone 6 rows in `packages/adapter-sdk/src/testing/parity.ts` (`milestone6Waits`) from `waits` to the cases, as `milestone6WithTools` names them for the fakes. The capability the spec calls `elicitation` is the existing `elicitationForm`.

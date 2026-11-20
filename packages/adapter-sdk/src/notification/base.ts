@@ -72,8 +72,19 @@ export type RunnerNoticeSubject = {
   readonly url: string;
 };
 
-/** A moment's kinds: milestone 3's, the budget notices and the runner notices. */
-export type MomentNotificationKind = NotificationKind | BudgetNotificationKind | RunnerNotificationKind;
+/**
+ * Milestone 6 (ADR 0050, F-036): the whole team's moments. A refine task's draft is ready for its
+ * owners (`draft_ready`); a PR waits on its reviewers (`review_requested`); a task started from
+ * outside waits for a member's approval (`task_approval`); a task reached a round or automatic-turn
+ * cap (`round_cap`); an automation paused itself (`automation_paused`). Moments, on every channel.
+ * Each carries the task's title and key, the moment and one line: never the draft's text, a
+ * finding's, a CI log's or a review comment's.
+ */
+export const teamNotificationKinds = ["draft_ready", "review_requested", "task_approval", "round_cap", "automation_paused"] as const;
+export type TeamNotificationKind = (typeof teamNotificationKinds)[number];
+
+/** A moment's kinds: milestone 3's, the budget notices, the runner notices and milestone 6's. */
+export type MomentNotificationKind = NotificationKind | BudgetNotificationKind | RunnerNotificationKind | TeamNotificationKind;
 
 /**
  * Milestone 4: what a notification is. A `moment` is a needs-you moment or a budget notice for

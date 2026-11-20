@@ -17,6 +17,8 @@ import { defineAgentEffortCases } from "./agent-effort-cases.ts";
 import type { AgentEffortProbes } from "./agent-effort-cases.ts";
 import { defineAgentMemoryCases } from "./agent-memory-cases.ts";
 import { defineAgentParityCases } from "./agent-parity-cases.ts";
+import { defineAgentTeamCases } from "./agent-team-cases.ts";
+import type { AgentTeamProbes } from "./agent-team-cases.ts";
 import type { AgentParityProbes } from "./agent-parity-cases.ts";
 import type { AgentCanaryProbe, AgentMemoryProbes } from "./agent-memory-cases.ts";
 import { defineAgentProfileCases } from "./agent-profile-cases.ts";
@@ -122,6 +124,8 @@ export type AgentFixture = {
   readonly effort?: AgentEffortProbes;
   /** Milestone 7 (ticket 03): the cases every agent is checked for before launch. Absent: skipped. */
   readonly parity?: AgentParityProbes;
+  /** Milestone 6 (ticket 04): the whole team's task kinds: automatic turns, read-only tasks, reviews, ostra's tools, `commitPaths`. Absent: skipped. */
+  readonly team?: AgentTeamProbes;
 };
 
 const turn = (n: number) => turnIdSchema.parse(`contract-turn-${String(n)}`);
@@ -566,6 +570,9 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
 
     // Milestone 7: the launch, the key proxy, a repo's config, "for this task", slash commands and the checksum.
     defineAgentParityCases(subject);
+
+    // Milestone 6: the whole team's task kinds, last, since they add repo folders to the workspace.
+    defineAgentTeamCases(subject);
   });
 };
 

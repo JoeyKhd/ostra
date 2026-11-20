@@ -3,6 +3,30 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
 import {
+  draftIdSchema,
+  draftRequestSchema,
+  draftResponseSchema,
+  draftResultText,
+  environmentProposalIdSchema,
+  environmentProposalRequestFromTool,
+  environmentProposalRequestSchema,
+  environmentProposalResponseSchema,
+  environmentProposalResultText,
+  PROPOSE_ENVIRONMENT_TOOL,
+  proposeEnvironmentDescription,
+  proposeEnvironmentInputSchema,
+  reviewRequestFromTool,
+  reviewRequestSchema,
+  reviewResponseSchema,
+  reviewResultText,
+  reviewRunIdSchema,
+  SUBMIT_DRAFT_TOOL,
+  SUBMIT_REVIEW_TOOL,
+  submitDraftDescription,
+  submitDraftInputSchema,
+  submitReviewDescription,
+  submitReviewInputSchema,
+  unknownRepoText,
   memoryNoteResponseSchema,
   memoryProposalRequestSchema,
   memoryProposalResponseSchema,
@@ -13,7 +37,24 @@ import {
   runnerLimits,
   runnerPaths,
 } from "@ostra/protocol";
-import type { MemoryNote, MemoryProposalInput, MemoryProposalResponse, MemorySearchResponse, TaskId } from "@ostra/protocol";
+import type {
+  DraftRefusal,
+  DraftRequestBody,
+  DraftResponse,
+  EnvironmentProposal,
+  EnvironmentProposalRefusal,
+  EnvironmentProposalResponse,
+  MemoryNote,
+  MemoryProposalInput,
+  MemoryProposalResponse,
+  MemorySearchResponse,
+  OstraToolSet,
+  ReviewRefusal,
+  ReviewRequestBody,
+  ReviewResponse,
+  TaskId,
+  ToolRepo,
+} from "@ostra/protocol";
 import { z } from "zod";
 
 // Milestone 4 (ticket 02, F-110, F-111): a fake core for the sidecar's memory endpoints, answering
@@ -31,6 +72,12 @@ import { z } from "zod";
 //
 // Every request without the right bearer is 401. Nothing here logs: a note's text, a query and a
 // proposal's text are never logged.
+//
+// Milestone 6 (ticket 04) adds the sidecar's three new endpoints, by the protocol's schemas (minor
+// 5): `POST runnerPaths.taskDraft`, `taskReview` and `taskEnvironmentProposal`, each recorded, or
+// refused as the switch in `refusals` says. The MCP stand-in lists and serves the tools of the
+// task's tool sets (`tools`): `submit_draft`, `submit_review` and `propose_environment` beside
+// memory's, each answering the agent with the protocol's words.
 
 export type FakeMemoryCoreOptions = {
   readonly taskId: TaskId;
@@ -42,6 +89,17 @@ export type FakeMemoryCoreOptions = {
   readonly notes: readonly MemoryNote[];
   /** The proposals a task may make. Default: the protocol's `memoryProposalsPerTask`. */
   readonly proposalLimit?: number;
+  /** Milestone 6: the task's tool sets, which the MCP stand-in lists and serves. Default: milestone 4's, memory's tools. */
+  readonly tools?: readonly OstraToolSet[];
+  /** Milestone 6: the task's repos, which a finding or a proposal names by `owner/name`. */
+  readonly repos?: readonly ToolRepo[];
+};
+
+/** Milestone 6: how core's three new endpoints answer: `null` saves, a refusal refuses. Tests flip them. */
+export type FakeCoreRefusals = {
+  draft: DraftRefusal | null;
+  review: ReviewRefusal | null;
+  environment: EnvironmentProposalRefusal | null;
 };
 
 export type FakeMemoryCore = {
@@ -56,6 +114,15 @@ export type FakeMemoryCore = {
   readonly toolCalls: string[];
   /** The proposals recorded, in order. */
   readonly proposals: MemoryProposalInput[];
+  // ---- milestone 6 ----
+  /** Each endpoint's answer: saved, or the refusal set here. */
+  readonly refusals: FakeCoreRefusals;
+  /** What core saved, in order. */
+  readonly drafts: DraftRequestBody[];
+  readonly reviews: ReviewRequestBody[];
+  readonly environmentProposals: EnvironmentProposal[];
+  /** How many requests each new endpoint answered, refused ones included. */
+  readonly teamCalls: { draft: number; review: number; environment: number };
   readonly close: () => Promise<void>;
 };
 
@@ -98,6 +165,25 @@ const memoryTools = [
     },
   },
 ] as const;
+
+/** Milestone 6: the three tools, as `tools/list` offers them, by the protocol's descriptions and schemas. */
+const teamTools = {
+  draft: { name: SUBMIT_DRAFT_TOOL, description: submitDraftDescription, inputSchema: z.toJSONSchema(submitDraftInputSchema, { io: "input", unrepresentable: "any" }) },
+  review: { name: SUBMIT_REVIEW_TOOL, description: submitReviewDescription, inputSchema: z.toJSONSchema(submitReviewInputSchema, { io: "input", unrepresentable: "any" }) },
+  environment: {
+    name: PROPOSE_ENVIRONMENT_TOOL,
+    description: proposeEnvironmentDescription,
+    inputSchema: z.toJSONSchema(proposeEnvironmentInputSchema, { io: "input", unrepresentable: "any" }),
+  },
+} as const;
+
+/** The tools a task's tool sets list, memory's and milestone 6's; `pr-text` is the sidecar's own (ticket 20), not this stand-in's. */
+export const fakeCoreToolNames = (tools: readonly OstraToolSet[]): readonly string[] => [
+  ...(tools.includes("memory") ? memoryToolNames : []),
+  ...(tools.includes("draft") ? [SUBMIT_DRAFT_TOOL] : []),
+  ...(tools.includes("review") ? [SUBMIT_REVIEW_TOOL] : []),
+  ...(tools.includes("environment") ? [PROPOSE_ENVIRONMENT_TOOL] : []),
+];
 
 const jsonRpcSchema = z.looseObject({
   jsonrpc: z.literal("2.0"),
@@ -143,6 +229,13 @@ const search = (notes: readonly MemoryNote[], query: string, limit: number): Mem
 
 export const startFakeMemoryCore = async (options: FakeMemoryCoreOptions): Promise<FakeMemoryCore> => {
   const limit = options.proposalLimit ?? runnerLimits.memoryProposalsPerTask;
+  const toolSets: readonly OstraToolSet[] = options.tools ?? ["pr-text", "memory"];
+  const offered = new Set(fakeCoreToolNames(toolSets));
+  const refusals: FakeCoreRefusals = { draft: null, review: null, environment: null };
+  const drafts: DraftRequestBody[] = [];
+  const reviews: ReviewRequestBody[] = [];
+  const environmentProposals: EnvironmentProposal[] = [];
+  const teamCalls = { draft: 0, review: 0, environment: 0 };
   const calls = { search: 0, read: 0, propose: 0 };
   const toolCalls: string[] = [];
   const proposals: MemoryProposalInput[] = [];
@@ -179,6 +272,52 @@ export const startFakeMemoryCore = async (options: FakeMemoryCoreOptions): Promi
       send(response, 200, memoryNoteResponseSchema.parse(note));
       return;
     }
+    // ---- milestone 6: the draft, the review and the proposal ----
+    if (request.method === "POST" && path === runnerPaths.taskDraft(options.taskId)) {
+      teamCalls.draft += 1;
+      const parsed = draftRequestSchema.safeParse(parseJson(await readBody(request)));
+      let answer: DraftResponse;
+      if (!parsed.success) {
+        answer = { code: "invalid" };
+      } else if (refusals.draft !== null) {
+        answer = refusals.draft;
+      } else {
+        drafts.push(parsed.data);
+        answer = { draftId: draftIdSchema.parse(`draft-${String(drafts.length)}`), version: drafts.length };
+      }
+      send(response, 200, draftResponseSchema.parse(answer));
+      return;
+    }
+    if (request.method === "POST" && path === runnerPaths.taskReview(options.taskId)) {
+      teamCalls.review += 1;
+      const parsed = reviewRequestSchema.safeParse(parseJson(await readBody(request)));
+      let answer: ReviewResponse;
+      if (!parsed.success) {
+        answer = { code: "invalid" };
+      } else if (refusals.review !== null) {
+        answer = refusals.review;
+      } else {
+        reviews.push(parsed.data);
+        answer = { reviewRunId: reviewRunIdSchema.parse(`review-run-${String(reviews.length)}`) };
+      }
+      send(response, 200, reviewResponseSchema.parse(answer));
+      return;
+    }
+    if (request.method === "POST" && path === runnerPaths.taskEnvironmentProposal(options.taskId)) {
+      teamCalls.environment += 1;
+      const parsed = environmentProposalRequestSchema.safeParse(parseJson(await readBody(request)));
+      let answer: EnvironmentProposalResponse;
+      if (!parsed.success) {
+        answer = { code: "invalid" };
+      } else if (refusals.environment !== null) {
+        answer = refusals.environment;
+      } else {
+        environmentProposals.push(parsed.data);
+        answer = { proposalId: environmentProposalIdSchema.parse(`environment-proposal-${String(environmentProposals.length)}`) };
+      }
+      send(response, 200, environmentProposalResponseSchema.parse(answer));
+      return;
+    }
     if (request.method === "POST" && path === proposalsPath) {
       calls.propose += 1;
       const parsed = memoryProposalRequestSchema.safeParse(parseJson(await readBody(request)));
@@ -195,6 +334,53 @@ export const startFakeMemoryCore = async (options: FakeMemoryCoreOptions): Promi
       return;
     }
     send(response, 404, { error: "no such endpoint" });
+  };
+
+  /** Milestone 6: posts a tool's request to core with the task's token, and reads the answer by `schema`. */
+  const postToCore = async <T,>(path: string, body: unknown, schema: z.ZodType<T>): Promise<T | null> => {
+    const answer = await fetch(`${base}${path}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${options.taskToken}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const parsed = schema.safeParse(answer.ok ? await answer.json() : undefined);
+    return parsed.success ? parsed.data : null;
+  };
+
+  /**
+   * Milestone 6: the sidecar's side of `submit_draft`, `submit_review` and `propose_environment`:
+   * the agent's input parsed by the tool's schema, the repos named by ID, core's answer in the
+   * protocol's words. A text result, as MCP's `content` carries it; `undefined` for another tool.
+   */
+  const callTeamTool = async (name: string, args: Readonly<Record<string, unknown>>): Promise<{ readonly text: string; readonly saved: boolean } | undefined> => {
+    const repos = options.repos ?? [];
+    switch (name) {
+      case SUBMIT_DRAFT_TOOL: {
+        const input = submitDraftInputSchema.safeParse(args);
+        const answer: DraftResponse | null = input.success ? await postToCore(runnerPaths.taskDraft(options.taskId), input.data, draftResponseSchema) : { code: "invalid" };
+        const response = answer ?? { code: "invalid" };
+        return { text: draftResultText(response), saved: "draftId" in response };
+      }
+      case SUBMIT_REVIEW_TOOL: {
+        const input = submitReviewInputSchema.safeParse(args);
+        if (!input.success) return { text: reviewResultText({ code: "invalid" }), saved: false };
+        const mapped = reviewRequestFromTool(input.data, repos);
+        if (!mapped.ok) return { text: unknownRepoText(mapped.unknownRepo), saved: false };
+        const response = (await postToCore(runnerPaths.taskReview(options.taskId), mapped.value, reviewResponseSchema)) ?? { code: "invalid" };
+        return { text: reviewResultText(response), saved: "reviewRunId" in response };
+      }
+      case PROPOSE_ENVIRONMENT_TOOL: {
+        const input = proposeEnvironmentInputSchema.safeParse(args);
+        if (!input.success) return { text: environmentProposalResultText({ code: "invalid" }), saved: false };
+        const mapped = environmentProposalRequestFromTool(input.data, repos);
+        if (!mapped.ok) return { text: unknownRepoText(mapped.unknownRepo), saved: false };
+        const response =
+          (await postToCore(runnerPaths.taskEnvironmentProposal(options.taskId), mapped.value, environmentProposalResponseSchema)) ?? ({ code: "invalid" } as const);
+        return { text: environmentProposalResultText(response), saved: "proposalId" in response };
+      }
+      default:
+        return undefined;
+    }
   };
 
   /** The sidecar's side of one tool call: core's endpoint, with the task's token. */
@@ -246,10 +432,28 @@ export const startFakeMemoryCore = async (options: FakeMemoryCoreOptions): Promi
         reply({ protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "ostra", version: "0.0.0" } });
         return;
       case "tools/list":
-        reply({ tools: memoryTools });
+        reply({
+          tools: [
+            ...(toolSets.includes("memory") ? memoryTools : []),
+            ...(toolSets.includes("draft") ? [teamTools.draft] : []),
+            ...(toolSets.includes("review") ? [teamTools.review] : []),
+            ...(toolSets.includes("environment") ? [teamTools.environment] : []),
+          ],
+        });
         return;
       case "tools/call": {
         const call = toolCallParamsSchema.safeParse(params);
+        if (call.success && !offered.has(call.data.name)) {
+          // A tool outside the task's sets isn't served, whatever its name.
+          send(response, 200, { jsonrpc: "2.0", id, error: { code: -32602, message: "no such tool" } });
+          return;
+        }
+        const team = call.success ? await callTeamTool(call.data.name, call.data.arguments ?? {}) : undefined;
+        if (call.success && team !== undefined) {
+          toolCalls.push(call.data.name);
+          reply({ content: [{ type: "text", text: team.text }], isError: !team.saved });
+          return;
+        }
         const result = call.success ? await callTool(call.data.name, call.data.arguments ?? {}) : undefined;
         if (!call.success || result === undefined) {
           send(response, 200, { jsonrpc: "2.0", id, error: { code: -32602, message: "no such tool" } });
@@ -292,6 +496,11 @@ export const startFakeMemoryCore = async (options: FakeMemoryCoreOptions): Promi
     calls,
     toolCalls,
     proposals,
+    refusals,
+    drafts,
+    reviews,
+    environmentProposals,
+    teamCalls,
     close: () =>
       new Promise<void>((resolve) => {
         server.closeAllConnections();

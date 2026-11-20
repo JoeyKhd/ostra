@@ -100,6 +100,16 @@ export const suiteCases = {
   allowForTask: suite("agent-parity-cases.ts", "F-026: allow for this task holds for the rest of the task, across a relaunch, and nothing of it reaches the commit"),
   slash: suite("agent-parity-cases.ts", "F-019: a ticket whose text starts with / is never run as a slash command: ostra's prompt never starts with ticket text"),
   checksum: suite("agent-parity-cases.ts", "F-019: an agent binary whose checksum doesn't match its pin refuses the launch"),
+  // Milestone 6 (ticket 04).
+  neutralReply: suite("agent-team-cases.ts", "F-101: in an automatic turn, the agent's question gets the fixed neutral reply, and the agent carries on"),
+  declinedControl: suite("agent-team-cases.ts", "F-101: the control: the same question declined ends the turn cancelled, as OpenCode's did in spike 10"),
+  readOnlyPush: suite("agent-team-cases.ts", "F-099: a read-only task's push is refused by its fetch-only remote, and nothing reaches the upstream"),
+  reviewHeads: suite("agent-team-cases.ts", "F-100: a review task's repos are checked out at the given heads, one per repo"),
+  toolsByKind: suite("agent-team-cases.ts", "F-099: ostra's tools are listed for the task kinds that have them, and absent for the others"),
+  submitDraft: suite("agent-team-cases.ts", "F-099: the drafting agent's submit_draft reaches core as a draft, and a refusal reaches the agent in the protocol's words"),
+  submitReview: suite("agent-team-cases.ts", "F-100: the reviewing agent's submit_review reaches core with its findings by repo ID, and not-in-review reaches the agent"),
+  proposeEnvironment: suite("agent-team-cases.ts", "F-113: the proposing agent's propose_environment reaches core, and a secret found reaches the agent by kind, never by value"),
+  commitPaths: suite("agent-team-cases.ts", "F-113: after a turn, a commit with commitPaths keeps only those; the agent's other changes stay uncommitted"),
 } as const satisfies Record<string, ParityCase>;
 
 /**
@@ -188,12 +198,30 @@ const cases = (...list: readonly ParityCase[]): ParityProof => ({ kind: "cases",
 const fallback = (capability: keyof AgentCapabilities, ...list: readonly ParityCase[]): ParityProof => ({ kind: "fallback", capability, cases: list });
 const waits = (on: string): ParityProof => ({ kind: "waits", on });
 
-/** Milestone 6's rows, built while this table was written: each names the ticket its cases come with. */
-const milestone6 = {
-  "F-099, F-100 Refine, review": waits("milestone 6, tickets 04, 09 and 22: the read-only and tools cases"),
+/** Milestone 6's rows on OpenCode: its fixture gains the team probes with ticket 09; agent mode is tickets 13 and 38. */
+const milestone6Waits = {
+  "F-099, F-100 Refine, review": waits("milestone 6, ticket 09: OpenCode's fixture gains the read-only, review and tools probes"),
   "F-012 Start from Linear": waits("milestone 6, tickets 13 and 38: the agent-mode case"),
-  "F-101 Automatic turns": waits("milestone 6, tickets 04 and 18: the automatic-turn case"),
-  "F-113 Onboarding": waits("milestone 6, tickets 04, 21 and 23: the proposal and commit cases"),
+  "F-101 Automatic turns": waits("milestone 6, ticket 09: OpenCode's fixture gains the asking probe"),
+  "F-113 Onboarding": waits("milestone 6, ticket 09: OpenCode's fixture gains the proposal and commit probes"),
+} as const;
+
+/** Milestone 6's rows on a scripted fake with ostra's tools over MCP (ticket 04): every team case runs on it. */
+const milestone6WithTools = {
+  "F-099, F-100 Refine, review": cases(suiteCases.readOnlyPush, suiteCases.reviewHeads, suiteCases.toolsByKind, suiteCases.submitDraft, suiteCases.submitReview),
+  "F-012 Start from Linear": waits("milestone 6, tickets 13 and 38: the agent-mode case"),
+  "F-101 Automatic turns": cases(suiteCases.neutralReply, suiteCases.declinedControl),
+  "F-113 Onboarding": cases(suiteCases.proposeEnvironment, suiteCases.commitPaths),
+} as const;
+
+/**
+ * Milestone 6's rows on the fake without MCP: ostra's tools need it, so the tools cases skip, and
+ * what holds without it is the read-only remote, the review's checkout and the commit's paths.
+ */
+const milestone6IndexOnly = {
+  ...milestone6WithTools,
+  "F-099, F-100 Refine, review": fallback("memory", suiteCases.readOnlyPush, suiteCases.reviewHeads),
+  "F-113 Onboarding": fallback("memory", suiteCases.commitPaths),
 } as const;
 
 /** What every adapter shares: the runner's and core's parts, and the suite's cases every fixture runs. */
@@ -208,7 +236,6 @@ const common = {
   "F-070, F-053, F-054, F-035, F-105 A new turn with a prompt": cases(suiteCases.turn, suiteCases.nextTurn),
   "F-016, F-098 Workspace, several repos": cases(suiteCases.twoRepos),
   "F-116 Egress baseline": cases(sharedCases.egressPlan, suiteCases.everyCall),
-  ...milestone6,
 } as const;
 
 /**
@@ -220,6 +247,7 @@ const common = {
 export const parityTable: Readonly<Record<string, Readonly<Record<string, ParityProof>>>> = {
   opencode: {
     ...common,
+    ...milestone6Waits,
     "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan),
     "F-025 Stop": cases(suiteCases.cancel),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch),
@@ -236,6 +264,7 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
   },
   "fake-acp-agent-rich": {
     ...common,
+    ...milestone6WithTools,
     "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate),
     "F-025 Stop": cases(suiteCases.cancel, suiteCases.leftover),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch, suiteCases.endpoint),
@@ -252,6 +281,7 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
   },
   "fake-acp-agent-plain": {
     ...common,
+    ...milestone6WithTools,
     "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate),
     "F-025 Stop": cases(suiteCases.cancel, suiteCases.leftover),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch, suiteCases.endpoint),
@@ -268,6 +298,7 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
   },
   "fake-acp-agent-plain-index-only-unknown-notification": {
     ...common,
+    ...milestone6IndexOnly,
     "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate),
     "F-025 Stop": cases(suiteCases.cancel, suiteCases.leftover),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch, suiteCases.endpoint),
@@ -284,6 +315,7 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
   },
   "fake-acp-agent-rich-effort": {
     ...common,
+    ...milestone6WithTools,
     "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate),
     "F-025 Stop": cases(suiteCases.cancel, suiteCases.leftover),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch, suiteCases.endpoint),

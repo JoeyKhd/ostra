@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { turnIdSchema } from "@ostra/protocol";
+import { repoFullNameSchema, turnIdSchema } from "@ostra/protocol";
 import type { TaskEvent } from "@ostra/protocol";
 import { fixtureIds } from "@ostra/protocol/testing";
 import { afterAll, describe, expect, it } from "vitest";
@@ -17,11 +17,13 @@ import type { PrepareLaunchInput } from "../../agent/base.ts";
 import type { AgentFixture } from "../agent-suite.ts";
 import { memoryNoteFixtures, startFakeMemoryCore } from "../fake-memory-core.ts";
 import type { FakeMemoryCore } from "../fake-memory-core.ts";
+import { startGitUpstream } from "../git-upstream.ts";
+import type { GitUpstream } from "../git-upstream.ts";
 import { runAgentSuite } from "../run-agent-suite.ts";
 import { runAgentCommand, spawnAgentProcess } from "../spawn-agent.ts";
 import { startStubModelServer } from "../stub-models/server.ts";
 import type { StubServer } from "../stub-models/server.ts";
-import { FAKE_AGENT_MCP_TOOL, FAKE_AGENT_REPO_CONFIG, FAKE_AGENT_UNKNOWN_NOTIFICATION, FAKE_AGENT_UNKNOWN_NOTIFICATION_ENV, fakeMarker } from "./agent.ts";
+import { FAKE_AGENT_MCP_TOOL, FAKE_AGENT_REPO_CONFIG, FAKE_AGENT_UNKNOWN_NOTIFICATION, FAKE_AGENT_UNKNOWN_NOTIFICATION_ENV, fakeMarker, fakeToolArgs } from "./agent.ts";
 import type { FakeAgentProfile } from "./agent.ts";
 import { FakeAgentAdapter } from "./fake-agent-adapter.ts";
 import type { FakeAgentEffort, FakeAgentMemory, FakeAgentParity } from "./fake-agent-adapter.ts";
@@ -32,7 +34,9 @@ import type { FakeAgentEffort, FakeAgentMemory, FakeAgentParity } from "./fake-a
 const roots: string[] = [];
 const cores: FakeMemoryCore[] = [];
 const stubs: StubServer[] = [];
+const upstreams: GitUpstream[] = [];
 afterAll(async () => {
+  await Promise.all(upstreams.map((upstream) => upstream.close()));
   await Promise.all(cores.map((core) => core.close()));
   await Promise.all(stubs.map((stub) => stub.close()));
   await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
@@ -41,6 +45,73 @@ afterAll(async () => {
 /** Milestone 4: the two repos every fixture's workspace holds side by side, each a git repo. */
 const REPOS = ["test1", "test2"] as const;
 const run = promisify(execFile);
+
+/** Milestone 6: a commit in a repo folder, with a fixed author, as a test makes one. */
+const commitAll = async (dir: string, message: string): Promise<string> => {
+  await run("git", ["add", "-A"], { cwd: dir });
+  await run("git", ["-c", "user.email=ostra@example.test", "-c", "user.name=ostra", "commit", "-q", "--allow-empty", "-m", message], { cwd: dir });
+  return (await run("git", ["rev-parse", "HEAD"], { cwd: dir })).stdout.trim();
+};
+
+/** Milestone 6 (ticket 04): the team cases' set-ups, each made in the workspace when its case runs. */
+const teamProbes = (root: string, workspaceDir: string, memory: FakeAgentMemory): NonNullable<AgentFixture["team"]> => ({
+  askAndContinue: fakeMarker("ask-and-continue"),
+  readOnlyPush: async () => {
+    // The fetch-only upstream stands where a refine or review task's git proxy is.
+    const upstream = await startGitUpstream(path.join(root, "upstream"), { requireToken: false, fetchOnly: true });
+    upstreams.push(upstream);
+    await upstream.createRepo("test-org/readonly", { "README.md": "# readonly\n" });
+    await run("git", ["clone", "-q", upstream.cloneUrl("test-org/readonly"), "readonly"], { cwd: workspaceDir });
+    await writeFile(path.join(workspaceDir, "readonly", "change.txt"), "a change\n");
+    await commitAll(path.join(workspaceDir, "readonly"), "A change the task can't push");
+    return {
+      prompt: fakeMarker("git-push", "readonly"),
+      pushesReceived: () => Promise.resolve(upstream.requests.filter((request) => request.endpoint === "git-receive-pack").length),
+    };
+  },
+  reviewCheckout: async () => {
+    // Two repos, each checked out at its PR's head: one at its newest commit, one at an older one.
+    const heads: { folder: string; sha: string }[] = [];
+    for (const [folder, back] of [["review-a", false], ["review-b", true]] as const) {
+      const dir = path.join(workspaceDir, folder);
+      await mkdir(dir, { recursive: true });
+      await run("git", ["init", "-q"], { cwd: dir });
+      const first = await commitAll(dir, "first");
+      const second = await commitAll(dir, "second");
+      if (back) await run("git", ["checkout", "-q", "--detach", first], { cwd: dir });
+      heads.push({ folder, sha: back ? first : second });
+    }
+    return { prompt: fakeMarker("heads", heads.map((head) => head.folder).join(" ")), heads };
+  },
+  ...(memory === "mcp"
+    ? {
+        tools: {
+          start: async (tools) => {
+            const core = await startFakeMemoryCore({
+              taskId: fixtureIds.task,
+              taskToken: "ostra-task-fake-token",
+              mcpBearer: "fake-mcp-bearer",
+              notes: memoryNoteFixtures,
+              tools,
+              repos: [{ repoId: fixtureIds.repo, fullName: repoFullNameSchema.parse("test-org/test1") }],
+            });
+            cores.push(core);
+            return { core, mcp: { url: core.mcpUrl, bearer: core.mcpBearer } };
+          },
+          list: fakeMarker("memory-tools"),
+          submitDraft: (draft) => fakeMarker("submit-draft", fakeToolArgs(draft)),
+          submitReview: (review) => fakeMarker("submit-review", fakeToolArgs(review)),
+          proposeEnvironment: (proposal) => fakeMarker("propose-environment", fakeToolArgs(proposal)),
+          repo: repoFullNameSchema.parse("test-org/test1"),
+        },
+      }
+    : {}),
+  writeFiles: async () => {
+    await mkdir(path.join(workspaceDir, "onboarding"), { recursive: true });
+    await run("git", ["init", "-q"], { cwd: path.join(workspaceDir, "onboarding") });
+    return { prompt: (files) => fakeMarker("write", files.join(" ")), repo: "onboarding" };
+  },
+});
 
 /** The fake's key for its one task: the stub endpoint, standing where the key proxy is, takes it. */
 const TASK_KEY = "ostra-fake-key-for-this-task";
@@ -185,6 +256,8 @@ const fixtureFor = async (memory: FakeAgentMemory = "mcp", parity: FakeAgentPari
       slashCommand: { ran: (name) => `Ran the slash command /${name}.` },
       mismatchedChecksum: () => new FakeAgentAdapter("plain", undefined, undefined, memory, "none", { ...parity, pinnedSha256: "0".repeat(64) }),
     },
+    // Milestone 6 (ticket 04): the whole team's task kinds.
+    team: teamProbes(root, workspaceDir, memory),
   };
 };
 

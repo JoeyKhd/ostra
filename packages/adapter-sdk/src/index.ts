@@ -30,6 +30,7 @@ export * from "./executor/capabilities.ts";
 export * from "./executor/base.ts";
 export * from "./executor/checks.ts";
 export * from "./executor/work-in-progress.ts";
+export * from "./executor/commit-paths.ts";
 export * from "./executor/task-token.ts";
 export * from "./executor/egress-baseline.ts";
 export * from "./model-provider/capabilities.ts";

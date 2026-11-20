@@ -3,8 +3,8 @@ import { randomUUID } from "node:crypto";
 import { memberIdSchema, organizationIdSchema, runnerIdSchema } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
-import { runnerNotificationKinds } from "../notification/base.ts";
-import type { AccountNotification, MomentNotification, NotificationAdapter, NotificationRecipient, RunnerNotificationKind } from "../notification/base.ts";
+import { runnerNotificationKinds, teamNotificationKinds } from "../notification/base.ts";
+import type { AccountNotification, MomentNotification, NotificationAdapter, NotificationRecipient, RunnerNotificationKind, TeamNotificationKind } from "../notification/base.ts";
 import type { LogRecord } from "../plumbing/logger.ts";
 import { defineCommonCases, useSubject } from "./common-cases.ts";
 import type { ContractSuiteOptions } from "./common-cases.ts";
@@ -274,7 +274,84 @@ export const defineNotificationContractSuite = (options: ContractSuiteOptions<No
         }
       });
     }
+
+    // ---- milestone 6: the whole team's moments (ticket 04) ----
+
+    for (const kind of teamNotificationKinds) {
+      it(`F-036: the ${kind} moment reaches the channel with the task's title and key and one line, and none of it reaches a log line`, async () => {
+        const { adapter, fixture } = subject();
+        const notice = sampleTeamNotice(kind, [fixture.reachable]);
+        const notification = (await fixture.prepare?.(notice.notification)) ?? notice.notification;
+        const sent = await adapter.send(notification);
+        if (!sent.ok) throw new Error(sent.error.message);
+        expect(sent.value.refused).toEqual([]);
+        const delivered = (await fixture.delivered()).find((candidate) => candidate.providerMessageId === sent.value.providerMessageId);
+        expect(delivered).toBeDefined();
+        if (adapter.capabilities.channels.includes("email")) {
+          for (const part of [delivered?.html ?? "", delivered?.text ?? ""]) {
+            expect(part).toContain(notice.taskKey);
+            expect(part).toContain(notice.taskTitle);
+            expect(part).toContain(notice.line);
+          }
+        }
+        // The moment's words are the task's: data, never in a log line.
+        const logged = JSON.stringify(fixture.logs());
+        expect(logged).not.toContain(notice.taskTitle);
+        expect(logged).not.toContain(notice.line);
+      });
+    }
   });
+};
+
+let teamNotices = 0;
+
+/**
+ * Milestone 6 (F-036, ADR 0050): a whole-team moment as core builds it: the task's title and key,
+ * the moment and one line, and nothing of the task's content (no draft, finding, log or comment).
+ */
+export const sampleTeamNotice = (
+  kind: TeamNotificationKind,
+  recipients: readonly NotificationRecipient[],
+): { readonly notification: MomentNotification; readonly taskTitle: string; readonly taskKey: string; readonly line: string } => {
+  teamNotices += 1;
+  const taskTitle = "Show the user's name in the banner";
+  const taskKey = "OST-12";
+  const url = `https://ostra.example/t/task-team-${String(teamNotices)}`;
+  const moments: Readonly<Record<TeamNotificationKind, { readonly heading: string; readonly line: string }>> = {
+    draft_ready: { heading: "A draft is ready", line: "The refine task handed in a draft for you to check." },
+    review_requested: { heading: "A PR waits for your review", line: "You were asked to review the task's PR." },
+    task_approval: { heading: "A task waits for approval", line: "Someone outside the project started it from Linear." },
+    round_cap: { heading: "A task needs you", line: "It reached its limit of automatic rounds." },
+    automation_paused: { heading: "An automation paused", line: "It reached its hourly limit of starts." },
+  };
+  const { heading, line } = moments[kind];
+  return {
+    notification: {
+      organizationId,
+      memberIds: recipients.map((recipient) => recipient.memberId),
+      title: heading,
+      body: `${line} ${url}`,
+      url,
+      idempotencyKey: `suite-team:${kind}:${String(teamNotices)}:${String(Date.now())}`,
+      kind,
+      category: "moment",
+      recipients,
+      subject: taskTitle,
+      rendered: {
+        subject: `${heading}: ${taskTitle} (${taskKey})`,
+        html: `<table><tr><td><p><strong>${taskTitle}</strong> · ${taskKey}</p><p>${line}</p><p><a href="${url}">Open it</a></p></td></tr></table>`,
+        text: `${taskTitle} · ${taskKey}
+
+${line}
+
+Open it: ${url}
+`,
+      },
+    },
+    taskTitle,
+    taskKey,
+    line,
+  };
 };
 
 let runnerNotices = 0;

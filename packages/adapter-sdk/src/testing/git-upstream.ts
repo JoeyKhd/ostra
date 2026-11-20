@@ -117,7 +117,15 @@ export type GitUpstreamOptions = {
    * for an App without the `workflows` permission (ADR 0040, Q122). Default false.
    */
   readonly refuseWorkflowChanges?: boolean;
+  /**
+   * Milestone 6 (ADR 0031, F-099): answer fetches only, as the git proxy does for a refine or a
+   * review task: a push is refused at its first request, before anything is received. Default false.
+   */
+  readonly fetchOnly?: boolean;
 };
+
+/** What a fetch-only upstream answers a push with. */
+export const FETCH_ONLY_REFUSAL = "upstream: this task can only fetch; a push is refused";
 
 /** GitHub's reason for refusing a workflow change from an App without the `workflows` permission. */
 export const WORKFLOWS_REFUSAL_REASON = "refusing to allow a GitHub App to create or update workflow `.github/workflows/ci.yml` without `workflows` permission";
@@ -217,6 +225,13 @@ export const startGitUpstream = async (root: string, options: GitUpstreamOptions
     const protocolHeader = request.headers["git-protocol"];
     const gitProtocol = typeof protocolHeader === "string" ? protocolHeader : undefined;
     const isV2 = gitProtocol?.split(":").includes("version=2") ?? false;
+    if (options.fetchOnly === true && (rest === "git-receive-pack" || url.searchParams.get("service") === "git-receive-pack")) {
+      request.resume();
+      response.writeHead(403, { "content-type": "text/plain" });
+      response.end(`${FETCH_ONLY_REFUSAL}
+`);
+      return;
+    }
     if (rest === "info/refs") {
       const service = url.searchParams.get("service");
       if (service !== "git-upload-pack" && service !== "git-receive-pack") {
