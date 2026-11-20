@@ -30,7 +30,7 @@ import { useTRPC, useTRPCClient } from "@/lib/trpc";
 import { cacheAge, contextLine, filtered, filtersFrom, filtersToSearch, ledeSource, listInputOf, priorityText, rowAge } from "./inbox-words";
 import type { InboxDetail, InboxFilters, InboxSource, InboxTicket } from "./inbox-words";
 import { BulkStartPanel, SelectionBar, planOf, useBulkStart } from "./bulk-start";
-import { noTicks, tickAll, tickedRows, toggleTick } from "./inbox-selection";
+import { noTicks, tickAll, tickedRows, toggleTick, untick } from "./inbox-selection";
 import type { Ticks } from "./inbox-selection";
 import type { BulkKind } from "./bulk-start";
 import { SafeMarkdown } from "./safe-markdown";
@@ -477,21 +477,41 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
   const [ticks, setTicks] = useState<Ticks>(noTicks);
   const [bulkKind, setBulkKind] = useState<BulkKind>("code");
   const [bulkProfile, setBulkProfile] = useState<AgentProfileId | null>(null);
-  const bulk = useBulkStart(projectId);
+  const bulk = useBulkStart(projectId, project.data?.name ?? "");
   const limits = useQuery(trpc.automations.list.queryOptions({ projectId }));
   const bulkMax = limits.data?.limits.bulkStartMax ?? 50;
   const tickedList = tickedRows(ticks, tickets);
-  const selecting = tickedList.length > 0;
+  // The tickets a press started, as they were ticked: the panel keeps their results after the
+  // started rows untick, until Done or a new tick.
+  const [pressedTickets, setPressedTickets] = useState<readonly InboxTicket[]>([]);
+  const pressedList = pressedTickets.map((ticket) => tickets.find((one) => one.id === ticket.id) ?? ticket);
+  const selecting = tickedList.length > 0 || bulk.pressed !== null;
   const busy = bulk.pressed !== null && !bulk.done;
   const toggleRow = (ticket: InboxTicket, range: boolean) => {
     if (busy) return;
+    if (bulk.done) {
+      // Ticking something else after a start ends its results: the bar and panel preview again.
+      bulk.reset();
+      setPressedTickets([]);
+    }
     setTicks((current) => toggleTick(current, tickets, ticket, range));
   };
   const clearTicks = () => {
     if (busy) return;
     setTicks(noTicks);
+    setPressedTickets([]);
     bulk.reset();
   };
+  const startTicked = () => {
+    setPressedTickets(tickedList);
+    void bulk.start(tickedList, bulkKind, bulkProfile);
+  };
+  // A started row unticks as its result lands (inbox-bulk-start.md's results).
+  const startedIds = [...bulk.results].flatMap(([id, result]) => (result.kind === "started" ? [id] : [])).join(",");
+  useEffect(() => {
+    if (startedIds === "") return;
+    setTicks((current) => untick(current, startedIds.split(",")));
+  }, [startedIds]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const typing = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
@@ -564,7 +584,7 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
     ticket.subIssues > 0 && ticket.codeStart.tasks > 0 && !ticket.codeStart.overLimit ? { tasks: ticket.codeStart.tasks, href: `/projects/${projectId}/tickets/${ticket.id}` } : null;
   const panel = selecting ? (
     <BulkStartPanel
-      ticked={tickedList}
+      ticked={bulk.pressed === null ? tickedList : pressedList}
       max={bulkMax}
       kind={bulkKind}
       profile={bulkProfile}
@@ -572,7 +592,7 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
       bulk={bulk}
       onKind={(kind) => { setBulkKind(kind); setBulkProfile(null); }}
       onProfile={setBulkProfile}
-      onStart={() => void bulk.start(tickedList, bulkKind, bulkProfile)}
+      onStart={startTicked}
       onDone={clearTicks}
     />
   ) : selected === undefined || empty !== null ? undefined : detail.data === undefined ? (
@@ -633,7 +653,7 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
               onKind={(kind) => { setBulkKind(kind); setBulkProfile(null); }}
               onProfile={setBulkProfile}
               onClear={clearTicks}
-              onStart={() => void bulk.start(tickedList, bulkKind, bulkProfile)}
+              onStart={startTicked}
             />
           ) : (
           <div className="mt-[18px] flex flex-wrap items-center gap-2" data-testid="inbox-filters">

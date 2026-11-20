@@ -30,12 +30,21 @@ test("F-107/c1, F-010/c2: a member ticks four tickets and starts them in one act
   // One press: three start, each through the same start as one; the fourth is skipped, with why.
   await bar.getByRole("button", { name: "Start 3 tasks" }).click();
   await expect(page.getByTestId("bulk-head")).toHaveText("Started 3 tasks from 3 tickets. 1 skipped.", { timeout: 30_000 });
-  for (const key of [keys.two, keys.three, keys.four]) await expect(panel.locator(`[data-key="${key}"]`).getByTestId("bulk-outcome")).toHaveText(/^Started[0-9a-f]{8}$/);
+  // Each started task says its state, or that it's queued and why; the started rows untick.
+  for (const key of [keys.two, keys.three, keys.four]) {
+    await expect(panel.locator(`[data-key="${key}"]`).getByTestId("bulk-outcome")).toHaveText(/^(Started[A-Z][a-z ]+ · [0-9a-f]{8}|Queued[0-9a-f]{8}( · .+)?)$/);
+    await expect(page.locator(`[data-ticket="${key}"]`)).toHaveAttribute("data-ticked", "false");
+  }
   await expect(panel.locator(`[data-key="${keys.held}"]`).getByTestId("bulk-outcome")).toHaveText("Skippedit already has a task");
+  await expect(page.locator(`[data-ticket="${keys.held}"]`)).toHaveAttribute("data-ticked", "true");
+  await expect(panel.getByRole("button", { name: "Done" })).toBeVisible();
   await shootM6(page, "inbox-bulk-results");
 
-  // "Done" returns the Inbox, where the started tickets now show their tasks.
-  await panel.getByRole("button", { name: "Done" }).click();
+  // Ticking another ends the results (Done or a new tick): the bar and the panel preview what's ticked now.
+  await tick(page, keys.one);
+  await expect(page.getByTestId("bulk-head")).toHaveText("2 tickets, 1 task");
+  await expect(page.getByTestId("bar-start")).toBeEnabled();
+  await page.getByTestId("selection-bar").getByRole("button", { name: "Clear" }).click();
   await expect(page.getByTestId("inbox-filters")).toBeVisible();
   for (const key of [keys.two, keys.three, keys.four]) await expect(page.locator(`[data-ticket="${key}"]`)).toContainText(/Queued|Preparing|Running/);
 });

@@ -9,6 +9,9 @@ import { useState } from "react";
 import type { AgentProfileId, BulkStartId, ProjectId, TaskId } from "@ostra/protocol";
 
 import { bulkReasonText } from "@/components/automations/automation-words";
+import { waitReasonText } from "@/components/tasks/task-waiting-words";
+import { taskStateText } from "@/components/tasks/task-words";
+import type { TaskState } from "@/components/tasks/task-words";
 import { PropRow } from "@/components/shell/page-frame";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -52,20 +55,38 @@ type BulkItem = RouterOutputs["inbox"]["bulkStart"]["items"][number];
 type ParentResult = RouterOutputs["tickets"]["startSubIssues"];
 
 /** What a ticket's start did: a bulk item's outcome, or a parent's sub-issue starts. */
+/** A task a start made: its state, and why it waits while it's queued (inbox-bulk-start.md's results). */
+export type StartedTask = {
+  readonly id: TaskId;
+  readonly shortId: string;
+  readonly state: TaskState | null;
+  /** Why a queued task waits, in words; `null` when it doesn't, or the reason isn't known. */
+  readonly waits: string | null;
+};
+
 export type Result =
   | { readonly kind: "pending" }
-  | { readonly kind: "started"; readonly tasks: readonly { readonly id: TaskId; readonly shortId: string }[] }
+  | { readonly kind: "started"; readonly tasks: readonly StartedTask[] }
   | { readonly kind: "skipped"; readonly reason: string }
   | { readonly kind: "failed"; readonly reason: string };
 
 const shortIdOf = (id: string): string => id.replaceAll("-", "").slice(-8);
 
-const resultOfItem = (item: BulkItem): Result => {
+/** Why a bulk start's queued task waits, worded as the task page words it. */
+const waitsOf = (task: NonNullable<BulkItem["task"]>, project: string): string | null =>
+  task.state !== "queued" || task.wait === null
+    ? null
+    : waitReasonText(task.wait, { project, poolNames: task.poolName === null ? [] : [task.poolName], poolName: () => task.poolName ?? "", personal: null });
+
+export const resultOfItem = (item: BulkItem, project: string): Result => {
   switch (item.state) {
     case "pending":
       return { kind: "pending" };
     case "started":
-      return { kind: "started", tasks: item.task === null ? [] : [{ id: item.task.id, shortId: item.task.shortId }] };
+      return {
+        kind: "started",
+        tasks: item.task === null ? [] : [{ id: item.task.id, shortId: item.task.shortId, state: item.task.state, waits: waitsOf(item.task, project) }],
+      };
     case "skipped":
       return { kind: "skipped", reason: bulkReasonText(item.reason) };
     case "failed":
@@ -78,14 +99,14 @@ const resultOfItem = (item: BulkItem): Result => {
 const resultOfParent = (result: ParentResult): Result => {
   if (result.result === "over-limit") return { kind: "skipped", reason: t("bulkStart.reason.overLimit", { n: result.count, max: result.max }) };
   if (result.result === "no-children") return { kind: "skipped", reason: t("bulkStart.reason.noLeaf") };
-  const started = result.outcomes.flatMap((outcome) => (outcome.state === "started" && outcome.taskId !== null ? [{ id: outcome.taskId, shortId: shortIdOf(outcome.taskId) }] : []));
+  const started = result.outcomes.flatMap((outcome) => (outcome.state === "started" && outcome.taskId !== null ? [{ id: outcome.taskId, shortId: shortIdOf(outcome.taskId), state: null, waits: null }] : []));
   if (started.length > 0) return { kind: "started", tasks: started };
   const reason = result.outcomes[0]?.reason ?? null;
   return result.outcomes.some((outcome) => outcome.state === "failed") ? { kind: "failed", reason: bulkReasonText(reason) } : { kind: "skipped", reason: bulkReasonText(reason) };
 };
 
 /** The bulk start's state: one press, its request key, and each ticket's result as it lands. */
-export const useBulkStart = (projectId: ProjectId) => {
+export const useBulkStart = (projectId: ProjectId, projectName: string) => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const [requestKey, setRequestKey] = useState(() => crypto.randomUUID());
@@ -101,7 +122,7 @@ export const useBulkStart = (projectId: ProjectId) => {
   const startSubIssues = useMutation(trpc.tickets.startSubIssues.mutationOptions());
 
   const results = new Map<string, Result>(parents);
-  for (const item of bulk.data?.items ?? []) results.set(String(item.ticket.id), resultOfItem(item));
+  for (const item of bulk.data?.items ?? []) results.set(String(item.ticket.id), resultOfItem(item, projectName));
   const waitingParents = pressed?.some((id) => !results.has(id)) ?? false;
   const done = pressed !== null && !waitingParents && (bulkStartId === null || bulk.data?.done === true);
 
@@ -291,11 +312,25 @@ const PlanLine = ({ plan, ticket, kind }: { readonly plan: Plan; readonly ticket
   }
 };
 
-const ResultLine = ({ result }: { readonly result: Result }) => {
+export const ResultLine = ({ result }: { readonly result: Result }) => {
   switch (result.kind) {
     case "pending":
       return <span className="block text-[14px] font-medium text-muted">{t("bulkStart.result.pending")}</span>;
-    case "started":
+    case "started": {
+      const [only] = result.tasks;
+      if (only !== undefined && result.tasks.length === 1) {
+        // One task: `Started` with its state (`Running · 3f9c21ab`), or `Queued` with why it waits.
+        const link = <Link href={`/tasks/${only.id}`} className="font-mono text-teal hover:underline">{only.shortId}</Link>;
+        const queued = only.state === "queued";
+        return (
+          <>
+            <span className="block text-[14px] font-medium text-text">{queued ? t("bulkStart.result.queued") : t("bulkStart.result.started.one")}</span>
+            <span className="block text-sm text-muted" data-testid="bulk-task">
+              {queued && only.waits !== null ? <>{link} · {only.waits}</> : only.state !== null && !queued ? <>{taskStateText(only.state)} · {link}</> : link}
+            </span>
+          </>
+        );
+      }
       return (
         <>
           <span className="block text-[14px] font-medium text-text">{plural(result.tasks.length, "bulkStart.result.started.one", "bulkStart.result.started.other")}</span>
@@ -304,6 +339,7 @@ const ResultLine = ({ result }: { readonly result: Result }) => {
           </span>
         </>
       );
+    }
     case "skipped":
       return (
         <>

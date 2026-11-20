@@ -1,13 +1,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { boardIdSchema, taskIdSchema, ticketIdSchema } from "@ostra/protocol";
+import { boardIdSchema, poolIdSchema, taskIdSchema, ticketIdSchema } from "@ostra/protocol";
 import type { TaskId, TicketId } from "@ostra/protocol";
 
 import { progressOf } from "@/components/tickets/parent-progress";
 import type { Child } from "@/components/tickets/parent-progress";
+import type { RouterOutputs } from "@/lib/trpc";
 
-import { planOf, plannedTasks } from "./bulk-start";
+import { planOf, plannedTasks, ResultLine, resultOfItem } from "./bulk-start";
 import { TicketRow } from "./inbox-view";
 import type { InboxTicket } from "./inbox-words";
 
@@ -79,6 +80,30 @@ const child = (n: number, state: NonNullable<Child["task"]>["state"] | null, ove
   skipped: null,
   task: state === null ? null : { id: task(n), shortId: "3f9c21ab", state, needsYou: null, prs: [] },
   ...over,
+});
+
+describe("a bulk start's results (inbox-bulk-start.md)", () => {
+  const item = (state: "running" | "queued", wait: NonNullable<RouterOutputs["inbox"]["bulkStart"]["items"][number]["task"]>["wait"]) =>
+    resultOfItem(
+      {
+        ticket: { id: id(7), key: "CALC-7", title: "Ticket 7" },
+        state: "started",
+        reason: null,
+        task: { id: task(7), shortId: "0000000a", state, wait, poolName: wait === null ? null : "build-fleet" },
+      },
+      "calculator",
+    );
+
+  it("F-107/c1: a started task says its state with its ID, and a queued one says why it waits", () => {
+    const running = renderToStaticMarkup(<ResultLine result={item("running", null)} />);
+    expect(running).toContain("Started");
+    expect(running).toContain("Running · ");
+    expect(running).toContain(">0000000a</a>");
+    const queued = renderToStaticMarkup(<ResultLine result={item("queued", { code: "pool-full", poolId: poolIdSchema.parse("01900000-0000-7000-8000-0000000000f1") })} />);
+    expect(queued).toContain("Queued");
+    expect(queued).toContain(">0000000a</a> · build-fleet is at its cap of boxes.");
+    expect(queued).not.toContain("Started");
+  });
 });
 
 describe("a parent's progress (ticket-parent.md)", () => {

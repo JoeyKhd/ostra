@@ -1,5 +1,5 @@
-import { parseBoardMapping, startMany } from "@ostra/domain";
-import type { BoardMapping } from "@ostra/domain";
+import { dispatchWaitFromDb, dispatchWaitSchema, parseBoardMapping, startMany } from "@ostra/domain";
+import type { BoardMapping, DispatchWait } from "@ostra/domain";
 import type { Prisma } from "@ostra/db";
 import { agentProfileIdSchema, boardIdSchema, bulkStartIdSchema, connectionIdSchema, memberIdSchema, projectIdSchema, taskIdSchema, ticketIdSchema } from "@ostra/protocol";
 import type { OrganizationId, ProjectId } from "@ostra/protocol";
@@ -465,7 +465,16 @@ export const inboxRouter = router({
             state: z.enum(["pending", "started", "skipped", "failed"]),
             /** Why it was skipped or failed, as a code (`has-task`, `has-sub-issues`, `no-repo`, ...). */
             reason: z.string().nullable(),
-            task: z.object({ id: taskIdSchema, shortId: z.string(), state: taskStateSchema }).nullable(),
+            task: z
+              .object({
+                id: taskIdSchema,
+                shortId: z.string(),
+                state: taskStateSchema,
+                /** Why a queued task waits, and the name of the pool the reason names (inbox-bulk-start.md's "Queued"). */
+                wait: dispatchWaitSchema.nullable(),
+                poolName: z.string().nullable(),
+              })
+              .nullable(),
           }),
         ),
       }),
@@ -477,7 +486,7 @@ export const inboxRouter = router({
         include: {
           items: {
             orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-            include: { ticket: { select: { id: true, key: true, title: true } }, task: { select: { id: true, state: true } } },
+            include: { ticket: { select: { id: true, key: true, title: true } }, task: { select: { id: true, state: true, dispatchWait: true } } },
           },
         },
       });
@@ -488,6 +497,11 @@ export const inboxRouter = router({
       for (const item of bulk.items) {
         counts[item.state] += 1;
       }
+      // A queued task's reason, and the pools it names, by name: the results say why it waits.
+      const waits = new Map(bulk.items.flatMap((item) => (item.task?.state !== "queued" ? [] : [[item.task.id, dispatchWaitFromDb(item.task.dispatchWait)] as const])));
+      const poolIds = [...new Set([...waits.values()].flatMap((wait) => (wait !== null && "poolId" in wait ? [wait.poolId] : [])))];
+      const pools = poolIds.length === 0 ? [] : await ctx.deps.db.runnerPool.findMany({ where: { organizationId, id: { in: poolIds } }, select: { id: true, name: true } });
+      const poolNames = new Map(pools.map((pool) => [pool.id, pool.name] as const));
       return {
         id: bulkStartIdSchema.parse(bulk.id),
         source: bulk.source,
@@ -500,10 +514,19 @@ export const inboxRouter = router({
           ticket: { id: ticketIdSchema.parse(item.ticket.id), key: item.ticket.key, title: item.ticket.title },
           state: item.state,
           reason: item.reason,
-          task: item.task === null ? null : { id: taskIdSchema.parse(item.task.id), shortId: shortIdOf(item.task.id), state: item.task.state },
+          task: item.task === null ? null : taskOfItem(item.task, waits.get(item.task.id) ?? null, poolNames),
         })),
       };
     }),
+});
+
+/** A bulk start's task as its result says it: its state, and why it waits when it's queued. */
+const taskOfItem = (task: { readonly id: string; readonly state: z.infer<typeof taskStateSchema> }, wait: DispatchWait | null, poolNames: ReadonlyMap<string, string>) => ({
+  id: taskIdSchema.parse(task.id),
+  shortId: shortIdOf(task.id),
+  state: task.state,
+  wait,
+  poolName: wait !== null && "poolId" in wait ? (poolNames.get(wait.poolId) ?? null) : null,
 });
 
 /** The tickets that match the default filter, per project: the sidebar's Inbox count (one grouped query). */
