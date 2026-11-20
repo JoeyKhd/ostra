@@ -32,6 +32,16 @@ export const appEvents = [
 ] as const;
 
 /**
+ * Milestone 6 (F-035, F-102, ADR 0058): the events the review loop reads CI and reviewers by. A
+ * new App subscribes to them through its manifest; an App made before milestone 6 adds them in its
+ * settings (ticket 40's step 2), and `appHealth` warns until it has.
+ */
+export const reviewLoopEvents = ["check_run", "check_suite", "status", "pull_request"] as const;
+
+/** The review loop's events an App doesn't subscribe to, as `GET /app` lists its events. */
+export const missingAppEvents = (events: readonly string[]): readonly string[] => reviewLoopEvents.filter((event) => !events.includes(event));
+
+/**
  * A public App's homepage (F-136, ADR 0065): ostra's own project page. Anyone can open a public
  * App's page to install it, so it doesn't name the install's address. A private App's is the panel's.
  */

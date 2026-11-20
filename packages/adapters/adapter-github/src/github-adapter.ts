@@ -2,7 +2,7 @@ import { createHmac, createHash, timingSafeEqual } from "node:crypto";
 
 import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
-import { adapterError, CodeHostAdapter, idempotencyKey, ok, parseVendor } from "@ostra/adapter-sdk";
+import { adapterError, CodeHostAdapter, err, idempotencyKey, lineInRanges, logTail, ok, parseVendor } from "@ostra/adapter-sdk";
 import type {
   AdapterContext,
   AdapterResult,
@@ -11,21 +11,34 @@ import type {
   AppManifestInput,
   BranchRules,
   CheckRunInput,
+  CiCheckRun,
+  CiCheckRunStatus,
+  CiConclusion,
+  CiLog,
+  CiLogRef,
+  CiResults,
+  CiStatus,
+  CiStatusState,
   CodeHostAppCredentials,
   CodeHostCapabilities,
   CodeHostOAuthClient,
   CodeHostWebhookEvent,
   CommentRef,
+  CommentReviewInput,
   CompareFile,
   CompareFileStatus,
   CompareResult,
   CreatedApp,
+  CreatedReview,
+  CreateReviewError,
   DeleteRefResult,
+  DiffFileLines,
   HealthReport,
   HostRepo,
   Installation,
   InstallationAccount,
   InstallationRepo,
+  LineRange,
   LinkedUser,
   OpenPullRequestInput,
   UpdatePullRequestBodyInput,
@@ -42,6 +55,9 @@ import type {
   RepoFile,
   RepoPermission,
   RepoToken,
+  RequestedReviewers,
+  Result,
+  ReviewComment,
   WebhookInput,
 } from "@ostra/adapter-sdk";
 import { gitPersonSchema, repoFullNameSchema } from "@ostra/protocol";
@@ -49,7 +65,7 @@ import type { GitPerson } from "@ostra/protocol";
 import { z } from "zod";
 
 import { isPlanLimit, readHttpFailure, retryDecision, statusOf, toAdapterError } from "./errors.ts";
-import { buildAppManifest } from "./manifest.ts";
+import { buildAppManifest, missingAppEvents } from "./manifest.ts";
 import {
   appSchema,
   branchProtectionSchema,
@@ -57,6 +73,11 @@ import {
   branchSchema,
   checkRunListSchema,
   checkRunSchema,
+  ciCheckRunListSchema,
+  ciCheckRunSchema,
+  ciSubjectSchema,
+  ciSubjectWebhookSchema,
+  combinedStatusSchema,
   compareSchema,
   contentFileSchema,
   conversionSchema,
@@ -69,12 +90,18 @@ import {
   pullRequestListSchema,
   pullRequestNodeSchema,
   pullRequestSchema,
+  postedReviewListSchema,
+  postedReviewSchema,
   pullRequestWebhookSchema,
   pushWebhookSchema,
   repoSchema,
+  requestedReviewersSchema,
+  reviewCommentListSchema,
   reviewCommentWebhookSchema,
   reviewListSchema,
+  reviewRequestWebhookSchema,
   reviewWebhookSchema,
+  statusWebhookSchema,
   treeSchema,
   userSchema,
   userTokenSchema,
@@ -236,12 +263,12 @@ export class GitHubAdapter extends CodeHostAdapter {
       reviews: true,
       // Milestone 4 (ticket 47): a public App, its installation events and removing one.
       installableByOtherAccounts: true,
-      // Milestone 6: CI, comment-type reviews, reviewers and CODEOWNERS come with its ticket 08.
-      ciResults: false,
-      ciLogs: false,
-      reviewComments: false,
-      requestedReviewers: false,
-      codeOwners: false,
+      // Milestone 6 (ticket 08, ADR 0058): CI on a head, its logs, comment-type reviews, reviewers and CODEOWNERS.
+      ciResults: true,
+      ciLogs: true,
+      reviewComments: true,
+      requestedReviewers: true,
+      codeOwners: true,
     };
   }
 
@@ -312,6 +339,22 @@ export class GitHubAdapter extends CodeHostAdapter {
         ...(parsed.value.owner === null || parsed.value.owner === undefined ? {} : { owner: { login: parsed.value.owner.login, accountId: String(parsed.value.owner.id) } }),
       });
     });
+  }
+
+  /**
+   * Milestone 6: the App's own health. `degraded`, naming them, when it lacks events the review
+   * loop needs (`check_run`, `check_suite`, `status`): an App made before milestone 6 gains them
+   * in its settings (ticket 40's step 2), and until then CI is read when a turn ends, not when it changes.
+   */
+  async appHealth(app: CodeHostAppCredentials): Promise<HealthReport> {
+    const read = await this.readApp(app);
+    if (!read.ok) {
+      return { status: "down", reason: read.error.message };
+    }
+    const missing = missingAppEvents(read.value.events);
+    return missing.length === 0
+      ? { status: "ok" }
+      : { status: "degraded", reason: `The GitHub App doesn't subscribe to ${missing.join(", ")}: add them in its settings, under "Subscribe to events".` };
   }
 
   async listInstallations(app: CodeHostAppCredentials): Promise<AdapterResult<readonly Installation[]>> {
@@ -714,6 +757,9 @@ export class GitHubAdapter extends CodeHostAdapter {
     }
     if (
       event !== "pull_request" &&
+      event !== "check_run" &&
+      event !== "check_suite" &&
+      event !== "status" &&
       event !== "issue_comment" &&
       event !== "pull_request_review_comment" &&
       event !== "push" &&
@@ -732,6 +778,11 @@ export class GitHubAdapter extends CodeHostAdapter {
     switch (event) {
       case "pull_request":
         return parsePullRequestWebhook(payload);
+      case "check_run":
+      case "check_suite":
+        return parseCiSubjectWebhook(event, payload);
+      case "status":
+        return parseStatusWebhook(payload);
       case "issue_comment":
         return parseIssueCommentWebhook(payload);
       case "pull_request_review_comment":
@@ -1073,6 +1124,247 @@ export class GitHubAdapter extends CodeHostAdapter {
     });
   }
 
+  // ---------- milestone 6 (F-035, F-100, F-102, F-105, ADR 0058): CI, comment-type reviews, reviewers ----------
+
+  override async listCiResults(access: RepoAccess, headSha: string): Promise<AdapterResult<CiResults>> {
+    if (!SHA.test(headSha)) {
+      return adapterError("invalid-input", "a head is a 40-character commit SHA");
+    }
+    return this.#guarded<CiResults>("reading a head's CI", this.#budgetKey(access), async () => {
+      const octokit = await this.#asRepo(access, { checks: "read", statuses: "read", metadata: "read" });
+      const { owner, name } = splitRepo(access.repo);
+      const checkRuns: CiCheckRun[] = [];
+      // Every app's runs, paged: GitHub answers 100 at most per page.
+      for (let page = 1; page <= MAX_CI_PAGES; page += 1) {
+        const response = await octokit.request("GET /repos/{owner}/{repo}/commits/{ref}/check-runs", { owner, repo: name, ref: headSha, per_page: 100, page });
+        const parsed = parseVendor(ciCheckRunListSchema, response.data, "GitHub's check runs");
+        if (!parsed.ok) {
+          return parsed;
+        }
+        for (const run of parsed.value.check_runs) {
+          const read = toCiCheckRun(run);
+          if (read === null) {
+            return adapterError("invalid-response", "GitHub listed a check run whose time could not be read");
+          }
+          checkRuns.push(read);
+        }
+        if (parsed.value.check_runs.length < 100) {
+          break;
+        }
+      }
+      const statuses = await this.#statusesOf(octokit, owner, name, headSha);
+      if (!statuses.ok) {
+        return statuses;
+      }
+      this.plumbing.logger.debug("github.ci.read", { repo: access.repo, checkRuns: checkRuns.length, statuses: statuses.value.length });
+      return ok({ checkRuns, statuses: statuses.value });
+    });
+  }
+
+  override async getCiLog(access: RepoAccess, ref: CiLogRef, maxBytes: number): Promise<AdapterResult<CiLog>> {
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+      return adapterError("invalid-input", "a log's cap is a positive whole number of bytes");
+    }
+    if (ref.kind === "check-run" && !/^[1-9]\d{0,19}$/.test(ref.checkRunId)) {
+      return adapterError("invalid-input", "a check run ID is GitHub's number");
+    }
+    if (ref.kind === "status" && (!SHA.test(ref.headSha) || ref.context === "")) {
+      return adapterError("invalid-input", "a status is named by a 40-character head SHA and its context");
+    }
+    return this.#guarded<CiLog>("reading a CI log", this.#budgetKey(access), async () => {
+      const { owner, name } = splitRepo(access.repo);
+      switch (ref.kind) {
+        case "status": {
+          const octokit = await this.#asRepo(access, { statuses: "read", metadata: "read" });
+          const statuses = await this.#statusesOf(octokit, owner, name, ref.headSha);
+          if (!statuses.ok) {
+            return statuses;
+          }
+          const status = statuses.value.find((candidate) => candidate.context === ref.context);
+          const words = [status?.description ?? "", status?.targetUrl ?? ""].filter((part) => part !== "").join("\n");
+          return ok(words === "" ? { found: false, reason: "no-log" } : { found: true, ...logTail(words, maxBytes) });
+        }
+        case "check-run": {
+          // `actions: read` reads an Actions job's log (ADR 0040); the run itself, any app's.
+          const octokit = await this.#asRepo(access, { checks: "read", actions: "read", metadata: "read" });
+          const response = await octokit.request("GET /repos/{owner}/{repo}/check-runs/{check_run_id}", { owner, repo: name, check_run_id: Number(ref.checkRunId) });
+          const run = parseVendor(ciCheckRunSchema, response.data, "GitHub's check run");
+          if (!run.ok) {
+            return run;
+          }
+          if (run.value.app?.slug === GITHUB_ACTIONS_SLUG) {
+            // An Actions check run's ID is its job's ID.
+            return this.#actionsJobLog(octokit, owner, name, run.value.id, maxBytes);
+          }
+          // Another app's run: its summary and text are its log.
+          const words = [run.value.output?.summary ?? "", run.value.output?.text ?? ""].filter((part) => part !== "").join("\n\n");
+          return ok(words === "" ? { found: false, reason: "no-log" } : { found: true, ...logTail(words, maxBytes) });
+        }
+        default:
+          return ref satisfies never;
+      }
+    });
+  }
+
+  override async createReview(access: RepoAccess, number: number, review: CommentReviewInput): Promise<Result<CreatedReview, CreateReviewError>> {
+    // The interface takes "COMMENT" only; a caller that got past the type is refused here too (ADR 0028).
+    const event: string = review.event;
+    if (event !== "COMMENT") {
+      return adapterError("invalid-input", "ostra posts comment-type reviews only: never an approval or a change request");
+    }
+    if (!Number.isSafeInteger(number) || number < 1) {
+      return adapterError("invalid-input", "a PR number is a positive whole number");
+    }
+    if (!SHA.test(review.commitId)) {
+      return adapterError("invalid-input", "a review's commit is a 40-character SHA");
+    }
+    if (review.body.length > MAX_BODY_CHARS || review.comments.some((comment) => comment.body.length > MAX_BODY_CHARS)) {
+      return adapterError("invalid-input", `a review's body and each comment are at most ${String(MAX_BODY_CHARS)} characters`);
+    }
+    if (review.comments.some((comment) => !isSafeRepoPath(comment.path) || !Number.isSafeInteger(comment.line) || comment.line < 1)) {
+      return adapterError("invalid-input", "a line comment needs a repo-relative path and a positive line");
+    }
+    const posted = await this.#guarded<{ readonly review: CreatedReview } | { readonly refused: "line-outside-diff" }>("posting a review", this.#budgetKey(access), async () => {
+      const octokit = await this.#asRepo(access, { pull_requests: "write", metadata: "read" });
+      const { owner, name } = splitRepo(access.repo);
+      // A retry after a review that posted and lost its answer finds it: a bot's review of this
+      // commit with this body is the marker (F-046), so it's never posted twice.
+      const listed = await octokit.paginate("GET /repos/{owner}/{repo}/pulls/{pull_number}/reviews", { owner, repo: name, pull_number: number, per_page: 100 });
+      const earlier = parseVendor(postedReviewListSchema, listed, "GitHub's reviews");
+      if (!earlier.ok) {
+        return earlier;
+      }
+      const same = earlier.value.find((item) => item.user?.type === "Bot" && item.commit_id === review.commitId && (item.body ?? "") === review.body);
+      if (same !== undefined) {
+        return ok({ review: { reviewId: String(same.id), url: same.html_url } });
+      }
+      try {
+        const response = await octokit.request("POST /repos/{owner}/{repo}/pulls/{pull_number}/reviews", {
+          owner,
+          repo: name,
+          pull_number: number,
+          commit_id: review.commitId,
+          body: review.body,
+          event: "COMMENT",
+          comments: review.comments.map((comment) => ({ path: comment.path, line: comment.line, side: comment.side === "new" ? "RIGHT" : "LEFT", body: comment.body })),
+        });
+        const parsed = parseVendor(postedReviewSchema, response.data, "GitHub's review");
+        if (!parsed.ok) {
+          return parsed;
+        }
+        this.plumbing.logger.info("github.review.posted", { repo: access.repo, prNumber: number, reviewId: parsed.value.id, comments: review.comments.length });
+        return ok({ review: { reviewId: String(parsed.value.id), url: parsed.value.html_url } });
+      } catch (error) {
+        // GitHub refuses the whole review with 422 when a line isn't in the diff: nothing was posted.
+        if (statusOf(error) === 422 && review.comments.length > 0) {
+          return ok({ refused: "line-outside-diff" });
+        }
+        throw error;
+      }
+    });
+    if (!posted.ok) {
+      return posted;
+    }
+    if ("review" in posted.value) {
+      return ok(posted.value.review);
+    }
+    // Which comment: GitHub doesn't say, so the diff's lines do.
+    const lines = await this.diffLines(access, number);
+    if (!lines.ok) {
+      return lines;
+    }
+    const commentIndex = review.comments.findIndex((comment) => {
+      const file = lines.value.find((candidate) => candidate.path === comment.path);
+      return file === undefined || !lineInRanges(comment.side === "new" ? file.new : file.old, comment.line);
+    });
+    this.plumbing.logger.warn("github.review.off-diff", { repo: access.repo, prNumber: number, commentIndex });
+    return commentIndex < 0
+      ? adapterError("conflict", "GitHub refused the review (HTTP 422)")
+      : err({ code: "line-outside-diff", message: `GitHub refused the review: line comment ${String(commentIndex + 1)} isn't on a line of the diff`, commentIndex });
+  }
+
+  override async diffLines(access: RepoAccess, number: number): Promise<AdapterResult<readonly DiffFileLines[]>> {
+    if (!Number.isSafeInteger(number) || number < 1) {
+      return adapterError("invalid-input", "a PR number is a positive whole number");
+    }
+    const pr = await this.getPullRequest(access, number);
+    if (!pr.ok) {
+      return pr;
+    }
+    // The PR's diff is its base's merge base to its head (milestone 3's compare, three dots).
+    const compared = await this.compare(access, pr.value.baseBranch, pr.value.headSha);
+    if (!compared.ok) {
+      return compared;
+    }
+    return ok(compared.value.files.flatMap((file) => (file.patch === null ? [] : [{ path: file.path, ...hunkRanges(file.patch) }])));
+  }
+
+  override async listReviewComments(access: RepoAccess, number: number, reviewId: string): Promise<AdapterResult<readonly ReviewComment[]>> {
+    if (!Number.isSafeInteger(number) || number < 1 || !/^[1-9]\d{0,19}$/.test(reviewId)) {
+      return adapterError("invalid-input", "a PR number and a review ID are GitHub's numbers");
+    }
+    return this.#guarded("reading a review's comments", this.#budgetKey(access), async () => {
+      const octokit = await this.#asRepo(access, { pull_requests: "read", metadata: "read" });
+      const { owner, name } = splitRepo(access.repo);
+      // `GET /pulls/{n}/reviews/{id}/comments` answers each comment's diff position only, with no
+      // `line` or `side` (seen live on test1, 2026-11-20); the PR's review comments carry both, and
+      // the review each belongs to.
+      const raw = await octokit.paginate("GET /repos/{owner}/{repo}/pulls/{pull_number}/comments", { owner, repo: name, pull_number: number, per_page: 100 });
+      const parsed = parseVendor(reviewCommentListSchema, raw, "GitHub's review comments");
+      if (!parsed.ok) {
+        return parsed;
+      }
+      return ok(
+        parsed.value.filter((comment) => String(comment.pull_request_review_id ?? "") === reviewId).map((comment) => ({
+          id: String(comment.id),
+          path: comment.path,
+          // A comment on a whole file has no line.
+          line: comment.subject_type === "file" ? null : (comment.line ?? comment.original_line ?? null),
+          side: comment.side === "LEFT" ? "old" : "new",
+          body: comment.body ?? "",
+          userId: comment.user === null || comment.user === undefined ? "" : String(comment.user.id),
+        })),
+      );
+    });
+  }
+
+  override async listRequestedReviewers(access: RepoAccess, number: number): Promise<AdapterResult<RequestedReviewers>> {
+    if (!Number.isSafeInteger(number) || number < 1) {
+      return adapterError("invalid-input", "a PR number is a positive whole number");
+    }
+    return this.#guarded("reading a PR's requested reviewers", this.#budgetKey(access), async () => {
+      const octokit = await this.#asRepo(access, { pull_requests: "read", metadata: "read" });
+      const { owner, name } = splitRepo(access.repo);
+      const response = await octokit.request("GET /repos/{owner}/{repo}/pulls/{pull_number}/requested_reviewers", { owner, repo: name, pull_number: number });
+      const parsed = parseVendor(requestedReviewersSchema, response.data, "GitHub's requested reviewers");
+      if (!parsed.ok) {
+        return parsed;
+      }
+      return ok({
+        users: parsed.value.users.map((user) => ({ userId: String(user.id), login: user.login })),
+        teams: parsed.value.teams.map((team) => ({ slug: team.slug })),
+      });
+    });
+  }
+
+  /** The first of the places GitHub looks for `CODEOWNERS`, in its order (docs.github.com, "About code owners"). */
+  override async readCodeOwners(access: RepoAccess, ref: string): Promise<AdapterResult<string | null>> {
+    if (!isSafeRefName(ref)) {
+      return adapterError("invalid-input", "a ref is empty, too long, or holds `..` or control characters");
+    }
+    const read = await this.readFiles(access, ref, CODEOWNERS_PATHS);
+    if (!read.ok) {
+      return read;
+    }
+    for (const path of CODEOWNERS_PATHS) {
+      const file = read.value.files.find((candidate) => candidate.path === path);
+      if (file !== undefined) {
+        return ok(file.content);
+      }
+    }
+    return ok(null);
+  }
+
   verifyWebhook(input: WebhookInput): boolean {
     const header = Object.entries(input.headers).find(([name]) => name.toLowerCase() === "x-hub-signature-256")?.[1];
     if (header === undefined || !header.startsWith("sha256=") || input.secret.length === 0) {
@@ -1121,6 +1413,77 @@ export class GitHubAdapter extends CodeHostAdapter {
       }
     }
     return ok({ status: response.status, body });
+  }
+
+  /** A head's latest status per context, paged. */
+  async #statusesOf(octokit: Octokit, owner: string, name: string, headSha: string): Promise<AdapterResult<CiStatus[]>> {
+    const statuses: CiStatus[] = [];
+    for (let page = 1; page <= MAX_CI_PAGES; page += 1) {
+      const response = await octokit.request("GET /repos/{owner}/{repo}/commits/{ref}/status", { owner, repo: name, ref: headSha, per_page: 100, page });
+      const parsed = parseVendor(combinedStatusSchema, response.data, "GitHub's commit statuses");
+      if (!parsed.ok) {
+        return parsed;
+      }
+      for (const status of parsed.value.statuses) {
+        statuses.push({ context: status.context, state: statusStateOf(status.state), targetUrl: status.target_url ?? null, description: status.description ?? null });
+      }
+      if (parsed.value.statuses.length < 100) {
+        break;
+      }
+    }
+    return ok(statuses);
+  }
+
+  /**
+   * An Actions job's log: GitHub answers a redirect to a short-lived download URL, fetched without
+   * the token, from the end up to the cap (a range of its last bytes). A log past its retention is
+   * none, as `expired`: GitHub answers 410, or 404 for a job it still lists.
+   */
+  async #actionsJobLog(octokit: Octokit, owner: string, name: string, jobId: number, maxBytes: number): Promise<AdapterResult<CiLog>> {
+    let location: string | null = null;
+    try {
+      const response = await octokit.request("GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs", { owner, repo: name, job_id: jobId, request: { redirect: "manual" } });
+      const header: unknown = response.headers.location;
+      if (typeof header === "string" && header !== "") {
+        location = header;
+      } else if (typeof response.data === "string") {
+        // Answered with the log itself, not a redirect.
+        return ok({ found: true, ...logTail(response.data, maxBytes) });
+      }
+    } catch (error) {
+      const status = statusOf(error);
+      if (status === 410 || status === 404) {
+        return ok({ found: false, reason: "expired" });
+      }
+      throw error;
+    }
+    if (location === null || !isHttpUrl(location)) {
+      return adapterError("invalid-response", "GitHub's answer for the job's log had no download URL");
+    }
+    let download: Response;
+    try {
+      download = await fetch(location, {
+        // The download URL is signed: no token goes with it.
+        headers: { "user-agent": this.#userAgent, range: `bytes=-${String(maxBytes)}` },
+        redirect: "follow",
+        signal: AbortSignal.timeout(LOG_TIMEOUT_MS),
+      });
+    } catch {
+      return adapterError("unavailable", "reading a CI log failed: its download could not be reached");
+    }
+    if (download.status === 404 || download.status === 410) {
+      await download.body?.cancel();
+      return ok({ found: false, reason: "expired" });
+    }
+    if (!download.ok) {
+      await download.body?.cancel();
+      return adapterError(download.status >= 500 ? "unavailable" : "invalid-response", `reading a CI log failed (HTTP ${String(download.status)})`);
+    }
+    const tail = await readTail(download, maxBytes);
+    if (tail === null) {
+      return adapterError("unavailable", "reading a CI log failed: the download broke off");
+    }
+    return ok({ found: true, ...tail });
   }
 
   #budgetKey(access: RepoAccess): string {
@@ -1289,6 +1652,11 @@ const installationIdOf = (installation: { readonly id: number } | null | undefin
   installation === null || installation === undefined ? null : String(installation.id);
 
 const parsePullRequestWebhook = (payload: unknown): AdapterResult<CodeHostWebhookEvent> => {
+  // Milestone 6 (F-102): a review request changed is its own hint.
+  const reviewers = parseReviewRequestWebhook(payload);
+  if (reviewers !== null) {
+    return reviewers;
+  }
   const parsed = parseVendor(pullRequestWebhookSchema, payload, "GitHub's pull_request webhook");
   if (!parsed.ok) {
     return parsed;
@@ -1483,6 +1851,191 @@ const parseReviewWebhook = (payload: unknown): AdapterResult<CodeHostWebhookEven
     number: pr.number,
     headSha: pr.head.sha,
     review: read,
+  });
+};
+
+// ---------- milestone 6 (ticket 08, ADR 0058): CI, the diff's lines, and their webhooks ----------
+
+const SHA = /^[0-9a-f]{40}$/;
+/** Pages of check runs or statuses read at most: 1,000 of each on a head. */
+const MAX_CI_PAGES = 10;
+const LOG_TIMEOUT_MS = 30_000;
+/** GitHub Actions' app slug: its check runs' logs are its jobs'. */
+const GITHUB_ACTIONS_SLUG = "github-actions";
+/** Where GitHub looks for `CODEOWNERS`, in its order: the first one found is used. */
+export const CODEOWNERS_PATHS: readonly string[] = [".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"];
+
+const CHECK_RUN_STATUSES: ReadonlySet<string> = new Set<CiCheckRunStatus>(["queued", "in_progress", "completed", "waiting", "requested", "pending"]);
+const CONCLUSIONS: ReadonlySet<string> = new Set<CiConclusion>(["success", "failure", "neutral", "cancelled", "skipped", "timed_out", "action_required", "stale", "startup_failure"]);
+const isCheckRunStatus = (status: string): status is CiCheckRunStatus => CHECK_RUN_STATUSES.has(status);
+const isConclusion = (conclusion: string): conclusion is CiConclusion => CONCLUSIONS.has(conclusion);
+
+const timeOf = (value: string | null | undefined): number | null | "unreadable" => {
+  if (value === null || value === undefined) return null;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? "unreadable" : ms;
+};
+
+/** A check run in ostra's words. A status GitHub adds later reads as `queued`, a conclusion as `neutral`. */
+const toCiCheckRun = (run: z.infer<typeof ciCheckRunSchema>): CiCheckRun | null => {
+  const startedAt = timeOf(run.started_at);
+  const completedAt = timeOf(run.completed_at);
+  if (startedAt === "unreadable" || completedAt === "unreadable") {
+    return null;
+  }
+  const conclusion = run.conclusion === null || run.conclusion === undefined ? null : isConclusion(run.conclusion) ? run.conclusion : "neutral";
+  return {
+    id: String(run.id),
+    name: run.name,
+    appSlug: run.app?.slug ?? null,
+    status: isCheckRunStatus(run.status) ? run.status : "queued",
+    conclusion,
+    detailsUrl: run.details_url ?? null,
+    startedAt,
+    completedAt,
+  };
+};
+
+const statusStateOf = (state: string): CiStatusState => {
+  switch (state) {
+    case "error":
+    case "failure":
+    case "pending":
+    case "success":
+      return state;
+    default:
+      // A state GitHub adds later: not passed, not failed.
+      return "pending";
+  }
+};
+
+/** The lines each side of a file's hunks covers, from its patch's `@@ -a,b +c,d @@` headers. */
+export const hunkRanges = (patch: string): { readonly new: readonly LineRange[]; readonly old: readonly LineRange[] } => {
+  const added: LineRange[] = [];
+  const removed: LineRange[] = [];
+  for (const match of patch.matchAll(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm)) {
+    const oldStart = Number(match[1]);
+    const oldCount = match[2] === undefined ? 1 : Number(match[2]);
+    const newStart = Number(match[3]);
+    const newCount = match[4] === undefined ? 1 : Number(match[4]);
+    if (oldCount > 0) removed.push({ start: oldStart, end: oldStart + oldCount - 1 });
+    if (newCount > 0) added.push({ start: newStart, end: newStart + newCount - 1 });
+  }
+  return { new: added, old: removed };
+};
+
+/**
+ * A download's last `maxBytes`: a range answer (206, with its total in `Content-Range`), or the
+ * whole body read with only its tail kept. Cut forward to a whole character. `null` if it broke off.
+ */
+const readTail = async (response: Response, maxBytes: number): Promise<{ readonly text: string; readonly truncated: boolean; readonly totalBytes: number } | null> => {
+  const kept: Uint8Array[] = [];
+  let keptBytes = 0;
+  let totalBytes = 0;
+  if (response.body !== null) {
+    const reader: ReadableStreamDefaultReader<Uint8Array> = response.body.getReader();
+    for (;;) {
+      let read: Awaited<ReturnType<ReadableStreamDefaultReader<Uint8Array>["read"]>>;
+      try {
+        read = await reader.read();
+      } catch {
+        return null;
+      }
+      if (read.done) break;
+      kept.push(read.value);
+      keptBytes += read.value.byteLength;
+      totalBytes += read.value.byteLength;
+      // Keep only what the tail can need.
+      while (kept.length > 1 && keptBytes - (kept[0]?.byteLength ?? 0) >= maxBytes) {
+        keptBytes -= kept.shift()?.byteLength ?? 0;
+      }
+    }
+  }
+  const joined = new Uint8Array(keptBytes);
+  let offset = 0;
+  for (const chunk of kept) {
+    joined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  let bytes = joined.subarray(Math.max(0, joined.length - maxBytes));
+  const range = /\/(\d+)\s*$/.exec(response.headers.get("content-range") ?? "");
+  if (response.status === 206 && range?.[1] !== undefined) {
+    totalBytes = Math.max(totalBytes, Number(range[1]));
+  }
+  const truncated = totalBytes > bytes.length;
+  if (truncated) {
+    // A cut may land inside a character: step past its continuation bytes (10xxxxxx).
+    let start = 0;
+    while (start < bytes.length && ((bytes[start] ?? 0) & 0xc0) === 0x80) start += 1;
+    bytes = bytes.subarray(start);
+  }
+  return { text: new TextDecoder().decode(bytes), truncated, totalBytes };
+};
+
+const parseCiSubjectWebhook = (event: "check_run" | "check_suite", payload: unknown): AdapterResult<CodeHostWebhookEvent> => {
+  const parsed = parseVendor(ciSubjectWebhookSchema, payload, `GitHub's ${event} webhook`);
+  if (!parsed.ok) {
+    return parsed;
+  }
+  const subject = parseVendor(ciSubjectSchema, Reflect.get(Object(payload), event), `GitHub's ${event} webhook`);
+  if (!subject.ok) {
+    return subject;
+  }
+  const fullName = repoFullNameSchema.safeParse(parsed.value.repository.full_name);
+  if (!fullName.success) {
+    return adapterError("invalid-response", `the ${event} webhook names a repo that could not be read`);
+  }
+  return ok({
+    kind: "ci",
+    event,
+    action: parsed.value.action,
+    installationId: installationIdOf(parsed.value.installation),
+    hostRepoId: String(parsed.value.repository.id),
+    repo: fullName.data,
+    headSha: subject.value.head_sha,
+    appSlug: subject.value.app?.slug ?? null,
+  });
+};
+
+const parseStatusWebhook = (payload: unknown): AdapterResult<CodeHostWebhookEvent> => {
+  const parsed = parseVendor(statusWebhookSchema, payload, "GitHub's status webhook");
+  if (!parsed.ok) {
+    return parsed;
+  }
+  const fullName = repoFullNameSchema.safeParse(parsed.value.repository.full_name);
+  if (!fullName.success) {
+    return adapterError("invalid-response", "the status webhook names a repo that could not be read");
+  }
+  return ok({
+    kind: "ci",
+    event: "status",
+    action: null,
+    installationId: installationIdOf(parsed.value.installation),
+    hostRepoId: String(parsed.value.repository.id),
+    repo: fullName.data,
+    headSha: parsed.value.sha,
+    appSlug: null,
+  });
+};
+
+/** A `pull_request` delivery about its requested reviewers: a hint to read them by. */
+const parseReviewRequestWebhook = (payload: unknown): AdapterResult<CodeHostWebhookEvent> | null => {
+  const parsed = reviewRequestWebhookSchema.safeParse(payload);
+  if (!parsed.success) {
+    return null;
+  }
+  const fullName = repoFullNameSchema.safeParse(parsed.data.repository.full_name);
+  if (!fullName.success) {
+    return adapterError("invalid-response", "the pull_request webhook names a repo that could not be read");
+  }
+  return ok({
+    kind: "pull_request_reviewers",
+    action: parsed.data.action,
+    installationId: installationIdOf(parsed.data.installation),
+    hostRepoId: String(parsed.data.repository.id),
+    repo: fullName.data,
+    number: parsed.data.pull_request.number,
+    headSha: parsed.data.pull_request.head.sha,
   });
 };
 

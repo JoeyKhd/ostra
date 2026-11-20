@@ -1,0 +1,22 @@
+# 2026-11-20T13:10:29Z: pnpm exec vitest run src/github-adapter.live.test.ts -t "milestone 6" --reporter verbose --silent false in packages/adapters/adapter-github, with github.env and github-test.env loaded (the App on ostra-test, repo test1). The other blocks' skipped cases are left out.
+
+ RUN  v5.1.1 C:/Users/santi/ow/m6-adapters/packages/adapters/adapter-github
+
+stdout | src/github-adapter.live.test.ts > the GitHub adapter's milestone 6, live on the test org (F-035, F-100, F-102) > F-035: reads a workflow run's check runs on its head, and a GitHub Actions job's log from the end up to the cap
+live CI: run 44741841412 head 503ca11: 2 check run(s), 0 status(es); job log 10004 bytes, tail 2048 bytes, truncated=true, tail ends the whole log=true
+
+ ✓ src/github-adapter.live.test.ts > the GitHub adapter's milestone 6, live on the test org (F-035, F-100, F-102) > F-035: reads a workflow run's check runs on its head, and a GitHub Actions job's log from the end up to the cap 4204ms
+stdout | src/github-adapter.live.test.ts > the GitHub adapter's milestone 6, live on the test org (F-035, F-100, F-102) > F-100: posts a comment-type review with one line comment, and an off-diff finding is named, then moved into the body
+live review: the off-diff comment was named as index 1 and nothing was posted; the retry posted review 5993208789 with 1 line comment, on line 2
+
+ ✓ src/github-adapter.live.test.ts > the GitHub adapter's milestone 6, live on the test org (F-035, F-100, F-102) > F-100: posts a comment-type review with one line comment, and an off-diff finding is named, then moved into the body 6105ms
+stdout | src/github-adapter.live.test.ts > the GitHub adapter's milestone 6, live on the test org (F-035, F-100, F-102) > F-102: reads the PR's requested reviewers, and CODEOWNERS where GitHub looks first
+live reviewers: PR 202 has 0 requested reviewers; CODEOWNERS read at the branch from .github/CODEOWNERS, none on main
+
+ ✓ src/github-adapter.live.test.ts > the GitHub adapter's milestone 6, live on the test org (F-035, F-100, F-102) > F-102: reads the PR's requested reviewers, and CODEOWNERS where GitHub looks first 836ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed | 14 skipped (17)
+   Start at  14:10:30
+   Duration  19.50s (tests 98%, import 1%, transform 1%)
+

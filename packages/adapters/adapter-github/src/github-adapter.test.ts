@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-import type { CheckRunState, InstallationAccount, PullRequestReview } from "@ostra/adapter-sdk";
+import type { CheckRunState, CiCheckRunStatus, CiConclusion, InstallationAccount, PullRequestReview } from "@ostra/adapter-sdk";
 
 import { defineCodeHostContractSuite, memoryAdapterContext } from "@ostra/adapter-sdk/testing";
 import type { CodeHostFixture } from "@ostra/adapter-sdk/testing";
@@ -9,9 +9,9 @@ import { repoFullNameSchema } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createFakeGitHub } from "./fake-github.ts";
-import type { FakeGitHub, FakeReview } from "./fake-github.ts";
-import { GITHUB_COM_LFS_ACTION_HOSTS, GitHubAdapter } from "./github-adapter.ts";
-import { OSTRA_PROJECT_URL } from "./manifest.ts";
+import type { FakeCheckRun, FakeGitHub, FakeReview } from "./fake-github.ts";
+import { GITHUB_COM_LFS_ACTION_HOSTS, GitHubAdapter, hunkRanges } from "./github-adapter.ts";
+import { appEvents, missingAppEvents, OSTRA_PROJECT_URL } from "./manifest.ts";
 
 const template = "## What\n\n## Why\n";
 const test1 = repoFullNameSchema.parse("fake-org/test1");
@@ -42,6 +42,17 @@ const compares = [
   { base: "main", head: "ostra/other", aheadBy: 0, behindBy: 3 },
   { base: "main", head: "ostra/third", aheadBy: 2, behindBy: 1 },
   { base: "main", head: "ostra/review", aheadBy: 40, behindBy: 0, files: truncatedFiles },
+  // Milestone 6 (F-100): the commented PR's diff, at its head: new lines 10 to 14, old 10 to 12.
+  {
+    base: "main",
+    head: "1".repeat(40),
+    aheadBy: 1,
+    behindBy: 0,
+    files: [
+      { path: "src/banner.ts", status: "modified", additions: 2, deletions: 0, patch: "@@ -10,3 +10,5 @@\n a\n b\n+c\n+d\n e\n" },
+      { path: "logo.png", status: "modified", additions: 0, deletions: 0 },
+    ],
+  },
 ] as const;
 
 /** A comment's webhook payload, shaped as GitHub sends it (docs.github.com, "Webhook events and payloads"). */
@@ -208,6 +219,11 @@ const startFake = (): Promise<FakeGitHub> =>
         },
         refs: ["refs/ostra/wip/task-contract"],
         compares,
+        // Milestone 6 (F-102): CODEOWNERS where GitHub looks first (with a root one it then ignores), and only in a later place.
+        filesAt: {
+          "ostra/owners-first": { ".github/CODEOWNERS": "* @fake-org/web-reviewers\n", CODEOWNERS: "* @someone-else\n" },
+          "ostra/owners-later": { "docs/CODEOWNERS": "/docs/ @grace\n" },
+        },
       },
       { id: 1002, owner: "fake-org", name: "test2", defaultBranch: "main", files: { "secret.txt": "other repo\n" }, branches: ["main"] },
       // Private, in a free organization: rulesets and rules answer 403 "Upgrade to GitHub Pro".
@@ -321,6 +337,116 @@ const milestone4Fixture = (fake: FakeGitHub): Pick<CodeHostFixture, "reviews" | 
   };
 };
 
+// ---- milestone 6 (ticket 08, F-035, F-100, F-102): CI, comment-type reviews, reviewers and CODEOWNERS ----
+
+const COMMENTED_PR = 600;
+const commentedHead = "1".repeat(40);
+const ciHead = "8".repeat(40);
+/** A CI log with a line no error may carry, and a character of more than one byte near the end. */
+const ciLogText = ["##[group]Run pnpm test", "TOKEN-LIKE-LINE do-not-echo-0b7f", "FAIL src/banner.test.ts > shows the name", 'Expected: "Ada"', 'Received: "Adé"', "##[error]Process completed with exit code 1."].join("\n");
+const ciRepository = { id: 1001, full_name: "fake-org/test1" };
+
+const milestone6Fixture = (fake: FakeGitHub): Pick<CodeHostFixture, "ci" | "ciLogs" | "commentReview" | "requestedReviewers" | "codeOwners" | "ciWebhooks"> => {
+  const repo = "fake-org/test1";
+  fake.pulls.push({
+    number: COMMENTED_PR,
+    repo,
+    head: "ostra/commented",
+    base: "main",
+    title: "Commented",
+    body: "",
+    draft: false,
+    state: "open",
+    merged: false,
+    headSha: commentedHead,
+    updatedAt: "2026-11-20T10:00:00Z",
+    mergedAt: null,
+    closedAt: null,
+  });
+  const actions = fake.addCheckRun(repo, {
+    headSha: ciHead,
+    name: "test",
+    appSlug: "github-actions",
+    status: "completed",
+    conclusion: "failure",
+    detailsUrl: "https://github.example/fake-org/test1/actions/runs/1/job/2",
+    startedAt: "2026-11-20T10:00:00Z",
+    completedAt: "2026-11-20T10:02:00Z",
+    log: ciLogText,
+  });
+  const queued = fake.addCheckRun(repo, { headSha: ciHead, name: "deploy-preview", appSlug: "vercel", appId: 8329, status: "queued", conclusion: null, summary: "Waiting" });
+  const expired = fake.addCheckRun(repo, { headSha: ciHead, name: "lint", appSlug: "github-actions", status: "completed", conclusion: "success", logExpired: true });
+  fake.setStatus(repo, ciHead, { context: "ci/jenkins", state: "pending", targetUrl: "https://jenkins.invalid/job/1", description: "Waiting for an executor" });
+  fake.setStatus(repo, ciHead, { context: "ci/legacy", state: "success", targetUrl: null, description: "Passed" });
+  fake.requestReviewers(repo, COMMENTED_PR, { users: [{ id: 888, login: "grace" }], teams: ["web-reviewers"] });
+  const runView = (run: FakeCheckRun, status: CiCheckRunStatus, conclusion: CiConclusion | null) => ({
+    id: String(run.id),
+    name: run.name,
+    appSlug: run.appSlug ?? null,
+    status,
+    conclusion,
+    detailsUrl: run.detailsUrl ?? null,
+    startedAt: run.startedAt === undefined || run.startedAt === null ? null : Date.parse(run.startedAt),
+    completedAt: run.completedAt === undefined || run.completedAt === null ? null : Date.parse(run.completedAt),
+  });
+  const checkRunBody = JSON.stringify({ action: "completed", installation: { id: 7 }, repository: ciRepository, check_run: { id: actions.id, head_sha: ciHead, status: "completed", app: { id: 15_368, slug: "github-actions" } }, sender: { id: 1, login: "x" } });
+  const checkSuiteBody = JSON.stringify({ action: "completed", installation: { id: 7 }, repository: ciRepository, check_suite: { id: 71_001, head_sha: ciHead, app: { slug: "circleci-checks" } } });
+  const statusBody = JSON.stringify({ id: 1, installation: { id: 7 }, repository: ciRepository, sha: ciHead, context: "ci/jenkins", state: "pending", target_url: null });
+  const reviewRequestBody = (action: "review_requested" | "review_request_removed") =>
+    JSON.stringify({
+      action,
+      number: COMMENTED_PR,
+      installation: { id: 7 },
+      repository: ciRepository,
+      pull_request: { number: COMMENTED_PR, state: "open", merged: false, updated_at: "2026-11-20T10:00:00Z", head: { ref: "ostra/commented", sha: commentedHead } },
+      requested_reviewer: { id: 888, login: "grace" },
+    });
+  const ciHint = (event: "check_run" | "check_suite" | "status", appSlug: string | null) =>
+    ({ kind: "ci", event, action: event === "status" ? null : "completed", installationId: "7", hostRepoId: "1001", repo: test1, headSha: ciHead, appSlug }) as const;
+  const reviewersHint = (action: "review_requested" | "review_request_removed") =>
+    ({ kind: "pull_request_reviewers", action, installationId: "7", hostRepoId: "1001", repo: test1, number: COMMENTED_PR, headSha: commentedHead }) as const;
+  return {
+    ci: {
+      headSha: ciHead,
+      expected: {
+        checkRuns: [runView(actions, "completed", "failure"), runView(queued, "queued", null), runView(expired, "completed", "success")],
+        statuses: [
+          { context: "ci/jenkins", state: "pending", targetUrl: "https://jenkins.invalid/job/1", description: "Waiting for an executor" },
+          { context: "ci/legacy", state: "success", targetUrl: null, description: "Passed" },
+        ],
+      },
+    },
+    ciLogs: {
+      checkRunId: String(actions.id),
+      log: ciLogText,
+      secretLine: "TOKEN-LIKE-LINE do-not-echo-0b7f",
+      expiredCheckRunId: String(expired.id),
+      status: { headSha: ciHead, context: "ci/jenkins", words: "Waiting for an executor" },
+    },
+    commentReview: {
+      number: COMMENTED_PR,
+      headSha: commentedHead,
+      expectedLines: [{ path: "src/banner.ts", new: [{ start: 10, end: 14 }], old: [{ start: 10, end: 12 }] }],
+      onDiff: { path: "src/banner.ts", line: 12, side: "new", body: "**Blocking:** the name isn't escaped" },
+      offDiff: { path: "src/banner.ts", line: 40, side: "new", body: "**Nit:** a far line" },
+      reviewCount: () => Promise.resolve(fake.reviewCount(repo, COMMENTED_PR)),
+    },
+    requestedReviewers: { number: COMMENTED_PR, expected: { users: [{ userId: "888", login: "grace" }], teams: [{ slug: "web-reviewers" }] } },
+    codeOwners: {
+      first: { ref: "ostra/owners-first", text: "* @fake-org/web-reviewers\n" },
+      later: { ref: "ostra/owners-later", text: "/docs/ @grace\n" },
+      none: "main",
+    },
+    ciWebhooks: [
+      { input: signed(fake, "check_run", checkRunBody), expected: ciHint("check_run", "github-actions") },
+      { input: signed(fake, "check_suite", checkSuiteBody), expected: ciHint("check_suite", "circleci-checks") },
+      { input: signed(fake, "status", statusBody), expected: ciHint("status", null) },
+      { input: signed(fake, "pull_request", reviewRequestBody("review_requested")), expected: reviewersHint("review_requested") },
+      { input: signed(fake, "pull_request", reviewRequestBody("review_request_removed")), expected: reviewersHint("review_request_removed") },
+    ],
+  };
+};
+
 const fixtureOf = (fake: FakeGitHub): CodeHostFixture => {
   const app = { appId: fake.appId, privateKey: fake.privateKey };
   const body = JSON.stringify({ action: "opened", number: 1 });
@@ -356,6 +482,7 @@ const fixtureOf = (fake: FakeGitHub): CodeHostFixture => {
     ...milestone3Fixture(fake),
     ...milestone4Fixture(fake),
     ...milestone4InstallationsFixture(fake),
+    ...milestone6Fixture(fake),
   };
 };
 
@@ -801,9 +928,9 @@ describe("the GitHub adapter", () => {
     });
 
     it("answers other for an event it doesn't act on, without reading its body", () => {
-      expect(adapter.parseWebhook({ headers: { "x-github-event": "check_suite" }, body: "not json at all", secret: "" })).toEqual({
+      expect(adapter.parseWebhook({ headers: { "x-github-event": "workflow_run" }, body: "not json at all", secret: "" })).toEqual({
         ok: true,
-        value: { kind: "other", event: "check_suite" },
+        value: { kind: "other", event: "workflow_run" },
       });
     });
 
@@ -1203,12 +1330,12 @@ describe("the GitHub adapter", () => {
         reviews: true,
         // Milestone 4 (ticket 47).
         installableByOtherAccounts: true,
-        // Milestone 6: none yet, until its ticket 08.
-        ciResults: false,
-        ciLogs: false,
-        reviewComments: false,
-        requestedReviewers: false,
-        codeOwners: false,
+        // Milestone 6 (ticket 08): CI, its logs, comment-type reviews, reviewers and CODEOWNERS.
+        ciResults: true,
+        ciLogs: true,
+        reviewComments: true,
+        requestedReviewers: true,
+        codeOwners: true,
       });
     });
   });
@@ -1513,5 +1640,94 @@ describe("the configuration reference", () => {
     // And the adapter calls what the setting lists: GitHub.com's by default, a GHES install's when set.
     expect(new GitHubAdapter().capabilities.lfsActionHosts).toEqual([...GITHUB_COM_LFS_ACTION_HOSTS]);
     expect(new GitHubAdapter({ lfsActionHosts: ["lfs.ghes.example.com"] }).capabilities.lfsActionHosts).toEqual(["lfs.ghes.example.com"]);
+  });
+});
+
+describe("the GitHub adapter's milestone 6: CI, reviews and the App's events (ticket 08)", () => {
+  let fake: FakeGitHub;
+  let adapter: GitHubAdapter;
+  let fixture: CodeHostFixture;
+
+  beforeAll(async () => {
+    fake = await startFake();
+    adapter = new GitHubAdapter({ apiUrl: fake.apiUrl, webUrl: fake.webUrl, oauthUrl: fake.apiUrl }, memoryAdapterContext());
+    fixture = fixtureOf(fake);
+  });
+  afterAll(async () => {
+    await fake.close();
+  });
+
+  const repo = "fake-org/test1";
+  const head = "a".repeat(40);
+  const access = (): CodeHostFixture["access"] => fixture.access;
+
+  it("F-035: reads another app's check run's log from its summary and text, and an Actions job's log without sending the token to the download", async () => {
+    const preview = fake.addCheckRun(repo, { headSha: head, name: "preview", appSlug: "vercel", status: "completed", conclusion: "failure", summary: "Build failed", text: "Error: missing env NEXT_PUBLIC_X" });
+    expect(await adapter.getCiLog(access(), { kind: "check-run", checkRunId: String(preview.id) }, 1_000)).toEqual({
+      ok: true,
+      value: { found: true, text: "Build failed\n\nError: missing env NEXT_PUBLIC_X", truncated: false, totalBytes: Buffer.byteLength("Build failed\n\nError: missing env NEXT_PUBLIC_X") },
+    });
+    const quiet = fake.addCheckRun(repo, { headSha: head, name: "quiet", appSlug: "vercel", status: "completed", conclusion: "success", summary: null });
+    expect(await adapter.getCiLog(access(), { kind: "check-run", checkRunId: String(quiet.id) }, 1_000)).toEqual({ ok: true, value: { found: false, reason: "no-log" } });
+    const log = `${"x".repeat(5_000)}\nthe last line é`;
+    const job = fake.addCheckRun(repo, { headSha: head, name: "test", appSlug: "github-actions", status: "completed", conclusion: "failure", log });
+    const before = fake.authorizedLogDownloads();
+    const tail = await adapter.getCiLog(access(), { kind: "check-run", checkRunId: String(job.id) }, 64);
+    if (!tail.ok || !tail.value.found) throw new Error("no tail");
+    expect(tail.value.text.endsWith("the last line é")).toBe(true);
+    expect(Buffer.byteLength(tail.value.text)).toBeLessThanOrEqual(64);
+    expect(tail.value).toMatchObject({ truncated: true, totalBytes: Buffer.byteLength(log) });
+    expect(fake.authorizedLogDownloads()).toBe(before);
+    expect(await adapter.getCiLog(access(), { kind: "check-run", checkRunId: "0" }, 64)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+    expect(await adapter.getCiLog(access(), { kind: "check-run", checkRunId: String(job.id) }, 0)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+  });
+
+  it("F-035: reads each hunk's lines on both sides, from a patch's headers", () => {
+    expect(hunkRanges("@@ -1,3 +1,4 @@\n a\n+b\n c\n d\n@@ -20 +21,0 @@\n-gone\n@@ -0,0 +30,2 @@\n+x\n+y\n")).toEqual({
+      new: [
+        { start: 1, end: 4 },
+        { start: 30, end: 31 },
+      ],
+      old: [
+        { start: 1, end: 3 },
+        { start: 20, end: 20 },
+      ],
+    });
+    expect(hunkRanges("Binary files differ")).toEqual({ new: [], old: [] });
+  });
+
+  it("F-035: warns, naming them, when the App doesn't subscribe to the review loop's events, and is ok once it does", async () => {
+    fake.setAppEvents(["pull_request"]);
+    const warned = await adapter.appHealth(fixture.app);
+    expect(warned.status).toBe("degraded");
+    expect(warned.status === "degraded" && warned.reason).toContain("check_run, check_suite, status");
+    expect(missingAppEvents(["pull_request", "check_run"])).toEqual(["check_suite", "status"]);
+    fake.setAppEvents(["pull_request", "check_run", "check_suite", "status", "push"]);
+    expect(await adapter.appHealth(fixture.app)).toEqual({ status: "ok" });
+    fake.setAppEvents(["pull_request"]);
+    // A new App asks for every one of them through its manifest.
+    expect(missingAppEvents(appEvents)).toEqual([]);
+  });
+
+  it("F-102: reads a PR's requested reviewers, people and teams, and CODEOWNERS from the first place GitHub looks", async () => {
+    const number = fixture.commentReview?.number ?? 0;
+    expect(await adapter.listRequestedReviewers(access(), number)).toEqual({ ok: true, value: { users: [{ userId: "888", login: "grace" }], teams: [{ slug: "web-reviewers" }] } });
+    expect(await adapter.listRequestedReviewers(access(), 0)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+    expect(await adapter.listRequestedReviewers(access(), 9_999)).toMatchObject({ ok: false, error: { code: "not-found" } });
+    // `.github/CODEOWNERS` wins over a root one on the same ref; `docs/CODEOWNERS` is read when it's the only one.
+    expect(await adapter.readCodeOwners(access(), "ostra/owners-first")).toEqual({ ok: true, value: "* @fake-org/web-reviewers\n" });
+    expect(await adapter.readCodeOwners(access(), "ostra/owners-later")).toEqual({ ok: true, value: "/docs/ @grace\n" });
+    expect(await adapter.readCodeOwners(access(), "main")).toEqual({ ok: true, value: null });
+    expect(await adapter.readCodeOwners(access(), "a..b")).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+  });
+
+  it("F-100 and F-105: reads one review's line comments with their lines and sides, from the PR's comments, and only that review's", async () => {
+    const number = fixture.commentReview?.number ?? 0;
+    const first = await adapter.createReview(access(), number, { event: "COMMENT", commitId: "1".repeat(40), body: "first", comments: [{ path: "src/banner.ts", line: 11, side: "new", body: "one" }] });
+    const second = await adapter.createReview(access(), number, { event: "COMMENT", commitId: "1".repeat(40), body: "second", comments: [{ path: "src/banner.ts", line: 10, side: "old", body: "two" }] });
+    if (!first.ok || !second.ok) throw new Error("not posted");
+    expect(await adapter.listReviewComments(access(), number, second.value.reviewId)).toMatchObject({ ok: true, value: [{ path: "src/banner.ts", line: 10, side: "old", body: "two" }] });
+    expect(await adapter.listReviewComments(access(), number, first.value.reviewId)).toMatchObject({ ok: true, value: [{ path: "src/banner.ts", line: 11, side: "new", body: "one" }] });
+    expect(await adapter.listReviewComments(access(), number, "x")).toMatchObject({ ok: false, error: { code: "invalid-input" } });
   });
 });

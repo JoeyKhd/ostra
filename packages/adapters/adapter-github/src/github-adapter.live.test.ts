@@ -553,3 +553,135 @@ describe.skipIf(!env.success)("the GitHub adapter's milestone 4, live on the tes
     console.info(`live reviews: ${String(listed.value.length)} review, isBot=${String(listed.value[0]?.isBot)}, state=${String(listed.value[0]?.state)}`);
   }, 60_000);
 });
+
+describe.skipIf(!env.success)("the GitHub adapter's milestone 6, live on the test org (F-035, F-100, F-102)", () => {
+  const adapter = new GitHubAdapter({ userAgent });
+  let access: RepoAccess;
+  let api: Octokit;
+  let base = "";
+  let branch: string | undefined;
+  let prNumber: number | undefined;
+  let headSha = "";
+  const codeOwners = "# ostra live test\n/live-test/ @ostra-test/nobody\n";
+  /** The file the test's commit adds: its lines 1 to 3 are the PR's diff. */
+  const probePath = (): string => `live-test/${(branch ?? "x").replaceAll("/", "-")}.md`;
+
+  const config = (): z.infer<typeof envSchema> => {
+    if (!env.success) {
+      throw new Error("the live environment is not loaded");
+    }
+    return env.data;
+  };
+  const target = (): { readonly owner: string; readonly repo: string } => ({ owner: config().GITHUB_TEST_ORG, repo: config().GITHUB_TEST_REPO });
+
+  beforeAll(async () => {
+    const { GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY_PATH, GITHUB_APP_INSTALLATION_ID, GITHUB_TEST_ORG, GITHUB_TEST_REPO } = config();
+    const app = { appId: GITHUB_APP_ID, privateKey: await readFile(GITHUB_APP_PRIVATE_KEY_PATH, "utf8") };
+    access = { app, installationId: GITHUB_APP_INSTALLATION_ID, repo: repoFullNameSchema.parse(`${GITHUB_TEST_ORG}/${GITHUB_TEST_REPO}`) };
+    const token = await adapter.mintRepoToken(access, { contents: "write", pull_requests: "write", metadata: "read" });
+    if (!token.ok) {
+      throw new Error(`could not mint a setup token: ${token.error.message}`);
+    }
+    api = new Octokit({ auth: token.value.token, userAgent });
+    const defaultBranch = await adapter.getDefaultBranch(access);
+    if (!defaultBranch.ok) {
+      throw new Error("no default branch");
+    }
+    base = defaultBranch.value;
+    const head = await api.rest.git.getRef({ ...target(), ref: `heads/${base}` });
+    branch = `ostra/live-m6-${String(Date.now())}`;
+    await api.rest.git.createRef({ ...target(), ref: `refs/heads/${branch}`, sha: head.data.object.sha });
+    await api.rest.repos.createOrUpdateFileContents({
+      ...target(),
+      path: ".github/CODEOWNERS",
+      message: "ostra live test: a CODEOWNERS file",
+      content: Buffer.from(codeOwners).toString("base64"),
+      branch,
+    });
+    const committed = await api.rest.repos.createOrUpdateFileContents({
+      ...target(),
+      path: probePath(),
+      message: "ostra live test: a milestone 6 probe",
+      content: Buffer.from("A probe from the ostra GitHub adapter's milestone 6 live test.\nIts second line.\nIts third line.\n").toString("base64"),
+      branch,
+    });
+    headSha = committed.data.commit.sha ?? "";
+    const opened = await adapter.openPullRequest({ access, head: branch, base, title: "ostra live test (milestone 6): safe to close", body: "Opened by the adapter's live test.", draft: false });
+    if (!opened.ok) throw new Error(opened.error.message);
+    prNumber = opened.value.number;
+  }, 90_000);
+
+  afterAll(async () => {
+    if (prNumber !== undefined) {
+      await api.rest.pulls.update({ ...target(), pull_number: prNumber, state: "closed" });
+    }
+    if (branch !== undefined) {
+      await api.rest.git.deleteRef({ ...target(), ref: `heads/${branch}` });
+    }
+  }, 60_000);
+
+  it("F-035: reads a workflow run's check runs on its head, and a GitHub Actions job's log from the end up to the cap", async () => {
+    // The newest finished run of test1's own CI workflow: its jobs' logs are kept for 90 days.
+    const reader = await adapter.mintRepoToken(access, { actions: "read", metadata: "read" });
+    if (!reader.ok) throw new Error(reader.error.message);
+    const actions = new Octokit({ auth: reader.value.token, userAgent });
+    const runs = await actions.request("GET /repos/{owner}/{repo}/actions/runs", { ...target(), status: "completed", per_page: 5 });
+    const run = runs.data.workflow_runs[0];
+    if (run === undefined) throw new Error("test1 has no finished workflow run");
+    const ci = await adapter.listCiResults(access, run.head_sha);
+    if (!ci.ok) throw new Error(ci.error.message);
+    const job = ci.value.checkRuns.find((candidate) => candidate.appSlug === "github-actions" && candidate.status === "completed");
+    if (job === undefined) throw new Error("the run's head has no finished Actions check run");
+    expect([job.status, typeof job.conclusion, typeof job.startedAt, typeof job.completedAt]).toEqual(["completed", "string", "number", "number"]);
+    const log = await adapter.getCiLog(access, { kind: "check-run", checkRunId: job.id }, 2_048);
+    if (!log.ok) throw new Error(log.error.message);
+    if (!log.value.found) throw new Error(`no log: ${log.value.reason}`);
+    expect(Buffer.byteLength(log.value.text)).toBeLessThanOrEqual(2_048);
+    expect(log.value.totalBytes).toBeGreaterThan(0);
+    expect(log.value.text.length).toBeGreaterThan(0);
+    const whole = await adapter.getCiLog(access, { kind: "check-run", checkRunId: job.id }, 1_000_000);
+    if (!whole.ok || !whole.value.found) throw new Error("the whole log could not be read");
+    // The tail is the end of the whole log.
+    expect(whole.value.text.endsWith(log.value.text)).toBe(true);
+    expect(whole.value.truncated).toBe(false);
+    console.info(
+      `live CI: run ${String(run.id)} head ${run.head_sha.slice(0, 7)}: ${String(ci.value.checkRuns.length)} check run(s), ${String(ci.value.statuses.length)} status(es); job log ${String(log.value.totalBytes)} bytes, tail ${String(Buffer.byteLength(log.value.text))} bytes, truncated=${String(log.value.truncated)}, tail ends the whole log=${String(whole.value.text.endsWith(log.value.text))}`,
+    );
+  }, 60_000);
+
+  it("F-100: posts a comment-type review with one line comment, and an off-diff finding is named, then moved into the body", async () => {
+    if (prNumber === undefined) throw new Error("no PR");
+    const lines = await adapter.diffLines(access, prNumber);
+    if (!lines.ok) throw new Error(lines.error.message);
+    expect(lines.value.find((file) => file.path === probePath())).toEqual({ path: probePath(), new: [{ start: 1, end: 3 }], old: [] });
+    const onDiff = { path: probePath(), line: 2, side: "new", body: "ostra live test: a finding on a line of the diff." } as const;
+    const offDiff = { path: probePath(), line: 40, side: "new", body: "ostra live test: a finding on a line outside the diff." } as const;
+    const refused = await adapter.createReview(access, prNumber, { event: "COMMENT", commitId: headSha, body: "ostra live test: a review.", comments: [onDiff, offDiff] });
+    expect(refused).toMatchObject({ ok: false, error: { code: "line-outside-diff", commentIndex: 1 } });
+    expect(await adapter.listReviews(access, prNumber)).toEqual({ ok: true, value: [] });
+    // What core does with the refusal: the finding moves into the body, and the review is posted once more.
+    const posted = await adapter.createReview(access, prNumber, {
+      event: "COMMENT",
+      commitId: headSha,
+      body: `ostra live test: a review.\n\n**${offDiff.path}:${String(offDiff.line)}:** ${offDiff.body}`,
+      comments: [onDiff],
+    });
+    if (!posted.ok) throw new Error(posted.error.message);
+    expect(posted.value.url).toMatch(/^https:\/\/github\.com\/.+\/pull\/\d+#pullrequestreview-\d+$/);
+    const reviews = await adapter.listReviews(access, prNumber);
+    expect(reviews.ok && reviews.value.map((review) => [review.state, review.isBot, review.commitId])).toEqual([["commented", true, headSha]]);
+    const comments = await adapter.listReviewComments(access, prNumber, posted.value.reviewId);
+    if (!comments.ok) throw new Error(comments.error.message);
+    expect(comments.value.map((comment) => [comment.path, comment.line, comment.side, comment.body])).toEqual([[onDiff.path, 2, "new", onDiff.body]]);
+    console.info(`live review: the off-diff comment was named as index 1 and nothing was posted; the retry posted review ${posted.value.reviewId} with ${String(comments.value.length)} line comment, on line 2`);
+  }, 60_000);
+
+  it("F-102: reads the PR's requested reviewers, and CODEOWNERS where GitHub looks first", async () => {
+    if (prNumber === undefined || branch === undefined) throw new Error("no PR");
+    // No one is asked: asking a person would notify them, so the list is read as it is.
+    expect(await adapter.listRequestedReviewers(access, prNumber)).toEqual({ ok: true, value: { users: [], teams: [] } });
+    expect(await adapter.readCodeOwners(access, branch)).toEqual({ ok: true, value: codeOwners });
+    expect(await adapter.readCodeOwners(access, base)).toEqual({ ok: true, value: null });
+    console.info(`live reviewers: PR ${String(prNumber)} has 0 requested reviewers; CODEOWNERS read at the branch from .github/CODEOWNERS, none on ${base}`);
+  }, 60_000);
+});

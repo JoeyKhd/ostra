@@ -262,3 +262,89 @@ export const installationRepositoriesWebhookSchema = z.looseObject({
   repositories_added: z.array(installationRepoSchema).default([]),
   repositories_removed: z.array(installationRepoSchema).default([]),
 });
+
+// ---------- milestone 6 (ticket 08, ADR 0058): CI, comment-type reviews, reviewers ----------
+
+/** A check run as `listCiResults` and `getCiLog` read it: any app's, with its words and times. */
+export const ciCheckRunSchema = z.looseObject({
+  id: z.number().int(),
+  name: z.string(),
+  head_sha: z.string().optional(),
+  status: z.string(),
+  conclusion: z.string().nullish(),
+  details_url: z.string().nullish(),
+  started_at: z.string().nullish(),
+  completed_at: z.string().nullish(),
+  app: z.looseObject({ id: z.number().int().optional(), slug: z.string().nullish() }).nullish(),
+  output: z.looseObject({ title: z.string().nullish(), summary: z.string().nullish(), text: z.string().nullish() }).nullish(),
+});
+
+/** `GET /repos/{o}/{r}/commits/{ref}/check-runs`, a page of it. */
+export const ciCheckRunListSchema = z.looseObject({ total_count: z.number().int().nonnegative(), check_runs: z.array(ciCheckRunSchema) });
+
+/** `GET /repos/{o}/{r}/commits/{ref}/status`: the latest status per context, a page of them. */
+export const combinedStatusSchema = z.looseObject({
+  state: z.string().optional(),
+  statuses: z.array(
+    z.looseObject({
+      context: z.string(),
+      state: z.string(),
+      target_url: z.string().nullish(),
+      description: z.string().nullish(),
+    }),
+  ),
+});
+
+/** `POST /repos/{o}/{r}/pulls/{n}/reviews`'s answer, and a review as the list reads it for the lookup. */
+export const postedReviewSchema = z.looseObject({
+  id: z.number().int(),
+  html_url: z.string().min(1),
+  body: z.string().nullish(),
+  commit_id: z.string().nullish(),
+  user: z.looseObject({ id: z.number().int(), type: z.string().optional() }).nullish(),
+});
+export const postedReviewListSchema = z.array(postedReviewSchema);
+
+/** `GET /repos/{o}/{r}/pulls/{n}/reviews/{id}/comments`. */
+export const reviewCommentListSchema = z.array(
+  z.looseObject({
+    id: z.number().int(),
+    pull_request_review_id: z.number().int().nullish(),
+    path: z.string().min(1),
+    line: z.number().int().nullish(),
+    original_line: z.number().int().nullish(),
+    side: z.string().nullish(),
+    subject_type: z.string().nullish(),
+    body: z.string().nullish(),
+    user: z.looseObject({ id: z.number().int() }).nullish(),
+  }),
+);
+
+/** `GET /repos/{o}/{r}/pulls/{n}/requested_reviewers`. */
+export const requestedReviewersSchema = z.looseObject({
+  users: z.array(z.looseObject({ id: z.number().int(), login: z.string().min(1) })).default([]),
+  teams: z.array(z.looseObject({ slug: z.string().min(1) })).default([]),
+});
+
+/** A `check_run` or `check_suite` webhook: a hint, with its head and the app that made it. */
+export const ciSubjectWebhookSchema = z.looseObject({
+  action: z.string().min(1),
+  installation: webhookInstallationSchema,
+  repository: webhookRepositorySchema,
+});
+export const ciSubjectSchema = z.looseObject({ head_sha: z.string().min(1), app: z.looseObject({ slug: z.string().nullish() }).nullish() });
+
+/** A `status` webhook: a commit status changed on `sha`. */
+export const statusWebhookSchema = z.looseObject({
+  installation: webhookInstallationSchema,
+  repository: webhookRepositorySchema,
+  sha: z.string().min(1),
+});
+
+/** A `pull_request` webhook whose action is `review_requested` or `review_request_removed`. */
+export const reviewRequestWebhookSchema = z.looseObject({
+  action: z.enum(["review_requested", "review_request_removed"]),
+  installation: webhookInstallationSchema,
+  repository: webhookRepositorySchema,
+  pull_request: z.looseObject({ number: z.number().int().positive(), head: z.looseObject({ sha: z.string().min(1) }) }),
+});

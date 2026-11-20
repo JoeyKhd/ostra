@@ -37,6 +37,11 @@ export type FakeRepo = {
   readonly refs?: readonly string[];
   /** Milestone 3: what a compare of `base...head` answers. Two branches not listed compare as identical. */
   readonly compares?: readonly FakeCompare[];
+  /**
+   * Milestone 6: the files at a ref, where they differ from `files` (`CODEOWNERS` in another
+   * place on a branch). A ref not listed reads `files`.
+   */
+  readonly filesAt?: Readonly<Record<string, Readonly<Record<string, string>>>>;
 };
 
 /** A compare the fake answers (F-027): GitHub's limits are applied to its files when it's read. */
@@ -91,6 +96,19 @@ export type FakeReview = {
   readonly commitId: string;
   /** ISO, or `null` for a pending review. */
   readonly submittedAt: string | null;
+  /** Milestone 6: the review's body; empty when not given. */
+  readonly body?: string;
+};
+
+/** Milestone 6 (F-100): a line comment of a review the App posted. */
+export type FakeReviewComment = {
+  readonly id: number;
+  readonly reviewId: number;
+  readonly path: string;
+  readonly line: number;
+  /** `RIGHT` the head's side, `LEFT` the base's. */
+  readonly side: "LEFT" | "RIGHT";
+  readonly body: string;
 };
 
 /** Milestone 4 (F-104): a check run, as the Checks API keeps it. */
@@ -105,6 +123,25 @@ export type FakeCheckRun = {
   title: string | null;
   summary: string | null;
   externalId: string | null;
+  // ---- milestone 6 (F-035): other apps' runs, with their logs ----
+  /** The app that made it; default the fake's own App. */
+  readonly appSlug?: string;
+  readonly detailsUrl?: string | null;
+  readonly startedAt?: string | null;
+  readonly completedAt?: string | null;
+  /** The run's `output.text`, besides its summary. */
+  readonly text?: string | null;
+  /** An Actions job's log: its text, `expired` (GitHub answers 410), or none. */
+  readonly log?: string | null;
+  readonly logExpired?: boolean;
+};
+
+/** Milestone 6 (F-035): a commit status, as the older CI API keeps it, by context. */
+export type FakeStatus = {
+  readonly context: string;
+  readonly state: "error" | "failure" | "pending" | "success";
+  readonly targetUrl: string | null;
+  readonly description: string | null;
 };
 
 /**
@@ -220,6 +257,24 @@ export type FakeGitHub = {
    * only, with its own ID and key; `null` unless the fake was started with one.
    */
   readonly secondApp: { readonly appId: string; readonly appSlug: string; readonly privateKey: string; readonly installationId: number; readonly owner: FakeAccount } | null;
+  // ---- milestone 6 (ticket 08, ADR 0058) ----
+  /** Adds another app's check run on a head (GitHub Actions', a deploy preview's), with its log. */
+  readonly addCheckRun: (
+    repo: string,
+    run: Omit<FakeCheckRun, "id" | "repo" | "appId" | "title" | "summary" | "externalId"> & { readonly appId?: number; readonly summary?: string | null },
+  ) => FakeCheckRun;
+  /** Sets a head's status for a context, as a CI that uses the older API does. */
+  readonly setStatus: (repo: string, headSha: string, status: FakeStatus) => void;
+  /** Requests reviewers on a PR, as a person or CODEOWNERS does. */
+  readonly requestReviewers: (repo: string, number: number, reviewers: { readonly users: readonly { readonly id: number; readonly login: string }[]; readonly teams: readonly string[] }) => void;
+  /** The line comments of the reviews the App posted on a PR. */
+  readonly reviewComments: (repo: string, number: number) => readonly FakeReviewComment[];
+  /** How many reviews a PR holds, any author's. */
+  readonly reviewCount: (repo: string, number: number) => number;
+  /** Log downloads that carried an `Authorization` header: the token must never go there. */
+  readonly authorizedLogDownloads: () => number;
+  /** The events the App subscribes to (default: `pull_request` only, as an App made before milestone 6). */
+  readonly setAppEvents: (events: readonly string[]) => void;
   readonly close: () => Promise<void>;
 };
 
@@ -358,11 +413,19 @@ export const createFakeGitHub = async (options: {
   let checkRunCounter = 0;
   let baseUrl = "";
   const apiBase = (): string => baseUrl;
+  const statuses = new Map<string, FakeStatus[]>();
+  const requestedReviewers = new Map<string, { readonly users: readonly { readonly id: number; readonly login: string }[]; readonly teams: readonly string[] }>();
+  const postedComments = new Map<string, FakeReviewComment[]>();
+  let reviewCommentCounter = 0;
+  let authorizedLogDownloads = 0;
+  /** The events the App subscribes to, as GET /app lists them: an App made before milestone 6 by default. */
+  let appEvents: readonly string[] = ["pull_request"];
   const reviewJson = (review: FakeReview) => ({
     id: review.id,
     node_id: `PRR_fake_${String(review.id)}`,
     user: { id: review.userId, login: review.login, type: review.userType },
-    body: "",
+    body: review.body ?? "",
+    html_url: `https://github.example/${review.repo}/pull/${String(review.number)}#pullrequestreview-${String(review.id)}`,
     state: review.state,
     commit_id: review.commitId,
     author_association: review.userType === "Bot" ? "NONE" : "MEMBER",
@@ -375,9 +438,29 @@ export const createFakeGitHub = async (options: {
     status: run.status,
     conclusion: run.conclusion,
     external_id: run.externalId,
-    output: { title: run.title, summary: run.summary },
-    app: { id: run.appId, slug: appSlug },
+    details_url: run.detailsUrl ?? null,
+    started_at: run.startedAt ?? null,
+    completed_at: run.completedAt ?? null,
+    output: { title: run.title, summary: run.summary, text: run.text ?? null },
+    app: { id: run.appId, slug: run.appSlug ?? appSlug },
   });
+  /** The lines each side of a scripted compare's file covers, as GitHub's review API reads its diff. */
+  const diffRanges = (repo: FakeRepo, pr: FakePullRequest): Map<string, { readonly right: [number, number][]; readonly left: [number, number][] }> => {
+    const ranges = new Map<string, { readonly right: [number, number][]; readonly left: [number, number][] }>();
+    const scripted = repo.compares?.find((candidate) => candidate.base === pr.base && candidate.head === pr.headSha);
+    for (const file of scripted?.files ?? []) {
+      const right: [number, number][] = [];
+      const left: [number, number][] = [];
+      for (const match of (file.patch ?? "").matchAll(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm)) {
+        const oldCount = match[2] === undefined ? 1 : Number(match[2]);
+        const newCount = match[4] === undefined ? 1 : Number(match[4]);
+        if (oldCount > 0) left.push([Number(match[1]), Number(match[1]) + oldCount - 1]);
+        if (newCount > 0) right.push([Number(match[3]), Number(match[3]) + newCount - 1]);
+      }
+      ranges.set(file.path, { right, left });
+    }
+    return ranges;
+  };
   const nodeIdOf = (pr: FakePullRequest): string => `PR_fake_${Buffer.from(`${pr.repo}#${String(pr.number)}`).toString("base64url")}`;
 
   const send = (response: ServerResponse, realStatus: number, realBody: unknown, realHeaders: Record<string, string> = {}): void => {
@@ -501,6 +584,28 @@ export const createFakeGitHub = async (options: {
     const path = url.pathname;
     const auth = bearer(request);
 
+    const jobLog = /^\/job-logs\/(\d+)$/.exec(path);
+    if (method === "GET" && jobLog?.[1] !== undefined) {
+      if (request.headers.authorization !== undefined) {
+        authorizedLogDownloads += 1;
+      }
+      const run = checkRuns.find((candidate) => candidate.id === Number(jobLog[1]));
+      if (run?.log === undefined || run.log === null) {
+        send(response, 404, { message: "Not Found" });
+        return;
+      }
+      const bytes = Buffer.from(run.log, "utf8");
+      const suffix = /^bytes=-(\d+)$/.exec(request.headers.range ?? "");
+      if (suffix?.[1] !== undefined) {
+        const start = Math.max(0, bytes.length - Number(suffix[1]));
+        response.writeHead(206, { "content-type": "text/plain", "content-range": `bytes ${String(start)}-${String(bytes.length - 1)}/${String(bytes.length)}` });
+        response.end(bytes.subarray(start));
+        return;
+      }
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.end(bytes);
+      return;
+    }
     if (method === "GET" && path === "/rate_limit") {
       send(response, 200, { resources: {} });
       return;
@@ -627,7 +732,7 @@ export const createFakeGitHub = async (options: {
           slug: appSlug,
           name: "ostra fake",
           permissions: { contents: "write", checks: "write", actions: "read", metadata: "read", pull_requests: "write" },
-          events: ["pull_request"],
+          events: [...appEvents],
           client_id: oauthClient.clientId,
           owner: accountJson({ login: org, id: orgId, type: "Organization" }),
         });
@@ -765,7 +870,8 @@ export const createFakeGitHub = async (options: {
         return;
       }
       const filePath = decodeURIComponent(contents[1] ?? "");
-      const content = repo.files[filePath];
+      const files = repo.filesAt?.[url.searchParams.get("ref") ?? ""] ?? repo.files;
+      const content = files[filePath];
       if (content !== undefined) {
         send(response, 200, {
           type: "file",
@@ -776,7 +882,7 @@ export const createFakeGitHub = async (options: {
         });
         return;
       }
-      const children = Object.keys(repo.files).filter((file) => file.startsWith(`${filePath}/`));
+      const children = Object.keys(files).filter((file) => file.startsWith(`${filePath}/`));
       if (children.length > 0) {
         send(response, 200, children.map((child) => ({ type: "file", path: child })));
         return;
@@ -1014,7 +1120,179 @@ export const createFakeGitHub = async (options: {
       const found = checkRuns.filter(
         (run) => run.repo === `${owner}/${name}` && run.headSha === ref && (named === null || run.name === named) && (appFilter === null || String(run.appId) === appFilter),
       );
-      send(response, 200, { total_count: found.length, check_runs: found.map(checkRunJson) });
+      // Paged as GitHub pages it (milestone 6 reads every app's runs).
+      const perPage = Math.min(Number(url.searchParams.get("per_page") ?? "30"), 100);
+      const page = Number(url.searchParams.get("page") ?? "1");
+      send(response, 200, { total_count: found.length, check_runs: found.slice((page - 1) * perPage, page * perPage).map(checkRunJson) });
+      return;
+    }
+    // ---- milestone 6: CI (F-035), comment-type reviews (F-100), requested reviewers (F-102)
+    const statusOfRef = /^\/commits\/([^/]+)\/status$/.exec(rest);
+    if (method === "GET" && statusOfRef?.[1] !== undefined) {
+      if (!needs("statuses", "read")) {
+        forbid();
+        return;
+      }
+      const held = statuses.get(`${owner}/${name}:${decodeURIComponent(statusOfRef[1])}`) ?? [];
+      const perPage = Math.min(Number(url.searchParams.get("per_page") ?? "30"), 100);
+      const page = Number(url.searchParams.get("page") ?? "1");
+      const state = held.some((status) => status.state === "failure" || status.state === "error") ? "failure" : held.every((status) => status.state === "success") && held.length > 0 ? "success" : "pending";
+      send(response, 200, {
+        state,
+        sha: decodeURIComponent(statusOfRef[1]),
+        total_count: held.length,
+        statuses: held.slice((page - 1) * perPage, page * perPage).map((status) => ({ context: status.context, state: status.state, target_url: status.targetUrl, description: status.description })),
+      });
+      return;
+    }
+    const oneCheckRun = /^\/check-runs\/(\d+)$/.exec(rest);
+    if (method === "GET" && oneCheckRun?.[1] !== undefined) {
+      if (!needs("checks", "read")) {
+        forbid();
+        return;
+      }
+      const run = checkRuns.find((candidate) => candidate.repo === `${owner}/${name}` && candidate.id === Number(oneCheckRun[1]));
+      if (run === undefined) {
+        send(response, 404, { message: "Not Found" });
+        return;
+      }
+      send(response, 200, checkRunJson(run));
+      return;
+    }
+    const jobLogs = /^\/actions\/jobs\/(\d+)\/logs$/.exec(rest);
+    if (method === "GET" && jobLogs?.[1] !== undefined) {
+      if (!needs("actions", "read")) {
+        forbid();
+        return;
+      }
+      const run = checkRuns.find((candidate) => candidate.repo === `${owner}/${name}` && candidate.id === Number(jobLogs[1]) && candidate.appSlug === "github-actions");
+      if (run === undefined) {
+        send(response, 404, { message: "Not Found" });
+        return;
+      }
+      if (run.logExpired === true) {
+        send(response, 410, { message: "Gone" });
+        return;
+      }
+      // GitHub answers a redirect to a short-lived download URL.
+      response.writeHead(302, { location: `${apiBase()}/job-logs/${String(run.id)}`, "x-ratelimit-limit": "5000", "x-ratelimit-remaining": "4990", "x-ratelimit-reset": String(Math.floor(Date.now() / 1000) + 3600) });
+      response.end();
+      return;
+    }
+    const postReview = /^\/pulls\/(\d+)\/reviews$/.exec(rest);
+    if (method === "POST" && postReview?.[1] !== undefined) {
+      if (!needs("pull_requests", "write")) {
+        forbid();
+        return;
+      }
+      const pr = pulls.find((item) => item.repo === `${owner}/${name}` && item.number === Number(postReview[1]));
+      if (pr === undefined) {
+        send(response, 404, { message: "Not Found" });
+        return;
+      }
+      const body = z
+        .looseObject({
+          commit_id: z.string().optional(),
+          body: z.string().optional(),
+          event: z.string().optional(),
+          comments: z.array(z.looseObject({ path: z.string(), line: z.number().int(), side: z.enum(["LEFT", "RIGHT"]).optional(), body: z.string() })).optional(),
+        })
+        .safeParse(await readBody(request));
+      if (!body.success) {
+        send(response, 422, { message: "Validation Failed" });
+        return;
+      }
+      const ranges = diffRanges(repo, pr);
+      const offDiff = (body.data.comments ?? []).some((comment) => {
+        const file = ranges.get(comment.path);
+        const sideRanges = (comment.side ?? "RIGHT") === "RIGHT" ? file?.right : file?.left;
+        return !sideRanges?.some(([start, end]) => comment.line >= start && comment.line <= end);
+      });
+      if (offDiff) {
+        // GitHub refuses the whole review, and doesn't say which comment.
+        send(response, 422, { message: "Unprocessable Entity", errors: ["Line could not be resolved"] });
+        return;
+      }
+      const states: Readonly<Record<string, string>> = { COMMENT: "COMMENTED", APPROVE: "APPROVED", REQUEST_CHANGES: "CHANGES_REQUESTED" };
+      reviewCounter += 1;
+      const posted: FakeReview = {
+        id: 80_000_000 + reviewCounter,
+        repo: `${owner}/${name}`,
+        number: pr.number,
+        userId: botId,
+        login: `${appSlug}[bot]`,
+        userType: "Bot",
+        state: states[body.data.event ?? ""] ?? "PENDING",
+        commitId: body.data.commit_id ?? pr.headSha,
+        submittedAt: tick(),
+        body: body.data.body ?? "",
+      };
+      reviews.push(posted);
+      const key = `${posted.repo}#${String(pr.number)}`;
+      const held = postedComments.get(key) ?? [];
+      for (const comment of body.data.comments ?? []) {
+        reviewCommentCounter += 1;
+        held.push({ id: 90_000_000 + reviewCommentCounter, reviewId: posted.id, path: comment.path, line: comment.line, side: comment.side ?? "RIGHT", body: comment.body });
+      }
+      postedComments.set(key, held);
+      send(response, 200, reviewJson(posted));
+      return;
+    }
+    const reviewCommentsRoute = /^\/pulls\/(\d+)\/reviews\/(\d+)\/comments$/.exec(rest);
+    if (method === "GET" && reviewCommentsRoute?.[1] !== undefined && reviewCommentsRoute[2] !== undefined) {
+      if (!needs("pull_requests", "read")) {
+        forbid();
+        return;
+      }
+      const reviewId = Number(reviewCommentsRoute[2]);
+      if (!reviews.some((review) => review.id === reviewId && review.repo === `${owner}/${name}`)) {
+        send(response, 404, { message: "Not Found" });
+        return;
+      }
+      const held = (postedComments.get(`${owner}/${name}#${reviewCommentsRoute[1]}`) ?? []).filter((comment) => comment.reviewId === reviewId);
+      // As GitHub answers it (seen live, 2026-11-20): each comment's diff position, and no `line` or `side`.
+      send(
+        response,
+        200,
+        held.map((comment) => ({ id: comment.id, pull_request_review_id: comment.reviewId, path: comment.path, position: comment.line, original_position: comment.line, body: comment.body, user: { id: botId, login: `${appSlug}[bot]` } })),
+      );
+      return;
+    }
+    const prCommentsRoute = /^\/pulls\/(\d+)\/comments$/.exec(rest);
+    if (method === "GET" && prCommentsRoute?.[1] !== undefined) {
+      if (!needs("pull_requests", "read")) {
+        forbid();
+        return;
+      }
+      if (!pulls.some((pr) => pr.repo === `${owner}/${name}` && pr.number === Number(prCommentsRoute[1]))) {
+        send(response, 404, { message: "Not Found" });
+        return;
+      }
+      // A PR's review comments, every review's, each with its line, side and review (`GET /pulls/{n}/comments`).
+      const held = postedComments.get(`${owner}/${name}#${prCommentsRoute[1]}`) ?? [];
+      const perPage = Number(url.searchParams.get("per_page") ?? "30");
+      const page = Number(url.searchParams.get("page") ?? "1");
+      send(
+        response,
+        200,
+        held
+          .slice((page - 1) * perPage, page * perPage)
+          .map((comment) => ({ id: comment.id, pull_request_review_id: comment.reviewId, path: comment.path, line: comment.line, original_line: comment.line, side: comment.side, subject_type: "line", body: comment.body, user: { id: botId, login: `${appSlug}[bot]` } })),
+      );
+      return;
+    }
+    const requestedRoute = /^\/pulls\/(\d+)\/requested_reviewers$/.exec(rest);
+    if (method === "GET" && requestedRoute?.[1] !== undefined) {
+      if (!needs("pull_requests", "read")) {
+        forbid();
+        return;
+      }
+      if (!pulls.some((pr) => pr.repo === `${owner}/${name}` && pr.number === Number(requestedRoute[1]))) {
+        send(response, 404, { message: "Not Found" });
+        return;
+      }
+      const held = requestedReviewers.get(`${owner}/${name}#${requestedRoute[1]}`) ?? { users: [], teams: [] };
+      send(response, 200, { users: held.users.map((user) => ({ id: user.id, login: user.login, type: "User" })), teams: held.teams.map((slug) => ({ slug, name: slug })) });
       return;
     }
     if (method === "POST" && rest === "/check-runs") {
@@ -1162,6 +1440,34 @@ export const createFakeGitHub = async (options: {
       return found;
     },
     checkRuns,
+    addCheckRun: (repo, run) => {
+      checkRunCounter += 1;
+      const added: FakeCheckRun = {
+        ...run,
+        id: 5_000_000 + checkRunCounter,
+        repo,
+        appId: run.appId ?? 15_368,
+        title: null,
+        summary: run.summary ?? null,
+        externalId: null,
+      };
+      checkRuns.push(added);
+      return added;
+    },
+    setStatus: (repo, headSha, status) => {
+      const key = `${repo}:${headSha}`;
+      const held = (statuses.get(key) ?? []).filter((candidate) => candidate.context !== status.context);
+      statuses.set(key, [...held, status]);
+    },
+    requestReviewers: (repo, number, reviewers) => {
+      requestedReviewers.set(`${repo}#${String(number)}`, reviewers);
+    },
+    reviewComments: (repo, number) => [...(postedComments.get(`${repo}#${String(number)}`) ?? [])],
+    reviewCount: (repo, number) => reviews.filter((review) => review.repo === repo && review.number === number).length,
+    authorizedLogDownloads: () => authorizedLogDownloads,
+    setAppEvents: (events) => {
+      appEvents = [...events];
+    },
     otherAccounts,
     removedInstallations: () => [...removedInstallations],
     secondApp: second === null ? null : { appId: second.appId, appSlug: second.appSlug, privateKey: second.pair.privateKey, installationId: second.owner.installationId, owner: second.owner },
