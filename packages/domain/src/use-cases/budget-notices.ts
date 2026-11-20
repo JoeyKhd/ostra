@@ -31,6 +31,7 @@ import { BUDGET_WARN_PERCENT_DEFAULT, budgetsForProjectInTx, checkBudget, monthS
 import type { M4Deps, SetBudget } from "./m4-signatures.ts";
 import { planAnswerCommandInTx } from "./plans-questions.ts";
 import { appendServerEvent } from "./server-events.ts";
+import { releaseHeldRoundInTx } from "../review-loop/start-round.ts";
 
 // Budget notices and their release (F-037, F-115, ADR 0055, ADR 0050; ticket 13). `budget.check`
 // writes a budget's notice for a month and threshold once and fans it out, as milestone 3's moments
@@ -370,6 +371,8 @@ export const releaseHeldTurnsInTx = async (
       // A held reopen: its new session waits for its dispatch, through the gate again there.
       await tx.task.update({ where: { id: task.id }, data: dispatchWaitColumns(null) });
       await deps.jobs.enqueueInTx(tx, "task.dispatch", { organizationId: input.organizationId, taskId: task.id, sessionId: sessionIdSchema.parse(session.id), leaseEpoch: leaseEpochSchema.parse(task.leaseEpoch + 1) });
+    } else if (turn.origin === "automatic_round" && (await releaseHeldRoundInTx(deps, tx, { taskId: taskIdSchema.parse(task.id), pendingMessageSeq: turn.pendingMessageSeq }))) {
+      // Milestone 6 (F-101, ADR 0041): a held round starts now, as an automatic turn, its counters with it.
     } else if (turn.pendingMessageSeq !== null && session !== null) {
       // A held message to a session that's still going: steered now, as it would have been.
       const [lease, event] = await Promise.all([
@@ -395,6 +398,8 @@ export const releaseHeldTurnsInTx = async (
             text: message.data.text.slice(0, runnerLimits.steerTextMaxChars),
             delivery: "queue",
             ...(message.data.intent === undefined ? {} : { intent: message.data.intent }),
+            // Milestone 6: a round's message is an automatic turn, whatever released it.
+            ...(message.data.intent === "fix-ci" || message.data.intent === "fix-findings" ? { automatic: true } : {}),
           },
           notAfter: now + runnerLimits.offerTimeoutMs,
           task: { taskId: task.id, projectId },

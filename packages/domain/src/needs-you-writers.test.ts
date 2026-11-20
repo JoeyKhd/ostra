@@ -103,6 +103,8 @@ describe("every write of a needs-you item enqueues its fan-out", () => {
       "packages/domain/src/use-cases/outside-tasks.ts",
       // Ticket 13 (F-012): a stop from Linear closes the stopped task's items, as the panel's stop does.
       "apps/core/src/linear/agent-mode/events.ts",
+      // Milestone 6's ticket 18 (F-101): a round's cap, and the spend cap it stops at, for the driver.
+      "packages/domain/src/review-loop/start-round.ts",
     ];
     const unknown = callers.filter((caller) => !known.includes(caller));
     expect(unknown).toEqual([]);

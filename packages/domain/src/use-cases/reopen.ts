@@ -31,6 +31,7 @@ import { freshBranchesInTx } from "./fresh-branch.ts";
 import type { FreshBranch } from "./fresh-branch.ts";
 import { resolveNeedsYouItemsInTx } from "./needs-you-items.ts";
 import { appendServerEvent } from "./server-events.ts";
+import { recordPersonActionInTx } from "../review-loop/rounds.ts";
 import { endSessionTimersInTx } from "./sessions-m2.ts";
 import { resolveReopenProfileInTx } from "./task-profile.ts";
 import type { SessionTimers } from "./sessions-m2.ts";
@@ -308,6 +309,8 @@ export const reopenTask: ReopenTask = async (deps, input) => {
 
   // Milestone 5 (F-067): a reopen is a new place in the queue, taken when it's queued (`queueTask`).
   await tx.task.update({ where: { id: task.id }, data: { driverMemberId: scope.memberId, queuedAt: null } });
+  // Milestone 6 (ADR 0041, F-101): a person reopened it, so the automatic turns count from nothing again.
+  await recordPersonActionInTx(tx, task.id, new Date(now));
   await moveTaskInTx(moveDeps, task, reopenInput);
   const freshBranches = mergedRepoIds.length === 0 ? [] : await freshBranchesInTx(tx, task, new Date(now));
   // The reopen answers what the task needed: a limit, a crash, no changes.

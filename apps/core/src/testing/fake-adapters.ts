@@ -1,9 +1,17 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 
-import { adapterError, CodeHostAdapter, ModelProviderAdapter, ok, secretRefSchema, SecretStoreAdapter } from "@ostra/adapter-sdk";
-import { FakeReviewsAndChecks } from "@ostra/adapter-sdk/testing";
+import { adapterError, CodeHostAdapter, err, logTail, ModelProviderAdapter, ok, secretRefSchema, SecretStoreAdapter } from "@ostra/adapter-sdk";
+import { FakeCiHost, FakeReviewsAndChecks } from "@ostra/adapter-sdk/testing";
 import type {
   AdapterResult,
+  CiLog,
+  CiLogRef,
+  CiResults,
+  CommentReviewInput,
+  CreatedReview,
+  CreateReviewError,
+  DiffFileLines,
+  Result,
   CheckRunInput,
   PublishedCheckRun,
   PullRequestReview,
@@ -90,7 +98,18 @@ export type OpenedPull = PullRequest & { readonly repo: string; readonly body: s
 
 export class FakeCodeHost extends CodeHostAdapter {
   readonly name = "fake-code-host";
-  readonly capabilities: CodeHostCapabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: ["lfs.example.test"], branchRules: false, compare: true, draftPullRequests: true, prComments: true, userLink: false, reviews: true, installableByOtherAccounts: false, ciResults: false, ciLogs: false, reviewComments: false, requestedReviewers: false, codeOwners: false };
+  /**
+   * Milestone 6 (tickets 16, 17): the review loop's CI and comment-type reviews. Off by default, as
+   * the GitHub adapter has them off until its ticket 08: a test turns it on with `reviewLoop`.
+   */
+  reviewLoop = false;
+  get capabilities(): CodeHostCapabilities {
+    return { checkRuns: true, prTemplates: true, lfsActionHosts: ["lfs.example.test"], branchRules: false, compare: true, draftPullRequests: true, prComments: true, userLink: false, reviews: true, installableByOtherAccounts: false, ciResults: this.reviewLoop, ciLogs: this.reviewLoop, reviewComments: this.reviewLoop, requestedReviewers: false, codeOwners: false };
+  }
+  /** Milestone 6: the heads' check runs and statuses from other apps, their logs, the PRs' diffs and the App's reviews. */
+  readonly ci = new FakeCiHost();
+  /** Every `createReview` call, refused or not, so a test can count the tries. */
+  readonly reviewCalls: { readonly repo: string; readonly number: number; readonly comments: number }[] = [];
   /** Milestone 4 (F-104, ticket 18): the PRs' reviews and the check runs, in memory. */
   readonly reviewsAndChecks = new FakeReviewsAndChecks();
   /** Fail the next `listReviews` this many times, as a flaky host would. */
@@ -272,6 +291,63 @@ export class FakeCodeHost extends CodeHostAdapter {
     if (found !== undefined) {
       this.pulls[index] = { ...found, state: state.state };
     }
+  }
+
+  // ---------- milestone 6 (tickets 16, 17): CI and comment-type reviews, from `ci` ----------
+
+  override listCiResults(access: RepoAccess, headSha: string): Promise<AdapterResult<CiResults>> {
+    if (!this.known(access.app)) return Promise.resolve(adapterError("unauthorized", "refused"));
+    const repo = repoFullNameSchema.parse(access.repo);
+    return Promise.resolve(
+      ok({
+        checkRuns: this.ci.checkRuns(repo, headSha).map((run) => ({
+          id: run.id,
+          name: run.name,
+          appSlug: run.appSlug,
+          status: run.status,
+          conclusion: run.conclusion,
+          detailsUrl: run.detailsUrl,
+          startedAt: run.startedAt,
+          completedAt: run.completedAt,
+        })),
+        statuses: this.ci.statuses(repo, headSha),
+      }),
+    );
+  }
+
+  override getCiLog(access: RepoAccess, ref: CiLogRef, maxBytes: number): Promise<AdapterResult<CiLog>> {
+    if (!this.known(access.app)) return Promise.resolve(adapterError("unauthorized", "refused"));
+    const repo = repoFullNameSchema.parse(access.repo);
+    if (ref.kind === "status") {
+      const status = this.ci.statuses(repo, ref.headSha).find((one) => one.context === ref.context);
+      const words = [status?.description ?? null, status?.targetUrl ?? null].filter((part) => part !== null).join(" ");
+      return Promise.resolve(ok(words === "" ? { found: false, reason: "no-log" } : { found: true, ...logTail(words, maxBytes) }));
+    }
+    const run = this.ci.checkRun(repo, ref.checkRunId);
+    if (run === undefined) return Promise.resolve(adapterError("not-found", "no such check run"));
+    if (run.log === null) return Promise.resolve(ok({ found: false, reason: "no-log" }));
+    if (run.log === "expired") return Promise.resolve(ok({ found: false, reason: "expired" }));
+    return Promise.resolve(ok({ found: true, ...logTail(run.log.text, maxBytes) }));
+  }
+
+  override createReview(access: RepoAccess, number: number, review: CommentReviewInput): Promise<Result<CreatedReview, CreateReviewError>> {
+    if (!this.known(access.app)) return Promise.resolve(adapterError("unauthorized", "refused"));
+    const repo = repoFullNameSchema.parse(access.repo);
+    this.reviewCalls.push({ repo, number, comments: review.comments.length });
+    const made = this.ci.createReview(repo, number, review, `bot-${access.app.appId}`);
+    if ("kind" in made) {
+      return Promise.resolve(
+        made.kind === "event"
+          ? adapterError("invalid-input", "a review from ostra is a comment, never an approval or a change request")
+          : err({ code: "line-outside-diff", message: `line comment ${String(made.commentIndex)} isn't on a line of the diff`, commentIndex: made.commentIndex }),
+      );
+    }
+    return Promise.resolve(ok({ reviewId: made.reviewId, url: `https://github.example/${repo}/pull/${String(number)}#pullrequestreview-${made.reviewId}` }));
+  }
+
+  override diffLines(access: RepoAccess, number: number): Promise<AdapterResult<readonly DiffFileLines[]>> {
+    if (!this.known(access.app)) return Promise.resolve(adapterError("unauthorized", "refused"));
+    return Promise.resolve(ok(this.ci.diff(repoFullNameSchema.parse(access.repo), number) ?? []));
   }
 
   /** Someone pushes to a PR's branch: its head moves (a `synchronize`, F-104). */
@@ -477,6 +553,28 @@ export class FakeCodeHost extends CodeHostAdapter {
     }
     if (event === "pull_request_review") {
       return this.#parseReview(read);
+    }
+    if (event === "check_run" || event === "check_suite" || event === "status") {
+      // Milestone 6 (F-035): a CI hint, read as GitHub's adapter reads one: the head and the app.
+      const repoId = read("repository", "id");
+      const repo = repoFullNameSchema.safeParse(read("repository", "full_name"));
+      const headSha = event === "status" ? read("sha") : read(event, "head_sha");
+      const slug = event === "status" ? null : read(event, "app", "slug");
+      const action = read("action");
+      const installation = read("installation", "id");
+      if ((typeof repoId !== "string" && typeof repoId !== "number") || !repo.success || typeof headSha !== "string") {
+        return adapterError("invalid-response", "not a CI event");
+      }
+      return ok({
+        kind: "ci",
+        event,
+        action: typeof action === "string" ? action : null,
+        installationId: typeof installation === "number" ? String(installation) : null,
+        hostRepoId: String(repoId),
+        repo: repo.data,
+        headSha,
+        appSlug: typeof slug === "string" ? slug : null,
+      });
     }
     if (event !== "pull_request") {
       return ok({ kind: "other", event });

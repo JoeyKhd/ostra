@@ -39,6 +39,9 @@ import { admitHandler, applyOfferResultsInTx, dispatchHandler, offerTimeoutHandl
 import type { DispatcherDeps } from "./dispatch/dispatcher.ts";
 import { handleTaskEndpoint } from "./dispatch/endpoints.ts";
 import { handleMemoryEndpoint } from "./memory/endpoints.ts";
+import { blobCiLogStore, ciEvaluateHandler } from "./review-loop/ci.ts";
+import { reviewPostHandler, reviewStartHandler } from "./review-loop/review.ts";
+import { roundStartHandler } from "./review-loop/rounds.ts";
 import { ensureBootstrapJoinToken } from "./gateway/bootstrap-join-token.ts";
 import { postgresDeviceSessions } from "./gateway/device-sessions.ts";
 import { createGateway } from "./gateway/gateway.ts";
@@ -237,7 +240,7 @@ export const startCore = async (
   const signingKey = await loadRunnerTokenKey(settings);
   // Ticket 34: each frame's ingest is timed, and an `ingest.timing` line every 10 s says how long they took.
   const ingest = timedIngest(
-    createIngest({ db, jobs, notices, clock: systemClock, liveText, logger, timers, outbox: postgresCommandOutbox, budgetWarnPercent: settings.budgetWarnPercent }),
+    createIngest({ db, jobs, notices, clock: systemClock, liveText, logger, timers, outbox: postgresCommandOutbox, budgetWarnPercent: settings.budgetWarnPercent, reviewLoop: adapters.codeHost.capabilities }),
     logger,
   );
   const gateway = createGateway({
@@ -433,6 +436,14 @@ export const startCore = async (
   // Milestone 3's diff (ticket 22): one compare per head, cached, and outdated comments.
   const diffLimits = { maxFiles: settings.diffMaxFiles, maxPatchBytes: settings.diffMaxPatchBytes };
   await jobs.work("diff.fetch", diffFetchHandler({ db, notices, clock: systemClock, adapters, limits: diffLimits, logger }), { localConcurrency: 2 });
+  // Milestone 6's review loop (F-035, F-100, F-101; tickets 16 to 18): CI, the AI review and the rounds.
+  const loopPorts = { db, jobs, outbox: postgresCommandOutbox, notices, audit: postgresAuditLog, clock: systemClock, timers };
+  const ciSettings = { ciWaits: settings.team.ciWaits, ciLogTailBytes: settings.team.ciLogTailBytes, ciLogChecks: settings.team.ciLogChecks };
+  await jobs.work("ci.evaluate", ciEvaluateHandler({ db, jobs, notices, clock: systemClock, adapters, settings: ciSettings, logs: blobCiLogStore(blobs) }), { localConcurrency: 2 });
+  await jobs.work("review.start", reviewStartHandler({ ...loopPorts, adapters }), { localConcurrency: 2 });
+  await jobs.work("review.post", reviewPostHandler({ ...loopPorts, adapters }), { localConcurrency: 2 });
+  const roundSpendCap = { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap };
+  await jobs.work("round.start", roundStartHandler({ ...loopPorts, limits: settings.team.roundLimits, spendCap: roundSpendCap }), { localConcurrency: 2 });
   const reconcileSchedules = createReconcileSchedules({ db, jobs, reconcileMinutes: settings.reconcileMinutes });
   const webhookHandlers: WebhookHandlers = {
     linear: trackerWebhookHandler(ingestDeps),

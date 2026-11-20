@@ -1,8 +1,8 @@
-import type { DiffCommentId, MemberId, MemoryKind, MemoryScope, ProjectId, TaskId } from "@ostra/protocol";
+import type { DiffCommentId, FindingId, MemberId, MemoryKind, MemoryScope, ProjectId, TaskId } from "@ostra/protocol";
 import { runnerLimits, utf8ByteLength } from "@ostra/protocol";
 
-// "Remember this" (F-111, ADR 0044 amended, Q205): a member turns a diff comment, or an accepted
-// `@ostra` PR comment, into a proposal. The member edits it before it's proposed; this is the
+// "Remember this" (F-111, ADR 0044 amended, Q205): a member turns a diff comment, an accepted
+// `@ostra` PR comment, or (milestone 6, F-100) an AI review's finding, into a proposal. The member edits it before it's proposed; this is the
 // starting text, which then goes through the secret scan like any other proposal. Pure.
 
 export type RememberThisSource =
@@ -20,7 +20,28 @@ export type RememberThisSource =
       readonly url: string;
       /** The comment's text. Never logged. */
       readonly body: string;
+    }
+  | {
+      /** Milestone 6 (F-111, ticket 17): a finding of the task's AI review. */
+      readonly kind: "ai_finding";
+      readonly findingId: FindingId;
+      /** The finding's text. Never logged. */
+      readonly body: string;
     };
+
+/** What a proposal names as its source: the diff comment's ID, the PR comment's URL, or the finding's ID. */
+export const rememberThisSourceRef = (source: RememberThisSource): string => {
+  switch (source.kind) {
+    case "diff_comment":
+      return source.commentId;
+    case "pr_comment":
+      return source.url;
+    case "ai_finding":
+      return source.findingId;
+    default:
+      return source satisfies never;
+  }
+};
 
 export type RememberThisDraft = {
   readonly title: string;
@@ -28,8 +49,8 @@ export type RememberThisDraft = {
   readonly kind: MemoryKind;
   readonly scope: MemoryScope;
   readonly projectId: ProjectId;
-  readonly sourceKind: "diff_comment" | "pr_comment";
-  /** The diff comment's ID, or the PR comment's URL. */
+  readonly sourceKind: RememberThisSource["kind"];
+  /** The diff comment's ID, the PR comment's URL, or the finding's ID. */
   readonly sourceRef: string;
   readonly taskId: TaskId;
   readonly proposedByMemberId: MemberId;
@@ -87,7 +108,7 @@ export const rememberThis = (input: {
     scope: "project",
     projectId: input.projectId,
     sourceKind: input.source.kind,
-    sourceRef: input.source.kind === "diff_comment" ? input.source.commentId : input.source.url,
+    sourceRef: rememberThisSourceRef(input.source),
     taskId: input.taskId,
     proposedByMemberId: input.memberId,
   };

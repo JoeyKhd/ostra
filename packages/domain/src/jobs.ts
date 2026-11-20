@@ -267,8 +267,12 @@ export const jobPayloadSchemas = {
   "linear.activity.send": z.strictObject({ organizationId: organizationIdSchema, agentActivityId: agentActivityIdSchema }),
   /** The heartbeat sweep, once a minute: a post for each session whose heartbeat is due. */
   "linear.heartbeat": z.strictObject({}),
-  /** A head's CI verdict (F-035), on a check webhook or the reconcile. */
-  "ci.evaluate": z.strictObject({ organizationId: organizationIdSchema, taskRepoId: taskRepoIdSchema, headSha: gitShaSchema }),
+  /**
+   * A head's CI verdict (F-035), on a check webhook or the reconcile. `deadline`: the delayed
+   * evaluation at the "no CI" deadline or the wait limit, keyed apart so a waiting timer never
+   * holds back a webhook's evaluation under the queue's one-per-key rule.
+   */
+  "ci.evaluate": z.strictObject({ organizationId: organizationIdSchema, taskRepoId: taskRepoIdSchema, headSha: gitShaSchema, deadline: z.enum(["none", "wait"]).optional() }),
   /**
    * A fixing round (F-035, F-101, F-105). `causeRef` names what caused it: the head (CI), the review
    * run (findings) or the review (changes requested). An ID, never text.
@@ -345,7 +349,7 @@ const jobKeys: { readonly [N in JobName]: (payload: JobPayload<N>) => string } =
   "linear.agent-event": (payload) => `linear:${payload.connectionId}:agent-event:${payload.deliveryId}`,
   "linear.activity.send": (payload) => `activity:${payload.agentActivityId}:send`,
   "linear.heartbeat": () => "linear:heartbeat",
-  "ci.evaluate": (payload) => `task-repo:${payload.taskRepoId}:ci:${payload.headSha}`,
+  "ci.evaluate": (payload) => `task-repo:${payload.taskRepoId}:ci:${payload.headSha}${payload.deadline === undefined ? "" : `:${payload.deadline}`}`,
   "round.start": (payload) => `task:${payload.taskId}:round:${payload.kind}:${payload.causeRef}`,
   "review.start": (payload) => `task:${payload.codeTaskId}:review:${String(payload.round)}`,
   "review.post": (payload) => `review-run:${payload.reviewRunId}:post:${payload.repoId}`,

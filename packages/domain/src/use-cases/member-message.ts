@@ -13,6 +13,7 @@ import { answerNextTurnItemsInTx } from "./needs-you-items.ts";
 import { reopenTask } from "./reopen.ts";
 import type { ReopenTaskResult } from "./reopen.ts";
 import { appendServerEvent } from "./server-events.ts";
+import { recordPersonActionInTx } from "../review-loop/rounds.ts";
 import { sessionProviderGateInTx } from "../providers/session-model.ts";
 import { restartOnProviderChangeInTx } from "../providers/turn-start.ts";
 import type { SessionTimers } from "./sessions-m2.ts";
@@ -100,6 +101,8 @@ export const sendMemberMessageInTx = async (
     return { ok: true, delivery: reopen ? "reopen" : "steer", sessionId: sessionIdSchema.parse(sent.sessionId), seq: null, duplicate: true };
   }
   const text = fitText(input.text);
+  // Milestone 6 (ADR 0041, F-101): a person acted, so the automatic turns count from nothing again.
+  await recordPersonActionInTx(tx, task.id, new Date(deps.clock.now()));
   const [lease, session] = await Promise.all([
     tx.lease.findFirst({ where: { taskId: task.id, state: "active" }, select: { runnerId: true } }),
     tx.session.findFirst({

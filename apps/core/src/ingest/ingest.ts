@@ -1,7 +1,7 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import type { Db, Tx } from "@ostra/db";
 import { createNeedsYouItemInTx, ingestEvents } from "@ostra/domain";
-import type { ChangeNotices, Clock, CommandOutbox, JobQueue, SessionIngestOutcome, SessionTimers } from "@ostra/domain";
+import type { ChangeNotices, Clock, CommandOutbox, JobQueue, ReviewLoopCapabilities, SessionIngestOutcome, SessionTimers } from "@ostra/domain";
 import { lockTask } from "@ostra/jobs";
 import {
   epochMsSchema,
@@ -208,6 +208,8 @@ export const createIngest = (options: {
   readonly outbox?: CommandOutbox;
   /** Milestone 4: `OSTRA_BUDGET_WARN_PERCENT` (F-037). */
   readonly budgetWarnPercent?: number;
+  /** Milestone 6 (F-035, F-100): the code host's review-loop capabilities; without them, milestone 5's path. */
+  readonly reviewLoop?: ReviewLoopCapabilities;
 }): Ingest => {
   const logger = options.logger.child({ component: "ingest" });
 
@@ -223,6 +225,7 @@ export const createIngest = (options: {
           ...(options.timers === undefined ? {} : { timers: options.timers }),
           ...(options.outbox === undefined ? {} : { outbox: options.outbox }),
           budgetWarnPercent: options.budgetWarnPercent,
+          reviewLoop: options.reviewLoop,
         },
         { runnerId: runner.runnerId, events: [...events] },
       );

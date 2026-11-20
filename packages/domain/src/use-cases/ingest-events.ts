@@ -21,6 +21,7 @@ import type { TaskMoveDeps } from "./moves.ts";
 import { recordCheckFinishedInTx, recordCheckStartedInTx } from "./checks.ts";
 import { recordMemoryUse } from "../memory/store.ts";
 import { sendClosingTurnInTx } from "../memory/closing-turn.ts";
+import type { ReviewLoopCapabilities } from "../review-loop/loop.ts";
 import { cancelBoxIdleTimerInTx, endSessionTimersInTx, markBoxBusyInTx, recordLimitReached, recordWorkSaved, startSessionTimersInTx } from "./sessions-m2.ts";
 import { recordSpendInTx } from "./budgets.ts";
 import { modelTokenPrices, priceTokens } from "./spend.ts";
@@ -72,6 +73,8 @@ export type IngestEventsDeps = Pick<Ports, "jobs" | "notices" | "clock"> & Parti
   readonly timers?: SessionTimers;
   /** Milestone 4: `OSTRA_BUDGET_WARN_PERCENT`, the share of a budget that warns its admins (F-037). */
   readonly budgetWarnPercent?: number | undefined;
+  /** Milestone 6 (F-035, F-100): the code host's review-loop capabilities; without them, milestone 5's path. */
+  readonly reviewLoop?: ReviewLoopCapabilities | undefined;
 };
 
 export type IngestEvents = (deps: IngestEventsDeps, input: IngestEventsInput) => Promise<IngestEventsResult>;
@@ -464,7 +467,7 @@ const applyEffects = async (
       case "session.saved": {
         // After every turn (ticket 17): heads, hidden refs, the archive, then PRs or needs you.
         const saved = await recordWorkSaved(
-          { tx, jobs: deps.jobs, notices: deps.notices, clock: deps.clock, timers: deps.timers, logger: deps.logger },
+          { tx, jobs: deps.jobs, notices: deps.notices, clock: deps.clock, timers: deps.timers, logger: deps.logger, reviewLoop: deps.reviewLoop },
           { organizationId, taskId: task.id, sessionId: sessionRef.sessionId, event, eventSeq: seq },
         );
         if (!saved.ok) {

@@ -127,6 +127,11 @@ export type TaskInput =
   | { readonly type: "ci_failed"; readonly capReached: boolean }
   /** The agent pushed a fix. */
   | { readonly type: "pushed" }
+  /**
+   * Milestone 6 (F-100, ADR 0058): a PR's head moved while the AI review read the old one (a person
+   * pushed). The review of the old head is void, and the loop starts again on the new head.
+   */
+  | { readonly type: "head_moved"; readonly rounds: ReviewRounds }
   | { readonly type: "ai_review_done"; readonly blocking: boolean; readonly capReached: boolean }
   /** A "changes requested" review, `@ostra`, Update branch or a diff comment (F-105). */
   | { readonly type: "changes_requested" }
@@ -210,6 +215,7 @@ const commonTransition = (status: Common, input: TaskInput): Transition<Common> 
     case "ci_passed":
     case "ci_failed":
     case "pushed":
+    case "head_moved":
     case "ai_review_done":
     case "changes_requested":
     case "last_pr_merged":
@@ -266,6 +272,8 @@ const transitionCode = (status: CodeTaskState, input: TaskInput): Transition<Cod
       return status.state === "in_review" && (status.subState === "fixing_ci" || status.subState === "fixing_findings")
         ? moveTo({ state: "in_review", subState: "ci_running" })
         : refuse(input, from);
+    case "head_moved":
+      return status.state === "in_review" && status.subState === "ai_review" ? moveTo(firstReviewState(input.rounds)) : refuse(input, from);
     case "ai_review_done":
       if (status.state !== "in_review" || status.subState !== "ai_review") {
         return refuse(input, from);
@@ -363,6 +371,7 @@ const transitionRefine = (status: RefineTaskState, input: TaskInput): Transition
     case "ci_passed":
     case "ci_failed":
     case "pushed":
+    case "head_moved":
     case "ai_review_done":
     case "changes_requested":
     case "last_pr_merged":
@@ -407,6 +416,7 @@ const transitionReview = (status: ReviewTaskState, input: TaskInput): Transition
     case "ci_passed":
     case "ci_failed":
     case "pushed":
+    case "head_moved":
     case "ai_review_done":
     case "changes_requested":
     case "last_pr_merged":

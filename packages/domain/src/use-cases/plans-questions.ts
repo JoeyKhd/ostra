@@ -32,6 +32,7 @@ import { createNeedsYouItemInTx, resolveNeedsYouItemsInTx } from "./needs-you-it
 import type { TaskMoveDeps } from "./moves.ts";
 import { reopenTask } from "./reopen.ts";
 import { appendServerEvent } from "./server-events.ts";
+import { recordPersonActionInTx } from "../review-loop/rounds.ts";
 import type { SessionTimers } from "./sessions-m2.ts";
 import type { SpendCapSettings } from "./spend.ts";
 
@@ -252,6 +253,7 @@ export const answerPlan = async (
       const projectId = projectIdSchema.parse(task.projectId);
       const going = await goingSessionInTx(tx, task.id);
       const sessionId = going === null ? await newestSessionInTx(tx, task.id) : sessionIdSchema.parse(going.session.id);
+      await recordPersonActionInTx(tx, task.id, new Date(now));
 
       let commandText: string;
       let answeredSeq;
@@ -434,6 +436,8 @@ export const answerQuestion = async (
         event: { kind: "question.answered", questionId: input.questionId, answers: checked.answers, memberId: scope.memberId },
       });
       await closeItemsInTx(deps, tx, task, { reason: "question", questionId: input.questionId }, scope.memberId, now);
+      // Milestone 6 (ADR 0041): an answer is a person's action, so the automatic turns count from nothing.
+      await recordPersonActionInTx(tx, task.id, new Date(now));
 
       if (going?.session.id !== asked.sessionId) {
         // Closed by the turn's end, or the session that asked is gone: the answer starts the next turn.

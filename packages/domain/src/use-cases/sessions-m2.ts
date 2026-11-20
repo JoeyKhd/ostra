@@ -16,6 +16,8 @@ import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
 import { createNeedsYouItemInTx } from "./needs-you-items.ts";
 import { lastAgentMessageInTx } from "./record-session-end.ts";
 import { appendCoreEvent } from "./server-events.ts";
+import { enterReviewLoopInTx, reviewRoundsInTx } from "../review-loop/loop.ts";
+import type { ReviewLoopCapabilities } from "../review-loop/loop.ts";
 
 // A session that lives across turns (F-096, F-068; spec section 4, "After every turn" and "The idle
 // timer"). Both run in the ingest transaction of the event that caused them.
@@ -138,6 +140,12 @@ export type RecordWorkSavedDeps = Pick<Ports, "jobs" | "notices" | "clock"> & {
   readonly tx: Tx;
   readonly timers?: SessionTimers | undefined;
   readonly logger?: Logger | undefined;
+  /**
+   * Milestone 6 (F-035, F-100): the code host's review-loop capabilities. With them, a task in
+   * review runs the CI and AI review rounds its project and host have; without them, milestone 5's
+   * path (straight to "waiting for a reviewer").
+   */
+  readonly reviewLoop?: ReviewLoopCapabilities | undefined;
 };
 
 /**
@@ -232,8 +240,16 @@ export const recordWorkSaved: RecordWorkSaved = async (deps, input) => {
     return { ok: true, outcome: "in-review" };
   }
   if (withChanges || prOpen) {
-    // The push already updated the open PRs: the task is (still) in review.
-    const moved = await moveTaskInTx(moveDeps, task, { type: "work_saved", withChanges, prOpen, rounds: M2_ROUNDS });
+    // The push already updated the open PRs: the task is (still) in review. Milestone 6: a fixing
+    // round's turn pushed, so CI runs again on the new heads (ADR 0058).
+    const fixing = task.state === "in_review" && (task.subState === "fixing_ci" || task.subState === "fixing_findings");
+    const rounds = deps.reviewLoop === undefined ? M2_ROUNDS : await reviewRoundsInTx(tx, task.projectId, deps.reviewLoop);
+    const moved = fixing
+      ? await moveTaskInTx(moveDeps, task, { type: "pushed" })
+      : await moveTaskInTx(moveDeps, task, { type: "work_saved", withChanges, prOpen, rounds });
+    if (moved && deps.reviewLoop !== undefined) {
+      await enterReviewLoopInTx(deps, tx, organizationId, task.id);
+    }
     if (prOpen && (input.event.checks?.length ?? 0) > 0) {
       // F-054 (ticket 23): the turn's checks go into each changed PR's body and draft state.
       await deps.jobs.enqueueInTx(tx, "task.open-pull-requests", { organizationId, taskId: task.id, sessionId: input.sessionId, eventSeq: input.eventSeq });

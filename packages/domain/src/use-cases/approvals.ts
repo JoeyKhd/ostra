@@ -32,6 +32,7 @@ import { createNeedsYouItemInTx, resolveNeedsYouItemsInTx } from "./needs-you-it
 import type { TaskMoveDeps } from "./moves.ts";
 import { reopenTask } from "./reopen.ts";
 import { appendServerEvent } from "./server-events.ts";
+import { recordPersonActionInTx } from "../review-loop/rounds.ts";
 import type { SessionTimers } from "./sessions-m2.ts";
 import type { SpendCapSettings } from "./spend.ts";
 
@@ -294,6 +295,8 @@ export const answerApproval = async (
     if (option === undefined) {
       return refuse("invalid-input", "The agent offered no such option");
     }
+    // Milestone 6 (ADR 0041): an answer is a person's action, so the automatic turns count from nothing.
+    await recordPersonActionInTx(tx, taskId, new Date(deps.clock.now()));
     const openItem = await tx.needsYouItem.findFirst({ where: { approvalId: approval.id, taskId, state: "open" }, select: { id: true } });
     // "Answer anyway": an expired approval while its item is open. A cancelled one is over.
     const late = approval.state === "closed" && approval.closedReason === "expired" && openItem !== null;

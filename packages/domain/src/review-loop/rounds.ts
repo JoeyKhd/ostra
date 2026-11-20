@@ -1,4 +1,4 @@
-import type { DbEnum } from "@ostra/db";
+import type { DbEnum, Tx } from "@ostra/db";
 import type { RoundKind } from "@ostra/protocol";
 
 import type { RoundVerdict } from "../lifecycles/m6.ts";
@@ -68,3 +68,11 @@ export type PersonAction = (typeof personActions)[number];
 /** A round's kind as the protocol spells it (`round.started`), and as the schema does. */
 export const roundKindToDb = { ci: "ci", findings: "findings", "changes-requested": "changes_requested" } as const satisfies Record<RoundKind, TaskRoundKind>;
 export const roundKindFromDb = { ci: "ci", findings: "findings", changes_requested: "changes-requested" } as const satisfies Record<TaskRoundKind, RoundKind>;
+
+/**
+ * A person acted on the task (a message, a reopen, an answer, "Keep working", "Fix this", a
+ * "changes requested" turn): the counters start again from nothing, in the caller's transaction.
+ */
+export const recordPersonActionInTx = async (tx: Pick<Tx, "task">, taskId: string, at: Date): Promise<void> => {
+  await tx.task.update({ where: { id: taskId }, data: { ...NO_ROUNDS, lastPersonActionAt: at } });
+};

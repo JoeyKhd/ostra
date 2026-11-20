@@ -18,6 +18,7 @@ import type { AuditLog, Clock } from "../ports.ts";
 import { appendServerEvent } from "../use-cases/server-events.ts";
 import type { ArchiveNote, DecideProposal, RememberThis, SaveNote } from "../use-cases/m4-signatures.ts";
 import { checkNoteVersion } from "./block.ts";
+import { rememberThisSourceRef } from "./remember-this.ts";
 import type { RememberThisSource } from "./remember-this.ts";
 import { scanMemoryText, secretScanMessage } from "./secret-scan.ts";
 import { organizationSecretValues, queryWords } from "./store.ts";
@@ -528,7 +529,7 @@ export const proposeRememberThis = (async (deps: NotesDeps, scope: MemberScope, 
         body: body.data,
         kind: input.kind,
         sourceKind: input.source.kind,
-        sourceRef: input.source.kind === "diff_comment" ? input.source.commentId : input.source.url,
+        sourceRef: rememberThisSourceRef(input.source),
         taskId: input.taskId,
         proposedByMemberId: scope.memberId,
         createdAt: new Date(now),
@@ -569,6 +570,9 @@ const commentOfTask = async (db: DbOrTx, taskId: TaskId, source: RememberThisSou
     }
     case "pr_comment":
       return (await db.event.count({ where: { taskId, kind: "pr.comment_received", payload: { path: ["url"], equals: source.url } } })) > 0;
+    case "ai_finding":
+      // A finding of one of the task's AI reviews (F-100, F-111).
+      return (await db.finding.count({ where: { id: source.findingId, reviewRun: { codeTaskId: taskId } } })) > 0;
     default:
       return source satisfies never;
   }

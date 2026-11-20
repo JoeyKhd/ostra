@@ -26,6 +26,7 @@ import { repoAccessFor } from "./repo-access.ts";
 import { writePullRequestSearchEntry } from "../search/entries.ts";
 import { recordAgentSessionMomentInTx } from "../linear/agent-session-moments.ts";
 import { appendServerEvent } from "./server-events.ts";
+import { enterReviewLoopInTx, reviewRoundsInTx } from "../review-loop/loop.ts";
 import { INSTALLATION_NOT_LINKED, installationStateSelect, installationUsable } from "../code-host/installations.ts";
 
 // F-030, F-078, ADR 0040: the `task.open-pull-requests` job. One PR per changed repo, opened by the
@@ -103,8 +104,6 @@ const ticketTextOf = async (
   const word = parseBoardMapping(board?.statusMap)?.magicWord ?? "Closes";
   return { title: ticketPullRequestTitle(ticketKey, ticket?.title ?? task.title), magicLine: ticketMagicLine(ticketKey, word) };
 };
-
-const M1_ROUNDS = { ci: false, aiReview: false } as const;
 
 export const openPullRequests: OpenPullRequests = async (deps, input) => {
   const { db } = deps;
@@ -306,12 +305,18 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
   await db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT 1 FROM "task" WHERE "id" = ${task.id} FOR UPDATE`;
     const fresh = mapTask(await tx.task.findUniqueOrThrow({ where: { id: task.id } }));
-    if (fresh.state === "running") {
-      await moveTaskInTx(
-        { tx, notices: deps.notices, jobs: deps.jobs, ...(deps.logger === undefined ? {} : { logger: deps.logger }) },
-        fresh,
-        { type: "session_ended", withChanges: true, rounds: M1_ROUNDS },
-      );
+    const moveDeps = { tx, notices: deps.notices, jobs: deps.jobs, ...(deps.logger === undefined ? {} : { logger: deps.logger }) };
+    // Milestone 6 (F-035, F-100): the rounds the project and the code host have, then the loop's first step.
+    const rounds = await reviewRoundsInTx(tx, fresh.projectId, deps.adapters.codeHost.capabilities);
+    const fixing = fresh.state === "in_review" && (fresh.subState === "fixing_ci" || fresh.subState === "fixing_findings");
+    const moved =
+      fresh.state === "running"
+        ? await moveTaskInTx(moveDeps, fresh, { type: "session_ended", withChanges: true, rounds })
+        : fixing && opened.length > 0
+          ? await moveTaskInTx(moveDeps, fresh, { type: "pushed" })
+          : false;
+    if (moved) {
+      await enterReviewLoopInTx(deps, tx, organizationId, task.id);
     }
   });
   return { ok: true, opened };
