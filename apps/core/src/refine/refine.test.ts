@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
-import { silentLogger } from "@ostra/adapter-sdk";
+import { adapterError, silentLogger } from "@ostra/adapter-sdk";
 import type { TrackerAdapter } from "@ostra/adapter-sdk";
 import { LinearAdapter } from "@ostra/adapter-linear";
 import { createFakeLinear, createJiraSite, JiraFakeAdapter } from "@ostra/adapter-sdk/testing";
@@ -91,6 +91,9 @@ const taskTokens = createTaskTokens(randomBytes(32));
 const blobBytes = new Map<string, Uint8Array>();
 let jiraAdapter: JiraFakeAdapter;
 let useJira = false;
+/** The Jira fake as a tracker without sub-issues, whose next `linkFailures` links fail. */
+let flatTracker: JiraFakeAdapter | null = null;
+let linkFailures = 0;
 
 const trackers = () =>
   createConnectionTrackers({
@@ -100,7 +103,7 @@ const trackers = () =>
     logger: silentLogger,
     build: (input): TrackerAdapter | null => {
       // One tracker connection per organization: the Jira cases switch what it is.
-      if (useJira) return jiraAdapter;
+      if (useJira) return flatTracker ?? jiraAdapter;
       return new LinearAdapter(
         { apiUrl: fake.apiUrl, auth: { kind: "oauth", token: input.token } },
         input.context,
@@ -664,6 +667,52 @@ describe("refine drafts (F-099)", () => {
         where: { id: linearBoard },
         data: { statusMap: mapping ?? {} },
       });
+    }
+  });
+
+  it("F-099/c6: on a tracker without sub-issues, each sub-ticket is linked from the ticket, also when a retry finds one an earlier try made but couldn't link", async () => {
+    useJira = true;
+    flatTracker = new Proxy(jiraAdapter, {
+      get: (target, key, receiver): unknown => {
+        if (key === "capabilities") return { ...target.capabilities, subIssues: false };
+        if (key === "linkTask") {
+          return (...args: Parameters<JiraFakeAdapter["linkTask"]>) => {
+            if (linkFailures > 0) {
+              linkFailures -= 1;
+              return Promise.resolve(adapterError("unavailable", "the tracker is down"));
+            }
+            return target.linkTask(...args);
+          };
+        }
+        const value: unknown = Reflect.get(target, key, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    try {
+      const { taskId, sessionId, token, ticket } = await refineTask("jira");
+      await submit(taskId, token, draft());
+      await turnEnds(taskId, sessionId);
+      expect(await applyDraft({ db: test.db, ...ports() }, scopeOf(fixture.a.member), { taskId, version: 1 })).toMatchObject({ ok: true });
+      const v1 = await test.db.refineDraft.findFirstOrThrow({ where: { taskId } });
+      // The fake site's clock at the real one, as a real tracker's is: the retry looks back from now.
+      site.clock.set(Date.now());
+      const measured = () => [...site.issues.values()].filter((issue) => issue.summary === "Measure the footer").length;
+      const before = measured();
+      // The first sub-ticket is made, and its link fails: the job fails, to run again.
+      linkFailures = 1;
+      await expect(runApply(v1.id, 1)).rejects.toThrow("linking a sub-ticket");
+      await runApply(v1.id, 1, 1);
+      const read = await jiraAdapter.getTicketContext({ externalId: site.projects[0]?.id ?? "" }, { externalId: externalTicketIdSchema.parse(ticket.externalId) });
+      if (!read.ok) throw new Error(read.error.message);
+      // No sub-tasks; two sub-tickets, each made once and linked once from the ticket.
+      expect(read.value.children).toHaveLength(0);
+      const links = read.value.attachments.filter((link) => link.url.includes("/browse/"));
+      expect(links).toHaveLength(2);
+      expect(new Set(links.map((link) => link.url)).size).toBe(2);
+      expect(measured() - before).toBe(1);
+    } finally {
+      flatTracker = null;
+      linkFailures = 0;
     }
   });
 

@@ -195,17 +195,18 @@ export const draftApplyHandler =
             ...(caps.subIssues ? { parent: ref } : {}),
           });
           if (!created.ok) return fail("creating a sub-ticket", created.error.code);
-          if (!caps.subIssues) {
-            // No sub-issues: the parent links to it instead.
-            const linked = await tracker.linkTask(boardRef, ref, {
-              url: created.value.url,
-              title: created.value.title.slice(0, 256),
-              subtitle: created.value.key,
-            });
-            if (!linked.ok) fail("linking a sub-ticket", linked.error.code);
-          }
           return created.value;
         })());
+      if (!caps.subIssues) {
+        // No sub-issues: the parent links to it instead, also for one an earlier try made but
+        // couldn't link (`linkTask` is once per URL, so a link already there stays one).
+        const linked = await tracker.linkTask(boardRef, ref, {
+          url: made.url,
+          title: made.title.slice(0, 256),
+          subtitle: made.key,
+        });
+        if (!linked.ok) fail("linking a sub-ticket", linked.error.code);
+      }
       subTicketKeys.push(ticketKeySchema.parse(made.key));
     }
 
