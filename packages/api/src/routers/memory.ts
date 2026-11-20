@@ -40,7 +40,7 @@ import { loadProjectAccess, memberProcedure, router, taskProcedure } from "../tr
 // found, never the value; a stale save or merge is `CONFLICT`, naming who saved which version.
 
 const noteStatusSchema = z.enum(["active", "archived"]);
-const sourceKindSchema = z.enum(["member", "task", "proposal", "diff_comment", "pr_comment"]);
+const sourceKindSchema = z.enum(["member", "task", "proposal", "diff_comment", "pr_comment", "ai_finding"]);
 
 const personSchema = z.object({ memberId: memberIdSchema, name: z.string() });
 
@@ -67,7 +67,7 @@ export const noteViewSchema = z.object({
 export type NoteView = z.infer<typeof noteViewSchema>;
 
 const proposalStateSchema = z.enum(["proposed", "approved", "rejected", "merged"]);
-const proposalSourceSchema = z.enum(["agent", "closing_turn", "diff_comment", "pr_comment"]);
+const proposalSourceSchema = z.enum(["agent", "closing_turn", "diff_comment", "pr_comment", "ai_finding"]);
 
 export const proposalViewSchema = z.object({
   proposalId: proposalIdSchema,

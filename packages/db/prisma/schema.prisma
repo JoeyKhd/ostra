@@ -174,6 +174,9 @@ model Organization {
   // Milestone 5 (F-095, F-120).
   boxSizes              BoxSize[]
   registry              Registry?
+  // Milestone 6 (F-012): agent sessions, which may arrive before a project is known.
+  agentSessions         AgentSession[]
+  agentActivities       AgentActivity[]
 
   @@unique([slug])
   @@map("organization")
@@ -458,6 +461,11 @@ model Connection {
   /// on the next read for an existing row.
   ownerLogin            String?
   ownerAccountId        String?
+  // ---- milestone 6, Linear's agent mode (F-012, ADR 0013, ADR 0057) ----
+  /// The token's scopes as the tracker granted them, so core tells when agent mode's are missing.
+  scopes                String[]              @default([])
+  /// When an admin turned on agent mode (the re-authorization with the agent scopes).
+  agentModeAt           DateTime?
 
   repos             Repo[]
   installations     CodeHostInstallation[]
@@ -465,6 +473,7 @@ model Connection {
   webhookDeliveries WebhookDelivery[]
   tickets           Ticket[]
   oauthStates       OAuthState[]
+  agentSessions     AgentSession[]
 
   @@unique([organizationId, kind, appId])
   @@unique([id, organizationId])
@@ -739,6 +748,10 @@ model AgentProfile {
   // ---- milestone 5 (F-069, ADR 0059) ----
   /// The labels a runner needs to run this profile's tasks, matched exactly as a subset.
   runnerLabels   String[]      @default([])
+  // ---- milestone 6 (F-099, F-100, ADR 0028) ----
+  /// Which built-in profile this is: the Refine and Review profiles are found by it and can be
+  /// edited, never deleted. `null` for every other profile.
+  builtInKind    BuiltInProfileKind?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -874,6 +887,25 @@ model Project {
   ownProviders        Boolean             @default(false)
   providerListEntries ProviderListEntry[]
   modelChoices        ModelChoice[]
+  // ---- milestone 6 (F-100, F-040, ADR 0057, ADR 0058) ----
+  /// Whether a code task's PRs get an AI review (F-100). On by default.
+  aiReview                         Boolean @default(true)
+  /// Whether a task from a tracker user ostra can't match waits for a member's approval (F-040).
+  outsideApproval                  Boolean @default(true)
+  /// The organization admin who last switched `outsideApproval`.
+  outsideApprovalChangedByMemberId String?
+  automationRuns     AutomationRun[]
+  bulkStarts         BulkStart[]
+  bulkStartItems     BulkStartItem[]
+  agentSessions      AgentSession[]
+  refineDrafts       RefineDraft[]
+  refineDraftImages  RefineDraftImage[]
+  ciRuns             CiRun[]
+  taskRounds         TaskRound[]
+  reviewRuns         ReviewRun[]
+  findings           Finding[]
+  taskReviewers      TaskReviewer[]
+  environmentProposals EnvironmentProposal[]
 
   // The target of every project record's composite foreign key (ADR 0026).
   @@unique([id, organizationId])
@@ -983,15 +1015,21 @@ model Board {
   /// Set when a project admin detaches the board: it stops polling and starts no new task, but its
   /// tickets stay cached and its tasks keep their links. Attaching the team again clears it.
   detachedAt          DateTime?
+  // ---- milestone 6 (F-012, ADR 0057) ----
+  /// "Start from Linear": delegations and mentions in this board's team start tasks here. One
+  /// board per team per organization.
+  agentMode           Boolean    @default(false)
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @updatedAt
 
-  tickets      Ticket[]
-  ticketWrites TicketWrite[]
-  tasks        Task[]
+  tickets       Ticket[]
+  ticketWrites  TicketWrite[]
+  tasks         Task[]
+  agentSessions AgentSession[]
 
   @@unique([projectId, externalId])
   @@unique([id, projectId])
+  @@unique([organizationId, connectionId, externalId], where: raw("\"agentMode\""), map: "board_one_agent_mode_board_per_team")
   @@map("board")
 }
 
@@ -1040,6 +1078,10 @@ model Ticket {
 
   tasks        Task[]
   ticketWrites TicketWrite[]
+  // ---- milestone 6 ----
+  automationRuns AutomationRun[]
+  bulkStartItems BulkStartItem[]
+  agentSessions  AgentSession[]
 
   @@unique([boardId, externalId])
   @@unique([id, projectId])
@@ -1102,6 +1144,8 @@ model Environment {
   services  Service[]
   checks    Check[]
   snapshots Snapshot[]
+  // ---- milestone 6 (F-113) ----
+  proposals EnvironmentProposal[]
 
   @@unique([id, projectId])
   @@unique([projectId, organizationId])
@@ -1230,10 +1274,390 @@ model Automation {
   /// A schedule's cron expression.
   schedule       String?
   enabled        Boolean        @default(true)
+  // ---- milestone 6 (F-011, F-106, ADR 0056) ----
+  /// The IANA time zone a schedule's cron is read in.
+  timeZone          String                 @default("UTC")
+  /// A prompt schedule's prompt. Untrusted, private: never logged.
+  prompt            String?
+  /// A prompt schedule's task title.
+  title             String?
+  /// Whether the tasks it starts wait for a member's approval.
+  requireApproval   Boolean                @default(false)
+  /// "Skip while the last one is open": an occurrence starts nothing while the last one's task is open.
+  skipWhileOpen     Boolean                @default(true)
+  /// Set with `pausedReason` (checked in the migration): a member paused it, or the hourly limit did.
+  pausedAt          DateTime?
+  pausedReason      AutomationPauseReason?
+  /// A schedule's next due time, advanced by each scheduler tick.
+  nextOccurrenceAt  DateTime?
+  lastOccurrenceAt  DateTime?
+  createdByMemberId String?
+  updatedByMemberId String?
+  /// Deleted: it starts nothing; its runs stay for the tasks' history.
+  deletedAt         DateTime?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
+  runs       AutomationRun[]
+  bulkStarts BulkStart[]
+  tasks      Task[]
+
+  @@unique([id, projectId])
+  /// The scheduler tick's due schedules (ADR 0037).
+  @@index([enabled, nextOccurrenceAt], where: raw("schedule IS NOT NULL"), map: "automation_due_schedules")
   @@map("automation")
+}
+
+// ===========================================================================
+// Milestone 6: automations' runs, bulk starts, agent sessions, drafts, the review loop and
+// environment proposals (spec section 5.3)
+// ===========================================================================
+
+/// One run of an automation (F-011, F-106, ADR 0056): a schedule's occurrence, a rule's match of a
+/// ticket, or a dry run's "Start all". The partial unique indexes make each occurrence and each
+/// ticket's match start at most once, however many replicas run.
+model AutomationRun {
+  id             String                @id @default(uuid(7))
+  organizationId String
+  projectId      String
+  project        Project               @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  automationId   String
+  automation     Automation            @relation(fields: [automationId, projectId], references: [id, projectId], onDelete: Cascade)
+  kind           AutomationRunKind
+  /// Set for an occurrence only (checked in the migration).
+  occurrenceAt   DateTime?
+  /// Set for a ticket match only (checked in the migration).
+  ticketId       String?
+  ticket         Ticket?               @relation(fields: [ticketId, projectId], references: [id, projectId], onDelete: NoAction)
+  state          AutomationRunState
+  /// Set when `state` is `skipped` (checked in the migration).
+  skipReason     AutomationSkipReason?
+  taskId         String?
+  task           Task?                 @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: NoAction)
+  bulkStartId    String?
+  bulkStart      BulkStart?            @relation(fields: [bulkStartId, projectId], references: [id, projectId], onDelete: NoAction)
+  createdAt      DateTime              @default(now())
+
+  @@unique([automationId, occurrenceAt], where: raw("kind = 'occurrence'"), map: "automation_run_one_per_occurrence")
+  @@unique([automationId, ticketId], where: raw("kind = 'ticket_match'"), map: "automation_run_one_match_per_ticket")
+  @@index([automationId, createdAt])
+  @@map("automation_run")
+}
+
+/// Many tickets started in one action (F-107, ADR 0056): from the Inbox, or a dry run's "Start all".
+model BulkStart {
+  id             String          @id @default(uuid(7))
+  organizationId String
+  projectId      String
+  project        Project         @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  memberId       String
+  source         BulkStartSource
+  automationId   String?
+  automation     Automation?     @relation(fields: [automationId, projectId], references: [id, projectId], onDelete: NoAction)
+  /// The client's key: the same request twice starts nothing twice.
+  requestKey     String
+  taskKind       TaskKind
+  agentProfileId String?
+  /// How many tickets the member asked for.
+  requested      Int
+  createdAt      DateTime        @default(now())
+
+  items          BulkStartItem[]
+  automationRuns AutomationRun[]
+
+  @@unique([memberId, requestKey])
+  @@unique([id, projectId])
+  @@map("bulk_start")
+}
+
+/// One ticket of a bulk start, started in its own transaction (F-107).
+model BulkStartItem {
+  id             String             @id @default(uuid(7))
+  organizationId String
+  projectId      String
+  project        Project            @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  bulkStartId    String
+  bulkStart      BulkStart          @relation(fields: [bulkStartId, projectId], references: [id, projectId], onDelete: Cascade)
+  ticketId       String
+  ticket         Ticket             @relation(fields: [ticketId, projectId], references: [id, projectId], onDelete: Cascade)
+  state          BulkStartItemState @default(pending)
+  /// Why it was skipped or failed, as a code (`has-task`, `budget`, ...): never content.
+  reason         String?
+  taskId         String?
+  task           Task?              @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: NoAction)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@unique([bulkStartId, ticketId])
+  @@map("bulk_start_item")
+}
+
+/// A tracker's agent session (F-012, ADR 0013, ADR 0057): a delegation or a mention in Linear.
+/// Written before a project is known, so its project is optional; its ticket, task and board are
+/// the project's once matched.
+model AgentSession {
+  id                String            @id @default(uuid(7))
+  organizationId    String
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connectionId      String
+  connection        Connection        @relation(fields: [connectionId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  /// The tracker's session ID.
+  externalSessionId String
+  projectId         String?
+  project           Project?          @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  ticketId          String?
+  ticket            Ticket?           @relation(fields: [ticketId, projectId], references: [id, projectId], onDelete: NoAction)
+  taskId            String?
+  task              Task?             @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: NoAction)
+  boardId           String?
+  board             Board?            @relation(fields: [boardId, projectId], references: [id, projectId], onDelete: NoAction)
+  state             AgentSessionState @default(active)
+  /// The tracker user who delegated or mentioned, by the tracker's ID and the name it gave.
+  creatorExternalId String
+  creatorName       String
+  /// The member the creator matched (ADR 0057), or `null` for a person from outside.
+  matchedMemberId   String?
+  lastPostAt        DateTime?
+  /// When the next heartbeat is due: every post moves it 20 minutes on.
+  heartbeatDueAt    DateTime?
+  endedAt           DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  activities AgentActivity[]
+
+  @@unique([connectionId, externalSessionId])
+  @@unique([id, organizationId])
+  @@index([heartbeatDueAt], where: raw("state <> 'ended'"), map: "agent_session_heartbeat_due")
+  @@map("agent_session")
+}
+
+/// The outbox of ostra's posts to an agent session (F-012). Its body is ostra's own words only.
+model AgentActivity {
+  id                 String             @id @default(uuid(7))
+  organizationId     String
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agentSessionId     String
+  agentSession       AgentSession       @relation(fields: [agentSessionId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  kind               AgentActivityKind
+  ephemeral          Boolean            @default(false)
+  /// ostra's own words, from its templates: never agent output, a tool's input, a plan or a draft.
+  body               String
+  /// Posting it twice with this key posts it once.
+  idempotencyKey     String
+  state              AgentActivityState @default(pending)
+  externalActivityId String?
+  attempts           Int                @default(0)
+  sentAt             DateTime?
+  createdAt          DateTime           @default(now())
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([state, createdAt])
+  @@map("agent_activity")
+}
+
+/// A refine task's draft, one row per version (F-099, ADR 0028). Its text is never logged.
+model RefineDraft {
+  id               String             @id @default(uuid(7))
+  organizationId   String
+  projectId        String
+  project          Project            @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskId           String
+  task             Task               @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  version          Int
+  /// Untrusted, private: never logged.
+  description      String
+  /// A JSON array of strings. Never logged.
+  acceptanceCriteria Json             @default("[]")
+  edgeCases        Json               @default("[]")
+  openQuestions    Json               @default("[]")
+  /// A JSON array of `{ title, description }`. Never logged.
+  subTickets       Json               @default("[]")
+  source           DraftSource
+  editedByMemberId String?
+  appliedAt        DateTime?
+  appliedByMemberId String?
+  readyAt          DateTime?
+  /// The ticket "Create ticket" made from a prompt task's draft.
+  createdTicketKey String?
+  createdAt        DateTime           @default(now())
+
+  images RefineDraftImage[]
+
+  @@unique([taskId, version])
+  @@unique([id, projectId])
+  @@map("refine_draft")
+}
+
+/// An image a member added to a refine draft, attached to the ticket on "Update ticket" (F-099).
+model RefineDraftImage {
+  id             String      @id @default(uuid(7))
+  organizationId String
+  projectId      String
+  project        Project     @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  draftId        String
+  draft          RefineDraft @relation(fields: [draftId, projectId], references: [id, projectId], onDelete: Cascade)
+  blobId         String
+  blob           Blob        @relation(fields: [blobId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  name           String
+  contentType    String
+  size           Int
+  attachedAt     DateTime?
+  createdAt      DateTime    @default(now())
+
+  @@map("refine_draft_image")
+}
+
+/// The CI result of one head of a task's PR (F-035, ADR 0058). ostra's own checks are left out.
+model CiRun {
+  id             String     @id @default(uuid(7))
+  organizationId String
+  projectId      String
+  project        Project    @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskRepoId     String
+  taskRepo       TaskRepo   @relation(fields: [taskRepoId, projectId], references: [id, projectId], onDelete: Cascade)
+  headSha        String
+  state          CiRunState @default(pending)
+  /// A JSON array of `{ name, conclusion, externalId }`: never a log's text.
+  checks         Json       @default("[]")
+  firstSeenAt    DateTime   @default(now())
+  completedAt    DateTime?
+  /// The failing checks' log tails, as blobs: their text is never logged.
+  logBlobIds     Json       @default("[]")
+  updatedAt      DateTime   @updatedAt
+
+  @@unique([taskRepoId, headSha])
+  @@map("ci_run")
+}
+
+/// A fixing round of a task (F-035, F-101, F-105, ADR 0041): one per cause, however often it's asked.
+model TaskRound {
+  id             String     @id @default(uuid(7))
+  organizationId String
+  projectId      String
+  project        Project    @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskId         String
+  task           Task       @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  kind           RoundKind
+  /// Its number within its kind, from 1.
+  number         Int
+  automatic      Boolean
+  /// What caused it: the head (CI), the review run (findings) or the review (changes requested).
+  causeRef       String
+  turnId         String?
+  state          RoundState
+  createdAt      DateTime   @default(now())
+
+  @@unique([taskId, kind, causeRef])
+  @@map("task_round")
+}
+
+/// One AI review of a code task's PRs (F-100, ADR 0058): one per round.
+model ReviewRun {
+  id             String         @id @default(uuid(7))
+  organizationId String
+  projectId      String
+  project        Project        @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  codeTaskId     String
+  codeTask       Task           @relation("ReviewRunCodeTask", fields: [codeTaskId, projectId], references: [id, projectId], onDelete: Cascade)
+  reviewTaskId   String?
+  reviewTask     Task?          @relation("ReviewRunReviewTask", fields: [reviewTaskId, projectId], references: [id, projectId], onDelete: NoAction)
+  round          Int
+  /// A JSON array of `{ repoId, prNumber, baseSha, headSha }`.
+  heads          Json           @default("[]")
+  state          ReviewRunState @default(running)
+  /// The agent's summary. Untrusted: never logged.
+  summary        String?
+  blocking       Int            @default(0)
+  nits           Int            @default(0)
+  postedAt       DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  findings Finding[]
+
+  @@unique([codeTaskId, round])
+  @@unique([id, projectId])
+  @@map("review_run")
+}
+
+/// A finding of an AI review (F-100). Its text is untrusted and never logged.
+model Finding {
+  id                String          @id @default(uuid(7))
+  organizationId    String
+  projectId         String
+  project           Project         @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  reviewRunId       String
+  reviewRun         ReviewRun       @relation(fields: [reviewRunId, projectId], references: [id, projectId], onDelete: Cascade)
+  taskRepoId        String
+  taskRepo          TaskRepo        @relation(fields: [taskRepoId, projectId], references: [id, projectId], onDelete: Cascade)
+  path              String
+  /// From 1 (checked in the migration).
+  line              Int
+  side              DiffSide
+  severity          FindingSeverity
+  title             String
+  /// Untrusted, private: never logged.
+  body              String
+  suggestion        String?
+  postedAs          FindingPostedAs?
+  externalCommentId String?
+  state             FindingState    @default(open)
+  /// The review run that found it resolved or outdated.
+  resolvedInRunId   String?
+  createdAt         DateTime        @default(now())
+
+  @@index([reviewRunId])
+  @@map("finding")
+}
+
+/// A reviewer of a task's PR (F-102): a GitHub user or team, matched to a member by the verified link.
+model TaskReviewer {
+  id              String         @id @default(uuid(7))
+  organizationId  String
+  projectId       String
+  project         Project        @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskRepoId      String
+  taskRepo        TaskRepo       @relation(fields: [taskRepoId, projectId], references: [id, projectId], onDelete: Cascade)
+  /// The GitHub user, or `null` for a team.
+  githubUserId    String?
+  login           String?
+  /// The team, or `null` for a user.
+  teamSlug        String?
+  /// The member the user matched, or `null`.
+  memberId        String?
+  source          ReviewerSource
+  /// The user's last review on the PR (`approved`, `changes_requested`, `commented`), as GitHub said.
+  lastReviewState String?
+  updatedAt       DateTime       @updatedAt
+
+  @@unique([taskRepoId, githubUserId])
+  @@unique([taskRepoId, teamSlug])
+  @@map("task_reviewer")
+}
+
+/// An environment an onboarding task proposed (F-113, ADR 0038), for a project admin to decide.
+model EnvironmentProposal {
+  id                String                    @id @default(uuid(7))
+  organizationId    String
+  projectId         String
+  project           Project                   @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  environmentId     String
+  environment       Environment               @relation(fields: [environmentId, projectId], references: [id, projectId], onDelete: Cascade)
+  taskId            String
+  task              Task                      @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  /// The proposal, parsed by the protocol's `environmentProposalSchema`. Its scripts are never logged.
+  body              Json
+  /// The agent's notes. Never logged.
+  notes             String?
+  state             EnvironmentProposalState  @default(proposed)
+  decidedByMemberId String?
+  decidedAt         DateTime?
+  /// The environment's version an accepted proposal became.
+  resultVersion     Int?
+  createdAt         DateTime                  @default(now())
+
+  @@map("environment_proposal")
 }
 
 // ===========================================================================
@@ -1309,6 +1733,31 @@ model Task {
   requiredLabels    String[]        @default([])
   /// Who cancelled it from the queue (`stoppedReason` `cancelled`); kept when the member leaves.
   cancelledByMemberId String?
+  // ---- milestone 6 (ADR 0056, ADR 0057, ADR 0058) ----
+  /// What started it.
+  origin             TaskOrigin      @default(member)
+  automationId       String?
+  automation         Automation?     @relation(fields: [automationId, projectId], references: [id, projectId], onDelete: NoAction)
+  bulkStartId        String?
+  /// The parent ticket of a sub-issue's task (F-077), by its ticket row.
+  parentTicketId     String?
+  /// The tracker user who started it from outside (F-040), by the tracker's ID and the name it gave.
+  trackerActorId     String?
+  trackerActorName   String?
+  /// It may run on a pool only, never a personal runner (an outside task, ADR 0057).
+  poolOnly           Boolean         @default(false)
+  /// Set together (checked in the migration).
+  approvedByMemberId String?
+  approvedAt         DateTime?
+  /// A rejected outside task's reason. Shown to the project's members, never logged.
+  rejectedReason     String?
+  /// The rounds and automatic turns since a person last acted (ADR 0041).
+  ciRounds           Int             @default(0)
+  reviewRounds       Int             @default(0)
+  automaticTurns     Int             @default(0)
+  lastPersonActionAt DateTime?
+  /// An onboarding task (F-113): it proposes the environment and commits only `AGENTS.md`.
+  onboarding         Boolean         @default(false)
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
@@ -1336,6 +1785,15 @@ model Task {
   heldTurns     HeldTurn[]
   taskMetrics   TaskMetric[]
   memoryUses    MemoryUse[]
+  // ---- milestone 6 ----
+  automationRuns       AutomationRun[]
+  bulkStartItems       BulkStartItem[]
+  agentSessions        AgentSession[]
+  refineDrafts         RefineDraft[]
+  taskRounds           TaskRound[]
+  reviewRunsAsCode     ReviewRun[]           @relation("ReviewRunCodeTask")
+  reviewRunsAsReview   ReviewRun[]           @relation("ReviewRunReviewTask")
+  environmentProposals EnvironmentProposal[]
 
   @@unique([id, projectId])
   /// One active code task per ticket per project (spec section 11, item 12).
@@ -1390,6 +1848,10 @@ model TaskRepo {
   pullRequests TaskPullRequest[]
   // ---- milestone 4 ----
   reviewChecks ReviewCheck[]
+  // ---- milestone 6 ----
+  ciRuns        CiRun[]
+  findings      Finding[]
+  taskReviewers TaskReviewer[]
 
   @@unique([taskId, repoId])
   @@unique([id, projectId])
@@ -1831,6 +2293,8 @@ model Blob {
   createdAt      DateTime      @default(now())
 
   chunks BlobChunk[]
+  // ---- milestone 6 ----
+  draftImages RefineDraftImage[]
 
   @@unique([store, key])
   @@unique([id, organizationId])
@@ -2260,6 +2724,142 @@ enum TaskKind {
   review
 }
 
+// ---- milestone 6 (spec section 5.3) ----
+
+/// What started a task (ADR 0056, ADR 0057).
+enum TaskOrigin {
+  member
+  automation
+  tracker
+  pr_review
+  onboarding
+}
+
+enum AutomationRunKind {
+  occurrence
+  ticket_match
+  start_all
+}
+
+enum AutomationRunState {
+  started
+  skipped
+  missed
+}
+
+enum AutomationSkipReason {
+  last_open
+  has_task
+  paused
+  hourly_limit
+  over_limit
+  budget
+}
+
+enum AutomationPauseReason {
+  member
+  hourly_limit
+}
+
+enum BulkStartSource {
+  inbox
+  dry_run
+}
+
+enum BulkStartItemState {
+  pending
+  started
+  skipped
+  failed
+}
+
+enum AgentSessionState {
+  active
+  awaiting_approval
+  ended
+}
+
+enum AgentActivityKind {
+  thought
+  action
+  elicitation
+  response
+  error
+}
+
+enum AgentActivityState {
+  pending
+  sent
+  failed
+}
+
+enum DraftSource {
+  agent
+  member
+}
+
+enum CiRunState {
+  pending
+  passed
+  failed
+  none
+  timed_out
+}
+
+enum RoundKind {
+  ci
+  findings
+  changes_requested
+}
+
+enum RoundState {
+  started
+  held
+  capped
+}
+
+enum ReviewRunState {
+  running
+  submitted
+  posted
+  failed
+}
+
+enum FindingSeverity {
+  blocking
+  nit
+}
+
+enum FindingPostedAs {
+  line_comment
+  review_body
+}
+
+enum FindingState {
+  open
+  resolved
+  outdated
+}
+
+enum ReviewerSource {
+  requested
+  codeowners
+  team
+}
+
+enum EnvironmentProposalState {
+  proposed
+  accepted
+  rejected
+  superseded
+}
+
+/// The built-in profiles a fresh organization is seeded with (F-099, F-100).
+enum BuiltInProfileKind {
+  refine
+  review
+}
+
 enum TaskSource {
   prompt
   ticket
@@ -2299,6 +2899,8 @@ enum NeedsYouReason {
   round_cap
   waiting_for_reviewer
   environment_proposal
+  /// Milestone 6 (F-040): a task from outside waits for a member's approval. For the project's members.
+  awaiting_approval
   /// Milestone 2: the saved work couldn't be merged with the branch's new commits (ADR 0039, Q150).
   restore_conflict
   /// Milestone 2: the server couldn't store an event, and refused it once (F-043).
@@ -2602,6 +3204,13 @@ enum NotificationKind {
   // Milestone 5 (F-091): the runner notices, for the organization's admins.
   runner_joined
   runner_awaiting_approval
+  // Milestone 6 (F-036, ADR 0050): a draft, a reviewer's request, an outside task, a round's cap,
+  // a paused automation.
+  draft_ready
+  review_requested
+  task_approval
+  round_cap
+  automation_paused
 }
 
 /// What an account mail is for (ticket 19): the job's purposes.
@@ -3032,6 +3641,9 @@ enum HeldTurnOrigin {
   keep_working
   closing_turn
   automatic_round
+  // Milestone 6 (F-105, F-012): a reviewer's "changes requested", a member's follow-up from Linear.
+  changes_requested
+  linear_follow_up
 }
 
 enum MemoryKind {
@@ -3059,6 +3671,8 @@ enum MemorySourceKind {
   diff_comment
   pr_comment
   proposal
+  /// Milestone 6 (F-111): "Remember this" on an AI review's finding.
+  ai_finding
 }
 
 enum ProposalState {
@@ -3073,6 +3687,8 @@ enum ProposalSourceKind {
   diff_comment
   pr_comment
   closing_turn
+  /// Milestone 6 (F-111): "Remember this" on an AI review's finding.
+  ai_finding
 }
 
 enum ProposalRelation {

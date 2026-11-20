@@ -298,6 +298,20 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   // Milestone 5 (its ticket 04): no procedure reads them yet; tickets 27 and 28 add theirs.
   BoxSize: ["boxSizes.list"],
   Registry: ["registry.get"],
+  // Milestone 6 (its ticket 05): no procedure reads them yet; tickets 24 to 29 add theirs.
+  AutomationRun: [],
+  BulkStart: [],
+  BulkStartItem: [],
+  AgentSession: [],
+  AgentActivity: [],
+  RefineDraft: [],
+  RefineDraftImage: [],
+  CiRun: [],
+  TaskRound: [],
+  ReviewRun: [],
+  Finding: [],
+  TaskReviewer: [],
+  EnvironmentProposal: [],
 };
 
 /** Calls a procedure by its dotted path, as the panel does. */

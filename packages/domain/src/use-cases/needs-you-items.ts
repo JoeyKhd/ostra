@@ -42,6 +42,9 @@ export const notificationKindOfReason = (reason: DbEnum.NeedsYouReason): Notific
     // Milestone 5 (F-091): the join sends its own runner notices to the admins (ticket 12), so the
     // item adds no second one.
     case "runner_awaiting_approval":
+    // Milestone 6 (F-040): an outside task's approval. Its `task_approval` notice comes with the
+    // notification kinds of the adapter SDK (milestone 6's ticket 04) and ticket 14.
+    case "awaiting_approval":
       return null;
     default:
       return reason satisfies never;
@@ -216,6 +219,7 @@ const answeredByNextTurn = {
   files_outside_repos: false,
   no_provider_for_model: false,
   runner_awaiting_approval: false,
+  awaiting_approval: false,
 } satisfies Record<DbEnum.NeedsYouReason, boolean>;
 
 const isReason = (value: string): value is DbEnum.NeedsYouReason => value in answeredByNextTurn;

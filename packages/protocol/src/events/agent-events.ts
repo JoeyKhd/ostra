@@ -603,6 +603,10 @@ export const turnOriginSchema = z.enum([
   "keep-working",
   "closing-turn",
   "automatic-round",
+  // Milestone 6 (F-105, F-012): a reviewer's "changes requested" and a member's follow-up from
+  // Linear. Only `turn.held`, a server-only kind, carries an origin, so no peer reads them.
+  "changes-requested",
+  "linear-follow-up",
 ]);
 export type TurnOrigin = z.infer<typeof turnOriginSchema>;
 

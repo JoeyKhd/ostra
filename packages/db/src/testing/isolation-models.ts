@@ -89,6 +89,20 @@ export const isolationModelList = [
   // Milestone 5 (its ticket 04).
   "BoxSize",
   "Registry",
+  // Milestone 6 (its ticket 05).
+  "AutomationRun",
+  "BulkStart",
+  "BulkStartItem",
+  "AgentSession",
+  "AgentActivity",
+  "RefineDraft",
+  "RefineDraftImage",
+  "CiRun",
+  "TaskRound",
+  "ReviewRun",
+  "Finding",
+  "TaskReviewer",
+  "EnvironmentProposal",
 ] as const;
 
 export type IsolationModelName = (typeof isolationModelList)[number];
@@ -332,6 +346,52 @@ export const isolationModels: Readonly<Record<IsolationModelName, FixtureBuilder
   BoxSize: async ({ db, organizationId }) => (await db.boxSize.create({ data: { organizationId, name: "small", cpuMillis: 2000, memoryMiB: 4096 } })).id,
   Registry: async ({ db, organizationId }) =>
     (await db.registry.create({ data: { organizationId, url: "registry.example.com", repositoryPrefix: `ostra-${tag()}`, auth: "basic", pushSecretId: `secret:${id()}`, pullSecretId: `secret:${id()}` } })).id,
+  // Milestone 6 (its ticket 05).
+  AutomationRun: async ({ db, organizationId, projectId }, ensure) =>
+    (await db.automationRun.create({ data: { organizationId, projectId, automationId: await ensure("Automation"), kind: "occurrence", occurrenceAt: new Date(), state: "started", taskId: await ensure("Task") } })).id,
+  BulkStart: async ({ db, organizationId, projectId, memberId }) =>
+    (await db.bulkStart.create({ data: { organizationId, projectId, memberId, source: "inbox", requestKey: `bulk-${tag()}`, taskKind: "code", requested: 1 } })).id,
+  BulkStartItem: async ({ db, organizationId, projectId }, ensure) =>
+    (await db.bulkStartItem.create({ data: { organizationId, projectId, bulkStartId: await ensure("BulkStart"), ticketId: await ensure("Ticket"), state: "started", taskId: await ensure("Task") } })).id,
+  AgentSession: async (place, ensure) =>
+    (
+      await place.db.agentSession.create({
+        data: {
+          organizationId: place.organizationId,
+          connectionId: await linearOf(place),
+          externalSessionId: `session-${tag()}`,
+          projectId: place.projectId,
+          ticketId: await ensure("Ticket"),
+          taskId: await ensure("Task"),
+          boardId: await ensure("Board"),
+          creatorExternalId: `user-${tag()}`,
+          creatorName: "Fixture Person",
+          heartbeatDueAt: new Date(Date.now() + 20 * 60_000),
+        },
+      })
+    ).id,
+  AgentActivity: async ({ db, organizationId }, ensure) =>
+    (await db.agentActivity.create({ data: { organizationId, agentSessionId: await ensure("AgentSession"), kind: "thought", body: "Received. Working on it in ostra.", idempotencyKey: `activity-${tag()}` } })).id,
+  RefineDraft: async ({ db, organizationId, projectId }, ensure) =>
+    (await db.refineDraft.create({ data: { organizationId, projectId, taskId: await ensure("Task"), version: 1, description: "A fixture draft.", source: "agent" } })).id,
+  RefineDraftImage: async ({ db, organizationId, projectId }, ensure) =>
+    (await db.refineDraftImage.create({ data: { organizationId, projectId, draftId: await ensure("RefineDraft"), blobId: await ensure("Blob"), name: "mock.png", contentType: "image/png", size: 1 } })).id,
+  CiRun: async ({ db, organizationId, projectId }, ensure) =>
+    (await db.ciRun.create({ data: { organizationId, projectId, taskRepoId: await ensure("TaskRepo"), headSha: randomBytes(20).toString("hex"), state: "passed" } })).id,
+  TaskRound: async ({ db, organizationId, projectId }, ensure) =>
+    (await db.taskRound.create({ data: { organizationId, projectId, taskId: await ensure("Task"), kind: "ci", number: 1, automatic: true, causeRef: randomBytes(20).toString("hex"), state: "started" } })).id,
+  ReviewRun: async ({ db, organizationId, projectId }, ensure) =>
+    (await db.reviewRun.create({ data: { organizationId, projectId, codeTaskId: await ensure("Task"), round: 1, state: "submitted" } })).id,
+  Finding: async ({ db, organizationId, projectId }, ensure) =>
+    (
+      await db.finding.create({
+        data: { organizationId, projectId, reviewRunId: await ensure("ReviewRun"), taskRepoId: await ensure("TaskRepo"), path: "src/a.ts", line: 1, side: "new", severity: "nit", title: "A fixture finding", body: "A fixture body." },
+      })
+    ).id,
+  TaskReviewer: async ({ db, organizationId, projectId, memberId }, ensure) =>
+    (await db.taskReviewer.create({ data: { organizationId, projectId, taskRepoId: await ensure("TaskRepo"), githubUserId: String(Math.floor(Math.random() * 1_000_000)), login: `reviewer-${tag()}`, memberId, source: "requested" } })).id,
+  EnvironmentProposal: async ({ db, organizationId, projectId }, ensure) =>
+    (await db.environmentProposal.create({ data: { organizationId, projectId, environmentId: await ensure("Environment"), taskId: await ensure("Task"), body: { repos: [], services: [], notes: "" } } })).id,
 };
 
 /** The models without `organizationId`, each with why it has none (reviewed: ADR 0053). */
@@ -395,6 +455,19 @@ export const isolationProjectModels: ReadonlySet<IsolationModelName> = new Set<I
   "ReviewCheck",
   "ProviderListEntry",
   "ModelChoice",
+  // Milestone 6.
+  "AutomationRun",
+  "BulkStart",
+  "BulkStartItem",
+  "AgentSession",
+  "RefineDraft",
+  "RefineDraftImage",
+  "CiRun",
+  "TaskRound",
+  "ReviewRun",
+  "Finding",
+  "TaskReviewer",
+  "EnvironmentProposal",
 ]);
 
 export const isolationModelNames = (): readonly IsolationModelName[] => isolationModelList;

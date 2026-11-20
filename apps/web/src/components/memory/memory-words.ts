@@ -20,7 +20,7 @@ const KIND_WORDS = {
 
 export const kindWord = (kind: MemoryKind): string => t(KIND_WORDS[kind]);
 
-export type NoteSourceKind = "member" | "task" | "proposal" | "diff_comment" | "pr_comment";
+export type NoteSourceKind = "member" | "task" | "proposal" | "diff_comment" | "pr_comment" | "ai_finding";
 export type SourceFilter = "member" | "agent" | "diff_comment" | "pr_comment";
 export const SOURCE_FILTERS = ["member", "agent", "diff_comment", "pr_comment"] as const satisfies readonly SourceFilter[];
 
@@ -31,6 +31,8 @@ export const sourceFilterOf = (kind: NoteSourceKind): SourceFilter => {
       return "member";
     case "task":
     case "proposal":
+    // Milestone 6 (F-111): a finding of the AI review, remembered by a member, is the agent's.
+    case "ai_finding":
       return "agent";
     case "diff_comment":
       return "diff_comment";

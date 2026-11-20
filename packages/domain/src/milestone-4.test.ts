@@ -255,7 +255,7 @@ describe("the budget gate", () => {
   });
 
   it("has one closed list of origins", () => {
-    expect([...turnOrigins]).toEqual(["dispatch", "reopen", "message", "diff-comments", "update-branch", "pr-comment", "keep-working", "closing-turn", "automatic-round"]);
+    expect([...turnOrigins]).toEqual(["dispatch", "reopen", "message", "diff-comments", "update-branch", "pr-comment", "keep-working", "closing-turn", "automatic-round", "changes-requested", "linear-follow-up"]);
   });
 
   it("F-037: every origin is open at 79%, 80% and 99%, held at 100%, and open again across a month's end", () => {

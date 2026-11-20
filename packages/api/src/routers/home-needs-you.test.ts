@@ -105,6 +105,7 @@ const everyReason = {
   files_outside_repos: nothing,
   no_provider_for_model: nothing,
   runner_awaiting_approval: nothing,
+  awaiting_approval: nothing,
 } satisfies Record<DbEnum.NeedsYouReason, (task: SeededTask) => Promise<void>>;
 
 const isReason = (value: string): value is DbEnum.NeedsYouReason => value in everyReason;
@@ -154,7 +155,7 @@ describe("the member's needs-you list", () => {
     expect(byReason.get("draft_ready")?.detail).toEqual({ reason: "draft_ready", prNumber: 2213 });
     const stalled = byReason.get("stalled")?.detail;
     expect(stalled?.reason === "stalled" && stalled.minutes >= 1).toBe(true);
-    for (const plain of ["no_changes", "spend_cap", "crashed", "round_cap", "waiting_for_reviewer", "environment_proposal", "restore_conflict", "unstorable_event", "files_outside_repos"] as const) {
+    for (const plain of ["no_changes", "spend_cap", "crashed", "round_cap", "waiting_for_reviewer", "environment_proposal", "restore_conflict", "unstorable_event", "files_outside_repos", "awaiting_approval"] as const) {
       expect(byReason.get(plain)?.detail).toEqual({ reason: plain });
     }
     // Each row names its task, its project and its key.
@@ -165,9 +166,9 @@ describe("the member's needs-you list", () => {
 
   it("F-062: Home shows the first five, with the total of all", async () => {
     const home = await (await harness.as(harness.fixture.a.admin)).home.overview();
-    expect(home.needsYou.total).toBe(18);
+    expect(home.needsYou.total).toBe(19);
     expect(home.needsYou.rows).toHaveLength(5);
-    expect(home.needsYou.rows.map((row) => row.reason)).toEqual(["runner_awaiting_approval", "no_provider_for_model", "files_outside_repos", "unstorable_event", "restore_conflict"]);
+    expect(home.needsYou.rows.map((row) => row.reason)).toEqual(["awaiting_approval", "runner_awaiting_approval", "no_provider_for_model", "files_outside_repos", "unstorable_event"]);
   });
 
   it("F-062: a task with two open items shows both", async () => {

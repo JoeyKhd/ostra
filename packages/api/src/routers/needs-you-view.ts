@@ -315,6 +315,7 @@ export const loadNeedsYouViews = async (
         case "unstorable_event":
         case "files_outside_repos":
         case "runner_awaiting_approval":
+        case "awaiting_approval":
           return { reason: item.reason };
         default:
           return item.reason satisfies never;

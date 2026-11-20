@@ -167,6 +167,9 @@ describe("minor 3's events", () => {
       "keep-working",
       "closing-turn",
       "automatic-round",
+      // Milestone 6 (F-105, F-012).
+      "changes-requested",
+      "linear-follow-up",
     ]);
   });
 

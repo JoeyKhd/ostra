@@ -44,6 +44,8 @@ const fromWords = (proposal: Proposal): string => {
       return t("memory.proposalsList.fromDiff", { name: proposal.proposedBy?.name ?? t("memory.someone"), task });
     case "pr_comment":
       return t("memory.proposalsList.fromPr", { name: proposal.proposedBy?.name ?? t("memory.someone"), task });
+    case "ai_finding":
+      return t("memory.proposalsList.fromFinding", { name: proposal.proposedBy?.name ?? t("memory.someone"), task });
     default:
       return proposal.source satisfies never;
   }

@@ -161,7 +161,8 @@
       "noKeyFor": "No key for {model} in this project. Pick a key in Models and keys.",
       "profileKeyNotAllowed": "Its profile runs on {provider}, which this project doesn't allow. Allow it in Models and keys.",
       "profileKeyNotListed": "{provider} no longer lists {model}. Pick another model for the profile.",
-      "runnerAwaitingApproval": "A runner waits for approval"
+      "runnerAwaitingApproval": "A runner waits for approval",
+      "awaitingApproval": "Started from outside: waits for a member's approval"
     },
     "action": {
       "approve": "Approve",
@@ -1344,7 +1345,8 @@
       "unstorableEvent": "An event couldn't be stored",
       "filesOutsideRepos": "Files left outside the repositories",
       "noProviderForModel": "No key for its model in this project",
-      "runnerAwaitingApproval": "A runner waits for approval"
+      "runnerAwaitingApproval": "A runner waits for approval",
+      "awaitingApproval": "Started from outside: waits for a member's approval"
     },
     "stopReason": {
       "requested": "asked to stop",
@@ -4378,6 +4380,7 @@
       "fromClosing": "An agent, closing turn of {task}",
       "fromDiff": "{name}, a diff comment on {task}",
       "fromPr": "{name}, a PR comment on {task}",
+      "fromFinding": "{name}, an AI review finding on {task}",
       "contradicts": "contradicts",
       "refines": "refines",
       "proposed": "Proposed",

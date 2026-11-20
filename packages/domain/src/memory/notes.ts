@@ -274,12 +274,14 @@ export const readNoteForMember = async (db: DbOrTx, scope: MemberScope, noteId: 
 
 /** A "Remember this" proposal's comment, which a note made from it names as its source. */
 const commentSourceOf = (proposal: {
-  readonly sourceKind: "agent" | "closing_turn" | "diff_comment" | "pr_comment";
+  readonly sourceKind: "agent" | "closing_turn" | "diff_comment" | "pr_comment" | "ai_finding";
   readonly sourceRef: string | null;
-}): { readonly kind: "diff_comment" | "pr_comment"; readonly ref: string } | null => {
+}): { readonly kind: "diff_comment" | "pr_comment" | "ai_finding"; readonly ref: string } | null => {
   switch (proposal.sourceKind) {
     case "diff_comment":
     case "pr_comment":
+    // Milestone 6 (F-111): "Remember this" on an AI review's finding names the finding.
+    case "ai_finding":
       return proposal.sourceRef === null ? null : { kind: proposal.sourceKind, ref: proposal.sourceRef };
     case "agent":
     case "closing_turn":

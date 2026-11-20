@@ -78,6 +78,8 @@ export const needsYouReasonText = (reason: NeedsYouReason): string => {
       return t("tasks.needsYouReason.noProviderForModel");
     case "runner_awaiting_approval":
       return t("tasks.needsYouReason.runnerAwaitingApproval");
+    case "awaiting_approval":
+      return t("tasks.needsYouReason.awaitingApproval");
     default:
       return reason satisfies never;
   }

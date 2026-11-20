@@ -222,6 +222,8 @@ export const turnOriginToDb = {
   "keep-working": "keep_working",
   "closing-turn": "closing_turn",
   "automatic-round": "automatic_round",
+  "changes-requested": "changes_requested",
+  "linear-follow-up": "linear_follow_up",
 } as const satisfies Record<TurnOrigin, DbHeldTurnOrigin>;
 export const turnOriginFromDb = {
   dispatch: "dispatch",
@@ -233,6 +235,8 @@ export const turnOriginFromDb = {
   keep_working: "keep-working",
   closing_turn: "closing-turn",
   automatic_round: "automatic-round",
+  changes_requested: "changes-requested",
+  linear_follow_up: "linear-follow-up",
 } as const satisfies Record<DbHeldTurnOrigin, TurnOrigin>;
 
 /** A reasoning level (F-137, ADR 0066), spelled the same in the database and the protocol. Checked both ways. */

@@ -240,14 +240,15 @@ export const turnOriginOfIntent = (intent: MessageIntent | undefined): TurnOrigi
       return "pr-comment";
     case "keep-working":
       return "keep-working";
-    // Milestone 6's rounds are automatic turns (ADR 0041, F-101). "Changes requested" and a
-    // Linear follow-up get origins of their own with ticket 06; until then they gate as a message.
+    // Milestone 6: the rounds are automatic turns (ADR 0041, F-101); "changes requested" and a
+    // Linear follow-up have origins of their own (F-105, F-012), each through the same gate.
     case "fix-ci":
     case "fix-findings":
       return "automatic-round";
     case "changes-requested":
+      return "changes-requested";
     case "linear-follow-up":
-      return "message";
+      return "linear-follow-up";
     default:
       return intent satisfies never;
   }
@@ -263,6 +264,8 @@ const HELD_ORIGIN: Readonly<Record<TurnOrigin, DbEnum.HeldTurnOrigin>> = {
   "keep-working": "keep_working",
   "closing-turn": "closing_turn",
   "automatic-round": "automatic_round",
+  "changes-requested": "changes_requested",
+  "linear-follow-up": "linear_follow_up",
 };
 
 /** A held turn's stored origin, as the gate names it. */
