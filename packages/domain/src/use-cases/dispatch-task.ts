@@ -412,10 +412,11 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
         model: mapModel(effortModel),
         level: task.effort,
       }).effort.level !== "default");
-  // Milestone 6 (F-099, F-100, F-101): a refine or review task, and a session an automatic round
-  // started on a fresh box, go only to a runner at minor 5, the first that reads them.
+  // Milestone 6 (F-099, F-100, F-101, F-113): a refine, review or onboarding task, and a session an
+  // automatic round started on a fresh box, go only to a runner at minor 5, the first that reads
+  // them (an older one would drop the onboarding task's tools and commit paths).
   const automaticRound = await automaticRoundOfSessionInTx(tx, { taskId: task.id, sessionId: session.id });
-  const kindMinor = task.kind !== "code" || automaticRound !== null ? TEAM_MINOR : 0;
+  const kindMinor = task.kind !== "code" || task.onboarding || automaticRound !== null ? TEAM_MINOR : 0;
   const minMinor = Math.max(runsAtLevel ? Math.max(profileMinor, EFFORT_MINOR) : profileMinor, kindMinor);
   /**
    * Milestone 3's words when services are why (F-094): a services runner missing, when only runners

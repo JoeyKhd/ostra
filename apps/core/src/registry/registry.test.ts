@@ -415,6 +415,7 @@ describe("the snapshot registry (F-120)", () => {
     await pushedSnapshot(registryId, digest("e"));
     for (const executor of ["kubernetes", "docker"] as const) {
       const holder = await poolRunner(executor);
+      await test.db.runnerPresence.update({ where: { runnerId: holder.runnerId }, data: { minor: 5 } });
       const task = await seedQueuedTask(test.db, world, fixture.a.member, null);
       await test.db.task.update({ where: { id: task.taskId }, data: { onboarding: true, origin: "onboarding" } });
       const offered = await test.db.$transaction((tx) =>
@@ -425,6 +426,21 @@ describe("the snapshot registry (F-120)", () => {
       expect(dispatchBodySchema.parse(dispatch.body).box?.image ?? null).toBeNull();
       await test.db.runner.update({ where: { id: holder.runnerId }, data: { state: "offline" } });
     }
+  });
+
+  it("F-113: an onboarding task is offered only to a runner at minor 5, which reads its tools and its commit paths", async () => {
+    const older = await poolRunner("docker");
+    const task = await seedQueuedTask(test.db, world, fixture.a.member, null);
+    await test.db.task.update({ where: { id: task.taskId }, data: { onboarding: true, origin: "onboarding" } });
+    const dispatch = () =>
+      test.db.$transaction((tx) => dispatchTask({ tx, jobs, outbox: postgresCommandOutbox, notices: postgresChangeNotices, clock: systemClock, logger }, dispatchPayload(task, 1)));
+    // Only a minor-4 runner is online: the task waits, with no lease.
+    expect(await dispatch()).toMatchObject({ ok: false });
+    expect(await test.db.lease.count({ where: { taskId: task.taskId } })).toBe(0);
+    // The same runner at minor 5 takes it.
+    await test.db.runnerPresence.update({ where: { runnerId: older.runnerId }, data: { minor: 5 } });
+    expect(await dispatch()).toMatchObject({ ok: true, runnerId: older.runnerId });
+    await test.db.runner.update({ where: { id: older.runnerId }, data: { state: "offline" } });
   });
 
   it("F-120: a kubernetes pool without a registry builds nothing, and its task waits for one", async () => {
