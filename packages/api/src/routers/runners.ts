@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { processContainmentFromDb } from "@ostra/db";
 import type { Db } from "@ostra/db";
-import { approveRunner, drainRunner, rejectRunner, requireOrganizationAdmin, resumeRunner, revokeRunner, revokeRunnerInputSchema, slotHoldingBoxStates, DEFAULT_PERSONAL_RUNNER_SLOTS } from "@ostra/domain";
+import { approveRunner, drainRunner, fleetInTx, rejectRunner, requireOrganizationAdmin, resumeRunner, revokeRunner, revokeRunnerInputSchema, runnerRoom, slotHoldingBoxStates, DEFAULT_PERSONAL_RUNNER_SLOTS } from "@ostra/domain";
 import { joinTokenIdSchema, memberIdSchema, poolIdSchema, projectIdSchema, runnerIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { RunnerId } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
@@ -137,7 +137,8 @@ export const runnersRouter = router({
     if (row === null) {
       throw new TRPCError({ code: "NOT_FOUND", message: "No such runner" });
     }
-    const [boxes, audit, deciders] = await Promise.all([
+    const runnerId = runnerIdSchema.parse(row.id);
+    const [boxes, audit, deciders, fleet] = await Promise.all([
       ctx.deps.db.box.findMany({
         where: { organizationId, runnerId: row.id, state: { in: [...slotHoldingBoxStates] } },
         orderBy: { createdAt: "asc" },
@@ -145,9 +146,11 @@ export const runnersRouter = router({
           id: true,
           state: true,
           size: true,
+          cpuMillis: true,
+          memoryMiB: true,
           createdAt: true,
           waitingReason: true,
-          task: { select: { id: true, title: true, project: { select: { id: true, name: true } } } },
+          task: { select: { id: true, title: true, ticketKey: true, project: { select: { id: true, name: true } } } },
         },
       }),
       ctx.deps.db.auditEntry.findMany({
@@ -160,7 +163,14 @@ export const runnersRouter = router({
         where: { organizationId, id: { in: [row.approvedByMemberId, row.drainedByMemberId, row.joinToken?.createdByMemberId ?? null].filter((id): id is string => id !== null) } },
         select: { id: true, user: { select: { name: true } } },
       }),
+      fleetInTx(ctx.deps.db, organizationId, { runnerIds: [runnerId] }, { now: ctx.deps.ports.clock.now(), personalSlots: DEFAULT_PERSONAL_RUNNER_SLOTS }),
     ]);
+    // The CPU and memory its slot-holding boxes take (ticket 05's `runnerRoom`), against what it
+    // offers: `null` where sizes don't apply (`host`, a minor-3 runner).
+    const fleetRunner = fleet.runners.find((one) => one.id === runnerId);
+    const offered = fleetRunner?.resources ?? null;
+    const free = fleetRunner === undefined ? null : runnerRoom(fleetRunner, fleet.boxes).resources;
+    const used = offered === null || free === null ? null : { cpuMillis: offered.cpuMillis - free.cpuMillis, memoryMiB: offered.memoryMiB - free.memoryMiB };
     const who = (id: string | null) => {
       const member = id === null ? undefined : deciders.find((one) => one.id === id);
       return id === null ? null : { memberId: memberIdSchema.parse(id), name: member?.user.name ?? null };
@@ -182,13 +192,17 @@ export const runnersRouter = router({
       approvedBy: who(row.approvedByMemberId),
       drainedBy: who(row.drainedByMemberId),
       createdAt: row.createdAt.getTime(),
+      used,
       boxes: boxes.map((box) => ({
         id: box.id,
         state: box.state,
         size: box.size,
+        /** The size's limits when the box was made; `null` where sizes don't apply. */
+        cpuMillis: box.cpuMillis,
+        memoryMiB: box.memoryMiB,
         waitingReason: box.waitingReason,
         createdAt: box.createdAt.getTime(),
-        task: { id: taskIdSchema.parse(box.task.id), title: box.task.title, project: { id: projectIdSchema.parse(box.task.project.id), name: box.task.project.name } },
+        task: { id: taskIdSchema.parse(box.task.id), key: box.task.ticketKey, title: box.task.title, project: { id: projectIdSchema.parse(box.task.project.id), name: box.task.project.name } },
       })),
       audit: audit.map((entry) => ({ id: entry.id, action: entry.action, actorKind: entry.actorKind, actorName: entry.actorName, at: entry.createdAt.getTime() })),
     };

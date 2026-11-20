@@ -37,6 +37,27 @@ export const systemText = (os: Page["os"]): string => {
   return `${platform} · ${os.arch}`;
 };
 
+/** Millicores as vCPU: `8`, or `1.5`. */
+export const vcpuText = (millis: number): string => (millis % 1000 === 0 ? String(millis / 1000) : (millis / 1000).toFixed(1));
+
+/** MiB as GiB: `16`, or `12.8`. */
+export const gibText = (mib: number): string => (mib % 1024 === 0 ? String(mib / 1024) : (mib / 1024).toFixed(1));
+
+type PageBox = Page["boxes"][number];
+
+/**
+ * A box's Size cell (runner.md, "Boxes"): `small · 2 vCPU · 4 GiB` with the limits it was made
+ * with; `slot` on `host`; the name alone when it carries no limits (a minor-3 runner).
+ */
+export const boxSizeText = (box: Pick<PageBox, "size" | "cpuMillis" | "memoryMiB">, executor: Page["executor"]): string => {
+  if (executor === "host") return t("runner.page.slot");
+  if (box.size === null) return "—";
+  return box.cpuMillis === null || box.memoryMiB === null ? box.size : t("runner.page.sizeLimits", { name: box.size, cpu: vcpuText(box.cpuMillis), memory: gibText(box.memoryMiB) });
+};
+
+/** A box's task, by its ticket's key, or the short ID of a prompt task. */
+export const boxTaskKey = (task: Pick<PageBox["task"], "id" | "key">): string => task.key ?? task.id.slice(-7);
+
 /** What the Executor row adds: a chip (`not isolated`) or a muted line (the internet line). */
 export const executorNote = (lines: readonly FleetLine[]): readonly { readonly chip: boolean; readonly text: string }[] => {
   const out: { readonly chip: boolean; readonly text: string }[] = [];

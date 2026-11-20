@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { MessageSquareIcon } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -22,11 +21,14 @@ import { RunnerButtons } from "./runner-actions";
 import type { ActionRunner } from "./runner-actions";
 import { Fingerprint, RunnerApproval } from "./runner-approval";
 import {
+  boxSizeText,
+  boxTaskKey,
   builtInLabels,
   carrierRow,
   connectionText,
   consequenceLine,
   executorNote,
+  gibText,
   historyText,
   installText,
   joinedAt,
@@ -35,6 +37,7 @@ import {
   protocolText,
   runnerLede,
   systemText,
+  vcpuText,
   versionFix,
 } from "./runner-page-words";
 import { RunnerStatus } from "./runner-rows";
@@ -67,26 +70,38 @@ const Bar = ({ value, max, label }: { readonly value: number; readonly max: numb
   </span>
 );
 
-const gib = (mib: number): string => (mib % 1024 === 0 ? String(mib / 1024) : (mib / 1024).toFixed(1));
-const vcpu = (millis: number): string => (millis % 1000 === 0 ? String(millis / 1000) : (millis / 1000).toFixed(1));
+/** A Capacity row: key, the bar, and `{used} of {offered}` in mono. */
+const CapacityRow = ({ label, used, offered, text, testId }: { readonly label: string; readonly used: number; readonly offered: number; readonly text: string; readonly testId: string }) => (
+  <div className="flex min-h-[34px] items-center gap-3 text-ui" data-testid={testId}>
+    <span className="shrink-0 text-muted" style={{ width: KEY }}>{label}</span>
+    <Bar value={used} max={offered} label={label} />
+    <span className="font-mono text-text">{text}</span>
+  </div>
+);
 
-const Capacity = ({ page }: { readonly page: Page }) => (
+/**
+ * Capacity (runner.md): slots busy, and where sizes apply the CPU and memory the slot-holding
+ * boxes take (`runnerRoom`) against what the runner offers.
+ */
+export const Capacity = ({ page }: { readonly page: Pick<Page, "busy" | "slots" | "resources" | "used" | "executor"> }) => (
   <Section title={t("runner.page.capacity")}>
-    <div className="flex min-h-[34px] items-center gap-3 text-ui" data-testid="capacity-slots">
-      <span className="shrink-0 text-muted" style={{ width: KEY }}>{t("runner.page.slots")}</span>
-      <Bar value={page.busy} max={page.slots} label={t("runner.page.slots")} />
-      <span className="font-mono text-text">{t("runner.page.slotsBusy", { busy: page.busy, slots: page.slots })}</span>
-    </div>
-    {page.resources === null ? null : (
+    <CapacityRow label={t("runner.page.slots")} used={page.busy} offered={page.slots} text={t("runner.page.slotsBusy", { busy: page.busy, slots: page.slots })} testId="capacity-slots" />
+    {page.resources === null || page.used === null ? null : (
       <>
-        <div className="flex min-h-[34px] items-center gap-3 text-ui">
-          <span className="shrink-0 text-muted" style={{ width: KEY }}>{t("runner.page.cpu")}</span>
-          <span className="font-mono text-text">{t("runner.page.cpuOffered", { n: vcpu(page.resources.cpuMillis) })}</span>
-        </div>
-        <div className="flex min-h-[34px] items-center gap-3 text-ui">
-          <span className="shrink-0 text-muted" style={{ width: KEY }}>{t("runner.page.memory")}</span>
-          <span className="font-mono text-text">{t("runner.page.memoryOffered", { n: gib(page.resources.memoryMiB) })}</span>
-        </div>
+        <CapacityRow
+          label={t("runner.page.cpu")}
+          used={page.used.cpuMillis}
+          offered={page.resources.cpuMillis}
+          text={t("runner.page.cpuUse", { used: vcpuText(page.used.cpuMillis), offered: vcpuText(page.resources.cpuMillis) })}
+          testId="capacity-cpu"
+        />
+        <CapacityRow
+          label={t("runner.page.memory")}
+          used={page.used.memoryMiB}
+          offered={page.resources.memoryMiB}
+          text={t("runner.page.memoryUse", { used: gibText(page.used.memoryMiB), offered: gibText(page.resources.memoryMiB) })}
+          testId="capacity-memory"
+        />
       </>
     )}
     <p className="mt-1 text-[12.5px] text-faint">
@@ -101,7 +116,8 @@ const Capacity = ({ page }: { readonly page: Page }) => (
   </Section>
 );
 
-const Boxes = ({ page, now }: { readonly page: Page; readonly now: number }) => (
+/** Boxes (runner.md): each slot-holding box's task by key and title, its project, size and age. */
+export const Boxes = ({ page, now }: { readonly page: Pick<Page, "boxes" | "executor" | "resources" | "state">; readonly now: number }) => (
   <Section title={t("runner.page.boxes")} count={page.boxes.length}>
     <div className="overflow-x-auto" role="region" aria-label={t("runner.page.boxes")} tabIndex={0}>
       <table className="w-full min-w-[560px] border-collapse text-ui">
@@ -123,7 +139,7 @@ const Boxes = ({ page, now }: { readonly page: Page; readonly now: number }) => 
             <tr key={box.id} className="h-10 border-b border-line" data-box={box.task.title}>
               <td className="max-w-0 pr-3">
                 <Link href={`/tasks/${box.task.id}`} className="flex min-w-0 items-center gap-3 hover:underline">
-                  <MessageSquareIcon aria-hidden className="size-[14px] shrink-0 stroke-[1.75] text-faint" />
+                  <span className="shrink-0 font-mono text-faint">{boxTaskKey(box.task)}</span>
                   <span className="truncate text-text">{box.task.title}</span>
                 </Link>
               </td>
@@ -134,7 +150,7 @@ const Boxes = ({ page, now }: { readonly page: Page; readonly now: number }) => 
                 </span>
               </td>
               <td className="pr-3 font-mono text-text">
-                {page.executor === "host" ? t("runner.page.slot") : box.size ?? "—"}
+                {boxSizeText(box, page.executor)}
                 {page.resources === null && page.executor !== "host" ? <span className="text-faint">{t("runner.page.notEnforced")}</span> : null}
               </td>
               <td className="text-right font-mono text-text">

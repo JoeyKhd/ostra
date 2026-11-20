@@ -216,6 +216,37 @@ describe("the fleet's counts (F-092)", () => {
     expect(page.audit[0]?.action).toBe("runner.approved");
     expect(JSON.stringify(page)).not.toContain(made.joinToken.token);
   });
+
+  it("F-092: a runner's page counts the CPU and memory its slot-holding boxes take against what it offers, with each box's size and task key", async () => {
+    const poolId = await seedPool("sized-fleet");
+    const projectId = await seedProjectOn(poolId, "sized");
+    const runnerId = await seedRunner(poolId, { name: "sized-01", slots: 4, minor: 4 });
+    await harness.test.db.runner.update({ where: { id: runnerId }, data: { cpuMillis: 15_000, memoryMiB: 30_720 } });
+    const sizedBox = async (state: "ready" | "released", ticketKey: string | null) => {
+      const task = await seedTask(harness, { organizationId, projectId, state: "running" });
+      await harness.test.db.task.update({ where: { id: task.taskId }, data: { ticketKey } });
+      await harness.test.db.box.create({ data: { organizationId, projectId, taskId: task.taskId, runnerId, executor: "docker", state, size: "small", cpuMillis: 2000, memoryMiB: 4096 } });
+      return task;
+    };
+    const ticketed = await sizedBox("ready", "CALC-212");
+    await sizedBox("ready", null);
+    await sizedBox("released", "CALC-213");
+
+    const admin = await harness.as(harness.fixture.a.admin);
+    const page = await admin.runners.get({ runnerId });
+    expect(page.resources).toEqual({ cpuMillis: 15_000, memoryMiB: 30_720 });
+    // Two live small boxes, each with the sidecar's 1 vCPU and 256 MiB (ADR 0059's footprint); the released one holds nothing.
+    expect(page.used).toEqual({ cpuMillis: 6000, memoryMiB: 8704 });
+    expect(page.boxes.map((box) => [box.task.key, box.size, box.cpuMillis, box.memoryMiB])).toEqual([
+      ["CALC-212", "small", 2000, 4096],
+      [null, "small", 2000, 4096],
+    ]);
+    expect(page.boxes[0]?.task.id).toBe(ticketed.taskId);
+
+    // Slots only (`host`, with no resources reported): no use to count.
+    const host = await seedRunner(poolId, { name: "sized-host", executor: "host" });
+    expect((await admin.runners.get({ runnerId: host })).used).toBeNull();
+  });
 });
 
 describe("drain, resume and revoke (F-092)", () => {
