@@ -17,7 +17,7 @@ The shared shell, unchanged (`app-concepts/html/shell.js`): 232px sidebar with n
 | Region | Size | Contents |
 |---|---|---|
 | Top bar | 44px, hairline under | Breadcrumbs `{organization} › New task` (last crumb `--text`, weight 500). Nothing on the right: the page's one primary button is in the composer. |
-| Page column | `1fr`, padding `28px 40px 20px` | Heading, composer, help line, "What happens next", "Recent in {project}". Content `max-width: 760px`. |
+| Page column | `1fr`, padding `28px 40px 20px` | Heading, composer, help line, "What happens next", "Recent in {project}". Content fills the column (was `max-width: 760px`; the maintainer, 2026-11-20: "the new task is not the full width of the pages container"). |
 | Properties panel | 340px (it pairs with a form), `border-left: 1px var(--line)`, padding `20px 18px` | What the task will be: project and repo, agent profile, runner. |
 
 ### Page column, top to bottom

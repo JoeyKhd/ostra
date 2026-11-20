@@ -471,7 +471,7 @@ export const NewTaskView = () => {
       wideProperties
       properties={project === undefined ? <PanelSkeleton /> : <Properties project={project} profile={profile} runner={runner} boxSize={defaultSize} noKey={noKey} servingKey={check.data?.kind === "open" && check.data.providerName !== "" ? check.data.providerName : null} />}
     >
-      <div className="max-w-[760px]">
+      <div>
         <PageHeading
           {...(project === undefined ? {} : { eyebrow: t("newTask.eyebrow", { project: project.slug }) })}
           title={t("newTask.title")}
