@@ -196,6 +196,7 @@ const procedures: Readonly<Record<string, { readonly input: InputOf; readonly ab
   "projects.access": { input: project, about: "project" },
   "projects.get": { input: project, about: "project" },
   "projects.reviewSettings": { input: project, about: "project" },
+  "environments.proposal": { input: project, about: "project" },
   "projects.getTicketTemplate": { input: project, about: "project" },
   "projects.runners": { input: project, about: "project" },
   "projects.list": { input: none, about: "organization" },
@@ -327,7 +328,7 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   ReviewRun: ["review.screen"],
   Finding: ["review.screen", "tasks.rounds"],
   TaskReviewer: ["review.screen"],
-  EnvironmentProposal: [],
+  EnvironmentProposal: ["environments.proposal"],
 };
 
 /** Calls a procedure by its dotted path, as the panel does. */
@@ -607,6 +608,7 @@ const matrix: Readonly<Record<string, readonly [Outcome, Outcome, Outcome, Outco
   "projects.access": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "projects.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "projects.reviewSettings": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "environments.proposal": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "projects.getTicketTemplate": ["ok", "FORBIDDEN", "ok", "FORBIDDEN", "NOT_FOUND"],
   "projects.runners": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "projects.list": ["ok", "ok", "ok", "ok", "ok"],

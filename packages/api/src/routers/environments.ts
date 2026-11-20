@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { loadGitHubConnection } from "../services/github-connection.ts";
 import { checksRouter, servicesRouter, snapshotRouter, whereTasksRun, whereTasksRunSchema } from "./environment-services.ts";
+import { onboardingProcedures } from "./environment-proposals.ts";
 import { projectProcedure, router, unwrap } from "../trpc/init.ts";
 
 // F-050, F-112, ticket 32: a project's one environment, and the draft detection makes. Reading is
@@ -75,6 +76,9 @@ const viewOf = (entry: EntryRow): EntryView[] => {
 };
 
 export const environmentsRouter = router({
+  // F-113 (milestone 6's ticket 29): the onboarding task and its environment proposal.
+  ...onboardingProcedures,
+
   /** The environment as stored: the draft or the saved one, its secrets masked. */
   get: projectProcedure("read", projectInput)
     .output(environmentViewSchema)

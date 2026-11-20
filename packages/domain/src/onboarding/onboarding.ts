@@ -228,10 +228,10 @@ export type EnvironmentDecision =
   /** "Reject", with the admin's reason. The audit entry records that one was given, never its words. */
   | { readonly kind: "reject"; readonly reason?: string };
 
-export type DecideEnvironmentProposalResult = UseCaseResult<
-  { readonly resultVersion: number | null },
-  "forbidden" | "not-found" | "already-decided" | "invalid-input"
->;
+export type DecideEnvironmentProposalResult =
+  | UseCaseResult<{ readonly resultVersion: number | null }, "forbidden" | "not-found" | "already-decided" | "invalid-input">
+  /** An admin's edit holding a secret's value (ticket 29): milestone 4's scan, as the agent's proposal gets. */
+  | { readonly ok: false; readonly error: "secret-found"; readonly message: string; readonly found: readonly string[] };
 
 /** The environment's version: how many times it was saved, as its audit trail counts them. */
 const environmentVersionInTx = (tx: Tx, environmentId: string): Promise<number> => tx.auditEntry.count({ where: { entity: "environment", entityId: environmentId, action: "environment.saved" } });
@@ -251,7 +251,7 @@ export const proposedSetupScript = (repos: readonly { readonly checkoutDir: stri
   return scripts.map((repo) => `# ${repo.checkoutDir}\n(\n  cd ${JSON.stringify(repo.checkoutDir)}\n${repo.setupScript ?? ""}\n)`).join("\n\n");
 };
 
-const refuse = (error: Exclude<DecideEnvironmentProposalResult, { readonly ok: true }>["error"], message: string): DecideEnvironmentProposalResult => ({ ok: false, error, message });
+const refuse = (error: Exclude<Exclude<DecideEnvironmentProposalResult, { readonly ok: true }>["error"], "secret-found">, message: string): DecideEnvironmentProposalResult => ({ ok: false, error, message });
 
 export const decideEnvironmentProposal = (deps: DecideEnvironmentProposalDeps, scope: MemberScope, input: { readonly proposalId: EnvironmentProposalId; readonly decision: EnvironmentDecision }): Promise<DecideEnvironmentProposalResult> =>
   deps.db.$transaction(
@@ -299,6 +299,13 @@ export const decideEnvironmentProposal = (deps: DecideEnvironmentProposalDeps, s
         return refuse("invalid-input", "The proposal doesn't parse");
       }
       const accepted = body.data;
+      // An admin's edit is scanned as the agent's proposal was: a variable's value goes in as a secret, never in a script (ticket 29).
+      if (input.decision.edited !== null) {
+        const scan = scanMemoryText(proposalTexts(accepted), await organizationSecretValues(tx, deps.adapters.secretStore, organizationId));
+        if (!scan.ok) {
+          return { ok: false, error: "secret-found", message: `The edit holds ${scan.found.join(", ")}: name the variable instead, and set its value as a secret.`, found: scan.found };
+        }
+      }
       const repos = await tx.repo.findMany({ where: { projectId, organizationId }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], select: { id: true, checkoutDir: true } });
       if (accepted.repos.some((repo) => !repos.some((one) => one.id === repo.repoId))) {
         return refuse("invalid-input", "The proposal names a repo that isn't in this project");

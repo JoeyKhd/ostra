@@ -1,0 +1,174 @@
+import { decideEnvironmentProposal, startOnboarding } from "@ostra/domain";
+import type { EnvironmentDecision } from "@ostra/domain";
+import { environmentProposalIdSchema, environmentProposalSchema, projectIdSchema, repoIdSchema, taskIdSchema } from "@ostra/protocol";
+import type { EnvironmentProposal, ProposedCheck, ProposedService } from "@ostra/protocol";
+import { TRPCError } from "@trpc/server";
+import { z } from "zod";
+
+import { memberProcedure, projectProcedure, unwrap } from "../trpc/init.ts";
+
+// F-113 (milestone 6's ticket 29; spec section 4, "The onboarding task"; ADR 0038 amended): the
+// onboarding task and its environment proposal in the panel. `environments.startOnboarding` is a
+// project admin's, refused while the project's onboarding task is open. `environments.proposal`
+// shows the open proposal against the environment as saved now, per repo: the setup script, the
+// checks and the variables it needs by name; then the services, the agent's notes and the task.
+// `environments.decideProposal` is a project admin's: accept, edit and accept (the edit scanned for
+// secret values as the agent's proposal was) or reject. The scripts and the notes are the agent's
+// words and the repos' code: they go to the project's members and never to a log line.
+
+const projectInput = z.strictObject({ projectId: projectIdSchema });
+
+type CheckRow = { readonly name: string; readonly command: string; readonly timeoutSeconds: number };
+type ServiceRow = { readonly name: string; readonly image: string; readonly port: number | null; readonly healthCheck: string | null };
+
+/** Lists by name, as "Accept" applies them: the proposal's are written, the ones it doesn't name are kept. */
+const byName = <Current extends { readonly name: string }, Proposed extends { readonly name: string }>(
+  current: readonly Current[],
+  proposed: readonly Proposed[],
+  same: (one: Current, other: Proposed) => boolean,
+) => ({
+  added: proposed.filter((one) => !current.some((other) => other.name === one.name)),
+  changed: proposed.flatMap((one) => {
+    const was = current.find((other) => other.name === one.name);
+    return was === undefined || same(was, one) ? [] : [{ name: one.name, current: was, proposed: one }];
+  }),
+  unchanged: proposed.filter((one) => current.some((other) => other.name === one.name && same(other, one))).map((one) => one.name),
+  /** The saved ones the proposal doesn't name: "Accept" keeps them. */
+  kept: current.filter((one) => !proposed.some((other) => other.name === one.name)).map((one) => one.name),
+});
+
+const sameCheck = (one: CheckRow, other: ProposedCheck): boolean => one.command === other.command && one.timeoutSeconds === other.timeoutSeconds;
+const sameService = (one: ServiceRow, other: ProposedService): boolean => one.image === other.image && one.port === other.port && one.healthCheck === other.healthCheck;
+
+/** What a decision is, as the panel sends it, in the domain's terms. */
+const decisionOf = (input: { readonly decision: "accept" | "edit-and-accept" | "reject"; readonly edited: EnvironmentProposal | null; readonly reason: string | null }): EnvironmentDecision => {
+  switch (input.decision) {
+    case "accept":
+      return { kind: "accept", edited: null };
+    case "edit-and-accept":
+      if (input.edited === null) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Edit and accept needs the edited proposal" });
+      }
+      return { kind: "accept", edited: input.edited };
+    case "reject":
+      return input.reason === null ? { kind: "reject" } : { kind: "reject", reason: input.reason };
+    default:
+      return input.decision satisfies never;
+  }
+};
+
+export const onboardingProcedures = {
+  /** "Test this environment": the onboarding task, from the built-in template. A project admin's; one open at a time. */
+  startOnboarding: projectProcedure("admin", projectInput).mutation(async ({ ctx, input }) => {
+    const { db, ports, logger } = ctx.deps;
+    const started = await startOnboarding(
+      { db, jobs: ports.jobs, notices: ports.notices, audit: ports.audit, clock: ports.clock, adapters: { codeHost: ports.adapters.codeHost, secretStore: ports.adapters.secretStore }, logger },
+      ctx.scope,
+      { projectId: input.projectId },
+    );
+    const made = unwrap(started, {
+      forbidden: "FORBIDDEN",
+      "not-found": "NOT_FOUND",
+      "already-running": "CONFLICT",
+      "runner-not-yours": "FORBIDDEN",
+      "provider-not-allowed-on-personal-runners": "PRECONDITION_FAILED",
+      "no-provider-for-model": "PRECONDITION_FAILED",
+      "no-agent-profile": "PRECONDITION_FAILED",
+      "no-repo": "PRECONDITION_FAILED",
+      "repo-unsupported": "PRECONDITION_FAILED",
+    });
+    return { taskId: made.taskId };
+  }),
+
+  /**
+   * The open proposal against the environment as saved now: per repo its setup script, its checks
+   * and the variables it names; the services; the notes and the task. `null` when none is open.
+   */
+  proposal: projectProcedure("read", projectInput).query(async ({ ctx, input }) => {
+    const { db } = ctx.deps;
+    const organizationId = ctx.scope.organizationId;
+    const row = await db.environmentProposal.findFirst({
+      where: { organizationId, projectId: input.projectId, state: "proposed" },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, environmentId: true, taskId: true, body: true, notes: true, createdAt: true, task: { select: { title: true, state: true } } },
+    });
+    if (row === null) {
+      return null;
+    }
+    // A body that doesn't parse (a shape this version doesn't read) is shown as unreadable: only rejecting it is left.
+    const parsed = environmentProposalSchema.safeParse(row.body);
+    const proposal: EnvironmentProposal = parsed.success ? parsed.data : { repos: [], services: [], notes: row.notes ?? "" };
+    const [environment, repos, checks, entries, services] = await Promise.all([
+      db.environment.findUniqueOrThrow({ where: { id: row.environmentId }, select: { status: true, setupScript: true } }),
+      db.repo.findMany({ where: { organizationId, projectId: input.projectId }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], select: { id: true, fullName: true } }),
+      db.check.findMany({ where: { environmentId: row.environmentId }, orderBy: { position: "asc" }, select: { name: true, command: true, timeoutSeconds: true, repoId: true } }),
+      db.environmentEntry.findMany({ where: { environmentId: row.environmentId, kind: { in: ["variable", "secret"] } }, select: { repoId: true, name: true, kind: true } }),
+      db.service.findMany({ where: { environmentId: row.environmentId }, orderBy: { createdAt: "asc" }, select: { name: true, image: true, port: true, healthCheck: true } }),
+    ]);
+    const saved = environment.status === "saved";
+    const firstRepoId = repos[0]?.id ?? null;
+    return {
+      proposalId: environmentProposalIdSchema.parse(row.id),
+      createdAt: row.createdAt.getTime(),
+      task: { taskId: taskIdSchema.parse(row.taskId), title: row.task.title, state: row.task.state },
+      /** Whether the environment was saved before; a draft one has nothing to compare against. */
+      saved,
+      /** Only a project admin decides it. */
+      canDecide: ctx.project.role === "admin",
+      /** Whether the proposal could be read; one that can't is shown without its parts. */
+      readable: parsed.success,
+      notes: proposal.notes,
+      /** As proposed: what "Edit and accept" starts from. */
+      body: parsed.success ? proposal : null,
+      repos: proposal.repos.map((repo) => {
+        const isFirst = repo.repoId === firstRepoId;
+        // The environment's one setup script runs in the workspace: it's compared with the first repo's.
+        const currentScript = saved && isFirst ? environment.setupScript : null;
+        const currentChecks = saved ? checks.filter((check) => check.repoId === repo.repoId || (check.repoId === null && isFirst)) : [];
+        const currentNames = new Set(entries.filter((entry) => entry.repoId === repo.repoId && entry.name !== null).map((entry) => entry.name));
+        return {
+          repoId: repoIdSchema.parse(repo.repoId),
+          repo: repos.find((one) => one.id === repo.repoId)?.fullName ?? null,
+          setupScript: { current: currentScript, proposed: repo.setupScript, changed: (currentScript ?? "") !== (repo.setupScript ?? "") },
+          checks: byName(
+            currentChecks.map((check) => ({ name: check.name, command: check.command, timeoutSeconds: check.timeoutSeconds })),
+            repo.checks,
+            sameCheck,
+          ),
+          /** The names it needs: the ones the environment has no value for yet, for an admin to set. */
+          variableNames: { missing: repo.variableNames.filter((name) => !currentNames.has(name)), present: repo.variableNames.filter((name) => currentNames.has(name)) },
+        };
+      }),
+      services: byName(
+        saved ? services : [],
+        proposal.services,
+        sameService,
+      ),
+    };
+  }),
+
+  /** A project admin's decision: accept, edit and accept, or reject (with a reason the audit entry records the presence of). */
+  decideProposal: memberProcedure
+    .input(
+      z.strictObject({
+        proposalId: environmentProposalIdSchema,
+        decision: z.enum(["accept", "edit-and-accept", "reject"]),
+        edited: environmentProposalSchema.nullable(),
+        reason: z.string().trim().max(2000).nullable(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { db, ports } = ctx.deps;
+      const decided = await decideEnvironmentProposal({ db, ...ports }, ctx.scope, { proposalId: input.proposalId, decision: decisionOf(input) });
+      if (!decided.ok && decided.error === "secret-found") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: decided.message });
+      }
+      const result = unwrap(decided, {
+        forbidden: "FORBIDDEN",
+        "not-found": "NOT_FOUND",
+        "already-decided": "CONFLICT",
+        "invalid-input": "BAD_REQUEST",
+      });
+      return { resultVersion: result.resultVersion };
+    }),
+};
