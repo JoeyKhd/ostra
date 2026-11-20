@@ -347,6 +347,13 @@ describe("removing a member (F-002, ADR 0053)", () => {
     controller.abort();
   });
 
+  it("F-002: a removed member's panel learns they're no longer a member, and an active member's has an organization", async () => {
+    const leaver = await seedMember(orgA, "member");
+    expect(await (await harness.as(leaver)).me.get()).toMatchObject({ noMembership: null, organization: { id: orgA } });
+    await (await harness.as(harness.fixture.a.admin)).members.remove({ memberId: leaver.id });
+    expect(await (await harness.as(leaver)).me.get()).toMatchObject({ noMembership: "removed", organization: null });
+  });
+
   it("F-002: history shows the removed member's name followed by (removed)", async () => {
     const leaver = await seedMember(orgA, "member", label("history"));
     const admin = await harness.as(harness.fixture.a.admin);

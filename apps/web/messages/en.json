@@ -98,6 +98,14 @@
     "signedInAs": "Signed in as {email}",
     "signOut": "Sign out"
   },
+  "noMembership": {
+    "title": "You're no longer a member of any organization",
+    "lede": "An admin removed you, so this account opens nothing on this install. It stays yours: ask an admin for a new invitation to join again.",
+    "noneTitle": "You're not a member of any organization yet",
+    "noneLede": "Open the link in the mail your invitation sent, or ask an admin to invite you.",
+    "signedInAs": "Signed in as {email}",
+    "signOut": "Sign out"
+  },
   "banner": {
     "defaultPassword": {
       "label": "Default password",

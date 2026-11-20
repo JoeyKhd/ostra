@@ -64,6 +64,17 @@ export const meRouter = router({
               slug: organization.slug,
               role: member.scope.role,
             },
+      /**
+       * F-002 (ADR 0053): with no organization, whether an admin removed the account's membership
+       * (`removed`) or it has none active yet (`none`, an invitation not confirmed), for the page
+       * that says why the panel opens nothing. `null` with an organization.
+       */
+      noMembership:
+        member === null
+          ? (await ctx.deps.db.member.count({ where: { userId: user.userId, state: "removed" } })) > 0
+            ? ("removed" as const)
+            : ("none" as const)
+          : null,
     };
   }),
 });
