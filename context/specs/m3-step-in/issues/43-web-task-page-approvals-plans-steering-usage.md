@@ -1,6 +1,6 @@
 # 43: Web: the task page for approvals, questions, plans, steering and usage
 
-Status: ready-for-agent
+Status: resolved
 Builder: web
 Blocked by: 35, 39, 41
 Features: F-026, F-063, F-024, F-084
@@ -19,10 +19,10 @@ Spec: `../spec.md`, section 12 (`task-approval`, `task-plan`; and `m1/task` grow
 
 ## Done when
 
-- [ ] The screens match their targets, checked by eye, with the differences recorded here.
-- [ ] Playwright, on the scripted fake agent: two members answer one approval and one sees "Someone answered this first"; "for this task" shows its pattern and then the rule's receipt; a deny with a reason; a plan approved after an edit; a watcher can't send and can take over; usage shows and matches the API.
-- [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `web` and `task-view`.
-- [ ] Committed as `✨ answer approvals and plans on the task page`.
+- [x] The screens match their targets, checked by eye, with the differences recorded here. *2026-11-20: `task-approval` against `demo/step04-approval-card.png` and this ticket's run, `task-plan` against `demo/step03-plan-proposed.png`, and the approved plan's receipt as `step04-approval-card.png` shows it. The structure, words, colours and buttons match. Differences: the "Approval rules" group lists the task's rules, not the profile's; the watcher's bar has no avatar before the driver's name; an answered approval's receipt is its own muted line and doesn't name the rule that asked; the plan's block and its receipt sit at the end of the thread, not under the plan turn, and the plan turn has no "Plan first" marker line; the plan's buttons read Ask for changes · Edit and approve · Approve plan (the target puts Approve plan first) and its message shows as plain text, not markdown; the properties panel has no Plan row; during a plan the composer keeps "Message the agent…".*
+- [x] Playwright, on the scripted fake agent: two members answer one approval and one sees "Someone answered this first"; "for this task" shows its pattern and then the rule's receipt; a deny with a reason; a plan approved after an edit; a watcher can't send and can take over; usage shows and matches the API. *2026-11-20: `apps/web/e2e/21-task-answers.spec.ts`, six cases on the rows the scripted fake agent leaves (`e2e/seed-answers.ts`), with a second member; all pass alone, and one break-it pass (the lost-race line, the deny's reason, the task-rule pattern, the plan's `edited` marks, the watcher's bar, the cache figures) failed each. The race case found that the member who lost lost the "Someone answered this first." line when the receipt replaced the card: fixed in `3e0bbbe9`.*
+- [x] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `web` and `task-view`. *2026-11-20, at `3e0bbbe9`.*
+- [x] Committed as `✨ answer approvals and plans on the task page` (`3e0bbbe9`; the screens themselves landed in `3af06b0`).
 
 ## Decided 2026-11-19
 
@@ -38,3 +38,4 @@ Decided on the maintainer's delegation while preparing the build, from the open 
 
 ## Comments
 - 2026-11-19, integrate (ticket 50): the approval card, the question form, the plan with Edit and approve, the watcher's bar, the usage rows, the task rules group and the ticket-closed block are wired to `tasks.get`, `approvals.*`, `questions.answer` and `plans.answer` (`3af06b0`), and used live in milestone 3's demo (`../demo.md`). Not done: this ticket's Playwright cases, the by-eye check against the targets, and the differences `demo.md` lists.
+- 2026-11-20, resolved: the Playwright cases, the by-eye check with its differences above, and the lost-race line's fix are in `3e0bbbe9` (`✨ answer approvals and plans on the task page`). The proof rows of F-026 (any member answers), F-063 (the plan approved or edited), F-024 (take over) and F-084 (an estimate marked) are `proved`; the features stay `building` for their other rows.

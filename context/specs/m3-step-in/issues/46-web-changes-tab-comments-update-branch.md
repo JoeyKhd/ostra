@@ -1,6 +1,6 @@
 # 46: Web: the Changes tab, diff comments, update branch and after the merge
 
-Status: ready-for-agent
+Status: resolved
 Builder: web
 Blocked by: 38, 39, 41
 Features: F-027, F-072, F-070, F-066
@@ -17,10 +17,10 @@ Spec: `../spec.md`, section 12 (`task-changes`; and `m2/task-reopen` growing); A
 
 ## Done when
 
-- [ ] The screens match their targets, checked by eye, with the differences recorded here.
-- [ ] Playwright, on the fake code host: a diff renders with a rename and a binary file; two comments sent as one message; an outdated mark after a new head; "Update branch" appears when behind and sends one message.
-- [ ] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `web`.
-- [ ] Committed as `✨ add the Changes tab and diff comments`.
+- [x] The screens match their targets, checked by eye, with the differences recorded here. *2026-11-20: `task-changes` against `demo/step07-two-drafts.png` and this ticket's run. The behind line with Update branch, the files column with its status letters and counts, the diff's colours, line numbers, hunk headers, comments with their chips and the review bar match. Differences: the Changes tab's count is the changed repos, not the files; the file header has no "Viewed" box; the gap of unchanged lines shows no "Show N unchanged lines" (decided below); an outdated comment's quote shows the line it was written on as text, with no diff colour.*
+- [x] Playwright, on the fake code host: a diff renders with a rename and a binary file; two comments sent as one message; an outdated mark after a new head; "Update branch" appears when behind and sends one message. *2026-11-20: `apps/web/e2e/21-task-changes.spec.ts`, three cases; the diff comes from the fake GitHub's scripted compare (`e2e/fakes.ts`) through core's `diff.fetch`. All pass alone, and one break-it pass (the rename's old path, a task notice's `diff` scope, the Update branch button) failed each. The outdated case found that an open Changes tab never refreshed its comments on the task's notice, so the mark showed only after a reload: fixed in `3993b803`.*
+- [x] `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for `web`. *2026-11-20, at `3993b803`.*
+- [x] Committed as `✨ add the Changes tab and diff comments` (`3993b803`; the tab's parts landed in `20f6c8d` and its wiring in `3af06b0`).
 
 ## Decided 2026-11-19
 
@@ -34,3 +34,4 @@ Decided on the maintainer's delegation while preparing the build, from the open 
 
 - 2026-11-19: the Changes tab's parts are in, `20f6c8d` (`✨ add the Changes tab's parts`), with `@tanstack/react-virtual` 3.14.26 and its lockfile: `diff-words.ts` (the rows, the files column's names, behind and the review bar's words), `diff-view.tsx` (the virtualized diff with a sticky file header, roving focus and `c` to comment, the sent, draft and outdated comments, the field with its counter and Esc rule), `task-changes.tsx` (behind line and Update branch, files column, review bar, every tab state), the shared `UnderlineTabs` (GitHub's page uses it now) and `--add-bg`/`--del-bg`. 19 tests name F-027, F-072, F-070; break-it checks on comment order, virtualization, the 50-comment cap, the driver rule and Esc each failed a test. Checked by eye against `task-changes`: the diff's code is 13px/21px (the picture's size, over the spec's 12px). **Not done yet:** the tabs in `task-view.tsx`, the thread markers, after-the-merge and the Playwright run wait on tickets 38 and 39 (`diff.*`, `tasks.updateBranch`, `behindBy`), not on `main` yet.
 - 2026-11-19, integrate (ticket 50): the Activity/Changes/Checks tabs, the Changes tab over `diff.get` and `diff.comments.*`, and Update branch are wired; the thread marks a message's intent (`3af06b0`), and used live in milestone 3's demo (`../demo.md`). Not done: this ticket's Playwright cases, the by-eye check against the targets, and the differences `demo.md` lists.
+- 2026-11-20, resolved: the Playwright cases, the by-eye check with its differences above, and the notice fix are in `3993b803` (`✨ add the Changes tab and diff comments`). F-027, F-072 and F-070 have every row `proved` and are `done` in `context/features.md`.
