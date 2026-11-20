@@ -130,6 +130,9 @@ const fannedOutItem = async (task: LoopTask): Promise<NeedsYouItemId> => {
   return needsYouItemIdSchema.parse(item.id);
 };
 
+/** A review's time on the host after the item was written: the item's time is the database's, ahead of the test's clock. */
+const afterTheItem = (): number => Math.max(h.clock.now(), Date.now()) + 1_000;
+
 /** A code task whose CI passed with the AI review off: waiting for a reviewer. */
 const waitingTask = async (): Promise<LoopTask> => {
   const task = await seedTaskInCi(h);
@@ -222,7 +225,7 @@ describe("F-102: the reviewers' needs-you", () => {
 
     // alice's review comes in (GitHub drops her request): her own notification is answered, the item stays for bob.
     h.clock.advance(1_000);
-    h.codeHost.reviewsAndChecks.addReview(pr.repo, pr.number, { userId: "1001", login: "alice", isBot: false, state: "commented", commitId: pr.head, submittedAt: h.clock.now() });
+    h.codeHost.reviewsAndChecks.addReview(pr.repo, pr.number, { userId: "1001", login: "alice", isBot: false, state: "commented", commitId: pr.head, submittedAt: afterTheItem() });
     h.codeHost.ci.removeRequestedReviewer(pr.repo, pr.number, { userId: "1001" });
     h.jobs.record("review.evaluate", { organizationId: h.world.organizationId, taskRepoId: pr.taskRepoId, prNumber: pr.number, headSha: pr.head });
     await h.drain(["review.evaluate"]);
@@ -235,7 +238,7 @@ describe("F-102: the reviewers' needs-you", () => {
 
     // bob's review: every matched reviewer reviewed, so the item is answered.
     h.clock.advance(1_000);
-    h.codeHost.reviewsAndChecks.addReview(pr.repo, pr.number, { userId: "1002", login: "bob", isBot: false, state: "approved", commitId: pr.head, submittedAt: h.clock.now() });
+    h.codeHost.reviewsAndChecks.addReview(pr.repo, pr.number, { userId: "1002", login: "bob", isBot: false, state: "approved", commitId: pr.head, submittedAt: afterTheItem() });
     h.jobs.record("review.evaluate", { organizationId: h.world.organizationId, taskRepoId: pr.taskRepoId, prNumber: pr.number, headSha: pr.head });
     await h.drain(["review.evaluate"]);
     expect(await open()).toEqual([]);
