@@ -168,3 +168,5 @@ export * from "./review-loop/codeowners.ts";
 export * from "./linear/agent-session-copy.ts";
 export * from "./prompts/m6.ts";
 export * from "./use-cases/m6-signatures.ts";
+export * from "./use-cases/agent-sessions.ts";
+export * from "./use-cases/outside-tasks.ts";

@@ -3,7 +3,7 @@ import type { ApprovalSubject } from "@ostra/protocol";
 
 import type { AudienceReason } from "./choices.ts";
 import { C, cut, DARK_STYLE, escapeHtml, FONT_BODY, FONT_HEADING, FONT_MONO, hostOf, oneLine } from "./email-parts.ts";
-import { momentHeading } from "./moments.ts";
+import { momentHeading, teamMomentHeading } from "./moments.ts";
 
 // The needs-you mails (ADR 0050, F-115; the build spec `context/brand/app-targets/m3/email-needs-you.md`):
 // one pure renderer for every moment, giving a subject, an HTML body (inline styles, a table layout,
@@ -40,14 +40,7 @@ export type MomentDetail =
    */
   | { readonly kind: "automation_paused"; readonly starts: number };
 
-/** Milestone 6's moments' headings (the adapter SDK's `teamNotificationKinds`): the mail's title and the panel's. */
-export const teamMomentHeading = {
-  draft_ready: "A draft is ready",
-  review_requested: "A PR waits for your review",
-  task_approval: "A task waits for approval",
-  round_cap: "A task needs you",
-  automation_paused: "An automation paused",
-} as const satisfies Record<Extract<MomentDetail["kind"], "draft_ready" | "review_requested" | "task_approval" | "round_cap" | "automation_paused">, string>;
+export { teamMomentHeading };
 
 export type NeedsYouEmailInput = {
   readonly detail: MomentDetail;

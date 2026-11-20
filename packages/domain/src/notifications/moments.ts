@@ -1,4 +1,4 @@
-import type { NotificationKind } from "@ostra/adapter-sdk";
+import type { NotificationKind, TeamNotificationKind } from "@ostra/adapter-sdk";
 
 /**
  * Each moment's heading (ADR 0050): the mail's title, the ticket comment's first words and the
@@ -17,3 +17,15 @@ export const momentHeading: Readonly<Record<NotificationKind, string>> = {
   ticket_closed: "The ticket closed while the agent worked",
   test: "Mail works",
 };
+
+/** Milestone 6's moments' headings (the adapter SDK's `teamNotificationKinds`): the mail's title and the panel's. */
+export const teamMomentHeading = {
+  draft_ready: "A draft is ready",
+  review_requested: "A PR waits for your review",
+  task_approval: "A task waits for approval",
+  round_cap: "A task needs you",
+  automation_paused: "An automation paused",
+} as const satisfies Readonly<Record<TeamNotificationKind, string>>;
+
+/** Every needs-you moment's heading: milestone 3's and milestone 6's, in one table. */
+export const anyMomentHeading: Readonly<Record<NotificationKind | TeamNotificationKind, string>> = { ...momentHeading, ...teamMomentHeading };

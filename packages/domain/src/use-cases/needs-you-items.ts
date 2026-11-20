@@ -2,7 +2,7 @@ import type { Db, DbEnum, Tx } from "@ostra/db";
 import { needsYouItemIdSchema, organizationIdSchema, projectIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { NeedsYouItemId, OrganizationId } from "@ostra/protocol";
 
-import type { NotificationKind } from "../notifications/choices.ts";
+import type { MomentKind } from "../notifications/choices.ts";
 import type { ChangeNotices, Clock, JobQueue } from "../ports.ts";
 
 // The one place that writes a needs-you item (F-036, ADR 0050, ADR 0011). Every creation, answer
@@ -17,7 +17,7 @@ import type { ChangeNotices, Clock, JobQueue } from "../ports.ts";
  * an environment proposal, a restore conflict, an unstorable event, files left outside the repos)
  * notify nobody in milestone 3: their item shows in the panel, and fan-out writes nothing for it.
  */
-export const notificationKindOfReason = (reason: DbEnum.NeedsYouReason): NotificationKind | null => {
+export const notificationKindOfReason = (reason: DbEnum.NeedsYouReason, taskKind: DbEnum.TaskKind = "code"): MomentKind | null => {
   switch (reason) {
     case "question":
     case "approval":
@@ -30,7 +30,11 @@ export const notificationKindOfReason = (reason: DbEnum.NeedsYouReason): Notific
     case "ticket_closed":
       return reason;
     case "draft_ready":
-      return "pr_ready";
+      // Milestone 6 (F-099, F-036): a refine task's draft is its own moment.
+      return taskKind === "refine" ? "draft_ready" : "pr_ready";
+    // Milestone 6 (F-040): an outside task waits for a member's approval.
+    case "awaiting_approval":
+      return "task_approval";
     case "round_cap":
     case "waiting_for_reviewer":
     case "environment_proposal":
@@ -42,9 +46,6 @@ export const notificationKindOfReason = (reason: DbEnum.NeedsYouReason): Notific
     // Milestone 5 (F-091): the join sends its own runner notices to the admins (ticket 12), so the
     // item adds no second one.
     case "runner_awaiting_approval":
-    // Milestone 6 (F-040): an outside task's approval. Its `task_approval` notice comes with the
-    // notification kinds of the adapter SDK (milestone 6's ticket 04) and ticket 14.
-    case "awaiting_approval":
       return null;
     default:
       return reason satisfies never;

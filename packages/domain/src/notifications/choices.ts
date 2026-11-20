@@ -1,5 +1,5 @@
-import { notificationKinds } from "@ostra/adapter-sdk";
-import type { NotificationKind } from "@ostra/adapter-sdk";
+import { notificationKinds, teamNotificationKinds } from "@ostra/adapter-sdk";
+import type { NotificationKind, TeamNotificationKind } from "@ostra/adapter-sdk";
 import type { MemberId } from "@ostra/protocol";
 
 // Who a notification goes to, on which channels, and when (ADR 0050, F-036, F-115). Pure rules:
@@ -8,16 +8,23 @@ import type { MemberId } from "@ostra/protocol";
 export { notificationKinds };
 export type { NotificationKind };
 
-const momentKinds: ReadonlySet<string> = new Set(notificationKinds);
+/**
+ * A needs-you moment's kind: milestone 3's, and milestone 6's whole-team moments (a draft ready, a
+ * review requested, a task's approval, a round's cap, a paused automation), which go through the
+ * same fan-out and channels (ADR 0050, F-036).
+ */
+export type MomentKind = NotificationKind | TeamNotificationKind;
+
+const momentKinds: ReadonlySet<string> = new Set<string>([...notificationKinds, ...teamNotificationKinds]);
 
 /**
  * Whether a stored notification's kind is a needs-you moment. Milestone 4 adds the account and
  * budget kinds to the stored enum; they never go through the needs-you fan-out and delivery.
  */
-export const isMomentKind = (kind: string): kind is NotificationKind => momentKinds.has(kind);
+export const isMomentKind = (kind: string): kind is MomentKind => momentKinds.has(kind);
 
 /** A stored kind the needs-you delivery handles. Any other kind there is a bug, so it throws. */
-export const momentKindOf = (kind: string): NotificationKind => {
+export const momentKindOf = (kind: string): MomentKind => {
   if (!isMomentKind(kind)) {
     throw new Error(`not a needs-you moment: ${kind}`);
   }
@@ -35,7 +42,7 @@ export type ItemAudience = "driver" | "reviewer" | "project_members";
 
 export type AudienceInput = {
   readonly audience: ItemAudience;
-  readonly kind: NotificationKind;
+  readonly kind: MomentKind;
   readonly driverMemberId: MemberId | null;
   /** The members who can open the task's project now. Nobody else is ever notified. */
   readonly projectMembers: readonly MemberId[];
@@ -74,13 +81,26 @@ export const resolveAudience = (input: AudienceInput): readonly Recipient[] => {
 // ---------- the member's choices ----------
 
 /** The moments email is on for by default (ADR 0050). */
-const EMAIL_BY_DEFAULT: ReadonlySet<NotificationKind> = new Set<NotificationKind>(["approval", "question", "plan", "pr_ready", "crashed", "spend_cap"]);
+const EMAIL_BY_DEFAULT: ReadonlySet<MomentKind> = new Set<MomentKind>([
+  "approval",
+  "question",
+  "plan",
+  "pr_ready",
+  "crashed",
+  "spend_cap",
+  // Milestone 6 (ADR 0050): each waits on a person who may not be in the panel.
+  "draft_ready",
+  "review_requested",
+  "task_approval",
+  "round_cap",
+  "automation_paused",
+]);
 
 /** A member's saved choice for one moment and channel. No row means the default. */
-export type NotificationChoice = { readonly kind: NotificationKind; readonly channel: NotificationChannel; readonly enabled: boolean };
+export type NotificationChoice = { readonly kind: MomentKind; readonly channel: NotificationChannel; readonly enabled: boolean };
 
 /** A moment's default on a channel: the panel and the ticket always on, email for the moments above. */
-export const defaultChoice = (kind: NotificationKind, channel: NotificationChannel): boolean => {
+export const defaultChoice = (kind: MomentKind, channel: NotificationChannel): boolean => {
   switch (channel) {
     case "panel":
     case "tracker":
@@ -96,7 +116,7 @@ export const defaultChoice = (kind: NotificationKind, channel: NotificationChann
 export const choiceLocked = (channel: NotificationChannel): boolean => channel === "panel";
 
 /** Whether a member wants a moment on a channel: their saved choice, or the default; the panel always. */
-export const wantsChannel = (kind: NotificationKind, channel: NotificationChannel, choices: readonly NotificationChoice[]): boolean => {
+export const wantsChannel = (kind: MomentKind, channel: NotificationChannel, choices: readonly NotificationChoice[]): boolean => {
   if (choiceLocked(channel)) {
     return true;
   }
@@ -109,7 +129,7 @@ export const wantsChannel = (kind: NotificationKind, channel: NotificationChanne
  * has one; email when the install has it on and the member has an address; each as they choose.
  */
 export const channelsFor = (input: {
-  readonly kind: NotificationKind;
+  readonly kind: MomentKind;
   readonly choices: readonly NotificationChoice[];
   readonly taskHasTicket: boolean;
   readonly emailOn: boolean;
@@ -184,7 +204,7 @@ export const emailDueAt = (momentAt: number, delaySeconds: number): number => mo
  * the panel, and not when the item is no longer open. A test mail always goes.
  */
 export const emailStillNeeded = (input: {
-  readonly kind: NotificationKind;
+  readonly kind: MomentKind;
   readonly readAt: number | null;
   readonly itemState: "open" | "answered" | "dismissed" | null;
 }): boolean => input.kind === "test" || (input.readAt === null && input.itemState === "open");

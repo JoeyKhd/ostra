@@ -162,6 +162,7 @@ export const requeueQueuedTasks = async (deps: Pick<DispatcherDeps, "db" | "jobs
       projectId: true,
       creatorMemberId: true,
       runnerId: true,
+      poolOnly: true,
       leaseEpoch: true,
       sessions: { where: { state: "starting" }, select: { id: true }, take: 1 },
     },

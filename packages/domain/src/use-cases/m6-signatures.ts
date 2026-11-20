@@ -206,14 +206,17 @@ export type PostAgentActivity = (
 /** `linear.heartbeat`: a post for each active session whose heartbeat is due. */
 export type SendHeartbeats = (deps: M6Deps) => Promise<{ readonly sent: number }>;
 
+/** The panel's address, for the task links an agent session's posts carry (ticket 14). */
+export type M6LinkDeps = M6Deps & { readonly publicUrl: string };
+
 export type ApproveOutsideTask = (
-  deps: M6Deps,
+  deps: M6LinkDeps,
   scope: MemberScope,
   input: { readonly taskId: TaskId },
 ) => Promise<UseCaseResult<{ readonly approvedAt: number }, "forbidden" | "not-found" | "not-awaiting-approval">>;
 
 export type RejectOutsideTask = (
-  deps: M6Deps,
+  deps: M6LinkDeps,
   scope: MemberScope,
   /** The reason is shown to the project's members, never logged. */
   input: { readonly taskId: TaskId; readonly reason: string | null },

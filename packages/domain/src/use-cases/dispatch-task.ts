@@ -465,9 +465,11 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   const chooseTask: ChooseTask = {
     id: task.id,
     projectId: project,
-    personalRunnerId: task.runnerId === null ? null : runnerIdSchema.parse(task.runnerId),
+    // F-040 (ADR 0057): a `poolOnly` task (an outside task) is never offered to a personal runner,
+    // before or after its approval, whatever its row names.
+    personalRunnerId: task.runnerId === null || task.poolOnly ? null : runnerIdSchema.parse(task.runnerId),
     // A task no member started (milestone 6's rules, schedules and agent mode) goes to pools only.
-    startedByMember: task.creatorMemberId !== null,
+    startedByMember: task.creatorMemberId !== null && !task.poolOnly,
     requiredLabels,
     needsServices,
     size:

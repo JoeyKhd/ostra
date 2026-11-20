@@ -12,7 +12,7 @@ import {
   renderRunnerNotice,
   runnerIdOfNoticeKey,
   runnerNoticeSubject,
-  momentHeading,
+  anyMomentHeading,
   spendUrlOf,
   momentKindOf,
   recordDelivery,
@@ -73,6 +73,9 @@ export const DELIVERY_SELECT = {
           ticketKey: true,
           driverMemberId: true,
           spentMicroUsd: true,
+          trackerActorName: true,
+          automaticTurns: true,
+          automation: { select: { id: true } },
           project: { select: { id: true, name: true, organization: { select: { name: true } } } },
           ticket: { select: { externalId: true, key: true, statusName: true } },
           board: { select: { externalId: true, connectionId: true } },
@@ -140,7 +143,7 @@ export const loadDelivery = (db: Db, organizationId: OrganizationId, deliveryId:
 
 /** The delivery's one-line text: the moment's heading, or who closed it. Never the task's own words. */
 const lineOf = async (deps: NotifyDeps, row: DeliveryRow, change: "created" | "answered" | "dismissed"): Promise<string> => {
-  const heading = momentHeading[momentKindOf(row.notification.kind)];
+  const heading = anyMomentHeading[momentKindOf(row.notification.kind)];
   if (change === "created") {
     return heading;
   }
@@ -170,7 +173,7 @@ export const baseNotification = async (
   return {
     organizationId: organizationIdSchema.parse(row.organizationId),
     memberIds: recipients.map((recipient) => recipient.memberId),
-    title: momentHeading[momentKindOf(row.notification.kind)],
+    title: anyMomentHeading[momentKindOf(row.notification.kind)],
     body: line,
     url: urlOf(deps, row),
     idempotencyKey: row.idempotencyKey,

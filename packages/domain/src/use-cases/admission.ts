@@ -34,9 +34,12 @@ import { appendServerEvent } from "./server-events.ts";
 /** How many queued tasks one pass of a pool's admission considers. */
 export const ADMIT_PASS_MAX = 100;
 
-/** Whether a task goes to its member's personal runner: a member started it and picked one. */
-export const goesToPersonalRunner = (task: { readonly creatorMemberId: string | null; readonly runnerId: string | null }): boolean =>
-  task.creatorMemberId !== null && task.runnerId !== null;
+/**
+ * Whether a task goes to its member's personal runner: a member started it and picked one. Never a
+ * `poolOnly` task (an outside task, F-040, ADR 0057), whatever its row says.
+ */
+export const goesToPersonalRunner = (task: { readonly creatorMemberId: string | null; readonly runnerId: string | null; readonly poolOnly?: boolean }): boolean =>
+  task.poolOnly !== true && task.creatorMemberId !== null && task.runnerId !== null;
 
 /** Sends `queue.admit` for each pool, in the caller's transaction (one job per pool at a time). */
 export const enqueueAdmissionInTx = async (
@@ -79,6 +82,7 @@ export const queueTask: QueueTask = async (deps, input) => {
       projectId: true,
       creatorMemberId: true,
       runnerId: true,
+      poolOnly: true,
       queuedAt: true,
       agentProfileId: true,
       ticket: { select: { priority: true } },
@@ -140,7 +144,8 @@ export const poolQueueInTx = async (
       state: "queued",
       leases: { none: { state: "active" } },
       sessions: { some: { state: "starting" } },
-      NOT: { creatorMemberId: { not: null }, runnerId: { not: null } },
+      // A personal runner's task is admitted on that runner, never here; a `poolOnly` one always is (F-040).
+      NOT: { creatorMemberId: { not: null }, runnerId: { not: null }, poolOnly: false },
       project: pool.isDefault ? { OR: [{ pools: { some: { poolId } } }, { pools: { none: {} } }] } : { pools: { some: { poolId } } },
     },
     select: {

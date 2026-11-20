@@ -98,6 +98,9 @@ describe("every write of a needs-you item enqueues its fan-out", () => {
       "packages/domain/src/providers/turn-start.ts",
       "apps/core/src/cleanup/cleanup.ts",
       "apps/core/src/core.ts",
+      // Milestone 6's ticket 14 (F-040): an outside task's approval item, and its answer.
+      "apps/core/src/starts/outside.ts",
+      "packages/domain/src/use-cases/outside-tasks.ts",
     ];
     const unknown = callers.filter((caller) => !known.includes(caller));
     expect(unknown).toEqual([]);
@@ -105,6 +108,9 @@ describe("every write of a needs-you item enqueues its fan-out", () => {
 
   it("F-036: a reason notifies the moment of its name, a ready draft PR is pr_ready, and the reasons with no moment of their own notify nobody", () => {
     expect(notificationKindOfReason("draft_ready")).toBe("pr_ready");
+    // Milestone 6: a refine task's draft and an outside task's approval are moments of their own.
+    expect(notificationKindOfReason("draft_ready", "refine")).toBe("draft_ready");
+    expect(notificationKindOfReason("awaiting_approval")).toBe("task_approval");
     expect(notificationKindOfReason("approval")).toBe("approval");
     expect(notificationKindOfReason("spend_cap")).toBe("spend_cap");
     for (const silent of ["round_cap", "waiting_for_reviewer", "environment_proposal", "restore_conflict", "unstorable_event", "files_outside_repos"] as const) {

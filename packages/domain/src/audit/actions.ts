@@ -17,6 +17,9 @@ export const auditActions = {
   "task.ticket-sync-retried": "task",
   "task.ticket-closed": "task",
   "task.history_removed": "task",
+  // Milestone 6 (F-040, ADR 0057): an outside task's answer.
+  "task.approved": "task",
+  "task.rejected": "task",
   "checks.fix-asked": "task",
   "diff.comments-sent": "task",
   "pr.opened": "task",
@@ -126,6 +129,8 @@ export const auditActions = {
   "project.repo-removed": "project",
   "project.repos-reordered": "project",
   "project.review-check-changed": "project",
+  // Milestone 6 (F-040): "Outside tasks need approval", an organization admin's switch.
+  "project.outside-approval-changed": "project",
   "environment.saved": "environment",
   "environment.service-added": "environment",
   "environment.service-changed": "environment",

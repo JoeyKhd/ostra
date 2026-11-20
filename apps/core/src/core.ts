@@ -475,6 +475,7 @@ export const startCore = async (
     logger,
     publicUrl: settings.publicUrl,
     stallMinutes: settings.sessionStallMinutes,
+    intakeStartsPerHour: settings.team.intakeStartsPerHour,
     fromSettings: settings.email,
     factories: realEmailFactories,
   });

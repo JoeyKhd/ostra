@@ -5,7 +5,7 @@ import type { SmtpEmailAdapterOptions } from "@ostra/adapter-email-smtp";
 import { isRunnerNotice, secretRefSchema } from "@ostra/adapter-sdk";
 import type { AccountNotification, AdapterContext, AdapterError, Logger, Notification, NotificationAdapter, Result, RunnerNotificationKind, SecretStoreAdapter, SendResult } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
-import { budgetNoticeIdOfKey, emailStillNeeded, isBudgetNoticeKind, loadBudgetNoticeView, momentHeading, momentKindOf, renderBudgetNoticeMail, renderNeedsYouEmail, spendUrlOf } from "@ostra/domain";
+import { budgetNoticeIdOfKey, emailStillNeeded, isBudgetNoticeKind, loadBudgetNoticeView, anyMomentHeading, momentKindOf, renderBudgetNoticeMail, renderNeedsYouEmail, spendUrlOf } from "@ostra/domain";
 import type { Clock, EmailFromSettings, MomentDetail } from "@ostra/domain";
 import { approvalSubjectSchema, memberIdSchema, notificationIdSchema, organizationIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { ApprovalSubject } from "@ostra/protocol";
@@ -52,10 +52,15 @@ export type EmailChannelDeps = {
   readonly publicUrl: string;
   /** `OSTRA_SESSION_STALL_MINUTES`, for the stall mail's one line. */
   readonly stallMinutes: number;
+  /** `OSTRA_INTAKE_STARTS_PER_HOUR`, for a paused automation's one line (milestone 6). */
+  readonly intakeStartsPerHour?: number;
   /** `OSTRA_EMAIL_*` as the install's settings gave them. */
   readonly fromSettings: EmailFromSettings;
   readonly factories: EmailAdapterFactories;
 };
+
+/** `OSTRA_INTAKE_STARTS_PER_HOUR`'s default, when the caller doesn't pass the setting. */
+const INTAKE_STARTS_PER_HOUR_DEFAULT = 20;
 
 /** What mail is set up to go through, with its secrets resolved. Never logged. */
 type EmailConfig =
@@ -225,6 +230,24 @@ export const createEmailChannel = (deps: EmailChannelDeps): EmailChannel & { rea
         return { kind, spent: usd(task?.spentMicroUsd ?? 0) };
       case "ticket_closed":
         return { kind, status: task?.ticket?.statusName ?? "closed" };
+      // ---- milestone 6 (F-036, ADR 0050): counts and names, never a draft's or a finding's text ----
+      case "draft_ready": {
+        const draft = await deps.db.refineDraft.findFirst({
+          where: { taskId: task?.id ?? "" },
+          orderBy: { version: "desc" },
+          select: { acceptanceCriteria: true, subTickets: true },
+        });
+        const count = (value: unknown): number => (Array.isArray(value) ? value.length : 0);
+        return { kind, acceptanceCriteria: count(draft?.acceptanceCriteria), subTickets: count(draft?.subTickets) };
+      }
+      case "review_requested":
+        return { kind, pullRequests: await deps.db.taskPullRequest.count({ where: { taskRepo: { taskId: task?.id ?? "" } } }) };
+      case "task_approval":
+        return { kind, startedBy: task?.trackerActorName ?? "someone outside the project" };
+      case "round_cap":
+        return { kind, reason: "rounds", turns: task?.automaticTurns ?? 0 };
+      case "automation_paused":
+        return { kind, starts: deps.intakeStartsPerHour ?? INTAKE_STARTS_PER_HOUR_DEFAULT };
       default:
         return kind satisfies never;
     }
@@ -370,8 +393,8 @@ export const createEmailChannel = (deps: EmailChannelDeps): EmailChannel & { rea
     const notification: Notification = {
       organizationId: organizationIdSchema.parse(row.organizationId),
       memberIds: [memberId],
-      title: momentHeading[kind],
-      body: momentHeading[kind],
+      title: anyMomentHeading[kind],
+      body: anyMomentHeading[kind],
       url: urlOf(deps, row),
       idempotencyKey: row.idempotencyKey,
       kind,

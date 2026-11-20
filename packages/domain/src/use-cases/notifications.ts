@@ -84,7 +84,8 @@ export const fanOutNotification = async (deps: M3Deps, input: FanOutInput): Prom
     if (item === null || (input.organizationId !== undefined && input.organizationId !== item.organizationId)) {
       return { ok: false, error: "not-found", message: "No such item" };
     }
-    const kind = notificationKindOfReason(item.reason);
+    const itemTask = await tx.task.findUnique({ where: { id: item.taskId }, select: { kind: true } });
+    const kind = notificationKindOfReason(item.reason, itemTask?.kind);
     if (kind === null) {
       return nothing;
     }
