@@ -1,7 +1,7 @@
 "use client";
 
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckIcon, GitPullRequestIcon, LinkIcon, ScanSearchIcon, SquareIcon } from "lucide-react";
+import { CheckIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestIcon, LinkIcon, ScanSearchIcon, SquareIcon } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -19,6 +19,7 @@ import { PageFrame, PropGroup, PropRow } from "@/components/shell/page-frame";
 import { initials } from "@/components/shell/user-menu";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { NeedsYou } from "@/components/ui/needs-you";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Status } from "@/components/ui/status";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
@@ -118,6 +119,62 @@ const CopyLink = () => {
     >
       {copied ? <CheckIcon /> : <LinkIcon />}
     </Button>
+  );
+};
+
+/** A PR the top bar links to: the repo's current one, with a safe address. */
+type BarPr = { readonly number: number; readonly href: string; readonly state: "open" | "merged" | "closed"; readonly repo: string };
+
+const PrStateIcon = ({ state }: { readonly state: BarPr["state"] }) => {
+  const className = "size-[15px] shrink-0 stroke-[1.75] text-muted";
+  switch (state) {
+    case "open":
+      return <GitPullRequestIcon aria-hidden className={className} />;
+    case "merged":
+      return <GitMergeIcon aria-hidden className={className} />;
+    case "closed":
+      return <GitPullRequestClosedIcon aria-hidden className={className} />;
+    default:
+      return state satisfies never;
+  }
+};
+
+/**
+ * The top bar's PR buttons (task.md): one per PR. At phone width several collapse into one
+ * `PRs · n` button that opens a bottom sheet listing them (m2/phone-task.md, "Top bar"), so the
+ * bar never scrolls sideways.
+ */
+const PrButtons = ({ prs }: { readonly prs: readonly BarPr[] }) => {
+  const button = (pr: BarPr, className?: string) => (
+    <a key={`${pr.repo}#${String(pr.number)}`} href={pr.href} target="_blank" rel="noopener noreferrer" className={cn(buttonVariants(), className)}>
+      <GitPullRequestIcon /> {t("taskPage.prButton", { n: pr.number })}
+    </a>
+  );
+  if (prs.length < 2) return <>{prs.map((pr) => button(pr))}</>;
+  return (
+    <>
+      {prs.map((pr) => button(pr, "max-sm:hidden"))}
+      <Sheet>
+        <SheetTrigger asChild>
+          <Button className="sm:hidden" data-action="task-prs">
+            <GitPullRequestIcon aria-hidden /> {t("taskPage.prsButton", { n: prs.length })}
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="bottom" title={t("taskPage.prsTitle")} className="px-4 pb-6 pt-4">
+          <h2 className="text-ui font-semibold text-text">{t("taskPage.prsTitle")}</h2>
+          <ul className="mt-2">
+            {prs.map((pr) => (
+              <li key={`${pr.repo}#${String(pr.number)}`} className="flex h-10 items-center gap-2 border-b border-line text-ui last:border-b-0">
+                <PrStateIcon state={pr.state} />
+                <span className="min-w-0 truncate font-mono text-text">{pr.repo}</span>
+                <a href={pr.href} target="_blank" rel="noopener noreferrer" className="shrink-0 font-mono text-teal hover:underline">#{pr.number}</a>
+                <span className="ml-auto shrink-0 text-muted">{t(`taskPage.prState.${pr.state}`)}</span>
+              </li>
+            ))}
+          </ul>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 };
 
@@ -432,7 +489,10 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
 
   const stopped = data.state === "stopped";
   const finished = stopped || data.state === "merged" || data.state === "done";
-  const prs = data.repos.flatMap((repo) => (repo.pr === null ? [] : [{ ...repo.pr, href: safeHref(repo.pr.url) }]));
+  const prs = data.repos.flatMap((repo): BarPr[] => {
+    const href = repo.pr === null ? null : safeHref(repo.pr.url);
+    return repo.pr === null || href === null ? [] : [{ number: repo.pr.number, href, state: repo.pr.state, repo: repo.fullName }];
+  });
   const summary = data.needsYou.find((item) => item.summary !== null)?.summary ?? null;
   const running = view.turnRunning || data.state === "running" || data.state === "preparing";
   // F-137: the level from the newest `effort.changed` on the stream, else `tasks.get`'s.
@@ -540,17 +600,11 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           <CopyLink />
           <TakeItLocal pushed={data.repos.some((repo) => repo.headSha !== null)} load={localLoad} onOpen={() => { setLocalOpened(true); }} />
           {data.kind === "code" && data.repos.some((repo) => repo.pr?.state === "open") ? (
-            <Link href={`/tasks/${taskId}/review`} className={buttonVariants()} data-action="open-review">
-              <ScanSearchIcon aria-hidden /> {t("review.button")}
+            <Link href={`/tasks/${taskId}/review`} className={buttonVariants()} aria-label={t("review.button")} data-action="open-review">
+              <ScanSearchIcon aria-hidden /> <span className="max-sm:hidden">{t("review.button")}</span>
             </Link>
           ) : null}
-          {prs.map((pr) =>
-            pr.href === null ? null : (
-              <a key={pr.number} href={pr.href} target="_blank" rel="noopener noreferrer" className={buttonVariants()}>
-                <GitPullRequestIcon /> {t("taskPage.prButton", { n: pr.number })}
-              </a>
-            ),
-          )}
+          <PrButtons prs={prs} />
           {data.capabilities.stop && !stopped ? (
             <Button data-action="stop" onClick={() => { stop.mutate({ taskId }); }} disabled={stopping || stop.isPending}>
               <SquareIcon /> {stopping ? t("taskPage.stopping") : t("taskPage.stop")}

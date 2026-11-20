@@ -1938,6 +1938,8 @@
     "pr": "PR",
     "noPr": "None yet",
     "prButton": "PR #{n}",
+    "prsButton": "PRs · {n}",
+    "prsTitle": "Pull requests",
     "stop": "Stop",
     "stopping": "Stopping…",
     "fromPrompt": "from a prompt",
