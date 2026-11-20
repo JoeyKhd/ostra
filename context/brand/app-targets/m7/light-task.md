@@ -2,7 +2,7 @@
 
 > **Committed image:** `light-task.webp`, downscaled from the 2048×1360 generation to 1440×956, so one image pixel is one CSS pixel. Sizes in this file are CSS px.
 
-- **Prompt:** `light-task.prompt.txt`. GPT Image 2.6 through Higgsfield (3:2, 2k, high), 1 generation, kept. References: the approved 2048 original of `app-targets/m1/task` (the screen this one starts from, spec section 13), `app-concepts/html/home-graphite.png` and the Abyss Hinge logo `kit/logo/export/ostra-hinge-2048.png`.
+- **Prompt:** `light-task.prompt.txt`. GPT Image 2.6 through Higgsfield (3:2, 2k, high), 1 generation, kept. Regenerated on 2026-11-20 on `light-home.md`'s graphite light set (the first picture, 2026-11-19, was drawn on warm paper with Abyss ink). References: the approved 2048 original of `app-targets/m1/task` (the screen this one starts from, spec section 13), the capture of the built docs home in light (`docs-home-light.webp` at 2x, the same tokens on a real page) and the Hinge logo `kit/logo/export/ostra-hinge-2048.png`.
 - **Route:** unchanged, `apps/web/src/app/(panel)/tasks/[task-id]/page.tsx` → `components/tasks/task-view.tsx` and the thread renderers (`apps/web/src/task/renderers.tsx`). Nothing changes but colours, plus an opened diff in the picture to settle the diff's light colours.
 - **Features:** F-082 (the theme). Spec section 4 ("The theme"), section 13 row 12. Ticket 18, ticket 17 (contrast in both themes).
 - **Status:** a proposed target, waiting on approval (ticket 12's `## Comments`). Ticket 18 builds its tokens and tests until then, not its UI.
@@ -31,7 +31,7 @@ The picture is milestone 1's task page (`../m1/task.webp`) in light: `CALC-161` 
 
 ### Code and diffs
 
-1. **A code block** (output, logs, setup log): `--surface` (Shell) with a 1px `--line` border, radius 8px, mono 12px/1.6 `--text`. No syntax colours in milestone 7, as in dark.
+1. **A code block** (output, logs, setup log): `--surface` with a 1px `--line` border, radius 8px, mono 12px/1.6 `--text`. No syntax colours in milestone 7, as in dark.
 2. **The diff** (in the thread and on the Changes tab, `../m3/task-changes.md`):
    - Header line: mono 12px, path `--muted`, the hunk `@@ … @@` `--faint`.
    - Line numbers: `--faint` (on the line fills `--faint` is 4.8:1 and 4.7:1).
@@ -44,10 +44,10 @@ The picture is milestone 1's task page (`../m1/task.webp`) in light: `CALC-161` 
 
 ### The approval block (and every needs-you block: questions, plans, round caps, take it local)
 
-1. No card, no fill: a **3px** `--amber` rule on the left in light (2px in dark: at 2px the 1.7:1 rule disappears on paper; the extra pixel keeps it a line, and the title says the same in words).
+1. No card, no fill: a **3px** `--amber` rule on the left in light (2px in dark: at 2px the 1.7:1 rule disappears on the light page; the extra pixel keeps it a line, and the title says the same in words).
 2. Title: `hand` 14px and `Needs you · approval` 13px weight 600, both `--amber-text` (`#8A5300`, 6.1:1).
 3. Body `--text`; the command chip `--surface` with a 1px `--line` border, mono `--text`.
-4. Buttons: `Deny` and `Approve for this task` outline (`--surface`, 1px `--line-2`, `--text`); `Approve once` `--amber` fill with `--ink` text weight 600 (9.6:1).
+4. Buttons: `Deny` and `Approve for this task` outline (`--surface`, 1px `--line-2`, `--text`); `Approve once` `--amber` fill with `--on-amber` text weight 600 (10.1:1).
 5. Footnote 12px `--faint`.
 6. Answered: the muted line, `--muted`, no rule, as dark.
 7. The same rule applies to `../m3/task-approval.md`'s question, `../m3/task-plan.md`'s plan approval, `../m6/task-rounds.md`'s cap and every other block with an amber rule.
@@ -62,7 +62,7 @@ The picture is milestone 1's task page (`../m1/task.webp`) in light: `CALC-161` 
 
 ### The composer
 
-`--surface` with a 1px `--line-2` border, radius 8px; placeholder `--faint`; the hint `--faint` with `info`; `Interrupt and send` outline; `Send` the page's one primary, `--primary` (Abyss) with `--on-primary` text. Disabled buttons: their colours at 45% opacity, as dark.
+`--surface` with a 1px `--line-2` border, radius 8px; placeholder `--faint`; the hint `--faint` with `info`; `Interrupt and send` outline; `Send` the page's one primary, `--primary` (graphite) with `--on-primary` text. Disabled buttons: their colours at 45% opacity, as dark.
 
 ## Layout (CSS px at 1440×960)
 
@@ -98,7 +98,7 @@ None beyond the task page's.
 
 ## WCAG AA check (F-081)
 
-`--text` on `--bg` 16.6:1, `--muted` 9.2:1, `--faint` 5.7:1 (4.7:1 on `--sel`, 4.8:1 and 4.7:1 on the diff fills), `--teal` 6.1:1, `--green` 5.5:1 (5.0:1 on `--diff-add`), `--red` 5.7:1 (5.1:1 on `--diff-del`), `--amber-text` 6.1:1, `--ink` on `--amber` 9.6:1, `--on-primary` on `--primary` 15.2:1. All pass 4.5:1. The 3px amber rule and the dots are 1.7:1 but never the only cue: each has its words.
+`--text` on `--bg` 17.5:1, `--muted` 8.1:1, `--faint` 5.6:1 (4.8:1 on `--sel`, 5.1:1 and 5.0:1 on the diff fills), `--teal` 6.1:1, `--green` 5.5:1 (5.0:1 on `--diff-add`), `--red` 5.7:1 (5.1:1 on `--diff-del`), `--amber-text` 6.1:1, `--on-amber` on `--amber` 10.1:1, `--on-primary` on `--primary` 17.5:1. All pass 4.5:1. The 3px amber rule and the dots are 1.7:1 but never the only cue: each has its words.
 
 ## Open points (recommendations; ticket 18 records the answer)
 
@@ -107,12 +107,10 @@ None beyond the task page's.
 
 ## Wrong in the image (build from this file)
 
-- **`Approve once`** has dark-brown text. Build `--ink` `#0C1D21`, weight 600.
-- **The diff's `+` signs** are dark; only the `−` is coloured. Build both the sign and the numbers in `--green` / `--red`.
-- **The diff's line numbers** show one column. Build `../m3/task-changes.md`'s two columns (old and new), 40px each.
-- **The diff block** starts at the verb column, about 30px left of the paths. Build it starting at the path column.
-- **The status dots** (header and panel) have a heavy amber-on-amber outline. Build `light-home`'s 1px inner ring at 55%.
-- **The sidebar's project dots** have a dark ring that reads as a second colour. Same rule: a 1px inner ring at 55%.
-- **The sidebar's org mark** isn't the Hinge. Build the Abyss Hinge SVG.
+- **The diff's line numbers** show one column, after the sign. Build `../m3/task-changes.md`'s two columns (old and new), 40px each.
+- **The diff block** starts at the verb column, about 75px left of the paths. Build it starting at the path column.
+- **The status dots** (header, panel and sidebar) have a 2px darker ring. Build `light-home`'s 1px inner ring at 55%.
+- **The properties panel** is about 340px. Build 320px.
+- **The greys** are drawn a shade darker than `light-home.md`'s table: build the table's values.
 
-Right as drawn: the paper page with the Shell sidebar and Shell code block, the pale green and red line fills with dark code on them, `Hide the diff` in teal, the plan's green check and teal circle, the amber rule with the darker amber title and hand, the amber `Approve once` as the page's one amber button, the Abyss `Send` as the one primary, outline buttons on Shell, the Kelp context meter, and the green and red counts in the Changes group.
+Right as drawn: the neutral near-white page with the sidebar a step below it, the pale grey code block, the pale green and red line fills with graphite code and coloured `+` and `−` signs, `Hide the diff`, `working`, `Take over` and `#483` in teal as text only, the plan's green check and teal circle, the amber rule with the darker amber title and hand, the amber `Approve once` with graphite text as the page's one amber button, the graphite `Send` as the one primary, outline buttons on the surface grey, the graphite context meter, and the green and red counts in the Changes group.

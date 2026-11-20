@@ -1,8 +1,8 @@
 # Target: the docs site's landing page (milestone 7, screen 1)
 
-> **Committed images:** `docs-home.webp` (dark) and `docs-home-light.webp` (light), each downscaled from a 2048×1360 generation to 1440×956, so one image pixel is one CSS pixel. Sizes in this file are CSS px.
+> **Committed images:** `docs-home.webp` (dark) and `docs-home-light.webp` (light), 1440×956, so one image pixel is one CSS pixel. Since 2026-11-20 both are **captures of the built site** (`apps/docs`, its static export, at 1440×956 and device scale 2, downscaled), no longer generations: the build follows this file, so the pictures show the graphite tokens below exactly. Sizes in this file are CSS px.
 
-- **Prompts:** `docs-home.prompt.txt` and `docs-home-light.prompt.txt`. GPT Image 2.6 through Higgsfield (3:2, 2k, high), one generation each, kept. References for the dark one: the approved 2048 original of `app-targets/m1/home` (the start spec section 13 names), `app-concepts/html/home-graphite.png`, the Hinge logo `kit/logo/export/ostra-hinge-single-color-2048.png` and the Deep water illustration `files/web/sign-in-illustration.webp` (B-017). The light one was made from the dark one, with the Abyss Hinge export `ostra-hinge-2048.png`.
+- **Prompts:** `docs-home.prompt.txt` and `docs-home-light.prompt.txt` keep the first generations' prompts (GPT Image 2.6 through Higgsfield, 3:2, 2k, high, on the brief's Abyss palette), with a line on how each capture replaced its picture. For the light one, a graphite generation was made on 2026-11-20 from the dark capture and compared with the light capture; the capture was kept, as the built page itself.
 - **Route (new):** `apps/docs/app/(home)/page.tsx`, at the site's root (`https://joeykhd.github.io/ostra/` until a domain is registered; ADR 0063).
 - **Features:** F-058 (the docs site), and F-076's "following only the docs": this page is where the 30-minute path starts. ADR 0063 ("What the site holds", section 1, Start), ADR 0048 (the word is "source-available"). Ticket 21 builds it; ticket 22 writes the words of the pages it links to.
 - **Status:** a proposed target, waiting on approval (ticket 12's `## Comments`). Ticket 21 builds its data and tests until then, not its UI.
@@ -115,7 +115,7 @@ A 1px `--line` hairline, then one 13px `--faint` row: `ostra is source-available
 
 ## Tokens (the docs site's, shared by `docs-guide`, `docs-reference` and `docs-search`)
 
-**The panel's graphite theme, since 2026-11-20** (the maintainer: the docs looked like an older product). The pictures were drawn on the brief's Abyss palette; build from this table, not their colours. `apps/docs/src/app/globals.css` defines the tokens on `:root` (dark) and `:root[data-theme="light"]`:
+**The panel's graphite theme, since 2026-11-20** (the maintainer: the docs looked like an older product). The pictures are captures of the build, so they show this table. `apps/docs/src/app/globals.css` defines the tokens on `:root` (dark) and `:root[data-theme="light"]`:
 - **Shared names hold the panel's values:** dark from `apps/web/src/app/globals.css`, light from `light-home.md`'s table (the panel's own `[data-theme="light"]` block once ticket 18 builds it).
 - **Copied, with a drift test:** sharing one file would need a new package, so the values are copied, and `apps/docs/src/app/theme-tokens.test.ts` fails when a shared token's value differs from the panel's, or a contrast pair below drops under AA.
 - **Renamed to the panel's names:** `--link` is `--teal`, `--surface-2` is `--sel`, `--dialog` is `--raise`, and `--highlight` is `--line-2`. `docs-guide`, `docs-reference` and `docs-search` still use the old names: read them through this table.
@@ -164,12 +164,6 @@ A 1px `--line` hairline, then one 13px `--faint` row: `ostra is source-available
 
 ## Wrong in the image (build from this file)
 
-- **The colours:** the picture is drawn on Abyss; build the graphite tokens above.
-- **Field and button borders** are drawn in Kelp `#2F4A47` (1.8:1 on Abyss) in dark and a pale line in light: build them with `--control` so they pass 3:1.
-- **The illustration in dark** has a soft square edge at its top right: build the radial feather.
-- **`Linear is optional`** sits far right on the Before-you-start row: keep it, but as a link to the Linear page, underlined.
-- **The grid's text** wraps to two lines in most cells: fine at this width; keep the copy.
-- **Wordmark and logo** are the model's drawing: use the real files.
-- **The footer** is below the fold and not drawn: build it from this file.
+Nothing since 2026-11-20: both pictures are captures of the build. The generated pictures they replaced drew Abyss colours, Kelp field and button borders that failed 3:1, a soft square edge on the dark illustration and the model's own wordmark; the build has none of these. The footer is below the fold in the capture: build it from this file.
 
 Right as drawn: no sidebar, no amber, one primary button, the hairline grid with no cards, the three numbered columns, the header's search with its key chip, and the Deep water stone as the only picture.

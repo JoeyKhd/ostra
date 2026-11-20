@@ -1,9 +1,9 @@
 # Target: the docs site's search dialog (milestone 7, screen 4)
 
-> **Committed images:** `docs-search.webp` (results) and `docs-search-empty.webp` (no results), each 1440×956 from a 2048×1360 picture, so one image pixel is one CSS pixel. Sizes in this file are CSS px.
+> **Committed images:** `docs-search.webp` (results) and `docs-search-empty.webp` (no results), each 1440×956, so one image pixel is one CSS pixel. Since 2026-11-20 both **are captures of the built site** (`apps/docs`, its static export, at device scale 2, downscaled), no longer generations, so they show the graphite tokens and the build as it is. Both open the dialog over the install guide (`/docs/install/docker-compose`) and type the query. Sizes in this file are CSS px.
 
-- **Prompt:** `docs-search.prompt.txt`. GPT Image 2.6 through Higgsfield (3:2, 2k, high), 1 generation, kept. References: the approved 2048 original of `app-targets/m4/search-palette` (the start spec section 13 names), `app-concepts/html/home-graphite.png` and the Hinge logo.
-- **`docs-search-empty`** is that generation with its query, results and count erased locally, and the empty state drawn in the brand's real fonts with the Deep water illustration (B-017) feathered into the dialog, as milestone 4's `search-empty` was made. No second generation. The script is kept beside the 2048 originals (`docs-search-empty-compose.py`).
+- **Prompt:** `docs-search.prompt.txt` keeps the first generation's prompt (GPT Image 2.6 through Higgsfield, 3:2, 2k, high), with a line on the captures that replaced both pictures. References: the approved 2048 original of `app-targets/m4/search-palette` (the start spec section 13 names), `app-concepts/html/home-graphite.png` and the Hinge logo.
+- **`docs-search-empty`** was first that generation with its query, results and count erased locally and the empty state composited in; since 2026-11-20 it's a capture too.
 - **Where:** a dialog over any docs page, opened by the header's search button, ⌘K or Ctrl+K, or `/` (outside a field, and outside `docs-reference`'s filter). On a phone, the top bar's search icon opens it full screen.
 - **Features:** F-058 (ADR 0063: "Search is built in and static: Fumadocs' own index, built with the site and served as a file. No hosted search service"). Ticket 21.
 - **Status:** a proposed target, waiting on approval (ticket 12's `## Comments`).
@@ -81,10 +81,10 @@ A `listbox`, padding `8px 10px`. Grouped by page, in the index's rank order of e
 
 ## Wrong in the image (build from this file)
 
-- **The page behind** is the model's invention (a different navigation with icons, a "Prerequisites" list and a garbled line `Rec ttetien nne…`): the real page behind is whatever page was open, and the overlay dims it to 70%; the picture's overlay is lighter.
-- **The breadcrumb behind** begins `Docs ›`: the guide's breadcrumb has no `Docs` crumb (`docs-guide.md`).
-- **Field and chip borders** are Kelp `#2F4A47`: build `--control`.
-- **`docs-search-empty`'s text** is drawn a touch smaller than the specified sizes, and the dialog keeps its full height: build the sizes above, and let the dialog shrink to its content (`max-height`, not a fixed height).
-- **Wordmark and logo** are the model's drawing: use the real files.
+The pictures are captures of the build since 2026-11-20, so they show what the build does. Two things in the capture differ from this file, and are the build's to fix (ticket 21):
+- **Snippets carry raw Markdown:** `**New token**` and backticks show as typed. Build the snippet as plain text.
+- **Some heading rows lose their text's form:** the setup page's `6. Connect a runner` shows as `connect a runner`. Build the heading as written.
 
-Right as drawn: the dialog shape with the `esc` chip, results grouped under page paths, page and `#` heading rows with snippets, setting names in mono, the selected row with its `↵` chip, the footer's key hints and "searched in your browser", and no amber.
+The results' order and count (24 for `join token`) are the index's, as this file says; the generated picture showed six. Its other faults (an invented page behind, Kelp borders, smaller empty-state text, the model's wordmark) are gone with it.
+
+Right as drawn: the dialog shape with the `esc` chip, results grouped under page paths, page and `#` heading rows with snippets, the selected row with its `↵` chip, the footer's key hints and "searched in your browser", the empty state with the Deep water stone and `Browse the sections →`, and no amber.

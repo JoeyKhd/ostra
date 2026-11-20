@@ -1,8 +1,8 @@
 # Target: a docs guide page, the install guide (milestone 7, screen 2)
 
-> **Committed images:** `docs-guide.webp`, downscaled from a 2048×1360 generation to 1440×956, so one image pixel is one CSS pixel; and `docs-guide-phone.webp`, 982×780: both phone screens of one 2048×1360 picture, cropped to them with a margin and downscaled so each screen is **390 CSS px wide**. The left screen sits at x 24–414, the right one at x 568–958, both at y 10–768 (758 tall, cut at the bottom). Sizes in this file are CSS px.
+> **Committed images:** `docs-guide.webp`, 1440×956, so one image pixel is one CSS pixel; and `docs-guide-phone.webp`, 982×780: two phone screens side by side on a `#1F2023` ground, each **390 CSS px wide** with a 1px `#2A2C30` edge. Since 2026-11-20 both **are captures of the built site** (`apps/docs`, its static export, at device scale 2, downscaled), no longer generations, so they show the graphite tokens and the build as it is. The left screen sits at x 24–414, the right one at x 568–958, both at y 10–768 (758 tall, cut at the bottom). Sizes in this file are CSS px.
 
-- **Prompts:** `docs-guide.prompt.txt` and `docs-guide-phone.prompt.txt`. GPT Image 2.6 through Higgsfield (3:2, 2k, high), one generation each, kept. References for the desktop picture: the approved 2048 original of `app-targets/m1/environment` (the start spec section 13 names: its numbered code block and hairline rows), `app-concepts/html/home-graphite.png` and the Hinge logo. For the phone picture: the desktop picture, the approved 2048 original of `app-targets/m3/phone-approval` (how a phone screen is drawn) and the Hinge logo.
+- **Prompts:** `docs-guide.prompt.txt` and `docs-guide-phone.prompt.txt` keep the first generations' prompts, with a line on the capture that replaced each picture. The first pictures: GPT Image 2.6 through Higgsfield (3:2, 2k, high), one generation each. References for the desktop picture: the approved 2048 original of `app-targets/m1/environment` (the start spec section 13 names: its numbered code block and hairline rows), `app-concepts/html/home-graphite.png` and the Hinge logo. For the phone picture: the desktop picture, the approved 2048 original of `app-targets/m3/phone-approval` (how a phone screen is drawn) and the Hinge logo.
 - **Route (new):** `apps/docs/app/docs/[[...slug]]/page.tsx`; this page is `/docs/install/docker-compose`, from `apps/docs/content/install/docker-compose.mdx`.
 - **Features:** F-058 (the docs site, the install guide, "every `run` command block checked"), F-076 (the 30-minute measure follows these pages and nothing else; a gap the newcomer hits is a docs bug). ADR 0063, ADR 0029 (what `host` doesn't isolate), F-001 and Q97 (the Docker socket warning). Ticket 21 builds the layout; ticket 22 writes the install, setup and runner pages and the command check.
 - **Status:** a proposed target, waiting on approval (ticket 12's `## Comments`).
@@ -120,11 +120,6 @@ Below 1180px the right rail goes and "On this page" becomes the collapsible row 
 
 ## Wrong in the image (build from this file)
 
-- **Field and button borders** are Kelp `#2F4A47` (1.8:1): build `--control`.
-- **The rail's other headings** have no rule along their left; only the current one has its bar. Build the 1px `--line` rule with the 2px `--link` bar over it.
-- **The navigation is about 280px wide** in the picture, so the article starts at x 322: build 264px, the article at x 304.
-- **The phone's code lines** are cut with a ghosted glyph rather than a clean fade: build the mask.
-- **Previous and next** are drawn at the fold; on the real page they follow the last section (`Next steps`).
-- **Wordmark and logo** are the model's drawing: use the real files.
+Nothing since 2026-11-20: both pictures are captures of the build, the phone one at 390×844 (the page, and the drawer open), cut at 758px. The generated pictures they replaced drew Abyss colours, Kelp field and button borders that failed 3:1, a 280px navigation, no rule along the rail's other headings, ghosted glyphs at the phone's code edge and the model's own wordmark; the build has none of these. Previous and next follow the last section, below the fold.
 
-Right as drawn: the hairline navigation with one selected page and collapsed sections, the numbered steps, the code blocks' `sh` strip with the teal `run` chip and copy icon, the three callouts with left rules (teal, off-white, red) and no amber, "On this page" with its current row, "Edit on GitHub", and previous/next.
+Right as drawn: the hairline navigation with one selected page and collapsed sections, the numbered steps, the code blocks' `sh` strip with the teal `run` chip and copy icon, the callouts with left rules and no amber, "On this page" with its current row, and "Edit on GitHub".

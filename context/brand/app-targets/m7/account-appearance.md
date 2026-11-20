@@ -31,7 +31,7 @@ The picture shows Alex with **Match my system** selected while the system is dar
 2. **Three choices,** a `RadioGroup` laid out as one row of three cards, each 236px wide with 18px between (the 760px column holds three with room to spare):
    - **The preview,** 236 × 148px, radius 8px, 1px `--line-2` border, `overflow: hidden`: a **schematic** of the panel drawn in real HTML/CSS with the theme's own tokens (not an image, not a screenshot): a 64px sidebar strip with three 6px bars and one 5px `--amber` dot, an 18px top bar with a hairline under it, two text bars (title and lede) and three hairline rows. No words inside.
      - `Dark`: the dark token set (`--bg` page, `--side` strip, `--muted`/`--faint` bars).
-     - `Light`: the light set from `light-home.md` (`#FBFAF6` page, `#F3F0E8` strip, Abyss and Kelp bars).
+     - `Light`: the light set from `light-home.md` (`#FAFAFB` page, `#F3F3F5` strip, `--text` `#141518` and `--muted` `#4A4D53` bars; the graphite light set since 2026-11-20).
      - `Match my system`: both, split by one diagonal from the top-right corner to the bottom-left corner, dark above, light below (two stacked schematics with a `clip-path: polygon(…)` on the light one).
      - The previews render their own token values, scoped (`data-theme` on the preview's root), so each looks right whichever theme the page is in.
    - **The label row,** 10px under the preview: a 14px `RadioGroupItem` and the label 14px. Unselected: `--line-2` ring, `--muted` label. **Selected:** `--text` ring with a 6px `--text` centre, `--text` label weight 500, and the preview gets a 2px `--text` outline at 3px offset.
@@ -93,7 +93,7 @@ The measured tokens (`apps/web/src/app/globals.css`), as `../m3/account.md`. The
 
 ## WCAG AA check (F-081)
 
-Dark: label `--muted` 9.6:1, selected `--text` 17.4:1, the note and keyboard line `--faint` 5.9:1, `Keyboard shortcuts` `--teal` 8.4:1. The selected state is never colour alone: the filled radio and the outline both mark it. The previews are decorative for assistive tech (`aria-hidden`); each radio's accessible name is its label. Light: `light-home.md`'s values, the selected outline `--text` (Abyss).
+Dark: label `--muted` 9.6:1, selected `--text` 17.4:1, the note and keyboard line `--faint` 5.9:1, `Keyboard shortcuts` `--teal` 8.4:1. The selected state is never colour alone: the filled radio and the outline both mark it. The previews are decorative for assistive tech (`aria-hidden`); each radio's accessible name is its label. Light: `light-home.md`'s values, the selected outline `--text` (graphite `#141518`).
 
 ## Open points (recommendations; ticket 18 records the answer)
 
@@ -105,7 +105,7 @@ Dark: label `--muted` 9.6:1, selected `--text` 17.4:1, the note and keyboard lin
 
 - **The preview cards** are about 252px wide with 22px gaps. Build 236px and 18px.
 - **The selected outline** is 3px off-white with rounded corners and a 4px offset. Build 2px at a 3px offset, radius 11px (the card's 8px plus the offset).
-- **The light preview's** bars are grey; build Abyss and Kelp bars from the light tokens, so it reads warm.
+- **The light preview** follows `light-home.md`'s graphite set since 2026-11-20: neutral greys with `--text` and `--muted` bars, no warm paper. Its grey bars are right as drawn.
 - **The keyboard line's `?` key** is a 26px box. Build the shared `Kbd`, 18px.
 - **The `GitHub` title** sits directly under a hairline at the end of Appearance. Keep the section's 20px hairline and `Section`'s normal top margin above GitHub.
 - **The `Linear` icon** is a half-filled circle. Use the icon milestone 2's Linear screen settled on.

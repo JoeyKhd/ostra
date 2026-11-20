@@ -63,6 +63,8 @@ The values live in `app-concepts/html/graphite.css` until milestone 1 turns them
 | Charts | Mist `#CFD8D4` |
 | Project markers | one colour per project, only on its 8px square |
 
+The light theme (milestone 7, ticket 18) mirrors this table token for token in neutral greys, with graphite ink and no Abyss: `app-targets/m7/light-home.md`, "The light tokens" (page `#FAFAFB`, text `#141518`, re-based on graphite on 2026-11-20).
+
 ## Type
 
 - **Manrope 700:** page titles.

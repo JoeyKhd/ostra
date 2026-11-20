@@ -1,8 +1,8 @@
 # Target: the configuration reference (milestone 7, screen 3)
 
-> **Committed image:** `docs-reference.webp`, downscaled from the 2048×1360 generation to 1440×956, so one image pixel is one CSS pixel. Sizes in this file are CSS px.
+> **Committed image:** `docs-reference.webp`, 1440×956, so one image pixel is one CSS pixel. Since 2026-11-20 it **is a capture of the built site** (`apps/docs`, its static export, at device scale 2, downscaled), no longer a generation, so it shows the graphite tokens and the build as it is. The capture hovers `OSTRA_PUBLIC_URL` and has just copied its link. Sizes in this file are CSS px.
 
-- **Prompt:** `docs-reference.prompt.txt`. GPT Image 2.6 through Higgsfield (3:2, 2k, high), 1 generation, kept. References: the approved 2048 original of `app-targets/m4/audit-log` (the start spec section 13 names: its filter row, its group bands with counts and its mono table cells), `app-concepts/html/home-graphite.png` and the Hinge logo.
+- **Prompt:** `docs-reference.prompt.txt` keeps the first generation's prompt (GPT Image 2.6 through Higgsfield, 3:2, 2k, high), with a line on the capture that replaced its picture. References: the approved 2048 original of `app-targets/m4/audit-log` (the start spec section 13 names: its filter row, its group bands with counts and its mono table cells), `app-concepts/html/home-graphite.png` and the Hinge logo.
 - **Route (new):** `/docs/reference/configuration`, rendered at build time from **`docs/configuration.md`**, read as a file, never copied (ADR 0063: "one source for the reference"; `apps/docs` imports nothing from `packages/domain`, which is Sustainable Use).
 - **Features:** F-058 ("the configuration reference rendered from `docs/configuration.md` holds every setting the settings test knows"). The self-hosting rule in `AGENTS.md` (a new setting ships with its line in the reference). Ticket 21 (the page and its test), ticket 23 (the Reference section's other pages).
 - **Status:** a proposed target, waiting on approval (ticket 12's `## Comments`).
@@ -107,10 +107,8 @@ The file's `##` headings: `The server` (current in the picture), `Code hosts and
 
 ## Wrong in the image (build from this file)
 
-- **The navigation's Reference pages** carry `chevron-right`s; pages have none, only collapsed sections do.
-- **`required`** is italic `--faint` as specified; `OSTRA_DATA_DIR`'s default is shortened: build the file's text.
-- **The `Link copied` tooltip** sits over the previous row's name; place it above the link button, clear of text.
-- **Field and button borders** are Kelp `#2F4A47`: build `--control`.
-- **Wordmark and logo** are the model's drawing: use the real files.
+Nothing since 2026-11-20: the picture is a capture of the build. Its counts are `docs/configuration.md`'s on that day (`All 112`, `Server 69`, `Runner 29`, `Development 14`); the 59 in this file is the count when it was written, and the page always shows the file's. The generated picture it replaced drew Abyss colours, Kelp borders, chevrons on the navigation's pages and the `Link copied` tooltip over the previous row's name; the build has none of these.
 
-Right as drawn: the filter row with its segmented `Read by` and counts, the group bands with their counts and the process that reads them, mono names with `server` and `runner` chips, flags under runner names, the hovered row with its link button, and "On this page" with the file's four headings.
+**Fixed with the capture (2026-11-20):** at 1440 the `Read by` segments shrank to fit the row and cut off the last one (`Development 7`). They no longer shrink; the filter field gives way (200 to 320px), and where even that doesn't fit, the count wraps to its own line (`apps/docs/src/components/settings-reference-layout.test.ts`).
+
+Right as drawn: the filter row with its segmented `Read by` and counts, the group bands with their counts and the process that reads them, mono names with `server` and `runner` chips, flags under runner names, the hovered row with its link button and tooltip, and "On this page" with the file's headings.

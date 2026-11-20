@@ -1,3 +1,4 @@
+# 2026-11-20: docs-reference.webp is no longer this generation. It's a capture of the built docs site (apps/docs at dd60096b, built with OSTRA_DOCS_VERSION=1.0.0 and served as its static export), on the panel's graphite theme: /docs/reference/configuration in dark at 1440x956, device scale 2, with OSTRA_PUBLIC_URL's row hovered and its link just copied, downscaled to 1440x956. The prompt below drew the brief's Abyss palette and is kept for the record.
 # Generation 1 (kept). References: the approved 2048 original of app-targets/m4/audit-log, app-concepts/html/home-graphite.png, kit/logo/export/ostra-hinge-single-color-2048.png
 # gpt_image_2_6 --aspect_ratio 3:2 --resolution 2k --quality high
 

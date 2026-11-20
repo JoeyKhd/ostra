@@ -44,9 +44,9 @@ These hold too:
 ## Decided 2026-11-19
 
 The open points in the build specs were settled by the lead on the maintainer's delegation, each as its spec recommends:
-- **Light page colour** (`light-home.md`, open point 1): the page is Shell lifted, `#FBFAF6`, with Shell for the sidebar and raised surfaces, and Mist only as control borders. The brand file's exact light set makes fields and code blocks green-grey at panel density.
+- **Light page colour** (`light-home.md`, open point 1): the page is Shell lifted, `#FBFAF6`, with Shell for the sidebar and raised surfaces, and Mist only as control borders. The brand file's exact light set makes fields and code blocks green-grey at panel density. (Superseded 2026-11-20: the light set is graphite, below.)
 - **`--amber-text`** (`light-home.md`, open point 2): one token, `#FFB224` in dark and `#8A5300` in light.
-- **Charts in light** (`light-home.md`, open point 3): `#748A85`, which passes 3:1.
+- **Charts in light** (`light-home.md`, open point 3): `#748A85`, which passes 3:1. (Now `#7F8288`, neutral, since 2026-11-20.)
 - **The approval rule in light** (`light-task.md`): 3px, so it stays visible on the pale page.
 - **Field and button borders on the docs site** (`docs-home.md`): `#5A7A76` dark and `#7D8B87` light, so they pass 3:1. The pictures draw them in Kelp, which doesn't.
 - **"Not isolated"** is its own red callout on the docs site, separate from warnings.
@@ -57,6 +57,8 @@ Each one changes many screens, so it's the first thing for the maintainer's revi
 
 **The docs follow the panel's graphite theme.** The brief's Abyss palette for the docs (`docs-home`, `docs-guide`, `docs-reference`, `docs-search`) was superseded on 2026-11-20 by the maintainer's word: the live docs read as an older product beside the panel.
 - **Dark** is the panel's `:root` tokens; **light** is `light-home`'s table, which the panel's own light theme will build (ticket 18).
-- The docs' token names became the panel's (`--link` is `--teal`, `--surface-2` `--sel`, `--dialog` `--raise`, `--highlight` `--line-2`), and `docs-home.md`'s table holds the values. The four docs pictures stay as they are: their layout holds, their colours don't.
+- The docs' token names became the panel's (`--link` is `--teal`, `--surface-2` `--sel`, `--dialog` `--raise`, `--highlight` `--line-2`), and `docs-home.md`'s table holds the values. The docs pictures were first kept as drawn; since the targets moved (below), they're captures of the built site.
 - The tokens are copied into `apps/docs`, and `apps/docs/src/app/theme-tokens.test.ts` fails when they drift from the panel's or a text pair drops under AA.
-- Two docs-only choices stay: field, button and chip borders at 3:1 (`--control`, from 2026-11-19 above; dark is now the neutral `#62656B`, 3.30:1, light keeps `#7D8B87`), and the Deep water illustration as a rounded window in light, now in the search's empty state too.
+- Two docs-only choices stay: field, button and chip borders at 3:1 (`--control`, from 2026-11-19 above; dark is now the neutral `#62656B`, 3.30:1, and light `#7F8288`, 3.69:1), and the Deep water illustration as a rounded window in light, now in the search's empty state too.
+
+**The nine docs and light targets moved to the panel's graphite theme, 2026-11-20; the dark docs targets are captures of the built site.** The maintainer's rule is that every surface wears graphite, and these nine still drew the brief's Abyss and teal. `docs-home`, `docs-guide`, `docs-guide-phone`, `docs-reference`, `docs-search`, `docs-search-empty` and `docs-home-light` are screenshots of `apps/docs` (each `.prompt.txt` names the commit); `light-home` and `light-task` were regenerated on a light token table re-based on graphite (`light-home.md`: the dark greys turned light, no Abyss ink, teal only as link text), which the docs' light theme now wears too.
