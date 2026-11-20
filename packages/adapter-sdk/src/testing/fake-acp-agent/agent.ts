@@ -191,7 +191,7 @@ export const fakeScripts = [
   "submit-review",
   /** The proposing fake: calls `propose_environment` with its args' proposal, and says the answer. */
   "propose-environment",
-  /** Runs `git push origin HEAD:refs/heads/<branch>` in the repo folder given, and says `pushed` or `push refused`. */
+  /** Runs `git push origin HEAD:refs/heads/<branch>` (or `HEAD:<ref>` for a full ref name) in the repo folder given, and says `pushed` or `push refused`. */
   "git-push",
   /** Says each git repo's HEAD under the session's folder, one `<folder> <sha>` line each. */
   "heads",
@@ -1150,11 +1150,13 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
           return "end_turn";
         }
         const cwd = path.resolve(root, repo);
-        const command = `git push origin HEAD:refs/heads/${branch}`;
+        // Milestone 6 (ticket 22): a full ref name (`refs/ostra/wip/<task>`) is pushed as it is.
+        const target = branch.startsWith("refs/") ? branch : `refs/heads/${branch}`;
+        const command = `git push origin HEAD:${target}`;
         const toolCallId = "t-git-push";
         await update({ sessionUpdate: "tool_call", toolCallId, title: command, kind: "execute", status: "in_progress", rawInput: { command, cwd } });
         const code = await new Promise<number | null>((resolve) => {
-          const child = spawn("git", ["push", "origin", `HEAD:refs/heads/${branch}`], { cwd, stdio: "ignore", windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } });
+          const child = spawn("git", ["push", "origin", `HEAD:${target}`], { cwd, stdio: "ignore", windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } });
           child.on("error", () => {
             resolve(null);
           });
