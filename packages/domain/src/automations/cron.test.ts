@@ -103,6 +103,9 @@ describe("the cron evaluator", () => {
   const yearTo = Date.UTC(2027, 0, 1);
   const expressions = ["30 2 * * *", "0 * * * *", "30 1 * * *", "0 */6 * * 1-5", "15 9 1,15 * *", "0 0 * * sun", "0 3 * * *", "45 2 * mar,nov 0"];
 
+  // A year minute by minute, eight expressions: a few seconds alone, more on a busy CI machine (run 44743811978).
+  const YEAR_TIMEOUT_MS = 60_000;
+
   const matchesReference = (zone: (typeof zones)[number]): void => {
     for (const source of expressions) {
       const c = cron(source);
@@ -112,15 +115,15 @@ describe("the cron evaluator", () => {
 
   it("F-106: matches the minute-by-minute reference over a year in UTC, across both daylight-saving changes", () => {
     matchesReference("UTC");
-  });
+  }, YEAR_TIMEOUT_MS);
 
   it("F-106: matches the minute-by-minute reference over a year in Europe/Amsterdam, across both daylight-saving changes", () => {
     matchesReference("Europe/Amsterdam");
-  });
+  }, YEAR_TIMEOUT_MS);
 
   it("F-106: matches the minute-by-minute reference over a year in America/New_York, across both daylight-saving changes", () => {
     matchesReference("America/New_York");
-  });
+  }, YEAR_TIMEOUT_MS);
 
   it("F-106: a skipped local time fires at the next valid minute, and a repeated hour fires once", () => {
     const daily = cron("30 2 * * *");
