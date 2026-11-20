@@ -310,6 +310,23 @@ describe("the spec and the credentials", () => {
     expect(entry?.createdAt).toBeInstanceOf(Date);
   });
 
+  it("F-099, F-100: a refine or a review task's git token can only read the repo, never write to it", async () => {
+    const token = await accessToken(harness, runner);
+    try {
+      for (const kind of ["refine", "review"] as const) {
+        await test.db.task.update({ where: { id: task.taskId }, data: { kind } });
+        const response = await postJson(`${harness.url}${runnerPaths.taskCredentials(task.taskId)}`, { taskId: task.taskId, leaseEpoch: 1 }, token.accessToken);
+        expect(response.status).toBe(200);
+        const credentials = taskCredentialsSchema.parse(response.body);
+        const minted = codeHost.minted.at(-1);
+        expect(minted?.permissions).toEqual({ contents: "read", metadata: "read" });
+        expect(credentials.repos[0]?.gitToken).toBe(minted?.token);
+      }
+    } finally {
+      await test.db.task.update({ where: { id: task.taskId }, data: { kind: "code" } });
+    }
+  });
+
   it("a stale epoch gets no credentials, and another runner or organization gets nothing", async () => {
     const token = await accessToken(harness, runner);
     const stale = await postJson(`${harness.url}${runnerPaths.taskCredentials(task.taskId)}`, { taskId: task.taskId, leaseEpoch: 2 }, token.accessToken);

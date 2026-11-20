@@ -47,6 +47,12 @@ export type IssueTaskCredentials = (
 
 /** The git token's permissions: push the task's branch and its hidden ref, read the repo (ADR 0030). */
 const GIT_PERMISSIONS = { contents: "write", metadata: "read" } as const;
+/**
+ * A refine or review task only fetches (ADR 0031, F-099, F-100): its token can't write either, so
+ * a push fails at the code host too, not only at the git proxy, and on `host`, where the agent runs
+ * as the runner's account, it holds nothing that writes.
+ */
+const READ_ONLY_GIT_PERMISSIONS = { contents: "read", metadata: "read" } as const;
 
 export const issueTaskCredentials: IssueTaskCredentials = async (deps, input) => {
   const { tx } = deps;
@@ -134,7 +140,7 @@ export const issueTaskCredentials: IssueTaskCredentials = async (deps, input) =>
     // Narrowed to this one repo and these permissions: a token can't reach another repo (ADR 0030).
     const minted = await codeHost.mintRepoToken(
       { app: { appId: repo.connection.appId, privateKey: privateKey.value }, installationId: repo.installationId, repo: repoFullNameSchema.parse(repo.fullName) },
-      GIT_PERMISSIONS,
+      task.kind === "code" ? GIT_PERMISSIONS : READ_ONLY_GIT_PERMISSIONS,
     );
     if (!minted.ok) {
       return failed(`the code host refused a token for a repo (${minted.error.code})`);
