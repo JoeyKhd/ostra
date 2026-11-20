@@ -35,7 +35,8 @@ const Frame = ({ me, children }: { readonly me: RouterOutputs["me"]["get"]; read
           <Sidebar me={me} />
         </aside>
         <Sheet open={open} onOpenChange={setOpen}>
-          <SheetContent side="left" title={t("shell.navigation")} closeButton={false} className="w-[234px] lg:hidden">
+          {/* The drawer scrolls, as the sidebar does: an admin's rows are taller than a phone's screen, and the account menu is the last. */}
+          <SheetContent side="left" title={t("shell.navigation")} closeButton={false} className="w-[234px] overflow-y-auto lg:hidden">
             <Sidebar me={me} onNavigate={() => { setOpen(false); }} />
           </SheetContent>
         </Sheet>

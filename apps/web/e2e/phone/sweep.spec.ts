@@ -82,6 +82,19 @@ test("F-075: no route scrolls sideways at 390 px, and every control is at least 
   expect.soft(problems.filter((problem) => problem.small.length > 0), "a control is under 44 px").toEqual([]);
 });
 
+test("F-075: the navigation drawer scrolls, so its last row, the account menu, is in reach by tap", async ({ page }) => {
+  // A small phone, 320 × 568: an admin's drawer holds more rows than its screen does.
+  await page.setViewportSize({ width: 320, height: 568 });
+  await signIn(page, world.username);
+  await page.getByRole("button", { name: "Open navigation" }).tap();
+  const drawer = page.getByRole("dialog", { name: "Navigation" });
+  await expect(drawer.getByTestId("user-menu")).toBeAttached();
+  expect(await drawer.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  await drawer.getByTestId("user-menu").tap();
+  await page.getByRole("menuitem", { name: "Sign out" }).tap();
+  await page.waitForURL(/\/sign-in$/);
+});
+
 /** The row of Needs you for a seeded task. */
 const needsYouRow = (page: Page, taskId: string) => page.locator(`li[data-notification]`).filter({ has: page.locator(`a[href="/tasks/${taskId}"]`) });
 
