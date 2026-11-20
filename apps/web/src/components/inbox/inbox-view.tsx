@@ -30,6 +30,8 @@ import { useTRPC, useTRPCClient } from "@/lib/trpc";
 import { cacheAge, contextLine, filtered, filtersFrom, filtersToSearch, ledeSource, listInputOf, priorityText, rowAge } from "./inbox-words";
 import type { InboxDetail, InboxFilters, InboxSource, InboxTicket } from "./inbox-words";
 import { BulkStartPanel, SelectionBar, planOf, useBulkStart } from "./bulk-start";
+import { noTicks, tickAll, tickedRows, toggleTick } from "./inbox-selection";
+import type { Ticks } from "./inbox-selection";
 import type { BulkKind } from "./bulk-start";
 import { SafeMarkdown } from "./safe-markdown";
 import { PriorityIcon, TicketStatusIcon } from "./ticket-icons";
@@ -471,48 +473,32 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
   const end = useRef<HTMLDivElement>(null);
 
   // F-107: the ticked tickets, the kind and profile for all, and the bulk start they become.
-  const [ticked, setTicked] = useState<ReadonlyMap<string, InboxTicket>>(new Map());
-  const [lastTicked, setLastTicked] = useState<number | null>(null);
+  // The ticks are kept by ticket, not by row: the list refreshes under them (inbox-selection.ts).
+  const [ticks, setTicks] = useState<Ticks>(noTicks);
   const [bulkKind, setBulkKind] = useState<BulkKind>("code");
   const [bulkProfile, setBulkProfile] = useState<AgentProfileId | null>(null);
   const bulk = useBulkStart(projectId);
   const limits = useQuery(trpc.automations.list.queryOptions({ projectId }));
   const bulkMax = limits.data?.limits.bulkStartMax ?? 50;
-  const tickedList = [...ticked.keys()].flatMap((id) => {
-    const ticket = tickets.find((one) => String(one.id) === id) ?? ticked.get(id);
-    return ticket === undefined ? [] : [ticket];
-  });
+  const tickedList = tickedRows(ticks, tickets);
   const selecting = tickedList.length > 0;
   const busy = bulk.pressed !== null && !bulk.done;
-  const toggleTick = (index: number, range: boolean) => {
-    const ticket = tickets[index];
-    if (ticket === undefined || busy) return;
-    setTicked((current) => {
-      const next = new Map(current);
-      const on = !next.has(String(ticket.id));
-      const from = range && lastTicked !== null ? Math.min(lastTicked, index) : index;
-      const to = range && lastTicked !== null ? Math.max(lastTicked, index) : index;
-      for (const one of tickets.slice(from, to + 1)) {
-        if (on) next.set(String(one.id), one);
-        else next.delete(String(one.id));
-      }
-      return next;
-    });
-    setLastTicked(index);
+  const toggleRow = (ticket: InboxTicket, range: boolean) => {
+    if (busy) return;
+    setTicks((current) => toggleTick(current, tickets, ticket, range));
   };
   const clearTicks = () => {
     if (busy) return;
-    setTicked(new Map());
-    setLastTicked(null);
+    setTicks(noTicks);
     bulk.reset();
   };
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const typing = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
-      if (event.key === "Escape" && ticked.size > 0 && !typing) clearTicks();
+      if (event.key === "Escape" && ticks.byId.size > 0 && !typing) clearTicks();
       if ((event.metaKey || event.ctrlKey) && event.key === "a" && !typing && tickets.length > 0 && !busy) {
         event.preventDefault();
-        setTicked(new Map(tickets.map((ticket) => [String(ticket.id), ticket] as const)));
+        setTicks(tickAll(tickets));
       }
     };
     window.addEventListener("keydown", onKey);
@@ -695,8 +681,8 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
             </p>
           ) : (
             <ul className="mt-3.5" data-testid="inbox-list">
-              {tickets.map((ticket, index) => {
-                const isTicked = ticked.has(String(ticket.id));
+              {tickets.map((ticket) => {
+                const isTicked = ticks.byId.has(String(ticket.id));
                 const plan = planOf(ticket, bulkKind);
                 return (
                   <TicketRow
@@ -710,7 +696,7 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
                     tick={{
                       ticked: isTicked,
                       disabled: busy,
-                      onTick: (range) => { toggleTick(index, range); },
+                      onTick: (range) => { toggleRow(ticket, range); },
                       startsTasks: isTicked && plan.kind === "sub-issues" ? plan.tasks : null,
                       parentHref: ticket.subIssues > 0 ? `/projects/${projectId}/tickets/${ticket.id}` : null,
                     }}

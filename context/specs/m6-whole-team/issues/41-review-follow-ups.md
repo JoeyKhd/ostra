@@ -25,6 +25,7 @@ Milestone 6's review (2026-11-20) fixed what it confirmed in code and tests, one
 
 Each line is a difference from a build spec that the building ticket didn't record.
 
+- [x] **Inbox ticks across a refresh** (added 2026-11-20 from the lead's list): the Shift range's anchor was a row index and the panel kept the tick order, so a refresh that reordered the rows moved both. *Done 2026-11-20: the ticks and the anchor are kept by ticket (`apps/web/src/components/inbox/inbox-selection.ts`), listed in the list's order with the refreshed copies; proof in `context/proof/F-107.md` (c1).*
 - [ ] **Inbox bulk start:** ticking another ticket after a bulk start doesn't clear the results, so the bar stays disabled until Done; the started rows stay ticked; the results don't show a started task's state or "Queued" with its reason.
 - [ ] **Ticket parent:** no Age column; the children on no board of the project don't name their board and project; the refined row has no "Draft vN applied by …" line.
 - [ ] **Linear agent mode:** the public address row doesn't show the address; with agent mode on and the address unreachable, State reads "On", not "On, not receiving".
