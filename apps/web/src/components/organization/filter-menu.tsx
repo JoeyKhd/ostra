@@ -51,7 +51,7 @@ export const FilterMenu = ({ label, value, defaultLabel, options, onChange, sear
       <Popover open={open} onOpenChange={(next) => { setOpen(next); if (!next) setTyped(""); }}>
         <PopoverTrigger
           className={cn(
-            "inline-flex h-[30px] max-w-[260px] items-center gap-1.5 rounded-[7px] border border-line-2 bg-surface pl-2.5 text-ui hover:bg-sel",
+            "inline-flex h-[30px] max-w-[260px] items-center gap-1.5 rounded-[7px] border border-control-line bg-surface pl-2.5 text-ui hover:bg-sel",
             value === null ? "pr-2" : "pr-7",
           )}
         >

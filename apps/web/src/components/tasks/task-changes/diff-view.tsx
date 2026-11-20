@@ -272,7 +272,7 @@ export const CommentField = ({
   const rows = Math.min(8, Math.max(2, text.split("\n").length));
   return (
     <div className="py-2 pl-[104px] pr-3" data-field={`${target.side}:${String(target.line)}`}>
-      <div className="rounded-lg border border-line-2 bg-surface px-3 py-2.5">
+      <div className="focus-box rounded-lg border border-control-line bg-surface px-3 py-2.5">
         <textarea
           // The field opens on a press, so it takes the focus then (task-changes.md).
           autoFocus

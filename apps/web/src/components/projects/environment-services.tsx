@@ -94,7 +94,7 @@ const AddButton = ({ children, onClick }: { readonly children: ReactNode; readon
 const openProps = (open: () => void, label: string) => ({
   tabIndex: 0,
   "aria-label": label,
-  className: "cursor-pointer hover:bg-hover focus-visible:bg-hover focus-visible:outline-none",
+  className: "cursor-pointer hover:bg-hover focus-visible:bg-hover focus-visible:-outline-offset-2",
   onClick: open,
   onKeyDown: (event: KeyboardEvent<HTMLTableRowElement>) => {
     if (event.key === "Enter") {
@@ -219,7 +219,7 @@ const ServiceSheet = ({
             <li key={row.key} className="flex items-center gap-1.5" data-kind={row.kind}>
               <input
                 aria-label={t("environment.svc.variableName")}
-                className="h-[30px] w-[140px] min-w-0 rounded-md border border-line-2 bg-surface px-2 font-mono text-ui text-text outline-none placeholder:text-faint focus-visible:border-faint disabled:opacity-70"
+                className="h-[30px] w-[140px] min-w-0 rounded-md border border-control-line bg-surface px-2 font-mono text-ui text-text placeholder:text-faint focus-visible:border-faint disabled:opacity-70"
                 value={row.name}
                 placeholder="NAME"
                 disabled={!admin}
@@ -229,7 +229,7 @@ const ServiceSheet = ({
                 aria-label={t("environment.svc.variableValue")}
                 type={row.kind === "secret" ? "password" : "text"}
                 autoComplete="off"
-                className="h-[30px] min-w-0 flex-1 rounded-md border border-line-2 bg-surface px-2 font-mono text-ui text-text outline-none placeholder:text-faint focus-visible:border-faint disabled:opacity-70"
+                className="h-[30px] min-w-0 flex-1 rounded-md border border-control-line bg-surface px-2 font-mono text-ui text-text placeholder:text-faint focus-visible:border-faint disabled:opacity-70"
                 value={row.value}
                 placeholder={row.kind === "secret" ? (row.stored ? t("environment.svc.secretSet") : t("environment.svc.secretNew")) : ""}
                 disabled={!admin}
@@ -527,7 +527,7 @@ export const ServicesAndChecks = ({ projectId, view, admin }: { readonly project
                       },
                     }
                   : {})}
-                className={cn("cursor-pointer hover:bg-hover focus-visible:bg-hover focus-visible:outline-none", dragging === index && "opacity-50")}
+                className={cn("cursor-pointer hover:bg-hover focus-visible:bg-hover focus-visible:-outline-offset-2", dragging === index && "opacity-50")}
               >
                 <TableCell className="h-10">
                   {reorderable ? (

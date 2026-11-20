@@ -225,7 +225,7 @@ export const SearchView = ({ organization }: { readonly organization: string }) 
           onKeyDown={(event) => {
             if (event.key === "Escape") onType("");
           }}
-          className="h-9 rounded-lg border-line-2 bg-surface pl-9 pr-14 text-body"
+          className="h-9 rounded-lg bg-surface pl-9 pr-14 text-body"
           data-testid="search-query"
         />
         <span className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -306,7 +306,7 @@ export const SearchView = ({ organization }: { readonly organization: string }) 
                   onClick={() => { setParams({ task: result.taskId }); }}
                   onDoubleClick={() => { router.push(resultHref(result.taskId, result.snippets)); }}
                   onKeyDown={(event) => { onListKey(event, result); }}
-                  className={cn("block cursor-default rounded-md border-b border-line px-3.5 py-3 outline-none hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted", isSelected && "bg-sel hover:bg-sel")}
+                  className={cn("block cursor-default rounded-md border-b border-line px-3.5 py-3 hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted", isSelected && "bg-sel hover:bg-sel")}
                 >
                   <div className="flex h-[22px] items-center gap-3">
                     <span className="w-[110px] shrink-0 truncate text-sm text-muted">{stateWord(result.state)}</span>

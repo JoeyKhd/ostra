@@ -114,7 +114,7 @@ export const MomentsTable = ({ grid, mailOn, disabled, onChange }: MomentsTableP
       <span role="columnheader" className="text-center">
         {t("notificationSettings.email")}
         {mailOn ? null : (
-          <span aria-hidden className="opacity-60">
+          <span aria-hidden>
             {t("notificationSettings.emailOff")}
           </span>
         )}

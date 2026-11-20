@@ -68,7 +68,7 @@ export const ProjectComposer = ({ projectId, repos }: { readonly projectId: Proj
       onSubmit={submit}
       noValidate
       aria-label={t("newTask.title")}
-      className="rounded-lg border border-line-2 bg-surface px-3.5 pb-3 pt-3"
+      className="focus-box rounded-lg border border-control-line bg-surface px-3.5 pb-3 pt-3"
       data-testid="new-task"
     >
       <label htmlFor={promptId} className="sr-only">{t("newTask.prompt")}</label>

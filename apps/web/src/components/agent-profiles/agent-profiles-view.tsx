@@ -69,7 +69,7 @@ const DefaultsCell = ({ profile }: { readonly profile: ProfileRow }) => {
   );
   return more > 0 ? (
     <Tooltip content={profile.defaults.map(defaultEntry).join(", ")}>
-      <span tabIndex={0} className="min-w-0 outline-none">{line}</span>
+      <span tabIndex={0} className="min-w-0">{line}</span>
     </Tooltip>
   ) : (
     line
@@ -118,7 +118,7 @@ const ProfileTableRow = ({ profile, selected, onSelect, onOpen }: {
               onOpen();
             }
           }}
-          className="flex w-full min-w-0 items-center gap-2.5 text-left outline-none focus-visible:underline"
+          className="flex w-full min-w-0 items-center gap-2.5 text-left focus-visible:underline"
         >
           <SlidersHorizontalIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-faint" />
           <span className={cn("truncate", archived ? "text-muted" : "text-text")}>{profile.name}</span>

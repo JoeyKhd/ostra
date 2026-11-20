@@ -73,7 +73,7 @@ export const PageFrame = ({ crumbs, actions, properties, wideProperties = false,
             onClick={openSearch}
             aria-label={t("search.palette.open")}
             data-testid="topbar-search"
-            className="flex h-[30px] items-center gap-2 rounded-md border border-line bg-surface px-2 text-faint hover:border-line-2 hover:text-muted md:w-[200px] md:px-2.5"
+            className="flex h-[30px] items-center gap-2 rounded-md border border-control-line bg-surface px-2 text-faint hover:border-faint hover:text-muted md:w-[200px] md:px-2.5"
           >
             <SearchIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75]" />
             <span className="hidden text-ui md:inline">{t("shell.search")}</span>

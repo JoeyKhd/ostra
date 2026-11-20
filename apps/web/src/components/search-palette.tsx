@@ -619,7 +619,7 @@ export const SearchPalette = ({
           className="fixed left-1/2 top-[14vh] z-50 flex max-h-[min(560px,70vh)] w-[min(680px,calc(100vw-32px))] -translate-x-1/2 flex-col overflow-hidden rounded-xl border border-line-2 bg-raise shadow-(--shadow-palette) focus:outline-none max-sm:top-[58px]"
         >
           <Dialog.Title className="sr-only">{t("palette.title")}</Dialog.Title>
-          <div className="relative flex min-h-[52px] shrink-0 flex-wrap items-center gap-2 border-b border-line px-4 py-2">
+          <div className="relative flex min-h-[52px] shrink-0 flex-wrap items-center gap-2 border-b border-control-line px-4 py-2">
             <SearchIcon aria-hidden className="mr-1 size-4 shrink-0 stroke-[1.75] text-muted" />
             {step === null ? null : (
               <span data-testid="palette-step-chip" className="inline-flex h-6 shrink-0 items-center rounded-[5px] border border-line-2 bg-bg px-2 text-[12.5px] text-text">{stepChip(step)}</span>
@@ -644,7 +644,7 @@ export const SearchPalette = ({
               aria-expanded
               aria-controls={listId}
               aria-activedescendant={activeId}
-              className="min-w-[120px] flex-1 bg-transparent text-[15px] text-text placeholder:text-faint focus:outline-none"
+              className="min-w-[120px] flex-1 bg-transparent text-[15px] text-text placeholder:text-faint focus-visible:outline-offset-2"
             />
             <Kbd className="ml-auto shrink-0">esc</Kbd>
             {loadingSearch ? <span aria-hidden className="absolute bottom-0 left-0 h-0.5 w-1/3 animate-pulse bg-line-2" /> : null}
@@ -670,7 +670,7 @@ export const SearchPalette = ({
                       sendReopen(step.task);
                     }
                   }}
-                  className="mt-1 block max-h-48 min-h-[76px] w-full resize-y rounded-lg border border-line-2 bg-bg px-3 py-2 text-ui text-text placeholder:text-faint"
+                  className="mt-1 block max-h-48 min-h-[76px] w-full resize-y rounded-lg border border-control-line bg-bg px-3 py-2 text-ui text-text placeholder:text-faint"
                 />
                 <p className="mt-2 text-[12.5px] text-faint">{t("palette.step.resumes")}</p>
               </div>

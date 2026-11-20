@@ -155,7 +155,7 @@ export const EmailForm = ({ draft, saved, problems, shown, disabled, readOnly, o
           <label key={provider} className="flex h-8 items-center text-ui">
             <RadioGroupItem
               value={provider}
-              className="size-4 border-line-2 data-[state=checked]:border-[5px] data-[state=checked]:border-text data-[state=checked]:bg-bg [&>span]:hidden"
+              className="size-4 border-control-line data-[state=checked]:border-[5px] data-[state=checked]:border-text data-[state=checked]:bg-bg [&>span]:hidden"
             />
             <span className="ml-2.5 text-text">{providerLabel(provider)}</span>
             <span className="ml-2.5 text-faint">{providerHint(provider)}</span>

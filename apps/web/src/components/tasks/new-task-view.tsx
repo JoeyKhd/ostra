@@ -136,7 +136,7 @@ const ProjectPicker = ({ projects, project, onPick, disabled }: {
                 pick(first.id);
               }
             }}
-            className="mb-1 h-[30px] w-full border-b border-line bg-transparent px-2 text-body text-text outline-none placeholder:text-faint focus-visible:outline-none"
+            className="mb-1 h-[30px] w-full border-b border-control-line bg-transparent px-2 text-body text-text placeholder:text-faint focus-visible:-outline-offset-2"
           />
           <ul role="listbox" aria-label={t("newTask.pickProject")}>
             {shown.map((item) => (
@@ -482,7 +482,7 @@ export const NewTaskView = () => {
           noValidate
           aria-label={t("newTask.title")}
           data-testid="new-task"
-          className="mt-6 flex min-h-[250px] cursor-text flex-col rounded-[10px] border border-line-2 bg-surface px-4 pb-2.5 pt-3.5 focus-within:border-line-3"
+          className="focus-box mt-6 flex min-h-[250px] cursor-text flex-col rounded-[10px] border border-control-line bg-surface px-4 pb-2.5 pt-3.5"
           onClick={(event) => { if (event.target === event.currentTarget) textarea.current?.focus(); }}
         >
           <label htmlFor="new-task-prompt" className="sr-only">{t("newTask.prompt")}</label>

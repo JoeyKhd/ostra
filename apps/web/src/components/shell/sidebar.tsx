@@ -77,7 +77,7 @@ export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
           type="button"
           onClick={openSearch}
           data-action="open-palette"
-          className="flex h-[30px] min-w-0 flex-1 items-center gap-2 rounded-md border border-line bg-surface px-2.5 text-faint hover:border-line-2 hover:text-muted"
+          className="flex h-[30px] min-w-0 flex-1 items-center gap-2 rounded-md border border-control-line bg-surface px-2.5 text-faint hover:border-faint hover:text-muted"
         >
           <SearchIcon aria-hidden className="size-4 shrink-0 stroke-[1.75]" />
           {t("shell.search")}

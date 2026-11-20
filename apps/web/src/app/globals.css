@@ -232,7 +232,8 @@
   .auth-scale {
     --text: #ededee;
     --muted: #9a9da3;
-    --faint: #64676d;
+    /* 4.8:1 on the page (ticket 17); the picture's #64676d was 3.4:1. */
+    --faint: #7c7f85;
     --fs-xs: 11px;
     --fs-sm: 12px;
     --fs-ui: 12.5px;
@@ -353,5 +354,49 @@
 @media (pointer: coarse) {
   :where(button, [data-slot="button"], input:not([type="checkbox"], [type="radio"], [type="hidden"], [type="file"]), select, textarea, [role="tab"], [role="combobox"]):not([role="checkbox"], [role="switch"], [role="radio"]) {
     min-height: 44px;
+  }
+}
+
+/*
+ * F-081 (ticket 17): what the keyboard walk and the contrast check asked for.
+ * - `--control-line`: the edge of a field or a button, at 3:1 or more against the page, the
+ *   sidebar, the surface and a raised dialog (WCAG 1.4.11). `--line-2` stays the hairline of rows,
+ *   cards and overlays, which identify nothing on their own.
+ * - `.focus-box`: a field drawn inside a box (the composers, the code editor) shows its focus ring
+ *   on the box, as every other control shows the 2px `:focus-visible` outline; a date field shows
+ *   it on `:focus`.
+ */
+:root,
+[data-theme="dark"] {
+  --control-line: #686b71;
+}
+
+[data-theme="light"] {
+  --control-line: #80838a;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --control-line: #80838a;
+  }
+}
+
+@theme inline {
+  --color-control-line: var(--control-line);
+}
+
+@layer base {
+  /* A date field keeps the focus in its parts, which `:focus-visible` doesn't reach. */
+  input[type="date"]:focus,
+  input[type="time"]:focus {
+    outline: 2px solid var(--teal);
+    outline-offset: 1px;
+  }
+}
+
+@layer components {
+  .focus-box:has(:focus-visible) {
+    outline: 2px solid var(--teal);
+    outline-offset: 1px;
   }
 }

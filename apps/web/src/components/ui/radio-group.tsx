@@ -12,7 +12,7 @@ export const RadioGroup = RadioGroupPrimitive.Root;
 export const RadioGroupItem = ({ className, ...props }: ComponentProps<typeof RadioGroupPrimitive.Item>) => (
   <RadioGroupPrimitive.Item
     className={cn(
-      "inline-grid size-3.5 shrink-0 place-items-center rounded-full border border-faint bg-surface outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal disabled:opacity-50 data-[state=checked]:border-text",
+      "inline-grid size-3.5 shrink-0 place-items-center rounded-full border border-faint bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal disabled:opacity-50 data-[state=checked]:border-text",
       className,
     )}
     {...props}

@@ -6,7 +6,7 @@ import type { ComponentProps } from "react";
 import { cn } from "@/lib/cn";
 
 // shadcn/ui's button, restyled to graphite (graphite.css `.btn`):
-// - `outline` (the default): `--surface` with a `--line-2` border, for every ordinary action.
+// - `outline` (the default): `--surface` with a `--control-line` border (3:1, ticket 17), for every ordinary action.
 // - `primary`: the Shell fill, at most one per page.
 // - `amber`: only the one action that answers what needs you (an approval), never anything else.
 export const buttonVariants = cva(
@@ -14,10 +14,10 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        outline: "border-line-2 bg-surface text-text hover:bg-sel",
+        outline: "border-control-line bg-surface text-text hover:bg-sel",
         primary: "border-primary bg-primary font-semibold text-on-primary hover:border-primary/88 hover:bg-primary/88",
         amber: "border-amber bg-amber font-semibold text-on-amber hover:brightness-95",
-        danger: "border-line-2 bg-surface text-red hover:bg-sel",
+        danger: "border-control-line bg-surface text-red hover:bg-sel",
         ghost: "border-transparent bg-transparent text-muted hover:bg-sel hover:text-text",
         link: "h-auto border-transparent bg-transparent p-0 text-teal hover:underline",
       },

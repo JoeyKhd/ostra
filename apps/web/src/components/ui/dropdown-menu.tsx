@@ -26,7 +26,7 @@ export const DropdownMenuContent = ({ className, sideOffset = 4, ...props }: Com
 export const DropdownMenuItem = ({ className, ...props }: ComponentProps<typeof Menu.Item>) => (
   <Menu.Item
     className={cn(
-      "flex h-[28px] cursor-default select-none items-center gap-[9px] rounded-sm px-2 text-text outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-sel [&_svg]:size-[14px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75] [&_svg]:text-muted",
+      "flex h-[28px] cursor-default select-none items-center gap-[9px] rounded-sm px-2 text-text outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-solid focus-visible:outline-teal data-[disabled]:opacity-50 data-[highlighted]:bg-sel [&_svg]:size-[14px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75] [&_svg]:text-muted",
       className,
     )}
     {...props}
@@ -47,7 +47,7 @@ export const DropdownMenuRadioGroup = Menu.RadioGroup;
 export const DropdownMenuRadioItem = ({ className, children, ...props }: ComponentProps<typeof Menu.RadioItem>) => (
   <Menu.RadioItem
     className={cn(
-      "flex h-[28px] cursor-default select-none items-center gap-[9px] rounded-sm px-2 text-text outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-sel [&_svg]:size-[14px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75]",
+      "flex h-[28px] cursor-default select-none items-center gap-[9px] rounded-sm px-2 text-text outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-solid focus-visible:outline-teal data-[disabled]:opacity-50 data-[highlighted]:bg-sel [&_svg]:size-[14px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75]",
       className,
     )}
     {...props}
@@ -65,7 +65,7 @@ export const DropdownMenuSub = Menu.Sub;
 export const DropdownMenuSubTrigger = ({ className, children, ...props }: ComponentProps<typeof Menu.SubTrigger>) => (
   <Menu.SubTrigger
     className={cn(
-      "flex h-[28px] cursor-default select-none items-center gap-[9px] rounded-sm px-2 text-text outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-sel data-[state=open]:bg-sel [&_svg]:size-[14px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75] [&_svg]:text-muted",
+      "flex h-[28px] cursor-default select-none items-center gap-[9px] rounded-sm px-2 text-text outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-solid focus-visible:outline-teal data-[disabled]:opacity-50 data-[highlighted]:bg-sel data-[state=open]:bg-sel [&_svg]:size-[14px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75] [&_svg]:text-muted",
       className,
     )}
     {...props}

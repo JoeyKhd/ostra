@@ -96,7 +96,7 @@ export const RunnerLabelsSection = ({ profileId, labels, readOnly }: { readonly 
                 aria-invalid={refusal !== null}
                 aria-describedby={refusal === null ? undefined : "runner-label-refusal"}
                 onChange={(event) => { setText(event.target.value); setRefusal(null); }}
-                className={cn("h-[30px] w-[220px] rounded-md border border-line-2 bg-surface px-2.5 font-mono text-ui text-text placeholder:text-faint focus-visible:border-faint focus-visible:outline-none", refusal !== null && "border-red")}
+                className={cn("h-[30px] w-[220px] rounded-md border border-control-line bg-surface px-2.5 font-mono text-ui text-text placeholder:text-faint focus-visible:border-faint", refusal !== null && "border-red")}
               />
               <Button type="submit" variant="outline" size="sm" className="h-[30px]" disabled={text.trim() === "" || save.isPending}>{t("runnerLabels.add")}</Button>
             </form>

@@ -6,7 +6,7 @@ import type { ComponentProps } from "react";
 
 import { cn } from "@/lib/cn";
 
-// shadcn/ui's select, restyled to graphite: a 28px trigger with a `--line-2` border and a 7px
+// shadcn/ui's select, restyled to graphite: a 28px trigger with a `--control-line` border and a 7px
 // radius, and the dropdown menu's `--raise` panel for its list.
 export const Select = SelectPrimitive.Root;
 export const SelectValue = SelectPrimitive.Value;
@@ -15,7 +15,7 @@ export const SelectGroup = SelectPrimitive.Group;
 export const SelectTrigger = ({ className, children, ...props }: ComponentProps<typeof SelectPrimitive.Trigger>) => (
   <SelectPrimitive.Trigger
     className={cn(
-      "inline-flex h-[30px] min-w-0 items-center gap-2 rounded-md border border-line-2 bg-transparent px-2.5 text-left text-body text-text outline-none hover:bg-hover focus-visible:border-faint disabled:opacity-50 data-[placeholder]:text-faint [&_svg]:size-[15px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75]",
+      "inline-flex h-[30px] min-w-0 items-center gap-2 rounded-md border border-control-line bg-transparent px-2.5 text-left text-body text-text hover:bg-hover focus-visible:border-faint disabled:opacity-50 data-[placeholder]:text-faint [&_svg]:size-[15px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75]",
       className,
     )}
     {...props}
@@ -46,7 +46,7 @@ export const SelectContent = ({ className, children, position = "popper", sideOf
 export const SelectItem = ({ className, children, ...props }: ComponentProps<typeof SelectPrimitive.Item>) => (
   <SelectPrimitive.Item
     className={cn(
-      "relative flex h-[30px] cursor-default select-none items-center gap-2 rounded-sm pl-2 pr-7 text-text outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-sel [&_svg]:size-[14px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75] [&_svg]:text-muted",
+      "relative flex h-[30px] cursor-default select-none items-center gap-2 rounded-sm pl-2 pr-7 text-text outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-solid focus-visible:outline-teal data-[disabled]:opacity-50 data-[highlighted]:bg-sel [&_svg]:size-[14px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75] [&_svg]:text-muted",
       className,
     )}
     {...props}

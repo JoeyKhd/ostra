@@ -214,7 +214,7 @@ export const RulesSection = ({ rules, openKey, readOnly, coverage, onChange, onO
                 aria-disabled={done}
                 onClick={() => { onPreset(preset); }}
                 className={cn(
-                  "inline-flex h-[26px] items-center gap-1.5 rounded-sm border border-line-2 px-2.5 text-sm [&_svg]:size-[13px]",
+                  "inline-flex h-[26px] items-center gap-1.5 rounded-sm border border-control-line px-2.5 text-sm [&_svg]:size-[13px]",
                   done ? "cursor-default text-faint" : "text-muted hover:bg-sel hover:text-text",
                 )}
               >

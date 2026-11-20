@@ -325,7 +325,7 @@ export const ProjectRunnersView = ({ projectId }: { readonly projectId: ProjectI
                               aria-roledescription="sortable"
                               aria-disabled={pools.length < 2}
                               aria-pressed={lifted}
-                              className={cn("grid size-6 touch-none place-items-center rounded-md text-faint hover:bg-hover focus-visible:outline focus-visible:outline-1 focus-visible:outline-line-2", pools.length < 2 ? "cursor-default opacity-50" : "cursor-grab")}
+                              className={cn("grid size-6 touch-none place-items-center rounded-md text-faint hover:bg-hover focus-visible:outline-2 focus-visible:outline-teal", pools.length < 2 ? "cursor-default opacity-50" : "cursor-grab")}
                               onKeyDown={(event) => { onHandleKey(event, index); }}
                               onPointerDown={(event) => { onPointerDown(event, pool.poolId); }}
                               onPointerMove={onPointerMove}
@@ -374,7 +374,7 @@ export const ProjectRunnersView = ({ projectId }: { readonly projectId: ProjectI
                                 setShareError(null);
                               }
                             }}
-                            className={cn("h-7 w-14 rounded-[7px] border border-line-2 bg-surface px-2 font-mono text-ui text-text placeholder:text-faint focus-visible:border-faint focus-visible:outline-none", invalid && "border-red")}
+                            className={cn("h-7 w-14 rounded-[7px] border border-control-line bg-surface px-2 font-mono text-ui text-text placeholder:text-faint focus-visible:border-faint", invalid && "border-red")}
                           />
                           <span className="whitespace-nowrap text-[12.5px] text-faint">
                             {usage?.poolMaxBoxes === null || usage === undefined

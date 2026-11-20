@@ -53,7 +53,7 @@ const MoneyInput = ({ id, value, onChange, placeholder, suffix, readOnly = false
       onChange={(event) => {
         onChange(event.target.value);
       }}
-      className={cn("min-w-0 flex-1 bg-transparent font-mono outline-none placeholder:font-sans placeholder:text-faint", readOnly ? "text-muted" : "text-text")}
+      className={cn("min-w-0 flex-1 bg-transparent font-mono placeholder:font-sans placeholder:text-faint", readOnly ? "text-muted" : "text-text")}
     />
     {suffix === undefined ? null : (
       <span aria-hidden className="font-sans text-sm text-faint">

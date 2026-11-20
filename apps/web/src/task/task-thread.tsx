@@ -183,7 +183,7 @@ const Composer = ({ interrupt, onSend, reopen = false, hint = null }: { readonly
     );
   };
   return (
-    <ComposerPrimitive.Root data-part="composer" className="rounded-lg border border-line-2 bg-surface px-3.5 py-3 focus-within:border-line-3" onSubmit={(event) => { event.preventDefault(); send(false); }}>
+    <ComposerPrimitive.Root data-part="composer" className="focus-box rounded-lg border border-control-line bg-surface px-3.5 py-3" onSubmit={(event) => { event.preventDefault(); send(false); }}>
       <ComposerPrimitive.Input
         onKeyDown={(event) => {
           // Ticket 16: Escape leaves the composer (Enter sends, Shift+Enter is a new line).

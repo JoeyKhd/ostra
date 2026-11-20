@@ -122,7 +122,7 @@ const PeriodPicker = ({ period, onChange, now }: { readonly period: PeriodChoice
               onChange={(event) => {
                 setFrom(event.target.value);
               }}
-              className="mt-1 block h-[30px] w-full rounded-md border border-line-2 bg-surface px-2 font-mono text-ui text-text [color-scheme:dark]"
+              className="mt-1 block h-[30px] w-full rounded-md border border-control-line bg-surface px-2 font-mono text-ui text-text [color-scheme:dark]"
             />
           </label>
           <label className="block text-sm text-muted">
@@ -135,7 +135,7 @@ const PeriodPicker = ({ period, onChange, now }: { readonly period: PeriodChoice
               onChange={(event) => {
                 setTo(event.target.value);
               }}
-              className="mt-1 block h-[30px] w-full rounded-md border border-line-2 bg-surface px-2 font-mono text-ui text-text [color-scheme:dark]"
+              className="mt-1 block h-[30px] w-full rounded-md border border-control-line bg-surface px-2 font-mono text-ui text-text [color-scheme:dark]"
             />
           </label>
           <p className="text-xs text-faint">{t("insights.datesHint")}</p>

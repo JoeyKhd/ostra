@@ -58,7 +58,7 @@ export const CodeEditor = ({
   const lines = value.split("\n");
   const rows = lines.length < minLines ? [...lines, ...Array.from({ length: minLines - lines.length }, () => null)] : lines;
   return (
-    <div className={cn("relative rounded-lg border border-line-2 bg-surface py-2.5 font-mono text-ui leading-5 focus-within:border-faint", className)} data-testid="code-editor">
+    <div className={cn("focus-box relative rounded-lg border border-control-line bg-surface py-2.5 font-mono text-ui leading-5 focus-within:border-faint", className)} data-testid="code-editor">
       <div aria-hidden className="select-none">
         {rows.map((line, i) => {
           const n = i + 1;

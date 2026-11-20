@@ -87,7 +87,7 @@ export const ProjectDefaults = ({ projectId, defaults, admin }: { readonly proje
                     }
                   }}
                 >
-                  <SelectTrigger className="h-7 w-full border-transparent px-1.5 text-ui hover:border-line-2" aria-label={t(kindLabel[kind])} data-kind={kind}>
+                  <SelectTrigger className="h-7 w-full px-1.5 text-ui" aria-label={t(kindLabel[kind])} data-kind={kind}>
                     <SelectValue placeholder="–" />
                   </SelectTrigger>
                   <SelectContent>

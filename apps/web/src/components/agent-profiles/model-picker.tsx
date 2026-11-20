@@ -147,7 +147,7 @@ export const ModelPicker = ({ options, chosenKey, onPick, onHighlight, labelledB
                 value={query}
                 onChange={(event) => { setQuery(event.target.value); setActive(0); onHighlight(null); }}
                 onKeyDown={onKeyDown}
-                className="h-full min-w-0 flex-1 bg-transparent text-body outline-none placeholder:text-faint"
+                className="h-full min-w-0 flex-1 bg-transparent text-body placeholder:text-faint"
               />
             </div>
             <p className="px-3 pb-1 pt-2.5 text-xs font-medium text-faint">{groupLabel}</p>

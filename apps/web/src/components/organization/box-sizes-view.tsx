@@ -202,7 +202,7 @@ export const BoxSizesView = () => {
         disabled={saving}
         onChange={(event) => { setValue(row.size.name, row.size, field, event.target.value); }}
         className={cn(
-          "h-[34px] w-[56px] rounded-[7px] border border-line-2 bg-surface px-2.5 font-mono text-[14px] text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-muted",
+          "h-[34px] w-[56px] rounded-[7px] border border-control-line bg-surface px-2.5 font-mono text-[14px] text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-muted",
           edited && "border-muted",
           bad && "border-red",
         )}

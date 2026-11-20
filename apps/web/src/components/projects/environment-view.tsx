@@ -109,7 +109,7 @@ const kindIcon = { variable: VariableIcon, secret: KeyRoundIcon, file: FileIcon 
 
 /** An input that reads as text at rest: no border and no fill until hovered or focused. */
 const quietInput =
-  "h-[30px] w-full rounded-md border border-transparent bg-transparent px-2 font-mono text-body text-text placeholder:text-faint outline-none hover:border-line-2 hover:bg-surface focus-visible:border-faint focus-visible:bg-surface read-only:hover:border-transparent read-only:hover:bg-transparent";
+  "h-[30px] w-full rounded-md border border-transparent bg-transparent px-2 font-mono text-body text-text placeholder:text-faint hover:border-control-line hover:bg-surface focus-visible:border-faint focus-visible:bg-surface read-only:hover:border-transparent read-only:hover:bg-transparent";
 
 /** A section of the page: a 28px title line with an inline note or a right-hand end, then its body. */
 const EnvSection = ({ title, count, note, end, children }: { readonly title: ReactNode; readonly count?: number; readonly note?: ReactNode; readonly end?: ReactNode; readonly children: ReactNode }) => (
@@ -228,7 +228,7 @@ const SecretValue = ({ row, admin, onChange }: { readonly row: Extract<Row, { ki
         type="password"
         autoComplete="off"
         aria-label={t("environment.secretValue")}
-        className="h-[30px] w-[240px] min-w-0 rounded-md border border-line-2 bg-surface px-2.5 font-mono text-body text-text placeholder:text-faint outline-none focus-visible:border-faint"
+        className="h-[30px] w-[240px] min-w-0 rounded-md border border-control-line bg-surface px-2.5 font-mono text-body text-text placeholder:text-faint focus-visible:border-faint"
         value={row.value}
         placeholder={row.hasValue ? t("environment.secretSet") : t("environment.secretEmpty")}
         onChange={(e) => { onChange(e.target.value); }}
@@ -423,7 +423,7 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
                       <label htmlFor={envFileId} className="text-ui text-muted">{t("environment.writtenTo")}</label>
                       <input
                         id={envFileId}
-                        className="h-[26px] w-[82px] rounded-md border border-line-2 bg-surface px-2 font-mono text-sm text-text outline-none focus-visible:border-faint"
+                        className="h-[26px] w-[82px] rounded-md border border-control-line bg-surface px-2 font-mono text-sm text-text focus-visible:border-faint"
                         value={envFiles[repo.repoId] ?? repo.envFile}
                         readOnly={!admin}
                         onChange={(e) => { setEnvFiles((current) => ({ ...current, [repo.repoId]: e.target.value })); }}

@@ -66,7 +66,7 @@ const AddMember = ({ members, listed, onAdd }: { readonly members: readonly Pane
           onChange={(event) => { setQuery(event.target.value); }}
           placeholder={t("agentProfiles.props.findMember")}
           aria-label={t("agentProfiles.props.findMember")}
-          className="mb-1 h-8 w-full rounded-md border border-line-2 bg-surface px-2.5 text-ui text-text placeholder:text-faint outline-none focus-visible:border-faint"
+          className="mb-1 h-8 w-full rounded-md border border-control-line bg-surface px-2.5 text-ui text-text placeholder:text-faint focus-visible:border-faint"
         />
         {offered.length === 0 ? (
           <p className="px-2 py-2 text-ui text-faint">{t("agentProfiles.props.noMatch")}</p>
@@ -79,7 +79,7 @@ const AddMember = ({ members, listed, onAdd }: { readonly members: readonly Pane
                   role="option"
                   aria-selected={false}
                   onClick={() => { onAdd(member.memberId); setOpen(false); }}
-                  className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-ui hover:bg-sel focus-visible:bg-sel focus-visible:outline-none"
+                  className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-ui hover:bg-sel focus-visible:bg-sel focus-visible:-outline-offset-2"
                 >
                   <MemberDot name={member.name} size={20} />
                   <span className="truncate">{member.name}</span>

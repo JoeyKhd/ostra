@@ -69,7 +69,7 @@ export const TicketRow = ({ ticket, several, tasks = true, selected, onSelect, n
       aria-pressed={selected}
       onClick={onSelect}
       onKeyDown={(event) => { if (event.key === "Enter") onSelect(); }}
-      className={cn(rowGrid(several, tasks), "cursor-default rounded-md px-2 outline-none hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted", selected && "bg-sel hover:bg-sel")}
+      className={cn(rowGrid(several, tasks), "cursor-default rounded-md px-2 hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted", selected && "bg-sel hover:bg-sel")}
     >
       <span title={priorityText(ticket.priority)} className="text-muted">
         <PriorityIcon priority={ticket.priority} />
@@ -504,7 +504,7 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
                 placeholder={t("inbox.filter.text")}
                 value={text}
                 onChange={(event) => { setText(event.target.value); }}
-                className="h-[30px] w-full rounded-md border border-line-2 bg-surface pl-8 pr-2.5 text-ui text-text placeholder:text-faint focus-visible:border-faint focus-visible:outline-none"
+                className="h-[30px] w-full rounded-md border border-control-line bg-surface pl-8 pr-2.5 text-ui text-text placeholder:text-faint focus-visible:border-faint"
               />
             </label>
             <FilterMenu label={t("inbox.filter.status")} options={statusOptions} selected={filters.status} onChange={(status) => { navigate({ ...filters, status: status.length === 0 ? ["open"] : status }); }} />

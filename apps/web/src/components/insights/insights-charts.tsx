@@ -102,7 +102,7 @@ export const PrChart = ({ days, endsToday, narrow }: { readonly days: readonly P
         tabIndex={0}
         aria-label={t("insights.chartLabel", { opened: totals.opened, merged: totals.merged })}
         viewBox={`0 0 ${String(width)} ${String(height)}`}
-        className="block w-full outline-none focus-visible:outline-2 focus-visible:outline-teal"
+        className="block w-full focus-visible:outline-2 focus-visible:outline-teal"
         onKeyDown={onKey}
         onMouseLeave={() => {
           setActive(null);

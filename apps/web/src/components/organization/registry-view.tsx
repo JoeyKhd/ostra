@@ -26,7 +26,7 @@ import { checkLine, checkStatus, imageNameOf, parseAddress, parsePrefix, prefixS
 type Auth = "basic" | "node";
 type Credential = { readonly username: string; readonly secret: string };
 
-const field = "h-7 rounded-[7px] border border-line-2 bg-surface px-2.5 font-mono text-ui text-text placeholder:text-faint focus-visible:border-faint focus-visible:outline-none aria-invalid:border-red";
+const field = "h-7 rounded-[7px] border border-control-line bg-surface px-2.5 font-mono text-ui text-text placeholder:text-faint focus-visible:border-faint aria-invalid:border-red";
 const row = "grid min-h-10 items-center gap-x-3 border-t border-line py-1.5 grid-cols-[140px_minmax(0,1fr)] sm:grid-cols-[180px_minmax(0,1fr)_auto]";
 
 const Mono = ({ children }: { readonly children: ReactNode }) => <span className="font-mono">{children}</span>;

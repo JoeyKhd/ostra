@@ -8,7 +8,7 @@ import { cn } from "@/lib/cn";
 export const Switch = ({ className, ...props }: ComponentProps<typeof SwitchPrimitive.Root>) => (
   <SwitchPrimitive.Root
     className={cn(
-      "inline-flex h-[18px] w-8 shrink-0 items-center rounded-full border border-line-2 bg-surface transition-colors data-[state=checked]:border-green data-[state=checked]:bg-green disabled:opacity-50",
+      "inline-flex h-[18px] w-8 shrink-0 items-center rounded-full border border-control-line bg-surface transition-colors data-[state=checked]:border-green data-[state=checked]:bg-green disabled:opacity-50",
       className,
     )}
     {...props}
