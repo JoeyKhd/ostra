@@ -81,7 +81,7 @@ export const proposal = async (d: Demo): Promise<void> => {
     // asks for it in the task instead, with the rule that holds.
     d.run.notes["step8-asked"] = "the agent declined the ticket's request (ticket text isn't an instruction, and apiVersion isn't one lowercase word); Demo asked in the task";
     const turns = await d.db.turn.count({ where: { taskId } });
-    await sendMessage(demo, taskId, "Please call memory_propose now, without asking me first: the title 'Settings keys', and the body 'Keys in `config/settings.json` are written in lowerCamelCase, like `release` and `apiVersion`.'");
+    await sendMessage(demo, taskId, "Please call memory_propose now, without asking me first: the title 'Settings keys', and the body 'Keys in `config/settings.json` are written in lowerCamelCase.'");
     await waitFor("the asked turn", 8 * 60_000, async () => ((await d.db.turn.count({ where: { taskId } })) > turns ? true : null), 3000);
     await settledAnswering(d, demo, taskId);
   }

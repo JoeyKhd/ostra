@@ -17,10 +17,14 @@ export const githubOrganizations = async (d: Demo): Promise<void> => {
   await ours.waitFor({ timeout: 30_000 });
   const state = (await ours.getAttribute("data-state")) ?? "";
   d.check("step 15: GitHub lists the App's installation on the test org, linked", state === "linked", `${settings.githubOrg}: ${state}`);
+  await d.shot(demo, "step15-github-organizations");
+  // "Add a GitHub organization" opens the panel with the install link and the private App's line.
+  await demo.getByRole("button", { name: "Add a GitHub organization" }).first().click();
+  await demo.getByTestId("add-organization").or(demo.getByTestId("private-apps")).first().waitFor({ timeout: 30_000 }).catch(() => undefined);
   const addOrg = await demo.getByTestId("add-organization").count();
   const privateApps = await demo.getByTestId("private-apps").innerText().catch(() => "");
   const explained = addOrg > 0 || privateApps.includes("GitHub lets only its owner install a private App");
   d.check("step 15: the page shows the install link to send, or why a private App can't be installed elsewhere", explained, addOrg > 0 ? "the install link (a public App)" : "the private App's line, with the link to its settings");
-  await d.shot(demo, "step15-github-organizations");
+  await d.shot(demo, "step15-add-organization");
   d.run.notes["step15"] = "live: the linked installation and the private App's line; the second organization's half ran on the fake GitHub (ticket 55 is the live run)";
 };

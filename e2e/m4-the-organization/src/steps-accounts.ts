@@ -68,7 +68,7 @@ export const removalAndResets = async (d: Demo): Promise<void> => {
   if (raeMember.state !== "removed") {
     await demo.goto("/organization/members");
     // The row menu: the role, then "Remove from Demo".
-    await demo.getByRole("button", { name: `Actions for ${settings.rae.username}` }).first().click();
+    await demo.getByRole("button", { name: `Actions for ${settings.rae.username}`, exact: true }).first().click();
     await demo.getByRole("menuitem", { name: /Remove from/ }).first().click();
     await d.shot(demo, "step14-remove-rae");
     await demo.getByRole("alertdialog").getByRole("button", { name: /Remove/ }).last().click();
@@ -91,7 +91,14 @@ export const removalAndResets = async (d: Demo): Promise<void> => {
   const forgot = await d.freshPage();
   await forgot.goto("/sign-in");
   await forgot.getByText("Forgot your password?").first().click();
-  await forgot.getByLabel("Email").fill(settings.sam.email);
+  await forgot.waitForURL(/\/reset/);
+  // Typed once the form has hydrated: a value set before that never reaches its state.
+  await forgot.waitForLoadState("networkidle");
+  const send = forgot.getByRole("button", { name: "Send reset link" });
+  for (let tries = 0; tries < 5 && !(await send.isEnabled()); tries += 1) {
+    await forgot.getByLabel("Email").fill(settings.sam.email);
+    await forgot.waitForTimeout(500);
+  }
   const askedAt = Date.now();
   await forgot.getByRole("button", { name: "Send reset link" }).click();
   await forgot.getByText("Check your inbox").first().waitFor({ timeout: 30_000 });
@@ -112,7 +119,7 @@ export const removalAndResets = async (d: Demo): Promise<void> => {
   await other.waitForLoadState("networkidle");
   d.check("step 14: Sam's other browser is signed out", new URL(other.url()).pathname === "/sign-in", new URL(other.url()).pathname);
   // Email off; the instance admin's reset link for Sam, once.
-  const off = await d.mutate(demo, "email.save", { provider: "off" });
+  const off = await d.mutate(demo, "email.settings.save", { provider: "off" });
   d.check("step 14: the instance admin switches email off", off.ok, off.ok ? "off" : off.code);
   await demo.goto("/instance/accounts");
   await demo.getByLabel("Search by username or address").fill(settings.sam.username);

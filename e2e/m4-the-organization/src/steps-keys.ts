@@ -1,4 +1,3 @@
-import { say } from "@ostra/e2e-m1/setup";
 import type { Page } from "@playwright/test";
 import { z } from "zod";
 
@@ -15,6 +14,7 @@ import { auditSince, sendMessage, settled, settledAnswering, startPromptTask, ta
 
 export const CLIENT_B = "client-b";
 export const BUILDER = "Builder";
+export const BUILDER_B = "Builder B";
 
 const planSchema = z.looseObject({
   version: z.string(),
@@ -43,7 +43,8 @@ const keyLine = async (page: Page, taskId: string): Promise<string> => {
   await page.goto(`/tasks/${taskId}`);
   await page.waitForLoadState("networkidle");
   await page.waitForTimeout(1500);
-  return /Key\s*·\s*[\w-]+/.exec(await page.locator("main").innerText())?.[0] ?? "";
+  // The key is in the properties panel beside the thread, which reads "Key" then the provider.
+  return /Key\s*·?\s*client-[\w-]+/.exec(await page.locator("body").innerText())?.[0] ?? "";
 };
 
 /** `client-b`: a second provider row, on no list (one model key on this machine). */
@@ -66,23 +67,29 @@ const addClientB = async (d: Demo): Promise<string> => {
   return row.id;
 };
 
-/** The `Builder` profile: the dev model by its name. */
-const builder = async (d: Demo): Promise<string> => {
+/**
+ * A `Builder` profile: the dev model by its name, on one provider. Since 2026-11-20 a profile names
+ * its provider (`agent-profiles.mdx`), and runs only where a project's list allows that provider:
+ * `Builder` is on client-a for calculator, and `Builder B` the same model on client-b for portal.
+ */
+const builder = async (d: Demo, name: string, providerName: string): Promise<string> => {
   const { demo, settings } = d;
-  const known = await d.db.agentProfile.findFirst({ where: { name: BUILDER, archivedAt: null }, select: { id: true } });
+  const known = await d.db.agentProfile.findFirst({ where: { name, archivedAt: null }, select: { id: true } });
   if (known !== null) return known.id;
   await demo.goto("/organization/agent-profiles");
   await demo.getByRole("link", { name: "New profile" }).first().click();
   await demo.getByTestId("profile-eyebrow").waitFor();
-  await demo.getByTestId("profile-name").fill(BUILDER);
+  await demo.getByTestId("profile-name").fill(name);
+  await demo.getByTestId("profile-provider").click();
+  await demo.getByRole("option", { name: providerName, exact: true }).first().click();
   const model = await d.db.model.findFirst({ where: { endpointModelId: settings.modelId }, select: { displayName: true } });
   await demo.getByTestId("profile-model").click();
   await demo.getByRole("option", { name: new RegExp(model?.displayName ?? settings.modelId) }).first().click();
   await demo.getByRole("textbox", { name: "Instructions" }).fill("Make the change the task asks for, and keep it small.");
-  await d.shot(demo, "step16-builder-profile");
+  await d.shot(demo, `step16-${name.toLowerCase().replaceAll(" ", "-")}-profile`);
   await demo.locator('[data-action="save-profile"]').click();
   await demo.getByRole("status").filter({ hasText: "Saved." }).first().waitFor({ timeout: 30_000 });
-  const row = await d.db.agentProfile.findFirstOrThrow({ where: { name: BUILDER }, select: { id: true } });
+  const row = await d.db.agentProfile.findFirstOrThrow({ where: { name }, select: { id: true } });
   return row.id;
 };
 
@@ -115,10 +122,13 @@ export const twoKeys = async (d: Demo): Promise<void> => {
   const a = await setList(d, demo, calculator, [clientA]);
   const b = await setList(d, demo, portal, [clientB]);
   d.check("step 16: calculator's own list is client-a, portal's is client-b", a.saved && b.saved, `${a.code}, ${b.code}`);
-  const profile = await builder(d);
-  for (const projectId of [calculator, portal]) {
-    const set = await d.mutate(demo, "projects.setDefaultProfile", { projectId, kind: "code", profileId: profile });
-    if (!set.ok) say(`step 16: setting ${BUILDER} as ${projectId}'s default: ${set.code}`);
+  const profiles = [
+    [calculator, await builder(d, BUILDER, "client-a")],
+    [portal, await builder(d, BUILDER_B, CLIENT_B)],
+  ] as const;
+  for (const [projectId, profileId] of profiles) {
+    const set = await d.mutate(demo, "projects.setDefaultProfile", { projectId, kind: "code", profileId });
+    d.check(`step 16: ${projectId === calculator ? BUILDER : BUILDER_B} is ${projectId === calculator ? "calculator" : "portal"}'s default`, set.ok, set.ok ? "set" : `${set.code} ${set.message.slice(0, 120)}`);
   }
   await demo.goto(`/projects/${portal}/settings/models`);
   await demo.waitForLoadState("networkidle");
@@ -198,7 +208,7 @@ export const noKey = async (d: Demo): Promise<void> => {
   await demo.reload();
   await demo.waitForLoadState("networkidle");
   const thread = await demo.locator("main").innerText();
-  const noKeyLine = /No key for [^\n]* in calculator[^\n]*/.exec(thread)?.[0] ?? "";
+  const noKeyLine = /no key for [^\n]* in calculator[^\n]*/i.exec(thread)?.[0] ?? "";
   d.check("step 17: the message is held, and the thread says there's no key", noKeyLine !== "", noKeyLine || "no such line");
   await d.shot(demo, "step17-held-no-key");
   await demo.goto("/");
@@ -209,7 +219,10 @@ export const noKey = async (d: Demo): Promise<void> => {
   await sam.goto("/");
   await sam.waitForLoadState("networkidle");
   const samHome = await sam.locator("main").innerText();
-  d.check("step 17: Home's needs-you shows it to Demo and not to Sam", /no key/i.test(home) && !/no key/i.test(samHome), `Demo ${/no key/i.test(home) ? "sees it" : "doesn't"}, Sam ${/no key/i.test(samHome) ? "sees it" : "doesn't"}`);
+  // Since profiles name their provider, the item reads "Its profile runs on client-a, which
+  // calculator doesn't allow", with "Pick a key".
+  const noKeyItem = /no key|Pick a key|profile runs on client-a/i;
+  d.check("step 17: Home's needs-you shows it to Demo and not to Sam", noKeyItem.test(home) && !noKeyItem.test(samHome), `Demo ${noKeyItem.test(home) ? "sees it" : "doesn't"}, Sam ${noKeyItem.test(samHome) ? "sees it" : "doesn't"}`);
   const check = await d.query(demo, "tasks.startCheck", { projectId: calculator });
   d.check("step 17: a new task in calculator shows no key before Start", check.ok && /key/i.test(JSON.stringify(check.data)), check.ok ? JSON.stringify(check.data).slice(0, 160) : check.code);
   await demo.goto(`/projects/${calculator}`);

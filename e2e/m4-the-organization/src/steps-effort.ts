@@ -28,6 +28,8 @@ export const effort = async (d: Demo): Promise<void> => {
   await demo.goto(`/organization/agent-profiles/${profile.id}`);
   const field = demo.getByTestId("profile-effort");
   await field.waitFor({ timeout: 30_000 });
+  // The levels render once the model's controls load.
+  await field.locator('[data-level="default"]').waitFor({ timeout: 30_000 }).catch(() => undefined);
   const offered = await attributes(field.locator("[data-level]"), "data-level");
   d.check("step 18: the profile's Effort offers the model's levels, Default first", offered[0] === "default" && offered.includes("high") && offered.includes("low"), offered.join(", "));
   await field.locator('[data-level="high"]').click();
@@ -50,8 +52,10 @@ export const effort = async (d: Demo): Promise<void> => {
   const taskId = d.id("task:step18");
   await running(d, taskId);
   await demo.goto(`/tasks/${taskId}`);
-  await demo.getByTestId("task-effort").first().waitFor({ timeout: 30_000 }).catch(() => undefined);
-  const shown = await demo.getByTestId("task-effort").first().getAttribute("data-level").catch(() => null);
+  // The driver sees the control (`task-effort-trigger`), anyone else the level (`task-effort`).
+  const effortRow = demo.locator('[data-testid="task-effort"], [data-testid="task-effort-trigger"]').first();
+  await effortRow.waitFor({ timeout: 30_000 }).catch(() => undefined);
+  const shown = await effortRow.getAttribute("data-level").catch(() => null);
   d.check("step 18: the task page shows Effort · High", shown === "high", shown ?? "no Effort row");
   await d.shot(demo, "step18-demo-4-task-high");
   // 5. While the turn runs, the driver picks Low: from the next turn.

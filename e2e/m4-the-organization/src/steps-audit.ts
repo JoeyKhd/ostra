@@ -78,7 +78,8 @@ const paletteResults = async (d: Demo, page: Awaited<ReturnType<Demo["page"]>>, 
   await page.keyboard.press("Control+K");
   const palette = page.getByTestId("search-palette");
   await palette.waitFor({ timeout: 15_000 });
-  await palette.getByRole("combobox").fill(text);
+  // A trailing space finishes the last filter token, as a person presses space or picks its value.
+  await palette.getByRole("combobox").fill(`${text} `);
   await page.waitForTimeout(2500);
   return attributes(palette.getByTestId("search-palette-result"), "data-task");
 };

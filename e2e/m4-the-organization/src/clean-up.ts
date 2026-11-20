@@ -43,7 +43,12 @@ export const cleanUp = async (d: Demo): Promise<void> => {
     archived += 1;
   }
   const webhook = d.run.notes["linearWebhook"];
-  if (webhook !== undefined && webhook !== "polling") await removeSeedWebhook(d.tool, webhook);
+  // A webhook an earlier clean-up of this run already deleted is gone: nothing to do.
+  if (webhook !== undefined && webhook !== "polling") {
+    await removeSeedWebhook(d.tool, webhook).catch((error: unknown) => {
+      if (!(error instanceof Error && error.message.includes("Entity not found"))) throw error;
+    });
+  }
   say(`clean-up: ${String(closed)} PRs closed, ${String(deleted)} refs deleted, ${String(archived)} tickets archived`);
   d.check("after: the clean-up closed this run's PRs, deleted its refs and archived its tickets", true, `${String(closed)} PRs closed, ${String(deleted)} refs deleted, ${String(archived)} tickets archived`);
 };

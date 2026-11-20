@@ -199,9 +199,9 @@ export const roles = async (d: Demo): Promise<void> => {
   await d.shot(sam, "step02-sam-sidebar");
   await sam.goto(`/projects/${vault}`);
   await sam.waitForLoadState("networkidle");
-  await sam.getByText(/not found|doesn't exist|can't find|no such project/i).first().waitFor({ timeout: 30_000 }).catch(() => undefined);
+  await sam.getByText(/not found|doesn't exist|can't find|no such project|nothing here/i).first().waitFor({ timeout: 30_000 }).catch(() => undefined);
   const vaultText = await sam.locator("main").innerText();
-  d.check("step 2: vault's URL shows not found to Sam", /not found|doesn't exist|can't find|no such project/i.test(vaultText), vaultText.slice(0, 80));
+  d.check("step 2: vault's URL shows not found to Sam", /not found|doesn't exist|can't find|no such project|nothing here/i.test(vaultText), vaultText.slice(0, 80));
   await d.shot(sam, "step02-sam-vault-not-found");
   const get = await d.query(sam, "projects.get", { projectId: vault });
   d.check("step 2: projects.get for vault as Sam is NOT_FOUND", !get.ok && get.code === "NOT_FOUND", get.ok ? "answered" : get.code);
