@@ -1,6 +1,6 @@
 # 39: Subagents on the task page: the badge and the tree
 
-Status: ready-for-agent
+Status: done
 Builder: full stack
 Blocked by: the subagent turn fix (a turn doesn't end while its subagents run; `explore` stays read-only), on main before this starts
 Features: F-138 (F-023 note)
@@ -21,12 +21,13 @@ The maintainer, 2026-11-20: "just a badge in the conversation that shows the amo
 
 ## Done when
 
-- [ ] Tests named for `F-138`: OpenCode's real child-session updates (the recorded log, and a run against the stub model) become the tree with its parents, types, prompts, states, calls and answers; a nested subagent sits under its parent; an agent without the capability shows flat calls; a reload rebuilds the same tree; an approval inside a subagent names it.
-- [ ] Playwright, desktop and phone: the badge, the window, a selected node, a running and a failed subagent, and the keyboard path; screenshots compared with the targets.
-- [ ] Break-its for each, then restored; proof rows in `context/proof/F-138.md`; `pnpm check:proof` passes.
-- [ ] Typecheck, lint and tests of every touched package and its consumers pass.
+- [x] Tests named for `F-138`: OpenCode's real child-session updates (the recorded log, and a run against the stub model) become the tree with its parents, types, prompts, states, calls and answers; a nested subagent sits under its parent; an agent without the capability shows flat calls; a reload rebuilds the same tree; an approval inside a subagent names it.
+- [x] Playwright, desktop and phone: the badge, the window, a selected node, a running and a failed subagent, and the keyboard path; screenshots compared with the targets.
+- [x] Break-its for each, then restored; proof rows in `context/proof/F-138.md`; `pnpm check:proof` passes.
+- [x] Typecheck, lint and tests of every touched package and its consumers pass.
 
 ## Comments
 
 - 2026-11-20: opened after the maintainer approved the targets and the subagent turn fix.
 - 2026-11-20: the subagent turn fix is in (ADR 0067). The agent interface has `AgentCapabilities.subagents` (`background` for OpenCode and the `rich` fake, `none` for the `plain` fakes); the driver already asks for `opencode/child-session-updates`, reads `opencode/session/child_update` (today it forwards the `update`s flat and keeps the states for the turn's wait) and joins each child to its starting call (`startedBy`, from `rawOutput.metadata.sessionID`). The `rich` fake plays a background subagent (`[[fake:subagent-bg]]`), and OpenCode's stub scenarios have `subagent-bg`.
+- 2026-11-20: done. Commits: `0d1b2b9d` (protocol minor 6: `subagent.started`, `subagent.status`, the subagent on the agent's output and on approvals; a minor-4 peer is outside the window now), `e8db7bfa` (the driver names each subagent's work, the runner leaves out what a minor-5 server can't read, the fake plays `[[fake:subagent-tree]]`, two parity cases), `e11df1eb` (the fold's per-turn tree, with OpenCode's recorded log replayed and a real run against the stub model), `d9080a0f` (the badge, the window, the `Subagent` rows, the approval naming its subagent, the e2e spec and its seed), `3447681d` (the driver's own `interrupted`), `b434b601` (the docs: the research's section 6, ADR 0067's note, the glossary, the adapter guide) and the commit that closes this ticket (the proof). The proof: `context/proof/F-138.md`. Tokens per subagent stay out, as planned: no node shows a tokens line.

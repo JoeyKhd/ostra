@@ -352,7 +352,7 @@ describe("the subagent tree, from each agent (F-138)", () => {
     }
   }, 60_000);
 
-  it("F-138: OpenCode's recorded approval inside a subagent names it (run I, no extension: the child's own `_meta`)", async () => {
+  it("F-138: OpenCode's recorded approval inside a subagent names it (run I, without the extension: by the child's own meta)", async () => {
     const run = await readRecordedRun("I");
     const replay = replayAgent(run);
     try {
