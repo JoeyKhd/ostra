@@ -1,4 +1,5 @@
 import { router } from "../trpc/init.ts";
+import { automationsRouter } from "./automations.ts";
 import { boardsRouter } from "./boards.ts";
 import { diffRouter } from "./diff.ts";
 import { emailRouter } from "./email.ts";
@@ -55,6 +56,7 @@ export const appRouter = router({
   projects: projectsRouter,
   boards: boardsRouter,
   inbox: inboxRouter,
+  automations: automationsRouter,
   environments: environmentsRouter,
   diff: diffRouter,
   tasks: tasksRouter,

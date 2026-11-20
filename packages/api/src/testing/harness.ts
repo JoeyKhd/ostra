@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { createLogger, silentLogger } from "@ostra/adapter-sdk";
 import type { CatalogEntry, LogRecord, ModelProviderAdapter, TrackerAdapter } from "@ostra/adapter-sdk";
 import { createJiraSite, JiraFakeAdapter } from "@ostra/adapter-sdk/testing";
-import { postgresAuditLog, postgresChangeNotices, profileLimits, systemClock } from "@ostra/domain";
+import { parseServerSettings, postgresAuditLog, postgresChangeNotices, profileLimits, systemClock } from "@ostra/domain";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, SeededMember, TestDatabase } from "@ostra/db/testing";
 import { hashPassword } from "better-auth/crypto";
@@ -99,6 +99,8 @@ export type BareHarnessOptions = {
   readonly resetLinkHours?: number;
   /** `OSTRA_DEV_HOST_POOL_SAME_USER`. Default off, as on an install. */
   readonly devHostPoolSameUser?: boolean;
+  /** `OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES`. Default 60, as on an install. */
+  readonly scheduleMinIntervalMinutes?: number;
 };
 
 /** A harness on an empty install: no account, no organization (the first-run tests). */
@@ -135,6 +137,11 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
   const uploads: UploadedBlob[] = [];
   const emailDirectory: EmailDirectory = options.email ?? noEmailDirectory;
 
+  const parsedDefaults = parseServerSettings({});
+  if (!parsedDefaults.ok) {
+    throw new Error("the install's default settings don't parse");
+  }
+  const installDefaults = parsedDefaults.settings;
   const deps: ApiDeps = {
     db: test.db,
     auth,
@@ -162,6 +169,8 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       joinTokenDays: 30,
       devHostPoolSameUser: options.devHostPoolSameUser ?? false,
       docsUrl: "https://docs.example.com/ostra/",
+      // Milestone 6's working values, as a fresh install has them.
+      team: { ...installDefaults.team, ...(options.scheduleMinIntervalMinutes === undefined ? {} : { scheduleMinIntervalMinutes: options.scheduleMinIntervalMinutes }) },
     },
     blobStore: {
       name: "postgres",
