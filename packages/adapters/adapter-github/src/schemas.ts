@@ -203,8 +203,8 @@ const reviewUserSchema = z.looseObject({ id: z.number().int(), login: z.string()
 /**
  * One review, as `GET /repos/{o}/{r}/pulls/{n}/reviews` lists it and the `pull_request_review`
  * webhook carries it. The REST API writes the state in capitals (`APPROVED`), the webhook in small
- * letters (`approved`); a pending review has no `submitted_at`. The body is never read. A deleted
- * account's review has `user: null`.
+ * letters (`approved`); a pending review has no `submitted_at`. A deleted account's review has
+ * `user: null`. Milestone 6 (F-105): the body and the page, for a "changes requested" prompt.
  */
 export const reviewSchema = z.looseObject({
   id: z.number().int(),
@@ -212,6 +212,8 @@ export const reviewSchema = z.looseObject({
   state: z.string().min(1),
   commit_id: z.string().nullish(),
   submitted_at: z.string().nullish(),
+  body: z.string().nullish(),
+  html_url: z.string().nullish(),
 });
 export const reviewListSchema = z.array(reviewSchema);
 export type GitHubReview = z.infer<typeof reviewSchema>;

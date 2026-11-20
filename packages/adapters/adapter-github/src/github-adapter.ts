@@ -1803,6 +1803,9 @@ const toReview = (review: GitHubReview): PullRequestReview | "no-author" | null 
     state,
     commitId: review.commit_id ?? null,
     submittedAt,
+    // Milestone 6 (F-105): the review's words and page, read only for a "changes requested" prompt.
+    body: review.body ?? null,
+    url: review.html_url ?? null,
   };
 };
 

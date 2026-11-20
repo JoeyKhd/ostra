@@ -304,6 +304,9 @@ const milestone4Fixture = (fake: FakeGitHub): Pick<CodeHostFixture, "reviews" | 
     state,
     commitId: review.commitId,
     submittedAt: review.submittedAt === null ? null : Date.parse(review.submittedAt),
+    // Milestone 6 (F-105): the review's words and page.
+    body: review.body ?? "",
+    url: `https://github.example/${review.repo}/pull/${String(review.number)}#pullrequestreview-${String(review.id)}`,
   });
   const synchronize = pullRequestPayload({ action: "synchronize", number: REVIEWED_PR }, { number: REVIEWED_PR, state: "open", merged: false, merged_at: null, closed_at: null, head: { ref: "ostra/contract", sha: reviewedHead } });
   return {
@@ -325,7 +328,17 @@ const milestone4Fixture = (fake: FakeGitHub): Pick<CodeHostFixture, "reviews" | 
         input: signed(fake, "pull_request_review", reviewPayload({ action: "submitted", reviewId: approved.id, state: "approved", userId: 583233, login: "monalisa", type: "User" })),
         number: REVIEWED_PR,
         headSha: reviewedHead,
-        review: { reviewId: String(approved.id), userId: "583233", login: "monalisa", isBot: false, state: "approved", commitId: reviewedHead, submittedAt: Date.parse(at(30)) },
+        review: {
+          reviewId: String(approved.id),
+          userId: "583233",
+          login: "monalisa",
+          isBot: false,
+          state: "approved",
+          commitId: reviewedHead,
+          submittedAt: Date.parse(at(30)),
+          body: "Looks good.",
+          url: `https://github.example/fake-org/test1/pull/${String(REVIEWED_PR)}#pullrequestreview-${String(approved.id)}`,
+        },
       },
       dismissed: {
         input: signed(fake, "pull_request_review", reviewPayload({ action: "dismissed", reviewId: dismissed.id, state: "dismissed", userId: 583231, login: "octocat", type: "User" })),
@@ -1507,7 +1520,17 @@ describe("the GitHub adapter", () => {
       expect(listed.value[0]).toMatchObject({ userId: "600000", login: "reviewer-0", isBot: true, state: "commented", commitId: head, submittedAt: Date.UTC(2026, 10, 18, 12, 0, 0) });
       expect(listed.value[0]?.reviewId).toMatch(/^\d+$/);
       expect(listed.value[129]).toMatchObject({ userId: "600129", isBot: false, state: "approved" });
-      expect(listed.value[130]).toEqual({ reviewId: String(pending.id), userId: "700001", login: "drafty", isBot: false, state: "pending", commitId: head, submittedAt: null });
+      expect(listed.value[130]).toEqual({
+        reviewId: String(pending.id),
+        userId: "700001",
+        login: "drafty",
+        isBot: false,
+        state: "pending",
+        commitId: head,
+        submittedAt: null,
+        body: "",
+        url: `https://github.example/${repo}/pull/${String(number)}#pullrequestreview-${String(pending.id)}`,
+      });
       // Oldest first, as GitHub lists them, across its pages of 100.
       expect(listed.value.map((review) => review.login).slice(98, 102)).toEqual(["reviewer-98", "reviewer-99", "reviewer-100", "reviewer-101"]);
       expect(fake.requests.filter((request) => request.path === `/repos/${repo}/pulls/${String(number)}/reviews`)).toHaveLength(2);
@@ -1567,7 +1590,7 @@ describe("the GitHub adapter", () => {
           repo,
           number: 3,
           headSha: head,
-          review: { reviewId: "9", userId: String(fake.botId), login: `${fake.appSlug}[bot]`, isBot: true, state: "commented", commitId: head, submittedAt: Date.parse("2026-11-18T12:00:00Z") },
+          review: { reviewId: "9", userId: String(fake.botId), login: `${fake.appSlug}[bot]`, isBot: true, state: "commented", commitId: head, submittedAt: Date.parse("2026-11-18T12:00:00Z"), body: null, url: null },
         },
       });
       expect(adapter.parseWebhook(signed(fake, "pull_request_review", body({ state: "a-state-github-never-sent" })))).toMatchObject({ ok: false, error: { code: "invalid-response" } });
@@ -1608,6 +1631,18 @@ describe("the GitHub adapter", () => {
       ]);
       // In order, so a later change request reads as withdrawing the earlier approval.
       expect(listed.value.map((review) => review.submittedAt)).toEqual([...listed.value.map((review) => review.submittedAt)].sort((a, b) => (a ?? 0) - (b ?? 0)));
+    });
+
+    it("F-105: reads a review's body and its page, for the changes-requested prompt", async () => {
+      const number = 43;
+      const added = fake.addReview(repo, number, { userId: 2, login: "reviewer", userType: "User", state: "CHANGES_REQUESTED", commitId: head, submittedAt: minute(1), body: "Rename the helper." });
+      fake.addReview(repo, number, { userId: 3, login: "other", userType: "User", state: "APPROVED", commitId: head, submittedAt: minute(2) });
+      const listed = await adapter.listReviews(fixture.access, number);
+      if (!listed.ok) throw new Error(listed.error.message);
+      expect(listed.value.map((review) => [review.state, review.body, review.url])).toEqual([
+        ["changes_requested", "Rename the helper.", `https://github.example/${repo}/pull/43#pullrequestreview-${String(added.id)}`],
+        ["approved", "", `https://github.example/${repo}/pull/43#pullrequestreview-${String(added.id + 1)}`],
+      ]);
     });
 
     it("F-104: a correctly signed pull_request_review webhook is read; one with a bad signature or none is refused", () => {

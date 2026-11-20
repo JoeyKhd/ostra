@@ -395,7 +395,11 @@ export type DeleteRefResult = {
 export const pullRequestReviewStates = ["approved", "changes_requested", "commented", "dismissed", "pending"] as const;
 export type PullRequestReviewState = (typeof pullRequestReviewStates)[number];
 
-/** One review on a PR (`listReviews`, the `pull_request_review` webhook). Its body is never read. */
+/**
+ * One review on a PR (`listReviews`, the `pull_request_review` webhook). Milestone 6 (F-105): its
+ * body and its page, when the host gives them, for a "changes requested" prompt; the body is
+ * untrusted text, never logged.
+ */
 export type PullRequestReview = {
   readonly reviewId: string;
   /** The reviewer's account on the host: what a member's linked account is matched by (F-119). */
@@ -408,6 +412,10 @@ export type PullRequestReview = {
   readonly commitId: string | null;
   /** In ms since the epoch; `null` for a pending review, which isn't submitted. */
   readonly submittedAt: number | null;
+  /** Milestone 6 (F-105): the review's own words, `null` or missing when it has none. Untrusted: never logged. */
+  readonly body?: string | null;
+  /** Milestone 6 (F-105): the review's page on the host, when the host says. */
+  readonly url?: string | null;
 };
 
 /**
