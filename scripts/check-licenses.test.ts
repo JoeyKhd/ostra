@@ -123,7 +123,7 @@ describe("findViolations", () => {
       { kind: "unknown-license", name: "runner", dir: "packages/runner", license: "Apache2.0" },
     ]);
     expect(violations.map((violation) => describeViolation(violation))).toEqual([
-      'runner (packages/runner) declares "Apache2.0", which is on neither license list in scripts/check-licenses.ts: check the spelling, or add the license to a list',
+      'runner (packages/runner) declares "Apache2.0", which is on neither license list in scripts/known-licenses.ts: check the spelling, or add the license to a list',
     ]);
   });
 
@@ -134,7 +134,7 @@ describe("findViolations", () => {
       pkg("sdk", "Apache-2.0", ["stale"]),
     ]);
     expect(violations.map((violation) => describeViolation(violation))).toEqual([
-      'stale (packages/stale) declares "AGPL-3.0-only", which is on neither license list in scripts/check-licenses.ts: check the spelling, or add the license to a list',
+      'stale (packages/stale) declares "AGPL-3.0-only", which is on neither license list in scripts/known-licenses.ts: check the spelling, or add the license to a list',
       "sdk (packages/sdk) is Apache-2.0 but reaches a restricted package (AGPL-3.0-only): sdk -> stale",
     ]);
   });

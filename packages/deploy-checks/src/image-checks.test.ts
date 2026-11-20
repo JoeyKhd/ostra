@@ -5,6 +5,7 @@ import { readDeployFiles } from "./deploy-files.ts";
 import { checkCompose, checkDockerfile, checkImages } from "./image-checks.ts";
 import type { DeployFiles, ImageRule } from "./image-checks.ts";
 import { buildPlan } from "./images.ts";
+import { NOTICES_PATH } from "./notices.ts";
 import { parseYaml, yamlAt } from "./yaml.ts";
 
 // Milestone 5's ticket 22 (F-039): the three images and the compose file, checked without Docker.
@@ -38,8 +39,10 @@ describe("every FROM", () => {
       expect(rulesOf(unpinned), name).toContain("from-digest");
     }
     // A stage's own name isn't an image, and a later stage's name can't be used before it exists.
-    expect(checkDockerfile("runner", "FROM a:1@sha256:" + "0".repeat(64) + " AS one\nFROM one AS two\nUSER node\nENTRYPOINT [\"ostra\"]\n", "")).toEqual([]);
-    expect(checkDockerfile("runner", "FROM two AS one\nFROM a:1@sha256:" + "0".repeat(64) + " AS two\nUSER node\nENTRYPOINT [\"ostra\"]\n", "").map((problem) => problem.rule)).toEqual(["from-digest"]);
+    // Only the FROM rule is read here: these small files write no notices.
+    const fromRules = (text: string): readonly ImageRule[] => checkDockerfile("runner", text, "").map((problem) => problem.rule).filter((rule) => rule !== "notices");
+    expect(fromRules("FROM a:1@sha256:" + "0".repeat(64) + " AS one\nFROM one AS two\nUSER node\nENTRYPOINT [\"ostra\"]\n")).toEqual([]);
+    expect(fromRules("FROM two AS one\nFROM a:1@sha256:" + "0".repeat(64) + " AS two\nUSER node\nENTRYPOINT [\"ostra\"]\n")).toEqual(["from-digest"]);
   });
 
   it("F-039: the compose file pins every image it doesn't build by digest", () => {
@@ -173,5 +176,25 @@ describe("the YAML reader", () => {
   it("reads maps, lists, inline lists and quoted scalars, and refuses what it doesn't know", () => {
     expect(parseYaml("a:\n  b: 'x'\n  c: [1, \"2\"]\n  d:\n    - e # comment\n")).toEqual({ a: { b: "x", c: ["1", "2"], d: ["e"] } });
     expect(() => parseYaml("just text\n")).toThrow();
+  });
+});
+
+// Milestone 7's ticket 29: each image writes its THIRD_PARTY_NOTICES in its build and carries them.
+describe("the notices in each image", () => {
+  it("F-039: each image writes its notices from its own install and copies them to the same path; the runner installs no agent", () => {
+    for (const name of ["server", "runner", "base"] as const) {
+      expect(files.dockerfiles[name], name).toContain(`/opt/notices/out/THIRD_PARTY_NOTICES ${NOTICES_PATH}`);
+      expect(rulesOf(withDockerfile(name, ` ${NOTICES_PATH}`, " /THIRD_PARTY_NOTICES")), name).toContain("notices");
+      expect(rulesOf(withDockerfile(name, `--image ${name}`, "--image other")), name).toContain("notices");
+      expect(rulesOf(withDockerfile(name, "notices-main.ts --image", "notices.ts --image")), name).toContain("notices");
+    }
+    // The bundle the checkout's check reads is the one the Dockerfile prunes and installs.
+    expect(rulesOf(withDockerfile("runner", "prune @ostra/runner --docker", "prune @ostra/runner @ostra/core --docker"))).toContain("notices");
+    expect(rulesOf(withDockerfile("runner", "pnpm licenses list --json --recursive --prod", "pnpm licenses list --json --recursive"))).toContain("notices");
+    expect(rulesOf(withDockerfile("server", "pnpm licenses list --json --recursive >", "pnpm licenses list --json --recursive --prod >"))).toContain("notices");
+    expect(rulesOf(withDockerfile("base", " --extra /opt/notices/extra/models-dev.json", ""))).toContain("notices");
+    // The runner's build checks that its install holds no agent, and it installs none.
+    expect(rulesOf(withDockerfile("runner", "/app/node_modules/.pnpm --without-agent", "/app/node_modules/.pnpm"))).toContain("notices");
+    expect(rulesOf(withDockerfile("runner", "USER node", "RUN npm install --ignore-scripts @opencode/cli@2.3.2\nUSER node"))).toContain("no-agent");
   });
 });

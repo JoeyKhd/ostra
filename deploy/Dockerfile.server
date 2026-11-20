@@ -24,12 +24,19 @@ COPY --from=prune /src/out/json/ ./
 RUN pnpm install --frozen-lockfile
 COPY --from=prune /src/out/full/ ./
 RUN pnpm --filter @ostra/db generate && pnpm --filter @ostra/web build
+# THIRD_PARTY_NOTICES (milestone 7's ticket 29): every third-party package this install bundles,
+# each with its license and the license and notice files it ships, from pnpm's own report. The
+# build fails on a license scripts/known-licenses.ts doesn't know, and on a package the notices miss.
+COPY scripts/known-licenses.ts /opt/notices/scripts/
+COPY packages/deploy-checks/src/notices.ts packages/deploy-checks/src/notices-main.ts /opt/notices/packages/deploy-checks/src/
+RUN pnpm licenses list --json --recursive > /tmp/licenses.json   && node /opt/notices/packages/deploy-checks/src/notices-main.ts --image server --pnpm-licenses /tmp/licenses.json      --pnpm-store /app/node_modules/.pnpm --out /opt/notices/out/THIRD_PARTY_NOTICES
 
 # The runtime starts node directly, so it needs no pnpm and downloads nothing when it starts.
 FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS runtime
 WORKDIR /app
 ENV NODE_ENV=production OSTRA_DATA_DIR=/var/lib/ostra
 COPY --from=build --chown=node:node /app /app
+COPY --from=build /opt/notices/out/THIRD_PARTY_NOTICES /usr/share/doc/ostra/THIRD_PARTY_NOTICES
 COPY --chmod=0755 deploy/server-entrypoint.sh /usr/local/bin/ostra-server
 RUN mkdir -p /var/lib/ostra && chown node:node /var/lib/ostra
 USER node

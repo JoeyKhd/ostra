@@ -16,22 +16,12 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 
-/** The SPDX id of the Sustainable Use License, version 1.0. It has no SPDX entry, so it is a custom reference. */
-export const sustainableUseLicense = "LicenseRef-Sustainable-Use-1.0";
+import { permissiveLicenses, restrictedLicenses } from "./known-licenses.ts";
+import type { PermissiveLicense } from "./known-licenses.ts";
 
-/** Licenses that put no limit on who may run, change or share the code. */
-export const permissiveLicenses = [
-  "Apache-2.0",
-  "MIT",
-  "BSD-2-Clause",
-  "BSD-3-Clause",
-  "ISC",
-  "0BSD",
-] as const;
-export type PermissiveLicense = (typeof permissiveLicenses)[number];
-
-/** Licenses that limit who may run or share the code. Today that is only the Sustainable Use License. */
-export const restrictedLicenses = [sustainableUseLicense] as const;
+// The lists live in known-licenses.ts, which the images' notices generator reads too (F-039).
+export { permissiveLicenses, restrictedLicenses, sustainableUseLicense } from "./known-licenses.ts";
+export type { PermissiveLicense } from "./known-licenses.ts";
 
 export type LicenseClass = "permissive" | "restricted";
 
@@ -283,7 +273,7 @@ export const describeViolation = (violation: Violation): string => {
     case "missing-license":
       return `${violation.name} (${violation.dir}) has no "license" field in its package.json`;
     case "unknown-license":
-      return `${violation.name} (${violation.dir}) declares "${violation.license}", which is on neither license list in scripts/check-licenses.ts: check the spelling, or add the license to a list`;
+      return `${violation.name} (${violation.dir}) declares "${violation.license}", which is on neither license list in scripts/known-licenses.ts: check the spelling, or add the license to a list`;
     case "permissive-package-missing-license-file":
       return `${violation.name} (${violation.dir}) is ${violation.license} but has no LICENSE file with text in its folder`;
     case "permissive-depends-on-restricted":

@@ -34,6 +34,16 @@ step image-sizes docker image ls --format '{{.Repository}}:{{.Tag}} {{.Size}}' -
 step runner-version docker run --rm "$RUNNER" --version
 step base-opencode docker run --rm --entrypoint sh "$BASE" -c 'opencode --version && sha256sum "$(readlink -f "$(command -v opencode)")"'
 
+# ---- F-039 (milestone 7's ticket 29): each image's THIRD_PARTY_NOTICES, written and checked in its
+# build; here their package count and first entries, and the runner holding no OpenCode ----
+image_notices() {
+  for image in "$SERVER" "$RUNNER" "$BASE"; do
+    docker run --rm --entrypoint sh "$image" -c 'f=/usr/share/doc/ostra/THIRD_PARTY_NOTICES; sed -n 8p "$f"; grep -c "^Package: " "$f"; grep -m 3 "^Package: " "$f"' || return 1
+  done
+}
+step image-notices image_notices
+step runner-no-agent docker run --rm --entrypoint sh "$RUNNER" -c '! ls /app/node_modules/.pnpm | grep "^@opencode+cli" && ! command -v opencode && echo "no OpenCode in the runner image"'
+
 # ---- F-001 and F-039: `docker compose up` with only the required settings, the server's `all`
 # healthy by its own check, and the compose file's pool runner joined with the bootstrap token ----
 compose_up() {

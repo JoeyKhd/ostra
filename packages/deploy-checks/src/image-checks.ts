@@ -8,8 +8,9 @@ import { redactTokens } from "@ostra/adapter-sdk";
 
 import { envValue, execForm, namesSet, parseDockerfile, stagesOf } from "./dockerfile.ts";
 import type { Instruction, Stage } from "./dockerfile.ts";
-import { buildPlan, dockerfileOf, imageNames } from "./images.ts";
+import { buildPlan, dockerfileOf, imageBundles, imageNames } from "./images.ts";
 import type { ImageName } from "./images.ts";
+import { NOTICES_PATH } from "./notices.ts";
 import { isYamlList, parseYaml, yamlAt, yamlPairs, yamlScalars } from "./yaml.ts";
 import type { Yaml } from "./yaml.ts";
 
@@ -22,7 +23,9 @@ export type ImageRule =
   | "health-check"
   | "catalog"
   | "compose-images"
-  | "release-version";
+  | "release-version"
+  | "notices"
+  | "no-agent";
 
 export type Problem = { readonly file: string; readonly line: number | null; readonly rule: ImageRule; readonly message: string };
 
@@ -185,6 +188,66 @@ const serverImage = (file: string, final: Stage | undefined, entrypoint: string)
   return problems;
 };
 
+/** A RUN option's value: `--out /x` gives `/x`. */
+const optionOf = (args: string, option: string): string | null => new RegExp(String.raw`(?:^|\s)${option}\s+(\S+)`).exec(args)?.[1] ?? null;
+
+const sameSet = (a: readonly string[], b: readonly string[]): boolean => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
+
+/**
+ * The image's THIRD_PARTY_NOTICES (milestone 7's ticket 29): `turbo prune` keeps the workspace
+ * packages `imageBundles` names, the install is `--prod` when the bundle is, `notices-main.ts`
+ * writes the notices from `pnpm licenses list --json --recursive` of that install (checking them
+ * against the install's store, and that OpenCode isn't in it when the bundle carries no agent),
+ * and the final stage copies them to NOTICES_PATH.
+ */
+const notices = (name: ImageName, file: string, instructions: readonly Instruction[], final: Stage | undefined): Problem[] => {
+  const problem = (message: string, line: number | null = null): Problem => ({ file, line, rule: "notices", message });
+  const bundle = imageBundles[name];
+  const runs = instructions.filter((instruction) => instruction.keyword === "RUN");
+  const problems: Problem[] = [];
+  const prune = runs.find((run) => / prune .* --docker/.test(run.args));
+  const pruned = / prune ((?:@[\w./-]+\s+)+)--docker/.exec(prune?.args ?? "")?.[1]?.trim().split(/\s+/) ?? [];
+  if (!sameSet(pruned, bundle.workspaces)) {
+    problems.push(problem(`turbo prune must keep ${bundle.workspaces.join(" ")}, which imageBundles says the notices list`, prune?.line ?? null));
+  }
+  const install = runs.find((run) => run.args.includes("pnpm install --frozen-lockfile"));
+  if (install === undefined || /\s--prod(?:\s|$)/.test(install.args) !== bundle.prod) {
+    problems.push(problem(`the install must ${bundle.prod ? "" : "not "}be --prod, as imageBundles says`, install?.line ?? null));
+  }
+  const generate = runs.find((run) => run.args.includes("notices-main.ts"));
+  if (generate === undefined) {
+    return [...problems, problem("no RUN writes the notices with notices-main.ts")];
+  }
+  const listing = /pnpm licenses list --json --recursive( --prod)? > (\S+)/.exec(generate.args);
+  if (listing === null || (listing[1] !== undefined) !== bundle.prod) {
+    problems.push(problem(`the notices must read pnpm licenses list --json --recursive${bundle.prod ? " --prod" : ""} > <file>`, generate.line));
+  }
+  if (optionOf(generate.args, "--image") !== name || optionOf(generate.args, "--pnpm-licenses") !== (listing?.[2] ?? null) || optionOf(generate.args, "--pnpm-store") === null) {
+    problems.push(problem(`notices-main.ts must run with --image ${name}, the listing as --pnpm-licenses and the install's store as --pnpm-store`, generate.line));
+  }
+  if (!bundle.agent && !/\s--without-agent(?:\s|$)/.test(generate.args)) {
+    problems.push(problem("the install carries no agent, so notices-main.ts must check it with --without-agent", generate.line));
+  }
+  if (name === "base" && (optionOf(generate.args, "--npm-modules") === null || optionOf(generate.args, "--extra") === null)) {
+    problems.push(problem("the base image's notices also read OpenCode's npm install (--npm-modules) and the catalog's notice (--extra)", generate.line));
+  }
+  const out = optionOf(generate.args, "--out");
+  const copied = final?.instructions.some((instruction) => {
+    const words = instruction.args.split(/\s+/);
+    return instruction.keyword === "COPY" && (words[0] ?? "").startsWith("--from=") && words.at(-1) === NOTICES_PATH && words.at(-2) === out;
+  });
+  if (out === null || copied !== true) {
+    problems.push(problem(`the final stage must COPY --from the notices notices-main.ts wrote (its --out) to ${NOTICES_PATH}`));
+  }
+  return problems;
+};
+
+/** The runner image installs no agent: in a box, the agent runs in the base image. */
+const noAgent = (file: string, instructions: readonly Instruction[]): Problem[] =>
+  instructions
+    .filter((instruction) => instruction.keyword === "RUN" && /@opencode\/cli@|\bopencode-ai\b/.test(instruction.args))
+    .map((instruction): Problem => ({ file, line: instruction.line, rule: "no-agent", message: "the runner image installs no agent: in a box, the agent runs in the base image" }));
+
 /** Checks one Dockerfile. */
 export const checkDockerfile = (name: ImageName, text: string, entrypoint: string): readonly Problem[] => {
   const file = dockerfileOf(name);
@@ -196,14 +259,14 @@ export const checkDockerfile = (name: ImageName, text: string, entrypoint: strin
       case "server":
         return serverImage(file, final, entrypoint);
       case "runner":
-        return [...nonRoot(file, final), ...entrypointIs(file, final, ["ostra"])];
+        return [...nonRoot(file, final), ...entrypointIs(file, final, ["ostra"]), ...noAgent(file, instructions)];
       case "base":
         return baseImage(file, instructions, final);
       default:
         return name satisfies never;
     }
   })();
-  return [...fromDigests(file, stages, instructions), ...secrets(file, instructions), ...own];
+  return [...fromDigests(file, stages, instructions), ...secrets(file, instructions), ...own, ...notices(name, file, instructions, final)];
 };
 
 const COMPOSE = "deploy/compose.yaml";
