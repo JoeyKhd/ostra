@@ -31,6 +31,24 @@ export const DENY_REASON_MAX = 2000;
 const DENY_COUNTER_FROM = 1800;
 
 /** The sentence for what asks, by the subject's kind (task-approval.md, "What asks"). */
+/** F-138: the same, for a subagent's call: `explore · Find the version source asks before running this command:`. */
+export const subagentAskSentence = (kind: "path" | "command" | "url" | "tool" | null, subagent: string): string => {
+  switch (kind) {
+    case "path":
+      return t("task.subagents.asks.path", { subagent });
+    case "command":
+      return t("task.subagents.asks.command", { subagent });
+    case "url":
+      return t("task.subagents.asks.url", { subagent });
+    case "tool":
+      return t("task.subagents.asks.tool", { subagent });
+    case null:
+      return t("task.subagents.asks.other", { subagent });
+    default:
+      return kind satisfies never;
+  }
+};
+
 export const askSentence = (kind: "path" | "command" | "url" | "tool" | null, agent: string): string => {
   switch (kind) {
     case "path":
@@ -105,6 +123,7 @@ export const ApprovalCard = ({
   agent,
   project,
   othersOpen,
+  asker,
 }: {
   readonly taskId: TaskId;
   readonly approval: ApprovalView;
@@ -112,6 +131,8 @@ export const ApprovalCard = ({
   readonly project: string;
   /** The session's other open approvals, for the deny's warning. */
   readonly othersOpen: number;
+  /** F-138: the subagent whose call asks (`explore · Find the version source`); absent for the agent's own. */
+  readonly asker?: string;
 }) => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
@@ -192,7 +213,7 @@ export const ApprovalCard = ({
     >
       <p>
         {approval.rule === null ? null : <span className="font-semibold">{approval.rule.name} </span>}
-        {askSentence(approval.subject?.kind ?? null, agent)}
+        {asker === undefined ? askSentence(approval.subject?.kind ?? null, agent) : subagentAskSentence(approval.subject?.kind ?? null, asker)}
       </p>
       {approval.subject === null ? null : (
         <code className="mt-2 inline-block max-w-full break-all rounded-[6px] border border-line bg-surface px-2.5 py-1.5 font-mono text-[12.5px] leading-[1.4] text-text" data-part="subject">

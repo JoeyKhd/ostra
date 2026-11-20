@@ -363,11 +363,12 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const isDriver = task.data !== undefined && task.data.driver !== null && task.data.driver.memberId === me.data?.memberId;
   const takeOverNow = useCallback(() => { takeOver.mutate({ taskId }); }, [takeOver, taskId]);
   const approvalCard = useCallback(
-    (approvalId: string): ReactNode => {
+    (approvalId: string, asker?: string): ReactNode => {
       const approval = approvals?.find((one) => one.approvalId === approvalId);
       if (approval === undefined || (approval.state !== "open" && !approval.answerableAnyway)) return null;
       const othersOpen = (approvals ?? []).filter((one) => one.state === "open" && one.approvalId !== approvalId).length;
-      return <ApprovalCard key={approvalId} taskId={taskId} approval={approval} agent={agentName} project={projectName} othersOpen={othersOpen} />;
+      // F-138: a subagent's call that asks names the subagent.
+      return <ApprovalCard key={approvalId} taskId={taskId} approval={approval} agent={agentName} project={projectName} othersOpen={othersOpen} {...(asker === undefined ? {} : { asker })} />;
     },
     [approvals, taskId, agentName, projectName],
   );

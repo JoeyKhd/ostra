@@ -1597,6 +1597,89 @@
       "showOutput": "Show the output",
       "hideOutput": "Hide the output"
     },
+    "subagents": {
+      "count": {
+        "one": "1 subagent",
+        "other": "{n} subagents"
+      },
+      "badgeState": {
+        "needsApprovalOne": "1 needs approval",
+        "needsApprovalOther": "{n} need approval",
+        "failed": "{n} failed",
+        "running": "{n} running",
+        "stopped": "{n} stopped"
+      },
+      "badgeName": "{count}, {state}",
+      "state": {
+        "running": "running",
+        "needs-approval": "needs approval",
+        "done": "done",
+        "failed": "failed",
+        "stopped": "stopped"
+      },
+      "verb": "Subagent",
+      "calls": {
+        "one": "1 call",
+        "other": "{n} calls"
+      },
+      "duration": {
+        "seconds": "{s}s",
+        "minutes": "{m}m {s}s",
+        "hours": "{h}h {m}m"
+      },
+      "durationWords": {
+        "secondOne": "1 second",
+        "secondOther": "{n} seconds",
+        "minuteOne": "1 minute",
+        "minuteOther": "{n} minutes",
+        "hourOne": "1 hour",
+        "hourOther": "{n} hours"
+      },
+      "title": "Subagents",
+      "summary": "{n} in {agent}'s turn at {time}",
+      "close": "Close",
+      "footer": "Subagents run in the task's box, on its model and key. Their tokens are in the task's spend.",
+      "mainAgent": "main agent",
+      "rootLine": "{time} · {calls}",
+      "nodeLine": "{type} · {duration} · {calls}",
+      "nodeLineNoType": "{duration} · {calls}",
+      "cardName": "{type} subagent, {description}, {state}, {duration}, {calls}",
+      "rootName": "{agent}, the main agent, {state}, {duration}, {calls}",
+      "treeLabel": "Subagents of {agent}'s turn",
+      "below": "+{n} below",
+      "breadcrumb": "Where the tree starts",
+      "started": "started {time} · {duration} · {calls}",
+      "askedBy": "Asked by {name}",
+      "showAll": "Show all",
+      "showLess": "Show less",
+      "callsLabel": "Calls",
+      "noCalls": "No calls yet.",
+      "earlierCalls": {
+        "one": "Show 1 earlier call",
+        "other": "Show {n} earlier calls"
+      },
+      "answer": "Answer",
+      "stillWorking": "Still working. Its answer shows here when it's done.",
+      "failedBefore": "It stopped before it answered.",
+      "stoppedBefore": "It was stopped before it answered.",
+      "round": "Round {n} · asked at {time}",
+      "orphan": "Its start wasn't reported, so it shows under {agent}.",
+      "back": "Subagents",
+      "turnState": {
+        "running": "working",
+        "ended": "done",
+        "failed": "failed"
+      },
+      "noPrompt": "No message.",
+      "asks": {
+        "path": "{subagent} asks before editing this file:",
+        "command": "{subagent} asks before running this command:",
+        "url": "{subagent} asks before fetching this address:",
+        "tool": "{subagent} asks before using this tool:",
+        "other": "{subagent} asks before it goes on:"
+      },
+      "receipt": "{subagent}: {receipt}"
+    },
     "setup": {
       "title": "Setup script",
       "ok": "done",

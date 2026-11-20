@@ -1,5 +1,6 @@
 "use client";
 
+import { TextMessagePartProvider } from "@assistant-ui/react";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import {
   ArchiveIcon,
@@ -30,9 +31,11 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 
 import { approvalMetadataSchema } from "@ostra/task-view";
-import type { TaskDataPart } from "@ostra/task-view";
+import type { SubagentNode, TaskDataPart } from "@ostra/task-view";
 
 import { monthWord } from "@/components/tasks/budget-reason";
+import { RowState } from "@/components/tasks/subagent-marks";
+import { callCount, nodeDurationMs, shortDuration, stateWord, subagentLabel } from "@/components/tasks/subagent-words";
 import type { RememberResult } from "@/components/tasks/task-changes/diff-view";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -45,7 +48,7 @@ import { t } from "@/lib/messages";
 import { EffortMarker } from "./effort-marks";
 import { filesOutsideText } from "./files-outside-words";
 import { restoredDetail, savedDetail } from "./marker-words";
-import { useDataPart, useTaskContext, useToolPart } from "./task-context";
+import { useDataPart, useSubagentOwner, useSubagentStartedBy, useTaskContext, useToolPart } from "./task-context";
 import type { ToolLikePart } from "./task-context";
 
 // Renderers keyed by ACP `kind`, never by an agent's tool name, so every agent renders alike
@@ -87,6 +90,18 @@ export const AssistantText = ({ streaming }: { readonly streaming: boolean }) =>
   </div>
 );
 
+/**
+ * F-138: an agent's text outside the thread's parts (a subagent's prompt and answer, in its
+ * window), with the thread's own rules: markdown, no raw HTML, safe links, no remote image.
+ */
+export const AgentMarkdown = ({ text, className }: { readonly text: string; readonly className?: string }) => (
+  <TextMessagePartProvider text={text}>
+    <div className={cn("agent-md", className)}>
+      <MarkdownTextPrimitive smooth={false} components={markdownComponents} />
+    </div>
+  </TextMessagePartProvider>
+);
+
 export const Reasoning = ({ text, streaming }: { readonly text: string; readonly streaming: boolean }) => (
   <details data-part="reasoning" data-streaming={streaming ? "true" : "false"} open={streaming} className="group text-muted">
     <summary className="flex min-h-7 cursor-pointer list-none items-center text-body hover:text-text">
@@ -111,7 +126,7 @@ const Line = ({ icon, verb, children, end, tone }: {
 }) => (
   <div className={cn("flex min-h-7 min-w-0 items-center text-body", tone === "red" && "text-red", tone === "muted" && "text-muted")}>
     <span className="flex w-8 shrink-0 pl-1.5 text-faint [&_svg]:size-[14px] [&_svg]:stroke-[1.75]">{icon}</span>
-    {verb === undefined ? null : <span className="w-[72px] shrink-0 text-muted">{verb}</span>}
+    {verb === undefined ? null : <span data-verb className="w-[72px] shrink-0 text-muted">{verb}</span>}
     <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
       {children}
       {end === undefined ? null : <span className="ml-1 shrink-0 font-mono text-sm">{end}</span>}
@@ -220,22 +235,43 @@ const approvalSubject = (part: ToolLikePart): string | null => {
  * descriptor's summary and the command; answered, one muted line. Read-only in milestone 1:
  * answering comes with F-026 in milestone 3, so the buttons' place holds the read-only line.
  */
-const ApprovalNote = ({ part }: { readonly part: ToolLikePart }) => {
+/** F-138: what a subagent's call that asks says first, by its kind (`explore · Find the version source asks before running this command:`). */
+const subagentAsks = (part: ToolLikePart, asker: string): string => {
+  switch (part.type) {
+    case "tool-execute":
+      return t("task.subagents.asks.command", { subagent: asker });
+    case "tool-edit":
+      return t("task.subagents.asks.path", { subagent: asker });
+    case "tool-read":
+    case "dynamic-tool":
+      return t("task.subagents.asks.other", { subagent: asker });
+    default:
+      return part satisfies never;
+  }
+};
+
+/**
+ * The approval of a call. F-138: `asker` names the subagent whose call it is, in the card's first
+ * line and before its receipt, so the thread says which subagent asks.
+ */
+export const ApprovalNote = ({ part, asker, className }: { readonly part: ToolLikePart; readonly asker?: string; readonly className?: string }) => {
   const { memberName, approvalSummary, approvalCard, approvalReceipt } = useTaskContext();
   const metadata = approvalMetadataSchema.safeParse(part.toolMetadata);
   if (!metadata.success) return null;
   const receipt = metadata.data.approval.descriptor.receipt;
+  const named = (text: string): string => (asker === undefined ? text : t("task.subagents.receipt", { subagent: asker, receipt: text }));
   // Milestone 3 (ticket 43): the task page answers it, and words its receipt with the rule and the reason.
-  const card = receipt === undefined ? approvalCard?.(metadata.data.approval.id) : undefined;
+  const card = receipt === undefined ? approvalCard?.(metadata.data.approval.id, asker) : undefined;
   if (card !== undefined && card !== null) return <>{card}</>;
   const worded = receipt === undefined ? null : (approvalReceipt?.(metadata.data.approval.id) ?? null);
-  if (worded !== null) return <div data-part="approval" data-state={receipt?.state} className="ml-[104px] text-sm text-muted">{worded}</div>;
+  if (worded !== null) return <div data-part="approval" data-state={receipt?.state} className={cn("ml-[104px] text-sm text-muted", className)}>{named(worded)}</div>;
   if (receipt === undefined) {
     const summary = approvalSummary(metadata.data.approval.id);
     const subject = approvalSubject(part);
     return (
       <NeedsYou data-testid="approval" title={t("task.approval.title")} className="my-2.5" footer={t("task.approval.readOnly")}>
         <div data-part="approval" data-state="pending">
+          {asker === undefined ? null : <p data-part="asker">{subagentAsks(part, asker)}</p>}
           {summary === null ? null : <p className="whitespace-pre-wrap">{summary}</p>}
           {subject === null ? null : (
             <code className="mt-2 inline-block max-w-full break-all rounded-sm border border-line bg-surface px-2.5 py-1.5 font-mono text-ui leading-[1.4] text-text">{subject}</code>
@@ -263,10 +299,10 @@ const ApprovalNote = ({ part }: { readonly part: ToolLikePart }) => {
     default:
       return receipt satisfies never;
   }
-  return <div data-part="approval" data-state={receipt.state} className="ml-[104px] text-sm text-muted">{text}</div>;
+  return <div data-part="approval" data-state={receipt.state} className={cn("ml-[104px] text-sm text-muted", className)}>{named(text)}</div>;
 };
 
-const ToolBody = ({ part }: { readonly part: ToolLikePart }) => {
+export const ToolBody = ({ part }: { readonly part: ToolLikePart }) => {
   const [open, setOpen] = useState(false);
   switch (part.type) {
     case "tool-read":
@@ -349,9 +385,65 @@ const ToolBody = ({ part }: { readonly part: ToolLikePart }) => {
   }
 };
 
+/**
+ * F-138: the call that started a subagent, as one line (task-subagents-tree.md, "The thread"): Lucide
+ * `layers`, `Subagent`, its type in mono and its description, then its calls, its time once it
+ * ended, and its state. A button: the thread's opens the window on it, the window's selects it.
+ */
+export const SubagentRow = ({ node, onOpen, popup, compact = false }: { readonly node: SubagentNode; readonly onOpen: () => void; readonly popup: boolean; readonly compact?: boolean }) => {
+  const ended = node.endedAt === null ? null : nodeDurationMs(node, node.endedAt);
+  const word = stateWord(node.state);
+  return (
+    <button
+      type="button"
+      data-part="subagent-row"
+      data-subagent={node.id}
+      data-state={node.state}
+      aria-haspopup={popup ? "dialog" : undefined}
+      onClick={onOpen}
+      className="block w-full min-w-0 rounded-md text-left hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-text"
+    >
+      <Line
+        icon={<LayersIcon />}
+        verb={t("task.subagents.verb")}
+        end={
+          <span className="inline-flex items-center gap-2 text-xs text-faint">
+            {/* In the window's narrow pane, the state alone: its node has the rest. */}
+            {compact ? null : <span>{ended === null ? callCount(node.callCount) : `${callCount(node.callCount)} · ${shortDuration(ended)}`}</span>}
+            <RowState state={node.state} word={word} />
+          </span>
+        }
+      >
+        {node.type === null ? null : <span className="font-mono text-ui text-text">{node.type}</span>}
+        {node.type === null || node.description === "" ? null : <span aria-hidden className="text-faint">·</span>}
+        <span className="min-w-0 truncate text-muted">{node.description}</span>
+      </Line>
+    </button>
+  );
+};
+
 export const ToolRow = ({ toolCallId }: { readonly toolCallId: string }) => {
   const part = useToolPart(toolCallId);
+  const started = useSubagentStartedBy(toolCallId);
+  const owner = useSubagentOwner(toolCallId);
+  const { openSubagents } = useTaskContext();
   if (part === undefined) return null;
+  if (started !== undefined && openSubagents !== undefined) {
+    // F-138: the main agent's call that started a subagent opens the window on it. Nothing is nested under it.
+    return (
+      <div data-part="tool" data-tool-kind="subagent" data-state={part.state}>
+        <SubagentRow node={started.node} popup onOpen={() => { openSubagents(started.messageId, started.node.id); }} />
+      </div>
+    );
+  }
+  if (owner !== undefined) {
+    // F-138: a subagent's call is in the thread for its approval only, which names the subagent.
+    return (
+      <div data-part="tool" data-subagent={owner.node.id} data-state={part.state}>
+        <ApprovalNote part={part} asker={subagentLabel(owner.node)} className="ml-8" />
+      </div>
+    );
+  }
   return (
     <div data-part="tool" data-tool-kind={part.type === "dynamic-tool" ? part.toolName : part.type.slice(5)} data-state={part.state}>
       <ToolBody part={part} />

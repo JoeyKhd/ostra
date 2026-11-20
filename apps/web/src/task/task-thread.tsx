@@ -21,6 +21,9 @@ import type { MemberId } from "@ostra/protocol";
 import { foldTaskEvents, visibleLiveText } from "@ostra/task-view";
 import type { OptimisticMessage, TaskUIMessage } from "@ostra/task-view";
 
+import { SubagentsBadge } from "@/components/tasks/subagents-badge";
+import { SubagentsWindow } from "@/components/tasks/subagents-window";
+import type { SubagentsAt } from "@/components/tasks/subagents-window";
 import type { RememberResult } from "@/components/tasks/task-changes/diff-view";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
@@ -53,7 +56,7 @@ const Meta = ({ children, dot = true, className }: { readonly children: string; 
  * `--faint`; the agent's adds its model and a status word, a member's how it was delivered.
  */
 const MessageHeader = ({ message }: { readonly message: TaskUIMessage }) => {
-  const { memberName, agent } = useTaskContext();
+  const { memberName, agent, openSubagents } = useTaskContext();
   const meta = message.metadata;
   const time = meta?.at === undefined ? null : formatClock(meta.at);
   if (message.role === "user") {
@@ -89,6 +92,10 @@ const MessageHeader = ({ message }: { readonly message: TaskUIMessage }) => {
           {meta?.turnState === "failed" ? <Meta className="text-red">{t("task.turnFailed")}</Meta> : null}
           {meta?.stopReason === "cancelled" ? <Meta>{t("task.turnStopped")}</Meta> : null}
         </span>
+        {/* F-138: the turn's subagents, nested ones included: the badge opens their window. */}
+        {meta?.subagents === undefined || openSubagents === undefined ? null : (
+          <SubagentsBadge tree={meta.subagents} className="ml-1" onOpen={() => { openSubagents(message.id, null); }} />
+        )}
       </div>
     );
   }
@@ -253,6 +260,12 @@ export const TaskThread = ({ taskId, projectName, log, memberId, memberName, can
   const trpc = useTRPC();
   const [optimistic, setOptimistic] = useState<readonly OptimisticMessage[]>([]);
   const previous = useRef<readonly TaskUIMessage[]>([]);
+  // F-138: the subagents window, on a turn, and what opened it (the focus goes back there).
+  const [subagentsAt, setSubagentsAt] = useState<(SubagentsAt & { readonly opener: HTMLElement | null }) | null>(null);
+  const openSubagents = useCallback((messageId: string, subagentId: string | null) => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setSubagentsAt({ messageId, subagentId, opener });
+  }, []);
   const send = useMutation(trpc.tasks.send.mutationOptions());
   const reopen = useMutation(trpc.tasks.reopen.mutationOptions());
   const remember = useMutation(trpc.memory.rememberThis.mutationOptions());
@@ -337,13 +350,27 @@ export const TaskThread = ({ taskId, projectName, log, memberId, memberName, can
       agent: { name: agentName, model: agentModel },
       approvalSummary,
       rememberPrComment,
+      openSubagents,
       ...(approvalCard === undefined ? {} : { approvalCard }),
       ...(approvalReceipt === undefined ? {} : { approvalReceipt }),
       ...(questionCard === undefined ? {} : { questionCard }),
       ...(projectName === undefined ? {} : { projectName }),
     }),
-    [store, memberName, agentName, agentModel, approvalSummary, rememberPrComment, approvalCard, approvalReceipt, questionCard, projectName],
+    [store, memberName, agentName, agentModel, approvalSummary, rememberPrComment, openSubagents, approvalCard, approvalReceipt, questionCard, projectName],
   );
+
+  // F-138: the member's message the turn answered, for the main agent's pane of the window.
+  const askedOf = (messageId: string): { readonly name: string; readonly text: string } | null => {
+    const at = messages.findIndex((message) => message.id === messageId);
+    for (let i = at - 1; i >= 0; i -= 1) {
+      const message = messages[i];
+      if (message?.role === "user") {
+        const text = message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n");
+        return { name: message.metadata?.author === undefined ? "" : memberName(message.metadata.author.memberId), text };
+      }
+    }
+    return null;
+  };
 
   useEffect(() => {
     if (focusSeq === null || focused.current === focusSeq) return;
@@ -395,6 +422,15 @@ export const TaskThread = ({ taskId, projectName, log, memberId, memberName, can
             <div className="shrink-0 pt-3 text-sm" data-part="not-driver">{notDriver}</div>
           )}
         </ThreadPrimitive.Root>
+        {subagentsAt === null ? null : (
+          <SubagentsWindow
+            key={`${subagentsAt.messageId}:${subagentsAt.subagentId ?? ""}`}
+            at={subagentsAt}
+            opener={subagentsAt.opener}
+            asked={askedOf(subagentsAt.messageId)}
+            onClose={() => { setSubagentsAt(null); }}
+          />
+        )}
       </TaskContext.Provider>
     </AssistantRuntimeProvider>
   );
