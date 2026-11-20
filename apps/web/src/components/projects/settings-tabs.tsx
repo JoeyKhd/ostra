@@ -18,6 +18,8 @@ export const ProjectSettingsTabs = ({ projectId, admin }: { readonly projectId: 
     ...(admin ? [{ href: `${base}/settings/ticket-template`, label: t("projectSettings.ticketTemplate") }, { href: `${base}/settings/repos`, label: t("projectSettings.repos") }] : []),
     { href: `${base}/settings/models`, label: t("projectSettings.models") },
     { href: `${base}/settings/access`, label: t("projectSettings.access") },
+    // Milestone 6 (ticket 35, review-settings.md): every member who can open the project reads it; its admins change it.
+    { href: `${base}/settings/review`, label: t("projectSettings.review") },
     // Milestone 5 (project-runners.md): the pools and shares are an admin's settings.
     ...(admin ? [{ href: `${base}/settings/runners`, label: t("projectSettings.runners") }, { href: `${base}/settings/audit`, label: t("projectSettings.audit") }] : []),
   ];

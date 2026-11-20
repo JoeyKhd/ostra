@@ -69,6 +69,22 @@ export type DiffCommentView = {
   readonly outdated: { readonly sign: "+" | "-" | " "; readonly text: string } | null;
 };
 
+/**
+ * Milestone 6 (F-100, F-102, ticket 35): an AI review's finding, where the review screen draws it:
+ * on its line, before the line's comments; at its file's top when the diff doesn't show its line
+ * (posted in the review's body); after the file's last hunk once a later push moved past it.
+ */
+export type DiffFindingView = {
+  readonly id: string;
+  readonly taskRepoId: string;
+  readonly path: string;
+  readonly side: "old" | "new";
+  readonly line: number;
+  readonly state: "open" | "resolved" | "outdated";
+  /** The review round that found it: the newest round's findings come first on a line. */
+  readonly round: number;
+};
+
 /** Where a comment field is open: a line of a file, or an existing draft being edited. */
 export type CommentTarget = { readonly taskRepoId: string; readonly path: string; readonly side: "old" | "new"; readonly line: number };
 
@@ -102,6 +118,9 @@ export type DiffRow =
   | { readonly kind: "gap"; readonly key: string; readonly lines: number }
   | { readonly kind: "line"; readonly key: string; readonly taskRepoId: string; readonly path: string; readonly line: DiffLine }
   | { readonly kind: "comment"; readonly key: string; readonly comment: DiffCommentView }
+  /** Ticket 35: an AI review's finding, and the label over a file's findings off its changed lines. */
+  | { readonly kind: "finding"; readonly key: string; readonly finding: DiffFindingView }
+  | { readonly kind: "findings-label"; readonly key: string }
   | { readonly kind: "field"; readonly key: string; readonly target: CommentTarget; readonly editing: DiffCommentView | null }
   | { readonly kind: "outdated-label"; readonly key: string };
 
@@ -115,8 +134,15 @@ const targetOf = (comment: DiffCommentView): CommentTarget => ({ taskRepoId: com
  * each line followed by its sent comments, the viewer's drafts and the open field; then the file's
  * outdated comments under their label. A file the diff doesn't draw gets one note row.
  */
-export const rowsOf = (repos: readonly DiffRepoView[], comments: readonly DiffCommentView[], folded: ReadonlySet<string>, open: OpenField): readonly DiffRow[] => {
+export const rowsOf = (
+  repos: readonly DiffRepoView[],
+  comments: readonly DiffCommentView[],
+  folded: ReadonlySet<string>,
+  open: OpenField,
+  findings: readonly DiffFindingView[] = [],
+): readonly DiffRow[] => {
   const rows: DiffRow[] = [];
+  const byRound = (a: DiffFindingView, b: DiffFindingView) => b.round - a.round;
   const fieldFor = (target: CommentTarget, key: string) => {
     if (open === null) return;
     if (open.kind === "new" && sameTarget(open.target, target)) rows.push({ kind: "field", key: `${key}:field`, target, editing: null });
@@ -138,6 +164,13 @@ export const rowsOf = (repos: readonly DiffRepoView[], comments: readonly DiffCo
       const own = comments.filter((comment) => comment.taskRepoId === repo.taskRepoId && comment.path === file.path);
       const current = own.filter((comment) => comment.outdated === null);
       const outdated = own.filter((comment) => comment.outdated !== null);
+      const fileFindings = findings.filter((finding) => finding.taskRepoId === repo.taskRepoId && finding.path === file.path).sort(byRound);
+      const shownLines = new Set(file.body.kind === "hunks" ? file.body.hunks.flatMap((hunk) => hunk.lines.flatMap((line) => { const anchor = anchorOf(line); return anchor === null ? [] : [`${anchor.side}:${String(anchor.line)}`]; })) : []);
+      const offDiff = fileFindings.filter((finding) => finding.state !== "outdated" && !shownLines.has(`${finding.side}:${String(finding.line)}`));
+      if (offDiff.length > 0) {
+        rows.push({ kind: "findings-label", key: `${key}:findings-off` });
+        for (const finding of offDiff) rows.push({ kind: "finding", key: `${key}:f:${finding.id}`, finding });
+      }
       const body = file.body;
       switch (body.kind) {
         case "too-large":
@@ -158,6 +191,9 @@ export const rowsOf = (repos: readonly DiffRepoView[], comments: readonly DiffCo
               const anchor = anchorOf(line);
               if (anchor === null) return;
               const target: CommentTarget = { taskRepoId: repo.taskRepoId, path: file.path, ...anchor };
+              for (const finding of fileFindings) {
+                if (finding.state !== "outdated" && finding.side === anchor.side && finding.line === anchor.line) rows.push({ kind: "finding", key: `${lineKey}:f:${finding.id}`, finding });
+              }
               const here = current.filter((comment) => sameTarget(targetOf(comment), target));
               for (const comment of [...here.filter((c) => c.state === "sent"), ...here.filter((c) => c.state === "draft")]) {
                 if (open?.kind === "edit" && open.comment.id === comment.id) rows.push({ kind: "field", key: `${lineKey}:edit:${comment.id}`, target, editing: comment });
@@ -170,8 +206,10 @@ export const rowsOf = (repos: readonly DiffRepoView[], comments: readonly DiffCo
         default:
           return body satisfies never;
       }
-      if (outdated.length > 0) {
+      const outdatedFindings = fileFindings.filter((finding) => finding.state === "outdated");
+      if (outdated.length > 0 || outdatedFindings.length > 0) {
         rows.push({ kind: "outdated-label", key: `${key}:outdated` });
+        for (const finding of outdatedFindings) rows.push({ kind: "finding", key: `${key}:of:${finding.id}`, finding });
         for (const comment of outdated) {
           if (open?.kind === "edit" && open.comment.id === comment.id) rows.push({ kind: "field", key: `${key}:edit:${comment.id}`, target: targetOf(comment), editing: comment });
           else rows.push({ kind: "comment", key: `${key}:o:${comment.id}`, comment });
@@ -197,6 +235,10 @@ export const estimateRow = (row: DiffRow): number => {
       return 21;
     case "comment":
       return 64;
+    case "finding":
+      return 130;
+    case "findings-label":
+      return 24;
     case "field":
       return 120;
     default:

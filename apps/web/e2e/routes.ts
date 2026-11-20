@@ -101,9 +101,11 @@ export const memberRoutes = (world: RoutesWorld): readonly PanelRoute[] => {
     { pattern: "/projects/[project-id]/settings/models", path: `/projects/${p}/settings/models` },
     { pattern: "/projects/[project-id]/settings/repos", path: `/projects/${p}/settings/repos` },
     { pattern: "/projects/[project-id]/settings/runners", path: `/projects/${p}/settings/runners` },
+    { pattern: "/projects/[project-id]/settings/review", path: `/projects/${p}/settings/review` },
     { pattern: "/projects/[project-id]/settings/ticket-template", path: `/projects/${p}/settings/ticket-template` },
     { pattern: "/tasks/new", path: "/tasks/new" },
     { pattern: "/tasks/[task-id]", path: `/tasks/${world.reopen.taskId}` },
+    { pattern: "/tasks/[task-id]/review", path: `/tasks/${world.reopen.taskId}/review` },
   ];
 };
 

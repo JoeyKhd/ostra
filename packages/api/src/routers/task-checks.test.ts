@@ -369,6 +369,20 @@ describe("a ticket closed while the task ran", () => {
     await expect(driver.tasks.keepWorking({ taskId: task.taskId })).rejects.toMatchObject({ code: "CONFLICT" });
   });
 
+  it("F-101: at a round limit, Keep working answers the cap's item, resets the round counters and sends the cap's words once", async () => {
+    const task = await newTask("cap-keep-going", { state: "running" });
+    await harness.test.db.task.update({ where: { id: task.taskId }, data: { state: "needs_you", needsYouReason: "round_cap", ciRounds: 2, automaticTurns: 3 } });
+    await harness.test.db.$transaction((tx) => createNeedsYouItemInTx(harness.deps.ports, tx, { ...place(), taskId: task.taskId, reason: "round_cap", audience: "driver" }));
+    const driver = await harness.as(harness.fixture.a.member);
+    await driver.tasks.keepWorking({ taskId: task.taskId });
+    const messages = await harness.test.db.event.findMany({ where: { taskId: task.taskId, kind: "user.message" } });
+    expect(messages).toHaveLength(1);
+    expect(JSON.stringify(messages[0]?.payload)).toContain("Keep working on what the last round sent you");
+    expect(await harness.test.db.needsYouItem.count({ where: { taskId: task.taskId, reason: "round_cap", state: "open" } })).toBe(0);
+    expect(await harness.test.db.task.findUniqueOrThrow({ where: { id: task.taskId }, select: { ciRounds: true, automaticTurns: true } })).toEqual({ ciRounds: 0, automaticTurns: 0 });
+    await expect(driver.tasks.keepWorking({ taskId: task.taskId })).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
   it("F-066: \"Stop the task\" is the other answer: the task stops as requested, and \"Keep working\" is then refused", async () => {
     const task = await closedTask("stop-it");
     const driver = await harness.as(harness.fixture.a.member);

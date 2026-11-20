@@ -14,7 +14,7 @@ import { plural, t } from "@/lib/messages";
 import { DiffView } from "./diff-view";
 import type { DiffActions, RememberResult, SaveResult } from "./diff-view";
 import { MAX_SEND, aheadText, behindOf, commentCount, draftsOf, draftsTitle, fileKey, glyphOf, reviewHint, rowsOf, sendLabel, shortNames } from "./diff-words";
-import type { BehindPart, CommentTarget, DiffCommentView, DiffRepoView, OpenField, SendDelivery } from "./diff-words";
+import type { BehindPart, CommentTarget, DiffCommentView, DiffFindingView, DiffRepoView, OpenField, SendDelivery } from "./diff-words";
 
 // The Changes tab (task-changes.md; F-027, F-072, F-070, ADR 0051, ADR 0052): the behind line with
 // "Update branch", the files column, ostra's own diff with line comments, and the review bar that
@@ -258,6 +258,11 @@ export type ChangesBodyProps = {
   readonly onRemember?: (comment: DiffCommentView) => Promise<RememberResult>;
   /** The list's size before it's measured (the tests). */
   readonly initialHeight?: number;
+  /** Milestone 6 (ticket 35): the review screen's findings, drawn on their lines by `renderFinding`. */
+  readonly findings?: readonly DiffFindingView[];
+  readonly renderFinding?: (finding: DiffFindingView) => ReactNode;
+  /** The review screen leaves the behind line and "Update branch" to the task's Changes tab. */
+  readonly hideBehind?: boolean;
 };
 
 const LoadingBody = () => (
@@ -271,7 +276,7 @@ const LoadingBody = () => (
   </div>
 );
 
-export const ChangesBody = ({ load, comments, canComment, update, review, onSave, onDelete, onUndoDelete, onRemember, initialHeight }: ChangesBodyProps) => {
+export const ChangesBody = ({ load, comments, canComment, update, review, onSave, onDelete, onUndoDelete, onRemember, initialHeight, findings, renderFinding, hideBehind = false }: ChangesBodyProps) => {
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
   const [open, setOpen] = useState<OpenField>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -285,7 +290,7 @@ export const ChangesBody = ({ load, comments, canComment, update, review, onSave
   }, [deleted]);
 
   const repos = load.kind === "ready" ? load.repos : [];
-  const rows = useMemo(() => rowsOf(repos, comments, folded, open), [repos, comments, folded, open]);
+  const rows = useMemo(() => rowsOf(repos, comments, folded, open, findings), [repos, comments, folded, open, findings]);
   const drafts = draftsOf(comments);
   const onTopFile = useCallback((key: string) => { setSelected(key); }, []);
 
@@ -293,6 +298,7 @@ export const ChangesBody = ({ load, comments, canComment, update, review, onSave
     onOpen: (target) => { setOpen({ kind: "new", target }); },
     onEdit: (comment) => { setOpen({ kind: "edit", comment }); },
     ...(onRemember === undefined ? {} : { onRemember }),
+    ...(renderFinding === undefined ? {} : { renderFinding }),
     onCancel: () => { setOpen(null); },
     onSave: async (target, body, editing) => {
       const result = await onSave(target, body, editing);
@@ -334,9 +340,11 @@ export const ChangesBody = ({ load, comments, canComment, update, review, onSave
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-changes>
-      <div className="mt-3">
-        <BehindLine repos={repos} lastPushAt={load.lastPushAt} update={update} />
-      </div>
+      {hideBehind ? null : (
+        <div className="mt-3">
+          <BehindLine repos={repos} lastPushAt={load.lastPushAt} update={update} />
+        </div>
+      )}
       <div className="mt-3 flex min-h-[320px] flex-1 flex-col gap-3 md:flex-row md:gap-0">
         <div className="max-h-[220px] shrink-0 md:max-h-none md:w-[220px]">
           <FilesColumn

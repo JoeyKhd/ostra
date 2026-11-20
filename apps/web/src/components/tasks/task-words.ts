@@ -49,6 +49,8 @@ export const taskStateLine = (state: TaskState, reason: TaskReason): string => {
   if (state === "needs_you" && reason === "question") return t("taskState.needsYouQuestion");
   // Milestone 6 (ticket 34): a refine task's draft, or milestone 1's draft PR.
   if (state === "needs_you" && reason === "draft_ready") return t("taskState.needsYouDraftReady");
+  // Milestone 6 (ticket 35): the review loop stopped at a round limit.
+  if (state === "needs_you" && reason === "round_cap") return t("taskState.needsYouRoundCap");
   return taskStateText(state);
 };
 

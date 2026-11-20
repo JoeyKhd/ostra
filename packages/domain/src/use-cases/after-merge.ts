@@ -4,7 +4,7 @@ import type { OrganizationId, TaskId } from "@ostra/protocol";
 
 import { requireProjectAccess } from "../access.ts";
 import type { MemberScope } from "../access.ts";
-import { KEEP_WORKING_PROMPT } from "../prompts/index.ts";
+import { KEEP_WORKING_AFTER_CAP_PROMPT, KEEP_WORKING_PROMPT } from "../prompts/index.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
 import type { M3Deps, RecordTicketClosed, ReopenAfterMerge } from "./m3-signatures.ts";
@@ -185,16 +185,19 @@ export const keepWorking = (
       if (task === null || !requireProjectAccess(scope, { id: projectIdSchema.parse(task.projectId), organizationId: scope.organizationId, access: task.project.access }, "read").ok) {
         return { ok: false, error: "not-found", message: "No such task" };
       }
-      const item = await tx.needsYouItem.findFirst({ where: { taskId: task.id, reason: "ticket_closed", state: "open" }, select: { id: true } });
-      if (task.state !== "needs_you" || task.needsYouReason !== "ticket_closed" || item === null) {
-        return { ok: false, error: "not-waiting", message: "The task isn't waiting on its closed ticket" };
+      // Milestone 6 (F-101, ticket 35): a round cap's "Keep working" is the same answer, a person's
+      // action that resets the round counters (the message records it), with the cap's own words.
+      const reason = task.needsYouReason === "round_cap" ? "round_cap" : "ticket_closed";
+      const item = await tx.needsYouItem.findFirst({ where: { taskId: task.id, reason, state: "open" }, select: { id: true } });
+      if (task.state !== "needs_you" || task.needsYouReason !== reason || item === null) {
+        return { ok: false, error: "not-waiting", message: "The task isn't waiting on its closed ticket or a round limit" };
       }
       // Dismissed before the message goes, which would otherwise answer it as the next turn's item.
       await resolveNeedsYouItemsInTx(deps, tx, { id: item.id }, { state: "dismissed", at: new Date(deps.clock.now()), byMemberId: scope.memberId });
       const sent = await sendMemberMessageInTx({ ...deps, ...extras }, tx, scope, {
         taskId: input.taskId,
         clientMessageId: clientMessageIdSchema.parse(`keep-working:${item.id}`),
-        text: KEEP_WORKING_PROMPT,
+        text: reason === "round_cap" ? KEEP_WORKING_AFTER_CAP_PROMPT : KEEP_WORKING_PROMPT,
         intent: "keep-working",
         sender: "driver",
       });

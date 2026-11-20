@@ -133,6 +133,9 @@ export const fixChecksPrompt = (checks: readonly FailedCheckForPrompt[]): string
 /** "Keep working" on a task whose ticket closed while it ran (Q181): the turn after the interrupt. */
 export const KEEP_WORKING_PROMPT = "Carry on where you stopped.";
 
+/** "Keep working" at a round limit (F-101, ticket 35): the driver lets the agent go on with what the last round sent it. */
+export const KEEP_WORKING_AFTER_CAP_PROMPT = "Keep working on what the last round sent you: fix it, then push.";
+
 // ---------- an approval answered after it expired (F-026, ADR 0039; ticket 17) ----------
 
 /**

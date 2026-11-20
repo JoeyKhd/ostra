@@ -407,7 +407,33 @@ export const projectReviewProcedures = {
       throw new TRPCError({ code: "NOT_FOUND", message: "No such project" });
     }
     const caps = ctx.deps.ports.adapters.codeHost.capabilities;
+    // Ticket 35: each repo's CI as ostra last saw it, on the newest head any task pushed there.
+    const repos = await ctx.deps.db.repo.findMany({ where: { organizationId: ctx.scope.organizationId, projectId: input.projectId }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], select: { id: true, fullName: true } });
+    const runs = await ctx.deps.db.ciRun.findMany({
+      where: { organizationId: ctx.scope.organizationId, projectId: input.projectId },
+      orderBy: { firstSeenAt: "desc" },
+      take: 200,
+      select: { headSha: true, state: true, checks: true, firstSeenAt: true, completedAt: true, taskRepo: { select: { repoId: true, task: { select: { id: true, ticketKey: true } } } } },
+    });
     return {
+      repos: repos.map((repo) => {
+        const run = runs.find((one) => one.taskRepo.repoId === repo.id);
+        return {
+          repoId: repoIdSchema.parse(repo.id),
+          fullName: repo.fullName,
+          ci:
+            run === undefined
+              ? null
+              : {
+                  state: run.state,
+                  checks: checksOf(run.checks),
+                  headSha: run.headSha,
+                  taskId: taskIdSchema.parse(run.taskRepo.task.id),
+                  taskKey: run.taskRepo.task.ticketKey,
+                  at: (run.completedAt ?? run.firstSeenAt).getTime(),
+                },
+        };
+      }),
       aiReview: project.aiReview,
       /** Whether this member may turn it on or off. */
       canChange: ctx.project.role === "admin",

@@ -261,10 +261,26 @@ describe("the task's rounds (F-035, F-101, ticket 28)", () => {
 });
 
 describe("Review settings (F-100, ticket 28)", () => {
+  it("F-035: each repo's CI as ostra last saw it, on the newest head a task pushed there, and a repo no task pushed to has none", async () => {
+    const task = await reviewedTask("ci-seen", { appliedDraft: false });
+    const member = await harness.as(harness.fixture.a.member);
+    const settings = await member.projects.reviewSettings({ projectId });
+    const byName = new Map(settings.repos.map((repo) => [repo.fullName, repo] as const));
+    expect(byName.get("ostra-test/test1")?.ci).toMatchObject({ state: "failed", headSha: task.head1, taskId: task.taskId, checks: [{ name: "test", conclusion: "failure" }, { name: "lint", conclusion: "success" }] });
+    expect(byName.get("ostra-test/test2")?.ci).toMatchObject({ state: "passed", headSha: task.head2 });
+    const first = await harness.test.db.repo.findUniqueOrThrow({ where: { id: repo1 } });
+    const lonely = await harness.test.db.repo.create({
+      data: { organizationId: orgA, projectId, connectionId: first.connectionId, installationId: first.installationId, hostRepoId: `lonely-${randomBytes(3).toString("hex")}`, fullName: `ostra-test/lonely-${randomBytes(3).toString("hex")}`, defaultBranch: "main", checkoutDir: "lonely", position: 9 },
+      select: { fullName: true },
+    });
+    expect((await member.projects.reviewSettings({ projectId })).repos.find((repo) => repo.fullName === lonely.fullName)?.ci).toBeNull();
+  });
+
+
   it("F-100: the AI review switch is a project admin's only, audited; the round limits are shown and the install's", async () => {
     const member = await harness.as(harness.fixture.a.member);
     const settings = await member.projects.reviewSettings({ projectId });
-    expect(settings).toEqual({ aiReview: true, canChange: false, limits: { ciRounds: 2, reviewRounds: 2, automaticTurns: 4 }, codeHost: { ciResults: harness.fakes.codeHost.capabilities.ciResults, reviewComments: harness.fakes.codeHost.capabilities.reviewComments } });
+    expect(settings).toMatchObject({ aiReview: true, canChange: false, limits: { ciRounds: 2, reviewRounds: 2, automaticTurns: 4 }, codeHost: { ciResults: harness.fakes.codeHost.capabilities.ciResults, reviewComments: harness.fakes.codeHost.capabilities.reviewComments } });
     expect(await codeOf(member.projects.setAiReview({ projectId, on: false }))).toBe("FORBIDDEN");
     expect(await harness.test.db.project.findUniqueOrThrow({ where: { id: projectId } })).toMatchObject({ aiReview: true });
 

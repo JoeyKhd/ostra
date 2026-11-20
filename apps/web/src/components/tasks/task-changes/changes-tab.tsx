@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import type { ReactNode } from "react";
 
 import { diffCommentIdSchema, gitShaSchema, taskRepoIdSchema } from "@ostra/protocol";
 import type { TaskId } from "@ostra/protocol";
@@ -12,7 +13,7 @@ import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
 import type { SaveResult } from "./diff-view";
-import type { CommentTarget, DiffCommentView, DiffFileView, DiffHunk, DiffLine, DiffRepoView, SendDelivery } from "./diff-words";
+import type { CommentTarget, DiffCommentView, DiffFileView, DiffFindingView, DiffHunk, DiffLine, DiffRepoView, SendDelivery } from "./diff-words";
 import { ChangesBody } from "./task-changes";
 import type { PressState } from "./task-changes";
 
@@ -120,7 +121,14 @@ export const ChangesTab = ({
   sessionGoing,
   onTakeOver,
   onSeeActivity,
+  onlyRepo,
+  findings,
+  renderFinding,
 }: {
+  /** Milestone 6 (ticket 35): the review screen shows one PR's repo at a time, with its findings. */
+  readonly onlyRepo?: string;
+  readonly findings?: readonly DiffFindingView[];
+  readonly renderFinding?: (finding: DiffFindingView) => ReactNode;
   readonly taskId: TaskId;
   readonly agent: string;
   readonly driver: string | null;
@@ -164,7 +172,7 @@ export const ChangesTab = ({
 
   const load =
     diff.data !== undefined
-      ? { kind: "ready" as const, repos: diff.data.repos.map(repoViewOf), lastPushAt: diff.data.asOf }
+      ? { kind: "ready" as const, repos: diff.data.repos.filter((repo) => onlyRepo === undefined || repo.taskRepoId === onlyRepo).map(repoViewOf), lastPushAt: diff.data.asOf }
       : diff.error !== null
         ? { kind: "failed" as const, error: errorText(diff.error) ?? t("errors.unknown"), retry: () => void diff.refetch() }
         : { kind: "loading" as const };
@@ -172,7 +180,10 @@ export const ChangesTab = ({
   return (
     <ChangesBody
       load={load}
-      comments={(comments.data?.comments ?? []).map(commentViewOf)}
+      {...(findings === undefined ? {} : { findings })}
+      {...(renderFinding === undefined ? {} : { renderFinding })}
+      hideBehind={onlyRepo !== undefined}
+      comments={(comments.data?.comments ?? []).filter((comment) => onlyRepo === undefined || comment.taskRepoId === onlyRepo).map(commentViewOf)}
       canComment
       update={{
         state: press(update, 1),

@@ -133,6 +133,20 @@ describe("the diff's rows", () => {
     expect(rows[label + 1]?.kind === "comment" && rows[label + 1]?.key.endsWith(":o:c3")).toBe(true);
   });
 
+  it("F-102: an AI review's findings sit on their line before its comments, newest round first; off the diff at the file's top; outdated after its last hunk", () => {
+    const finding = (id: string, line: number, round: number, state: "open" | "resolved" | "outdated" = "open") => ({ id, taskRepoId: "r1", path: "src/calculator/state.ts", side: "new" as const, line, state, round });
+    const rows = rowsOf([web], [sent, draft], new Set(), null, [finding("f1", 40, 1, "resolved"), finding("f2", 40, 2), finding("f3", 99, 2), finding("f4", 41, 1, "outdated")]);
+    const at40 = rows.findIndex((row) => row.kind === "line" && row.line.kind === "add" && row.line.new === 40);
+    expect(rows.slice(at40 + 1, at40 + 5).map((row) => (row.kind === "finding" ? row.finding.id : row.kind === "comment" ? row.comment.id : row.kind))).toEqual(["f2", "f1", "c1", "c2"]);
+    // Off the diff: under a label, right after the file's header.
+    expect(rows.slice(1, 3).map((row) => (row.kind === "finding" ? row.finding.id : row.kind))).toEqual(["findings-label", "f3"]);
+    const label = rows.findIndex((row) => row.kind === "outdated-label");
+    expect(label).toBeGreaterThan(rows.findLastIndex((row) => row.kind === "line" && row.path === "src/calculator/state.ts"));
+    expect(rows[label + 1]?.kind === "finding" ? rows[label + 1]?.key : null).toContain(":of:f4");
+    // The Changes tab passes none: nothing changes.
+    expect(rowsOf([web], [sent], new Set(), null).some((row) => row.kind === "finding" || row.kind === "findings-label")).toBe(false);
+  });
+
   it("F-072: editing a draft swaps it for the field with its text", () => {
     const rows = rowsOf([web], [draft], new Set(), { kind: "edit", comment: draft });
     const field = rows.find((row) => row.kind === "field");

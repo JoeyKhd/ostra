@@ -12,6 +12,7 @@ import type { RouterOutputs } from "@/lib/trpc";
 import type { ChecksMarker, CheckRunView, FixDelivery, PrDraftLine, TurnChecksView } from "./check-words";
 import { ChecksBody } from "./task-checks";
 import type { FixState } from "./task-checks";
+import { CodeHostCi } from "../review/code-host-ci";
 
 // Ticket 47 wired (task-checks.md; F-054): `tasks.checks` drawn by the Checks tab's parts, and "Ask
 // the agent to fix" through `tasks.fixChecks`. The API's shapes are read here once.
@@ -109,11 +110,15 @@ export const ChecksTab = ({
         ? { kind: "error" as const, message: errorText(checks.error) ?? t("errors.unknown"), retry: () => void checks.refetch() }
         : { kind: "loading" as const };
   return (
-    <ChecksBody
-      load={load}
-      now={now}
-      environmentHref={`/projects/${projectId}/environment?tab=services`}
-      fix={{ agent, delivery, state, onFix: () => { fix.mutate({ taskId }); }, onTakeOver, onSeeActivity }}
-    />
+    <>
+      {/* Milestone 6 (F-035, ticket 35): the code host's CI per pull request, beside ostra's checks. */}
+      <CodeHostCi taskId={taskId} />
+      <ChecksBody
+        load={load}
+        now={now}
+        environmentHref={`/projects/${projectId}/environment?tab=services`}
+        fix={{ agent, delivery, state, onFix: () => { fix.mutate({ taskId }); }, onTakeOver, onSeeActivity }}
+      />
+    </>
   );
 };

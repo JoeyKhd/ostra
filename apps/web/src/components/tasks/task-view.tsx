@@ -1,7 +1,8 @@
 "use client";
 
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckIcon, GitPullRequestIcon, LinkIcon, SquareIcon } from "lucide-react";
+import { CheckIcon, GitPullRequestIcon, LinkIcon, ScanSearchIcon, SquareIcon } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
@@ -51,6 +52,9 @@ import { UnderlineTabs } from "@/components/ui/underline-tabs";
 import { Chip } from "@/components/ui/status";
 import { DraftView } from "./draft/draft-view";
 import { DraftProperties } from "./draft/draft-properties";
+import { capOf } from "./review/review-words";
+import { RoundsGroup, RoundsInThread, StageLine } from "./review/task-rounds";
+import { formatClock } from "@/lib/format";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type Task = RouterOutputs["tasks"]["get"];
@@ -315,6 +319,10 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const [localOpened, setLocalOpened] = useState(false);
   const local = useQuery(trpc.tasks.local.queryOptions(localOpened ? { taskId } : skipToken));
   const checksMarker = useQuery({ ...trpc.tasks.checks.queryOptions({ taskId }), refetchInterval: 15_000 });
+  // Milestone 6 (ticket 35): a code task's review rounds, and whether its project's AI review is on.
+  const codeTask = task.data?.kind === "code";
+  const rounds = useQuery({ ...trpc.tasks.rounds.queryOptions(codeTask ? { taskId } : skipToken), refetchInterval: 15_000 });
+  const reviewSettings = useQuery(trpc.projects.reviewSettings.queryOptions(codeTask && task.data !== undefined ? { projectId: task.data.projectId } : skipToken));
 
   const getKey = trpc.tasks.get.queryKey({ taskId });
   const stop = useMutation(
@@ -328,6 +336,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const setEffort = useMutation(trpc.tasks.setEffort.mutationOptions({ onSettled: () => queryClient.invalidateQueries({ queryKey: getKey }) }));
   const settle = { onSettled: () => queryClient.invalidateQueries({ queryKey: getKey }) };
   const reopen = useMutation(trpc.tasks.reopen.mutationOptions(settle));
+  const keepWorking = useMutation(trpc.tasks.keepWorking.mutationOptions({ onSettled: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: getKey }), queryClient.invalidateQueries({ queryKey: trpc.tasks.rounds.queryKey({ taskId }) })]); } }));
   const retrySync = useMutation(trpc.tasks.retrySync.mutationOptions(settle));
   const dismiss = useMutation(trpc.tasks.dismissNeedsYou.mutationOptions(settle));
   const createTicket = useMutation(trpc.tasks.createTicket.mutationOptions(settle));
@@ -471,6 +480,38 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
       }
     />
   );
+  const aiReview = reviewSettings.data?.aiReview ?? true;
+  const roundList = rounds.data?.rounds ?? [];
+  const heldNow = roundList.some((round) => round.state === "held");
+  const inLoop = data.kind === "code" && data.subState !== null && (data.state === "in_review" || data.state === "needs_you");
+  const cap = data.state === "needs_you" && data.reason === "round_cap" ? (capOf(roundList) ?? "turns") : null;
+  const lastCi = roundList.findLast((round) => round.cause.kind === "ci");
+  const failingCheck = lastCi?.cause.kind === "ci" ? (lastCi.cause.failing[0]?.name ?? null) : null;
+  const lastFindings = roundList.findLast((round) => round.cause.kind === "findings");
+  const blockingSent = lastFindings?.cause.kind === "findings" ? lastFindings.cause.findings.filter((finding) => finding.severity === "blocking").length : 0;
+  const roundsTail =
+    rounds.data === undefined ? null : (
+      <RoundsInThread
+        taskId={taskId}
+        rounds={roundList}
+        limits={rounds.data.limits}
+        cap={cap}
+        capInput={{ agent: agentName, failing: failingCheck, blocking: blockingSent }}
+        isDriver={isDriver}
+        driver={driverName}
+        keep={{ run: () => { keepWorking.mutate({ taskId }); }, pending: keepWorking.isPending, error: errorText(keepWorking.error) }}
+        onTakeOver={takeOverNow}
+      />
+    );
+  const roundsGroup =
+    data.kind === "code" && (roundList.length > 0 || inLoop) ? (
+      <RoundsGroup
+        counts={data.roundCounts}
+        aiReview={aiReview}
+        since={data.roundCounts.lastPersonActionAt === null ? null : formatClock(data.roundCounts.lastPersonActionAt)}
+        held={heldNow}
+      />
+    ) : null;
   const draftGroups = isRefine ? (
     <DraftProperties taskId={taskId} meId={me.data?.memberId ?? null} readyStatusName={readyStatusName} moveState={moveWrite === undefined ? null : moveWrite.state === "done" ? "done" : moveWrite.state === "failed" ? "failed" : "pending"} now={now} />
   ) : null;
@@ -492,6 +533,11 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
         <>
           <CopyLink />
           <TakeItLocal pushed={data.repos.some((repo) => repo.headSha !== null)} load={localLoad} onOpen={() => { setLocalOpened(true); }} />
+          {data.kind === "code" && data.repos.some((repo) => repo.pr?.state === "open") ? (
+            <Link href={`/tasks/${taskId}/review`} className={buttonVariants()} data-action="open-review">
+              <ScanSearchIcon aria-hidden /> {t("review.button")}
+            </Link>
+          ) : null}
           {prs.map((pr) =>
             pr.href === null ? null : (
               <a key={pr.number} href={pr.href} target="_blank" rel="noopener noreferrer" className={buttonVariants()}>
@@ -515,7 +561,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           now={now}
           takingOver={takeOver.isPending}
           onTakeOver={() => { takeOver.mutate({ taskId }); }}
-          ticket={<>{ticketGroups}{draftGroups}</>}
+          ticket={<>{roundsGroup}{ticketGroups}{draftGroups}</>}
           effort={
             <TaskEffortRow
               effort={effort}
@@ -549,6 +595,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
             </span>
             {log.state.connection === "reconnecting" ? <><Sep /><span className="text-muted">{t("taskPage.reconnecting")}</span></> : null}
           </p>
+          {inLoop ? <StageLine subState={data.subState} aiReview={aiReview} counts={data.roundCounts} needsYou={cap !== null && isDriver} held={heldNow} /> : null}
           <TaskPrs repos={data.repos} />
           {data.waiting?.kind === "no-runner" && data.waiting.reason.code === "needs-services-runner" ? (
             <p className="mt-1.5 text-ui text-muted" data-testid="task-dispatch-note">{servicesWaitText(data.waiting.reason.online)}</p>
@@ -606,7 +653,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
               dismiss={{ run: () => { dismiss.mutate({ taskId, itemId: conflict.id }); }, pending: dismiss.isPending }}
             />
           )}
-          {data.group === "needs-you" && !shownInThread(data.reason) && data.limit === null && data.reason !== "crashed" && conflict === undefined && ticketClosed === undefined && data.reason !== "plan" && data.reason !== "approval" && data.reason !== "question" && !(isRefine && data.reason === "draft_ready") ? (
+          {data.group === "needs-you" && !shownInThread(data.reason) && data.limit === null && data.reason !== "crashed" && conflict === undefined && ticketClosed === undefined && data.reason !== "plan" && data.reason !== "approval" && data.reason !== "question" && !(isRefine && data.reason === "draft_ready") && data.reason !== "round_cap" ? (
             <NeedsYou title={t("taskPage.needsYou")} className="mt-4">
               <p className="whitespace-pre-wrap">{summary ?? t("taskPage.needsYouDefault")}</p>
             </NeedsYou>
@@ -677,7 +724,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           approvalCard={approvalCard}
           approvalReceipt={receiptOf}
           questionCard={questionCard}
-          tail={heldNoKey ? <HeldNoKey noKey={noKey} /> : data.plan === null ? null : <PlanBlock key={`${data.plan.turnId}:${String(data.plan.proposedAt)}`} taskId={taskId} plan={data.plan} agent={agentName} isDriver={isDriver} driver={driverName} onTakeOver={takeOverNow} takingOver={takeOver.isPending} />}
+          tail={heldNoKey ? <HeldNoKey noKey={noKey} /> : data.plan === null ? roundsTail : <PlanBlock key={`${data.plan.turnId}:${String(data.plan.proposedAt)}`} taskId={taskId} plan={data.plan} agent={agentName} isDriver={isDriver} driver={driverName} onTakeOver={takeOverNow} takingOver={takeOver.isPending} />}
           {...(notDriver === undefined ? {} : { notDriver })}
           hasEarlier={log.state.olderBefore !== null}
           loadEarlier={log.loadEarlier}

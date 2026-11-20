@@ -422,6 +422,16 @@ export const tasksRouter = router({
       source: task.source,
       state,
       subState: task.subState,
+      /**
+       * Milestone 6 (F-035, F-101, ticket 35): the review loop's counters since a person last acted,
+       * with the install's limits, for the task page's stage line and its Rounds group.
+       */
+      roundCounts: {
+        ci: { used: task.ciRounds, limit: ctx.deps.settings.team.roundLimits.ciRounds },
+        review: { used: task.reviewRounds, limit: ctx.deps.settings.team.roundLimits.reviewRounds },
+        automaticTurns: { used: task.automaticTurns, limit: ctx.deps.settings.team.roundLimits.automaticTurns },
+        lastPersonActionAt: task.lastPersonActionAt?.getTime() ?? null,
+      },
       reason: task.needsYouReason ?? task.stoppedReason,
       group: groupOf(state),
       /** Why a queued task waits (Q132): data the panel words, never a sentence. */

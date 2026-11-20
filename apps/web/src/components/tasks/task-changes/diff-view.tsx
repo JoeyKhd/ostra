@@ -14,7 +14,7 @@ import { formatClock } from "@/lib/format";
 import { t } from "@/lib/messages";
 
 import { COUNTER_FROM, MAX_COMMENT, anchorOf, estimateRow } from "./diff-words";
-import type { CommentTarget, DiffCommentView, DiffLine, DiffRow } from "./diff-words";
+import type { CommentTarget, DiffCommentView, DiffFindingView, DiffLine, DiffRow } from "./diff-words";
 
 // ostra's own unified diff (task-changes.md, "The diff view"; F-027, F-072, ADR 0051): one
 // continuous, virtualized list of every file's header, hunks, lines and comments. Code and comment
@@ -35,6 +35,8 @@ export type DiffActions = {
   readonly onFold: (key: string) => void;
   /** F-111: "Remember this" on a sent comment proposes it as a project note; answers whether it went. */
   readonly onRemember?: (comment: DiffCommentView) => Promise<RememberResult>;
+  /** Milestone 6 (ticket 35): the review screen draws an AI review's finding in its row. */
+  readonly renderFinding?: (finding: DiffFindingView) => ReactNode;
 };
 
 export type RememberResult = { readonly kind: "proposed" } | { readonly kind: "refused"; readonly message: string };
@@ -343,6 +345,10 @@ export const DiffRowView = ({
       return <CommentField key={row.key} target={row.target} editing={row.editing} onSave={actions.onSave} onCancel={actions.onCancel} />;
     case "outdated-label":
       return <div className="flex h-6 items-center pl-[104px] text-xs text-faint">{t("changes.outdatedComments")}</div>;
+    case "finding":
+      return <>{actions.renderFinding?.(row.finding) ?? null}</>;
+    case "findings-label":
+      return <div className="flex h-6 items-center pl-[104px] text-xs text-faint">{t("changes.findingsOffDiff")}</div>;
     default:
       return row satisfies never;
   }
