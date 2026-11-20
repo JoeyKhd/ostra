@@ -1,6 +1,6 @@
 # 42: A job object on Windows, and a marker sweep where there's no kernel unit
 
-Status: ready-for-agent
+Status: ready-for-human
 Builder: runner; api and web for the one line in the panel
 Blocked by: 02 (the protocol's minor 1)
 Features: F-014
@@ -45,3 +45,4 @@ Settled as Q126 on 2026-11-19 (`context/open-questions.md`, Settled). On `host`,
 - Windows proof: `context/specs/m2-tickets-in/evidence/42-windows-containment.txt`, and break-it checks in `context/proof/F-014.md`. A finding while proving it: Windows keeps a dead parent's PID on its children, so a tree walk still finds a helper whose parent exited; the case that only a job object ends is a helper whose parent and grandparent both exited (`testing/helpers.ts`), and the tests use that.
 - Not yet ticked: the Linux case with the cgroup probe faked and the setup daemon on Linux are written and run in CI on Linux, not on this Windows machine; the Mac case needs a Mac. F-014 stays `building`.
 - 2026-11-19, the builder: the Linux half ran in CI on `ubuntu-latest`: run https://github.com/JoeyKhd/ostra/actions/runs/44450873472 (commit `a10e816`, which holds `✨ contain a host task's processes`) passed `pnpm test`, with `host-containment.test.ts`'s Linux-only case (the cgroup probe faked, the helper ended by its marker) and the setup daemon, the detached grandchild and the killed runner on the runner's process tree and marker. Ticked the Linux and setup-daemon boxes on that run. The Mac case is still open.
+- 2026-11-20, audit: left open, now `ready-for-human`. Every box holds on `origin/main` except the macOS case, and nothing more can be done for it on this Windows machine: it needs a Mac. Milestone 5's ticket 35 already scripts it, as the `live-macos` job of the manual `Proof` workflow (`scripts/live/macos.sh`: the marker sweep ends a helper that left the group, and a helper that also cleared its environment is the recorded gap). **The maintainer's step:** `gh workflow run Proof -f jobs=fleet`; then an agent keeps the job's log in `context/specs/m5-the-fleet/demo/macos/`, records the result here and in `context/research/host-process-containment.md`, ticks the box, and F-014 can move on from `building`.
