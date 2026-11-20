@@ -424,7 +424,8 @@ export const startCore = async (
     secretStore: adapters.secretStore,
     clock: systemClock,
     logger,
-    ...(options.linearApiUrl === undefined ? {} : { linearApiUrl: options.linearApiUrl }),
+    // OSTRA_LINEAR_API_URL (ticket 34: the panel's e2e stack points it at a fake Linear); the restart harness passes its own.
+    linearApiUrl: options.linearApiUrl ?? settings.linearApiUrl,
   });
   const ingestDeps = { db, trackers, notices, clock: systemClock, logger, jobs, closed: { jobs, outbox: postgresCommandOutbox, audit: postgresAuditLog } };
   // PR states (ticket 16): the App's webhooks and a reconcile per GitHub connection agree.

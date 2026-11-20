@@ -136,6 +136,10 @@ const stackSchema = z.object({
    * repo), and a second App owned by a third account, for "Connect another App" (`appId`, `privateKey`, `slug`).
    */
   githubB: z.object({ login: z.string(), repo: z.string(), appId: z.string(), privateKey: z.string(), slug: z.string() }),
+  /** Milestone 6 (ticket 34): the fake Linear, its admin's API key and its team. */
+  linear: z.object({ apiUrl: z.string(), apiKey: z.string(), teamId: z.string(), teamKey: z.string() }),
+  /** The server's data folder, holding its secrets key; `null` for an outside stack. */
+  dataDir: z.string().nullable(),
 });
 const seededSchema = z.object({ taskId: taskIdSchema });
 

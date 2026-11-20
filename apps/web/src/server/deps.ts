@@ -156,7 +156,7 @@ const build = async (): Promise<ApiRuntime> => {
       clock: systemClock,
       logger,
     }),
-    makeLinearTracker: (auth) => new LinearAdapter({ auth }, context),
+    makeLinearTracker: (auth) => new LinearAdapter({ auth, apiUrl: settings.linearApiUrl }, context),
     // F-115: the adapters that send "Send a test mail"; core builds its own for the deliveries.
     email: {
       adapterFor: (config) =>

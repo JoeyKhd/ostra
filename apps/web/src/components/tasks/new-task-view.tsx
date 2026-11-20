@@ -17,13 +17,13 @@ import {
   SquareTerminalIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Popover } from "radix-ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, SubmitEvent } from "react";
 
 import { branchSlugFor, titleFromPrompt } from "@ostra/domain/branch-name";
-import { runnerIdSchema } from "@ostra/protocol";
+import { projectIdSchema, runnerIdSchema } from "@ostra/protocol";
 import type { ProjectId } from "@ostra/protocol";
 
 import { ProfilePicker, useStartProfile } from "@/components/agent-profiles/profile-picker";
@@ -37,6 +37,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Status } from "@/components/ui/status";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { formatAge } from "@/lib/format";
@@ -379,7 +380,13 @@ export const NewTaskView = () => {
   const me = useQuery(trpc.me.get.queryOptions());
   const projects = useQuery(trpc.projects.list.queryOptions());
   const runners = useQuery(trpc.runners.mine.queryOptions());
-  const [picked, setPicked] = useState<ProjectId | null>(null);
+  // Ticket 34: `?kind=refine&project=…` (a refine draft's "start a new refine task") opens on that kind and project.
+  const params = useSearchParams();
+  const [picked, setPicked] = useState<ProjectId | null>(() => {
+    const fromLink = projectIdSchema.safeParse(params.get("project"));
+    return fromLink.success ? fromLink.data : null;
+  });
+  const [kind, setKind] = useState<"code" | "refine">(() => (params.get("kind") === "refine" ? "refine" : "code"));
   const [prompt, setPrompt] = useState("");
   const hint = useSubmitHint();
   const [now] = useState(() => Date.now());
@@ -392,7 +399,7 @@ export const NewTaskView = () => {
   const recent = useMemo(() => (tasks.data ?? []).flatMap((group) => group.tasks), [tasks.data]);
 
   // The member's profiles for this project, its default first (F-021).
-  const profiles = useStartProfile(projectId);
+  const profiles = useStartProfile(projectId, kind);
   const profile = profiles.options === undefined ? undefined : profiles.chosen;
   // Milestone 5 (F-069, F-014): whether "A pool" and each "Your machine" can take it now, and why not.
   const choices = useQuery(
@@ -449,6 +456,7 @@ export const NewTaskView = () => {
       prompt: prompt.trim(),
       ...(profile === undefined || profile === null ? {} : { agentProfileId: profile.profileId }),
       ...(chosen === POOLS ? {} : { runnerId: runnerIdSchema.parse(chosen) }),
+      ...(kind === "refine" ? { kind } : {}),
     });
   };
 
@@ -509,6 +517,18 @@ export const NewTaskView = () => {
               </>
             ) : (
               <>
+                {/* Milestone 6 (F-099, ticket 34): the kind. A refine task drafts a ticket and never pushes. */}
+                <ToggleGroup
+                  type="single"
+                  value={kind}
+                  onValueChange={(value) => { if (value === "code" || value === "refine") setKind(value); }}
+                  aria-label={t("newTask.kind")}
+                  className="mr-1 h-[28px]"
+                  data-testid="pick-kind"
+                >
+                  <ToggleGroupItem value="code" disabled={starting} className="text-sm">{t("newTask.kindCode")}</ToggleGroupItem>
+                  <ToggleGroupItem value="refine" disabled={starting} className="text-sm">{t("newTask.kindRefine")}</ToggleGroupItem>
+                </ToggleGroup>
                 <ProjectPicker projects={projects.data} project={project} onPick={setPicked} disabled={starting} />
                 <ProfilePicker options={profiles.options} chosen={profiles.chosen} onPick={profiles.pick} disabled={starting} />
                 <RunOnPicker runners={runners.data} runner={runner} onPick={setRunOn} disabled={starting} choices={choices.data} project={project.name} />

@@ -152,7 +152,7 @@ describe("the member's needs-you list", () => {
     expect(byReason.get("plan")?.answer).toMatchObject({ kind: "plan", entries: [{ content: "Read the settings module" }, { content: "Add the theme switch" }], message: "Here is the plan." });
     expect(byReason.get("setup_failed")?.detail).toEqual({ reason: "setup_failed", exitCode: 1 });
     expect(byReason.get("ticket_closed")?.detail).toEqual({ reason: "ticket_closed", status: "Done" });
-    expect(byReason.get("draft_ready")?.detail).toEqual({ reason: "draft_ready", prNumber: 2213 });
+    expect(byReason.get("draft_ready")?.detail).toEqual({ reason: "draft_ready", prNumber: 2213, refine: false });
     const stalled = byReason.get("stalled")?.detail;
     expect(stalled?.reason === "stalled" && stalled.minutes >= 1).toBe(true);
     for (const plain of ["no_changes", "spend_cap", "crashed", "round_cap", "waiting_for_reviewer", "environment_proposal", "restore_conflict", "unstorable_event", "files_outside_repos", "awaiting_approval"] as const) {

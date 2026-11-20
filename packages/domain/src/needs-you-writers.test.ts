@@ -54,11 +54,13 @@ describe("every write of a needs-you item enqueues its fan-out", () => {
     }
     // The helpers' own file, the browser suite's seeds, which make a task in a state and need no
     // notification (milestone 4's keys world, ticket 53, seeds a no-key item the same way; milestone
-    // 7's keyboard specs, ticket 13, and its route sweep, ticket 19, seed the items they show), and the isolation
+    // 7's keyboard specs, ticket 13, and its route sweep, ticket 19, seed the items they show; milestone
+    // 6's refine draft, ticket 34, seeds its draft_ready item), and the isolation
     // suite's fixture rows (milestone 4, ticket 09), which notify no one.
     expect(writers.sort()).toEqual([
       "apps/web/e2e/seed-keys-world.ts",
       "apps/web/e2e/seed-keys.ts",
+      "apps/web/e2e/seed-refine-world.ts",
       "apps/web/e2e/seed-routes-world.ts",
       "apps/web/e2e/seed-task.ts",
       "packages/db/src/testing/isolation-models.ts",

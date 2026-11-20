@@ -54,6 +54,8 @@ export type ItemRow = {
     readonly agentProfileId: string | null;
     readonly updatedAt: Date;
     readonly repos: readonly { readonly prNumber: number | null }[];
+    /** Milestone 6 (ticket 34): a refine task's `draft_ready` is its draft, not a draft PR. */
+    readonly kind?: DbEnum.TaskKind;
     /** Why a queued task waits (`Task.dispatchWait`): a no-key item reads its profile's provider from it. */
     readonly dispatchWait?: unknown;
   };
@@ -64,7 +66,8 @@ export type ReasonDetail =
   | { readonly reason: "question"; readonly question: string | null }
   | { readonly reason: "approval"; readonly command: string | null; readonly subject: ApprovalSubject | null; readonly ruleName: string | null }
   | { readonly reason: "plan"; readonly steps: number | null }
-  | { readonly reason: "draft_ready"; readonly prNumber: number | null }
+  /** `refine`: a refine task's draft is ready (milestone 6, ticket 34), not a draft PR. */
+  | { readonly reason: "draft_ready"; readonly prNumber: number | null; readonly refine: boolean }
   | { readonly reason: "setup_failed"; readonly exitCode: number | null }
   | { readonly reason: "stalled"; readonly minutes: number }
   | { readonly reason: "ticket_closed"; readonly status: string | null }
@@ -288,7 +291,7 @@ export const loadNeedsYouViews = async (
         case "plan":
           return { reason: "plan", steps: proposed === undefined ? null : proposed.entries.length };
         case "draft_ready":
-          return { reason: "draft_ready", prNumber: task.repos.find((repo) => repo.prNumber !== null)?.prNumber ?? null };
+          return { reason: "draft_ready", prNumber: task.repos.find((repo) => repo.prNumber !== null)?.prNumber ?? null, refine: task.kind === "refine" };
         case "setup_failed":
           return { reason: "setup_failed", exitCode: loaded.setupExit.get(task.id) ?? null };
         case "stalled": {
@@ -409,6 +412,7 @@ const taskSelect = {
   updatedAt: true,
   repos: { select: { prNumber: true } },
   dispatchWait: true,
+  kind: true,
 } as const;
 
 /** Who reads what waits: the member, with their role for the admins' items. */

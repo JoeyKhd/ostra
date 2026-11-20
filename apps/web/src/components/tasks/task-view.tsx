@@ -48,11 +48,17 @@ import { TaskWaiting } from "./task-waiting";
 import { boxSizeText } from "./task-waiting-words";
 import type { LocalLoad } from "./take-it-local";
 import { UnderlineTabs } from "@/components/ui/underline-tabs";
+import { Chip } from "@/components/ui/status";
+import { DraftView } from "./draft/draft-view";
+import { DraftProperties } from "./draft/draft-properties";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type Task = RouterOutputs["tasks"]["get"];
 
-type TaskTab = "activity" | "changes" | "checks" | "events";
+type TaskTab = "activity" | "changes" | "checks" | "events" | "draft";
+
+/** The task kinds that never push (ADR 0028 amended): a refine task, and a review task. */
+const readOnlyKind = (kind: Task["kind"]): boolean => kind === "refine" || kind === "review";
 
 /** The wait reasons milestones 3 and 4 word in their own blocks on this page (the waiting line skips them). */
 const wordedElsewhere: ReadonlySet<string> = new Set(["needs-services-runner", "provider-not-allowed", "installation-not-linked", "no-provider-for-model"]);
@@ -157,8 +163,12 @@ const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, t
             </>
           ) : null}
         </PropRow>
+        {task.kind === "code" ? null : (
+          <PropRow label={t("draft.kind")}><span data-testid="task-kind">{task.kind === "refine" ? t("draft.kindRefine") : t("draft.kindReview")}</span></PropRow>
+        )}
         <PropRow label={t("taskAnswers.usage.profile")}>
           {task.agent === null ? <span className="text-faint">{t("taskAnswers.usage.none")}</span> : <span className="truncate" data-testid="task-profile">{task.agent.name}</span>}
+          {task.agent?.builtInKind === null || task.agent?.builtInKind === undefined ? null : <Chip className="h-5 shrink-0 px-1.5 text-xs">{t("draft.builtIn")}</Chip>}
         </PropRow>
         {task.agent === null ? null : (
           <>
@@ -183,6 +193,9 @@ const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, t
         {task.runner === null ? null : (
           <div className="pb-1.5 pl-[104px]"><RunnerKind runner={task.runner} /></div>
         )}
+        {readOnlyKind(task.kind) ? (
+          <PropRow label={t("draft.pushes")}><span className="truncate text-muted" data-testid="task-pushes">{task.state === "done" ? t("draft.pushesNoneDone") : t("draft.pushesNone")}</span></PropRow>
+        ) : null}
         <PropRow label={t("taskPage.tokens")}>
           <Mono>
             <span data-testid="task-tokens">{usage.estimated ? "≈ " : ""}{formatTokens(Math.max(input, usage.inputTokens))} {t("taskPage.in")} · {formatTokens(Math.max(output, usage.outputTokens))} {t("taskPage.out")}</span>
@@ -281,15 +294,24 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const router = useRouter();
   const params = useSearchParams();
   const tabParam = params.get("tab");
-  const tab: TaskTab = tabParam === "changes" || tabParam === "checks" || tabParam === "events" ? tabParam : "activity";
+  const refine = task.data?.kind === "refine";
+  // Ticket 34: a refine task's draft, for its tab; a refine task opens on it while a draft exists.
+  const draft = useQuery(trpc.drafts.get.queryOptions(refine ? { taskId, version: null } : skipToken));
+  const hasDraft = draft.data?.draft !== null && draft.data?.draft !== undefined;
+  const tab: TaskTab =
+    tabParam === "changes" || tabParam === "checks" || tabParam === "events"
+      ? tabParam
+      : tabParam === "draft" || (tabParam === null && refine && hasDraft)
+        ? "draft"
+        : "activity";
   const seqParam = Number.parseInt(params.get("seq") ?? "", 10);
   const selectTab = useCallback((next: TaskTab) => {
     const query = new URLSearchParams(params.toString());
-    if (next === "activity") query.delete("tab");
+    if (next === "activity" && !refine) query.delete("tab");
     else query.set("tab", next);
     const search = query.toString();
     router.replace(search === "" ? `/tasks/${taskId}` : `/tasks/${taskId}?${search}`, { scroll: false });
-  }, [params, router, taskId]);
+  }, [params, router, taskId, refine]);
   const [localOpened, setLocalOpened] = useState(false);
   const local = useQuery(trpc.tasks.local.queryOptions(localOpened ? { taskId } : skipToken));
   const checksMarker = useQuery({ ...trpc.tasks.checks.queryOptions({ taskId }), refetchInterval: 15_000 });
@@ -431,18 +453,27 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
       ? { kind: "error", message: errorText(local.error) ?? t("errors.unknown") }
       : { kind: "loading" };
   const firstBoard = boards.data?.boards[0];
+  const isRefine = data.kind === "refine";
+  // Ticket 34: the board's ready status by name, from the board's statuses.
+  const draftBoard = boards.data?.boards.find((board) => board.id === draft.data?.board?.boardId);
+  const readyStatusName =
+    draftBoard?.statusGroups?.flatMap((group) => group.statuses).find((status) => status.id === draft.data?.board?.readyStatusId)?.name ?? null;
+  const moveWrite = data.sync.findLast((write) => write.kind === "move");
   const ticketGroups = (
     <TicketProperties
-      task={{ ticket: data.ticket, sync: data.sync, canRetry: data.capabilities.retrySync }}
+      task={{ ticket: data.ticket, sync: isRefine ? [] : data.sync, canRetry: data.capabilities.retrySync }}
       now={now}
       retry={{ run: () => { retrySync.mutate({ taskId }); }, pending: retrySync.isPending }}
       createTicket={
-        data.source === "prompt" && firstBoard !== undefined
+        data.source === "prompt" && firstBoard !== undefined && !isRefine
           ? { run: () => { createTicket.mutate({ taskId, boardId: firstBoard.id }); }, pending: createTicket.isPending, error: errorText(createTicket.error) }
           : null
       }
     />
   );
+  const draftGroups = isRefine ? (
+    <DraftProperties taskId={taskId} meId={me.data?.memberId ?? null} readyStatusName={readyStatusName} moveState={moveWrite === undefined ? null : moveWrite.state === "done" ? "done" : moveWrite.state === "failed" ? "failed" : "pending"} now={now} />
+  ) : null;
   // A member who isn't the driver sees who is, and how to take over, where the composer would be.
   const notDriver =
     data.capabilities.send || !data.capabilities.takeOver || finished ? undefined : (
@@ -484,7 +515,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           now={now}
           takingOver={takeOver.isPending}
           onTakeOver={() => { takeOver.mutate({ taskId }); }}
-          ticket={ticketGroups}
+          ticket={<>{ticketGroups}{draftGroups}</>}
           effort={
             <TaskEffortRow
               effort={effort}
@@ -502,11 +533,15 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
     >
       <div className="flex min-h-full flex-col px-4 pb-5 pt-6 sm:px-10 sm:pt-7 xl:h-full">
         <div className="shrink-0">
-          <div className="font-mono text-sm text-faint">{data.key} · {data.source === "prompt" ? t("taskPage.fromPrompt") : t("taskPage.fromTicket")}</div>
+          <div className="flex items-center gap-2.5 font-mono text-sm text-faint">
+            <span>{data.key} · {data.source === "prompt" ? t("taskPage.fromPrompt") : t("taskPage.fromTicket")}</span>
+            {data.kind === "code" ? null : <Chip className="font-mono text-muted">{data.kind === "refine" ? t("draft.chipRefine") : t("draft.chipReview")}</Chip>}
+          </div>
           <h1 className="page-title my-1.5 break-words">{data.title}</h1>
           <p className="flex flex-wrap items-center gap-x-2 text-body" data-testid="task-doing" data-state={data.state}>
             <Status tone={stateTone(data.state)}><span className="font-medium text-text">{noKey === null ? stateText : t("noKey.queued")}</span></Status>
             {activity === "" ? null : <><Sep /><span className="text-muted">{activity}</span></>}
+            {readOnlyKind(data.kind) ? <><Sep /><span className="text-muted" data-testid="task-read-only">{data.state === "done" ? t("draft.readOnlyDone") : t("draft.readOnly")}</span></> : null}
             <Sep />
             <span className="text-muted">
               {t("taskPage.started", { age: formatElapsed(data.createdAt, now) })}
@@ -553,7 +588,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
             </p>
           ) : null}
           {data.ticket === null ? null : <TicketLine ticket={data.ticket} />}
-          {data.source === "ticket" ? <AgentGot files={data.contextFiles} /> : null}
+          {data.source === "ticket" && tab !== "draft" ? <AgentGot files={data.contextFiles} /> : null}
           {stop.error === null ? null : <p role="alert" className="mt-2 text-sm text-red">{errorText(stop.error)}</p>}
           <LimitBlock
             task={limitStateOf(data)}
@@ -571,7 +606,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
               dismiss={{ run: () => { dismiss.mutate({ taskId, itemId: conflict.id }); }, pending: dismiss.isPending }}
             />
           )}
-          {data.group === "needs-you" && !shownInThread(data.reason) && data.limit === null && data.reason !== "crashed" && conflict === undefined && ticketClosed === undefined && data.reason !== "plan" && data.reason !== "approval" && data.reason !== "question" ? (
+          {data.group === "needs-you" && !shownInThread(data.reason) && data.limit === null && data.reason !== "crashed" && conflict === undefined && ticketClosed === undefined && data.reason !== "plan" && data.reason !== "approval" && data.reason !== "question" && !(isRefine && data.reason === "draft_ready") ? (
             <NeedsYou title={t("taskPage.needsYou")} className="mt-4">
               <p className="whitespace-pre-wrap">{summary ?? t("taskPage.needsYouDefault")}</p>
             </NeedsYou>
@@ -582,16 +617,37 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
             idPrefix="task-tab"
             selected={tab}
             onSelect={selectTab}
-            tabs={[
-              { id: "activity", label: t("taskAnswers.tabs.activity") },
-              { id: "changes", label: t("taskAnswers.tabs.changes"), extra: changedFiles === 0 ? null : <span className="text-faint">{changedFiles}</span> },
-              { id: "checks", label: t("taskAnswers.tabs.checks"), extra: <ChecksTabMarker marker={checksMarkerOf(checksMarker.data)} /> },
-              { id: "events", label: t("taskAnswers.tabs.events") },
-            ]}
+            tabs={
+              isRefine
+                ? [
+                    { id: "activity", label: t("taskAnswers.tabs.activity") },
+                    // A refine task changes nothing: no Changes or Checks tab (refine-draft.md).
+                    { id: "draft", label: t("draft.tab"), extra: draft.data?.draft === null || draft.data?.draft === undefined ? null : <span className="font-mono text-faint">{t("draft.versionShort", { n: draft.data.draft.version })}</span> },
+                    { id: "events", label: t("taskAnswers.tabs.events") },
+                  ]
+                : [
+                    { id: "activity", label: t("taskAnswers.tabs.activity") },
+                    { id: "changes", label: t("taskAnswers.tabs.changes"), extra: changedFiles === 0 ? null : <span className="text-faint">{changedFiles}</span> },
+                    { id: "checks", label: t("taskAnswers.tabs.checks"), extra: <ChecksTabMarker marker={checksMarkerOf(checksMarker.data)} /> },
+                    { id: "events", label: t("taskAnswers.tabs.events") },
+                  ]
+            }
           />
         </div>
         {log.error === null ? null : <p role="alert" className="mt-3 text-red">{log.error}</p>}
-        {tab === "changes" ? (
+        {tab === "draft" && isRefine ? (
+          <DraftView
+            taskId={taskId}
+            meId={me.data?.memberId ?? null}
+            needsYou={data.state === "needs_you"}
+            running={running}
+            ticket={data.ticket === null ? null : { key: data.ticket.key, url: data.ticket.url }}
+            boards={(boards.data?.boards ?? []).map((board) => ({ boardId: board.id, name: board.name }))}
+            readyStatusName={readyStatusName}
+            newRefineHref={`/tasks/new?project=${encodeURIComponent(data.projectId)}&kind=refine`}
+            now={now}
+          />
+        ) : tab === "changes" ? (
           <div className="min-h-0 flex-1" id="task-tab-changes">
             <ChangesTab taskId={taskId} agent={agentName} driver={driverName} isDriver={isDriver} running={running} steersMidTurn={data.capabilities.steersMidTurn} sessionGoing={sessionGoing} onTakeOver={takeOverNow} onSeeActivity={() => { selectTab("activity"); }} />
           </div>
@@ -612,7 +668,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           memberName={memberName}
           canSend={data.capabilities.send}
           canReopen={mode.kind === "reopen"}
-          composerHint={mode.kind === "send" || mode.kind === "reopen" ? mode.hint : null}
+          composerHint={mode.kind === "send" || mode.kind === "reopen" ? (isRefine ? t("draft.composerHint") : mode.hint) : null}
           {...(mode.kind === "merged" ? { instead: <MergedHint inboxHref={data.ticket === null ? null : `/projects/${data.projectId}/inbox?ticket=${encodeURIComponent(data.ticket.key)}`} /> } : {})}
           canInterrupt={data.capabilities.interrupt}
           running={running}

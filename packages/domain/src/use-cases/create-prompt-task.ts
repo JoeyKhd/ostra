@@ -29,6 +29,8 @@ export const createPromptTaskInputSchema = z.strictObject({
   runnerId: runnerIdSchema.optional(),
   /** Milestone 3 (F-021): the member's pick. Unset: the project's default for code tasks, else the built-in profile. */
   agentProfileId: agentProfileIdSchema.optional(),
+  /** Defaults to `code`. Milestone 6 (F-099, ticket 34): `refine`, a draft of a new ticket ("Create ticket" applies it). */
+  kind: z.enum(["code", "refine"]).optional(),
 });
 export type CreatePromptTaskInput = z.infer<typeof createPromptTaskInputSchema>;
 
@@ -80,7 +82,7 @@ export const createPromptTask: CreatePromptTask = async (deps, input) => {
       organizationId,
       projectId: projectIdSchema.parse(project.id),
       origin: { kind: "member", memberId: scope.memberId },
-      kind: "code",
+      kind: input.kind ?? "code",
       ticketId: null,
       prompt: input.prompt,
       title: input.title ?? titleFromPrompt(input.prompt),

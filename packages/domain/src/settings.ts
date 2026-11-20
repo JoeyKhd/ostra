@@ -33,6 +33,7 @@ export const settingNames = [
   "OSTRA_CORE_INTERNAL_URL",
   "OSTRA_GITHUB_API_URL",
   "OSTRA_GITHUB_LFS_HOSTS",
+  "OSTRA_LINEAR_API_URL",
   "OSTRA_DATA_DIR",
   "OSTRA_SECRETS_KEY",
   "OSTRA_RUNNER_TOKEN_KEY",
@@ -149,6 +150,10 @@ export const settingFields = {
   OSTRA_GITHUB_API_URL: {
     default: "https://api.github.com",
     description: "The GitHub REST API the panel and core talk to: a GitHub Enterprise Server's, or a fake GitHub in tests.",
+  },
+  OSTRA_LINEAR_API_URL: {
+    default: "https://api.linear.app/graphql",
+    description: "Linear's GraphQL API the panel and core read and write tickets through: a fake Linear in tests.",
   },
   OSTRA_GITHUB_LFS_HOSTS: {
     default: GITHUB_COM_LFS_HOSTS.join(","),
@@ -553,6 +558,7 @@ const rawSettingsSchema = z.strictObject({
   OSTRA_CORE_PUBLIC_URL: url.default("http://localhost:8787").describe(describe("OSTRA_CORE_PUBLIC_URL")),
   OSTRA_CORE_INTERNAL_URL: url.optional().describe(describe("OSTRA_CORE_INTERNAL_URL")),
   OSTRA_GITHUB_API_URL: url.default("https://api.github.com").describe(describe("OSTRA_GITHUB_API_URL")),
+  OSTRA_LINEAR_API_URL: url.default("https://api.linear.app/graphql").describe(describe("OSTRA_LINEAR_API_URL")),
   OSTRA_GITHUB_LFS_HOSTS: z
     .string()
     .transform((text) => text.split(",").map((host) => host.trim().toLowerCase()).filter((host) => host !== ""))
@@ -672,6 +678,8 @@ export type ServerSettings = {
   readonly coreInternalUrl: string;
   /** OSTRA_GITHUB_API_URL: the GitHub REST API, without a trailing slash. */
   readonly githubApiUrl: string;
+  /** OSTRA_LINEAR_API_URL: Linear's GraphQL endpoint the trackers use (ticket 34: the e2e stack's fake Linear). */
+  readonly linearApiUrl: string;
   /** OSTRA_GITHUB_LFS_HOSTS: where a task's git proxy may send LFS transfers, besides the code host itself. */
   readonly githubLfsHosts: readonly string[];
   readonly dataDir: string;
@@ -936,6 +944,7 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
       corePublicUrl: value.OSTRA_CORE_PUBLIC_URL,
       coreInternalUrl: (value.OSTRA_CORE_INTERNAL_URL ?? `http://127.0.0.1:${String(value.OSTRA_CORE_PORT)}`).replace(/\/+$/, ""),
       githubApiUrl: value.OSTRA_GITHUB_API_URL.replace(/\/+$/, ""),
+      linearApiUrl: value.OSTRA_LINEAR_API_URL,
       githubLfsHosts: value.OSTRA_GITHUB_LFS_HOSTS,
       dataDir: value.OSTRA_DATA_DIR ?? (production ? "/var/lib/ostra" : path.join(devDataDir, "server")),
       secretsKey: value.OSTRA_SECRETS_KEY ?? null,

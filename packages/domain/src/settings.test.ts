@@ -66,6 +66,14 @@ describe("the server's settings", () => {
     expect(refused.ok).toBe(false);
   });
 
+  it("points Linear at OSTRA_LINEAR_API_URL, Linear's own by default, and refuses a URL that isn't http(s)", () => {
+    const fallback = parseServerSettings({});
+    expect(fallback.ok && fallback.settings.linearApiUrl).toBe("https://api.linear.app/graphql");
+    const fake = parseServerSettings({ OSTRA_LINEAR_API_URL: "http://127.0.0.1:4100/graphql" });
+    expect(fake.ok && fake.settings.linearApiUrl).toBe("http://127.0.0.1:4100/graphql");
+    expect(parseServerSettings({ OSTRA_LINEAR_API_URL: "ftp://linear.example" }).ok).toBe(false);
+  });
+
   it("F-090: takes the LFS storage hosts from OSTRA_GITHUB_LFS_HOSTS, GitHub.com's by default, and refuses what isn't a host name", () => {
     const fallback = parseServerSettings({});
     expect(fallback.ok && fallback.settings.githubLfsHosts).toEqual(["github-cloud.githubusercontent.com", "github-cloud.s3.amazonaws.com", "lfs.github.com"]);

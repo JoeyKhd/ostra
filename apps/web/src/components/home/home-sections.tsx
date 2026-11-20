@@ -30,7 +30,7 @@ import { formatAge } from "@/lib/format";
 import { t } from "@/lib/messages";
 import type { RouterOutputs } from "@/lib/trpc";
 
-import { actionHref, actionKey, activityIcon, activityParts, amberRow, formatSpend, monthShort, needsYouRowKey, reasonParts } from "./home-words";
+import { actionHref, activityIcon, detailActionKey, activityParts, amberRow, formatSpend, monthShort, needsYouRowKey, reasonParts } from "./home-words";
 import type { ActivityIcon, ActivityRow, NeedsYouRow, Part } from "./home-words";
 
 type Overview = RouterOutputs["home"]["overview"];
@@ -107,7 +107,7 @@ const NeedsYouLine = ({ row, amber, now }: { readonly row: NeedsYouRow; readonly
         href={actionHref(row.detail.reason, row.project.id, row.taskId)}
         className={cn(buttonVariants({ variant: amber ? "amber" : "outline", size: "sm" }), "h-7 w-[100px] justify-self-end text-ui", !amber && "font-normal")}
       >
-        {t(actionKey(row.detail.reason))}
+        {t(detailActionKey(row.detail))}
       </Link>
     </li>
   );

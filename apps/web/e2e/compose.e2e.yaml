@@ -21,6 +21,7 @@ services:
       OSTRA_PUBLIC_URL: http://localhost:3000
       OSTRA_CORE_PUBLIC_URL: http://127.0.0.1:8787
       OSTRA_GITHUB_API_URL: ${OSTRA_GITHUB_API_URL:?run fakes.ts first, which writes it to apps/web/e2e/.fakes.env}
+      OSTRA_LINEAR_API_URL: ${OSTRA_LINEAR_API_URL:?run fakes.ts first, which writes it to apps/web/e2e/.fakes.env}
       # The stub model endpoint listens on loopback, which the server refuses unless told.
       OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE: "true"
       OSTRA_CATALOG_FETCH: "false"

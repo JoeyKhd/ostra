@@ -30,7 +30,7 @@ export const bareDetail = (reason: Reason): NeedsYouDetail => {
     case "plan":
       return { reason, steps: null };
     case "draft_ready":
-      return { reason, prNumber: null };
+      return { reason, prNumber: null, refine: false };
     case "setup_failed":
       return { reason, exitCode: null };
     case "stalled":

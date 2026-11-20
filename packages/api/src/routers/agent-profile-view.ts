@@ -14,6 +14,8 @@ export const agentProfileViewSchema = z.object({
   /** The agent's display name, such as `OpenCode`. */
   agentName: z.string(),
   model: z.object({ id: modelIdSchema, name: z.string() }).nullable(),
+  /** Milestone 6 (ticket 34): the built-in Refine or Review profile, which the panel marks `built-in`; `null` for any other. */
+  builtInKind: z.enum(["refine", "review"]).nullable(),
 });
 export type AgentProfileView = z.infer<typeof agentProfileViewSchema>;
 
@@ -22,7 +24,7 @@ export const loadAgentProfileView = async (db: Db, organizationId: string, profi
   if (profileId === null) return null;
   const profile = await db.agentProfile.findFirst({
     where: { id: profileId, organizationId },
-    select: { id: true, name: true, adapter: true, model: { select: { id: true, displayName: true, endpointModelId: true } } },
+    select: { id: true, name: true, adapter: true, builtInKind: true, model: { select: { id: true, displayName: true, endpointModelId: true } } },
   });
   if (profile === null) return null;
   return {
@@ -30,6 +32,7 @@ export const loadAgentProfileView = async (db: Db, organizationId: string, profi
     name: profile.name,
     adapter: profile.adapter,
     agentName: agentDisplayName(profile.adapter),
+    builtInKind: profile.builtInKind === "refine" || profile.builtInKind === "review" ? profile.builtInKind : null,
     model: profile.model === null ? null : { id: modelIdSchema.parse(profile.model.id), name: profile.model.displayName ?? profile.model.endpointModelId },
   };
 };

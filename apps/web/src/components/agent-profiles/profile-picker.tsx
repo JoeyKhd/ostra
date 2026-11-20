@@ -32,9 +32,9 @@ export const startFacts = (profile: StartProfile): string =>
  * The start's profile choice: what the member picked while it's still offered, else the project's
  * default (the first option). Switching project resets it to that project's default.
  */
-export const useStartProfile = (projectId: ProjectId | undefined) => {
+export const useStartProfile = (projectId: ProjectId | undefined, kind: "code" | "refine" = "code") => {
   const trpc = useTRPC();
-  const options = useQuery(trpc.agentProfiles.forStart.queryOptions(projectId === undefined ? skipToken : { projectId, kind: "code" }));
+  const options = useQuery(trpc.agentProfiles.forStart.queryOptions(projectId === undefined ? skipToken : { projectId, kind }));
   const [picked, setPicked] = useState<{ readonly projectId: ProjectId; readonly profileId: AgentProfileId } | null>(null);
   const offered = options.data ?? [];
   const chosen =

@@ -1,7 +1,7 @@
 import { projectIdSchema, taskIdSchema } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
-import { actionHref, actionKey, activityParts, amberRow, formatSpend, reasonParts, summaryText } from "./home-words";
+import { actionHref, actionKey, detailActionKey, activityParts, amberRow, formatSpend, reasonParts, summaryText } from "./home-words";
 import type { NeedsYouDetail, NeedsYouRow } from "./home-words";
 
 const row = (id: string, detail: NeedsYouDetail, since: number): NeedsYouRow => ({
@@ -29,7 +29,11 @@ describe("reasonParts", () => {
   it("words each reason, with a fallback when the detail is missing", () => {
     expect(text(reasonParts({ reason: "question", question: "Keep the old share API?" }))).toBe("Question: Keep the old share API?");
     expect(text(reasonParts({ reason: "question", question: null }))).toBe("The agent asked a question");
-    expect(text(reasonParts({ reason: "draft_ready", prNumber: 2213 }))).toBe("Draft PR #2213 ready");
+    expect(text(reasonParts({ reason: "draft_ready", prNumber: 2213, refine: false }))).toBe("Draft PR #2213 ready");
+    // F-099 (ticket 34): a refine task's draft of its ticket is no draft PR.
+    expect(text(reasonParts({ reason: "draft_ready", prNumber: null, refine: true }))).toBe("Draft ready");
+    expect(detailActionKey({ reason: "draft_ready", prNumber: null, refine: true })).toBe("home.action.reviewDraft");
+    expect(detailActionKey({ reason: "draft_ready", prNumber: 2, refine: false })).toBe("home.action.reviewPr");
     expect(text(reasonParts({ reason: "setup_failed", exitCode: 1 }))).toBe("Setup failed: exited 1");
     expect(text(reasonParts({ reason: "stalled", minutes: 12 }))).toBe("No progress for 12 min");
   });

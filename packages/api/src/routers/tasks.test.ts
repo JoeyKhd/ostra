@@ -27,6 +27,16 @@ const orgA = () => harness.fixture.a.organization.id;
 const uuid = (label: string) => `${label}-${crypto.randomUUID()}`;
 
 describe("tasks.create (F-097)", () => {
+  it("F-099: New task's kind picker starts a refine task from a prompt, on the project's refine profile", async () => {
+    const { a } = harness.fixture;
+    const created = await (await harness.as(a.member)).tasks.create({ projectId, prompt: "Users want to see the version somewhere", kind: "refine" });
+    const task = await harness.test.db.task.findUniqueOrThrow({ where: { id: created.taskId }, select: { kind: true, source: true, ticketId: true } });
+    expect(task).toEqual({ kind: "refine", source: "prompt", ticketId: null });
+    // Unset, it's a code task, as before.
+    const code = await (await harness.as(a.member)).tasks.create({ projectId, prompt: "Fix the build" });
+    expect(await harness.test.db.task.findUniqueOrThrow({ where: { id: code.taskId }, select: { kind: true } })).toEqual({ kind: "code" });
+  });
+
   it("F-030, F-078, F-097: starts a code task from a prompt, in one transaction, with no ticket", async () => {
     const { a } = harness.fixture;
     const prompt = "Add a short CONTRIBUTING.md that explains how to run the tests\nUse the repo's own words.";

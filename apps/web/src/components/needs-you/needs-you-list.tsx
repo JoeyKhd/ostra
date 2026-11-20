@@ -7,7 +7,7 @@ import type { FocusEvent, KeyboardEvent, ReactNode } from "react";
 
 import { approvalIdSchema, questionIdSchema, taskIdSchema } from "@ostra/protocol";
 
-import { actionHref, actionKey, reasonParts } from "@/components/home/home-words";
+import { actionHref, detailActionKey, reasonParts } from "@/components/home/home-words";
 import type { Part } from "@/components/home/home-words";
 import { useFocusedItem } from "@/components/shell/actions/use-scope";
 import type { ItemScope } from "@/components/shell/actions/use-scope";
@@ -347,11 +347,11 @@ export const NotificationRow = ({
     </Button>
   ) : inline ? (
     <Button size="sm" className="h-[26px] w-[112px] justify-self-end font-normal" aria-expanded={false} onClick={() => { onToggle(row.id); }}>
-      {t(actionKey(row.detail.reason))}
+      {t(detailActionKey(row.detail))}
     </Button>
   ) : (
     <Button size="sm" className="h-[26px] w-[112px] justify-self-end font-normal" asChild>
-      <Link href={actionHref(row.detail.reason, row.project.id, row.taskId)}>{t(actionKey(row.detail.reason))}</Link>
+      <Link href={actionHref(row.detail.reason, row.project.id, row.taskId)}>{t(detailActionKey(row.detail))}</Link>
     </Button>
   );
   return (

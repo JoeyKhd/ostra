@@ -26,6 +26,8 @@ export const reasonParts = (detail: NeedsYouDetail): readonly Part[] => {
     case "plan":
       return [plain(t("home.reason.plan"))];
     case "draft_ready":
+      // Milestone 6 (ticket 34): a refine task's draft of its ticket, not a draft PR.
+      if (detail.refine) return [plain(t("home.reason.refineDraftReady"))];
       return [plain(detail.prNumber === null ? t("home.reason.draftReadyNoNumber") : t("home.reason.draftReady", { n: detail.prNumber }))];
     case "question":
       return [plain(detail.question === null || detail.question === "" ? t("home.reason.questionNoText") : t("home.reason.question", { question: detail.question }))];
@@ -73,6 +75,10 @@ export const reasonParts = (detail: NeedsYouDetail): readonly Part[] => {
       return detail satisfies never;
   }
 };
+
+/** A row's action from its detail: a refine task's draft is read, not a PR (ticket 34). */
+export const detailActionKey = (detail: NeedsYouDetail): MessageKey =>
+  detail.reason === "draft_ready" && detail.refine ? "home.action.reviewDraft" : actionKey(detail.reason);
 
 /** The one action of a Needs you row: what answering it means, on the task's page. */
 export const actionKey = (reason: NeedsYouReason): MessageKey => {

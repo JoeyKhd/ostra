@@ -49,17 +49,24 @@ const person = (members: ReadonlyMap<string, string>, id: string | null): { read
   id === null ? null : { memberId: memberIdSchema.parse(id), name: members.get(id) ?? "A former member" };
 
 /** What the tracker of the task's board can hold, for the preview. A board whose connection isn't usable is previewed as Linear holds a draft. */
-const trackerFields = async (ctx: Context, organizationId: OrganizationId, connectionId: string | null): Promise<{ readonly acceptanceCriteriaField: boolean; readonly attachments: boolean }> => {
+const trackerFields = async (
+  ctx: Context,
+  organizationId: OrganizationId,
+  connectionId: string | null,
+): Promise<{ readonly acceptanceCriteriaField: boolean; readonly attachments: boolean; readonly subIssues: boolean }> => {
   if (connectionId === null) {
-    return { acceptanceCriteriaField: false, attachments: true };
+    return { acceptanceCriteriaField: false, attachments: true, subIssues: true };
   }
   const lookup = await ctx.deps.trackers.forConnection(organizationId, connectionIdSchema.parse(connectionId));
   if (!lookup.ok) {
-    return { acceptanceCriteriaField: false, attachments: true };
+    return { acceptanceCriteriaField: false, attachments: true, subIssues: true };
   }
   const caps = lookup.tracker.tracker.capabilities;
-  return { acceptanceCriteriaField: caps.ticketFields.acceptanceCriteria, attachments: caps.attachments };
+  return { acceptanceCriteriaField: caps.ticketFields.acceptanceCriteria, attachments: caps.attachments, subIssues: caps.subIssues };
 };
+
+/** What core's `draft.apply` recorded for a version once it was written: the ticket and the sub-tickets it made (ticket 34's applied state). */
+const appliedEventSchema = z.object({ ticketKey: ticketKeySchema, subTickets: z.array(ticketKeySchema) });
 
 export const draftsRouter = router({
   /**
@@ -88,6 +95,15 @@ export const draftsRouter = router({
     }
     const row = chosen === null ? null : await db.refineDraft.findUniqueOrThrow({ where: { id: chosen.id } });
     const fields: RefineDraft | null = row === null ? null : draftOfRow(row);
+    // Ticket 34: the newest agent version's fields, so the editor marks what a member changed without a second call.
+    const newestAgent = versions.findLast((version) => version.source === "agent") ?? null;
+    const agentRow = newestAgent === null ? null : newestAgent.id === row?.id ? row : await db.refineDraft.findUnique({ where: { id: newestAgent.id } });
+    const agentFields = agentRow === null ? null : draftOfRow(agentRow);
+    const appliedEvent =
+      row === null
+        ? null
+        : await db.event.findFirst({ where: { taskId: task.id, organizationId, kind: "draft.applied", payload: { path: ["draftId"], equals: row.id } }, select: { payload: true } });
+    const applied = appliedEvent === null ? null : appliedEventSchema.safeParse(appliedEvent.payload);
     const images =
       row === null
         ? []
@@ -101,7 +117,7 @@ export const draftsRouter = router({
       (memberIds.length === 0 ? [] : await db.member.findMany({ where: { organizationId, id: { in: memberIds } }, select: { id: true, user: { select: { name: true } } } })).map((member) => [member.id, member.user.name]),
     );
     const ticket = task.ticketId === null ? null : await db.ticket.findFirst({ where: { id: task.ticketId, organizationId }, select: { key: true, title: true, url: true } });
-    const board = task.boardId === null ? null : await db.board.findFirst({ where: { id: task.boardId, organizationId }, select: { connectionId: true, statusMap: true } });
+    const board = task.boardId === null ? null : await db.board.findFirst({ where: { id: task.boardId, organizationId }, select: { id: true, name: true, connectionId: true, statusMap: true } });
     const tracker = await trackerFields(ctx, organizationId, board?.connectionId ?? null);
     const taskUrl = taskPageUrl(ctx.deps.settings.publicUrl, ctx.task.taskId);
     const unattached = tracker.attachments ? [] : images.filter((image) => image.attachedAt === null).map((image) => image.name);
@@ -116,6 +132,8 @@ export const draftsRouter = router({
       ticket: ticket === null ? null : { key: ticketKeySchema.parse(ticket.key), title: ticket.title, url: ticket.url },
       /** Whether "Mark ready" has a status to move to: a project admin picks one on the board otherwise. */
       readyStatus: board === null ? false : parseBoardMapping(board.statusMap)?.ready !== undefined,
+      /** Ticket 34: the task's board, and the status "Mark ready" moves to (the panel names it from the board's statuses). */
+      board: board === null ? null : { boardId: boardIdSchema.parse(board.id), name: board.name, readyStatusId: parseBoardMapping(board.statusMap)?.ready ?? null },
       latestVersion: latest?.version ?? null,
       versions: versions.map((version) => ({
         version: version.version,
@@ -145,6 +163,14 @@ export const draftsRouter = router({
               subTickets: fields.subTickets.map((sub) => ({ title: sub.title, description: sub.description })),
               attachments: tracker.attachments ? images.filter((image) => image.attachedAt === null).map((image) => image.name) : [],
             },
+      /** Ticket 34: the newest version the agent handed in, against which a member's edits are marked. */
+      agentDraft: newestAgent === null || agentFields === null ? null : { version: newestAgent.version, fields: agentFields },
+      /** Ticket 34: once core wrote the shown version, the ticket and the sub-tickets it made; `null` before. */
+      written: applied?.success === true ? { ticketKey: applied.data.ticketKey, subTickets: applied.data.subTickets } : null,
+      /** The ticket "Create ticket" made from the shown version, on a prompt refine task. */
+      createdTicketKey: row?.createdTicketKey ?? null,
+      /** Whether the tracker makes sub-tickets sub-issues (else linked tickets), for the footnote's words. */
+      subIssues: tracker.subIssues,
       imagesMax: ctx.deps.settings.team.draftImagesMax,
       imageMaxBytes: DRAFT_IMAGE_MAX_BYTES,
     };

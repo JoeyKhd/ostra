@@ -47,6 +47,8 @@ export const shownInThread = (reason: TaskReason): boolean => reason === "approv
 export const taskStateLine = (state: TaskState, reason: TaskReason): string => {
   if (state === "needs_you" && reason === "approval") return t("taskState.needsYouApproval");
   if (state === "needs_you" && reason === "question") return t("taskState.needsYouQuestion");
+  // Milestone 6 (ticket 34): a refine task's draft, or milestone 1's draft PR.
+  if (state === "needs_you" && reason === "draft_ready") return t("taskState.needsYouDraftReady");
   return taskStateText(state);
 };
 

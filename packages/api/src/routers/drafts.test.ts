@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 
-import { ensureBuiltInKindProfilesInTx, saveDraft } from "@ostra/domain";
-import { taskIdSchema } from "@ostra/protocol";
+import { appendServerEvent, ensureBuiltInKindProfilesInTx, saveDraft } from "@ostra/domain";
+import { draftIdSchema, sessionIdSchema, taskIdSchema, ticketKeySchema } from "@ostra/protocol";
 import type { BoardId, ConnectionId, OrganizationId, ProjectId, RefineDraft, TaskId, TicketId } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -115,6 +115,23 @@ describe("drafts (F-099, ticket 27)", () => {
     expect(await harness.test.db.auditEntry.count({ where: { entityId: taskId, action: "draft.edited", actorId: harness.fixture.a.member.id } })).toBe(1);
   });
 
+  it("F-099: a member's autosaves of their own latest version stay one version; another member's edit, or one after the agent's, is a new one", async () => {
+    const { taskId } = await refineTask();
+    const member = await harness.as(harness.fixture.a.member);
+    const first = await member.drafts.save({ taskId, baseVersion: 1, fields: draft({ description: "One." }) });
+    const again = await member.drafts.save({ taskId, baseVersion: first.version, fields: draft({ description: "One, then two." }) });
+    expect(again.version).toBe(first.version);
+    const view = await member.drafts.get({ taskId, version: null });
+    expect(view.versions.map((version) => version.source)).toEqual(["agent", "member"]);
+    expect(view.draft?.fields.description).toBe("One, then two.");
+    // Another member's edit on it is a version of their own.
+    const admin = await harness.as(harness.fixture.a.admin);
+    expect((await admin.drafts.save({ taskId, baseVersion: 2, fields: draft({ description: "The admin's." }) })).version).toBe(3);
+    // And the agent's next version ends the member's session: their next edit is a new version.
+    await harness.test.db.$transaction((tx) => saveDraft({ tx, ...harness.deps.ports }, { organizationId, taskId, draft: draft({ description: "The agent's third." }) }));
+    expect((await member.drafts.save({ taskId, baseVersion: 4, fields: draft({ description: "Mine again." }) })).version).toBe(5);
+  });
+
   it("F-099: the preview is the description as the tracker will hold it, with the criteria in the tracker's own field where it has one", async () => {
     const { taskId } = await refineTask();
     const member = await harness.as(harness.fixture.a.member);
@@ -152,7 +169,7 @@ describe("drafts (F-099, ticket 27)", () => {
     expect((await member.drafts.get({ taskId, version: null })).draft?.images.map((image) => image.name)).toEqual(["b.png", "c.png"]);
   });
 
-  it("F-099: Update ticket and Mark ready each happen once: the task is done, and every action after is refused", async () => {
+  it("F-099: Update ticket and Mark ready each happen once: the task is done, Mark ready may follow Update ticket, and every action after is refused", async () => {
     const member = await harness.as(harness.fixture.a.member);
 
     const applied = await refineTask();
@@ -164,6 +181,10 @@ describe("drafts (F-099, ticket 27)", () => {
     expect(harness.fakes.jobs.jobs.filter((job) => job.job === "draft.apply")).toMatchObject([{ payload: { version: 2 } }]);
     expect(await harness.test.db.auditEntry.count({ where: { entityId: applied.taskId, action: "draft.applied", actorId: harness.fixture.a.member.id } })).toBe(1);
     expect((await member.drafts.get({ taskId: applied.taskId, version: null })).done).toBe(true);
+    // Ticket 34: the ticket "Update ticket" wrote may still move to ready, once, with the task left done.
+    await member.drafts.markReady({ taskId: applied.taskId });
+    expect(await harness.test.db.task.findUniqueOrThrow({ where: { id: applied.taskId } })).toMatchObject({ state: "done" });
+    expect(await harness.test.db.ticketWrite.count({ where: { taskId: applied.taskId, kind: "move" } })).toBe(1);
     // Each called in turn, so no refusal is left unawaited.
     for (const again of [
       () => member.drafts.updateTicket({ taskId: applied.taskId, version: 2 }),
@@ -183,6 +204,38 @@ describe("drafts (F-099, ticket 27)", () => {
     expect(await codeOf(member.drafts.updateTicket({ taskId: ready.taskId, version: 1 }))).toBe("PRECONDITION_FAILED");
     expect(await harness.test.db.ticketWrite.findMany({ where: { taskId: ready.taskId, kind: "move" }, select: { payload: true } })).toEqual([{ payload: { kind: "move", target: "ready" } }]);
     expect(await harness.test.db.auditEntry.count({ where: { entityId: ready.taskId, action: "draft.marked-ready" } })).toBe(1);
+  });
+
+  it("F-099: the editor gets the agent's newest version beside a member's, and once core wrote a version, the ticket and sub-issues it made", async () => {
+    const { taskId } = await refineTask();
+    const member = await harness.as(harness.fixture.a.member);
+    await member.drafts.save({ taskId, baseVersion: 1, fields: draft({ acceptanceCriteria: ["The footer renders in under 500 ms", "No layout shift"] }) });
+    const edited = await member.drafts.get({ taskId, version: null });
+    expect(edited.draft?.version).toBe(2);
+    expect(edited.agentDraft).toEqual({ version: 1, fields: draft() });
+    expect(edited.written).toBeNull();
+    // The Jira fake makes sub-tickets sub-tasks: the footnote says sub-issues.
+    expect(edited.subIssues).toBe(true);
+
+    await member.drafts.updateTicket({ taskId, version: 2 });
+    const row = await harness.test.db.refineDraft.findFirstOrThrow({ where: { taskId, version: 2 }, select: { id: true } });
+    expect((await member.drafts.get({ taskId, version: null })).written).toBeNull();
+    // Core's `draft.apply` records what it wrote, as it does once the tracker took it.
+    await harness.test.db.$transaction(async (tx) => {
+      const session = await tx.session.create({ data: { organizationId, projectId, taskId, origin: "new", state: "idle" }, select: { id: true } });
+      await appendServerEvent(tx, {
+        organizationId,
+        projectId,
+        taskId,
+        sessionId: sessionIdSchema.parse(session.id),
+        at: Date.now(),
+        event: { kind: "draft.applied", draftId: draftIdSchema.parse(row.id), ticketKey: ticketKeySchema.parse("ENG-1"), subTickets: [ticketKeySchema.parse("ENG-2")] },
+      });
+    });
+    const written = await member.drafts.get({ taskId, version: null });
+    expect(written.written).toEqual({ ticketKey: "ENG-1", subTickets: ["ENG-2"] });
+    // The agent's version wasn't written: it says so.
+    expect((await member.drafts.get({ taskId, version: 1 })).written).toBeNull();
   });
 
   it("F-099: Create ticket makes one ticket from a prompt refine task's latest version, and a ticket's draft updates its ticket instead", async () => {

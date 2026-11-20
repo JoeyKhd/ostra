@@ -410,6 +410,19 @@ export const editDraft: EditDraft = (deps, scope, input) =>
         message: "The draft doesn't fit the draft's shape",
       };
     }
+    // One member version per editing session (ticket 34, open point 1): the panel saves a second after
+    // typing stops, so the member's own latest version, unapplied and with nothing written after it,
+    // takes the edit in place instead of a new version per pause.
+    if (latest.source === "member" && latest.editedByMemberId === scope.memberId && latest.appliedAt === null && latest.readyAt === null) {
+      await tx.refineDraft.update({ where: { id: latest.id }, data: draftColumns(draft.data) });
+      await deps.notices.emitInTx(tx, {
+        organizationId: scope.organizationId,
+        projectId: found.task.projectId,
+        entity: "task",
+        entityId: found.task.id,
+      });
+      return { ok: true, draftId: draftIdSchema.parse(latest.id), version: latest.version };
+    }
     if (latest.version + 1 > DRAFT_VERSIONS_MAX) {
       return {
         ok: false,
@@ -631,8 +644,12 @@ export const markTicketReady: MarkTicketReady = (deps, scope, input) =>
   deps.db.$transaction(async (tx) => {
     const found = await lockRefineTaskInTx(tx, scope, input.taskId);
     if (!found.ok) return found;
-    if (found.task.done) return { ok: false, error: "task-done", message: DONE_MESSAGE };
     const latest = await latestDraftInTx(tx, found.task.id);
+    // "Update ticket" then "Mark ready" (ticket 34, the refine draft's target): "Update ticket" leaves
+    // the task done, and the ticket it wrote may still move to ready, once. Anything else is refused
+    // once the task is done.
+    const afterApply = found.task.done && latest !== null && latest.appliedAt !== null && latest.readyAt === null;
+    if (found.task.done && !afterApply) return { ok: false, error: "task-done", message: DONE_MESSAGE };
     if (latest === null) {
       return { ok: false, error: "not-applied", message: "There's no draft yet" };
     }
@@ -688,7 +705,7 @@ export const markTicketReady: MarkTicketReady = (deps, scope, input) =>
       entityId: found.task.id,
       data: { version: latest.version },
     });
-    await finishRefineInTx(deps, tx, found.task.id, scope.memberId);
+    if (!afterApply) await finishRefineInTx(deps, tx, found.task.id, scope.memberId);
     await deps.notices.emitInTx(tx, {
       organizationId: scope.organizationId,
       projectId: found.task.projectId,
