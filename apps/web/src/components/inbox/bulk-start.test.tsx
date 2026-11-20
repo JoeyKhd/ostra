@@ -78,7 +78,8 @@ const child = (n: number, state: NonNullable<Child["task"]>["state"] | null, ove
   place: "board",
   leaf: true,
   skipped: null,
-  task: state === null ? null : { id: task(n), shortId: "3f9c21ab", state, needsYou: null, prs: [] },
+  task: state === null ? null : { id: task(n), shortId: "3f9c21ab", state, needsYou: null, prs: [], changedAt: now },
+  elsewhere: null,
   ...over,
 });
 

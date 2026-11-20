@@ -1,7 +1,7 @@
 import { LinearAdapter } from "@ostra/adapter-linear";
 import { createFakeLinear, createJiraSite, JiraFakeAdapter } from "@ostra/adapter-sdk/testing";
 import type { FakeLinear } from "@ostra/adapter-sdk/testing";
-import { taskIdSchema, ticketIdSchema } from "@ostra/protocol";
+import { projectIdSchema, taskIdSchema, ticketIdSchema } from "@ostra/protocol";
 import type { BoardId, ConnectionId, ExternalTicketId, ProjectId, TicketId, TicketKey } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -19,6 +19,7 @@ let projectId: ProjectId;
 let connectionId: ConnectionId;
 let boardId: BoardId;
 let parentId: TicketId;
+let elsewhereTeamId: string;
 const issues: Record<string, { readonly id: ExternalTicketId; readonly identifier: TicketKey }> = {};
 
 const member = () => harness.as(harness.fixture.a.member);
@@ -32,6 +33,7 @@ beforeAll(async () => {
   connectionId = await seedLinearConnection(harness);
   boardId = await seedBoard(harness, { projectId, connectionId, externalId: fake.team.id, key: fake.team.key });
   const elsewhere = fake.addTeam("ELS", "Elsewhere");
+  elsewhereTeamId = elsewhere.id;
   // P → C1 → G1 → H1, P → C2, P → E (another team, on no board of the project), and a closed C3.
   issues["P"] = await fake.createIssue({ title: "The billing epic" });
   issues["C1"] = await fake.createIssue({ title: "Billing, part one", parentId: issues["P"].id });
@@ -108,7 +110,9 @@ describe("a parent ticket (F-077)", () => {
     expect(byKey.get(keyOf("H1"))).toMatchObject({ place: "board", leaf: true, skipped: null, title: "Billing, the first quarter; `rm -rf /` stays text", task: { state: "queued", needsYou: null, prs: [] } });
     expect(byKey.get(keyOf("C2"))?.task?.state).toBe("queued");
     expect(byKey.get(keyOf("E"))).toMatchObject({ place: "elsewhere", ticketId: null, leaf: true, skipped: "not-on-a-board", task: null });
-    expect(page.refineTask).toEqual({ id: taskIdSchema.parse(refine.id), shortId: refine.id.replaceAll("-", "").slice(-8), state: "needs_you" });
+    expect(page.refineTask).toEqual({ id: taskIdSchema.parse(refine.id), shortId: refine.id.replaceAll("-", "").slice(-8), state: "needs_you", draft: null });
+    expect(byKey.get(keyOf("E"))?.elsewhere).toBeNull();
+    expect(byKey.get(keyOf("C2"))?.task?.changedAt).toEqual(expect.any(Number));
 
     // A child's task moves, and its PR shows: the page follows.
     const leafTask = await harness.test.db.task.findFirstOrThrow({ where: { ticket: { key: keyOf("C2") }, kind: "code" }, include: { repos: true } });
@@ -124,6 +128,40 @@ describe("a parent ticket (F-077)", () => {
       needsYou: "question",
       prs: [{ repo: "ostra-test/test1", number: 42, url: "https://github.example/ostra-test/test1/pull/42", state: "pr_open" }],
     });
+  });
+
+  it("F-077/c2: a child on another project's board names that board and project, to whoever can open that project; the refine task says its draft", async () => {
+    const organizationId = harness.fixture.a.organization.id;
+    const cacheOn = async (project: ProjectId, key: string) => {
+      const board = await seedBoard(harness, { projectId: project, connectionId, externalId: elsewhereTeamId, key });
+      const issue = issues["E"];
+      if (issue === undefined) throw new Error("no child E");
+      await harness.test.db.ticket.create({
+        data: { organizationId, projectId: project, boardId: board, connectionId, externalId: issue.id, key: issue.identifier, title: "Billing, elsewhere", statusCategory: "open", url: `https://linear.app/ostra-test/issue/${issue.identifier}`, open: true, trackerUpdatedAt: new Date() },
+      });
+    };
+    const restricted = projectIdSchema.parse(harness.fixture.a.restrictedProject.id);
+    const open = projectIdSchema.parse(harness.fixture.a.openProject.id);
+    await cacheOn(restricted, "ELR");
+    const elsewhereFor = async (as: Awaited<ReturnType<typeof member>>) =>
+      (await as.tickets.parent({ ticketId: parentId })).children.find((child) => child.key === keyOf("E"))?.elsewhere;
+    // The restricted project's name stays from a member who isn't on it; its admin sees it.
+    expect(await elsewhereFor(await member())).toBeNull();
+    expect(await elsewhereFor(await harness.as(harness.fixture.a.admin))).toEqual({ board: "Engineering", project: harness.fixture.a.restrictedProject.name });
+    await cacheOn(open, "ELO");
+    expect(await elsewhereFor(await member())).toEqual({ board: "Engineering", project: harness.fixture.a.openProject.name });
+
+    // The refine task's draft: ready, then applied by a member.
+    const refine = await harness.test.db.task.findFirstOrThrow({ where: { ticketId: parentId, kind: "refine" } });
+    const draft = await harness.test.db.refineDraft.create({
+      data: { organizationId, projectId, taskId: refine.id, version: 1, description: "Split billing in two.", source: "agent" },
+    });
+    const refined = async () => (await (await member()).tickets.parent({ ticketId: parentId })).refineTask?.draft;
+    expect(await refined()).toEqual({ kind: "ready", version: 1 });
+    const at = new Date();
+    await harness.test.db.refineDraft.update({ where: { id: draft.id }, data: { appliedAt: at, appliedByMemberId: harness.fixture.a.member.id } });
+    const memberName = (await harness.test.db.user.findUniqueOrThrow({ where: { id: harness.fixture.a.member.userId } })).name;
+    expect(await refined()).toEqual({ kind: "applied", version: 1, byName: memberName, at: at.getTime(), subTickets: 0 });
   });
 
   it("F-077/c2: with the tracker out of reach, the page reads the cache, and still names what a start would start", async () => {

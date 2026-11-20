@@ -5729,7 +5729,8 @@
       "title": "Title",
       "task": "Task",
       "now": "Now",
-      "prs": "PRs"
+      "prs": "PRs",
+      "age": "Age"
     },
     "noTask": "No task",
     "now": {
@@ -5755,8 +5756,18 @@
     "starting": "Starting…",
     "elsewhere": "Not on {project}'s boards",
     "elsewhereNote": "Listed, never started here. Start it from its own project.",
+    "elsewhereBoard": "Board {board}",
+    "elsewhereIn": "in",
+    "elsewhereNowhere": "on no project's board",
     "refined": "Refined",
     "refineTask": "Refine task",
+    "draftApplied": {
+      "one": "Draft v{version} applied by {name}, {date} · {n} sub-issue created",
+      "other": "Draft v{version} applied by {name}, {date} · {n} sub-issues created"
+    },
+    "draftAppliedNoOne": "someone",
+    "draftReady": "Draft ready, not applied yet",
+    "refineStopped": "Stopped",
     "openTask": "Open task",
     "tryAgain": "Try again",
     "fromCache": "Read from ostra's copy of the tickets: Linear didn't answer.",

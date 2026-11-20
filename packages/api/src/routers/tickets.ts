@@ -60,6 +60,8 @@ const taskViewSchema = z.object({
   /** Why it needs a person, while it does. */
   needsYou: z.string().nullable(),
   prs: z.array(z.object({ repo: z.string(), number: z.number().int(), url: z.string().nullable(), state: z.string() })),
+  /** When the task last changed: the page's Age column. */
+  changedAt: z.number().int(),
 });
 type TaskView = z.infer<typeof taskViewSchema>;
 
@@ -70,7 +72,7 @@ const codeTasksOf = async (deps: ApiDeps, organizationId: OrganizationId, ticket
   const rows = await deps.db.task.findMany({
     where: { organizationId, ticketId: { in: [...ticketIds] }, kind: "code" },
     orderBy: { createdAt: "desc" },
-    select: { id: true, ticketId: true, state: true, needsYouReason: true, repos: { select: { prNumber: true, prUrl: true, state: true, repo: { select: { fullName: true } } } } },
+    select: { id: true, ticketId: true, state: true, needsYouReason: true, updatedAt: true, repos: { select: { prNumber: true, prUrl: true, state: true, repo: { select: { fullName: true } } } } },
   });
   for (const row of rows) {
     if (row.ticketId === null) continue;
@@ -83,6 +85,7 @@ const codeTasksOf = async (deps: ApiDeps, organizationId: OrganizationId, ticket
         state: row.state,
         needsYou: row.state === "needs_you" ? row.needsYouReason : null,
         prs: row.repos.flatMap((repo) => (repo.prNumber === null ? [] : [{ repo: repo.repo.fullName, number: repo.prNumber, url: repo.prUrl, state: repo.state }])),
+        changedAt: row.updatedAt.getTime(),
         active,
       });
     }
@@ -106,7 +109,60 @@ const childSchema = z.object({
   /** Why "Start sub-issues" leaves it out: on no board of the project, or below the last level read. */
   skipped: z.enum(["not-on-a-board", "too-deep"]).nullable(),
   task: taskViewSchema.nullable(),
+  /**
+   * A child on no board of this project: the board another project of the organization has it on,
+   * and that project, when the member can open it; `null` for a child here, or on no project's board.
+   */
+  elsewhere: z.object({ board: z.string(), project: z.string() }).nullable(),
 });
+
+/** The refine task's draft, as the parent's Refined row says it: applied (by whom, when, the sub-tickets made), or ready. */
+const refinedDraftSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("applied"), version: z.number().int(), byName: z.string().nullable(), at: z.number().int(), subTickets: z.number().int() }),
+  z.object({ kind: z.literal("ready"), version: z.number().int() }),
+]);
+const appliedEventSchema = z.object({ subTickets: z.array(z.string()) });
+
+/** The refine task's newest draft: applied (by whom, when, how many sub-tickets it made), else ready; `null` without one. */
+const refinedDraftOf = async (deps: ApiDeps, organizationId: OrganizationId, taskId: string): Promise<z.infer<typeof refinedDraftSchema> | null> => {
+  const applied = await deps.db.refineDraft.findFirst({ where: { organizationId, taskId, appliedAt: { not: null } }, orderBy: { version: "desc" }, select: { id: true, version: true, appliedAt: true, appliedByMemberId: true } });
+  const appliedAt = applied?.appliedAt ?? null;
+  if (applied === null || appliedAt === null) {
+    const latest = await deps.db.refineDraft.findFirst({ where: { organizationId, taskId }, orderBy: { version: "desc" }, select: { version: true } });
+    return latest === null ? null : { kind: "ready", version: latest.version };
+  }
+  const [by, event] = await Promise.all([
+    applied.appliedByMemberId === null ? null : deps.db.member.findFirst({ where: { id: applied.appliedByMemberId, organizationId }, select: { user: { select: { name: true } } } }),
+    deps.db.event.findFirst({ where: { taskId, organizationId, kind: "draft.applied", payload: { path: ["draftId"], equals: applied.id } }, select: { payload: true } }),
+  ]);
+  const written = event === null ? null : appliedEventSchema.safeParse(event.payload);
+  return { kind: "applied", version: applied.version, byName: by?.user.name ?? null, at: appliedAt.getTime(), subTickets: written?.success === true ? written.data.subTickets.length : 0 };
+};
+
+/**
+ * The children on no board of this project that another project of the organization has on a
+ * board: that board's and project's names, for the projects the member can open (a restricted
+ * project's name isn't shown to a member who isn't on it).
+ */
+const elsewhereOf = async (
+  deps: ApiDeps,
+  scope: { readonly organizationId: OrganizationId; readonly role: string; readonly projectRoles: ReadonlyMap<ProjectId, unknown> },
+  connectionId: string,
+  externalIds: readonly string[],
+): Promise<ReadonlyMap<string, { readonly board: string; readonly project: string }>> => {
+  const found = new Map<string, { readonly board: string; readonly project: string }>();
+  if (externalIds.length === 0) return found;
+  const rows = await deps.db.ticket.findMany({
+    where: { organizationId: scope.organizationId, connectionId, externalId: { in: [...externalIds] }, removedAt: null, board: { detachedAt: null } },
+    orderBy: { createdAt: "asc" },
+    select: { externalId: true, board: { select: { name: true } }, project: { select: { id: true, name: true, access: true } } },
+  });
+  for (const row of rows) {
+    const visible = scope.role === "admin" || row.project.access === "open" || scope.projectRoles.has(projectIdSchema.parse(row.project.id));
+    if (visible && !found.has(row.externalId)) found.set(row.externalId, { board: row.board.name, project: row.project.name });
+  }
+  return found;
+};
 
 const startSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("leaves"), tasks: z.number().int() }),
@@ -128,7 +184,7 @@ export const ticketsRouter = router({
         depth: z.number().int(),
         children: z.array(childSchema),
         start: startSchema,
-        refineTask: z.object({ id: taskIdSchema, shortId: z.string(), state: taskStateSchema }).nullable(),
+        refineTask: z.object({ id: taskIdSchema, shortId: z.string(), state: taskStateSchema, draft: refinedDraftSchema.nullable() }).nullable(),
       }),
     )
     .query(async ({ ctx }) => {
@@ -147,6 +203,8 @@ export const ticketsRouter = router({
       const keyOf = new Map<string, string>([[parent.externalId, parent.key], ...nodes.map((node) => [node.externalId, node.key] as const)]);
       const tasks = await codeTasksOf(ctx.deps, organizationId, nodes.flatMap((node) => (node.cached === null ? [] : [node.cached.ticketId])));
       const refine = await db.task.findFirst({ where: { organizationId, ticketId: parent.id, kind: "refine" }, orderBy: { createdAt: "desc" }, select: { id: true, state: true } });
+      const refined = refine === null ? null : await refinedDraftOf(ctx.deps, organizationId, refine.id);
+      const elsewhere = await elsewhereOf(ctx.deps, ctx.scope, parent.connectionId, nodes.flatMap((node) => (node.cached === null ? [node.externalId] : [])));
       const isLeaf = (node: TreeNode): boolean => node.open && !node.children.some((child) => child.open);
       return {
         ticket: { id: ticketIdSchema.parse(parent.id), projectId: ctx.ticket.projectId, key: parent.key, title: parent.title, url: parent.url },
@@ -165,11 +223,12 @@ export const ticketsRouter = router({
             place: node.cached === null ? ("elsewhere" as const) : ("board" as const),
             leaf: isLeaf(node),
             skipped: node.open ? (skippedAs.get(node.key) ?? (node.cached === null ? "not-on-a-board" : null)) : null,
-            task: task === undefined ? null : { id: task.id, shortId: task.shortId, state: task.state, needsYou: task.needsYou, prs: task.prs },
+            task: task === undefined ? null : { id: task.id, shortId: task.shortId, state: task.state, needsYou: task.needsYou, prs: task.prs, changedAt: task.changedAt },
+            elsewhere: node.cached === null ? (elsewhere.get(node.externalId) ?? null) : null,
           };
         }),
         start: leaves.ok ? { kind: "leaves" as const, tasks: leaves.start.length } : leaves.reason === "over-limit" ? { kind: "over-limit" as const, count: leaves.count, max: leaves.max } : { kind: "no-children" as const },
-        refineTask: refine === null ? null : { id: taskIdSchema.parse(refine.id), shortId: shortIdOf(refine.id), state: refine.state },
+        refineTask: refine === null ? null : { id: taskIdSchema.parse(refine.id), shortId: shortIdOf(refine.id), state: refine.state, draft: refined },
       };
     }),
 

@@ -7,6 +7,7 @@ import { useState } from "react";
 
 import type { ProjectId, TicketId } from "@ostra/protocol";
 
+import { rowAge } from "@/components/inbox/inbox-words";
 import { TicketStatusIcon } from "@/components/inbox/ticket-icons";
 import { PageFrame, PropGroup, PropRow } from "@/components/shell/page-frame";
 import { stateTone, taskStateText } from "@/components/tasks/task-words";
@@ -17,6 +18,7 @@ import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { plural, t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
+import type { RouterOutputs } from "@/lib/trpc";
 
 import { partText, progressOf } from "./parent-progress";
 import type { Child } from "./parent-progress";
@@ -27,7 +29,7 @@ import type { Child } from "./parent-progress";
 
 const LIVE_MS = 5_000;
 
-const grid = "grid grid-cols-[84px_minmax(0,1fr)_120px] items-center gap-x-3 md:grid-cols-[84px_minmax(0,1fr)_130px_minmax(0,220px)_90px_100px]";
+const grid = "grid grid-cols-[84px_minmax(0,1fr)_120px] items-center gap-x-3 md:grid-cols-[84px_minmax(0,1fr)_130px_minmax(0,220px)_90px_50px_100px]";
 
 const TaskCell = ({ child }: { readonly child: Child }) =>
   child.task === null ? (
@@ -39,6 +41,48 @@ const TaskCell = ({ child }: { readonly child: Child }) =>
       {taskStateText(child.task.state)}
     </Status>
   );
+
+type Refined = NonNullable<RouterOutputs["tickets"]["parent"]["refineTask"]>;
+
+/** The Refined row's line: the draft applied (by whom, when, its sub-issues), ready, or the task stopped. */
+export const refinedLine = (refine: Refined): string | null => {
+  if (refine.draft?.kind === "applied") {
+    const date = new Date(refine.draft.at).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+    return plural(refine.draft.subTickets, "ticketParent.draftApplied.one", "ticketParent.draftApplied.other", {
+      version: refine.draft.version,
+      name: refine.draft.byName ?? t("ticketParent.draftAppliedNoOne"),
+      date,
+    });
+  }
+  if (refine.state === "stopped") return t("ticketParent.refineStopped");
+  return refine.draft?.kind === "ready" ? t("ticketParent.draftReady") : null;
+};
+
+/** A child on no board of this project, as its row says where it is: `Board {name}` and `in {project}`. */
+export const ElsewhereRow = ({ child }: { readonly child: Child }) => (
+  <li className={cn(grid, "min-h-10 border-b border-line py-1")} data-testid="elsewhere-row" data-key={child.key}>
+    <span className="font-mono text-[12.5px] text-faint">{child.key}</span>
+    <span className="truncate text-ui text-muted" title={child.title}>{child.title}</span>
+    <span className="truncate text-ui text-muted">{child.elsewhere === null ? "–" : t("ticketParent.elsewhereBoard", { board: child.elsewhere.board })}</span>
+    <span className="hidden truncate text-[12.5px] text-muted md:block">
+      {child.elsewhere === null ? (
+        t("ticketParent.elsewhereNowhere")
+      ) : (
+        <>
+          {t("ticketParent.elsewhereIn")} <span className="font-mono">{child.elsewhere.project}</span>
+        </>
+      )}
+    </span>
+    <span className="hidden md:block" />
+    <span className="hidden md:block" />
+    <span className="col-start-3 flex justify-end md:col-start-auto">
+      <a href={child.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-ui text-teal hover:underline">
+        {t("ticketParent.openInLinear")}
+        <ArrowUpRightIcon aria-hidden className="size-3 stroke-[1.75]" />
+      </a>
+    </span>
+  </li>
+);
 
 const nowText = (child: Child, anyStarted: boolean): string => {
   if (!child.open) return t("ticketParent.now.closed");
@@ -93,6 +137,8 @@ export const TicketParentView = ({ projectId, ticketId }: { readonly projectId: 
   const overLimit = data?.start.kind === "over-limit" ? data.start : null;
   const starting = startAll.isPending;
   const sentence = progress.parts.map(partText).join(" · ");
+  const now = parent.dataUpdatedAt === 0 ? Date.now() : parent.dataUpdatedAt;
+  const refined = data?.refineTask === null || data?.refineTask === undefined ? null : refinedLine(data.refineTask);
 
   return (
     <PageFrame
@@ -210,6 +256,7 @@ export const TicketParentView = ({ projectId, ticketId }: { readonly projectId: 
                   <span>{t("ticketParent.col.task")}</span>
                   <span className="hidden md:block">{t("ticketParent.col.now")}</span>
                   <span className="hidden md:block">{t("ticketParent.col.prs")}</span>
+                  <span className="hidden md:block">{t("ticketParent.col.age")}</span>
                   <span className="hidden md:block" />
                 </div>
                 <ul data-testid="sub-issues">
@@ -232,6 +279,7 @@ export const TicketParentView = ({ projectId, ticketId }: { readonly projectId: 
                           ))
                         )}
                       </span>
+                      <span className="hidden font-mono text-xs text-faint md:block" data-testid="sub-issue-age">{child.task === null ? "" : rowAge(child.task.changedAt, now)}</span>
                       <span className="col-start-3 flex justify-end md:col-start-auto">
                         {child.task === null && child.leaf && child.open && child.ticketId !== null ? (
                           <Button size="sm" disabled={startOne.isPending} onClick={() => { if (child.ticketId !== null) startOne.mutate({ projectId, ticketId: child.ticketId }); }}>
@@ -257,14 +305,7 @@ export const TicketParentView = ({ projectId, ticketId }: { readonly projectId: 
               <p className="mb-1 text-xs text-faint">{t("ticketParent.elsewhereNote")}</p>
               <ul>
                 {elsewhere.map((child) => (
-                  <li key={child.key} className="flex min-h-10 items-center gap-3 border-b border-line">
-                    <span className="w-[84px] shrink-0 font-mono text-[12.5px] text-faint">{child.key}</span>
-                    <span className="min-w-0 flex-1 truncate text-ui text-muted">{child.title}</span>
-                    <a href={child.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-ui text-teal hover:underline">
-                      {t("ticketParent.openInLinear")}
-                      <ArrowUpRightIcon aria-hidden className="size-3 stroke-[1.75]" />
-                    </a>
-                  </li>
+                  <ElsewhereRow key={child.key} child={child} />
                 ))}
               </ul>
             </section>
@@ -278,7 +319,8 @@ export const TicketParentView = ({ projectId, ticketId }: { readonly projectId: 
                 <span className="font-mono text-faint">{data.refineTask.shortId}</span>
                 <span className="text-text">{t("ticketParent.refineTask")}</span>
                 <Status tone={stateTone(data.refineTask.state)}>{taskStateText(data.refineTask.state)}</Status>
-                <Link href={`/tasks/${data.refineTask.id}`} className="ml-auto text-teal hover:underline">{t("ticketParent.openTask")}</Link>
+                {refined === null ? null : <span className="min-w-0 truncate text-[12.5px] text-muted" data-testid="refined-line">{refined}</span>}
+                <Link href={`/tasks/${data.refineTask.id}`} className="ml-auto shrink-0 text-teal hover:underline">{t("ticketParent.openTask")}</Link>
               </div>
             </section>
           )}
