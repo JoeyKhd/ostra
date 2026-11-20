@@ -159,6 +159,7 @@ export * from "./use-cases/theme.ts";
 // Milestone 6 (spec section 5.4): automations, starts, Linear's agent mode and the review loop.
 export * from "./lifecycles/m6.ts";
 export * from "./automations/cron.ts";
+export * from "./automations/cron-sentence.ts";
 export * from "./automations/intake-filter.ts";
 export * from "./starts/start-task.ts";
 // Milestone 6, tickets 10 and 11: the one start's body, bulk starts, intake rules and the scheduler.
