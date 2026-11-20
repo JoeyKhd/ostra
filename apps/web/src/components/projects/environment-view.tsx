@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckIcon, FileIcon, KeyRoundIcon, LockIcon, PlusIcon, ShieldCheckIcon, TriangleAlertIcon, VariableIcon, XIcon } from "lucide-react";
+import { CheckIcon, FileIcon, FlaskConicalIcon, KeyRoundIcon, LockIcon, PlusIcon, ShieldCheckIcon, TriangleAlertIcon, VariableIcon, XIcon } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -29,9 +29,10 @@ import type { RouterInputs, RouterOutputs } from "@/lib/trpc";
 
 import { ServicesAndChecks, SnapshotProperties } from "./environment-services";
 import { entriesText, lineCount, withoutFinalNewline } from "./environment-words";
+import { EnvironmentProposalTab, ProposalProperties, TestEnvironmentButton } from "./environment-proposal";
 
-/** The page's two tabs (environment-services.md): `?tab=services`, or none for Setup. */
-type EnvironmentTab = "setup" | "services";
+/** The page's tabs (environment-services.md): `?tab=services`, milestone 6's `?tab=proposal` (ticket 36), or none for Setup. */
+type EnvironmentTab = "setup" | "services" | "proposal";
 
 type View = RouterOutputs["environments"]["get"];
 type Detected = RouterOutputs["environments"]["detect"];
@@ -254,6 +255,11 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
   const params = useSearchParams();
   const project = useQuery(trpc.projects.get.queryOptions({ projectId }));
   const environment = useQuery(trpc.environments.get.queryOptions({ projectId }));
+  // Ticket 36: the onboarding task and its open proposal, for the Proposal tab, its banner and "Test this environment".
+  const onboarding = useQuery({ ...trpc.environments.onboarding.queryOptions({ projectId }), refetchInterval: 10_000 });
+  const proposal = useQuery(trpc.environments.proposal.queryOptions({ projectId }));
+  const [now] = useState(() => Date.now());
+  const [startError, setStartError] = useState<string | null>(null);
   const detect = useMutation(trpc.environments.detect.mutationOptions());
   const save = useMutation(
     trpc.environments.save.mutationOptions({
@@ -330,10 +336,11 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
 
   const router = useRouter();
   const pathname = usePathname();
-  const tab: EnvironmentTab = params.get("tab") === "services" ? "services" : "setup";
+  const tabParam = params.get("tab");
+  const tab: EnvironmentTab = tabParam === "services" || tabParam === "proposal" ? tabParam : "setup";
   const selectTab = (next: EnvironmentTab) => {
     const query = new URLSearchParams(params.toString());
-    if (next === "services") query.set("tab", "services");
+    if (next === "services" || next === "proposal") query.set("tab", next);
     else query.delete("tab");
     const search = query.toString();
     router.replace(search === "" ? pathname : `${pathname}?${search}`, { scroll: false });
@@ -346,13 +353,18 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
   return (
     <PageFrame
       crumbs={[{ label: name, href: `/projects/${projectId}` }, { label: t("shell.environment") }]}
-      actions={admin && tab === "setup" ? (
-        <Button variant="primary" onClick={submit} disabled={save.isPending || view === undefined}>
-          {save.isPending ? t("common.saving") : t("environment.save")}
-        </Button>
-      ) : undefined}
-      properties={
+      actions={
         <>
+          <TestEnvironmentButton projectId={projectId} onboarding={onboarding.data} onStarted={() => { selectTab("proposal"); }} onError={setStartError} />
+          {admin && tab === "setup" ? (
+            <Button variant="primary" onClick={submit} disabled={save.isPending || view === undefined}>
+              {save.isPending ? t("common.saving") : t("environment.save")}
+            </Button>
+          ) : null}
+        </>
+      }
+      properties={
+        tab === "proposal" ? <ProposalProperties proposal={proposal.data ?? null} onboarding={onboarding.data} now={now} /> : <>
           <SnapshotProperties projectId={projectId} view={view} admin={admin} servicesTab={tab === "services"} />
           {tab === "setup" ? <Properties view={view} rows={rows} detected={detect.data} detecting={detect.isPending} /> : null}
         </>
@@ -376,6 +388,10 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
           tabs={[
             { id: "setup", label: t("environment.tabs.setup") },
             { id: "services", label: t("environment.tabs.servicesAndChecks") },
+            // Ticket 36: the onboarding task's proposal, once there's an onboarding task; a dot while a proposal waits (amber for its admins).
+            ...(onboarding.data?.task === null || onboarding.data === undefined
+              ? []
+              : [{ id: "proposal" as const, label: t("environment.tabs.proposal"), extra: proposal.data === null || proposal.data === undefined ? null : <span aria-hidden className={cn("inline-block size-1.5 rounded-full", admin ? "bg-amber" : "bg-faint")} /> }]),
           ]}
           selected={tab}
           onSelect={selectTab}
@@ -390,8 +406,21 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
           </div>
         )}
         {environment.error === null ? null : <p role="alert" className="mt-4 text-ui text-red">{errorText(environment.error)}</p>}
+        {startError === null ? null : <p role="alert" className="mt-2 text-xs text-red" data-testid="onboarding-error">{startError}</p>}
+        {tab !== "proposal" && proposal.data !== null && proposal.data !== undefined ? (
+          <p className="mt-2 flex min-h-9 items-center gap-2 text-ui text-text" data-testid="proposal-banner">
+            {admin ? <span aria-hidden className="size-1.5 rounded-full bg-amber" /> : null}
+            <FlaskConicalIcon aria-hidden className="size-[15px] text-muted" />
+            {t("environment.proposalBanner")}
+            <button type="button" className="text-teal hover:underline" onClick={() => { selectTab("proposal"); }}>{t("environment.reviewProposal")}</button>
+          </p>
+        ) : null}
 
-        {view === undefined ? (
+        {tab === "proposal" ? (
+          <div role="tabpanel" id="environment-panel-proposal" aria-labelledby="environment-tab-proposal">
+            <EnvironmentProposalTab projectId={projectId} projectName={name} onboarding={onboarding.data} now={now} />
+          </div>
+        ) : view === undefined ? (
           environment.isPending ? (
             <div aria-busy className="mt-[26px] space-y-3">
               <Skeleton className="w-24" />

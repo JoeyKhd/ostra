@@ -57,7 +57,58 @@ const decisionOf = (input: { readonly decision: "accept" | "edit-and-accept" | "
   }
 };
 
+/** A `commit.filtered` event's paths the runner left out (ticket 36: the panel's "Not committed"). */
+const filteredSchema = z.looseObject({ dropped: z.array(z.string()).catch([]) });
+
+/** The task states an onboarding task is over in (ticket 21's `ENDED`). */
+const ENDED_STATES: readonly string[] = ["stopped", "merged", "done"];
+
 export const onboardingProcedures = {
+  /**
+   * Ticket 36: the project's newest onboarding task, for the environment page's task line and its
+   * "Test this environment": its state, its `AGENTS.md` pull requests, the paths its commits left
+   * out, and whether this member may start one now.
+   */
+  onboarding: projectProcedure("read", projectInput).query(async ({ ctx, input }) => {
+    const { db } = ctx.deps;
+    const organizationId = ctx.scope.organizationId;
+    const task = await db.task.findFirst({
+      where: { organizationId, projectId: input.projectId, onboarding: true },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, title: true, state: true, ticketKey: true, createdAt: true, updatedAt: true, repos: { select: { prNumber: true, prUrl: true, state: true, repo: { select: { fullName: true } } } } },
+    });
+    const open = task !== null && !ENDED_STATES.includes(task.state);
+    const proposalOpen = (await db.environmentProposal.count({ where: { organizationId, projectId: input.projectId, state: "proposed" } })) > 0;
+    const filtered =
+      task === null
+        ? []
+        : (await db.event.findMany({ where: { organizationId, taskId: task.id, kind: "commit.filtered" }, orderBy: { seq: "asc" }, select: { payload: true } })).flatMap((event) => {
+            const parsed = filteredSchema.safeParse(event.payload);
+            return parsed.success ? parsed.data.dropped : [];
+          });
+    return {
+      task:
+        task === null
+          ? null
+          : {
+              taskId: taskIdSchema.parse(task.id),
+              key: task.ticketKey ?? task.id.replaceAll("-", "").slice(-8),
+              title: task.title,
+              state: task.state,
+              startedAt: task.createdAt.getTime(),
+              updatedAt: task.updatedAt.getTime(),
+              open,
+              /** The `AGENTS.md` pull requests it opened, by repo. */
+              prs: task.repos.flatMap((repo) => (repo.prNumber === null || repo.prUrl === null ? [] : [{ repo: repo.repo.fullName, number: repo.prNumber, url: repo.prUrl, state: repo.state }])),
+            },
+      /** The paths its commits left out: only `AGENTS.md` is committed. */
+      notCommitted: [...new Set(filtered)].slice(0, 50),
+      /** A project admin starts one while none is open and no proposal waits. */
+      canStart: ctx.project.role === "admin" && !open && !proposalOpen,
+      isAdmin: ctx.project.role === "admin",
+    };
+  }),
+
   /** "Test this environment": the onboarding task, from the built-in template. A project admin's; one open at a time. */
   startOnboarding: projectProcedure("admin", projectInput).mutation(async ({ ctx, input }) => {
     const { db, ports, logger } = ctx.deps;

@@ -131,6 +131,37 @@ describe("the onboarding task (F-113, ticket 29)", () => {
     expect(await harness.test.db.task.count({ where: { projectId, onboarding: true } })).toBe(2);
   });
 
+  it("F-113: the page reads the newest onboarding task, its AGENTS.md PR and what its commits left out, and who may start one now", async () => {
+    await closeOnboarding();
+    await harness.test.db.environmentProposal.updateMany({ where: { projectId, state: "proposed" }, data: { state: "rejected" } });
+    const admin = await harness.as(harness.fixture.a.admin);
+    const member = await harness.as(harness.fixture.a.member);
+    expect((await admin.environments.onboarding({ projectId })).canStart).toBe(true);
+    expect((await member.environments.onboarding({ projectId })).canStart).toBe(false);
+    const { taskId } = await admin.environments.startOnboarding({ projectId });
+    const running = await admin.environments.onboarding({ projectId });
+    expect(running.task).toMatchObject({ taskId, open: true, prs: [] });
+    expect(running.canStart).toBe(false);
+    // Its AGENTS.md PR, and a commit the runner filtered.
+    await harness.test.db.taskRepo.updateMany({ where: { taskId, repoId: repo2 }, data: { state: "pr_open", prNumber: 97, prUrl: "https://github.com/ostra-test/test2/pull/97", headSha: "a".repeat(40) } });
+    const session = await harness.test.db.session.findFirstOrThrow({ where: { taskId } });
+    const seq = (await harness.test.db.task.findUniqueOrThrow({ where: { id: taskId } })).eventSeq + 1;
+    await harness.test.db.event.create({
+      data: { organizationId: orgA, projectId, taskId, seq, sessionId: session.id, kind: "commit.filtered", occurredAt: new Date(), payload: { kind: "commit.filtered", repoId: repo2, kept: ["AGENTS.md"], dropped: ["package.json", "src/setup.ts"], droppedCount: 2 } },
+    });
+    await harness.test.db.task.update({ where: { id: taskId }, data: { eventSeq: seq } });
+    const read = await member.environments.onboarding({ projectId });
+    expect(read.task?.prs).toEqual([{ repo: "ostra-test/test2", number: 97, url: "https://github.com/ostra-test/test2/pull/97", state: "pr_open" }]);
+    expect(read.notCommitted).toEqual(["package.json", "src/setup.ts"]);
+    // A waiting proposal holds the start too, once the task is over.
+    await agentProposes(taskId);
+    await closeOnboarding();
+    expect((await admin.environments.onboarding({ projectId })).canStart).toBe(false);
+    expect(await codeOf((await harness.as(harness.fixture.b.admin)).environments.onboarding({ projectId }))).toBe("NOT_FOUND");
+    // The next case starts with no proposal open.
+    await harness.test.db.environmentProposal.updateMany({ where: { projectId, state: "proposed" }, data: { state: "rejected" } });
+  });
+
   it("F-113: the open proposal is shown per repo against the environment as saved: its script, its checks and the variables it needs, then the services", async () => {
     await closeOnboarding();
     const admin = await harness.as(harness.fixture.a.admin);
