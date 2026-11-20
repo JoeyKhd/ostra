@@ -9,6 +9,7 @@ import type { Ports } from "../ports.ts";
 import { checkBudget, holdTurnInTx, sessionModelIdInTx, turnOriginOfIntent } from "./budgets.ts";
 import type { UseCaseResult } from "./common.ts";
 import { moveTaskInTx } from "./moves.ts";
+import { answerNextTurnItemsInTx } from "./needs-you-items.ts";
 import { reopenTask } from "./reopen.ts";
 import type { ReopenTaskResult } from "./reopen.ts";
 import { appendServerEvent } from "./server-events.ts";
@@ -167,8 +168,9 @@ export const sendMemberMessageInTx = async (
     }
   }
   if (task.state === "needs_you") {
-    // The message answers what the task waited on, as the composer's send does.
-    await moveTaskInTx({ tx, notices: deps.notices }, task, { type: "member_acted", boxWarm: true });
+    // The message answers what the task waited on, as the composer's send does, and its items close.
+    await moveTaskInTx({ tx, notices: deps.notices, jobs: deps.jobs }, task, { type: "member_acted", boxWarm: true });
+    await answerNextTurnItemsInTx(deps, tx, task.id, { at: new Date(now), byMemberId: scope.memberId });
   }
   const seq = await appendServerEvent(tx, {
     organizationId: organizationIdSchema.parse(organizationId),

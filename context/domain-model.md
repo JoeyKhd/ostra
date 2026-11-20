@@ -199,6 +199,14 @@ Each case is a needs-you item:
 
 A turn that waits on a person follows the box's idle timer: after 15 minutes *(working value)* the turn is cancelled and the box stops. The needs-you item stays open, and answering it reopens the task with the decision (Q42).
 
+**An item never outlives its reason** (2026-11-20). It closes when what it waits on ends:
+- a member answers it, or dismisses one that sits beside the task (a restore conflict, files outside the repos);
+- a member's message that starts the task's next turn answers what the last turn's end raised: no changes, a stall, the spend cap, a crash, a failed setup, a closed ticket, a draft, a round cap. An approval, a question and a plan wait on their own answer;
+- a reopen answers what the task needed;
+- the task stops, merges or is done: its open items are dismissed with it, with nobody's answer.
+
+What waits on a member is one rule, read the same everywhere: Home's needs-you section and its total, the Needs you page's Open tab and its count, and the sidebar's count all count the open items the member is the audience of or can answer, so they never disagree. Whether the member has read an item is their notification's business, and changes only the page's unread marks.
+
 **Each item has an audience** (Q73, F-036):
 
 | Audience | Gets |

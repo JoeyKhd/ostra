@@ -65,9 +65,9 @@ export const Sidebar = ({ me, onNavigate = noop }: SidebarProps) => {
   const admin = me.organization?.role === "admin";
   const { openSearch } = useShell();
   const trpc = useTRPC();
-  // Ticket 44: the member's open, unread notifications, kept fresh while the panel is open.
-  const unread = useQuery({ ...trpc.notifications.unreadCount.queryOptions(), refetchInterval: 10_000 });
-  const count = unread.data?.count ?? 0;
+  // Ticket 44: what waits on the member, by Home's rule (Home's total, the Open tab's count), kept fresh while the panel is open.
+  const waiting = useQuery({ ...trpc.notifications.openCount.queryOptions(), refetchInterval: 10_000 });
+  const count = waiting.data?.count ?? 0;
 
   return (
     <nav aria-label={t("shell.navigation")} className="flex h-full flex-col bg-side px-2.5 py-3">

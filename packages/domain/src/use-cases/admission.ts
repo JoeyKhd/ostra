@@ -257,8 +257,8 @@ export const admitQueued = async (
  */
 export const requeueTaskInTx = async (
   deps: Pick<Ports, "notices" | "clock"> & {
-    /** Without it, the next dispatch is the sweep's (`OSTRA_QUEUE_SWEEP_SECONDS`). */
-    readonly jobs?: Ports["jobs"];
+    /** Sends the next dispatch at once, and owes the fan-out of any item a move closes. */
+    readonly jobs: Ports["jobs"];
     readonly logger?: Logger;
   },
   tx: Tx,
@@ -281,7 +281,7 @@ export const requeueTaskInTx = async (
     await tx.box.updateMany({ where: { id: lease.boxId, state: { in: ["creating", "preparing"] } }, data: { state: "failed", failedReason: input.boxReason } });
   }
   if (row.state === "preparing") {
-    const moved = await moveTaskInTx({ tx, notices: deps.notices, ...(deps.logger === undefined ? {} : { logger: deps.logger }) }, mapTask(row), { type: "box_unplaced" });
+    const moved = await moveTaskInTx({ tx, notices: deps.notices, jobs: deps.jobs, ...(deps.logger === undefined ? {} : { logger: deps.logger }) }, mapTask(row), { type: "box_unplaced" });
     if (!moved) {
       return false;
     }
@@ -289,7 +289,7 @@ export const requeueTaskInTx = async (
   // As a declined offer: the next dispatch raises the epoch, which fences the old one (F-045).
   const fenced = await tx.task.update({ where: { id: input.taskId }, data: dispatchWaitColumns(input.wait), select: { leaseEpoch: true } });
   const session = await tx.session.findFirst({ where: { taskId: input.taskId, state: "starting" }, orderBy: { startedAt: "desc" }, select: { id: true } });
-  if (session !== null && deps.jobs !== undefined) {
+  if (session !== null) {
     await deps.jobs.enqueueInTx(tx, "task.dispatch", {
       organizationId: input.organizationId,
       taskId: input.taskId,
@@ -329,7 +329,7 @@ export const cancelQueuedTask: CancelQueuedTask = async (deps, scope, input) => 
       return { ok: false, error: "not-queued", message: "Only a queued task is cancelled" } as const;
     }
     const task = mapTask(row);
-    const moved = await moveTaskInTx({ tx, notices: deps.notices }, task, { type: "cancel" });
+    const moved = await moveTaskInTx({ tx, notices: deps.notices, jobs: deps.jobs }, task, { type: "cancel" });
     if (!moved) {
       return { ok: false, error: "not-queued", message: "Only a queued task is cancelled" } as const;
     }

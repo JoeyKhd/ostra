@@ -11,17 +11,20 @@ import {
   notificationKinds,
   saveNotificationPreferences,
 } from "@ostra/domain";
+import type { Prisma } from "@ostra/db";
 import { notificationIdSchema, projectIdSchema } from "@ostra/protocol";
 import { z } from "zod";
 
 import { loadEmailRow, viewEmail } from "../services/email.ts";
 import { memberProcedure, router, unwrap } from "../trpc/init.ts";
 import { boardProjectIds } from "./home-board.ts";
-import { loadNeedsYouViews } from "./needs-you-view.ts";
+import { countOpenNeedsYou, listOpenNeedsYou, loadNeedsYouViews, openNeedsYouWhere } from "./needs-you-view.ts";
+import type { NeedsYouView } from "./needs-you-view.ts";
 
 // F-036, F-115 (tickets 36 and 37; ADR 0050): a member's notifications. `preferences` is their own
 // choices of which moments reach them where; the rest of the router is the "Needs you" page's list
-// and the sidebar's count.
+// and the sidebar's count. What is open is Home's rule (`openNeedsYouWhere`), never a notification's
+// own state, so the page, its count, the sidebar and Home can't disagree.
 
 const kindSchema = z.enum(notificationKinds).exclude(["test"]);
 const channelSchema = z.enum(notificationChannels);
@@ -92,15 +95,40 @@ const DONE_PAGE = 50;
 
 const doneCursor = z.string().regex(/^\d+:.+$/);
 
+/** A member's notification as the list reads it: with their own deliveries that didn't go. */
+const notificationInclude = {
+  deliveries: { where: { error: { not: null }, state: { in: ["pending" as const, "failed" as const] } }, select: { channel: true, state: true, error: true, attempts: true } },
+} satisfies Prisma.NotificationInclude;
+
+type MemberNotification = Prisma.NotificationGetPayload<{ include: typeof notificationInclude }>;
+
+/** A row of the list: the item as Home shows it, and the member's own notification of it, if one reached them. */
+const rowOf = (view: NeedsYouView, notification: MemberNotification | undefined) => ({
+  /** `null` when no notification of the item reached the member: nothing to mark read. */
+  notificationId: notification === undefined ? null : notificationIdSchema.parse(notification.id),
+  kind: notification?.kind ?? null,
+  /** Read, or never reached the member (no notification: `undefined`, not `null`). */
+  read: notification?.readAt !== null,
+  readAt: notification?.readAt?.getTime() ?? null,
+  state: view.state,
+  createdAt: notification?.createdAt.getTime() ?? view.since,
+  view,
+  /** This member's deliveries that didn't go: the page says so under the row. */
+  failedDeliveries: (notification?.deliveries ?? []).map((delivery) => ({ channel: delivery.channel, state: delivery.state, error: delivery.error ?? "", attempts: delivery.attempts })),
+});
+
 export const notificationsRouter = router({
   preferences: preferencesRouter,
 
   /**
-   * The member's own notifications for the Needs you page (ticket 36): `open` is every open one,
-   * read or not; `done` is the answered and dismissed ones, newest first, paged by cursor. A
-   * notification of a project the member can no longer open, and a test mail, never show. Each row
-   * carries its item as Home shows it, what an inline answer needs, how a closed one ended, and the
-   * member's own deliveries that failed.
+   * The Needs you page's list (ticket 36). `open` is what waits on the member by Home's rule
+   * (`listOpenNeedsYou`: the same rows, the same total), each with the member's own notification of
+   * it when one reached them: whether they read it, and their deliveries that failed. An item no
+   * notification reached them for (an approval on a task someone else drives, a reason with no
+   * moment, a task from before items) shows as read. `done` is the member's answered and dismissed
+   * notifications, newest first, paged by cursor. A project the member can no longer open, and a
+   * test mail, never show. Each row carries its item as Home shows it, what an inline answer needs,
+   * and how a closed one ended.
    */
   list: memberProcedure
     .input(z.strictObject({ tab: z.enum(["open", "done"]), cursor: z.string().max(200).optional() }))
@@ -108,59 +136,63 @@ export const notificationsRouter = router({
       const { db } = ctx.deps;
       const { organizationId, memberId } = ctx.scope;
       const projectIds = (await boardProjectIds(db, ctx.scope, undefined)) ?? [];
+      // The unread ones among what waits: a notification whose item no longer waits never counts.
+      const unreadOf = () => db.notification.count({ where: { organizationId, memberId, readAt: null, needsYouItem: { is: openNeedsYouWhere(ctx.scope, projectIds).items } } });
+
+      if (input.tab === "open") {
+        const open = await listOpenNeedsYou({ db }, ctx.scope, { projectIds, limit: OPEN_TAB_MAX, now: Date.now() });
+        const itemIds = open.rows.flatMap((view) => (view.itemId === null ? [] : [view.itemId]));
+        const [unread, mine] = await Promise.all([
+          unreadOf(),
+          itemIds.length === 0 ? [] : db.notification.findMany({ where: { organizationId, memberId, needsYouItemId: { in: itemIds } }, include: notificationInclude }),
+        ]);
+        const byItem = new Map(mine.map((notification) => [notification.needsYouItemId, notification] as const));
+        return {
+          tab: input.tab,
+          /** Everything that waits on the member, read or not: the Open tab's count, Home's and the sidebar's. */
+          total: open.total,
+          /** How many of them are unread. */
+          unread,
+          rows: open.rows.map((view) => rowOf(view, view.itemId === null ? undefined : byItem.get(view.itemId))),
+          nextCursor: null,
+        };
+      }
+
       const base = { organizationId, memberId, kind: { not: "test" as const }, projectId: { in: [...projectIds] }, needsYouItemId: { not: null } };
-      const where = input.tab === "open" ? { ...base, state: "open" as const } : { ...base, state: { in: ["answered" as const, "dismissed" as const] } };
-      const after = input.tab === "done" && input.cursor !== undefined && doneCursor.safeParse(input.cursor).success ? input.cursor : null;
+      const after = input.cursor !== undefined && doneCursor.safeParse(input.cursor).success ? input.cursor : null;
       const split = after === null ? -1 : after.indexOf(":");
       const afterAt = after === null ? null : new Date(Number(after.slice(0, split)));
       const afterId = after === null ? null : after.slice(split + 1);
-      const take = input.tab === "open" ? OPEN_TAB_MAX : DONE_PAGE + 1;
-
       const [total, unread, rows] = await Promise.all([
-        db.notification.count({ where: { ...base, state: "open" } }),
-        db.notification.count({ where: { ...base, state: "open", readAt: null } }),
+        countOpenNeedsYou({ db }, ctx.scope, projectIds),
+        unreadOf(),
         db.notification.findMany({
           where: {
-            ...where,
+            ...base,
+            state: { in: ["answered" as const, "dismissed" as const] },
             ...(afterAt === null || afterId === null ? {} : { AND: [{ OR: [{ updatedAt: { lt: afterAt } }, { updatedAt: afterAt, id: { lt: afterId } }] }] }),
           },
-          orderBy: [{ [input.tab === "open" ? "createdAt" : "updatedAt"]: "desc" }, { id: "desc" }],
-          take,
+          orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+          take: DONE_PAGE + 1,
           include: {
             needsYouItem: { include: { task: { select: { id: true, projectId: true, ticketKey: true, title: true, driverMemberId: true, agentProfileId: true, updatedAt: true, repos: { select: { prNumber: true } } } } } },
-            deliveries: { where: { error: { not: null }, state: { in: ["pending", "failed"] } }, select: { channel: true, state: true, error: true, attempts: true } },
+            ...notificationInclude,
           },
         }),
       ]);
-      const page = input.tab === "done" ? rows.slice(0, DONE_PAGE) : rows;
+      const page = rows.slice(0, DONE_PAGE);
       const withItem = page.flatMap((row) => (row.needsYouItem === null ? [] : [{ row, item: row.needsYouItem }]));
       const views = await loadNeedsYouViews({ db }, ctx.scope, withItem.map((entry) => entry.item), Date.now());
       const last = page.at(-1);
       return {
         tab: input.tab,
-        /** Every open notification, read or not: the Open tab's count. */
         total,
-        /** How many of them are unread. */
         unread,
         rows: withItem.flatMap((entry, index) => {
           const view = views[index];
-          return view === undefined
-            ? []
-            : [
-                {
-                  notificationId: notificationIdSchema.parse(entry.row.id),
-                  kind: entry.row.kind,
-                  read: entry.row.readAt !== null,
-                  readAt: entry.row.readAt?.getTime() ?? null,
-                  state: entry.row.state,
-                  createdAt: entry.row.createdAt.getTime(),
-                  view,
-                  /** This member's deliveries that didn't go: the page says so under the row. */
-                  failedDeliveries: entry.row.deliveries.map((delivery) => ({ channel: delivery.channel, state: delivery.state, error: delivery.error ?? "", attempts: delivery.attempts })),
-                },
-              ];
+          return view === undefined ? [] : [rowOf(view, entry.row)];
         }),
-        nextCursor: input.tab === "done" && rows.length > DONE_PAGE && last !== undefined ? `${String(last.updatedAt.getTime())}:${last.id}` : null,
+        nextCursor: rows.length > DONE_PAGE && last !== undefined ? `${String(last.updatedAt.getTime())}:${last.id}` : null,
       };
     }),
 
@@ -243,13 +275,13 @@ export const notificationsRouter = router({
     return out;
   }),
 
-  /** The sidebar's count: the member's open, unread notifications of projects they can open. */
-  unreadCount: memberProcedure.query(async ({ ctx }) => {
+  /**
+   * The sidebar's count: everything that waits on the member, by Home's rule (`countOpenNeedsYou`),
+   * so it is always Home's total and the Open tab's count. Reading doesn't lower it; an answer does.
+   */
+  openCount: memberProcedure.query(async ({ ctx }) => {
     const { db } = ctx.deps;
     const projectIds = (await boardProjectIds(db, ctx.scope, undefined)) ?? [];
-    const count = await db.notification.count({
-      where: { organizationId: ctx.scope.organizationId, memberId: ctx.scope.memberId, state: "open", readAt: null, kind: { not: "test" }, projectId: { in: [...projectIds] }, needsYouItemId: { not: null } },
-    });
-    return { count };
+    return { count: await countOpenNeedsYou({ db }, ctx.scope, projectIds) };
   }),
 });

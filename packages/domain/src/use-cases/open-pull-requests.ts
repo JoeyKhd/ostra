@@ -54,8 +54,8 @@ export type OpenPullRequestsDeps = Pick<Ports, "notices" | "audit" | "clock" | "
   readonly logger?: Logger;
   /** Called once a PR exists on the code host and before its row says so: the restart harness's seam (ticket 21). */
   readonly afterHostWrite?: () => void;
-  /** Milestone 4 (F-104, ticket 18): a PR ostra opens gets its independent-review check evaluated. */
-  readonly jobs?: JobQueue;
+  /** Milestone 4 (F-104, ticket 18): a PR ostra opens gets its independent-review check evaluated; a task's move owes its items' fan-out. */
+  readonly jobs: JobQueue;
 };
 
 export type OpenPullRequests = (deps: OpenPullRequestsDeps, input: OpenPullRequestsInput) => Promise<OpenPullRequestsResult>;
@@ -230,11 +230,11 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
       // Search (ticket 11): the PR is found by its title, on its repo.
       await writePullRequestSearchEntry(tx, { organizationId, projectId, taskId: task.id, repoId, eventSeq: openedSeq, title: pr.title });
       // Milestone 4 (F-098, ticket 17): the task's PRs link each other in their "Related" sections.
-      if (deps.jobs !== undefined && !reused) {
+      if (!reused) {
         await enqueueLinkRelatedInTx(deps.jobs, tx, { organizationId, taskId: task.id, repoId, prNumber: pr.number, connectionId: repo.connectionId });
       }
       // Milestone 4 (F-104): the new PR's independent-review check, on its head.
-      if (deps.jobs !== undefined && !reused && taskRepo.headSha !== null) {
+      if (!reused && taskRepo.headSha !== null) {
         await enqueueReviewEvaluationInTx(deps.jobs, tx, { organizationId, taskRepoId: taskRepo.id, prNumber: pr.number, headSha: taskRepo.headSha, connectionId: repo.connectionId });
       }
       // A ticket task's ticket links the PR, moves to in review at the first one, and its
@@ -298,7 +298,7 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
     const fresh = mapTask(await tx.task.findUniqueOrThrow({ where: { id: task.id } }));
     if (fresh.state === "running") {
       await moveTaskInTx(
-        { tx, notices: deps.notices, ...(deps.logger === undefined ? {} : { logger: deps.logger }) },
+        { tx, notices: deps.notices, jobs: deps.jobs, ...(deps.logger === undefined ? {} : { logger: deps.logger }) },
         fresh,
         { type: "session_ended", withChanges: true, rounds: M1_ROUNDS },
       );

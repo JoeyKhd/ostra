@@ -29,7 +29,7 @@ import { expiredApprovalAnswerPrompt } from "../prompts/index.ts";
 import type { UseCaseResult } from "./common.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
 import { createNeedsYouItemInTx, resolveNeedsYouItemsInTx } from "./needs-you-items.ts";
-import type { MoveDeps } from "./moves.ts";
+import type { TaskMoveDeps } from "./moves.ts";
 import { reopenTask } from "./reopen.ts";
 import { appendServerEvent } from "./server-events.ts";
 import type { SessionTimers } from "./sessions-m2.ts";
@@ -67,13 +67,13 @@ export type ApprovalEffectDeps = Pick<Ports, "jobs" | "notices" | "clock"> & {
   readonly logger?: Logger | undefined;
 };
 
-const moveDepsOf = (deps: ApprovalEffectDeps): MoveDeps => ({ tx: deps.tx, notices: deps.notices, ...(deps.logger === undefined ? {} : { logger: deps.logger }) });
+const moveDepsOf = (deps: ApprovalEffectDeps): TaskMoveDeps => ({ tx: deps.tx, notices: deps.notices, jobs: deps.jobs, ...(deps.logger === undefined ? {} : { logger: deps.logger }) });
 
 /**
  * The task leaves needs you once no approval holds it: when its reason is `approval` and no other
  * approval item of the task is open (`except` aside). The session waiting on the person goes on.
  */
-const releaseWhenNoneOpenInTx = async (deps: MoveDeps, taskId: string, sessionId: string, except: string | null, force = false): Promise<boolean> => {
+const releaseWhenNoneOpenInTx = async (deps: TaskMoveDeps, taskId: string, sessionId: string, except: string | null, force = false): Promise<boolean> => {
   const { tx } = deps;
   const task = mapTask(await tx.task.findUniqueOrThrow({ where: { id: taskId } }));
   if (task.state !== "needs_you" || task.needsYouReason !== "approval") {
@@ -380,7 +380,7 @@ export const answerApproval = async (
 
     // A deny ends the agent's turn, and the runner closes the session's other requests as
     // cancelled (ADR 0036): those are the runner's events, so the task leaves needs you now.
-    await releaseWhenNoneOpenInTx({ tx, notices: deps.notices }, taskId, sessionId, null, input.decision === "deny");
+    await releaseWhenNoneOpenInTx({ tx, notices: deps.notices, jobs: deps.jobs }, taskId, sessionId, null, input.decision === "deny");
     const lease = await tx.lease.findFirst({ where: { taskId, state: "active" }, select: { runnerId: true } });
     if (lease !== null) {
       await deps.outbox.enqueueInTx(tx, organizationId, runnerIdSchema.parse(lease.runnerId), {

@@ -191,7 +191,7 @@ export const recordPullRequestState: RecordPullRequestState = async (deps, input
   const outcome = pullRequestsOutcome(all);
   const taskInput = taskInputFor(outcome, task);
   let taskOutcome: "merged" | "stopped" | "in-review" | "unchanged" = "unchanged";
-  if (taskInput !== null && (await moveTaskInTx({ tx, notices: deps.notices }, task, taskInput))) {
+  if (taskInput !== null && (await moveTaskInTx({ tx, notices: deps.notices, jobs: deps.jobs }, task, taskInput))) {
     taskOutcome = outcome === "merged" ? "merged" : outcome === "stopped" ? "stopped" : "in-review";
     if (outcome === "merged" || outcome === "stopped") {
       // No PR left open: the box goes, and the hidden ref with it (ticket 20's `box.release`).

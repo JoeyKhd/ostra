@@ -48,8 +48,8 @@ export type RevokeRunnerResult = UseCaseResult<
 
 export type RevokeRunnerDeps = Pick<Ports, "notices" | "audit" | "clock"> & {
   readonly tx: Tx;
-  /** Milestone 5: sends an unaccepted offer's next dispatch at once; without it, the queue's sweep does. */
-  readonly jobs?: Ports["jobs"];
+  /** Milestone 5: sends an unaccepted offer's next dispatch at once; a stopped task's items owe their fan-out. */
+  readonly jobs: Ports["jobs"];
   readonly scope: MemberScope;
   readonly logger?: Logger;
 };
@@ -115,7 +115,7 @@ export const revokeRunner: RevokeRunner = async (deps, input) => {
   });
   await lockTasks(leases.map((lease) => lease.taskId));
 
-  const moveDeps = { tx, notices: deps.notices, ...(deps.logger === undefined ? {} : { logger: deps.logger }) };
+  const moveDeps = { tx, notices: deps.notices, jobs: deps.jobs, ...(deps.logger === undefined ? {} : { logger: deps.logger }) };
   const stoppedTaskIds: TaskId[] = [];
   for (const lease of leases) {
     await tx.lease.update({ where: { id: lease.id }, data: { state: "ended", endedAt: now, endReason: RUNNER_REVOKED_END_REASON } });

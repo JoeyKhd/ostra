@@ -56,7 +56,10 @@ export type Outcome =
   | { readonly kind: "closed" };
 
 export type NotificationView = {
+  /** The row's key: its item, or its task for one from before items. */
   readonly id: string;
+  /** The member's notification of it, to mark read; `null` when none reached them (it shows read). */
+  readonly notificationId: string | null;
   readonly taskId: string;
   /** The ticket key, or the task's short ID. */
   readonly key: string;
@@ -165,8 +168,9 @@ export const PLAN_SHOWN = 8;
 /** How long the Open tab must be visible before its rows are marked read (needs-you.md, Reading). */
 export const READ_AFTER_MS = 2000;
 
-/** The rows to mark read: the unread ones rendered on the Open tab. */
-export const toMarkRead = (rows: readonly NotificationView[]): readonly string[] => rows.filter((row) => !row.read).map((row) => row.id);
+/** The notifications to mark read: those of the unread rows rendered on the Open tab. */
+export const toMarkRead = (rows: readonly NotificationView[]): readonly string[] =>
+  rows.flatMap((row) => (row.read || row.notificationId === null ? [] : [row.notificationId]));
 
 /** The member's choices for the panel (ticket 37): where these notifications reach them. */
 export type ReachView = {

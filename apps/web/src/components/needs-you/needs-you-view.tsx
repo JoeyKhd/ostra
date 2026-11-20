@@ -96,7 +96,8 @@ const askOf = (view: ApiView, me: string | null): InlineAsk | null => {
 export const notificationViewOf = (row: ApiRow, me: string | null): NotificationView => {
   const failed = row.failedDeliveries.find((delivery) => delivery.state === "failed") ?? null;
   return {
-    id: row.notificationId,
+    id: row.view.itemId ?? row.view.taskId,
+    notificationId: row.notificationId,
     taskId: row.view.taskId,
     key: row.view.key,
     title: row.view.title,
@@ -128,7 +129,7 @@ export const NeedsYouView = () => {
   const open = useQuery({ ...trpc.notifications.list.queryOptions({ tab: "open" }), refetchInterval: 15_000 });
   const done = useQuery({ ...trpc.notifications.list.queryOptions(doneCursor === null ? { tab: "done" } : { tab: "done", cursor: doneCursor }), enabled: tab === "done" });
   const preferences = useQuery(trpc.notifications.preferences.get.queryOptions());
-  const markRead = useMutation(trpc.notifications.markRead.mutationOptions({ onSettled: () => queryClient.invalidateQueries({ queryKey: trpc.notifications.unreadCount.queryKey() }) }));
+  const markRead = useMutation(trpc.notifications.markRead.mutationOptions());
   const approve = useMutation(trpc.approvals.answer.mutationOptions());
   const plan = useMutation(trpc.plans.answer.mutationOptions());
   const question = useMutation(trpc.questions.answer.mutationOptions());
@@ -182,7 +183,7 @@ export const NeedsYouView = () => {
       try {
         const taskId = taskIdSchema.parse(row.taskId);
         if (answer.kind === "approve") {
-          const source = open.data?.rows.find((one) => one.notificationId === row.id)?.view.answer;
+          const source = open.data?.rows.find((one) => (one.view.itemId ?? one.view.taskId) === row.id)?.view.answer;
           const entries = source?.kind === "plan" ? source.entries : [];
           await plan.mutateAsync({ taskId, decision: "approve", entries: [...entries], message: source?.kind === "plan" ? source.message : "" });
         } else {
@@ -195,7 +196,7 @@ export const NeedsYouView = () => {
       }
     },
     question: async (row, ask, text) => {
-      const source = open.data?.rows.find((one) => one.notificationId === row.id)?.view.answer;
+      const source = open.data?.rows.find((one) => (one.view.itemId ?? one.view.taskId) === row.id)?.view.answer;
       const fields = source?.kind === "question" ? source.fields : [];
       try {
         await question.mutateAsync({ taskId: taskIdSchema.parse(row.taskId), questionId: ask.questionId, answers: Object.fromEntries(fields.map((field) => [field.id, text])) });

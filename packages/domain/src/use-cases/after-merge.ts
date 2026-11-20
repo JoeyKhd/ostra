@@ -102,7 +102,7 @@ export const recordTicketClosedWith = (deps: TicketClosedDeps, input: Parameters
           task: { taskId: task.id, projectId },
         });
       }
-      await moveTaskInTx({ tx, notices: deps.notices }, task, { type: "ticket_closed" });
+      await moveTaskInTx({ tx, notices: deps.notices, jobs: deps.jobs }, task, { type: "ticket_closed" });
       const word = input.category === "cancelled" ? "cancelled" : "done";
       await createNeedsYouItemInTx(deps, tx, {
         organizationId,
@@ -176,9 +176,11 @@ export const keepWorking = (
   extras: Pick<SendMemberMessageDeps, "spendCap" | "timers">,
   scope: MemberScope,
   input: { readonly taskId: TaskId },
-): Promise<KeepWorkingResult> =>
-  deps.db.$transaction(
-    async (tx) => {
+): Promise<KeepWorkingResult> => {
+  // A refused send throws to roll the dismissal back; this holds its answer.
+  let refused: Exclude<KeepWorkingResult, { readonly ok: true }> | null = null;
+  return deps.db.$transaction(
+    async (tx): Promise<KeepWorkingResult> => {
       const task = await tx.task.findFirst({ where: { id: input.taskId, organizationId: scope.organizationId }, select: { id: true, projectId: true, state: true, needsYouReason: true, project: { select: { access: true } } } });
       if (task === null || !requireProjectAccess(scope, { id: projectIdSchema.parse(task.projectId), organizationId: scope.organizationId, access: task.project.access }, "read").ok) {
         return { ok: false, error: "not-found", message: "No such task" };
@@ -187,6 +189,8 @@ export const keepWorking = (
       if (task.state !== "needs_you" || task.needsYouReason !== "ticket_closed" || item === null) {
         return { ok: false, error: "not-waiting", message: "The task isn't waiting on its closed ticket" };
       }
+      // Dismissed before the message goes, which would otherwise answer it as the next turn's item.
+      await resolveNeedsYouItemsInTx(deps, tx, { id: item.id }, { state: "dismissed", at: new Date(deps.clock.now()), byMemberId: scope.memberId });
       const sent = await sendMemberMessageInTx({ ...deps, ...extras }, tx, scope, {
         taskId: input.taskId,
         clientMessageId: clientMessageIdSchema.parse(`keep-working:${item.id}`),
@@ -195,10 +199,16 @@ export const keepWorking = (
         sender: "driver",
       });
       if (!sent.ok) {
-        return sent;
+        refused = sent;
+        throw new Error("keep working's message was refused");
       }
-      await resolveNeedsYouItemsInTx(deps, tx, { id: item.id }, { state: "dismissed", at: new Date(deps.clock.now()), byMemberId: scope.memberId });
       return { ok: true, delivery: sent.delivery };
     },
     { timeout: 20_000 },
-  );
+  ).catch((error: unknown) => {
+    if (refused !== null) {
+      return refused;
+    }
+    throw error;
+  });
+};

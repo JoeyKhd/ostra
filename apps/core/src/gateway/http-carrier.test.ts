@@ -204,7 +204,7 @@ describe("the HTTP carrier", () => {
     const held = peer.down(0, { baseUrl: b.url });
     await new Promise((resolve) => setTimeout(resolve, 300));
     const scope = { organizationId: runner.organizationId, memberId: memberIdSchema.parse(fixture.a.member.id), role: "member" as const, projectRoles: new Map() };
-    expect(await test.db.$transaction((tx) => revokeRunner({ tx, scope, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock }, { runnerId: runner.runnerId }))).toMatchObject({
+    expect(await test.db.$transaction((tx) => revokeRunner({ tx, scope, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock, jobs }, { runnerId: runner.runnerId }))).toMatchObject({
       ok: true,
     });
     expect((await held).status).toBe(403);

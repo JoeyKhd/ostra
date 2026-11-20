@@ -36,7 +36,7 @@ const sourceFiles = async (dir: string): Promise<readonly string[]> => {
 const WRITE = /needsYouItem\s*\.\s*(create|createMany|createManyAndReturn|update|updateMany|upsert|delete|deleteMany)\b|(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+"?needs_you_item"?/i;
 
 /** The helpers that write and enqueue. */
-const HELPERS = /\b(createNeedsYouItemInTx|resolveNeedsYouItemsInTx|setNeedsYouSummaryInTx|handDriverItemsToProjectInTx)\b/;
+const HELPERS = /\b(createNeedsYouItemInTx|resolveNeedsYouItemsInTx|setNeedsYouSummaryInTx|handDriverItemsToProjectInTx|closeItemsOfEndedTaskInTx|answerNextTurnItemsInTx|closeStaleNeedsYouItems)\b/;
 
 /** Reading every source file of the repo takes longer than 5 s on a slow disk (Windows, a loaded machine). */
 const SCAN_TIMEOUT_MS = 60_000;
@@ -87,6 +87,14 @@ describe("every write of a needs-you item enqueues its fan-out", () => {
       "packages/domain/src/providers/session-model.ts",
       // Milestone 4's ticket 23: a removed member's driven tasks hand their driver's items to the project (F-002).
       "packages/domain/src/use-cases/members.ts",
+      // An item never outlives its reason: a move that ends the task, a stop, a message that starts
+      // the next turn, and core's clean-up of items older releases left open on ended tasks.
+      "packages/domain/src/use-cases/moves.ts",
+      "packages/domain/src/use-cases/stop-task.ts",
+      "packages/domain/src/use-cases/member-message.ts",
+      "packages/domain/src/providers/turn-start.ts",
+      "apps/core/src/cleanup/cleanup.ts",
+      "apps/core/src/core.ts",
     ];
     const unknown = callers.filter((caller) => !known.includes(caller));
     expect(unknown).toEqual([]);

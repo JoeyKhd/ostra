@@ -161,7 +161,7 @@ export const recordWorkSaved: RecordWorkSaved = async (deps, input) => {
   if (session === null) {
     return { ok: false, error: "not-found", message: "no such session of the task" };
   }
-  const moveDeps = { tx, notices: deps.notices, ...(deps.logger === undefined ? {} : { logger: deps.logger }) };
+  const moveDeps = { tx, notices: deps.notices, jobs: deps.jobs, ...(deps.logger === undefined ? {} : { logger: deps.logger }) };
   const at = new Date(deps.clock.now());
 
   // Each repo: its head, whether it's ahead, and the hidden ref with the head it was saved on.
@@ -323,7 +323,7 @@ export const recordLimitReached: RecordLimitReached = async (deps, input) => {
   const now = deps.clock.now();
   const organizationId = organizationIdSchema.parse(task.organizationId);
   const projectId = projectIdSchema.parse(task.projectId);
-  const moveDeps = { tx, notices: deps.notices, ...(deps.logger === undefined ? {} : { logger: deps.logger }) };
+  const moveDeps = { tx, notices: deps.notices, jobs: deps.jobs, ...(deps.logger === undefined ? {} : { logger: deps.logger }) };
 
   // A limit core times is its own event: the runner never saw it (ADR 0037).
   if (input.by === "core") {

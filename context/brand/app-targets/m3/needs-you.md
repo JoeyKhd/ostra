@@ -16,7 +16,7 @@ The panel's own notification channel. Every needs-you moment that reached this m
 
 | Region | Size | Contents |
 |---|---|---|
-| Sidebar | 232px, the shared shell | Build it from `components/shell/sidebar.tsx`, never from the picture. **New row** `Needs you` (`hand` icon) under Home, selected here, with the amber count pill: `notifications.unreadCount`, hidden at 0. `My tasks` follows when it exists |
+| Sidebar | 232px, the shared shell | Build it from `components/shell/sidebar.tsx`, never from the picture. **New row** `Needs you` (`hand` icon) under Home, selected here, with the amber count pill: `notifications.openCount`, hidden at 0. *Changed 2026-11-20: the pill counts what waits on the member, the same number as Home's total and the Open tab's count (`domain-model.md`, "An item never outlives its reason"). It was the unread notifications, which could count what no longer waited and miss what no notification reached.* `My tasks` follows when it exists |
 | Top bar | 44px, hairline under | Crumbs `Acme Corp › Needs you`. Right: `Mark all as read`, `Button variant="outline"` with `check-check`, shown only on the Open tab while something is unread |
 | Main column | `1fr`, padding `28px 40px` | Title, lede, tabs, the grouped list |
 | Properties panel | 300px, `border-left: 1px var(--line)`, padding `20px 18px` | Where these notifications reach the member |
@@ -26,7 +26,7 @@ The panel's own notification channel. Every needs-you moment that reached this m
 1. **Title** `Needs you` (`PageHeading`: Manrope 700 24px, −0.015em).
 2. **Lede**, 13.5px `--muted`: `What waits on you across your projects. {n} unread.` With nothing unread: `What waits on you across your projects.`
 3. **Tabs**, 16px under the lede: underline tabs, 32px tall, 13px weight 500, 20px apart, a 1px `--line` rule under the whole row.
-   - `Open` + its count in mono 12px `--faint` (all open notifications, read or not). Selected: `--text` with a 2px `--text` underline on the tab.
+   - `Open` + its count in mono 12px `--faint` (everything that waits on the member, read or not: Home's total). Selected: `--text` with a 2px `--text` underline on the tab.
    - `Done`, no count. Unselected: `--muted`.
    - The tab lives in the URL (`?tab=done`).
 4. **The list**, 16px under the tabs. **Grouped by project**, each group 12px under the last:
@@ -83,7 +83,7 @@ The expanded part sits under its row, indented to the title column (94px), paddi
 ## Reading
 
 - A notification is **read** when the member has seen it here, or opened its task. On this page: rows on the Open tab are marked read (`notifications.markRead`) once the page has been visible for 2 seconds (`document.visibilityState`), in one call for the rows rendered.
-- **The dots stay for this visit**, so the list doesn't re-sort under the reader; the sidebar's count drops at once. The next load shows the new order.
+- **The dots stay for this visit**, so the list doesn't re-sort under the reader; the lede's unread count drops at once. The sidebar's count is what waits, so it drops when an item is answered, not when it's read. The next load shows the new order.
 - `Mark all as read` marks every open notification read, clears the dots and hides the button.
 - Read state is per member: Sam reading an item doesn't read it for Alex.
 

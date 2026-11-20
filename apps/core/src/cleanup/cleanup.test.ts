@@ -20,9 +20,10 @@ import type { LiveTextWriter } from "../ingest/live-text.ts";
 import { openPullRequestsHandler } from "../reactions/session-end.ts";
 import { FakeCodeHost, FakeModelProvider, FakeSecretStore } from "../testing/fake-adapters.ts";
 import { connect, registerPersonal, startGateway } from "../testing/harness.ts";
+import { fanoutChangesOf } from "../testing/notify.ts";
 import { acceptedTask, jobContext, sha } from "../testing/turns.ts";
 import type { DrivenTask } from "../testing/turns.ts";
-import { seedOnlineRunner, seedWorld } from "../testing/world.ts";
+import { seedOnlineRunner, seedQueuedTask, seedWorld } from "../testing/world.ts";
 import type { World } from "../testing/world.ts";
 import { applyReleaseResultsInTx, boxReleaseHandler, releaseAfterIdleHandler, runRetention } from "./cleanup.ts";
 import type { CleanupDeps } from "./cleanup.ts";
@@ -278,5 +279,44 @@ describe("retention (F-079, spec section 11, item 11)", () => {
     });
     // A second run has nothing left to delete for it.
     expect((await runRetention(cleanupDeps())).swept).toMatchObject({ ok: true, tasks: 0 });
+  });
+});
+
+describe("needs-you items that outlived their task (F-036, F-062)", () => {
+  it("F-036, F-062: the daily clean-up closes items left open on stopped and merged tasks, owes their fan-out, and leaves the rest", async () => {
+    /** A task in `state` with one item in `itemState`, as a release before stopping closed items left it. */
+    const seed = async (target: World, state: "stopped" | "merged" | "needs_you", itemState: "open" | "answered" = "open") => {
+      const creator = target === world ? fixture.a.member : fixture.b.admin;
+      const task = await seedQueuedTask(test.db, target, creator, null);
+      await test.db.task.update({
+        where: { id: task.taskId },
+        data: state === "stopped" ? { state, stoppedReason: "requested" } : state === "merged" ? { state } : { state, needsYouReason: "no_changes" },
+      });
+      const item = await test.db.needsYouItem.create({
+        data: { organizationId: target.organizationId, projectId: target.projectId, taskId: task.taskId, reason: "no_changes", audience: "driver", state: itemState, ...(itemState === "open" ? {} : { resolvedAt: new Date(0) }) },
+      });
+      return item.id;
+    };
+    const stopped = await seed(world, "stopped");
+    const merged = await seed(world, "merged");
+    const theirs = await seed(otherWorld, "stopped");
+    const waiting = await seed(world, "needs_you");
+    const answered = await seed(world, "stopped", "answered");
+
+    const first = await runRetention(cleanupDeps());
+    expect(first.itemsClosed).toBe(3);
+    for (const id of [stopped, merged, theirs]) {
+      const item = await test.db.needsYouItem.findUniqueOrThrow({ where: { id } });
+      expect(item).toMatchObject({ state: "dismissed", resolvedByMemberId: null });
+      expect(item.resolvedAt).not.toBeNull();
+      // Its notifications close through the fan-out, as any dismissal's.
+      expect(await fanoutChangesOf(test.db, id)).toEqual(["dismissed"]);
+    }
+    // A task that still needs you keeps its item; one already answered stays as it was.
+    expect(await test.db.needsYouItem.findUniqueOrThrow({ where: { id: waiting } })).toMatchObject({ state: "open", resolvedAt: null });
+    expect(await test.db.needsYouItem.findUniqueOrThrow({ where: { id: answered } })).toMatchObject({ state: "answered", resolvedAt: new Date(0) });
+    expect(await fanoutChangesOf(test.db, waiting)).toEqual([]);
+    // Nothing is left for the next run.
+    expect((await runRetention(cleanupDeps())).itemsClosed).toBe(0);
   });
 });

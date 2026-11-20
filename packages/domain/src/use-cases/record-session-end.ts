@@ -100,7 +100,7 @@ export const recordSessionEnd: RecordSessionEnd = async (deps, input) => {
   }
   const ended = event.data;
   const session = await tx.session.findUniqueOrThrow({ where: { id: input.sessionId } });
-  const moveDeps = { tx, notices: deps.notices, ...(deps.logger === undefined ? {} : { logger: deps.logger }) };
+  const moveDeps = { tx, notices: deps.notices, jobs: deps.jobs, ...(deps.logger === undefined ? {} : { logger: deps.logger }) };
   const withChanges = ended.repos.some((repo) => repo.ahead);
 
   // The session: a running one ends its turn first, then the box stops with or without changes.

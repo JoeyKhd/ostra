@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   agentSteersMidTurn,
+  answerNextTurnItemsInTx,
   answerApproval,
   askAgentToFixChecks,
   keepWorking,
@@ -813,6 +814,8 @@ export const tasksRouter = router({
         const moved = transitionTask(lifecycle, { type: "member_acted", boxWarm: true });
         if (moved.ok) {
           await tx.task.update({ where: { id: task.id }, data: taskToColumns(moved.state) });
+          // The message answers what the task waited on: the items its next turn answers close.
+          await answerNextTurnItemsInTx(ports, tx, task.id, { at: new Date(now), byMemberId: ctx.scope.memberId });
         }
       }
       if (input.delivery === "interrupt") {

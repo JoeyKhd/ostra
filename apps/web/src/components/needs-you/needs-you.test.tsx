@@ -16,6 +16,7 @@ const planAsk: PlanAsk = { kind: "plan", planId: "pl1", driver: null, entries: A
 const questionAsk: QuestionAsk = { kind: "question", questionId: "q1", question: "Keep the old CSV header?", options: ["Yes", "No"], driver: null };
 
 const row = (over: Partial<NotificationView> & Pick<NotificationView, "id">): NotificationView => ({
+  notificationId: over.id,
   taskId: `task-${over.id}`,
   key: "CALC-142",
   title: "Retry webhook delivery on 5xx",
@@ -64,6 +65,8 @@ describe("the order", () => {
     expect(ledeWords(6)).toBe("What waits on you across your projects. 6 unread.");
     expect(ledeWords(0)).toBe("What waits on you across your projects.");
     expect(toMarkRead(rows)).toEqual(["c-approval", "c-question", "b-plan"]);
+    // A row no notification reached the member for has nothing to mark: its notification's ID, never its item's.
+    expect(toMarkRead([row({ id: "item-1", notificationId: "n-1" }), row({ id: "item-2", notificationId: null })])).toEqual(["n-1"]);
   });
 });
 

@@ -396,24 +396,23 @@ const taskSelect = {
   repos: { select: { prNumber: true } },
 } as const;
 
+/** Who reads what waits: the member, with their role for the admins' items. */
+export type OpenNeedsYouScope = { readonly organizationId: OrganizationId; readonly memberId: MemberId; readonly role?: "admin" | "member" | undefined };
+
 /**
- * The open needs-you items a member sees (F-062): those they are the audience of (a driver's item is
- * the driver's, or every member's when the task has none; a project-wide item is every member's) and
- * every open approval of their projects, which any member answers. A task in `needs_you` that has no
- * open item (one from before items) shows as a row of its own, so nothing that waits is hidden.
- * Newest first. `scope` is the member; `projectIds` the projects they can open.
+ * The one rule for what waits on a member (F-062, F-036). An open item of a project they can open
+ * that they are the audience of (a driver's item is the driver's, or every member's when the task
+ * has none; a project-wide item is every member's; an admins' item is an admin's) or can answer
+ * (every approval: any member answers one). And a task in `needs_you` with no open item (one from
+ * before items), so nothing that waits is hidden. Home's section and its total, the Needs you page's
+ * Open tab and its count, and the sidebar's count all read this, so they never disagree. An item
+ * lives as long as its reason: the writers close it when its task moves on (domain-model.md).
  */
-export const listOpenNeedsYou = async (
-  deps: { readonly db: Db },
-  scope: { readonly organizationId: OrganizationId; readonly memberId: MemberId; readonly role?: "admin" | "member" | undefined },
-  input: { readonly projectIds: readonly string[]; readonly limit: number; readonly cursor?: string | undefined; readonly now: number },
-): Promise<{ readonly total: number; readonly rows: readonly NeedsYouView[]; readonly nextCursor: string | null }> => {
-  const { db } = deps;
+export const openNeedsYouWhere = (scope: OpenNeedsYouScope, projectIds: readonly string[]) => {
   const { organizationId, memberId } = scope;
-  const projectIds = [...input.projectIds];
-  const itemWhere = {
+  const items = {
     organizationId,
-    projectId: { in: projectIds },
+    projectId: { in: [...projectIds] },
     state: "open" as const,
     OR: [
       { audience: "project_members" as const },
@@ -423,12 +422,32 @@ export const listOpenNeedsYou = async (
       ...(scope.role === "admin" ? [{ audience: "organization_admins" as const }] : []),
     ],
   };
-  const legacyWhere = { organizationId, projectId: { in: projectIds }, state: "needs_you" as const, needsYouItems: { none: { state: "open" as const } } };
+  const legacyTasks = { organizationId, projectId: { in: [...projectIds] }, state: "needs_you" as const, needsYouItems: { none: { state: "open" as const } } };
+  return { items, legacyTasks };
+};
+
+/** How many things wait on the member, by the one rule: the sidebar's count, and every total beside it. */
+export const countOpenNeedsYou = async (deps: { readonly db: Db }, scope: OpenNeedsYouScope, projectIds: readonly string[]): Promise<number> => {
+  const where = openNeedsYouWhere(scope, projectIds);
+  const [items, legacy] = await Promise.all([deps.db.needsYouItem.count({ where: where.items }), deps.db.task.count({ where: where.legacyTasks })]);
+  return items + legacy;
+};
+
+/**
+ * What waits on a member (`openNeedsYouWhere`), newest first, a page at a time, with its total.
+ * `scope` is the member; `projectIds` the projects they can open.
+ */
+export const listOpenNeedsYou = async (
+  deps: { readonly db: Db },
+  scope: OpenNeedsYouScope,
+  input: { readonly projectIds: readonly string[]; readonly limit: number; readonly cursor?: string | undefined; readonly now: number },
+): Promise<{ readonly total: number; readonly rows: readonly NeedsYouView[]; readonly nextCursor: string | null }> => {
+  const { db } = deps;
+  const { items: itemWhere, legacyTasks: legacyWhere } = openNeedsYouWhere(scope, input.projectIds);
   const after = parseCursor(input.cursor);
 
-  const [itemTotal, legacyTotal, items, legacy] = await Promise.all([
-    db.needsYouItem.count({ where: itemWhere }),
-    db.task.count({ where: legacyWhere }),
+  const [total, items, legacy] = await Promise.all([
+    countOpenNeedsYou(deps, scope, input.projectIds),
     db.needsYouItem.findMany({
       where: {
         ...itemWhere,
@@ -476,7 +495,7 @@ export const listOpenNeedsYou = async (
   const last = page.at(-1);
   const rows = await loadNeedsYouViews(deps, scope, page.map((entry) => entry.row), input.now);
   return {
-    total: itemTotal + legacyTotal,
+    total,
     rows,
     nextCursor: entries.length > input.limit && last !== undefined ? `${String(last.at)}:${last.key}` : null,
   };

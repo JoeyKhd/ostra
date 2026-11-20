@@ -62,7 +62,7 @@ export const acceptOffer: AcceptOffer = async (deps, input) => {
     return { ok: false, error: "stale", message: "the offer was withdrawn or replaced" };
   }
   const task = mapTask(row);
-  const moveDeps = { tx, notices: deps.notices, ...(deps.logger === undefined ? {} : { logger: deps.logger }) };
+  const moveDeps = { tx, notices: deps.notices, jobs: deps.jobs, ...(deps.logger === undefined ? {} : { logger: deps.logger }) };
   switch (input.result) {
     case "accepted": {
       if (lease.acceptedAt !== null) {

@@ -1,9 +1,9 @@
-import type { DbEnum, Tx } from "@ostra/db";
-import { needsYouItemIdSchema, organizationIdSchema } from "@ostra/protocol";
+import type { Db, DbEnum, Tx } from "@ostra/db";
+import { needsYouItemIdSchema, organizationIdSchema, projectIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { NeedsYouItemId, OrganizationId } from "@ostra/protocol";
 
 import type { NotificationKind } from "../notifications/choices.ts";
-import type { JobQueue } from "../ports.ts";
+import type { ChangeNotices, Clock, JobQueue } from "../ports.ts";
 
 // The one place that writes a needs-you item (F-036, ADR 0050, ADR 0011). Every creation, answer
 // and dismissal goes through these functions, which enqueue `notify.fanout` in the caller's
@@ -105,6 +105,7 @@ export type OpenItemsWhere = {
   readonly approvalId?: string;
   readonly questionId?: string;
   readonly reason?: DbEnum.NeedsYouReason;
+  readonly reasonIn?: readonly DbEnum.NeedsYouReason[];
   readonly reasonNotIn?: readonly DbEnum.NeedsYouReason[];
 };
 
@@ -133,6 +134,7 @@ export const resolveNeedsYouItemsInTx = async (
       ...(where.approvalId === undefined ? {} : { approvalId: where.approvalId }),
       ...(where.questionId === undefined ? {} : { questionId: where.questionId }),
       ...(where.reason === undefined ? {} : { reason: where.reason }),
+      ...(where.reasonIn === undefined ? {} : { reason: { in: [...where.reasonIn] } }),
       ...(where.reasonNotIn === undefined ? {} : { reason: { notIn: [...where.reasonNotIn] } }),
     },
     select: { id: true, organizationId: true },
@@ -163,6 +165,127 @@ export const resolveNeedsYouItemsInTx = async (
 export const handDriverItemsToProjectInTx = async (tx: Tx, taskId: string): Promise<number> => {
   const handed = await tx.needsYouItem.updateMany({ where: { taskId, state: "open", audience: "driver" }, data: { audience: "project_members" } });
   return handed.count;
+};
+
+// ---------- an item never outlives its reason ----------
+
+/** The task states nothing waits in (domain-model.md, "A task's lifecycle"): stopped, merged and done. */
+export const endedTaskStates = ["stopped", "merged", "done"] as const satisfies readonly DbEnum.TaskState[];
+
+const ENDED: ReadonlySet<DbEnum.TaskState> = new Set(endedTaskStates);
+
+/** Whether a task in this state has ended, so none of its items can still be waited on. */
+export const isEndedTaskState = (state: DbEnum.TaskState): boolean => ENDED.has(state);
+
+/**
+ * A task that stops, merges or is done waits on nobody (domain-model.md, "When a task needs you"):
+ * its open items are dismissed with it, each one's fan-out owed, in the caller's transaction, so its
+ * notifications close too. `byMemberId`: the member whose action ended the task, or `null` when
+ * ostra ended it. Returns the IDs it closed.
+ */
+export const closeItemsOfEndedTaskInTx = (
+  deps: { readonly jobs: JobQueue },
+  tx: Tx,
+  taskId: string,
+  closing: { readonly at: Date; readonly byMemberId: string | null },
+): Promise<readonly NeedsYouItemId[]> =>
+  resolveNeedsYouItemsInTx(deps, tx, { taskId }, { state: "dismissed", at: closing.at, byMemberId: closing.byMemberId });
+
+/**
+ * Whether a member's message that starts the task's next turn answers an item of this reason
+ * (F-024): the moments a turn's end raised do. An approval, a question and a plan wait on their own
+ * answer; a restore conflict, files left outside the repos and an unstorable event sit beside the
+ * task until dismissed; a reviewer's wait ends with its review; the admins' items wait on an admin.
+ */
+const answeredByNextTurn = {
+  no_changes: true,
+  stalled: true,
+  spend_cap: true,
+  crashed: true,
+  setup_failed: true,
+  ticket_closed: true,
+  draft_ready: true,
+  round_cap: true,
+  question: false,
+  approval: false,
+  plan: false,
+  waiting_for_reviewer: false,
+  environment_proposal: false,
+  restore_conflict: false,
+  unstorable_event: false,
+  files_outside_repos: false,
+  no_provider_for_model: false,
+  runner_awaiting_approval: false,
+} satisfies Record<DbEnum.NeedsYouReason, boolean>;
+
+const isReason = (value: string): value is DbEnum.NeedsYouReason => value in answeredByNextTurn;
+
+/** The reasons a new turn answers, from the record above. */
+export const nextTurnAnswers: readonly DbEnum.NeedsYouReason[] = Object.entries(answeredByNextTurn).flatMap(([reason, answers]) =>
+  answers && isReason(reason) ? [reason] : [],
+);
+
+/**
+ * A member's message moved the task out of needs you into its next turn: what that turn answers
+ * closes, answered by the member, in the caller's transaction. Returns the IDs it closed.
+ */
+export const answerNextTurnItemsInTx = (
+  deps: { readonly jobs: JobQueue },
+  tx: Tx,
+  taskId: string,
+  answer: { readonly at: Date; readonly byMemberId: string },
+): Promise<readonly NeedsYouItemId[]> =>
+  resolveNeedsYouItemsInTx(deps, tx, { taskId, reasonIn: nextTurnAnswers }, { state: "answered", at: answer.at, byMemberId: answer.byMemberId });
+
+/** How many tasks one pass of the clean-up reads at a time. */
+const STALE_BATCH = 200;
+
+/**
+ * Closes the items left open on tasks that already ended, as releases before stopping closed them
+ * left them (and any a late writer raises after the end): core runs it once at start and in the
+ * daily clean-up. Each task in its own transaction, under its row's lock and read again, so a task
+ * reopened meanwhile keeps its items. Each close owes its fan-out. Returns how many items it closed.
+ */
+export const closeStaleNeedsYouItems = async (deps: {
+  readonly db: Db;
+  readonly jobs: JobQueue;
+  readonly notices: ChangeNotices;
+  readonly clock: Clock;
+}): Promise<number> => {
+  let closed = 0;
+  for (;;) {
+    const stale = await deps.db.needsYouItem.findMany({
+      where: { state: "open", task: { state: { in: [...endedTaskStates] } } },
+      distinct: ["taskId"],
+      select: { taskId: true },
+      take: STALE_BATCH,
+    });
+    let pass = 0;
+    for (const { taskId } of stale) {
+      pass += await deps.db.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT 1 FROM "task" WHERE "id" = ${taskId} FOR UPDATE`;
+        const task = await tx.task.findUnique({ where: { id: taskId }, select: { state: true, organizationId: true, projectId: true } });
+        if (task === null || !isEndedTaskState(task.state)) {
+          return 0;
+        }
+        const ids = await closeItemsOfEndedTaskInTx(deps, tx, taskId, { at: new Date(deps.clock.now()), byMemberId: null });
+        if (ids.length > 0) {
+          await deps.notices.emitInTx(tx, {
+            organizationId: organizationIdSchema.parse(task.organizationId),
+            projectId: projectIdSchema.parse(task.projectId),
+            entity: "task",
+            entityId: taskIdSchema.parse(taskId),
+          });
+        }
+        return ids.length;
+      });
+    }
+    closed += pass;
+    // Done when nothing is left, or when a pass closed nothing (every task found was reopened meanwhile).
+    if (stale.length < STALE_BATCH || pass === 0) {
+      return closed;
+    }
+  }
 };
 
 /** Rewrites an open item's summary. Not a moment: it enqueues nothing. */

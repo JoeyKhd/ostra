@@ -360,7 +360,7 @@ describe("stop and crash", () => {
     const task = await runningTask();
     const scope: MemberScope = { organizationId: fixture.a.organization.id, memberId: fixture.a.member.id, role: "member", projectRoles: new Map() };
     const stopped = await test.db.$transaction((tx) =>
-      stopTask({ tx, scope, outbox: postgresCommandOutbox, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock }, { taskId: task.taskId }),
+      stopTask({ tx, scope, outbox: postgresCommandOutbox, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock, jobs }, { taskId: task.taskId }),
     );
     if (!stopped.ok || stopped.commandId === null) {
       throw new Error("stop failed");
@@ -387,7 +387,7 @@ describe("stop and crash", () => {
     const task = await runningTask();
     const scope: MemberScope = { organizationId: fixture.a.organization.id, memberId: fixture.a.member.id, role: "member", projectRoles: new Map() };
     const stopped = await test.db.$transaction((tx) =>
-      stopTask({ tx, scope, outbox: postgresCommandOutbox, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock }, { taskId: task.taskId }),
+      stopTask({ tx, scope, outbox: postgresCommandOutbox, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock, jobs }, { taskId: task.taskId }),
     );
     if (!stopped.ok || stopped.commandId === null) {
       throw new Error("stop failed");

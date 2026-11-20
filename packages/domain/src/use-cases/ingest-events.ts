@@ -17,7 +17,7 @@ import { releaseLeaseInTx } from "./record-session-end.ts";
 import { unansweredMessagesInTx } from "./reopen.ts";
 import { writeEventSearchEntries } from "../search/entries.ts";
 import { storableEvent } from "./storable-event.ts";
-import type { MoveDeps } from "./moves.ts";
+import type { TaskMoveDeps } from "./moves.ts";
 import { recordCheckFinishedInTx, recordCheckStartedInTx } from "./checks.ts";
 import { recordMemoryUse } from "../memory/store.ts";
 import { sendClosingTurnInTx } from "../memory/closing-turn.ts";
@@ -173,7 +173,7 @@ const applyEffects = async (
   session: Session,
   stored: readonly Stored[],
 ): Promise<void> => {
-  const moveDeps: MoveDeps = { tx: deps.tx, notices: deps.notices, ...(deps.logger === undefined ? {} : { logger: deps.logger }) };
+  const moveDeps: TaskMoveDeps = { tx: deps.tx, notices: deps.notices, jobs: deps.jobs, ...(deps.logger === undefined ? {} : { logger: deps.logger }) };
   const { tx } = deps;
   // The rows move as the events go: re-read the session after each move so the next one sees it.
   let current = session;

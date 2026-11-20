@@ -162,7 +162,7 @@ export const endGraceInTx = async (
   await tx.lease.update({ where: { id: lease.id }, data: { state: "ended", endedAt: at, endReason: "grace-expired" } });
   // The fence: from here on, a write carrying the old epoch is refused (F-045).
   await tx.task.update({ where: { id: task.id }, data: { leaseEpoch: { increment: 1 } } });
-  const moveDeps = { tx, notices: deps.notices, logger: deps.logger };
+  const moveDeps = { tx, notices: deps.notices, jobs: deps.jobs, logger: deps.logger };
   // A task whose work already left its box (in review, merged, done) isn't stopped by losing it.
   const keepsState = task.state === "in_review" || task.state === "merged" || task.state === "done";
   if (!keepsState) {

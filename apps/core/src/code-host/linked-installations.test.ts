@@ -267,7 +267,7 @@ describe("no mint through an installation that isn't linked", () => {
       await test.db.task.update({ where: { id: task.taskId }, data: { state: "running", subState: null } });
       await test.db.taskRepo.updateMany({ where: { taskId: task.taskId }, data: { ahead: true } });
       const opened = await openPullRequests(
-        { db: test.db, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock, adapters: { codeHost: recording, secretStore, modelProvider: new FakeModelProvider() }, publicUrl: "https://ostra.example" },
+        { db: test.db, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock, adapters: { codeHost: recording, secretStore, modelProvider: new FakeModelProvider() }, publicUrl: "https://ostra.example", jobs },
         { organizationId: world.organizationId, taskId: task.taskId, sessionId: task.sessionId, eventSeq: taskSeqSchema.parse(1) },
       );
       expect(opened).toMatchObject({ ok: false, message: INSTALLATION_NOT_LINKED });

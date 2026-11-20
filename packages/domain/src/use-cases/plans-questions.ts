@@ -27,7 +27,7 @@ import type { ApprovalEffectDeps } from "./approvals.ts";
 import type { UseCaseResult } from "./common.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
 import { createNeedsYouItemInTx, resolveNeedsYouItemsInTx } from "./needs-you-items.ts";
-import type { MoveDeps } from "./moves.ts";
+import type { TaskMoveDeps } from "./moves.ts";
 import { reopenTask } from "./reopen.ts";
 import { appendServerEvent } from "./server-events.ts";
 import type { SessionTimers } from "./sessions-m2.ts";
@@ -51,7 +51,7 @@ type LockedTask = ReturnType<typeof mapTask>;
 
 const ACTIVE_SESSION_STATES = ["starting", "running", "waiting", "idle"] as const;
 
-const moveDepsOf = (deps: ApprovalEffectDeps): MoveDeps => ({ tx: deps.tx, notices: deps.notices, ...(deps.logger === undefined ? {} : { logger: deps.logger }) });
+const moveDepsOf = (deps: ApprovalEffectDeps): TaskMoveDeps => ({ tx: deps.tx, notices: deps.notices, jobs: deps.jobs, ...(deps.logger === undefined ? {} : { logger: deps.logger }) });
 
 // ---------- ingest ----------
 
@@ -278,7 +278,7 @@ export const answerPlan = async (
         }
         return { ok: true, reopened: true };
       }
-      await moveTaskInTx({ tx, notices: deps.notices }, task, { type: "plan_answered", boxWarm: true });
+      await moveTaskInTx({ tx, notices: deps.notices, jobs: deps.jobs }, task, { type: "plan_answered", boxWarm: true });
       await deps.outbox.enqueueInTx(tx, organizationId, going.runnerId, {
         kind: "plan-answer",
         body: { sessionId, decision: input.decision, text: commandText },
@@ -409,7 +409,7 @@ export const answerQuestion = async (
       }
       const others = await tx.needsYouItem.count({ where: { taskId: task.id, state: "open", reason: { in: ["question", "approval"] } } });
       if (others === 0 && task.state === "needs_you" && task.needsYouReason === "question") {
-        await moveTaskInTx({ tx, notices: deps.notices }, task, { type: "member_acted", boxWarm: true });
+        await moveTaskInTx({ tx, notices: deps.notices, jobs: deps.jobs }, task, { type: "member_acted", boxWarm: true });
         if (going.session.state === "waiting") {
           await moveSessionInTx({ tx, notices: deps.notices }, going.session, { type: "person_answered" });
         }

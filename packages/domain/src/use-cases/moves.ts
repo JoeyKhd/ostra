@@ -6,8 +6,9 @@ import { transitionSession } from "../lifecycles/session.ts";
 import type { SessionInput } from "../lifecycles/session.ts";
 import { transitionTask } from "../lifecycles/task.ts";
 import type { TaskInput } from "../lifecycles/task.ts";
-import type { ChangeNotices } from "../ports.ts";
+import type { ChangeNotices, JobQueue } from "../ports.ts";
 import { recordTicketProgressInTx } from "../tickets/ticket-writes.ts";
+import { closeItemsOfEndedTaskInTx, isEndedTaskState } from "./needs-you-items.ts";
 
 // Moving a task or a session by its lifecycle's transition, in the caller's transaction: the row is
 // written only when the transition allows the input. A refusal is an expected answer (a late event,
@@ -19,14 +20,21 @@ export type MoveDeps = {
   readonly logger?: Logger;
 };
 
+/** A task's move also owes the fan-out of the items it closes. */
+export type TaskMoveDeps = MoveDeps & { readonly jobs: JobQueue };
+
 /** A task row as `mapTask` gives it, so its IDs are branded. */
 type TaskRow = Pick<
   ReturnType<typeof mapTask>,
   "id" | "organizationId" | "projectId" | "kind" | "state" | "subState" | "needsYouReason" | "stoppedReason"
 >;
 
-/** Applies `input` to the task; `true` when it moved. A change notice goes with every move. */
-export const moveTaskInTx = async (deps: MoveDeps, task: TaskRow, input: TaskInput): Promise<boolean> => {
+/**
+ * Applies `input` to the task; `true` when it moved. A change notice goes with every move, and a
+ * move that ends the task (stopped, merged, done) dismisses its open needs-you items: an item never
+ * outlives its reason.
+ */
+export const moveTaskInTx = async (deps: TaskMoveDeps, task: TaskRow, input: TaskInput): Promise<boolean> => {
   const current = taskFromColumns(task);
   if (!current.ok) {
     deps.logger?.error("task.unreadable", { taskId: task.id, reason: current.reason });
@@ -51,6 +59,9 @@ export const moveTaskInTx = async (deps: MoveDeps, task: TaskRow, input: TaskInp
   if (updated.ticketId !== null) {
     // A ticket task's progress comment shows every move (F-031): its edit commits with the move.
     await recordTicketProgressInTx(deps.tx, task.id, columns.state);
+  }
+  if (isEndedTaskState(columns.state)) {
+    await closeItemsOfEndedTaskInTx(deps, deps.tx, task.id, { at: new Date(), byMemberId: null });
   }
   await deps.notices.emitInTx(deps.tx, {
     organizationId: task.organizationId,

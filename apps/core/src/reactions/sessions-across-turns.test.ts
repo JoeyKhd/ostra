@@ -193,7 +193,7 @@ describe("a session across turns (F-096, F-030, F-065)", () => {
 
     // The member answers: the next turn runs in the warm box.
     await test.db.$transaction(async (tx) => {
-      await moveTaskInTx({ tx, notices: postgresChangeNotices }, mapTask(await tx.task.findUniqueOrThrow({ where: { id: task.taskId } })), { type: "member_acted", boxWarm: true });
+      await moveTaskInTx({ tx, notices: postgresChangeNotices, jobs }, mapTask(await tx.task.findUniqueOrThrow({ where: { id: task.taskId } })), { type: "member_acted", boxWarm: true });
     });
 
     // Turn 2, with changes: one PR job, and the opener opens one PR.

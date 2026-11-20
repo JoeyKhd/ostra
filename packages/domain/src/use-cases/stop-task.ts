@@ -9,6 +9,7 @@ import { taskFromColumns, taskToColumns } from "../lifecycles/mapping.ts";
 import { transitionTask } from "../lifecycles/task.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
+import { closeItemsOfEndedTaskInTx } from "./needs-you-items.ts";
 
 // F-025: a member stops a task. In the panel's transaction: the task moves to stopped, a `stop`
 // command goes to the outbox for the runner holding its lease (the panel never calls core, ADR
@@ -25,7 +26,7 @@ export type StopTaskResult = UseCaseResult<
   "not-found" | "forbidden" | "already-stopped"
 >;
 
-export type StopTaskDeps = Pick<Ports, "outbox" | "notices" | "audit" | "clock"> & {
+export type StopTaskDeps = Pick<Ports, "outbox" | "notices" | "audit" | "clock" | "jobs"> & {
   readonly tx: Tx;
   readonly scope: MemberScope;
 };
@@ -69,6 +70,8 @@ export const stopTask: StopTask = async (deps, input) => {
   await tx.task.update({ where: { id: task.id }, data: taskToColumns(moved.state) });
 
   const now = deps.clock.now();
+  // A stopped task waits on nobody: its open items (no changes, a crash, an approval…) close with it.
+  await closeItemsOfEndedTaskInTx(deps, tx, task.id, { at: new Date(now), byMemberId: scope.memberId });
   const lease = await tx.lease.findFirst({ where: { taskId: task.id, state: "active" }, select: { runnerId: true, epoch: true } });
   const session = await tx.session.findFirst({
     where: { taskId: task.id, state: { in: ["starting", "running", "waiting", "idle"] } },

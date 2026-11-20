@@ -4,6 +4,7 @@ import type { ClientMessageId, MemberId, MessageIntent, SessionId, TaskSeq } fro
 
 import type { Ports } from "../ports.ts";
 import { moveSessionInTx, moveTaskInTx } from "../use-cases/moves.ts";
+import { answerNextTurnItemsInTx } from "../use-cases/needs-you-items.ts";
 import { unansweredMessagesInTx } from "../use-cases/reopen.ts";
 import { appendServerEvent } from "../use-cases/server-events.ts";
 import { endSessionTimersInTx } from "../use-cases/sessions-m2.ts";
@@ -45,7 +46,7 @@ export const restartOnProviderChangeInTx = async (
   const organizationId = organizationIdSchema.parse(task.organizationId);
   const projectId = projectIdSchema.parse(task.projectId);
   const now = deps.clock.now();
-  const moveDeps = { tx, notices: deps.notices };
+  const moveDeps = { tx, notices: deps.notices, jobs: deps.jobs };
   const going = await tx.session.findMany({ where: { taskId: task.id, state: { in: [...ACTIVE_SESSION_STATES] } }, orderBy: [{ startedAt: "desc" }, { id: "desc" }] });
   for (const old of going) {
     await moveSessionInTx(moveDeps, old, { type: "stop" });
@@ -92,6 +93,10 @@ export const restartOnProviderChangeInTx = async (
       ...(message.intent === undefined ? {} : { intent: message.intent }),
     },
   });
+  if (task.state === "needs_you") {
+    // The message answers what the task waited on, as any send does: its next turn's items close.
+    await answerNextTurnItemsInTx(deps, tx, task.id, { at: new Date(now), byMemberId: message.memberId });
+  }
   await moveTaskInTx(moveDeps, task, { type: "provider_changed" });
   await deps.jobs.enqueueInTx(tx, "task.dispatch", { organizationId, taskId: task.id, sessionId, leaseEpoch: leaseEpochSchema.parse(task.leaseEpoch + 1) });
   await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: task.id });

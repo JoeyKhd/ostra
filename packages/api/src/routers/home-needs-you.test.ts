@@ -260,36 +260,44 @@ describe("notifications", () => {
     expect(fanned).toMatchObject({ ok: true, notifications: 1 });
 
     const member = await harness.as(a.member);
-    expect(await member.notifications.unreadCount()).toEqual({ count: 1 });
+    // The Open tab is Home's list, with the member's own notification on the row it reached.
+    const waiting = (await member.home.needsYou({ limit: 50 })).total;
     const open1 = await member.notifications.list({ tab: "open" });
-    expect(open1).toMatchObject({ tab: "open", total: 1, unread: 1 });
-    const row = open1.rows[0];
+    expect(open1).toMatchObject({ tab: "open", total: waiting, unread: 1 });
+    expect(await member.notifications.openCount()).toEqual({ count: waiting });
+    const row = open1.rows.find((candidate) => candidate.view.itemId === itemId);
     expect(row).toMatchObject({ kind: "approval", read: false, state: "open", failedDeliveries: [], view: { reason: "approval", taskId: task.taskId, itemId, project: { id: open } } });
     expect(row?.view.answer).toMatchObject({ kind: "approval", forThisTask: { tool: "execute", pattern: "pnpm test" } });
-    // The driver is the audience: nobody else got one, in either organization.
-    expect(await (await harness.as(a.admin)).notifications.unreadCount()).toEqual({ count: 0 });
-    expect((await (await harness.as(a.insider)).notifications.list({ tab: "open" })).rows).toEqual([]);
-    expect(await (await harness.as(b.admin)).notifications.unreadCount()).toEqual({ count: 0 });
+    // The driver is the audience: nobody else got a notification, in either organization. Another
+    // member of the project still sees the approval (any member answers one), with nothing unread.
+    const admin = await harness.as(a.admin);
+    const adminRow = (await admin.notifications.list({ tab: "open" })).rows.find((candidate) => candidate.view.itemId === itemId);
+    expect(adminRow).toMatchObject({ notificationId: null, kind: null, read: true });
+    expect((await admin.notifications.list({ tab: "open" })).unread).toBe(0);
+    expect((await (await harness.as(b.admin)).notifications.list({ tab: "open" })).rows.map((candidate) => candidate.view.itemId)).not.toContain(itemId);
 
-    // Reading moves the unread count, not the list; another member can't read it for them.
+    // Reading moves the unread count, not the list nor the count of what waits; another member can't read it for them.
     const notificationId = notificationIdSchema.parse(row?.notificationId);
-    expect(await (await harness.as(a.admin)).notifications.markRead({ ids: [notificationId] })).toEqual({ marked: 0 });
-    expect(await member.notifications.unreadCount()).toEqual({ count: 1 });
+    expect(await admin.notifications.markRead({ ids: [notificationId] })).toEqual({ marked: 0 });
+    expect((await member.notifications.list({ tab: "open" })).unread).toBe(1);
     expect(await member.notifications.markRead({ ids: [notificationId] })).toEqual({ marked: 1 });
-    expect(await member.notifications.unreadCount()).toEqual({ count: 0 });
     expect(await member.notifications.markRead({ ids: [notificationId] })).toEqual({ marked: 0 });
     const read = await member.notifications.list({ tab: "open" });
-    expect(read).toMatchObject({ total: 1, unread: 0 });
-    expect(read.rows[0]).toMatchObject({ read: true });
+    expect(read).toMatchObject({ total: waiting, unread: 0 });
+    expect(read.rows.find((candidate) => candidate.view.itemId === itemId)).toMatchObject({ read: true });
+    expect(await member.notifications.openCount()).toEqual({ count: waiting });
 
-    // An answer closes the item; fan-out closes the notification, and it moves to Done with its outcome.
+    // An answer closes the item: it leaves the Open tab and every count at once, before its
+    // fan-out runs; the fan-out closes the notification, and it moves to Done with its outcome.
     await harness.test.db.$transaction(async (tx) => {
       await tx.approval.update({ where: { id: approval.id }, data: { state: "answered", decision: "allow_once", optionId: "o-once", answeredByMemberId: a.admin.id, resolvedAt: new Date() } });
       await resolveNeedsYouItemsInTx(harness.deps.ports, tx, { id: itemId }, { state: "answered", at: new Date(), byMemberId: a.admin.id });
+      // The answer lets the task run on, as `answerApproval` does.
+      await tx.task.update({ where: { id: task.taskId }, data: { state: "running", needsYouReason: null } });
     });
+    expect((await member.notifications.list({ tab: "open" })).rows.map((candidate) => candidate.view.itemId)).not.toContain(itemId);
+    expect(await member.notifications.openCount()).toEqual({ count: waiting - 1 });
     await fanOutNotification({ db: harness.test.db, ...harness.deps.ports }, { itemId, change: "answered" });
-    expect(await member.notifications.unreadCount()).toEqual({ count: 0 });
-    expect((await member.notifications.list({ tab: "open" })).rows).toEqual([]);
     const done = await member.notifications.list({ tab: "done" });
     expect(done.rows).toHaveLength(1);
     expect(done.rows[0]).toMatchObject({ state: "answered", view: { state: "answered", outcome: { kind: "approved-once", by: { memberId: memberIdSchema.parse(a.admin.id), name: "admin-a" } } } });
@@ -303,18 +311,23 @@ describe("notifications", () => {
     await fanOutNotification({ db: harness.test.db, ...harness.deps.ports }, { itemId, change: "created" });
     const insider = await harness.as(a.insider);
     expect((await insider.notifications.list({ tab: "open" })).rows.map((row) => row.view.title)).toContain("Soon hidden");
-    const before = (await insider.notifications.unreadCount()).count;
-    // They leave the restricted project: its notifications drop out of the list and the count.
+    const before = await insider.notifications.list({ tab: "open" });
+    const count = (await insider.notifications.openCount()).count;
+    expect(count).toBe(before.total);
+    // They leave the restricted project: its notifications drop out of the list and every count.
     await harness.test.db.projectMember.deleteMany({ where: { projectId: restricted, memberId: a.insider.id } });
     const gone = await harness.as(a.insider);
-    expect((await gone.notifications.list({ tab: "open" })).rows.map((row) => row.view.title)).not.toContain("Soon hidden");
-    expect((await gone.notifications.unreadCount()).count).toBe(before - 1);
+    const after = await gone.notifications.list({ tab: "open" });
+    expect(after.rows.map((row) => row.view.title)).not.toContain("Soon hidden");
+    expect(after.unread).toBe(before.unread - 1);
+    expect((await gone.notifications.openCount()).count).toBeLessThan(count);
     await harness.test.db.projectMember.create({ data: { organizationId: orgA, projectId: restricted, memberId: a.insider.id, role: "member" } });
 
     // A test mail's notification has no project and no item.
     await harness.test.db.notification.create({ data: { organizationId: orgA, memberId: a.insider.id, kind: "test" } });
     const back = await harness.as(a.insider);
-    expect((await back.notifications.unreadCount()).count).toBe(before);
+    expect((await back.notifications.openCount()).count).toBe(count);
+    expect(await back.notifications.list({ tab: "open" })).toMatchObject({ total: count, unread: before.unread });
     expect((await back.notifications.list({ tab: "open" })).rows.every((row) => row.kind !== "test")).toBe(true);
   });
 

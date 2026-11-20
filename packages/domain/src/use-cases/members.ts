@@ -18,7 +18,7 @@ import { appendServerEvent } from "./server-events.ts";
 // are counted under a row lock, so two changes at once can never leave none.
 
 /** What these use cases write through: no adapter, no queue. */
-export type MembersDeps = Pick<M4Deps, "db" | "notices" | "audit" | "clock">;
+export type MembersDeps = Pick<M4Deps, "db" | "notices" | "audit" | "clock" | "jobs">;
 
 const fail = <E extends string>(error: E, message: string) => ({ ok: false as const, error, message });
 
@@ -139,7 +139,7 @@ export const removeMember = async (
     });
     let runnersRevoked = 0;
     for (const runner of runners) {
-      const revoked = await revokeRunner({ tx, scope, notices: deps.notices, audit: deps.audit, clock: deps.clock }, { runnerId: runnerIdSchema.parse(runner.id) });
+      const revoked = await revokeRunner({ tx, scope, notices: deps.notices, audit: deps.audit, clock: deps.clock, jobs: deps.jobs }, { runnerId: runnerIdSchema.parse(runner.id) });
       if (revoked.ok && !revoked.alreadyRevoked) {
         runnersRevoked += 1;
       }

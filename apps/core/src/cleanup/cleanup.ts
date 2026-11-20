@@ -2,7 +2,18 @@ import { hiddenRefFor, secretRefSchema } from "@ostra/adapter-sdk";
 import type { Logger } from "@ostra/adapter-sdk";
 import { boxReleaseReasonToDb } from "@ostra/db";
 import type { Db, Tx } from "@ostra/db";
-import { hiddenRefsToDelete, installationStateSelect, installationUsable, recordBoxReleasedInTx, releaseBox, releaseProviderBoxes, retentionDaysInEffect, sweepCleanup, sweepRetention } from "@ostra/domain";
+import {
+  closeStaleNeedsYouItems,
+  hiddenRefsToDelete,
+  installationStateSelect,
+  installationUsable,
+  recordBoxReleasedInTx,
+  releaseBox,
+  releaseProviderBoxes,
+  retentionDaysInEffect,
+  sweepCleanup,
+  sweepRetention,
+} from "@ostra/domain";
 import type { AuditLog, ChangeNotices, Clock, CommandOutbox, JobQueue, ServerAdapters } from "@ostra/domain";
 import type { JobHandler, Jobs } from "@ostra/jobs";
 import { organizationIdSchema, releaseBodySchema, repoFullNameSchema } from "@ostra/protocol";
@@ -16,7 +27,8 @@ import type { AckedCommand, RunnerRef } from "../gateway/context.ts";
 // released at once and its runner gets one `release` command, kept in the outbox for an offline
 // runner. Then, outside the transaction, the hidden ref goes from each repo once the task is done
 // with it (merged, or stopped with its PRs closed). Cleanup deletes refs, never LFS objects (Q120).
-// `retention.sweep` runs daily and does nothing unless a retention is in effect.
+// `retention.sweep` runs daily and does nothing unless a retention is in effect. Its pass also
+// closes needs-you items left open on tasks that already ended (an item never outlives its reason).
 
 export type CleanupDeps = {
   readonly db: Db;
@@ -141,7 +153,7 @@ export const providerBoxesHandler =
     context.logger.info("providers.release-boxes", { projectId: payload.projectId, released: result.released, waiting: result.waiting, reset: result.reset });
   };
 
-/** One retention pass and the idle-box backstop: what they did, counted. */
+/** One retention pass, the idle-box backstop and the ended tasks' open items: what they did, counted. */
 export const runRetention = async (deps: CleanupDeps) => {
   const now = deps.clock.now();
   const saved = await deps.db.instanceSetting.findUnique({ where: { id: "instance" }, select: { retentionDays: true, retentionSetAt: true } });
@@ -151,13 +163,14 @@ export const runRetention = async (deps: CleanupDeps) => {
     { now, retentionDays },
   );
   const boxes = await sweepCleanup({ db: deps.db, jobs: deps.jobs, clock: deps.clock }, { now, releaseAfterIdleMs: deps.releaseAfterIdleMs });
-  return { retentionDays, swept, releaseQueued: boxes.ok ? boxes.releaseQueued : 0 };
+  const itemsClosed = await closeStaleNeedsYouItems(deps);
+  return { retentionDays, swept, releaseQueued: boxes.ok ? boxes.releaseQueued : 0, itemsClosed };
 };
 
 export const retentionSweepHandler =
   (deps: CleanupDeps): JobHandler<"retention.sweep"> =>
   async (context) => {
-    const { retentionDays, swept, releaseQueued } = await runRetention(deps);
+    const { retentionDays, swept, releaseQueued, itemsClosed } = await runRetention(deps);
     context.logger.info("retention.sweep", {
       retentionDays,
       outcome: swept.ok ? "done" : swept.error,
@@ -165,6 +178,7 @@ export const retentionSweepHandler =
       events: swept.ok ? swept.events : 0,
       blobs: swept.ok ? swept.blobs : 0,
       releaseQueued,
+      itemsClosed,
     });
   };
 

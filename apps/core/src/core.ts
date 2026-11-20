@@ -11,6 +11,7 @@ import { ModelEndpointAdapter } from "@ostra/adapter-model-endpoint";
 import { createDb } from "@ostra/db";
 import type { Db } from "@ostra/db";
 import {
+  closeStaleNeedsYouItems,
   organizationOfGitHubKey,
   postgresAuditLog,
   postgresChangeNotices,
@@ -554,6 +555,15 @@ export const startCore = async (
   await enqueueSearchBackfill({ db, jobs, logger }).catch((error: unknown) => {
     logger.warn("search.backfill-enqueue-failed", { error: error instanceof Error ? error.name : "unknown" });
   });
+  // Needs-you items an older release left open on ended tasks close at start, not at the next daily
+  // clean-up; in the background, so a large install starts at once.
+  void closeStaleNeedsYouItems({ db, jobs, notices, clock: systemClock })
+    .then((closed) => {
+      logger.info("needs-you.stale-closed", { closed });
+    })
+    .catch((error: unknown) => {
+      logger.warn("needs-you.stale-close-failed", { error: error instanceof Error ? error.name : "unknown" });
+    });
   const drain = setInterval(() => {
     drainTicketWrites({ db, jobs, clock: systemClock }).catch((error: unknown) => {
       logger.warn("ticket.drain-failed", { error: error instanceof Error ? error.name : "unknown" });

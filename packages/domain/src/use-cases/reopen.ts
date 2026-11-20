@@ -240,7 +240,7 @@ export const reopenTask: ReopenTask = async (deps, input) => {
   const now = deps.clock.now();
   const organization = organizationIdSchema.parse(organizationId);
   const projectId = projectIdSchema.parse(task.projectId);
-  const moveDeps = { tx, notices: deps.notices };
+  const moveDeps = { tx, notices: deps.notices, jobs: deps.jobs };
   // Milestone 4 (F-037, ADR 0055): the budget gate, in the task's lock. A closed one still saves the
   // reopen and its message, and holds the turn: no dispatch until the budget's release.
   const gate = await checkBudget(tx, {

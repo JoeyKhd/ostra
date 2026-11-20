@@ -249,7 +249,7 @@ describe("the tracker writer, on the Jira fake", () => {
   it("a replayed state change writes nothing new: a move the lifecycle refuses edits nothing", async () => {
     const { taskId } = await newTicket();
     const stop = async (): Promise<boolean> =>
-      test.db.$transaction(async (tx) => moveTaskInTx({ tx, notices: postgresChangeNotices }, mapTask(await tx.task.findUniqueOrThrow({ where: { id: taskId } })), { type: "stop", reason: "requested" }));
+      test.db.$transaction(async (tx) => moveTaskInTx({ tx, notices: postgresChangeNotices, jobs }, mapTask(await tx.task.findUniqueOrThrow({ where: { id: taskId } })), { type: "stop", reason: "requested" }));
     expect(await stop()).toBe(true);
     const after = await writesOf(taskId);
     expect(after.filter((row) => row.kind === "comment_update")).toHaveLength(1);

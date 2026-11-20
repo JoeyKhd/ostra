@@ -88,7 +88,7 @@ const scopeOf = (member: SeededMember, role: "admin" | "member"): MemberScope =>
 });
 
 const revoke = (runnerId: RunnerId, by: MemberScope = scopeOf(fixture.a.admin, "admin")) =>
-  test.db.$transaction((tx) => revokeRunner({ tx, scope: by, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock }, { runnerId }));
+  test.db.$transaction((tx) => revokeRunner({ tx, scope: by, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock, jobs }, { runnerId }));
 
 const dispatch = (task: QueuedTask, epoch = 1) =>
   test.db.$transaction((tx) =>
@@ -175,7 +175,7 @@ describe("revoking a connected runner (Q131)", () => {
     await markRunning(task);
     await expect(
       test.db.$transaction(async (tx) => {
-        await revokeRunner({ tx, scope: scopeOf(fixture.a.admin, "admin"), notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock }, { runnerId: runner.runnerId });
+        await revokeRunner({ tx, scope: scopeOf(fixture.a.admin, "admin"), notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock, jobs }, { runnerId: runner.runnerId });
         throw new Error("the caller's transaction failed after the revoke");
       }),
     ).rejects.toThrow("failed after the revoke");
@@ -207,7 +207,7 @@ describe("revoking a connected runner (Q131)", () => {
     // Reopen: stopped → queued, with a fresh session, and the next dispatch grants epoch 3.
     const reopenedSession = await test.db.$transaction(async (tx) => {
       const row = mapTask(await tx.task.findUniqueOrThrow({ where: { id: task.taskId } }));
-      expect(await moveTaskInTx({ tx, notices: postgresChangeNotices }, row, { type: "reopen" })).toBe(true);
+      expect(await moveTaskInTx({ tx, notices: postgresChangeNotices, jobs }, row, { type: "reopen" })).toBe(true);
       return tx.session.create({
         data: { organizationId: world.organizationId, projectId: world.projectId, taskId: task.taskId, agentProfileId: world.profileId, origin: "resumed", state: "starting" },
         select: { id: true },
