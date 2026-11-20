@@ -15,7 +15,17 @@ How it ran, against section 3's "Before":
 - **Two browsers,** Demo and Sam, driven by Playwright through the panel. Per the maintainer's direction for this milestone, the "run by hand" of ticket 37 is this Playwright run: every step went through the panel's own pages and buttons, and Sam's runner signed in with a real device code that Sam approved in the browser.
 - The demo's Linear tickets and GitHub PRs went to the test workspaces only (`ostra-test`, team `OST`; repos `test1` and `test2`), and were cleaned up after: 3 tickets archived, 20 PRs closed, 42 branches and hidden refs deleted.
 
-## Step by step
+## The re-run from a fresh clone: 2026-11-20, 14:20 to 14:51 UTC
+
+`pnpm e2e:m5` once more, from a fresh `git clone` of `origin/main` at `9819e74a` (milestones 6 and 7 had landed since the run of record), on the same machine, from an empty data folder, on the ports 3960, 9560 to 9562 and 55160. **67 of 69 checks passed in 30 minutes** ([`demo/checks-rerun.json`](demo/checks-rerun.json)); every check after the run passed, and the clean-up archived 3 tickets, closed 20 PRs and deleted 41 refs. Both misses were the demo's own checks, not the fleet's behaviour, and both are fixed in `🐛 fix the m5 demo's queue and egress checks`:
+
+- **Step 6's queue order.** The queue read Urgent, prompts 3, 4 and 5, then "Review: Waits for an approval", then Low. The extra row is milestone 6's AI review: step 2's task opened a PR, and its project's AI review (on by default) queued a review task in `test1`, at Medium, after the prompts, as the queue's rule puts it. The demo's own five tasks were in the right order; the check now judges those and names any other row in its detail.
+- **Step 14's F-116 tests.** Run beside the demo's stack, two of the package's seven test files failed to load (no test failed; the same command passed alone right after, 5 of 5). The check now runs only the three files that hold F-116's tests, one worker at a time, and keeps the whole output in the state folder.
+- Step 7 took 628 s (388 s in the run of record): the review tasks share `build-fleet`'s slots.
+
+The ledger doesn't change: no condition was proved or broken by this run, and ticket 35's jobs still haven't run.
+
+## Step by step (the run of record)
 
 | Step | Time | What was seen |
 |---|---|---|
@@ -53,7 +63,7 @@ All passed, in the same run:
 - **Cgroup limits, pushes and pulls on `docker`, the egress probes from a box, a separate OS user for a `host` pool, the macOS sweep.** Ticket 35's `live-docker` and `live-macos` jobs. **None of ticket 35's jobs has run yet**: this machine has no `gh`, and the maintainer dispatches them with `gh workflow run Proof -f jobs=fleet`. So every row that waits on them stays `building`.
 - **The pin** (the CLI at N+1 installing N from npm): proved by `apps/runner/src/pin.test.ts`; the dev npm registry serves stand-ins, not runners.
 - **A refused runner shown as outdated:** only a runner that already has a row can be shown so, one that joined before the server moved on. The two-minors-behind runner stops before it signs in. The panel's outdated line is proved by `apps/web/e2e/15-runner.spec.ts`.
-- **The demo ran once,** not twice in a row as ticket 37 asks: the maintainer asked for one clean run today.
+- **Two clean runs in a row,** as ticket 37 asks: the run of record passed 69 of 69, and the re-run from a fresh clone 67 of 69, its two misses fixed in the demo since. A second clean run is still owed.
 
 ## What the demo found, and fixed before the run of record
 
