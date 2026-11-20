@@ -112,6 +112,9 @@ export const footnote = (input: {
 
 export type WriteState = "done" | "pending" | "failed";
 
+/** The part a failed "Update ticket" write stopped at (ticket 41), as `drafts.get` gives it. */
+export type FailedPart = NonNullable<DraftView["applyFailed"]>["part"];
+
 /** The On Linear group's rows once a version was applied: what was written, and where each write stands. */
 export const onLinearRows = (input: {
   readonly appliedAt: number | null;
@@ -120,22 +123,41 @@ export const onLinearRows = (input: {
   readonly subTickets: number;
   readonly createdTicket: boolean;
   readonly move: { readonly state: WriteState; readonly status: string } | null;
+  /** The part a failed write stopped at: it's `failed`, the parts before it `done`. */
+  readonly failed?: FailedPart | null;
 }): readonly { readonly id: string; readonly label: string; readonly state: WriteState }[] => {
   const rows: { id: string; label: string; state: WriteState }[] = [];
   if (input.appliedAt !== null) {
-    const state: WriteState = input.written === null ? "pending" : "done";
-    if (input.createdTicket) rows.push({ id: "created", label: t("draft.rowCreated"), state });
-    else rows.push({ id: "description", label: t("draft.rowDescription"), state });
+    const failed = input.written === null ? (input.failed ?? null) : null;
+    // The job writes the images, then the description, then the sub-tickets.
+    const description: WriteState = input.written !== null || failed === "sub_tickets" ? "done" : failed === "description" ? "failed" : "pending";
+    const subTickets: WriteState = input.written !== null ? "done" : failed === "sub_tickets" ? "failed" : "pending";
+    if (input.createdTicket) rows.push({ id: "created", label: t("draft.rowCreated"), state: description });
+    else rows.push({ id: "description", label: t("draft.rowDescription"), state: description });
     if (input.images.length > 0) {
       const attached = input.images.every((image) => image.attachedAt !== null);
-      rows.push({ id: "images", label: plural(input.images.length, "draft.rowImages.one", "draft.rowImages.other"), state: attached ? "done" : "pending" });
+      rows.push({ id: "images", label: plural(input.images.length, "draft.rowImages.one", "draft.rowImages.other"), state: attached ? "done" : failed === "images" ? "failed" : "pending" });
     }
     if (input.subTickets > 0) {
-      rows.push({ id: "sub-issues", label: plural(input.subTickets, "draft.rowSubIssues.one", "draft.rowSubIssues.other"), state });
+      rows.push({ id: "sub-issues", label: plural(input.subTickets, "draft.rowSubIssues.one", "draft.rowSubIssues.other"), state: subTickets });
     }
   }
   if (input.move !== null) rows.push({ id: "move", label: t("draft.rowMoved", { status: input.move.status }), state: input.move.state });
   return rows;
+};
+
+/** The partly-applied line (refine-draft.md): `Version 3 is partly on CALC-180: the image wasn't attached.` */
+export const partlyAppliedText = (version: number, key: string, part: FailedPart): string => {
+  switch (part) {
+    case "images":
+      return t("draft.partly.images", { n: version, key });
+    case "description":
+      return t("draft.partly.description", { n: version, key });
+    case "sub_tickets":
+      return t("draft.partly.subTickets", { n: version, key });
+    default:
+      return part satisfies never;
+  }
 };
 
 /** A sub-issue's address beside its parent's: Linear's `/issue/<key>` path, else none. */

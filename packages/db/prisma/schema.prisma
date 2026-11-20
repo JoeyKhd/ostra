@@ -1485,6 +1485,10 @@ model RefineDraft {
   editedByMemberId String?
   appliedAt        DateTime?
   appliedByMemberId String?
+  /// The last "Update ticket" write that failed (ticket 41): when, and the part it stopped at, so
+  /// the panel shows the version partly applied with "Retry sync". Cleared once the version is written.
+  applyFailedAt    DateTime?
+  applyFailedPart  DraftApplyPart?
   readyAt          DateTime?
   /// The ticket "Create ticket" made from a prompt task's draft.
   createdTicketKey String?
@@ -2690,6 +2694,13 @@ enum RunnerState {
   offline
   draining
   revoked
+}
+
+/// The part of "Update ticket" a failed write stopped at (F-099): the images, the description, or the sub-tickets.
+enum DraftApplyPart {
+  images
+  description
+  sub_tickets
 }
 
 enum ProjectAccess {

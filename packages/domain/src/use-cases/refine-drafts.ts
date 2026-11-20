@@ -29,6 +29,7 @@ import type {
   ApplyDraft,
   CreateTicketFromDraft,
   EditDraft,
+  M6Deps,
   M6TxDeps,
   MarkTicketReady,
   SaveDraft,
@@ -586,6 +587,51 @@ const finishRefineInTx = async (
   });
   await tx.task.update({ where: { id: taskId }, data: { lastPersonActionAt: at } });
 };
+
+/**
+ * "Retry sync" (ticket 41, F-099): a version whose "Update ticket" write failed goes to the ticket
+ * again through `draft.apply`. Any member who can open the project, as "Update ticket". The job
+ * finds what an earlier try wrote (each image by its marker, each sub-ticket by its marker), so a
+ * retry writes nothing twice; the failure stays recorded until the version is written whole.
+ */
+export const retryDraftApply = (
+  deps: Pick<M6Deps, "db" | "jobs" | "audit" | "notices">,
+  scope: MemberScope,
+  input: { readonly taskId: TaskId },
+): Promise<UseCaseResult<{ readonly version: number }, "forbidden" | "not-found" | "nothing-failed">> =>
+  deps.db.$transaction(async (tx) => {
+    const found = await lockRefineTaskInTx(tx, scope, input.taskId);
+    if (!found.ok) return found;
+    const failed = await tx.refineDraft.findFirst({
+      where: { taskId: found.task.id, appliedAt: { not: null }, applyFailedAt: { not: null } },
+      orderBy: { version: "desc" },
+      select: { id: true, version: true },
+    });
+    if (failed === null) {
+      return { ok: false, error: "nothing-failed", message: "No write of this draft failed" };
+    }
+    await deps.jobs.enqueueInTx(tx, "draft.apply", {
+      organizationId: scope.organizationId,
+      draftId: draftIdSchema.parse(failed.id),
+      version: failed.version,
+    });
+    await deps.audit.recordInTx(tx, {
+      organizationId: scope.organizationId,
+      projectId: found.task.projectId,
+      actor: { kind: "member", id: scope.memberId },
+      action: "draft.applied",
+      entity: "task",
+      entityId: found.task.id,
+      data: { version: failed.version, retry: true },
+    });
+    await deps.notices.emitInTx(tx, {
+      organizationId: scope.organizationId,
+      projectId: found.task.projectId,
+      entity: "task",
+      entityId: found.task.id,
+    });
+    return { ok: true, version: failed.version };
+  });
 
 /** "Update ticket": the version goes to the ticket through `draft.apply`, once per version. */
 export const applyDraft: ApplyDraft = (deps, scope, input) =>

@@ -18,6 +18,7 @@ import {
   postgresChangeNotices,
   postgresCommandOutbox,
   recordWorkSaved,
+  retryDraftApply,
   startTicketTask,
   systemClock,
 } from "@ostra/domain";
@@ -96,6 +97,9 @@ let flatTracker: JiraFakeAdapter | null = null;
 let linkFailures = 0;
 /** The next Linear attaches that go through, then die before the job writes `attachedAt`. */
 let crashesAfterAttach = 0;
+/** Fails Linear's second `createTicket` of a job while set: a write that stops partway. */
+let failSecondSubTicket = false;
+let subTicketsMade = 0;
 
 const trackers = () =>
   createConnectionTrackers({
@@ -111,6 +115,14 @@ const trackers = () =>
         input.context,
       );
       const attach = linear.attachFile.bind(linear);
+      const create = linear.createTicket.bind(linear);
+      linear.createTicket = (...args) => {
+        subTicketsMade += 1;
+        if (failSecondSubTicket && subTicketsMade === 2) {
+          return Promise.resolve(adapterError("unavailable", "the tracker is down"));
+        }
+        return create(...args);
+      };
       linear.attachFile = async (...args) => {
         const attached = await attach(...args);
         if (crashesAfterAttach > 0) {
@@ -684,6 +696,51 @@ describe("refine drafts (F-099)", () => {
     expect(await test.db.event.count({ where: { taskId, kind: "draft.applied" } })).toBe(1);
   });
 
+  it("F-099/c6: a write that stops partway records the part it stopped at, and Retry sync finishes it without making a sub-issue twice", async () => {
+    const { taskId, sessionId, token, ticket } = await refineTask();
+    await submit(taskId, token, draft());
+    await turnEnds(taskId, sessionId);
+    // Applied on the fake Linear's clock, as a real tracker's: a retry looks back from the apply.
+    expect(
+      await applyDraft({ db: test.db, ...ports(), clock: fake.clock }, scopeOf(fixture.a.member), {
+        taskId,
+        version: 1,
+      }),
+    ).toMatchObject({ ok: true });
+    const v1 = await test.db.refineDraft.findFirstOrThrow({ where: { taskId, version: 1 } });
+    // Nothing failed yet: there's nothing to retry.
+    expect(
+      await retryDraftApply({ db: test.db, ...ports() }, scopeOf(fixture.a.member), { taskId }),
+    ).toMatchObject({ ok: false, error: "nothing-failed" });
+    subTicketsMade = 0;
+    failSecondSubTicket = true;
+    try {
+      await expect(runApply(v1.id, 1)).rejects.toThrow("creating a sub-ticket");
+    } finally {
+      failSecondSubTicket = false;
+    }
+    expect(await test.db.refineDraft.findUniqueOrThrow({ where: { id: v1.id } })).toMatchObject({
+      applyFailedPart: "sub_tickets",
+    });
+    expect(await test.db.event.count({ where: { taskId, kind: "draft.applied" } })).toBe(0);
+
+    // A member's Retry sync: a new job, not a queue retry, and it still finds the sub-issue made.
+    expect(
+      await retryDraftApply({ db: test.db, ...ports() }, scopeOf(fixture.a.member), { taskId }),
+    ).toMatchObject({ ok: true, version: 1 });
+    await runApply(v1.id, 1, 0);
+    const after = await linearTicket(ticket.externalId);
+    expect(after.children.map((child) => child.title).sort()).toEqual([
+      "Lazy-load the footer's images",
+      "Measure the footer",
+    ]);
+    expect(await test.db.refineDraft.findUniqueOrThrow({ where: { id: v1.id } })).toMatchObject({
+      applyFailedAt: null,
+      applyFailedPart: null,
+    });
+    expect(await test.db.event.count({ where: { taskId, kind: "draft.applied" } })).toBe(1);
+  });
+
   it("F-099/c6: Mark ready moves the ticket to the board's ready status through the ticket outbox", async () => {
     const { taskId, sessionId, token, ticket } = await refineTask();
     await submit(taskId, token, draft());
@@ -720,7 +777,9 @@ describe("refine drafts (F-099)", () => {
       .statusMap;
     const parsed = parseBoardMapping(mapping);
     if (parsed === null) throw new Error("no mapping");
-    const withoutReady = Object.fromEntries(Object.entries(parsed).filter(([key]) => key !== "ready"));
+    const withoutReady = Object.fromEntries(
+      Object.entries(parsed).filter(([key]) => key !== "ready"),
+    );
     await test.db.board.update({ where: { id: linearBoard }, data: { statusMap: withoutReady } });
     try {
       expect(
@@ -758,17 +817,26 @@ describe("refine drafts (F-099)", () => {
       const { taskId, sessionId, token, ticket } = await refineTask("jira");
       await submit(taskId, token, draft());
       await turnEnds(taskId, sessionId);
-      expect(await applyDraft({ db: test.db, ...ports() }, scopeOf(fixture.a.member), { taskId, version: 1 })).toMatchObject({ ok: true });
+      expect(
+        await applyDraft({ db: test.db, ...ports() }, scopeOf(fixture.a.member), {
+          taskId,
+          version: 1,
+        }),
+      ).toMatchObject({ ok: true });
       const v1 = await test.db.refineDraft.findFirstOrThrow({ where: { taskId } });
       // The fake site's clock at the real one, as a real tracker's is: the retry looks back from now.
       site.clock.set(Date.now());
-      const measured = () => [...site.issues.values()].filter((issue) => issue.summary === "Measure the footer").length;
+      const measured = () =>
+        [...site.issues.values()].filter((issue) => issue.summary === "Measure the footer").length;
       const before = measured();
       // The first sub-ticket is made, and its link fails: the job fails, to run again.
       linkFailures = 1;
       await expect(runApply(v1.id, 1)).rejects.toThrow("linking a sub-ticket");
       await runApply(v1.id, 1, 1);
-      const read = await jiraAdapter.getTicketContext({ externalId: site.projects[0]?.id ?? "" }, { externalId: externalTicketIdSchema.parse(ticket.externalId) });
+      const read = await jiraAdapter.getTicketContext(
+        { externalId: site.projects[0]?.id ?? "" },
+        { externalId: externalTicketIdSchema.parse(ticket.externalId) },
+      );
       if (!read.ok) throw new Error(read.error.message);
       // No sub-tasks; two sub-tickets, each made once and linked once from the ticket.
       expect(read.value.children).toHaveLength(0);

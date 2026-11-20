@@ -420,6 +420,13 @@
     "readyStatus": "its ready status",
     "onLinear": "On Linear",
     "nothingYet": "Nothing written yet. A draft reaches Linear only when someone presses Update ticket.",
+    "partly": {
+      "images": "Version {n} is partly on {key}: the image wasn't attached.",
+      "description": "Version {n} is partly on {key}: the description wasn't written.",
+      "subTickets": "Version {n} is partly on {key}: the sub-issues weren't all created."
+    },
+    "retrySync": "Retry sync",
+    "retrying": "Retrying…",
     "rowDescription": "Updated the description",
     "rowCreated": "Created the ticket",
     "rowImages": {

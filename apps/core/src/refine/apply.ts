@@ -82,7 +82,8 @@ const findMade = async (
 };
 
 /** The subtitle each attached image carries, so a retry finds the one it attached: ostra's words and the image's ID. */
-const imageMarkerOf = (imageId: string): string => `Attached by ostra from a draft (image ${imageId})`;
+const imageMarkerOf = (imageId: string): string =>
+  `Attached by ostra from a draft (image ${imageId})`;
 
 const fail = (what: string, code: string): never => {
   throw new Error(`${what} failed (${code})`);
@@ -145,123 +146,147 @@ export const draftApplyHandler =
     const boardRef = { externalId: board.externalId };
     const ref = { externalId: externalTicketIdSchema.parse(ticketRow.externalId) };
     const taskUrl = taskPageUrl(deps.publicUrl, taskId);
-
-    // 2 first: what can't be attached is named in the description.
-    const unattached: string[] = [];
-    // The markers already on the ticket, read once: an earlier try's attach whose `attachedAt` a
-    // crash kept from being written.
-    let onTicket: ReadonlySet<string> | null = null;
-    const markersOnTicket = async (): Promise<ReadonlySet<string>> => {
-      if (onTicket !== null) return onTicket;
-      const listed = await tracker.listAttachments(boardRef, ref);
-      if (!listed.ok) return fail("reading the ticket's attachments", listed.error.code);
-      onTicket = new Set(listed.value.flatMap((one) => (one.subtitle === null ? [] : [one.subtitle])));
-      return onTicket;
-    };
-    for (const image of draftRow.images) {
-      if (image.attachedAt !== null) continue;
-      if (!caps.attachments) {
-        unattached.push(image.name);
-        continue;
-      }
-      const marker = imageMarkerOf(image.id);
-      if (!(await markersOnTicket()).has(marker)) {
-        const bytes = await deps.readBlob(organizationId, image.blobId);
-        if (bytes === null) {
+    // Ticket 41: a write that fails records the part it stopped at, for the panel's "partly applied"
+    // and "Retry sync"; a retry a member asked for looks its sub-tickets up as a queue retry does.
+    let part: "images" | "description" | "sub_tickets" = "images";
+    const retried = context.retryCount > 0 || draftRow.applyFailedAt !== null;
+    try {
+      // 2 first: what can't be attached is named in the description.
+      const unattached: string[] = [];
+      // The markers already on the ticket, read once: an earlier try's attach whose `attachedAt` a
+      // crash kept from being written.
+      let onTicket: ReadonlySet<string> | null = null;
+      const markersOnTicket = async (): Promise<ReadonlySet<string>> => {
+        if (onTicket !== null) return onTicket;
+        const listed = await tracker.listAttachments(boardRef, ref);
+        if (!listed.ok) return fail("reading the ticket's attachments", listed.error.code);
+        onTicket = new Set(
+          listed.value.flatMap((one) => (one.subtitle === null ? [] : [one.subtitle])),
+        );
+        return onTicket;
+      };
+      for (const image of draftRow.images) {
+        if (image.attachedAt !== null) continue;
+        if (!caps.attachments) {
           unattached.push(image.name);
           continue;
         }
-        const attached = await tracker.attachFile(boardRef, ref, {
-          name: image.name,
-          contentType: image.contentType,
-          bytes,
-          marker,
-        });
-        if (!attached.ok) fail("attaching an image", attached.error.code);
-      }
-      await deps.db.refineDraftImage.update({
-        where: { id: image.id },
-        data: { attachedAt: new Date(deps.clock.now()) },
-      });
-    }
-
-    // 1. The description, with the criteria in their own field where the tracker has one: the
-    // domain's `draftTicketText`, the same text the panel's preview shows (ticket 27).
-    const text = draftTicketText(draft, {
-      acceptanceCriteriaField: caps.ticketFields.acceptanceCriteria,
-      unattachedImages: unattached,
-      taskUrl,
-    });
-    const updated = await tracker.updateTicket(boardRef, ref, {
-      description: text.description,
-      ...(text.acceptanceCriteria === null ? {} : { acceptanceCriteria: text.acceptanceCriteria }),
-    });
-    if (!updated.ok) fail("writing the description", updated.error.code);
-
-    // 3. The sub-tickets, once each.
-    const subTicketKeys: TicketKey[] = [];
-    const since = (draftRow.appliedAt.getTime() || deps.clock.now()) - LOOKBACK_MS;
-    for (const [index, sub] of draft.subTickets.entries()) {
-      const marker = markerOf(taskUrl, draftRow.version, index);
-      const found =
-        context.retryCount > 0 ? await findMade(tracker, boardRef, marker, since) : null;
-      const made =
-        found ??
-        (await (async () => {
-          const created = await tracker.createTicket(boardRef, {
-            title: sub.title,
-            description: `${sub.description}\n\n${marker}`,
-            ...(caps.subIssues ? { parent: ref } : {}),
+        const marker = imageMarkerOf(image.id);
+        if (!(await markersOnTicket()).has(marker)) {
+          const bytes = await deps.readBlob(organizationId, image.blobId);
+          if (bytes === null) {
+            unattached.push(image.name);
+            continue;
+          }
+          const attached = await tracker.attachFile(boardRef, ref, {
+            name: image.name,
+            contentType: image.contentType,
+            bytes,
+            marker,
           });
-          if (!created.ok) return fail("creating a sub-ticket", created.error.code);
-          return created.value;
-        })());
-      if (!caps.subIssues) {
-        // No sub-issues: the parent links to it instead, also for one an earlier try made but
-        // couldn't link (`linkTask` is once per URL, so a link already there stays one).
-        const linked = await tracker.linkTask(boardRef, ref, {
-          url: made.url,
-          title: made.title.slice(0, 256),
-          subtitle: made.key,
+          if (!attached.ok) fail("attaching an image", attached.error.code);
+        }
+        await deps.db.refineDraftImage.update({
+          where: { id: image.id },
+          data: { attachedAt: new Date(deps.clock.now()) },
         });
-        if (!linked.ok) fail("linking a sub-ticket", linked.error.code);
       }
-      subTicketKeys.push(ticketKeySchema.parse(made.key));
-    }
 
-    await deps.db.$transaction(async (tx) => {
-      const session = await tx.session.findFirst({
-        where: { taskId },
-        orderBy: { startedAt: "desc" },
-        select: { id: true },
+      part = "description";
+      // 1. The description, with the criteria in their own field where the tracker has one: the
+      // domain's `draftTicketText`, the same text the panel's preview shows (ticket 27).
+      const text = draftTicketText(draft, {
+        acceptanceCriteriaField: caps.ticketFields.acceptanceCriteria,
+        unattachedImages: unattached,
+        taskUrl,
       });
-      const projectId = projectIdSchema.parse(draftRow.task.projectId);
-      if (session !== null) {
-        await appendServerEvent(tx, {
+      const updated = await tracker.updateTicket(boardRef, ref, {
+        description: text.description,
+        ...(text.acceptanceCriteria === null
+          ? {}
+          : { acceptanceCriteria: text.acceptanceCriteria }),
+      });
+      if (!updated.ok) fail("writing the description", updated.error.code);
+
+      part = "sub_tickets";
+      // 3. The sub-tickets, once each.
+      const subTicketKeys: TicketKey[] = [];
+      const since = (draftRow.appliedAt.getTime() || deps.clock.now()) - LOOKBACK_MS;
+      for (const [index, sub] of draft.subTickets.entries()) {
+        const marker = markerOf(taskUrl, draftRow.version, index);
+        const found = retried ? await findMade(tracker, boardRef, marker, since) : null;
+        const made =
+          found ??
+          (await (async () => {
+            const created = await tracker.createTicket(boardRef, {
+              title: sub.title,
+              description: `${sub.description}\n\n${marker}`,
+              ...(caps.subIssues ? { parent: ref } : {}),
+            });
+            if (!created.ok) return fail("creating a sub-ticket", created.error.code);
+            return created.value;
+          })());
+        if (!caps.subIssues) {
+          // No sub-issues: the parent links to it instead, also for one an earlier try made but
+          // couldn't link (`linkTask` is once per URL, so a link already there stays one).
+          const linked = await tracker.linkTask(boardRef, ref, {
+            url: made.url,
+            title: made.title.slice(0, 256),
+            subtitle: made.key,
+          });
+          if (!linked.ok) fail("linking a sub-ticket", linked.error.code);
+        }
+        subTicketKeys.push(ticketKeySchema.parse(made.key));
+      }
+
+      await deps.db.$transaction(async (tx) => {
+        // Written whole: a failure an earlier try recorded is over.
+        await tx.refineDraft.update({
+          where: { id: draftRow.id },
+          data: { applyFailedAt: null, applyFailedPart: null },
+        });
+        const session = await tx.session.findFirst({
+          where: { taskId },
+          orderBy: { startedAt: "desc" },
+          select: { id: true },
+        });
+        const projectId = projectIdSchema.parse(draftRow.task.projectId);
+        if (session !== null) {
+          await appendServerEvent(tx, {
+            organizationId,
+            projectId,
+            taskId,
+            sessionId: sessionIdSchema.parse(session.id),
+            at: deps.clock.now(),
+            event: {
+              kind: "draft.applied",
+              draftId: context.payload.draftId,
+              ticketKey: ticketKeySchema.parse(ticketRow.key),
+              subTickets: subTicketKeys,
+            },
+          });
+        }
+        await deps.notices.emitInTx(tx, {
           organizationId,
           projectId,
-          taskId,
-          sessionId: sessionIdSchema.parse(session.id),
-          at: deps.clock.now(),
-          event: {
-            kind: "draft.applied",
-            draftId: context.payload.draftId,
-            ticketKey: ticketKeySchema.parse(ticketRow.key),
-            subTickets: subTicketKeys,
-          },
+          entity: "task",
+          entityId: taskId,
         });
-      }
-      await deps.notices.emitInTx(tx, {
-        organizationId,
-        projectId,
-        entity: "task",
-        entityId: taskId,
       });
-    });
-    logger.info("draft.applied", {
-      subTickets: subTicketKeys.length,
-      attached: draftRow.images.length - unattached.length,
-    });
+      logger.info("draft.applied", {
+        subTickets: subTicketKeys.length,
+        attached: draftRow.images.length - unattached.length,
+      });
+    } catch (error) {
+      // The part it stopped at, for the panel; the queue retries the job, and a member's
+      // "Retry sync" can run it again once the queue gives up.
+      await deps.db.refineDraft.update({
+        where: { id: draftRow.id },
+        data: { applyFailedAt: new Date(deps.clock.now()), applyFailedPart: part },
+      });
+      logger.warn("draft.apply-failed", { part });
+      throw error;
+    }
   };
 
 // ---------- the built-in profiles ----------

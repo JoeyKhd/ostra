@@ -45,6 +45,7 @@ export const DraftProperties = ({ taskId, meId, readyStatusName, moveState, now 
     subTickets: data.draft.fields.subTickets.length,
     createdTicket: data.ticket === null,
     move: readyAt === null ? null : { state: moveState ?? "pending", status: readyStatusName ?? t("draft.readyStatus") },
+    failed: data.applyFailed?.part ?? null,
   });
   return (
     <>

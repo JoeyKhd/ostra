@@ -24,7 +24,7 @@ import { DraftList, DraftSubTickets, FieldLabel } from "./draft-field-list";
 import type { Editor } from "./draft-field-list";
 import { DraftImages, imageTypes } from "./draft-images";
 import { DraftPreview } from "./draft-preview";
-import { footnote, shownChips, siblingUrl, versionChip, versionWho } from "./draft-words";
+import { footnote, partlyAppliedText, shownChips, siblingUrl, versionChip, versionWho } from "./draft-words";
 import type { DraftView as DraftData } from "./draft-words";
 
 // A refine task's Draft tab (app-targets/m6/refine-draft.md; F-099, milestone 6's ticket 34): the
@@ -105,6 +105,7 @@ export const DraftView = ({ taskId, meId, needsYou, running, ticket, boards, rea
   const removeImage = useMutation(trpc.drafts.removeImage.mutationOptions({ onSettled: settle }));
   const updateTicket = useMutation(trpc.drafts.updateTicket.mutationOptions({ onSettled: settle }));
   const markReady = useMutation(trpc.drafts.markReady.mutationOptions({ onSettled: settle }));
+  const retrySync = useMutation(trpc.drafts.retrySync.mutationOptions({ onSettled: settle }));
   const createTicket = useMutation(trpc.drafts.createTicket.mutationOptions({ onSettled: settle }));
 
   const data: DraftData | undefined = draft.data;
@@ -321,7 +322,15 @@ export const DraftView = ({ taskId, meId, needsYou, running, ticket, boards, rea
 
       {/* 2. The draft block. */}
       <div className={cn("mt-3 border-l-2 pl-3", needsYou && !isApplied && !data.done ? "border-amber" : "border-line-2")} data-testid="draft-block">
-        {isApplied ? (
+        {isApplied && data.applyFailed !== null && data.written === null ? (
+          <p role="alert" className="mb-3 flex flex-wrap items-center gap-x-1.5 text-ui text-text" data-testid="draft-partly">
+            <TriangleAlertIcon aria-hidden className="size-[15px] stroke-[1.75] text-red" />
+            <span>{partlyAppliedText(appliedVersion.version, ticketKey ?? "", data.applyFailed.part)}</span>
+            <Button variant="link" className="h-auto px-0 text-ui" disabled={retrySync.isPending} onClick={() => { retrySync.mutate({ taskId }); }} data-testid="draft-retry-sync">
+              {retrySync.isPending ? t("draft.retrying") : t("draft.retrySync")}
+            </Button>
+          </p>
+        ) : isApplied ? (
           <p className="mb-3 flex flex-wrap items-center gap-x-1.5 text-ui text-text" data-testid="draft-applied">
             {data.written === null && !prompt ? (
               <TriangleAlertIcon aria-hidden className="size-[15px] stroke-[1.75] text-faint" />

@@ -1,7 +1,7 @@
 import { memberIdSchema, ticketKeySchema } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
-import { footnote, lineCount, markItems, moveItem, onLinearRows, shownChips, siblingUrl, versionChip } from "./draft-words";
+import { footnote, lineCount, markItems, moveItem, onLinearRows, partlyAppliedText, shownChips, siblingUrl, versionChip } from "./draft-words";
 
 // F-099 (ticket 34): the refine draft's pure parts. Whose words each item is decides the "edited by
 // you · the agent's: …" lines, the footnote names what "Update ticket" writes, and the On Linear
@@ -61,6 +61,23 @@ describe("the refine draft's words (F-099, ticket 34)", () => {
       ["Moved to Todo", "failed"],
     ]);
     expect(onLinearRows({ appliedAt: null, written: null, images: [], subTickets: 0, createdTicket: false, move: null })).toEqual([]);
+  });
+
+  it("F-099/c6: a write that stopped partway shows its part failed, the parts before it done, and the partly-applied line", () => {
+    const applied = { appliedAt: 1, images: [{ attachedAt: 2 }], subTickets: 2, createdTicket: false, written: null, move: null };
+    expect(onLinearRows({ ...applied, failed: "sub_tickets" }).map((row) => [row.id, row.state])).toEqual([
+      ["description", "done"],
+      ["images", "done"],
+      ["sub-issues", "failed"],
+    ]);
+    expect(onLinearRows({ ...applied, images: [{ attachedAt: null }], failed: "images" }).map((row) => [row.id, row.state])).toEqual([
+      ["description", "pending"],
+      ["images", "failed"],
+      ["sub-issues", "pending"],
+    ]);
+    expect(onLinearRows({ ...applied, failed: "description" }).map((row) => row.state)).toEqual(["failed", "done", "pending"]);
+    expect(partlyAppliedText(3, "CALC-180", "images")).toBe("Version 3 is partly on CALC-180: the image wasn't attached.");
+    expect(partlyAppliedText(3, "CALC-180", "sub_tickets")).toBe("Version 3 is partly on CALC-180: the sub-issues weren't all created.");
   });
 
   it("moves an item up and down, and not past an end; counts a sub-ticket's lines; finds a sub-issue's address", () => {

@@ -9,6 +9,7 @@ import {
   markTicketReady,
   parseBoardMapping,
   removeDraftImage,
+  retryDraftApply,
   taskPageUrl,
 } from "@ostra/domain";
 import type { M6Deps } from "@ostra/domain";
@@ -67,6 +68,13 @@ const trackerFields = async (
 
 /** What core's `draft.apply` recorded for a version once it was written: the ticket and the sub-tickets it made (ticket 34's applied state). */
 const appliedEventSchema = z.object({ ticketKey: ticketKeySchema, subTickets: z.array(ticketKeySchema) });
+
+/** A version's last failed write (ticket 41): the part it stopped at and when; `null` when none failed. */
+const failedWrite = (row: { readonly applyFailedAt: Date | null; readonly applyFailedPart: "images" | "description" | "sub_tickets" | null } | null) => {
+  if (row === null) return null;
+  const { applyFailedAt: at, applyFailedPart: part } = row;
+  return at === null || part === null ? null : { part, at: at.getTime() };
+};
 
 export const draftsRouter = router({
   /**
@@ -167,6 +175,11 @@ export const draftsRouter = router({
       agentDraft: newestAgent === null || agentFields === null ? null : { version: newestAgent.version, fields: agentFields },
       /** Ticket 34: once core wrote the shown version, the ticket and the sub-tickets it made; `null` before. */
       written: applied?.success === true ? { ticketKey: applied.data.ticketKey, subTickets: applied.data.subTickets } : null,
+      /**
+       * Ticket 41: the shown version's last failed write, while it isn't written whole: the part it
+       * stopped at and when, for the panel's "partly applied" and "Retry sync".
+       */
+      applyFailed: applied?.success === true ? null : failedWrite(row),
       /** The ticket "Create ticket" made from the shown version, on a prompt refine task. */
       createdTicketKey: row?.createdTicketKey ?? null,
       /** Whether the tracker makes sub-tickets sub-issues (else linked tickets), for the footnote's words. */
@@ -250,6 +263,16 @@ export const draftsRouter = router({
       "task-done": "PRECONDITION_FAILED",
     });
     return { appliedAt: applied.appliedAt };
+  }),
+
+  /** "Retry sync" (ticket 41): a version whose write failed goes to the ticket again; nothing is written twice. */
+  retrySync: taskProcedure("read", z.strictObject({ taskId: taskIdSchema })).mutation(async ({ ctx }) => {
+    const retried = unwrap(await retryDraftApply(deps(ctx), ctx.scope, { taskId: ctx.task.taskId }), {
+      forbidden: "FORBIDDEN",
+      "not-found": "NOT_FOUND",
+      "nothing-failed": "PRECONDITION_FAILED",
+    });
+    return { version: retried.version };
   }),
 
   /** "Mark ready": the ticket moves to the board's ready status. The task is done. */
