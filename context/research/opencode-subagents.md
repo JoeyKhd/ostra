@@ -52,14 +52,14 @@ A subagent can run more than once: the main agent may call `subagent` again with
 
 OpenCode answers `session/prompt` when the main session's own run ends, and keeps the turn's children and background shells "pending" ([OC] `translate.ts:145-148`; `turn.ts:324-350`). When a child goes idle, OpenCode wakes the main session with a `<subagent sessionID=... state="completed" description=...>` message holding the child's answer, which starts a new run of the main agent with no prompt in flight ([OC] `core/src/session/subagent-completion.ts:77`; [EV C], [EV H]).
 
-For ostra this means:
+For ostra this meant, until the fix of section 5:
 - **A one-shot task** (a spec below minor 1) ends the agent right after the prompt is answered ([OS] `apps/runner/src/task-host/task-run.ts:2056-2080`): a subagent still working is killed with the box, and the main agent's real answer, given when the subagent reports back, never comes. In run H that answer came 8 s after the prompt was answered ([EV H]).
 - **A session across turns** keeps the agent, so the wake-up runs happen, but their updates reach the adapter with no turn running. The adapter maps them under the last turn's ID, after its `turn.ended` ([OS] `packages/adapter-sdk/src/agent/base.ts:547-560`, where `#turns` keeps the last turn's ID).
 - **Spend** is counted either way, for every call made before the agent ends (summary item 6). A call cut off when the agent is killed is counted as an estimate when its answer had begun, and not counted when it hadn't ([OS] `key-proxy.ts:419-445`); a background subagent makes that cut likelier. **Unverified:** whether a provider bills a request cut before its answer begins.
 
 ## 3. Tools a subagent gets under ostra's config
 
-OpenCode's built-in `general` agent denies `question` and `subagent`, and `explore` denies everything but reading, searching, the shell and the web ([OC] `core/src/plugin/agent.ts:63-93`). ostra's config starts with `allow *` ([OS] `config.ts`, `permissionRules`), and OpenCode pushes the config's permissions onto every agent after the built-in ones, so the last match, ostra's, wins ([OC] `core/src/config/plugin/agent.ts:65-73`). In every probe run each subagent was offered the main agent's 13 tools, `subagent` and `question` included, `explore` too ([EV A] to [EV I], "tools offered per call"). So under ostra an `explore` subagent can edit, and a subagent can ask the member a question **(inferred for the question: not run)**. ostra's own `ask` rules still reach a subagent's calls ([EV I]). The plan agent's denies are written under `agents.plan`, so they come after and still hold (`packages/adapters/adapter-opencode/README.md`, "Plan first").
+OpenCode's built-in `general` agent denies `question` and `subagent`, and `explore` denies everything but reading, searching, the shell and the web ([OC] `core/src/plugin/agent.ts:63-93`). ostra's config starts with `allow *` ([OS] `config.ts`, `permissionRules`), and OpenCode pushes the config's permissions onto every agent after the built-in ones, so the last match, ostra's, wins ([OC] `core/src/config/plugin/agent.ts:65-73`). In every probe run each subagent was offered the main agent's 13 tools, `subagent` and `question` included, `explore` too ([EV A] to [EV I], "tools offered per call"). So under ostra an `explore` subagent could edit, and a subagent can ask the member a question **(inferred for the question: not run)**. Fixed for `explore` on 2026-11-20 (section 5). ostra's own `ask` rules still reach a subagent's calls ([EV I]). The plan agent's denies are written under `agents.plan`, so they come after and still hold (`packages/adapters/adapter-opencode/README.md`, "Plan first").
 
 ## 4. What the subagent screen needs that ostra lacks
 
@@ -69,9 +69,22 @@ OpenCode's built-in `general` agent denies `question` and `subagent`, and `explo
 4. **Tokens per subagent:** nothing in ACP gives them (section 1). The key proxy sees every call but not whose it is. **Inferred:** a subagent's every call opens with the message `You are a subagent spawned by another session.` followed by its prompt ([OC] `subagent.ts:199`), so the runner could tell its calls apart in memory by that opening, joined to the `subagent` call's prompt, without logging it. An ADR decides it.
 5. **Approvals:** the driver's `PermissionRequest` gains the child's session from `toolCall._meta`, so the card names the subagent that asks.
 
+## 5. What ostra does since the fix (2026-11-20, ADR 0067)
+
+The maintainer approved the fix for sections 2 and 3 ("yes"). Each claim below is checked by a test that names it, against the pinned binary and the stub model.
+
+- **The turn waits.** The driver sends `_meta["opencode/child-session-updates"]: true` and reads `opencode/session/child_update` ([OS] `packages/adapter-sdk/src/agent/acp/driver.ts`, "Subagents"). A turn ends once its prompt is answered, no child is `created` or `running`, and the agent was at work after the last one ended and is idle again. So a one-shot task keeps its agent until the real answer, which lands in the turn's events (`apps/runner/src/task-host/task-host.opencode.test.ts`, "F-023, F-138: a task doesn't end while its agent's subagent runs …"). The bound is `OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES`, default 30.
+- **Idle, by a probe.** OpenCode sends nothing when a wake-up run ends. Its steering extension checks for a running turn before it reads the prompt ([OC] `cli/src/acp/turn.ts:433-437`), and its prompt reader refuses an image with neither data nor URI ([OC] `cli/src/acp/prompt.ts:23`). So `_session/steering` with such an image answers `promptRequired` on an idle session, refuses a busy one with `-32602` and `data.field: "prompt"`, and injects nothing either way.
+- **A cancel reaches the prompt alone.** `session/cancel` removes the prompt's fiber and nothing else ([OC] `cli/src/acp/turn.ts:452-454`). Interrupting a session doesn't interrupt its children: core cascades to children only when a session is deleted ([OC] `core/src/session.ts:404-418`). `session/close` on a session with no prompt in flight interrupts that session's execution ([OC] `cli/src/acp/turn.ts:455-463`, `cli/src/acp/service.ts:228-233`). So ostra closes each running child session, then the session itself, which also ends OpenCode's follower, and resumes it (`session/resume`). The agent contract case "F-025: a cancel while a subagent runs stops it with the turn …" checks that the subagent makes no model call after the cancel, and that nothing arrives after `turn.ended`.
+- **`explore` stays read-only.** OpenCode's built-in rules for `explore` ([OC] `core/src/plugin/agent.ts:74-93`) are written into ostra's config as `agents.explore.permissions`, which come last, with two differences:
+  - the shell is the plan agent's read-only list, not every command;
+  - `external_directory` stays denied.
+
+  In a real run, explore isn't offered `edit` or `write`, and its edit and its shell write both fail (`task-host.opencode.test.ts`, "F-026: OpenCode's explore subagent stays read-only …"). `general` keeps the task's permissions and the profile's asks.
+
 ## Unverified
 
 - Whether a subagent's question (`question` tool, an elicitation) reaches ostra as it does from the main agent.
 - A subagent's follow-up rounds (`subagent` called again with its `sessionID`).
-- `failed` and `interrupted` notices: not produced in a run.
-- Whether `session/cancel` interrupts a background subagent, or only the main session ([OC] `turn.ts`, `windDown`, interrupts the main session only).
+- A `failed` notice: not produced in a run. `interrupted` is now produced by ostra's own cancel (section 5).
+- A background shell (OpenCode's other "pending" work, [OC] `translate.ts`, `pending`) is reported over ACP only by its tool call. A turn doesn't wait for one **(inferred from the source; not run)**.

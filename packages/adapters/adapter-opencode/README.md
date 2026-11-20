@@ -40,3 +40,11 @@ Without a switch, a repo's `opencode.json` that allows everything wins over the 
 
 OpenCode's `subagent` tool always runs its subagent in the background: the call ends at once with the child's session ID, the agent is told to end its turn, and the subagent's report wakes the agent later (`context/research/opencode-subagents.md`). The adapter declares `subagents: "background"`, so the driver asks for `opencode/child-session-updates` and a turn waits for its subagents and the turns their reports wake, up to `OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES`. A cancel closes each running child session (`session/close` interrupts it), then the session's own follower, and resumes the session.
 
+OpenCode's built-in subagents are `general` and `explore`. `general` keeps the task's permissions, the profile's asks included. `explore` is read-only in OpenCode's own rules, which the task's `allow *` would override, so the config writes them as `agents.explore.permissions` (`explorePermissions`), after the task's:
+- deny everything;
+- then allow `grep`, `glob`, `read` (asking for `.env` files), `webfetch` and `websearch`;
+- deny `subagent`;
+- allow the plan agent's read-only command list and no other command, where OpenCode allows explore any command and asks it in words to stay read-only;
+- deny `external_directory` last.
+
+With a profile rule on commands or the network, those commands and fetches ask instead. Explore isn't offered `edit` or `write`.

@@ -29,3 +29,4 @@ The maintainer, 2026-11-20: "just a badge in the conversation that shows the amo
 ## Comments
 
 - 2026-11-20: opened after the maintainer approved the targets and the subagent turn fix.
+- 2026-11-20: the subagent turn fix is in (ADR 0067). The agent interface has `AgentCapabilities.subagents` (`background` for OpenCode and the `rich` fake, `none` for the `plain` fakes); the driver already asks for `opencode/child-session-updates`, reads `opencode/session/child_update` (today it forwards the `update`s flat and keeps the states for the turn's wait) and joins each child to its starting call (`startedBy`, from `rawOutput.metadata.sessionID`). The `rich` fake plays a background subagent (`[[fake:subagent-bg]]`), and OpenCode's stub scenarios have `subagent-bg`.

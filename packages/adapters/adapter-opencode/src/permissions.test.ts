@@ -14,7 +14,7 @@ import { OPENCODE_VERSION } from "./binary.ts";
 import type { OpenCodeBinary } from "./binary.ts";
 import { allowedEnvNames, buildCliEnv, SKILLS_HEADING, taskDirs } from "./config.ts";
 import { OpenCodeAdapter } from "./opencode-adapter.ts";
-import { buildPermissions, globToResource, planModePermissions, prefixToResource } from "./permissions.ts";
+import { buildPermissions, EXPLORE_AGENT, explorePermissions, globToResource, planModePermissions, prefixToResource } from "./permissions.ts";
 import type { OpenCodePermission } from "./permissions.ts";
 
 // The profile's side of OpenCode's config (ticket 08, ADR 0049): the rules as its own permissions,
@@ -186,6 +186,54 @@ describe("the profile's rules as OpenCode's permissions", () => {
     expect(decide(plan, "subagent", "general")).toBe("deny");
     expect(decide(plan, "files_write", "*")).toBe("deny");
     expect(decide(plan, "docs_search", "*")).toBe("allow");
+  });
+});
+
+describe("OpenCode's explore subagent (2026-11-20)", () => {
+  /** Explore's rules as OpenCode 2.3.2 checks them: its built-ins, the task's, then the config's for the agent. */
+  const exploreOf = (approvalRules: readonly ApprovalRule[]): readonly OpenCodePermission[] => [
+    // OpenCode's own (packages/core/src/plugin/agent.ts at v2.3.2), which the task's `allow *` buries.
+    { action: "*", resource: "*", effect: "deny" },
+    { action: "shell", resource: "*", effect: "allow" },
+    ...buildPermissions({ approvalRules, mcpServers: servers }),
+    ...explorePermissions(approvalRules),
+  ];
+
+  it("F-026: explore stays read-only: no edit, no command outside the read-only list, no subagent, no MCP tool, nothing outside the workspace", () => {
+    const explore = exploreOf([]);
+    expect(decide(explore, "edit", "README.md")).toBe("deny");
+    expect(decide(explore, "shell", "node -e \"require('fs').writeFileSync('x','y')\"")).toBe("deny");
+    expect(decide(explore, "shell", "cat a > b")).toBe("deny");
+    expect(decide(explore, "shell", "git log --oneline")).toBe("allow");
+    expect(decide(explore, "read", "src/index.ts")).toBe("allow");
+    expect(decide(explore, "read", ".env")).toBe("ask");
+    expect(decide(explore, "read", ".env.example")).toBe("allow");
+    expect(decide(explore, "grep", "*")).toBe("allow");
+    expect(decide(explore, "glob", "*")).toBe("allow");
+    expect(decide(explore, "webfetch", "https://example.com")).toBe("allow");
+    expect(decide(explore, "subagent", "general")).toBe("deny");
+    expect(decide(explore, "docs_search", "*")).toBe("deny");
+    expect(decide(explore, "ostra_set_pr_title", "*")).toBe("deny");
+    expect(decide(explore, "external_directory", "/etc")).toBe("deny");
+  });
+
+  it("F-026: a profile's rule on commands or the network still asks for what explore may do, and never opens what it may not", () => {
+    const explore = exploreOf([rule("any-command", "execute", { kind: "any" }), rule("network", "fetch", { kind: "any" }), rule("any-edit", "edit", { kind: "any" })]);
+    expect(decide(explore, "shell", "git log --oneline")).toBe("ask");
+    expect(decide(explore, "shell", "node -e 1")).toBe("deny");
+    expect(decide(explore, "webfetch", "https://example.com")).toBe("ask");
+    expect(decide(explore, "websearch", "ostra")).toBe("ask");
+    expect(decide(explore, "edit", "README.md")).toBe("deny");
+  });
+
+  it("F-026: the config gives explore its rules, and leaves general on the task's own, the profile's asks included", async () => {
+    const config = await configOf(newAdapter(), { approvalRules: [rule("any-edit", "edit", { kind: "any" })] });
+    const permission = z.object({ action: z.string(), resource: z.string(), effect: z.enum(["allow", "ask", "deny"]) });
+    const agents = z.record(z.string(), z.object({ permissions: z.array(permission) })).parse(config["agents"]);
+    expect(agents[EXPLORE_AGENT]?.permissions).toEqual(explorePermissions([rule("any-edit", "edit", { kind: "any" })]));
+    expect(Object.keys(agents).sort()).toEqual(["explore", "plan"]);
+    const task = z.array(permission).parse(config["permissions"]);
+    expect(decide(task, "edit", "README.md")).toBe("ask");
   });
 });
 

@@ -104,6 +104,30 @@ beforeAll(async () => {
       },
       // A subagent that never ends: a short wait at every step, each one a model call.
       "loop-child": ({ step }) => ({ toolCalls: [{ name: "shell", arguments: { command: `node -e "setTimeout(()=>{},1500)"`, timeout: 60_000, description: `wait ${String(step)}` } }] }),
+      // OpenCode's read-only explore subagent, which tries to change the repo.
+      "explore-subagent": ({ step }) => {
+        if (step === 0) {
+          return { toolCalls: [{ name: "subagent", arguments: { agent: "explore", description: "look around", prompt: `${stubMarker("explore-tries")} Look at README.md.` } }] };
+        }
+        if (step === 1) {
+          return { text: "launched explore, ending my turn" };
+        }
+        return step === 2 ? { text: "explore reported back" } : undefined;
+      },
+      // Explore's own calls: an edit of the README, then a file written through the shell, then what each did.
+      "explore-tries": ({ step, since }) => {
+        if (step === 0) {
+          return { toolCalls: [{ name: "edit", arguments: { path: "README.md", oldString: "hello", newString: "changed by explore" } }] };
+        }
+        if (step === 1) {
+          return { toolCalls: [{ name: "shell", arguments: { command: `node -e "require('fs').writeFileSync('explore-wrote.txt','x')"`, timeout: 60_000, description: "write a file" } }] };
+        }
+        if (step === 2) {
+          const results = since.filter((message) => message.role === "tool");
+          return { text: `explore results: ${results.map((result) => (result.isError ? "error" : "ok")).join(",")}` };
+        }
+        return undefined;
+      },
     }),
   });
 }, 60_000);
@@ -381,6 +405,31 @@ describe("the task host with OpenCode's subagents", () => {
       await pause(4_000);
       expect(subagentCallsOf(stub.calls.slice(before)).length).toBe(calls);
       expect(messagesOf(h, spec).some((message) => message.text.includes("the final answer"))).toBe(false);
+    } finally {
+      await h.close();
+    }
+  }, 180_000);
+
+  it("F-026: OpenCode's explore subagent stays read-only: its edit and its shell write are refused, and the repo is unchanged", async () => {
+    const h = await harness("explore");
+    const before = stub.calls.length;
+    try {
+      const spec = dispatchTask(h, "explore", `${stubMarker("explore-subagent")} Have explore look around.`, { baseUrl: stub.baseUrl, token: STUB_TOKEN, endpointModelId: "stub-model" });
+      await h.gateway.waitFor(() => kindsOf(h, spec).includes("session.ended") || kindsOf(h, spec).includes("session.crashed"), 150_000);
+      expect(kindsOf(h, spec)).toContain("session.ended");
+      // Explore isn't even offered a tool that edits; its edit and its write through the shell both fail.
+      const exploreCalls = subagentCallsOf(stub.calls.slice(before));
+      expect(exploreCalls.length).toBeGreaterThan(0);
+      for (const call of exploreCalls) {
+        expect(call.toolNames, "explore's tools").not.toContain("edit");
+        expect(call.toolNames, "explore's tools").not.toContain("write");
+      }
+      expect(messagesOf(h, spec).map((message) => message.text).join("\n")).toContain("explore results: error,error");
+      const ended = eventsOf(h, spec).find((item) => item.event.kind === "session.ended")?.event;
+      expect(ended).toMatchObject({ outcome: "without-changes" });
+      const readme = await upstream.fileAt("ostra-test/test1", `refs/heads/${spec.branchName}`, "README.md").catch(() => null);
+      expect((readme ?? "").includes("changed by explore")).toBe(false);
+      expect(await upstream.fileAt("ostra-test/test1", `refs/heads/${spec.branchName}`, "explore-wrote.txt").catch(() => null)).toBeNull();
     } finally {
       await h.close();
     }

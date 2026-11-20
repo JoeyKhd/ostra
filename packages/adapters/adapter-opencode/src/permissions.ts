@@ -216,6 +216,17 @@ export const buildPermissions = (input: PermissionInput): readonly OpenCodePermi
 };
 
 /**
+ * A shell that runs the read-only list alone (`PLAN_MODE_READ_ONLY_COMMANDS`): every other command
+ * denied, and so is anything a listed command could still be made to do (write a file through a
+ * redirection, run another command). `listed` is what the listed commands get: `allow`, or `ask`.
+ */
+const readOnlyShell = (listed: "allow" | "ask"): readonly OpenCodePermission[] => [
+  { action: "shell", resource: "*", effect: "deny" },
+  ...PLAN_MODE_READ_ONLY_COMMANDS.flatMap((command) => allowsFor(command).map((resource) => ({ action: "shell", resource, effect: listed }))),
+  ...["*>*", "*$(*", "*`*", "*<(*"].map((resource) => ({ action: "shell", resource, effect: "deny" as const })),
+];
+
+/**
  * What OpenCode's plan agent may not do, on top of its own refusal of edits (ADR 0049, F-063): a
  * command outside the read-only list, a write through a redirection, a fetch, a web search, a
  * subagent (which could edit), and a tool of an MCP server that isn't read-only. Written as the
@@ -223,15 +234,47 @@ export const buildPermissions = (input: PermissionInput): readonly OpenCodePermi
  */
 export const planModePermissions = (mcpServers: readonly LaunchMcpServer[]): readonly OpenCodePermission[] => [
   { action: "edit", resource: "*", effect: "deny" },
-  { action: "shell", resource: "*", effect: "deny" },
-  ...PLAN_MODE_READ_ONLY_COMMANDS.flatMap((command) => allowsFor(command).map((resource) => ({ action: "shell", resource, effect: "allow" as const }))),
-  // Anything a read-only command could still be made to do: write a file, or run another command.
-  ...["*>*", "*$(*", "*`*", "*<(*"].map((resource) => ({ action: "shell", resource, effect: "deny" as const })),
+  ...readOnlyShell("allow"),
   { action: "webfetch", resource: "*", effect: "deny" },
   { action: "websearch", resource: "*", effect: "deny" },
   { action: "subagent", resource: "*", effect: "deny" },
   ...mcpServers.filter((server) => !server.readOnly).map((server) => ({ action: `${server.name}_*`, resource: "*", effect: "deny" as const })),
 ];
+
+/** OpenCode's read-only subagent, by its ID. */
+export const EXPLORE_AGENT = "explore";
+
+/**
+ * OpenCode 2.3.2's own rules for its read-only `explore` subagent (`packages/core/src/plugin/agent.ts`
+ * at tag v2.3.2), written as the agent's permissions in ostra's config, which OpenCode checks after
+ * the task's: without them the task's `allow *` would win over its built-in denies, and explore
+ * could edit (`research/opencode-subagents.md`, section 3). Mirrored rule for rule, with two
+ * differences. OpenCode allows explore any command and asks it, in its prompt, to run read-only
+ * ones; ostra allows the read-only list alone, as the plan agent has it, since any other command
+ * could write. And `external_directory` stays denied, as for every agent of a task. A profile's
+ * rule still reaches what explore may do: with a rule on commands, each listed command asks, and
+ * with a rule on the network, a fetch or a web search asks; the runner answers the requests no
+ * rule covers, as for any over-ask.
+ */
+export const explorePermissions = (approvalRules: readonly ApprovalRule[]): readonly OpenCodePermission[] => {
+  const watchesCommands = approvalRules.some((rule) => rule.tool === "execute");
+  const watchesFetches = approvalRules.some((rule) => rule.tool === "fetch");
+  const [, denyOutside] = permissionRules;
+  return [
+    { action: "*", resource: "*", effect: "deny" },
+    { action: "grep", resource: "*", effect: "allow" },
+    { action: "glob", resource: "*", effect: "allow" },
+    { action: "webfetch", resource: "*", effect: watchesFetches ? "ask" : "allow" },
+    { action: "websearch", resource: "*", effect: watchesFetches ? "ask" : "allow" },
+    { action: "read", resource: "*", effect: "allow" },
+    { action: "read", resource: "*.env", effect: "ask" },
+    { action: "read", resource: "*.env.*", effect: "ask" },
+    { action: "read", resource: "*.env.example", effect: "allow" },
+    { action: "subagent", resource: "*", effect: "deny" },
+    ...readOnlyShell(watchesCommands ? "ask" : "allow"),
+    denyOutside,
+  ];
+};
 
 /** The OpenCode agent a mode runs as: its own plan agent, with the denies above, or its build agent. Their IDs are ostra's mode names. */
 export const agentForMode = (mode: TurnMode): string => mode;

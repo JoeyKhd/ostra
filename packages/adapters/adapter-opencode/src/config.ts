@@ -3,7 +3,7 @@ import path from "node:path";
 import { composeLaunchInstructions, effortModelOf, GIT_GUARD_ENV_NAMES } from "@ostra/adapter-sdk";
 import type { LaunchFile, LaunchMcpServer, PrepareLaunchInput } from "@ostra/adapter-sdk";
 
-import { agentForMode, buildPermissions, OSTRA_MCP_SERVER, planModePermissions } from "./permissions.ts";
+import { agentForMode, buildPermissions, EXPLORE_AGENT, explorePermissions, OSTRA_MCP_SERVER, planModePermissions } from "./permissions.ts";
 import type { OpenCodePermission } from "./permissions.ts";
 
 export { permissionRules } from "./permissions.ts";
@@ -153,8 +153,13 @@ export const buildOpenCodeConfig = (input: PrepareLaunchInput, instructionsPath:
     update: "disable",
     // The profile's rules as OpenCode's own permissions, never its defaults (ADR 0031, ADR 0049).
     permissions: taskPermissionRules(input),
-    // Plan first runs as OpenCode's plan agent, made read-only by the denies it adds (F-063).
-    agents: { [agentForMode("plan")]: { permissions: planModePermissions(mcpServers) } },
+    // Plan first runs as OpenCode's plan agent, made read-only by the denies it adds (F-063). Its
+    // read-only `explore` subagent keeps its own denies, which the task's `allow *` would override;
+    // `general` keeps the task's permissions, the profile's asks included.
+    agents: {
+      [agentForMode("plan")]: { permissions: planModePermissions(mcpServers) },
+      [EXPLORE_AGENT]: { permissions: explorePermissions(input.approvalRules ?? []) },
+    },
     default_agent: agentForMode(input.mode ?? "build"),
     // The profile's skills, from the folders the runner wrote them to in the task's agent folder,
     // then the repos' own, which the project config being off would otherwise drop.
