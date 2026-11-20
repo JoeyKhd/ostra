@@ -23,6 +23,9 @@ export const installationAuditActions = {
   connectionAdded: "connection.added",
 } as const;
 
+/** The refusal for a repo of an installation ostra may not use: seen on GitHub, not linked. */
+export const NOT_LINKED_MESSAGE = "This installation isn't linked";
+
 export type InstallationRow = { readonly state: "linked" | "removed"; readonly removedAt: Date | null };
 
 /**

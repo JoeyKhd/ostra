@@ -155,7 +155,7 @@ export const projectReposProcedures = {
     }),
 };
 
-type RepoRefusal = "forbidden" | "not-found" | "limit-reached" | "already-added" | "no-access" | "last-repo" | "in-use" | "invalid-input";
+type RepoRefusal = "forbidden" | "not-found" | "limit-reached" | "already-added" | "no-access" | "not-linked" | "last-repo" | "in-use" | "invalid-input";
 
 const codeOf = (error: RepoRefusal) => {
   switch (error) {
@@ -169,6 +169,7 @@ const codeOf = (error: RepoRefusal) => {
       return "BAD_REQUEST" as const;
     case "limit-reached":
     case "no-access":
+    case "not-linked":
     case "last-repo":
     case "in-use":
       return "PRECONDITION_FAILED" as const;

@@ -6,6 +6,7 @@ import type { OrganizationId, ProjectId, RepoFullName, RepoId, TaskId } from "@o
 
 import { requireProjectAccess } from "../access.ts";
 import type { MemberScope } from "../access.ts";
+import { NOT_LINKED_MESSAGE } from "../code-host/installations.ts";
 import type { TaskStateName } from "../lifecycles/task.ts";
 import type { AuditLog, ChangeNotices, Clock, JobQueue, ServerAdapters } from "../ports.ts";
 import type { UseCaseResult } from "../use-cases/common.ts";
@@ -57,23 +58,55 @@ const projectFor = async (
 const lockProject = (tx: Tx, organizationId: OrganizationId, projectId: ProjectId) =>
   tx.$queryRaw<readonly unknown[]>`SELECT 1 FROM "project" WHERE "id" = ${projectId} AND "organizationId" = ${organizationId} FOR UPDATE`;
 
-/** The repo as an installation of the organization's App lists it, or `null` when none does (milestone 1's `listRepos` check). */
+/** A GitHub connection's App credentials, or `null` when its key can't be read. */
+const appCredentialsOf = async (deps: ProjectReposDeps, organizationId: OrganizationId, connection: { readonly appId: string; readonly privateKeySecretRef: string | null }) => {
+  const ref = secretRefSchema.safeParse(connection.privateKeySecretRef);
+  if (!ref.success) return null;
+  const key = await deps.adapters.secretStore.get(organizationId, ref.data);
+  return key.ok ? { appId: connection.appId, privateKey: key.value } : null;
+};
+
+const sameRepo = (fullName: RepoFullName) => (repo: { readonly fullName: string }) => repo.fullName.toLowerCase() === fullName.toLowerCase();
+
+/**
+ * The repo as a linked installation of one of the organization's Apps lists it. Else `not-linked`
+ * when an installation GitHub lists but ostra hasn't linked (a waiting one) has it, and `null`
+ * when none reaches it (milestone 1's `listRepos` check, F-136).
+ */
 const findReachableRepo = async (deps: ProjectReposDeps, organizationId: OrganizationId, fullName: RepoFullName) => {
   const installations = await deps.db.codeHostInstallation.findMany({
-    where: { organizationId, state: "linked", connection: { kind: "github" } },
+    where: { organizationId, state: "linked", removedAt: null, connection: { kind: "github" } },
     orderBy: { createdAt: "asc" },
     select: { installationId: true, connectionId: true, connection: { select: { appId: true, privateKeySecretRef: true } } },
   });
   for (const installation of installations) {
-    const ref = secretRefSchema.safeParse(installation.connection.privateKeySecretRef);
-    if (!ref.success) continue;
-    const key = await deps.adapters.secretStore.get(organizationId, ref.data);
-    if (!key.ok) continue;
-    const listed = await deps.adapters.codeHost.listRepos({ appId: installation.connection.appId, privateKey: key.value }, installation.installationId);
+    const app = await appCredentialsOf(deps, organizationId, installation.connection);
+    if (app === null) continue;
+    const listed = await deps.adapters.codeHost.listRepos(app, installation.installationId);
     if (!listed.ok) continue;
-    const found = listed.value.find((repo) => repo.fullName.toLowerCase() === fullName.toLowerCase());
+    const found = listed.value.find(sameRepo(fullName));
     if (found !== undefined) {
-      return { ...found, installationId: installation.installationId, connectionId: installation.connectionId };
+      return { kind: "reachable", repo: { ...found, installationId: installation.installationId, connectionId: installation.connectionId } } as const;
+    }
+  }
+  // None linked lists it: is it a waiting installation's? Its repos are offered nowhere, but the refusal says why.
+  const linked = new Set(installations.map((installation) => `${installation.connectionId}:${installation.installationId}`));
+  const connections = await deps.db.connection.findMany({
+    where: { organizationId, kind: "github" },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { id: true, appId: true, privateKeySecretRef: true },
+  });
+  for (const connection of connections) {
+    const app = await appCredentialsOf(deps, organizationId, connection);
+    if (app === null) continue;
+    const seen = await deps.adapters.codeHost.listInstallations(app);
+    if (!seen.ok) continue;
+    for (const installation of seen.value) {
+      if (linked.has(`${connection.id}:${installation.installationId}`)) continue;
+      const listed = await deps.adapters.codeHost.listRepos(app, installation.installationId);
+      if (listed.ok && listed.value.some(sameRepo(fullName))) {
+        return { kind: "not-linked" } as const;
+      }
     }
   }
   return null;
@@ -100,10 +133,14 @@ export const addProjectRepo = async (
   if (!canAddProjectRepo(existing.length, maxRepos)) {
     return { ok: false, error: "limit-reached", message: `A project holds at most ${String(maxRepos)} repos` };
   }
-  const hostRepo = await findReachableRepo(deps, organizationId, input.fullName);
-  if (hostRepo === null) {
+  const reach = await findReachableRepo(deps, organizationId, input.fullName);
+  if (reach === null) {
     return { ok: false, error: "no-access", message: "The organization's GitHub App can't reach that repo: install it there first" };
   }
+  if (reach.kind === "not-linked") {
+    return { ok: false, error: "not-linked", message: NOT_LINKED_MESSAGE };
+  }
+  const hostRepo = reach.repo;
   return deps.db.$transaction(async (tx): Promise<AddProjectRepoResult> => {
     await lockProject(tx, organizationId, project.projectId);
     // Under the lock: the count and the positions another add may have changed.

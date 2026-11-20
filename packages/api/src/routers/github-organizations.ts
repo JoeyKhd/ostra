@@ -5,6 +5,7 @@ import {
   isOwnInstallation,
   linkInstallationInTx,
   linkOwnInstallationInTx,
+  NOT_LINKED_MESSAGE,
   removeInstallation,
   seenInstallationOf,
   unlinkInstallation,
@@ -28,8 +29,8 @@ import { adminProcedure, unwrap } from "../trpc/init.ts";
 // installation, each with its audit entry. Repos come only from linked installations: a waiting
 // one's are offered nowhere.
 
-/** The refusal for a repo of an installation ostra may not use. */
-export const NOT_LINKED_MESSAGE = "This installation isn't linked";
+/** The refusal for a repo of an installation ostra may not use (the domain's, so `projects.addRepo` says the same). */
+export { NOT_LINKED_MESSAGE };
 
 /** Where GitHub delivers a connection's events: its own address (core's `/webhooks/github/:id`). */
 export const webhookUrlOf = (corePublicUrl: string, connectionId: ConnectionId): string => `${corePublicUrl}/webhooks/github/${connectionId}`;

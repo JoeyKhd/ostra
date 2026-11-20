@@ -109,7 +109,15 @@ describe("F-136: GitHub organizations in the API", () => {
       ["ostra-test", ["ostra-test/test1", "ostra-test/test2"]],
     ]);
     expect(JSON.stringify(offered)).not.toContain("secret-sauce");
-    await expect(caller.projects.addRepo({ projectId, fullName: repoFullNameSchema.parse("stranger-co/secret-sauce") })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    // A waiting installation's repo is refused as not linked (spec step 15); one no installation lists, as unreachable.
+    await expect(caller.projects.addRepo({ projectId, fullName: repoFullNameSchema.parse("stranger-co/secret-sauce") })).rejects.toMatchObject({
+      code: "PRECONDITION_FAILED",
+      message: "This installation isn't linked",
+    });
+    await expect(caller.projects.addRepo({ projectId, fullName: repoFullNameSchema.parse("nobody-co/nowhere") })).rejects.toMatchObject({
+      code: "PRECONDITION_FAILED",
+      message: "The organization's GitHub App can't reach that repo: install it there first",
+    });
     await expect(
       caller.projects.create({ name: "Stranger", slug: "stranger", access: "open", repo: { connectionId: own, installationId: "9002", fullName: repoFullNameSchema.parse("stranger-co/secret-sauce") } }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
