@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { expectNoHorizontalScroll } from "./helpers.ts";
+import { expectNoHorizontalScroll, hydrated } from "./helpers.ts";
 import { e2eAdmin } from "./settings.ts";
 
 // F-001: an install started with OSTRA_ALLOW_DEFAULT_PASSWORD=true (the second stack in
@@ -13,6 +13,8 @@ const panelPages = ["/", "/organization/models", "/organization/github", "/organ
 
 test("F-001: with OSTRA_ALLOW_DEFAULT_PASSWORD the default password opens the panel, with a banner on every page until it changes", async ({ page }) => {
   await page.goto("/sign-in");
+  // Text filled in before React hydrates the form never reaches it (`hydrated`).
+  await hydrated(page.getByLabel("Username or email"));
   await page.getByLabel("Username or email").fill(e2eAdmin.email);
   await page.getByLabel("Password").fill(e2eAdmin.defaultPassword);
   await page.getByRole("button", { name: "Sign in" }).click();

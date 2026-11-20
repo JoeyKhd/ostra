@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { expectNoHorizontalScroll, expectSignInRefused, signIn, watchOrigins } from "./helpers.ts";
+import { expectNoHorizontalScroll, expectSignInRefused, hydrated, signIn, watchOrigins } from "./helpers.ts";
 import { e2eAdmin } from "./settings.ts";
 
 // Ticket 35 (the shell) and the first step of ticket 37: the seeded first admin (F-001), its
@@ -15,6 +15,8 @@ test("F-001: a fresh install signs in as demo@demo.com / demo, and must choose a
   const origins = watchOrigins(page);
   await page.goto("/");
   await expect(page).toHaveURL(/\/sign-in$/);
+  // Text filled in before React hydrates the form never reaches it (`hydrated`).
+  await hydrated(page.getByLabel("Username or email"));
   await page.getByLabel("Username or email").fill(e2eAdmin.email);
   await page.getByLabel("Password").fill(e2eAdmin.defaultPassword);
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -29,6 +31,7 @@ test("F-001: a fresh install signs in as demo@demo.com / demo, and must choose a
   const next = page.getByLabel("New password", { exact: true });
   const again = page.getByLabel("Confirm the new password");
   const submit = page.getByRole("button", { name: "Save and continue" });
+  await hydrated(next);
   // The normal policy: the default password, or anything short, can't be chosen. No current
   // password is asked for: the account still has the public default one.
   await next.fill(e2eAdmin.defaultPassword);

@@ -101,12 +101,9 @@ test("F-002: a reset by link changes the password and signs the other context ou
   // The other context is signed out.
   await elsewhere.reload();
   await expect(elsewhere).toHaveURL(/\/sign-in/);
-  // And the new password signs in; the link works once.
-  await holder.goto("/sign-in");
-  await holder.getByLabel("Username or email").fill(RESETTER);
-  await holder.getByLabel("Password").fill(NEW_PASSWORD);
-  await holder.getByRole("button", { name: "Sign in" }).click();
-  await holder.waitForURL((url) => url.pathname === "/");
+  // And the new password signs in (the helper waits out the sign-in rate limit, which the two
+  // sign-ins above can reach); the link works once.
+  await signIn(holder, RESETTER, NEW_PASSWORD);
   const again = await freshPage(browser);
   await again.goto(`${new URL(link).pathname}${new URL(link).search}`);
   await expect(again.getByText("This reset link has been used")).toBeVisible();

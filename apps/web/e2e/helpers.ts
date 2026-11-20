@@ -4,7 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { expect } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { taskIdSchema } from "@ostra/protocol";
 import type { TaskId } from "@ostra/protocol";
 import { z } from "zod";
@@ -31,35 +31,87 @@ export const expectNoHorizontalScroll = async (page: Page): Promise<void> => {
   expect(overflow).toBeLessThanOrEqual(0);
 };
 
-/** Signs in, waiting out better-auth's sign-in rate limit (a few tries per 10 s) when a test hits it. */
-export const signIn = async (page: Page, identifier: string = e2eAdmin.username): Promise<void> => {
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    await page.goto("/sign-in");
-    await page.getByLabel("Username or email").fill(identifier);
-    await page.getByLabel("Password").fill(e2eAdmin.password);
+/**
+ * Waits until React has hydrated the element. A page load's `load` event can come before React
+ * hydrates the page, and text filled into a field before then stays in the field but never reaches
+ * React's state: a button that waits on the field stays disabled, and a click on it times out.
+ * React marks each element it has hydrated with a `__reactProps$…` key; from then on it takes
+ * every input event.
+ */
+export const hydrated = async (locator: Locator): Promise<void> => {
+  await expect
+    .poll(() => locator.evaluate((element) => Object.keys(element).some((key) => key.startsWith("__reactProps$"))), {
+      message: "the page didn't hydrate",
+    })
+    .toBe(true);
+};
+
+/** Opens the sign-in page and fills its form, once React has it (`hydrated`). */
+const fillSignIn = async (page: Page, identifier: string, password: string): Promise<void> => {
+  await page.goto("/sign-in");
+  const field = page.getByLabel("Username or email");
+  await hydrated(field);
+  await field.fill(identifier);
+  await page.getByLabel("Password").fill(password);
+};
+
+const refusedText = "That username or email and password don't match.";
+
+/**
+ * Signs in, waiting out better-auth's sign-in rate limit (3 tries per 10 s) when a test hits it.
+ * On a fresh stack the seeded admin keeps the default password until 01-shell's first test chooses
+ * `e2eAdmin.password`. A spec run without it (one file, or a project with `--no-deps`) has its
+ * sign-in as the admin refused; it then signs in with the default password and chooses that
+ * password on the forced change, as 01-shell does, rather than wait for a Home that never comes.
+ */
+export const signIn = async (page: Page, identifier: string = e2eAdmin.username, chosen: string = e2eAdmin.password): Promise<void> => {
+  const admin = (identifier === e2eAdmin.username || identifier === e2eAdmin.email) && chosen === e2eAdmin.password;
+  let password = chosen;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await fillSignIn(page, identifier, password);
     await page.getByRole("button", { name: "Sign in" }).click();
     const outcome = await Promise.race([
       page.waitForURL((url) => url.pathname === "/").then(() => "in" as const),
+      page.waitForURL((url) => url.pathname === "/change-password").then(() => "change" as const),
       page.getByText("Too many sign-in attempts").waitFor().then(() => "limited" as const),
+      page.getByText(refusedText).waitFor().then(() => "refused" as const),
     ]);
-    if (outcome === "in") return;
-    await page.waitForTimeout(11_000);
+    switch (outcome) {
+      case "in":
+        return;
+      case "change": {
+        if (password !== e2eAdmin.defaultPassword) throw new Error(`${identifier} was sent to change its password`);
+        const next = page.getByLabel("New password", { exact: true });
+        await hydrated(next);
+        await next.fill(e2eAdmin.password);
+        await page.getByLabel("Confirm the new password").fill(e2eAdmin.password);
+        await page.getByRole("button", { name: "Save and continue" }).click();
+        await page.waitForURL((url) => url.pathname === "/");
+        return;
+      }
+      case "refused":
+        if (!admin || password === e2eAdmin.defaultPassword) throw new Error(`the sign-in as ${identifier} was refused`);
+        password = e2eAdmin.defaultPassword;
+        break;
+      case "limited":
+        await page.waitForTimeout(11_000);
+        break;
+      default:
+        outcome satisfies never;
+    }
   }
   throw new Error("signing in kept being rate limited");
 };
 
 /** A sign-in that must be refused in words, waiting out the rate limit like `signIn` does. */
 export const expectSignInRefused = async (page: Page, identifier: string, password: string): Promise<void> => {
-  const refused = "That username or email and password don't match.";
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    await page.goto("/sign-in");
-    await page.getByLabel("Username or email").fill(identifier);
-    await page.getByLabel("Password").fill(password);
+    await fillSignIn(page, identifier, password);
     await page.getByRole("button", { name: "Sign in" }).click();
     const alert = page.getByRole("alert").filter({ hasText: /./ });
     await alert.waitFor();
     if ((await alert.textContent())?.includes("Too many sign-in attempts") !== true) {
-      await expect(alert).toHaveText(refused);
+      await expect(alert).toHaveText(refusedText);
       return;
     }
     await page.waitForTimeout(11_000);
