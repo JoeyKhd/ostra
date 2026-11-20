@@ -37,6 +37,8 @@ export const filterTicketOf = (row: {
   readonly statusId: string | null;
   readonly statusCategory: FilterTicket["statusCategory"];
   readonly assigneeId: string | null;
+  readonly trackerProjectId: string | null;
+  readonly trackerProjectName: string | null;
   readonly open: boolean;
   readonly removedAt: Date | null;
 }): FilterTicket => ({
@@ -45,7 +47,8 @@ export const filterTicketOf = (row: {
   statusId: row.statusId,
   statusCategory: row.statusCategory,
   assigneeId: row.assigneeId,
-  trackerProjectId: null,
+  trackerProjectId: row.trackerProjectId,
+  trackerProjectName: row.trackerProjectName,
   open: row.open && row.removedAt === null,
 });
 

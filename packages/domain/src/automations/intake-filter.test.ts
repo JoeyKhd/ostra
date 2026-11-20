@@ -18,6 +18,7 @@ const ticket: FilterTicket = {
   statusCategory: "open",
   assigneeId: "user-ana",
   trackerProjectId: "proj-payments",
+  trackerProjectName: "Payments",
   open: true,
 };
 
@@ -66,7 +67,10 @@ describe("an intake rule's filter", () => {
     expect(matchesFilter(ticket, filter({ boardIds: [boardB] }))).toBe(false);
     expect(matchesFilter(ticket, filter({ trackerProjectIds: ["proj-payments"] }))).toBe(true);
     expect(matchesFilter(ticket, filter({ trackerProjectIds: ["proj-search"] }))).toBe(false);
-    expect(matchesFilter({ ...ticket, trackerProjectId: null }, filter({ trackerProjectIds: ["proj-payments"] }))).toBe(false);
+    expect(matchesFilter({ ...ticket, trackerProjectId: null, trackerProjectName: null }, filter({ trackerProjectIds: ["proj-payments"] }))).toBe(false);
+    // By its name too, as the editor offers it: case-folded, with a near miss.
+    expect(matchesFilter(ticket, filter({ trackerProjectIds: [" payments "] }))).toBe(true);
+    expect(matchesFilter(ticket, filter({ trackerProjectIds: ["Payment"] }))).toBe(false);
   });
 
   it("F-011/c1: needs every condition it names, and never matches a closed ticket", () => {

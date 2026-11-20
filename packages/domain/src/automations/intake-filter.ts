@@ -40,7 +40,10 @@ export const intakeFilterSchema = z
     assignees: z.array(assigneeConditionSchema).max(LIST_MAX).default([]),
     /** Any of the project's boards. Empty: every board of the project. */
     boardIds: z.array(boardIdSchema).max(LIST_MAX).default([]),
-    /** Any of the tracker's own projects (Linear's projects). Empty: any. */
+    /**
+     * Any of the tracker's own projects (Linear's projects), each by its ID or its name (the editor
+     * offers the names, compared case-folded). Empty: any.
+     */
     trackerProjectIds: z.array(idSchema).max(LIST_MAX).default([]),
   })
   .refine(
@@ -68,8 +71,9 @@ export type FilterTicket = {
   readonly statusId: string | null;
   readonly statusCategory: TicketStatusCategory | null;
   readonly assigneeId: string | null;
-  /** The tracker's own project, when the cache knows it. */
+  /** The tracker's own project, when the cache knows it: its ID and its name. */
   readonly trackerProjectId: string | null;
+  readonly trackerProjectName: string | null;
   /** Neither done nor cancelled, and still on its board. */
   readonly open: boolean;
 };
@@ -120,11 +124,16 @@ export const matchesFilter = (ticket: FilterTicket, filter: IntakeFilter, contex
   if (filter.boardIds.length > 0 && !filter.boardIds.includes(ticket.boardId)) {
     return false;
   }
-  if (filter.trackerProjectIds.length > 0 && (ticket.trackerProjectId === null || !filter.trackerProjectIds.includes(ticket.trackerProjectId))) {
+  if (filter.trackerProjectIds.length > 0 && !filter.trackerProjectIds.some((wanted) => projectMatches(wanted, ticket))) {
     return false;
   }
   return true;
 };
+
+/** A filter's project names the ticket's tracker project: by its ID, or by its name case-folded. */
+const projectMatches = (wanted: string, ticket: FilterTicket): boolean =>
+  (ticket.trackerProjectId !== null && wanted.trim() === ticket.trackerProjectId) ||
+  (ticket.trackerProjectName !== null && fold(wanted) === fold(ticket.trackerProjectName));
 
 const assigneeMatches = (condition: AssigneeCondition, assigneeId: string | null, context: FilterContext): boolean => {
   switch (condition.kind) {

@@ -7,7 +7,7 @@ import type { FakeLinear, FakeLinearApp } from "@ostra/adapter-sdk/testing";
 import { LinearAdapter } from "@ostra/adapter-linear";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
-import { postgresAuditLog, postgresChangeNotices, systemClock } from "@ostra/domain";
+import { filterTicketOf, intakeFilterSchema, matchesFilter, postgresAuditLog, postgresChangeNotices, systemClock } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
 import { connectionIdSchema, externalTicketIdSchema, organizationIdSchema, webhookDeliveryIdSchema } from "@ostra/protocol";
@@ -143,6 +143,26 @@ describe("a webhook hint", () => {
     // The same hint again changes nothing.
     await trackerWebhookHandler(deps())(deliveryContext(delivery.rawBody));
     expect(await rowsOf(issue.id)).toHaveLength(1);
+  });
+
+  it("F-011/c1: keeps the ticket's Linear project on its copy, so a filter on that project matches it", async () => {
+    const inProject = await fake.createIssue({ title: "Card declined at checkout", project: { id: "project-payments", name: "Payments" } });
+    const loose = await fake.createIssue({ title: "In no project" });
+    for (const issue of [inProject, loose]) {
+      const delivery = fake.signedDelivery({ issueId: issue.id, byUserId: fake.admin.id, sentAt: Date.now() });
+      await trackerWebhookHandler(deps())(deliveryContext(delivery.rawBody));
+    }
+    const [row] = await rowsOf(inProject.id);
+    const [other] = await rowsOf(loose.id);
+    if (row === undefined || other === undefined) throw new Error("the ingest cached no copy");
+    expect(row).toMatchObject({ trackerProjectId: "project-payments", trackerProjectName: "Payments" });
+    expect(other).toMatchObject({ trackerProjectId: null, trackerProjectName: null });
+    // The project as the editor offers it (its name) and by its ID: the copy matches, the other doesn't.
+    for (const wanted of ["Payments", "project-payments"]) {
+      const filter = intakeFilterSchema.parse({ trackerProjectIds: [wanted] });
+      expect(matchesFilter(filterTicketOf(row), filter)).toBe(true);
+      expect(matchesFilter(filterTicketOf(other), filter)).toBe(false);
+    }
   });
 
   it("records a change by the app's own user without acting on it, and still keeps the copy current", async () => {

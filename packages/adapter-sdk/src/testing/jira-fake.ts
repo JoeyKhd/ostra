@@ -887,6 +887,8 @@ export class JiraFakeAdapter extends TrackerAdapter {
       parentKey: parent?.key ?? null,
       parentExternalId: parent?.id ?? null,
       labels: [...issue.labels],
+      // Jira's own project is the one the issue is in (F-011): the board's, here.
+      trackerProject: { id: issue.projectId, name: this.#site.projects.find((project) => project.id === issue.projectId)?.name ?? issue.projectId },
       updatedAt: issue.updated,
       acceptanceCriteria: issue.acceptanceCriteria,
     };

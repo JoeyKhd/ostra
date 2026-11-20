@@ -37,6 +37,7 @@ export const filterTicket = (fields: Partial<FilterTicket> = {}): FilterTicket =
   statusCategory: "open",
   assigneeId: null,
   trackerProjectId: null,
+  trackerProjectName: null,
   open: true,
   ...fields,
 });

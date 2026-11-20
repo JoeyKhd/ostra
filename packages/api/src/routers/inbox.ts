@@ -382,6 +382,8 @@ export const inboxRouter = router({
         statuses: z.array(z.object({ id: z.string(), name: z.string(), category: statusCategorySchema.nullable() })),
         labels: z.array(z.string()),
         assignees: z.array(z.object({ id: z.string(), name: z.string() })),
+        /** The tracker's own projects the tickets are in, by name (an intake rule's filter, F-011). */
+        trackerProjects: z.array(z.string()),
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -390,7 +392,7 @@ export const inboxRouter = router({
       const boards = await attachedBoards(ctx.deps, organizationId, input.projectId);
       const boardIds = boards.map((board) => board.id);
       const where = { organizationId, projectId: input.projectId, boardId: { in: boardIds }, removedAt: null };
-      const [statuses, assignees, labels] = await Promise.all([
+      const [statuses, assignees, labels, trackerProjects] = await Promise.all([
         db.ticket.groupBy({ by: ["statusId", "statusName", "statusCategory"], where, orderBy: { statusName: "asc" } }),
         db.ticket.groupBy({ by: ["assigneeId", "assigneeName"], where: { ...where, assigneeName: { not: null } }, orderBy: { assigneeName: "asc" } }),
         boardIds.length === 0
@@ -399,11 +401,13 @@ export const inboxRouter = router({
               SELECT DISTINCT label FROM "ticket", jsonb_array_elements_text("labels") AS label
               WHERE "organizationId" = ${organizationId} AND "projectId" = ${input.projectId} AND "boardId" = ANY(${boardIds}::text[]) AND "removedAt" IS NULL
               ORDER BY label LIMIT 200`,
+        db.ticket.groupBy({ by: ["trackerProjectName"], where: { ...where, trackerProjectName: { not: null } }, orderBy: { trackerProjectName: "asc" }, take: 200 }),
       ]);
       return {
         statuses: statuses.flatMap((row) => (row.statusId === null || row.statusName === null ? [] : [{ id: row.statusId, name: row.statusName, category: row.statusCategory }])),
         labels: z.array(z.object({ label: z.string() })).parse(labels).map((row) => row.label),
         assignees: assignees.flatMap((row) => (row.assigneeId === null || row.assigneeName === null ? [] : [{ id: row.assigneeId, name: row.assigneeName }])),
+        trackerProjects: trackerProjects.flatMap((row) => (row.trackerProjectName === null ? [] : [row.trackerProjectName])),
       };
     }),
 

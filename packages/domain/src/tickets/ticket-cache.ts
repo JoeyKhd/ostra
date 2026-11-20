@@ -32,6 +32,10 @@ const columnsOf = (ticket: TrackerTicket) => ({
   // An adapter that doesn't say (`undefined`) is kept as no assignee.
   assigneeId: ticket.assignee?.id ?? null,
   assigneeName: ticket.assignee?.name ?? null,
+  // Milestone 6 (F-011): the tracker's own project, which an intake rule's filter can name. An
+  // adapter that doesn't say is kept as none.
+  trackerProjectId: ticket.trackerProject?.id ?? null,
+  trackerProjectName: ticket.trackerProject?.name ?? null,
   open: isOpenCategory(ticket.status.category),
   trackerUpdatedAt: new Date(ticket.updatedAt),
   removedAt: null,

@@ -166,6 +166,9 @@ describe("intake rules (F-011)", () => {
       // Here the unassigned match, and a closed ticket, which never matches.
       { name: "assignee: nobody", filter: { ...labelFilter([]), labels: null, assignees: [{ kind: "unassigned" }] }, hit: () => issue(), miss: () => issue({ statusId: "10003" }) },
       { name: "board", filter: { ...labelFilter([]), labels: null, boardIds: [secondBoardId] }, hit: () => issue({ jiraProject: secondJiraProject }), miss: () => issue(), board: secondBoardId },
+      // The tracker's own project, which the ingest keeps on the copy: by the name the editor offers, and by its ID.
+      { name: "the tracker's project, by name", filter: { ...labelFilter([]), labels: null, trackerProjectIds: ["second"] }, hit: () => issue({ jiraProject: secondJiraProject }), miss: () => issue(), board: secondBoardId },
+      { name: "the tracker's project, by ID", filter: { ...labelFilter([]), labels: null, trackerProjectIds: [secondJiraProject] }, hit: () => issue({ jiraProject: secondJiraProject }), miss: () => issue(), board: secondBoardId },
     ];
     for (const entry of cases) {
       await clearRules();

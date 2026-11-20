@@ -78,6 +78,12 @@ export type Ticket = {
    * adapter doesn't say (an older one), which the cache keeps as no assignee.
    */
   readonly assignee?: { readonly id: string; readonly name: string } | null;
+  /**
+   * Milestone 6 (F-011): the tracker's own project the ticket is in (Linear's project), which an
+   * intake rule's filter can name. `null`: none. Missing: the adapter doesn't say, which the cache
+   * keeps as none.
+   */
+  readonly trackerProject?: { readonly id: string; readonly name: string } | null;
   /** In ms since the epoch. */
   readonly updatedAt: number;
   /**

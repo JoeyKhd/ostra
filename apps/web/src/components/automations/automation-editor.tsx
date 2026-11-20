@@ -581,7 +581,8 @@ const optionsFor = (condition: Condition, filters: Filters, boards: Boards): { r
     case "board":
       return { options: (boards ?? []).map((board) => ({ value: String(board.id), label: board.name })), free: false };
     case "project":
-      return { options: [], free: true };
+      // The projects the cached tickets are in, by name; a name not seen yet can be typed.
+      return { options: (filters?.trackerProjects ?? []).map((name) => ({ value: name, label: name })), free: true };
     default:
       return condition satisfies never;
   }

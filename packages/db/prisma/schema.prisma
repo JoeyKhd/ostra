@@ -1070,6 +1070,10 @@ model Ticket {
   assigneeId       String?
   assigneeName     String?
   parentExternalId String?
+  /// The tracker's own project the ticket is in (Linear's project), as of the last read (F-011:
+  /// an intake rule's filter names it); `null` when it's in none, or the adapter does not say.
+  trackerProjectId   String?
+  trackerProjectName String?
   url              String
   /// Open on the tracker: not done, cancelled or archived.
   open             Boolean               @default(true)

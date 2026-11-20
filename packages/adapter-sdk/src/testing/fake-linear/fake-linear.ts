@@ -97,6 +97,8 @@ type Issue = {
   priority: number;
   labels: string[];
   parentId: string | null;
+  /** Milestone 6 (F-011): the Linear project the issue is in, if any. */
+  project: { readonly id: string; readonly name: string } | null;
   readonly creatorId: string;
   readonly createdAt: number;
   updatedAt: number;
@@ -284,6 +286,8 @@ export type FakeLinear = {
     readonly comments?: readonly string[];
     readonly withImage?: boolean;
     readonly parentId?: string;
+    /** Milestone 6 (F-011): the Linear project it's in. */
+    readonly project?: { readonly id: string; readonly name: string };
   }) => Promise<{ readonly id: ExternalTicketId; readonly identifier: TicketKey }>;
   readonly editIssue: (id: ExternalTicketId, change: { readonly title?: string; readonly description?: string }) => Promise<void>;
   /** A person moves the issue to another team: its identifier changes. */
@@ -581,6 +585,7 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
       team: teamJson(teamOf(issue.teamId)),
       labels: connection(issue.labels.map((name) => ({ id: `label-${name}`, name }))),
       parent: parent === undefined ? null : summaryJson(parent),
+      project: issue.project === null ? null : { id: issue.project.id, name: issue.project.name },
       children: connection([...issues.values()].filter((other) => other.parentId === issue.id).map(summaryJson)),
       relations: connection(
         issue.relations.flatMap((relation) => {
@@ -1271,6 +1276,7 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
       priority: 0,
       labels: [],
       parentId: input.parentId ?? null,
+      project: null,
       creatorId: input.creatorId,
       createdAt: now,
       updatedAt: now,
@@ -1665,6 +1671,7 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
         ...(input.parentId === undefined ? {} : { parentId: input.parentId }),
       });
       issue.labels = [...(input.labels ?? [])];
+      issue.project = input.project === undefined ? null : { id: input.project.id, name: input.project.name };
       for (const [index, body] of (input.comments ?? []).entries()) {
         comments.push({ id: `comment-${randomUUID()}`, issueId: issue.id, body, userId: admin.id, parentId: null, createdAt: issue.createdAt + index, updatedAt: issue.createdAt + index });
       }
