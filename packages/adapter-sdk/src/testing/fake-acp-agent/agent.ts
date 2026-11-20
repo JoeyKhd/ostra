@@ -214,7 +214,8 @@ export const fakeScripts = [
   /**
    * Starts a subagent and ends its turn, as OpenCode does: the subagent works for the ms given
    * (default 1000; `hang` never ends), reads a file and answers, and its report wakes the agent,
-   * which then says `the final answer, after the subagent`, with no prompt in flight.
+   * which then says `the final answer, after the subagent`, with no prompt in flight. With `silent`
+   * too, a stopped child never reports its end (F-138).
    */
   "subagent-bg",
   /**
@@ -791,6 +792,8 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
     const client = io.ctx.client;
     const [first = "", second = ""] = args.split(/\s+/);
     const hangs = first === "hang";
+    // F-138: `silent`, a child whose end is never reported, as once OpenCode no longer follows the session.
+    const silent = args.split(/\s+/).includes("silent");
     const ms = Number.parseInt(hangs ? second : first, 10);
     const workMs = Number.isFinite(ms) && ms > 0 ? ms : 1000;
     counter += 1;
@@ -829,7 +832,9 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
       session.children.delete(childId);
       const toolCallId = `${childId}:read-1`;
       if (child.signal.aborted) {
-        await notifyChild({ type: "status", status: "interrupted" });
+        if (!silent) {
+          await notifyChild({ type: "status", status: "interrupted" });
+        }
       } else {
         await notifyChild({ type: "update", update: { sessionUpdate: "tool_call", toolCallId, title: `${title}: read`, kind: "read", status: "pending", rawInput: { path: "README.md" }, _meta: meta } });
         await notifyChild({ type: "update", update: { sessionUpdate: "tool_call_update", toolCallId, status: "completed", _meta: meta } });

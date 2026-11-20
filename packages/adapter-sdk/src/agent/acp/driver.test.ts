@@ -459,7 +459,8 @@ describe("the ACP driver, naming each subagent's work (F-138)", () => {
     const seen = naming();
     const peer = await connectInProcess("rich", seen.handlers, { idlePollMs: 50 }, {}, background);
     const id = await newSession(peer);
-    const turn = peer.connection.prompt(id, fakeMarker("subagent-bg", "hang"));
+    // A child whose end the agent never reports: only the driver can say it was stopped.
+    const turn = peer.connection.prompt(id, fakeMarker("subagent-bg", "hang silent"));
     await new Promise((resolve) => setTimeout(resolve, 300));
     await peer.connection.cancel(id);
     expect(await turn).toEqual({ ok: true, value: { stopReason: "cancelled" } });
