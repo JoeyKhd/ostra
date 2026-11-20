@@ -102,6 +102,8 @@ export type LinearAppManifestInput = {
   /** The developer's name in Linear's form. Default `ostra`. */
   readonly developerName?: string;
   readonly description?: string;
+  /** The new-app form the link opens. Default Linear's own; a fake Linear's in tests (`linearAppEndpoints`). */
+  readonly newAppUrl?: string;
 };
 
 /** Whether the manifest carries the webhook, and why not when it doesn't. */
@@ -152,7 +154,7 @@ export const linearAppManifest = (input: LinearAppManifestInput): LinearAppManif
   if (!parsed.success) {
     return { ok: false, problems: parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`) };
   }
-  return { ok: true, url: `${MANIFEST_NEW_APP_URL}?manifest=${encodeURIComponent(JSON.stringify(parsed.data))}`, manifest: parsed.data, webhook };
+  return { ok: true, url: `${input.newAppUrl ?? MANIFEST_NEW_APP_URL}?manifest=${encodeURIComponent(JSON.stringify(parsed.data))}`, manifest: parsed.data, webhook };
 };
 
 /** Reads a manifest link back, as Linear does: for tests, and for the panel's preview. */

@@ -6,7 +6,7 @@ import type { AdapterContext, LogRecord, SecretRowStore } from "@ostra/adapter-s
 import { ResendEmailAdapter } from "@ostra/adapter-email-resend";
 import { SmtpEmailAdapter } from "@ostra/adapter-email-smtp";
 import { GitHubAdapter } from "@ostra/adapter-github";
-import { LinearAdapter } from "@ostra/adapter-linear";
+import { LinearAdapter, linearAppEndpoints } from "@ostra/adapter-linear";
 import { bundledCatalogSchema, catalogEntries, ModelEndpointAdapter, parseModelsDevCatalog } from "@ostra/adapter-model-endpoint";
 import { BuiltinSecretStore, generateSecretsKey, parseSecretsKey } from "@ostra/adapter-secret-store-builtin";
 import { corePanelUploader, createApiRuntime, createCatalogSource, postgresBlobReader } from "@ostra/api";
@@ -157,6 +157,8 @@ const build = async (): Promise<ApiRuntime> => {
       logger,
     }),
     makeLinearTracker: (auth) => new LinearAdapter({ auth, apiUrl: settings.linearApiUrl }, context),
+    // Connect Linear's endpoints (the new-app form, the consent, the token): Linear's own, or a fake Linear's at OSTRA_LINEAR_API_URL's origin.
+    linearEndpoints: linearAppEndpoints(settings.linearApiUrl),
     // F-115: the adapters that send "Send a test mail"; core builds its own for the deliveries.
     email: {
       adapterFor: (config) =>

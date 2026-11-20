@@ -244,6 +244,55 @@ describe("the fake Linear", () => {
   });
 });
 
+describe("the fake Linear's new-app form", () => {
+  it("registers the app a manifest link describes, shows its values, and consents only to the manifest's callback", async () => {
+    const fake = await createFakeLinear();
+    try {
+      const callback = "http://localhost:3000/api/linear/callback";
+      const manifest = { schemaVersion: "1.0.0", developer: { name: "ostra" }, oauth: { client_name: "ostra (localhost:3000)", redirect_uris: [callback], grant_types: ["authorization_code"] } };
+      const page = await fetch(`${fake.newAppUrl}?manifest=${encodeURIComponent(JSON.stringify(manifest))}`);
+      expect(page.status).toBe(200);
+      const html = await page.text();
+      const shown = (id: string): string => new RegExp(`data-testid="${id}">([^<]*)<`).exec(html)?.[1] ?? "";
+      expect(shown("client-id")).toMatch(/^[0-9a-f]{32}$/);
+      expect(shown("webhook-secret")).toMatch(/^lin_wh_/);
+      expect(shown("callback-urls")).toBe(callback);
+      expect(shown("webhook-url")).toBe("");
+
+      // The consent goes back only to the manifest's callback, and the shown secret exchanges its code.
+      const verifier = randomBytes(32).toString("base64url");
+      const authorize = new URL(fake.authorizeUrl);
+      for (const [key, value] of Object.entries({
+        client_id: shown("client-id"),
+        redirect_uri: callback,
+        response_type: "code",
+        state: "state-1",
+        code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+        code_challenge_method: "S256",
+        scope: "read,write",
+        actor: "app",
+      })) {
+        authorize.searchParams.set(key, value);
+      }
+      const consent = await fetch(authorize, { redirect: "manual" });
+      expect(consent.status).toBe(302);
+      const code = new URL(consent.headers.get("location") ?? "").searchParams.get("code") ?? "";
+      const exchanged = await fetch(fake.tokenUrl, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: callback, client_id: shown("client-id"), client_secret: shown("client-secret"), code_verifier: verifier }),
+      });
+      expect(exchanged.status).toBe(200);
+      authorize.searchParams.set("redirect_uri", "http://localhost:3000/elsewhere");
+      expect((await fetch(authorize, { redirect: "manual" })).status).toBe(400);
+
+      expect((await fetch(`${fake.newAppUrl}?manifest=nope`)).status).toBe(400);
+    } finally {
+      await fake.close();
+    }
+  });
+});
+
 // Milestone 6 (ticket 02): agent sessions, ported from spike 5's fake. Each test makes its own
 // fake, so one session's clock and scopes never reach another's.
 describe("the fake Linear's agent sessions", () => {

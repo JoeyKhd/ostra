@@ -1,3 +1,4 @@
+import { linearAppEndpoints } from "@ostra/adapter-linear";
 import { createFakeLinear } from "@ostra/adapter-sdk/testing";
 import type { FakeLinear } from "@ostra/adapter-sdk/testing";
 import { connectionIdSchema } from "@ostra/protocol";
@@ -19,14 +20,8 @@ let fake: FakeLinear;
 
 beforeAll(async () => {
   fake = await createFakeLinear();
-  harness = await createApiHarness({
-    linearEndpoints: {
-      authorizeUrl: fake.authorizeUrl,
-      tokenUrl: fake.tokenUrl,
-      revokeUrl: fake.revokeUrl,
-      graphqlUrl: fake.apiUrl,
-    },
-  });
+  // The endpoints as the panel derives them from OSTRA_LINEAR_API_URL set to the fake's API.
+  harness = await createApiHarness({ linearEndpoints: linearAppEndpoints(fake.apiUrl) });
 });
 
 afterAll(async () => {

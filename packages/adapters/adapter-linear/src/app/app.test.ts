@@ -6,6 +6,7 @@ import { createFakeLinear } from "@ostra/adapter-sdk/testing";
 import type { FakeLinear } from "@ostra/adapter-sdk/testing";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import { linearAppEndpoints } from "./endpoints.ts";
 import { linearAppManifest, linearAppName, OSTRA_RESOURCE_TYPES, parseManifestLink } from "./manifest.ts";
 import { authorizeUrl, checkAppToken, clientCredentialsToken, createPkce, exchangeCode, LINEAR_APP_SCOPES, randomOAuthState, refreshToken, revokeToken } from "./oauth.ts";
 import { checkPublicUrl } from "./public-url.ts";
@@ -110,6 +111,32 @@ describe("the manifest link", () => {
 
   it("refuses a callback that isn't a URL", () => {
     expect(linearAppManifest({ name: "ostra", callbackUrl: "nope", webhookUrl: null })).toMatchObject({ ok: false });
+  });
+
+  it("opens the new-app form it's given, a fake Linear's, with the same manifest", () => {
+    const newAppUrl = "http://127.0.0.1:4100/settings/api/applications/new";
+    const link = linearAppManifest({ name: "ostra", callbackUrl, webhookUrl: null, newAppUrl });
+    if (!link.ok) throw new Error(link.problems.join("; "));
+    expect(link.url.startsWith(`${newAppUrl}?manifest=`)).toBe(true);
+    expect(JSON.parse(new URL(link.url).searchParams.get("manifest") ?? "")).toEqual(link.manifest);
+  });
+});
+
+describe("the app flow's endpoints", () => {
+  it("are Linear's own for Linear's API, and the same paths on a fake Linear's origin for another address", async () => {
+    expect(linearAppEndpoints()).toEqual({
+      graphqlUrl: "https://api.linear.app/graphql",
+      authorizeUrl: "https://linear.app/oauth/authorize",
+      tokenUrl: "https://api.linear.app/oauth/token",
+      revokeUrl: "https://api.linear.app/oauth/revoke",
+      newAppUrl: "https://linear.app/settings/api/applications/new",
+    });
+    const fake = await createFakeLinear();
+    try {
+      expect(linearAppEndpoints(fake.apiUrl)).toEqual({ graphqlUrl: fake.apiUrl, authorizeUrl: fake.authorizeUrl, tokenUrl: fake.tokenUrl, revokeUrl: fake.revokeUrl, newAppUrl: fake.newAppUrl });
+    } finally {
+      await fake.close();
+    }
   });
 });
 

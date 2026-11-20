@@ -6,7 +6,7 @@ import type { AdapterContext, Logger } from "@ostra/adapter-sdk";
 import { S3BlobStore } from "@ostra/adapter-blob-s3";
 import { GitHubAdapter } from "@ostra/adapter-github";
 import { OpenCodeAdapter } from "@ostra/adapter-opencode";
-import { LinearAdapter } from "@ostra/adapter-linear";
+import { LinearAdapter, linearAppEndpoints } from "@ostra/adapter-linear";
 import { ModelEndpointAdapter } from "@ostra/adapter-model-endpoint";
 import { createDb } from "@ostra/db";
 import type { Db } from "@ostra/db";
@@ -426,15 +426,10 @@ export const startCore = async (
     insertDeadlineMs: settings.webhookInsertDeadlineMs,
     blocked: parseBlockedWebhooks(options.devBlockWebhooks, settings.mode),
   });
+  // OSTRA_LINEAR_API_URL (ticket 34: the panel's e2e stack points it at a fake Linear); the restart harness passes its own.
+  const linearApiUrl = options.linearApiUrl ?? settings.linearApiUrl;
   // A connection's tracker, with its token and the organization's Postgres stores (tickets 14, 15).
-  const trackers = createConnectionTrackers({
-    db,
-    secretStore: adapters.secretStore,
-    clock: systemClock,
-    logger,
-    // OSTRA_LINEAR_API_URL (ticket 34: the panel's e2e stack points it at a fake Linear); the restart harness passes its own.
-    linearApiUrl: options.linearApiUrl ?? settings.linearApiUrl,
-  });
+  const trackers = createConnectionTrackers({ db, secretStore: adapters.secretStore, clock: systemClock, logger, linearApiUrl });
   const ingestDeps = { db, trackers, notices, clock: systemClock, logger, jobs, closed: { jobs, outbox: postgresCommandOutbox, audit: postgresAuditLog } };
   // PR states (ticket 16): the App's webhooks and a reconcile per GitHub connection agree.
   const prDeps = {
@@ -503,7 +498,8 @@ export const startCore = async (
     reconcileMinutes: settings.reconcileMinutes,
     logger,
   });
-  const refreshDeps = { db, jobs, secretStore: adapters.secretStore, trackers, notices, audit: postgresAuditLog, clock: systemClock, logger };
+  // The token is refreshed where the panel's consent got it: Linear's, or the fake Linear's (`linearAppEndpoints`).
+  const refreshDeps = { db, jobs, secretStore: adapters.secretStore, trackers, notices, audit: postgresAuditLog, clock: systemClock, logger, tokenUrl: linearAppEndpoints(linearApiUrl).tokenUrl };
   await jobs.work("linear.refresh-token", refreshTokenHandler(refreshDeps), { localConcurrency: 1 });
   // Milestone 6 (F-012, ticket 13): Linear agent mode. The inbox claims a session's event before
   // its 200; `linear.agent-event` acts on it; the outbox posts with the app's token; the heartbeat

@@ -3,16 +3,13 @@ import {
   checkAppToken,
   checkPublicUrl,
   exchangeCode,
-  LINEAR_API_URL,
   LINEAR_APP_SCOPES,
-  LINEAR_AUTHORIZE_URL,
-  LINEAR_REVOKE_URL,
-  LINEAR_TOKEN_URL,
+  linearAppEndpoints,
   linearAppManifest,
   OSTRA_RESOURCE_TYPES,
   revokeToken,
 } from "@ostra/adapter-linear";
-import type { LinearOAuthError } from "@ostra/adapter-linear";
+import type { LinearAppEndpoints, LinearOAuthError } from "@ostra/adapter-linear";
 import type { LinearAppKit, LinearKitError } from "@ostra/domain";
 
 // The calls to Linear the connection flow makes (F-005, spec section 11, items 2 and 3), as the
@@ -21,22 +18,15 @@ import type { LinearAppKit, LinearKitError } from "@ostra/domain";
 // that a token is the app's own user, the revoke), with Linear's answers in the words the use cases
 // speak. A token or a secret goes in one header or one form field and nowhere else.
 
-/** Where Linear's endpoints are. A test points them at the fake Linear server. */
-export type LinearEndpoints = {
-  /** The consent page. */
-  readonly authorizeUrl: string;
-  readonly tokenUrl: string;
-  readonly revokeUrl: string;
-  /** The GraphQL endpoint. */
-  readonly graphqlUrl: string;
-};
+/**
+ * Where Linear's endpoints are: the GraphQL API, the consent page, the token and revoke endpoints,
+ * and the new-app form the manifest link opens. The panel derives them from OSTRA_LINEAR_API_URL
+ * (`linearAppEndpoints`); a test points them at the fake Linear server.
+ */
+export type LinearEndpoints = LinearAppEndpoints;
 
-export const linearEndpoints: LinearEndpoints = {
-  authorizeUrl: LINEAR_AUTHORIZE_URL,
-  tokenUrl: LINEAR_TOKEN_URL,
-  revokeUrl: LINEAR_REVOKE_URL,
-  graphqlUrl: LINEAR_API_URL,
-};
+/** Linear's own. */
+export const linearEndpoints: LinearEndpoints = linearAppEndpoints();
 
 /** What ostra asks for at authorize time (spec section 11, item 3). */
 export const linearScopes: readonly string[] = LINEAR_APP_SCOPES;
@@ -77,7 +67,7 @@ export const createLinearAppKit = (options: LinearAppKitOptions = {}): LinearApp
     },
 
     manifestUrl: (input) => {
-      const link = linearAppManifest(input);
+      const link = linearAppManifest({ ...input, newAppUrl: endpoints.newAppUrl });
       if (!link.ok) {
         // The panel's own address is what's wrong here (a callback that isn't an http(s) URL).
         throw new Error(`Linear's app manifest could not be made: ${link.problems.join("; ")}`);

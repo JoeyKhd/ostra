@@ -154,7 +154,7 @@ export const settingFields = {
   },
   OSTRA_LINEAR_API_URL: {
     default: "https://api.linear.app/graphql",
-    description: "Linear's GraphQL API the panel and core read and write tickets through: a fake Linear in tests.",
+    description: "Linear's GraphQL API the panel and core read and write tickets through: a fake Linear in tests, whose origin then serves Connect Linear's new-app form, consent and token endpoints too.",
   },
   OSTRA_GITHUB_LFS_HOSTS: {
     default: GITHUB_COM_LFS_HOSTS.join(","),

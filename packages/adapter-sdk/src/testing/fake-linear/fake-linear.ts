@@ -18,7 +18,8 @@ import type { GraphqlValue, TopLevelField } from "./graphql-lite.ts";
 // A local stand-in for Linear's plain API (spec section 8), ported from
 // spikes/linear-agent-mode/src/fake-linear/ and widened from agent mode to what milestone 2 uses:
 // teams, workflow states, issues, comments with threads, attachments, integrations, `viewer` and
-// `organization`, webhooks, the OAuth endpoints with PKCE and rotating refresh tokens, signed
+// `organization`, webhooks, the new-app form a manifest link opens (milestone 2's ticket 33: it
+// registers the app at once), the OAuth endpoints with PKCE and rotating refresh tokens, signed
 // deliveries with Linear's headers and retry schedule, and 429 with `Retry-After`.
 //
 // It's built from Linear's docs (context/research/trackers.md) and answers every field it knows,
@@ -231,6 +232,12 @@ export type FakeLinear = {
   readonly authorizeUrl: string;
   readonly tokenUrl: string;
   readonly revokeUrl: string;
+  /**
+   * The new-app form a manifest link opens (`/settings/api/applications/new?manifest=…`): the fake
+   * registers the app from the manifest at once, as an admin pressing Create does, and its page
+   * shows the client ID, the client secret and the webhook signing secret to copy back.
+   */
+  readonly newAppUrl: string;
   readonly clock: ManualClock;
   readonly organization: { readonly id: string; readonly name: string; readonly urlKey: string };
   /** A person: the workspace's admin. */
@@ -394,6 +401,18 @@ const timeArg = (value: GraphqlValue | undefined): number | undefined => {
 };
 
 const tokenFormSchema = z.looseObject({ grant_type: z.string() });
+
+/** Where Linear's new-app form is, on linear.app and here. */
+const NEW_APP_PATH = "/settings/api/applications/new";
+
+/** What the fake reads of an OAuth app manifest (linear.app/developers/oauth-app-manifests), loosely. */
+const newAppManifestSchema = z.looseObject({
+  oauth: z.looseObject({ client_name: z.string().min(1), redirect_uris: z.array(z.string().min(1)).min(1) }),
+  webhook: z.looseObject({ url: z.string().min(1), enabled: z.boolean().optional() }).optional(),
+});
+
+const escapeHtml = (text: string): string =>
+  text.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
 
 export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise<FakeLinear> => {
   const clock = options.clock ?? manualClock();
@@ -927,6 +946,19 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
     return { accessToken, refreshToken };
   };
 
+  /** Registers the app, as "Create" on a manifest does. One app per fake: a second replaces the first. */
+  const registerApp = (input: { readonly name: string; readonly redirectUris: readonly string[]; readonly webhookUrl: string | null }): FakeLinearApp => {
+    app = {
+      clientId: randomBytes(16).toString("hex"),
+      clientSecret: randomBytes(24).toString("hex"),
+      webhookSecret: `lin_wh_${randomBytes(24).toString("hex")}`,
+      name: input.name,
+      redirectUris: [...input.redirectUris],
+      webhookUrl: input.webhookUrl,
+    };
+    return { clientId: app.clientId, clientSecret: app.clientSecret, webhookSecret: app.webhookSecret };
+  };
+
   const ensureAppUser = (): FakeLinearPerson => {
     if (app === undefined) throw new Error("the fake Linear has no app yet");
     if (appUser === undefined) {
@@ -1295,6 +1327,38 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
 
   // ---------- OAuth ----------
 
+  /**
+   * The new-app form a manifest link opens. The admin presses Create at once: the app is registered
+   * with the manifest's name, callbacks and webhook, and the page shows its three values.
+   */
+  const handleNewApp = (url: URL, response: ServerResponse): void => {
+    countCall("new-app");
+    let manifest: unknown;
+    try {
+      manifest = JSON.parse(url.searchParams.get("manifest") ?? "");
+    } catch {
+      manifest = undefined;
+    }
+    const parsed = newAppManifestSchema.safeParse(manifest);
+    if (!parsed.success) {
+      sendJson(response, 400, { error: "invalid_manifest" });
+      return;
+    }
+    const { oauth, webhook } = parsed.data;
+    const made = registerApp({ name: oauth.client_name, redirectUris: oauth.redirect_uris, webhookUrl: webhook === undefined || webhook.enabled === false ? null : webhook.url });
+    const row = (id: string, label: string, value: string): string => `<dt>${label}</dt><dd data-testid="${id}">${escapeHtml(value)}</dd>`;
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(
+      `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(oauth.client_name)}</title></head><body><h1>${escapeHtml(oauth.client_name)}</h1><dl>` +
+        row("client-id", "Client ID", made.clientId) +
+        row("client-secret", "Client secret", made.clientSecret) +
+        row("webhook-secret", "Webhook signing secret", made.webhookSecret) +
+        row("callback-urls", "Callback URLs", oauth.redirect_uris.join(" ")) +
+        row("webhook-url", "Webhook URL", webhook === undefined || webhook.enabled === false ? "" : webhook.url) +
+        `</dl></body></html>`,
+    );
+  };
+
   const handleAuthorize = (url: URL, response: ServerResponse): void => {
     countCall("oauth/authorize");
     const params = url.searchParams;
@@ -1464,6 +1528,7 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
     const run = async (): Promise<void> => {
       if (request.method === "POST" && url.pathname === "/graphql") await handleGraphql(request, response);
       else if (request.method === "GET" && url.pathname === "/oauth/authorize") handleAuthorize(url, response);
+      else if (request.method === "GET" && url.pathname === NEW_APP_PATH) handleNewApp(url, response);
       else if (request.method === "POST" && url.pathname === "/oauth/token") await handleToken(request, response);
       else if (request.method === "POST" && url.pathname === "/oauth/revoke") {
         countCall("oauth/revoke");
@@ -1511,6 +1576,7 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
     authorizeUrl: `${base}/oauth/authorize`,
     tokenUrl: `${base}/oauth/token`,
     revokeUrl: `${base}/oauth/revoke`,
+    newAppUrl: `${base}${NEW_APP_PATH}`,
     clock,
     organization,
     admin,
@@ -1518,17 +1584,7 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
     team,
     addTeam,
     states: (teamId) => states.filter((state) => state.teamId === teamId).sort((a, b) => a.position - b.position),
-    createApp: (input) => {
-      app = {
-        clientId: randomBytes(16).toString("hex"),
-        clientSecret: randomBytes(24).toString("hex"),
-        webhookSecret: `lin_wh_${randomBytes(24).toString("hex")}`,
-        name: input.name,
-        redirectUris: [...input.redirectUris],
-        webhookUrl: input.webhookUrl,
-      };
-      return { clientId: app.clientId, clientSecret: app.clientSecret, webhookSecret: app.webhookSecret };
-    },
+    createApp: registerApp,
     appUser: () => appUser,
     setClientCredentialsEnabled: (enabled) => {
       clientCredentials = enabled;
