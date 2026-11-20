@@ -166,6 +166,9 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
   const live = await startConnection({
     serverUrl: config.serverUrl,
     peer: { kind: "runner", runnerId: record.runnerId },
+    // Milestone 5 (ticket 18): a WebSocket, falling back to HTTP by itself on `auto`.
+    transport: config.transport,
+    timers: { wsRetryMs: config.wsRetryMinutes * 60_000 },
     tokens: signedIn.tokens,
     dataDir,
     handlers: work.handlers,
@@ -178,6 +181,9 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
       },
       onRefused: (reason, message) => {
         updateStatus(dataDir, { lastRefusal: { at: Date.now(), reason, message } }).catch(() => undefined);
+      },
+      onCarrier: (carrier, fallback) => {
+        updateStatus(dataDir, { carrier: { at: Date.now(), carrier, fallback } }).catch(() => undefined);
       },
     },
   });

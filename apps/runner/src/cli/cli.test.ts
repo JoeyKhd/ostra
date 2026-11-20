@@ -4,7 +4,7 @@ import path from "node:path";
 import { PROTOCOL_MINOR } from "@ostra/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { checkOwnerOnly } from "../identity/owner-only.ts";
-import { dataPaths, loadIdentity } from "../identity/store.ts";
+import { dataPaths, loadIdentity, updateStatus } from "../identity/store.ts";
 import type { SignedIn } from "../sign-in.ts";
 import { startFakeServer } from "../testing/fake-server.ts";
 import type { FakeServer, FakeServerOptions } from "../testing/fake-server.ts";
@@ -282,5 +282,13 @@ describe("the CLI's commands", () => {
     const result = await run(["runner", "status", "--data-dir", dataDir]);
     expect(result.code).toBe(exitCodes.ok);
     expect(result.lines.join("")).toContain("not signed in");
+  });
+
+  it("F-013: shows the carrier of the last connection, and why it fell back to HTTP", async () => {
+    await updateStatus(dataDir, { carrier: { at: Date.now(), carrier: "http", fallback: "no-welcome" } });
+    const fellBack = (await run(["runner", "status", "--data-dir", dataDir])).lines.join("");
+    expect(fellBack).toContain("Carrier         HTTP, fell back because the WebSocket upgrade succeeded but no welcome came within 10 s");
+    await updateStatus(dataDir, { carrier: { at: Date.now(), carrier: "websocket", fallback: null } });
+    expect((await run(["runner", "status", "--data-dir", dataDir])).lines.join("")).toContain("Carrier         WebSocket");
   });
 });

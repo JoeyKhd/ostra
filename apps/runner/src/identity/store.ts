@@ -146,6 +146,15 @@ export const runnerStatusRecordSchema = z.strictObject({
     .strictObject({ at: epochMsSchema, reason: refusalReasonSchema, message: z.string().max(2000) })
     .nullable(),
   lastConnectedAt: epochMsSchema.nullable(),
+  /** Milestone 5 (ticket 18): the carrier of the last connection, and why it is HTTP when it fell back. */
+  carrier: z
+    .strictObject({
+      at: epochMsSchema,
+      carrier: z.enum(["websocket", "http"]),
+      fallback: z.enum(["upgrade-refused", "no-welcome", "quick-deaths"]).nullable(),
+    })
+    .nullable()
+    .optional(),
 });
 export type RunnerStatusRecord = z.infer<typeof runnerStatusRecordSchema>;
 

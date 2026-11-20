@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { parseRunnerConfig, runnerConfigFields } from "@ostra/protocol";
 import type { RunnerConfig } from "@ostra/protocol";
+import { fallbackReasonWords } from "../connection/http-carrier.ts";
 import { checkOwnerOnly } from "../identity/owner-only.ts";
 import { dataPaths, defaultDataDir, loadIdentity, loadStatus } from "../identity/store.ts";
 import { signIn } from "../sign-in.ts";
@@ -106,6 +107,14 @@ const runnerStatus = async (dataDir: string, terminal: Terminal): Promise<number
       : `Version window  protocol ${String(window.protocolMajor)}.${String(window.min)} to ${String(window.protocolMajor)}.${String(window.max)} (server ostra ${window.serverVersion})`,
   );
   terminal.say(`Last connected  ${status.lastConnectedAt === null ? "never" : formatTime(status.lastConnectedAt)}`);
+  const carrier = status.carrier ?? null;
+  terminal.say(
+    carrier === null
+      ? "Carrier         unknown (no connection yet)"
+      : carrier.carrier === "websocket"
+        ? "Carrier         WebSocket"
+        : `Carrier         HTTP${carrier.fallback === null ? " (--transport http)" : `, fell back because ${fallbackReasonWords[carrier.fallback]}`}`,
+  );
   terminal.say(
     status.lastRefusal === null
       ? "Last refusal    none"

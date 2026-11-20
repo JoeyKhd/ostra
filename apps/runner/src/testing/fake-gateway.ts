@@ -265,7 +265,9 @@ export const startFakeGateway = (server: FakeServer, options: FakeGatewayOptions
       return;
     }
     if (token === undefined || !server.accessTokens.has(token)) {
-      socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+      // As core refuses it: ostra's error body, so the runner reads it as ostra's answer, not a proxy's.
+      const body = JSON.stringify({ error: { code: "unauthorized", message: "a valid access token is required" } });
+      socket.end(`HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: ${String(Buffer.byteLength(body))}\r\n\r\n${body}`);
       return;
     }
     wss.handleUpgrade(request, socket, head, (ws) => {

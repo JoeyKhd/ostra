@@ -54,7 +54,7 @@ Each flag is also an environment variable, and a flag wins over its variable. Va
 |---|---|---|---|
 | `--server` | `OSTRA_SERVER_URL` | (required) | The ostra server's core address, such as http://localhost:8787. |
 | `--data-dir` | `OSTRA_RUNNER_DATA_DIR` | ~/.ostra/runner | The runner's folder: its key pair, its spool and the task workspaces. |
-| `--transport` | `OSTRA_RUNNER_TRANSPORT` | auto | How the runner talks to the server: auto (a WebSocket, falling back to HTTP by itself when a proxy blocks it), websocket or http. Until the HTTP fallback is built (milestone 5, ticket 18), every value uses the WebSocket. |
+| `--transport` | `OSTRA_RUNNER_TRANSPORT` | auto | How the runner talks to the server: auto (a WebSocket, falling back to HTTP by itself when a proxy blocks it), websocket or http. Both go through HTTPS_PROXY, HTTP_PROXY and NO_PROXY, and trust NODE_EXTRA_CA_CERTS. |
 | `--executor` | `OSTRA_RUNNER_EXECUTOR` | host | Where tasks run: host (a worktree on this machine, not isolated) or docker (a box per task). |
 | `--capacity` | `OSTRA_RUNNER_CAPACITY` | 1 | How many tasks the runner runs at once. |
 | `--labels` | `OSTRA_RUNNER_LABELS` | (none) | Comma-separated labels that tasks can ask for, such as gpu,macos. |

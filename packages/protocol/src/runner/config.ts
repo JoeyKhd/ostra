@@ -63,7 +63,7 @@ export const runnerConfigFields = {
     env: "OSTRA_RUNNER_TRANSPORT",
     default: "auto",
     description:
-      "How the runner talks to the server: auto (a WebSocket, falling back to HTTP by itself when a proxy blocks it), websocket or http. Until the HTTP fallback is built (milestone 5, ticket 18), every value uses the WebSocket.",
+      "How the runner talks to the server: auto (a WebSocket, falling back to HTTP by itself when a proxy blocks it), websocket or http. Both go through HTTPS_PROXY, HTTP_PROXY and NO_PROXY, and trust NODE_EXTRA_CA_CERTS.",
   },
   executor: {
     flag: "executor",

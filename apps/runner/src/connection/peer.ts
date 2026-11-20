@@ -6,8 +6,10 @@ import {
   parseDownFrame,
   PROTOCOL_MAJOR,
   PROTOCOL_MINOR,
+  runnerHeaders,
   runnerLimits,
   runnerPaths,
+  upFrameCodec,
   utf8ByteLength,
 } from "@ostra/protocol";
 import type {
@@ -20,6 +22,7 @@ import type {
   DownFrame,
   ErrorFrame,
   ExecutorKind,
+  Hello,
   ProcessContainment,
   LeaseEpoch,
   Peer,
@@ -36,6 +39,8 @@ import type { RawData } from "ws";
 import { isTerminalRefusal } from "../server/access-token.ts";
 import type { AccessTokenResult, TerminalRefusal } from "../server/access-token.ts";
 import { userAgent, RUNNER_VERSION } from "../version.ts";
+import { errorCodeOf, fallbackReasonWords, httpCall, makeAgents, ostraErrorOf, readAnswer } from "./http-carrier.ts";
+import type { Carrier, FallbackReason, HttpAnswer, NetworkOptions, Transport } from "./http-carrier.ts";
 import { createLiveTextBuffer } from "./live-text.ts";
 import type { LiveSegment } from "./live-text.ts";
 import { openSessionSpool } from "./spool.ts";
@@ -43,9 +48,9 @@ import type { SessionSpool } from "./spool.ts";
 import { fileStateStore, markApplied, wasApplied } from "./state.ts";
 import type { RunnerState, SessionState } from "./state.ts";
 
-// The peer's side of the runner protocol (ADR 0034), WebSocket only in milestone 1 (the HTTP
-// carrier is milestone 5). It connects with a 10-minute access token, says `hello`, and once
-// `welcome` comes:
+// The peer's side of the runner protocol (ADR 0034), over a WebSocket or, when a proxy blocks it,
+// the HTTP carrier (milestone 5's ticket 18). It connects with a 10-minute access token, says
+// `hello`, and once `welcome` comes:
 //
 // - sends each session's events from its disk spool, numbered per session, inside the credit
 //   window (256 frames or 4 MiB, whichever comes first, frames at most 1 MiB), and drops them from
@@ -57,6 +62,14 @@ import type { RunnerState, SessionState } from "./state.ts";
 // - sends its status on connect and when it changes
 // - stops its agents after 9.5 minutes without the server (the self-fence, a courtesy: the
 //   server's refusal of a stale lease is the guarantee)
+//
+// Both carriers share the spool, the credit window and the command handling: only how a frame
+// travels differs. On `auto` the runner falls back to HTTP by itself (ADR 0034, "Networks") when the
+// upgrade is answered by something that isn't ostra, when an upgraded socket brings no `welcome`
+// within 10 s, or when the socket dies within 10 s of opening three times in a row; after a
+// `welcome`, silence is a network failure and never a reason to fall back. On HTTP it tries the
+// WebSocket again every `OSTRA_RUNNER_WS_RETRY_MINUTES`. Both go through `HTTPS_PROXY` (Node's own
+// `proxyEnv`) and trust `NODE_EXTRA_CA_CERTS`.
 //
 // Ported from spikes/runner-transport/src/runner/peer.ts, with the product's frames, the byte
 // count in the window, contiguous command acks and typed command handlers.
@@ -90,6 +103,8 @@ export type ConnectionHooks = {
    * now, while the connection keeps asking (the clocks disagree, say).
    */
   readonly onRefused?: (reason: RefusedReason, message: string) => void;
+  /** A connection was welcomed on `carrier`; `fallback` says why it's HTTP on `auto`, `null` on a WebSocket. */
+  readonly onCarrier?: (carrier: Carrier, fallback: FallbackReason | null) => void;
 };
 
 export type ConnectionTimers = {
@@ -102,6 +117,12 @@ export type ConnectionTimers = {
   readonly liveTextIntervalMs: number;
   /** How often the dead-connection and self-fence checks run. */
   readonly checkMs: number;
+  /** A socket that dies within this of opening is a quick death; three in a row fall back to HTTP. */
+  readonly quickDeathMs: number;
+  /** How long a `down` poll may be held: the server's hold, plus room for a slow network. */
+  readonly longPollMs: number;
+  /** On the HTTP carrier, how often an `auto` runner tries the WebSocket again. */
+  readonly wsRetryMs: number;
 };
 
 export const defaultTimers: ConnectionTimers = {
@@ -113,6 +134,9 @@ export const defaultTimers: ConnectionTimers = {
   versionRetryMs: runnerLimits.versionRetryMs,
   liveTextIntervalMs: runnerLimits.liveTextIntervalMs,
   checkMs: 1_000,
+  quickDeathMs: runnerLimits.quickDeathMs,
+  longPollMs: runnerLimits.longPollMs,
+  wsRetryMs: runnerLimits.wsRetryMs,
 };
 
 export type TokenSource = {
@@ -137,6 +161,13 @@ export type ConnectionOptions = {
   /** The clock the self-fence, the dead check and `notAfter` read. */
   readonly now?: () => number;
   readonly random?: () => number;
+  /**
+   * `--transport`: `websocket` only, `http` only, or `auto`, which falls back to HTTP by itself.
+   * Default `websocket`: a box's sidecar keeps its WebSocket (its task token is refused on HTTP).
+   */
+  readonly transport?: Transport;
+  /** The proxy settings (the environment's by default) and, for tests, the CAs to trust. */
+  readonly network?: NetworkOptions;
 };
 
 export type SessionRef = { readonly taskId: TaskId; readonly sessionId: SessionId; readonly leaseEpoch: LeaseEpoch };
@@ -163,6 +194,10 @@ export type ConnectionEnd = { readonly kind: "stopped" } | { readonly kind: Term
 
 export type ConnectionReport = {
   readonly connected: boolean;
+  /** The carrier of the welcomed connection; `null` while not connected. */
+  readonly carrier: Carrier | null;
+  /** Why an `auto` runner is on HTTP; `null` on the WebSocket or before any fallback. */
+  readonly fallback: FallbackReason | null;
   readonly lastContiguousSeq: number;
   readonly fenced: boolean;
   readonly sessions: readonly { readonly sessionId: SessionId; readonly lastSeq: number; readonly ackedUpTo: number; readonly state: SessionState }[];
@@ -197,14 +232,27 @@ type Session = SessionRef & {
 
 type InflightFrame = { readonly sessionId: SessionId; readonly lastSeq: number; readonly bytes: number };
 
-type SocketEnd =
+/** How one connection, on either carrier, ended. */
+type End =
   | { readonly kind: "revoked"; readonly message: string }
   | { readonly kind: "replaced" }
   | { readonly kind: "token-expired" }
   | { readonly kind: "version"; readonly message: string }
   | { readonly kind: "goaway"; readonly afterMs: number }
-  | { readonly kind: "lost"; readonly welcomed: boolean; readonly detail: string }
+  /** A network failure. `quick`: a WebSocket the far side closed within `quickDeathMs` of opening. */
+  | { readonly kind: "lost"; readonly welcomed: boolean; readonly detail: string; readonly quick: boolean }
+  /** The upgrade was answered, not with 101, by something that isn't ostra (or ostra saying it's no upgrade). */
+  | { readonly kind: "upgrade-refused"; readonly status: number }
+  /** Upgraded, but no `welcome` within the handshake timeout. */
+  | { readonly kind: "no-welcome" }
+  /** HTTP: a newer connection of this runner holds it (`409`). */
+  | { readonly kind: "superseded" }
+  /** HTTP: time to try the WebSocket again. */
+  | { readonly kind: "ws-retry" }
   | { readonly kind: "stopped" };
+
+/** How a frame travels on the current connection. */
+type Link = { readonly carrier: Carrier; readonly send: (frame: UpFrame) => boolean };
 
 const REVOKED_BY_SERVER = "This runner was revoked in the panel.";
 
@@ -214,6 +262,14 @@ const EVENTS_FRAME_OVERHEAD = 64;
 export const MAX_EVENT_BYTES = runnerLimits.frameMaxBytes - EVENTS_FRAME_OVERHEAD;
 /** How many recent command results are kept, to answer a resent command with its result. */
 const RESULTS_KEPT = 512;
+/** The most of an upgrade's refusal read, to tell ostra's error from a proxy's page. */
+const REFUSAL_MAX_BYTES = 16 * 1024;
+/** How long an upgrade's refusal is read before it's judged on what came. */
+const REFUSAL_READ_MS = 2_000;
+/** An HTTP `up` batch: at most this many bytes, under core's cap of twice the frame cap. */
+const UP_BATCH_MAX_BYTES = 2 * runnerLimits.frameMaxBytes - 64 * 1024;
+/** An HTTP `up` waits this long for its answer. */
+const UP_TIMEOUT_MS = 30_000;
 /** How long, and how many, of the runner's own events are kept to send again on a new connection. */
 const RUNNER_EVENTS_KEPT_MS = 60 * 60_000;
 const RUNNER_EVENTS_KEPT = 64;
@@ -246,8 +302,13 @@ const rawText = (data: RawData): string => {
 export const connectionUrl = (serverUrl: string): string =>
   `${serverUrl.replace(/\/+$/, "").replace(/^http/, "ws")}${runnerPaths.connect}`;
 
+/** The HTTP carrier's endpoint on the server. */
+const httpUrl = (serverUrl: string, pathAndQuery: string): string => `${serverUrl.replace(/\/+$/, "")}${pathAndQuery}`;
+
 export const startConnection = async (options: ConnectionOptions): Promise<RunnerConnection> => {
   const timers: ConnectionTimers = { ...defaultTimers, ...options.timers };
+  const transport: Transport = options.transport ?? "websocket";
+  const agents = makeAgents(options.serverUrl, options.network);
   const now = options.now ?? Date.now;
   const random = options.random ?? Math.random;
   const quota = options.spoolQuotaBytes ?? runnerLimits.spoolQuotaBytes;
@@ -260,8 +321,9 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
   const liveText = createLiveTextBuffer();
   const stopController = new AbortController();
 
-  let socket: WebSocket | undefined;
+  let link: Link | undefined;
   let ready = false;
+  let fallback: FallbackReason | null = null;
   let minor = PROTOCOL_MINOR;
   let serverOffset = 0;
   let windowFrames: number = runnerLimits.creditFrames;
@@ -278,7 +340,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
    * no ack, and a socket that died unnoticed swallows what was sent on it, so each is sent again on
    * every new connection while it's kept: core applies a snapshot's result idempotently.
    */
-  const runnerEvents: { readonly at: number; readonly event: TaskEvent; sentOn: WebSocket | undefined }[] = [];
+  const runnerEvents: { readonly at: number; readonly event: TaskEvent; sentOn: Link | undefined }[] = [];
   const quotaWaiters: (() => void)[] = [];
 
   const persist = (): Promise<void> => store.save(state);
@@ -374,13 +436,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
 
   // ---------- up ----------
 
-  const send = (frame: UpFrame): boolean => {
-    if (socket?.readyState !== WebSocket.OPEN) {
-      return false;
-    }
-    socket.send(encodeUpFrame(frame, minor));
-    return true;
-  };
+  const send = (frame: UpFrame): boolean => link?.send(frame) ?? false;
 
   const flush = (): void => {
     if (!ready) {
@@ -417,13 +473,13 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
       return;
     }
     for (const item of runnerEvents) {
-      if (item.sentOn !== undefined && item.sentOn === socket) {
+      if (item.sentOn !== undefined && item.sentOn === link) {
         continue;
       }
       if (!send({ type: "runner-event", at: item.at, event: item.event })) {
         return;
       }
-      item.sentOn = socket;
+      item.sentOn = link;
     }
   };
 
@@ -584,7 +640,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
     }
   };
 
-  const onDown = async (frame: DownFrame, onWelcome: () => void, end: (value: SocketEnd) => void): Promise<void> => {
+  const onDown = async (frame: DownFrame, onWelcome: () => void, end: (value: End) => void): Promise<void> => {
     switch (frame.type) {
       case "welcome":
         serverOffset = frame.serverTime - now();
@@ -599,8 +655,11 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
         }
         liveText.resnapshot();
         onWelcome();
-        log.info("connected", { minor: frame.minor, connectionEpoch: frame.connectionEpoch, replicaId: frame.replicaId });
+        log.info("connected", { minor: frame.minor, connectionEpoch: frame.connectionEpoch, replicaId: frame.replicaId, carrier: link?.carrier ?? "none" });
         hooks.onConnected?.(now());
+        if (link !== undefined) {
+          hooks.onCarrier?.(link.carrier, link.carrier === "http" ? fallback : null);
+        }
         sendStatus();
         if (unsentResults.length > 0) {
           sendResults([]);
@@ -653,41 +712,71 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
     }
   };
 
-  // ---------- the socket ----------
+  // ---------- hello ----------
 
-  const runSocket = (token: string): Promise<SocketEnd> =>
-    new Promise<SocketEnd>((resolve) => {
+  const helloFrame = (carrier: Carrier): Hello => ({
+    type: "hello",
+    protocolMajor: PROTOCOL_MAJOR,
+    protocolMinor: PROTOCOL_MINOR,
+    runnerVersion: RUNNER_VERSION,
+    peer: options.peer,
+    carrier,
+    lastCommandSeq: state.lastContiguousSeq,
+    sessions: [...sessions.values()]
+      .filter((session) => session.state !== "stale")
+      .slice(0, runnerLimits.helloSessionsMax)
+      .map((session) => ({
+        taskId: session.taskId,
+        sessionId: session.sessionId,
+        leaseEpoch: session.leaseEpoch,
+        nextSessionSeq: session.spool.lastSeq() + 1,
+      })),
+
+  });
+
+  // ---------- the WebSocket ----------
+
+  const runSocket = (token: string): Promise<End> =>
+    new Promise<End>((resolve) => {
       let finished = false;
       let welcomed = false;
+      let openedAt: number | null = null;
       let lastFrame = now();
       let chain: Promise<void> = Promise.resolve();
+      let welcomeTimer: ReturnType<typeof setTimeout> | undefined;
       const ws = new WebSocket(connectionUrl(options.serverUrl), {
+        agent: agents.websocket,
         headers: { authorization: `Bearer ${token}`, "user-agent": userAgent() },
         perMessageDeflate: false,
         handshakeTimeout: timers.handshakeTimeoutMs,
         maxPayload: runnerLimits.frameMaxBytes,
       });
-      socket = ws;
-      const handshake = setTimeout(() => {
-        if (!welcomed) {
-          finish({ kind: "lost", welcomed: false, detail: "no welcome within the handshake timeout" });
-        }
-      }, timers.handshakeTimeoutMs);
+      const wsLink: Link = {
+        carrier: "websocket",
+        send: (frame) => {
+          if (ws.readyState !== WebSocket.OPEN) {
+            return false;
+          }
+          ws.send(encodeUpFrame(frame, minor));
+          return true;
+        },
+      };
+      link = wsLink;
       const deadCheck = setInterval(() => {
-        if (now() - lastFrame > timers.deadMs) {
-          finish({ kind: "lost", welcomed, detail: "no frame from the server for too long" });
+        if (openedAt !== null && now() - lastFrame > timers.deadMs) {
+          finish({ kind: "lost", welcomed, detail: "no frame from the server for too long", quick: false });
         }
       }, timers.checkMs);
-      const finish = (value: SocketEnd): void => {
+      const finish = (value: End): void => {
         if (finished) {
           return;
         }
         finished = true;
         ready = false;
-        clearTimeout(handshake);
+        clearTimeout(welcomeTimer);
         clearInterval(deadCheck);
-        if (socket === ws) {
-          socket = undefined;
+        if (link === wsLink) {
+          link = undefined;
         }
         if (ws.readyState === WebSocket.OPEN) {
           ws.close(1000);
@@ -701,41 +790,58 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
       };
       stopController.signal.addEventListener("abort", onStop, { once: true });
 
-      ws.on("unexpected-response", (_request, response) => {
+      ws.on("unexpected-response", (request, response) => {
+        // Not 101. ostra's own refusals carry its error body; anything else answered is in the way
+        // (a proxy's page, nginx's defaults), and that's a reason to fall back, never a verdict.
         const status = response.statusCode ?? 0;
-        response.resume();
-        if (status === 401) {
-          finish({ kind: "token-expired" });
-        } else if (status === 403) {
-          finish({ kind: "revoked", message: "The server refused this runner at the upgrade: it was revoked in the panel." });
-        } else if (status === 426) {
-          finish({ kind: "version", message: "the server refused this runner's version at the upgrade" });
-        } else {
-          finish({ kind: "lost", welcomed: false, detail: `the upgrade was answered ${String(status)}` });
-        }
+        const chunks: Buffer[] = [];
+        let size = 0;
+        let judged = false;
+        const judge = (): void => {
+          if (judged) {
+            return;
+          }
+          judged = true;
+          clearTimeout(readTimer);
+          request.destroy();
+          const error = ostraErrorOf(Buffer.concat(chunks).toString("utf8"));
+          if (error === null) {
+            finish({ kind: "upgrade-refused", status });
+          } else if (status === 401) {
+            finish({ kind: "token-expired" });
+          } else if (status === 403) {
+            finish({ kind: "revoked", message: "The server refused this runner at the upgrade: it was revoked in the panel." });
+          } else if (error.code === "version-unsupported") {
+            finish({ kind: "version", message: "the server refused this runner's version at the upgrade" });
+          } else if (status >= 500) {
+            finish({ kind: "lost", welcomed: false, detail: `the upgrade was answered ${String(status)}`, quick: false });
+          } else {
+            // ostra answered, but not with an upgrade: something on the way dropped the Upgrade header.
+            finish({ kind: "upgrade-refused", status });
+          }
+        };
+        const readTimer = setTimeout(judge, REFUSAL_READ_MS);
+        response.on("data", (chunk: Buffer) => {
+          size += chunk.length;
+          if (size <= REFUSAL_MAX_BYTES) {
+            chunks.push(chunk);
+          }
+        });
+        response.on("end", judge);
+        response.on("error", judge);
+        response.on("close", judge);
       });
       ws.on("open", () => {
-        lastFrame = now();
+        openedAt = now();
+        lastFrame = openedAt;
         lastContact = lastFrame;
-        const hello: UpFrame = {
-          type: "hello",
-          protocolMajor: PROTOCOL_MAJOR,
-          protocolMinor: PROTOCOL_MINOR,
-          runnerVersion: RUNNER_VERSION,
-          peer: options.peer,
-          carrier: "websocket",
-          lastCommandSeq: state.lastContiguousSeq,
-          sessions: [...sessions.values()]
-            .filter((session) => session.state !== "stale")
-            .slice(0, runnerLimits.helloSessionsMax)
-            .map((session) => ({
-              taskId: session.taskId,
-              sessionId: session.sessionId,
-              leaseEpoch: session.leaseEpoch,
-              nextSessionSeq: session.spool.lastSeq() + 1,
-            })),
-        };
-        ws.send(encodeUpFrame(hello, PROTOCOL_MINOR));
+        ws.send(encodeUpFrame(helloFrame("websocket"), PROTOCOL_MINOR));
+        // Upgraded, but no `welcome` within the handshake timeout: something holds the frames.
+        welcomeTimer = setTimeout(() => {
+          if (!welcomed) {
+            finish({ kind: "no-welcome" });
+          }
+        }, timers.handshakeTimeoutMs);
       });
       ws.on("ping", () => {
         lastFrame = now();
@@ -762,7 +868,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
               frame,
               () => {
                 welcomed = true;
-                clearTimeout(handshake);
+                clearTimeout(welcomeTimer);
               },
               finish,
             ),
@@ -790,10 +896,233 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
             finish({ kind: "version", message: "the server refused this runner's version" });
             return;
           default:
-            finish({ kind: "lost", welcomed, detail: `closed with ${String(code)}` });
+            finish({
+              kind: "lost",
+              welcomed,
+              detail: `closed with ${String(code)}`,
+              quick: openedAt !== null && now() - openedAt < timers.quickDeathMs,
+            });
         }
       });
     });
+
+  // ---------- the HTTP carrier ----------
+
+  /** What an HTTP answer that isn't frames ends the connection with. */
+  const httpEndOf = (answer: HttpAnswer, read: ReturnType<typeof readAnswer>, welcomed: boolean, what: string): End => {
+    switch (read.kind) {
+      case "superseded":
+        return { kind: "superseded" };
+      case "error":
+        if (answer.status === 401) {
+          return { kind: "token-expired" };
+        }
+        if (answer.status === 403) {
+          return { kind: "revoked", message: "The server refused this runner: it was revoked in the panel." };
+        }
+        return { kind: "lost", welcomed, detail: `${what} was answered ${String(answer.status)} ${read.error.code}`, quick: false };
+      case "not-ostra":
+        // ADR 0034: a proxy's page is a network failure, and the runner says so.
+        log.warn("a proxy answered instead of the ostra server", { request: what, status: answer.status });
+        return { kind: "lost", welcomed, detail: `${what} was answered ${String(answer.status)} by something that isn't the ostra server`, quick: false };
+      case "frames":
+      case "empty":
+        return { kind: "lost", welcomed, detail: `${what} was answered ${String(answer.status)}`, quick: false };
+      default:
+        return read satisfies never;
+    }
+  };
+
+  const runHttp = async (wsRetryAt: number): Promise<End> => {
+    const abort = new AbortController();
+    const outbox: UpFrame[] = [];
+    let wake: (() => void) | undefined;
+    const poke = (): void => {
+      const resolve = wake;
+      wake = undefined;
+      resolve?.();
+    };
+    const conn: { ended: End | undefined; welcomed: boolean; epoch: number } = { ended: undefined, welcomed: false, epoch: 0 };
+    const over = (): boolean => conn.ended !== undefined;
+    const httpLink: Link = {
+      carrier: "http",
+      send: (frame) => {
+        if (conn.ended !== undefined) {
+          return false;
+        }
+        outbox.push(frame);
+        poke();
+        return true;
+      },
+    };
+    const finish = (value: End): void => {
+      if (conn.ended !== undefined) {
+        return;
+      }
+      conn.ended = value;
+      ready = false;
+      if (link === httpLink) {
+        link = undefined;
+      }
+      abort.abort();
+      poke();
+    };
+    const onStop = (): void => {
+      finish({ kind: "stopped" });
+    };
+    stopController.signal.addEventListener("abort", onStop, { once: true });
+    const retryTimer = setInterval(() => {
+      if (transport === "auto" && conn.welcomed && now() >= wsRetryAt) {
+        finish({ kind: "ws-retry" });
+      }
+    }, Math.min(timers.checkMs, timers.wsRetryMs));
+
+    /** One request: the token, the minor and, after the hello, the connection's epoch. */
+    const call = async (method: "GET" | "POST", pathAndQuery: string, body: string | undefined, timeoutMs: number): Promise<HttpAnswer | End> => {
+      const token = await options.tokens.get();
+      if (!token.ok) {
+        return { kind: "lost", welcomed: conn.welcomed, detail: `no access token (${token.reason})`, quick: false };
+      }
+      try {
+        return await httpCall({
+          url: httpUrl(options.serverUrl, pathAndQuery),
+          method,
+          agent: agents.http,
+          headers: {
+            authorization: `Bearer ${token.token}`,
+            "user-agent": userAgent(),
+            [runnerHeaders.minor]: String(conn.welcomed ? minor : PROTOCOL_MINOR),
+            ...(conn.welcomed ? { [runnerHeaders.connectionEpoch]: String(conn.epoch) } : {}),
+          },
+          ...(body === undefined ? {} : { body }),
+          timeoutMs,
+          signal: abort.signal,
+        });
+      } catch (error) {
+        return conn.ended ?? { kind: "lost", welcomed: conn.welcomed, detail: `${method} ${pathAndQuery.split("?")[0] ?? ""} failed: ${errorCodeOf(error)}`, quick: false };
+      }
+    };
+    const isEnd = (value: HttpAnswer | End): value is End => "kind" in value;
+
+    /** The answer's frames, each handled in turn; `false` once the connection ended. */
+    const take = async (answer: HttpAnswer, what: string): Promise<boolean> => {
+      lastContact = now();
+      const read = readAnswer(answer, conn.welcomed ? minor : PROTOCOL_MINOR);
+      if (answer.status === 204 && read.kind === "empty") {
+        return true;
+      }
+      if (answer.status !== 200 || read.kind !== "frames") {
+        finish(httpEndOf(answer, read, conn.welcomed, what));
+        return false;
+      }
+      for (const frame of read.frames) {
+        if (conn.ended !== undefined) {
+          return false;
+        }
+        await onDown(
+          frame,
+          () => {
+            conn.welcomed = true;
+          },
+          finish,
+        );
+      }
+      return conn.ended === undefined;
+    };
+
+    try {
+      // ---- hello ----
+      link = httpLink;
+      const hello = await call("POST", runnerPaths.httpHello, encodeUpFrame(helloFrame("http"), PROTOCOL_MINOR), timers.handshakeTimeoutMs);
+      if (isEnd(hello)) {
+        finish(hello);
+        return conn.ended ?? hello;
+      }
+      lastContact = now();
+      const helloRead = readAnswer(hello, PROTOCOL_MINOR);
+      if (helloRead.kind === "frames") {
+        const refusal = helloRead.frames.find((frame) => frame.type === "error");
+        if (hello.status !== 200 && refusal?.type === "error") {
+          finish(
+            refusal.code === "version-unsupported"
+              ? { kind: "version", message: refusal.message }
+              : { kind: "revoked", message: "The server refused this runner at its hello: it was revoked in the panel." },
+          );
+          return conn.ended ?? { kind: "stopped" };
+        }
+        const welcome = helloRead.frames.find((frame) => frame.type === "welcome");
+        if (welcome?.type === "welcome") {
+          conn.epoch = welcome.connectionEpoch;
+        }
+      }
+      if (!(await take(hello, "the hello")) || !conn.welcomed) {
+        finish({ kind: "lost", welcomed: false, detail: "the hello was answered without a welcome", quick: false });
+        return conn.ended ?? { kind: "stopped" };
+      }
+
+      // ---- down: commands, held up to 25 s ----
+      const downLoop = async (): Promise<void> => {
+        while (conn.ended === undefined) {
+          // The poll's `after` acks what was applied, so it waits for the commands in hand.
+          await commandChain;
+          if (over()) {
+            return;
+          }
+          const answer = await call("GET", `${runnerPaths.httpDown}?after=${String(state.lastContiguousSeq)}`, undefined, timers.longPollMs + 15_000);
+          if (isEnd(answer)) {
+            finish(answer);
+            return;
+          }
+          if (!(await take(answer, "a down poll"))) {
+            return;
+          }
+        }
+      };
+
+      // ---- up: the outbox in batches ----
+      const upLoop = async (): Promise<void> => {
+        while (conn.ended === undefined) {
+          if (outbox.length === 0) {
+            await new Promise<void>((resolve) => {
+              wake = resolve;
+            });
+            continue;
+          }
+          const encoded: unknown[] = [];
+          let bytes = 0;
+          while (outbox.length > 0 && encoded.length < 512) {
+            const [next] = outbox;
+            if (next === undefined) {
+              break;
+            }
+            const value = upFrameCodec.encodeValue(next, minor);
+            const size = utf8ByteLength(JSON.stringify(value)) + 1;
+            if (encoded.length > 0 && bytes + size > UP_BATCH_MAX_BYTES) {
+              break;
+            }
+            outbox.shift();
+            encoded.push(value);
+            bytes += size;
+          }
+          const answer = await call("POST", runnerPaths.httpUp, JSON.stringify({ frames: encoded }), UP_TIMEOUT_MS);
+          if (isEnd(answer)) {
+            finish(answer);
+            return;
+          }
+          if (!(await take(answer, "an up batch"))) {
+            return;
+          }
+        }
+      };
+
+      await Promise.all([downLoop(), upLoop()]);
+      return conn.ended ?? { kind: "stopped" };
+    } finally {
+      clearInterval(retryTimer);
+      stopController.signal.removeEventListener("abort", onStop);
+      finish({ kind: "stopped" });
+    }
+  };
 
   // ---------- the checks ----------
 
@@ -823,8 +1152,20 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
 
   const loop = async (): Promise<ConnectionEnd> => {
     let attempt = 0;
+    let quickDeaths = 0;
+    let carrier: Carrier = transport === "http" ? "http" : "websocket";
+    let wsRetryAt = 0;
     const signal = stopController.signal;
     const stopped = (): boolean => signal.aborted;
+    /** An `auto` runner moves to HTTP at once, and tries the WebSocket again after `wsRetryMs`. */
+    const fallBack = (reason: FallbackReason): void => {
+      carrier = "http";
+      fallback = reason;
+      quickDeaths = 0;
+      attempt = 0;
+      wsRetryAt = now() + timers.wsRetryMs;
+      log.warn("falling back to the HTTP carrier", { reason, detail: fallbackReasonWords[reason], wsRetryInMs: timers.wsRetryMs });
+    };
     while (!stopped()) {
       const token = await options.tokens.get();
       if (stopped()) {
@@ -862,7 +1203,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
         attempt += 1;
         continue;
       }
-      const end = await runSocket(token.token);
+      const end = carrier === "websocket" ? await runSocket(token.token) : await runHttp(wsRetryAt);
       switch (end.kind) {
         case "stopped":
           break;
@@ -888,12 +1229,41 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
           attempt = 0;
           await sleep(end.afterMs, signal);
           continue;
+        case "upgrade-refused":
+          log.warn("the WebSocket upgrade was answered by something other than the ostra server", { status: end.status, transport });
+          if (transport === "auto") {
+            fallBack("upgrade-refused");
+            continue;
+          }
+          break;
+        case "no-welcome":
+          log.warn("the WebSocket upgraded but no welcome came", { waitedMs: timers.handshakeTimeoutMs, transport });
+          if (transport === "auto") {
+            fallBack("no-welcome");
+            continue;
+          }
+          break;
         case "lost":
-          log.info("connection lost", { detail: end.detail, attempt });
+          log.info("connection lost", { detail: end.detail, attempt, carrier });
+          // After a welcome, silence or a drop is a network failure: reconnect on the same carrier.
+          quickDeaths = carrier === "websocket" && end.quick ? quickDeaths + 1 : 0;
+          if (transport === "auto" && carrier === "websocket" && quickDeaths >= 3) {
+            fallBack("quick-deaths");
+            continue;
+          }
           if (end.welcomed) {
             attempt = 0;
           }
           break;
+        case "superseded":
+          // A newer connection of this runner holds it (another replica saw a newer hello): this
+          // one ends, and the runner says hello again from scratch.
+          log.info("another connection of this runner holds it: saying hello again");
+          break;
+        case "ws-retry":
+          log.info("trying the WebSocket again", { fallback });
+          carrier = "websocket";
+          continue;
         default:
           end satisfies never;
       }
@@ -909,6 +1279,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
   const done = loop().finally(() => {
     clearInterval(checks);
     clearInterval(liveTimer);
+    agents.destroy();
   });
 
   const emitInto = async (session: Session, event: TaskEvent): Promise<RunnerEvent> => {
@@ -998,6 +1369,8 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
     },
     report: () => ({
       connected: ready,
+      carrier: ready ? (link?.carrier ?? null) : null,
+      fallback: ready && link?.carrier === "http" ? fallback : null,
       lastContiguousSeq: state.lastContiguousSeq,
       fenced,
       sessions: [...sessions.values()].map((session) => ({

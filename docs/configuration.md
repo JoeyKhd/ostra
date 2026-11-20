@@ -113,7 +113,7 @@ Read by `ostra runner` through `parseRunnerConfig` (`packages/protocol/src/runne
 |---|---|---|---|
 | `OSTRA_SERVER_URL` | `--server` | (required) | The ostra server's core address, such as `http://localhost:8787`. |
 | `OSTRA_RUNNER_DATA_DIR` | `--data-dir` | `~/.ostra/runner` | The runner's folder: its key pair, its spool and the task workspaces (`tasks/<task>/workspace/<repo>`). On Windows the runner turns on git's `core.longpaths` for every clone and checkout it makes, so a repo with deep paths works under a long folder; git still refuses a `.git` folder path of about 250 characters, so keep this folder short. |
-| `OSTRA_RUNNER_TRANSPORT` | `--transport` | `auto` | How the runner talks to the server: `auto` (a WebSocket, falling back to HTTP by itself when a proxy blocks it), `websocket` or `http`. Until the HTTP fallback is built (milestone 5, ticket 18), every value uses the WebSocket. |
+| `OSTRA_RUNNER_TRANSPORT` | `--transport` | `auto` | How the runner talks to the server: `auto` (a WebSocket, falling back to HTTP by itself when a proxy blocks it), `websocket` or `http`. Both go through HTTPS_PROXY, HTTP_PROXY and NO_PROXY, and trust NODE_EXTRA_CA_CERTS. |
 | `OSTRA_RUNNER_EXECUTOR` | `--executor` | `host` | Where tasks run: `host` (a worktree on this machine, not isolated) or `docker` (a box per task). |
 | `OSTRA_RUNNER_CAPACITY` | `--capacity` | `1` | How many tasks the runner runs at once. |
 | `OSTRA_RUNNER_LABELS` | `--labels` | (none) | Comma-separated labels that tasks can ask for, such as `gpu,macos`. |
