@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { approvalIdSchema, notificationIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { ApprovalDecision } from "@ostra/protocol";
 
+import { RunnerApproval } from "@/components/runners/runner-approval";
 import { PageFrame, PageHeading } from "@/components/shell/page-frame";
 import { BudgetNoticeRows, useBudgetNotices } from "@/components/spend/budget-notices";
 import { errorText } from "@/lib/errors";
@@ -16,6 +17,7 @@ import type { RouterOutputs } from "@/lib/trpc";
 import { DoneList, ListSkeleton, NeedsYouLede, NeedsYouTabs, OpenEmpty, OpenList, ReachPanel } from "./needs-you-list";
 import type { AnswerResult, Answers, NeedsYouTab } from "./needs-you-list";
 import { READ_AFTER_MS, toMarkRead } from "./needs-you-words";
+import { awaitingRunners, RunnerApprovalsBand } from "./runner-approvals";
 import type { AnsweredBy, InlineAsk, NotificationView, Outcome, ReachView } from "./needs-you-words";
 
 // Ticket 44 wired (needs-you.md; F-036, F-062): `notifications.list` drawn by the page's parts, the
@@ -142,6 +144,11 @@ export const NeedsYouView = () => {
     return () => { clearTimeout(timer); };
     // markNotices' identity changes each render; the unread notices decide.
   }, [unreadNotices, tab]);
+  // Ticket 31 (F-091): an admin's runners waiting for approval, first in the list, answered in the panel.
+  const admin = me.data?.organization?.role === "admin";
+  const fleet = useQuery({ ...trpc.runners.list.queryOptions(), enabled: admin, refetchInterval: 15_000 });
+  const awaiting = useMemo(() => awaitingRunners(fleet.data ?? []), [fleet.data]);
+  const [selectedRunner, setSelectedRunner] = useState<string | null>(null);
   const [unreadAtLoad, setUnreadAtLoad] = useState<ReadonlySet<string> | null>(null);
 
   const rows = useMemo(() => (open.data?.rows ?? []).map((row) => notificationViewOf(row, memberId)), [open.data, memberId]);
@@ -215,7 +222,17 @@ export const NeedsYouView = () => {
         };
 
   return (
-    <PageFrame crumbs={[{ label: t("needsYouPage.pageTitle") }]} properties={<ReachPanel reach={reach} />}>
+    <PageFrame
+      crumbs={[{ label: t("needsYouPage.pageTitle") }]}
+      wideProperties={selectedRunner !== null}
+      properties={
+        selectedRunner === null ? (
+          <ReachPanel reach={reach} />
+        ) : (
+          <RunnerApproval key={selectedRunner} runnerId={selectedRunner} organization={me.data?.organization?.name ?? ""} now={Date.now()} />
+        )
+      }
+    >
       <PageHeading title={t("needsYouPage.pageTitle")} lede={<NeedsYouLede unread={open.data?.unread ?? null} />} />
       <NeedsYouTabs tab={tab} onTab={setTab} openCount={open.data?.total ?? null} />
       <div className="mt-4" data-needs-you-tab={tab}>
@@ -224,13 +241,14 @@ export const NeedsYouView = () => {
             <p role="alert" className="text-red">{errorText(open.error)}</p>
           ) : open.data === undefined ? (
             <ListSkeleton />
-          ) : rows.length === 0 && notices.length === 0 ? (
+          ) : rows.length === 0 && notices.length === 0 && awaiting.length === 0 ? (
             <OpenEmpty />
           ) : (
-            <>
+            <div className="flex flex-col gap-3">
+              {awaiting.length === 0 ? null : <RunnerApprovalsBand runners={awaiting} selected={selectedRunner} onSelect={setSelectedRunner} now={fleet.dataUpdatedAt} />}
               <BudgetNoticeRows notices={notices} organizationAdmin={me.data?.organization?.role === "admin"} />
               {rows.length === 0 ? null : <OpenList rows={rows} now={open.dataUpdatedAt} answers={answers} unreadAtLoad={unreadAtLoad ?? new Set()} />}
-            </>
+            </div>
           )
         ) : (
           <DoneList
