@@ -1,6 +1,7 @@
 import path from "node:path";
 import { createDockerBoxes, createDockerSnapshots, createEngine, engineAddressFrom } from "@ostra/adapter-executor-docker";
 import { HostExecutor } from "@ostra/adapter-executor-host";
+import { KubernetesExecutor } from "@ostra/adapter-executor-kubernetes";
 import type { RunnerConfig } from "@ostra/protocol";
 import type { RunSignedIn } from "./cli/cli.ts";
 import { exitCodes } from "./cli/cli.ts";
@@ -8,6 +9,8 @@ import { createBoxDispatcher } from "./box-dispatcher.ts";
 import { startConnection } from "./connection/peer.ts";
 import type { CommandHandlers, ConnectionHooks, PeerStatus, RunnerConnection } from "./connection/peer.ts";
 import { dataPaths, signInAgainAdvice, updateStatus } from "./identity/store.ts";
+import { kubernetesCluster } from "./kubernetes-cluster.ts";
+import { createKubernetesDispatcher } from "./kubernetes-dispatcher.ts";
 import { defaultAgents } from "./task-host/agents.ts";
 import { fetchServiceSecrets, fetchSnapshotCredentials, fetchTaskToken, runnerServerLink } from "./task-host/server-link.ts";
 import { createTaskHost } from "./task-host/task-host.ts";
@@ -168,6 +171,63 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
         started: () => undefined,
         shutdown: () => Promise.resolve(),
         describe: "docker, a box per task",
+      };
+      break;
+    }
+    case "kubernetes": {
+      // Milestone 5 (ticket 20, ADR 0060): a pod per box, made in the runner's namespace.
+      const cluster = await kubernetesCluster({ namespace: config.k8sNamespace }, process.env);
+      if (!cluster.ok) {
+        terminal.warn(cluster.reason);
+        return exitCodes.failed;
+      }
+      const { kube, namespace } = cluster.value;
+      const executor = new KubernetesExecutor(
+        {
+          kube,
+          namespace,
+          images: imagesOf(config),
+          serverUrl: config.boxServerUrl ?? config.serverUrl,
+          ...(config.slots === undefined ? {} : { slots: config.slots }),
+          runtimeClassName: config.k8sRuntimeClass ?? null,
+          nodeWaitMinutes: config.k8sNodeWaitMinutes,
+          sidecarLimits: { cpuMillis: config.sidecarCpuMillis, memoryMiB: config.sidecarMemoryMiB },
+          serviceLimits: { cpuMillis: config.serviceCpuMillis, memoryMiB: config.serviceMemoryMiB },
+          ...(config.k8sBuildNamespace === undefined ? {} : { buildNamespace: config.k8sBuildNamespace }),
+        },
+        { logger, clock: { now: () => Date.now() } },
+      );
+      const health = await executor.health();
+      if (health.status !== "ok") {
+        terminal.warn(`The kubernetes executor can't run boxes here: ${health.reason}`);
+        return exitCodes.failed;
+      }
+      const dispatcher = createKubernetesDispatcher({
+        executor,
+        kube,
+        namespace,
+        link,
+        taskToken: fetchTaskToken({ serverUrl: config.serverUrl, tokens: signedIn.tokens }),
+        dataDir: path.resolve(dataDir),
+        labels: config.labels,
+        logger,
+        reportRunnerEvent: (event) => {
+          holder.connection?.sendRunnerEvent(event);
+        },
+      });
+      work = {
+        handlers: dispatcher.handlers,
+        status: () => ({ ...dispatcher.status(), install }),
+        hooks: {},
+        // The pods this runner made before it restarted: their sidecars ran on without it.
+        started: () => {
+          void dispatcher.adopt();
+        },
+        shutdown: () => {
+          dispatcher.detach();
+          return Promise.resolve();
+        },
+        describe: `kubernetes, a pod per box in ${namespace}`,
       };
       break;
     }

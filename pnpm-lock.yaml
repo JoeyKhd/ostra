@@ -169,6 +169,9 @@ importers:
       '@ostra/adapter-executor-host':
         specifier: workspace:*
         version: link:../../packages/adapters/adapter-executor-host
+      '@ostra/adapter-executor-kubernetes':
+        specifier: workspace:*
+        version: link:../../packages/adapters/adapter-executor-kubernetes
       '@ostra/adapter-opencode':
         specifier: workspace:*
         version: link:../../packages/adapters/adapter-opencode

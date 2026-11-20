@@ -493,6 +493,11 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
       if (item.sentOn !== undefined && item.sentOn === link) {
         continue;
       }
+      if (!eventKindSupportedAt(item.event.kind, minor)) {
+        // A box's wait to a server below minor 4: it can't read it, and the box runs the same.
+        item.sentOn = link;
+        continue;
+      }
       if (!send({ type: "runner-event", at: item.at, event: item.event })) {
         return;
       }

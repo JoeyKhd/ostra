@@ -72,6 +72,7 @@ import { createPollSchedules, pollBoardHandler, trackerWebhookHandler } from "./
 import { ensureTokenRefreshes, refreshTokenHandler } from "./tracker/refresh-token.ts";
 import { fetchContextHandler } from "./tracker/context.ts";
 import { drainTicketWrites, ticketSyncHandler } from "./tracker/writer.ts";
+import { applyBoxRunnerEvent } from "./dispatch/box-waits.ts";
 import { handleSnapshotEndpoint } from "./snapshots/endpoints.ts";
 import { registryCheckHandler } from "./registry/check.ts";
 import { handleRegistryEndpoint } from "./registry/endpoints.ts";
@@ -254,7 +255,12 @@ export const startCore = async (
         await applyReleaseResultsInTx({ clock: systemClock, logger }, tx, runner, results);
         await applySnapshotCommandResultsInTx(snapshotDeps, tx, runner, results);
       },
-      runnerEvent: (runner, frame) => applySnapshotRunnerEvent(snapshotDeps, runner, frame),
+      // A box's wait (milestone 5, ticket 20), else a snapshot's result.
+      runnerEvent: async (runner, frame) => {
+        if (!(await applyBoxRunnerEvent({ db, clock: systemClock, logger }, runner, frame))) {
+          await applySnapshotRunnerEvent(snapshotDeps, runner, frame);
+        }
+      },
     },
     logger,
   });

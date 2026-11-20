@@ -139,6 +139,8 @@ export type FakeServer = {
   /** The HTTP server, so the fake gateway can take its WebSocket upgrades. */
   readonly httpServer: Server;
   readonly setInfo: (info: Partial<InfoResponse>) => void;
+  /** Milestone 5 (ticket 20): tasks whose spec request waits while they're here, so their run stays at its start. */
+  readonly holdSpecs: Set<string>;
   readonly close: () => Promise<void>;
 };
 
@@ -185,6 +187,7 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
   const requests: string[] = [];
   const tasks = new Map<string, { readonly spec: TaskSpec; readonly credentials: TaskCredentials }>();
   const credentialsIssued = new Map<string, number>();
+  const holdSpecs = new Set<string>();
   const devices = new Map<string, { polls: number }>();
   const blobs = new Map<string, FakeBlob>();
   type Upload = { readonly taskId: string; readonly sha256: string; readonly size: number; readonly contentType: string; readonly purpose: string; held: Buffer };
@@ -558,6 +561,9 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
         return;
       }
       if (taskMatch[2] === "spec" && request.method === "GET") {
+        while (holdSpecs.has(taskId) && !response.destroyed) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
         const epoch = Number(new URLSearchParams(taskMatch[3] ?? "").get("leaseEpoch"));
         if (epoch !== task.spec.leaseEpoch) {
           send(response, 409, { error: { code: "stale-lease", message: "stale", currentEpoch: task.spec.leaseEpoch } });
@@ -617,6 +623,7 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
     setInfo: (next) => {
       infoOverride = next;
     },
+    holdSpecs,
     close: () =>
       new Promise<void>((resolve) => {
         server.closeAllConnections();

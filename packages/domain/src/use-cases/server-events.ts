@@ -38,9 +38,10 @@ export const appendServerEvent = async (tx: Tx, input: AppendServerEventInput): 
 /**
  * The runner's kinds core also records itself, when it's core that saw it happen (milestone 2): a
  * runaway limit core times (the maximum duration, the stall: ADR 0037), and the crash of a box the
- * dispatch found gone (F-047). Stored like a server event, with no session number.
+ * dispatch found gone (F-047); milestone 5, a box's wait a runner reports outside the session
+ * (`box.waiting`, `box.scheduled`, ticket 20). Stored like a server event, with no session number.
  */
-export const coreRecordedKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind>(["session.limit_reached", "session.crashed"]);
+export const coreRecordedKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind>(["session.limit_reached", "session.crashed", "box.waiting", "box.scheduled"]);
 
 /** Appends one event of a `coreRecordedKinds` kind, as `appendServerEvent` does. */
 export const appendCoreEvent = async (tx: Tx, input: AppendServerEventInput): Promise<TaskSeq> => {

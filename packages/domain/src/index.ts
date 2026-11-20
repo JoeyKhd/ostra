@@ -149,3 +149,4 @@ export * from "./effort/levels.ts";
 export * from "./use-cases/effort.ts";
 // Milestone 4: an admin's model prices (F-037, ticket 27).
 export * from "./use-cases/model-price.ts";
+export * from "./use-cases/box-wait.ts";

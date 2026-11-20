@@ -24,6 +24,7 @@
     "@modelcontextprotocol/sdk": "1.32.2",
     "@ostra/adapter-executor-docker": "workspace:*",
     "@ostra/adapter-executor-host": "workspace:*",
+    "@ostra/adapter-executor-kubernetes": "workspace:*",
     "@ostra/adapter-opencode": "workspace:*",
     "@ostra/adapter-sdk": "workspace:*",
     "@ostra/protocol": "workspace:*",

@@ -63,7 +63,9 @@ describe("the runner's config", () => {
 
   it("refuses a missing server, a bad executor and a zero capacity", () => {
     expect(parseRunnerConfig({ flags: {}, env: {} }).ok).toBe(false);
-    expect(parseRunnerConfig({ flags: { server: "http://x", executor: "kubernetes" }, env: {} }).ok).toBe(false);
+    // Milestone 5 (ticket 20): `kubernetes` is an executor now.
+    expect(parseRunnerConfig({ flags: { server: "http://x", executor: "kubernetes" }, env: {} })).toMatchObject({ ok: true, config: { executor: "kubernetes" } });
+    expect(parseRunnerConfig({ flags: { server: "http://x", executor: "nomad" }, env: {} }).ok).toBe(false);
     expect(parseRunnerConfig({ flags: { server: "http://x", capacity: "0" }, env: {} }).ok).toBe(false);
   });
 

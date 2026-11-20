@@ -69,7 +69,7 @@ export const runnerConfigFields = {
     flag: "executor",
     env: "OSTRA_RUNNER_EXECUTOR",
     default: "host",
-    description: "Where tasks run: host (a worktree on this machine, not isolated) or docker (a box per task).",
+    description: "Where tasks run: host (a worktree on this machine, not isolated), docker (a box per task) or kubernetes (a pod per task, from a pool runner in the cluster).",
   },
   capacity: {
     flag: "capacity",
@@ -244,7 +244,7 @@ export const runnerConfigSchema = z.strictObject({
   /** Unset: the runner uses `<home>/.ostra/runner`. */
   dataDir: z.string().min(1).optional().describe(describe("dataDir")),
   transport: z.enum(["auto", "websocket", "http"]).default("auto").describe(describe("transport")),
-  executor: z.enum(["host", "docker"]).default("host").describe(describe("executor")),
+  executor: z.enum(["host", "docker", "kubernetes"]).default("host").describe(describe("executor")),
   /** Unset: the slots' default (`OSTRA_RUNNER_SLOTS` wins over it). */
   capacity: z.coerce.number().pipe(z.number().int().positive().max(1024)).optional().describe(describe("capacity")),
   labels: z.array(runnerLabelSchema).max(64).default([]).describe(describe("labels")),

@@ -951,11 +951,14 @@ export const minor4EventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKin
 
 /**
  * The kinds a runner may also send outside a task, in a `runner-event` frame: a snapshot build's
- * result when no task triggered the build (F-051).
+ * result when no task triggered the build (F-051), and (minor 4) a box's wait before its sidecar
+ * holds the task's session (F-093): `box.waiting` and `box.scheduled`.
  */
 export const runnerScopedEventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind>([
   "snapshot.built",
   "snapshot.failed",
+  "box.waiting",
+  "box.scheduled",
 ]);
 
 /** The lowest minor that carries an event kind. */

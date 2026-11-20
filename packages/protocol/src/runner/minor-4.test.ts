@@ -435,3 +435,17 @@ describe("welcome's pool (minor 4)", () => {
     expect(parseDownFrame(JSON.stringify({ ...welcome, pool: { ...welcome.pool, extra: 1 } }), 4).ok).toBe(false);
   });
 });
+
+describe("a box's wait as a runner event (minor 4)", () => {
+  it("F-093: box.waiting and box.scheduled travel in a runner-event frame at minor 4, and are refused in one below it", () => {
+    for (const kind of runnerAdded) {
+      const frame: UpFrame = { type: "runner-event", at: 1_700_000_000_000, event: eventFixtures[kind] };
+      expect(parseUpFrame(encodeUpFrame(frame, 4), 4)).toEqual({ ok: true, frame });
+      expect(parseUpFrame(JSON.stringify(frame), 3).ok).toBe(false);
+    }
+    // A snapshot's result still travels at minor 3, and a task's other events never as a runner event.
+    const built: UpFrame = { type: "runner-event", at: 1_700_000_000_000, event: eventFixtures["snapshot.built"] };
+    expect(parseUpFrame(JSON.stringify(built), 3)).toEqual({ ok: true, frame: built });
+    expect(parseUpFrame(JSON.stringify({ type: "runner-event", at: 1, event: eventFixtures["task.cancelled"] }), 4).ok).toBe(false);
+  });
+});

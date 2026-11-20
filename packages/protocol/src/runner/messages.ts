@@ -13,6 +13,7 @@ import {
 import type { ExecutorKind } from "../common.ts";
 import {
   encodeEventForMinor,
+  eventKindMinMinor,
   runnerEventSchema,
   runnerEventSchemaV0,
   runnerEventSchemaV1,
@@ -214,10 +215,15 @@ export const runnerEventFrameSchema = z.strictObject({
   /** When the runner recorded it, in ms since the epoch, by its clock. */
   at: epochMsSchema,
   event: taskEventSchema.refine((event) => runnerScopedEventKinds.has(event.kind), {
-    message: "only a snapshot's result is a runner event",
+    message: "only a snapshot's result or a box's wait is a runner event",
   }),
 });
 export type RunnerEventFrame = z.infer<typeof runnerEventFrameSchema>;
+
+/** `runner-event` below minor 4: a snapshot's result only; a box's wait is new in minor 4. */
+const runnerEventFrameSchemaV3 = runnerEventFrameSchema.refine((frame) => eventKindMinMinor(frame.event.kind) < 4, {
+  message: "a box's wait is a runner event from minor 4",
+});
 
 export const commandAckItemSchema = z.strictObject({
   id: commandIdSchema,
@@ -297,7 +303,7 @@ const upFrameV3 = z.discriminatedUnion("type", [
   commandAckSchema,
   statusSchemaV3,
   liveTextSchema,
-  runnerEventFrameSchema,
+  runnerEventFrameSchemaV3,
 ]);
 const upFrameV2 = z.discriminatedUnion("type", [
   helloSchema,
@@ -305,7 +311,7 @@ const upFrameV2 = z.discriminatedUnion("type", [
   commandAckSchema,
   statusSchemaV3,
   liveTextSchema,
-  runnerEventFrameSchema,
+  runnerEventFrameSchemaV3,
 ]);
 const upFrameV1 = z.discriminatedUnion("type", [
   helloSchema,
