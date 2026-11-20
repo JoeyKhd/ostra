@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { processContainmentFromDb } from "@ostra/db";
 import type { Db } from "@ostra/db";
 import { approveRunner, drainRunner, rejectRunner, requireOrganizationAdmin, resumeRunner, revokeRunner, revokeRunnerInputSchema, slotHoldingBoxStates, DEFAULT_PERSONAL_RUNNER_SLOTS } from "@ostra/domain";
@@ -20,6 +22,12 @@ const parseOs = (value: unknown) => {
   const parsed = osSchema.safeParse(value);
   return parsed.success ? parsed.data : null;
 };
+
+/**
+ * A runner's key as an admin checks it (F-091, ticket 31): `SHA256:` and the unpadded base64 of the
+ * SHA-256 of the stored public key, as `ssh-keygen -l` prints one. Never the key itself.
+ */
+export const keyFingerprint = (publicKey: string): string => `SHA256:${createHash("sha256").update(publicKey).digest("base64").replace(/=+$/, "")}`;
 
 const runnerRowSelect = {
   id: true,
@@ -121,7 +129,8 @@ export const runnersRouter = router({
         os: true,
         approvedByMemberId: true,
         drainedByMemberId: true,
-        joinToken: { select: { id: true, label: true, revokedAt: true } },
+        publicKey: true,
+        joinToken: { select: { id: true, label: true, revokedAt: true, createdByMemberId: true } },
         owner: { select: { id: true, user: { select: { name: true } } } },
       },
     });
@@ -148,7 +157,7 @@ export const runnersRouter = router({
         select: { id: true, action: true, actorKind: true, actorName: true, createdAt: true },
       }),
       ctx.deps.db.member.findMany({
-        where: { organizationId, id: { in: [row.approvedByMemberId, row.drainedByMemberId].filter((id): id is string => id !== null) } },
+        where: { organizationId, id: { in: [row.approvedByMemberId, row.drainedByMemberId, row.joinToken?.createdByMemberId ?? null].filter((id): id is string => id !== null) } },
         select: { id: true, user: { select: { name: true } } },
       }),
     ]);
@@ -163,7 +172,12 @@ export const runnersRouter = router({
       pool: row.pool === null ? null : { id: poolIdSchema.parse(row.pool.id), name: row.pool.name },
       owner: row.owner === null ? null : { memberId: memberIdSchema.parse(row.owner.id), name: row.owner.user.name },
       /** The join token it joined with, by label: never the token. */
-      joinToken: row.joinToken === null ? null : { id: joinTokenIdSchema.parse(row.joinToken.id), label: row.joinToken.label, revoked: row.joinToken.revokedAt !== null },
+      joinToken:
+        row.joinToken === null
+          ? null
+          : { id: joinTokenIdSchema.parse(row.joinToken.id), label: row.joinToken.label, revoked: row.joinToken.revokedAt !== null, createdBy: who(row.joinToken.createdByMemberId) },
+      /** Its key's fingerprint, for the admin who approves it (ticket 31): never the key. */
+      keyFingerprint: keyFingerprint(row.publicKey),
       approvedAt: row.approvedAt?.getTime() ?? null,
       approvedBy: who(row.approvedByMemberId),
       drainedBy: who(row.drainedByMemberId),

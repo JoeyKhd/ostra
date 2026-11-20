@@ -5,6 +5,7 @@ import {
   joinTokenFromColumns,
   poolQueueInTx,
   revokeJoinToken,
+  slotHoldingBoxStates,
   updatePool,
 } from "@ostra/domain";
 import type { PoolAdminDeps } from "@ostra/domain";
@@ -280,7 +281,7 @@ export const poolsRouter = router({
     .query(async ({ ctx, input }) => {
       const organizationId = ctx.scope.organizationId;
       const pool = await poolOrNotFound(ctx.deps, organizationId, input.poolId);
-      const [runners, tokens, projects] = await Promise.all([
+      const [runners, tokens, projects, boxes] = await Promise.all([
         ctx.deps.db.runner.findMany({
           where: { organizationId, poolId: pool.id },
           orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -303,7 +304,14 @@ export const poolsRouter = router({
           orderBy: { project: { name: "asc" } },
           select: { maxBoxes: true, position: true, project: { select: { id: true, name: true } } },
         }),
+        // Each project's boxes on this pool's runners that hold a slot: the count admission uses.
+        ctx.deps.db.box.groupBy({
+          by: ["projectId"],
+          where: { organizationId, state: { in: [...slotHoldingBoxStates] }, runner: { poolId: pool.id } },
+          _count: { _all: true },
+        }),
       ]);
+      const busyOf = new Map(boxes.map((row) => [row.projectId, row._count._all] as const));
       return {
         id: input.poolId,
         name: pool.name,
@@ -335,6 +343,8 @@ export const poolsRouter = router({
           name: link.project.name,
           maxBoxes: link.maxBoxes,
           position: link.position,
+          /** Its boxes on this pool now (F-092): `Box` rows holding a slot on the pool's runners. */
+          busy: busyOf.get(link.project.id) ?? 0,
         })),
       };
     }),
