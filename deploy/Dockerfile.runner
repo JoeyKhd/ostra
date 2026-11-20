@@ -35,6 +35,8 @@ COPY --from=build --chown=node:node /app /app
 RUN printf '#!/bin/sh\nexec node /app/apps/runner/src/main.ts "$@"\n' > /usr/local/bin/ostra \
   && chmod 0755 /usr/local/bin/ostra \
   && mkdir -p /task /run/ostra && chown node:node /task
+# The runner reports how it was installed (ADR 0034's pin): from the image, it installs no other version.
+ENV OSTRA_INSTALL=image
 # The box's task volume is seeded from /task: owned by the agent's user (uid 1000, `node`), which
 # the sidecar runs as too.
 USER node

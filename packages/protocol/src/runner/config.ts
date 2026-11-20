@@ -74,8 +74,8 @@ export const runnerConfigFields = {
   capacity: {
     flag: "capacity",
     env: "OSTRA_RUNNER_CAPACITY",
-    default: "1",
-    description: "How many tasks the runner runs at once.",
+    default: "(none: the slots' default)",
+    description: "How many tasks a host runner runs at once: the older name of OSTRA_RUNNER_SLOTS, which wins.",
   },
   labels: {
     flag: "labels",
@@ -128,8 +128,8 @@ export const runnerConfigFields = {
   slots: {
     flag: "slots",
     env: "OSTRA_RUNNER_SLOTS",
-    default: "docker: the host's CPUs / 2; kubernetes: 20; host (pool): 2",
-    description: "How many boxes a pool runner holds at once (ADR 0059). A personal runner's is its member's setting (2 by default).",
+    default: "docker: the host's CPUs / 2; kubernetes: 20; host: 2",
+    description: "How many tasks or boxes the runner holds at once (ADR 0059). The server may hold a personal runner to fewer (its member's setting, 2 by default).",
   },
   reserveCpuMillis: {
     flag: "reserve-cpu-millis",
@@ -245,7 +245,8 @@ export const runnerConfigSchema = z.strictObject({
   dataDir: z.string().min(1).optional().describe(describe("dataDir")),
   transport: z.enum(["auto", "websocket", "http"]).default("auto").describe(describe("transport")),
   executor: z.enum(["host", "docker"]).default("host").describe(describe("executor")),
-  capacity: z.coerce.number().pipe(z.number().int().positive().max(1024)).default(1).describe(describe("capacity")),
+  /** Unset: the slots' default (`OSTRA_RUNNER_SLOTS` wins over it). */
+  capacity: z.coerce.number().pipe(z.number().int().positive().max(1024)).optional().describe(describe("capacity")),
   labels: z.array(runnerLabelSchema).max(64).default([]).describe(describe("labels")),
   /** Unset: the runner uses the machine's host name. */
   name: z.string().min(1).max(128).optional().describe(describe("name")),

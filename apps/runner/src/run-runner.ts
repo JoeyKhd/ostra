@@ -11,6 +11,8 @@ import { dataPaths, signInAgainAdvice, updateStatus } from "./identity/store.ts"
 import { defaultAgents } from "./task-host/agents.ts";
 import { fetchServiceSecrets, fetchSnapshotCredentials, fetchTaskToken, runnerServerLink } from "./task-host/server-link.ts";
 import { createTaskHost } from "./task-host/task-host.ts";
+import { approvalHooks, DOCKER_CAPABILITIES, withApprovalStatus } from "./pool-approval.ts";
+import { hostSlots, reportedCapabilities } from "./reports.ts";
 import { RUNNER_VERSION } from "./version.ts";
 
 // `ostra runner` once it's signed in: the connection to the server, and what runs the tasks it's
@@ -36,7 +38,7 @@ type Work = {
   readonly describe: string;
 };
 
-export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir, terminal, signal }) => {
+export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir, terminal, signal, install }) => {
   const { record } = signedIn.identity;
   const logger = terminal.logger.child({ runnerId: record.runnerId });
   // The task host and the connection need each other: the host reaches the connection through this.
@@ -92,13 +94,16 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
         logger,
         listenHost: "127.0.0.1",
         stopGraceMs: STOP_GRACE_MS,
-        capacity: config.capacity,
+        // Milestone 5 (F-014, ADR 0059): two at once unless OSTRA_RUNNER_SLOTS says otherwise.
+        capacity: hostSlots(config),
         executorKind: "host",
         labels: config.labels,
       });
+      const capabilities = reportedCapabilities(executor.capabilities);
       work = {
         handlers: host.handlers,
-        status: host.status,
+        // `host` offers slots only: no CPU or memory (ADR 0059).
+        status: () => ({ ...host.status(), resources: null, capabilities, install }),
         hooks: {
           onSelfFence: (sessions) => {
             host.fence(sessions);
@@ -132,13 +137,20 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
         terminal.warn("The docker executor needs a Docker Engine, and none answers here (DOCKER_HOST, or the default socket).");
         return exitCodes.failed;
       }
+      // Milestone 5 (ADR 0059): what this host offers, from the Engine's `info` less the reserve.
+      const settings = { ...(config.slots === undefined ? {} : { slots: config.slots }), reserveCpuMillis: config.reserveCpuMillis, reserveMemoryMiB: config.reserveMemoryMiB };
+      const offer = await boxes.readCapacity(settings);
+      if (offer === null) {
+        terminal.warn("The Docker Engine didn't say how many CPUs and how much memory it has.");
+        return exitCodes.failed;
+      }
       const dispatcher = createBoxDispatcher({
         boxes,
         link,
         taskToken: fetchTaskToken({ serverUrl: config.serverUrl, tokens: signedIn.tokens }),
         dataDir: path.resolve(dataDir),
         serverUrl: config.boxServerUrl ?? config.serverUrl,
-        capacity: config.capacity,
+        capacity: offer.slots,
         labels: config.labels,
         logger,
         // Milestone 3 (ticket 14): the services' secrets, and the snapshots built and kept here.
@@ -151,7 +163,7 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
       });
       work = {
         handlers: dispatcher.handlers,
-        status: dispatcher.status,
+        status: () => ({ ...dispatcher.status(), resources: offer, capabilities: DOCKER_CAPABILITIES, install }),
         hooks: {},
         started: () => undefined,
         shutdown: () => Promise.resolve(),
@@ -171,7 +183,7 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
     timers: { wsRetryMs: config.wsRetryMinutes * 60_000 },
     tokens: signedIn.tokens,
     dataDir,
-    handlers: work.handlers,
+    handlers: withApprovalStatus(work.handlers, dataDir),
     status: work.status,
     logger,
     hooks: {
@@ -185,6 +197,7 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
       onCarrier: (carrier, fallback) => {
         updateStatus(dataDir, { carrier: { at: Date.now(), carrier, fallback } }).catch(() => undefined);
       },
+      ...approvalHooks(dataDir, terminal),
     },
   });
   holder.connection = live;

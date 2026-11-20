@@ -296,6 +296,24 @@ describe("join tokens", () => {
     expect(await updatePool(deps(), admin(), { poolId, requiresApproval: false })).toMatchObject({ ok: true });
   });
 
+  it("F-091: a joining runner hears in its welcome that it waits for approval in its pool, and a resume when an admin approves it", async () => {
+    const pool = await newPool("needs-a-yes", { requiresApproval: true });
+    const runner = await joined(pool.joinToken.token, "waiting-one");
+    const token = await accessToken(gateway, runner);
+    const peer = await connectPeer(gateway.url, token.accessToken, runner.runnerId);
+    peers.push(peer);
+    expect((await peer.next("welcome")).pool).toEqual({ poolId: pool.poolId, name: "needs-a-yes", awaitingApproval: true });
+    await api.test.db.$transaction((tx) =>
+      approveRunner({ tx, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock }, { organizationId, runnerId: runner.runnerId, memberId: memberIdSchema.parse(api.fixture.a.admin.id) }),
+    );
+    const resume = await peer.next("command");
+    expect(resume).toMatchObject({ kind: "resume", body: {} });
+    // Its next connection's welcome says so too.
+    const again = await connectPeer(gateway.url, (await accessToken(gateway, runner)).accessToken, runner.runnerId);
+    peers.push(again);
+    expect((await again.next("welcome")).pool).toEqual({ poolId: pool.poolId, name: "needs-a-yes", awaitingApproval: false });
+  });
+
   it("F-091: the join's audit entry and its notice's job commit with it: a rollback leaves neither", async () => {
     const pool = await newPool("all-or-nothing");
     const entries = await joinedEntries();

@@ -75,7 +75,7 @@ describe("ostra runner: the first sign-in", () => {
     expect(fake.runners.size).toBe(1);
     const [registered] = [...fake.runners.values()];
     expect(registered?.proof).toBe("device-session");
-    expect(registered?.request).toMatchObject({ name: "laptop", executor: "host", capacity: 1, version: RUNNER_VERSION });
+    expect(registered?.request).toMatchObject({ name: "laptop", executor: "host", capacity: 2, version: RUNNER_VERSION });
     expect([...fake.sessions.values()].every((session) => session.revoked)).toBe(true);
 
     const loaded = await loadIdentity(dataDir);

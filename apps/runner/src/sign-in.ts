@@ -10,8 +10,11 @@ import { runDeviceFlow } from "./server/device-flow.ts";
 import type { DeviceFlowInput } from "./server/device-flow.ts";
 import { describeFailure } from "./server/http.ts";
 import { fetchInfo } from "./server/info.ts";
+import { hostSlots } from "./reports.ts";
+import type { CallFailure } from "./server/http.ts";
 import { register } from "./server/register.ts";
 import type { RegisterProof } from "./server/register.ts";
+import { RUNNER_VERSION } from "./version.ts";
 
 // `ostra runner`'s sign-in (ticket 15, ADR 0029 as amended, Q115):
 //
@@ -31,7 +34,7 @@ export type SignedIn = {
 };
 
 export type SignInFailure = {
-  readonly reason: RefusalReason | "broken-identity" | "other-server" | "device-flow";
+  readonly reason: RefusalReason | "broken-identity" | "other-server" | "device-flow" | "join-refused";
   /** For the person at the terminal: what happened and what to do. Never holds a token. */
   readonly message: string;
 };
@@ -49,6 +52,24 @@ export type SignInInput = {
 };
 
 const fail = (reason: SignInFailure["reason"], message: string): SignInResult => ({ ok: false, failure: { reason, message } });
+
+/** Why core refused a join token (milestone 5, F-091): its 401 says so in words. */
+export type JoinRefusal = "expired" | "revoked" | "unknown";
+
+/** The refusal of a pool's join token in core's register answer, or `null` when it's something else. */
+export const joinRefusalOf = (failure: CallFailure): JoinRefusal | null => {
+  if (failure.kind !== "refused" || failure.status !== 401) {
+    return null;
+  }
+  const words = failure.error?.message ?? "";
+  return /expired/i.test(words) ? "expired" : /revoked/i.test(words) ? "revoked" : "unknown";
+};
+
+const joinRefusalWords: Readonly<Record<JoinRefusal, string>> = {
+  expired: "it has expired",
+  revoked: "it was revoked",
+  unknown: "the server doesn't know it",
+};
 
 const recordRefusal = async (input: SignInInput, reason: RefusalReason, message: string): Promise<void> => {
   await updateStatus(input.dataDir, { lastRefusal: { at: (input.now ?? Date.now)(), reason, message } });
@@ -115,6 +136,10 @@ export const signIn = async (input: SignInInput): Promise<SignInResult> => {
     return fail("unreachable", message);
   }
   const info = infoResult.info;
+  if (info.serverVersion !== RUNNER_VERSION) {
+    // An npm install pinned itself before this (`pin.ts`); the image and a checkout only say so.
+    terminal.logger.info("this runner's version differs from the server's", { version: RUNNER_VERSION, serverVersion: info.serverVersion });
+  }
   await updateStatus(dataDir, {
     versionWindow: {
       protocolMajor: info.protocolMajor,
@@ -140,11 +165,18 @@ export const signIn = async (input: SignInInput): Promise<SignInResult> => {
       publicKey: keyPair.publicKey,
       name,
       executor: config.executor,
-      capacity: config.capacity,
+      capacity: hostSlots(config),
       labels: config.labels,
       proof,
     });
     if (!registered.ok) {
+      const refused = proof.kind === "join-token" ? joinRefusalOf(registered.failure) : null;
+      if (refused !== null) {
+        // Milestone 5 (F-091): the reason, `expired`, `revoked` or `unknown`, and the fix.
+        const message = `The pool's join token was refused (${refused}): ${joinRefusalWords[refused]}. Ask an admin for a new one in the panel, under Runners.`;
+        await recordRefusal(input, "invalid-response", message);
+        return fail("join-refused", message);
+      }
       const message = `The server didn't register this runner: ${describeFailure(registered.failure)}.`;
       await recordRefusal(input, "invalid-response", message);
       return fail("invalid-response", message);

@@ -24,8 +24,9 @@ import {
   runnerPaths,
   sessionIdSchema,
   taskIdSchema,
+  poolIdSchema,
 } from "@ostra/protocol";
-import type { Ack, CommandAck, DownFrame, ErrorFrame, Hello, RunnerId, Status, UpFrame } from "@ostra/protocol";
+import type { Ack, CommandAck, DownFrame, ErrorFrame, Hello, RunnerId, Status, UpFrame, WelcomePool } from "@ostra/protocol";
 import pg from "pg";
 import { WebSocketServer } from "ws";
 import type { RawData, WebSocket } from "ws";
@@ -104,7 +105,14 @@ const rejectUpgrade = (socket: Duplex, status: 401 | 403 | 404 | 500, code: stri
 const revokedWhileConnecting = new Error("the runner was revoked while it connected");
 
 type HelloOutcome =
-  | { readonly ok: true; readonly connectionEpoch: number; readonly minor: number; readonly acks: readonly Ack[] }
+  | {
+      readonly ok: true;
+      readonly connectionEpoch: number;
+      readonly minor: number;
+      readonly acks: readonly Ack[];
+      /** Minor 4 (F-091): a pool runner's pool, and whether it waits for approval; `null` for a personal runner. */
+      readonly pool: WelcomePool | null;
+    }
   | { readonly ok: false; readonly error: ErrorFrame; readonly close: number };
 
 export type ConnectionsOptions = {
@@ -269,7 +277,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
       await tx.$queryRaw`SELECT 1 FROM "runner" WHERE "id" = ${runner.runnerId} FOR UPDATE`;
       const current = await tx.runner.findFirst({
         where: { id: runner.runnerId, organizationId: runner.organizationId },
-        select: { state: true, revokedAt: true, kind: true, approvedAt: true, pool: { select: { requiresApproval: true } } },
+        select: { state: true, revokedAt: true, kind: true, approvedAt: true, pool: { select: { id: true, name: true, requiresApproval: true } } },
       });
       if (current?.revokedAt !== null || current.state === "revoked") {
         // Rejected or revoked while this hello waited: nothing of this connection is kept.
@@ -339,7 +347,9 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
           entityId: runner.runnerId,
         });
       }
-      return { connectionEpoch, acks };
+      const pool: WelcomePool | null =
+        current.kind === "pool" && current.pool !== null ? { poolId: poolIdSchema.parse(current.pool.id), name: current.pool.name, awaitingApproval: !accept } : null;
+      return { connectionEpoch, acks, pool };
     }).catch((error: unknown) => {
       if (error === revokedWhileConnecting) {
         return null;
@@ -353,7 +363,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
         close: closeCodes.revoked,
       };
     }
-    return { ok: true, connectionEpoch: outcome.connectionEpoch, minor: negotiation.minor, acks: outcome.acks };
+    return { ok: true, connectionEpoch: outcome.connectionEpoch, minor: negotiation.minor, acks: outcome.acks, pool: outcome.pool };
   };
 
   // ---------- commands down ----------
@@ -533,7 +543,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
   const carrierSession: CarrierSession = {
     acceptHello: async (runner, hello) => {
       const outcome = await acceptHello(runner, hello);
-      return outcome.ok ? { ok: true, connectionEpoch: outcome.connectionEpoch, minor: outcome.minor, acks: outcome.acks } : { ok: false, error: outcome.error };
+      return outcome.ok ? { ok: true, connectionEpoch: outcome.connectionEpoch, minor: outcome.minor, acks: outcome.acks, pool: outcome.pool } : { ok: false, error: outcome.error };
     },
     connectedHere: (runnerId, connectionEpoch) => {
       const peer = peers.get(runnerId);
@@ -629,6 +639,8 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
           creditFrames: runnerLimits.creditFrames,
           creditBytes: runnerLimits.creditBytes,
           maxConnectionAgeMs: timers.maxConnectionAgeMs,
+          // Minor 4 (F-091): a pool runner hears whether it waits for an admin's approval.
+          ...(outcome.pool === null || outcome.minor < 4 ? {} : { pool: outcome.pool }),
         });
         for (const ack of outcome.acks) {
           send(opened, ack);

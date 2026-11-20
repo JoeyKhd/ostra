@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { poolIdSchema } from "../ids.ts";
+
 import { isReservedLabel, reservedLabelPrefixes, runnerLabelSchema } from "../common.ts";
 import {
   eventKindSupportedAt,
@@ -407,5 +409,29 @@ describe("GET /runner/v1/info", () => {
     expect(infoResponseSchemaV3.safeParse(info).success).toBe(false);
     // A minor-3 server's answer still parses here.
     expect(infoResponseSchema.parse(forMinor3)).toEqual(forMinor3);
+  });
+});
+
+describe("welcome's pool (minor 4)", () => {
+  it("F-091: tells a pool runner its pool and whether it waits for approval, only at minor 4", () => {
+    const welcome = {
+      type: "welcome" as const,
+      minor: 4,
+      serverTime: 1_700_000_000_000,
+      connectionEpoch: 2,
+      replicaId: ids.replica,
+      pingMs: 20_000,
+      creditFrames: 256,
+      creditBytes: 4_194_304,
+      maxConnectionAgeMs: 3_600_000,
+      pool: { poolId: poolIdSchema.parse("pool-1"), name: "Build farm", awaitingApproval: true },
+    };
+    expect(parseDownFrame(encodeDownFrame(welcome, 4), 4)).toEqual({ ok: true, frame: welcome });
+    // A minor-3 runner reads minor 3's welcome: the pool is dropped, and refused if it were sent.
+    const { pool: _dropped, ...minor3 } = welcome;
+    expect(_dropped.awaitingApproval).toBe(true);
+    expect(parseDownFrame(encodeDownFrame(welcome, 3), 3)).toEqual({ ok: true, frame: minor3 });
+    expect(parseDownFrame(JSON.stringify(welcome), 3).ok).toBe(false);
+    expect(parseDownFrame(JSON.stringify({ ...welcome, pool: { ...welcome.pool, extra: 1 } }), 4).ok).toBe(false);
   });
 });

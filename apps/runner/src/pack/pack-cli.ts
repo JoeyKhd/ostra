@@ -1,0 +1,88 @@
+import { execFile } from "node:child_process";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
+import { z } from "zod";
+
+// The npm CLI (ADR 0046, milestone 5's ticket 19, F-013): `pnpm --filter @ostra/runner pack:cli`
+// bundles the `ostra` program and everything it imports into one file, `dist/npm/dist/ostra.js`,
+// beside a package.json with no dependencies, the `ostra` bin and `engines` (Node 24.5 or later,
+// for `proxyEnv`), and packs that folder with npm into `dist/npm/<name>-<version>.tgz`. Node won't
+// strip types under `node_modules`, and the workspace's packages aren't published, so the tarball
+// carries JavaScript only, and nothing for npm to fetch.
+//
+// The package's name is the maintainer's to register before milestone 7 (ADR 0046: npm's `ostra`
+// is taken); until then it's `OSTRA_CLI_PACKAGE`, or `ostra`.
+
+const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+const runnerPackageSchema = z.looseObject({ version: z.string().min(1), license: z.string().min(1), engines: z.looseObject({ node: z.string().min(1) }) });
+
+export type PackedCli = { readonly tarball: string; readonly name: string; readonly version: string; readonly folder: string };
+
+/** npm's own CLI, run by this Node with no shell: beside `node` on Windows, under `lib/` elsewhere. */
+const npmCli = async (): Promise<readonly string[]> => {
+  const beside = path.dirname(process.execPath);
+  for (const candidate of [path.join(beside, "node_modules", "npm", "bin", "npm-cli.js"), path.join(beside, "..", "lib", "node_modules", "npm", "bin", "npm-cli.js")]) {
+    if (await stat(candidate).then(() => true, () => false)) {
+      return [process.execPath, candidate];
+    }
+  }
+  return ["npm"];
+};
+
+const run = async (args: readonly string[], cwd: string): Promise<string> => {
+  const [command = "npm", ...prefix] = await npmCli();
+  return new Promise((resolve, reject) => {
+    execFile(command, [...prefix, ...args], { cwd, windowsHide: true, timeout: 300_000 }, (error, stdout, stderr) => {
+      if (error === null) {
+        resolve(stdout);
+      } else {
+        reject(new Error(`npm ${args.join(" ")} failed: ${stderr.slice(0, 2000)}`));
+      }
+    });
+  });
+};
+
+export const packCli = async (options: { readonly outDir?: string; readonly name?: string } = {}): Promise<PackedCli> => {
+  const runner = runnerPackageSchema.parse(JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8")));
+  const folder = options.outDir ?? path.join(packageRoot, "dist", "npm");
+  const name = options.name ?? process.env["OSTRA_CLI_PACKAGE"] ?? "ostra";
+  await rm(folder, { recursive: true, force: true });
+  await mkdir(path.join(folder, "dist"), { recursive: true });
+  await build({
+    entryPoints: [path.join(packageRoot, "src", "main.ts")],
+    outfile: path.join(folder, "dist", "ostra.js"),
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    target: "node24",
+    // `ws`'s optional native speed-ups: it runs without them.
+    external: ["bufferutil", "utf-8-validate"],
+    // Some of the bundled packages are CommonJS and `require` Node's own modules.
+    banner: { js: 'import { createRequire as __ostraCreateRequire } from "node:module"; const require = __ostraCreateRequire(import.meta.url);' },
+    legalComments: "linked",
+    logLevel: "warning",
+  });
+  const manifest = {
+    name,
+    version: runner.version,
+    description: "The ostra CLI: a runner for ostra's coding agents, its sidecar, and a member's login and checkout",
+    license: runner.license,
+    type: "module",
+    bin: { ostra: "dist/ostra.js" },
+    files: ["dist"],
+    engines: { node: runner.engines.node },
+  };
+  await writeFile(path.join(folder, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+  await writeFile(path.join(folder, "LICENSE"), await readFile(path.join(packageRoot, "LICENSE"), "utf8"));
+  const packed = await run(["pack", "--json", "--pack-destination", folder], folder);
+  const filename = z.array(z.looseObject({ filename: z.string().min(1) })).min(1).parse(JSON.parse(packed))[0]?.filename ?? "";
+  return { tarball: path.join(folder, filename), name, version: runner.version, folder };
+};
+
+if (import.meta.main) {
+  const packed = await packCli();
+  process.stdout.write(`${packed.tarball}\n`);
+}

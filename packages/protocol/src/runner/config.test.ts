@@ -14,7 +14,6 @@ describe("the runner's config", () => {
         serverUrl: "http://localhost:8787",
         transport: "auto",
         executor: "host",
-        capacity: 1,
         labels: [],
         shell: "bash",
         reserveCpuMillis: 1000,

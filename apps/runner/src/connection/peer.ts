@@ -26,12 +26,16 @@ import type {
   ProcessContainment,
   LeaseEpoch,
   Peer,
+  RunnerCapabilities,
   RunnerEvent,
+  RunnerInstall,
   RunnerLabel,
+  RunnerResources,
   SessionId,
   TaskEvent,
   TaskId,
   UpFrame,
+  WelcomePool,
 } from "@ostra/protocol";
 import type { Logger } from "@ostra/adapter-sdk";
 import WebSocket from "ws";
@@ -87,6 +91,14 @@ export type PeerStatus = {
   readonly freeSlots: number;
   readonly labels: readonly RunnerLabel[];
   readonly running: readonly SessionId[];
+  /**
+   * Minor 4 (F-092, ADR 0059): what a runner reports in `hello` and each `status`. What it offers
+   * (`null` on `host`, which counts `capacity` as slots), what its executor can do, and how it was
+   * installed. A sidecar leaves them out.
+   */
+  readonly resources?: RunnerResources | null;
+  readonly capabilities?: RunnerCapabilities;
+  readonly install?: RunnerInstall;
 };
 
 /** Why the server refused this peer, as `onRefused` reports it. */
@@ -105,6 +117,11 @@ export type ConnectionHooks = {
   readonly onRefused?: (reason: RefusedReason, message: string) => void;
   /** A connection was welcomed on `carrier`; `fallback` says why it's HTTP on `auto`, `null` on a WebSocket. */
   readonly onCarrier?: (carrier: Carrier, fallback: FallbackReason | null) => void;
+  /**
+   * Minor 4 (F-091): each `welcome`'s pool, for a pool runner: its name, and whether it waits for an
+   * admin's approval. `null` for a personal runner, a sidecar, or a server below minor 4.
+   */
+  readonly onWelcome?: (pool: WelcomePool | null) => void;
 };
 
 export type ConnectionTimers = {
@@ -488,6 +505,13 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
     inflightBytes = inflight.reduce((sum, frame) => sum + frame.bytes, 0);
   };
 
+  /** Minor 4's reports of a status, as `hello` and `status` carry them; the codec drops them below minor 4. */
+  const reportsOf = (status: PeerStatus): Pick<Hello, "resources" | "capabilities" | "install"> => ({
+    ...(status.resources === undefined ? {} : { resources: status.resources }),
+    ...(status.capabilities === undefined ? {} : { capabilities: status.capabilities }),
+    ...(status.install === undefined ? {} : { install: status.install }),
+  });
+
   const sendStatus = (): void => {
     const status = options.status();
     send({
@@ -500,6 +524,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
       running: [...status.running],
       spoolBytes: spoolBytes(),
       ...(status.processContainment === undefined ? {} : { processContainment: status.processContainment }),
+      ...reportsOf(status),
     });
   };
 
@@ -657,6 +682,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
         onWelcome();
         log.info("connected", { minor: frame.minor, connectionEpoch: frame.connectionEpoch, replicaId: frame.replicaId, carrier: link?.carrier ?? "none" });
         hooks.onConnected?.(now());
+        hooks.onWelcome?.(frame.pool ?? null);
         if (link !== undefined) {
           hooks.onCarrier?.(link.carrier, link.carrier === "http" ? fallback : null);
         }
@@ -731,8 +757,14 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
         leaseEpoch: session.leaseEpoch,
         nextSessionSeq: session.spool.lastSeq() + 1,
       })),
-
+    // Minor 4 (F-092): a runner's executor and what it reports; a sidecar sends none of them.
+    ...(options.peer.kind === "runner" ? helloReports() : {}),
   });
+
+  const helloReports = (): Pick<Hello, "executor" | "resources" | "capabilities" | "install"> => {
+    const status = options.status();
+    return { executor: status.executor, ...reportsOf(status) };
+  };
 
   // ---------- the WebSocket ----------
 

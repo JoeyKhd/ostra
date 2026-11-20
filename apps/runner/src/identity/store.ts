@@ -155,6 +155,14 @@ export const runnerStatusRecordSchema = z.strictObject({
     })
     .nullable()
     .optional(),
+  /**
+   * Milestone 5 (ticket 19, F-091): a pool runner's pool as the last `welcome` named it, and whether
+   * it waits for an admin's approval there; an approval's `resume` clears the wait.
+   */
+  pool: z
+    .strictObject({ at: epochMsSchema, name: z.string().min(1).max(200), awaitingApproval: z.boolean() })
+    .nullable()
+    .optional(),
 });
 export type RunnerStatusRecord = z.infer<typeof runnerStatusRecordSchema>;
 
@@ -172,10 +180,13 @@ export const loadStatus = async (dataDir: string): Promise<RunnerStatusRecord> =
 let statusChain: Promise<unknown> = Promise.resolve();
 
 /** Merges `change` into status.json. Writes are serialized, so two updates never interleave. */
-export const updateStatus = (dataDir: string, change: Partial<RunnerStatusRecord>): Promise<void> => {
+export const updateStatus = (dataDir: string, change: Partial<RunnerStatusRecord>): Promise<void> => updateStatusWith(dataDir, () => change);
+
+/** Merges the change `changeOf` makes of the current status.json, in the same serialized order. */
+export const updateStatusWith = (dataDir: string, changeOf: (current: RunnerStatusRecord) => Partial<RunnerStatusRecord>): Promise<void> => {
   const next = statusChain.then(async () => {
     const current = await loadStatus(dataDir);
-    await writeAtomic(dataPaths(dataDir).status, `${JSON.stringify({ ...current, ...change }, null, 2)}\n`);
+    await writeAtomic(dataPaths(dataDir).status, `${JSON.stringify({ ...current, ...changeOf(current) }, null, 2)}\n`);
   });
   statusChain = next.catch(() => undefined);
   return next;

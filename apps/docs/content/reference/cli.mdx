@@ -26,7 +26,7 @@ ostra --help
 The first start signs the runner in. A pool runner trades its join token (`--join-token` or `--join-token-file`) for its runner key. A personal runner, started without one, shows a device code to approve in the panel. After that, the runner connects and takes tasks. See [Pools and join tokens](/docs/runners/pools) and [Personal runners](/docs/runners/personal).
 
 ```sh
-ostra runner --server http://localhost:8787 --executor docker --capacity 2
+ostra runner --server http://localhost:8787 --executor docker --slots 2
 ```
 
 ### ostra login
@@ -56,7 +56,7 @@ Each flag is also an environment variable, and a flag wins over its variable. Va
 | `--data-dir` | `OSTRA_RUNNER_DATA_DIR` | ~/.ostra/runner | The runner's folder: its key pair, its spool and the task workspaces. |
 | `--transport` | `OSTRA_RUNNER_TRANSPORT` | auto | How the runner talks to the server: auto (a WebSocket, falling back to HTTP by itself when a proxy blocks it), websocket or http. Both go through HTTPS_PROXY, HTTP_PROXY and NO_PROXY, and trust NODE_EXTRA_CA_CERTS. |
 | `--executor` | `OSTRA_RUNNER_EXECUTOR` | host | Where tasks run: host (a worktree on this machine, not isolated) or docker (a box per task). |
-| `--capacity` | `OSTRA_RUNNER_CAPACITY` | 1 | How many tasks the runner runs at once. |
+| `--capacity` | `OSTRA_RUNNER_CAPACITY` | (none: the slots' default) | How many tasks a host runner runs at once: the older name of OSTRA_RUNNER_SLOTS, which wins. |
 | `--labels` | `OSTRA_RUNNER_LABELS` | (none) | Comma-separated labels that tasks can ask for, such as gpu,macos. |
 | `--name` | `OSTRA_RUNNER_NAME` | the machine's host name | The runner's name in the panel. |
 | `--join-token` | `OSTRA_JOIN_TOKEN` | (none) | A pool runner's join token, used once to register. A personal runner signs in with a device code instead. |
@@ -65,7 +65,7 @@ Each flag is also an environment variable, and a flag wins over its variable. Va
 | `--box-base-image` | `OSTRA_BOX_BASE_IMAGE` | ostra/base:&lt;the runner's version&gt; | The docker executor's base image, for an environment that names none. |
 | `--box-runner-image` | `OSTRA_BOX_RUNNER_IMAGE` | ostra/runner:&lt;the runner's version&gt; | The image each docker box's sidecar runs: the ostra CLI. |
 | `--box-server-url` | `OSTRA_BOX_SERVER_URL` | the --server address | Core's address as a docker box's sidecar reaches it, when that differs from --server. |
-| `--slots` | `OSTRA_RUNNER_SLOTS` | docker: the host's CPUs / 2; kubernetes: 20; host (pool): 2 | How many boxes a pool runner holds at once (ADR 0059). A personal runner's is its member's setting (2 by default). |
+| `--slots` | `OSTRA_RUNNER_SLOTS` | docker: the host's CPUs / 2; kubernetes: 20; host: 2 | How many tasks or boxes the runner holds at once (ADR 0059). The server may hold a personal runner to fewer (its member's setting, 2 by default). |
 | `--reserve-cpu-millis` | `OSTRA_RUNNER_RESERVE_CPU_MILLIS` | 1000 | The CPU, in millicores, a docker runner keeps for the host and itself: it offers the engine's CPU less this. |
 | `--reserve-memory-mib` | `OSTRA_RUNNER_RESERVE_MEMORY_MIB` | 2048 | The memory, in MiB, a docker runner keeps for the host and itself: it offers the engine's memory less this. |
 | `--ws-retry-minutes` | `OSTRA_RUNNER_WS_RETRY_MINUTES` | 10 | After falling back to HTTP, how often the runner tries the WebSocket again. |

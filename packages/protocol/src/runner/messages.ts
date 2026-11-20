@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { commandIdSchema, replicaIdSchema, sessionIdSchema, taskIdSchema } from "../ids.ts";
+import { commandIdSchema, poolIdSchema, replicaIdSchema, sessionIdSchema, taskIdSchema } from "../ids.ts";
 import {
   commandSeqSchema,
   epochMsSchema,
@@ -327,7 +327,8 @@ export type UpFrameType = UpFrame["type"];
 // ---------- down: server to peer ----------
 
 /** The server's answer to `hello`: the negotiated minor, its clock and the credit window. */
-export const welcomeSchema = z.strictObject({
+/** `welcome` up to minor 3. */
+const welcomeSchemaV3 = z.strictObject({
   type: z.literal("welcome"),
   /** The negotiated minor: both sides speak it from here on. */
   minor: count,
@@ -343,6 +344,22 @@ export const welcomeSchema = z.strictObject({
   /** The connection is asked to reconnect after this long. */
   maxConnectionAgeMs: positive,
 });
+
+/**
+ * Minor 4 (F-091, Q130): a pool runner's pool, and whether it waits for an admin's approval
+ * before it's offered anything. Core sends it to a pool runner only; when an admin approves a
+ * connected runner, core sends it `resume`, which lifts that hold as it lifts a drain.
+ */
+export const welcomePoolSchema = z.strictObject({
+  poolId: poolIdSchema,
+  /** The pool's name, as the panel shows it. */
+  name: z.string().min(1).max(200),
+  awaitingApproval: z.boolean(),
+});
+export type WelcomePool = z.infer<typeof welcomePoolSchema>;
+
+/** `welcome` at the current minor (4): minor 3's, with a pool runner's `pool`. A minor-3 peer is never sent it. */
+export const welcomeSchema = welcomeSchemaV3.extend({ pool: welcomePoolSchema.optional() });
 export type Welcome = z.infer<typeof welcomeSchema>;
 
 /**
@@ -427,7 +444,7 @@ const downFrameV4 = z.discriminatedUnion("type", [
   evictSchema,
 ]);
 const downFrameV3 = z.discriminatedUnion("type", [
-  welcomeSchema,
+  welcomeSchemaV3,
   ackSchema,
   creditSchema,
   commandSchemaV3,
@@ -436,7 +453,7 @@ const downFrameV3 = z.discriminatedUnion("type", [
   evictSchema,
 ]);
 const downFrameV2 = z.discriminatedUnion("type", [
-  welcomeSchema,
+  welcomeSchemaV3,
   ackSchema,
   creditSchema,
   commandSchemaV2,
@@ -445,7 +462,7 @@ const downFrameV2 = z.discriminatedUnion("type", [
   evictSchema,
 ]);
 const downFrameV1 = z.discriminatedUnion("type", [
-  welcomeSchema,
+  welcomeSchemaV3,
   ackSchema,
   creditSchema,
   commandSchemaV1,
@@ -454,7 +471,7 @@ const downFrameV1 = z.discriminatedUnion("type", [
   evictSchema,
 ]);
 const downFrameV0 = z.discriminatedUnion("type", [
-  welcomeSchema,
+  welcomeSchemaV3,
   ackSchema,
   creditSchema,
   commandSchemaV0,
@@ -510,11 +527,20 @@ const encodeUpFrameFor =
     return frame;
   };
 
-/** A down frame in the shape of a lower minor: a command loses the newer fields. */
+/** A down frame in the shape of a lower minor: a command loses the newer fields, `welcome` its pool. */
 const encodeDownFrameFor =
   (minor: number) =>
-  (frame: DownFrame): unknown =>
-    frame.type === "command" ? encodeCommandForMinor(frame, minor) : frame;
+  (frame: DownFrame): unknown => {
+    if (frame.type === "command") {
+      return encodeCommandForMinor(frame, minor);
+    }
+    if (frame.type === "welcome" && minor < 4) {
+      const minor3: Record<string, unknown> = { ...frame };
+      Reflect.deleteProperty(minor3, "pool");
+      return minor3;
+    }
+    return frame;
+  };
 
 /** Up frames, one codec per kept minor. */
 export const upFrameCodec = createVersionedCodec<UpFrame>([

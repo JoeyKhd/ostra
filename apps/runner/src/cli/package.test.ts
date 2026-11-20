@@ -48,6 +48,8 @@ describe("the ostra program", () => {
     expect(dockerfile).toContain(`exec node ${imageMain} "$@"`);
     expect(dockerfile).toContain('ENTRYPOINT ["ostra"]');
     expect(dockerfile).toContain('CMD ["runner"]');
+    // Ticket 19: it says it's the image, so the pin installs nothing there (ADR 0034).
+    expect(dockerfile).toContain("ENV OSTRA_INSTALL=image");
   });
 
   it("F-013: the CLI needs Node 24.5 or later: its engines say so, and the runner image's Node meets it", async () => {

@@ -8,3 +8,8 @@ export { RUNNER_VERSION } from "./version.ts";
 export { startConnection } from "./connection/peer.ts";
 export type { CommandHandlers, CommandOutcome, ConnectionOptions, ConnectionReport, PeerStatus, RunnerConnection, SessionChannel, TokenSource } from "./connection/peer.ts";
 export type { Carrier, FallbackReason, NetworkOptions, Transport } from "./connection/http-carrier.ts";
+// Milestone 5 (ticket 19): the whole `ostra runner` start, for core's test of a pool runner's join,
+// approval and reports against the real gateway.
+export { runSignedInRunner } from "./run-runner.ts";
+export { createCapturingTerminal } from "./cli/terminal.ts";
+export type { Terminal } from "./cli/terminal.ts";

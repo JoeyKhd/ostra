@@ -13,7 +13,7 @@ import {
   runnerPaths,
   upFrameCodec,
 } from "@ostra/protocol";
-import type { DownFrame, ErrorFrame, Hello, RunnerId, UpFrame } from "@ostra/protocol";
+import type { DownFrame, ErrorFrame, Hello, RunnerId, UpFrame, WelcomePool } from "@ostra/protocol";
 
 import { readJsonBody, sendError, sendJson } from "../http.ts";
 import { bearerToken, runnerIsLive } from "./access-token.ts";
@@ -44,7 +44,7 @@ import { isTaskToken } from "./task-token.ts";
 
 /** What a hello came to: the WebSocket's outcome (`connections.ts`). */
 export type HttpHelloOutcome =
-  | { readonly ok: true; readonly connectionEpoch: number; readonly minor: number; readonly acks: readonly DownFrame[] }
+  | { readonly ok: true; readonly connectionEpoch: number; readonly minor: number; readonly acks: readonly DownFrame[]; readonly pool: WelcomePool | null }
   | { readonly ok: false; readonly error: ErrorFrame };
 
 /** The session code the carrier shares with the WebSocket's (`connections.ts`). */
@@ -196,6 +196,7 @@ export const createHttpCarrier = (context: GatewayContext, session: CarrierSessi
       creditFrames: runnerLimits.creditFrames,
       creditBytes: runnerLimits.creditBytes,
       maxConnectionAgeMs: timers.maxConnectionAgeMs,
+      ...(outcome.pool === null || outcome.minor < 4 ? {} : { pool: outcome.pool }),
     };
     sendJson(response, httpCarrierStatus.ok, { frames: encode([welcome, ...outcome.acks], outcome.minor) });
   };

@@ -1,9 +1,10 @@
 import type { Tx } from "@ostra/db";
+import { commandKindSupportedAt, runnerLimits } from "@ostra/protocol";
 import type { MemberId, OrganizationId, RunnerId } from "@ostra/protocol";
 
 import { runnerFromColumns } from "../lifecycles/mapping.ts";
 import { transitionRunner } from "../lifecycles/runner.ts";
-import { notifyRunnerInTx } from "../postgres-outbox.ts";
+import { notifyRunnerInTx, postgresCommandOutbox } from "../postgres-outbox.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
 import { resolveRunnerApprovalNoticesInTx } from "./pool-admin.ts";
@@ -48,11 +49,14 @@ const lockRunner = async (tx: Tx, organizationId: OrganizationId, runnerId: Runn
   });
 };
 
-/** Whether the runner has a live connection, as the presence table says. */
-const isConnected = async (tx: Tx, runnerId: RunnerId): Promise<boolean> => {
-  const presence = await tx.runnerPresence.findUnique({ where: { runnerId }, select: { disconnectedAt: true } });
-  return presence !== null && presence.disconnectedAt === null;
+/** Whether the runner has a live connection, as the presence table says, and the minor it speaks. */
+const connectionOf = async (tx: Tx, runnerId: RunnerId): Promise<{ readonly connected: boolean; readonly minor: number }> => {
+  const presence = await tx.runnerPresence.findUnique({ where: { runnerId }, select: { disconnectedAt: true, minor: true } });
+  return { connected: presence !== null && presence.disconnectedAt === null, minor: presence?.minor ?? 0 };
 };
+
+/** Whether the runner has a live connection, as the presence table says. */
+const isConnected = async (tx: Tx, runnerId: RunnerId): Promise<boolean> => (await connectionOf(tx, runnerId)).connected;
 
 /** An admin approves a joining runner: online now when it's connected, else at its next hello. */
 export const approveRunner = async (deps: RunnerDecisionDeps, input: RunnerDecisionInput): Promise<ApproveRunnerResult> => {
@@ -66,7 +70,8 @@ export const approveRunner = async (deps: RunnerDecisionDeps, input: RunnerDecis
   }
   const now = new Date(deps.clock.now());
   let state: "joining" | "online" = "joining";
-  if (await isConnected(tx, input.runnerId)) {
+  const connection = await connectionOf(tx, input.runnerId);
+  if (connection.connected) {
     const before = runnerFromColumns({ state: row.state });
     const moved = before.ok ? transitionRunner(before.value, { type: "accept" }) : null;
     if (moved?.ok === true && moved.state.state === "online") {
@@ -77,6 +82,17 @@ export const approveRunner = async (deps: RunnerDecisionDeps, input: RunnerDecis
     where: { id: input.runnerId },
     data: { approvedAt: row.approvedAt ?? now, approvedByMemberId: input.memberId, state },
   });
+  // Milestone 5 (ticket 19): a connected runner at minor 4 hears it at once. Its welcome said it
+  // waited for approval; `resume` lifts that hold, as it lifts a drain. An older runner, or one
+  // that isn't connected, hears it in its next welcome.
+  if (state === "online" && commandKindSupportedAt("resume", connection.minor)) {
+    await postgresCommandOutbox.enqueueInTx(tx, input.organizationId, input.runnerId, {
+      kind: "resume",
+      body: {},
+      notAfter: deps.clock.now() + runnerLimits.offerTimeoutMs,
+      task: null,
+    });
+  }
   // The admins' open approval notice is answered (milestone 5, ticket 12).
   await resolveRunnerApprovalNoticesInTx(tx, deps, { organizationId: input.organizationId, runnerId: input.runnerId });
   await deps.audit.recordInTx(tx, {

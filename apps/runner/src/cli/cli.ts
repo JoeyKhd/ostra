@@ -1,9 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { parseRunnerConfig, runnerConfigFields } from "@ostra/protocol";
-import type { RunnerConfig } from "@ostra/protocol";
+import type { RunnerConfig, RunnerInstall } from "@ostra/protocol";
 import { fallbackReasonWords } from "../connection/http-carrier.ts";
 import { checkOwnerOnly } from "../identity/owner-only.ts";
 import { dataPaths, defaultDataDir, loadIdentity, loadStatus } from "../identity/store.ts";
+import { applyPin, PIN_REEXEC_ENV } from "../pin.ts";
+import type { PinInput } from "../pin.ts";
+import { poolStatusLine } from "../pool-approval.ts";
+import { detectInstall, programPath, reservedLabelsMessage, reservedLabelsOf } from "../reports.ts";
+import { fetchInfo } from "../server/info.ts";
 import { signIn } from "../sign-in.ts";
 import type { SignInInput, SignedIn } from "../sign-in.ts";
 import { RUNNER_VERSION } from "../version.ts";
@@ -37,6 +42,8 @@ export type RunSignedIn = (input: {
   readonly dataDir: string;
   readonly terminal: Terminal;
   readonly signal: AbortSignal;
+  /** How this CLI was installed (milestone 5): reported in `hello` and `status`. */
+  readonly install: RunnerInstall;
 }) => Promise<number>;
 
 /** What `ostra sidecar` does (ticket 22). */
@@ -56,6 +63,10 @@ export type CliDeps = {
   /** For tests: the device flow's waits. */
   readonly deviceFlow?: SignInInput["deviceFlow"];
   readonly now?: () => number;
+  /** How this CLI was installed; detected from its program's path by default. */
+  readonly install?: RunnerInstall;
+  /** For tests: the pin's npm, its re-run and its fetch. */
+  readonly pin?: Pick<PinInput, "npm" | "reexec" | "fetch">;
   /** For tests: `login`'s waits, the machine's name, and where `checkout` looks without `--dir`. */
   readonly local?: {
     readonly sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
@@ -76,7 +87,7 @@ const dataDirOf = (flags: Readonly<Record<string, string>>, env: CliDeps["env"])
 
 const formatTime = (ms: number): string => new Date(ms).toISOString();
 
-const runnerStatus = async (dataDir: string, terminal: Terminal): Promise<number> => {
+const runnerStatus = async (dataDir: string, terminal: Terminal, install: RunnerInstall): Promise<number> => {
   const identity = await loadIdentity(dataDir);
   const status = await loadStatus(dataDir);
   terminal.say(`Data folder     ${dataDir}`);
@@ -100,7 +111,7 @@ const runnerStatus = async (dataDir: string, terminal: Terminal): Promise<number
       return identity satisfies never;
   }
   const window = status.versionWindow;
-  terminal.say(`This runner     ostra ${RUNNER_VERSION}`);
+  terminal.say(`This runner     ostra ${RUNNER_VERSION} (from ${install})`);
   terminal.say(
     window === null
       ? "Version window  unknown (no contact yet)"
@@ -115,6 +126,11 @@ const runnerStatus = async (dataDir: string, terminal: Terminal): Promise<number
         ? "Carrier         WebSocket"
         : `Carrier         HTTP${carrier.fallback === null ? " (--transport http)" : `, fell back because ${fallbackReasonWords[carrier.fallback]}`}`,
   );
+  // Milestone 5 (ticket 19, F-091): a pool runner's pool, and whether it waits for an admin.
+  const poolLine = poolStatusLine(status.pool ?? null);
+  if (poolLine !== null) {
+    terminal.say(poolLine);
+  }
   terminal.say(
     status.lastRefusal === null
       ? "Last refusal    none"
@@ -139,7 +155,7 @@ const withJoinTokenFile = async (config: RunnerConfig): Promise<RunnerConfig | s
   }
 };
 
-const startRunner = async (flags: Readonly<Record<string, string>>, deps: CliDeps): Promise<number> => {
+const startRunner = async (flags: Readonly<Record<string, string>>, deps: CliDeps, args: readonly string[]): Promise<number> => {
   const parsed = parseRunnerConfig({ flags, env: deps.env });
   if (!parsed.ok) {
     for (const error of parsed.errors) {
@@ -153,7 +169,39 @@ const startRunner = async (flags: Readonly<Record<string, string>>, deps: CliDep
     return exitCodes.usage;
   }
   const config = withToken;
+  // Milestone 5 (ticket 19): ostra sets `executor:`, `os:` and `arch:` itself.
+  const reserved = reservedLabelsOf(config.labels);
+  if (reserved.length > 0) {
+    deps.terminal.warn(`ostra runner: ${reservedLabelsMessage(reserved)}`);
+    return exitCodes.usage;
+  }
   const dataDir = config.dataDir ?? defaultDataDir();
+  // The pin (ticket 19, F-061): an npm install runs the server's version when it differs.
+  const install = deps.install ?? detectInstall(programPath(), deps.env);
+  if (install === "npm" && config.pin && deps.env[PIN_REEXEC_ENV] === undefined) {
+    const info = await fetchInfo(config.serverUrl, deps.signal);
+    const known = info.ok ? info.info : info.reason === "version" ? info.info : null;
+    if (known !== null) {
+      const pinned = await applyPin({
+        info: known,
+        install,
+        version: RUNNER_VERSION,
+        enabled: config.pin,
+        registryOverride: flags[runnerConfigFields.npmRegistry.flag] ?? deps.env[runnerConfigFields.npmRegistry.env] ?? null,
+        dataDir,
+        args,
+        env: deps.env,
+        logger: deps.terminal.logger,
+        ...deps.pin,
+      });
+      if (pinned.kind === "ran") {
+        return pinned.exitCode;
+      }
+      if (pinned.reason === "integrity") {
+        deps.terminal.warn(`The server's version ${known.serverVersion} failed its integrity check and wasn't run. This version starts instead.`);
+      }
+    }
+  }
   const signedIn = await signIn({
     config,
     dataDir,
@@ -167,7 +215,7 @@ const startRunner = async (flags: Readonly<Record<string, string>>, deps: CliDep
     const reason = signedIn.failure.reason;
     return reason === "revoked" || reason === "unknown-key" ? exitCodes.refused : exitCodes.failed;
   }
-  return deps.runSignedIn({ signedIn: signedIn.value, config, dataDir, terminal: deps.terminal, signal: deps.signal });
+  return deps.runSignedIn({ signedIn: signedIn.value, config, dataDir, terminal: deps.terminal, signal: deps.signal, install });
 };
 
 export const runCli = async (args: readonly string[], deps: CliDeps): Promise<number> => {
@@ -189,10 +237,10 @@ export const runCli = async (args: readonly string[], deps: CliDeps): Promise<nu
   switch (command) {
     case "runner":
       if (sub === undefined) {
-        return startRunner(flags, deps);
+        return startRunner(flags, deps, args);
       }
       if (sub === "status" && rest.length === 0) {
-        return runnerStatus(dataDirOf(flags, deps.env), deps.terminal);
+        return runnerStatus(dataDirOf(flags, deps.env), deps.terminal, deps.install ?? detectInstall(programPath(), deps.env));
       }
       deps.terminal.warn(`ostra runner: unknown command "${sub}". Try \`ostra --help\`.`);
       return exitCodes.usage;
