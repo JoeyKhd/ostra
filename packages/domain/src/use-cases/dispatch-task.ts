@@ -15,10 +15,9 @@ import { budgetWaitOf, checkBudget } from "./budgets.ts";
 import type { UseCaseResult } from "./common.ts";
 import { chooseReopenStep } from "./reopen.ts";
 import { PROFILE_FEATURES_MINOR, profileNeedsMinor2 } from "./task-profile.ts";
-import { modelNameText } from "../providers/model-name.ts";
 import type { ModelName } from "../providers/model-name.ts";
 import { installationStateSelect, installationUsable } from "../code-host/installations.ts";
-import { clearNoProviderInTx, raiseNoProviderInTx, resolveProfileModelInTx, sessionRowStateInTx } from "../providers/session-model.ts";
+import { clearNoProviderInTx, noProviderWait, raiseNoProviderInTx, resolveProfileModelInTx, sessionRowStateInTx } from "../providers/session-model.ts";
 import type { ProfileProviderRefusal } from "../providers/session-model.ts";
 import type { ReopenStep } from "./reopen.ts";
 import { boxFootprint } from "../fleet/capacity.ts";
@@ -307,11 +306,7 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   let modelId = session.modelId;
   const noProvider = async (modelName: ModelName, refusal: ProfileProviderRefusal | null = null): Promise<DispatchTaskResult> => {
     await raiseNoProviderInTx(deps, tx, task, modelName);
-    return noRunner({
-      code: "no-provider-for-model",
-      modelName: modelNameText(modelName),
-      ...(refusal === null ? {} : { provider: { name: refusal.name, reason: refusal.reason } }),
-    });
+    return noRunner(noProviderWait(modelName, refusal));
   };
   // ADR 0065 amended 2026-11-20: a session on its profile's own provider, which the project no
   // longer allows or which stopped listing the model, takes the no-key path, worded for it, with

@@ -163,7 +163,8 @@ export const matchIntakeRules = async (deps: Parameters<MatchIntakeRules>[0] & I
       skipped.push({ automationId, reason: "has_task" });
     } else {
       // The project's setup refused it (no repo, no profile with a model): no match is kept, so the
-      // ticket's next change tries again once the setup is fixed.
+      // ticket's next change tries again once the setup is fixed. A model no provider on the
+      // project's list serves isn't a refusal: the task is made and waits queued with the reason (F-135).
       await tx.automationRun.delete({ where: { id: run.id } });
     }
   }

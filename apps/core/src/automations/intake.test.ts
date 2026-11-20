@@ -6,7 +6,7 @@ import { createDb } from "@ostra/db";
 import type { Db } from "@ostra/db";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
-import { matchIntakeRules, postgresAuditLog, postgresChangeNotices, saveAutomation, systemClock } from "@ostra/domain";
+import { dispatchWaitFromDb, matchIntakeRules, postgresAuditLog, postgresChangeNotices, saveAutomation, systemClock } from "@ostra/domain";
 import type { AutomationSettings, IntakeFilter, MemberScope } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
@@ -308,6 +308,38 @@ describe("intake rules (F-011)", () => {
     expect(await test.db.ticketWrite.count({ where: { taskId: task?.id ?? "" } })).toBe(0);
     const fetches = await test.db.$queryRaw<readonly unknown[]>`SELECT id FROM pgboss.job WHERE name = 'ticket.fetch-context' AND data->>'taskId' = ${task?.id ?? ""}`;
     expect(fetches).toEqual([]);
+  });
+
+  it("F-135: a rule's match in a project whose list serves no model makes its task, queued with the no-key reason and the admins' needs-you item, and keeps the match", async () => {
+    await clearRules();
+    const automationId = await rule(labelFilter(["keyless"]));
+    // An organization admin gives the project a list of its own, with no provider on it.
+    await test.db.providerListEntry.deleteMany({ where: { organizationId, projectId } });
+    await test.db.project.update({ where: { id: projectId }, data: { ownProviders: true } });
+    try {
+      const externalId = issue({ labels: ["keyless"] });
+      await deliver(externalId);
+      const ticketId = await ticketIdOf(externalId);
+      await settled(ticketId);
+      const [task, ...more] = await tasksOf(automationId);
+      expect(more).toEqual([]);
+      expect(task).toMatchObject({ state: "queued", origin: "automation", ticketId });
+      expect(dispatchWaitFromDb(task?.dispatchWait)).toEqual({ code: "no-provider-for-model", modelName: "dev-model-1" });
+      const session = await test.db.session.findFirstOrThrow({ where: { taskId: task?.id ?? "" } });
+      expect([session.providerId, session.modelId]).toEqual([null, null]);
+      const items = await test.db.needsYouItem.findMany({ where: { taskId: task?.id ?? "", state: "open" } });
+      expect(items.map((item) => [item.reason, item.audience])).toEqual([["no_provider_for_model", "organization_admins"]]);
+      // The match is kept with its task: the ticket's next change starts nothing more.
+      const runs = await test.db.automationRun.findMany({ where: { automationId, kind: "ticket_match" } });
+      expect(runs.map((row) => [row.ticketId, row.state, row.taskId])).toEqual([[ticketId, "started", task?.id]]);
+      edit(externalId, { labels: ["keyless", "again"] });
+      await deliver(externalId);
+      await settled(ticketId);
+      expect(await tasksOf(automationId)).toHaveLength(1);
+    } finally {
+      await test.db.providerListEntry.deleteMany({ where: { organizationId, projectId } });
+      await test.db.project.update({ where: { id: projectId }, data: { ownProviders: false } });
+    }
   });
 
   it("F-011: no log line carries a ticket's text", () => {

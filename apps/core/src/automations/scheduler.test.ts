@@ -4,9 +4,12 @@ import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
 import {
   deleteAutomation,
+  dispatchTask,
+  dispatchWaitFromDb,
   pauseAutomation,
   postgresAuditLog,
   postgresChangeNotices,
+  postgresCommandOutbox,
   runOccurrence,
   saveAutomation,
   tickAutomationInTx,
@@ -26,6 +29,7 @@ import { expectStartGates } from "../testing/start-gates.ts";
 import { seedBoard, seedTicketRow, seedTrackerConnection } from "../testing/tickets.ts";
 import { jobContext } from "../testing/turns.ts";
 import { seedWorld } from "../testing/world.ts";
+import type { World } from "../testing/world.ts";
 import { ensureSchedulerTick, occurrenceHandler, schedulerTickHandler } from "./automations.ts";
 
 // Ticket 10 (F-106, ADR 0037 amended, ADR 0056): the scheduler's tick and its occurrences, against
@@ -38,6 +42,7 @@ let jobs: Jobs;
 let organizationId: OrganizationId;
 let projectId: ProjectId;
 let admin: MemberScope;
+let world: World;
 let now = Date.UTC(2026, 2, 2, 8, 0, 0);
 const clock: Clock = { now: () => now };
 const HOUR = 3_600_000;
@@ -88,7 +93,7 @@ beforeAll(async () => {
   await jobs.start();
   organizationId = fixture.a.organization.id;
   projectId = fixture.a.openProject.id;
-  await seedWorld(test.db, { codeHost: new FakeCodeHost(), secretStore: new FakeSecretStore() }, organizationId, projectId);
+  world = await seedWorld(test.db, { codeHost: new FakeCodeHost(), secretStore: new FakeSecretStore() }, organizationId, projectId);
   admin = scopeOf(fixture.a.admin, "admin");
 });
 
@@ -323,5 +328,63 @@ describe("scheduler.tick (F-106)", () => {
     expect(await run(automationId, at("2026-03-02T09:00:00Z"))).toMatchObject({ ok: true, state: "started" });
     const taskId = await taskOf(automationId, at("2026-03-02T09:00:00Z"));
     await expectStartGates({ db: test.db, jobs, clock, organizationId, projectId }, taskId, ["gpu"]);
+  });
+
+  it("F-135: an occurrence in a project whose list serves no model makes its task, queued with the no-key reason and the admins' needs-you item, and counts as started", async () => {
+    const automationId = await save(prompt());
+    const nine = at("2026-03-02T09:00:00Z");
+    // An organization admin gives the project a list of its own, with no provider on it.
+    await test.db.providerListEntry.deleteMany({ where: { organizationId, projectId } });
+    await test.db.project.update({ where: { id: projectId }, data: { ownProviders: true } });
+    const dispatchNow = async (taskId: TaskId) => {
+      const session = await test.db.session.findFirstOrThrow({ where: { taskId, state: "starting" }, select: { id: true } });
+      return test.db.$transaction((tx) =>
+        dispatchTask(
+          { tx, jobs, outbox: postgresCommandOutbox, notices: postgresChangeNotices, clock },
+          { organizationId, taskId, sessionId: sessionIdSchema.parse(session.id), leaseEpoch: leaseEpochSchema.parse(1) },
+        ),
+      );
+    };
+    try {
+      now = nine + 5_000;
+      expect(await tick()).toEqual({ occurrences: 1, missed: 0 });
+      const result = await run(automationId, nine);
+      const taskId = await taskOf(automationId, nine);
+      expect(result).toEqual({ ok: true, state: "started", taskId });
+      // The task is made, and waits queued with the reason, as the dispatch words it.
+      const task = await test.db.task.findUniqueOrThrow({ where: { id: taskId } });
+      expect([task.state, task.automationId]).toEqual(["queued", automationId]);
+      expect(dispatchWaitFromDb(task.dispatchWait)).toEqual({ code: "no-provider-for-model", modelName: "dev-model-1" });
+      expect(task.dispatchNote).toBe("No provider on this project's list serves dev-model-1: an organization admin adds one under Models.");
+      // Its session records no provider yet: nothing falls back to another key.
+      const session = await test.db.session.findFirstOrThrow({ where: { taskId } });
+      expect([session.providerId, session.modelId]).toEqual([null, null]);
+      // Home's needs-you item is for the organization's admins, who alone edit the lists.
+      const items = await test.db.needsYouItem.findMany({ where: { taskId, state: "open" } });
+      expect(items.map((item) => [item.reason, item.audience])).toEqual([["no_provider_for_model", "organization_admins"]]);
+
+      // It counts as started: a replayed job makes nothing more, and the next occurrence skips while it waits.
+      expect(await run(automationId, nine)).toEqual({ ok: true, state: "started", taskId });
+      now = nine + 24 * HOUR + 5_000;
+      expect(await tick()).toEqual({ occurrences: 1, missed: 0 });
+      expect(await run(automationId, nine + 24 * HOUR)).toEqual({ ok: true, state: "skipped", taskId: null });
+      expect((await runsOf(automationId)).map((row) => [row.state, row.skipReason, row.taskId])).toEqual([
+        ["started", null, taskId],
+        ["skipped", "last_open", null],
+      ]);
+      expect(await test.db.task.count({ where: { automationId } })).toBe(1);
+
+      // Its dispatch keeps it waiting with the same reason and one item.
+      expect(await dispatchNow(taskId)).toMatchObject({ ok: false, error: "no-runner", message: "no-provider-for-model" });
+      expect(await test.db.needsYouItem.count({ where: { taskId, state: "open" } })).toBe(1);
+      // An admin puts a provider on the list: the next dispatch records it and closes the item.
+      await test.db.providerListEntry.create({ data: { organizationId, projectId, providerId: world.providerId } });
+      expect(await dispatchNow(taskId)).not.toMatchObject({ message: "no-provider-for-model" });
+      expect((await test.db.session.findFirstOrThrow({ where: { taskId } })).providerId).toBe(world.providerId);
+      expect(await test.db.needsYouItem.count({ where: { taskId, state: "open" } })).toBe(0);
+    } finally {
+      await test.db.providerListEntry.deleteMany({ where: { organizationId, projectId } });
+      await test.db.project.update({ where: { id: projectId }, data: { ownProviders: false } });
+    }
   });
 });

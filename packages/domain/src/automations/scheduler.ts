@@ -185,7 +185,8 @@ export const runOccurrence = async (deps: StartPorts & SchedulerOptions, input: 
     );
     if (!started.ok) {
       // The project's setup refused it (no repo, no profile with a model): the occurrence stays
-      // without a task, and the next one tries again.
+      // without a task, and the next one tries again. A model no provider on the project's list
+      // serves isn't a refusal: the task is made and waits queued with the reason (F-135).
       return { ok: true, state: "started", taskId: null };
     }
     await tx.automationRun.update({ where: { id: run.id }, data: { taskId: started.taskId } });

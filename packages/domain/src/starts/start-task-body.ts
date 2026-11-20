@@ -17,7 +17,8 @@ import type { MemberScope } from "../access.ts";
 import { branchSlugFor, titleFromPrompt } from "../branch-name.ts";
 import { taskToColumns } from "../lifecycles/mapping.ts";
 import { newTask } from "../lifecycles/task.ts";
-import { noProviderMessage, resolveProfileModelInTx } from "../providers/session-model.ts";
+import { dispatchWaitColumns } from "../dispatch-wait.ts";
+import { noProviderMessage, noProviderWait, raiseNoProviderInTx, resolveProfileModelInTx } from "../providers/session-model.ts";
 import { modelNameOfColumns } from "../providers/model-name.ts";
 import { writeTaskSearchEntries } from "../search/entries.ts";
 import { writeTicketOutboxInTx } from "../tickets/ticket-outbox.ts";
@@ -29,7 +30,7 @@ import { signedCommitRefusal, unsupportedRepos } from "../use-cases/repo-checks.
 import { appendServerEvent } from "../use-cases/server-events.ts";
 import { resolveStartProfileInTx } from "../use-cases/task-profile.ts";
 import type { ResolveProfileResult, StartProfile } from "../use-cases/task-profile.ts";
-import { oneActiveTaskError, oneActiveTaskWords, startingMemberOf, startRuleFor, taskOriginOf } from "./start-task.ts";
+import { noProviderStartFor, oneActiveTaskError, oneActiveTaskWords, startingMemberOf, startRuleFor, taskOriginOf } from "./start-task.ts";
 import type { StartOrigin, StartRule } from "./start-task.ts";
 
 // The one start (F-010, F-011, F-106, F-107, F-077; ADR 0056, milestone 6's ticket 11): every way a
@@ -265,11 +266,16 @@ export const startTask: StartTask = async (deps, input: StartTaskInput) => {
   // Milestone 4 (F-135, ADR 0065): the provider the project's list serves the profile's model from,
   // checked before anything is made. The session records it; nothing falls back to another key.
   const served = await resolveProfileModelInTx(tx, { organizationId, projectId, profileId: profile.id });
-  if (!served.ok) {
-    return served.modelName === null
-      ? refuse("no-agent-profile", NO_MODEL)
-      : refuse("no-provider-for-model", noProviderMessage(served.modelName, served.provider));
+  if (!served.ok && served.modelName === null) {
+    return refuse("no-agent-profile", NO_MODEL);
   }
+  // No provider serves it: a start someone pressed is refused with the reason; an automation's is
+  // made and waits queued with it (`noProviderStartFor`), its session recording no provider yet.
+  const unserved = served.ok || served.modelName === null ? null : { modelName: served.modelName, provider: served.provider };
+  if (unserved !== null && noProviderStartFor(input.origin) === "refuse") {
+    return refuse("no-provider-for-model", noProviderMessage(unserved.modelName, unserved.provider));
+  }
+  const row = served.ok ? served : null;
   const repos = await tx.repo.findMany({ where: { projectId: project.id, organizationId }, orderBy: { createdAt: "asc" } });
   if (repos.length === 0) {
     return refuse("no-repo", "The project has no repo");
@@ -294,7 +300,7 @@ export const startTask: StartTask = async (deps, input: StartTaskInput) => {
       return refuse("runner-not-yours", "That isn't one of your personal runners");
     }
     // A personal runner isn't isolated: a provider's token reaches it only when an admin allows it (Q47).
-    if (!served.allowOnPersonalRunners) {
+    if (row?.allowOnPersonalRunners !== true) {
       return refuse(
         "provider-not-allowed-on-personal-runners",
         "The project's model provider isn't allowed on personal runners: an admin turns it on under Models",
@@ -358,7 +364,8 @@ export const startTask: StartTask = async (deps, input: StartTaskInput) => {
     await tx.taskCoAuthor.create({ data: { organizationId, projectId: project.id, taskId, memberId: member, name: account.user.name, email: account.user.email } });
   }
   const session = await tx.session.create({
-    data: { organizationId, projectId: project.id, taskId, agentProfileId: profile.id, origin: "new", state: "starting", providerId: served.providerId, modelId: served.modelId },
+    // With no provider serving the model, none yet: the dispatch resolves and records it once one does.
+    data: { organizationId, projectId: project.id, taskId, agentProfileId: profile.id, origin: "new", state: "starting", providerId: row?.providerId ?? null, modelId: row?.modelId ?? null },
     select: { id: true },
   });
   const sessionId = sessionIdSchema.parse(session.id);
@@ -388,6 +395,15 @@ export const startTask: StartTask = async (deps, input: StartTaskInput) => {
     title,
     ticket: ticket === null ? null : { ticketId: ticket.id, boardId: ticket.boardId, connectionId: ticket.connectionId },
   };
+  if (unserved !== null) {
+    // F-135: an automation's task that no provider serves waits queued with the reason, as the
+    // dispatch leaves one whose provider went away, and the organization's admins, who alone edit
+    // the lists, get its needs-you item. Its dispatch keeps it waiting until a provider serves it.
+    if (!rule.needsApproval) {
+      await tx.task.update({ where: { id: taskId }, data: dispatchWaitColumns(noProviderWait(unserved.modelName, unserved.provider)) });
+    }
+    await raiseNoProviderInTx(deps, tx, { organizationId, projectId, id: taskId }, unserved.modelName);
+  }
   if (rule.needsApproval) {
     // F-040 and a rule's "wait for approval": the project's members approve it (ticket 14's path),
     // and its start's work is sent then.

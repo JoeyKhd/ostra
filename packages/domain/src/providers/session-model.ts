@@ -2,6 +2,7 @@ import type { Db, Tx } from "@ostra/db";
 import { modelIdSchema, providerIdSchema } from "@ostra/protocol";
 import type { ModelId, OrganizationId, ProjectId, ProviderId } from "@ostra/protocol";
 
+import type { DispatchWait } from "../dispatch-wait.ts";
 import type { JobQueue } from "../ports.ts";
 import { createNeedsYouItemInTx, resolveNeedsYouItemsInTx } from "../use-cases/needs-you-items.ts";
 import { modelNameOfColumns, modelNameOfModel, modelNameText } from "./model-name.ts";
@@ -103,6 +104,13 @@ export const noProviderMessage = (modelName: ModelName, provider: ProfileProvide
     ? `The profile runs on ${provider.name}, which this project's list doesn't allow: an organization admin adds it in Models and keys, or a member picks a profile on an allowed key`
     : `${provider.name}, the profile's provider, no longer lists ${modelNameText(modelName)}: an organization admin picks another model for the profile`;
 };
+
+/** The wait a queued task that no provider serves has: the model, and the profile's own provider when that's the one refused. */
+export const noProviderWait = (modelName: ModelName, provider: ProfileProviderRefusal | null = null): DispatchWait => ({
+  code: "no-provider-for-model",
+  modelName: modelNameText(modelName),
+  ...(provider === null ? {} : { provider: { name: provider.name, reason: provider.reason } }),
+});
 
 /** Whether a session's profile names its provider (ADR 0065 amended 2026-11-20): then it never moves to another. */
 const profilePinnedInTx = async (tx: Tx | Db, organizationId: OrganizationId, agentProfileId: string | null): Promise<boolean> => {

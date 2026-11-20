@@ -4,7 +4,7 @@ import { createLogger } from "@ostra/adapter-sdk";
 import type { LogRecord } from "@ostra/adapter-sdk";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
-import { appendServerEvent, dispatchTask, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, reopenTask, systemClock } from "@ostra/domain";
+import { appendServerEvent, dispatchTask, dispatchWaitFromDb, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, reopenTask, systemClock } from "@ostra/domain";
 import type { DispatchTaskResult, MemberScope, ReopenTaskResult, SessionTimers } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
@@ -468,5 +468,32 @@ describe("the rebuild template on spike 2's history (ADR 0039, Q128)", () => {
     expect(prompt).not.toContain("secret patch text");
     expect(prompt).toContain(`${facts.docSlug} | +3 -0`);
     await setOnline(first, true);
+  });
+});
+
+describe("a reopen no provider serves (F-135)", () => {
+  it("F-135: a reopen in a project whose list serves no model waits queued with the no-key reason, and its needs-you item is the organization admins'", async () => {
+    const task = await inReview();
+    const organizationId = fixture.a.organization.id;
+    const projectId = world.projectId;
+    // An organization admin gives the project a list of its own, with no provider on it.
+    await test.db.providerListEntry.deleteMany({ where: { organizationId, projectId } });
+    await test.db.project.update({ where: { id: projectId }, data: { ownProviders: true } });
+    try {
+      const sessionId = await reopened(task.taskId, "Also add a changelog entry.");
+      expect(await dispatch(task.taskId, sessionId)).toMatchObject({ ok: false, error: "no-runner", message: "no-provider-for-model" });
+      const row = await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
+      expect(row.state).toBe("queued");
+      expect(dispatchWaitFromDb(row.dispatchWait)).toEqual({ code: "no-provider-for-model", modelName: "dev-model-1" });
+      expect(await test.db.lease.count({ where: { taskId: task.taskId, state: "active" } })).toBe(0);
+      // The new session records no provider: nothing falls back to another key, or the last session's.
+      expect((await test.db.session.findUniqueOrThrow({ where: { id: sessionId } })).providerId).toBeNull();
+      const items = await test.db.needsYouItem.findMany({ where: { taskId: task.taskId, state: "open" } });
+      expect(items.map((item) => [item.reason, item.audience])).toEqual([["no_provider_for_model", "organization_admins"]]);
+    } finally {
+      await test.db.providerListEntry.deleteMany({ where: { organizationId, projectId } });
+      await test.db.project.update({ where: { id: projectId }, data: { ownProviders: false } });
+      await test.db.task.update({ where: { id: task.taskId }, data: { state: "stopped", stoppedReason: "requested" } });
+    }
   });
 });

@@ -117,6 +117,29 @@ export const startRuleFor = (origin: StartOrigin, project: { readonly outsideApp
   }
 };
 
+/**
+ * What a start does when no provider on the project's list serves the profile's model (F-135, ADR
+ * 0065). `refuse`: someone pressed Start, and is told why before anything is made. `queue`: an
+ * automation's start, which nobody is watching: the task is made and waits queued with the reason,
+ * with the organization admins' needs-you item, and the automation counts it started.
+ */
+export const noProviderStartFor = (origin: StartOrigin): "refuse" | "queue" => {
+  switch (origin.kind) {
+    case "intake-rule":
+    case "occurrence":
+      return "queue";
+    case "member":
+    case "bulk-item":
+    case "sub-issue":
+    case "onboarding":
+    // A Linear user is answered in their agent session (`starts/outside.ts`).
+    case "linear":
+      return "refuse";
+    default:
+      return origin satisfies never;
+  }
+};
+
 /** The one-active-task rule's refusal (F-010): a ticket has at most one active code task. */
 export type OneActiveTaskError = { readonly code: "ticket-has-active-task"; readonly ticketKey: TicketKey; readonly taskId: TaskId };
 
