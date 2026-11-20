@@ -51,13 +51,16 @@ describe("the isolation model list (F-049)", () => {
     }
   });
 
-  it("F-087: every model with a required projectId is built inside a project", async () => {
+  it("F-049, F-087: every model with a required projectId is built inside a project, and every model built inside one has the column", async () => {
     const schema = await readFile(path.resolve(import.meta.dirname, "..", "prisma", "schema.prisma"), "utf8");
     const required = [...schema.matchAll(/^model\s+(\w+)\s*\{([\s\S]*?)^\}/gm)]
       .filter((match) => /^\s+projectId\s+String\s/m.test(match[2] ?? ""))
       .map((match) => match[1] ?? "");
     const projectModels = new Set<string>(isolationProjectModels);
     expect(required.filter((name) => !projectModels.has(name))).toEqual([]);
+    // A project record carries its project: each model the fixtures build inside a project has the column.
+    const models = await readSchemaModels();
+    expect(models.filter((model) => projectModels.has(model.name) && !model.hasProjectId).map((model) => model.name)).toEqual([]);
   });
 });
 

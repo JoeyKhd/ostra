@@ -4,7 +4,7 @@ import type { Db, Tx } from "@ostra/db";
 import type { SeededMember } from "@ostra/db/testing";
 import { postgresAuditLog, recordAudit, sweepRetention, SYSTEM_ACTOR_NAME } from "@ostra/domain";
 import type { AuditAction } from "@ostra/domain";
-import { approvalIdSchema, memberIdSchema, organizationIdSchema, poolIdSchema, projectIdSchema, repoFullNameSchema, runnerIdSchema, taskIdSchema, userIdSchema } from "@ostra/protocol";
+import { approvalIdSchema, memberIdSchema, noteIdSchema, organizationIdSchema, poolIdSchema, projectIdSchema, repoFullNameSchema, runnerIdSchema, taskIdSchema, userIdSchema } from "@ostra/protocol";
 import type { ProjectId } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -100,6 +100,13 @@ const runningTask = async (): Promise<Record<string, string>> => {
 const newMember = async (): Promise<string> => {
   const user = await harness.test.db.user.create({ data: { id: randomUUID(), name: "Someone", email: `${unique("someone")}@example.com`, username: unique("someone") } });
   return (await harness.test.db.member.create({ data: { id: randomUUID(), organizationId: orgA(), userId: user.id, role: "member", createdAt: new Date() } })).id;
+};
+
+/** A project note written by organization A's member, at version 1. */
+const newNote = async () => {
+  const body = `Deploys go through the pipeline ${unique("note-canary")}`;
+  content.push(body);
+  return (await harness.as(member())).memory.save({ noteId: null, expectedVersion: null, scope: "project", projectId, title: "Deploys", body, kind: "command", always: false });
 };
 
 const newPool = async (): Promise<string> => (await (await harness.as(admin())).pools.create({ name: unique("pool") })).poolId;
@@ -240,6 +247,42 @@ const cases: readonly Case[] = [
     actor: admin,
     setup: async () => ({ profileId: (await (await harness.as(admin())).agentProfiles.save(profileInput(unique("Profile")))).profileId }),
     act: (caller, made) => caller.agentProfiles.archive({ profileId: need(made, "profileId") }),
+  },
+  // ---- milestone 4: budgets and memory notes (tickets 12, 16, 27, 29) ----
+  { action: "budget.set", actor: admin, setup: () => Promise.resolve({}), act: (caller) => caller.budgets.set({ projectId, monthlyUsd: 40 }) },
+  {
+    action: "budget.cleared",
+    actor: admin,
+    setup: async () => {
+      await (await harness.as(admin())).budgets.set({ projectId, monthlyUsd: 40 });
+      return {};
+    },
+    act: (caller) => caller.budgets.clear({ projectId }),
+  },
+  {
+    action: "memory.note-created",
+    actor: member,
+    setup: () => Promise.resolve({ body: `Run the tests with pnpm ${unique("note-canary")}` }),
+    act: (caller, made) => {
+      content.push(need(made, "body"));
+      return caller.memory.save({ noteId: null, expectedVersion: null, scope: "project", projectId, title: "Run the tests", body: need(made, "body"), kind: "command", always: false });
+    },
+  },
+  {
+    action: "memory.note-edited",
+    actor: member,
+    setup: async () => ({ noteId: (await newNote()).noteId }),
+    act: (caller, made) => {
+      const body = `Run them with pnpm test --run ${unique("note-canary")}`;
+      content.push(body);
+      return caller.memory.save({ noteId: noteIdSchema.parse(need(made, "noteId")), expectedVersion: 1, scope: "project", projectId, title: "Run the tests", body, kind: "command", always: false });
+    },
+  },
+  {
+    action: "memory.note-archived",
+    actor: member,
+    setup: async () => ({ noteId: (await newNote()).noteId }),
+    act: (caller, made) => caller.memory.archive({ noteId: noteIdSchema.parse(need(made, "noteId")) }),
   },
   // ---- milestone 4: members, invitations, project access and the instance admin (tickets 22, 23, 43) ----
   { action: "invitation.created", actor: admin, setup: () => Promise.resolve({ email: `${unique("invitee")}@example.com` }), act: (caller, made) => caller.members.invite({ email: need(made, "email"), role: "member", projectGrants: [] }) },

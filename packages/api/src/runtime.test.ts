@@ -81,11 +81,13 @@ describe("a fresh install with no setting", () => {
     install = await freshInstall();
   });
 
-  it("F-001: a fresh install with no setting seeds demo@demo.com / demo, the instance admin of a first organization named Demo", async () => {
+  it("F-001, F-049: a fresh install with no setting seeds demo@demo.com / demo, the instance admin of a first organization named Demo", async () => {
     const { logs } = await start(install);
     const { db } = install.test;
     const user = await db.user.findUniqueOrThrow({ where: { email: "demo@demo.com" } });
     expect(user).toMatchObject({ username: "demo", role: "admin", mustChangePassword: true });
+    // One organization, created with the first account (F-049).
+    expect(await db.organization.count()).toBe(1);
     const organization = await db.organization.findFirstOrThrow();
     expect(organization).toMatchObject({ name: "Demo", slug: "demo" });
     expect(await db.member.findFirst({ where: { userId: user.id } })).toMatchObject({ organizationId: organization.id, role: "admin" });
@@ -136,7 +138,7 @@ describe("a fresh install with no setting", () => {
 });
 
 describe("two replicas starting at once on a fresh install", () => {
-  it("F-001: two replicas starting at once on a fresh install seed exactly one admin, one organization and one member", async () => {
+  it("F-001, F-049: two replicas starting at once on a fresh install seed exactly one admin, one organization and one member", async () => {
     const install = await freshInstall();
     const started = await Promise.all([start(install), start(install)]);
     expect(started.flatMap(({ logs }) => seededLines(logs))).toHaveLength(1);

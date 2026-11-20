@@ -284,7 +284,7 @@ describe("the spec and the credentials", () => {
     expect(await coAuthors()).toEqual([{ name: "Ada Admin", email: "ada@example.com" }]);
   });
 
-  it("F-090: issues the credentials after the lease check, with a token narrowed to the one repo, and logs none of them", async () => {
+  it("F-073, F-090: issues the credentials after the lease check, with a token narrowed to the one repo, records who and when, and logs none of them", async () => {
     records.length = 0;
     const token = await accessToken(harness, runner);
     const response = await postJson(`${harness.url}${runnerPaths.taskCredentials(task.taskId)}`, { taskId: task.taskId, leaseEpoch: 1 }, token.accessToken);
@@ -304,7 +304,10 @@ describe("the spec and the credentials", () => {
       expect(logged).not.toContain(secret);
     }
     expect(records.some((record) => record.message === "task.credentials-issued")).toBe(true);
-    expect(await test.db.auditEntry.findFirst({ where: { action: "task.credentials-issued", entityId: task.taskId } })).not.toBeNull();
+    // The use of a credential is an audit entry: the runner that took them, and when (F-073).
+    const entry = await test.db.auditEntry.findFirst({ where: { action: "task.credentials-issued", entityId: task.taskId } });
+    expect(entry).toMatchObject({ actorKind: "runner", actorId: runner.runnerId });
+    expect(entry?.createdAt).toBeInstanceOf(Date);
   });
 
   it("a stale epoch gets no credentials, and another runner or organization gets nothing", async () => {
