@@ -44,6 +44,7 @@ import { blobCiLogStore, ciEvaluateHandler } from "./review-loop/ci.ts";
 import { reviewPostHandler, reviewStartHandler } from "./review-loop/review.ts";
 import { roundStartHandler } from "./review-loop/rounds.ts";
 import { reviewersRefreshHandler } from "./review-loop/reviewers.ts";
+import { changesReopenHandler } from "./review-loop/changes-requested.ts";
 import { handleReviewEndpoint } from "./runner-http/review.ts";
 import { ensureBootstrapJoinToken } from "./gateway/bootstrap-join-token.ts";
 import { postgresDeviceSessions } from "./gateway/device-sessions.ts";
@@ -463,6 +464,8 @@ export const startCore = async (
   const roundSpendCap = { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap };
   // Milestone 6 (F-102, ticket 19): a task PR's requested reviewers and code owners.
   await jobs.work("reviewers.refresh", reviewersRefreshHandler({ db, jobs, notices, clock: systemClock, adapters }), { localConcurrency: 2 });
+  // Milestone 6 (F-105, ticket 20): a linked member's "changes requested" reopens the task.
+  await jobs.work("changes.reopen", changesReopenHandler({ ...loopPorts, adapters, spendCap: roundSpendCap }), { localConcurrency: 2 });
   await jobs.work("round.start", roundStartHandler({ ...loopPorts, limits: settings.team.roundLimits, spendCap: roundSpendCap }), { localConcurrency: 2 });
   const reconcileSchedules = createReconcileSchedules({ db, jobs, reconcileMinutes: settings.reconcileMinutes });
   const webhookHandlers: WebhookHandlers = {

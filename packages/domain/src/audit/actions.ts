@@ -33,6 +33,8 @@ export const auditActions = {
   "pr.closed": "task",
   "pr.reopened": "task",
   "pr.comment-accepted": "task",
+  // Milestone 6 (F-105): a reviewer's "changes requested" reopened the task.
+  "pr.changes-requested": "task",
   "approval.answered": "approval",
   "plan.answered": "task",
   // ---- uses of a credential: one entry per issuance (ADR 0054) ----

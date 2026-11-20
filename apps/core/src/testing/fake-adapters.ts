@@ -643,7 +643,7 @@ export class FakeCodeHost extends CodeHostAdapter {
     });
   }
 
-  // Milestone 4 (F-104): a review, read as GitHub's adapter reads one. Its body is never read.
+  // Milestone 4 (F-104): a review, read as GitHub's adapter reads one. Milestone 6 (F-105): its body and page too.
   #parseReview(read: (...path: readonly string[]) => unknown): AdapterResult<CodeHostWebhookEvent> {
     const number = read("pull_request", "number");
     const repoId = read("repository", "id");
@@ -661,7 +661,7 @@ export class FakeCodeHost extends CodeHostAdapter {
       !repo.success ||
       typeof action !== "string" ||
       typeof headSha !== "string" ||
-      typeof reviewId !== "number" ||
+      (typeof reviewId !== "number" && typeof reviewId !== "string") ||
       typeof userId !== "number" ||
       typeof login !== "string" ||
       typeof state !== "string"
@@ -671,6 +671,8 @@ export class FakeCodeHost extends CodeHostAdapter {
     const lower = state.toLowerCase();
     const submittedAt = read("review", "submitted_at");
     const commitId = read("review", "commit_id");
+    const body = read("review", "body");
+    const url = read("review", "html_url");
     return ok({
       kind: "pull_request_review",
       action,
@@ -687,6 +689,8 @@ export class FakeCodeHost extends CodeHostAdapter {
         state: lower === "approved" || lower === "changes_requested" || lower === "commented" || lower === "dismissed" ? lower : "pending",
         commitId: typeof commitId === "string" ? commitId : null,
         submittedAt: typeof submittedAt === "string" ? Date.parse(submittedAt) : null,
+        body: typeof body === "string" ? body : null,
+        url: typeof url === "string" ? url : null,
       },
     });
   }

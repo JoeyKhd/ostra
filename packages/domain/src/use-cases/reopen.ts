@@ -145,6 +145,8 @@ export type ReopenTaskDeps = Pick<Ports, "jobs" | "notices" | "audit" | "clock">
   readonly timers?: SessionTimers | undefined;
   /** Milestone 4 (F-037): what wants the turn, for the budget gate. `reopen` when left out. */
   readonly origin?: TurnOrigin | undefined;
+  /** Milestone 6 (F-105): the task keeps its driver; a reviewer's "changes requested" doesn't take it over. */
+  readonly keepDriver?: true | undefined;
 };
 
 /**
@@ -308,7 +310,7 @@ export const reopenTask: ReopenTask = async (deps, input) => {
   }
 
   // Milestone 5 (F-067): a reopen is a new place in the queue, taken when it's queued (`queueTask`).
-  await tx.task.update({ where: { id: task.id }, data: { driverMemberId: scope.memberId, queuedAt: null } });
+  await tx.task.update({ where: { id: task.id }, data: { ...(deps.keepDriver === true ? {} : { driverMemberId: scope.memberId }), queuedAt: null } });
   // Milestone 6 (ADR 0041, F-101): a person reopened it, so the automatic turns count from nothing again.
   await recordPersonActionInTx(tx, task.id, new Date(now));
   await moveTaskInTx(moveDeps, task, reopenInput);

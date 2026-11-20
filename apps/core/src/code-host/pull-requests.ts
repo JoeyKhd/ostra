@@ -10,6 +10,7 @@ import type { ConnectionId, OrganizationId } from "@ostra/protocol";
 import { ciHintEvent, recordTaskPrHead } from "../review-loop/ci.ts";
 import type { CiHintDeps } from "../review-loop/ci.ts";
 import { enqueueReviewersRefresh, reviewersHintEvent } from "../review-loop/reviewers.ts";
+import { changesRequestedHint } from "../review-loop/changes-requested.ts";
 import type { ReviewersHintDeps } from "../review-loop/reviewers.ts";
 import type { WebhookDeliveryContext, WebhookHandler, WebhookOutcome } from "../webhooks/process.ts";
 
@@ -122,7 +123,12 @@ export const githubWebhookHandler =
         }),
       );
       context.logger.info("pr.review", { number: event.number, action: event.action.slice(0, 32), reviewer: event.review.login.slice(0, 64), enqueued });
-      return enqueued === 0 ? { outcome: "ignored", reason: "not a task's open PR" } : { outcome: "processed" };
+      // Milestone 6 (F-105, ticket 20): a linked member's "changes requested" reopens the task.
+      const changes = await changesRequestedHint({ db: deps.db, jobs: deps.jobs, capable: deps.codeHost.capabilities.reviews }, context, event);
+      if (changes.kind === "skipped") {
+        return { outcome: "ignored", reason: `changes requested, not acted on: ${changes.skip}` };
+      }
+      return enqueued === 0 && changes.kind !== "enqueued" ? { outcome: "ignored", reason: "not a task's open PR" } : { outcome: "processed" };
     }
     if (event.kind === "installation") {
       // Milestone 4 (F-136, ADR 0065): the App owner's own installation is linked when seen; any

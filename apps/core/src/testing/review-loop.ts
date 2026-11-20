@@ -21,6 +21,7 @@ import { blobCiLogStore, ciEvaluateHandler } from "../review-loop/ci.ts";
 import { reviewPostHandler, reviewStartHandler } from "../review-loop/review.ts";
 import { roundStartHandler } from "../review-loop/rounds.ts";
 import { reviewersRefreshHandler } from "../review-loop/reviewers.ts";
+import { changesReopenHandler } from "../review-loop/changes-requested.ts";
 import { reviewEvaluateHandler } from "../reactions/review-check.ts";
 import { FakeCodeHost, FakeSecretStore } from "./fake-adapters.ts";
 import { drive, jobContext } from "./turns.ts";
@@ -55,9 +56,9 @@ export type LoopHarness = {
   readonly stop: () => Promise<void>;
 };
 
-export type LoopJob = "ci.evaluate" | "round.start" | "review.start" | "review.post" | "reviewers.refresh" | "review.evaluate";
+export type LoopJob = "ci.evaluate" | "round.start" | "review.start" | "review.post" | "reviewers.refresh" | "review.evaluate" | "changes.reopen";
 
-const loopJobs: readonly string[] = ["ci.evaluate", "round.start", "review.start", "review.post", "reviewers.refresh", "review.evaluate"] satisfies readonly LoopJob[];
+const loopJobs: readonly string[] = ["ci.evaluate", "round.start", "review.start", "review.post", "reviewers.refresh", "review.evaluate", "changes.reopen"] satisfies readonly LoopJob[];
 const isLoopJob = (name: string): name is LoopJob => loopJobs.includes(name);
 
 export type RecordedJob = { readonly job: JobName; readonly key: string; readonly payload: unknown; readonly options: EnqueueOptions | undefined };
@@ -177,6 +178,10 @@ export const startLoopHarness = async (options: { readonly codeHost?: FakeCodeHo
       // Milestone 6 (ticket 19): the PR's reviewers, and milestone 4's check that keeps each one's review.
       case "reviewers.refresh":
         await reviewersRefreshHandler({ db: test.db, jobs, notices: postgresChangeNotices, clock, adapters })(jobContext(job, jobPayloadSchemas[job].parse(payload), logger));
+        return;
+      // Milestone 6 (ticket 20): a linked member's "changes requested", with the harness's spend cap.
+      case "changes.reopen":
+        await changesReopenHandler({ ...ports, adapters, spendCap: { capMicroUsd: 25_000_000, capTokens: 10_000_000 } })(jobContext(job, jobPayloadSchemas[job].parse(payload), logger));
         return;
       case "review.evaluate":
         await reviewEvaluateHandler({ db: test.db, jobs, notices: postgresChangeNotices, clock, adapters })(jobContext(job, jobPayloadSchemas[job].parse(payload), logger));

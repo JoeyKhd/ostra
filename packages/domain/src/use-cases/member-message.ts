@@ -43,6 +43,11 @@ export type SendMemberMessageInput = {
   readonly intent: MessageIntent;
   /** `driver`: the panel's actions; `anyone`: a PR comment, queued whoever drives. */
   readonly sender: "driver" | "anyone";
+  /**
+   * Milestone 6 (F-105): a reopen keeps the task's driver. A reviewer's "changes requested" is a
+   * review, so it doesn't make the reviewer the task's driver. Missing: a reopen makes the sender the driver.
+   */
+  readonly keepDriver?: true;
 };
 
 export type MemberMessageDelivery = "steer" | "reopen";
@@ -125,6 +130,7 @@ export const sendMemberMessageInTx = async (
         spendCap: deps.spendCap,
         timers: deps.timers,
         origin: origin === "message" ? "reopen" : origin,
+        ...(input.keepDriver === true ? { keepDriver: true as const } : {}),
       },
       { taskId: task.id, clientMessageId: input.clientMessageId, text, intent: input.intent },
     );
