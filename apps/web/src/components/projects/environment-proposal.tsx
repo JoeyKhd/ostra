@@ -137,6 +137,21 @@ const RepoBlock = ({ repo, editing, edit, onEdit }: {
   );
 };
 
+/** What a project admin decided: `Accepted as version 5.` with `Open Setup`, or `Rejected.` */
+const DecidedLine = ({ decided, projectId, className }: { readonly decided: Decided; readonly projectId: ProjectId; readonly className?: string }) => (
+  <p className={cn("flex items-center gap-1.5 text-sm text-green", className)} role="status" data-testid="proposal-decided">
+    {decided.kind === "accepted" ? (
+      <>
+        <CheckIcon aria-hidden className="size-[14px]" />
+        {decided.version === null ? t("proposal.acceptedNoVersion") : t("proposal.accepted", { n: decided.version })}{" "}
+        <Link href={`/projects/${projectId}/environment`} className="text-teal hover:underline">{t("proposal.openSetup")}</Link>
+      </>
+    ) : (
+      <span className="text-muted">{t("proposal.rejected")}</span>
+    )}
+  </p>
+);
+
 /** The onboarding task's line: its key and title, its state, and its AGENTS.md PRs. */
 const TaskLine = ({ onboarding, now }: { readonly onboarding: Onboarding; readonly now: number }) => {
   const task = onboarding.task;
@@ -204,7 +219,19 @@ export const ProposalProperties = ({ proposal, onboarding, now }: { readonly pro
   <div data-testid="proposal-properties">
     <PropGroup title={t("proposal.panel.proposal")}>
       <PropRow label={t("proposal.panel.state")} labelWidth={120}>
-        <span>{proposal !== null ? t("proposal.panel.proposed") : onboarding?.task?.open === true ? t("proposal.panel.running") : t("proposal.panel.none")}</span>
+        <span>
+          {proposal?.decision?.kind === "accepted"
+            ? proposal.decision.version === null
+              ? t("proposal.panel.acceptedNoVersion")
+              : t("proposal.panel.accepted", { n: proposal.decision.version })
+            : proposal?.decision?.kind === "rejected"
+              ? t("proposal.panel.rejected")
+              : proposal !== null
+                ? t("proposal.panel.proposed")
+                : onboarding?.task?.open === true
+                  ? t("proposal.panel.running")
+                  : t("proposal.panel.none")}
+        </span>
       </PropRow>
       {onboarding?.task === null || onboarding?.task === undefined ? null : (
         <PropRow label={t("proposal.panel.task")} labelWidth={120}><Link href={`/tasks/${onboarding.task.taskId}`} className="font-mono text-teal hover:underline">{onboarding.task.key}</Link></PropRow>
@@ -251,8 +278,9 @@ export const EnvironmentProposalTab = ({ projectId, projectName, onboarding, now
   const [reason, setReason] = useState("");
   const data = proposal.data;
   const [justDecided, setDecided] = useState<Decided | null>(null);
-  // What was decided here a moment ago, else what the server says was decided (after a reload too).
-  const decided = decidedOf(justDecided, data === null ? (onboarding?.decision ?? null) : null);
+  // What was decided here a moment ago, else what the server says was decided (after a reload too):
+  // the shown proposal's decision (kept readable for 7 days), or the onboarding task's last one.
+  const decided = decidedOf(justDecided, data?.decision ?? (data === null ? (onboarding?.decision ?? null) : null));
   const decide = useMutation(
     trpc.environments.decideProposal.mutationOptions({
       onSettled: async () => {
@@ -292,19 +320,8 @@ export const EnvironmentProposalTab = ({ projectId, projectName, onboarding, now
   return (
     <div data-testid="proposal-tab">
       <TaskLine onboarding={onboarding} now={now} />
-      {decided === null ? null : (
-        <p className="mt-4 flex items-center gap-1.5 text-sm text-green" role="status" data-testid="proposal-decided">
-          {decided.kind === "accepted" ? (
-            <>
-              <CheckIcon aria-hidden className="size-[14px]" />
-              {decided.version === null ? t("proposal.acceptedNoVersion") : t("proposal.accepted", { n: decided.version })}{" "}
-              <Link href={`/projects/${projectId}/environment`} className="text-teal hover:underline">{t("proposal.openSetup")}</Link>
-            </>
-          ) : (
-            <span className="text-muted">{t("proposal.rejected")}</span>
-          )}
-        </p>
-      )}
+      {/* With the proposal shown, its outcome takes the decision row's place below. */}
+      {decided === null || data !== null ? null : <DecidedLine decided={decided} projectId={projectId} className="mt-4" />}
       {data === null ? (
         onboarding.task !== null && !onboarding.task.open && decided === null ? (
           <p className="mt-2 text-sm text-muted">
@@ -351,7 +368,9 @@ export const EnvironmentProposalTab = ({ projectId, projectName, onboarding, now
             </div>
           )}
           <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-line pt-4" data-testid="proposal-decision">
-            {!data.canDecide ? (
+            {decided !== null ? (
+              <DecidedLine decided={decided} projectId={projectId} />
+            ) : !data.canDecide ? (
               <p className="text-sm text-muted">{t("proposal.adminDecides", { project: projectName })}</p>
             ) : editing ? (
               <>
@@ -386,7 +405,7 @@ export const EnvironmentProposalTab = ({ projectId, projectName, onboarding, now
                 </Popover.Root>
               </>
             )}
-            {data.canDecide ? <span className="text-xs text-faint sm:ml-auto">{t("proposal.acceptNote")}</span> : null}
+            {data.canDecide && decided === null ? <span className="text-xs text-faint sm:ml-auto">{t("proposal.acceptNote")}</span> : null}
           </div>
           {decide.error === null ? null : <p role="alert" className="mt-2 text-sm text-red">{errorText(decide.error)}</p>}
         </div>

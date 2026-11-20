@@ -74,7 +74,12 @@ test("F-113/c1,c2,c3: a project admin starts the onboarding task, reads the prop
   await page.getByLabel(`Setup script for ${e2eRepo.owner}/test1`).fill("corepack enable\npnpm install --frozen-lockfile");
   await page.locator('[data-action="accept-edited"]').click();
   await expect(page.getByTestId("proposal-decided")).toContainText("Accepted as version");
-  await expect(page.getByTestId("proposal")).toHaveCount(0);
+  // Decided, its diff stays readable for 7 days with nothing left to decide, after a reload too (ticket 41).
+  await page.reload();
+  await expect(proposal.locator('[data-testid="script-diff"] [data-sign="+"]')).toContainText(["corepack enable"]);
+  await expect(page.getByTestId("proposal-decision").getByTestId("proposal-decided")).toContainText("Accepted as version");
+  await expect(page.locator('[data-action="accept"]')).toHaveCount(0);
+  await shoot(page, "environment-proposal-accepted");
 
   // The Setup tab holds it now.
   await page.goto(`/projects/${projectId}/environment`);

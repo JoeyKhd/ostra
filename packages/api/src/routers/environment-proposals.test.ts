@@ -214,7 +214,8 @@ describe("the onboarding task (F-113, ticket 29)", () => {
     expect(await harness.test.db.environmentProposal.findUniqueOrThrow({ where: { id: proposalId } })).toMatchObject({ state: "accepted", decidedByMemberId: harness.fixture.a.insider.id, resultVersion: decided.resultVersion });
     expect((await harness.test.db.environment.findFirstOrThrow({ where: { projectId } })).setupScript).toContain("pnpm install --frozen-lockfile");
     expect(await codeOf(projectAdmin.environments.decideProposal({ proposalId, decision: "reject", edited: null, reason: "Too late." }))).toBe("CONFLICT");
-    expect(await member.environments.proposal({ projectId })).toBeNull();
+    // Decided, it stays readable and can't be decided again (ticket 41).
+    expect(await projectAdmin.environments.proposal({ projectId })).toMatchObject({ proposalId, decision: { kind: "accepted", version: decided.resultVersion }, canDecide: false, body: null });
     // The page reads what became of it, after a reload too.
     expect((await member.environments.onboarding({ projectId })).decision).toMatchObject({ kind: "accepted", version: decided.resultVersion });
 
@@ -224,6 +225,36 @@ describe("the onboarding task (F-113, ticket 29)", () => {
     expect(await admin.environments.decideProposal({ proposalId: rejected, decision: "reject", edited: null, reason: "We don't run make here." })).toEqual({ resultVersion: null });
     expect((await harness.test.db.environment.findFirstOrThrow({ where: { projectId } })).setupScript).toBe(before.setupScript);
     expect((await member.environments.onboarding({ projectId })).decision).toMatchObject({ kind: "rejected", version: null });
+  });
+
+  it("F-113/c2: a decided proposal stays readable for 7 days, read-only, against the environment as its decision found it", async () => {
+    await closeOnboarding();
+    const admin = await harness.as(harness.fixture.a.admin);
+    const member = await harness.as(harness.fixture.a.member);
+    const { taskId } = await admin.environments.startOnboarding({ projectId });
+    const proposalId = await agentProposes(taskId, proposal({ setupScript: "make seven-days" }));
+    const before = await harness.test.db.environment.findFirstOrThrow({ where: { projectId } });
+    const open = await member.environments.proposal({ projectId });
+    const decided = await admin.environments.decideProposal({ proposalId, decision: "accept", edited: null, reason: null });
+    // The environment now holds the proposal, yet the diff is the one the admin accepted: against the script it replaced.
+    expect((await harness.test.db.environment.findFirstOrThrow({ where: { projectId } })).setupScript).not.toBe(before.setupScript);
+    const view = await member.environments.proposal({ projectId });
+    const adminName = (await harness.test.db.user.findUniqueOrThrow({ where: { id: harness.fixture.a.admin.userId } })).name;
+    expect(view).toMatchObject({ proposalId, decision: { kind: "accepted", version: decided.resultVersion, byName: adminName }, canDecide: false, body: null });
+    expect(view?.repos[0]?.setupScript).toEqual({ current: before.setupScript, proposed: "make seven-days", changed: true });
+    expect(view?.repos).toEqual(open?.repos);
+    expect(view?.services).toEqual(open?.services);
+    expect((await admin.environments.proposal({ projectId }))?.canDecide).toBe(false);
+    // A newer open proposal comes first; once it's rejected, it's the one shown.
+    const next = await agentProposes(taskId, proposal({ setupScript: "make rejected-later" }));
+    expect(await member.environments.proposal({ projectId })).toMatchObject({ proposalId: next, decision: null });
+    await admin.environments.decideProposal({ proposalId: next, decision: "reject", edited: null, reason: null });
+    expect(await member.environments.proposal({ projectId })).toMatchObject({ proposalId: next, decision: { kind: "rejected", version: null } });
+    // After 7 days, nothing is shown: the onboarding line keeps the outcome.
+    await harness.test.db.$executeRaw`UPDATE "environment_proposal" SET "decidedAt" = "decidedAt" - interval '7 days 1 minute' WHERE "projectId" = ${projectId} AND "decidedAt" IS NOT NULL`;
+    expect(await member.environments.proposal({ projectId })).toBeNull();
+    expect((await member.environments.onboarding({ projectId })).decision).toMatchObject({ kind: "rejected" });
+    expect(await codeOf((await harness.as(harness.fixture.b.admin)).environments.proposal({ projectId }))).toBe("NOT_FOUND");
   });
 
   it("F-113/c2: an admin's edit that adds a secret's value is refused by the scan, and nothing is saved; a clean edit is accepted", async () => {

@@ -1,5 +1,5 @@
-import { decideEnvironmentProposal, startOnboarding } from "@ostra/domain";
-import type { EnvironmentDecision } from "@ostra/domain";
+import { decideEnvironmentProposal, environmentBaselineInTx, environmentBaselineSchema, startOnboarding } from "@ostra/domain";
+import type { EnvironmentBaseline, EnvironmentDecision } from "@ostra/domain";
 import { environmentProposalIdSchema, environmentProposalSchema, projectIdSchema, repoIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { EnvironmentProposal, ProposedCheck, ProposedService } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
@@ -12,6 +12,8 @@ import { memberProcedure, projectProcedure, unwrap } from "../trpc/init.ts";
 // project admin's, refused while the project's onboarding task is open. `environments.proposal`
 // shows the open proposal against the environment as saved now, per repo: the setup script, the
 // checks and the variables it needs by name; then the services, the agent's notes and the task.
+// With none open, the one decided in the last 7 days, read-only, against the environment as its
+// decision found it (ticket 41).
 // `environments.decideProposal` is a project admin's: accept, edit and accept (the edit scanned for
 // secret values as the agent's proposal was) or reject. The scripts and the notes are the agent's
 // words and the repos' code: they go to the project's members and never to a log line.
@@ -62,6 +64,24 @@ const filteredSchema = z.looseObject({ dropped: z.array(z.string()).catch([]) })
 
 /** The task states an onboarding task is over in (ticket 21's `ENDED`). */
 const ENDED_STATES: readonly string[] = ["stopped", "merged", "done"];
+
+/** How long a decided proposal stays readable on the Proposal tab (environment-proposal.md, "Accepted"). */
+export const DECIDED_PROPOSAL_SHOWN_MS = 7 * 24 * 60 * 60 * 1000;
+
+const proposalSelect = {
+  id: true,
+  environmentId: true,
+  taskId: true,
+  body: true,
+  notes: true,
+  createdAt: true,
+  state: true,
+  decidedAt: true,
+  decidedByMemberId: true,
+  resultVersion: true,
+  baseline: true,
+  task: { select: { title: true, state: true } },
+} as const;
 
 export const onboardingProcedures = {
   /**
@@ -150,50 +170,64 @@ export const onboardingProcedures = {
 
   /**
    * The open proposal against the environment as saved now: per repo its setup script, its checks
-   * and the variables it names; the services; the notes and the task. `null` when none is open.
+   * and the variables it names; the services; the notes and the task. With none open, the one
+   * decided in the last 7 days, read-only, against the environment as its decision found it
+   * (ticket 41). `null` otherwise.
    */
   proposal: projectProcedure("read", projectInput).query(async ({ ctx, input }) => {
     const { db } = ctx.deps;
     const organizationId = ctx.scope.organizationId;
-    const row = await db.environmentProposal.findFirst({
-      where: { organizationId, projectId: input.projectId, state: "proposed" },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, environmentId: true, taskId: true, body: true, notes: true, createdAt: true, task: { select: { title: true, state: true } } },
-    });
+    const open = await db.environmentProposal.findFirst({ where: { organizationId, projectId: input.projectId, state: "proposed" }, orderBy: { createdAt: "desc" }, select: proposalSelect });
+    const decidedRow =
+      open !== null
+        ? null
+        : await db.environmentProposal.findFirst({
+            where: { organizationId, projectId: input.projectId, state: { in: ["accepted", "rejected"] }, decidedAt: { gte: new Date(ctx.deps.ports.clock.now() - DECIDED_PROPOSAL_SHOWN_MS) } },
+            orderBy: { decidedAt: "desc" },
+            select: proposalSelect,
+          });
+    // A proposal decided before its baseline was kept has only its outcome to show (the onboarding line says it).
+    const kept = decidedRow === null ? null : environmentBaselineSchema.safeParse(decidedRow.baseline);
+    const row = open ?? (kept?.success === true ? decidedRow : null);
     if (row === null) {
       return null;
     }
+    const current: EnvironmentBaseline = kept?.success === true ? kept.data : await environmentBaselineInTx(db, row.environmentId);
     // A body that doesn't parse (a shape this version doesn't read) is shown as unreadable: only rejecting it is left.
     const parsed = environmentProposalSchema.safeParse(row.body);
     const proposal: EnvironmentProposal = parsed.success ? parsed.data : { repos: [], services: [], notes: row.notes ?? "" };
-    const [environment, repos, checks, entries, services] = await Promise.all([
-      db.environment.findUniqueOrThrow({ where: { id: row.environmentId }, select: { status: true, setupScript: true } }),
-      db.repo.findMany({ where: { organizationId, projectId: input.projectId }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], select: { id: true, fullName: true } }),
-      db.check.findMany({ where: { environmentId: row.environmentId }, orderBy: { position: "asc" }, select: { name: true, command: true, timeoutSeconds: true, repoId: true } }),
-      db.environmentEntry.findMany({ where: { environmentId: row.environmentId, kind: { in: ["variable", "secret"] } }, select: { repoId: true, name: true, kind: true } }),
-      db.service.findMany({ where: { environmentId: row.environmentId }, orderBy: { createdAt: "asc" }, select: { name: true, image: true, port: true, healthCheck: true } }),
-    ]);
-    const saved = environment.status === "saved";
+    const repos = await db.repo.findMany({ where: { organizationId, projectId: input.projectId }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], select: { id: true, fullName: true } });
+    const decidedBy =
+      row.decidedByMemberId === null ? null : await db.member.findFirst({ where: { id: row.decidedByMemberId, organizationId }, select: { user: { select: { name: true } } } });
+    const decidedAt = row.decidedAt?.getTime() ?? null;
+    const saved = current.saved;
     const firstRepoId = repos[0]?.id ?? null;
     return {
       proposalId: environmentProposalIdSchema.parse(row.id),
       createdAt: row.createdAt.getTime(),
       task: { taskId: taskIdSchema.parse(row.taskId), title: row.task.title, state: row.task.state },
+      /** Ticket 41: what a project admin decided, for a proposal decided in the last 7 days; `null` while it's open. */
+      decision:
+        row.state === "proposed" || decidedAt === null
+          ? null
+          : row.state === "accepted"
+            ? { kind: "accepted" as const, version: row.resultVersion, at: decidedAt, byName: decidedBy?.user.name ?? null }
+            : { kind: "rejected" as const, version: null, at: decidedAt, byName: decidedBy?.user.name ?? null },
       /** Whether the environment was saved before; a draft one has nothing to compare against. */
       saved,
-      /** Only a project admin decides it. */
-      canDecide: ctx.project.role === "admin",
+      /** Only a project admin decides it, and only while it's open. */
+      canDecide: ctx.project.role === "admin" && row.state === "proposed",
       /** Whether the proposal could be read; one that can't is shown without its parts. */
       readable: parsed.success,
       notes: proposal.notes,
-      /** As proposed: what "Edit and accept" starts from. */
-      body: parsed.success ? proposal : null,
+      /** As proposed: what "Edit and accept" starts from; `null` once it's decided. */
+      body: parsed.success && row.state === "proposed" ? proposal : null,
       repos: proposal.repos.map((repo) => {
         const isFirst = repo.repoId === firstRepoId;
         // The environment's one setup script runs in the workspace: it's compared with the first repo's.
-        const currentScript = saved && isFirst ? environment.setupScript : null;
-        const currentChecks = saved ? checks.filter((check) => check.repoId === repo.repoId || (check.repoId === null && isFirst)) : [];
-        const currentNames = new Set(entries.filter((entry) => entry.repoId === repo.repoId && entry.name !== null).map((entry) => entry.name));
+        const currentScript = saved && isFirst ? current.setupScript : null;
+        const currentChecks = saved ? current.checks.filter((check) => check.repoId === repo.repoId || (check.repoId === null && isFirst)) : [];
+        const currentNames = new Set(current.names.filter((entry) => entry.repoId === repo.repoId).map((entry) => entry.name));
         return {
           repoId: repoIdSchema.parse(repo.repoId),
           repo: repos.find((one) => one.id === repo.repoId)?.fullName ?? null,
@@ -208,7 +242,7 @@ export const onboardingProcedures = {
         };
       }),
       services: byName(
-        saved ? services : [],
+        saved ? current.services : [],
         proposal.services,
         sameService,
       ),

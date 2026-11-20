@@ -2,6 +2,7 @@ import type { Logger } from "@ostra/adapter-sdk";
 import type { Db, Tx } from "@ostra/db";
 import { environmentIdSchema, environmentProposalIdSchema, environmentProposalSchema, organizationIdSchema, projectIdSchema, repoFullNameSchema, repoIdSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { EnvironmentEntry, EnvironmentProposal, EnvironmentProposalId, OrganizationId, OstraToolSet, ProjectId, RepoId, TaskId } from "@ostra/protocol";
+import { z } from "zod";
 
 import { requireProjectAccess } from "../access.ts";
 import type { MemberScope } from "../access.ts";
@@ -237,6 +238,37 @@ export type DecideEnvironmentProposalResult =
 const environmentVersionInTx = (tx: Tx, environmentId: string): Promise<number> => tx.auditEntry.count({ where: { entity: "environment", entityId: environmentId, action: "environment.saved" } });
 
 /**
+ * The environment as a proposal is compared with (ticket 41): whether it was saved, its setup
+ * script, its checks, its services and the names of its variables and secrets, never a value. The
+ * open proposal is compared with it as it is now; a decision keeps it on the proposal
+ * (`EnvironmentProposal.baseline`), so the decided proposal's diff stays readable for 7 days.
+ */
+export const environmentBaselineSchema = z.strictObject({
+  saved: z.boolean(),
+  setupScript: z.string().nullable(),
+  checks: z.array(z.strictObject({ name: z.string(), command: z.string(), timeoutSeconds: z.number().int(), repoId: repoIdSchema.nullable() })),
+  services: z.array(z.strictObject({ name: z.string(), image: z.string(), port: z.number().int().nullable(), healthCheck: z.string().nullable() })),
+  names: z.array(z.strictObject({ repoId: repoIdSchema, name: z.string() })),
+});
+export type EnvironmentBaseline = z.infer<typeof environmentBaselineSchema>;
+
+export const environmentBaselineInTx = async (tx: Pick<Tx, "environment" | "check" | "service" | "environmentEntry">, environmentId: string): Promise<EnvironmentBaseline> => {
+  const [environment, checks, services, entries] = await Promise.all([
+    tx.environment.findUniqueOrThrow({ where: { id: environmentId }, select: { status: true, setupScript: true } }),
+    tx.check.findMany({ where: { environmentId }, orderBy: { position: "asc" }, select: { name: true, command: true, timeoutSeconds: true, repoId: true } }),
+    tx.service.findMany({ where: { environmentId }, orderBy: { createdAt: "asc" }, select: { name: true, image: true, port: true, healthCheck: true } }),
+    tx.environmentEntry.findMany({ where: { environmentId, kind: { in: ["variable", "secret"] } }, orderBy: { createdAt: "asc" }, select: { repoId: true, name: true } }),
+  ]);
+  return {
+    saved: environment.status === "saved",
+    setupScript: environment.setupScript,
+    checks: checks.map((check) => ({ ...check, repoId: check.repoId === null ? null : repoIdSchema.parse(check.repoId) })),
+    services,
+    names: entries.flatMap((entry) => (entry.name === null ? [] : [{ repoId: repoIdSchema.parse(entry.repoId), name: entry.name }])),
+  };
+};
+
+/**
  * The proposal's scripts as the environment's one setup script: each repo's in its own folder of
  * the workspace, in the project's order. One repo's script runs as it is.
  */
@@ -276,12 +308,14 @@ export const decideEnvironmentProposal = (deps: DecideEnvironmentProposalDeps, s
       }
       const now = new Date(deps.clock.now());
       const taskId = taskIdSchema.parse(proposal.taskId);
+      // What the proposal was decided against, before "Accept" changes it: its read-only diff (ticket 41).
+      const baseline = await environmentBaselineInTx(tx, proposal.environmentId);
       const answerItem = async (): Promise<void> => {
         await resolveNeedsYouItemsInTx(deps, tx, { taskId, reason: "environment_proposal" }, { state: "answered", at: now, byMemberId: scope.memberId });
         await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: taskId });
       };
       if (input.decision.kind === "reject") {
-        await tx.environmentProposal.update({ where: { id: proposal.id }, data: { state: "rejected", decidedByMemberId: scope.memberId, decidedAt: now } });
+        await tx.environmentProposal.update({ where: { id: proposal.id }, data: { state: "rejected", decidedByMemberId: scope.memberId, decidedAt: now, baseline } });
         await deps.audit.recordInTx(tx, {
           organizationId,
           projectId,
@@ -361,7 +395,7 @@ export const decideEnvironmentProposal = (deps: DecideEnvironmentProposalDeps, s
         });
       }
       const resultVersion = await environmentVersionInTx(tx, environment.id);
-      await tx.environmentProposal.update({ where: { id: proposal.id }, data: { state: "accepted", decidedByMemberId: scope.memberId, decidedAt: now, resultVersion, ...(input.decision.edited === null ? {} : { body: { repos: accepted.repos, services: accepted.services, notes: accepted.notes } }) } });
+      await tx.environmentProposal.update({ where: { id: proposal.id }, data: { state: "accepted", decidedByMemberId: scope.memberId, decidedAt: now, resultVersion, baseline, ...(input.decision.edited === null ? {} : { body: { repos: accepted.repos, services: accepted.services, notes: accepted.notes } }) } });
       await deps.audit.recordInTx(tx, {
         organizationId,
         projectId,

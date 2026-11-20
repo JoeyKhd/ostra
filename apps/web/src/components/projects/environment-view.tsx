@@ -258,6 +258,8 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
   // Ticket 36: the onboarding task and its open proposal, for the Proposal tab, its banner and "Test this environment".
   const onboarding = useQuery({ ...trpc.environments.onboarding.queryOptions({ projectId }), refetchInterval: 10_000 });
   const proposal = useQuery(trpc.environments.proposal.queryOptions({ projectId }));
+  // A proposal waiting for a decision: the tab's dot and the banner. One decided in the last 7 days is only read (ticket 41).
+  const waiting = proposal.data?.decision === null;
   const [now] = useState(() => Date.now());
   const [startError, setStartError] = useState<string | null>(null);
   const detect = useMutation(trpc.environments.detect.mutationOptions());
@@ -391,7 +393,7 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
             // Ticket 36: the onboarding task's proposal, once there's an onboarding task; a dot while a proposal waits (amber for its admins).
             ...(onboarding.data?.task === null || onboarding.data === undefined
               ? []
-              : [{ id: "proposal" as const, label: t("environment.tabs.proposal"), extra: proposal.data === null || proposal.data === undefined ? null : <span aria-hidden className={cn("inline-block size-1.5 rounded-full", admin ? "bg-amber" : "bg-faint")} /> }]),
+              : [{ id: "proposal" as const, label: t("environment.tabs.proposal"), extra: !waiting ? null : <span aria-hidden className={cn("inline-block size-1.5 rounded-full", admin ? "bg-amber" : "bg-faint")} /> }]),
           ]}
           selected={tab}
           onSelect={selectTab}
@@ -407,7 +409,7 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
         )}
         {environment.error === null ? null : <p role="alert" className="mt-4 text-ui text-red">{errorText(environment.error)}</p>}
         {startError === null ? null : <p role="alert" className="mt-2 text-xs text-red" data-testid="onboarding-error">{startError}</p>}
-        {tab !== "proposal" && proposal.data !== null && proposal.data !== undefined ? (
+        {tab !== "proposal" && waiting ? (
           <p className="mt-2 flex min-h-9 items-center gap-2 text-ui text-text" data-testid="proposal-banner">
             {admin ? <span aria-hidden className="size-1.5 rounded-full bg-amber" /> : null}
             <FlaskConicalIcon aria-hidden className="size-[15px] text-muted" />

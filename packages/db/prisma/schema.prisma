@@ -1668,6 +1668,10 @@ model EnvironmentProposal {
   /// The environment's version an accepted proposal became.
   resultVersion     Int?
   createdAt         DateTime                  @default(now())
+  /// Milestone 6's review (ticket 41): the environment as the decision found it, read by the
+  /// domain's `environmentBaselineSchema` (its script, checks, services and variable names, never
+  /// a value), so a decided proposal's diff stays readable for 7 days. `null` before this release.
+  baseline          Json?
 
   @@map("environment_proposal")
 }
