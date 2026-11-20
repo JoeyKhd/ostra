@@ -28,6 +28,7 @@ import { chooseRunner } from "../fleet/choose.ts";
 import type { ChooseResult, ChooseTask } from "../fleet/choose.ts";
 import { fleetInTx, lockPoolsInTx, lockRunnerInTx, poolsInTx, projectPoolsInTx, projectSizeInTx, snapshotRunnerInTx } from "./fleet-rows.ts";
 import { registryImageForProject } from "./registry.ts";
+import { automaticRoundOfSessionInTx } from "../review-loop/start-round.ts";
 
 // ADR 0034, F-045: the `task.dispatch` job. It picks the runner (the member's personal runner in
 // milestone 1), raises the task's lease epoch under the task row's lock, creates the box and the
@@ -75,6 +76,9 @@ export type DispatchTaskDeps = Pick<Ports, "jobs" | "outbox" | "notices" | "cloc
 
 /** The runner minor that reads each repo's own bot (F-136): a task across two Apps needs it. */
 export const SEVERAL_APPS_MINOR = 3;
+
+/** The runner minor that reads milestone 6's kinds and automatic rounds (protocol minor 5). */
+export const TEAM_MINOR = 5;
 
 /** How a dispatch starts its session: fresh (the task's first), or by one of ADR 0039's steps. */
 export type DispatchPlan = { readonly step: "new" } | (ReopenStep & { readonly keptRunnerId?: RunnerId });
@@ -411,7 +415,11 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
         model: mapModel(effortModel),
         level: task.effort,
       }).effort.level !== "default");
-  const minMinor = runsAtLevel ? Math.max(profileMinor, EFFORT_MINOR) : profileMinor;
+  // Milestone 6 (F-099, F-100, F-101): a refine or review task, and a session an automatic round
+  // started on a fresh box, go only to a runner at minor 5, the first that reads them.
+  const automaticRound = await automaticRoundOfSessionInTx(tx, { taskId: task.id, sessionId: session.id });
+  const kindMinor = task.kind !== "code" || automaticRound !== null ? TEAM_MINOR : 0;
+  const minMinor = Math.max(runsAtLevel ? Math.max(profileMinor, EFFORT_MINOR) : profileMinor, kindMinor);
   /**
    * Milestone 3's words when services are why (F-094): a services runner missing, when only runners
    * that can't start them are online in the same scope. Otherwise the choice's own reason.
@@ -666,6 +674,8 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
       sessionId: input.sessionId,
       boxId,
       leaseEpoch: input.leaseEpoch,
+      // Minor 5 (F-101): the session's first turn is an automatic round.
+      ...(automaticRound === null ? {} : { automatic: true }),
       // Minor 4: the box's size and image; a minor-3 runner is never sent it (the outbox encodes down).
       ...(boxSize === null && image === null ? {} : { box: { size: boxSize, image } }),
     },
