@@ -22,7 +22,7 @@ Spec: `../spec.md`, sections 10.1 and 12 (item 14)
 
 ## Comments
 
-- 2026-11-20: done in the commit `✅ check every string is in a message file` (its hash is on `origin/main`; this ticket's next edit records it).
+- 2026-11-20: done in 9482761e, `✅ check every string is in a message file`.
   - **The check** is `apps/web/src/lib/messages.check.test.ts` over `src/lib/messages-check.ts` (the TypeScript compiler API), in `pnpm test`; `ci.yml` is unchanged. Names that aren't words are in `messages/allowed-literals.json`, each with its reason. It found 3 literals (a retention's "keep", "PR", "s ago"/"min ago") and 160 unused keys, which went.
   - **Refusals as codes:** `errorText` now words a FORBIDDEN (a role refusal) and a NOT_FOUND through `t` (`errors.forbidden`, `errors.notFound`); before, it showed the server's English. A budget stop already reached the page as a code (the limit block). **Deviation:** the spec's `model-format` refusal was Claude Code's format check, postponed with F-018 (2026-11-19), so there's none to seed.
   - **The pseudo-locale:** `OSTRA_PSEUDO_LOCALE=1` (dev and test only; its line is in `docs/configuration.md` and `devOnlyEnvNames`) builds into `.next-pseudo`. `e2e/pseudo-locale.spec.ts` runs on its own stack (`playwright.pseudo.config.ts`) over every route of `e2e/routes.ts`. The proof workflow's `e2e` job runs it, and `ci.yml` doesn't. The pass found, and this fixes: unit letters written straight into ten formatters ("now", "min", "h", "d", "s"), now `units.*` messages; a section's "{description}: {fields}" in the ticket template; the audit log's codes, marked `translate="no"`; and the NOT_FOUND English on an environment page.
