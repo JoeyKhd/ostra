@@ -41,9 +41,12 @@ describe("the ostra program", () => {
     const { stdout } = await run(process.execPath, [main, "--help"], { cwd: packageRoot });
     expect(stdout).toMatch(/^\s+ostra runner \[flags\]\s+Start a runner/m);
 
-    // The runner image's entry point is that file, and its command is `runner`.
+    // The runner image's entry point is `ostra`, a shim on the PATH that runs that same file, and
+    // its command is `runner` (milestone 5's images, ticket 22: the sidecar runs `ostra sidecar`).
     const dockerfile = await readFile(path.join(repoRoot, "deploy", "Dockerfile.runner"), "utf8");
-    expect(dockerfile).toContain('ENTRYPOINT ["node", "/app/apps/runner/src/main.ts"]');
+    const imageMain = `/app/apps/runner/${(pkg.bin["ostra"] ?? "").replace(/^\.\//, "")}`;
+    expect(dockerfile).toContain(`exec node ${imageMain} "$@"`);
+    expect(dockerfile).toContain('ENTRYPOINT ["ostra"]');
     expect(dockerfile).toContain('CMD ["runner"]');
   });
 
