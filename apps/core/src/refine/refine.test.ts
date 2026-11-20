@@ -512,7 +512,7 @@ describe("refine drafts (F-099)", () => {
     expect((await submit(code.taskId, token, draft())).status).toBe(403);
   });
 
-  it("F-099/c5: a turn that handed in a draft puts the task in front of its owner; a turn without one doesn't", async () => {
+  it("F-036/c1, F-099/c5: a turn that handed in a draft puts the task in front of its owner; a turn without one doesn't", async () => {
     const quiet = await refineTask();
     expect(await turnEnds(quiet.taskId, quiet.sessionId)).toMatchObject({
       ok: true,
