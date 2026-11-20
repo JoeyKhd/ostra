@@ -50,16 +50,28 @@ describe("the steer timer", () => {
 describe("the CPU sampler", () => {
   it("F-117: reads the test's own process's CPU and memory from the OS", async () => {
     const before = await sampleProcess(process.pid);
-    const burnUntil = performance.now() + 1_500;
+    const nodeBefore = process.cpuUsage();
+    // Burn until Node itself counts 1.2 s of CPU, not for a wall-clock time: on a busy CI machine
+    // the loop gets only part of a core (run 44660587098 got 0.75 s in 1.5 s).
+    const giveUpAt = performance.now() + 30_000;
     let spin = 0;
-    while (performance.now() < burnUntil) spin += Math.sqrt(spin + 1);
+    const nodeMs = (): number => {
+      const delta = process.cpuUsage(nodeBefore);
+      return (delta.user + delta.system) / 1000;
+    };
+    while (nodeMs() < 1_200 && performance.now() < giveUpAt) {
+      for (let i = 0; i < 100_000; i += 1) spin += Math.sqrt(spin + 1);
+    }
+    const nodeUsed = nodeMs();
     const after = await sampleProcess(process.pid);
     expect(spin).toBeGreaterThan(0);
-    // About 1.5 s of one core went into the loop; the sampler's own reads add a little.
+    expect(nodeUsed).toBeGreaterThanOrEqual(1_200);
+    // The OS's count for this process agrees with Node's own, within the sampler's resolution; the
+    // sampler's own reads and any idle child add a little.
     const used = after.cpuMs - before.cpuMs;
-    expect(used).toBeGreaterThanOrEqual(1_200);
+    expect(used).toBeGreaterThanOrEqual(nodeUsed - 300);
     expect(used).toBeLessThan((after.at - before.at) * 4 + 500);
-    expect(cpuCores(before, after)).toBeGreaterThan(0.5);
+    expect(cpuCores(before, after)).toBeGreaterThan(0);
     expect(after.rssBytes).toBeGreaterThan(10 * 1024 * 1024);
     expect(after.processes).toBeGreaterThanOrEqual(1);
   }, 60_000);
