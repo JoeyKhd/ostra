@@ -178,8 +178,18 @@ export class FakeCodeHost extends CodeHostAdapter {
     return Promise.resolve(ok({ token, expiresAt: Date.now() + 3_600_000 }));
   }
 
-  readFiles(): Promise<AdapterResult<ReadFilesResult>> {
-    return Promise.resolve(ok({ files: [], missing: [] }));
+  /** Milestone 6 (ticket 21): files the repos hold, by `repo@ref:path`, for `readFiles`. None by default. */
+  readonly repoFiles = new Map<string, string>();
+
+  readFiles(access?: RepoAccess, ref?: string, paths?: readonly string[]): Promise<AdapterResult<ReadFilesResult>> {
+    if (access === undefined || ref === undefined || paths === undefined) {
+      return Promise.resolve(ok({ files: [], missing: [] }));
+    }
+    const files = paths.flatMap((path) => {
+      const content = this.repoFiles.get(`${access.repo}@${ref}:${path}`);
+      return content === undefined ? [] : [{ path, content }];
+    });
+    return Promise.resolve(ok({ files, missing: paths.filter((path) => !files.some((file) => file.path === path)) }));
   }
 
   getDefaultBranch(): Promise<AdapterResult<string>> {

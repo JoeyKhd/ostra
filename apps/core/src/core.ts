@@ -46,6 +46,7 @@ import { roundStartHandler } from "./review-loop/rounds.ts";
 import { reviewersRefreshHandler } from "./review-loop/reviewers.ts";
 import { changesReopenHandler } from "./review-loop/changes-requested.ts";
 import { handleReviewEndpoint } from "./runner-http/review.ts";
+import { handleEnvironmentProposalEndpoint } from "./runner-http/environment-proposal.ts";
 import { ensureBootstrapJoinToken } from "./gateway/bootstrap-join-token.ts";
 import { postgresDeviceSessions } from "./gateway/device-sessions.ts";
 import { createGateway } from "./gateway/gateway.ts";
@@ -378,6 +379,17 @@ export const startCore = async (
   });
   // Milestone 6 (F-099, ticket 15): a refine task's sidecar hands in its draft here.
   const draftEndpoints = handleDraftEndpoint({ db, tokens: gateway.context.tokens, taskTokens: gateway.context.taskTokens, jobs, notices, audit: postgresAuditLog, clock: systemClock, logger });
+  // Milestone 6 (ticket 21): the sidecar's `propose_environment`, by the task's token.
+  const environmentProposalEndpoints = handleEnvironmentProposalEndpoint({
+    db,
+    tokens: gateway.context.tokens,
+    taskTokens: gateway.context.taskTokens,
+    jobs,
+    notices,
+    clock: systemClock,
+    secretStore: adapters.secretStore,
+    logger,
+  });
   const snapshotEndpoints = handleSnapshotEndpoint({ db, tokens: gateway.context.tokens, adapters, audit: postgresAuditLog, clock: systemClock, logger });
   // Milestone 5 (F-120, ticket 17): the registry's push and pull credentials, by the runner's token.
   const registryEndpoints = handleRegistryEndpoint({ db, tokens: gateway.context.tokens, adapters, audit: postgresAuditLog, clock: systemClock, logger });
@@ -663,7 +675,7 @@ export const startCore = async (
     });
   }, TICKET_DRAIN_MS);
   drain.unref();
-  const server = createCoreServer({ routes: [gateway.handleRequest, taskEndpoints, memoryEndpoints, reviewEndpoints, draftEndpoints, snapshotEndpoints, registryEndpoints, blobEndpoints, panelBlobEndpoints, inbox.handle], upgrade: gateway.handleUpgrade, logger });
+  const server = createCoreServer({ routes: [gateway.handleRequest, taskEndpoints, memoryEndpoints, reviewEndpoints, environmentProposalEndpoints, draftEndpoints, snapshotEndpoints, registryEndpoints, blobEndpoints, panelBlobEndpoints, inbox.handle], upgrade: gateway.handleUpgrade, logger });
   await gateway.start();
   const port = await server.listen(settings.corePort, options.host);
 

@@ -13,6 +13,7 @@ import { specChecks, specServices, specSnapshot } from "./environment-spec.ts";
 import { profileSpecParts } from "./profile-spec.ts";
 import { specMilestone2Parts } from "./restore-spec.ts";
 import { specReviewLoopParts } from "./review-loop-spec.ts";
+import { onboardingPromptOf, specOnboardingParts } from "./onboarding-spec.ts";
 
 // `GET /runner/v1/tasks/:taskId/spec` (ticket 26, ADR 0034): what a dispatch hands the runner once it
 // accepted the offer, for the lease holder only. References and the task's text, never a secret:
@@ -236,7 +237,9 @@ export const buildTaskSpec = async (
   // Milestone 3 (ticket 23): the environment's checks, run after every turn with changes.
   const checks = await specChecks(db, task, taskRepos.map(({ repo }) => repo.id));
   // Milestone 3 (ticket 26): the snapshot this runner holds, or the host's dependency cache.
-  const snapshot = await specSnapshot(db, task, lease);
+  // Milestone 6 (F-113, ticket 21): an onboarding task tests the environment from the base image, so it gets no snapshot.
+  const snapshot = task.onboarding ? undefined : await specSnapshot(db, task, lease);
+  const onboarding = task.onboarding ? await specOnboardingParts(db, task, lease) : null;
   // Milestone 6 (tickets 17, 18): a review task's checkout and tools; an automatic round's flag and CI logs.
   const team = await specReviewLoopParts(db, task, session);
   // Milestone 4 (ticket 15, F-110): the project's and the organization's approved notes. A minor-3
@@ -260,7 +263,7 @@ export const buildTaskSpec = async (
     // Milestone 6 (F-099, ADR 0028): a refine task's sidecar serves the draft tool and memory, not the PR's text.
     ...(task.kind === "refine" ? { tools: ["draft", "memory"] } : {}),
     title: task.title,
-    prompt: extras.prompt ?? task.prompt ?? "",
+    prompt: onboardingPromptOf(extras.prompt ?? task.prompt ?? "", onboarding),
     ticket: extras.ticket,
     contextFiles: [...extras.contextFiles, ...team.ciFiles],
     ...(extras.restore === undefined ? {} : { restore: extras.restore }),
@@ -320,6 +323,8 @@ export const buildTaskSpec = async (
     ...(team.review === undefined ? {} : { review: team.review }),
     ...(team.tools === undefined ? {} : { tools: team.tools }),
     ...(team.automatic === undefined ? {} : { automatic: true }),
+    // Milestone 6 (F-113): the proposal's tool and the PR text, and only `AGENTS.md` committed.
+    ...(onboarding === null ? {} : { tools: [...onboarding.tools], commitPaths: [...onboarding.commitPaths] }),
   });
   return { ok: true, spec };
 };

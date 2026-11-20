@@ -150,6 +150,9 @@ export const auditActions = {
   "environment.check-changed": "environment",
   "environment.checks-reordered": "environment",
   "environment.check-removed": "environment",
+  // Milestone 6 (F-113): a project admin decided an onboarding task's environment proposal.
+  "environment.proposal-accepted": "environment",
+  "environment.proposal-rejected": "environment",
   // ---- memory (ADR 0044) ----
   "memory.note-created": "memory-note",
   "memory.note-edited": "memory-note",

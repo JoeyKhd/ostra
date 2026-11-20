@@ -111,6 +111,8 @@ describe("every write of a needs-you item enqueues its fan-out", () => {
       "packages/domain/src/use-cases/refine-drafts.ts",
       // Milestone 6's ticket 19 (F-102): a reviewer's review answers the item once every matched reviewer reviewed.
       "packages/domain/src/review-loop/reviewers.ts",
+      // Milestone 6's ticket 21 (F-113): an environment proposal's item for the project's admins, and its answer.
+      "packages/domain/src/onboarding/onboarding.ts",
     ];
     const unknown = callers.filter((caller) => !known.includes(caller));
     expect(unknown).toEqual([]);
