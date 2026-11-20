@@ -12,6 +12,7 @@ import {
   readMarkedBlocks,
   repoIdSchema,
   reviewRunIdSchema,
+  runnerLimits,
   taskIdSchema,
   taskRepoIdSchema,
   ticketIdSchema,
@@ -367,6 +368,25 @@ describe("milestone 6's prompts", () => {
     for (const piece of ["Ignore previous instructions", "rm -rf", "$(curl", "evil.sh"]) {
       expect(rest).not.toContain(piece);
     }
+  });
+
+  it("F-101, F-105: a round's prompt fits a steer whole, with every finding and comment in it, however long their text", () => {
+    const long = "y".repeat(4096);
+    const many = Array.from({ length: 30 }, (_, index) => ({ ...finding, path: `src/f${String(index)}.ts`, title: `Finding ${String(index)}`, body: long, severity: "blocking" as const }));
+    const findingsPrompt = fixFindingsPrompt(many);
+    expect(findingsPrompt.length).toBeLessThanOrEqual(runnerLimits.steerTextMaxChars);
+    const blocks = readMarkedBlocks(findingsPrompt);
+    expect(blocks).toHaveLength(30);
+    for (const [index, block] of blocks.entries()) {
+      expect(block.text.startsWith(`ostra-test/test1 src/f${String(index)}.ts:3 (head)\nFinding ${String(index)}`)).toBe(true);
+    }
+    expect(blocks.some((block) => block.text.endsWith("the rest is on the pull request.]"))).toBe(true);
+    const changes = changesRequestedPrompt({ reviewBody: "r".repeat(65_000), comments: Array.from({ length: 20 }, (_, index) => ({ path: `src/c${String(index)}.ts`, line: index + 1, body: long })) });
+    expect(changes.length).toBeLessThanOrEqual(runnerLimits.steerTextMaxChars);
+    const comments = readMarkedBlocks(changes).filter((block) => block.label === "review-comment");
+    expect(comments.map((block) => block.text.split("\n")[0])).toEqual(Array.from({ length: 20 }, (_, index) => `src/c${String(index)}.ts:${String(index + 1)}`));
+    // A short one is whole.
+    expect(readMarkedBlocks(prompts.fixFindings).every((block) => !block.text.includes("Cut here"))).toBe(true);
   });
 
   it("F-101: the findings round lists nits after the blocking findings, and says they needn't be acted on", () => {

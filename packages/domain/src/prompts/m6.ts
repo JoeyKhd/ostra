@@ -116,6 +116,38 @@ export const onboardingPrompt = (input: { readonly repos: readonly DraftEnvironm
 
 // ---------- the rounds (F-035, F-101, F-105) ----------
 
+/** What a round's quotes may hold in all: a steer's text, less room for ostra's own lines and the blocks' markers. */
+const ROUND_QUOTES_MAX_CHARS = runnerLimits.steerTextMaxChars - 4_096;
+
+/** The words that end a quote cut to fit. */
+const CUT_NOTE = "\n[Cut here to fit: the rest is on the pull request.]";
+
+/**
+ * A round's quotes, each one whole while they fit together, else the long ones cut to an equal
+ * share of what's left, so every finding or comment keeps its place, its title and its start, and
+ * none is dropped by the cut a steer's limit would make at the end. Each cut keeps its block.
+ */
+export const fitRoundQuotes = (quotes: readonly RoundQuote[], maxChars: number = ROUND_QUOTES_MAX_CHARS): readonly RoundQuote[] => {
+  const total = quotes.reduce((sum, quote) => sum + quote.text.length, 0);
+  if (total <= maxChars) {
+    return quotes;
+  }
+  const allowed = new Map<number, number>();
+  let left = maxChars;
+  let open = quotes.length;
+  const shortestFirst = [...quotes.entries()].sort(([, a], [, b]) => a.text.length - b.text.length);
+  for (const [index, quote] of shortestFirst) {
+    const take = Math.min(quote.text.length, Math.floor(left / open));
+    allowed.set(index, take);
+    left -= take;
+    open -= 1;
+  }
+  return quotes.map((quote, index) => {
+    const take = allowed.get(index) ?? 0;
+    return quote.text.length <= take ? quote : { ...quote, text: `${quote.text.slice(0, Math.max(0, take - CUT_NOTE.length))}${CUT_NOTE}` };
+  });
+};
+
 export type FailingCheckForPrompt = {
   /** The check's name, as its app gave it. Untrusted. */
   readonly name: string;
@@ -156,10 +188,10 @@ export const fixFindingsPrompt = (findings: readonly FindingForPrompt[]): string
   const nits = findings.filter((finding) => finding.severity === "nit");
   return roundPrompt("fix-findings", {
     opening: `${roundFraming["fix-findings"].opening} ${String(blocking.length)} blocking${nits.length === 0 ? "" : `; ${String(nits.length)} nit${nits.length === 1 ? " is" : "s are"} listed after them, and you don't have to act on ${nits.length === 1 ? "it" : "them"}`}.`,
-    quotes: [
+    quotes: fitRoundQuotes([
       ...blocking.map((finding): RoundQuote => ({ label: "finding", text: findingText(finding) })),
       ...nits.map((finding): RoundQuote => ({ label: "nit", text: findingText(finding) })),
-    ],
+    ]),
   });
 };
 
@@ -169,10 +201,10 @@ export type ReviewCommentForPrompt = { readonly path: string; readonly line: num
 /** A "changes requested" round's prompt: the review's body and its line comments, as one prompt. */
 export const changesRequestedPrompt = (input: { readonly reviewBody: string; readonly comments: readonly ReviewCommentForPrompt[] }): string =>
   roundPrompt("changes-requested", {
-    quotes: [
+    quotes: fitRoundQuotes([
       ...(input.reviewBody.trim() === "" ? [] : [{ label: "review", text: input.reviewBody }]),
       ...input.comments.map((comment): RoundQuote => ({ label: "review-comment", text: `${comment.path}${comment.line === null ? "" : `:${String(comment.line)}`}\n\n${comment.body}` })),
-    ],
+    ]),
   });
 
 // ---------- a draft as a ticket's description (F-099, Q221) ----------
