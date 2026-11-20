@@ -28,3 +28,4 @@ Spec: `../spec.md`, section 4 ("A pool and its tokens", "A join")
   - Milestone 2's `pools.joinTokens`, `pools.createJoinToken` and `pools.revokeJoinToken` stay, on the same code as `joinTokens.list`, `create` and `revoke`, until ticket 30 moves the panel. `createJoinToken` without `expiresInDays` now takes the pool's lifetime (else `OSTRA_JOIN_TOKEN_DAYS`, 30), not a fixed 30.
   - A repeated `joinTokens.revoke` answers the same with `changed: false`; a repeated `runners.approve` or `runners.reject`, or either on a runner already approved or revoked, answers its state with `changed: false` and changes nothing.
   - The API's settings gain `joinTokenDays` (and `devHostPoolSameUser` for ticket 26).
+- 2026-11-20: commits 7f4c32f3 (`✨ let a new pool name its projects`) and 05d0cfbc (`✨ add pools and join tokens to the API`).
