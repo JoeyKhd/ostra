@@ -23,7 +23,7 @@ Spec: `../spec.md`, section 4 ("CI"); ADR 0058
 
 ## Comments
 
-- 2026-11-20, core: built as `✨ read CI on the task's PRs`. Readings and differences:
+- 2026-11-20, core: built as `✨ read CI on the task's PRs` (a2fa20a9). Readings and differences:
   - **`ci.evaluate`** (`apps/core/src/review-loop/ci.ts`, the domain's `evaluateCi` in `packages/domain/src/review-loop/evaluate-ci.ts`): keyed by the task repo and the head, 10 s apart (`singletonSeconds`), enqueued by a `ci` hint from the App's webhook (`check_run`, `check_suite`, `status`; ostra's own App's runs are no hint), by a PR's opening or new head (`pull_request` `opened`, `reopened`, `synchronize`, `ready_for_review`), and by milestone 2's PR reconcile, which covers an App without the check events. A head with its verdict already isn't read again, so the reconcile costs nothing after that. The two delayed evaluations carry a `deadline` (`none`, `wait`) in the payload, an additive field keyed apart, so a waiting timer never holds back a webhook's evaluation under the one-per-key rule.
   - **A person's push.** The head the host reports is recorded on the task repo, which until now only the runner's saves moved; while the AI review reads the old head, that review run fails and the code task goes back to "CI running" (ticket 17's `failReviewOnHeadMoveInTx`).
   - **The verdict and the sub-state** as the ticket says; the combined verdict waits while any open PR's head is pending or unread. `timed_out` moves on as a pass, with `ci.updated` saying `timed_out`.

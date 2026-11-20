@@ -25,7 +25,7 @@ Spec: `../spec.md`, section 4 ("A round"); ADR 0041, ADR 0058
 
 ## Comments
 
-- 2026-11-20, core: built as `✨ add review and CI rounds`. Readings and differences:
+- 2026-11-20, core: built as `✨ add review and CI rounds` (d4133be1). Readings and differences:
   - **`round.start`** (`apps/core/src/review-loop/rounds.ts`, the domain's `startRound` in `packages/domain/src/review-loop/start-round.ts`) as the ticket says. `TaskRound.turnId` holds the session the round's turn runs in; a fresh-box session that is an automatic round gets `automatic: true` on its dispatch and its spec, its CI logs as `ci` files, and goes only to a runner at minor 5 (`TEAM_MINOR` in `dispatch-task.ts`, also for refine and review tasks). A kept box on an older runner isn't resumed for it.
   - **A CI round with log files goes to a fresh box**: only a dispatch carries files, so the warm box's steer is for a round without logs. A fresh-box round is milestone 2's reopen: the task is queued, then running, rather than in "fixing CI", and its push takes it back to "CI running" as the warm round's does.
   - **A held round** saves its message and holds the turn; `budget.release` starts held rounds oldest first, and the counters rise then, not when it was held.

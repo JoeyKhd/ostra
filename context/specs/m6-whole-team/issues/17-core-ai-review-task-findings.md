@@ -26,7 +26,7 @@ Spec: `../spec.md`, section 4 ("The AI review"); ADR 0028 (amended), ADR 0058
 
 ## Comments
 
-- 2026-11-20, core: built as `✨ add the AI review`. Readings and differences:
+- 2026-11-20, core: built as `✨ add the AI review` (38f442fb). Readings and differences:
   - **`review.start`** (`apps/core/src/review-loop/review.ts`, the domain's `startReview` in `packages/domain/src/review-loop/review.ts`): the profile is the project's default review profile, else the organization's built-in Review profile (`builtInKind: review`), else the code task's own. The prompt holds the acceptance criteria of the ticket's applied refine draft, else none, and the ticket's text says them. The review task runs in its own box: its own task, lease and session; a second round reopens it (or, when it never handed in, stops and reopens it) and voids the earlier run.
   - **The spec** (`apps/core/src/dispatch/review-loop-spec.ts`): `review { codeTaskId, round, repos }` from the running review run, `tools: ["review", "memory"]`; `kind: review` is what the runner's git proxy reads for its read-only mode (ticket 22). The dispatch sends a refine or review task only to a runner at minor 5 (ticket 18's commit).
   - **`POST /runner/v1/tasks/:taskId/review`** (`apps/core/src/runner-http/review.ts`) checks the task token as the memory tools' calls do: `authorizeTaskCall`, exported from `apps/core/src/memory/endpoints.ts` for the sidecar's other calls (tickets 15 and 21 may use it too). A body that doesn't parse, over 30 findings included, answers `invalid`, as the protocol's schema caps the list; `limit-reached` stays for `OSTRA_REVIEW_FINDINGS_MAX` below 30.
