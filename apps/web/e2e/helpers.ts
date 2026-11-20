@@ -77,9 +77,14 @@ export const signIn = async (page: Page, identifier: string = e2eAdmin.username,
   for (let attempt = 0; attempt < 5; attempt += 1) {
     await fillSignIn(page, identifier, password);
     await page.getByRole("button", { name: "Sign in" }).click();
+    // With the default password the panel always asks for a new one, and the client router passes
+    // through Home on its way there: only the change page counts as arrived.
+    const arrived =
+      password === e2eAdmin.defaultPassword
+        ? page.waitForURL((url) => url.pathname === "/change-password").then(() => "change" as const)
+        : page.waitForURL((url) => url.pathname === "/").then(() => "in" as const);
     const outcome = await Promise.race([
-      page.waitForURL((url) => url.pathname === "/").then(() => "in" as const),
-      page.waitForURL((url) => url.pathname === "/change-password").then(() => "change" as const),
+      arrived,
       page.getByText("Too many sign-in attempts").waitFor().then(() => "limited" as const),
       page.getByText(refusedText).waitFor().then(() => "refused" as const),
     ]);
@@ -87,7 +92,6 @@ export const signIn = async (page: Page, identifier: string = e2eAdmin.username,
       case "in":
         return;
       case "change": {
-        if (password !== e2eAdmin.defaultPassword) throw new Error(`${identifier} was sent to change its password`);
         const next = page.getByLabel("New password", { exact: true });
         await hydrated(next);
         await next.fill(e2eAdmin.password);
