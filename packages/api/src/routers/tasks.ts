@@ -385,7 +385,13 @@ export const tasksRouter = router({
     // F-066 (ticket 24): a merged task reopens on a fresh branch from each merged repo's base; one
     // whose repos record no merge has no base to start from, and stays blocked as before.
     const mergedRepo = task.repos.some((repo) => repo.state === "merged");
-    const reopenState = isOneOf(REOPEN_FROM, state) || (state === "merged" && mergedRepo) || (state === "needs_you" && isOneOf(REOPEN_FROM_NEEDS_YOU, task.needsYouReason));
+    const sessionGoing = session !== undefined && ["starting", "running", "waiting", "idle"].includes(session.state);
+    // A needs-you task whose session has ended (a question that expired cancels its turn) has no
+    // agent left to answer: a reopen with the member's message is the only way on.
+    const reopenState =
+      isOneOf(REOPEN_FROM, state) ||
+      (state === "merged" && mergedRepo) ||
+      (state === "needs_you" && (isOneOf(REOPEN_FROM_NEEDS_YOU, task.needsYouReason) || (session !== undefined && !sessionGoing)));
     const reopenBlocked =
       state === "merged" && !mergedRepo
         ? ("merged_reopen_later" as const)
@@ -396,7 +402,6 @@ export const tasksRouter = router({
             : null;
     // What the caller may do: send and interrupt as the driver of a task with a session going, answer
     // approvals as any member, take over as any member who isn't the driver, stop until it is stopped.
-    const sessionGoing = session !== undefined && ["starting", "running", "waiting", "idle"].includes(session.state);
     return {
       id: taskIdSchema.parse(task.id),
       projectId: projectIdSchema.parse(task.projectId),

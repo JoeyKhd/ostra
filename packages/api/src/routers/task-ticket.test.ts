@@ -241,6 +241,15 @@ describe("F-033, F-068: capabilities", () => {
     expect(await caps(await ticketTask("ENG-36", "needs_you"))).toMatchObject({ reopen: false });
   });
 
+  it("F-032: a question that expired and ended its session leaves the task reopenable, with the member's message", async () => {
+    const expired = await ticketTask("ENG-39", "needs_you");
+    await harness.test.db.task.update({ where: { id: expired.taskId }, data: { needsYouReason: "question" } });
+    // While its agent waits on the answer, the task is answered, not reopened.
+    expect(await caps(expired)).toMatchObject({ reopen: false, send: true });
+    await harness.test.db.session.updateMany({ where: { taskId: expired.taskId }, data: { state: "ended", outcome: "without_changes", endedAt: new Date() } });
+    expect(await caps(expired)).toMatchObject({ reopen: true, reopenBlocked: null, reopenWithoutText: false, send: false });
+  });
+
   it("refuses a reopen at the spend cap until the cap is raised", async () => {
     const task = await ticketTask("ENG-37", "needs_you");
     await harness.test.db.model.update({ where: { id: world.modelId }, data: { inputPricePerMTok: 3, outputPricePerMTok: 15 } });
