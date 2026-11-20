@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-import { e2eBaseUrl, e2eDefaultPasswordBaseUrl, e2eDefaultPasswordPort } from "./e2e/settings.ts";
+import { e2eBaseUrl, e2eDefaultPasswordBaseUrl, e2eDefaultPasswordPort, e2eExternalStack } from "./e2e/settings.ts";
 
 // The panel's browser checks (ADR 0007): a throwaway stack (`e2e/stack.ts`) and Chromium at
 // desktop and phone width. Run with `pnpm --filter @ostra/web test:e2e`, which builds the panel first.
@@ -46,22 +46,26 @@ export default defineConfig({
       testMatch: "**/06-default-password.spec.ts",
     },
   ],
-  webServer: [
-    {
-      command: "node e2e/stack.ts",
-      url: `${e2eBaseUrl}/sign-in`,
-      timeout: 180_000,
-      reuseExistingServer: false,
-      stdout: "pipe",
-    },
-    {
-      // F-001: an install that allows the default password (`06-default-password.spec.ts`).
-      command: "node e2e/stack.ts",
-      url: `${e2eDefaultPasswordBaseUrl}/sign-in`,
-      env: { OSTRA_E2E_PORT: String(e2eDefaultPasswordPort), OSTRA_ALLOW_DEFAULT_PASSWORD: "true" },
-      timeout: 180_000,
-      reuseExistingServer: false,
-      stdout: "ignore",
-    },
-  ],
+  // An outside stack (OSTRA_E2E_PANEL_URL, e2e/settings.ts) is already running, with the fakes beside
+  // it (e2e/compose-e2e.sh): Playwright starts no stack of its own.
+  webServer: e2eExternalStack
+    ? []
+    : [
+        {
+          command: "node e2e/stack.ts",
+          url: `${e2eBaseUrl}/sign-in`,
+          timeout: 180_000,
+          reuseExistingServer: false,
+          stdout: "pipe",
+        },
+        {
+          // F-001: an install that allows the default password (`06-default-password.spec.ts`).
+          command: "node e2e/stack.ts",
+          url: `${e2eDefaultPasswordBaseUrl}/sign-in`,
+          env: { OSTRA_E2E_PORT: String(e2eDefaultPasswordPort), OSTRA_ALLOW_DEFAULT_PASSWORD: "true" },
+          timeout: 180_000,
+          reuseExistingServer: false,
+          stdout: "ignore",
+        },
+      ],
 });

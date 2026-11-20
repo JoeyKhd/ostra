@@ -14,8 +14,32 @@ const basePort = ((): number => {
   return port;
 })();
 
+/** An http(s) address from the environment, or `undefined` when unset. */
+const addressFrom = (name: string): string | undefined => {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") {
+    return undefined;
+  }
+  if (!URL.canParse(raw) || !/^https?:$/.test(new URL(raw).protocol)) {
+    throw new Error(`${name} must be an http or https address, not "${raw}"`);
+  }
+  return raw.replace(/\/$/, "");
+};
+
+/**
+ * F-076 (ticket 22): the specs can run against a stack someone else started, such as `docker
+ * compose up` on deploy/compose.yaml (`compose-e2e.sh`). OSTRA_E2E_PANEL_URL and OSTRA_E2E_CORE_URL
+ * name it; Playwright then starts no stack of its own, and the fakes run beside it (`fakes.ts`).
+ */
+const externalPanelUrl = addressFrom("OSTRA_E2E_PANEL_URL");
+const externalCoreUrl = addressFrom("OSTRA_E2E_CORE_URL");
+if ((externalPanelUrl === undefined) !== (externalCoreUrl === undefined)) {
+  throw new Error("OSTRA_E2E_PANEL_URL and OSTRA_E2E_CORE_URL name an outside stack together: set both or neither");
+}
+export const e2eExternalStack = externalPanelUrl !== undefined;
+
 export const e2ePort = basePort;
-export const e2eBaseUrl = `http://localhost:${String(e2ePort)}`;
+export const e2eBaseUrl = externalPanelUrl ?? `http://localhost:${String(e2ePort)}`;
 /**
  * F-001: a second stack, ten ports up, started with OSTRA_ALLOW_DEFAULT_PASSWORD=true, for
  * `06-default-password.spec.ts` (the `default-password` project in playwright.config.ts).
@@ -41,7 +65,7 @@ export const e2eStubPort = basePort + 1;
 export const e2eStubBaseUrl = `http://127.0.0.1:${String(e2eStubPort)}/v1`;
 /** Core, which the runner connects to, and the fake GitHub's repo (the fake serves one org, `fake-org`). */
 export const e2eCorePort = basePort + 2;
-export const e2eCoreUrl = `http://127.0.0.1:${String(e2eCorePort)}`;
+export const e2eCoreUrl = externalCoreUrl ?? `http://127.0.0.1:${String(e2eCorePort)}`;
 export const e2eRepo = { owner: "fake-org", name: "test1" } as const;
 /**
  * F-136: the fake GitHub's second account, `client-b`, with the App installed and waiting to be

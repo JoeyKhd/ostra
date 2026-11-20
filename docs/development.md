@@ -68,6 +68,8 @@ Every package is `private: true` for now, including the ones ADR 0045 lists as p
 
 **The panel's browser checks.** `pnpm --filter @ostra/web test:e2e` builds the panel and runs its Playwright suite (`apps/web/e2e/`) on a throwaway stack: an embedded Postgres, a fake GitHub, a stub model endpoint in each API format, core and a runner on the `host` executor. A second stack, started with `OSTRA_ALLOW_DEFAULT_PASSWORD=true`, serves `06-default-password.spec.ts` (the `default-password` project). CI runs it in its own job. The first stack listens on 3100 to 3103 and the second on 3110 to 3113; `OSTRA_E2E_PORT` moves all eight, so two checkouts can run it at once.
 
+**The setup specs on `docker compose up`** (F-076, Linux with Docker). `bash apps/web/e2e/compose-e2e.sh <folder holding compose.yaml>` takes that compose stack down with its volumes, starts the fake GitHub and the stub model endpoints alone (`node e2e/fakes.ts`), brings the stack up again with `apps/web/e2e/compose.e2e.yaml` laid over it (the server on the host's network so it reaches them, the pool runner left down), and runs `01-shell`, `02-setup` and `03-first-run` against it. Playwright starts no stack of its own when `OSTRA_E2E_PANEL_URL` and `OSTRA_E2E_CORE_URL` name one. The `docs-commands` job of `proof.yml` runs it after the install guide's commands.
+
 ## Run it
 
 ```

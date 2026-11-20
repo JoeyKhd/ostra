@@ -1,0 +1,29 @@
+# F-076 (ticket 22): milestone 1's setup specs on `docker compose up`, laid over the install guide's
+# compose file (deploy/compose.yaml) by `compose-e2e.sh`. Linux only (host networking).
+#
+# The images, the database and every setting the guide sets stay as they are. What changes:
+# - The server shares the host's network, so it reaches the fakes `fakes.ts` starts on loopback:
+#   the fake GitHub (OSTRA_GITHUB_API_URL) and the stub model endpoint, at the address the setup
+#   spec types into the panel. Postgres is published on loopback for it.
+# - The guide's pool runner stays down: the specs connect their own personal runner, and the
+#   checklist's runner step must still be open when they reach it.
+
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:55432:5432"
+
+  server:
+    network_mode: host
+    ports: !reset []
+    environment:
+      DATABASE_URL: postgres://ostra@127.0.0.1:55432/ostra
+      OSTRA_PUBLIC_URL: http://localhost:3000
+      OSTRA_CORE_PUBLIC_URL: http://127.0.0.1:8787
+      OSTRA_GITHUB_API_URL: ${OSTRA_GITHUB_API_URL:?run fakes.ts first, which writes it to apps/web/e2e/.fakes.env}
+      # The stub model endpoint listens on loopback, which the server refuses unless told.
+      OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE: "true"
+      OSTRA_CATALOG_FETCH: "false"
+
+  runner:
+    profiles: ["pool-runner"]
