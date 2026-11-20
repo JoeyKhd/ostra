@@ -239,6 +239,7 @@ export type TaskThreadProps = {
   /** Milestone 3 (ticket 43): the answerable cards and the worded receipts, from `tasks.get`. */
   readonly approvalCard?: (approvalId: string) => ReactNode;
   readonly approvalReceipt?: (approvalId: string) => string | null;
+  readonly approvalLostRace?: (approvalId: string) => boolean;
   readonly questionCard?: (questionId: string) => ReactNode;
   /** After the last message, inside the scroll: the plan waiting for the driver, or its receipt. */
   readonly tail?: ReactNode;
@@ -256,7 +257,7 @@ export type TaskThreadProps = {
   readonly onFold?: (ms: number, messages: number) => void;
 };
 
-export const TaskThread = ({ taskId, projectName, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, questionCard, tail, notDriver, canReopen = false, composerHint = null, instead, hasEarlier, loadEarlier, onFold }: TaskThreadProps) => {
+export const TaskThread = ({ taskId, projectName, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, approvalLostRace, questionCard, tail, notDriver, canReopen = false, composerHint = null, instead, hasEarlier, loadEarlier, onFold }: TaskThreadProps) => {
   const trpc = useTRPC();
   const [optimistic, setOptimistic] = useState<readonly OptimisticMessage[]>([]);
   const previous = useRef<readonly TaskUIMessage[]>([]);
@@ -353,10 +354,11 @@ export const TaskThread = ({ taskId, projectName, log, memberId, memberName, can
       openSubagents,
       ...(approvalCard === undefined ? {} : { approvalCard }),
       ...(approvalReceipt === undefined ? {} : { approvalReceipt }),
+      ...(approvalLostRace === undefined ? {} : { approvalLostRace }),
       ...(questionCard === undefined ? {} : { questionCard }),
       ...(projectName === undefined ? {} : { projectName }),
     }),
-    [store, memberName, agentName, agentModel, approvalSummary, rememberPrComment, openSubagents, approvalCard, approvalReceipt, questionCard, projectName],
+    [store, memberName, agentName, agentModel, approvalSummary, rememberPrComment, openSubagents, approvalCard, approvalReceipt, approvalLostRace, questionCard, projectName],
   );
 
   // F-138: the member's message the turn answered, for the main agent's pane of the window.

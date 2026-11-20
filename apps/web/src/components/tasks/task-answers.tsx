@@ -124,6 +124,7 @@ export const ApprovalCard = ({
   project,
   othersOpen,
   asker,
+  onLostRace,
 }: {
   readonly taskId: TaskId;
   readonly approval: ApprovalView;
@@ -133,13 +134,20 @@ export const ApprovalCard = ({
   readonly othersOpen: number;
   /** F-138: the subagent whose call asks (`explore · Find the version source`); absent for the agent's own. */
   readonly asker?: string;
+  /** Another member answered first (`CONFLICT`): the receipt that replaces this card says so, for this member only. */
+  readonly onLostRace?: (approvalId: string) => void;
 }) => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const [denying, setDenying] = useState(false);
   const [reason, setReason] = useState("");
   const answer = useMutation(
-    trpc.approvals.answer.mutationOptions({ onSettled: () => queryClient.invalidateQueries({ queryKey: trpc.tasks.get.queryKey({ taskId }) }) }),
+    trpc.approvals.answer.mutationOptions({
+      onError: (error) => {
+        if (error.data?.code === "CONFLICT") onLostRace?.(approval.approvalId);
+      },
+      onSettled: () => queryClient.invalidateQueries({ queryKey: trpc.tasks.get.queryKey({ taskId }) }),
+    }),
   );
   const offered = (decision: ApprovalDecision): boolean => approval.options.some((option) => option.decision === decision);
   const send = (decision: ApprovalDecision, why?: string) => {

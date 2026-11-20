@@ -255,16 +255,20 @@ const subagentAsks = (part: ToolLikePart, asker: string): string => {
  * line and before its receipt, so the thread says which subagent asks.
  */
 export const ApprovalNote = ({ part, asker, className }: { readonly part: ToolLikePart; readonly asker?: string; readonly className?: string }) => {
-  const { memberName, approvalSummary, approvalCard, approvalReceipt } = useTaskContext();
+  const { memberName, approvalSummary, approvalCard, approvalReceipt, approvalLostRace } = useTaskContext();
   const metadata = approvalMetadataSchema.safeParse(part.toolMetadata);
   if (!metadata.success) return null;
+  const approvalId = metadata.data.approval.id;
   const receipt = metadata.data.approval.descriptor.receipt;
   const named = (text: string): string => (asker === undefined ? text : t("task.subagents.receipt", { subagent: asker, receipt: text }));
   // Milestone 3 (ticket 43): the task page answers it, and words its receipt with the rule and the reason.
-  const card = receipt === undefined ? approvalCard?.(metadata.data.approval.id, asker) : undefined;
+  const card = receipt === undefined ? approvalCard?.(approvalId, asker) : undefined;
   if (card !== undefined && card !== null) return <>{card}</>;
-  const worded = receipt === undefined ? null : (approvalReceipt?.(metadata.data.approval.id) ?? null);
-  if (worded !== null) return <div data-part="approval" data-state={receipt?.state} className={cn("ml-[104px] text-sm text-muted", className)}>{named(worded)}</div>;
+  // Lost the race (task-approval.md, "Lost the race"): a line under the winner's receipt, for this member only.
+  const lost = approvalLostRace?.(approvalId) === true ? <p data-part="lost-race" className={cn("ml-[104px] text-xs text-muted", className)}>{t("taskAnswers.answeredFirst")}</p> : null;
+  // `tasks.get` can know the answer before the stream brings its event: its receipt shows from then.
+  const worded = approvalReceipt?.(approvalId) ?? null;
+  if (worded !== null) return <><div data-part="approval" data-state={receipt?.state} className={cn("ml-[104px] text-sm text-muted", className)}>{named(worded)}</div>{lost}</>;
   if (receipt === undefined) {
     const summary = approvalSummary(metadata.data.approval.id);
     const subject = approvalSubject(part);
@@ -299,7 +303,7 @@ export const ApprovalNote = ({ part, asker, className }: { readonly part: ToolLi
     default:
       return receipt satisfies never;
   }
-  return <div data-part="approval" data-state={receipt.state} className={cn("ml-[104px] text-sm text-muted", className)}>{named(text)}</div>;
+  return <><div data-part="approval" data-state={receipt.state} className={cn("ml-[104px] text-sm text-muted", className)}>{named(text)}</div>{lost}</>;
 };
 
 export const ToolBody = ({ part }: { readonly part: ToolLikePart }) => {

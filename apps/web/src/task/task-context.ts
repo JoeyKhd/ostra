@@ -102,6 +102,8 @@ export type TaskContextValue = {
   readonly approvalCard?: (approvalId: string, asker?: string) => ReactNode;
   /** The receipt of an answered or closed approval in the task page's words, or `null` for the fold's own. */
   readonly approvalReceipt?: (approvalId: string) => string | null;
+  /** This member answered after someone else did: the receipt carries "Someone answered this first." */
+  readonly approvalLostRace?: (approvalId: string) => boolean;
   /** The answerable form of an open question, or `null` to keep the read-only note. */
   readonly questionCard?: (questionId: string) => ReactNode;
   /** F-111: "Remember this" on an accepted `@ostra` comment, by its event's seq; absent where the page can't propose. */

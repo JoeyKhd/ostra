@@ -419,15 +419,19 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const driverName = task.data?.driver?.name ?? null;
   const isDriver = task.data !== undefined && task.data.driver !== null && task.data.driver.memberId === me.data?.memberId;
   const takeOverNow = useCallback(() => { takeOver.mutate({ taskId }); }, [takeOver, taskId]);
+  // Ticket 43: the approvals another member answered first, for this member's "Someone answered this first."
+  const [lostRaces, setLostRaces] = useState<ReadonlySet<string>>(() => new Set());
+  const lostRace = useCallback((approvalId: string) => { setLostRaces((now) => new Set([...now, approvalId])); }, []);
+  const approvalLostRace = useCallback((approvalId: string) => lostRaces.has(approvalId), [lostRaces]);
   const approvalCard = useCallback(
     (approvalId: string, asker?: string): ReactNode => {
       const approval = approvals?.find((one) => one.approvalId === approvalId);
       if (approval === undefined || (approval.state !== "open" && !approval.answerableAnyway)) return null;
       const othersOpen = (approvals ?? []).filter((one) => one.state === "open" && one.approvalId !== approvalId).length;
       // F-138: a subagent's call that asks names the subagent.
-      return <ApprovalCard key={approvalId} taskId={taskId} approval={approval} agent={agentName} project={projectName} othersOpen={othersOpen} {...(asker === undefined ? {} : { asker })} />;
+      return <ApprovalCard key={approvalId} taskId={taskId} approval={approval} agent={agentName} project={projectName} othersOpen={othersOpen} onLostRace={lostRace} {...(asker === undefined ? {} : { asker })} />;
     },
-    [approvals, taskId, agentName, projectName],
+    [approvals, taskId, agentName, projectName, lostRace],
   );
   const receiptOf = useCallback(
     (approvalId: string): string | null => {
@@ -785,6 +789,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           approvalSummary={approvalSummary}
           approvalCard={approvalCard}
           approvalReceipt={receiptOf}
+          approvalLostRace={approvalLostRace}
           questionCard={questionCard}
           tail={heldNoKey ? <HeldNoKey noKey={noKey} /> : data.plan === null ? roundsTail : <PlanBlock key={`${data.plan.turnId}:${String(data.plan.proposedAt)}`} taskId={taskId} plan={data.plan} agent={agentName} isDriver={isDriver} driver={driverName} onTakeOver={takeOverNow} takingOver={takeOver.isPending} />}
           {...(notDriver === undefined ? {} : { notDriver })}
