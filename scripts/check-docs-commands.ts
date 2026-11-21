@@ -188,10 +188,13 @@ export const runBlocks = async (
       const lines = pending.split("\n");
       pending = lines.pop() ?? "";
       for (const line of lines) {
-        if (line.startsWith(MARKER)) {
-          state.started = line.slice(MARKER.length).trim();
+        // A marker ends its line, but a command whose output doesn't end its own (`curl` printing
+        // core's `{"ok":true}`) leaves the next marker after that output, on the same line.
+        const at = line.indexOf(MARKER);
+        if (at >= 0) {
+          state.started = line.slice(at + MARKER.length).trim();
           if (options.echo === true) {
-            process.stdout.write(`\n$ # ${state.started}\n`);
+            process.stdout.write(`${at > 0 ? `${line.slice(0, at)}\n` : ""}\n$ # ${state.started}\n`);
           }
         } else if (options.echo === true) {
           process.stdout.write(`${line}\n`);

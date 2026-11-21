@@ -191,6 +191,19 @@ describe("runBlocks", () => {
     await expect(readFile(path.join(root, "work", "next.txt"), "utf8")).rejects.toThrow();
   });
 
+  it("F-058/c1: a block whose last output doesn't end its line passes, as the guide's healthz curl does", async () => {
+    await writePages(`printf '{"ok":true}'`, "printf 'no newline either'");
+    expect(await runBlocks(await loadRunBlocks(content), { cwd: path.join(root, "work") })).toEqual({
+      kind: "passed",
+      blocks: 2,
+    });
+    // And a failure after such output still names its own block.
+    await writePages(`printf '{"ok":true}'`, "false");
+    expect(
+      await runBlocks(await loadRunBlocks(content), { cwd: path.join(root, "work") }),
+    ).toMatchObject({ kind: "failed", block: { page: "install/second.mdx", line: 3 } });
+  });
+
   it("F-058: a failure inside a pipe fails the block too", async () => {
     await writePages("echo fine", "false | cat");
     expect(
