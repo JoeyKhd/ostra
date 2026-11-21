@@ -36,6 +36,7 @@ const gpt: CatalogEntry = {
   logoPath: "/assets/models/openai.svg",
   reasoning: gptControls,
   reasoningPriceDiffers: false,
+  inputModalities: null,
 };
 
 let harness: ApiHarness;

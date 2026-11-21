@@ -2320,6 +2320,9 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         // F-137 (ADR 0066): the model's own controls and real limits, for the agent's config.
         ...(taskSpec.agent.reasoning === undefined ? {} : { reasoning: taskSpec.agent.reasoning }),
         ...(taskSpec.agent.limits === undefined ? {} : { limits: taskSpec.agent.limits }),
+        // Milestone 9 (F-148, ADR 0070): what the model takes, so the agent's config says it: OpenCode
+        // turns every image of a model it takes as text only into an error line. Absent: text only.
+        ...(taskSpec.agent.inputModalities === undefined ? {} : { inputModalities: taskSpec.agent.inputModalities }),
       },
       mcp: { url: mcp.url, bearer: mcp.bearer },
       instructions: taskSpec.agent.instructions,

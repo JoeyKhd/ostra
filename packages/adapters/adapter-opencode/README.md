@@ -63,3 +63,24 @@ With a profile rule on commands or the network, those commands and fetches ask i
 - **The app's block.** For a task whose environment has app processes, the launch's `app` adds the protocol's block (`appInstructionsBlock`) to the task's instructions file, after the profile's instructions and the memory block, and before the repos' own `AGENTS.md`: each process by its label, name and in-box address, the services with their addresses, the one-origin rule, and where the logs are. It names the app tools only when the task has them. A task with no app process gets no block.
 - **No sign-in.** OpenCode 2.3.2 signs in to a remote MCP server with OAuth by default: its `Mcp.RemoteConfig` takes `oauth` as an OAuth config or `false`, and for a remote server whose `oauth` isn't `false` it registers an OAuth integration, so `opencode mcp auth <server>` (which the agent's own shell could run) would start a sign-in, with a callback listener on `127.0.0.1:19876`. The config writes `oauth: false` on every remote server: a profile's, a library's (both at the sidecar's MCP proxy, with no header) and ostra's own (with the task's bearer). Read from 2.3.2's source; on the binary, a server that answers every call with an OAuth challenge gets one call and nothing else (no metadata, no client registration), its tools aren't listed, and the turn runs (`F-145/c12`).
 - `opencode mcp list` and `opencode mcp auth` start OpenCode's managed service on a fixed port (28894) and leave it running, so the contract tests never run them.
+
+## Milestone 9: what the model sees (ADR 0070, ticket 09)
+
+| Capability | Declared | How OpenCode 2.3.2 does it |
+|---|---|---|
+| The model's inputs | always written | The catalog file's entry gets `modalities: { input, output: ["text"] }` and the config's model `capabilities.input`, the same list (`modelInputModalities`): `text` first, then whichever of `image`, `pdf`, `audio` and `video` the launch's `model.inputModalities` names. Absent, text only. OpenCode's own image limits (`media.image`) stay at its defaults. |
+
+Read in 2.3.2's source at tag v2.3.2 (`context/research/attachments-for-agents.md` §1 to §3; paths under `packages/`):
+
+- Before each request, a media part whose kind (`image`, `audio`, `video`, `pdf`) the model's `capabilities.input` doesn't name is replaced with `ERROR: Cannot read "<name>" (this model does not support image input). Inform the user.`, in a message and in a tool's result alike (`core/src/session/model-request.ts:139-164`, `183-191`).
+- A catalog entry without `modalities` is `{ input: ["text"], output: ["text"] }` (`core/src/models-dev/v1.ts:135`), and the config's `capabilities.input` wins over the catalog's (`mergeCapabilities`, `core/src/model.ts:32-41`, applied in `core/src/config/plugin/provider.ts`). ostra's catalog entry had no `modalities`, so every model it ran was text only to OpenCode, and F-064's ticket images, read since milestone 2, reached no model as pictures.
+- The read tool answers `Image read successfully` with a PNG, JPEG, GIF, WebP or PDF as a data-URL part (`core/src/tool/plugin/read.ts:349-363`), and goes through `external_directory`, which the config allows for the workspace's root.
+- Anthropic Messages sends an image as an `image` block with a base64 `source`, and OpenAI Chat as an `image_url` with a data URL, a tool's image in a following user message (`ai/src/protocols/anthropic-messages.ts:704-718`; `ai/src/protocols/openai-chat.ts:466-482`, `618-619`).
+
+What the binary showed (2026-11-21, Windows 11, the stub model in both API formats, `src/opencode-images.contract.test.ts`):
+
+- **Before this change** (the catalog entry and config with no inputs, as since milestone 2): a PNG the agent opened with its read tool reached the model as the error line above, naming the file's path, and no image part, in both formats.
+- **A model written as taking images:** the same read reached the Anthropic stub as an `image` block (`image/png`, in the tool's result) and the OpenAI-compatible stub as an `image_url` with a PNG data URL. The file was under `<workspace root>/.ostra/attachments/1/`, outside the repo the session started in, and the read asked no one (`F-148/c4,c5`).
+- **A model written as text only, or with nothing said of it:** the error line and no image part, as before (`F-148/c5`).
+- **Through the runner** (`apps/runner/src/task-host/ticket-images.opencode.test.ts`, the host executor and the real key proxy): a task spec whose `agent.inputModalities` holds `image` gets its ticket screenshot, written by the runner under `.ostra/ticket/` as F-064 writes it, to the model as a picture in both formats; a spec that says nothing gets the error line, as every ticket image did before.
+- **Still to check** once the agent contract suite's files cases land (milestone 9's ticket 02): an image sent in `session/prompt`, and one in `_session/steering`, reaching each stub as an image.

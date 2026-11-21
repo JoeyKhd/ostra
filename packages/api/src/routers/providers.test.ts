@@ -24,6 +24,7 @@ const claude: CatalogEntry = {
   logoPath: "/assets/models/anthropic.svg",
   reasoning: { supported: false },
   reasoningPriceDiffers: false,
+  inputModalities: null,
 };
 
 let harness: ApiHarness;

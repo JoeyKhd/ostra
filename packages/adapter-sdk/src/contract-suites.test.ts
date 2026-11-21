@@ -756,6 +756,7 @@ defineModelProviderContractSuite({
             logoPath: null,
             reasoning: { supported: false },
             reasoningPriceDiffers: false,
+            inputModalities: null,
           },
         ],
         knownModelId: "gpt-test",

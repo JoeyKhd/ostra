@@ -5,10 +5,10 @@ import { HostExecutor } from "@ostra/adapter-executor-host";
 import type { HostExecutorOptions } from "@ostra/adapter-executor-host";
 import { createLogger, silentLogger } from "@ostra/adapter-sdk";
 import type { AdapterResult, AgentCommand, AgentLaunch, AgentProcess, BoxRef, ExecutorAdapter, ExportSessionInput, Logger, LogRecord } from "@ostra/adapter-sdk";
-import { FakeAgentAdapter, startAnthropicStub, startGitUpstream } from "@ostra/adapter-sdk/testing";
+import { FakeAgentAdapter, startGitUpstream, startStubModelServer } from "@ostra/adapter-sdk/testing";
 import type { GitUpstream, StubBrain, StubServer } from "@ostra/adapter-sdk/testing";
 import { boxIdSchema, clientMessageIdSchema, runnerIdSchema, sessionIdSchema, taskCredentialsSchema, taskIdSchema } from "@ostra/protocol";
-import type { BoxId, Command, Peer, RunnerEvent, TaskCredentials, TaskEvent, TaskEventOf, TaskSpec } from "@ostra/protocol";
+import type { ApiFormat, BoxId, Command, Peer, RunnerEvent, TaskCredentials, TaskEvent, TaskEventOf, TaskSpec } from "@ostra/protocol";
 import { taskSpecFixture } from "@ostra/protocol/testing";
 import { startConnection } from "../connection/peer.ts";
 import type { Carrier } from "../connection/http-carrier.ts";
@@ -54,22 +54,29 @@ export type Shared = {
   readonly root: string;
   readonly upstream: GitUpstream;
   readonly models: StubServer;
+  /** The stub models' API format: the tasks' model speaks it, through the key proxy. */
+  readonly format: ApiFormat;
   readonly close: () => Promise<void>;
 };
 
-/** What a file's tests share can differ: the stub model's brain, for a test on a real agent (OpenCode). */
-export type SharedOptions = { readonly brain?: StubBrain };
+/**
+ * What a file's tests share can differ: the stub model's brain, for a test on a real agent
+ * (OpenCode), and (milestone 9) its API format. Default: Anthropic Messages.
+ */
+export type SharedOptions = { readonly brain?: StubBrain; readonly format?: ApiFormat };
 
 export const startShared = async (name: string, options: SharedOptions = {}): Promise<Shared> => {
   const root = await mkdtemp(path.join(os.tmpdir(), `ostra-${name}-`));
   const upstream = await startGitUpstream(path.join(root, "upstream"));
   await upstream.createRepo("ostra-test/test1", { "README.md": "# test1\n", "notes.txt": "notes\n" });
   upstream.tokens.set(GIT_TOKEN, Date.now() + 3_600_000);
-  const models = await startAnthropicStub({ realKey: MODEL_TOKEN, models: ["stub-model"], brain: options.brain ?? (() => ({ text: "ok" })) });
+  const format = options.format ?? "anthropic-messages";
+  const models = await startStubModelServer({ format, realKey: MODEL_TOKEN, models: ["stub-model"], brain: options.brain ?? (() => ({ text: "ok" })) });
   return {
     root,
     upstream,
     models,
+    format,
     close: async () => {
       await models.close();
       await upstream.close();
@@ -246,7 +253,7 @@ export const startHarness = async (shared: Shared, options: HarnessOptions = {})
         branchName: `ostra/m2-${stamp}-work`,
         prompt,
         title: "Do the work",
-        agent: { ...taskSpecFixture.agent, adapter: "fake-acp-agent-rich", apiFormat: "anthropic-messages" },
+        agent: { ...taskSpecFixture.agent, adapter: "fake-acp-agent-rich", apiFormat: shared.format },
         environment: { ...taskSpecFixture.environment, setupScript: null },
         limits: { turnMaxMinutes: 30, idleMinutes: 60 },
         ...patch,
@@ -255,7 +262,7 @@ export const startHarness = async (shared: Shared, options: HarnessOptions = {})
       const credentials = taskCredentialsSchema.parse({
         taskId,
         leaseEpoch: spec.leaseEpoch,
-        model: { baseUrl: shared.models.baseUrl, apiFormat: "anthropic-messages", authScheme: "x-api-key", token: MODEL_TOKEN },
+        model: { baseUrl: shared.models.baseUrl, apiFormat: shared.format, authScheme: shared.format === "openai-compatible" ? "bearer" : "x-api-key", token: MODEL_TOKEN },
         repos: spec.repos.map((repo) => ({ repoId: repo.repoId, gitToken: GIT_TOKEN, expiresAt: Date.now() + 3_600_000 })),
         secrets: [],
         mcpToken: MCP_TOKEN,

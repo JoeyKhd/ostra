@@ -365,6 +365,7 @@ describe("the catalog sync", () => {
       logoPath: null,
       reasoning,
       reasoningPriceDiffers: false,
+      inputModalities: null,
     });
     let catalog = [entry("openai/gpt-5.5", reasoningControlsFixtures.effort), entry("openai/gpt-5.2-pro", reasoningControlsFixtures.effortNoLow)];
     const sync = () =>

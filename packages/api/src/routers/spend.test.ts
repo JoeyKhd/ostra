@@ -361,6 +361,7 @@ describe("budgets and prices", () => {
       logoPath: null,
       reasoning: { supported: false },
       reasoningPriceDiffers: false,
+      inputModalities: null,
     };
     harness.catalogEntries.push(entry);
     harness.fakes.modelProvider.endpoints.set(PRICED_URL, {

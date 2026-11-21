@@ -1,8 +1,10 @@
 import { realpath } from "node:fs/promises";
 import path from "node:path";
 
-import { composeLaunchInstructions, effortModelOf, GIT_GUARD_ENV_NAMES, REPO_SKILL_FOLDERS } from "@ostra/adapter-sdk";
+import { composeLaunchInstructions, effortModelOf, GIT_GUARD_ENV_NAMES, inputModalitiesOf, REPO_SKILL_FOLDERS } from "@ostra/adapter-sdk";
 import type { LaunchFile, LaunchMcpServer, PrepareLaunchInput } from "@ostra/adapter-sdk";
+import { inputModalitySchema } from "@ostra/protocol";
+import type { InputModality } from "@ostra/protocol";
 
 import { agentForMode, buildPermissions, EXPLORE_AGENT, explorePermissions, OSTRA_MCP_SERVER, planModePermissions } from "./permissions.ts";
 import type { OpenCodePermission } from "./permissions.ts";
@@ -66,6 +68,18 @@ const catalogReasoning = (input: PrepareLaunchInput): Record<string, unknown> =>
     ...(reasoning.budget === undefined ? [] : [{ type: "budget_tokens", ...reasoning.budget }]),
   ];
   return { reasoning: true, ...(options.length === 0 ? {} : { reasoning_options: options }) };
+};
+
+/**
+ * Milestone 9 (F-148, ADR 0070): the model's inputs as OpenCode reads them, `text` first, then each
+ * other one the launch names, in `inputModalitySchema`'s order. OpenCode 2.3.2 replaces an image, a PDF,
+ * audio or video, in a prompt or a tool's result, with `ERROR: Cannot read "<name>" (this model
+ * does not support image input)` unless the model's `capabilities.input` names it, and a catalog
+ * entry without `modalities` is text only (research `attachments-for-agents.md` §1). Absent: text only.
+ */
+export const modelInputModalities = (input: PrepareLaunchInput): readonly InputModality[] => {
+  const named = inputModalitiesOf(input.model);
+  return inputModalitySchema.options.filter((modality) => modality === "text" || named.includes(modality));
 };
 
 /** The catalog file's release date: required for OpenCode to decode the entry, and read for nothing else. */
@@ -203,8 +217,13 @@ export const buildOpenCodeConfig = (
   const providerModel = {
     name: model.endpointModelId,
     limit: modelLimit(input),
-    // Milestone 4 (F-137): the model's own levels, as OpenCode's variants.
-    capabilities: { reasoning: modelReasoning(input) },
+    capabilities: {
+      // Milestone 4 (F-137): the model's own levels, as OpenCode's variants.
+      reasoning: modelReasoning(input),
+      // Milestone 9 (F-148): what it takes, as the catalog file says it too. The config wins over
+      // the catalog (OpenCode's `mergeCapabilities`), so the two always agree.
+      input: [...modelInputModalities(input)],
+    },
   };
   const mcpServers = input.mcpServers ?? [];
   return {
@@ -268,7 +287,8 @@ export const buildOpenCodeConfig = (
  * The model catalog as a file, in models.dev's shape, which OpenCode reads from `OPENCODE_MODELS_PATH`
  * so the agent never fetches it (ADR 0033: "the agent never fetches the catalog"). Milestone 4
  * (F-137): with a `release_date`, which OpenCode 2.3.2 needs to decode an entry at all (research
- * section 1.7, S4), and the model's reasoning and limits, so it agrees with the config.
+ * section 1.7, S4), and the model's reasoning and limits, so it agrees with the config. Milestone 9
+ * (F-148): with its `modalities`, which OpenCode otherwise takes as text only, so it agrees there too.
  */
 export const buildModelsCatalog = (input: PrepareLaunchInput): Record<string, unknown> => ({
   [PROVIDER_ID]: {
@@ -283,6 +303,7 @@ export const buildModelsCatalog = (input: PrepareLaunchInput): Record<string, un
         release_date: CATALOG_RELEASE_DATE,
         tool_call: true,
         ...catalogReasoning(input),
+        modalities: { input: [...modelInputModalities(input)], output: ["text"] },
         limit: modelLimit(input),
       },
     },

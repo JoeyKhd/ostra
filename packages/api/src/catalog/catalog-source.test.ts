@@ -19,6 +19,7 @@ const entry = (catalogId: string): CatalogEntry => ({
   logoPath: null,
   reasoning: { supported: false },
   reasoningPriceDiffers: false,
+  inputModalities: null,
 });
 
 const bundled = [entry("bundled/one")];

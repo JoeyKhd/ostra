@@ -25,6 +25,7 @@ const catalog: readonly CatalogEntry[] = [
     logoPath: "/model-logos/anthropic.svg",
     reasoning: { supported: true, budget: { min: 1024 } },
     reasoningPriceDiffers: false,
+    inputModalities: null,
   },
 ];
 
@@ -300,6 +301,7 @@ describe("the model endpoint adapter", () => {
           logoPath: "/model-logos/acme.svg",
           reasoning: { supported: false },
           reasoningPriceDiffers: false,
+          inputModalities: null,
         },
       ]);
       expect(parseModelsDevCatalog({ acme: { models: "nope" } })).toMatchObject({ ok: false, error: { code: "invalid-response" } });

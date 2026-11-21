@@ -329,6 +329,18 @@ export const scenarios: Readonly<Record<string, Scenario>> = {
     return memoryCall(step, `${OSTRA_PREFIX}${tool}`, toolArgs(encoded), lastToolResults);
   },
 
+  /**
+   * Milestone 9 (F-148): reads the file the marker names with OpenCode's own read tool, then says
+   * what the tool answered: `Image read successfully` for a model that sees images, OpenCode's
+   * error line for one it takes as text only.
+   */
+  "read-file": ({ step, args, lastToolResults }) => {
+    if (step === 0) {
+      return { toolCalls: [{ name: "read", arguments: { path: args } }] };
+    }
+    return step === 1 ? { text: `read answered: ${lastToolResults.map((result) => (result.isError ? `error: ${result.text}` : result.text)).join(" | ")}` } : undefined;
+  },
+
   /** Writes each workspace-relative file the marker names, then says it did. */
   write: ({ step, args }) => {
     const files = args.split(" ").filter((file) => file !== "");

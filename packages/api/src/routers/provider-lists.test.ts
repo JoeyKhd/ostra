@@ -406,6 +406,7 @@ describe("F-135: a catalog model's logo", () => {
       logoPath: "/assets/models/acme.svg",
       reasoning: { supported: false },
       reasoningPriceDiffers: false,
+      inputModalities: null,
     });
     harness.fakes.modelProvider.endpoints.set(URL_C, { token: TOKEN_C, apiFormat: "openai-compatible", authScheme: "bearer", models: [{ endpointModelId: "logo-model", displayName: null, contextWindow: null }] });
     const providerC = providerIdSchema.parse(

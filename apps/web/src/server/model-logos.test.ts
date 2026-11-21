@@ -22,6 +22,7 @@ const entry = (logoPath: string | null): CatalogEntry => ({
   logoPath,
   reasoning: { supported: false },
   reasoningPriceDiffers: false,
+  inputModalities: null,
 });
 const catalog = (...paths: (string | null)[]) => ({ entries: () => Promise.resolve(paths.map(entry)) });
 

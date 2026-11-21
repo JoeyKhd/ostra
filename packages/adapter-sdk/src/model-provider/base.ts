@@ -1,4 +1,4 @@
-import type { ApiFormat, AuthScheme, ReasoningControls } from "@ostra/protocol";
+import type { ApiFormat, AuthScheme, InputModality, ReasoningControls } from "@ostra/protocol";
 
 import { createPlumbing, defaultAdapterContext } from "../common/context.ts";
 import type { AdapterContext, Plumbing } from "../common/context.ts";
@@ -61,6 +61,12 @@ export type CatalogEntry = {
   readonly reasoning: ReasoningControls;
   /** models.dev lists a `cost.reasoning` that isn't its output price. v1 prices reasoning as output. */
   readonly reasoningPriceDiffers: boolean;
+  /**
+   * Milestone 9 (F-148, ADR 0070, Q335): what the model takes as input, from models.dev's
+   * `modalities.input`, in `inputModalitySchema`'s order, any value ostra doesn't name dropped. `null`
+   * when the entry says nothing, which counts as text only.
+   */
+  readonly inputModalities: readonly InputModality[] | null;
 };
 
 export type CatalogMatch = {

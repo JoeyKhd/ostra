@@ -134,6 +134,7 @@ describe("OpenCode's config: the model's controls and limits", () => {
       tool_call: true,
       reasoning: true,
       reasoning_options: [{ type: "toggle" }, { type: "effort", values: ["low", "high"] }, { type: "budget_tokens", min: 1024, max: 8000 }],
+      modalities: { input: ["text"], output: ["text"] },
       limit: { context: 400_000, output: 32_000 },
     });
     expect(await catalogModel({ reasoning: { supported: true } })).toMatchObject({ reasoning: true });

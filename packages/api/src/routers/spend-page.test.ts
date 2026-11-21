@@ -32,6 +32,7 @@ beforeAll(async () => {
     logoPath: "/assets/models/anthropic.svg",
     reasoning: { supported: false },
     reasoningPriceDiffers: false,
+    inputModalities: null,
   });
   const { a } = harness.fixture;
   const provider = await seedProviderRow(harness.test.db, a.organization.id, "Spend page keys");

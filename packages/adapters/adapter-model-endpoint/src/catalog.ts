@@ -2,8 +2,8 @@ import { readFile } from "node:fs/promises";
 
 import { adapterError, ok, parseVendor, silentLogger } from "@ostra/adapter-sdk";
 import type { AdapterResult, CatalogEntry, CatalogMatch, EndpointModel, Logger } from "@ostra/adapter-sdk";
-import { EFFORT_SCALE, effortScaleLevelSchema, noReasoning, reasoningControlsSchema } from "@ostra/protocol";
-import type { EffortScaleLevel, ReasoningControls } from "@ostra/protocol";
+import { EFFORT_SCALE, effortScaleLevelSchema, inputModalitySchema, noReasoning, reasoningControlsSchema } from "@ostra/protocol";
+import type { EffortScaleLevel, InputModality, ReasoningControls } from "@ostra/protocol";
 import { z } from "zod";
 
 // The models.dev catalog (ADR 0033): names, limits and prices for the models an endpoint lists.
@@ -24,6 +24,8 @@ const modelsDevModelSchema = z.looseObject({
   // (`reasoningOf`), so a malformed entry loses its reasoning alone, never the catalog.
   reasoning: z.unknown().optional(),
   reasoning_options: z.unknown().optional(),
+  // F-148 (ADR 0070, Q335): `modalities` is read loosely too and parsed per model (`inputModalitiesFromCatalog`).
+  modalities: z.unknown().optional(),
 });
 
 const modelsDevProviderSchema = z.looseObject({
@@ -135,6 +137,27 @@ const reasoningPriceDiffers = (cost: { readonly output?: number | null | undefin
   return reasoning !== null && reasoning !== finite(cost?.output);
 };
 
+// ---------- input modalities (F-148, ADR 0070, Q335; research `attachments-for-agents.md` §1) ----------
+
+const modalitiesSchema = z.looseObject({ input: z.array(z.unknown()) });
+
+/**
+ * What a model takes as input, from models.dev's `modalities.input`: the values ostra names, in
+ * `inputModalitySchema`'s order, each once, anything else dropped. `null` when the entry has no
+ * `modalities`, or no list in it: nobody said, which counts as text only.
+ */
+export const inputModalitiesFromCatalog = (model: { readonly modalities?: unknown }): readonly InputModality[] | null => {
+  const parsed = modalitiesSchema.safeParse(model.modalities);
+  if (!parsed.success) {
+    return null;
+  }
+  const listed = new Set(parsed.data.input.flatMap((value) => {
+    const modality = inputModalitySchema.safeParse(value);
+    return modality.success ? [modality.data] : [];
+  }));
+  return inputModalitySchema.options.filter((modality) => listed.has(modality));
+};
+
 export type CatalogEntriesOptions = {
   /** Where the count of entries whose reasoning was refused goes. Never an entry's text. */
   readonly logger?: Logger;
@@ -168,6 +191,7 @@ export const catalogEntries = (catalog: ModelsDevCatalog, options: CatalogEntrie
         logoPath: logoPathFor(providerId),
         reasoning: reasoning ?? noReasoning,
         reasoningPriceDiffers: reasoningPriceDiffers(model.cost),
+        inputModalities: inputModalitiesFromCatalog(model),
       });
     }
   }
