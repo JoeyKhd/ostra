@@ -58,7 +58,7 @@ const YourMachine = ({ corePublicUrl, mine, now }: { readonly corePublicUrl: str
   return (
     <Section title={t("runners.yourMachine")} {...(mine === undefined ? {} : { count: mine.length })}>
       <div className="overflow-x-auto">
-        <div className="min-w-[1000px]">{mine === undefined ? <RunnerSkeleton /> : <MyRunnerRows runners={mine} now={now} />}</div>
+        <div className="min-w-[740px]">{mine === undefined ? <RunnerSkeleton /> : <MyRunnerRows runners={mine} now={now} />}</div>
       </div>
       {mine?.map((runner) => (
         <p key={runner.id} data-testid="machine-facts" className="mt-2 text-ui text-muted">
@@ -184,7 +184,7 @@ export const RunnersView = ({ settings, admin }: { readonly settings: FleetSetti
               }
             >
               <div className="overflow-x-auto">
-                <div className="min-w-[1000px]">
+                <div className="min-w-[740px]">
                   {runners.data === undefined ? (
                     <RunnerSkeleton />
                   ) : listed.length === 0 ? (

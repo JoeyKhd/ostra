@@ -21,7 +21,7 @@ type Mine = RouterOutputs["runners"]["mine"][number];
  * line up across both sections: state, name, pool or owner, executor, carrier, busy, version, age,
  * and the row menu.
  */
-export const runnerGrid = "grid grid-cols-[124px_122px_minmax(0,166px)_92px_92px_112px_minmax(80px,1fr)_96px_30px] items-center";
+export const runnerGrid = "grid grid-cols-[100px_minmax(0,112px)_minmax(0,1fr)_68px_minmax(0,84px)_92px_minmax(64px,auto)_minmax(0,92px)_24px] items-center";
 
 const dotClass: Record<RunnerDot, string> = {
   green: "bg-green shadow-(--dot-green)",

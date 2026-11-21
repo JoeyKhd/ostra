@@ -20,7 +20,7 @@ const Meter = ({ value, max }: { readonly value: number; readonly max: number })
     aria-valuemin={0}
     aria-valuemax={max}
     aria-valuenow={value}
-    className="relative inline-block h-1 w-[76px] shrink-0 overflow-hidden rounded-full bg-line-2"
+    className="relative inline-block h-1 w-[44px] shrink-0 overflow-hidden rounded-full bg-line-2"
   >
     <span className="absolute inset-y-0 left-0 rounded-full bg-muted" style={{ width: `${String(max === 0 ? 0 : Math.min(100, (value / max) * 100))}%` }} />
   </span>
@@ -38,16 +38,17 @@ export const PoolsTable = ({ pools, selectedId, onSelect }: { readonly pools: re
   };
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[1000px] border-collapse text-body">
+      {/* At 1440 the page column is 744px (the double sidebar): every column fits it, and it scrolls only narrower. */}
+      <table className="w-full min-w-[740px] border-collapse text-body">
         <colgroup>
-          <col className="w-[240px]" />
-          <col className="w-[104px]" />
-          <col className="w-[104px]" />
-          <col className="w-[164px]" />
+          <col className="w-[168px]" />
           <col className="w-[72px]" />
-          <col className="w-[140px]" />
-          <col className="w-[96px]" />
-          <col className="w-[72px]" />
+          <col className="w-[92px]" />
+          <col className="w-[112px]" />
+          <col className="w-[56px]" />
+          <col className="w-[64px]" />
+          <col className="w-[76px]" />
+          <col className="w-[60px]" />
           <col />
         </colgroup>
         <thead>
@@ -95,7 +96,7 @@ export const PoolsTable = ({ pools, selectedId, onSelect }: { readonly pools: re
                   {pool.slots === 0 ? (
                     <span className="text-faint">—</span>
                   ) : (
-                    <span className="flex items-center gap-3">
+                    <span className="flex items-center gap-2">
                       <Meter value={pool.busy} max={pool.slots} />
                       <span className="shrink-0 whitespace-nowrap font-mono text-ui">{pool.busy} / {pool.slots}</span>
                     </span>
