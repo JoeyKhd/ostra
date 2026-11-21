@@ -22,6 +22,7 @@ import { useTRPC } from "@/lib/trpc";
 
 import { changedLines, eyebrow, insertAt, placeholderRows, startingText, validate } from "./ticket-template-words";
 import type { PlaceholderRow, TemplateView, Validation } from "./ticket-template-words";
+import { ProjectSettingsTabs } from "./settings-tabs";
 
 /** A ticket of the project's Inbox, to preview the template on. */
 export type PreviewTicket = { readonly id: TicketId; readonly key: string; readonly title: string };
@@ -306,6 +307,8 @@ export const TicketTemplateView = ({ projectId, tickets }: { readonly projectId:
         ) : undefined
       }
     >
+      {/* The settings tabs, as on every other settings page (project-access.md, "Settings tabs"). */}
+      {project.data === undefined ? null : <ProjectSettingsTabs projectId={projectId} admin={admin} />}
       <PageHeading
         eyebrow={view === undefined ? <Skeleton className="w-[160px]" /> : eyebrow(view, dirty, savedJustNow)}
         title={t("ticketTemplate.title")}
