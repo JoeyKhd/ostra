@@ -3295,6 +3295,8 @@
   },
   "registryPage": {
     "title": "Registry",
+    "ago": "{age} ago",
+    "justNow": "just now",
     "lede": "Where ostra keeps environment snapshots, so pool runners pull them by digest.",
     "address": "Address",
     "registry": "Registry",

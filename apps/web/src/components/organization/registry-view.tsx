@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 
 import { shortDate } from "@/components/members/member-words";
 import { PageFrame, PageHeading, PropGroup, PropRow } from "@/components/shell/page-frame";
+import { projectColour } from "@/components/shell/project-colour";
 import { AlertDialog, AlertDialogContent } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -22,6 +23,12 @@ import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 
 import { checkLine, checkStatus, imageNameOf, parseAddress, parsePrefix, prefixShown, shortDigest } from "./registry-words";
+
+/** A relative time as the page shows it (registry.md): `4m ago`, or `just now`. */
+const agoText = (at: number): string => {
+  const age = formatAge(at);
+  return age === "now" ? t("registryPage.justNow") : t("registryPage.ago", { age });
+};
 
 type Auth = "basic" | "node";
 type Credential = { readonly username: string; readonly secret: string };
@@ -199,7 +206,7 @@ export const RegistryView = () => {
         <PropRow label={t("registryPage.auth")} labelWidth={104}>{registry === null ? <span className="text-faint">–</span> : registry.auth === "node" ? t("registryPage.authNode") : t("registryPage.authBasic")}</PropRow>
         <PropRow label={t("registryPage.images")} labelWidth={104}><Mono>{view.data.snapshots.length}</Mono></PropRow>
         <PropRow label={t("registryPage.lastCheck")} labelWidth={104}>
-          {lastChecked === null ? <span className="text-faint">{t("registryPage.never")}</span> : <Mono>{formatAge(lastChecked)}</Mono>}
+          {lastChecked === null ? <span className="text-faint">{t("registryPage.never")}</span> : <Mono>{agoText(lastChecked)}</Mono>}
         </PropRow>
       </PropGroup>
       <PropGroup title={t("registryPage.issued")}>
@@ -210,7 +217,7 @@ export const RegistryView = () => {
         {newestChange === undefined ? <p className="text-[12.5px] text-faint">–</p> : (
           <p className="flex items-baseline gap-2 text-[12.5px] text-muted">
             <span className="min-w-0 flex-1">{t(newestChange.action === "registry.cleared" ? "registryPage.cleared" : "registryPage.changed", { name: newestChange.actor.name ?? "ostra" })}</span>
-            <span className="shrink-0 font-mono text-faint">{formatAge(newestChange.at)}</span>
+            <span className="shrink-0 font-mono text-faint">{agoText(newestChange.at)}</span>
           </p>
         )}
         <Link href="/organization/audit?action=registry." className="mt-1.5 inline-flex items-center gap-1 text-sm text-teal hover:underline">
@@ -231,7 +238,7 @@ export const RegistryView = () => {
       <span className="flex min-w-0 items-center gap-2 text-ui">
         <Icon aria-hidden className={cn("size-[15px] shrink-0 stroke-[1.75]", tone)} />
         <span className={cn("min-w-0", registry.check.result === "refused" ? "text-red" : "text-text")} data-testid="registry-check-result">{line}</span>
-        <span className="shrink-0 font-mono text-[12.5px] text-faint">{formatAge(registry.check.checkedAt)}</span>
+        <span className="shrink-0 font-mono text-[12.5px] text-faint">{agoText(registry.check.checkedAt)}</span>
       </span>
     );
   })();
@@ -389,7 +396,10 @@ export const RegistryView = () => {
                   const where = builtOn.get(snapshot.snapshotId);
                   return (
                     <li key={snapshot.snapshotId} data-testid="registry-snapshot" className="group grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 border-b border-line py-1.5 sm:grid-cols-[minmax(0,1fr)_130px_170px_160px_72px]">
-                      <Link href={`/projects/${snapshot.projectId}/environment`} className="truncate text-ui text-text hover:underline">{snapshot.projectName}</Link>
+                      <Link href={`/projects/${snapshot.projectId}/environment`} className="flex min-w-0 items-center gap-2.5 text-ui text-text hover:underline">
+                        <span aria-hidden className="size-2 shrink-0 rounded-[2px]" style={{ background: projectColour(snapshot.projectId) }} />
+                        <span className="truncate">{snapshot.projectName}</span>
+                      </Link>
                       <span className="hidden truncate font-mono text-[12.5px] text-text sm:block">{snapshot.snapshotId.slice(-8)}</span>
                       <span className="flex min-w-0 items-center gap-1 max-sm:col-span-full max-sm:row-start-2">
                         <Tooltip content={snapshot.digest}><span className="truncate font-mono text-[12.5px] text-faint">{shortDigest(snapshot.digest)}</span></Tooltip>
@@ -405,7 +415,7 @@ export const RegistryView = () => {
                       <span className="truncate text-[12.5px] text-muted max-sm:col-span-full max-sm:row-start-3">
                         {where?.runnerName === null || where === undefined ? "–" : where.builder === null ? where.runnerName : t("registryPage.builtOn", { runner: where.runnerName, builder: where.builder === "buildkit" ? "BuildKit" : "docker" })}
                       </span>
-                      <span className="text-right font-mono text-[12.5px] text-faint max-sm:col-start-2 max-sm:row-start-1">{formatAge(snapshot.pushedAt)}</span>
+                      <span className="text-right font-mono text-[12.5px] text-faint max-sm:col-start-2 max-sm:row-start-1">{agoText(snapshot.pushedAt)}</span>
                     </li>
                   );
                 })}
