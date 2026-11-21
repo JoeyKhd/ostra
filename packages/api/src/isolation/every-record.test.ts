@@ -331,6 +331,20 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   Finding: ["review.screen", "tasks.rounds"],
   TaskReviewer: ["review.screen"],
   EnvironmentProposal: ["environments.proposal"],
+  // Milestone 8 (its ticket 04): no procedure reads them yet; tickets 16, 20 and 30 add theirs.
+  AppProcess: [],
+  TaskAttachment: [],
+  TaskPreview: [],
+  PreviewAccess: [],
+  PreviewAccessMember: [],
+  PreviewLink: [],
+  PreviewView: [],
+  PreviewCode: [],
+  LibraryItem: [],
+  LibraryItemVersion: [],
+  AgentProfileLibraryItem: [],
+  LibrarySource: [],
+  LibrarySuggestion: [],
 };
 
 /** Calls a procedure by its dotted path, as the panel does. */

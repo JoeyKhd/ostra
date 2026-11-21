@@ -103,6 +103,20 @@ export const isolationModelList = [
   "Finding",
   "TaskReviewer",
   "EnvironmentProposal",
+  // Milestone 8 (its ticket 04).
+  "AppProcess",
+  "TaskAttachment",
+  "TaskPreview",
+  "PreviewAccess",
+  "PreviewAccessMember",
+  "PreviewLink",
+  "PreviewView",
+  "PreviewCode",
+  "LibraryItem",
+  "LibraryItemVersion",
+  "AgentProfileLibraryItem",
+  "LibrarySource",
+  "LibrarySuggestion",
 ] as const;
 
 export type IsolationModelName = (typeof isolationModelList)[number];
@@ -392,6 +406,73 @@ export const isolationModels: Readonly<Record<IsolationModelName, FixtureBuilder
     (await db.taskReviewer.create({ data: { organizationId, projectId, taskRepoId: await ensure("TaskRepo"), githubUserId: String(Math.floor(Math.random() * 1_000_000)), login: `reviewer-${tag()}`, memberId, source: "requested" } })).id,
   EnvironmentProposal: async ({ db, organizationId, projectId }, ensure) =>
     (await db.environmentProposal.create({ data: { organizationId, projectId, environmentId: await ensure("Environment"), taskId: await ensure("Task"), body: { repos: [], services: [], notes: "" } } })).id,
+  // Milestone 8 (its ticket 04).
+  AppProcess: async ({ db, organizationId, projectId }, ensure) =>
+    (
+      await db.appProcess.create({
+        data: { organizationId, projectId, environmentId: await ensure("Environment"), repoId: await ensure("Repo"), name: `web-${tag()}`, command: "pnpm dev", port: 5173, readyKind: "http", readyValue: "/", label: "Web", primary: true },
+      })
+    ).id,
+  TaskAttachment: async ({ db, organizationId, projectId }, ensure) =>
+    (
+      await db.taskAttachment.create({
+        data: {
+          organizationId,
+          projectId,
+          taskId: await ensure("Task"),
+          attachmentId: `att-${tag()}`,
+          kind: "screenshot",
+          blobId: await ensure("Blob"),
+          source: "agent",
+          targetKind: "process",
+          targetName: "web",
+          path: "/",
+          width: 1440,
+          height: 900,
+          caption: "A fixture caption.",
+          browserName: "Chromium",
+          browserVersion: "131.0.6778.85",
+        },
+      })
+    ).id,
+  TaskPreview: async ({ db, organizationId, projectId }, ensure) =>
+    (await db.taskPreview.create({ data: { organizationId, projectId, taskId: await ensure("Task"), key: "port-4100", port: 4100, label: "Docs" } })).id,
+  PreviewAccess: async ({ db, organizationId, projectId, memberId }, ensure) =>
+    (await db.previewAccess.create({ data: { organizationId, projectId, taskId: await ensure("Task"), key: "app-web", level: "named", setByMemberId: memberId } })).id,
+  PreviewAccessMember: async ({ db, organizationId, projectId, memberId }, ensure) =>
+    (await db.previewAccessMember.create({ data: { organizationId, projectId, previewAccessId: await ensure("PreviewAccess"), memberId } })).id,
+  PreviewLink: async ({ db, organizationId, projectId, memberId }, ensure) =>
+    (
+      await db.previewLink.create({
+        data: { organizationId, projectId, taskId: await ensure("Task"), key: "app-web", kind: "expiring", tokenHash: randomBytes(32).toString("hex"), expiresAt: new Date(Date.now() + 3_600_000), createdByMemberId: memberId },
+      })
+    ).id,
+  PreviewView: async ({ db, organizationId, projectId, memberId }, ensure) =>
+    (await db.previewView.create({ data: { organizationId, projectId, taskId: await ensure("Task"), key: "app-web", mode: "stream", openedByMemberId: memberId, leaseEpoch: 1, state: "open" } })).id,
+  PreviewCode: async ({ db, organizationId, projectId, memberId }, ensure) =>
+    (
+      await db.previewCode.create({
+        data: { organizationId, projectId, kind: "enter", codeHash: randomBytes(32).toString("hex"), taskId: await ensure("Task"), key: "app-web", port: 5173, memberId, leaseEpoch: 1, expiresAt: new Date(Date.now() + 60_000) },
+      })
+    ).id,
+  LibraryItem: async ({ db, organizationId, memberId }) =>
+    (
+      await db.libraryItem.create({
+        data: { organizationId, kind: "skill", name: `skill-${tag()}`, sourceKind: "github", source: { kind: "github", owner: "ostra-test-skills", repo: "demo-skills", path: "release-notes" }, installedByMemberId: memberId },
+      })
+    ).id,
+  LibraryItemVersion: async ({ db, organizationId }, ensure) =>
+    (
+      await db.libraryItemVersion.create({
+        data: { organizationId, itemId: await ensure("LibraryItem"), number: 1, state: "current", ref: "main", commitSha: randomBytes(20).toString("hex"), computedHash: randomBytes(32).toString("hex") },
+      })
+    ).id,
+  AgentProfileLibraryItem: async ({ db, organizationId, memberId }, ensure) =>
+    (await db.agentProfileLibraryItem.create({ data: { organizationId, profileId: await ensure("AgentProfile"), itemId: await ensure("LibraryItem"), attachedByMemberId: memberId } })).id,
+  LibrarySource: async ({ db, organizationId, memberId }) =>
+    (await db.librarySource.create({ data: { organizationId, kind: "github_owner", value: `owner-${tag()}`, addedByMemberId: memberId } })).id,
+  LibrarySuggestion: async ({ db, organizationId, memberId }) =>
+    (await db.librarySuggestion.create({ data: { organizationId, memberId, reference: "ostra-test-skills/demo-skills@changelog", note: "A fixture note." } })).id,
 };
 
 /** The models without `organizationId`, each with why it has none (reviewed: ADR 0053). */
@@ -468,6 +549,15 @@ export const isolationProjectModels: ReadonlySet<IsolationModelName> = new Set<I
   "Finding",
   "TaskReviewer",
   "EnvironmentProposal",
+  // Milestone 8.
+  "AppProcess",
+  "TaskAttachment",
+  "TaskPreview",
+  "PreviewAccess",
+  "PreviewAccessMember",
+  "PreviewLink",
+  "PreviewView",
+  "PreviewCode",
 ]);
 
 export const isolationModelNames = (): readonly IsolationModelName[] => isolationModelList;

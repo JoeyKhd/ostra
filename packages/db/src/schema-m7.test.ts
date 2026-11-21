@@ -118,11 +118,13 @@ describe("the milestone 7 migration", () => {
     await apply(url, names.filter((name) => name >= m7Migration));
     const after = await snapshot(url);
     // The accounts gained their theme, dark, and nothing else of any row changed. A later migration
-    // adds its own column with its default: 2026-11-21's `project.repoSkills` (F-021), on.
+    // adds its own column with its default: 2026-11-21's `project.repoSkills` (F-021), on, and
+    // milestone 8's `task.previewId`, unset.
     expect((after["user"] ?? []).map((row) => row["theme"])).toEqual(["dark", "dark"]);
     expect((after["project"] ?? []).map((row) => row["repoSkills"])).toEqual([true]);
+    expect((after["task"] ?? []).map((row) => row["previewId"])).toEqual([null]);
     const without = (rows: readonly Row[] | undefined, column: string): Row[] => (rows ?? []).map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== column)));
-    expect({ ...after, user: without(after["user"], "theme"), project: without(after["project"], "repoSkills") }).toEqual(before);
+    expect({ ...after, user: without(after["user"], "theme"), project: without(after["project"], "repoSkills"), task: without(after["task"], "previewId") }).toEqual(before);
   });
 
   it("F-082/c1: a new account's theme is dark, and only the three themes are taken", async () => {

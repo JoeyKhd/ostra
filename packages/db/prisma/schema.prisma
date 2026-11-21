@@ -181,6 +181,10 @@ model Organization {
   // Milestone 6 (F-012): agent sessions, which may arrive before a project is known.
   agentSessions         AgentSession[]
   agentActivities       AgentActivity[]
+  // Milestone 8 (F-145, ADR 0069): the library.
+  libraryItems          LibraryItem[]
+  librarySources        LibrarySource[]
+  librarySuggestions    LibrarySuggestion[]
 
   @@unique([slug])
   @@map("organization")
@@ -211,6 +215,8 @@ model Member {
   notifications           Notification[]
   notificationPreferences NotificationPreference[]
   cliSessions             CliSession[]
+  // ---- milestone 8 (F-142) ----
+  previewAccess           PreviewAccessMember[]
 
   // ostra: one membership per account and organization, not just unlikely twice (spike 9).
   @@unique([organizationId, userId])
@@ -341,6 +347,11 @@ model OrganizationSetting {
   /// When every required step of Home's checklist was first done (F-076, 2026-11-21). From then on
   /// Home never shows the checklist again, even while no runner is online: it says so in a notice.
   setupCompletedAt        DateTime?
+  // ---- milestone 8 (ADR 0068, ADR 0069) ----
+  /// An organization admin allows public preview links (F-142). Off by default.
+  publicPreviewLinks      Boolean      @default(false)
+  /// An organization admin turned marketplace search on (F-146, Q316). Off by default.
+  marketplaceSearch       Boolean      @default(false)
   createdAt               DateTime     @default(now())
   updatedAt               DateTime     @updatedAt
 
@@ -765,6 +776,8 @@ model AgentProfile {
   members AgentProfileMember[]
   skills  AgentProfileSkill[]
   tasks   Task[]
+  // ---- milestone 8 (F-145) ----
+  libraryItems AgentProfileLibraryItem[]
 
   @@unique([organizationId, name])
   @@unique([id, organizationId])
@@ -917,6 +930,15 @@ model Project {
   /// Whether each repo's own skills (`.agents/skills`, `.claude/skills`, `.opencode/skills`) reach
   /// the agent beside the profile's. On by default; a project admin's switch, audited.
   repoSkills         Boolean @default(true)
+  // ---- milestone 8 (ADR 0068) ----
+  appProcesses         AppProcess[]
+  taskAttachments      TaskAttachment[]
+  taskPreviews         TaskPreview[]
+  previewAccesses      PreviewAccess[]
+  previewAccessMembers PreviewAccessMember[]
+  previewLinks         PreviewLink[]
+  previewViews         PreviewView[]
+  previewCodes         PreviewCode[]
 
   // The target of every project record's composite foreign key (ADR 0026).
   @@unique([id, organizationId])
@@ -993,6 +1015,8 @@ model Repo {
   taskRepos TaskRepo[]
   // ---- milestone 3 ----
   diffCaches DiffCache[]
+  // ---- milestone 8 (F-140) ----
+  appProcesses AppProcess[]
 
   @@unique([projectId, hostRepoId])
   @@unique([projectId, checkoutDir])
@@ -1154,6 +1178,13 @@ model Environment {
   savedByMemberId String?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
+  // ---- milestone 8 (F-121, ADR 0068) ----
+  /// "Screenshots after each turn": on by default, and it acts only once a primary app process is declared.
+  screenshotsAfterTurn Boolean       @default(true)
+  /// The routes they take, at most 5 paths.
+  screenshotRoutes     Json          @default("[\"/\"]")
+  /// The widths they take, `desktop` and `phone`, at most 2.
+  screenshotWidths     Json          @default("[\"desktop\"]")
 
   entries   EnvironmentEntry[]
   services  Service[]
@@ -1161,6 +1192,8 @@ model Environment {
   snapshots Snapshot[]
   // ---- milestone 6 (F-113) ----
   proposals EnvironmentProposal[]
+  // ---- milestone 8 (F-140) ----
+  appProcesses AppProcess[]
 
   @@unique([id, projectId])
   @@unique([projectId, organizationId])
@@ -1207,6 +1240,8 @@ model Service {
   port           Int?
   variables      Json
   healthCheck    String?
+  /// Milestone 8 (F-140): a service with a web UI is a preview under this label; `null`: not a preview.
+  previewLabel   String?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
@@ -1796,6 +1831,10 @@ model Task {
   lastPersonActionAt DateTime?
   /// An onboarding task (F-113): it proposes the environment and commits only `AGENTS.md`.
   onboarding         Boolean         @default(false)
+  // ---- milestone 8 (F-144, ADR 0068) ----
+  /// The task's preview ID: 128 random bits in lower-case base32, 26 characters, set at its first
+  /// preview. It names the preview hosts, and survives a reopen on a fresh box. Not a secret.
+  previewId          String?         @unique @db.VarChar(26)
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
@@ -1832,6 +1871,13 @@ model Task {
   reviewRunsAsCode     ReviewRun[]           @relation("ReviewRunCodeTask")
   reviewRunsAsReview   ReviewRun[]           @relation("ReviewRunReviewTask")
   environmentProposals EnvironmentProposal[]
+  // ---- milestone 8 ----
+  attachments          TaskAttachment[]
+  previews             TaskPreview[]
+  previewAccesses      PreviewAccess[]
+  previewLinks         PreviewLink[]
+  previewViews         PreviewView[]
+  previewCodes         PreviewCode[]
 
   @@unique([id, projectId])
   /// One active code task per ticket per project (spec section 11, item 12).
@@ -1956,6 +2002,10 @@ model Box {
   waitingSince   DateTime?
   /// When its pod was scheduled after a wait.
   scheduledAt    DateTime?
+  // ---- milestone 8 (F-141, Q299) ----
+  /// The last heartbeat of a pane or a viewer page watching one of its previews: the idle sweep
+  /// keeps a box warm while it's under 2 minutes old, up to `OSTRA_PREVIEW_WARM_MINUTES`.
+  previewWatchedAt DateTime?
 
   leases          Lease[]
   sessions        Session[]
@@ -2014,6 +2064,11 @@ model Lease {
   endedAt        DateTime?
   /// Why it ended: `released`, `grace-expired`, `superseded`, `rejected`, `offer-timeout`.
   endReason      String?
+  // ---- milestone 8 (F-141, Q300) ----
+  /// Why its box runs: a turn of the agent, or the app alone ("Start the app"), which launches no agent.
+  purpose              LeasePurpose @default(turn)
+  /// The member who pressed "Start the app", for an `app` lease.
+  appStartedByMemberId String?
 
   @@unique([taskId, epoch])
   @@unique([taskId], where: raw("state = 'active'"), map: "lease_one_active_per_task")
@@ -2333,6 +2388,8 @@ model Blob {
   chunks BlobChunk[]
   // ---- milestone 6 ----
   draftImages RefineDraftImage[]
+  // ---- milestone 8 (F-121) ----
+  taskAttachments TaskAttachment[]
 
   @@unique([store, key])
   @@unique([id, organizationId])
@@ -3961,4 +4018,469 @@ enum ThemePreference {
   dark
   light
   system
+}
+
+// ---------- milestone 8 (ticket 04, spec section 5.3, ADR 0068, ADR 0069) ----------
+
+/// An app process of an environment (F-140, ADR 0068): the project's own program, run from one of
+/// its repos in a task's box, beside the environment's services. Parsed and checked by the
+/// domain's `appProcessSchema`.
+model AppProcess {
+  id             String       @id @default(uuid(7))
+  organizationId String
+  projectId      String
+  project        Project      @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  environmentId  String
+  environment    Environment  @relation(fields: [environmentId, projectId], references: [id, projectId], onDelete: Cascade)
+  /// Lower-case letters, digits and dashes: it names `OSTRA_APP_<NAME>_URL`.
+  name           String
+  repoId         String
+  repo           Repo         @relation(fields: [repoId, projectId], references: [id, projectId], onDelete: Cascade)
+  /// Its folder in the repo's checkout, `.` for the root.
+  folder         String       @default(".")
+  /// The command that starts it and keeps running. Never logged.
+  command        String
+  port           Int
+  readyKind      AppReadyKind
+  /// The ready check's path (`http`) or command (`command`, never logged); `null` for `port`.
+  readyValue     String?
+  label          String
+  /// The primary preview: at most one per environment (`app_process_one_primary`).
+  primary        Boolean      @default(false)
+  /// The native preview rewrites `Host` and `Origin` (Q304); off for an app that builds URLs from its host.
+  hostRewrite    Boolean      @default(true)
+  /// Its place in the list: the order the runner starts them in.
+  position       Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([environmentId, name])
+  @@unique([environmentId, port])
+  @@unique([environmentId], where: raw("\"primary\""), map: "app_process_one_primary")
+  @@map("app_process")
+}
+
+/// A screenshot or a recording of a task's running app (F-121, ADR 0068): a blob of the task, shown
+/// in its thread at its place in the turn. Stored from the runner's `attachment.added`, once per
+/// `attachmentId`.
+model TaskAttachment {
+  id             String            @id @default(uuid(7))
+  organizationId String
+  projectId      String
+  project        Project           @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskId         String
+  task           Task              @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  /// The runner's ID of it, unique within the task.
+  attachmentId   String
+  kind           AttachmentKind
+  blobId         String
+  blob           Blob              @relation(fields: [blobId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  source         AttachmentSource
+  targetKind     PreviewTargetKind
+  /// The process's or the service's name; `null` for a port.
+  targetName     String?
+  port           Int?
+  path           String
+  width          Int
+  height         Int
+  /// A recording's length and frames; `null` for a screenshot.
+  durationMs     Int?
+  frameCount     Int?
+  /// The agent's caption. Never logged.
+  caption        String?
+  browserName    String
+  browserVersion String
+  /// The turn it was taken in, by ID; `null` for a member's from the pane.
+  turnId         String?
+  /// The member who took it from the pane (`source` `member`).
+  memberId       String?
+  /// The refine draft image it was added to ("Add to draft", F-099), by ID.
+  draftImageId   String?
+  createdAt      DateTime          @default(now())
+
+  @@unique([taskId, attachmentId])
+  @@index([taskId, createdAt])
+  @@map("task_attachment")
+}
+
+/// A port the agent announced in a task with `show_preview` (F-140, ADR 0068): scoped to the task.
+/// "Keep it" turns it into an environment proposal.
+model TaskPreview {
+  id                String   @id @default(uuid(7))
+  organizationId    String
+  projectId         String
+  project           Project  @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskId            String
+  task              Task     @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  /// The preview's key (`port-<port>`), the same on every box of the task.
+  key               String
+  port              Int
+  label             String
+  path              String   @default("/")
+  primary           Boolean  @default(false)
+  announcedInTurnId String?
+  /// The proposal "Keep it" made, by ID.
+  keptProposalId    String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([taskId, key])
+  @@map("task_preview")
+}
+
+/// A preview's level (F-142, ADR 0068): the project's members, or named people. With no row, the
+/// level is `members`. Links are `PreviewLink` rows.
+model PreviewAccess {
+  id             String        @id @default(uuid(7))
+  organizationId String
+  projectId      String
+  project        Project       @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskId         String
+  task           Task          @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  key            String
+  level          PreviewLevel  @default(members)
+  setByMemberId  String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  members PreviewAccessMember[]
+
+  @@unique([taskId, key])
+  @@unique([id, projectId])
+  @@map("preview_access")
+}
+
+/// A named person of a preview's `named` level (F-142): they see that preview and nothing else of the task.
+model PreviewAccessMember {
+  id              String        @id @default(uuid(7))
+  organizationId  String
+  projectId       String
+  project         Project       @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  previewAccessId String
+  previewAccess   PreviewAccess @relation(fields: [previewAccessId, projectId], references: [id, projectId], onDelete: Cascade)
+  memberId        String
+  member          Member        @relation(fields: [memberId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+
+  @@unique([previewAccessId, memberId])
+  @@index([memberId])
+  @@map("preview_access_member")
+}
+
+/// A link to a preview (F-142, ADR 0068): expiring, or public where an organization admin allows
+/// it; watch-only unless it allows input. A bearer token, kept only as its SHA-256.
+model PreviewLink {
+  id                String          @id @default(uuid(7))
+  organizationId    String
+  projectId         String
+  project           Project         @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskId            String
+  task              Task            @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  key               String
+  kind              PreviewLinkKind
+  /// The token's SHA-256, lower-case hex. The token itself is shown once and never stored or logged.
+  tokenHash         String          @unique
+  allowInput        Boolean         @default(false)
+  /// When it ends; `null` only for a `public` link (checked in the migration).
+  expiresAt         DateTime?
+  createdByMemberId String
+  revokedAt         DateTime?
+  revokedByMemberId String?
+  /// Its first use, for its audit entry once, and its last.
+  firstUsedAt       DateTime?
+  lastUsedAt        DateTime?
+  createdAt         DateTime        @default(now())
+
+  views PreviewView[]
+  codes PreviewCode[]
+
+  @@unique([id, projectId])
+  @@index([taskId, key])
+  @@map("preview_link")
+}
+
+/// One opening of a preview (F-141, F-143, F-144): the browser view, a tunnel, the native preview or
+/// `ostra preview`, by a member or a link. Its presence names the replica that holds the box's
+/// preview connection, so other replicas forward to it (Q305).
+model PreviewView {
+  id               String           @id @default(uuid(7))
+  organizationId   String
+  projectId        String
+  project          Project          @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskId           String
+  task             Task             @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  key              String
+  mode             PreviewViewMode
+  openedByMemberId String?
+  linkId           String?
+  link             PreviewLink?     @relation(fields: [linkId, projectId], references: [id, projectId], onDelete: Cascade)
+  leaseId          String?
+  leaseEpoch       Int
+  /// The internal address of the replica holding the box's preview connection (`OSTRA_CORE_REPLICA_URL`).
+  replicaUrl       String?
+  state            PreviewViewState @default(opening)
+  openedAt         DateTime         @default(now())
+  lastHeartbeatAt  DateTime         @default(now())
+  closedAt         DateTime?
+
+  @@index([state, lastHeartbeatAt])
+  @@index([taskId, key])
+  @@map("preview_view")
+}
+
+/// A one-time code for the native preview's handshake, or a CLI tunnel's ticket (F-143, F-144):
+/// single use, 60 s, bound to the member or the link, the task, the port and the lease epoch. Kept
+/// only as its SHA-256; the code itself is never stored or logged.
+model PreviewCode {
+  id             String          @id @default(uuid(7))
+  organizationId String
+  projectId      String
+  project        Project         @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  kind           PreviewCodeKind
+  /// The code's SHA-256, lower-case hex. Never logged.
+  codeHash       String          @unique
+  taskId         String
+  task           Task            @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  key            String
+  port           Int
+  memberId       String?
+  linkId         String?
+  link           PreviewLink?    @relation(fields: [linkId, projectId], references: [id, projectId], onDelete: Cascade)
+  leaseEpoch     Int
+  expiresAt      DateTime
+  usedAt         DateTime?
+  createdAt      DateTime        @default(now())
+
+  @@index([expiresAt])
+  @@map("preview_code")
+}
+
+/// A skill or an MCP server in an organization's library (F-145, ADR 0069), installed by reference
+/// from a GitHub repo, a well-known URL or a registry, pinned and hashed. Removing it keeps the row.
+model LibraryItem {
+  id                  String                @id @default(uuid(7))
+  organizationId      String
+  organization        Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  kind                LibraryItemKind
+  name                String
+  sourceKind          LibraryItemSourceKind
+  /// Where it comes from, parsed by the domain's `librarySourceSchema`.
+  source              Json
+  /// Attached to every profile of the organization.
+  everyProfile        Boolean               @default(false)
+  /// An MCP server whose tools only read: plan mode may call them.
+  readOnly            Boolean               @default(false)
+  /// The version tasks get. One of this item's versions.
+  currentVersionId    String?               @unique
+  currentVersion      LibraryItemVersion?   @relation("LibraryItemCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  installedByMemberId String
+  installedAt         DateTime              @default(now())
+  removedAt           DateTime?
+  removedByMemberId   String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  versions    LibraryItemVersion[]  @relation("LibraryItemVersions")
+  profiles    AgentProfileLibraryItem[]
+  suggestions LibrarySuggestion[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, kind, name], where: raw("\"removedAt\" IS NULL"), map: "library_item_one_name")
+  @@map("library_item")
+}
+
+/// One version of a library item (F-145, ADR 0069): its pin, its files or its server entry, and the
+/// diff against the current one. An update waits as `available` until an admin accepts it.
+model LibraryItemVersion {
+  id                String              @id @default(uuid(7))
+  organizationId    String
+  itemId            String
+  item              LibraryItem         @relation("LibraryItemVersions", fields: [itemId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  number            Int
+  state             LibraryVersionState
+  /// The reference's ref, as asked (`#ref`), and the commit it resolved to.
+  ref               String?
+  commitSha         String?
+  /// The `skills` CLI's hash of the skill's folder.
+  computedHash      String?
+  /// A skill's files: `[{ path, blobId, size, sha256, executable }]`. Their content is never logged.
+  files             Json                @default("[]")
+  /// A registry entry's version.
+  registryVersion   String?
+  /// A server's remote: its URL template and the headers it asks for, never a secret's value.
+  serverEntry       Json?
+  /// A server's inputs: plain values, and secret references for the secret ones. Never a secret's value; never logged.
+  serverInputs      Json?
+  /// The tools the test call listed.
+  toolNames         Json                @default("[]")
+  /// The server answered the test call with an OAuth challenge: it can't be attached yet (Q321).
+  needsOAuth        Boolean             @default(false)
+  /// Files added, removed and changed, or a server's changed fields, against the current version.
+  diff              Json?
+  fetchedAt         DateTime            @default(now())
+  decidedByMemberId String?
+  decidedAt         DateTime?
+  createdAt         DateTime            @default(now())
+
+  currentOf LibraryItem? @relation("LibraryItemCurrentVersion")
+
+  @@unique([itemId, number])
+  @@map("library_item_version")
+}
+
+/// A library item attached to a profile (F-145): its tasks get it at the item's current version.
+model AgentProfileLibraryItem {
+  id                 String       @id @default(uuid(7))
+  organizationId     String
+  profileId          String
+  profile            AgentProfile @relation(fields: [profileId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  itemId             String
+  item               LibraryItem  @relation(fields: [itemId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  attachedByMemberId String
+  attachedAt         DateTime     @default(now())
+
+  @@unique([profileId, itemId])
+  @@index([itemId])
+  @@map("agent_profile_library_item")
+}
+
+/// A source an organization's library may install from (F-145, ADR 0069, Q322): a GitHub owner or
+/// repo, a well-known host, or a registry and its namespace. Matched by these, never by a name.
+model LibrarySource {
+  id              String            @id @default(uuid(7))
+  organizationId  String
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  kind            LibrarySourceKind
+  value           String
+  /// A registry's namespace, such as `io.github.example`; `null` for the whole registry, and for the other kinds.
+  namespace       String?
+  addedByMemberId String?
+  createdAt       DateTime          @default(now())
+
+  @@unique([organizationId, kind, value, namespace])
+  @@unique([organizationId, kind, value], where: raw("namespace IS NULL"), map: "library_source_one_without_namespace")
+  @@map("library_source")
+}
+
+/// A member's suggestion of something to install (F-145): an admin installs or dismisses it.
+model LibrarySuggestion {
+  id                String                 @id @default(uuid(7))
+  organizationId    String
+  organization      Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberId          String
+  /// The reference as the member wrote it, parsed again by the domain's `libraryReferenceSchema` when acted on.
+  reference         String
+  /// The member's note. Never logged.
+  note              String?
+  state             LibrarySuggestionState @default(open)
+  decidedByMemberId String?
+  decidedAt         DateTime?
+  itemId            String?
+  item              LibraryItem?           @relation(fields: [itemId, organizationId], references: [id, organizationId], onDelete: NoAction)
+  createdAt         DateTime               @default(now())
+
+  @@index([organizationId, state])
+  @@map("library_suggestion")
+}
+
+/// How the runner knows an app process is ready (F-140): an HTTP path, a command, or the port.
+enum AppReadyKind {
+  http
+  command
+  port
+}
+
+/// A screenshot or a recording (F-121).
+enum AttachmentKind {
+  screenshot
+  recording
+}
+
+/// Who took a picture (F-121): the agent, ostra after a turn, or a member from the pane.
+enum AttachmentSource {
+  agent
+  after_turn
+  member
+}
+
+/// What a preview or a picture shows: an app process, an announced port, or a service.
+enum PreviewTargetKind {
+  process
+  port
+  service
+}
+
+/// A preview's level below its links (F-142).
+enum PreviewLevel {
+  members
+  named
+}
+
+/// A preview link's kind (F-142).
+enum PreviewLinkKind {
+  expiring
+  public
+}
+
+/// How a view was opened (F-141, F-143, F-144).
+enum PreviewViewMode {
+  stream
+  tunnel
+  native
+  cli
+}
+
+/// A view's lifecycle (F-141): `opening` → `open` → `closed`.
+enum PreviewViewState {
+  opening
+  open
+  closed
+}
+
+/// A one-time code for the native preview's handshake, or a CLI tunnel's ticket.
+enum PreviewCodeKind {
+  enter
+  cli_ticket
+}
+
+/// Why a lease's box runs (F-141, Q300): an agent turn, or the app alone ("Start the app").
+enum LeasePurpose {
+  turn
+  app
+}
+
+/// A library item's kind (F-145).
+enum LibraryItemKind {
+  skill
+  mcp_server
+}
+
+/// Where a library item comes from (F-145): a GitHub repo, a well-known URL, or a registry.
+enum LibraryItemSourceKind {
+  github
+  well_known
+  registry
+}
+
+/// A library source's kind (F-145, Q322): a GitHub owner or repo, a well-known host, or a registry.
+enum LibrarySourceKind {
+  github_owner
+  github_repo
+  well_known_host
+  registry
+}
+
+/// A library item version's lifecycle (F-145): `available` → `current` | `dismissed`, `current` → `superseded`.
+enum LibraryVersionState {
+  current
+  available
+  superseded
+  dismissed
+}
+
+/// A suggestion's lifecycle (F-145): `open` → `installed` | `dismissed`.
+enum LibrarySuggestionState {
+  open
+  installed
+  dismissed
 }
