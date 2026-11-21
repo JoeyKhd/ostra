@@ -396,8 +396,15 @@ export const previewStreamCases = (mode: PreviewStreamMode) => {
       core.control(first, { kind: "viewport", viewport: TABLET });
       const atTablet = (frame: FakeStreamView["frames"][number]): boolean => frame.header.width === TABLET.width && frame.header.height === TABLET.height;
       await h.gateway.waitFor(() => one.frames.some(atTablet) && two.frames.some(atTablet), 20_000);
-      await h.gateway.waitFor(() => one.frames.some((frame) => atTablet(frame) && pictureSize(frame.jpeg)?.height === TABLET.height), 20_000);
-      expect(pictureSize(one.frames.findLast(atTablet)?.jpeg)).toEqual(TABLET);
+      // A frame whose picture is the whole 834×1112. While the page resizes, Edge sends frames with
+      // the tablet's size and a picture of the phone's page scaled to its height (514×1112), so the
+      // check reads the frame it waited for, not whichever came last.
+      const fullTablet = (frame: FakeStreamView["frames"][number]): boolean => {
+        const size = pictureSize(frame.jpeg);
+        return atTablet(frame) && size?.width === TABLET.width && size.height === TABLET.height;
+      };
+      await h.gateway.waitFor(() => one.frames.some(fullTablet), 20_000);
+      expect(pictureSize(one.frames.find(fullTablet)?.jpeg)).toEqual(TABLET);
       if (live) await pageSays(h, "String(window.innerHeight)", String(TABLET.height));
       // The width preset from core, on the shared page: back to the desktop's, on both.
       core.control(first, { kind: "viewport", viewport: DESKTOP });
