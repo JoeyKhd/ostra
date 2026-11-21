@@ -117,6 +117,7 @@ describe("the job catalogue (ADR 0037)", () => {
         "profiles.seed-built-in",
         "library.check-updates",
         "library.seed-sources",
+        "library.cleanup",
         "preview.views-sweep",
         "preview.codes-sweep",
       ].sort(),

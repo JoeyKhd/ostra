@@ -112,6 +112,7 @@ export const jobNames = [
   // ---- milestone 8 (spec section 5.4, ADR 0069) ----
   "library.check-updates",
   "library.seed-sources",
+  "library.cleanup",
   // ---- milestone 8 (spec section 5.4, ADR 0068): previews ----
   "preview.views-sweep",
   "preview.codes-sweep",
@@ -311,6 +312,11 @@ export const jobPayloadSchemas = {
   ]),
   /** GitHub's MCP registry on the organization's allowlist of sources (Q324): when it's seeded, and once for each existing one. */
   "library.seed-sources": z.strictObject({ organizationId: organizationIdSchema }),
+  /**
+   * Deletes the library files no version in use names, and the secret inputs of removed items and
+   * of versions out of use, once a day, for every organization (ADR 0069, a follow-up to ticket 28).
+   */
+  "library.cleanup": z.strictObject({}),
   /** Closes the views with no heartbeat for 2 minutes (F-141), once a minute. */
   "preview.views-sweep": z.strictObject({}),
   /** Removes the used and expired one-time codes and CLI tickets (F-143, F-144), once a day. */
@@ -384,6 +390,7 @@ const jobKeys: { readonly [N in JobName]: (payload: JobPayload<N>) => string } =
   "library.check-updates": (payload) =>
     "itemId" in payload ? `library-item:${payload.itemId}:check-updates` : `organization:${payload.organizationId}:library-check-updates:${String(payload.windowStart)}`,
   "library.seed-sources": (payload) => `organization:${payload.organizationId}:library-seed-sources`,
+  "library.cleanup": () => "library:cleanup",
   "preview.views-sweep": () => "previews:views-sweep",
   "preview.codes-sweep": () => "previews:codes-sweep",
 };
@@ -468,6 +475,8 @@ export const jobSending: Readonly<Record<JobName, JobSending>> = {
   // Sent per organization by a pass over the windows, and per item by an admin.
   "library.check-updates": { kind: "event" },
   "library.seed-sources": { kind: "event" },
+  // A pg-boss schedule once a day: an idempotent pass.
+  "library.cleanup": { kind: "schedule" },
   // A pg-boss schedule every minute (`EVERY_MINUTE_CRON`), and one a day: idempotent passes.
   "preview.views-sweep": { kind: "schedule" },
   "preview.codes-sweep": { kind: "schedule" },

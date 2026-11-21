@@ -105,6 +105,8 @@ export const queueSettings: Readonly<Record<JobName, QueueSettings>> = {
   // Milestone 8 (ADR 0069): each item's source is read again, so a slow source gets its time.
   "library.check-updates": { ...base, retryLimit: 3, expireInSeconds: 900 },
   "library.seed-sources": { ...base, retryLimit: 5 },
+  // A daily pass that runs again tomorrow: what it couldn't delete waits for it.
+  "library.cleanup": { ...base, retryLimit: 2, expireInSeconds: 1800 },
   // Milestone 8 (ADR 0068): sweeps that run again on their next tick.
   "preview.views-sweep": { ...base, retryLimit: 1, expireInSeconds: 50 },
   "preview.codes-sweep": { ...base, retryLimit: 2, expireInSeconds: 600 },

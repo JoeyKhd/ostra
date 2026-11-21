@@ -38,6 +38,9 @@ describe("the library's jobs", () => {
     expect(jobKey("library.check-updates", { organizationId, itemId })).toBe("library-item:item-1:check-updates");
     expect(jobKey("library.seed-sources", { organizationId })).toBe("organization:org-1:library-seed-sources");
     expect(jobSending["library.check-updates"]).toEqual({ kind: "event" });
+    // The clean-up: one daily pass over every organization, keyed once.
+    expect(jobKey("library.cleanup", {})).toBe("library:cleanup");
+    expect(jobSending["library.cleanup"]).toEqual({ kind: "schedule" });
   });
 
   it("F-145: carries IDs only: a payload with anything else is refused", () => {
@@ -46,6 +49,8 @@ describe("the library's jobs", () => {
     expect(parseJobPayload("library.check-updates", { organizationId, itemId, reference: "acme/skills" }).ok).toBe(false);
     expect(parseJobPayload("library.check-updates", { organizationId }).ok).toBe(false);
     expect(parseJobPayload("library.seed-sources", { organizationId, registry: "https://api.mcp.github.com" }).ok).toBe(false);
+    expect(parseJobPayload("library.cleanup", {}).ok).toBe(true);
+    expect(parseJobPayload("library.cleanup", { organizationId }).ok).toBe(false);
   });
 });
 
