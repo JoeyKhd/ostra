@@ -63,7 +63,7 @@ import { z } from "zod";
 import { activityContent, activityIdFor, canBeEphemeral, parseLinearAgentSessionEvent } from "./agent-sessions.ts";
 import { LINEAR_AGENT_SCOPES } from "./app/oauth.ts";
 import { linearWebhookHint, verifyLinearWebhook } from "./app/webhooks.ts";
-import { imageName, looksLikeImage, markdownImages } from "./markdown-images.ts";
+import { fileName, imageName, looksLikeImage, markdownFiles, markdownImages } from "./markdown-images.ts";
 import { answers, documents, MAX_ACTIVITY_PAGES, MAX_COMMENT_PAGES, MAX_TICKET_PAGE, USERS_PER_QUERY } from "./queries.ts";
 import type { DocumentName, LinearComment, LinearIssue, LinearSummary } from "./queries.ts";
 
@@ -88,8 +88,8 @@ export type LinearAdapterOptions = {
   readonly apiUrl?: string;
   readonly timeoutMs?: number;
   /**
-   * The origins whose files `downloadFile` fetches with the token, and so the only images a
-   * ticket's context lists. Default `https://uploads.linear.app`; a test adds its fake's.
+   * The origins whose files `downloadFile` fetches with the token, and so the only images and
+   * files a ticket's context lists. Default `https://uploads.linear.app`; a test adds its fake's.
    */
   readonly fileOrigins?: readonly string[];
 };
@@ -274,8 +274,9 @@ export const LINEAR_CAPABILITIES: TrackerCapabilities = {
   agentSessionLink: true,
   // Linear has no field of its own for acceptance criteria: they go into the description.
   ticketFields: { acceptanceCriteria: false },
-  // Milestone 9 (F-149): the images a ticket shows, inline or attached, on Linear's file host.
-  ticketFiles: "images",
+  // Milestone 9 (F-149): every file a ticket shows on Linear's file host, inline or attached; a
+  // link attachment (a pull request, Figma) stays a link.
+  ticketFiles: "all",
 };
 
 export class LinearAdapter extends TrackerAdapter {
@@ -986,13 +987,14 @@ export class LinearAdapter extends TrackerAdapter {
   }
 
   /**
-   * Milestone 9 (F-149): the files a piece of markdown shows on Linear's file host, in order, as
-   * `ticketFiles` lets through: each with the name its text or URL gives.
+   * Milestone 9 (F-149): the files a piece of markdown shows on Linear's file host, in order: its
+   * images, its links (`[name](url)`) and its autolinks (`<url>`), each with the name its text or
+   * URL gives. A link anywhere else (a pull request, Figma) isn't a file, and is never fetched.
    */
   #filesInMarkdown(markdown: string): readonly ShownFile[] {
-    return markdownImages(markdown).flatMap((image) => {
-      const url = this.#onFileHost(image.url);
-      return url === null ? [] : [{ url: url.href, name: imageName(url, image.alt), contentType: null, size: null, image: true }];
+    return markdownFiles(markdown).flatMap((shown) => {
+      const url = this.#onFileHost(shown.url);
+      return url === null ? [] : [{ url: url.href, name: fileName(url, shown.text), contentType: null, size: null, image: shown.image }];
     });
   }
 
@@ -1032,7 +1034,7 @@ export class LinearAdapter extends TrackerAdapter {
     for (const attachment of attachments) {
       const url = this.#onFileHost(attachment.url);
       if (url !== null) {
-        const file = { url: url.href, name: imageName(url, attachment.title), contentType: null, size: null, image: looksLikeImage(url) };
+        const file = { url: url.href, name: fileName(url, attachment.title), contentType: null, size: null, image: looksLikeImage(url) };
         add(file, "attachment", null, isOwnAttachment(options?.own, attachment));
       }
     }

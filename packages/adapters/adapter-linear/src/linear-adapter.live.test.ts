@@ -51,11 +51,14 @@ const mentionedIds = (node: unknown): string[] => {
 };
 
 /** Uploads an image the way Linear's editor does, and answers its asset URL. */
-const uploadImage = async (token: string): Promise<string> => {
+const uploadImage = async (token: string): Promise<string> => upload(token, { name: "ostra-live.png", contentType: "image/png", bytes: PNG });
+
+/** Uploads a file the way Linear's editor does, and answers its asset URL (milestone 9: any type). */
+const upload = async (token: string, file: { readonly name: string; readonly contentType: string; readonly bytes: Buffer }): Promise<string> => {
   const data = await raw(
     token,
-    'mutation ($size: Int!) { fileUpload(contentType: "image/png", filename: "ostra-live.png", size: $size) { success uploadFile { uploadUrl assetUrl headers { key value } } } }',
-    { size: PNG.length },
+    "mutation ($size: Int!, $contentType: String!, $filename: String!) { fileUpload(contentType: $contentType, filename: $filename, size: $size) { success uploadFile { uploadUrl assetUrl headers { key value } } } }",
+    { size: file.bytes.length, contentType: file.contentType, filename: file.name },
   );
   const { uploadFile } = z
     .object({
@@ -64,13 +67,13 @@ const uploadImage = async (token: string): Promise<string> => {
       }),
     })
     .parse(data).fileUpload;
-  const headers: Record<string, string> = { "content-type": "image/png", "cache-control": "public, max-age=31536000" };
+  const headers: Record<string, string> = { "content-type": file.contentType, "cache-control": "public, max-age=31536000" };
   for (const header of uploadFile.headers) {
     headers[header.key] = header.value;
   }
-  const put = await fetch(uploadFile.uploadUrl, { method: "PUT", headers, body: PNG });
+  const put = await fetch(uploadFile.uploadUrl, { method: "PUT", headers, body: file.bytes });
   if (!put.ok) {
-    throw new Error(`the image upload failed (HTTP ${String(put.status)})`);
+    throw new Error(`the upload failed (HTTP ${String(put.status)})`);
   }
   return uploadFile.assetUrl;
 };
@@ -223,5 +226,36 @@ describe.skipIf(!env.success)("the Linear adapter, live on ostra-test (team OST)
         .comment.bodyData,
     );
     expect(mentionedIds(plainBody)).toEqual([]);
+  }, 60_000);
+
+  it("F-149/c1: lists a test ticket's files, linked and attached, leaves its link attachment out, and downloads one", async () => {
+    if (!env.success) return;
+    const token = env.data.LINEAR_API_KEY;
+    const board = { externalId: env.data.LINEAR_TEST_TEAM_ID };
+    const adapter: TrackerAdapter = new LinearAdapter({ auth: { kind: "api-key", token } });
+    // A document linked in the description and an image attached, as a person drops them in.
+    const notes = Buffer.from("ostra live test: a ticket's file\n");
+    const notesUrl = await upload(token, { name: "ostra-live-notes.txt", contentType: "text/plain", bytes: notes });
+    const imageUrl = await uploadImage(token);
+    const ticket = must(
+      await adapter.createTicket(board, { title: "ostra live test: a ticket's files", description: `The notes: [ostra-live-notes.txt](${notesUrl})` }),
+      "createTicket",
+    );
+    created.push(ticket.externalId);
+    const attach = "mutation ($issueId: String!, $url: String!, $title: String!) { attachmentCreate(input: { issueId: $issueId, url: $url, title: $title }) { success } }";
+    await raw(token, attach, { issueId: ticket.externalId, url: imageUrl, title: "ostra-live.png" });
+    const figma = `https://www.figma.com/file/ostra-live-${ticket.externalId}/Frame`;
+    await raw(token, attach, { issueId: ticket.externalId, url: figma, title: "A Figma frame" });
+
+    const context = must(await adapter.getTicketContext(board, { externalId: ticket.externalId }), "getTicketContext");
+    expect(context.files.map((file) => ({ name: file.name, where: file.where, byOstra: file.byOstra }))).toEqual([
+      { name: "ostra-live-notes.txt", where: "description", byOstra: false },
+      { name: "ostra-live.png", where: "attachment", byOstra: false },
+    ]);
+    expect(context.files.map((file) => file.url)).not.toContain(figma);
+    expect(context.attachments.map((attachment) => attachment.url)).toContain(figma);
+    const first = context.files[0];
+    if (first === undefined) throw new Error("no file");
+    expect(Buffer.from(must(await adapter.downloadFile(first.url, 1024 * 1024), "downloadFile").bytes).equals(notes)).toBe(true);
   }, 60_000);
 });

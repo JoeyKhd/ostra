@@ -302,6 +302,8 @@ export type FakeLinear = {
   readonly upload: (file: { readonly name: string; readonly contentType: string; readonly bytes: Uint8Array }) => string;
   /** Milestone 9: an upload whose body never ends and declares no length. */
   readonly uploadEndless: () => string;
+  /** Milestone 9: the next download of this upload answers HTTP 500, once: a download that fails on demand. */
+  readonly failNextDownload: (url: string) => void;
   /** Milestone 9: a person attaches a URL to the issue: an upload's (a file), or anything else (a link). */
   readonly attachToIssue: (issueId: ExternalTicketId, input: { readonly url: string; readonly title: string; readonly subtitle?: string | null }) => Promise<string>;
   /** Milestone 3: adds a person to the workspace, active unless `active` is false. */
@@ -488,6 +490,8 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
    * person's uploads, and one whose body never ends.
    */
   const uploads = new Map<string, { readonly contentType: string; readonly size: number; bytes: Uint8Array | null; readonly endless?: boolean }>();
+  /** Milestone 9: uploads whose next download fails, by their asset path. */
+  const failingDownloads = new Set<string>();
 
   const countCall = (name: string): void => {
     calls.set(name, (calls.get(name) ?? 0) + 1);
@@ -1505,7 +1509,12 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
       sendJson(response, 401, { error: "unauthorized" });
       return;
     }
-    const uploaded = uploads.get(new URL(request.url ?? "/", "http://fake-linear.invalid").pathname);
+    const assetPath = new URL(request.url ?? "/", "http://fake-linear.invalid").pathname;
+    if (failingDownloads.delete(assetPath)) {
+      sendJson(response, 500, { error: "the file store failed" });
+      return;
+    }
+    const uploaded = uploads.get(assetPath);
     if (uploaded?.endless === true) {
       // Chunked, with no length, until the client goes: only a reader that stops at its cap returns.
       response.writeHead(200, { "content-type": uploaded.contentType });
@@ -1742,6 +1751,9 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
       const assetPath = `/uploads/${randomUUID()}/endless.bin`;
       uploads.set(assetPath, { contentType: "application/octet-stream", size: 0, bytes: null, endless: true });
       return `${base}${assetPath}`;
+    },
+    failNextDownload: (url) => {
+      failingDownloads.add(new URL(url).pathname);
     },
     attachToIssue: async (issueId, input) => {
       const issue = issueOf(issueId);

@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 
 import { sha256Hex } from "@ostra/adapter-sdk";
-import type { TrackerAdapter } from "@ostra/adapter-sdk";
+import type { AdapterResult, TrackerAdapter } from "@ostra/adapter-sdk";
 import { createFakeLinear, defineTrackerContractSuite, fakeLinearSuiteFixture, memoryAdapterContext, memoryRateBudgetStore } from "@ostra/adapter-sdk/testing";
 import type { FakeLinear } from "@ostra/adapter-sdk/testing";
 import { externalTicketIdSchema, ticketKeySchema } from "@ostra/protocol";
@@ -9,7 +9,14 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { LINEAR_AGENT_MODE_SCOPES } from "./app/oauth.ts";
 import { LinearAdapter, linearMention } from "./linear-adapter.ts";
-import { markdownImages } from "./markdown-images.ts";
+import { fileName, markdownFiles, markdownImages } from "./markdown-images.ts";
+
+const must = <T,>(result: AdapterResult<T>, what: string): T => {
+  if (!result.ok) {
+    throw new Error(`${what}: ${result.error.code}: ${result.error.message}`);
+  }
+  return result.value;
+};
 
 // The Linear adapter against the fake Linear server (spec section 8): the tracker contract suite,
 // then what's Linear's own: how it reads Linear's types, threads, relations and files, and how it
@@ -272,9 +279,159 @@ describe("the Linear adapter", () => {
       agentScopes: ["app:assignable", "app:mentionable"],
       agentSessionLink: true,
       ticketFields: { acceptanceCriteria: false },
-      // Milestone 9 (F-149): images until ticket 08 reads every file.
-      ticketFiles: "images",
+      // Milestone 9 (F-149): every file the ticket shows on Linear's file host.
+      ticketFiles: "all",
     });
+  });
+});
+
+// Milestone 9 (F-149, ticket 08): every file of a Linear ticket, on the fake Linear. The tracker
+// suite above runs the shared cases; these are Linear's own shapes: links, autolinks, attachments.
+
+const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+const ZIP = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0, 0, 0, 8, 0]);
+const PDF = new TextEncoder().encode("%PDF-1.7\n%fake\n");
+/** ostra's progress comment's marker, as core passes it in `OwnWrites`. */
+const PROGRESS_MARKER = "<sub>ostra edits this comment as the task moves:";
+const own = (userId: string | null) => ({ userId, commentMarkers: [PROGRESS_MARKER], attachmentMarkers: ["Attached by ostra from a draft"] });
+
+describe("every file of a Linear ticket", () => {
+  let fake: FakeLinear;
+  let key: LinearAdapter;
+  let app: LinearAdapter;
+  const board = () => ({ externalId: fake.team.id });
+
+  beforeAll(async () => {
+    fake = await createFakeLinear();
+    fake.createApp({ name: "ostra", redirectUris: ["https://ostra.example.test/oauth/linear/callback"], webhookUrl: null });
+    app = adapterOn(fake, fake.mintToken("app", LINEAR_AGENT_MODE_SCOPES).accessToken, "oauth");
+    key = adapterOn(fake, fake.adminApiKey, "api-key");
+  });
+  afterAll(async () => {
+    await fake.close();
+  });
+
+  it("F-149/c1,c6: a .docx link in the description, an attached PDF and a comment's .xlsx are files, in order; ostra's comment's picture and a link attachment aren't", async () => {
+    const spec = fake.upload({ name: "spec v2.docx", contentType: DOCX, bytes: ZIP });
+    const mock = fake.upload({ name: "mock.png", contentType: "image/png", bytes: PNG });
+    const sheet = fake.upload({ name: "numbers.xlsx", contentType: XLSX, bytes: ZIP });
+    const design = fake.upload({ name: "design.pdf", contentType: "application/pdf", bytes: PDF });
+    const preview = fake.upload({ name: "preview.png", contentType: "image/png", bytes: PNG });
+    const figma = "https://www.figma.com/file/0196f1a0/History?node-id=1-2";
+    const issue = await fake.createIssue({
+      title: "Every file",
+      // A link and an autolink to the file host, and links elsewhere, which are never files.
+      description: `Build it from [spec v2.docx](${spec}); the layout is <${mock}>.\n\nSee [the frame](${figma}) and <https://example.test/notes.txt>. \`$(whoami)\``,
+    });
+    const commentId = await fake.addComment(issue.id, `The numbers: [numbers.xlsx](${sheet})`);
+    // ostra's progress comment, written through the adapter as core writes it, with a picture.
+    must(await key.comment(board(), issue.identifier, `**ostra is working on this.**\n\n![preview.png](${preview})\n\n${PROGRESS_MARKER} https://ostra.example.test/tasks/1</sub>`), "comment");
+    await fake.attachToIssue(issue.id, { url: design, title: "design.pdf" });
+    await fake.attachToIssue(issue.id, { url: figma, title: "History panel (Figma)" });
+    must(await key.linkPullRequest(board(), issue.identifier, "https://github.com/ostra-test/test1/pull/7"), "linkPullRequest");
+
+    const read = must(await key.getTicketContext(board(), { externalId: issue.id }, { own: own(null) }), "getTicketContext");
+    expect(read.files.filter((file) => !file.byOstra).map((file) => ({ url: file.url, name: file.name, where: file.where, commentId: file.commentId }))).toEqual([
+      { url: spec, name: "spec v2.docx", where: "description", commentId: null },
+      { url: mock, name: "mock.png", where: "description", commentId: null },
+      { url: sheet, name: "numbers.xlsx", where: "comment", commentId },
+      { url: design, name: "design.pdf", where: "attachment", commentId: null },
+    ]);
+    // ostra's own picture is marked, so core leaves it out.
+    expect(read.files.filter((file) => file.byOstra).map((file) => file.url)).toEqual([preview]);
+    // A link attachment off the file host stays a link: never a file, never fetched.
+    const fileUrls = read.files.map((file) => file.url);
+    expect(fileUrls).not.toContain(figma);
+    expect(fileUrls).not.toContain("https://github.com/ostra-test/test1/pull/7");
+    expect(fileUrls).not.toContain("https://example.test/notes.txt");
+    expect(read.attachments.map((attachment) => attachment.url)).toEqual(expect.arrayContaining([design, figma, "https://github.com/ostra-test/test1/pull/7"]));
+    // Each one is a file Linear holds, fetched with the token.
+    const before = fake.apiCalls()["uploads"] ?? 0;
+    for (const file of read.files) {
+      expect(must(await key.downloadFile(file.url, 1024 * 1024), "downloadFile").bytes.length).toBeGreaterThan(0);
+    }
+    expect((fake.apiCalls()["uploads"] ?? 0) - before).toBe(read.files.length);
+  });
+
+  it("F-149/c6: a comment by ostra's app user is ostra's without its marker, and an attachment with attachFile's marker too", async () => {
+    const shot = fake.upload({ name: "shot.png", contentType: "image/png", bytes: PNG });
+    const issue = await fake.createIssue({ title: "The app's own" });
+    must(await app.comment(board(), issue.identifier, `A preview: ![shot.png](${shot})`), "comment");
+    const attached = must(
+      await app.attachFile(board(), { externalId: issue.id }, { name: "draft.png", contentType: "image/png", bytes: PNG, marker: "Attached by ostra from a draft (image 7)" }),
+      "attachFile",
+    );
+    const appUser = fake.appUser();
+    if (appUser === undefined) throw new Error("no app user");
+    const read = must(await app.getTicketContext(board(), { externalId: issue.id }, { own: { userId: appUser.id, commentMarkers: [], attachmentMarkers: ["Attached by ostra from a draft"] } }), "getTicketContext");
+    expect(read.files.map((file) => ({ url: file.url, byOstra: file.byOstra, where: file.where }))).toEqual([
+      { url: shot, byOstra: true, where: "comment" },
+      { url: attached.url, byOstra: true, where: "attachment" },
+    ]);
+  });
+
+  it("F-149/c9: filesInText finds a follow-up's file, and a link off the file host is ignored", async () => {
+    const layout = fake.upload({ name: "layout.png", contentType: "image/png", bytes: PNG });
+    const notes = fake.upload({ name: "notes.docx", contentType: DOCX, bytes: ZIP });
+    const issue = await fake.createIssue({ title: "Delegated with files" });
+    const { sessionId } = await fake.delegateToApp(issue.id);
+    // A member's follow-up in the session's thread, holding a screenshot and a document.
+    await fake.promptSession(sessionId, `Use this layout instead: ![layout.png](${layout})\n\nand [notes.docx](${notes}), not [the old notes](https://files.example.test/uploads/1/notes.docx)`);
+    const body = fake.sessionEvents().filter((event) => event.sessionId === sessionId).at(-1)?.body;
+    const event = must(app.parseAgentSessionEvent(body), "parseAgentSessionEvent");
+    expect(event.action).toBe("prompted");
+    const found = app.filesInText(event.prompt ?? "");
+    expect(found).toEqual([
+      { url: layout, name: "layout.png", contentType: null, size: null, where: "comment", commentId: null, byOstra: false },
+      { url: notes, name: "notes.docx", contentType: null, size: null, where: "comment", commentId: null, byOstra: false },
+    ]);
+    expect(must(await app.downloadFile(layout, 1024 * 1024), "downloadFile").bytes).toEqual(PNG);
+    expect(app.filesInText("Nothing here but [a link](https://example.test/a.pdf) and <https://example.test/b.png>")).toEqual([]);
+  });
+
+  it("F-149/c1: refuses a 12 MiB file at a 10 MiB cap, and a download that fails is an error, not a file", async () => {
+    const big = fake.upload({ name: "recording.mov", contentType: "video/quicktime", bytes: new Uint8Array(12 * 1024 * 1024) });
+    expect(await key.downloadFile(big, 10 * 1024 * 1024)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+    const flaky = fake.upload({ name: "flaky.pdf", contentType: "application/pdf", bytes: PDF });
+    fake.failNextDownload(flaky);
+    expect(await key.downloadFile(flaky, 1024 * 1024)).toMatchObject({ ok: false, error: { code: "unavailable" } });
+    // Retry fetches it again.
+    expect(must(await key.downloadFile(flaky, 1024 * 1024), "downloadFile again").bytes).toEqual(PDF);
+  });
+});
+
+describe("markdown files", () => {
+  it("F-149/c1: finds images, links and autolinks in order, each URL once, an image when any place shows it as one", () => {
+    const text = [
+      "[spec.docx](https://uploads.linear.app/a/spec.docx) and ![mock.png](https://uploads.linear.app/b/mock.png)",
+      '<https://uploads.linear.app/c/notes.txt> then [title](<https://uploads.linear.app/d/deck.pptx> "Deck")',
+      "[again](https://uploads.linear.app/a/spec.docx) and [the mock](https://uploads.linear.app/b/mock.png)",
+      // A linked image: the image is found, and stays an image.
+      "[![badge](https://uploads.linear.app/e/badge.png)](https://example.test/x)",
+    ].join("\n");
+    expect(markdownFiles(text)).toEqual([
+      { url: "https://uploads.linear.app/a/spec.docx", text: "spec.docx", image: false },
+      { url: "https://uploads.linear.app/b/mock.png", text: "mock.png", image: true },
+      { url: "https://uploads.linear.app/c/notes.txt", text: "", image: false },
+      { url: "https://uploads.linear.app/d/deck.pptx", text: "title", image: false },
+      { url: "https://uploads.linear.app/e/badge.png", text: "![badge", image: true },
+    ]);
+  });
+
+  it("names a file by its text when that's a plain file name, else by its URL", () => {
+    expect(fileName(new URL("https://uploads.linear.app/a/b/spec%20v2.docx"), "the spec")).toBe("spec v2.docx");
+    expect(fileName(new URL("https://uploads.linear.app/a/b/c"), "notes.md")).toBe("notes.md");
+    expect(fileName(new URL("https://uploads.linear.app/"), "")).toBe("file");
+    expect(fileName(new URL("https://uploads.linear.app/a/%E0%A4%A"), "../../etc/passwd")).toBe("%E0%A4%A");
+  });
+
+  it("reads a long hostile text quickly", () => {
+    const hostile = `${"[".repeat(20_000)}${"](".repeat(20_000)}${"<https://".repeat(20_000)}`;
+    const started = performance.now();
+    markdownFiles(hostile);
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 });
 
