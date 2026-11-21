@@ -69,6 +69,14 @@ describe("the rows", () => {
     expect(html).toContain("/tasks/01900000-0000-7000-8000-00000a17be09");
     expect(html).toContain("a17be093");
   });
+
+  it("a parent's chip gives way before its title: a narrow title cell keeps the count, the words in its tooltip and its name", () => {
+    const html = renderToStaticMarkup(<TicketRow ticket={{ ...ticket, subIssues: 4 }} several={false} selected={false} onSelect={() => undefined} now={now} />);
+    expect(html).toContain('class="@container');
+    expect(html).toContain('title="4 sub-issues"');
+    expect(html).toMatch(/<span class="hidden @min-\[22rem\]:inline">4 sub-issues<\/span>/);
+    expect(html).toMatch(/<span aria-hidden="true">4<\/span><span class="sr-only">4 sub-issues<\/span>/);
+  });
 });
 
 describe("the filters", () => {

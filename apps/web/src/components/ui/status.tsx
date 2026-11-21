@@ -28,8 +28,9 @@ export const Status = ({ tone, children, className }: { readonly tone: Tone; rea
   </span>
 );
 
-export const Chip = ({ children, className }: { readonly children: ReactNode; readonly className?: string }) => (
+export const Chip = ({ children, className, title }: { readonly children: ReactNode; readonly className?: string; readonly title?: string }) => (
   <span
+    title={title}
     className={cn(
       "inline-flex h-[22px] items-center gap-[5px] whitespace-nowrap rounded-sm border border-line-2 px-2 text-sm text-muted [&_svg]:size-3",
       className,

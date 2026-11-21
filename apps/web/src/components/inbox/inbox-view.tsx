@@ -1,7 +1,7 @@
 "use client";
 
 import { skipToken, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRightIcon, ArrowUpIcon, ArrowUpRightIcon, BotIcon, ChevronDownIcon, CircleAlertIcon, InfoIcon, LoaderCircleIcon, PauseIcon, PlusIcon, SearchIcon, TriangleAlertIcon } from "lucide-react";
+import { ArrowRightIcon, ArrowUpIcon, ArrowUpRightIcon, BotIcon, ChevronDownIcon, CircleAlertIcon, InfoIcon, ListTreeIcon, LoaderCircleIcon, PauseIcon, PlusIcon, SearchIcon, TriangleAlertIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -77,6 +77,25 @@ export type RowTick = {
   readonly parentHref: string | null;
 };
 
+/**
+ * A parent's `{n} sub-issues` chip (inbox-bulk-start.md). It gives way before the title does: in a
+ * narrow title cell (a phone, or the bulk panel beside the list) it keeps only its count, and the words
+ * move to its tooltip and its accessible name.
+ */
+export const SubIssueChip = ({ count, className }: { readonly count: number; readonly className?: string }) => {
+  const words = plural(count, "bulkStart.subIssueChip.one", "bulkStart.subIssueChip.other");
+  return (
+    <Chip className={cn("shrink-0 text-faint", className)} title={words}>
+      <span className="hidden @min-[22rem]:inline">{words}</span>
+      <span className="inline-flex items-center gap-1 @min-[22rem]:hidden" data-compact>
+        <ListTreeIcon aria-hidden className="stroke-[1.75]" />
+        <span aria-hidden>{count}</span>
+        <span className="sr-only">{words}</span>
+      </span>
+    </Chip>
+  );
+};
+
 /** One ticket: priority, key, title, labels, (board), status, its task, and the age of its last change. */
 export const TicketRow = ({ ticket, several, tasks = true, selected, onSelect, now, tick }: { readonly ticket: InboxTicket; readonly several: boolean; readonly tasks?: boolean; readonly selected: boolean; readonly onSelect: () => void; readonly now: number; readonly tick?: RowTick }) => (
   <li className="flex items-center border-b border-line" data-ticket={ticket.key} data-selected={selected} data-ticked={tick?.ticked === true}>
@@ -113,14 +132,15 @@ export const TicketRow = ({ ticket, several, tasks = true, selected, onSelect, n
         <PriorityIcon priority={ticket.priority} />
       </span>
       <span className="font-mono text-ui text-faint">{ticket.key}</span>
-      <span className="flex min-w-0 items-center gap-2">
+      {/* A container: a parent's chip reads the title cell's width, and gives way before the title does. */}
+      <span className="@container flex min-w-0 items-center gap-2">
         <span className="truncate text-body text-text">{ticket.title}</span>
         {ticket.subIssues > 0 ? (
           tick?.parentHref === null || tick?.parentHref === undefined ? (
-            <Chip className="shrink-0 text-faint">{plural(ticket.subIssues, "bulkStart.subIssueChip.one", "bulkStart.subIssueChip.other")}</Chip>
+            <SubIssueChip count={ticket.subIssues} />
           ) : (
             <Link href={tick.parentHref} onClick={(event) => { event.stopPropagation(); }} className="shrink-0" data-testid="parent-link">
-              <Chip className="text-faint hover:text-text">{plural(ticket.subIssues, "bulkStart.subIssueChip.one", "bulkStart.subIssueChip.other")}</Chip>
+              <SubIssueChip count={ticket.subIssues} className="hover:text-text" />
             </Link>
           )
         ) : null}
