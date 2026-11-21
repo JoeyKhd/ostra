@@ -1,6 +1,6 @@
 # Starting from Linear, and tasks from outside
 
-**Status:** accepted (2026-11-19, on the maintainer's delegation for milestone 6's spec). Settles Q214 to Q219. Covers F-012 and F-040, and builds on ADR 0013 (Linear's two modes, amended below it for this milestone), ADR 0031 (outside tasks wait for a member), ADR 0030 (no credential in the box) and ADR 0050 (what may leave the install).
+**Status:** accepted (2026-11-19, on the maintainer's delegation for milestone 6's spec). Settles Q214 to Q219. Covers F-012 and F-040, and builds on ADR 0013 (Linear's two modes, amended below it for this milestone), ADR 0031 (outside tasks wait for a member), ADR 0030 (no credential in the box) and ADR 0050 (what may leave the install). **Amended 2026-11-21 by ADR 0070:** a member's follow-up brings the files in its comment, fetched as a ticket's are.
 
 Linear's agent mode lets anyone in a Linear workspace hand a ticket to ostra. Most of them are the organization's own members; some aren't, and ticket text from anyone reaches an agent that runs commands. This ADR says who is who, where a delegation goes, what ostra writes back, and what waits.
 

@@ -75,3 +75,15 @@ Chosen on the maintainer's delegation for milestone 7's spec, and confirmed the 
 | `@agentclientprotocol/claude-agent-acp` 0.108.1, and through it `@anthropic-ai/claude-agent-sdk` 0.3.326 | **No `package.json`:** installed at run time by the runner, or into an agent image (ADR 0062, ADR 0046) | Claude Code over ACP (F-018) | Apache-2.0; the SDK and Claude Code under Anthropic's legal agreements; confirmed 2026-11-19, **withdrawn 2026-11-19** (F-018 is after v1) | Withdrawn: nothing in v1 installs it. The row stays for when F-018 is built, and asks for its yes again then |
 
 No other new dependency is planned for milestone 7: the keyboard and contrast checks, the message-file check and the measure's script are ostra's own code on what's already installed.
+
+## Milestone 9 (2026-11-21)
+
+Chosen for milestone 9's spec (ADR 0070, `research/attachments-for-agents.md` §5) under the maintainer's permission for that session's work, pending the maintainer's own review (milestone 9's ticket 19). Each is pinned exactly, in `apps/core` only, so the runner's image doesn't grow. Added by milestone 9's ticket 07.
+
+| Dependency | Package | For | License | If withdrawn |
+|---|---|---|---|---|
+| `unpdf` 2.2.1 | `apps/core` | A PDF's text layer, page by page (F-150) | MIT, no dependencies; it bundles Mozilla's pdf.js (Apache-2.0) | `pdfjs-dist` 6.5.438 (Apache-2.0) directly, its legacy build |
+| `fflate` 0.8.3 | `apps/core` | Reading an Office file's zip part by part, with each part's declared size checked first (F-150) | MIT, no dependencies | Node's `zlib` with ostra's own reader of a zip's central directory |
+| `@xmldom/xmldom` 0.9.12 | `apps/core` | Parsing an Office part's XML (F-150) | MIT, no dependencies | A small tokenizer of ostra's own for the few elements read |
+
+Considered and not added: `mammoth` (its `jszip` is `(MIT OR GPL-3.0-or-later)`, which the images' notices check refuses), `officeparser` (an OCR engine that fetches its data at run time) and `pdf-parse` (a native module).

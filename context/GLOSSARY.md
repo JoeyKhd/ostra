@@ -59,7 +59,7 @@ A project's list of the open tickets on its boards, from ostra's cached copy, wh
 _Avoid_: backlog, queue (the queue holds tasks waiting for a runner), triage
 
 **Ticket template**:
-The text a ticket task's first prompt is rendered from: the ticket's title, description, comments, labels, images, parent and linked tickets, and the agent profile's instructions, each piece of the ticket's own text in a marked block. A project has the built-in one until an admin edits it. It holds placeholders and sections, and no code.
+The text a ticket task's first prompt is rendered from: the ticket's title, description, comments, labels, images, parent and linked tickets, and the agent profile's instructions, each piece of the ticket's own text in a marked block. A project has the built-in one until an admin edits it. It holds placeholders and sections, and no code. From milestone 9 the ticket's files go with the first message as message files, and ostra's own words name them, so the built-in template has no images section.
 _Avoid_: prompt template (the rebuild template is another thing), context
 
 **Ticket write**:
@@ -390,6 +390,32 @@ _Avoid_: ticket (alone: that's a tracker's), token (the CLI session's is the tok
 **App-only start**:
 "Start the app" on a stopped task: a box started from the task's branches and hidden ref to run its app processes, with no agent and no model call. A member's message then starts a turn in that box.
 _Avoid_: preview box, wake, reopen (a reopen is a turn)
+
+### Files for the agent
+
+**Message file**:
+A file that goes with a task's message: one a member adds by the paperclip, a paste or a drop, or one of the task's ticket files, given with its first prompt or a ticket update. It's kept as a blob of the task, shown in the thread under its message, and written into the box under the workspace root's `.ostra/`, outside every repo, before the agent gets the message. An image also reaches the model as an image when the agent and the model take images.
+_Avoid_: attachment (that's a screenshot or a recording of the app; the panel's `Attachments` group shows both), upload (alone: an unsent upload is a message file not sent yet)
+
+**Unsent upload**:
+A message file a member has handed to ostra in a message box and not sent yet. It belongs to the member and the project until a message takes it, and one no message takes within a day is deleted.
+_Avoid_: draft image (a refine draft's own images), attachment
+
+**Ticket file**:
+A file a ticket holds, which the tracker keeps: an image or a file inline in its description or a comment, or a file attached to it. A link attachment (a pull request, a Figma frame) isn't one: the agent gets its title and URL. A task's ticket files become message files of its first message.
+_Avoid_: ticket attachment (a tracker's attachments include links), ticket image (images are one kind of ticket file)
+
+**Extracted text**:
+The text core reads out of a `.docx`, `.pdf`, `.xlsx` or `.pptx` message file when it comes in, written beside the file in the box as `<name>.md` for the agent. "text extracted" on a file's chip says it exists.
+_Avoid_: OCR (ostra reads only a document's own text), summary, preview
+
+**Image input**:
+Whether a model can see images: models.dev's `modalities.input` for it, or an organization admin's "Reads images" for that model, which wins. Unknown counts as no, and the agent then gets images as files.
+_Avoid_: vision (a vendor's word), multimodal
+
+**Ticket update**:
+ostra's message to a task's agent with what changed on its ticket since the agent last read it: new and edited comments, an edited description and new files, as the ticket's text in marked blocks. A reopen of a ticket task sends one by itself, and "Send ticket updates" sends one on a member's press.
+_Avoid_: ticket sync (that's ostra writing progress to the ticket), refresh
 
 ### Agents and models
 

@@ -2,7 +2,7 @@
 
 **Who answers:** 👤 = the maintainer's call · 🔬 = research informs it, then we decide together · 🔧 = a build task with a known fix: no decision is needed, and the row leaves when the fix is committed.
 
-A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q326). They are two separate ranges: Q-20 and Q20 are different questions.
+A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q341). They are two separate ranges: Q-20 and Q20 are different questions.
 
 ## Settled
 
@@ -505,6 +505,32 @@ Ticket 34 of that spec asks the maintainer to review the lead's calls; any the m
 |---|---|
 | Q325 How does ostra tell the panel's site from the preview domain's, without the public suffix list? | ADR 0068 ("Decided by the lead"), F-144, the lead on the builder's recommendation: by the browser's own `Sec-Fetch-Site` and `Sec-Fetch-Dest` at each handshake. `None; Partitioned` for a frame on another site, `Lax` in a tab or on the panel's site, and a browser's `cross-site` is never read as the panel's site. Ticket 25's rule (`previewSiteLayout`) is the fallback for a browser that sends neither. No dependency |
 | Q326 How tall is the browser view's tablet preset? | ADR 0068 ("Decided by the lead"), F-141, the lead's call: as tall as the preset, 834×1112. A browser view's page is capped by its pixels, at most 1440×900's in all and 1920 a side, so every preset fits, and the screencast sends each page at its own size |
+
+#### Settled for milestone 9's spec (2026-11-21)
+
+The maintainer called attachments a top priority on 2026-11-21 ("LOL no attachements?!?!?!?!"; "the full ticket shouldd be used as context"). Writing `specs/m9-attachments/spec.md` met these questions, from `research/attachments-for-agents.md`. They were settled two ways:
+- **Q327 to Q331** are the lead's proposal, which the maintainer accepted on 2026-11-21.
+- **Q332 to Q341** are the lead's call on the research, recorded on the maintainer's behalf.
+
+Ticket 19 of that spec asks the maintainer to look at the lead's calls; any the maintainer disagrees with moves back to the open list. The spec's section 12 restates them all.
+
+| Question | Settled in |
+|---|---|
+| Q327 Where can a member attach files, and how? | ADR 0070, F-148, the lead's proposal, accepted: in the new-task box and in every message after it (a message, a reply, an interrupt, a reopen), by paste, drag and drop or a paperclip, any file type, each shown as a thumbnail or a chip and removable before sending; files with no words make a message |
+| Q328 What does the agent get of a file? | ADR 0070, F-148, F-150, the lead's proposal, accepted: every file in the task's workspace, outside the repos, with its path in the prompt; an image also as an image when the agent and the model take images, with a warning in the box when they don't; a document ostra can read with its text beside it |
+| Q329 What does a task started from a ticket get? | ADR 0070, F-149, the lead's proposal, accepted: the full ticket (description, comments, every file inline or attached), fetched through the tracker adapter as a declared capability, Linear now and Jira later, extending F-064 |
+| Q330 Where are files kept, and who sees them? | ADR 0070, F-148, the lead's proposal, accepted: ostra's blobs, kept with the task, shown in the thread, downloadable by anyone who can see the task, with fixed content types, `nosniff` and a sandbox, as milestone 8's attachments; untrusted data, never run, never put into a command |
+| Q331 What are the limits? | ADR 0070, F-148, F-149, the lead's proposal, accepted: 10 files a message, 10 MiB each and 25 MiB in all; a ticket's 20 files, 10 MiB each and 50 MiB in all; settings with those defaults; too big or too many left out with a note in the thread, never a failure |
+| Q332 How do images reach OpenCode? | ADR 0070, F-148, the lead's call: ACP `image` blocks with base64 data in `session/prompt` and `_session/steering`, behind the agent capability `promptImages` and the agent's own `promptCapabilities.image`, with the model's input modalities written into OpenCode's catalog file and config (without them OpenCode turns every image into an error line). No `resource_link`: OpenCode reads a linked file itself past its permission check and drops types it can't name. The fallback is the file and the agent's read tool |
+| Q333 Where do files go in the box? | ADR 0070, F-148, F-149, the lead's call: under the workspace's root, outside every repo: `.ostra/attachments/<n>/` for a message's (`<n>` the message's number in the task's log), `.ostra/ticket/` for the ticket's, a document's text beside it as `.md`; written again on every fresh box; the runner names the absolute paths in the protocol's fixed words. F-064's folder in the session's folder stays only for tasks started before |
+| Q334 Where, and with what, is a document's text read? | ADR 0070, F-150, the lead's call: in core, when the file comes in (before an upload answers; in the job that fetches a ticket's file), in a worker pool with time, memory and size limits; `.docx`, `.xlsx` and `.pptx` by ostra's own reader on `fflate` 0.8.3 and `@xmldom/xmldom` 0.9.12, `.pdf` by `unpdf` 2.2.1, all MIT with no dependencies; no OCR; `OSTRA_FILE_TEXT_EXTRACTION` turns it off. `mammoth` was set aside: its `jszip` fails the images' notices check |
+| Q335 How does ostra know a model sees images? | ADR 0070, ADR 0033 amended, F-148, the lead's call: models.dev's `modalities.input`, kept on each model by the catalog sync, and an organization admin's "Reads images" per model, which wins; unknown counts as no |
+| Q336 Does a running task get a ticket's new comments and files? | ADR 0070, F-149, the lead's call: not by themselves (only a project's members steer, ADR 0057); a reopen of a ticket task reads the ticket again and passes on what changed; "Send ticket updates" does so on a member's press; a failed file has Retry; a Linear follow-up brings its own files |
+| Q337 Are a ticket's links fetched? | ADR 0070, F-149, the lead's call: no; a link attachment (a pull request, Figma, Sentry) goes to the agent as its title and URL |
+| Q338 How do uploads work? | ADR 0070, ADR 0043 amended, F-148, the lead's call: one file a request, as `FormData`, through the web app to core with a one-minute token for that organization, project, member, size and digest; bound to a message at send; deleted after 24 hours unsent |
+| Q339 Which images go to a model as images? | ADR 0070, F-148, the lead's call: PNG, JPEG, GIF and WebP, told by their bytes, at most 10 of 10 MiB in one prompt; HEIC, AVIF, BMP and SVG are files, and an SVG is never drawn as an image |
+| Q340 Which protocol minor carries files? | ADR 0070, F-148, the lead's call: minor 8; a task or a message with files goes only to a minor-8 runner, and the box says when the task's runner needs upgrading |
+| Q341 What of video and audio? | ADR 0070, F-148, the lead's call: files only, within the limits; no frames and no transcripts |
 
 ## Open
 
