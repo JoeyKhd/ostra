@@ -71,6 +71,16 @@ describe("the pool (F-150/c2)", () => {
     expect(pool.stats()).toMatchObject({ workers: 1, started: 1, replaced: 0 });
   });
 
+  it("F-150/c1: a file's bytes as a Node Buffer, as an upload's body arrives, are read too, and stay the caller's", async () => {
+    const { pool } = testPool();
+    // A small Buffer is a view on Node's shared pool, which no message can move.
+    const bytes = Buffer.from(await specDocx());
+    const before = Buffer.from(bytes);
+    const result = await pool.read({ bytes, kind: "docx", name: "spec.docx" });
+    expect(result.state).toBe("ready");
+    expect(bytes.equals(before)).toBe(true);
+  });
+
   it("F-150/c2: a file that runs past the time limit is timeout, its worker replaced, and the pool takes the next file", async () => {
     const { pool, logger } = testPool();
     const started = performance.now();

@@ -88,14 +88,14 @@ export type RecordUploadInput = {
   readonly text: UploadText;
 };
 
-/** What the upload answers the box: the file, and its text's state and words. */
+/** What the upload answers the box: the file, and its text's state, a failed one's reason, and a ready one's words. */
 export type RecordedUpload = {
   readonly fileId: MessageFileId;
   readonly name: SafeFileName;
   readonly kind: MessageFileKind;
   readonly contentType: string;
   readonly size: number;
-  readonly text: { readonly state: FileTextLifecycle["state"]; readonly words: number | null };
+  readonly text: { readonly state: FileTextLifecycle["state"]; readonly reason: string | null; readonly words: number | null };
 };
 
 /** Records a member's upload, `uploaded`, no task's (core's endpoint, after it stored the blobs). */
@@ -126,8 +126,36 @@ export const recordUpload = async (tx: Tx, input: RecordUploadInput): Promise<Re
     kind: input.kind,
     contentType: input.contentType,
     size: input.size,
-    text: { state: text.state, words: text.state === "ready" ? text.words : null },
+    text: { state: text.state, reason: text.state === "failed" ? text.reason : null, words: text.state === "ready" ? text.words : null },
   };
+};
+
+/**
+ * How many unsent uploads a member may hold in one project at once (ticket 10, a working value):
+ * twice a message's files, so the tray can't fill the store. The next upload is refused.
+ */
+export const unsentUploadsMax = (limits: Pick<FileLimits, "maxFiles">): number => 2 * limits.maxFiles;
+
+/** The member's unsent uploads in the project. */
+export const unsentUploadsOfInTx = (
+  tx: Pick<Tx, "messageFile">,
+  who: { readonly organizationId: OrganizationId; readonly projectId: ProjectId; readonly memberId: MemberId },
+): Promise<number> =>
+  tx.messageFile.count({ where: { organizationId: who.organizationId, projectId: who.projectId, memberId: who.memberId, origin: "member", state: "uploaded", taskId: null } });
+
+export type RecordUploadWithinCapResult = UseCaseResult<RecordedUpload, "too-many-unsent">;
+
+/**
+ * Records a member's upload unless they hold `cap` unsent ones in the project already
+ * (`unsentUploadsMax`). The member's uploads in a project are counted under one lock, so two
+ * uploads at once can't both take the last place.
+ */
+export const recordUploadWithinCapInTx = async (tx: Tx, input: RecordUploadInput, cap: number): Promise<RecordUploadWithinCapResult> => {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`unsent-uploads:${input.projectId}:${input.memberId}`}))`;
+  if ((await unsentUploadsOfInTx(tx, input)) >= cap) {
+    return { ok: false, error: "too-many-unsent", message: `You have ${String(cap)} files waiting to be sent in this project: send or remove some first` };
+  }
+  return { ok: true, ...(await recordUpload(tx, input)) };
 };
 
 export type DiscardUploadDeps = {

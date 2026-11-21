@@ -132,8 +132,9 @@ export const createTextPool = (options: TextPoolOptions): TextPool => {
       clearTimeout(job.waitTimer);
       job.waitTimer = null;
     }
-    // The worker gets its own copy, moved to it, so the caller keeps its bytes and only they move.
-    const bytes = job.input.bytes.slice();
+    // The worker gets its own copy, moved to it, so the caller keeps its bytes and only they move. A
+    // copy into a fresh buffer: a Node `Buffer`'s `slice` is a view on a pool no message can move.
+    const bytes = new Uint8Array(job.input.bytes);
     const request: WorkerRequest = { type: "read", id: job.id, bytes, kind: job.input.kind, name: job.input.name, limits: readLimits };
     const startedAt = performance.now();
     const timer = setTimeout(() => {

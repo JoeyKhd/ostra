@@ -407,7 +407,7 @@ A file that goes with a task's message: one a member adds by the paperclip, a pa
 _Avoid_: attachment (that's a screenshot or a recording of the app; the panel's `Attachments` group shows both), upload (alone: an unsent upload is a message file not sent yet)
 
 **Unsent upload**:
-A message file a member has handed to ostra in a message box and not sent yet. It belongs to the member and the project until a message takes it, and one no message takes within a day is deleted.
+A message file a member has handed to ostra in a message box and not sent yet. It belongs to the member and the project until a message takes it, and one no message takes within a day is deleted. A member holds at most twice `OSTRA_MESSAGE_FILES_MAX` of them in a project at once.
 _Avoid_: draft image (a refine draft's own images), attachment
 
 **Ticket file**:

@@ -1,11 +1,23 @@
 import { createHmac } from "node:crypto";
 
 import { base64urlMacEqual } from "@ostra/adapter-sdk";
-import { memberIdSchema, organizationIdSchema, parseJson, projectIdSchema, runnerLimits, sha256HexSchema } from "@ostra/protocol";
+import {
+  fileTextStateSchema,
+  memberIdSchema,
+  messageFileIdSchema,
+  messageFileKindSchema,
+  organizationIdSchema,
+  parseJson,
+  projectIdSchema,
+  runnerLimits,
+  safeFileNameSchema,
+  sha256HexSchema,
+} from "@ostra/protocol";
 import type { MemberId, OrganizationId, ProjectId, Sha256Hex } from "@ostra/protocol";
 import { z } from "zod";
 
 import { PANEL_BLOB_TOKEN_PREFIX } from "../panel-blob-token.ts";
+import type { RecordedUpload } from "./message-files.ts";
 
 // A member's upload goes through the web app to core (ADR 0043 amended, ADR 0070, Q338): the web
 // app checks the member can open the project, the file's size against the limit and the member's
@@ -79,3 +91,54 @@ export const createPanelFileTokens = (secret: string): PanelFileTokens => {
     },
   };
 };
+
+// ---------- the request and the answer ----------
+
+/**
+ * The header that carries the file's name as the member's browser gave it, percent-encoded
+ * (`encodeURIComponent`), since a header holds no other text. Core makes it safe (`fileKindOf`).
+ * Never in a URL, never logged.
+ */
+export const PANEL_FILE_NAME_HEADER = "x-ostra-file-name";
+
+/** The most characters of the name header core reads; a longer name is cut before it's made safe. */
+export const PANEL_FILE_NAME_HEADER_MAX = 2048;
+
+/**
+ * What core answers when it stored a member's upload: the file, as the tray shows it, and its
+ * text's state (`none`, `off`, `ready` with its words, `failed` with the reader's reason).
+ */
+export const panelFileResponseSchema = z.strictObject({
+  fileId: messageFileIdSchema,
+  name: safeFileNameSchema,
+  kind: messageFileKindSchema,
+  contentType: z.string().min(1).max(255),
+  size: z.number().int().min(1),
+  text: z.strictObject({
+    state: fileTextStateSchema,
+    reason: z.string().max(64).nullable(),
+    words: z.number().int().nonnegative().nullable(),
+  }),
+});
+export type PanelFileResponse = z.infer<typeof panelFileResponseSchema>;
+
+// The schema reads exactly what `recordUpload` answers.
+panelFileResponseSchema satisfies z.ZodType<RecordedUpload>;
+
+/**
+ * Why core refused an upload, each a code the panel words (ticket 15):
+ * - `unauthorized`: no token, a forged one, or one past its minute;
+ * - `size-mismatch`: the body isn't the size the token names; `digest-mismatch`: its SHA-256 isn't;
+ * - `empty`: a file of no bytes;
+ * - `too-large`: the token names a size over `OSTRA_MESSAGE_FILE_MAX_MIB`;
+ * - `too-many-unsent`: the member holds `unsentUploadsMax` unsent uploads in the project already;
+ * - `not-found`: the project isn't the organization's;
+ * - `bad-request`: a body that didn't arrive whole, or a name header that doesn't decode;
+ * - `unavailable`: the blob store didn't answer; try again.
+ */
+export const panelFileErrorCodes = ["unauthorized", "size-mismatch", "digest-mismatch", "empty", "too-large", "too-many-unsent", "not-found", "bad-request", "unavailable"] as const;
+export type PanelFileErrorCode = (typeof panelFileErrorCodes)[number];
+
+/** Core's refusal of an upload: a code and words for a person, never the file's name or content. */
+export const panelFileErrorSchema = z.strictObject({ error: z.strictObject({ code: z.enum(panelFileErrorCodes), message: z.string().max(2000) }) });
+export type PanelFileError = z.infer<typeof panelFileErrorSchema>;

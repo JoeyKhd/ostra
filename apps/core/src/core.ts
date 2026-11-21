@@ -36,6 +36,9 @@ import { agentImportsArchives } from "./agents/session-archives.ts";
 import { handleBlobEndpoint } from "./blobs/endpoints.ts";
 import { handlePanelBlobEndpoint } from "./blobs/panel-endpoints.ts";
 import { blobGcHandler, ensureBlobGcSchedule } from "./blobs/gc.ts";
+import { handlePanelFileEndpoint } from "./blobs/panel-file-endpoint.ts";
+import { ensureUnsentSweepSchedule, sweepUnsentHandler } from "./files/sweep-unsent.ts";
+import { createDocumentTextReader } from "./files/text/index.ts";
 
 import { catalogRefreshHandler, catalogSource, ensureSchedules, providerRefreshHandler } from "./catalog/catalog.ts";
 import { admitHandler, applyOfferResultsInTx, dispatchHandler, offerTimeoutHandler, requeueQueuedTasks } from "./dispatch/dispatcher.ts";
@@ -428,7 +431,20 @@ export const startCore = async (
   // The panel's own way in for a member's file (ticket 42): its token is made under the secrets key,
   // which the panel and core both hold.
   const panelBlobEndpoints = handlePanelBlobEndpoint({ blobs, secret: () => loadSecretsKey(settings), clock: systemClock, logger });
+  // Milestone 9 (F-150, ticket 07): the one text reader of this process, its workers started by the
+  // first document. A member's upload reads through it (ticket 10), and a ticket's files (ticket 12).
+  const documentText = createDocumentTextReader({ extraction: settings.files.textExtraction, logger });
+  // A member's upload (F-148, ticket 10): the panel's file token, made under the secrets key.
+  const panelFileEndpoint = handlePanelFileEndpoint({
+    db,
+    store: { blobs, text: documentText, extraction: settings.files.textExtraction },
+    limits: settings.files,
+    secret: () => loadSecretsKey(settings),
+    clock: systemClock,
+    logger,
+  });
   await jobs.work("blob.gc", blobGcHandler({ db, clock: systemClock, logger, ...(s3 === undefined ? {} : { s3 }) }), { localConcurrency: 1 });
+  await jobs.work("files.sweep-unsent", sweepUnsentHandler({ db, blobs, clock: systemClock, logger }), { localConcurrency: 1 });
   // The webhook inbox (ticket 13): verify, claim, 200; `webhook.process` acts from the queue.
   const inbox = createWebhookInbox({
     db,
@@ -762,7 +778,7 @@ export const startCore = async (
     logger,
   });
   const server = createCoreServer({
-    routes: [previews.handleRequest, panelStartApp, gateway.handleRequest, taskEndpoints, memoryEndpoints, reviewEndpoints, environmentProposalEndpoints, draftEndpoints, snapshotEndpoints, registryEndpoints, blobEndpoints, panelBlobEndpoints, inbox.handle, automationWebhooks.handle],
+    routes: [previews.handleRequest, panelStartApp, gateway.handleRequest, taskEndpoints, memoryEndpoints, reviewEndpoints, environmentProposalEndpoints, draftEndpoints, snapshotEndpoints, registryEndpoints, blobEndpoints, panelBlobEndpoints, panelFileEndpoint, inbox.handle, automationWebhooks.handle],
     upgrade: (request, socket, head) => {
       if (!previews.handleUpgrade(request, socket, head)) {
         gateway.handleUpgrade(request, socket, head);
@@ -810,6 +826,9 @@ export const startCore = async (
     });
     await ensureBlobGcSchedule(jobs).catch((error: unknown) => {
       logger.warn("schedules.failed", { job: "blob.gc", error: error instanceof Error ? error.name : "unknown" });
+    });
+    await ensureUnsentSweepSchedule(jobs).catch((error: unknown) => {
+      logger.warn("schedules.failed", { job: "files.sweep-unsent", error: error instanceof Error ? error.name : "unknown" });
     });
     await ensureRetentionSchedule(jobs).catch((error: unknown) => {
       logger.warn("schedules.failed", { job: "retention.sweep", error: error instanceof Error ? error.name : "unknown" });
@@ -873,6 +892,7 @@ export const startCore = async (
       ingest.stop();
       await liveText.stop();
       await jobs.stop({ graceful: true, timeoutMs: 10_000 });
+      await documentText.close();
       s3?.close();
       emailChannel.close();
       await db.$disconnect();

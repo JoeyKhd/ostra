@@ -474,9 +474,9 @@ A **message file** is a file the agent gets with a message: a member's, attached
 
 | State | Means | Leaves when |
 |---|---|---|
-| **uploaded** | The member's, in a project, no task's. Only that member can send or discard it | A message of that member in that project takes it, within the limits again (→ sent); left out at send, it stays an upload. A day passes unsent (→ expired, deleted by `files.sweep-unsent`) |
+| **uploaded** | The member's, in a project, no task's; its blobs the project's. Only that member can send or discard it. A member holds at most twice `OSTRA_MESSAGE_FILES_MAX` in a project at once, and core refuses the next upload | A message of that member in that project takes it, within the limits again (→ sent); left out at send, it stays an upload. A day passes unsent (→ expired, deleted by `files.sweep-unsent`) |
 | **sent** | Its message's: its task, its place in the message and in the box, and whether it went to the model as an image too | Never |
-| **expired** | Deleted with its blobs | Never |
+| **expired** | Its blobs deleted, the row kept as its record; a store that didn't answer leaves them for the next hour's sweep | Never |
 
 **A ticket's file** is what one read of the ticket made of a file it holds.
 

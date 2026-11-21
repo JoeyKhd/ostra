@@ -18,6 +18,9 @@ export const BLOB_CHUNK_BYTES = 1024 * 1024;
 /** The task a blob belongs to. Both or neither: the schema's composite key needs the project. */
 export type BlobOwner = { readonly projectId: ProjectId; readonly taskId: TaskId };
 
+/** Whose the rows' blobs are: a task's, or a project's with no task yet (a member's upload, F-148). */
+export type BlobRowsOwner = BlobOwner | { readonly projectId: ProjectId; readonly taskId: null };
+
 const STORE = "postgres" as const;
 
 const heldSchema = z.array(z.looseObject({ bytes: z.number() }));
@@ -91,8 +94,10 @@ const uploadSelect = {
 } as const;
 
 /** The built-in store's rows on Postgres, bound to `owner` when given. */
-export const postgresBlobRows = (db: Db, owner: BlobOwner | null = null): BlobRows => {
-  const ownerColumns = owner === null ? {} : { projectId: owner.projectId, taskId: owner.taskId };
+export const postgresBlobRows = (db: Db, owner: BlobRowsOwner | null = null): BlobRows => {
+  const ownerColumns = owner === null ? {} : { projectId: owner.projectId, ...(owner.taskId === null ? {} : { taskId: owner.taskId }) };
+  // An owner's uploads only: a task's, or a project's with no task.
+  const uploadsOfOwner = owner === null ? {} : owner.taskId === null ? { projectId: owner.projectId, taskId: null } : { taskId: owner.taskId };
   return {
     insertBlob: async (row: BlobRow) => {
       await db.$transaction(
@@ -120,7 +125,7 @@ export const postgresBlobRows = (db: Db, owner: BlobOwner | null = null): BlobRo
               size: row.size,
               receivedBytes: row.size,
               blobId: null,
-              ...(owner === null ? {} : { taskId: owner.taskId }),
+              ...uploadsOfOwner,
             },
             orderBy: { createdAt: "asc" },
             select: { id: true },
@@ -183,7 +188,7 @@ export const postgresBlobRows = (db: Db, owner: BlobOwner | null = null): BlobRo
           purpose,
           expectedSha256,
           blobId: null,
-          ...(owner === null ? {} : { taskId: owner.taskId }),
+          ...uploadsOfOwner,
         },
         orderBy: { createdAt: "asc" },
         select: uploadSelect,

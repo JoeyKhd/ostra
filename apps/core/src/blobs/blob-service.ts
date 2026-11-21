@@ -3,11 +3,11 @@ import type { AdapterContext, AdapterResult, BlobStoreAdapter, Logger, StoredBlo
 import type { Db } from "@ostra/db";
 import type { BlobStoreSettings } from "@ostra/domain";
 import { blobIdSchema } from "@ostra/protocol";
-import type { BlobId, BlobRef, OrganizationId, Sha256Hex, TaskId, UploadId } from "@ostra/protocol";
+import type { BlobId, BlobRef, OrganizationId, ProjectId, Sha256Hex, TaskId, UploadId } from "@ostra/protocol";
 import { sha256HexSchema } from "@ostra/protocol";
 
 import { postgresBlobRows } from "./postgres-blob-rows.ts";
-import type { BlobOwner } from "./postgres-blob-rows.ts";
+import type { BlobOwner, BlobRowsOwner } from "./postgres-blob-rows.ts";
 
 // The blob service (ADR 0043, ticket 12): the one place on the server that stores and reads blobs.
 // It picks the store from OSTRA_BLOB_STORE (`postgres`, the built-in one, by default), keeps a
@@ -15,10 +15,29 @@ import type { BlobOwner } from "./postgres-blob-rows.ts";
 // OSTRA_BLOB_MAX_MIB with a clear error, and reads a blob only for its own organization (and, when
 // asked, its own task). Bytes are never logged: log lines carry blob IDs, sizes and digests.
 
-/** Who a blob belongs to: its organization, and the task it was made for when there is one. */
-export type BlobScopeOwner = {
-  readonly organizationId: OrganizationId;
-  readonly task: BlobOwner | null;
+/**
+ * Who a blob belongs to: its organization, and the task it was made for when there is one. A blob
+ * made for no task yet may name its project instead (a member's upload, F-148, ADR 0070): its row
+ * carries the project, and the message that takes the file makes it the task's.
+ */
+export type BlobScopeOwner =
+  | { readonly organizationId: OrganizationId; readonly task: BlobOwner | null; readonly projectId?: never }
+  | { readonly organizationId: OrganizationId; readonly task: null; readonly projectId: ProjectId };
+
+/** The row columns that say whose a blob is: its task's and project's, its project's alone, or neither. */
+const ownerColumnsOf = (owner: BlobScopeOwner): { readonly projectId?: ProjectId; readonly taskId?: TaskId } => {
+  if (owner.task !== null) {
+    return { projectId: owner.task.projectId, taskId: owner.task.taskId };
+  }
+  return owner.projectId === undefined ? {} : { projectId: owner.projectId };
+};
+
+/** The built-in store's rows' owner: the task, or the project of a blob with no task yet. */
+const rowsOwnerOf = (owner: BlobScopeOwner): BlobRowsOwner | null => {
+  if (owner.task !== null) {
+    return owner.task;
+  }
+  return owner.projectId === undefined ? null : { projectId: owner.projectId, taskId: null };
 };
 
 export type BlobServiceError =
@@ -134,7 +153,7 @@ export const createBlobService = (deps: BlobServiceDeps): BlobService => {
   /** The store new blobs go to: the built-in one is bound to its owner, so its rows carry the task. */
   const storeFor = (owner: BlobScopeOwner): BlobStoreAdapter =>
     settings.kind === "postgres" || s3 === undefined
-      ? new PostgresBlobStore({ rows: postgresBlobRows(db, owner.task), maxBytes }, deps.context)
+      ? new PostgresBlobStore({ rows: postgresBlobRows(db, rowsOwnerOf(owner)), maxBytes }, deps.context)
       : s3;
 
   /**
@@ -143,7 +162,7 @@ export const createBlobService = (deps: BlobServiceDeps): BlobService => {
    * `undefined`: the blob is in a store this install has no settings for.
    */
   const storeHolding = (store: "postgres" | "s3", owner: BlobScopeOwner): BlobStoreAdapter | undefined =>
-    store === "s3" ? s3 : new PostgresBlobStore({ rows: postgresBlobRows(db, owner.task), maxBytes }, deps.context);
+    store === "s3" ? s3 : new PostgresBlobStore({ rows: postgresBlobRows(db, rowsOwnerOf(owner)), maxBytes }, deps.context);
 
   const notConfigured = (store: string): BlobServiceResult<never> => ({
     ok: false,
@@ -187,7 +206,7 @@ export const createBlobService = (deps: BlobServiceDeps): BlobService => {
         where: { store_key: { store: settings.kind, key: stored.key } },
         create: {
           organizationId: owner.organizationId,
-          ...(owner.task === null ? {} : { projectId: owner.task.projectId, taskId: owner.task.taskId }),
+          ...ownerColumnsOf(owner),
           store: settings.kind,
           key: stored.key,
           purpose,
@@ -273,7 +292,7 @@ export const createBlobService = (deps: BlobServiceDeps): BlobService => {
           create: {
             id: started.value.uploadId,
             organizationId: owner.organizationId,
-            ...(owner.task === null ? {} : { projectId: owner.task.projectId, taskId: owner.task.taskId }),
+            ...ownerColumnsOf(owner),
             store: "s3",
             purpose: input.purpose,
             contentType: input.contentType,
