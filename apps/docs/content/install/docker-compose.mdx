@@ -50,16 +50,25 @@ The compose file's runner uses the `docker` executor, so each task runs in its o
 
 ## Required settings
 
-None. Every setting has a working default, listed in the [configuration reference](/docs/reference/configuration). The ones you're most likely to set go in front of `docker compose up`, or under the server's `environment:` in `compose.yaml`:
+None. Every setting has a working default, listed in the [configuration reference](/docs/reference/configuration). The ones you're most likely to set:
 
 | Setting | Default | Set it when |
 |---|---|---|
 | `OSTRA_PUBLIC_URL` | `http://localhost:3000` | People reach the panel at another address, such as `https://ostra.example.com`. |
 | `OSTRA_CORE_PUBLIC_URL` | `http://localhost:8787` | Runners on other machines, or GitHub's and Linear's webhooks, reach core at another address. |
 
+To set any setting, write it in a `.env` file in the folder that holds `compose.yaml`, one `NAME=value` a line, then start or restart:
+
 ```sh
-OSTRA_PUBLIC_URL=https://ostra.example.com OSTRA_CORE_PUBLIC_URL=https://core.ostra.example.com docker compose up -d
+cat >> .env <<'EOF'
+OSTRA_PUBLIC_URL=https://ostra.example.com
+OSTRA_CORE_PUBLIC_URL=https://core.ostra.example.com
+EOF
+chmod 600 .env
+docker compose up -d
 ```
+
+Compose hands every line of `.env` to the server. The file is optional, and an upgrade, which replaces `compose.yaml`, leaves it as it is, so keep your settings there rather than in `compose.yaml`. The values `compose.yaml` sets itself, such as the database's address and the data folder, win over it. Put a value that holds a `$` in single quotes, or Compose reads it as a variable. A misspelt `OSTRA_` name stops the server at start, and `docker compose logs server` names it. Reading `.env` this way needs Docker Compose 2.24 or later.
 
 Put a TLS-terminating proxy in front of both ports for an install others reach. Without a public address everything still works: GitHub and Linear are read on a schedule instead of by webhook.
 

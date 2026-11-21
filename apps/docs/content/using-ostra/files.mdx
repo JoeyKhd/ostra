@@ -34,14 +34,11 @@ The server checks again when the message is sent, and leaves out what's over, wi
 
 You can hold at most twice `OSTRA_MESSAGE_FILES_MAX` uploads in a project that no message has taken yet, 20 at the defaults. Send or remove some to upload more.
 
-The limits are server settings, set like any other: under the server's `environment:` in `compose.yaml`, or in the server chart's `env` on Kubernetes.
+The limits are server settings, set like any other: in the `.env` file beside `compose.yaml` ([Install with Docker Compose](/docs/install/docker-compose)), or in the server chart's `env` on Kubernetes.
 
-```yaml
-services:
-  server:
-    environment:
-      OSTRA_MESSAGE_FILES_MAX: "20"
-      OSTRA_MESSAGE_FILE_MAX_MIB: "25"
+```ini
+OSTRA_MESSAGE_FILES_MAX=20
+OSTRA_MESSAGE_FILE_MAX_MIB=25
 ```
 
 A file's limit is never more than the blob store's, `OSTRA_BLOB_MAX_MIB`. See the [configuration reference](/docs/reference/configuration).

@@ -1,8 +1,9 @@
 # ostra on one machine (F-001): `docker compose -f deploy/compose.yaml up` from a clone.
 #
 # The server (the panel and core), Postgres, and one pool runner on the `docker` executor. Only the
-# required settings, each with a working default (docs/configuration.md). The first account needs
-# the setup token the server prints in its log at first start (Q117).
+# required settings, each with a working default (docs/configuration.md); the server reads any
+# other from an optional .env file beside this one. The first start creates the admin `demo`, whose
+# password the panel asks to change at the first sign-in.
 #
 # The server, runner and base images are the ones `pnpm images:build` tags,
 # `<namespace>/<name>:<version>` (`pnpm check:images` keeps them equal): `ostra/` and 0.0.0 in a
@@ -37,6 +38,11 @@ services:
       dockerfile: deploy/Dockerfile.server
     image: ostra/server:0.0.0
     command: ["all"]
+    # Any other setting (docs/configuration.md) goes in a .env file beside this one, one NAME=value a
+    # line, which an upgrade's new compose file leaves alone. It's optional (Compose 2.24 or later),
+    # and the values below win over it; OSTRA_PUBLIC_URL and OSTRA_CORE_PUBLIC_URL are read from it too.
+    env_file:
+      - { path: .env, required: false }
     environment:
       NODE_ENV: production
       DATABASE_URL: postgres://ostra@postgres:5432/ostra
@@ -47,9 +53,8 @@ services:
       # on preview.localhost, with nothing to add (off turns it off). For other people to reach,
       # every name under a domain of yours must reach core's port 8787, on OSTRA_CORE_PUBLIC_URL's
       # scheme and port: one wildcard DNS record (*.previews.example.com) to your TLS proxy in front
-      # of this host, with a wildcard certificate, passing WebSocket upgrades. See
-      # OSTRA_PREVIEW_DOMAIN in docs/configuration.md.
-      # OSTRA_PREVIEW_DOMAIN: previews.example.com
+      # of this host, with a wildcard certificate, passing WebSocket upgrades. Then set
+      # OSTRA_PREVIEW_DOMAIN=previews.example.com in .env (docs/configuration.md).
       # Holds the generated keys and the bootstrap join token. Back it up (docs/configuration.md).
       OSTRA_DATA_DIR: /var/lib/ostra
     ports:

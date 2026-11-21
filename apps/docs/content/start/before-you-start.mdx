@@ -7,7 +7,7 @@ Three things, and an optional fourth. Have them at hand and the [30-minute path]
 
 ## A Linux machine with Docker
 
-The server, Postgres and a pool runner start from one compose file. The machine needs Docker Engine with the Compose plugin (`docker compose`), `curl`, and ports 3000 and 8787 free: the panel listens on 3000, and core, which runners connect to, on 8787.
+The server, Postgres and a pool runner start from one compose file. The machine needs Docker Engine with the Compose plugin (`docker compose`) 2.24 or later, `curl`, and ports 3000 and 8787 free: the panel listens on 3000, and core, which runners connect to, on 8787.
 
 > [!WARNING]
 > The pool runner mounts the Docker socket, which is root on this machine. Run pools on machines that do nothing else.

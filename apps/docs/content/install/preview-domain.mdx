@@ -67,15 +67,12 @@ The same page holds the organization's **Allow public preview links**, which its
 
 ## Docker Compose
 
-In `compose.yaml`, under the server's `environment:`, core's public address goes to `https`, and the commented `OSTRA_PREVIEW_DOMAIN` line is set:
+In the `.env` file beside `compose.yaml` ([Install with Docker Compose](/docs/install/docker-compose)), core's public address goes to `https`, and `OSTRA_PREVIEW_DOMAIN` is set:
 
-```yaml
-services:
-  server:
-    environment:
-      OSTRA_PUBLIC_URL: https://ostra.example.com
-      OSTRA_CORE_PUBLIC_URL: https://core.ostra.example.com
-      OSTRA_PREVIEW_DOMAIN: previews.example.com
+```ini
+OSTRA_PUBLIC_URL=https://ostra.example.com
+OSTRA_CORE_PUBLIC_URL=https://core.ostra.example.com
+OSTRA_PREVIEW_DOMAIN=previews.example.com
 ```
 
 ```sh

@@ -13,7 +13,7 @@ ostra uses semantic versioning, and the server and runner images are tagged per 
 
 ## Upgrade with Docker Compose
 
-In the folder that holds `compose.yaml`, fetch the new release's compose file, then pull and restart. The server runs its migrations as it starts.
+In the folder that holds `compose.yaml`, fetch the new release's compose file, then pull and restart. The server runs its migrations as it starts. The new file replaces the old one, so a change you made in `compose.yaml` is gone, while your settings in `.env` beside it stay.
 
 ```sh
 curl -fsSLO https://github.com/JoeyKhd/ostra/releases/latest/download/compose.yaml

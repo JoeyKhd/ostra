@@ -17,13 +17,13 @@ Then Home opens, with the setup checklist: [Setup in the panel](/docs/install/se
 
 ## Your own first admin
 
-To start with your own account instead of `demo`, give the server these settings **before its first start**, under the server's `environment:` in `compose.yaml`. They are read only when the first admin is created; changing them later changes nothing.
+To start with your own account instead of `demo`, give the server these settings **before its first start**, in the `.env` file beside `compose.yaml` ([Install with Docker Compose](/docs/install/docker-compose)). They are read only when the first admin is created; changing them later changes nothing.
 
-```yaml
-OSTRA_ADMIN_EMAIL: you@example.com
-OSTRA_ADMIN_USERNAME: you
-OSTRA_ADMIN_PASSWORD: a-password-of-12-or-more-characters
-OSTRA_ORGANIZATION_NAME: Example
+```ini
+OSTRA_ADMIN_EMAIL=you@example.com
+OSTRA_ADMIN_USERNAME=you
+OSTRA_ADMIN_PASSWORD=a-password-of-12-or-more-characters
+OSTRA_ORGANIZATION_NAME=Example
 ```
 
 With `OSTRA_ADMIN_PASSWORD` set, there's no forced change. For a demo that nobody else can reach, `OSTRA_ALLOW_DEFAULT_PASSWORD=true` lets `demo` keep the default password, with a warning across the panel until it changes. Never set it on an install others can reach.

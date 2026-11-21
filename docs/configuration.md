@@ -1,6 +1,6 @@
 # Configuration reference
 
-Every setting ostra reads, with its default and what it does. A fresh install needs none of them: each has a working default (the self-hosting rule in `AGENTS.md`).
+Every setting ostra reads, with its default and what it does. A fresh install needs none of them: each has a working default (the self-hosting rule in `AGENTS.md`). With Docker Compose, a server setting goes in the `.env` file beside `compose.yaml`; with Helm, in the server chart's `env`.
 
 **Every new setting adds its line here, in the same commit.** A test (`packages/domain/src/settings.test.ts`) reads this file and the settings schema, and fails when one lists a name the other doesn't. The server refuses an `OSTRA_*` variable it doesn't know, and names the ones it does, so a typo is caught at start. A setting ostra no longer reads is the exception: it is ignored with a warning, so an upgrade never fails on it (below, "Removed settings").
 
