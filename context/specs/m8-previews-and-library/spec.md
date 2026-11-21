@@ -516,7 +516,7 @@ Each condition of a row's "done when" gets a test named with its key. The buildi
 
 | From | What | To (ticket) |
 |---|---|---|
-| `spikes/box-browser-stream/` | the DevTools pipe client, the screencast with acks, the input mapping, the measured frame rate and size defaults | 11, 13, 18 |
+| `spikes/box-browser-stream/` | Measured in `research/spike-box-browser-stream.md`.<br>**11:** the DevTools pipe client (`src/cdp/`), the browser's flags with the crash reporter off, and closing it before its profile is removed, with retries.<br>**13:** a page of its own per screenshot or recording, PNG screenshots, and recordings as a 10 fps screencast by held acks, kept as JPEG q60 frames (a 30 s reel fits 32 MiB; PNG frames don't).<br>**18:** the screencast's defaults: JPEG q60, at most 1440×900, `maxFramesInFlight` 1, `sendLastFrame: true`, and 15 fps (2 on the HTTP carrier) by holding each ack, never by dropping frames. Also core's ack once every open stream has drained, the member's pane's stream reader and its one-in-flight input queue, and the input mapping with virtual-key codes from `code` | 11, 13, 18 |
 | `spikes/preview-through-core/` | HTTP/2 over a `ws` duplex, extended CONNECT for WebSockets, the `Host` and `Origin` rewrite, the `docker` forwarder, the partitioned cookie's attributes | 22, 23, 25 |
 
 Product code never imports `spikes/`. A builder copies the code into the product's package and adapts it, with a one-line provenance comment (`// Ported from spikes/<spike>/<path>.`).

@@ -1,6 +1,6 @@
 # 07: Spike: the box's browser, streamed
 
-Status: ready-for-agent
+Status: resolved
 Builder: runner
 Blocked by: none
 Features: F-141, F-121 (the numbers they rest on)
@@ -40,8 +40,17 @@ Record each, with the machine and the browser's version:
 
 ## Done when
 
-- [ ] `context/research/spike-box-browser-stream.md` holds every measurement, cited to its run's log in the spike's folder. The parts that need Linux with Docker are marked as waiting, never as passed.
-- [ ] Spec section 11's port line names what tickets 11, 13 and 18 take from the spike.
-- [ ] Committed as `✨ spike the box's browser stream`, and the finding as `📝 add the browser stream spike's finding`.
+- [x] `context/research/spike-box-browser-stream.md` holds every measurement, cited to its run's log in the spike's folder. The parts that need Linux with Docker are marked as waiting, never as passed.
+- [x] Spec section 11's port line names what tickets 11, 13 and 18 take from the spike.
+- [x] Committed as `✨ spike the box's browser stream`, and the finding as `📝 add the browser stream spike's finding`.
 
 ## Comments
+
+- 2026-11-21, runner: the spike is commit `25c480d0`, and the finding is this commit. It passes on this machine, headless Edge 157 on Windows (`research/spike-box-browser-stream.md`, section 2):
+  - 15 fps at 1280×800 while typing at 15 keys a second (8.2 at the fallback's cap of 8);
+  - a click back in 33 ms at p50 and 56 ms at p95, through core and the web hop;
+  - keys typed at 15 a second back in 53 ms at p95;
+  - the counter, typing, a paste and `/api` all work through the stream;
+  - the box's browser used 0.5 to 0.8 vCPU at the working defaults, and 280 to 460 MB, beside Vite's 151 MB and the API's 39 MB.
+
+  ADR 0068's working values stand, and its fallback isn't needed. The cap must hold the screencast's acks with `sendLastFrame` on: without the flag, the last change before a pause never arrives. The HTTP carrier gives 2 fps, with typing back in 560 ms at p95. Waiting for Linux with Docker: the 2 vCPU and 4 GB container, Debian's Chromium and the init's bridge in the path; a CPU-only approximation (two threads of one performance core) held every rate on at most 0.54 vCPU. The lead asked for one commit per spike; this follows the ticket's two.
