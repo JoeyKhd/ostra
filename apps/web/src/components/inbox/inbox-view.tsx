@@ -62,11 +62,11 @@ const rowGrid = (several: boolean, tasks: boolean) =>
     // With the Task column, the labels, status and task columns are narrower, so the title keeps room beside
     // the panel: the double sidebar leaves the page 70px less than the target's single one (inbox-bulk-start).
     several && tasks
-      ? "xl:grid-cols-[16px_72px_minmax(0,1fr)_76px_92px_92px_124px_32px]"
+      ? "xl:grid-cols-[16px_72px_minmax(0,1fr)_72px_92px_92px_136px_32px]"
       : several
         ? "xl:grid-cols-[16px_72px_minmax(0,1fr)_100px_92px_104px_32px]"
         : tasks
-          ? "xl:grid-cols-[16px_72px_minmax(0,1fr)_76px_92px_124px_32px]"
+          ? "xl:grid-cols-[16px_72px_minmax(0,1fr)_72px_92px_136px_32px]"
           : "xl:grid-cols-[16px_72px_minmax(0,1fr)_100px_104px_32px]",
   );
 
