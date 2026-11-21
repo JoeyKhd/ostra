@@ -1,7 +1,7 @@
 # Research: Multica's double sidebar
 
 **Question:** How does Multica's navigation work, so ostra can take its structure and keep its own look? The maintainer, 2026-11-21: "i like the ux of multica a lot, their double sidebar is nice". In particular: is it an icon rail plus a contextual list, what goes in each, where projects, the board and settings sit, how it collapses, and what it does on a phone.
-**Status:** Research, 2026-11-21. Feeds milestone 8's shell target (`brand/app-targets/m8/app-shell.md`) and F-146. It settles nothing.
+**Status:** Research, 2026-11-21. Feeds milestone 8's shell target (`brand/app-targets/m8/app-shell.md`) and F-147, the double sidebar. It settles nothing.
 **Builds on** `research/multica-comparison.md` (2026-11-20), which compares Multica's features with ostra's. This note covers only its navigation, which that one didn't.
 **Method:** Tavily search and page reads of multica.ai and its changelog, then the source of [`multica-ai/multica`](https://github.com/multica-ai/multica) at commit [`d405319`](https://github.com/multica-ai/multica/tree/d405319d18fdcbfbca8ed3ae5b19b94cd9ada818) (`main`, 2026-11-20), read file by file. File links below are at that commit. The hosted app wasn't run, so behaviour comes from the code, its comments, its tests and Multica's own screenshots. Anything read only from code is marked *(code)*; my own reasoning is *(inference)*.
 

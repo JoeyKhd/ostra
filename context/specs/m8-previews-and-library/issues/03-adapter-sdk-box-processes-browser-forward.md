@@ -1,6 +1,6 @@
 # 03: Adapter SDK: the box's processes, browser and forward, and the suites' cases
 
-Status: ready-for-agent
+Status: done
 Builder: adapters
 Blocked by: 01
 Features: F-121, F-140, F-141, F-143
@@ -54,3 +54,4 @@ The interfaces and the fakes that tickets 11, 12, 13, 18 and 22 build on. The in
   - **The fixture apps** (`e2e/m8-previews-and-library/fixtures/`): `test-web`, a Vite 8 and React 19 frontend on 5173 with `/api` (HTTP and its WebSocket echo) behind its `server.proxy` to a Node API on 3001, a docs page on 4000, `/frame-deny` with `X-Frame-Options: DENY`, `/host-url` built from `Host` (or `X-Forwarded-Host`), a counter and a field, every port movable by a variable; and `test-next`, a Next.js 16 page with a counter and a route handler that shows its headers, with Next.js's own `AGENTS.md` off. Both are private workspace packages on versions already in the lock (React's automatic runtime comes from Vite's own transform, since `@vitejs/plugin-react` isn't in it), listed in `pnpm-workspace.yaml` by folder, as the license check reads only `folder/*` or a folder. Both were run here once: every page, the proxy and the echo answered.
   - **Left open:** the `live-docker` and `live-kind` jobs don't run the executor suite yet, and `scripts/live/` is ticket 11's to grow, waiting for the launch-gate Proof run. A `host` pool with its own agent user reports no browser (`agent-user.ts`): `sudo` closes the pipe's fds 3 and 4 unless its rule allows `closefrom_override`, which ticket 11 sets up. What Chromium's sandbox needs in a container, and a writable `/tmp` for the profile in a pod with a read-only root, are ticket 11's.
   - **Checks:** typecheck of every package that depends on the SDK (37); lint and tests of `packages/adapter-sdk`, the three executors and `packages/adapters/adapter-opencode`; `pnpm check:licenses`. On the lead's rules of 2026-11-20, GitHub CI runs the rest.
+- 2026-11-21, core (ticket 32): `Status:` set to `done`. The work landed in `de0427d7` (`✨ add the box's app contract to the adapter SDK`) and `96cb213a` (`✨ add box processes, browser and forward`), as the first comment says; the file had kept `ready-for-agent`.
