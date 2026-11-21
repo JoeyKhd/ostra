@@ -68,4 +68,13 @@ export type AgentCapabilities = {
    * prompt's answer.
    */
   readonly subagents: "background" | "none";
+
+  // ---- milestone 9 (ADR 0070, F-148) ----
+  /**
+   * The agent takes images in its prompt and its steers, as ACP `image` blocks the model sees as
+   * pictures. The driver also needs the agent to advertise `promptCapabilities.image` at
+   * `initialize`, and the task's model to take images. Without all three, a message's images reach
+   * the agent as files on disk, their paths in its prompt.
+   */
+  readonly promptImages: boolean;
 };

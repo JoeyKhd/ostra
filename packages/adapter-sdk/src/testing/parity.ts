@@ -60,6 +60,9 @@ export const parityFeatures = [
   "F-140 The app's block",
   "F-145 Library skills",
   "F-145 Library MCP servers",
+  // Milestone 9 (ADR 0070, its spec's section 6): images to the model where the agent takes them,
+  // and a message's files on disk, outside the repos, read with the agent's own tools.
+  "F-148 Images and files in a prompt",
 ] as const;
 export type ParityFeature = (typeof parityFeatures)[number];
 
@@ -128,6 +131,14 @@ export const suiteCases = {
   appScreenshot: suite("agent-app-cases.ts", "F-121/c1: the agent's take_screenshot reaches ostra's server with its input, and the tool's answer reaches the agent"),
   appWithoutMcp: suite("agent-app-cases.ts", "F-121/c1: an agent without MCP is offered no app tools, and its app block doesn't name them: its pictures are ostra's after each turn"),
   appBlock: suite("agent-app-cases.ts", "F-140/c10: the app's block reaches the agent's instructions, naming each process, its address and the one-origin rule; a task with no process gets none"),
+  // Milestone 9 (ticket 02).
+  imagesInPrompt: suite("agent-files-cases.ts", "F-148/c5: with promptImages, a PNG in a prompt reaches the stub model as an image, in each API format"),
+  imagesInSteer: suite("agent-files-cases.ts", "F-148/c5: with promptImages, a PNG in a steer mid-turn reaches the stub model as an image, in each API format"),
+  imagesAsFiles: suite(
+    "agent-files-cases.ts",
+    "F-148/c5: without promptImages, or with a model whose inputModalities lacks image, no image part reaches the stub model and the prompt is the text alone",
+  ),
+  filesOnDisk: suite("agent-files-cases.ts", "F-148/c4: a file the runner wrote under the workspace root's .ostra/ is readable by the agent's own read tool"),
 } as const satisfies Record<string, ParityCase>;
 
 /**
@@ -235,6 +246,7 @@ export const capabilityCases: Readonly<Record<keyof AgentCapabilities, { readonl
   memory: { on: [suiteCases.memoryTools], off: [suiteCases.memoryIndex] },
   reasoningEffort: { on: [suiteCases.effortLevels], off: [suiteCases.noEffort] },
   subagents: { on: [suiteCases.subagentsWait, suiteCases.subagentsCancel, suiteCases.subagentsOwn], off: [suiteCases.subagentsNone, suiteCases.subagentsFlat] },
+  promptImages: { on: [suiteCases.imagesInPrompt], off: [suiteCases.imagesAsFiles] },
 };
 
 /** Whether an adapter declares a capability, read the way `capabilityCases` splits it. */
@@ -261,6 +273,7 @@ export const declares = (capabilities: AgentCapabilities, capability: keyof Agen
     case "sessionArchive":
     case "skills":
     case "projectConfigOverride":
+    case "promptImages":
       return capabilities[capability];
     default:
       return capability satisfies never;
@@ -327,6 +340,13 @@ const milestone8IndexOnly = {
   "F-121, F-140 The app tools": fallback("memory", suiteCases.appWithoutMcp),
 } as const;
 
+/**
+ * Milestone 9's row (ticket 02): an agent that takes images sends them in a prompt and a steer; one
+ * that doesn't gets them refused and the paths instead. Every agent reads a file under `.ostra/`.
+ */
+const imagesTaken = { "F-148 Images and files in a prompt": cases(suiteCases.imagesInPrompt, suiteCases.imagesInSteer, suiteCases.imagesAsFiles, suiteCases.filesOnDisk) } as const;
+const imagesAsFiles = { "F-148 Images and files in a prompt": fallback("promptImages", suiteCases.imagesAsFiles, suiteCases.filesOnDisk) } as const;
+
 /** What every adapter shares: the runner's and core's parts, and the suite's cases every fixture runs. */
 const common = {
   "F-090 Git proxy": cases(sharedCases.gitProxy),
@@ -352,6 +372,8 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
     ...common,
     ...milestone6WithTools,
     ...milestone8OpenCode,
+    // Ticket 09 writes the model's inputs into OpenCode's config and declares promptImages.
+    ...imagesAsFiles,
     "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.subagentsWait, suiteCases.subagentsOwn),
     "F-025 Stop": cases(suiteCases.cancel, suiteCases.subagentsCancel),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch),
@@ -371,6 +393,7 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
     ...common,
     ...milestone6WithTools,
     ...milestone8Fakes,
+    ...imagesTaken,
     "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate, suiteCases.subagentsWait, suiteCases.subagentsOwn),
     "F-025 Stop": cases(suiteCases.cancel, suiteCases.leftover, suiteCases.subagentsCancel),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch, suiteCases.endpoint),
@@ -389,6 +412,7 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
     ...common,
     ...milestone6WithTools,
     ...milestone8Fakes,
+    ...imagesAsFiles,
     "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate, suiteCases.subagentsNone, suiteCases.subagentsFlat),
     "F-025 Stop": cases(suiteCases.cancel, suiteCases.leftover),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch, suiteCases.endpoint),
@@ -407,6 +431,7 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
     ...common,
     ...milestone6IndexOnly,
     ...milestone8IndexOnly,
+    ...imagesAsFiles,
     "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate, suiteCases.subagentsNone, suiteCases.subagentsFlat),
     "F-025 Stop": cases(suiteCases.cancel, suiteCases.leftover),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch, suiteCases.endpoint),
@@ -426,6 +451,7 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
     ...common,
     ...milestone6IndexOnly,
     ...milestone8IndexOnly,
+    ...imagesAsFiles,
     "F-121, F-140 The app tools": fallback("mcp", suiteCases.appWithoutMcp),
     "F-145 Library MCP servers": fallback("mcp", suiteCases.skillsMcp),
     "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate, suiteCases.subagentsNone, suiteCases.subagentsFlat),
@@ -446,6 +472,7 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
     ...common,
     ...milestone6WithTools,
     ...milestone8Fakes,
+    ...imagesTaken,
     "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate, suiteCases.subagentsWait, suiteCases.subagentsOwn),
     "F-025 Stop": cases(suiteCases.cancel, suiteCases.leftover, suiteCases.subagentsCancel),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch, suiteCases.endpoint),

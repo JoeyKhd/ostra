@@ -25,6 +25,7 @@ describe("the stub model's markers", () => {
 const message = (role: NormalizedMessage["role"], text: string, toolCalls: NormalizedMessage["toolCalls"] = []): NormalizedMessage => ({
   role,
   text,
+  images: [],
   toolCalls,
   toolCallId: undefined,
   isError: false,

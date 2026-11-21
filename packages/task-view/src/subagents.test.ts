@@ -255,7 +255,7 @@ const runTurn = async (adapter: AgentAdapter, prompt: string, io: AgentIo | "spa
   });
   try {
     if (!session.ok) throw new Error(session.error.message);
-    const result = await adapter.prompt(session.value, turn, prompt);
+    const result = await adapter.prompt(session.value, turn, { text: prompt, images: [] });
     expect(result).toEqual({ ok: true, value: { stopReason: "end_turn" } });
     await adapter.close(session.value);
   } finally {

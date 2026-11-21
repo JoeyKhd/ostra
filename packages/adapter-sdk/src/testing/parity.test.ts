@@ -69,8 +69,29 @@ describe("adapter parity, the scripted fakes", () => {
     expect(await checkParity([{ name: "another-agent", capabilities: plain.capabilities }])).toEqual(["another-agent: no entry in the parity table"]);
   });
 
+  it("F-148/c5: the images row proves images in a prompt and a steer on a fake with promptImages, and the files fallback on one without", async () => {
+    const row = "F-148 Images and files in a prompt";
+    for (const fake of fakes) {
+      const proof = parityTable[fake.name]?.[row];
+      if (fake.capabilities.promptImages) {
+        expect(proof, fake.name).toEqual({ kind: "cases", cases: [suiteCases.imagesInPrompt, suiteCases.imagesInSteer, suiteCases.imagesAsFiles, suiteCases.filesOnDisk] });
+      } else {
+        expect(proof, fake.name).toEqual({ kind: "fallback", capability: "promptImages", cases: [suiteCases.imagesAsFiles, suiteCases.filesOnDisk] });
+      }
+    }
+    expect(fakes.filter((fake) => fake.capabilities.promptImages).map((fake) => fake.name)).toEqual(["fake-acp-agent-rich", "fake-acp-agent-rich-effort"]);
+    // A fake that takes images but names only the fallback is refused.
+    const [rich] = fakes;
+    if (rich === undefined) throw new Error("the fakes are listed");
+    const fallbackOnly = { ...(parityTable[rich.name] ?? {}), [row]: { kind: "fallback" as const, capability: "promptImages" as const, cases: [suiteCases.imagesAsFiles] } };
+    expect(await checkParity([rich], { [rich.name]: fallbackOnly })).toEqual([
+      `${rich.name}: ${row} names a fallback for promptImages, which it declares: it must prove the capability itself`,
+      `${rich.name}: declares promptImages on, and no case among its entries runs that way`,
+    ]);
+  });
+
   it("lists every row of spec section 6 once", () => {
     expect(new Set(parityFeatures).size).toBe(parityFeatures.length);
-    expect(parityFeatures).toHaveLength(31);
+    expect(parityFeatures).toHaveLength(32);
   });
 });

@@ -237,7 +237,7 @@ export const defineAgentProfileCases = (subject: Subject): void => {
         return session;
       },
       prompt: async (n: number, text: string, mode?: TurnMode) => {
-        const done = await adapter.prompt(session, turn(n), text, mode === undefined ? {} : { mode });
+        const done = await adapter.prompt(session, turn(n), { text, images: [] }, mode === undefined ? {} : { mode });
         if (!done.ok) {
           throw new Error(`the turn failed: ${done.error.message}`);
         }
@@ -581,7 +581,7 @@ export const defineAgentProfileCases = (subject: Subject): void => {
       const canSteer = adapter.capabilities.steerMidTurn && running.session.connection.steeringAdvertised;
       if (!canSteer) {
         // Mid-turn steering is the ADR 0032 case's; here, an agent without it refuses the steer.
-        expect(await adapter.steer(running.session, "also add a test")).toMatchObject({ ok: false, error: { code: "unsupported" } });
+        expect(await adapter.steer(running.session, { text: "also add a test", images: [] })).toMatchObject({ ok: false, error: { code: "unsupported" } });
       }
       await adapter.cancel(running.session);
       expect(await long).toBe("cancelled");

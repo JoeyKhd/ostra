@@ -120,7 +120,7 @@ const runTurn = async (agent: Agent): Promise<readonly StoredEvent[]> => {
   });
   try {
     if (!session.ok) throw new Error(session.error.message);
-    const result = await adapter.prompt(session.value, turnId, agent.prompt);
+    const result = await adapter.prompt(session.value, turnId, { text: agent.prompt, images: [] });
     expect(result).toEqual({ ok: true, value: { stopReason: "end_turn" } });
     await adapter.close(session.value);
   } finally {

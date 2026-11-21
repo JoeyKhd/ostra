@@ -14,9 +14,17 @@ export type StubToolCall = {
   readonly arguments: Readonly<Record<string, unknown>>;
 };
 
+/**
+ * Milestone 9 (F-148): an image a request carries, in either format: an Anthropic `image` block
+ * with `source.base64`, or an OpenAI `image_url` with a data URL. Kept for assertions, never logged.
+ */
+export type StubImage = { readonly mimeType: string; readonly base64: string };
+
 export type NormalizedMessage = {
   readonly role: "system" | "user" | "assistant" | "tool";
   readonly text: string;
+  /** Milestone 9: the message's image parts, in order; a tool's result's images on its `tool` message. */
+  readonly images: readonly StubImage[];
   readonly toolCalls: readonly StubToolCall[];
   /** Set on `tool` messages: the call this result answers. */
   readonly toolCallId: string | undefined;

@@ -283,6 +283,12 @@ const fixtureFor = async (memory: FakeAgentMemory = "mcp", parity: FakeAgentPari
       takeScreenshot: (input) => fakeMarker("take-screenshot", fakeToolArgs(input)),
       instructions: fakeMarker("instructions"),
     },
+    // Milestone 9 (ticket 02): images in a prompt and a steer, and a file under the root's `.ostra/`.
+    files: {
+      modelTurn: fakeMarker("model-turn"),
+      steerable: { prompt: fakeMarker("model-steerable"), waitFor: "open to a steer" },
+      readFile: (absolutePath) => fakeMarker("read-file", absolutePath),
+    },
   };
 };
 
@@ -354,10 +360,10 @@ describe("the fake ACP agents, for the capabilities OpenCode lacks (F-019)", () 
   it("F-019/c7: the rich fake declares native plan updates and reject-and-continue, which OpenCode lacks, and both reach ostra", async () => {
     await runFake("rich", async (adapter, session, events) => {
       expect(adapter.capabilities).toMatchObject({ nativePlan: true, rejectAndContinue: true, steerMidTurn: true });
-      expect(await adapter.prompt(session, turnOf(1), fakeMarker("plan"))).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+      expect(await adapter.prompt(session, turnOf(1), { text: fakeMarker("plan"), images: [] })).toEqual({ ok: true, value: { stopReason: "end_turn" } });
       expect(events.filter((event) => event.kind === "plan.updated")).toHaveLength(1);
       // A deny, and the agent carries on in the same turn.
-      expect(await adapter.prompt(session, turnOf(2), fakeMarker("permission"))).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+      expect(await adapter.prompt(session, turnOf(2), { text: fakeMarker("permission"), images: [] })).toEqual({ ok: true, value: { stopReason: "end_turn" } });
       expect(events.some((event) => event.kind === "tool.failed")).toBe(true);
     });
   }, 60_000);
@@ -366,12 +372,12 @@ describe("the fake ACP agents, for the capabilities OpenCode lacks (F-019)", () 
     await runFake("plain", async (adapter, session, events) => {
       expect(adapter.capabilities).toMatchObject({ nativePlan: false, rejectAndContinue: false, steerMidTurn: false });
       expect(session.connection.steeringAdvertised).toBe(false);
-      expect(await adapter.prompt(session, turnOf(1), fakeMarker("plan"))).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+      expect(await adapter.prompt(session, turnOf(1), { text: fakeMarker("plan"), images: [] })).toEqual({ ok: true, value: { stopReason: "end_turn" } });
       expect(events.some((event) => event.kind === "plan.updated")).toBe(false);
-      expect(await adapter.prompt(session, turnOf(2), fakeMarker("permission"))).toEqual({ ok: true, value: { stopReason: "cancelled" } });
+      expect(await adapter.prompt(session, turnOf(2), { text: fakeMarker("permission"), images: [] })).toEqual({ ok: true, value: { stopReason: "cancelled" } });
       // The deny ended the turn; the next prompt goes on (the re-prompt ADR 0032 describes).
-      expect(await adapter.prompt(session, turnOf(3), fakeMarker("say"))).toEqual({ ok: true, value: { stopReason: "end_turn" } });
-      expect(await adapter.steer(session, "use tabs")).toMatchObject({ ok: false, error: { code: "unsupported" } });
+      expect(await adapter.prompt(session, turnOf(3), { text: fakeMarker("say"), images: [] })).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+      expect(await adapter.steer(session, { text: "use tabs", images: [] })).toMatchObject({ ok: false, error: { code: "unsupported" } });
     });
   }, 60_000);
 });
@@ -392,7 +398,7 @@ describe("the fake ACP agents and project memory (F-110)", () => {
         if (!launched.ok) throw new Error(launched.error.message);
         expect(launched.value.files.map((file) => path.dirname(file.path))).toEqual([fixture.launchInput.agentDir]);
         const before = events.length;
-        await adapter.prompt(session, turnOf(1), fakeMarker("instructions"));
+        await adapter.prompt(session, turnOf(1), { text: fakeMarker("instructions"), images: [] });
         const text = said(events, before);
         expect(text).toContain("Keep the README short.");
         expect(text).toContain(memory.block);
@@ -420,7 +426,7 @@ describe("the fake ACP agents and project memory (F-110)", () => {
           fakeMarker("memory-propose", "Run the linter before a commit"),
         ].entries()) {
           const before = events.length;
-          await adapter.prompt(session, turnOf(index + 1), prompt);
+          await adapter.prompt(session, turnOf(index + 1), { text: prompt, images: [] });
           texts.push(said(events, before));
         }
         expect(texts[0]).toBe("memory tools: memory_search, memory_read, memory_propose");
@@ -442,13 +448,13 @@ describe("the fake ACP agents and project memory (F-110)", () => {
       async (adapter, session, events) => {
         expect(adapter.capabilities).toMatchObject({ memory: "index-only" });
         let before = events.length;
-        await adapter.prompt(session, turnOf(1), fakeMarker("instructions"));
+        await adapter.prompt(session, turnOf(1), { text: fakeMarker("instructions"), images: [] });
         expect(said(events, before)).toContain(memory.block);
         before = events.length;
-        await adapter.prompt(session, turnOf(2), fakeMarker("memory-tools"));
+        await adapter.prompt(session, turnOf(2), { text: fakeMarker("memory-tools"), images: [] });
         expect(said(events, before)).toBe("memory tools: none");
         before = events.length;
-        await adapter.prompt(session, turnOf(3), fakeMarker("memory-search", "pnpm"));
+        await adapter.prompt(session, turnOf(3), { text: fakeMarker("memory-search", "pnpm"), images: [] });
         expect(said(events, before)).toBe("memory_search: no such tool");
       },
       // Even a spec that offers the tools gives an index-only agent none.
@@ -465,7 +471,7 @@ describe("the fake ACP agents and ADR 0035's canary (F-073)", () => {
     await writeFile(file, "canary-value-1234\n");
     await runFake("rich", async (adapter, session, events, fixture) => {
       expect(path.relative(fixture.launchInput.workspaceDir, file).startsWith("..")).toBe(true);
-      await adapter.prompt(session, turnOf(1), fakeMarker("shell-read", file));
+      await adapter.prompt(session, turnOf(1), { text: fakeMarker("shell-read", file), images: [] });
       const call = events.find((event) => event.kind === "tool.called" && event.toolKind === "execute");
       // The command in full; its folder as the event log keeps it, relative to the workspace.
       expect(call).toMatchObject({ kind: "tool.called", input: { command: `cat ${file}`, cwd: "." } });
@@ -501,7 +507,7 @@ describe("F-137 on the scripted fakes", () => {
           expect(set, asked).toMatchObject({ ok: true, value: { level: ran } });
         }
         turns += 1;
-        expect(await adapter.prompt(session, turnIdSchema.parse(`fake-effort-${String(turns)}`), fakeMarker("effort"))).toMatchObject({ ok: true });
+        expect(await adapter.prompt(session, turnIdSchema.parse(`fake-effort-${String(turns)}`), { text: fakeMarker("effort"), images: [] })).toMatchObject({ ok: true });
         // `max` was clamped to `high`, which the session already had: nothing was sent for it.
         const said = events.flatMap((event) => (event.kind === "agent.message" ? [event.text] : [])).join("");
         expect(said).toContain("effort: default set: high,low,default");

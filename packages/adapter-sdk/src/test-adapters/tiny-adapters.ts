@@ -1375,12 +1375,13 @@ export const scriptedDriver = (): DriverPort => ({
       agentName: "scripted",
       agentVersion: "0.0.0",
       steeringAdvertised: false,
+      imagesAdvertised: false,
       newSession: () => {
         sessions += 1;
         return Promise.resolve(ok({ agentSessionId: `scripted-${String(sessions)}`, configOptions: [] }));
       },
       loadSession: () => Promise.resolve(ok({ configOptions: [] })),
-      prompt: (agentSessionId, text) => {
+      prompt: (agentSessionId, { text }) => {
         handlers.onUpdate(agentSessionId, {
           sessionUpdate: "agent_message_chunk",
           content: { type: "text", text: `Working on: ${text}` },
@@ -1434,6 +1435,8 @@ export class TinyAgent extends AgentAdapter {
     reasoningEffort: "none",
     // No subagents: a turn ends with its prompt's answer.
     subagents: "none",
+    // Milestone 9: no images in its prompt: a message's images reach it as files.
+    promptImages: false,
   };
   effortLevels(): readonly EffortLevel[] {
     return ["default"];

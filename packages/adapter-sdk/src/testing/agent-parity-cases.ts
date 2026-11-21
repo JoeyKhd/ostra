@@ -204,7 +204,7 @@ export const defineAgentParityCases = (subject: Subject): void => {
       sent: tapped.sent,
       received: tapped.received,
       prompt: async (n, text) => {
-        const done = await adapter.prompt(session, turn(n), text);
+        const done = await adapter.prompt(session, turn(n), { text, images: [] });
         if (!done.ok) throw new Error(`the turn failed: ${done.error.message}`);
         return done.value.stopReason;
       },

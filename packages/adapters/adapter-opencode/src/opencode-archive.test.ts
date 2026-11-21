@@ -99,7 +99,7 @@ const firstBox = async (stub: StubServer): Promise<{ readonly box: Box; readonly
   }
   const archivePath = path.join(path.dirname(box.input.workspaceDir), "session.json");
   try {
-    expect(await adapter.prompt(session.value, turn(1), `${stubMarker("remember")} The project codename is ${FACT}.`)).toEqual({
+    expect(await adapter.prompt(session.value, turn(1), { text: `${stubMarker("remember")} The project codename is ${FACT}.`, images: [] })).toEqual({
       ok: true,
       value: { stopReason: "end_turn" },
     });
@@ -186,7 +186,7 @@ describe("F-033 on the pinned OpenCode: a session moves to a fresh box", () => {
       expect(resumed.value.replayedUpdates).toBeGreaterThan(0);
       expect(events).toEqual([]);
       // The model is shown the earlier turn: the stub answers only from the messages it was sent.
-      expect(await ran.adapter.prompt(resumed.value, turn(2), `${stubMarker("recall")} What was the codename?`)).toEqual({
+      expect(await ran.adapter.prompt(resumed.value, turn(2), { text: `${stubMarker("recall")} What was the codename?`, images: [] })).toEqual({
         ok: true,
         value: { stopReason: "end_turn" },
       });

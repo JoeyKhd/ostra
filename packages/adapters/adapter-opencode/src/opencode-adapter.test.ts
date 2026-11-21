@@ -279,6 +279,8 @@ describe("the OpenCode adapter's capabilities", () => {
       reasoningEffort: "session-option",
       // Its subagents run on past the prompt (research/opencode-subagents.md).
       subagents: "background",
+      // Milestone 9: images in its prompt wait for its config to name the model's inputs (ticket 09).
+      promptImages: false,
     });
     expect(adapter().repoConfigPaths).toEqual(["opencode.json", "opencode.jsonc", ".opencode"]);
   });

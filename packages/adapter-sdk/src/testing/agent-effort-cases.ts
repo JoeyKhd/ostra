@@ -171,7 +171,7 @@ export const defineAgentEffortCases = (subject: Subject): void => {
       prompt: async (text) => {
         turns += 1;
         const before = events.length;
-        const done = await adapter.prompt(session, turnIdSchema.parse(`effort-turn-${String(turns)}`), text);
+        const done = await adapter.prompt(session, turnIdSchema.parse(`effort-turn-${String(turns)}`), { text, images: [] });
         if (!done.ok) throw new Error(`the turn failed: ${done.error.message}`);
         return textOf(events.slice(before));
       },

@@ -3,11 +3,33 @@
 // the stub's normalized conversation. Vendor formats: schemas are loose.
 
 import { z } from "zod";
-import type { NormalizedMessage, StubToolCall } from "./types.ts";
+import type { NormalizedMessage, StubImage, StubToolCall } from "./types.ts";
 
 const textPart = z.looseObject({ type: z.string(), text: z.string().optional() });
 
-const openAiContent = z.union([z.string(), z.array(textPart), z.null()]).optional();
+/** Milestone 9: OpenAI's image part, `{ type: "image_url", image_url: { url: "data:<type>;base64,<data>" } }`. */
+const openAiPart = textPart.extend({ image_url: z.looseObject({ url: z.string() }).optional() });
+
+const openAiContent = z.union([z.string(), z.array(openAiPart), z.null()]).optional();
+
+/** Milestone 9: an Anthropic `image` block's source. */
+const anthropicImageSource = z.looseObject({ type: z.string(), media_type: z.string().optional(), data: z.string().optional() });
+const anthropicContentPart = textPart.extend({ source: anthropicImageSource.optional() });
+
+const DATA_URL = /^data:([^;,]{1,100});base64,(.*)$/s;
+
+/** An OpenAI image part's data URL as a stub image; another URL (a link) isn't one. */
+const openAiImageOf = (part: z.infer<typeof openAiPart>): StubImage | null => {
+  if (part.type !== "image_url" || part.image_url === undefined) return null;
+  const match = DATA_URL.exec(part.image_url.url);
+  return match === null ? null : { mimeType: match[1] ?? "", base64: match[2] ?? "" };
+};
+
+/** An Anthropic `image` block's base64 source as a stub image. */
+const anthropicImageOf = (part: { readonly type: string; readonly source?: z.infer<typeof anthropicImageSource> | undefined }): StubImage | null =>
+  part.type === "image" && part.source?.type === "base64" && part.source.data !== undefined ? { mimeType: part.source.media_type ?? "", base64: part.source.data } : null;
+
+const present = <T>(values: readonly (T | null)[]): T[] => values.flatMap((value) => (value === null ? [] : [value]));
 
 const openAiMessage = z.looseObject({
   role: z.string(),
@@ -39,7 +61,8 @@ const anthropicBlock = z.looseObject({
   input: z.unknown().optional(),
   tool_use_id: z.string().optional(),
   is_error: z.boolean().optional(),
-  content: z.union([z.string(), z.array(textPart)]).optional(),
+  content: z.union([z.string(), z.array(anthropicContentPart)]).optional(),
+  source: anthropicImageSource.optional(),
 });
 
 export const anthropicRequestSchema = z.looseObject({
@@ -94,9 +117,11 @@ export const normalizeOpenAi = (body: z.infer<typeof openAiRequestSchema>): Norm
       name: call.function.name,
       arguments: parseArguments(call.function.arguments),
     }));
+    const { content } = message;
     return {
       role: toRole(message.role),
-      text: joinText(message.content),
+      text: joinText(content),
+      images: content === undefined || content === null || typeof content === "string" ? [] : present(content.map(openAiImageOf)),
       toolCalls,
       toolCallId: message.tool_call_id,
       isError: false,
@@ -112,20 +137,26 @@ export const normalizeAnthropic = (body: z.infer<typeof anthropicRequestSchema>)
   const out: NormalizedMessage[] = [];
   if (body.system !== undefined) {
     const text = typeof body.system === "string" ? body.system : body.system.map((part) => part.text ?? "").join("");
-    out.push({ role: "system", text, toolCalls: [], toolCallId: undefined, isError: false });
+    out.push({ role: "system", text, images: [], toolCalls: [], toolCallId: undefined, isError: false });
   }
   for (const message of body.messages) {
     if (typeof message.content === "string") {
-      out.push({ role: toRole(message.role), text: message.content, toolCalls: [], toolCallId: undefined, isError: false });
+      out.push({ role: toRole(message.role), text: message.content, images: [], toolCalls: [], toolCallId: undefined, isError: false });
       continue;
     }
     let text = "";
+    const images: StubImage[] = [];
     const toolCalls: StubToolCall[] = [];
     for (const block of message.content) {
       switch (block.type) {
         case "text":
           text += block.text ?? "";
           break;
+        case "image": {
+          const image = anthropicImageOf(block);
+          if (image !== null) images.push(image);
+          break;
+        }
         case "tool_use":
           toolCalls.push({ id: block.id ?? "", name: block.name ?? "", arguments: recordOf(block.input) });
           break;
@@ -136,6 +167,7 @@ export const normalizeAnthropic = (body: z.infer<typeof anthropicRequestSchema>)
           out.push({
             role: "tool",
             text: resultText,
+            images: content === undefined || typeof content === "string" ? [] : present(content.map(anthropicImageOf)),
             toolCalls: [],
             toolCallId: block.tool_use_id,
             isError: block.is_error ?? false,
@@ -146,8 +178,8 @@ export const normalizeAnthropic = (body: z.infer<typeof anthropicRequestSchema>)
           break;
       }
     }
-    if (text !== "" || toolCalls.length > 0) {
-      out.push({ role: toRole(message.role), text, toolCalls, toolCallId: undefined, isError: false });
+    if (text !== "" || toolCalls.length > 0 || images.length > 0) {
+      out.push({ role: toRole(message.role), text, images, toolCalls, toolCallId: undefined, isError: false });
     }
   }
   return out;

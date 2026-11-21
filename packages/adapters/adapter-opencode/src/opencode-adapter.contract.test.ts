@@ -397,14 +397,14 @@ describe("F-019 on the pinned OpenCode", () => {
     try {
       expect(opened.adapter.name).toBe("opencode");
       expect(opened.session.connection.steeringAdvertised).toBe(true);
-      const turn = opened.adapter.prompt(opened.session, turnOf(1), `${stubMarker("steer")} wait`);
+      const turn = opened.adapter.prompt(opened.session, turnOf(1), { text: `${stubMarker("steer")} wait`, images: [] });
       // The steer goes in while the long shell step runs.
       const until = Date.now() + 60_000;
       while (!opened.events.some((event) => event.kind === "tool.called") && Date.now() < until) {
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
       await new Promise((resolve) => setTimeout(resolve, 500));
-      expect(await opened.adapter.steer(opened.session, "STEER-TOKEN: also mention the colour blue")).toEqual({ ok: true, value: undefined });
+      expect(await opened.adapter.steer(opened.session, { text: "STEER-TOKEN: also mention the colour blue", images: [] })).toEqual({ ok: true, value: undefined });
       expect(await turn).toEqual({ ok: true, value: { stopReason: "end_turn" } });
       expect(messageText(opened.events)).toContain("steer seen mid-turn");
       expect(opened.events[0]).toEqual({ kind: "turn.started", turnId: turnOf(1) });
@@ -449,9 +449,9 @@ describe("F-019 on the pinned OpenCode", () => {
       if (!session.ok) throw new Error(session.error.message);
       expect(adapter.capabilities.steerMidTurn).toBe(true);
       expect(session.value.connection.steeringAdvertised).toBe(false);
-      const turn = adapter.prompt(session.value, turnOf(2), fakeMarker("silent"));
+      const turn = adapter.prompt(session.value, turnOf(2), { text: fakeMarker("silent"), images: [] });
       await new Promise((resolve) => setTimeout(resolve, 200));
-      expect(await adapter.steer(session.value, "use tabs")).toMatchObject({ ok: false, error: { code: "unsupported" } });
+      expect(await adapter.steer(session.value, { text: "use tabs", images: [] })).toMatchObject({ ok: false, error: { code: "unsupported" } });
       await adapter.cancel(session.value);
       expect(await turn).toEqual({ ok: true, value: { stopReason: "cancelled" } });
     } finally {
@@ -464,7 +464,7 @@ describe("F-019 on the pinned OpenCode", () => {
     const opened = await openOpenCode("openai-compatible");
     try {
       expect(opened.adapter.capabilities.nativePlan).toBe(false);
-      expect(await opened.adapter.prompt(opened.session, turnOf(3), `${stubMarker("todo")} plan`)).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+      expect(await opened.adapter.prompt(opened.session, turnOf(3), { text: `${stubMarker("todo")} plan`, images: [] })).toEqual({ ok: true, value: { stopReason: "end_turn" } });
       const plans = opened.events.flatMap((event) => (event.kind === "plan.updated" ? [event] : []));
       expect(plans.length).toBeGreaterThanOrEqual(1);
       expect(plans[0]?.entries).toEqual([
@@ -528,7 +528,7 @@ const openProfiled = async (setup: Partial<PrepareLaunchInput>, prepare?: (works
     session: session.value,
     prompt: async (text: string) => {
       turns += 1;
-      const done = await adapter.prompt(session.value, turnOf(100 + turns), text);
+      const done = await adapter.prompt(session.value, turnOf(100 + turns), { text, images: [] });
       if (!done.ok) throw new Error(done.error.message);
       return done.value.stopReason;
     },
@@ -873,7 +873,7 @@ const openEffort = async (format: ApiFormat, model: Partial<PrepareLaunchInput["
         if (!set.ok) throw new Error(set.error.message);
       }
       turns += 1;
-      const done = await adapter.prompt(session.value, turnOf(500 + turns), `${stubMarker("hello")} hi`);
+      const done = await adapter.prompt(session.value, turnOf(500 + turns), { text: `${stubMarker("hello")} hi`, images: [] });
       if (!done.ok) throw new Error(done.error.message);
       return wireReasoningOf(fixture.effort?.requests?.().at(-1));
     },
@@ -1102,7 +1102,7 @@ describe("milestone 6's automatic turn on the pinned OpenCode", () => {
       throw new Error(session.error.message);
     }
     try {
-      const turn = await adapter.prompt(session.value, turnOf(200 + asked.length), `${stubMarker("ask-and-continue")} ask first`);
+      const turn = await adapter.prompt(session.value, turnOf(200 + asked.length), { text: `${stubMarker("ask-and-continue")} ask first`, images: [] });
       if (!turn.ok) throw new Error(turn.error.message);
       return { asked, text: messageText(events), stopReason: turn.value.stopReason };
     } finally {

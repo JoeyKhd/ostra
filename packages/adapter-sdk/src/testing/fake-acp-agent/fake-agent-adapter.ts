@@ -7,7 +7,7 @@ import { mcpSubjectValue } from "@ostra/protocol";
 import type { ApprovalRequestSubject } from "@ostra/protocol";
 
 import { createAcpDriver } from "../../agent/acp/driver.ts";
-import { AgentAdapter, composeLaunchInstructions, effortModelOf, launchHasAppTools, orderedEffortLevels } from "../../agent/base.ts";
+import { AgentAdapter, composeLaunchInstructions, effortModelOf, inputModalitiesOf, launchHasAppTools, orderedEffortLevels } from "../../agent/base.ts";
 import type {
   AgentCommand,
   AgentLaunch,
@@ -148,6 +148,8 @@ export class FakeAgentAdapter extends AgentAdapter {
       ...(memoryTools || appTools ? { ostraMcp: { url: input.mcp.url, ...(input.mcp.bearer === undefined ? {} : { bearer: input.mcp.bearer }) } } : {}),
       // Milestone 4 (F-137): the values its `thought_level` option advertises, from the model's controls.
       effortValues: this.#effortValues(input),
+      // Milestone 9 (F-148): the model, its format and its inputs, as OpenCode's catalog file has them.
+      model: { apiFormat: input.model.apiFormat, endpointModelId: input.model.endpointModelId, inputModalities: [...inputModalitiesOf(input.model)] },
     };
   }
 

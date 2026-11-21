@@ -10,6 +10,7 @@ import type { AdapterError, AdapterResult } from "../../common/result.ts";
 import type {
   AcpUpdate,
   AgentIo,
+  AgentPromptInput,
   ConnectOptions,
   DriverConnection,
   DriverHandlers,
@@ -190,6 +191,8 @@ const elicitationSchema = z.looseObject({
 
 const initializeSchema = z.looseObject({
   agentInfo: z.looseObject({ name: z.string().nullish(), version: z.string().nullish() }).nullish(),
+  // Milestone 9 (F-148): whether the agent takes `image` blocks in a prompt.
+  agentCapabilities: z.looseObject({ promptCapabilities: z.looseObject({ image: z.boolean().nullish() }).nullish() }).nullish(),
   _meta: z.looseObject({ steering: z.looseObject({ supported: z.boolean().optional() }).optional() }).nullish(),
 });
 
@@ -330,6 +333,16 @@ const PROBE_TIMEOUT_MS = 5000;
 
 /** How long a prompt waits for its session to be attached again after a cancel stopped its subagents. */
 const RESUME_WAIT_MS = 30_000;
+
+/**
+ * Milestone 9 (F-148, ADR 0070, research `attachments-for-agents.md` section 1): a prompt's ACP
+ * blocks: its text, then each image as an `image` block with base64 data and its type. Never a
+ * `uri`: OpenCode takes a block with one as a link and reads the file itself (research section 2).
+ */
+const promptBlocks = (input: AgentPromptInput): ({ readonly type: "text"; readonly text: string } | { readonly type: "image"; readonly mimeType: string; readonly data: string })[] => [
+  { type: "text", text: input.text },
+  ...input.images.map((image) => ({ type: "image" as const, mimeType: image.mimeType, data: Buffer.from(image.bytes).toString("base64") })),
+];
 
 /** The steering probe's prompt: OpenCode refuses it before it reaches the session (`ACPPrompt.prepare`). */
 const IDLE_PROBE_PROMPT = [{ type: "image", mimeType: "image/png", data: "" }] as const;
@@ -719,6 +732,17 @@ const connectAgent = async (
   }
   const info = initializeSchema.safeParse(initialized.value);
   const steeringAdvertised = info.success && info.data._meta?.steering?.supported === true;
+  const imagesAdvertised = info.success && info.data.agentCapabilities?.promptCapabilities?.image === true;
+  // Milestone 9: images go only where both the adapter and the agent say the agent takes them.
+  const imagesRefused = (input: AgentPromptInput): AdapterResult<never> | null => {
+    if (input.images.length === 0) {
+      return null;
+    }
+    if (connectOptions.promptImages !== true) {
+      return adapterError("unsupported", "the adapter doesn't declare images in a prompt");
+    }
+    return imagesAdvertised ? null : adapterError("unsupported", "the agent did not advertise images in a prompt");
+  };
   // A turn can wait for subagents only when the agent sends their states and the probe can ask it.
   const agentMeta = agentMetaSchema.safeParse(initialized.value);
   tracksSubagents = asksForSubagents && steeringAdvertised && agentMeta.success && agentMeta.data.agentCapabilities?._meta?.[CHILD_SESSION_UPDATES] === true;
@@ -735,7 +759,7 @@ const connectAgent = async (
     /** The turn waits for its subagents (its prompt was answered). */
     waiting: boolean;
     /** Members' messages the agent couldn't take mid-turn while it waited idle: the turn's next prompts. */
-    readonly queued: string[];
+    readonly queued: AgentPromptInput[];
   };
   const turns = new Map<string, Turn>();
 
@@ -847,7 +871,7 @@ const connectAgent = async (
         const queued = turn.queued.shift();
         if (queued !== undefined) {
           await Promise.race([
-            guarded("running the turn", connection.agent.request(acp.methods.agent.session.prompt, { sessionId: agentSessionId, prompt: [{ type: "text", text: queued }] })),
+            guarded("running the turn", connection.agent.request(acp.methods.agent.session.prompt, { sessionId: agentSessionId, prompt: promptBlocks(queued) })),
             turn.graceExpired,
             delay(left),
           ]);
@@ -956,6 +980,7 @@ const connectAgent = async (
     agentName: info.success ? (info.data.agentInfo?.name ?? null) : null,
     agentVersion: info.success ? (info.data.agentInfo?.version ?? null) : null,
     steeringAdvertised,
+    imagesAdvertised,
 
     newSession: async (input) => {
       const created = await guarded(
@@ -998,7 +1023,11 @@ const connectAgent = async (
       }
     },
 
-    prompt: async (agentSessionId, text) => {
+    prompt: async (agentSessionId, input) => {
+      const refused = imagesRefused(input);
+      if (refused !== null) {
+        return refused;
+      }
       // A session attached again after a cancel takes its next prompt once it's back.
       const pending = resuming.get(agentSessionId);
       if (pending !== undefined) {
@@ -1016,7 +1045,7 @@ const connectAgent = async (
           "running the turn",
           connection.agent.request(acp.methods.agent.session.prompt, {
             sessionId: agentSessionId,
-            prompt: [{ type: "text", text }],
+            prompt: promptBlocks(input),
           }),
         );
         // A cancel the agent never answers ends the turn here, and the agent with it.
@@ -1073,13 +1102,17 @@ const connectAgent = async (
       await within(Promise.all(open.map(closeSession)), Date.now() + cancelGraceMs);
     },
 
-    steer: async (agentSessionId, text) => {
+    steer: async (agentSessionId, input) => {
       if (!steeringAdvertised) {
         return adapterError("unsupported", "the agent did not advertise mid-turn steering");
       }
+      const refused = imagesRefused(input);
+      if (refused !== null) {
+        return refused;
+      }
       const steered = await guarded(
         "steering the turn",
-        connection.agent.request("_session/steering", { sessionId: agentSessionId, prompt: [{ type: "text", text }] }),
+        connection.agent.request("_session/steering", { sessionId: agentSessionId, prompt: promptBlocks(input) }),
       );
       if (!steered.ok) {
         return steered;
@@ -1091,7 +1124,7 @@ const connectAgent = async (
       // The turn waits for its subagents while the agent idles: the message is its next prompt, in this turn.
       const turn = turns.get(agentSessionId);
       if (turn?.waiting === true && turn.cancelledAt === null) {
-        turn.queued.push(text);
+        turn.queued.push(input);
         wake(subagentsOf(agentSessionId));
         return ok(undefined);
       }

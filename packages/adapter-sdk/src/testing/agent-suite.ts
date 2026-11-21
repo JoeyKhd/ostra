@@ -20,6 +20,8 @@ import { defineAgentParityCases } from "./agent-parity-cases.ts";
 import { defineAgentAppCases } from "./agent-app-cases.ts";
 import type { AgentAppProbes } from "./agent-app-cases.ts";
 import { defineAgentTeamCases } from "./agent-team-cases.ts";
+import { defineAgentFilesCases } from "./agent-files-cases.ts";
+import type { AgentFilesProbes } from "./agent-files-cases.ts";
 import type { AgentTeamProbes } from "./agent-team-cases.ts";
 import type { AgentParityProbes } from "./agent-parity-cases.ts";
 import type { AgentCanaryProbe, AgentMemoryProbes } from "./agent-memory-cases.ts";
@@ -152,6 +154,8 @@ export type AgentFixture = {
   readonly team?: AgentTeamProbes;
   /** Milestone 8 (ticket 03): the app tools and the app's block. Absent: skipped. */
   readonly app?: AgentAppProbes;
+  /** Milestone 9 (F-148): images in a prompt and a steer, and a file under the root's `.ostra/`. Absent: skipped. */
+  readonly files?: AgentFilesProbes;
 };
 
 const turn = (n: number) => turnIdSchema.parse(`contract-turn-${String(n)}`);
@@ -187,6 +191,7 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
       memory: "string",
       reasoningEffort: "string",
       subagents: "string",
+      promptImages: "boolean",
     });
 
     const launch = async (): Promise<AgentLaunch> => {
@@ -232,7 +237,7 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
       const events: TaskEvent[] = [];
       const { session: running, started } = await session(events, handlers);
       try {
-        const result = await subject().adapter.prompt(running, turn(n), prompt);
+        const result = await subject().adapter.prompt(running, turn(n), { text: prompt, images: [] });
         if (!result.ok) {
           throw new Error(`the turn failed: ${result.error.message}`);
         }
@@ -261,7 +266,7 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
       // Turn one, in the first box: the agent states the fact.
       const first: TaskEvent[] = [];
       const { session: running, started } = await session(first);
-      const said = await adapter.prompt(running, turn(1), archive.remember.prompt);
+      const said = await adapter.prompt(running, turn(1), { text: archive.remember.prompt, images: [] });
       expect(said.ok).toBe(true);
       const agentSessionId = running.agentSessionId;
       await adapter.close(running);
@@ -302,7 +307,7 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
         // The replay is marked and counted, never handed over as new events.
         expect(resumed.value.replayedUpdates, "session/load replayed the history").toBeGreaterThan(0);
         expect(events, "a replayed update reached onEvents").toEqual([]);
-        const recalled = await adapter.prompt(resumed.value, turn(2), archive.remember.recall);
+        const recalled = await adapter.prompt(resumed.value, turn(2), { text: archive.remember.recall, images: [] });
         expect(recalled.ok).toBe(true);
         expect(textOf(events)).toContain(archive.remember.fact);
         await adapter.close(resumed.value);
@@ -333,7 +338,7 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
       const events: TaskEvent[] = [];
       const { session: running, started } = await session(events);
       try {
-        const turnResult = subject().adapter.prompt(running, turn(2), subject().fixture.longPrompt);
+        const turnResult = subject().adapter.prompt(running, turn(2), { text: subject().fixture.longPrompt, images: [] });
         await new Promise((resolve) => setTimeout(resolve, 100));
         const at = Date.now();
         await subject().adapter.cancel(running);
@@ -354,7 +359,7 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
       const events: TaskEvent[] = [];
       const { session: running, started } = await session(events);
       try {
-        const turnResult = subject().adapter.prompt(running, turn(3), prompt);
+        const turnResult = subject().adapter.prompt(running, turn(3), { text: prompt, images: [] });
         const spawned = await waitFor(() => /spawned (\d+)/.exec(textOf(events))?.[1], 15_000);
         expect(spawned, "the agent says which process it left").toBeDefined();
         const pid = Number(spawned);
@@ -443,7 +448,7 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
         },
       });
       try {
-        const first = await adapter.prompt(running, turn(4), prompt);
+        const first = await adapter.prompt(running, turn(4), { text: prompt, images: [] });
         expect(asked).toContain("allow_once");
         if (adapter.capabilities.rejectAndContinue) {
           // The agent tried another way within the same turn.
@@ -451,7 +456,7 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
         } else {
           // The deny ended the turn: the runner re-prompts, and the agent works on.
           expect(first).toEqual({ ok: true, value: { stopReason: "cancelled" } });
-          const again = await adapter.prompt(running, turn(5), fixture.simplePrompt);
+          const again = await adapter.prompt(running, turn(5), { text: fixture.simplePrompt, images: [] });
           expect(again).toEqual({ ok: true, value: { stopReason: "end_turn" } });
         }
         expect(events.some((event) => event.kind === "tool.failed")).toBe(true);
@@ -518,7 +523,7 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
       const { adapter } = subject();
       const { session: running, started } = await session([]);
       try {
-        const steered = await adapter.steer(running, "also add a test");
+        const steered = await adapter.steer(running, { text: "also add a test", images: [] });
         if (adapter.capabilities.steerMidTurn && running.connection.steeringAdvertised) {
           // No turn is running, so an agent that takes steers answers, and one that doesn't refuses.
           expect(steered.ok || steered.error.code === "conflict").toBe(true);
@@ -548,11 +553,11 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
           context.skip();
           return;
         }
-        const turnResult = adapter.prompt(running, turn(6), spec.prompt);
+        const turnResult = adapter.prompt(running, turn(6), { text: spec.prompt, images: [] });
         await waitFor(() => (events.some((event) => event.kind === "tool.called") || textOf(events).includes(spec.waitFor) ? true : undefined), 60_000);
         // The turn is in its long step.
         await new Promise((resolve) => setTimeout(resolve, 500));
-        expect(await adapter.steer(running, spec.steerText)).toEqual({ ok: true, value: undefined });
+        expect(await adapter.steer(running, { text: spec.steerText, images: [] })).toEqual({ ok: true, value: undefined });
         expect(await turnResult).toEqual({ ok: true, value: { stopReason: "end_turn" } });
         expect(textOf(events)).toContain(spec.expectMessage);
       } finally {
@@ -660,7 +665,7 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
       const events: TaskEvent[] = [];
       const { session: running, started } = await session(events);
       try {
-        const turnResult = adapter.prompt(running, turn(8), probed.hangingPrompt);
+        const turnResult = adapter.prompt(running, turn(8), { text: probed.hangingPrompt, images: [] });
         // The prompt is answered, and the turn waits on its subagent.
         await waitFor(() => (textOf(events).includes(probed.launched) ? true : undefined), 120_000);
         await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -679,7 +684,7 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
         expect(events.slice(count).filter((event) => event.kind !== "session.config_changed")).toEqual([]);
         expect(probed.childCalls?.(), "the subagent called the model after the cancel").toBe(calls);
         // The session goes on: "interrupt and send" sends the member's message as its next turn.
-        const next = await adapter.prompt(running, turn(9), subject().fixture.simplePrompt);
+        const next = await adapter.prompt(running, turn(9), { text: subject().fixture.simplePrompt, images: [] });
         expect(next).toEqual({ ok: true, value: { stopReason: "end_turn" } });
       } finally {
         await adapter.close(running);
@@ -727,6 +732,8 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
     // Milestone 6: the whole team's task kinds, last, since they add repo folders to the workspace.
     defineAgentTeamCases(subject);
     defineAgentAppCases(subject);
+    // Milestone 9 (ADR 0070, F-148): images in a prompt and a steer, and a message's files on disk.
+    defineAgentFilesCases(subject);
   });
 };
 

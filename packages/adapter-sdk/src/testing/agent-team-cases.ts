@@ -130,7 +130,7 @@ export const defineAgentTeamCases = (subject: Subject): void => {
       throw new Error(`startSession failed: ${session.error.message}`);
     }
     try {
-      const turn = await adapter.prompt(session.value, turnIdSchema.parse("team-turn-1"), prompt);
+      const turn = await adapter.prompt(session.value, turnIdSchema.parse("team-turn-1"), { text: prompt, images: [] });
       if (!turn.ok) throw new Error(`the turn failed: ${turn.error.message}`);
       return { text: textOf(events), events, stopReason: turn.value.stopReason };
     } finally {

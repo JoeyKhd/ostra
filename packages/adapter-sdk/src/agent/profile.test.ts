@@ -40,6 +40,7 @@ const capabilities = (planMode: AgentCapabilities["planMode"]): AgentCapabilitie
   memory: "index-only",
   reasoningEffort: "none",
   subagents: "none",
+  promptImages: false,
 });
 
 const unusedDriver: DriverPort = {
@@ -81,6 +82,7 @@ const sessionWith = (connection: Partial<DriverConnection>): AgentSession => ({
     agentName: null,
     agentVersion: null,
     steeringAdvertised: false,
+    imagesAdvertised: false,
     newSession: () => Promise.resolve(ok({ agentSessionId: "x", configOptions: [] })),
     loadSession: () => Promise.resolve(ok({ configOptions: [] })),
     prompt: () => Promise.resolve(ok({ stopReason: "end_turn" as const })),

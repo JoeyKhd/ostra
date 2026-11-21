@@ -108,7 +108,7 @@ describe("the ACP driver, in process", () => {
     const peer = await connectInProcess("rich");
     expect(peer.connection.agentName).toBe("ostra-fake-agent");
     const id = await newSession(peer);
-    const result = await peer.connection.prompt(id, fakeMarker("say"));
+    const result = await peer.connection.prompt(id, { text: fakeMarker("say"), images: [] });
     expect(result).toEqual({ ok: true, value: { stopReason: "end_turn" } });
     expect(messageText(peer)).toBe("Hello from the fake agent. The work is done.");
     expect(peer.updates.every((entry) => entry.agentSessionId === id)).toBe(true);
@@ -117,7 +117,7 @@ describe("the ACP driver, in process", () => {
   it("answers a cancel within 5 s: the turn ends cancelled", async () => {
     const peer = await connectInProcess("rich");
     const id = await newSession(peer);
-    const turn = peer.connection.prompt(id, fakeMarker("silent"));
+    const turn = peer.connection.prompt(id, { text: fakeMarker("silent"), images: [] });
     await new Promise((resolve) => setTimeout(resolve, 50));
     const at = Date.now();
     await peer.connection.cancel(id);
@@ -155,7 +155,7 @@ describe("the ACP driver, in process", () => {
     };
     const peer = await connectInProcess("rich", {}, { cancelGraceMs: 2_000 }, { pid: agent, unitPids });
     const id = await newSession(peer);
-    const turn = peer.connection.prompt(id, fakeMarker("silent"));
+    const turn = peer.connection.prompt(id, { text: fakeMarker("silent"), images: [] });
     await waitUntil(() => messageText(peer).includes("Starting a long step."));
     // Born during the turn, in the task's unit and outside the agent's tree.
     const bornInTurn = pidOf(idle());
@@ -175,7 +175,7 @@ describe("the ACP driver, in process", () => {
   it("ends a cancelled turn itself when the agent ignores the cancel", async () => {
     const peer = await connectInProcess("rich", {}, { cancelGraceMs: 200 });
     const id = await newSession(peer);
-    const turn = peer.connection.prompt(id, fakeMarker("silent-deaf"));
+    const turn = peer.connection.prompt(id, { text: fakeMarker("silent-deaf"), images: [] });
     await new Promise((resolve) => setTimeout(resolve, 50));
     const at = Date.now();
     await peer.connection.cancel(id);
@@ -186,7 +186,7 @@ describe("the ACP driver, in process", () => {
   it("routes a permission request to the decider with branded IDs, leaves out an option with no usable ID, and carries its answer back", async () => {
     const peer = await connectInProcess("rich");
     const id = await newSession(peer);
-    const result = await peer.connection.prompt(id, fakeMarker("permission"));
+    const result = await peer.connection.prompt(id, { text: fakeMarker("permission"), images: [] });
     expect(result).toEqual({ ok: true, value: { stopReason: "end_turn" } });
     expect(peer.permissions).toEqual([
       {
@@ -207,13 +207,13 @@ describe("the ACP driver, in process", () => {
   it("answers an unreadable permission request as cancelled instead of failing the agent's call", async () => {
     const peer = await connectInProcess("plain", { onPermission: () => Promise.resolve({ outcome: "cancelled" }) });
     const id = await newSession(peer);
-    expect(await peer.connection.prompt(id, fakeMarker("permission"))).toEqual({ ok: true, value: { stopReason: "cancelled" } });
+    expect(await peer.connection.prompt(id, { text: fakeMarker("permission"), images: [] })).toEqual({ ok: true, value: { stopReason: "cancelled" } });
   });
 
   it("routes an elicitation form to the decider as question fields, and coerces the answers to the form's types", async () => {
     const peer = await connectInProcess("rich");
     const id = await newSession(peer);
-    expect(await peer.connection.prompt(id, fakeMarker("elicit"))).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+    expect(await peer.connection.prompt(id, { text: fakeMarker("elicit"), images: [] })).toEqual({ ok: true, value: { stopReason: "end_turn" } });
     expect(peer.questions).toEqual([
       {
         message: "Which database should the service use?",
@@ -233,7 +233,7 @@ describe("the ACP driver, in process", () => {
     for (const outcome of ["declined", "cancelled"] as const) {
       const peer = await connectInProcess("rich", { onQuestion: () => Promise.resolve({ outcome }) });
       const id = await newSession(peer);
-      await peer.connection.prompt(id, fakeMarker("elicit"));
+      await peer.connection.prompt(id, { text: fakeMarker("elicit"), images: [] });
       expect(messageText(peer)).toContain(outcome === "declined" ? "no answer: decline" : "no answer: cancel");
     }
   });
@@ -242,9 +242,9 @@ describe("the ACP driver, in process", () => {
     const peer = await connectInProcess("rich");
     expect(peer.connection.steeringAdvertised).toBe(true);
     const id = await newSession(peer);
-    const turn = peer.connection.prompt(id, fakeMarker("steerable"));
+    const turn = peer.connection.prompt(id, { text: fakeMarker("steerable"), images: [] });
     await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(await peer.connection.steer(id, "use tabs")).toEqual({ ok: true, value: undefined });
+    expect(await peer.connection.steer(id, { text: "use tabs", images: [] })).toEqual({ ok: true, value: undefined });
     expect(await turn).toEqual({ ok: true, value: { stopReason: "end_turn" } });
     expect(messageText(peer)).toContain("Steered: use tabs");
   });
@@ -252,41 +252,91 @@ describe("the ACP driver, in process", () => {
   it("answers conflict for a steer when the agent has no running turn", async () => {
     const peer = await connectInProcess("rich");
     const id = await newSession(peer);
-    expect(await peer.connection.steer(id, "too late")).toMatchObject({ ok: false, error: { code: "conflict" } });
+    expect(await peer.connection.steer(id, { text: "too late", images: [] })).toMatchObject({ ok: false, error: { code: "conflict" } });
   });
 
   it("refuses a steer, as an error, when the agent didn't advertise steering", async () => {
     const peer = await connectInProcess("plain");
     expect(peer.connection.steeringAdvertised).toBe(false);
     const id = await newSession(peer);
-    expect(await peer.connection.steer(id, "hello")).toMatchObject({ ok: false, error: { code: "unsupported" } });
+    expect(await peer.connection.steer(id, { text: "hello", images: [] })).toMatchObject({ ok: false, error: { code: "unsupported" } });
+  });
+
+  // Milestone 9 (F-148, ADR 0070): images as ACP `image` blocks, only where both sides say yes.
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+  const image = { mimeType: "image/png" as const, bytes: PNG, name: "mock.png" };
+
+  it("F-148/c5: reads promptCapabilities.image from initialize, and sends a prompt's images as image blocks after its text", async () => {
+    const peer = await connectInProcess("rich", {}, {}, {}, { promptImages: true });
+    expect(peer.connection.imagesAdvertised).toBe(true);
+    const id = await newSession(peer);
+    expect(await peer.connection.prompt(id, { text: fakeMarker("say-images"), images: [image, { ...image, mimeType: "image/webp" }] })).toEqual({
+      ok: true,
+      value: { stopReason: "end_turn" },
+    });
+    const base64 = Buffer.from(PNG).toString("base64");
+    expect(messageText(peer)).toBe(`images: image/png:${base64} image/webp:${base64}`);
+    expect((await connectInProcess("plain", {}, {}, {}, { promptImages: true })).connection.imagesAdvertised).toBe(false);
+  });
+
+  it("F-148/c5: sends a steer's images as image blocks, mid-turn", async () => {
+    const peer = await connectInProcess("rich", {}, {}, {}, { promptImages: true });
+    const id = await newSession(peer);
+    const turn = peer.connection.prompt(id, { text: fakeMarker("model-steerable"), images: [] });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(await peer.connection.steer(id, { text: "use this layout", images: [image] })).toEqual({ ok: true, value: undefined });
+    expect(await turn).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+    expect(messageText(peer)).toContain("Steered: use this layout");
+  });
+
+  it("F-148/c5: refuses images unless the adapter declares promptImages and the agent advertised them, and sends nothing", async () => {
+    // The agent takes images, the adapter doesn't declare them.
+    const undeclared = await connectInProcess("rich");
+    const first = await newSession(undeclared);
+    expect(await undeclared.connection.prompt(first, { text: fakeMarker("say-images"), images: [image] })).toMatchObject({ ok: false, error: { code: "unsupported" } });
+    // The adapter declares them, the agent didn't advertise them.
+    const unadvertised = await connectInProcess("plain", {}, {}, {}, { promptImages: true });
+    const second = await newSession(unadvertised);
+    expect(await unadvertised.connection.prompt(second, { text: fakeMarker("say-images"), images: [image] })).toMatchObject({ ok: false, error: { code: "unsupported" } });
+    const steerable = await connectInProcess("rich");
+    const third = await newSession(steerable);
+    const turn = steerable.connection.prompt(third, { text: fakeMarker("steerable"), images: [] });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(await steerable.connection.steer(third, { text: "look", images: [image] })).toMatchObject({ ok: false, error: { code: "unsupported" } });
+    await steerable.connection.cancel(third);
+    await turn;
+    // Nothing reached either agent; text alone still goes.
+    expect(messageText(undeclared)).toBe("");
+    expect(messageText(unadvertised)).toBe("");
+    expect(await undeclared.connection.prompt(first, { text: fakeMarker("say-images"), images: [] })).toMatchObject({ ok: true });
+    expect(messageText(undeclared)).toBe("images: none");
   });
 
   it("doesn't emit what session/load replays, and emits what comes after", async () => {
     const peer = await connectInProcess("rich");
     const id = await newSession(peer);
-    await peer.connection.prompt(id, fakeMarker("say"));
+    await peer.connection.prompt(id, { text: fakeMarker("say"), images: [] });
     const before = peer.updates.length;
     expect(before).toBeGreaterThan(0);
     // The fake replays two updates per line of history: none of them may reach the handler.
     expect(await peer.connection.loadSession({ agentSessionId: id, cwd: process.cwd(), mcpServers: [] })).toEqual({ ok: true, value: { configOptions: [] } });
     expect(peer.updates.length).toBe(before);
     // The session carries on, and its new updates do arrive.
-    await peer.connection.prompt(id, fakeMarker("say"));
+    await peer.connection.prompt(id, { text: fakeMarker("say"), images: [] });
     expect(peer.updates.length).toBeGreaterThan(before);
   });
 
   it("hands an update of a kind it doesn't know to the handler, so it can't be dropped", async () => {
     const peer = await connectInProcess("rich");
     const id = await newSession(peer);
-    await peer.connection.prompt(id, fakeMarker("unknown"));
+    await peer.connection.prompt(id, { text: fakeMarker("unknown"), images: [] });
     expect(peer.updates.map((entry) => entry.update.sessionUpdate)).toContain("future_feature");
   });
 
   it("maps updates through the shared mapping, with the open text closed at the turn's end", async () => {
     const peer = await connectInProcess("rich");
     const id = await newSession(peer);
-    await peer.connection.prompt(id, fakeMarker("tools"));
+    await peer.connection.prompt(id, { text: fakeMarker("tools"), images: [] });
     const context = {
       taskId: taskIdSchema.parse("task-1"),
       sessionId: sessionIdSchema.parse("session-1"),
@@ -314,9 +364,9 @@ describe("the ACP driver, in process", () => {
   it("fails a turn as a typed failure, not a throw, when the agent's connection ends", async () => {
     const peer = await connectInProcess("rich");
     const id = await newSession(peer);
-    const turn = peer.connection.prompt(id, fakeMarker("crash"));
+    const turn = peer.connection.prompt(id, { text: fakeMarker("crash"), images: [] });
     expect(await turn).toMatchObject({ ok: false, error: { code: "unavailable" } });
-    expect(await peer.connection.prompt(id, fakeMarker("say"))).toMatchObject({ ok: false, error: { code: "unavailable" } });
+    expect(await peer.connection.prompt(id, { text: fakeMarker("say"), images: [] })).toMatchObject({ ok: false, error: { code: "unavailable" } });
   });
 });
 
@@ -328,7 +378,7 @@ describe("the ACP driver, with background subagents", () => {
   it("F-023/c1: a turn waits for its subagent and for the turn its report wakes: the agent's real answer is in it", async () => {
     const peer = await connectInProcess("rich", {}, { idlePollMs: 50 }, {}, background);
     const id = await newSession(peer);
-    const result = await peer.connection.prompt(id, fakeMarker("subagent-bg", "400"));
+    const result = await peer.connection.prompt(id, { text: fakeMarker("subagent-bg", "400"), images: [] });
     expect(result).toEqual({ ok: true, value: { stopReason: "end_turn" } });
     // Everything came before the prompt resolved: the subagent's work under its prefixed IDs, then the woken answer.
     expect(messageText(peer)).toBe("launched a subagent, ending my turnchild answer: the README says hellothe final answer, after the subagent");
@@ -339,7 +389,7 @@ describe("the ACP driver, with background subagents", () => {
   it("F-023/c1: without the capability declared, the turn ends with its prompt's answer, and the subagent's updates never come", async () => {
     const peer = await connectInProcess("rich", {}, { idlePollMs: 50 });
     const id = await newSession(peer);
-    const result = await peer.connection.prompt(id, fakeMarker("subagent-bg", "400"));
+    const result = await peer.connection.prompt(id, { text: fakeMarker("subagent-bg", "400"), images: [] });
     expect(result).toEqual({ ok: true, value: { stopReason: "end_turn" } });
     expect(messageText(peer)).toBe("launched a subagent, ending my turn");
     // The report still wakes the agent, past the turn: what ostra had before this fix.
@@ -351,7 +401,7 @@ describe("the ACP driver, with background subagents", () => {
     const peer = await connectInProcess("rich", {}, { idlePollMs: 50, subagentWaitMs: 600 }, {}, background);
     const id = await newSession(peer);
     const at = Date.now();
-    const result = await peer.connection.prompt(id, fakeMarker("subagent-bg", "hang"));
+    const result = await peer.connection.prompt(id, { text: fakeMarker("subagent-bg", "hang"), images: [] });
     expect(result).toEqual({ ok: true, value: { stopReason: "end_turn", subagentsStopped: { waitedMs: 600, startedBy: ["subagent-1"] } } });
     expect(Date.now() - at).toBeLessThan(5000);
     // Stopped, with the turn its report would wake: nothing more comes.
@@ -363,7 +413,7 @@ describe("the ACP driver, with background subagents", () => {
   it("F-025/c1: a cancel while the turn waits on a subagent ends it cancelled within 5 s, the subagent stopped and nothing after", async () => {
     const peer = await connectInProcess("rich", {}, { idlePollMs: 50 }, {}, background);
     const id = await newSession(peer);
-    const turn = peer.connection.prompt(id, fakeMarker("subagent-bg", "hang"));
+    const turn = peer.connection.prompt(id, { text: fakeMarker("subagent-bg", "hang"), images: [] });
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(messageText(peer)).toBe("launched a subagent, ending my turn");
     const at = Date.now();
@@ -374,15 +424,15 @@ describe("the ACP driver, with background subagents", () => {
     await new Promise((resolve) => setTimeout(resolve, 800));
     expect(peer.updates.slice(count)).toEqual([]);
     // The session goes on: its next turn runs.
-    expect(await peer.connection.prompt(id, fakeMarker("say"))).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+    expect(await peer.connection.prompt(id, { text: fakeMarker("say"), images: [] })).toEqual({ ok: true, value: { stopReason: "end_turn" } });
   });
 
   it("F-024/c2: a steer while the agent idles on its subagent becomes the turn's next prompt, inside the turn", async () => {
     const peer = await connectInProcess("rich", {}, { idlePollMs: 50 }, {}, background);
     const id = await newSession(peer);
-    const turn = peer.connection.prompt(id, fakeMarker("subagent-bg", "700"));
+    const turn = peer.connection.prompt(id, { text: fakeMarker("subagent-bg", "700"), images: [] });
     await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(await peer.connection.steer(id, fakeMarker("remember", "cobalt"))).toEqual({ ok: true, value: undefined });
+    expect(await peer.connection.steer(id, { text: fakeMarker("remember", "cobalt"), images: [] })).toEqual({ ok: true, value: undefined });
     expect(await turn).toEqual({ ok: true, value: { stopReason: "end_turn" } });
     expect(messageText(peer)).toContain("I'll remember cobalt.");
     expect(messageText(peer)).toContain("the final answer, after the subagent");
@@ -415,7 +465,7 @@ describe("the ACP driver, naming each subagent's work (F-138)", () => {
     const seen = naming();
     const peer = await connectInProcess("rich", seen.handlers, { idlePollMs: 50 }, {}, background);
     const id = await newSession(peer);
-    expect(await peer.connection.prompt(id, fakeMarker("subagent-tree"))).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+    expect(await peer.connection.prompt(id, { text: fakeMarker("subagent-tree"), images: [] })).toEqual({ ok: true, value: { stopReason: "end_turn" } });
     const refs = new Map<string, SubagentRef>();
     for (const entry of seen.named) {
       if (entry.subagent !== undefined && !refs.has(entry.subagent.id)) refs.set(entry.subagent.id, entry.subagent);
@@ -439,7 +489,7 @@ describe("the ACP driver, naming each subagent's work (F-138)", () => {
   it("F-138/c4: a subagent's permission request names it", async () => {
     const peer = await connectInProcess("rich", naming().handlers, { idlePollMs: 50 }, {}, background);
     const id = await newSession(peer);
-    expect(await peer.connection.prompt(id, fakeMarker("subagent-tree", "ask"))).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+    expect(await peer.connection.prompt(id, { text: fakeMarker("subagent-tree", "ask"), images: [] })).toEqual({ ok: true, value: { stopReason: "end_turn" } });
     expect(peer.permissions).toHaveLength(1);
     expect(peer.permissions[0]?.subagentId?.endsWith("-general")).toBe(true);
   });
@@ -448,7 +498,7 @@ describe("the ACP driver, naming each subagent's work (F-138)", () => {
     const seen = naming();
     const peer = await connectInProcess("rich", seen.handlers, { idlePollMs: 50 });
     const id = await newSession(peer);
-    expect(await peer.connection.prompt(id, fakeMarker("subagent-tree", "ask"))).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+    expect(await peer.connection.prompt(id, { text: fakeMarker("subagent-tree", "ask"), images: [] })).toEqual({ ok: true, value: { stopReason: "end_turn" } });
     expect(seen.named.length).toBeGreaterThan(10);
     expect(seen.named.every((entry) => entry.subagent === undefined)).toBe(true);
     expect(seen.notices).toEqual([]);
@@ -460,7 +510,7 @@ describe("the ACP driver, naming each subagent's work (F-138)", () => {
     const peer = await connectInProcess("rich", seen.handlers, { idlePollMs: 50 }, {}, background);
     const id = await newSession(peer);
     // A child whose end the agent never reports: only the driver can say it was stopped.
-    const turn = peer.connection.prompt(id, fakeMarker("subagent-bg", "hang silent"));
+    const turn = peer.connection.prompt(id, { text: fakeMarker("subagent-bg", "hang silent"), images: [] });
     await new Promise((resolve) => setTimeout(resolve, 300));
     await peer.connection.cancel(id);
     expect(await turn).toEqual({ ok: true, value: { stopReason: "cancelled" } });
@@ -525,7 +575,7 @@ describe("the ACP driver, with processes", () => {
       throw new Error("no session");
     }
     // The agent leaves a process behind and keeps running: it never answers on its own.
-    void connected.value.prompt(created.value.agentSessionId, fakeMarker("spawn"));
+    void connected.value.prompt(created.value.agentSessionId, { text: fakeMarker("spawn"), images: [] });
     const child = await waitFor(() => {
       const text = updates.map((update) => JSON.stringify(update)).join("");
       return /spawned (\d+)/.exec(text)?.[1];
@@ -569,7 +619,7 @@ describe("the ACP driver, with processes", () => {
     if (!created.ok) {
       throw new Error("no session");
     }
-    const result = await connected.value.prompt(created.value.agentSessionId, fakeMarker("crash"));
+    const result = await connected.value.prompt(created.value.agentSessionId, { text: fakeMarker("crash"), images: [] });
     expect(result).toMatchObject({ ok: false, error: { code: "unavailable" } });
     expect(!result.ok && result.error.message).toContain("process ended");
   }, 30_000);

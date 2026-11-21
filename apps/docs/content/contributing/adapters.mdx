@@ -62,10 +62,11 @@ export const capabilities = {
   memory: "index-only",
   reasoningEffort: "none",
   subagents: "none",
+  promptImages: false,
 } as const satisfies AgentCapabilities;
 ```
 
-ostra then queues a member's message until the turn ends, reopens through the rebuild template, appends skills to the agent's instructions, hides the repo's own agent config from it, has the runner check every permission request, gives it memory's index without the memory tools, runs every task at the agent's default reasoning level, with no effort control in the panel, and ends a turn with its prompt's answer, since no subagent of its runs on past it; whatever subagents it has show their calls in the thread as its own, with no subagents window. Plan first can't run on it, and the panel says so. `modelBaseUrlAndPlaceholderKey` is the one an agent can't do without: every model call must go through the key proxy.
+ostra then queues a member's message until the turn ends, reopens through the rebuild template, appends skills to the agent's instructions, hides the repo's own agent config from it, has the runner check every permission request, gives it memory's index without the memory tools, runs every task at the agent's default reasoning level, with no effort control in the panel, and ends a turn with its prompt's answer, since no subagent of its runs on past it; whatever subagents it has show their calls in the thread as its own, with no subagents window; and a member's screenshots reach it as files in its workspace, their paths in its prompt, rather than as images the model sees. Plan first can't run on it, and the panel says so. `modelBaseUrlAndPlaceholderKey` is the one an agent can't do without: every model call must go through the key proxy.
 
 ## The tracker kind: a ticket's files
 
@@ -105,7 +106,7 @@ An agent adapter writes only what is particular to its agent. ostra drives agent
 - **`prepareLaunch`:** the command, the environment (an allowlist, never the runner's own) and the config files the agent starts with, from the task's profile: its model at the key proxy's base URL with the placeholder key, its permissions, skills and MCP servers. Each repo's own skills (`REPO_SKILL_FOLDERS`) reach the agent beside the profile's unless the launch's `repoSkills` is `false`, and a profile's skill wins over a repo's of the same name;
 - **`mapUpdate`:** how the agent's ACP updates map to ostra's events: text, thinking, tool calls with their input and output, plans and usage;
 - **`effortLevels`:** the reasoning levels the agent can send for a model, from its controls, API format and model ID, with `default` first. With `reasoningEffort: "session-option"`, the base class's `setEffort` sets the level on the session's ACP option of category `thought_level`, clamped to the values the agent advertised;
-- **`capabilities`**, as above, each one checked by the agent suite.
+- **`capabilities`**, as above, each one checked by the agent suite. With `promptImages`, a prompt and a steer take `{ text, images }`, and the driver sends each image as an ACP `image` block with base64 data after the text, once the agent advertised `promptCapabilities.image` at `initialize` and the task's model takes images (`PrepareLaunchInput.model.inputModalities`, which the agent's config should carry). `promptsImages(session)` says whether all three hold; otherwise images are refused, and the runner writes their paths into the text instead.
 
 The agent itself is installed by the base image, pinned and checked, never by the adapter at run time.
 

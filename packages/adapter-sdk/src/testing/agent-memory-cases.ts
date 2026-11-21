@@ -91,7 +91,7 @@ export const defineAgentMemoryCases = (subject: Subject): void => {
     try {
       for (const [index, prompt] of prompts.entries()) {
         const before = events.length;
-        const turn = await adapter.prompt(result.value, turnIdSchema.parse(`memory-turn-${String(index + 1)}`), prompt);
+        const turn = await adapter.prompt(result.value, turnIdSchema.parse(`memory-turn-${String(index + 1)}`), { text: prompt, images: [] });
         if (!turn.ok) throw new Error(`the turn failed: ${turn.error.message}`);
         texts.push(textOf(events.slice(before)));
       }

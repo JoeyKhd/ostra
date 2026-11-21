@@ -8,7 +8,9 @@ import type {
   ApprovalRequestSubject,
   ApprovalRule,
   EffortLevel,
+  InputModality,
   OptionId,
+  PromptImageContentType,
   OstraToolSet,
   QuestionField,
   ReasoningControls,
@@ -158,6 +160,12 @@ export type PrepareLaunchInput = {
     readonly reasoning?: ReasoningControls;
     /** Milestone 4 (F-137): the model's real limits. Absent, or both `null`: the adapter's fixed ones. */
     readonly limits?: TaskSpecModelLimits;
+    /**
+     * Milestone 9 (F-148, ADR 0070): the model's inputs, as models.dev or an admin says, which the
+     * agent's config carries so the agent shows an image to a model that sees one. Absent: text
+     * only (`inputModalitiesOf`).
+     */
+    readonly inputModalities?: readonly InputModality[];
   };
   /** ostra's MCP tools for this task (ticket 20). */
   readonly mcp: {
@@ -358,6 +366,36 @@ export type SessionConfigOption = {
 /** ACP's reserved category for a reasoning level selector (ACP, "Session Config Options"). */
 export const THOUGHT_LEVEL_CATEGORY = "thought_level";
 
+// ---------- milestone 9: images in a prompt (ADR 0070, F-148) ----------
+
+/** A launch's model inputs: text only when the launch says nothing. */
+export const inputModalitiesOf = (model: { readonly inputModalities?: readonly InputModality[] | undefined }): readonly InputModality[] =>
+  model.inputModalities ?? ["text"];
+
+/**
+ * An image a prompt or a steer carries to the model, beside its text: one of the four types a
+ * prompt takes (Q339), its bytes as the runner wrote them to the box, and its safe name. The
+ * bytes and the name are never logged.
+ */
+export type AgentPromptImage = {
+  readonly mimeType: PromptImageContentType;
+  readonly bytes: Uint8Array;
+  readonly name: string;
+};
+
+/**
+ * What a turn's prompt, or a steer, carries: the text, then the images that go to the model as
+ * images. `images` is empty unless the session takes images (`AgentAdapter.promptsImages`); a
+ * message's files reach the agent as paths in `text` either way.
+ */
+export type AgentPromptInput = {
+  readonly text: string;
+  readonly images: readonly AgentPromptImage[];
+};
+
+/** A prompt of text alone. */
+export const textPrompt = (text: string): AgentPromptInput => ({ text, images: [] });
+
 /**
  * What a turn's prompt came to. With `subagents: "background"`, the driver answers it only once no
  * subagent of the session runs and the agent has finished the turns their reports woke it for.
@@ -376,6 +414,8 @@ export type PromptOutcome = {
 export type ConnectOptions = {
   /** The adapter's `subagents` capability: with `background`, a turn waits for the subagents it started. Absent: `none`. */
   readonly subagents?: AgentCapabilities["subagents"];
+  /** Milestone 9: the adapter's `promptImages` capability. Absent or `false`: a prompt or a steer with images is refused. */
+  readonly promptImages?: boolean;
 };
 
 /** One initialized ACP connection to one agent process. */
@@ -384,6 +424,8 @@ export type DriverConnection = {
   readonly agentVersion: string | null;
   /** The agent advertised mid-turn steering on `initialize` (ADR 0032). */
   readonly steeringAdvertised: boolean;
+  /** Milestone 9 (F-148): the agent advertised `promptCapabilities.image` on `initialize`. */
+  readonly imagesAdvertised: boolean;
   /** Milestone 4 (F-137): with the session's config options, as the agent advertised them. */
   readonly newSession: (input: {
     readonly cwd: string;
@@ -394,9 +436,15 @@ export type DriverConnection = {
     readonly cwd: string;
     readonly mcpServers: readonly McpServer[];
   }) => Promise<AdapterResult<{ readonly configOptions: readonly SessionConfigOption[] }>>;
-  readonly prompt: (agentSessionId: string, text: string) => Promise<AdapterResult<PromptOutcome>>;
+  /**
+   * Milestone 9: the input's text, then its images as ACP `image` blocks with base64 data and no
+   * URI. Images are refused (`unsupported`) unless the connection takes them (`ConnectOptions.promptImages`
+   * and `imagesAdvertised`).
+   */
+  readonly prompt: (agentSessionId: string, input: AgentPromptInput) => Promise<AdapterResult<PromptOutcome>>;
   readonly cancel: (agentSessionId: string) => Promise<void>;
-  readonly steer: (agentSessionId: string, text: string) => Promise<AdapterResult<void>>;
+  /** A message mid-turn, its images as `prompt`'s, in `_session/steering`. */
+  readonly steer: (agentSessionId: string, input: AgentPromptInput) => Promise<AdapterResult<void>>;
   /**
    * Sets a session config option (the model, for one) and returns the `session.config_changed`
    * event for the caller to number and spool: the driver emits it itself, because an agent sends no
@@ -473,6 +521,11 @@ export type StartSessionInput = {
    * same as `relaunch`, with the launch written for the reasoning level given. The runner provides it.
    */
   readonly relaunchAtEffort?: (level: EffortLevel) => Promise<AdapterResult<AgentIo>>;
+  /**
+   * Milestone 9 (F-148): the model's inputs, as the launch gave them (`PrepareLaunchInput.model.inputModalities`).
+   * A prompt carries images only to a model with `image` among them. Absent: text only.
+   */
+  readonly modelInputModalities?: readonly InputModality[];
 };
 
 /** A running session, as the base class hands it back. */
@@ -709,7 +762,7 @@ export abstract class AgentAdapter {
         },
         onQuestion: input.onQuestion,
       },
-      { subagents: this.capabilities.subagents },
+      { subagents: this.capabilities.subagents, promptImages: this.capabilities.promptImages },
     );
     if (!connected.ok) {
       this.#emitters.delete(sessionKey);
@@ -761,7 +814,7 @@ export abstract class AgentAdapter {
   async prompt(
     session: AgentSession,
     turnId: TurnId,
-    text: string,
+    input: AgentPromptInput,
     options: {
       readonly mode?: TurnMode;
       /** Milestone 4 (F-137): the level the turn runs at, and the level asked for when the agent's clamp changed it. */
@@ -769,6 +822,11 @@ export abstract class AgentAdapter {
       readonly adjustedFrom?: EffortLevel;
     } = {},
   ): Promise<AdapterResult<PromptOutcome>> {
+    // Milestone 9: refused before the turn starts, so the caller sends the paths instead (ticket 13).
+    const refused = this.#imagesRefusal(session, input);
+    if (refused !== null) {
+      return refused;
+    }
     const key = String(session.sessionId);
     const emit = this.#emitters.get(key);
     this.#turns.set(key, turnId);
@@ -783,7 +841,7 @@ export abstract class AgentAdapter {
         ...(options.adjustedFrom === undefined ? {} : { adjustedFrom: options.adjustedFrom }),
       },
     ]);
-    const result = await session.connection.prompt(session.agentSessionId, text);
+    const result = await session.connection.prompt(session.agentSessionId, input);
     const held = this.#driver.finishTurn?.({ taskId: session.taskId, sessionId: session.sessionId, turnId }) ?? [];
     // A subagent the wait gave up on fails on the call that started it: what the member sees end.
     const stopped = result.ok ? result.value.subagentsStopped : undefined;
@@ -810,12 +868,47 @@ export abstract class AgentAdapter {
     await session.connection.cancel(session.agentSessionId);
   }
 
-  /** A member's message mid-turn. Only when the adapter declares `steerMidTurn` and the agent advertised it. */
-  async steer(session: AgentSession, text: string): Promise<AdapterResult<void>> {
+  /**
+   * A member's message mid-turn. Only when the adapter declares `steerMidTurn` and the agent
+   * advertised it; its images only when the session takes images (`promptsImages`).
+   */
+  async steer(session: AgentSession, input: AgentPromptInput): Promise<AdapterResult<void>> {
     if (!this.capabilities.steerMidTurn || !session.connection.steeringAdvertised) {
       return adapterError("unsupported", `${this.name} can't take a message mid-turn`);
     }
-    return session.connection.steer(session.agentSessionId, text);
+    const refused = this.#imagesRefusal(session, input);
+    if (refused !== null) {
+      return refused;
+    }
+    return session.connection.steer(session.agentSessionId, input);
+  }
+
+  /**
+   * Milestone 9 (F-148, ADR 0070): whether a prompt or a steer of this session can carry images
+   * the model sees: the adapter declares `promptImages`, the agent advertised
+   * `promptCapabilities.image`, and the launch's model takes images. Otherwise the caller writes
+   * the message's paths into its text and sends no image.
+   */
+  promptsImages(session: AgentSession): boolean {
+    const started = this.#starts.get(String(session.sessionId));
+    return (
+      this.capabilities.promptImages &&
+      session.connection.imagesAdvertised &&
+      inputModalitiesOf({ inputModalities: started?.modelInputModalities }).includes("image")
+    );
+  }
+
+  /** `unsupported` for images the session can't carry, with the reason in ostra's words; `null` when it can. */
+  #imagesRefusal(session: AgentSession, input: AgentPromptInput): ReturnType<typeof adapterError> | null {
+    if (input.images.length === 0 || this.promptsImages(session)) {
+      return null;
+    }
+    const why = !this.capabilities.promptImages
+      ? `${this.name} takes no images in its prompt`
+      : !session.connection.imagesAdvertised
+        ? "the agent didn't advertise images in its prompt"
+        : "the task's model can't see images";
+    return adapterError("unsupported", `${why}: send the images as files`);
   }
 
   /**

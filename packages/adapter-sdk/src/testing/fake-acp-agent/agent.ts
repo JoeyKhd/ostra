@@ -33,6 +33,12 @@ import { loadFakeSession, saveFakeSession } from "./archive.ts";
 // in the background past the prompt's answer, its states sent as `opencode/session/child_update`
 // to a client that asks for them. `rich` declares `subagents: "background"`, `plain` declares `none`.
 
+//
+// Milestone 9 (ADR 0070, F-148): `rich` advertises `promptCapabilities.image` and declares
+// `promptImages`, `plain` neither. A turn that calls its model (`[[fake:model-turn]]`,
+// `[[fake:model-steerable]]`) sends its prompt's images, and a steer's, on to the model as the
+// format's image part, when its config says the model takes images.
+
 export type FakeAgentProfile = "rich" | "plain";
 
 export type FakeAgentCapabilities = {
@@ -48,6 +54,8 @@ export type FakeAgentCapabilities = {
   readonly projectConfigOverride: boolean;
   // Subagents (2026-11-20).
   readonly subagents: "background" | "none";
+  // Milestone 9 (F-148).
+  readonly promptImages: boolean;
 };
 
 export const fakeAgentCapabilities: Readonly<Record<FakeAgentProfile, FakeAgentCapabilities>> = {
@@ -62,6 +70,7 @@ export const fakeAgentCapabilities: Readonly<Record<FakeAgentProfile, FakeAgentC
     mcp: { http: true, stdio: true },
     projectConfigOverride: true,
     subagents: "background",
+    promptImages: true,
   },
   plain: {
     steerMidTurn: false,
@@ -74,6 +83,7 @@ export const fakeAgentCapabilities: Readonly<Record<FakeAgentProfile, FakeAgentC
     mcp: { http: true, stdio: false },
     projectConfigOverride: false,
     subagents: "none",
+    promptImages: false,
   },
 };
 
@@ -91,6 +101,17 @@ export const fakeAgentConfigSchema = z.looseObject({
    * for a `session-option` fake. Absent or empty: the agent advertises no such option.
    */
   effortValues: z.array(z.string()).optional(),
+  /**
+   * Milestone 9 (F-148): the model the turn's calls go to, in its API format, and the inputs it
+   * takes, as OpenCode's catalog file carries them. Absent: the OpenAI-compatible format, text only.
+   */
+  model: z
+    .looseObject({
+      apiFormat: z.enum(["openai-compatible", "anthropic-messages"]),
+      endpointModelId: z.string(),
+      inputModalities: z.array(z.string()),
+    })
+    .optional(),
 });
 export type FakeAgentConfig = z.infer<typeof fakeAgentConfigSchema>;
 
@@ -248,6 +269,15 @@ export const fakeScripts = [
    * one fails with an error), `ask` (the general one's command asks for an approval, naming it).
    */
   "subagent-tree",
+  // Milestone 9 (F-148).
+  /** Calls its model once with the prompt's text and images, as the config's format sends them, and says how many images went. */
+  "model-turn",
+  /** Calls its model with the prompt, waits for a steer, then calls it again with the steer's text and images, and says `Steered: <text>`. */
+  "model-steerable",
+  /** Reads the absolute path given with a `read` tool call, as an agent's own read tool does, and says `Read: <its first line>`. */
+  "read-file",
+  /** Says each image its prompt carried, as `images: <type>:<base64> …`, or `images: none`. */
+  "say-images",
 ] as const;
 export type FakeScript = (typeof fakeScripts)[number];
 
@@ -318,6 +348,18 @@ const parsePrompt = (text: string): { readonly script: string; readonly args: st
 const promptText = (blocks: readonly { readonly type: string; readonly text?: string | undefined }[]): string =>
   blocks.map((block) => (block.type === "text" ? (block.text ?? "") : "")).join("\n");
 
+/** Milestone 9: an image a prompt or a steer carried, as ACP's `image` block holds it. */
+export type FakePromptImage = { readonly mimeType: string; readonly data: string };
+
+const imageBlockSchema = z.looseObject({ type: z.literal("image"), mimeType: z.string(), data: z.string().min(1) });
+
+/** The prompt's `image` blocks with data, in order. */
+const promptImagesOf = (blocks: readonly unknown[]): readonly FakePromptImage[] =>
+  blocks.flatMap((block) => {
+    const image = imageBlockSchema.safeParse(block);
+    return image.success ? [{ mimeType: image.data.mimeType, data: image.data.data }] : [];
+  });
+
 type Session = {
   readonly id: string;
   /** The session's folder, from `session/new`: where the `write` script writes. */
@@ -333,8 +375,8 @@ type Session = {
   cancel: AbortController;
   /** A prompt has arrived and its handler hasn't run yet: `cancel` is already that prompt's turn's. */
   armed: boolean;
-  /** Set while a `steerable` turn waits for a steer. */
-  steer: ((text: string) => void) | undefined;
+  /** Set while a `steerable` turn waits for a steer; milestone 9: with the steer's images. */
+  steer: ((text: string, images: readonly FakePromptImage[]) => void) | undefined;
   running: boolean;
   /** Milestone 4 (F-137): the values its `thought_level` option advertises, `default` aside. */
   readonly effortValues: readonly string[];
@@ -547,7 +589,12 @@ export const createFakeAgent = (options: FakeAgentOptions): FakeAgent => {
         protocolVersion: acp.PROTOCOL_VERSION,
         agentInfo: { name: "ostra-fake-agent", title: "ostra fake agent", version: "0.0.0" },
         // As OpenCode: it always offers its subagents' updates; a client takes them by asking.
-        agentCapabilities: { loadSession: capabilities.sessionLoad, promptCapabilities: {}, _meta: { [FAKE_CHILD_SESSION_UPDATES]: true } },
+        // Milestone 9: `rich` takes images in its prompt, as OpenCode advertises it does.
+        agentCapabilities: {
+          loadSession: capabilities.sessionLoad,
+          promptCapabilities: capabilities.promptImages ? { image: true } : {},
+          _meta: { [FAKE_CHILD_SESSION_UPDATES]: true },
+        },
         ...(capabilities.steerMidTurn ? { _meta: { steering: { supported: true } } } : {}),
       };
     })
@@ -668,7 +715,7 @@ export const createFakeAgent = (options: FakeAgentOptions): FakeAgent => {
         if (session?.steer === undefined) {
           return { outcome: "not_running" };
         }
-        session.steer(promptText(ctx.params.prompt));
+        session.steer(promptText(ctx.params.prompt), promptImagesOf(ctx.params.prompt));
         return { outcome: "injected" };
       },
     );
@@ -703,7 +750,7 @@ export const createFakeAgent = (options: FakeAgentOptions): FakeAgent => {
     };
     const usage: { value: FakeTurnUsage | undefined } = { value: undefined };
     try {
-      const stopReason = await play(script, args, { say, update, signal, session, ctx, text, usage });
+      const stopReason = await play(script, args, { say, update, signal, session, ctx, text, images: promptImagesOf(ctx.params.prompt), usage });
       // A cancelled turn ends `cancelled`, whatever the script was doing (ACP), but for the agent
       // that ignores a cancel on purpose. A turn that called the model reports its own usage, as
       // OpenCode's prompt answer does (milestone 7, ticket 03).
@@ -724,6 +771,8 @@ export const createFakeAgent = (options: FakeAgentOptions): FakeAgent => {
     readonly signal: AbortSignal;
     readonly session: Session;
     readonly ctx: { readonly client: acp.AgentContext };
+    /** Milestone 9: the prompt's images, in order. */
+    readonly images: readonly FakePromptImage[];
     /** The turn's whole prompt text. */
     readonly text: string;
     /** Milestone 7: the turn's own usage, set by a script that calls the model. */
@@ -731,6 +780,58 @@ export const createFakeAgent = (options: FakeAgentOptions): FakeAgent => {
   };
 
   const promptTextOf = (io: Play): string => io.text;
+
+  /**
+   * Milestone 9 (F-148): one call to the model with a message's text and images, in the config's
+   * API format, to the base URL with the task's key and nowhere else: an OpenAI `image_url` with a
+   * data URL, or an Anthropic `image` block with base64 data. As OpenCode, an image goes only to a
+   * model whose inputs take one. Whether the model answered.
+   */
+  const callModelWith = async (text: string, images: readonly FakePromptImage[], signal: AbortSignal): Promise<boolean> => {
+    const config = await readConfig();
+    const model = config.model ?? { apiFormat: "openai-compatible" as const, endpointModelId: "stub-model", inputModalities: ["text"] };
+    const sent = model.inputModalities.includes("image") ? images : [];
+    const baseUrl = (options.env["FAKE_AGENT_BASE_URL"] ?? "").replace(/[/]+$/, "");
+    const key = options.env["FAKE_AGENT_API_KEY"] ?? "";
+    try {
+      const answer =
+        model.apiFormat === "anthropic-messages"
+          ? await fetch(`${baseUrl}/messages`, {
+              method: "POST",
+              headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+              body: JSON.stringify({
+                model: model.endpointModelId,
+                max_tokens: 256,
+                messages: [
+                  {
+                    role: "user",
+                    content: [{ type: "text", text }, ...sent.map((image) => ({ type: "image", source: { type: "base64", media_type: image.mimeType, data: image.data } }))],
+                  },
+                ],
+              }),
+              signal,
+            })
+          : await fetch(`${baseUrl}/chat/completions`, {
+              method: "POST",
+              headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+              body: JSON.stringify({
+                model: model.endpointModelId,
+                stream: false,
+                messages: [
+                  {
+                    role: "user",
+                    content: [{ type: "text", text }, ...sent.map((image) => ({ type: "image_url", image_url: { url: `data:${image.mimeType};base64,${image.data}` } }))],
+                  },
+                ],
+              }),
+              signal,
+            });
+      await answer.text();
+      return answer.ok;
+    } catch {
+      return false;
+    }
+  };
 
   type Ask = {
     readonly toolCallId: string;
@@ -1644,6 +1745,57 @@ export const createFakeAgent = (options: FakeAgentOptions): FakeAgent => {
       }
 
       // Milestone 7 (ticket 03).
+      // Milestone 9 (F-148).
+      case "model-turn": {
+        const answered = await callModelWith(io.text, io.images, signal);
+        await say(answered ? `Asked the model, with ${String(io.images.length)} images.` : "The model didn't answer.");
+        return "end_turn";
+      }
+
+      case "model-steerable": {
+        await callModelWith(io.text, io.images, signal);
+        await say("Asked the model, open to a steer. ");
+        // A tool call closes the open message, as `steerable`'s does.
+        await update({ sessionUpdate: "tool_call", toolCallId: "t-wait-steer", title: "Wait for guidance", kind: "other", status: "in_progress" });
+        const steered = await new Promise<{ readonly text: string; readonly images: readonly FakePromptImage[] } | undefined>((resolve) => {
+          session.steer = (steerText, steerImages) => {
+            resolve({ text: steerText, images: steerImages });
+          };
+          signal.addEventListener("abort", () => {
+            resolve(undefined);
+          }, { once: true });
+        });
+        if (steered === undefined) {
+          return "cancelled";
+        }
+        await update({ sessionUpdate: "tool_call_update", toolCallId: "t-wait-steer", status: "completed" });
+        await callModelWith(steered.text, steered.images, signal);
+        await say(`Steered: ${steered.text}`);
+        return "end_turn";
+      }
+
+      case "say-images":
+        await say(`images: ${io.images.length === 0 ? "none" : io.images.map((image) => `${image.mimeType}:${image.data}`).join(" ")}`);
+        return "end_turn";
+
+      case "read-file": {
+        // The agent's own read tool, on the absolute path given: what a message's files are read with.
+        const target = args;
+        const toolCallId = "t-read-file";
+        await update({ sessionUpdate: "tool_call", toolCallId, title: `Read ${target}`, kind: "read", status: "in_progress", rawInput: { filePath: target }, locations: [{ path: target }] });
+        let content: string;
+        try {
+          content = await readFile(target, "utf8");
+        } catch {
+          await update({ sessionUpdate: "tool_call_update", toolCallId, status: "failed", content: [{ type: "content", content: { type: "text", text: "no such file" } }] });
+          await say("Couldn't read it.");
+          return "end_turn";
+        }
+        await update({ sessionUpdate: "tool_call_update", toolCallId, status: "completed", content: [{ type: "content", content: { type: "text", text: content } }] });
+        await say(`Read: ${content.split(/\r?\n/)[0] ?? ""}`);
+        return "end_turn";
+      }
+
       case "slash":
         await say(`Ran the slash command /${args}.`);
         return "end_turn";

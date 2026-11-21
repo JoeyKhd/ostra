@@ -159,7 +159,7 @@ describe.skipIf(!env.success)("OpenCode on the development endpoint, live", () =
     if (!session.ok) {
       throw new Error(`startSession failed: ${session.error.message}`);
     }
-    const result = await adapter.prompt(session.value, turnIdSchema.parse("live-turn-1"), "Reply with the single word pong, and use no tools.");
+    const result = await adapter.prompt(session.value, turnIdSchema.parse("live-turn-1"), { text: "Reply with the single word pong, and use no tools.", images: [] });
     await adapter.close(session.value);
 
     expect(result, "the live turn").toMatchObject({ ok: true, value: { stopReason: "end_turn" } });
@@ -208,7 +208,7 @@ describe.skipIf(!env.success)("OpenCode on the development endpoint, live", () =
     const result = await adapter.prompt(
       session.value,
       turnIdSchema.parse("live-plan-turn-1"),
-      planTurnPrompt("Add a CONTRIBUTING.md that says how to run the tests, and link it from README.md."),
+      { text: planTurnPrompt("Add a CONTRIBUTING.md that says how to run the tests, and link it from README.md."), images: [] },
       { mode: "plan" },
     );
     await adapter.close(session.value);
@@ -265,7 +265,7 @@ describe.skipIf(!env.success)("OpenCode on the development endpoint, live", () =
       "Reply with the single word pong, and use no tools.",
     ];
     for (const [index, prompt] of turns.entries()) {
-      const done = await adapter.prompt(running.value, turnIdSchema.parse(`live-archive-turn-${String(index + 1)}`), prompt);
+      const done = await adapter.prompt(running.value, turnIdSchema.parse(`live-archive-turn-${String(index + 1)}`), { text: prompt, images: [] });
       expect(done, `turn ${String(index + 1)}`).toMatchObject({ ok: true, value: { stopReason: "end_turn" } });
     }
     const archivePath = path.join(path.dirname(first.workspaceDir), "session.json");
@@ -321,7 +321,7 @@ describe.skipIf(!env.success)("OpenCode on the development endpoint, live", () =
       const answered = await adapter.prompt(
         loaded,
         turnIdSchema.parse("live-archive-turn-4"),
-        "What codename did I give you in my first message? Reply with only the codename, and use no tools.",
+        { text: "What codename did I give you in my first message? Reply with only the codename, and use no tools.", images: [] },
       );
       expect(answered).toMatchObject({ ok: true, value: { stopReason: "end_turn" } });
       expect(textOf(secondEvents)).toContain(codename);
@@ -375,12 +375,12 @@ describe.skipIf(!env.success)("OpenCode on the development endpoint, live", () =
     const searched = await adapter.prompt(
       session.value,
       turnIdSchema.parse("live-memory-turn-1"),
-      "Use the ostra memory_search tool to search the project's memory for \"pnpm install\", then tell me in one sentence which package manager this project uses. Use no other tool.",
+      { text: "Use the ostra memory_search tool to search the project's memory for \"pnpm install\", then tell me in one sentence which package manager this project uses. Use no other tool.", images: [] },
     );
     const proposed = await adapter.prompt(
       session.value,
       turnIdSchema.parse("live-memory-turn-2"),
-      'Use the ostra memory_propose tool once to propose a note with the title "Run the linter before a commit", the body "Run pnpm lint before every commit.", the kind "convention" and the scope "project". Then reply with the proposal ID it returns. Use no other tool.',
+      { text: 'Use the ostra memory_propose tool once to propose a note with the title "Run the linter before a commit", the body "Run pnpm lint before every commit.", the kind "convention" and the scope "project". Then reply with the proposal ID it returns. Use no other tool.', images: [] },
     );
     await adapter.close(session.value);
 

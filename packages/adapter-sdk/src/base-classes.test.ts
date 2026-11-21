@@ -146,6 +146,7 @@ describe("a missing operation", () => {
         memory: "index-only" as const,
         reasoningEffort: "none" as const,
         subagents: "none" as const,
+        promptImages: false,
       };
       health(): Promise<HealthReport> {
         return ok();

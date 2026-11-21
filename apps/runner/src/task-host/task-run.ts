@@ -1220,7 +1220,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     const modeOption = channel?.supports("plan.proposed") === true ? { mode } : {};
     // Minor 3 (F-137): and the level it runs at, which a minor-2 peer's codec drops.
     const effortOption = effortNow.adjustedFrom === undefined ? { effort: effortNow.level } : { effort: effortNow.level, adjustedFrom: effortNow.adjustedFrom };
-    const prompted = runningAgent.prompt(runningSession, turnId, text, { ...modeOption, ...effortOption }).then((result) => ({ kind: "prompted" as const, result }));
+    const prompted = runningAgent.prompt(runningSession, turnId, { text, images: [] }, { ...modeOption, ...effortOption }).then((result) => ({ kind: "prompted" as const, result }));
     const within = <T>(promise: Promise<T>, ms: number): Promise<T | null> =>
       Promise.race([
         promise,
@@ -2758,7 +2758,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         if (body.automatic !== true) {
           turnAutomatic = false;
         }
-        const steered = await agent.steer(session, body.text);
+        const steered = await agent.steer(session, { text: body.text, images: [] });
         return steered.ok ? { result: "done" } : { result: "rejected", reason: steered.error.code };
       }
       // Queued for after the turn; an interrupt cancels the turn first.

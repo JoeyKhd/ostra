@@ -37,5 +37,7 @@ export * from "./egress-probes.ts";
 export * from "./run-agent-suite.ts";
 export * from "./agent-parity-cases.ts";
 export * from "./parity.ts";
+// Milestone 9 (ticket 02): images in a prompt, and a message's files on disk.
+export * from "./agent-files-cases.ts";
 // Changing a signed token so it's always a real change, and its lenient decoder's twins.
 export * from "./tamper-token.ts";
