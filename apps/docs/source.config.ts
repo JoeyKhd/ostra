@@ -1,11 +1,11 @@
 import path from "node:path";
 
-import { remarkSteps } from "fumadocs-core/mdx-plugins/remark-steps";
 import { pageSchema } from "fumadocs-core/source/schema";
 import { defineCollections, defineConfig, defineDocs } from "fumadocs-mdx/config";
 import { z } from "zod";
 
-import { remarkCallouts, remarkCodeMeta, remarkDropTitle, titleOf } from "./markdown/remark-plugins.ts";
+import { headingRemarkPlugins } from "./markdown/heading-plugins.ts";
+import { remarkCallouts, remarkCodeMeta, titleOf } from "./markdown/remark-plugins.ts";
 
 /** The site's own pages: `content/`, one folder per section, in `content/meta.json`'s order. */
 export const docs = defineDocs({
@@ -34,6 +34,6 @@ export default defineConfig({
   mdxOptions: {
     // Code is drawn in the brand's mono, in one colour, as the targets do: no syntax theme.
     rehypeCodeOptions: false,
-    remarkPlugins: (defaults) => [remarkDropTitle, remarkSteps, remarkCallouts, remarkCodeMeta, ...defaults],
+    remarkPlugins: (defaults) => [...headingRemarkPlugins, remarkCallouts, remarkCodeMeta, ...defaults],
   },
 });

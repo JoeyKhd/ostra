@@ -82,14 +82,5 @@ export const remarkCodeMeta = () => (tree: Root) => {
   });
 };
 
-/** Drops a page's leading `# Title`: the layout prints the title, from the front matter or this line. */
-export const remarkDropTitle = () => (tree: Root) => {
-  const index = tree.children.findIndex((node) => node.type !== "yaml" && node.type !== "html");
-  const first = tree.children[index];
-  if (first?.type === "heading" && first.depth === 1) {
-    tree.children.splice(index, 1);
-  }
-};
-
 /** A Markdown file's title: its first `# ` line. */
 export const titleOf = (source: string): string | undefined => /^# (.+)$/m.exec(source)?.[1]?.trim();

@@ -6,7 +6,8 @@
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
-    "./configuration-reference": "./src/lib/configuration-reference.ts"
+    "./configuration-reference": "./src/lib/configuration-reference.ts",
+    "./heading-anchors": "./markdown/heading-anchors.ts"
   },
   "scripts": {
     "generate": "fumadocs-mdx",

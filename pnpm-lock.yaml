@@ -1011,6 +1011,9 @@ importers:
       '@ostra/adapter-github':
         specifier: workspace:*
         version: link:../adapters/adapter-github
+      '@ostra/docs':
+        specifier: workspace:*
+        version: link:../../apps/docs
       '@ostra/runner':
         specifier: workspace:*
         version: link:../../apps/runner

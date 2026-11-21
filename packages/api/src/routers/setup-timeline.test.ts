@@ -1,5 +1,8 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
+import { headingAnchors } from "@ostra/docs/heading-anchors";
 import { setupTimelineSteps } from "@ostra/domain";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -65,22 +68,55 @@ describe("the checklist without Linear (F-076)", () => {
   it("F-076/c1: each step links to its page in the docs, under OSTRA_DOCS_URL, and the page and heading exist", async () => {
     const steps = (await (await harness.as(harness.fixture.a.member)).setup.status()).steps;
     expect(steps.map((step) => step.id)).toEqual([...setupStepIds]);
-    const slug = (heading: string): string =>
-      heading
-        .toLowerCase()
-        .replace(/[^a-z0-9 -]/g, "")
-        .replace(/ /g, "-");
     for (const step of steps) {
       expect(step.docs, step.id).toBe(`https://docs.example.com/ostra/${setupStepDocs[step.id]}`);
-      const [page = "", anchor] = setupStepDocs[step.id].replace(/^docs\//, "").split("#");
-      const source = await readFile(new URL(`../../../../apps/docs/content/${page.replace(/\/$/, "")}.mdx`, import.meta.url), "utf8");
+      const [page = "", anchor] = setupStepDocs[step.id].split("#");
+      const source = await docsPage(page);
+      // The anchor the docs site gives the heading: its own remark steps, then Fumadocs' slugs.
       if (anchor !== undefined) {
-        const headings = [...source.matchAll(/^#{2,3} (.+)$/gm)].map((match) => slug(match[1] ?? ""));
-        expect(headings, step.id).toContain(anchor);
+        expect(await headingAnchors(source), step.id).toContain(anchor);
       }
     }
   });
+
+  it("F-076/c1: every docs link with an anchor the panel uses opens a heading the docs site renders", async () => {
+    const files = [...(await sourceFiles(path.join(repoRoot, "packages/api/src"))), ...(await sourceFiles(path.join(repoRoot, "apps/web/src")))];
+    const links = new Set<string>();
+    for (const file of files) {
+      for (const match of (await readFile(file, "utf8")).matchAll(/["'`/](docs\/[a-z0-9/-]+#[a-z0-9-]+)["'`]/g)) {
+        if (match[1] !== undefined) links.add(match[1]);
+      }
+    }
+    // The setup checklist's three, at least: a link found nowhere would make this check vacuous.
+    expect([...links]).toEqual(expect.arrayContaining(["docs/install/setup/#connect-a-runner", "docs/install/setup/#connect-github", "docs/install/setup/#create-a-project"]));
+    for (const link of links) {
+      const [page = "", anchor = ""] = link.split("#");
+      expect(await headingAnchors(await docsPage(page)), link).toContain(anchor);
+    }
+  });
 });
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
+
+/** A docs page's source from its path under the site (`docs/install/setup/`): its `.mdx`, or its folder's `index.mdx`. */
+const docsPage = async (page: string): Promise<string> => {
+  const base = path.join(repoRoot, "apps/docs/content", page.replace(/^docs\//, "").replace(/\/$/, ""));
+  return readFile(`${base}.mdx`, "utf8").catch(() => readFile(path.join(base, "index.mdx"), "utf8"));
+};
+
+/** The source files under a folder, tests and generated code left out. */
+const sourceFiles = async (dir: string): Promise<readonly string[]> => {
+  const found: string[] = [];
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const at = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (!["node_modules", "generated", ".next"].includes(entry.name)) found.push(...(await sourceFiles(at)));
+    } else if (/\.(ts|tsx)$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) {
+      found.push(at);
+    }
+  }
+  return found;
+};
 
 describe("setup.timeline (F-076)", () => {
   let harness: ApiHarness;

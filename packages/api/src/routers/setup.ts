@@ -25,15 +25,16 @@ const optionalSetupSteps: ReadonlySet<SetupStepId> = new Set<SetupStepId>(["line
 
 /**
  * Each step's page in the docs site, relative to `OSTRA_DOCS_URL` (the site exports with a
- * trailing slash). A heading's anchor is the docs' slug of its text (`apps/docs/content`).
+ * trailing slash). A heading's anchor is the one the docs site gives it (`apps/docs/content`): a
+ * numbered step's drops its number, so `## 3. Connect GitHub` is `#connect-github`.
  */
 export const setupStepDocs = {
   admin: "docs/install/first-sign-in/",
   "model-provider": "docs/agents-and-models/model-providers/",
-  github: "docs/install/setup/#3-connect-github",
+  github: "docs/install/setup/#connect-github",
   linear: "docs/install/linear/",
-  project: "docs/install/setup/#5-create-a-project",
-  runner: "docs/install/setup/#6-connect-a-runner",
+  project: "docs/install/setup/#create-a-project",
+  runner: "docs/install/setup/#connect-a-runner",
   "first-task": "docs/using-ostra/tasks/",
 } as const satisfies Record<SetupStepId, string>;
 
