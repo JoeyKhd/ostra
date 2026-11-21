@@ -21,10 +21,10 @@ const look: Readonly<Record<StepLook, string>> = {
 export const StepTick = ({ state, n }: { readonly state: StepLook; readonly n: number }) => (
   <span
     data-tick={state}
-    className={cn("inline-grid size-[22px] shrink-0 place-items-center rounded-full border font-mono text-xs", look[state])}
+    className={cn("inline-grid size-[26px] shrink-0 place-items-center rounded-full border font-mono text-xs", look[state])}
   >
     {state === "done" ? (
-      <CheckIcon className="size-[13px] stroke-[2.25]" aria-label={t("checklist.done")} />
+      <CheckIcon className="size-[15px] stroke-[2.25]" aria-label={t("checklist.done")} />
     ) : state === "skipped" ? (
       <span aria-label={t("checklist.skippedStep")}>–</span>
     ) : (

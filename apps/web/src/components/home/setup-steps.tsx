@@ -84,7 +84,7 @@ export const SetupSteps = ({ steps, next, admin, skip }: SetupStepsProps) => (
           data-state={step.state}
           data-next={isNext}
           data-done={step.state === "done"}
-          className="flex min-h-[52px] flex-wrap items-center gap-x-3 gap-y-2 py-2.5 sm:flex-nowrap"
+          className="flex min-h-[52px] flex-wrap items-center gap-x-3.5 gap-y-2 py-1.5 sm:flex-nowrap"
         >
           <StepTick state={tickLook(step.state, isNext)} n={i + 1} />
           <div className="min-w-0 flex-1">
@@ -108,11 +108,11 @@ export const SetupSteps = ({ steps, next, admin, skip }: SetupStepsProps) => (
             </div>
           </div>
           {!canAct || step.state === "done" ? null : step.state === "skipped" ? (
-            <Link href={view.href} className="ml-[34px] shrink-0 text-ui text-teal hover:underline sm:ml-0">
+            <Link href={view.href} className="ml-[40px] shrink-0 text-ui text-teal hover:underline sm:ml-0">
               {t("checklist.linear.action")}
             </Link>
           ) : (
-            <div className="ml-[34px] flex shrink-0 flex-row-reverse items-center gap-4 sm:ml-0 sm:flex-row">
+            <div className="ml-[40px] flex shrink-0 flex-row-reverse items-center gap-4 sm:ml-0 sm:flex-row">
               {step.id === "linear" && step.state === "open" ? (
                 <Button variant="link" className="h-auto px-0 text-ui" disabled={skip.pending} onClick={skip.run}>
                   {skip.pending ? t("checklist.linear.skipping") : t("checklist.linear.skip")}
