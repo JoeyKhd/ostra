@@ -1,5 +1,4 @@
 import { mkdtemp, rm } from "node:fs/promises";
-import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,6 +25,7 @@ import type { PictureTiming } from "../browser/pictures.ts";
 import type { AppTiming } from "../task-host/app-processes.ts";
 import { startHarness, startShared } from "./task-host-harness.ts";
 import type { Harness, HarnessOptions, Shared } from "./task-host-harness.ts";
+import { testPort } from "@ostra/adapter-sdk/testing/net";
 
 // Milestone 8's ticket 13 (F-121): the app's pictures in a box, on one executor, through the whole
 // task host: the real key proxy, git proxy and ostra's MCP server, the scripted fake agent calling
@@ -65,20 +65,6 @@ const APP_REPO_FILES: Readonly<Record<string, string>> = {
 };
 
 const MEMBER = memberIdSchema.parse("member-sam");
-
-/** A free port on this machine's `localhost`, for one process of one test. */
-const freePort = (): Promise<number> =>
-  new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen(0, "localhost", () => {
-      const address = server.address();
-      const port = typeof address === "object" && address !== null ? address.port : 0;
-      server.close(() => {
-        resolve(port);
-      });
-    });
-  });
 
 const process_ = (input: Omit<TaskSpecAppProcess, "repoId" | "folder" | "primary" | "hostRewrite"> & Partial<Pick<TaskSpecAppProcess, "primary">>): TaskSpecAppProcess => ({
   repoId: APP_REPO_ID,
@@ -178,7 +164,7 @@ export const appPicturesCases = (mode: AppPicturesMode) => {
   };
 
   const ports = async (): Promise<Ports> => {
-    const [api, web, docs] = await Promise.all([freePort(), freePort(), freePort()]);
+    const [api, web, docs] = await Promise.all([testPort(), testPort(), testPort()]);
     return { api, web, docs };
   };
 
@@ -356,7 +342,7 @@ export const appPicturesCases = (mode: AppPicturesMode) => {
       // The refusals: a process the environment lacks, a port below 1024, the box's own port, a port nothing answers on.
       const keyProxyPort = Number(new URL(h.launches[0]?.env["FAKE_AGENT_BASE_URL"] ?? "http://localhost:1").port);
       expect(keyProxyPort).toBeGreaterThan(1023);
-      const nothing = await freePort();
+      const nothing = await testPort();
       const refusals: readonly FakeAppCall[] = [
         { tool: "take_screenshot", arguments: { target: { process: "nope" } } },
         { tool: "record_app", arguments: { target: { port: 80 }, steps: [{ action: "wait", until: { ms: 10 } }] } },
@@ -388,7 +374,9 @@ export const appPicturesCases = (mode: AppPicturesMode) => {
      * in an environment with no primary; and a primary that never gets ready fails, and takes none.
      */
     afterTurn: async (): Promise<void> => {
-      const h = await runner({ app: { readyTimeoutMs: 4_000 } });
+      // The usual time to get ready: a Vite's cold start on a loaded machine outlasts a short one,
+      // and the frontend would fail before its pictures. The hang gets a short one on its own runner.
+      const h = await runner();
       const p = await ports();
       const settings: TaskSpecScreenshots = { afterTurn: true, routes: ["/", "/host-url"], widths: ["desktop", "phone"] };
       const spec = taskWith(h, fakeMarker("app-calls", fakeAppCalls([], ["changed-by-the-turn.txt"])), fixtureProcesses(p, "web"), p, settings);
@@ -425,16 +413,17 @@ export const appPicturesCases = (mode: AppPicturesMode) => {
       expect(h.ofKind(noPrimary, "attachment.skipped")).toEqual([]);
 
       // A primary that never gets ready: `app.process failed`, no picture, and the thread's note.
+      const quick = await runner({ app: { readyTimeoutMs: 4_000 } });
       const r = await ports();
       const hang = process_({ name: "hang", command: "node hang.js", port: r.web, ready: { kind: "http", path: "/" }, label: "Hang", primary: true });
-      const stuck = taskWith(h, fakeMarker("app-calls", fakeAppCalls([], ["changed.txt"])), [hang], r, settings);
-      h.dispatch(stuck);
-      await waitFor(h, stuck, "session.saved");
-      expect(h.ofKind(stuck, "app.process").find((event) => event.state === "failed")).toMatchObject({ name: "hang", state: "failed", reason: "ready-timeout" });
+      const stuck = taskWith(quick, fakeMarker("app-calls", fakeAppCalls([], ["changed.txt"])), [hang], r, settings);
+      quick.dispatch(stuck);
+      await waitFor(quick, stuck, "session.saved");
+      expect(quick.ofKind(stuck, "app.process").find((event) => event.state === "failed")).toMatchObject({ name: "hang", state: "failed", reason: "ready-timeout" });
       // The note after the failure, both before the turn's end.
-      expect(h.kinds(stuck).indexOf("attachment.skipped")).toBeLessThan(h.kinds(stuck).indexOf("session.saved"));
-      expect(added(h, stuck)).toEqual([]);
-      expect(h.ofKind(stuck, "attachment.skipped")).toEqual([{ kind: "attachment.skipped", source: "after-turn", reason: "not-ready", count: 4, requestId: null }]);
+      expect(quick.kinds(stuck).indexOf("attachment.skipped")).toBeLessThan(quick.kinds(stuck).indexOf("session.saved"));
+      expect(added(quick, stuck)).toEqual([]);
+      expect(quick.ofKind(stuck, "attachment.skipped")).toEqual([{ kind: "attachment.skipped", source: "after-turn", reason: "not-ready", count: 4, requestId: null }]);
     },
 
     /**

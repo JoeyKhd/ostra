@@ -1,13 +1,14 @@
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
-import { createServer } from "node:net";
+import { connect, createServer } from "node:net";
 import type { Server } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { baseEnv, localShellProbe, resolveSetupShell } from "@ostra/adapter-executor-host";
 import { fakeMarker, fakeToolArgs } from "@ostra/adapter-sdk/testing";
+import { testPort } from "@ostra/adapter-sdk/testing/net";
 import { appLogPath, boxIdSchema, clientMessageIdSchema, repoFullNameSchema, repoIdSchema, taskCredentialsSchema } from "@ostra/protocol";
-import type { RepoId, TaskEvent, TaskEventOf, TaskSpec, TaskSpecAppProcess } from "@ostra/protocol";
+import type { AppProcessState, RepoId, TaskEvent, TaskEventOf, TaskSpec, TaskSpecAppProcess } from "@ostra/protocol";
 import { expect } from "vitest";
 import { z } from "zod";
 import type { AppTiming } from "../task-host/app-processes.ts";
@@ -59,34 +60,24 @@ const APP_REPO_FILES: Readonly<Record<string, string>> = {
   "hostile.txt": `${HOSTILE_LOG}\n`,
   // Says it waits, and never listens.
   "hang.js": "console.log('waiting forever');\nsetInterval(() => {}, 1000);\n",
-  // Listens, then exits 3 a moment after it was ready.
+  // Listens, then exits 3 once it was ready: on its second connection, the test's own after the
+  // `ready` went up (the first is the ready check's). Never on a timer, which a slow start or a
+  // slow check would outlast, leaving it `failed` before it was ever seen ready.
   "flake.js": [
     "const net = require('node:net');",
     "const port = Number(process.env.FLAKE_PORT);",
-    "net.createServer((socket) => socket.end()).listen(port, 'localhost', () => {",
-    "  console.log('flake listening on ' + port);",
-    "  setTimeout(() => { console.error('flake gave up'); process.exit(3); }, 2500);",
-    "});",
+    "let connections = 0;",
+    "net.createServer((socket) => {",
+    "  socket.end();",
+    "  connections += 1;",
+    "  if (connections === 2) { console.error('flake gave up'); setTimeout(() => process.exit(3), 100); }",
+    "}).listen(port, 'localhost', () => console.log('flake listening on ' + port));",
     "",
   ].join("\n"),
 };
 
 const APP_REPO = "ostra-test/test-app";
 const APP_REPO_ID: RepoId = repoIdSchema.parse("repo-test-app");
-
-/** A free port on this machine's `localhost`, for one process of one test. */
-const freePort = (): Promise<number> =>
-  new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen(0, "localhost", () => {
-      const address = server.address();
-      const port = typeof address === "object" && address !== null ? address.port : 0;
-      server.close(() => {
-        resolve(port);
-      });
-    });
-  });
 
 /** A GET of a box's `localhost` port from this machine: its status and body, or `null` when nothing answered. */
 const fetchLocal = async (port: number, requestPath = "/"): Promise<{ readonly status: number; readonly body: string } | null> => {
@@ -128,8 +119,17 @@ export const appProcessesCases = (mode: AppProcessesMode) => {
     return shared;
   };
 
-  /** Short ready checks: every 200 ms, and a hang gives up after 4 s. */
+  /** Short ready checks: every 200 ms, for at most a minute (a Vite's cold start on a loaded machine). */
   const timing: Partial<AppTiming> = { readyIntervalMs: 200, readyTimeoutMs: 60_000, stopGraceMs: 1_000 };
+
+  /**
+   * The failures' time to get ready: one budget for every process of a box, so it must hold the
+   * crasher's exit and the flake's start as well as run out on the hang. 4 s did on a quiet machine;
+   * on a loaded one `bash -lc node …` alone outlasts it, and the crasher and the flake failed with
+   * `ready-timeout` too. 20 s holds a node's start there, and the hang still gives up long before the
+   * case's own deadline, with its line in its log.
+   */
+  const FAILURES_READY_MS = 20_000;
 
   const runner = async (overrides: Partial<AppTiming> = {}): Promise<Harness> => {
     const h = await startHarness(sharedNow(), {
@@ -206,6 +206,29 @@ export const appProcessesCases = (mode: AppProcessesMode) => {
   /** Each process's states in the order they went up. */
   const statesOf = (h: Harness, spec: TaskSpec): readonly string[] => h.ofKind(spec, "app.process").map((event) => `${event.name}:${event.state}`);
 
+  /** Waits for a process's state; on a timeout, says which states came, with their reasons. */
+  const waitForState = async (h: Harness, spec: TaskSpec, name: string, state: AppProcessState, timeoutMs = 120_000): Promise<void> => {
+    try {
+      await h.gateway.waitFor(() => h.ofKind(spec, "app.process").some((event) => event.name === name && event.state === state), timeoutMs);
+    } catch {
+      const states = h.ofKind(spec, "app.process").map((event) => `${event.name}:${event.state}:${event.reason ?? ""}`);
+      throw new Error(`no ${name}:${state}: ${states.join(" ")}`);
+    }
+  };
+
+  /** One TCP connection to a box's `localhost` port, closed as soon as it's made; resolves either way. */
+  const poke = (port: number): Promise<void> =>
+    new Promise((resolve) => {
+      const socket = connect({ host: "localhost", port });
+      socket.once("connect", () => {
+        socket.destroy();
+      });
+      socket.once("error", () => undefined);
+      socket.once("close", () => {
+        resolve();
+      });
+    });
+
   /** What the agent said after its `n`th tool call: the tool's answer to it. */
   const saidOf = (h: Harness, spec: TaskSpec): string => h.ofKind(spec, "agent.message").map((event) => event.text).join("\n");
 
@@ -262,7 +285,7 @@ export const appProcessesCases = (mode: AppProcessesMode) => {
      */
     inOrder: async (): Promise<void> => {
       const h = await runner();
-      const [api, web, docs, probe] = await Promise.all([freePort(), freePort(), freePort(), freePort()]);
+      const [api, web, docs, probe] = await Promise.all([testPort(), testPort(), testPort(), testPort()]);
       const processes = [
         process_({ name: "api", command: `node ${fixturePath("api", "server.js")}`, port: api, ready: { kind: "http", path: "/api/hello" }, label: "API" }),
         process_({
@@ -348,8 +371,8 @@ export const appProcessesCases = (mode: AppProcessesMode) => {
      * and no process's arguments.
      */
     failures: async (): Promise<void> => {
-      const h = await runner({ readyTimeoutMs: 4_000 });
-      const [crashPort, hangPort, flakePort] = await Promise.all([freePort(), freePort(), freePort()]);
+      const h = await runner({ readyTimeoutMs: FAILURES_READY_MS });
+      const [crashPort, hangPort, flakePort] = await Promise.all([testPort(), testPort(), testPort()]);
       const launches: string[][] = [];
       const commands: string[][] = [];
       const startApp = h.executor.startAppProcess.bind(h.executor);
@@ -372,7 +395,10 @@ export const appProcessesCases = (mode: AppProcessesMode) => {
       await waitFor(h, spec, "session.saved");
       const ack = await h.waitForAck(h.command("app.start", { sessionId: spec.sessionId, names: null }));
       expect(ack.result).toBe("accepted");
-      await h.gateway.waitFor(() => h.ofKind(spec, "app.process").some((event) => event.name === "flake" && event.state === "exited"), 120_000);
+      // The flake goes once it was seen ready: the test's connection is the one it gives up on.
+      await waitForState(h, spec, "flake", "ready");
+      await poke(flakePort);
+      await waitForState(h, spec, "flake", "exited");
       const events = h.ofKind(spec, "app.process");
       const last = (name: string): TaskEventOf<"app.process"> | undefined => events.filter((event) => event.name === name).at(-1);
       // Exited before it was ready: failed, with its code and its log's tail.
@@ -417,7 +443,7 @@ export const appProcessesCases = (mode: AppProcessesMode) => {
      */
     takenAndAnnounced: async (): Promise<void> => {
       const h = await runner();
-      const [docs, mine] = await Promise.all([freePort(), freePort()]);
+      const [docs, mine] = await Promise.all([testPort(), testPort()]);
       const processes = [process_({ name: "docs", command: `node ${fixturePath("docs", "server.js")}`, port: docs, ready: { kind: "port" }, label: "Docs", primary: true })];
       // The agent's own server already on the docs' port.
       await holdPort(docs);
@@ -461,7 +487,7 @@ export const appProcessesCases = (mode: AppProcessesMode) => {
      */
     appOnly: async (): Promise<void> => {
       const h = await runner();
-      const [api, docs] = await Promise.all([freePort(), freePort()]);
+      const [api, docs] = await Promise.all([testPort(), testPort()]);
       const processes = [
         process_({ name: "api", command: `node ${fixturePath("api", "server.js")}`, port: api, ready: { kind: "http", path: "/api/hello" }, label: "API" }),
         process_({ name: "docs", command: `node ${fixturePath("docs", "server.js")}`, port: docs, ready: { kind: "port" }, label: "Docs", primary: true }),
