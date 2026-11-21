@@ -34,3 +34,4 @@ Built to the approved targets, at their sizes, in both themes and at the phone w
 - [ ] Committed as `✨ show a task's files and what the agent got`.
 
 ## Comments
+- 2026-11-21, lead: the maintainer approved the m9 targets ("yes to all"), recorded in `context/brand/app-targets/m9/README.md`. This ticket waits only for ticket 14 now.

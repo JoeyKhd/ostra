@@ -2,7 +2,7 @@
 
 The design targets for milestone 9's attachments: files in the message box, in the thread, and in a ticket's context. The milestone 9 spec, written beside them, names them and gives their features IDs.
 
-**Status: these targets wait for the maintainer's approval.** Nothing is built from them before it. Each build spec ends with its open points: the choices the approval settles, each with a recommendation.
+**Status: approved 2026-11-21** (the maintainer: "yes to all"). Every open point is settled as its build spec recommends; see "Approval" below. Build from these targets.
 
 **Why these screens:** the maintainer, 2026-11-21:
 - "add image support and file support to our chat text box thing, LOL no attachements?!?!?!?!"
@@ -87,4 +87,11 @@ Two questions for the spec more than for the pictures: where a document's text i
 
 ## Approval
 
-**Waiting.** The maintainer's word goes here, with the choices it settles.
+**Approved 2026-11-21.** The maintainer, shown every picture and every open point with its recommendation, answered "yes to all". Settled:
+
+- **The message box:** the tray sits under the words; any file type; Send while a file uploads waits and sends when the last one lands; a refused file gets a red note and never enters the tray; the drop zone is the chat column only (not the preview pane).
+- **Limits:** 10 files a message, 10 MB each, 25 MB in all; a ticket's 20 files, 10 MB each, 50 MB in all. The spec makes these settings with those defaults (ADR 0070), which the box reads from the server; the pictures' fixed numbers are those defaults.
+- **The thread:** one Attachments group in the properties panel for captures, a member's files and the ticket's; no captions under a member's images; a document's extracted text isn't shown in v1 (the agent reads it).
+- **A ticket's context:** the ticket shows as the thread's first message, "What the agent got"; a failed fetch doesn't stop the task (Retry, and the files reach the agent with its next turn); links are listed, not fetched; videos are files like any other.
+- **The new-task box:** what the model takes ("Takes: text only") always shows; a task still needs a few words, never files alone.
+- **Where files go in the box:** the spec's paths win over any path text in the pictures: `<workspace root>/.ostra/attachments/<n>/` and `.ostra/ticket/` (ADR 0070, Q333).
