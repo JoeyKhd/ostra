@@ -1,40 +1,44 @@
-import { randomUUID } from "node:crypto";
-
-import type { Logger, TicketContext, TicketImage } from "@ostra/adapter-sdk";
+import type { Logger, TicketContext } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
-import { appendServerEvent, isProgressComment, markTicketInline, parentCriteriaOf, refinePrompt, renderTicketPrompt, ticketTemplateFor } from "@ostra/domain";
-import type { ChangeNotices, Clock, JobQueue, TicketPromptContext } from "@ostra/domain";
-import type { JobHandler } from "@ostra/jobs";
 import {
-  TICKET_FILES_DIR,
-  clientMessageIdSchema,
-  connectionIdSchema,
-  externalTicketIdSchema,
-  leaseEpochSchema,
-  memberIdSchema,
-  projectIdSchema,
-  runnerLimits,
-  ticketKeySchema,
-} from "@ostra/protocol";
-import type { ExternalTicketId, OrganizationId, ProjectId, TaskId } from "@ostra/protocol";
+  boxPathFor,
+  contextReadLinks,
+  fetchTicketFiles,
+  isProgressComment,
+  noTicketFiles,
+  parentCriteriaOf,
+  refinePrompt,
+  renderTicketPrompt,
+  ticketFileLimits,
+  ticketFilesLeftOutLines,
+  ticketTemplateFor,
+  writeTicketStartInTx,
+} from "@ostra/domain";
+import type { ChangeNotices, Clock, FileSettings, JobQueue, TicketPromptContext } from "@ostra/domain";
+import type { JobHandler } from "@ostra/jobs";
+import { FILES_ROOT_DIR, externalTicketIdSchema, leaseEpochSchema, memberIdSchema, projectIdSchema, ticketKeySchema } from "@ostra/protocol";
 import { z } from "zod";
 
+import { coreMessageFilesDeps } from "../agents/prompt-images.ts";
 import type { BlobService } from "../blobs/blob-service.ts";
-import { TICKET_FILE_PURPOSE, ticketFileNameFor } from "../dispatch/restore-spec.ts";
+import type { DocumentTextReader } from "../files/text/index.ts";
 import type { ConnectionTrackers } from "./connections.ts";
+import { ticketReadPorts } from "./ticket-reads.ts";
 
-// `ticket.fetch-context` (ticket 18, F-064): a new ticket task's first prompt. It reads the ticket's
-// full context through the adapter, copies each image into the blob store as a blob of the task
-// (at most 20, 10 MiB each: spec section 11, item 9), renders the prompt with the project's
-// template (or the built-in one), stores it on the task with the first `user.message`, and sends
-// `task.dispatch`. Every piece of ticket text is untrusted: it's data inside the template's marked
-// blocks, it never reaches a log line, and it never reaches a shell. An image that can't be copied
-// leaves a line in the prompt saying so, and the task still starts.
+// `ticket.fetch-context` (F-064; milestone 9's ticket 12, F-149, F-150): a new ticket task's first
+// prompt, the start's read of its ticket (round 1). It reads the ticket's full context through the
+// adapter, with ostra's own comments and attachments told apart; fetches every file the ticket holds
+// that the tracker's `ticketFiles` lets through, within the ticket's limits (`fetchTicketFiles`),
+// each stored as a blob of the task with its kind told by its bytes and a document's text beside it;
+// renders the prompt with the project's template (or the built-in one), naming the files left out
+// or failed; and in one transaction writes the prompt on the task, the first `user.message` with the
+// ticket's files (each at `ticket/<name>`), `ticket.context_read` (round 1, `start`), the
+// `TaskTicketRead`, and `task.dispatch` (`writeTicketStartInTx`). Every piece of ticket text is
+// untrusted: it's data inside the template's marked blocks, it never reaches a log line, and it
+// never reaches a shell. A file that fails leaves a line in the prompt and a Retry in the thread,
+// and the task still starts. A tracker that doesn't answer retries the job, and a retry after a
+// partial run reuses the files it already stored.
 
-/** At most this many images per ticket (spec section 11, item 9): a working value. */
-export const TICKET_IMAGES_MAX = Math.min(20, runnerLimits.ticketFilesMax);
-/** At most this many bytes per image: a working value. */
-export const TICKET_IMAGE_MAX_BYTES = Math.min(10 * 1024 * 1024, runnerLimits.ticketFileMaxBytes);
 /** The prompt's cap: the task spec's. */
 const PROMPT_MAX_CHARS = 262_144;
 
@@ -44,7 +48,11 @@ export type FetchContextDeps = {
   readonly notices: ChangeNotices;
   readonly clock: Clock;
   readonly trackers: Pick<ConnectionTrackers, "forConnection">;
-  readonly blobs: Pick<BlobService, "put">;
+  readonly blobs: Pick<BlobService, "put" | "delete">;
+  /** Core's reader of documents' text (`createDocumentTextReader`). */
+  readonly text: Pick<DocumentTextReader, "read">;
+  /** The settings' file limits and `OSTRA_FILE_TEXT_EXTRACTION` (`settings.files`). */
+  readonly files: FileSettings;
   readonly logger: Logger;
 };
 
@@ -69,50 +77,13 @@ const priorityLabel = (priority: number | null): string | null => {
   }
 };
 
-type CopiedImage = { readonly path: string; readonly name: string };
+/** An image of the ticket in the workspace: where under the workspace's root, and its safe name. */
+type ImageInBox = { readonly path: string; readonly name: string };
 
-/** A file fetched with the connection's credential, or why it wasn't: a code, never content. */
-type Download = (
-  url: string,
-  maxBytes: number,
-) => Promise<{ readonly ok: true; readonly bytes: Uint8Array; readonly contentType: string | null } | { readonly ok: false; readonly reason: string }>;
-
-/** Copies the ticket's images into the blob store; one that can't be copied is named in `failed`. */
-const copyImages = async (
-  deps: FetchContextDeps,
-  owner: { readonly organizationId: OrganizationId; readonly projectId: ProjectId; readonly taskId: TaskId },
-  images: readonly TicketImage[],
-  download: Download,
-): Promise<{ readonly copied: readonly CopiedImage[]; readonly failed: readonly string[] }> => {
-  const copied: CopiedImage[] = [];
-  const failed: string[] = [];
-  for (const image of images.slice(0, TICKET_IMAGES_MAX)) {
-    const file = await download(image.url, TICKET_IMAGE_MAX_BYTES);
-    if (!file.ok) {
-      failed.push(`${image.name} (${file.reason})`);
-      continue;
-    }
-    const contentType = file.contentType ?? image.contentType ?? "application/octet-stream";
-    const stored = await deps.blobs.put(
-      { organizationId: owner.organizationId, task: { projectId: owner.projectId, taskId: owner.taskId } },
-      { purpose: TICKET_FILE_PURPOSE, contentType, bytes: file.bytes },
-    );
-    if (!stored.ok) {
-      failed.push(`${image.name} (${stored.error})`);
-      continue;
-    }
-    copied.push({ path: `${TICKET_FILES_DIR}/${ticketFileNameFor(stored.value.blobId, contentType)}`, name: image.name });
-  }
-  if (images.length > TICKET_IMAGES_MAX) {
-    failed.push(`${String(images.length - TICKET_IMAGES_MAX)} more beyond the first ${String(TICKET_IMAGES_MAX)}`);
-  }
-  return { copied, failed };
-};
-
-/** The template's context from what the tracker said, and the images as copied. */
+/** The template's context from what the tracker said, and the ticket's images as the box holds them. */
 export const promptContextOf = (
   context: TicketContext,
-  images: readonly CopiedImage[],
+  images: readonly ImageInBox[],
   extra: {
     readonly instructions: string | null;
     readonly branch: string;
@@ -146,6 +117,8 @@ export const promptContextOf = (
   instructions: extra.instructions,
   task: { branch: extra.branch },
   parentCriteria: extra.parentCriteria ?? [],
+  // Milestone 9 (Q337): a link attachment goes as its title and URL; nothing behind it is fetched.
+  links: contextReadLinks(context),
 });
 
 /** The context from the ticket cache's row alone, when the tracker no longer has the ticket. */
@@ -214,47 +187,24 @@ export const fetchContextHandler =
     const owner = { organizationId: payload.organizationId, projectId, taskId: payload.taskId };
 
     // The context, through the adapter; the cache's row when the tracker can't find the ticket.
-    const lookup = await deps.trackers.forConnection(payload.organizationId, connectionIdSchema.parse(board.connectionId));
-    let ticketContext: TicketContext | null = null;
-    let download: Download = () => Promise.resolve({ ok: false, reason: "the tracker isn't connected" });
-    if (lookup.ok) {
-      const tracker = lookup.value.tracker;
-      const externalId: ExternalTicketId = externalTicketIdSchema.parse(ticket.externalId);
-      const read = await tracker.getTicketContext({ externalId: board.externalId }, { externalId });
-      if (read.ok) {
-        ticketContext = read.value;
-      } else if (read.error.code === "rate-limited" || read.error.code === "unavailable") {
-        throw new Error(TRACKER_UNAVAILABLE);
-      }
-      download = async (url, maxBytes) => {
-        const file = await tracker.downloadFile(url, maxBytes);
-        return file.ok ? { ok: true, bytes: file.value.bytes, contentType: file.value.contentType } : { ok: false, reason: file.error.code };
-      };
-    } else if (lookup.reason !== "not-active" && lookup.reason !== "not-found") {
+    const reads = ticketReadPorts(deps);
+    const read = await reads.readTicket(owner);
+    if (!read.ok && read.reason === "unavailable") {
       throw new Error(TRACKER_UNAVAILABLE);
     }
-    ticketContext ??= cachedContextOf(ticket);
+    const ticketContext = read.ok ? read.context : cachedContextOf(ticket);
     if (ticketContext === null) {
       context.logger.warn("ticket.fetch-context-skipped", { taskId: payload.taskId, reason: "ticket-unreadable" });
       return;
     }
+    const ownUserId = read.ok ? read.ownUserId : null;
 
-    // A retry after a partial run reuses the images already copied: none is stored twice.
-    const already = await deps.db.blob.findMany({
-      where: { taskId: payload.taskId, organizationId: payload.organizationId, purpose: TICKET_FILE_PURPOSE },
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-      select: { id: true, contentType: true },
-    });
-    const images =
-      already.length > 0
-        ? {
-            copied: already.map((blob, index) => ({
-              path: `${TICKET_FILES_DIR}/${ticketFileNameFor(blob.id, blob.contentType)}`,
-              name: ticketContext.images[index]?.name ?? "image",
-            })),
-            failed: [],
-          }
-        : await copyImages(deps, owner, ticketContext.images, download);
+    // Every file the ticket holds, within its limits; a retry after a partial run reuses what it stored.
+    const files = read.ok ? await fetchTicketFiles({ reads, limits: ticketFileLimits(deps.files) }, owner, read.context.files, read.capability) : noTicketFiles;
+    // A project's own template may still list the images: each at its place under the workspace's
+    // root, as the start's message places it (the ticket's folder is empty before its first read).
+    const places = boxPathFor("ticket", 1, files.stored.map((file) => file.name));
+    const images = files.stored.flatMap((file, index) => (file.kind === "image" ? [{ path: `${FILES_ROOT_DIR}/${places[index] ?? ""}`, name: file.name }] : []));
 
     const session = await deps.db.session.findFirst({ where: { id: payload.sessionId, taskId: payload.taskId }, select: { agentProfileId: true } });
     const profile =
@@ -266,18 +216,16 @@ export const fetchContextHandler =
     const repos = task.kind === "refine" ? await deps.db.taskRepo.findMany({ where: { taskId: task.id }, select: { repo: { select: { fullName: true, checkoutDir: true } } } }) : [];
     const rendered = task.kind === "refine" ? refinePrompt({ ticket: { key: ticket.key, title: ticketContext.ticket.title, description: ticketContext.ticket.description }, repos: repos.map((row) => row.repo) }) : renderTicketPrompt(
       ticketTemplateFor(project.ticketTemplate).template,
-      promptContextOf(ticketContext, images.copied, {
+      promptContextOf(ticketContext, images, {
         instructions: profile?.instructions ?? null,
         branch: task.branchName,
-        ownUserId: lookup.ok ? lookup.value.ownUserId : null,
+        ownUserId,
         parentCriteria: await parentCriteriaOf(deps.db, { organizationId: payload.organizationId, parentTicketId: task.parentTicketId }),
       }),
     );
-    const failedLine =
-      images.failed.length === 0
-        ? ""
-        : `\n\n(ostra couldn't copy ${String(images.failed.length)} of the ticket's images into the workspace: ${images.failed.map(markTicketInline).join(", ")}.)\n`;
-    const prompt = `${rendered}${failedLine}`.slice(0, PROMPT_MAX_CHARS);
+    // The files the agent doesn't have are named with why (F-149/c3); the runner's block names those it has.
+    const leftOut = ticketFilesLeftOutLines(files);
+    const prompt = (leftOut === "" ? rendered : `${rendered.replace(/\s+$/, "")}\n\n${leftOut}\n`).slice(0, PROMPT_MAX_CHARS);
 
     const outcome = await deps.db.$transaction(async (tx) => {
       const locked = await tx.$queryRaw<readonly unknown[]>`SELECT 1 FROM "task" WHERE "id" = ${payload.taskId} FOR UPDATE`;
@@ -287,17 +235,22 @@ export const fetchContextHandler =
       }
       await tx.task.update({ where: { id: payload.taskId }, data: { prompt } });
       const creator = memberIdSchema.safeParse(fresh.creatorMemberId);
-      if (creator.success) {
-        // The first message is the rendered ticket, as a prompt task's is its prompt.
-        await appendServerEvent(tx, {
+      await writeTicketStartInTx(
+        tx,
+        { files: coreMessageFilesDeps(deps.files) },
+        {
           organizationId: payload.organizationId,
           projectId,
           taskId: payload.taskId,
           sessionId: payload.sessionId,
-          at: deps.clock.now(),
-          event: { kind: "user.message", memberId: creator.data, clientMessageId: clientMessageIdSchema.parse(randomUUID()), text: prompt, delivery: "immediate" },
-        });
-      }
+          memberId: creator.success ? creator.data : null,
+          prompt,
+          context: ticketContext,
+          ownUserId,
+          files,
+          now: deps.clock.now(),
+        },
+      );
       await deps.jobs.enqueueInTx(tx, "task.dispatch", {
         organizationId: payload.organizationId,
         taskId: payload.taskId,
@@ -311,8 +264,9 @@ export const fetchContextHandler =
     context.logger.info("ticket.fetch-context", {
       taskId: payload.taskId,
       outcome,
-      images: images.copied.length,
-      imagesFailed: images.failed.length,
-      fromCache: !lookup.ok,
+      files: files.stored.length,
+      leftOut: files.notes.filter((note) => note.state === "left_out").length,
+      failed: files.notes.filter((note) => note.state === "failed").length,
+      fromCache: !read.ok,
     });
   };

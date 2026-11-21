@@ -12,7 +12,7 @@ import {
   upsertTicketCacheInTx,
   writeMomentToSessionInTx,
 } from "@ostra/domain";
-import type { AgentSessionMoment, MessageFilesDeps, Ports, SessionTimers, SpendCapSettings } from "@ostra/domain";
+import type { AgentSessionMoment, MessageFilesDeps, Ports, SessionTimers, SpendCapSettings, TicketFilesToBind } from "@ostra/domain";
 import type { JobHandler } from "@ostra/jobs";
 import {
   agentActivityIdSchema,
@@ -76,6 +76,16 @@ export type AgentModeDeps = Pick<Ports, "jobs" | "outbox" | "notices" | "audit" 
   readonly timers?: SessionTimers;
   /** Milestone 9 (F-148): a follow-up's files' limits and which agents take images (`coreMessageFilesDeps`); the defaults when left out. */
   readonly files?: MessageFilesDeps;
+  /**
+   * Milestone 9 (F-149, ticket 12; ADR 0057 amended): fetches and stores the files a member's
+   * follow-up names (`filesInText`), as a ticket's are (core's `fetchFollowUpFiles`). Left out, a
+   * follow-up carries its words alone.
+   */
+  readonly fetchFollowUpFiles?: (
+    tracker: TrackerAdapter,
+    task: { readonly organizationId: OrganizationId; readonly projectId: ProjectId; readonly taskId: TaskId },
+    text: string,
+  ) => Promise<TicketFilesToBind>;
 };
 
 export type AgentEventInput = {
@@ -482,6 +492,20 @@ const handleFollowUp = async (
   const text = event.prompt ?? "";
   const email = await addressOf(tracker, event.creator);
   const now = deps.clock.now();
+  // Milestone 9 (F-149/c9): the files a member's follow-up names, fetched with the connection's
+  // credential and stored before the transaction, as a ticket's are. Only a member's: someone
+  // else's follow-up reaches nothing, so nothing of it is fetched.
+  const fetchFiles = deps.fetchFollowUpFiles;
+  const files: TicketFilesToBind | null =
+    fetchFiles === undefined || text.trim() === "" || tracker.filesInText(text).length === 0
+      ? null
+      : await deps.db
+          .$transaction(async (tx) => {
+            const match = await matchStarterInTx(tx, organizationId, projectId, { userId: event.creator.userId, name: byName, email });
+            return match.kind === "member" && (await memberScopeInTx(tx, organizationId, match.memberId)) !== null;
+          })
+          .then((member) => (member ? fetchFiles(tracker, { organizationId, projectId, taskId }, text) : null));
+  const hasFiles = files !== null && files.stored.length + files.notes.length > 0;
   return deps.db.$transaction(async (tx) => {
     const match = await matchStarterInTx(tx, organizationId, projectId, {
       userId: event.creator.userId,
@@ -512,27 +536,35 @@ const handleFollowUp = async (
       );
       return { agentSessionId, taskId, posted: ["follow-up-not-member"] };
     }
-    const sent = await sendMemberMessageInTx(
-      {
-        jobs: deps.jobs,
-        outbox: deps.outbox,
-        notices: deps.notices,
-        audit: deps.audit,
-        clock: deps.clock,
-        spendCap: deps.spendCap,
-        timers: deps.timers,
-        files: deps.files,
-      },
-      tx,
-      scope,
-      {
-        taskId,
-        clientMessageId: clientMessageIdSchema.parse(`linear-${input.deliveryId}`),
-        text,
-        intent: "linear-follow-up",
-        sender: "anyone",
-      },
-    );
+    const send = (withFiles: boolean) =>
+      sendMemberMessageInTx(
+        {
+          jobs: deps.jobs,
+          outbox: deps.outbox,
+          notices: deps.notices,
+          audit: deps.audit,
+          clock: deps.clock,
+          spendCap: deps.spendCap,
+          timers: deps.timers,
+          files: deps.files,
+        },
+        tx,
+        scope,
+        {
+          taskId,
+          clientMessageId: clientMessageIdSchema.parse(`linear-${input.deliveryId}`),
+          text,
+          intent: "linear-follow-up",
+          sender: "anyone",
+          ...(withFiles && files !== null ? { ticketFiles: files } : {}),
+        },
+      );
+    let sent = await send(hasFiles);
+    if (!sent.ok && sent.error === "runner-needs-upgrade" && hasFiles) {
+      // A runner below protocol minor 8 can't take files (Q340): it gets the follow-up's words
+      // alone, as before milestone 9. The refusal wrote nothing.
+      sent = await send(false);
+    }
     if (!sent.ok) {
       deps.logger.info("linear.follow-up-refused", {
         organizationId,

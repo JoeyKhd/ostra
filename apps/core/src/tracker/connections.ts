@@ -47,6 +47,9 @@ export type ConnectionTrackersDeps = {
   readonly linearApiUrl?: string;
 };
 
+/** Linear's own file host: where its uploads live, and the only host `downloadFile` sends the token to. */
+const LINEAR_FILE_HOST = "https://uploads.linear.app";
+
 /** How long a built adapter is reused before its token is read again. */
 const CACHE_MS = 60_000;
 
@@ -60,7 +63,9 @@ export const createConnectionTrackers = (deps: ConnectionTrackersDeps): Connecti
           return new LinearAdapter(
             {
               auth: input.credentialKind === "api_key" ? { kind: "api-key", token: input.token } : { kind: "oauth", token: input.token },
-              ...(deps.linearApiUrl === undefined ? {} : { apiUrl: deps.linearApiUrl }),
+              // Another API (the dev stack's fake Linear) serves its own files too: its origin is a
+              // file host the token may go to, as it already goes to the API itself (milestone 9).
+              ...(deps.linearApiUrl === undefined ? {} : { apiUrl: deps.linearApiUrl, fileOrigins: [LINEAR_FILE_HOST, new URL(deps.linearApiUrl).origin] }),
             },
             input.context,
           );

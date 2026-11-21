@@ -48,11 +48,26 @@ const pendingInSpec = (message: PendingMessage, carried: ReadonlySet<string>): P
   return { clientMessageId: message.clientMessageId, text: message.text, ...(files === undefined ? {} : { files }) };
 };
 
-/** The files of the session's first member message, as the event recorded them: its first prompt's. */
-const firstPromptFilesOf = async (db: Pick<Db, "event">, taskId: string, sessionId: string): Promise<PromptFiles | undefined> => {
-  const first = await db.event.findFirst({ where: { taskId, sessionId, kind: "user.message" }, orderBy: { seq: "asc" }, select: { payload: true } });
+/**
+ * The files of the session's first member message, as the event recorded them: its first prompt's.
+ * An outside start (F-012) has no member's message: the ticket's files went with its first read
+ * (`ticket.context_read`, round 1), each going as an image as its row says (milestone 9's ticket 12).
+ */
+const firstPromptFilesOf = async (db: Pick<Db, "event" | "messageFile">, taskId: string, sessionId: string): Promise<PromptFiles | undefined> => {
+  const first = await db.event.findFirst({ where: { taskId, sessionId, kind: { in: ["user.message", "ticket.context_read"] } }, orderBy: { seq: "asc" }, select: { payload: true } });
   const parsed = taskEventSchema.safeParse(first?.payload);
-  return parsed.success && parsed.data.kind === "user.message" ? promptFilesOfMessage(parsed.data.files) : undefined;
+  if (!parsed.success) {
+    return undefined;
+  }
+  if (parsed.data.kind === "user.message") {
+    return promptFilesOfMessage(parsed.data.files);
+  }
+  if (parsed.data.kind !== "ticket.context_read" || parsed.data.reason !== "start" || parsed.data.files.length === 0) {
+    return undefined;
+  }
+  const fileIds = parsed.data.files;
+  const images = new Set((await db.messageFile.findMany({ where: { id: { in: [...fileIds] }, taskId, asImage: true }, select: { id: true } })).map((row) => row.id));
+  return { fileIds: [...fileIds], images: fileIds.filter((id) => images.has(id)) };
 };
 
 export const specFileParts = async (

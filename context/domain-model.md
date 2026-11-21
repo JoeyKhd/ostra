@@ -501,7 +501,7 @@ A **message file** is a file the agent gets with a message: a member's, attached
 
 An image (PNG, JPEG, GIF or WebP) also goes to the model as an image when the session's agent takes images in its prompt and its model sees them (an admin's "Reads images", then the catalog's inputs; unknown counts as no), at most 10 of 10 MiB *(working values)*. Otherwise it's a file only, and the message says why (`imagesNotSent`: the model, or the agent).
 
-One **read of a ticket** for its task is a round: 1 at the start, one more for each reopen, "Send ticket updates" or Retry. It records digests and IDs (the description's SHA-256, each comment's ID and edit time, each file's source key), never the ticket's text, so the next read passes on only what changed.
+One **read of a ticket** for its task is a round: 1 at the start, one more for each reopen, "Send ticket updates" or Retry. It records digests and IDs (the description's SHA-256, each comment's ID and edit time, each file's source key), never the ticket's text, so the next read passes on only what changed. Every round has its `ticket.context_read` for the thread: what the agent got; nothing, when nothing changed ("Nothing new on the ticket since the agent read it"); or `unreadable`, when the tracker didn't answer after the read's tries or the ticket is gone, and a reopen then goes on without the ticket's changes. A tracker whose `ticketFiles` is `none` marks its rounds `filesNotFetched`. A task started before milestone 9 has no round 1: its first read after is a baseline, which passes nothing on.
 
 ## Events and their two numbers
 

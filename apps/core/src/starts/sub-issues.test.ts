@@ -29,6 +29,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createBlobService } from "../blobs/blob-service.ts";
 import { HOSTILE_TEXT, scopeOf } from "../testing/automations.ts";
 import { FakeCodeHost, FakeSecretStore } from "../testing/fake-adapters.ts";
+import { noTextReader, testFileSettings } from "../testing/files.ts";
 import { mappingFor, seedBoard } from "../testing/tickets.ts";
 import { jobContext } from "../testing/turns.ts";
 import { seedWorld } from "../testing/world.ts";
@@ -248,7 +249,7 @@ describe("sub-issues (F-077)", () => {
     });
     const child = await test.db.task.findFirstOrThrow({ where: { parentTicketId, ticketKey: keys["b1"] ?? "" }, include: { sessions: true } });
     const blobs = createBlobService({ db: test.db, settings: { kind: "postgres", maxBytes: 1024 * 1024 }, context: { logger, clock: adapterClock } });
-    await fetchContextHandler({ db: test.db, jobs, notices: postgresChangeNotices, clock: systemClock, trackers: trackers(), blobs, logger })(
+    await fetchContextHandler({ db: test.db, jobs, notices: postgresChangeNotices, clock: systemClock, trackers: trackers(), blobs, text: noTextReader, files: testFileSettings, logger })(
       jobContext("ticket.fetch-context", { organizationId, taskId: taskIdSchema.parse(child.id), sessionId: sessionIdSchema.parse(child.sessions[0]?.id) }, logger),
     );
     const prompt = (await test.db.task.findUniqueOrThrow({ where: { id: child.id } })).prompt ?? "";

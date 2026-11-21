@@ -294,7 +294,8 @@ describe("F-032, F-033: reopening", () => {
     const messages = await harness.test.db.event.findMany({ where: { taskId: task.taskId, kind: "user.message" } });
     expect(messages.filter((message) => JSON.stringify(message.payload).includes(clientMessageId))).toHaveLength(1);
     expect(first.sessionId).toBeTruthy();
-    expect(harness.fakes.jobs.jobs.filter((job) => job.job === "task.dispatch" && job.key.startsWith(`task:${task.taskId}:`)).length).toBeGreaterThan(0);
+    // Milestone 9 (F-149, ticket 12): a ticket task's reopen reads the ticket again first; that job sends the dispatch.
+    expect(harness.fakes.jobs.jobs.filter((job) => job.job === "ticket.read-changes" && job.key.startsWith(`task:${task.taskId}:`))).toHaveLength(1);
   });
 
   run("refuses a task without a message unless a limit or a crash stopped it, and then writes the carry-on text", async () => {

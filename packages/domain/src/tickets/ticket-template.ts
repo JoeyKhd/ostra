@@ -23,7 +23,7 @@ type FieldKind =
   /** An admin's text (the agent profile's instructions): written as it is, on its own lines. */
   | "admin-block";
 
-type ScopeName = "root" | "label" | "comment" | "ticketRef" | "link" | "image" | "criterion";
+type ScopeName = "root" | "label" | "comment" | "ticketRef" | "link" | "image" | "criterion" | "attachment";
 
 type ScopeSpec = {
   readonly fields: Readonly<Record<string, FieldKind>>;
@@ -52,6 +52,8 @@ const scopes: Readonly<Record<ScopeName, ScopeSpec>> = {
       images: "image",
       // Milestone 6 (F-077): a sub-issue's parent's accepted acceptance criteria.
       parentCriteria: "criterion",
+      // Milestone 9 (F-149, Q337): the ticket's link attachments, given as title and URL, never fetched.
+      links: "attachment",
     },
   },
   label: { fields: { name: "ticket-inline" }, sections: {} },
@@ -60,6 +62,8 @@ const scopes: Readonly<Record<ScopeName, ScopeSpec>> = {
   link: { fields: { relation: "plain", key: "plain", title: "ticket-inline", url: "plain" }, sections: {} },
   image: { fields: { path: "plain", name: "ticket-inline" }, sections: {} },
   criterion: { fields: { text: "ticket-inline" }, sections: {} },
+  // A link attachment is the ticket's: its title and its URL are both marked as the ticket's text.
+  attachment: { fields: { title: "ticket-inline", url: "ticket-inline" }, sections: {} },
 };
 
 /** Every placeholder and section a template may use, by scope: for the editor's help (ticket 37). */
@@ -76,6 +80,7 @@ export const ticketTemplateVocabulary = {
   link: vocabularyOf(scopes.link),
   image: vocabularyOf(scopes.image),
   criterion: vocabularyOf(scopes.criterion),
+  attachment: vocabularyOf(scopes.attachment),
 } as const satisfies Readonly<Record<ScopeName, unknown>>;
 
 // ---------- the values ----------
@@ -99,7 +104,11 @@ export type TicketPromptContext = {
   readonly parent: TicketRefValue | null;
   readonly children: readonly TicketRefValue[];
   readonly linked: readonly (TicketRefValue & { readonly relation: string })[];
-  /** Copied into the workspace: `path` is where (`.ostra/ticket/<name>`), `name` the tracker's. */
+  /**
+   * The ticket's images in the workspace: `path` is where under the workspace's root
+   * (`.ostra/ticket/<name>`, milestone 9), `name` the file's safe name. The built-in template no
+   * longer lists them (the runner's block names every file); a project's own template may.
+   */
   readonly images: readonly { readonly path: string; readonly name: string }[];
   /** The agent profile's instructions. */
   readonly instructions: string | null;
@@ -109,6 +118,11 @@ export type TicketPromptContext = {
    * refine draft (written by people and agents: untrusted). Missing or empty without one.
    */
   readonly parentCriteria?: readonly { readonly text: string }[];
+  /**
+   * Milestone 9 (F-149, Q337): the ticket's link attachments (a Figma frame, a Sentry issue, a pull
+   * request), their titles and URLs; nothing behind them is fetched. Missing or empty without one.
+   */
+  readonly links?: readonly { readonly title: string; readonly url: string }[];
 };
 
 // ---------- parsing ----------
@@ -340,18 +354,18 @@ From the parent's accepted refine draft. This ticket is one part of that work:
 
 {{#linked}}- {{relation}} {{key}}: {{title}}
 {{/linked}}
-{{/linked}}## Comments, oldest first
+{{/linked}}{{?links}}## Links
+
+The ticket links these. ostra didn't open them:
+{{#links}}- {{title}}: {{url}}
+{{/links}}
+{{/links}}## Comments, oldest first
 
 {{#comments}}{{author}}, {{date}}:
 {{body}}
 
 {{/comments}}{{^comments}}(No comments.)
-{{/comments}}{{?images}}
-## Images
-
-The ticket's images are in your workspace:
-{{#images}}- {{path}} (from {{name}})
-{{/images}}{{/images}}{{?instructions}}
+{{/comments}}{{?instructions}}
 ## Your team's instructions
 
 {{instructions}}

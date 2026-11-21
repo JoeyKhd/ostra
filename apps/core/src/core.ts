@@ -86,6 +86,8 @@ import { createConnectionTrackers } from "./tracker/connections.ts";
 import { createPollSchedules, pollBoardHandler, trackerWebhookHandler } from "./tracker/ingest.ts";
 import { ensureTokenRefreshes, refreshTokenHandler } from "./tracker/refresh-token.ts";
 import { fetchContextHandler } from "./tracker/context.ts";
+import { readChangesHandler } from "./tracker/read-changes.ts";
+import { fetchFollowUpFiles } from "./tracker/ticket-reads.ts";
 import { drainTicketWrites, ticketSyncHandler } from "./tracker/writer.ts";
 import { agentEventHandler } from "./linear/agent-mode/events.ts";
 import { draftApplyHandler, enqueueBuiltInProfileSeeds, seedProfilesHandler } from "./refine/apply.ts";
@@ -434,6 +436,8 @@ export const startCore = async (
   // Milestone 9 (F-150, ticket 07): the one text reader of this process, its workers started by the
   // first document. A member's upload reads through it (ticket 10), and a ticket's files (ticket 12).
   const documentText = createDocumentTextReader({ extraction: settings.files.textExtraction, logger });
+  // A ticket's files (F-149, ticket 12): stored as blobs of their task, through the same reader.
+  const ticketFileDeps = { db, blobs, text: documentText, files: settings.files, logger };
   // A member's upload (F-148, ticket 10): the panel's file token, made under the secrets key.
   const panelFileEndpoint = handlePanelFileEndpoint({
     db,
@@ -567,6 +571,8 @@ export const startCore = async (
       timers,
       // Milestone 9 (F-148): a follow-up's files keep to the settings' limits, its images to its agent.
       files: coreMessageFilesDeps(settings.files),
+      // Milestone 9 (F-149, ticket 12): the files a member's follow-up names, fetched as a ticket's are.
+      fetchFollowUpFiles: (tracker, task, text) => fetchFollowUpFiles(ticketFileDeps, tracker, task, text),
     }),
     { localConcurrency: 4 },
   );
@@ -730,8 +736,15 @@ export const startCore = async (
     publicUrl: settings.publicUrl,
     team: settings.team,
   });
-  // A ticket task's context, images and first prompt, then its dispatch (ticket 18).
-  await jobs.work("ticket.fetch-context", fetchContextHandler({ db, jobs, notices, clock: systemClock, trackers, blobs, logger }), { localConcurrency: 4 });
+  // A ticket task's context, files and first prompt, then its dispatch (ticket 18; milestone 9's ticket 12).
+  await jobs.work("ticket.fetch-context", fetchContextHandler({ ...ticketFileDeps, jobs, notices, clock: systemClock, trackers }), { localConcurrency: 4 });
+  // Milestone 9 (F-149, ticket 12): a ticket task's ticket read again, for a reopen, "Send ticket
+  // updates" and Retry.
+  await jobs.work(
+    "ticket.read-changes",
+    readChangesHandler({ ...ticketFileDeps, jobs, outbox: postgresCommandOutbox, notices, audit: postgresAuditLog, clock: systemClock, trackers }),
+    { localConcurrency: 2 },
+  );
   // Search (ticket 11): the entries of tasks from before milestone 4, once per task.
   await jobs.work("search.backfill", searchBackfillHandler({ db }), { localConcurrency: 2 });
   await enqueueSearchBackfill({ db, jobs, logger }).catch((error: unknown) => {

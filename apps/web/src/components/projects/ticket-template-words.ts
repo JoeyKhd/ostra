@@ -46,6 +46,8 @@ const sectionScopes: Readonly<Record<string, string>> = {
   children: "ticketRef",
   linked: "link",
   images: "image",
+  // Milestone 9 (F-149): the ticket's link attachments.
+  links: "attachment",
 };
 
 export type PlaceholderRow = {
@@ -71,6 +73,7 @@ const descriptions: Readonly<Record<string, MessageKey>> = {
   "children": "ticketTemplate.placeholders.describe.children",
   "linked": "ticketTemplate.placeholders.describe.linked",
   "images": "ticketTemplate.placeholders.describe.images",
+  "links": "ticketTemplate.placeholders.describe.links",
 };
 
 /** The description of a placeholder or section the editor knows; empty for one added later. */

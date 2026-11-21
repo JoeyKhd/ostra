@@ -262,6 +262,10 @@ describe("minor 8's events", () => {
     expect(taskEventSchema.safeParse({ ...read, comments: [{ ...comment, body: "x".repeat(runnerLimits.ticketCommentMaxBytes + 1) }] }).success).toBe(false);
     expect(taskEventSchema.safeParse({ ...read, links: [{ title: "x", url: "javascript:alert(1)" }] }).success).toBe(false);
     expect(taskEventSchema.safeParse({ ...read, reason: "webhook" }).success).toBe(false);
+    // Ticket 12's two notes are a marker each, never a word of the ticket.
+    expect(taskEventSchema.safeParse({ ...read, filesNotFetched: true }).success).toBe(true);
+    expect(taskEventSchema.safeParse({ ...read, filesNotFetched: false }).success).toBe(false);
+    expect(taskEventSchema.safeParse({ ...read, unreadable: "Linear said 503" }).success).toBe(false);
     expect(taskEventSchema.safeParse({ ...read, leftOut: [{ name: "../x", reason: "too-big" }] }).success).toBe(false);
     expect(taskEventSchema.safeParse({ ...eventFixtures["files.written"], skipped: [{ fileId: ids.imageFile, reason: "eaten" }] }).success).toBe(false);
     expect(taskEventSchema.safeParse({ ...eventFixtures["files.written"], imagesSent: runnerLimits.promptImagesMax + 1 }).success).toBe(false);

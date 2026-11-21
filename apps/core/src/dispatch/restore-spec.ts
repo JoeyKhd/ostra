@@ -20,7 +20,7 @@ import type { BlobRef, HiddenRefRestore, TaskSpecContextFile, TaskSpecRestore, T
 // reopen's prompt is the rebuild template, so a runner whose resume or import fails falls back to it
 // (ticket 24); a `resumed` or `restored` session never sends it.
 
-/** The purpose a ticket image's blob is stored under (ticket 18's `ticket.fetch-context`). */
+/** The purpose a ticket's file's blob is stored under (ticket 18's `ticket.fetch-context`; milestone 9, every file of the ticket). */
 export const TICKET_FILE_PURPOSE = "ticket-file";
 
 const extensionOf = (contentType: string): string => {
@@ -89,8 +89,13 @@ export const specMilestone2Parts = async (
     ticketRow !== null && key.success && url.success && ticketRow.title.trim() !== ""
       ? { key: key.data, title: ticketRow.title.slice(0, 1024), url: url.data }
       : null;
-  const files = await db.blob.findMany({
-    where: { taskId: task.id, organizationId: task.organizationId, purpose: TICKET_FILE_PURPOSE },
+  // F-064's old path (milestone 9's ticket 12): only a task whose first prompt was rendered before
+  // milestone 9's first read of its ticket has its images as `ticket-file` blobs no message file
+  // holds, written under the session's `.ostra/ticket/`. A task read since (its `start` round) gets
+  // the ticket's files as message files, in the spec's `files`.
+  const readAtStart = await db.taskTicketRead.findFirst({ where: { taskId: task.id, reason: "start" }, select: { id: true } });
+  const files = readAtStart !== null ? [] : await db.blob.findMany({
+    where: { taskId: task.id, organizationId: task.organizationId, purpose: TICKET_FILE_PURPOSE, messageFiles: { none: {} } },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     take: runnerLimits.ticketFilesMax,
     select: { id: true, contentType: true, size: true },

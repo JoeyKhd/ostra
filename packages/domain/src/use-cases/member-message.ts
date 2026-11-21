@@ -256,6 +256,8 @@ export const sendMemberMessageInTx = async (
         origin: origin === "message" ? "reopen" : origin,
         ...(input.keepDriver === true ? { keepDriver: true as const } : {}),
         ...(deps.files === undefined ? {} : { files: deps.files }),
+        // Milestone 9 (ticket 12): a follow-up's files go with the message that reopens the task.
+        ...(input.ticketFiles === undefined ? {} : { ticketFiles: input.ticketFiles }),
       },
       { taskId: task.id, clientMessageId: input.clientMessageId, text, intent: input.intent, ...(fileIds.length === 0 ? {} : { fileIds: [...fileIds] }) },
     );

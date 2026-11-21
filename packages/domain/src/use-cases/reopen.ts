@@ -171,9 +171,9 @@ export type ReopenTaskDeps = Pick<Ports, "jobs" | "notices" | "audit" | "clock">
   /** Milestone 9 (ticket 06): a ticket's files core fetched for the reopen's message (a follow-up's). */
   readonly ticketFiles?: TicketFilesToBind | undefined;
   /**
-   * Milestone 9 (F-149, ticket 06): a ticket task's reopen reads the ticket again first: it sends
-   * `ticket.read-changes` (reason `reopen`), whose job passes on what changed and sends the
-   * dispatch, instead of the dispatch itself. Core turns it on where it works that job.
+   * Milestone 9 (F-149, tickets 06 and 12): a ticket task's reopen reads the ticket again first: it
+   * sends `ticket.read-changes` (reason `reopen`), whose job (core's) passes on what changed and
+   * sends the dispatch, instead of the dispatch itself. On unless `false`.
    */
   readonly readTicketChanges?: boolean | undefined;
 };
@@ -373,7 +373,7 @@ export const reopenTask: ReopenTask = async (deps, input) => {
   );
   if (gate.kind === "held") {
     await holdTurnInTx(deps, tx, { organizationId: organization, projectId, taskId: task.id, sessionId, held: gate, pendingMessageSeq: messageSeq, now, queued: true });
-  } else if (deps.readTicketChanges === true && task.kind === "code" && task.ticketId !== null) {
+  } else if (deps.readTicketChanges !== false && task.kind === "code" && task.ticketId !== null) {
     // Milestone 9 (F-149): the ticket is read again first; the job sends the dispatch.
     await deps.jobs.enqueueInTx(tx, "ticket.read-changes", {
       organizationId: organization,

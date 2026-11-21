@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { createLogger, silentLogger } from "@ostra/adapter-sdk";
+import { createLogger, silentLogger, systemClock as adapterClock } from "@ostra/adapter-sdk";
 import type { LogRecord } from "@ostra/adapter-sdk";
 import { refreshToken as refreshLinearToken } from "@ostra/adapter-linear";
 import { LINEAR_CAPABILITIES, LinearAdapter } from "@ostra/adapter-linear";
@@ -37,6 +37,7 @@ import {
   connectionIdSchema,
   leaseEpochSchema,
   memberIdSchema,
+  safeFileName,
   sessionIdSchema,
   taskIdSchema,
   webhookDeliveryIdSchema,
@@ -44,14 +45,17 @@ import {
 import type { BoardId, ConnectionId, OrganizationId, ProjectId, TaskId } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { createBlobService } from "../../blobs/blob-service.ts";
 import { applyOfferResultsInTx } from "../../dispatch/dispatcher.ts";
 import { FakeCodeHost, FakeModelProvider, FakeSecretStore } from "../../testing/fake-adapters.ts";
+import { noTextReader, testFileSettings } from "../../testing/files.ts";
 import { mappingFor, seedBoard } from "../../testing/tickets.ts";
 import { jobContext } from "../../testing/turns.ts";
 import { seedOnlineRunner, seedWorld } from "../../testing/world.ts";
 import { createConnectionTrackers } from "../../tracker/connections.ts";
 import type { ConnectionTrackers } from "../../tracker/connections.ts";
 import { refreshConnectionToken } from "../../tracker/refresh-token.ts";
+import { fetchFollowUpFiles } from "../../tracker/ticket-reads.ts";
 import { toPayload } from "../../webhooks/inbox.ts";
 import { agentEventHandler } from "./events.ts";
 import type { AgentModeDeps } from "./events.ts";
@@ -64,6 +68,8 @@ import { activitySendHandler, sendHeartbeats } from "./outbox.ts";
 // read from the fake. The fast lane through the webhook inbox is `agent-mode.fast-lane.test.ts`.
 
 const PUBLIC_URL = "https://ostra.example";
+/** Milestone 9: a screenshot in a follow-up, by its PNG signature. */
+const SCREENSHOT = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 9, 9]);
 const HEARTBEAT_MS = 20 * 60_000;
 const AGENT_SCOPES = [
   "read",
@@ -141,14 +147,14 @@ const scopeOf = (
 });
 
 /** Stores a session event as the inbox does, and runs `linear.agent-event` on it. */
-const deliver = async (body: unknown, clock: Clock = systemClock): Promise<void> => {
+const deliver = async (body: unknown, clock: Clock = systemClock, overrides: Partial<AgentModeDeps> = {}): Promise<void> => {
   const deliveryId = webhookDeliveryIdSchema.parse(randomUUID());
   const json = toPayload(body);
   if (json === null) throw new Error("not a JSON body");
   await test.db.webhookDelivery.create({
     data: { organizationId, connectionId, deliveryId, event: "AgentSessionEvent.x", payload: json },
   });
-  await agentEventHandler(agentDeps(clock))(
+  await agentEventHandler(agentDeps(clock, overrides))(
     jobContext("linear.agent-event", { organizationId, connectionId, deliveryId }, silentLogger),
   );
 };
@@ -321,6 +327,8 @@ beforeAll(async () => {
                   input.credentialKind === "api_key"
                     ? { kind: "api-key", token: input.token }
                     : { kind: "oauth", token: input.token },
+                // Milestone 9: the fake's uploads are on its own host, the one file host the token may reach.
+                fileOrigins: [new URL(fake.apiUrl).origin],
               },
               input.context,
             ),
@@ -515,6 +523,38 @@ describe("prompted: a stop and a follow-up (F-012)", () => {
     // The prompt's text reached no log line.
     expect(JSON.stringify(records)).not.toContain("Delete the database");
     expect(JSON.stringify(records)).not.toContain("Also make the header faster");
+  });
+
+  it("F-149/c9: a member's follow-up's screenshot reaches its message's files, fetched with the app's token, and goes with the steer; an outsider's is never fetched", async () => {
+    const { sessionId } = await delegate(matchedUserId);
+    const taskId = taskIdSchema.parse((await sessionRow(sessionId)).taskId);
+    const runner = await running(taskId, fixture.a.member);
+    await test.db.runnerPresence.update({ where: { runnerId: runner.runnerId }, data: { minor: 8 } });
+    const blobs = createBlobService({ db: test.db, settings: { kind: "postgres", maxBytes: 16 * 1024 * 1024 }, context: { logger, clock: adapterClock } });
+    const store = { db: test.db, blobs, text: noTextReader, files: testFileSettings, logger };
+    const withFiles: Partial<AgentModeDeps> = { fetchFollowUpFiles: (tracker, task, text) => fetchFollowUpFiles(store, tracker, task, text) };
+    // A name with shell syntax: made safe before it touches a disk or a prompt.
+    const raw = "broken header $HOME; rm -rf ~.png";
+    const safe = safeFileName(raw, null);
+    const shot = fake.upload({ name: raw, contentType: "image/png", bytes: SCREENSHOT });
+    await fake.promptSession(sessionId, `The header breaks here: ![${raw}](${shot})`, { byUserId: matchedUserId });
+    await deliver(lastEventBody(), systemClock, withFiles);
+    const row = await test.db.event.findFirstOrThrow({ where: { taskId, kind: "user.message" }, orderBy: { seq: "desc" } });
+    expect(row.payload).toMatchObject({ intent: "linear-follow-up", memberId: fixture.a.member.id, files: [{ name: safe, origin: "ticket", kind: "image" }] });
+    const file = await test.db.messageFile.findFirstOrThrow({ where: { taskId, origin: "ticket" }, include: { blob: true } });
+    expect(file).toMatchObject({ state: "sent", eventSeq: row.seq, ticketWhere: "comment", boxPath: `ticket/${safe}`, memberId: null });
+    expect(file.blob).toMatchObject({ taskId, purpose: "ticket-file", size: SCREENSHOT.length });
+    const steers = await test.db.command.findMany({ where: { taskId, kind: "steer" } });
+    expect(steers).toHaveLength(1);
+    expect(steers[0]?.body).toMatchObject({ intent: "linear-follow-up", files: [{ fileId: file.id, path: `ticket/${safe}` }] });
+    // Someone outside the project: nothing of theirs is fetched or reaches the agent.
+    const before = await test.db.blob.count({ where: { taskId } });
+    const theirs = fake.upload({ name: "theirs.png", contentType: "image/png", bytes: SCREENSHOT });
+    await fake.promptSession(sessionId, `Look: ![theirs.png](${theirs})`, { byUserId: outsideUserId });
+    await deliver(lastEventBody(), systemClock, withFiles);
+    expect(await test.db.blob.count({ where: { taskId } })).toBe(before);
+    expect(await test.db.messageFile.count({ where: { taskId } })).toBe(1);
+    expect(JSON.stringify(records)).not.toContain("broken header");
   });
 });
 

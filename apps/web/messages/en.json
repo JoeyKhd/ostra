@@ -3760,7 +3760,8 @@
         "parent": "The parent ticket, if any",
         "children": "Each sub-ticket",
         "linked": "Each linked ticket",
-        "images": "Each image of the ticket, at its path under the workspace's root (.ostra/ticket/…)"
+        "images": "Each image of the ticket, at its path under the workspace's root (.ostra/ticket/…)",
+        "links": "Each link the ticket holds, its title and URL; ostra never opens it"
       }
     },
     "preview": {

@@ -342,7 +342,8 @@ export type TicketContextLink = z.infer<typeof ticketContextLinkSchema>;
  * What one read of the ticket gave the agent (F-149), for the thread's "What the agent got": the
  * round (1 at the start), why, the description (`null` when it didn't change since the last
  * round), the comments, the links, the files given, and those left out and failed. Every string is
- * the ticket's: never logged.
+ * the ticket's: never logged. A round after the start that found nothing new has every list empty
+ * and no description: "Nothing new on the ticket since the agent read it".
  */
 export const ticketContextReadSchema = z.strictObject({
   round: z.number().int().positive(),
@@ -353,6 +354,18 @@ export const ticketContextReadSchema = z.strictObject({
   files: z.array(messageFileIdSchema).max(runnerLimits.ticketContextFilesMax),
   leftOut: fileNotesSchema,
   failed: fileNotesSchema,
+  /**
+   * Ticket 12: the tracker's adapter fetches no files (its `ticketFiles` is `none`), so the task
+   * started from the ticket's text alone and the task page says its files weren't fetched. Missing
+   * when the files were fetched as the tracker allows.
+   */
+  filesNotFetched: z.literal(true).optional(),
+  /**
+   * Ticket 12: the ticket couldn't be read (the tracker didn't answer after the read's tries, or the
+   * ticket or its connection is gone): nothing of it reached the agent this round, every list is
+   * empty, and a reopen went on without the ticket's changes.
+   */
+  unreadable: z.literal(true).optional(),
 });
 export type TicketContextRead = z.infer<typeof ticketContextReadSchema>;
 

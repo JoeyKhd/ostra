@@ -81,9 +81,15 @@ const findMade = async (
   return null;
 };
 
+/**
+ * The words every attachment a draft's "Update ticket" made carries in its subtitle: milestone 9
+ * (ticket 12) tells ostra's own attachments by them, and leaves them out of a ticket's files.
+ */
+export const DRAFT_ATTACHMENT_MARKER = "Attached by ostra from a draft";
+
 /** The subtitle each attached image carries, so a retry finds the one it attached: ostra's words and the image's ID. */
 const imageMarkerOf = (imageId: string): string =>
-  `Attached by ostra from a draft (image ${imageId})`;
+  `${DRAFT_ATTACHMENT_MARKER} (image ${imageId})`;
 
 const fail = (what: string, code: string): never => {
   throw new Error(`${what} failed (${code})`);

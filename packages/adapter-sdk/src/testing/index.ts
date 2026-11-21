@@ -41,3 +41,5 @@ export * from "./parity.ts";
 export * from "./agent-files-cases.ts";
 // Changing a signed token so it's always a real change, and its lenient decoder's twins.
 export * from "./tamper-token.ts";
+// Milestone 9 (ticket 12): the tiny tracker, whose `ticketFiles` is `none`, for core's start from a ticket's text.
+export { TinyTracker } from "../test-adapters/tiny-adapters.ts";

@@ -1844,4 +1844,8 @@ export const minor8EventFixtures = {
     files: [{ fileId: ids.ticketFile, name: "design-notes.pdf", kind: "document", contentType: "application/pdf", size: 40_960, origin: "ticket", asImage: false, text: "failed" }],
   },
   noChangeRead: { ...eventFixtures["ticket.context_read"], round: 2, reason: "member", description: null, comments: [], links: [], files: [], leftOut: [], failed: [] },
+  /** Ticket 12: a tracker whose adapter fetches no files (`ticketFiles: "none"`): the task starts from the text. */
+  filesNotFetchedRead: { ...eventFixtures["ticket.context_read"], files: [], leftOut: [], failed: [], filesNotFetched: true },
+  /** Ticket 12: a reopen's read the tracker never answered: the task went on without the ticket's changes. */
+  unreadableRead: { ...eventFixtures["ticket.context_read"], round: 3, reason: "reopen", description: null, comments: [], links: [], files: [], leftOut: [], failed: [], unreadable: true },
 } as const satisfies Readonly<Record<string, TaskEvent>>;
