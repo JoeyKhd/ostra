@@ -73,11 +73,13 @@ This is a large v1: 105 ledger rows against 66. It's shippable because the depth
 
 ### After v1, in this order
 
-1. **Right after:** Jira (F-008), Claude Code on keys (F-018), Codex on keys (F-038), network allowlists (F-052), Slack (F-057), signed runner binaries (F-085).
+1. **Right after:** Jira (F-008), network allowlists (F-052), Slack (F-057), signed runner binaries (F-085).
 2. **Then:** AI review of people's PRs (F-123), prototype mockups (F-122), variants (F-124), memory depth (F-129), SSO and custom roles (F-004), several organizations per install (F-134, after v1 since 2026-11-19), providers that sign requests (F-130), a secret store adapter for a vault (F-133), GitLab (F-009), the public API (F-074).
 3. **Later still:** attach (F-041), a terminal in the browser (F-029), bulk onboarding (F-126), community executors (F-127), workflows (F-125) and signed commits (F-056). *Changed 2026-11-19: the hosted version, last on this list until then, is not planned. ostra is an app people host themselves (`history/self-hosted-only-2026-11-19.md`).*
 
 *Changed 2026-11-21: seeing the running app (F-121), first in "Right after" until then, moved into v1 with milestone 8, on the maintainer's word.*
+
+*Changed 2026-11-21: Claude Code (F-018) and Codex (F-038), in "Right after" until then, are set aside with no date, on the maintainer's word: "so let's skip Claude code then for now and Codex". OpenCode stays the only agent. A Claude subscription can't be used through ostra under Anthropic's terms (ADR 0005, Q45, Q47), which made Claude Code on keys less useful; the agent interface stays ready for both.*
 
 ### What slips first if v1 runs long
 
