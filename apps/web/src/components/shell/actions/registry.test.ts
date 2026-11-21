@@ -44,7 +44,7 @@ describe("the ? sheet", () => {
     const lines = sheetLines().flatMap((section) => section.lines.map((line) => ({ scope: section.scope, id: line.id, keys: line.shortcut.join(" ") })));
     const shortcuts = registry.flatMap((entry) => (entry.shortcut === null ? [] : [{ scope: entry.scope, id: entry.id, keys: entry.shortcut.join(" ") }]));
     expect(lines).toEqual([...shortcuts].sort((a, b) => ["global", "needs-you-item", "task"].indexOf(a.scope) - ["global", "needs-you-item", "task"].indexOf(b.scope)));
-    expect(lines.map((line) => line.keys)).toEqual(["g n", "g h", "g t", "/", "?", "c", "a", "d", "r", "t", "o", "s"]);
+    expect(lines.map((line) => line.keys)).toEqual(["g n", "g h", "g t", "g p", "g o", "[", "/", "?", "c", "a", "d", "r", "t", "o", "s"]);
   });
 
   it("F-081/c1: an action added to the registry gets its line with no list of the sheet's own", () => {
@@ -60,7 +60,7 @@ describe("the palette's groups", () => {
     expect(ids(groups.page)).toEqual(["approve", "deny", "reopen"]);
     expect(groups.page[0]).toMatchObject({ label: "Approve…", hint: "3 waiting", shortcut: ["a"], step: true });
     expect(ids(groups.actions)).toEqual(["new-task", "toggle-theme"]);
-    expect(ids(groups.goTo)).toEqual(["go-needs-you", "go-home", "go-tasks"]);
+    expect(ids(groups.goTo)).toEqual(["go-needs-you", "go-home", "go-tasks", "go-projects", "go-organization"]);
   });
 
   it("F-081/c1: an action the member's role can't take isn't listed: New project is an admin's", () => {

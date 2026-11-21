@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRightIcon, ChevronRightIcon, MenuIcon, SearchIcon } from "lucide-react";
+import { ArrowRightIcon, ChevronRightIcon, PanelLeftOpenIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Fragment } from "react";
@@ -13,6 +13,8 @@ import { t } from "@/lib/messages";
 
 import { useShell } from "./app-shell";
 import { DefaultPasswordBanner } from "./default-password-banner";
+import { MenuButton } from "./nav-sheet";
+import { useOptionalShellState } from "./shell-state";
 
 export type Crumb = { readonly label: string; readonly href?: string };
 
@@ -28,37 +30,49 @@ export type PageFrameProps = {
 };
 
 /**
- * The 46px top bar with breadcrumbs and the page's actions, the default-password banner under it
+ * The 46px top bar with breadcrumbs and the page's actions (54px at phone width, with the menu
+ * button that opens the rail and the panel as one sheet, F-147), the default-password banner under it
  * while it applies, the page (padding 28px 36px), and its properties panel (320px, or 380px for a
  * form; padding 20px 18px), which stacks under the page below `xl`. The sizes are the approved
  * pictures' (app-targets/m1/README.md, "Scale").
  */
 export const PageFrame = ({ crumbs, actions, properties, wideProperties = false, padded = true, children }: PageFrameProps) => {
-  const { openNavigation, openSearch, passwordChange } = useShell();
+  const { openNavigation, navigationOpen, passwordChange } = useShell();
+  const shell = useOptionalShellState();
   const path = usePathname();
   return (
     <>
-      <header className="flex h-[46px] shrink-0 items-center gap-2 border-b border-line px-3 text-muted sm:px-[18px]">
-        <button
-          type="button"
-          onClick={openNavigation}
-          className="-ml-1 rounded-sm p-1 text-muted hover:text-text lg:hidden"
-          aria-label={t("shell.openNavigation")}
-        >
-          <MenuIcon className="size-[18px]" />
-        </button>
-        <nav aria-label={t("shell.breadcrumbs")} className="flex min-w-0 items-center gap-2">
+      <header className="flex h-[54px] shrink-0 items-center gap-2 border-b border-line bg-bg px-1.5 text-muted md:h-[46px] md:px-[18px]">
+        {shell === null ? null : <MenuButton open={navigationOpen} onOpen={openNavigation} />}
+        {/* F-147: with the panel collapsed, the top bar's first item docks it again (`shell-peek.webp`). */}
+        {shell === null ? null : (
+          <button
+            type="button"
+            onClick={shell.dock}
+            aria-label={t("shell.panel.show")}
+            title={t("shell.panel.show")}
+            data-testid="show-sidebar"
+            className={cn(
+              "-ml-2 hidden size-7 shrink-0 place-items-center rounded-sm text-muted hover:bg-hover hover:text-text",
+              !shell.opened && "md:max-xl:grid",
+              shell.choice.collapsed && !shell.opened && "xl:grid",
+            )}
+          >
+            <PanelLeftOpenIcon aria-hidden className="size-4 stroke-[1.75]" />
+          </button>
+        )}
+        <nav aria-label={t("shell.breadcrumbs")} className="flex min-w-0 flex-1 items-center gap-1.5 text-base md:gap-2 md:text-body">
           {crumbs.map((crumb, i) => {
             const last = i === crumbs.length - 1;
             return (
               <Fragment key={`${crumb.label}-${String(i)}`}>
-                {i > 0 ? <ChevronRightIcon aria-hidden className="hidden size-[14px] shrink-0 text-faint sm:block" /> : null}
+                {i > 0 ? <ChevronRightIcon aria-hidden className="size-[15px] shrink-0 text-faint md:size-[14px]" /> : null}
                 {last || crumb.href === undefined ? (
-                  <span className={cn("truncate", last ? "font-medium text-text" : "hidden sm:inline")} aria-current={last ? "page" : undefined}>
+                  <span className={cn("min-w-0 truncate", last ? "shrink-[0.2] font-semibold text-text md:font-medium" : "font-medium")} aria-current={last ? "page" : undefined}>
                     {crumb.label}
                   </span>
                 ) : (
-                  <Link href={crumb.href} className="hidden truncate hover:text-text sm:inline">
+                  <Link href={crumb.href} className="min-w-0 truncate font-medium hover:text-text md:font-normal">
                     {crumb.label}
                   </Link>
                 )}
@@ -66,21 +80,7 @@ export const PageFrame = ({ crumbs, actions, properties, wideProperties = false,
             );
           })}
         </nav>
-        <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          {/* F-080 (ticket 35): the top bar's way in to the search palette, beside the sidebar's box. */}
-          <button
-            type="button"
-            onClick={openSearch}
-            aria-label={t("search.palette.open")}
-            data-testid="topbar-search"
-            className="flex h-[30px] items-center gap-2 rounded-md border border-control-line bg-surface px-2 text-faint hover:border-faint hover:text-muted md:w-[200px] md:px-2.5"
-          >
-            <SearchIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75]" />
-            <span className="hidden text-ui md:inline">{t("shell.search")}</span>
-            <kbd className="ml-auto hidden font-mono text-[11.5px] font-medium md:inline">⌘K</kbd>
-          </button>
-          {actions}
-        </div>
+        {actions === undefined ? null : <div className="ml-auto flex shrink-0 items-center gap-1.5">{actions}</div>}
       </header>
       <DefaultPasswordBanner passwordChange={passwordChange} path={path} />
       <div

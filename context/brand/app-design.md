@@ -27,14 +27,23 @@ These come from the maintainer's verdict on round 2 ("the ui is FUCKING ugly") a
 
 ## Layout
 
-1. **Sidebar, 234px, always there:**
-   - The organization switcher, then search (⌘K) and a "+" for a new task.
-   - Personal views: **Home**, **Needs you** (an amber count) and **My tasks**.
-   - **Projects:** the member's pinned projects, each with an 8px colour square. An amber dot marks a project where something waits on them. The open project expands into Tasks, Inbox, Environment, Boards, Automations, Memory, Repos and Settings. "N more" opens the full list. Boards (F-007) sits after Environment. Settings holds the ticket template from milestone 2 on, and project admins see it.
-   - **Organization:** Runner pools (busy count), Models, GitHub, Linear, Storage, Agent profiles, Insights, Memory, Members, Audit log, Background work and Settings. Agent profiles are F-021. Background work lists queues and stuck jobs, with retry and cancel (ADR 0037). GitHub and Linear are the organization's connections, and only its admins see them. Storage (F-114, F-079) is for instance admins. *Rows added 2026-11-19 for milestone 2 (ticket 40's decisions).*
-   - **Memory** is a page for the project and another for the organization (F-109, ADR 0044). Each carries a count of its proposals (F-111), in the plain count style, never amber.
-   - The signed-in member at the bottom.
-2. **Top bar, 46px:** breadcrumbs on the left (`calculator › Tasks › CALC-161`), the page's actions on the right. At most one primary (Shell) button per page.
+1. **The double sidebar** (F-147, milestone 8; approved 2026-11-21, `app-targets/m8/app-shell.md`). It replaces the single 234px sidebar. At 1440 wide: rail 64 | panel 240 | page.
+   - **The rail, 64px, on `--side`,** never moves and never scrolls. Top to bottom:
+     - the organization tile (the Hinge, with a letter chip for a member of more than one organization), which opens the organization switcher;
+     - New task (the `--primary` square) and Search (⌘K);
+     - the four spaces, each an icon over an 11px label: **Home**, **Needs you** (its amber count, the rail's only amber), **Projects** (one space: no pinned projects in the rail) and **Org**;
+     - at its foot, **Settings** and the member's initials, which open the member's menu.
+     - The open space is lit (`--sel`). A space opens the last page visited in it this session; the lit one goes back to its home.
+   - **The context panel, 240px (200 to 320 by dragging), on `--bg`,** one hairline from the page, no card and no shadow. Its 46px head names the place; its body lists the place's pages as 28px rows, then what's live in it:
+     - **Home:** Overview, Board and All tasks; the member's own live tasks; the tasks they opened lately.
+     - **Needs you:** the list with its count, then each project where something waits.
+     - **A project:** the switcher in the head; Tasks, Needs approval (amber), Inbox, Boards, Environment, Automations, Memory, Insights and Settings, with their counts (Repos is a tab of Settings); its live tasks, needs-you first; the member's other projects, each with its 8px colour square and an amber dot where something waits on them.
+     - **Organization:** Insights, Spend, Memory; Fleet (Runners, Box sizes, Registry); Agents (Agent profiles, the Library's `Skills and MCP` once its page exists, Models); Connections (GitHub, Linear); People (Members, Audit log); Instance (Accounts, Storage, Email). Each row shows only to the roles that see it, and a group left empty is hidden.
+     - **Settings:** the member's own pages.
+     - **Memory** is a page for the project and another for the organization (F-109, ADR 0044). Each carries a count of its proposals (F-111), in the plain count style, never amber.
+   - **Collapsing:** `[`, or the head's `panel-left-close`, hides the panel (160ms); the top bar's `panel-left-open` brings it back. The choice is kept in a cookie the server reads, so a reload doesn't flash. While it's collapsed, resting the pointer on a space for 150ms floats that space's panel over the page (the peek). From 1024 to 1279px the panel starts collapsed; from 768 to 1023 the rail stands alone and the panel opens over the page.
+   - **Below 768px:** no rail and no tab bar. The top bar's menu button (with an amber dot while something needs the member) opens one sheet from the left holding the rail and the panel side by side, `min(100vw - 56px, 384px)` wide, with 44px rows.
+2. **Top bar, 46px** (54px below 768px, the menu button first): breadcrumbs on the left (`calculator › Tasks › CALC-161`), the page's actions on the right. At most one primary (Shell) button per page.
 3. **The page:** a title (Manrope 700, 26px), a one-line lede in muted text, optional underline tabs, then sections.
 4. **The properties panel, 320px on the right** (380px when it holds a form). Every resource has one: a task, a project, an environment, a pool, a provider. It holds key/value rows, grouped under small labels. A list with a selected row shows that row's properties here.
 5. **Lists are grouped by lifecycle state**, in the order of `domain-model.md`: Needs you, Running, Queued, In review. Each group gets a quiet header band with a count. A row shows:

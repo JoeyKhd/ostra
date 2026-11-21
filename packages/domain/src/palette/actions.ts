@@ -18,7 +18,7 @@ export type PaletteScope = (typeof paletteScopes)[number];
 export type PaletteShortcut = readonly [string] | readonly [string, string];
 
 /** The panel's own destinations an action can go to. */
-export const paletteRoutes = ["needs-you", "home", "tasks", "new-task", "new-project"] as const;
+export const paletteRoutes = ["needs-you", "home", "tasks", "new-task", "new-project", "projects", "organization"] as const;
 export type PaletteRoute = (typeof paletteRoutes)[number];
 
 /** The tRPC procedures an action calls. The API's routers name these same paths. */
@@ -37,12 +37,15 @@ export type PaletteProcedure = (typeof paletteProcedures)[number];
 export type PaletteEffect =
   | { readonly kind: "call"; readonly procedure: PaletteProcedure }
   | { readonly kind: "navigate"; readonly route: PaletteRoute }
-  | { readonly kind: "panel"; readonly does: "focus-search" | "open-shortcut-sheet" };
+  | { readonly kind: "panel"; readonly does: "focus-search" | "open-shortcut-sheet" | "toggle-sidebar" };
 
 export type PaletteActionId =
   | "go-needs-you"
   | "go-home"
   | "go-tasks"
+  | "go-projects"
+  | "go-organization"
+  | "toggle-sidebar"
   | "search"
   | "shortcut-sheet"
   | "new-task"
@@ -86,11 +89,17 @@ const action = (
   confirm: options.confirm ?? false,
 });
 
-/** Spec section 12, item 11: every action and shortcut of milestone 7. */
+/**
+ * Spec section 12, item 11: every action and shortcut of milestone 7, and milestone 8's three for
+ * the double sidebar (F-147, app-shell.md "Keyboard"): `g p`, `g o` and `[`.
+ */
 export const paletteActions: readonly PaletteAction[] = Object.freeze([
   action("go-needs-you", ["g", "n"], "global", { kind: "navigate", route: "needs-you" }),
   action("go-home", ["g", "h"], "global", { kind: "navigate", route: "home" }),
   action("go-tasks", ["g", "t"], "global", { kind: "navigate", route: "tasks" }),
+  action("go-projects", ["g", "p"], "global", { kind: "navigate", route: "projects" }),
+  action("go-organization", ["g", "o"], "global", { kind: "navigate", route: "organization" }),
+  action("toggle-sidebar", ["["], "global", { kind: "panel", does: "toggle-sidebar" }),
   action("search", ["/"], "global", { kind: "panel", does: "focus-search" }),
   action("shortcut-sheet", ["?"], "global", { kind: "panel", does: "open-shortcut-sheet" }),
   action("new-task", ["c"], "global", { kind: "navigate", route: "new-task" }),

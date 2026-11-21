@@ -2,7 +2,6 @@
   "$comment": "F-083: the literals the message-file check (src/lib/messages.check.test.ts) lets through, because they're names, not words: the product's name, a keyboard key, a setting, a path, a command, or an example of a field's format. Each has its reason. A word a translator would change never belongs here.",
   "allowed": [
     { "text": "ostra", "reason": "The product's name (the logo's alt text)." },
-    { "text": "⌘K", "reason": "A keyboard shortcut, as the keys read." },
     { "text": "Ctrl", "reason": "A keyboard key." },
     { "text": "Esc", "reason": "A keyboard key." },
     { "text": "esc", "reason": "A keyboard key, as the palette's key cap shows it." },

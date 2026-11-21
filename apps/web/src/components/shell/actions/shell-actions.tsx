@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -13,6 +13,7 @@ import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
+import { useShellState } from "../shell-state";
 import { ShortcutSheet } from "../shortcut-sheet";
 import { useSystemScheme, useTheme } from "../theme-provider";
 
@@ -49,6 +50,7 @@ export const ShellActions = ({ me, children }: { readonly me: RouterOutputs["me"
   const path = usePathname();
   const queryClient = useQueryClient();
   const scope = useActionScope();
+  const shell = useShellState();
   const role = me.organization?.role ?? "member";
   const context: PaletteContext = useMemo(() => ({ role, scopes: scope.scopes }), [role, scope.scopes]);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -121,6 +123,15 @@ export const ShellActions = ({ me, children }: { readonly me: RouterOutputs["me"
         router.push(project === null ? "/search" : `/projects/${project}`);
         return;
       }
+      case "go-projects":
+        router.push(shell.spaceHref("projects"));
+        return;
+      case "go-organization":
+        router.push(shell.spaceHref("organization"));
+        return;
+      case "toggle-sidebar":
+        shell.toggle();
+        return;
       case "search":
         openPalette(null);
         return;
@@ -172,15 +183,14 @@ export const ShellActions = ({ me, children }: { readonly me: RouterOutputs["me"
 
   const { pending } = useShortcuts({ context, fire: (action) => { run(action.id, "key"); } });
 
-  // A new needs-you item is announced (ticket 16): the sidebar's count, kept fresh, rising.
-  const waiting = useQuery({ ...trpc.notifications.openCount.queryOptions(), refetchInterval: 10_000 });
+  // A new needs-you item is announced (ticket 16): the rail's count, kept fresh, rising.
+  const count = shell.needsYou;
   const seen = useRef<number | null>(null);
   useEffect(() => {
-    const count = waiting.data?.count;
-    if (count === undefined) return;
+    if (count === null) return;
     if (seen.current !== null && count > seen.current) announce(count === 1 ? t("palette.toast.newItemOne") : t("palette.toast.newItemOther", { n: count }));
     seen.current = count;
-  }, [waiting.data, announce]);
+  }, [count, announce]);
 
   const value = useMemo(() => ({ openPalette, openSheet, announce }), [openPalette, openSheet, announce]);
   return (

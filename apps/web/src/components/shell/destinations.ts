@@ -1,7 +1,15 @@
 import { t } from "@/lib/messages";
 
+import { spaceOf } from "./places";
+import type { Space } from "./places";
+
 // The places search ⌘K can open (milestone 1: the sidebar's own pages, nothing else). Pure, so the
-// list and its filter are tested without a browser.
+// list and its filter are tested without a browser. Each page's place, the space of the rail it
+// sits in and its row in that space's panel, is `places.ts`'s (F-147): the palette, the rail and the
+// panel read the same table, and a test fails for a page of `src/app` that has no place in it.
+
+export { pagePlaces, placeOf, spaceOf, spaces } from "./places";
+export type { Place, Space } from "./places";
 
 export type DestinationIcon = "home" | "new-task" | "project" | "tasks" | "environment" | "new-project" | "runners" | "models" | "github" | "agent-profiles";
 
@@ -14,6 +22,12 @@ export type Destination = {
   /** The project's colour square, for a project row. */
   readonly colour?: string;
 };
+
+/** A destination with the space of the rail it opens in. */
+export type PlacedDestination = Destination & { readonly space: Space };
+
+/** Each destination with its space, the one the rail lights when it's open. */
+export const placed = (list: readonly Destination[]): readonly PlacedDestination[] => list.map((destination) => ({ ...destination, space: spaceOf(destination.href) }));
 
 export type DestinationProject = { readonly id: string; readonly name: string; readonly colour: string };
 

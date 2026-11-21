@@ -9,6 +9,7 @@ import { themePreferences } from "@ostra/domain/theme";
 import type { ThemePreference } from "@ostra/domain/theme";
 
 import { themeLabel } from "@/components/account/theme-choice";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { authClient } from "@/lib/auth-client";
+import { cn } from "@/lib/cn";
 import { t } from "@/lib/messages";
 import type { RouterOutputs } from "@/lib/trpc";
 
@@ -78,8 +80,11 @@ const ThemeSubmenu = () => {
   );
 };
 
-/** The signed-in member at the foot of the sidebar (graphite.css `.bottom`); its menu signs out, and holds the theme. */
-export const UserMenu = ({ me }: { readonly me: RouterOutputs["me"]["get"] }) => {
+/**
+ * The signed-in member at the foot of the rail (app-shell.md, "The account"): their initials in a
+ * 28px circle (a 44px target in the phone sheet); its menu holds the theme, the account and sign out.
+ */
+export const UserMenu = ({ me, sheet = false, tabIndex, onFocus }: { readonly me: RouterOutputs["me"]["get"]; readonly sheet?: boolean; readonly tabIndex?: number; readonly onFocus?: () => void }) => {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const signOut = async () => {
@@ -90,13 +95,22 @@ export const UserMenu = ({ me }: { readonly me: RouterOutputs["me"]["get"] }) =>
   };
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger data-testid="user-menu" className="flex w-full items-center gap-[9px] rounded-md p-2 text-left text-muted hover:bg-sel hover:text-text data-[state=open]:bg-sel">
-        <span aria-hidden className="inline-grid size-[22px] shrink-0 place-items-center rounded-full bg-line-2 text-[11px] font-semibold text-text">
-          {initials(me.name)}
-        </span>
-        <span className="min-w-0 truncate">{me.name}</span>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="start" className="w-[212px]">
+      {/* No tooltip in the phone's sheet: a touch has no hover, and Escape there is the sheet's. */}
+      <Tooltip content={me.name} side="right" delay={500} suppressed={sheet}>
+        <DropdownMenuTrigger
+          data-testid="user-menu"
+          data-roving-item=""
+          aria-label={t("shell.rail.account", { name: me.name })}
+          {...(tabIndex === undefined ? {} : { tabIndex })}
+          {...(onFocus === undefined ? {} : { onFocus })}
+          className={cn("grid shrink-0 place-items-center rounded-full", sheet ? "size-11" : "size-9")}
+        >
+          <span aria-hidden className="rail-avatar inline-grid size-7 place-items-center rounded-full text-[11px] font-semibold text-text">
+            {initials(me.name)}
+          </span>
+        </DropdownMenuTrigger>
+      </Tooltip>
+      <DropdownMenuContent side="right" align="end" className="w-[212px]">
         <DropdownMenuLabel className="truncate font-normal">{me.email}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <ThemeSubmenu />

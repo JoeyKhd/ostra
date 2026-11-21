@@ -74,6 +74,9 @@ const taskRow = (entry: PaletteAction, scope: ActionScope): ActionRow | null => 
     case "go-needs-you":
     case "go-home":
     case "go-tasks":
+    case "go-projects":
+    case "go-organization":
+    case "toggle-sidebar":
     case "search":
     case "shortcut-sheet":
     case "new-task":
@@ -101,6 +104,9 @@ const pickRow = (entry: PaletteAction, waiting: Waiting): ActionRow | null => {
     case "go-needs-you":
     case "go-home":
     case "go-tasks":
+    case "go-projects":
+    case "go-organization":
+    case "toggle-sidebar":
     case "search":
     case "shortcut-sheet":
     case "new-task":

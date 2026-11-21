@@ -48,6 +48,9 @@ describe("the palette's actions and shortcuts (F-081)", () => {
         "toggle-theme",
         "go-home",
         "go-tasks",
+        "go-projects",
+        "go-organization",
+        "toggle-sidebar",
         "search",
         "shortcut-sheet",
       ].sort(),
@@ -69,6 +72,9 @@ describe("the palette's actions and shortcuts (F-081)", () => {
       "go-needs-you": "g n",
       "go-home": "g h",
       "go-tasks": "g t",
+      "go-projects": "g p",
+      "go-organization": "g o",
+      "toggle-sidebar": "[",
       search: "/",
       "shortcut-sheet": "?",
       "new-task": "c",
@@ -100,7 +106,7 @@ describe("the palette's actions and shortcuts (F-081)", () => {
     // A single `g` would make every `g …` sequence untypeable.
     const prefix: PaletteAction = { ...byId("toggle-theme"), shortcut: ["g"] };
     expect(shortcutClashes([...paletteActions.filter((entry) => entry.id !== "toggle-theme"), prefix]).map((clash) => clash.keys)).toEqual(
-      paletteScopes.flatMap(() => ["g", "g", "g"]),
+      paletteScopes.flatMap(() => ["g", "g", "g", "g", "g"]),
     );
     // In another scope the same key is fine: `t` is take over on a task, and nothing on a needs-you item.
     const otherScope: PaletteAction = { ...byId("approve"), id: "steer", shortcut: ["t"] };

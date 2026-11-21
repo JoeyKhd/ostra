@@ -151,8 +151,8 @@ const needsYouSegments = (task: TaskRow): readonly Segment[] => {
   return [plain(doing?.kind === "question.asked" ? t("doing.waitingAnswer") : t("doing.waitingApproval"))];
 };
 
-/** What the agent is doing now, from its latest event. */
-const runningSegments = (doing: TaskRow["doing"]): readonly Segment[] => {
+/** What the agent is doing now, from its latest event (the shell's live rows use it too). */
+export const runningSegments = (doing: TaskRow["doing"]): readonly Segment[] => {
   if (doing === null) return [];
   switch (doing.kind) {
     case "tool.called":

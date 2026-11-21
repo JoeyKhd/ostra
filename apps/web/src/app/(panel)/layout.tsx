@@ -1,10 +1,11 @@
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { AuthFrame } from "@/components/auth/auth-frame";
 import { NoMembership } from "@/components/auth/no-membership";
 import { AppShell } from "@/components/shell/app-shell";
+import { SIDEBAR_COOKIE, readSidebarCookie } from "@/components/shell/sidebar-state";
 import { getServerApi } from "@/server/api";
 
 /**
@@ -32,7 +33,13 @@ const PanelLayout = async ({ children }: { readonly children: ReactNode }) => {
       </AuthFrame>
     );
   }
-  return <AppShell me={me}>{children}</AppShell>;
+  // F-147: the context panel as the member left it, read here so the first frame draws it (no flash).
+  const sidebar = readSidebarCookie((await cookies()).get(SIDEBAR_COOKIE)?.value);
+  return (
+    <AppShell me={me} sidebar={sidebar}>
+      {children}
+    </AppShell>
+  );
 };
 
 export default PanelLayout;

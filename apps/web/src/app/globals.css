@@ -400,3 +400,38 @@
     outline-offset: 1px;
   }
 }
+
+/*
+ * F-147 (app-shell.md): the double sidebar's few theme-dependent details. The account's circle is
+ * `--line-2` in dark and `--sel` in light; the phone's menu dot has a 2px `--bg` ring, and in light
+ * `--dot-amber`'s 1px edge too; the panel's body shows its scrollbar only on hover.
+ */
+@layer components {
+  .rail-avatar {
+    background: var(--line-2);
+  }
+  [data-theme="light"] .rail-avatar {
+    background: var(--sel);
+  }
+  .menu-dot {
+    box-shadow: 0 0 0 2px var(--bg);
+  }
+  [data-theme="light"] .menu-dot {
+    box-shadow: 0 0 0 2px var(--bg), var(--dot-amber);
+  }
+  .panel-scroll {
+    scrollbar-width: none;
+  }
+  .panel-scroll:hover {
+    scrollbar-width: thin;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) .rail-avatar {
+    background: var(--sel);
+  }
+  :root:not([data-theme]) .menu-dot {
+    box-shadow: 0 0 0 2px var(--bg), var(--dot-amber);
+  }
+}

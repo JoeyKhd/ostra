@@ -4,11 +4,13 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import {
   ArrowRightIcon,
   BoxIcon,
+  Building2Icon,
   CheckIcon,
   ChevronRightIcon,
   CircleStopIcon,
   CornerDownLeftIcon,
   CpuIcon,
+  FolderIcon,
   FolderPlusIcon,
   GitPullRequestIcon,
   HandIcon,
@@ -18,6 +20,7 @@ import {
   MessageSquareIcon,
   MessageSquareReplyIcon,
   MoonIcon,
+  PanelLeftIcon,
   PlusIcon,
   RotateCcwIcon,
   SearchIcon,
@@ -79,6 +82,12 @@ const actionIcon = (id: PaletteActionId, shownTheme: "dark" | "light"): ReactNod
       return <HouseIcon />;
     case "go-tasks":
       return <ListChecksIcon />;
+    case "go-projects":
+      return <FolderIcon />;
+    case "go-organization":
+      return <Building2Icon />;
+    case "toggle-sidebar":
+      return <PanelLeftIcon />;
     case "search":
       return <SearchIcon />;
     case "shortcut-sheet":
