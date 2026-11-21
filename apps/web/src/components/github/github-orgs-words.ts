@@ -46,3 +46,14 @@ export const appSettingsUrl = (slug: string, owner: { readonly login: string; re
 
 /** `3 Nov`. */
 export const dayMonth = (at: number): string => new Date(at).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+
+/**
+ * Whether the panel treats an App as public, private, or not known (F-136). GitHub doesn't tell an
+ * App's visibility: the API reports `public: true` once the App is installed on an account other
+ * than its owner's, and `null` otherwise. An App is private by default, so one with a known owner
+ * and no such install is private: it gets the Private Apps group, with GitHub's own setting. One
+ * whose owner isn't known yet is offered for installing, so the panel never says it "stays on" an
+ * owner it can't name.
+ */
+export const appVisibility = (app: { readonly public: boolean | null; readonly ownerLogin: string | null }): "public" | "private" | "unknown" =>
+  app.public === true ? "public" : app.ownerLogin === null ? "unknown" : "private";

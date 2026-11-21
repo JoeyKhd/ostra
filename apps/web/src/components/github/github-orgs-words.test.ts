@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { appSettingsUrl, installUrl, orderInstallations, reposText } from "./github-orgs-words";
+import { appSettingsUrl, appVisibility, installUrl, orderInstallations, reposText } from "./github-orgs-words";
 
 // F-136 (ticket 54): the words of several GitHub organizations.
 
@@ -21,5 +21,13 @@ describe("GitHub organizations, in words", () => {
     expect(installUrl("ostra-acme")).toBe("github.com/apps/ostra-acme/installations/new");
     expect(appSettingsUrl("ostra-acme", { login: "acme", kind: "organization" })).toBe("https://github.com/organizations/acme/settings/apps/ostra-acme/advanced");
     expect(appSettingsUrl("dana-app", { login: "dana", kind: "user" })).toBe("https://github.com/settings/apps/dana-app/advanced");
+  });
+});
+
+describe("an App's visibility (F-136)", () => {
+  it("F-136/c3: an App is private by default: with its owner known and no install elsewhere it gets the Private Apps group; installed elsewhere it's public; with no owner known it's offered for installing", () => {
+    expect(appVisibility({ public: null, ownerLogin: "client-c" })).toBe("private");
+    expect(appVisibility({ public: true, ownerLogin: "acme" })).toBe("public");
+    expect(appVisibility({ public: null, ownerLogin: null })).toBe("unknown");
   });
 });

@@ -33,7 +33,7 @@ import type { RouterOutputs } from "@/lib/trpc";
 
 import { GitHubMark } from "./github-mark";
 import { orderPermissions } from "./permission-order";
-import { appSettingsUrl, dayMonth, installUrl, orderInstallations, reposText } from "./github-orgs-words";
+import { appSettingsUrl, appVisibility, dayMonth, installUrl, orderInstallations, reposText } from "./github-orgs-words";
 
 // Organization › GitHub with several GitHub organizations (F-136, app-targets/m4/github-organizations.md):
 // each App with its installations, linked, waiting to be linked or removed. ostra acts only through
@@ -268,7 +268,7 @@ export const useStatusLine = () => {
 /** "Add a GitHub organization": the install link to send, for a public App. */
 export const AddOrganizationGroup = ({ apps }: { readonly apps: readonly GitHubApp[] }) => {
   const id = useId();
-  const publicApps = apps.filter((app) => app.public !== false && app.slug !== null);
+  const publicApps = apps.filter((app) => appVisibility(app) !== "private" && app.slug !== null);
   const [picked, setPicked] = useState<string | null>(null);
   const app = publicApps.find((candidate) => candidate.connectionId === picked) ?? publicApps[0];
   if (app?.slug === undefined || app.slug === null) return null;
@@ -297,7 +297,7 @@ export const AddOrganizationGroup = ({ apps }: { readonly apps: readonly GitHubA
 
 /** "Private Apps": why a private App can't be installed elsewhere, and GitHub's setting. */
 export const PrivateAppsGroup = ({ apps }: { readonly apps: readonly GitHubApp[] }) => {
-  const privateApps = apps.filter((app) => app.public === false && app.slug !== null);
+  const privateApps = apps.filter((app) => appVisibility(app) === "private" && app.slug !== null);
   if (privateApps.length === 0) return null;
   return (
     <div data-testid="private-apps">
