@@ -286,7 +286,9 @@ export const AddOrganizationGroup = ({ apps }: { readonly apps: readonly GitHubA
         </Select>
       ) : null}
       <div className="flex items-center gap-2">
-        <span id={`${id}-url`} className="flex h-8 min-w-0 flex-1 items-center truncate rounded-md border border-line-2 bg-surface px-2.5 font-mono text-xs text-text" data-testid="install-url">{url}</span>
+        <span id={`${id}-url`} className="flex h-8 min-w-0 flex-1 items-center rounded-md border border-line-2 bg-surface px-2.5 font-mono text-[11px] text-text" data-testid="install-url">
+          <span className="truncate">{url}</span>
+        </span>
         <CopyButton text={`https://${url}`} selectId={`${id}-url`} />
       </div>
     </div>
@@ -295,7 +297,7 @@ export const AddOrganizationGroup = ({ apps }: { readonly apps: readonly GitHubA
 
 /** "Private Apps": why a private App can't be installed elsewhere, and GitHub's setting. */
 export const PrivateAppsGroup = ({ apps }: { readonly apps: readonly GitHubApp[] }) => {
-  const privateApps = apps.filter((app) => app.public !== true && app.slug !== null);
+  const privateApps = apps.filter((app) => app.public === false && app.slug !== null);
   if (privateApps.length === 0) return null;
   return (
     <div data-testid="private-apps">
@@ -380,26 +382,29 @@ export const InstallationPanel = ({ app, installation }: { readonly app: GitHubA
 export const AppPanel = ({ app, own, onClientSecret }: { readonly app: GitHubApp; readonly own: OwnConnection | null; readonly onClientSecret?: () => void }) => (
   <div data-testid="app-panel">
     <PanelLabel>{t("github.app")}</PanelLabel>
-    <PropRow label={t("github.slug")}><span className="truncate font-mono">{app.slug ?? "–"}</span></PropRow>
-    <PropRow label={t("github.appId")}><span className="font-mono">{app.appId}</span></PropRow>
-    <PropRow label={t("githubOrgs.app.owner")}><span className="truncate font-mono">{app.ownerLogin ?? "–"}</span></PropRow>
-    {app.public === null ? null : <PropRow label={t("githubOrgs.app.visibility")}>{app.public ? t("githubOrgs.public") : t("githubOrgs.private")}</PropRow>}
-    {own === null ? null : <PropRow label={t("github.bot")}><span className="truncate font-mono">{own.botName ?? "–"}</span></PropRow>}
-    <PropRow label={t("githubOrgs.app.webhook")}><span className="truncate font-mono text-xs" title={app.webhookUrl}>{app.webhookUrl}</span></PropRow>
-    <PropRow label={t("github.secrets")}>
+    <PropRow labelWidth={112} label={t("github.slug")}><span className="truncate font-mono">{app.slug ?? "–"}</span></PropRow>
+    <PropRow labelWidth={112} label={t("github.appId")}><span className="font-mono">{app.appId}</span></PropRow>
+    <PropRow labelWidth={112} label={t("githubOrgs.app.owner")}><span className="truncate font-mono">{app.ownerLogin ?? "–"}</span></PropRow>
+    {app.public === null ? null : <PropRow labelWidth={112} label={t("githubOrgs.app.visibility")}>{app.public ? t("githubOrgs.public") : t("githubOrgs.private")}</PropRow>}
+    {own === null ? null : <PropRow labelWidth={112} label={t("github.bot")}><span className="truncate font-mono">{own.botName ?? "–"}</span></PropRow>}
+    <PropRow labelWidth={112} label={t("githubOrgs.app.webhook")}><span className="truncate font-mono text-xs" title={app.webhookUrl}>{app.webhookUrl}</span></PropRow>
+    <PropRow labelWidth={112} label={t("github.secrets")}>
       <LockIcon aria-hidden className="stroke-[1.75]" />
       <span className="text-muted">{t("github.secretsStored")}</span>
     </PropRow>
     {own === null ? null : (
-      <PropRow label={t("github.memberLinking")}>
-        <span className={cn("truncate", own.clientSecretSet ? "text-text" : "text-muted")} data-testid="member-linking">
-          {own.clientSecretSet ? t("github.linkingOn") : t("github.linkingOffShort")}
+      <PropRow labelWidth={112} label={t("github.memberLinking")}>
+        {/* The state and its action wrap rather than cut, beside the panel's 112px labels. */}
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2">
+          <span className={own.clientSecretSet ? "text-text" : "text-muted"} data-testid="member-linking">
+            {own.clientSecretSet ? t("github.linkingOn") : t("github.linkingOffShort")}
+          </span>
+          {onClientSecret === undefined ? null : (
+            <button type="button" className="shrink-0 text-teal hover:underline" onClick={onClientSecret}>
+              {own.clientSecretSet ? t("github.replaceClientSecret") : t("github.addClientSecret")}
+            </button>
+          )}
         </span>
-        {onClientSecret === undefined ? null : (
-          <button type="button" className="ml-auto shrink-0 text-teal hover:underline" onClick={onClientSecret}>
-            {own.clientSecretSet ? t("github.replaceClientSecret") : t("github.addClientSecret")}
-          </button>
-        )}
       </PropRow>
     )}
     {own === null ? null : (

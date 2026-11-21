@@ -371,8 +371,11 @@ export const GitHubView = () => {
   const allInstallations = apps.flatMap((app) => app.installations.map((installation) => ({ app, installation })));
   const selectedInstallation = panel?.kind === "installation" ? allInstallations.find((row) => row.installation.installationId === panel.installationId) : undefined;
   const selectedApp = panel?.kind === "app" ? apps.find((app) => app.connectionId === panel.connectionId) : undefined;
-  const anyPrivate = apps.some((app) => !app.public);
-  const anyPublic = apps.some((app) => app.public);
+  // An App whose visibility GitHub hasn't told (`null`) is offered for installing, as
+  // `AddOrganizationGroup` does: only a known private App gets the Private Apps group, so the panel
+  // never says one "stays on" an owner it doesn't know.
+  const anyPrivate = apps.some((app) => app.public === false);
+  const anyPublic = apps.some((app) => app.public !== false);
   const orgGroups = (
     <>
       {anyPublic ? <AddOrganizationGroup apps={apps} /> : null}

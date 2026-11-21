@@ -76,7 +76,7 @@ export const RepoBlock = ({ repo, selected, onSelect }: { readonly repo: RepoDet
           <span className="min-w-0 truncate font-mono text-body text-text">{repo.fullName}</span>
           {repo.private === true ? <LockIcon aria-label={t("repos.private")} className="size-[14px] shrink-0 stroke-[1.75] text-faint" /> : null}
           <span className="ml-1 hidden font-mono text-ui text-faint sm:inline">{repo.defaultBranch}</span>
-          <span className={cn("ml-auto shrink-0 text-ui", verdictStyle[verdict])}>{t(`repos.verdict.${verdict}`)}</span>
+          <span className={cn("ml-auto shrink-0 whitespace-nowrap text-ui", verdictStyle[verdict])}>{t(`repos.verdict.${verdict}`)}</span>
         </div>
         <ul className="pl-[27px]">
           {checkLines(repo).map((line) => (
