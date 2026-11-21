@@ -24,10 +24,10 @@ docker run -d --name ostra-runner --restart unless-stopped --user root \
   -e OSTRA_RUNNER_EXECUTOR=docker \
   -e OSTRA_RUNNER_DATA_DIR=/var/lib/ostra-runner \
   -e OSTRA_RUNNER_CAPACITY=4 \
-  ostra/runner:<version> runner
+  <image namespace>/runner:<version> runner
 ```
 
-`OSTRA_SERVER_URL` is core's address as this machine reaches it (`OSTRA_CORE_PUBLIC_URL` on the server). The runner shows on the Runners page as joining, then online. Every setting is also a flag of `ostra runner`, listed in the [configuration reference](/docs/reference/configuration): `OSTRA_RUNNER_CAPACITY` is how many tasks it runs at once, `OSTRA_RUNNER_LABELS` the labels tasks can ask for, and `OSTRA_RUNNER_NAME` its name in the panel.
+`<image namespace>/runner:<version>` is the runner image of your server's release, the one its compose file's `runner` service runs. When you make a join token, the panel prints this command with both filled in, under **Start a runner** › **docker run**, and with the token read from a file instead. `OSTRA_SERVER_URL` is core's address as this machine reaches it (`OSTRA_CORE_PUBLIC_URL` on the server). The runner shows on the Runners page as joining, then online. Every setting is also a flag of `ostra runner`, listed in the [configuration reference](/docs/reference/configuration): `OSTRA_RUNNER_CAPACITY` is how many tasks it runs at once, `OSTRA_RUNNER_LABELS` the labels tasks can ask for, and `OSTRA_RUNNER_NAME` its name in the panel.
 
 Give each machine its own data folder, and let each join with the token. A data folder is one runner. A second `ostra runner` on the same folder and host name refuses to start while the first runs. A copy of the folder elsewhere, on another machine or in another container (which has a host name of its own), is the same runner: the server keeps only the newest connection, and the older runner stops with exit code 4 ([exit codes](/docs/reference/cli#exit-codes)). Docker's restart policies restart a container whatever its exit code, so two containers with one folder's identity still take turns, one restart at a time.
 

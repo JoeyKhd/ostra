@@ -101,4 +101,18 @@ describe("the CLI's published package", () => {
       publishConfig: { access: "public", provenance: true },
     });
   });
+
+  it("F-039/c2: the pack is named the root package.json's cliPackage, and its bundle carries the release's names the stamp wrote there and nothing else of that file", async () => {
+    const release = z.looseObject({ imageNamespace: z.string(), cliPackage: z.string(), license: z.string() }).parse(JSON.parse(await readFile(new URL("../../../../package.json", import.meta.url), "utf8")));
+    const dir = await mkdtemp(path.join(os.tmpdir(), "ostra-pack-names-"));
+    folders.push(dir);
+    const packed = await packCli({ outDir: path.join(dir, "stage") });
+    expect(packed.name).toBe(release.cliPackage);
+    expect(manifestSchema.parse(JSON.parse(await readFile(path.join(packed.folder, "package.json"), "utf8"))).name).toBe(release.cliPackage);
+    // The box images' defaults and the CLI's name read these two fields (version.ts), which esbuild
+    // inlines from the stamped file; the root's own license and scripts stay out of the bundle.
+    const bundle = await readFile(path.join(packed.folder, "dist", "ostra.js"), "utf8");
+    expect(bundle).toContain(`{ imageNamespace: ${JSON.stringify(release.imageNamespace)}, cliPackage: ${JSON.stringify(release.cliPackage)} }`);
+    expect(bundle).not.toContain(release.license);
+  }, 180_000);
 });

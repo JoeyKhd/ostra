@@ -80,10 +80,12 @@ jobs:
 
       # The release stamped everywhere it's carried: the version on every package.json (the root's tags
       # the images, the CLI's is `ostra --version`, core's is what a runner pins to), the namespace the
-      # images are pushed to on the root's, and both on the compose file's images and each chart's
-      # version, appVersion and image repositories (scripts/release.ts, releaseStamps). So the build
-      # tags, the compose file and the charts all name the images this job pushes.
-      - run: node scripts/version.ts "$VERSION" "$IMAGE_NAMESPACE"
+      # images are pushed to and the CLI's npm name on the root's, and the version and the namespace on
+      # the compose file's images and each chart's version, appVersion and image repositories
+      # (scripts/release.ts, releaseStamps). So the build tags, the compose file, the charts, the
+      # runner's box images and the panel's join commands all name what this job publishes, and the
+      # CLI's pack takes its name from the same field.
+      - run: node scripts/version.ts "$VERSION" "$IMAGE_NAMESPACE" "$CLI_PACKAGE"
 
       # Every check, on the release's own tree.
       - run: pnpm turbo run generate
@@ -138,7 +140,7 @@ jobs:
           for dir in packages/protocol packages/adapter-sdk packages/adapters/*; do
             (cd "$dir" && pnpm pack --pack-destination "$OUT/npm")
           done
-          OSTRA_CLI_PACKAGE="$CLI_PACKAGE" pnpm --filter @ostra/runner pack:cli
+          pnpm --filter @ostra/runner pack:cli
           cp apps/runner/dist/npm/*.tgz "$OUT/npm/"
           : > "$OUT/packages.txt"
           for tarball in "$OUT"/npm/*.tgz; do

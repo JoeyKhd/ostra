@@ -65,8 +65,8 @@ Each flag is also an environment variable, and a flag wins over its variable. Va
 | `--join-token` | `OSTRA_JOIN_TOKEN` | (none) | A pool runner's join token, used once to register. A personal runner signs in with a device code instead. |
 | `--shell` | `OSTRA_RUNNER_SHELL` | bash | The shell the host executor runs setup scripts with. On Linux and macOS, bash from PATH. On Windows, the bare name bash means Git for Windows' own bin\bash.exe, found from the git on PATH, never WSL's System32\bash.exe; without Git for Windows, set it to a shell's full path. A full path is used as given. |
 | `--join-token-file` | `OSTRA_JOIN_TOKEN_FILE` | (none) | A file holding a pool runner's join token, such as the bootstrap token core writes at first start. --join-token wins. |
-| `--box-base-image` | `OSTRA_BOX_BASE_IMAGE` | ostra/base:&lt;the runner's version&gt; | The docker executor's base image, for an environment that names none. |
-| `--box-runner-image` | `OSTRA_BOX_RUNNER_IMAGE` | ostra/runner:&lt;the runner's version&gt; | The image each docker box's sidecar runs: the ostra CLI. |
+| `--box-base-image` | `OSTRA_BOX_BASE_IMAGE` | &lt;the release's image namespace&gt;/base:&lt;the runner's version&gt; | The docker executor's base image, for an environment that names none. |
+| `--box-runner-image` | `OSTRA_BOX_RUNNER_IMAGE` | &lt;the release's image namespace&gt;/runner:&lt;the runner's version&gt; | The image each docker box's sidecar runs: the ostra CLI. |
 | `--box-server-url` | `OSTRA_BOX_SERVER_URL` | the --server address | Core's address as a docker box's sidecar reaches it, when that differs from --server. |
 | `--slots` | `OSTRA_RUNNER_SLOTS` | docker: the host's CPUs / 2; kubernetes: 20; host: 2 | How many tasks or boxes the runner holds at once (ADR 0059). The server may hold a personal runner to fewer (its member's setting, 2 by default). |
 | `--reserve-cpu-millis` | `OSTRA_RUNNER_RESERVE_CPU_MILLIS` | 1000 | The CPU, in millicores, a docker runner keeps for the host and itself: it offers the engine's CPU less this. |
@@ -85,6 +85,8 @@ Each flag is also an environment variable, and a flag wins over its variable. Va
 | `--service-cpu-millis` | `OSTRA_SERVICE_CPU_MILLIS` | 1000 | The CPU limit, in millicores, of a service that names none, counted in the box's footprint. |
 | `--service-memory-mib` | `OSTRA_SERVICE_MEMORY_MIB` | 1024 | The memory limit, in MiB, of a service that names none, counted in the box's footprint. |
 | `--subagent-wait-minutes` | `OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES` | 30 | How long a turn waits, once its agent's prompt is answered, for the subagents it started and the turns their reports wake (OpenCode runs subagents in the background). Past it, ostra stops them, fails each one on the call that started it, and ends the turn. |
+
+A runner's box images default to its own release's: the release's image namespace is the registry and path that release published its images under, the one its compose file and charts name too.
 
 ## Other flags
 

@@ -2,6 +2,7 @@
   "name": "ostra",
   "version": "0.0.0",
   "imageNamespace": "ostra",
+  "cliPackage": "ostra",
   "private": true,
   "license": "LicenseRef-Sustainable-Use-1.0",
   "type": "module",
@@ -45,6 +46,7 @@
     "ostra": "node apps/runner/src/main.ts"
   },
   "devDependencies": {
+    "@ostra/protocol": "workspace:*",
     "@types/node": "26.6.6",
     "eslint": "10.15.0",
     "eslint-plugin-unicorn": "80.0.0",

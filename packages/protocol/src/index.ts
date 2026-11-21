@@ -3,6 +3,7 @@ export * from "./ids.ts";
 export * from "./common.ts";
 export * from "./json.ts";
 export * from "./change.ts";
+export * from "./release.ts";
 
 export * from "./events/tools.ts";
 export * from "./events/agent-events.ts";

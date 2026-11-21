@@ -37,6 +37,10 @@ export type FleetSettings = {
   readonly serverUrl: string;
   /** The server's version: the runner pins itself to it. */
   readonly serverVersion: string;
+  /** Where the server's release pushed its images (`ostra` in a clone), as the release's stamp wrote it. */
+  readonly imageNamespace: string;
+  /** The CLI's npm name in the server's release (the placeholder `ostra` in a clone), as the stamp wrote it. */
+  readonly cliPackage: string;
   /** `OSTRA_JOIN_TOKEN_DAYS`: a token's lifetime when a pool names none; 0 is none. */
   readonly joinTokenDays: number;
 };
@@ -448,7 +452,7 @@ const ShownBody = ({ shown, settings, onClose, onOpenPool }: { readonly shown: S
   const [revoked, setRevoked] = useState(false);
   const tokenRef = useRef<HTMLDivElement>(null);
   const commandRef = useRef<HTMLPreElement>(null);
-  const command = joinCommand(path, { serverUrl: settings.serverUrl, serverVersion: settings.serverVersion, executor: joinExecutor(shown.pool.executors) });
+  const command = joinCommand(path, { ...settings, executor: joinExecutor(shown.pool.executors) });
   const pathLabel = (id: JoinPath): string => {
     switch (id) {
       case "cli":

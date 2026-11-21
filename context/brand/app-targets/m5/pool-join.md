@@ -36,7 +36,7 @@ Inside, top to bottom, one left edge:
    **`ostra runner`** (the npm CLI, F-013):
    ```
    OSTRA_JOIN_TOKEN_FILE=./join-token \
-     npx ostra@{serverVersion} runner \
+     npx {cliPackage}@{serverVersion} runner \
      --server {OSTRA_PUBLIC_URL} \
      --executor {executor}
    ```
@@ -50,18 +50,18 @@ Inside, top to bottom, one left edge:
      -e OSTRA_RUNNER_EXECUTOR=docker \
      -e OSTRA_JOIN_TOKEN_FILE=/run/secrets/join-token \
      -e OSTRA_RUNNER_DATA_DIR=/var/lib/ostra-runner \
-     ostra/runner:{serverVersion} runner
+     {imageNamespace}/runner:{serverVersion} runner
    ```
    **`Helm`** (the `ostra-runner` chart's values, ticket 23):
    ```
    # kubectl -n ostra create secret generic ostra-join-token --from-file=token=./join-token
-   # helm install ostra-runner ./deploy/helm/ostra-runner -n ostra -f values.yaml
+   # helm install ostra-runner https://github.com/JoeyKhd/ostra/releases/download/v{serverVersion}/ostra-runner.tgz -n ostra -f values.yaml
    server:
      url: {OSTRA_PUBLIC_URL}
    joinToken:
      existingSecret: ostra-join-token
    ```
-   - `{executor}` is the pool's executor when its runners share one, and `docker` for a pool with no runner yet. `{serverVersion}` is the server's own version (`/runner/v1/info`), so the runner starts pinned to it (spec section 4, "The pin"). The value names in the Helm values follow the chart's Zod schema (ticket 23); the build reads them from it, not from this file.
+   - `{executor}` is the pool's executor when its runners share one, and `docker` for a pool with no runner yet. `{serverVersion}` is the server's own version (`/runner/v1/info`), so the runner starts pinned to it (spec section 4, "The pin"). `{cliPackage}` and `{imageNamespace}` are where the server's release published the CLI and its images, the root `package.json`'s `cliPackage` and `imageNamespace`, which the release's stamp writes (`ostra` and `ostra` in a clone); the Helm line installs the runner chart that release attached. *Changed 2026-11-21: they were typed as `ostra`, which no release publishes. On a development build (`0.0.0`) the Helm line is a clone's `./deploy/helm/ostra-runner`, under a comment that says so.* The value names in the Helm values follow the chart's Zod schema (ticket 23); the build reads them from it, not from this file.
    - `Copy` copies exactly what the box shows, and never the token: the token goes in through the file or the secret.
    - The `docker run` tab adds, under the box, 12.5px `--faint` with Lucide `info`: `The Docker socket is root on this host: run pool runners on hosts of their own.` (the compose file's note, Q97).
 7. Under the box, 10px, 12.5px `--faint` with Lucide `file` 14px:

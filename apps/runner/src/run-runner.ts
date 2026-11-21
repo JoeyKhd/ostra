@@ -16,7 +16,7 @@ import { fetchPullCredential, fetchPushCredential, fetchServiceSecrets, fetchSna
 import { createTaskHost } from "./task-host/task-host.ts";
 import { approvalHooks, DOCKER_CAPABILITIES, withApprovalStatus } from "./pool-approval.ts";
 import { hostSlots, reportedCapabilities } from "./reports.ts";
-import { RUNNER_VERSION } from "./version.ts";
+import { releaseImage } from "./version.ts";
 
 // `ostra runner` once it's signed in: the connection to the server, and what runs the tasks it's
 // dispatched, until Ctrl-C or a refusal for good (revoked, or a key the server doesn't know).
@@ -26,10 +26,13 @@ import { RUNNER_VERSION } from "./version.ts";
 /** How long a stopping agent has to exit on its own before its tree is killed. */
 const STOP_GRACE_MS = 5_000;
 
-/** The images a box is made of, unless the settings name others (`docs/configuration.md`). */
-const imagesOf = (config: RunnerConfig): { readonly base: string; readonly runner: string } => ({
-  base: config.boxBaseImage ?? `ostra/base:${RUNNER_VERSION}`,
-  runner: config.boxRunnerImage ?? `ostra/runner:${RUNNER_VERSION}`,
+/**
+ * The images a box is made of: its own release's base and runner images, under the namespace and
+ * at the version the release's stamp wrote, unless the settings name others (`docs/configuration.md`).
+ */
+export const imagesOf = (config: Pick<RunnerConfig, "boxBaseImage" | "boxRunnerImage">): { readonly base: string; readonly runner: string } => ({
+  base: config.boxBaseImage ?? releaseImage("base"),
+  runner: config.boxRunnerImage ?? releaseImage("runner"),
 });
 
 type Work = {

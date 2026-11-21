@@ -28,6 +28,8 @@ const own = { version: await releaseVersion(), imageNamespace: await imageNamesp
 const SAMPLE = {
   version: own.version === "1.2.3-rc.1" ? "1.2.4-rc.1" : "1.2.3-rc.1",
   imageNamespace: own.imageNamespace === "registry.example:5000/team" ? "registry.example:5000/other" : "registry.example:5000/team",
+  // The CLI's name, which no deploy file carries: the stamp writes it on the root package.json only.
+  cliPackage: "@example/ostra-cli",
 };
 
 /** A copy of what the stamp writes and the checks read: every package.json, the Dockerfiles, the compose file and each chart's Chart.yaml and values.yaml. */

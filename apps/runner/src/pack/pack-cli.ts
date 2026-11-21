@@ -3,6 +3,7 @@ import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import type { Plugin } from "esbuild";
 import { z } from "zod";
 
 import { LICENSOR, REPOSITORY_URL } from "../../../../scripts/licensor.ts";
@@ -15,11 +16,29 @@ import { LICENSOR, REPOSITORY_URL } from "../../../../scripts/licensor.ts";
 // carries JavaScript only, and nothing for npm to fetch.
 //
 // The package's name is the maintainer's to register before milestone 7 (ADR 0046: npm's `ostra`
-// is taken); until then it's `OSTRA_CLI_PACKAGE`, or `ostra`.
+// is taken): the root package.json's `cliPackage`, which the release's stamp writes
+// (`node scripts/version.ts`), and the placeholder `ostra` in a clone.
+//
+// The bundle inlines the root package.json, which `version.ts` imports for the release's names, as
+// those two fields alone: the rest of it (the workspace's scripts, its license) isn't the CLI's.
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const rootManifest = path.resolve(packageRoot, "..", "..", "package.json");
 
 const runnerPackageSchema = z.looseObject({ version: z.string().min(1), license: z.string().min(1), engines: z.looseObject({ node: z.string().min(1) }) });
+
+/** The release's names on the root package.json, as the stamp writes them. */
+const releaseNamesSchema = z.looseObject({ imageNamespace: z.string().min(1), cliPackage: z.string().min(1) });
+
+/** Loads the root package.json into the bundle as the release's names, and nothing else of it. */
+const releaseNamesOnly = (names: z.infer<typeof releaseNamesSchema>): Plugin => ({
+  name: "release-names-only",
+  setup: (bundle) => {
+    bundle.onLoad({ filter: /package\.json$/ }, (args) =>
+      path.resolve(args.path) === rootManifest ? { contents: JSON.stringify({ imageNamespace: names.imageNamespace, cliPackage: names.cliPackage }), loader: "json" } : undefined,
+    );
+  },
+});
 
 /**
  * The CLI package's manifest (milestone 7's ticket 30): the bundle and its LICENSE only, public,
@@ -67,8 +86,9 @@ const run = async (args: readonly string[], cwd: string): Promise<string> => {
 
 export const packCli = async (options: { readonly outDir?: string; readonly name?: string } = {}): Promise<PackedCli> => {
   const runner = runnerPackageSchema.parse(JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8")));
+  const names = releaseNamesSchema.parse(JSON.parse(await readFile(rootManifest, "utf8")));
   const folder = options.outDir ?? path.join(packageRoot, "dist", "npm");
-  const name = options.name ?? process.env["OSTRA_CLI_PACKAGE"] ?? "ostra";
+  const name = options.name ?? names.cliPackage;
   await rm(folder, { recursive: true, force: true });
   await mkdir(path.join(folder, "dist"), { recursive: true });
   await build({
@@ -84,6 +104,7 @@ export const packCli = async (options: { readonly outDir?: string; readonly name
     banner: { js: 'import { createRequire as __ostraCreateRequire } from "node:module"; const require = __ostraCreateRequire(import.meta.url);' },
     legalComments: "linked",
     logLevel: "warning",
+    plugins: [releaseNamesOnly(names)],
   });
   await writeFile(path.join(folder, "package.json"), `${JSON.stringify(cliManifest(name, runner), null, 2)}\n`);
   await writeFile(path.join(folder, "LICENSE"), await readFile(path.join(packageRoot, "LICENSE"), "utf8"));

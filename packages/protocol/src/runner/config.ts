@@ -112,13 +112,13 @@ export const runnerConfigFields = {
   boxBaseImage: {
     flag: "box-base-image",
     env: "OSTRA_BOX_BASE_IMAGE",
-    default: "ostra/base:<the runner's version>",
+    default: "<the release's image namespace>/base:<the runner's version>",
     description: "The docker executor's base image, for an environment that names none.",
   },
   boxRunnerImage: {
     flag: "box-runner-image",
     env: "OSTRA_BOX_RUNNER_IMAGE",
-    default: "ostra/runner:<the runner's version>",
+    default: "<the release's image namespace>/runner:<the runner's version>",
     description: "The image each docker box's sidecar runs: the ostra CLI.",
   },
   boxServerUrl: {

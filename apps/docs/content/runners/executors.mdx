@@ -9,7 +9,7 @@ A runner's **executor** is where it runs each task. A task behaves the same on e
 
 Each task gets its own **box**: the agent's container, a **sidecar** and the environment's services, on networks of their own. The sidecar holds the task's credentials and proxies the agent's model calls and its git, so the agent only ever sees a fake key: no model key and no GitHub token enters its container. The agent's container sits on an internal network whose only exit is the sidecar.
 
-The runner needs the Docker Engine's socket, from `DOCKER_HOST` or the default socket, and that socket is root on the machine. Boxes start from the environment's base image, or `ostra/base` for one that names none. The [egress baseline](/docs/runners/egress) keeps every box off private ranges, the cloud metadata address and other boxes.
+The runner needs the Docker Engine's socket, from `DOCKER_HOST` or the default socket, and that socket is root on the machine. Boxes start from the environment's base image, or, for one that names none, the base image of the runner's own release, under the namespace that release published its images to. The [egress baseline](/docs/runners/egress) keeps every box off private ranges, the cloud metadata address and other boxes.
 
 ## host
 

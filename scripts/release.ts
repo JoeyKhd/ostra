@@ -12,10 +12,14 @@
 // - **The licensor line** (ADR 0048) is `LICENSOR`, in `licensor.ts` and nowhere else in code: the root
 //   LICENSE, NOTICE and every published package's `author` must say it, and any LICENSE that names a
 //   copyright holder must name it. `node scripts/release.ts --write-licensor` writes it everywhere.
+// - **The release's names** (the image namespace and the CLI's package) are the root package.json's,
+//   which the stamp writes; the runner and the panel read them from it, and no other file types them.
 
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { RELEASES_URL, releaseFiles } from "@ostra/protocol";
+import type { ReleaseFile } from "@ostra/protocol";
 import { z } from "zod";
 
 import { COPYRIGHT_YEAR, LICENSOR, REPOSITORY_URL } from "./licensor.ts";
@@ -37,12 +41,21 @@ const PATH_PART = "[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*";
  */
 const IMAGE_NAMESPACE = new RegExp(`^${PATH_PART}(?::\\d+)?(?:/${PATH_PART})*$`);
 
+/**
+ * The npm name the CLI is published under (ADR 0046: npm's `ostra` is taken, so it's the
+ * maintainer's to register, Q80): a name npm accepts for a new package, lowercase, scoped or not,
+ * such as `@joeykhd/ostra`. A clone's is the placeholder `ostra`, which is never published.
+ */
+const CLI_PACKAGE = /^(?=.{1,214}$)(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/;
+
 // package.json is npm's format, so unknown fields are tolerated.
 const manifestSchema = z.looseObject({
   name: z.string().min(1),
   version: z.string().optional(),
   /** The root's only: the namespace the release's images are published under (`stampRelease`). */
   imageNamespace: z.string().optional(),
+  /** The root's only: the npm name the CLI is published under (`stampRelease`). */
+  cliPackage: z.string().optional(),
   private: z.boolean().optional(),
   license: z.string().optional(),
   author: z.unknown().optional(),
@@ -249,6 +262,80 @@ const readLicenses = async (root: string, workspace: readonly WorkspaceManifest[
   return files;
 };
 
+/**
+ * One of the release's names typed into a file: an image under a clone's namespace
+ * (`ostra/<server|runner|base>:<tag>`) or the CLI by its placeholder name (`npx ostra` at a
+ * version). Typed, it names what a clone builds, not what a release publishes, so a released runner
+ * or the panel's join command would pull what no release pushed. The runner and the panel read both
+ * names from the root package.json, which the stamp writes, and the docs write placeholders. A
+ * longer name that ends in one (a registry's `<host>/ostra/runner`, the `@ostra/runner` package)
+ * isn't one.
+ */
+const TYPED_NAME = /(?<![\w@./-])(?:ostra\/(?:server|runner|base):|npx\s+ostra@)/g;
+
+/** Where the release's names are looked for: the shipped code, the deploy files, the workflows and every page of docs. */
+const NAMED_ROOTS = ["apps", "packages", "docs", "deploy", "scripts", ".github", "README.md", "CONTRIBUTING.md"];
+
+/** Folders not looked in: installs, builds and generated code, tests and their fakes, and kept evidence of past runs. A hidden one (`.next`, `.turbo`) neither. */
+const UNNAMED_DIRS = new Set(["node_modules", "dist", "generated", "coverage", "test-results", "playwright-report", "evidence", "testing", "test", "e2e"]);
+
+const NAMED_FILE = /\.(?:[cm]?[jt]sx?|json|ya?ml|mdx?|sh)$|^Dockerfile/;
+const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
+
+/** Files that may type the names, by path or folder, and why. The stamp's own files may too: it writes them. */
+export const typedNameExemptions: readonly { readonly path: string; readonly reason: string }[] = [
+  { path: "scripts/live/", reason: "the launch gate's live jobs run a clone's own build, which `pnpm images:build` tags under the clone's `ostra`" },
+  { path: "docs/development.md", reason: "the development tools' fakes, such as the fake registry's seeded image, not a release's" },
+];
+
+/** The release's names typed into these files, each as a problem naming its line; tests, exemptions and the stamp's files left out. */
+export const typedNameProblems = (files: readonly { readonly file: string; readonly text: string }[]): readonly ReleaseProblem[] => {
+  const stamped = new Set(releaseStamps.map((stamp) => stamp.file));
+  const problems: ReleaseProblem[] = [];
+  for (const { file, text } of files) {
+    if (TEST_FILE.test(file) || stamped.has(file) || typedNameExemptions.some((exempt) => file === exempt.path || (exempt.path.endsWith("/") && file.startsWith(exempt.path)))) {
+      continue;
+    }
+    for (const [index, line] of text.split(/\r?\n/).entries()) {
+      for (const match of line.matchAll(TYPED_NAME)) {
+        problems.push({
+          file,
+          message: `line ${String(index + 1)} types ${match[0]}, a clone's name, not the release's: read the image namespace and the CLI's package from the root package.json, which the release's stamp writes, or write a placeholder`,
+        });
+      }
+    }
+  }
+  return problems;
+};
+
+/** The files the release's names are looked for in, with their text, by path from the root. */
+const readNamedFiles = async (root: string): Promise<readonly { readonly file: string; readonly text: string }[]> => {
+  const found: { file: string; text: string }[] = [];
+  const visit = async (relative: string): Promise<void> => {
+    const full = path.join(root, ...relative.split("/"));
+    const entries = await readdir(full, { withFileTypes: true }).catch(() => null);
+    if (entries === null) {
+      const text = await readFile(full, "utf8").catch(() => null);
+      if (text !== null) {
+        found.push({ file: relative, text });
+      }
+      return;
+    }
+    for (const entry of entries) {
+      const child = `${relative}/${entry.name}`;
+      if (entry.isDirectory() && !entry.name.startsWith(".") && !UNNAMED_DIRS.has(entry.name)) {
+        await visit(child);
+      } else if (entry.isFile() && NAMED_FILE.test(entry.name)) {
+        found.push({ file: child, text: await readFile(path.join(full, entry.name), "utf8") });
+      }
+    }
+  };
+  for (const name of NAMED_ROOTS) {
+    await visit(name);
+  }
+  return found;
+};
+
 /** Every release check over a checkout. Empty when it's ready to publish. */
 export const releaseProblems = async (root: string): Promise<readonly ReleaseProblem[]> => {
   const workspace = await readWorkspace(root);
@@ -260,6 +347,10 @@ export const releaseProblems = async (root: string): Promise<readonly ReleasePro
   // The images' namespace, which the build tags them with and the compose file and charts name.
   if (!IMAGE_NAMESPACE.test(rootManifest.imageNamespace ?? "")) {
     problems.push({ file: "package.json", message: `its imageNamespace is ${rootManifest.imageNamespace ?? "missing"}, not an image namespace: where the images are published, which node scripts/version.ts sets ("ostra" in a clone)` });
+  }
+  // The CLI's npm name, which the pack publishes under and the panel's join command runs.
+  if (!CLI_PACKAGE.test(rootManifest.cliPackage ?? "")) {
+    problems.push({ file: "package.json", message: `its cliPackage is ${rootManifest.cliPackage ?? "missing"}, not an npm package name: the CLI's, which node scripts/version.ts sets ("ostra" in a clone)` });
   }
   for (const { dir, manifest } of workspace) {
     if (manifest.version !== release) {
@@ -284,6 +375,11 @@ export const releaseProblems = async (root: string): Promise<readonly ReleasePro
   const workflow = await readFile(path.join(root, ".github", "workflows", "release.yml"), "utf8").catch(() => "");
   const ci = await readFile(path.join(root, ".github", "workflows", "ci.yml"), "utf8").catch(() => "");
   problems.push(...releaseWorkflowProblems(workflow, ci));
+  problems.push(...typedNameProblems(await readNamedFiles(root)));
+  // The releases the panel and the docs download from are this repository's.
+  if (RELEASES_URL !== `${repositoryPages}/releases`) {
+    problems.push({ file: "packages/protocol/src/release.ts", message: `RELEASES_URL is ${RELEASES_URL}, not the repository's releases, ${repositoryPages}/releases (scripts/licensor.ts, REPOSITORY_URL)` });
+  }
   return problems;
 };
 
@@ -305,9 +401,9 @@ const topBlock = (text: string, key: string): string | null => {
  * `release.yml` (ADR 0064): started by hand only, with `version` and `dry-run`; every action pinned
  * by its commit's SHA; `contents`, `packages` and `id-token` write and nothing else at the top; no
  * npm token, since npm's trusted publishing needs none; the dry run pushing to the job's own
- * registry and publishing nothing; its tree stamped with the version and the image namespace; the
- * release's files made in every run and attached to the real run's release only; and ci.yml
- * never running it (the maintainer's CI scope).
+ * registry and publishing nothing; its tree stamped with the version, the image namespace and the
+ * CLI's package; the release's files made in every run and attached to the real run's release
+ * only; and ci.yml never running it (the maintainer's CI scope).
  */
 export const releaseWorkflowProblems = (workflow: string, ci: string): readonly ReleaseProblem[] => {
   const problems: string[] = [];
@@ -342,8 +438,12 @@ export const releaseWorkflowProblems = (workflow: string, ci: string): readonly 
   if (!/^ {6}registry:\n {8}image: registry:[^\s@]+@sha256:[0-9a-f]{64}$/m.test(workflow) || !workflow.includes("inputs.dry-run && 'localhost:5000/ostra'")) {
     problems.push("its dry run pushes the images to a registry service inside the job, pinned by digest");
   }
-  if (!/^ {6}- run: node scripts\/version\.ts "\$VERSION" "\$IMAGE_NAMESPACE"$/m.test(workflow)) {
-    problems.push('stamps its tree with the version and the image namespace the images are pushed to: node scripts/version.ts "$VERSION" "$IMAGE_NAMESPACE"');
+  if (!/^ {6}- run: node scripts\/version\.ts "\$VERSION" "\$IMAGE_NAMESPACE" "\$CLI_PACKAGE"$/m.test(workflow)) {
+    problems.push(`stamps its tree with the version, the image namespace the images are pushed to and the CLI's package: node scripts/version.ts "$VERSION" "$IMAGE_NAMESPACE" "$CLI_PACKAGE"`);
+  }
+  // The pack takes the CLI's name from the stamped root package.json, so nothing names it twice.
+  if (workflow.includes("OSTRA_CLI_PACKAGE=")) {
+    problems.push("packs the CLI under the stamped name: no OSTRA_CLI_PACKAGE beside pack:cli");
   }
   // The release's files are made in both runs, so the dry run lists them, and attached only by the
   // real run's release.
@@ -360,12 +460,12 @@ export const releaseWorkflowProblems = (workflow: string, ci: string): readonly 
 /** The package.json files a version is set in: the root (the images' tags) and every workspace package. */
 export const versionedFiles = async (root: string): Promise<readonly string[]> => ["package.json", ...(await readWorkspace(root)).map((item) => `${item.dir}/package.json`)];
 
-/** What a release stamps on its tree: its version, and the namespace its images are published under. */
-export type Release = { readonly version: string; readonly imageNamespace: string };
+/** What a release stamps on its tree: its version, the namespace its images are published under, and the CLI's npm name. */
+export type Release = { readonly version: string; readonly imageNamespace: string; readonly cliPackage: string };
 
 /**
  * A place in a file the stamp writes the release into: each match of `pattern` (global, by line)
- * becomes `to`, in which `{version}` and `{namespace}` are the release's and `$1`, `$2` the
+ * becomes `to`, in which `{version}`, `{namespace}` and `{cliPackage}` are the release's and `$1`, `$2` the
  * pattern's groups. It must match `count` times, so a moved or added line fails the stamp instead
  * of shipping the old value.
  */
@@ -409,21 +509,31 @@ const stampText = (file: string, spots: readonly StampSpot[], text: string, rele
     if (found !== spot.count) {
       throw new Error(`${file}: the release stamp expects ${String(spot.count)} line(s) like ${String(spot.pattern)} and found ${String(found)}`);
     }
-    // Neither value can hold a `$`, which a replacement would read: both are checked first.
-    return current.replaceAll(spot.pattern, spot.to.replaceAll("{version}", release.version).replaceAll("{namespace}", release.imageNamespace));
+    // No value can hold a `$`, which a replacement would read, or a `{`: each is checked first.
+    return current.replaceAll(spot.pattern, spot.to.replaceAll("{version}", release.version).replaceAll("{namespace}", release.imageNamespace).replaceAll("{cliPackage}", release.cliPackage));
   }, text);
 
-/** Every package.json's version line, and the root's `imageNamespace`, which the image checks and the build read. */
+/**
+ * Every package.json's version line, and the root's `imageNamespace` and `cliPackage`: the image
+ * checks and the build read the first, the pack the second, and the runner and the panel both.
+ */
 const manifestSpots = (file: string): readonly StampSpot[] => [
   { pattern: /^(\s*"version":\s*")[^"]*(")/gm, count: 1, to: "$1{version}$2" },
-  ...(file === "package.json" ? [{ pattern: /^(\s*"imageNamespace":\s*")[^"]*(")/gm, count: 1, to: "$1{namespace}$2" }] : []),
+  ...(file === "package.json"
+    ? [
+        { pattern: /^(\s*"imageNamespace":\s*")[^"]*(")/gm, count: 1, to: "$1{namespace}$2" },
+        { pattern: /^(\s*"cliPackage":\s*")[^"]*(")/gm, count: 1, to: "$1{cliPackage}$2" },
+      ]
+    : []),
 ];
 
 /**
  * Stamps the release everywhere it's carried (ADR 0045's one version line, ADR 0064): its version
  * on every package.json, the root's (`releaseVersion`, the images' tags), the CLI's (`ostra
  * --version`) and core's (the version a runner pins to) among them; its image namespace on the
- * root's `imageNamespace`; and both on each file of `stamps`. Only those values change; the rest of
+ * root's `imageNamespace` and the CLI's npm name on its `cliPackage`, which the runner and the panel
+ * read (their box images and join commands) and the pack publishes under; and the version and the
+ * namespace on each file of `stamps`. Only those values change; the rest of
  * each file is kept as it's written. Nothing is written unless every file can be stamped. `stamps`
  * is `releaseStamps` but in a test.
  */
@@ -433,6 +543,9 @@ export const stampRelease = async (root: string, release: Release, stamps: reado
   }
   if (!IMAGE_NAMESPACE.test(release.imageNamespace)) {
     throw new Error(`"${release.imageNamespace}" isn't an image namespace (a registry and a path, lowercase, such as ghcr.io/owner)`);
+  }
+  if (!CLI_PACKAGE.test(release.cliPackage)) {
+    throw new Error(`"${release.cliPackage}" isn't an npm package name for the CLI (lowercase, scoped or not, such as @owner/ostra)`);
   }
   const read = (file: string): Promise<string> => readFile(path.join(root, ...file.split("/")), "utf8");
   const stamped: { readonly file: string; readonly text: string }[] = [];
@@ -451,8 +564,8 @@ export const stampRelease = async (root: string, release: Release, stamps: reado
 /** Where a release's file comes from: a file of the stamped tree, or a chart Helm packages from it. */
 export type AssetSource = { readonly kind: "file"; readonly path: string } | { readonly kind: "chart"; readonly chart: string };
 
-/** A file the GitHub release carries, by the name it's downloaded as. */
-export type ReleaseAsset = { readonly name: string; readonly from: AssetSource };
+/** A file the GitHub release carries, by the name it's downloaded as (`releaseFiles`, in `protocol`). */
+export type ReleaseAsset = { readonly name: ReleaseFile; readonly from: AssetSource };
 
 /**
  * The files the GitHub release carries beside its notes (ADR 0064, amended 2026-11-21), each as the
@@ -460,11 +573,12 @@ export type ReleaseAsset = { readonly name: string; readonly from: AssetSource }
  * downloads, and both charts, which the Helm page installs. Each is reached at
  * `releases/latest/download/<name>`, or `releases/download/v<version>/<name>` for one release, so
  * no page types a version. `scripts/release-assets.ts` makes them, and `release.yml` attaches them.
+ * Their names are `protocol`'s `releaseFiles`, which the panel's Helm join command downloads too.
  */
 export const releaseAssets: readonly ReleaseAsset[] = [
-  { name: "compose.yaml", from: { kind: "file", path: "deploy/compose.yaml" } },
-  { name: "ostra-server.tgz", from: { kind: "chart", chart: "ostra-server" } },
-  { name: "ostra-runner.tgz", from: { kind: "chart", chart: "ostra-runner" } },
+  { name: releaseFiles.compose, from: { kind: "file", path: "deploy/compose.yaml" } },
+  { name: releaseFiles.serverChart, from: { kind: "chart", chart: "ostra-server" } },
+  { name: releaseFiles.runnerChart, from: { kind: "chart", chart: "ostra-runner" } },
 ];
 
 /** The repository's own pages on GitHub (`https://github.com/<owner>/<repo>`), from REPOSITORY_URL. */
@@ -472,8 +586,8 @@ const repositoryPages = REPOSITORY_URL.replace(/^git\+/, "").replace(/\.git$/, "
 
 /** The release files a text names by their download link: `releases/latest/download/<name>`, or one release's. */
 export const linkedAssets = (text: string): readonly string[] => {
-  const base = repositoryPages.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const link = new RegExp(`${base}/releases/(?:latest/download|download/[^/\\s]+)/([^\\s)"'\`<>\\\\]+)`, "g");
+  const base = RELEASES_URL.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const link = new RegExp(`${base}/(?:latest/download|download/[^/\\s]+)/([^\\s)"'\`<>\\\\]+)`, "g");
   return [...text.matchAll(link)].map((match) => (match[1] ?? "").replace(/[.,;:]+$/, ""));
 };
 
