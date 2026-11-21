@@ -30,6 +30,13 @@ describe("taskStateLine", () => {
     expect(taskStateLine("awaiting_approval", null)).toBe("Awaiting approval");
     expect(taskStateLine("running", null)).toBe("Running");
   });
+
+  it("names a limit or a crash with its block's word (task-limits.md)", () => {
+    expect(taskStateLine("needs_you", "spend_cap", "spend-cap")).toBe("Needs you · spend cap");
+    expect(taskStateLine("needs_you", "stalled", "stall")).toBe("Needs you · stalled");
+    expect(taskStateLine("needs_you", "stalled", "max-duration")).toBe("Needs you · maximum duration");
+    expect(taskStateLine("needs_you", "crashed")).toBe("Needs you · crashed");
+  });
 });
 
 describe("headerActivity", () => {

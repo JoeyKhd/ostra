@@ -36,13 +36,19 @@ export const taskStateText = (state: TaskState): string => {
 };
 
 export type TaskReason = RouterOutputs["tasks"]["get"]["reason"];
+export type TaskLimit = RouterOutputs["tasks"]["get"]["limit"];
 
 /**
  * A task's state for its header and properties (task.md, "Header status line"): needs-you states
  * name what waits when it's an approval or a question, `Needs you · approval`.
  */
-export const taskStateLine = (state: TaskState, reason: TaskReason): string => {
+export const taskStateLine = (state: TaskState, reason: TaskReason, limit: TaskLimit = null): string => {
   if (state === "needs_you" && reason === "approval") return t("taskState.needsYouApproval");
+  // Milestone 2 (task-limits.md): a limit or a crash names itself, the same word as its block's title.
+  if (state === "needs_you" && limit === "max-duration") return t("taskState.needsYouMaxDuration");
+  if (state === "needs_you" && reason === "stalled") return t("taskState.needsYouStalled");
+  if (state === "needs_you" && reason === "spend_cap") return t("taskState.needsYouSpendCap");
+  if (state === "needs_you" && reason === "crashed") return t("taskState.needsYouCrashed");
   if (state === "needs_you" && reason === "question") return t("taskState.needsYouQuestion");
   // Milestone 6 (ticket 34): a refine task's draft, or milestone 1's draft PR.
   if (state === "needs_you" && reason === "draft_ready") return t("taskState.needsYouDraftReady");

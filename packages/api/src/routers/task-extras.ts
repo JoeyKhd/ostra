@@ -97,7 +97,9 @@ export const loadTaskExtras = async (deps: ApiDeps, task: TaskRow, profileModelI
   const { db, settings } = deps;
   const { organizationId } = task;
   const [ticket, writes, sessions, boxes, restored, filesReady, model] = await Promise.all([
-    task.ticketId === null ? Promise.resolve(null) : db.ticket.findFirst({ where: { id: task.ticketId, organizationId } }),
+    task.ticketId === null
+      ? Promise.resolve(null)
+      : db.ticket.findFirst({ where: { id: task.ticketId, organizationId }, include: { board: { select: { name: true } }, connection: { select: { kind: true } } } }),
     db.ticketWrite.findMany({ where: { taskId: task.id, organizationId }, orderBy: { createdAt: "asc" } }),
     db.session.findMany({ where: { taskId: task.id, organizationId }, orderBy: { startedAt: "asc" } }),
     db.box.findMany({ where: { taskId: task.id, organizationId }, orderBy: { createdAt: "desc" }, take: 1 }),
@@ -162,6 +164,12 @@ export const loadTaskExtras = async (deps: ApiDeps, task: TaskRow, profileModelI
             title: ticket.title,
             url: ticket.url,
             status: { name: ticket.statusName, category: ticket.statusCategory },
+            /** The board the ticket came in on, and its tracker's kind (task-ticket.md: `Board`, `from Linear`). */
+            board: ticket.board.name,
+            tracker: ticket.connection.kind,
+            /** The strip's label chips and priority (task-ticket.md, "Ticket strip"); Linear's 1 urgent to 4 low. */
+            labels: z.array(z.string()).catch([]).parse(ticket.labels),
+            priority: ticket.priority,
             cachedAt: ticket.updatedAt.getTime(),
             removed: ticket.removedAt !== null,
           },

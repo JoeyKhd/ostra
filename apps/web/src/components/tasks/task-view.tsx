@@ -39,7 +39,7 @@ import { TaskPrs } from "./task-prs";
 import { HeldNoKey, KeyRow, NoKeySentence, WhoPicks } from "./no-key";
 import { adminNames } from "./no-key-words";
 import type { NoKey } from "./no-key";
-import { AgentGot, MergedHint, TicketLine, TicketProperties, boxText, composerInputOf, composerMode, idleHeader, limitStateOf, spendText } from "./task-ticket";
+import { AgentGot, MergedHint, TicketLine, TicketProperties, boxText, composerInputOf, composerMode, idleHeader, limitStateOf, sessionText, SpendCapComposer, SpendValue, trackerName } from "./task-ticket";
 import { headerActivity, stateTone, taskStateLine } from "./task-words";
 import { ApprovalCard, PlanBlock, QuestionCard, WatcherBar, approvalReceipt } from "./task-answers";
 import { NeedsYouCards, NeedsYouLive } from "./needs-you-cards";
@@ -260,9 +260,10 @@ const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, t
         )}
         {effort}
         <PropRow label={t("taskPage.runner")}>
-          {task.runner === null ? <span className="text-faint">{t("taskPage.noRunner")}</span> : <Mono>{task.runner.name}</Mono>}
+          {/* Once the box is released the task has no runner (task-reopen.md, "Properties"). */}
+          {task.runner === null || task.box?.state === "released" ? <span className="text-faint">{t("taskPage.noRunner")}</span> : <Mono>{task.runner.name}</Mono>}
         </PropRow>
-        {task.runner === null ? null : (
+        {task.runner === null || task.box?.state === "released" ? null : (
           <div className="pb-1.5 pl-[104px]"><RunnerKind runner={task.runner} /></div>
         )}
         {readOnlyKind(task.kind) ? (
@@ -292,9 +293,14 @@ const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, t
           </PropRow>
         )}
         {task.box === null ? null : <PropRow label={t("taskPage.box.label")}><span className="truncate">{boxText(task.box, now)}</span></PropRow>}
+        {task.sessions.length === 0 ? null : (
+          <PropRow label={t("taskPage.session.label")}>
+            <span className="truncate" data-testid="task-sessions">{sessionText(task.sessions)}</span>
+          </PropRow>
+        )}
         {boxSize === null ? null : <PropRow label={t("waitLine.panelBoxSize")}><Mono><span data-testid="task-box-size">{boxSizeText(boxSize)}</span></Mono></PropRow>}
         <PropRow label={t("taskPage.spend")}>
-          <Mono className={task.spend.reached ? "text-amber-text" : ""}>{spendText(task.spend)}</Mono>
+          <Mono><span data-reached={task.spend.reached}><SpendValue spend={task.spend} /></span></Mono>
         </PropRow>
         <PropRow label={t("taskAnswers.usage.agentTime")}><Mono><span data-testid="task-agent-time">{formatDuration(usage.agentMs)}</span></Mono></PropRow>
         <PropRow label={t("taskPage.time")}><Mono>{formatElapsed(task.createdAt, now)}</Mono></PropRow>
@@ -597,7 +603,9 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const running = view.turnRunning || data.state === "running" || data.state === "preparing";
   // F-137: the level from the newest `effort.changed` on the stream, else `tasks.get`'s.
   const effort: TaskEffort = { level: view.effort ?? data.effort.level, levels: data.effort.levels.map((one) => one.level), runningTurn: view.runningEffort };
-  const stateText = stopping && !stopped ? t("taskPage.stopping") : taskStateLine(data.state, data.reason);
+  const stateText = stopping && !stopped ? t("taskPage.stopping") : taskStateLine(data.state, data.reason, data.limit);
+  // A limit or a crash ended the session: the line says when it stopped (task-limits.md, "Status").
+  const stoppedAt = data.state === "needs_you" && (data.limit !== null || data.reason === "crashed") ? (data.sessions.at(-1)?.endedAt ?? null) : null;
   const organizationAdmin = me.data?.organization?.role === "admin";
   // F-135: queued because no key on the project's list serves the profile's model.
   const noKey: NoKey | null =
@@ -853,7 +861,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
       <div className={cn("flex min-h-full flex-col", previewing ? "px-4 pb-4 pt-6 sm:px-7 sm:pt-[22px] lg:h-full" : "px-4 pb-5 pt-6 sm:px-10 sm:pt-7 xl:h-full")}>
         <div className="shrink-0">
           <div className="flex items-center gap-2.5 font-mono text-sm text-faint">
-            <span>{data.key} · {data.source === "prompt" ? t("taskPage.fromPrompt") : t("taskPage.fromTicket")}</span>
+            <span>{data.key} · {data.source === "prompt" ? t("taskPage.fromPrompt") : data.ticket === null ? t("taskPage.fromTicket") : t("taskPage.fromTracker", { tracker: trackerName(data.ticket.tracker) })}</span>
             {waitingTask?.startedBy.kind === "outside" ? <span className="font-sans text-ui">· <StartedInLinear task={waitingTask} /></span> : null}
             {data.kind === "code" ? null : <Chip className="font-mono text-muted">{data.kind === "refine" ? t("draft.chipRefine") : t("draft.chipReview")}</Chip>}
           </div>
@@ -864,7 +872,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
             {readOnlyKind(data.kind) ? <><Sep /><span className="text-muted" data-testid="task-read-only">{data.state === "done" ? t("draft.readOnlyDone") : t("draft.readOnly")}</span></> : null}
             <Sep />
             <span className="text-muted">
-              {t("taskPage.started", { age: formatElapsed(data.createdAt, now) })}
+              {stoppedAt === null ? t("taskPage.started", { age: formatElapsed(data.createdAt, now) }) : t("taskPage.stoppedAgo", { age: formatElapsed(stoppedAt, now) })}
               {data.runner === null ? null : <> {t("taskPage.on")} <span className="font-mono text-ui text-faint">{data.runner.name}</span></>}
             </span>
             {log.state.connection === "reconnecting" ? <><Sep /><span className="text-muted">{t("taskPage.reconnecting")}</span></> : null}
@@ -971,7 +979,11 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           canSend={data.capabilities.send}
           canReopen={mode.kind === "reopen"}
           composerHint={mode.kind === "send" || mode.kind === "reopen" ? (isRefine ? t("draft.composerHint") : ((mode.kind === "send" ? replyHint(needs, agentName) : null) ?? mode.hint)) : null}
-          {...(mode.kind === "merged" ? { instead: <MergedHint inboxHref={data.ticket === null ? null : `/projects/${data.projectId}/inbox?ticket=${encodeURIComponent(data.ticket.key)}`} /> } : {})}
+          {...(mode.kind === "merged"
+            ? { instead: <MergedHint inboxHref={data.ticket === null ? null : `/projects/${data.projectId}/inbox?ticket=${encodeURIComponent(data.ticket.key)}`} /> }
+            : mode.kind === "none" && data.capabilities.reopenBlocked === "spend_cap"
+              ? { instead: <SpendCapComposer /> }
+              : {})}
           canInterrupt={data.capabilities.interrupt}
           running={running}
           agent={{ name: data.agent?.agentName ?? t("task.agent"), model: data.agent?.model?.name ?? null }}

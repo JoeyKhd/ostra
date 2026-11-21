@@ -216,6 +216,6 @@ describe("what needs you, as cards in the chat", () => {
     const said = renderToStaticMarkup(<NeedsYouLive needs={[{ kind: "reply", asked: true }]} agent="OpenCode" how="send" />);
     expect(said).toContain("Needs you: OpenCode asked you something in its message above. Reply below.");
     expect(renderToStaticMarkup(<NeedsYouLive needs={[{ kind: "approval", count: 2 }]} agent="OpenCode" how="send" />)).toContain("Needs you: OpenCode waits for 2 approvals.");
-    expect(renderToStaticMarkup(<NeedsYouLive needs={[{ kind: "limit", what: "spend-cap" }]} agent="OpenCode" how="send" />)).toContain(">Needs you · spend cap reached</p>");
+    expect(renderToStaticMarkup(<NeedsYouLive needs={[{ kind: "limit", what: "spend-cap" }]} agent="OpenCode" how="send" />)).toContain(">Needs you · spend cap</p>");
   });
 });

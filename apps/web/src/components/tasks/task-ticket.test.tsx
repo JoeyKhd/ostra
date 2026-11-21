@@ -1,12 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { blobIdSchema, ticketWriteIdSchema } from "@ostra/protocol";
+import { blobIdSchema, sessionIdSchema, ticketIdSchema, ticketWriteIdSchema } from "@ostra/protocol";
 
 import { t } from "@/lib/messages";
 import { formatSize, restoredDetail, savedDetail } from "@/task/marker-words";
 
-import { AgentGot, LimitBlock, RestoreConflict, TicketProperties, boxText, composerMode, idleHeader, reopenBlockedText, spendText } from "./task-ticket";
+import { AgentGot, LimitBlock, RestoreConflict, TicketLine, TicketProperties, boxText, composerMode, idleHeader, reopenBlockedText, sessionText, SpendCapComposer, spendText, trackerName } from "./task-ticket";
 import type { ComposerInput, LimitState, TaskDetail } from "./task-ticket";
 
 // F-064, F-031, F-032, F-033, F-047, F-068, F-097: the task page for tickets, reopening and limits
@@ -110,6 +110,37 @@ describe("the sync steps", () => {
 
   it("F-097: a prompt task with a board offers Create ticket", () => {
     expect(renderToStaticMarkup(<TicketProperties task={{ ticket: null, sync: [], canRetry: false }} now={now} retry={idle} createTicket={{ ...idle, error: null }} />)).toContain(t("taskPage.createTicket"));
+  });
+});
+
+describe("the ticket and the sessions (task-ticket.md, task-reopen.md)", () => {
+  const session = (origin: TaskDetail["sessions"][number]["origin"]): TaskDetail["sessions"][number] =>
+    ({ id: sessionIdSchema.parse("01900000-0000-7000-8000-0000000000c1"), origin, state: "ended", outcome: null, startedAt: now, endedAt: now, limit: null, previousBox: null });
+
+  it("names the tracker a ticket came from, and the board", () => {
+    expect(trackerName("linear")).toBe("Linear");
+    const ticket: TaskDetail["ticket"] = { id: ticketIdSchema.parse("01900000-0000-7000-8000-0000000000b1"), key: "CALC-174", title: "Keep a history", url: "https://linear.app/x", status: { name: "In Review", category: "started" }, board: "Calculator", tracker: "linear", labels: ["frontend"], priority: 2, cachedAt: now, removed: false };
+    const html = renderToStaticMarkup(<TicketProperties task={{ ticket, sync: [], canRetry: false }} now={now} retry={idle} createTicket={null} />);
+    expect(html).toContain(t("taskPage.ticketBoard"));
+    expect(html).toContain("Calculator");
+    const strip = renderToStaticMarkup(<TicketLine ticket={ticket} />);
+    expect(strip).toContain("frontend");
+    expect(strip).toContain("High priority");
+  });
+
+  it("counts the sessions and says how the newest began", () => {
+    expect(sessionText([session("new")])).toBe("1");
+    expect(sessionText([session("new"), session("resumed"), session("rebuilt")])).toBe("3 · rebuilt from the template");
+    expect(sessionText([session("new"), session("restored")])).toBe("2 · restored from the archive");
+  });
+});
+
+describe("the composer at the spend cap (task-limits.md)", () => {
+  it("is drawn disabled, saying why, with Reopen out of reach", () => {
+    const html = renderToStaticMarkup(<SpendCapComposer />);
+    expect(html).toContain("disabled");
+    expect(html).toContain(t("taskPage.composer.spendCapPlaceholder"));
+    expect(html).toContain('aria-disabled="true"');
   });
 });
 

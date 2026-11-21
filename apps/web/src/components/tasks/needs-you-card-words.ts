@@ -133,7 +133,7 @@ export const noticeLine = (reason: NeedsYouReason | null, summary: string | null
  */
 export const needAnnouncement = (need: Need, agent: string, how: ReplyHow): string => {
   const line = needLine(need, agent, how);
-  // A card whose title already says it (`Needs you · spend cap reached`) is read as it is.
+  // A card whose title already says it (`Needs you · spend cap`) is read as it is.
   return line.startsWith(t("taskPage.needsYou")) ? line : `${t("taskPage.needsYou")}: ${line}`;
 };
 

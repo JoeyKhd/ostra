@@ -11,7 +11,7 @@ import { formatClock } from "@/lib/format";
 import { t } from "@/lib/messages";
 
 import { taskStateLine } from "../task-words";
-import type { TaskReason, TaskState } from "../task-words";
+import type { TaskReason, TaskLimit, TaskState } from "../task-words";
 
 import { capBody, capTitle, findingsSentWords, releasedHoldText, roundName, roundOutcomeText, stagesOf } from "./review-words";
 import type { CapKind, Limits, Stage, SubState, TaskRound } from "./review-words";
@@ -191,8 +191,8 @@ export const RoundsInThread = ({ taskId, rounds, limits, cap, capInput, isDriver
  * The Status row in review (task-rounds.md): the state, then the sub-state the loop is at
  * (`In review · CI running`); a needs-you or any other state keeps its own line.
  */
-export const statusWithSubState = (task: { readonly state: TaskState; readonly reason: TaskReason; readonly subState: SubState }): string => {
-  const line = taskStateLine(task.state, task.reason);
+export const statusWithSubState = (task: { readonly state: TaskState; readonly reason: TaskReason; readonly subState: SubState; readonly limit?: TaskLimit }): string => {
+  const line = taskStateLine(task.state, task.reason, task.limit ?? null);
   if (task.state !== "in_review" || task.subState === null) return line;
   switch (task.subState) {
     case "ci_running":

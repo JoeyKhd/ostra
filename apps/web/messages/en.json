@@ -2492,7 +2492,11 @@
     "needsYouApproval": "Needs you · approval",
     "needsYouQuestion": "Needs you · question",
     "needsYouDraftReady": "Needs you · draft ready",
-    "needsYouRoundCap": "Needs you · round limit"
+    "needsYouRoundCap": "Needs you · round limit",
+    "needsYouStalled": "Needs you · stalled",
+    "needsYouMaxDuration": "Needs you · maximum duration",
+    "needsYouSpendCap": "Needs you · spend cap",
+    "needsYouCrashed": "Needs you · crashed"
   },
   "taskGroup": {
     "needsYou": "Needs you",
@@ -2783,6 +2787,11 @@
     "stopping": "Stopping…",
     "fromPrompt": "from a prompt",
     "fromTicket": "from a ticket",
+    "fromTracker": "from {tracker}",
+    "tracker": {
+      "linear": "Linear",
+      "github": "GitHub"
+    },
     "reconnecting": "Reconnecting…",
     "needsYou": "Needs you",
     "needsYouDefault": "The agent stopped and waits on a person.",
@@ -2809,6 +2818,7 @@
     "model": "Model",
     "time": "Time",
     "started": "Started {age} ago",
+    "stoppedAgo": "Stopped {age} ago",
     "on": "on",
     "copyLink": "Copy the link",
     "linkCopied": "Link copied",
@@ -2844,6 +2854,14 @@
     "ticketGroup": "Ticket",
     "ticketKey": "Key",
     "ticketStatus": "Status",
+    "ticketBoard": "Board",
+    "priority": "{level} priority",
+    "session": {
+      "label": "Session",
+      "resumed": "{n} · resumed",
+      "restored": "{n} · restored from the archive",
+      "rebuilt": "{n} · rebuilt from the template"
+    },
     "synced": "Synced",
     "createTicket": "Create ticket",
     "creatingTicket": "Creating…",
@@ -2869,13 +2887,14 @@
     "limit": {
       "title": "Needs you · {what}",
       "stall": "stalled",
-      "max-duration": "maximum time reached",
-      "spend-cap": "spend cap reached",
+      "max-duration": "maximum duration",
+      "spend-cap": "spend cap",
       "crashed": "crashed",
       "stallBody": "The agent produced nothing for a while, so ostra stopped the session. Its work is saved.",
       "max-durationBody": "The session ran for its maximum time, so ostra stopped it. Its work is saved.",
-      "spend-capBody": "The task spent {spent} of its {cap} cap, so ostra stopped the session. Raise the cap to reopen it.",
-      "spend-capTokens": "The task used {spent} tokens of its {cap} cap, so ostra stopped the session. Raise the cap to reopen it.",
+      "spend-capBody": "This task spent {spent} of its {cap} cap. The key proxy refused the next model call, and the session stopped cleanly.",
+      "spend-capTokens": "This task used {spent} of its {cap} tokens. Its model has no known price, so the cap is counted in tokens. The key proxy refused the next model call, and the session stopped cleanly.",
+      "spend-capDetail": "It can't be reopened until the cap is raised. An admin sets {setting} on the server; the task keeps what it spent.",
       "crashedBody": "The session ended without finishing. Its work up to the last turn is saved.",
       "boxLostBody": "The box was lost before the agent answered. Reopen to carry on in a fresh box.",
       "reopen": "Reopen",
@@ -2897,6 +2916,7 @@
       "mergedHint": "Its pull requests are merged. Start a new task from the ticket to change it again.",
       "openInInbox": "Open the ticket in the Inbox",
       "spendCap": "This task reached its spend cap. It can't be reopened until the cap is raised.",
+      "spendCapPlaceholder": "Reopening waits until the spend cap is raised.",
       "ticketHasTask": "The ticket already has an active task."
     },
     "servicesWait": "Waiting for a runner that can start services. Online now: {runners}.",

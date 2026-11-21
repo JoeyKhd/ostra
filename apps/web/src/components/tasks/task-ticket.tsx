@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 
 import { TicketStatusIcon } from "@/components/inbox/ticket-icons";
+import { priorityText } from "@/components/inbox/inbox-words";
 import { PropGroup, PropRow } from "@/components/shell/page-frame";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { NeedsYou } from "@/components/ui/needs-you";
@@ -38,6 +39,37 @@ const releaseReasonKey: Readonly<Record<string, MessageKey>> = {
 };
 
 /** The box's state in words: `Idle · stops in 11 min`, `Released · the PRs closed`. */
+/** The tracker a ticket came from, by name (task-ticket.md: `CALC-174 · from Linear`). */
+export const trackerName = (kind: NonNullable<TaskDetail["ticket"]>["tracker"]): string => {
+  switch (kind) {
+    case "linear":
+      return t("taskPage.tracker.linear");
+    case "github":
+      return t("taskPage.tracker.github");
+    default:
+      return kind satisfies never;
+  }
+};
+
+/** The Session row (task-reopen.md): how many sessions the task had, and how the newest began. */
+export const sessionText = (sessions: TaskDetail["sessions"]): string => {
+  const newest = sessions.at(-1);
+  const n = sessions.length;
+  if (newest === undefined || n === 1) return String(n);
+  switch (newest.origin) {
+    case "new":
+      return String(n);
+    case "resumed":
+      return t("taskPage.session.resumed", { n });
+    case "restored":
+      return t("taskPage.session.restored", { n });
+    case "rebuilt":
+      return t("taskPage.session.rebuilt", { n });
+    default:
+      return newest.origin satisfies never;
+  }
+};
+
 export const boxText = (box: Box, now: number): string => {
   switch (box.state) {
     case "starting":
@@ -69,6 +101,21 @@ const usd = (micro: number): string => `$${(micro / 1_000_000).toFixed(2)}`;
 export const spendText = (spend: Spend): string =>
   spend.unit === "usd" ? t("taskPage.spendOf", { spent: usd(spend.spent), cap: usd(spend.cap) }) : t("taskPage.spendOf", { spent: formatTokens(spend.spent), cap: formatTokens(spend.cap) });
 
+/**
+ * The Spend row's value (m3/task-approval, "Tokens, Cache, Spend"): the spend, then ` of {cap}` in
+ * `--muted`. Never amber at the cap: the needs-you block says so (task-limits.md).
+ */
+export const SpendValue = ({ spend }: { readonly spend: Spend }) => {
+  const spent = spend.unit === "usd" ? usd(spend.spent) : formatTokens(spend.spent);
+  const [, rest = ""] = spendText(spend).split(spent);
+  return (
+    <>
+      {spent}
+      <span className="text-muted">{rest}</span>
+    </>
+  );
+};
+
 /** The ticket line under the title: its status, and a link to it on Linear. */
 export const TicketLine = ({ ticket }: { readonly ticket: NonNullable<TaskDetail["ticket"]> }) => (
   <p className="mt-3 flex flex-wrap items-center gap-2 text-body" data-testid="task-ticket">
@@ -76,6 +123,16 @@ export const TicketLine = ({ ticket }: { readonly ticket: NonNullable<TaskDetail
       <TicketStatusIcon category={ticket.status.category} />
       {ticket.status.name ?? "–"}
     </span>
+    {ticket.labels.slice(0, 3).map((label) => (
+      <span key={label} className="inline-flex h-[26px] items-center rounded-md border border-line-2 px-2.5 text-ui text-muted">{label}</span>
+    ))}
+    {ticket.labels.length > 3 ? <span className="text-ui text-faint">+{ticket.labels.length - 3}</span> : null}
+    {ticket.priority === null || ticket.priority === 0 ? null : (
+      <span className="text-ui text-muted">
+        <span aria-hidden className="text-faint">· </span>
+        {t("taskPage.priority", { level: priorityText(ticket.priority) })}
+      </span>
+    )}
     {ticket.removed ? <span className="text-ui text-faint">{t("taskPage.ticketRemoved")}</span> : null}
     <a href={ticket.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-ui text-teal hover:underline">
       {t("taskPage.openInLinear")}
@@ -155,6 +212,7 @@ export const TicketProperties = ({ task, now, retry, createTicket }: {
           </a>
         </PropRow>
         <PropRow label={t("taskPage.ticketStatus")}>{task.ticket.status.name ?? "–"}</PropRow>
+        <PropRow label={t("taskPage.ticketBoard")}><span className="truncate">{task.ticket.board}</span></PropRow>
         <PropRow label={t("taskPage.synced")}>
           <span className="font-mono">{Math.max(0, Math.round((now - task.ticket.cachedAt) / 1000)) < 60 ? t("taskPage.syncedSeconds", { n: Math.max(0, Math.round((now - task.ticket.cachedAt) / 1000)) }) : t("taskPage.syncedMinutes", { n: Math.round((now - task.ticket.cachedAt) / 60_000) })}</span>
         </PropRow>
@@ -193,6 +251,9 @@ export const limitStateOf = (task: TaskDetail): LimitState => ({
   reopenWithoutText: task.capabilities.reopenWithoutText,
 });
 
+/** The server setting that holds a task's cap, by its unit: names, not words. */
+const capSetting = { usd: "OSTRA_TASK_SPEND_CAP_USD", tokens: "OSTRA_TASK_TOKEN_CAP" } as const;
+
 export const LimitBlock = ({ task, reopen, className }: { readonly task: LimitState; readonly reopen: { readonly run: () => void; readonly pending: boolean; readonly error: string | null }; readonly className?: string }) => {
   const crashed = task.reason === "crashed";
   const what = crashed ? "crashed" : task.limit;
@@ -230,6 +291,19 @@ export const LimitBlock = ({ task, reopen, className }: { readonly task: LimitSt
       {...(reopen.error === null ? {} : { footer: <span role="alert" className="text-red">{reopen.error}</span> })}
     >
       <p>{body}</p>
+      {/* At the spend cap there's no Reopen: the detail says why, and who can change it (task-limits.md, state 3). */}
+      {what === "spend-cap" && !task.reopenWithoutText ? (
+        <p className="mt-1 text-sm text-muted" data-testid="limit-detail">
+          {t("taskPage.limit.spend-capDetail", { setting: "\u0000" })
+            .split("\u0000")
+            .map((part, i) => (
+              <span key={`${part}-${String(i)}`}>
+                {i > 0 ? <code className="rounded-[5px] border border-line bg-surface px-1.5 py-px font-mono text-[11.5px] text-text">{capSetting[task.spend.unit]}</code> : null}
+                {part}
+              </span>
+            ))}
+        </p>
+      ) : null}
     </NeedsYou>
   );
 };
@@ -298,6 +372,28 @@ export const reopenBlockedText = (blocked: TaskDetail["capabilities"]["reopenBlo
       return blocked satisfies never;
   }
 };
+
+/**
+ * The composer at the spend cap (task-limits.md, "Composer"): drawn but disabled, a `--line` edge,
+ * the placeholder saying why, and `Reopen` at 40%, until an admin raises the cap.
+ */
+export const SpendCapComposer = () => (
+  <div className="shrink-0 pt-3" data-part="composer-blocked">
+    <div className="flex items-center gap-2 rounded-lg border border-line bg-surface px-3.5 py-3">
+      <textarea
+        disabled
+        rows={2}
+        aria-label={t("task.composer.label")}
+        placeholder={t("taskPage.composer.spendCapPlaceholder")}
+        className="block min-w-0 flex-1 resize-none bg-transparent text-body placeholder:text-faint disabled:cursor-not-allowed"
+      />
+      <Button variant="primary" aria-disabled className="pointer-events-none self-end opacity-40" tabIndex={-1}>
+        <RotateCcwIcon aria-hidden />
+        {t("taskPage.composer.reopen")}
+      </Button>
+    </div>
+  </div>
+);
 
 /** A line of the header: the merged hint, with a link to the ticket in the Inbox when there is one. */
 export const MergedHint = ({ inboxHref }: { readonly inboxHref: string | null }): ReactNode => (
