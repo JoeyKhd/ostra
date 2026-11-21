@@ -1,0 +1,66 @@
+---
+title: "Documents ostra reads"
+description: "The text ostra reads out of Word, Excel, PowerPoint and PDF files, what it can't read, and where it reads them."
+summary: "A .docx, .xlsx, .pptx or .pdf gets its text beside it as Markdown, read in core when the file comes in, never in a box."
+---
+
+An agent reads text files with its own tools, but not a Word document or a PDF. So for four kinds of document, ostra reads the text out when the file comes in, and the runner writes it beside the file as Markdown: `history-panel-spec.docx` gets `history-panel-spec.docx.md`. The prompt names both paths, and the file's chip in the thread says **text extracted**. It works the same for a member's files ([Attaching files](/docs/using-ostra/files)) and a ticket's ([A ticket's files](/docs/using-ostra/ticket-files)).
+
+## The four kinds
+
+ostra tells a document by its bytes, never by its name: a PDF by its header, and a Word, Excel or PowerPoint file by the main part its zip names.
+
+| Kind | What its text holds |
+|---|---|
+| Word, `.docx` | The body in order: paragraphs, with their tabs and line breaks; headings as `#` to `######`; list items as `- `; tables as Markdown tables. Deleted text, field codes and drawings are left out. |
+| Excel, `.xlsx` | Each sheet, in the workbook's order, under `## <sheet>`, its rows as a Markdown table of the cells' stored values. A formula gives the last result Excel stored: nothing is recomputed. |
+| PowerPoint, `.pptx` | Each slide, in the deck's order, under `## Slide <n>`, its title as `###`, then its shapes' text and tables. |
+| PDF, `.pdf` | Each page's text layer under `## Page <n>`. A page with no text is left out. |
+
+The text starts with a line of ostra's, "Text extracted by ostra from history-panel-spec.docx (docx). Layout, images and anything scanned may be missing.", so the agent knows it's a reading, not the file. It holds at most 1 MiB. A longer one is cut, and its last line says so: "[ostra cut the text here: the document's text goes on past 1 MiB.]"
+
+## What it doesn't read
+
+- **Scans and pictures.** ostra does no OCR, so a scanned PDF has no text. A model that takes images or PDFs can read the file itself.
+- **Older and other formats:** `.doc`, `.xls`, `.ppt` and OpenDocument files. They're attached as files.
+- **Text files,** such as `.csv`, `.md`, `.log` or source code. The agent reads them as they are.
+
+A document ostra can't read is still attached, and the agent still gets the file. Its chip says **no text**, and its tooltip says why:
+
+| Reason | What it means |
+|---|---|
+| It's encrypted | The document needs a password. |
+| It's damaged | It can't be read as its kind: a broken zip, broken XML, or a PDF that won't open. |
+| It's too big to read | A part of it, or all of them together, would unpack past the reader's limit, or past its memory. |
+| It holds too many parts | Its zip holds more than 2,000 entries. |
+| It declares a DOCTYPE | A part declares a DOCTYPE or an entity, which ostra never parses. |
+| Reading it took too long | Past 30 seconds. |
+| It has no text layer | It was read, and holds no text: a scan, or an empty document. |
+| The readers were busy | No reader was free within 30 seconds. |
+
+## Where it's read
+
+Core reads the text, never the runner or the box. A member's document is read before its upload answers, and a ticket's in the job that fetches it. So the runner's image carries no document parser, and no box ever parses an untrusted document.
+
+Core reads each document in a worker thread of its own, apart from its event loop, two at a time in each core process. Each worker has 256 MiB of memory and 30 seconds for a file. A worker past either is stopped, the file is refused with its reason, and a fresh worker takes the next file.
+
+Nothing in a document runs or is fetched. No macro, script or embedded object runs, no link or external part is followed, and no font is loaded. A worker gets none of core's environment, and `fetch`, `WebSocket`, `EventSource` and `XMLHttpRequest` throw there, so no library can call out. A zip is read only for the parts its kind needs, each part's declared size checked before it's unpacked, at most 2,000 entries and 100 MiB unpacked. A part that declares a DOCTYPE is refused before it's parsed. See [Files and documents](/docs/security/files).
+
+The readers are [unpdf](https://github.com/unjs/unpdf) for PDFs, and ostra's own small reader on [fflate](https://github.com/101arrowz/fflate) and [@xmldom/xmldom](https://github.com/xmldom/xmldom) for the Office files: each MIT, pinned, with no dependency of its own.
+
+## Turn it off
+
+`OSTRA_FILE_TEXT_EXTRACTION=false` reads no document's text: each one goes to the agent as a file alone, and no worker ever starts. It's `true` by default.
+
+```yaml
+services:
+  server:
+    environment:
+      OSTRA_FILE_TEXT_EXTRACTION: "false"
+```
+
+```sh
+docker compose up -d
+```
+
+A document that came in before the change keeps the text it got.

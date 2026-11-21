@@ -97,7 +97,22 @@ export const trackerCapabilities = {
 } as const satisfies TrackerCapabilities;
 ```
 
-The tracker suite's files cases take `files` hooks in their fixture, which seed a ticket with an image and a document in its description, an image in a comment, an attached document and a link attachment, as a person makes them in the tracker. An adapter that declares `none` may leave them out.
+The tracker suite's files cases take `files` hooks in their fixture, as a person makes files in the tracker:
+
+- **`seedTicketWithFiles`:** a ticket with an image and a linked document in its description, a person's comment showing an image, an attached document, a link attachment, and a spare image on the file host that the suite's own ostra comment shows;
+- **`followUpText`:** a follow-up's text, as the tracker gives it, with an image and a document on the file host and a link to the same kind of file off it;
+- **`seedFile(size)`** and **`seedEndlessFile()`:** a file of that size on the file host, and one whose body never ends, for the download cases. Leave out the second where nothing streams, as in an in-memory fake.
+
+An adapter that declares `none` may leave the hooks out. The cases are:
+
+- `ticketFiles` is declared as `all`, `images` or `none`, and the hooks are there unless it's `none`;
+- a ticket's files are listed once each, in the order above, as `ticketFiles` says, with `files` empty for `none`;
+- the files in ostra's own comment, or an attachment ostra made, are `byOstra`, and none is without `options.own`;
+- a link attachment is never a file;
+- `filesInText` finds a follow-up's files on the file host, as `ticketFiles` says, and ignores the link off it;
+- `downloadFile` gets a file within `maxBytes`, refuses one over it with `invalid-input` having read no more, and refuses a URL off the file host with no credential sent.
+
+`defineTrackerFilesSuite` runs these cases alone, for an adapter the full suite doesn't run.
 
 ## The agent kind
 
@@ -109,6 +124,26 @@ An agent adapter writes only what is particular to its agent. ostra drives agent
 - **`capabilities`**, as above, each one checked by the agent suite. With `promptImages`, a prompt and a steer take `{ text, images }`, and the driver sends each image as an ACP `image` block with base64 data after the text, once the agent advertised `promptCapabilities.image` at `initialize` and the task's model takes images (`PrepareLaunchInput.model.inputModalities`, which the agent's config should carry). `promptsImages(session)` says whether all three hold; otherwise images are refused, and the runner writes their paths into the text instead.
 
 The agent itself is installed by the base image, pinned and checked, never by the adapter at run time.
+
+### Files and images
+
+Every file a member or a ticket gives a task reaches every agent the same way, with nothing asked of the adapter: the runner writes it under the workspace root's `.ostra/`, outside the repos, writes a document's text beside it, and names each path in the prompt's text ([Attaching files](/docs/using-ostra/files#what-the-agent-gets)). An image also goes in as a picture only on an agent that declares `promptImages`. Without it, images reach the agent as files, which its read tool opens, and the task page says so.
+
+The agent suite's files cases run when the fixture gives `files` probes:
+
+- **`modelTurn`:** words put before a prompt so that its turn calls the model once, with the prompt's text and images. Empty for an agent whose every turn calls its model.
+- **`steerable`:** a prompt whose turn waits for a steer, and `waitFor`, the agent's message that says it's waiting. Without it, the steer case is skipped.
+- **`readFile(path)`:** a prompt that makes the agent read the file at an absolute path with its own read tool, and say its first line.
+- **`brain`:** a script for the cases' stub model, for an agent whose every step is its model's, as a real agent's is.
+
+The cases are:
+
+- with `promptImages`, a PNG in a prompt reaches the stub model as an image, in each API format: an Anthropic `image` block with base64 data, and an OpenAI `image_url` with a data URL;
+- the same for a PNG in a steer mid-turn, where the agent steers mid-turn;
+- without `promptImages`, or with a model whose `inputModalities` lack `image`, a prompt with images is refused with `unsupported` before its turn starts and nothing reaches the model, while the same prompt with the file's path in its text and no image goes through;
+- a file the runner wrote under the workspace root's `.ostra/` opens with the agent's own read tool.
+
+In the parity table, the row "F-148 Images and files in a prompt" takes the four cases on an agent that declares `promptImages`, and the fallback on one that doesn't: the paths in the text, and the file read from `.ostra/`.
 
 ## Contract suites
 

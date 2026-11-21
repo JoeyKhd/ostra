@@ -37,10 +37,13 @@ Every feature that touches the agent goes through the agent interface. Where an 
 | MCP | HTTP and stdio | Both kinds of MCP server work, through the sidecar. OpenCode never signs in to one itself. |
 | Profile over repo config | yes | A profile's permissions and MCP servers win over the repo's. |
 | Memory | through MCP | ostra's [memory](/docs/using-ostra/memory) reaches it as the index and ostra's memory tools. OpenCode has no memory of its own to turn off. |
+| Images in its prompt | yes | A member's or a ticket's images reach a model that reads images as pictures, in a prompt and in a message mid-turn. See [Attaching files](/docs/using-ostra/files). |
 
 ## Models
 
 OpenCode uses the model its [agent profile](/docs/agents-and-models/agent-profiles) names, served by a [model provider](/docs/agents-and-models/model-providers) in either API format. ostra writes the provider into OpenCode's config as a base URL that points at the key proxy, with a fake key. A profile's reasoning effort is sent as one of the levels the model has.
+
+ostra also writes what the model takes in, text and, where the model reads them, images and PDFs ([Model providers](/docs/agents-and-models/model-providers#images)). OpenCode treats a model it's told nothing of as text only, and swaps any image, its read tool's included, for an error line.
 
 ## Updates
 

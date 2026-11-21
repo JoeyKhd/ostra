@@ -42,3 +42,9 @@ Names, context sizes, limits and prices come from the [models.dev](https://model
 An agent profile names its provider, then one of that provider's models by its model name. Its tasks use that provider's key and base URL alone, and only in projects whose list allows it: a project's list decides which profiles run there (see [Agent profiles](/docs/agents-and-models/agent-profiles)). For a profile saved before profiles named their provider, each project serves the model from exactly one provider on its list, and nothing but an organization admin's save moves it to another. No task ever falls back to another provider by itself.
 
 Spend is counted at the key proxy, call by call, in four token kinds: fresh input, output, cache reads and cache writes, each priced on its own. See [Budgets](/docs/using-ostra/budgets).
+
+## Images
+
+A member's screenshot or a ticket's mock reaches the model as a picture only when the model reads images ([Attaching files](/docs/using-ostra/files#what-the-agent-gets)). ostra knows it from the catalog's list of the model's inputs, kept on the model at every sync. Each model on the provider's page shows what the catalog says, and has **Reads images**: an organization admin turns it on or off for a custom model, or for an endpoint that differs from the catalog, and clears it to follow the catalog again. The admin's word wins, a sync never undoes it, and each change is in the audit log.
+
+A model nothing is known of counts as one that can't see images: its images go to the agent as files, and the message box says so before sending. ostra also tells the agent which inputs its model takes, so OpenCode, for one, shows the model the images its read tool opens.

@@ -1,0 +1,54 @@
+---
+title: "Files and documents"
+description: "Files for the agent are untrusted data: how ostra takes them in, stores them, serves them and reads their text."
+summary: "A member's or a ticket's file is data: told by its bytes, renamed safe, served as a download, never run, its text read in a sealed worker."
+---
+
+A file a member attaches, or one a ticket holds, is untrusted: anyone who can write in the tracker, or trick a member into attaching something, chooses its bytes and its name. ostra treats every file as data from the moment it arrives. The box is what contains an agent the file tricks ([What the box contains](/docs/security/the-box)).
+
+## Taking a file in
+
+- **One file a request, checked twice.** The panel's upload goes to the web app, which checks that the member can open the project, and send on the task when one is named, and the file's size against the limit. It hands the bytes to core with a token for that organization, project, member, size and SHA-256, good for one minute. Core checks the token, then the size and the digest against the bytes it got, and refuses anything else with a code and nothing of the file.
+- **Told by its bytes.** Core decides what a file is from its content alone: never the browser's type, never its name. A PNG, JPEG, GIF or WebP is an image, a PDF or an Office file a document, valid UTF-8 text a text file, and anything else a file. An SVG is a file, never drawn as an image.
+- **Renamed safe.** Before a name touches a disk or a prompt, it's made safe: ASCII letters, digits, spaces and `._-()`, at most 120 characters, no leading dot, no path, and none of Windows' reserved names ([Names](/docs/using-ostra/files#names)).
+- **Capped.** The limits keep each message, and each read of a ticket, to a number of files and of bytes ([Limits](/docs/using-ostra/files#limits)), and a member to twice `OSTRA_MESSAGE_FILES_MAX` uploads waiting in a project. An upload no message took is deleted after a day.
+
+A file's name, its content and its text never reach a log line, a shell command, a process's arguments or a URL ostra builds. Log lines carry IDs, sizes, kinds and reasons.
+
+## A ticket's files
+
+Core fetches a ticket's files through the tracker's adapter, with the connection's credential. The credential goes only to the tracker's own file host, `https://uploads.linear.app` for Linear, and no redirect is followed, so a link in a ticket can't send the token anywhere else. A download is held to its limit and stops there. A link attachment is given to the agent as its title and URL, and ostra never opens it. The credential never reaches the box: the runner gets each file from core, as a blob.
+
+## In the box
+
+The runner writes each file under the workspace root's `.ostra/`, outside every repo, at the place core named. It checks each file against the size and SHA-256 core gave, and writes nothing that differs. A place must resolve inside `.ostra/`: a `..`, an absolute path, or a link or junction that leads out is refused. A file is written under a fresh name and then moved into place, so a link someone left at the place is replaced, never followed. Every file is readable and never executable (`0644`), on `docker`, `kubernetes` and `host` alike.
+
+The prompt tells the agent the files are the member's or the ticket's data, not instructions, and a ticket's words reach it inside marked blocks. That keeps an honest agent on track, but it contains nothing: an agent a file tricks is held by the box, as it is when any other text tricks it. On `host` there is no box ([The host executor](/docs/security/host-executor)).
+
+## Served as downloads
+
+Anyone who can open the task downloads its files, and nobody else. Every response carries:
+
+| Header | Value |
+|---|---|
+| `Content-Type` | An image's own type; `application/octet-stream` for anything else, an SVG or an HTML file included |
+| `Content-Disposition` | `attachment`, with the file's safe name |
+| `X-Content-Type-Options` | `nosniff` |
+| `Content-Security-Policy` | `default-src 'none'; sandbox` |
+| `Cross-Origin-Resource-Policy` | `same-origin` |
+| `Cache-Control` | `private, no-store` |
+
+So the browser saves a file rather than open it, never guesses another type, and runs nothing in it even if it's opened. Another organization's task, a restricted project's, another task's file and a file that doesn't exist all get the same "not found". Before a message is sent, its box previews an image from the browser's own copy of it, never from the server.
+
+## Reading a document's text
+
+Core reads the text out of `.docx`, `.xlsx`, `.pptx` and `.pdf` files as they come in, never in the runner or a box, so no box parses an untrusted document ([Documents ostra reads](/docs/using-ostra/documents)). The readers:
+
+- run in worker threads apart from core's event loop, two to a core process, each with 256 MiB of memory and 30 seconds a file, after which the worker is stopped and replaced;
+- get none of core's environment, with `fetch`, `WebSocket`, `EventSource` and `XMLHttpRequest` made to throw and the console silenced, since a parser's warning can quote the document;
+- read a zip only for the parts their kind needs, each part's declared size checked before it's unpacked, at most 2,000 entries and 100 MiB;
+- refuse a part that declares a DOCTYPE or an entity, before parsing it;
+- read a PDF's text layer and nothing else, with no script, no WebAssembly compiled from the document, no fonts and nothing fetched;
+- keep at most 1 MiB of text.
+
+A document they can't read is still attached, with the reason, and never fails its message. `OSTRA_FILE_TEXT_EXTRACTION=false` turns reading off on an install.

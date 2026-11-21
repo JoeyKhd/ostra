@@ -3,7 +3,7 @@ title: "Linear (optional)"
 description: "Connect a Linear workspace, so its tickets become tasks."
 ---
 
-With Linear connected, a ticket becomes a task, and ostra keeps the ticket's status in step, writes one comment on it, and links the pull request back. The organization uses its own Linear app, whose tokens stay on your server in the secret store and never reach an agent. You need to be an admin of the Linear workspace.
+With Linear connected, a ticket becomes a task, and ostra keeps the ticket's status in step, writes one comment on it, and links the pull request back. The organization uses its own Linear app, whose tokens stay on your server in the secret store and never reach an agent. ostra fetches a ticket's files with them from Linear's own file host, and hands the agent the files ([A ticket's files](/docs/using-ostra/ticket-files)). You need to be an admin of the Linear workspace.
 
 ## 1. Create the app in Linear
 

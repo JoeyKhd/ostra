@@ -13,6 +13,8 @@ Type in the task's composer, then:
 - **Send.** For an agent that takes a message mid-turn, as OpenCode does, the message reaches the model at the agent's next call, after any tool step that's running. For an agent that doesn't, the message is queued: everyone sees it in the thread as "queued", and it's delivered when the turn ends. When the session is idle, **Send** starts the next turn.
 - **Interrupt and send.** Stops the current turn and sends the message as the next prompt, on every agent.
 
+A message can carry files: paste them, drop them on the page, or pick them with the paperclip. See [Attaching files](/docs/using-ostra/files).
+
 When someone else is driving, the composer says so: take over first to send.
 
 ## Stop

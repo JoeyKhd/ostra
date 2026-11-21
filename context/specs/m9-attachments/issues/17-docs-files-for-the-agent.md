@@ -1,6 +1,6 @@
 # 17: Docs: files for the agent
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: 14
 Features: F-148, F-149, F-150 (their docs)
@@ -18,9 +18,17 @@ Pages in the docs site (ADR 0063), in its voice, each command run by `check-docs
 
 ## Done when
 
-- [ ] The pages exist, link from the docs' navigation, and the docs build and its commands' check pass.
-- [ ] The configuration reference's seven lines read as the pages say.
-- [ ] Checks for `apps/docs` pass (spec section 10).
-- [ ] Committed as `📝 document files for the agent`.
+- [x] The pages exist, link from the docs' navigation, and the docs build and its commands' check pass.
+- [x] The configuration reference's seven lines read as the pages say.
+- [x] Checks for `apps/docs` pass (spec section 10).
+- [x] Committed as `📝 document files for the agent`.
 
 ## Comments
+
+- 2026-11-21, core: committed as `📝 document files for the agent`, started before ticket 14 on the lead's word, from the spec, ADR 0070 and the code on `main`. What it holds, and the readings:
+  - **The pages:** `using-ostra/files.mdx` (Attaching files), `using-ostra/ticket-files.mdx` (A ticket's files, with the ticket template's `{{#images}}` and `{{#links}}`: the site has no template page of its own, so the section lives here), `using-ostra/documents.mdx` (Documents ostra reads) and `security/files.mdx` (Files and documents), each in its section's `meta.json`. The adapter guide gains the tracker suite's files hooks and cases, and an agent section, "Files and images", with the `files` probes, the four cases and the parity row. Short links from Tasks, Steering, Reopening, Model providers (a new "Images" section: the catalog's inputs and "Reads images"), OpenCode (the capability row, and the inputs written into its config) and Linear. README's milestone 9 row moves from "specced" to "being built".
+  - **Ticket 12 had landed** when I checked before pushing (`c3425e7e`, the same as the local `42aeb58f` the pages were written against): the ticket pages follow it (the start's limits as a file downloads, Retry's and an update's words, the driver-only press on a running or waiting task, a reopen without the changes when the tracker doesn't answer, `none`'s prompt line, the built-in template without `## Images` and with `{{#links}}`).
+  - **The panel's words** come from `apps/web/messages/en.json` where tickets 15 and 16's phase A put them, and from the approved targets for what isn't wired yet ("Send ticket updates", "Reads images", "Nothing new on the ticket since the agent read it."). Words with a placeholder are given with example values, since MDX reads braces as code.
+  - **The configuration reference's seven lines** read as the pages say, and weren't touched. The pages also name what no setting holds: the unsent cap (twice `OSTRA_MESSAGE_FILES_MAX` a member and project), and a task's box holding its first 500 files and 512 MiB.
+  - **No pictures:** no page of the site uses them, so no `picture` marker was left.
+  - **Checks:** `apps/docs`' typecheck, lint and tests; `next build` and `check:export`; `scripts/check-docs-commands.test.ts`, `--list`, and the other tests that read the pages (`members-docs`, `deploy-docs`, the adapter guide's samples); every `/docs/…#anchor` link checked against the site's heading anchors.
