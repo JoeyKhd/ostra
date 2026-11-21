@@ -752,7 +752,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
     );
 
   const previewing = side === "preview";
-  const eventsMarker = eventRows.data === undefined || eventRows.data.rows === 0 ? null : <span className="font-mono text-xs text-faint" data-testid="event-log-count">{eventRows.data.rows}</span>;
+  const eventsMarker = eventRows.data === undefined || eventRows.data.rows === 0 ? null : <span className="text-faint" data-testid="event-log-count">{eventRows.data.rows}</span>;
   const sideToggle = codeTask ? (
     <ToggleGroup
       type="single"
