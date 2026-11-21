@@ -34,7 +34,7 @@ Spec: `../spec.md`, sections 4 and 5; ADR 0070
 
 ## Comments
 
-- **2026-11-22, done** (`✨ add file uploads, sends and downloads`). What landed, and where it differs from the text above:
+- **2026-11-22, done** (`4c92c0b5`, `✨ add file uploads, sends and downloads`). What landed, and where it differs from the text above:
   - **The maintainer's call that overrides this ticket** (the approved designs' choices, 4.2): a new task from files alone isn't allowed. `tasks.create` needs words even when files come (`createPromptTask` refuses `prompt-required`, and the title fallback to the first file's name is gone); `tasks.send` and `tasks.reopen` still take files with no words. Spec section 4 ("Sending") and 5.4 say so.
   - **Routes:** `POST /api/projects/<projectId>/files` (`serveMessageFileUpload`) and `GET /api/tasks/<taskId>/files/<fileId>` (`serveTaskFile`), with the web app's handlers. The upload's answer and refusals are `@ostra/domain/file-uploads` (`recordedUploadSchema`, `uploadRefusalSchema`, client-safe); core is reached through `corePanelFileUploader` (90 s, over core's wait for a document's text), the runtime's default under the secrets key.
   - **`files.discard` expires the upload** instead of deleting its row and blobs: the panel deletes no blob (ADR 0043), and core's `files.sweep-unsent` already deletes every expired upload's blobs from whichever store holds them. `domain-model.md` says so.
