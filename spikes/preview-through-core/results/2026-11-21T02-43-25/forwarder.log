@@ -1,0 +1,6 @@
+forwarder 127.0.0.3:15173 -> localhost:5173, from 127.0.0.2 only
+forwarder 127.0.0.3:13002 -> localhost:3002, from 127.0.0.2 only
+forwarder 127.0.0.3:18080 -> localhost:8080, from 127.0.0.2 only
+forwarder 127.0.0.3:18081 -> localhost:8081, from 127.0.0.2 only
+forwarder 127.0.0.3:13001 -> localhost:3001, from 127.0.0.2 only
+refused 127.0.0.4 on 5173

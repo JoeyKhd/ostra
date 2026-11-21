@@ -1,0 +1,9 @@
+packages:
+  - "."
+# spikes/ is outside the repo's workspace (docs/development.md): this spike installs on its own.
+# Next.js's optional image library (sharp) and its SWC binary come as prebuilt platform packages; no install
+# script is needed for the dev servers the spike runs.
+allowBuilds:
+  sharp: false
+  "@parcel/watcher": false
+  unrs-resolver: false

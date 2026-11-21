@@ -1,0 +1,2 @@
+forwarding http://localhost:15173 to the box's 5173
+[cli-5173 exited 1]

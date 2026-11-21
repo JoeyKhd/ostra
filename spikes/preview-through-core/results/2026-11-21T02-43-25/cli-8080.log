@@ -1,0 +1,2 @@
+forwarding http://localhost:18080 to the box's 8080
+[cli-8080 exited 1]

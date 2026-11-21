@@ -1,0 +1,2 @@
+forwarding http://localhost:13002 to the box's 3002
+[cli-3002 exited 1]

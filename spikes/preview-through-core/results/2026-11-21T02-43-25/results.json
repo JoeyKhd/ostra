@@ -1,0 +1,1973 @@
+{
+  "stamp": "2026-11-21T02-43-25",
+  "quick": false,
+  "machine": {
+    "cpu": "13th Gen Intel(R) Core(TM) i9-13900K",
+    "os": "Windows 10.0.26200",
+    "node": "v24.14.0",
+    "versions": {
+      "vite": "8.3.8",
+      "next": "16.4.6",
+      "webpack": "5.112.2",
+      "webpackDevServer": "5.2.7",
+      "ws": "8.23.0",
+      "playwright": "1.65.1"
+    },
+    "devServerBindings": [
+      "::1:8080",
+      "::1:5173",
+      ":::3002",
+      "127.0.0.1:3001"
+    ]
+  },
+  "chromeVersion": "159.0.8154.6",
+  "hmr": [
+    {
+      "server": "vite",
+      "route": "direct",
+      "status": 200,
+      "api": true,
+      "pageHost": "localhost:5173",
+      "bypassed": [],
+      "updated": true,
+      "ms": 121,
+      "reloaded": false
+    },
+    {
+      "server": "vite",
+      "route": "tunnel (https, rewrite on, preview.example.test)",
+      "status": 200,
+      "api": true,
+      "pageHost": "5173-p1.preview.example.test:8443",
+      "bypassed": [],
+      "updated": true,
+      "ms": 34,
+      "reloaded": false
+    },
+    {
+      "server": "vite",
+      "route": "tunnel (http, rewrite on, preview.localhost)",
+      "status": 200,
+      "api": true,
+      "pageHost": "5173-p1.preview.localhost:8800",
+      "bypassed": [],
+      "updated": true,
+      "ms": 32,
+      "reloaded": false
+    },
+    {
+      "server": "vite",
+      "route": "local forward (ostra preview)",
+      "status": 200,
+      "api": true,
+      "pageHost": "localhost:15173",
+      "bypassed": [],
+      "updated": true,
+      "ms": 32,
+      "reloaded": false
+    },
+    {
+      "server": "next",
+      "route": "direct",
+      "status": 200,
+      "api": null,
+      "pageHost": "localhost:3002",
+      "bypassed": [],
+      "updated": true,
+      "ms": 127,
+      "reloaded": false
+    },
+    {
+      "server": "next",
+      "route": "tunnel (https, rewrite on, preview.example.test)",
+      "status": 200,
+      "api": null,
+      "pageHost": "3002-p1.preview.example.test:8443",
+      "bypassed": [],
+      "updated": true,
+      "ms": 22,
+      "reloaded": false
+    },
+    {
+      "server": "next",
+      "route": "tunnel (http, rewrite on, preview.localhost)",
+      "status": 200,
+      "api": null,
+      "pageHost": "3002-p1.preview.localhost:8800",
+      "bypassed": [],
+      "updated": true,
+      "ms": 20,
+      "reloaded": false
+    },
+    {
+      "server": "next",
+      "route": "local forward (ostra preview)",
+      "status": 200,
+      "api": null,
+      "pageHost": "localhost:13002",
+      "bypassed": [],
+      "updated": true,
+      "ms": 21,
+      "reloaded": false
+    },
+    {
+      "server": "wds",
+      "route": "direct",
+      "status": 200,
+      "api": null,
+      "pageHost": "localhost:8080",
+      "bypassed": [],
+      "updated": true,
+      "ms": 54,
+      "reloaded": false
+    },
+    {
+      "server": "wds",
+      "route": "tunnel (https, rewrite on, preview.example.test)",
+      "status": 200,
+      "api": null,
+      "pageHost": "8080-p1.preview.example.test:8443",
+      "bypassed": [
+        "localhost:8080"
+      ],
+      "updated": false,
+      "ms": 30003,
+      "reloaded": false
+    },
+    {
+      "server": "wds",
+      "route": "tunnel (http, rewrite on, preview.localhost)",
+      "status": 200,
+      "api": null,
+      "pageHost": "8080-p1.preview.localhost:8800",
+      "bypassed": [
+        "localhost:8080"
+      ],
+      "updated": false,
+      "ms": 30001,
+      "reloaded": false
+    },
+    {
+      "server": "wds",
+      "route": "local forward (ostra preview)",
+      "status": 200,
+      "api": null,
+      "pageHost": "localhost:18080",
+      "bypassed": [
+        "localhost:8080"
+      ],
+      "updated": true,
+      "ms": 59,
+      "reloaded": false
+    },
+    {
+      "server": "wdsAuto",
+      "route": "direct",
+      "status": 200,
+      "api": null,
+      "pageHost": "localhost:8081",
+      "bypassed": [],
+      "updated": true,
+      "ms": 41,
+      "reloaded": false
+    },
+    {
+      "server": "wdsAuto",
+      "route": "tunnel (https, rewrite on, preview.example.test)",
+      "status": 200,
+      "api": null,
+      "pageHost": "8081-p1.preview.example.test:8443",
+      "bypassed": [],
+      "updated": true,
+      "ms": 50,
+      "reloaded": false
+    },
+    {
+      "server": "wdsAuto",
+      "route": "tunnel (http, rewrite on, preview.localhost)",
+      "status": 200,
+      "api": null,
+      "pageHost": "8081-p1.preview.localhost:8800",
+      "bypassed": [],
+      "updated": true,
+      "ms": 43,
+      "reloaded": false
+    },
+    {
+      "server": "wdsAuto",
+      "route": "local forward (ostra preview)",
+      "status": 200,
+      "api": null,
+      "pageHost": "localhost:18081",
+      "bypassed": [],
+      "updated": true,
+      "ms": 42,
+      "reloaded": false
+    }
+  ],
+  "pageLoad": {
+    "direct": {
+      "loadMsMedian": 75,
+      "readyMsMedian": 95,
+      "loadMs": [
+        76,
+        76,
+        74,
+        74,
+        75,
+        83,
+        69,
+        68
+      ],
+      "requests": 14,
+      "kb": 3627
+    },
+    "tunnel": {
+      "loadMsMedian": 105,
+      "readyMsMedian": 128,
+      "loadMs": [
+        104,
+        117,
+        111,
+        95,
+        108,
+        94,
+        97,
+        105
+      ],
+      "requests": 14,
+      "kb": 3629
+    },
+    "local forward": {
+      "loadMsMedian": 108,
+      "readyMsMedian": 127,
+      "loadMs": [
+        108,
+        115,
+        119,
+        99,
+        103,
+        103,
+        96,
+        111
+      ],
+      "requests": 14,
+      "kb": 3627
+    }
+  },
+  "cookies": [
+    {
+      "browser": "chrome",
+      "version": "159.0.8154.6",
+      "scheme": "http",
+      "layout": "cross-site",
+      "panelOrigin": "http://localhost:3410",
+      "previewHost": "5173-p1.preview.localhost:8800",
+      "resolved": true,
+      "inFrame": "app",
+      "frameApi": true,
+      "hmrConnected": true,
+      "stored": [
+        {
+          "sameSite": "None",
+          "secure": true,
+          "partitionKey": "http://localhost"
+        }
+      ],
+      "topLevelBeforeHandshake": "no-cookie",
+      "topLevelAfterHandshake": "app"
+    },
+    {
+      "browser": "chrome",
+      "version": "159.0.8154.6",
+      "scheme": "http",
+      "layout": "same-site",
+      "panelOrigin": "http://ostra.localhost:3410",
+      "previewHost": "5173-p1.preview.ostra.localhost:8800",
+      "resolved": true,
+      "inFrame": "app",
+      "frameApi": true,
+      "hmrConnected": true,
+      "stored": [
+        {
+          "sameSite": "Lax",
+          "secure": true,
+          "partitionKey": null
+        }
+      ],
+      "topLevelBeforeHandshake": "app",
+      "topLevelAfterHandshake": "app"
+    },
+    {
+      "browser": "chrome",
+      "version": "159.0.8154.6",
+      "scheme": "https",
+      "layout": "cross-site",
+      "panelOrigin": "https://localhost:3443",
+      "previewHost": "5173-p1.preview.localhost:8443",
+      "resolved": true,
+      "inFrame": "app",
+      "frameApi": true,
+      "hmrConnected": true,
+      "stored": [
+        {
+          "sameSite": "None",
+          "secure": true,
+          "partitionKey": "https://localhost"
+        }
+      ],
+      "topLevelBeforeHandshake": "no-cookie",
+      "topLevelAfterHandshake": "app"
+    },
+    {
+      "browser": "chrome",
+      "version": "159.0.8154.6",
+      "scheme": "https",
+      "layout": "same-site",
+      "panelOrigin": "https://ostra.localhost:3443",
+      "previewHost": "5173-p1.preview.ostra.localhost:8443",
+      "resolved": true,
+      "inFrame": "app",
+      "frameApi": true,
+      "hmrConnected": true,
+      "stored": [
+        {
+          "sameSite": "Lax",
+          "secure": true,
+          "partitionKey": null
+        }
+      ],
+      "topLevelBeforeHandshake": "app",
+      "topLevelAfterHandshake": "app"
+    },
+    {
+      "browser": "edge",
+      "version": "157.0.4341.60",
+      "scheme": "http",
+      "layout": "cross-site",
+      "panelOrigin": "http://localhost:3410",
+      "previewHost": "5173-p1.preview.localhost:8800",
+      "resolved": true,
+      "inFrame": "app",
+      "frameApi": true,
+      "hmrConnected": true,
+      "stored": [
+        {
+          "sameSite": "None",
+          "secure": true,
+          "partitionKey": "http://localhost"
+        }
+      ],
+      "topLevelBeforeHandshake": "no-cookie",
+      "topLevelAfterHandshake": "app"
+    },
+    {
+      "browser": "edge",
+      "version": "157.0.4341.60",
+      "scheme": "http",
+      "layout": "same-site",
+      "panelOrigin": "http://ostra.localhost:3410",
+      "previewHost": "5173-p1.preview.ostra.localhost:8800",
+      "resolved": true,
+      "inFrame": "app",
+      "frameApi": true,
+      "hmrConnected": true,
+      "stored": [
+        {
+          "sameSite": "Lax",
+          "secure": true,
+          "partitionKey": null
+        }
+      ],
+      "topLevelBeforeHandshake": "app",
+      "topLevelAfterHandshake": "app"
+    },
+    {
+      "browser": "edge",
+      "version": "157.0.4341.60",
+      "scheme": "https",
+      "layout": "cross-site",
+      "panelOrigin": "https://localhost:3443",
+      "previewHost": "5173-p1.preview.localhost:8443",
+      "resolved": true,
+      "inFrame": "app",
+      "frameApi": true,
+      "hmrConnected": true,
+      "stored": [
+        {
+          "sameSite": "None",
+          "secure": true,
+          "partitionKey": "https://localhost"
+        }
+      ],
+      "topLevelBeforeHandshake": "no-cookie",
+      "topLevelAfterHandshake": "app"
+    },
+    {
+      "browser": "edge",
+      "version": "157.0.4341.60",
+      "scheme": "https",
+      "layout": "same-site",
+      "panelOrigin": "https://ostra.localhost:3443",
+      "previewHost": "5173-p1.preview.ostra.localhost:8443",
+      "resolved": true,
+      "inFrame": "app",
+      "frameApi": true,
+      "hmrConnected": true,
+      "stored": [
+        {
+          "sameSite": "Lax",
+          "secure": true,
+          "partitionKey": null
+        }
+      ],
+      "topLevelBeforeHandshake": "app",
+      "topLevelAfterHandshake": "app"
+    },
+    {
+      "browser": "firefox",
+      "version": "159.0",
+      "scheme": "http",
+      "layout": "cross-site",
+      "panelOrigin": "http://localhost:3410",
+      "previewHost": "5173-p1.preview.localhost:8800",
+      "resolved": true,
+      "inFrame": "app",
+      "frameApi": true,
+      "hmrConnected": true,
+      "stored": [
+        {
+          "sameSite": "None",
+          "secure": true,
+          "partitionKey": null
+        }
+      ],
+      "topLevelBeforeHandshake": "app",
+      "topLevelAfterHandshake": "app"
+    },
+    {
+      "browser": "firefox",
+      "version": "159.0",
+      "scheme": "http",
+      "layout": "same-site",
+      "panelOrigin": "http://ostra.localhost:3410",
+      "previewHost": "5173-p1.preview.ostra.localhost:8800",
+      "resolved": true,
+      "inFrame": "app",
+      "frameApi": true,
+      "hmrConnected": true,
+      "stored": [
+        {
+          "sameSite": "Lax",
+          "secure": true,
+          "partitionKey": null
+        }
+      ],
+      "topLevelBeforeHandshake": "app",
+      "topLevelAfterHandshake": "app"
+    },
+    {
+      "browser": "firefox",
+      "version": "159.0",
+      "scheme": "https",
+      "layout": "cross-site",
+      "panelOrigin": "https://localhost:3443",
+      "previewHost": "5173-p1.preview.localhost:8443",
+      "resolved": true,
+      "inFrame": "app",
+      "frameApi": true,
+      "hmrConnected": true,
+      "stored": [
+        {
+          "sameSite": "None",
+          "secure": true,
+          "partitionKey": null
+        }
+      ],
+      "topLevelBeforeHandshake": "app",
+      "topLevelAfterHandshake": "app"
+    },
+    {
+      "browser": "firefox",
+      "version": "159.0",
+      "scheme": "https",
+      "layout": "same-site",
+      "panelOrigin": "https://ostra.localhost:3443",
+      "previewHost": "5173-p1.preview.ostra.localhost:8443",
+      "resolved": true,
+      "inFrame": "app",
+      "frameApi": true,
+      "hmrConnected": true,
+      "stored": [
+        {
+          "sameSite": "Lax",
+          "secure": true,
+          "partitionKey": null
+        }
+      ],
+      "topLevelBeforeHandshake": "app",
+      "topLevelAfterHandshake": "app"
+    },
+    {
+      "browser": "firefox-tcp",
+      "version": "159.0",
+      "scheme": "http",
+      "layout": "cross-site",
+      "panelOrigin": "http://localhost:3410",
+      "previewHost": "5173-p1.preview.localhost:8800",
+      "resolved": true,
+      "inFrame": "app",
+      "frameApi": true,
+      "hmrConnected": true,
+      "stored": [
+        {
+          "sameSite": "None",
+          "secure": true,
+          "partitionKey": null
+        }
+      ],
+      "topLevelBeforeHandshake": "no-cookie",
+      "topLevelAfterHandshake": "app"
+    },
+    {
+      "browser": "firefox-tcp",
+      "version": "159.0",
+      "scheme": "http",
+      "layout": "same-site",
+      "panelOrigin": "http://ostra.localhost:3410",
+      "previewHost": "5173-p1.preview.ostra.localhost:8800",
+      "resolved": true,
+      "inFrame": "app",
+      "frameApi": true,
+      "hmrConnected": true,
+      "stored": [
+        {
+          "sameSite": "Lax",
+          "secure": true,
+          "partitionKey": null
+        }
+      ],
+      "topLevelBeforeHandshake": "app",
+      "topLevelAfterHandshake": "app"
+    },
+    {
+      "browser": "firefox-tcp",
+      "version": "159.0",
+      "scheme": "https",
+      "layout": "cross-site",
+      "panelOrigin": "https://localhost:3443",
+      "previewHost": "5173-p1.preview.localhost:8443",
+      "resolved": true,
+      "inFrame": "app",
+      "frameApi": true,
+      "hmrConnected": true,
+      "stored": [
+        {
+          "sameSite": "None",
+          "secure": true,
+          "partitionKey": null
+        }
+      ],
+      "topLevelBeforeHandshake": "no-cookie",
+      "topLevelAfterHandshake": "app"
+    },
+    {
+      "browser": "firefox-tcp",
+      "version": "159.0",
+      "scheme": "https",
+      "layout": "same-site",
+      "panelOrigin": "https://ostra.localhost:3443",
+      "previewHost": "5173-p1.preview.ostra.localhost:8443",
+      "resolved": true,
+      "inFrame": "app",
+      "frameApi": true,
+      "hmrConnected": true,
+      "stored": [
+        {
+          "sameSite": "Lax",
+          "secure": true,
+          "partitionKey": null
+        }
+      ],
+      "topLevelBeforeHandshake": "app",
+      "topLevelAfterHandshake": "app"
+    }
+  ],
+  "enterRequests": {
+    "previewRequests": 732,
+    "previewUpgrades": 63,
+    "cliStreams": 104,
+    "refusedNoCookie": 13,
+    "refusedOrigin": 2,
+    "codesUsed": 73,
+    "codesRefused": 2,
+    "bytesToBrowser": 139280746,
+    "boxes": 1,
+    "enterLog": [
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "none",
+        "agent": "other",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "cross-site",
+        "dest": "iframe",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "same-site",
+        "dest": "iframe",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "cross-site",
+        "dest": "iframe",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "same-site",
+        "dest": "iframe",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "chrome",
+        "ok": true
+      },
+      {
+        "site": "cross-site",
+        "dest": "iframe",
+        "agent": "edge",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "edge",
+        "ok": true
+      },
+      {
+        "site": "same-site",
+        "dest": "iframe",
+        "agent": "edge",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "edge",
+        "ok": true
+      },
+      {
+        "site": "cross-site",
+        "dest": "iframe",
+        "agent": "edge",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "edge",
+        "ok": true
+      },
+      {
+        "site": "same-site",
+        "dest": "iframe",
+        "agent": "edge",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "edge",
+        "ok": true
+      },
+      {
+        "site": "cross-site",
+        "dest": "iframe",
+        "agent": "firefox",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "firefox",
+        "ok": true
+      },
+      {
+        "site": "same-site",
+        "dest": "iframe",
+        "agent": "firefox",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "firefox",
+        "ok": true
+      },
+      {
+        "site": "cross-site",
+        "dest": "iframe",
+        "agent": "firefox",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "firefox",
+        "ok": true
+      },
+      {
+        "site": "same-site",
+        "dest": "iframe",
+        "agent": "firefox",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "firefox",
+        "ok": true
+      },
+      {
+        "site": "cross-site",
+        "dest": "iframe",
+        "agent": "firefox",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "firefox",
+        "ok": true
+      },
+      {
+        "site": "same-site",
+        "dest": "iframe",
+        "agent": "firefox",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "firefox",
+        "ok": true
+      },
+      {
+        "site": "cross-site",
+        "dest": "iframe",
+        "agent": "firefox",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "firefox",
+        "ok": true
+      },
+      {
+        "site": "same-site",
+        "dest": "iframe",
+        "agent": "firefox",
+        "ok": true
+      },
+      {
+        "site": "none",
+        "dest": "document",
+        "agent": "firefox",
+        "ok": true
+      },
+      {
+        "site": "cross-site",
+        "dest": "iframe",
+        "agent": "chrome",
+        "ok": true
+      }
+    ]
+  },
+  "checks": [
+    {
+      "name": "vite: page through the tunnel, rewrite on, non-localhost domain",
+      "pass": true,
+      "detail": {
+        "status": 200
+      }
+    },
+    {
+      "name": "vite: rewrite off on a non-localhost domain is blocked by Vite's host check",
+      "pass": true,
+      "detail": {
+        "status": 403,
+        "body": "Blocked request. This host (\"5173-p2.preview.example.test\") is not allowed.\nTo allow this host, add \"5173-p2.preview.exa"
+      }
+    },
+    {
+      "name": "vite: rewrite off on *.preview.localhost passes (Vite allows .localhost)",
+      "pass": true,
+      "detail": {
+        "status": 200
+      }
+    },
+    {
+      "name": "webpack-dev-server: page through the tunnel, rewrite on",
+      "pass": true,
+      "detail": {
+        "status": 200
+      }
+    },
+    {
+      "name": "webpack-dev-server: rewrite off on a non-localhost domain is refused",
+      "pass": true,
+      "detail": {
+        "status": 403,
+        "body": "Invalid Host header"
+      }
+    },
+    {
+      "name": "next: page through the tunnel, rewrite on",
+      "pass": true,
+      "detail": {
+        "status": 200
+      }
+    },
+    {
+      "name": "rewrite on: Vite sees Host localhost:5173 and no X-Forwarded-Host",
+      "pass": true,
+      "detail": {
+        "host": "localhost:5173"
+      }
+    },
+    {
+      "name": "rewrite off: X-Forwarded-Host and -Proto reach Vite, Host is the preview host",
+      "pass": true,
+      "detail": {
+        "host": "5173-p2.preview.localhost:8800",
+        "xfh": "5173-p2.preview.localhost:8800",
+        "xfp": "http"
+      }
+    },
+    {
+      "name": "rewrite off: X-Forwarded-Host reaches the API behind Vite's proxy",
+      "pass": true,
+      "detail": {
+        "xfh": "5173-p2.preview.localhost:8800",
+        "host": "5173-p2.preview.localhost:8800"
+      }
+    },
+    {
+      "name": "rewrite off: X-Forwarded-Host reaches a Next.js route handler",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "xfh": "3002-p2.preview.example.test:8800"
+      }
+    },
+    {
+      "name": "cookie: core strips its own cookie and the client's X-Forwarded-*",
+      "pass": true,
+      "detail": {
+        "cookie": null
+      }
+    },
+    {
+      "name": "cookie: a client's own X-Forwarded-Host never reaches the app",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "rewrite: a Location of http://localhost:5173 comes back as the preview host",
+      "pass": true,
+      "detail": {
+        "location": "http://5173-p1.preview.example.test:8800/"
+      }
+    },
+    {
+      "name": "framing: X-Frame-Options removed, frame-ancestors replaced by the panel's origins",
+      "pass": true,
+      "detail": {
+        "xfo": null,
+        "csp": "frame-ancestors http://localhost:3410 https://localhost:3443 http://ostra.localhost:3410 https://ostra.localhost:3443"
+      }
+    },
+    {
+      "name": "cookie: a request without the preview cookie gets nothing of the app",
+      "pass": true,
+      "detail": {
+        "status": 401
+      }
+    },
+    {
+      "name": "cookie: a code works once, and only on its own preview host",
+      "pass": true,
+      "detail": {
+        "used": 302,
+        "reused": 403,
+        "wrongHost": 403,
+        "setCookie": "__Host-ostra-preview=…; Path=/; Secure; HttpOnly; SameSite=None; Partitioned; Max-Age=43200"
+      }
+    },
+    {
+      "name": "vite HMR socket through the tunnel (extended CONNECT), with its token",
+      "pass": true,
+      "detail": {
+        "token": true
+      }
+    },
+    {
+      "name": "vite HMR socket without the token is refused by Vite through the tunnel",
+      "pass": true,
+      "detail": {
+        "opened": false,
+        "status": 400,
+        "detail": "HTTP 400"
+      }
+    },
+    {
+      "name": "a WebSocket behind Vite's proxy (ws: true) through the tunnel",
+      "pass": true,
+      "detail": {
+        "opened": true,
+        "status": 101,
+        "detail": "open"
+      }
+    },
+    {
+      "name": "core refuses a WebSocket whose Origin isn't the preview's own host",
+      "pass": true,
+      "detail": {
+        "opened": false,
+        "status": 403,
+        "detail": "HTTP 403"
+      }
+    },
+    {
+      "name": "core refuses Origin: null on a WebSocket",
+      "pass": true,
+      "detail": {
+        "opened": false,
+        "status": 403,
+        "detail": "HTTP 403"
+      }
+    },
+    {
+      "name": "next HMR socket /_next/hmr through the tunnel, rewrite on",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "next HMR socket with the rewrite off, non-localhost origin: blocked by allowedDevOrigins",
+      "pass": true,
+      "detail": {
+        "opened": false,
+        "status": 502,
+        "detail": "HTTP 502"
+      }
+    },
+    {
+      "name": "next (direct): Origin: null on the HMR socket is refused",
+      "pass": true,
+      "detail": {
+        "opened": false,
+        "status": null,
+        "detail": "Parse Error: Expected HTTP/, RTSP/ or ICE/"
+      }
+    },
+    {
+      "name": "next (direct): Origin localhost and *.localhost are allowed by default",
+      "pass": true,
+      "detail": {
+        "localhost": {
+          "opened": true,
+          "status": 101,
+          "detail": "open"
+        },
+        "previewLocalhost": {
+          "opened": true,
+          "status": 101,
+          "detail": "open"
+        }
+      }
+    },
+    {
+      "name": "next (direct): a dev asset with Origin: null, or a cross-site no-cors load, is refused",
+      "pass": true,
+      "detail": {
+        "asset": "/_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_17ou6oobjzvd1._.js",
+        "originNull": 403,
+        "crossSite": 403,
+        "plain": 200
+      }
+    },
+    {
+      "name": "webpack-dev-server HMR socket /ws through the tunnel",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "local forward: a WebSocket and HTTP requests at once over one tunnel",
+      "pass": true,
+      "detail": {
+        "echoes": 50,
+        "inOrder": true,
+        "httpOk": 20,
+        "bigBytes": [
+          2097152,
+          2097152,
+          2097152
+        ],
+        "ms": 539
+      }
+    },
+    {
+      "name": "local forward: Vite's HMR socket on the member's localhost",
+      "pass": true,
+      "detail": {
+        "opened": true,
+        "status": 101,
+        "detail": "open"
+      }
+    },
+    {
+      "name": "CLI tunnel: an unknown or used ticket is refused",
+      "pass": true,
+      "detail": {
+        "opened": false,
+        "status": 403,
+        "detail": "HTTP 403"
+      }
+    },
+    {
+      "name": "vite via direct: page loads and /api answers, an edit hot-updates it without a reload",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "api": true,
+        "pageHost": "localhost:5173",
+        "bypassed": [],
+        "updated": true,
+        "ms": 121,
+        "reloaded": false
+      }
+    },
+    {
+      "name": "vite via tunnel (https, rewrite on, preview.example.test): page loads and /api answers, an edit hot-updates it without a reload",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "api": true,
+        "pageHost": "5173-p1.preview.example.test:8443",
+        "bypassed": [],
+        "updated": true,
+        "ms": 34,
+        "reloaded": false
+      }
+    },
+    {
+      "name": "vite via tunnel (http, rewrite on, preview.localhost): page loads and /api answers, an edit hot-updates it without a reload",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "api": true,
+        "pageHost": "5173-p1.preview.localhost:8800",
+        "bypassed": [],
+        "updated": true,
+        "ms": 32,
+        "reloaded": false
+      }
+    },
+    {
+      "name": "vite via local forward (ostra preview): page loads and /api answers, an edit hot-updates it without a reload",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "api": true,
+        "pageHost": "localhost:15173",
+        "bypassed": [],
+        "updated": true,
+        "ms": 32,
+        "reloaded": false
+      }
+    },
+    {
+      "name": "next via direct: page loads, an edit hot-updates it without a reload",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "api": null,
+        "pageHost": "localhost:3002",
+        "bypassed": [],
+        "updated": true,
+        "ms": 127,
+        "reloaded": false
+      }
+    },
+    {
+      "name": "next via tunnel (https, rewrite on, preview.example.test): page loads, an edit hot-updates it without a reload",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "api": null,
+        "pageHost": "3002-p1.preview.example.test:8443",
+        "bypassed": [],
+        "updated": true,
+        "ms": 22,
+        "reloaded": false
+      }
+    },
+    {
+      "name": "next via tunnel (http, rewrite on, preview.localhost): page loads, an edit hot-updates it without a reload",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "api": null,
+        "pageHost": "3002-p1.preview.localhost:8800",
+        "bypassed": [],
+        "updated": true,
+        "ms": 20,
+        "reloaded": false
+      }
+    },
+    {
+      "name": "next via local forward (ostra preview): page loads, an edit hot-updates it without a reload",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "api": null,
+        "pageHost": "localhost:13002",
+        "bypassed": [],
+        "updated": true,
+        "ms": 21,
+        "reloaded": false
+      }
+    },
+    {
+      "name": "wds via direct: page loads, an edit hot-updates it without a reload",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "api": null,
+        "pageHost": "localhost:8080",
+        "bypassed": [],
+        "updated": true,
+        "ms": 54,
+        "reloaded": false
+      }
+    },
+    {
+      "name": "wds via tunnel (https, rewrite on, preview.example.test): page loads, an edit hot-updates it without a reload",
+      "pass": false,
+      "detail": {
+        "status": 200,
+        "api": null,
+        "pageHost": "8080-p1.preview.example.test:8443",
+        "bypassed": [
+          "localhost:8080"
+        ],
+        "updated": false,
+        "ms": 30003,
+        "reloaded": false,
+        "console": [
+          "[ws open] localhost:8080/ws",
+          "[ws in] {\"type\":\"error\",\"data\":\"Invalid Host/Origin header\"}",
+          "[webpack-dev-server] Invalid Host/Origin header",
+          "[ws closed]",
+          "[ws open] localhost:8080/ws",
+          "[ws in] {\"type\":\"error\",\"data\":\"Invalid Host/Origin header\"}",
+          "[webpack-dev-server] Invalid Host/Origin header",
+          "[ws closed]",
+          "[ws open] localhost:8080/ws",
+          "[ws in] {\"type\":\"error\",\"data\":\"Invalid Host/Origin header\"}",
+          "[webpack-dev-server] Invalid Host/Origin header",
+          "[ws closed]"
+        ]
+      }
+    },
+    {
+      "name": "wds via tunnel (http, rewrite on, preview.localhost): page loads, an edit hot-updates it without a reload",
+      "pass": false,
+      "detail": {
+        "status": 200,
+        "api": null,
+        "pageHost": "8080-p1.preview.localhost:8800",
+        "bypassed": [
+          "localhost:8080"
+        ],
+        "updated": false,
+        "ms": 30001,
+        "reloaded": false,
+        "console": [
+          "[ws open] localhost:8080/ws",
+          "[ws in] {\"type\":\"error\",\"data\":\"Invalid Host/Origin header\"}",
+          "[webpack-dev-server] Invalid Host/Origin header",
+          "[ws closed]",
+          "[ws open] localhost:8080/ws",
+          "[ws in] {\"type\":\"error\",\"data\":\"Invalid Host/Origin header\"}",
+          "[webpack-dev-server] Invalid Host/Origin header",
+          "[ws closed]",
+          "[ws open] localhost:8080/ws",
+          "[ws in] {\"type\":\"error\",\"data\":\"Invalid Host/Origin header\"}",
+          "[webpack-dev-server] Invalid Host/Origin header",
+          "[ws closed]"
+        ]
+      }
+    },
+    {
+      "name": "wds via local forward (ostra preview): page loads, an edit hot-updates it without a reload",
+      "pass": false,
+      "detail": {
+        "status": 200,
+        "api": null,
+        "pageHost": "localhost:18080",
+        "bypassed": [
+          "localhost:8080"
+        ],
+        "updated": true,
+        "ms": 59,
+        "reloaded": false
+      }
+    },
+    {
+      "name": "wdsAuto via direct: page loads, an edit hot-updates it without a reload",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "api": null,
+        "pageHost": "localhost:8081",
+        "bypassed": [],
+        "updated": true,
+        "ms": 41,
+        "reloaded": false
+      }
+    },
+    {
+      "name": "wdsAuto via tunnel (https, rewrite on, preview.example.test): page loads, an edit hot-updates it without a reload",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "api": null,
+        "pageHost": "8081-p1.preview.example.test:8443",
+        "bypassed": [],
+        "updated": true,
+        "ms": 50,
+        "reloaded": false
+      }
+    },
+    {
+      "name": "wdsAuto via tunnel (http, rewrite on, preview.localhost): page loads, an edit hot-updates it without a reload",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "api": null,
+        "pageHost": "8081-p1.preview.localhost:8800",
+        "bypassed": [],
+        "updated": true,
+        "ms": 43,
+        "reloaded": false
+      }
+    },
+    {
+      "name": "wdsAuto via local forward (ostra preview): page loads, an edit hot-updates it without a reload",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "api": null,
+        "pageHost": "localhost:18081",
+        "bypassed": [],
+        "updated": true,
+        "ms": 42,
+        "reloaded": false
+      }
+    },
+    {
+      "name": "chrome http cross-site: cookie holds in the frame (app, /api, HMR), and a new tab needs its own handshake",
+      "pass": true,
+      "detail": {
+        "browser": "chrome",
+        "version": "159.0.8154.6",
+        "scheme": "http",
+        "layout": "cross-site",
+        "panelOrigin": "http://localhost:3410",
+        "previewHost": "5173-p1.preview.localhost:8800",
+        "resolved": true,
+        "inFrame": "app",
+        "frameApi": true,
+        "hmrConnected": true,
+        "stored": [
+          {
+            "sameSite": "None",
+            "secure": true,
+            "partitionKey": "http://localhost"
+          }
+        ],
+        "topLevelBeforeHandshake": "no-cookie",
+        "topLevelAfterHandshake": "app"
+      }
+    },
+    {
+      "name": "chrome http same-site: cookie holds in the frame (app, /api, HMR), and a new tab needs its own handshake",
+      "pass": true,
+      "detail": {
+        "browser": "chrome",
+        "version": "159.0.8154.6",
+        "scheme": "http",
+        "layout": "same-site",
+        "panelOrigin": "http://ostra.localhost:3410",
+        "previewHost": "5173-p1.preview.ostra.localhost:8800",
+        "resolved": true,
+        "inFrame": "app",
+        "frameApi": true,
+        "hmrConnected": true,
+        "stored": [
+          {
+            "sameSite": "Lax",
+            "secure": true,
+            "partitionKey": null
+          }
+        ],
+        "topLevelBeforeHandshake": "app",
+        "topLevelAfterHandshake": "app"
+      }
+    },
+    {
+      "name": "chrome https cross-site: cookie holds in the frame (app, /api, HMR), and a new tab needs its own handshake",
+      "pass": true,
+      "detail": {
+        "browser": "chrome",
+        "version": "159.0.8154.6",
+        "scheme": "https",
+        "layout": "cross-site",
+        "panelOrigin": "https://localhost:3443",
+        "previewHost": "5173-p1.preview.localhost:8443",
+        "resolved": true,
+        "inFrame": "app",
+        "frameApi": true,
+        "hmrConnected": true,
+        "stored": [
+          {
+            "sameSite": "None",
+            "secure": true,
+            "partitionKey": "https://localhost"
+          }
+        ],
+        "topLevelBeforeHandshake": "no-cookie",
+        "topLevelAfterHandshake": "app"
+      }
+    },
+    {
+      "name": "chrome https same-site: cookie holds in the frame (app, /api, HMR), and a new tab needs its own handshake",
+      "pass": true,
+      "detail": {
+        "browser": "chrome",
+        "version": "159.0.8154.6",
+        "scheme": "https",
+        "layout": "same-site",
+        "panelOrigin": "https://ostra.localhost:3443",
+        "previewHost": "5173-p1.preview.ostra.localhost:8443",
+        "resolved": true,
+        "inFrame": "app",
+        "frameApi": true,
+        "hmrConnected": true,
+        "stored": [
+          {
+            "sameSite": "Lax",
+            "secure": true,
+            "partitionKey": null
+          }
+        ],
+        "topLevelBeforeHandshake": "app",
+        "topLevelAfterHandshake": "app"
+      }
+    },
+    {
+      "name": "edge http cross-site: cookie holds in the frame (app, /api, HMR), and a new tab needs its own handshake",
+      "pass": true,
+      "detail": {
+        "browser": "edge",
+        "version": "157.0.4341.60",
+        "scheme": "http",
+        "layout": "cross-site",
+        "panelOrigin": "http://localhost:3410",
+        "previewHost": "5173-p1.preview.localhost:8800",
+        "resolved": true,
+        "inFrame": "app",
+        "frameApi": true,
+        "hmrConnected": true,
+        "stored": [
+          {
+            "sameSite": "None",
+            "secure": true,
+            "partitionKey": "http://localhost"
+          }
+        ],
+        "topLevelBeforeHandshake": "no-cookie",
+        "topLevelAfterHandshake": "app"
+      }
+    },
+    {
+      "name": "edge http same-site: cookie holds in the frame (app, /api, HMR), and a new tab needs its own handshake",
+      "pass": true,
+      "detail": {
+        "browser": "edge",
+        "version": "157.0.4341.60",
+        "scheme": "http",
+        "layout": "same-site",
+        "panelOrigin": "http://ostra.localhost:3410",
+        "previewHost": "5173-p1.preview.ostra.localhost:8800",
+        "resolved": true,
+        "inFrame": "app",
+        "frameApi": true,
+        "hmrConnected": true,
+        "stored": [
+          {
+            "sameSite": "Lax",
+            "secure": true,
+            "partitionKey": null
+          }
+        ],
+        "topLevelBeforeHandshake": "app",
+        "topLevelAfterHandshake": "app"
+      }
+    },
+    {
+      "name": "edge https cross-site: cookie holds in the frame (app, /api, HMR), and a new tab needs its own handshake",
+      "pass": true,
+      "detail": {
+        "browser": "edge",
+        "version": "157.0.4341.60",
+        "scheme": "https",
+        "layout": "cross-site",
+        "panelOrigin": "https://localhost:3443",
+        "previewHost": "5173-p1.preview.localhost:8443",
+        "resolved": true,
+        "inFrame": "app",
+        "frameApi": true,
+        "hmrConnected": true,
+        "stored": [
+          {
+            "sameSite": "None",
+            "secure": true,
+            "partitionKey": "https://localhost"
+          }
+        ],
+        "topLevelBeforeHandshake": "no-cookie",
+        "topLevelAfterHandshake": "app"
+      }
+    },
+    {
+      "name": "edge https same-site: cookie holds in the frame (app, /api, HMR), and a new tab needs its own handshake",
+      "pass": true,
+      "detail": {
+        "browser": "edge",
+        "version": "157.0.4341.60",
+        "scheme": "https",
+        "layout": "same-site",
+        "panelOrigin": "https://ostra.localhost:3443",
+        "previewHost": "5173-p1.preview.ostra.localhost:8443",
+        "resolved": true,
+        "inFrame": "app",
+        "frameApi": true,
+        "hmrConnected": true,
+        "stored": [
+          {
+            "sameSite": "Lax",
+            "secure": true,
+            "partitionKey": null
+          }
+        ],
+        "topLevelBeforeHandshake": "app",
+        "topLevelAfterHandshake": "app"
+      }
+    },
+    {
+      "name": "firefox http cross-site: cookie holds in the frame (app, /api, HMR), and a new tab needs its own handshake",
+      "pass": false,
+      "detail": {
+        "browser": "firefox",
+        "version": "159.0",
+        "scheme": "http",
+        "layout": "cross-site",
+        "panelOrigin": "http://localhost:3410",
+        "previewHost": "5173-p1.preview.localhost:8800",
+        "resolved": true,
+        "inFrame": "app",
+        "frameApi": true,
+        "hmrConnected": true,
+        "stored": [
+          {
+            "sameSite": "None",
+            "secure": true,
+            "partitionKey": null
+          }
+        ],
+        "topLevelBeforeHandshake": "app",
+        "topLevelAfterHandshake": "app"
+      }
+    },
+    {
+      "name": "firefox http same-site: cookie holds in the frame (app, /api, HMR), and a new tab needs its own handshake",
+      "pass": true,
+      "detail": {
+        "browser": "firefox",
+        "version": "159.0",
+        "scheme": "http",
+        "layout": "same-site",
+        "panelOrigin": "http://ostra.localhost:3410",
+        "previewHost": "5173-p1.preview.ostra.localhost:8800",
+        "resolved": true,
+        "inFrame": "app",
+        "frameApi": true,
+        "hmrConnected": true,
+        "stored": [
+          {
+            "sameSite": "Lax",
+            "secure": true,
+            "partitionKey": null
+          }
+        ],
+        "topLevelBeforeHandshake": "app",
+        "topLevelAfterHandshake": "app"
+      }
+    },
+    {
+      "name": "firefox https cross-site: cookie holds in the frame (app, /api, HMR), and a new tab needs its own handshake",
+      "pass": false,
+      "detail": {
+        "browser": "firefox",
+        "version": "159.0",
+        "scheme": "https",
+        "layout": "cross-site",
+        "panelOrigin": "https://localhost:3443",
+        "previewHost": "5173-p1.preview.localhost:8443",
+        "resolved": true,
+        "inFrame": "app",
+        "frameApi": true,
+        "hmrConnected": true,
+        "stored": [
+          {
+            "sameSite": "None",
+            "secure": true,
+            "partitionKey": null
+          }
+        ],
+        "topLevelBeforeHandshake": "app",
+        "topLevelAfterHandshake": "app"
+      }
+    },
+    {
+      "name": "firefox https same-site: cookie holds in the frame (app, /api, HMR), and a new tab needs its own handshake",
+      "pass": true,
+      "detail": {
+        "browser": "firefox",
+        "version": "159.0",
+        "scheme": "https",
+        "layout": "same-site",
+        "panelOrigin": "https://ostra.localhost:3443",
+        "previewHost": "5173-p1.preview.ostra.localhost:8443",
+        "resolved": true,
+        "inFrame": "app",
+        "frameApi": true,
+        "hmrConnected": true,
+        "stored": [
+          {
+            "sameSite": "Lax",
+            "secure": true,
+            "partitionKey": null
+          }
+        ],
+        "topLevelBeforeHandshake": "app",
+        "topLevelAfterHandshake": "app"
+      }
+    },
+    {
+      "name": "firefox-tcp http cross-site: cookie holds in the frame (app, /api, HMR), and a new tab needs its own handshake",
+      "pass": true,
+      "detail": {
+        "browser": "firefox-tcp",
+        "version": "159.0",
+        "scheme": "http",
+        "layout": "cross-site",
+        "panelOrigin": "http://localhost:3410",
+        "previewHost": "5173-p1.preview.localhost:8800",
+        "resolved": true,
+        "inFrame": "app",
+        "frameApi": true,
+        "hmrConnected": true,
+        "stored": [
+          {
+            "sameSite": "None",
+            "secure": true,
+            "partitionKey": null
+          }
+        ],
+        "topLevelBeforeHandshake": "no-cookie",
+        "topLevelAfterHandshake": "app"
+      }
+    },
+    {
+      "name": "firefox-tcp http same-site: cookie holds in the frame (app, /api, HMR), and a new tab needs its own handshake",
+      "pass": true,
+      "detail": {
+        "browser": "firefox-tcp",
+        "version": "159.0",
+        "scheme": "http",
+        "layout": "same-site",
+        "panelOrigin": "http://ostra.localhost:3410",
+        "previewHost": "5173-p1.preview.ostra.localhost:8800",
+        "resolved": true,
+        "inFrame": "app",
+        "frameApi": true,
+        "hmrConnected": true,
+        "stored": [
+          {
+            "sameSite": "Lax",
+            "secure": true,
+            "partitionKey": null
+          }
+        ],
+        "topLevelBeforeHandshake": "app",
+        "topLevelAfterHandshake": "app"
+      }
+    },
+    {
+      "name": "firefox-tcp https cross-site: cookie holds in the frame (app, /api, HMR), and a new tab needs its own handshake",
+      "pass": true,
+      "detail": {
+        "browser": "firefox-tcp",
+        "version": "159.0",
+        "scheme": "https",
+        "layout": "cross-site",
+        "panelOrigin": "https://localhost:3443",
+        "previewHost": "5173-p1.preview.localhost:8443",
+        "resolved": true,
+        "inFrame": "app",
+        "frameApi": true,
+        "hmrConnected": true,
+        "stored": [
+          {
+            "sameSite": "None",
+            "secure": true,
+            "partitionKey": null
+          }
+        ],
+        "topLevelBeforeHandshake": "no-cookie",
+        "topLevelAfterHandshake": "app"
+      }
+    },
+    {
+      "name": "firefox-tcp https same-site: cookie holds in the frame (app, /api, HMR), and a new tab needs its own handshake",
+      "pass": true,
+      "detail": {
+        "browser": "firefox-tcp",
+        "version": "159.0",
+        "scheme": "https",
+        "layout": "same-site",
+        "panelOrigin": "https://ostra.localhost:3443",
+        "previewHost": "5173-p1.preview.ostra.localhost:8443",
+        "resolved": true,
+        "inFrame": "app",
+        "frameApi": true,
+        "hmrConnected": true,
+        "stored": [
+          {
+            "sameSite": "Lax",
+            "secure": true,
+            "partitionKey": null
+          }
+        ],
+        "topLevelBeforeHandshake": "app",
+        "topLevelAfterHandshake": "app"
+      }
+    },
+    {
+      "name": "framing: an origin outside frame-ancestors (127.0.0.1) gets no app in its frame",
+      "pass": true,
+      "detail": {
+        "frames": [
+          "http://127.0.0.1:3410/pane?src=http%3A%2F%2F5173-p1.preview.",
+          "chrome-error://chromewebdata/"
+        ]
+      }
+    },
+    {
+      "name": "forwarder: the page and Vite's HMR socket reach the app through it",
+      "pass": true,
+      "detail": {
+        "page": 200,
+        "hmr": {
+          "opened": true,
+          "status": 101,
+          "detail": "open"
+        }
+      }
+    },
+    {
+      "name": "forwarder: a connection from another address is refused",
+      "pass": true,
+      "detail": {
+        "fromOther": "error: read ECONNRESET",
+        "logged": true
+      }
+    }
+  ],
+  "passed": 60,
+  "failed": 5
+}

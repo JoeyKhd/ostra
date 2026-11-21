@@ -1,0 +1,54 @@
+▲ Next.js 16.4.6 (Turbopack)
+- Local:         http://localhost:3002
+- Network:       http://<the machine's LAN address, removed>:3002
+✓ Ready in 383ms
+✓ Running next.config.mjs took 32ms
+
+ GET / 200 in 244ms (next.js: 139ms, application-code: 105ms)
+ GET / 200 in 16ms (next.js: 0.9ms, application-code: 15ms)
+ GET /api/echo 200 in 39ms (next.js: 31ms, application-code: 8ms)
+⚠ Blocked cross-origin request to Next.js dev resource /_next/hmr from "3002-p2.preview.example.test".
+Cross-origin access to Next.js dev resources is blocked by default for safety.
+
+To allow this host in development, add it to "allowedDevOrigins" in next.config.js and restart the dev server:
+
+// next.config.js
+module.exports = {
+  allowedDevOrigins: ['3002-p2.preview.example.test'],
+}
+
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+⚠ Blocked cross-origin request to Next.js dev resource /_next/hmr from a privacy-sensitive or opaque origin.
+Cross-origin access to Next.js dev resources is blocked by default for safety.
+
+This request came from a privacy-sensitive or opaque origin, so Next.js cannot determine which host to allow.
+If you need it to succeed, load the dev server from a normal origin and add that host to "allowedDevOrigins".
+
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+⚠ Blocked cross-origin request to Next.js dev resource /_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_17ou6oobjzvd1._.js from a privacy-sensitive or opaque origin.
+Cross-origin access to Next.js dev resources is blocked by default for safety.
+
+This request came from a privacy-sensitive or opaque origin, so Next.js cannot determine which host to allow.
+If you need it to succeed, load the dev server from a normal origin and add that host to "allowedDevOrigins".
+
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+⚠ Blocked cross-origin request to Next.js dev resource /_next/static/chunks/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_17ou6oobjzvd1._.js from "evil.example".
+Cross-origin access to Next.js dev resources is blocked by default for safety.
+
+To allow this host in development, add it to "allowedDevOrigins" in next.config.js and restart the dev server:
+
+// next.config.js
+module.exports = {
+  allowedDevOrigins: ['evil.example'],
+}
+
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+ GET / 200 in 26ms (next.js: 1.3ms, application-code: 25ms)
+✓ Compiled in 2ms
+ GET / 200 in 25ms (next.js: 1.8ms, application-code: 23ms)
+✓ Compiled in 2ms
+ GET / 200 in 29ms (next.js: 1.7ms, application-code: 27ms)
+✓ Compiled in 3ms
+ GET / 200 in 28ms (next.js: 1.6ms, application-code: 27ms)
+✓ Compiled in 2ms
+[next exited 1]
