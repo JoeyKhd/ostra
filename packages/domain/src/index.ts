@@ -231,3 +231,5 @@ export * from "./library/registry-source.ts";
 export * from "./library/mcp-test-call.ts";
 export * from "./library/sources.ts";
 export * from "./library/install.ts";
+// Milestone 8 (ticket 29, ADR 0069): the marketplace search and its switch.
+export * from "./library/search.ts";

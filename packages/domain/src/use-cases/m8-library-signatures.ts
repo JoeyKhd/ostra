@@ -282,27 +282,75 @@ export type SeedSources = (deps: LibraryDeps, input: { readonly organizationId: 
 
 // ---------- the marketplace (ticket 29) ----------
 
-/** A result, with whether its source is on the list; it installs through `resolveReference` and `installItem`, never a shortcut. */
+/** Where a search goes: the skills search (`OSTRA_SKILLS_SEARCH_URL`, named by its host) or a registry on the organization's list. */
+export type MarketplaceSource = { readonly kind: "skills-search"; readonly host: string } | { readonly kind: "registry"; readonly registryUrl: string };
+
+/**
+ * A result, with whether its source is on the list. It installs through `resolveReference` and
+ * `installItem` with its `reference`, never a shortcut, so a source that isn't allowed is refused
+ * until an admin allows it. Its text is the source's, shown as data. No third-party audit verdict (Q319).
+ */
 export type MarketplaceResult =
-  | { readonly kind: "skill"; readonly reference: string; readonly source: string; readonly name: string; readonly installs: number | null; readonly sourceAllowed: boolean }
-  | { readonly kind: "server"; readonly reference: string; readonly registryUrl: string; readonly name: string; readonly version: string; readonly description: string | null; readonly sourceAllowed: boolean };
+  | {
+      readonly kind: "skill";
+      /** `<owner>/<repo>@<skill>`. */
+      readonly reference: string;
+      /** The GitHub repo, `owner/repo`. */
+      readonly source: string;
+      readonly skill: string;
+      readonly name: string;
+      /** skills.sh's count, from the `skills` CLI's telemetry; `null` when it gave none. */
+      readonly installs: number | null;
+      readonly sourceAllowed: boolean;
+    }
+  | {
+      readonly kind: "server";
+      /** `registry:<name>@<registry URL>`: the install reads the same registry. */
+      readonly reference: string;
+      readonly registryUrl: string;
+      readonly name: string;
+      readonly title: string | null;
+      readonly version: string;
+      readonly description: string | null;
+      /** `null`: it has a remote ostra installs; else why not, as the install would refuse it. */
+      readonly refusal: ServerRefusal | null;
+      readonly sourceAllowed: boolean;
+    };
 
-/** One source's search: its results, or that it's unavailable (a failed or malformed answer). */
+/** One source's search: its results (and how many entries didn't read), or that it's unavailable (a failed or malformed answer). */
 export type MarketplaceSourceResults =
-  | { readonly source: "skills.sh" | { readonly registryUrl: string }; readonly state: "ok"; readonly results: readonly MarketplaceResult[]; readonly dropped: number }
-  | { readonly source: "skills.sh" | { readonly registryUrl: string }; readonly state: "unavailable" };
+  | { readonly source: MarketplaceSource; readonly state: "ok"; readonly results: readonly MarketplaceResult[]; readonly dropped: number }
+  | { readonly source: MarketplaceSource; readonly state: "unavailable"; /** For a person: never the source's own text. */ readonly message: string };
 
-/** Behind the organization's switch and the instance's setting; sends the admin's words and nothing else. */
+/** Which switch keeps search off: the install's (`OSTRA_MARKETPLACE_SEARCH=false`), which wins, or the organization's own. */
+export type MarketplaceSearchOff = "instance" | "organization";
+
+/** The switch as the library shows it: whether search is on, which setting keeps it off, and where a search sends the admin's words. */
+export type MarketplaceSearchState = {
+  readonly enabled: boolean;
+  /** The organization admin's switch. */
+  readonly organizationOn: boolean;
+  /** `OSTRA_MARKETPLACE_SEARCH`. */
+  readonly instanceAllows: boolean;
+  /** `null` while search is on. */
+  readonly off: MarketplaceSearchOff | null;
+  /** What a search sends where: the words, to the skills search's host and to each registry on the list. */
+  readonly sendsTo: { readonly skills: string; readonly registries: readonly string[] };
+};
+
+/** Behind the organization's switch and the instance's setting; sends the admin's words and nothing else. An organization admin's. */
 export type SearchMarketplace = (
   deps: LibraryDeps,
   scope: MemberScope,
-  input: { readonly query: string; readonly kind: "skills" | "servers" },
-) => Promise<UseCaseResult<{ readonly sources: readonly MarketplaceSourceResults[] }, "forbidden" | "search-off" | "invalid-input">>;
+  input: { readonly kind: "skills" | "servers"; /** Never logged. */ readonly words: string },
+) => Promise<UseCaseResult<{ readonly sources: readonly MarketplaceSourceResults[] }, "forbidden" | "instance-search-off" | "organization-search-off" | "invalid-input">>;
 
-/** The organization admin's switch; refused on while `OSTRA_MARKETPLACE_SEARCH=false`. */
+/** The switch's state, for the library's page. An organization admin's. */
+export type ReadMarketplaceSearch = (deps: LibraryDeps, scope: MemberScope) => Promise<UseCaseResult<{ readonly state: MarketplaceSearchState }, "forbidden">>;
+
+/** The organization admin's switch, audited; refused on while `OSTRA_MARKETPLACE_SEARCH=false`. */
 export type SetMarketplaceSearch = (
   deps: LibraryDeps,
   scope: MemberScope,
   input: { readonly enabled: boolean },
-) => Promise<UseCaseResult<{ readonly enabled: boolean }, "forbidden" | "search-off">>;
-
+) => Promise<UseCaseResult<{ readonly state: MarketplaceSearchState }, "forbidden" | "instance-search-off">>;
