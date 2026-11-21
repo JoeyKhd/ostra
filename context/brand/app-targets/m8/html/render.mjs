@@ -16,6 +16,7 @@ const targets = {
   "shell-project-tasks-light": ["shell-project-tasks.html", "theme=light", 1440, 956],
   "shell-peek": ["shell-project-tasks.html", "panel=none&peek=org", 1440, 956],
   "shell-phone": ["shell-phone.html", "", 1440, 956],
+  "shell-phone-menu": ["shell-phone.html", "view=menu", 1440, 956],
   "task-preview-pane": ["task-preview.html", "", 1440, 956],
   "task-preview-pane-light": ["task-preview.html", "theme=light", 1440, 956],
   "task-preview-expanded": ["task-preview.html", "view=expanded&panel=none", 1440, 956],

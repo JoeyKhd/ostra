@@ -6,7 +6,7 @@ The design targets for milestone 8 (`context/specs/m8-previews-and-library/`, se
 - **screenshots and recordings in the timeline** (F-121);
 - **the skills and MCP library** (F-144, F-145).
 
-**Status: waiting for the maintainer's approval.** Nothing here is built until the maintainer approves it, and the approval is recorded below with its date. If a screen is rejected, its target is remade.
+**Status: approved 2026-11-21** (the maintainer: "yes to all"). The choices the approval settled are under "Approval" below. Build from these targets.
 
 **Why these screens:**
 - **The shell:** the maintainer, 2026-11-21: "i like the ux of multica a lot, their double sidebar is nice". How Multica's works is in `context/research/multica-ui.md`. These targets take its structure and keep ostra's own look (`../../brief.md`, `../../app-design.md`).
@@ -34,7 +34,8 @@ They're real HTML, not image-model pictures (`app-design.md`, rule 5). Each page
 | The shell on Home, dark and light | `shell-home`, `shell-home-light` | `app-shell.md` | ticket 10 (F-146) |
 | The shell on a project's task list, dark and light | `shell-project-tasks`, `shell-project-tasks-light` | `app-shell.md` | ticket 10 |
 | The panel collapsed, peeking the Organization | `shell-peek` | `app-shell.md` | ticket 10 |
-| The shell at phone width: tab bar, panel sheet, a task | `shell-phone` | `app-shell.md` | ticket 10 |
+| The shell at phone width, with no tab bar: a project's tasks under the menu button and breadcrumb, and a task | `shell-phone` | `app-shell.md` | ticket 10 |
+| The phone's menu sheet: the rail and the panel together, dark and light | `shell-phone-menu` | `app-shell.md` | ticket 10 |
 | The task page with the preview pane, dark and light | `task-preview-pane`, `task-preview-pane-light` | `task-preview.md` | target 1 |
 | The preview at full width | `task-preview-expanded` | `task-preview.md` | target 2 |
 | The pane starting, and with the box asleep | `task-preview-starting`, `task-preview-stopped` | `task-preview.md` | target 3 |
@@ -46,7 +47,7 @@ They're real HTML, not image-model pictures (`app-design.md`, rule 5). Each page
 | An item: source, pin, used-by profiles, an update's diff | `library-update` | `library-update.md` | target 12 |
 | The admin's marketplace browser | `library-browse` | `library-browse.md` | target 14 |
 
-The names follow the milestone 8 spec's section 13 where it names the screen. Section 13's other targets aren't drawn here yet; ticket 09 makes them in this shell once it's approved:
+The names follow the milestone 8 spec's section 13 where it names the screen. Section 13's other targets aren't drawn here yet; ticket 09 makes them in this shell, now that it's approved:
 - 5 `environment-app-processes`
 - 7 `preview-viewer`
 - 8 `preview-native`
@@ -70,4 +71,11 @@ These are new for milestone 8:
 
 ## Approval
 
-_Waiting for the maintainer._ When they decide, record each screen here with the date and their words, and anything they asked to change.
+**Approved 2026-11-21.** The maintainer: "yes to all", for every screen in the table above. The choices it settled:
+- **Projects:** one Projects space in the rail, not pinned projects (`app-shell.md`, open point 2).
+- **Phone:** no bottom tab bar. The maintainer: "no need for a bottom tab bar btw". The menu button opens one sheet holding the rail and the panel together, and carries an amber dot while something needs the member. `shell-phone` was redrawn that day, and `shell-phone-menu` added (`app-shell.md`, "Phone" and open point 4).
+- **The expanded preview:** a floating steer bar over the full-width app, not the thread folded to a strip (`task-preview.md`, open point 1).
+- **The organization tile:** the Hinge with a small letter chip, not a plain letter tile (`app-shell.md`, open point 1).
+- **`Wake to preview` and `Start the app`:** both labels kept, as drawn (`task-preview.md`, open point 2).
+
+The open points this list doesn't name stay in their build specs as they were.

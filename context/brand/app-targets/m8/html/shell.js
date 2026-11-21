@@ -109,11 +109,12 @@
       </div>`,
   };
 
-  const railEl = document.querySelector("nav.rail");
-  if (railEl) railEl.innerHTML = rail;
-  const ctxEl = document.querySelector("aside.ctx");
-  if (ctxEl && panels[d.panel]) ctxEl.innerHTML = panels[d.panel]() + '<span class="resize"></span>';
-  else if (ctxEl) ctxEl.remove();
+  // Every rail and panel on the page: the phone's menu board draws two sheets, one per theme.
+  for (const railEl of document.querySelectorAll("nav.rail")) railEl.innerHTML = rail;
+  for (const ctxEl of document.querySelectorAll("aside.ctx")) {
+    if (panels[d.panel]) ctxEl.innerHTML = panels[d.panel]() + '<span class="resize"></span>';
+    else ctxEl.remove();
+  }
   // Collapsed: the top bar gains the toggle that docks the panel again, and a peek floats over the page.
   const bar = document.querySelector(".main .bar");
   if (d.panel === "none" && bar) bar.insertAdjacentHTML("afterbegin", `<span class="ib" style="margin-left:-8px" title="Show the sidebar ([)">${ic("panel-left-open")}</span>`);

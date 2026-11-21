@@ -1,4 +1,4 @@
-# Target: one library item, with an update to review (proposed 2026-11-21)
+# Target: one library item, with an update to review (approved 2026-11-21)
 
 > **Committed images:** `library-update.png` (2880×1912, the render at 2×) and `library-update.webp` (1440×956, one image pixel per CSS pixel), rendered with Playwright from `html/library-update.html` with the panel's own tokens and fonts. Sizes in this file are CSS px. Re-render: `node html/render.mjs <playwright index.mjs> library-update`, then `python -I html/to-webp.py library-update`.
 
@@ -9,7 +9,7 @@
 - **Route:** new, `apps/web/src/app/(panel)/organization/skills/[item-id]/page.tsx`, `?tab=skill|files|used-by|update`. The tab opens on `Update` when one is waiting, else on `SKILL.md` (or `Server` for an MCP item).
 - **Shell:** the double-sidebar shell, the rail's **Org** space, the Organization panel's **Skills and MCP** row selected.
 - **Features:** F-021, and F-144 (the skills and MCP library). The milestone 8 spec proposes F-144 (`context/specs/m8-previews-and-library/spec.md`, section 13, target 12 `library-update`); it isn't in `features.md` yet. Facts: `context/research/skills-and-mcp-marketplaces.md`, sections 7.3 ("Updates", design B), 7.4 ("Pinning and drift", "Secrets") and 5 (why an update is reviewed, never automatic).
-- **Status: a proposed target, waiting for the maintainer's approval.**
+- **Status: approved 2026-11-21** (the maintainer: "yes to all").
 
 > Build it in real HTML/React (`app-design.md`, rule 5), then screenshot the build at 1440×956 and compare it with the picture.
 
@@ -82,7 +82,7 @@ Page column 1136px: the page `minmax(0, 1fr)` and the properties panel 320px; pa
 
 - **1024–1279px:** the contextual panel collapses (the shell's rule); the file list narrows to 180px.
 - **Below 1024px:** the properties panel moves under the diff; the file list becomes a `Select` above the diff.
-- **Phone (390px):** the shell's bottom tab bar. The update head stacks: the summary line, the note, then `Keep` and `Accept update` full width (44px). The diff shows one column of numbers (the new one), lines wrapping. The panel's groups follow as sections.
+- **Phone (390px):** the shell's top bar and menu sheet (`app-shell.md`, "Phone"). The update head stacks: the summary line, the note, then `Keep` and `Accept update` full width (44px). The diff shows one column of numbers (the new one), lines wrapping. The panel's groups follow as sections.
 
 ## Components (shadcn/ui names)
 

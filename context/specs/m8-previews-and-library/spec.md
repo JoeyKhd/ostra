@@ -588,7 +588,7 @@ Questions 2 and 3 of the library research (repo skills by default, and name clas
 | # | Target | Screen | Feature | Starts from |
 |---|---|---|---|---|
 | 1 | `task-preview-pane` | The task page with the pane beside the thread: the previews primary first, each with its label and source, the path field, reload, the width preset, "Expand", "Take a screenshot", "Share", the watchers' count, the view's line ("Live: the box's browser"), the box's state | F-141 | `app-targets/m1/task` |
-| 2 | `task-preview-expanded` | The same pane at the page's width, with the thread folded to a strip | F-141 | `task-preview-pane` |
+| 2 | `task-preview-expanded` | The same pane at the page's width, the thread hidden behind a floating steer bar (approved 2026-11-21, in place of a strip) | F-141 | `task-preview-pane` |
 | 3 | `task-preview-stopped` | The pane on a stopped task: the last screenshot, "Start the app", the starting progress (setup, processes, ready), and the states a runner below minor 7 or on the HTTP carrier shows | F-141 | `task-preview-pane` |
 | 4 | `task-attachments` | Screenshots and a recording in the thread at their place in the turn, with captions and the browser; the lightbox; the recording's player with its steps; "Add to draft"; the PR's line | F-121 | `app-targets/m1/task` |
 | 5 | `environment-app-processes` | The environment's app processes: the list (label, repo and folder, command, port, ready check, primary), the editor sheet, `hostRewrite`, "Screenshots after each turn" with routes and widths, a service's "has a web UI", detected and proposed processes, and a process the agent announced waiting as a proposal | F-140 | `app-targets/m1/environment` |

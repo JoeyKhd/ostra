@@ -1,4 +1,4 @@
-# Target: the task page with a live preview pane (proposed 2026-11-21)
+# Target: the task page with a live preview pane (approved 2026-11-21)
 
 > **Committed images:** each `<name>.png` is the render at 2× (2880×1912), and each `<name>.webp` is 1440×956, one image pixel per CSS pixel. All of them render from `html/task-preview.html`, a query string choosing the state, with the panel's own tokens and fonts. The app inside the pane (`html/app-fixture.js`, "Tally") is demo data drawn in the customer app's own colours, on purpose. Sizes in this file are CSS px. Re-render: `node html/render.mjs <playwright's index.mjs> <name>`, then `python -I html/to-webp.py <name>`.
 
@@ -16,7 +16,7 @@
 - **Route:** unchanged, `apps/web/src/app/(panel)/tasks/[task-id]/page.tsx` → `components/tasks/task-view.tsx`. The pane is a side pane of the task page, chosen from the top bar's `Preview | Properties` toggle, and kept in the URL (`?pane=preview&preview={label}&path=/history`), so a link reopens it. Expand adds `&view=full`.
 - **Shell:** the double sidebar (`app-shell.md`): the Projects space, the project panel, the task's live row selected.
 - **Features:** F-140 (the live preview), F-141 (sharing a preview), F-139 (app processes: the services in the switcher) and F-143 (the preview domain: the in-your-browser mode). The milestone 8 spec proposes them (`context/specs/m8-previews-and-library/spec.md`, section 13, targets 1 to 3 and 6), and they aren't in `features.md` yet. F-121 covers the screenshots behind the stopped state. The facts are in `context/research/live-previews.md` (sections 7 and 8) and the spec's ADR 0068.
-- **Status: a proposed target, waiting for the maintainer's approval.** The maintainer approved the idea on 2026-11-21 ("live previews in the task chat").
+- **Status: approved 2026-11-21** (the maintainer: "yes to all"). The maintainer approved the idea the same day ("live previews in the task chat").
 
 > Build it in real HTML/React (`app-design.md`, rule 5), then screenshot the build at 1440×956 and compare it with each picture.
 
@@ -124,12 +124,12 @@ A `Popover` from the share button, 392 wide, aligned to its right edge, under it
   - A runner or install that can't enforce a level shows that level disabled, with the reason. It never widens access.
 - **Without the preview domain,** a link opens the panel's signed-out viewer page (`preview-viewer`, target 7 of the m8 spec, not drawn here), which streams pixels. With the preview domain and `Allow input` on, the link's viewer runs the app in their own browser on the preview host.
 
-## Phone (`shell-phone.webp`, picture 3)
+## Phone (`shell-phone.webp`, picture 2)
 
-- **The top bar:** `chevron-left` back, the task's title (15px 600) over mono 12px `--faint` `CALC-192 · ● Running`, and `ellipsis` (Stop, Copy link, Properties).
+- **The top bar:** the shell's menu button with its amber dot (`app-shell.md`, "Phone"), the task's title (15px 600) over mono 12px `--faint` `CALC-192 · ● Running`, and `ellipsis` (Stop, Copy link, Properties).
 - **Under it,** a full-width segmented control: `Chat | Preview`. The two never share the screen.
 - **The pane's toolbar,** 50px: the switcher (label only), the path, reload and share, all 36 to 44px. The width preset and the screenshot button move into `ellipsis`.
-- **The view** is the phone's width (`Fit`), with the footer line, and the composer docked at the bottom on both tabs, with 44px controls. The tab bar is hidden on a task.
+- **The view** is the phone's width (`Fit`), with the footer line, and the composer docked at the bottom on both tabs, with 44px controls. The shell has no tab bar on a phone, so nothing else takes the bottom.
 
 ## Keyboard
 
@@ -196,8 +196,8 @@ From the m8 spec (ADR 0068) and `context/research/live-previews.md`:
 
 ## Open points (recommendations; the maintainer's approval settles them)
 
-1. **Expanded: the thread folded to a strip** (the m8 spec's wording), or hidden with a floating steer bar (as drawn). Recommended as drawn: a strip 56 wide shows nothing readable, and the bar keeps the one thing needed while looking, telling the agent what you see.
-2. **`Wake to preview` for an idle box and `Start the app` for an ended task:** two labels for one action. Recommended: keep both. The maintainer's words fit a sleeping box, and an ended task has nothing to wake.
+1. **Expanded:** *settled 2026-11-21, as drawn: a floating steer bar over the full-width app, not the thread folded to a strip* (the maintainer: "yes to all"). The m8 spec had the strip. Why the bar: a strip 56 wide shows nothing readable, and the bar keeps the one thing needed while looking, telling the agent what you see.
+2. **`Wake to preview` for an idle box and `Start the app` for an ended task:** *settled 2026-11-21: keep both labels, as drawn* (the maintainer: "yes to all"). They're two labels for one action. The maintainer's words fit a sleeping box, and an ended task has nothing to wake.
 3. **The default width preset:** `Fit` (the pane's own size, crisp), as drawn, or `Desktop 1280` scaled down. Recommended: `Fit`. A scaled 1280 view at 636 wide is 48%, and text becomes unreadable.
 4. **Who can change the level:** the task's driver and the project's admins (recommended), or any member who can open the task.
 

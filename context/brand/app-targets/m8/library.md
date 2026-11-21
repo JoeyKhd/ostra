@@ -1,4 +1,4 @@
-# Target: the organization's library of skills and MCP servers (proposed 2026-11-21)
+# Target: the organization's library of skills and MCP servers (approved 2026-11-21)
 
 > **Committed images:** `library.png` (2880×1912, the render at 2×) and `library.webp` (1440×956, one image pixel per CSS pixel), rendered with Playwright from `html/library.html` with the panel's own tokens (`apps/web/src/app/globals.css`) and fonts (`apps/web/src/fonts`). Sizes in this file are CSS px. Re-render: `node html/render.mjs <playwright index.mjs> library`, then `python -I html/to-webp.py library`.
 
@@ -9,7 +9,7 @@
 - **Route:** new, `apps/web/src/app/(panel)/organization/skills/page.tsx` (the list, `?tab=all|skills|mcp|updates`). An item is `organization/skills/[item-id]` (`library-update.md`), the browser `organization/skills/marketplace` (`library-browse.md`), and "Add from a source" a `Sheet` over this page.
 - **Shell:** the double-sidebar shell (`app-shell.md`): the rail's **Org** space lit, the Organization panel with **Skills and MCP** selected under Agents, its count the library's size.
 - **Features:** F-021 (agent profiles: skills and MCP servers) gains a library to fill them from. Its row is F-144 (the skills and MCP library), which the milestone 8 spec proposes (`context/specs/m8-previews-and-library/spec.md`, section 13, target 10 `library`); it isn't in `features.md` yet. The facts and the shape (design B, "an organization library, then attach") come from `context/research/skills-and-mcp-marketplaces.md`, sections 7.3 to 7.6.
-- **Status: a proposed target, waiting for the maintainer's approval.** Nothing builds it until then.
+- **Status: approved 2026-11-21** (the maintainer: "yes to all").
 
 > Build it in real HTML/React (`app-design.md`, rule 5), then screenshot the build at 1440×956 and compare it with the picture.
 
@@ -90,7 +90,7 @@ A right `Sheet`, 440px, title `Add from a source`:
 
 - **1024–1279px:** the contextual panel collapses (the shell's rule, `app-shell.md`); the table keeps its columns, the description line ellipsizes sooner.
 - **Below 1024px:** the properties panel moves under the table as a section (`Library`, `Policy`, `Repo skills` as hairline groups). The `Source` column drops; the source joins the name's second line in mono 12px.
-- **Phone (390px):** the shell's bottom tab bar (`Org` lit). One row per item, 60px: kind square, name and `{pinned} · {used by}` mono 12px `--faint`; the update chip or `Up to date` on the right. Bands stay. The top-bar buttons move to a `+` in the top bar (`Add from a source`, `Browse marketplace` in its menu).
+- **Phone (390px):** the shell's top bar and menu sheet, with `Org` lit in the sheet's rail (`app-shell.md`, "Phone"). One row per item, 60px: kind square, name and `{pinned} · {used by}` mono 12px `--faint`; the update chip or `Up to date` on the right. Bands stay. The top-bar buttons move to a `+` in the top bar (`Add from a source`, `Browse marketplace` in its menu).
 
 ## Components (shadcn/ui names)
 

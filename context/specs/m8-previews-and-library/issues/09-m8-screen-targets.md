@@ -2,7 +2,7 @@
 
 Status: ready-for-agent
 Builder: web
-Blocked by: the double sidebar's targets approved (ticket 10's first condition), since every new screen is drawn in the new shell
+Blocked by: the double sidebar's targets approved (ticket 10's first condition), since every new screen is drawn in the new shell. *Approved 2026-11-21 (the maintainer: "yes to all").*
 Features: F-121, F-140, F-141, F-142, F-144, F-145, F-146 (their screens)
 Packages: `context/brand/app-targets/m8/`
 Note: the maintainer requires `ui-taste` plus Higgsfield targets, approved before any of tickets 17, 21, 26 and 31 builds its UI.

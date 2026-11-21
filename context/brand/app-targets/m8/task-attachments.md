@@ -1,4 +1,4 @@
-# Target: screenshots and recordings in the task timeline (proposed 2026-11-21)
+# Target: screenshots and recordings in the task timeline (approved 2026-11-21)
 
 > **Committed images:** `task-attachments.png` and `task-attachments-viewer.png` (2880×1912, the render at 2×) with their `.webp` (1440×956, one image pixel per CSS pixel), rendered with Playwright from `html/task-attachments.html` (`?viewer=1` for the viewer). The thumbnails are the demo app (`html/app-fixture.js`). Sizes in this file are CSS px.
 
@@ -10,7 +10,7 @@
 - **Route:** unchanged, the task page (`components/tasks/task-view.tsx`), Activity tab. The viewer is a `Dialog` with `?attachment={id}` in the URL, so a link opens it.
 - **Shell:** the double sidebar (`app-shell.md`). The project panel's live row shows `CALC-192 · In review · PR #486`.
 - **Features:** F-121 (seeing the running app: screenshots and recordings). The milestone 8 spec moves it into v1 and names this screen `task-attachments` (target 4). Facts: `context/research/live-previews.md`, section 6. The maintainer approved "screenshots in the timeline" on 2026-11-21.
-- **Status: a proposed target, waiting for the maintainer's approval.**
+- **Status: approved 2026-11-21** (the maintainer: "yes to all").
 
 > Build it in real HTML/React (`app-design.md`, rule 5), then screenshot the build at 1440×956 and compare it with each picture.
 

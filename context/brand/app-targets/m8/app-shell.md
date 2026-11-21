@@ -1,4 +1,4 @@
-# Target: the double-sidebar shell (proposed 2026-11-21)
+# Target: the double-sidebar shell (approved 2026-11-21)
 
 > **Committed images:** each `<name>.png` is the render at 2× (2880×1912) and each `<name>.webp` is 1440×956, one image pixel per CSS pixel. Both are rendered with Playwright from `html/` with the panel's own tokens (`apps/web/src/app/globals.css`) and fonts (`apps/web/src/fonts`). Sizes in this file are CSS px. To re-render: `node html/render.mjs <playwright's index.mjs> <name>`, then `python -I html/to-webp.py <name>`.
 
@@ -9,12 +9,13 @@
 | `shell-project-tasks.webp` | **Projects** is lit, with `calculator` open. The panel is the project's: its pages (Tasks selected, Needs approval's amber count), its five live tasks, and three other projects with their amber dots. The page is the project's task list (`../m1/project.md`), unchanged. |
 | `shell-project-tasks-light.webp` | The same, in light. |
 | `shell-peek.webp` | The panel is collapsed (`[`): the page takes the width, and the top bar gains the button that docks it again. The pointer rests on **Org** in the rail, so the Organization panel floats over the page: a peek. |
-| `shell-phone.webp` | Three 390×844 screens: (1) the project's tasks with the spaces in a bottom tab bar; (2) the top bar's panel button has opened the project's panel as a sheet; (3) a task with Chat and Preview as one segmented choice (`task-preview.md`, "Phone"). |
+| `shell-phone.webp` | Two 390×844 screens, dark, with no bottom tab bar: (1) the project's tasks, the menu closed: the top bar's menu button with its amber dot, the breadcrumb `calculator › Tasks` and `plus`; (2) a task with Chat and Preview as one segmented choice (`task-preview.md`, "Phone"), under the same top bar. |
+| `shell-phone-menu.webp` | The menu button has opened the sheet over (1): the rail (Projects lit, Needs you's `5`) and the project's panel side by side, with a strip of the dimmed page at the right. Dark on the left, light on the right. |
 
 - **Where it comes from:** the maintainer, 2026-11-21: "i like the ux of multica a lot, their double sidebar is nice". Multica's structure is in `context/research/multica-ui.md`. This target takes the structure (a rail of spaces, a contextual panel, one-key collapse with a peek, a sheet on the phone), and keeps ostra's own look: flat graphite, no content card, amber only for "needs you", the Hinge.
 - **Route:** every route of milestones 1 to 7 stays where it is. This changes `apps/web/src/components/shell/` (`app-shell.tsx`, `sidebar.tsx`, `project-nav.tsx`, `nav-link.tsx`, `page-frame.tsx`, `destinations.ts`) and nothing under `app/`.
 - **Features:** F-146 (the double sidebar), proposed by the milestone 8 spec (`context/specs/m8-previews-and-library/`, ticket 10), and not in `features.md` yet. Also F-075 (touch sizes), F-080 and F-081 (the palette, the shortcuts, the keyboard walk) and F-082 (both themes).
-- **Status: a proposed target, waiting for the maintainer's approval.** Ticket 10 builds it once it's approved. Every other milestone 8 target is drawn in this shell.
+- **Status: approved 2026-11-21** (the maintainer: "yes to all"), with the phone redrawn the same day without a tab bar ("no need for a bottom tab bar btw"). Ticket 10 builds it. Every other milestone 8 target is drawn in this shell.
 
 > Build it in real HTML/React (`app-design.md`, rule 5), then screenshot the build at 1440×956 and compare it with each picture.
 
@@ -158,22 +159,52 @@ Head `Settings`. The member's own pages that exist today (`/account` and its tab
 - **768 to 1023px:** the rail only. Docking the panel overlays the page, like a pinned peek with a scrim (`--scrim`) that closes it.
 - **Below 768px:** the phone pattern below.
 
-## Phone (`shell-phone.webp`)
+## Phone (`shell-phone.webp`, `shell-phone-menu.webp`)
 
-At 390×844, with every control at least 44px tall (F-075, `globals.css`'s `pointer: coarse` rule).
-1. **The top bar,** 54px:
-   - **Left:** a 44px `panel-left` button that opens the panel as a sheet.
-   - **The title:** Plex Sans 600 16px, the place's name. On a project, it's the project switcher, with its square and `chevron-down`.
-   - **Right:** the page's one action as a 44px icon (`plus` on a project).
-2. **The bottom tab bar,** 66px plus the safe-area inset, `--side` fill, a 1px `--line` top edge.
-   - **Five tabs:** Home, Needs you (the amber count pill, at `top 5px; left: 50% + 4px`), Projects, Org and Search (which opens the palette full-screen, `../m7/command-palette-phone`).
-   - **Each tab:** a 21px icon over Plex Sans 500 11px, `--faint` at rest and `--text` when it's the open space.
-   - **The tab bar replaces the rail.** It's hidden on a task's page, where the composer takes the bottom (picture 3).
-3. **The sheet** (picture 2): from the left, 318 wide, full height, over a `--scrim` that closes it.
-   - **Head:** 54px, the panel's own (the switcher, and `x` to close).
-   - **Rows** are 44px, Plex Sans 15px with 18px icons, and the live rows are as on desktop.
-   - **Its foot,** not drawn, holds the account row (initials, name, which opens the user menu) and `Settings`.
-   - **It closes** on navigation, Escape, a tap on the scrim, or a swipe left.
+*Changed 2026-11-21. The maintainer: "no need for a bottom tab bar btw". The first draft's tab bar is gone: the menu button opens the rail and the panel together, as one sheet, which is Multica's web pattern (`context/research/multica-ui.md`, "On a phone").*
+
+Below 768px; drawn at 390×844. Every control is at least 44px tall (F-075, `globals.css`'s `pointer: coarse` rule).
+1. **The top bar,** 54px, on every page, a task's included. `--bg`, a 1px `--line` under it, padding `0 6px`:
+   - **Left, the menu button:** 44×44, Lucide `menu` at 20px in `--muted` (`page-frame.tsx` has it today).
+     - Its accessible name is today's `Open navigation`. While something needs the member, it's `Open navigation, {n} need you`.
+     - It has `aria-haspopup="dialog"`, `aria-expanded`, and `aria-controls` naming the sheet.
+   - **The menu button's amber dot:** 8px `--amber`, at `top 10px; right 9px` of the button, with a 2px `--bg` ring. In light it adds `--dot-amber`'s 1px inset edge.
+     - It shows while the member's needs-you count is above 0. The count comes from the query that feeds the rail's count.
+     - It's the top bar's only amber.
+   - **The breadcrumb,** as the desktop top bar's, at Plex Sans 16px: the parents in 500 `--muted`, Lucide `chevron-right` 15px `--faint` between, and the page in 600 `--text` (`calculator › Tasks`).
+     - A parent is a link. The parents truncate first.
+     - On a task, it's the title (600 15px) over mono 12px `--faint` `CALC-192 · ● Running` (`task-preview.md`, "Phone").
+   - **Right, the page's one main action,** a 44px icon button: `plus` (`New task in calculator`) on a project's pages, `ellipsis` on a task. A page with no main action leaves the place empty.
+2. **No bottom tab bar.** The page runs to the bottom of the screen, and a task's composer docks there (`shell-phone.webp`, picture 2).
+3. **The sheet** (`shell-phone-menu.webp`): the menu button opens one sheet from the left. It holds the rail and the open space's panel, side by side.
+   - **Size:** the screen's width less 56px, full height. That's 334 at 390: the rail's 64, and the panel at the sheet's full width beside it, 270.
+     - The 56px strip of the page left at the right is what a tap outside lands on.
+     - On a wider phone the sheet stops at 384 (the rail plus the panel's widest, 320): `min(100vw - 56px, 384px)`.
+   - **Surface:** the rail on `--side` and the panel on `--bg`, with a 1px `--line-2` right edge and `--shadow-pop`. `--scrim` covers the page.
+   - **Motion:** it slides in with the repo's `Sheet`, and appears at once with `prefers-reduced-motion`.
+   - **The rail,** as on desktop with touch sizes:
+     - padding `5px 0 10px`, so the tile lines up with the panel's 54px head;
+     - the tile, Search, Settings and the account each in a 44×44 target;
+     - New task, a 36×36 `--primary` fill with an 8px radius and 4px above and below;
+     - the spaces at 54×52.
+     - **Needs you keeps its amber count** (`5` in the picture), and Projects is lit on a project.
+     - **The foot** keeps Settings and the account, so the sheet needs no other foot.
+   - **The panel:** the open space's, as on desktop, with phone sizes.
+     - **Head:** 54px, padding `0 4px 0 14px`. It has the title or the project switcher at 16px, then one 44×44 `x` (`Close navigation`, Lucide 19px `--muted`).
+     - **Not in the sheet:** the head's `plus` and `panel-left-close`. The top bar has the page's action, and the sheet doesn't collapse.
+     - **Rows:** 44px, padding `0 10px`, a 12px gap, Plex Sans 500 15px with 18px icons. Counts are mono 12.5px, and the amber pill is 20px.
+     - **Section labels:** 12.5px, padding `16px 10px 4px`.
+     - **Live rows:** padding `7px 10px`. The title is 15px/21px, and line 2 is mono 12.5px/18px.
+     - **Scrolling:** the panel's body scrolls on its own, and the rail doesn't.
+   - **What a tap does:**
+     - A panel row or a live task opens that page.
+     - A rail space opens its last page, as a click does on desktop ("What a space opens").
+     - New task opens `/tasks/new`.
+     - Search opens the palette full-screen (`../m7/command-palette-phone`).
+     - Each of those closes the sheet.
+     - The organization tile, the project switcher and the account open their menus inside the sheet, and it stays open until a choice is made.
+   - **It closes** on Escape, a tap on the scrim, the `x`, and after a page is chosen (any navigation). There's no swipe to close: the repo's `Sheet` has none.
+4. **Needs you is two taps from anywhere:** the menu button, which carries the dot, then Needs you in the rail, which carries the count.
 
 ## Keyboard
 
@@ -185,6 +216,12 @@ At 390×844, with every control at least 44px tall (F-075, `globals.css`'s `poin
   - **Unchanged:** `g h`, `g n`, `g t`, `c`, `/`, `?` and ⌘K.
 - **Tooltips:** on the rail's items, after 500ms of hover or at once on focus. Each gives the full name and its shortcut. A tooltip never replaces the accessible name.
 - **Focus:** the panel's 2px `--teal` `:focus-visible` outline (`globals.css`), on the 6px radius of a row and the 9px radius of a space.
+- **The phone sheet** is a modal dialog: the repo's `Sheet` (Radix Dialog), `role="dialog"` with `aria-modal="true"`, named `Navigation` (today's `shell.navigation`).
+  - **On open,** focus goes to the current page's row in the panel (the one with `aria-current="page"`). With no such row, it goes to the lit space in the rail.
+  - **Focus is trapped in the sheet.** Tab goes rail → the panel's head (the switcher, then `x`) → the panel's rows, then wraps to the rail. Shift+Tab goes back.
+  - **The page behind** is `inert`, so a screen reader doesn't reach it either.
+  - **Inside,** the rail and the panel keep their arrow keys (above).
+  - **On close,** whichever way it closes, focus returns to the menu button. That holds after a navigation too: the top bar stays, and Next.js's route announcer reads the new page's title.
 
 ## Every state
 
@@ -198,25 +235,26 @@ At 390×844, with every control at least 44px tall (F-075, `globals.css`'s `poin
 | **A restricted project** | Today's 12px `lock` after the name, in the switcher and in `Other projects` |
 | **A member, not an admin** | The Org panel shows only their rows (Insights, Memory, Runners, Box sizes, Agent profiles, Skills and MCP, Members). Projects has no `plus` |
 | **Collapsed** | `shell-peek.webp` without the overlay: the rail, then the page from x=64 |
-| **Light theme** | `shell-home-light.webp`, `shell-project-tasks-light.webp`: `../m7/light-home.md`'s tokens. The rail on `--side` `#F3F3F5`, the panel and page on `--bg` `#FAFAFB`, the abyss Hinge, `--primary` `#141518` on the new-task button |
+| **Nothing needs you (phone)** | The menu button has no dot, and its name is plain `Open navigation`. The rail's Needs you shows no count |
+| **Light theme** | `shell-home-light.webp`, `shell-project-tasks-light.webp`, and the right of `shell-phone-menu.webp`: `../m7/light-home.md`'s tokens. The rail on `--side` `#F3F3F5`, the panel and page on `--bg` `#FAFAFB`, the abyss Hinge, `--primary` `#141518` on the new-task button |
 
 ## Components (shadcn/ui names)
 
-- **From the repo:** `Sheet` (the phone sheet and the 768–1023 overlay), `DropdownMenu` (the switchers, the user menu), `Tooltip`, `nav-link.tsx`, `user-menu.tsx`, `shortcut-sheet.tsx` and the action registry, `destinations.ts`.
+- **From the repo:** `Sheet` (the phone's menu sheet and the 768–1023 overlay), `DropdownMenu` (the switchers, the user menu), `Tooltip`, `nav-link.tsx`, `user-menu.tsx`, `shortcut-sheet.tsx` and the action registry, `destinations.ts`.
 - **New:**
   - `components/shell/rail.tsx`: the rail, its spaces and its foot;
   - `components/shell/context-panel.tsx`: head, body and resize;
   - `components/shell/panels/{home,needs-you,project,projects,organization,settings}.tsx`;
   - `components/shell/live-task-row.tsx`;
   - `components/shell/peek.tsx`;
-  - `components/shell/tab-bar.tsx`.
+  - `components/shell/nav-sheet.tsx`: the phone's menu button, its dot, and the sheet holding `rail.tsx` and `context-panel.tsx`.
 
   A space is a union `"home" | "needs-you" | "projects" | "organization" | "settings"`, derived from the route in `destinations.ts`. Every `switch` over it is exhaustive.
-- **Icons** (Lucide, stroke 1.75): `house`, `bell`, `folder`, `building-2`, `settings`, `plus`, `search`, `panel-left-close`, `panel-left-open`, `panel-left`, `chevrons-up-down`, `list-filter`, `layout-dashboard`, `square-kanban`, `list-checks`, `blocks`, and today's page icons.
+- **Icons** (Lucide, stroke 1.75): `house`, `bell`, `folder`, `building-2`, `settings`, `plus`, `search`, `panel-left-close`, `panel-left-open`, `menu`, `x`, `chevron-right`, `chevrons-up-down`, `list-filter`, `layout-dashboard`, `square-kanban`, `list-checks`, `blocks`, and today's page icons.
 
 ## Tokens
 
-These are `globals.css`'s, in both themes, and the shell adds none. `--side` is the rail. `--bg` is the panel and the page. `--sel` is the lit space and the page's row. `--hover` is hover. `--line` is the edges, `--raise` with `--line-2` and `--shadow-pop` is the peek, and `--scrim` is behind the sheet. `--amber` and `--on-amber` are only Needs you's count, the Needs approval pill and the dots; `--amber-text` is the needs-you words. `--primary` is only the new-task button.
+These are `globals.css`'s, in both themes, and the shell adds none. `--side` is the rail. `--bg` is the panel and the page. `--sel` is the lit space and the page's row. `--hover` is hover. `--line` is the edges, `--raise` with `--line-2` and `--shadow-pop` is the peek, and `--scrim` is behind the sheet. `--amber` and `--on-amber` are only Needs you's count, the Needs approval pill and the dots (the phone's menu-button dot among them); `--amber-text` is the needs-you words. `--primary` is only the new-task button.
 
 ## WCAG AA (F-081)
 
@@ -231,25 +269,26 @@ These are `globals.css`'s, in both themes, and the shell adds none. `--side` is 
 | `--amber-text` on `--bg` (`Needs you · approval`) | 10.7:1 | 6.1:1 | 4.5 |
 | `--faint` on `--raise` (the peek's labels) | 5.4:1 | 5.8:1 | 4.5 |
 | `--primary` on `--side` (the new-task button as a control) | 17.3:1 | 16.5:1 | 3 |
+| `--muted` on `--bg` (the phone's breadcrumb parents and top-bar icons) | 9.6:1 | 8.1:1 | 4.5 |
+| `--amber` on `--bg` (the menu button's dot, a graphic) | 10.7:1 | 1.7:1, and 3.2:1 for its `--dot-amber` edge | 3 |
 
 ## Differences from the current code
 
-1. **`app-shell.tsx`:** the grid becomes `64px | panel | 1fr`. The 234px `<aside>` and its drawer go.
+1. **`app-shell.tsx`:** the grid becomes `64px | panel | 1fr`. The 234px `<aside>` goes. Below 768px, its phone drawer becomes the menu sheet, which holds the rail and the panel.
 2. **`sidebar.tsx`** splits into the rail and the panels. Its role gates move unchanged with their rows.
 3. **`project-nav.tsx`** becomes the project panel: one project at a time, plus the switcher, the live list and the other projects.
 4. **New data:** the panel's live lists use the task list's existing queries (the member's active tasks, and a project's active tasks) from the same stream, with no new endpoint. `Recent` is local to the browser.
-5. **Messages:** new keys under `shell.rail.*`, `shell.panel.*` and `shell.tabs.*`.
+5. **Messages:** new keys under `shell.rail.*` and `shell.panel.*`. The phone keeps today's `shell.openNavigation` and `shell.navigation`, and adds the menu button's name with the needs-you count.
 
 ## Open points (recommendations; the maintainer's approval settles them)
 
-1. **The organization tile:** the Hinge with a monogram chip (as drawn), or the organization's monogram alone, as Multica and Linear do. Recommended as drawn: the Hinge stays the panel's one logo, and the chip shows which organization a multi-organization member is in.
-2. **Pinned projects in the rail** (the m8 spec's ticket 10 lists them there): a square per project below the spaces, or the Projects space alone, as drawn. Recommended as drawn: with 18 projects the rail would scroll, and the panel's `Other projects` and the switcher are one click away.
+1. **The organization tile:** *settled 2026-11-21, as drawn: the Hinge with a small letter chip, not a plain letter tile* (the maintainer approved the targets: "yes to all"). The other choice was the organization's monogram alone, as Multica and Linear do. The Hinge stays the panel's one logo, and the chip shows which organization a multi-organization member is in.
+2. **Pinned projects in the rail:** *settled 2026-11-21, as drawn: one Projects space in the rail, not pinned projects* ("yes to all"; ticket 10 now says so). With 18 projects the rail would scroll, and the panel's `Other projects` and the switcher are one click away.
 3. **The org label** `Org` under the icon, its tooltip `Organization`. "Organization" doesn't fit 54px at 11px.
-4. **The phone:** a tab bar plus a panel sheet, as drawn and as Multica's native app does, or Multica's web pattern of one sheet holding the rail and the panel. Recommended as drawn: on a phone, ostra is mostly Needs you (F-075), one tap from anywhere.
+4. **The phone:** *settled 2026-11-21: no bottom tab bar* (the maintainer: "no need for a bottom tab bar btw"). One sheet holds the rail and the panel, Multica's web pattern, redrawn in `shell-phone.webp` and `shell-phone-menu.webp`. Needs you stays two taps away, with the menu button's amber dot ("Phone").
 5. **The collapse key:** `[`, as Linear has it, since ostra's shortcuts are single keys and `g` sequences. Multica uses ⌘B, which some browsers take.
 
 ## Wrong in the image (build from this file)
 
 - **The live rows' line 2** truncates the agent's activity at 240 wide (`Editing panel…`). That's right for the width. The full line is the row's `title` and its accessible name.
-- **`shell-phone.webp`, picture 1:** the needs-you line 2 is all `--amber-text`, including the command. Build the key in `--faint`, then the kind in `--amber-text`, then the command in `--muted` mono, as the desktop row does.
 - **`shell-home.webp`:** Home's page keeps its `New task` primary while the rail's new-task button is primary too. That's two Shell fills, as the approved `../m7/light-home` already has. Keep both: the rail's is the shell's, not the page's.

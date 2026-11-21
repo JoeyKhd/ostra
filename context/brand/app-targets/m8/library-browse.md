@@ -1,4 +1,4 @@
-# Target: the marketplace browser (proposed 2026-11-21)
+# Target: the marketplace browser (approved 2026-11-21)
 
 > **Committed images:** `library-browse.png` (2880×1912, the render at 2×) and `library-browse.webp` (1440×956, one image pixel per CSS pixel), rendered with Playwright from `html/library-browse.html` with the panel's own tokens and fonts. Sizes in this file are CSS px. Re-render: `node html/render.mjs <playwright index.mjs> library-browse`, then `python -I html/to-webp.py library-browse`.
 
@@ -11,7 +11,7 @@
 - **Route:** new, `apps/web/src/app/(panel)/organization/skills/marketplace/page.tsx`, `?source=skills|mcp&q=…&selected=…`. Reached from the library's `Browse marketplace` and the palette (`Browse the marketplace`). Org admins only; for anyone else, and while search is off, the route shows the "off" state below.
 - **Shell:** the double-sidebar shell, the rail's **Org** space, the Organization panel's **Skills and MCP** row selected.
 - **Features:** F-145 (the marketplace browser), design C of the research ("a marketplace browser on top of B"). The milestone 8 spec proposes it (`context/specs/m8-previews-and-library/spec.md`, section 13, target 14 `library-browse`); it isn't in `features.md` yet. Facts: `context/research/skills-and-mcp-marketplaces.md`, sections 2.6, 3.1, 3.2, 7.3 (design C) and 7.6.
-- **Status: a proposed target, waiting for the maintainer's approval.** It depends on two of the maintainer's answers (open points 1 and 2): without them, the library ships with install by reference only, and this page doesn't exist.
+- **Status: approved 2026-11-21** (the maintainer: "yes to all"). It still depends on two of the maintainer's answers (open points 1 and 2): without them, the library ships with install by reference only, and this page doesn't exist.
 
 > Build it in real HTML/React (`app-design.md`, rule 5), then screenshot the build at 1440×956 and compare it with the picture.
 
@@ -79,7 +79,7 @@ The same row and panel, with the registry's fields: the name is the registry nam
 
 - **1024–1279px:** the contextual panel collapses (the shell's rule); the detail panel narrows to 340px.
 - **Below 1024px:** no detail panel: a selected result opens its detail in a right `Sheet` (440px) with `Install` in its footer.
-- **Phone (390px):** the shell's bottom tab bar. The notice, the source switch (full width), the search field, then results as 64px rows (name, owner, installs; audit chips hidden); a tap opens the detail as a full-height bottom `Sheet`.
+- **Phone (390px):** the shell's top bar and menu sheet (`app-shell.md`, "Phone"). The notice, the source switch (full width), the search field, then results as 64px rows (name, owner, installs; audit chips hidden); a tap opens the detail as a full-height bottom `Sheet`.
 
 ## Components (shadcn/ui names)
 

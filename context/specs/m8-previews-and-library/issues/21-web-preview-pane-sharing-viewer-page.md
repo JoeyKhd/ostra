@@ -18,7 +18,7 @@ To the approved targets `task-preview-pane`, `task-preview-expanded`, `task-prev
 - **The frames:** the pane reads `/api/previews/:viewId/stream` with `fetch`'s body reader, and draws each JPEG frame into a canvas from a `blob:` URL, revoked after use.
 - **Input:** the member's mouse, wheel, keys and pasted text, batched, through `/api/previews/:viewId/input`. While the pane has focus, its keys go to the app and not to the panel's shortcuts, and Escape leaves the pane, so milestone 7's keyboard rules hold.
 - **The heartbeat** every 30 s while the pane is open and the tab visible.
-- **"Expand"** widens the same element to the page's width without a reload, and folds the thread to a strip.
+- **"Expand"** widens the same element to the page's width without a reload, and hides the thread behind a floating steer bar (`task-preview-expanded`). *Changed 2026-11-21: the maintainer approved the steer bar over the thread folded to a strip.*
 - **The stopped pane:** the last screenshot, "Start the app" with its progress (the setup, the processes, ready), and the states for a runner below minor 7 and on the HTTP carrier.
 - **The share dialog:** the levels, the named-people picker, a link's expiry and "Allow input", public greyed with why, the existing links with their first use and "Revoke".
 - **The viewer page** at `/p/<token>`, for a signed-out person: the stream alone, the label, the organization's name, "watch only" or input, the expiry, and the expired and revoked states. It loads none of the panel's shell, and its route reaches no tRPC procedure but the link's own.

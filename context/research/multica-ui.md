@@ -92,7 +92,7 @@ ostra keeps its flat graphite chrome: the rail on `--side`, and the panel on the
 - **The spaces:** Home, Needs you, Projects and Org, with Settings and the account at the rail's foot.
 - **A project's panel** drills into that project, with its pages and live tasks, rather than a tree of every project's issues.
 - **The collapse key** is `[`, since ostra's shortcuts are single keys and `g` sequences (`app-targets/m7/shortcut-sheet.md`).
-- **On a phone,** a bottom tab bar holds the spaces, and the panel is a sheet. That's Multica's native-app pattern rather than its web sheet. ostra's phone use is mostly answering Needs you (F-075).
+- **On a phone,** Multica's web pattern: the top bar's menu button opens one sheet holding the rail and the panel, and carries an amber dot while something needs the member. The first draft had a bottom tab bar, the native app's pattern. The maintainer, 2026-11-21: "no need for a bottom tab bar btw".
 
 ## Unconfirmed
 
