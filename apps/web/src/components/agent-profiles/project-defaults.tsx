@@ -74,7 +74,7 @@ export const ProjectDefaults = ({ projectId, defaults, admin }: { readonly proje
           const current = defaults[kind];
           const choices = defaultChoices(profiles.data ?? [], current?.id ?? null, allowed);
           return (
-            <PropRow key={kind} label={t(kindLabel[kind])}>
+            <PropRow key={kind} labelWidth={120} label={t(kindLabel[kind])}>
               {admin && profiles.data !== undefined ? (
                 <Select
                   value={current?.id ?? ""}

@@ -32,10 +32,10 @@ export const ProjectSpend = ({ projectId, organizationAdmin }: { readonly projec
           <Skeleton className="my-2 h-4 w-40" />
         ) : (
           <>
-            <PropRow label={t("projectSpend.spent")}>
+            <PropRow labelWidth={120} label={t("projectSpend.spent")}>
               <span className="font-mono" data-testid="project-spend-month">{formatUsd(spent)}</span>
             </PropRow>
-            <PropRow label={t("projectSpend.budget")}>
+            <PropRow labelWidth={120} label={t("projectSpend.budget")}>
               {budget === undefined ? (
                 <span className="text-faint">{t("spend.noBudget")}</span>
               ) : (
@@ -45,7 +45,7 @@ export const ProjectSpend = ({ projectId, organizationAdmin }: { readonly projec
               )}
             </PropRow>
             {tokens === 0 ? null : (
-              <PropRow label={t("projectSpend.tokens")}>
+              <PropRow labelWidth={120} label={t("projectSpend.tokens")}>
                 <span className="font-mono">{formatTokenCount(tokens)}</span>
               </PropRow>
             )}

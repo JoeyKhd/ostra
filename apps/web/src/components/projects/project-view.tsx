@@ -94,7 +94,7 @@ const Row = ({ task, now }: { readonly task: TaskRow; readonly now: number }) =>
   <li data-task={task.id} data-state={task.state} className="border-b border-line">
     <Link
       href={`/tasks/${task.id}`}
-      className={cn(rowGrid, "h-10 pl-[5px] pr-1.5 hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted")}
+      className={cn(rowGrid, "h-[37px] pl-[5px] pr-1.5 hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted")}
     >
       <span className="grid place-items-center">
         <Mark mark={taskMark(task.state)} />
@@ -109,9 +109,9 @@ const Row = ({ task, now }: { readonly task: TaskRow; readonly now: number }) =>
         {task.runner === null ? null : (
           <>
             {task.runner.kind === "personal" ? (
-              <LaptopIcon aria-hidden className={cn(markIcon, "shrink-0 text-faint")} />
+              <LaptopIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-faint" />
             ) : (
-              <ServerIcon aria-hidden className={cn(markIcon, "shrink-0 text-faint")} />
+              <ServerIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-faint" />
             )}
             <span className="truncate font-mono text-ui text-muted">{task.runner.name}</span>
           </>
@@ -162,7 +162,7 @@ const GroupSection = ({ group, now }: { readonly group: Group; readonly now: num
   );
   if (group.group !== "finished") {
     return (
-      <section data-group={group.group} className="mt-[18px] first:mt-0">
+      <section data-group={group.group} className="mt-[14px] first:mt-0">
         <h2 className={cn(bandClass, "text-body")}>
           <BandLabel group={group.group} count={group.tasks.length} open />
         </h2>
@@ -172,7 +172,7 @@ const GroupSection = ({ group, now }: { readonly group: Group; readonly now: num
   }
   return (
     <Collapsible.Root open={open} onOpenChange={setOpen} asChild>
-      <section data-group={group.group} className="mt-[18px] first:mt-0">
+      <section data-group={group.group} className="mt-[14px] first:mt-0">
         <h2 className="text-body">
           <Collapsible.Trigger className={cn(bandClass, "hover:bg-hover")}>
             <BandLabel group={group.group} count={group.tasks.length} open={open} />
@@ -187,7 +187,7 @@ const GroupSection = ({ group, now }: { readonly group: Group; readonly now: num
 const LoadingList = () => (
   <div aria-busy className="mt-[22px]">
     {[0, 1, 2].map((band) => (
-      <div key={band} className="mt-[18px] first:mt-0">
+      <div key={band} className="mt-[14px] first:mt-0">
         <Skeleton className="h-8" />
         {[0, 1, 2].map((row) => (
           <div key={row} className="flex h-10 items-center gap-4 border-b border-line pl-2">
