@@ -16,7 +16,7 @@ import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
 import { PersonalRunnersSwitch, formatLabel } from "./add-provider-form";
-import { formatSpend } from "./keys-words";
+import { formatSpend, servesText } from "./keys-words";
 
 type Provider = RouterOutputs["providers"]["list"][number];
 
@@ -119,9 +119,11 @@ export const ProviderSettings = ({ provider }: { readonly provider: Provider }) 
         </h3>
         <ul>
           {listed.map((model) => (
-            <li key={model.id} className="flex min-h-[30px] items-center gap-2 text-ui">
+            <li key={model.id} className="flex min-h-[30px] items-center gap-2 text-ui" data-model={model.endpointModelId}>
               {model.logoPath === null ? null : <img src={model.logoPath} alt="" className="size-[15px] shrink-0 opacity-75 invert" />}
-              <span className={model.displayName === null ? "truncate font-mono" : "truncate"}>{model.displayName ?? model.endpointModelId}</span>
+              <span className={model.displayName === null ? "min-w-0 truncate font-mono" : "min-w-0 truncate"}>{model.displayName ?? model.endpointModelId}</span>
+              {/* models-keys.md: the projects where this key is the one serving it. */}
+              <span className="ml-auto min-w-0 shrink truncate pl-2 text-right text-faint" data-testid="model-serves" title={servesText(model.serves)}>{servesText(model.serves)}</span>
             </li>
           ))}
         </ul>

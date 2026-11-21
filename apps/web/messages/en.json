@@ -1014,6 +1014,8 @@
       "noProjects": "No project uses it. Add it to the default list or to a project's list.",
       "onlyAdmins": "Only an organization admin changes which projects use a key.",
       "modelsItLists": "Models it lists",
+      "serves": "serves {projects}",
+      "servesNone": "serves no project",
       "thisMonthLabel": "This month",
       "panelBaseUrl": "Base URL",
       "panelFormat": "Format",

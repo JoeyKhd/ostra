@@ -363,6 +363,30 @@ describe("F-135: provider lists in the API", () => {
   });
 });
 
+describe("F-135: what a key serves (models-keys.md)", () => {
+  it("F-135/c15: a key's listed models name the projects where that key is the one serving them", async () => {
+    const { a } = harness.fixture;
+    const caller = await admin();
+    const servedBy = async (providerId: ProviderId): Promise<Record<string, readonly string[]>> =>
+      Object.fromEntries((await caller.providers.models({ providerId })).filter((model) => model.listed).map((model) => [model.endpointModelId, model.serves.map((project) => project.projectId)]));
+    // The default list holds A alone, and the open project follows it: A serves its models there.
+    const onlyA = await caller.providers.previewDefaultList({ providerIds: [providerA] });
+    await caller.providers.setDefaultList({ providerIds: [providerA], version: onlyA.version });
+    const followDefault = await caller.projects.previewProviders({ projectId: a.openProject.id, mode: { kind: "default" } });
+    await caller.projects.setProviders({ projectId: a.openProject.id, mode: { kind: "default" }, version: followDefault.version });
+    expect((await servedBy(providerA))["shared-model"]).toContain(a.openProject.id);
+    expect((await servedBy(providerB))["shared-model"]).toEqual([]);
+    // The open project's own list holds B: there B serves the shared model and its own, A nothing.
+    const ownB = await caller.projects.previewProviders({ projectId: a.openProject.id, mode: { kind: "own", providerIds: [providerB] } });
+    await caller.projects.setProviders({ projectId: a.openProject.id, mode: { kind: "own", providerIds: [providerB] }, version: ownB.version });
+    expect(await servedBy(providerB)).toEqual({ "shared-model": [a.openProject.id], "b-only": [a.openProject.id] });
+    expect((await servedBy(providerA))["shared-model"]).not.toContain(a.openProject.id);
+    // Back to the default list, as the other tests found it.
+    const back = await caller.projects.previewProviders({ projectId: a.openProject.id, mode: { kind: "default" } });
+    await caller.projects.setProviders({ projectId: a.openProject.id, mode: { kind: "default" }, version: back.version });
+  });
+});
+
 describe("F-135: a catalog model's logo", () => {
   it("F-135/c15: a catalog model carries its display name and logo in the project's providers and the plan lines", async () => {
     const { a } = harness.fixture;

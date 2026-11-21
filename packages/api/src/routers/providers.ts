@@ -1,14 +1,17 @@
-import { BUILT_IN_PROFILE_ADAPTER, syncProviderModels, addModelProvider, setModelPrice, setModelReasoningInTx } from "@ostra/domain";
+import { BUILT_IN_PROFILE_ADAPTER, loadListedModelsInTx, resolveProjectModel, syncProviderModels, addModelProvider, setModelPrice, setModelReasoningInTx } from "@ostra/domain";
 import {
   addModelProviderInputSchema,
   apiFormatSchema,
   authSchemeSchema,
   httpUrlSchema,
   modelIdSchema,
+  projectIdSchema,
   providerIdSchema,
   reasoningControlsSchema,
 } from "@ostra/protocol";
+import type { ModelId, OrganizationId, ProjectId, ProviderId } from "@ostra/protocol";
 import { mapModel, mapModelProvider } from "@ostra/db";
+import type { Db } from "@ostra/db";
 import type { CatalogEntry, ModelEndpoint } from "@ostra/adapter-sdk";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -99,6 +102,12 @@ const modelViewSchema = z.object({
   priceChangedAt: z.number().nullable(),
   logoPath: z.string().nullable(),
   /**
+   * The projects where this key is the one that serves this model (models-keys.md, "Models it
+   * lists": `serves northwind-portal`), by each project's list and its choices; empty when another
+   * key serves it there, or no project uses this key.
+   */
+  serves: z.array(z.object({ projectId: projectIdSchema, name: z.string() })),
+  /**
    * F-137 (ADR 0066): the controls the model runs with (an admin's, else the catalog's, else none),
    * where they came from (`null`: nobody said, so a custom model doesn't reason), the catalog's own
    * beside an override, the levels the agent offers on it, and whether the catalog prices reasoning
@@ -112,6 +121,35 @@ const modelViewSchema = z.object({
     reasoningPriceDiffers: z.boolean(),
   }),
 });
+
+/**
+ * Which projects each of a provider's model rows serves (models-keys.md): for every project, its
+ * list (its own, or the organization's default) and its choices resolve each name as a session's
+ * start would (`resolveProjectModel`); the rows this provider is the answer for, by model ID.
+ */
+const servedProjects = async (db: Db, organizationId: OrganizationId, providerId: ProviderId): Promise<ReadonlyMap<ModelId, readonly { readonly projectId: ProjectId; readonly name: string }[]>> => {
+  const [projects, entries, choices, models] = await Promise.all([
+    db.project.findMany({ where: { organizationId }, select: { id: true, name: true, ownProviders: true }, orderBy: { name: "asc" } }),
+    db.providerListEntry.findMany({ where: { organizationId }, select: { projectId: true, providerId: true }, orderBy: { createdAt: "asc" } }),
+    db.modelChoice.findMany({ where: { organizationId }, select: { projectId: true, modelKey: true, modelId: true } }),
+    loadListedModelsInTx(db, organizationId),
+  ]);
+  const own = models.filter((model) => model.providerId === providerId && model.listed);
+  const out = new Map<ModelId, { readonly projectId: ProjectId; readonly name: string }[]>();
+  for (const project of projects) {
+    const listProjectId = project.ownProviders ? project.id : null;
+    const list = entries.flatMap((entry) => (entry.projectId === listProjectId ? [providerIdSchema.parse(entry.providerId)] : []));
+    if (!list.includes(providerId)) continue;
+    const listChoices = choices.flatMap((choice) => (choice.projectId === listProjectId ? [{ modelKey: choice.modelKey, modelId: modelIdSchema.parse(choice.modelId) }] : []));
+    for (const model of own) {
+      const resolved = resolveProjectModel(list, listChoices, models, model.name);
+      if (resolved.ok && resolved.providerId === providerId && resolved.modelId === model.modelId) {
+        out.set(model.modelId, [...(out.get(model.modelId) ?? []), { projectId: projectIdSchema.parse(project.id), name: project.name }]);
+      }
+    }
+  }
+  return out;
+};
 
 /** The catalog lists a reasoning price apart from output (ticket 58); a custom model has none. */
 const reasoningPriceDiffersOf = (entry: CatalogEntry | undefined): boolean => entry?.reasoningPriceDiffers ?? false;
@@ -328,9 +366,10 @@ export const providersRouter = router({
       if (provider === null) {
         throw new TRPCError({ code: "NOT_FOUND", message: "No such model provider" });
       }
-      const [rows, catalog] = await Promise.all([
+      const [rows, catalog, serves] = await Promise.all([
         ctx.deps.db.model.findMany({ where: { providerId: input.providerId, organizationId }, orderBy: { endpointModelId: "asc" } }),
         ctx.deps.catalog.entries(),
+        servedProjects(ctx.deps.db, organizationId, providerIdSchema.parse(provider.id)),
       ]);
       const entries = new Map(catalog.map((entry) => [entry.catalogId, entry] as const));
       const adapter = input.adapter ?? BUILT_IN_PROFILE_ADAPTER;
@@ -354,6 +393,7 @@ export const providersRouter = router({
           priceSource: row.priceSource,
           priceChangedAt: row.priceChangedAt?.getTime() ?? null,
           logoPath: entry?.logoPath ?? null,
+          serves: [...(serves.get(model.id) ?? [])],
           reasoning: {
             controls: reasoning.controls,
             source: reasoning.source,

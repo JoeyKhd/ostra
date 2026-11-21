@@ -36,3 +36,7 @@ export const hostOf = (baseUrl: string): string => {
 /** A month's spend, `$1,204.30`. */
 export const formatSpend = (usd: number): string =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(usd);
+
+/** `serves northwind-portal, calculator`, or `serves no project` (models-keys.md, "Models it lists"). */
+export const servesText = (projects: readonly { readonly name: string }[]): string =>
+  projects.length === 0 ? t("models.keys.servesNone") : t("models.keys.serves", { projects: projects.map((project) => project.name).join(", ") });
