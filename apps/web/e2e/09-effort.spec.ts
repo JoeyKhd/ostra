@@ -100,7 +100,7 @@ test("F-137/c7: a member who isn't the driver sees the level and no control", { 
 test("F-137/c2: Models shows each model's levels and their source", { tag: "@desktop-only" }, async ({ page }) => {
   await seed();
   await signIn(page);
-  await page.goto("/organization/models");
+  await page.goto("/organization/models?tab=models");
   const gpt = page.locator('tr[data-model="gpt-5.5"]');
   await expect(gpt.getByTestId("model-reasoning-cell")).toContainText("Off, Low, Medium, High, Extra high");
   await expect(gpt.getByTestId("model-reasoning-cell")).toContainText("from the catalog");

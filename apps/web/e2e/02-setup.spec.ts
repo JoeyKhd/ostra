@@ -67,7 +67,10 @@ test("Add a model provider: a wrong token is refused in words, the right one lis
   await page.getByRole("button", { name: "Save provider" }).click();
   const settings = page.getByTestId("provider-settings");
   await expect(settings).toBeVisible();
+  // The models are on the Models tab (model-reasoning.md), one row per model.
+  await page.getByRole("tab", { name: /^Models/ }).click();
   await expect(page.locator("tr[data-model]")).toHaveCount(2);
+  await page.getByRole("tab", { name: /^Keys/ }).click();
   // The token is never shown back.
   expect(await page.content()).not.toContain(e2eModelToken);
 
@@ -88,6 +91,7 @@ test("Add a model provider: a wrong token is refused in words, the right one lis
   await expect(page.getByLabel("Allow on personal runners")).toHaveAttribute("data-state", "checked");
 
   // The custom model is editable, and becomes the default model.
+  await page.getByRole("tab", { name: /^Models/ }).click();
   await page.locator('tr[data-model="local-coder-7b"]').click();
   await expect(page.getByTestId("model-editor")).toContainText("Custom model");
   await page.getByRole("button", { name: "Use as default model" }).click();

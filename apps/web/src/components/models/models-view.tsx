@@ -1,26 +1,23 @@
 "use client";
 
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CpuIcon, LoaderCircleIcon, PlusIcon } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { LoaderCircleIcon, PlusIcon } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
-import { PageFrame, PageHeading, Section } from "@/components/shell/page-frame";
+import { PageFrame, PageHeading } from "@/components/shell/page-frame";
 import { Button } from "@/components/ui/button";
-import { SkeletonRows } from "@/components/ui/skeleton";
-import { Chip } from "@/components/ui/status";
-import { cn } from "@/lib/cn";
+import { UnderlineTabs } from "@/components/ui/underline-tabs";
 import { errorText } from "@/lib/errors";
-import { formatPrice, formatTokens } from "@/lib/format";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
-import { AddProviderForm } from "./add-provider-form";
+import { AddProviderForm, formatLabel } from "./add-provider-form";
 import { DefaultListSection, KeysSection, ToConfirmSection, defaultListOf, useDefaultListEdit } from "./keys-sections";
 import { ModelEditor, modelReasoningOf } from "./model-editor";
-import { priceDiffers } from "./model-reasoning";
-import { PriceFootnote, ReasoningCell } from "./models-table";
+import { ModelsTable } from "./models-table";
+import type { ModelTableRow } from "./models-table";
 import { ProviderSettings } from "./provider-settings";
 import { ProvidersPreview } from "./providers-preview";
 
@@ -31,15 +28,6 @@ type Selection =
   | { readonly kind: "add" }
   | { readonly kind: "provider"; readonly providerId: string }
   | { readonly kind: "model"; readonly providerId: string; readonly modelId: string };
-
-/** A model's logo, served by ostra (never the vendor's server), or a plain chip icon. */
-const ModelLogo = ({ path }: { readonly path: string | null }) =>
-  path === null ? (
-    <CpuIcon aria-hidden className="size-[15px] shrink-0 text-muted" />
-  ) : (
-    // Drawn light grey on dark (between --muted and --text), so the vendors' marks read as one family.
-    <img src={path} alt="" className="size-[15px] shrink-0 opacity-75 invert" />
-  );
 
 /** Organization › Models (F-088): providers, their models, and the form in the properties panel. */
 export const ModelsView = () => {
@@ -54,6 +42,9 @@ export const ModelsView = () => {
   const [selection, setSelection] = useState<Selection | null>(null);
   // F-137: `?model=` opens that model (the profile editor's `Set it in Models`); a row's `Use the catalog's` opens its confirmation.
   const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const tab: "keys" | "models" = params.get("tab") === "models" || params.has("model") ? "models" : "keys";
   const [confirmCatalog, setConfirmCatalog] = useState<string | null>(null);
   const admin = me.data?.organization?.role === "admin";
   const defaultList = defaultListOf(providers.data);
@@ -98,6 +89,27 @@ export const ModelsView = () => {
   const rows: { provider: Provider; model: Model }[] = (providers.data ?? []).flatMap((provider, i) =>
     (models[i]?.data ?? []).filter((model) => model.listed).map((model) => ({ provider, model })),
   );
+  // The Models tab: one row per model, the keys that list it together (a custom model is its key's own).
+  const groups = new Map<string, { readonly first: { provider: Provider; model: Model }; readonly keys: string[] }>();
+  for (const listing of rows) {
+    const { provider, model } = listing;
+    const key = model.custom || model.catalogId === null ? `${provider.id}:${model.endpointModelId}` : model.catalogId;
+    const known = groups.get(key);
+    if (known === undefined) groups.set(key, { first: listing, keys: [provider.name] });
+    else known.keys.push(provider.name);
+  }
+  const tableRows: readonly ModelTableRow[] = [...groups.values()].map(({ first: { model }, keys }) => ({
+    id: model.id,
+    name: model.displayName ?? model.endpointModelId,
+    custom: model.custom,
+    logoPath: model.logoPath,
+    catalogId: model.catalogId,
+    listedBy: keys,
+    contextWindow: model.contextWindow,
+    reasoning: modelReasoningOf(model),
+    endpointId: model.endpointModelId,
+    isDefault: model.id === defaultModelId,
+  }));
 
   // The models the organization's profiles use, by text: what a change to the default list is about.
   const textOfModelId = new Map(rows.map(({ model }) => [model.id, model.catalogId ?? model.endpointModelId] as const));
@@ -132,6 +144,13 @@ export const ModelsView = () => {
         canEditReasoning={admin}
         profileLevels={(profiles.data ?? []).filter((profile) => profile.model?.id === selectedRow.model.id).map((profile) => profile.effort)}
         confirmCatalog={confirmCatalog === selectedRow.model.id}
+        listedLine={t("models.listedLine", {
+          keys: rows
+            .filter((row) => (selectedRow.model.custom || selectedRow.model.catalogId === null ? row.model.id === selectedRow.model.id : row.model.catalogId === selectedRow.model.catalogId))
+            .map((row) => row.provider.name)
+            .join(", "),
+          format: formatLabel(selectedRow.provider.apiFormat),
+        })}
       />
     ) : (
       <p className="text-sm text-muted">{t("models.selectHint")}</p>
@@ -158,8 +177,28 @@ export const ModelsView = () => {
       properties={properties}
       wideProperties
     >
-      <PageHeading title={t("models.title")} lede={t("models.lede")} />
-
+      <PageHeading title={t("models.title")} lede={tab === "models" ? t("models.ledeModels") : t("models.lede")} />
+      {/* Keys and Models as two tabs (model-reasoning.md, "The Models tab"); the URL keeps the tab. */}
+      <UnderlineTabs
+        tabs={[
+          { id: "keys", label: t("models.tabKeys"), extra: providers.data === undefined ? null : <span className="font-mono text-xs text-faint">{providers.data.length}</span> },
+          { id: "models", label: t("models.tabModels"), extra: providers.isPending ? null : <span className="font-mono text-xs text-faint">{tableRows.length}</span> },
+        ]}
+        selected={tab}
+        onSelect={(next) => {
+          const query = new URLSearchParams(params.toString());
+          query.delete("model");
+          if (next === "models") query.set("tab", "models");
+          else query.delete("tab");
+          const text = query.toString();
+          router.replace(text === "" ? pathname : `${pathname}?${text}`, { scroll: false });
+        }}
+        label={t("models.tabsLabel")}
+        idPrefix="models-tab"
+        className="mt-5"
+      />
+      {tab === "keys" ? (
+      <>
       <DefaultListSection
         list={defaultList}
         editing={edit.editing}
@@ -177,70 +216,30 @@ export const ModelsView = () => {
       {providers.error === null ? null : <p role="alert" className="mt-2 text-sm text-red">{errorText(providers.error)}</p>}
       <ToConfirmSection rows={toConfirm.data ?? []} />
 
-      {providers.isPending ? (
-        <Section title={t("models.enabled")}>
-          <SkeletonRows height="h-10" />
-        </Section>
-      ) : rows.length === 0 ? null : (
-        <Section title={t("models.enabled")} count={rows.length}>
+      </>
+      ) : (
+        <div className="mt-6" role="tabpanel" id="models-tab-models" aria-labelledby="models-tab-models-tab">
           {setDefault.error === null ? null : <p role="alert" className="mb-2 text-sm text-red">{errorText(setDefault.error)}</p>}
-          {/* No minimum width: beside the double sidebar the column is about 690px at 1440, and the
-              provider and the model's name give way before the reasoning clips. */}
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-body">
-              <thead>
-                <tr className="h-[30px] whitespace-nowrap border-b border-line text-left text-[12.5px] font-medium text-faint">
-                  <th className="pr-3 font-medium">{t("models.model")}</th>
-                  <th className="pr-3 font-medium">{t("models.provider")}</th>
-                  <th className="pr-3 text-right font-medium">{t("models.context")}</th>
-                  <th className="pr-3 text-right font-medium">{t("models.inputPrice")}</th>
-                  <th className="pr-3 text-right font-medium">{t("models.outputPrice")}</th>
-                  <th className="pl-3 font-medium">{t("models.reasoning.reasoning")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map(({ provider, model }) => {
-                  const on = effective?.kind === "model" && effective.modelId === model.id;
-                  return (
-                    <tr
-                      key={model.id}
-                      data-model={model.endpointModelId}
-                      onClick={() => { setSelection({ kind: "model", providerId: provider.id, modelId: model.id }); }}
-                      className={cn("h-10 cursor-pointer border-b border-line hover:bg-hover", on && "bg-sel hover:bg-sel")}
-                    >
-                      <td className="pr-3">
-                        <span className="flex items-center gap-2.5">
-                          <ModelLogo path={model.logoPath} />
-                          <button
-                            type="button"
-                            className={cn("truncate text-left", model.displayName === null && "font-mono text-ui")}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setSelection({ kind: "model", providerId: provider.id, modelId: model.id });
-                            }}
-                          >
-                            {model.displayName ?? model.endpointModelId}
-                          </button>
-                          {model.id === defaultModelId ? <Chip>{t("models.default")}</Chip> : null}
-                          {model.custom ? <Chip>{t("models.custom")}</Chip> : null}
-                        </span>
-                      </td>
-                      <td className="max-w-[120px] truncate pr-3 font-mono text-ui text-muted" title={provider.name}>{provider.name}</td>
-                      <td className="whitespace-nowrap pr-3 text-right font-mono text-ui">{formatTokens(model.contextWindow)}</td>
-                      <td className="whitespace-nowrap pr-3 text-right font-mono text-ui">{formatPrice(model.inputPricePerMTok)}</td>
-                      <td className="whitespace-nowrap pr-3 text-right font-mono text-ui">{formatPrice(model.outputPricePerMTok)}</td>
-                      <ReasoningCell
-                        reasoning={modelReasoningOf(model)}
-                        onUseCatalog={admin ? () => { setConfirmCatalog(model.id); setSelection({ kind: "model", providerId: provider.id, modelId: model.id }); } : null}
-                      />
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {rows.some((row) => priceDiffers(modelReasoningOf(row.model))) ? <PriceFootnote /> : null}
-        </Section>
+          <ModelsTable
+            rows={providers.isPending ? null : tableRows}
+            selectedId={effective?.kind === "model" ? effective.modelId : null}
+            loading={providers.isPending}
+            onSelect={(id) => {
+              const row = rows.find((one) => one.model.id === id);
+              if (row !== undefined) setSelection({ kind: "model", providerId: row.provider.id, modelId: row.model.id });
+            }}
+            onUseCatalog={
+              admin
+                ? (id) => {
+                    const row = rows.find((one) => one.model.id === id);
+                    if (row === undefined) return;
+                    setConfirmCatalog(id);
+                    setSelection({ kind: "model", providerId: row.provider.id, modelId: row.model.id });
+                  }
+                : null
+            }
+          />
+        </div>
       )}
     </PageFrame>
   );

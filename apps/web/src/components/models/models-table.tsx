@@ -3,6 +3,7 @@
 import { BoxIcon, CpuIcon } from "lucide-react";
 
 import { SkeletonRows } from "@/components/ui/skeleton";
+import { Chip } from "@/components/ui/status";
 import { cn } from "@/lib/cn";
 import { formatCount } from "@/lib/format";
 import { t } from "@/lib/messages";
@@ -26,6 +27,9 @@ export type ModelTableRow = {
   readonly listedBy: readonly string[];
   readonly contextWindow: number | null;
   readonly reasoning: ModelReasoning;
+  /** The first listing's endpoint ID (`data-model`), and whether it's the built-in profile's model. */
+  readonly endpointId?: string;
+  readonly isDefault?: boolean;
 };
 
 /** By name, custom models last. */
@@ -100,7 +104,7 @@ export const ModelsTable = ({ rows, selectedId, loading, onSelect, onUseCatalog 
             return (
               <tr
                 key={row.id}
-                data-model={row.name}
+                data-model={row.endpointId ?? row.name}
                 aria-selected={on}
                 onClick={() => { onSelect(row.id); }}
                 className={cn("h-14 cursor-pointer border-b border-line hover:bg-hover", on && "bg-sel hover:bg-sel")}
@@ -109,13 +113,16 @@ export const ModelsTable = ({ rows, selectedId, loading, onSelect, onUseCatalog 
                   <span className="flex items-center gap-3">
                     <Logo row={row} />
                     <span className="min-w-0">
-                      <button
-                        type="button"
-                        className={cn("block truncate text-left text-body text-text", row.custom && "font-mono")}
-                        onClick={(event) => { event.stopPropagation(); onSelect(row.id); }}
-                      >
-                        {row.name}
-                      </button>
+                      <span className="flex min-w-0 items-center gap-2">
+                        <button
+                          type="button"
+                          className={cn("min-w-0 truncate text-left text-body text-text", row.custom && "font-mono")}
+                          onClick={(event) => { event.stopPropagation(); onSelect(row.id); }}
+                        >
+                          {row.name}
+                        </button>
+                        {row.isDefault === true ? <Chip>{t("models.default")}</Chip> : null}
+                      </span>
                       <span className="block truncate font-mono text-xs text-faint">{row.custom ? t("models.reasoning.customModel") : row.catalogId}</span>
                       <span className="hidden truncate font-mono text-xs text-muted max-md:block">{listedByText(row.listedBy)} · {row.contextWindow === null ? "—" : formatCount(row.contextWindow)}</span>
                     </span>

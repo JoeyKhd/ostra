@@ -11,6 +11,7 @@ import { PropGroup, PropRow } from "@/components/shell/page-frame";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { formatPrice, formatTokens } from "@/lib/format";
 import { t } from "@/lib/messages";
@@ -68,8 +69,10 @@ const PriceGroup = ({ model, canEdit }: { readonly model: Model; readonly canEdi
   </PropGroup>
 );
 
-export const ModelEditor = ({ model, providerId, isDefault, onUseAsDefault, settingDefault, canEditReasoning, profileLevels, confirmCatalog }: {
+export const ModelEditor = ({ model, providerId, isDefault, onUseAsDefault, settingDefault, canEditReasoning, profileLevels, confirmCatalog, listedLine }: {
   readonly model: Model;
+  /** `Listed by globex-openrouter · OpenAI-compatible` under the name (model-reasoning.md, the panel's head). */
+  readonly listedLine?: string;
   /** F-137: an organization admin sets the model's reasoning. */
   readonly canEditReasoning: boolean;
   /** The levels saved on the profiles that use this model. */
@@ -116,9 +119,11 @@ export const ModelEditor = ({ model, providerId, isDefault, onUseAsDefault, sett
 
   return (
     <div data-testid="model-editor">
-      <h2 className="mb-1 text-xs font-medium text-faint">{t("models.model")}</h2>
-      <div className="mb-1 text-[16.5px] font-semibold">{model.displayName ?? model.endpointModelId}</div>
-      <div className="mb-4 font-mono text-sm text-faint">{model.endpointModelId}</div>
+      <h2 className="mb-1 text-xs font-medium text-faint">{model.custom ? t("models.customModelLabel") : t("models.model")}</h2>
+      <div className={cn("mb-1 break-all", model.custom && model.displayName === null ? "font-mono text-[20px] font-medium" : "text-[16.5px] font-semibold")}>{model.displayName ?? model.endpointModelId}</div>
+      {model.custom && model.displayName === null ? null : <div className="font-mono text-sm text-faint">{model.endpointModelId}</div>}
+      {listedLine === undefined ? null : <div className="text-sm text-muted">{listedLine}</div>}
+      <div className="mb-4" />
       <div className="mb-4">
         {isDefault ? (
           <span className="text-sm text-green">{t("models.isDefault")}</span>
