@@ -1,6 +1,6 @@
 import { PLAN_MODE_READ_ONLY_COMMANDS } from "@ostra/adapter-sdk";
 import type { LaunchMcpServer } from "@ostra/adapter-sdk";
-import { commandOutsideAllowlist, parseCommandLine, PROPOSE_ENVIRONMENT_TOOL, SUBMIT_DRAFT_TOOL, SUBMIT_REVIEW_TOOL } from "@ostra/protocol";
+import { appToolNames, commandOutsideAllowlist, parseCommandLine, PROPOSE_ENVIRONMENT_TOOL, SUBMIT_DRAFT_TOOL, SUBMIT_REVIEW_TOOL } from "@ostra/protocol";
 import type { ApprovalRule, OstraToolSet, TaskKind, TurnMode } from "@ostra/protocol";
 
 // The profile's approval rules as OpenCode's own permissions (ADR 0049, ADR 0031, F-026), for
@@ -144,12 +144,24 @@ export const teamTools: readonly { readonly set: OstraToolSet; readonly tool: st
 ];
 
 /**
- * The deny for each of ostra's milestone 6 tools the task's tool sets don't name (`ostra_<tool>`):
- * OpenCode then offers it to no agent of the task, so a code task never sees `submit_review` even
- * if a server lists it. The sidecar serves only the task's sets too; this is the adapter's own half.
+ * Milestone 8's app tools (protocol minor 7, ADR 0068): `start_app`, `show_preview`,
+ * `take_screenshot` and `record_app`, all of the `app` set. Like every tool of ostra's server they're
+ * under no approval rule: "Reaching the network" asks before none of them, since they reach only
+ * the box (its processes and its browser at the app's `localhost`), never a host outside it.
+ */
+export const appTools: readonly { readonly set: OstraToolSet; readonly tool: string }[] = appToolNames.map((tool) => ({ set: "app", tool }));
+
+/** The tools of ostra's server that a tool set must name to be offered: milestone 6's and milestone 8's. */
+export const setTools: readonly { readonly set: OstraToolSet; readonly tool: string }[] = [...teamTools, ...appTools];
+
+/**
+ * The deny for each of ostra's tools the task's tool sets don't name (`ostra_<tool>`): OpenCode then
+ * offers it to no agent of the task, so a code task never sees `submit_review`, and a task whose
+ * spec has no `"app"` never sees `take_screenshot`, even if a server lists them. The sidecar serves
+ * only the task's sets too; this is the adapter's own half.
  */
 export const toolFilterPermissions = (tools: readonly OstraToolSet[]): readonly OpenCodePermission[] =>
-  teamTools.filter((entry) => !tools.includes(entry.set)).map((entry) => ({ action: `${OSTRA_MCP_SERVER}_${entry.tool}`, resource: "*", effect: "deny" as const }));
+  setTools.filter((entry) => !tools.includes(entry.set)).map((entry) => ({ action: `${OSTRA_MCP_SERVER}_${entry.tool}`, resource: "*", effect: "deny" as const }));
 
 /**
  * The task's permissions in OpenCode's order (ADR 0049): everything allowed, then each rule as

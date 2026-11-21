@@ -84,11 +84,24 @@ export const taskDirs = (agentDir: string) => ({
 });
 export type TaskDirs = ReturnType<typeof taskDirs>;
 
+/**
+ * Milestone 8 (ADR 0069, F-145; `research/skills-and-mcp-marketplaces.md` §7.2, fix 3): OpenCode
+ * signs in to a remote MCP server with OAuth by default, and keeps the grant itself. In a box that
+ * would let a sign-in start (`opencode mcp auth`, a callback listener on loopback, a URL to open),
+ * so every remote server the config names says `oauth: false`: a profile's own, a library's, and
+ * ostra's. Read from 2.3.2's source: its `Mcp.RemoteConfig` takes `oauth` as an OAuth config or
+ * `false`, and it registers no OAuth integration for a server whose `oauth` is `false`. A server
+ * that needs a sign-in is marked in the library and never attached (Q321); a server's credential
+ * is the sidecar's to add, never the agent's.
+ */
+export const REMOTE_MCP_OAUTH = false;
+
 /** An MCP server of the profile as OpenCode's config names it (ADR 0049, Q170). */
 const mcpServerConfig = (server: LaunchMcpServer): Record<string, unknown> =>
   server.transport === "http"
-    ? // At the sidecar's MCP proxy, which adds the server's secret: the address holds none, and no header goes with it.
-      { type: "remote", url: server.url, codemode: false }
+    ? // At the sidecar's MCP proxy, which adds the server's secret: the address holds none, no header
+      // goes with it, and OpenCode never signs in to it (F-145).
+      { type: "remote", url: server.url, oauth: REMOTE_MCP_OAUTH, codemode: false }
     : // A command in the image, with the server's variables, none of them a secret.
       { type: "local", command: [server.command, ...server.args], environment: { ...server.env }, codemode: false };
 
@@ -199,10 +212,13 @@ export const buildOpenCodeConfig = (input: PrepareLaunchInput, instructionsPath:
         ...Object.fromEntries(mcpServers.map((server) => [server.name, mcpServerConfig(server)])),
         // ostra's tools for the task: the PR's title and body (ticket 20), and with milestone 4 the
         // memory tools, `memory_search`, `memory_read` and `memory_propose` (F-110), on the same
-        // server. A profile can't name a server `ostra` (`checkProfileInputs`), so this one is always ostra's.
+        // server; milestone 6's and 8's by the task's tool sets (`toolFilterPermissions`). A profile
+        // can't name a server `ostra` (`checkProfileInputs`), so this one is always ostra's.
         [OSTRA_MCP_SERVER]: {
           type: "remote",
           url: input.mcp.url,
+          // Its bearer is the task's, written here: never a sign-in (F-145).
+          oauth: REMOTE_MCP_OAUTH,
           // Each tool listed to the model by its name (`ostra_memory_search`), as the profile's are:
           // with OpenCode's code mode on, they'd sit behind its one `execute` tool (checked on 2.3.2).
           codemode: false,
@@ -364,18 +380,22 @@ export const launchFiles = (input: PrepareLaunchInput, dirs: TaskDirs): readonly
 
 /**
  * The task's instructions file, in the task's config folder and never in a repo: the profile's
- * instructions with the IDs of its skills after them, then (milestone 4) the repos side by side and
- * the memory block, which comes after the profile's instructions and before the repos' own
- * `AGENTS.md` (`buildOpenCodeConfig` names this file first). OpenCode lists a skill to the model
- * only when its `SKILL.md` starts with a `description` (checked on 2.3.2), and a profile's skill
- * may have none: named here, every one of them can be loaded with the `skill` tool.
+ * instructions with the IDs of its skills after them, then (milestone 4) the repos side by side,
+ * the memory block and (milestone 8) the app's block, which come after the profile's instructions
+ * and before the repos' own `AGENTS.md` (`buildOpenCodeConfig` names this file first). OpenCode
+ * lists a skill to the model only when its `SKILL.md` starts with a `description` (checked on
+ * 2.3.2), and a profile's skill may have none: named here, every one of them can be loaded with
+ * the `skill` tool.
  */
 export const instructionsText = (input: PrepareLaunchInput): string | null => {
   const skills = input.skills ?? [];
   const index = skills.length === 0 ? null : `${SKILLS_HEADING}: ${skills.map((skill) => `\`${skill.name}\``).join(", ")}.\n`;
   const profile = index === null ? input.instructions : input.instructions === null ? index : `${input.instructions.replace(/\n*$/, "")}\n\n${index}`;
-  // Milestone 4: with several repos or a memory block, the base class's one text (F-098, F-110).
-  const more = (input.repoDirs ?? []).length > 1 || (input.memory?.block ?? "").trim() !== "";
+  // Milestone 4: with several repos or a memory block, the base class's one text (F-098, F-110);
+  // milestone 8: or the app's block, for a task whose environment has app processes (F-140). OpenCode
+  // always reaches ostra's MCP server, so the block names the app tools exactly when the launch's
+  // tool sets hold `app` (the base class's default).
+  const more = (input.repoDirs ?? []).length > 1 || (input.memory?.block ?? "").trim() !== "" || (input.app?.processes.length ?? 0) > 0;
   return more ? composeLaunchInstructions({ ...input, instructions: profile }) : profile;
 };
 

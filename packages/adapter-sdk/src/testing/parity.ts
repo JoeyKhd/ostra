@@ -25,7 +25,7 @@ export type ParityProof =
   | { readonly kind: "fallback"; readonly capability: keyof AgentCapabilities; readonly cases: readonly ParityCase[] }
   | { readonly kind: "waits"; readonly on: string };
 
-/** Spec section 6's rows, and the launch row the milestone-7 cases add. */
+/** Spec section 6's rows, the launch row the milestone-7 cases add, and milestone 8's agent rows (its spec, section 6). */
 export const parityFeatures = [
   "F-023 Live activity",
   "F-025 Stop",
@@ -54,6 +54,12 @@ export const parityFeatures = [
   "F-101 Automatic turns",
   "F-113 Onboarding",
   "F-019 The agent's launch",
+  // Milestone 8 (ADR 0068, ADR 0069): the app tools through ostra's MCP server, the app's block in
+  // the instructions, and the library's skills and MCP servers, delivered as the profile's are.
+  "F-121, F-140 The app tools",
+  "F-140 The app's block",
+  "F-145 Library skills",
+  "F-145 Library MCP servers",
 ] as const;
 export type ParityFeature = (typeof parityFeatures)[number];
 
@@ -117,6 +123,11 @@ export const suiteCases = {
   submitReview: suite("agent-team-cases.ts", "F-100: the reviewing agent's submit_review reaches core with its findings by repo ID, and not-in-review reaches the agent"),
   proposeEnvironment: suite("agent-team-cases.ts", "F-113: the proposing agent's propose_environment reaches core, and a secret found reaches the agent by kind, never by value"),
   commitPaths: suite("agent-team-cases.ts", "F-113: after a turn, a commit with commitPaths keeps only those; the agent's other changes stay uncommitted"),
+  // Milestone 8 (ticket 03).
+  appTools: suite("agent-app-cases.ts", "F-121/c1: the app tools are listed for a task whose tool sets hold app, and absent otherwise"),
+  appScreenshot: suite("agent-app-cases.ts", "F-121/c1: the agent's take_screenshot reaches ostra's server with its input, and the tool's answer reaches the agent"),
+  appWithoutMcp: suite("agent-app-cases.ts", "F-121/c1: an agent without MCP is offered no app tools, and its app block doesn't name them: its pictures are ostra's after each turn"),
+  appBlock: suite("agent-app-cases.ts", "F-140/c10: the app's block reaches the agent's instructions, naming each process, its address and the one-origin rule; a task with no process gets none"),
 } as const satisfies Record<string, ParityCase>;
 
 /**
@@ -155,6 +166,35 @@ export const sharedCases = {
   openCodeRepoSkillsOff: {
     file: "packages/adapters/adapter-opencode/src/opencode-adapter.contract.test.ts",
     title: "F-021/c9: with the project's repo skills off, OpenCode lists none of the repo's skills, in any of the three folders, and keeps the profile's",
+  },
+  // Milestone 8 (ticket 14): OpenCode's own half of the app tools, the block and the remote servers.
+  openCodeAppToolsFiltered: {
+    file: "packages/adapters/adapter-opencode/src/opencode-adapter.contract.test.ts",
+    title: "F-121/c1, F-140/c4,c9: OpenCode lists start_app, show_preview, take_screenshot and record_app for a task with app, and none of them without, even from a server that lists them all",
+  },
+  openCodeAppToolsAskNoOne: {
+    file: "packages/adapters/adapter-opencode/src/opencode-adapter.contract.test.ts",
+    title:
+      "F-121/c1, F-140/c4,c9: OpenCode's app tools ask no one with Reaching the network and a rule on every MCP tool on: take_screenshot's answer reaches the agent, and so do start_app's and show_preview's",
+  },
+  openCodeAppBlock: {
+    file: "packages/adapters/adapter-opencode/src/opencode-adapter.contract.test.ts",
+    title:
+      "F-140/c10: the app's block reaches OpenCode's prompt after the profile's instructions and before the repos' own AGENTS.md, naming each process's label and in-box address; a task without app processes gets none",
+  },
+  runnerAppBlock: {
+    file: "apps/runner/src/task-host/app-block.opencode.test.ts",
+    title:
+      "F-140/c10: a task whose environment declares app processes reaches OpenCode with each one's label and in-box address, the one-origin rule and the logs, after the profile's instructions",
+  },
+  openCodeNoSignInConfig: {
+    file: "packages/adapters/adapter-opencode/src/permissions.test.ts",
+    title: "F-145/c12: every remote MCP server in OpenCode's config says oauth: false, a profile's, a library's and ostra's own, with no header but ostra's bearer",
+  },
+  openCodeNoSignIn: {
+    file: "packages/adapters/adapter-opencode/src/opencode-adapter.contract.test.ts",
+    title:
+      "F-145/c12: the pinned OpenCode takes oauth: false on a proxied server that asks for OAuth sign-in: no metadata fetched, no client registered, its tools never listed, and the turn runs",
   },
 } as const satisfies Record<string, ParityCase>;
 
@@ -238,6 +278,30 @@ const milestone6IndexOnly = {
   "F-113 Onboarding": fallback("memory", suiteCases.commitPaths),
 } as const;
 
+/**
+ * Milestone 8's rows on OpenCode (ticket 14): the suite's app cases on the pinned binary, its own
+ * filter of the app tools (from a server that lists them all, with no one asked), the block's place
+ * in its prompt and through the runner, and `oauth: false` on every remote server. A library's
+ * skills and servers reach it as the profile's do (ADR 0069, "Delivery: unchanged").
+ */
+const milestone8OpenCode = {
+  "F-121, F-140 The app tools": cases(suiteCases.appTools, suiteCases.appScreenshot, sharedCases.openCodeAppToolsFiltered, sharedCases.openCodeAppToolsAskNoOne),
+  "F-140 The app's block": cases(suiteCases.appBlock, sharedCases.openCodeAppBlock, sharedCases.runnerAppBlock),
+  "F-145 Library skills": cases(suiteCases.skillsMcp),
+  "F-145 Library MCP servers": cases(suiteCases.skillsMcp, sharedCases.openCodeNoSignInConfig, sharedCases.openCodeNoSignIn),
+} as const;
+
+/**
+ * Milestone 8's rows on the scripted fakes: a library's skills and servers reach them as the
+ * profile's do, and no fake signs in to anything; the app cases wait for the fakes' app probes.
+ */
+const milestone8Fakes = {
+  "F-121, F-140 The app tools": waits("milestone 8, ticket 03: the scripted fakes' app probes"),
+  "F-140 The app's block": waits("milestone 8, ticket 03: the scripted fakes' app probes"),
+  "F-145 Library skills": cases(suiteCases.skillsMcp),
+  "F-145 Library MCP servers": cases(suiteCases.skillsMcp),
+} as const;
+
 /** What every adapter shares: the runner's and core's parts, and the suite's cases every fixture runs. */
 const common = {
   "F-090 Git proxy": cases(sharedCases.gitProxy),
@@ -262,6 +326,7 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
   opencode: {
     ...common,
     ...milestone6WithTools,
+    ...milestone8OpenCode,
     "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.subagentsWait, suiteCases.subagentsOwn),
     "F-025 Stop": cases(suiteCases.cancel, suiteCases.subagentsCancel),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch),
@@ -280,6 +345,7 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
   "fake-acp-agent-rich": {
     ...common,
     ...milestone6WithTools,
+    ...milestone8Fakes,
     "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate, suiteCases.subagentsWait, suiteCases.subagentsOwn),
     "F-025 Stop": cases(suiteCases.cancel, suiteCases.leftover, suiteCases.subagentsCancel),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch, suiteCases.endpoint),
@@ -297,6 +363,7 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
   "fake-acp-agent-plain": {
     ...common,
     ...milestone6WithTools,
+    ...milestone8Fakes,
     "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate, suiteCases.subagentsNone, suiteCases.subagentsFlat),
     "F-025 Stop": cases(suiteCases.cancel, suiteCases.leftover),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch, suiteCases.endpoint),
@@ -314,6 +381,7 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
   "fake-acp-agent-plain-index-only-unknown-notification": {
     ...common,
     ...milestone6IndexOnly,
+    ...milestone8Fakes,
     "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate, suiteCases.subagentsNone, suiteCases.subagentsFlat),
     "F-025 Stop": cases(suiteCases.cancel, suiteCases.leftover),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch, suiteCases.endpoint),
@@ -331,6 +399,7 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
   "fake-acp-agent-rich-effort": {
     ...common,
     ...milestone6WithTools,
+    ...milestone8Fakes,
     "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate, suiteCases.subagentsWait, suiteCases.subagentsOwn),
     "F-025 Stop": cases(suiteCases.cancel, suiteCases.leftover, suiteCases.subagentsCancel),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch, suiteCases.endpoint),

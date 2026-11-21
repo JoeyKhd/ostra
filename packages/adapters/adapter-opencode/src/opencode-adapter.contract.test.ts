@@ -7,12 +7,16 @@ import { promisify } from "node:util";
 import { effortModelOf } from "@ostra/adapter-sdk";
 import type { AgentSession, PrepareLaunchInput, QuestionAnswer, QuestionRequest } from "@ostra/adapter-sdk";
 import {
+  appToolSets,
   createScenarioBrain,
+  fakeAttachmentId,
   FakeAgentAdapter,
   fakeMarker,
   memoryNoteFixtures,
   runAgentCommand,
   runAgentSuite,
+  sampleLaunchApp,
+  sampleScreenshot,
   spawnAgentProcess,
   startFakeMemoryCore,
   startGitUpstream,
@@ -21,15 +25,30 @@ import {
   wireReasoningOf,
 } from "@ostra/adapter-sdk/testing";
 import type { AgentFixture, FakeMemoryCore, GitUpstream, StubServer } from "@ostra/adapter-sdk/testing";
-import { approvalRuleIdSchema, NEUTRAL_REPLY, PROPOSE_ENVIRONMENT_TOOL, repoFullNameSchema, SUBMIT_DRAFT_TOOL, SUBMIT_REVIEW_TOOL, turnIdSchema } from "@ostra/protocol";
-import type { ApiFormat, ApprovalRule, EffortLevel, TaskEvent } from "@ostra/protocol";
+import {
+  appInstructionsBlock,
+  appToolNames,
+  approvalRuleIdSchema,
+  NEUTRAL_REPLY,
+  ONE_ORIGIN_RULE,
+  PROPOSE_ENVIRONMENT_TOOL,
+  repoFullNameSchema,
+  SHOW_PREVIEW_TOOL,
+  START_APP_TOOL,
+  SUBMIT_DRAFT_TOOL,
+  SUBMIT_REVIEW_TOOL,
+  TAKE_SCREENSHOT_TOOL,
+  turnIdSchema,
+} from "@ostra/protocol";
+import type { ApiFormat, ApprovalRule, EffortLevel, OstraToolSet, TaskEvent } from "@ostra/protocol";
 import { fixtureIds } from "@ostra/protocol/testing";
 import { afterAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import { platformPackages, resolveOpenCodeBinary } from "./binary.ts";
 import { OpenCodeAdapter } from "./opencode-adapter.ts";
 import { isSubagentCall, scenarios } from "./stub-scenarios.ts";
-import { startTestMcpHttp, writeTestMcpStdio } from "./test-mcp-servers.ts";
+import { startOAuthChallengeMcp, startTestMcpHttp, writeTestMcpStdio } from "./test-mcp-servers.ts";
 import type { TestMcpHttp } from "./test-mcp-servers.ts";
 
 // The agent contract suite against the real OpenCode binary, once per API format, with a stub
@@ -80,6 +99,20 @@ const toolArgsOf = (value: unknown): string => Buffer.from(JSON.stringify(value)
 
 const TEAM_REPO = repoFullNameSchema.parse("test-org/test1");
 
+/** A fake core whose MCP stand-in serves the tool sets given, at ostra's place in the config: the team and app cases' `start`. */
+const startToolsCore = async (tools: readonly OstraToolSet[]): Promise<{ readonly core: FakeMemoryCore; readonly mcp: PrepareLaunchInput["mcp"] }> => {
+  const core = await startFakeMemoryCore({
+    taskId: fixtureIds.task,
+    taskToken: "ostra-task-fake-token",
+    mcpBearer: "fake-mcp-bearer",
+    notes: memoryNoteFixtures,
+    tools,
+    repos: [{ repoId: fixtureIds.repo, fullName: TEAM_REPO }],
+  });
+  cores.push(core);
+  return { core, mcp: { url: core.mcpUrl, bearer: core.mcpBearer } };
+};
+
 /**
  * Milestone 6 (ticket 09): the team cases' set-ups on the pinned OpenCode, each played by the stub
  * model (`stub-scenarios.ts`): OpenCode's own question tool, its shell pushing to a fetch-only
@@ -118,18 +151,7 @@ const teamProbes = (root: string, workspaceDir: string): NonNullable<AgentFixtur
     return { prompt: `${stubMarker("heads", heads.map((head) => head.folder).join(" "))} say them`, heads };
   },
   tools: {
-    start: async (tools) => {
-      const core = await startFakeMemoryCore({
-        taskId: fixtureIds.task,
-        taskToken: "ostra-task-fake-token",
-        mcpBearer: "fake-mcp-bearer",
-        notes: memoryNoteFixtures,
-        tools,
-        repos: [{ repoId: fixtureIds.repo, fullName: TEAM_REPO }],
-      });
-      cores.push(core);
-      return { core, mcp: { url: core.mcpUrl, bearer: core.mcpBearer } };
-    },
+    start: startToolsCore,
     list: `${stubMarker("ostra-tools")} list them`,
     submitDraft: (draft) => `${stubMarker("ostra-call", `${SUBMIT_DRAFT_TOOL} ${toolArgsOf(draft)}`)} hand it in`,
     submitReview: (review) => `${stubMarker("ostra-call", `${SUBMIT_REVIEW_TOOL} ${toolArgsOf(review)}`)} hand it in`,
@@ -299,6 +321,13 @@ const fixtureFor = async (format: ApiFormat): Promise<AgentFixture> => {
     },
     // Milestone 6 (ticket 09): the whole team's task kinds, played by the stub model on the real binary.
     team: teamProbes(root, workspaceDir),
+    // Milestone 8 (ticket 14): the app tools and the app's block, played by the stub model on the real binary.
+    app: {
+      start: startToolsCore,
+      list: `${stubMarker("ostra-tools")} list them`,
+      takeScreenshot: (shot) => `${stubMarker("ostra-call", `${TAKE_SCREENSHOT_TOOL} ${toolArgsOf(shot)}`)} take it`,
+      instructions: `${stubMarker("instructions")} say them`,
+    },
   };
 };
 
@@ -486,6 +515,7 @@ const openProfiled = async (setup: Partial<PrepareLaunchInput>, prepare?: (works
   return {
     adapter,
     input,
+    launch: launch.value,
     events,
     asked,
     mcpUrl: fixture.profile?.mcpUrl ?? ((name: string) => `http://127.0.0.1:9/mcp/${name}`),
@@ -1087,5 +1117,115 @@ describe("milestone 6's automatic turn on the pinned OpenCode", () => {
     const declined = await askedTurn(() => ({ outcome: "declined" }));
     expect(declined.stopReason).toBe("cancelled");
     expect(declined.text).not.toContain("carried on with");
+  }, 120_000);
+});
+
+// Milestone 8 (ticket 14, ADR 0068, ADR 0069): the app tools, the app's block and remote servers
+// without sign-in, on the pinned OpenCode, played by the stub model.
+
+describe("milestone 8 on the pinned OpenCode", () => {
+  /** A server at ostra's place that lists the app tools beside ostra's others, as one that lists too much would. */
+  const everyAppToolServer = async (): Promise<TestMcpHttp> => {
+    const server = await startTestMcpHttp([...appToolNames, "memory_search", SUBMIT_REVIEW_TOOL]);
+    mcpServers.push(server);
+    return server;
+  };
+
+  /** The app tools OpenCode lists to the model for a task with the tool sets given, from a server that lists them all. */
+  const appToolsListed = async (tools: PrepareLaunchInput["tools"]): Promise<readonly string[]> => {
+    const server = await everyAppToolServer();
+    const profiled = await openProfiled({ ...(tools === undefined ? {} : { tools }), mcp: { url: server.urlFor("ostra") } });
+    try {
+      expect(await profiled.prompt(`${stubMarker("ostra-tools")} list them`)).toBe("end_turn");
+      const names = /memory tools: (.*)/.exec(messageText(profiled.events))?.[1]?.split(", ") ?? [];
+      return names.filter((name) => appToolNames.some((tool) => tool === name)).sort();
+    } finally {
+      await profiled.stop();
+    }
+  };
+
+  const app = sampleLaunchApp;
+
+  it("F-121/c1, F-140/c4,c9: OpenCode lists start_app, show_preview, take_screenshot and record_app for a task with app, and none of them without, even from a server that lists them all", async () => {
+    const all = [...appToolNames].sort();
+    expect(await appToolsListed(appToolSets)).toEqual(all);
+    expect(await appToolsListed(["pr-text", "memory"])).toEqual([]);
+    expect(await appToolsListed(["memory", "review"])).toEqual([]);
+  }, 180_000);
+
+  it("F-121/c1, F-140/c4,c9: OpenCode's app tools ask no one with Reaching the network and a rule on every MCP tool on: take_screenshot's answer reaches the agent, and so do start_app's and show_preview's", async () => {
+    const { core, mcp } = await startToolsCore(appToolSets);
+    const profiled = await openProfiled({
+      tools: appToolSets,
+      mcp,
+      app,
+      approvalRules: [rule("m8-net", "fetch", { kind: "any" }), rule("m8-mcp", "mcp", { kind: "any" })],
+    });
+    const call = (tool: string, input: unknown): string => `${stubMarker("ostra-call", `${tool} ${toolArgsOf(input)}`)} call it`;
+    try {
+      expect(await profiled.prompt(call(TAKE_SCREENSHOT_TOOL, sampleScreenshot))).toBe("end_turn");
+      expect(await profiled.prompt(call(START_APP_TOOL, { names: ["web"] }))).toBe("end_turn");
+      expect(await profiled.prompt(call(SHOW_PREVIEW_TOOL, { port: 4000, label: "Docs" }))).toBe("end_turn");
+      const said = messageText(profiled.events);
+      expect(said).toContain(`ostra_${TAKE_SCREENSHOT_TOOL} answered: Screenshot ${fakeAttachmentId(1)} (390×844) is in the task's thread`);
+      expect(said).toContain(`ostra_${START_APP_TOOL} answered: `);
+      expect(said).toContain(`ostra_${SHOW_PREVIEW_TOOL} answered: `);
+      expect(core.screenshots).toEqual([sampleScreenshot]);
+      expect(core.toolCalls).toEqual([TAKE_SCREENSHOT_TOOL, START_APP_TOOL, SHOW_PREVIEW_TOOL]);
+      // The app tools reach only the box: neither the network's rule nor the MCP rule asks before them.
+      expect(profiled.asked).toEqual([]);
+    } finally {
+      await profiled.stop();
+    }
+  }, 180_000);
+
+  it("F-140/c10: the app's block reaches OpenCode's prompt after the profile's instructions and before the repos' own AGENTS.md, naming each process's label and in-box address; a task without app processes gets none", async () => {
+    const said = async (setup: Partial<PrepareLaunchInput>): Promise<string> => {
+      const profiled = await openProfiled({ instructions: "PROFILE-INSTRUCTIONS-MARKER: write tests first.", ...setup }, async (workspaceDir) => {
+        await writeFile(path.join(workspaceDir, "test1", "AGENTS.md"), "REPO-AGENTS-MARKER: run pnpm test.\n");
+      });
+      try {
+        expect(await profiled.prompt(`${stubMarker("instructions")} say them`)).toBe("end_turn");
+        return messageText(profiled.events);
+      } finally {
+        await profiled.stop();
+      }
+    };
+    const withApp = await said({ app, tools: appToolSets });
+    for (const line of appInstructionsBlock({ ...app, tools: true }).split("\n").filter((text) => text.trim() !== "")) {
+      expect(withApp, line).toContain(line);
+    }
+    expect(withApp).toContain(`- "Web" (web, the primary preview): http://localhost:5173, also in OSTRA_APP_WEB_URL`);
+    expect(withApp).toContain(ONE_ORIGIN_RULE);
+    const at = (part: string): number => withApp.indexOf(part);
+    expect(at("PROFILE-INSTRUCTIONS-MARKER")).toBeGreaterThanOrEqual(0);
+    expect(at("## The app")).toBeGreaterThan(at("PROFILE-INSTRUCTIONS-MARKER"));
+    expect(at("REPO-AGENTS-MARKER")).toBeGreaterThan(at(ONE_ORIGIN_RULE));
+    // No app process: the profile's instructions and the repo's AGENTS.md, and no block.
+    const without = await said({ app: null, tools: appToolSets });
+    expect(without).toContain("PROFILE-INSTRUCTIONS-MARKER");
+    expect(without).toContain("REPO-AGENTS-MARKER");
+    expect(without).not.toContain("## The app");
+    expect(without).not.toContain(ONE_ORIGIN_RULE);
+  }, 180_000);
+
+  it("F-145/c12: the pinned OpenCode takes oauth: false on a proxied server that asks for OAuth sign-in: no metadata fetched, no client registered, its tools never listed, and the turn runs", async () => {
+    const challenge = await startOAuthChallengeMcp();
+    const profiled = await openProfiled({ mcpServers: [{ name: "signin", transport: "http", url: challenge.urlFor("signin"), readOnly: true }] });
+    try {
+      // The config OpenCode read says so: it would refuse the whole file over a key its schema lacks.
+      const config = profiled.launch.files.find((file) => file.path.endsWith("opencode.json"))?.content ?? "";
+      expect(z.looseObject({ mcp: z.looseObject({ servers: z.record(z.string(), z.looseObject({ oauth: z.literal(false) })) }) }).safeParse(JSON.parse(config)).success).toBe(true);
+      expect(await profiled.prompt(`${stubMarker("mcp-list", "signin=http")} list them`)).toBe("end_turn");
+      expect(messageText(profiled.events)).toContain("servers: none");
+      // OpenCode called the server, got its challenge, and went no further: nothing but the server's own path.
+      expect(challenge.requests.some((request) => request === "POST /mcp/signin")).toBe(true);
+      expect(challenge.requests.filter((request) => !request.endsWith(" /mcp/signin"))).toEqual([]);
+      // Nothing asked a member to sign in either.
+      expect(profiled.asked).toEqual([]);
+    } finally {
+      await profiled.stop();
+      await challenge.close();
+    }
   }, 120_000);
 });

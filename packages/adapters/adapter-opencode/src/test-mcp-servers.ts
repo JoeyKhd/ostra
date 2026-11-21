@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
-import type { IncomingMessage } from "node:http";
+import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import path from "node:path";
 
 import { z } from "zod";
@@ -16,13 +16,13 @@ const rpcSchema = z.looseObject({
   params: z.looseObject({ name: z.string().optional(), protocolVersion: z.string().optional() }).optional(),
 });
 
-/** One tool per server, `<tool>`, whose result says `<server> ran <tool>`. */
-const answer = (server: string, tool: string, message: z.infer<typeof rpcSchema>): unknown => {
+/** The server's tools, `<tool>` each, whose result says `<server> ran <tool>`. */
+const answer = (server: string, tools: readonly string[], message: z.infer<typeof rpcSchema>): unknown => {
   if (message.method === "initialize") {
     return { protocolVersion: message.params?.protocolVersion ?? "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: server, version: "1.0.0" } };
   }
   if (message.method === "tools/list") {
-    return { tools: [{ name: tool, description: `The ${tool} tool of ${server}.`, inputSchema: { type: "object", properties: {} } }] };
+    return { tools: tools.map((tool) => ({ name: tool, description: `The ${tool} tool of ${server}.`, inputSchema: { type: "object", properties: {} } })) };
   }
   if (message.method === "tools/call") {
     return { content: [{ type: "text", text: `${server} ran ${message.params?.name ?? "nothing"}` }] };
@@ -46,8 +46,31 @@ export type TestMcpHttp = {
   readonly close: () => Promise<void>;
 };
 
-/** One streamable-HTTP endpoint that answers as a server per path, `/mcp/<name>`, each with one tool. */
-export const startTestMcpHttp = async (tool: string): Promise<TestMcpHttp> => {
+/** A server listening on loopback at a port of its own. */
+const listenOnLoopback = async (server: Server): Promise<number> => {
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      resolve();
+    });
+  });
+  const address = server.address();
+  return typeof address === "object" && address !== null ? address.port : 0;
+};
+
+const closeServer = (server: Server): Promise<void> =>
+  new Promise<void>((resolve) => {
+    server.closeAllConnections();
+    server.close(() => {
+      resolve();
+    });
+  });
+
+/**
+ * One streamable-HTTP endpoint that answers as a server per path, `/mcp/<name>`, each with the
+ * tool given, or (milestone 8) with every tool of a list, as a server that lists too much would.
+ */
+export const startTestMcpHttp = async (tool: string | readonly string[]): Promise<TestMcpHttp> => {
+  const tools = typeof tool === "string" ? [tool] : tool;
   const calls: string[] = [];
   const server = createServer((request, response) => {
     void (async () => {
@@ -66,26 +89,79 @@ export const startTestMcpHttp = async (tool: string): Promise<TestMcpHttp> => {
         calls.push(`${name}/${parsed.data.params?.name ?? ""}`);
       }
       response.writeHead(200, { "content-type": "application/json", "mcp-session-id": `session-${name}` });
-      response.end(JSON.stringify({ jsonrpc: "2.0", id: parsed.data.id, result: answer(name, tool, parsed.data) }));
+      response.end(JSON.stringify({ jsonrpc: "2.0", id: parsed.data.id, result: answer(name, tools, parsed.data) }));
     })();
   });
-  await new Promise<void>((resolve) => {
-    server.listen(0, "127.0.0.1", () => {
-      resolve();
-    });
-  });
-  const address = server.address();
-  const port = typeof address === "object" && address !== null ? address.port : 0;
+  const port = await listenOnLoopback(server);
   return {
     urlFor: (name) => `http://127.0.0.1:${String(port)}/mcp/${name}`,
     calls,
-    close: () =>
-      new Promise<void>((resolve) => {
-        server.close(() => {
-          resolve();
-        });
-      }),
+    close: () => closeServer(server),
   };
+};
+
+export type OAuthChallengeMcp = {
+  /** The address of the server of that name: `/mcp/<name>`, which answers every call with an OAuth challenge. */
+  readonly urlFor: (name: string) => string;
+  /** Every request it got, as `<method> <path>`, in order. */
+  readonly requests: readonly string[];
+  readonly close: () => Promise<void>;
+};
+
+/**
+ * Milestone 8 (F-145, ADR 0069): a remote MCP server that asks for OAuth sign-in, as MCP's
+ * authorization spec has it: every call to `/mcp/<name>` is a 401 whose `WWW-Authenticate` names
+ * its protected-resource metadata, which names an authorization server on the same port with
+ * dynamic client registration, so a client that signs in finds everything it needs to start. It
+ * notes every request, so a case sees whether the agent went looking for a sign-in.
+ */
+export const startOAuthChallengeMcp = async (): Promise<OAuthChallengeMcp> => {
+  const requests: string[] = [];
+  let origin = "";
+  const json = (response: ServerResponse, status: number, body: unknown): void => {
+    response.writeHead(status, { "content-type": "application/json" });
+    response.end(JSON.stringify(body));
+  };
+  const server = createServer((request, response) => {
+    void (async () => {
+      const url = request.url ?? "/";
+      const pathname = url.split("?")[0] ?? url;
+      requests.push(`${request.method ?? "GET"} ${pathname}`);
+      await readBody(request);
+      if (/^\/mcp\/[A-Za-z0-9-]+$/.test(pathname)) {
+        response.writeHead(401, {
+          "content-type": "application/json",
+          "www-authenticate": `Bearer realm="mcp", resource_metadata="${origin}/.well-known/oauth-protected-resource${pathname}"`,
+        });
+        response.end(JSON.stringify({ error: "invalid_token", error_description: "sign in first" }));
+        return;
+      }
+      if (pathname.startsWith("/.well-known/oauth-protected-resource")) {
+        json(response, 200, { resource: `${origin}${pathname.slice("/.well-known/oauth-protected-resource".length)}`, authorization_servers: [origin] });
+        return;
+      }
+      if (pathname.startsWith("/.well-known/oauth-authorization-server") || pathname.startsWith("/.well-known/openid-configuration")) {
+        json(response, 200, {
+          issuer: origin,
+          authorization_endpoint: `${origin}/authorize`,
+          token_endpoint: `${origin}/token`,
+          registration_endpoint: `${origin}/register`,
+          response_types_supported: ["code"],
+          grant_types_supported: ["authorization_code", "refresh_token"],
+          code_challenge_methods_supported: ["S256"],
+        });
+        return;
+      }
+      if (pathname === "/register") {
+        json(response, 201, { client_id: "test-client", redirect_uris: ["http://127.0.0.1:19876/mcp/oauth/callback"] });
+        return;
+      }
+      response.writeHead(404).end();
+    })();
+  });
+  const port = await listenOnLoopback(server);
+  origin = `http://127.0.0.1:${String(port)}`;
+  return { urlFor: (name) => `${origin}/mcp/${name}`, requests, close: () => closeServer(server) };
 };
 
 /** A stdio MCP server, as a script Node runs: newline-delimited JSON-RPC, one tool. */

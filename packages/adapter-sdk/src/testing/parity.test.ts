@@ -25,8 +25,10 @@ describe("adapter parity, the scripted fakes", () => {
       "fake-acp-agent-rich-effort",
     ]);
     expect(await checkParity(fakes)).toEqual([]);
-    // What still waits is milestone 6's rows alone, each naming its ticket.
-    expect(pendingParity().every((line) => line.includes("milestone 6"))).toBe(true);
+    // What still waits is milestone 6's rows and the fakes' milestone 8 app rows, each naming its ticket.
+    expect(pendingParity().every((line) => line.includes("milestone 6") || line.includes("milestone 8, ticket 03"))).toBe(true);
+    // OpenCode, the agent v1 ships, waits for none of milestone 8's rows.
+    expect(pendingParity().filter((line) => line.startsWith("opencode:") && line.includes("milestone 8"))).toEqual([]);
   });
 
   it("F-019/c3: the check fails when a row is deleted from an adapter's entry, a case doesn't exist, or a declared capability has only its fallback", async () => {
@@ -54,6 +56,6 @@ describe("adapter parity, the scripted fakes", () => {
 
   it("lists every row of spec section 6 once", () => {
     expect(new Set(parityFeatures).size).toBe(parityFeatures.length);
-    expect(parityFeatures).toHaveLength(27);
+    expect(parityFeatures).toHaveLength(31);
   });
 });

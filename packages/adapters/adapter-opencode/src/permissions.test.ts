@@ -2,10 +2,10 @@ import path from "node:path";
 import { tmpdir } from "node:os";
 
 import { ok } from "@ostra/adapter-sdk";
-import type { LaunchMcpServer, PermissionRequest, PrepareLaunchInput } from "@ostra/adapter-sdk";
+import type { LaunchApp, LaunchMcpServer, PermissionRequest, PrepareLaunchInput } from "@ostra/adapter-sdk";
 import { memoryAdapterContext } from "@ostra/adapter-sdk/testing";
-import { approvalRuleIdSchema, firstMatchingRule, optionIdSchema, toolCallIdSchema } from "@ostra/protocol";
-import type { ApprovalRequestSubject, ApprovalRule } from "@ostra/protocol";
+import { appInstructionsBlock, appToolNames, approvalRuleIdSchema, defaultOstraToolSets, firstMatchingRule, ONE_ORIGIN_RULE, optionIdSchema, toolCallIdSchema } from "@ostra/protocol";
+import type { ApprovalRequestSubject, ApprovalRule, OstraToolSet } from "@ostra/protocol";
 import { fixtureIds } from "@ostra/protocol/testing";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -242,9 +242,9 @@ describe("the profile's side of the launch", () => {
     const config = await configOf(newAdapter(), { mcpServers: servers });
     expect(config["mcp"]).toEqual({
       servers: {
-        docs: { type: "remote", url: "http://127.0.0.1:7/mcp/docs", codemode: false },
+        docs: { type: "remote", url: "http://127.0.0.1:7/mcp/docs", oauth: false, codemode: false },
         files: { type: "local", command: ["/usr/bin/mcp-files", "--root", "."], environment: { FILES_MODE: "rw" }, codemode: false },
-        ostra: { type: "remote", url: "http://127.0.0.1:8124/mcp", codemode: false },
+        ostra: { type: "remote", url: "http://127.0.0.1:8124/mcp", oauth: false, codemode: false },
       },
     });
   });
@@ -378,5 +378,105 @@ describe("milestone 6: the read-only kinds and ostra's tools on OpenCode (ticket
     expect(decide(await permissionsOf({ kind: "review", tools: ["memory", "review"] }), "ostra_memory_search", "{}")).toBe("allow");
     // Without the task's sets (a runner before milestone 6), the config filters nothing: the sidecar serves the defaults.
     expect(await offered({})).toEqual(["submit_draft", "submit_review", "propose_environment"]);
+  });
+});
+
+describe("milestone 8: the app tools, the app's block and servers without sign-in on OpenCode (ticket 14)", () => {
+  const appSets: readonly OstraToolSet[] = [...defaultOstraToolSets, "app"];
+  const permissionsOf = async (setup: Partial<PrepareLaunchInput>): Promise<readonly OpenCodePermission[]> => permissionsSchema.parse((await configOf(newAdapter(), setup))["permissions"]);
+  const appToolsOffered = async (setup: Partial<PrepareLaunchInput>): Promise<readonly string[]> => {
+    const permissions = await permissionsOf(setup);
+    return appToolNames.filter((tool) => decide(permissions, `ostra_${tool}`, "{}") !== "deny");
+  };
+
+  /** The `test-web` fixture's app: a Vite frontend (the primary) and its API, and Mailpit's web UI on docker. */
+  const app: LaunchApp = {
+    processes: [
+      { name: "web", label: "Web", port: 5173, primary: true },
+      { name: "api", label: "API", port: 3001, primary: false },
+    ],
+    services: [{ name: "mailpit", label: "Mail", address: "http://mailpit:8025" }],
+  };
+
+  const instructionsOf = async (setup: Partial<PrepareLaunchInput>): Promise<string | null> => {
+    const prepared = await newAdapter().prepareLaunch(input(setup));
+    if (!prepared.ok) throw new Error(prepared.error.message);
+    return prepared.value.files.find((file) => file.path === taskDirs(agentDir).instructions)?.content ?? null;
+  };
+
+  it("F-121/c1, F-140/c4,c9: a task with app is offered start_app, show_preview, take_screenshot and record_app; one without is offered none, even from a server that lists them", async () => {
+    expect(await appToolsOffered({ tools: appSets })).toEqual(["start_app", "show_preview", "take_screenshot", "record_app"]);
+    expect(await appToolsOffered({ tools: defaultOstraToolSets })).toEqual([]);
+    expect(await appToolsOffered({ kind: "review", tools: ["memory", "review"] })).toEqual([]);
+    expect(await appToolsOffered({ kind: "refine", tools: ["memory", "draft", "app"] })).toEqual(["start_app", "show_preview", "take_screenshot", "record_app"]);
+    // The app set opens only its own tools: milestone 6's stay with their sets.
+    const withApp = await permissionsOf({ tools: appSets });
+    expect(decide(withApp, "ostra_submit_review", "{}")).toBe("deny");
+    expect(decide(withApp, "ostra_memory_search", "{}")).toBe("allow");
+    // Without the task's sets (a runner before milestone 6), the config filters nothing: the sidecar is the filter.
+    expect(await appToolsOffered({})).toEqual(["start_app", "show_preview", "take_screenshot", "record_app"]);
+  });
+
+  it("F-121/c1, F-140/c4: Reaching the network and a rule on MCP tools ask before none of the app tools, in a build or a plan turn: they reach only the box", async () => {
+    const rules = [rule("m8-net", "fetch", { kind: "any" }), rule("m8-mcp", "mcp", { kind: "any" }), rule("m8-mcp-w", "mcp", { kind: "mcp-not-read-only" })];
+    const permissions = await permissionsOf({ tools: appSets, approvalRules: rules, mcpServers: servers });
+    for (const tool of appToolNames) {
+      expect(decide(permissions, `ostra_${tool}`, "{}"), tool).toBe("allow");
+      // The plan agent's own denies, checked after the task's, leave them alone too.
+      expect(decide([...permissions, ...planModePermissions(servers)], `ostra_${tool}`, "{}"), `${tool} in a plan turn`).toBe("allow");
+    }
+    // The rules still ask where they reach: a fetch, and a profile server's tool.
+    expect(decide(permissions, "webfetch", "https://example.com/")).toBe("ask");
+    expect(decide(permissions, "docs_search", "{}")).toBe("ask");
+  });
+
+  it("F-145/c12: every remote MCP server in OpenCode's config says oauth: false, a profile's, a library's and ostra's own, with no header but ostra's bearer", async () => {
+    // A library server reaches the launch as the profile's do: an HTTP server at the sidecar's proxy path.
+    const library: LaunchMcpServer = { name: "linear", transport: "http", url: "http://127.0.0.1:7/mcp/library-linear", readOnly: false };
+    const config = await configOf(newAdapter(), { mcpServers: [...servers, library], mcp: { url: "http://127.0.0.1:8124/mcp", bearer: "task-mcp-bearer-xyz" } });
+    const entries = z.record(z.string(), z.looseObject({ type: z.string() })).parse(z.looseObject({ servers: z.unknown() }).parse(config["mcp"]).servers);
+    const remotes = Object.entries(entries).filter(([, server]) => server.type === "remote");
+    expect(remotes.map(([name]) => name).sort()).toEqual(["docs", "linear", "ostra"]);
+    for (const [name, server] of remotes) {
+      expect(server["oauth"], name).toBe(false);
+    }
+    expect(entries["docs"]).not.toHaveProperty("headers");
+    expect(entries["linear"]).not.toHaveProperty("headers");
+    expect(entries["ostra"]?.["headers"]).toEqual({ authorization: "Bearer task-mcp-bearer-xyz" });
+    // A stdio server signs in to nothing: it has no oauth key at all.
+    expect(entries["files"]).not.toHaveProperty("oauth");
+  });
+
+  it("F-140/c10: the app's block is in the task's instructions file after the profile's, before the repos' AGENTS.md: each process by label and in-box address, the services, one origin and the logs", async () => {
+    const text = (await instructionsOf({ instructions: "PROFILE: prefer small commits.", app, tools: appSets })) ?? "";
+    expect(text.startsWith("PROFILE: prefer small commits.")).toBe(true);
+    expect(text).toContain(appInstructionsBlock({ ...app, tools: true }));
+    expect(text).toContain(`- "Web" (web, the primary preview): http://localhost:5173, also in OSTRA_APP_WEB_URL`);
+    expect(text).toContain(`- "API" (api): http://localhost:3001, also in OSTRA_APP_API_URL`);
+    expect(text).toContain(`- "Mail" (mailpit): http://mailpit:8025, also in OSTRA_SERVICE_MAILPIT_URL`);
+    expect(text).toContain(ONE_ORIGIN_RULE);
+    expect(text).toContain(".ostra/app/<name>.log");
+    // ostra runs the processes (start_app), and a dev server the agent starts itself is shown with show_preview.
+    expect(text).toContain("start_app");
+    expect(text).toContain("show_preview");
+    // The file is the task's, named before the repos' own AGENTS.md, and in no repo.
+    const config = await configOf(newAdapter(), { app, tools: appSets });
+    expect(z.array(z.string()).parse(config["instructions"])[0]).toBe(taskDirs(agentDir).instructions);
+    expect(path.relative(workspaceDir, taskDirs(agentDir).instructions).startsWith("..")).toBe(true);
+  });
+
+  it("F-140/c10: without the app tools the block names none; a task with no app process gets no block at all", async () => {
+    const noTools = (await instructionsOf({ app, tools: defaultOstraToolSets })) ?? "";
+    expect(noTools).toBe(appInstructionsBlock({ ...app, tools: false }));
+    expect(noTools).toContain(ONE_ORIGIN_RULE);
+    for (const tool of appToolNames) {
+      expect(noTools).not.toContain(tool);
+    }
+    // No process: no block, whatever else the task has.
+    for (const none of [null, { processes: [], services: app.services }] as const) {
+      expect(await instructionsOf({ instructions: "Prefer small commits.", app: none, tools: appSets })).toBe("Prefer small commits.");
+      expect(await instructionsOf({ app: none, tools: appSets })).toBeNull();
+    }
+    expect(await instructionsOf({ instructions: "Prefer small commits.", tools: appSets })).toBe("Prefer small commits.");
   });
 });

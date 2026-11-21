@@ -77,7 +77,7 @@ describe("the OpenCode adapter's launch", () => {
       },
     });
     expect(config["mcp"]).toEqual({
-      servers: { ostra: { type: "remote", url: "http://127.0.0.1:8124/mcp", codemode: false, headers: { authorization: "Bearer task-mcp-bearer-xyz" } } },
+      servers: { ostra: { type: "remote", url: "http://127.0.0.1:8124/mcp", oauth: false, codemode: false, headers: { authorization: "Bearer task-mcp-bearer-xyz" } } },
     });
   });
 
@@ -134,7 +134,7 @@ describe("the OpenCode adapter's launch", () => {
   it("omits the MCP header when there is no bearer, and writes the instructions when there are some", async () => {
     const { files } = await launch({ mcp: { url: "http://127.0.0.1:8124/mcp" }, instructions: "Prefer small commits." });
     const config = jsonFile(files, "opencode.json");
-    expect(config["mcp"]).toEqual({ servers: { ostra: { type: "remote", url: "http://127.0.0.1:8124/mcp", codemode: false } } });
+    expect(config["mcp"]).toEqual({ servers: { ostra: { type: "remote", url: "http://127.0.0.1:8124/mcp", oauth: false, codemode: false } } });
     const written = files.find((file) => file.path.endsWith("instructions.md"));
     expect(written?.content).toBe("Prefer small commits.");
     // The task's file comes first, then the repo's own AGENTS.md, named because OpenCode's project
@@ -162,7 +162,7 @@ describe("the OpenCode adapter's launch", () => {
       expect(path.relative(input().workspaceDir, file.path).startsWith("..")).toBe(true);
     }
     // The memory tools are on ostra's own server, which the config always names, with the task's bearer.
-    expect(record(record(config["mcp"])["servers"])["ostra"]).toEqual({ type: "remote", url: "http://127.0.0.1:8124/mcp", codemode: false, headers: { authorization: "Bearer task-mcp-bearer-xyz" } });
+    expect(record(record(config["mcp"])["servers"])["ostra"]).toEqual({ type: "remote", url: "http://127.0.0.1:8124/mcp", oauth: false, codemode: false, headers: { authorization: "Bearer task-mcp-bearer-xyz" } });
   });
 
   it("F-110: with no memory block and one repo, the instructions file is the profile's alone, as before milestone 4", async () => {

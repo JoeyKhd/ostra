@@ -11,7 +11,7 @@ Pinned version: **OpenCode 2.3.2** (`OPENCODE_VERSION` in `src/binary.ts`). Ever
 | `permissionRules` | `native` | The profile's rules are written into the task's `opencode.json` as `permissions`, each as `ask` (`src/permissions.ts`). |
 | `planMode` | `session-mode` | OpenCode's own `plan` agent, switched with `session/set_mode`, made read-only by the config. |
 | `skills` | `true` | The config's `skills` names each repo's own `.agents/skills`, `.claude/skills` and `.opencode/skills` (unless the project keeps them off), then the folders the runner wrote in the task's agent folder, last, so the profile's win. |
-| `mcp` | `{ http: true, stdio: true }` | `mcp.servers`: an HTTP server as `remote` at the sidecar's URL with no header, a stdio server as `local` with its variables. |
+| `mcp` | `{ http: true, stdio: true }` | `mcp.servers`: an HTTP server as `remote` at the sidecar's URL with no header and (milestone 8) `oauth: false`, a stdio server as `local` with its variables. |
 | `projectConfigOverride` | `true` | `OPENCODE_DISABLE_PROJECT_CONFIG=1`, with the repo's `AGENTS.md` and skill folders named in the config. |
 
 ### Permissions
@@ -50,3 +50,10 @@ OpenCode's built-in subagents are `general` and `explore`. `general` keeps the t
 - deny `external_directory` last.
 
 With a profile rule on commands or the network, those commands and fetches ask instead. Explore isn't offered `edit` or `write`.
+
+## Milestone 8: the running app and servers without sign-in (ADR 0068, ADR 0069, ticket 14)
+
+- **The app tools.** `start_app`, `show_preview`, `take_screenshot` and `record_app` are tools of ostra's own server (`ostra_<tool>`), offered for a task whose tool sets hold `app`. Without it, the config denies each one (`toolFilterPermissions`, as for milestone 6's tools), so OpenCode lists none of them even from a server that lists them. They're under no approval rule: "Reaching the network" and a rule on MCP tools ask before none of them, since they reach only the box, and the plan agent's denies leave them alone.
+- **The app's block.** For a task whose environment has app processes, the launch's `app` adds the protocol's block (`appInstructionsBlock`) to the task's instructions file, after the profile's instructions and the memory block, and before the repos' own `AGENTS.md`: each process by its label, name and in-box address, the services with their addresses, the one-origin rule, and where the logs are. It names the app tools only when the task has them. A task with no app process gets no block.
+- **No sign-in.** OpenCode 2.3.2 signs in to a remote MCP server with OAuth by default: its `Mcp.RemoteConfig` takes `oauth` as an OAuth config or `false`, and for a remote server whose `oauth` isn't `false` it registers an OAuth integration, so `opencode mcp auth <server>` (which the agent's own shell could run) would start a sign-in, with a callback listener on `127.0.0.1:19876`. The config writes `oauth: false` on every remote server: a profile's, a library's (both at the sidecar's MCP proxy, with no header) and ostra's own (with the task's bearer). Read from 2.3.2's source; on the binary, a server that answers every call with an OAuth challenge gets one call and nothing else (no metadata, no client registration), its tools aren't listed, and the turn runs (`F-145/c12`).
+- `opencode mcp list` and `opencode mcp auth` start OpenCode's managed service on a fixed port (28894) and leave it running, so the contract tests never run them.

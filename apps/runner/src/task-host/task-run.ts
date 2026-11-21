@@ -80,6 +80,7 @@ import { startMcpTools } from "../sidecar/mcp-tools.ts";
 import type { McpTools } from "../sidecar/mcp-tools.ts";
 import { agentCwd } from "./agent-cwd.ts";
 import type { AgentRegistry } from "./agents.ts";
+import { launchAppOf } from "./app-block.ts";
 import { checkLaunchEnvironment, checkLaunchFiles } from "./environment-check.ts";
 import { checkRepoFolders } from "./repo-folders.ts";
 import type { ServerLink } from "./server-link.ts";
@@ -2084,6 +2085,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       // Milestone 6 (ticket 22, ADR 0028): the kind, so a review task's agent never edits, and the tool sets it's offered.
       kind: taskSpec.kind,
       ...(taskSpec.tools === undefined ? {} : { tools: taskSpec.tools }),
+      // Milestone 8 (F-140, ADR 0068): the app's processes and services, for the app's block in its instructions.
+      app: launchAppOf(taskSpec, deps.executor.name),
     });
     if (!launch.ok) {
       return { ok: false, error: `the agent couldn't be launched: ${launch.error.message}` };
