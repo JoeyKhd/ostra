@@ -11,7 +11,7 @@ import type { AgentAdapter, AgentPromptImage, AgentSession, PrepareLaunchInput }
 import type { AgentFixture, StartedAgent } from "./agent-suite.ts";
 import { startStubModelServer } from "./stub-models/server.ts";
 import type { StubServer } from "./stub-models/server.ts";
-import type { NormalizedMessage } from "./stub-models/types.ts";
+import type { NormalizedMessage, StubBrain } from "./stub-models/types.ts";
 
 // Milestone 9 (ADR 0070, F-148, spec section 5.2): the agent contract suite's files cases. With
 // `promptImages`, a PNG in a prompt, and in a steer mid-turn, reaches the stub model as an image,
@@ -37,6 +37,12 @@ export type AgentFilesProbes = {
   readonly steerable?: { readonly prompt: string; readonly waitFor: string };
   /** A prompt that makes the agent read the file at an absolute path with its own read tool, and say its first line. */
   readonly readFile: (absolutePath: string) => string;
+  /**
+   * The stub model's script for these cases, for an agent whose every step is its model's (a real
+   * one, as OpenCode): it plays the read, and the long step a steer lands in. Absent: the model
+   * answers "I can see it." to every call, as the scripted fakes need.
+   */
+  readonly brain?: StubBrain;
 };
 
 type Subject = () => { readonly adapter: AgentAdapter; readonly fixture: AgentFixture };
@@ -69,6 +75,15 @@ const textOf = (events: readonly TaskEvent[]): string =>
 /** Every user message the stub got, oldest first. */
 const userMessages = (stub: StubServer): readonly NormalizedMessage[] => stub.calls.flatMap((call) => call.messages.filter((message) => message.role === "user"));
 
+/**
+ * The user message that carried these words to the model, the one with its pictures first: an
+ * agent's own title call quotes the words without the pictures (OpenCode's does), and comes first.
+ */
+const messageWith = (stub: StubServer, words: string): NormalizedMessage | undefined => {
+  const carrying = userMessages(stub).filter((message) => message.text.includes(words));
+  return carrying.find((message) => message.images.length > 0) ?? carrying[0];
+};
+
 const waitUntil = async (what: string, done: () => boolean, timeoutMs = 20_000): Promise<void> => {
   const deadline = Date.now() + timeoutMs;
   while (!done()) {
@@ -97,7 +112,7 @@ export const defineAgentFilesCases = (subject: Subject): void => {
   /** A session of the fixture's agent, its model at a stub of the format given, taking the inputs given. */
   const open = async (format: ApiFormat, inputModalities: readonly InputModality[]): Promise<Opened> => {
     const { adapter, fixture } = subject();
-    const stub = await startStubModelServer({ format, realKey: STUB_KEY, models: [STUB_MODEL], brain: () => ({ text: "I can see it." }) });
+    const stub = await startStubModelServer({ format, realKey: STUB_KEY, models: [STUB_MODEL], brain: fixture.files?.brain ?? (() => ({ text: "I can see it." })) });
     const input: PrepareLaunchInput = {
       ...fixture.launchInput,
       model: { ...fixture.launchInput.model, apiFormat: format, endpointModelId: STUB_MODEL, baseUrl: stub.baseUrl, placeholderKey: STUB_KEY, inputModalities },
@@ -155,7 +170,7 @@ export const defineAgentFilesCases = (subject: Subject): void => {
         const text = `${probes.modelTurn} Make the history panel look like this.`.trim();
         const done = await adapter.prompt(opened.session, nextTurn(), { text, images: [IMAGE] });
         expect(done.ok, format).toBe(true);
-        const asked = userMessages(opened.stub).find((message) => message.text.includes("Make the history panel look like this."));
+        const asked = messageWith(opened.stub, "Make the history panel look like this.");
         expectPng(asked, `${format}: the prompt's image`);
       } finally {
         await opened.close();
@@ -179,7 +194,7 @@ export const defineAgentFilesCases = (subject: Subject): void => {
         const steered = await adapter.steer(opened.session, { text: "Use this layout instead.", images: [IMAGE] });
         expect(steered, format).toEqual({ ok: true, value: undefined });
         expect((await turn).ok, format).toBe(true);
-        const asked = userMessages(opened.stub).find((message) => message.text.includes("Use this layout instead."));
+        const asked = messageWith(opened.stub, "Use this layout instead.");
         expectPng(asked, `${format}: the steer's image`);
       } finally {
         await opened.close();

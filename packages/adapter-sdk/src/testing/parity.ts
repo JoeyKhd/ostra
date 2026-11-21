@@ -372,8 +372,8 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
     ...common,
     ...milestone6WithTools,
     ...milestone8OpenCode,
-    // Ticket 09 writes the model's inputs into OpenCode's config and declares promptImages.
-    ...imagesAsFiles,
+    // Ticket 09: the model's inputs in OpenCode's config and catalog, and promptImages declared.
+    ...imagesTaken,
     "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.subagentsWait, suiteCases.subagentsOwn),
     "F-025 Stop": cases(suiteCases.cancel, suiteCases.subagentsCancel),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch),

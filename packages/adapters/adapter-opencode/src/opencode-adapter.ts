@@ -126,10 +126,10 @@ export class OpenCodeAdapter extends AgentAdapter {
     // end its turn; the driver asks for `opencode/child-session-updates`, so a turn waits for them
     // and for the turns their reports wake (`research/opencode-subagents.md`).
     subagents: "background",
-    // Milestone 9 (ADR 0070): OpenCode advertises `promptCapabilities.image`, but turns every image
-    // into an error line until its config names the model's inputs; ticket 09 writes them and
-    // declares this. Until then a message's images reach it as files, their paths in its prompt.
-    promptImages: false,
+    // Milestone 9 (ADR 0070): OpenCode advertises `promptCapabilities.image`, and shows an image to
+    // a model whose inputs its config and catalog name (`modelInputModalities`, ticket 09); to one
+    // they don't, it sends an error line, so the driver sends images only to such a model.
+    promptImages: true,
   };
 
   /** The repo files OpenCode reads its project config from, hidden without `projectConfigOverride` (Q171). */

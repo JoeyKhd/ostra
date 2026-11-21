@@ -341,6 +341,17 @@ export const scenarios: Readonly<Record<string, Scenario>> = {
     return step === 1 ? { text: `read answered: ${lastToolResults.map((result) => (result.isError ? `error: ${result.text}` : result.text)).join(" | ")}` } : undefined;
   },
 
+  /**
+   * Milestone 9 (F-148): says it waits, runs a long step a steer lands in, then says whether the
+   * steer's words reached it (the files cases' steer, which waits for the first words).
+   */
+  "steer-wait": ({ step, since }) => {
+    if (step === 0) {
+      return { text: "waiting for a steer", toolCalls: [{ name: "shell", arguments: { command: sleepCommand(8000), timeout: 120_000, description: "wait" } }] };
+    }
+    return step === 1 ? { text: conversationText(since).includes("Use this layout instead.") ? "steer seen" : "no steer seen" } : undefined;
+  },
+
   /** Writes each workspace-relative file the marker names, then says it did. */
   write: ({ step, args }) => {
     const files = args.split(" ").filter((file) => file !== "");

@@ -326,6 +326,15 @@ const fixtureFor = async (format: ApiFormat): Promise<AgentFixture> => {
     },
     // Milestone 6 (ticket 09): the whole team's task kinds, played by the stub model on the real binary.
     team: teamProbes(root, workspaceDir),
+    // Milestone 9 (ticket 09, F-148): the files cases on the real binary, each with stub models of
+    // its own in both formats, played by the same scripts: an image in a prompt and in a steer that
+    // lands in a long step, and a file under the workspace root's `.ostra/` opened with its read tool.
+    files: {
+      modelTurn: "",
+      steerable: { prompt: `${stubMarker("steer-wait")} wait for a steer`, waitFor: "waiting for a steer" },
+      readFile: (absolutePath) => `${stubMarker("read-file", absolutePath)} read it`,
+      brain: createScenarioBrain(scenarios),
+    },
     // Milestone 8 (ticket 14): the app tools and the app's block, played by the stub model on the real binary.
     app: {
       start: startToolsCore,
