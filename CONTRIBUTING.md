@@ -21,7 +21,6 @@ pnpm check:licenses              # the license line: no Apache-2.0 package reach
 
 Those run in CI on every pull request. Before you push a change, also run what applies to it:
 
-- `pnpm check:proof`, when you change a feature's status, a proof file or a test a proof cites;
 - `pnpm check:images` and `pnpm check:helm`, when you change `deploy/` or a dependency (each image's third-party notices are made from the install);
 - `pnpm check:release`, when you change a published package (`@ostra/protocol`, `@ostra/adapter-sdk`, the adapters, the CLI) or any `package.json`.
 
@@ -29,7 +28,7 @@ A change to a `package.json` goes in the same commit as the updated `pnpm-lock.y
 
 ## The proof rule
 
-A feature is done only when every condition of its "done when" ([`context/features.md`](context/features.md)) has a proof in [`context/proof/`](context/proof/README.md): a test that runs the real code path, names the feature's ID (`F-039: ...`), and would fail if the feature broke. Check that it would: break the code on purpose, watch the test fail, and write what you broke in the proof file's break-it column. Where a condition needs a machine or an account CI doesn't have, its proof is live evidence kept in the repo, with an honest note of what hasn't run yet. `pnpm check:proof` fails a `done` row without its proof.
+A feature is done only when every condition of its "done when" ([`context/features.md`](context/features.md)) has a test that runs the real code path and would fail if the feature broke, and CI runs it. Name the test with the condition's key: `F-039/c1: ...`, where `c1` is the first sentence of the "done when", its dated notes in italics left out. Where a condition needs a machine CI doesn't have (Linux with Docker, kind, macOS), it waits for the one run of the `Proof` workflow (`.github/workflows/proof.yml`) at the launch gate, and the feature stays `building` until then.
 
 ## The contributor agreement
 

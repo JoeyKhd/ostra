@@ -32,7 +32,7 @@ Ported from spike 08.
   - a port outside the previews refused (break-it: skip `mayReach`, and the case fails);
   - the HTTP carrier's refusal.
 - [ ] Tests named for `F-144`: a plain request and an extended CONNECT reaching the Vite fixture with HMR.
-- [ ] The executor suite's forward case passes on the `docker` fake. The `live-docker` job carries the forwarder live, marked as waiting until it runs.
+- [ ] The executor suite's forward case passes on the `docker` fake. The `live-docker` job carries the forwarder live, marked as waiting until it runs. *Its run waits for the launch-gate Proof run (the maintainer, 2026-11-21).*
 - [ ] The whole-repo checks pass (spec section 10).
 - [ ] Committed as `✨ carry previews over an HTTP/2 tunnel`.
 

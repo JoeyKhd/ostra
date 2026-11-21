@@ -308,7 +308,7 @@ describe.each(["openai-compatible", "anthropic-messages"] as const)("OpenCode, %
 });
 
 // F-019's own cases, against the pinned binary: what the contract suite checks for every agent,
-// said for OpenCode, so the proof ledger (context/proof/F-019.md) can name them.
+// said for OpenCode, so each one has a test named with F-019's key.
 
 const turnOf = (n: number) => turnIdSchema.parse(`f019-turn-${String(n)}`);
 
@@ -447,7 +447,7 @@ describe("F-019 on the pinned OpenCode", () => {
 });
 
 // Milestone 3's cases on the pinned OpenCode (ticket 08): what the profile cases check for every
-// agent, said for OpenCode and its config, so the proof ledger can name them.
+// agent, said for OpenCode and its config, so each one has a test named with its key.
 
 type Asked = { readonly title: string; readonly subject: unknown };
 
@@ -955,7 +955,7 @@ describe("ticket 57 on the pinned OpenCode", () => {
 });
 
 // Milestone 6 (ticket 09): what the team cases check for every agent, said for OpenCode's own
-// config, so the proof ledger can name them: its tool filter and the read-only kinds' edits.
+// config, so each one has a test named with its key: its tool filter and the read-only kinds' edits.
 
 describe("milestone 6 on the pinned OpenCode", () => {
   /** A fake core whose MCP stand-in serves every tool set, as a server that lists too much would. */

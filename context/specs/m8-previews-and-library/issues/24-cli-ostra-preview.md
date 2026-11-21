@@ -28,7 +28,7 @@ Spec: `../spec.md`, sections 3 (step 9) and 4; ADR 0068 ("`ostra preview`")
   - it listens on loopback only (break-it: listen on `0.0.0.0`, and the case fails);
   - each refusal's words;
   - the reconnect.
-- [ ] Live evidence: `ostra preview` against the fixture app on this machine, HMR seen in a browser tab, its log kept in `context/proof/`.
+- [ ] Checked by hand: `ostra preview` against the fixture app on this machine, HMR seen in a browser tab, recorded under `## Comments`. *Changed 2026-11-21: its log was to be kept in `context/proof/`, gone with the proof files.*
 - [ ] `cli-docs-reference.test.ts` passes with the new page.
 - [ ] Checks for `apps/runner` pass (spec section 10).
 - [ ] Committed as `✨ add ostra preview`.

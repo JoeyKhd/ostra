@@ -428,7 +428,7 @@ export const checkParity = async (
   return problems;
 };
 
-/** The rows still waiting for the cases of a ticket being built, per adapter: what the proof file lists as not yet proved. */
+/** The rows still waiting for the cases of a ticket being built, per adapter: what isn't proved yet. */
 export const pendingParity = (table: Readonly<Record<string, Readonly<Record<string, ParityProof>>>> = parityTable): readonly string[] =>
   Object.entries(table).flatMap(([name, entries]) =>
     Object.entries(entries).flatMap(([feature, proof]) => (proof.kind === "waits" ? [`${name}: ${feature} waits for ${proof.on}`] : [])),

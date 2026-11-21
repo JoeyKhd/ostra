@@ -28,7 +28,7 @@ Spec: `../spec.md`, sections 5.2, 6 and 11; ADR 0068 ("The box's browser")
 ## Done when
 
 - [ ] Tests named for `F-121`: on `host` here, the browser is found (Edge), started in the task's unit, takes a screenshot of the fixture app, and leaves no profile folder after the task ends; the download path checks the SHA-256 and refuses a mismatch (break-it: accept any hash, and the case fails); with the download off and no browser, the reason is reported.
-- [ ] The executor suite's browser case passes on `docker` and `kubernetes` against their fakes; the `live-docker` and `live-kind` jobs carry it, marked as waiting until they run.
+- [ ] The executor suite's browser case passes on `docker` and `kubernetes` against their fakes; the `live-docker` and `live-kind` jobs carry it, marked as waiting until they run. *Their run waits for the launch-gate Proof run (the maintainer, 2026-11-21).*
 - [ ] `pnpm check:images` passes with the Chromium pin and its notices.
 - [ ] The whole-repo checks pass (spec section 10).
 - [ ] Committed as `✨ add the box's browser`.

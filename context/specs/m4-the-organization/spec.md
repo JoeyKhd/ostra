@@ -496,7 +496,7 @@ As milestones 1 to 3 (`../m1-first-pr/spec.md`, section 9). In short:
 - `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for the touched packages, and `pnpm check:licenses` passes.
 - Tickets that touch auth, credentials, the schema, the runner protocol, webhooks or anything that runs agent output (01, 02, 05, 07, 08, 09, 15, 18, 19, 20, 21, 22, 23, 41, 43, and since 2026-11-19 45, 46, 47, 48, 49, 51, 56, 57, 59 and 60) run all the checks for the whole repo.
 - Every new setting has a working default and its line in `docs/configuration.md`. A fresh install with only the required settings still works, with mail off.
-- **Proof** (`AGENTS.md`, `context/proof/README.md`): a test that proves a condition of a row's "done when" names the row's ID in its title (`it("F-049: a member of one organization never sees another's runners", ...)`), runs in CI, and has a break-it check. The ticket adds its rows to `context/proof/F-nnn.md` (`pnpm proof:new F-nnn` writes the file), and `pnpm check:proof` passes. A condition only a live run shows cites the run's log or screenshot kept in the repo, which ticket 41 records.
+- **Proof** (`AGENTS.md`; *changed 2026-11-21, the maintainer: "keep tests, drop extras"*): each condition of a row's "done when" has a test named with its key (`it("F-nnn/c1: ...")`) that exercises it through the real code path, and CI runs it. No break-it pass, no proof file. A condition only a live run shows (Linux, macOS, kind, the e2e workflow) waits for the launch-gate Proof run.
 - No secret in the commit. Logs carry IDs and fields, never tokens, invitation or reset links, notes, queries, prompts, ticket text, comments or agent output. Member, PR, note and agent text is never interpolated into a shell command or into SQL: search and memory queries go through bound parameters only.
 - A `package.json` change goes with its `pnpm-lock.yaml`. Nothing new is added without the maintainer's yes; milestone 4 needs no new dependency (section 10).
 - Stage only the ticket's own paths, a gitmoji message of at most 50 characters, no AI attribution, `git pull --rebase origin main`, `git push origin main`, retrying on a rejected push.
@@ -504,7 +504,7 @@ As milestones 1 to 3 (`../m1-first-pr/spec.md`, section 9). In short:
 
 ### 9.1 How each row gets proved
 
-Each condition of a row's "done when" gets a row in its proof file. This is where the proofs are expected to come from; the building tickets write them, and ticket 41 checks every one.
+Each condition of a row's "done when" gets a test named with its key. This is where those tests are expected to come from; the building tickets write them, and ticket 41 checks every one.
 
 | F-ID | Proved by tests (kind, ticket) | Live evidence (step of section 3, kept by ticket 41) |
 |---|---|---|

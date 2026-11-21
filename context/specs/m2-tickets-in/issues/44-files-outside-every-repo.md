@@ -27,7 +27,7 @@ Settled as Q133 on 2026-11-19 (`context/open-questions.md`, Settled). The worksp
 
 ## Done when
 
-- [ ] With the scripted fake agent, in both executors' suites: a file written at the root is reported once, with its path. A turn that also changed a repo still opens its PR, with the item beside it. A turn that changed nothing needs you for this reason. A later turn that moved the file closes the item. The repos' folders and ostra's own are never reported.
+- [ ] With the scripted fake agent, in both executors' suites: a file written at the root is reported once, with its path. A turn that also changed a repo still opens its PR, with the item beside it. A turn that changed nothing needs you for this reason. A later turn that moved the file closes the item. The repos' folders and ostra's own are never reported. *Its `docker` half needs its live test in the `docker` executor's suite first, then waits for the launch-gate Proof run's `live-docker` job (the maintainer, 2026-11-21).*
 - [x] The paths reach the event log and the panel, and no log line.
 - [x] Proof (`AGENTS.md`, `context/proof/README.md`): each test that proves a condition of a row's "done when" names the row's ID in its title and has a break-it check, its rows are in `context/proof/`, and `pnpm check:proof` passes.
 - [x] The whole-repo checks pass (spec section 9: the runner protocol, the schema).

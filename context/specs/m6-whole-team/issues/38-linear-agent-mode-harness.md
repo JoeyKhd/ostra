@@ -24,7 +24,7 @@ Spike 5's real-run harness, ported to run against ostra itself (core, Postgres, 
 
 ## Done when
 
-- [ ] With the app token: the install, the 50 delegations, the follow-up and the 35 minutes pass, the stop passes with the maintainer's press, and the log is kept and cited in `context/proof/F-012.md`.
+- [ ] With the app token: the install, the 50 delegations, the follow-up and the 35 minutes pass, the stop passes with the maintainer's press, recorded under `## Comments`. *Changed 2026-11-21: the log was to be kept and cited in `context/proof/F-012.md`, gone with the proof files.*
 - [x] Without it: the harness skips cleanly, and F-012's proof file says which conditions wait for the token.
 - [ ] Committed as `✅ add the Linear agent-mode harness`, and the record as `📝 record the Linear agent-mode run`.
 

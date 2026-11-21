@@ -25,6 +25,12 @@ const untickedDoneWhen = (text: string): string[] => {
   return section.filter((line) => /^\s*- \[ \]/u.test(line)).map((line) => line.trim());
 };
 
+/**
+ * A box that only the launch gate's one Proof run can tick, and says so with its dated note, may
+ * stay unticked in a closed ticket (the maintainer, 2026-11-21: the Proof workflow runs only then).
+ */
+const waitsForTheGate = (box: string): boolean => /waits for the launch-gate proof run/iu.test(box);
+
 describe("milestone 5 tickets", () => {
   it("reads the status and the unticked boxes of a ticket", () => {
     const ticket = [
@@ -36,16 +42,19 @@ describe("milestone 5 tickets", () => {
       "",
       "- [x] One.",
       "- [ ] Two.",
+      "- [ ] Three. *Waits for the launch-gate Proof run (the maintainer, 2026-11-21).*",
       "",
       "## Comments",
       "",
       "- [ ] not a done-when box",
     ].join("\n");
     expect(ticketStatus(ticket)).toBe("resolved");
-    expect(untickedDoneWhen(ticket)).toEqual(["- [ ] Two."]);
+    const unticked = untickedDoneWhen(ticket);
+    expect(unticked).toHaveLength(2);
+    expect(unticked.filter((box) => !waitsForTheGate(box))).toEqual(["- [ ] Two."]);
   });
 
-  it("leaves no done or resolved ticket with an unticked done-when box", async () => {
+  it("leaves no done or resolved ticket with an unticked done-when box, but for the gate's", async () => {
     const names = (await readdir(issuesDir)).filter((name) => name.endsWith(".md"));
     expect(names.length).toBeGreaterThan(0);
     const open: string[] = [];
@@ -53,7 +62,7 @@ describe("milestone 5 tickets", () => {
       const text = await readFile(path.join(issuesDir, name), "utf8");
       const status = ticketStatus(text);
       if (closedStatuses.some((closed) => closed === status)) {
-        for (const box of untickedDoneWhen(text)) {
+        for (const box of untickedDoneWhen(text).filter((unticked) => !waitsForTheGate(unticked))) {
           open.push(`${name} (${status ?? ""}): ${box}`);
         }
       }

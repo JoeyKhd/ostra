@@ -35,7 +35,7 @@ To the approved targets `preview-native` and `instance-preview-domain`:
   - "Open in a new tab" makes its own handshake;
   - the settings page's check reports a missing record.
 - [ ] Tests named for `F-142`: a watch-only link gets no code (break-it: let one through, and the case fails).
-- [ ] Safari's partitioned cookie in the frame is checked by hand on a Mac (ticket 34), and recorded in F-144's proof file as live evidence or as waiting.
+- [ ] Safari's partitioned cookie in the frame is checked by hand on a Mac (ticket 34), and recorded under `## Comments` as seen or as waiting. *Changed 2026-11-21: it was F-144's proof file, gone with the proof files.*
 - [ ] Checks for `packages/api` and `apps/web` pass (spec section 10).
 - [ ] Committed as `✨ add the native preview to the pane`.
 

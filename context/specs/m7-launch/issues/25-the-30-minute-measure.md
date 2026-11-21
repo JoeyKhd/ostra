@@ -4,7 +4,7 @@ Status: ready-for-human
 Builder: core (lead), with two people new to ostra whom the maintainer picks
 Blocked by: 22, 24, 29 (it was also 31, which is `wontfix` since 2026-11-19 with F-018)
 Features: F-076, F-001 (its first sentence's live evidence)
-Packages: `context/specs/m7-launch/measure/` (new), `context/proof/F-076.md`
+Packages: `context/specs/m7-launch/measure/` (new)
 Spec: `../spec.md`, sections 2 and 10.1; ADR 0064 ("The 30-minute measure")
 
 ## Why a person
@@ -22,7 +22,7 @@ F-076 says "an organization new to ostra". Nobody who built it, and no agent, is
 
 - [ ] The rehearsal is recorded, with what it changed in the docs.
 - [ ] Two measured runs by two different newcomers are recorded, each under 30 minutes.
-- [ ] `context/proof/F-076.md` cites them, and `pnpm check:proof` passes.
+- *Withdrawn 2026-11-21, with the proof files (the maintainer: "keep tests, drop extras"):* `context/proof/F-076.md` cites them, and `pnpm check:proof` passes.
 - [ ] Committed as `📝 record the 30-minute measure`.
 
 ## Comments

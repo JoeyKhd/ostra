@@ -5,7 +5,7 @@ Held: until the maintainer says it is time for the launch gate. The maintainer, 
 Builder: core
 Blocked by: none (it was 07, which is `wontfix` since 2026-11-19)
 Features: F-117
-Packages: `e2e/load` (the mix), `context/specs/m7-launch/load/` (new), `context/proof/F-117.md`
+Packages: `e2e/load` (the mix), `context/specs/m7-launch/load/` (new)
 Spec: `../spec.md`, sections 2 and 10.1; ADR 0061 (amended); ADR 0064 ("The load test as the gate")
 Note: changed 2026-11-19. Claude Code (F-018) moved after v1, so the mix stays milestone 5's, on OpenCode's rates. The second agent's rates in the mix wait with F-018; they're in this file's history.
 
@@ -14,6 +14,7 @@ Note: changed 2026-11-19. Claude Code (F-018) moved after v1, so the mix stays m
 - **The mix:** milestone 5's generator, as it is, on OpenCode's rates from spike 10.
 - **This machine's ramp** on the release candidate (`pnpm load:run --ramp`), its summary in `context/specs/m7-launch/load/windows.md` with the machine's description, as milestone 5 kept its.
 - **The run that counts,** on the maintainer's Linux machine (at least 16 vCPUs and 32 GB, a real Postgres on its own disk; ticket 34, step 7): `pnpm load:run --tasks 1000`, its summary and `results.json` in `context/specs/m7-launch/load/linux.md`.
+- **The one Proof run,** on the same release candidate, with this gate: `gh workflow run Proof -f jobs=all`, once, on the maintainer's word (ticket 32 owns it; ADR 0064, "The Proof run"). *Added 2026-11-21 (the maintainer: "Launch gate only").*
 
 ## Done when
 

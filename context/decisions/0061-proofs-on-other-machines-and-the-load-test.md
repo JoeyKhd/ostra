@@ -1,6 +1,6 @@
 # Proofs on machines the plan isn't built on, and the load test
 
-**Status:** accepted (2026-11-19, on the maintainer's delegation for milestone 5's spec). Settles Q230 and Q245. **Amended 2026-11-19 for milestone 7's spec** (ADR 0064, Q257): the run that counts is repeated on the release candidate, and launch waits for it. Claude Code's recorded rates in the mix wait with F-018, which moved after v1 on 2026-11-19. Covers how F-014, F-015, F-017, F-039, F-093, F-095, F-116, F-117, F-118 and F-120 get proved, and builds on `AGENTS.md`'s proof rule, `context/proof/README.md`, the maintainer's CI scope of 2026-11-19 (`proof.yml` by hand only, never in `ci.yml`) and ADR 0034 (spike 6's load bars).
+**Status:** accepted (2026-11-19, on the maintainer's delegation for milestone 5's spec). Settles Q230 and Q245. **Amended 2026-11-19 for milestone 7's spec** (ADR 0064, Q257): the run that counts is repeated on the release candidate, and launch waits for it. Claude Code's recorded rates in the mix wait with F-018, which moved after v1 on 2026-11-19. **Amended 2026-11-21, on the maintainer's word** ("Launch gate only"; "Keep tests, drop extras"): the `Proof` workflow's jobs run once, at the launch gate, as one of its steps (ADR 0064), and never while building. The proof files, their break-its and the logs kept in the repo as live evidence are gone: a row is `done` when a test named with each condition's key passes in CI, and a condition only these jobs show waits for that run. Covers how F-014, F-015, F-017, F-039, F-093, F-095, F-116, F-117, F-118 and F-120 get proved, and builds on `AGENTS.md`'s proof rule, `context/proof/README.md`, the maintainer's CI scope of 2026-11-19 (`proof.yml` by hand only, never in `ci.yml`) and ADR 0034 (spike 6's load bars).
 
 The plan is built on a Windows machine with no Docker, no Kubernetes, no Linux and no Mac (`build-order.md`). Milestone 5's rows are mostly about those. A row is `done` only when every condition of its "done when" is proved (`context/proof/README.md`), and a test that runs only on another machine is live evidence, cited by its run's log. This ADR says where those runs happen, so a row never waits on "later" with no plan, and is never set `done` on a fake.
 
@@ -10,7 +10,7 @@ The plan is built on a Windows machine with no Docker, no Kubernetes, no Linux a
   - **`ubuntu-24.04`** for Docker (the three images, the compose file, the `docker` executor's live tests, the egress probes, 50 boxes, limits, a local `registry:2`, real nginx, a `host` pool's OS user, a delegated cgroup, gVisor optionally) and for kind (both charts, a box as a pod, the kubelet's pull, the BuildKit pod, NetworkPolicy enforced by Calico and ignored by a second cluster, so the control pod tells them apart).
   - **`macos-15`** for the `host` executor's macOS containment cases and a `host` pool's OS user.
 - **They need no secret.** The jobs use the stub models, the fake git upstream and the fake GitHub, so nothing from `~/.config/ostra-dev/` goes to GitHub. Every action is pinned by SHA and every tool by version and SHA-256.
-- **Their logs are kept in the repo** under the milestone's `demo/` folder, checked for secrets, and cited as `live:` evidence. A step a hosted runner can't do is said in its log, and its condition stays `partial`.
+- **Their logs are kept in the repo** under the milestone's `demo/` folder, checked for secrets, and cited as `live:` evidence. A step a hosted runner can't do is said in its log, and its condition stays `partial`. *Changed 2026-11-21: the logs are checked for secrets and uploaded as the run's artifacts, and the launch-gate run is the evidence; a step a hosted runner can't do keeps its row `building`, with a dated note.*
 - **The maintainer's own machine and cluster** do what a hosted runner can't: an autoscaler that really adds a node (F-093), and the load test at full scale (F-117), which needs more than a hosted runner's 4 vCPUs. The scripts the jobs run are in `scripts/live/`, so the same steps run on any Linux machine.
 
 ## The load test
@@ -31,6 +31,6 @@ The plan is built on a Windows machine with no Docker, no Kubernetes, no Linux a
 ## Consequences
 
 - `proof.yml` gains three jobs; `ci.yml` doesn't change.
-- A row whose conditions need another machine says, in its proof file, which job's log proves each one, and stays `building` until the log is in the repo.
+- A row whose conditions need another machine says, in its proof file, which job's log proves each one, and stays `building` until the log is in the repo. *Changed 2026-11-21: it says so in a dated note, and stays `building` until the launch-gate Proof run passes.*
 - The plan's machine stays the one the demos run on; milestone 5's demo links the jobs' runs.
 - If GitHub's hosted runners stop allowing kind, nested containers or the macOS runner, the scripts run on the maintainer's machines instead.

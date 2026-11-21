@@ -75,7 +75,7 @@ Read from the code on `main` on 2026-11-21, so builders don't rebuild what exist
 ### On this machine
 
 The same adjustment as milestones 1 to 7: the demo's scripted part runs here on the `host` executor, where a "box" is a worktree. Here the box's browser is Edge, which every Windows machine has. The browser view, screenshots, recordings, `ostra preview`, the native preview on `preview.localhost`, two core replicas and the library all run here. What needs more than that:
-- **Linux with Docker:** Chromium in the base image, the init's browser pipe and forwarder, and the box's network keeping public fonts out of a screenshot. In the `live-docker` job of `proof.yml` (ADR 0061), which hasn't run yet. Until then F-121 and F-141 stay `building` for `docker`, proved against the fake engine.
+- **Linux with Docker:** Chromium in the base image, the init's browser pipe and forwarder, and the box's network keeping public fonts out of a screenshot. In the `live-docker` job of `proof.yml` (ADR 0061), which runs once, at the launch gate. Until then F-121 and F-141 stay `building` for `docker`, proved against the fake engine.
 - **Kubernetes:** the same in the `live-kind` job, with the pod's shared `localhost`.
 - **macOS:** Safari's partitioned cookie in the pane's frame (F-144), and a `host` runner on a Mac finding Chrome or downloading its headless shell. The maintainer's Mac, or the macOS proof job.
 - **People:** the maintainer's review of the targets (tickets 09 and 10), and the `test-web` repo in `ostra-test` (ticket 34).
@@ -468,7 +468,7 @@ Agreed here so builders don't each invent one.
 - **Postgres:** milestone 1's helper, a database per test file. Every test that reads data also checks that another organization's rows and a restricted project's rows stay invisible. Milestone 4's generated isolation test gets a fixture for each new model.
 - **The browser in tests:** on this machine, Edge through the same pipe client the runner uses. In CI, the Chromium that the Linux job's base image carries. A `FakeBrowser` in `apps/runner/src/testing/` answers the pipe's few DevTools calls with fixed frames, for the unit tests that don't need pixels.
 - **The app:** `e2e/m8-previews-and-library/fixtures/test-web/`, which ticket 03 writes, is the demo's app and the tests' app: a Vite and React frontend with `server.proxy` to an API on 3001, a docs page on 4000, a page that sets `X-Frame-Options: DENY`, a page that builds a URL from `Host`, and a WebSocket echo. The runner's tests start it from the fixture, with no network.
-- **Executors:** the fake Docker engine and the fake Kubernetes API (milestone 5), grown with the init's process, browser and forward requests. Live on `host` here. The `live-docker` and `live-kind` jobs of `proof.yml` run the executor suite's new cases when they run.
+- **Executors:** the fake Docker engine and the fake Kubernetes API (milestone 5), grown with the init's process, browser and forward requests. Live on `host` here. The `live-docker` and `live-kind` jobs of `proof.yml` run the executor suite's new cases at the launch gate.
 - **Replicas:** two `apps/core` processes on one database, from milestone 6's helper that starts and kills a core by name, with `OSTRA_CORE_REPLICA_URL` pointing at each.
 - **Time:** the warm rule, the views' sweep, a link's expiry, the codes' 60 s and the update check read the `Clock` port.
 - **The library's sources:** the fake code host (ticket 02) with public repos and a private one behind an installation; a fake well-known host; a fake MCP registry speaking `v0.1` with active, deprecated and deleted entries, a remote with a secret header, a remote that answers with an OAuth challenge, and a packages-only entry; a stub MCP server that answers `tools/list` and one tool; a fake skills search. The live cases run against GitHub's registry and skills.sh only when the run says so, and never in CI.
@@ -483,9 +483,9 @@ As milestones 1 to 7 (`../m1-first-pr/spec.md`, section 9), and the lead's rules
 - **Checks once, then push.** `pnpm typecheck`, `pnpm lint` and `pnpm test` for the touched packages (and their direct consumers when a shared type changes), with `--cache-dir=C:/Users/santi/ow/.turbo-cache`, once before each push. `pnpm check:licenses` passes. GitHub CI runs the rest; a failure from the change is fixed forward.
 - **The whole-repo checks** run for tickets that touch auth, credentials, the schema, the runner protocol, webhooks or anything that runs agent output: 01, 03, 04, 11, 12, 13, 18, 19, 22, 23, 25, 27 and 28.
 - **Browser suites run once,** at the milestone's end (ticket 33). A fix that needs browser proof runs only its own spec file.
-- **Break-its only where they guard behaviour,** one pass per ticket: break the fix once, watch all its tests fail together, then restore.
+- **A ticket's "(break-it: ...)"** names what its test must catch, and nothing more: no break-it pass runs (*changed 2026-11-21, the maintainer: "keep tests, drop extras"*).
 - **Every new setting** has a working default and its line in `docs/configuration.md`. A fresh install with only the required settings still works: no preview domain, no library items, search off, and every task behaves as in milestone 7, with screenshots after a turn only once an environment declares a primary.
-- **Proof** (`AGENTS.md`, `context/proof/README.md`): a test that proves a condition of a row's "done when" names the row's ID in its title (`it("F-142: an expired link opens no view, and says so", ...)`), runs in CI, and has a break-it check where it guards behaviour. The ticket adds its rows to `context/proof/F-nnn.md` (`pnpm proof:new F-nnn` writes the file), and `pnpm check:proof` passes. A condition only a live run shows cites the run's log or screenshot kept in the repo.
+- **Proof** (`AGENTS.md`; *changed 2026-11-21, the maintainer: "keep tests, drop extras"*): each condition of a row's "done when" has a test named with its key (`it("F-nnn/c1: ...")`) that exercises it through the real code path, and CI runs it. No break-it pass, no proof file. A condition only a live run shows (Linux, macOS, kind, the e2e workflow) waits for the launch-gate Proof run.
 - **No secret in the commit.** Logs carry IDs and fields, never tokens, codes, tickets, captions, steps, app logs, skill files, a server's headers or a suggestion's note.
 - **No new dependency without the maintainer's yes** (section 11). A `package.json` change goes with its `pnpm-lock.yaml`.
 - **Stage only the ticket's own paths,** no `git add -A`, no stash. A gitmoji message of at most 50 characters, no AI attribution. Rebase onto `origin/main`, then push to `origin main`.
@@ -494,7 +494,7 @@ As milestones 1 to 7 (`../m1-first-pr/spec.md`, section 9), and the lead's rules
 
 ### 10.1 How each row gets proved
 
-Each condition of a row's "done when" gets a row in its proof file. The building tickets write them, and ticket 33 checks every one. "Needs" names hardware or people this machine lacks. Such a condition stays `missing` or `partial` until it has run, with the plan in its proof file's notes, never a pass the run didn't show.
+Each condition of a row's "done when" gets a test named with its key. The building tickets write them, and ticket 33 checks every one. "Needs" names hardware or people this machine lacks. Such a condition keeps its row `building` until it has run (the launch-gate Proof run, or the person), with a dated note in the ledger, never a pass the run didn't show.
 
 | F-ID | Proved by tests (ticket) | Live evidence (step of section 3) | Needs |
 |---|---|---|---|

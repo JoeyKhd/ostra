@@ -24,7 +24,6 @@
 | `build-order.md` | The milestones (0–8) and the spikes of milestone 0 |
 | `open-questions.md` | What's still undecided |
 | `specs/` | One folder per milestone (`m1-first-pr`, `m2-tickets-in`, `m3-step-in`, `m4-the-organization`, `m5-the-fleet`, `m6-whole-team`, `m7-launch`, `m8-previews-and-library`): the spec, and the tickets as markdown files in `issues/` |
-| `proof/` | The proof ledger: for each feature, a test that shows each "done when" condition holds (`proof/README.md`) |
 | `decisions/` | ADRs: one file per hard-to-reverse decision |
 | `research/` | Findings on agents, trackers, vendors and similar tools, every claim cited |
 | `history/` | The record of how and why the plan changed. `answers-2026-11-18.md` holds every open question as the maintainer delegated it, with each answer's decision, reason, confidence and what would reopen it. `answers-2026-11-19.md` does the same for the questions milestone 1 raised. `self-hosted-only-2026-11-19.md` records that ostra is self-hosted only, and what that took out of the plan |

@@ -48,7 +48,7 @@ Pages on the docs site (ADR 0063), written as Markdown both of its paths render.
 
 - [ ] The pages exist, are in the site's navigation, and build.
 - [ ] The configuration reference lists every new setting, and `packages/domain`'s settings test passes.
-- [ ] Each `run` block parses, and the proof job's run of them is recorded or marked as waiting.
+- [ ] Each `run` block parses, and the proof job's run of them is recorded or marked as waiting. *The `docs-commands` job's run waits for the launch-gate Proof run (the maintainer, 2026-11-21).*
 - [ ] Committed as `📝 document previews and the library`.
 
 ## Comments

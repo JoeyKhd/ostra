@@ -1,6 +1,6 @@
 # 29: Images: third-party notices
 
-Status: in-progress
+Status: done
 Builder: runner
 Blocked by: none (it was 08 and 35, which are `wontfix` since 2026-11-19)
 Features: F-039
@@ -17,7 +17,7 @@ Note: changed 2026-11-19. Claude Code (F-018) moved after v1, so this ticket kee
 ## Done when
 
 - [x] Tests named for `F-039`: the notices list every bundled package (break-it: a bundled package left out fails); an unknown license fails.
-- [ ] The Linux proof job built the three images, each started and checked, its log kept.
+- [ ] The Linux proof job built the three images, each started and checked. *Waits for the launch-gate Proof run (the maintainer, 2026-11-21).* *Changed the same day: "its log kept" is dropped with the live-evidence logs.*
 - [x] The whole-repo checks pass (spec section 10).
 - [x] Committed as `✅ check images for their notices`.
 
@@ -31,3 +31,4 @@ Note: changed 2026-11-19. Claude Code (F-018) moved after v1, so this ticket kee
   - **Tests** (`notices.test.ts`, `image-checks.test.ts`, F-039) and their break-its are in `context/proof/F-039.md`.
   - **Not done here: the Linux proof job.** This machine has no Docker. `scripts/live/docker.sh` now prints each built image's notices and checks the runner holds no OpenCode (`image-notices`, `runner-no-agent`); the maintainer's `gh workflow run Proof -f jobs=fleet` builds, starts and checks the three, and its log goes in `context/specs/m5-the-fleet/demo/linux/`. That box stays open, and the ticket `in-progress`, until then.
   - **Checks:** typecheck and lint of the whole repo through turbo (72 of 72), the tests of `@ostra/deploy-checks` (37) and `@ostra/runner` (369), the root's (77), `check:licenses`, `check:images` and `check:proof`.
+- 2026-11-21, set `done` on the maintainer's word of 2026-11-21 (the Proof workflow runs only at the launch gate, "Launch gate only"): every box holds but the Linux job's build of the three images, which waits for the launch-gate Proof run (milestone 7's ticket 32).

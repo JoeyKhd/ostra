@@ -10,7 +10,7 @@ Source-available, self-hostable control panel that connects an organization's tr
 |---|---|
 | Asked where things stand, or what comes next | `context/README.md`, then `context/build-order.md` |
 | Working on a task, session, runner or any lifecycle | `context/domain-model.md` |
-| Deciding what to build, or whether it's done | `context/features.md` (the ledger); the spec under `context/specs/` that names its feature ID; its proof in `context/proof/` |
+| Deciding what to build, or whether it's done | `context/features.md` (the ledger); the spec under `context/specs/` that names its feature ID; the tests named with that ID (`F-025/`) |
 | Naming a domain concept | `context/GLOSSARY.md` |
 | Touching architecture, stack, data model or an adapter's design | `context/decisions/` |
 | Meeting something undecided | `context/open-questions.md`: add it there and settle it with the maintainer |
@@ -24,7 +24,7 @@ Source-available, self-hostable control panel that connects an organization's tr
 A change is done, and ready to commit, when every line that applies holds in that one commit:
 
 - **Checks:** sized to the change (the table under this list), on the packages it touches.
-- **Proof:** every condition of a feature's "done when" has a proof in `context/proof/`: a test named with the condition's key (`it("F-025/c1: ...")`) that exercises it for real and would fail if it broke (a break-it check shows it), or live evidence kept in the repo. `pnpm proof:sync` writes the proof files' test lists and statuses from the code, and `pnpm check:proof` fails for a `done` row without proof. How to add one: `context/proof/README.md`.
+- **Proof:** each condition of a feature's "done when" has a real test, named with the condition's key, that exercises it through the real code path, and CI runs it: `it("F-025/c1: ...")`, where `c1` is the first sentence of the "done when", its dated notes in italics left out. A feature is `done` once those tests pass. The test is the whole proof: no break-it pass, no proof file. A condition only a live run shows (Linux, macOS, kind, the e2e workflow) waits for the launch-gate Proof run.
 - **Adapter parity:** a feature that touches trackers, agents or code hosts works through the shared interface for every shipped adapter. The alternative is that the interface declares it an optional capability, and each adapter states whether it has it. A feature that works only for Linear or only for OpenCode, without that declaration, is a bug.
 - **Runner parity:** a task behaves the same on a personal runner and a pool runner, and on every executor (`docker`, `host`, `kubernetes`). A difference is a bug unless an ADR records it (ADR 0029 records the allowed differences: three for the `host` executor and one for `kubernetes`).
 - **Self-hosting:** a fresh install with only the required settings still works. A new setting ships with a working default and its line in the configuration reference.
@@ -39,13 +39,12 @@ A change is done, and ready to commit, when every line that applies holds in tha
 |---|---|---|
 | Docs: plan, research, ADRs | Nothing | No |
 | A fix or small change | Typecheck and lint of the packages it touches; a test when the code it covers changed | Only when the code can't settle it |
-| A feature, a new screen, a new adapter | Typecheck, lint and tests of the touched packages, `pnpm proof:sync`, plus a ticket → task → PR run against the test workspaces | Yes |
-| A feature's status or "done when", a proof file, or a test whose name gives a condition key | `pnpm proof:sync` | No |
+| A feature, a new screen, a new adapter | Typecheck, lint and tests of the touched packages, plus a ticket → task → PR run against the test workspaces | Yes |
 | Auth, credentials, the schema, the runner protocol, anything that runs agent output | All checks for the whole repo | As the change needs |
 
 ## Commits
 
-- **CI scope (the maintainer, 2026-11-19).** `.github/workflows/ci.yml` runs on every push and pull request with only the everyday checks: typecheck, lint, test and `check:licenses`. `pnpm check:proof` and the Playwright e2e suite run only by hand, in `.github/workflows/proof.yml` (`gh workflow run Proof`). Never add them, or another heavy job, to `ci.yml`; run them locally before you push.
+- **CI scope (the maintainer, 2026-11-19 and 2026-11-21).** `.github/workflows/ci.yml` runs on every push and pull request with only the everyday checks: typecheck, lint, test and `check:licenses`. The Playwright e2e suite, the docs' commands and the live jobs are in `.github/workflows/proof.yml`, which runs only at the launch gate, once, dispatched by the lead on the maintainer's word: never dispatch it while building. Never add them, or another heavy job, to `ci.yml`; run the e2e spec files a change touches locally before you push.
 - Commit and push to `origin main` after every fix or change, once it's done (above). One logical change per commit.
 - Other sessions work in this checkout at the same time: stage your own files by path, and leave changes you didn't make as they are.
 - A change to any `package.json` goes in the same commit as the updated `pnpm-lock.yaml` (run `pnpm install` first). CI installs with `--frozen-lockfile`, and a stale lockfile fails every later build.

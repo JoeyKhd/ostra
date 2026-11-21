@@ -1,8 +1,8 @@
 name: CI
 
-# The checks below run on every push to main and on pull requests. The heavier proof (pnpm
-# check:proof and the Playwright e2e suite) runs only by hand, in proof.yml: the maintainer, 2026-11-19.
-# Don't add those to this file.
+# The checks below run on every push to main and on pull requests. The Playwright e2e suite, the
+# docs' commands and the live jobs are in proof.yml, which runs once, at the launch gate: the
+# maintainer, 2026-11-19 and 2026-11-21. Don't add those to this file.
 on:
   push:
     branches: [main]

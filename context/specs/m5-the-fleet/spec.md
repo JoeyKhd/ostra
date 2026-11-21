@@ -347,7 +347,7 @@ Agreed here so builders don't each invent one.
 - **The Docker engine:** milestone 1's fake engine, grown to record limits, pulls by digest with credentials, pushes and runtimes; the live cases in `*.live.test.ts`, run by ticket 35's job only.
 - **Agents:** milestone 3's scripted fakes; the load test's agent is a scripted event source, not an ACP agent.
 - **Time:** token expiry, the node wait, the fallback's retry, the offer timeout and the queue sweep read the `Clock` port or a setting.
-- **Live tests:** a test that needs Docker, a cluster, Linux or macOS is a `*.live.test.ts` file, never a conditional test in a CI file (`context/proof/README.md`). Ticket 35's jobs run them and keep their logs as live evidence.
+- **Live tests:** a test that needs Docker, a cluster, Linux or macOS is a `*.live.test.ts` file, never a conditional test in a CI file. Ticket 35's jobs run them, once, at the launch gate (*changed 2026-11-21: they kept their logs as live evidence*).
 
 ---
 
@@ -357,7 +357,7 @@ As milestones 1 to 4 (`../m1-first-pr/spec.md`, section 9). In short:
 - `pnpm typecheck`, `pnpm lint` and `pnpm test` pass for the touched packages, and `pnpm check:licenses` passes.
 - Tickets that touch auth, credentials, the schema, the runner protocol or anything that runs agent output (01, 02, 04, 07, 08, 09, 10, 11, 12, 16, 17, 18, 19, 20, 21, 24, 37) run all the checks for the whole repo.
 - Every new setting has a working default and its line in `docs/configuration.md`. A fresh install with only the required settings still works, with no registry, no Kubernetes and one pool.
-- **Proof** (`AGENTS.md`, `context/proof/README.md`): a test that proves a condition of a row's "done when" names the row's ID in its title (`it("F-067: no project takes more than its share of a pool", ...)`), runs in CI, and has a break-it check. The ticket adds its rows to `context/proof/F-nnn.md` (`pnpm proof:new F-nnn` writes the file), and `pnpm check:proof` passes. A condition only a live run shows cites the run's log kept in the repo, which ticket 35 or 37 records.
+- **Proof** (`AGENTS.md`; *changed 2026-11-21, the maintainer: "keep tests, drop extras"*): each condition of a row's "done when" has a test named with its key (`it("F-nnn/c1: ...")`) that exercises it through the real code path, and CI runs it. No break-it pass, no proof file. A condition only a live run shows (Linux, macOS, kind, the e2e workflow) waits for the launch-gate Proof run.
 - No secret in the commit. Logs carry IDs and fields, never join tokens, runner keys, access or task tokens, registry credentials, prompts or agent output. No runner label, pool name or registry URL is interpolated into a shell command: the executors pass arguments as arrays, and the Kubernetes objects are built as typed values, never from templates of strings.
 - A `package.json` change goes with its `pnpm-lock.yaml`. `@kubernetes/client-node` is confirmed (ADR 0007) and joins the `kubernetes` executor in ticket 07; nothing else new is added without the maintainer's yes (section 10).
 - Stage only the ticket's own paths, a gitmoji message of at most 50 characters, no AI attribution, `git pull --rebase origin main`, `git push origin main`, retrying on a rejected push.
@@ -365,7 +365,7 @@ As milestones 1 to 4 (`../m1-first-pr/spec.md`, section 9). In short:
 
 ### 9.1 How each row gets proved
 
-Each condition of a row's "done when" gets a row in its proof file. This is where the proofs are expected to come from; the building tickets write them, and ticket 37 checks every one. The last column is the honest part: what this machine can't prove, where it's proved instead, and what stays `partial` until then.
+Each condition of a row's "done when" gets a test named with its key. This is where those tests are expected to come from; the building tickets write them, and ticket 37 checks every one. The last column is the honest part: what this machine can't prove, where it's proved instead (the launch-gate Proof run, since 2026-11-21), and what keeps a row `building` until then.
 
 | F-ID | Proved by tests (kind, ticket) | Live evidence here (step of section 3) | Needs what this machine lacks |
 |---|---|---|---|

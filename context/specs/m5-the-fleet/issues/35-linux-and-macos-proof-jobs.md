@@ -1,6 +1,6 @@
 # 35: The Linux and macOS proof jobs
 
-Status: ready-for-human
+Status: done
 Builder: core
 Blocked by: 09, 10, 20, 21, 22, 23, 24
 Features: F-017, F-015, F-014, F-093, F-120, F-095, F-116, F-118, F-039, F-013, F-001 (its compose run), F-051, F-094, F-096, F-045 (their `docker` and `kubernetes` halves)
@@ -18,9 +18,9 @@ Jobs of the manual `Proof` workflow (the maintainer, 2026-11-19: by hand only, n
 
 ## Done when
 
-- [ ] The three jobs exist, run by `gh workflow run Proof`, and pass; their logs are in the repo; each condition they prove has its proof row citing the log.
-- [ ] A job that can't do a step on a hosted runner says so in its log and in this ticket's `## Comments`, and the condition stays `partial`.
-- [ ] Committed as `✅ add the Linux and macOS proof jobs`, and the kept logs as `📝 keep the fleet's live proof logs`.
+- [ ] The three jobs exist, run by `gh workflow run Proof`, and pass. *Waits for the launch-gate Proof run (the maintainer, 2026-11-21).* *Changed the same day: their logs stay the run's artifacts, and no proof row cites them, since the proof files are gone.*
+- [ ] A job that can't do a step on a hosted runner says so in its log and in this ticket's `## Comments`, and its feature's row stays `building`. *Waits for the launch-gate Proof run (the maintainer, 2026-11-21).* *Changed the same day: it was "the condition stays `partial`", a proof file's status.*
+- [x] Committed as `✅ add the Linux and macOS proof jobs` (db8ed960). *Changed 2026-11-21: the kept logs and their commit, `📝 keep the fleet's live proof logs`, are dropped with the live-evidence logs (the maintainer: "keep tests, drop extras").*
 
 ## Comments
 
@@ -29,3 +29,4 @@ Jobs of the manual `Proof` workflow (the maintainer, 2026-11-19: by hand only, n
 - Choices: the second kind cluster is Kubernetes 1.29 on flannel, because kind's own kindnet enforces NetworkPolicy since v0.24; the first is the newest kind supports (1.37) on Calico. The registry and the second Docker Engine for F-120 are a `registry:3` with Basic auth and a `docker:dind` on the host network (its own bridge and iptables off), so `localhost:5000` is the same registry to both Engines. The `host` pool's delegated cgroup comes from a systemd scope with `Delegate=yes` around the test run.
 - Steps each job says it doesn't do, as `not-run` lines with the reason (their conditions stay `partial`): real nginx's defaults in front of core (no test drives the fallback through a real nginx yet), 50 boxes on one host with a box ready in under 10 s and the sidecar's memory (no live test measures them yet), gVisor (optional, not installed), and on kind a box as a pod with its services ready in under 60 s and the rootless BuildKit pod's build, scan and push (both need a task or a snapshot build driven through core on the cluster, which the job doesn't set up yet). An autoscaler that really adds a node stays ticket 38's.
 - 2026-11-21: `live-kind` waits for the launch-gate proof run; its box stays unticked. Run 44847085650 failed on three things. (1) The server image didn't build; fixed in 182ee9e9 and f4556642. (2) `step` in `scripts/live/lib.sh` kept its name in a global `name`, which the step functions also set. So each step after the cluster passed the last step's name as the cluster (`kind-calico-server-chart`, and longer each step), and a failed step's `tail` read a log that was never written. Fixed in db101088: the step runner's variables and every function's are local, `on_cluster` passes each step the cluster's own name, and a step whose cluster failed is reported as `skipped: cluster failed` with its own log. (3) `runner_chart` read core's bootstrap join token, which the chart turns off (`OSTRA_BOOTSTRAP_JOIN_TOKEN=false`). The job now makes the default pool's token itself, stored by its hash, the way the pool page does. Both fixes passed a local dry run with stubbed `kind`, `kubectl` and `helm`, and the dry run fails on the old script; no live run has tried them yet.
+- 2026-11-21, set `done` on the maintainer's word of 2026-11-21 (the Proof workflow runs only at the launch gate, "Launch gate only"): every box holds but the jobs' run, which waits for the launch-gate Proof run (milestone 7's ticket 32).

@@ -6,7 +6,7 @@ Every feature we've decided on, with a checkable "done when". It is the source o
 - **Status:** `planned` → `building` → `done`, or `dropped`.
 - **Rules:**
   - IDs are permanent: never renumber or reuse one. New features get the next free ID.
-  - Change a status in the same commit as the work. Set `done` only when every condition in "done when" holds, and its proof file in `context/proof/` proves each one (`pnpm check:proof`).
+  - Change a status in the same commit as the work. Set `done` only when every condition in "done when" holds: each has a passing test named with its key, which CI runs (`F-025/c1: ...`, `AGENTS.md`'s "Proof"). A condition only a live run shows (Linux, macOS, kind, the e2e workflow) waits for the launch-gate Proof run, and its row stays `building` until then. *Changed 2026-11-21 (the maintainer: "keep tests, drop extras"): the proof files in `context/proof/`, their break-its and `pnpm check:proof` are gone; a dated note that cites a proof file is history.*
   - Specs in `context/specs/` name the feature IDs they cover.
   - A row that waits on an open question names it (`Q-nn` in `open-questions.md`). Its priority isn't final until that question is settled.
   - *(working value)* marks a number we expect to tune; changing it doesn't need a new ID.

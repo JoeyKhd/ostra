@@ -43,8 +43,8 @@ The app shell's navigation becomes **a narrow icon rail plus a contextual second
   - the phone sheet at 390 px opening, navigating and closing;
   - ⌘K and the existing shortcuts unchanged.
 - [ ] Milestone 7's keyboard walk and contrast check pass on the shell in both themes, at 1440 px and 390 px, with the shell spec file alone (the full browser suite runs at the milestone's end).
-- [ ] Screenshots of both themes at both widths are kept in `context/proof/` for F-147's live evidence.
-- [ ] Checks for `apps/web` pass, and `pnpm check:proof` passes.
+- *Withdrawn 2026-11-21, with the proof files (the maintainer: "keep tests, drop extras"):* screenshots of both themes at both widths are kept in `context/proof/` for F-147's live evidence.
+- [ ] Checks for `apps/web` pass. *Changed 2026-11-21: `pnpm check:proof` is gone with the proof files.*
 - [ ] Committed as `✨ add the double-sidebar app shell`.
 
 ## Comments

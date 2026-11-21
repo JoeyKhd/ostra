@@ -1,6 +1,6 @@
 # 42: A job object on Windows, and a marker sweep where there's no kernel unit
 
-Status: ready-for-human
+Status: done
 Builder: runner; api and web for the one line in the panel
 Blocked by: 02 (the protocol's minor 1)
 Features: F-014
@@ -33,7 +33,7 @@ Settled as Q126 on 2026-11-19 (`context/open-questions.md`, Settled). On `host`,
 - [x] On Windows: the detached-helper case passes with no known gap, with a helper whose parent exits at once. Killing the runner's process leaves no process of the task (a test with a child runner). A test shows `koffi` isn't imported on Linux.
 - [x] With the loader faked to fail: the executor falls back to the tree, reports `process-tree`, and the panel's line shows.
 - [x] On Linux with no cgroup of its own (the probe faked): a helper that left the agent's group is ended by its marker.
-- [ ] macOS: the same case, run on a Mac, recorded under `## Comments` and in `context/research/host-process-containment.md`. Until it has run, F-014 isn't `done`.
+- [ ] macOS: the same case, run on a Mac, recorded under `## Comments` and in `context/research/host-process-containment.md`. Until it has run, F-014 isn't `done`. *Waits for the launch-gate Proof run (the maintainer, 2026-11-21).* *Its `live-macos` job runs the case (`scripts/live/macos.sh`).*
 - [x] A setup script that leaves a daemon behind: the daemon ends with the task, on Windows and on Linux.
 - [x] Proof (`AGENTS.md`, `context/proof/README.md`): each test that proves a condition of a row's "done when" names the row's ID in its title and has a break-it check, its rows are in `context/proof/`, and `pnpm check:proof` passes.
 - [x] The whole-repo checks pass (spec section 9: anything that runs agent output).
@@ -46,3 +46,4 @@ Settled as Q126 on 2026-11-19 (`context/open-questions.md`, Settled). On `host`,
 - Not yet ticked: the Linux case with the cgroup probe faked and the setup daemon on Linux are written and run in CI on Linux, not on this Windows machine; the Mac case needs a Mac. F-014 stays `building`.
 - 2026-11-19, the builder: the Linux half ran in CI on `ubuntu-latest`: run https://github.com/JoeyKhd/ostra/actions/runs/44450873472 (commit `a10e816`, which holds `✨ contain a host task's processes`) passed `pnpm test`, with `host-containment.test.ts`'s Linux-only case (the cgroup probe faked, the helper ended by its marker) and the setup daemon, the detached grandchild and the killed runner on the runner's process tree and marker. Ticked the Linux and setup-daemon boxes on that run. The Mac case is still open.
 - 2026-11-20, audit: left open, now `ready-for-human`. Every box holds on `origin/main` except the macOS case, and nothing more can be done for it on this Windows machine: it needs a Mac. Milestone 5's ticket 35 already scripts it, as the `live-macos` job of the manual `Proof` workflow (`scripts/live/macos.sh`: the marker sweep ends a helper that left the group, and a helper that also cleared its environment is the recorded gap). **The maintainer's step:** `gh workflow run Proof -f jobs=fleet`; then an agent keeps the job's log in `context/specs/m5-the-fleet/demo/macos/`, records the result here and in `context/research/host-process-containment.md`, ticks the box, and F-014 can move on from `building`.
+- 2026-11-21, set `done` on the maintainer's word of 2026-11-21 (the Proof workflow runs only at the launch gate, "Launch gate only"): every box holds but the macOS case, which waits for the launch-gate Proof run (milestone 7's ticket 32).
