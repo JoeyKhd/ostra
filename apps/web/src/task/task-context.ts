@@ -93,6 +93,8 @@ export type TaskContextValue = {
   readonly agent: { readonly name: string; readonly model: string | null };
   /** The task's project, for the budget's held row (F-037). */
   readonly projectName?: string;
+  /** The task's ticket's key, for a Linear follow-up's header (`OST-12`). */
+  readonly ticketKey?: string;
   /** What an open approval asks, in the descriptor's words (the needs-you item's summary), or `null`. */
   readonly approvalSummary: (approvalId: string) => string | null;
   /**

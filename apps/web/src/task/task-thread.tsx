@@ -11,10 +11,11 @@ import {
 } from "@assistant-ui/react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
-import { ArrowUpIcon, InfoIcon, PauseIcon, RotateCcwIcon, SquareTerminalIcon, UserIcon } from "lucide-react";
+import { ArrowUpIcon, InfoIcon, PauseIcon, RefreshCcwIcon, RotateCcwIcon, SquareTerminalIcon, UserIcon } from "lucide-react";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
+import type { AgentMessage } from "@ostra/domain/agent-message";
 import { clientMessageIdSchema } from "@ostra/protocol";
 import type { TaskId } from "@ostra/protocol";
 import type { MemberId } from "@ostra/protocol";
@@ -32,8 +33,9 @@ import { formatClock } from "@/lib/format";
 import { plural, t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 
+import { agentMessageOf, agentMessageSummary, AgentMessageMark, isAutomatic, LinearMark, UserMessageText } from "./agent-message-view";
 import { toThreadMessageLike } from "./convert";
-import { MessageIntentMark, SentDiffCommentsContext, sentBySeq, UserMessageText } from "./diff-comments-message";
+import { MessageIntentMark, SentDiffCommentsContext, sentBySeq } from "./diff-comments-message";
 import { TurnUsage } from "./effort-marks";
 import { AssistantText, DataRow, Reasoning, SafeLink, ToolRow } from "./renderers";
 import type { TaskStreamState } from "./stream-state";
@@ -56,21 +58,30 @@ const Meta = ({ children, dot = true, className }: { readonly children: string; 
  * A message's header (task.md, "Message header"): the author (14.5px, 600), then the time in mono
  * `--faint`; the agent's adds its model and a status word, a member's how it was delivered.
  */
-const MessageHeader = ({ message }: { readonly message: TaskUIMessage }) => {
-  const { memberName, agent, openSubagents } = useTaskContext();
+const MessageHeader = ({ message, agentMessage }: { readonly message: TaskUIMessage; readonly agentMessage: AgentMessage | null }) => {
+  const { memberName, agent, openSubagents, ticketKey } = useTaskContext();
   const meta = message.metadata;
   const time = meta?.at === undefined ? null : formatClock(meta.at);
   if (message.role === "user") {
     const delivery = meta?.author?.delivery;
     const intent = meta?.author?.intent;
+    // F-072: what ostra wrote for the agent says what it is after the time, in place of its intent's tag.
+    const marked = intent === "diff-comments" || intent === "linear-follow-up" || agentMessage !== null;
+    const author = agentMessage !== null && isAutomatic(agentMessage) ? t("task.agentMessage.ostra") : meta?.author === undefined ? "" : memberName(meta.author.memberId);
     return (
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-        <span className="font-semibold">{meta?.author === undefined ? "" : memberName(meta.author.memberId)}</span>
+        <span className="font-semibold">{author}</span>
         {/* F-072: diff comments say how many after the time (task-changes.md, "In the Activity tab"). */}
-        {time === null && intent !== "diff-comments" ? null : (
+        {time === null && !marked ? null : (
           <span className="min-w-0">
             {time === null ? null : <Meta dot={false}>{time}</Meta>}
-            {intent === "diff-comments" ? <MessageIntentMark intent={intent} seq={meta?.firstSeq} /> : null}
+            {intent === "diff-comments" ? (
+              <MessageIntentMark intent={intent} seq={meta?.author?.replayOf ?? meta?.firstSeq} />
+            ) : agentMessage !== null ? (
+              <AgentMessageMark message={agentMessage} intent={intent} />
+            ) : intent === "linear-follow-up" ? (
+              <LinearMark ticketKey={ticketKey} />
+            ) : null}
           </span>
         )}
         {meta?.author?.held === true ? (
@@ -83,7 +94,7 @@ const MessageHeader = ({ message }: { readonly message: TaskUIMessage }) => {
         {delivery === "after-interrupt" ? <span className="text-sm text-faint">{t("task.afterInterrupt")}</span> : null}
         {meta?.author?.reopen === true ? <span className="rounded-sm border border-line-2 px-1.5 text-xs text-muted" data-tag="reopen">{t("task.reopenTag")}</span> : null}
         {meta?.author?.replayed === true ? <span className="rounded-sm border border-line-2 px-1.5 text-xs text-muted" data-tag="replayed">{t("task.replayedTag")}</span> : null}
-        {intent === undefined || intent === "message" || intent === "diff-comments" ? null : <MessageIntentMark intent={intent} seq={meta?.firstSeq} />}
+        {intent === undefined || intent === "message" || marked ? null : <MessageIntentMark intent={intent} seq={meta?.firstSeq} />}
         {meta?.optimistic === true ? <span className="text-sm text-faint">{t("task.sending")}</span> : null}
       </div>
     );
@@ -115,6 +126,8 @@ const MessageView = memo(({ id, fallbackRole }: { readonly id: string; readonly 
   const role = own?.role ?? fallbackRole;
   const meta = own?.metadata;
   const system = role === "system";
+  // F-072: a message ostra wrote for the agent is drawn from what it carried, never its prompt.
+  const agentMessage = useMemo(() => (own === undefined ? null : agentMessageOf(own)), [own]);
   return (
     <MessagePrimitive.Root
       data-message-id={id}
@@ -127,17 +140,23 @@ const MessageView = memo(({ id, fallbackRole }: { readonly id: string; readonly 
     >
       {system ? null : (
         <span className="mt-0.5 inline-grid size-7 shrink-0 place-items-center rounded-full border border-line-2 text-muted">
-          {role === "user" ? <UserIcon className="size-[14px] stroke-[1.75]" /> : <SquareTerminalIcon className="size-[14px] stroke-[1.75]" />}
+          {role !== "user" ? (
+            <SquareTerminalIcon className="size-[14px] stroke-[1.75]" />
+          ) : agentMessage !== null && isAutomatic(agentMessage) ? (
+            <RefreshCcwIcon className="size-[14px] stroke-[1.75]" />
+          ) : (
+            <UserIcon className="size-[14px] stroke-[1.75]" />
+          )}
         </span>
       )}
       <div className="min-w-0 flex-1">
-        {own === undefined ? null : <MessageHeader message={own} />}
+        {own === undefined ? null : <MessageHeader message={own} agentMessage={agentMessage} />}
         <MessagePrimitive.Parts>
           {({ part }) => {
             switch (part.type) {
               case "text":
                 return role === "user" ? (
-                  <UserMessageText text={part.text} intent={meta?.author?.intent} seq={meta?.firstSeq} />
+                  <UserMessageText text={part.text} intent={meta?.author?.intent} diffSeq={meta?.author?.replayOf ?? meta?.firstSeq} agentMessage={agentMessage} />
                 ) : (
                   <AssistantText streaming={part.status.type === "running"} />
                 );
@@ -234,6 +253,8 @@ export type TaskThreadProps = {
   readonly taskId: TaskId;
   /** The task's project, for the budget's held row (F-037). */
   readonly projectName?: string;
+  /** The task's ticket's key, for a Linear follow-up's header; `null` for a prompt task. */
+  readonly ticketKey?: string | null;
   readonly log: TaskStreamState;
   readonly memberId: MemberId | null;
   readonly memberName: (memberId: string) => string;
@@ -265,7 +286,7 @@ export type TaskThreadProps = {
   readonly onFold?: (ms: number, messages: number) => void;
 };
 
-export const TaskThread = ({ taskId, projectName, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, approvalLostRace, questionCard, tail, notDriver, canReopen = false, composerHint = null, instead, hasEarlier, loadEarlier, onFold }: TaskThreadProps) => {
+export const TaskThread = ({ taskId, projectName, ticketKey = null, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, approvalLostRace, questionCard, tail, notDriver, canReopen = false, composerHint = null, instead, hasEarlier, loadEarlier, onFold }: TaskThreadProps) => {
   const trpc = useTRPC();
   const [optimistic, setOptimistic] = useState<readonly OptimisticMessage[]>([]);
   const previous = useRef<readonly TaskUIMessage[]>([]);
@@ -384,8 +405,9 @@ export const TaskThread = ({ taskId, projectName, log, memberId, memberName, can
       ...(approvalLostRace === undefined ? {} : { approvalLostRace }),
       ...(questionCard === undefined ? {} : { questionCard }),
       ...(projectName === undefined ? {} : { projectName }),
+      ...(ticketKey === null ? {} : { ticketKey }),
     }),
-    [store, memberName, agentName, agentModel, approvalSummary, rememberPrComment, openSubagents, approvalCard, approvalReceipt, approvalLostRace, questionCard, projectName],
+    [store, memberName, agentName, agentModel, approvalSummary, rememberPrComment, openSubagents, approvalCard, approvalReceipt, approvalLostRace, questionCard, projectName, ticketKey],
   );
 
   // F-138: the member's message the turn answered, for the main agent's pane of the window.
@@ -395,10 +417,14 @@ export const TaskThread = ({ taskId, projectName, log, memberId, memberName, can
       const message = messages[i];
       if (message?.role === "user") {
         const name = message.metadata?.author === undefined ? "" : memberName(message.metadata.author.memberId);
+        // F-072: a fenced prompt is the agent's to read; the window says what the member sent.
         if (message.metadata?.author?.intent === "diff-comments") {
-          // F-072: the fenced prompt is the agent's to read; the window says what the member sent.
-          const sent = sentDiffComments?.get(message.metadata.firstSeq);
+          const sent = sentDiffComments?.get(message.metadata.author.replayOf ?? message.metadata.firstSeq);
           return { name, text: sent === undefined || sent.length === 0 ? t("taskAnswers.intent.diff-comments") : plural(sent.length, "task.diffComments.one", "task.diffComments.other") };
+        }
+        const agentMessage = agentMessageOf(message);
+        if (agentMessage !== null) {
+          return { name: isAutomatic(agentMessage) ? t("task.agentMessage.ostra") : name, text: agentMessageSummary(agentMessage) };
         }
         const text = message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n");
         return { name, text };

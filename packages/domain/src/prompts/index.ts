@@ -136,6 +136,15 @@ export const KEEP_WORKING_PROMPT = "Carry on where you stopped.";
 /** "Keep working" at a round limit (F-101, ticket 35): the driver lets the agent go on with what the last round sent it. */
 export const KEEP_WORKING_AFTER_CAP_PROMPT = "Keep working on what the last round sent you: fix it, then push.";
 
+// ---------- the closing turn (F-111, ADR 0044 amended) ----------
+
+/** The closing turn's prompt: ostra's words, fixed. `memory/closing-turn.ts` sends it. */
+export const CLOSING_TURN_PROMPT = [
+  "Before this session ends: is there anything the next task in this project should know?",
+  "If you learned a convention, a command, a gotcha, a decision or a term that isn't in memory yet, propose it with `memory_propose`, one note each. If a note you read was wrong, propose a correction that names it.",
+  "Don't change any file, don't commit and don't push in this turn. If there's nothing to propose, say so in one line.",
+].join("\n\n");
+
 // ---------- an approval answered after it expired (F-026, ADR 0039; ticket 17) ----------
 
 /**

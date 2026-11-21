@@ -777,6 +777,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
         ) : (
         <TaskThread
           projectName={projectName}
+          ticketKey={data.ticket?.key ?? null}
           taskId={taskId}
           log={log.state}
           memberId={me.data?.memberId ?? null}

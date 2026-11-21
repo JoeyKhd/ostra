@@ -11,6 +11,7 @@ import type { RouterOutputs } from "@/lib/trpc";
 // agent only: the thread draws the message from the comments it carried, the rows whose `sentInSeq`
 // is the message's sequence (`diff.comments.list`). Its header reads `{n} comments on the diff`
 // after the time, and its body lists each `{path}:{line}`, the quoted line and the comment, as plain text.
+// Every other message ostra writes for the agent is drawn by `agent-message-view.tsx`.
 
 type ApiComment = RouterOutputs["diff"]["comments"]["list"]["comments"][number];
 
@@ -97,16 +98,3 @@ export const SentDiffCommentsList = ({ seq }: { readonly seq: number | undefined
     </ol>
   );
 };
-
-/**
- * A member message's text. A diff-comments message never shows its own: that's the fenced prompt
- * the agent reads. It shows the comments it carried instead.
- */
-export const UserMessageText = ({ text, intent, seq }: { readonly text: string; readonly intent: MessageIntent | undefined; readonly seq: number | undefined }) =>
-  intent === "diff-comments" ? (
-    <SentDiffCommentsList seq={seq} />
-  ) : (
-    <p data-part="user-text" className="whitespace-pre-wrap break-words">
-      {text}
-    </p>
-  );

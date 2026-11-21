@@ -4,6 +4,7 @@ import type { ClientMessageId, OrganizationId, SessionId, TaskEventOf, TaskId, T
 import { z } from "zod";
 
 import type { Ports } from "../ports.ts";
+import { CLOSING_TURN_PROMPT } from "../prompts/index.ts";
 import { checkBudget, holdTurnInTx, sessionModelIdInTx } from "../use-cases/budgets.ts";
 import { appendServerEvent } from "../use-cases/server-events.ts";
 
@@ -11,14 +12,8 @@ import { appendServerEvent } from "../use-cases/server-events.ts";
 // default. When it's on, after a turn that changed a repo, core sends the session one more turn
 // with a fixed prompt that asks for proposals and nothing else. It goes through the budget gate as
 // any turn does (origin `closing-turn`), and is sent once per save: the closing turn changes no
-// repo, and a save after a closing turn never sends another.
-
-/** The closing turn's prompt: ostra's words, fixed. */
-export const CLOSING_TURN_PROMPT = [
-  "Before this session ends: is there anything the next task in this project should know?",
-  "If you learned a convention, a command, a gotcha, a decision or a term that isn't in memory yet, propose it with `memory_propose`, one note each. If a note you read was wrong, propose a correction that names it.",
-  "Don't change any file, don't commit and don't push in this turn. If there's nothing to propose, say so in one line.",
-].join("\n\n");
+// repo, and a save after a closing turn never sends another. Its prompt, `CLOSING_TURN_PROMPT`,
+// lives with core's other prompts (`prompts/index.ts`), where the panel's reading finds it too.
 
 const CLOSING_PREFIX = "closing-turn-";
 

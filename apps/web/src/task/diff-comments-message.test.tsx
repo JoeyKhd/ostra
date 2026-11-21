@@ -4,7 +4,8 @@ import { describe, expect, it } from "vitest";
 
 import { diffCommentIdSchema, markedBlock } from "@ostra/protocol";
 
-import { MessageIntentMark, SentDiffCommentsContext, sentBySeq, UserMessageText } from "./diff-comments-message";
+import { UserMessageText } from "./agent-message-view";
+import { MessageIntentMark, SentDiffCommentsContext, sentBySeq } from "./diff-comments-message";
 import type { SentDiffComments } from "./diff-comments-message";
 
 // F-072 (ticket 46; task-changes.md, "In the Activity tab"): the message "Send 2 comments to the
@@ -37,7 +38,7 @@ const render = (sent: SentDiffComments, node: ReactNode): string => renderToStat
 describe("a diff-comments message in the thread (F-072)", () => {
   it("F-072/c1: the thread draws the comments a message carried, by its sequence, and never its fenced prompt", () => {
     const sent = sentBySeq(listed);
-    const body = render(sent, <UserMessageText text={prompt} intent="diff-comments" seq={seq} />);
+    const body = render(sent, <UserMessageText text={prompt} intent="diff-comments" diffSeq={seq} agentMessage={null} />);
     expect(body).not.toContain("ostra-data");
     expect(body).not.toContain("Address each one");
     expect(body).toContain('data-part="diff-comments"');
@@ -51,10 +52,10 @@ describe("a diff-comments message in the thread (F-072)", () => {
     expect(render(sent, <MessageIntentMark intent="diff-comments" seq={seq} />)).toContain("2 comments on the diff");
 
     // Until the comments are read, the header keeps the intent's tag and the body stays empty.
-    expect(render(null, <UserMessageText text={prompt} intent="diff-comments" seq={seq} />)).toBe("");
+    expect(render(null, <UserMessageText text={prompt} intent="diff-comments" diffSeq={seq} agentMessage={null} />)).toBe("");
     expect(render(null, <MessageIntentMark intent="diff-comments" seq={seq} />)).toContain("from diff comments");
 
     // Any other member message is its own text.
-    expect(render(sent, <UserMessageText text="Rename it back." intent={undefined} seq={3} />)).toContain("Rename it back.");
+    expect(render(sent, <UserMessageText text="Rename it back." intent={undefined} diffSeq={3} agentMessage={null} />)).toContain("Rename it back.");
   });
 });

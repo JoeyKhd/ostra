@@ -1820,6 +1820,70 @@
       "one": "{n} comment on the diff",
       "other": "{n} comments on the diff"
     },
+    "agentMessage": {
+      "ostra": "ostra",
+      "prComment": "@ostra comment on the pull request",
+      "fixChecks": {
+        "one": "{n} failing check to fix",
+        "other": "{n} failing checks to fix"
+      },
+      "checkStatus": {
+        "failed": "failed",
+        "timed-out": "timed out",
+        "error": "couldn’t run"
+      },
+      "checkOutput": "The end of its output",
+      "updateBranch": "update branch",
+      "updateBranchRepo": {
+        "one": "merge {base} into {branch}, {n} commit behind",
+        "other": "merge {base} into {branch}, {n} commits behind"
+      },
+      "keepWorking": "pressed Keep working",
+      "keepWorkingBody": "The agent carries on where it stopped.",
+      "keepWorkingAfterCap": "The agent keeps working on what the last round sent it.",
+      "planRevision": "asked for changes to the plan",
+      "fixCi": {
+        "one": "CI failed: {n} check",
+        "other": "CI failed: {n} checks"
+      },
+      "ciConclusion": {
+        "failure": "failed",
+        "timed_out": "timed out",
+        "action_required": "needs action",
+        "startup_failure": "couldn’t start",
+        "error": "error"
+      },
+      "fixFindings": {
+        "one": "AI review: {n} blocking finding",
+        "other": "AI review: {n} blocking findings"
+      },
+      "nits": {
+        "one": "{n} nit listed",
+        "other": "{n} nits listed"
+      },
+      "severity": {
+        "blocking": "blocking",
+        "nit": "nit"
+      },
+      "changesRequested": "requested changes on the pull request",
+      "lineComments": {
+        "one": "{n} line comment",
+        "other": "{n} line comments"
+      },
+      "planApproved": "approved the plan",
+      "planApprovedEdited": "approved the plan with edits",
+      "planShown": "The plan as approved",
+      "questionAnswer": "answered the agent’s question",
+      "approval": {
+        "allow_once": "approved a request",
+        "allow_task": "approved a request for this task",
+        "deny": "denied a request"
+      },
+      "closingTurn": "closing turn",
+      "closingTurnBody": "Asked the agent for anything the next task should know, as memory proposals.",
+      "linearComment": "Linear comment on {key}",
+      "linearCommentNoKey": "Linear comment"
+    },
     "prComment": "{login} asked through an @ostra comment on the pull request",
     "prCommentOpen": "Open the comment",
     "prCommentTitle": "Title",
