@@ -14,6 +14,7 @@ export * from "./agent-team-cases.ts";
 export * from "./agent-app-cases.ts";
 export * from "./fake-memory-core.ts";
 export * from "./executor-suite.ts";
+export * from "./fake-browser.ts";
 export * from "./model-provider-suite.ts";
 export * from "./secret-store-suite.ts";
 export * from "./notification-suite.ts";

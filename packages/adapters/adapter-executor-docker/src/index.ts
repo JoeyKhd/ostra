@@ -9,10 +9,13 @@ export { createEngine, engineAddressFrom, ENGINE_API_VERSION, registryAuthHeader
 export type { Engine, EngineAddress, EngineError, EngineResult } from "./engine.ts";
 export { BLOCKED_V4, BLOCKED_V6, egressRules, egressRuleSet, METADATA_ADDRESS } from "./egress.ts";
 export type { EgressInput, EgressRule } from "./egress.ts";
-export { listenForInit } from "./bridge/bridge-server.ts";
-export type { Bridge, BridgeListener, BridgeListenOptions } from "./bridge/bridge-server.ts";
+export { initTooOld, listenForInit } from "./bridge/bridge-server.ts";
+export { BRIDGE_FEATURES, bridgeFeatureSchema } from "./bridge/protocol.ts";
+export type { BridgeFeature } from "./bridge/protocol.ts";
+export type { Bridge, BridgedApp, BridgedBrowser, BridgedForward, BridgeListener, BridgeListenOptions } from "./bridge/bridge-server.ts";
 export { bridgeProcesses } from "./bridge-processes.ts";
 export { initEnvSchema, runInit } from "./init/init.ts";
+export type { InitOptions } from "./init/init.ts";
 // Milestone 3 (ticket 14): snapshots built and kept on the pool runner's Docker, and the services' health report.
 export { SERVICES_HEALTHY_WITHIN_MS } from "./boxes.ts";
 export type { BoxService } from "./boxes.ts";

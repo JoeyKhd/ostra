@@ -265,6 +265,24 @@ const fixtureFor = async (memory: FakeAgentMemory = "mcp", parity: FakeAgentPari
     },
     // Milestone 6 (ticket 04): the whole team's task kinds.
     team: teamProbes(root, workspaceDir, memory),
+    // Milestone 8 (ticket 03): the app tools through the fake core, and the app's block.
+    app: {
+      start: async (tools) => {
+        const core = await startFakeMemoryCore({
+          taskId: fixtureIds.task,
+          taskToken: "ostra-task-fake-token",
+          mcpBearer: "fake-mcp-bearer",
+          notes: memoryNoteFixtures,
+          tools,
+          repos: [{ repoId: fixtureIds.repo, fullName: repoFullNameSchema.parse("test-org/test1") }],
+        });
+        cores.push(core);
+        return { core, mcp: { url: core.mcpUrl, bearer: core.mcpBearer } };
+      },
+      list: fakeMarker("memory-tools"),
+      takeScreenshot: (input) => fakeMarker("take-screenshot", fakeToolArgs(input)),
+      instructions: fakeMarker("instructions"),
+    },
   };
 };
 
@@ -284,6 +302,13 @@ runAgentSuite(new FakeAgentAdapter("plain", undefined, undefined, "index-only", 
 // Milestone 4 (ticket 57, F-137): the fake that takes a reasoning level as a `thought_level`
 // session option, beside the fakes above, which declare `none`.
 runAgentSuite(new FakeAgentAdapter("rich", undefined, undefined, "mcp", "session-option"), { model: "stub", fixture: () => fixtureFor() });
+
+// Milestone 8 (ticket 03, spec section 6): the fake without MCP at all, which gets no app tools:
+// its task's pictures are the ones ostra takes after each turn, and the pane's.
+runAgentSuite(new FakeAgentAdapter("plain", undefined, undefined, "index-only", "none", { noMcp: true }), {
+  model: "stub",
+  fixture: () => fixtureFor("index-only", { noMcp: true }),
+});
 
 // F-019: the fakes stand for what OpenCode lacks. `rich` declares native plan updates and
 // reject-and-continue, and both happen; `plain` declares neither, and can't be steered.

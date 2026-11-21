@@ -1,13 +1,16 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { boxIdSchema, checkIdSchema, projectIdSchema, runnerLimits, snapshotIdSchema, taskIdSchema } from "@ostra/protocol";
-import type { TaskSpec, TaskSpecCheck } from "@ostra/protocol";
+import { boxIdSchema, checkIdSchema, projectIdSchema, reservedPortNames, runnerLimits, snapshotIdSchema, taskIdSchema } from "@ostra/protocol";
+import type { ReservedPorts, TaskSpec, TaskSpecCheck } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
 import type { AgentLaunch } from "../agent/base.ts";
+import { dialApp } from "../executor/app.ts";
+import type { AppProcessHandle } from "../executor/app.ts";
+import { testCdp } from "./fake-browser.ts";
 import type { BoxImage, BoxRef, BoxSize, BoxWaitChange, BuildSnapshotInput, CreatedBox, ExecutorAdapter, PrepareCacheInput, TaskProxies } from "../executor/base.ts";
 import { defineCommonCases, useSubject } from "./common-cases.ts";
 import type { ContractSuiteOptions } from "./common-cases.ts";
@@ -888,6 +891,231 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
       expect(await adapter.release(box, "requested")).toEqual({ ok: true, value: undefined });
       expect(await objectsOf(box)).toEqual([]);
     }, CASE_TIMEOUT_MS);
+
+    // ---------- milestone 8 (ticket 03, ADR 0068): the running app ----------
+
+    /** The suite's app: an HTTP server on `localhost` (IPv6 or IPv4, as a dev server picks), which logs each request and its greeting. */
+    const APP_TITLE = "ostra suite app";
+    const appScript = [
+      "const http = require('node:http');",
+      "console.log('greeting: ' + (process.env.SUITE_APP_GREETING || 'none'));",
+      `const page = '<!doctype html><html><head><title>${APP_TITLE}</title></head><body><h1>The suite app</h1></body></html>';`,
+      "const server = http.createServer((request, response) => {",
+      "  console.log('GET ' + request.url);",
+      "  response.writeHead(200, { 'content-type': 'text/html' });",
+      "  response.end(page);",
+      "});",
+      "server.listen(0, 'localhost', () => console.log('listening ' + server.address().port));",
+    ].join("\n");
+
+    const appFixture = (context: { readonly skip: () => void }): AppFixture | undefined => {
+      const value = subject().fixture.app;
+      if (value === undefined) context.skip();
+      return value;
+    };
+
+    const exists = (app: AppFixture, target: string): Promise<boolean> =>
+      app.pathExists?.(target) ?? stat(target).then(
+        () => true,
+        () => false,
+      );
+
+    const readLog = (file: string): Promise<string> => readFile(file, "utf8").catch(() => "");
+
+    /** Starts the suite's app in a box and waits for its port in its log. */
+    const startSuiteApp = async (app: AppFixture, box: BoxRef, created: CreatedBox): Promise<{ readonly handle: AppProcessHandle; readonly port: number }> => {
+      const { adapter } = subject();
+      const node = app.node(appScript);
+      const started = await adapter.startAppProcess({
+        box,
+        launch: { name: "web", command: node.command, args: node.args, cwd: created.workspaceDir, env: { ...node.env, SUITE_APP_GREETING: "from its environment" } },
+      });
+      if (!started.ok) throw new Error(`startAppProcess: ${started.error.message}`);
+      const port = await pollFor(async () => {
+        const found = /listening (\d+)/.exec(await readLog(started.value.logPath))?.[1];
+        return found === undefined ? null : Number(found);
+      }, 20_000);
+      if (port === null) throw new Error("the app never said its port in its log");
+      return { handle: started.value, port };
+    };
+
+    /** One HTTP/1.1 request over a socket, read to its end: the status line and the body. */
+    const httpOver = (socket: NodeJS.ReadWriteStream, requestPath: string): Promise<string> =>
+      new Promise((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        socket.on("data", (chunk: Buffer) => chunks.push(chunk));
+        socket.on("end", () => {
+          resolve(Buffer.concat(chunks).toString("utf8"));
+        });
+        socket.on("error", reject);
+        socket.write(`GET ${requestPath} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n`);
+      });
+
+    /** The box's own ports, numbered as the suite picks them: none of them is the app's. */
+    const reservedPorts = (taken: number): ReservedPorts => ({
+      "key-proxy": taken,
+      "git-proxy": 45_002,
+      "mcp-proxy": 45_003,
+      "sidecar-control": 45_004,
+      "agent-loopback": 45_005,
+      browser: null,
+    });
+
+    it("F-140/c5,c12: an app process starts from its argument array in its folder with its variables, logs its output in the task's folder and no repo, and stops with the box", async (context) => {
+      const app = appFixture(context);
+      if (app === undefined) return;
+      const { adapter, fixture } = subject();
+      const { box, created } = await createAndPrepare(fixture.spec);
+      try {
+        const { handle, port } = await startSuiteApp(app, box, created);
+        // `.ostra/app/<name>.log` in the task's folder: never inside the workspace, where the repos are.
+        expect(handle.logPath.replaceAll("\\", "/").endsWith("/.ostra/app/web.log")).toBe(true);
+        expect(path.relative(created.workspaceDir, handle.logPath).startsWith("..")).toBe(true);
+        // A second process of the same name is refused while the first runs.
+        const again = await adapter.startAppProcess({ box, launch: { name: "web", ...app.node(appScript), cwd: created.workspaceDir } });
+        expect(again).toMatchObject({ ok: false, error: { code: "conflict" } });
+        // Ready: it answers at its port in the box, and the request is in its log.
+        const reach = await adapter.reachAppPort({ box, port, reserved: reservedPorts(45_001) });
+        if (!reach.ok) throw new Error(reach.error.message);
+        expect(await httpOver(dialApp(reach.value.host, reach.value.port), "/ready")).toContain(APP_TITLE);
+        await reach.value.close();
+        expect(await waitFor(async () => (await readLog(handle.logPath)).includes("GET /ready"), 10_000)).toBe(true);
+        expect(await readLog(handle.logPath)).toContain("greeting: from its environment");
+        // Stopped with the box: its exit is reported, and its port answers no more.
+        expect(await adapter.stop({ box, graceMs: 1000 })).toEqual({ ok: true, value: undefined });
+        const exit = await Promise.race([handle.exited, new Promise<null>((resolve) => setTimeout(resolve, 15_000, null))]);
+        expect(exit, "the app process exited with the box").not.toBeNull();
+      } finally {
+        await adapter.release(box, "requested");
+      }
+    }, CASE_TIMEOUT_MS);
+
+    it("F-140/c5: an app process that crashes is reported with its exit code, and what it wrote is in its log", async (context) => {
+      const app = appFixture(context);
+      if (app === undefined) return;
+      const { adapter, fixture } = subject();
+      const { box, created } = await createAndPrepare(fixture.spec);
+      try {
+        const node = app.node("console.log('starting'); console.error('crashed: $(whoami) `id`'); setTimeout(() => process.exit(7), 100);");
+        const started = await adapter.startAppProcess({ box, launch: { name: "crasher", ...node, cwd: created.workspaceDir } });
+        if (!started.ok) throw new Error(started.error.message);
+        const exit = await Promise.race([started.value.exited, new Promise<null>((resolve) => setTimeout(resolve, 20_000, null))]);
+        expect(exit?.code).toBe(7);
+        const log = await readLog(started.value.logPath);
+        expect(log).toContain("starting");
+        expect(log).toContain("crashed: $(whoami) `id`");
+        // It's gone from the box: nothing of that name is left to stop.
+        expect(await adapter.stopAppProcess({ box, name: "crasher", graceMs: 100 })).toMatchObject({ ok: false, error: { code: "not-found" } });
+      } finally {
+        await adapter.release(box, "requested");
+      }
+    }, CASE_TIMEOUT_MS);
+
+    it("F-121/c2,c8: the box's browser starts beside the app with a fresh profile, loads a page at the app's localhost, takes a screenshot, and names itself", async (context) => {
+      const app = appFixture(context);
+      if (app === undefined) return;
+      const { adapter, fixture } = subject();
+      const { box, created } = await createAndPrepare(fixture.spec);
+      try {
+        const { handle, port } = await startSuiteApp(app, box, created);
+        const started = await adapter.startBrowser(box);
+        if (!started.ok) throw new Error(started.error.message);
+        if (!started.value.available) throw new Error(`no browser in the box: ${started.value.reason}`);
+        const browser = started.value.browser;
+        await context.annotate(`the box's browser: ${browser.name} ${browser.version}`);
+        expect(browser.name.length).toBeGreaterThan(0);
+        expect(browser.version).toMatch(/\d/);
+        expect(await exists(app, browser.profileDir), "the browser's fresh profile folder").toBe(true);
+        const cdp = testCdp(browser.channel);
+        const target = await cdp.send("Target.createTarget", { url: "about:blank" });
+        const targetId = String(target["targetId"]);
+        const attached = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
+        const sessionId = String(attached["sessionId"]);
+        await cdp.send("Page.enable", {}, sessionId);
+        const loaded = cdp.waitFor("Page.loadEventFired", sessionId, 30_000);
+        const navigated = await cdp.send("Page.navigate", { url: `http://localhost:${String(port)}/from-the-browser` }, sessionId, 30_000);
+        expect(navigated["errorText"]).toBeUndefined();
+        await loaded;
+        const title = await cdp.send("Runtime.evaluate", { expression: "document.title", returnByValue: true }, sessionId);
+        expect(Reflect.get(Object(title["result"]), "value")).toBe(APP_TITLE);
+        expect(await waitFor(async () => (await readLog(handle.logPath)).includes("GET /from-the-browser"), 10_000)).toBe(true);
+        const shot = await cdp.send("Page.captureScreenshot", { format: "png" }, sessionId, 30_000);
+        const png = Buffer.from(String(shot["data"]), "base64");
+        expect(png.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+        expect(png.readUInt32BE(16)).toBeGreaterThan(0);
+        await cdp.send("Target.closeTarget", { targetId });
+        await browser.channel.close();
+        expect(await waitFor(async () => !(await exists(app, browser.profileDir)), 20_000), "the profile went with the browser").toBe(true);
+      } finally {
+        await adapter.release(box, "requested");
+      }
+    }, 2 * CASE_TIMEOUT_MS);
+
+    it("F-121: the browser and its profile folder are gone after the box ends", async (context) => {
+      const app = appFixture(context);
+      if (app === undefined) return;
+      const { adapter, fixture } = subject();
+      const { box } = await createAndPrepare(fixture.spec);
+      const started = await adapter.startBrowser(box);
+      if (!started.ok || !started.value.available) {
+        await adapter.release(box, "requested");
+        throw new Error(started.ok ? `no browser in the box: ${started.value.available ? "" : started.value.reason}` : started.error.message);
+      }
+      const { profileDir, channel } = started.value.browser;
+      try {
+        expect(await exists(app, profileDir)).toBe(true);
+      } finally {
+        await adapter.release(box, "requested");
+      }
+      const ended = await Promise.race([channel.closed.then(() => true), new Promise<boolean>((resolve) => setTimeout(resolve, 20_000, false))]);
+      expect(ended, "the browser ended with the box").toBe(true);
+      expect(await waitFor(async () => !(await exists(app, profileDir)), 20_000), "no profile folder is left").toBe(true);
+    }, CASE_TIMEOUT_MS);
+
+    it("F-143/c2: the runner reaches an app's port in the box: the init's forwarder on docker, localhost over IPv6 and IPv4 elsewhere", async (context) => {
+      const app = appFixture(context);
+      if (app === undefined) return;
+      const { adapter, fixture } = subject();
+      const { box, created } = await createAndPrepare(fixture.spec);
+      try {
+        const { handle, port } = await startSuiteApp(app, box, created);
+        const reach = await adapter.reachAppPort({ box, port, reserved: reservedPorts(45_001) });
+        if (!reach.ok) throw new Error(reach.error.message);
+        if (adapter.capabilities.appReach === "loopback") {
+          expect(reach.value).toMatchObject({ host: "localhost", port });
+        } else {
+          expect(reach.value.port, "the forwarder listens at a port of its own").not.toBe(port);
+        }
+        // Two connections at once, each its own request through the same reach.
+        const [first, second] = await Promise.all([
+          httpOver(dialApp(reach.value.host, reach.value.port), "/through-one"),
+          httpOver(dialApp(reach.value.host, reach.value.port), "/through-two"),
+        ]);
+        expect(first).toMatch(/^HTTP\/1\.1 200/);
+        expect(second).toContain(APP_TITLE);
+        const log = await readLog(handle.logPath);
+        expect(log).toContain("GET /through-one");
+        expect(log).toContain("GET /through-two");
+        await reach.value.close();
+      } finally {
+        await adapter.release(box, "requested");
+      }
+    }, CASE_TIMEOUT_MS);
+
+    it("F-143/c3, F-141/c4: a port below 1024, or one of the box's own, is refused before anything is reached, on every executor", async () => {
+      const { adapter } = subject();
+      const box = newBox();
+      for (const port of [22, 80, 1023]) {
+        const refused = await adapter.reachAppPort({ box, port, reserved: reservedPorts(45_001) });
+        expect(refused).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+        expect(refused.ok ? "" : refused.error.message).toContain(`port ${String(port)} isn't an app's`);
+      }
+      for (const name of reservedPortNames) {
+        const reserved: ReservedPorts = { ...reservedPorts(45_001), [name]: 45_100 };
+        const refused = await adapter.reachAppPort({ box, port: 45_100, reserved });
+        expect(refused.ok ? "" : refused.error.message).toContain(`the box's own (${name})`);
+      }
+    });
 
     it("stops every process of the task, a detached helper included (ADR 0029)", async (context) => {
       await withGap(subject().fixture.knownGaps?.detachedHelper, (text) => context.annotate(text), () => helperCase((fixture) => fixture.detachedHelper));

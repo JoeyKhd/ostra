@@ -14,6 +14,7 @@ const fakes: readonly ParitySubject[] = [
   new FakeAgentAdapter("plain"),
   new FakeAgentAdapter("plain", undefined, undefined, "index-only", "none", { unknownNotification: true }),
   new FakeAgentAdapter("rich", undefined, undefined, "mcp", "session-option"),
+  new FakeAgentAdapter("plain", undefined, undefined, "index-only", "none", { noMcp: true }),
 ];
 
 describe("adapter parity, the scripted fakes", () => {
@@ -23,12 +24,26 @@ describe("adapter parity, the scripted fakes", () => {
       "fake-acp-agent-plain",
       "fake-acp-agent-plain-index-only-unknown-notification",
       "fake-acp-agent-rich-effort",
+      "fake-acp-agent-plain-index-only-no-mcp",
     ]);
     expect(await checkParity(fakes)).toEqual([]);
-    // What still waits is milestone 6's rows and the fakes' milestone 8 app rows, each naming its ticket.
-    expect(pendingParity().every((line) => line.includes("milestone 6") || line.includes("milestone 8, ticket 03"))).toBe(true);
+    // What still waits is milestone 6's rows alone, each naming its ticket.
+    expect(pendingParity().every((line) => line.includes("milestone 6"))).toBe(true);
     // OpenCode, the agent v1 ships, waits for none of milestone 8's rows.
     expect(pendingParity().filter((line) => line.startsWith("opencode:") && line.includes("milestone 8"))).toEqual([]);
+  });
+
+  it("F-121/c1, F-140/c10: spec section 6's milestone 8 rows name a case on every fake, or the fallback of the capability it lacks", () => {
+    const rows = ["F-121, F-140 The app tools", "F-140 The app's block", "F-145 Library skills", "F-145 Library MCP servers"] as const;
+    for (const fake of fakes) {
+      for (const row of rows) {
+        expect(parityTable[fake.name]?.[row]?.kind, `${fake.name}: ${row}`).toMatch(/^(cases|fallback)$/);
+      }
+    }
+    // A fake with ostra's tools calls them; the fakes without ostra's MCP server prove the fallback.
+    expect(parityTable["fake-acp-agent-rich"]?.["F-121, F-140 The app tools"]).toEqual({ kind: "cases", cases: [suiteCases.appTools, suiteCases.appScreenshot] });
+    expect(parityTable["fake-acp-agent-plain-index-only-unknown-notification"]?.["F-121, F-140 The app tools"]).toEqual({ kind: "fallback", capability: "memory", cases: [suiteCases.appWithoutMcp] });
+    expect(parityTable["fake-acp-agent-plain-index-only-no-mcp"]?.["F-121, F-140 The app tools"]).toEqual({ kind: "fallback", capability: "mcp", cases: [suiteCases.appWithoutMcp] });
   });
 
   it("F-019/c3: the check fails when a row is deleted from an adapter's entry, a case doesn't exist, or a declared capability has only its fallback", async () => {

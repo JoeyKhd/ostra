@@ -1,9 +1,9 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { killTree } from "@ostra/adapter-sdk";
 import type { AgentLaunch, CreatedBox } from "@ostra/adapter-sdk";
-import { defineExecutorContractSuite, localWorkspaceFiles, startGitUpstream, trackedPids } from "@ostra/adapter-sdk/testing";
+import { defineExecutorContractSuite, fakeBrowserProgram, localWorkspaceFiles, startGitUpstream, trackedPids } from "@ostra/adapter-sdk/testing";
 import type { HelperCase } from "@ostra/adapter-sdk/testing";
 import { projectIdSchema } from "@ostra/protocol";
 import { taskSpecFixture } from "@ostra/protocol/testing";
@@ -43,6 +43,32 @@ const hostCheckCommands = {
 // By birth as well as PID: a stop that takes seconds leaves a killed helper's PID to another process.
 const helpers = trackedPids();
 
+/**
+ * Milestone 8 (ticket 03): the machine's own browser, live: `OSTRA_RUNNER_BROWSER` when it's set,
+ * else Edge on Windows (every Windows machine has it) or Chrome on a Mac. Elsewhere, a Linux CI
+ * machine whose browser's sandbox may need what its user lacks, the fake browser over the same pipe.
+ * Ticket 11 finds the browser for the runner itself.
+ */
+const machineBrowser = async (): Promise<{ readonly command: string; readonly args?: readonly string[] }> => {
+  const named = process.env["OSTRA_RUNNER_BROWSER"];
+  const candidates =
+    named !== undefined && named !== ""
+      ? [named]
+      : process.platform === "win32"
+        ? [process.env["ProgramFiles(x86)"], process.env["ProgramFiles"]].flatMap((root) => (root === undefined ? [] : [path.join(root, "Microsoft", "Edge", "Application", "msedge.exe")]))
+        : process.platform === "darwin"
+          ? ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]
+          : [];
+  for (const candidate of candidates) {
+    const there = await access(candidate).then(
+      () => true,
+      () => false,
+    );
+    if (there) return { command: candidate };
+  }
+  return fakeBrowserProgram();
+};
+
 const helperCase = (clearEnv: boolean): HelperCase => ({
   // The agent detaches a helper through go-betweens that all exit, and the helper writes its PID
   // only once its parent is gone, so the box stops only after the helper has fully detached. A stop
@@ -72,7 +98,7 @@ defineExecutorContractSuite({
     const upstream = await startGitUpstream(path.join(root, "upstream"), { requireToken: false });
     await upstream.createRepo("ostra-test/test1", { "README.md": "# test1\n", "notes.txt": "notes\n" });
     const spec = { ...taskSpecFixture, environment: { ...taskSpecFixture.environment, setupScript: "echo ready\n" } };
-    const adapter = await HostExecutor.start({ dataDir: path.join(root, "runner") });
+    const adapter = await HostExecutor.start({ dataDir: path.join(root, "runner"), browser: await machineBrowser() });
     const treeOnly = adapter.capabilities.processContainment === "process-tree";
     return {
       adapter,
@@ -93,6 +119,8 @@ defineExecutorContractSuite({
         }),
         detachedHelper: helperCase(false),
         cleanEnvHelper: helperCase(true),
+        // Milestone 8 (ticket 03): the app's processes, the machine's browser and the loopback, live.
+        app: { node: (script) => ({ command: process.execPath, args: ["-e", script], env: windowsEnv() }) },
         ...(treeOnly
           ? { knownGaps: { cleanEnvHelper: "the process tree ends a helper that left its group by its marker, and this one cleared its environment" } }
           : {}),

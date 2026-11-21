@@ -51,7 +51,8 @@ export const sampleScreenshot: TakeScreenshotInput = { target: { process: "web" 
 /** Every kind's tool sets hold memory's, so a launch with ostra's tools carries the memory block with its tools. */
 const withTools = { block: sampleMemoryBlock(true), tools: true } as const;
 
-const hasMcp = (adapter: AgentAdapter): boolean => adapter.capabilities.mcp.http || adapter.capabilities.mcp.stdio;
+/** Whether the agent reaches ostra's MCP server, where the app tools are: MCP, and memory over it (milestone 4's split). */
+const hasOstraTools = (adapter: AgentAdapter): boolean => (adapter.capabilities.mcp.http || adapter.capabilities.mcp.stdio) && adapter.capabilities.memory === "mcp";
 
 export const defineAgentAppCases = (subject: Subject): void => {
   const runTurn = async (prompt: string, extra: Partial<PrepareLaunchInput>): Promise<string> => {
@@ -100,7 +101,7 @@ export const defineAgentAppCases = (subject: Subject): void => {
   it("F-121/c1: the app tools are listed for a task whose tool sets hold app, and absent otherwise", async (context) => {
     const app = probes(context);
     if (app === undefined) return;
-    if (!hasMcp(subject().adapter)) {
+    if (!hasOstraTools(subject().adapter)) {
       context.skip();
       return;
     }
@@ -120,7 +121,7 @@ export const defineAgentAppCases = (subject: Subject): void => {
   it("F-121/c1: the agent's take_screenshot reaches ostra's server with its input, and the tool's answer reaches the agent", async (context) => {
     const app = probes(context);
     if (app === undefined) return;
-    if (!hasMcp(subject().adapter)) {
+    if (!hasOstraTools(subject().adapter)) {
       context.skip();
       return;
     }
@@ -139,7 +140,7 @@ export const defineAgentAppCases = (subject: Subject): void => {
   it("F-121/c1: an agent without MCP is offered no app tools, and its app block doesn't name them: its pictures are ostra's after each turn", async (context) => {
     const app = probes(context);
     if (app === undefined) return;
-    if (hasMcp(subject().adapter)) {
+    if (hasOstraTools(subject().adapter)) {
       context.skip();
       return;
     }

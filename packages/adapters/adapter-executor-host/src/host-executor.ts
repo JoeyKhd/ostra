@@ -5,9 +5,12 @@ import os from "node:os";
 import path from "node:path";
 import {
   adapterError,
+  browserChannel,
   ExecutorAdapter,
+  identifyBrowser,
   localWipFiles,
   ok,
+  openAppLog,
   restoreWorkInProgressIn,
   runChecksWith,
   saveWorkInProgressIn,
@@ -19,7 +22,12 @@ import type {
   AgentCommandResult,
   AgentLaunch,
   AgentProcess,
+  AppProcessHandle,
   BoxRef,
+  BrowserChannel,
+  BrowserStart,
+  StartAppProcessInput,
+  StopAppProcessInput,
   CheckRunResult,
   CommitAndPushInput,
   CommittedRepoWork,
@@ -47,7 +55,7 @@ import type {
   TaskProxies,
   WipDeps,
 } from "@ostra/adapter-sdk";
-import { gitShaSchema, repoBranchName, repoGitIdentity, runnerLimits, SETUP_OUTPUT_MAX_CHARS } from "@ostra/protocol";
+import { appLogPath, gitShaSchema, repoBranchName, repoGitIdentity, runnerLimits, SETUP_OUTPUT_MAX_CHARS } from "@ostra/protocol";
 import type { BoxReleaseReason, BoxState, GitPerson, ProjectId, RepoId, RepoSecret, TaskId, TaskSpec, TaskSpecReviewRepo } from "@ostra/protocol";
 import { cgroupPrefix, detectContainment, newUnitMarker, processTreeContainment, sweepLeftovers, TASK_UNIT_ENV } from "./containment.ts";
 import {
@@ -60,7 +68,7 @@ import {
 } from "./agent-user.ts";
 import type { AgentUser, HandOver, SudoProgram } from "./agent-user.ts";
 import { localProcesses } from "./task-processes.ts";
-import type { TaskProcesses } from "./task-processes.ts";
+import type { BrowserProgram, TaskProcesses } from "./task-processes.ts";
 import type { Containment, ContainmentProbe, ContainmentUnit } from "./containment.ts";
 import { excludeFromGit, insideCheckout, renderEnvFile, writeCheckoutFile } from "./env-file.ts";
 import { baseEnv, codeHostRefusal, ostraLines, runProgram } from "./process.ts";
@@ -130,6 +138,19 @@ export type HostExecutorOptions = {
   readonly awaitServices?: (spec: TaskSpec, signal: AbortSignal | undefined) => Promise<readonly ServiceHealth[]>;
   /** Milestone 5 (ticket 10): who a task's processes run as. Default: the runner's own user (a personal runner). */
   readonly agentUser?: HostAgentUserOptions;
+  /**
+   * Milestone 8 (ADR 0068, F-121): the machine's browser, which each box starts in its unit with a
+   * fresh profile. Ticket 11 finds it (`OSTRA_RUNNER_BROWSER`, Chrome, Chromium, Edge, or the pinned
+   * download). Absent or `null`: a box has no browser (`not-found`). Read when a box asks, so a
+   * download that lands later counts. Ignored with `processes`, which starts its own.
+   */
+  readonly browser?: BrowserProgram | null | (() => BrowserProgram | null);
+};
+
+/** Milestone 8 (F-140): one of the app's processes in a box, its log open until it exits. */
+type RunningApp = {
+  readonly handle: AppProcessHandle;
+  readonly stop: (graceMs: number) => Promise<void>;
 };
 
 /** A pool's agent user, as the executor runs it (`HostExecutor.startPool` makes it). */
@@ -211,6 +232,9 @@ type BoxRecord = {
   agent: RunningAgent | undefined;
   /** Each repo's head when the box got ready or at the last `commitWork`: a turn changed a repo when it moved (Q188). */
   readonly turnBase: Map<RepoId, string>;
+  /** Milestone 8: the app's processes running, by name, and the browsers open; they end with the box. */
+  readonly apps: Map<string, RunningApp>;
+  readonly browsers: Set<BrowserChannel>;
 };
 
 /** A project's cache folder: its ID, with anything odd replaced. */
@@ -361,12 +385,16 @@ export class HostExecutor extends ExecutorAdapter {
     this.#shellProbe =
       options.shellProbe ?? (options.processes === undefined ? localShellProbe(baseEnv(this.#env), this.#dataDir) : undefined);
     this.#containment = options.containment;
+    const browser = options.browser ?? null;
     const processes =
       options.processes ??
-      localProcesses(() => {
-        this.#containment ??= processTreeContainment();
-        return this.#containment;
-      });
+      localProcesses(
+        () => {
+          this.#containment ??= processTreeContainment();
+          return this.#containment;
+        },
+        typeof browser === "function" ? browser : () => browser,
+      );
     this.#agentUser = options.agentUser ?? { user: { kind: "runner" } };
     const agentUser = this.#agentUser.user;
     // Milestone 5 (ticket 10): on a pool, every process of the task as the agent's user.
@@ -550,6 +578,8 @@ export class HostExecutor extends ExecutorAdapter {
       unit: undefined,
       agent: undefined,
       turnBase: new Map(),
+      apps: new Map(),
+      browsers: new Set(),
     };
     this.#boxes.set(key, record);
     try {
@@ -747,6 +777,7 @@ export class HostExecutor extends ExecutorAdapter {
     if (record === undefined) {
       return ok(undefined);
     }
+    await this.#endApp(record, input.graceMs);
     await this.#endAgent(record, input.graceMs);
     // Everything else the task started too: a daemon its setup script left (ticket 42).
     await record.unit?.killAll();
@@ -754,6 +785,108 @@ export class HostExecutor extends ExecutorAdapter {
       record.state = "stopped";
     }
     return ok(undefined);
+  }
+
+  // ---------- milestone 8 (ADR 0068): the running app ----------
+
+  /**
+   * One of the app's processes (F-140), through the processes seam: on `host` a child in the task's
+   * unit, in a box the init's, as the agent's user either way. Its output goes to its log in the
+   * task's folder (`.ostra/app/<name>.log`), never in a repo, and it ends with the box.
+   */
+  override async startAppProcess(input: StartAppProcessInput): Promise<AdapterResult<AppProcessHandle>> {
+    const record = this.#boxes.get(boxKey(input.box));
+    const unit = record?.unit;
+    if (record === undefined || unit === undefined || (record.state !== "ready" && record.state !== "idle")) {
+      return adapterError("conflict", `an app process can't start in a box that is ${record?.state ?? "released"}`);
+    }
+    const { launch } = input;
+    if (record.apps.has(launch.name)) {
+      return adapterError("conflict", `the app process ${launch.name} is running already`);
+    }
+    const logPath = path.join(record.root, ...appLogPath(launch.name).split("/"));
+    let log;
+    try {
+      log = await openAppLog(logPath);
+    } catch (error) {
+      return adapterError("unavailable", `couldn't open the app process's log (${errorCode(error)})`);
+    }
+    // The task's marker rides in its environment, as the agent's does, so its children carry it too.
+    const started = await this.#processes.startApp({ ...launch, env: { ...launch.env, [TASK_UNIT_ENV]: unit.marker } }, unit);
+    if (!started.ok) {
+      await log.close();
+      return adapterError("unavailable", `the app process ${launch.name} didn't start (${started.reason})`);
+    }
+    const running = started.value;
+    running.stdout.on("data", (chunk: Buffer) => {
+      log.write(chunk);
+    });
+    running.stderr.on("data", (chunk: Buffer) => {
+      log.write(chunk);
+    });
+    // Its exit is reported once its output is in the log: the end of both streams, then the file closed.
+    const streamEnd = (stream: NodeJS.ReadableStream): Promise<void> =>
+      new Promise((resolve) => {
+        stream.once("end", resolve);
+        stream.once("close", resolve);
+      });
+    const exited = Promise.all([running.exited, streamEnd(running.stdout), streamEnd(running.stderr)]).then(async ([exit]) => {
+      await log.close();
+      if (record.apps.get(launch.name)?.handle.pid === running.pid) {
+        record.apps.delete(launch.name);
+      }
+      this.plumbing.logger.info("app process exited", { taskId: record.ref.taskId, boxId: record.ref.boxId, app: launch.name, code: exit.code, signal: exit.signal });
+      return exit;
+    });
+    const handle: AppProcessHandle = { name: launch.name, pid: running.pid, logPath, exited };
+    record.apps.set(launch.name, { handle, stop: running.stop });
+    this.plumbing.logger.info("app process started", { taskId: record.ref.taskId, boxId: record.ref.boxId, app: launch.name, pid: running.pid });
+    return ok(handle);
+  }
+
+  override async stopAppProcess(input: StopAppProcessInput): Promise<AdapterResult<ProcessExit>> {
+    const running = this.#boxes.get(boxKey(input.box))?.apps.get(input.name);
+    if (running === undefined) {
+      return adapterError("not-found", `no app process ${input.name} runs in the box`);
+    }
+    await running.stop(input.graceMs);
+    return ok(await running.handle.exited);
+  }
+
+  /**
+   * The box's browser (F-121, F-141), through the processes seam: on `host` the machine's, in the
+   * task's unit; in a box the image's, started by the init. Named by DevTools' own `Browser.getVersion`.
+   */
+  override async startBrowser(box: BoxRef): Promise<AdapterResult<BrowserStart>> {
+    const record = this.#boxes.get(boxKey(box));
+    const unit = record?.unit;
+    if (record === undefined || unit === undefined || (record.state !== "ready" && record.state !== "idle")) {
+      return adapterError("conflict", `a browser can't start in a box that is ${record?.state ?? "released"}`);
+    }
+    const started = await this.#processes.startBrowser(unit, { ...baseEnv(this.#env), [TASK_UNIT_ENV]: unit.marker });
+    if (!started.available) {
+      this.plumbing.logger.info("no browser in the box", { taskId: box.taskId, boxId: box.boxId, reason: started.reason });
+      return ok({ available: false, reason: started.reason });
+    }
+    const channel = browserChannel(started.ends);
+    record.browsers.add(channel);
+    void channel.closed.then(() => record.browsers.delete(channel));
+    const identity = await identifyBrowser(channel, started.program);
+    if (identity === null) {
+      await channel.close();
+      this.plumbing.logger.warn("the box's browser didn't answer", { taskId: box.taskId, boxId: box.boxId });
+      return ok({ available: false, reason: "failed-to-start" });
+    }
+    this.plumbing.logger.info("browser started", { taskId: box.taskId, boxId: box.boxId, browser: identity.name, version: identity.version });
+    return ok({ available: true, browser: { ...identity, channel, profileDir: started.profileDir } });
+  }
+
+  /** The app's processes and the browsers end before the agent: each process gets `graceMs` to exit, and each browser's profile goes. */
+  async #endApp(record: BoxRecord, graceMs: number): Promise<void> {
+    const apps = [...record.apps.values()];
+    const browsers = [...record.browsers];
+    await Promise.all([...apps.map(async (app) => app.stop(graceMs).catch(() => undefined)), ...browsers.map(async (browser) => browser.close().catch(() => undefined))]);
+    await Promise.all(apps.map((app) => app.handle.exited));
   }
 
   async release(box: BoxRef, reason: BoxReleaseReason = "requested"): Promise<AdapterResult<void>> {
@@ -771,6 +904,7 @@ export class HostExecutor extends ExecutorAdapter {
       }
       return ok(undefined);
     }
+    await this.#endApp(record, 0);
     await this.#endAgent(record, 0);
     await record.unit?.dispose();
     record.unit = undefined;

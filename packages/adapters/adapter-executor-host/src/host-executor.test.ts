@@ -446,6 +446,8 @@ describe("the executor's git, where the agent controls the checkout", () => {
       processes: {
         createUnit: local.createUnit,
         startAgent: local.startAgent,
+        startApp: local.startApp,
+        startBrowser: local.startBrowser,
         run: (command, args, options) => {
           calls.push({ command, args });
           return local.run(command, args, options);

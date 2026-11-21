@@ -78,6 +78,10 @@ const idleBridge: Bridge = {
   reapAll: () => Promise.resolve([]),
   closed: new Promise(() => undefined),
   close: () => undefined,
+  features: [],
+  spawnApp: () => Promise.reject(new Error("no init in this test")),
+  startBrowser: () => Promise.reject(new Error("no init in this test")),
+  openForward: () => Promise.reject(new Error("no init in this test")),
 };
 
 describe("a box's size on Docker (F-095)", () => {

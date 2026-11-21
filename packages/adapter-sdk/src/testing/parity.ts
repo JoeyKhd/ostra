@@ -292,14 +292,24 @@ const milestone8OpenCode = {
 } as const;
 
 /**
- * Milestone 8's rows on the scripted fakes: a library's skills and servers reach them as the
- * profile's do, and no fake signs in to anything; the app cases wait for the fakes' app probes.
+ * Milestone 8's rows on the scripted fakes with ostra's tools over MCP (ticket 03): the app tools
+ * listed and called through the fake core, and the block in their instructions. A library's skills
+ * and servers reach them as the profile's do, and no fake signs in to anything.
  */
 const milestone8Fakes = {
-  "F-121, F-140 The app tools": waits("milestone 8, ticket 03: the scripted fakes' app probes"),
-  "F-140 The app's block": waits("milestone 8, ticket 03: the scripted fakes' app probes"),
+  "F-121, F-140 The app tools": cases(suiteCases.appTools, suiteCases.appScreenshot),
+  "F-140 The app's block": cases(suiteCases.appBlock),
   "F-145 Library skills": cases(suiteCases.skillsMcp),
   "F-145 Library MCP servers": cases(suiteCases.skillsMcp),
+} as const;
+
+/**
+ * Milestone 8's rows on the fakes that can't reach ostra's MCP server (spec section 6): no app
+ * tools, a block that doesn't name them, and the pictures ostra takes after each turn.
+ */
+const milestone8IndexOnly = {
+  ...milestone8Fakes,
+  "F-121, F-140 The app tools": fallback("memory", suiteCases.appWithoutMcp),
 } as const;
 
 /** What every adapter shares: the runner's and core's parts, and the suite's cases every fixture runs. */
@@ -381,7 +391,7 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
   "fake-acp-agent-plain-index-only-unknown-notification": {
     ...common,
     ...milestone6IndexOnly,
-    ...milestone8Fakes,
+    ...milestone8IndexOnly,
     "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate, suiteCases.subagentsNone, suiteCases.subagentsFlat),
     "F-025 Stop": cases(suiteCases.cancel, suiteCases.leftover),
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch, suiteCases.endpoint),
@@ -395,6 +405,27 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
     "F-110, F-111 Memory": fallback("memory", suiteCases.memoryBlock, suiteCases.memoryIndex),
     "F-039 Three images": cases(suiteCases.checksum),
     "F-019 The agent's launch": cases(suiteCases.noCredential, suiteCases.envAllowlist, suiteCases.unknownNotification, suiteCases.slash, suiteCases.checksum, suiteCases.noEffort),
+  },
+  // Milestone 8 (ticket 03): the fake without MCP at all, for the app tools' fallback (spec section 6).
+  "fake-acp-agent-plain-index-only-no-mcp": {
+    ...common,
+    ...milestone6IndexOnly,
+    ...milestone8IndexOnly,
+    "F-121, F-140 The app tools": fallback("mcp", suiteCases.appWithoutMcp),
+    "F-145 Library MCP servers": fallback("mcp", suiteCases.skillsMcp),
+    "F-023 Live activity": cases(suiteCases.turn, suiteCases.tools, suiteCases.plan, suiteCases.unknownUpdate, suiteCases.subagentsNone, suiteCases.subagentsFlat),
+    "F-025 Stop": cases(suiteCases.cancel, suiteCases.leftover),
+    "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch, suiteCases.endpoint),
+    "F-078 Repo conventions": cases(suiteCases.twoRepos, sharedCases.trailer),
+    "F-032, F-033, F-096 Reopen anywhere": cases(suiteCases.archive),
+    "F-021 Agent profiles": fallback("projectConfigOverride", suiteCases.repoConfigHidden, suiteCases.repoAllowsAll, suiteCases.skillsMcp),
+    "F-024 Steer": fallback("steerMidTurn", suiteCases.steerGuard, suiteCases.nextTurn),
+    "F-026 Approvals": fallback("rejectAndContinue", suiteCases.deny, suiteCases.denyReason, suiteCases.ruleAsks, suiteCases.taskRule, suiteCases.allowForTask),
+    "F-063 Plan first": fallback("planMode", suiteCases.buildMode, suiteCases.planTurn),
+    "F-062 Questions": cases(suiteCases.question),
+    "F-110, F-111 Memory": fallback("memory", suiteCases.memoryBlock, suiteCases.memoryIndex),
+    "F-039 Three images": cases(suiteCases.checksum),
+    "F-019 The agent's launch": cases(suiteCases.noCredential, suiteCases.envAllowlist, suiteCases.slash, suiteCases.checksum, suiteCases.noEffort),
   },
   "fake-acp-agent-rich-effort": {
     ...common,

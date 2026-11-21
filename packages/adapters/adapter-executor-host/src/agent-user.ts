@@ -138,6 +138,16 @@ export const agentUserProcesses = (user: string, inner: TaskProcesses, sudo: Sud
     const invoked = sudoInvocation(user, command, args, options.env, sudo);
     return inner.run(invoked.command, invoked.args, options);
   },
+  // Milestone 8 (F-140): the app's processes as the agent's user too.
+  startApp: (launch, unit) => {
+    const invoked = sudoInvocation(user, launch.command, launch.args, launch.env, sudo);
+    return inner.startApp({ ...launch, command: invoked.command, args: [...invoked.args] }, unit);
+  },
+  // Milestone 8 (F-121): the browser's DevTools pipe is its fd 3 and 4, which `sudo` closes unless
+  // the pool's sudoers rule allows `closefrom_override` (ticket 11 sets that up and starts it as the
+  // agent's user). Until then a pool with its own agent user reports no browser, never one running
+  // as the runner's user.
+  startBrowser: () => Promise.resolve({ available: false, reason: "failed-to-start" }),
 });
 
 /** Runs a program to its end: `runProgram`, or a test's stand-in. */

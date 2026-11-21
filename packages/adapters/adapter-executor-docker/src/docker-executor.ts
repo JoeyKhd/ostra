@@ -8,7 +8,13 @@ import type {
   AgentCommandResult,
   AgentLaunch,
   AgentProcess,
+  AppPortReach,
+  AppProcessHandle,
   BoxRef,
+  BrowserStart,
+  ProcessExit,
+  StartAppProcessInput,
+  StopAppProcessInput,
   BuildSnapshotInput,
   CheckRunResult,
   CommitAndPushInput,
@@ -79,6 +85,12 @@ export type DockerExecutorOptions = {
   readonly snapshots?: DockerSnapshots;
   /** Milestone 5: the pool runner's half, which makes and removes the boxes on the Engine; a box's sidecar has none. */
   readonly pool?: DockerPoolHalf;
+  /**
+   * Milestone 8 (ADR 0068): how this sidecar reaches an app's port. `forwarder` in a `docker` box,
+   * whose agent container has its own loopback; `loopback` in a `kubernetes` pod, whose containers
+   * share one `localhost`. Default: `forwarder`.
+   */
+  readonly appReach?: ExecutorCapabilities["appReach"];
 };
 
 /** The pool runner's half of the executor (ticket 09): the boxes on the Engine, and where their token folders go. */
@@ -98,7 +110,8 @@ export type DockerPoolHalf = {
 
 export class DockerExecutor extends ExecutorAdapter {
   readonly name = "docker";
-  readonly capabilities: ExecutorCapabilities = {
+  readonly capabilities: ExecutorCapabilities;
+  static readonly defaultCapabilities: ExecutorCapabilities = {
     isolation: "container",
     // Milestone 3 (ticket 14): the services on the box's network, and the snapshot image.
     services: true,
@@ -121,8 +134,12 @@ export class DockerExecutor extends ExecutorAdapter {
   readonly #pool: DockerPoolHalf | undefined;
   #capacity: ExecutorCapacity | null = null;
 
+  readonly #bridge: Bridge;
+
   constructor(options: DockerExecutorOptions, context?: AdapterContext) {
     super(context);
+    this.capabilities = { ...DockerExecutor.defaultCapabilities, appReach: options.appReach ?? "forwarder" };
+    this.#bridge = options.bridge;
     const servicesFile = options.servicesFile ?? SIDECAR_SERVICES_FILE;
     const servicesWaitMs = options.servicesWaitMs ?? SERVICES_HEALTHY_WITHIN_MS + 30_000;
     this.#snapshots = options.snapshots;
@@ -302,5 +319,35 @@ export class DockerExecutor extends ExecutorAdapter {
   /** The task volume's workspace root, as the sidecar sees it (ticket 44). */
   listWorkspaceRoot(box: BoxRef): Promise<AdapterResult<readonly string[]>> {
     return this.#inner.listWorkspaceRoot(box);
+  }
+
+  // ---------- milestone 8 (ADR 0068): the running app ----------
+
+  /** In the agent's container, through the init; its log on the task volume, which the sidecar writes. */
+  override startAppProcess(input: StartAppProcessInput): Promise<AdapterResult<AppProcessHandle>> {
+    return this.#inner.startAppProcess(input);
+  }
+
+  override stopAppProcess(input: StopAppProcessInput): Promise<AdapterResult<ProcessExit>> {
+    return this.#inner.stopAppProcess(input);
+  }
+
+  /** The image's browser in the agent's container, its pipe on the bridge's own channel. */
+  override startBrowser(box: BoxRef): Promise<AdapterResult<BrowserStart>> {
+    return this.#inner.startBrowser(box);
+  }
+
+  /** The init's forwarder: on the box network, for this sidecar's address only, to the app's `localhost:<port>`. */
+  protected override async openForward(box: BoxRef, port: number): Promise<AdapterResult<AppPortReach>> {
+    const state = await this.#inner.state(box);
+    if (!state.ok || state.value === "released" || state.value === "stopped" || state.value === "failed") {
+      return adapterError("conflict", `no forward into a box that is ${state.ok ? state.value : "unknown"}`);
+    }
+    try {
+      const forward = await this.#bridge.openForward(port);
+      return { ok: true, value: forward };
+    } catch (error) {
+      return adapterError("unavailable", error instanceof Error ? error.message.slice(0, 300) : "the forwarder didn't open");
+    }
   }
 }

@@ -7,6 +7,10 @@ import type { Bridge } from "./bridge/bridge-server.ts";
 // The host executor's processes seam over a box's bridge (spike 3's `AgentHost`): the agent and the
 // setup script run in the agent's container, as the agent's user, started by the box's init. Git
 // and the task's files stay with the sidecar, on the box's shared task volume.
+//
+// Milestone 8 (ADR 0068): the app's processes and the image's browser too, through the init's
+// `app_spawn` and `browser_start`; an app's output comes over the bridge and the sidecar writes its
+// log on the task volume, and the browser's pipe rides the bridge's own channel for it.
 
 /** Resolves once the stream has ended, or closed early (the bridge was lost): it never rejects. */
 const drained = (stream: Readable): Promise<void> => finished(stream).catch(() => undefined);
@@ -77,5 +81,24 @@ export const bridgeProcesses = (bridge: Bridge): TaskProcesses => ({
     const [exit] = await Promise.all([started.exited, drained(started.stdout), drained(started.stderr)]);
     options.signal?.removeEventListener("abort", onAbort);
     return { code: exit.code, stdout, stderr };
+  },
+  // Milestone 8 (F-140): in the agent's container, as the agent's user, in a group of its own.
+  startApp: async (launch) => {
+    try {
+      const app = await bridge.spawnApp({ command: launch.command, args: launch.args, cwd: launch.cwd, env: launch.env });
+      return { ok: true, value: app };
+    } catch (error) {
+      return { ok: false, reason: error instanceof Error ? error.message.slice(0, 200) : "unknown" };
+    }
+  },
+  // Milestone 8 (F-121): the image's browser, started by the init with a fresh profile.
+  startBrowser: async () => {
+    try {
+      const browser = await bridge.startBrowser();
+      return browser.available ? { available: true, program: browser.program, profileDir: browser.profileDir, ends: browser.ends } : browser;
+    } catch {
+      // An image whose init is older than the browser has none to offer; else the bridge didn't answer.
+      return { available: false, reason: bridge.features.includes("browser") ? "failed-to-start" : "not-in-image" };
+    }
   },
 });

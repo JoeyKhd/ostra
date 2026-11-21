@@ -8,7 +8,12 @@ import type {
   AgentCommandResult,
   AgentLaunch,
   AgentProcess,
+  AppProcessHandle,
   BoxRef,
+  BrowserStart,
+  ProcessExit,
+  StartAppProcessInput,
+  StopAppProcessInput,
   BoxSize,
   BoxWaitChange,
   BuildSnapshotInput,
@@ -658,6 +663,25 @@ export class KubernetesExecutor extends ExecutorAdapter {
     const inner = this.#inner(box);
     return inner.ok ? inner.value.listWorkspaceRoot(box) : inner;
   }
+
+  // ---------- milestone 8 (ADR 0068): the running app, in the pod through the same init ----------
+
+  override async startAppProcess(input: StartAppProcessInput): Promise<AdapterResult<AppProcessHandle>> {
+    const inner = this.#inner(input.box);
+    return inner.ok ? inner.value.startAppProcess(input) : inner;
+  }
+
+  override async stopAppProcess(input: StopAppProcessInput): Promise<AdapterResult<ProcessExit>> {
+    const inner = this.#inner(input.box);
+    return inner.ok ? inner.value.stopAppProcess(input) : inner;
+  }
+
+  override async startBrowser(box: BoxRef): Promise<AdapterResult<BrowserStart>> {
+    const inner = this.#inner(box);
+    return inner.ok ? inner.value.startBrowser(box) : inner;
+  }
+
+  // `reachAppPort` is the base class's: `loopback`, the pod's `localhost`, which every container shares.
 
   /**
    * A snapshot on `kubernetes` (ticket 08, F-120): a rootless BuildKit pod in the build namespace

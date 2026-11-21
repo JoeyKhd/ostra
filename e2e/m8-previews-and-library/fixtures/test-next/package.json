@@ -1,0 +1,16 @@
+{
+  "name": "@ostra/e2e-m8-test-next",
+  "version": "0.0.0",
+  "description": "Milestone 8's Next.js 16 page for the native preview's tests (spec section 9): a page, a counter and a route handler that shows the headers that reached it. Never in the production build",
+  "private": true,
+  "license": "LicenseRef-Sustainable-Use-1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 3002"
+  },
+  "dependencies": {
+    "next": "16.4.6",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  }
+}

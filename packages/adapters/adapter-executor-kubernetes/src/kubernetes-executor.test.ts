@@ -157,6 +157,8 @@ describe("the kubernetes executor's boxes (ticket 07)", () => {
       OSTRA_BRIDGE_ADDR: "127.0.0.1:7101",
       OSTRA_AGENT_UID: "1000",
       OSTRA_AGENT_GID: "1000",
+      // Milestone 8: the bridge features the pod's sidecar reads, which the init announces back.
+      OSTRA_BRIDGE_FEATURES: "app,browser,forward",
     });
 
     // The token volume carries the token's key alone; the pull secret is a dockerconfigjson for the registry's host.

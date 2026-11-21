@@ -1,0 +1,21 @@
+{
+  "name": "@ostra/e2e-m8-test-web",
+  "version": "0.0.0",
+  "description": "Milestone 8's app under test (spec section 9): a Vite and React frontend whose /api goes to a Node API on 3001 through Vite's proxy, a docs page on 4000, a page that sends X-Frame-Options: DENY, a page that builds a URL from Host, a WebSocket echo and a counter. Ticket 34 makes the test-web repo from it. Never in the production build",
+  "private": true,
+  "license": "LicenseRef-Sustainable-Use-1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "api": "node api/server.js",
+    "docs": "node docs/server.js"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "ws": "8.23.0"
+  },
+  "devDependencies": {
+    "vite": "8.3.8"
+  }
+}

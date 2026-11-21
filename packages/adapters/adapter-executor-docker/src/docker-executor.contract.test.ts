@@ -7,11 +7,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { killTree, silentLogger } from "@ostra/adapter-sdk";
 import type { AgentLaunch, BoxImage, BoxRef, CreatedBox } from "@ostra/adapter-sdk";
-import { defineExecutorContractSuite, localWorkspaceFiles, startGitUpstream, trackedPids } from "@ostra/adapter-sdk/testing";
+import { defineExecutorContractSuite, FAKE_BROWSER_MAIN, localWorkspaceFiles, startGitUpstream, trackedPids } from "@ostra/adapter-sdk/testing";
 import type { FleetFixture } from "@ostra/adapter-sdk/testing";
 import { boxIdSchema, leaseEpochSchema, sessionIdSchema } from "@ostra/protocol";
 import { taskSpecFixture } from "@ostra/protocol/testing";
 import { listenForInit } from "./bridge/bridge-server.ts";
+import { BRIDGE_FEATURES } from "./bridge/protocol.ts";
 import { createDockerBoxes } from "./boxes.ts";
 import { DockerExecutor } from "./docker-executor.ts";
 import { createEngine } from "./engine.ts";
@@ -63,7 +64,8 @@ const sidecarTokenDir = (engine: FakeEngine, box: BoxRef): string | null => {
   return typeof source === "string" ? source : null;
 };
 
-const INIT = fileURLToPath(new URL("./init/main.ts", import.meta.url));
+// Milestone 8: the real init, with the fake box browser in place of the image's Chromium.
+const INIT = fileURLToPath(new URL("./testing/init-with-fake-browser.ts", import.meta.url));
 
 const nodeLaunch = (script: string, box: CreatedBox): AgentLaunch => ({
   command: process.execPath,
@@ -99,8 +101,15 @@ defineExecutorContractSuite({
     const boxId = boxIdSchema.parse("contract-box");
     const nonce = randomBytes(32).toString("base64url");
     const listener = await listenForInit({ boxId, nonce, host: "127.0.0.1", port: 0, logger: silentLogger });
-    const init: ChildProcess = spawn(process.execPath, [INIT], {
-      env: { ...process.env, OSTRA_BOX_ID: boxId, OSTRA_BRIDGE_NONCE: nonce, OSTRA_BRIDGE_ADDR: `127.0.0.1:${String(listener.port)}` },
+    const init: ChildProcess = spawn(process.execPath, [INIT, FAKE_BROWSER_MAIN], {
+      env: {
+        ...process.env,
+        OSTRA_BOX_ID: boxId,
+        OSTRA_BRIDGE_NONCE: nonce,
+        OSTRA_BRIDGE_ADDR: `127.0.0.1:${String(listener.port)}`,
+        // Milestone 8: as the pool runner sets it (`boxes.ts`).
+        OSTRA_BRIDGE_FEATURES: BRIDGE_FEATURES.join(","),
+      },
       stdio: ["ignore", "ignore", "ignore"],
       windowsHide: true,
     });
@@ -165,6 +174,8 @@ defineExecutorContractSuite({
         echoLaunch: (box) => nodeLaunch("process.stdin.pipe(process.stdout)", box),
         // Milestone 2 (ticket 22): the hidden ref is saved and restored in the box's first checkout.
         workInProgress: { checkout: (box) => localWorkspaceFiles(path.join(box.workspaceDir, "test1")), trackedFiles: ["README.md", "notes.txt"] },
+        // Milestone 8 (ticket 03): the app's processes, the browser and the forwarder, through the real init.
+        app: { node: (script) => ({ command: process.execPath, args: ["-e", script], env: process.platform === "win32" ? { SystemRoot: process.env["SystemRoot"] ?? "C:\\Windows" } : {} }) },
         // Milestone 3 (ticket 14): the checks run in the agent's container through the bridge.
         checks: {
           passing: "exit 0",

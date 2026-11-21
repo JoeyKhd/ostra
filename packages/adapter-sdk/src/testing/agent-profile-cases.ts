@@ -424,8 +424,13 @@ export const defineAgentProfileCases = (subject: Subject): void => {
       expect((await readdir(workspace(), { recursive: true })).sort()).toEqual(before);
       const said = textOf(events);
       expect(said).toMatch(/write=(refused|denied)/);
-      expect(said).toContain("docs:allowed");
-      expect(said).toMatch(/files:(refused|denied)/);
+      if (adapter.capabilities.mcp.http || adapter.capabilities.mcp.stdio) {
+        expect(said).toContain("docs:allowed");
+        expect(said).toMatch(/files:(refused|denied)/);
+      } else {
+        // Milestone 8: an agent without MCP reaches neither server, read-only or not.
+        expect(said).not.toMatch(/(docs|files):allowed/);
+      }
       if (adapter.capabilities.nativePlan) {
         expect(events.some((event) => event.kind === "plan.updated")).toBe(true);
       }

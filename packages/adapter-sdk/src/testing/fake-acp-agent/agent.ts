@@ -200,6 +200,9 @@ export const fakeScripts = [
   "submit-review",
   /** The proposing fake: calls `propose_environment` with its args' proposal, and says the answer. */
   "propose-environment",
+  // Milestone 8 (ticket 03).
+  /** Calls `take_screenshot` with its args' input, and says the answer. */
+  "take-screenshot",
   /** Runs `git push origin HEAD:refs/heads/<branch>` (or `HEAD:<ref>` for a full ref name) in the repo folder given, and says `pushed` or `push refused`. */
   "git-push",
   /** Says each git repo's HEAD under the session's folder, one `<folder> <sha>` line each. */
@@ -1405,9 +1408,11 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
 
       case "submit-draft":
       case "submit-review":
-      case "propose-environment": {
+      case "propose-environment":
+      case "take-screenshot": {
         const config = await readConfig();
-        const tool = script === "submit-draft" ? "submit_draft" : script === "submit-review" ? "submit_review" : "propose_environment";
+        const tools = { "submit-draft": "submit_draft", "submit-review": "submit_review", "propose-environment": "propose_environment", "take-screenshot": "take_screenshot" } as const;
+        const tool = tools[script];
         if (config.ostraMcp === undefined) {
           await say(`${tool}: no such tool`);
           return "end_turn";

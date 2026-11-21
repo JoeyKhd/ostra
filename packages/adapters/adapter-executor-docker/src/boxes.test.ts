@@ -55,7 +55,9 @@ describe("a box's resources", () => {
       SecurityOpt: ["no-new-privileges:true"],
       Mounts: [{ Type: "volume", Source: resources.volume.Name, Target: TASK_ROOT }],
     });
-    expect(envOf(agent).map((line) => line.split("=")[0])).toEqual(["OSTRA_BOX_ID", "OSTRA_BRIDGE_NONCE", "OSTRA_BRIDGE_ADDR", "OSTRA_AGENT_UID", "OSTRA_AGENT_GID"]);
+    expect(envOf(agent).map((line) => line.split("=")[0])).toEqual(["OSTRA_BOX_ID", "OSTRA_BRIDGE_NONCE", "OSTRA_BRIDGE_ADDR", "OSTRA_AGENT_UID", "OSTRA_AGENT_GID", "OSTRA_BRIDGE_FEATURES"]);
+    // Milestone 8: the bridge features this sidecar reads, which the init announces back.
+    expect(envOf(agent)).toContain("OSTRA_BRIDGE_FEATURES=app,browser,forward");
   });
 
   it("F-050/c1: uses the environment's own base image when it names one", () => {

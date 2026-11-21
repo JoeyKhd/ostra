@@ -4,6 +4,9 @@ packages:
   - packages/*
   - packages/adapters/*
   - e2e/*
+  # Milestone 8's apps under test (ticket 03), each a package of its own, as its repo will be.
+  - e2e/m8-previews-and-library/fixtures/test-web
+  - e2e/m8-previews-and-library/fixtures/test-next
 minimumReleaseAgeExclude:
   - "@turbo/darwin-64@2.11.13"
   - "@turbo/darwin-arm64@2.11.13"

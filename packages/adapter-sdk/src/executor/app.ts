@@ -1,3 +1,4 @@
+import { mkdir, open, rm } from "node:fs/promises";
 import { connect } from "node:net";
 import type { Socket } from "node:net";
 import path from "node:path";
@@ -216,4 +217,153 @@ export const browserIdentity = (executable: string, product: string): BoxBrowser
   const fromProduct = (slash === -1 ? "" : product.slice(0, slash)).replace(/^Headless/, "");
   const name = known[program] ?? (fromProduct === "Edg" ? "Edge" : fromProduct);
   return { name: (name === "" ? "Chromium" : name).slice(0, 100), version: (version === "" ? "unknown" : version).slice(0, 100) };
+};
+
+// ---------- the pipe as a channel, the same on every executor ----------
+
+/** The DevTools IDs ostra's own calls use on a channel: a caller's client keeps its IDs below them. */
+export const BROWSER_VERSION_CALL_ID = 2_000_000_000;
+export const BROWSER_CLOSE_CALL_ID = 2_000_000_001;
+
+/** A browser process's ends as an executor holds them: its pipe's bytes, its end and its kill. */
+export type BrowserProcessEnds = {
+  /** Writes bytes to the browser's fd 3. */
+  readonly write: (bytes: Buffer) => void;
+  /** Hears the bytes the browser writes on its fd 4. */
+  readonly onBytes: (listener: (bytes: Buffer) => void) => void;
+  /** Resolves once the browser has exited and its profile folder is gone, however it ended. */
+  readonly gone: Promise<void>;
+  /** Kills the browser's tree. Harmless once it has exited. */
+  readonly kill: () => Promise<void>;
+};
+
+/** The caller's channel over a browser's ends: whole messages each way, and a close that asks first. */
+export const browserChannel = (ends: BrowserProcessEnds): BrowserChannel => {
+  const listeners = new Set<(message: string) => void>();
+  let ended = false;
+  const gone = ends.gone.then(() => {
+    ended = true;
+  });
+  ends.onBytes(
+    createPipeMessageSplitter((message) => {
+      for (const listener of listeners) {
+        listener(message);
+      }
+    }),
+  );
+  const send = (message: string): void => {
+    if (!ended) {
+      ends.write(Buffer.from(`${message}\0`, "utf8"));
+    }
+  };
+  return {
+    send,
+    onMessage: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    closed: gone,
+    close: async () => {
+      if (!ended) {
+        // Spike 07: `Browser.close` first, so the browser flushes and its helpers let go of the profile.
+        send(JSON.stringify({ id: BROWSER_CLOSE_CALL_ID, method: "Browser.close" }));
+        await Promise.race([gone, new Promise((resolve) => setTimeout(resolve, 3_000).unref())]);
+      }
+      await ends.kill();
+      await gone;
+    },
+  };
+};
+
+/**
+ * Asks a started browser its version (DevTools' `Browser.getVersion`) and names it for the pictures.
+ * `null` when it doesn't answer within `timeoutMs`, or answers something else.
+ */
+export const identifyBrowser = (channel: BrowserChannel, program: string, timeoutMs = 15_000): Promise<BoxBrowser | null> =>
+  new Promise((resolve) => {
+    const finish = (value: BoxBrowser | null): void => {
+      clearTimeout(timer);
+      unsubscribe();
+      resolve(value);
+    };
+    const timer = setTimeout(() => {
+      finish(null);
+    }, timeoutMs);
+    const unsubscribe = channel.onMessage((message) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(message);
+      } catch {
+        return;
+      }
+      if (typeof parsed !== "object" || parsed === null || Reflect.get(parsed, "id") !== BROWSER_VERSION_CALL_ID) {
+        return;
+      }
+      const product: unknown = Reflect.get(Object(Reflect.get(parsed, "result")), "product");
+      finish(typeof product === "string" ? browserIdentity(program, product) : null);
+    });
+    void channel.closed.then(() => {
+      finish(null);
+    });
+    channel.send(JSON.stringify({ id: BROWSER_VERSION_CALL_ID, method: "Browser.getVersion" }));
+  });
+
+// ---------- an app process's log ----------
+
+/** An app process's log as the executor writes it: its output in order, capped, closed with the process. */
+export type AppLogWriter = {
+  readonly write: (chunk: Buffer) => void;
+  /** Resolves once everything written is in the file. */
+  readonly close: () => Promise<void>;
+};
+
+/**
+ * Opens an app process's log afresh (`.ostra/app/<name>.log` in the task's folder, ADR 0068), with
+ * its folder. Past `maxBytes`, the oldest lines are dropped: the newest half is kept, from a line's
+ * start. A write that fails is dropped, so a full disk never stops the app. Its content is never logged.
+ */
+export const openAppLog = async (file: string, maxBytes = APP_LOG_MAX_BYTES): Promise<AppLogWriter> => {
+  await mkdir(path.dirname(file), { recursive: true });
+  // Read too: a trim reads back the newest half.
+  const handle = await open(file, "w+", 0o644);
+  let size = 0;
+  let queue: Promise<void> = Promise.resolve();
+  const keep = Math.floor(maxBytes / 2);
+  const trim = async (incoming: Buffer): Promise<Buffer> => {
+    if (incoming.length >= keep) {
+      await handle.truncate(0);
+      size = 0;
+      return incoming.subarray(incoming.length - keep);
+    }
+    const tail = Buffer.alloc(Math.min(size, keep - incoming.length));
+    await handle.read(tail, 0, tail.length, size - tail.length);
+    const newline = tail.indexOf(10);
+    const kept = newline === -1 ? tail : tail.subarray(newline + 1);
+    await handle.truncate(0);
+    await handle.write(kept, 0, kept.length, 0);
+    size = kept.length;
+    return incoming;
+  };
+  return {
+    write: (chunk) => {
+      queue = queue
+        .then(async () => {
+          const bytes = size + chunk.length > maxBytes ? await trim(chunk) : chunk;
+          await handle.write(bytes, 0, bytes.length, size);
+          size += bytes.length;
+        })
+        .catch(() => undefined);
+    },
+    close: async () => {
+      await queue;
+      await handle.close().catch(() => undefined);
+    },
+  };
+};
+
+/** Removes a folder a browser used, retrying while its helpers still hold files (spike 07: up to 15 s on Windows). */
+export const removeProfileDir = async (dir: string): Promise<void> => {
+  await rm(dir, { recursive: true, force: true, maxRetries: 50, retryDelay: 300 }).catch(() => undefined);
 };

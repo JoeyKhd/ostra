@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type { V1Container, V1EnvVar, V1Pod, V1Probe, V1Secret, V1Volume } from "@kubernetes/client-node";
+import { BRIDGE_FEATURES } from "@ostra/adapter-executor-docker";
 import type { BoxImage, BoxRef, BoxSize } from "@ostra/adapter-sdk";
 import type { TaskSpec, TaskSpecService } from "@ostra/protocol";
 
@@ -279,6 +280,8 @@ export const boxObjects = (input: BoxPodInput, settings: PodSettings): BoxObject
       { name: "OSTRA_BRIDGE_ADDR", value: `127.0.0.1:${String(settings.bridgePort)}` },
       { name: "OSTRA_AGENT_UID", value: String(AGENT_UID) },
       { name: "OSTRA_AGENT_GID", value: String(AGENT_UID) },
+      // Milestone 8: the bridge features the sidecar reads, which the init announces back.
+      { name: "OSTRA_BRIDGE_FEATURES", value: BRIDGE_FEATURES.join(",") },
     ],
     securityContext: {
       // The init is root to start processes as the agent's user; those are never root.

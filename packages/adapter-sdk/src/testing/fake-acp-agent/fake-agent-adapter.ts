@@ -7,7 +7,7 @@ import { mcpSubjectValue } from "@ostra/protocol";
 import type { ApprovalRequestSubject } from "@ostra/protocol";
 
 import { createAcpDriver } from "../../agent/acp/driver.ts";
-import { AgentAdapter, composeLaunchInstructions, effortModelOf, orderedEffortLevels } from "../../agent/base.ts";
+import { AgentAdapter, composeLaunchInstructions, effortModelOf, launchHasAppTools, orderedEffortLevels } from "../../agent/base.ts";
 import type {
   AgentCommand,
   AgentLaunch,
@@ -47,7 +47,15 @@ export type FakeAgentEffort = "session-option" | "none";
  * notification no client knows after `initialize`. `pinnedSha256` is the checksum its program
  * must have, as OpenCode's binary has one: a mismatch refuses the launch.
  */
-export type FakeAgentParity = { readonly unknownNotification?: boolean; readonly pinnedSha256?: string };
+export type FakeAgentParity = {
+  readonly unknownNotification?: boolean;
+  readonly pinnedSha256?: string;
+  /**
+   * Milestone 8 (ticket 03): a fake without MCP at all, no server of the profile's or ostra's: it
+   * gets no app tools, and its task's pictures are the ones ostra takes after each turn.
+   */
+  readonly noMcp?: boolean;
+};
 
 /** The SHA-256 of the fake's program, as a pin would name it. */
 export const fakeAgentProgramSha256 = async (): Promise<string> => createHash("sha256").update(await readFile(MAIN)).digest("hex");
@@ -80,7 +88,7 @@ export class FakeAgentAdapter extends AgentAdapter {
     super(driver, context);
     this.#profile = profile;
     this.#parity = parity;
-    this.name = `fake-acp-agent-${profile}${memory === "mcp" ? "" : "-index-only"}${effort === "none" ? "" : "-effort"}${parity.unknownNotification === true ? "-unknown-notification" : ""}`;
+    this.name = `fake-acp-agent-${profile}${memory === "mcp" ? "" : "-index-only"}${effort === "none" ? "" : "-effort"}${parity.unknownNotification === true ? "-unknown-notification" : ""}${parity.noMcp === true ? "-no-mcp" : ""}`;
     const declared = fakeAgentCapabilities[profile];
     this.capabilities = {
       ...declared,
@@ -89,6 +97,7 @@ export class FakeAgentAdapter extends AgentAdapter {
       sessionArchive: true,
       memory,
       reasoningEffort: effort,
+      ...(parity.noMcp === true ? { mcp: { http: false, stdio: false } } : {}),
     };
   }
 
@@ -123,7 +132,9 @@ export class FakeAgentAdapter extends AgentAdapter {
     const skills = input.skills ?? [];
     const skillLines = this.capabilities.skills ? [] : skills.map((skill) => `Skill ${skill.name}: read ${path.join(skill.dir, "SKILL.md")}`);
     // Milestone 4: the profile's instructions, the repos side by side and the memory block, in this config file.
-    const instructions = [composeLaunchInstructions(input) ?? "", ...skillLines].filter((line) => line !== "").join("\n");
+    // Milestone 8: the app tools ride ostra's MCP server, which only a fake with memory over MCP lists.
+    const appTools = this.capabilities.memory === "mcp" && (this.capabilities.mcp.http || this.capabilities.mcp.stdio) && launchHasAppTools(input);
+    const instructions = [composeLaunchInstructions(input, { appTools }) ?? "", ...skillLines].filter((line) => line !== "").join("\n");
     const mcpServers = (input.mcpServers ?? []).filter((server) =>
       server.transport === "http" ? this.capabilities.mcp.http : this.capabilities.mcp.stdio,
     );
@@ -134,7 +145,7 @@ export class FakeAgentAdapter extends AgentAdapter {
       ...(this.capabilities.skills ? { skills: skills.map((skill) => ({ name: skill.name, dir: skill.dir })) } : {}),
       instructions: instructions === "" ? null : instructions,
       mcpServers: mcpServers.map((server) => ({ name: server.name, transport: server.transport, readOnly: server.readOnly })),
-      ...(memoryTools ? { ostraMcp: { url: input.mcp.url, ...(input.mcp.bearer === undefined ? {} : { bearer: input.mcp.bearer }) } } : {}),
+      ...(memoryTools || appTools ? { ostraMcp: { url: input.mcp.url, ...(input.mcp.bearer === undefined ? {} : { bearer: input.mcp.bearer }) } } : {}),
       // Milestone 4 (F-137): the values its `thought_level` option advertises, from the model's controls.
       effortValues: this.#effortValues(input),
     };

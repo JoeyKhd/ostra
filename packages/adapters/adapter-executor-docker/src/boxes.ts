@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { BoxImage, BoxSize, ExecutorCapacity, ServiceHealth } from "@ostra/adapter-sdk";
 import type { BoxId, BoxState, LeaseEpoch, SessionId, TaskId } from "@ostra/protocol";
 import { z } from "zod";
+import { BRIDGE_FEATURES } from "./bridge/protocol.ts";
 import { emptySchema } from "./engine.ts";
 import type { Engine, EngineResult } from "./engine.ts";
 
@@ -282,6 +283,8 @@ export const boxResources = (input: BoxInput, options: BoxOptions, nonce = rando
           `OSTRA_BRIDGE_ADDR=sidecar:${String(BRIDGE_PORT)}`,
           `OSTRA_AGENT_UID=${String(AGENT_UID)}`,
           `OSTRA_AGENT_GID=${String(AGENT_UID)}`,
+          // Milestone 8: the bridge features this sidecar reads, which the init announces back.
+          `OSTRA_BRIDGE_FEATURES=${BRIDGE_FEATURES.join(",")}`,
         ],
         // The init is root to start processes as the agent's user; those are never root.
         User: "0:0",

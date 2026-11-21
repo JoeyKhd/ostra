@@ -34,7 +34,7 @@ export {
 export type { AdoptOptions, Containment, ContainmentKind, ContainmentProbe, ContainmentUnit, MarkerSweep } from "./containment.ts";
 export { loadJobObjects } from "./job-object.ts";
 export type { JobHandle, JobObjects, JobObjectsLoad } from "./job-object.ts";
-export { localProcesses } from "./task-processes.ts";
-export type { StartAgentResult, StartedAgent, TaskProcesses } from "./task-processes.ts";
+export { localProcesses, stopTree } from "./task-processes.ts";
+export type { BrowserProcessResult, BrowserProgram, StartAgentResult, StartAppResult, StartedAgent, StartedApp, StartedBrowserProcess, TaskProcesses } from "./task-processes.ts";
 export { baseEnv, runProgram } from "./process.ts";
 export type { RunOptions, RunResult } from "./process.ts";

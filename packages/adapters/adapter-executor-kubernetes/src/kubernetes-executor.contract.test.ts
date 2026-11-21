@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { DockerExecutor, listenForInit } from "@ostra/adapter-executor-docker";
 import { defaultAdapterContext, killTree, silentLogger } from "@ostra/adapter-sdk";
 import type { AgentLaunch, BoxImage, BoxSize, CreatedBox } from "@ostra/adapter-sdk";
-import { defineExecutorContractSuite, localWorkspaceFiles, startGitUpstream, trackedPids } from "@ostra/adapter-sdk/testing";
+import { defineExecutorContractSuite, FAKE_BROWSER_MAIN, localWorkspaceFiles, startGitUpstream, trackedPids } from "@ostra/adapter-sdk/testing";
 import { taskSpecFixture } from "@ostra/protocol/testing";
 
 import { KubernetesExecutor } from "./kubernetes-executor.ts";
@@ -27,7 +27,8 @@ import { arrayOf, namesWithLabel, podSurface, recordOf, SIDECAR_TOKEN_MOUNT } fr
 // spec, as the kubelet would apply them, and the cgroups that hold them are ticket 35's live run.
 
 const NS = "ostra-boxes";
-const INIT = fileURLToPath(new URL("../../adapter-executor-docker/src/init/main.ts", import.meta.url));
+// Milestone 8: the real init, with the fake box browser in place of the image's Chromium.
+const INIT = fileURLToPath(new URL("../../adapter-executor-docker/src/testing/init-with-fake-browser.ts", import.meta.url));
 
 const nodeLaunch = (script: string, box: CreatedBox): AgentLaunch => ({
   command: process.execPath,
@@ -83,7 +84,7 @@ defineExecutorContractSuite({
         images: { runner: "ghcr.io/ostra/runner:test", base: "ghcr.io/ostra/base:test" },
         serverUrl: "https://ostra.example",
         pollMs: 20,
-        initCommand: [process.execPath, INIT],
+        initCommand: [process.execPath, INIT, FAKE_BROWSER_MAIN],
         inBox: {
           listen: async (box, nonce) => {
             const listener = await listenForInit({ boxId: box.boxId, nonce, host: "127.0.0.1", port: 0, logger: silentLogger });
@@ -91,7 +92,8 @@ defineExecutorContractSuite({
               bridges.add(() => {
                 bridge.close();
               });
-              return new DockerExecutor({ taskRoot: path.join(root, "sidecars", box.boxId), bridge }, defaultAdapterContext);
+              // Milestone 8: in a pod the sidecar reaches the app at the shared localhost, with no forwarder.
+              return new DockerExecutor({ taskRoot: path.join(root, "sidecars", box.boxId), bridge, appReach: "loopback" }, defaultAdapterContext);
             });
             return {
               port: listener.port,
@@ -115,6 +117,8 @@ defineExecutorContractSuite({
         failingSetupSpec: { ...spec, environment: { ...spec.environment, setupScript: "exit 3\n" } },
         echoLaunch: (box) => nodeLaunch("process.stdin.pipe(process.stdout)", box),
         workInProgress: { checkout: (box) => localWorkspaceFiles(path.join(box.workspaceDir, "test1")), trackedFiles: ["README.md", "notes.txt"] },
+        // Milestone 8 (ticket 03): the app's processes and the browser through the pod's init, the app at the pod's localhost.
+        app: { node: (script) => ({ command: process.execPath, args: ["-e", script], env: process.platform === "win32" ? { SystemRoot: process.env["SystemRoot"] ?? "C:\\Windows" } : {} }) },
         checks: {
           passing: "exit 0",
           failing: "exit 3",
