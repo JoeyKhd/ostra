@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { LoaderCircleIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { PageFrame, PageHeading } from "@/components/shell/page-frame";
@@ -49,6 +50,7 @@ export const EmailView = () => {
   const queryClient = useQueryClient();
   const me = useQuery(trpc.me.get.queryOptions());
   const instanceAdmin = me.data?.instanceAdmin === true;
+  const crumbs = [{ label: me.data?.organization?.name ?? t("shell.organization") }, { label: t("shell.email") }];
   const settings = useQuery({ ...trpc.email.settings.get.queryOptions(), enabled: instanceAdmin });
   const save = useMutation(trpc.email.settings.save.mutationOptions({ onSuccess: () => queryClient.invalidateQueries({ queryKey: trpc.email.settings.get.queryKey() }) }));
   const test = useMutation(trpc.email.sendTest.mutationOptions({ onSettled: () => queryClient.invalidateQueries({ queryKey: trpc.email.settings.get.queryKey() }) }));
@@ -66,7 +68,7 @@ export const EmailView = () => {
 
   if (me.data !== undefined && !instanceAdmin) {
     return (
-      <PageFrame crumbs={[{ label: t("shell.email") }]}>
+      <PageFrame crumbs={crumbs}>
         <PageHeading title={t("shell.email")} lede={t("email.lede")} />
         <LockBlock lockedBy="read-only" />
       </PageFrame>
@@ -74,7 +76,7 @@ export const EmailView = () => {
   }
   if (view === undefined || saved === null || draft === null) {
     return (
-      <PageFrame crumbs={[{ label: t("shell.email") }]}>
+      <PageFrame crumbs={crumbs}>
         <PageHeading title={t("shell.email")} lede={t("email.lede")} />
         {settings.error === null ? null : <p role="alert" className="text-red">{errorText(settings.error)}</p>}
       </PageFrame>
@@ -95,7 +97,18 @@ export const EmailView = () => {
     });
   };
   return (
-    <PageFrame crumbs={[{ label: t("shell.email") }]} properties={<EmailPanel facts={factsOf(view)} now={now} />}>
+    <PageFrame
+      crumbs={crumbs}
+      // email-settings.md: the page's one primary button, in the top bar, on until the form differs from the saved settings.
+      actions={
+        locked ? null : (
+          <Button variant="primary" disabled={!edited || save.isPending} onClick={trySave} data-action="save-email">
+            {save.isPending ? <><LoaderCircleIcon aria-hidden className="motion-safe:animate-spin" /> {t("email.saving")}</> : t("email.save")}
+          </Button>
+        )
+      }
+      properties={<EmailPanel facts={factsOf(view)} now={now} />}
+    >
       <PageHeading title={t("shell.email")} lede={t("email.lede")} />
       {locked ? <LockBlock lockedBy={view.lockedBy} /> : null}
       <EmailForm
@@ -108,12 +121,6 @@ export const EmailView = () => {
         onDraft={(next) => { setDraft(next); setSavedNotice(false); }}
         onTouch={(field) => { setShown((now) => new Set([...now, field])); }}
       />
-      {locked ? null : (
-        <div className="mt-5 flex gap-2">
-          <Button variant="primary" disabled={!edited || save.isPending} onClick={trySave} data-action="save-email">{t("common.save")}</Button>
-          {edited ? <Button variant="ghost" onClick={() => { setDraft(draftOf(saved)); }}>{t("common.cancel")}</Button> : null}
-        </div>
-      )}
       <div className="mt-8">
         <TestSection
           address={view.adminAddress}
