@@ -283,7 +283,7 @@ export const settingFields = {
   },
   OSTRA_BLOB_STORE: {
     default: "postgres",
-    description: "Where blobs (session archives, ticket images) are kept: postgres, in the database's own tables, or s3, any S3-compatible store (F-114).",
+    description: "Where blobs (session archives, a ticket's images and files, message files and the text extracted from them) are kept: postgres, in the database's own tables, or s3, any S3-compatible store (F-114).",
   },
   OSTRA_BLOB_MAX_MIB: {
     default: "64",
@@ -544,7 +544,7 @@ export const settingFields = {
   OSTRA_MESSAGE_FILES_MAX: {
     default: "10",
     description:
-      "The most files one message carries, in the new-task box and every message after it (F-148), at most 20. The box refuses one more as it arrives; the server leaves out what's over at send, with a note in the thread.",
+      "The most files one message carries, in the new-task box and every message after it (F-148), at most 20. The box refuses one more as it arrives; the server leaves out what's over at send, with a note in the thread. It also caps a member's unsent uploads: twice this value per member and project, and the next upload is refused until they send or remove some.",
   },
   OSTRA_MESSAGE_FILE_MAX_MIB: {
     default: "10",
