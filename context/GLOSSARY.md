@@ -305,8 +305,21 @@ An environment prepared ahead of time, so a box starts in seconds: an image with
 _Avoid_: cache, template
 
 **Service**:
-A program the environment starts beside the agent for its tests, such as a database. The `host` executor can't start one.
+A program the environment starts beside the agent for its tests, such as a database: a container from an image. The `host` executor can't start one. One with a web UI, such as a mail catcher, can be marked a preview.
 _Avoid_: dependency
+_Not_: an app process, which is the project's own program, run from its repo
+
+**App process**:
+One of the project's own programs that the environment declares for its app, such as a Vite frontend or an API: its repo and folder, its start command, its port, a ready check and a label. ostra starts it in the box, keeps its log, and gives it the other processes' and services' in-box addresses. At most one is the primary preview.
+_Avoid_: dev server (one kind of app process), service (a service is a container from an image), port (alone)
+
+**Primary preview**:
+The app process the preview pane and the after-turn screenshots open first. A frontend that reaches its API through its own dev-server proxy, on one origin, is the usual primary.
+_Avoid_: main app, default port
+
+**Box's browser**:
+The headless Chromium that runs beside the app in a task's box (on `host`, the machine's own Chromium-family browser), which takes screenshots and recordings and streams the browser view. It holds no cookie or token of ostra's.
+_Avoid_: headless browser (alone), Playwright, the agent's browser (an agent may run its own)
 
 **Check**:
 A command the environment names that ostra runs after every turn with changes, before it pushes and opens or updates a PR. A failing one makes the PR a draft. The code host's own pipeline is "CI".
@@ -315,6 +328,48 @@ _Avoid_: test, CI (for ostra's checks)
 **Environment proposal**:
 The corrected environment an onboarding task hands in after running the setup, the services and the checks: scripts, checks and variable names per repo, never a secret's value. A project admin accepts, edits or rejects it.
 _Avoid_: suggestion, draft (a refine task hands in drafts), proposal (alone, that's memory)
+
+### Seeing the running app
+
+**Attachment**:
+A screenshot or a recording of a task's running app, posted in its thread at its place in the turn and kept as a blob of the task, so it outlives the box. The agent, ostra after a turn, or a member takes it. The PR links to it in ostra.
+_Avoid_: artifact, upload (a member's upload to a draft is a draft image), file (alone)
+
+**Recording**:
+An attachment of a few seconds of the box's browser running a list of steps: its frames, their times and the steps, which the panel plays. It isn't a video file.
+_Avoid_: video, replay, screencast (that's the browser's own word for its frames)
+
+**Preview**:
+One port of a task's running app that members can watch live: an app process, a service marked as one, or a port the agent announced. Each has a label, a source and a level of who may open it.
+_Avoid_: deployment, preview environment (a hosting platform's word), dry run (that's an intake rule's list)
+
+**Preview pane**:
+The pane beside a task's thread that shows its previews live, primary first. Its expanded view is the same pane widened to the page.
+_Avoid_: preview tab, iframe, viewer (that's the page a link opens)
+
+**Browser view**:
+The live preview that needs no setting: the box's browser streamed to the pane as pictures, with a member's clicks and keys sent back. Everyone watching a preview shares one page.
+_Avoid_: screencast, remote desktop, live stream (that's the panel's event stream, ADR 0035)
+
+**Native preview**:
+The live preview in the member's own browser: the app itself on its preview host, served by core over the box's preview connection, with devtools and real device sizes. Only where an admin set a preview domain.
+_Avoid_: tunnel, iframe preview, port forward (that's `ostra preview`)
+
+**Preview domain**:
+The optional wildcard domain under which core serves native previews, as `<port>-<previewId>.<domain>`. It needs one wildcard DNS record and a wildcard certificate, and a domain of its own is recommended.
+_Avoid_: wildcard URL, app domain
+
+**Preview link**:
+A link that lets someone open one preview without being in its project: expiring, or public where an organization admin allows it. It opens a viewer page that shows only that preview, watch-only unless the link allows input. Its token is a bearer secret.
+_Avoid_: share URL, public URL, invite (an invitation adds a member)
+
+**Preview connection**:
+A box's second connection to core, opened only while someone watches, that carries a preview's bytes off the session: pictures for the browser view, or an HTTP/2 tunnel for `ostra preview` and the native preview.
+_Avoid_: tunnel (alone), session (that's the box's main connection)
+
+**App-only start**:
+"Start the app" on a stopped task: a box started from the task's branches and hidden ref to run its app processes, with no agent and no model call. A member's message then starts a turn in that box.
+_Avoid_: preview box, wake, reopen (a reopen is a turn)
 
 ### Agents and models
 
@@ -325,6 +380,34 @@ _Avoid_: bot, model, AI, assistant
 **Agent profile**:
 A named setup of an agent (its model provider, then one of that provider's models by its model name, instructions, tools, how much it may do without asking) that automations and members choose from. It belongs to the organization, and a project picks a default for each task kind. Its tasks use its provider's key and base URL alone, so it runs only in projects whose provider list allows that provider. A profile saved before 2026-11-20 may name no provider yet; then each project's own provider serves its model name, until an admin picks one.
 _Avoid_: preset, config, persona
+
+**Library**:
+The organization's installed skills and MCP servers, each pinned and attached to agent profiles or marked "every profile". Organization admins install; members see it and suggest.
+_Avoid_: marketplace (that's where items are found), catalog (that's models.dev's), registry (an MCP registry is one of its sources), store
+
+**Library item**:
+One skill or MCP server in the library, with its source, its current pin, who installed it, and the profiles it's on.
+_Avoid_: package, plugin, extension
+
+**Library source**:
+Where a library item comes from: a GitHub repo, a well-known URL, or an MCP registry. The organization's allowlist of sources is matched by owner, repo, host or registry, never by an item's name.
+_Avoid_: origin, provider (that's a model provider)
+
+**Pin**:
+What a library item's current version is fixed at: the commit a skill was fetched at, with its content hash (the `skills` CLI's), or an MCP server's registry version. Nothing moves a pin but an admin accepting an update.
+_Avoid_: lock, version (alone, for a skill)
+
+**Library update**:
+A newer pin found for a library item, by the daily check or on demand, waiting with its diff until an organization admin accepts or dismisses it.
+_Avoid_: upgrade, sync
+
+**Library suggestion**:
+A member's request that an organization admin install a skill or an MCP server: a reference and a note.
+_Avoid_: proposal (that's memory's), request
+
+**Marketplace browser**:
+The organization admin's search of skills.sh and the organization's MCP registries, through core, off until an admin turns it on. A result installs through the library like any reference.
+_Avoid_: store, app store, marketplace (alone, that's skills.sh or a registry)
 
 **Model provider**:
 An endpoint an organization adds for models: an API base URL and a token. ostra lists the models from the endpoint itself, except a model's batch listing (`x:batch` beside `x`, the endpoint's asynchronous batch API), which it keeps unlisted. Each one is one key: an organization may hold several that serve the same models, one per client, and a project uses only those on its provider list.
@@ -372,6 +455,16 @@ _Avoid_: quota, credits
 The figures an organization or project sees about its work over a period: PRs opened and merged, the merge rate, the median time to a first PR, the time waiting on people, tokens and spend. Computed every few minutes, not live.
 _Avoid_: analytics, metrics, dashboard
 
+### The panel
+
+**Rail**:
+The narrow column of icons at the panel's left edge for its top-level places: search, a new task, Home and the personal views with "Needs you", each pinned project, the organization, and the member's menu. It's always there on a desktop.
+_Avoid_: sidebar (alone, there are two), dock, nav bar
+
+**Context sidebar**:
+The second sidebar, beside the rail, that lists the pages of the place open in the rail: a project's, the organization's or the personal views. It collapses to the rail.
+_Avoid_: secondary nav, submenu, drawer (on a phone, the rail and the context sidebar open as one sheet)
+
 ### Who
 
 **Organization**:
@@ -403,7 +496,7 @@ The organization's record of who did what and when: people's and the system's ac
 _Avoid_: activity log, history (a task's history is its event log)
 
 **CLI session**:
-What `ostra login` makes: a member's own credential for the `ostra` CLI, made by a device code the member approves in the browser, listed and revocable in their Account. It can read a task's branches for `ostra checkout`, and nothing else.
+What `ostra login` makes: a member's own credential for the `ostra` CLI, made by a device code the member approves in the browser, listed and revocable in their Account. It can read a task's branches for `ostra checkout`, open a task's preview on the member's own `localhost` with `ostra preview` (since 2026-11-21), and nothing else.
 _Avoid_: CLI token, API key, runner key (a runner's credential is a different one)
 
 ### Integrations

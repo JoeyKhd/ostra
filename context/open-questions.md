@@ -2,7 +2,7 @@
 
 **Who answers:** 👤 = the maintainer's call · 🔬 = research informs it, then we decide together · 🔧 = a build task with a known fix: no decision is needed, and the row leaves when the fix is committed.
 
-A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q284). They are two separate ranges: Q-20 and Q20 are different questions.
+A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q324). They are two separate ranges: Q-20 and Q20 are different questions.
 
 ## Settled
 
@@ -137,7 +137,7 @@ Two adjustments the maintainer made afterwards apply to every row below:
 | Q65 what to call the work before the code | ADR 0028: refine. "Plan first" (F-063) stays a step inside a code task |
 | Q66 what a refine task may do | ADR 0028, F-099: it reads, answers and prototypes in its box, and never pushes or opens a PR |
 | Q67 how refine ends | ADR 0028, F-099: a typed draft, then "Update ticket" and "Mark ready", both by a member |
-| Q68 seeing the running app | F-121, after v1 and first in line |
+| Q68 seeing the running app | F-121, after v1 and first in line. *Changed 2026-11-21:* moved into v1, in milestone 8 (Q308) |
 | Q69 mockups | F-122, later. Members upload their own images in v1 |
 | Q70 who uses ostra | ADR 0026, F-021: non-coders are ordinary members, and a profile can be limited to some members |
 | Q71 AI review | ADR 0028, F-100: a review task with its own profile, posting a comment-type review |
@@ -457,6 +457,47 @@ The maintainer asked on 2026-11-19: "it doesn't seem that our models have suppor
 | Q290 Which limits does the agent get? | ADR 0066, F-137: the model row's own context window and output limit, from the catalog or an admin. Only a model with neither keeps 128,000 and 16,000 tokens |
 | Q291 Do reasoning tokens change the count or the price? | ADR 0066, F-137: the count is already right, since both formats bill reasoning as output and report it inside it. The key proxy also records the reasoning subset, Anthropic's `thinking_tokens` included, on `usage.recorded` and the turn. v1 prices it as output; models.dev's separate `cost.reasoning` (99 models list one that differs) is marked on the Models page and isn't applied |
 | Q292 Where is it built? | ADR 0066: milestone 4, tickets 56 to 63. It needs protocol minor 3, which milestone 4's ticket 01 makes, and it sits on milestone 4's model by name (ADR 0065), so the control is designed once beside the model control that milestone 4 redesigns. Not a release between milestones 3 and 4, which would take minor 3 itself and build on `modelId` only to move it |
+
+#### Settled for milestone 8's spec (2026-11-21)
+
+The maintainer approved milestone 8's three features on 2026-11-21: screenshots and recordings, live previews, and a skills and MCP library. Writing `specs/m8-previews-and-library/spec.md` met these questions, from `research/live-previews.md` and `research/skills-and-mcp-marketplaces.md`. They were settled three ways:
+- **Q296 to Q298** are the maintainer's own answers, given on 2026-11-20 and 2026-11-21.
+- **Q299 to Q303** are the lead's recommendations, which the maintainer said "yes" to as a group on 2026-11-21.
+- **Q304 to Q324** are the lead's call on the research's recommendations, recorded on the maintainer's behalf.
+
+Ticket 34 of that spec asks the maintainer to review the lead's calls; any the maintainer disagrees with moves back to the open list. The spec's section 12 restates them all. Two of the library research's questions (repo skills loading by default, and which skill wins a name clash with a repo's) aren't here: the `repo-skills` work settles them.
+
+| Question | Settled in |
+|---|---|
+| Q296 Is a preview domain required for a live preview? | ADR 0068, F-144, the maintainer: no. "A preview domain (wildcard) is welcome but must stay OPTIONAL." Unset, the browser view, `ostra preview` and screenshots carry everything |
+| Q297 Who can open a preview? | ADR 0068, F-142, the maintainer: it's configurable per preview: the project's members by default, named people, an expiring link, or public where an admin allows it. It fails closed, and sharing is audited |
+| Q298 How does a frontend that relies on an API work? | ADR 0068, F-140, the maintainer: app processes declared in the environment, with the dev-server proxy pattern, so the browser talks to one origin |
+| Q299 Does watching a preview keep a box warm? | ADR 0068, F-141, ADR 0039 amended, the lead's recommendation, "yes": while a pane is open and visible, for up to 60 minutes after the last turn or app start (`OSTRA_PREVIEW_WARM_MINUTES`). The panel's heartbeat counts; the app's own HMR socket never does. Budgets don't count the compute |
+| Q300 May "Start the app" start a box with no agent turn? | ADR 0068, F-141, the lead's recommendation, "yes": a lease with the purpose `app`, from the task's branches and hidden ref, starting the app processes and no agent, with no model call. A member's message then starts a turn in that box |
+| Q301 May a link for someone outside the project click and type in the box's browser? | ADR 0068, F-142, the lead's recommendation, "yes": only when the link allows input; otherwise it's watch-only |
+| Q302 How do webhooks reach the app in a box? | ADR 0068, the lead's recommendation, "yes": forwarders that dial out (Stripe CLI, `gh webhook forward`, smee), run in the box. No ostra entry point. On `docker` they wait for network allowlists (F-052) |
+| Q303 Is a third-party tunnel built in? | ADR 0068, the lead's recommendation, "yes": no. Not as the default, and not built in |
+| Q304 Does the native preview rewrite `Host` and `Origin` to `localhost`? | ADR 0068, F-144, the lead's call: yes, by default, and `Location` back. Each app process can turn it off and get the real host in `Host` and `X-Forwarded-Host`. On a link for people outside the project, the browser's `Origin` is kept on WebSocket upgrades, so a dev server's own check still guards a channel that writes files |
+| Q305 How do preview streams work with several core replicas? | ADR 0068, F-141, ADR 0034 amended, the lead's call: a presence row per view names the replica holding the box's preview connection (`OSTRA_CORE_REPLICA_URL`), and any other replica forwards to it, signed under the secrets key. A one-machine install never forwards |
+| Q306 What does a runner on the HTTP fallback carrier get? | ADR 0068, F-141, F-143, F-144, the lead's call: the browser view at 2 frames a second, and no tunnel, so no `ostra preview` and no native preview. A limit by network, not one of ADR 0029's executor differences |
+| Q307 A registrable domain of its own for previews, or a subdomain of the panel's? | ADR 0068, F-144, the lead's call: both are allowed. The docs recommend a domain of its own, as v0, Cloudflare and Google advise, and warn on a subdomain of the panel's |
+| Q308 Where does F-121 go? | F-121, the build order, the lead's call on the maintainer's agreement to move it earlier: into v1, in milestone 8, before the launch gate |
+| Q309 App processes as a second list, or services grown to cover them? | ADR 0068, F-140, ADR 0038 amended, the lead's call: a second list beside the services, and a service with a web UI can be marked a preview |
+| Q310 Should ostra tell agents to keep the browser on one origin, and should the native preview offer CORS between a task's hosts? | ADR 0068, F-140, the lead's call: yes to one origin, in the agent's instructions and onboarding's proposal; no cross-host CORS in this milestone |
+| Q311 Which browser is the box's, and where does it come from? | ADR 0068, F-121, the lead's call: Chromium. Debian's `chromium` in the base image; on `host`, `OSTRA_RUNNER_BROWSER`, else the machine's Chrome, Chromium or Edge, else Chrome for Testing's headless shell downloaded at a pinned version with its SHA-256 checked, which `OSTRA_RUNNER_BROWSER_DOWNLOAD=false` turns off. No new allowed difference: each attachment names its browser |
+| Q312 What is a recording? | ADR 0068, F-121, the lead's call: a frame reel (JPEG frames, their times and the steps) the panel plays, at most 30 s. No video encoder in the box |
+| Q313 Are listening ports detected? | ADR 0068, F-140, the lead's call: later. Previews reach declared and announced ports only, the same on every executor, since a macOS `host` runner can't scan per task |
+| Q314 Does each viewer get their own page in the browser view, and who may give input? | ADR 0068, F-141, the lead's call: one page per preview, shared by everyone watching it; any member who can open the project may give input |
+| Q315 What's the library's scope? | ADR 0069, F-145, the lead's call: an organization library attached to profiles, with "every profile". Projects pick profiles, as now, and nothing attaches to a single task |
+| Q316 May the server call git hosts, registries and skills.sh? | ADR 0069, ADR 0021 amended, F-145, F-146, the lead's call: installs, update checks and the test call are calls the organization sets up. The marketplace search is off by default, an organization admin's switch, and `OSTRA_MARKETPLACE_SEARCH=false` disables it on the install |
+| Q317 What does the marketplace search skills with? | ADR 0069, F-146, the lead's call: skills.sh's CLI search endpoint (`OSTRA_SKILLS_SEARCH_URL`), through core, documented as undocumented. Installing by reference never depends on it. Not the OIDC API, which needs Vercel |
+| Q318 The `skills` CLI, or ostra's own code? | ADR 0069, F-145, the lead's call: ostra's own code for the fetch, the discovery and the CLI's documented hash. No CLI, no telemetry, no skills.sh download path |
+| Q319 Does the library show third-party audits? | ADR 0069, F-146, the lead's call: not in this milestone. It shows the source, the commit, the hash, the files and who installed it |
+| Q320 stdio MCP servers that need a secret? | ADR 0069, F-145, the lead's call: later, in a container of their own, with their own ADR. The library installs remote servers only; a packages-only registry entry is listed as not installable yet |
+| Q321 OAuth MCP servers? | ADR 0069, F-145, the lead's call: later, with their own ADR (a broker in core, and whose grant). A server that asks for sign-in is marked and can't be attached, and proxied servers get `oauth: false` |
+| Q322 Who installs, and what may an allowlist name? | ADR 0069, F-145, the lead's call: organization admins install, members suggest. The allowlist names GitHub owners and repos, well-known hosts, and registries with an optional namespace, matched by source and never by name |
+| Q323 How do updates work? | ADR 0069, F-145, the lead's call: a daily check and an on-demand one; an update shows its diff and waits for an admin's accept or dismiss; a running task gets the accepted pin at its next session |
+| Q324 Which MCP registries? | ADR 0069, F-145, the lead's call: GitHub's curated registry on every organization's list, plus any registry URL an admin names. The official registry, which asks hosts not to call it, isn't listed by default |
 
 ## Open
 

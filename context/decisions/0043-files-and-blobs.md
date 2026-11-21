@@ -1,6 +1,6 @@
 # Files go through a blob store adapter, kept in Postgres by default
 
-**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Settles Q76. Ledger: F-114. Extends ADR 0017 and ADR 0025.
+**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Settles Q76. Ledger: F-114. Extends ADR 0017 and ADR 0025. **Amended 2026-11-21 by ADR 0068:** screenshots and recordings are task blobs (`app-screenshot`, `app-recording`), linked from the PR and never served at a public URL; library files are organization blobs (`library-file`, ADR 0069).
 
 ostra stores files: a session's archive, the images a member attaches to a refine draft, and later the screenshots of a running app (F-121). They go through a **`BlobStoreAdapter`**, the eighth adapter kind (ADR 0025).
 

@@ -1,6 +1,6 @@
 # No telemetry unless an admin turns it on
 
-**Status:** accepted (plan signed off 2026-11-17). Chosen on 2026-11-17 in grilling round 3. Amended 2026-11-18: it names the one outbound fetch, the model catalog, with its setting and its bundled copy (Q34).
+**Status:** accepted (plan signed off 2026-11-17). Chosen on 2026-11-17 in grilling round 3. Amended 2026-11-18: it names the one outbound fetch, the model catalog, with its setting and its bundled copy (Q34). **Amended 2026-11-21 by ADR 0069:** the server makes four new kinds of outbound call, none carrying usage data: fetching a library item when an admin installs it, the daily update check of installed items, the test call to an MCP server an admin installs, and the marketplace search, off by default (ADR 0069, "ADR 0021, amended").
 
 No usage data leaves an install unless its admin turns it on. v1 has none at all. If telemetry is ever added, it's opt-in and documented field by field.
 
