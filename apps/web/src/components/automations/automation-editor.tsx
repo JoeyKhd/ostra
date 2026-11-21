@@ -38,6 +38,7 @@ import { applyPreset, draftOf, emptyCondition, emptyPayloadRow, filterOf, newDra
 import type { Condition, ConditionField, Draft, PayloadRow, Preset, Starts } from "./automation-draft";
 import { bulkReasonText, categoryWord, clockText, dryCountText, dryOutcomeText, labelsNoRunnerCarries, occurrenceText } from "./automation-words";
 import type { Automation } from "./automation-words";
+import { cronSentenceText } from "./cron-words";
 import { sampleBody, sampleCurl, SECRET_VARIABLE } from "./webhook-sample";
 
 // The rule, schedule and webhook editor (automation-edit.md, F-011, F-106, F-107, F-139): a name and a
@@ -425,7 +426,7 @@ const EditorForm = ({
               <>
                 <p className="mt-3 flex items-center gap-2 text-[14px] text-text" data-testid="cron-sentence">
                   <CalendarIcon aria-hidden className="size-[15px] stroke-[1.75] text-muted" />
-                  {preview.data.sentence}
+                  {preview.data.sentence === null ? null : cronSentenceText(preview.data.sentence)}
                 </p>
                 <div className="mt-2 flex flex-wrap items-baseline gap-x-6 gap-y-1">
                   <span className="text-[12.5px] text-muted">{t("automations.editor.next")}</span>

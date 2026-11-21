@@ -10,14 +10,11 @@ import {
   decideSuggestion,
   detachItem,
   dismissUpdate,
-  INSTANCE_SEARCH_OFF_WORDS,
   installItem,
   libraryCounts,
   librarySourceSchema,
   libraryVersionFilesSchema,
   MARKETPLACE_WORDS_MAX,
-  marketplaceSearchSendsWords,
-  ORGANIZATION_SEARCH_OFF_WORDS,
   parseLibraryReference,
   readGitHubSkillForInstall,
   readMarketplaceSearch,
@@ -36,7 +33,7 @@ import {
   SUGGESTION_NOTE_MAX,
   testServer,
 } from "@ostra/domain";
-import type { AttachError, MarketplaceSearchState, ResolveReferenceError, SkillRead } from "@ostra/domain";
+import type { AttachError, ResolveReferenceError, SkillRead } from "@ostra/domain";
 import {
   agentProfileIdSchema,
   gitShaSchema,
@@ -153,15 +150,6 @@ const sourceEntryInput = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("well_known_host"), value: z.string().max(300) }),
   z.strictObject({ kind: z.literal("registry"), value: z.string().max(2048), namespace: z.string().max(256).nullable() }),
 ]);
-
-/** The switch as the library shows it, with its words: why it's off, and what a search sends where. */
-const searchStateView = (state: MarketplaceSearchState) => ({
-  ...state,
-  /** Why search is off, in the fixed words of the switch that keeps it off; `null` while it's on. */
-  offWords: state.off === "instance" ? INSTANCE_SEARCH_OFF_WORDS : state.off === "organization" ? ORGANIZATION_SEARCH_OFF_WORDS : null,
-  /** What a search sends where. */
-  sendsWords: marketplaceSearchSendsWords(state.sendsTo),
-});
 
 const notFound = (what: string): TRPCError => new TRPCError({ code: "NOT_FOUND", message: `No such ${what}` });
 
@@ -514,16 +502,19 @@ export const libraryRouter = router({
   sources: sourcesRouter,
   suggestions: suggestionsRouter,
 
-  /** The marketplace search's switch: on or off, which setting keeps it off and why, and what a search sends where. */
+  /**
+   * The marketplace search's switch: on or off, which setting keeps it off (`off`) and where a search
+   * sends its words (`sendsTo`), as a code and hosts the panel words (F-083), never sentences.
+   */
   searchState: adminProcedure.query(async ({ ctx }) => {
     const read = unwrap(await readMarketplaceSearch(libraryDepsOf(ctx.deps), ctx.scope), { forbidden: "FORBIDDEN" });
-    return searchStateView(read.state);
+    return read.state;
   }),
 
   /** The organization admin's switch, audited; refused on while `OSTRA_MARKETPLACE_SEARCH=false`. */
   setMarketplaceSearch: adminProcedure.input(z.strictObject({ enabled: z.boolean() })).mutation(async ({ ctx, input }) => {
     const set = unwrap(await setMarketplaceSearch(libraryDepsOf(ctx.deps), ctx.scope, input), { forbidden: "FORBIDDEN", "instance-search-off": "PRECONDITION_FAILED" });
-    return searchStateView(set.state);
+    return set.state;
   }),
 
   /**

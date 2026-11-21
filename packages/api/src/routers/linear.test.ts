@@ -172,12 +172,12 @@ describe("F-005: the whole flow, from start to active", () => {
     expect(second.webhookUrl).toBe(first.webhookUrl);
   });
 
-  it("runs in polling mode on a private address: no webhook in the manifest, no webhook secret asked, the reason in words", async () => {
+  it("runs in polling mode on a private address: no webhook in the manifest, no webhook secret asked, the reason as the pre-check's code", async () => {
     const admin = await adminOn("session-1", "private");
     expect(await admin.linear.status()).toMatchObject({ state: "none", mode: "polling" });
     const started = await admin.linear.start();
     expect(started).toMatchObject({ mode: "polling", webhookUrl: null });
-    expect(started.modeReason).toMatch(/https/);
+    expect(started.modeReason).toBe("not-https");
     expect(manifestOf(started.manifestUrl).webhook).toBeUndefined();
 
     const app = fake.createApp({ name: "ostra", redirectUris: [CALLBACK], webhookUrl: null });
@@ -186,7 +186,7 @@ describe("F-005: the whole flow, from start to active", () => {
     await admin.linear.complete(await consent(saved.authorizeUrl));
     const status = await admin.linear.status();
     expect(status).toMatchObject({ state: "active", mode: "polling" });
-    expect(status.modeReason).toMatch(/https/);
+    expect(status.modeReason).toBe("not-https");
     expect(status.state === "active" ? status.webhookUrl : "x").toBeNull();
   });
 

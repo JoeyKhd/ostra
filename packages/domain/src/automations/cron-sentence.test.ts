@@ -1,44 +1,48 @@
 import { describe, expect, it } from "vitest";
 
-import { cronSentence, ordinal, zoneWords } from "./cron-sentence.ts";
+import { cronDescribed, cronSentence, cronZone } from "./cron-sentence.ts";
+import type { CronWhen } from "./cron-sentence.ts";
 
 // The schedule's sentence (F-106): the grammar of milestone 6's screen target `automation-edit.md`,
-// each row of its table, the zone's words, and the fallback for an expression it has no words for.
+// each row of its table as a sentence's shape, the zone, and the fallback for an expression it has
+// no shape for. The panel words them (`apps/web`'s `cron-words.test.ts` has the table's words).
 
 describe("the cron sentence", () => {
-  it("F-106/c1: says each of the editor's examples in its zone's words", () => {
-    const table: readonly (readonly [string, string])[] = [
-      ["0 * * * *", "Every hour, on the hour"],
-      ["30 */2 * * *", "Every 2 hours at :30"],
-      ["0 9 * * *", "Every day at 09:00"],
-      ["0 9 * * 1-5", "Every weekday at 09:00"],
-      ["0 9 * * 1", "Every Monday at 09:00"],
-      ["0 9 * * 1,3", "Every Monday and Wednesday at 09:00"],
-      ["0 9,17 * * *", "Every day at 09:00 and 17:00"],
-      ["0 9 1 * *", "On the 1st of every month at 09:00"],
-      ["0 9 1 1,7 *", "On the 1st of January and July at 09:00"],
-      ["0 9 1 * 1", "On the 1st of every month and every Monday at 09:00"],
+  it("F-106/c1: gives each of the editor's examples its sentence's shape, in its zone", () => {
+    const table: readonly (readonly [string, CronWhen])[] = [
+      ["0 * * * *", { kind: "hourly", minute: 0 }],
+      ["30 */2 * * *", { kind: "every-hours", step: 2, minute: 30 }],
+      ["0 9 * * *", { kind: "daily", times: ["09:00"], months: null }],
+      ["0 9 * * 1-5", { kind: "weekly", days: "weekdays", times: ["09:00"], months: null }],
+      ["0 9 * * 1", { kind: "weekly", days: [1], times: ["09:00"], months: null }],
+      ["0 9 * * 1,3", { kind: "weekly", days: [1, 3], times: ["09:00"], months: null }],
+      ["0 9,17 * * *", { kind: "daily", times: ["09:00", "17:00"], months: null }],
+      ["0 9 1 * *", { kind: "monthly", daysOfMonth: [1], times: ["09:00"], months: null }],
+      ["0 9 1 1,7 *", { kind: "monthly", daysOfMonth: [1], times: ["09:00"], months: [1, 7] }],
+      ["0 9 1 * 1", { kind: "monthly-or-weekly", daysOfMonth: [1], days: [1], times: ["09:00"] }],
     ];
-    for (const [cron, words] of table) {
-      expect(cronSentence(cron, "UTC"), cron).toEqual({ text: `${words}, UTC`, described: true });
+    for (const [cron, when] of table) {
+      expect(cronSentence(cron, "UTC"), cron).toEqual({ when, zone: { kind: "utc" } });
     }
-    expect(cronSentence("0 9 * * 1", "Europe/Amsterdam")?.text).toBe("Every Monday at 09:00, Amsterdam time");
-    expect(cronSentence("15 7 * * 1,3,5", "America/New_York")?.text).toBe("Every Monday, Wednesday and Friday at 07:15, New York time");
-    expect(cronSentence("0 9 * * 0", "UTC")?.text).toBe("Every Sunday at 09:00, UTC");
-    expect(cronSentence("0 9 * * 7", "UTC")?.text).toBe("Every Sunday at 09:00, UTC");
+    expect(cronSentence("0 9 * * 1", "Europe/Amsterdam")).toEqual({ when: { kind: "weekly", days: [1], times: ["09:00"], months: null }, zone: { kind: "city", city: "Amsterdam" } });
+    expect(cronSentence("15 7 * * 1,3,5", "America/New_York")).toEqual({ when: { kind: "weekly", days: [1, 3, 5], times: ["07:15"], months: null }, zone: { kind: "city", city: "New York" } });
+    // Sunday ends the week, as 0 or 7.
+    expect(cronSentence("0 9 * * 0,1", "UTC")?.when).toEqual({ kind: "weekly", days: [1, 0], times: ["09:00"], months: null });
+    expect(cronSentence("0 9 * * 7", "UTC")?.when).toEqual({ kind: "weekly", days: [0], times: ["09:00"], months: null });
   });
 
-  it("F-106: falls back to the cron itself for what it has no words for, and says nothing for an invalid one", () => {
-    expect(cronSentence("0,30 9 * * *", "Europe/Amsterdam")).toEqual({ text: "At 0,30 9 * * *, Amsterdam time", described: false });
-    expect(cronSentence("0 */2 * * 1", "UTC")).toEqual({ text: "At 0 */2 * * 1, UTC", described: false });
-    expect(cronSentence("0 9 1 1 1", "UTC")).toEqual({ text: "At 0 9 1 1 1, UTC", described: false });
+  it("F-106: falls back to the cron itself for what it has no shape for, and says nothing for an invalid one", () => {
+    const fallback = cronSentence("0,30 9 * * *", "Europe/Amsterdam");
+    expect(fallback).toEqual({ when: { kind: "cron", source: "0,30 9 * * *" }, zone: { kind: "city", city: "Amsterdam" } });
+    expect(fallback === null ? null : cronDescribed(fallback)).toBe(false);
+    expect(cronSentence("0 */2 * * 1", "UTC")?.when).toEqual({ kind: "cron", source: "0 */2 * * 1" });
+    expect(cronSentence("0 9 1 1 1", "UTC")?.when).toEqual({ kind: "cron", source: "0 9 1 1 1" });
     expect(cronSentence("0 25 * * *", "UTC")).toBeNull();
     expect(cronSentence("* * * *", "UTC")).toBeNull();
   });
 
-  it("F-106: writes ordinals and zones as people read them", () => {
-    expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 31].map(ordinal)).toEqual(["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "23rd", "31st"]);
-    expect(zoneWords("Etc/UTC")).toBe(", UTC");
-    expect(zoneWords("America/Argentina/Buenos_Aires")).toBe(", Buenos Aires time");
+  it("F-106: names a zone by UTC or by its city", () => {
+    expect(cronZone("Etc/UTC")).toEqual({ kind: "utc" });
+    expect(cronZone("America/Argentina/Buenos_Aires")).toEqual({ kind: "city", city: "Buenos Aires" });
   });
 });

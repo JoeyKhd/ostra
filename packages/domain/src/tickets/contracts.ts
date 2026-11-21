@@ -1,3 +1,4 @@
+import { branchRuleReasons } from "@ostra/adapter-sdk";
 import type { TicketStatusCategory } from "@ostra/adapter-sdk";
 import type { DbEnum } from "@ostra/db";
 import { repoIdSchema, ticketKeySchema } from "@ostra/protocol";
@@ -11,11 +12,22 @@ import type { MagicWord } from "./board-mapping.ts";
 
 // ---------- repos: the two checks (F-055, F-060) ----------
 
+/**
+ * Why a check isn't a plain yes, as a code the panel words (F-083): the host's own (`BranchRuleReason`),
+ * or ostra's when it couldn't ask: not checked yet, the repo's installation isn't linked, GitHub
+ * isn't connected, the host has no such read, or the host didn't answer.
+ */
+export const branchRuleReasonSchema = z.enum([...branchRuleReasons, "not-checked", "installation-unlinked", "not-connected", "host-unsupported", "host-no-answer"]);
+export type BranchRuleCheckReason = z.infer<typeof branchRuleReasonSchema>;
+
 /** One check's answer: `unknown` when the code host can't say, with the reason. */
 export const branchRuleCheckSchema = z.strictObject({
   result: z.union([z.boolean(), z.literal("unknown")]),
-  /** Words for the panel, never a vendor's body: why it's false or unknown. */
-  reason: z.string().max(500).optional(),
+  /**
+   * Why it's false or unknown, as a code. A row kept before reasons were codes holds words: those
+   * read as no reason (the panel's "didn't say why") until the next check writes a code.
+   */
+  reason: branchRuleReasonSchema.optional().catch(undefined),
 });
 export type BranchRuleCheck = z.infer<typeof branchRuleCheckSchema>;
 

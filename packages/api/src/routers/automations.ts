@@ -1,6 +1,9 @@
 import {
   CRON_MAX_CHARS,
+  cronDescribed,
   cronSentence,
+  cronSentenceSchema,
+  cronZone,
   deleteAutomation,
   dryRunAutomation,
   intakeFilterSchema,
@@ -126,8 +129,8 @@ const automationSchema = z.object({
     .object({
       cron: z.string(),
       timeZone: z.string(),
-      /** The cron in words in its zone, as the editor, the list and the history say it. */
-      sentence: z.string(),
+      /** The cron as a sentence's shape and values in its zone, which the panel words as the editor, the list and the history say it (F-083). */
+      sentence: cronSentenceSchema,
       skipWhileOpen: z.boolean(),
       does: z.enum(["filter", "prompt"]),
       /** A prompt schedule's task title and prompt (never logged). */
@@ -295,7 +298,7 @@ const viewOf = async (
           : {
               cron: row.schedule,
               timeZone: row.timeZone,
-              sentence: sentence?.text ?? row.schedule,
+              sentence: sentence ?? { when: { kind: "cron", source: row.schedule }, zone: cronZone(row.timeZone) },
               skipWhileOpen: row.skipWhileOpen,
               does: row.prompt === null ? "filter" : "prompt",
               title: row.title,
@@ -678,7 +681,8 @@ export const automationsRouter = router({
     .input(z.strictObject({ cron: z.string().max(CRON_MAX_CHARS + 1), timeZone: z.string().min(1).max(64) }))
     .output(
       z.object({
-        sentence: z.string().nullable(),
+        /** The sentence's shape and values, which the panel words (F-083). */
+        sentence: cronSentenceSchema.nullable(),
         /** `false` when the grammar has no words for it and the sentence is the cron itself. */
         described: z.boolean(),
         next: z.array(z.number().int()),
@@ -708,7 +712,7 @@ export const automationsRouter = router({
         after = at;
       }
       const sentence = cronSentence(parsed.cron.source, input.timeZone);
-      return { sentence: sentence?.text ?? null, described: sentence?.described ?? false, next, minIntervalMinutes, refusal: null };
+      return { sentence, described: sentence === null ? false : cronDescribed(sentence), next, minIntervalMinutes, refusal: null };
     }),
 
   /**

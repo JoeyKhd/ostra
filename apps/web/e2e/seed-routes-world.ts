@@ -264,6 +264,10 @@ for (const row of await db.agentProfile.findMany({ where: { organizationId }, se
 // "default" included) and every box size (small, medium, large).
 for (const row of await db.runnerPool.findMany({ where: { organizationId }, select: { name: true } })) data(row.name);
 for (const row of await db.boxSize.findMany({ where: { organizationId }, select: { name: true } })) data(row.name);
+// And every join token's label, core's bootstrap token's `bootstrap` included (the audit log names
+// it), which core may make after this seed runs: a token's name, as the default pool's is.
+for (const row of await db.joinToken.findMany({ where: { organizationId }, select: { label: true } })) if (row.label !== null) data(row.label);
+data("bootstrap");
 
 // Milestone 6 (ticket 31): a prompt schedule, for the automation editor and its history.
 const automation =
@@ -292,8 +296,19 @@ const linear =
 const board =
   (await db.board.findFirst({ where: { organizationId, projectId: project.id } })) ??
   (await db.board.create({
-    data: { organizationId, projectId: project.id, connectionId: linear.id, externalId: `routes-team-${args.tag}`, name: data("Routes board"), key: "RTE", statusMap: { open: ["s-todo"], started: "s-progress", inReview: "s-review", done: "s-done", doneBy: "ostra", magicWord: "Closes" } },
+    data: {
+      organizationId,
+      projectId: project.id,
+      connectionId: linear.id,
+      externalId: `routes-team-${args.tag}`,
+      name: data("Routes board"),
+      key: "RTE",
+      statusMap: { open: ["s-todo"], started: "s-progress", inReview: "s-review", done: "s-done", doneBy: "ostra", magicWord: "Closes" },
+    },
   }));
+// The board's key and its statuses (their ids, and the name `Todo` its tickets carry) are Linear's:
+// data, never the panel's words.
+for (const word of ["RTE", "s-todo", "s-progress", "s-review", "s-done", "Todo"]) data(word);
 const cachedTicket = async (key: string, title: string, parentExternalId: string | null) =>
   (await db.ticket.findFirst({ where: { organizationId, boardId: board.id, key } })) ??
   (await db.ticket.create({
@@ -315,8 +330,9 @@ const cachedTicket = async (key: string, title: string, parentExternalId: string
       parentExternalId,
     },
   }));
-const parentTicket = await cachedTicket("RTE-1", "Show the app's version", null);
-await cachedTicket("RTE-2", "Add a version endpoint", parentTicket.externalId);
+// A ticket's key is the tracker's: data.
+const parentTicket = await cachedTicket(data("RTE-1"), "Show the app's version", null);
+await cachedTicket(data("RTE-2"), "Add a version endpoint", parentTicket.externalId);
 
 // Milestone 8 (F-145, ticket 31): the library in its fullest state, for its four pages.
 const library = await seedLibrary(db, { organizationId, adminMemberId: admin.id, memberId: plain.seeded.memberId, profileId: profile.id });

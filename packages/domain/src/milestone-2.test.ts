@@ -374,7 +374,10 @@ describe("milestone 2's small contracts", () => {
   });
 
   it("reads a repo's branch rules, and says what they mean", () => {
-    const rules = repoBranchRulesSchema.parse({ protected: { result: false, reason: "no rule on main" }, signedCommits: { result: "unknown", reason: "a private repo on a free plan" } });
+    const rules = repoBranchRulesSchema.parse({ protected: { result: false, reason: "no-rules-on-plan" }, signedCommits: { result: "unknown", reason: "classic-signatures" } });
+    expect(rules).toEqual({ protected: { result: false, reason: "no-rules-on-plan" }, signedCommits: { result: "unknown", reason: "classic-signatures" } });
+    // A row kept while reasons were words reads as no reason, never as a refusal of the row.
+    expect(repoBranchRulesSchema.parse({ protected: { result: "unknown", reason: "GitHub is not connected." }, signedCommits: { result: true } })).toEqual({ protected: { result: "unknown" }, signedCommits: { result: true } });
     expect(repoIsUnsupported(rules)).toBe(false);
     expect(repoNeedsProtectionWarning(rules)).toBe(true);
     expect(repoIsUnsupported({ ...rules, signedCommits: { result: true } })).toBe(true);

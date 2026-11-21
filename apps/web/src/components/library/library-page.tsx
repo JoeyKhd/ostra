@@ -23,7 +23,7 @@ import { useTRPC } from "@/lib/trpc";
 
 import { AddFromSourceSheet } from "./add-from-source-sheet";
 import type { InstallKind, SheetOrigin } from "./add-from-source-sheet";
-import { bandsOf, callsOutTo, descriptionOf, libraryTabs, matchesFilter, onProfile, pinText, sizeText, sourceEntryText, sourceText, sourceTitle, statusOf, suggestionKind, tabCounts, tabOf, usedByOf, usedByText } from "./library-model";
+import { bandsOf, callsOutTo, descriptionOf, libraryTabs, matchesFilter, onProfile, pinText, searchOffText, searchSendsText, sizeText, sourceEntryText, sourceText, sourceTitle, statusOf, suggestionKind, tabCounts, tabOf, usedByOf, usedByText } from "./library-model";
 import type { Band, LibraryItem, LibraryTab, Suggestion } from "./library-model";
 import { EveryProfileChip, KindIcon, KindSquare, StatusCell } from "./library-parts";
 import { SourcesSheet } from "./sources-sheet";
@@ -432,7 +432,7 @@ const LibraryProperties = ({ admin, items, counts, searchState, searchError, sou
                   <span className="text-text">{searchState?.enabled === true ? t("library.props.searchOn") : t("library.props.searchOff")}</span>
                 </span>
                 {searchState === undefined ? null : (
-                  <span className="mt-1 block text-[12.5px] leading-[1.45] text-faint" data-testid="search-words">{searchState.offWords ?? searchState.sendsWords}</span>
+                  <span className="mt-1 block text-[12.5px] leading-[1.45] text-faint" data-testid="search-words">{searchOffText(searchState.off) ?? searchSendsText(searchState.sendsTo)}</span>
                 )}
                 {searchError === null ? null : <span role="alert" className="mt-1 block text-sm text-red">{searchError}</span>}
               </span>

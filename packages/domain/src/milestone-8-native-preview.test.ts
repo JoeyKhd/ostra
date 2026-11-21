@@ -279,32 +279,34 @@ describe("the instance's preview domain check (F-144/c8)", () => {
       at,
       passed: true,
       dns: { state: "passed" },
-      certificate: { state: "passed", detail: "*.preview.acme.dev, valid until Feb 19 12:00:00 2027 GMT" },
-      proxy: { state: "passed" },
-      upgrade: { state: "passed" },
+      certificate: { state: "passed", detail: { code: "certificate-valid", domain: "preview.acme.dev", validTo: "Feb 19 12:00:00 2027 GMT" } },
+      proxy: { state: "passed", detail: { code: "proxy-answered" } },
+      upgrade: { state: "passed", detail: { code: "upgrade-through" } },
     });
-    expect(check.state === "checked" ? check.name : "").toMatch(/^ostra-check-[0-9a-f]{12}\.preview\.acme\.dev$/);
+    const name = check.state === "checked" ? check.name : "";
+    expect(name).toMatch(/^ostra-check-[0-9a-f]{12}\.preview\.acme\.dev$/);
+    expect(check).toMatchObject({ dns: { state: "passed", detail: { code: "dns-resolves", name, coreHost: "core.acme.dev", addresses: ["203.0.113.24"] } } });
   });
 
   it("F-144/c8: a missing record, a record elsewhere, a certificate for core only, another server and a refused upgrade each fail their row, and what needs them doesn't run", async () => {
     const missing = await checkPreviewDomain({ probe: probeOf({ resolves: false }), mark, clock }, { domain: "preview.acme.dev", corePublicUrl });
     expect(missing).toMatchObject({ passed: false, dns: { state: "failed" }, certificate: { state: "skipped" }, proxy: { state: "skipped" }, upgrade: { state: "skipped" } });
-    expect(missing.state === "checked" && missing.dns.state === "failed" ? missing.dns.reason : "").toMatch(/doesn't resolve\.$/);
+    expect(missing).toMatchObject({ dns: { reason: { code: "dns-no-record", name: missing.state === "checked" ? missing.name : "" } }, certificate: { needs: "dns" }, proxy: { needs: "certificate" }, upgrade: { needs: "certificate" } });
     const elsewhere = await checkPreviewDomain({ probe: probeOf({ coreAt: "198.51.100.7" }), mark, clock }, { domain: "preview.acme.dev", corePublicUrl });
-    expect(elsewhere.state === "checked" && elsewhere.dns.state === "failed" ? elsewhere.dns.reason : "").toMatch(/resolves to 203\.0\.113\.24, not core\.acme\.dev\.$/);
+    expect(elsewhere).toMatchObject({ dns: { state: "failed", reason: { code: "dns-elsewhere", addresses: ["203.0.113.24"], coreHost: "core.acme.dev" } } });
     const coreOnly = await checkPreviewDomain({ probe: probeOf({ authorized: false, error: "ERR_TLS_CERT_ALTNAME_INVALID" }), mark, clock }, { domain: "preview.acme.dev", corePublicUrl });
-    expect(coreOnly).toMatchObject({ certificate: { state: "failed", reason: "The certificate covers core.acme.dev only, not *.preview.acme.dev." }, proxy: { state: "skipped" }, upgrade: { state: "skipped" } });
+    expect(coreOnly).toMatchObject({ certificate: { state: "failed", reason: { code: "certificate-names", domain: "preview.acme.dev", names: ["core.acme.dev"] } }, proxy: { state: "skipped" }, upgrade: { state: "skipped" } });
     const expired = await checkPreviewDomain({ probe: probeOf({ authorized: false, error: "CERT_HAS_EXPIRED" }), mark, clock }, { domain: "preview.acme.dev", corePublicUrl });
-    expect(expired).toMatchObject({ certificate: { state: "failed", reason: "It expired on Feb 19 12:00:00 2027 GMT." } });
+    expect(expired).toMatchObject({ certificate: { state: "failed", reason: { code: "certificate-expired", validTo: "Feb 19 12:00:00 2027 GMT" } } });
     const untrusted = await checkPreviewDomain({ probe: probeOf({ authorized: false, error: "SELF_SIGNED_CERT_IN_CHAIN" }), mark, clock }, { domain: "preview.acme.dev", corePublicUrl });
-    expect(untrusted).toMatchObject({ certificate: { state: "failed", reason: "Its chain isn't trusted." } });
+    expect(untrusted).toMatchObject({ certificate: { state: "failed", reason: { code: "certificate-untrusted" } } });
     const other = await checkPreviewDomain({ probe: probeOf({ marked: false }), mark, clock }, { domain: "preview.acme.dev", corePublicUrl });
-    expect(other).toMatchObject({ proxy: { state: "failed", reason: "Something else answered: the ingress sends these hosts elsewhere." }, upgrade: { state: "skipped" } });
+    expect(other).toMatchObject({ proxy: { state: "failed", reason: { code: "something-else" } }, upgrade: { state: "skipped", needs: "proxy" } });
     const noUpgrade = await checkPreviewDomain({ probe: probeOf({ upgrade: 400 }), mark, clock }, { domain: "preview.acme.dev", corePublicUrl });
-    expect(noUpgrade).toMatchObject({ passed: false, upgrade: { state: "failed", reason: "The ingress refused the upgrade (400)." } });
+    expect(noUpgrade).toMatchObject({ passed: false, upgrade: { state: "failed", reason: { code: "upgrade-refused", status: 400 } } });
     // A plain-http core can't serve a real preview domain: browsers drop the cookie.
     const plain = await checkPreviewDomain({ probe: probeOf({}), mark, clock }, { domain: "preview.acme.dev", corePublicUrl: "http://core.acme.dev" });
-    expect(plain).toMatchObject({ passed: false, certificate: { state: "failed" } });
+    expect(plain).toMatchObject({ passed: false, certificate: { state: "failed", reason: { code: "core-http" } } });
   });
 
   it("F-144/c8: under localhost no record or certificate is needed, and only the last two rows run, over http", async () => {
@@ -318,7 +320,7 @@ describe("the instance's preview domain check (F-144/c8)", () => {
       upgrade: () => Promise.resolve({ ok: true, status: 101 }),
     };
     const check = await checkPreviewDomain({ probe, mark, clock }, { domain: "preview.localhost", corePublicUrl: "http://localhost:8787" });
-    expect(check).toMatchObject({ passed: true, dns: { state: "not-needed" }, certificate: { state: "not-needed" }, proxy: { state: "passed" }, upgrade: { state: "passed" } });
+    expect(check).toMatchObject({ passed: true, dns: { state: "not-needed", domain: "preview.localhost" }, certificate: { state: "not-needed", domain: "preview.localhost" }, proxy: { state: "passed" }, upgrade: { state: "passed" } });
     expect(urls).toEqual([expect.stringMatching(/^http:\/\/ostra-check-[0-9a-f]{12}\.preview\.localhost:8787\/\.ostra\/check$/)]);
   });
 
@@ -373,13 +375,13 @@ describe("the instance's preview domain check (F-144/c8)", () => {
         { probe: createPreviewDomainProbe({ ca: coreCa, lookup, timeoutMs: 3_000 }), mark, clock },
         { domain: "preview.example.test", corePublicUrl: `https://127.0.0.1:${String(corePort)}` },
       );
-      expect(bad).toMatchObject({ certificate: { state: "failed", reason: "The certificate covers core.example.test only, not *.preview.example.test." }, proxy: { state: "skipped" } });
+      expect(bad).toMatchObject({ certificate: { state: "failed", reason: { code: "certificate-names", domain: "preview.example.test", names: ["core.example.test"] } }, proxy: { state: "skipped" } });
       // Without the CA, the same wildcard isn't trusted here.
       const untrusted = await checkPreviewDomain(
         { probe: createPreviewDomainProbe({ lookup, timeoutMs: 3_000 }), mark, clock },
         { domain: "preview.example.test", corePublicUrl: `https://127.0.0.1:${String(wildPort)}` },
       );
-      expect(untrusted).toMatchObject({ certificate: { state: "failed", reason: "Its chain isn't trusted." } });
+      expect(untrusted).toMatchObject({ certificate: { state: "failed", reason: { code: "certificate-untrusted" } } });
     });
   });
 });

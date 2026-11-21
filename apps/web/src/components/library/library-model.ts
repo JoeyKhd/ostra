@@ -202,6 +202,26 @@ export const bandsOf = (items: readonly LibraryItem[], tab: LibraryTab, opened: 
   return bands;
 };
 
+/** Why search is off (ticket 29: the switch that keeps it off says why), or `null` while it's on. */
+export const searchOffText = (off: SearchState["off"]): string | null => {
+  switch (off) {
+    case "instance":
+      return t("library.search.offInstance", { setting: "OSTRA_MARKETPLACE_SEARCH=false" });
+    case "organization":
+      return t("library.search.offOrganization");
+    case null:
+      return null;
+    default:
+      return off satisfies never;
+  }
+};
+
+/** What a search sends where (ADR 0069: "the switch says so"): the skills search's host and each registry's. */
+export const searchSendsText = (sendsTo: SearchState["sendsTo"]): string =>
+  sendsTo.registries.length === 0
+    ? t("library.search.sendsNoRegistry", { skills: sendsTo.skills })
+    : t("library.search.sends", { skills: sendsTo.skills, registries: sendsTo.registries.map(hostOf).join(", ") });
+
 /** The hosts the server calls for this organization (library.md, Policy's `Calls out to`). */
 export const callsOutTo = (state: SearchState, sources: readonly SourceEntry[]): readonly string[] => {
   const hosts = [state.sendsTo.skills, ...state.sendsTo.registries.map(hostOf), ...sources.filter((entry) => entry.kind === "well_known_host").map((entry) => entry.value)];

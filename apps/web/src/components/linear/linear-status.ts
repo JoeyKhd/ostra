@@ -1,3 +1,5 @@
+import type { LinearAddressProblem } from "@ostra/domain";
+
 import { formatClock } from "@/lib/format";
 import { t } from "@/lib/messages";
 
@@ -45,11 +47,14 @@ export const formatLeft = (at: number, now: number): string => {
   return hours < 48 ? t("units.hours", { n: hours }) : t("units.days", { n: Math.round(hours / 24) });
 };
 
+/** Why Linear can't reach an address: the pre-check's code (or `polling`, for a connection that polls), in words. */
+export const addressProblemText = (problem: LinearAddressProblem | "polling"): string => t(`linear.addressProblem.${problem}`);
+
 /** The polling sentence, with the reason when the pre-check gave one; `{setting}` stays for the caller to set in mono. */
-export const pollingLine = (reason: string | null, seconds: number): string =>
+export const pollingLine = (reason: LinearAddressProblem | null, seconds: number): string =>
   reason === null
     ? t("linear.mode.pollingLineNoReason", { seconds, setting: "{setting}" })
-    : t("linear.mode.pollingLine", { reason, seconds, setting: "{setting}" });
+    : t("linear.mode.pollingLine", { reason: addressProblemText(reason), seconds, setting: "{setting}" });
 
 /** The connection row's status: its words and tone. */
 export const connectionTone = (state: LinearConnection["state"]): { readonly tone: "green" | "red" | "grey"; readonly label: string } => {

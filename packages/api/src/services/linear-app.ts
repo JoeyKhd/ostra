@@ -66,7 +66,7 @@ export const createLinearAppKit = (options: LinearAppKitOptions = {}): LinearApp
 
     checkPublicUrl: (url) => {
       const checked = checkPublicUrl(url);
-      return checked.ok ? { public: true } : { public: false, reason: checked.reason };
+      return checked.ok ? { public: true } : { public: false, problem: checked.problem };
     },
 
     manifestUrl: (input) => {

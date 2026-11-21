@@ -63,7 +63,14 @@ export type LinearKitError = {
 
 export type LinearKitResult<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: LinearKitError };
 
-export type PublicUrlCheck = { readonly public: true } | { readonly public: false; readonly reason: string };
+/**
+ * Why Linear can't deliver webhooks to an address (adapter-linear's address pre-check): a code the
+ * panel words (F-083), never a sentence.
+ */
+export const linearAddressProblems = ["invalid-url", "not-https", "loopback", "private-network", "single-label-host", "local-suffix", "linear-host"] as const;
+export type LinearAddressProblem = (typeof linearAddressProblems)[number];
+
+export type PublicUrlCheck = { readonly public: true } | { readonly public: false; readonly problem: LinearAddressProblem };
 
 /**
  * The calls to Linear the connection flow makes, as pure functions and small requests (ticket 08
@@ -150,8 +157,8 @@ export type LinearConnectionDeps = Pick<Ports, "notices" | "audit" | "clock"> & 
   readonly scope: MemberScope;
   /** Core's public address, or `null` when it fails the pre-check: the connection polls. */
   readonly corePublicUrl: string | null;
-  /** Why `corePublicUrl` failed the pre-check, in words; `null` when it passed. */
-  readonly corePublicUrlProblem?: string | null;
+  /** Why `corePublicUrl` failed the pre-check, as its code; `null` when it passed. */
+  readonly corePublicUrlProblem?: LinearAddressProblem | null;
   /** The panel's address, for the OAuth callback. */
   readonly publicUrl: string;
   readonly linear: LinearAppKit;
@@ -171,8 +178,8 @@ export type StartLinearConnectionResult = UseCaseResult<
     /** `null` in polling mode. */
     readonly webhookUrl: string | null;
     readonly mode: "webhooks" | "polling";
-    /** Why polling, in words, when it is. */
-    readonly modeReason: string | null;
+    /** Why polling, as the pre-check's code, when it is and the pre-check said; otherwise `null`. */
+    readonly modeReason: LinearAddressProblem | null;
   },
   "forbidden" | "already-connected"
 >;
@@ -191,7 +198,7 @@ export const startLinearConnection: StartLinearConnection = async (deps) => {
   if (denied !== null) return denied;
 
   const mode = deps.corePublicUrl === null ? ("polling" as const) : ("webhooks" as const);
-  const modeReason = mode === "polling" ? (deps.corePublicUrlProblem ?? "Linear can't reach this server's address, so ostra polls for changes.") : null;
+  const modeReason = mode === "polling" ? (deps.corePublicUrlProblem ?? null) : null;
   const existing = await tx.connection.findFirst({ where: { organizationId, kind: "linear", state: { not: "revoked" } } });
   if (existing !== null && existing.state !== "pending") {
     return { ok: false, error: "already-connected", message: "This organization is already connected to Linear. Disconnect it first to connect another workspace" };

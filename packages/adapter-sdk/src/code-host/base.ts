@@ -172,12 +172,22 @@ export type WebhookInput = {
 
 // ---------- milestone 2 ----------
 
+/**
+ * Why a host's answer on a branch's rules isn't a plain yes, as a code the panel words (F-083):
+ * - `no-rules-on-plan`: the repo's plan offers no branch rules, so none apply;
+ * - `classic-signatures`: classic branch protection, whose signed-commit rule the App can't read
+ *   without an administration permission ostra doesn't ask for;
+ * - `rules-refused`: the host wouldn't let the App read the branch's rules.
+ */
+export const branchRuleReasons = ["no-rules-on-plan", "classic-signatures", "rules-refused"] as const;
+export type BranchRuleReason = (typeof branchRuleReasons)[number];
+
 /** One answer of `readBranchRules`: `unknown` when the host can't say, and `reasons` says why. */
 export type BranchRules = {
   readonly protected: boolean | "unknown";
   readonly requiresSignedCommits: boolean | "unknown";
-  /** Words for the panel, one per check that isn't a plain yes: never a vendor's body. */
-  readonly reasons: readonly string[];
+  /** Why, one per check that isn't a plain yes: codes, never a vendor's body. */
+  readonly reasons: readonly BranchRuleReason[];
 };
 
 /** A PR's state, for the reconcile (F-044). */

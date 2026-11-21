@@ -321,7 +321,7 @@ describe("F-010, F-097: starting a task from a ticket", () => {
       expect(refusal).toMatchObject({ code: "PRECONDITION_FAILED" });
       expect(String(Reflect.get(refusal ?? {}, "message"))).toContain("signed commits");
       expect(await harness.test.db.task.count({ where: { ticketId } })).toBe(0);
-      harness.fakes.codeHost.branchRules.set(REPO, { protected: "unknown", requiresSignedCommits: "unknown", reasons: ["not sure"] });
+      harness.fakes.codeHost.branchRules.set(REPO, { protected: "unknown", requiresSignedCommits: "unknown", reasons: ["rules-refused"] });
       expect((await (await member()).tasks.startFromTicket({ projectId, ticketId })).taskId).toBeTruthy();
     } finally {
       harness.fakes.codeHost.branchRules.clear();

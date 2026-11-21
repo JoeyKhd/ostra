@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 
 import { t } from "@/lib/messages";
 
-import { unprotectedRepos, unsupportedRepos } from "./repo-checks-words";
+import { checkReasonText, unprotectedRepos, unsupportedRepos } from "./repo-checks-words";
 import type { CheckLine, RepoDetail } from "./repo-checks-words";
 
 const icon = "mt-[3px] size-[15px] shrink-0 stroke-[1.75]";
@@ -76,7 +76,7 @@ export const RepoCheckLine = ({ line, inline = false }: { readonly line: CheckLi
           inline={inline}
           glyph={<CircleHelpIcon aria-hidden className={`${icon} text-faint`} />}
           text={t(line.kind === "unknown" ? "repos.check.unknown" : line.kind === "protectedUnknown" ? "repos.check.protectedUnknown" : "repos.check.signedUnknown")}
-          why={line.reason ?? t("repos.check.noReason")}
+          why={checkReasonText(line.reason)}
         />
       );
     default:

@@ -8,7 +8,7 @@ import { t } from "@/lib/messages";
 import { ComposerRepoNotes } from "./repo-check-line";
 import { BlockedNotice, RepoBlock, RepoProperties, ReposLede } from "./repo-checks";
 import { checkLines, oldestCheck, repoVerdict, reposByAccount, selectedRepo } from "./repo-checks-words";
-import type { RepoDetail } from "./repo-checks-words";
+import type { CheckReason, RepoDetail } from "./repo-checks-words";
 
 // F-060, F-055: each combination of the two branch checks (repo-checks.md).
 
@@ -18,7 +18,7 @@ const esc = (text: string): string => text.replaceAll("'", "&#x27;");
 const now = Date.UTC(2026, 10, 19, 12);
 const yes = { result: true } as const;
 const no = { result: false } as const;
-const unknown = (reason: string) => ({ result: "unknown", reason }) as const;
+const unknown = (reason: CheckReason) => ({ result: "unknown", reason }) as const;
 
 const repo = (n: number, protectedCheck: RepoDetail["defaultBranchProtected"], signed: RepoDetail["signedCommitsRequired"]): RepoDetail => ({
   repoId: repoIdSchema.parse(`01900000-0000-7000-8000-0000000000${String(n).padStart(2, "0")}`),
@@ -34,7 +34,7 @@ const repo = (n: number, protectedCheck: RepoDetail["defaultBranchProtected"], s
 const ready = repo(1, yes, no);
 const warning = repo(2, no, no);
 const unsupported = repo(3, yes, yes);
-const forbidden = unknown("GitHub refused the read (403). ostra checks again when a task starts.");
+const forbidden = unknown("rules-refused");
 const unchecked = repo(4, forbidden, forbidden);
 
 const block = (detail: RepoDetail) => renderToStaticMarkup(<RepoBlock repo={detail} selected={false} onSelect={() => undefined} />);
@@ -46,8 +46,8 @@ describe("a repo's verdict", () => {
     expect(repoVerdict(unsupported)).toBe("unsupported");
     expect(repoVerdict(repo(5, no, yes))).toBe("unsupported");
     expect(repoVerdict(unchecked)).toBe("unknown");
-    expect(repoVerdict(repo(6, unknown("x"), no))).toBe("unknown");
-    expect(repoVerdict(repo(7, no, unknown("x")))).toBe("warning");
+    expect(repoVerdict(repo(6, unknown("host-no-answer"), no))).toBe("unknown");
+    expect(repoVerdict(repo(7, no, unknown("host-no-answer")))).toBe("warning");
   });
 
   it("selects the URL's repo, else the worst one, else the first", () => {
@@ -60,7 +60,7 @@ describe("a repo's verdict", () => {
 
   it("collapses two unknowns with one reason into one line", () => {
     expect(checkLines(unchecked)).toEqual([{ kind: "unknown", reason: forbidden.reason }]);
-    expect(checkLines(repo(8, unknown("a"), unknown("b"))).map((line) => line.kind)).toEqual(["protectedUnknown", "signedUnknown"]);
+    expect(checkLines(repo(8, unknown("rules-refused"), unknown("classic-signatures"))).map((line) => line.kind)).toEqual(["protectedUnknown", "signedUnknown"]);
   });
 
   it("ages from the oldest check, and none when one was never read", () => {
@@ -95,10 +95,10 @@ describe("the repo blocks", () => {
     expect(html).toContain("text-red");
   });
 
-  it("couldn't check: the reason, never Ready", () => {
+  it("couldn't check: the reason, worded from its code, never Ready", () => {
     const html = block(unchecked);
     expect(html).toContain(esc(t("repos.check.unknown")));
-    expect(html).toContain("GitHub refused the read (403)");
+    expect(html).toContain(esc("GitHub wouldn't let the App read this branch's rulesets."));
     expect(html).not.toContain(`>${esc(t("repos.verdict.ready"))}<`);
   });
 });
@@ -141,7 +141,7 @@ describe("the panel", () => {
   it("couldn't check: the reason in full, and that a task isn't refused for it", () => {
     const html = renderToStaticMarkup(<RepoProperties repo={unchecked} now={now} />);
     expect(html).toContain(esc(t("repos.panel.whyUnknown")));
-    expect(html).toContain("GitHub refused the read (403)");
+    expect(html).toContain(esc("GitHub wouldn't let the App read this branch's rulesets."));
     expect(html).toContain("A task isn&#x27;t refused");
   });
 

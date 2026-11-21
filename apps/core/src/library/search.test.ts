@@ -12,7 +12,6 @@ import {
   INSTANCE_SEARCH_OFF_WORDS,
   installItem,
   MARKETPLACE_SEARCH_LIMITS,
-  marketplaceSearchSendsWords,
   ORGANIZATION_SEARCH_OFF_WORDS,
   parseServerSettings,
   postgresAuditLog,
@@ -170,10 +169,7 @@ describe("the marketplace search (F-146, ticket 29)", () => {
     const before = marks();
     const state = await readMarketplaceSearch(deps, admin());
     expect(state).toEqual({ ok: true, state: { enabled: false, organizationOn: false, instanceAllows: true, off: "organization", sendsTo: { skills: "skills.sh", registries: LISTED } } });
-    if (!state.ok) throw new Error("the state");
-    expect(marketplaceSearchSendsWords(state.state.sendsTo)).toBe(
-      "A search sends the words you type, and nothing else about you or this install, to skills.sh for skills and to each registry on the list (registry.test, registry-two.test, broken.test, gone.test) for MCP servers",
-    );
+    // What a search sends where is the state's `sendsTo` (above), which the panel words (F-083).
     expect(await searchMarketplace(deps, admin(), { kind: "skills", words: "pdf" })).toEqual({ ok: false, error: "organization-search-off", message: ORGANIZATION_SEARCH_OFF_WORDS });
     expect(await searchMarketplace(deps, admin(), { kind: "servers", words: WORD })).toMatchObject({ ok: false, error: "organization-search-off" });
     // Off, nothing is called.

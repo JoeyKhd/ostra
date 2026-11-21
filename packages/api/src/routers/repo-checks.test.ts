@@ -60,13 +60,13 @@ describe("F-055, F-060: the repo checks", () => {
     harness.fakes.codeHost.branchRules.set(REPO, {
       protected: protectedNow,
       requiresSignedCommits: signed,
-      reasons: protectedNow === "unknown" || signed === "unknown" ? ["GitHub does not say for this repo."] : [],
+      reasons: protectedNow === "unknown" || signed === "unknown" ? ["classic-signatures"] : [],
     });
     const checked = await (await harness.as(harness.fixture.a.admin)).projects.checkRepos({ projectId });
     expect(checked[0]).toMatchObject({ defaultBranchProtected: { result: protectedNow }, signedCommitsRequired: { result: signed } });
     // An unknown answer says why.
     if (signed === "unknown") {
-      expect(checked[0]?.signedCommitsRequired.reason).toContain("does not say");
+      expect(checked[0]?.signedCommitsRequired.reason).toBe("classic-signatures");
     }
     expect((await repoOf()).signedCommitsRequired.result).toBe(signed);
   });
@@ -76,11 +76,11 @@ describe("F-055, F-060: the repo checks", () => {
     harness.fakes.codeHost.branchRules.set(REPO, {
       protected: false,
       requiresSignedCommits: false,
-      reasons: ["Branch protection needs GitHub Pro for a private repo, so it reads as off."],
+      reasons: ["no-rules-on-plan"],
     });
     const [repo] = await (await harness.as(harness.fixture.a.admin)).projects.checkRepos({ projectId });
     expect(repo).toMatchObject({ defaultBranchProtected: { result: false }, signedCommitsRequired: { result: false } });
-    expect(repo?.defaultBranchProtected.reason).toContain("GitHub Pro");
+    expect(repo?.defaultBranchProtected.reason).toBe("no-rules-on-plan");
   });
 
   it("reuses the answer for 10 minutes at a page load, and reads again after", async () => {
@@ -113,7 +113,7 @@ describe("F-055, F-060: the repo checks", () => {
     harness.fakes.codeHost.branchRulesFailure = "unsupported";
     const [unsupported] = await (await harness.as(harness.fixture.a.admin)).projects.checkRepos({ projectId });
     expect(unsupported).toMatchObject({ defaultBranchProtected: { result: "unknown" }, signedCommitsRequired: { result: "unknown" } });
-    expect(unsupported?.signedCommitsRequired.reason).toBeTruthy();
+    expect(unsupported?.signedCommitsRequired.reason).toBe("host-unsupported");
     expect(unsupported?.checkedAt).not.toBeNull();
 
     await harness.test.db.repo.updateMany({ where: { projectId }, data: { branchRulesCheckedAt: null } });
@@ -148,7 +148,7 @@ describe("F-055: a signed-commit repo refuses a task; unknown and unprotected ne
 
   it("never refuses on unknown, or on an unprotected default branch", async () => {
     reset();
-    harness.fakes.codeHost.branchRules.set(REPO, { protected: "unknown", requiresSignedCommits: "unknown", reasons: ["not sure"] });
+    harness.fakes.codeHost.branchRules.set(REPO, { protected: "unknown", requiresSignedCommits: "unknown", reasons: ["rules-refused"] });
     expect((await (await harness.as(harness.fixture.a.member)).tasks.create({ projectId, prompt: "unknown is fine" })).taskId).toBeTruthy();
     harness.fakes.codeHost.branchRules.set(REPO, { protected: false, requiresSignedCommits: false, reasons: [] });
     expect((await (await harness.as(harness.fixture.a.member)).tasks.create({ projectId, prompt: "unprotected is fine" })).taskId).toBeTruthy();

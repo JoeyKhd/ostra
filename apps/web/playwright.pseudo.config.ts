@@ -5,7 +5,8 @@ import { e2ePort } from "./e2e/settings.ts";
 // F-083 (ticket 20): the pseudo-locale pass. Its own stack (`e2e/stack.ts` with
 // OSTRA_PSEUDO_LOCALE=1, twenty ports above the main stack's) serves the pseudo-locale build, in
 // which every message reads `⟦…⟧`; `e2e/pseudo-locale.spec.ts` walks every route and finds any
-// visible text outside the brackets. Build and run it with:
+// visible text outside the brackets. Build and run it with `pnpm --filter @ostra/web test:e2e:pseudo`
+// (`e2e/pseudo-pass.ts`), or by hand:
 //
 //   OSTRA_PSEUDO_LOCALE=1 pnpm --filter @ostra/web exec next build
 //   OSTRA_PSEUDO_LOCALE=1 pnpm --filter @ostra/web exec playwright test -c playwright.pseudo.config.ts

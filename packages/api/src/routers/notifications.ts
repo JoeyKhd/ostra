@@ -68,8 +68,8 @@ const preferencesRouter = router({
       emailOn: email.provider !== "off" && email.ready,
       /** The member's own address, where mail would go. */
       emailAddress: account.email,
-      /** The connected tracker, or `null`: the ticket column then has nothing to comment on. */
-      tracker: tracker === null ? null : { kind: "linear" as const, name: "Linear", workspace: tracker.externalWorkspaceName },
+      /** The connected tracker by its kind, which the panel words (F-083), or `null`: the ticket column then has nothing to comment on. */
+      tracker: tracker === null ? null : { kind: "linear" as const, workspace: tracker.externalWorkspaceName },
       /** How long a needs-you mail waits, in seconds: the instance's saved delay, or the setting's. */
       emailDelaySeconds: instance?.emailDelaySeconds ?? settings.emailDelaySeconds,
       /** When the member last saved a choice, or `null` when they never have. */

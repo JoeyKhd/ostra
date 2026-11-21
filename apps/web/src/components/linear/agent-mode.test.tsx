@@ -28,15 +28,16 @@ describe("Linear agent mode (linear-agent-mode.md)", () => {
     const reachable = renderToStaticMarkup(<PublicAddress agent={agent()} />);
     expect(reachable).toContain(">https://ostra.acme.dev</span>");
     expect(reachable).toContain("Reachable: Linear&#x27;s webhooks arrive here");
-    const unreachable = renderToStaticMarkup(<PublicAddress agent={agent({ reachable: false, unreachableReason: "a private address" })} />);
+    const unreachable = renderToStaticMarkup(<PublicAddress agent={agent({ reachable: false, unreachableReason: "private-network" })} />);
     expect(unreachable).toContain("Not reachable from Linear");
-    expect(unreachable).toContain("· a private address");
+    expect(unreachable).toContain("· a private-network address can&#x27;t be reached from Linear");
   });
 
   it("F-012/c3: with agent mode on and the address unreachable, State reads On, not receiving", () => {
     expect(renderToStaticMarkup(<AgentModeState agent={agent()} justTurnedOn={false} />)).toContain(">On</");
     const deaf = renderToStaticMarkup(<AgentModeState agent={agent({ reachable: false, unreachableReason: "polling" })} justTurnedOn={false} />);
     expect(deaf).toContain("On, not receiving");
+    expect(renderToStaticMarkup(<PublicAddress agent={agent({ reachable: false, unreachableReason: "polling" })} />)).toContain("· the connection polls: Linear&#x27;s webhooks don&#x27;t reach it");
     expect(deaf).toContain("by Alex Kim");
     expect(renderToStaticMarkup(<AgentModeState agent={agent({ on: false, reachable: false })} justTurnedOn={false} />)).toContain("Off");
   });

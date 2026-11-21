@@ -564,15 +564,14 @@ describe("the marketplace search (F-146)", () => {
     const member = await asMember();
     const requests = harness.fakes.library.requests.length;
     expect(await trpcFailure(admin.library.search({ kind: "skills", words: "release notes" }))).toEqual({ code: "PRECONDITION_FAILED", message: ORGANIZATION_SEARCH_OFF_WORDS });
-    expect(await admin.library.searchState()).toMatchObject({ enabled: false, organizationOn: false, instanceAllows: true, off: "organization", offWords: ORGANIZATION_SEARCH_OFF_WORDS });
+    expect(await admin.library.searchState()).toMatchObject({ enabled: false, organizationOn: false, instanceAllows: true, off: "organization" });
     for (const call of [member.library.search({ kind: "skills", words: "release notes" }), member.library.searchState(), member.library.setMarketplaceSearch({ enabled: true })]) {
       expect(await trpcFailure(call)).toMatchObject({ code: "FORBIDDEN" });
     }
     expect(harness.fakes.library.requests.length).toBe(requests);
 
     const on = await admin.library.setMarketplaceSearch({ enabled: true });
-    expect(on).toMatchObject({ enabled: true, off: null, offWords: null });
-    expect(on.sendsWords).toContain("skills.sh");
+    expect(on).toMatchObject({ enabled: true, off: null, sendsTo: { skills: "skills.sh" } });
     expect(await auditCount("organization.marketplace_search_changed", orgA())).toBe(1);
     // A member is refused even with the switch on.
     expect(await trpcFailure(member.library.search({ kind: "skills", words: "release notes" }))).toMatchObject({ code: "FORBIDDEN" });
@@ -604,7 +603,7 @@ describe("the marketplace search (F-146)", () => {
     const offInstall = harness.callerFor({ ...context, deps: { ...context.deps, settings: { ...context.deps.settings, library: { ...context.deps.settings.library, marketplaceSearch: false } } } });
     const requests = harness.fakes.library.requests.length;
     expect(await trpcFailure(offInstall.library.search({ kind: "servers", words: "notes" }))).toEqual({ code: "PRECONDITION_FAILED", message: INSTANCE_SEARCH_OFF_WORDS });
-    expect(await offInstall.library.searchState()).toMatchObject({ enabled: false, organizationOn: true, instanceAllows: false, off: "instance", offWords: INSTANCE_SEARCH_OFF_WORDS });
+    expect(await offInstall.library.searchState()).toMatchObject({ enabled: false, organizationOn: true, instanceAllows: false, off: "instance" });
     expect(await trpcFailure(offInstall.library.setMarketplaceSearch({ enabled: true }))).toMatchObject({ code: "PRECONDITION_FAILED" });
     expect(harness.fakes.library.requests.length).toBe(requests);
     // Off is always taken.

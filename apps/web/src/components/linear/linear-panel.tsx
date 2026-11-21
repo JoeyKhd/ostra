@@ -26,6 +26,7 @@ import { cn } from "@/lib/cn";
 import { plural, t } from "@/lib/messages";
 
 import {
+  addressProblemText,
   connectSteps,
   connectionTone,
   currentStep,
@@ -323,7 +324,7 @@ const ConnectedSections = ({ status, actions, now, justConnected, agentMode }: {
           {polling ? (
             <KeyRow label={t("linear.events.webhook")}>
               <span className="text-muted">
-                {status.modeReason === null ? t("linear.events.webhookNoneNoReason") : t("linear.events.webhookNone", { reason: status.modeReason })}
+                {status.modeReason === null ? t("linear.events.webhookNoneNoReason") : t("linear.events.webhookNone", { reason: addressProblemText(status.modeReason) })}
               </span>
             </KeyRow>
           ) : status.webhookUrl === null ? null : (

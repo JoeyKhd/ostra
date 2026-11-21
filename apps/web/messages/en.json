@@ -3012,6 +3012,16 @@
       "pollingLineNoReason": "This server's address isn't public, so the app gets no webhook and ostra asks Linear for changes every {seconds} s. Set {setting} to a public https address to receive events.",
       "webhooksHelp": "Linear sends each change to this server as it happens."
     },
+    "addressProblem": {
+      "invalid-url": "it isn't a valid absolute URL",
+      "not-https": "Linear delivers webhooks only to https:// addresses",
+      "loopback": "a loopback address can't be reached from Linear",
+      "private-network": "a private-network address can't be reached from Linear",
+      "single-label-host": "a host name with no dot is a local name, not a public one",
+      "local-suffix": "a .local, .internal, .lan or .home.arpa name is local, not public",
+      "linear-host": "Linear doesn't accept its own domain as a webhook address",
+      "polling": "the connection polls: Linear's webhooks don't reach it"
+    },
     "connection": {
       "title": "Connection",
       "connected": "Connected",
@@ -3493,6 +3503,16 @@
       "notLinkedUnlinked": "Its installation on {account} was unlinked",
       "notLinkedRemoved": "Its installation on {account} was removed",
       "notLinkedWhy": "New tasks here wait until an admin links it again."
+    },
+    "reason": {
+      "no-rules-on-plan": "GitHub doesn't offer branch rules on this repo's plan, so none apply.",
+      "classic-signatures": "This branch uses classic branch protection, and its signed-commit rule can only be read with the administration permission, which ostra doesn't ask for.",
+      "rules-refused": "GitHub wouldn't let the App read this branch's rulesets.",
+      "not-checked": "Not checked yet.",
+      "installation-unlinked": "The repo's GitHub installation isn't linked, so the branch could not be checked.",
+      "not-connected": "GitHub is not connected, so the branch could not be checked.",
+      "host-unsupported": "This code host can't say whether the branch is protected.",
+      "host-no-answer": "The code host did not answer, so the branch could not be checked."
     },
     "footnote": "ostra reads each default branch's rules when you open this page, at most every 10 minutes, and again when a task starts.",
     "panel": {
@@ -5469,6 +5489,36 @@
         "proxy": "ostra answers on it",
         "upgrade": "WebSocket upgrades",
         "notChecked": "Not checked yet.",
+        "words": {
+          "dnsResolves": "{name} → {coreHost} · {addresses}",
+          "certificateValid": "{cover}, valid until {validTo}",
+          "certificateValidNoEnd": "{cover}",
+          "proxyAnswered": "Core's preview proxy answered.",
+          "upgradeThrough": "An upgrade went through.",
+          "dnsNoRecord": "{name} doesn't resolve.",
+          "dnsElsewhere": "{name} resolves to {addresses}, not {coreHost}.",
+          "coreHttp": "Core's public address ({setting}) is http: browsers drop a preview's cookie on plain http, so it needs https.",
+          "noHttpsAnswer": "{name} doesn't answer over https ({error}).",
+          "noCertificate": "{name} didn't present a certificate.",
+          "certificateNames": "The certificate covers {names} only, not {cover}.",
+          "certificateNoNames": "The certificate doesn't cover {cover}.",
+          "certificateExpired": "It expired on {validTo}.",
+          "certificateExpiredNoDate": "It has expired.",
+          "certificateUntrusted": "Its chain isn't trusted.",
+          "noAnswer": "{name} doesn't answer ({error}).",
+          "somethingElse": "Something else answered: the ingress sends these hosts elsewhere.",
+          "upgradeFailed": "The upgrade didn't go through ({error}).",
+          "upgradeRefused": "The ingress refused the upgrade ({status})."
+        },
+        "needs": {
+          "dns": "Not checked: it needs the DNS record.",
+          "certificate": "Not checked: it needs the certificate.",
+          "proxy": "Not checked: it needs core's preview proxy."
+        },
+        "notNeeded": {
+          "dns": "Not needed for {domain}: browsers send every *.localhost name to this machine.",
+          "certificate": "Not needed for {domain}: browsers keep a preview's cookie on http there."
+        },
         "run": "Check",
         "again": "Check again",
         "checking": "Checking…",
@@ -5594,7 +5644,25 @@
       "profile": "profile",
       "joinToken": "join token",
       "emailSettings": "email settings",
-      "bulkStart": "bulk start"
+      "bulkStart": "bulk start",
+      "approval": "approval",
+      "automation": "automation",
+      "budget": "budget",
+      "cliSession": "CLI session",
+      "connection": "connection",
+      "environment": "environment",
+      "invitation": "invitation",
+      "libraryItem": "library item",
+      "librarySource": "library source",
+      "librarySuggestion": "suggestion",
+      "member": "member",
+      "model": "model",
+      "organization": "organization",
+      "project": "project",
+      "registry": "registry",
+      "runner": "runner",
+      "task": "task",
+      "user": "account"
     },
     "noMatch": "No entries match these filters.",
     "clearFilters": "Clear filters",
@@ -6485,6 +6553,28 @@
     "schedule": "Schedule",
     "webhookWord": "Webhook",
     "checksFilter": "checks its filter",
+    "cron": {
+      "hourlyOnTheHour": "Every hour, on the hour",
+      "hourlyAt": "Every hour at :{minute}",
+      "everyHours": "Every {step} hours at :{minute}",
+      "daily": "Every day at {times}",
+      "dailyIn": "Every day in {months} at {times}",
+      "weekly": "Every {days} at {times}",
+      "weeklyIn": "Every {days} in {months} at {times}",
+      "monthly": "On the {daysOfMonth} of every month at {times}",
+      "monthlyIn": "On the {daysOfMonth} of {months} at {times}",
+      "monthlyOrWeekly": "On the {daysOfMonth} of every month and every {days} at {times}",
+      "raw": "At {cron}",
+      "weekday": "weekday",
+      "inUtc": "{when}, UTC",
+      "inCity": "{when}, {city} time",
+      "ordinal": {
+        "one": "{n}st",
+        "two": "{n}nd",
+        "few": "{n}rd",
+        "other": "{n}th"
+      }
+    },
     "onAMatch": "on a match",
     "onARequest": "on a request",
     "ago": "{age} ago",
@@ -7309,6 +7399,12 @@
       "sameName": "Same name",
       "profileWins": "The profile's wins",
       "sameNameNote": "When a repo skill has a library skill's name, the task page names the one left out."
+    },
+    "search": {
+      "offInstance": "Marketplace search is off for this whole install ({setting}), so an organization admin can't turn it on. Installing by reference still works.",
+      "offOrganization": "Marketplace search is off in this organization until an organization admin turns it on in the library. Installing by reference still works.",
+      "sends": "A search sends the words you type, and nothing else about you or this install, to {skills} for skills and to each registry on the list ({registries}) for MCP servers.",
+      "sendsNoRegistry": "A search sends the words you type, and nothing else about you or this install, to {skills} for skills, and to no registry yet for MCP servers, since the list has none."
     },
     "policy": {
       "registryWord": "registry"

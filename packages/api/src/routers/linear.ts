@@ -9,6 +9,7 @@ import {
   disconnectLinearInputSchema,
   enableAgentMode,
   LINEAR_REFRESH_MARGIN_MS,
+  linearAddressProblems,
   linearAppName,
   linearCallbackUrl,
   linearWebhookUrl,
@@ -34,8 +35,8 @@ const modeSchema = z.enum(["webhooks", "polling"]);
 
 const commonSchema = z.object({
   mode: modeSchema,
-  /** The address pre-check's words when the mode is polling; `null` for webhooks. */
-  modeReason: z.string().nullable(),
+  /** The address pre-check's code when the mode is polling, which the panel words; `null` for webhooks. */
+  modeReason: z.enum(linearAddressProblems).nullable(),
   /** What the app asks for at authorize time, read-only. */
   scopes: z.array(z.string()),
   /** The webhook resource types the manifest subscribes to, read-only. */
@@ -88,7 +89,8 @@ const connectionSchema = commonSchema.extend({
       missingScopes: z.array(z.string()),
       /** Linear can reach the install: webhooks mode, and the address passes milestone 2's pre-check. */
       reachable: z.boolean(),
-      unreachableReason: z.string().nullable(),
+      /** Why Linear can't reach the address: `polling` for a connection that polls, else the pre-check's code. */
+      unreachableReason: z.enum([...linearAddressProblems, "polling"]).nullable(),
       /** The address Linear's webhooks need (`OSTRA_CORE_PUBLIC_URL`), shown in the Public address row. */
       publicAddress: z.string(),
       /** When core renews the app's token next: an hour before it expires. */
@@ -123,7 +125,7 @@ const modeOf = (deps: ApiDeps) => {
   const check = deps.linear.checkPublicUrl(deps.settings.corePublicUrl);
   return check.public
     ? { mode: "webhooks" as const, reason: null, corePublicUrl: deps.settings.corePublicUrl }
-    : { mode: "polling" as const, reason: check.reason, corePublicUrl: null };
+    : { mode: "polling" as const, reason: check.problem, corePublicUrl: null };
 };
 
 /**
@@ -253,7 +255,7 @@ const agentModeOf = async (
     missingScopes: [...(missingAgentModeScopes(agentMode, row.scopes) ?? [])],
     reachable: row.webhookMode === "webhooks" && reach.public,
     publicAddress: deps.settings.corePublicUrl,
-    unreachableReason: row.webhookMode === "polling" ? "The connection polls: Linear's webhooks don't reach it" : reach.public ? null : reach.reason,
+    unreachableReason: row.webhookMode === "polling" ? ("polling" as const) : reach.public ? null : reach.problem,
     nextRenewalAt: expiresAt === null ? null : Math.max(now + 60_000, expiresAt - LINEAR_REFRESH_MARGIN_MS),
     boards: boards.map((board) => ({
       boardId: boardIdSchema.parse(board.id),
@@ -283,7 +285,7 @@ const startedSchema = z.object({
   callbackUrl: z.string(),
   webhookUrl: z.string().nullable(),
   mode: modeSchema,
-  modeReason: z.string().nullable(),
+  modeReason: z.enum(linearAddressProblems).nullable(),
 });
 
 const authorizeUrlSchema = z.object({ authorizeUrl: z.string() });

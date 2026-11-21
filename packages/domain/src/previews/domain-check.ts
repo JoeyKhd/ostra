@@ -37,14 +37,54 @@ const sameMark = (given: string, wanted: string): boolean => {
   return a.length === b.length && timingSafeEqual(a, b);
 };
 
-/** One row of the check, as the settings page shows it. */
+/**
+ * What a row that passed found, as a code and its values, which the settings page words (F-083):
+ * the name, core's host and the addresses it resolved to; the certificate's domain and end; core's
+ * proxy answering; an upgrade going through.
+ */
+export const previewCheckPassSchema = z.discriminatedUnion("code", [
+  z.strictObject({ code: z.literal("dns-resolves"), name: z.string(), coreHost: z.string(), addresses: z.array(z.string()) }),
+  /** `validTo` as the certificate gives it (`Feb 19 12:00:00 2027 GMT`), or `null` when it gives none. */
+  z.strictObject({ code: z.literal("certificate-valid"), domain: z.string(), validTo: z.string().nullable() }),
+  z.strictObject({ code: z.literal("proxy-answered") }),
+  z.strictObject({ code: z.literal("upgrade-through") }),
+]);
+export type PreviewCheckPass = z.infer<typeof previewCheckPassSchema>;
+
+/**
+ * Why a row failed, as a code and its values (F-083). `error` is Node's code for a call that failed
+ * (`ECONNREFUSED`, `timeout`); `names` the certificate's names, `[]` when it lists none.
+ */
+export const previewCheckFailureSchema = z.discriminatedUnion("code", [
+  z.strictObject({ code: z.literal("dns-no-record"), name: z.string() }),
+  z.strictObject({ code: z.literal("dns-elsewhere"), name: z.string(), addresses: z.array(z.string()), coreHost: z.string() }),
+  /** Core's public address is plain http: browsers drop a preview's cookie there. */
+  z.strictObject({ code: z.literal("core-http") }),
+  z.strictObject({ code: z.literal("no-https-answer"), name: z.string(), error: z.string() }),
+  z.strictObject({ code: z.literal("no-certificate"), name: z.string() }),
+  z.strictObject({ code: z.literal("certificate-names"), domain: z.string(), names: z.array(z.string()) }),
+  z.strictObject({ code: z.literal("certificate-expired"), validTo: z.string().nullable() }),
+  z.strictObject({ code: z.literal("certificate-untrusted") }),
+  z.strictObject({ code: z.literal("no-answer"), name: z.string(), error: z.string() }),
+  /** Something that isn't this install's core answered on the name. */
+  z.strictObject({ code: z.literal("something-else") }),
+  z.strictObject({ code: z.literal("upgrade-failed"), error: z.string() }),
+  z.strictObject({ code: z.literal("upgrade-refused"), status: z.number().int() }),
+]);
+export type PreviewCheckFailure = z.infer<typeof previewCheckFailureSchema>;
+
+/**
+ * One row of the check, as the settings page shows it: codes and values, never sentences (F-083).
+ * A result kept before rows were codes doesn't parse, so the page reads the domain as not checked
+ * until the next check.
+ */
 export const previewCheckRowSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("passed"), detail: z.string() }),
-  z.strictObject({ state: z.literal("failed"), reason: z.string() }),
-  /** It needs a row before it that didn't pass. */
-  z.strictObject({ state: z.literal("skipped"), needs: z.string() }),
-  /** Under `localhost`: no record and no certificate to add. */
-  z.strictObject({ state: z.literal("not-needed"), detail: z.string() }),
+  z.strictObject({ state: z.literal("passed"), detail: previewCheckPassSchema }),
+  z.strictObject({ state: z.literal("failed"), reason: previewCheckFailureSchema }),
+  /** It needs a row before it that didn't pass: the DNS record, the certificate or core's proxy. */
+  z.strictObject({ state: z.literal("skipped"), needs: z.enum(["dns", "certificate", "proxy"]) }),
+  /** Under `localhost`: no record and no certificate to add, for this domain. */
+  z.strictObject({ state: z.literal("not-needed"), domain: z.string() }),
 ]);
 export type PreviewCheckRow = z.infer<typeof previewCheckRowSchema>;
 
@@ -200,8 +240,8 @@ export const createPreviewDomainProbe = (options: { readonly ca?: string; readon
 /** A random label, so no cache along the way holds the answer. */
 const randomLabel = (): string => `ostra-check-${randomBytes(6).toString("hex")}`;
 
-/** The certificate row's words for why this machine doesn't trust what the name presented. */
-const certificateReason = (certificate: ProbeCertificate, domain: string): string => {
+/** Why this machine doesn't trust what the name presented: the names it covers, its end, or its chain. */
+const certificateFailure = (certificate: ProbeCertificate, domain: string): PreviewCheckFailure => {
   switch (certificate.error ?? "") {
     case "ERR_TLS_CERT_ALTNAME_INVALID":
     case "HOSTNAME_MISMATCH": {
@@ -209,14 +249,13 @@ const certificateReason = (certificate: ProbeCertificate, domain: string): strin
         .split(",")
         .map((part) => part.trim())
         .filter((part) => part.startsWith("DNS:"))
-        .map((part) => part.slice(4))
-        .join(", ");
-      return names === "" ? `The certificate doesn't cover *.${domain}.` : `The certificate covers ${names} only, not *.${domain}.`;
+        .map((part) => part.slice(4));
+      return { code: "certificate-names", domain, names };
     }
     case "CERT_HAS_EXPIRED":
-      return certificate.validTo === null ? "It has expired." : `It expired on ${certificate.validTo}.`;
+      return { code: "certificate-expired", validTo: certificate.validTo };
     default:
-      return "Its chain isn't trusted.";
+      return { code: "certificate-untrusted" };
   }
 };
 
@@ -243,64 +282,66 @@ export const checkPreviewDomain = async (
 
   let dns: PreviewCheckRow;
   if (local) {
-    dns = { state: "not-needed", detail: `Not needed for ${domain}: browsers send every *.localhost name to this machine.` };
+    dns = { state: "not-needed", domain };
   } else {
     const addresses = await deps.probe.resolve(name);
     if (addresses.length === 0) {
-      dns = { state: "failed", reason: `${name} doesn't resolve.` };
+      dns = { state: "failed", reason: { code: "dns-no-record", name } };
     } else {
       const coreAddresses = isAddress(coreHost) ? [coreHost] : await deps.probe.resolve(coreHost);
       const shared = coreAddresses.length === 0 || addresses.some((address) => coreAddresses.includes(address));
-      dns = shared ? { state: "passed", detail: `${name} → ${coreHost} · ${addresses.join(", ")}` } : { state: "failed", reason: `${name} resolves to ${addresses.join(", ")}, not ${coreHost}.` };
+      dns = shared
+        ? { state: "passed", detail: { code: "dns-resolves", name, coreHost, addresses: [...addresses] } }
+        : { state: "failed", reason: { code: "dns-elsewhere", name, addresses: [...addresses], coreHost } };
     }
   }
 
   let certificate: PreviewCheckRow;
   let answer: ProbeAnswer | null = null;
   if (local) {
-    certificate = { state: "not-needed", detail: `Not needed for ${domain}: browsers keep a preview's cookie on http there.` };
+    certificate = { state: "not-needed", domain };
   } else if (origin.scheme === "http") {
-    certificate = { state: "failed", reason: "Core's public address (OSTRA_CORE_PUBLIC_URL) is http: browsers drop a preview's cookie on plain http, so it needs https." };
+    certificate = { state: "failed", reason: { code: "core-http" } };
   } else if (dns.state !== "passed") {
-    certificate = { state: "skipped", needs: "Not checked: it needs the DNS record." };
+    certificate = { state: "skipped", needs: "dns" };
   } else {
     answer = await deps.probe.fetch(url);
     if (!answer.ok) {
-      certificate = { state: "failed", reason: `${name} doesn't answer over https (${answer.error}).` };
+      certificate = { state: "failed", reason: { code: "no-https-answer", name, error: answer.error } };
     } else if (answer.certificate === null) {
-      certificate = { state: "failed", reason: `${name} didn't present a certificate.` };
+      certificate = { state: "failed", reason: { code: "no-certificate", name } };
     } else if (!answer.certificate.authorized) {
-      certificate = { state: "failed", reason: certificateReason(answer.certificate, domain) };
+      certificate = { state: "failed", reason: certificateFailure(answer.certificate, domain) };
     } else {
-      certificate = { state: "passed", detail: `*.${domain}${answer.certificate.validTo === null ? "" : `, valid until ${answer.certificate.validTo}`}` };
+      certificate = { state: "passed", detail: { code: "certificate-valid", domain, validTo: answer.certificate.validTo } };
     }
   }
 
   const reached = certificate.state === "passed" || certificate.state === "not-needed";
   let proxy: PreviewCheckRow;
   if (!reached) {
-    proxy = { state: "skipped", needs: "Not checked: it needs the certificate." };
+    proxy = { state: "skipped", needs: "certificate" };
   } else {
     answer ??= await deps.probe.fetch(url);
     if (!answer.ok) {
-      proxy = { state: "failed", reason: `${name} doesn't answer (${answer.error}).` };
+      proxy = { state: "failed", reason: { code: "no-answer", name, error: answer.error } };
     } else if (answer.mark !== null && sameMark(answer.mark, deps.mark(name))) {
-      proxy = { state: "passed", detail: "Core's preview proxy answered." };
+      proxy = { state: "passed", detail: { code: "proxy-answered" } };
     } else {
-      proxy = { state: "failed", reason: "Something else answered: the ingress sends these hosts elsewhere." };
+      proxy = { state: "failed", reason: { code: "something-else" } };
     }
   }
 
   let upgrade: PreviewCheckRow;
   if (proxy.state !== "passed") {
-    upgrade = { state: "skipped", needs: reached ? "Not checked: it needs core's preview proxy." : "Not checked: it needs the certificate." };
+    upgrade = { state: "skipped", needs: reached ? "proxy" : "certificate" };
   } else {
     const upgraded = await deps.probe.upgrade(url);
     upgrade = !upgraded.ok
-      ? { state: "failed", reason: `The upgrade didn't go through (${upgraded.error}).` }
+      ? { state: "failed", reason: { code: "upgrade-failed", error: upgraded.error } }
       : upgraded.status === 101
-        ? { state: "passed", detail: "An upgrade went through." }
-        : { state: "failed", reason: `The ingress refused the upgrade (${String(upgraded.status)}).` };
+        ? { state: "passed", detail: { code: "upgrade-through" } }
+        : { state: "failed", reason: { code: "upgrade-refused", status: upgraded.status } };
   }
 
   const fine = (row: PreviewCheckRow): boolean => row.state === "passed" || row.state === "not-needed";

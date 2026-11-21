@@ -6,7 +6,7 @@ import type { ConnectionId, OrganizationId, ProjectId, RepoId } from "@ostra/pro
 
 import type { Ports } from "../ports.ts";
 import { BRANCH_RULES_CACHE_MS, repoBranchRulesSchema } from "../tickets/contracts.ts";
-import type { BranchRuleCheck, RepoBranchRules } from "../tickets/contracts.ts";
+import type { BranchRuleCheck, BranchRuleCheckReason, RepoBranchRules } from "../tickets/contracts.ts";
 import { installationStateSelect, installationUsable } from "../code-host/installations.ts";
 
 // F-055, F-060, ticket 31: the two checks on a repo's default branch. They are read through the
@@ -39,8 +39,8 @@ export type CheckRepoRulesInput = {
 };
 
 const notChecked: RepoBranchRules = {
-  protected: { result: "unknown", reason: "Not checked yet." },
-  signedCommits: { result: "unknown", reason: "Not checked yet." },
+  protected: { result: "unknown", reason: "not-checked" },
+  signedCommits: { result: "unknown", reason: "not-checked" },
 };
 
 /** What a stored `Repo.branchRules` holds, or the "not checked" answer. */
@@ -49,14 +49,14 @@ export const storedRepoRules = (value: unknown): RepoBranchRules => {
   return parsed.success ? parsed.data : notChecked;
 };
 
-const unknownRules = (reason: string): RepoBranchRules => ({
+const unknownRules = (reason: BranchRuleCheckReason): RepoBranchRules => ({
   protected: { result: "unknown", reason },
   signedCommits: { result: "unknown", reason },
 });
 
-/** The adapter's answer as the stored shape: a reason sits beside each check that isn't a plain yes. */
+/** The adapter's answer as the stored shape: its first reason sits beside each check that isn't a plain yes. */
 const rulesFromHost = (rules: BranchRules): RepoBranchRules => {
-  const reason = rules.reasons.length === 0 ? undefined : rules.reasons.join(" ").slice(0, 500);
+  const [reason] = rules.reasons;
   const check = (result: boolean | "unknown"): BranchRuleCheck => (result === true || reason === undefined ? { result } : { result, reason });
   return { protected: check(rules.protected), signedCommits: check(rules.requiresSignedCommits) };
 };
@@ -110,7 +110,7 @@ export const checkProjectRepos = async (deps: CheckRepoRulesDeps, input: CheckRe
         defaultBranch: row.defaultBranch,
         private: row.private,
         checkedAt: row.branchRulesCheckedAt?.getTime() ?? null,
-        rules: unknownRules("The repo's GitHub installation isn't linked, so the branch could not be checked."),
+        rules: unknownRules("installation-unlinked"),
       });
       continue;
     }
@@ -122,7 +122,7 @@ export const checkProjectRepos = async (deps: CheckRepoRulesDeps, input: CheckRe
         defaultBranch: row.defaultBranch,
         private: row.private,
         checkedAt: row.branchRulesCheckedAt?.getTime() ?? null,
-        rules: unknownRules("GitHub is not connected, so the branch could not be checked."),
+        rules: unknownRules("not-connected"),
       });
       continue;
     }
@@ -146,10 +146,10 @@ export const checkProjectRepos = async (deps: CheckRepoRulesDeps, input: CheckRe
     if (answer.ok) {
       rules = rulesFromHost(answer.value);
     } else if (answer.error.code === "unsupported") {
-      rules = unknownRules("This code host can't say whether the branch is protected.");
+      rules = unknownRules("host-unsupported");
     } else {
       // A host that didn't answer is tried again at the next load: nothing is cached for it.
-      rules = unknownRules("The code host did not answer, so the branch could not be checked.");
+      rules = unknownRules("host-no-answer");
       keep = false;
     }
     if (keep) {

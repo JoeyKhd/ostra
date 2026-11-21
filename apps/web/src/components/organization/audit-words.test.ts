@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { auditActions } from "@ostra/domain";
+
+import messages from "../../../messages/en.json";
 import { ACTOR_KIND_CHOICES, actionPrefix, actorChoices, actorFilterOf, dayLabel, entityHref, entityKindTitle, entityKindWord, entityLabelOf, flattenData, isAuditPeriod, periodRange } from "./audit-words";
 
 // F-073 (ticket 34): the audit log's filters and words, without a browser.
@@ -74,6 +77,14 @@ describe("what an entry's entity is called (audit-log.md, the Entity column)", (
     expect(["runner-pool", "model-provider", "memory-note", "agent-profile", "task", "member", "budget"].map(entityKindWord)).toEqual(["pool", "provider", "note", "profile", "task", "member", "budget"]);
     expect(entityKindTitle("task")).toBe("Task");
     expect(entityKindTitle("runner-pool")).toBe("Pool");
+  });
+
+  it("F-083/c1: every kind the log names is worded from the message file, never shown as stored", () => {
+    const words: readonly string[] = Object.values(messages.audit.kind);
+    for (const kind of [...new Set(Object.values(auditActions)), "email-settings"]) {
+      expect(words, kind).toContain(entityKindWord(kind));
+    }
+    expect(["organization", "member", "library-source", "user"].map(entityKindWord)).toEqual(["organization", "member", "library source", "account"]);
   });
 
   it("F-073/c2: a pool, a provider, a profile and a note link to their pages, by the kinds the log stores", () => {

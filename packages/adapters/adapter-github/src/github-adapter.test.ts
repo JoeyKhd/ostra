@@ -810,20 +810,20 @@ describe("the GitHub adapter", () => {
     it("answers unknown, with the reason, for a classically protected branch no ruleset signs", async () => {
       const rules = await adapter.readBranchRules(fixture.access, "ostra/classic");
       expect(rules).toMatchObject({ ok: true, value: { protected: true, requiresSignedCommits: "unknown" } });
-      expect(rules.ok && rules.value.reasons.join(" ")).toContain("administration");
+      expect(rules.ok && rules.value.reasons).toEqual(["classic-signatures"]);
     });
 
     it("answers false for both on a plan that has no rules, never unknown, and says so", async () => {
       expect(await adapter.readBranchRules(on("free"), "main")).toEqual({
         ok: true,
-        value: { protected: false, requiresSignedCommits: false, reasons: ["GitHub doesn't offer branch rules on this repo's plan, so none apply."] },
+        value: { protected: false, requiresSignedCommits: false, reasons: ["no-rules-on-plan"] },
       });
     });
 
     it("answers unknown, with the reason, when GitHub refuses the App the rulesets", async () => {
       expect(await adapter.readBranchRules(on("refused"), "main")).toMatchObject({
         ok: true,
-        value: { protected: "unknown", requiresSignedCommits: "unknown" },
+        value: { protected: "unknown", requiresSignedCommits: "unknown", reasons: ["rules-refused"] },
       });
       expect(await adapter.readBranchRules(on("refused"), "locked")).toMatchObject({
         ok: true,

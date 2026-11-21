@@ -196,10 +196,6 @@ const PR_TEMPLATE_PATHS = [
 
 /** Rule types that protect a branch from being deleted, rewritten, or merged into without review. */
 const PROTECTIVE_RULE_TYPES: ReadonlySet<string> = new Set(["deletion", "non_fast_forward", "pull_request", "update"]);
-const REASON_NO_RULES_ON_PLAN = "GitHub doesn't offer branch rules on this repo's plan, so none apply.";
-const REASON_CLASSIC_SIGNATURES =
-  "This branch uses classic branch protection, and its signed-commit rule can only be read with the administration permission, which ostra doesn't ask for.";
-const REASON_RULES_REFUSED = "GitHub wouldn't let the App read this branch's rulesets.";
 /** Only refs under here are deleted: a branch or a tag is never ostra's to delete through this call. */
 const DELETABLE_REF = /^refs\/ostra\/[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/;
 
@@ -788,12 +784,12 @@ export class GitHubAdapter extends CodeHostAdapter {
         // Classic protection, if any, is all there can be: its signed-commit rule is unreadable.
         return ok(
           flagged
-            ? { protected: true, requiresSignedCommits: "unknown", reasons: [REASON_CLASSIC_SIGNATURES] }
-            : { protected: false, requiresSignedCommits: false, reasons: [REASON_NO_RULES_ON_PLAN] },
+            ? { protected: true, requiresSignedCommits: "unknown", reasons: ["classic-signatures"] }
+            : { protected: false, requiresSignedCommits: false, reasons: ["no-rules-on-plan"] },
         );
       }
       if (rules.kind === "refused") {
-        return ok({ protected: flagged ? true : "unknown", requiresSignedCommits: "unknown", reasons: [REASON_RULES_REFUSED] });
+        return ok({ protected: flagged ? true : "unknown", requiresSignedCommits: "unknown", reasons: ["rules-refused"] });
       }
       const parsedRules = parseVendor(branchRulesSchema, rules.data, "GitHub's branch rules");
       if (!parsedRules.ok) {
@@ -807,7 +803,7 @@ export class GitHubAdapter extends CodeHostAdapter {
       // An unprotected branch can't have classic protection, so nothing requires signatures. A
       // protected one might: only `administration: read` could say.
       return flagged
-        ? ok({ protected: isProtected, requiresSignedCommits: "unknown", reasons: [REASON_CLASSIC_SIGNATURES] })
+        ? ok({ protected: isProtected, requiresSignedCommits: "unknown", reasons: ["classic-signatures"] })
         : ok({ protected: isProtected, requiresSignedCommits: false, reasons: [] });
     });
   }

@@ -25,6 +25,7 @@ import { useTRPC } from "@/lib/trpc";
 import { useFilterNames } from "./automation-data";
 import { clockText, dayText, filterWords, occurrenceText, secondsText, skipReasonText, webhookWords, weekdayText } from "./automation-words";
 import type { Automation, HistoryRun } from "./automation-words";
+import { cronSentenceText } from "./cron-words";
 import { bandsOf, matchCount, occurrenceCount, requestCount, rowsOfBand, shownRuns } from "./history-bands";
 import type { Band } from "./history-bands";
 
@@ -147,8 +148,8 @@ export const AutomationHistory = ({ projectId, automationId }: { readonly projec
         : automation.schedule === null
         ? t("automations.history.ledeRule", { filter: filterText })
         : automation.schedule.does === "prompt"
-          ? t("automations.history.ledePrompt", { sentence: automation.schedule.sentence, title: automation.schedule.title ?? "" })
-          : t("automations.history.ledeFilter", { sentence: automation.schedule.sentence, filter: filterText });
+          ? t("automations.history.ledePrompt", { sentence: cronSentenceText(automation.schedule.sentence), title: automation.schedule.title ?? "" })
+          : t("automations.history.ledeFilter", { sentence: cronSentenceText(automation.schedule.sentence), filter: filterText });
 
   const onKey = (run: HistoryRun) => (event: KeyboardEvent<HTMLTableRowElement>) => {
     const index = flat.findIndex((one) => one.id === run.id);

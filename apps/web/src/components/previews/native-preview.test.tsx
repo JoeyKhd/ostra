@@ -5,7 +5,8 @@ import { previewKeySchema, previewViewIdSchema } from "@ostra/protocol";
 
 import { PreviewsBody } from "@/components/instance/previews-view";
 import type { PreviewsBodyProps } from "@/components/instance/previews-view";
-import { checkRowsOf, passedCount, PreviewDomainCheckRows, rowAnnouncement } from "@/components/instance/preview-domain-check";
+import { checkRowsOf, passedCount, PreviewDomainCheckRows, resultWords, rowAnnouncement } from "@/components/instance/preview-domain-check";
+import type { CheckRowId } from "@/components/instance/preview-domain-check";
 import type { InstancePreviews } from "@/components/instance/preview-domain-check";
 import { hostParts, nativeOffered, nativeOfferOf, nativePaneStateOf, paneModeOf, paneStateOf } from "@/components/tasks/preview-pane-state";
 import type { NativeView, PreviewList } from "@/components/tasks/preview-pane-state";
@@ -150,10 +151,10 @@ const checked = (over: Partial<Extract<InstancePreviews["status"], { readonly st
   state: "checked" as const,
   name: "ostra-check-0a1b2c3d4e5f.preview.acme.dev",
   at: Date.UTC(2026, 10, 21, 14, 32),
-  dns: { state: "failed" as const, reason: "ostra-check-0a1b2c3d4e5f.preview.acme.dev doesn't resolve." },
-  certificate: { state: "skipped" as const, needs: "Not checked: it needs the DNS record." },
-  proxy: { state: "skipped" as const, needs: "Not checked: it needs the certificate." },
-  upgrade: { state: "skipped" as const, needs: "Not checked: it needs the certificate." },
+  dns: { state: "failed" as const, reason: { code: "dns-no-record" as const, name: "ostra-check-0a1b2c3d4e5f.preview.acme.dev" } },
+  certificate: { state: "skipped" as const, needs: "dns" as const },
+  proxy: { state: "skipped" as const, needs: "certificate" as const },
+  upgrade: { state: "skipped" as const, needs: "certificate" as const },
   passed: false,
   ...over,
 });
@@ -218,10 +219,10 @@ describe("Instance › Previews (ticket 26)", () => {
     expect(rowAnnouncement("dns", rows[0]?.row ?? { state: "running" })).toBe("DNS record: failed. ostra-check-0a1b2c3d4e5f.preview.acme.dev doesn't resolve.");
     expect(checkRowsOf(status, true).every(({ row }) => row.state === "running")).toBe(true);
     const local = checked({
-      dns: { state: "not-needed", detail: "Not needed for preview.localhost." },
-      certificate: { state: "not-needed", detail: "Not needed for preview.localhost." },
-      proxy: { state: "passed", detail: "Core's preview proxy answered." },
-      upgrade: { state: "passed", detail: "An upgrade went through." },
+      dns: { state: "not-needed", domain: "preview.localhost" },
+      certificate: { state: "not-needed", domain: "preview.localhost" },
+      proxy: { state: "passed", detail: { code: "proxy-answered" } },
+      upgrade: { state: "passed", detail: { code: "upgrade-through" } },
       passed: true,
     });
     expect(passedCount(local)).toBe(4);
@@ -229,6 +230,26 @@ describe("Instance › Previews (ticket 26)", () => {
     const html = renderToStaticMarkup(<PreviewDomainCheckRows rows={checkRowsOf({ state: "checked", domain: "preview.localhost", check: local, at: local.at, byName: null, passed: true }, false)} />);
     expect(html).toContain('role="list"');
     expect(html.match(/role="listitem"/g)).toHaveLength(4);
+    expect(html).toContain("Not needed for <span class=\"font-mono text-[12.5px] text-text-2\">preview.localhost</span>: browsers send every *.localhost name to this machine.");
+    expect(html).toContain("Core&#x27;s preview proxy answered.");
+  });
+
+  it("F-144/c8: each row's result is worded from the check's code and values, with its names and addresses in mono", () => {
+    const name = "ostra-check-0a1b2c3d4e5f.preview.acme.dev";
+    const words = (id: CheckRowId, row: Parameters<typeof resultWords>[1]): string => resultWords(id, row);
+    expect(words("dns", { state: "passed", detail: { code: "dns-resolves", name, coreHost: "core.acme.dev", addresses: ["203.0.113.24", "203.0.113.25"] } })).toBe(`${name} → core.acme.dev · 203.0.113.24, 203.0.113.25`);
+    expect(words("dns", { state: "failed", reason: { code: "dns-elsewhere", name, addresses: ["203.0.113.24"], coreHost: "core.acme.dev" } })).toBe(`${name} resolves to 203.0.113.24, not core.acme.dev.`);
+    expect(words("certificate", { state: "passed", detail: { code: "certificate-valid", domain: "preview.acme.dev", validTo: "Feb 19 12:00:00 2027 GMT" } })).toBe("*.preview.acme.dev, valid until Feb 19 12:00:00 2027 GMT");
+    expect(words("certificate", { state: "failed", reason: { code: "certificate-names", domain: "preview.acme.dev", names: ["core.acme.dev"] } })).toBe("The certificate covers core.acme.dev only, not *.preview.acme.dev.");
+    expect(words("certificate", { state: "failed", reason: { code: "certificate-names", domain: "preview.acme.dev", names: [] } })).toBe("The certificate doesn't cover *.preview.acme.dev.");
+    expect(words("certificate", { state: "failed", reason: { code: "certificate-expired", validTo: "Feb 19 12:00:00 2027 GMT" } })).toBe("It expired on Feb 19 12:00:00 2027 GMT.");
+    expect(words("certificate", { state: "failed", reason: { code: "core-http" } })).toBe("Core's public address (OSTRA_CORE_PUBLIC_URL) is http: browsers drop a preview's cookie on plain http, so it needs https.");
+    expect(words("certificate", { state: "not-needed", domain: "preview.localhost" })).toBe("Not needed for preview.localhost: browsers keep a preview's cookie on http there.");
+    expect(words("proxy", { state: "failed", reason: { code: "no-answer", name, error: "ECONNREFUSED" } })).toBe(`${name} doesn't answer (ECONNREFUSED).`);
+    expect(words("upgrade", { state: "failed", reason: { code: "upgrade-refused", status: 400 } })).toBe("The ingress refused the upgrade (400).");
+    expect(words("upgrade", { state: "skipped", needs: "proxy" })).toBe("Not checked: it needs core's preview proxy.");
+    const html = renderToStaticMarkup(<PreviewDomainCheckRows rows={checkRowsOf(page().status, false)} />);
+    expect(html).toContain(`<span class="font-mono text-[12.5px] text-text-2">${name}</span> doesn&#x27;t resolve.`);
   });
 
   it("F-144/c2: with no domain, says what works without it and the four steps to turn it on, preview.localhost included, and no check", () => {

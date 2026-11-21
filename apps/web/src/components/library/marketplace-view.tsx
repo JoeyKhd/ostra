@@ -18,7 +18,7 @@ import { errorText } from "@/lib/errors";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 
-import { installsText, pinText, resultKey, resultStateOf, searchSourceHost, sizeText, skillRowsOf, versionText } from "./library-model";
+import { installsText, pinText, resultKey, resultStateOf, searchOffText, searchSendsText, searchSourceHost, sizeText, skillRowsOf, versionText } from "./library-model";
 import type { LibraryItem, Look, ResultState, SearchResult, SearchSource } from "./library-model";
 import { Note } from "./library-parts";
 
@@ -131,10 +131,10 @@ export const MarketplaceView = () => {
           <div className="mt-10 flex max-w-[560px] flex-col items-start gap-2" data-testid="marketplace-off">
             <StoreIcon aria-hidden className="size-7 stroke-[1.5] text-faint" />
             <p className="text-[16px] font-semibold text-text">{t("library.market.offTitle")}</p>
-            <p className="text-ui text-muted">{admin && state.data?.offWords !== null && state.data?.offWords !== undefined ? state.data.offWords : t("library.market.offBody")}</p>
+            <p className="text-ui text-muted">{(admin && state.data !== undefined ? searchOffText(state.data.off) : null) ?? t("library.market.offBody")}</p>
             {admin ? (
               <>
-                {state.data?.sendsWords === undefined ? null : <p className="text-[12.5px] text-faint" data-testid="search-sends">{state.data.sendsWords}</p>}
+                {state.data === undefined ? null : <p className="text-[12.5px] text-faint" data-testid="search-sends">{searchSendsText(state.data.sendsTo)}</p>}
                 <div className="mt-2 flex flex-wrap items-center gap-3">
                   {state.data?.instanceAllows === true ? (
                     <Button onClick={() => { setSearch.mutate({ enabled: true }); }} disabled={setSearch.isPending} data-action="turn-search-on">{t("library.market.turnOn")}</Button>

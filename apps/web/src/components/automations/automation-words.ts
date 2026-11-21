@@ -4,6 +4,8 @@ import type { PayloadCondition } from "@ostra/domain/webhook-template";
 import { plural, t } from "@/lib/messages";
 import type { RouterOutputs } from "@/lib/trpc";
 
+import { cronSentenceText } from "./cron-words";
+
 // Automations in words (automations.md, "The filter in words"; automation-history.md): one place for
 // the list, the editor and the history, so each says a filter, a date and an outcome the same way.
 
@@ -205,7 +207,8 @@ export const nextText = (automation: Automation, startsPerHour: number): { reado
 export const startsWhenText = (automation: Automation, names: FilterNames): string => {
   if (automation.webhook !== null) return webhookWords(automation.webhook.filter);
   if (automation.schedule === null) return automation.filter === null ? t("automations.words.everyTicket") : filterWords(automation.filter, names);
-  return automation.schedule.does === "filter" ? `${automation.schedule.sentence} · ${t("automations.checksFilter")}` : automation.schedule.sentence;
+  const sentence = cronSentenceText(automation.schedule.sentence);
+  return automation.schedule.does === "filter" ? `${sentence} · ${t("automations.checksFilter")}` : sentence;
 };
 
 /** Why a run was skipped, as the history's Task column says it. A webhook's hourly limit is its own setting. */

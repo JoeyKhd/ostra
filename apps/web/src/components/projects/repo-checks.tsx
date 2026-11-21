@@ -18,7 +18,7 @@ import { plural, t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 
 import { RepoCheckLine } from "./repo-check-line";
-import { accountOf, checkLines, checkedAge, oldestCheck, repoVerdict, reposByAccount, selectedRepo, unsupportedRepos } from "./repo-checks-words";
+import { accountOf, checkLines, checkedAge, checkReasonText, oldestCheck, repoVerdict, reposByAccount, selectedRepo, unsupportedRepos } from "./repo-checks-words";
 import type { RepoDetail, RepoVerdict } from "./repo-checks-words";
 
 const verdictStyle: Readonly<Record<RepoVerdict, string>> = {
@@ -142,7 +142,7 @@ export const RepoProperties = ({ repo, now, lead }: { readonly repo: RepoDetail 
     );
   const verdict = repoVerdict(repo);
   const check = (result: boolean | "unknown", yes: string, no: string) => (result === "unknown" ? <span className="text-faint">{t("repos.panel.unknown")}</span> : result ? yes : no);
-  const unknownReason = [repo.defaultBranchProtected, repo.signedCommitsRequired].find((c) => c.result === "unknown")?.reason ?? t("repos.check.noReason");
+  const unknownReason = checkReasonText([repo.defaultBranchProtected, repo.signedCommitsRequired].find((c) => c.result === "unknown")?.reason);
   return (
     <div data-testid="repo-properties">
       <PanelLabel mono>{repo.fullName}</PanelLabel>

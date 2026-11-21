@@ -194,7 +194,7 @@ describe.skipIf(!env.success)("the GitHub adapter, live on the test org", () => 
         expect(rules.value, name).toEqual({
           protected: false,
           requiresSignedCommits: false,
-          reasons: ["GitHub doesn't offer branch rules on this repo's plan, so none apply."],
+          reasons: ["no-rules-on-plan"],
         });
       }
       // Never a guess: an answer that isn't a plain yes or no says why.

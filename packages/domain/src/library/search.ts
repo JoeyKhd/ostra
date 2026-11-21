@@ -67,12 +67,6 @@ export const INSTANCE_SEARCH_OFF_WORDS =
 export const ORGANIZATION_SEARCH_OFF_WORDS =
   "Marketplace search is off in this organization until an organization admin turns it on in the library. Installing by reference still works";
 
-/** What the switch says a search sends where (ADR 0069: "the switch says so"). */
-export const marketplaceSearchSendsWords = (sendsTo: MarketplaceSearchState["sendsTo"]): string => {
-  const registries = sendsTo.registries.map((url) => new URL(url).host);
-  const servers = registries.length === 0 ? "no registry yet, since the list has none" : `each registry on the list (${registries.join(", ")})`;
-  return `A search sends the words you type, and nothing else about you or this install, to ${sendsTo.skills} for skills and to ${servers} for MCP servers`;
-};
 
 const refuse = <E extends string>(error: E, message: string): { readonly ok: false; readonly error: E; readonly message: string } => ({ ok: false, error, message });
 

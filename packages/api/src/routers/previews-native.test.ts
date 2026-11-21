@@ -243,7 +243,8 @@ describe("Instance › Previews (ticket 26)", () => {
     const missing: PreviewDomainProbe = { ...workingProbe, resolve: () => Promise.resolve([]) };
     const checked = await (await admin(withDomain("preview.acme.dev", { ...acme, probe: missing }))).instance.previewDomainCheck();
     expect(checked).toMatchObject({ state: "checked", passed: false, dns: { state: "failed" }, certificate: { state: "skipped" } });
-    expect(checked.state === "checked" && checked.dns.state === "failed" ? checked.dns.reason : "").toMatch(/\.preview\.acme\.dev doesn't resolve\.$/);
+    expect(checked.state === "checked" && checked.dns.state === "failed" ? checked.dns.reason : null).toEqual({ code: "dns-no-record", name: checked.state === "checked" ? checked.name : "" });
+    expect(checked.state === "checked" ? checked.name : "").toMatch(/\.preview\.acme\.dev$/);
     const kept = await (await admin(withDomain("preview.acme.dev", acme))).instance.previews();
     const name = (await harness.test.db.user.findUniqueOrThrow({ where: { id: harness.fixture.a.admin.userId }, select: { name: true } })).name;
     expect(kept.status).toMatchObject({ state: "checked", domain: "preview.acme.dev", passed: false, byName: name, check: { dns: { state: "failed" } } });

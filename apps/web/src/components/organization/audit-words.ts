@@ -1,3 +1,5 @@
+import type { AuditEntityKind } from "@ostra/domain";
+
 import { t } from "@/lib/messages";
 import type { MessageKey } from "@/lib/messages";
 
@@ -138,23 +140,43 @@ export const entityHref = (entry: { readonly entity: string | null; readonly ent
 /** A short form of a long ID: its first 8 characters. */
 export const shortId = (id: string): string => (id.length > 12 ? `${id.slice(0, 8)}…` : id);
 
-/** The kinds the Entity column names by a word of their own (audit-log.md: `pool`, `provider`, `note`, …). */
-const kindWords: ReadonlyMap<string, MessageKey> = new Map([
-  ["runner-pool", "audit.kind.pool"],
-  ["model-provider", "audit.kind.provider"],
-  ["memory-note", "audit.kind.note"],
-  ["memory-proposal", "audit.kind.proposal"],
-  ["agent-profile", "audit.kind.profile"],
-  ["join-token", "audit.kind.joinToken"],
-  ["email-settings", "audit.kind.emailSettings"],
-  ["bulk-start", "audit.kind.bulkStart"],
-] as const);
+/**
+ * Every kind an entry names, by its word (audit-log.md: `pool`, `provider`, `note`, …): the closed
+ * list's kinds (`auditActions`), and the email settings', which their entries name outside it.
+ */
+const kindWords = {
+  "agent-profile": "audit.kind.profile",
+  approval: "audit.kind.approval",
+  automation: "audit.kind.automation",
+  budget: "audit.kind.budget",
+  "bulk-start": "audit.kind.bulkStart",
+  "cli-session": "audit.kind.cliSession",
+  connection: "audit.kind.connection",
+  "email-settings": "audit.kind.emailSettings",
+  environment: "audit.kind.environment",
+  invitation: "audit.kind.invitation",
+  "join-token": "audit.kind.joinToken",
+  "library-item": "audit.kind.libraryItem",
+  "library-source": "audit.kind.librarySource",
+  "library-suggestion": "audit.kind.librarySuggestion",
+  member: "audit.kind.member",
+  "memory-note": "audit.kind.note",
+  "memory-proposal": "audit.kind.proposal",
+  model: "audit.kind.model",
+  "model-provider": "audit.kind.provider",
+  organization: "audit.kind.organization",
+  project: "audit.kind.project",
+  registry: "audit.kind.registry",
+  runner: "audit.kind.runner",
+  "runner-pool": "audit.kind.pool",
+  task: "audit.kind.task",
+  user: "audit.kind.user",
+} as const satisfies Record<AuditEntityKind | "email-settings", MessageKey>;
 
-/** An entity's kind as the log shows it: its word, or the kind as stored (`task`, `member`, `project`, `budget`, …). */
-export const entityKindWord = (entity: string): string => {
-  const key = kindWords.get(entity);
-  return key === undefined ? entity : t(key);
-};
+const isKind = (entity: string): entity is keyof typeof kindWords => Object.hasOwn(kindWords, entity);
+
+/** An entity's kind as the log shows it: its word, or, for a kind this panel doesn't know yet, the kind as stored. */
+export const entityKindWord = (entity: string): string => (isKind(entity) ? t(kindWords[entity]) : entity);
 
 /** The kind leading the panel's Entity value: `Task CALC-161`. */
 export const entityKindTitle = (entity: string): string => {

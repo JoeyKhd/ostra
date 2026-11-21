@@ -16,6 +16,8 @@ import {
   pinText,
   profileCounts,
   resultStateOf,
+  searchOffText,
+  searchSendsText,
   serverInputsOf,
   serverReference,
   serverRefusalOf,
@@ -288,8 +290,18 @@ describe("the marketplace (F-146)", () => {
   });
 
   it("F-146/c3: the policy names every host a search or an install calls out to, from the switch's state and the sources", () => {
-    const state: SearchState = { enabled: true, organizationOn: true, instanceAllows: true, off: null, sendsTo: { skills: "skills.sh", registries: ["https://api.mcp.github.com"] }, offWords: null, sendsWords: "" };
+    const state: SearchState = { enabled: true, organizationOn: true, instanceAllows: true, off: null, sendsTo: { skills: "skills.sh", registries: ["https://api.mcp.github.com"] } };
     const github: SourceEntry = { sourceId: librarySourceIdSchema.parse(id(20)), kind: "github_owner", value: "acme", namespace: null, addedBy: null, createdAt: 0, items: 0 };
     expect(callsOutTo(state, [github])).toEqual(["skills.sh", "api.mcp.github.com", "github.com"]);
+  });
+
+  it("F-146/c3: the switch says which setting keeps search off and what a search sends where, worded from the server's code and hosts", () => {
+    expect(searchOffText(null)).toBeNull();
+    expect(searchOffText("organization")).toBe("Marketplace search is off in this organization until an organization admin turns it on in the library. Installing by reference still works.");
+    expect(searchOffText("instance")).toContain("(OSTRA_MARKETPLACE_SEARCH=false), so an organization admin can't turn it on");
+    expect(searchSendsText({ skills: "skills.sh", registries: ["https://api.mcp.github.com", "https://registry.example.test/v0"] })).toBe(
+      "A search sends the words you type, and nothing else about you or this install, to skills.sh for skills and to each registry on the list (api.mcp.github.com, registry.example.test) for MCP servers.",
+    );
+    expect(searchSendsText({ skills: "skills.sh", registries: [] })).toContain("to no registry yet for MCP servers, since the list has none");
   });
 });

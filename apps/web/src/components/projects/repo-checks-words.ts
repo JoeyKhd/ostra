@@ -1,9 +1,16 @@
+import { t } from "@/lib/messages";
 import type { RouterOutputs } from "@/lib/trpc";
 
 // The two checks ostra runs on a repo's default branch (F-060, F-055; repo-checks.md), read from
 // `projects.get`: is it protected, and does it require signed commits. Pure, so it's tested alone.
 
 export type RepoDetail = RouterOutputs["projects"]["get"]["repos"][number];
+
+/** Why a check isn't a plain yes: the host's code or ostra's, which the panel words (F-083). */
+export type CheckReason = NonNullable<RepoDetail["defaultBranchProtected"]["reason"]>;
+
+/** A check's reason in words, or the host's silence when it gave none. */
+export const checkReasonText = (reason: CheckReason | null | undefined): string => (reason === null || reason === undefined ? t("repos.check.noReason") : t(`repos.reason.${reason}`));
 
 /**
  * A repo's worst result, in this order: its installation isn't linked (F-136), signed commits
@@ -76,7 +83,7 @@ export const accountOf = (repos: readonly RepoDetail[]): string | null => repos[
  */
 export type CheckLine =
   | { readonly kind: "protected" | "notProtected" | "signedNotRequired" | "signedRequired" }
-  | { readonly kind: "protectedUnknown" | "signedUnknown" | "unknown"; readonly reason: string | null }
+  | { readonly kind: "protectedUnknown" | "signedUnknown" | "unknown"; readonly reason: CheckReason | null }
   | { readonly kind: "notLinked"; readonly account: string; readonly how: "unlinked" | "removed" };
 
 export const checkLines = (repo: RepoDetail): readonly CheckLine[] => {

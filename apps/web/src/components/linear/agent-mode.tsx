@@ -17,6 +17,7 @@ import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
 import { PanelLabel } from "./linear-panel";
+import { addressProblemText } from "./linear-status";
 
 // "Connect Linear", grown (linear-agent-mode.md, F-012): agent mode's state and what it needs, each
 // board's "Start from Linear", and the last session events. Organization admins only, as the page.
@@ -92,7 +93,7 @@ export const PublicAddress = ({ agent }: { readonly agent: AgentMode }) =>
     <>
       <TriangleAlertIcon aria-hidden className="size-[14px] stroke-[1.75] text-red" />
       <span>{t("agentMode.unreachable")}</span>
-      {agent.unreachableReason === null ? null : <span className="text-muted">· {agent.unreachableReason}</span>}
+      {agent.unreachableReason === null ? null : <span className="text-muted">· {addressProblemText(agent.unreachableReason)}</span>}
     </>
   );
 

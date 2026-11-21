@@ -101,7 +101,7 @@ describe("notifications.preferences", () => {
     await seedLinearConnection(harness);
     await harness.test.db.instanceSetting.upsert({ where: { id: "instance" }, create: { id: "instance", emailDelaySeconds: 300 }, update: { emailDelaySeconds: 300 } });
     const view = await (await harness.as(a.member)).notifications.preferences.get();
-    expect(view).toMatchObject({ emailOn: true, tracker: { kind: "linear", name: "Linear", workspace: "ostra-test" }, emailDelaySeconds: 300, isInstanceAdmin: false });
+    expect(view).toMatchObject({ emailOn: true, tracker: { kind: "linear", workspace: "ostra-test" }, emailDelaySeconds: 300, isInstanceAdmin: false });
     // The other organization has no tracker, but shares the install's mail.
     expect(await (await harness.as(harness.fixture.b.admin)).notifications.preferences.get()).toMatchObject({ emailOn: true, tracker: null });
   });

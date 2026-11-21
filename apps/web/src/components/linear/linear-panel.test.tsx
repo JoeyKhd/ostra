@@ -66,9 +66,9 @@ describe("the Linear page, not connected", () => {
   });
 
   it("F-042: in polling mode says why, names the setting, and asks for no signing secret", () => {
-    const polling: LinearNone = { ...none, mode: "polling", modeReason: "a loopback host cannot be reached from Linear" };
+    const polling: LinearNone = { ...none, mode: "polling", modeReason: "loopback" };
     const html = body(polling);
-    expect(html).toContain("a loopback host cannot be reached from Linear");
+    expect(html).toContain("a loopback address can&#x27;t be reached from Linear");
     expect(html).toContain("OSTRA_CORE_PUBLIC_URL");
     expect(html).toContain(t("linear.connect.step2.bodyPolling").trim());
     const panel = renderToStaticMarkup(<LinearProperties status={polling} />);
@@ -135,9 +135,9 @@ describe("the Linear page, connected", () => {
   });
 
   it("F-042: by polling: the interval, why there's no webhook, the last poll, no backstop row", () => {
-    const html = body({ ...active, mode: "polling", modeReason: "a private-network host cannot be reached from Linear", webhookUrl: null, lastPoll: { at: now - 60_000, changed: 3 } });
+    const html = body({ ...active, mode: "polling", modeReason: "private-network", webhookUrl: null, lastPoll: { at: now - 60_000, changed: 3 } });
     expect(html).toContain(t("linear.events.polling", { seconds: 60 }));
-    expect(html).toContain("a private-network host cannot be reached from Linear");
+    expect(html).toContain("a private-network address can&#x27;t be reached from Linear");
     expect(html).toContain("3 tickets changed");
     expect(html).not.toContain(t("linear.events.backstop"));
   });

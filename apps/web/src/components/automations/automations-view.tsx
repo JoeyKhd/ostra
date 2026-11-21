@@ -25,6 +25,7 @@ import { useTRPC } from "@/lib/trpc";
 import { useFilterNames } from "./automation-data";
 import { assigneeValue, dayText, listWords, nextText, occurrenceText, payloadConditionWords, startsWhenText, statusValues, taskKindLong, taskKindWord } from "./automation-words";
 import type { Automation, FilterNames } from "./automation-words";
+import { cronSentenceText } from "./cron-words";
 
 // A project's Automations (automations.md, F-011, F-106, F-139): its intake rules, schedules and
 // webhooks in one list,
@@ -489,7 +490,7 @@ const AutomationPanel = ({
               ? t("automations.panel.webhookKind")
               : automation.schedule === null
                 ? t("automations.panel.ruleKind")
-                : t("automations.panel.scheduleKind", { sentence: automation.schedule.sentence })}
+                : t("automations.panel.scheduleKind", { sentence: cronSentenceText(automation.schedule.sentence) })}
           </span>
         </PropRow>
         {automation.webhook !== null ? (

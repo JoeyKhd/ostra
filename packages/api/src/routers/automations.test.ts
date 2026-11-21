@@ -187,7 +187,7 @@ describe("automations: schedules (F-106)", () => {
   it("F-106/c1: the schedule preview gives the sentence and the next three occurrences, and refuses a schedule under the minimum interval", async () => {
     const asMember = await member();
     const preview = await asMember.automations.previewSchedule({ cron: "0 9 * * 1", timeZone: "Europe/Amsterdam" });
-    expect(preview).toMatchObject({ sentence: "Every Monday at 09:00, Amsterdam time", described: true, refusal: null, minIntervalMinutes: 60 });
+    expect(preview).toMatchObject({ sentence: { when: { kind: "weekly", days: [1], times: ["09:00"], months: null }, zone: { kind: "city", city: "Amsterdam" } }, described: true, refusal: null, minIntervalMinutes: 60 });
     expect(preview.next).toHaveLength(3);
     const now = Date.now();
     const wall = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Amsterdam", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false });
@@ -208,7 +208,7 @@ describe("automations: schedules (F-106)", () => {
   it("F-106/c7: a pause stops a schedule at once, and a resume acts from now, never firing a time it missed", async () => {
     const asAdmin = await admin();
     const made = await asAdmin.automations.create({ projectId, settings: mondays("Monday deps") });
-    expect(made.schedule).toMatchObject({ cron: "0 9 * * 1", timeZone: "UTC", sentence: "Every Monday at 09:00, UTC", does: "prompt", title: "Update the dependencies" });
+    expect(made.schedule).toMatchObject({ cron: "0 9 * * 1", timeZone: "UTC", sentence: { when: { kind: "weekly", days: [1], times: ["09:00"] }, zone: { kind: "utc" } }, does: "prompt", title: "Update the dependencies" });
     expect(made.nextOccurrenceAt).toBeGreaterThan(Date.now());
 
     const paused = await asAdmin.automations.pause({ automationId: made.id });
