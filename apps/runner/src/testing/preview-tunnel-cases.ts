@@ -61,24 +61,56 @@ const freePort = (): Promise<number> =>
 const textOf = (data: WebSocket.RawData): string =>
   Buffer.isBuffer(data) ? data.toString("utf8") : Array.isArray(data) ? Buffer.concat(data).toString("utf8") : Buffer.from(new Uint8Array(data)).toString("utf8");
 
-const openSocket = (url: string, protocol?: string): Promise<WebSocket> =>
+/** Texts in the order they came, each taken once: `next` waits for one, `clear` drops those not taken. */
+type Inbox = {
+  readonly push: (text: string) => void;
+  readonly next: (timeoutMs?: number) => Promise<string>;
+  readonly clear: () => void;
+};
+
+const inbox = (nothing: string): Inbox => {
+  const texts: string[] = [];
+  const waiters: (() => void)[] = [];
+  return {
+    push: (text) => {
+      texts.push(text);
+      for (const waiter of waiters.splice(0)) waiter();
+    },
+    next: async (timeoutMs = 20_000) => {
+      const deadline = Date.now() + timeoutMs;
+      while (texts.length === 0) {
+        if (Date.now() > deadline) throw new Error(nothing);
+        await new Promise<void>((resolve) => {
+          waiters.push(resolve);
+          setTimeout(resolve, 100);
+        });
+      }
+      return texts.shift() ?? "";
+    },
+    clear: () => {
+      texts.splice(0);
+    },
+  };
+};
+
+/**
+ * A WebSocket and its messages, kept from before its `open`: a server that speaks first (Vite's HMR
+ * `connected`) can come in the same read as the 101, and `ws` emits it before whoever awaited
+ * `open` gets to listen. Over the box's direct dial on Linux, it does.
+ */
+type TestSocket = { readonly ws: WebSocket; readonly messages: Inbox };
+
+const openSocket = (url: string, protocol?: string): Promise<TestSocket> =>
   new Promise((resolve, reject) => {
     const ws = protocol === undefined ? new WebSocket(url) : new WebSocket(url, protocol);
+    const messages = inbox("no message");
+    ws.on("message", (data) => {
+      messages.push(textOf(data));
+    });
     ws.once("open", () => {
-      resolve(ws);
+      resolve({ ws, messages });
     });
     ws.once("error", reject);
-  });
-
-const nextMessage = (ws: WebSocket, timeoutMs = 20_000): Promise<string> =>
-  new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error("no message"));
-    }, timeoutMs);
-    ws.once("message", (data) => {
-      clearTimeout(timer);
-      resolve(textOf(data));
-    });
   });
 
 /**
@@ -87,8 +119,7 @@ const nextMessage = (ws: WebSocket, timeoutMs = 20_000): Promise<string> =>
  */
 const serverTextFrames = (stream: ClientHttp2Stream): ((timeoutMs?: number) => Promise<string>) => {
   let held = Buffer.alloc(0);
-  const frames: string[] = [];
-  const waiters: (() => void)[] = [];
+  const frames = inbox("no frame");
   stream.on("data", (chunk: Buffer) => {
     held = Buffer.concat([held, chunk]);
     for (;;) {
@@ -110,21 +141,10 @@ const serverTextFrames = (stream: ClientHttp2Stream): ((timeoutMs?: number) => P
       held = held.subarray(offset + length);
       if (opcode === 1) {
         frames.push(payload.toString("utf8"));
-        for (const waiter of waiters.splice(0)) waiter();
       }
     }
   });
-  return async (timeoutMs = 20_000) => {
-    const deadline = Date.now() + timeoutMs;
-    while (frames.length === 0) {
-      if (Date.now() > deadline) throw new Error("no frame");
-      await new Promise<void>((resolve) => {
-        waiters.push(resolve);
-        setTimeout(resolve, 100);
-      });
-    }
-    return frames.shift() ?? "";
-  };
+  return frames.next;
 };
 
 /** Whether something takes a connection on `host:port`. */
@@ -313,10 +333,10 @@ export const previewTunnelCases = (mode: PreviewTunnelMode) => {
       expect(statesOf(h, spec)).toEqual(["api:starting", "api:ready", "web:starting", "web:ready"]);
       // A WebSocket and HTTP requests at once, each its own CONNECT on the one tunnel.
       const echo = await openSocket(`ws://127.0.0.1:${String(local)}/api/ws`);
-      sockets.push(echo);
-      const echoed = nextMessage(echo);
+      sockets.push(echo.ws);
+      const echoed = echo.messages.next();
       const [hello, again] = await Promise.all([fetch(`${base}/api/hello`), fetch(`${base}/src/main.jsx`)]);
-      echo.send("through the tunnel");
+      echo.ws.send("through the tunnel");
       expect(await echoed).toBe("echo: through the tunnel");
       expect(helloSchema.parse(await hello.json()).message).toBe(`hello from the API on ${String(api)}`);
       expect(again.status).toBe(200);
@@ -324,9 +344,9 @@ export const previewTunnelCases = (mode: PreviewTunnelMode) => {
       const token = /const wsToken = "([^"]+)"/.exec(client)?.[1] ?? "";
       expect(token).not.toBe("");
       const hmr = await openSocket(`ws://127.0.0.1:${String(local)}/?token=${encodeURIComponent(token)}`, "vite-hmr");
-      sockets.push(hmr);
-      expect(hmrMessageSchema.parse(JSON.parse(await nextMessage(hmr))).type).toBe("connected");
-      echo.close();
+      sockets.push(hmr.ws);
+      expect(hmrMessageSchema.parse(JSON.parse(await hmr.messages.next())).type).toBe("connected");
+      echo.ws.close();
 
       // The native preview's plain requests, as core's proxy sends them: `:authority` localhost:<port>.
       const index = await core.request(viewId, web, "/");
@@ -350,12 +370,14 @@ export const previewTunnelCases = (mode: PreviewTunnelMode) => {
       probes.push(probePath);
       await writeFile(probePath, "export const probe = 1;\n");
       expect((await core.request(viewId, web, `/src/${probe}`)).status).toBe(200);
-      const viaConnect = nextMessage(hmr, 30_000);
+      // The edit's message, not one from before it.
+      hmr.messages.clear();
+      const viaConnect = hmr.messages.next(30_000);
       await writeFile(probePath, "export const probe = 2;\n");
       expect(["update", "full-reload"]).toContain(hmrMessageSchema.parse(JSON.parse(await frames(30_000))).type);
       expect(["update", "full-reload"]).toContain(hmrMessageSchema.parse(JSON.parse(await viaConnect)).type);
       upgraded.stream.close();
-      hmr.close();
+      hmr.ws.close();
 
       const tunnel = viewsOf(h).tunnel(viewId);
       // The local fetches share their kept-alive connections, each one CONNECT; the two sockets are one each.
