@@ -68,15 +68,19 @@ import { NATIVE_FORWARD_PREFIX } from "./native.ts";
 // this file's that answers with the headers and the WebSocket `Origin` that reached it. Real
 // Postgres and pg-boss; a fake runner peer takes the commands, and the runner's view registry
 // opens each view's connection as the task run does. Requests go to core on loopback with a
-// preview host in `Host`, as a browser's would after the wildcard record. Three replicas share the
-// database and the secrets key: A, which holds the box's connections; B, which forwards to A; and
-// one on the panel's own site. A fourth has no preview domain at all.
+// preview host in `Host`, as a browser's would after the wildcard record. Four replicas share the
+// database and the secrets key: A, which holds the box's connections; B, which forwards to A; one
+// on the panel's own site; and one whose panel is on `acme.co.uk`, which the site layout misreads
+// as the previews' site (Q325). A fifth has no preview domain at all.
 
 const fixtureDir = fileURLToPath(new URL("../../../../e2e/m8-previews-and-library/fixtures/test-web/", import.meta.url));
 const nextDir = fileURLToPath(new URL("../../../../e2e/m8-previews-and-library/fixtures/test-next/", import.meta.url));
 const domain = "preview.localhost";
 const panelUrl = "http://localhost:3000";
 const sameSiteDomain = "preview.ostra.localhost";
+/** A panel on a two-part suffix's apex beside previews on another name of it: the site layout reads one site, a browser two. */
+const acmePanelUrl = "https://acme.co.uk";
+const acmeDomain = "previews.other.co.uk";
 
 let test: TestDatabase;
 let fixture: IsolationFixture;
@@ -85,6 +89,7 @@ let world: World;
 let a: PreviewReplica;
 let b: PreviewReplica;
 let sameSite: PreviewReplica;
+let acme: PreviewReplica;
 let plain: PreviewReplica;
 let runner: RegisteredAt;
 let peer: FakePeer;
@@ -184,14 +189,14 @@ type Entered = { readonly host: string; readonly origin: string; readonly answer
 
 const enterDeps = (replica: PreviewReplica, previewDomain: string = domain, clock: Clock = systemClock) => ({ db: test.db, clock, settings: { domain: previewDomain, warmMinutes: 60 }, corePublicUrl: replica.url });
 
-/** The panel's half of the handshake (`enterNativePreview`), then the browser's: the code on the preview host. */
-const enter = async (replica: PreviewReplica, taskId: TaskId, key: PreviewKey, who: NativePreviewOpener, previewDomain: string = domain): Promise<Entered> => {
+/** The panel's half of the handshake (`enterNativePreview`), then the browser's: the code on the preview host, with the browser's own headers. */
+const enter = async (replica: PreviewReplica, taskId: TaskId, key: PreviewKey, who: NativePreviewOpener, previewDomain: string = domain, headers: Readonly<Record<string, string>> = {}): Promise<Entered> => {
   const entered = await enterNativePreview(enterDeps(replica, previewDomain), who, { taskId, key });
   if (!entered.ok) {
     throw new Error(`no code: ${entered.error}`);
   }
   const url = new URL(entered.url);
-  const answer = await hit(replica.url, url.host, `${url.pathname}${url.search}`);
+  const answer = await hit(replica.url, url.host, `${url.pathname}${url.search}`, { headers });
   const setCookie = answer.headers["set-cookie"]?.[0] ?? "";
   return { host: url.host, origin: entered.origin, answer, setCookie, cookie: setCookie.split(";")[0] ?? "", code: url.searchParams.get("code") ?? "" };
 };
@@ -264,6 +269,18 @@ const attributesOf = (setCookie: string): ReadonlyMap<string, string> =>
       }),
   );
 
+/** A preview cookie's `SameSite` as the handshake set it: `None; Partitioned`, or `Lax`. */
+const sameSiteOf = (setCookie: string): string => {
+  const attributes = attributesOf(setCookie);
+  return attributes.has("partitioned") ? `${attributes.get("samesite") ?? ""}; Partitioned` : (attributes.get("samesite") ?? "");
+};
+
+/** The browser's Fetch Metadata on the handshake: `Sec-Fetch-Site` and `Sec-Fetch-Dest`, each when it's sent. */
+const fetchMetadata = (site: string | undefined, dest: string | undefined): Readonly<Record<string, string>> => ({
+  ...(site === undefined ? {} : { "sec-fetch-site": site }),
+  ...(dest === undefined ? {} : { "sec-fetch-dest": dest }),
+});
+
 beforeAll(async () => {
   test = await createTestDatabase();
   fixture = await seedIsolationFixture(test.db);
@@ -330,6 +347,7 @@ beforeAll(async () => {
   a = await replica({ previewDomain: domain, publicUrl: panelUrl });
   b = await replica({ previewDomain: domain, publicUrl: panelUrl });
   sameSite = await replica({ previewDomain: sameSiteDomain, publicUrl: "http://ostra.localhost:3000" });
+  acme = await replica({ previewDomain: acmeDomain, publicUrl: acmePanelUrl });
   plain = await replica();
   runner = await registerRunnerAt(a.url, test.db, fixture.a.member);
   const token = tokenResponseSchema.parse((await postJson(`${a.url}${runnerPaths.token}`, signAssertion(runner.key, runner.runnerId))).body).accessToken;
@@ -388,7 +406,7 @@ afterAll(async () => {
   clearInterval(opener);
   views.closeAll("closed");
   peer.close();
-  await Promise.all([a.stop(), b.stop(), sameSite.stop(), plain.stop()]);
+  await Promise.all([a.stop(), b.stop(), sameSite.stop(), acme.stop(), plain.stop()]);
   await new Promise<void>((resolve) => {
     if (probe === null) {
       resolve();
@@ -558,6 +576,55 @@ describe("the handshake", () => {
     expect(Number(linked.get("max-age"))).toBeGreaterThan(7_190);
     expect(Number(linked.get("max-age"))).toBeLessThanOrEqual(7_200);
   }, 60_000);
+
+  it("F-144/c3: on a panel at acme.co.uk beside previews on previews.other.co.uk, which the site layout reads as one site, the browser's cross-site frame gets SameSite=None; Partitioned, its tab Lax, and a browser that says nothing the layout's Lax", async () => {
+    const taskId = await boxedTask();
+    const who = await memberOpener();
+    const cases: readonly (readonly [site: string | undefined, dest: string | undefined, cookie: string])[] = [
+      // The pane's frame: the browser reads the real public suffix list, and its `cross-site` wins.
+      ["cross-site", "iframe", "None; Partitioned"],
+      // A cross-site answer that names no destination is still another site.
+      ["cross-site", undefined, "None; Partitioned"],
+      // "Open in a new tab": the preview's host is the tab's own site, so `Lax` is set and sent.
+      ["cross-site", "document", "Lax"],
+      // No Fetch Metadata at all: the site layout's reading, the miss Q325 names.
+      [undefined, undefined, "Lax"],
+    ];
+    for (const [site, dest, cookie] of cases) {
+      const entered = await enter(acme, taskId, web, who, acmeDomain, fetchMetadata(site, dest));
+      expect(entered.host).toContain(`.${acmeDomain}:`);
+      expect([entered.answer.status, sameSiteOf(entered.setCookie)], `${String(site)} ${String(dest)}`).toEqual([302, cookie]);
+    }
+    // The frame's cookie opens the preview on that host.
+    const framed = await enter(acme, taskId, web, who, acmeDomain, fetchMetadata("cross-site", "iframe"));
+    expect((await hit(acme.url, framed.host, "/", { headers: { cookie: framed.cookie } })).status).toBe(200);
+    expect(records.some((record) => record.message === "preview.native-entered" && record.fields["sameSite"] === "none-partitioned" && record.fields["readBy"] === "browser")).toBe(true);
+  }, 60_000);
+
+  it("F-144/c3: each Sec-Fetch-Site value at the handshake: cross-site is never read as the panel's site, same-site is, and same-origin, none, an unknown value or no header fall back to the site layout", async () => {
+    const taskId = await boxedTask();
+    const who = await memberOpener();
+    // A: the panel on `localhost` and previews on `preview.localhost`, which the layout reads as two sites.
+    // The panel's site: `ostra.localhost` and `preview.ostra.localhost`, which it reads as one.
+    const cases: readonly (readonly [replica: PreviewReplica, previewDomain: string, site: string | undefined, dest: string | undefined, cookie: string])[] = [
+      [sameSite, sameSiteDomain, "cross-site", "iframe", "None; Partitioned"],
+      [sameSite, sameSiteDomain, "cross-site", "document", "Lax"],
+      [a, domain, "cross-site", "iframe", "None; Partitioned"],
+      [a, domain, "same-site", "iframe", "Lax"],
+      [a, domain, "same-site", "document", "Lax"],
+      [a, domain, "same-origin", "iframe", "None; Partitioned"],
+      [sameSite, sameSiteDomain, "same-origin", "iframe", "Lax"],
+      [a, domain, "none", "document", "Lax"],
+      [a, domain, "cross-origin", "iframe", "None; Partitioned"],
+      [sameSite, sameSiteDomain, "cross-origin", "iframe", "Lax"],
+      [a, domain, undefined, undefined, "None; Partitioned"],
+      [sameSite, sameSiteDomain, undefined, undefined, "Lax"],
+    ];
+    for (const [replica, previewDomain, site, dest, cookie] of cases) {
+      const entered = await enter(replica, taskId, web, who, previewDomain, fetchMetadata(site, dest));
+      expect([entered.answer.status, sameSiteOf(entered.setCookie)], `${String(site)} ${String(dest)} on ${previewDomain}`).toEqual([302, cookie]);
+    }
+  }, 60_000);
 });
 
 describe("the proxy on every request", () => {
@@ -714,7 +781,11 @@ describe("the checks while it lasts", () => {
     const after = await hit(a.url, entered.host, "/echo", { headers: { cookie: entered.cookie } });
     expect(after.status).toBe(401);
     expect(after.body).toContain("Open this preview from ostra.");
-    expect(attributesOf(after.headers["set-cookie"]?.[0] ?? "").get("max-age")).toBe("0");
+    // Both forms are cleared, since the request can't say which one the browser holds.
+    expect((after.headers["set-cookie"] ?? []).map((line) => [sameSiteOf(line), attributesOf(line).get("max-age")])).toEqual([
+      ["None; Partitioned", "0"],
+      ["Lax", "0"],
+    ]);
     expect(await closed).toBeGreaterThan(0);
   }, 60_000);
 

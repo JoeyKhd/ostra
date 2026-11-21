@@ -16,7 +16,9 @@ import {
   isPreviewDomainHost,
   PREVIEW_COOKIE,
   PREVIEW_COOKIE_MAX_MS,
+  previewCookieClears,
   previewCookieHeader,
+  previewCookieSameSite,
   previewCookieValue,
   previewFrameSource,
   previewHost,
@@ -33,10 +35,10 @@ import type { PreviewCookieClaims } from "./previews/tokens.ts";
 import { parseServerSettings } from "./settings.ts";
 
 // Milestone 8's ticket 25 (F-144, ADR 0068 "The native preview"): the pure parts of the preview
-// domain. The site layout that picks the cookie's `SameSite`, the cookie's own attributes and its
-// value (an HMAC under the secrets key), where a preview host is and how a browser reaches it, the
-// handshake's redirect, the strips the proxy adds, and the instance's domain check, against fakes
-// and against a real TLS server on loopback. Core's proxy itself is `apps/core/src/previews/native.test.ts`.
+// domain. The cookie's `SameSite` from the browser's Fetch Metadata and the site layout it falls
+// back on (Q325), the cookie's own attributes and its value (an HMAC under the secrets key), where
+// a preview host is and how a browser reaches it, the handshake's redirect, the strips the proxy
+// adds, and the instance's domain check, against fakes and against a real TLS server on loopback. Core's proxy itself is `apps/core/src/previews/native.test.ts`.
 
 const at = Date.UTC(2026, 10, 21, 12);
 const previewId = previewIdSchema.parse("k3f7d2abcdefghijklmnopqrst");
@@ -63,16 +65,65 @@ describe("the site layout and the cookie (F-144/c3)", () => {
     }
   });
 
+  it("F-144/c3: the handshake's SameSite comes from the browser's own Sec-Fetch-Site and Sec-Fetch-Dest, a cross-site always taken, and the site layout only where the browser doesn't say", () => {
+    type Row = readonly [site: string | undefined, dest: string | undefined, layout: "same-site" | "cross-site", sameSite: "lax" | "none-partitioned", readBy: "browser" | "layout"];
+    const rows: readonly Row[] = [
+      // `cross-site`: the browser's word wins over a layout that reads one site (the `acme.co.uk` miss).
+      ["cross-site", "iframe", "same-site", "none-partitioned", "browser"],
+      ["cross-site", "iframe", "cross-site", "none-partitioned", "browser"],
+      ["cross-site", "frame", "same-site", "none-partitioned", "browser"],
+      ["cross-site", undefined, "same-site", "none-partitioned", "browser"],
+      ["cross-site", "empty", "same-site", "none-partitioned", "browser"],
+      // A tab of its own across sites: the preview's host is the page's own site there, so `Lax`.
+      ["cross-site", "document", "same-site", "lax", "browser"],
+      ["cross-site", "document", "cross-site", "lax", "browser"],
+      // `same-site`: the panel's site, over a layout that errs towards cross-site.
+      ["same-site", "iframe", "cross-site", "lax", "browser"],
+      ["same-site", "document", "cross-site", "lax", "browser"],
+      ["same-site", undefined, "cross-site", "lax", "browser"],
+      // `same-origin` and `none` name no panel: the layout reads the site.
+      ["same-origin", "iframe", "cross-site", "none-partitioned", "layout"],
+      ["same-origin", "iframe", "same-site", "lax", "layout"],
+      ["none", "document", "cross-site", "lax", "layout"],
+      ["none", "document", "same-site", "lax", "layout"],
+      // An unknown value, or a browser that sends neither header: the layout, as before Q325.
+      ["cross-origin", "iframe", "cross-site", "none-partitioned", "layout"],
+      ["cross-origin", "iframe", "same-site", "lax", "layout"],
+      [undefined, undefined, "cross-site", "none-partitioned", "layout"],
+      [undefined, undefined, "same-site", "lax", "layout"],
+      [undefined, "document", "cross-site", "lax", "layout"],
+    ];
+    for (const [site, dest, layout, sameSite, readBy] of rows) {
+      const choice = previewCookieSameSite({ site, dest }, layout);
+      expect([choice.sameSite, choice.readBy], `${String(site)} ${String(dest)} on a ${layout} layout`).toEqual([sameSite, readBy]);
+      if (site === "cross-site") {
+        expect(choice.site).toBe("cross-site");
+      }
+    }
+    // The header's case and spaces as a proxy might pass them.
+    expect(previewCookieSameSite({ site: " Cross-Site ", dest: "IFRAME" }, "same-site").sameSite).toBe("none-partitioned");
+    // The `acme.co.uk` layout end to end: the rule reads one site, the browser's frame gets the partitioned cookie.
+    const acme = previewSiteLayout("https://acme.co.uk", "previews.other.co.uk");
+    expect(acme).toBe("same-site");
+    expect(previewCookieSameSite({ site: "cross-site", dest: "iframe" }, acme)).toEqual({ sameSite: "none-partitioned", site: "cross-site", readBy: "browser" });
+    expect(previewCookieSameSite({ site: undefined, dest: undefined }, acme)).toEqual({ sameSite: "lax", site: "same-site", readBy: "layout" });
+  });
+
   it("F-144/c3: the cookie is __Host-, host-only, Secure and HttpOnly, partitioned across sites and Lax on the panel's site, and its lifetime is its Max-Age", () => {
-    const cross = previewCookieHeader("v", "cross-site", 3600.7);
+    const cross = previewCookieHeader("v", "none-partitioned", 3600.7);
     expect(cross).toBe(`${PREVIEW_COOKIE}=v; Path=/; Secure; HttpOnly; SameSite=None; Partitioned; Max-Age=3600`);
-    const same = previewCookieHeader("v", "same-site", 43_200);
+    const same = previewCookieHeader("v", "lax", 43_200);
     expect(same).toBe(`${PREVIEW_COOKIE}=v; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=43200`);
     for (const header of [cross, same]) {
       expect(header.startsWith("__Host-")).toBe(true);
       expect(header.toLowerCase()).not.toContain("domain=");
     }
-    expect(previewCookieHeader("", "same-site", -5)).toContain("Max-Age=0");
+    expect(previewCookieHeader("", "lax", -5)).toContain("Max-Age=0");
+    // A clear names both forms, since a refused request can't say which one the browser holds.
+    expect(previewCookieClears()).toEqual([
+      `${PREVIEW_COOKIE}=; Path=/; Secure; HttpOnly; SameSite=None; Partitioned; Max-Age=0`,
+      `${PREVIEW_COOKIE}=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0`,
+    ]);
     expect(PREVIEW_COOKIE_MAX_MS).toBe(12 * 60 * 60_000);
     // The value a request carries, among the app's own cookies.
     expect(previewCookieValue(`theme=dark; ${PREVIEW_COOKIE}=abc.def; sid=1`)).toBe("abc.def");

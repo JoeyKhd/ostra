@@ -95,18 +95,17 @@ export const previewHostOrigin = (host: string, origin: PreviewOrigin): string =
 export const previewFrameSource = (domain: string, corePublicUrl: string): string => previewHostOrigin(`*.${domain}`, previewOriginOf(corePublicUrl));
 
 /**
- * Whether the preview domain is the panel's site (`same-site`: the cookie is `SameSite=Lax`) or
- * another (`cross-site`: `SameSite=None; Partitioned`, which a cross-site frame needs), as a
- * browser reads the two hosts (ADR 0068, Q307):
+ * Whether the preview domain is the panel's site or another, as the install's settings read the two
+ * hosts (ADR 0068, Q307). It's the fallback for a handshake whose browser doesn't say
+ * (`previewCookieSameSite`, Q325), and the settings page's reading:
  * - a panel on an IP address or a one-label name (`localhost`) shares a site with no domain under
  *   it: browsers treat `localhost` as a suffix of its own (spike 08 §3.5);
  * - otherwise the domain is the panel's site when it's under the panel's host, or under the
  *   panel's parent name when the panel's host has three labels or more (`ostra.acme.dev` and
  *   `preview.acme.dev`).
  * Without the public suffix list (a dependency ostra doesn't take), a panel on a two-part suffix's
- * apex (`acme.co.uk`) beside a preview domain on another name of it reads as one site: the frame
- * then needs "Open in a new tab". Every other mistake it can make reads `cross-site`, which works
- * in both a frame and a tab.
+ * apex (`acme.co.uk`) beside a preview domain on another name of it reads as one site. Every other
+ * mistake it can make reads `cross-site`. A browser's own `Sec-Fetch-Site` corrects both.
  */
 export type PreviewSiteLayout = "same-site" | "cross-site";
 
@@ -126,13 +125,52 @@ export const previewSiteLayout = (panelUrl: string, domain: string): PreviewSite
 /** The longest a preview's cookie lives, whatever the session or the link allows *(working value)*. */
 export const PREVIEW_COOKIE_MAX_MS = 12 * 60 * 60_000;
 
+/** The cookie's `SameSite`: `Lax`, or `None; Partitioned`, which a frame on another site than the panel's needs. */
+export type PreviewCookieSameSite = "lax" | "none-partitioned";
+
+/** A request's own Fetch Metadata as the browser sent it: `Sec-Fetch-Site` and `Sec-Fetch-Dest`, `undefined` when absent. */
+export type PreviewFetchMetadata = { readonly site: string | undefined; readonly dest: string | undefined };
+
 /**
- * The handshake's `Set-Cookie` (ADR 0068): `__Host-ostra-preview`, host-only (no `Domain`),
- * `Path=/`, `Secure`, `HttpOnly`, and `SameSite=None; Partitioned` when the preview domain is
- * another site than the panel's, `SameSite=Lax` when it's the same. `maxAgeSeconds` 0 clears it.
+ * The handshake's cookie, and what read the site: the browser's `Sec-Fetch-Site`, or the install's
+ * site layout where the browser didn't say.
  */
-export const previewCookieHeader = (value: string, layout: PreviewSiteLayout, maxAgeSeconds: number): string =>
-  `${PREVIEW_COOKIE}=${value}; Path=/; Secure; HttpOnly; ${layout === "cross-site" ? "SameSite=None; Partitioned" : "SameSite=Lax"}; Max-Age=${String(Math.max(0, Math.floor(maxAgeSeconds)))}`;
+export type PreviewCookieChoice = { readonly sameSite: PreviewCookieSameSite; readonly site: PreviewSiteLayout; readonly readBy: "browser" | "layout" };
+
+/**
+ * The handshake's `SameSite`, per request (ADR 0068, Q325): from the browser's own Fetch Metadata,
+ * which reads "site" by the real public suffix list, with the install's site layout as the fallback.
+ * - **The site:** `Sec-Fetch-Site: cross-site` is another site than the panel's, always, whatever
+ *   the layout says; `same-site` is the panel's. `same-origin` (the preview's own page sent it),
+ *   `none` (a person typed it), an unknown value or none at all don't name the panel's site, so the
+ *   layout reads it.
+ * - **The attributes:** `None; Partitioned` on another site, except in a tab of its own
+ *   (`Sec-Fetch-Dest: document`), where the preview's host is the page's own site and a `Lax`
+ *   cookie is set and sent; `Lax` on the panel's site, in a frame or a tab.
+ */
+export const previewCookieSameSite = (metadata: PreviewFetchMetadata, layout: PreviewSiteLayout): PreviewCookieChoice => {
+  const said = metadata.site?.trim().toLowerCase();
+  const tab = metadata.dest?.trim().toLowerCase() === "document";
+  const browser: PreviewSiteLayout | null = said === "cross-site" ? "cross-site" : said === "same-site" ? "same-site" : null;
+  const site = browser ?? layout;
+  return { sameSite: site === "cross-site" && !tab ? "none-partitioned" : "lax", site, readBy: browser === null ? "layout" : "browser" };
+};
+
+/**
+ * A `Set-Cookie` for the preview's cookie (ADR 0068): `__Host-ostra-preview`, host-only (no
+ * `Domain`), `Path=/`, `Secure`, `HttpOnly`, and `SameSite=None; Partitioned` or `SameSite=Lax`
+ * (`previewCookieSameSite`). `maxAgeSeconds` 0 clears it.
+ */
+export const previewCookieHeader = (value: string, sameSite: PreviewCookieSameSite, maxAgeSeconds: number): string =>
+  `${PREVIEW_COOKIE}=${value}; Path=/; Secure; HttpOnly; ${sameSite === "none-partitioned" ? "SameSite=None; Partitioned" : "SameSite=Lax"}; Max-Age=${String(Math.max(0, Math.floor(maxAgeSeconds)))}`;
+
+/**
+ * The `Set-Cookie` lines that clear the preview's cookie, whichever one the browser holds: the
+ * partitioned one a frame on another site got, and the `Lax` one. A refused request's own Fetch
+ * Metadata names its initiator (often the preview's own page), not the frame's top, so it can't say
+ * which; a context drops the line it can't take.
+ */
+export const previewCookieClears = (): readonly string[] => [previewCookieHeader("", "none-partitioned", 0), previewCookieHeader("", "lax", 0)];
 
 /** The preview's cookie's value in a `Cookie` header, or `null`. The first one wins, as browsers send the most specific first. */
 export const previewCookieValue = (cookie: string | readonly string[] | undefined): string | null => {

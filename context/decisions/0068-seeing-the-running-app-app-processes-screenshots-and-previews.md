@@ -231,7 +231,7 @@ The docs recommend a registrable domain of the preview's own, as v0, Cloudflare 
 **The handshake** (the Coder, Ona, Modal and CodeSandbox pattern, §4.4):
 1. The panel asks for the preview. Core checks that the member can open the task, or that the link is valid.
 2. Core mints a one-time code: single use, 60 s, bound to the member or the link, the task, the port and the lease epoch.
-3. The browser goes to `https://<host>/.ostra/enter?code=…`. Core sets `__Host-ostra-preview` there: HttpOnly, Secure, and `SameSite=None; Partitioned` when the preview domain is another site, `Lax` when it's the panel's site. Then it redirects to the path.
+3. The browser goes to `https://<host>/.ostra/enter?code=…`. Core sets `__Host-ostra-preview` there: HttpOnly, Secure, and `SameSite=None; Partitioned` in a frame on another site than the panel's, `Lax` in a tab or on the panel's site, by the browser's own `Sec-Fetch-Site` and `Sec-Fetch-Dest` (Q325, below). Then it redirects to the path.
 4. Every request checks the cookie. It lives at most as long as the member's panel session, or the link, and at most 12 hours *(working value)*. Core checks membership and the lease again on each new connection and every 5 minutes.
 
 The cookie set inside the pane's frame is a partitioned one, so "Open in a new tab" makes its own handshake (§4.5).
@@ -262,7 +262,7 @@ These are the lessons of Gitpod's CVE-2023-0957 and CVE-2024-21583 and Coder's G
 - **Where a preview host is.** On `OSTRA_CORE_PUBLIC_URL`'s scheme and port, since the wildcard record points at the ingress in front of core: so a real preview domain needs core's public address on `https` (browsers drop the cookie on plain `http`, spike 08), and a development install on `preview.localhost` uses core's own port over `http`. The panel's `frame-src` is those hosts on that scheme and port, nothing wider.
 - **The task's `previewId`** is set at its first `enterNativePreview` (128 random bits, lower-case base32).
 - **The code** is bound to the panel's login session too (`PreviewCode.authSessionId`, an additive column), so the cookie lasts no longer than that session (and the link, and 12 hours), and a signed-out session ends it at the next check. A watch-only viewer (a named person, a link without input) gets no code; neither does a runner on the HTTP carrier (`runner-cannot-tunnel`). The handshake redeems it on the host it names only: another port's host or another task's is refused and leaves the code unspent.
-- **The cookie** is stateless: an HMAC under the secrets key over the organization, the task, the preview's key and port, the member and their login session (or the link), and a deadline, so any replica reads it. `SameSite` follows the install's site layout, read without the public suffix list (Q325, open).
+- **The cookie** is stateless: an HMAC under the secrets key over the organization, the task, the preview's key and port, the member and their login session (or the link), and a deadline, so any replica reads it. Its `SameSite` is picked at each handshake from the browser's own Fetch Metadata, with the install's site layout as the fallback (Q325, under "Decided by the lead").
 - **The view is core's.** On each new connection, and every 5 minutes while a socket is open, the replica checks the cookie's viewer and lease against the rows (`nativeViewFor`) and gets the viewer's open `native` view on the task's lease, or opens one (`preview.open` in `tunnel` mode). A view whose box connection went (a stale lease, a reopen) is closed and the next one opened under the same host. A refusal for good (a revoked link, a removed member, a signed-out session) clears the cookie, ends the browser's sockets and closes the view.
 - **Warm while used.** The pane can't heartbeat a view it doesn't know, and "Open in a new tab" has no pane, so the replica with the browser's traffic heartbeats the view every 30 s while a request or a socket is on it, as an open `ostra preview` does (ticket 23), to the same warm cap. An HMR socket in a forgotten tab therefore holds the box up to the cap, as an open `ostra preview` does.
 - **The rewrites** also drop any client `Ostra-*` header, so no page names another port to the box (`ostra-target-port` is core's alone), and the app can't set or clear the preview's own cookie.
@@ -289,6 +289,13 @@ On the research's recommendations, 2026-11-21, which the maintainer can change:
 - **Recordings are frame reels** (Q312).
 - **Detected ports come later** (Q313).
 - **One shared page per preview** in the browser view, with input from any project member (Q314).
+
+**The preview cookie's `SameSite` comes from the browser** (Q325; the lead, on the builder's recommendation, 2026-11-21). ostra doesn't carry the public suffix list (a data file or a dependency, `tldts` or `psl`), so ticket 25 read the panel's site and the preview domain's with a rule of its own (`previewSiteLayout`), which misreads one layout: a panel on the apex of a two-part suffix (`acme.co.uk`) beside previews on another name of it (`previews.other.co.uk`) reads as one site, so the frame got a `Lax` cookie it can't use. The handshake now picks the attributes from the request's own `Sec-Fetch-Site` and `Sec-Fetch-Dest`, which the browser fills in by the real list (`previewCookieSameSite`):
+- `cross-site` is another site, always, whatever the rule says: `SameSite=None; Partitioned`, except a tab of its own (`Sec-Fetch-Dest: document`), where the preview's host is the page's own site and gets `Lax`;
+- `same-site` is the panel's site: `Lax`, in a frame or a tab;
+- `same-origin` and `none` name no panel, and a browser that sends neither header (or a value it doesn't know) is read by the rule: `None; Partitioned` across sites, except a tab, and `Lax` on the panel's site.
+
+A refused request's cookie is cleared in both forms, the partitioned one and the `Lax` one, since its own Fetch Metadata names its initiator (often the preview's page), not the frame's top. The rule stays as the fallback and as the settings page's reading of the layout. Options not taken: keep the rule alone and document the miss; or carry the public suffix list, a dependency (ADR 0007) for one layout the headers already settle.
 
 ## If a spike fails
 

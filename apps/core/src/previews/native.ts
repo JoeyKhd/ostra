@@ -23,7 +23,9 @@ import {
   PREVIEW_ENTER_PATH,
   PREVIEW_HEARTBEAT_MS,
   previewCheckMark,
+  previewCookieClears,
   previewCookieHeader,
+  previewCookieSameSite,
   previewCookieValue,
   previewOriginOf,
   previewRedirectPath,
@@ -49,8 +51,10 @@ import type { TunnelHub } from "./tunnels.ts";
 // - **The handshake:** `GET /.ostra/enter?code=…&path=…` on a preview host redeems the one-time code
 //   the panel minted (`redeemNativeEntry`: single use, 60 s, bound to the viewer, the task, the port
 //   and the lease epoch, and to the host's preview ID and port), sets `__Host-ostra-preview`
-//   (host-only, `Secure; HttpOnly`, `SameSite=None; Partitioned` across sites, `Lax` on the panel's
-//   site; at most 12 hours, the member's session or the link), and redirects to the path.
+//   (host-only, `Secure; HttpOnly`; `SameSite=None; Partitioned` in a frame on another site than the
+//   panel's, `Lax` in a tab or on the panel's site, by the browser's own `Sec-Fetch-Site` and
+//   `Sec-Fetch-Dest`, with the install's site layout where it sends neither (Q325); at most 12
+//   hours, the member's session or the link), and redirects to the path.
 // - **Every request** needs that cookie (an HMAC under the secrets key), for the host it names.
 //   Without one, the host answers a small page that says to open the preview from ostra, and
 //   nothing of the app. On each new connection and every 5 minutes core checks the viewer and the
@@ -82,7 +86,7 @@ export type NativePreviewsDeps = {
   readonly settings: {
     /** `OSTRA_PREVIEW_DOMAIN`, lower-case. */
     readonly domain: string;
-    /** `OSTRA_PUBLIC_URL`: the one origin that may frame a preview, and its site layout. */
+    /** `OSTRA_PUBLIC_URL`: the one origin that may frame a preview, and the site layout a handshake falls back on. */
     readonly publicUrl: string;
     /** `OSTRA_CORE_PUBLIC_URL`: preview hosts are served on its scheme and port. */
     readonly corePublicUrl: string;
@@ -269,8 +273,6 @@ export const createNativePreviews = (deps: NativePreviewsDeps): NativePreviews =
   const cookiesOnce = (): Promise<PreviewCookies> => (cookies ??= deps.secret().then((secret) => createPreviewCookies(secret)));
   let ticker: ReturnType<typeof setInterval> | undefined;
 
-  const clearCookie = (): string => previewCookieHeader("", layout, 0);
-
   const page = (response: ServerResponse, status: number, kind: PageKind, clear: boolean): void => {
     if (response.headersSent) {
       response.destroy();
@@ -284,7 +286,7 @@ export const createNativePreviews = (deps: NativePreviewsDeps): NativePreviews =
       "content-security-policy": `default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors ${panelOrigin}`,
       "x-content-type-options": "nosniff",
       "referrer-policy": "no-referrer",
-      ...(clear ? { "set-cookie": clearCookie() } : {}),
+      ...(clear ? { "set-cookie": [...previewCookieClears()] } : {}),
     });
     response.end(body);
   };
@@ -453,15 +455,17 @@ export const createNativePreviews = (deps: NativePreviewsDeps): NativePreviews =
     const issuer = await cookiesOnce();
     const claims: PreviewCookieClaims = { ...entered.entry, grantId: issuer.newGrantId() };
     const maxAge = (claims.expiresAt - deps.clock.now()) / 1000;
+    // The browser reads "site" by the real public suffix list: its `cross-site` is always taken.
+    const cookie = previewCookieSameSite({ site: first(request.headers["sec-fetch-site"]), dest: first(request.headers["sec-fetch-dest"]) }, layout);
     response.writeHead(302, {
-      "set-cookie": previewCookieHeader(issuer.issue(claims), layout, maxAge),
+      "set-cookie": previewCookieHeader(issuer.issue(claims), cookie.sameSite, maxAge),
       location: previewRedirectPath(url.searchParams.get("path")),
       "cache-control": "no-store",
       "referrer-policy": "no-referrer",
       "content-length": "0",
     });
     response.end();
-    logger.info("preview.native-entered", { taskId: claims.taskId, port: claims.port, viewer: claims.viewer.kind, layout });
+    logger.info("preview.native-entered", { taskId: claims.taskId, port: claims.port, viewer: claims.viewer.kind, sameSite: cookie.sameSite, site: cookie.site, readBy: cookie.readBy });
     // The view opens now, so the box connects while the browser follows the redirect.
     const grant: Grant = { id: claims.grantId, claims, host, previewId: key.previewId, view: null, checkedAt: 0, checks: 0, checking: null, holder: null, lastUse: Date.now(), active: 0, sockets: new Map() };
     grants.set(claims.grantId, grant);

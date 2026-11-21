@@ -2,7 +2,7 @@
 
 **Who answers:** 👤 = the maintainer's call · 🔬 = research informs it, then we decide together · 🔧 = a build task with a known fix: no decision is needed, and the row leaves when the fix is committed.
 
-A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q324). They are two separate ranges: Q-20 and Q20 are different questions.
+A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q325). They are two separate ranges: Q-20 and Q20 are different questions.
 
 ## Settled
 
@@ -499,11 +499,13 @@ Ticket 34 of that spec asks the maintainer to review the lead's calls; any the m
 | Q323 How do updates work? | ADR 0069, F-145, the lead's call: a daily check and an on-demand one; an update shows its diff and waits for an admin's accept or dismiss; a running task gets the accepted pin at its next session |
 | Q324 Which MCP registries? | ADR 0069, F-145, the lead's call: GitHub's curated registry on every organization's list, plus any registry URL an admin names. The official registry, which asks hosts not to call it, isn't listed by default |
 
+#### Settled while building milestone 8 (2026-11-21)
+
+| Question | Settled in |
+|---|---|
+| Q325 How does ostra tell the panel's site from the preview domain's, without the public suffix list? | ADR 0068 ("Decided by the lead"), F-144, the lead on the builder's recommendation: by the browser's own `Sec-Fetch-Site` and `Sec-Fetch-Dest` at each handshake. `None; Partitioned` for a frame on another site, `Lax` in a tab or on the panel's site, and a browser's `cross-site` is never read as the panel's site. Ticket 25's rule (`previewSiteLayout`) is the fallback for a browser that sends neither. No dependency |
+
 ## Open
-
-### Raised by milestone 8 (2026-11-21)
-
-**Q325 👤 How does ostra tell the panel's site from the preview domain's, without the public suffix list?** (F-144, ADR 0068, milestone 8's ticket 25). The handshake's cookie is `SameSite=Lax` when the preview domain is the panel's site and `SameSite=None; Partitioned` when it's another (Q307), and the settings page warns on the first (`instance-preview-domain.md`). Browsers decide "site" by the public suffix list, which ostra doesn't carry: it's a data file or a dependency (`tldts`, `psl`). Ticket 25 reads the two hosts with a rule of its own (`previewSiteLayout`): a panel on an IP address or a one-label name shares a site with nothing under it (browsers treat `localhost` as a suffix of its own, spike 08); otherwise the domain is the panel's site when it's under the panel's host, or under the panel's parent name when the panel's host has three labels or more. It errs towards `cross-site`, which works in a frame and in a tab, except in one layout: a panel on the apex of a two-part suffix (`acme.co.uk`) beside a preview domain on another name of the same suffix (`previews.other.co.uk`) reads as one site, so the cookie is `Lax` and the frame gets no cookie ("Open in a new tab" still works). *Options:* keep the rule and say so in the docs; carry the public suffix list (a dependency, ADR 0007); or pick the attributes per handshake from the browser's own `Sec-Fetch-Site` and `Sec-Fetch-Dest` (`None; Partitioned` only for a cross-site frame, `Lax` everywhere else), with the rule as the fallback for a browser that sends neither. *Recommendation:* the browser's own headers with the rule as the fallback: they use the real list, need no dependency, and give a new tab `Lax` even across sites.
 
 ### Raised by milestone 5 (2026-11-20)
 
