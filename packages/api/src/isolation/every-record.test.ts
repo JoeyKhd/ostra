@@ -374,6 +374,10 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   AgentProfileLibraryItem: ["library.list", "library.get", "agentProfiles.get"],
   LibrarySource: ["library.sources.list", "library.list", "library.searchState"],
   LibrarySuggestion: ["library.suggestions.list", "library.suggestions.mine", "library.counts"],
+  // Milestone 9 (its ticket 04): no procedure reads them yet; ticket 14 adds theirs (the thread's
+  // files, downloads, "What the agent got"). The every-ID case below covers their rows meanwhile.
+  MessageFile: [],
+  TaskTicketRead: [],
 };
 
 /** Calls a procedure by its dotted path, as the panel does. */
@@ -422,6 +426,21 @@ describe("the guards (F-049)", () => {
       for (const path of paths) {
         expect(known.has(path), path).toBe(true);
       }
+    }
+  });
+
+  it("F-148/c3: a message's files and a ticket's reads are built in A's open and restricted projects and in B, and every leak check looks for them", () => {
+    for (const model of ["MessageFile", "TaskTicketRead"] as const) {
+      expect(isolationModelNames()).toContain(model);
+      expect(isolationProjectModels.has(model)).toBe(true);
+      expect(Object.keys(readers)).toContain(model);
+      const [inOpen, inRestricted, inB] = [open.get(model), restricted.get(model), other.get(model)];
+      expect(new Set([inOpen, inRestricted, inB]).size, model).toBe(3);
+      // Every procedure of every role below is checked for these IDs: B's, and the restricted project's.
+      expect(idsOfB, model).toContain(inB);
+      expect(idsOfRestricted, model).toContain(inRestricted);
+      expect(idsOfB).not.toContain(inOpen);
+      expect(idsOfRestricted).not.toContain(inOpen);
     }
   });
 });

@@ -173,6 +173,8 @@ describe("minor 3's events", () => {
       // Milestone 6 (F-105, F-012).
       "changes-requested",
       "linear-follow-up",
+      // Milestone 9 (F-149).
+      "ticket-update",
     ]);
   });
 

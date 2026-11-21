@@ -117,6 +117,9 @@ export const isolationModelList = [
   "AgentProfileLibraryItem",
   "LibrarySource",
   "LibrarySuggestion",
+  // Milestone 9 (its ticket 04).
+  "MessageFile",
+  "TaskTicketRead",
 ] as const;
 
 export type IsolationModelName = (typeof isolationModelList)[number];
@@ -473,6 +476,37 @@ export const isolationModels: Readonly<Record<IsolationModelName, FixtureBuilder
     (await db.librarySource.create({ data: { organizationId, kind: "github_owner", value: `owner-${tag()}`, addedByMemberId: memberId } })).id,
   LibrarySuggestion: async ({ db, organizationId, memberId }) =>
     (await db.librarySuggestion.create({ data: { organizationId, memberId, reference: "ostra-test-skills/demo-skills@changelog", note: "A fixture note." } })).id,
+  // Milestone 9 (its ticket 04): a member's file sent with a message of the task, its text beside it.
+  MessageFile: async ({ db, organizationId, projectId, memberId }, ensure) =>
+    (
+      await db.messageFile.create({
+        data: {
+          organizationId,
+          projectId,
+          taskId: await ensure("Task"),
+          memberId,
+          origin: "member",
+          state: "sent",
+          sessionId: await ensure("Session"),
+          clientMessageId: `client-${tag()}`,
+          eventSeq: 1,
+          position: 0,
+          name: "_(rm -rf _) spec.docx",
+          kind: "document",
+          contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          size: 1,
+          sha256: randomBytes(32).toString("hex"),
+          blobId: await ensure("Blob"),
+          boxPath: `attachments/1/spec-${tag()}.docx`,
+          textState: "ready",
+          textBlobId: await ensure("Blob"),
+          textWords: 3,
+          sentAt: new Date(),
+        },
+      })
+    ).id,
+  TaskTicketRead: async ({ db, organizationId, projectId }, ensure) =>
+    (await db.taskTicketRead.create({ data: { organizationId, projectId, taskId: await ensure("Task"), round: 1, reason: "start", descriptionSha256: randomBytes(32).toString("hex"), comments: [], fileKeys: [] } })).id,
 };
 
 /** The models without `organizationId`, each with why it has none (reviewed: ADR 0053). */
@@ -558,6 +592,9 @@ export const isolationProjectModels: ReadonlySet<IsolationModelName> = new Set<I
   "PreviewLink",
   "PreviewView",
   "PreviewCode",
+  // Milestone 9.
+  "MessageFile",
+  "TaskTicketRead",
 ]);
 
 export const isolationModelNames = (): readonly IsolationModelName[] => isolationModelList;

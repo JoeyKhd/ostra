@@ -570,6 +570,11 @@ model Model {
   /// `catalogReasoning` and never `adminReasoning`, an admin's, which wins over it.
   catalogReasoning       Json?
   adminReasoning         Json?
+  /// Milestone 9 (Q335, ADR 0070): models.dev's `modalities.input` for the model, as the catalog
+  /// sync writes it (`["text", "image"]`); `null` when the catalog says nothing.
+  catalogInputModalities Json?
+  /// An organization admin's "Reads images", which wins over the catalog: `null` follows it.
+  adminImageInput        Boolean?
   /// Whether the endpoint still lists it.
   listed             Boolean       @default(true)
   createdAt          DateTime      @default(now())
@@ -951,6 +956,9 @@ model Project {
   previewLinks         PreviewLink[]
   previewViews         PreviewView[]
   previewCodes         PreviewCode[]
+  // ---- milestone 9 (ADR 0070) ----
+  messageFiles         MessageFile[]
+  taskTicketReads      TaskTicketRead[]
 
   // The target of every project record's composite foreign key (ADR 0026).
   @@unique([id, organizationId])
@@ -1898,6 +1906,9 @@ model Task {
   previewLinks         PreviewLink[]
   previewViews         PreviewView[]
   previewCodes         PreviewCode[]
+  // ---- milestone 9 ----
+  messageFiles         MessageFile[]
+  ticketReads          TaskTicketRead[]
 
   @@unique([id, projectId])
   /// One active code task per ticket per project (spec section 11, item 12).
@@ -2410,6 +2421,9 @@ model Blob {
   draftImages RefineDraftImage[]
   // ---- milestone 8 (F-121) ----
   taskAttachments TaskAttachment[]
+  // ---- milestone 9 (F-148, F-150) ----
+  messageFiles     MessageFile[] @relation("MessageFileBlob")
+  messageFileTexts MessageFile[] @relation("MessageFileTextBlob")
 
   @@unique([store, key])
   @@unique([id, organizationId])
@@ -3802,6 +3816,8 @@ enum HeldTurnOrigin {
   // Milestone 6 (F-105, F-012): a reviewer's "changes requested", a member's follow-up from Linear.
   changes_requested
   linear_follow_up
+  // Milestone 9 (F-149): a ticket's changes, on a reopen or a member's "Send ticket updates".
+  ticket_update
 }
 
 enum MemoryKind {
@@ -4538,4 +4554,140 @@ enum LibrarySuggestionState {
   open
   installed
   dismissed
+}
+
+// =============================================================================
+// Milestone 9 (spec section 5.3, ADR 0070): files for the agent
+// =============================================================================
+
+/// Whose file it is: a member's upload, or a file core fetched from a ticket.
+enum MessageFileOrigin {
+  member
+  ticket
+}
+
+/// A file's state: a member's `uploaded` until a message takes it (`sent`) or the sweep deletes it
+/// (`expired`); a ticket's `sent`, `left_out` (over a limit, not fetched) or `failed` (its download
+/// failed, a Retry makes a new row).
+enum MessageFileState {
+  uploaded
+  sent
+  expired
+  left_out
+  failed
+}
+
+/// What a file is, told by core from its bytes (Q339).
+enum MessageFileKind {
+  image
+  document
+  text
+  file
+}
+
+/// A file's text (F-150): beside it, none to read, unreadable, or reading turned off on the install.
+enum FileTextState {
+  none
+  ready
+  failed
+  off
+}
+
+/// Why ostra read a ticket for its task (F-149).
+enum TicketReadReason {
+  start
+  reopen
+  member
+  retry
+}
+
+/// A file for the agent (F-148, F-149, F-150, ADR 0070): a member's upload, bound at send to its
+/// message, or a ticket's file core fetched. Its bytes and its text are blobs of the task once sent,
+/// so they follow the task's retention (F-079). A blob's deletion leaves the row, its blob unset.
+model MessageFile {
+  id              String            @id @default(uuid(7))
+  organizationId  String
+  projectId       String
+  project         Project           @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  /// The task its message went to; `null` until sent.
+  taskId          String?
+  task            Task?             @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  /// The member who uploaded it; `null` for a ticket's.
+  memberId        String?
+  origin          MessageFileOrigin
+  state           MessageFileState  @default(uploaded)
+  /// A left-out or failed file's reason, as the protocol's code (`too-big`, `download-failed`).
+  reason          String?
+  /// The `user.message` it went with: its session, its client message ID and its number in the task's log.
+  sessionId       String?
+  clientMessageId String?
+  eventSeq        Int?
+  /// Its place in its message, from 0.
+  position        Int?
+  /// Its safe name (`safeFileName`). The member's or the ticket's text: never logged.
+  name            String
+  kind            MessageFileKind
+  /// The type core detected from its bytes, never the browser's.
+  contentType     String
+  size            Int
+  /// SHA-256 of its bytes, lower-case hex; `null` for a ticket's file that wasn't fetched.
+  sha256          String?
+  /// `null` for a left-out or failed ticket file, and once the blob is gone.
+  blobId          String?
+  blob            Blob?             @relation("MessageFileBlob", fields: [blobId, organizationId], references: [id, organizationId], onDelete: SetNull)
+  /// Its path under the workspace root's `.ostra/` (`attachments/<n>/<name>`, `ticket/<name>`), set at send. Never logged.
+  boxPath         String?
+  /// Whether it went to the model as an image too.
+  asImage         Boolean           @default(false)
+  textState       FileTextState     @default(none)
+  /// A `failed` text's reason, as the reader's code (`encrypted`, `too-big`).
+  textReason      String?
+  /// Its text's blob (`message-file-text`). The text is never logged.
+  textBlobId      String?
+  textBlob        Blob?             @relation("MessageFileTextBlob", fields: [textBlobId, organizationId], references: [id, organizationId], onDelete: SetNull)
+  textWords       Int?
+  textTruncated   Boolean           @default(false)
+  /// A ticket's file: where on the ticket it was (`description`, `comment`, `attachment`) and which comment.
+  ticketWhere     String?
+  ticketCommentId String?
+  /// The SHA-256 of the tracker's URL of a ticket's file, to know it again; never the URL.
+  ticketSourceKey String?
+  /// The failed ticket file a Retry fetched again, by ID.
+  retryOfId       String?
+  createdAt       DateTime          @default(now())
+  sentAt          DateTime?
+
+  /// Two files never share a place in the box.
+  @@unique([taskId, boxPath], where: raw("\"boxPath\" IS NOT NULL"), map: "message_file_one_per_place")
+  @@index([taskId, eventSeq, position])
+  @@index([state, createdAt])
+  @@index([organizationId, projectId, memberId, state])
+  @@map("message_file")
+}
+
+/// One read of a ticket for its task (F-149, ADR 0070): what the agent got, as digests and IDs to
+/// compare the next read with (`ticketChanges`). Never the ticket's text: that lives only in the
+/// events and the prompts, and is never logged.
+model TaskTicketRead {
+  id                String           @id @default(uuid(7))
+  organizationId    String
+  projectId         String
+  project           Project          @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  taskId            String
+  task              Task             @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: Cascade)
+  /// 1 at the task's start, one more each read after it.
+  round             Int
+  reason            TicketReadReason
+  readAt            DateTime         @default(now())
+  /// The SHA-256 of the description as the agent got it; never its text.
+  descriptionSha256 String
+  /// A JSON array of `{ id, updatedAt }`, the comments the agent got; never a comment's text.
+  comments          Json             @default("[]")
+  /// A JSON array of the files' source keys (each the SHA-256 of its URL); never a URL.
+  fileKeys          Json             @default("[]")
+  /// The `user.message` the read went with, by its number in the task's log, if any.
+  eventSeq          Int?
+
+  @@unique([taskId, round])
+  @@map("task_ticket_read")
 }

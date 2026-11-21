@@ -664,6 +664,9 @@ export const turnOriginSchema = z.enum([
   // Linear. Only `turn.held`, a server-only kind, carries an origin, so no peer reads them.
   "changes-requested",
   "linear-follow-up",
+  // Milestone 9 (F-149, ADR 0070): a ticket's changes, sent on a reopen or a member's "Send ticket
+  // updates". Server-only as the two above.
+  "ticket-update",
 ]);
 export type TurnOrigin = z.infer<typeof turnOriginSchema>;
 

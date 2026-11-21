@@ -250,9 +250,9 @@ export const turnOriginOfIntent = (intent: MessageIntent | undefined): TurnOrigi
     case "linear-follow-up":
       return "linear-follow-up";
     // Milestone 9 (F-149): a ticket's changes, sent on a reopen or a member's "Send ticket
-    // updates", are a member's message through the same gate.
+    // updates", have an origin of their own, through the same gate.
     case "ticket-update":
-      return "message";
+      return "ticket-update";
     default:
       return intent satisfies never;
   }
@@ -270,6 +270,7 @@ const HELD_ORIGIN: Readonly<Record<TurnOrigin, DbEnum.HeldTurnOrigin>> = {
   "automatic-round": "automatic_round",
   "changes-requested": "changes_requested",
   "linear-follow-up": "linear_follow_up",
+  "ticket-update": "ticket_update",
 };
 
 /** A held turn's stored origin, as the gate names it. */
