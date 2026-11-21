@@ -3877,6 +3877,8 @@
     "boxLabel": "{channel} for {moment}",
     "footnote": "The panel always shows every moment. Ticket comments go only to tasks with a ticket.",
     "reset": "Reset to defaults",
+    "save": "Save choices",
+    "saving": "Saving…",
     "saved": "Saved.",
     "yourAddress": "Your address",
     "addressHint": "Your sign-in address.",

@@ -63,7 +63,12 @@ test("F-115/c1: a member turns plans off for email, and the choice is saved", { 
   // ADR 0050's default: plans reach the member by email.
   await expect(plans).toBeChecked();
   await plans.click();
+  // The change waits for Save choices, which turns on once the boxes differ from the saved ones.
+  const save = page.getByRole("button", { name: "Save choices" });
+  await expect(save).toBeEnabled();
+  await save.click();
   await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
+  await expect(save).toBeDisabled();
   await expect(plans).not.toBeChecked();
   // Saved, not only drawn: a reload reads it back, and the panel's box and the ticket's stay as they were.
   await page.reload();

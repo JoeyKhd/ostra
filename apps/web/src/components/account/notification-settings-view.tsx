@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import { PageFrame, PageHeading } from "@/components/shell/page-frame";
+import { Button } from "@/components/ui/button";
 import { errorText } from "@/lib/errors";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
@@ -13,7 +14,8 @@ import { choicesOf, defaultGrid, sameGrid, savedGrid, withBox } from "./notifica
 import type { ChoiceCell, Grid } from "./notification-words";
 
 // Ticket 45 wired (notification-settings.md; F-036): the member's choices per moment and channel
-// through `notifications.preferences.get` and `.save`. A box saves as soon as it changes.
+// through `notifications.preferences.get` and `.save`. Changes wait for `Save choices` in the top bar,
+// which turns on once the boxes differ from the saved choices; leaving with unsaved changes asks first.
 
 export const NotificationSettingsView = () => {
   const trpc = useTRPC();
@@ -30,12 +32,30 @@ export const NotificationSettingsView = () => {
   const store = (next: Grid) => {
     setGrid(next);
     setSaved(false);
-    save.mutate({ choices: [...choicesOf(next)] }, { onSuccess: () => { setSaved(true); } });
+    save.reset();
   };
   const defaults = defaultGrid(cells);
+  const stored = savedGrid(cells);
+  const dirty = grid !== undefined && data !== undefined && !sameGrid(grid, stored);
+  // The browser's own "leave page?" while a change is unsaved (notification-settings.md, "Edited").
+  useEffect(() => {
+    if (!dirty) return undefined;
+    const ask = (event: BeforeUnloadEvent) => { event.preventDefault(); };
+    window.addEventListener("beforeunload", ask);
+    return () => { window.removeEventListener("beforeunload", ask); };
+  }, [dirty]);
+  const submit = () => {
+    if (grid === undefined || !dirty) return;
+    save.mutate({ choices: [...choicesOf(grid)] }, { onSuccess: () => { setSaved(true); } });
+  };
   return (
     <PageFrame
       crumbs={[{ label: t("shell.account"), href: "/account" }, { label: t("shell.notifications") }]}
+      actions={
+        <Button variant="primary" disabled={!dirty || save.isPending} onClick={submit}>
+          {save.isPending ? t("notificationSettings.saving") : t("notificationSettings.save")}
+        </Button>
+      }
       properties={
         <NotificationPanel
           email={data?.emailAddress ?? null}
