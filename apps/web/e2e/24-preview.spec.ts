@@ -176,6 +176,19 @@ test("F-141/c2: a click on the pane's frame counts the fixture's counter, and ty
   await page.keyboard.type("hi");
   await expect(fixture.page.locator("#typed")).toHaveText("hi");
   await expect(page).toHaveURL(/\/tasks\//);
+  // The ? sheet's two lines for the frame: Ctrl+. hands the focus back to the pane's toolbar, and
+  // Tab leaves the frame too; neither key reaches the app.
+  const frame = page.getByTestId("preview-frame");
+  await expect(frame).toBeFocused();
+  await page.keyboard.press("Control+Period");
+  await expect(frame).not.toBeFocused();
+  await expect(pane(page).locator(":focus")).toHaveCount(1);
+  await page.mouse.click(canvas.x + (field.x + 10) * scale, canvas.y + (field.y + field.height / 2) * scale);
+  await expect(frame).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(frame).not.toBeFocused();
+  expect(view.input().some((event) => event.kind === "key" && (event.key === "." || event.key === "Tab"))).toBe(false);
+  await expect(fixture.page.locator("#typed")).toHaveText("hi");
   // A later frame shows it: the picture is the box's.
   const seen = await frameSeq(page);
   await expect.poll(() => frameSeq(page)).toBeGreaterThan(seen);

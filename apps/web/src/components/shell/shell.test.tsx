@@ -20,6 +20,7 @@ import { otherProjects, pushRecent } from "./recent";
 import { nextRovingIndex } from "./roving";
 import { ShellStateContext } from "./shell-state";
 import type { ShellState } from "./shell-state";
+import { PreviewFrameLines } from "./shortcut-sheet";
 import { bandOf, clampWidth, defaultSidebar, panelShown, readSidebarCookie, sidebarCookieLine, sidebarCookieValue, toggled } from "./sidebar-state";
 
 // F-147 (milestone 8, ticket 10; app-shell.md): the double sidebar's rules, each alone. The browser
@@ -270,6 +271,16 @@ describe("the keyboard (F-147)", () => {
     expect(shortcutClashes(paletteActions)).toEqual([]);
     const global = sheetLines().find((section) => section.scope === "global")?.lines.map((line) => line.id) ?? [];
     expect(global).toEqual(expect.arrayContaining(["toggle-sidebar", "go-projects", "go-organization"]));
+  });
+
+  it("F-081/c2: the ? sheet's task section says ⌘. or Ctrl+. hands the focus back from the preview, and Tab and Shift+Tab leave it in either view", () => {
+    const render = (mac: boolean) => renderToStaticMarkup(<dl><PreviewFrameLines mac={mac} /></dl>);
+    const lines = (mac: boolean) => [...render(mac).matchAll(/data-sheet-line="([^"]+)" data-keys="([^"]+)"/g)].map((found) => [found[1], found[2]]);
+    expect(lines(false)).toEqual([["preview-focus-back", "Control+."], ["preview-leave", "Tab Shift+Tab"]]);
+    expect(lines(true)).toEqual([["preview-focus-back", "Meta+."], ["preview-leave", "Tab Shift+Tab"]]);
+    const text = render(false).replace(/<[^>]+>/g, " ").replaceAll("&#x27;", "'").replace(/\s+/g, " ");
+    expect(text).toContain(`${t("shortcuts.previewLeave")} ${t("shortcuts.previewFocusBackNote")} Ctrl .`);
+    expect(text).toContain(`${t("shortcuts.previewLeave")} ${t("shortcuts.previewLeaveNote")} Tab ${t("shortcuts.or")} ⇧ Tab`);
   });
 
   it("F-147/c5: ↑ and ↓ move through the rail and the panel and stop at the ends; Home and End jump; other keys are the page's", () => {

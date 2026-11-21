@@ -101,9 +101,13 @@ test.describe("F-081: the core actions by keyboard", { tag: "@desktop-only" }, (
     await expect(sheet).toBeVisible();
     const lines = await sheet.locator("[data-sheet-line]").evaluateAll((nodes) => nodes.map((node) => ({ id: node.getAttribute("data-sheet-line") ?? "", keys: node.getAttribute("data-keys") ?? "" })));
     const registry = paletteActions.flatMap((entry) => (entry.shortcut === null ? [] : [{ id: entry.id, keys: entry.shortcut.join(" ") }]));
-    // Every shortcut has its line, and every line but ⌘K's is a shortcut of the registry.
-    expect(lines.filter((line) => line.id !== "palette").sort((a, b) => a.id.localeCompare(b.id))).toEqual([...registry].sort((a, b) => a.id.localeCompare(b.id)));
+    // Every shortcut has its line, and every line but the chords' (⌘K, and the preview frame's ⌘.
+    // and Tab, which aren't actions) is a shortcut of the registry.
+    const chords = ["palette", "preview-focus-back", "preview-leave"];
+    expect(lines.filter((line) => !chords.includes(line.id)).sort((a, b) => a.id.localeCompare(b.id))).toEqual([...registry].sort((a, b) => a.id.localeCompare(b.id)));
     expect(lines.find((line) => line.id === "palette")?.keys).toMatch(/^(Control|Meta)\+k$/);
+    expect(lines.find((line) => line.id === "preview-focus-back")?.keys).toMatch(/^(Control|Meta)\+\.$/);
+    expect(lines.find((line) => line.id === "preview-leave")?.keys).toBe("Tab Shift+Tab");
     await page.keyboard.press("Escape");
     await expect(sheet).toHaveCount(0);
 
@@ -223,6 +227,8 @@ test.describe("F-081: the core actions by keyboard", { tag: "@desktop-only" }, (
         await page.keyboard.press("Escape");
         continue;
       }
+      // The preview frame's ⌘. and Tab need a live frame: `24-preview.spec.ts`'s F-141/c2 presses both.
+      if (line.id === "preview-focus-back" || line.id === "preview-leave") continue;
       const check = Object.entries(checks).find(([id]) => id === line.id)?.[1];
       expect(check, `no check for the sheet line ${line.id}`).toBeDefined();
       await check?.(line.keys);

@@ -6206,6 +6206,10 @@
     "then": "then",
     "asksToConfirm": "asks to confirm",
     "openPalette": "Open the command palette",
+    "previewFocusBackNote": "in the box's browser",
+    "previewLeave": "Leave the preview",
+    "previewLeaveNote": "in either view",
+    "or": "or",
     "footnote": "Shortcuts don't fire while you type in a field or the composer.",
     "everyAction": "Every action is in the command palette",
     "scope": {

@@ -12,6 +12,35 @@ import { actionWords, scopeWords, sheetLines } from "./actions/registry";
 // from the registry and never typed by hand. Escape, Close or a click outside closes it, and the
 // focus goes back to what had it (Radix's dialog).
 
+/**
+ * The preview frame's own keys (milestone 8, ticket 26; task-preview.md, preview-native.md): they
+ * aren't actions, so the registry doesn't hold them, as it doesn't hold ⌘K. ⌘. (Ctrl+. elsewhere)
+ * hands the focus back from the box's browser; the panel can't catch it inside the app in your
+ * browser, a cross-origin frame, so Tab and Shift+Tab, which leave either view, are the way out.
+ */
+export const PreviewFrameLines = ({ mac }: { readonly mac: boolean }) => (
+  <>
+    <div className="flex min-h-[34px] items-center gap-3 border-b border-line py-1" data-sheet-line="preview-focus-back" data-keys={mac ? "Meta+." : "Control+."}>
+      <dt className="min-w-0 flex-1 text-ui text-text">
+        {t("shortcuts.previewLeave")}
+        <span className="text-[12.5px] text-faint"> {t("shortcuts.previewFocusBackNote")}</span>
+      </dt>
+      <dd><KbdSequence keys={[mac ? "⌘" : "Ctrl", "."]} chord /></dd>
+    </div>
+    <div className="flex min-h-[34px] items-center gap-3 border-b border-line py-1" data-sheet-line="preview-leave" data-keys="Tab Shift+Tab">
+      <dt className="min-w-0 flex-1 text-ui text-text">
+        {t("shortcuts.previewLeave")}
+        <span className="text-[12.5px] text-faint"> {t("shortcuts.previewLeaveNote")}</span>
+      </dt>
+      <dd className="inline-flex shrink-0 items-center gap-1.5">
+        <KbdSequence keys={["Tab"]} />
+        <span className="text-[11px] text-faint">{t("shortcuts.or")}</span>
+        <KbdSequence keys={["⇧", "Tab"]} chord />
+      </dd>
+    </div>
+  </>
+);
+
 export const ShortcutSheet = ({
   open,
   onOpenChange,
@@ -68,6 +97,7 @@ export const ShortcutSheet = ({
                       <dd><KbdSequence keys={line.shortcut} /></dd>
                     </div>
                   ))}
+                  {section.scope === "task" ? <PreviewFrameLines mac={mac} /> : null}
                 </dl>
               </section>
               );
