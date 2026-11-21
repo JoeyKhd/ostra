@@ -10,6 +10,7 @@ import { z } from "zod";
 
 import { checkContrast, prepareA11y, walkByTab } from "./a11y/checks.ts";
 import { readStack, signIn } from "./helpers.ts";
+import { settleRoute } from "./routes.ts";
 import { e2eAdmin, e2eBaseUrl } from "./settings.ts";
 
 // Milestone 8's ticket 17 (F-121, F-140): the environment's App tab and the thread's pictures, on
@@ -276,6 +277,9 @@ test("F-081/c2: the keyboard walk and the contrast check pass on the App tab, it
       await page.goto(url);
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       await ready();
+      // The shell draws too (the panel's Live list lands a round trip after the page's own data):
+      // the walk numbers the controls once, so it starts when nothing changes any more.
+      await settleRoute(page);
       problems.push(...(await checkContrast(page, null)).failures.map((failure) => `${label} (${theme}): ${failure}`));
       problems.push(...(await walkByTab(page, null)).map((problem) => `${label} (${theme}): ${problem}`));
     };

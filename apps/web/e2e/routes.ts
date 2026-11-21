@@ -22,6 +22,8 @@ const worldSchema = z.object({
   capped: z.object({ taskId: z.string() }),
   /** Milestone 8 (ticket 21): a task with an app to preview, its box asleep, and a watch-only link's token. */
   preview: z.object({ taskId: z.string(), token: z.string() }),
+  /** A running task, in the project's Live list beside the needs-you ones. */
+  running: z.object({ taskId: z.string() }),
   orgNoteId: z.string(),
   projectNoteId: z.string(),
   poolId: z.string(),

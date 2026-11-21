@@ -104,8 +104,8 @@ const pngSize = (bytes: Uint8Array): { readonly width: number; readonly height: 
 
 type Timed = { readonly at: number; readonly event: TaskEvent };
 
-/** A task the admin drives, on build-01, its session ended and its box stopped. */
-const makeTask = async (title: string, kind: "code" | "refine", state: "in_review" | "needs_you", reason: "draft_ready" | "environment_proposal" | null = null) => {
+/** A task the admin drives, on build-01: a running one's session runs in its ready box; another's ended, its box stopped. */
+const makeTask = async (title: string, kind: "code" | "refine", state: "in_review" | "needs_you" | "running", reason: "draft_ready" | null = null) => {
   const task = await db.task.create({
     data: {
       ...place,
@@ -121,8 +121,9 @@ const makeTask = async (title: string, kind: "code" | "refine", state: "in_revie
       creatorMemberId: admin.id,
     },
   });
-  const box = await db.box.create({ data: { ...place, taskId: task.id, runnerId: runner.id, executor: "docker", state: "stopped", readyAt: new Date(Date.now() - 30 * 60_000), stoppedAt: new Date() } });
-  const session = await db.session.create({ data: { ...place, taskId: task.id, origin: "new", state: "ended", outcome: "with_changes", endedAt: new Date(), boxId: box.id } });
+  const live = state === "running";
+  const box = await db.box.create({ data: { ...place, taskId: task.id, runnerId: runner.id, executor: "docker", state: live ? "ready" : "stopped", readyAt: new Date(Date.now() - 30 * 60_000), ...(live ? {} : { stoppedAt: new Date() }) } });
+  const session = await db.session.create({ data: { ...place, taskId: task.id, origin: "new", ...(live ? { state: "running" as const } : { state: "ended" as const, outcome: "with_changes" as const, endedAt: new Date() }), boxId: box.id } });
   return { taskId: task.id, sessionId: session.id };
 };
 
@@ -299,8 +300,9 @@ const historyTurns = await store(history.taskId, history.sessionId, [...historyE
 await storeRows(history.taskId, [older, desktop, tablet, phone, recording], historyTurns);
 
 // 2. A port another task's agent announced, kept by Sam Rivera: a proposal waiting on an admin.
-// Its task waits on the proposal its member made, as "Keep it" leaves it.
-const storybook = await makeTask("Add a storybook", "code", "needs_you", "environment_proposal");
+// "Keep it" leaves its task running, and puts a needs-you item before the project's admins
+// (`proposeAppProcess`), so the project's Live list has a running row.
+const storybook = await makeTask("Add a storybook", "code", "running");
 const taskPreview = await db.taskPreview.create({ data: { ...place, taskId: storybook.taskId, key: "port-6006", port: 6006, label: "Storybook" } });
 const body = environmentProposalSchema.parse({
   repos: [{ repoId: repo.id, setupScript: "pnpm install --frozen-lockfile", checks: [], variableNames: [] }],
@@ -315,6 +317,7 @@ const body = environmentProposalSchema.parse({
 const kept = await db.environmentProposal.create({ data: { ...place, environmentId: environment.id, taskId: storybook.taskId, body, notes: body.notes, state: "proposed", source: "kept", createdAt: new Date(Date.now() - 20 * 60_000) } });
 await db.taskPreview.update({ where: { id: taskPreview.id }, data: { keptProposalId: kept.id } });
 await db.$transaction((tx) => recordAudit(tx, { organizationId: organizationIdSchema.parse(organizationId), projectId: projectIdSchema.parse(project.id), actor: { kind: "member", id: keeper.seeded.memberId }, actorName: "Sam Rivera", action: "environment.app-process-kept", entity: "environment", entityId: environmentIdSchema.parse(environment.id), data: { proposalId: kept.id, taskId: storybook.taskId, port: 6006, name: "storybook" } }));
+await db.needsYouItem.create({ data: { ...place, taskId: storybook.taskId, reason: "environment_proposal", audience: "project_members" } });
 
 // 3. A refine task with a draft, and a screenshot of its own box.
 const refine = await makeTask("Refine: show the app's version", "refine", "needs_you", "draft_ready");

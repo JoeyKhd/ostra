@@ -39,6 +39,12 @@ export const needsYouLine = (reason: NeedsYouReason | null): string => {
 
 const plainText = (segments: readonly { readonly text: string }[]): string => segments.map((segment) => segment.text).join("");
 
+/**
+ * A running task's line: what the agent does now, or `Running` before its first event says. The
+ * dot is hidden from a reader and is colour alone, so the words always name the state.
+ */
+export const runningLine = (doing: TaskRow["doing"]): string => plainText(runningSegments(doing)) || t("taskState.running");
+
 /** A project's task, from `tasks.list`, when it's live: every driver's, needs you to queued. */
 export const liveFromRow = (task: TaskRow): LiveTask | null => {
   const base = { taskId: task.id, key: task.key, title: task.title };
@@ -48,7 +54,7 @@ export const liveFromRow = (task: TaskRow): LiveTask | null => {
     case "awaiting_approval":
       return { ...base, mark: "amber", line: { tone: "needs-you", text: t("tasks.row.awaitingStart") } };
     case "running":
-      return { ...base, mark: "green", line: { tone: "plain", text: plainText(runningSegments(task.doing)) } };
+      return { ...base, mark: "green", line: { tone: "plain", text: runningLine(task.doing) } };
     case "preparing":
       return { ...base, mark: "preparing", line: { tone: "plain", text: t("tasks.row.preparing") } };
     case "queued":
@@ -70,7 +76,7 @@ export const liveFromCard = (card: BoardCard): LiveTask | null => {
     case "needs-you":
       return { ...base, mark: "amber", line: { tone: "needs-you", text: needsYouLine(card.status.reason) } };
     case "running":
-      return { ...base, mark: "green", line: { tone: "plain", text: plainText(runningSegments(card.status.doing)) } };
+      return { ...base, mark: "green", line: { tone: "plain", text: runningLine(card.status.doing) } };
     case "preparing":
       return { ...base, mark: "preparing", line: { tone: "plain", text: t("tasks.row.preparing") } };
     case "queued":

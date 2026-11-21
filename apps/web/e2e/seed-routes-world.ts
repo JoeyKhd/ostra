@@ -197,6 +197,22 @@ const capped = await (async () => {
   return { taskId: made.taskId };
 })();
 
+// 5. A running task: the agent runs a command now, so the project's Live list holds a running row
+// (its green mark and what the agent does), beside the needs-you ones.
+const running = await (async () => {
+  const made = await createTask("Speed up the test suite", "running", null, "running");
+  const turnId = randomUUID();
+  await appendEvents(
+    made.taskId,
+    made.sessionId,
+    parse([
+      { kind: "turn.started", turnId },
+      { kind: "tool.called", turnId, toolCallId: `tool-${randomUUID()}`, toolKind: "execute", title: data("pnpm test --shard 1/4"), input: { command: "pnpm test --shard 1/4" } },
+    ]),
+  );
+  return { taskId: made.taskId };
+})();
+
 // A memory note in the organization and one in the project.
 const note = async (scope: "organization" | "project", title: string, body: string) => {
   const row = await db.memoryNote.create({
@@ -345,6 +361,7 @@ process.stdout.write(
     reopen,
     capped,
     preview,
+    running,
     orgNoteId,
     projectNoteId,
     poolId: pool.id,
