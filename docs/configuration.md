@@ -84,6 +84,9 @@ Read by `apps/core` and `apps/web` through `parseServerSettings` (`packages/doma
 | `OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES` | `60` | The fewest minutes between two occurrences of a schedule (F-106). A schedule that fires more often is refused when it's saved, and one saved under a lower value fires at most once in that many minutes, checked at each tick. |
 | `OSTRA_SCHEDULE_MISSED_HOURS` | `6` | How late an occurrence may be and still fire, after the install was down (F-106). Only the latest due one fires; older ones are skipped and audited. |
 | `OSTRA_INTAKE_STARTS_PER_HOUR` | `20` | The most tasks one intake rule starts in an hour (F-011). The next match pauses the rule and tells the project's admins. |
+| `OSTRA_WEBHOOK_STARTS_PER_HOUR` | `20` | The most tasks one webhook automation starts in an hour (F-139). The next request is answered 429, pauses the automation and tells the project's admins. |
+| `OSTRA_WEBHOOK_REQUESTS_PER_MINUTE` | `60` | The most requests one webhook automation takes in a minute (F-139). More are answered 429 with `Retry-After`, and leave nothing in its history. |
+| `OSTRA_WEBHOOK_BODY_MAX_KIB` | `64` | The largest body a webhook automation's request may have, in KiB (F-139). A larger one is answered 413 and stores nothing. |
 | `OSTRA_BULK_START_MAX` | `50` | The most tickets a member starts at once, from the Inbox or a dry run's "Start all" (F-107). |
 | `OSTRA_SUB_ISSUES_MAX` | `50` | The most sub-issues one start on a parent ticket runs (F-077). More than that starts nothing, and the member is told. |
 | `OSTRA_SUB_ISSUES_DEPTH` | `3` | How many levels of sub-issues below a parent a start reaches (F-077). |

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRightIcon, ChevronDownIcon, ClockIcon, FilterIcon, PencilIcon, PlayIcon, PlusIcon, ShieldIcon } from "lucide-react";
+import { ArrowRightIcon, ChevronDownIcon, ClockIcon, FilterIcon, PencilIcon, PlayIcon, PlusIcon, ShieldIcon, WebhookIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
@@ -23,15 +23,16 @@ import { plural, t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 
 import { useFilterNames } from "./automation-data";
-import { assigneeValue, dayText, listWords, nextText, occurrenceText, startsWhenText, statusValues, taskKindLong, taskKindWord } from "./automation-words";
+import { assigneeValue, dayText, listWords, nextText, occurrenceText, payloadConditionWords, startsWhenText, statusValues, taskKindLong, taskKindWord } from "./automation-words";
 import type { Automation, FilterNames } from "./automation-words";
 
-// A project's Automations (automations.md, F-011, F-106): its intake rules and schedules in one list,
+// A project's Automations (automations.md, F-011, F-106, F-139): its intake rules, schedules and
+// webhooks in one list,
 // each with what starts it, what it starts, its last start and its next, and a switch that pauses and
 // resumes it at once. The selected one fills the properties panel. Members read; project admins act.
 
-type KindFilter = "all" | "rules" | "schedules" | "paused";
-const kindFilters: readonly KindFilter[] = ["all", "rules", "schedules", "paused"];
+type KindFilter = "all" | "rules" | "schedules" | "webhooks" | "paused";
+const kindFilters: readonly KindFilter[] = ["all", "rules", "schedules", "webhooks", "paused"];
 const isKindFilter = (value: string | null): value is KindFilter => kindFilters.some((kind) => kind === value);
 
 const kindFilterLabel = (kind: KindFilter): string => {
@@ -42,6 +43,8 @@ const kindFilterLabel = (kind: KindFilter): string => {
       return t("automations.kinds.rules");
     case "schedules":
       return t("automations.kinds.schedules");
+    case "webhooks":
+      return t("automations.kinds.webhooks");
     case "paused":
       return t("automations.kinds.paused");
     default:
@@ -57,6 +60,8 @@ const keep = (automation: Automation, kind: KindFilter): boolean => {
       return automation.kind === "intake_rule";
     case "schedules":
       return automation.kind === "schedule";
+    case "webhooks":
+      return automation.kind === "webhook";
     case "paused":
       return automation.paused !== null;
     default:
@@ -126,6 +131,7 @@ export const AutomationsView = ({ projectId, organizationAdmin }: { readonly pro
   const empty = data !== undefined && all.length === 0;
   const noBoard = boardsLoaded && (boards?.length ?? 0) === 0;
   const startsPerHour = data?.limits.startsPerHour ?? 20;
+  const webhookStartsPerHour = data?.limits.webhookStartsPerHour ?? 20;
 
   const onKey = (index: number) => (event: KeyboardEvent<HTMLTableRowElement>) => {
     const row = rows[index];
@@ -147,6 +153,10 @@ export const AutomationsView = ({ projectId, organizationAdmin }: { readonly pro
   const actions =
     canEdit && !empty ? (
       <>
+        {/* Below 768px the top bar holds two: the editor's trigger offers a webhook there. */}
+        <Link href={`/projects/${projectId}/automations/new?starts=webhook`} className={cn(buttonVariants(), "max-md:hidden")}>
+          <WebhookIcon /> {t("automations.newWebhook")}
+        </Link>
         <Link href={`/projects/${projectId}/automations/new?starts=schedule`} className={buttonVariants()}>
           <ClockIcon /> {t("automations.newSchedule")}
         </Link>
@@ -160,7 +170,7 @@ export const AutomationsView = ({ projectId, organizationAdmin }: { readonly pro
     <PageFrame
       crumbs={[{ label: projectName, href: `/projects/${projectId}` }, { label: t("automations.title") }]}
       actions={actions}
-      {...(empty || data === undefined ? {} : { properties: selected === null ? null : <AutomationPanel automation={selected} canEdit={canEdit} organizationAdmin={organizationAdmin} names={names} startsPerHour={startsPerHour} projectId={projectId} onToggle={toggle} /> })}
+      {...(empty || data === undefined ? {} : { properties: selected === null ? null : <AutomationPanel automation={selected} canEdit={canEdit} organizationAdmin={organizationAdmin} names={names} startsPerHour={selected.kind === "webhook" ? webhookStartsPerHour : startsPerHour} projectId={projectId} onToggle={toggle} /> })}
     >
       <PageHeading title={t("automations.title")} lede={t("automations.lede", { project: projectName })} />
       {list.isError ? (
@@ -234,7 +244,7 @@ export const AutomationsView = ({ projectId, organizationAdmin }: { readonly pro
                     selected={automation.id === selected?.id}
                     canEdit={canEdit}
                     names={names}
-                    startsPerHour={startsPerHour}
+                    startsPerHour={automation.kind === "webhook" ? webhookStartsPerHour : startsPerHour}
                     onSelect={() => { setParam("automation", automation.id); }}
                     onOpen={() => { if (canEdit) router.push(`/projects/${projectId}/automations/${automation.id}`); }}
                     onKey={onKey(index)}
@@ -313,8 +323,7 @@ const AutomationRow = ({
       <td className="pr-3">
         <span className="block truncate text-[14px] font-medium text-text">{automation.name}</span>
         <span className="flex items-center gap-1.5 text-sm text-faint">
-          {automation.kind === "schedule" ? <ClockIcon aria-hidden className="size-[13px] stroke-[1.75]" /> : <FilterIcon aria-hidden className="size-[13px] stroke-[1.75]" />}
-          {automation.kind === "schedule" ? t("automations.schedule") : t("automations.rule")}
+          <KindMark kind={automation.kind} />
         </span>
         {/* Below 640px the row's second line is "Starts when · Next". */}
         <span className="block truncate text-sm text-muted sm:hidden">{`${startsWhen} · ${next.text}`}</span>
@@ -348,6 +357,35 @@ const AutomationRow = ({
   );
 };
 
+/** An automation's kind, with its icon: `Rule`, `Schedule` or `Webhook`. */
+const KindMark = ({ kind }: { readonly kind: Automation["kind"] }) => {
+  switch (kind) {
+    case "intake_rule":
+      return (
+        <>
+          <FilterIcon aria-hidden className="size-[13px] stroke-[1.75]" />
+          {t("automations.rule")}
+        </>
+      );
+    case "schedule":
+      return (
+        <>
+          <ClockIcon aria-hidden className="size-[13px] stroke-[1.75]" />
+          {t("automations.schedule")}
+        </>
+      );
+    case "webhook":
+      return (
+        <>
+          <WebhookIcon aria-hidden className="size-[13px] stroke-[1.75]" />
+          {t("automations.webhookWord")}
+        </>
+      );
+    default:
+      return kind satisfies never;
+  }
+};
+
 const LastStart = ({ automation, zone }: { readonly automation: Automation; readonly zone: string | undefined }) => {
   const run = automation.lastRun;
   if (run === null) return <span className="text-faint">—</span>;
@@ -375,7 +413,7 @@ const EmptyState = ({ projectId, canEdit, noBoard }: { readonly projectId: Proje
     <p className="mt-2 text-sm text-muted">{noBoard ? t("automations.noBoard") : t("automations.emptyBody")}</p>
     {canEdit ? (
       <>
-        <div className="mt-4 flex gap-2">
+        <div className="mt-4 flex flex-wrap justify-center gap-2">
           {noBoard ? (
             <Link href={`/projects/${projectId}/boards`} className={buttonVariants({ variant: "primary" })}>{t("automations.attachBoard")}</Link>
           ) : (
@@ -385,6 +423,9 @@ const EmptyState = ({ projectId, canEdit, noBoard }: { readonly projectId: Proje
           )}
           <Link href={`/projects/${projectId}/automations/new?starts=schedule`} className={buttonVariants()}>
             <ClockIcon /> {t("automations.newSchedule")}
+          </Link>
+          <Link href={`/projects/${projectId}/automations/new?starts=webhook`} className={buttonVariants()}>
+            <WebhookIcon /> {t("automations.newWebhook")}
           </Link>
         </div>
         <p className="mt-[18px] text-xs text-faint">{t("automations.emptyAdmins")}</p>
@@ -431,6 +472,7 @@ const AutomationPanel = ({
 }) => {
   const filter = automation.schedule?.does === "prompt" ? null : automation.filter;
   const base = `/projects/${projectId}/automations/${automation.id}`;
+  const editLabel = automation.kind === "webhook" ? t("automations.panel.editWebhook") : automation.kind === "schedule" ? t("automations.panel.editSchedule") : t("automations.panel.editRule");
   return (
     <div data-testid="automation-panel">
       <PropGroup
@@ -442,9 +484,26 @@ const AutomationPanel = ({
         }
       >
         <PropRow label={t("automations.panel.kind")}>
-          <span className="truncate">{automation.schedule === null ? t("automations.panel.ruleKind") : t("automations.panel.scheduleKind", { sentence: automation.schedule.sentence })}</span>
+          <span className="truncate">
+            {automation.webhook !== null
+              ? t("automations.panel.webhookKind")
+              : automation.schedule === null
+                ? t("automations.panel.ruleKind")
+                : t("automations.panel.scheduleKind", { sentence: automation.schedule.sentence })}
+          </span>
         </PropRow>
-        {filter === null ? (
+        {automation.webhook !== null ? (
+          <>
+            {automation.webhook.filter.map((condition) => (
+              <PropRow key={`${condition.path}-${condition.op}`} label={t("automations.webhook.filterTitle")}>
+                <span className="truncate font-mono text-[12.5px]">{payloadConditionWords(condition)}</span>
+              </PropRow>
+            ))}
+            <PropRow label={t("automations.panel.prompt")}>
+              <span className="truncate text-muted">{automation.webhook.title}</span>
+            </PropRow>
+          </>
+        ) : filter === null ? (
           automation.schedule?.prompt === null || automation.schedule === null ? null : (
             <PropRow label={t("automations.panel.prompt")}>
               <span className="truncate text-muted">{automation.schedule.prompt.split("\n")[0]}</span>
@@ -483,7 +542,7 @@ const AutomationPanel = ({
           {automation.poolLabels.length === 0 ? <span className="text-faint">—</span> : automation.poolLabels.map((label) => <Chip key={label} className="font-mono text-[12.5px] text-text">{label}</Chip>)}
         </PropRow>
         <PropRow label={t("automations.panel.approval")}>{automation.requireApproval ? t("automations.panel.approvalMember") : t("automations.panel.approvalNone")}</PropRow>
-        {automation.kind === "intake_rule" ? (
+        {automation.kind === "intake_rule" || automation.kind === "webhook" ? (
           <PropRow label={t("automations.panel.limit")}>
             <span data-testid="automation-limit">{t("automations.panel.limitValue", { n: automation.counts.lastHour, max: startsPerHour })}</span>
           </PropRow>
@@ -503,9 +562,9 @@ const AutomationPanel = ({
       {canEdit ? (
         <div className="mb-3.5 grid grid-cols-2 gap-2">
           <Link href={base} className={buttonVariants()}>
-            <PencilIcon /> {automation.kind === "schedule" ? t("automations.panel.editSchedule") : t("automations.panel.editRule")}
+            <PencilIcon /> {editLabel}
           </Link>
-          {automation.schedule?.does === "prompt" ? null : (
+          {automation.schedule?.does === "prompt" || automation.kind === "webhook" ? null : (
             <Link href={`${base}#dry-run`} className={buttonVariants()}>
               <PlayIcon /> {t("automations.panel.dryRun")}
             </Link>

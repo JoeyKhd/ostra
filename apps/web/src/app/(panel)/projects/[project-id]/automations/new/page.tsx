@@ -11,7 +11,8 @@ export const metadata = { title: t("automations.title") };
 const NewAutomationPage = async ({ params, searchParams }: { readonly params: Promise<{ "project-id": string }>; readonly searchParams: Promise<{ readonly starts?: string | string[] }> }) => {
   const projectId = projectIdSchema.safeParse((await params)["project-id"]);
   if (!projectId.success) notFound();
-  const starts = (await searchParams).starts === "schedule" ? "schedule" : "match";
+  const asked = (await searchParams).starts;
+  const starts = asked === "schedule" || asked === "webhook" ? asked : "match";
   return (
     <Suspense>
       <AutomationEditor projectId={projectId.data} automationId={null} starts={starts} />

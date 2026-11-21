@@ -64,3 +64,5 @@ export const shownRuns = (bands: readonly Band[]): readonly HistoryRun[] => band
 /** The matches in a list of runs (a match is a ticket's run). */
 export const matchCount = (runs: readonly HistoryRun[]): number => runs.filter((run) => run.kind === "ticket_match").length;
 export const occurrenceCount = (runs: readonly HistoryRun[]): number => runs.filter((run) => run.kind === "occurrence").length;
+/** A webhook's requests (F-139): each one it took is a run of its own, banded by day as a rule's matches. */
+export const requestCount = (runs: readonly HistoryRun[]): number => runs.filter((run) => run.kind === "request").length;

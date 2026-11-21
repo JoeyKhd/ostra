@@ -1273,7 +1273,7 @@ model Snapshot {
   @@map("snapshot")
 }
 
-/// A rule that starts tasks by itself: an intake rule or a schedule (Q10, F-011). Milestone 2.
+/// A rule that starts tasks by itself: an intake rule, a schedule or a webhook (Q10, F-011, F-139). Milestone 2.
 model Automation {
   id             String         @id @default(uuid(7))
   organizationId String
@@ -1292,9 +1292,9 @@ model Automation {
   // ---- milestone 6 (F-011, F-106, ADR 0056) ----
   /// The IANA time zone a schedule's cron is read in.
   timeZone          String                 @default("UTC")
-  /// A prompt schedule's prompt. Untrusted, private: never logged.
+  /// A prompt schedule's prompt, or a webhook's prompt template. Untrusted, private: never logged.
   prompt            String?
-  /// A prompt schedule's task title.
+  /// A prompt schedule's task title, or a webhook's title template.
   title             String?
   /// Whether the tasks it starts wait for a member's approval.
   requireApproval   Boolean                @default(false)
@@ -1310,6 +1310,17 @@ model Automation {
   updatedByMemberId String?
   /// Deleted: it starts nothing; its runs stay for the tasks' history.
   deletedAt         DateTime?
+  // ---- webhooks (F-139, ADR 0056 amended 2026-11-21) ----
+  /// A webhook's address: `POST /webhooks/automations/<webhookId>`. Random, made at the create; it routes, it isn't the credential.
+  webhookId               String?                @unique
+  /// A webhook's signing secret, in the secret store (set for a webhook only, checked in the migration).
+  webhookSecretRef        String?
+  /// How a webhook's request proves it holds the secret: its body's HMAC signature, or the secret as a bearer token.
+  webhookAuth             AutomationWebhookAuth?
+  /// A webhook's filter on the request body's fields: a list of conditions, all of which must hold.
+  payloadFilter           Json?
+  /// A webhook's body field that holds a request's idempotency key (`body.alert.id`), when no header gives one.
+  idempotencyField        String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -1328,8 +1339,8 @@ model Automation {
 // environment proposals (spec section 5.3)
 // ===========================================================================
 
-/// One run of an automation (F-011, F-106, ADR 0056): a schedule's occurrence, a rule's match of a
-/// ticket, or a dry run's "Start all". The partial unique indexes make each occurrence and each
+/// One run of an automation (F-011, F-106, F-139, ADR 0056): a schedule's occurrence, a rule's match
+/// of a ticket, a dry run's "Start all", or a webhook's request. The partial unique indexes make each occurrence and each
 /// ticket's match start at most once, however many replicas run.
 model AutomationRun {
   id             String                @id @default(uuid(7))
@@ -1351,11 +1362,15 @@ model AutomationRun {
   task           Task?                 @relation(fields: [taskId, projectId], references: [id, projectId], onDelete: NoAction)
   bulkStartId    String?
   bulkStart      BulkStart?            @relation(fields: [bulkStartId, projectId], references: [id, projectId], onDelete: NoAction)
+  /// A webhook request's idempotency key, as its SHA-256 in hex: never the key itself (F-139).
+  idempotencyKeyHash String?
   createdAt      DateTime              @default(now())
 
   @@unique([automationId, occurrenceAt], where: raw("kind = 'occurrence'"), map: "automation_run_one_per_occurrence")
   @@unique([automationId, ticketId], where: raw("kind = 'ticket_match'"), map: "automation_run_one_match_per_ticket")
   @@index([automationId, createdAt])
+  /// A webhook's repeat of a key within 24 hours (F-139).
+  @@index([automationId, idempotencyKeyHash, createdAt], where: raw("\"idempotencyKeyHash\" IS NOT NULL"), map: "automation_run_idempotency_key")
   @@map("automation_run")
 }
 
@@ -2746,6 +2761,13 @@ enum SnapshotState {
 enum AutomationKind {
   intake_rule
   schedule
+  webhook
+}
+
+/// How a webhook automation's request proves it holds the secret (F-139).
+enum AutomationWebhookAuth {
+  signature
+  bearer
 }
 
 enum TaskKind {
@@ -2769,6 +2791,7 @@ enum AutomationRunKind {
   occurrence
   ticket_match
   start_all
+  request
 }
 
 enum AutomationRunState {
@@ -2784,6 +2807,9 @@ enum AutomationSkipReason {
   hourly_limit
   over_limit
   budget
+  filtered
+  duplicate
+  setup
 }
 
 enum AutomationPauseReason {

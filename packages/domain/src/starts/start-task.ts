@@ -26,6 +26,8 @@ export type StartOrigin =
   | { readonly kind: "intake-rule"; readonly automationId: AutomationId; readonly requireApproval: boolean }
   /** A schedule's occurrence started its prompt task. */
   | { readonly kind: "occurrence"; readonly automationId: AutomationId; readonly occurrenceAt: number; readonly requireApproval: boolean }
+  /** A webhook automation took a request (F-139): its one prompt task. */
+  | { readonly kind: "webhook"; readonly automationId: AutomationId; readonly requireApproval: boolean }
   /** One ticket of a bulk start (the Inbox, or a dry run's "Start all"). */
   | { readonly kind: "bulk-item"; readonly memberId: MemberId; readonly bulkStartId: BulkStartId; readonly bulkStartItemId: BulkStartItemId; readonly automationId: AutomationId | null }
   /** A leaf of a parent ticket a member started (F-077). */
@@ -54,6 +56,7 @@ export const taskOriginOf = (origin: StartOrigin): DbEnum.TaskOrigin => {
       return "member";
     case "intake-rule":
     case "occurrence":
+    case "webhook":
       return "automation";
     case "linear":
       return "tracker";
@@ -76,6 +79,7 @@ export const startingMemberOf = (origin: StartOrigin): MemberId | null => {
       return origin.matchedMemberId;
     case "intake-rule":
     case "occurrence":
+    case "webhook":
       return null;
     default:
       return origin satisfies never;
@@ -106,6 +110,7 @@ export const startRuleFor = (origin: StartOrigin, project: { readonly outsideApp
         : { outside: false, needsApproval: false, poolOnly: false, profile: "project-default" };
     case "intake-rule":
     case "occurrence":
+    case "webhook":
       return { outside: false, needsApproval: origin.requireApproval, poolOnly: false, profile: "requested" };
     case "member":
     case "bulk-item":
@@ -127,6 +132,7 @@ export const noProviderStartFor = (origin: StartOrigin): "refuse" | "queue" => {
   switch (origin.kind) {
     case "intake-rule":
     case "occurrence":
+    case "webhook":
       return "queue";
     case "member":
     case "bulk-item":

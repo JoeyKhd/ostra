@@ -1,3 +1,5 @@
+import { secretRefSchema } from "@ostra/adapter-sdk";
+import type { SecretRef, SecretStoreAdapter } from "@ostra/adapter-sdk";
 import { Prisma } from "@ostra/db";
 import type { Tx } from "@ostra/db";
 import { automationIdSchema, projectIdSchema } from "@ostra/protocol";
@@ -5,9 +7,11 @@ import type { AutomationId, OrganizationId, ProjectId } from "@ostra/protocol";
 
 import { requireProjectAccess } from "../access.ts";
 import type { MemberScope } from "../access.ts";
-import type { AutomationSettings, DeleteAutomation, M6Deps, PauseAutomation, SaveAutomation } from "../use-cases/m6-signatures.ts";
+import type { AutomationSettings, DeleteAutomation, M6Deps, PauseAutomation, RotateWebhookSecret, SaveAutomation } from "../use-cases/m6-signatures.ts";
 import { isTimeZone, minimumIntervalOk, nextOccurrence, parseCron } from "./cron.ts";
 import { pauseAutomationInTx } from "./intake.ts";
+import { newWebhookId, newWebhookSecret, WEBHOOK_SECRET_PURPOSE } from "./webhook.ts";
+import { isPayloadPath, templateProblems, WEBHOOK_PROMPT_MAX } from "./webhook-template.ts";
 import type { StartPorts } from "../starts/start-task-body.ts";
 
 // Saving, pausing and deleting an automation (F-011, F-106, ADR 0056; milestone 6's tickets 10 and
@@ -15,6 +19,12 @@ import type { StartPorts } from "../starts/start-task-body.ts";
 // next occurrence from now, so an edit takes effect at the next tick and never fires a past time;
 // so does a resume. A delete is soft: the automation starts nothing more, at the next tick, and its
 // runs stay for its tasks' history. A schedule's prompt is never logged nor put in an audit entry.
+//
+// A webhook (F-139, ADR 0056 amended 2026-11-21) gets its address's ID and its signing secret when
+// it's created: the secret goes into the secret store before the transaction, is deleted again when
+// the transaction refuses or fails, and comes back once, in the create's answer. "New secret" makes
+// another the same way and deletes the old one once the new one is stored. Its templates and its
+// filter are never logged nor put in an audit entry either.
 
 /** `OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES`'s default. */
 export const SCHEDULE_MIN_INTERVAL_MINUTES_DEFAULT = 60;
@@ -25,6 +35,8 @@ const PROMPT_MAX = 262_144;
 export type ManageOptions = {
   /** `OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES`. */
   readonly scheduleMinIntervalMinutes?: number;
+  /** Where a webhook's signing secret is kept (F-139): needed to create a webhook, or to give it a new secret. */
+  readonly secretStore?: Pick<SecretStoreAdapter, "put" | "delete">;
 };
 
 type AdminCheck = { readonly ok: true; readonly projectId: ProjectId } | { readonly ok: false; readonly error: "forbidden" | "not-found"; readonly message: string };
@@ -62,6 +74,26 @@ export const scheduleColumnsAt = (schedule: string, timeZone: string, now: numbe
   }
   const next = nextOccurrence(parsed.cron, timeZone, now);
   return { ok: true, schedule: parsed.cron.source, timeZone, nextOccurrenceAt: next === null ? null : new Date(next) };
+};
+
+/** Why a webhook's templates or its idempotency field are refused, or `null`. Names the placeholder, never the text around it. */
+const webhookRefusal = (settings: Extract<AutomationSettings, { readonly kind: "webhook" }>): string | null => {
+  if (settings.title.trim() === "" || settings.prompt.trim() === "") {
+    return "A webhook automation has a title and a prompt";
+  }
+  if (settings.prompt.length > WEBHOOK_PROMPT_MAX) {
+    return "The prompt is too long";
+  }
+  for (const [where, template] of [["title", settings.title], ["prompt", settings.prompt]] as const) {
+    const [problem] = templateProblems(template);
+    if (problem !== undefined) {
+      return `${problem.placeholder.slice(0, 80)} on line ${String(problem.line)} of the ${where} isn't a field of the request: write {{body.field}}, such as {{body.alert.title}}`;
+    }
+  }
+  if (settings.idempotencyField !== null && !isPayloadPath(settings.idempotencyField)) {
+    return "The idempotency key's field is a body field, such as body.alert.id";
+  }
+  return null;
 };
 
 /** An automation's columns from its settings. Never logs the prompt. */
@@ -105,9 +137,68 @@ const columnsOf = (settings: AutomationSettings, now: number, minIntervalMinutes
         },
       };
     }
+    case "webhook": {
+      const refusal = webhookRefusal(settings);
+      if (refusal !== null) {
+        return { ok: false as const, error: "invalid-input" as const, message: refusal };
+      }
+      return {
+        ok: true as const,
+        columns: {
+          ...base,
+          kind: settings.kind,
+          filter: null,
+          schedule: null,
+          nextOccurrenceAt: null,
+          skipWhileOpen: settings.skipWhileOpen,
+          prompt: settings.prompt,
+          title: settings.title.trim().slice(0, 512),
+          webhookAuth: settings.auth,
+          payloadFilter: settings.filter.map((condition) => ({ ...condition })),
+          idempotencyField: settings.idempotencyField,
+        },
+      };
+    }
     default:
       return settings satisfies never;
   }
+};
+
+/** Deletes a secret the store kept for a save that didn't happen, or one replaced. Best effort: a leftover opens nothing. */
+const forgetSecret = async (deps: ManageOptions, organizationId: OrganizationId, ref: SecretRef | null): Promise<void> => {
+  if (ref === null || deps.secretStore === undefined) {
+    return;
+  }
+  await deps.secretStore.delete(organizationId, ref).catch(() => undefined);
+};
+
+/** A write's answer; the secret made for it is deleted again when the write refuses or fails. */
+const settled = async <T extends { readonly ok: boolean }>(deps: ManageOptions, organizationId: OrganizationId, ref: SecretRef | null, work: Promise<T>): Promise<T> => {
+  try {
+    const result = await work;
+    if (!result.ok) {
+      await forgetSecret(deps, organizationId, ref);
+    }
+    return result;
+  } catch (error) {
+    await forgetSecret(deps, organizationId, ref);
+    throw error;
+  }
+};
+
+/** A webhook's new address and secret, its secret already in the store. */
+type NewWebhook = { readonly webhookId: string; readonly secret: string; readonly ref: SecretRef };
+
+const makeWebhookSecret = async (deps: ManageOptions, organizationId: OrganizationId): Promise<{ readonly secret: string; readonly ref: SecretRef }> => {
+  if (deps.secretStore === undefined) {
+    throw new Error("A webhook automation needs the secret store");
+  }
+  const secret = newWebhookSecret();
+  const stored = await deps.secretStore.put({ organizationId, purpose: WEBHOOK_SECRET_PURPOSE }, secret);
+  if (!stored.ok) {
+    throw new Error(`The secret store refused the webhook's secret: ${stored.error.code}`);
+  }
+  return { secret, ref: stored.value };
 };
 
 export const saveAutomation = async (deps: StartPorts & ManageOptions, scope: Parameters<SaveAutomation>[1], input: Parameters<SaveAutomation>[2]): ReturnType<SaveAutomation> => {
@@ -120,7 +211,9 @@ export const saveAutomation = async (deps: StartPorts & ManageOptions, scope: Pa
     return made;
   }
   const { columns } = made;
-  return deps.db.$transaction(async (tx): ReturnType<SaveAutomation> => {
+  const webhook: NewWebhook | null =
+    columns.kind === "webhook" && input.automationId === null ? { webhookId: newWebhookId(), ...(await makeWebhookSecret(deps, scope.organizationId)) } : null;
+  return settled(deps, scope.organizationId, webhook?.ref ?? null, deps.db.$transaction(async (tx): ReturnType<SaveAutomation> => {
     const admin = await projectAdminInTx(tx, scope, input.projectId);
     if (!admin.ok) {
       return admin;
@@ -136,7 +229,16 @@ export const saveAutomation = async (deps: StartPorts & ManageOptions, scope: Pa
     const data = { ...columns, filter: columns.filter ?? Prisma.DbNull, updatedByMemberId: scope.memberId };
     let automationId: AutomationId;
     if (input.automationId === null) {
-      const row = await tx.automation.create({ data: { ...data, organizationId, projectId: admin.projectId, createdByMemberId: scope.memberId }, select: { id: true } });
+      const row = await tx.automation.create({
+        data: {
+          ...data,
+          organizationId,
+          projectId: admin.projectId,
+          createdByMemberId: scope.memberId,
+          ...(webhook === null ? {} : { webhookId: webhook.webhookId, webhookSecretRef: webhook.ref }),
+        },
+        select: { id: true },
+      });
       automationId = automationIdSchema.parse(row.id);
     } else {
       const updated = await tx.automation.updateMany({
@@ -155,12 +257,51 @@ export const saveAutomation = async (deps: StartPorts & ManageOptions, scope: Pa
       action: input.automationId === null ? "automation.created" : "automation.updated",
       entity: "automation",
       entityId: automationId,
-      // Settings only: never the prompt nor the filter's values.
-      data: { kind: columns.kind, taskKind: columns.taskKind, requireApproval: columns.requireApproval, schedule: columns.schedule },
+      // Settings only: never the prompt, the templates nor the filter's values.
+      data: {
+        kind: columns.kind,
+        taskKind: columns.taskKind,
+        requireApproval: columns.requireApproval,
+        schedule: columns.schedule,
+        ...(columns.kind === "webhook" ? { auth: columns.webhookAuth, conditions: columns.payloadFilter.length, secretMade: webhook !== null } : {}),
+      },
     });
     await deps.notices.emitInTx(tx, { organizationId, projectId: admin.projectId, entity: "project", entityId: admin.projectId });
-    return { ok: true, automationId, nextOccurrenceAt: columns.nextOccurrenceAt?.getTime() ?? null };
-  });
+    return { ok: true, automationId, nextOccurrenceAt: columns.nextOccurrenceAt?.getTime() ?? null, secret: webhook?.secret ?? null };
+  }));
+};
+
+type RotateResult = Awaited<ReturnType<RotateWebhookSecret>>;
+
+export const rotateWebhookSecret = async (deps: StartPorts & ManageOptions, scope: Parameters<RotateWebhookSecret>[1], input: Parameters<RotateWebhookSecret>[2]): Promise<RotateResult> => {
+  const made = await makeWebhookSecret(deps, scope.organizationId);
+  const rotated = await settled(deps, scope.organizationId, made.ref, deps.db.$transaction(async (tx): Promise<{ readonly ok: true; readonly old: SecretRef | null } | Exclude<RotateResult, { readonly ok: true }>> => {
+      const found = await findAutomationInTx(tx, scope, input.automationId);
+      if (!found.ok) {
+        return found;
+      }
+      if (found.row.kind !== "webhook" || found.row.webhookId === null) {
+        return { ok: false, error: "not-allowed-in-state", message: "Only a webhook automation has a secret" };
+      }
+      await tx.automation.update({ where: { id: found.row.id }, data: { webhookSecretRef: made.ref, updatedByMemberId: scope.memberId } });
+      await deps.audit.recordInTx(tx, {
+        organizationId: scope.organizationId,
+        projectId: found.projectId,
+        actor: { kind: "member", id: scope.memberId },
+        action: "automation.secret-rotated",
+        entity: "automation",
+        entityId: input.automationId,
+      });
+      await deps.notices.emitInTx(tx, { organizationId: scope.organizationId, projectId: found.projectId, entity: "project", entityId: found.projectId });
+      const old = secretRefSchema.safeParse(found.row.webhookSecretRef);
+      return { ok: true, old: old.success ? old.data : null };
+    }));
+  if (!rotated.ok) {
+    return rotated;
+  }
+  // The old secret stops working at once: the row names the new one. Deleting it is housekeeping.
+  await forgetSecret(deps, scope.organizationId, rotated.old);
+  return { ok: true, secret: made.secret };
 };
 
 const findAutomationInTx = async (tx: Tx, scope: MemberScope, automationId: AutomationId) => {

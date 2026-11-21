@@ -13,6 +13,7 @@
     "./palette": "./src/palette/actions.ts",
     "./theme": "./src/use-cases/theme.ts",
     "./ticket-template": "./src/tickets/ticket-template.ts",
+    "./webhook-template": "./src/automations/webhook-template.ts",
     "./testing": "./src/testing/index.ts"
   },
   "scripts": {

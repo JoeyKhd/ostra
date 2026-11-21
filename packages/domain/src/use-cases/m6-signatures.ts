@@ -32,6 +32,7 @@ import type {
 
 import type { MemberScope } from "../access.ts";
 import type { IntakeFilter } from "../automations/intake-filter.ts";
+import type { PayloadFilter, WebhookAuth } from "../automations/webhook-template.ts";
 import type { AgentSessionMoment } from "../linear/agent-session-copy.ts";
 import type { AutomationSkipReason, RoundVerdict } from "../lifecycles/m6.ts";
 import type { Ports } from "../ports.ts";
@@ -57,7 +58,7 @@ export type M6TxDeps = { readonly tx: Tx } & Pick<Ports, "clock" | "notices" | "
 
 // ---------- automations: rules and schedules (F-011, F-106; tickets 10, 11, 24) ----------
 
-/** An automation as a project admin saves it: an intake rule, or a schedule of a filter or a prompt. */
+/** An automation as a project admin saves it: an intake rule, a schedule of a filter or a prompt, or a webhook. */
 export type AutomationSettings = {
   readonly name: string;
   readonly taskKind: TaskKind;
@@ -75,6 +76,19 @@ export type AutomationSettings = {
       /** The rule's filter it checks, or the one prompt task it starts. */
       readonly does: { readonly kind: "filter"; readonly filter: IntakeFilter } | { readonly kind: "prompt"; readonly title: string; /** Never logged. */ readonly prompt: string };
     }
+  | {
+      /** F-139: each request it takes starts one prompt task (ADR 0056, amended 2026-11-21). */
+      readonly kind: "webhook";
+      readonly auth: WebhookAuth;
+      readonly skipWhileOpen: boolean;
+      /** Conditions on the body's fields, all of which must hold; none: every request starts a task. */
+      readonly filter: PayloadFilter;
+      /** The body field that holds a request's idempotency key when no `Idempotency-Key` header does. */
+      readonly idempotencyField: string | null;
+      /** Templates whose `{{body.field}}` placeholders the request fills, as data. Never logged. */
+      readonly title: string;
+      readonly prompt: string;
+    }
 );
 
 export type SaveAutomation = (
@@ -82,8 +96,23 @@ export type SaveAutomation = (
   scope: MemberScope,
   input: { readonly projectId: ProjectId; readonly automationId: AutomationId | null; readonly settings: AutomationSettings },
 ) => Promise<
-  UseCaseResult<{ readonly automationId: AutomationId; readonly nextOccurrenceAt: number | null }, "forbidden" | "not-found" | "invalid-input" | "schedule-too-often" | "name-taken">
+  UseCaseResult<
+    {
+      readonly automationId: AutomationId;
+      readonly nextOccurrenceAt: number | null;
+      /** A new webhook's signing secret, shown once: the create's answer is the only place it's read. `null` otherwise. */
+      readonly secret: string | null;
+    },
+    "forbidden" | "not-found" | "invalid-input" | "schedule-too-often" | "name-taken"
+  >
 >;
+
+/** A webhook's new signing secret, shown once; the old one stops working at once (F-139). */
+export type RotateWebhookSecret = (
+  deps: M6Deps,
+  scope: MemberScope,
+  input: { readonly automationId: AutomationId },
+) => Promise<UseCaseResult<{ readonly secret: string }, "forbidden" | "not-found" | "not-allowed-in-state">>;
 
 export type PauseAutomation = (
   deps: M6Deps,

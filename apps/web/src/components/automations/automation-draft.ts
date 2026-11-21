@@ -1,4 +1,6 @@
 import type { IntakeFilter } from "@ostra/domain";
+import { isPayloadPath, WEBHOOK_CONDITION_VALUE_MAX } from "@ostra/domain/webhook-template";
+import type { PayloadConditionOp, WebhookAuth } from "@ostra/domain/webhook-template";
 import { boardIdSchema, runnerLabelSchema } from "@ostra/protocol";
 import type { AgentProfileId } from "@ostra/protocol";
 
@@ -6,8 +8,9 @@ import type { RouterInputs } from "@/lib/trpc";
 
 import type { Automation } from "./automation-words";
 
-// The rule and schedule editor's draft (automation-edit.md): what the form holds, and how it becomes
-// the settings `automations.create` and `update` take. Pure, so the round trip is tested.
+// The rule, schedule and webhook editor's draft (automation-edit.md; F-139 for a webhook): what the
+// form holds, and how it becomes the settings `automations.create` and `update` take. Pure, so the
+// round trip is tested. A webhook's paths are checked with the domain's own code.
 
 export type ConditionField = "labels" | "status" | "assignee" | "board" | "project";
 export type LabelOp = "any" | "all" | "none";
@@ -21,9 +24,14 @@ export type Condition =
   | { readonly key: string; readonly field: "board"; readonly values: readonly string[] }
   | { readonly key: string; readonly field: "project"; readonly values: readonly string[] };
 
+/** One condition row of a webhook's filter: a body field, how it's compared, and the value. */
+export type PayloadRow = { readonly key: string; readonly path: string; readonly op: PayloadConditionOp; readonly value: string };
+
+export type Starts = "match" | "schedule" | "webhook";
+
 export type Draft = {
   readonly name: string;
-  readonly starts: "match" | "schedule";
+  readonly starts: Starts;
   readonly cron: string;
   readonly timeZone: string;
   readonly does: "filter" | "prompt";
@@ -35,6 +43,10 @@ export type Draft = {
   readonly agentProfileId: AgentProfileId | null;
   readonly poolLabels: readonly string[];
   readonly requireApproval: boolean;
+  /** A webhook's: how a request proves it holds the secret, its filter and its idempotency key's field. */
+  readonly auth: WebhookAuth;
+  readonly payloadRows: readonly PayloadRow[];
+  readonly idempotencyField: string;
 };
 
 export type Settings = RouterInputs["automations"]["create"]["settings"];
@@ -161,8 +173,11 @@ const viewerZone = (): string => {
   }
 };
 
-/** A new rule (`On a match`, one Labels row) or schedule (`Every Monday`, the viewer's zone). */
-export const newDraft = (starts: "match" | "schedule", hasBoard: boolean): Draft => ({
+/** A new webhook filter row: the field to fill in, compared for equality. */
+export const emptyPayloadRow = (): PayloadRow => ({ key: conditionKey(), path: "", op: "equals", value: "" });
+
+/** A new rule (`On a match`, one Labels row), schedule (`Every Monday`, the viewer's zone) or webhook. */
+export const newDraft = (starts: Starts, hasBoard: boolean): Draft => ({
   name: "",
   starts,
   cron: PRESETS.monday,
@@ -176,30 +191,82 @@ export const newDraft = (starts: "match" | "schedule", hasBoard: boolean): Draft
   agentProfileId: null,
   poolLabels: [],
   requireApproval: false,
+  auth: "signature",
+  payloadRows: [],
+  idempotencyField: "",
 });
+
+const startsOf = (automation: Automation): Starts => {
+  switch (automation.kind) {
+    case "intake_rule":
+      return "match";
+    case "schedule":
+      return "schedule";
+    case "webhook":
+      return "webhook";
+    default:
+      return automation.kind satisfies never;
+  }
+};
 
 /** A saved automation as the form's draft. */
 export const draftOf = (automation: Automation): Draft => ({
   name: automation.name,
-  starts: automation.schedule === null ? "match" : "schedule",
+  starts: startsOf(automation),
   cron: automation.schedule?.cron ?? PRESETS.monday,
   timeZone: automation.schedule?.timeZone ?? viewerZone(),
   does: automation.schedule?.does ?? "filter",
-  title: automation.schedule?.title ?? "",
-  prompt: automation.schedule?.prompt ?? "",
-  skipWhileOpen: automation.schedule?.skipWhileOpen ?? true,
+  title: automation.webhook?.title ?? automation.schedule?.title ?? "",
+  prompt: automation.webhook?.prompt ?? automation.schedule?.prompt ?? "",
+  skipWhileOpen: automation.webhook?.skipWhileOpen ?? automation.schedule?.skipWhileOpen ?? true,
   conditions: conditionsOf(automation.filter),
   taskKind: automation.taskKind === "refine" ? "refine" : "code",
   agentProfileId: automation.agentProfile?.id ?? null,
   poolLabels: automation.poolLabels,
   requireApproval: automation.requireApproval,
+  auth: automation.webhook?.auth ?? "signature",
+  payloadRows: (automation.webhook?.filter ?? []).map((condition) => ({ key: conditionKey(), path: condition.path, op: condition.op, value: condition.op === "exists" ? "" : condition.value })),
+  idempotencyField: automation.webhook?.idempotencyField ?? "",
 });
+
+type WebhookFilterInput = Extract<Settings, { readonly kind: "webhook" }>["filter"];
+
+/** Why a filter row can't be saved yet, or `null` (an empty row is left out). */
+export const payloadRowProblem = (row: PayloadRow): "path" | "value" | null => {
+  const path = row.path.trim();
+  if (path === "" && row.value.trim() === "") return null;
+  if (!isPayloadPath(path)) return "path";
+  if (row.value.length > WEBHOOK_CONDITION_VALUE_MAX || (row.op === "contains" && row.value === "")) return "value";
+  return null;
+};
+
+/** The rows as the webhook's filter, or `null` while one can't be saved. */
+export const payloadFilterOf = (rows: readonly PayloadRow[]): WebhookFilterInput | null => {
+  const filter: WebhookFilterInput = [];
+  for (const row of rows) {
+    if (payloadRowProblem(row) !== null) return null;
+    const path = row.path.trim();
+    if (path === "") continue;
+    filter.push(row.op === "exists" ? { path, op: "exists" } : { path, op: row.op, value: row.value });
+  }
+  return filter;
+};
 
 /** What the form saves, or why it can't yet (the server checks it again). */
 export const settingsOf = (draft: Draft): { readonly ok: true; readonly settings: Settings } | { readonly ok: false } => {
   const name = draft.name.trim();
   if (name === "" || name.length > 80) return { ok: false };
   const base = { name, taskKind: draft.taskKind, agentProfileId: draft.agentProfileId, poolLabels: [...draft.poolLabels], requireApproval: draft.requireApproval };
+  if (draft.starts === "webhook") {
+    const title = draft.title.trim();
+    const filter = payloadFilterOf(draft.payloadRows);
+    const field = draft.idempotencyField.trim();
+    if (title === "" || draft.prompt.trim() === "" || filter === null || (field !== "" && !isPayloadPath(field))) return { ok: false };
+    return {
+      ok: true,
+      settings: { kind: "webhook", ...base, auth: draft.auth, skipWhileOpen: draft.skipWhileOpen, filter, idempotencyField: field === "" ? null : field, title, prompt: draft.prompt },
+    };
+  }
   const filter = filterOf(draft.conditions);
   if (draft.starts === "match") {
     return filter === null ? { ok: false } : { ok: true, settings: { kind: "intake_rule", ...base, filter } };
@@ -216,7 +283,11 @@ export const settingsOf = (draft: Draft): { readonly ok: true; readonly settings
 
 /** Two drafts that save the same (condition keys aside). */
 export const sameDraft = (a: Draft, b: Draft): boolean => {
-  const strip = (draft: Draft) => ({ ...draft, conditions: draft.conditions.map((condition) => ({ ...condition, key: "" })) });
+  const strip = (draft: Draft) => ({
+    ...draft,
+    conditions: draft.conditions.map((condition) => ({ ...condition, key: "" })),
+    payloadRows: draft.payloadRows.map((row) => ({ ...row, key: "" })),
+  });
   return JSON.stringify(strip(a)) === JSON.stringify(strip(b));
 };
 

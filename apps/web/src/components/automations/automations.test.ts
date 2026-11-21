@@ -2,9 +2,10 @@ import { boardIdSchema, bulkStartIdSchema } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
 import { applyPreset, conditionsOf, filterOf, newDraft, presetOf, sameDraft, settingsOf } from "./automation-draft";
-import { bulkReasonText, filterWords, labelsNoRunnerCarries, noNames, occurrenceText } from "./automation-words";
+import { bulkReasonText, filterWords, labelsNoRunnerCarries, noNames, occurrenceText, webhookWords } from "./automation-words";
 import type { FilterNames, HistoryRun } from "./automation-words";
 import { bandsOf, shownRuns } from "./history-bands";
+import { sampleBody, sampleCurl, SECRET_VARIABLE } from "./webhook-sample";
 
 // Ticket 31 (F-011, F-106): the automations screens' words and the editor's draft, pure.
 
@@ -152,5 +153,74 @@ describe("the history's bands (automation-history.md)", () => {
     expect(occurrenceText(Date.UTC(2026, 10, 23, 8, 0), "UTC")).toBe("Mon 23 Nov, 08:00");
     expect(bulkReasonText("has-task")).toBe("it already has a task");
     expect(bulkReasonText("something-new")).toBe("it couldn't start (something-new)");
+  });
+});
+
+describe("a webhook's draft and its sample request (F-139)", () => {
+  it("F-139/c9: a webhook's form saves its verification, filter rows, key field and templates, refuses a row on anything but the body, and comes back the same", () => {
+    const draft = {
+      ...newDraft("webhook", false),
+      name: "Pager alerts",
+      title: "Alert: {{body.alert.title}}",
+      prompt: "Fix {{body.alert.title}}",
+      auth: "bearer" as const,
+      idempotencyField: " body.alert.id ",
+      payloadRows: [
+        { key: "r1", path: "body.status", op: "equals" as const, value: "firing" },
+        { key: "r2", path: "body.labels", op: "contains" as const, value: "prod" },
+        { key: "r3", path: "body.alert.id", op: "exists" as const, value: "ignored" },
+        { key: "r4", path: "", op: "equals" as const, value: "" },
+      ],
+    };
+    expect(draft.skipWhileOpen).toBe(true);
+    expect(settingsOf(draft)).toEqual({
+      ok: true,
+      settings: {
+        kind: "webhook",
+        name: "Pager alerts",
+        taskKind: "code",
+        agentProfileId: null,
+        poolLabels: [],
+        requireApproval: false,
+        auth: "bearer",
+        skipWhileOpen: true,
+        filter: [
+          { path: "body.status", op: "equals", value: "firing" },
+          { path: "body.labels", op: "contains", value: "prod" },
+          { path: "body.alert.id", op: "exists" },
+        ],
+        idempotencyField: "body.alert.id",
+        title: "Alert: {{body.alert.title}}",
+        prompt: "Fix {{body.alert.title}}",
+      },
+    });
+    expect(settingsOf({ ...draft, payloadRows: [{ key: "r1", path: "alert.status", op: "equals", value: "x" }] })).toEqual({ ok: false });
+    expect(settingsOf({ ...draft, payloadRows: [{ key: "r1", path: "body.a", op: "contains", value: "" }] })).toEqual({ ok: false });
+    expect(settingsOf({ ...draft, idempotencyField: "headers.id" })).toEqual({ ok: false });
+    expect(settingsOf({ ...draft, prompt: " " })).toEqual({ ok: false });
+    expect(sameDraft(draft, { ...draft, payloadRows: draft.payloadRows.map((row) => ({ ...row, key: `${row.key}-again` })) })).toBe(true);
+  });
+
+  it("F-139/c9: the sample fills the template's fields and passes the filter, and its curl signs or carries the secret from a variable, quoted for the shell", () => {
+    const body = sampleBody(["Alert: {{body.alert.title}} {{body}}", "{{body.alerts.0.name}}"], [
+      { key: "r1", path: "body.status", op: "equals", value: "it's firing" },
+      { key: "r2", path: "body.service", op: "not-equals", value: "web" },
+    ]);
+    expect(JSON.parse(body)).toEqual({ alert: { title: "example" }, alerts: [{ name: "example" }], status: "it's firing" });
+    expect(sampleBody([], [])).toBe('{"alert":{"title":"Disk full on db-1"}}');
+    const signed = sampleCurl({ url: "https://core.example/webhooks/automations/abc", auth: "signature", body, keyed: true });
+    expect(signed).toContain(`body='{"alert":{"title":"example"},"alerts":[{"name":"example"}],"status":"it'\\''s firing"}'`);
+    expect(signed).toContain(`openssl dgst -sha256 -hmac "$${SECRET_VARIABLE}"`);
+    expect(signed).toContain('-H "x-ostra-signature: sha256=$sig"');
+    expect(signed).toContain("-H 'idempotency-key: sample-1'");
+    const bearer = sampleCurl({ url: "https://core.example/webhooks/automations/abc", auth: "bearer", body: "{}", keyed: false });
+    expect(bearer).toContain(`-H "authorization: Bearer $${SECRET_VARIABLE}"`);
+    expect(bearer).not.toContain("idempotency-key");
+    expect(bearer).not.toContain("openssl");
+  });
+
+  it("F-139: a webhook's trigger and its filter in words", () => {
+    expect(webhookWords([])).toBe("on a request");
+    expect(webhookWords([{ path: "body.status", op: "equals", value: "firing" }, { path: "body.id", op: "exists" }])).toBe("on a request where body.status is firing and body.id is set");
   });
 });

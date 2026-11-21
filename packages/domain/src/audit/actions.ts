@@ -177,6 +177,8 @@ export const auditActions = {
   "automation.deleted": "automation",
   /** A tick found occurrences more than `OSTRA_SCHEDULE_MISSED_HOURS` late: one entry per catch-up, with the count. */
   "automation.occurrences-missed": "automation",
+  /** A webhook automation's new signing secret (F-139): the old one stops working at once. Never the secret. */
+  "automation.secret-rotated": "automation",
   "bulk-start.created": "bulk-start",
 } as const;
 

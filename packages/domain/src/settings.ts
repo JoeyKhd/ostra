@@ -106,6 +106,9 @@ export const settingNames = [
   "OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES",
   "OSTRA_SCHEDULE_MISSED_HOURS",
   "OSTRA_INTAKE_STARTS_PER_HOUR",
+  "OSTRA_WEBHOOK_STARTS_PER_HOUR",
+  "OSTRA_WEBHOOK_REQUESTS_PER_MINUTE",
+  "OSTRA_WEBHOOK_BODY_MAX_KIB",
   "OSTRA_BULK_START_MAX",
   "OSTRA_SUB_ISSUES_MAX",
   "OSTRA_SUB_ISSUES_DEPTH",
@@ -426,6 +429,18 @@ export const settingFields = {
     default: "20",
     description: "The most tasks one intake rule starts in an hour (F-011). The next match pauses the rule and tells the project's admins.",
   },
+  OSTRA_WEBHOOK_STARTS_PER_HOUR: {
+    default: "20",
+    description: "The most tasks one webhook automation starts in an hour (F-139). The next request is answered 429, pauses the automation and tells the project's admins.",
+  },
+  OSTRA_WEBHOOK_REQUESTS_PER_MINUTE: {
+    default: "60",
+    description: "The most requests one webhook automation takes in a minute (F-139). More are answered 429 with Retry-After, and leave nothing in its history.",
+  },
+  OSTRA_WEBHOOK_BODY_MAX_KIB: {
+    default: "64",
+    description: "The largest body a webhook automation's request may have, in KiB (F-139). A larger one is answered 413 and stores nothing.",
+  },
   OSTRA_BULK_START_MAX: {
     default: "50",
     description: "The most tickets a member starts at once, from the Inbox or a dry run's \"Start all\" (F-107).",
@@ -653,6 +668,9 @@ const rawSettingsSchema = z.strictObject({
   OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES: whole(1, 10_080).default(60).describe(describe("OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES")),
   OSTRA_SCHEDULE_MISSED_HOURS: whole(0, 168).default(6).describe(describe("OSTRA_SCHEDULE_MISSED_HOURS")),
   OSTRA_INTAKE_STARTS_PER_HOUR: whole(1, 1000).default(20).describe(describe("OSTRA_INTAKE_STARTS_PER_HOUR")),
+  OSTRA_WEBHOOK_STARTS_PER_HOUR: whole(1, 1000).default(20).describe(describe("OSTRA_WEBHOOK_STARTS_PER_HOUR")),
+  OSTRA_WEBHOOK_REQUESTS_PER_MINUTE: whole(1, 6000).default(60).describe(describe("OSTRA_WEBHOOK_REQUESTS_PER_MINUTE")),
+  OSTRA_WEBHOOK_BODY_MAX_KIB: whole(1, 1024).default(64).describe(describe("OSTRA_WEBHOOK_BODY_MAX_KIB")),
   OSTRA_BULK_START_MAX: whole(1, 500).default(50).describe(describe("OSTRA_BULK_START_MAX")),
   OSTRA_SUB_ISSUES_MAX: whole(1, 500).default(50).describe(describe("OSTRA_SUB_ISSUES_MAX")),
   OSTRA_SUB_ISSUES_DEPTH: whole(1, 10).default(3).describe(describe("OSTRA_SUB_ISSUES_DEPTH")),
@@ -789,6 +807,10 @@ export type TeamSettings = {
   readonly scheduleMissedHours: number;
   /** OSTRA_INTAKE_STARTS_PER_HOUR. */
   readonly intakeStartsPerHour: number;
+  /** OSTRA_WEBHOOK_STARTS_PER_HOUR, OSTRA_WEBHOOK_REQUESTS_PER_MINUTE and OSTRA_WEBHOOK_BODY_MAX_KIB, in bytes (F-139). */
+  readonly webhookStartsPerHour: number;
+  readonly webhookRequestsPerMinute: number;
+  readonly webhookBodyMaxBytes: number;
   /** OSTRA_BULK_START_MAX. */
   readonly bulkStartMax: number;
   /** OSTRA_SUB_ISSUES_MAX and OSTRA_SUB_ISSUES_DEPTH. */
@@ -1008,6 +1030,9 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
         scheduleMinIntervalMinutes: value.OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES,
         scheduleMissedHours: value.OSTRA_SCHEDULE_MISSED_HOURS,
         intakeStartsPerHour: value.OSTRA_INTAKE_STARTS_PER_HOUR,
+        webhookStartsPerHour: value.OSTRA_WEBHOOK_STARTS_PER_HOUR,
+        webhookRequestsPerMinute: value.OSTRA_WEBHOOK_REQUESTS_PER_MINUTE,
+        webhookBodyMaxBytes: value.OSTRA_WEBHOOK_BODY_MAX_KIB * 1024,
         bulkStartMax: value.OSTRA_BULK_START_MAX,
         subIssuesMax: value.OSTRA_SUB_ISSUES_MAX,
         subIssuesDepth: value.OSTRA_SUB_ISSUES_DEPTH,

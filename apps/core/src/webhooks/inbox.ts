@@ -101,7 +101,8 @@ const installationIdOf = (body: unknown): string | null => {
   return typeof id === "string" && /^\d{1,20}$/.test(id) ? id : null;
 };
 
-const headerMap = (request: IncomingMessage): Readonly<Record<string, string | undefined>> => {
+/** A request's headers by their lowercase names, a repeated one joined. */
+export const headerMap = (request: IncomingMessage): Readonly<Record<string, string | undefined>> => {
   const headers: Record<string, string | undefined> = {};
   for (const [name, value] of Object.entries(request.headers)) {
     headers[name.toLowerCase()] = Array.isArray(value) ? value.join(", ") : value;
@@ -110,7 +111,7 @@ const headerMap = (request: IncomingMessage): Readonly<Record<string, string | u
 };
 
 /** Reads a request's body to its end and drops it, for at most `ms`. */
-const drain = (request: IncomingMessage, ms: number): Promise<void> =>
+export const drain = (request: IncomingMessage, ms: number): Promise<void> =>
   new Promise((resolve) => {
     const timer = setTimeout(() => {
       request.destroy();

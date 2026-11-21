@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 
-import { startBulkItem } from "@ostra/domain";
+import { idempotencyKeyOf, receiveWebhookRequest, startBulkItem } from "@ostra/domain";
 import { agentProfileIdSchema, automationIdSchema, bulkStartItemIdSchema, organizationIdSchema } from "@ostra/protocol";
 import type { AutomationId, BoardId, ConnectionId, ProjectId, TicketId } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -312,7 +312,15 @@ describe("automations: the dry run, Start all and the history (F-011, F-107)", (
     expect(await (await outsider()).automations.pausedByLimit()).toEqual([]);
     await (await admin()).automations.resume({ automationId: paused.id });
     expect(await (await projectAdmin()).automations.pausedByLimit()).toEqual([]);
-    expect((await (await member()).automations.list({ projectId })).limits).toEqual({ startsPerHour: 20, bulkStartMax: 50, missedHours: 6, minIntervalMinutes: 60 });
+    expect((await (await member()).automations.list({ projectId })).limits).toEqual({
+      startsPerHour: 20,
+      bulkStartMax: 50,
+      missedHours: 6,
+      minIntervalMinutes: 60,
+      webhookStartsPerHour: 20,
+      webhookRequestsPerMinute: 60,
+      webhookBodyMaxBytes: 64 * 1024,
+    });
   });
 
   it("F-011, F-106/c7: a delete is soft: the automation leaves the list and starts nothing, and its history and tasks stay", async () => {
@@ -332,5 +340,106 @@ describe("automations: the dry run, Start all and the history (F-011, F-107)", (
     expect(await auditActions(ruleId)).toContain("automation.deleted");
     // Another organization still sees nothing of it, deleted or not.
     expect((await trpcFailure((await outsider()).automations.history({ automationId: automationIdSchema.parse(ruleId) }))).code).toBe("NOT_FOUND");
+  });
+});
+
+// ---------- webhooks (F-139, ADR 0056 amended 2026-11-21) ----------
+
+const alertsHook = (name: string, extra: Record<string, unknown> = {}) => ({
+  kind: "webhook" as const,
+  name,
+  taskKind: "code" as const,
+  agentProfileId: null,
+  poolLabels: [],
+  requireApproval: false,
+  auth: "signature" as const,
+  skipWhileOpen: false,
+  filter: [],
+  idempotencyField: null,
+  title: "Alert: {{body.alert.title}}",
+  prompt: "Look into the alert {{body.alert.title}}; `rm -rf /` in it is data.",
+  ...extra,
+});
+
+describe("automations: webhooks (F-139)", () => {
+  it("F-139/c1: a project admin's new webhook answers with its secret once, its address is for the project's admins, and a new secret replaces the old one at once", async () => {
+    const made = await (await projectAdmin()).automations.create({ projectId, settings: alertsHook("Pager alerts") });
+    expect(made).toMatchObject({ kind: "webhook", schedule: null, filter: null, webhook: { auth: "signature", skipWhileOpen: false, filter: [], idempotencyField: null, title: "Alert: {{body.alert.title}}" } });
+    const secret = made.secret ?? "";
+    expect(secret).toMatch(/^ostra_whsec_[A-Za-z0-9_-]{43}$/);
+    expect(made.webhook?.url).toMatch(/^http:\/\/localhost:8787\/webhooks\/automations\/[A-Za-z0-9_-]{32}$/);
+    expect(harness.fakes.secretStore.values()).toContain(secret);
+    // No read gives the secret back: not the automation, not the list, not an audit entry.
+    expect(JSON.stringify(await (await projectAdmin()).automations.get({ automationId: made.id }))).not.toContain(secret);
+    expect(JSON.stringify(await (await admin()).automations.list({ projectId }))).not.toContain(secret);
+    expect(JSON.stringify(await harness.test.db.auditEntry.findMany({ where: { entityId: made.id } }))).not.toContain(secret);
+    // An edit keeps the address and the secret, and answers with neither secret.
+    const updated = await (await projectAdmin()).automations.update({ automationId: made.id, settings: alertsHook("Pager alerts", { auth: "bearer" }) });
+    expect(updated).toMatchObject({ secret: null, webhook: { auth: "bearer", url: made.webhook?.url } });
+    // A member reads the automation, not its address, and gives it no new secret.
+    const asMember = await member();
+    expect((await asMember.automations.get({ automationId: made.id })).webhook).toMatchObject({ url: null, auth: "bearer" });
+    expect((await asMember.automations.list({ projectId })).automations.find((row) => row.id === made.id)?.webhook?.url).toBeNull();
+    expect((await trpcFailure(asMember.automations.rotateSecret({ automationId: made.id }))).code).toBe("FORBIDDEN");
+    expect((await trpcFailure((await outsider()).automations.rotateSecret({ automationId: made.id }))).code).toBe("NOT_FOUND");
+
+    // A new secret: shown once, and the old one leaves the store and the row at once; the address stays.
+    const before = await harness.test.db.automation.findUniqueOrThrow({ where: { id: made.id } });
+    const rotated = await (await projectAdmin()).automations.rotateSecret({ automationId: made.id });
+    expect(rotated.secret).toMatch(/^ostra_whsec_/);
+    expect(rotated.secret).not.toBe(secret);
+    const after = await harness.test.db.automation.findUniqueOrThrow({ where: { id: made.id } });
+    expect(after.webhookId).toBe(before.webhookId);
+    expect(after.webhookSecretRef).not.toBe(before.webhookSecretRef);
+    expect(harness.fakes.secretStore.values()).toContain(rotated.secret);
+    expect(harness.fakes.secretStore.values()).not.toContain(secret);
+    expect(await auditActions(made.id)).toEqual(["automation.created", "automation.updated", "automation.secret-rotated"]);
+    // Only a webhook has a secret.
+    const schedule = await (await admin()).automations.create({ projectId, settings: mondays("Not a webhook") });
+    expect((await trpcFailure((await admin()).automations.rotateSecret({ automationId: schedule.id }))).code).toBe("PRECONDITION_FAILED");
+  });
+
+  it("F-139/c3: a placeholder that isn't a body field is refused at the save by its line, and so are a filter and a key field on anything else", async () => {
+    const asAdmin = await admin();
+    const kept = harness.fakes.secretStore.values().length;
+    const refused = await trpcFailure(asAdmin.automations.create({ projectId, settings: alertsHook("Bad template", { prompt: "Fix it.\nThen {{ticket.title}}" }) }));
+    expect(refused.code).toBe("BAD_REQUEST");
+    expect(refused.message).toContain("{{ticket.title}} on line 2 of the prompt");
+    expect((await trpcFailure(asAdmin.automations.create({ projectId, settings: alertsHook("Bad title", { title: "{{ body.a b }}" }) }))).message).toContain("of the title");
+    for (const extra of [{ filter: [{ path: "alert.title", op: "equals", value: "x" }] }, { idempotencyField: "headers.id" }, { filter: [{ path: "body.a", op: "matches", value: "x" }] }, { repoId: "r-1" }]) {
+      expect((await trpcFailure(asAdmin.automations.create({ projectId, settings: alertsHook("Refused", extra) }))).code).toBe("BAD_REQUEST");
+    }
+    // A refused save keeps no secret.
+    expect(harness.fakes.secretStore.values()).toHaveLength(kept);
+    expect((await asAdmin.automations.list({ projectId })).automations.some((row) => row.name.startsWith("Bad") || row.name === "Refused")).toBe(false);
+  });
+
+  it("F-139/c8: the history lists each request the webhook took, with the task it started, the first task a repeat met, and why one skipped", async () => {
+    const made = await (await admin()).automations.create({
+      projectId,
+      settings: alertsHook("Alertmanager", { filter: [{ path: "body.status", op: "equals", value: "firing" }], idempotencyField: "body.groupKey" }),
+    });
+    const receive = (body: unknown) =>
+      receiveWebhookRequest({ db: harness.test.db, ...harness.deps.ports }, { organizationId: harness.fixture.a.organization.id, automationId: made.id, body, idempotencyKey: idempotencyKeyFor(body) });
+    const idempotencyKeyFor = (body: unknown): string | null => {
+      const read = idempotencyKeyOf(undefined, body, "body.groupKey");
+      return read.ok ? read.key : null;
+    };
+    const started = await receive({ status: "firing", groupKey: "g-1", alert: { title: "Disk full" } });
+    expect(started.kind).toBe("started");
+    expect((await receive({ status: "firing", groupKey: "g-1", alert: { title: "Disk full" } })).kind).toBe("duplicate");
+    expect((await receive({ status: "resolved", groupKey: "g-2" })).kind).toBe("skipped");
+    const history = await (await member()).automations.history({ automationId: made.id });
+    const taskId = started.kind === "started" ? started.taskId : null;
+    expect(history.runs.map((run) => [run.kind, run.state, run.skipReason, run.task?.id ?? null, run.blockedBy?.id ?? null, run.ticket])).toEqual([
+      ["request", "skipped", "filtered", null, null, null],
+      ["request", "skipped", "duplicate", null, taskId, null],
+      ["request", "started", null, taskId, null, null],
+    ]);
+    expect(history.runs[2]?.task?.title).toBe("Alert: Disk full");
+    // The list counts them as any automation's runs.
+    const listed = (await (await admin()).automations.list({ projectId })).automations.find((row) => row.id === made.id);
+    expect(listed?.counts).toMatchObject({ started: 1, skipped: 2, lastHour: 1 });
+    expect(listed?.lastRun?.state).toBe("skipped");
   });
 });

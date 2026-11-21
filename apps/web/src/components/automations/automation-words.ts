@@ -1,4 +1,5 @@
 import type { IntakeFilter } from "@ostra/domain";
+import type { PayloadCondition } from "@ostra/domain/webhook-template";
 
 import { plural, t } from "@/lib/messages";
 import type { RouterOutputs } from "@/lib/trpc";
@@ -168,12 +169,33 @@ export const taskKindLong = (kind: Automation["taskKind"]): string => {
   }
 };
 
+/** One condition of a webhook's filter in words: `body.status is firing`. */
+export const payloadConditionWords = (condition: PayloadCondition): string => {
+  switch (condition.op) {
+    case "equals":
+      return t("automations.words.conditionEquals", { path: condition.path, value: condition.value });
+    case "not-equals":
+      return t("automations.words.conditionNotEquals", { path: condition.path, value: condition.value });
+    case "contains":
+      return t("automations.words.conditionContains", { path: condition.path, value: condition.value });
+    case "exists":
+      return t("automations.words.conditionExists", { path: condition.path });
+    default:
+      return condition satisfies never;
+  }
+};
+
+/** A webhook's trigger in words: "on a request", and its filter's conditions when it has some. */
+export const webhookWords = (filter: readonly PayloadCondition[]): string =>
+  filter.length === 0 ? t("automations.onARequest") : t("automations.words.requestWhere", { conditions: listWords(filter.map(payloadConditionWords), "and") });
+
 /** What a row's Next cell says: the reason it's paused, a schedule's next time, or "on a match". */
 export const nextText = (automation: Automation, startsPerHour: number): { readonly text: string; readonly tone: "text" | "faint" | "muted"; readonly limit: boolean } => {
   if (automation.paused !== null) {
     if (automation.paused.reason === "hourly_limit") return { text: t("automations.pausedLimit", { n: startsPerHour }), tone: "muted", limit: true };
     return { text: automation.paused.byName === null ? t("automations.pausedByNobody") : t("automations.pausedBy", { name: automation.paused.byName }), tone: "muted", limit: false };
   }
+  if (automation.kind === "webhook") return { text: t("automations.onARequest"), tone: "faint", limit: false };
   if (automation.schedule === null) return { text: t("automations.onAMatch"), tone: "faint", limit: false };
   if (automation.nextOccurrenceAt === null) return { text: "—", tone: "faint", limit: false };
   return { text: occurrenceText(automation.nextOccurrenceAt, automation.schedule.timeZone), tone: "text", limit: false };
@@ -181,12 +203,17 @@ export const nextText = (automation: Automation, startsPerHour: number): { reado
 
 /** A row's "Starts when": a rule's filter, or a schedule's sentence (and "checks its filter"). */
 export const startsWhenText = (automation: Automation, names: FilterNames): string => {
+  if (automation.webhook !== null) return webhookWords(automation.webhook.filter);
   if (automation.schedule === null) return automation.filter === null ? t("automations.words.everyTicket") : filterWords(automation.filter, names);
   return automation.schedule.does === "filter" ? `${automation.schedule.sentence} · ${t("automations.checksFilter")}` : automation.schedule.sentence;
 };
 
-/** Why a run was skipped, as the history's Task column says it. */
-export const skipReasonText = (reason: SkipReason, limits: { readonly startsPerHour: number; readonly bulkStartMax: number }): string => {
+/** Why a run was skipped, as the history's Task column says it. A webhook's hourly limit is its own setting. */
+export const skipReasonText = (
+  reason: SkipReason,
+  limits: { readonly startsPerHour: number; readonly bulkStartMax: number; readonly webhookStartsPerHour?: number },
+  kind: Automation["kind"] = "intake_rule",
+): string => {
   switch (reason) {
     case "has_task":
       return t("automations.history.reason.has_task");
@@ -195,11 +222,19 @@ export const skipReasonText = (reason: SkipReason, limits: { readonly startsPerH
     case "paused":
       return t("automations.history.reason.paused");
     case "hourly_limit":
-      return t("automations.history.reason.hourly_limit", { n: limits.startsPerHour });
+      return kind === "webhook"
+        ? t("automations.history.reason.hourlyLimitWebhook", { n: limits.webhookStartsPerHour ?? limits.startsPerHour })
+        : t("automations.history.reason.hourly_limit", { n: limits.startsPerHour });
     case "over_limit":
       return t("automations.history.reason.over_limit", { n: limits.bulkStartMax });
     case "budget":
       return t("automations.history.reason.budget");
+    case "filtered":
+      return t("automations.history.reason.filtered");
+    case "duplicate":
+      return t("automations.history.reason.duplicate");
+    case "setup":
+      return t("automations.history.reason.setup");
     default:
       return reason satisfies never;
   }
@@ -229,6 +264,12 @@ export const dryOutcomeText = (outcome: DryOutcome, kind: "code" | "refine"): st
       return t("automations.dry.skip.over_limit");
     case "budget":
       return t("automations.dry.skip.budget");
+    case "filtered":
+      return t("automations.dry.skip.filtered");
+    case "duplicate":
+      return t("automations.dry.skip.duplicate");
+    case "setup":
+      return t("automations.dry.skip.setup");
     default:
       return outcome satisfies never;
   }

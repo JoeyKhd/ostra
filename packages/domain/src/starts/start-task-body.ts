@@ -118,6 +118,7 @@ const originColumns = (origin: StartOrigin) => {
   switch (origin.kind) {
     case "intake-rule":
     case "occurrence":
+    case "webhook":
       return { automationId: origin.automationId };
     case "bulk-item":
       return { bulkStartId: origin.bulkStartId, automationId: origin.automationId };
@@ -141,6 +142,7 @@ const actorOf = (member: MemberId | null) => (member === null ? { kind: "system"
 const automationOf = (origin: StartOrigin): { readonly automationId: NonNullable<ReturnType<typeof originColumns>["automationId"]>; readonly occurrenceAt: number | null } | null => {
   switch (origin.kind) {
     case "intake-rule":
+    case "webhook":
       return { automationId: origin.automationId, occurrenceAt: null };
     case "occurrence":
       return { automationId: origin.automationId, occurrenceAt: origin.occurrenceAt };

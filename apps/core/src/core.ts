@@ -101,6 +101,7 @@ import {
   snapshotsOnPush,
 } from "./snapshots/snapshots.ts";
 import type { SnapshotDeps } from "./snapshots/snapshots.ts";
+import { createAutomationWebhooks } from "./webhooks/automation-webhooks.ts";
 import { createWebhookInbox, parseBlockedWebhooks } from "./webhooks/inbox.ts";
 import { webhookProcessHandler } from "./webhooks/process.ts";
 import type { WebhookHandlers } from "./webhooks/process.ts";
@@ -431,6 +432,18 @@ export const startCore = async (
     insertDeadlineMs: settings.webhookInsertDeadlineMs,
     blocked: parseBlockedWebhooks(options.devBlockWebhooks, settings.mode),
   });
+  // Webhook automations (F-139): verify, then decide and start in one transaction, then answer.
+  const automationWebhooks = createAutomationWebhooks({
+    db,
+    jobs,
+    notices,
+    audit: postgresAuditLog,
+    clock: systemClock,
+    secretStore: adapters.secretStore,
+    logger,
+    publicUrl: settings.publicUrl,
+    team: settings.team,
+  });
   // OSTRA_LINEAR_API_URL (ticket 34: the panel's e2e stack points it at a fake Linear); the restart harness passes its own.
   const linearApiUrl = options.linearApiUrl ?? settings.linearApiUrl;
   // A connection's tracker, with its token and the organization's Postgres stores (tickets 14, 15).
@@ -687,7 +700,7 @@ export const startCore = async (
     });
   }, TICKET_DRAIN_MS);
   drain.unref();
-  const server = createCoreServer({ routes: [gateway.handleRequest, taskEndpoints, memoryEndpoints, reviewEndpoints, environmentProposalEndpoints, draftEndpoints, snapshotEndpoints, registryEndpoints, blobEndpoints, panelBlobEndpoints, inbox.handle], upgrade: gateway.handleUpgrade, logger });
+  const server = createCoreServer({ routes: [gateway.handleRequest, taskEndpoints, memoryEndpoints, reviewEndpoints, environmentProposalEndpoints, draftEndpoints, snapshotEndpoints, registryEndpoints, blobEndpoints, panelBlobEndpoints, inbox.handle, automationWebhooks.handle], upgrade: gateway.handleUpgrade, logger });
   await gateway.start();
   const port = await server.listen(settings.corePort, options.host);
 

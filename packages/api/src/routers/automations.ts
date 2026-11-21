@@ -10,10 +10,16 @@ import {
   openCachedChildrenInTx,
   parseCron,
   parseIntakeFilter,
+  parsePayloadFilter,
   pauseAutomation,
+  payloadFilterSchema,
+  payloadPathSchema,
   requireProjectAccess,
+  rotateWebhookSecret,
   saveAutomation,
   startMany,
+  webhookAuths,
+  webhookUrlOf,
 } from "@ostra/domain";
 import type { AutomationSettings, DryRunRow, IntakeFilter } from "@ostra/domain";
 import type { Db } from "@ostra/db";
@@ -45,6 +51,11 @@ import type { ProjectAccess } from "../trpc/init.ts";
 // can open the project may use. The pool labels are checked against the project's pools: a label no
 // runner of them carries is returned (`labelsNoRunnerHas`), since its tasks would wait, not refused.
 // A schedule's prompt is the members' to read in the panel and never reaches a log or an audit entry.
+//
+// A webhook automation (F-139, ADR 0056 amended 2026-11-21) is saved the same way. Its create answers
+// with its signing secret, once: no read gives it back, and "New secret" (`rotateSecret`) makes
+// another, shown once. Its address is for the project's admins only: it isn't a credential, but
+// nobody else needs it.
 
 const startKindSchema = z.enum(["code", "refine"]);
 const nameSchema = z.string().trim().min(1).max(80);
@@ -73,6 +84,16 @@ const settingsSchema = z.discriminatedUnion("kind", [
       z.strictObject({ kind: z.literal("prompt"), title: z.string().trim().min(1).max(512), prompt: z.string().min(1).max(PROMPT_MAX) }),
     ]),
   }),
+  z.strictObject({
+    kind: z.literal("webhook"),
+    ...baseShape,
+    auth: z.enum(webhookAuths),
+    skipWhileOpen: z.boolean(),
+    filter: payloadFilterSchema,
+    idempotencyField: payloadPathSchema.nullable(),
+    title: z.string().trim().min(1).max(512),
+    prompt: z.string().min(1).max(PROMPT_MAX),
+  }),
 ]);
 type SettingsInput = z.infer<typeof settingsSchema>;
 
@@ -86,12 +107,12 @@ const pausedSchema = z.object({
 });
 
 const runStateSchema = z.enum(["started", "skipped", "missed"]);
-const skipReasonSchema = z.enum(["last_open", "has_task", "paused", "hourly_limit", "over_limit", "budget"]);
+const skipReasonSchema = z.enum(["last_open", "has_task", "paused", "hourly_limit", "over_limit", "budget", "filtered", "duplicate", "setup"]);
 
 const automationSchema = z.object({
   id: automationIdSchema,
   projectId: projectIdSchema,
-  kind: z.enum(["intake_rule", "schedule"]),
+  kind: z.enum(["intake_rule", "schedule", "webhook"]),
   name: z.string(),
   taskKind: z.enum(["refine", "code", "review"]),
   agentProfile: z.object({ id: agentProfileIdSchema, name: z.string() }).nullable(),
@@ -114,6 +135,20 @@ const automationSchema = z.object({
       prompt: z.string().nullable(),
     })
     .nullable(),
+  /** A webhook automation's settings (F-139); `null` for a rule or a schedule. */
+  webhook: z
+    .object({
+      /** Its address, for the project's admins; `null` for the rest. */
+      url: z.string().nullable(),
+      auth: z.enum(webhookAuths),
+      skipWhileOpen: z.boolean(),
+      filter: payloadFilterSchema,
+      idempotencyField: z.string().nullable(),
+      /** The title and prompt templates (never logged). */
+      title: z.string(),
+      prompt: z.string(),
+    })
+    .nullable(),
   paused: pausedSchema.nullable(),
   nextOccurrenceAt: z.number().int().nullable(),
   lastOccurrenceAt: z.number().int().nullable(),
@@ -128,6 +163,9 @@ const automationSchema = z.object({
   updatedByName: z.string().nullable(),
 });
 type AutomationView = z.infer<typeof automationSchema>;
+
+/** A create's or an update's answer: the automation, and a new webhook's signing secret, once (`null` otherwise). */
+const savedSchema = automationSchema.extend({ secret: z.string().nullable() });
 
 type AutomationRow = Awaited<ReturnType<Db["automation"]["findFirstOrThrow"]>>;
 
@@ -183,12 +221,30 @@ const checkRuleProfile = async (db: Db, organizationId: OrganizationId, projectI
   }
 };
 
+/** A webhook's view, its address only for the project's admins. */
+const webhookViewOf = (row: AutomationRow, address: { readonly corePublicUrl: string; readonly admin: boolean }): AutomationView["webhook"] => {
+  if (row.kind !== "webhook" || row.webhookAuth === null) {
+    return null;
+  }
+  const filter = parsePayloadFilter(row.payloadFilter);
+  return {
+    url: address.admin && row.webhookId !== null ? webhookUrlOf(address.corePublicUrl, row.webhookId) : null,
+    auth: row.webhookAuth,
+    skipWhileOpen: row.skipWhileOpen,
+    filter: filter.ok ? [...filter.filter] : [],
+    idempotencyField: row.idempotencyField,
+    title: row.title ?? "",
+    prompt: row.prompt ?? "",
+  };
+};
+
 const viewOf = async (
   db: Db,
   organizationId: OrganizationId,
   rows: readonly AutomationRow[],
   runners: readonly (readonly string[])[],
   now: number,
+  address: { readonly corePublicUrl: string; readonly admin: boolean },
 ): Promise<AutomationView[]> => {
   const ids = rows.map((row) => row.id);
   const profileIds = rows.flatMap((row) => (row.agentProfileId === null ? [] : [row.agentProfileId]));
@@ -245,6 +301,7 @@ const viewOf = async (
               title: row.title,
               prompt: row.prompt,
             },
+      webhook: webhookViewOf(row, address),
       paused:
         row.pausedAt === null || row.pausedReason === null
           ? null
@@ -270,11 +327,11 @@ const viewOf = async (
   });
 };
 
-/** One automation's view, read again after a write. */
-const oneView = async (deps: ApiDeps, organizationId: OrganizationId, automationId: AutomationId): Promise<AutomationView> => {
+/** One automation's view, read again after a write. `admin`: the reader is one of its project's admins. */
+const oneView = async (deps: ApiDeps, organizationId: OrganizationId, automationId: AutomationId, admin: boolean): Promise<AutomationView> => {
   const row = await deps.db.automation.findFirstOrThrow({ where: { id: automationId, organizationId } });
   const runners = await poolRunnerLabels(deps.db, organizationId, projectIdSchema.parse(row.projectId));
-  const [view] = await viewOf(deps.db, organizationId, [row], runners, deps.ports.clock.now());
+  const [view] = await viewOf(deps.db, organizationId, [row], runners, deps.ports.clock.now(), { corePublicUrl: deps.settings.corePublicUrl, admin });
   if (view === undefined) {
     throw new TRPCError({ code: "NOT_FOUND", message: "No such automation" });
   }
@@ -326,10 +383,14 @@ const save = async (deps: ApiDeps, scope: Parameters<typeof saveAutomation>[1], 
     await checkRuleProfile(deps.db, scope.organizationId, projectId, settings.agentProfileId);
   }
   const saved = unwrap(
-    await saveAutomation({ db: deps.db, ...deps.ports, scheduleMinIntervalMinutes: deps.settings.team.scheduleMinIntervalMinutes }, scope, { projectId, automationId, settings: settingsOf(settings) }),
+    await saveAutomation(
+      { db: deps.db, ...deps.ports, scheduleMinIntervalMinutes: deps.settings.team.scheduleMinIntervalMinutes, secretStore: deps.ports.adapters.secretStore },
+      scope,
+      { projectId, automationId, settings: settingsOf(settings) },
+    ),
     saveCodes,
   );
-  return oneView(deps, scope.organizationId, saved.automationId);
+  return { ...(await oneView(deps, scope.organizationId, saved.automationId, true)), secret: saved.secret };
 };
 
 const dryRunOutcomeSchema = z.union([
@@ -405,7 +466,7 @@ const outcomeOf = async (
 const filterOfRow = (row: { readonly filter: unknown; readonly prompt: string | null }): IntakeFilter => {
   const parsed = row.prompt === null && row.filter !== null ? parseIntakeFilter(row.filter) : { ok: false as const };
   if (!parsed.ok) {
-    throw new TRPCError({ code: "PRECONDITION_FAILED", message: "A prompt schedule starts one task: it has no filter to dry-run" });
+    throw new TRPCError({ code: "PRECONDITION_FAILED", message: "A prompt schedule or a webhook starts one task: it has no ticket filter to dry-run" });
   }
   return parsed.filter;
 };
@@ -435,7 +496,16 @@ export const automationsRouter = router({
         canEdit: z.boolean(),
         automations: z.array(automationSchema),
         /** The install's limits the screens name (`OSTRA_INTAKE_STARTS_PER_HOUR`, and the others). */
-        limits: z.object({ startsPerHour: z.number().int(), bulkStartMax: z.number().int(), missedHours: z.number().int(), minIntervalMinutes: z.number().int() }),
+        limits: z.object({
+          startsPerHour: z.number().int(),
+          bulkStartMax: z.number().int(),
+          missedHours: z.number().int(),
+          minIntervalMinutes: z.number().int(),
+          /** F-139: `OSTRA_WEBHOOK_STARTS_PER_HOUR`, `OSTRA_WEBHOOK_REQUESTS_PER_MINUTE` and `OSTRA_WEBHOOK_BODY_MAX_KIB` in bytes. */
+          webhookStartsPerHour: z.number().int(),
+          webhookRequestsPerMinute: z.number().int(),
+          webhookBodyMaxBytes: z.number().int(),
+        }),
         /** Every label a runner of the project's pools carries, so the editor names one a draft's tasks would wait for. */
         runnerLabels: z.array(z.string()),
       }),
@@ -445,10 +515,19 @@ export const automationsRouter = router({
       const rows = await ctx.deps.db.automation.findMany({ where: { organizationId, projectId: input.projectId, deletedAt: null }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
       const runners = await poolRunnerLabels(ctx.deps.db, organizationId, input.projectId);
       const { team } = ctx.deps.settings;
+      const admin = ctx.project.role === "admin";
       return {
-        canEdit: ctx.project.role === "admin",
-        automations: await viewOf(ctx.deps.db, organizationId, rows, runners, ctx.deps.ports.clock.now()),
-        limits: { startsPerHour: team.intakeStartsPerHour, bulkStartMax: team.bulkStartMax, missedHours: team.scheduleMissedHours, minIntervalMinutes: team.scheduleMinIntervalMinutes },
+        canEdit: admin,
+        automations: await viewOf(ctx.deps.db, organizationId, rows, runners, ctx.deps.ports.clock.now(), { corePublicUrl: ctx.deps.settings.corePublicUrl, admin }),
+        limits: {
+          startsPerHour: team.intakeStartsPerHour,
+          bulkStartMax: team.bulkStartMax,
+          missedHours: team.scheduleMissedHours,
+          minIntervalMinutes: team.scheduleMinIntervalMinutes,
+          webhookStartsPerHour: team.webhookStartsPerHour,
+          webhookRequestsPerMinute: team.webhookRequestsPerMinute,
+          webhookBodyMaxBytes: team.webhookBodyMaxBytes,
+        },
         runnerLabels: [...new Set(runners.flat())].sort(),
       };
     }),
@@ -464,31 +543,45 @@ export const automationsRouter = router({
         where: { organizationId: ctx.scope.organizationId, pausedReason: "hourly_limit", pausedAt: { not: null }, deletedAt: null },
         orderBy: [{ pausedAt: "desc" }, { id: "desc" }],
         take: 50,
-        select: { id: true, name: true, pausedAt: true, project: { select: { id: true, name: true, access: true } } },
+        select: { id: true, name: true, kind: true, pausedAt: true, project: { select: { id: true, name: true, access: true } } },
       });
+      const { team } = ctx.deps.settings;
       return rows.flatMap((row) => {
         const projectId = projectIdSchema.parse(row.project.id);
         const admin = requireProjectAccess(ctx.scope, { id: projectId, organizationId: ctx.scope.organizationId, access: row.project.access }, "admin").ok;
-        return admin && row.pausedAt !== null
-          ? [{ id: automationIdSchema.parse(row.id), name: row.name, projectId, projectName: row.project.name, pausedAt: row.pausedAt.getTime(), startsPerHour: ctx.deps.settings.team.intakeStartsPerHour }]
-          : [];
+        const startsPerHour = row.kind === "webhook" ? team.webhookStartsPerHour : team.intakeStartsPerHour;
+        return admin && row.pausedAt !== null ? [{ id: automationIdSchema.parse(row.id), name: row.name, projectId, projectName: row.project.name, pausedAt: row.pausedAt.getTime(), startsPerHour }] : [];
       });
     }),
 
   /** One automation, for the editor: read-only to a member, editable by a project admin. */
   get: automationProcedure("read", z.strictObject({ automationId: automationIdSchema }))
     .output(automationSchema.extend({ canEdit: z.boolean() }))
-    .query(async ({ ctx }) => ({ ...(await oneView(ctx.deps, ctx.scope.organizationId, ctx.automation.automationId)), canEdit: ctx.project.role === "admin" })),
+    .query(async ({ ctx }) => ({ ...(await oneView(ctx.deps, ctx.scope.organizationId, ctx.automation.automationId, ctx.project.role === "admin")), canEdit: ctx.project.role === "admin" })),
 
-  /** A new rule or schedule. Saving starts nothing; a schedule's first occurrence is the next one after now. */
+  /**
+   * A new rule, schedule or webhook. Saving starts nothing; a schedule's first occurrence is the next
+   * one after now. A webhook's answer holds its signing secret, the one time it's read.
+   */
   create: projectProcedure("admin", z.strictObject({ projectId: projectIdSchema, settings: settingsSchema }))
-    .output(automationSchema)
+    .output(savedSchema)
     .mutation(({ ctx, input }) => save(ctx.deps, ctx.scope, input.projectId, null, input.settings)),
 
-  /** An edit, kind for kind. A schedule's next occurrence is computed again from now, so it never fires a past time. */
+  /** An edit, kind for kind. A schedule's next occurrence is computed again from now, so it never fires a past time. A webhook keeps its address and secret. */
   update: automationProcedure("admin", z.strictObject({ automationId: automationIdSchema, settings: settingsSchema }))
-    .output(automationSchema)
+    .output(savedSchema)
     .mutation(({ ctx, input }) => save(ctx.deps, ctx.scope, ctx.automation.projectId, ctx.automation.automationId, input.settings)),
+
+  /** A webhook's new signing secret, shown once: the old one stops working at once (F-139). */
+  rotateSecret: automationProcedure("admin", z.strictObject({ automationId: automationIdSchema }))
+    .output(z.object({ secret: z.string() }))
+    .mutation(async ({ ctx }) => {
+      const rotated = unwrap(
+        await rotateWebhookSecret({ db: ctx.deps.db, ...ctx.deps.ports, secretStore: ctx.deps.ports.adapters.secretStore }, ctx.scope, { automationId: ctx.automation.automationId }),
+        { forbidden: "FORBIDDEN", "not-found": "NOT_FOUND", "not-allowed-in-state": "PRECONDITION_FAILED" },
+      );
+      return { secret: rotated.secret };
+    }),
 
   /** Paused at once: its next occurrence and its matches start nothing until it's resumed. */
   pause: automationProcedure("admin", z.strictObject({ automationId: automationIdSchema }))
@@ -499,7 +592,7 @@ export const automationsRouter = router({
         "not-found": "NOT_FOUND",
         "not-allowed-in-state": "CONFLICT",
       });
-      return oneView(ctx.deps, ctx.scope.organizationId, ctx.automation.automationId);
+      return oneView(ctx.deps, ctx.scope.organizationId, ctx.automation.automationId, true);
     }),
 
   /** Resumed from now on: a schedule's next occurrence is the next one after now, never a missed one. */
@@ -511,7 +604,7 @@ export const automationsRouter = router({
         "not-found": "NOT_FOUND",
         "not-allowed-in-state": "CONFLICT",
       });
-      return oneView(ctx.deps, ctx.scope.organizationId, ctx.automation.automationId);
+      return oneView(ctx.deps, ctx.scope.organizationId, ctx.automation.automationId, true);
     }),
 
   /** A soft delete: it starts nothing more, and its history and tasks stay. */
@@ -628,7 +721,7 @@ export const automationsRouter = router({
         runs: z.array(
           z.object({
             id: z.string(),
-            kind: z.enum(["occurrence", "ticket_match", "start_all"]),
+            kind: z.enum(["occurrence", "ticket_match", "start_all", "request"]),
             state: runStateSchema,
             skipReason: skipReasonSchema.nullable(),
             occurrenceAt: z.number().int().nullable(),
@@ -663,9 +756,19 @@ export const automationsRouter = router({
       });
       const page = runs.slice(0, HISTORY_PAGE);
       const last = page.at(-1);
-      // The task each skip was about: the newest one made before it, of the ticket or of the automation.
+      // The task each skip was about: the newest one made before it, of the ticket or of the automation;
+      // for a webhook's repeat of a key, the task the key's first request started.
       const blockedBy = new Map<string, { readonly id: TaskId; readonly shortId: string; readonly state: string }>();
       for (const run of page) {
+        if (run.state === "skipped" && run.skipReason === "duplicate" && run.idempotencyKeyHash !== null) {
+          const first = await db.automationRun.findFirst({
+            where: { organizationId, automationId: run.automationId, idempotencyKeyHash: run.idempotencyKeyHash, taskId: { not: null }, createdAt: { lte: run.createdAt } },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+            select: { task: { select: { id: true, state: true } } },
+          });
+          if (first?.task !== null && first?.task !== undefined) blockedBy.set(run.id, { id: taskIdSchema.parse(first.task.id), shortId: shortIdOf(first.task.id), state: first.task.state });
+          continue;
+        }
         if (run.state !== "skipped" || (run.skipReason !== "has_task" && run.skipReason !== "last_open")) continue;
         const scope = run.skipReason === "has_task" ? (run.ticketId === null ? null : { ticketId: run.ticketId }) : { automationId: run.automationId };
         if (scope === null) continue;

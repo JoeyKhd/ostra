@@ -23,13 +23,13 @@ import { plural, t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 
 import { useFilterNames } from "./automation-data";
-import { clockText, dayText, filterWords, occurrenceText, secondsText, skipReasonText, weekdayText } from "./automation-words";
+import { clockText, dayText, filterWords, occurrenceText, secondsText, skipReasonText, webhookWords, weekdayText } from "./automation-words";
 import type { Automation, HistoryRun } from "./automation-words";
-import { bandsOf, matchCount, occurrenceCount, rowsOfBand, shownRuns } from "./history-bands";
+import { bandsOf, matchCount, occurrenceCount, requestCount, rowsOfBand, shownRuns } from "./history-bands";
 import type { Band } from "./history-bands";
 
-// An automation's history (automation-history.md, F-011, F-106): each occurrence, match and "Start
-// all" press, with what it started, skipped or missed, the pause notice with "Resume", and the
+// An automation's history (automation-history.md, F-011, F-106, F-139): each occurrence, match, "Start
+// all" press and webhook request, with what it started, skipped or missed, the pause notice with "Resume", and the
 // selected run's details. Anyone who can open the project reads it; a deleted automation's stays.
 
 type Outcome = "all" | "started" | "skipped" | "missed";
@@ -110,9 +110,11 @@ export const AutomationHistory = ({ projectId, automationId }: { readonly projec
   const automation: Automation | undefined = list.data?.automations.find((row) => row.id === automationId);
   const canEdit = list.data?.canEdit === true;
   const deleted = history.data?.pages[0]?.deleted === true;
-  const limits = list.data?.limits ?? { startsPerHour: 20, bulkStartMax: 50, missedHours: 6, minIntervalMinutes: 60 };
+  const limits = list.data?.limits ?? { startsPerHour: 20, bulkStartMax: 50, missedHours: 6, minIntervalMinutes: 60, webhookStartsPerHour: 20, webhookRequestsPerMinute: 60, webhookBodyMaxBytes: 65_536 };
   const zone = automation?.schedule?.timeZone;
   const isSchedule = automation?.kind === "schedule";
+  const isWebhook = automation?.kind === "webhook";
+  const kind = automation?.kind ?? "intake_rule";
   const outcomeParam = params.get("outcome");
   const periodParam = params.get("period");
   const outcome: Outcome = isOutcome(outcomeParam) ? outcomeParam : "all";
@@ -140,7 +142,9 @@ export const AutomationHistory = ({ projectId, automationId }: { readonly projec
   const lede =
     automation === undefined
       ? undefined
-      : automation.schedule === null
+      : automation.webhook !== null
+        ? `${t("automations.history.ledeWebhook")} ${webhookWords(automation.webhook.filter)}.`
+        : automation.schedule === null
         ? t("automations.history.ledeRule", { filter: filterText })
         : automation.schedule.does === "prompt"
           ? t("automations.history.ledePrompt", { sentence: automation.schedule.sentence, title: automation.schedule.title ?? "" })
@@ -171,11 +175,11 @@ export const AutomationHistory = ({ projectId, automationId }: { readonly projec
       actions={
         canEdit && !deleted && automation !== undefined ? (
           <Link href={`/projects/${projectId}/automations/${automationId}`} className={buttonVariants()}>
-            <PencilIcon /> {isSchedule ? t("automations.panel.editSchedule") : t("automations.panel.editRule")}
+            <PencilIcon /> {isWebhook ? t("automations.panel.editWebhook") : isSchedule ? t("automations.panel.editSchedule") : t("automations.panel.editRule")}
           </Link>
         ) : null
       }
-      properties={selected === null ? null : <RunPanel run={selected} automation={automation} limits={limits} />}
+      properties={selected === null ? null : <RunPanel run={selected} automation={automation} limits={limits} kind={kind} />}
     >
       <PageHeading title={deleted ? `${name} ${t("automations.history.deleted")}` : name} lede={lede} />
       {automation?.paused === null || automation?.paused === undefined || deleted ? null : (
@@ -218,9 +222,11 @@ export const AutomationHistory = ({ projectId, automationId }: { readonly projec
           testId="history-period"
         />
         <span className="ml-auto text-sm text-faint">
-          {isSchedule
-            ? `${plural(occurrenceCount(runs), "automations.history.occurrenceCount.one", "automations.history.occurrenceCount.other")} · ${plural(matchCount(runs), "automations.history.matchCount.one", "automations.history.matchCount.other")}`
-            : plural(matchCount(runs), "automations.history.matchCount.one", "automations.history.matchCount.other")}
+          {isWebhook
+            ? plural(requestCount(runs), "automations.history.requestCount.one", "automations.history.requestCount.other")
+            : isSchedule
+              ? `${plural(occurrenceCount(runs), "automations.history.occurrenceCount.one", "automations.history.occurrenceCount.other")} · ${plural(matchCount(runs), "automations.history.matchCount.one", "automations.history.matchCount.other")}`
+              : plural(matchCount(runs), "automations.history.matchCount.one", "automations.history.matchCount.other")}
         </span>
       </div>
       {history.isError ? (
@@ -233,7 +239,9 @@ export const AutomationHistory = ({ projectId, automationId }: { readonly projec
             ? automation.nextOccurrenceAt === null
               ? t("automations.history.emptyScheduleNone")
               : t("automations.history.emptySchedule", { date: occurrenceText(automation.nextOccurrenceAt, zone) })
-            : t("automations.history.emptyRule")}
+            : isWebhook
+              ? t("automations.history.emptyWebhook")
+              : t("automations.history.emptyRule")}
         </p>
       ) : runs.length === 0 && filtered ? (
         <p className="mt-4 flex items-center gap-2 text-sm text-muted">
@@ -266,7 +274,7 @@ export const AutomationHistory = ({ projectId, automationId }: { readonly projec
                     </td>
                   </tr>
                   {rowsOfBand(band).map((run) => (
-                    <RunRow key={run.id} run={run} zone={zone} selected={selected?.id === run.id} limits={limits} onSelect={() => { setParam("run", run.id); }} onKey={onKey(run)} />
+                    <RunRow key={run.id} run={run} zone={zone} selected={selected?.id === run.id} limits={limits} kind={kind} onSelect={() => { setParam("run", run.id); }} onKey={onKey(run)} />
                   ))}
                 </Fragment>
               ))}
@@ -327,18 +335,22 @@ const BandLabel = ({ band, zone, now }: { readonly band: Band; readonly zone: st
   }
 };
 
+type HistoryLimits = { readonly startsPerHour: number; readonly bulkStartMax: number; readonly missedHours: number; readonly webhookStartsPerHour: number };
+
 const RunRow = ({
   run,
   zone,
   selected,
   limits,
+  kind,
   onSelect,
   onKey,
 }: {
   readonly run: HistoryRun;
   readonly zone: string | undefined;
   readonly selected: boolean;
-  readonly limits: { readonly startsPerHour: number; readonly bulkStartMax: number; readonly missedHours: number };
+  readonly limits: HistoryLimits;
+  readonly kind: Automation["kind"];
   readonly onSelect: () => void;
   readonly onKey: (event: KeyboardEvent<HTMLTableRowElement>) => void;
 }) => {
@@ -362,6 +374,8 @@ const RunRow = ({
           </span>
         ) : run.task !== null ? (
           <span className="truncate text-text">{run.task.title}</span>
+        ) : run.kind === "request" ? (
+          <span className="text-faint">{t("automations.history.request")}</span>
         ) : (
           <span className="text-faint">{t("automations.history.noTickets")}</span>
         )}
@@ -370,13 +384,13 @@ const RunRow = ({
         {run.state === "started" ? t("automations.history.started") : run.state === "skipped" ? t("automations.history.skipped") : t("automations.history.missed")}
       </td>
       <td className="truncate pr-2 text-ui max-sm:hidden">
-        <TaskCell run={run} limits={limits} />
+        <TaskCell run={run} limits={limits} kind={kind} />
       </td>
     </tr>
   );
 };
 
-const TaskCell = ({ run, limits }: { readonly run: HistoryRun; readonly limits: { readonly startsPerHour: number; readonly bulkStartMax: number; readonly missedHours: number } }) => {
+const TaskCell = ({ run, limits, kind }: { readonly run: HistoryRun; readonly limits: HistoryLimits; readonly kind: Automation["kind"] }) => {
   if (run.task !== null) {
     const state = taskStateOf(run.task.state);
     return (
@@ -388,7 +402,7 @@ const TaskCell = ({ run, limits }: { readonly run: HistoryRun; readonly limits: 
     );
   }
   if (run.state === "missed") return <span className="text-faint">{missedText(run, limits.missedHours)}</span>;
-  if (run.skipReason !== null) return <SkipReason run={run} limits={limits} />;
+  if (run.skipReason !== null) return <SkipReason run={run} limits={limits} kind={kind} />;
   return null;
 };
 
@@ -396,7 +410,15 @@ const TaskCell = ({ run, limits }: { readonly run: HistoryRun; readonly limits: 
  * A skip's reason, with the task it was about a link (automation-history.md): `It already has a
  * task, a17be093`, `Waited for 7c1e04d2, still in review`.
  */
-export const SkipReason = ({ run, limits }: { readonly run: Pick<HistoryRun, "skipReason" | "blockedBy">; readonly limits: { readonly startsPerHour: number; readonly bulkStartMax: number } }) => {
+export const SkipReason = ({
+  run,
+  limits,
+  kind = "intake_rule",
+}: {
+  readonly run: Pick<HistoryRun, "skipReason" | "blockedBy">;
+  readonly limits: { readonly startsPerHour: number; readonly bulkStartMax: number; readonly webhookStartsPerHour?: number };
+  readonly kind?: Automation["kind"];
+}) => {
   if (run.skipReason === null) return null;
   const blocking = run.blockedBy;
   const link =
@@ -412,6 +434,13 @@ export const SkipReason = ({ run, limits }: { readonly run: Pick<HistoryRun, "sk
       </span>
     );
   }
+  if (run.skipReason === "duplicate" && link !== null) {
+    return (
+      <span className="text-faint" data-testid="skip-reason">
+        {t("automations.history.reason.duplicateOf")} {link}
+      </span>
+    );
+  }
   if (run.skipReason === "last_open" && link !== null && blocking !== null) {
     const state = taskStateOf(blocking.state);
     return (
@@ -421,7 +450,7 @@ export const SkipReason = ({ run, limits }: { readonly run: Pick<HistoryRun, "sk
       </span>
     );
   }
-  return <span className="text-faint" data-testid="skip-reason">{skipReasonText(run.skipReason, limits)}</span>;
+  return <span className="text-faint" data-testid="skip-reason">{skipReasonText(run.skipReason, limits, kind)}</span>;
 };
 
 const taskStates = ["queued", "preparing", "running", "awaiting_approval", "needs_you", "in_review", "stopped", "merged", "done"] as const;
@@ -431,12 +460,18 @@ const taskStateOf = (state: string): KnownState | null => taskStates.find((one) 
 const missedText = (run: HistoryRun, limit: number): string =>
   t("automations.history.reason.missed", { h: Math.max(limit, Math.round((run.at - (run.occurrenceAt ?? run.at)) / 3_600_000)), limit });
 
-const RunPanel = ({ run, automation, limits }: { readonly run: HistoryRun; readonly automation: Automation | undefined; readonly limits: { readonly startsPerHour: number; readonly bulkStartMax: number; readonly missedHours: number } }) => {
+const RunPanel = ({ run, automation, limits, kind }: { readonly run: HistoryRun; readonly automation: Automation | undefined; readonly limits: HistoryLimits; readonly kind: Automation["kind"] }) => {
   const zone = automation?.schedule?.timeZone;
   const outcomeText = run.state === "started" ? t("automations.history.started") : run.state === "skipped" ? t("automations.history.skipped") : t("automations.history.missed");
   return (
     <div data-testid="run-panel">
-      <PropGroup title={<span className="font-mono text-[12.5px]">{run.ticket?.key ?? (run.kind === "start_all" ? t("automations.history.startAllBy") : t("automations.history.panelOccurrence"))}</span>}>
+      <PropGroup
+        title={
+          <span className="font-mono text-[12.5px]">
+            {run.ticket?.key ?? (run.kind === "start_all" ? t("automations.history.startAllBy") : run.kind === "request" ? t("automations.history.panelRequest") : t("automations.history.panelOccurrence"))}
+          </span>
+        }
+      >
         <PropRow label={t("automations.history.panelOutcome")}>{outcomeText}</PropRow>
         <PropRow label={t("automations.history.panelWhen")}>
           <span title={new Date(run.at).toISOString()} className="truncate">{secondsText(run.at, zone)}</span>
@@ -452,7 +487,7 @@ const RunPanel = ({ run, automation, limits }: { readonly run: HistoryRun; reado
           </>
         )}
         {run.state === "missed" ? <PropRow label={t("automations.history.panelReason")}><span className="whitespace-normal">{missedText(run, limits.missedHours)}</span></PropRow> : null}
-        {run.skipReason === null ? null : <PropRow label={t("automations.history.panelReason")}><span className="whitespace-normal"><SkipReason run={run} limits={limits} /></span></PropRow>}
+        {run.skipReason === null ? null : <PropRow label={t("automations.history.panelReason")}><span className="whitespace-normal"><SkipReason run={run} limits={limits} kind={kind} /></span></PropRow>}
       </PropGroup>
       {run.task === null ? null : (
         <PropGroup title={t("automations.history.panelTasks")}>

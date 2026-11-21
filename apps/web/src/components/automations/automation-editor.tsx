@@ -1,18 +1,21 @@
 "use client";
 
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarIcon, CheckIcon, ClockIcon, LoaderCircleIcon, PlayIcon, PlusIcon, Trash2Icon, XIcon, ZapIcon } from "lucide-react";
+import { CalendarIcon, CheckIcon, ClockIcon, KeyRoundIcon, LoaderCircleIcon, PlayIcon, PlusIcon, ShieldIcon, Trash2Icon, WebhookIcon, XIcon, ZapIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
+import { isPayloadPath, templateProblems, WEBHOOK_SIGNATURE_HEADER } from "@ostra/domain/webhook-template";
+import type { PayloadConditionOp, WebhookAuth } from "@ostra/domain/webhook-template";
 import type { AutomationId, BulkStartId, ProjectId } from "@ostra/protocol";
 
 import { PageFrame, PageHeading } from "@/components/shell/page-frame";
 import { AlertDialog, AlertDialogContent, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { CopyButton } from "@/components/ui/copy-button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -31,14 +34,24 @@ import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
 import { useFilterNames } from "./automation-data";
-import { applyPreset, draftOf, emptyCondition, filterOf, newDraft, poolLabelOk, presetOf, sameDraft, settingsOf } from "./automation-draft";
-import type { Condition, ConditionField, Draft, Preset } from "./automation-draft";
+import { applyPreset, draftOf, emptyCondition, emptyPayloadRow, filterOf, newDraft, payloadRowProblem, poolLabelOk, presetOf, sameDraft, settingsOf } from "./automation-draft";
+import type { Condition, ConditionField, Draft, PayloadRow, Preset, Starts } from "./automation-draft";
 import { bulkReasonText, categoryWord, clockText, dryCountText, dryOutcomeText, labelsNoRunnerCarries, occurrenceText } from "./automation-words";
 import type { Automation } from "./automation-words";
+import { sampleBody, sampleCurl, SECRET_VARIABLE } from "./webhook-sample";
 
-// The rule and schedule editor (automation-edit.md, F-011, F-106, F-107): a name and a trigger, a
-// schedule with its sentence and next times, a filter, what each task is, and the dry run beside it
-// with "Start all". Saving starts nothing (ADR 0056); "Start all" is a bulk start by hand.
+// The rule, schedule and webhook editor (automation-edit.md, F-011, F-106, F-107, F-139): a name and a
+// trigger, a schedule with its sentence and next times, a filter, what each task is, and the dry run
+// beside it with "Start all". Saving starts nothing (ADR 0056); "Start all" is a bulk start by hand.
+// A webhook's trigger has its address, how a request proves it holds the secret, the secret shown
+// once (after the create, and after "New secret"), its filter on the body's fields, its templates,
+// and "Try it" beside it: a sample `curl` that reads the secret from a variable.
+
+/**
+ * A new webhook's secret, from the create's answer to the saved automation's page (the editor
+ * moves there): kept in this tab's memory only, read once and forgotten. A reload shows `Set`.
+ */
+const revealedSecrets = new Map<string, string>();
 
 /** `value` once it has stayed the same (by its JSON) for `ms`: an object rebuilt each render doesn't restart the wait. */
 const useDebounced = <T,>(value: T, ms: number): T => {
@@ -118,7 +131,7 @@ const SectionTitle = ({ title, note, end }: { readonly title: string; readonly n
 );
 
 /** The editor of a saved automation, or of a new one (`automationId` null, `starts` from the button). */
-export const AutomationEditor = ({ projectId, automationId, starts }: { readonly projectId: ProjectId; readonly automationId: AutomationId | null; readonly starts: "match" | "schedule" }) => {
+export const AutomationEditor = ({ projectId, automationId, starts }: { readonly projectId: ProjectId; readonly automationId: AutomationId | null; readonly starts: Starts }) => {
   const trpc = useTRPC();
   const saved = useQuery(trpc.automations.get.queryOptions(automationId === null ? skipToken : { automationId }));
   const list = useQuery(trpc.automations.list.queryOptions({ projectId }));
@@ -172,14 +185,19 @@ const EditorForm = ({
   readonly projectName: string;
   readonly automation: (Automation & { readonly canEdit: boolean }) | null;
   readonly canEdit: boolean;
-  readonly starts: "match" | "schedule";
+  readonly starts: Starts;
   readonly hasBoard: boolean;
   readonly limits: Limits;
 }) => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const router = useRouter();
-  const [initial] = useState<Draft>(() => (automation === null ? newDraft(hasBoard ? starts : "schedule", hasBoard) : draftOf(automation)));
+  const [initial] = useState<Draft>(() => (automation === null ? newDraft(starts === "webhook" || hasBoard ? starts : "schedule", hasBoard) : draftOf(automation)));
+  // A webhook's secret, shown once: the create's (carried here from the new page), or a new one's.
+  const [revealed, setRevealed] = useState<string | null>(() => (automation === null ? null : (revealedSecrets.get(automation.id) ?? null)));
+  useEffect(() => {
+    if (automation !== null) revealedSecrets.delete(automation.id);
+  }, [automation]);
   const [base, setBase] = useState<Draft>(initial);
   const [draft, setDraft] = useState<Draft>(initial);
   const [savedAt, setSavedAt] = useState<number | null>(automation?.updatedAt ?? null);
@@ -189,6 +207,7 @@ const EditorForm = ({
   const dirty = !sameDraft(draft, base);
   const update = (patch: Partial<Draft>) => { setDraft((current) => ({ ...current, ...patch })); };
   const schedule = draft.starts === "schedule";
+  const webhook = draft.starts === "webhook";
   const promptSchedule = schedule && draft.does === "prompt";
 
   useEffect(() => {
@@ -211,10 +230,11 @@ const EditorForm = ({
   const settings = settingsOf(draft);
   const valid = settings.ok && !(schedule && (refusal !== null || fiveFields || preview.data === undefined));
   const listKey = trpc.automations.pathKey();
-  const afterSave = (result: Automation) => {
+  const afterSave = (result: Automation & { readonly secret: string | null }) => {
     void queryClient.invalidateQueries({ queryKey: listKey });
     setSaveError(null);
     setSavedAt(Date.now());
+    if (result.secret !== null) revealedSecrets.set(result.id, result.secret);
     if (isNew) {
       router.replace(`/projects/${projectId}/automations/${result.id}`);
       return;
@@ -239,8 +259,21 @@ const EditorForm = ({
     else save.mutate({ automationId: automation.id, settings: settings.settings });
   };
 
-  const title = draft.name.trim() === "" ? (isNew ? (schedule ? t("automations.editor.newScheduleTitle") : t("automations.editor.newRuleTitle")) : automation.name) : draft.name;
-  const saveLabel = saving ? t("automations.editor.saving") : isNew ? (schedule ? t("automations.editor.createSchedule") : t("automations.editor.createRule")) : schedule ? t("automations.editor.saveSchedule") : t("automations.editor.saveRule");
+  const newTitle = webhook ? t("automations.editor.newWebhookTitle") : schedule ? t("automations.editor.newScheduleTitle") : t("automations.editor.newRuleTitle");
+  const title = draft.name.trim() === "" ? (isNew ? newTitle : automation.name) : draft.name;
+  const saveLabel = saving
+    ? t("automations.editor.saving")
+    : isNew
+      ? webhook
+        ? t("automations.editor.createWebhook")
+        : schedule
+          ? t("automations.editor.createSchedule")
+          : t("automations.editor.createRule")
+      : webhook
+        ? t("automations.editor.saveWebhook")
+        : schedule
+          ? t("automations.editor.saveSchedule")
+          : t("automations.editor.saveRule");
   const eyebrow = (
     <span suppressHydrationWarning>
       {t("automations.editor.eyebrow")} ·{" "}
@@ -256,7 +289,7 @@ const EditorForm = ({
       crumbs={[
         { label: projectName, href: `/projects/${projectId}` },
         { label: t("automations.title"), href: `/projects/${projectId}/automations` },
-        { label: isNew ? (schedule ? t("automations.editor.newScheduleTitle") : t("automations.editor.newRuleTitle")) : automation.name },
+        { label: isNew ? newTitle : automation.name },
       ]}
       actions={
         canEdit ? (
@@ -268,7 +301,9 @@ const EditorForm = ({
       }
       wideProperties
       properties={
-        promptSchedule ? (
+        webhook ? (
+          <WebhookColumn draft={draft} automation={automation} limits={limits} />
+        ) : promptSchedule ? (
           <OccurrencesColumn next={preview.data?.next ?? []} zone={draft.timeZone} title={draft.title} />
         ) : (
           <DryRunColumn projectId={projectId} draft={draft} automation={automation} dirty={dirty} canEdit={canEdit} />
@@ -276,7 +311,7 @@ const EditorForm = ({
       }
     >
       <div className="max-w-[760px]">
-        <PageHeading eyebrow={eyebrow} title={title} lede={promptSchedule ? t("automations.editor.ledePrompt") : t("automations.editor.lede")} />
+        <PageHeading eyebrow={eyebrow} title={title} lede={webhook ? t("automations.editor.ledeWebhook") : promptSchedule ? t("automations.editor.ledePrompt") : t("automations.editor.lede")} />
         {saveError === null ? null : <p role="alert" className="mt-2 text-sm text-red">{saveError}</p>}
         {canEdit ? null : <p className="mt-2 text-sm text-faint">{t("automations.editor.readOnly")}</p>}
         {paused === null ? null : (
@@ -311,11 +346,11 @@ const EditorForm = ({
                 aria-labelledby="automation-starts-label"
                 value={draft.starts}
                 disabled={disabled}
-                onValueChange={(value) => { if (value === "match" || value === "schedule") update({ starts: value }); }}
-                className="grid h-[34px] w-full grid-cols-2"
+                onValueChange={(value) => { if (value === "match" || value === "schedule" || value === "webhook") update({ starts: value }); }}
+                className="grid h-[34px] w-full grid-cols-3"
               >
                 {hasBoard ? (
-                  <ToggleGroupItem value="match" className="flex items-center justify-center gap-2">
+                  <ToggleGroupItem value="match" disabled={!isNew && draft.starts !== "match"} className="flex items-center justify-center gap-2">
                     <ZapIcon aria-hidden className="size-[15px] stroke-[1.75]" /> {t("automations.editor.onAMatch")}
                   </ToggleGroupItem>
                 ) : (
@@ -325,8 +360,11 @@ const EditorForm = ({
                     </span>
                   </Tooltip>
                 )}
-                <ToggleGroupItem value="schedule" className="flex items-center justify-center gap-2 data-[state=on]:font-semibold">
+                <ToggleGroupItem value="schedule" disabled={!isNew && draft.starts !== "schedule"} className="flex items-center justify-center gap-2 data-[state=on]:font-semibold">
                   <ClockIcon aria-hidden className="size-[15px] stroke-[1.75]" /> {t("automations.editor.onASchedule")}
+                </ToggleGroupItem>
+                <ToggleGroupItem value="webhook" disabled={!isNew && draft.starts !== "webhook"} className="flex items-center justify-center gap-2 data-[state=on]:font-semibold">
+                  <WebhookIcon aria-hidden className="size-[15px] stroke-[1.75]" /> {t("automations.editor.onAWebhook")}
                 </ToggleGroupItem>
               </ToggleGroup>
             </div>
@@ -426,8 +464,24 @@ const EditorForm = ({
           </section>
         ) : null}
 
+        {/* 2. Webhook */}
+        {webhook ? (
+          <WebhookSection
+            draft={draft}
+            automation={automation}
+            limits={limits}
+            disabled={disabled}
+            canEdit={canEdit}
+            revealed={revealed}
+            onRevealed={setRevealed}
+            onChange={update}
+          />
+        ) : null}
+
         {/* 3. Prompt, or Filter */}
-        {promptSchedule ? (
+        {webhook ? (
+          <WebhookFilterAndPrompt draft={draft} disabled={disabled} canEdit={canEdit} onChange={update} />
+        ) : promptSchedule ? (
           <section className="mt-[26px]">
             <SectionTitle title={t("automations.editor.sectionPrompt")} note={t("automations.editor.promptNote")} />
             <Label htmlFor="automation-title">{t("automations.editor.taskTitle")}</Label>
@@ -534,7 +588,7 @@ const EditorForm = ({
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="ghost">
-                  <Trash2Icon /> {schedule ? t("automations.editor.deleteSchedule") : t("automations.editor.deleteRule")}
+                  <Trash2Icon /> {webhook ? t("automations.editor.deleteWebhook") : schedule ? t("automations.editor.deleteSchedule") : t("automations.editor.deleteRule")}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent
@@ -551,6 +605,282 @@ const EditorForm = ({
         )}
       </div>
     </PageFrame>
+  );
+};
+
+// ---------- a webhook's parts (F-139) ----------
+
+const payloadOps: readonly PayloadConditionOp[] = ["equals", "not-equals", "contains", "exists"];
+
+const payloadOpWord = (op: PayloadConditionOp): string => {
+  switch (op) {
+    case "equals":
+      return t("automations.webhook.op.equals");
+    case "not-equals":
+      return t("automations.webhook.op.not-equals");
+    case "contains":
+      return t("automations.webhook.op.contains");
+    case "exists":
+      return t("automations.webhook.op.exists");
+    default:
+      return op satisfies never;
+  }
+};
+
+const isPayloadOp = (value: string): value is PayloadConditionOp => payloadOps.some((op) => op === value);
+const isWebhookAuth = (value: string): value is WebhookAuth => value === "signature" || value === "bearer";
+
+/** A line of mono text in a box, with its copy button: the address, the secret. */
+const CopyBox = ({ id, text, testId }: { readonly id: string; readonly text: string; readonly testId: string }) => (
+  <div className="flex min-h-[38px] items-center gap-2 rounded-lg border border-line-2 bg-surface py-1.5 pl-3.5 pr-1.5">
+    <span id={id} data-testid={testId} className="min-w-0 flex-1 select-all break-all font-mono text-[13px] text-text">{text}</span>
+    <CopyButton text={text} selectId={id} />
+  </div>
+);
+
+const WebhookSection = ({
+  draft,
+  automation,
+  limits,
+  disabled,
+  canEdit,
+  revealed,
+  onRevealed,
+  onChange,
+}: {
+  readonly draft: Draft;
+  readonly automation: (Automation & { readonly canEdit: boolean }) | null;
+  readonly limits: Limits;
+  readonly disabled: boolean;
+  readonly canEdit: boolean;
+  readonly revealed: string | null;
+  readonly onRevealed: (secret: string) => void;
+  readonly onChange: (patch: Partial<Draft>) => void;
+}) => {
+  const trpc = useTRPC();
+  const [open, setOpen] = useState(false);
+  const rotate = useMutation(
+    trpc.automations.rotateSecret.mutationOptions({
+      onSuccess: (result) => {
+        onRevealed(result.secret);
+        setOpen(false);
+      },
+    }),
+  );
+  const url = automation?.webhook?.url ?? null;
+  const field = draft.idempotencyField.trim();
+  const fieldInvalid = field !== "" && !isPayloadPath(field);
+  return (
+    <section className="mt-[26px]" data-testid="editor-webhook">
+      <SectionTitle title={t("automations.webhook.section")} note={t("automations.webhook.sectionNote", { n: limits.webhookRequestsPerMinute })} />
+      <Label id="webhook-address-label">{t("automations.webhook.address")}</Label>
+      {automation === null ? (
+        <p className="text-sm text-muted">{t("automations.webhook.addressNew")}</p>
+      ) : url === null ? (
+        <p className="text-sm text-faint">{t("automations.webhook.addressHidden")}</p>
+      ) : (
+        <CopyBox id="webhook-url" text={url} testId="webhook-url" />
+      )}
+
+      <div className="mt-4">
+        <Label id="webhook-auth-label">{t("automations.webhook.verify")}</Label>
+        <RadioGroup
+          aria-labelledby="webhook-auth-label"
+          value={draft.auth}
+          disabled={disabled}
+          onValueChange={(value) => { if (isWebhookAuth(value)) onChange({ auth: value }); }}
+          className="mt-1 flex flex-col gap-2"
+        >
+          <label className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-ui">
+            <RadioGroupItem value="signature" />
+            {t("automations.webhook.signature")}
+            <span className="text-sm text-muted">{t("automations.webhook.signatureNote", { header: WEBHOOK_SIGNATURE_HEADER })}</span>
+          </label>
+          <label className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-ui">
+            <RadioGroupItem value="bearer" />
+            {t("automations.webhook.bearer")}
+            <span className="text-sm text-muted">{t("automations.webhook.bearerNote")}</span>
+          </label>
+        </RadioGroup>
+      </div>
+
+      {automation === null || !canEdit ? null : (
+        <div className="mt-4" data-testid="webhook-secret-field">
+          <Label id="webhook-secret-label">{t("automations.webhook.secret")}</Label>
+          {revealed === null ? (
+            <span className="flex h-8 items-center gap-3 text-ui">
+              <span className="flex items-center gap-1.5 text-text">
+                <CheckIcon aria-hidden className="size-[14px] stroke-[1.75] text-green" />
+                {t("automations.webhook.secretSet")}
+              </span>
+              <AlertDialog open={open} onOpenChange={setOpen}>
+                <AlertDialogTrigger asChild>
+                  <button type="button" disabled={disabled} className="inline-flex items-center gap-1.5 text-teal hover:text-text disabled:opacity-50">
+                    <KeyRoundIcon aria-hidden className="size-[14px] stroke-[1.75]" /> {t("automations.webhook.newSecret")}
+                  </button>
+                </AlertDialogTrigger>
+                <AlertDialogContent
+                  title={t("automations.webhook.newSecretTitle")}
+                  body={t("automations.webhook.newSecretBody")}
+                  cancel={t("automations.editor.cancel")}
+                  action={t("automations.webhook.newSecretAction")}
+                  onAction={() => { rotate.mutate({ automationId: automation.id }); }}
+                  pending={{ busy: rotate.isPending, label: t("automations.webhook.newSecretMaking"), error: rotate.isError ? errorText(rotate.error) : null }}
+                />
+              </AlertDialog>
+            </span>
+          ) : (
+            <>
+              <CopyBox id="webhook-secret" text={revealed} testId="webhook-secret" />
+              <p className="mt-2 flex items-start gap-2 text-sm text-muted">
+                <ShieldIcon aria-hidden className="mt-0.5 size-[14px] shrink-0 stroke-[1.75]" />
+                {t("automations.webhook.secretShownOnce")}
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="mt-4 max-w-[420px]">
+        <Label htmlFor="webhook-key">{t("automations.webhook.key")}</Label>
+        <Input
+          id="webhook-key"
+          className="font-mono"
+          placeholder={t("automations.webhook.keyPlaceholder")}
+          value={draft.idempotencyField}
+          maxLength={200}
+          disabled={disabled}
+          aria-invalid={fieldInvalid}
+          onChange={(event) => { onChange({ idempotencyField: event.target.value }); }}
+        />
+        {fieldInvalid ? (
+          <p role="alert" className="mt-1.5 text-[12.5px] text-red">{t("automations.webhook.keyInvalid", { example: "body.alert.id" })}</p>
+        ) : (
+          <p className="mt-1.5 text-[12.5px] text-muted">{t("automations.webhook.keyNote", { header: "Idempotency-Key" })}</p>
+        )}
+      </div>
+      <label className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-ui">
+        <Checkbox tone="teal" checked={draft.skipWhileOpen} disabled={disabled} onCheckedChange={(checked) => { onChange({ skipWhileOpen: checked === true }); }} />
+        {t("automations.webhook.skipWhileOpen")}
+        <span className="text-sm text-muted">{t("automations.webhook.skipWhileOpenNote")}</span>
+      </label>
+    </section>
+  );
+};
+
+const PLACEHOLDER_EXAMPLE = "{{body.alert.title}}";
+
+const WebhookFilterAndPrompt = ({ draft, disabled, canEdit, onChange }: { readonly draft: Draft; readonly disabled: boolean; readonly canEdit: boolean; readonly onChange: (patch: Partial<Draft>) => void }) => {
+  const setRow = (key: string, patch: Partial<PayloadRow>) => { onChange({ payloadRows: draft.payloadRows.map((row) => (row.key === key ? { ...row, ...patch } : row)) }); };
+  const problems = [...templateProblems(draft.title), ...templateProblems(draft.prompt)];
+  return (
+    <>
+      <section className="mt-[26px]" data-testid="editor-payload-filter">
+        <SectionTitle title={t("automations.webhook.filterTitle")} note={t("automations.webhook.filterNote")} />
+        <div className="flex flex-col gap-2">
+          {draft.payloadRows.map((row, index) => {
+            const n = index + 1;
+            const problem = payloadRowProblem(row);
+            return (
+              <div key={row.key}>
+                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_30px] gap-2 sm:grid-cols-[220px_130px_minmax(0,1fr)_30px]" data-testid="payload-condition">
+                  <Input
+                    aria-label={t("automations.webhook.fieldOf", { n })}
+                    className="h-[38px] font-mono"
+                    placeholder={t("automations.webhook.fieldPlaceholder")}
+                    value={row.path}
+                    maxLength={200}
+                    disabled={disabled}
+                    aria-invalid={problem === "path"}
+                    onChange={(event) => { setRow(row.key, { path: event.target.value }); }}
+                  />
+                  <Select value={row.op} disabled={disabled} onValueChange={(value) => { if (isPayloadOp(value)) setRow(row.key, { op: value }); }}>
+                    <SelectTrigger aria-label={t("automations.webhook.opOf", { n })} className="h-[38px] w-full bg-surface">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {payloadOps.map((op) => <SelectItem key={op} value={op}>{payloadOpWord(op)}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    aria-label={t("automations.webhook.valueOf", { n })}
+                    className="col-span-2 h-[38px] max-sm:order-last sm:col-span-1"
+                    placeholder={row.op === "exists" ? undefined : t("automations.webhook.valuePlaceholder")}
+                    value={row.op === "exists" ? "" : row.value}
+                    maxLength={500}
+                    disabled={disabled || row.op === "exists"}
+                    aria-invalid={problem === "value"}
+                    onChange={(event) => { setRow(row.key, { value: event.target.value }); }}
+                  />
+                  <Button variant="ghost" size="icon" className="h-[38px]" disabled={disabled} aria-label={t("automations.webhook.removeCondition", { n })} onClick={() => { onChange({ payloadRows: draft.payloadRows.filter((one) => one.key !== row.key) }); }}>
+                    <XIcon />
+                  </Button>
+                </div>
+                {problem === "path" ? <p role="alert" className="mt-1 text-[12.5px] text-red">{t("automations.webhook.pathInvalid", { n, example: "body.status" })}</p> : null}
+                {problem === "value" ? <p role="alert" className="mt-1 text-[12.5px] text-red">{t("automations.webhook.valueInvalid", { n })}</p> : null}
+              </div>
+            );
+          })}
+        </div>
+        {canEdit && draft.payloadRows.length < 10 ? (
+          <Button variant="ghost" className="mt-2 h-[30px] text-muted hover:text-text" disabled={disabled} onClick={() => { onChange({ payloadRows: [...draft.payloadRows, emptyPayloadRow()] }); }}>
+            <PlusIcon /> {t("automations.webhook.addCondition")}
+          </Button>
+        ) : null}
+      </section>
+
+      <section className="mt-[26px]" data-testid="editor-webhook-prompt">
+        <SectionTitle title={t("automations.webhook.promptTitle")} note={t("automations.webhook.promptNote", { example: PLACEHOLDER_EXAMPLE })} />
+        <Label htmlFor="automation-title">{t("automations.editor.taskTitle")}</Label>
+        <Input id="automation-title" className="font-mono" placeholder={t("automations.webhook.titlePlaceholder", { example: PLACEHOLDER_EXAMPLE })} value={draft.title} maxLength={512} disabled={disabled} onChange={(event) => { onChange({ title: event.target.value }); }} />
+        <div className="mt-3">
+          <Label htmlFor="automation-prompt">{t("automations.editor.promptText")}</Label>
+          <Textarea id="automation-prompt" rows={7} className="font-mono" placeholder={t("automations.webhook.promptPlaceholder", { example: PLACEHOLDER_EXAMPLE })} value={draft.prompt} disabled={disabled} onChange={(event) => { onChange({ prompt: event.target.value }); }} />
+        </div>
+        {problems.map((problem) => (
+          <p key={`${String(problem.line)}-${problem.placeholder}`} role="alert" className="mt-1.5 text-[12.5px] text-red" data-testid="template-problem">
+            {t("automations.webhook.placeholderProblem", { placeholder: problem.placeholder, line: problem.line })}
+          </p>
+        ))}
+      </section>
+    </>
+  );
+};
+
+/** "Try it" beside a webhook's form: the sample `curl`, the limits, and what a sender gets back. */
+const WebhookColumn = ({ draft, automation, limits }: { readonly draft: Draft; readonly automation: Automation | null; readonly limits: Limits }) => {
+  const url = automation?.webhook?.url ?? null;
+  const curl =
+    url === null
+      ? null
+      : sampleCurl({ url, auth: draft.auth, body: sampleBody([draft.title, draft.prompt], draft.payloadRows), keyed: draft.idempotencyField.trim() === "" });
+  return (
+    <div className="xl:sticky xl:top-0" data-testid="webhook-column">
+      <h2 className="text-[13px] font-semibold text-muted">{t("automations.webhook.tryIt")}</h2>
+      {curl === null ? (
+        <p className="mt-3 text-sm text-muted">{automation === null ? t("automations.webhook.tryItNew") : t("automations.webhook.tryItHidden")}</p>
+      ) : (
+        <>
+          <div className="relative mt-3 rounded-lg border border-line-2 bg-surface">
+            <pre id="webhook-curl" data-testid="webhook-curl" className="max-h-[320px] overflow-auto whitespace-pre py-2.5 pl-3 pr-9 font-mono text-[12px] leading-[1.6] text-text">{curl}</pre>
+            <CopyButton text={curl} selectId="webhook-curl" className="absolute right-1.5 top-1.5" />
+          </div>
+          <p className="mt-2 text-[12.5px] text-faint">{t("automations.webhook.curlNote", { variable: `$${SECRET_VARIABLE}` })}</p>
+        </>
+      )}
+      <h3 className="mt-5 text-[13px] font-semibold text-muted">{t("automations.webhook.limitsTitle")}</h3>
+      <ul className="mt-2 flex flex-col gap-1.5 text-sm text-muted">
+        <li>{t("automations.webhook.limitRequests", { n: limits.webhookRequestsPerMinute })}</li>
+        <li>{t("automations.webhook.limitStarts", { n: limits.webhookStartsPerHour })}</li>
+        <li>{t("automations.webhook.limitBody", { kib: Math.round(limits.webhookBodyMaxBytes / 1024) })}</li>
+      </ul>
+      <h3 className="mt-5 text-[13px] font-semibold text-muted">{t("automations.webhook.answersTitle")}</h3>
+      <ul className="mt-2 flex flex-col gap-1.5 font-mono text-[12.5px] text-faint">
+        <li>{t("automations.webhook.answerStarted")}</li>
+        <li>{t("automations.webhook.answerSkipped")}</li>
+        <li>{t("automations.webhook.answerRefused")}</li>
+      </ul>
+    </div>
   );
 };
 
