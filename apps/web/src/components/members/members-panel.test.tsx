@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { memberIdSchema, userIdSchema } from "@ostra/protocol";
 
-import { removalLines, removedText } from "./member-words";
+import { expiryText, removalLines, removedText } from "./member-words";
 import { MemberProperties } from "./members-view";
 
 // F-002 (ticket 32, members.md): what an admin sees of a member before removing them. The panel's
@@ -60,5 +60,12 @@ describe("the member panel and the removal dialog (F-002)", () => {
   it("F-002/c3: a removed row names who removed them", () => {
     expect(removedText(Date.UTC(2026, 10, 14, 12), "Alex Kim")).toBe("removed 14 Nov by Alex Kim");
     expect(removedText(Date.UTC(2026, 10, 14, 12), null)).toBe("removed 14 Nov");
+  });
+
+  it("an invitation's expiry counts calendar days, so one made a moment ago expires in 7 days", () => {
+    const now = new Date(2026, 10, 19, 14, 7).getTime();
+    expect(expiryText(new Date(2026, 10, 26, 14, 6).getTime(), now)).toBe("expires in 7 days");
+    expect(expiryText(new Date(2026, 10, 20, 9, 0).getTime(), now)).toBe("expires in 1 day");
+    expect(expiryText(new Date(2026, 10, 19, 23, 0).getTime(), now)).toBe("expires today");
   });
 });

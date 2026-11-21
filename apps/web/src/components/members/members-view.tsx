@@ -46,7 +46,7 @@ const MemberAvatar = ({ name, size = 26, dim = false }: { readonly name: string;
   <span
     aria-hidden
     className={cn(
-      "inline-grid shrink-0 place-items-center rounded-full bg-raise font-semibold text-text",
+      "inline-grid shrink-0 place-items-center rounded-full bg-line-2 font-semibold text-text",
       size === 26 ? "size-[26px] text-[11px]" : "size-9 text-[12.5px]",
       dim && "opacity-50",
     )}
@@ -287,7 +287,9 @@ const InvitationRow = ({ invitation, now, link, past = false, onRevoke }: Invita
     {past ? (
       <span className="hidden md:block" />
     ) : (
-      <span className="col-span-full flex items-center justify-end gap-4 md:col-span-1 md:-ml-[110px] md:w-[150px]">
+      // With `Copy link` beside `Revoke`, the pair is wider than the menu column and would cover the
+      // expiry, so it takes a line of its own at the row's right (members.md: the expiry stays on the grid).
+      <span className={cn("col-span-full flex items-center justify-end gap-4", link === undefined ? "md:col-span-1 md:-ml-[110px] md:w-[150px]" : "md:-mt-2 md:pb-1.5")}>
         {link === undefined ? null : <CopyInvitationLink link={link} />}
         <Button variant="ghost" size="sm" className="text-muted" onClick={onRevoke}>{t("members.revoke")}</Button>
       </span>

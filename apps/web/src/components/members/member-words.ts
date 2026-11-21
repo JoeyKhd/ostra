@@ -25,9 +25,13 @@ export const lastActiveText = (at: number, now: number): string => {
   return shortDate(at);
 };
 
-/** A pending invitation's last column: `expires in 7 days`, `expires in 1 day`, `expires today`. */
+/**
+ * A pending invitation's last column: `expires in 7 days`, `expires in 1 day`, `expires today`, in
+ * calendar days, so an invitation made a moment ago reads `expires in 7 days`, not 6.
+ */
 export const expiryText = (expiresAt: number, now: number): string => {
-  const days = Math.floor((expiresAt - now) / day);
+  const midnight = (at: number): number => new Date(at).setHours(0, 0, 0, 0);
+  const days = Math.round((midnight(expiresAt) - midnight(now)) / day);
   if (days <= 0) return t("members.expiresToday");
   if (days === 1) return t("members.expiresInOne");
   return t("members.expiresIn", { n: days });
