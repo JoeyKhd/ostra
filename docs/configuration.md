@@ -94,7 +94,7 @@ Read by `apps/core` and `apps/web` through `parseServerSettings` (`packages/doma
 | `OSTRA_CI_LOG_TAIL_KIB` | `64` | The most of each failing check's log, in KiB, that reaches the agent as a file (F-035). The tail is kept. |
 | `OSTRA_CI_LOG_CHECKS` | `5` | The most failing checks whose logs reach the agent in one CI round (F-035). |
 | `OSTRA_CI_ROUNDS` | `2` | The most CI rounds a task gets before a person acts (F-035). |
-| `OSTRA_REVIEW_ROUNDS` | `2` | The most findings rounds a task gets before a person acts (F-101). |
+| `OSTRA_REVIEW_ROUNDS` | `2` | The most review rounds a task gets before a person acts: its findings rounds, and each AI review run again on a new head pushed while the last one ran (F-101). |
 | `OSTRA_AUTOMATIC_TURNS` | `4` | The most automatic turns, CI and findings rounds together, a task gets before a person acts (F-101). |
 | `OSTRA_REVIEW_FINDINGS_MAX` | `30` | The most findings one AI review hands in (F-100). |
 | `OSTRA_DRAFT_IMAGES_MAX` | `10` | The most images a refine draft holds, 10 MiB each (F-099). |

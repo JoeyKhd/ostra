@@ -1,6 +1,6 @@
 # The review loop: CI, AI review, rounds and reviewers
 
-**Status:** accepted (2026-11-19, on the maintainer's delegation for milestone 6's spec). Settles Q222 to Q227. Covers F-035, F-100, F-101, F-102 and F-105, and puts ADR 0028 (the review kind) and ADR 0041 (the loops and their caps) into practice, with ADR 0040 (the App, the independent-review check) and ADR 0055 (the budget gate).
+**Status:** accepted (2026-11-19, on the maintainer's delegation for milestone 6's spec). Settles Q222 to Q227. Covers F-035, F-100, F-101, F-102 and F-105, and puts ADR 0028 (the review kind) and ADR 0041 (the loops and their caps) into practice, with ADR 0040 (the App, the independent-review check) and ADR 0055 (the budget gate). **Amended 2026-11-21, the maintainer's decision** ("all yes" to milestone 6's review follow-ups): a review run again on a new head counts toward the review rounds' cap (the section "A review run again on a new head").
 
 ADR 0041 says what sends a task back to its agent and how often. This ADR says what ostra reads to know CI's result, how one review covers several PRs, what counts as an automatic turn, how logs reach the agent, and who the reviewers are.
 
@@ -28,6 +28,15 @@ ADR 0041 says what sends a task back to its agent and how often. This ADR says w
 - **The counts run since a person last acted on the task:** a message, a reopen, an answer, "Keep working", "Fix this" sent, a "changes requested" review. "At most 4 before a person has to act" (ADR 0041) then means exactly that.
 - Every automatic turn goes through the budget gate with the origin `automatic-round` and the task's spend cap, before it starts.
 - A question the agent asks in an automatic turn gets the fixed neutral reply (Q160), never a decline.
+
+## A review run again on a new head
+
+Added 2026-11-21, the maintainer's decision. Milestone 6's review found that a head moving during a review (a person or a bot pushing to the PR) voids that review and starts another on the new head, every time, with no cap: the review task's turns aren't automatic turns, so only the budget gate stood in the way.
+
+- **A review that runs again because the last one never posted is one of the task's review rounds.** It counts toward `OSTRA_REVIEW_ROUNDS` with the findings rounds, since a person last acted, and is checked before its run is made. It isn't an automatic turn: the coding agent takes no turn for it, so `OSTRA_AUTOMATIC_TURNS` doesn't count it.
+- **Past the cap, a new head gets no automatic review.** The task goes to "needs you" with the same "round cap reached" item as every capped loop, for its driver, and "Keep working" or a message starts the count again.
+- The first review of a loop, and the review of a round's fix (the last run posted), are no reruns.
+- *Considered:* a cap of review runs of their own (one more setting, for the same question the review rounds answer); and counting the rerun when the head moves (CI on the new head may fail, and then a CI round, not a review, comes next).
 
 ## Reviewers
 

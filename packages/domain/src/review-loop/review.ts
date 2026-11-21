@@ -37,6 +37,9 @@ import type { SessionTimers } from "../use-cases/sessions-m2.ts";
 import { openTaskPrsInTx, reviewRoundsInTx } from "./loop.ts";
 import { placeFindings, REVIEW_FINDINGS_MAX, reviewBody } from "./place-findings.ts";
 import { acceptedCriteriaOfTicketInTx } from "./review-settings.ts";
+import { countReviewRerun, DEFAULT_ROUND_LIMITS, reviewRerunAllowed } from "./rounds.ts";
+import type { RoundLimits } from "./rounds.ts";
+import { reviewRerunCappedInTx, roundCountersInTx } from "./start-round.ts";
 
 // The AI review (F-100, F-111, ADR 0028 amended, ADR 0058, Q223; milestone 6's ticket 17). Each
 // code task has one review task (`reviewOfTaskId`), made at its first review and reopened per
@@ -63,13 +66,15 @@ export type ReviewDeps = Pick<Ports, "jobs" | "outbox" | "notices" | "audit" | "
   readonly adapters: Pick<ServerAdapters, "codeHost" | "secretStore">;
   readonly timers?: SessionTimers;
   readonly logger?: Logger;
+  /** `OSTRA_REVIEW_ROUNDS` and the rest, which a review rerun counts toward; the working values without it. */
+  readonly limits?: RoundLimits;
 };
 
 // ---------- review.start ----------
 
 export type StartReviewResult = UseCaseResult<
   { readonly reviewRunId: ReviewRunId; readonly reviewTaskId: TaskId; readonly created: boolean; readonly held: boolean },
-  "not-found" | "ai-review-off" | "already-started" | "not-in-review"
+  "not-found" | "ai-review-off" | "already-started" | "not-in-review" | "round-cap"
 >;
 
 /** The profile a review runs on: the project's default for reviews, the built-in Review profile, else the code task's. */
@@ -157,6 +162,20 @@ const startReviewInTx = async (
   }
   if (heads.length === 0) {
     return { ok: false, error: "not-in-review", message: "the code task has no open PR" };
+  }
+  // ADR 0058 as amended 2026-11-21 (the maintainer's "all yes"): a review run again because the last
+  // run never posted (a head moved under it) is one of the task's review rounds. Past their cap, the
+  // new head gets no automatic review, and the task needs its driver, as at any round cap.
+  const previous = await tx.reviewRun.findFirst({ where: { codeTaskId: code.id }, orderBy: { round: "desc" }, select: { state: true } });
+  if (previous !== null && previous.state !== "posted") {
+    const limits = deps.limits ?? DEFAULT_ROUND_LIMITS;
+    const counters = await roundCountersInTx(tx, code.id);
+    if (reviewRerunAllowed(counters, limits).kind === "capped") {
+      await reviewRerunCappedInTx(deps, tx, code, limits);
+      deps.logger?.info("review.capped", { codeTaskId: code.id, round: input.round, reviewRounds: counters.reviewRounds, limit: limits.reviewRounds });
+      return { ok: false, error: "round-cap", message: "the AI review has run its review rounds since a person last acted" };
+    }
+    await tx.task.update({ where: { id: code.id }, data: { ...countReviewRerun(counters) } });
   }
   const now = deps.clock.now();
   const project = await tx.project.findUniqueOrThrow({ where: { id: projectId }, select: { organizationId: true, defaultReviewProfileId: true } });

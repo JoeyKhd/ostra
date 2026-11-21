@@ -18,9 +18,10 @@ import type { Finding, TaskId } from "@ostra/protocol";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { buildTaskSpec } from "../dispatch/task-spec.ts";
-import { agentPushes, checkRun, followFreshSession, recorded, seedTaskInCi, startLoopHarness, stateOf } from "../testing/review-loop.ts";
+import { agentPushes, checkRun, followFreshSession, newHead, recorded, seedTaskInCi, startLoopHarness, stateOf } from "../testing/review-loop.ts";
 import { seedOnlineRunner } from "../testing/world.ts";
 import type { LoopHarness, LoopPr, LoopTask } from "../testing/review-loop.ts";
+import { recordTaskPrHead } from "./ci.ts";
 
 // Milestone 6's ticket 18 (F-101, F-035; ADR 0041, ADR 0058): the rounds, their caps and the
 // automatic turn, against Postgres, the fake code host and core's real ingest. A findings round's
@@ -201,6 +202,71 @@ describe("F-101: the findings round", () => {
     await failCi(task);
     expect(await stateOf(h, task.taskId)).toBe("in_review/fixing_ci");
     expect(await counters(task.taskId)).toMatchObject({ ciRounds: 1, automaticTurns: 1 });
+  });
+});
+
+describe("F-101: a review run again on a new head (ADR 0058 as amended 2026-11-21)", () => {
+  /** A person pushes a new head while the AI review reads the old one: that review is void, and CI runs again. */
+  const personPushes = async (task: LoopTask): Promise<void> => {
+    const pr = firstPr(task);
+    pr.head = newHead(h.codeHost, pr.repo);
+    h.codeHost.pushHead(pr.repo, pr.number, pr.head);
+    await recordTaskPrHead({ db: h.db, jobs: h.jobs, notices: postgresChangeNotices, adapters: { codeHost: h.codeHost, secretStore: h.secretStore } }, { organizationId: h.world.organizationId, taskRepoId: pr.taskRepoId, headSha: pr.head });
+    expect(await stateOf(h, task.taskId)).toBe("in_review/ci_running");
+  };
+
+  /** CI passes on the PR's head, and the AI review is asked for. */
+  const ciPasses = async (task: LoopTask): Promise<void> => {
+    checkRun(h, firstPr(task), `test-${randomBytes(2).toString("hex")}`, "success");
+    for (const pr of task.prs) h.jobs.record("ci.evaluate", { organizationId: task.organizationId, taskRepoId: pr.taskRepoId, headSha: pr.head });
+    await h.drain(["ci.evaluate"]);
+    await h.drain(["review.start"]);
+  };
+
+  const runsOf = (task: LoopTask) => h.db.reviewRun.findMany({ where: { codeTaskId: task.taskId }, orderBy: { round: "asc" }, select: { state: true } });
+
+  it("F-101/c4,c6: each rerun on a new head counts as a review round, and past the cap the new head gets no review and the task needs its driver", async () => {
+    const task = await seedTaskInCi(h);
+    await ciPasses(task);
+    // The first review of the loop is no rerun.
+    expect(await counters(task.taskId)).toMatchObject({ reviewRounds: 0, automaticTurns: 0 });
+    await personPushes(task);
+    await ciPasses(task);
+    expect(await counters(task.taskId)).toMatchObject({ reviewRounds: 1, automaticTurns: 0 });
+    await personPushes(task);
+    await ciPasses(task);
+    expect(await counters(task.taskId)).toMatchObject({ reviewRounds: 2, automaticTurns: 0 });
+    expect((await runsOf(task)).map((run) => run.state)).toEqual(["failed", "failed", "running"]);
+    // A third new head: the cap is reached, so no review starts for it.
+    await personPushes(task);
+    const dispatches = recorded(h, "task.dispatch").length;
+    await ciPasses(task);
+    expect(await stateOf(h, task.taskId)).toBe("needs_you/round_cap");
+    expect((await runsOf(task)).map((run) => run.state)).toEqual(["failed", "failed", "failed"]);
+    expect(recorded(h, "task.dispatch")).toHaveLength(dispatches);
+    expect(await counters(task.taskId)).toMatchObject({ reviewRounds: 2, automaticTurns: 0 });
+    // The same "round cap reached" item as every capped loop, for the driver, worded with the cap.
+    const item = await capItem(task.taskId);
+    expect(item).toMatchObject({ audience: "driver" });
+    expect(item?.summary).toContain("its 2 review rounds");
+    expect(h.records.some((record) => record.message === "review.capped" && record.fields["codeTaskId"] === task.taskId)).toBe(true);
+    // The coding agent took no turn for any of it.
+    expect(await steersOf(task.taskId)).toEqual([]);
+  });
+
+  it("F-101/c6: a rerun and a findings round share the review rounds' cap", async () => {
+    const task = await seedTaskInCi(h);
+    await ciPasses(task);
+    await personPushes(task);
+    // The rerun counts one round; its blocking findings start the second.
+    await reviewRound(task, [finding(task)]);
+    expect(await counters(task.taskId)).toMatchObject({ reviewRounds: 2, automaticTurns: 1 });
+    expect(await stateOf(h, task.taskId)).toBe("in_review/fixing_findings");
+    // The fix's review is no rerun (the last one posted), and its blocking findings meet the cap.
+    await agentPushes(h, task);
+    await reviewRound(task, [finding(task, { title: "Still looping" })]);
+    expect(await stateOf(h, task.taskId)).toBe("needs_you/round_cap");
+    expect((await steersOf(task.taskId)).length).toBe(1);
   });
 });
 

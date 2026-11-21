@@ -116,6 +116,32 @@ export const roundCapSummary = (kind: TaskRoundKind, reason: "rounds" | "automat
     : `The AI review still finds blocking problems after ${String(limits.reviewRounds)} rounds of fixes. Read its findings, then press Keep working or send a message.`;
 };
 
+/** ADR 0058 as amended 2026-11-21: the item when a new head would run the AI review past its rounds. */
+export const reviewRerunCapSummary = (limits: RoundLimits): string =>
+  `The PRs got new heads while the AI review ran, and it has run its ${String(limits.reviewRounds)} review rounds since a person last acted, so the new head gets no review. Read the PRs, then press Keep working or send a message.`;
+
+/**
+ * ADR 0058 as amended 2026-11-21: a review rerun the review rounds' cap stops. The code task, in
+ * "AI review", needs its driver with the same item as every round cap. In the task's lock, in the
+ * caller's transaction.
+ */
+export const reviewRerunCappedInTx = async (
+  deps: Pick<StartRoundDeps, "jobs" | "notices" | "logger">,
+  tx: Tx,
+  task: ReturnType<typeof mapTask>,
+  limits: RoundLimits,
+): Promise<void> => {
+  await moveTaskInTx({ tx, notices: deps.notices, jobs: deps.jobs, ...(deps.logger === undefined ? {} : { logger: deps.logger }) }, task, { type: "ai_review_done", blocking: true, capReached: true });
+  await createNeedsYouItemInTx(deps, tx, {
+    organizationId: organizationIdSchema.parse(task.organizationId),
+    projectId: projectIdSchema.parse(task.projectId),
+    taskId: task.id,
+    reason: "round_cap",
+    audience: "driver",
+    summary: reviewRerunCapSummary(limits),
+  });
+};
+
 type Prompt = { readonly text: string; readonly logFiles: readonly CiLogEntry[] };
 
 /**

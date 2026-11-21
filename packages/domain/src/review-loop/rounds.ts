@@ -8,7 +8,9 @@ import type { RoundVerdict } from "../lifecycles/m6.ts";
 // its own cap, and together they have one more; all three counters run since a person last acted
 // (a message, a reopen, an answer, "Keep working", "Fix this", a "changes requested" review), so
 // "at most 4 automatic turns before a person has to act" means exactly that. A "changes requested"
-// round is a person's action: no cap applies, and it resets the counters.
+// round is a person's action: no cap applies, and it resets the counters. An AI review run again
+// on a new head, because the last run never posted, is a review round too (ADR 0058 as amended
+// 2026-11-21): it counts toward the review rounds' cap, and isn't an automatic turn.
 
 export type TaskRoundKind = DbEnum.RoundKind;
 
@@ -57,6 +59,17 @@ export const countRound = (task: RoundCounters, kind: TaskRoundKind): RoundCount
       return kind satisfies never;
   }
 };
+
+/**
+ * ADR 0058 as amended 2026-11-21 (the maintainer's "all yes"): whether the AI review may run again
+ * on a new head after a run that never posted (a head moved under it), against the review rounds'
+ * cap. The coding agent takes no turn for it, so the automatic turns' cap doesn't stop it.
+ */
+export const reviewRerunAllowed = (task: RoundCounters, limits: RoundLimits = DEFAULT_ROUND_LIMITS): RoundVerdict =>
+  task.reviewRounds >= limits.reviewRounds ? { kind: "capped", reason: "rounds" } : { kind: "allowed" };
+
+/** The counters after a review rerun starts: one more review round, no automatic turn. */
+export const countReviewRerun = (task: RoundCounters): RoundCounters => ({ ciRounds: task.ciRounds, reviewRounds: task.reviewRounds + 1, automaticTurns: task.automaticTurns });
 
 /** What a person's action does to the counters: they start again from nothing. */
 export const resetOnPersonAction = (): RoundCounters => NO_ROUNDS;

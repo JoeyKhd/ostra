@@ -49,7 +49,7 @@ export type LoopHarness = {
   readonly records: LogRecord[];
   readonly logger: Logger;
   readonly clock: Clock & { advance: (ms: number) => void };
-  /** The round caps the `round.start` jobs run with; a test may change them. */
+  /** The round caps the `round.start` and `review.start` jobs run with; a test may change them. */
   limits: RoundLimits;
   /** Runs the recorded jobs of these names, in order, until none is left; returns the names run. */
   readonly drain: (names: readonly LoopJob[], options?: { readonly delayed?: boolean }) => Promise<readonly string[]>;
@@ -170,7 +170,7 @@ export const startLoopHarness = async (options: { readonly codeHost?: FakeCodeHo
         await roundStartHandler({ ...ports, limits: harness.limits, spendCap: { capMicroUsd: 25_000_000, capTokens: 10_000_000 } })(jobContext(job, jobPayloadSchemas[job].parse(payload), logger));
         return;
       case "review.start":
-        await reviewStartHandler({ ...ports, adapters })(jobContext(job, jobPayloadSchemas[job].parse(payload), logger));
+        await reviewStartHandler({ ...ports, adapters, limits: harness.limits })(jobContext(job, jobPayloadSchemas[job].parse(payload), logger));
         return;
       case "review.post":
         await reviewPostHandler({ ...ports, adapters })(jobContext(job, jobPayloadSchemas[job].parse(payload), logger));

@@ -475,7 +475,8 @@ export const startCore = async (
   const loopPorts = { db, jobs, outbox: postgresCommandOutbox, notices, audit: postgresAuditLog, clock: systemClock, timers };
   const ciSettings = { ciWaits: settings.team.ciWaits, ciLogTailBytes: settings.team.ciLogTailBytes, ciLogChecks: settings.team.ciLogChecks };
   await jobs.work("ci.evaluate", ciEvaluateHandler({ db, jobs, notices, clock: systemClock, adapters, settings: ciSettings, logs: blobCiLogStore(blobs) }), { localConcurrency: 2 });
-  await jobs.work("review.start", reviewStartHandler({ ...loopPorts, adapters }), { localConcurrency: 2 });
+  // ADR 0058 as amended 2026-11-21: a review rerun on a new head counts toward the review rounds' cap.
+  await jobs.work("review.start", reviewStartHandler({ ...loopPorts, adapters, limits: settings.team.roundLimits }), { localConcurrency: 2 });
   await jobs.work("review.post", reviewPostHandler({ ...loopPorts, adapters }), { localConcurrency: 2 });
   const roundSpendCap = { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap };
   // Milestone 6 (F-102, ticket 19): a task PR's requested reviewers and code owners.
