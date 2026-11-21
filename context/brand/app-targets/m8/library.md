@@ -8,7 +8,7 @@
 
 - **Route:** new, `apps/web/src/app/(panel)/organization/skills/page.tsx` (the list, `?tab=all|skills|mcp|updates`). An item is `organization/skills/[item-id]` (`library-update.md`), the browser `organization/skills/marketplace` (`library-browse.md`), and "Add from a source" a `Sheet` over this page.
 - **Shell:** the double-sidebar shell (`app-shell.md`): the rail's **Org** space lit, the Organization panel with **Skills and MCP** selected under Agents, its count the library's size.
-- **Features:** F-021 (agent profiles: skills and MCP servers) gains a library to fill them from. Its row is F-144 (the skills and MCP library), which the milestone 8 spec proposes (`context/specs/m8-previews-and-library/spec.md`, section 13, target 10 `library`); it isn't in `features.md` yet. The facts and the shape (design B, "an organization library, then attach") come from `context/research/skills-and-mcp-marketplaces.md`, sections 7.3 to 7.6.
+- **Features:** F-021 (agent profiles: skills and MCP servers) gains a library to fill them from. Its row is F-145 (the skills and MCP library), which the milestone 8 spec builds (`context/specs/m8-previews-and-library/spec.md`, section 13, target 10 `library`). The facts and the shape (design B, "an organization library, then attach") come from `context/research/skills-and-mcp-marketplaces.md`, sections 7.3 to 7.6.
 - **Status: approved 2026-11-21** (the maintainer: "yes to all").
 
 > Build it in real HTML/React (`app-design.md`, rule 5), then screenshot the build at 1440×956 and compare it with the picture.

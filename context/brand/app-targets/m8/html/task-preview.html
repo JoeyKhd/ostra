@@ -1,6 +1,6 @@
 <!doctype html>
-<!-- Target: the task page with the chat and a live preview pane beside it (task-preview.md).
-     ?pane=live|loading|asleep|none  ?menu=services|access  ?view=expanded  ?theme=light. Demo data. -->
+<!-- Target: the task page with the chat and a live preview pane beside it (task-preview.md, preview-native.md).
+     ?pane=live|native|loading|asleep|none  ?menu=services|access  ?view=expanded  ?theme=light. Demo data. -->
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
@@ -42,6 +42,12 @@
   .pv .foot { height: 32px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); white-space: nowrap; }
   .pv .foot .mono { font-size: 12.5px; color: var(--faint); }
   .pv .foot .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .fnote { height: 34px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 12px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .fnote > svg.lucide { width: 14px; height: 14px; color: var(--faint); }
+  .fnote .mono { font-size: 12.5px; color: var(--text-2); }
+  .fnote > span:not(.ib) { overflow: hidden; text-overflow: ellipsis; }
+  .fnote .ib { margin-left: auto; width: 24px; height: 24px; }
+  .fnote .ib svg.lucide { width: 14px; height: 14px; }
 
   /* Pane states over the viewport */
   .state { position: absolute; inset: 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--bg); display: flex; align-items: center; justify-content: center; overflow: hidden; }
@@ -195,6 +201,12 @@
   if (pane === "live") {
     frame.innerHTML = tallyApp();
     foot.innerHTML = `${live}<span class="right"><span style="display:inline-flex;align-items:center;gap:5px;color:var(--muted)">${ic("eye", "width:14px;height:14px")}2 watching</span><span class="faint">·</span><span class="mono">${size}</span><span class="faint">·</span><span class="mono">build-fleet-03</span></span>`;
+  }
+  // The native preview (preview-native.md): the app itself, framed from the preview host, in the member's own browser.
+  if (pane === "native") {
+    frame.innerHTML = tallyApp();
+    document.getElementById("tb").insertAdjacentHTML("afterend", `<div class="fnote">${ic("shield-check")}<span>web sent <span class="mono">X-Frame-Options</span>. ostra replaced it: only this panel can frame the preview.</span><span class="ib" title="Dismiss">${ic("x")}</span></div>`);
+    foot.innerHTML = `<span class="dot green"></span><span style="color:var(--text);font-weight:500">Live</span><span class="faint">· in your browser ·</span><span class="mono" style="color:var(--muted)">5173-k3f9d2.preview.acme.dev</span><span class="right"><span class="btn xs ghost" style="padding:0 4px;color:var(--teal)">${ic("monitor", "width:14px;height:14px")}Use the box's browser</span></span>`;
   }
   if (pane === "loading") {
     frame.style.display = "none";

@@ -10,7 +10,7 @@
 
 - **Route:** new, `apps/web/src/app/(panel)/organization/skills/marketplace/page.tsx`, `?source=skills|mcp&q=…&selected=…`. Reached from the library's `Browse marketplace` and the palette (`Browse the marketplace`). Org admins only; for anyone else, and while search is off, the route shows the "off" state below.
 - **Shell:** the double-sidebar shell, the rail's **Org** space, the Organization panel's **Skills and MCP** row selected.
-- **Features:** F-145 (the marketplace browser), design C of the research ("a marketplace browser on top of B"). The milestone 8 spec proposes it (`context/specs/m8-previews-and-library/spec.md`, section 13, target 14 `library-browse`); it isn't in `features.md` yet. Facts: `context/research/skills-and-mcp-marketplaces.md`, sections 2.6, 3.1, 3.2, 7.3 (design C) and 7.6.
+- **Features:** F-146 (the marketplace browser), design C of the research ("a marketplace browser on top of B"). The milestone 8 spec builds it (`context/specs/m8-previews-and-library/spec.md`, section 13, target 14 `library-browse`). Facts: `context/research/skills-and-mcp-marketplaces.md`, sections 2.6, 3.1, 3.2, 7.3 (design C) and 7.6.
 - **Status: approved 2026-11-21** (the maintainer: "yes to all"). It still depends on two of the maintainer's answers (open points 1 and 2): without them, the library ships with install by reference only, and this page doesn't exist.
 
 > Build it in real HTML/React (`app-design.md`, rule 5), then screenshot the build at 1440×956 and compare it with the picture.

@@ -106,6 +106,7 @@
         ${nav("accounts", "circle-user-round", "Accounts")}
         ${nav("storage", "hard-drive", "Storage")}
         ${nav("email", "mail", "Email")}
+        ${nav("previews", "app-window", "Previews")}
       </div>`,
   };
 

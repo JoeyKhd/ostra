@@ -1,0 +1,289 @@
+<!doctype html>
+<!-- Target: install by reference into the library (library-install.md), the "Add from a source" sheet over
+     Organization › Skills and MCP. ?kind=skill (default) | mcp | refusals. Facts from ADR 0069 ("Sources, and
+     the allowlist", "Installing"). Demo data: Globex and everything of it is invented. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m8 · install by reference</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="m8.css">
+<style>
+  /* The library page behind the sheet (library.html, trimmed). */
+  .tools { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  .tools .field { width: 280px; }
+  .lib { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; table-layout: fixed; }
+  .lib th { text-align: left; font: 500 12.5px var(--sans); color: var(--faint); height: 32px; border-bottom: 1px solid var(--line); padding: 0 12px 0 0; }
+  .lib td { height: 52px; border-bottom: 1px solid var(--line); padding: 0 12px 0 0; white-space: nowrap; overflow: hidden; }
+  .lib .grp td { height: 36px; padding: 0; border-bottom: 0; }
+  .lib .grp .band { margin: 10px 0 2px; height: 30px; font-size: 13.5px; }
+  .lib .nm { display: flex; gap: 10px; }
+  .lib .nm .k { width: 26px; height: 26px; flex: none; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: 6px; color: var(--muted); }
+  .lib .nm .k svg.lucide { width: 14px; height: 14px; }
+  .lib .nm b { display: block; font: 500 14px var(--mono); }
+  .lib .nm .d { display: block; font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; line-height: 1.35; }
+  .lib .src { font: 400 13px var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+  .lib .pin { font: 400 13px var(--mono); }
+
+  /* The sheet: shadcn's right Sheet (ui/sheet.tsx: --side, a --line edge), widened to 560. */
+  .sheet { position: absolute; top: 0; right: 0; bottom: 0; width: 560px; background: var(--side); border-left: 1px solid var(--line); box-shadow: var(--shadow-palette); z-index: 9; display: flex; flex-direction: column; }
+  .sheet .x { position: absolute; top: 14px; right: 14px; color: var(--faint); }
+  .sheet .sh { padding: 20px 24px 0; flex: none; }
+  .sheet .sh h2 { font: 600 17px var(--sans); }
+  .sheet .sh p { font-size: 13.5px; color: var(--muted); margin-top: 3px; }
+  .sheet .sh .seg { margin-top: 12px; }
+  .sheet .sb { flex: 1; min-height: 0; overflow: hidden; padding: 4px 24px 12px; }
+  .sheet .sf { flex: none; border-top: 1px solid var(--line); padding: 12px 24px 16px; }
+  .sheet .sf p { font-size: 13px; color: var(--muted); }
+  .sheet .sf p .mono { font-size: 12.5px; color: var(--text); }
+  .sheet .sf .row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .sheet .sf .why { margin-right: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--faint); }
+  .sheet .sf .why svg.lucide { width: 14px; height: 14px; }
+  .btn.off { opacity: 0.45; }
+
+  .lb { display: block; font: 500 12px var(--sans); color: var(--muted); margin: 12px 0 6px; }
+  .in { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid var(--control-line); border-radius: 7px; background: var(--surface); font: 400 13.5px var(--mono); color: var(--text); min-width: 0; }
+  .in .ph { color: var(--faint); font-family: var(--sans); }
+  .in svg.lucide { width: 14px; height: 14px; color: var(--faint); }
+  .in.sel { justify-content: space-between; font-family: var(--sans); }
+  .help { font-size: 12.5px; color: var(--faint); margin-top: 6px; }
+  .help .mono { font-size: 12px; }
+  .two { display: grid; grid-template-columns: minmax(0, 1fr) 132px; gap: 10px; align-items: end; }
+  .two > div { min-width: 0; }
+  .resolved { display: flex; align-items: center; gap: 7px; margin-top: 8px; font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .resolved svg.lucide { width: 14px; height: 14px; color: var(--green); }
+  .resolved .mono { font-size: 12.5px; color: var(--text); }
+  .note { display: flex; gap: 10px; margin-top: 12px; padding: 2px 0 2px 12px; border-left: 2px solid var(--line-3); font-size: 13.5px; color: var(--muted); }
+  .note svg.lucide { width: 15px; height: 15px; color: var(--faint); margin-top: 2px; }
+  .note .mono { font-size: 12.5px; color: var(--text); }
+  .note .acts { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+  .note.err { border-left-color: var(--red); }
+  .note.err svg.lucide { color: var(--red); }
+
+  .sec2 { display: flex; align-items: baseline; gap: 8px; margin: 14px 0 6px; font: 600 14px var(--sans); }
+  .sec2 .n { font: 500 12px var(--mono); color: var(--faint); }
+  .sec2 .r { margin-left: auto; font: 400 12.5px var(--sans); color: var(--faint); }
+  .sec2 .r .mono { font-size: 12px; }
+  .pick { border-top: 1px solid var(--line); }
+  .pk { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 10px; padding: 8px 8px; border-bottom: 1px solid var(--line); }
+  .pk.on { background: var(--sel); border-radius: 6px; border-bottom-color: transparent; }
+  .cb { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--control-line); margin-top: 2px; display: grid; place-items: center; }
+  .cb.on { background: var(--teal); border-color: var(--teal); color: var(--on-primary); }
+  .cb.on svg.lucide { width: 12px; height: 12px; stroke-width: 3; }
+  .cb.dis { border-color: var(--line-2); }
+  .pk .t { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; overflow: hidden; }
+  .pk .t b { font: 500 14px var(--mono); }
+  .pk .t .p { font: 400 12px var(--mono); color: var(--faint); }
+  .pk .d { grid-column: 2; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pk .d.red { color: var(--red); white-space: normal; }
+  .pk .sz { font: 400 12px var(--mono); color: var(--faint); text-align: right; white-space: nowrap; }
+  .pk.dis .t b { color: var(--faint); }
+
+  .files { margin-top: 2px; }
+  .fl { display: flex; align-items: center; gap: 8px; height: 26px; font: 400 13px var(--mono); color: var(--text-2); }
+  .fl svg.lucide { width: 14px; height: 14px; color: var(--faint); }
+  .fl .chip { height: 20px; font-size: 11.5px; padding: 0 6px; }
+  .fl .s { margin-left: auto; color: var(--faint); font-size: 12px; }
+  .kv { display: grid; grid-template-columns: 74px minmax(0, 1fr); column-gap: 10px; align-items: baseline; margin-top: 8px; font-size: 13px; }
+  .kv .k { color: var(--muted); }
+  .kv .v { color: var(--text-2); min-width: 0; }
+  .kv .v .mono { font-size: 12.5px; color: var(--text); }
+  .kv .v .faint { font-size: 12.5px; }
+  .kv .v svg.lucide { width: 13px; height: 13px; color: var(--green); vertical-align: -2px; margin-right: 4px; }
+
+  /* The server's inputs */
+  .rem { display: grid; grid-template-columns: 16px minmax(0, 1fr); column-gap: 10px; padding: 8px 8px; border-bottom: 1px solid var(--line); }
+  .rem.on { background: var(--sel); border-radius: 6px; border-bottom-color: transparent; }
+  .rd { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--control-line); margin-top: 2px; position: relative; }
+  .rem.on .rd { border-color: var(--teal); }
+  .rem.on .rd::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: var(--teal); }
+  .rem.dis .rd { border-color: var(--line-2); }
+  .rem .t { display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden; font: 400 13px var(--mono); color: var(--text); }
+  .rem .t .chip { font-family: var(--sans); }
+  .rem .d { grid-column: 2; font-size: 12.5px; color: var(--faint); }
+  .rem.dis .t { color: var(--faint); }
+  .inp { display: grid; grid-template-columns: 150px minmax(0, 1fr); column-gap: 10px; align-items: center; padding: 6px 0; }
+  .inp .nm { font: 400 13px var(--mono); color: var(--text); display: flex; flex-direction: column; }
+  .inp .nm small { font: 400 11.5px var(--sans); color: var(--faint); }
+  .inp .h { grid-column: 2; font-size: 12.5px; color: var(--faint); margin-top: 4px; }
+  .tools-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .tools-list .chip { font: 400 12px var(--mono); color: var(--text-2); }
+  .swrow { display: flex; align-items: flex-start; gap: 10px; margin-top: 14px; }
+  .swrow .sw { margin-top: 1px; }
+  .swrow b { font-weight: 500; font-size: 14px; }
+  .swrow p { font-size: 12.5px; color: var(--faint); margin-top: 2px; }
+
+  /* The refusals board */
+  body[data-kind="refusals"] { background: var(--side); }
+  .board { position: relative; width: 1440px; height: 956px; background: var(--side); }
+  .board .lbl { position: absolute; font: 500 13px var(--sans); color: var(--faint); }
+  .board .lbl b { color: var(--muted); font-weight: 600; margin-right: 6px; }
+  .card { position: absolute; width: 560px; height: 404px; background: var(--side); border: 1px solid var(--line-2); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
+  .card .cb2 { flex: 1; padding: 6px 24px 0; overflow: hidden; }
+  .card .sf { border-top: 1px solid var(--line); padding: 12px 24px 14px; }
+  .card .sf .row { display: flex; align-items: center; gap: 8px; }
+  .card .sf .why { margin-right: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--faint); }
+  .card .sf .why svg.lucide { width: 14px; height: 14px; }
+  .card .ch { display: flex; align-items: center; gap: 8px; padding: 16px 24px 0; font: 600 15px var(--sans); }
+  .card .ch .seg { margin-left: auto; }
+  .card .ch .seg > span { height: 26px; font-size: 12.5px; }
+  .card .lb { margin-top: 12px; }
+  .callout-line { font-size: 13px; color: var(--muted); margin-top: 10px; }
+</style>
+</head>
+<body data-space="org" data-panel="org" data-active="skills">
+<div class="app" id="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>Organization</span><i data-lucide="chevron-right" class="chev"></i><b>Skills and MCP</b>
+      <div class="right"><span class="btn"><i data-lucide="store"></i> Browse marketplace</span><span class="btn primary"><i data-lucide="plus"></i> Add from a source</span></div>
+    </div>
+    <div class="content">
+      <div class="page">
+        <h1 style="margin-top:0">Skills and MCP servers</h1>
+        <p class="lede">Installed once for Acme Corp, pinned, and attached to agent profiles. Agents get them at their next session.</p>
+        <div class="tabs" style="margin-top:16px"><span class="tab on">All <span class="n">14</span></span><span class="tab">Skills <span class="n">9</span></span><span class="tab">MCP servers <span class="n">5</span></span><span class="tab">Updates <span class="n">2</span></span></div>
+        <div class="tools"><span class="field"><i data-lucide="search"></i>Filter by name or source</span></div>
+        <table class="lib">
+          <colgroup><col style="width:232px"><col style="width:178px"><col style="width:74px"><col></colgroup>
+          <tr><th>Name</th><th>Source</th><th>Pinned</th><th>Used by</th></tr>
+          <tr class="grp"><td colspan="4"><div class="band"><i data-lucide="book-open" style="width:14px;height:14px;color:var(--muted)"></i>Skills <span class="n">9</span></div></td></tr>
+          <tr><td><div class="nm"><span class="k"><i data-lucide="book-open"></i></span><span><b>webapp-testing</b><span class="d">Start a local web app, click through it</span></span></div></td><td class="src">anthropics/skills@webapp-testing</td><td class="pin">a3f9c1e</td><td class="muted">3 profiles</td></tr>
+          <tr><td><div class="nm"><span class="k"><i data-lucide="book-open"></i></span><span><b>frontend-design</b><span class="d">Production-grade frontend work</span></span></div></td><td class="src">anthropics/skills@frontend-design</td><td class="pin">7b20d4a</td><td class="muted">Every profile</td></tr>
+          <tr><td><div class="nm"><span class="k"><i data-lucide="book-open"></i></span><span><b>prisma-migrations</b><span class="d">Plan, write and check a migration</span></span></div></td><td class="src">acme/agent-skills@prisma-migrations</td><td class="pin">e41c0f2</td><td class="muted">4 profiles</td></tr>
+          <tr><td><div class="nm"><span class="k"><i data-lucide="book-open"></i></span><span><b>release-notes</b><span class="d">Release notes the way Acme writes them</span></span></div></td><td class="src">git.acme.dev/platform/skills.git#v3</td><td class="pin">58d2b97</td><td class="muted">2 profiles</td></tr>
+          <tr class="grp"><td colspan="4"><div class="band"><i data-lucide="plug" style="width:14px;height:14px;color:var(--muted)"></i>MCP servers <span class="n">5</span></div></td></tr>
+          <tr><td><div class="nm"><span class="k"><i data-lucide="plug"></i></span><span><b>sentry</b><span class="d">Issues and traces · remote · 1 secret</span></span></div></td><td class="src">io.sentry/sentry-mcp</td><td class="pin">v0.21.0</td><td class="muted">3 profiles</td></tr>
+          <tr><td><div class="nm"><span class="k"><i data-lucide="plug"></i></span><span><b>linear</b><span class="d">Issues, comments and projects</span></span></div></td><td class="src">app.linear/linear</td><td class="pin">v1.4.2</td><td class="muted">2 profiles</td></tr>
+          <tr><td><div class="nm"><span class="k"><i data-lucide="plug"></i></span><span><b>context7</b><span class="d">Library docs by version · remote</span></span></div></td><td class="src">io.github.upstash/context7</td><td class="pin">v2.1.0</td><td class="muted">Every profile</td></tr>
+        </table>
+      </div>
+      <aside class="props">
+        <div class="group"><h5>Library</h5>
+          <div class="prop"><span class="k">Skills</span><span class="v mono">9</span></div>
+          <div class="prop"><span class="k">MCP servers</span><span class="v mono">5</span></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+  <div class="scrim"></div>
+  <aside class="sheet" id="sheet" role="dialog" aria-label="Add from a source"></aside>
+</div>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  const kind = q.get("kind") ?? "skill";
+  document.body.dataset.kind = kind;
+  const ic = (n, s = "") => `<i data-lucide="${n}"${s ? ` style="${s}"` : ""}></i>`;
+  const head = (on) => `<span class="x">${ic("x")}</span>
+    <div class="sh"><h2>Add from a source</h2><p>Installed once for Acme Corp, pinned, and attached to no profile until you choose.</p>
+    <span class="seg"><span${on === "skill" ? ' class="on"' : ""}>${ic("book-open")} Skill</span><span${on === "mcp" ? ' class="on"' : ""}>${ic("plug")} MCP server</span></span></div>`;
+
+  const skill = `${head("skill")}
+    <div class="sb">
+      <div class="two">
+        <div><span class="lb">Source</span><span class="in">globex/agent-skills<span style="margin-left:auto" class="btn xs">Look up</span></span></div>
+        <div><span class="lb">Ref</span><span class="in">main</span></div>
+      </div>
+      <p class="help"><span class="mono">owner/repo</span>, <span class="mono">owner/repo@skill</span>, a GitHub URL, or a site's well-known index</p>
+      <div class="resolved">${ic("check")}<span class="mono">main</span> is <span class="mono">4c81e0a</span><span class="faint">· 2 days ago · from GitHub, public</span></div>
+      <div class="note">${ic("lock")}<div><span><span class="mono">github.com/globex/agent-skills</span> isn't on Acme Corp's allowlist. Sources are matched by owner and repo, never by a skill's name.</span>
+        <div class="acts"><span class="btn sm">${ic("shield-plus")} Allow this source</span><span class="faint" style="font-size:12.5px">adds the repo, in your name ·</span><span class="teal" style="font-size:13px;margin-left:-6px">the whole owner instead</span></div></div></div>
+
+      <div class="sec2">Skills in the repo <span class="n">4</span><span class="r">at <span class="mono">4c81e0a</span> · up to four folders deep</span></div>
+      <div class="pick">
+        <div class="pk on"><span class="cb on">${ic("check")}</span><span class="t"><b>db-seeding</b><span class="p">skills/db-seeding</span></span><span class="sz">5 files · 14.2 KB</span><span class="d">Seed a local database from fixtures, and reset it between test runs</span></div>
+        <div class="pk"><span class="cb"></span><span class="t"><b>api-contracts</b><span class="p">skills/api-contracts</span></span><span class="sz">3 files · 9.8 KB</span><span class="d">Check an OpenAPI file against the handlers that serve it</span></div>
+        <div class="pk"><span class="cb"></span><span class="t"><b>release-checklist</b><span class="p">skills/release-checklist</span></span><span class="sz">1 file · 2.1 KB</span><span class="d">The steps Globex runs before it tags a release</span></div>
+        <div class="pk dis"><span class="cb dis"></span><span class="t"><b>Legacy Tools</b><span class="p">skills/legacy</span></span><span class="sz">—</span><span class="d red">Can't install: its name must be lowercase, digits and dashes, as its folder</span></div>
+      </div>
+
+      <div class="sec2">db-seeding <span class="n">5 files</span><span class="r">of 20, each under 1 MiB</span></div>
+      <div class="files">
+        <div class="fl">${ic("file-text")}SKILL.md<span class="s">3.9 KB</span></div>
+        <div class="fl">${ic("file-text")}reference/fixtures.md<span class="s">6.2 KB</span></div>
+        <div class="fl">${ic("file-code")}scripts/seed.sh<span class="chip">script · in scripts/, shebang</span><span class="s">1.4 KB</span></div>
+        <div class="fl">${ic("file-code")}bin/reset<span class="chip">script · executable bit</span><span class="s">0.9 KB</span></div>
+        <div class="fl">${ic("file-text")}templates/fixture.json<span class="s">1.8 KB</span></div>
+      </div>
+      <div class="note" style="margin-top:8px">${ic("file-code")}<span>2 files look like scripts. The skill can tell the agent to run them in the task's box, so read them before you install. <span class="teal">Read scripts/seed.sh</span></span></div>
+      <div class="kv"><span class="k">Checks</span><span class="v">${ic("check")}<span class="mono">SKILL.md</span> follows the Agent Skills spec</span></div>
+      <div class="kv"><span class="k">Hash</span><span class="v"><span class="mono">sha256 9f2c…a71d</span> <span class="faint">· the skills CLI's hash, as in <span class="mono">skills-lock.json</span></span></span></div>
+    </div>
+    <div class="sf">
+      <p>Install pins <span class="mono">4c81e0a</span> and keeps these 5 files with their hash.</p>
+      <div class="row"><span class="why">${ic("lock")}Allow the source to install from it.</span><span class="btn ghost">Cancel</span><span class="btn primary off"><i data-lucide="download"></i> Install 1 skill</span></div>
+    </div>`;
+
+  const mcp = `${head("mcp")}
+    <div class="sb">
+      <div class="two" style="grid-template-columns:minmax(0,1fr) 170px">
+        <div><span class="lb">Server's name in the registry</span><span class="in">dev.globex/incidents<span style="margin-left:auto" class="btn xs">Look up</span></span></div>
+        <div><span class="lb">Name in the library</span><span class="in">incidents</span></div>
+      </div>
+      <span class="lb">Registry</span><span class="in sel"><span>GitHub's MCP registry <span class="mono faint" style="font-size:12.5px">api.mcp.github.com</span></span>${ic("chevron-down")}</span>
+      <p class="help">Acme Corp's list: GitHub's, there from the start, and Globex internal, added by Alex Kim.</p>
+      <div class="resolved">${ic("check")}<span class="mono">v1.8.2</span><span class="faint">· latest · active · 3 Nov · <span class="mono" style="color:var(--faint)">dev.globex/*</span> is on the allowlist</span></div>
+
+      <div class="sec2">Remote <span class="r">streamable HTTP only</span></div>
+      <div>
+        <div class="rem on"><span class="rd"></span><span class="t"><span class="chip">streamable HTTP</span>https://mcp.globex.dev/{region}/mcp</span><span class="d">The sidecar's MCP proxy calls it; the agent sees only the proxy's path.</span></div>
+        <div class="rem dis"><span class="rd"></span><span class="t"><span class="chip">SSE</span>https://mcp.globex.dev/sse</span><span class="d">Not offered: MCP deprecated SSE, and ostra connects to streamable HTTP.</span></div>
+      </div>
+
+      <div class="sec2">Inputs <span class="n">3</span></div>
+      <div class="inp"><span class="nm">region<small>in the URL</small></span><span class="in sel" style="font-family:var(--mono)">eu${ic("chevron-down")}</span></div>
+      <div class="inp"><span class="nm">X-Globex-Team<small>header</small></span><span class="in">platform</span></div>
+      <div class="inp"><span class="nm">Authorization<small>header · secret</small></span><span class="in" style="letter-spacing:2px">••••••••••••••••<span class="chip" style="margin-left:auto;letter-spacing:0;font-family:var(--sans)">${ic("lock")}secret</span></span><span class="h">Kept in the secret store. Never shown again.</span></div>
+
+      <div class="sec2">Test call <span class="resolved" style="margin:0;font-weight:400">${ic("check")}<span><span class="mono">tools/list</span> answered in 412 ms with 6 tools</span></span><span class="r"><span class="btn xs">${ic("refresh-cw")} Test again</span></span></div>
+      <div class="tools-list"><span class="chip">list_incidents</span><span class="chip">get_incident</span><span class="chip">acknowledge_incident</span><span class="chip">add_timeline_note</span><span class="chip">search_runbooks</span><span class="chip">page_oncall</span></div>
+
+      <div class="swrow"><span class="sw"></span><div><b>Read-only</b><p>Off: a registry has no read-only flag to trust. Plan mode leaves its tools alone, and "Reaching the network" asks before they run.</p></div></div>
+    </div>
+    <div class="sf">
+      <p>Install pins <span class="mono">v1.8.2</span>, an immutable registry version, and stores the secret.</p>
+      <div class="row"><span class="why"></span><span class="btn ghost">Cancel</span><span class="btn primary"><i data-lucide="download"></i> Install incidents</span></div>
+    </div>`;
+
+  // The refusals: four sheets' look-up results, each at the sheet's real width.
+  const card = (x, y, n, label, title, seg, field, body, foot) => `
+    <div class="lbl" style="left:${x}px;top:${y - 26}px"><b>${n}</b>${label}</div>
+    <div class="card" style="left:${x}px;top:${y}px">
+      <div class="ch">${title}<span class="seg"><span${seg === "skill" ? ' class="on"' : ""}>${ic("book-open")} Skill</span><span${seg === "mcp" ? ' class="on"' : ""}>${ic("plug")} MCP server</span></span></div>
+      <div class="cb2">${field}${body}</div>
+      <div class="sf"><div class="row">${foot}</div></div>
+    </div>`;
+  const regField = (name) => `<span class="lb">Server's name in the registry</span><span class="in">${name}<span style="margin-left:auto" class="btn xs">Look up</span></span>`;
+  const refusals = `<div class="board">
+    ${card(110, 62, 1, "OAuth sign-in: installed, marked, never attached", "Add from a source", "mcp", regField("dev.globex/crm"), `
+      <div class="resolved">${ic("check")}<span class="mono">v3.0.1</span><span class="faint">· active · streamable HTTP · <span class="mono" style="color:var(--faint)">https://crm.globex.dev/mcp</span></span></div>
+      <div class="note">${ic("key-round")}<div><span style="color:var(--text)">globex-crm needs sign-in, which ostra doesn't do yet.</span><br>Its server answered the test call with an OAuth challenge. You can install it to keep track of it, marked <span class="chip" style="height:20px;font-size:11.5px">needs sign-in</span>, and no profile can attach it until ostra signs in to MCP servers, in a later release.</div></div>`,
+      `<span class="why">${ic("info")}It can't be attached.</span><span class="btn ghost">Cancel</span><span class="btn primary"><i data-lucide="download"></i> Install, marked</span>`)}
+    ${card(770, 62, 2, "Packages only: listed, with why it isn't installable yet", "Add from a source", "mcp", regField("dev.globex/files"), `
+      <div class="resolved">${ic("check")}<span class="mono">v0.9.4</span><span class="faint">· active · no remote · npm and OCI packages</span></div>
+      <div class="note">${ic("package")}<div><span style="color:var(--text)">Not installable yet: globex-files runs only as a package.</span><br>Its entry offers <span class="mono">@globex/files-mcp</span> on npm and an OCI image, run over stdio, and no remote. Running one means a download in the box, which a docker runner's network forbids, and every runner has to behave the same. A server in a container of its own, beside the box, comes later.</div></div>
+      <p class="callout-line">A stdio server whose command is already in the box's image can still be added by hand on a profile.</p>`,
+      `<span class="why">${ic("ban")}Nothing to install.</span><span class="btn ghost">Close</span><span class="btn primary off"><i data-lucide="download"></i> Install</span>`)}
+    ${card(110, 516, 3, "An SSE remote: refused as deprecated", "Add from a source", "mcp", regField("dev.globex/status"), `
+      <div class="resolved">${ic("check")}<span class="mono">v2.2.0</span><span class="faint">· active · one remote, SSE</span></div>
+      <div class="note err">${ic("circle-x")}<div><span style="color:var(--text)">Not installable: its only remote uses SSE, which MCP deprecated.</span><br>ostra connects only to streamable-HTTP remotes. A version of globex-status with one installs as any other server.</div></div>`,
+      `<span class="why">${ic("ban")}Nothing to install.</span><span class="btn ghost">Close</span><span class="btn primary off"><i data-lucide="download"></i> Install</span>`)}
+    ${card(770, 516, 4, "A well-known index whose digest doesn't match", "Add from a source", "skill", `<span class="lb">Source</span><span class="in" style="font-size:13px">https://skills.globex.dev/.well-known/agent-skills/index.json</span>`, `
+      <div class="resolved">${ic("check")}<span>The index lists 3 skills</span><span class="faint">· picked <span class="mono" style="color:var(--faint)">onboarding</span></span></div>
+      <div class="note err">${ic("circle-x")}<div><span style="color:var(--text)">onboarding's files don't match the index.</span><br>The index gives <span class="mono">sha256 3b0a…e19c</span>, and the files it served hash to <span class="mono">sha256 d47f…0b62</span>. A mismatch is an error, never a fallback: nothing is kept.</div></div>`,
+      `<span class="why">${ic("ban")}Nothing installed.</span><span class="btn ghost">Close</span><span class="btn primary off"><i data-lucide="download"></i> Install 1 skill</span>`)}
+  </div>`;
+
+  if (kind === "refusals") {
+    document.getElementById("app").outerHTML = refusals;
+  } else {
+    document.getElementById("sheet").innerHTML = kind === "mcp" ? mcp : skill;
+  }
+})();
+</script>
+<script src="shell.js"></script>
+</body>
+</html>

@@ -1,12 +1,13 @@
 # Milestone 8 screen targets
 
 The design targets for milestone 8 (`context/specs/m8-previews-and-library/`, section 13):
-- **the double-sidebar shell** (F-146), which every other screen is drawn in;
-- **the live preview pane** (F-140, F-141);
+- **the double-sidebar shell** (F-147), which every other screen is drawn in;
+- **the live preview pane** (F-141, F-142);
 - **screenshots and recordings in the timeline** (F-121);
-- **the skills and MCP library** (F-144, F-145).
+- **the skills and MCP library** (F-145, F-146);
+- **the environment's app processes** (F-140), **the viewer page for a preview link** (F-142), and **the native preview with the preview domain's settings** (F-144), in the second batch below.
 
-**Status: approved 2026-11-21** (the maintainer: "yes to all"). The choices the approval settled are under "Approval" below. Build from these targets.
+**Status:** the first batch was **approved 2026-11-21** (the maintainer: "yes to all"). The choices the approval settled are under "Approval" below. Build from those targets. **The second batch,** section 13's other seven targets, drawn the same day, is **waiting for the maintainer's approval**, and nothing in it is built until then.
 
 **Why these screens:**
 - **The shell:** the maintainer, 2026-11-21: "i like the ux of multica a lot, their double sidebar is nice". How Multica's works is in `context/research/multica-ui.md`. These targets take its structure and keep ostra's own look (`../../brief.md`, `../../app-design.md`).
@@ -25,13 +26,13 @@ They're real HTML, not image-model pictures (`app-design.md`, rule 5). Each page
 
   The renders used `playwright@1.65.1` from the repo's `node_modules`.
 - **No Higgsfield credits were used.** Every screen could be drawn in HTML, so the `html/` page stands where earlier milestones kept a `.prompt.txt`.
-- **All data is demo data:** Acme Corp, its projects and people, and the marketplace's owners, counts and audits (except `anthropics/skills@webapp-testing`, a real repo). Model names and protocol facts are from the research files each spec cites.
+- **All data is demo data:** Acme Corp, its projects and people, and the marketplace's owners, counts and audits (except `anthropics/skills@webapp-testing`, a real repo). Globex, its repos, registry entries and hosts are invented for the second batch. Model names and protocol facts are from the research files each spec cites.
 
 ## Screens
 
 | Screen | Targets | Build spec | m8 spec, section 13 |
 |---|---|---|---|
-| The shell on Home, dark and light | `shell-home`, `shell-home-light` | `app-shell.md` | ticket 10 (F-146) |
+| The shell on Home, dark and light | `shell-home`, `shell-home-light` | `app-shell.md` | ticket 10 (F-147) |
 | The shell on a project's task list, dark and light | `shell-project-tasks`, `shell-project-tasks-light` | `app-shell.md` | ticket 10 |
 | The panel collapsed, peeking the Organization | `shell-peek` | `app-shell.md` | ticket 10 |
 | The shell at phone width, with no tab bar: a project's tasks under the menu button and breadcrumb, and a task | `shell-phone` | `app-shell.md` | ticket 10 |
@@ -47,14 +48,34 @@ They're real HTML, not image-model pictures (`app-design.md`, rule 5). Each page
 | An item: source, pin, used-by profiles, an update's diff | `library-update` | `library-update.md` | target 12 |
 | The admin's marketplace browser | `library-browse` | `library-browse.md` | target 14 |
 
-The names follow the milestone 8 spec's section 13 where it names the screen. Section 13's other targets aren't drawn here yet; ticket 09 makes them in this shell, now that it's approved:
-- 5 `environment-app-processes`
-- 7 `preview-viewer`
-- 8 `preview-native`
-- 9 `instance-preview-domain`
-- 11 `library-install`
-- 13 `library-suggestions`
-- 15 `agent-profile-library`
+The names follow the milestone 8 spec's section 13 where it names the screen.
+
+### The second batch: waiting for the maintainer's approval
+
+Ticket 09 drew section 13's other seven targets on 2026-11-21, in the approved shell and the same way. **Each is waiting for the maintainer's approval.** When it's given, record it under "Approval" and in ticket 09's `## Comments`, with the date.
+
+| Screen | Targets | Build spec | m8 spec, section 13 |
+|---|---|---|---|
+| The environment's app processes: the list, a process kept from a task, one found in the repo, services with a web UI, the after-turn screenshots, dark and light | `environment-app-processes`, `environment-app-processes-light` | `environment-app-processes.md` | target 5 |
+| A process's editor sheet: the ready check, primary and the host rewrite | `environment-app-process-sheet` | `environment-app-processes.md` | target 5 |
+| The environment when the box has no browser | `environment-app-processes-no-browser` | `environment-app-processes.md` | target 5 |
+| The page a signed-out person opens from a link, dark and light | `preview-viewer`, `preview-viewer-light` | `preview-viewer.md` | target 7 |
+| The viewer on a phone with input, and the expired and revoked links | `preview-viewer-states` | `preview-viewer.md` | target 7 |
+| The pane with the app in the member's own browser, dark and light | `preview-native`, `preview-native-light` | `preview-native.md` | target 8 |
+| Instance › Previews: the preview domain, its DNS record and certificate, the check, and public links | `instance-preview-domain` | `instance-preview-domain.md` | target 9 |
+| The same with no preview domain set | `instance-preview-domain-unset` | `instance-preview-domain.md` | target 9 |
+| Install by reference: a repo's skills, its files and scripts, the hash, a source to allow | `library-install` | `library-install.md` | target 11 |
+| Install an MCP server: the registry, the remote, the inputs and secret, the test call's tools | `library-install-server` | `library-install.md` | target 11 |
+| What can't be installed: OAuth sign-in, packages only, an SSE remote, a digest that doesn't match | `library-install-refusals` | `library-install.md` | target 11 |
+| The admins' suggestions, with Install and Dismiss | `library-suggestions` | `library-suggestions.md` | target 13 |
+| A member's Suggest sheet and their past suggestions | `library-suggest-form` | `library-suggestions.md` | target 13 |
+| The profile editor's skills and MCP servers: its own, attached, every profile, the attach picker, dark and light | `agent-profile-library`, `agent-profile-library-light` | `agent-profile-library.md` | target 15 |
+| A profile at its limit of 20 MCP servers, and the refusal | `agent-profile-library-limit` | `agent-profile-library.md` | target 15 |
+
+**What the second batch changes in the first:**
+- **The Organization panel's Instance group** gains `Previews` (`app-window`, `/instance/previews`, the instance admin's), drawn by `html/shell.js`. The approved renders that show the Organization panel predate it: re-rendering `library`, `library-update`, `library-browse` or `shell-peek` adds the row. `app-shell.md`'s list of the panel's rows gains it when the second batch is approved.
+- **`library-install`'s sheet is 560 wide,** where `library.md` says 440, for the files and inputs it holds (`library-install.md`, open point 1).
+- **`library-browse` and `library-update` draw skills.sh's audit verdicts as an option** (`library-update.md`, open point 3), which ADR 0069 has since left out (Q319). The second batch shows none.
 
 ## Rules
 

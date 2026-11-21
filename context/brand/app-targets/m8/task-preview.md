@@ -15,7 +15,7 @@
 
 - **Route:** unchanged, `apps/web/src/app/(panel)/tasks/[task-id]/page.tsx` → `components/tasks/task-view.tsx`. The pane is a side pane of the task page, chosen from the top bar's `Preview | Properties` toggle, and kept in the URL (`?pane=preview&preview={label}&path=/history`), so a link reopens it. Expand adds `&view=full`.
 - **Shell:** the double sidebar (`app-shell.md`): the Projects space, the project panel, the task's live row selected.
-- **Features:** F-140 (the live preview), F-141 (sharing a preview), F-139 (app processes: the services in the switcher) and F-143 (the preview domain: the in-your-browser mode). The milestone 8 spec proposes them (`context/specs/m8-previews-and-library/spec.md`, section 13, targets 1 to 3 and 6), and they aren't in `features.md` yet. F-121 covers the screenshots behind the stopped state. The facts are in `context/research/live-previews.md` (sections 7 and 8) and the spec's ADR 0068.
+- **Features:** F-141 (the live preview), F-142 (sharing a preview), F-140 (app processes: the services in the switcher) and F-144 (the preview domain: the in-your-browser mode). The milestone 8 spec builds them (`context/specs/m8-previews-and-library/spec.md`, section 13, targets 1 to 3 and 6). F-121 covers the screenshots behind the stopped state. The facts are in `context/research/live-previews.md` (sections 7 and 8) and the spec's ADR 0068.
 - **Status: approved 2026-11-21** (the maintainer: "yes to all"). The maintainer approved the idea the same day ("live previews in the task chat").
 
 > Build it in real HTML/React (`app-design.md`, rule 5), then screenshot the build at 1440×956 and compare it with each picture.
@@ -75,11 +75,11 @@ When the agent opens a port (`show_preview`), its turn gains a tool row in miles
 | **Live** | `task-preview-pane` | As above |
 | **Starting** | `task-preview-starting` | The frame is replaced by a centred block 400 wide on `--bg`. It has a 36px icon box with a spinner, `Starting web` 16px 600, a line of `--muted`, and three steps (`Box ready`, `Started pnpm dev`, `Waiting for :5173 to answer · 9 s`), each with a `check` `--green` or a spinner. Under them, the start command's last three log lines in a `--surface` code block, mono 12.5px `--muted`. The thread's `Started` row shows `starting`. After 90 s *(working value)*, the step turns red with `It didn't answer in 90 s.`, `Show the log` and `Restart web` |
 | **Asleep** (an idle box, ADR 0039) | `task-preview-stopped` | The last screenshot, grayscale at 10% (35% in light), behind a `--raise` card 420 wide with a 12px radius and `--shadow-pop`. The card has `moon`, `The box is asleep`, the reason and the time, `Wake to preview` (`power`), the ghost `See the last screenshot`, and 12.5px `--faint` text on what waking does: a box from the project's snapshot on the task's branch, the start command, about how long, and no model tokens. The top bar has no `Stop`. The task's line reads `Idle · the agent finished its turn · box asleep` |
-| **Ended** (the task stopped, failed or merged; no box) | not drawn | As asleep, with `The task's box is gone` and `Start the app` (the same action, F-140) |
+| **Ended** (the task stopped, failed or merged; no box) | not drawn | As asleep, with `The task's box is gone` and `Start the app` (the same action, F-141) |
 | **Nothing to preview** | `task-preview-none` | A 430-wide block: `app-window` in a 36px box, `No preview for this task`, why, then `The box is listening on` and each detected port as a 40px row (dot, mono port, process and source, `Open as a preview`). Then `Ask the agent to start the app` (it puts that text into the composer and doesn't send it) and a teal `Declare it in Environment →`. The toolbar's path, reload, width and share are at 45% opacity and inert |
 | **The app stopped answering** | not drawn | The frame keeps its last picture, dimmed to 40%. A top banner reads `web :5173 stopped answering at 14:58`, with `Restart web` and `Show the log`. The thread gets no row: it isn't the agent's action |
 | **The stream dropped** | not drawn | The frame keeps its last picture, with a 24px pill at its top centre: spinner and `Reconnecting…`. After 30 s: `Lost the stream.` and `Retry` |
-| **A runner too old** (below the preview minor) | not drawn | The none block's shape, with `build-fleet-03 needs upgrading to show previews.`, a teal `How to upgrade a runner` (docs), and share disabled. It fails closed, never falls back to an unprotected view (F-141) |
+| **A runner too old** (below the preview minor) | not drawn | The none block's shape, with `build-fleet-03 needs upgrading to show previews.`, a teal `How to upgrade a runner` (docs), and share disabled. It fails closed, never falls back to an unprotected view (F-142) |
 | **Expanded** | `task-preview-expanded` | Below |
 | **Light** | `task-preview-pane-light` | `../m7/light-home.md`'s tokens. The app's own colours don't change |
 
@@ -99,7 +99,7 @@ A `DropdownMenu`, 380 wide, under the switcher at a 4px gap. `--raise`, 1px `--l
 1. **Label** `Previews of CALC-192` (12px 500 `--faint`).
 2. **A row per preview,** in a `14px 1fr auto` grid with padding `7px 10px`, two lines:
    - **Line 1:** the state dot, the label in mono 14px `--text` and the port in `--faint`, then chips (22px, 1px `--line-2`, 5px radius, 12px `--muted`): `primary` where it is, and its source (`declared`, `service`, `opened by the agent`). The current preview has a `check` at the end and a `--sel` fill.
-   - **Line 2,** 12.5px `--faint`: what it is (`The app · pnpm dev in calculator-web`, `Opens /docs · the frontend reaches it through /api`, `Mail the app sends in this box`). An agent's preview adds `This task only ·` and a teal `Keep it for calculator`, which turns it into an environment proposal (F-139; a project admin accepts it, as `../m6/environment-proposal`).
+   - **Line 2,** 12.5px `--faint`: what it is (`The app · pnpm dev in calculator-web`, `Opens /docs · the frontend reaches it through /api`, `Mail the app sends in this box`). An agent's preview adds `This task only ·` and a teal `Keep it for calculator`, which turns it into an environment proposal (F-140; a project admin accepts it, as `../m6/environment-proposal`).
    - The order is primary first, then declared, services and the agent's, each alphabetical.
 3. **`Detected`:** ports the box listens on that belong to the task's processes, each with `Open`. The key, git and MCP proxies' ports and OpenCode's never show (research §7: a preview reaches only the task's ports).
 4. `Open a port…` (`plus`) asks for a port and a label, for this task only. `Edit the app's processes in Environment` (`box`) is there for project admins.
@@ -118,7 +118,7 @@ A `Popover` from the share button, 392 wide, aligned to its right edge, under it
      - `Made by {who} at {hh:mm} · opened {n} times, first {hh:mm} · Revoke`, with `Revoke` teal.
   4. `Public` with a `lock` icon. It's greyed out (labels in `--faint`, the radio ring in `--line-2`) with `An admin of Acme Corp turned public previews off.` Where an admin allows it, it reads `Anyone, signed in or not, until you change it.`
 - **Footer:** a 1px `--line` above, `scroll-text` 14px and 12.5px `--faint` `Making a link and each first use of it go to the audit log.`
-- **Rules** (F-141, research §7):
+- **Rules** (F-142, research §7):
   - Changing the level takes effect at once.
   - Narrowing it ends every viewer who no longer qualifies.
   - A runner or install that can't enforce a level shows that level disabled, with the reason. It never widens access.
@@ -177,7 +177,7 @@ A `Popover` from the share button, 392 wide, aligned to its right edge, under it
 ## Data it needs
 
 From the m8 spec (ADR 0068) and `context/research/live-previews.md`:
-1. **The task's previews:** label, port, source (`declared | service | agent | detected`), primary, path, state, and access level. They come from the environment's app processes (F-139), the agent's `show_preview`, and the box's port scan.
+1. **The task's previews:** label, port, source (`declared | service | agent | detected`), primary, path, state, and access level. They come from the environment's app processes (F-140), the agent's `show_preview`, and the box's port scan.
 2. **The view:**
    - **Design B,** with no setting: frames and input over the preview connection, opened only while someone watches.
    - **Design A,** with the preview domain: the one-time code handshake and the per-origin cookie.

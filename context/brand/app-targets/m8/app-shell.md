@@ -14,7 +14,7 @@
 
 - **Where it comes from:** the maintainer, 2026-11-21: "i like the ux of multica a lot, their double sidebar is nice". Multica's structure is in `context/research/multica-ui.md`. This target takes the structure (a rail of spaces, a contextual panel, one-key collapse with a peek, a sheet on the phone), and keeps ostra's own look: flat graphite, no content card, amber only for "needs you", the Hinge.
 - **Route:** every route of milestones 1 to 7 stays where it is. This changes `apps/web/src/components/shell/` (`app-shell.tsx`, `sidebar.tsx`, `project-nav.tsx`, `nav-link.tsx`, `page-frame.tsx`, `destinations.ts`) and nothing under `app/`.
-- **Features:** F-146 (the double sidebar), proposed by the milestone 8 spec (`context/specs/m8-previews-and-library/`, ticket 10), and not in `features.md` yet. Also F-075 (touch sizes), F-080 and F-081 (the palette, the shortcuts, the keyboard walk) and F-082 (both themes).
+- **Features:** F-147 (the double sidebar), which the milestone 8 spec builds (`context/specs/m8-previews-and-library/`, ticket 10). Also F-075 (touch sizes), F-080 and F-081 (the palette, the shortcuts, the keyboard walk) and F-082 (both themes).
 - **Status: approved 2026-11-21** (the maintainer: "yes to all"), with the phone redrawn the same day without a tab bar ("no need for a bottom tab bar btw"). Ticket 10 builds it. Every other milestone 8 target is drawn in this shell.
 
 > Build it in real HTML/React (`app-design.md`, rule 5), then screenshot the build at 1440×956 and compare it with each picture.
@@ -133,7 +133,7 @@ Head: `Needs you`.
 Head: `Organization`. Rows in groups, each gated as today:
 - **Ungrouped:** `Insights`, `Spend` (admins), `Memory` (its proposals' count).
 - **`Fleet`:** `Runners` (count), `Box sizes`, `Registry` (admins).
-- **`Agents`:** `Agent profiles` (count), **`Skills and MCP`** (new in milestone 8, F-144, `blocks`; `library.md`), and `Models` (admins).
+- **`Agents`:** `Agent profiles` (count), **`Skills and MCP`** (new in milestone 8, F-145, `blocks`; `library.md`), and `Models` (admins).
 - **`Connections`** (admins): `GitHub`, `Linear`.
 - **`People`:** `Members` (count), `Audit log` (admins).
 - **`Instance`** (the instance admin): `Accounts`, `Storage`, `Email`.

@@ -33,7 +33,7 @@ Inside an agent's turn, at its place among the tool rows:
 3. **The recording row:** `clapperboard`, the verb `Recorded`, the recording's title in Plex Sans (the agent's words, as data), and mono `--faint` `0:42 · 4 steps`. Under it, its thumbnail (176×110), with a centred 34px play disc (`rgba(13,14,16,.78)` and `play` 15px filled `#F2F3F4`) and a duration chip at the bottom-right (18px, mono 11.5px on the same dark). The caption reads `1280 · recording`.
 4. **Where they are,** one line 32px in: `paperclip` 14px `--faint`, then 13.5px `--muted` `In the description of draft PR #486, and kept with the task` and `--faint` `· links need a sign-in`. Without a PR yet: `Kept with the task. They go into the PR's description when it opens.` Where the project turns that off: `Kept with the task.`
 
-**After-turn screenshots** (the environment's "Screenshots after each turn", F-121/F-139) come in as the same row at the turn's end, with the verb `Captured` and the subject `the environment's 3 routes`. A **member's screenshot** from the preview pane's `camera` comes in as a row in the member's own message: `Sam Rivera · Screenshot of /history`.
+**After-turn screenshots** (the environment's "Screenshots after each turn", F-121/F-140) come in as the same row at the turn's end, with the verb `Captured` and the subject `the environment's 3 routes`. A **member's screenshot** from the preview pane's `camera` comes in as a row in the member's own message: `Sam Rivera · Screenshot of /history`.
 
 ## The viewer (`task-attachments-viewer.webp`)
 

@@ -30,6 +30,26 @@ const targets = {
   "library": ["library.html", "", 1440, 956],
   "library-update": ["library-update.html", "", 1440, 956],
   "library-browse": ["library-browse.html", "", 1440, 956],
+  // Ticket 09's second batch (section 13's targets 5, 7, 8, 9, 11, 13 and 15).
+  "environment-app-processes": ["environment-app-processes.html", "", 1440, 956],
+  "environment-app-processes-light": ["environment-app-processes.html", "theme=light", 1440, 956],
+  "environment-app-process-sheet": ["environment-app-processes.html", "sheet=api", 1440, 956],
+  "environment-app-processes-no-browser": ["environment-app-processes.html", "browser=none", 1440, 956],
+  "preview-viewer": ["preview-viewer.html", "", 1440, 956],
+  "preview-viewer-light": ["preview-viewer.html", "theme=light", 1440, 956],
+  "preview-viewer-states": ["preview-viewer.html", "view=states", 1440, 956],
+  "preview-native": ["task-preview.html", "pane=native", 1440, 956],
+  "preview-native-light": ["task-preview.html", "pane=native&theme=light", 1440, 956],
+  "instance-preview-domain": ["instance-preview-domain.html", "", 1440, 956],
+  "instance-preview-domain-unset": ["instance-preview-domain.html", "domain=unset", 1440, 956],
+  "library-install": ["library-install.html", "", 1440, 956],
+  "library-install-server": ["library-install.html", "kind=mcp", 1440, 956],
+  "library-install-refusals": ["library-install.html", "kind=refusals", 1440, 956],
+  "library-suggestions": ["library-suggestions.html", "", 1440, 956],
+  "library-suggest-form": ["library-suggestions.html", "view=member", 1440, 956],
+  "agent-profile-library": ["agent-profile-library.html", "", 1440, 956],
+  "agent-profile-library-light": ["agent-profile-library.html", "theme=light", 1440, 956],
+  "agent-profile-library-limit": ["agent-profile-library.html", "state=limit", 1440, 956],
 };
 
 const browser = await chromium.launch();

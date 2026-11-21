@@ -1,0 +1,264 @@
+<!doctype html>
+<!-- Target: the environment's App tab (environment-app-processes.md): the app's processes, a process an agent
+     announced and a member kept, one detection found, the services with a web UI, the screenshots after each
+     turn, the in-box addresses and the box's browser. ?sheet=api opens the editor sheet; ?browser=none shows
+     the box with no browser. Facts from ADR 0068 ("The app's processes"). Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m8 · environment, the app's processes</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="m8.css">
+<style>
+  .content { grid-template-columns: minmax(0, 1fr) 340px; }
+  .eyebrow { font: 400 12px var(--mono); color: var(--faint); }
+  .tabs { margin-top: 14px; }
+  .tab .pdot-a { width: 6px; height: 6px; border-radius: 50%; background: var(--amber); display: inline-block; }
+  .stitle { display: flex; align-items: baseline; gap: 10px; margin-top: 24px; height: 30px; }
+  .stitle h3 { font: 600 15px var(--sans); }
+  .stitle .n { font: 500 13px var(--mono); color: var(--faint); }
+  .stitle .note { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  table.ap { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 14px; }
+  table.ap th { text-align: left; font: 500 12.5px var(--sans); color: var(--faint); height: 30px; border-bottom: 1px solid var(--line); padding: 0 12px 0 0; white-space: nowrap; }
+  table.ap td { height: 52px; border-bottom: 1px solid var(--line); padding: 0 12px 0 0; vertical-align: middle; white-space: nowrap; overflow: hidden; }
+  table.ap td:last-child, table.ap th:last-child { padding-right: 0; }
+  table.ap .grp td { height: 38px; padding: 0; border-bottom: 0; }
+  table.ap .grp .band { margin: 8px 0 0; height: 30px; font-size: 13.5px; }
+  table.ap .grp .band svg.lucide { width: 14px; height: 14px; color: var(--muted); }
+  .grip svg.lucide { width: 14px; height: 14px; color: var(--faint); }
+  .pc .l1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .pc .l1 b { font: 500 14px var(--mono); color: var(--text); }
+  .pc .l1 .lb { font-size: 13px; color: var(--muted); }
+  .pc .l2 { font: 400 12.5px/1.45 var(--mono); color: var(--faint); overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+  .pc .l2 .cmd { color: var(--muted); }
+  .pc .l2.sans { font-family: var(--sans); font-size: 13px; color: var(--muted); }
+  .port { font: 400 13.5px var(--mono); color: var(--text); }
+  .ready { font-size: 13px; color: var(--muted); }
+  .ready .mono { color: var(--text); font-size: 13px; }
+  .last { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--text-2); }
+  .last .mono { font-size: 12.5px; color: var(--faint); }
+  .acts { display: flex; gap: 6px; justify-content: flex-end; }
+  .rm { display: grid; place-items: center; width: 28px; height: 28px; color: var(--faint); }
+  .rm svg.lucide { width: 14px; height: 14px; }
+  .addrow { display: flex; align-items: center; gap: 14px; margin-top: 8px; }
+  .ghost-add { display: inline-flex; align-items: center; gap: 6px; height: 24px; color: var(--muted); font: 500 13.5px var(--sans); }
+  .ghost-add svg.lucide { width: 13px; height: 13px; }
+  .help { font-size: 13px; color: var(--faint); }
+  table.sv td { height: 40px; }
+  .svn { display: flex; align-items: baseline; gap: 10px; }
+  .svn b { font: 500 14px var(--mono); color: var(--text); font-weight: 400; }
+  .svn span { font: 400 12.5px var(--mono); color: var(--faint); }
+  .webui { display: flex; align-items: center; gap: 10px; font-size: 13.5px; }
+  .lblin { display: inline-flex; align-items: center; height: 28px; padding: 0 9px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--surface); font-size: 13.5px; color: var(--text); min-width: 96px; }
+  .foot-note { display: flex; gap: 8px; align-items: flex-start; margin-top: 22px; font-size: 13px; color: var(--muted); max-width: 700px; }
+  .foot-note svg.lucide { width: 14px; height: 14px; color: var(--faint); margin-top: 2px; }
+  .warnline { display: flex; align-items: flex-start; gap: 9px; margin-top: 14px; font-size: 14px; color: var(--text); }
+  .warnline svg.lucide { width: 15px; height: 15px; color: var(--muted); margin-top: 2px; }
+  .warnline .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+
+  /* The properties panel (340px: it holds form controls) */
+  .props { padding: 20px 18px; }
+  .group h5 .sw { margin-left: auto; }
+  .prop { grid-template-columns: 96px 1fr; font-size: 13.5px; }
+  .prop.top { align-items: flex-start; padding-top: 5px; }
+  .prop .v.wrap { flex-wrap: wrap; }
+  .routes { display: flex; flex-wrap: wrap; gap: 6px; }
+  .routes .chip { height: 24px; color: var(--text); font: 400 12.5px var(--mono); gap: 6px; }
+  .routes .chip svg.lucide { width: 11px; height: 11px; color: var(--faint); }
+  .routes .chip.add { color: var(--muted); font-family: var(--sans); border-style: dashed; }
+  .cb { width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid var(--control-line); display: grid; place-items: center; flex: none; }
+  .cb.on { background: var(--teal); border-color: var(--teal); color: var(--on-primary); }
+  .cb svg.lucide { width: 11px; height: 11px; stroke-width: 3; }
+  .widths { display: flex; flex-direction: column; gap: 6px; padding: 3px 0; }
+  .widths label { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text); white-space: nowrap; }
+  .widths label .mono { font-size: 12.5px; color: var(--faint); }
+  .ghelp { font-size: 12.5px; color: var(--faint); margin: 6px 0 2px; }
+  .addr { display: flex; flex-direction: column; gap: 7px; margin-top: 6px; }
+  .addr .a { display: flex; flex-direction: column; }
+  .addr .a .k { font: 400 12.5px var(--mono); color: var(--text); }
+  .addr .a .v { font: 400 12.5px var(--mono); color: var(--muted); }
+  .addr .more { font-size: 12.5px; color: var(--faint); }
+
+  /* The editor sheet */
+  .sheet { position: absolute; top: 0; right: 0; bottom: 0; width: 440px; background: var(--bg); border-left: 1px solid var(--line-2); box-shadow: var(--shadow-palette); z-index: 9; display: flex; flex-direction: column; }
+  .sheet .sh { height: 54px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 14px 0 20px; border-bottom: 1px solid var(--line); }
+  .sheet .sh h2 { font: 600 16px var(--sans); }
+  .sheet .sh h2 .mono { font-weight: 500; font-size: 15px; }
+  .sheet .sh .ib { margin-left: auto; }
+  .sheet .sb { flex: 1; min-height: 0; overflow: hidden; padding: 14px 20px 0; display: flex; flex-direction: column; gap: 13px; }
+  .fl { display: flex; flex-direction: column; gap: 5px; }
+  .fl > .lbl { font: 500 13px var(--sans); color: var(--muted); }
+  .fl > .hp { font-size: 12.5px; color: var(--faint); line-height: 1.45; }
+  .fl > .hp .mono { font-size: 12px; color: var(--muted); }
+  .fl > .er { font-size: 12.5px; color: var(--red); display: flex; align-items: center; gap: 6px; }
+  .fl > .er svg.lucide { width: 13px; height: 13px; }
+  .in { display: flex; align-items: center; height: 32px; padding: 0 10px; border: 1px solid var(--control-line); border-radius: 6px; background: var(--surface); font-size: 14px; color: var(--text); white-space: nowrap; overflow: hidden; }
+  .in.mono { font: 400 13.5px var(--mono); }
+  .in.bad { border-color: var(--red); }
+  .in.sel { justify-content: space-between; }
+  .in.sel svg.lucide { width: 14px; height: 14px; color: var(--faint); }
+  .two { display: grid; grid-template-columns: 1fr 120px; gap: 10px; }
+  .two3 { display: grid; grid-template-columns: 1fr 100px; gap: 10px; }
+  .seg2 { display: flex; gap: 8px; align-items: center; }
+  .swrow { display: grid; grid-template-columns: 30px 1fr; column-gap: 10px; row-gap: 3px; align-items: start; }
+  .swrow .sw { margin-top: 2px; }
+  .swrow b { font: 500 14px var(--sans); }
+  .swrow .hp { grid-column: 2; font-size: 12.5px; color: var(--faint); line-height: 1.45; }
+  .swrow .hp .mono { font-size: 12px; color: var(--muted); }
+  .sep2 { height: 1px; background: var(--line); margin: 1px 0; }
+  .sheet .sf { height: 60px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 20px; border-top: 1px solid var(--line); }
+  .sheet .sf .btn.primary.off { opacity: 0.45; }
+</style>
+</head>
+<body data-space="projects" data-panel="project" data-active="environment">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>calculator</span><i data-lucide="chevron-right" class="chev"></i><b>Environment</b>
+      <div class="right"><span class="btn sm"><i data-lucide="flask-conical"></i> Test this environment</span></div>
+    </div>
+    <div class="content">
+      <div class="page">
+        <div class="eyebrow">Saved 2h ago</div>
+        <h1>Environment</h1>
+        <p class="lede">What every task of this project gets: its setup, the services beside it, and the checks after each turn.</p>
+        <div class="tabs">
+          <span class="tab">Setup</span>
+          <span class="tab">Services and checks</span>
+          <span class="tab on">App</span>
+          <span class="tab">Proposal <span class="adot"></span></span>
+        </div>
+        <div id="warn"></div>
+
+        <div class="stitle"><h3>App processes</h3><span class="n">2</span><span class="note">the project's own programs, started in the box in this order</span></div>
+        <table class="ap">
+          <colgroup><col style="width:24px"><col><col style="width:62px"><col style="width:122px"><col style="width:120px"><col style="width:28px"></colgroup>
+          <tr><th></th><th>Process</th><th>Port</th><th>Ready when</th><th>Last box</th><th></th></tr>
+          <tr>
+            <td class="grip"><i data-lucide="grip-vertical"></i></td>
+            <td class="pc"><div class="l1"><b>web</b><span class="lb">Web</span><span class="chip">primary</span></div><div class="l2">calculator-web · <span class="cmd">pnpm dev</span></div></td>
+            <td class="port">5173</td>
+            <td class="ready">HTTP <span class="mono">/</span></td>
+            <td><span class="last" title="On build-01, 2h ago"><span class="dot green"></span>ready <span class="mono">6 s</span></span></td>
+            <td><span class="rm"><i data-lucide="x"></i></span></td>
+          </tr>
+          <tr>
+            <td class="grip"><i data-lucide="grip-vertical"></i></td>
+            <td class="pc"><div class="l1"><b>api</b><span class="lb">API</span></div><div class="l2">calculator-web/api · <span class="cmd">pnpm start:dev</span></div></td>
+            <td class="port">3001</td>
+            <td class="ready">HTTP <span class="mono">/health</span></td>
+            <td><span class="last" title="On build-01, 2h ago"><span class="dot green"></span>ready <span class="mono">3 s</span></span></td>
+            <td><span class="rm"><i data-lucide="x"></i></span></td>
+          </tr>
+          <tr class="grp"><td colspan="6"><div class="band"><i data-lucide="app-window"></i>Kept from a task <span class="n">1</span></div></td></tr>
+          <tr>
+            <td><span class="adot" style="display:block;margin-left:4px"></span></td>
+            <td class="pc"><div class="l1"><b>storybook</b><span class="lb">Storybook</span></div><div class="l2 sans">Sam Rivera kept it from <span class="mono" style="font-size:12.5px;color:var(--faint)">CALC-192</span> · 20 min ago</div></td>
+            <td class="port">6006</td>
+            <td class="ready">Port open</td>
+            <td colspan="2"><div class="acts"><span class="btn xs ghost">Dismiss</span><span class="btn xs">Review</span></div></td>
+          </tr>
+          <tr class="grp"><td colspan="6"><div class="band"><i data-lucide="file-search"></i>Found in the repo, not added <span class="n">1</span></div></td></tr>
+          <tr>
+            <td></td>
+            <td class="pc"><div class="l1"><b>docs</b><span class="lb">Docs</span></div><div class="l2">.devcontainer/devcontainer.json · <span class="cmd">pnpm docs:dev</span></div></td>
+            <td class="port">4000</td>
+            <td class="ready faint">—</td>
+            <td colspan="2"><div class="acts"><span class="btn xs ghost">Ignore</span><span class="btn xs">Add</span></div></td>
+          </tr>
+        </table>
+        <div class="addrow"><span class="ghost-add"><i data-lucide="plus"></i>Process</span><span class="help">Each saves from its sheet. A process that exits shows on its task with its log's last lines.</span></div>
+
+        <div class="stitle" style="margin-top:28px"><h3>Services with a web UI</h3><span class="note">open as a preview too, private like every preview</span></div>
+        <table class="ap sv">
+          <colgroup><col><col style="width:62px"><col style="width:150px"><col style="width:150px"></colgroup>
+          <tr><th>Service</th><th>Port</th><th>Has a web UI</th><th>Label</th></tr>
+          <tr><td><span class="svn"><b>mailpit</b><span>axllent/mailpit:1.21</span></span></td><td class="port">8025</td><td><span class="webui"><span class="sw on"></span>Yes</span></td><td><span class="lblin">Mail</span></td></tr>
+          <tr><td><span class="svn"><b>db</b><span>postgres:17</span></span></td><td class="port">5432</td><td><span class="webui"><span class="sw"></span><span class="muted">No</span></span></td><td class="faint">—</td></tr>
+          <tr><td><span class="svn"><b>redis</b><span>redis:7</span></span></td><td class="port">6379</td><td><span class="webui"><span class="sw"></span><span class="muted">No</span></span></td><td class="faint">—</td></tr>
+        </table>
+
+        <p class="foot-note"><i data-lucide="shield-check"></i><span>A preview reaches only these ports and the ones an agent announces, never the sidecar's, the agent's or one below 1024.</span></p>
+      </div>
+
+      <aside class="props">
+        <div class="group">
+          <h5>Screenshots after each turn <span class="sw on" id="shot-sw"></span></h5>
+          <p class="ghelp" id="shot-help" style="margin-top:0">After a turn that changed a repo, ostra opens <span class="mono" style="color:var(--muted);font-size:12px">web</span> and puts each route in the thread.</p>
+          <div class="prop top"><span class="k">Routes</span><span class="v wrap"><span class="routes"><span class="chip">/<i data-lucide="x"></i></span><span class="chip">/history<i data-lucide="x"></i></span><span class="chip">/settings<i data-lucide="x"></i></span><span class="chip add"><i data-lucide="plus"></i>Route</span></span></span></div>
+          <div class="prop top"><span class="k">Widths</span><span class="v"><span class="widths">
+            <label><span class="cb on"><i data-lucide="check"></i></span>Desktop <span class="mono">1440 × 900</span></label>
+            <label><span class="cb on"><i data-lucide="check"></i></span>Phone <span class="mono">390 × 844</span></label>
+          </span></span></div>
+          <p class="ghelp">Up to 5 routes. Pictures are kept with the task, after its box stops.</p>
+        </div>
+        <div class="group">
+          <h5>In-box addresses</h5>
+          <p class="ghelp" style="margin-top:0">Each process gets the others'. None is for a browser: keep the app on web's origin, with <span class="mono" style="color:var(--muted);font-size:12px">/api</span> behind its dev server's proxy.</p>
+          <div class="addr">
+            <div class="a"><span class="k">OSTRA_APP_WEB_URL</span><span class="v">http://localhost:5173</span></div>
+            <div class="a"><span class="k">OSTRA_APP_API_URL</span><span class="v">http://localhost:3001</span></div>
+            <div class="a"><span class="k">OSTRA_SERVICE_MAILPIT_URL</span><span class="v">http://mailpit:8025</span></div>
+            <span class="more">and 2 services · <span class="teal">Show all</span></span>
+          </div>
+          <div class="prop" style="margin-top:6px"><span class="k">Proxy</span><span class="v"><span class="mono">/api → :3001</span><span class="faint" style="font-size:12.5px">vite.config.ts</span></span></div>
+        </div>
+        <div class="group" id="browser-group">
+          <h5>The box's browser</h5>
+          <div class="prop"><span class="k">Browser</span><span class="v"><span class="mono">Chromium 131</span><span class="faint" style="font-size:12.5px">the base image</span></span></div>
+          <div class="prop"><span class="k">Last seen</span><span class="v"><span class="mono">build-01</span><span class="faint" style="font-size:12.5px">· 2h ago</span></span></div>
+          <div class="prop"><span class="k">Logs</span><span class="v mono" style="font-size:12.5px">.ostra/app/&lt;name&gt;.log</span></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+</div>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  const ic = (n, s = "") => `<i data-lucide="${n}"${s ? ` style="${s}"` : ""}></i>`;
+  if (q.get("browser") === "none") {
+    document.getElementById("warn").innerHTML = `<div class="warnline">${ic("triangle-alert")}<div>The last box had no browser: <span class="mono" style="font-size:13px">acme/calculator-base:4</span> has no Chromium.<div class="sub">The processes still start. Screenshots and the browser view need a browser in the image. <span class="teal">How to add one</span></div></div></div>`;
+    document.getElementById("browser-group").innerHTML = `<h5>The box's browser</h5>
+      <div class="prop"><span class="k">Browser</span><span class="v"><span class="muted">None in the image</span></span></div>
+      <div class="prop"><span class="k">Image</span><span class="v mono" style="font-size:12.5px">acme/calculator-base:4</span></div>
+      <div class="prop"><span class="k">Last seen</span><span class="v"><span class="mono">build-01</span><span class="faint" style="font-size:12.5px">· 2h ago</span></span></div>`;
+    document.getElementById("shot-help").innerHTML = `Waiting for a browser in the box: nothing is taken until then.`;
+  }
+  if (q.get("sheet") === "api") {
+    document.querySelector(".app").insertAdjacentHTML("beforeend", `<div class="scrim"></div>
+    <aside class="sheet" role="dialog" aria-label="Edit api">
+      <div class="sh"><h2>Edit <span class="mono">api</span></h2><span class="ib">${ic("x")}</span></div>
+      <div class="sb">
+        <div class="two3">
+          <div class="fl"><span class="lbl">Name</span><span class="in mono">api</span></div>
+          <div class="fl"><span class="lbl">Label</span><span class="in">API</span></div>
+        </div>
+        <div class="fl" style="margin-top:-6px"><span class="hp">Lowercase letters, digits and dashes. The label is what people see in the pane.</span></div>
+        <div class="two">
+          <div class="fl"><span class="lbl">Repo</span><span class="in sel mono">acme/calculator-web${ic("chevrons-up-down")}</span></div>
+          <div class="fl"><span class="lbl">Folder</span><span class="in mono">api</span></div>
+        </div>
+        <div class="fl"><span class="lbl">Command</span><span class="in mono">pnpm start:dev</span><span class="hp">Starts it and keeps running. Its output goes to <span class="mono">.ostra/app/api.log</span> in the task's config folder, never the repo.</span></div>
+        <div class="fl" style="width:120px"><span class="lbl">Port</span><span class="in mono">3001</span></div>
+        <div class="fl"><span class="lbl">Ready when</span>
+          <div class="seg2"><span class="seg"><span class="on">HTTP path</span><span>Command</span><span>Port open</span></span><span class="in mono bad" style="flex:1">health</span></div>
+          <span class="er">${ic("circle-alert")}A path starts with /, such as /health.</span>
+          <span class="hp">Tried every 2 s for up to 120 s. Ready when it answers below 500.</span>
+        </div>
+        <div class="sep2"></div>
+        <div class="swrow"><span class="sw"></span><b>The primary preview</b><span class="hp">The pane and the screenshots open it first. <span class="mono">web</span> is the primary now: turning this on moves it here.</span></div>
+        <div class="swrow"><span class="sw on"></span><b>Rewrite the host</b><span class="hp">The app sees <span class="mono">Host</span> and <span class="mono">Origin</span> as <span class="mono">localhost:3001</span>, so dev servers' host checks pass. Off, it gets the preview's own host, for an app that builds its sign-in callback from it.</span></div>
+        <div class="sep2"></div>
+        <div class="fl"><span class="lbl">Addresses</span><span class="hp">It gets <span class="mono">OSTRA_APP_WEB_URL</span> and the 3 services'. The others reach it at <span class="mono">OSTRA_APP_API_URL</span>, <span class="mono">http://localhost:3001</span>.</span></div>
+      </div>
+      <div class="sf"><span class="btn sm ghost" style="padding-left:0">${ic("trash-2")} Remove api</span><span style="margin-left:auto" class="btn ghost">Cancel</span><span class="btn primary off">Save process</span></div>
+    </aside>`);
+  }
+})();
+</script>
+<script src="shell.js"></script>
+</body>
+</html>

@@ -33,8 +33,10 @@ Notes for some targets:
 
 ## Done when
 
-- [ ] The fifteen targets exist in `context/brand/app-targets/m8/`, three files each, listed in the folder's README.
+- [x] The fifteen targets exist in `context/brand/app-targets/m8/`, three files each, listed in the folder's README. *Done 2026-11-21: each has its `.webp`, its build spec and its `html/` page, which stands in for the `.prompt.txt` (the README's "How they're made").*
 - [ ] They're approved, recorded under `## Comments` with the date. Until then, tickets 17, 21, 26 and 31 build their data and tests, not their UI.
 - [ ] Committed as `🎨 add milestone 8 screen targets`.
 
 ## Comments
+
+- **2026-11-21, the second batch.** Targets 5, 7, 8, 9, 11, 13 and 15 are drawn in the approved shell: 19 pictures with their build specs, listed in the README's "The second batch", **waiting for the maintainer's approval**. As in the first batch, each is real HTML rendered with Playwright, so no Higgsfield credits were used. Targets 1, 2, 3, 4, 6, 10, 12 and 14 were approved the same day ("yes to all", the README's "Approval").

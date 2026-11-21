@@ -8,7 +8,7 @@
 
 - **Route:** new, `apps/web/src/app/(panel)/organization/skills/[item-id]/page.tsx`, `?tab=skill|files|used-by|update`. The tab opens on `Update` when one is waiting, else on `SKILL.md` (or `Server` for an MCP item).
 - **Shell:** the double-sidebar shell, the rail's **Org** space, the Organization panel's **Skills and MCP** row selected.
-- **Features:** F-021, and F-144 (the skills and MCP library). The milestone 8 spec proposes F-144 (`context/specs/m8-previews-and-library/spec.md`, section 13, target 12 `library-update`); it isn't in `features.md` yet. Facts: `context/research/skills-and-mcp-marketplaces.md`, sections 7.3 ("Updates", design B), 7.4 ("Pinning and drift", "Secrets") and 5 (why an update is reviewed, never automatic).
+- **Features:** F-021, and F-145 (the skills and MCP library). The milestone 8 spec builds F-145 (`context/specs/m8-previews-and-library/spec.md`, section 13, target 12 `library-update`). Facts: `context/research/skills-and-mcp-marketplaces.md`, sections 7.3 ("Updates", design B), 7.4 ("Pinning and drift", "Secrets") and 5 (why an update is reviewed, never automatic).
 - **Status: approved 2026-11-21** (the maintainer: "yes to all").
 
 > Build it in real HTML/React (`app-design.md`, rule 5), then screenshot the build at 1440×956 and compare it with the picture.

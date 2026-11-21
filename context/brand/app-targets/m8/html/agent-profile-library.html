@@ -1,0 +1,209 @@
+<!doctype html>
+<!-- Target: the agent profile editor's skills and MCP servers, with library items (agent-profile-library.md).
+     The m3 editor (../m3/agent-profile.md) in the new shell. ?state=limit: an attach refused at the 20-server
+     limit. ?theme=light. Facts from ADR 0069 ("Attaching"). Demo data: Globex is invented. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m8 · agent profile with library items</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="m8.css">
+<style>
+  .content.wide { grid-template-columns: minmax(0, 1fr) 340px; }
+  .page { position: relative; }
+  .eyebrow { font: 400 12px var(--mono); color: var(--faint); }
+  .col { max-width: 724px; }
+  .section:first-of-type { margin-top: 22px; }
+  .shead .note { font-size: 13px; color: var(--muted); margin-left: 4px; white-space: nowrap; }
+  .shead .n { font-size: 13px; }
+  .shead .n b { color: var(--text); font-weight: 500; }
+  .sub { display: flex; align-items: center; gap: 6px; height: 28px; margin-top: 4px; font: 500 12px var(--sans); color: var(--faint); }
+  .sub .n { font: 500 12px var(--mono); }
+  .sub .r { margin-left: auto; font-weight: 400; font-size: 12px; }
+  .it { display: grid; grid-template-columns: 26px 150px minmax(0, 1fr) auto 52px; align-items: center; column-gap: 10px; height: 40px; border-top: 1px solid var(--line); font-size: 14px; }
+  .group-rows .it:last-child { border-bottom: 1px solid var(--line); }
+  .it > svg.lucide { width: 15px; height: 15px; color: var(--faint); }
+  .it .nm { font: 400 13.5px var(--mono); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .it .mid { min-width: 0; display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden; font-size: 13px; color: var(--muted); }
+  .it .mid .src { font: 400 12.5px var(--mono); color: var(--teal); overflow: hidden; text-overflow: ellipsis; }
+  .it .mid .url { font: 400 12.5px var(--mono); color: var(--faint); overflow: hidden; text-overflow: ellipsis; }
+  .it .mid .d { overflow: hidden; text-overflow: ellipsis; }
+  .it .meta { display: flex; align-items: center; gap: 6px; font: 400 12px var(--mono); color: var(--faint); white-space: nowrap; }
+  .it .meta .chip { font-family: var(--sans); }
+  .it .meta .pin { font: 400 12.5px var(--mono); color: var(--text); }
+  .it .acts { display: flex; align-items: center; justify-content: flex-end; gap: 8px; color: var(--faint); font-size: 13px; }
+  .it .acts svg.lucide { width: 14px; height: 14px; }
+  .it .acts .teal { font-size: 13.5px; }
+  .chip.new { border-style: dashed; color: var(--text-2); }
+  .chip svg.lucide { width: 12px; height: 12px; }
+  .chip .up { color: var(--teal); }
+  .adds { display: flex; gap: 4px; margin-top: 8px; }
+  .adds .btn { height: 26px; font-size: 13px; padding: 0 8px; }
+  .adds .btn svg.lucide { width: 13px; height: 13px; }
+  .more-row { display: flex; align-items: center; gap: 8px; height: 34px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; padding-left: 36px; }
+  .more-row svg.lucide { width: 14px; height: 14px; }
+
+  /* The attach picker: Popover + Command */
+  .picker { width: 470px; padding: 0; overflow: hidden; }
+  .picker .cmd { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border-bottom: 1px solid var(--line); color: var(--faint); font-size: 14px; }
+  .picker .cmd svg.lucide { width: 15px; height: 15px; }
+  .picker .list { padding: 6px; }
+  .picker .gl { font: 500 12px var(--sans); color: var(--faint); padding: 6px 8px 4px; display: flex; gap: 6px; }
+  .opt { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 10px; padding: 6px 8px; border-radius: 6px; }
+  .opt.hl { background: var(--sel); }
+  .opt > svg.lucide { width: 15px; height: 15px; color: var(--faint); margin-top: 2px; }
+  .opt .t { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; overflow: hidden; }
+  .opt .t b { font: 400 13.5px var(--mono); color: var(--text); font-weight: 500; }
+  .opt .t span { font: 400 12px var(--mono); color: var(--faint); overflow: hidden; text-overflow: ellipsis; }
+  .opt .s { font-size: 12.5px; color: var(--faint); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; align-self: start; margin-top: 2px; }
+  .opt .s svg.lucide { width: 13px; height: 13px; }
+  .opt .s.ok svg.lucide { color: var(--green); }
+  .opt .w { grid-column: 2 / 4; font-size: 12.5px; color: var(--faint); }
+  .opt.dis .t b { color: var(--faint); }
+  .picker .pf { display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--faint); }
+  .picker .pf .mono { font-size: 12px; color: var(--text); }
+  .picker .pf .teal { margin-left: auto; }
+  .refuse { display: flex; gap: 8px; margin-top: 12px; padding: 4px 0 4px 12px; border-left: 2px solid var(--red); font-size: 13px; color: var(--text-2); }
+  .refuse svg.lucide { width: 15px; height: 15px; color: var(--red); margin-top: 2px; }
+
+  .props .help { font-size: 12.5px; color: var(--faint); margin-top: 6px; }
+  .prop.two { align-items: flex-start; padding: 4px 0; }
+  .prop.two .v { flex-direction: column; align-items: flex-start; gap: 0; }
+  .prop.two .v small { font-size: 12px; color: var(--faint); }
+  .rad { display: flex; align-items: center; gap: 8px; height: 28px; font-size: 14px; }
+  .rad i.r { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--control-line); position: relative; display: inline-block; }
+  .rad i.r.on { border-color: var(--teal); }
+  .rad i.r.on::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: var(--teal); }
+</style>
+</head>
+<body data-space="org" data-panel="org" data-active="agent-profiles">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>Organization</span><i data-lucide="chevron-right" class="chev"></i><span>Agent profiles</span><i data-lucide="chevron-right" class="chev"></i><b>Careful</b>
+      <div class="right"><span class="btn primary">Save profile</span></div>
+    </div>
+    <div class="content wide">
+      <div class="page" id="page"></div>
+      <aside class="props" id="props"></aside>
+    </div>
+  </section>
+</div>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  const limit = q.get("state") === "limit";
+  const ic = (n, s = "") => `<i data-lucide="${n}"${s ? ` style="${s}"` : ""}></i>`;
+  const x = (name) => `<span class="teal">Edit</span><span title="Remove ${name}">${ic("x")}</span>`;
+  const detach = (name) => `<span title="Detach ${name}">${ic("x")}</span>`;
+  const every = `<span class="chip">${ic("layers")}Every profile</span>`;
+  const sub = (label, n, r = "") => `<div class="sub">${label} <span class="n">${n}</span>${r ? `<span class="r">${r}</span>` : ""}</div>`;
+  const row = (icon, name, mid, meta, acts) => `<div class="it">${ic(icon)}<span class="nm">${name}</span><span class="mid">${mid}</span><span class="meta">${meta}</span><span class="acts">${acts}</span></div>`;
+
+  const skills = `
+    <div class="section">
+      <div class="shead"><h3>Skills</h3><span class="n"><b>5</b> of 50</span><span class="note">written to the task's own config folder, never to the repo</span></div>
+      ${sub("Its own", 1)}
+      <div class="group-rows">${row("book-open", "changelog", '<span class="d">How a changelog line reads</span>', "SKILL.md · 1 file", x("changelog"))}</div>
+      ${sub("From the library", 3, "pinned in the library; an update there reaches this profile once an admin accepts it")}
+      <div class="group-rows">
+        ${row("book-open", "webapp-testing", '<span class="src">anthropics/skills@webapp-testing</span>', `<span class="chip">${ic("circle-arrow-up", "color:var(--teal)")}update waiting</span><span class="pin">a3f9c1e</span>`, detach("webapp-testing"))}
+        ${row("book-open", "prisma-migrations", '<span class="src">acme/agent-skills@prisma-migrations</span>', '<span class="pin">e41c0f2</span>', detach("prisma-migrations"))}
+        ${row("book-open", "pdf", '<span class="src">anthropics/skills@pdf</span>', '<span class="chip new">not saved yet</span><span class="pin">2d7e9a1</span>', detach("pdf"))}
+      </div>
+      ${sub("On every profile", 1, "set in the library")}
+      <div class="group-rows">${row("book-open", "frontend-design", '<span class="src">anthropics/skills@frontend-design</span>', `${every}<span class="pin">7b20d4a</span>`, "")}</div>
+      <div class="adds"><span class="btn ghost">${ic("plus")} Skill</span><span class="btn ghost${limit ? "" : " on"}" id="anchor">${ic("blocks")} From the library</span></div>
+    </div>`;
+
+  const mcpCount = limit ? 20 : 5;
+  const mcp = `
+    <div class="section">
+      <div class="shead"><h3>MCP servers</h3><span class="n"><b>${mcpCount}</b> of 20</span><span class="note">reached through the runner's MCP proxy, so no secret enters the box</span></div>
+      ${sub("Its own", limit ? 3 : 2)}
+      <div class="group-rows">
+        ${row("plug", "release-names", '<span class="chip">HTTP</span><span class="url">https://names.acme.internal/mcp</span>', `Authorization <span class="chip">${ic("lock")}set</span>`, x("release-names"))}
+        ${row("plug", "repo-search", '<span class="chip">stdio</span><span class="url">mcp-ripgrep --root .</span>', '<span class="chip">read-only</span>', x("repo-search"))}
+        ${limit ? row("plug", "docs-search", '<span class="chip">HTTP</span><span class="url">https://docs.acme.internal/mcp</span>', '<span class="chip">read-only</span>', x("docs-search")) : ""}
+      </div>
+      ${sub("From the library", limit ? 15 : 2)}
+      <div class="group-rows">
+        ${row("plug", "sentry", '<span class="src">io.sentry/sentry-mcp</span>', `<span class="chip">${ic("lock")}1 secret</span><span class="pin">v0.21.0</span>`, detach("sentry"))}
+        ${row("plug", "linear", '<span class="src">app.linear/linear</span>', `<span class="chip">${ic("lock")}1 secret</span><span class="pin">v1.4.2</span>`, detach("linear"))}
+        ${limit ? `<div class="more-row">${ic("chevron-down")}Show 13 more from the library</div>` : ""}
+      </div>
+      ${sub("On every profile", limit ? 2 : 1, "set in the library")}
+      <div class="group-rows">
+        ${row("plug", "context7", '<span class="src">io.github.upstash/context7</span>', `${every}<span class="pin">v2.1.0</span>`, "")}
+        ${limit ? row("plug", "uptime", '<span class="src">dev.globex/uptime</span>', `${every}<span class="pin">v1.0.3</span>`, "") : ""}
+      </div>
+      <div class="adds"><span class="btn ghost">${ic("plus")} HTTP server</span><span class="btn ghost">${ic("plus")} stdio server</span><span class="btn ghost">${ic("blocks")} From the library</span></div>
+      ${limit ? `<div class="refuse" role="alert">${ic("circle-x")}<span>incidents wasn't attached. Careful already has 20 MCP servers, the most a profile holds: 3 of its own, 15 from the library and 2 on every profile. Detach one first.</span></div>` : ""}
+    </div>`;
+
+  const opt = (icon, name, src, state, extra = "", cls = "") => `<div class="opt ${cls}">${ic(icon)}<span class="t"><b>${name}</b><span>${src}</span></span><span class="s${state.ok ? " ok" : ""}">${state.html}</span>${extra}</div>`;
+  const picker = limit ? "" : `
+    <div class="pop picker" id="picker">
+      <div class="cmd">${ic("search")}Find a skill or server in the library</div>
+      <div class="list">
+        <div class="gl">Skills <span class="mono">9</span></div>
+        ${opt("book-open", "release-notes", "58d2b97 · git.acme.dev/platform/skills.git#v3", { html: "" }, "", "hl")}
+        ${opt("book-open", "webapp-testing", "a3f9c1e · anthropics/skills", { ok: true, html: `${ic("check")}attached` })}
+        ${opt("book-open", "frontend-design", "7b20d4a · anthropics/skills", { html: `${ic("layers")}on every profile` }, "", "dis")}
+        ${opt("book-open", "changelog", "91be04c · acme/agent-skills", { html: "" }, '<span class="w">Careful has its own changelog. Rename or remove it first.</span>', "dis")}
+        <div class="gl" style="margin-top:4px">MCP servers <span class="mono">7</span></div>
+        ${opt("plug", "incidents", "v1.8.2 · dev.globex/incidents", { html: "" })}
+        ${opt("plug", "globex-crm", "v3.0.1 · dev.globex/crm", { html: `${ic("key-round")}needs sign-in` }, `<span class="w">It needs sign-in, which ostra doesn't do yet.</span>`, "dis")}
+      </div>
+      <div class="pf"><span><span class="mono">5 of 50</span> skills · <span class="mono">5 of 20</span> servers</span><span class="teal">Open the library</span></div>
+    </div>`;
+
+  document.getElementById("page").innerHTML = `
+    <div class="col">
+      <div class="eyebrow">Agent profile · saved 2h ago</div>
+      <h1>Careful</h1>
+      <p class="lede">Its permissions and MCP servers win over a repo's own agent config. Its instructions and skills sit beside the repo's.</p>
+      ${skills}
+      ${mcp}
+    </div>
+    ${picker}`;
+
+  document.getElementById("props").innerHTML = `
+    <div class="group"><h5>Profile</h5>
+      <div class="prop"><span class="k">Status</span><span class="v"><span class="dot green"></span>Active</span></div>
+      <div class="prop"><span class="k">Created</span><span class="v">12 Nov by Alex Kim</span></div>
+      <div class="prop"><span class="k">Used by</span><span class="v">14 tasks</span></div>
+    </div>
+    <div class="group"><h5>Skills and MCP</h5>
+      <div class="prop two"><span class="k">Skills</span><span class="v"><span><span class="mono">5</span> <span class="faint">of 50</span></span><small>1 own · 3 library · 1 every profile</small></span></div>
+      <div class="prop two"><span class="k">MCP servers</span><span class="v"><span><span class="mono">${mcpCount}</span> <span class="faint">of 20</span>${limit ? ' <span class="muted" style="font-size:13px">· the most it holds</span>' : ""}</span><small>${limit ? "3 own · 15 library · 2 every profile" : "2 own · 2 library · 1 every profile"}</small></span></div>
+      <p class="help">Every-profile items count on every profile, the built-in Refine and Review profiles too.</p>
+    </div>
+    <div class="group"><h5>Plan first <span class="sw on"></span></h5>
+      <p class="help" style="margin-top:0">The first turn only reads and proposes a plan. The driver approves it before anything changes.</p>
+    </div>
+    <div class="group"><h5>Who may use it</h5>
+      <div class="rad"><i class="r on"></i>Everyone</div>
+      <div class="rad"><i class="r"></i>Only these members</div>
+    </div>
+    <div class="group"><h5>Default for</h5>
+      <div class="prop"><span class="v"><span class="pdot" style="background:#6FB8AA"></span>calculator</span><span class="muted" style="text-align:right">code tasks</span></div>
+    </div>`;
+
+  // The picker sits under its trigger, aligned to its left edge. The limit state is scrolled to MCP servers.
+  if (limit) document.querySelector(".col").style.marginTop = "-250px";
+  window.addEventListener("load", () => setTimeout(() => {
+    const pk = document.getElementById("picker");
+    if (!pk) return;
+    const a = document.getElementById("anchor").getBoundingClientRect();
+    const p = document.getElementById("page").getBoundingClientRect();
+    pk.style.left = `${a.left - p.left}px`;
+    pk.style.top = `${a.bottom - p.top + 4}px`;
+  }, 0));
+})();
+</script>
+<script src="shell.js"></script>
+</body>
+</html>

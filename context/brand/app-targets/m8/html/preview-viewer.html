@@ -1,0 +1,147 @@
+<!doctype html>
+<!-- Target: the page a signed-out person opens from a preview link (preview-viewer.md). It loads none of the
+     panel's shell: the stream, the preview's label, the organization's name and the link's expiry, nothing else.
+     ?theme=light  ?view=states (three phone screens: input allowed, expired, revoked). Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m8 · preview viewer</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="m8.css">
+<style>
+  :root { --lockup: url('../../../../../apps/web/public/brand/lockup-horizontal-shell.svg'); }
+  [data-theme="light"] { --lockup: url('../../../../../apps/web/public/brand/lockup-horizontal-abyss.svg'); }
+  .lockup { display: block; width: 95px; height: 20px; background: var(--lockup) left center / contain no-repeat; flex: none; }
+
+  /* The viewer page: a top bar, the stream, a footer line. */
+  .viewer { width: 100%; height: 100%; display: flex; flex-direction: column; background: var(--bg); }
+  .vbar { height: 56px; flex: none; display: flex; align-items: center; gap: 14px; padding: 0 20px 0 22px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .vbar .div { width: 1px; height: 20px; background: var(--line-2); flex: none; }
+  .vbar .what { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .vbar .what .lb { font: 500 14.5px var(--mono); color: var(--text); }
+  .vbar .what .lb .p { color: var(--faint); font-weight: 400; }
+  .vbar .what .org { color: var(--muted); font-size: 14px; overflow: hidden; text-overflow: ellipsis; }
+  .vbar .right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .vchip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border: 1px solid var(--line-2); border-radius: 6px; color: var(--muted); font: 500 13px var(--sans); white-space: nowrap; flex: none; }
+  .vchip svg.lucide { width: 14px; height: 14px; color: var(--faint); }
+  .vchip .mono { font-size: 12.5px; color: var(--text); }
+  .stage { flex: 1; min-height: 0; display: grid; place-items: center; padding: 18px 20px; background: var(--surface); }
+  .vframe { border: 1px solid var(--line-2); border-radius: 8px; overflow: hidden; background: #fff; position: relative; }
+  .vfoot { height: 40px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 22px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .vfoot .right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .vfoot .mono { font-size: 12.5px; color: var(--faint); }
+  .vfoot svg.lucide { width: 14px; height: 14px; color: var(--faint); }
+  .cursor { position: absolute; width: 22px; height: 22px; color: #1d2433; }
+  .cursor svg.lucide { width: 22px; height: 22px; stroke-width: 1.5; fill: #fff; }
+  .tipx { position: absolute; background: var(--raise); border: 1px solid var(--line-2); border-radius: 6px; box-shadow: var(--shadow-pop); padding: 5px 9px; font-size: 12.5px; color: var(--text); white-space: nowrap; }
+
+  /* An ended link: a centred block in place of the stream. */
+  .ended { flex: 1; display: grid; place-items: center; padding: 24px; background: var(--bg); }
+  .ended .box { width: 100%; max-width: 380px; }
+  .ico { width: 36px; height: 36px; border-radius: 9px; border: 1px solid var(--line-2); display: grid; place-items: center; color: var(--muted); margin-bottom: 14px; }
+  .ico svg.lucide { width: 17px; height: 17px; }
+  .ended h2 { font: 600 17px/1.35 var(--sans); margin-bottom: 6px; }
+  .ended p { color: var(--muted); font-size: 14.5px; }
+  .ended .fine { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--faint); font-size: 13px; }
+  .ended .fine .mono { font-size: 12.5px; }
+
+  /* ?view=states: three phone screens on the rail's ground, as shell-phone. */
+  body[data-view="states"] { background: var(--side); }
+  .board { width: 1440px; height: 956px; display: flex; justify-content: center; gap: 44px; padding-top: 58px; background: var(--side); }
+  .col { display: flex; flex-direction: column; gap: 12px; }
+  .cap { font: 500 13px var(--sans); color: var(--faint); height: 20px; }
+  .cap b { color: var(--text-2); font-weight: 600; margin-right: 6px; }
+  .phone { width: 390px; height: 844px; border: 1px solid var(--line-2); border-radius: 22px; overflow: hidden; background: var(--bg); position: relative; }
+  .phone .viewer { border-radius: 22px; }
+  .phone .vbar { height: 54px; padding: 0 12px 0 16px; gap: 10px; }
+  .phone .sub { display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 16px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .phone .sub .lb { font: 500 14.5px var(--mono); }
+  .phone .sub .lb .p { color: var(--faint); font-weight: 400; }
+  .phone .sub .org { color: var(--muted); font-size: 14px; }
+  .phone .stage { padding: 12px; place-items: start center; }
+  .phone .vfoot { height: auto; min-height: 44px; padding: 8px 16px 22px; flex-wrap: wrap; row-gap: 2px; }
+  .phone .ended { place-items: start center; padding: 120px 22px 24px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="app-fixture.js"></script>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
+  const view = q.get("view");
+  if (view) document.body.dataset.view = view;
+  const ic = (n, s = "") => `<i data-lucide="${n}"${s ? ` style="${s}"` : ""}></i>`;
+  const root = document.getElementById("root");
+
+  // The desktop page: a watch-only link to web :5173, the shared page at Desktop 1280.
+  const desktop = () => `
+    <div class="viewer" style="width:1440px;height:956px">
+      <div class="vbar">
+        <span class="lockup" role="img" aria-label="ostra"></span>
+        <span class="div"></span>
+        <span class="what"><span class="lb">web <span class="p">:5173</span></span><span class="org">a preview from Acme Corp</span></span>
+        <span class="right">
+          <span class="vchip">${ic("eye")}Watch only</span>
+          <span class="vchip">${ic("clock")}Expires in 23 h</span>
+        </span>
+      </div>
+      <div class="stage">
+        <div class="vframe" style="width:1280px;height:800px">${tallyApp()}
+          <span class="cursor" style="left:742px;top:328px">${ic("mouse-pointer-2")}</span>
+          <span class="tipx" style="left:770px;top:352px">Watch only: clicks and keys aren't sent</span>
+        </div>
+      </div>
+      <div class="vfoot">
+        <span class="dot green"></span><span style="color:var(--text);font-weight:500">Live</span><span class="faint">· streamed from the app's box</span>
+        <span class="right"><span class="mono">1280 × 800</span><span class="faint">·</span><span class="mono">100%</span></span>
+      </div>
+    </div>`;
+
+  // The phone screens.
+  const phoneBar = (chip) => `
+    <div class="vbar"><span class="lockup" role="img" aria-label="ostra"></span><span class="right">${chip}</span></div>`;
+  const sub = (extra) => `<div class="sub"><span class="lb">web <span class="p">:5173</span></span><span class="org">from Acme Corp</span>${extra}</div>`;
+  const input = `
+    <div class="viewer">
+      ${phoneBar(`<span class="vchip">${ic("clock")}Expires in 6 days</span>`)}
+      ${sub(`<span class="vchip" style="margin-left:auto;color:var(--text-2)">${ic("mouse-pointer-click")}You can use it</span>`)}
+      <div class="stage"><div class="vframe" style="width:364px;height:600px">${tallyApp({ phone: true })}</div></div>
+      <div class="vfoot">
+        <span class="dot green"></span><span style="color:var(--text);font-weight:500">Live</span><span class="faint">· streamed from the app's box</span>
+        <span style="flex-basis:100%;font-size:12.5px;white-space:normal" class="faint">Taps and typing reach the app. Whoever else watches sees them too.</span>
+      </div>
+    </div>`;
+  const ended = (icon, title, body, fine) => `
+    <div class="viewer">
+      ${phoneBar("")}
+      <div class="ended"><div class="box">
+        <div class="ico">${ic(icon)}</div>
+        <h2>${title}</h2><p>${body}</p>
+        <p class="fine">${fine}</p>
+      </div></div>
+    </div>`;
+  const expired = ended("clock", "This link has expired",
+    "It opened <span class=\"mono\" style=\"font-size:13.5px;color:var(--text)\">web :5173</span> from Acme Corp until 14:50 on 22 Nov. Ask whoever sent it for a new one.",
+    "Nothing of the app is shown after a link ends.");
+  const revoked = ended("link-2-off", "This link was revoked",
+    "Someone at Acme Corp revoked it at 15:02 today. Ask them for a new link.",
+    "Nothing of the app is shown after a link ends.");
+
+  root.innerHTML = view === "states"
+    ? `<div class="board">
+        <div class="col"><div class="cap"><b>1</b>A link that allows input, on a phone</div><div class="phone">${input}</div></div>
+        <div class="col"><div class="cap"><b>2</b>Expired</div><div class="phone">${expired}</div></div>
+        <div class="col"><div class="cap"><b>3</b>Revoked</div><div class="phone">${revoked}</div></div>
+      </div>`
+    : desktop();
+
+  window.addEventListener("load", () => {
+    lucide.createIcons();
+    document.body.dataset.ready = "1";
+  });
+})();
+</script>
+</body>
+</html>

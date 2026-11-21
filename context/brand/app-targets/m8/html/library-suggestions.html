@@ -1,0 +1,245 @@
+<!doctype html>
+<!-- Target: suggestions to the library (library-suggestions.md). Default: the admins' list, Organization › Skills
+     and MCP › Suggestions, with the selected suggestion and Dismiss open. ?view=member: a member on the read-only
+     library with the Suggest sheet open. Facts from ADR 0069 ("Installing"). Demo data: Globex is invented. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m8 · library suggestions</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="m8.css">
+<style>
+  /* The admins' list (memory-proposals' layout) */
+  .sl { margin-top: 16px; }
+  .sr { display: grid; grid-template-columns: 28px minmax(0, 1fr) 150px 178px 40px; align-items: center; height: 40px; border-bottom: 1px solid var(--line); font-size: 14px; padding: 0 8px 0 4px; }
+  .sr.on { background: var(--sel); border-radius: 6px; border-bottom-color: transparent; }
+  .sr .i { color: var(--faint); display: flex; }
+  .sr .i svg.lucide { width: 15px; height: 15px; }
+  .sr .ref { font: 500 14px var(--mono); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 12px; }
+  .sr .by { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sr .al { font-size: 13px; color: var(--faint); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .sr .al svg.lucide { width: 13px; height: 13px; }
+  .sr .al.ok svg.lucide { color: var(--green); }
+  .sr .age { font: 400 12px var(--mono); color: var(--faint); text-align: right; }
+  .sel-wrap { display: grid; grid-template-columns: 44% minmax(0, 1fr); column-gap: 28px; margin-top: 24px; }
+  .lbl2 { font: 500 12px var(--sans); color: var(--faint); margin-bottom: 8px; display: flex; gap: 6px; }
+  .sel-wrap h3 { font: 600 15px var(--mono); overflow-wrap: anywhere; }
+  .sel-wrap .chips { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; color: var(--muted); }
+  .sel-wrap .body { font-size: 14px; line-height: 1.6; margin-top: 12px; color: var(--text); }
+  .sel-wrap .who2 { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+  .kv { display: grid; grid-template-columns: 78px minmax(0, 1fr); column-gap: 10px; align-items: baseline; padding: 7px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
+  .kv:last-child { border-bottom: 1px solid var(--line); }
+  .kv .k { color: var(--muted); font-size: 13px; }
+  .kv .v { min-width: 0; color: var(--text-2); }
+  .kv .v .mono { font-size: 13px; color: var(--text); }
+  .kv .v .d { display: block; color: var(--muted); font-size: 13px; }
+  .kv .v svg.lucide { width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px; }
+  .dec { display: flex; align-items: center; gap: 8px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .dec .btn { height: 30px; }
+  .dec .end { margin-left: auto; font-size: 12.5px; color: var(--faint); }
+  .pop.dismiss { width: 380px; padding: 14px 16px; }
+  .pop.dismiss b { font-size: 14.5px; }
+  .pop.dismiss .lb { font: 500 12px var(--sans); color: var(--muted); margin: 12px 0 6px; display: block; }
+  .ta { border: 1px solid var(--control-line); border-radius: 8px; background: var(--surface); padding: 8px 10px; font-size: 13.5px; line-height: 1.55; color: var(--text); min-height: 74px; }
+  .ta.ph { color: var(--faint); }
+  .cnt { display: flex; justify-content: space-between; font-size: 12px; color: var(--faint); margin-top: 6px; }
+  .cnt .mono { font-size: 11.5px; }
+  .pop .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+  /* The member's view: the library behind, the Suggest sheet */
+  .lib { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; table-layout: fixed; }
+  .lib th { text-align: left; font: 500 12.5px var(--sans); color: var(--faint); height: 32px; border-bottom: 1px solid var(--line); padding: 0 12px 0 0; }
+  .lib td { height: 52px; border-bottom: 1px solid var(--line); padding: 0 12px 0 0; white-space: nowrap; overflow: hidden; }
+  .lib .grp td { height: 36px; padding: 0; border-bottom: 0; }
+  .lib .grp .band { margin: 10px 0 2px; height: 30px; font-size: 13.5px; }
+  .lib .nm { display: flex; gap: 10px; }
+  .lib .nm .k { width: 26px; height: 26px; flex: none; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: 6px; color: var(--muted); }
+  .lib .nm .k svg.lucide { width: 14px; height: 14px; }
+  .lib .nm b { display: block; font: 500 14px var(--mono); }
+  .lib .nm .d { display: block; font-size: 13px; color: var(--muted); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; }
+  .lib .src { font: 400 13px var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+  .sheet { position: absolute; top: 0; right: 0; bottom: 0; width: 480px; background: var(--side); border-left: 1px solid var(--line); box-shadow: var(--shadow-palette); z-index: 9; display: flex; flex-direction: column; }
+  .sheet .x { position: absolute; top: 14px; right: 14px; color: var(--faint); }
+  .sheet .sh { padding: 20px 24px 0; }
+  .sheet .sh h2 { font: 600 17px var(--sans); }
+  .sheet .sh p { font-size: 13.5px; color: var(--muted); margin-top: 3px; }
+  .sheet .sh .seg { margin-top: 12px; }
+  .sheet .sb { flex: 1; min-height: 0; overflow: hidden; padding: 0 24px 12px; }
+  .sheet .sf { border-top: 1px solid var(--line); padding: 12px 24px 16px; }
+  .sheet .sf p { font-size: 13px; color: var(--muted); }
+  .sheet .sf .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+  .sheet .lb { display: block; font: 500 12px var(--sans); color: var(--muted); margin: 14px 0 6px; }
+  .in { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid var(--control-line); border-radius: 7px; background: var(--surface); font: 400 13.5px var(--mono); color: var(--text); }
+  .found { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
+  .found .t { display: flex; align-items: baseline; gap: 8px; }
+  .found .t b { font: 500 14px var(--mono); }
+  .found .t .mono { font-size: 12px; color: var(--faint); }
+  .found .d { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .found .f { font: 400 12px var(--mono); color: var(--faint); margin-top: 6px; }
+  .found .w { display: flex; gap: 7px; align-items: flex-start; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
+  .found .w svg.lucide { width: 13px; height: 13px; color: var(--faint); margin-top: 2px; }
+  .found .w .mono { font-size: 12px; color: var(--text); }
+  .sec2 { display: flex; align-items: baseline; gap: 8px; margin: 18px 0 4px; font: 600 14px var(--sans); }
+  .sec2 .n { font: 500 12px var(--mono); color: var(--faint); }
+  .mine { border-top: 1px solid var(--line); }
+  .mine .m { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .mine .m > svg.lucide { width: 14px; height: 14px; margin-top: 3px; color: var(--faint); }
+  .mine .m b { font: 500 13.5px var(--mono); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mine .m .o { grid-column: 2 / 4; font-size: 12.5px; color: var(--muted); }
+  .mine .m .q { grid-column: 2 / 4; font-size: 12.5px; color: var(--faint); margin-top: 2px; padding-left: 8px; border-left: 2px solid var(--line-2); }
+  .mine .m .a { font-size: 12.5px; }
+</style>
+</head>
+<body data-space="org" data-panel="org" data-active="skills">
+<div class="app" id="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main" id="main"></section>
+</div>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  const member = q.get("view") === "member";
+  const ic = (n, s = "") => `<i data-lucide="${n}"${s ? ` style="${s}"` : ""}></i>`;
+  const main = document.getElementById("main");
+
+  const admin = `
+    <div class="bar"><span>Organization</span>${ic("chevron-right")}<span>Skills and MCP</span>${ic("chevron-right")}<b>Suggestions</b></div>
+    <div class="content">
+      <div class="page" style="position:relative">
+        <h1 style="margin-top:0">Suggestions</h1>
+        <p class="lede">What members asked to add to Acme Corp's library. Nothing is installed until an admin installs it.</p>
+        <div class="tabs" style="margin-top:16px"><span class="tab on">Open <span class="n">3</span></span><span class="tab">Decided</span></div>
+        <div class="sl">
+          <div class="sr on"><span class="i">${ic("book-open")}</span><span class="ref">globex/agent-skills@db-seeding</span><span class="by">Sam Rivera</span><span class="al">${ic("lock")}Not on the allowlist</span><span class="age">2h</span></div>
+          <div class="sr"><span class="i">${ic("plug")}</span><span class="ref">dev.globex/incidents</span><span class="by">Priya Shah</span><span class="al ok">${ic("check")}On the allowlist</span><span class="age">1d</span></div>
+          <div class="sr"><span class="i">${ic("book-open")}</span><span class="ref">anthropics/skills@pdf</span><span class="by">Jordan Lee</span><span class="al ok">${ic("check")}On the allowlist</span><span class="age">3d</span></div>
+        </div>
+        <div class="sel-wrap">
+          <div>
+            <div class="lbl2">Suggested</div>
+            <h3>globex/agent-skills@db-seeding</h3>
+            <div class="chips"><span class="chip">skill</span>for Acme Corp's library</div>
+            <p class="body">We write seed scripts by hand in every repo. This one seeds a local database from fixtures and resets it between test runs, and billing-platform's tasks keep needing that.</p>
+            <div class="who2"><span class="av">SR</span>Sam Rivera · today at 14:12</div>
+          </div>
+          <div>
+            <div class="lbl2">At the source <span style="font-weight:400">· looked up just now</span></div>
+            <div class="kv"><span class="k">Skill</span><span class="v"><span class="mono">db-seeding</span><span class="d">Seed a local database from fixtures, and reset it between test runs</span></span></div>
+            <div class="kv"><span class="k">Commit</span><span class="v"><span class="mono">4c81e0a</span> <span class="faint" style="font-size:13px">main · 2 days ago</span></span></div>
+            <div class="kv"><span class="k">Files</span><span class="v">5 · 14.2 KB · <span style="color:var(--text)">2 look like scripts</span></span></div>
+            <div class="kv"><span class="k">Hash</span><span class="v"><span class="mono">sha256 9f2c…a71d</span></span></div>
+            <div class="kv"><span class="k">Allowlist</span><span class="v">${ic("lock", "color:var(--faint)")}<span class="mono">github.com/globex/agent-skills</span> isn't on it. <span class="teal">Allow it</span></span></div>
+          </div>
+        </div>
+        <div class="dec">
+          <span class="btn primary">${ic("download")} Install…</span>
+          <span class="btn on">Dismiss ${ic("chevron-up", "width:14px;height:14px")}</span>
+          <span class="end">Sam is told either way.</span>
+        </div>
+        <div class="pop dismiss" style="left:146px;top:634px">
+          <b>Dismiss db-seeding?</b>
+          <span class="lb">A reason for Sam (optional)</span>
+          <div class="ta">We'd rather keep seeding in each repo's own scripts for now. Ask again if billing-platform still needs it next month.</div>
+          <div class="cnt"><span>Sam sees it on their suggestion, and nowhere else.</span><span class="mono">118 / 500</span></div>
+          <div class="row"><span class="btn ghost">Cancel</span><span class="btn">Dismiss suggestion</span></div>
+        </div>
+      </div>
+      <aside class="props">
+        <div class="group"><h5>Suggestion</h5>
+          <div class="prop"><span class="k">Kind</span><span class="v">Skill</span></div>
+          <div class="prop"><span class="k">From</span><span class="v"><span class="av">SR</span>Sam Rivera</span></div>
+          <div class="prop"><span class="k">Sent</span><span class="v">today, <span class="mono">14:12</span></span></div>
+          <div class="prop"><span class="k">Source</span><span class="v"><span class="mono">globex/agent-skills</span></span></div>
+          <div class="prop"><span class="k">Ref</span><span class="v"><span class="mono">main</span><span class="faint">the default</span></span></div>
+          <div class="prop"><span class="k">Status</span><span class="v"><span class="dot grey"></span>Open</span></div>
+        </div>
+        <div class="group"><h5>Who decides</h5>
+          <div class="prop"><span class="k">Org admins</span><span class="v"><span class="av">AK</span><span class="av" style="margin-left:-10px;box-shadow:0 0 0 2px var(--bg)">PS</span>Alex Kim, Priya Shah</span></div>
+          <p style="font-size:12.5px;color:var(--faint);margin-top:6px">Any of them installs or dismisses it. Members suggest; they never install.</p>
+        </div>
+        <div class="group"><h5>This month</h5>
+          <div class="prop"><span class="k">Installed</span><span class="v mono">5</span></div>
+          <div class="prop"><span class="k">Dismissed</span><span class="v mono">2</span></div>
+          <div class="prop"><span class="k">Withdrawn</span><span class="v mono">1</span></div>
+        </div>
+      </aside>
+    </div>`;
+
+  const memberPage = `
+    <div class="bar"><span>Organization</span>${ic("chevron-right")}<b>Skills and MCP</b><div class="right"><span class="btn">${ic("message-square-plus")} Suggest a skill or server</span></div></div>
+    <div class="content">
+      <div class="page">
+        <h1 style="margin-top:0">Skills and MCP servers</h1>
+        <p class="lede">Installed once for Acme Corp, pinned, and attached to agent profiles. Agents get them at their next session.</p>
+        <div class="tabs" style="margin-top:16px"><span class="tab on">All <span class="n">14</span></span><span class="tab">Skills <span class="n">9</span></span><span class="tab">MCP servers <span class="n">5</span></span></div>
+        <table class="lib">
+          <colgroup><col style="width:232px"><col style="width:178px"><col style="width:74px"><col></colgroup>
+          <tr><th>Name</th><th>Source</th><th>Pinned</th><th>Used by</th></tr>
+          <tr class="grp"><td colspan="4"><div class="band">${ic("message-square-plus", "width:14px;height:14px;color:var(--muted)")}Suggested <span class="n">1</span></div></td></tr>
+          <tr><td><div class="nm"><span class="k">${ic("book-open")}</span><span><b>xlsx</b><span class="d">You suggested it · 3 days ago</span></span></div></td><td class="src">anthropics/skills@xlsx</td><td class="faint">—</td><td><span class="teal" style="font-size:13.5px">Withdraw</span></td></tr>
+          <tr class="grp"><td colspan="4"><div class="band">${ic("book-open", "width:14px;height:14px;color:var(--muted)")}Skills <span class="n">9</span></div></td></tr>
+          <tr><td><div class="nm"><span class="k">${ic("book-open")}</span><span><b>webapp-testing</b><span class="d">Start a local web app, click through it</span></span></div></td><td class="src">anthropics/skills@webapp-testing</td><td class="mono">a3f9c1e</td><td class="muted">3 profiles</td></tr>
+          <tr><td><div class="nm"><span class="k">${ic("book-open")}</span><span><b>frontend-design</b><span class="d">Production-grade frontend work</span></span></div></td><td class="src">anthropics/skills@frontend-design</td><td class="mono">7b20d4a</td><td class="muted">Every profile</td></tr>
+          <tr><td><div class="nm"><span class="k">${ic("book-open")}</span><span><b>prisma-migrations</b><span class="d">Plan, write and check a migration</span></span></div></td><td class="src">acme/agent-skills@prisma-migrations</td><td class="mono">e41c0f2</td><td class="muted">4 profiles</td></tr>
+          <tr><td><div class="nm"><span class="k">${ic("book-open")}</span><span><b>release-notes</b><span class="d">Release notes the way Acme writes them</span></span></div></td><td class="src">git.acme.dev/platform/skills.git#v3</td><td class="mono">58d2b97</td><td class="muted">2 profiles</td></tr>
+          <tr class="grp"><td colspan="4"><div class="band">${ic("plug", "width:14px;height:14px;color:var(--muted)")}MCP servers <span class="n">5</span></div></td></tr>
+          <tr><td><div class="nm"><span class="k">${ic("plug")}</span><span><b>sentry</b><span class="d">Issues and traces · remote · 1 secret</span></span></div></td><td class="src">io.sentry/sentry-mcp</td><td class="mono">v0.21.0</td><td class="muted">3 profiles</td></tr>
+          <tr><td><div class="nm"><span class="k">${ic("plug")}</span><span><b>linear</b><span class="d">Issues, comments and projects</span></span></div></td><td class="src">app.linear/linear</td><td class="mono">v1.4.2</td><td class="muted">2 profiles</td></tr>
+        </table>
+      </div>
+      <aside class="props"><div class="group"><h5>Library</h5><div class="prop"><span class="k">Skills</span><span class="v mono">9</span></div><div class="prop"><span class="k">MCP servers</span><span class="v mono">5</span></div></div></aside>
+    </div>`;
+
+  const sheet = `
+    <div class="scrim"></div>
+    <aside class="sheet" role="dialog" aria-label="Suggest a skill or server">
+      <span class="x">${ic("x")}</span>
+      <div class="sh"><h2>Suggest a skill or server</h2><p>An admin of Acme Corp installs it, or tells you why not.</p>
+        <span class="seg"><span class="on">${ic("book-open")} Skill</span><span>${ic("plug")} MCP server</span></span></div>
+      <div class="sb">
+        <span class="lb">Source</span>
+        <span class="in">globex/agent-skills@db-seeding<span style="margin-left:auto" class="btn xs">Look up</span></span>
+        <div class="found">
+          <div class="t"><b>db-seeding</b><span class="mono">at 4c81e0a</span></div>
+          <div class="d">Seed a local database from fixtures, and reset it between test runs</div>
+          <div class="f">5 files · 14.2 KB · 2 look like scripts</div>
+          <div class="w">${ic("lock")}<span><span class="mono">github.com/globex/agent-skills</span> isn't on Acme Corp's allowlist. An admin can add it when they install.</span></div>
+        </div>
+        <span class="lb">Why your team wants it</span>
+        <div class="ta">We write seed scripts by hand in every repo. This one seeds a local database from fixtures and resets it between test runs, and billing-platform's tasks keep needing that.</div>
+        <div class="cnt"><span>Admins see it with your name.</span><span class="mono">171 / 1,000</span></div>
+        <div class="sec2">Your suggestions <span class="n">3</span></div>
+        <div class="mine">
+          <div class="m">${ic("clock")}<b>anthropics/skills@xlsx</b><span class="teal a">Withdraw</span><span class="o">Open · sent 3 days ago</span></div>
+          <div class="m">${ic("check", "color:var(--green)")}<b>anthropics/skills@pdf</b><span></span><span class="o">Installed by Alex Kim · 12 Nov</span></div>
+          <div class="m">${ic("x")}<b>dev.globex/files</b><span></span><span class="o">Dismissed by Priya Shah · 9 Nov</span><span class="q">"It runs only as a package, and ostra can't run those yet."</span></div>
+        </div>
+      </div>
+      <div class="sf">
+        <p>Nothing reaches a profile until an admin installs it and attaches it.</p>
+        <div class="row"><span class="btn ghost">Cancel</span><span class="btn primary">${ic("send")} Send to the admins</span></div>
+      </div>
+    </aside>`;
+
+  if (member) {
+    main.innerHTML = memberPage;
+    document.getElementById("app").insertAdjacentHTML("beforeend", sheet);
+  } else {
+    main.innerHTML = admin;
+  }
+  main.querySelectorAll(".bar > i").forEach((el) => el.classList.add("chev"));
+})();
+</script>
+<script src="shell.js"></script>
+<script>
+// A member's Organization panel (app-shell.md: "A member, not an admin"): only their rows, and Sam's initials.
+if (new URLSearchParams(location.search).get("view") === "member") {
+  const hide = ["Spend", "Registry", "Models", "GitHub", "Linear", "Audit log", "Accounts", "Storage", "Email", "Previews"];
+  document.querySelectorAll(".ctx .nav").forEach((row) => { if (hide.includes(row.textContent.trim().replace(/\d+$/, "").trim())) row.remove(); });
+  document.querySelectorAll(".ctx .sec").forEach((sec) => { if (["Connections", "Instance"].includes(sec.textContent.trim())) sec.remove(); });
+  const me = document.querySelector(".rail .me"); if (me) me.textContent = "SR";
+}
+</script>
+</body>
+</html>

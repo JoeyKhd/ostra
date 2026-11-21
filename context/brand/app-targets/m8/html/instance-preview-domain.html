@@ -1,0 +1,176 @@
+<!doctype html>
+<!-- Target: Instance › Previews (instance-preview-domain.md): the optional preview domain as configured, the
+     DNS record and certificate to add, the check with each result, and the organization's "Allow public preview
+     links". ?domain=unset shows an install without one. Facts from ADR 0068 ("The native preview") and
+     research/live-previews.md §3. Demo data: acme.dev and 203.0.113.0/24 (a documentation range). -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m8 · instance, previews</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="m8.css">
+<style>
+  .page { padding-top: 26px; }
+  .page .inner { max-width: 744px; }
+  h1 { margin-top: 0; }
+  .stitle { display: flex; align-items: baseline; gap: 10px; margin-top: 26px; height: 30px; }
+  .stitle h3 { font: 600 15px var(--sans); }
+  .stitle .note { font-size: 13px; color: var(--muted); }
+  .kv { display: grid; grid-template-columns: 196px 1fr; align-items: center; min-height: 36px; border-top: 1px solid var(--line); font-size: 14px; }
+  .kv:last-of-type { border-bottom: 1px solid var(--line); }
+  .kv .k { font: 400 13px var(--mono); color: var(--muted); }
+  .kv .k.sans { font-family: var(--sans); font-size: 14px; }
+  .kv .v { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .kv .v .mono { font-size: 14px; }
+  .kv .v .ex { font: 400 13px var(--mono); color: var(--faint); }
+  .line-note { display: flex; gap: 9px; align-items: flex-start; margin-top: 10px; font-size: 13.5px; color: var(--text); }
+  .line-note svg.lucide { width: 15px; height: 15px; color: var(--muted); margin-top: 2px; }
+  .line-note .sub { color: var(--muted); font-size: 13px; }
+  .line-note .mono { font-size: 13px; }
+  .help { font-size: 13px; color: var(--faint); margin-top: 8px; }
+  .help .mono { font-size: 12.5px; color: var(--muted); }
+  .todo { border-top: 1px solid var(--line); }
+  .todo .it { display: grid; grid-template-columns: 26px 1fr; column-gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .todo .it > svg.lucide { width: 15px; height: 15px; color: var(--faint); margin-top: 2px; }
+  .todo .it .n { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--line-2); display: grid; place-items: center; font: 500 11.5px var(--mono); color: var(--muted); }
+  .todo .it b { font-weight: 500; font-size: 14px; }
+  .todo .it .d { grid-column: 2; font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .todo .it .d .mono { font-size: 12.5px; color: var(--text-2); }
+  .code { grid-column: 2; display: flex; align-items: center; gap: 12px; margin-top: 7px; height: 34px; padding: 0 6px 0 12px; background: var(--surface); border: 1px solid var(--line-2); border-radius: 8px; font: 400 13px var(--mono); color: var(--text); white-space: nowrap; }
+  .code .t { color: var(--faint); }
+  .code .cp { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 8px; color: var(--teal); font: 500 13px var(--sans); }
+  .code .cp svg.lucide { width: 13px; height: 13px; }
+  .checks { border-top: 1px solid var(--line); }
+  .ck { display: grid; grid-template-columns: 26px 168px 1fr; align-items: center; min-height: 36px; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .ck svg.lucide { width: 15px; height: 15px; }
+  .ck .what { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ck .what .mono { font-size: 12.5px; color: var(--text-2); }
+  .ck.skip { color: var(--faint); }
+  .ck.skip .what { color: var(--faint); }
+  .ckfoot { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 13px; color: var(--faint); }
+  .ckfoot .btn { margin-left: auto; }
+  .swline { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 14px; }
+  .swline .hint { color: var(--faint); font-size: 13px; }
+
+  .props .prop { grid-template-columns: 120px 1fr; }
+  .props .prop .v .mono { font-size: 13px; }
+  .props .ghelp { font-size: 12.5px; color: var(--faint); margin-top: 4px; }
+  .works { display: flex; flex-direction: column; gap: 2px; }
+  .works .w { display: grid; grid-template-columns: 22px 1fr; align-items: center; min-height: 28px; font-size: 14px; }
+  .works .w svg.lucide { width: 14px; height: 14px; }
+  .works .w .s { font-size: 12.5px; color: var(--faint); margin-left: 6px; }
+</style>
+</head>
+<body data-space="org" data-panel="org" data-active="previews">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>Instance</span><i data-lucide="chevron-right" class="chev"></i><b>Previews</b>
+      <div class="right"><span class="btn sm ghost"><i data-lucide="book-open"></i> Previews in the docs</span></div>
+    </div>
+    <div class="content">
+      <div class="page"><div class="inner" id="page"></div></div>
+      <aside class="props" id="props"></aside>
+    </div>
+  </section>
+</div>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  const unset = q.get("domain") === "unset";
+  const ic = (n, s = "") => `<i data-lucide="${n}"${s ? ` style="${s}"` : ""}></i>`;
+  const m = (t) => `<span class="mono">${t}</span>`;
+
+  const heading = `
+    <h1>Previews</h1>
+    <p class="lede">How a task's app opens in a member's own browser. Optional: without it, previews stream from the box.</p>`;
+
+  const publicLinks = `
+    <div class="stitle"><h3>Public preview links</h3><span class="note">Acme Corp's setting</span></div>
+    <div class="swline"><span class="sw"></span><span>Allow public preview links</span><span class="hint">off: a link expires within 7 days</span></div>
+    <p class="help">A public link opens a preview for anyone who has it, signed in or not, until a member revokes it. Members still choose it per preview, and each change is in the audit log.</p>`;
+
+  const set = `
+    ${heading}
+    <div class="stitle"><h3>Preview domain</h3><span class="note">from ostra's settings, so it's read-only here</span></div>
+    <div class="kv"><span class="k">OSTRA_PREVIEW_DOMAIN</span><span class="v">${m("preview.acme.dev")}<span class="faint" style="font-size:13px;margin-left:6px">a preview opens on</span><span class="ex" style="color:var(--muted)">5173-k3f9d2….preview.acme.dev</span></span></div>
+    <div class="line-note">${ic("triangle-alert")}<div><span class="mono">preview.acme.dev</span> is on the panel's own site, <span class="mono">acme.dev</span>.<div class="sub">Previews work, but a domain of its own, such as <span class="mono">acme-preview.dev</span>, keeps their cookies apart. <span class="teal">Why</span></div></div></div>
+
+    <div class="stitle"><h3>Add these once</h3><span class="note">at your DNS provider, and at the ingress in front of core</span></div>
+    <div class="todo">
+      <div class="it">${ic("globe")}<b>One DNS record</b><span class="code"><span>*.preview.acme.dev</span><span class="t">CNAME</span><span>core.acme.dev</span><span class="cp">${ic("copy")}Copy</span></span></div>
+      <div class="it">${ic("lock")}<b>A wildcard certificate for <span class="mono" style="font-weight:400;font-size:13.5px">*.preview.acme.dev</span></b><span class="d">Let's Encrypt issues one only through DNS-01: your ACME client needs your DNS provider's API.</span></div>
+      <div class="it">${ic("arrow-left-right")}<b>WebSocket upgrades on those hosts</b><span class="d">As runners need on core's own host. A dev server's live reload rides them.</span></div>
+    </div>
+
+    <div class="stitle"><h3>Check</h3><span class="note">resolves a random name under the domain and opens it over HTTPS</span></div>
+    <div class="checks">
+      <div class="ck">${ic("circle-check", "color:var(--green)")}<span>DNS record</span><span class="what">${m("q7m2x9.preview.acme.dev")} → ${m("core.acme.dev")} · ${m("203.0.113.24")}</span></div>
+      <div class="ck">${ic("circle-x", "color:var(--red)")}<span>Certificate</span><span class="what" style="color:var(--text)">The certificate covers ${m("core.acme.dev")} only, not ${m("*.preview.acme.dev")}.</span></div>
+      <div class="ck skip">${ic("circle-dashed")}<span>ostra answers on it</span><span class="what">Not checked: it needs the certificate.</span></div>
+      <div class="ck skip">${ic("circle-dashed")}<span>WebSocket upgrades</span><span class="what">Not checked: it needs the certificate.</span></div>
+    </div>
+    <div class="ckfoot"><span>Checked at 14:32 by Alex Kim. Until it passes, previews stream from the box's browser.</span><span class="btn sm">${ic("refresh-cw")} Check again</span></div>
+    ${publicLinks}`;
+
+  const none = `
+    ${heading}
+    <div class="stitle"><h3>Preview domain</h3><span class="note">from ostra's settings, so it's read-only here</span></div>
+    <div class="kv"><span class="k">OSTRA_PREVIEW_DOMAIN</span><span class="v"><span class="faint">not set</span></span></div>
+    <p class="help" style="color:var(--muted);font-size:14px;margin-top:12px">Previews work without it: the pane streams the box's own browser, ${m("ostra preview")} serves a port on a member's own <span class="mono" style="font-size:13px;color:var(--text-2)">localhost</span>, and screenshots land in the thread. With a preview domain, the app also runs in the member's own browser, with its devtools.</p>
+
+    <div class="stitle"><h3>To turn it on</h3><span class="note">once, by whoever runs this install</span></div>
+    <div class="todo">
+      <div class="it"><span class="n">1</span><b>Pick a domain of its own</b><span class="d">Such as <span class="mono">acme-preview.dev</span>. A name on the panel's own site, such as <span class="mono">preview.acme.dev</span>, works too, with a warning.</span></div>
+      <div class="it"><span class="n">2</span><b>Add one DNS record</b><span class="code"><span>*.acme-preview.dev</span><span class="t">CNAME</span><span>core.acme.dev</span><span class="cp">${ic("copy")}Copy</span></span></div>
+      <div class="it"><span class="n">3</span><b>Get a wildcard certificate, and pass WebSocket upgrades</b><span class="d">For <span class="mono">*.acme-preview.dev</span>, through the DNS-01 challenge, at the ingress in front of core.</span></div>
+      <div class="it"><span class="n">4</span><b>Set the domain, restart core, and check it here</b><span class="code"><span>OSTRA_PREVIEW_DOMAIN=acme-preview.dev</span><span class="cp">${ic("copy")}Copy</span></span></div>
+    </div>
+    <p class="help">On a development machine, ${m("preview.localhost")} needs no record and no certificate: browsers send every ${m("*.localhost")} name to the machine itself.</p>
+    ${publicLinks}`;
+
+  document.getElementById("page").innerHTML = unset ? none : set;
+
+  const works = `
+    <div class="group">
+      <h5>Without a preview domain</h5>
+      <div class="works">
+        <div class="w">${ic("check", "color:var(--green)")}<span>The browser view<span class="s">every runner</span></span></div>
+        <div class="w">${ic("check", "color:var(--green)")}<span>${m("ostra preview")}<span class="s">a member's localhost</span></span></div>
+        <div class="w">${ic("check", "color:var(--green)")}<span>Screenshots<span class="s">in the thread</span></span></div>
+        <div class="w">${ic("minus", "color:var(--faint)")}<span class="muted">The app in your browser<span class="s">needs it</span></span></div>
+      </div>
+    </div>`;
+  document.getElementById("props").innerHTML = unset ? `
+    <div class="group">
+      <h5>Preview domain</h5>
+      <div class="prop"><span class="k">Status</span><span class="v"><span class="dot grey"></span>Not set</span></div>
+      <div class="prop"><span class="k">In your browser</span><span class="v muted">Off</span></div>
+      <div class="prop"><span class="k">Panel</span><span class="v mono">ostra.acme.dev</span></div>
+      <div class="prop"><span class="k">Core</span><span class="v mono">core.acme.dev</span></div>
+    </div>
+    ${works}` : `
+    <div class="group">
+      <h5>Preview domain</h5>
+      <div class="prop"><span class="k">Status</span><span class="v"><span class="dot red"></span>Check failing</span></div>
+      <div class="prop"><span class="k">Last check</span><span class="v"><span class="mono">14:32</span><span class="faint" style="font-size:13px">· 1 of 4 passed</span></span></div>
+      <div class="prop"><span class="k">In your browser</span><span class="v muted">Off until it passes</span></div>
+      <div class="prop"><span class="k">Panel</span><span class="v mono">ostra.acme.dev</span></div>
+      <div class="prop"><span class="k">Core</span><span class="v mono">core.acme.dev</span></div>
+    </div>
+    <div class="group">
+      <h5>Signing in on a preview</h5>
+      <div class="prop"><span class="k">Cookie</span><span class="v mono" style="font-size:12.5px">__Host-ostra-preview</span></div>
+      <div class="prop"><span class="k">Scope</span><span class="v">The preview's host only</span></div>
+      <div class="prop"><span class="k">SameSite</span><span class="v">Lax<span class="faint" style="font-size:13px">· the panel's site</span></span></div>
+      <div class="prop"><span class="k">Lasts</span><span class="v">12 h at most</span></div>
+      <p class="ghelp">A one-time code sets it. The panel's own cookie never reaches a preview, and only the panel may frame one.</p>
+    </div>
+    ${works}`;
+})();
+</script>
+<script src="shell.js"></script>
+</body>
+</html>
