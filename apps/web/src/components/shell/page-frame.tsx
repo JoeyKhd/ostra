@@ -3,8 +3,8 @@
 import { ArrowRightIcon, ChevronRightIcon, PanelLeftOpenIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Fragment } from "react";
-import type { ReactNode } from "react";
+import { Fragment, useRef, useState } from "react";
+import type { PointerEvent, ReactNode } from "react";
 
 import { Dot } from "@/components/ui/status";
 import type { Tone } from "@/components/ui/status";
@@ -26,8 +26,30 @@ export type PageFrameProps = {
   readonly wideProperties?: boolean;
   /** Pages that scroll their own content (the task thread) pass false. */
   readonly padded?: boolean;
+  /** A side pane in place of the properties panel: the task page's preview (milestone 8, F-141). */
+  readonly pane?: SidePane;
   readonly children: ReactNode;
 };
+
+/**
+ * A side pane beside the page (task-preview.md, "Layout"): the page keeps `clamp(440px, 44%,
+ * 560px)` and the pane the rest, with a 1px divider that drags (the page at least 440, the pane at
+ * least 420; a double-click resets it). Expanded, the pane takes the whole width and the page beside
+ * it hides: only the grid's columns change, so neither moves in the DOM (nothing in them reloads).
+ * Below 1024px the two never share the screen: the switch under the top bar shows one.
+ */
+export type SidePane = {
+  readonly node: ReactNode;
+  readonly expanded: boolean;
+  /** Below 1024px: which of the two shows. */
+  readonly narrow: "page" | "pane";
+  /** The `Chat | Preview` switch, under the top bar below 1024px. */
+  readonly switcher: ReactNode;
+};
+
+/** The page's least width beside a side pane, and the pane's (task-preview.md). */
+const PAGE_MIN = 440;
+const PANE_MIN = 420;
 
 /**
  * The 46px top bar with breadcrumbs and the page's actions (54px at phone width, with the menu
@@ -36,10 +58,20 @@ export type PageFrameProps = {
  * form; padding 20px 18px), which stacks under the page below `xl`. The sizes are the approved
  * pictures' (app-targets/m1/README.md, "Scale").
  */
-export const PageFrame = ({ crumbs, actions, properties, wideProperties = false, padded = true, children }: PageFrameProps) => {
+export const PageFrame = ({ crumbs, actions, properties, wideProperties = false, padded = true, pane, children }: PageFrameProps) => {
   const { openNavigation, navigationOpen, passwordChange } = useShell();
   const shell = useOptionalShellState();
   const path = usePathname();
+  const split = useRef<HTMLDivElement | null>(null);
+  const [pageWidth, setPageWidth] = useState<number | null>(null);
+  const drag = (event: PointerEvent<HTMLDivElement>) => {
+    const node = split.current;
+    if (node === null || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    const rect = node.getBoundingClientRect();
+    setPageWidth(Math.round(Math.min(Math.max(PAGE_MIN, event.clientX - rect.left), Math.max(PAGE_MIN, rect.width - PANE_MIN))));
+  };
+  // One frame for both layouts, so the page (`main`) never remounts when a side pane comes or goes.
+  const columns = pane === undefined ? undefined : pane.expanded ? "minmax(0,1fr)" : `${pageWidth === null ? "clamp(440px,44%,560px)" : `${String(pageWidth)}px`} minmax(0,1fr)`;
   return (
     <>
       <header className="flex h-[54px] shrink-0 items-center gap-2 border-b border-line bg-bg px-1.5 text-muted md:h-[46px] md:px-[18px]">
@@ -56,6 +88,7 @@ export const PageFrame = ({ crumbs, actions, properties, wideProperties = false,
               "-ml-2 hidden size-7 shrink-0 place-items-center rounded-sm text-muted hover:bg-hover hover:text-text",
               !shell.opened && "md:max-xl:grid",
               shell.choice.collapsed && !shell.opened && "xl:grid",
+              shell.held && "md:grid",
             )}
           >
             <PanelLeftOpenIcon aria-hidden className="size-4 stroke-[1.75]" />
@@ -83,21 +116,52 @@ export const PageFrame = ({ crumbs, actions, properties, wideProperties = false,
         {actions === undefined ? null : <div className="ml-auto flex shrink-0 items-center gap-1.5">{actions}</div>}
       </header>
       <DefaultPasswordBanner passwordChange={passwordChange} path={path} />
+      <div className={cn("shrink-0 lg:hidden", pane === undefined && "hidden")}>{pane?.switcher}</div>
       <div
+        ref={split}
+        data-testid={pane === undefined ? undefined : "side-split"}
         className={cn(
-          "flex min-h-0 flex-1 flex-col xl:grid",
-          properties === undefined
-            ? "xl:grid-cols-1"
-            : wideProperties
-              ? "xl:grid-cols-[minmax(0,1fr)_380px]"
-              : "xl:grid-cols-[minmax(0,1fr)_320px]",
+          "relative flex min-h-0 flex-1 flex-col",
+          pane !== undefined
+            ? "lg:grid"
+            : properties === undefined
+              ? "xl:grid xl:grid-cols-1"
+              : wideProperties
+                ? "xl:grid xl:grid-cols-[minmax(0,1fr)_380px]"
+                : "xl:grid xl:grid-cols-[minmax(0,1fr)_320px]",
         )}
+        style={columns === undefined ? undefined : { gridTemplateColumns: columns }}
       >
-        <main className={cn("min-w-0 min-h-0 xl:overflow-y-auto", padded && "px-4 pb-8 pt-6 sm:px-9 sm:pt-7")}>{children}</main>
-        {properties === undefined ? null : (
+        <main
+          className={cn(
+            "min-w-0 min-h-0",
+            pane === undefined ? "xl:overflow-y-auto" : "lg:overflow-y-auto",
+            pane?.expanded === true && "lg:hidden",
+            pane?.narrow === "pane" && "max-lg:hidden",
+            padded && "px-4 pb-8 pt-6 sm:px-9 sm:pt-7",
+          )}
+        >
+          {children}
+        </main>
+        {pane !== undefined ? (
+          <div className={cn("relative min-h-0 min-w-0 max-lg:h-[calc(100dvh-104px)]", !pane.expanded && "lg:border-l lg:border-line", pane.narrow === "page" && "max-lg:hidden")} data-testid="side-pane">
+            {pane.expanded ? null : (
+              <div
+                aria-hidden
+                onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); }}
+                onPointerMove={drag}
+                onDoubleClick={() => { setPageWidth(null); }}
+                className="absolute inset-y-0 -left-[3px] z-[4] hidden w-1.5 cursor-col-resize lg:block"
+              />
+            )}
+            {pane.node}
+          </div>
+        ) : null}
+        {/* Beside a side pane the properties show only below 1024px, under the page, as they always did there. */}
+        {properties === undefined || pane?.narrow === "pane" ? null : (
           <aside
             aria-label={t("shell.properties")}
-            className="min-w-0 border-t border-line px-4 py-5 sm:px-[18px] xl:overflow-y-auto xl:border-l xl:border-t-0"
+            className={cn("min-w-0 border-t border-line px-4 py-5 sm:px-[18px] xl:overflow-y-auto xl:border-l xl:border-t-0", pane !== undefined && "lg:hidden")}
           >
             {properties}
           </aside>

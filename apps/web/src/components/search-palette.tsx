@@ -1,35 +1,7 @@
 "use client";
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowRightIcon,
-  BoxIcon,
-  Building2Icon,
-  CheckIcon,
-  ChevronRightIcon,
-  CircleStopIcon,
-  CornerDownLeftIcon,
-  CpuIcon,
-  FolderIcon,
-  FolderPlusIcon,
-  GitPullRequestIcon,
-  HandIcon,
-  HouseIcon,
-  KeyboardIcon,
-  ListChecksIcon,
-  MessageSquareIcon,
-  MessageSquareReplyIcon,
-  MoonIcon,
-  PanelLeftIcon,
-  PlusIcon,
-  RotateCcwIcon,
-  SearchIcon,
-  ServerIcon,
-  SlidersHorizontalIcon,
-  SquarePenIcon,
-  SunIcon,
-  XIcon,
-} from "lucide-react";
+import { AppWindowIcon, ArrowRightIcon, BoxIcon, Building2Icon, CheckIcon, ChevronRightIcon, CircleStopIcon, CornerDownLeftIcon, CpuIcon, FolderIcon, FolderPlusIcon, GitPullRequestIcon, HandIcon, HouseIcon, KeyboardIcon, ListChecksIcon, Maximize2Icon, MessageSquareIcon, MessageSquareReplyIcon, MoonIcon, PanelLeftIcon, PlusIcon, RotateCcwIcon, SearchIcon, ServerIcon, SlidersHorizontalIcon, SquarePenIcon, SunIcon, XIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Dialog } from "radix-ui";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
@@ -112,6 +84,10 @@ const actionIcon = (id: PaletteActionId, shownTheme: "dark" | "light"): ReactNod
       return <CircleStopIcon />;
     case "steer":
       return <MessageSquareIcon />;
+    case "toggle-side-pane":
+      return <AppWindowIcon />;
+    case "expand-preview":
+      return <Maximize2Icon />;
     default:
       return id satisfies never;
   }

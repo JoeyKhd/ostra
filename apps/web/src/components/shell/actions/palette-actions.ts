@@ -71,6 +71,9 @@ const taskRow = (entry: PaletteAction, scope: ActionScope): ActionRow | null => 
       return task?.canStop === true ? row(entry, t(actionWords.stop.palette), null, false) : null;
     case "reopen":
       return task?.canReopen === true ? row(entry, t("palette.labels.reopenThis"), null, true) : null;
+    case "toggle-side-pane":
+    case "expand-preview":
+      return task?.preview === undefined ? null : row(entry, t(actionWords[entry.id].palette), null, false);
     case "go-needs-you":
     case "go-home":
     case "go-tasks":
@@ -115,6 +118,8 @@ const pickRow = (entry: PaletteAction, waiting: Waiting): ActionRow | null => {
     case "take-over":
     case "stop":
     case "steer":
+    case "toggle-side-pane":
+    case "expand-preview":
       return null;
     default:
       return entry.id satisfies never;

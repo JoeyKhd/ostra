@@ -1847,6 +1847,193 @@
     }
   },
   "task": {
+    "preview": {
+      "pane": "Preview",
+      "toolbar": "Preview",
+      "side": "Side pane",
+      "sidePreview": "Preview",
+      "sideProperties": "Properties",
+      "narrowSwitch": "Chat or preview",
+      "chat": "Chat",
+      "noPreview": "No preview",
+      "reload": "Reload the page",
+      "path": "Path in the app",
+      "pathInvalid": "A path starts with / and stays on the app's own host.",
+      "more": "More preview actions",
+      "newTab": "Open in a new tab",
+      "expand": "Expand · f",
+      "collapse": "Back to the chat",
+      "press": "Press",
+      "frameName": "{label} :{port} at {path}, {state}",
+      "reconnecting": "Reconnecting…",
+      "lost": "Lost the stream.",
+      "retry": "Retry",
+      "again": "Try again",
+      "kept": "Kept: a project admin of {project} sees it as a proposal.",
+      "crashed": "{label} :{port} stopped answering at {time}",
+      "refusedTitle": "The box didn't open this preview",
+      "failedTitle": "This preview didn't open",
+      "width": {
+        "label": "Width",
+        "title": "Width: {name}",
+        "fit": "Fit",
+        "desktop": "Desktop {width}",
+        "tablet": "Tablet {width}",
+        "phone": "Phone {width}"
+      },
+      "services": {
+        "trigger": "Preview: {label} :{port}. Choose another",
+        "title": "Previews of {key}",
+        "primary": "primary",
+        "declared": "declared",
+        "service": "service",
+        "announced": "opened by the agent",
+        "declaredNote": "An app process of the environment",
+        "serviceNote": "A service of the environment",
+        "announcedNote": "This task only",
+        "keep": "Keep it for {project}",
+        "environment": "Edit the app's processes in Environment"
+      },
+      "share": {
+        "button": "Who can open this preview: {level}",
+        "title": "Who can open {label}",
+        "note": "For {key} only. Each preview has its own setting.",
+        "levels": "Who can open it",
+        "members": "Project members",
+        "membersNote": "Everyone who can open {project}. The default.",
+        "named": "Named people",
+        "namedNote": "Only the people you pick in {organization}.",
+        "chosen": "The people picked",
+        "remove": "Remove {name}",
+        "find": "Find a member",
+        "people": "The members of {organization}",
+        "link": "Anyone with the link",
+        "linkNote": "Until it expires or you revoke it.",
+        "public": "Public",
+        "publicNote": "Anyone, signed in or not, until you change it.",
+        "publicOff": "An admin of {organization} turned public previews off.",
+        "tooLong": "A link lasts at most {days} days here.",
+        "expires": "Expires",
+        "expiry": {
+          "hour": "in 1 hour",
+          "day": "in 24 hours",
+          "week": "in 7 days"
+        },
+        "allowInput": "Allow input",
+        "inputOff": "off: viewers only watch",
+        "inputOn": "on: viewers can use it",
+        "url": "The link",
+        "copy": "Copy",
+        "copied": "Copied",
+        "urlOnce": "Copy it now: the link isn't shown again.",
+        "make": "Make a link",
+        "another": "Make another link",
+        "links": "The links that open it",
+        "until": "Expires in {time}",
+        "withInput": "input allowed",
+        "watchOnly": "watch only",
+        "made": "Made by {who} at {time}",
+        "openedNever": "not opened yet",
+        "openedOnce": "opened once, {time}",
+        "openedMany": "opened {n} times, first {time}",
+        "revoke": "Revoke",
+        "audit": "Making a link and each first use of it go to the audit log.",
+        "short": {
+          "members": "Members",
+          "named": "People · {n}",
+          "link": "Link · {expiry}",
+          "linkOnly": "Link",
+          "public": "Public"
+        },
+        "shortMinutes": "{n} min",
+        "shortHours": "{n} h",
+        "shortDays": "{n} d"
+      },
+      "screenshot": {
+        "take": "Take a screenshot",
+        "asked": "Asked the box for a screenshot: it lands in the thread.",
+        "no-box": "The box isn't running, so it can't take a screenshot.",
+        "port-not-allowed": "This preview's port isn't one a screenshot may show.",
+        "runner-needs-upgrade": "This task's runner needs upgrading to take screenshots.",
+        "runner-cannot-preview": "This task's runner has no browser to take a screenshot with."
+      },
+      "open": {
+        "no-box": "The box isn't running any more. Start the app to see it.",
+        "port-not-allowed": "This port isn't one of the task's previews: a preview reaches only the task's app processes, the ports the agent announced and the services marked as previews.",
+        "runner-needs-upgrade": "This task's runner needs protocol 1.7 or later to show its app.",
+        "runner-cannot-preview": "This task's runner can't show its app.",
+        "level-unknown": "This preview's sharing level isn't one this panel knows. Reload the page."
+      },
+      "startRefused": {
+        "no-app-processes": "The environment declares no app process to start. Declare one in Environment.",
+        "no-runner": "No runner can start this task's app now. Try again once one is free.",
+        "runner-needs-upgrade": "Only runners below protocol 1.7 are free: upgrade one to start the app.",
+        "runner-cannot-preview": "This task's runner can't show its app.",
+        "forbidden": "You can't start this task's app.",
+        "core-unreachable": "The panel couldn't reach the server to start the app. Nothing started: try again."
+      },
+      "starting": {
+        "title": "Starting {label}",
+        "body": "The box runs the app's start command from the environment, then waits for its port to answer.",
+        "box": "Box ready",
+        "boxWaiting": "Waiting for the box",
+        "started": "Started {label}",
+        "processFailed": "{label} didn't start",
+        "waiting": "Waiting for",
+        "answer": "to answer",
+        "seconds": "{n} s",
+        "late": "It didn't answer in {seconds} s.",
+        "restart": "Restart {label}"
+      },
+      "stopped": {
+        "asleep": "The box is asleep",
+        "asleepBody": "It stopped after a while with no turn and no one watching. The branch and the environment are kept.",
+        "gone": "The task's box is gone",
+        "goneBody": "The task stopped, so its box did too. Its branch and the environment are kept.",
+        "wake": "Wake to preview",
+        "start": "Start the app",
+        "screenshot": "See the last screenshot",
+        "note": "It starts a box from {project}'s snapshot on the task's branch and runs the app. It uses no model tokens."
+      },
+      "none": {
+        "title": "No preview for this task",
+        "body": "{project}'s environment declares no app process, and the agent hasn't opened a port in this task.",
+        "ask": "Ask the agent to start the app",
+        "askText": "Start the app and open a preview of it, so I can see what you built.",
+        "declare": "Declare it in Environment"
+      },
+      "tooOld": {
+        "title": "This runner can't show a preview",
+        "docs": "How to upgrade a runner"
+      },
+      "steer": {
+        "placeholder": "Message the agent about what you see…",
+        "send": "Send",
+        "notDriver": "Only the task's driver can message the agent."
+      },
+      "foot": {
+        "live": "Live",
+        "stream": "the box's browser, streamed",
+        "http": "the box's browser, {n} frames a second over HTTP",
+        "starting": "Starting",
+        "startingLine": "the box's browser opens it when it answers",
+        "reconnecting": "Reconnecting",
+        "lost": "Lost",
+        "crashed": "Stopped answering",
+        "crashedLine": "the last picture, dimmed",
+        "asleep": "Asleep",
+        "asleepLine": "behind it, the last screenshot",
+        "stopped": "Stopped",
+        "stoppedLine": "start the app to see it",
+        "none": "No preview",
+        "noneLine": "screenshots still land in the timeline",
+        "tooOld": "No preview",
+        "tooOldLine": "the runner can't show one",
+        "failed": "No view",
+        "failedLine": "see why above",
+        "watching": "{n} watching"
+      }
+    },
     "agent": "Agent",
     "working": "working",
     "turnFailed": "the turn failed",
@@ -2410,6 +2597,102 @@
     "keyState": "State",
     "keyExecutor": "Executor",
     "recentPr": "PR"
+  },
+  "previewViewer": {
+    "title": "{label} · {organization}",
+    "endedTitle": "A preview link",
+    "from": "a preview from {organization}",
+    "fromShort": "from {organization}",
+    "frameName": "{label} :{port}, live",
+    "watchOnly": "Watch only",
+    "canUse": "You can use it",
+    "watchTip": "Watch only: clicks and keys aren't sent",
+    "inputTip": "Your clicks and typing reach the app",
+    "inputNote": "Taps and typing reach the app. Whoever else watches sees them too.",
+    "expiresIn": {
+      "minutes": "Expires in {n} min",
+      "hours": "Expires in {n} h",
+      "days": "Expires in {n} days"
+    },
+    "expiresAt": "Expires {date} at {time}",
+    "streamed": "streamed from the app's box",
+    "opening": "Opening {label} :{port}",
+    "openingBody": "It appears here when the app answers.",
+    "notRunning": {
+      "title": "The app isn't running right now",
+      "body": "It shows here again when someone at {organization} starts it. This page picks it up by itself."
+    },
+    "expired": {
+      "title": "This link has expired",
+      "before": "It opened",
+      "after": "from {organization} until {time} on {date}. Ask whoever sent it for a new one."
+    },
+    "revoked": {
+      "title": "This link was revoked",
+      "today": "Someone at {organization} revoked it at {time} today. Ask them for a new link.",
+      "on": "Someone at {organization} revoked it at {time} on {date}. Ask them for a new link."
+    },
+    "notAllowed": {
+      "title": "This link isn't allowed any more",
+      "body": "{organization} no longer allows public preview links. Ask whoever sent it for another way in."
+    },
+    "tooOld": {
+      "title": "This preview can't be shown right now",
+      "body": "Ask whoever sent the link."
+    },
+    "unknown": {
+      "title": "This link doesn't open anything",
+      "body": "Check that you copied all of it."
+    },
+    "tooMany": {
+      "title": "Too many tries from here",
+      "body": "Wait a minute, then open the link again."
+    },
+    "fine": "Nothing of the app is shown after a link ends."
+  },
+  "previewWords": {
+    "boxRefusal": {
+      "not-a-preview": "That port isn't one of the task's previews, so the box won't show it.",
+      "too-many-pages": "The box's browser shows three previews at most. Close another preview's pane, then try again.",
+      "session-ending": "The box's session is ending, so it can't open a preview now.",
+      "unknown-session": "The box doesn't run this task's session any more.",
+      "tunnel-needs-websocket": "This runner reaches the server over HTTP only, which carries no tunnel.",
+      "past-not-after": "The box got the request too late. Try again.",
+      "not-servable": "The app didn't get ready in the box. Start the app again.",
+      "no-browser": "The box has no browser to show the app in. The environment's App tab says why.",
+      "browser-failed": "The box's browser couldn't open the page. Try again.",
+      "connect-failed": "The box couldn't reach the server for this preview. Try again.",
+      "other": "The box didn't open this preview. Try again."
+    },
+    "close": {
+      "closed": "The view closed.",
+      "page-crashed": "The page crashed in the box's browser.",
+      "app-stopped": "The app stopped in the box.",
+      "box-stopping": "The box is stopping.",
+      "stale-lease": "A newer box holds the task now.",
+      "protocol-violation": "The view broke off. Try again."
+    },
+    "route": {
+      "unauthorized": "This link or session doesn't open this preview.",
+      "forbidden": "This preview can't be opened from here.",
+      "not-found": "This view isn't there any more.",
+      "view-closed": "This view closed.",
+      "watch-only": "You can watch this preview, not use it.",
+      "not-allowed": "You can't open this preview any more.",
+      "link-expired": "This link has expired.",
+      "link-revoked": "This link was revoked.",
+      "public-links-off": "Public preview links are turned off.",
+      "level-unknown": "This preview's sharing level isn't one this page knows.",
+      "bad-request": "That didn't reach the app: try again.",
+      "too-many-tries": "Too many tries: wait a minute.",
+      "not-connected": "The box hasn't connected this view yet.",
+      "core-unreachable": "The server didn't answer. Try again."
+    },
+    "runner": {
+      "theRunner": "This task's runner",
+      "runner-needs-upgrade": "{runner} needs upgrading to show previews (protocol 1.7 or later).",
+      "runner-cannot-preview": "{runner} can't show its app: it reports neither a browser in its box nor a tunnel to the server."
+    }
   },
   "taskPage": {
     "properties": "Properties",
@@ -5653,7 +5936,9 @@
       "take-over": "Take over",
       "reopen": "Reopen",
       "stop": "Stop",
-      "steer": "Message the agent"
+      "steer": "Message the agent",
+      "toggle-side-pane": "Switch between the preview and the properties",
+      "expand-preview": "Expand the preview, or go back to the chat"
     },
     "labels": {
       "go-needs-you": "Needs you",
@@ -5674,6 +5959,8 @@
       "reopen": "Reopen a task…",
       "stop": "Stop",
       "steer": "Message the agent",
+      "toggle-side-pane": "Switch the side pane",
+      "expand-preview": "Expand the preview",
       "approveThis": "Approve",
       "denyThis": "Deny",
       "answerThis": "Answer",
@@ -5699,7 +5986,9 @@
       "take-over": "drive control",
       "reopen": "resume restart continue",
       "stop": "cancel halt end",
-      "steer": "send tell composer"
+      "steer": "send tell composer",
+      "toggle-side-pane": "preview properties pane app",
+      "expand-preview": "full width app preview"
     },
     "hint": {
       "waiting": "{n} waiting",

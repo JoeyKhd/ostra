@@ -39,7 +39,7 @@ export const useShell = (): ShellContext => useContext(ShellContextValue);
 const DockedPanel = () => {
   const shell = useShellState();
   const width = shell.choice.width;
-  const open = !shell.choice.collapsed || shell.opened;
+  const open = (!shell.choice.collapsed || shell.opened) && !shell.held;
   return (
     <div
       data-testid="context-panel"

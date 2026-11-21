@@ -176,6 +176,12 @@ export const ShellActions = ({ me, children }: { readonly me: RouterOutputs["me"
       case "steer":
         task?.focusComposer();
         return;
+      case "toggle-side-pane":
+        task?.preview?.toggle();
+        return;
+      case "expand-preview":
+        task?.preview?.expand();
+        return;
       default:
         id satisfies never;
     }

@@ -42,6 +42,12 @@ export type ShellState = {
   readonly opened: boolean;
   /** The panel shows docked (or, from 768 to 1023, laid over the page). */
   readonly shown: boolean;
+  /**
+   * A page holds the panel collapsed for now, never saved over the member's choice (milestone 8:
+   * the task page's expanded preview). Docking it again lets go.
+   */
+  readonly held: boolean;
+  readonly hold: (on: boolean) => void;
   readonly toggle: () => void;
   /** Shows the panel docked, as `panel-left-open` and the peek's last button do. */
   readonly dock: () => void;
@@ -159,7 +165,8 @@ export const ShellStateProvider = ({ me, initial, children }: { readonly me: Me;
   const save = useCallback((next: SidebarChoice) => {
     document.cookie = sidebarCookieLine(next, window.location.protocol === "https:");
   }, []);
-  const shown = panelShown(band ?? "wide", choice, opened);
+  const [held, setHeld] = useState(false);
+  const shown = panelShown(band ?? "wide", choice, opened) && !held;
 
   const [peek, setPeek] = useState<Space | null>(null);
   const peekControl = useMemo(() => createPeek(setPeek, timers), []);
@@ -169,14 +176,21 @@ export const ShellStateProvider = ({ me, initial, children }: { readonly me: Me;
   }, [pathname, peekControl]);
 
   const toggle = useCallback(() => {
+    // A page's hold lets go first: `[` shows the panel the page collapsed.
+    if (held) {
+      setHeld(false);
+      peekControl.close();
+      return;
+    }
     const next = toggled(band ?? "wide", choice, opened);
     setChoice(next.choice);
     setOpened(next.opened);
     if (next.save) save(next.choice);
     peekControl.close();
-  }, [band, choice, opened, save, peekControl]);
+  }, [band, choice, opened, save, peekControl, held]);
   const dock = useCallback(() => {
     peekControl.close();
+    setHeld(false);
     if ((band ?? "wide") === "wide") {
       const next = { ...choice, collapsed: false };
       setChoice(next);
@@ -213,6 +227,8 @@ export const ShellStateProvider = ({ me, initial, children }: { readonly me: Me;
     choice,
     opened,
     shown,
+    held,
+    hold: setHeld,
     toggle,
     dock,
     hide,

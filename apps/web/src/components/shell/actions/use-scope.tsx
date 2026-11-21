@@ -44,6 +44,8 @@ export type TaskScope = {
   readonly item: ItemScope | null;
   /** Puts the focus in the composer (`Message the agent`). */
   readonly focusComposer: () => void;
+  /** Milestone 8 (F-141): `p` switches the side pane, `f` expands the preview; a code task's page only. */
+  readonly preview?: { readonly toggle: () => void; readonly expand: () => void };
 };
 
 export type ActionScope = {

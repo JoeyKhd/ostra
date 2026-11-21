@@ -4,7 +4,7 @@ import type { ChangeEntity } from "@ostra/protocol";
 // over `ChangeEntity`, so a new kind of notice fails the build until the panel says what it refreshes.
 
 /** A top-level tRPC router whose cached queries a notice can invalidate. */
-export type QueryScope = "tasks" | "projects" | "runners" | "pools" | "providers" | "agentProfiles" | "environments" | "github" | "organization" | "me" | "boxSizes" | "fleetUse" | "registry" | "registryUse" | "automations" | "inbox" | "tickets" | "diff" | "home" | "notifications";
+export type QueryScope = "tasks" | "projects" | "runners" | "pools" | "providers" | "agentProfiles" | "environments" | "github" | "organization" | "me" | "boxSizes" | "fleetUse" | "registry" | "registryUse" | "automations" | "inbox" | "tickets" | "diff" | "home" | "notifications" | "previews";
 
 export const queryScopesOf = (entity: ChangeEntity): readonly QueryScope[] => {
   switch (entity) {
@@ -13,7 +13,8 @@ export const queryScopesOf = (entity: ChangeEntity): readonly QueryScope[] => {
       // (ticket 46): `diff.fetch` sends the task's notice once a new head's diff is in and the
       // comments it outdated are marked, so an open Changes tab shows both.
       // Ticket m3-44: Home's sections and board, and the Needs you rows (an item answered elsewhere), follow a task live.
-      return ["tasks", "projects", "fleetUse", "inbox", "tickets", "diff", "home", "notifications"];
+      // Milestone 8 (F-141): a task's previews, their sharing, its box and its views follow it too.
+      return ["tasks", "projects", "fleetUse", "inbox", "tickets", "diff", "home", "notifications", "previews"];
     case "runner":
     case "runner-pool":
       // Milestone 5: the Box sizes page counts runners, and a project's Runners tab its pools' boxes.

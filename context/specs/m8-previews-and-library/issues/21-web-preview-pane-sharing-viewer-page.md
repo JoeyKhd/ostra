@@ -1,6 +1,6 @@
 # 21: Web: the preview pane, sharing and the viewer page
 
-Status: ready-for-agent
+Status: done
 Builder: web
 Blocked by: 09, 20
 Features: F-141, F-142
@@ -26,21 +26,21 @@ To the approved targets `task-preview-pane`, `task-preview-expanded`, `task-prev
 
 ## Done when
 
-- [ ] The targets' approval is recorded in ticket 09's `## Comments` before the UI is built.
-- [ ] Tests named for `F-141` (this ticket's own browser spec file only):
+- [x] The targets' approval is recorded in ticket 09's `## Comments` before the UI is built.
+- [x] Tests named for `F-141` (this ticket's own browser spec file only):
   - the pane streams the fixture app;
   - a click counts the counter;
   - "Expand" keeps the same element (no reload: the counter's count survives);
   - the box stays warm while the pane is open, with the clock moved;
   - "Start the app" brings the pane live.
-- [ ] Tests named for `F-142`:
+- [x] Tests named for `F-142`:
   - a signed-out viewer sees the stream from a watch-only link and their clicks change nothing;
   - a link with input lets them click;
   - a revoked link shows its state;
   - the viewer page shows nothing else of the task.
-- [ ] Milestone 7's keyboard walk and contrast check pass on the pane, the dialog and the viewer page, in both themes, and the pane works at 390 px.
-- [ ] Checks for `apps/web` and `packages/task-view` pass (spec section 10).
-- [ ] Committed as `✨ add the preview pane and sharing`.
+- [x] Milestone 7's keyboard walk and contrast check pass on the pane, the dialog and the viewer page, in both themes, and the pane works at 390 px.
+- [x] Checks for `apps/web` and `packages/task-view` pass (spec section 10).
+- [x] Committed as `✨ add the preview pane and sharing`.
 
 ## Comments
 
@@ -57,3 +57,8 @@ To the approved targets `task-preview-pane`, `task-preview-expanded`, `task-prev
 - 2026-11-21, core and runner (a view the box drops): a view the box took and then gave up before it connected closes at once now too, with the same record.
   - **What the pane gets:** the same `close` with `{ reason: "refused", refusal }` as a refused open, on a stream asked for before or after; on a stream already running (its page failed once its connection was open) the box's own `close` says it. Four reasons join the list to word through `t`: `not-servable` (the box's app didn't get ready: "Start the app" again), `no-browser` (the box has no browser: the pane's no-browser state, `app.browser` says why), `browser-failed` (the box's browser couldn't open the page: try again) and `connect-failed` (the box couldn't reach the server: try again).
   - **Then:** as a refused open: the view is closed, and opening the preview again makes a new view.
+- 2026-11-21, web (ticket 21): built, to the approved targets (`task-preview.md`, `preview-viewer.md`).
+  - **What's there:** the task page's `Preview | Properties` side pane (`?pane=preview&preview={key}&path=`, `&view=full` expanded): the switcher, reload, the path, the width preset, Share, a screenshot, a new tab and Expand; the frame (`components/previews/preview-frame.tsx`) reading `/api/previews/<viewId>/stream` and drawing each JPEG onto a canvas from a revoked `blob:` URL; input (mouse, wheel, keys, pasted text) and the controls (`viewport`, `navigate`, `reload`) through the input route; the heartbeat every 30 s while the tab is visible; Expand changing only the grid (the context panel held collapsed, never saved; a floating steer bar); the starting, asleep (`Wake to preview`), gone (`Start the app`), none, runner-too-old, refused (every `refusal` worded), crashed and dropped states; the share menu (members, named people, a link with its expiry and `Allow input`, public greyed with why, the links with their first use and `Revoke`); and `/p/<token>` on `loadPreviewViewer`, with only `previews.link.*` and the two routes. `p` and `f` join the registry and the `?` sheet.
+  - **Tests:** `apps/web/e2e/24-preview.spec.ts` (the fixture `test-web` in a page of the spec's browser, on core's real preview connection, `e2e/preview-box.ts`), the keyed unit tests beside the components, the a11y routes gain the pane and `/p/[token]`, and `17-keys.spec.ts` checks `p` and `f`.
+  - **Differs from the targets:** no detected ports and no `Open a port…` (Q313; no API yet); the starting block has no log tail (a process's log isn't in its events); the thread's `Preview` row with `Show` isn't drawn (the pane lists the agent's ports); the presets are the protocol's (Desktop 1440, Tablet 834, Phone 390); `Open in a new tab` opens the task's expanded pane; the too-old block has no docs link; the switcher, the path and the viewer's chips have `--control-line` edges and Tab leaves the frame (Escape or ⌘./Ctrl+. hand the focus back), for milestone 7's contrast and keyboard checks; a link's expiry and `Allow input` apply to the next link made (a link can't be edited), and its URL shows once; the named-people picker is a filtered checklist (the repo has no `Command`); below 1024 px the side toggle hides and the properties stack under the chat as before; a visitor with no theme cookie gets the browser's colour scheme on `/p/`.
+  - **For ticket 26:** `PreviewFrame` takes `mode: "stream"`; add `"native"` (the `<iframe>`) behind the same props. The pane opens its view in `preview-pane.tsx` (`previews.open` with `mode` fixed by the API); the footer's line and the share menu are already per-mode.

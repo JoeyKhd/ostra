@@ -11,7 +11,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { hashPassword } from "better-auth/crypto";
 
 import { createDb, notifyChannels } from "@ostra/db";
-import { seedMember } from "@ostra/domain";
+import { newPreviewLinkToken, seedMember } from "@ostra/domain";
 import type { TaskEvent } from "@ostra/protocol";
 import { taskEventSchema } from "@ostra/protocol";
 import { z } from "zod";
@@ -306,6 +306,32 @@ await cachedTicket("RTE-2", "Add a version endpoint", parentTicket.externalId);
 const library = await seedLibrary(db, { organizationId, adminMemberId: admin.id, memberId: plain.seeded.memberId, profileId: profile.id });
 for (const word of libraryWords()) data(word);
 
+// Milestone 8 (ticket 21): a task whose box went to sleep, with the environment's `web` as its
+// preview, for the task page with the preview pane open (its asleep card, the switcher and the share
+// menu); and a watch-only link to it, for the viewer page a signed-out visitor opens (the app isn't
+// running, so it says so). The repo's GitHub App is a row only: nothing calls GitHub.
+const preview = await (async () => {
+  const github =
+    (await db.connection.findFirst({ where: { organizationId, kind: "github" }, orderBy: { createdAt: "asc" } })) ??
+    (await db.connection.create({ data: { organizationId, kind: "github", appId: "e2e-routes-github", slug: "e2e-routes" } }));
+  const installation =
+    (await db.codeHostInstallation.findFirst({ where: { organizationId, connectionId: github.id }, orderBy: { createdAt: "asc" } })) ??
+    (await db.codeHostInstallation.create({ data: { organizationId, connectionId: github.id, installationId: `routes-${args.tag}`, accountLogin: "ostra-test" } }));
+  const repo = await db.repo.create({
+    data: { organizationId, projectId: project.id, connectionId: github.id, installationId: installation.installationId, hostRepoId: `routes-${args.tag}`, fullName: data(`ostra-test/routes-${args.tag}`), defaultBranch: "main", checkoutDir: data(`routes-${args.tag}`) },
+  });
+  const environment = (await db.environment.findUnique({ where: { projectId: project.id } })) ?? (await db.environment.create({ data: { organizationId, projectId: project.id } }));
+  await db.appProcess.create({ data: { organizationId, projectId: project.id, environmentId: environment.id, repoId: repo.id, name: "web", command: "pnpm dev", port: 5173, readyKind: "port", label: data("web"), primary: true } });
+  const made = await createTask("Add a history panel", "running", null, "waiting");
+  const box = await db.box.create({ data: { organizationId, projectId: project.id, taskId: made.taskId, executor: "host", state: "released", releasedAt: new Date(), stoppedAt: new Date() } });
+  await db.lease.create({ data: { organizationId, projectId: project.id, taskId: made.taskId, epoch: 1, runnerId: runner.id, boxId: box.id, state: "ended", acceptedAt: new Date(Date.now() - 20 * 60_000), endedAt: new Date() } });
+  const { token, tokenHash } = newPreviewLinkToken();
+  await db.previewLink.create({
+    data: { organizationId, projectId: project.id, taskId: made.taskId, key: "app-web", kind: "expiring", tokenHash, allowInput: false, expiresAt: new Date(Date.now() + 23 * 3_600_000), createdByMemberId: admin.id },
+  });
+  return { taskId: made.taskId, token };
+})();
+
 // A pending invitation, for the invitation page a new member opens.
 const invitation = await db.invitation.create({
   data: { id: randomUUID(), organizationId, email: data(`routes-${args.tag}@example.com`), role: "member", expiresAt: new Date(Date.now() + 7 * 86_400_000), inviterId: admin.userId },
@@ -318,6 +344,7 @@ process.stdout.write(
     question,
     reopen,
     capped,
+    preview,
     orgNoteId,
     projectNoteId,
     poolId: pool.id,

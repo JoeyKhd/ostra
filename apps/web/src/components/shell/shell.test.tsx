@@ -263,6 +263,9 @@ describe("the keyboard (F-147)", () => {
       "take-over": "t",
       reopen: "o",
       stop: "s",
+      // Milestone 8's task page (F-141, task-preview.md "Keyboard"): the side pane and Expand.
+      "toggle-side-pane": "p",
+      "expand-preview": "f",
     });
     expect(shortcutClashes(paletteActions)).toEqual([]);
     const global = sheetLines().find((section) => section.scope === "global")?.lines.map((line) => line.id) ?? [];
@@ -295,6 +298,8 @@ describe("the phone's menu (F-147)", () => {
       choice: defaultSidebar,
       opened: false,
       shown: false,
+      held: false,
+      hold: noop,
       toggle: noop,
       dock: noop,
       hide: noop,

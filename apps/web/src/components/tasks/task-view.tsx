@@ -1,9 +1,9 @@
 "use client";
 
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestIcon, LinkIcon, ScanSearchIcon, SquareIcon } from "lucide-react";
+import { AppWindowIcon, CheckIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestIcon, LinkIcon, Minimize2Icon, PanelRightIcon, ScanSearchIcon, SquareIcon } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { approvalIdSchema, clientMessageIdSchema, questionIdSchema } from "@ostra/protocol";
@@ -16,6 +16,9 @@ import { useProvideTaskScope } from "@/components/shell/actions/use-scope";
 import type { ItemScope, TaskScope } from "@/components/shell/actions/use-scope";
 import { TaskMemory } from "@/components/memory/task-memory";
 import { PageFrame, PropGroup, PropRow } from "@/components/shell/page-frame";
+import { useOptionalShellState } from "@/components/shell/shell-state";
+import { Kbd } from "@/components/ui/kbd";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { initials } from "@/components/shell/user-menu";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { NeedsYou } from "@/components/ui/needs-you";
@@ -50,6 +53,8 @@ import { TakeItLocal } from "./take-it-local";
 import { AwaitingApprovalBanner, StartedInLinear } from "@/components/approvals/approval-block";
 
 import { TaskWaiting } from "./task-waiting";
+import { PreviewPane } from "./preview-pane";
+import { PreviewSteerBar } from "./preview-steer-bar";
 import { boxSizeText } from "./task-waiting-words";
 import type { LocalLoad } from "./take-it-local";
 import { UnderlineTabs } from "@/components/ui/underline-tabs";
@@ -343,9 +348,36 @@ const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, t
   );
 };
 
+/** The task page's side pane (task-preview.md): the preview, or the properties. */
+type SidePaneChoice = "preview" | "properties";
+
+/** The words "Ask the agent to start the app" puts into the composer, unsent (task-preview.md, "Nothing to preview"). */
+const putInComposer = (text: string): void => {
+  const field = document.querySelector<HTMLTextAreaElement>("[data-part='composer'] textarea");
+  if (field === null) return;
+  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(field, text);
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+  field.focus();
+};
+
+/** Below 1024px the chat and the preview never share the screen (task-preview.md, "Phone"). */
+const useNarrow = (): boolean => {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const list = window.matchMedia("(max-width: 1023.98px)");
+    const read = () => { setNarrow(list.matches); };
+    read();
+    list.addEventListener("change", read);
+    return () => { list.removeEventListener("change", read); };
+  }, []);
+  return narrow;
+};
+
 /**
  * The task page (task.md; ADR 0036, F-023, F-025): the header, the live thread with its composer, and
- * the properties panel. Stop is optimistic and confirmed by the stream's change notice.
+ * the properties panel. Stop is optimistic and confirmed by the stream's change notice. Milestone 8
+ * (F-141): the top bar's `Preview | Properties` chooses the side pane, kept in the address
+ * (`?pane=preview&preview={key}&path=/history`, and `&view=full` expanded), so a link reopens it.
  */
 export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const trpc = useTRPC();
@@ -388,6 +420,43 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   // Milestone 6 (ticket 35): a code task's review rounds, and whether its project's AI review is on.
   const codeTask = task.data?.kind === "code";
   const rounds = useQuery({ ...trpc.tasks.rounds.queryOptions(codeTask ? { taskId } : skipToken), refetchInterval: 15_000 });
+  // Milestone 8 (F-141): the task's previews, for the side pane's default and its toggle.
+  const previewList = useQuery(trpc.previews.list.queryOptions(codeTask ? { taskId } : skipToken));
+  const paneParam = params.get("pane");
+  const hasPreviews = (previewList.data?.previews.length ?? 0) > 0;
+  const side: SidePaneChoice = !codeTask ? "properties" : paneParam === "preview" || paneParam === "properties" ? paneParam : hasPreviews ? "preview" : "properties";
+  const expanded = side === "preview" && params.get("view") === "full";
+  const narrowScreen = useNarrow();
+  const shell = useOptionalShellState();
+  const setQuery = useCallback((change: Readonly<Record<string, string | null>>) => {
+    const query = new URLSearchParams(params.toString());
+    for (const [name, value] of Object.entries(change)) {
+      if (value === null) query.delete(name);
+      else query.set(name, value);
+    }
+    const search = query.toString();
+    router.replace(search === "" ? `/tasks/${taskId}` : `/tasks/${taskId}?${search}`, { scroll: false });
+  }, [params, router, taskId]);
+  const setExpanded = useCallback((next: boolean) => { setQuery({ pane: "preview", view: next ? "full" : null }); }, [setQuery]);
+  // Expanded, the context panel collapses for now, never saved over the member's choice.
+  const holdPanel = shell?.hold;
+  useEffect(() => {
+    if (holdPanel === undefined) return;
+    holdPanel(expanded);
+    return () => { holdPanel(false); };
+  }, [expanded, holdPanel]);
+  // Escape, with the focus outside the app and any field, goes back to the chat.
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const target = event.target;
+      if (target instanceof Element && target.closest("input, textarea, select, [role='dialog'], [role='menu'], [role='listbox']") !== null) return;
+      setExpanded(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); };
+  }, [expanded, setExpanded]);
   const reviewSettings = useQuery(trpc.projects.reviewSettings.queryOptions(codeTask && task.data !== undefined ? { projectId: task.data.projectId } : skipToken));
 
   const getKey = trpc.tasks.get.queryKey({ taskId });
@@ -456,6 +525,11 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
 
   // F-081 (ticket 13): the page, its viewer's capabilities and its open item, for the palette and the keys.
   const scopeData = task.data;
+  const previewKeys = useRef({ toggle: () => undefined, expand: () => undefined });
+  previewKeys.current = {
+    toggle: () => { setQuery({ pane: side === "preview" ? "properties" : "preview", view: null }); },
+    expand: () => { setExpanded(!expanded); },
+  };
   const actionScope = useMemo((): TaskScope | null => {
     if (scopeData === undefined) return null;
     const approval = scopeData.approvals.find((one) => one.state === "open");
@@ -481,8 +555,11 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
       canSend: scopeData.capabilities.send,
       item,
       focusComposer: () => { document.querySelector<HTMLElement>("[data-part='composer'] textarea")?.focus(); },
+      // Milestone 8 (F-141): `p` and `f`, on a code task's page. The scope is set again only when its
+      // facts change, so the keys call through a ref to the page's state now.
+      ...(codeTask ? { preview: { toggle: () => { previewKeys.current.toggle(); }, expand: () => { previewKeys.current.expand(); } } } : {}),
     };
-  }, [scopeData, isDriver, taskId]);
+  }, [scopeData, isDriver, taskId, codeTask]);
   useProvideTaskScope(actionScope);
 
   const data = task.data;
@@ -595,6 +672,72 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
       <WatcherBar driver={data.driver?.name ?? null} onTakeOver={takeOverNow} takingOver={takeOver.isPending} />
     );
 
+  const previewing = side === "preview";
+  const sideToggle = codeTask ? (
+    <ToggleGroup
+      type="single"
+      value={side}
+      aria-label={t("task.preview.side")}
+      onValueChange={(value) => { if (value === "preview" || value === "properties") setQuery({ pane: value, view: null }); }}
+      className="h-7 max-lg:hidden"
+      data-testid="side-pane-toggle"
+    >
+      <ToggleGroupItem value="preview" aria-label={t("task.preview.sidePreview")} className="flex items-center gap-1.5 px-2.5 text-[13px] [&_svg]:size-[15px] [&_svg]:stroke-[1.75]">
+        <AppWindowIcon aria-hidden /> <span className="max-md:hidden">{t("task.preview.sidePreview")}</span>
+      </ToggleGroupItem>
+      <ToggleGroupItem value="properties" aria-label={t("task.preview.sideProperties")} className="flex items-center gap-1.5 px-2.5 text-[13px] [&_svg]:size-[15px] [&_svg]:stroke-[1.75]">
+        <PanelRightIcon aria-hidden /> <span className="max-md:hidden">{t("task.preview.sideProperties")}</span>
+      </ToggleGroupItem>
+    </ToggleGroup>
+  ) : null;
+  const stopButton = data.capabilities.stop && !stopped ? (
+    <Button data-action="stop" onClick={() => { stop.mutate({ taskId }); }} disabled={stopping || stop.isPending} aria-label={stopping ? t("taskPage.stopping") : t("taskPage.stop")}>
+      <SquareIcon aria-hidden /> <span className="max-sm:hidden">{stopping ? t("taskPage.stopping") : t("taskPage.stop")}</span>
+    </Button>
+  ) : null;
+  const previewPane = previewing ? (
+    <PreviewPane
+      task={{
+        id: taskId,
+        key: data.key,
+        projectId: data.projectId,
+        projectName,
+        organizationName: me.data?.organization?.name ?? "",
+        state: data.state,
+        runnerName: data.runner?.name ?? null,
+        projectAdmin: organizationAdmin,
+      }}
+      events={log.state.events}
+      previewKey={params.get("preview")}
+      path={params.get("path")}
+      onAddress={(next) => { setQuery({ pane: "preview", preview: next.preview, path: next.path }); }}
+      expanded={expanded}
+      onExpand={setExpanded}
+      onAskAgent={
+        data.capabilities.send
+          ? () => {
+              if (narrowScreen) setQuery({ pane: null });
+              putInComposer(t("task.preview.none.askText"));
+            }
+          : null
+      }
+      steer={
+        <PreviewSteerBar
+          taskId={taskId}
+          agent={agentName}
+          activity={activity}
+          working={running}
+          status={`${data.key} · ${stateText}`}
+          canSend={data.capabilities.send}
+          takeOver={data.capabilities.takeOver && !finished ? { run: takeOverNow, pending: takeOver.isPending } : null}
+        />
+      }
+      members={members.data ?? []}
+      now={now}
+      phone={narrowScreen}
+    />
+  ) : null;
+
   return (
     <PageFrame
       padded={false}
@@ -604,22 +747,51 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
         { label: data.key },
       ]}
       actions={
-        <>
-          <CopyLink />
-          <TakeItLocal pushed={data.repos.some((repo) => repo.headSha !== null)} load={localLoad} onOpen={() => { setLocalOpened(true); }} />
-          {data.kind === "code" && data.repos.some((repo) => repo.pr?.state === "open") ? (
-            <Link href={`/tasks/${taskId}/review`} className={buttonVariants()} aria-label={t("review.button")} data-action="open-review">
-              <ScanSearchIcon aria-hidden /> <span className="max-sm:hidden">{t("review.button")}</span>
-            </Link>
-          ) : null}
-          <PrButtons prs={prs} />
-          {data.capabilities.stop && !stopped ? (
-            <Button data-action="stop" onClick={() => { stop.mutate({ taskId }); }} disabled={stopping || stop.isPending} aria-label={stopping ? t("taskPage.stopping") : t("taskPage.stop")}>
-              <SquareIcon aria-hidden /> <span className="max-sm:hidden">{stopping ? t("taskPage.stopping") : t("taskPage.stop")}</span>
+        expanded ? (
+          <>
+            <span className="text-[13px] text-faint max-lg:hidden">{t("task.preview.press")}</span>
+            <Kbd className="rounded-sm border border-line-2 px-1.5 py-0.5 max-lg:hidden">esc</Kbd>
+            <Button onClick={() => { setExpanded(false); }} data-action="collapse-preview">
+              <Minimize2Icon aria-hidden /> <span className="max-sm:hidden">{t("task.preview.collapse")}</span>
             </Button>
-          ) : null}
-        </>
+            {stopButton}
+          </>
+        ) : (
+          <>
+            {sideToggle}
+            <CopyLink />
+            <TakeItLocal pushed={data.repos.some((repo) => repo.headSha !== null)} load={localLoad} onOpen={() => { setLocalOpened(true); }} />
+            {data.kind === "code" && data.repos.some((repo) => repo.pr?.state === "open") ? (
+              <Link href={`/tasks/${taskId}/review`} className={buttonVariants()} aria-label={t("review.button")} data-action="open-review">
+                <ScanSearchIcon aria-hidden /> <span className="max-sm:hidden">{t("review.button")}</span>
+              </Link>
+            ) : null}
+            <PrButtons prs={prs} />
+            {stopButton}
+          </>
+        )
       }
+      {...(previewPane === null
+        ? {}
+        : {
+            pane: {
+              node: previewPane,
+              expanded,
+              narrow: paneParam === "preview" ? ("pane" as const) : ("page" as const),
+              switcher: (
+                <ToggleGroup
+                  type="single"
+                  value={paneParam === "preview" ? "preview" : "chat"}
+                  aria-label={t("task.preview.narrowSwitch")}
+                  onValueChange={(value) => { if (value === "preview" || value === "chat") setQuery({ pane: value === "preview" ? "preview" : null }); }}
+                  className="mx-3 my-2 flex h-11"
+                >
+                  <ToggleGroupItem value="chat" className="flex-1">{t("task.preview.chat")}</ToggleGroupItem>
+                  <ToggleGroupItem value="preview" className="flex-1">{t("task.preview.sidePreview")}</ToggleGroupItem>
+                </ToggleGroup>
+              ),
+            },
+          })}
       properties={
         <Properties
           task={data}
@@ -645,14 +817,14 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
         />
       }
     >
-      <div className="flex min-h-full flex-col px-4 pb-5 pt-6 sm:px-10 sm:pt-7 xl:h-full">
+      <div className={cn("flex min-h-full flex-col", previewing ? "px-4 pb-4 pt-6 sm:px-7 sm:pt-[22px] lg:h-full" : "px-4 pb-5 pt-6 sm:px-10 sm:pt-7 xl:h-full")}>
         <div className="shrink-0">
           <div className="flex items-center gap-2.5 font-mono text-sm text-faint">
             <span>{data.key} · {data.source === "prompt" ? t("taskPage.fromPrompt") : t("taskPage.fromTicket")}</span>
             {waitingTask?.startedBy.kind === "outside" ? <span className="font-sans text-ui">· <StartedInLinear task={waitingTask} /></span> : null}
             {data.kind === "code" ? null : <Chip className="font-mono text-muted">{data.kind === "refine" ? t("draft.chipRefine") : t("draft.chipReview")}</Chip>}
           </div>
-          <h1 className="page-title my-1.5 break-words">{data.title}</h1>
+          <h1 className={cn("page-title my-1.5 break-words", previewing && "lg:text-[24px]")}>{data.title}</h1>
           <p className="flex flex-wrap items-center gap-x-2 text-body" data-testid="task-doing" data-state={data.state}>
             <Status tone={stateTone(data.state)}><span className="font-medium text-text">{noKey === null ? stateText : t("noKey.queued")}</span></Status>
             {activity === "" ? null : <><Sep /><span className="text-muted">{activity}</span></>}

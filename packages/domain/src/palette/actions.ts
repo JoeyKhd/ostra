@@ -37,7 +37,7 @@ export type PaletteProcedure = (typeof paletteProcedures)[number];
 export type PaletteEffect =
   | { readonly kind: "call"; readonly procedure: PaletteProcedure }
   | { readonly kind: "navigate"; readonly route: PaletteRoute }
-  | { readonly kind: "panel"; readonly does: "focus-search" | "open-shortcut-sheet" | "toggle-sidebar" };
+  | { readonly kind: "panel"; readonly does: "focus-search" | "open-shortcut-sheet" | "toggle-sidebar" | "toggle-side-pane" | "expand-preview" };
 
 export type PaletteActionId =
   | "go-needs-you"
@@ -57,7 +57,9 @@ export type PaletteActionId =
   | "take-over"
   | "reopen"
   | "stop"
-  | "steer";
+  | "steer"
+  | "toggle-side-pane"
+  | "expand-preview";
 
 /** One action of the registry: its ID, its words, its shortcut, when it's offered and what it does. */
 export type PaletteAction = {
@@ -90,8 +92,10 @@ const action = (
 });
 
 /**
- * Spec section 12, item 11: every action and shortcut of milestone 7, and milestone 8's three for
- * the double sidebar (F-147, app-shell.md "Keyboard"): `g p`, `g o` and `[`.
+ * Spec section 12, item 11: every action and shortcut of milestone 7, milestone 8's three for the
+ * double sidebar (F-147, app-shell.md "Keyboard"): `g p`, `g o` and `[`, and its two for the task
+ * page's preview (F-141, task-preview.md "Keyboard"): `p` switches the side pane between the
+ * preview and the properties, and `f` expands the preview to the page's width and back.
  */
 export const paletteActions: readonly PaletteAction[] = Object.freeze([
   action("go-needs-you", ["g", "n"], "global", { kind: "navigate", route: "needs-you" }),
@@ -112,6 +116,8 @@ export const paletteActions: readonly PaletteAction[] = Object.freeze([
   action("reopen", ["o"], "task", { kind: "call", procedure: "tasks.reopen" }),
   action("stop", ["s"], "task", { kind: "call", procedure: "tasks.stop" }, { confirm: true }),
   action("steer", null, "task", { kind: "call", procedure: "tasks.send" }),
+  action("toggle-side-pane", ["p"], "task", { kind: "panel", does: "toggle-side-pane" }),
+  action("expand-preview", ["f"], "task", { kind: "panel", does: "expand-preview" }),
 ]);
 
 /** A shortcut as the sheet and the clash check spell it: `g n`. */

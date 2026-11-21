@@ -82,6 +82,8 @@ const visits = (world: RoutesWorld): { readonly member: readonly Visit[]; readon
       visit({ pattern: task, path: `/tasks/${world.approval.taskId}` }, `${task} (an approval)`),
       visit({ pattern: task, path: `/tasks/${world.question.taskId}` }, `${task} (a question)`),
       visit({ pattern: task, path: `/tasks/${world.capped.taskId}` }, `${task} (a spend cap)`),
+      // Milestone 8 (ticket 21): the preview pane, its switcher, its width preset and its share menu.
+      visit({ pattern: task, path: `/tasks/${world.preview.taskId}?pane=preview` }, `${task} (the preview pane)`),
     ],
     visitor: visitorRoutes(world).map((route) => visit(route)),
   };

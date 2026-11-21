@@ -44,7 +44,7 @@ describe("the ? sheet", () => {
     const lines = sheetLines().flatMap((section) => section.lines.map((line) => ({ scope: section.scope, id: line.id, keys: line.shortcut.join(" ") })));
     const shortcuts = registry.flatMap((entry) => (entry.shortcut === null ? [] : [{ scope: entry.scope, id: entry.id, keys: entry.shortcut.join(" ") }]));
     expect(lines).toEqual([...shortcuts].sort((a, b) => ["global", "needs-you-item", "task"].indexOf(a.scope) - ["global", "needs-you-item", "task"].indexOf(b.scope)));
-    expect(lines.map((line) => line.keys)).toEqual(["g n", "g h", "g t", "g p", "g o", "[", "/", "?", "c", "a", "d", "r", "t", "o", "s"]);
+    expect(lines.map((line) => line.keys)).toEqual(["g n", "g h", "g t", "g p", "g o", "[", "/", "?", "c", "a", "d", "r", "t", "o", "s", "p", "f"]);
   });
 
   it("F-081/c1: an action added to the registry gets its line with no list of the sheet's own", () => {

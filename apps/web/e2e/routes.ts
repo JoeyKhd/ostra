@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { e2eAdmin } from "./settings.ts";
 
-// Every route of the panel, milestones 1 to 7 (ticket 19's phone sweep, ticket 20's pseudo-locale
+// Every route of the panel, milestones 1 to 8 (ticket 19's phone sweep, ticket 20's pseudo-locale
 // pass), with the IDs `seed-routes-world.ts` seeds behind the ones that need one. A route added to
 // `src/app` without its line here fails `routes.test.ts`... the spec that walks them lists each
 // `page.tsx` and fails on one this file doesn't name.
@@ -20,6 +20,8 @@ const worldSchema = z.object({
   question: z.object({ taskId: z.string(), questionId: z.string() }),
   reopen: z.object({ taskId: z.string() }),
   capped: z.object({ taskId: z.string() }),
+  /** Milestone 8 (ticket 21): a task with an app to preview, its box asleep, and a watch-only link's token. */
+  preview: z.object({ taskId: z.string(), token: z.string() }),
   orgNoteId: z.string(),
   projectNoteId: z.string(),
   poolId: z.string(),
@@ -127,6 +129,8 @@ export const visitorRoutes = (world: RoutesWorld): readonly PanelRoute[] => [
   { pattern: "/reset", path: "/reset" },
   { pattern: "/reset/new", path: "/reset/new?token=not-a-real-token" },
   { pattern: "/invite/[invitation-id]", path: `/invite/${world.invitationId}` },
+  // Milestone 8 (ticket 21): a preview link's viewer page.
+  { pattern: "/p/[token]", path: `/p/${world.preview.token}` },
 ];
 
 /** Every `page.tsx` under `src/app`, as its route pattern (route groups dropped). */

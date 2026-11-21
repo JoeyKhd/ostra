@@ -1,6 +1,6 @@
 import { THEME_COOKIE, themeFromCookie } from "@ostra/domain/theme";
 import type { ThemePreference } from "@ostra/domain/theme";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import type { Viewport } from "next/types";
 import { cache } from "react";
 
@@ -23,6 +23,10 @@ export const resolveTheme = cache(async (): Promise<ResolvedTheme> => {
   const fromCookie = themeFromCookie(raw);
   const { theme } = await getServerApi();
   if (theme === null) {
+    // A preview link's visitor (milestone 8, preview-viewer.md) who never chose a theme here: the
+    // browser's own, as `prefers-color-scheme` says.
+    const path = (await headers()).get("x-ostra-path") ?? "";
+    if (raw === undefined && path.startsWith("/p/")) return { theme: "system", syncCookie: false };
     return { theme: fromCookie, syncCookie: false };
   }
   return { theme, syncCookie: raw !== theme };

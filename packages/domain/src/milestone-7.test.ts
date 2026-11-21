@@ -53,6 +53,8 @@ describe("the palette's actions and shortcuts (F-081)", () => {
         "toggle-sidebar",
         "search",
         "shortcut-sheet",
+        "toggle-side-pane",
+        "expand-preview",
       ].sort(),
     );
     for (const entry of paletteActions) {
@@ -87,6 +89,8 @@ describe("the palette's actions and shortcuts (F-081)", () => {
       reopen: "o",
       stop: "s",
       steer: null,
+      "toggle-side-pane": "p",
+      "expand-preview": "f",
     });
     expect(shortcutClashes(paletteActions)).toEqual([]);
     // Stop asks first; nothing else does.

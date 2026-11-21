@@ -193,6 +193,27 @@ test.describe("F-081: the core actions by keyboard", { tag: "@desktop-only" }, (
         await page.keyboard.press("Enter");
         await expectFacts(seeded.taskId, (facts) => facts.state === "stopped");
       },
+      // Milestone 8 (F-141, task-preview.md "Keyboard"): `p` switches the side pane, `f` expands the preview.
+      "toggle-side-pane": async (keys) => {
+        const seeded = await seedKeysTask("running-other", title("key side pane"));
+        await openTask(page, seeded.taskId, title("key side pane"));
+        await press(keys);
+        await page.waitForURL(/pane=preview/);
+        await expect(page.getByTestId("preview-pane")).toBeVisible();
+        await press(keys);
+        await page.waitForURL(/pane=properties/);
+        await expect(page.getByTestId("preview-pane")).toHaveCount(0);
+      },
+      "expand-preview": async (keys) => {
+        const seeded = await seedKeysTask("running-other", title("key expand"));
+        await openTask(page, seeded.taskId, title("key expand"));
+        await press(keys);
+        await page.waitForURL(/view=full/);
+        await expect(page.getByTestId("preview-pane")).toHaveAttribute("data-expanded", "true");
+        await press(keys);
+        await expect(page.getByTestId("preview-pane")).toHaveAttribute("data-expanded", "false");
+        await expect(page).not.toHaveURL(/view=full/);
+      },
     };
     for (const line of lines) {
       if (line.id === "palette") {
