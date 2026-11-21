@@ -106,18 +106,13 @@ import { createWebhookInbox, parseBlockedWebhooks } from "./webhooks/inbox.ts";
 import { webhookProcessHandler } from "./webhooks/process.ts";
 import type { WebhookHandlers } from "./webhooks/process.ts";
 
-import coreManifest from "../package.json" with { type: "json" };
+import { runnerNpm } from "./gateway/runner-npm.ts";
+import { CORE_VERSION } from "./version.ts";
 
 // Core (ADR 0016): one process that holds runner connections, runs the queue's workers and serves
 // the runner endpoints. `startCore` wires the pieces from the settings; `main.ts` runs it.
 
-/**
- * Core's version: the version `ostra runner` installs to match it (ADR 0046). Its package.json's,
- * which the release sets (`node scripts/version.ts`), so it can't drift from the images' tags.
- */
-export const CORE_VERSION: string = coreManifest.version;
-
-export { RUNNER_TOKEN_KEY_FILE };
+export { CORE_VERSION, RUNNER_TOKEN_KEY_FILE };
 
 /** How often board schedules and token refreshes are made from their rows (a board attached in the panel polls within it). */
 const TRACKER_TICK_MS = 30_000;
@@ -131,9 +126,6 @@ const TICKET_DRAIN_MS = 2_000;
 const SNAPSHOT_SWEEP_MS = 15_000;
 
 /** The adapters core holds (ADR 0025): the code host, the model provider and the secret store. */
-/** The fake npm registry `pnpm dev:npm-registry` serves the CLI from, for the pin in development (F-061). */
-export const DEV_RUNNER_NPM = { package: "ostra", registry: "http://127.0.0.1:14873" } as const;
-
 export const createServerAdapters = async (db: Db, settings: ServerSettings, logger: Logger): Promise<ServerAdapters> => {
   const context: AdapterContext = { logger, clock: adapterClock };
   // The App's rate budgets and idempotency keys in Postgres, under the organization whose App it is (F-046).
@@ -270,8 +262,8 @@ export const startCore = async (
     replicaId,
     serverVersion: CORE_VERSION,
     panelUrl: settings.publicUrl,
-    // F-061: before milestone 7 names the published CLI, development pins from `pnpm dev:npm-registry`.
-    runnerNpm: settings.mode === "development" ? DEV_RUNNER_NPM : null,
+    // F-061: a release's build pins its npm runners to the CLI it published, development to `pnpm dev:npm-registry`'s.
+    runnerNpm: runnerNpm(settings.mode),
     signingKey,
     deviceSessions: postgresDeviceSessions(db),
     ports: { notices, audit: postgresAuditLog, clock: systemClock, jobs },

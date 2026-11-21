@@ -29,10 +29,10 @@ const tempDir = async (): Promise<string> => {
   return dir;
 };
 
-/** A stand-in CLI at `version` that records its arguments and its environment's marks, then exits 7. */
-const recordingCli = (version: string): Promise<PackedPackage> =>
+/** A stand-in CLI named `name` at `version` that records its arguments and its environment's marks, then exits 7. */
+const recordingCli = (version: string, name = "ostra"): Promise<PackedPackage> =>
   packNpmPackage(
-    { name: "ostra", version, bin: { ostra: "bin/ostra.js" }, license: "Apache-2.0" },
+    { name, version, bin: { ostra: "bin/ostra.js" }, license: "Apache-2.0" },
     {
       "bin/ostra.js": [
         "#!/usr/bin/env node",
@@ -81,6 +81,20 @@ describe("the pin (F-061)", () => {
     expect(await exists(path.join(dataDir, "versions", "1.4.1", "node_modules", "ostra", "bin", "ostra.js"))).toBe(true);
     expect((await readdir(path.join(dataDir, "versions"))).filter((name) => name !== ".npm-cache")).toEqual(["1.4.1"]);
     expect(registry.requests().map((request) => request.path)).toEqual(expect.arrayContaining(["/ostra", "/ostra/-/ostra-1.4.1.tgz"]));
+  }, 180_000);
+
+  it("F-061/c2: a release's pin: the CLI under the scoped name its release published, at a candidate's version, installs and runs as the server names it", async () => {
+    const name = "@acme/ostra-cli";
+    const registry = await startFakeNpmRegistry([await recordingCli("1.0.0-rc.0", name)]);
+    servers.push(registry);
+    const dataDir = await tempDir();
+    const out = path.join(dataDir, "ran.json");
+    const input = baseInput(dataDir, registry.url, out);
+    const outcome = await applyPin({ ...input, version: "0.9.0", info: { ...input.info, serverVersion: "1.0.0-rc.0", npm: { package: name, registry: registry.url } } });
+    expect(outcome).toEqual({ kind: "ran", version: "1.0.0-rc.0", exitCode: 7 });
+    expect(JSON.parse(await readFile(out, "utf8"))).toEqual({ version: "1.0.0-rc.0", args: input.args, reexec: "1.0.0-rc.0", kept: "yes" });
+    expect(await exists(path.join(dataDir, "versions", "1.0.0-rc.0", "node_modules", "@acme", "ostra-cli", "bin", "ostra.js"))).toBe(true);
+    expect(registry.requests().map((request) => request.path)).toEqual(expect.arrayContaining(["/@acme/ostra-cli", "/@acme/ostra-cli/-/ostra-cli-1.0.0-rc.0.tgz"]));
   }, 180_000);
 
   it("F-061/c2: the integrity check refuses a tampered tarball: nothing of it runs, and the installed version starts instead", async () => {

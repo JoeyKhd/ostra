@@ -29,9 +29,9 @@ import type { GatewayContext } from "./context.ts";
 /**
  * `GET /runner/v1/info` (F-061). From minor 4 the runner sends its minor in `x-ostra-minor`, and
  * gets the server's version, the window again as `minorWindow`, and where the pin installs from as
- * `npm`: the CLI's package and registry the gateway was given, or `null` (before milestone 7 names
- * the package, the runner's own `OSTRA_RUNNER_NPM_REGISTRY` or npm's public registry applies). A
- * request without the header gets minor 3's strict shape.
+ * `npm`: the CLI's package and registry the gateway was given (a release's on npm, `runner-npm.ts`),
+ * or `null`, when no registry has this server's version, so no runner pins. A request without the
+ * header gets minor 3's strict shape.
  */
 const info = (context: GatewayContext, http: IncomingMessage, response: ServerResponse): void => {
   const header = http.headers[runnerHeaders.minor];

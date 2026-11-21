@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { httpUrlSchema, runnerLabelSchema } from "../common.ts";
 import { describeIssues } from "../json.ts";
+import { NPM_REGISTRY } from "../release.ts";
 
 // The runner's configuration (`ostra runner`), from flags and `OSTRA_*` variables. A flag wins
 // over its variable. ostra owns this format, so an unknown flag or `OSTRA_RUNNER_*` variable is
@@ -163,7 +164,7 @@ export const runnerConfigFields = {
   npmRegistry: {
     flag: "npm-registry",
     env: "OSTRA_RUNNER_NPM_REGISTRY",
-    default: "https://registry.npmjs.org",
+    default: NPM_REGISTRY,
     description: "The npm registry the pin installs the ostra CLI from, such as a company mirror.",
   },
   hostPoolAgentUser: {
@@ -288,7 +289,7 @@ export const runnerConfigSchema = z.strictObject({
   reserveMemoryMiB: whole(0, 16_777_216).default(2048).describe(describe("reserveMemoryMiB")),
   wsRetryMinutes: whole(1, 1440).default(10).describe(describe("wsRetryMinutes")),
   pin: booleanSetting.default(true).describe(describe("pin")),
-  npmRegistry: httpUrlSchema.default("https://registry.npmjs.org").describe(describe("npmRegistry")),
+  npmRegistry: httpUrlSchema.default(NPM_REGISTRY).describe(describe("npmRegistry")),
   hostPoolAgentUser: z.string().min(1).max(64).regex(/^[a-z_][a-z0-9_-]*$/i, "a user name").optional().describe(describe("hostPoolAgentUser")),
   k8sNamespace: kubernetesName.optional().describe(describe("k8sNamespace")),
   k8sBuildNamespace: kubernetesName.optional().describe(describe("k8sBuildNamespace")),

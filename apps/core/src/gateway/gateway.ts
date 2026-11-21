@@ -40,9 +40,8 @@ export type GatewayOptions = {
   readonly timers?: Partial<GatewayTimers>;
   readonly serverMinor?: number;
   /**
-   * F-061: where the pin installs this server's version from, which `GET /runner/v1/info` names.
-   * `null` (the default) until milestone 7 names the published package: the runner's own
-   * `OSTRA_RUNNER_NPM_REGISTRY` or npm's public registry applies.
+   * F-061: where the pin installs this server's version from, which `GET /runner/v1/info` names
+   * (`runnerNpm` in `runner-npm.ts`). `null` (the default): none, so no runner pins.
    */
   readonly runnerNpm?: InfoNpm | null;
   /** `false`: commands go out on the sweep only (tests). */
