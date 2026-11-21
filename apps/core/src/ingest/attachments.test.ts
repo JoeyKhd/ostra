@@ -72,7 +72,7 @@ const previewDeps = (): PreviewDeps => ({
   audit: postgresAuditLog,
   clock: h.clock,
   adapters: adapters(),
-  settings: { domain: null, warmMinutes: 60, linkMaxDays: 7, replicaUrl: null },
+  settings: { domain: null, localDefault: false, warmMinutes: 60, linkMaxDays: 7, replicaUrl: null },
 });
 
 /** The agent's caption: shell syntax and words that read like instructions, which no log line may hold. */

@@ -68,6 +68,61 @@ export const isPreviewDomainHost = (host: string | undefined, domain: string): b
   return bare === root || bare.endsWith(`.${root}`);
 };
 
+// ---------- which preview domain an install has ----------
+
+/**
+ * The preview domain of a one-machine install (ADR 0068, the lead, 2026-11-21): when
+ * `OSTRA_PREVIEW_DOMAIN` is unset and the panel and core are both on this machine's loopback, as
+ * `docker compose up` on a laptop and `pnpm dev` are, previews open in the member's own browser on
+ * `*.preview.localhost`, which browsers send to the machine itself and keep a cookie on over `http`
+ * (spike 08 §3.5). On any other host it stays unset: `*.localhost` would be the viewer's own machine.
+ */
+export const LOCAL_PREVIEW_DOMAIN = "preview.localhost";
+
+/** `OSTRA_PREVIEW_DOMAIN=off`: no preview domain, not even a one-machine install's default. */
+export const PREVIEW_DOMAIN_OFF = "off";
+
+/** Where an install's preview domain comes from: the setting, the one-machine default, `off`, or nothing. */
+export type PreviewDomainChoice =
+  | { readonly source: "setting"; readonly domain: string }
+  | { readonly source: "local-default"; readonly domain: string }
+  | { readonly source: "off"; readonly domain: null }
+  | { readonly source: "unset"; readonly domain: null };
+
+/** A URL's host name, lower-case, without a trailing dot; `null` for text that isn't a URL. */
+const hostNameOf = (url: string): string | null => {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/\.$/, "");
+  } catch {
+    return null;
+  }
+};
+
+/** Whether a URL's host is this machine's loopback: `localhost` or a name under it, `127.0.0.0/8`, or `::1`. */
+export const isLoopbackUrl = (url: string): boolean => {
+  const host = hostNameOf(url);
+  return host !== null && (host === "localhost" || host.endsWith(".localhost") || /^127(?:\.\d{1,3}){3}$/.test(host) || host === "[::1]");
+};
+
+/**
+ * The install's preview domain (ADR 0068): `setting` is `OSTRA_PREVIEW_DOMAIN` as the server reads
+ * it (trimmed, lower-case, no trailing dot; empty is unset). Set, it wins; `off` turns previews in
+ * the member's own browser off. Unset, a one-machine install (the panel's and core's public
+ * addresses both on loopback) gets `preview.localhost`, unless one of their hosts is under it.
+ * The server checks a set domain's value itself (`settings.ts`); the panel's CSP reads it the same way.
+ */
+export const resolvePreviewDomain = (setting: string | undefined, urls: { readonly publicUrl: string; readonly corePublicUrl: string }): PreviewDomainChoice => {
+  if (setting === PREVIEW_DOMAIN_OFF) {
+    return { source: "off", domain: null };
+  }
+  if (setting !== undefined) {
+    return { source: "setting", domain: setting };
+  }
+  const local = isLoopbackUrl(urls.publicUrl) && isLoopbackUrl(urls.corePublicUrl);
+  const clear = [urls.publicUrl, urls.corePublicUrl].every((url) => !isPreviewDomainHost(hostNameOf(url) ?? undefined, LOCAL_PREVIEW_DOMAIN));
+  return local && clear ? { source: "local-default", domain: LOCAL_PREVIEW_DOMAIN } : { source: "unset", domain: null };
+};
+
 // ---------- how a browser reaches a preview host ----------
 
 export type PreviewScheme = "http" | "https";

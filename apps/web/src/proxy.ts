@@ -4,10 +4,18 @@ import type { NextRequest } from "next/server";
 import { contentSecurityPolicy } from "./lib/content-security-policy";
 
 // The Content Security Policy on every page (`lib/content-security-policy.ts`): a nonce per request
-// for Next's own scripts, and frames from the preview domain only when one is set (F-144).
+// for Next's own scripts, and frames from the preview domain only when there is one (F-144): set,
+// or a one-machine install's `preview.localhost`.
 
-/** Core's public address when the setting is unset: the server's own default (`OSTRA_CORE_PUBLIC_URL`). */
+/** The panel's and core's public addresses when their settings are unset: the server's own defaults (`OSTRA_PUBLIC_URL`, `OSTRA_CORE_PUBLIC_URL`). */
+const PUBLIC_URL_DEFAULT = "http://localhost:3000";
 const CORE_PUBLIC_URL_DEFAULT = "http://localhost:8787";
+
+/** A setting as the server reads it: empty is unset. */
+const settingOr = (name: string, fallback: string): string => {
+  const value = process.env[name];
+  return value === undefined || value === "" ? fallback : value;
+};
 
 export const proxy = (request: NextRequest): NextResponse => {
   const nonce = btoa(crypto.randomUUID());
@@ -15,7 +23,8 @@ export const proxy = (request: NextRequest): NextResponse => {
     nonce,
     dev: process.env["NODE_ENV"] === "development",
     previewDomain: process.env["OSTRA_PREVIEW_DOMAIN"],
-    corePublicUrl: process.env["OSTRA_CORE_PUBLIC_URL"] ?? CORE_PUBLIC_URL_DEFAULT,
+    publicUrl: settingOr("OSTRA_PUBLIC_URL", PUBLIC_URL_DEFAULT),
+    corePublicUrl: settingOr("OSTRA_CORE_PUBLIC_URL", CORE_PUBLIC_URL_DEFAULT),
   });
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);

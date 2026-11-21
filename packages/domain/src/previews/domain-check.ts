@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { lookup as dnsLookupCallback } from "node:dns";
 import { lookup as dnsLookup } from "node:dns/promises";
 import { request as httpRequest } from "node:http";
 import type { IncomingMessage } from "node:http";
@@ -101,11 +102,29 @@ const isAddress = (host: string): boolean => /^\d{1,3}(?:\.\d{1,3}){3}$/.test(ho
 
 const codeOf = (error: unknown): string => (error instanceof Error && "code" in error && typeof error.code === "string" ? error.code : error instanceof Error ? error.name : "failed");
 
-/** Node's probe: `dns.lookup`, and `https` (or `http` under `localhost`) with the name as SNI. `ca` and `lookup` are for tests. */
+/**
+ * `dns.lookup`, except that every name under `localhost` is this machine's loopback, as browsers
+ * have it (spike 08 §3.5): a container's or a CI machine's resolver may not know `*.localhost`, and
+ * a one-machine install's check (core's own, at its start) must reach core there all the same.
+ */
+export const localhostLookup: LookupFunction = (hostname, lookupOptions, callback) => {
+  const name = hostname.toLowerCase().replace(/\.$/, "");
+  if (name === "localhost" || name.endsWith(".localhost")) {
+    if (lookupOptions.all === true) {
+      callback(null, [{ address: "127.0.0.1", family: 4 }]);
+    } else {
+      callback(null, "127.0.0.1", 4);
+    }
+    return;
+  }
+  dnsLookupCallback(hostname, lookupOptions, callback);
+};
+
+/** Node's probe: `dns.lookup` (with `*.localhost` on loopback), and `https` (or `http` under `localhost`) with the name as SNI. `ca` and `lookup` are for tests. */
 export const createPreviewDomainProbe = (options: { readonly ca?: string; readonly lookup?: LookupFunction; readonly timeoutMs?: number } = {}): PreviewDomainProbe => {
   const timeoutMs = options.timeoutMs ?? 5_000;
   const requestOf = (url: URL, headers: Readonly<Record<string, string>>) => {
-    const common = { method: "GET", headers, timeout: timeoutMs, agent: false, ...(options.lookup === undefined ? {} : { lookup: options.lookup }) };
+    const common = { method: "GET", headers, timeout: timeoutMs, agent: false, lookup: options.lookup ?? localhostLookup };
     return url.protocol === "https:"
       ? httpsRequest(url, { ...common, servername: url.hostname, rejectUnauthorized: false, ...(options.ca === undefined ? {} : { ca: options.ca }) })
       : httpRequest(url, common);

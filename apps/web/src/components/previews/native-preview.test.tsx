@@ -160,6 +160,7 @@ const checked = (over: Partial<Extract<InstancePreviews["status"], { readonly st
 
 const page = (over: Partial<InstancePreviews> = {}): InstancePreviews => ({
   domain: "preview.acme.dev",
+  defaulted: false,
   localhost: false,
   panelHost: "ostra.acme.dev",
   coreHost: "core.acme.dev",
@@ -242,5 +243,14 @@ describe("Instance › Previews (ticket 26)", () => {
     expect(html).toContain("preview.localhost");
     expect(html).not.toContain('data-testid="preview-domain-check"');
     expect(html).toContain('data-testid="public-links-stub"');
+  });
+
+  it("F-144/c10: a one-machine install's preview.localhost says it's the default, checked by core at its start, and how to turn it off; a set domain doesn't", () => {
+    const local = { domain: "preview.localhost", localhost: true, sharedSite: null, sameSite: "none-partitioned", record: null } as const;
+    const html = body(page({ ...local, defaulted: true }));
+    expect(html).toContain('data-testid="preview-domain-default"');
+    expect(html).toMatch(/data-testid="preview-domain-default"[^>]*>The setting is unset, and the panel and core are on this machine, so previews use <span[^>]*>preview\.localhost<\/span> by default, and core checks it when it starts\. <span[^>]*>OSTRA_PREVIEW_DOMAIN=off<\/span> turns it off\./);
+    expect(body(page({ ...local, defaulted: false }))).not.toContain("preview-domain-default");
+    expect(body(page())).not.toContain("preview-domain-default");
   });
 });

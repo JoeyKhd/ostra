@@ -105,6 +105,8 @@ import {
 } from "./snapshots/snapshots.ts";
 import type { SnapshotDeps } from "./snapshots/snapshots.ts";
 import { createAutomationWebhooks } from "./webhooks/automation-webhooks.ts";
+import { checkLocalPreviewDomain } from "./previews/local-check.ts";
+import type { LocalPreviewCheck } from "./previews/local-check.ts";
 import { applyPreviewOpenResultsInTx } from "./previews/open-results.ts";
 import { createPreviews } from "./previews/previews.ts";
 import { replicaUrlFor } from "./previews/replica-url.ts";
@@ -158,6 +160,8 @@ export type RunningCore = {
   readonly gateway: Gateway;
   /** The blob service (ticket 12): session archives and ticket files. */
   readonly blobs: BlobService;
+  /** A one-machine install's preview domain check at start (`checkLocalPreviewDomain`); `null` once it failed to run. */
+  readonly previewCheck: Promise<LocalPreviewCheck | null>;
   readonly stop: () => Promise<void>;
 };
 
@@ -769,6 +773,15 @@ export const startCore = async (
   const port = await server.listen(settings.corePort, options.host);
   replicaUrl = replicaUrlFor(settings.previews.replicaUrl, port);
   previews.start();
+  // A one-machine install's `preview.localhost` (ADR 0068, 2026-11-21): checked now that core
+  // answers on it, so the pane opens previews in the member's own browser with no admin's check.
+  const localPreviewCheck = checkLocalPreviewDomain(
+    { db, audit: postgresAuditLog, clock: systemClock, logger, secret: () => loadSecretsKey(settings) },
+    { previews: settings.previews, corePublicUrl: settings.corePublicUrl, port },
+  ).catch((error: unknown) => {
+    logger.warn("preview.domain-check-failed", { error: error instanceof Error ? error.name : "unknown" });
+    return null;
+  });
 
   // The bootstrap join token waits for the first organization (a fresh install has none yet).
   let bootstrapTimer: ReturnType<typeof setTimeout> | undefined;
@@ -841,8 +854,11 @@ export const startCore = async (
     jobs,
     gateway,
     blobs,
+    previewCheck: localPreviewCheck,
     stop: async () => {
       clearTimeout(bootstrapTimer);
+      // Its writes finish before the database goes.
+      await localPreviewCheck;
       clearInterval(requeue);
       clearInterval(snapshotSweep);
       clearInterval(drain);

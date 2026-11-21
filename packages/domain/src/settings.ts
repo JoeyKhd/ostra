@@ -6,6 +6,7 @@ import { describeIssues, runnerEnvNames } from "@ostra/protocol";
 import { z } from "zod";
 
 import { defaultFirstAdmin, organizationNameSchema, passwordSchema, usernameSchema } from "./accounts.ts";
+import { PREVIEW_DOMAIN_OFF, resolvePreviewDomain } from "./previews/host.ts";
 
 // The server's settings (ticket 08): one strict schema over the environment, with a working
 // default for every setting, so a fresh install needs none (the self-hosting rule, AGENTS.md).
@@ -518,9 +519,9 @@ export const settingFields = {
     description: "Whether organization admins may turn on the library's search of skills.sh and their MCP registries (F-146), which is off in each organization until an admin turns it on. false keeps it off on the whole install; installing by reference still works.",
   },
   OSTRA_PREVIEW_DOMAIN: {
-    default: "(none: no native preview)",
+    default: "preview.localhost when OSTRA_PUBLIC_URL and OSTRA_CORE_PUBLIC_URL are both on this machine (localhost, 127.0.0.1, ::1); otherwise none: no native preview",
     description:
-      "The domain a task's app is served on in the member's own browser, one host per port, such as previews.example.com (F-144). Optional: unset, the browser view, ostra preview and screenshots still work. Set, it needs a wildcard DNS record and a wildcard certificate for *.<domain> pointing at core, and previews serve on <port>-<previewId>.<domain> on OSTRA_CORE_PUBLIC_URL's scheme and port (https for a real domain). A registrable domain of its own is safest; a subdomain of the panel's works, with the panel's cookies kept host-only. Neither the panel's nor core's own host may be under it.",
+      "The domain a task's app is served on in the member's own browser, one host per port, such as previews.example.com (F-144). Optional: unset, the browser view, ostra preview and screenshots still work. Set, it needs a wildcard DNS record and a wildcard certificate for *.<domain> pointing at core, and previews serve on <port>-<previewId>.<domain> on OSTRA_CORE_PUBLIC_URL's scheme and port (https for a real domain). A registrable domain of its own is safest; a subdomain of the panel's works, with the panel's cookies kept host-only. Neither the panel's nor core's own host may be under it. Unset on a one-machine install, it's preview.localhost, which needs no record and no certificate, and core checks it at start; off turns it off.",
   },
   OSTRA_PREVIEW_WARM_MINUTES: {
     default: "60",
@@ -737,7 +738,13 @@ const rawSettingsSchema = z.strictObject({
   OSTRA_PREVIEW_DOMAIN: z
     .string()
     .transform((domain) => domain.trim().toLowerCase().replace(/\.$/, ""))
-    .pipe(z.string().max(200).regex(previewDomainPattern, "a domain name such as previews.example.com, without a scheme or a port"))
+    .pipe(
+      z.union([
+        // Off: not even a one-machine install's `preview.localhost` (ADR 0068, 2026-11-21).
+        z.literal(PREVIEW_DOMAIN_OFF),
+        z.string().max(200).regex(previewDomainPattern, "a domain name such as previews.example.com, without a scheme or a port, or off"),
+      ]),
+    )
     .optional()
     .describe(describe("OSTRA_PREVIEW_DOMAIN")),
   OSTRA_PREVIEW_WARM_MINUTES: whole(1, 24 * 60).default(60).describe(describe("OSTRA_PREVIEW_WARM_MINUTES")),
@@ -863,8 +870,14 @@ export type ServerSettings = {
 
 /** The previews' settings, resolved (F-141, F-142, F-144). */
 export type PreviewSettings = {
-  /** OSTRA_PREVIEW_DOMAIN, lower-case, or `null`: no native preview. */
+  /** OSTRA_PREVIEW_DOMAIN, lower-case, or a one-machine install's `preview.localhost`; `null`: no native preview. */
   readonly domain: string | null;
+  /**
+   * Whether `domain` is a one-machine install's `preview.localhost`, with OSTRA_PREVIEW_DOMAIN
+   * unset (`resolvePreviewDomain`): core checks it at start, so the pane opens previews in the
+   * member's own browser with no admin pressing "Check again".
+   */
+  readonly localDefault: boolean;
   /** OSTRA_PREVIEW_WARM_MINUTES. */
   readonly warmMinutes: number;
   /** OSTRA_PREVIEW_LINK_MAX_DAYS. */
@@ -1014,9 +1027,13 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
       errors: ["OSTRA_DEV_HOST_POOL_SAME_USER is for development and tests only: a host pool runs the agent as its own OS user (OSTRA_HOST_POOL_AGENT_USER)"],
     };
   }
+  // The preview domain: the setting, `off`, or a one-machine install's `preview.localhost` when it's
+  // unset and the panel and core are both on loopback (ADR 0068, the lead, 2026-11-21).
+  const previewChoice = resolvePreviewDomain(value.OSTRA_PREVIEW_DOMAIN, { publicUrl: value.OSTRA_PUBLIC_URL, corePublicUrl: value.OSTRA_CORE_PUBLIC_URL });
+  const previewDomain = previewChoice.domain;
   // The panel can't sit under the preview domain: its host would be a preview host, framed by and
-  // sharing cookies with agent-written code (ADR 0068, the panel's own defences).
-  const previewDomain = value.OSTRA_PREVIEW_DOMAIN ?? null;
+  // sharing cookies with agent-written code (ADR 0068, the panel's own defences). The default never
+  // is (`resolvePreviewDomain` leaves it unset then), so these refuse only a set domain.
   const panelHost = new URL(value.OSTRA_PUBLIC_URL).hostname.toLowerCase();
   if (previewDomain !== null && (panelHost === previewDomain || panelHost.endsWith(`.${previewDomain}`))) {
     return {
@@ -1155,6 +1172,7 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
       },
       previews: {
         domain: previewDomain,
+        localDefault: previewChoice.source === "local-default",
         warmMinutes: value.OSTRA_PREVIEW_WARM_MINUTES,
         linkMaxDays: value.OSTRA_PREVIEW_LINK_MAX_DAYS,
         replicaUrl: value.OSTRA_CORE_REPLICA_URL ?? null,

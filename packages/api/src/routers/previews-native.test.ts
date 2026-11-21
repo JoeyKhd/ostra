@@ -258,4 +258,14 @@ describe("Instance › Previews (ticket 26)", () => {
     expect(await trpcFailure(member.instance.previews())).toMatchObject({ code: "FORBIDDEN" });
     expect(await trpcFailure(member.instance.previewDomainCheck())).toMatchObject({ code: "FORBIDDEN" });
   });
+
+  it("F-144/c10: names a one-machine install's preview.localhost as the default, with nothing to add, and an admin's preview.localhost as the setting", async () => {
+    const admin = (deps: ApiDeps) => asMember(harness.fixture.a.admin, deps);
+    const local = { publicUrl: "http://localhost:3000", corePublicUrl: "http://localhost:8787" };
+    const byDefault = withDomain("preview.localhost", local);
+    const defaulted = await (await admin({ ...byDefault, settings: { ...byDefault.settings, previews: { ...byDefault.settings.previews, localDefault: true } } })).instance.previews();
+    expect(defaulted).toMatchObject({ domain: "preview.localhost", defaulted: true, localhost: true, record: null });
+    expect((await (await admin(withDomain("preview.localhost", local))).instance.previews()).defaulted).toBe(false);
+    expect((await (await admin(withDomain(null))).instance.previews()).defaulted).toBe(false);
+  });
 });

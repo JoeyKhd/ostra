@@ -34,10 +34,13 @@ const devPanel = process.env["OSTRA_E2E_DEV"] === "1";
  * Milestone 8 (ticket 26, F-144): the install's preview domain. `preview.localhost` by default,
  * which needs no DNS record and no certificate (browsers send every `*.localhost` name to the
  * machine), so the native preview runs against core's real proxy; OSTRA_E2E_PREVIEW_DOMAIN names
- * another (the second stack's, a name that never resolves), and `none` leaves it unset.
+ * another (the second stack's, a name that never resolves), and `none` turns it off. It's set
+ * explicitly, never left to a one-machine install's own `preview.localhost` (2026-11-21), so the
+ * specs' first check is the settings page's, not core's at its start; `none` is `off`, since
+ * unset on loopback would be that default.
  */
 const previewDomain = process.env["OSTRA_E2E_PREVIEW_DOMAIN"] ?? e2ePreviewDomain;
-const previewSettings = previewDomain === "none" ? {} : { OSTRA_PREVIEW_DOMAIN: previewDomain };
+const previewSettings = { OSTRA_PREVIEW_DOMAIN: previewDomain === "none" ? "off" : previewDomain };
 const webDir = path.resolve(import.meta.dirname, "..");
 const repoRoot = path.resolve(webDir, "..", "..");
 

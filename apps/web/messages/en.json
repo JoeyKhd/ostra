@@ -5407,7 +5407,8 @@
         "note": "from ostra's settings, so it's read-only here",
         "notSet": "not set",
         "opensOn": "a preview opens on",
-        "pattern": "<port>-<preview>.{domain}"
+        "pattern": "<port>-<preview>.{domain}",
+        "defaulted": "The setting is unset, and the panel and core are on this machine, so previews use {domain} by default, and core checks it when it starts. {off} turns it off."
       },
       "warning": {
         "line": "{domain} is on the panel's own site, {site}.",
@@ -5458,7 +5459,7 @@
         "step3": "Get a wildcard certificate, and pass WebSocket upgrades",
         "step3Body": "For {name}, through the DNS-01 challenge, at the ingress in front of core.",
         "step4": "Set the domain, restart core, and check it here",
-        "localhost": "On a development machine, {domain} needs no record and no certificate: browsers send every {any} name to the machine itself."
+        "localhost": "With the panel and core on one machine, {domain} is the default unless the setting is off: browsers send every {any} name to the machine itself, so it needs no record and no certificate."
       },
       "copy": "Copy",
       "copied": "Copied",

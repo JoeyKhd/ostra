@@ -764,10 +764,14 @@ describe("milestone 8's preview jobs, audit actions and settings", () => {
   });
 
   it("F-141, F-144: every preview setting has its working default with only the required settings set, and the domain is optional", () => {
+    // Only the required settings: the panel and core on this machine's defaults, so `preview.localhost` (F-144/c10).
     const parsed = parseServerSettings({});
-    expect(parsed.ok && parsed.settings.previews).toEqual({ domain: null, warmMinutes: 60, linkMaxDays: 7, replicaUrl: null });
+    expect(parsed.ok && parsed.settings.previews).toEqual({ domain: "preview.localhost", localDefault: true, warmMinutes: 60, linkMaxDays: 7, replicaUrl: null });
+    // On public hosts, unset is no domain at all.
+    const hosted = parseServerSettings({ OSTRA_PUBLIC_URL: "https://ostra.example.com", OSTRA_CORE_PUBLIC_URL: "https://core.ostra.example.com" });
+    expect(hosted.ok && hosted.settings.previews).toEqual({ domain: null, localDefault: false, warmMinutes: 60, linkMaxDays: 7, replicaUrl: null });
     const set = parseServerSettings({ OSTRA_PREVIEW_DOMAIN: "Previews.Example.com.", OSTRA_PREVIEW_WARM_MINUTES: "30", OSTRA_CORE_REPLICA_URL: "http://10.0.0.7:8787" });
-    expect(set.ok && set.settings.previews).toEqual({ domain: "previews.example.com", warmMinutes: 30, linkMaxDays: 7, replicaUrl: "http://10.0.0.7:8787" });
+    expect(set.ok && set.settings.previews).toEqual({ domain: "previews.example.com", localDefault: false, warmMinutes: 30, linkMaxDays: 7, replicaUrl: "http://10.0.0.7:8787" });
     expect(parseServerSettings({ OSTRA_PREVIEW_DOMAIN: "preview.localhost" }).ok).toBe(true);
     for (const bad of ["https://previews.example.com", "*.previews.example.com", "previews.example.com:443", "localhost", "a_b.example.com"]) {
       expect(parseServerSettings({ OSTRA_PREVIEW_DOMAIN: bad }).ok, bad).toBe(false);
@@ -776,5 +780,39 @@ describe("milestone 8's preview jobs, audit actions and settings", () => {
     expect(parseServerSettings({ OSTRA_PUBLIC_URL: "https://app.previews.example.com", OSTRA_PREVIEW_DOMAIN: "previews.example.com" }).ok).toBe(false);
     expect(parseServerSettings({ OSTRA_PUBLIC_URL: "https://ostra.example.com", OSTRA_PREVIEW_DOMAIN: "previews.example.com" }).ok).toBe(true);
     expect(parseServerSettings({ OSTRA_PREVIEW_LINK_MAX_DAYS: "0" }).ok).toBe(false);
+  });
+
+  it("F-144/c10: unset, a one-machine install's preview domain is preview.localhost, a public host's is none, an explicit domain wins, and off or empty reads as the parser's conventions say", () => {
+    const previews = (env: Readonly<Record<string, string>>) => {
+      const parsed = parseServerSettings(env);
+      if (!parsed.ok) throw new Error(parsed.errors.join("; "));
+      return { domain: parsed.settings.previews.domain, localDefault: parsed.settings.previews.localDefault };
+    };
+    // The panel and core both on loopback, by name, by IPv4 or by IPv6: `preview.localhost`, from the default.
+    for (const [panel, core] of [
+      ["http://localhost:3000", "http://localhost:8787"],
+      ["http://127.0.0.1:3710", "http://127.0.0.1:9310"],
+      ["http://[::1]:3000", "http://[::1]:8787"],
+      ["http://ostra.localhost:3000", "http://core.localhost:8787"],
+    ] as const) {
+      expect(previews({ OSTRA_PUBLIC_URL: panel, OSTRA_CORE_PUBLIC_URL: core }), core).toEqual({ domain: "preview.localhost", localDefault: true });
+      // Empty is unset (the parser's rule for every setting): the default again.
+      expect(previews({ OSTRA_PUBLIC_URL: panel, OSTRA_CORE_PUBLIC_URL: core, OSTRA_PREVIEW_DOMAIN: "" })).toEqual({ domain: "preview.localhost", localDefault: true });
+      // `off`, in any case, turns it off; an explicit domain wins and isn't the default.
+      expect(previews({ OSTRA_PUBLIC_URL: panel, OSTRA_CORE_PUBLIC_URL: core, OSTRA_PREVIEW_DOMAIN: "Off" })).toEqual({ domain: null, localDefault: false });
+      expect(previews({ OSTRA_PUBLIC_URL: panel, OSTRA_CORE_PUBLIC_URL: core, OSTRA_PREVIEW_DOMAIN: "preview.localhost" })).toEqual({ domain: "preview.localhost", localDefault: false });
+      expect(previews({ OSTRA_PUBLIC_URL: panel, OSTRA_CORE_PUBLIC_URL: core, OSTRA_PREVIEW_DOMAIN: "previews.example.com" })).toEqual({ domain: "previews.example.com", localDefault: false });
+    }
+    // A public host, the panel's or core's: `*.localhost` would be the viewer's own machine, so none.
+    expect(previews({ OSTRA_PUBLIC_URL: "https://ostra.example.com", OSTRA_CORE_PUBLIC_URL: "https://core.example.com" })).toEqual({ domain: null, localDefault: false });
+    expect(previews({ OSTRA_PUBLIC_URL: "https://ostra.example.com", OSTRA_CORE_PUBLIC_URL: "http://localhost:8787" })).toEqual({ domain: null, localDefault: false });
+    expect(previews({ OSTRA_PUBLIC_URL: "http://localhost:3000", OSTRA_CORE_PUBLIC_URL: "http://10.0.0.7:8787" })).toEqual({ domain: null, localDefault: false });
+    expect(previews({ OSTRA_PUBLIC_URL: "http://192.168.1.20:3000", OSTRA_CORE_PUBLIC_URL: "http://192.168.1.20:8787" })).toEqual({ domain: null, localDefault: false });
+    // The guards hold: the panel's `localhost` isn't under `preview.localhost`; a panel or core that is
+    // gets no default (and is refused when it's set), rather than core answering itself with the proxy.
+    expect(previews({ OSTRA_PUBLIC_URL: "http://localhost:3000", OSTRA_CORE_PUBLIC_URL: "http://core.preview.localhost:8787" })).toEqual({ domain: null, localDefault: false });
+    expect(parseServerSettings({ OSTRA_PUBLIC_URL: "http://app.preview.localhost:3000", OSTRA_PREVIEW_DOMAIN: "preview.localhost" }).ok).toBe(false);
+    // `off` is the one word it takes besides a domain.
+    expect(parseServerSettings({ OSTRA_PREVIEW_DOMAIN: "none" }).ok).toBe(false);
   });
 });

@@ -1,19 +1,23 @@
-import { previewFrameSource } from "@ostra/domain/preview-host";
+import { previewFrameSource, resolvePreviewDomain } from "@ostra/domain/preview-host";
 
 // The panel's Content Security Policy (ticket 35): a nonce per request for Next's own scripts, and
 // no third-party origin anywhere. Agent text never becomes HTML (ADR 0036), and this is the backstop.
 // In development React needs `eval` for its error overlays, and the dev server's websocket.
 //
-// Milestone 8 (ticket 25, F-144, ADR 0068): with a preview domain set, the pane frames the app on
-// its preview host, so `frame-src` names the preview domain's hosts on core's public scheme and
-// port, and nothing wider. Unset, the panel frames nothing, as before. The panel itself is never
-// framed: `frame-ancestors 'none'` stays, beside `X-Frame-Options: DENY` (`next.config.ts`).
+// Milestone 8 (ticket 25, F-144, ADR 0068): with a preview domain, the pane frames the app on its
+// preview host, so `frame-src` names the preview domain's hosts on core's public scheme and port,
+// and nothing wider. The domain is the server's own reading (`resolvePreviewDomain`): the setting,
+// `off`, or a one-machine install's `preview.localhost` when it's unset (2026-11-21). With none,
+// the panel frames nothing, as before. The panel itself is never framed: `frame-ancestors 'none'`
+// stays, beside `X-Frame-Options: DENY` (`next.config.ts`).
 
 export type PolicyOptions = {
   readonly nonce: string;
   readonly dev: boolean;
-  /** `OSTRA_PREVIEW_DOMAIN`, or `undefined` when it's unset. */
+  /** `OSTRA_PREVIEW_DOMAIN` as the environment has it, or `undefined` when it's unset. */
   readonly previewDomain: string | undefined;
+  /** `OSTRA_PUBLIC_URL`: with core's, whether this is a one-machine install. */
+  readonly publicUrl: string;
   /** `OSTRA_CORE_PUBLIC_URL`: preview hosts are served on its scheme and port. */
   readonly corePublicUrl: string;
 };
@@ -25,7 +29,7 @@ const domainOf = (raw: string | undefined): string | undefined => {
 };
 
 export const contentSecurityPolicy = (options: PolicyOptions): string => {
-  const domain = domainOf(options.previewDomain);
+  const { domain } = resolvePreviewDomain(domainOf(options.previewDomain), { publicUrl: options.publicUrl, corePublicUrl: options.corePublicUrl });
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${options.nonce}' 'strict-dynamic'${options.dev ? " 'unsafe-eval'" : ""}`,
@@ -33,7 +37,7 @@ export const contentSecurityPolicy = (options: PolicyOptions): string => {
     "img-src 'self' blob: data:",
     "font-src 'self'",
     `connect-src 'self'${options.dev ? " ws://localhost:* ws://127.0.0.1:*" : ""}`,
-    ...(domain === undefined ? [] : [`frame-src ${previewFrameSource(domain, options.corePublicUrl)}`]),
+    ...(domain === null ? [] : [`frame-src ${previewFrameSource(domain, options.corePublicUrl)}`]),
     "object-src 'none'",
     "base-uri 'self'",
     // The one exception: "Create a new App" posts its manifest to GitHub (F-006). It's a navigation

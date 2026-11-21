@@ -246,7 +246,7 @@ It defaults to the primary's port, and to the same local port when that's free. 
 
 ## The native preview (F-144)
 
-**Only with a preview domain.** `OSTRA_PREVIEW_DOMAIN` is unset by default (Q296). With it unset, the pane shows the browser view, and screenshots and `ostra preview` work as before. A self-hoster who sets it adds:
+**Only with a preview domain.** `OSTRA_PREVIEW_DOMAIN` is unset by default (Q296), except on one machine, where it's `preview.localhost` (the lead, 2026-11-21: "Local installs default to `preview.localhost`", below). With none, the pane shows the browser view, and screenshots and `ostra preview` work as before. A self-hoster who sets it adds:
 - one wildcard DNS record to the ingress in front of core;
 - a wildcard certificate (Let's Encrypt issues those only through DNS-01);
 - WebSocket upgrades passed on those hosts, as runners already need.
@@ -336,6 +336,15 @@ A refused request's cookie is cleared in both forms, the partitioned one and the
 - the screencast's `maxWidth` and `maxHeight` are the page's own size (`browserViewFrameBounds`), so a tablet's frames come at 834×1112, never scaled down to 900 high, and a frame holds no more pixels than the desktop's; a recording's frames take the same bounds.
 
 Options not taken: send the tablet at 834×900, its width with the old height cap, which isn't the preset; or raise the height cap to 1112 and scale the tablet's frames down to fit 1440×900 (about 675×900), which keeps the bytes but blurs the tablet's picture.
+
+**Local installs default to `preview.localhost`** (the lead, 2026-11-21, on the maintainer's feedback that the pane "doesnt look like actual html"). The browser view is pictures of the box's browser, so an install with no preview domain never shows the app itself, and a one-machine install had to know to set `OSTRA_PREVIEW_DOMAIN=preview.localhost` and run the check by hand. `preview.localhost` needs no record and no certificate there (spike 08 §3.5), so it's now the default where it can work:
+- **When:** `OSTRA_PREVIEW_DOMAIN` is unset (or empty) and the panel's and core's public addresses (`OSTRA_PUBLIC_URL`, `OSTRA_CORE_PUBLIC_URL`) are both on loopback (`localhost` or a name under it, `127.0.0.0/8`, `::1`): `docker compose up` with the compose file's defaults, and `pnpm dev`. Both, not core's alone: a panel on a public host would frame `*.localhost`, the viewer's own machine. On any other host unset stays none (`resolvePreviewDomain`, `packages/domain/src/previews/host.ts`, which the settings and the panel's CSP both read).
+- **An explicit setting wins,** and `off` turns previews in the member's own browser off on any install.
+- **Core checks it at its start,** once it listens, as Instance › Previews' "Check again" does (`apps/core/src/previews/local-check.ts`): kept for the install with no one as its runner, and an audit entry `instance.preview_domain_checked` in each organization with the system as its actor. So the pane opens "in your browser" with no admin's step. It runs only for the default (a set domain's record or certificate may not be in place at start, so its check stays the admin's), only when core's public port is the one it listens on (another program may answer the other), and not again once the domain's last result passed.
+- **The check reaches `*.localhost` itself.** Its probe sends every name under `localhost` to `127.0.0.1`, as browsers do, since a container's or a CI machine's resolver may not know them.
+- **The guards hold:** the panel's `localhost` isn't under `preview.localhost`, and a panel or core host that is gets no default (and is refused when the domain is set). The CSP's `frame-src` is the default's hosts on core's port, `http://*.preview.localhost:<port>`.
+
+Options not taken: keep the default unset and document `preview.localhost` for development (the feedback says nobody finds it); default to it whenever core alone is on loopback (a public panel would frame the viewer's own machine); check every domain at start (a real domain's ingress may come up after core, and a failed check would turn the pane back to the stream until an admin checks again).
 
 ## If a spike fails
 

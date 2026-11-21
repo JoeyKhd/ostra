@@ -6,6 +6,8 @@ summary: "Set OSTRA_PREVIEW_DOMAIN, add one wildcard DNS record and a wildcard c
 
 A preview domain lets a task's app open in a member's own browser, on a host of its own, in the task's preview pane or a tab, with its devtools. It's **optional**. Without it, every install still has the browser view, `ostra preview` on a member's own `localhost`, and the screenshots in the thread ([Previews](/docs/using-ostra/previews)), and nothing of it listens.
 
+**On one machine there's nothing to do.** When the panel and core both run on the machine you browse from (`docker compose up` on a laptop, or `pnpm dev` from a clone), so `OSTRA_PUBLIC_URL` and `OSTRA_CORE_PUBLIC_URL` are on `localhost`, `127.0.0.1` or `::1`, the preview domain is `preview.localhost` unless you set one ([On one machine](#on-one-machine)). The rest of this page is for an install other people reach over the network.
+
 With `OSTRA_PREVIEW_DOMAIN` set to `previews.example.com`, each preview is served on `<port>-<id>.previews.example.com`: the app's port in the box, and an ID of the task's own, which stays the same when the task reopens on a fresh box. Core answers every name under the domain with its preview proxy, and with nothing else, and serves the app from the task's box over the connection the box already holds to core. Nothing connects in to a runner.
 
 ## A domain of its own, or a subdomain
@@ -159,15 +161,17 @@ The core service is `<release>-ostra-server-core`. The chart's `values.yaml` hol
 
 A preview's bytes go through the core replica that holds its box's connection. A request that reaches another replica is forwarded to that one, signed under the secrets key every replica shares, and a replica refuses a forwarded request it can't verify. Each replica says where the others reach it in `OSTRA_CORE_REPLICA_URL`: the chart sets it to the pod's IP, and a replica elsewhere takes its first address that isn't loopback, with core's port, over `http`. Set it yourself when that isn't the address the others reach. A one-machine install never forwards.
 
-## On a development machine
+## On one machine
 
-`preview.localhost` needs no DNS record and no certificate: browsers send every `*.localhost` name to the machine itself, and treat it as secure over plain `http`. Previews are then served on `http://<port>-<id>.preview.localhost:8787`, on core's own port. From a clone:
+When the panel and core both run on the machine you browse from, and `OSTRA_PREVIEW_DOMAIN` is unset, the preview domain is **`preview.localhost` by default**. It needs no DNS record and no certificate: browsers send every `*.localhost` name to the machine itself, and treat it as secure over plain `http`. Previews are served on `http://<port>-<id>.preview.localhost:8787`, on core's own port. Vite, Next.js and webpack-dev-server each already allow every `*.localhost` name.
 
-```sh
-OSTRA_PREVIEW_DOMAIN=preview.localhost pnpm dev
-```
+It applies when both `OSTRA_PUBLIC_URL` and `OSTRA_CORE_PUBLIC_URL` are on `localhost` (or a name under it), `127.0.0.1` or `::1`: `docker compose up` with `compose.yaml`'s defaults, and `pnpm dev` from a clone. On any other host it stays unset, since a `*.localhost` name would be the viewer's own machine, not the server.
 
-With Docker Compose on one machine, set `OSTRA_PREVIEW_DOMAIN: preview.localhost` in `compose.yaml` and keep core's address on `http://localhost:8787`. Vite, Next.js and webpack-dev-server each already allow every `*.localhost` name.
+- **Core checks it when it starts,** as **Check again** on **Instance › Previews** would, once core answers on its own port. The result is kept and audited as the system, and once it has passed a restart doesn't check again. So the pane opens previews in your browser with no admin step. The page says the domain is the default.
+- **An explicit setting wins.** `OSTRA_PREVIEW_DOMAIN=preview.localhost` works too, and is then checked on Instance › Previews, as any domain you set.
+- **`OSTRA_PREVIEW_DOMAIN=off` turns it off:** the pane keeps the browser view. An empty value is the same as unset.
+
+With Docker Compose, keep core's published port and its address the same, as `compose.yaml` has them (`8787:8787` and `http://localhost:8787`): core checks the domain from inside its container, on that port.
 
 ## Signing in on a preview
 

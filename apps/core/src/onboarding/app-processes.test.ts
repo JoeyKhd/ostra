@@ -105,7 +105,7 @@ const previewDeps = (): PreviewDeps => ({
   audit: postgresAuditLog,
   clock: h.clock,
   adapters: adapters(),
-  settings: { domain: null, warmMinutes: 60, linkMaxDays: 7, replicaUrl: null },
+  settings: { domain: null, localDefault: false, warmMinutes: 60, linkMaxDays: 7, replicaUrl: null },
 });
 const decideDeps = () => ({ db: h.db, jobs: h.jobs, notices: postgresChangeNotices, audit: postgresAuditLog, clock: h.clock, adapters: adapters() });
 /** OpenCode's way, as core's registry has it: it reaches ostra's MCP server. */

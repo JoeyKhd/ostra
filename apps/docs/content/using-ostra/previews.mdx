@@ -10,7 +10,7 @@ A preview is one of the task's apps live: an [app process](/docs/using-ostra/the
 |---|---|---|
 | **The browser view** | The box's own browser, streamed into the pane as pictures | Nothing: every install, every runner |
 | **`ostra preview`** | Your own browser, on `http://localhost:<port>` | The CLI, signed in |
-| **The app in your browser** | Your own browser, on the preview's own host, in the pane or a tab | A [preview domain](/docs/install/preview-domain), set by whoever runs the install |
+| **The app in your browser** | Your own browser, on the preview's own host, in the pane or a tab | A [preview domain](/docs/install/preview-domain): on by itself when ostra runs on your own machine, else set by whoever runs the install |
 
 Screenshots and recordings of the app land in the thread on top of these, with no setting ([Seeing the running app](/docs/using-ostra/the-running-app#screenshots-and-recordings)).
 
@@ -89,7 +89,7 @@ The page sends no referrer and asks search engines not to index it. An address t
 
 ## The app in your browser
 
-On an install with a [preview domain](/docs/install/preview-domain), the pane can frame the app itself, the **native preview**, served from the box on its own host, `<port>-<id>.<preview domain>`. It's your browser running the app, so devtools work on it, and the page loads the public fonts and scripts the box's network may not reach.
+On an install with a [preview domain](/docs/install/preview-domain), the pane can frame the app itself, the **native preview**, served from the box on its own host, `<port>-<id>.<preview domain>`. An install on one machine (the panel and core on `localhost`) has one with no setting, `preview.localhost`, which core checks when it starts ([On one machine](/docs/install/preview-domain#on-one-machine)). It's your browser running the app, so devtools work on it, and the page loads the public fonts and scripts the box's network may not reach.
 
 - **It's the default** once the domain's check on the instance's Previews page has passed and the task's runner can carry it. **Use the box's browser** and **Open it in your browser** switch between the two, and the pane remembers your choice for each preview in this browser.
 - **The frame never reloads** when you expand the pane or come back to it; the path and reload load the preview's own host in the same frame.

@@ -296,6 +296,11 @@ export const PreviewsBody = ({ data, checking, checkError, onCheck, publicLinks:
             <Mono className="min-w-0 truncate text-[13px] text-muted" >{example}</Mono>
           </>,
         )}
+        {data.defaulted ? (
+          <p className="mt-2 text-sm text-faint" data-testid="preview-domain-default">
+            {tNodes("instance.previews.domain.defaulted", { domain: <Mono className="text-[12.5px] text-muted">{domain}</Mono>, off: <Mono className="text-[12.5px] text-muted">OSTRA_PREVIEW_DOMAIN=off</Mono> })}
+          </p>
+        ) : null}
         {data.sharedSite === null ? null : (
           <div className="mt-2.5 flex items-start gap-[9px] text-[13.5px] text-text" data-testid="preview-domain-warning">
             <TriangleAlertIcon aria-hidden className="mt-0.5 size-[15px] shrink-0 stroke-[1.75] text-muted" />

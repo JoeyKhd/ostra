@@ -1,5 +1,5 @@
 import type { Db, Tx } from "@ostra/db";
-import { previewKeySchema } from "@ostra/protocol";
+import { organizationIdSchema, previewKeySchema } from "@ostra/protocol";
 import type { OrganizationId, PreviewKey, PreviewViewId, TaskId, UserId } from "@ostra/protocol";
 import { z } from "zod";
 
@@ -67,14 +67,21 @@ export const previewDomainStatus = async (db: Db | Tx, domain: string | null): P
 export const nativePreviewOn = (status: PreviewDomainStatus): boolean => status.state === "checked" && status.passed;
 
 /**
+ * Who ran a check: the instance admin on Instance › Previews, or core itself at its start, for a
+ * one-machine install's `preview.localhost` (ADR 0068, 2026-11-21).
+ */
+export type PreviewCheckRunner = { readonly kind: "member"; readonly userId: UserId; readonly scope: MemberScope } | { readonly kind: "system" };
+
+/**
  * Keeps a check's result for the install (ticket 26): the domain it ran on, its answer, when and by
- * whom, replacing the last; and an audit entry in the instance admin's organization, with whether
- * it passed and no result text (`instance-preview-domain.md`, "Data it needs" 5). `not-set` keeps
- * nothing.
+ * whom, replacing the last; and an audit entry with whether it passed and no result text
+ * (`instance-preview-domain.md`, "Data it needs" 5): in the instance admin's organization, or, for
+ * core's own check at its start, in every organization as the system, since the domain is the
+ * install's. `not-set` keeps nothing.
  */
 export const savePreviewDomainCheck = async (
   deps: { readonly db: Db; readonly audit: AuditLog; readonly clock: Clock },
-  by: { readonly userId: UserId; readonly scope: MemberScope },
+  by: PreviewCheckRunner,
   input: { readonly domain: string | null; readonly check: PreviewDomainCheck },
 ): Promise<PreviewDomainStatus> => {
   const { domain, check } = input;
@@ -83,17 +90,23 @@ export const savePreviewDomainCheck = async (
   }
   const at = new Date(check.at);
   await deps.db.$transaction(async (tx) => {
-    const kept = { previewCheckDomain: domain, previewCheck: check, previewCheckAt: at, previewCheckByUserId: by.userId };
+    const kept = { previewCheckDomain: domain, previewCheck: check, previewCheckAt: at, previewCheckByUserId: by.kind === "member" ? by.userId : null };
     await tx.instanceSetting.upsert({ where: { id: "instance" }, create: { id: "instance", ...kept }, update: kept });
-    await deps.audit.recordInTx(tx, {
-      organizationId: by.scope.organizationId,
-      projectId: null,
-      actor: { kind: "member", id: by.scope.memberId },
-      action: "instance.preview_domain_checked",
-      entity: "organization",
-      entityId: by.scope.organizationId,
-      data: { passed: check.passed },
-    });
+    const audited =
+      by.kind === "member"
+        ? [{ organizationId: by.scope.organizationId, actor: { kind: "member" as const, id: by.scope.memberId } }]
+        : (await tx.organization.findMany({ select: { id: true }, orderBy: { id: "asc" } })).map((organization) => ({ organizationId: organizationIdSchema.parse(organization.id), actor: { kind: "system" as const, id: null } }));
+    for (const { organizationId, actor } of audited) {
+      await deps.audit.recordInTx(tx, {
+        organizationId,
+        projectId: null,
+        actor,
+        action: "instance.preview_domain_checked",
+        entity: "organization",
+        entityId: organizationId,
+        data: { passed: check.passed },
+      });
+    }
   });
   return previewDomainStatus(deps.db, domain);
 };

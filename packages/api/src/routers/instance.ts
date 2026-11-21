@@ -68,6 +68,8 @@ const dnsRecordSchema = z.strictObject({ name: z.string(), type: z.enum(["CNAME"
  */
 const instancePreviewsSchema = z.strictObject({
   domain: z.string().nullable(),
+  /** A one-machine install's `preview.localhost`, with `OSTRA_PREVIEW_DOMAIN` unset (ADR 0068, 2026-11-21). */
+  defaulted: z.boolean(),
   /** Under `localhost`: browsers send every name to the machine itself, so no record or certificate. */
   localhost: z.boolean(),
   panelHost: z.string(),
@@ -129,7 +131,7 @@ export const instanceRouter = router({
       { domain, corePublicUrl: ctx.deps.settings.corePublicUrl },
     );
     // Ticket 26: its result is kept for the install, with who ran it, and the run is audited.
-    await savePreviewDomainCheck({ db: ctx.deps.db, audit: ctx.deps.ports.audit, clock: ctx.deps.ports.clock }, { userId: ctx.user.userId, scope: ctx.scope }, { domain, check });
+    await savePreviewDomainCheck({ db: ctx.deps.db, audit: ctx.deps.ports.audit, clock: ctx.deps.ports.clock }, { kind: "member", userId: ctx.user.userId, scope: ctx.scope }, { domain, check });
     return check;
   }),
 
@@ -150,6 +152,7 @@ export const instanceRouter = router({
     const localhost = domain !== null && (domain === "localhost" || domain.endsWith(".localhost"));
     return {
       domain,
+      defaulted: settings.previews.localDefault,
       localhost,
       panelHost: new URL(settings.publicUrl).host,
       coreHost: new URL(settings.corePublicUrl).host,

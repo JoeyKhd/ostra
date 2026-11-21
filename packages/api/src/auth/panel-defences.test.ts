@@ -115,7 +115,7 @@ describe("the panel's own defences", () => {
 });
 
 describe("the instance's preview domain check", () => {
-  it("F-144/c8: an instance admin checks the preview domain: not set by default, and each row's result once it's set", async () => {
+  it("F-144/c8: an instance admin checks the preview domain: not set when there's none (public hosts, or off), and each row's result once it's set", async () => {
     const context = await createContext(harness.deps, { headers: cookieHeaderFrom(session), resHeaders: new Headers() });
     expect(context.user?.instanceAdmin).toBe(true);
     expect(await harness.callerFor(context).instance.previewDomainCheck()).toEqual({ state: "not-set" });

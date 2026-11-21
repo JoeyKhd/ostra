@@ -218,8 +218,11 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       docsUrl: "https://docs.example.com/ostra/",
       // Milestone 6's working values, as a fresh install has them.
       team: { ...installDefaults.team, ...(options.scheduleMinIntervalMinutes === undefined ? {} : { scheduleMinIntervalMinutes: options.scheduleMinIntervalMinutes }) },
-      // Milestone 8's previews and a personal runner's slots, as a fresh install has them.
-      previews: installDefaults.previews,
+      // Milestone 8's previews and a personal runner's slots, as a fresh install has them, but with
+      // no preview domain, as a fresh install on public hosts (or `OSTRA_PREVIEW_DOMAIN=off`) has
+      // it: on this machine's loopback the default would be `preview.localhost` (F-144/c10), and a
+      // test that wants a domain names it (`previews-native.test.ts`'s `withDomain`).
+      previews: { ...installDefaults.previews, domain: null, localDefault: false },
       personalRunnerCapacity: installDefaults.personalRunnerCapacity,
       // Milestone 8's library, as a fresh install has it: search may be turned on, at skills.sh's address.
       library: installDefaults.library,
