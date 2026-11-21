@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { connect as connectTcp, createServer } from "node:net";
+import { request as httpRequest } from "node:http";
+import { createServer } from "node:net";
 import type { Server } from "node:net";
 import type { ClientHttp2Stream } from "node:http2";
 import os from "node:os";
@@ -160,24 +161,37 @@ const serverTextFrames = (stream: ClientHttp2Stream): Inbox => {
   return frames;
 };
 
-/** Whether something takes a connection on `host:port`. */
-const answersAt = (host: string, port: number): Promise<boolean> =>
+/**
+ * Whether `host:port` is still a way to the fixture's app: its `/api/hello` answers in the API's
+ * own words, with the API's port (through Vite's proxy or straight). Never "something takes a
+ * connection": a forwarder's port is the OS's pick, and once it's closed any other server on the
+ * machine may get the same one.
+ */
+const reachesTheApp = (host: string, port: number, api: number): Promise<boolean> =>
   new Promise((resolve) => {
-    const socket = connectTcp({ host, port, autoSelectFamily: true });
-    const done = (answer: boolean): void => {
-      socket.destroy();
-      resolve(answer);
-    };
-    socket.setTimeout(3_000, () => {
-      done(false);
+    // A connection of its own each time (`agent: false`): never one kept alive across the forwarder's close.
+    const request = httpRequest({ host, port, path: "/api/hello", headers: { host: "localhost" }, agent: false, timeout: 3_000 }, (response) => {
+      const chunks: Buffer[] = [];
+      response.on("data", (chunk: Buffer) => chunks.push(chunk));
+      response.on("error", () => {
+        resolve(false);
+      });
+      response.on("end", () => {
+        resolve(Buffer.concat(chunks).toString("utf8").includes(`hello from the API on ${String(api)}`));
+      });
     });
-    socket.once("connect", () => {
-      done(true);
+    request.once("timeout", () => {
+      request.destroy();
     });
-    socket.once("error", () => {
-      done(false);
+    request.once("error", () => {
+      resolve(false);
     });
+    request.end();
   });
+
+/** Each address once: a forwarder opened after another closed may be given its port. */
+const addressesOf = (reaches: readonly AppPortReach[]): readonly { readonly host: string; readonly port: number }[] =>
+  [...new Map(reaches.map((reach) => [`${reach.host}:${String(reach.port)}`, { host: reach.host, port: reach.port }])).values()];
 
 const appProcess = (input: Omit<TaskSpecAppProcess, "repoId" | "folder" | "primary" | "hostRewrite"> & Partial<Pick<TaskSpecAppProcess, "primary" | "hostRewrite">>): TaskSpecAppProcess => ({
   repoId: APP_REPO_ID,
@@ -491,7 +505,7 @@ export const previewTunnelCases = (mode: PreviewTunnelMode) => {
      */
     closes: async (): Promise<void> => {
       const { h, core, reaches } = await runner();
-      const { spec, web, viewId } = await openedView(h, core);
+      const { spec, api, web, viewId } = await openedView(h, core);
       expect((await core.request(viewId, web, "/")).status).toBe(200);
       const before = reaches.length;
       // More streams to the same port reuse the view's way to it: no new forwarder per stream.
@@ -499,10 +513,10 @@ export const previewTunnelCases = (mode: PreviewTunnelMode) => {
         expect((await core.request(viewId, web, "/src/main.jsx")).status).toBe(200);
       }
       expect(reaches.length).toBe(before);
-      const forwarders = mode.name === "docker" ? reaches.filter((reach) => reach.host !== "localhost") : [];
+      const forwarders = mode.name === "docker" ? addressesOf(reaches.filter((reach) => reach.host !== "localhost")) : [];
       if (mode.name === "docker") {
         // The app's start closed its ready checks' forwards; the view's one is open.
-        const open = await Promise.all(forwarders.map((reach) => answersAt(reach.host, reach.port)));
+        const open = await Promise.all(forwarders.map((reach) => reachesTheApp(reach.host, reach.port, api)));
         expect(open.filter(Boolean)).toHaveLength(1);
       } else {
         // The pod's `localhost`, or the machine's: nothing to open or close.
@@ -515,12 +529,12 @@ export const previewTunnelCases = (mode: PreviewTunnelMode) => {
       expect(await connection.closed).toBe(1000);
       expect(viewsOf(h).watching()).toBe(0);
       if (mode.name === "docker") {
-        // The view's forwarder goes with it: nothing in the box takes a connection there now.
+        // The view's forwarder goes with it: none of the box's ways to the app is open now.
         const deadline = Date.now() + 10_000;
-        let open = await Promise.all(forwarders.map((reach) => answersAt(reach.host, reach.port)));
+        let open = await Promise.all(forwarders.map((reach) => reachesTheApp(reach.host, reach.port, api)));
         while (open.some(Boolean) && Date.now() < deadline) {
           await new Promise((resolve) => setTimeout(resolve, 200));
-          open = await Promise.all(forwarders.map((reach) => answersAt(reach.host, reach.port)));
+          open = await Promise.all(forwarders.map((reach) => reachesTheApp(reach.host, reach.port, api)));
         }
         expect(open.filter(Boolean)).toEqual([]);
       }
