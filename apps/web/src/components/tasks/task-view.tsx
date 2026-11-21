@@ -822,6 +822,32 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
     />
   ) : null;
 
+  const properties = (
+    <Properties
+      task={data}
+      checks={checksPropertyOf(checksMarker.data)}
+      tokens={view.tokens}
+      reasoningTokens={view.reasoningTokens}
+      context={view.context}
+      now={now}
+      takingOver={takeOver.isPending}
+      onTakeOver={() => { takeOver.mutate({ taskId }); }}
+      ticket={<>{roundsGroup}{ticketGroups}{draftGroups}</>}
+      effort={
+        <TaskEffortRow
+          effort={effort}
+          viewer={{ driver: data.capabilities.setEffort, canTakeOver: data.capabilities.takeOver, finished }}
+          pending={setEffort.isPending}
+          error={setEffort.error === null ? null : errorText(setEffort.error)}
+          onChange={(level) => { setEffort.mutate({ taskId, level }); }}
+          onTakeOver={takeOverNow}
+        />
+      }
+      noKey={noKey !== null}
+      projectName={project.data?.name ?? ""}
+    />
+  );
+
   return (
     <PageFrame
       padded={false}
@@ -878,31 +904,9 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
               ),
             },
           })}
-      properties={
-        <Properties
-          task={data}
-          checks={checksPropertyOf(checksMarker.data)}
-          tokens={view.tokens}
-          reasoningTokens={view.reasoningTokens}
-          context={view.context}
-          now={now}
-          takingOver={takeOver.isPending}
-          onTakeOver={() => { takeOver.mutate({ taskId }); }}
-          ticket={<>{roundsGroup}{ticketGroups}{draftGroups}</>}
-          effort={
-            <TaskEffortRow
-              effort={effort}
-              viewer={{ driver: data.capabilities.setEffort, canTakeOver: data.capabilities.takeOver, finished }}
-              pending={setEffort.isPending}
-              error={setEffort.error === null ? null : errorText(setEffort.error)}
-              onChange={(level) => { setEffort.mutate({ taskId, level }); }}
-              onTakeOver={takeOverNow}
-            />
-          }
-          noKey={noKey !== null}
-          projectName={project.data?.name ?? ""}
-        />
-      }
+      properties={properties}
+      // Under 640px they don't stack under the thread: the Details row opens them (m2's `phone-task`).
+      phoneProperties="sheet"
     >
       <div className={cn("flex min-h-full flex-col", previewing ? "px-4 pb-4 pt-6 sm:px-7 sm:pt-[22px] lg:h-full" : "px-4 pb-5 pt-6 sm:px-10 sm:pt-[26px] xl:h-full")}>
         <div className="shrink-0">
@@ -975,6 +979,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           <PhoneTaskSections
             task={{ ticket: data.ticket, sync: data.sync, repos: data.repos, contextFiles: data.contextFiles, kind: data.kind, canRetry: data.capabilities.retrySync }}
             retry={{ run: () => { retrySync.mutate({ taskId }); }, pending: retrySync.isPending }}
+            details={properties}
           />
           {stop.error === null ? null : <p role="alert" className="mt-2 text-sm text-red">{errorText(stop.error)}</p>}
           <UnderlineTabs

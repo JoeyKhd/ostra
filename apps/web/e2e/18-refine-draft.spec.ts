@@ -65,8 +65,12 @@ test("F-099/c6,c7: a member edits the agent's draft, uploads an image, then Upda
   await expect(tab.locator("[data-version]")).toHaveText(["v1 · agent", "v2 · agent"]);
   await expect(tab.locator('[data-field="acceptanceCriteria"] input')).toHaveCount(3);
   await expect(page.getByTestId("draft-footnote")).toHaveText(`Update ticket writes version 2 to ${world.ticketKey ?? ""} on Linear and creates 2 sub-issues. Mark ready moves it to Todo.`);
-  // Nothing is on Linear before a member acts.
-  await expect(page.getByText("Nothing written yet. A draft reaches Linear only when someone presses Update ticket.")).toBeVisible();
+  // Nothing is on Linear before a member acts. On a phone the properties are behind Details (phone-task.md).
+  const phone = (page.viewportSize()?.width ?? 1440) < 640;
+  if (phone) await page.locator('[data-action="task-details"]').click();
+  const properties = phone ? page.getByRole("dialog", { name: "Details" }) : page;
+  await expect(properties.getByText("Nothing written yet. A draft reaches Linear only when someone presses Update ticket.")).toBeVisible();
+  if (phone) await page.keyboard.press("Escape");
 
   // The first version is the drafting fake's, read-only.
   await tab.locator('[data-version="1"]').click();
@@ -125,7 +129,8 @@ test("F-099/c5: Needs you lists the draft as a draft ready, and the draft reads 
   const world = await seed();
   await signIn(page);
   await page.goto("/needs-you");
-  const row = page.getByTestId("needs-you-row").filter({ hasText: world.ticketKey ?? "" }).first();
+  // An item of the list, at either width: a phone draws it as its own item (phone-approval.md).
+  const row = page.locator("li[data-notification]").filter({ hasText: world.ticketKey ?? "" }).first();
   await expect(row).toContainText("Draft ready");
   await expect(row).toContainText("Review draft");
   await page.goto(`/tasks/${world.taskId}`);

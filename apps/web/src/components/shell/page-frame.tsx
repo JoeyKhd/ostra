@@ -23,6 +23,11 @@ export type PageFrameProps = {
   readonly actions?: ReactNode;
   /** The 320px properties panel (380px when it holds a form). Stacks below at phone width. */
   readonly properties?: ReactNode;
+  /**
+   * Under 640px, `sheet`: the page opens its properties in a bottom sheet of its own (the task
+   * page's `Details` row, m2's `phone-task`), so they don't stack under it. `stacked` by default.
+   */
+  readonly phoneProperties?: "stacked" | "sheet";
   readonly wideProperties?: boolean;
   /** Pages that scroll their own content (the task thread) pass false. */
   readonly padded?: boolean;
@@ -64,7 +69,7 @@ const PANE_MIN = 420;
  * which stacks under the page below `xl`. The other sizes are the approved pictures'
  * (app-targets/m1/README.md, "Scale").
  */
-export const PageFrame = ({ crumbs, actions, properties, wideProperties = false, padded = true, pane, phoneTitle, children }: PageFrameProps) => {
+export const PageFrame = ({ crumbs, actions, properties, phoneProperties = "stacked", wideProperties = false, padded = true, pane, phoneTitle, children }: PageFrameProps) => {
   const { openNavigation, navigationOpen, passwordChange } = useShell();
   const shell = useOptionalShellState();
   // Below 768px a project's page with no action of its own offers New task in the project, as a
@@ -194,7 +199,7 @@ export const PageFrame = ({ crumbs, actions, properties, wideProperties = false,
         {properties === undefined || pane?.narrow === "pane" ? null : (
           <aside
             aria-label={t("shell.properties")}
-            className={cn("min-w-0 border-t border-line px-4 py-5 sm:px-[18px] xl:overflow-y-auto xl:border-l xl:border-t-0", pane !== undefined && "lg:hidden")}
+            className={cn("min-w-0 border-t border-line px-4 py-5 sm:px-[18px] xl:overflow-y-auto xl:border-l xl:border-t-0", pane !== undefined && "lg:hidden", phoneProperties === "sheet" && "max-sm:hidden")}
           >
             {properties}
           </aside>

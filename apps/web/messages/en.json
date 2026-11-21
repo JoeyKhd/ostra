@@ -2869,7 +2869,8 @@
       "openIn": "Open in {tracker}",
       "syncOn": "Sync on {tracker}",
       "pullRequests": "Pull requests",
-      "noPrYet": "None yet"
+      "noPrYet": "None yet",
+      "details": "Details"
     },
     "box": {
       "label": "Box",

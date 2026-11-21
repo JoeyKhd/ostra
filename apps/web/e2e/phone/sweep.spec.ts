@@ -95,6 +95,20 @@ test("F-075/c1: the menu sheet keeps the account menu in reach by tap, at the ra
   await page.waitForURL(/\/sign-in$/);
 });
 
+test("F-075/c1: a task's properties don't stack under its thread: the Details row opens them as a bottom sheet, and its handle closes it", async ({ page }) => {
+  // m2's `phone-task`, "What leaves the page at this width".
+  await signIn(page, world.username);
+  await page.goto(`/tasks/${world.running.taskId}`);
+  await expect(page.getByTestId("task-doing")).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "Properties" })).toBeHidden();
+  await page.locator('[data-action="task-details"]').tap();
+  const sheet = page.getByRole("dialog", { name: "Details" });
+  await expect(sheet.getByTestId("task-properties")).toBeVisible();
+  await expect(sheet.getByTestId("task-status")).toBeVisible();
+  await sheet.getByRole("button", { name: "Close" }).tap();
+  await expect(sheet).toHaveCount(0);
+});
+
 /** The row of Needs you for a seeded task. */
 const needsYouRow = (page: Page, taskId: string) => page.locator(`li[data-notification]`).filter({ has: page.locator(`a[href="/tasks/${taskId}"]`) });
 

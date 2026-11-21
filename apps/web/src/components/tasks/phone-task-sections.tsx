@@ -1,10 +1,11 @@
 "use client";
 
-import { ArrowUpRightIcon, ChevronRightIcon, CircleCheckIcon, CircleIcon, CircleXIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestIcon, PaperclipIcon } from "lucide-react";
+import { ArrowUpRightIcon, ChevronRightIcon, CircleCheckIcon, CircleIcon, CircleXIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestIcon, PaperclipIcon, SlidersHorizontalIcon } from "lucide-react";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
 import { TicketStatusIcon } from "@/components/inbox/ticket-icons";
+import { Sheet, SheetClose, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/cn";
 import { formatClock } from "@/lib/format";
 import { plural, t } from "@/lib/messages";
@@ -20,7 +21,9 @@ import type { TaskDetail } from "./task-ticket";
 // and Pull requests come first, above the thread: what state the ticket is in, that the tracker is in
 // step, and the PRs. Each is a section, a 13px title over 44px rows with a hairline under each (the
 // target draws 40px; F-075's touch rule makes them 44). Under 640px only: wider, the header's ticket
-// strip and the properties panel say the same.
+// strip and the properties panel say the same. The properties panel doesn't stack under the thread
+// there: a `Details` row, the Ticket section's last (a row of its own without a ticket), opens it
+// as a bottom sheet.
 
 type SyncWrite = TaskDetail["sync"][number];
 type Repo = TaskDetail["repos"][number];
@@ -44,8 +47,45 @@ const Section = ({ title, testId, children }: { readonly title: string; readonly
 
 const rowClass = "flex min-h-11 items-center gap-3 border-b border-line py-2 text-ui";
 
-/** The Ticket section: its status on the tracker with a link to it, then what the agent got, which opens. */
-const TicketSection = ({ ticket, files }: { readonly ticket: NonNullable<TaskDetail["ticket"]>; readonly files: TaskDetail["contextFiles"] }) => {
+/**
+ * `Details` (phone-task.md, "What leaves the page at this width"): `sliders-horizontal`, the word and
+ * `chevron-right`; it opens the properties panel as a bottom sheet, with its grab handle to close it.
+ */
+const DetailsRow = ({ details }: { readonly details: ReactNode }) => (
+  <li className="border-b border-line">
+    <Sheet>
+      <SheetTrigger asChild>
+        <button type="button" className="flex min-h-11 w-full items-center gap-3 py-2 text-left text-ui" data-action="task-details">
+          <SlidersHorizontalIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-muted" />
+          <span className="min-w-0 flex-1 text-text">{t("taskPage.phone.details")}</span>
+          <ChevronRightIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-faint" />
+        </button>
+      </SheetTrigger>
+      <SheetContent
+        side="bottom"
+        title={t("taskPage.phone.details")}
+        closeButton={false}
+        className="px-4 pt-6 pb-[max(16px,env(safe-area-inset-bottom))]"
+        data-testid="task-details-sheet"
+        // The sheet takes the focus, not its grab handle: a tap opened it, not a key.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          if (event.currentTarget instanceof HTMLElement) event.currentTarget.focus();
+        }}
+      >
+        <SheetClose asChild>
+          <button type="button" aria-label={t("common.close")} className="absolute left-1/2 top-0 grid h-5 w-14 -translate-x-1/2 place-items-center rounded-sm">
+            <span aria-hidden className="h-1 w-9 rounded-sm bg-line-2" />
+          </button>
+        </SheetClose>
+        {details}
+      </SheetContent>
+    </Sheet>
+  </li>
+);
+
+/** The Ticket section: its status on the tracker with a link to it, what the agent got, which opens, and Details. */
+const TicketSection = ({ ticket, files, details }: { readonly ticket: NonNullable<TaskDetail["ticket"]>; readonly files: TaskDetail["contextFiles"]; readonly details: ReactNode }) => {
   const [open, setOpen] = useState(false);
   const tracker = trackerName(ticket.tracker);
   const href = safeHref(ticket.url);
@@ -89,6 +129,7 @@ const TicketSection = ({ ticket, files }: { readonly ticket: NonNullable<TaskDet
           </div>
         ) : null}
       </li>
+      <DetailsRow details={details} />
     </Section>
   );
 };
@@ -187,19 +228,27 @@ const PrSection = ({ repos }: { readonly repos: readonly Repo[] }) => (
  * The phone's sections above the thread, in the target's order: Ticket (a ticket task), Sync on
  * Linear (once something was written), Pull requests (once the task has a repo). A prompt task has
  * only Pull requests; a refine task writes nothing it shows here (its draft is its own tab).
+ * `details` is the properties panel, which the `Details` row opens: the Ticket section's last row,
+ * or, with no ticket, a row of its own under the sections.
  */
-export const PhoneTaskSections = ({ task, retry }: {
+export const PhoneTaskSections = ({ task, retry, details }: {
   readonly task: Pick<TaskDetail, "ticket" | "sync" | "repos" | "contextFiles" | "kind"> & { readonly canRetry: boolean };
   readonly retry: { readonly run: () => void; readonly pending: boolean };
+  readonly details: ReactNode;
 }) => {
   const refine = task.kind === "refine";
   return (
     <div className="sm:hidden" data-testid="phone-task-sections">
-      {task.ticket === null ? null : <TicketSection ticket={task.ticket} files={task.contextFiles} />}
+      {task.ticket === null ? null : <TicketSection ticket={task.ticket} files={task.contextFiles} details={details} />}
       {task.ticket === null || refine || task.sync.length === 0 ? null : (
         <SyncSection tracker={trackerName(task.ticket.tracker)} sync={task.sync} retry={task.canRetry ? retry : null} />
       )}
       {refine || task.repos.length === 0 ? null : <PrSection repos={task.repos} />}
+      {task.ticket === null ? (
+        <ul className="mt-4 border-t border-line">
+          <DetailsRow details={details} />
+        </ul>
+      ) : null}
     </div>
   );
 };

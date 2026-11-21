@@ -60,6 +60,7 @@ const draw = (task: Partial<Parameters<typeof PhoneTaskSections>[0]["task"]>) =>
     <PhoneTaskSections
       task={{ ticket, sync: [], repos: [], contextFiles: [], kind: "code", canRetry: false, ...task }}
       retry={idle}
+      details={<div data-testid="task-properties-stub" />}
     />,
   );
 
@@ -110,5 +111,23 @@ describe("the phone's ticket sections (phone-task.md)", () => {
     expect(refine).toContain('data-testid="phone-ticket"');
     expect(refine).not.toContain('data-testid="phone-sync"');
     expect(refine).not.toContain('data-testid="phone-prs"');
+  });
+
+  it("F-075/c1: the properties don't stack under the thread on a phone: a Details row opens them, the Ticket section's last, or a row of its own without a ticket", () => {
+    const row = /<button type="button"[^>]*data-action="task-details"[^>]*>.*?<\/button>/;
+    const ticketed = draw({});
+    expect(ticketed).toMatch(row);
+    const button = row.exec(ticketed)?.[0];
+    expect(button).toContain(t("taskPage.phone.details"));
+    expect(button).toContain('aria-haspopup="dialog"');
+    // The Ticket section's last row.
+    expect(ticketed.indexOf('data-action="task-details"')).toBeGreaterThan(ticketed.indexOf('data-testid="phone-agent-got"'));
+    expect(ticketed.indexOf('data-action="task-details"')).toBeLessThan(ticketed.indexOf("</section>"));
+    // A prompt task: a row of its own, under its Pull requests.
+    const prompt = draw({ ticket: null, repos: [repo(1, "acme/calculator-web", null)] });
+    expect(prompt.match(/data-action="task-details"/g)).toHaveLength(1);
+    expect(prompt.indexOf('data-action="task-details"')).toBeGreaterThan(prompt.indexOf('data-testid="phone-prs"'));
+    // The sheet holds the properties only while it's open: nothing of them is drawn on the page.
+    expect(ticketed).not.toContain("task-properties-stub");
   });
 });
