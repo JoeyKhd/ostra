@@ -14,6 +14,7 @@ import { kubernetesCluster } from "./kubernetes-cluster.ts";
 import { createKubernetesDispatcher } from "./kubernetes-dispatcher.ts";
 import { defaultAgents } from "./task-host/agents.ts";
 import { fetchPullCredential, fetchPushCredential, fetchServiceSecrets, fetchSnapshotCredentials, fetchTaskToken, runnerServerLink } from "./task-host/server-link.ts";
+import { RUNNER_PREVIEW_SUPPORT } from "./task-host/preview-views.ts";
 import { createTaskHost } from "./task-host/task-host.ts";
 import { approvalHooks, DOCKER_CAPABILITIES, withApprovalStatus } from "./pool-approval.ts";
 import { hostSlots, reportedCapabilities } from "./reports.ts";
@@ -126,8 +127,8 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
       const capabilities = reportedCapabilities(executor.capabilities);
       work = {
         handlers: host.handlers,
-        // `host` offers slots only: no CPU or memory (ADR 0059).
-        status: () => ({ ...host.status(), resources: null, capabilities, install }),
+        // `host` offers slots only: no CPU or memory (ADR 0059). Minor 7: the tunnel (ticket 22).
+        status: () => ({ ...host.status(), resources: null, capabilities, install, preview: RUNNER_PREVIEW_SUPPORT }),
         hooks: {
           onSelfFence: (sessions) => {
             host.fence(sessions);
@@ -191,7 +192,8 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
       });
       work = {
         handlers: dispatcher.handlers,
-        status: () => ({ ...dispatcher.status(), resources: offer, capabilities: DOCKER_CAPABILITIES, install }),
+        // Minor 7: each box's sidecar serves the tunnel (ticket 22), with this release's image.
+        status: () => ({ ...dispatcher.status(), resources: offer, capabilities: DOCKER_CAPABILITIES, install, preview: RUNNER_PREVIEW_SUPPORT }),
         hooks: {},
         started: () => undefined,
         shutdown: () => Promise.resolve(),
@@ -247,7 +249,7 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
       });
       work = {
         handlers: dispatcher.handlers,
-        status: () => ({ ...dispatcher.status(), install }),
+        status: () => ({ ...dispatcher.status(), install, preview: RUNNER_PREVIEW_SUPPORT }),
         hooks: {},
         // The pods this runner made before it restarted: their sidecars ran on without it.
         started: () => {

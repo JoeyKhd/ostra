@@ -26,6 +26,7 @@ import type {
   ProcessContainment,
   LeaseEpoch,
   Peer,
+  PreviewSupport,
   RunnerCapabilities,
   RunnerEvent,
   RunnerInstall,
@@ -99,6 +100,11 @@ export type PeerStatus = {
   readonly resources?: RunnerResources | null;
   readonly capabilities?: RunnerCapabilities;
   readonly install?: RunnerInstall;
+  /**
+   * Minor 7 (ADR 0068): what the runner can show of a preview, on the WebSocket. The connection
+   * reports `tunnel: false` on the HTTP carrier whatever this says (Q306). A sidecar leaves it out.
+   */
+  readonly preview?: PreviewSupport;
 };
 
 /** Why the server refused this peer, as `onRefused` reports it. */
@@ -343,6 +349,12 @@ const rawText = (data: RawData): string => {
   return Buffer.from(data).toString("utf8");
 };
 
+/**
+ * Why a `preview.open` in `tunnel` mode is refused on the HTTP carrier (Q306): `ostra preview` and
+ * the native preview need the WebSocket the network blocks.
+ */
+export const TUNNEL_NEEDS_WEBSOCKET = "tunnel-needs-websocket";
+
 export const connectionUrl = (serverUrl: string): string =>
   `${serverUrl.replace(/\/+$/, "").replace(/^http/, "ws")}${runnerPaths.connect}`;
 
@@ -544,11 +556,16 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
     inflightBytes = inflight.reduce((sum, frame) => sum + frame.bytes, 0);
   };
 
-  /** Minor 4's reports of a status, as `hello` and `status` carry them; the codec drops them below minor 4. */
-  const reportsOf = (status: PeerStatus): Pick<Hello, "resources" | "capabilities" | "install"> => ({
+  /**
+   * Minor 4's reports of a status, as `hello` and `status` carry them, and minor 7's preview: the
+   * codec drops each below its minor. On the HTTP carrier there's no tunnel (Q306), whatever the
+   * runner can do on the WebSocket.
+   */
+  const reportsOf = (status: PeerStatus, carrier: Carrier | undefined): Pick<Hello, "resources" | "capabilities" | "install" | "preview"> => ({
     ...(status.resources === undefined ? {} : { resources: status.resources }),
     ...(status.capabilities === undefined ? {} : { capabilities: status.capabilities }),
     ...(status.install === undefined ? {} : { install: status.install }),
+    ...(status.preview === undefined ? {} : { preview: { stream: status.preview.stream, tunnel: status.preview.tunnel && carrier === "websocket" } }),
   });
 
   const sendStatus = (): void => {
@@ -563,7 +580,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
       running: [...status.running],
       spoolBytes: spoolBytes(),
       ...(status.processContainment === undefined ? {} : { processContainment: status.processContainment }),
-      ...reportsOf(status),
+      ...reportsOf(status, link?.carrier),
     });
   };
 
@@ -707,6 +724,11 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
       case "screenshot.take":
         return handlers["screenshot.take"](command);
       case "preview.open":
+        // The HTTP carrier has no tunnel (Q306, ADR 0068): its WebSocket is what a proxy blocks.
+        if (command.body.mode === "tunnel" && link?.carrier === "http") {
+          log.info("a tunnel view refused on the HTTP carrier", { commandId: command.id, viewId: command.body.viewId });
+          return Promise.resolve({ result: "rejected", reason: TUNNEL_NEEDS_WEBSOCKET });
+        }
         return handlers["preview.open"](command);
       case "preview.close":
         return handlers["preview.close"](command);
@@ -810,12 +832,12 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
         nextSessionSeq: session.spool.lastSeq() + 1,
       })),
     // Minor 4 (F-092): a runner's executor and what it reports; a sidecar sends none of them.
-    ...(options.peer.kind === "runner" ? helloReports() : {}),
+    ...(options.peer.kind === "runner" ? helloReports(carrier) : {}),
   });
 
-  const helloReports = (): Pick<Hello, "executor" | "resources" | "capabilities" | "install"> => {
+  const helloReports = (carrier: Carrier): Pick<Hello, "executor" | "resources" | "capabilities" | "install" | "preview"> => {
     const status = options.status();
-    return { executor: status.executor, ...reportsOf(status) };
+    return { executor: status.executor, ...reportsOf(status, carrier) };
   };
 
   // ---------- the WebSocket ----------

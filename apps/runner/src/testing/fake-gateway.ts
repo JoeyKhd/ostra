@@ -6,6 +6,7 @@ import {
   encodeDownFrame,
   negotiate,
   parseUpFrame,
+  previewPaths,
   PROTOCOL_MINOR,
   replicaIdSchema,
   runnerLimits,
@@ -310,6 +311,10 @@ export const startFakeGateway = (server: FakeServer, options: FakeGatewayOptions
   };
 
   server.httpServer.on("upgrade", (request: IncomingMessage, socket: Duplex, head: Buffer) => {
+    // Milestone 8: a view's preview connection is the fake core's (`fake-preview-core.ts`), when a test attaches it.
+    if (request.url?.startsWith(previewPaths.connection) === true) {
+      return;
+    }
     const header = request.headers.authorization;
     const token = header?.startsWith("Bearer ") === true ? header.slice("Bearer ".length) : undefined;
     if (gateway.refuseUpgrades || request.url !== runnerPaths.connect) {

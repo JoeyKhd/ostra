@@ -185,6 +185,14 @@ As built (ticket 19): the presence is the view's `PreviewView.replicaUrl`, writt
 
 **The HTTP fallback carrier** (Q306). A runner on the carrier gets no tunnel: no native preview and no `ostra preview`, because RFC 6202's bounds make a dev server's hundreds of module requests over long polls a poor preview (§2.1). The browser view works over it at 2 frames a second at most *(working value)*: frames go up in `POST /runner/v1/preview/frames` and input comes down the long poll as `preview.input` commands. The pane says the runner reaches the server over HTTP only. This is a difference by network, not by executor, so it isn't one of ADR 0029's.
 
+**As built (ticket 22, 2026-11-21), the box's side of a tunnel:**
+- **The connection** comes paused from the upgrade, since core speaks first (its HTTP/2 preface right behind the 101), and the box's HTTP/2 server reads it from then: no byte is lost before the server listens. The box's own WebSocket duplex never terminates the socket when the session ends, so the box's close code reaches core (1000 for `preview.close`, 1001 when the box stops).
+- **Each stream's port** is the `:authority`'s (`localhost:<port>`), or, when core sends `ostra-target-port` (`previewTunnel.portHeader`), that header's: the native preview's request for an app with `hostRewrite` off keeps the preview's own host as its `:authority`, which the app gets as `Host`. The box removes the header and checks the port as any other. A port `mayReach` refuses, or one the box listens on for the task, is answered 403 before anything is dialled.
+- **The way to a port** is opened on a view's first stream to it and closed with the view: the init's forwarder on `docker`, the pod's `localhost` on `kubernetes`, the machine's on `host`, and a service by its name on `docker`'s box network. A stream to an app process that is getting ready (the view's open starts what isn't running) waits for it, up to the ready check's 120 s.
+- **The open view holds the box:** the runner's idle timer, coming due while a view is open, fires once the last view closes, so a box past its time ends then. Ticket 18's browser view joins the same registry.
+- **On the HTTP carrier** the runner's connection reports `tunnel: false` in `hello` and `status` whatever the box can do, and refuses a `preview.open` in `tunnel` mode itself (`tunnel-needs-websocket`), before any handler.
+- **Back-pressure:** each stream's HTTP/2 window (1 MiB the box advertises, 16 MiB for the connection, *working values*) and the WebSocket's send callbacks. A 4 MiB answer nobody reads holds its own stream, and the next request on the tunnel is answered.
+
 ## `ostra preview` (F-143)
 
 `ostra preview <task> [port] [--local <port>]` serves a preview's port on the member's own `http://localhost:<port>`, as `coder port-forward`, `devin forward` and Cursor's forwarding do (§7).

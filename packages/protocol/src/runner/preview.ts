@@ -326,6 +326,14 @@ export const previewTunnel = {
   /** The `:authority` a request or a `CONNECT` names: the app's port on the box's loopback. */
   authority: (port: number): string => `localhost:${String(port)}`,
   /**
+   * The header that names the app's port when the `:authority` is the preview's own host: the
+   * native preview's request for an app process with `hostRewrite` off keeps the real host in its
+   * `:authority`, which the app gets as `Host`, and names the port here (spike 08's
+   * `ostra-target-port`). The box reads it, removes it, and checks the port as any other. Absent,
+   * the port is the `:authority`'s.
+   */
+  portHeader: "ostra-target-port",
+  /**
    * The largest WebSocket message either side of a tunnel accepts: one write of HTTP/2 frames,
    * which Node keeps far below this *(working value)*. The CLI's tunnel to core takes the same.
    */

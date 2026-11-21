@@ -38,8 +38,13 @@ import type {
   TaskCredentials,
   TaskId,
   TaskSpec,
+  PreviewViewId,
 } from "@ostra/protocol";
+import { makeAgents } from "../connection/http-carrier.ts";
+import type { Agents } from "../connection/http-carrier.ts";
 import type { RunnerConnection, SessionChannel, SessionRef } from "../connection/peer.ts";
+import { openPreviewConnection } from "../connection/preview-connection.ts";
+import type { PreviewConnectionResult } from "../connection/preview-connection.ts";
 import { createBulkClient } from "../server/bulk.ts";
 import type { BulkResult, DownloadInput, Downloaded, UploadInput } from "../server/bulk.ts";
 import { callJson, describeFailure, joinUrl } from "../server/http.ts";
@@ -105,6 +110,11 @@ export type ServerLink = {
   readonly memory: MemoryLink;
   /** Minor 5 (milestone 6): `submit_draft`, `submit_review` and `propose_environment`'s calls, on behalf of the task. */
   readonly team: TeamLink;
+  /**
+   * Minor 7 (ticket 22, ADR 0068): a view's preview connection to core in `tunnel` mode, with the
+   * link's own token (the runner's on `host`, the box's task token in a sidecar) and the lease epoch.
+   */
+  readonly openPreview: (viewId: PreviewViewId, leaseEpoch: LeaseEpoch) => Promise<PreviewConnectionResult>;
 };
 
 /** How long a memory call may take before the tool says memory is unavailable. */
@@ -261,6 +271,8 @@ export const runnerServerLink = (input: {
     const token = await input.tokens.get();
     return token.ok ? { ok: true, token: token.token } : { ok: false, failure: { kind: "unavailable", message: token.message } };
   };
+  /** The preview connections' agent, through the environment's proxy as the session's WebSocket: made at the first view. */
+  let previewAgents: Agents | undefined;
   const bulk = createBulkClient({
     serverUrl: input.serverUrl,
     bearer: async () => {
@@ -311,6 +323,14 @@ export const runnerServerLink = (input: {
     downloadBlob: (download) => bulk.download(download),
     statusChanged: () => {
       input.connection.statusChanged();
+    },
+    openPreview: async (viewId, leaseEpoch) => {
+      const token = await input.tokens.get();
+      if (!token.ok) {
+        return { ok: false, failure: { kind: "unreachable", detail: `no token (${token.reason})` } };
+      }
+      previewAgents ??= makeAgents(input.serverUrl);
+      return openPreviewConnection({ serverUrl: input.serverUrl, token: token.token, viewId, leaseEpoch, mode: "tunnel", agent: previewAgents.websocket });
     },
   };
 };

@@ -188,9 +188,9 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
       const run = runs.get(command.body.sessionId);
       return run === undefined ? done({ result: "rejected", reason: "unknown-session" }) : run.setEffort(command.body);
     },
-    // Protocol minor 7 (milestone 8, ADR 0068): the app's processes (ticket 12), by the session's
-    // box. A member's screenshot and the views are refused until tickets 13 and 18 serve them; until
-    // then this runner reports no `preview` in `hello`, so no view of its tasks opens (`isPreviewable`).
+    // Protocol minor 7 (milestone 8, ADR 0068): the app's processes (ticket 12) and the views
+    // (ticket 22's tunnel), by the session's box. A member's screenshot and the browser view are
+    // refused until tickets 13 and 18 serve them: the runner reports `stream: false` until then.
     "app.start": (command) => {
       const run = runs.get(command.body.sessionId);
       return run === undefined ? done({ result: "rejected", reason: "unknown-session" }) : run.appStart(command.body);
@@ -201,8 +201,16 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
       return run === undefined ? done({ result: "done", reason: "unknown-session" }) : run.appStop(command.body);
     },
     "screenshot.take": () => done({ result: "rejected", reason: "not-supported" }),
-    "preview.open": () => done({ result: "rejected", reason: "not-supported" }),
-    "preview.close": () => done({ result: "rejected", reason: "not-supported" }),
+    "preview.open": (command) => {
+      const run = runs.get(command.body.sessionId);
+      return run === undefined ? done({ result: "rejected", reason: "unknown-session" }) : run.previewOpen(command.body);
+    },
+    "preview.close": (command) => {
+      const run = runs.get(command.body.sessionId);
+      // No session here: none of its views is open either.
+      return run === undefined ? done({ result: "done", reason: "unknown-session" }) : run.previewClose(command.body);
+    },
+    // The browser view's input on the HTTP carrier: ticket 18's.
     "preview.input": () => done({ result: "rejected", reason: "not-supported" }),
     // The `host` executor builds no snapshot image (ADR 0038), so it refuses a build.
     "snapshot-build": () => done({ result: "rejected", reason: "not-supported" }),

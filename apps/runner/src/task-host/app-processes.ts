@@ -9,6 +9,7 @@ import {
   appToolRefusalText,
   boxPortRefusal,
   inBoxAppAddress,
+  mayReach,
   previewTargets,
   runnerLimits,
   SHOW_PREVIEW_TOOL,
@@ -23,6 +24,7 @@ import type {
   BlobId,
   ExecutorKind,
   PreviewListItem,
+  Reach,
   RepoSecret,
   RepoId,
   ReservedPorts,
@@ -163,6 +165,16 @@ export type AppProcesses = {
   readonly previews: () => readonly PreviewListItem[];
   /** Sends the previews' list: at the box's start, and whenever it changes. */
   readonly sendPreviewList: () => Promise<void>;
+  /**
+   * The reach rule for a view's stream (ticket 22, ADR 0068): `mayReach` against the task's
+   * previews and the box's own ports by name, and every port the box listens on for the task.
+   */
+  readonly reach: (port: number) => Reach;
+  /**
+   * Resolves once the process isn't starting and no start asked for it is still pending, or after
+   * `timeoutMs`: a view's stream to an app that's getting ready waits for it (ticket 22).
+   */
+  readonly settled: (name: string, timeoutMs: number) => Promise<void>;
 };
 
 const sleep = (ms: number): Promise<void> =>
@@ -248,6 +260,16 @@ export const createAppProcesses = (options: AppProcessesOptions): AppProcesses =
   const forwarded = options.executor.capabilities.appReach === "forwarder";
   const ownPorts = new Set(options.ownPorts);
   const announced: AnnouncedPreview[] = [];
+  /** How many starts asked for each process haven't run it yet, or are running it: a view's stream waits for them. */
+  const pendingStarts = new Map<string, number>();
+  /** Streams waiting for a process to be ready or settled: woken at each state it reports. */
+  const settledWaiters = new Set<() => void>();
+  const wakeSettled = (): void => {
+    for (const waiter of [...settledWaiters]) {
+      settledWaiters.delete(waiter);
+      waiter();
+    }
+  };
   /** A stop asked while a process's start was still with the executor: it's stopped the moment it starts. */
   const stopAsked = new Map<string, Extract<EndingReason, "stopped" | "box-stopped">>();
   /** Starts run one at a time: a second asks after the first, and finds what it started running. */
@@ -289,6 +311,7 @@ export const createAppProcesses = (options: AppProcessesOptions): AppProcesses =
   ): Promise<void> => {
     // Names, states and numbers only: never the command, its environment or its log.
     log.info("app process", { taskId: options.box.taskId, boxId: options.box.boxId, app: process.name, state, reason: detail.reason, exitCode: detail.exitCode, logBlob: detail.logBlobId !== null });
+    wakeSettled();
     await options.emit({ kind: "app.process", name: process.name, state, port: process.port, ...detail });
   };
 
@@ -525,16 +548,55 @@ export const createAppProcesses = (options: AppProcessesOptions): AppProcesses =
     names === null ? processes : processes.filter((process) => names.includes(process.name));
 
   const start = (names: readonly string[] | null): Promise<readonly AppProcessView[]> => {
+    const asked = selected(names);
+    for (const process of asked) {
+      pendingStarts.set(process.name, (pendingStarts.get(process.name) ?? 0) + 1);
+    }
     const next = chain.then(async () => {
-      const wanted = selected(names);
-      log.info("starting the app's processes", { taskId: options.box.taskId, asked: wanted.length });
-      for (const process of wanted) {
-        await startOne(process);
+      log.info("starting the app's processes", { taskId: options.box.taskId, asked: asked.length });
+      for (const process of asked) {
+        try {
+          await startOne(process);
+        } finally {
+          pendingStarts.set(process.name, (pendingStarts.get(process.name) ?? 1) - 1);
+          wakeSettled();
+        }
       }
-      return wanted.map(viewOf);
+      return asked.map(viewOf);
     });
     chain = next.catch(() => undefined);
     return next;
+  };
+
+  /** Whether a process is getting ready: starting now, or not running with a start asked for it still to run. */
+  const gettingReady = (name: string): boolean => {
+    const state = slots.get(name)?.state;
+    return state === "starting" || (state !== "ready" && (pendingStarts.get(name) ?? 0) > 0);
+  };
+
+  const settled = async (name: string, timeoutMs: number): Promise<void> => {
+    const deadline = Date.now() + timeoutMs;
+    while (gettingReady(name) && Date.now() < deadline) {
+      await new Promise<void>((resolve) => {
+        const waiter = (): void => {
+          clearTimeout(timer);
+          resolve();
+        };
+        const timer = setTimeout(() => {
+          settledWaiters.delete(waiter);
+          resolve();
+        }, Math.max(0, deadline - Date.now()));
+        timer.unref();
+        settledWaiters.add(waiter);
+      });
+    }
+  };
+
+  const reachRule = (port: number): Reach => {
+    if (ownPorts.has(port)) {
+      return { ok: false, refusal: { reason: "reserved", name: "mcp-proxy" } };
+    }
+    return mayReach(port, previews(), options.reservedPorts);
   };
 
   const stopRun = async (process: TaskSpecAppProcess, reason: Extract<EndingReason, "stopped" | "box-stopped">): Promise<void> => {
@@ -633,5 +695,7 @@ export const createAppProcesses = (options: AppProcessesOptions): AppProcesses =
     announce,
     previews,
     sendPreviewList,
+    reach: reachRule,
+    settled,
   };
 };

@@ -22,3 +22,10 @@ export type { RegisterInput, RegisterProof } from "./server/register.ts";
 export { createAccessTokens } from "./server/access-token.ts";
 export type { AccessTokens, AccessTokensInput } from "./server/access-token.ts";
 export type { CallFailure, CallResult } from "./server/http.ts";
+// Milestone 8 (ticket 22): the box's side of a tunnel view, for core's test of its own tunnel code
+// against the runner's (`apps/core/src/previews/runner-tunnel.test.ts`).
+export { openPreviewConnection } from "./connection/preview-connection.ts";
+export type { PreviewConnectionFailure, PreviewConnectionResult } from "./connection/preview-connection.ts";
+export { TUNNEL_NEEDS_WEBSOCKET } from "./connection/peer.ts";
+export { createPreviewViews, RUNNER_PREVIEW_SUPPORT } from "./task-host/preview-views.ts";
+export type { PreviewViews, PreviewViewsDeps } from "./task-host/preview-views.ts";

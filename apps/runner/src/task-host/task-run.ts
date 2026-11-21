@@ -8,6 +8,7 @@ import type {
   AgentIo,
   AgentLaunch,
   AgentProcess,
+  AppPortReach,
   HiddenRepoConfig,
   LaunchMcpServer,
   LaunchSkill,
@@ -63,6 +64,7 @@ import type {
   TaskRule,
   TurnMode,
   HiddenRefOutcome,
+  PreviewTarget,
   ReservedPorts,
   RestoreOrigin,
   SessionId,
@@ -90,6 +92,8 @@ import { launchAppOf } from "./app-block.ts";
 import { createAppProcesses } from "./app-processes.ts";
 import type { AppEvent, AppProcesses, AppTiming } from "./app-processes.ts";
 import { checkLaunchEnvironment, checkLaunchFiles } from "./environment-check.ts";
+import { createPreviewViews } from "./preview-views.ts";
+import type { PreviewViews } from "./preview-views.ts";
 import { checkRepoFolders } from "./repo-folders.ts";
 import type { ServerLink } from "./server-link.ts";
 import { allowOnce, decidePermission, rejectOnce, TASK_RULE_NAME } from "./permission-decision.ts";
@@ -261,6 +265,16 @@ export type TaskRun = {
   readonly appStop: (body: CommandBody<"app.stop">) => Promise<CommandOutcome>;
   /** Milestone 8: the box's app, once the box is ready; `undefined` before, or when it never got ready. */
   readonly app: () => AppProcesses | undefined;
+  /**
+   * Minor 7 (ticket 22): a view of one of the task's previews. In `tunnel` mode the box opens its
+   * preview connection and serves HTTP/2 on it; the view holds the box past its idle timer until it
+   * closes (ADR 0068). The `stream` mode is ticket 18's.
+   */
+  readonly previewOpen: (body: CommandBody<"preview.open">) => Promise<CommandOutcome>;
+  /** Minor 7 (ticket 22): the view closed: its connection ends. */
+  readonly previewClose: (body: CommandBody<"preview.close">) => Promise<CommandOutcome>;
+  /** Milestone 8: the box's open views. */
+  readonly views: () => PreviewViews;
   /** The self-fence: end the agent, keep the workspace, send nothing more. */
   readonly fence: () => Promise<void>;
   /** The server refused the lease: end the agent and release, without pushing. */
@@ -475,6 +489,63 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   const firstTurnAutomatic = (taskSpec: TaskSpec): boolean => taskSpec.automatic === true || dispatch.automatic === true;
   /** The idle limit of a session across turns, in ms. */
   const idleMs = (taskSpec: TaskSpec): number => (taskSpec.limits.idleMinutes ?? runnerLimits.idleMinutes) * 60_000;
+
+  // ---------- the box's views (milestone 8, ticket 22, ADR 0068) ----------
+
+  /** The box's own ports by name, once its app is open: no view reaches them. */
+  let boxReserved: ReservedPorts | undefined;
+  /**
+   * Where the box reaches a preview's port: a service by its name on `docker`'s box network, and
+   * anything else through the executor (the init's forwarder on `docker`, `localhost` elsewhere).
+   */
+  const reachPreviewPort = (target: PreviewTarget, port: number): Promise<AdapterResult<AppPortReach>> => {
+    if ("service" in target && executorKind === "docker") {
+      return Promise.resolve({ ok: true, value: { host: target.service, port, close: () => Promise.resolve() } });
+    }
+    if (boxReserved === undefined) {
+      return Promise.resolve(adapterError("unavailable", "the box's app isn't open"));
+    }
+    return deps.executor.reachAppPort({ box, port, reserved: boxReserved });
+  };
+  const views = createPreviewViews({
+    connect: (viewId) => deps.link.openPreview(viewId, dispatch.leaseEpoch),
+    mayReach: (port) => app?.reach(port) ?? { ok: false, refusal: { reason: "not-a-preview" } },
+    reachPort: reachPreviewPort,
+    settled: (target) => ("process" in target && app !== undefined ? app.settled(target.process, runnerLimits.appReadyTimeoutSeconds * 1000) : Promise.resolve()),
+    logger: log,
+  });
+  /** Idle timers that came due while a view was open: each fires once the last view closes (ADR 0068). */
+  const heldIdle = new Set<() => void>();
+  views.onUnwatched(() => {
+    for (const fire of [...heldIdle]) {
+      heldIdle.delete(fire);
+      log.info("the last view closed after the idle timer came due: the box ends now");
+      fire();
+    }
+  });
+  /**
+   * The idle timer, held while one of the box's views is open (ADR 0068, "How core holds them"):
+   * when it comes due with a view open, it fires once the last one closes, so a box past its time
+   * stops then. Disarming it drops a held one too.
+   */
+  const idleAfter = (ms: number, fire: () => void): (() => void) => {
+    let held: (() => void) | undefined;
+    const disarm = timers.after(ms, () => {
+      if (views.watching() === 0) {
+        fire();
+        return;
+      }
+      held = fire;
+      heldIdle.add(fire);
+      log.info("the idle timer came due while a preview is open: the box stays until its views close", { views: views.watching() });
+    });
+    return () => {
+      disarm();
+      if (held !== undefined) {
+        heldIdle.delete(held);
+      }
+    };
+  };
   /** Wakes the session waiting between turns: a message came, or the session is ending. */
   let wake: (() => void) | undefined;
   const nudge = (): void => {
@@ -739,7 +810,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     const waitingSpec = spec;
     const disarmIdle =
       acrossTurns && waitingSpec !== undefined
-        ? timers.after(idleMs(waitingSpec), () => {
+        ? idleAfter(idleMs(waitingSpec), () => {
             log.info("a turn waited on a person past the idle limit: ending the session", { idleMinutes: waitingSpec.limits.idleMinutes ?? null });
             end({ kind: "idle" });
             thisTurn.abort();
@@ -1341,7 +1412,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
    * turn before then starts the timer again the next time the session waits.
    */
   const nextTurn = async (taskSpec: TaskSpec): Promise<string | undefined> => {
-    const disarm = timers.after(idleMs(taskSpec), () => {
+    const disarm = idleAfter(idleMs(taskSpec), () => {
       log.info("the session was idle for its limit: ending it", { idleMinutes: taskSpec.limits.idleMinutes ?? null });
       end({ kind: "idle" });
     });
@@ -1528,7 +1599,9 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     }
     session = undefined;
     if (boxCreated) {
-      // Milestone 8: the app's processes stop with the box, each reported `stopped` (`box-stopped`).
+      // Milestone 8: the box's views end first (ticket 22), then the app's processes stop with the
+      // box, each reported `stopped` (`box-stopped`).
+      views.closeAll("box-stopping");
       await app?.stopAll();
       await deps.executor.stop({ box, graceMs: deps.stopGraceMs });
     }
@@ -1537,6 +1610,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   };
 
   const cleanUp = async (keepWorkspace: boolean): Promise<void> => {
+    views.closeAll("box-stopping");
     keyProxy?.revoke();
     await restoreRepoConfig();
     await Promise.allSettled([keyProxy?.close(), gitProxy?.close(), mcp?.close(), mcpProxy?.close()]);
@@ -2001,6 +2075,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       return adapterError("unavailable", "the task's proxies aren't running");
     }
     // The box's stop ends the app's processes too: each is reported, and starts again when asked.
+    // An open view keeps its connection, and reaches the box's ports afresh once it's back.
+    views.forgetReaches();
     await app?.stopAll();
     await deps.executor.stop({ box, graceMs: deps.stopGraceMs });
     const again = await deps.executor.resumeBox({ ...box, spec: taskSpec, proxies });
@@ -2287,6 +2363,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       browser: null,
     };
     const ownPorts = [...Object.values(reservedPorts), mcpProxy === undefined ? null : portOfUrl(mcpProxy.urlFor("/"))].filter((port): port is number => port !== null);
+    boxReserved = reservedPorts;
     app = createAppProcesses({
       executor: deps.executor,
       box,
@@ -2323,7 +2400,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
    * session waits between turns, with the idle timer running. `true` once one came.
    */
   const awaitFirstMessage = async (taskSpec: TaskSpec): Promise<boolean> => {
-    const disarm = timers.after(idleMs(taskSpec), () => {
+    const disarm = idleAfter(idleMs(taskSpec), () => {
       log.info("the app's box was idle for its limit: ending it", { idleMinutes: taskSpec.limits.idleMinutes ?? null });
       end({ kind: "idle" });
     });
@@ -2581,6 +2658,43 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       return Promise.resolve({ result: "accepted" });
     },
     app: () => app,
+    previewOpen: (body) => {
+      if (body.mode !== "tunnel") {
+        // The browser view is ticket 18's: until then the runner reports `stream: false`, and core sends none.
+        return Promise.resolve({ result: "rejected", reason: "stream-not-supported" });
+      }
+      if (views.has(body.viewId)) {
+        return Promise.resolve({ result: "done" });
+      }
+      if (ending !== undefined) {
+        return Promise.resolve({ result: "rejected", reason: "session-ending" });
+      }
+      const isPreview = (opened: AppProcesses): boolean => opened.previews().some((item) => item.key === body.key);
+      // The reach rule (ADR 0068): a view opens only on one of the task's previews.
+      if (app !== undefined && !isPreview(app)) {
+        log.info("a view refused: not one of the task's previews", { viewId: body.viewId, key: body.key });
+        return Promise.resolve({ result: "rejected", reason: "not-a-preview" });
+      }
+      views.open({
+        viewId: body.viewId,
+        key: body.key,
+        // Before the box is ready the view waits for it; an opened view starts what isn't running.
+        ready: appOpened.promise.then((opened) => {
+          if (opened === undefined || ending !== undefined || !isPreview(opened)) {
+            return false;
+          }
+          if (opened.any) {
+            opened.start(null).catch((error: unknown) => {
+              log.warn("starting the app for a view failed", { error: errorName(error) });
+            });
+          }
+          return true;
+        }),
+      });
+      return Promise.resolve({ result: "accepted" });
+    },
+    previewClose: (body) => Promise.resolve(views.close(body.viewId, "closed") ? { result: "done" } : { result: "done", reason: "unknown-view" }),
+    views: () => views,
     endBetweenTurns: async () => {
       if (turnRunning) {
         return false;
