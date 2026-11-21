@@ -29,7 +29,7 @@ afterAll(async () => {
 afterEach(async () => {
   await harness?.close();
   harness = undefined;
-  await rm(tempDir, { recursive: true, force: true });
+  await rm(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 }, 60_000);
 
 const start = async (): Promise<Harness> => {

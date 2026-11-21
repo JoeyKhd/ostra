@@ -125,7 +125,7 @@ const moveBranch = async (spec: TaskSpec, how: "on-top" | "unrelated"): Promise<
     await git(["commit", "--quiet", "-m", "move the branch"]);
     await git(["push", "--quiet", "--force", "origin", `HEAD:refs/heads/${spec.branchName}`]);
   } finally {
-    await rm(work, { recursive: true, force: true });
+    await rm(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 };
 

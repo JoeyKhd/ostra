@@ -23,7 +23,7 @@ afterEach(async () => {
   for (const holder of holders.splice(0)) {
     await holder.crash();
   }
-  await rm(dataDir, { recursive: true, force: true });
+  await rm(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 });
 
 const hold = async (): Promise<LockHolder> => {

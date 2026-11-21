@@ -43,7 +43,7 @@ afterEach(async () => {
   await server?.close();
   gateway = undefined;
   server = undefined;
-  await rm(dataDir, { recursive: true, force: true });
+  await rm(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 });
 
 const setup = async (gatewayOptions: FakeGatewayOptions = {}): Promise<{ readonly server: FakeServer; readonly gateway: FakeGateway }> => {

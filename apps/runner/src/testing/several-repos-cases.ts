@@ -321,7 +321,7 @@ export const severalReposCases = (mode: SeveralReposMode) => {
           expect(await upstream().treeFiles(`ostra-test/${name}`, `refs/heads/${spec.branchName}`)).toContain(`${name}-agent.txt`);
         }
       } finally {
-        await rm(home, { recursive: true, force: true });
+        await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
       }
       await h.waitForAck(h.stop(spec));
     },

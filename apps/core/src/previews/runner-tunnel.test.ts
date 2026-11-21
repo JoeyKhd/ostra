@@ -422,6 +422,13 @@ describe("the runner on the HTTP carrier", () => {
     return { connection, dataDir };
   };
 
+  /**
+   * Removes a stopped runner's data folder. The runner saves `state.json` (a temporary file, then a
+   * rename) before it sends a command's result, so each case waits for its last command's ack
+   * first; Windows can still hold a just-renamed file for a moment, so `rm` retries.
+   */
+  const removeDataDir = (dataDir: string): Promise<void> => rm(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+
   const reportedPreview = async (runnerId: RunnerId) => {
     const row = await test.db.runner.findUniqueOrThrow({ where: { id: runnerId }, select: { preview: true } });
     return previewSupportSchema.nullable().parse(row.preview);
@@ -452,19 +459,22 @@ describe("the runner on the HTTP carrier", () => {
       expect(handed).toEqual([]);
     } finally {
       await http.connection.stop();
-      await rm(http.dataDir, { recursive: true, force: true });
+      await removeDataDir(http.dataDir);
     }
     const ws = await connectRunner("websocket", ref, handed);
     try {
       await waitFor("the runner on the WebSocket", () => ws.connection.report().carrier === "websocket", 30_000);
       await waitFor("its report", async () => (await reportedPreview(ref.runnerId))?.tunnel === true, 10_000);
       expect(await reportedPreview(ref.runnerId)).toEqual({ stream: false, tunnel: true });
-      await sendOpen(ref.runnerId, `view-ws-${randomBytes(3).toString("hex")}`);
+      const open = await sendOpen(ref.runnerId, `view-ws-${randomBytes(3).toString("hex")}`);
       await waitFor("the open handed to the runner", () => handed.length === 1, 30_000);
       expect(handed[0]?.body.mode).toBe("tunnel");
+      // Its ack: the runner has saved its state for the open, and writes nothing more to its folder.
+      await waitFor("the open's ack", async () => (await test.db.command.findFirst({ where: { id: open.commandId, ackedAt: { not: null } } })) !== null, 30_000);
+      expect(await test.db.command.findUniqueOrThrow({ where: { id: open.commandId }, select: { result: true } })).toEqual({ result: "accepted" });
     } finally {
       await ws.connection.stop();
-      await rm(ws.dataDir, { recursive: true, force: true });
+      await removeDataDir(ws.dataDir);
     }
   }, 120_000);
 });

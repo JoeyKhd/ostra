@@ -28,7 +28,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await engine.close();
-  await rm(root, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 });
 
 const ACCESS_TOKEN = "ostra-task-box-dispatcher-token";

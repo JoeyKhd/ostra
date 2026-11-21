@@ -103,7 +103,7 @@ describe.skipIf(!env.success)("the git proxy, live against the test repo", () =>
       await removeRef(`refs/heads/${branch}`);
       await removeRef(hiddenRef);
       await proxy.close();
-      await rm(root, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }
     const everything = [...outputs, ...logs].join("\n");
     expect(everything.includes(token), "the token is in no git output or log line").toBe(false);

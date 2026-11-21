@@ -26,7 +26,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await server?.close();
   server = undefined;
-  await rm(dataDir, { recursive: true, force: true });
+  await rm(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 });
 
 const start = async (options: FakeServerOptions = {}): Promise<FakeServer> => {
