@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { PROTOCOL_MINOR } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
 import { buildSteps, defaultBuilds, parseBuildArgs, protocolMinorOf } from "./build-runner-at.ts";
@@ -41,7 +42,7 @@ describe("build-runner-at (F-061)", () => {
 
   it("F-061: reads the protocol minor a build speaks from its source", async () => {
     const today = await readFile(path.join(root, "packages", "protocol", "src", "runner", "version.ts"), "utf8");
-    expect(protocolMinorOf(today)).toBe(7);
+    expect(protocolMinorOf(today)).toBe(PROTOCOL_MINOR);
     expect(protocolMinorOf("export const PROTOCOL_MINOR = 2;")).toBe(2);
     expect(protocolMinorOf("nothing here")).toBeNull();
   });
