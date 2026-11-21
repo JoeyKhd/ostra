@@ -76,7 +76,8 @@ export const HomeView = () => {
           <PlusIcon /> {t("shell.newTask")}
         </Link>
       }
-      {...(setup.data === undefined ? {} : { properties: <HomePanel overview={overview.data} now={now} /> })}
+      // The board takes the full width: no properties panel in the board view (home-board.md, "Layout").
+      {...(setup.data === undefined || (view === "board" && !firstRun) ? {} : { properties: <HomePanel overview={overview.data} now={now} /> })}
     >
       <PageHeading eyebrow={<span suppressHydrationWarning>{today(now)}</span>} title={organization?.name ?? t("home.title")} lede={lede} />
       {setupView === "no-runner" ? <NoRunnerNotice admin={admin} /> : null}
