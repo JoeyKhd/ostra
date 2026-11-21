@@ -31,6 +31,8 @@ export type LogRow = {
   /** The `seq` of the event a tool call's completion or failure was recorded with. */
   readonly endSeq: number | null;
   readonly turn: number | null;
+  /** A turn's start: who started it, the author of the message before it (`null`: an automatic turn). */
+  readonly startedBy?: string | null;
 };
 
 type Names = ReadonlyMap<string, string>;
@@ -142,6 +144,8 @@ export const buildRows = (events: readonly StoredEvent[], names: Names): readonl
   const callRow = new Map<string, number>();
   let turn = 0;
   let inTurn: number | null = null;
+  /** The author of the last member message since the last turn started: who starts the next one. */
+  let lastAuthor: string | null = null;
   for (const stored of events) {
     const event = stored.event;
     const base = { seq: stored.seq, at: stored.at, status: null, durationMs: null, body: null, endSeq: null, turn: inTurn };
@@ -188,7 +192,8 @@ export const buildRows = (events: readonly StoredEvent[], names: Names): readonl
     if (event.kind === "turn.started") {
       turn += 1;
       inTurn = turn;
-      rows.push({ ...base, turn, chip: "turn", word: "turn", icon: "play", text: { lead: t("eventLog.turnStarted", { n: turn }) } });
+      rows.push({ ...base, turn, chip: "turn", word: "turn", icon: "play", text: { lead: t("eventLog.turnStarted", { n: turn }) }, startedBy: lastAuthor });
+      lastAuthor = null;
       continue;
     }
     if (event.kind === "turn.ended" || event.kind === "turn.failed") {
@@ -207,6 +212,7 @@ export const buildRows = (events: readonly StoredEvent[], names: Names): readonl
     }
     if (event.kind === "user.message") {
       const text = event.text;
+      lastAuthor = nameOf(names, event.memberId);
       rows.push({ ...base, chip: "message", word: "message", icon: "user", text: { strong: `${nameOf(names, event.memberId)}:`, lead: firstLine(text) }, body: text.includes("\n") || text.length > 160 ? { text } : null });
       continue;
     }

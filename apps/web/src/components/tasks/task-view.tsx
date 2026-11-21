@@ -987,7 +987,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           </div>
         ) : tab === "events" ? (
           <div className="flex min-h-0 flex-1 flex-col" id="task-tab-events">
-            <EventLogTab taskId={taskId} names={names} executor={data.runner?.executor ?? null} seq={Number.isInteger(seqParam) && seqParam > 0 ? seqParam : null} />
+            <EventLogTab taskId={taskId} names={names} executor={data.runner?.executor ?? null} seq={Number.isInteger(seqParam) && seqParam > 0 ? seqParam : null} agent={agentName} model={data.agent?.model?.name ?? null} />
           </div>
         ) : tab === "checks" ? (
           <div className="min-h-0 flex-1" id="task-tab-checks">

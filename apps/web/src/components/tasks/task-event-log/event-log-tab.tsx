@@ -145,7 +145,15 @@ const RowBody = ({ row, taskId }: { readonly row: LogRow; readonly taskId: TaskI
  * The task's Event log tab (F-073, ADR 0054; task-event-log.md): every event in order, filtered by kind,
  * each tool call with its full input, status and error. It reads what's stored and never re-runs it.
  */
-export const EventLogTab = ({ taskId, names, executor, seq }: { readonly taskId: TaskId; readonly names: ReadonlyMap<string, string>; readonly executor: string | null; readonly seq: number | null }) => {
+export const EventLogTab = ({ taskId, names, executor, seq, agent, model }: {
+  readonly taskId: TaskId;
+  readonly names: ReadonlyMap<string, string>;
+  readonly executor: string | null;
+  readonly seq: number | null;
+  /** The band's `{agent} · {model}` (task-event-log.md, "Turn bands"). */
+  readonly agent?: string;
+  readonly model?: string | null;
+}) => {
   const trpc = useTRPC();
   const client = useTRPCClient();
   const pages = useInfiniteQuery({
@@ -240,6 +248,13 @@ export const EventLogTab = ({ taskId, names, executor, seq }: { readonly taskId:
     requestAnimationFrame(() => { document.querySelector<HTMLButtonElement>(`[data-seq="${String(next.seq)}"]`)?.focus(); });
   };
 
+  /** `09:38 · Alex Kim · OpenCode · Claude Sonnet 5.5`: when the turn started, who started it, the agent and its model. */
+  const bandMeta = (turn: number): string => {
+    const start = rows.find((row) => row.chip === "turn" && row.icon === "play" && row.turn === turn);
+    return [start === undefined ? null : clockText(start.at).slice(0, 5), start?.startedBy ?? null, agent ?? null, model ?? null]
+      .filter((part): part is string => part !== null && part !== "")
+      .join(" · ");
+  };
   const recordLine = executor === "host" ? t("eventLog.recordHost") : t("eventLog.recordBox");
   const loading = pages.isPending;
 
@@ -253,26 +268,27 @@ export const EventLogTab = ({ taskId, names, executor, seq }: { readonly taskId:
             aria-pressed={chip === value}
             data-chip={value}
             onClick={() => { setChip(value); }}
-            className={cn("inline-flex h-[26px] items-center gap-1.5 rounded-md border border-line-2 px-2.5 text-[13px]", chip === value ? "bg-raise text-text" : "text-muted hover:bg-hover")}
+            className={cn("inline-flex h-[26px] items-center gap-1.5 rounded-md border border-line-2 px-2 text-[12.5px]", chip === value ? "bg-raise text-text" : "text-muted hover:bg-hover")}
           >
             {chipWord(value)}
             <span className="font-mono text-xs text-faint">{loading ? "–" : (counts.get(value) ?? 0)}</span>
           </button>
         ))}
-        <span aria-hidden className="mx-3 h-[18px] w-px bg-line-2" />
+        {/* Tighter than the picture's, so the order toggle stays on the row beside the double sidebar. */}
+        <span aria-hidden className="mx-1.5 h-[18px] w-px bg-line-2" />
         <button
           type="button"
           aria-pressed={failedOnly}
           disabled={failedCount === 0 && !failedOnly}
           data-chip="failed"
           onClick={() => { setFailedOnly((value) => !value); }}
-          className={cn("inline-flex h-[26px] items-center gap-1.5 rounded-md border border-line-2 px-2.5 text-[13px] text-muted disabled:opacity-60", failedOnly && "bg-raise text-text")}
+          className={cn("inline-flex h-[26px] items-center gap-1.5 rounded-md border border-line-2 px-2 text-[12.5px] text-muted disabled:opacity-60", failedOnly && "bg-raise text-text")}
         >
           <CircleXIcon aria-hidden className={cn("size-[13px] stroke-[1.75]", failedCount === 0 ? "text-faint" : "text-red")} />
           {t("eventLog.failedOrRefused")}
           <span className={cn("font-mono text-xs", failedCount === 0 ? "text-faint" : "text-red")}>{failedCount}</span>
         </button>
-        <Button variant="ghost" size="sm" className="ml-auto text-[13px] text-faint" onClick={() => { setNewestFirst((value) => !value); }}>
+        <Button variant="ghost" size="sm" className="ml-auto px-2 text-[13px] text-faint" onClick={() => { setNewestFirst((value) => !value); }}>
           {newestFirst ? t("eventLog.newestFirst") : t("eventLog.oldestFirst")}
         </Button>
       </div>
@@ -305,6 +321,7 @@ export const EventLogTab = ({ taskId, names, executor, seq }: { readonly taskId:
                 return (
                   <div key={`band-${String(entry.turn)}-${String(item.index)}`} ref={virtualizer.measureElement} data-index={item.index} className="absolute left-0 top-0 flex h-8 w-full items-center bg-raise px-3 text-ui font-semibold text-text" style={style}>
                     {entry.turn === null ? t("eventLog.beforeTurn") : t("eventLog.turn", { n: entry.turn })}
+                    {entry.turn === null ? null : <span className="ml-3 truncate font-mono text-xs font-normal text-faint">{bandMeta(entry.turn)}</span>}
                   </div>
                 );
               }
