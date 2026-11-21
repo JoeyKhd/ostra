@@ -4,6 +4,7 @@ import type {
   BoxId,
   BoxReleaseReason,
   BoxState,
+  DispatchPurpose,
   GitPerson,
   GitSha,
   HiddenRefRestore,
@@ -93,6 +94,12 @@ export type CreateBoxInput = BoxRef & {
   readonly taskToken?: string | null;
   /** Milestone 5 (F-093): told when the box waits before it runs, and when it's scheduled. Only an executor with `nodeWait` waits for a node. */
   readonly onWaiting?: (change: BoxWaitChange) => void;
+  /**
+   * Milestone 8 (Q300, ticket 12): the dispatch's purpose, for an executor whose box's sidecar
+   * starts the task itself (`kubernetes`): `app` starts the box and its app, and no agent until a
+   * member's message. Absent: a turn. An executor that runs the task in the runner ignores it.
+   */
+  readonly purpose?: DispatchPurpose;
 };
 
 /** Where the box's workspace is, as the agent sees it. */
@@ -108,6 +115,12 @@ export type CreatedBox = {
    * A path the agent's process can read: in a container, the same path as on the executor.
    */
   readonly gitConfig: string;
+  /**
+   * Milestone 8 (F-140, ticket 12): where the app's processes' logs go, `.ostra/app` in the task's
+   * folder and never in a repo, as the agent's process reads it. The runner names it to the agent,
+   * which works in a checkout below the task's folder. Absent for an executor that runs no app process.
+   */
+  readonly appLogDir?: string;
 };
 
 /** The names `gitGuardEnv` sets: an agent's launch environment takes them from the runner only. */

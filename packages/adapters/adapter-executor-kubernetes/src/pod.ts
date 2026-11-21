@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import type { V1Container, V1EnvVar, V1Pod, V1Probe, V1Secret, V1Volume } from "@kubernetes/client-node";
 import { BRIDGE_FEATURES } from "@ostra/adapter-executor-docker";
 import type { BoxImage, BoxRef, BoxSize } from "@ostra/adapter-sdk";
-import type { TaskSpec, TaskSpecService } from "@ostra/protocol";
+import type { DispatchPurpose, TaskSpec, TaskSpecService } from "@ostra/protocol";
 
 import { cpuQuantity, memoryQuantity } from "./quantity.ts";
 
@@ -93,6 +93,8 @@ export type BoxPodInput = {
   readonly nonce: string;
   /** The lease's task token; `null` makes a box whose sidecar has none (tests only). Never logged. */
   readonly taskToken: string | null;
+  /** Milestone 8 (Q300, ticket 12): the dispatch's purpose, for the sidecar's own dispatch. Absent: a turn. */
+  readonly purpose?: DispatchPurpose;
 };
 
 export type BoxObjects = {
@@ -248,6 +250,11 @@ export const boxObjects = (input: BoxPodInput, settings: PodSettings): BoxObject
       { name: "OSTRA_TASK_ROOT", value: TASK_ROOT },
       { name: "OSTRA_SIDECAR_DATA_DIR", value: SIDECAR_DATA_DIR },
       ...(settings.subagentWaitMinutes === undefined || settings.subagentWaitMinutes === null ? [] : [{ name: "OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES", value: String(settings.subagentWaitMinutes) }]),
+      // Milestone 8 (ticket 12): the box is a pod, so the app's ports are the pod's `localhost`
+      // (no forwarder) and its services are at `localhost` too (ADR 0068).
+      { name: "OSTRA_BOX_EXECUTOR", value: "kubernetes" },
+      // "Start the app"'s dispatch (Q300), which the sidecar starts itself.
+      ...(input.purpose === undefined || input.purpose === "turn" ? [] : [{ name: "OSTRA_DISPATCH_PURPOSE", value: input.purpose }]),
     ],
     securityContext: {
       runAsUser: SIDECAR_UID,

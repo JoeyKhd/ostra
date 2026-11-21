@@ -188,11 +188,18 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
       const run = runs.get(command.body.sessionId);
       return run === undefined ? done({ result: "rejected", reason: "unknown-session" }) : run.setEffort(command.body);
     },
-    // Protocol minor 7 (milestone 8, ADR 0068): the app's processes, a member's screenshot and the
-    // views. Refused until the runner's milestone 8 tickets (12, 13, 18) serve them; until then
-    // this runner reports no `preview` in `hello`, so no view of its tasks opens (`isPreviewable`).
-    "app.start": () => done({ result: "rejected", reason: "not-supported" }),
-    "app.stop": () => done({ result: "rejected", reason: "not-supported" }),
+    // Protocol minor 7 (milestone 8, ADR 0068): the app's processes (ticket 12), by the session's
+    // box. A member's screenshot and the views are refused until tickets 13 and 18 serve them; until
+    // then this runner reports no `preview` in `hello`, so no view of its tasks opens (`isPreviewable`).
+    "app.start": (command) => {
+      const run = runs.get(command.body.sessionId);
+      return run === undefined ? done({ result: "rejected", reason: "unknown-session" }) : run.appStart(command.body);
+    },
+    "app.stop": (command) => {
+      const run = runs.get(command.body.sessionId);
+      // No session here: nothing of its app runs either.
+      return run === undefined ? done({ result: "done", reason: "unknown-session" }) : run.appStop(command.body);
+    },
     "screenshot.take": () => done({ result: "rejected", reason: "not-supported" }),
     "preview.open": () => done({ result: "rejected", reason: "not-supported" }),
     "preview.close": () => done({ result: "rejected", reason: "not-supported" }),

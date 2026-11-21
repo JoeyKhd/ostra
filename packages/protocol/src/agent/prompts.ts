@@ -228,16 +228,26 @@ export const appInstructionsBlock = (input: {
   readonly services: readonly AppBlockService[];
   /** Whether the agent has the app tools (`start_app`, `show_preview`, `take_screenshot`, `record_app`). */
   readonly tools: boolean;
+  /**
+   * Ticket 12: the folder of the logs, `.ostra/app` in the task's folder, as the agent's process
+   * reads it, with `/` between its parts. The agent works in a repo's checkout below the task's
+   * folder, where a relative `.ostra/app` names another folder, so the block names it in full.
+   */
+  readonly logDir?: string | null;
 }): string => {
   if (input.processes.length === 0) {
     return "";
   }
+  const logs =
+    input.logDir === undefined || input.logDir === null
+      ? "Each one's output is in .ostra/app/<name>.log in the task's folder, outside the repos."
+      : `Each one's output is in ${input.logDir.replace(/\/+$/, "")}/<name>.log, outside the repos.`;
   const lines = [
     "## The app",
     "",
     input.tools
-      ? "This project's app runs in this box as the processes below. Start them with the start_app tool; they also start when a member opens a preview. Each one's output is in .ostra/app/<name>.log."
-      : "This project's app runs in this box as the processes below. They start when a member opens a preview, and after a turn for its screenshots. Each one's output is in .ostra/app/<name>.log.",
+      ? `This project's app runs in this box as the processes below. Start them with the start_app tool; they also start when a member opens a preview. ${logs}`
+      : `This project's app runs in this box as the processes below. They start when a member opens a preview, and after a turn for its screenshots. ${logs}`,
     "",
     ...input.processes.map(
       (process) =>

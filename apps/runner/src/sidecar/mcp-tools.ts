@@ -23,6 +23,12 @@ import {
   reviewRequestFromTool,
   reviewResultText,
   runnerLimits,
+  SHOW_PREVIEW_TOOL,
+  showPreviewDescription,
+  showPreviewInputSchema,
+  START_APP_TOOL,
+  startAppDescription,
+  startAppInputSchema,
   SUBMIT_DRAFT_TOOL,
   SUBMIT_REVIEW_TOOL,
   submitDraftDescription,
@@ -40,6 +46,7 @@ import type {
   ProposeEnvironmentInput,
   RepoFullName,
   RepoId,
+  ShowPreviewInput,
   SubmitDraftInput,
   SubmitReviewInput,
   TaskEventOf,
@@ -74,6 +81,12 @@ import { RUNNER_VERSION } from "../version.ts";
 // forwarded to core's `/runner/v1/tasks/:taskId/{draft,review,environment-proposal}` with the link's
 // token. Core's answer, a refusal included, goes back in the protocol's words. A draft's, a
 // finding's and a proposal's text are never logged: counts and IDs only.
+//
+// Milestone 8 (ticket 12, protocol minor 7): with the `app` set, `start_app` and `show_preview`,
+// the box's own app (`task-host/app-processes.ts`): the start waits for each process's ready check
+// and answers each one's state, address and log path; a shown port is checked against the box's own
+// ports and the limit before it joins the task's previews. Ticket 13 adds `take_screenshot` and
+// `record_app`. A process's command and its log never reach a log line or the tool's answer.
 
 export const SET_PR_TEXT_TOOL = "set_pull_request_text";
 export const MEMORY_SEARCH_TOOL = "memory_search";
@@ -116,6 +129,16 @@ export type McpToolsOptions = {
   readonly tools?: readonly OstraToolSet[];
   /** Minor 5: core's draft, review and proposal endpoints, for the `draft`, `review` and `environment` sets. */
   readonly team?: TeamLink;
+  /** Minor 7 (ticket 12): the box's app, for the `app` set's `start_app` and `show_preview`. */
+  readonly app?: McpAppTools;
+};
+
+/** What the `app` set's tools reach: the box's app processes and previews, in words for the agent. */
+export type McpAppTools = {
+  /** `start_app`: these processes, or all (`null`), each until it's ready or failed. */
+  readonly start: (names: readonly string[] | null) => Promise<{ readonly text: string; readonly isError: boolean }>;
+  /** `show_preview`: a port the agent started, for the task's previews. */
+  readonly announce: (input: ShowPreviewInput) => Promise<{ readonly text: string; readonly isError: boolean }>;
 };
 
 export type McpMemoryOptions = {
@@ -440,6 +463,23 @@ export const startMcpTools = async (options: McpToolsOptions): Promise<McpTools>
         PROPOSE_ENVIRONMENT_TOOL,
         { title: "Propose the environment", description: proposeEnvironmentDescription, inputSchema: proposeEnvironmentInputSchema },
         (input) => proposeEnvironment(team, input),
+      );
+    }
+    const app = toolSets.has("app") ? options.app : undefined;
+    if (app !== undefined) {
+      server.registerTool(START_APP_TOOL, { title: "Start the app", description: startAppDescription, inputSchema: startAppInputSchema }, async (input) => {
+        log.info("app tool called", { tool: START_APP_TOOL, names: input.names?.length ?? null });
+        const result = await app.start(input.names ?? null);
+        return answer(result.text, result.isError);
+      });
+      server.registerTool(
+        SHOW_PREVIEW_TOOL,
+        { title: "Show a port in the task's preview pane", description: showPreviewDescription, inputSchema: showPreviewInputSchema },
+        async (input) => {
+          log.info("app tool called", { tool: SHOW_PREVIEW_TOOL, port: input.port });
+          const result = await app.announce(input);
+          return answer(result.text, result.isError);
+        },
       );
     }
     const memory = toolSets.has("memory") ? options.memory : undefined;

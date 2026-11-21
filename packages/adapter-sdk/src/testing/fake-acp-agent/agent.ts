@@ -203,6 +203,11 @@ export const fakeScripts = [
   // Milestone 8 (ticket 03).
   /** Calls `take_screenshot` with its args' input, and says the answer. */
   "take-screenshot",
+  // Milestone 8 (ticket 12).
+  /** Calls `start_app` with its args' input (`{}` for all), and says the answer. */
+  "start-app",
+  /** Calls `show_preview` with its args' input, and says the answer. */
+  "show-preview",
   /** Runs `git push origin HEAD:refs/heads/<branch>` (or `HEAD:<ref>` for a full ref name) in the repo folder given, and says `pushed` or `push refused`. */
   "git-push",
   /** Says each git repo's HEAD under the session's folder, one `<folder> <sha>` line each. */
@@ -1409,9 +1414,18 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
       case "submit-draft":
       case "submit-review":
       case "propose-environment":
-      case "take-screenshot": {
+      case "take-screenshot":
+      case "start-app":
+      case "show-preview": {
         const config = await readConfig();
-        const tools = { "submit-draft": "submit_draft", "submit-review": "submit_review", "propose-environment": "propose_environment", "take-screenshot": "take_screenshot" } as const;
+        const tools = {
+          "submit-draft": "submit_draft",
+          "submit-review": "submit_review",
+          "propose-environment": "propose_environment",
+          "take-screenshot": "take_screenshot",
+          "start-app": "start_app",
+          "show-preview": "show_preview",
+        } as const;
         const tool = tools[script];
         if (config.ostraMcp === undefined) {
           await say(`${tool}: no such tool`);

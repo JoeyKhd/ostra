@@ -4,7 +4,7 @@ import path from "node:path";
 import { DockerExecutor, listenForInit } from "@ostra/adapter-executor-docker";
 import { OpenCodeAdapter, OPENCODE_VERSION } from "@ostra/adapter-opencode";
 import { ok } from "@ostra/adapter-sdk";
-import { boxIdSchema, commandSchema, httpUrlSchema, leaseEpochSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
+import { boxIdSchema, commandSchema, dispatchPurposeSchema, httpUrlSchema, leaseEpochSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
 import { z } from "zod";
 import type { RunSidecar } from "./cli/cli.ts";
 import { exitCodes } from "./cli/cli.ts";
@@ -51,12 +51,27 @@ export const sidecarEnvSchema = z
     OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES: z.coerce.number().pipe(z.number().int().min(1).max(1440)).default(30),
     /** OpenCode in the base image, checked against its SHA-256 when the image was built (ADR 0046). */
     OSTRA_OPENCODE_BIN: z.string().min(1).default("/opt/opencode/bin/opencode"),
+    /**
+     * Milestone 8 (ticket 12): which executor's box this is. A pod's containers share its
+     * `localhost`, so the app's ports are reached there with no forwarder, and its services are at
+     * `localhost` too (ADR 0068); a `docker` box's agent has a loopback of its own.
+     */
+    OSTRA_BOX_EXECUTOR: z.enum(["docker", "kubernetes"]).default("docker"),
+    /** Milestone 8 (Q300): the dispatch's purpose, `app` for "Start the app". Absent: a turn. */
+    OSTRA_DISPATCH_PURPOSE: dispatchPurposeSchema.optional(),
   })
   .refine((env) => !isInside(env.OSTRA_TASK_ROOT, env.OSTRA_SIDECAR_DATA_DIR), {
     path: ["OSTRA_SIDECAR_DATA_DIR"],
     message: "the sidecar's state can't live in the task root, where the agent could rewrite it",
   });
 export type SidecarEnv = z.infer<typeof sidecarEnvSchema>;
+
+/**
+ * How a box's sidecar reaches the app's ports (ticket 12, ADR 0068): a pod's containers share its
+ * `localhost`, so the sidecar dials it; a docker box's agent has a loopback of its own, which the
+ * init's forwarder reaches.
+ */
+export const sidecarAppReach = (executor: SidecarEnv["OSTRA_BOX_EXECUTOR"]): "forwarder" | "loopback" => (executor === "kubernetes" ? "loopback" : "forwarder");
 
 /** How long the box's init has to connect to the bridge. */
 const INIT_CONNECT_MS = 120_000;
@@ -123,7 +138,13 @@ export const runSidecarCommand: RunSidecar = async ({ env, terminal, signal }) =
         },
       },
     }),
-    executor: new DockerExecutor({ taskRoot: settings.OSTRA_TASK_ROOT, bridge, shell: settings.OSTRA_RUNNER_SHELL }),
+    executor: new DockerExecutor({
+      taskRoot: settings.OSTRA_TASK_ROOT,
+      bridge,
+      shell: settings.OSTRA_RUNNER_SHELL,
+      // A pod's sidecar dials the app's ports at the pod's `localhost`; a docker box's, through the init's forwarder.
+      appReach: sidecarAppReach(settings.OSTRA_BOX_EXECUTOR),
+    }),
     agents: createAgentRegistry({
       opencode: (driver) =>
         new OpenCodeAdapter({
@@ -138,8 +159,12 @@ export const runSidecarCommand: RunSidecar = async ({ env, terminal, signal }) =
     stopGraceMs: 5_000,
     subagentWaitMs: settings.OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES * 60_000,
     capacity: 1,
-    executorKind: "docker",
+    executorKind: settings.OSTRA_BOX_EXECUTOR,
     labels: [],
+    // Milestone 8 (ticket 12): an app process's command line runs with the setup shell, and the
+    // bridge's port is the box's own, which no preview reaches.
+    appShell: settings.OSTRA_RUNNER_SHELL,
+    sidecarControlPort: settings.OSTRA_BRIDGE_PORT,
   });
   const connection = await startConnection({
     serverUrl: settings.OSTRA_SERVER_URL,
@@ -169,7 +194,13 @@ export const runSidecarCommand: RunSidecar = async ({ env, terminal, signal }) =
     id: `box-${settings.OSTRA_BOX_ID}`,
     notAfter: Date.now() + 60_000,
     kind: "dispatch",
-    body: { taskId: settings.OSTRA_TASK_ID, sessionId: settings.OSTRA_SESSION_ID, boxId: settings.OSTRA_BOX_ID, leaseEpoch: settings.OSTRA_LEASE_EPOCH },
+    body: {
+      taskId: settings.OSTRA_TASK_ID,
+      sessionId: settings.OSTRA_SESSION_ID,
+      boxId: settings.OSTRA_BOX_ID,
+      leaseEpoch: settings.OSTRA_LEASE_EPOCH,
+      ...(settings.OSTRA_DISPATCH_PURPOSE === undefined ? {} : { purpose: settings.OSTRA_DISPATCH_PURPOSE }),
+    },
   });
   if (dispatch.kind !== "dispatch") {
     throw new Error("the box's dispatch didn't parse as one");

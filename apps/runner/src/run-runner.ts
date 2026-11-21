@@ -1,6 +1,6 @@
 import path from "node:path";
 import { createDockerBoxes, createDockerSnapshots, createEngine, engineAddressFrom } from "@ostra/adapter-executor-docker";
-import { HostExecutor, machineBrowserSource, resolveMachineBrowser } from "@ostra/adapter-executor-host";
+import { baseEnv, HostExecutor, localShellProbe, machineBrowserSource, resolveMachineBrowser, resolveSetupShell } from "@ostra/adapter-executor-host";
 import { KubernetesExecutor } from "@ostra/adapter-executor-kubernetes";
 import { noBrowserWords } from "@ostra/protocol";
 import type { RunnerConfig } from "@ostra/protocol";
@@ -106,6 +106,9 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
         terminal.warn(`The host executor can't run tasks here: ${health.reason}.`);
         return exitCodes.failed;
       }
+      // Milestone 8 (ticket 12): an app process's command line runs with the setup shell, as a
+      // check's: on Windows the bare `bash` is Git for Windows' own (`resolveSetupShell`).
+      const appShell = await resolveSetupShell(config.shell, localShellProbe(baseEnv(), path.resolve(dataDir)));
       const host = createTaskHost({
         link,
         executor,
@@ -118,6 +121,7 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
         capacity: hostSlots(config),
         executorKind: "host",
         labels: config.labels,
+        appShell: appShell.kind === "found" ? appShell.command : config.shell,
       });
       const capabilities = reportedCapabilities(executor.capabilities);
       work = {

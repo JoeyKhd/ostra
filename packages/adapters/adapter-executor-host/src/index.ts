@@ -46,3 +46,6 @@ export type { EnsureHeadlessShellOptions, EnsureHeadlessShellResult, FetchZip, H
 export { extractZip, safeEntryPath } from "./zip-extract.ts";
 export { agentUserBrowser, BROWSER_PIPE_CLOSE_FROM } from "./agent-user.ts";
 export type { BrowserRunAs } from "./task-processes.ts";
+// Ticket 12: the runner runs an app process's command line with the setup shell, as a check's.
+export { localShellProbe, resolveSetupShell } from "./setup-shell.ts";
+export type { SetupShell, ShellProbe } from "./setup-shell.ts";

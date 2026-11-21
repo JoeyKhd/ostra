@@ -171,6 +171,29 @@ describe("the kubernetes executor's boxes (ticket 07)", () => {
     await executor.release(box, "requested");
   });
 
+  it("F-140/c12, F-141/c6: a pod's sidecar is told its box is a pod, and \"Start the app\"'s purpose rides its own dispatch through the executor", async () => {
+    const settings = { images: { runner: "r", base: "b" }, serverUrl: "https://ostra.example", runtimeClassName: null, sidecarLimits: { cpuMillis: 1000, memoryMiB: 256 }, serviceLimits: { cpuMillis: 1000, memoryMiB: 1024 }, bridgePort: 7101, initCommand: ["init"], sidecarCommand: ["sidecar"] };
+    const sidecarEnvOf = (purpose: "turn" | "app" | undefined): Readonly<Record<string, unknown>> => {
+      const objects = boxObjects({ box: newBox(), spec: taskSpecFixture, size: null, image: null, nonce: "n".repeat(43), taskToken: null, ...(purpose === undefined ? {} : { purpose }) }, settings);
+      const sidecar = objects.pod.spec?.initContainers?.find((container) => container.name === "sidecar");
+      return Object.fromEntries((sidecar?.env ?? []).map((variable) => [variable.name, variable.value] as const));
+    };
+    expect(sidecarEnvOf("app")).toMatchObject({ OSTRA_BOX_EXECUTOR: "kubernetes", OSTRA_DISPATCH_PURPOSE: "app" });
+    for (const purpose of ["turn", undefined] as const) {
+      expect(sidecarEnvOf(purpose)["OSTRA_BOX_EXECUTOR"]).toBe("kubernetes");
+      expect(sidecarEnvOf(purpose)).not.toHaveProperty("OSTRA_DISPATCH_PURPOSE");
+    }
+    // Through the executor, as the kubernetes dispatcher creates the box.
+    const cluster = await startCluster();
+    const executor = executorOn(cluster);
+    const box = newBox();
+    expect((await executor.create({ ...box, spec: taskSpecFixture, proxies, size: SIZE, image: IMAGE, taskToken: TOKEN, purpose: "app" })).ok).toBe(true);
+    const sidecar = containerNamed(podOf(cluster, box), "sidecar");
+    const env = Object.fromEntries(arrayOf(sidecar["env"]).map((variable) => [String(variable["name"]), variable["value"]] as const));
+    expect(env).toMatchObject({ OSTRA_BOX_EXECUTOR: "kubernetes", OSTRA_DISPATCH_PURPOSE: "app" });
+    await executor.release(box, "requested");
+  });
+
   it("F-095/c4: a box without a size has no limits of its own, and the environment's base image when no registry image is given", () => {
     const objects = boxObjects(
       { box: newBox(), spec: { ...taskSpecFixture, environment: { ...taskSpecFixture.environment, baseImage: "node:24" } }, size: null, image: null, nonce: "n".repeat(43), taskToken: null },

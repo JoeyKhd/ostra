@@ -368,6 +368,8 @@ export const createBoxDispatcher = (options: BoxDispatcherOptions): BoxDispatche
         // Milestone 5: the project's size as the agent's container's limits (F-095), and the image.
         ...(size === null ? {} : { size: { cpuMillis: size.cpuMillis, memoryMiB: size.memoryMiB } }),
         ...(image.value === null ? {} : { image: image.value }),
+        // Milestone 8 (Q300): "Start the app", which the sidecar's own dispatch carries.
+        ...(body.purpose === undefined ? {} : { purpose: body.purpose }),
       });
       if (!created.ok) {
         boxLog.error("creating the box failed", { status: created.error.status });

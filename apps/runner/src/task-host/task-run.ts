@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { baseEnv } from "@ostra/adapter-executor-host";
 import { adapterError, GIT_GUARD_ENV_NAMES, gitGuardEnv, hideRepoAgentConfig, ok, shadowedRepoSkills, toApprovalOptions, unknownModelLimits } from "@ostra/adapter-sdk";
 import type {
   AdapterResult,
@@ -12,6 +13,7 @@ import type {
   LaunchSkill,
   AgentSession,
   BoxRef,
+  CreatedBox,
   EffortModel,
   ExecutorAdapter,
   Logger,
@@ -23,9 +25,11 @@ import type {
   StagedCommitPaths,
 } from "@ostra/adapter-sdk";
 import {
+  APP_LOG_CONTENT_TYPE,
   approvalIdSchema,
   approvedPlanPrompt,
   denyPrompt,
+  executorKindSchema,
   firstMatchingTaskRule,
   NEUTRAL_REPLY,
   noReasoning,
@@ -51,6 +55,7 @@ import type {
   CommandBody,
   EffortChangeId,
   EffortLevel,
+  ExecutorKind,
   PlanEntry,
   QuestionId,
   RepoId,
@@ -58,6 +63,7 @@ import type {
   TaskRule,
   TurnMode,
   HiddenRefOutcome,
+  ReservedPorts,
   RestoreOrigin,
   SessionId,
   StopReason,
@@ -81,6 +87,8 @@ import type { McpTools } from "../sidecar/mcp-tools.ts";
 import { agentCwd } from "./agent-cwd.ts";
 import type { AgentRegistry } from "./agents.ts";
 import { launchAppOf } from "./app-block.ts";
+import { createAppProcesses } from "./app-processes.ts";
+import type { AppEvent, AppProcesses, AppTiming } from "./app-processes.ts";
 import { checkLaunchEnvironment, checkLaunchFiles } from "./environment-check.ts";
 import { checkRepoFolders } from "./repo-folders.ts";
 import type { ServerLink } from "./server-link.ts";
@@ -185,6 +193,21 @@ export type TaskRunDeps = {
    * (`OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES`). Default: the driver's, 30 minutes.
    */
   readonly subagentWaitMs?: number;
+  // ---------- milestone 8 (ticket 12, ADR 0068): the app's processes ----------
+  /**
+   * Where the box runs, for the app's in-box addresses and its services as previews: a pod's
+   * sidecar runs `docker`'s executor, so its name alone doesn't say. Default: the executor's name,
+   * else `host`.
+   */
+  readonly executorKind?: ExecutorKind;
+  /** The setup shell (`OSTRA_RUNNER_SHELL`), which runs each app process's command line, as a check's. Default: `bash`. */
+  readonly appShell?: string;
+  /** The sidecar's control port (the bridge) on `docker` and `kubernetes`, which no preview reaches; `null` on `host`. */
+  readonly sidecarControlPort?: number | null;
+  /** The variables a program needs to run at all, as the setup script gets them. Default: `baseEnv` of this process's. */
+  readonly appBaseEnv?: Readonly<Record<string, string>>;
+  /** The app's ready checks' timings (spec section 8: tests shorten them). */
+  readonly appTiming?: Partial<AppTiming>;
 };
 
 /** A timer port: `after` calls `fire` once, `ms` from now, unless the answer is called first. */
@@ -229,6 +252,15 @@ export type TaskRun = {
    * held for before the next prompt (`accepted`), so every turn runs at one level.
    */
   readonly setEffort: (body: CommandBody<"set-effort">) => Promise<CommandOutcome>;
+  /**
+   * Minor 7 (ticket 12): start these app processes, or all, in the environment's order: `accepted`
+   * at once, the states going up as `app.process`. One asked before the box is ready starts once it is.
+   */
+  readonly appStart: (body: CommandBody<"app.start">) => Promise<CommandOutcome>;
+  /** Minor 7 (ticket 12): stop these app processes, or all. The box keeps running. */
+  readonly appStop: (body: CommandBody<"app.stop">) => Promise<CommandOutcome>;
+  /** Milestone 8: the box's app, once the box is ready; `undefined` before, or when it never got ready. */
+  readonly app: () => AppProcesses | undefined;
   /** The self-fence: end the agent, keep the workspace, send nothing more. */
   readonly fence: () => Promise<void>;
   /** The server refused the lease: end the agent and release, without pushing. */
@@ -258,6 +290,9 @@ type Ending =
 
 /** The longest error text an event carries. */
 const ERROR_MAX = 4000;
+
+/** What the app tools answer before the box is ready: the agent starts after it is, so only a race sees it. */
+const BOX_NOT_READY = "The box isn't ready yet. Call the tool again in a moment.";
 
 /** How long the agent's fake key lasts in a session across turns: the session's end revokes it first. */
 const ACROSS_TURNS_KEY_TTL_MS = 24 * 60 * 60_000;
@@ -362,13 +397,23 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   let agentProcess: AgentProcess | undefined;
   let turn: TurnId | undefined;
   let boxCreated = false;
-  let dirsCache: { readonly workspaceDir: string; readonly agentDir: string; readonly gitConfig: string } | undefined;
+  let dirsCache: CreatedBox | undefined;
   let boxPrepared = false;
   let keyProxy: KeyProxy | undefined;
   let gitProxy: GitProxy | undefined;
   /** When the last rate-limit event's hold ends, in ms since the epoch: later 429s inside it say nothing new. */
   let rateLimitedUntil = 0;
   let mcp: McpTools | undefined;
+  /** Milestone 8 (ticket 12): the box's app processes and previews, once the box is ready. */
+  let app: AppProcesses | undefined;
+  /** Resolves with the box's app once it's ready, or `undefined` once it never will be: a start asked before then waits. */
+  const appOpened = deferred<AppProcesses | undefined>();
+  /** "Start the app" (Q300, F-141): this dispatch starts the box and its app, and the agent only for a member's message. */
+  const appOnly = dispatch.purpose === "app";
+  /** Whether this session started its agent: a box for the app alone doesn't until a message. */
+  let agentStarted = false;
+  /** The box's kind, for the app's addresses (a pod's sidecar runs `docker`'s executor). */
+  const executorKind: ExecutorKind = deps.executorKind ?? (executorKindSchema.safeParse(deps.executor.name).data ?? "host");
   /** Ticket 29 (ADR 0030): the profile's HTTP MCP servers, behind the sidecar's proxy. */
   let mcpProxy: McpProxy | undefined;
   /** Ticket 29 (F-021): the profile's skills as written into the agent folder, once per session. */
@@ -1483,6 +1528,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     }
     session = undefined;
     if (boxCreated) {
+      // Milestone 8: the app's processes stop with the box, each reported `stopped` (`box-stopped`).
+      await app?.stopAll();
       await deps.executor.stop({ box, graceMs: deps.stopGraceMs });
     }
     // The repo's own agent config is back before anything is committed or the box is kept.
@@ -1626,6 +1673,11 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       // Minor 5 (tickets 22 and 23): exactly the tool sets the spec names, and core's endpoints for the new ones.
       tools: taskSpecToolSets(taskSpec),
       team: deps.link.team,
+      // Minor 7 (ticket 12): the box's app, which is there once the box is ready; the agent starts after that.
+      app: {
+        start: (names) => (app === undefined ? Promise.resolve({ text: BOX_NOT_READY, isError: true }) : app.startForTool(names)),
+        announce: (input) => (app === undefined ? Promise.resolve({ text: BOX_NOT_READY, isError: true }) : app.announce(input)),
+      },
       // Minor 3 (ticket 20, F-110): the memory tools, when the spec offers them.
       ...(taskSpec.memory?.tools === true
         ? {
@@ -1771,7 +1823,11 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     return { ok: true, agentSessionId: keptBox.agentSessionId ?? undefined };
   };
 
-  /** `restored` and `rebuilt`, on the fresh box: each repo's hidden ref, then the archive for `restored`. */
+  /**
+   * `restored` and `rebuilt`, on the fresh box: each repo's hidden ref, then the archive for
+   * `restored`. A box for the app alone (`appOnly`) takes the archive with its first turn instead
+   * (`loadRestoredArchive`): it runs nothing of the agent's until a member's message.
+   */
   const restoreOntoFreshBox = async (taskSpec: TaskSpec): Promise<void> => {
     const state = restored;
     const refs = taskSpec.restore?.hiddenRefs ?? [];
@@ -1788,7 +1844,15 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         state.hiddenRef = "conflict";
       }
     }
-    if (state.origin !== "restored") {
+    if (!appOnly) {
+      await loadRestoredArchive(taskSpec);
+    }
+  };
+
+  /** `restored`: the session archive, imported into the agent's folder for its session to load. */
+  const loadRestoredArchive = async (taskSpec: TaskSpec): Promise<void> => {
+    const state = restored;
+    if (state?.origin !== "restored" || state.resumeId !== undefined) {
       return;
     }
     const archive = taskSpec.restore?.archive ?? null;
@@ -1936,6 +2000,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     if (proxies === undefined) {
       return adapterError("unavailable", "the task's proxies aren't running");
     }
+    // The box's stop ends the app's processes too: each is reported, and starts again when asked.
+    await app?.stopAll();
     await deps.executor.stop({ box, graceMs: deps.stopGraceMs });
     const again = await deps.executor.resumeBox({ ...box, spec: taskSpec, proxies });
     if (!again.ok) {
@@ -2085,8 +2151,9 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       // Milestone 6 (ticket 22, ADR 0028): the kind, so a review task's agent never edits, and the tool sets it's offered.
       kind: taskSpec.kind,
       ...(taskSpec.tools === undefined ? {} : { tools: taskSpec.tools }),
-      // Milestone 8 (F-140, ADR 0068): the app's processes and services, for the app's block in its instructions.
-      app: launchAppOf(taskSpec, deps.executor.name),
+      // Milestone 8 (F-140, ADR 0068): the app's processes and services, for the app's block in its
+      // instructions, on the box's executor, with the logs' folder in full (ticket 12).
+      app: launchAppOf(taskSpec, executorKind, dirs.appLogDir ?? null),
     });
     if (!launch.ok) {
       return { ok: false, error: `the agent couldn't be launched: ${launch.error.message}` };
@@ -2180,11 +2247,96 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     return { ok: true };
   };
 
-  const workspaceOf = (): { readonly workspaceDir: string; readonly agentDir: string; readonly gitConfig: string } => {
+  const workspaceOf = (): CreatedBox => {
     if (dirsCache === undefined) {
       throw new Error("the workspace isn't created");
     }
     return dirsCache;
+  };
+
+  // ---------- the box's app (milestone 8, ticket 12, ADR 0068) ----------
+
+  /** The port of a proxy's address, which no app process and no preview may take. */
+  const portOfUrl = (url: string): number | null => {
+    const port = Number(new URL(url).port);
+    return Number.isInteger(port) && port > 0 ? port : null;
+  };
+
+  /** An app event, sent when the server reads it: a minor-6 server gives no app process and reads none. */
+  const emitApp = (event: AppEvent): Promise<void> => (channel?.supports(event.kind) === true ? emit(event) : Promise.resolve());
+
+  /**
+   * The box's app, once the box is ready: its processes start only when something asks, and its
+   * previews' list goes up now, with the declared ones. Every executor alike; on a server below minor
+   * 7 there's none.
+   */
+  const openApp = async (taskSpec: TaskSpec): Promise<void> => {
+    const dirs = dirsCache;
+    const held = credentials;
+    if (dirs === undefined || held === undefined || keyProxy === undefined || gitProxy === undefined || mcp === undefined || channel?.supports("app.process") !== true) {
+      appOpened.resolve(undefined);
+      return;
+    }
+    // The box's own ports, by name: the sidecar's proxies and ostra's MCP server, and its bridge on docker and kubernetes.
+    const reservedPorts: ReservedPorts = {
+      "key-proxy": portOfUrl(keyProxy.baseUrl),
+      "git-proxy": portOfUrl(gitProxy.baseUrl),
+      "mcp-proxy": portOfUrl(mcp.url),
+      "sidecar-control": deps.sidecarControlPort ?? null,
+      "agent-loopback": null,
+      browser: null,
+    };
+    const ownPorts = [...Object.values(reservedPorts), mcpProxy === undefined ? null : portOfUrl(mcpProxy.urlFor("/"))].filter((port): port is number => port !== null);
+    app = createAppProcesses({
+      executor: deps.executor,
+      box,
+      spec: taskSpec,
+      executorKind,
+      workspaceDir: dirs.workspaceDir,
+      logDir: dirs.appLogDir ?? null,
+      secrets: held.secrets,
+      // The setup script's own base: the variables a program needs to run, never the runner's tokens.
+      baseEnv: deps.appBaseEnv ?? baseEnv(process.env),
+      shell: deps.appShell ?? "bash",
+      reservedPorts,
+      ownPorts,
+      emit: emitApp,
+      uploadLog: async (bytes) => {
+        const uploaded = await deps.link.uploadBlob({ taskId: taskSpec.taskId, leaseEpoch: taskSpec.leaseEpoch, purpose: "app-log", contentType: APP_LOG_CONTENT_TYPE, bytes });
+        if (!uploaded.ok) {
+          log.warn("an app process's log wasn't uploaded", { reason: uploaded.failure.kind });
+          return null;
+        }
+        return uploaded.value.blobId;
+      },
+      logger: log,
+      ...(deps.appTiming === undefined ? {} : { timing: deps.appTiming }),
+    });
+    appOpened.resolve(app);
+    if (app.previews().length > 0) {
+      await app.sendPreviewList();
+    }
+  };
+
+  /**
+   * "Start the app" (Q300): the box waits for a member's message before its agent starts, as the
+   * session waits between turns, with the idle timer running. `true` once one came.
+   */
+  const awaitFirstMessage = async (taskSpec: TaskSpec): Promise<boolean> => {
+    const disarm = timers.after(idleMs(taskSpec), () => {
+      log.info("the app's box was idle for its limit: ending it", { idleMinutes: taskSpec.limits.idleMinutes ?? null });
+      end({ kind: "idle" });
+    });
+    try {
+      while (ending === undefined && steers.length === 0) {
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+        });
+      }
+      return ending === undefined;
+    } finally {
+      disarm();
+    }
   };
 
   const main = async (): Promise<void> => {
@@ -2192,6 +2344,9 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     const prepared = await prepare();
     if (!prepared.ok) {
       end({ kind: "crashed", error: prepared.error });
+      appOpened.resolve(undefined);
+    } else {
+      await openApp(prepared.spec);
     }
     const taskSpec = spec;
     // F-137: the session starts at the spec's level, unless the driver changed it since.
@@ -2202,7 +2357,25 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     if (taskSpec !== undefined && acrossTurns && restored === undefined && taskSpec.firstTurnMode === "plan" && channel.supports("plan.proposed")) {
       mode = "plan";
     }
-    if (ending === undefined && taskSpec !== undefined) {
+    // "Start the app" (Q300, F-141): the processes start, and no agent and no model call until a
+    // member's message, which becomes this lease's first turn: then the agent starts and restores its
+    // session from the archive (ADR 0039). One that never comes ends the box as the idle timer does.
+    let agentWanted = ending === undefined && taskSpec !== undefined;
+    if (agentWanted && appOnly && taskSpec !== undefined) {
+      if (!acrossTurns) {
+        end({ kind: "crashed", error: "a box for the app alone needs a session across turns (protocol minor 1 and up)" });
+        agentWanted = false;
+      } else {
+        log.info("a box for the app alone: its processes start, and the agent waits for a message", { processes: app?.names.length ?? 0 });
+        void app?.start(null);
+        agentWanted = await awaitFirstMessage(taskSpec);
+        if (agentWanted) {
+          await loadRestoredArchive(taskSpec);
+        }
+      }
+    }
+    if (agentWanted && ending === undefined && taskSpec !== undefined) {
+      agentStarted = true;
       const failed = await startAgentFor(taskSpec);
       if (failed !== null) {
         end({ kind: "crashed", error: failed });
@@ -2218,10 +2391,13 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       const how: Ending = ending ?? { kind: "idle" };
       await finishAcrossTurns(taskSpec, how);
       // The box stays for the next session, unless it never got ready or the server refused the lease.
-      const keep = how.kind === "fenced" || (boxPrepared && how.kind !== "abandoned" && !discardBox);
+      // A box for the app alone whose agent never ran holds no session of the agent's, unless it was
+      // the kept box resumed: the next reopen restores the session from its archive on a fresh box.
+      const noAgentSession = appOnly && !agentStarted && restored?.previousBox !== "kept";
+      const keep = how.kind === "fenced" || (boxPrepared && how.kind !== "abandoned" && !discardBox && !noAgentSession);
       await cleanUp(keep);
       if (keep && boxCreated) {
-        kept = { box, agentAdapter: taskSpec.agent.adapter, agentSessionId: lastAgentSessionId ?? null };
+        kept = { box, agentAdapter: taskSpec.agent.adapter, agentSessionId: lastAgentSessionId ?? restored?.resumeId ?? null };
       }
       stopDone.resolve({ result: "done" });
       log.info("task run ended", { ending: how.kind, turns: turnOrdinal });
@@ -2299,6 +2475,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
 
   const done = main().catch(async (error: unknown) => {
     log.error("task run failed", { error: errorName(error) });
+    appOpened.resolve(undefined);
     await crash("the runner failed while running the task").catch(() => undefined);
     await cleanUp(false).catch(() => undefined);
     stopDone.resolve({ result: "done", reason: "failed" });
@@ -2326,6 +2503,13 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       return { result: "done" };
     },
     steer: async (body) => {
+      if (appOnly && session === undefined && ending === undefined) {
+        // "Start the app" (Q300): a member's message is the lease's first turn; the agent starts for it.
+        log.info("a message for a box of the app alone: the agent starts for it", { delivery: body.delivery, intent: body.intent ?? "message", agentStarted });
+        steers.push({ text: body.text, automatic: body.automatic === true });
+        nudge();
+        return { result: "accepted" };
+      }
       if (agent === undefined || session === undefined || ending !== undefined) {
         return { result: "rejected", reason: "session-not-running" };
       }
@@ -2366,6 +2550,37 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     answerQuestion,
     answerPlan,
     setEffort,
+    appStart: (body) => {
+      // Before the spec is read the names wait for it; after, they're checked against the environment.
+      const declared = spec === undefined ? undefined : (spec.environment.appProcesses ?? []).map((process) => process.name);
+      if (declared?.length === 0) {
+        return Promise.resolve({ result: "rejected", reason: "no-app-processes" });
+      }
+      if (declared !== undefined && (body.names ?? []).some((name) => !declared.includes(name))) {
+        return Promise.resolve({ result: "rejected", reason: "unknown-process" });
+      }
+      if (ending !== undefined) {
+        return Promise.resolve({ result: "rejected", reason: "session-ending" });
+      }
+      log.info("app start asked", { names: body.names?.length ?? null, boxReady: app !== undefined });
+      void appOpened.promise.then((opened) => opened?.start(body.names)).catch((error: unknown) => {
+        log.warn("starting the app failed", { error: errorName(error) });
+      });
+      return Promise.resolve({ result: "accepted" });
+    },
+    appStop: (body) => {
+      const opened = app;
+      if (opened === undefined) {
+        // Nothing of the app runs before the box is ready.
+        return Promise.resolve({ result: "done" });
+      }
+      log.info("app stop asked", { names: body.names?.length ?? null });
+      void opened.stop(body.names).catch((error: unknown) => {
+        log.warn("stopping the app failed", { error: errorName(error) });
+      });
+      return Promise.resolve({ result: "accepted" });
+    },
+    app: () => app,
     endBetweenTurns: async () => {
       if (turnRunning) {
         return false;

@@ -8,6 +8,9 @@ import { defineConfig } from "vite";
 //   it does, which `hostRewrite` off keeps working (Q304).
 const port = Number(process.env["TEST_WEB_PORT"] ?? "5173");
 const apiPort = process.env["TEST_WEB_API_PORT"] ?? "3001";
+// In an ostra box the API's in-box address comes in `OSTRA_APP_API_URL` (ADR 0068): the proxy's
+// target, as a project written for ostra reads it.
+const apiTarget = process.env["OSTRA_APP_API_URL"] ?? `http://localhost:${apiPort}`;
 
 /** The two pages, before Vite's own handling. */
 const testPages = {
@@ -35,6 +38,8 @@ const testPages = {
 
 export default defineConfig({
   root: import.meta.dirname,
+  // Tests that run several copies at once give each its own cache folder.
+  ...(process.env["TEST_WEB_CACHE_DIR"] === undefined ? {} : { cacheDir: process.env["TEST_WEB_CACHE_DIR"] }),
   plugins: [testPages],
   // React's automatic runtime, from Vite's own transform: no plugin beyond what the lock holds.
   oxc: { jsx: { runtime: "automatic" } },
@@ -43,7 +48,7 @@ export default defineConfig({
     strictPort: true,
     host: "localhost",
     proxy: {
-      "/api": { target: `http://localhost:${apiPort}`, ws: true },
+      "/api": { target: apiTarget, ws: true },
     },
   },
   clearScreen: false,

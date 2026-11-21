@@ -7,6 +7,7 @@ import {
   appProcessRuleIssues,
   appProcessRuleWords,
   appReadyCheckSchema,
+  fixedReservedPorts,
   repoIdSchema,
   repoRelativePathSchema,
   runnerLimits,
@@ -23,11 +24,10 @@ import { z } from "zod";
 
 /**
  * Ports a box keeps for itself at a fixed number, refused for an app process when it's saved: the
- * sidecar's control API (the bridge) on `docker` and `kubernetes`. The box's other ports (the key,
- * git and MCP proxies, the agent's loopback and the browser's) are picked when the box starts, so
- * `mayReach` and the app tools refuse them by name then (`ReservedPorts`).
+ * sidecar's control API (the bridge) on `docker` and `kubernetes`. The protocol's, beside
+ * `mayReach` (`task/previews.ts`).
  */
-export const fixedReservedPorts = [{ port: 7101, name: "sidecar-control" }] as const;
+export { fixedReservedPorts } from "@ostra/protocol";
 
 /** A folder inside its repo: repo-relative, never `..`, `.` for the root; `./web` reads as `web`. */
 export const appFolderSchema = repoRelativePathSchema

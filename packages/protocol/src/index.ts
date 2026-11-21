@@ -18,6 +18,7 @@ export * from "./memory/notes.ts";
 export * from "./mcp/tools.ts";
 
 export * from "./task/app.ts";
+export * from "./task/previews.ts";
 export * from "./task/spec.ts";
 export * from "./task/frame-reel.ts";
 export * from "./task/credentials.ts";

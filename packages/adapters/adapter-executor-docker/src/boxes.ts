@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { BoxImage, BoxSize, ExecutorCapacity, ServiceHealth } from "@ostra/adapter-sdk";
-import type { BoxId, BoxState, LeaseEpoch, SessionId, TaskId } from "@ostra/protocol";
+import type { BoxId, BoxState, DispatchPurpose, LeaseEpoch, SessionId, TaskId } from "@ostra/protocol";
 import { z } from "zod";
 import { BRIDGE_FEATURES } from "./bridge/protocol.ts";
 import { emptySchema } from "./engine.ts";
@@ -97,6 +97,11 @@ export type BoxInput = {
    * its pull credential, which goes to the Engine's pull call and nowhere else. Wins over `snapshotImage`.
    */
   readonly image?: BoxImage | null;
+  /**
+   * Milestone 8 (Q300, ticket 12): the dispatch's purpose, for the sidecar, which starts the task
+   * itself: `app` starts the box and its app with no agent until a member's message. Absent: a turn.
+   */
+  readonly purpose?: DispatchPurpose;
 };
 
 /** A container's CPU and memory limits. */
@@ -324,6 +329,8 @@ export const boxResources = (input: BoxInput, options: BoxOptions, nonce = rando
           `OSTRA_TASK_ROOT=${TASK_ROOT}`,
           `OSTRA_SIDECAR_DATA_DIR=${SIDECAR_DATA_DIR}`,
           ...(options.subagentWaitMinutes === undefined ? [] : [`OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES=${String(options.subagentWaitMinutes)}`]),
+          // Milestone 8 (ticket 12): "Start the app"'s dispatch, which the sidecar starts itself.
+          ...(input.purpose === undefined || input.purpose === "turn" ? [] : [`OSTRA_DISPATCH_PURPOSE=${input.purpose}`]),
         ],
         User: `${String(SIDECAR_UID)}:${String(SIDECAR_GID)}`,
         WorkingDir: TASK_ROOT,

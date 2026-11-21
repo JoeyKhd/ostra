@@ -55,7 +55,7 @@ import type {
   TaskProxies,
   WipDeps,
 } from "@ostra/adapter-sdk";
-import { appLogPath, gitShaSchema, repoBranchName, repoGitIdentity, runnerLimits, SETUP_OUTPUT_MAX_CHARS } from "@ostra/protocol";
+import { APP_LOG_DIR, appLogPath, gitShaSchema, repoBranchName, repoGitIdentity, runnerLimits, SETUP_OUTPUT_MAX_CHARS } from "@ostra/protocol";
 import type { BoxReleaseReason, BoxState, GitPerson, ProjectId, RepoId, RepoSecret, TaskId, TaskSpec, TaskSpecReviewRepo } from "@ostra/protocol";
 import { cgroupPrefix, detectContainment, newUnitMarker, processTreeContainment, sweepLeftovers, TASK_UNIT_ENV } from "./containment.ts";
 import {
@@ -244,11 +244,22 @@ const projectFolder = (projectId: ProjectId): string => projectId.replace(/[^A-Z
 
 const boxKey = (box: BoxRef): string => `${box.taskId}\u0000${box.boxId}`;
 
+/** A box's folders as the agent sees them, the app's logs' folder too (`.ostra/app` in the task's folder, ticket 12). */
+const createdBoxOf = (record: BoxRecord): CreatedBox => ({
+  workspaceDir: record.workspaceDir,
+  agentDir: record.agentDir,
+  gitConfig: record.gitConfig,
+  appLogDir: path.join(record.root, ...APP_LOG_DIR.split("/")),
+});
+
 /** ostra's own folder in a checkout or the workspace: the ticket's files go in its `ticket/` (ticket 26). */
 const OSTRA_DIR = ".ostra";
 
 /** The most of an agent command's output kept: it can hold content, so it's never logged. */
 const AGENT_COMMAND_OUTPUT_MAX = 64 * 1024;
+
+/** How long past its grace an app process's exit and output may take when its box stops (ticket 12). */
+const APP_EXIT_WAIT_MS = 10_000;
 
 /** A folder name for a task's root: its ID, with anything odd replaced. */
 const folderOf = (taskId: TaskId): string => taskId.replace(/[^A-Za-z0-9._-]/g, "_");
@@ -611,7 +622,7 @@ export class HostExecutor extends ExecutorAdapter {
       return adapterError("unavailable", `couldn't make the task's folder (${errorCode(error)})`);
     }
     this.plumbing.logger.info("box created", { taskId: input.taskId, boxId: input.boxId, repos: input.spec.repos.length });
-    return ok({ workspaceDir: record.workspaceDir, agentDir: record.agentDir, gitConfig: record.gitConfig });
+    return ok(createdBoxOf(record));
   }
 
   async prepare(input: PrepareInput): Promise<AdapterResult<PrepareResult>> {
@@ -890,12 +901,31 @@ export class HostExecutor extends ExecutorAdapter {
     return ok({ available: true, browser: { ...identity, channel, profileDir: started.profileDir } });
   }
 
-  /** The app's processes and the browsers end before the agent: each process gets `graceMs` to exit, and each browser's profile goes. */
+  /**
+   * The app's processes and the browsers end before the agent: each process gets `graceMs` to exit,
+   * and each browser's profile goes. A process whose exit or output doesn't end in time (a child
+   * that outlived its tree's kill and kept the pipe) never holds the box's stop: the unit's own end
+   * after this reaches what's left (ticket 12).
+   */
   async #endApp(record: BoxRecord, graceMs: number): Promise<void> {
     const apps = [...record.apps.values()];
     const browsers = [...record.browsers];
-    await Promise.all([...apps.map(async (app) => app.stop(graceMs).catch(() => undefined)), ...browsers.map(async (browser) => browser.close().catch(() => undefined))]);
-    await Promise.all(apps.map((app) => app.handle.exited));
+    const settled = async (work: Promise<unknown>, app: string): Promise<void> => {
+      const done = await Promise.race([
+        work.then(
+          () => true,
+          () => true,
+        ),
+        new Promise<boolean>((resolve) => {
+          setTimeout(resolve, graceMs + APP_EXIT_WAIT_MS, false).unref();
+        }),
+      ]);
+      if (!done) {
+        this.plumbing.logger.warn("an app process didn't end in time with its box", { taskId: record.ref.taskId, boxId: record.ref.boxId, app });
+      }
+    };
+    await Promise.all([...apps.map((app) => settled(app.stop(graceMs), app.handle.name)), ...browsers.map(async (browser) => browser.close().catch(() => undefined))]);
+    await Promise.all(apps.map((app) => settled(app.handle.exited, app.handle.name)));
   }
 
   async release(box: BoxRef, reason: BoxReleaseReason = "requested"): Promise<AdapterResult<void>> {
@@ -1104,7 +1134,7 @@ export class HostExecutor extends ExecutorAdapter {
     await this.#recordHeads(record);
     record.state = "ready";
     this.plumbing.logger.info("box resumed", { taskId: input.taskId, boxId: input.boxId });
-    return ok({ workspaceDir: record.workspaceDir, agentDir: record.agentDir, gitConfig: record.gitConfig });
+    return ok(createdBoxOf(record));
   }
 
   /**

@@ -220,6 +220,8 @@ export const createKubernetesDispatcher = (options: KubernetesDispatcherOptions)
       size: size === null ? null : { cpuMillis: size.cpuMillis, memoryMiB: size.memoryMiB },
       image: image.value,
       taskToken: token.value,
+      // Milestone 8 (Q300): "Start the app", which the pod's sidecar starts itself.
+      ...(body.purpose === undefined ? {} : { purpose: body.purpose }),
       onWaiting: (change) => {
         reportWait(record.boxId, change);
       },

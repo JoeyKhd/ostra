@@ -12,7 +12,7 @@ import { createBoxDispatcher, detectTokenAccess } from "./box-dispatcher.ts";
 import type { TokenAccess } from "./box-dispatcher.ts";
 import { exitCodes, runCli } from "./cli/cli.ts";
 import { createCapturingTerminal } from "./cli/terminal.ts";
-import { runSidecarCommand, sidecarEnvSchema } from "./run-sidecar.ts";
+import { runSidecarCommand, sidecarAppReach, sidecarEnvSchema } from "./run-sidecar.ts";
 import { makeCommand } from "./testing/fake-gateway.ts";
 
 // The runner's side of the `docker` executor (ticket 22), against a fake Engine API: a dispatch
@@ -126,6 +126,16 @@ describe("the box dispatcher", () => {
     expect(engine.volumes.size).toBe(0);
     expect(await readdir(path.join(root, "boxes"))).toEqual([]);
     expect(dispatcher.status().freeSlots).toBe(1);
+  }, 30_000);
+
+  it("F-141/c6: a dispatch to start the app hands its purpose to the box's sidecar, which starts the task itself", async () => {
+    const dispatcher = makeDispatcher({ tokenAccess: { kind: "group", gid: 4242 } });
+    const dispatch = dispatchOf("box-app-only");
+    expect(await dispatcher.handlers.dispatch({ ...dispatch, body: { ...dispatch.body, purpose: "app" } })).toEqual({ result: "accepted" });
+    await waitFor(boxStarted);
+    expect(sidecarBody()).toContain("OSTRA_DISPATCH_PURPOSE=app");
+    exitAll();
+    await Promise.all(dispatcher.boxes());
   }, 30_000);
 
   it.skipIf(!posix)("keeps the token readable by its group alone: 0440 in a 0750 folder, and the sidecar joins the group", async () => {
@@ -276,6 +286,33 @@ describe("ostra sidecar", () => {
     expect(sidecarEnvSchema.safeParse({ ...good, OSTRA_SIDECAR_DATA_DIR: "/taskdata" }).success).toBe(true);
     expect(sidecarEnvSchema.safeParse({ ...good, OSTRA_LEASE_EPOCH: "0" }).success).toBe(false);
     expect(sidecarEnvSchema.safeParse({ ...good, OSTRA_BRIDGE_NONCE: "short" }).success).toBe(false);
+  });
+
+  it("F-140/c12, F-141/c6: a sidecar reads its box's executor, which decides how it reaches the app, and \"Start the app\"'s purpose", () => {
+    const good = {
+      OSTRA_SERVER_URL: "http://ostra-server:8787",
+      OSTRA_SIDECAR_TOKEN_FILE: "/run/ostra/token",
+      OSTRA_TASK_ID: "task-1",
+      OSTRA_SESSION_ID: "session-1",
+      OSTRA_BOX_ID: "box-1",
+      OSTRA_LEASE_EPOCH: "2",
+      OSTRA_BRIDGE_NONCE: "n".repeat(43),
+      OSTRA_BRIDGE_PORT: "7101",
+      OSTRA_SIDECAR_HOST: "sidecar",
+      OSTRA_TASK_ROOT: "/task",
+      OSTRA_SIDECAR_DATA_DIR: "/var/lib/ostra-sidecar",
+    };
+    // A docker box's unless the pod says otherwise; a turn's when no purpose is given.
+    expect(sidecarEnvSchema.safeParse(good)).toMatchObject({ success: true, data: { OSTRA_BOX_EXECUTOR: "docker" } });
+    expect(sidecarEnvSchema.safeParse(good).data?.OSTRA_DISPATCH_PURPOSE).toBeUndefined();
+    expect(sidecarEnvSchema.safeParse({ ...good, OSTRA_BOX_EXECUTOR: "kubernetes", OSTRA_DISPATCH_PURPOSE: "app" })).toMatchObject({
+      success: true,
+      data: { OSTRA_BOX_EXECUTOR: "kubernetes", OSTRA_DISPATCH_PURPOSE: "app" },
+    });
+    expect(sidecarEnvSchema.safeParse({ ...good, OSTRA_BOX_EXECUTOR: "host" }).success).toBe(false);
+    expect(sidecarEnvSchema.safeParse({ ...good, OSTRA_DISPATCH_PURPOSE: "agent" }).success).toBe(false);
+    // A pod's sidecar dials the pod's localhost; a docker box's goes through the init's forwarder.
+    expect([sidecarAppReach("docker"), sidecarAppReach("kubernetes")]).toEqual(["forwarder", "loopback"]);
   });
 });
 

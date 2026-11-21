@@ -101,6 +101,15 @@ describe("a box's resources", () => {
     expect(JSON.stringify(resources.agent.body.HostConfig)).not.toContain("Tmpfs");
   });
 
+  it("F-141/c6: \"Start the app\"'s purpose rides the sidecar's own dispatch, and only the sidecar's; a turn's adds nothing", () => {
+    const app = boxResources({ ...input, purpose: "app" }, { images });
+    expect(envOf(app.sidecar.body)).toContain("OSTRA_DISPATCH_PURPOSE=app");
+    expect(envOf(app.agent.body).some((line) => line.startsWith("OSTRA_DISPATCH_PURPOSE="))).toBe(false);
+    for (const resources of [boxResources(input, { images }), boxResources({ ...input, purpose: "turn" }, { images })]) {
+      expect(envOf(resources.sidecar.body).some((line) => line.startsWith("OSTRA_DISPATCH_PURPOSE="))).toBe(false);
+    }
+  });
+
   it("adds the token file's group to the sidecar only when the runner gave one", () => {
     expect(boxResources(input, { images }).sidecar.body.HostConfig).not.toHaveProperty("GroupAdd");
     const grouped = boxResources({ ...input, tokenGroup: 1234 }, { images });

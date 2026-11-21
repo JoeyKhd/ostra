@@ -79,7 +79,16 @@ export type LaunchMemory = { readonly block: string; readonly tools: boolean };
  * beside the profile's instructions, in the task's config folder and never in a repo. With no
  * process, there's no block.
  */
-export type LaunchApp = { readonly processes: readonly AppBlockProcess[]; readonly services: readonly AppBlockService[] };
+export type LaunchApp = {
+  readonly processes: readonly AppBlockProcess[];
+  readonly services: readonly AppBlockService[];
+  /**
+   * Ticket 12: where the processes' logs are, as the agent's process reads it (the box's
+   * `CreatedBox.appLogDir`, with `/` between its parts), so the block names it in full. Absent: the
+   * block names `.ostra/app` in the task's folder.
+   */
+  readonly logDir?: string | null;
+};
 
 /** A file the agent needs before it starts, such as its per-task config. */
 export type LaunchFile = {
@@ -235,7 +244,9 @@ export const composeLaunchInstructions = (input: PrepareLaunchInput, options: { 
       ? `This task's workspace holds ${String(repos.length)} repos side by side, each in its own folder under the workspace's root, where you work: ${repos.join(", ")}.`
       : "",
     input.memory?.block ?? "",
-    app === null ? "" : appInstructionsBlock({ processes: app.processes, services: app.services, tools: options.appTools ?? launchHasAppTools(input) }),
+    app === null
+      ? ""
+      : appInstructionsBlock({ processes: app.processes, services: app.services, tools: options.appTools ?? launchHasAppTools(input), logDir: app.logDir ?? null }),
   ].filter((part) => part.trim() !== "");
   return parts.length === 0 ? null : parts.join("\n\n");
 };

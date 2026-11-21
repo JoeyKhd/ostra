@@ -204,6 +204,11 @@ export const appProcessReasonSchema = z.enum([
   "stopped",
   /** The box stopped, and the process with it. */
   "box-stopped",
+  /**
+   * Something in the box already listens on its port, such as a dev server the agent started
+   * itself, so it wasn't started (milestone 8's ticket 12).
+   */
+  "port-in-use",
 ]);
 export type AppProcessReason = z.infer<typeof appProcessReasonSchema>;
 

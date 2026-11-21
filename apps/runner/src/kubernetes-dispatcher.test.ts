@@ -173,6 +173,22 @@ describe("kubernetes boxes from the runner (ticket 20)", () => {
     expect(await leftOf(cluster)).toBe(0);
   }, 30_000);
 
+  it("F-141/c6: a dispatch to start the app hands its purpose to the pod's sidecar, which starts the task itself, and tells it its box is a pod", async () => {
+    const { cluster, make } = await setup(false);
+    const dispatcher = make();
+    const plain = dispatch();
+    expect(await dispatcher.handlers.dispatch({ ...plain, body: { ...plain.body, purpose: "app" } })).toEqual({ result: "accepted" });
+    await until(async () => {
+      const pod = await cluster.kube.readPod(NS, boxNames(box).pod);
+      return pod.ok && pod.value !== null;
+    }, "the box's pod");
+    const pod = JSON.stringify(cluster.fake.get("pods", NS, boxNames(box).pod));
+    expect(pod).toContain(`{"name":"OSTRA_DISPATCH_PURPOSE","value":"app"}`);
+    expect(pod).toContain(`{"name":"OSTRA_BOX_EXECUTOR","value":"kubernetes"}`);
+    expect(await dispatcher.handlers.release(release(2))).toEqual({ result: "done" });
+    await Promise.all(dispatcher.boxes());
+  }, 30_000);
+
   it("F-093/c3, F-015/c2: box.waiting while the pod waits for a node, box.scheduled once it's placed, as runner events; and nothing of the box is left once its task ends", async () => {
     const { cluster, events, make } = await setup(false);
     const dispatcher = make();

@@ -14,6 +14,7 @@ import {
   appLabelSchema,
   appPathSchema,
   appProcessNameSchema,
+  appProcessReasonSchema,
   appProcessStateSchema,
   captionSchema,
   screenshotSizeSchema,
@@ -481,8 +482,16 @@ export const startAppProcessResultSchema = z.strictObject({
   state: appProcessStateSchema,
   /** Its address in this box, such as `http://localhost:5173`. */
   address: z.url({ protocol: /^http$/ }),
-  /** Its log in the task's folder (`appLogPath`). Its content is never logged. */
-  logPath: z.string().min(1).max(200),
+  /**
+   * Its log in the task's folder (`appLogPath`), as the agent's process reads it: the runner gives
+   * the full path, since the agent works in a repo's checkout below that folder. Its content is
+   * never logged.
+   */
+  logPath: z.string().min(1).max(1024),
+  /** Ticket 12: why it failed or stopped, in ostra's words (`appProcessReasonText`); absent or `null` when it runs. */
+  reason: appProcessReasonSchema.nullable().optional(),
+  /** Ticket 12: the code it exited with, when it did. */
+  exitCode: z.number().int().nullable().optional(),
 });
 export type StartAppProcessResult = z.infer<typeof startAppProcessResultSchema>;
 
@@ -614,12 +623,48 @@ export const appToolRefusalText = (refusal: AppToolRefusal): string => {
   }
 };
 
-/** The text `start_app` returns: each process's state, address and log. */
+/**
+ * Why an app process isn't running, in ostra's words for the agent (ticket 12): names, numbers and
+ * the log's path, never the log. A port in use says to stop the agent's own server on it, or to
+ * show that one with `show_preview`.
+ */
+export const appProcessReasonText = (process: Pick<StartAppProcessResult, "address" | "logPath" | "exitCode" | "reason">): string => {
+  const port = new URL(process.address).port;
+  const code = process.exitCode === null || process.exitCode === undefined ? "" : ` with code ${String(process.exitCode)}`;
+  switch (process.reason) {
+    case "port-in-use":
+      return (
+        `Port ${port} is already in use in this box, so it wasn't started. ` +
+        `If you started a server on it yourself, stop yours and call start_app again, or keep yours and show it with ${SHOW_PREVIEW_TOOL}.`
+      );
+    case "ready-timeout":
+      return `It didn't get ready within ${String(runnerLimits.appReadyTimeoutSeconds)} s. Read its log at ${process.logPath} to see why.`;
+    case "exited":
+      return `It exited${code}. Read its log at ${process.logPath} to see why.`;
+    case "start-failed":
+      return `It couldn't start: its folder is missing, or its port is one of this box's own. Its log, if any, is at ${process.logPath}.`;
+    case "stopped":
+      return `It was stopped${code}.`;
+    case "box-stopped":
+      return `It stopped with the box${code}.`;
+    case null:
+    case undefined:
+      return "";
+    default:
+      return process.reason satisfies never;
+  }
+};
+
+/** The text `start_app` returns: each process's state, address and log, and why one isn't running. */
 export const startAppResultText = (result: StartAppResult): string =>
   result.processes.length === 0
     ? "No app process was started."
     : result.processes
-        .map((process) => `${process.name} (${process.label}): ${process.state} at ${process.address}; its log is ${process.logPath}.`)
+        .map((process) => {
+          const line = `${process.name} (${process.label}): ${process.state} at ${process.address}; its log is ${process.logPath}.`;
+          const why = appProcessReasonText(process);
+          return why === "" ? line : `${line} ${why}`;
+        })
         .join("\n");
 
 /** The text `show_preview` returns. */

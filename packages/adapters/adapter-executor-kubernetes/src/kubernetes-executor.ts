@@ -380,7 +380,7 @@ export class KubernetesExecutor extends ExecutorAdapter {
     const nonce = randomBytes(32).toString("base64url");
     const listening = this.#inBox === undefined ? null : await this.#inBox.listen(ref, nonce);
     const objects = boxObjects(
-      { box: ref, spec: input.spec, size: input.size ?? null, image: input.image ?? null, nonce, taskToken: input.taskToken ?? null },
+      { box: ref, spec: input.spec, size: input.size ?? null, image: input.image ?? null, nonce, taskToken: input.taskToken ?? null, ...(input.purpose === undefined ? {} : { purpose: input.purpose }) },
       {
         images: this.#images,
         serverUrl: this.#serverUrl,
