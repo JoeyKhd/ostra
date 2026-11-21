@@ -18,7 +18,7 @@ No box: the runner runs the agent in a worktree on its own machine, as a process
 > [!CAUTION]
 > A runner on the host executor runs agents in a worktree on its own machine. Its agent can reach whatever that account can.
 
-The panel labels every `host` runner "not isolated". The key proxy and the git proxy still hold the credentials, so the agent never sees them, but nothing stops it reading the account's own files or reaching its network. A `host` pool on Linux or macOS runs its agents as a separate OS user, which the admin creates with a sudoers rule. On Windows a `host` pool runner refuses to start in v1; a personal runner on Windows works as on the other systems.
+The panel labels every `host` runner "not isolated". The key proxy and the git proxy still hold the credentials, so the agent never sees them, but nothing stops it reading the account's own files or reaching its network. A `host` pool on Linux or macOS runs its agents as a separate OS user, which the admin creates with a sudoers rule ([a pool on the host executor](/docs/runners/pools#a-pool-on-the-host-executor)). On Windows a `host` pool runner refuses to start in v1; a personal runner on Windows works as on the other systems.
 
 ## kubernetes
 

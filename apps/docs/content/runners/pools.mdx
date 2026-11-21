@@ -36,6 +36,81 @@ Give each machine its own data folder, and let each join with the token. A data 
 
 Rootless Docker or the gVisor runtime narrows what a box that escapes can reach. On Kubernetes, the runner's Helm chart makes the runner and its token secret instead: [Kubernetes with Helm](/docs/install/helm).
 
+## A pool on the host executor
+
+A pool runs on `host` only when an admin chooses it: its tasks run in worktrees on the machine, with no box (see [the host executor](/docs/security/host-executor)). It runs on Linux and macOS; on Windows a `host` pool runner refuses to start. The agent runs as an OS user of its own, never as the runner's: the runner starts each of a task's processes as that user with `sudo -n -u`, and hands each task's folder to that user's group. One agent user serves every task on the machine, so a running task's agent can read another running task's worktree.
+
+### Make the two users
+
+Make the runner's user and the agent's, put the runner's user in the agent's group, and make the runner's data folder. The data folder sits outside every home folder, because the agent's user must get through each folder above it. On Linux:
+
+```sh
+sudo useradd --create-home --shell /bin/bash ostra-runner
+sudo useradd --create-home --shell /bin/bash ostra-agent
+sudo usermod -aG ostra-agent ostra-runner
+sudo install -d -o ostra-runner -m 0711 /var/lib/ostra-runner
+```
+
+On macOS a new user's group is `staff`, which every user is in, so the agent's user gets a group of its own:
+
+```sh
+sudo dseditgroup -o create ostra-agent
+sudo sysadminctl -addUser ostra-agent -fullName "ostra agent" -password "$(openssl rand -base64 24)"
+sudo dscl . -create /Users/ostra-agent PrimaryGroupID "$(dscl . -read /Groups/ostra-agent PrimaryGroupID | awk '{print $2}')"
+sudo sysadminctl -addUser ostra-runner -fullName "ostra runner" -password "$(openssl rand -base64 24)"
+sudo dseditgroup -o edit -a ostra-runner -t user ostra-agent
+sudo install -d -o ostra-runner -m 0711 /usr/local/var/ostra-runner
+```
+
+Nobody signs in as either user, so their passwords are random and never shown.
+
+### Let the runner's user act as the agent's
+
+The runner's user may act as the agent's user, and as nobody else. Write the rule to `/etc/sudoers.d/ostra-runner`, on either system:
+
+```sh
+printf 'ostra-runner ALL=(ostra-agent) NOPASSWD:SETENV: ALL\nDefaults>ostra-agent umask=0007, umask_override\n' | sudo tee /etc/sudoers.d/ostra-runner >/dev/null
+sudo chmod 0440 /etc/sudoers.d/ostra-runner
+sudo visudo -cf /etc/sudoers.d/ostra-runner
+```
+
+`SETENV` lets a task's variables through by name, and the umask keeps what the agent writes open to the runner's user. Give the runner's user no other sudo rule. At start, the runner checks that sudo lets it act as the agent's user and not as root, that the agent's user gets through to the data folder, and that the agent's user can't read the runner's key. When a check fails, the runner stops and says which.
+
+### Start the runner
+
+Install the CLI as for a [personal runner](/docs/runners/personal#install-the-cli), in a folder the runner's user can read, such as `/opt/ostra`. Put the pool's join token in `/etc/ostra-runner.env`, as `OSTRA_JOIN_TOKEN=<the join token>`, readable by root only (`sudo chmod 0600 /etc/ostra-runner.env`).
+
+On Linux, start the runner as a systemd service with `Delegate=yes`. systemd then gives the runner a cgroup of its own, each task gets a cgroup under it, and the runner ends all of a task's processes together, a process the agent detached and stripped of its environment included. Without it, the runner falls back to the process tree and the task's marker, and reports `process-tree`. A cgroup needs cgroup v2 and Linux 5.14 or later, which Ubuntu 22.04, Debian 12 and RHEL 9 have. Write `/etc/systemd/system/ostra-runner.service`, with the paths of your Node (24.5 or later) and your clone in `ExecStart`:
+
+```ini
+[Unit]
+Description=ostra runner
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=ostra-runner
+Environment=OSTRA_SERVER_URL=https://core.ostra.example.com
+Environment=OSTRA_RUNNER_EXECUTOR=host
+Environment=OSTRA_RUNNER_DATA_DIR=/var/lib/ostra-runner
+Environment=OSTRA_HOST_POOL_AGENT_USER=ostra-agent
+EnvironmentFile=/etc/ostra-runner.env
+ExecStart=/usr/bin/node /opt/ostra/apps/runner/src/main.ts runner
+Delegate=yes
+Restart=on-failure
+RestartPreventExitStatus=3 4
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now ostra-runner
+```
+
+On macOS, run the same command under launchd, as a daemon whose `UserName` is `ostra-runner`, with `OSTRA_RUNNER_DATA_DIR=/usr/local/var/ostra-runner`. macOS has no kernel unit for a task's processes, so the runner reports `process-tree` there, and the panel says that a process the agent detaches isn't contained ([the allowed differences](/docs/runners/executors#the-allowed-differences)).
+
 ## Revoke a join token
 
 Select the pool and **Revoke** the token. Runners that already joined stay connected; no new runner can join with it.
