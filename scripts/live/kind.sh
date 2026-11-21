@@ -124,11 +124,23 @@ server_chart() {
 }
 
 runner_chart() {
-  local ctx="kind-$1" core
-  # The pool's join token is the bootstrap one core wrote at first start; it goes from the pod's
-  # data folder into the secret without passing through this log.
-  core="$(kubectl --context "$ctx" -n ostra get pods -l app.kubernetes.io/component=core -o name | head -n 1)"
-  kubectl --context "$ctx" -n ostra exec "$core" -- sh -c 'cat "${OSTRA_DATA_DIR:-/var/lib/ostra}/bootstrap-join-token"' >"$BIN/join-token" || return 1
+  local ctx="kind-$1" hash made=""
+  # The chart's server makes no bootstrap join token (OSTRA_BOOTSTRAP_JOIN_TOKEN=false: each core
+  # replica's data folder is its own), so the token is made here the way the pool page's "new join
+  # token" makes one: `ostra-join-` and 32 random bytes, stored by its SHA-256 for the default pool
+  # of the organization the panel seeded at first start. The token goes from a file into the
+  # secret; only its hash is in a command, and neither is in this log.
+  (umask 077 && node -e 'process.stdout.write("ostra-join-" + require("node:crypto").randomBytes(32).toString("base64url"))' >"$BIN/join-token") || return 1
+  hash="$(sha256sum "$BIN/join-token" | cut -d ' ' -f 1)"
+  for _ in $(seq 1 24); do
+    made="$(kubectl --context "$ctx" -n ostra exec postgres -- psql -U ostra -d ostra -v ON_ERROR_STOP=1 -qtAc "INSERT INTO join_token (id, \"organizationId\", \"poolId\", \"tokenHash\", label) SELECT gen_random_uuid()::text, \"organizationId\", id, '$hash', 'live-kind' FROM runner_pool WHERE \"isDefault\" ORDER BY \"createdAt\" LIMIT 1 RETURNING id" 2>&1)"
+    if echo "$made" | grep -qxE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'; then break; fi
+    echo "no default pool yet: ${made:-no row}"
+    made=""
+    sleep 5
+  done
+  [ -n "$made" ] || { rm -f "$BIN/join-token"; echo "no join token: the panel seeded no default pool"; return 1; }
+  echo "a join token for the default pool: $made"
   kubectl --context "$ctx" -n ostra create secret generic ostra-join-token --from-file=join-token="$BIN/join-token" >/dev/null || return 1
   rm -f "$BIN/join-token"
   helm --kube-context "$ctx" install ostra-runner deploy/helm/ostra-runner -n ostra -f deploy/helm/ostra-runner/examples/required-values.yaml --set image.pullPolicy=Never || return 1
