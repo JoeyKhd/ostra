@@ -22,6 +22,7 @@ import type { MemberId } from "@ostra/protocol";
 import { foldTaskEvents, visibleLiveText } from "@ostra/task-view";
 import type { OptimisticMessage, TaskUIMessage } from "@ostra/task-view";
 
+import { AttachmentsProvider } from "@/components/tasks/attachments/attachments-context";
 import { SubagentsBadge } from "@/components/tasks/subagents-badge";
 import { SubagentsWindow } from "@/components/tasks/subagents-window";
 import type { SubagentsAt } from "@/components/tasks/subagents-window";
@@ -305,6 +306,9 @@ export const TaskThread = ({ taskId, projectName, ticketKey = null, log, memberI
   const focusSeq = Number.isInteger(focusParam) && focusParam > 0 ? focusParam : null;
   const focused = useRef<number | null>(null);
 
+  // F-121: how many pictures the log holds, so the thread reads the attachments again when one comes.
+  const attachmentsAdded = useMemo(() => log.events.filter(({ event }) => event.kind === "attachment.added").length, [log.events]);
+
   const messages = useMemo(() => {
     const started = performance.now();
     const next = foldTaskEvents(log.events, visibleLiveText(log.live), { optimistic, previous: previous.current });
@@ -461,6 +465,7 @@ export const TaskThread = ({ taskId, projectName, ticketKey = null, log, memberI
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <TaskContext.Provider value={context}>
+        <AttachmentsProvider taskId={taskId} added={attachmentsAdded} agentName={agentName}>
         <SentDiffCommentsContext.Provider value={sentDiffComments}>
           <ThreadPrimitive.Root data-part="thread" className="flex min-h-0 flex-1 flex-col">
             <ThreadPrimitive.Viewport autoScroll={focusSeq === null} className="min-h-0 flex-1 overflow-y-auto">
@@ -494,6 +499,7 @@ export const TaskThread = ({ taskId, projectName, ticketKey = null, log, memberI
             />
           )}
         </SentDiffCommentsContext.Provider>
+        </AttachmentsProvider>
       </TaskContext.Provider>
     </AssistantRuntimeProvider>
   );

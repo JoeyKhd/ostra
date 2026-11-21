@@ -31,6 +31,7 @@ import { safeHref } from "@/task/renderers";
 import { TaskThread } from "@/task/task-thread";
 import { useTaskLog } from "@/task/use-task-log";
 
+import { TaskAppSupportLine, TaskAttachmentsGroup } from "./attachments/attachments-group";
 import { monthWord } from "./budget-reason";
 import { TaskPrs } from "./task-prs";
 import { HeldNoKey, KeyRow, NoKeySentence, WhoPicks } from "./no-key";
@@ -302,6 +303,7 @@ const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, t
         </PropGroup>
       )}
       {ticket}
+      <TaskAttachmentsGroup taskId={task.id} pr={task.repos.flatMap((repo) => (repo.pr === null ? [] : [{ number: repo.pr.number, url: repo.pr.url }]))[0] ?? null} />
       <TaskMemory taskId={task.id} />
       <PropGroup title={t("taskPage.code")}>
         {task.repos.map((repo) => {
@@ -664,6 +666,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           </p>
           {inLoop ? <StageLine subState={data.subState} aiReview={aiReview} counts={data.roundCounts} needsYou={cap !== null && isDriver} held={heldNow} /> : null}
           <TaskPrs repos={data.repos} />
+          <TaskAppSupportLine taskId={taskId} />
           {data.state === "awaiting_approval" ? <AwaitingApprovalBanner task={waitingTask} /> : null}
           {data.waiting?.kind === "no-runner" && data.waiting.reason.code === "needs-services-runner" ? (
             <p className="mt-1.5 text-ui text-muted" data-testid="task-dispatch-note">{servicesWaitText(data.waiting.reason.online)}</p>

@@ -226,6 +226,7 @@ export const ReviewScreen = ({ taskId }: { readonly taskId: TaskId }) => {
     return (
       <FindingBlock
         finding={finding}
+        pictures={{ taskKey: task.data?.key ?? "", agentName: t("review.finding.ai") }}
         actions={{
           fixed: fixedOf(finding),
           proposalHref: proposal === undefined || task.data === undefined ? null : `/projects/${task.data.projectId}/memory/proposals?proposal=${encodeURIComponent(proposal)}`,

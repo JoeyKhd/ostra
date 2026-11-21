@@ -9,13 +9,22 @@ import {
   optionIdSchema,
 } from "@ostra/protocol";
 import type {
+  AppProcessReason,
+  AppProcessState,
+  AttachmentId,
+  AttachmentKind,
+  AttachmentSkipReason,
+  AttachmentSource,
+  BlobId,
   BudgetScope,
   EffortLevel,
   MemberId,
   MessageDelivery,
   MessageDeliveryState,
   MessageIntent,
+  NoBrowserReason,
   PlanEntry,
+  PreviewTarget,
   QuestionField,
   QuestionId,
   RepoId,
@@ -190,6 +199,68 @@ export type PrCommentData = { readonly seq: number; readonly url: string; readon
 /** The ticket's files, written into the workspace for the agent (`ticket.files_ready`). */
 export type TicketFilesData = { readonly paths: readonly string[] };
 
+/**
+ * Milestone 8 (F-121): one screenshot or recording, as its `attachment.added` event names it. The
+ * panel shows it only once the task's attachments list it too (core stores a row for a valid one).
+ * The caption is the agent's words: text, never markup, and never logged.
+ */
+export type AttachmentItem = {
+  readonly attachmentId: AttachmentId;
+  readonly kind: AttachmentKind;
+  readonly source: AttachmentSource;
+  readonly target: PreviewTarget;
+  readonly path: string;
+  readonly width: number;
+  readonly height: number;
+  readonly durationMs: number | null;
+  readonly frameCount: number | null;
+  readonly caption: string | null;
+  /** The browser and the version that took it (F-121). */
+  readonly browser: { readonly name: string; readonly version: string };
+  /** A member's from the pane. */
+  readonly memberId: MemberId | null;
+  /** When it was recorded, in ms since the epoch. */
+  readonly at: number;
+};
+
+/**
+ * F-121: pictures at their place in a turn: a run of screenshots one after another, or one
+ * recording. The after-turn screenshots come at the turn's end; a member's from the pane is a row
+ * of its own, outside any turn.
+ */
+export type AttachmentsData = {
+  readonly kind: AttachmentKind;
+  readonly source: AttachmentSource;
+  readonly items: readonly AttachmentItem[];
+  /** The turn's last run: the line saying where they're kept goes under it. */
+  readonly lastInTurn: boolean;
+  /** The turn they were taken in, and when it started; `null` for a member's. */
+  readonly turnId: TurnId | null;
+  readonly turnAt: number | null;
+};
+
+/** Ticket 13: pictures ostra was to take itself weren't taken (`attachment.skipped`). */
+export type AttachmentSkippedData = { readonly source: "after-turn" | "member"; readonly reason: AttachmentSkipReason; readonly count: number };
+
+/**
+ * F-140: an app process in the box, one line per start that updates in place (`app.process`):
+ * starting, ready, then exited, failed or stopped. A failed one names its log's tail, a blob of the
+ * task; the log itself is never in the event.
+ */
+export type AppProcessData = {
+  readonly name: string;
+  readonly port: number;
+  readonly state: AppProcessState;
+  readonly exitCode: number | null;
+  readonly reason: AppProcessReason | null;
+  readonly logBlobId: BlobId | null;
+  /** How long it took from `starting` to `ready`, in ms; `null` until it's ready. */
+  readonly readyAfterMs: number | null;
+};
+
+/** F-121: the box has no browser (`app.browser`), shown once per task. */
+export type NoBrowserData = { readonly reason: NoBrowserReason };
+
 export type TaskDataParts = {
   plan: { entries: PlanEntry[] };
   question: QuestionData;
@@ -209,6 +280,10 @@ export type TaskDataParts = {
   "memory-proposed": MemoryProposedData;
   "pr-comment": PrCommentData;
   "ticket-files": TicketFilesData;
+  attachments: AttachmentsData;
+  "attachment-skipped": AttachmentSkippedData;
+  "app-process": AppProcessData;
+  "no-browser": NoBrowserData;
   system: { seq: number; event: SystemEvent };
   unsupported: { seq: number; rawKind: string; acp: boolean };
   problem: { seq: number; text: string };

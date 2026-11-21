@@ -93,11 +93,11 @@ export const foldCoverage = {
   // Protocol minor 6 (F-138): the turn's subagents, drawn as its badge and window.
   "subagent.started": "the turn's subagent tree",
   "subagent.status": "the turn's subagent tree",
-  // Protocol minor 7 (milestone 8, ADR 0068): no row until ticket 17 and 21 draw them.
-  "app.process": "no row (milestone 8)",
-  "app.browser": "no row (milestone 8)",
-  "attachment.added": "no row (milestone 8)",
-  "attachment.skipped": "no row (milestone 8)",
+  // Protocol minor 7 (milestone 8, ADR 0068): the app and its pictures (ticket 17); the previews are the pane (ticket 21).
+  "app.process": "app process line (F-140)",
+  "app.browser": "no-browser row, once per task (F-121)",
+  "attachment.added": "attachments row at its place in the turn (F-121)",
+  "attachment.skipped": "skipped pictures line (F-121)",
   "preview.list": "no row (milestone 8)",
   "preview.dropped": "no row (milestone 8)",
   "preview.opened": "no row (milestone 8)",

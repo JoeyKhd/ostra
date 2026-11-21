@@ -101,6 +101,10 @@ const convertPart = (part: TaskUIPart): ThreadPart | null => {
     case "data-memory-proposed":
     case "data-pr-comment":
     case "data-ticket-files":
+    case "data-attachments":
+    case "data-attachment-skipped":
+    case "data-app-process":
+    case "data-no-browser":
     case "data-system":
     case "data-unsupported":
     case "data-problem":

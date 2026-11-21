@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/messages";
 
+import { FindingAttachments } from "../attachments/finding-attachments";
 import { findingStateWords } from "./review-words";
 import type { ReviewFinding } from "./review-words";
 
@@ -40,7 +41,10 @@ export type FindingActions = {
   readonly onRemember: () => void;
 };
 
-export const FindingBlock = ({ finding, actions }: { readonly finding: ReviewFinding; readonly actions: FindingActions }) => {
+/** Milestone 8 (F-121): the task's key and its agent's name, for the viewer of the finding's pictures. */
+export type FindingPictures = { readonly taskKey: string; readonly agentName: string };
+
+export const FindingBlock = ({ finding, actions, pictures }: { readonly finding: ReviewFinding; readonly actions: FindingActions; readonly pictures?: FindingPictures }) => {
   const open = finding.state === "open";
   const quiet = finding.state !== "open";
   return (
@@ -67,6 +71,7 @@ export const FindingBlock = ({ finding, actions }: { readonly finding: ReviewFin
           <pre className="mt-1 overflow-x-auto rounded-lg border border-line bg-surface px-3 py-2 font-mono text-xs text-text">{finding.suggestion}</pre>
         </div>
       )}
+      <FindingAttachments views={finding.attachments} taskKey={pictures?.taskKey ?? ""} agentName={pictures?.agentName ?? t("review.finding.ai")} projectName={actions.projectName} />
       <div className="mt-2 flex flex-wrap items-center gap-2 pb-1">
         {open && actions.prOpen ? (
           actions.fixed ? (

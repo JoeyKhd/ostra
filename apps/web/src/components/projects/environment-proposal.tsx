@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRightIcon, CheckIcon, FlaskConicalIcon, GitBranchIcon, LoaderCircleIcon, LockIcon } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Popover } from "radix-ui";
 import { useState } from "react";
 import type { ReactNode } from "react";
@@ -21,6 +22,10 @@ import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import { safeHref } from "@/task/renderers";
 
+import { AttachmentThumb } from "@/components/tasks/attachments/attachment-thumb";
+import { thumbName } from "@/components/tasks/attachments/attachment-words";
+
+import { readyWords } from "./environment-app-words";
 import { agoText, changesOf, decidedOf, editedProposal, lineDiff, taskStateWords } from "./proposal-words";
 import type { Decided, DiffRow, Onboarding, ProposalView } from "./proposal-words";
 
@@ -132,6 +137,72 @@ const RepoBlock = ({ repo, editing, edit, onEdit }: {
             ))}
           </RowsBlock>
         </Part>
+      )}
+    </section>
+  );
+};
+
+/**
+ * Milestone 8 (F-140, F-113): the proposal's app processes, against the environment's list while
+ * it's open (`+` added, `~` changed), who kept it from a task, and the onboarding task's screenshot
+ * of the primary it started. "Accept" writes each in place of the one of its name or port.
+ */
+const AppProcessesBlock = ({ data, projectId }: { readonly data: ProposalView; readonly projectId: ProjectId }) => {
+  const router = useRouter();
+  const { proposed, diff } = data.appProcesses;
+  if (proposed.length === 0) return null;
+  const signOf = (name: string): "+" | "~" | null =>
+    diff === null || diff.added.some((one) => one.name === name) ? "+" : diff.changed.some((one) => one.name === name) ? "~" : null;
+  const rows = proposed.flatMap((process) => {
+    const sign = signOf(process.name);
+    return sign === null ? [] : [{ sign, process }];
+  });
+  const shot = data.screenshot;
+  return (
+    <section className="border-t border-line pt-4" data-testid="proposal-app">
+      <h3 className="text-[14px] font-semibold text-text">
+        {t("proposal.app.title")}
+        <span className="text-sm font-normal text-faint"> {data.source === "kept" ? t("proposal.app.kept", { name: data.keptBy?.name ?? t("environment.app.someone") }) : t("proposal.app.order")}</span>
+      </h3>
+      {rows.length === 0 ? (
+        <p className="mt-2 text-sm text-faint">{t("proposal.noChanges")}</p>
+      ) : (
+        <div className="mt-2">
+          <RowsBlock>
+            {rows.map(({ sign, process }) => {
+              const ready = readyWords(process.ready);
+              return (
+                <SignedRow key={process.name} sign={sign} testid="proposal-process">
+                  <span className="font-mono text-[13px] text-text">{process.name}</span>
+                  <span className="text-sm text-muted">{process.label}</span>
+                  {process.primary ? <span className="inline-flex h-5 items-center rounded-[5px] border border-line-2 px-1.5 text-xs text-muted">{t("environment.app.primary")}</span> : null}
+                  <span className="font-mono text-[12.5px] text-text">{process.port}</span>
+                  <span className="text-[12.5px] text-muted">{ready.words}{ready.mono === null ? null : <span className="ml-1 font-mono text-text">{ready.mono}</span>}</span>
+                  <span className="basis-full truncate font-mono text-[12.5px] text-faint">{process.folder === "." ? process.command : `${process.folder} · ${process.command}`}</span>
+                </SignedRow>
+              );
+            })}
+          </RowsBlock>
+        </div>
+      )}
+      {data.waitsForCommand === null ? null : (
+        <p className="mt-2 text-sm text-muted" data-testid="proposal-waits">
+          {t("proposal.app.waits", { name: data.waitsForCommand })}{" "}
+          <Link href={`/projects/${projectId}/environment?tab=app`} className="text-teal hover:underline">{t("proposal.app.review")}</Link>
+        </p>
+      )}
+      {shot === null ? null : (
+        <div className="mt-3" data-testid="proposal-screenshot">
+          <p className="mb-1.5 text-xs font-medium text-faint">{t("proposal.app.screenshot")}</p>
+          <AttachmentThumb
+            view={shot}
+            size={{ width: shot.width, height: shot.height, kind: shot.kind, durationMs: shot.durationMs }}
+            height={110}
+            caption={`${String(shot.width)} · ${shot.path}`}
+            name={thumbName({ kind: shot.kind, path: shot.path, width: shot.width, at: shot.createdAt })}
+            onOpen={() => { router.push(`/tasks/${shot.taskId}?attachment=${encodeURIComponent(shot.attachmentId)}`); }}
+          />
+        </div>
       )}
     </section>
   );
@@ -365,6 +436,7 @@ export const EnvironmentProposalTab = ({ projectId, projectName, onboarding, now
                   </div>
                 </section>
               )}
+              <AppProcessesBlock data={data} projectId={projectId} />
             </div>
           )}
           <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-line pt-4" data-testid="proposal-decision">

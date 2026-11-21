@@ -1,7 +1,7 @@
 import type { UIToolInvocation } from "ai";
 import type { z } from "zod";
 
-import { messageDeliveries, typedToolSchemas } from "@ostra/protocol";
+import { RECORD_APP_TOOL, TAKE_SCREENSHOT_TOOL, messageDeliveries, typedToolSchemas } from "@ostra/protocol";
 import type {
   ApprovalId,
   ApprovalOption,
@@ -29,6 +29,9 @@ import type {
   ApprovalDescriptor,
   ApprovalReceipt,
   ApprovalStatus,
+  AppProcessData,
+  AttachmentItem,
+  AttachmentsData,
   PullRequestData,
   QuestionStatus,
   SetupData,
@@ -82,7 +85,31 @@ type ToolRecord = {
   subagentId?: SubagentId;
   /** F-138: it's in the thread (the main agent's, or a subagent's that asked for an approval). */
   inThread?: boolean;
+  /**
+   * F-121: an app-picture call (`take_screenshot`, `record_app`) whose picture came: the capture row
+   * stands in its place, so the call isn't drawn twice.
+   */
+  absorbed?: boolean;
 };
+
+/** F-121: a run of pictures in a turn, as the fold builds it. */
+type AttachmentsRecord = {
+  kind: AttachmentsData["kind"];
+  source: AttachmentsData["source"];
+  items: AttachmentItem[];
+  lastInTurn: boolean;
+  turnId: AttachmentsData["turnId"];
+  turnAt: number | null;
+};
+
+/** F-140: one start of an app process, as the fold builds it: its line updates in place. */
+type AppProcessRecord = {
+  -readonly [K in keyof AppProcessData]: AppProcessData[K];
+} & { startedAt: number | null };
+
+/** Whether a call is one of ostra's app-picture tools, whatever prefix its agent names it with (`ostra_take_screenshot`). */
+const isPictureTool = (title: string): boolean =>
+  [TAKE_SCREENSHOT_TOOL, RECORD_APP_TOOL].some((name) => title === name || title.endsWith(`_${name}`) || title.endsWith(`.${name}`) || title.endsWith(`/${name}`));
 
 /** F-138: one round of a subagent, as the fold builds it. */
 type RoundRecord = {
@@ -141,7 +168,9 @@ type Slot =
   | { t: "question"; rec: QuestionRecord }
   | { t: "plan"; id: string; entries: PlanEntry[] }
   | { t: "compaction"; id: string; status: "running" | "done"; summary?: string }
-  | { t: "setup"; id: string; rec: SetupRecord };
+  | { t: "setup"; id: string; rec: SetupRecord }
+  | { t: "attachments"; id: string; rec: AttachmentsRecord }
+  | { t: "app-process"; id: string; rec: AppProcessRecord };
 
 type Builder = {
   id: string;
@@ -366,6 +395,12 @@ const slotToPart = (slot: Slot): TaskUIPart => {
       };
     case "setup":
       return setupPart(slot.id, slot.rec);
+    case "attachments":
+      return { type: "data-attachments", id: slot.id, data: { ...slot.rec, items: [...slot.rec.items] } };
+    case "app-process": {
+      const { name, port, state, exitCode, reason, logBlobId, readyAfterMs } = slot.rec;
+      return { type: "data-app-process", id: slot.id, data: { name, port, state, exitCode, reason, logBlobId, readyAfterMs } };
+    }
     default:
       return slot satisfies never;
   }
@@ -544,6 +579,10 @@ export const foldTaskEvents = (
   const deliveries = messageDeliveries(events);
   // Minor 3 (F-037): the messages whose turn the budget gate holds now.
   const held = heldMessages(events);
+  // F-140: each app process's line while it runs, by session and name: its later states update it.
+  const openApps = new Map<string, { readonly rec: AppProcessRecord; readonly owner: Builder }>();
+  // F-121: "the box has no browser" is said once per task.
+  let noBrowserShown = false;
 
   const push = (builder: Builder): Builder => {
     builders.push(builder);
@@ -589,6 +628,44 @@ export const foldTaskEvents = (
 
   const touch = (owner: Builder, seq: number): void => {
     owner.meta.lastSeq = Math.max(owner.meta.lastSeq, seq);
+  };
+
+  /** A row of its own outside any turn, holding one slot that later events may update. */
+  const slotRow = (id: string, seq: number, sessionId: SessionId, slot: Slot): Builder =>
+    push({ id, role: "system", slots: [slot], meta: { firstSeq: seq, lastSeq: seq, sessionId } });
+
+  /** The session's turn while it runs: where the agent's app lines go. Outside a turn, `undefined`. */
+  const runningTurnOf = (sessionId: SessionId): Builder | undefined => {
+    const turn = lastTurnBySession.get(sessionId);
+    return turn?.meta.turnState === "running" ? turn : undefined;
+  };
+
+  /**
+   * F-121: a picture at its place. In a turn, a screenshot joins the run of screenshots just
+   * before it (by the same hand), and a recording starts its own; the agent's own call to the tool
+   * that took it is folded into the row. A member's from the pane, or one with no turn, is a row.
+   */
+  const addAttachment = (seq: number, sessionId: SessionId, item: AttachmentItem): void => {
+    const turn = item.source === "member" ? undefined : lastTurnBySession.get(sessionId);
+    const id = `attachments:${String(seq)}`;
+    if (turn === undefined) {
+      slotRow(id, seq, sessionId, { t: "attachments", id, rec: { kind: item.kind, source: item.source, items: [item], lastInTurn: false, turnId: null, turnAt: null } });
+      return;
+    }
+    touch(turn, seq);
+    if (item.source === "agent") {
+      const call = turn.slots.findLast(
+        (slot): slot is Extract<Slot, { t: "tool" }> => slot.t === "tool" && slot.rec.absorbed !== true && slot.rec.outcome?.type !== "failed" && isPictureTool(slot.rec.title),
+      );
+      if (call !== undefined) call.rec.absorbed = true;
+    }
+    const last = turn.slots.findLast((slot) => !(slot.t === "tool" && slot.rec.absorbed === true));
+    if (last?.t === "attachments" && last.rec.kind === "screenshot" && item.kind === "screenshot" && last.rec.source === item.source) {
+      last.rec.items.push(item);
+      return;
+    }
+    for (const slot of turn.slots) if (slot.t === "attachments") slot.rec.lastInTurn = false;
+    turn.slots.push({ t: "attachments", id, rec: { kind: item.kind, source: item.source, items: [item], lastInTurn: true, turnId: turn.meta.turnId ?? null, turnAt: turn.meta.at ?? null } });
   };
 
   const text = (value: string, state: "streaming" | "done"): TaskUIPart => ({
@@ -1141,10 +1218,94 @@ export const foldTaskEvents = (
       case "environment.proposed":
         // Protocol minor 5. No row until the milestone 6 task page draws them (tickets 30 to 36).
         break;
-      case "app.process":
-      case "app.browser":
-      case "attachment.added":
-      case "attachment.skipped":
+      case "app.process": {
+        // F-140: one line per start of a process, updated in place by its later states.
+        const key = `${sessionId}:${event.name}`;
+        const open = openApps.get(key);
+        const ended = event.state === "exited" || event.state === "failed" || event.state === "stopped";
+        if (open === undefined || event.state === "starting") {
+          // A process that stops before anything was said of it says nothing.
+          if (event.state === "stopped") break;
+          const rec: AppProcessRecord = {
+            name: event.name,
+            port: event.port,
+            state: event.state,
+            exitCode: event.exitCode,
+            reason: event.reason,
+            logBlobId: event.logBlobId,
+            readyAfterMs: null,
+            startedAt: event.state === "starting" ? stored.at : null,
+          };
+          const id = `app:${String(seq)}`;
+          const turn = runningTurnOf(sessionId);
+          let owner: Builder;
+          if (turn === undefined) owner = slotRow(id, seq, sessionId, { t: "app-process", id, rec });
+          else {
+            touch(turn, seq);
+            turn.slots.push({ t: "app-process", id, rec });
+            owner = turn;
+          }
+          if (!ended) openApps.set(key, { rec, owner });
+          break;
+        }
+        const { rec } = open;
+        if (event.state === "stopped" && rec.state === "ready") {
+          // Stopped with its box once it was ready: the box's end says so, and its line keeps how it started.
+          openApps.delete(key);
+          break;
+        }
+        rec.state = event.state;
+        rec.port = event.port;
+        rec.exitCode = event.exitCode;
+        rec.reason = event.reason;
+        rec.logBlobId = event.logBlobId ?? rec.logBlobId;
+        if (event.state === "ready" && rec.startedAt !== null) rec.readyAfterMs = Math.max(0, stored.at - rec.startedAt);
+        touch(open.owner, seq);
+        if (ended) openApps.delete(key);
+        break;
+      }
+      case "app.browser": {
+        // F-121: a box without a browser takes no pictures: said once per task, where the turn is.
+        if (event.browser.available || noBrowserShown) break;
+        noBrowserShown = true;
+        const part: TaskUIPart = { type: "data-no-browser", id: `no-browser:${String(seq)}`, data: { reason: event.browser.reason } };
+        const turn = runningTurnOf(sessionId);
+        if (turn === undefined) row(seq, sessionId, part);
+        else {
+          touch(turn, seq);
+          turn.slots.push({ t: "part", part });
+        }
+        break;
+      }
+      case "attachment.added": {
+        addAttachment(seq, sessionId, {
+          attachmentId: event.attachmentId,
+          kind: event.attachmentKind,
+          source: event.source,
+          target: event.target,
+          path: event.path,
+          width: event.width,
+          height: event.height,
+          durationMs: event.durationMs,
+          frameCount: event.frameCount,
+          caption: event.caption,
+          browser: { name: event.browser.name, version: event.browser.version },
+          memberId: event.memberId,
+          at: stored.at,
+        });
+        break;
+      }
+      case "attachment.skipped": {
+        // Ticket 13: the after-turn screenshots that weren't taken, at the turn's end; a member's, a row.
+        const part: TaskUIPart = { type: "data-attachment-skipped", id: `skipped:${String(seq)}`, data: { source: event.source, reason: event.reason, count: event.count } };
+        const turn = event.source === "member" ? undefined : lastTurnBySession.get(sessionId);
+        if (turn === undefined) row(seq, sessionId, part);
+        else {
+          touch(turn, seq);
+          turn.slots.push({ t: "part", part });
+        }
+        break;
+      }
       case "preview.list":
       case "preview.dropped":
       case "preview.opened":
@@ -1153,8 +1314,7 @@ export const foldTaskEvents = (
       case "preview.link_created":
       case "preview.link_revoked":
       case "app.started_by":
-        // Protocol minor 7 (milestone 8, ADR 0068). No row until the milestone 8 task page draws
-        // them: the pictures in the thread (ticket 17) and the preview pane (ticket 21).
+        // Protocol minor 7 (milestone 8, ADR 0068). No row: the preview pane (ticket 21) reads them.
         break;
       case "subagent.started": {
         // F-138: placed in the tree of its parent's turn, or of the turn of the call that started it.
@@ -1284,7 +1444,8 @@ export const foldTaskEvents = (
       id: builder.id,
       role: builder.role,
       metadata: records.length === 0 ? builder.meta : { ...builder.meta, subagents: treeOf(builder, records) },
-      parts: builder.slots.map(slotToPart),
+      // F-121: an app-picture call whose picture came is drawn as the picture's row only.
+      parts: builder.slots.filter((slot) => !(slot.t === "tool" && slot.rec.absorbed === true)).map(slotToPart),
     };
     const previous = previousById.get(message.id);
     return previous !== undefined && deepEqual(previous, message) ? previous : message;

@@ -520,27 +520,28 @@ const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
   },
   // Protocol minor 7 (milestone 8): no row until tickets 17 and 21 draw them.
   "app.process": {
-    prefix: [],
+    prefix: turnPrefix,
     check: (m) => {
-      expect(typesOf(m)).not.toContain("data-system");
+      expect(typesOf(m)).toContain("data-app-process");
     },
   },
   "app.browser": {
     prefix: [],
     check: (m) => {
-      expect(typesOf(m)).not.toContain("data-system");
+      // A box with a browser says nothing; one without says so once (attachments.test.ts).
+      expect(typesOf(m)).not.toContain("data-no-browser");
     },
   },
   "attachment.added": {
-    prefix: [],
+    prefix: turnPrefix,
     check: (m) => {
-      expect(typesOf(m)).not.toContain("data-system");
+      expect(findPart(m, "data-attachments")).toBeDefined();
     },
   },
   "attachment.skipped": {
-    prefix: [],
+    prefix: turnPrefix,
     check: (m) => {
-      expect(typesOf(m)).not.toContain("data-system");
+      expect(typesOf(m)).toContain("data-attachment-skipped");
     },
   },
   "preview.list": {

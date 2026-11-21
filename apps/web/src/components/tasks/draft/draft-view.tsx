@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckIcon, ChevronDownIcon, LoaderCircleIcon, TriangleAlertIcon } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ClipboardEvent, DragEvent } from "react";
 
 import type { BoardId, RefineDraft, TaskId } from "@ostra/protocol";
@@ -86,6 +86,12 @@ export const DraftView = ({ taskId, meId, needsYou, running, ticket, boards, rea
   const [uploading, setUploading] = useState<readonly string[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [discarding, setDiscarding] = useState(false);
+  // Ticket 17 (F-121): a screenshot "Add to draft" put among the images shows as itself, from its download.
+  const attachments = useQuery(trpc.tasks.attachments.queryOptions({ taskId }));
+  const pictures = useMemo(
+    () => new Map((attachments.data?.attachments ?? []).flatMap((view) => (view.draftImageId === null ? [] : [[view.draftImageId, view.downloadPath] as const]))),
+    [attachments.data],
+  );
   const task = useQuery({ ...trpc.tasks.get.queryOptions({ taskId }), refetchInterval: (query) => (query.state.data?.sync.some((write) => write.state === "pending") === true ? 2000 : false) });
   const draft = useQuery({
     ...trpc.drafts.get.queryOptions({ taskId, version: shown }),
@@ -376,7 +382,7 @@ export const DraftView = ({ taskId, meId, needsYou, running, ticket, boards, rea
               max={data.imagesMax}
               editable={editable}
               applied={isApplied}
-              thumbs={thumbs}
+              thumbs={pictures.size === 0 ? thumbs : new Map([...pictures, ...thumbs])}
               uploading={uploading}
               error={uploadError}
               onUpload={upload}

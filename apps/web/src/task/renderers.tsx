@@ -33,6 +33,7 @@ import type { ReactNode } from "react";
 import { approvalMetadataSchema } from "@ostra/task-view";
 import type { SubagentNode, TaskDataPart } from "@ostra/task-view";
 
+import { AppProcessLine, AttachmentsRow, NoBrowserLine, SkippedLine } from "@/components/tasks/attachments/attachment-strip";
 import { monthWord } from "@/components/tasks/budget-reason";
 import { RowState } from "@/components/tasks/subagent-marks";
 import { callCount, nodeDurationMs, shortDuration, stateWord, subagentLabel } from "@/components/tasks/subagent-words";
@@ -630,6 +631,14 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
           </Line>
         </div>
       );
+    case "data-attachments":
+      return <AttachmentsRow data={part.data} />;
+    case "data-attachment-skipped":
+      return <SkippedLine data={part.data} />;
+    case "data-app-process":
+      return <AppProcessLine data={part.data} />;
+    case "data-no-browser":
+      return <NoBrowserLine data={part.data} />;
     case "data-driver":
       return (
         <Line icon={<InfoIcon />} tone="muted">

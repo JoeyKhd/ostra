@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckIcon, FileIcon, FlaskConicalIcon, KeyRoundIcon, LockIcon, PlusIcon, ShieldCheckIcon, TriangleAlertIcon, VariableIcon, XIcon } from "lucide-react";
+import { AppWindowIcon, CheckIcon, FileIcon, FlaskConicalIcon, KeyRoundIcon, LockIcon, PlusIcon, ShieldCheckIcon, TriangleAlertIcon, VariableIcon, XIcon } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -30,9 +30,13 @@ import type { RouterInputs, RouterOutputs } from "@/lib/trpc";
 import { ServicesAndChecks, SnapshotProperties } from "./environment-services";
 import { entriesText, lineCount, withoutFinalNewline } from "./environment-words";
 import { EnvironmentProposalTab, ProposalProperties, TestEnvironmentButton } from "./environment-proposal";
+import { AppProperties, AppWarnings, EnvironmentAppTab } from "./environment-app";
 
-/** The page's tabs (environment-services.md): `?tab=services`, milestone 6's `?tab=proposal` (ticket 36), or none for Setup. */
-type EnvironmentTab = "setup" | "services" | "proposal";
+/**
+ * The page's tabs (environment-services.md): `?tab=services`, milestone 8's `?tab=app` (ticket 17),
+ * milestone 6's `?tab=proposal` (ticket 36), or none for Setup.
+ */
+type EnvironmentTab = "setup" | "services" | "app" | "proposal";
 
 type View = RouterOutputs["environments"]["get"];
 type Detected = RouterOutputs["environments"]["detect"];
@@ -260,6 +264,8 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
   const proposal = useQuery(trpc.environments.proposal.queryOptions({ projectId }));
   // A proposal waiting for a decision: the tab's dot and the banner. One decided in the last 7 days is only read (ticket 41).
   const waiting = proposal.data?.decision === null;
+  // Milestone 8: a port an agent announced and a member kept (`source: kept`), not onboarding's.
+  const keptWaiting = waiting && proposal.data?.source === "kept";
   const [now] = useState(() => Date.now());
   const [startError, setStartError] = useState<string | null>(null);
   const detect = useMutation(trpc.environments.detect.mutationOptions());
@@ -339,10 +345,13 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
   const router = useRouter();
   const pathname = usePathname();
   const tabParam = params.get("tab");
-  const tab: EnvironmentTab = tabParam === "services" || tabParam === "proposal" ? tabParam : "setup";
+  const tab: EnvironmentTab = tabParam === "services" || tabParam === "app" || tabParam === "proposal" ? tabParam : "setup";
+  // Ticket 17: the App tab's warnings under the tabs, from its list (shared with the tab's own query).
+  const appList = useQuery(trpc.environments.appProcesses.list.queryOptions({ projectId }, { enabled: tab === "app" }));
   const selectTab = (next: EnvironmentTab) => {
     const query = new URLSearchParams(params.toString());
-    if (next === "services" || next === "proposal") query.set("tab", next);
+    query.delete("process");
+    if (next === "services" || next === "app" || next === "proposal") query.set("tab", next);
     else query.delete("tab");
     const search = query.toString();
     router.replace(search === "" ? pathname : `${pathname}?${search}`, { scroll: false });
@@ -366,7 +375,7 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
         </>
       }
       properties={
-        tab === "proposal" ? <ProposalProperties proposal={proposal.data ?? null} onboarding={onboarding.data} now={now} /> : <>
+        tab === "proposal" ? <ProposalProperties proposal={proposal.data ?? null} onboarding={onboarding.data} now={now} /> : tab === "app" ? <AppProperties projectId={projectId} view={view} /> : <>
           <SnapshotProperties projectId={projectId} view={view} admin={admin} servicesTab={tab === "services"} />
           {tab === "setup" ? <Properties view={view} rows={rows} detected={detect.data} detecting={detect.isPending} /> : null}
         </>
@@ -390,6 +399,7 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
           tabs={[
             { id: "setup", label: t("environment.tabs.setup") },
             { id: "services", label: t("environment.tabs.servicesAndChecks") },
+            { id: "app", label: t("environment.tabs.app") },
             // Ticket 36: the onboarding task's proposal, once there's an onboarding task; a dot while a proposal waits (amber for its admins).
             ...(onboarding.data?.task === null || onboarding.data === undefined
               ? []
@@ -409,12 +419,14 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
         )}
         {environment.error === null ? null : <p role="alert" className="mt-4 text-ui text-red">{errorText(environment.error)}</p>}
         {startError === null ? null : <p role="alert" className="mt-2 text-xs text-red" data-testid="onboarding-error">{startError}</p>}
-        {tab !== "proposal" && waiting ? (
+        {tab === "app" ? <AppWarnings list={appList.data} baseImage={view?.baseImage ?? null} /> : null}
+        {/* Ticket 17: a process kept from a task is reviewed on the App tab, which shows it in its band. */}
+        {tab !== "proposal" && waiting && !(keptWaiting && tab === "app") ? (
           <p className="mt-2 flex min-h-9 items-center gap-2 text-ui text-text" data-testid="proposal-banner">
             {admin ? <span aria-hidden className="size-1.5 rounded-full bg-amber" /> : null}
-            <FlaskConicalIcon aria-hidden className="size-[15px] text-muted" />
-            {t("environment.proposalBanner")}
-            <button type="button" className="text-teal hover:underline" onClick={() => { selectTab("proposal"); }}>{t("environment.reviewProposal")}</button>
+            {keptWaiting ? <AppWindowIcon aria-hidden className="size-[15px] text-muted" /> : <FlaskConicalIcon aria-hidden className="size-[15px] text-muted" />}
+            {keptWaiting ? t("environment.keptBanner") : t("environment.proposalBanner")}
+            <button type="button" className="text-teal hover:underline" onClick={() => { selectTab(keptWaiting ? "app" : "proposal"); }}>{keptWaiting ? t("environment.reviewKept") : t("environment.reviewProposal")}</button>
           </p>
         ) : null}
 
@@ -434,6 +446,10 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
         ) : tab === "services" ? (
           <div role="tabpanel" id="environment-panel-services" aria-labelledby="environment-tab-services">
             <ServicesAndChecks projectId={projectId} view={view} admin={admin} />
+          </div>
+        ) : tab === "app" ? (
+          <div role="tabpanel" id="environment-panel-app" aria-labelledby="environment-tab-app">
+            <EnvironmentAppTab projectId={projectId} view={view} />
           </div>
         ) : (
           <div role="tabpanel" id="environment-panel-setup" aria-labelledby="environment-tab-setup">
