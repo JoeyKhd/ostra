@@ -1,6 +1,6 @@
 # 08: Spike: a dev server through core over HTTP/2
 
-Status: ready-for-agent
+Status: resolved
 Builder: runner
 Blocked by: none
 Features: F-143, F-144 (the transport they rest on)
@@ -34,8 +34,22 @@ Throwaway code, in `spikes/preview-through-core/`:
 
 ## Done when
 
-- [ ] `context/research/spike-preview-through-core.md` holds every result, cited to its run's log in the spike's folder. Safari and the `docker` forwarder are marked as waiting when they haven't run, never as passed.
-- [ ] Spec section 11's port line names what tickets 22, 23 and 25 take from the spike.
-- [ ] Committed as `✨ spike a dev server through core`, and the finding as `📝 add the preview tunnel spike's finding`.
+- [x] `context/research/spike-preview-through-core.md` holds every result, cited to its run's log in the spike's folder. Safari and the `docker` forwarder are marked as waiting when they haven't run, never as passed.
+- [x] Spec section 11's port line names what tickets 22, 23 and 25 take from the spike.
+- [x] Committed as `✨ spike a dev server through core`, and the finding as `📝 add the preview tunnel spike's finding`.
 
 ## Comments
+
+- 2026-11-21, runner: the spike is commit `44c4d31e`. The finding, the HTTP-cookie check `src/harness/secure-cookie.ts` with its log, ADR 0068's amendment and ticket 22's two lines are this commit. It passes (`research/spike-preview-through-core.md`, section 2):
+  - Node's `http2` over the `ws` duplex carried Vite's and Next.js 16's pages and HMR through core, with the rewrite on and no project change, on an HTTPS non-localhost domain and on `preview.localhost`;
+  - `X-Forwarded-Host` reached the app with the rewrite off;
+  - one local forward carried a WebSocket and HTTP at once;
+  - the partitioned cookie held in a cross-site frame on Chrome for Testing 159, Edge 157 and Firefox 159;
+  - a cold page load took 105 ms against 75 ms direct.
+
+  `yamux-js` isn't needed, so ticket 22 adds no dependency. Three findings change the build:
+  - dial the app at `localhost` with IPv6 and IPv4, since Vite and webpack-dev-server listened on `::1` only (ADR 0068 and spec sections 5.2 and 6 amended, and ticket 22; ticket 03's forward still says `127.0.0.1`, left for its builder);
+  - join raw streams with `splice`, never `stream.pipeline`, which lost a response's tail;
+  - webpack-dev-server's HMR needs `client.webSocketURL: "auto://0.0.0.0:0/ws"` in the native preview when a project sets its port.
+
+  Of the run's 65 checks, 5 failed, and all 5 are these findings: webpack-dev-server's default client, and Playwright's Firefox, which turns cookie partitioning off. Waiting: the `docker` forwarder in a container (its logic ran on loopback aliases), and Safari. The lead asked for one commit per spike; this follows the ticket's two.

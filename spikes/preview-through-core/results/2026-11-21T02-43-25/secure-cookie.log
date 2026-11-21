@@ -1,0 +1,6 @@
+chrome 159.0.8154.6 http://5173-p1.preview.localhost:8800: kept: /.ostra/ok answered; cookies stored 1
+chrome 159.0.8154.6 http://5173-p1.preview.example.test:8800: dropped: no preview cookie; cookies stored 0
+edge 157.0.4341.60 http://5173-p1.preview.localhost:8800: kept: /.ostra/ok answered; cookies stored 1
+edge 157.0.4341.60 http://5173-p1.preview.example.test:8800: dropped: no preview cookie; cookies stored 0
+firefox 159.0 http://5173-p1.preview.localhost:8800: kept: /.ostra/ok answered; cookies stored 1
+firefox 159.0 http://5173-p1.preview.example.test:8800: dropped: no preview cookie; cookies stored 0

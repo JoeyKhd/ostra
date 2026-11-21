@@ -5,13 +5,19 @@
 - who can open a preview is configurable;
 - a frontend and its API are app processes the environment declares, with the dev-server proxy pattern.
 
-The lead's five recommendations got the maintainer's "yes" as a group the same day: a box stays warm while someone watches, up to 60 minutes; a stopped task's app can start without an agent turn; links for people outside the project are watch-only unless the link allows input; webhooks come in through forwarders that dial out; and no third-party tunnel is built in. The lead settled the research's technical questions by its recommendations (the `Host` rewrite, several replicas, the HTTP carrier, and the rest under "Decided by the lead" below). The maintainer can still change any of them. Settles Q68's placement and Q296 to Q314. Covers F-121, F-140, F-141, F-142, F-143 and F-144. **Amends** ADR 0025 (an executor declares `boxBrowser` and `appReach`), ADR 0029 (what the box's browser is on each executor, with no new allowed difference), ADR 0034 (a second connection for a preview's bytes, and forwarding between replicas for it), ADR 0035 (one more streamed response while a preview pane is open), ADR 0038 (the environment's app processes), ADR 0039 (the idle timer while someone watches, and a box started for the app alone) and ADR 0043 (screenshots and recordings as blobs).
+The lead's five recommendations got the maintainer's "yes" as a group the same day: a box stays warm while someone watches, up to 60 minutes; a stopped task's app can start without an agent turn; links for people outside the project are watch-only unless the link allows input; webhooks come in through forwarders that dial out; and no third-party tunnel is built in. The lead settled the research's technical questions by its recommendations (the `Host` rewrite, several replicas, the HTTP carrier, and the rest under "Decided by the lead" below). The maintainer can still change any of them. Settles Q68's placement and Q296 to Q314. Covers F-121, F-140, F-141, F-142, F-143 and F-144. **Amends** ADR 0025 (an executor declares `boxBrowser` and `appReach`), ADR 0029 (what the box's browser is on each executor, with no new allowed difference), ADR 0034 (a second connection for a preview's bytes, and forwarding between replicas for it), ADR 0035 (one more streamed response while a preview pane is open), ADR 0038 (the environment's app processes), ADR 0039 (the idle timer while someone watches, and a box started for the app alone) and ADR 0043 (screenshots and recordings as blobs). **Amended 2026-11-21** after the two spikes: the box's app is dialled at `localhost`, trying IPv6 and IPv4, not at `127.0.0.1`; and webpack-dev-server's HMR in the native preview needs `client.webSocketURL` when a project sets its port.
 
 **Two spikes gate the numbers,** not the shape (milestone 8's tickets 07 and 08):
 - `spikes/box-browser-stream/` measures the browser view on a small box;
 - `spikes/preview-through-core/` runs HTTP/2 over a WebSocket through core to a real Vite and Next.js 16 dev server.
 
 What each one does if it fails is under "If a spike fails".
+
+**Both ran on 2026-11-21, on Windows, and passed** (`research/spike-box-browser-stream.md`, `research/spike-preview-through-core.md`):
+- **The browser view:** 15 frames a second at 1280×800 while typing, with a click back through core in 56 ms at p95, and the box's browser on 0.5 to 0.8 vCPU.
+- **The tunnel:** Vite's and Next.js 16's pages and HMR through Node's `http2` over the WebSocket, with the rewrite on and no project change. A cold page load took 30 ms more than direct. The partitioned cookie held in a cross-site frame on Chrome, Edge and Firefox.
+
+Neither fallback is needed, and `yamux-js` isn't added. The Linux container and Safari parts wait for their jobs.
 
 ## Why
 
@@ -152,7 +158,7 @@ Any member who can open the task may start it, and each start is an audit entry.
   - `ostra preview`'s connections are plain HTTP/2 `CONNECT` streams to the port, raw bytes.
   - HTTP/2's per-stream windows and the WebSocket's `bufferedAmount` are the back-pressure.
 
-**On `docker`,** the agent's container has its own loopback, so the init runs a forwarder for the tunnel: it listens on the box network at a port it picks, takes connections only from the sidecar's address, and dials `127.0.0.1:<port>`. The app's default binding to `localhost` then works (§5.3). On `kubernetes` the sidecar dials the pod's `127.0.0.1`. On `host` the runner dials `127.0.0.1`.
+**On `docker`,** the agent's container has its own loopback, so the init runs a forwarder for the tunnel: it listens on the box network at a port it picks, takes connections only from the sidecar's address, and dials `localhost:<port>`. The app's default binding to `localhost` then works (§5.3). On `kubernetes` the sidecar dials the pod's `localhost`. On `host` the runner dials `localhost`. Each tries IPv6 and IPv4, since a dev server told `localhost` may listen on `::1` only: Vite and webpack-dev-server did in spike 08 (amended 2026-11-21; `research/spike-preview-through-core.md` §4.2).
 
 **Several core replicas forward preview streams** (Q305). ADR 0034 set replica-to-replica forwarding aside for commands, which Postgres routes. A byte stream at page-load rates can't go through Postgres. So:
 - each preview connection writes a presence row naming its replica's internal address (`OSTRA_CORE_REPLICA_URL`; by default the replica's first non-loopback address and core's port; the Helm chart sets the pod's IP);
@@ -194,7 +200,7 @@ The cookie set inside the pane's frame is a partitioned one, so "Open in a new t
 - It removes its own cookie and every `X-Forwarded-*` the client sent.
 - It never passes the member's identity to the app.
 - It checks `Origin` on WebSocket upgrades: it must be the preview's own host.
-- It rewrites `Host` and `Origin` to `localhost:<port>`, and `Location` back to the preview host, as Devin does (Q304, §5.1). So Vite, Next.js and webpack-dev-server pass their host checks with no project change. A process with `hostRewrite` off gets the real host in `Host` and in `X-Forwarded-Host` and `X-Forwarded-Proto`, for an app that builds its OAuth callback from the host (§8.3).
+- It rewrites `Host` and `Origin` to `localhost:<port>`, and `Location` back to the preview host, as Devin does (Q304, §5.1). So Vite, Next.js and webpack-dev-server pass their host checks with no project change. Vite's and Next.js's HMR follow the page's host. webpack-dev-server's follows it only with `client.webSocketURL: "auto://0.0.0.0:0/ws"`: when a project sets its port or host, its client dials that port directly, past the proxy, and the docs say so (spike 08, `research/spike-preview-through-core.md` §3.3). A process with `hostRewrite` off gets the real host in `Host` and in `X-Forwarded-Host` and `X-Forwarded-Proto`, for an app that builds its OAuth callback from the host (§8.3).
 - On a link for people outside the project, it keeps the browser's `Origin` on WebSocket upgrades, so a dev server's own check still guards a channel that writes files, such as Storybook's.
 - It removes `X-Frame-Options`, and sets `frame-ancestors` to the panel's origin only, replacing any the app sent. The pane says it did. So helmet, Rails, Django and Spring apps show, and no other site can frame the preview.
 

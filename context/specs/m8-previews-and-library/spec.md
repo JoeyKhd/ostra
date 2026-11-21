@@ -250,7 +250,7 @@ Every contract change in milestone 8 is **additive**: a new optional field, a ne
 **`ExecutorAdapter` and the box** (ticket 03). The init's bridge protocol, shared by `docker` and `kubernetes`, and the `host` executor's process host gain:
 - **A process with a log:** start a long-running process in a folder with variables, its output to a file, report when it exits, and stop it. The init already starts processes (`bridge-processes.ts`); this adds the log file and the exit report.
 - **The browser:** start Chromium with `--remote-debugging-pipe` and a fresh profile in a temporary folder, and give the caller the pipe as a channel of its own on the bridge. Report `{ name, version }`, or that there's none.
-- **A forward** (`docker` only, from the init): listen on the box network at a port the init picks, accept only the sidecar's address, and dial `127.0.0.1:<port>`. `kubernetes` and `host` declare that they reach the app at `127.0.0.1` directly.
+- **A forward** (`docker` only, from the init): listen on the box network at a port the init picks, accept only the sidecar's address, and dial `localhost:<port>`, trying IPv6 and IPv4 (a dev server told `localhost` may listen on `::1` only, spike 08). `kubernetes` and `host` declare that they reach the app at `localhost` directly, the same way.
 - **Capabilities, new:** `boxBrowser: "image" | "machine"` (`docker` and `kubernetes` take it from the image; `host` from the machine or its download) and `appReach: "forwarder" | "loopback"`.
 - **The executor contract suite** gains, on each executor (its fake for `docker` and `kubernetes`, live on `host`, and live in the Linux jobs):
   - a process started, ready, logged and stopped with the box;
@@ -374,7 +374,7 @@ The parity test (milestone 7's `parity.test.ts`) gains a row for each line above
 | | `docker` | `kubernetes` | `host` |
 |---|---|---|---|
 | The box's browser | Chromium in the agent's container, from the image | the same | the machine's Chromium-family browser, or the pinned headless shell |
-| Reaching an app's port | the init's forwarder | the pod's `127.0.0.1` | `127.0.0.1` |
+| Reaching an app's port | the init's forwarder | the pod's `localhost` (IPv6 and IPv4) | `localhost` (IPv6 and IPv4) |
 | A service as a preview | by its name | at `localhost` | none: `host` runs no services (ADR 0029, difference 1) |
 | What the browser can load | the box's network only | public hosts too (ADR 0029, difference 4) | what the machine reaches |
 | Webhook forwarders | after F-052 | yes | yes |
@@ -517,7 +517,7 @@ Each condition of a row's "done when" gets a test named with its key. The buildi
 | From | What | To (ticket) |
 |---|---|---|
 | `spikes/box-browser-stream/` | Measured in `research/spike-box-browser-stream.md`.<br>**11:** the DevTools pipe client (`src/cdp/`), the browser's flags with the crash reporter off, and closing it before its profile is removed, with retries.<br>**13:** a page of its own per screenshot or recording, PNG screenshots, and recordings as a 10 fps screencast by held acks, kept as JPEG q60 frames (a 30 s reel fits 32 MiB; PNG frames don't).<br>**18:** the screencast's defaults: JPEG q60, at most 1440×900, `maxFramesInFlight` 1, `sendLastFrame: true`, and 15 fps (2 on the HTTP carrier) by holding each ack, never by dropping frames. Also core's ack once every open stream has drained, the member's pane's stream reader and its one-in-flight input queue, and the input mapping with virtual-key codes from `code` | 11, 13, 18 |
-| `spikes/preview-through-core/` | HTTP/2 over a `ws` duplex, extended CONNECT for WebSockets, the `Host` and `Origin` rewrite, the `docker` forwarder, the partitioned cookie's attributes | 22, 23, 25 |
+| `spikes/preview-through-core/` | Tried in `research/spike-preview-through-core.md`; `yamux-js` isn't needed.<br>**22:** the sidecar's HTTP/2 server on the preview connection's duplex (`enableConnectProtocol`): plain requests to HTTP/1.1, extended CONNECT to an HTTP/1.1 upgrade, plain CONNECT to raw TCP. Also the port check, dialling `localhost` with IPv6 and IPv4 (not `127.0.0.1`), the forwarder's address check, and `splice` (pipes and graceful ends) in place of `stream.pipeline` for every raw stream, which lost a response's tail.<br>**23:** core's HTTP/2 client session per preview connection, held once the sidecar's settings arrive, and the CLI tunnel as an HTTP/2 server bridging each `CONNECT` for the ticket's port with `splice`.<br>**25:** the handshake (a single-use code bound to the host; `__Host-ostra-preview` `Secure; HttpOnly`, with `SameSite=None; Partitioned` cross-site or `Lax` same-site), the rewrites of `Host`, `Origin`, `Location` and the framing headers, and the browser's upgrade answered by core over extended CONNECT after the cookie and `Origin` checks. Its Firefox tests set `network.cookie.cookieBehavior` 5, which Playwright's Firefox turns off | 22, 23, 25 |
 
 Product code never imports `spikes/`. A builder copies the code into the product's package and adapts it, with a one-line provenance comment (`// Ported from spikes/<spike>/<path>.`).
 

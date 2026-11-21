@@ -17,8 +17,8 @@ Ported from spike 08.
   - a plain `CONNECT` (`ostra preview`'s) bridged to a raw TCP connection to the port.
 - **Reaching the port:**
   - `docker`: the init's forwarder (ticket 03), opened on demand per port and closed with the view;
-  - `kubernetes`: the pod's `127.0.0.1`;
-  - `host`: `127.0.0.1`.
+  - `kubernetes`: the pod's `localhost`, trying IPv6 and IPv4;
+  - `host`: `localhost`, the same way. Spike 08 found Vite and webpack-dev-server on `::1` only, which `127.0.0.1` misses (ADR 0068, amended 2026-11-21).
 
   A service's preview is reached by its name on `docker` and at `localhost` on `kubernetes`.
 - **The reach rule,** checked on every stream: `mayReach` against the task's previews and the reserved ports. A stream to anything else is answered 403 or refused with `RST_STREAM`.
