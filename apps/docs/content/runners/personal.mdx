@@ -34,6 +34,8 @@ The runner trades that sign-in once for a key of its own, and the server ends th
 
 After the first time, the same command starts it, and Organization › Runners shows it under **Your machine**. Pick it when you start a task, and the task runs on this machine.
 
+The task's AI review runs here too when no runner of the project's pools is free: a review task, read-only, on the PR the task opened. It runs on whichever is free first, this machine or a pool runner, and never on another member's machine.
+
 - A model provider must allow personal runners (**Allow on personal runners**, off by default) before its models can be used here: on your own machine, you could read the key the proxy holds.
 - `pnpm ostra runner status` shows the runner's ID, its server, the versions it accepts and its last refusal.
 - One runner runs per data folder. A second `ostra runner` started on the same folder, say in another terminal, doesn't start: it names the pid of the one already running and exits with code 4. If you copy the folder to another machine, that copy is the same runner, and the server keeps only the newest connection. The other one stops with code 4, so the two don't take turns. Sign each machine in as its own runner.

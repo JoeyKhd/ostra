@@ -1,6 +1,6 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import type { Db, Tx } from "@ostra/db";
-import { acceptOffer, admitQueued, dispatchTask, dispatchWaitColumns, endAppLeaseInTx, goesToPersonalRunner, projectPoolsInTx, queueTask } from "@ostra/domain";
+import { acceptOffer, admitQueued, dispatchTask, dispatchWaitColumns, endAppLeaseInTx, followUpOf, goesToPersonalRunner, projectPoolsInTx, queueTask } from "@ostra/domain";
 import type { AgentEffortLevels, ChangeNotices, Clock, CommandOutbox, JobPayload, ReopenDispatchSettings } from "@ostra/domain";
 import type { JobHandler, Jobs } from "@ostra/jobs";
 import { onCurrentTask } from "@ostra/jobs";
@@ -160,8 +160,10 @@ export const applyOfferResultsInTx = async (
 /**
  * The queue's sweep (F-067, every `OSTRA_QUEUE_SWEEP_SECONDS`): `queue.admit` for every pool whose
  * queue holds a task with no offer out, and a fresh dispatch for every such task that goes to its
- * member's personal runner. It catches every change of room that sent nothing: a slot freed, a
- * runner came online, a provider's hold ended. Each job is keyed, so a sweep never sends one twice.
+ * member's personal runner, or that follows up a task in a project with no pool. It catches every
+ * change of room that sent nothing: a slot freed, a runner came online (a personal runner a
+ * follow-up waits for among them), a provider's hold ended. Each job is keyed, so a sweep never
+ * sends one twice.
  */
 export const requeueQueuedTasks = async (deps: Pick<DispatcherDeps, "db" | "jobs">, limit = 200): Promise<number> => {
   const waiting = await deps.db.task.findMany({
@@ -170,6 +172,8 @@ export const requeueQueuedTasks = async (deps: Pick<DispatcherDeps, "db" | "jobs
       id: true,
       organizationId: true,
       projectId: true,
+      kind: true,
+      reviewOfTaskId: true,
       creatorMemberId: true,
       runnerId: true,
       poolOnly: true,
@@ -181,13 +185,20 @@ export const requeueQueuedTasks = async (deps: Pick<DispatcherDeps, "db" | "jobs
   });
   let sent = 0;
   const projects = new Map<string, { readonly organizationId: OrganizationId; readonly projectId: ProjectId }>();
+  const sendDispatch = async (payload: JobPayload<"task.dispatch">): Promise<void> => {
+    await deps.db.$transaction(async (tx) => {
+      const result = await deps.jobs.sendInTx(tx, "task.dispatch", payload);
+      if (result.kind === "enqueued") {
+        sent += 1;
+      }
+    });
+  };
+  // A follow-up (ADR 0059 amended 2026-11-21) waits in its pools' queues, and may also run on its
+  // task's personal runner: in a project with no pool at all, nothing walks a queue for it.
+  const followUps: { readonly projectId: string; readonly payload: JobPayload<"task.dispatch"> }[] = [];
   for (const task of waiting) {
     const [session] = task.sessions;
     if (session === undefined) {
-      continue;
-    }
-    if (!goesToPersonalRunner(task)) {
-      projects.set(task.projectId, { organizationId: organizationIdSchema.parse(task.organizationId), projectId: projectIdSchema.parse(task.projectId) });
       continue;
     }
     const payload: JobPayload<"task.dispatch"> = {
@@ -196,17 +207,29 @@ export const requeueQueuedTasks = async (deps: Pick<DispatcherDeps, "db" | "jobs
       sessionId: sessionIdSchema.parse(session.id),
       leaseEpoch: leaseEpochSchema.parse(task.leaseEpoch + 1),
     };
-    await deps.db.$transaction(async (tx) => {
-      const result = await deps.jobs.sendInTx(tx, "task.dispatch", payload);
-      if (result.kind === "enqueued") {
-        sent += 1;
+    if (!goesToPersonalRunner(task)) {
+      projects.set(task.projectId, { organizationId: organizationIdSchema.parse(task.organizationId), projectId: projectIdSchema.parse(task.projectId) });
+      if (followUpOf(task) !== null) {
+        followUps.push({ projectId: task.projectId, payload });
       }
-    });
+      continue;
+    }
+    await sendDispatch(payload);
   }
   const pools = new Map<PoolId, OrganizationId>();
+  const withoutPools = new Set<string>();
   for (const { organizationId, projectId } of projects.values()) {
-    for (const entry of await projectPoolsInTx(deps.db, organizationId, projectId)) {
+    const entries = await projectPoolsInTx(deps.db, organizationId, projectId);
+    if (entries.length === 0) {
+      withoutPools.add(projectId);
+    }
+    for (const entry of entries) {
       pools.set(entry.poolId, organizationId);
+    }
+  }
+  for (const followUp of followUps) {
+    if (withoutPools.has(followUp.projectId)) {
+      await sendDispatch(followUp.payload);
     }
   }
   for (const [poolId, organizationId] of pools) {

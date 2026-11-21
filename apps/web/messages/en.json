@@ -1793,7 +1793,11 @@
         "offer": "A runner passed on it",
         "protocol": "Needs a runner on protocol minor {minor}",
         "budget": "Its budget is reached",
-        "installation": "Its GitHub installation isn't linked"
+        "installation": "Its GitHub installation isn't linked",
+        "followUp": "Or its task's runner",
+        "followUpFull": "No runner here is free, nor {runner}, the personal runner its task ran on: it takes whichever frees first.",
+        "followUpPools": "Waiting for a runner here",
+        "followUpPoolsFull": "No runner here is free. Its model provider isn't allowed on personal runners, so it can't use {runner}."
       }
     }
   },
@@ -3308,6 +3312,10 @@
     },
     "poolFull": "{pool} is at its cap of boxes.",
     "queued": "Every runner of {pool} that fits is busy: it starts when a box frees.",
+    "followUpBusy": "Waiting for {runner}, where its task ran, or a runner of {project}'s pools: none is free right now.",
+    "followUpOffline": "Waiting for {runner}, where its task ran, to connect, or for a runner of {project}'s pools to free up.",
+    "followUpOutdated": "{runner}, where its task ran, needs an update to run it, and no runner of {project}'s pools is free.",
+    "followUpNotAllowed": "Waiting for a runner of {project}'s pools: its model provider isn't allowed on personal runners, so it can't use {runner}.",
     "waitingForNode": "Waiting for a node",
     "pullingImage": "Pulling the snapshot image",
     "cancelledBy": "Cancelled by {name}",

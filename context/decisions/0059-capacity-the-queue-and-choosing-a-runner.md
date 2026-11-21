@@ -1,6 +1,6 @@
 # Capacity, the queue and choosing a runner
 
-**Status:** accepted (2026-11-19, on the maintainer's delegation for milestone 5's spec). Settles Q231 to Q236, Q247 and Q248. Covers F-067, F-069 and F-095, and builds on ADR 0029 (pools, box sizes, dispatch by labels and capacity), ADR 0034 (a dispatch is an offer), ADR 0037 (a share is counted from ostra's own rows, never from a queue's limit) and ADR 0038 (services never go to `host`).
+**Status:** accepted (2026-11-19, on the maintainer's delegation for milestone 5's spec). Settles Q231 to Q236, Q247 and Q248. Covers F-067, F-069 and F-095, and builds on ADR 0029 (pools, box sizes, dispatch by labels and capacity), ADR 0034 (a dispatch is an offer), ADR 0037 (a share is counted from ostra's own rows, never from a queue's limit) and ADR 0038 (services never go to `host`). **Amended 2026-11-21:** follow-up tasks run where their task ran ("Follow-ups", below). The maintainer approved: "man fix this review thing for me please".
 
 ADR 0029 says a task goes to one of its project's pools by labels and free capacity, that sizes exist, and that a pool caps its total and each project's share. It doesn't say what a runner offers, in what order waiting tasks start, what a share counts, how labels match, or which of several fitting runners wins. This ADR does.
 
@@ -36,9 +36,21 @@ ADR 0029 says a task goes to one of its project's pools by labels and free capac
 
 ## Choosing a runner
 
-- **A member's personal runner** only for a task that member started and picked it for. A task no member started (intake rules, schedules and Linear's agent mode, in milestone 6) goes to pools only.
+- **A member's personal runner** only for a task that member started and picked it for, or a follow-up of one of their tasks (amended 2026-11-21, below). A task no member started (intake rules, schedules and Linear's agent mode, in milestone 6) goes to pools only.
 - **Otherwise the project's pools in the project's order.** In a pool, the runners that are online and approved, carry the labels, declare what the task needs (services; a registry where the executor requires one), and have room. Among them: the most free room, then the runner holding the project's snapshot, then the one offered least recently.
 - **When nothing fits,** the task stays queued and its page says the nearest miss across the pools, in a fixed order: a registry is needed, services are needed, no runner has the labels, the size is larger than any runner, the project's share is reached, the pool is full, no runner is online.
+- **A follow-up** of a member's task also has the personal runner its task ran on (below).
+
+## Follow-ups run where their task ran (amended 2026-11-21)
+
+The maintainer ran ostra on Windows with only a personal runner: no Docker, and a `host` pool runner runs only on Linux and macOS. Two prompt tasks each opened a PR, and each PR's AI review sat queued for over 45 minutes, "No runner of test1's pools is online with a free slot", because a review task is started by ostra and a personal runner took only the tasks its member picked it for. On a setup with personal runners only, no AI review could ever run. The maintainer approved the lead's rule: "man fix this review thing for me please".
+
+- **A follow-up** is a task ostra starts by itself from a member's code task, for that member: today the code task's AI review, a review task (`reviewOfTaskId`, F-100). A CI round, a findings round and "changes requested" (F-035, F-101, F-105) aren't follow-ups: they reopen the code task itself, which already goes back to its own runner (F-033). A refine task (F-099) is a member's own start.
+- **The pools first, as today.** A follow-up waits in its project's pool queues and their admission considers it like any task, so a project with a pool runner free keeps using it.
+- **Then the runner its task ran on.** When no pool runner can take it now, it may run on a personal runner of the code task's member that one of the code task's boxes ran on (newest first), or that the member picked for the code task. It takes that runner's slots under the runner's lock, as a task the member picked it for. Whichever is free first takes it: the pools' admission and the queue's sweep (every 5 s) try both again, so a follow-up that waits starts when either frees, and one left queued before this amendment is picked up by the next sweep. In a project with no pool at all, the sweep sends the follow-up's dispatch itself.
+- **Never further.** Never another member's personal runner, never a runner of a code task that runs on pools only (an outside task, ADR 0057), never one that can't start the environment's services, and only when the session's model provider is allowed on personal runners (Q47): with it off, a follow-up waits for the pools. Nothing on the member's machine is new: the review task is read-only there as anywhere, its git proxy accepting fetches only and its repo token reading only (F-090), on a checkout of the code task's own PR. The `host` executor's own differences (ADR 0029) apply as to the code task.
+- **Why it waits** is a new reason, `follow-up-waits`, with the runner by name and why it can't take it now: busy, offline, outdated (older than the protocol the task needs) or not allowed (its provider). A follow-up with no such runner keeps the pools' own reason.
+- **Considered:** personal runner first, then the pools. Rejected: a team with pools would see reviews land on laptops; the pools-first order keeps every project with pools as it was. Treating a follow-up as the member's own pick of their runner. Rejected: it would never use a pool, and a member's machine that went offline would hold every review.
 
 ## Notices and cancel
 
@@ -60,3 +72,4 @@ ADR 0029 says a task goes to one of its project's pools by labels and free capac
 - The wait reasons join milestone 2's typed `dispatchWait`, and the panel words each one from its message file.
 - `chooseRunner` is a pure function over rows, so every reason is tested from a table without a database.
 - Ledger rows: F-067, F-069, F-095, F-014 (two slots), F-086 (the ordered pool list).
+- *Amended 2026-11-21:* `followUpRunnersInTx` reads the personal runners a follow-up may use, `dispatchTask` tries them after the pools, and the queue's sweep sends a follow-up's dispatch in a project with no pool. `dispatchWait` gains `follow-up-waits`. Ledger rows: F-069 (its last sentence), F-014, F-100 (what its page says) and F-147 (the live lists nest a follow-up under its code task).

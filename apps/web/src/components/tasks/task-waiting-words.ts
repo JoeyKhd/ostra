@@ -102,8 +102,30 @@ export const waitReasonText = (reason: Reason, context: WaitContext): string => 
       return t("waitLine.poolFull", { pool: context.poolName(reason.poolId) || t("waitLine.aPool") });
     case "queued":
       return t("waitLine.queued", { pool: context.poolName(reason.poolId) || t("waitLine.aPool") });
+    case "follow-up-waits":
+      return followUpWaitText(reason, context.project);
     default:
       return reason satisfies never;
+  }
+};
+
+/**
+ * A follow-up's wait (2026-11-21, ADR 0059 amended): the personal runner its task ran on, by name,
+ * why it can't take it now, and the project's pools, which may take it first.
+ */
+export const followUpWaitText = (reason: Extract<Reason, { readonly code: "follow-up-waits" }>, project: string): string => {
+  const values = { runner: reason.runner.name, project };
+  switch (reason.personal) {
+    case "busy":
+      return t("waitLine.followUpBusy", values);
+    case "offline":
+      return t("waitLine.followUpOffline", values);
+    case "outdated":
+      return t("waitLine.followUpOutdated", values);
+    case "not-allowed":
+      return t("waitLine.followUpNotAllowed", values);
+    default:
+      return reason.personal satisfies never;
   }
 };
 
@@ -114,7 +136,8 @@ export const queuePlaceText = (queue: QueuePlace | null): string | null =>
 /** The whole line: the place, then why (`3rd in build-fleet's queue · test1 is at its share …`), or an open offer. */
 export const waitLine = (waiting: Waiting | null, queue: QueuePlace | null, context: WaitContext): string | null => {
   if (waiting?.kind === "offered") return t("waitLine.offered", { runner: waiting.runner.name });
-  const place = queuePlaceText(queue);
+  // A follow-up's own words name the pools and the runner it waits for: its place says less.
+  const place = waiting?.reason.code === "follow-up-waits" ? null : queuePlaceText(queue);
   // `queued` says only that its turn hasn't come: the place says that better.
   const why = waiting === null || (waiting.reason.code === "queued" && place !== null) ? null : waitReasonText(waiting.reason, context);
   const parts = [place, why].filter((part): part is string => part !== null);

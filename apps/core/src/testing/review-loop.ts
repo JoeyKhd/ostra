@@ -233,10 +233,19 @@ export const seedSecondRepo = async (h: LoopHarness): Promise<RepoId> => {
 /**
  * A code task in review as its first turn leaves it with the review loop on: each repo's PR open on
  * the fake host at a head of its own, the task in "CI running", its session idle on a warm box
- * leased to the harness's minor-5 runner, and one `ci.evaluate` per PR recorded.
+ * leased to the harness's minor-5 runner (or `runner`), and one `ci.evaluate` per PR recorded.
  */
-export const seedTaskInCi = async (h: LoopHarness, options: { readonly repos?: 1 | 2 } = {}): Promise<LoopTask> => {
-  const task = await seedQueuedTask(h.db, h.world, h.fixture.a.member, null);
+export const seedTaskInCi = async (
+  h: LoopHarness,
+  options: {
+    readonly repos?: 1 | 2;
+    /** The runner its box ran on: the harness's pool runner, or its member's personal runner, which the task then names. */
+    readonly runner?: RunnerRef;
+  } = {},
+): Promise<LoopTask> => {
+  const ranOn = options.runner ?? h.runner;
+  const personal = (await h.db.runner.findUniqueOrThrow({ where: { id: ranOn.runnerId }, select: { kind: true } })).kind === "personal";
+  const task = await seedQueuedTask(h.db, h.world, h.fixture.a.member, personal ? ranOn.runnerId : null);
   const row = await h.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
   if (options.repos === 2) {
     const second = await seedSecondRepo(h);
@@ -264,15 +273,17 @@ export const seedTaskInCi = async (h: LoopHarness, options: { readonly repos?: 1
     });
     prs.push({ repo, repoId: repoIdSchema.parse(taskRepo.repoId), taskRepoId: taskRepoIdSchema.parse(taskRepo.id), number: opened.value.number, head });
   }
-  const box = await h.db.box.create({ data: { organizationId: row.organizationId, projectId: row.projectId, taskId: row.id, runnerId: h.runner.runnerId, executor: "docker", state: "ready" } });
-  await h.db.lease.create({ data: { organizationId: row.organizationId, projectId: row.projectId, taskId: row.id, epoch: 1, runnerId: h.runner.runnerId, boxId: box.id, state: "active" } });
+  const box = await h.db.box.create({
+    data: { organizationId: row.organizationId, projectId: row.projectId, taskId: row.id, runnerId: ranOn.runnerId, executor: personal ? "host" : "docker", state: "ready" },
+  });
+  await h.db.lease.create({ data: { organizationId: row.organizationId, projectId: row.projectId, taskId: row.id, epoch: 1, runnerId: ranOn.runnerId, boxId: box.id, state: "active" } });
   await h.db.task.update({ where: { id: row.id }, data: { state: "in_review", subState: "ci_running", leaseEpoch: 1 } });
   await h.db.session.update({ where: { id: task.sessionId }, data: { boxId: box.id, state: "idle" } });
   await recordSessionModel(h.db, h.world, task.sessionId);
   for (const pr of prs) {
     h.jobs.record("ci.evaluate", { organizationId: task.organizationId, taskRepoId: pr.taskRepoId, headSha: pr.head });
   }
-  return { ...task, prs, boxId: box.id, driven: drive(h.ingest, task, h.runner, 1) };
+  return { ...task, prs, boxId: box.id, driven: drive(h.ingest, task, ranOn, 1) };
 };
 
 /** A check run on a PR's head from another app (or ostra's own, by its slug). */

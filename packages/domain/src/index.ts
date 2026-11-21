@@ -48,6 +48,7 @@ export * from "./use-cases/create-prompt-task.ts";
 export * from "./use-cases/dispatch-task.ts";
 export * from "./use-cases/admission.ts";
 export * from "./use-cases/fleet-rows.ts";
+export * from "./use-cases/follow-up-runners.ts";
 export * from "./use-cases/fleet-settings.ts";
 export * from "./use-cases/runner-report.ts";
 export * from "./use-cases/hold-provider.ts";

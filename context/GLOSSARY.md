@@ -178,6 +178,11 @@ _Avoid_: iteration, retry, loop (the loop is all the rounds together)
 A turn of the coding agent that no person asked for: a CI round's or a findings round's. A task gets at most 4, counted since a person last acted on it, before a person has to act. A question the agent asks in one gets a fixed neutral reply.
 _Avoid_: auto-fix, background turn
 
+**Follow-up**:
+A task ostra starts by itself from a member's code task, for that member: today its AI review (a review task). It runs on the project's pools, or on the personal runner its code task ran on, whichever is free first, and the panel's live lists show it under its code task.
+_Avoid_: child task, subtask, side task
+_Not_: a round, which reopens the code task itself
+
 ### Execution
 
 **Runner**:
@@ -189,7 +194,7 @@ A named set of runners in an organization that projects send tasks to.
 _Avoid_: cluster, queue
 
 **Personal runner**:
-A runner on a member's own machine that runs only that member's tasks.
+A runner on a member's own machine that runs only that member's tasks, and their tasks' follow-ups.
 _Avoid_: local runner
 
 **Runner key**:

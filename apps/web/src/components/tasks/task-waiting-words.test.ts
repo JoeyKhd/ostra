@@ -40,6 +40,17 @@ describe("the waiting line", () => {
     expect(waitLine(null, null, context)).toBeNull();
   });
 
+  it("F-100/c6: a follow-up's wait names the runner its task ran on, why it can't take it, and the pools; its place in a queue says no more", () => {
+    const runner = { id: "01900000-0000-7000-8000-0000000000aa", name: "santi-laptop" };
+    const waits = (personal: string) => reason({ code: "follow-up-waits", runner, personal });
+    expect(waitReasonText(waits("busy"), context)).toBe("Waiting for santi-laptop, where its task ran, or a runner of test1's pools: none is free right now.");
+    expect(waitReasonText(waits("offline"), context)).toBe("Waiting for santi-laptop, where its task ran, to connect, or for a runner of test1's pools to free up.");
+    expect(waitReasonText(waits("outdated"), context)).toBe("santi-laptop, where its task ran, needs an update to run it, and no runner of test1's pools is free.");
+    expect(waitReasonText(waits("not-allowed"), context)).toBe("Waiting for a runner of test1's pools: its model provider isn't allowed on personal runners, so it can't use santi-laptop.");
+    const queue: QueuePlace = { poolId: pool, poolName: "default", place: 1, length: 1 };
+    expect(waitLine({ kind: "no-runner", reason: waits("busy") }, queue, context)).toBe("Waiting for santi-laptop, where its task ran, or a runner of test1's pools: none is free right now.");
+  });
+
   it("F-093: a box waiting for a node says how long, and the panel says its size", () => {
     expect(waitedFor(40_000)).toBe("40s");
     expect(waitedFor(3 * 60_000 + 5_000)).toBe("3m");

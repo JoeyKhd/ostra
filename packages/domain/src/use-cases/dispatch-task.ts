@@ -27,6 +27,7 @@ import type { FleetRunner } from "../fleet/capacity.ts";
 import { chooseRunner } from "../fleet/choose.ts";
 import type { ChooseResult, ChooseTask } from "../fleet/choose.ts";
 import { fleetInTx, lockPoolsInTx, lockRunnerInTx, poolsInTx, projectPoolsInTx, projectSizeInTx, snapshotRunnerInTx } from "./fleet-rows.ts";
+import { followUpRunnersInTx } from "./follow-up-runners.ts";
 import { registryImageForProject } from "./registry.ts";
 import { automaticRoundOfSessionInTx } from "../review-loop/start-round.ts";
 
@@ -602,37 +603,79 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   } else {
     const projectPools = await projectPoolsInTx(tx, organization, project);
     const poolIds = projectPools.map((entry) => entry.poolId);
-    if (poolIds.length === 0) {
-      return noRunner({ code: "no-runner-online" });
-    }
-    // The pools' rows, in ID order: every admission of these pools counts and grants in turn.
-    await lockPoolsInTx(tx, organization, poolIds);
-    const [pools, registrySet, snapshotRunnerId] = await Promise.all([
-      poolsInTx(tx, organization, poolIds),
-      tx.registry.count({ where: { organizationId: organization } }).then((count) => count > 0),
-      snapshotRunnerInTx(tx, organization, project),
-    ]);
-    const chooseIn = async (options: typeof fleetOptions): Promise<{ readonly choice: ChooseResult; readonly runners: readonly FleetRunner[] }> => {
-      const fleet = await fleetInTx(tx, organization, { poolIds }, options);
-      const choice = chooseRunner({
-        task: chooseTask,
-        project: { id: project, pools: projectPools, snapshotRunnerId },
-        pools,
-        runners: fleet.runners,
-        boxes: fleet.boxes,
-        registrySet,
-        ...(deps.places === undefined ? {} : { places: deps.places }),
-      });
-      return { choice, runners: fleet.runners };
-    };
-    const { choice, runners } = await chooseIn(fleetOptions);
-    runner = chosenOf(choice, runners);
-    if (runner === null) {
-      if (minMinor > 0 && (await chooseIn({ ...fleetOptions, minMinor: 0 })).choice.kind === "runner") {
-        return noRunner({ code: "needs-protocol", minor: minMinor });
+    // Why the pools can't take it now; a project with no pool at all has no runner online.
+    let poolWait: DispatchWait = { code: "no-runner-online" };
+    if (poolIds.length > 0) {
+      // The pools' rows, in ID order: every admission of these pools counts and grants in turn.
+      await lockPoolsInTx(tx, organization, poolIds);
+      const [pools, registrySet, snapshotRunnerId] = await Promise.all([
+        poolsInTx(tx, organization, poolIds),
+        tx.registry.count({ where: { organizationId: organization } }).then((count) => count > 0),
+        snapshotRunnerInTx(tx, organization, project),
+      ]);
+      const chooseIn = async (options: typeof fleetOptions): Promise<{ readonly choice: ChooseResult; readonly runners: readonly FleetRunner[] }> => {
+        const fleet = await fleetInTx(tx, organization, { poolIds }, options);
+        const choice = chooseRunner({
+          task: chooseTask,
+          project: { id: project, pools: projectPools, snapshotRunnerId },
+          pools,
+          runners: fleet.runners,
+          boxes: fleet.boxes,
+          registrySet,
+          ...(deps.places === undefined ? {} : { places: deps.places }),
+        });
+        return { choice, runners: fleet.runners };
+      };
+      const { choice, runners } = await chooseIn(fleetOptions);
+      runner = chosenOf(choice, runners);
+      if (runner === null) {
+        if (minMinor > 0 && (await chooseIn({ ...fleetOptions, minMinor: 0 })).choice.kind === "runner") {
+          poolWait = { code: "needs-protocol", minor: minMinor };
+        } else {
+          const reason: DispatchWait = choice.kind === "waits" ? choice.reason : { code: "no-runner-online" };
+          poolWait = reason.code === "needs-services" ? await servicesReason({ poolIds }, reason) : reason;
+        }
       }
-      const reason: DispatchWait = choice.kind === "waits" ? choice.reason : { code: "no-runner-online" };
-      return noRunner(reason.code === "needs-services" ? await servicesReason({ poolIds }, reason) : reason);
+    }
+    // ADR 0059 amended 2026-11-21: a follow-up of a member's task (its AI review) that no pool
+    // runner takes now may run on the personal runner its task ran on, whichever is free first.
+    const followUpRunners = runner === null ? await followUpRunnersInTx(tx, task) : [];
+    let followUpWait: DispatchWait | null = null;
+    const [first] = followUpRunners;
+    if (first !== undefined && !provider.allowOnPersonalRunners) {
+      // Only the pools may take it: the session's provider never goes to a personal runner.
+      followUpWait = { code: "follow-up-waits", runner: first, personal: "not-allowed" };
+    } else {
+      for (const candidate of followUpRunners) {
+        await lockRunnerInTx(tx, organization, candidate.id);
+        const fleet = await fleetInTx(tx, organization, { runnerIds: [candidate.id] }, fleetOptions);
+        const choice = chooseRunner({
+          // The code task's member started it: their runner, as for a task they picked it for.
+          task: { ...chooseTask, startedByMember: true, personalRunnerId: candidate.id },
+          project: { id: project, pools: [], snapshotRunnerId: null },
+          pools: [],
+          runners: fleet.runners,
+          boxes: fleet.boxes,
+          registrySet: false,
+        });
+        runner = chosenOf(choice, fleet.runners);
+        if (runner !== null) {
+          break;
+        }
+        // A runner that can't start the environment's services never takes it: the pools' reason stands.
+        if (followUpWait === null && (choice.kind !== "waits" || choice.reason.code !== "needs-services")) {
+          const read = fleet.runners.find((row) => row.id === candidate.id);
+          const anyMinor = read?.state === "offline" && minMinor > 0 ? (await fleetInTx(tx, organization, { runnerIds: [candidate.id] }, { ...fleetOptions, minMinor: 0 })).runners[0] : undefined;
+          followUpWait = {
+            code: "follow-up-waits",
+            runner: candidate,
+            personal: read?.state === "online" ? "busy" : anyMinor?.state === "online" ? "outdated" : "offline",
+          };
+        }
+      }
+    }
+    if (runner === null) {
+      return noRunner(followUpWait ?? poolWait);
     }
   }
   const unavailable: DispatchWait = { code: task.runnerId === null ? "no-runner-online" : "personal-runner-unavailable" };

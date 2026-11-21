@@ -183,6 +183,11 @@ export const queueReason = (wait: DispatchWait | null, pool: QueuePool, project:
       return same(t("runners.queue.why.budget"));
     case "installation-not-linked":
       return same(t("runners.queue.why.installation"));
+    // A follow-up (ADR 0059 amended 2026-11-21) also has the personal runner its task ran on.
+    case "follow-up-waits":
+      return wait.personal === "not-allowed"
+        ? { short: t("runners.queue.why.followUpPools"), full: t("runners.queue.why.followUpPoolsFull", { runner: wait.runner.name }) }
+        : { short: t("runners.queue.why.followUp"), full: t("runners.queue.why.followUpFull", { runner: wait.runner.name }) };
     default:
       return wait satisfies never;
   }

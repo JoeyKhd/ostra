@@ -83,6 +83,18 @@ export const dispatchWaitSchema = z.discriminatedUnion("code", [
   z.strictObject({ code: z.literal("pool-full"), poolId: poolIdSchema }),
   /** A runner fits, and none has room now: the task waits its turn, at `place` in the pool's queue. */
   z.strictObject({ code: z.literal("queued"), poolId: poolIdSchema, place: z.number().int().positive() }),
+  /**
+   * 2026-11-21 (ADR 0059 amended, F-069): a follow-up of a member's task (its AI review), which no
+   * runner of the project's pools can take now, nor `runner`, the personal runner its task ran on.
+   * `personal` says why that runner can't: `busy` (no free slot), `offline` (not connected, or not
+   * taking tasks), `outdated` (its protocol is older than the task needs), or `not-allowed` (the
+   * session's model provider isn't allowed on personal runners, so only the pools may take it).
+   */
+  z.strictObject({
+    code: z.literal("follow-up-waits"),
+    runner: z.strictObject({ id: runnerIdSchema, name: z.string().min(1).max(200) }),
+    personal: z.enum(["busy", "offline", "outdated", "not-allowed"]),
+  }),
 ]);
 export type DispatchWait = z.infer<typeof dispatchWaitSchema>;
 export type DispatchWaitCode = DispatchWait["code"];
@@ -154,6 +166,10 @@ export const dispatchNoteFor = (wait: DispatchWait): string => {
       return "The pool is at its cap of boxes.";
     case "queued":
       return `Waiting its turn: number ${String(wait.place)} in the pool's queue.`;
+    case "follow-up-waits":
+      return wait.personal === "not-allowed"
+        ? "Waiting for a runner of the project's pools: the model provider isn't allowed on personal runners."
+        : "Waiting for a runner: the one its task ran on, or one of the project's pools.";
     default:
       return wait satisfies never;
   }
