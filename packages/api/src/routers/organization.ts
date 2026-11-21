@@ -22,6 +22,9 @@ const organizationViewSchema = z.object({
   publicPreviewLinks: z.boolean(),
 });
 
+/** Organization › Previews: the organization's name, its public-links switch and the install's link limit in days. */
+const organizationPreviewsSchema = z.strictObject({ name: z.string(), publicPreviewLinks: z.boolean(), linkMaxDays: z.number().int() });
+
 
 /** Whether the signed-in account must, may or needn't change a seeded default password (F-001). */
 export type PasswordChange = "required" | "suggested" | "none";
@@ -182,6 +185,22 @@ export const organizationRouter = router({
         state: member.state,
       })),
     ),
+
+  /**
+   * Organization › Previews (milestone 8, F-142; the lead's polish of 2026-11-21): the organization's
+   * own page for "Allow public preview links", for its admins, who may not be the instance admin and
+   * so never reach Instance › Previews. The same switch as there (`PublicLinksSetting`), its link
+   * limit (`OSTRA_PREVIEW_LINK_MAX_DAYS`) for the switch's off words.
+   */
+  previews: adminProcedure.output(organizationPreviewsSchema).query(async ({ ctx }) => {
+    const { db, settings } = ctx.deps;
+    const organizationId = ctx.scope.organizationId;
+    const [organization, setting] = await Promise.all([
+      db.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true } }),
+      db.organizationSetting.findUnique({ where: { organizationId }, select: { publicPreviewLinks: true } }),
+    ]);
+    return { name: organization.name, publicPreviewLinks: setting?.publicPreviewLinks ?? false, linkMaxDays: settings.previews.linkMaxDays };
+  }),
 
   /**
    * Milestone 8 (F-142, ADR 0068): an organization admin allows public preview links, or stops

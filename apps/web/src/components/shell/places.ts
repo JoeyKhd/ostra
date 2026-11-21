@@ -56,6 +56,7 @@ export type OrganizationRow =
   | "github"
   | "linear"
   | "members"
+  | "preview-links"
   | "audit"
   | "accounts"
   | "storage"
@@ -170,6 +171,9 @@ export const organizationGroups: readonly RowGroup<OrganizationRow>[] = [
     label: "shell.panel.people",
     rows: [
       { id: "members", href: "/organization/members", label: "shell.members", icon: "users", gate: "member" },
+      // Milestone 8 (F-142; the lead's polish of 2026-11-21): who may see a preview, the organization's
+      // public links. Its admins' own page, since one may not be the instance admin.
+      { id: "preview-links", href: "/organization/previews", label: "shell.previews", icon: "app-window", gate: "admin" },
       { id: "audit", href: "/organization/audit", label: "shell.auditLog", icon: "scroll-text", gate: "admin" },
     ],
   },
@@ -271,6 +275,7 @@ export const pagePlaces: readonly { readonly pattern: string; readonly place: Pl
   { pattern: "/organization/github", place: organization("github") },
   { pattern: "/organization/linear", place: organization("linear") },
   { pattern: "/organization/members", place: organization("members") },
+  { pattern: "/organization/previews", place: organization("preview-links") },
   { pattern: "/organization/audit", place: organization("audit") },
   { pattern: "/organization/storage", place: organization("storage") },
   { pattern: "/organization/email", place: organization("email") },

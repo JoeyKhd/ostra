@@ -107,7 +107,8 @@ describe("the rail and the context panel (F-147)", () => {
       ["shell.panel.fleet", ["runners", "box-sizes", "registry"]],
       ["shell.panel.agents", ["agent-profiles", "skills", "models"]],
       ["shell.panel.connections", ["github", "linear"]],
-      ["shell.panel.people", ["members", "audit"]],
+      // Organization › Previews (F-142): the organization's public links, for its admins, who may not be the instance admin.
+      ["shell.panel.people", ["members", "preview-links", "audit"]],
     ]);
     expect(ids(admin).at(-1)).toEqual(["shell.instance", ["accounts", "storage", "email", "previews"]]);
   });

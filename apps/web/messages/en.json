@@ -2978,6 +2978,10 @@
       "webhookOff": "Off: polling every {seconds} s"
     }
   },
+  "organizationPreviews": {
+    "title": "Previews",
+    "lede": "Whether members may share a task's running app with anyone, by a public link."
+  },
   "storage": {
     "title": "Storage",
     "lede": "Where ostra keeps files, and how long it keeps a finished task's history.",

@@ -203,6 +203,7 @@ const procedures: Readonly<Record<string, { readonly input: InputOf; readonly ab
   "notifications.preferences.get": { input: none, about: "organization" },
   "organization.get": { input: none, about: "organization" },
   "organization.members": { input: none, about: "organization" },
+  "organization.previews": { input: none, about: "organization" },
   "organization.storage": { input: none, about: "organization" },
   "joinTokens.list": { input: (target) => ({ poolId: row(target, "RunnerPool") }), about: "organization" },
   "pools.get": { input: (target) => ({ poolId: row(target, "RunnerPool") }), about: "organization" },
@@ -260,7 +261,7 @@ const procedures: Readonly<Record<string, { readonly input: InputOf; readonly ab
 const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   Member: ["organization.members", "me.get", "members.list"],
   Invitation: ["organization.members", "members.invitations", "invitations.preview"],
-  OrganizationSetting: ["setup.status", "organization.get"],
+  OrganizationSetting: ["setup.status", "organization.get", "organization.previews"],
   AuditEntry: ["environments.snapshot.get", "email.settings.get", "audit.list", "registryUse.get"],
   ChangeNotice: ["stream.subscribe"],
   Connection: ["github.connection", "linear.status", "setup.status"],
@@ -652,6 +653,8 @@ const matrix: Readonly<Record<string, readonly [Outcome, Outcome, Outcome, Outco
   "notifications.openCount": ["ok", "ok", "ok", "ok", "ok"],
   "organization.get": ["ok", "ok", "ok", "ok", "ok"],
   "organization.members": ["ok", "ok", "ok", "ok", "ok"],
+  // Organization › Previews (F-142): the organization's admins only.
+  "organization.previews": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "organization.storage": ["FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "joinTokens.list": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "pools.get": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],

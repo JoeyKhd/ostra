@@ -60,6 +60,9 @@ test.describe("at 1440px", { tag: "@desktop-only" }, () => {
     await page.waitForURL(/\/organization\/insights$/);
     const adminRows = ["Insights", "Spend", "Memory", "Runners", "Box sizes", "Registry", "Agent profiles", "Skills and MCP", "Models", "GitHub", "Linear", "Members", "Audit log", "Accounts", "Storage", "Email"];
     for (const row of adminRows) await expect(contextPanel(page).getByRole("link", { name: row, exact: true })).toBeVisible();
+    // Two rows named Previews for an admin who is also the instance admin: the organization's public
+    // links under People, and the install's preview domain under Instance.
+    for (const href of ["/organization/previews", "/instance/previews"]) await expect(contextPanel(page).locator(`a[href='${href}']`)).toHaveText("Previews");
 
     // A member who isn't an admin: only their rows, and the groups left empty are hidden.
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });

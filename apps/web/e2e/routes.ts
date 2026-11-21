@@ -81,6 +81,7 @@ export const memberRoutes = (world: RoutesWorld): readonly PanelRoute[] => {
     { pattern: "/organization/memory/proposals", path: "/organization/memory/proposals" },
     { pattern: "/organization/memory/[note-id]", path: `/organization/memory/${world.orgNoteId}` },
     { pattern: "/organization/models", path: "/organization/models" },
+    { pattern: "/organization/previews", path: "/organization/previews" },
     { pattern: "/organization/registry", path: "/organization/registry" },
     { pattern: "/organization/runners", path: "/organization/runners" },
     { pattern: "/organization/skills", path: "/organization/skills" },

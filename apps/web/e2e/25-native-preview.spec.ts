@@ -146,8 +146,8 @@ test("F-144/c8: Instance › Previews shows the preview domain, has nothing to a
   await page.goto("/instance/previews");
   await expect(page.getByTestId("instance-previews")).toHaveAttribute("data-domain", e2ePreviewDomain);
   await expect(page.getByRole("heading", { level: 1, name: "Previews" })).toBeVisible();
-  // The shell's Instance group has its row, selected here.
-  await expect(contextPanel(page).getByRole("link", { name: "Previews", exact: true })).toHaveAttribute("aria-current", "page");
+  // The shell's Instance group has its row, selected here (People has the organization's own Previews).
+  await expect(contextPanel(page).locator("a[href='/instance/previews']")).toHaveAttribute("aria-current", "page");
   await expect(page.getByTestId("preview-domain-setting")).toContainText(`OSTRA_PREVIEW_DOMAIN${e2ePreviewDomain}`);
   // Under `localhost`: no record and no certificate to add; no warning (the panel is on `localhost`).
   await expect(page.getByTestId("preview-add-dns")).toContainText(`Not needed for ${e2ePreviewDomain}.`);
@@ -173,6 +173,43 @@ test("F-144/c8: Instance › Previews shows the preview domain, has nothing to a
   await page.setViewportSize({ width: 390, height: 844 });
   await expectNoHorizontalScroll(page);
   await shoot(page, "instance-previews-390");
+});
+
+test("F-142/c2: Organization › Previews holds the same public-links switch: an organization admin turns public links on after the question, and off again, as Instance › Previews shows", { tag: "@desktop-only" }, async ({ page }) => {
+  await signIn(page);
+  await page.goto("/organization/previews");
+  await expect(page.getByRole("heading", { level: 1, name: "Previews" })).toBeVisible();
+  // Its row is under People, selected here.
+  await expect(contextPanel(page).locator("a[href='/organization/previews']")).toHaveAttribute("aria-current", "page");
+  const toggle = page.getByTestId("public-links-switch");
+  const setting = page.getByTestId("public-links-setting");
+  await expect(page.getByTestId("organization-previews")).toContainText("Public preview links");
+  await expect(toggle).toHaveAttribute("data-state", "unchecked");
+  await expect(setting).toContainText("off: a link expires within 7 days");
+
+  // On asks first, as on Instance › Previews; Cancel leaves it off and gives the switch its focus back.
+  await toggle.click();
+  const question = page.getByRole("alertdialog");
+  await expect(question).toContainText(/^Allow public preview links in .+\?/);
+  await question.getByRole("button", { name: "Cancel" }).click();
+  await expect(toggle).toHaveAttribute("data-state", "unchecked");
+  await expect(toggle).toBeFocused();
+  await toggle.click();
+  await question.getByRole("button", { name: "Allow public links" }).click();
+  await expect(question).toHaveCount(0);
+  await expect(toggle).toHaveAttribute("data-state", "checked");
+  await expect(setting).toContainText("on: members may make a link that doesn't expire");
+  await shoot(page, "organization-previews-1440");
+
+  // The one setting: Instance › Previews reads it on.
+  await page.goto("/instance/previews");
+  await expect(page.getByTestId("public-links-switch")).toHaveAttribute("data-state", "checked");
+  // Off saves at once, here too, and the next case finds it off as every install starts.
+  await page.goto("/organization/previews");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("data-state", "unchecked");
+  await page.reload();
+  await expect(toggle).toHaveAttribute("data-state", "unchecked");
 });
 
 test("F-144/c1: the pane frames the fixture app on its preview host in the member's own browser, and the app's own state survives Expand: no reload", { tag: "@desktop-only" }, async ({ page, browser }) => {
