@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 import type { CheckRunState, CiCheckRunStatus, CiConclusion, InstallationAccount, PullRequestReview } from "@ostra/adapter-sdk";
 
-import { defineCodeHostContractSuite, memoryAdapterContext } from "@ostra/adapter-sdk/testing";
+import { createFakeRepoTrees, defineCodeHostContractSuite, memoryAdapterContext, movedSkillTree, SKILL_FOLDER, SKILL_TREE_TAG } from "@ostra/adapter-sdk/testing";
 import type { CodeHostFixture } from "@ostra/adapter-sdk/testing";
 import { repoFullNameSchema } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -233,9 +233,33 @@ const startFake = (): Promise<FakeGitHub> =>
       // Milestone 4 (F-136): repos on a stranger's account, which installed the public App.
       { id: 3001, owner: "stranger-co", name: "app", defaultBranch: "main", files: { "README.md": "stranger\n" }, branches: ["main"] },
       { id: 3002, owner: "stranger-co", name: "api", defaultBranch: "main", files: {}, branches: ["main"] },
+      // Milestone 8 (ticket 02, F-145): the repos read at a commit, one public and one private.
+      { id: 1101, owner: "fake-org", name: "skills", defaultBranch: "main", files: {}, branches: ["main"], private: false },
+      { id: 1102, owner: "fake-org", name: "private-skills", defaultBranch: "main", files: {}, branches: ["main"] },
     ],
     otherAccounts: [STRANGER, ANOTHER],
+    trees: createFakeRepoTrees("fake-org"),
   });
+
+/** Milestone 8 (ticket 02): the suite's view of the fake's repos read at a commit. */
+const treesFixture = (fake: FakeGitHub): Pick<CodeHostFixture, "trees"> => {
+  const trees = fake.trees;
+  const [publicRepo, privateRepo] = trees?.repos ?? [];
+  if (trees === undefined || publicRepo === undefined || privateRepo === undefined) {
+    return {};
+  }
+  return {
+    trees: {
+      publicRepo: publicRepo.fullName,
+      branch: publicRepo.defaultBranch,
+      privateRepo: privateRepo.fullName,
+      moveBranch: () => {
+        trees.commit(publicRepo.fullName, publicRepo.defaultBranch, movedSkillTree);
+        return Promise.resolve();
+      },
+    },
+  };
+};
 
 const pullRequestPayload = (overrides: Readonly<Record<string, unknown>> = {}, pr: Readonly<Record<string, unknown>> = {}): string =>
   JSON.stringify({
@@ -496,6 +520,7 @@ const fixtureOf = (fake: FakeGitHub): CodeHostFixture => {
     ...milestone4Fixture(fake),
     ...milestone4InstallationsFixture(fake),
     ...milestone6Fixture(fake),
+    ...treesFixture(fake),
   };
 };
 
@@ -1364,6 +1389,8 @@ describe("the GitHub adapter", () => {
         reviewComments: true,
         requestedReviewers: true,
         codeOwners: true,
+        // Milestone 8 (ticket 02).
+        readTree: true,
       });
     });
   });
@@ -1779,5 +1806,87 @@ describe("the GitHub adapter's milestone 6: CI, reviews and the App's events (ti
     expect(await adapter.listReviewComments(access(), number, second.value.reviewId)).toMatchObject({ ok: true, value: [{ path: "src/banner.ts", line: 10, side: "old", body: "two" }] });
     expect(await adapter.listReviewComments(access(), number, first.value.reviewId)).toMatchObject({ ok: true, value: [{ path: "src/banner.ts", line: 11, side: "new", body: "one" }] });
     expect(await adapter.listReviewComments(access(), number, "x")).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+  });
+});
+
+// ---- milestone 8 (ticket 02, F-145, ADR 0069): what's GitHub's own in reading a repo at a commit ----
+describe("the GitHub adapter reading a repo at a commit (ticket 02)", () => {
+  let fake: FakeGitHub;
+  const context = memoryAdapterContext();
+  let adapter: GitHubAdapter;
+  const publicRepo = repoFullNameSchema.parse("fake-org/skills");
+  const privateRepo = repoFullNameSchema.parse("fake-org/private-skills");
+  const wide = { maxFiles: 1000, maxBytes: 16 * 1024 * 1024 };
+
+  beforeAll(async () => {
+    fake = await startFake();
+    adapter = new GitHubAdapter({ apiUrl: fake.apiUrl, webUrl: fake.webUrl, oauthUrl: fake.apiUrl }, context);
+  });
+  afterAll(async () => {
+    await fake.close();
+  });
+
+  const commitOf = async (repo: typeof publicRepo, access: { readonly app: { readonly appId: string; readonly privateKey: string }; readonly installationId: string } | null): Promise<string> => {
+    const resolved = await adapter.resolveRef(access, repo, access === null ? SKILL_TREE_TAG : "main");
+    if (!resolved.ok || resolved.value === null) throw new Error("the ref didn't resolve");
+    return resolved.value.commit;
+  };
+
+  it("F-145/c1: the anonymous rate limit used up is a refusal in words the panel shows, with when it resets, and no call past it", async () => {
+    fake.setAnonymousRemaining(0);
+    const refused = await adapter.resolveRef(null, publicRepo, "main");
+    expect(refused).toMatchObject({ ok: false, error: { code: "rate-limited" } });
+    if (refused.ok) throw new Error("refused");
+    expect(refused.error.message).toMatch(/^GitHub's limit for reading public repos without an installation is used up \(60 requests an hour from this server\)\. It resets in about \d+ minutes; with the GitHub App installed on the repo's account, it's read under the App's own limit\.$/);
+    expect(refused.error.retryAfterMs).toBeGreaterThan(60_000);
+    // The budget learned the limit: the next anonymous read waits without asking GitHub.
+    const before = fake.requests.length;
+    expect(await adapter.readTree(null, publicRepo, "a".repeat(40), SKILL_FOLDER, wide)).toMatchObject({ ok: false, error: { code: "rate-limited" } });
+    expect(fake.requests.length).toBe(before);
+    // An installation's reads have their own limit, untouched by the anonymous one.
+    const access = { app: { appId: fake.appId, privateKey: fake.privateKey }, installationId: fake.installationId };
+    expect((await adapter.resolveRef(access, privateRepo, "main")).ok).toBe(true);
+    await context.rateBudgets?.set("anonymous", { remaining: 60, limit: 60, resetAt: context.clock.now() + 3_600_000 });
+    fake.setAnonymousRemaining(60);
+  });
+
+  it("F-145/c1: a private repo read anonymously is refused in words that name the GitHub App", async () => {
+    const refused = await adapter.resolveRef(null, privateRepo, "main");
+    expect(refused).toMatchObject({ ok: false, error: { code: "not-found" } });
+    expect(!refused.ok && refused.error.message).toContain("GitHub App");
+  });
+
+  it("F-145/c1: reads through a token with contents: read only, and no token reaches the archive's download", async () => {
+    const access = { app: { appId: fake.appId, privateKey: fake.privateKey }, installationId: fake.installationId };
+    const commit = await commitOf(privateRepo, access);
+    const read = await adapter.readTree(access, privateRepo, commit, "", wide);
+    expect(read.ok).toBe(true);
+    // Every token minted for the repo is narrowed to it, and reads only.
+    const minted = [...fake.tokens.values()].filter((scope) => scope.repos?.includes("private-skills") === true);
+    expect(minted.length).toBeGreaterThan(0);
+    for (const scope of minted) {
+      expect(scope.permissions).toEqual({ contents: "read", metadata: "read" });
+      expect(scope.repos).toEqual(["private-skills"]);
+    }
+    expect((await adapter.readTree(null, publicRepo, await commitOf(publicRepo, null), SKILL_FOLDER, wide)).ok).toBe(true);
+    expect(fake.authorizedArchiveDownloads()).toBe(0);
+    // The log line names the read, never a path or a byte of it.
+    const lines = JSON.stringify(context.logger.records);
+    expect(lines).toContain("github.tree.read");
+    expect(lines).not.toContain("SKILL.md");
+  });
+
+  it("F-145/c1: an answer with no download, or an archive that isn't gzip, is refused in ostra's words", async () => {
+    const commit = await commitOf(publicRepo, null);
+    fake.failures.push({ pathPattern: /\/tarball\//, status: 302, body: {} });
+    expect(await adapter.readTree(null, publicRepo, commit, SKILL_FOLDER, wide)).toEqual({
+      ok: false,
+      error: { code: "invalid-response", message: "GitHub's answer for the commit's archive had no download URL" },
+    });
+    fake.failures.push({ pathPattern: /^\/codeload\//, status: 200, body: { not: "a tarball" } });
+    expect(await adapter.readTree(null, publicRepo, commit, SKILL_FOLDER, wide)).toEqual({
+      ok: false,
+      error: { code: "invalid-response", message: "GitHub's archive of the commit isn't gzip" },
+    });
   });
 });

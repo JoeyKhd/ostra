@@ -106,7 +106,7 @@ export class FakeCodeHost extends CodeHostAdapter {
    */
   reviewLoop = false;
   get capabilities(): CodeHostCapabilities {
-    return { checkRuns: true, prTemplates: true, lfsActionHosts: ["lfs.example.test"], branchRules: false, compare: true, draftPullRequests: true, prComments: true, userLink: false, reviews: true, installableByOtherAccounts: false, ciResults: this.reviewLoop, ciLogs: this.reviewLoop, reviewComments: this.reviewLoop, requestedReviewers: this.reviewLoop, codeOwners: this.reviewLoop };
+    return { checkRuns: true, prTemplates: true, lfsActionHosts: ["lfs.example.test"], branchRules: false, compare: true, draftPullRequests: true, prComments: true, userLink: false, reviews: true, installableByOtherAccounts: false, ciResults: this.reviewLoop, ciLogs: this.reviewLoop, reviewComments: this.reviewLoop, requestedReviewers: this.reviewLoop, codeOwners: this.reviewLoop, readTree: false };
   }
   /** Milestone 6: the heads' check runs and statuses from other apps, their logs, the PRs' diffs and the App's reviews. */
   readonly ci = new FakeCiHost();

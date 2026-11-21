@@ -1,8 +1,23 @@
 import { createHmac, createHash, timingSafeEqual } from "node:crypto";
+import { pipeline, Readable } from "node:stream";
+import { createGunzip } from "node:zlib";
 
 import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
-import { adapterError, CodeHostAdapter, err, idempotencyKey, lineInRanges, logTail, ok, parseVendor } from "@ostra/adapter-sdk";
+import {
+  adapterError,
+  CodeHostAdapter,
+  createTreeCollector,
+  err,
+  idempotencyKey,
+  lineInRanges,
+  logTail,
+  ok,
+  parseVendor,
+  readTar,
+  treeFolderOf,
+  treeLimitsProblem,
+} from "@ostra/adapter-sdk";
 import type {
   AdapterContext,
   AdapterResult,
@@ -36,6 +51,7 @@ import type {
   HealthReport,
   HostRepo,
   Installation,
+  InstallationAccess,
   InstallationAccount,
   InstallationRepo,
   LineRange,
@@ -55,13 +71,17 @@ import type {
   RepoFile,
   RepoPermission,
   RepoToken,
+  RepoTree,
   RequestedReviewers,
+  ResolvedRef,
   Result,
   ReviewComment,
+  TreeCollector,
+  TreeLimits,
   WebhookInput,
 } from "@ostra/adapter-sdk";
-import { gitPersonSchema, repoFullNameSchema } from "@ostra/protocol";
-import type { GitPerson } from "@ostra/protocol";
+import { gitPersonSchema, gitShaSchema, repoFullNameSchema } from "@ostra/protocol";
+import type { GitPerson, GitSha, RepoFullName } from "@ostra/protocol";
 import { z } from "zod";
 
 import { isPlanLimit, readHttpFailure, retryDecision, statusOf, toAdapterError } from "./errors.ts";
@@ -78,6 +98,7 @@ import {
   ciSubjectSchema,
   ciSubjectWebhookSchema,
   combinedStatusSchema,
+  commitShaSchema,
   compareSchema,
   contentFileSchema,
   conversionSchema,
@@ -191,6 +212,50 @@ export const GITHUB_COMPARE_MAX_FILES = 300;
 export const GITHUB_MAX_FILE_DIFF_BYTES = 500 * 1024;
 const OAUTH_TIMEOUT_MS = 15_000;
 
+// ---- milestone 8 (F-145, ADR 0069): reading a repo at a commit ----
+
+/** Every read without an installation shares GitHub's anonymous limit, per address. */
+const ANONYMOUS_BUDGET_KEY = "anonymous";
+/** GitHub's anonymous rate limit: "60 requests per hour", per originating IP address. */
+const ANONYMOUS_LIMIT_PER_HOUR = 60;
+/** The longest a commit's archive may take to stream through. */
+const ARCHIVE_TIMEOUT_MS = 120_000;
+/** The most a commit's archive unpacks to before ostra stops reading it: 1 GiB. */
+const ARCHIVE_MAX_UNPACKED_BYTES = 1024 * 1024 * 1024;
+
+/** A refused request's answer, of which the anonymous budget reads the rate limit's headers. */
+const failedResponseSchema = z.looseObject({ response: z.looseObject({ headers: z.record(z.string(), z.unknown()) }) });
+
+/** The words for the anonymous limit used up, which the panel shows as they are. */
+const anonymousLimitWords = (retryAfterMs: number | undefined): string => {
+  const minutes = retryAfterMs === undefined ? null : Math.max(1, Math.ceil(retryAfterMs / 60_000));
+  const resets = minutes === null ? "It resets within the hour" : `It resets in about ${String(minutes)} minute${minutes === 1 ? "" : "s"}`;
+  return `GitHub's limit for reading public repos without an installation is used up (${String(ANONYMOUS_LIMIT_PER_HOUR)} requests an hour from this server). ${resets}; with the GitHub App installed on the repo's account, it's read under the App's own limit.`;
+};
+
+/** A path inside a commit's archive, without its one top folder (`<owner>-<repo>-<sha7>/`), or `null` for the folder itself or a path that isn't safe. */
+const archivePath = (path: string): { readonly top: string; readonly path: string | null } => {
+  const slash = path.indexOf("/");
+  const top = slash === -1 ? path : path.slice(0, slash);
+  const inner = slash === -1 ? "" : path.slice(slash + 1).replace(/\/+$/, "");
+  // A path git wouldn't write (`..`, an empty part) is never read.
+  return { top, path: inner === "" || treeFolderOf(inner) !== inner ? null : inner };
+};
+
+/** Counts what streams past, and ends the stream once it's over `maxBytes`, saying so in `over`. */
+// eslint-disable-next-line func-style -- a generator can't be an arrow function
+async function* unpackedUpTo(source: AsyncIterable<Uint8Array>, maxBytes: number, over: { exceeded: boolean }): AsyncGenerator<Uint8Array> {
+  let total = 0;
+  for await (const chunk of source) {
+    total += chunk.length;
+    if (total > maxBytes) {
+      over.exceeded = true;
+      return;
+    }
+    yield chunk;
+  }
+}
+
 /** GitHub's file statuses in a compare, as ostra names them; one it adds later reads as `changed`. */
 const compareStatusOf = (status: string): CompareFileStatus => {
   switch (status) {
@@ -283,6 +348,8 @@ export class GitHubAdapter extends CodeHostAdapter {
       reviewComments: true,
       requestedReviewers: true,
       codeOwners: true,
+      // Milestone 8 (ticket 02, ADR 0069): a repo's files at a commit, through its tarball.
+      readTree: true,
     };
   }
 
@@ -1498,6 +1565,206 @@ export class GitHubAdapter extends CodeHostAdapter {
       return adapterError("unavailable", "reading a CI log failed: the download broke off");
     }
     return ok({ found: true, ...tail });
+  }
+
+  // ---------- milestone 8 (F-145, ADR 0069, ADR 0025 amended): a repo's files at a commit ----------
+
+  /**
+   * Through the commits API, which answers 422 ("No commit found for SHA") for a ref the repo
+   * doesn't have: that's `null`. A repo that isn't there, or is private and read anonymously, is 404.
+   */
+  override async resolveRef(access: InstallationAccess | null, repo: RepoFullName, ref: string): Promise<AdapterResult<ResolvedRef | null>> {
+    if (!repoFullNameSchema.safeParse(repo).success) {
+      return adapterError("invalid-input", "a repo is named owner/name");
+    }
+    if (!isSafeRefName(ref)) {
+      return adapterError("invalid-input", "a ref is a branch, a tag or a commit's SHA");
+    }
+    return this.#readAtCommit<ResolvedRef | null>("resolving a ref", access, repo, async (octokit) => {
+      const { owner, name } = splitRepo(repo);
+      let data: unknown;
+      try {
+        const response = await octokit.request("GET /repos/{owner}/{repo}/commits/{ref}", { owner, repo: name, ref });
+        data = response.data;
+      } catch (error) {
+        if (statusOf(error) === 422) {
+          return ok(null);
+        }
+        throw error;
+      }
+      const parsed = parseVendor(commitShaSchema, data, "GitHub's commit");
+      if (!parsed.ok) {
+        return parsed;
+      }
+      const sha = gitShaSchema.safeParse(parsed.value.sha);
+      return sha.success ? ok({ commit: sha.data }) : adapterError("invalid-response", "GitHub's commit has no full SHA");
+    });
+  }
+
+  /**
+   * Through the commit's tarball: GitHub answers a redirect to a short-lived download, fetched with
+   * no token, gunzipped and unpacked as it streams, with the caps applied while reading (the SDK's
+   * `createTreeCollector`). Nothing is written to disk: only the folder's files within the caps
+   * are held, and every other byte streams past.
+   */
+  override async readTree(access: InstallationAccess | null, repo: RepoFullName, commit: GitSha, path: string, limits: TreeLimits): Promise<AdapterResult<RepoTree>> {
+    if (!repoFullNameSchema.safeParse(repo).success) {
+      return adapterError("invalid-input", "a repo is named owner/name");
+    }
+    if (!gitShaSchema.safeParse(commit).success) {
+      return adapterError("invalid-input", "a tree is read at a commit's full SHA, never at a branch");
+    }
+    const folder = treeFolderOf(path);
+    if (folder === null) {
+      return adapterError("invalid-input", "a folder to read is repo-relative, with no `..`");
+    }
+    const problem = treeLimitsProblem(limits);
+    if (problem !== null) {
+      return adapterError("invalid-input", problem);
+    }
+    return this.#readAtCommit<RepoTree>("reading a repo at a commit", access, repo, async (octokit) => {
+      const { owner, name } = splitRepo(repo);
+      const response = await octokit.request("GET /repos/{owner}/{repo}/tarball/{ref}", { owner, repo: name, ref: commit, request: { redirect: "manual" } });
+      const location: unknown = response.headers.location;
+      if (typeof location !== "string" || !isHttpUrl(location)) {
+        return adapterError("invalid-response", "GitHub's answer for the commit's archive had no download URL");
+      }
+      const read = await this.#readArchive(location, commit, createTreeCollector(folder, limits));
+      if (read.ok) {
+        this.plumbing.logger.info("github.tree.read", { repo, anonymous: access === null, files: read.value.files.length, truncated: read.value.truncated, notes: read.value.notes.length });
+      }
+      return read;
+    });
+  }
+
+  /**
+   * A read at a commit, anonymously or through the installation, with `contents: read` only. The
+   * anonymous path's refusals get words the panel shows: its rate limit, and a repo that isn't public.
+   */
+  async #readAtCommit<T>(operation: string, access: InstallationAccess | null, repo: RepoFullName, call: (octokit: Octokit) => Promise<AdapterResult<T>>): Promise<AdapterResult<T>> {
+    const budgetKey = access === null ? ANONYMOUS_BUDGET_KEY : `inst:${access.app.appId}:${access.installationId}`;
+    const result = await this.#guarded(operation, budgetKey, async () => {
+      const octokit = access === null ? this.#anonymousReader() : await this.#asRepo({ ...access, repo }, { contents: "read", metadata: "read" });
+      return call(octokit);
+    });
+    if (result.ok || access !== null) {
+      return result;
+    }
+    if (result.error.code === "rate-limited") {
+      this.plumbing.logger.warn("github.anonymous.rate-limited", { repo, retryAfterMs: result.error.retryAfterMs ?? null });
+      return adapterError("rate-limited", anonymousLimitWords(result.error.retryAfterMs), result.error.retryAfterMs);
+    }
+    if (result.error.code === "not-found") {
+      return adapterError("not-found", `${operation} failed: GitHub has no public repo by that name. A private repo is read through the GitHub App, installed on its account.`);
+    }
+    return result;
+  }
+
+  /**
+   * No credentials, under the anonymous rate limit, whose budget also learns from a refusal: once
+   * GitHub says the limit is used up, the next read waits for the reset without asking it again.
+   */
+  #anonymousReader(): Octokit {
+    const octokit = this.#newOctokit({}, ANONYMOUS_BUDGET_KEY);
+    const guard = this.plumbing.rateBudget;
+    if (guard !== undefined) {
+      octokit.hook.error("request", async (error: unknown) => {
+        const failed = failedResponseSchema.safeParse(error);
+        if (failed.success) {
+          const header = (name: string): string | null => {
+            const value = failed.data.response.headers[name];
+            return typeof value === "string" || typeof value === "number" ? String(value) : null;
+          };
+          await guard.record(ANONYMOUS_BUDGET_KEY, { remaining: header("x-ratelimit-remaining"), limit: header("x-ratelimit-limit"), reset: header("x-ratelimit-reset") });
+        }
+        throw error;
+      });
+    }
+    return octokit;
+  }
+
+  /** Streams a commit's archive from its download URL into the collector. */
+  async #readArchive(location: string, commit: GitSha, collector: TreeCollector): Promise<AdapterResult<RepoTree>> {
+    let download: Response;
+    try {
+      // The download URL is signed (a private repo's carries its own token): no token of the App's goes with it.
+      download = await fetch(location, { headers: { "user-agent": this.#userAgent }, redirect: "follow", signal: AbortSignal.timeout(ARCHIVE_TIMEOUT_MS) });
+    } catch {
+      return adapterError("unavailable", "reading a repo at a commit failed: its archive could not be reached");
+    }
+    if (download.status === 404 || download.body === null) {
+      await download.body?.cancel();
+      return adapterError("not-found", "reading a repo at a commit failed: GitHub has no archive of that commit");
+    }
+    if (!download.ok) {
+      await download.body.cancel();
+      return adapterError(download.status >= 500 ? "unavailable" : "invalid-response", `reading a repo at a commit failed (HTTP ${String(download.status)})`);
+    }
+    const unpacked = pipeline(Readable.fromWeb(download.body), createGunzip(), () => undefined);
+    const over = { exceeded: false };
+    /** What the archive showed while it streamed: its one top folder, a second one, and the commit it says it's of. */
+    const seen: { top: string | null; foreign: boolean; archived: string | null } = { top: null, foreign: false, archived: null };
+    try {
+      const outcome = await readTar(unpackedUpTo(unpacked, ARCHIVE_MAX_UNPACKED_BYTES, over), {
+        comment: (comment) => {
+          seen.archived = comment;
+        },
+        entry: (entry) => {
+          const inner = archivePath(entry.path);
+          seen.top ??= inner.top;
+          if (inner.top !== seen.top) {
+            seen.foreign = true;
+            return "stop";
+          }
+          if (inner.path === null) {
+            return "skip";
+          }
+          switch (entry.type) {
+            case "file":
+              return collector.wants(inner.path, entry.size) ? "read" : collector.full() ? "stop" : "skip";
+            case "symlink":
+              collector.symlink(inner.path, entry.linkTarget);
+              return "skip";
+            case "directory":
+            case "hardlink":
+            case "other":
+              return "skip";
+            default:
+              return entry.type satisfies never;
+          }
+        },
+        bytes: (entry, bytes) => {
+          const inner = archivePath(entry.path).path;
+          if (inner !== null) {
+            collector.file(inner, (entry.mode & 0o111) === 0 ? "regular" : "executable", bytes);
+          }
+        },
+      });
+      if (over.exceeded) {
+        return adapterError("invalid-input", `the repo's archive unpacks to over ${String(ARCHIVE_MAX_UNPACKED_BYTES / (1024 * 1024 * 1024))} GiB, more than ostra reads`);
+      }
+      if (!outcome.ok) {
+        return adapterError("invalid-response", `GitHub's archive of the commit doesn't read: ${outcome.error}`);
+      }
+      if (seen.foreign) {
+        return adapterError("invalid-response", "GitHub's archive of the commit holds more than one top folder");
+      }
+      // `git archive` writes the commit it archived as the archive's comment: it must be the one asked for.
+      if (seen.archived !== null && /^[0-9a-f]{40}$/.test(seen.archived) && seen.archived !== commit) {
+        return adapterError("invalid-response", "GitHub's archive is of another commit than the one asked for");
+      }
+      return ok(collector.finish());
+    } catch (error) {
+      if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+        return adapterError("unavailable", `reading a repo at a commit took over ${String(ARCHIVE_TIMEOUT_MS / 1000)} s`);
+      }
+      if (error instanceof Error && "code" in error && typeof error.code === "string" && error.code.startsWith("Z_")) {
+        return adapterError("invalid-response", "GitHub's archive of the commit isn't gzip");
+      }
+      throw error;
+    } finally {
+      unpacked.destroy();
+    }
   }
 
   #budgetKey(access: RepoAccess): string {

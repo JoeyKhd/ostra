@@ -1,4 +1,4 @@
-import type { GitPerson, RepoFullName } from "@ostra/protocol";
+import type { GitPerson, GitSha, RepoFullName } from "@ostra/protocol";
 
 import { createPlumbing, defaultAdapterContext } from "../common/context.ts";
 import type { AdapterContext, Plumbing } from "../common/context.ts";
@@ -541,6 +541,57 @@ export type ReviewComment = {
   readonly userId: string;
 };
 
+// ---------- milestone 8 (F-145, ADR 0069, ADR 0025 amended): a repo's files at a commit ----------
+
+/**
+ * An installation's access to the repos it covers (ADR 0040, ADR 0065). In its place, `null` reads
+ * a public repo anonymously, under the host's anonymous rate limit. A `RepoAccess` is one too.
+ */
+export type InstallationAccess = { readonly app: CodeHostAppCredentials; readonly installationId: string };
+
+/** A ref (a branch, a tag or a commit) as the commit it names now. */
+export type ResolvedRef = { readonly commit: GitSha };
+
+/**
+ * The caps `readTree` applies while it reads: at most `maxFiles` files, and at most `maxBytes`
+ * bytes of them in all. The library asks for a little over ostra's limits, so the domain's
+ * `checkSkill` can name what passes them.
+ */
+export type TreeLimits = { readonly maxFiles: number; readonly maxBytes: number };
+
+/** A file's mode as git keeps it: a regular file, or one with its executable bit. */
+export type TreeFileMode = "regular" | "executable";
+
+/** One file of a tree, its path repo-relative. Its bytes are the repo's content: never logged. */
+export type TreeFile = {
+  readonly path: string;
+  readonly size: number;
+  readonly mode: TreeFileMode;
+  readonly bytes: Uint8Array;
+};
+
+/**
+ * Why an entry under the folder isn't among the files:
+ * - `symlink-outside`: a symlink whose target, or a hop to it, leaves the folder (or the repo), or
+ *   loops back to a folder holding it: never followed;
+ * - `symlink-dangling`: a symlink whose target isn't in the tree;
+ * - `over-max-bytes`: a file bigger than the bytes the cap had left;
+ * - `over-max-files`: the first file past `maxFiles`, after which reading stopped.
+ */
+export type TreeNoteReason = "symlink-outside" | "symlink-dangling" | "over-max-bytes" | "over-max-files";
+
+export type TreeNote = { readonly path: string; readonly reason: TreeNoteReason };
+
+/**
+ * The files under a folder at a commit, in path order. `truncated` when a cap left a file out;
+ * `notes` say what was left out and why, at most `TREE_NOTES_MAX` of them.
+ */
+export type RepoTree = {
+  readonly files: readonly TreeFile[];
+  readonly truncated: boolean;
+  readonly notes: readonly TreeNote[];
+};
+
 /** Whether a line is inside one of the ranges. */
 export const lineInRanges = (ranges: readonly LineRange[], line: number): boolean => ranges.some((range) => line >= range.start && line <= range.end);
 
@@ -798,4 +849,38 @@ export abstract class CodeHostAdapter {
     this.plumbing.logger.debug("readCodeOwners is not supported", { repo: access.repo, refLength: ref.length });
     return Promise.resolve(adapterError("unsupported", `${this.name} can't read CODEOWNERS`));
   }
+
+  // ---------- milestone 8: additive, so each answers `unsupported` until an adapter has it ----------
+
+  /**
+   * The commit a branch, a tag or a commit names now, or `null` when the repo has no such ref
+   * (F-145, ADR 0069). `access` is an installation's, for a repo it covers, or `null` to read a
+   * public repo anonymously; a repo that isn't public, read anonymously, is `not-found`, as a repo
+   * that doesn't exist is. Needs the capability `readTree`.
+   */
+  resolveRef(access: InstallationAccess | null, repo: RepoFullName, ref: string): Promise<AdapterResult<ResolvedRef | null>> {
+    this.plumbing.logger.debug("resolveRef is not supported", { repo, anonymous: access === null, refLength: ref.length });
+    return Promise.resolve(adapterError("unsupported", readTreeRefusalOf(this.name)));
+  }
+
+  /**
+   * The files under `path` (repo-relative; `""` for the whole repo) at a commit, a full SHA and
+   * never a branch, so what's read is what was pinned (F-145, ADR 0069). Paths are repo-relative
+   * and inside `path`. A symlink is followed only when its target stays inside `path`, else it's
+   * left out with a note. The caps are applied while reading (`createTreeCollector`, shared by
+   * every adapter). Needs the capability `readTree`.
+   */
+  readTree(access: InstallationAccess | null, repo: RepoFullName, commit: GitSha, path: string, limits: TreeLimits): Promise<AdapterResult<RepoTree>> {
+    this.plumbing.logger.debug("readTree is not supported", { repo, anonymous: access === null, commitLength: commit.length, pathLength: path.length, maxFiles: limits.maxFiles });
+    return Promise.resolve(adapterError("unsupported", readTreeRefusalOf(this.name)));
+  }
 }
+
+const readTreeRefusalOf = (name: string): string => `${name} can't read a repo's files at a commit, so ostra can't install a skill from it`;
+
+/**
+ * The capability check before a library install reads a repo through a host (F-145, ADR 0069):
+ * the words the install's refusal shows when the host lacks `readTree`, or `null` when it has it.
+ */
+export const readTreeRefusal = (host: Pick<CodeHostAdapter, "name" | "capabilities">): string | null =>
+  host.capabilities.readTree ? null : readTreeRefusalOf(host.name);

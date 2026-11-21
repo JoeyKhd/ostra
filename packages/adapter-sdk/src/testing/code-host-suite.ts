@@ -1,6 +1,11 @@
+import type { RepoFullName } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
+import { readTreeRefusal } from "../code-host/base.ts";
 import type {
+  RepoTree,
+  TreeLimits,
+  InstallationAccess,
   AppManifest,
   AppOwner,
   BranchRules,
@@ -21,6 +26,17 @@ import type {
 } from "../code-host/base.ts";
 import { defineCommonCases, useSubject } from "./common-cases.ts";
 import type { ContractSuiteOptions } from "./common-cases.ts";
+import {
+  fakeTreeBytes,
+  movedSkillTree,
+  privateSkillTree,
+  SKILL_FOLDER,
+  SKILL_TREE_BYTE_CAP,
+  SKILL_TREE_TAG,
+  skillFolderFiles,
+  skillTree,
+} from "./fake-repo-trees.ts";
+import type { FakeTree } from "./fake-repo-trees.ts";
 
 // The cases every code host adapter passes (ADR 0025, spec section 8): against a fake host, and,
 // gated on `github.env` and `github-test.env`, against `ostra-test/test1`.
@@ -149,6 +165,18 @@ export type CodeHostFixture = {
   };
   /** Signed `check_run`, `check_suite`, `status` and `pull_request` review-request webhooks, and what each reads as. */
   readonly ciWebhooks?: readonly { readonly input: WebhookInput; readonly expected: Extract<CodeHostWebhookEvent, { readonly kind: "ci" | "pull_request_reviewers" }> }[];
+  // ---- milestone 8 (ticket 02, F-145, ADR 0069): absent, the cases are skipped; without `readTree`, both calls must be `unsupported` ----
+  /**
+   * The repos of `createFakeRepoTrees`: the public one holding `skillTree` on `branch`, with the
+   * tag `SKILL_TREE_TAG` on that commit, and the private one the installation covers.
+   */
+  readonly trees?: {
+    readonly publicRepo: RepoFullName;
+    readonly branch: string;
+    readonly privateRepo: RepoFullName;
+    /** Pushes `movedSkillTree` to the public repo's `branch` as a new commit, once. */
+    readonly moveBranch: () => Promise<void>;
+  };
 };
 
 /** Milestone 4 (F-136): the two installation webhooks, as the suite expects them read. */
@@ -201,6 +229,168 @@ export const defineCodeHostContractSuite = (options: ContractSuiteOptions<CodeHo
       reviewComments: "boolean",
       requestedReviewers: "boolean",
       codeOwners: "boolean",
+      readTree: "boolean",
+    });
+
+    // ---- milestone 8 (ticket 02, F-145, ADR 0069): a repo's files at a commit ----
+    // The cases read the tag, which never moves, except the last, which moves the branch.
+
+    /** The caps when a case isn't testing them: wide open. */
+    const wide: TreeLimits = { maxFiles: 1000, maxBytes: 16 * 1024 * 1024 };
+    const decoded = (tree: RepoTree, path: string): string | undefined => {
+      const found = tree.files.find((candidate) => candidate.path === path);
+      return found === undefined ? undefined : new TextDecoder().decode(found.bytes);
+    };
+    const contentOf = (tree: FakeTree, path: string): string => {
+      const entry = tree[path];
+      if (entry?.kind !== "file") throw new Error(`the fake tree has no file ${path}`);
+      return new TextDecoder().decode(fakeTreeBytes(entry));
+    };
+    /** The commit a ref names, or the case fails. */
+    const commitOf = async (adapter: CodeHostAdapter, repo: RepoFullName, ref: string, access: InstallationAccess | null = null): Promise<string> => {
+      const resolved = await adapter.resolveRef(access, repo, ref);
+      if (!resolved.ok || resolved.value === null) throw new Error(`${ref} didn't resolve`);
+      return resolved.value.commit;
+    };
+
+    it("F-145/c1: a host without readTree declares it, both calls refuse, and an install through it is refused with the reason", async () => {
+      const { adapter, fixture } = subject();
+      const refusal = readTreeRefusal(adapter);
+      if (adapter.capabilities.readTree) {
+        expect(refusal).toBeNull();
+        return;
+      }
+      expect(refusal).toContain(adapter.name);
+      const repo = fixture.trees?.publicRepo ?? fixture.access.repo;
+      expect(await adapter.resolveRef(null, repo, "main")).toEqual({ ok: false, error: { code: "unsupported", message: refusal } });
+      expect(await adapter.readTree(fixture.access, repo, "a".repeat(40), "", wide)).toEqual({ ok: false, error: { code: "unsupported", message: refusal } });
+    });
+
+    it("F-145/c1: resolves a branch, a tag and a commit to the commit they name, anonymously on a public repo, and a ref that doesn't exist to none", async (context) => {
+      const { adapter, fixture } = subject();
+      const trees = fixture.trees;
+      if (!adapter.capabilities.readTree || trees === undefined) {
+        context.skip();
+        return;
+      }
+      const commit = await commitOf(adapter, trees.publicRepo, trees.branch);
+      expect(commit).toMatch(/^[0-9a-f]{40}$/);
+      expect(await adapter.resolveRef(null, trees.publicRepo, SKILL_TREE_TAG)).toEqual({ ok: true, value: { commit } });
+      expect(await adapter.resolveRef(null, trees.publicRepo, commit)).toEqual({ ok: true, value: { commit } });
+      expect(await adapter.resolveRef(null, trees.publicRepo, "no-such-branch")).toEqual({ ok: true, value: null });
+      expect(await adapter.resolveRef(null, trees.publicRepo, "f".repeat(40))).toEqual({ ok: true, value: null });
+    });
+
+    it("F-145/c1: reads a skill's folder at a commit: repo-relative paths inside it, sizes and modes, a link inside followed and one leaving it noted", async (context) => {
+      const { adapter, fixture } = subject();
+      const trees = fixture.trees;
+      if (!adapter.capabilities.readTree || trees === undefined) {
+        context.skip();
+        return;
+      }
+      const commit = await commitOf(adapter, trees.publicRepo, SKILL_TREE_TAG);
+      const read = await adapter.readTree(null, trees.publicRepo, commit, SKILL_FOLDER, wide);
+      if (!read.ok) throw new Error(read.error.message);
+      const tree = read.value;
+      expect(tree.files.map((file) => file.path)).toEqual([...skillFolderFiles]);
+      expect(tree.truncated).toBe(false);
+      expect(tree.notes).toEqual([{ path: "skills/pdf/style.md", reason: "symlink-outside" }]);
+      expect(decoded(tree, "skills/pdf/SKILL.md")).toBe(contentOf(skillTree, "skills/pdf/SKILL.md"));
+      // The link inside the folder is its target's bytes; the one leaving it never brings the outside file in.
+      expect(decoded(tree, "skills/pdf/forms.md")).toBe(contentOf(skillTree, "skills/pdf/reference.md"));
+      expect(tree.files.some((file) => decoded(tree, file.path) === contentOf(skillTree, "skills/shared/style.md"))).toBe(false);
+      for (const file of tree.files) {
+        expect(file.size, file.path).toBe(file.bytes.length);
+        expect(file.mode, file.path).toBe(file.path === "skills/pdf/scripts/extract.py" ? "executable" : "regular");
+      }
+      // The whole repo, for finding its skills: every `SKILL.md`, at every depth.
+      const whole = await adapter.readTree(null, trees.publicRepo, commit, "", wide);
+      if (!whole.ok) throw new Error(whole.error.message);
+      expect(whole.value.files.map((file) => file.path).filter((path) => path.endsWith("SKILL.md"))).toEqual([
+        "skills/archive/old/v1/legacy/SKILL.md",
+        "skills/pdf/SKILL.md",
+        "skills/team/web/review/SKILL.md",
+        "writer/SKILL.md",
+      ]);
+      // A folder is no way out: `..`, an absolute path and a backslash are refused before any call.
+      for (const unsafe of ["../other", "skills/../..", "/etc", "skills\\pdf"]) {
+        expect(await adapter.readTree(null, trees.publicRepo, commit, unsafe, wide), unsafe).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+      }
+      // A tree is read at a commit, never at a branch's name.
+      expect(await adapter.readTree(null, trees.publicRepo, trees.branch, SKILL_FOLDER, wide)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+    });
+
+    it("F-145/c1: the caps truncate while reading: past maxFiles reading stops, and a file over the bytes left is left out, each noted", async (context) => {
+      const { adapter, fixture } = subject();
+      const trees = fixture.trees;
+      if (!adapter.capabilities.readTree || trees === undefined) {
+        context.skip();
+        return;
+      }
+      const commit = await commitOf(adapter, trees.publicRepo, SKILL_TREE_TAG);
+      const fewer = await adapter.readTree(null, trees.publicRepo, commit, SKILL_FOLDER, { maxFiles: 2, maxBytes: wide.maxBytes });
+      if (!fewer.ok) throw new Error(fewer.error.message);
+      expect(fewer.value.files).toHaveLength(2);
+      expect(fewer.value.truncated).toBe(true);
+      // The first file past the cap is noted, and so is a link to a file reading stopped before.
+      expect(fewer.value.notes.some((note) => note.reason === "over-max-files")).toBe(true);
+      expect(fewer.value.notes.every((note) => note.reason === "over-max-files" || note.reason === "symlink-outside")).toBe(true);
+      for (const file of fewer.value.files) {
+        expect(skillFolderFiles).toContain(file.path);
+      }
+      const smaller = await adapter.readTree(null, trees.publicRepo, commit, SKILL_FOLDER, { maxFiles: wide.maxFiles, maxBytes: SKILL_TREE_BYTE_CAP });
+      if (!smaller.ok) throw new Error(smaller.error.message);
+      expect(smaller.value.truncated).toBe(true);
+      expect(smaller.value.files.map((file) => file.path)).toEqual(skillFolderFiles.filter((path) => path !== "skills/pdf/assets/sample.pdf"));
+      expect(smaller.value.notes).toContainEqual({ path: "skills/pdf/assets/sample.pdf", reason: "over-max-bytes" });
+      expect(smaller.value.files.reduce((sum, file) => sum + file.size, 0)).toBeLessThanOrEqual(SKILL_TREE_BYTE_CAP);
+      expect(await adapter.readTree(null, trees.publicRepo, commit, SKILL_FOLDER, { maxFiles: 0, maxBytes: 10 })).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+    });
+
+    it("F-145/c1: a private repo is refused without access, and read through the installation that covers it", async (context) => {
+      const { adapter, fixture } = subject();
+      const trees = fixture.trees;
+      if (!adapter.capabilities.readTree || trees === undefined) {
+        context.skip();
+        return;
+      }
+      const access: InstallationAccess = { app: fixture.app, installationId: fixture.installationId };
+      // Anonymously, a private repo is no repo at all, as the host answers.
+      expect(await adapter.resolveRef(null, trees.privateRepo, "main")).toMatchObject({ ok: false, error: { code: "not-found" } });
+      const commit = await commitOf(adapter, trees.privateRepo, "main", access);
+      expect(await adapter.readTree(null, trees.privateRepo, commit, "", wide)).toMatchObject({ ok: false, error: { code: "not-found" } });
+      const read = await adapter.readTree(access, trees.privateRepo, commit, "", wide);
+      if (!read.ok) throw new Error(read.error.message);
+      expect(read.value.files.map((file) => file.path)).toEqual(Object.keys(privateSkillTree));
+      expect(decoded(read.value, "skills/internal/SKILL.md")).toBe(contentOf(privateSkillTree, "skills/internal/SKILL.md"));
+      // A wrong App reads nothing.
+      expect((await adapter.resolveRef({ app: fixture.wrongApp, installationId: fixture.installationId }, trees.privateRepo, "main")).ok).toBe(false);
+    });
+
+    it("F-145/c2: a tree read at a commit is the same after its branch moves on, and the new commit reads the push", async (context) => {
+      const { adapter, fixture } = subject();
+      const trees = fixture.trees;
+      if (!adapter.capabilities.readTree || trees === undefined) {
+        context.skip();
+        return;
+      }
+      const pinned = await commitOf(adapter, trees.publicRepo, trees.branch);
+      const first = await adapter.readTree(null, trees.publicRepo, pinned, SKILL_FOLDER, wide);
+      await trees.moveBranch();
+      const head = await commitOf(adapter, trees.publicRepo, trees.branch);
+      expect(head).not.toBe(pinned);
+      // The pin reads what it read before, byte for byte.
+      const again = await adapter.readTree(null, trees.publicRepo, pinned, SKILL_FOLDER, wide);
+      expect(again).toEqual(first);
+      if (!again.ok) throw new Error(again.error.message);
+      expect(decoded(again.value, "skills/pdf/SKILL.md")).toBe(contentOf(skillTree, "skills/pdf/SKILL.md"));
+      expect(again.value.files.map((file) => file.path)).not.toContain("skills/pdf/signing.md");
+      // The tag stays on the old commit too.
+      expect(await adapter.resolveRef(null, trees.publicRepo, SKILL_TREE_TAG)).toEqual({ ok: true, value: { commit: pinned } });
+      const moved = await adapter.readTree(null, trees.publicRepo, head, SKILL_FOLDER, wide);
+      if (!moved.ok) throw new Error(moved.error.message);
+      expect(decoded(moved.value, "skills/pdf/SKILL.md")).toBe(contentOf(movedSkillTree, "skills/pdf/SKILL.md"));
+      expect(moved.value.files.map((file) => file.path)).toContain("skills/pdf/signing.md");
     });
 
     // ---- milestone 6 (ticket 03, ADR 0058): CI, comment-type reviews, reviewers and CODEOWNERS ----

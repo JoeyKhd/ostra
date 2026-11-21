@@ -3,7 +3,12 @@ import http from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { promisify } from "node:util";
+import { gzip } from "node:zlib";
 
+import type { FakeRepoTrees, FakeTree } from "@ostra/adapter-sdk/testing";
+import { tarOf } from "@ostra/adapter-sdk/testing/net";
+import type { TarEntry } from "@ostra/adapter-sdk/testing/net";
+import { repoFullNameSchema } from "@ostra/protocol";
 import { z } from "zod";
 
 // A fake GitHub for this package's tests: enough of the REST API for the code host contract suite
@@ -12,6 +17,7 @@ import { z } from "zod";
 // minted for.
 
 const generate = promisify(generateKeyPair);
+const gzipped = promisify(gzip);
 
 export type FakeRepo = {
   readonly id: number;
@@ -275,6 +281,13 @@ export type FakeGitHub = {
   readonly authorizedLogDownloads: () => number;
   /** The events the App subscribes to (default: `pull_request` only, as an App made before milestone 6). */
   readonly setAppEvents: (events: readonly string[]) => void;
+  // ---- milestone 8 (ticket 02, F-145) ----
+  /** The requests left in the anonymous rate limit (60 an hour, as GitHub's per address); 0 refuses the next. */
+  readonly setAnonymousRemaining: (remaining: number) => void;
+  /** Archive downloads that carried an `Authorization` header: the token must never go there. */
+  readonly authorizedArchiveDownloads: () => number;
+  /** The repos read at a commit, as the fake was started with them. */
+  readonly trees: FakeRepoTrees | undefined;
   readonly close: () => Promise<void>;
 };
 
@@ -332,6 +345,12 @@ export const createFakeGitHub = async (options: {
    * on it alone; its repos are the fake's repos whose `owner` is the account's login. None by default.
    */
   readonly secondApp?: { readonly slug: string; readonly owner: FakeAccount };
+  /**
+   * Milestone 8 (ticket 02, F-145): repos read at a commit, through the commits API and the
+   * commit's tarball. Each must also be in `repos`, which says whether it's private and which
+   * installation covers it. A public one reads anonymously, under the anonymous rate limit.
+   */
+  readonly trees?: FakeRepoTrees;
 }): Promise<FakeGitHub> => {
   const pair = await generate("rsa", {
     modulusLength: 2048,
@@ -420,6 +439,70 @@ export const createFakeGitHub = async (options: {
   let authorizedLogDownloads = 0;
   /** The events the App subscribes to, as GET /app lists them: an App made before milestone 6 by default. */
   let appEvents: readonly string[] = ["pull_request"];
+  // ---- milestone 8 (ticket 02): reading a repo at a commit ----
+  let anonymousRemaining = 60;
+  let authorizedArchiveDownloads = 0;
+  /** A private archive's one-time download tokens, as codeload's `?token=`, to the repo they're for. */
+  const archiveTokens = new Map<string, string>();
+  /** The commit a ref names in a repo of `trees`, as the commits API reads it. */
+  const commitOf = (fullName: string, ref: string): string | undefined => {
+    const repoName = repoFullNameSchema.safeParse(fullName);
+    return repoName.success ? options.trees?.resolve(repoName.data, ref) : undefined;
+  };
+  /** `GET /repos/{owner}/{repo}/commits/{ref}`: GitHub answers 422 for a ref the repo doesn't have. */
+  const sendCommit = (response: ServerResponse, fullName: string, ref: string, headers: Record<string, string>): void => {
+    const sha = commitOf(fullName, ref);
+    if (sha === undefined) {
+      send(response, 422, { message: `No commit found for SHA: ${ref}`, documentation_url: "https://docs.github.com/rest/commits/commits#get-a-commit", status: "422" }, headers);
+      return;
+    }
+    send(response, 200, { sha, node_id: `C_fake_${sha.slice(0, 8)}`, commit: { message: "a commit", tree: { sha: sha.split("").reverse().join("") } }, files: [] }, headers);
+  };
+  /** `GET /repos/{owner}/{repo}/tarball/{ref}`: a redirect to codeload's download, with a one-time token for a private repo. */
+  const sendTarballRedirect = (response: ServerResponse, repo: FakeRepo, ref: string, headers: Record<string, string>): void => {
+    const fullName = `${repo.owner}/${repo.name}`;
+    const sha = commitOf(fullName, ref);
+    if (sha === undefined) {
+      send(response, 404, { message: "Not Found" }, headers);
+      return;
+    }
+    let query = "";
+    if (repo.private ?? true) {
+      const token = `ARCHIVE${randomBytes(12).toString("hex").toUpperCase()}`;
+      archiveTokens.set(token, fullName);
+      query = `?token=${token}`;
+    }
+    response.writeHead(302, { location: `${apiBase()}/codeload/${fullName}/legacy.tar.gz/${sha}${query}`, ...headers });
+    response.end();
+  };
+  /** A commit's tarball as `git archive` writes it: its commit as the global comment, every path under `<owner>-<repo>-<sha7>/`, folders first. */
+  const archiveOf = async (repo: FakeRepo, sha: string, tree: FakeTree): Promise<Buffer> => {
+    const root = `${repo.owner}-${repo.name}-${sha.slice(0, 7)}`;
+    const entries: TarEntry[] = [{ name: `${root}/`, content: Buffer.alloc(0), type: "directory", mode: 0o775 }];
+    const folders = new Set<string>();
+    for (const [path, entry] of Object.entries(tree).sort(([a], [b]) => (a < b ? -1 : 1))) {
+      const parts = path.split("/");
+      for (let depth = 1; depth < parts.length; depth += 1) {
+        const folder = parts.slice(0, depth).join("/");
+        if (!folders.has(folder)) {
+          folders.add(folder);
+          entries.push({ name: `${root}/${folder}/`, content: Buffer.alloc(0), type: "directory", mode: 0o775 });
+        }
+      }
+      entries.push(
+        entry.kind === "symlink"
+          ? { name: `${root}/${path}`, content: Buffer.alloc(0), type: "symlink", linkTarget: entry.target, mode: 0o777 }
+          : { name: `${root}/${path}`, content: typeof entry.content === "string" ? Buffer.from(entry.content, "utf8") : Buffer.from(entry.content), mode: entry.executable === true ? 0o775 : 0o664 },
+      );
+    }
+    return gzipped(tarOf(entries, { comment: sha }));
+  };
+  /** The anonymous rate limit's headers, after this request. */
+  const anonymousHeaders = (): Record<string, string> => ({
+    "x-ratelimit-limit": "60",
+    "x-ratelimit-remaining": String(Math.max(0, anonymousRemaining)),
+    "x-ratelimit-reset": String(Math.floor(Date.now() / 1000) + 3600),
+  });
   const reviewJson = (review: FakeReview) => ({
     id: review.id,
     node_id: `PRR_fake_${String(review.id)}`,
@@ -604,6 +687,50 @@ export const createFakeGitHub = async (options: {
       }
       response.writeHead(200, { "content-type": "text/plain" });
       response.end(bytes);
+      return;
+    }
+    // ---- milestone 8 (ticket 02): codeload's archive download, which carries no token of the App's
+    const archive = /^\/codeload\/([^/]+)\/([^/]+)\/legacy\.tar\.gz\/([0-9a-f]{40})$/.exec(path);
+    if (method === "GET" && archive !== null) {
+      if (request.headers.authorization !== undefined) {
+        authorizedArchiveDownloads += 1;
+      }
+      const [, archiveOwner = "", archiveName = "", sha = ""] = archive;
+      const repo = repoOf(archiveOwner, archiveName);
+      const fullName = `${archiveOwner}/${archiveName}`;
+      const token = url.searchParams.get("token") ?? "";
+      const tree = options.trees === undefined || repo === undefined ? undefined : options.trees.tree(repoFullNameSchema.parse(fullName), sha);
+      if (repo === undefined || tree === undefined || ((repo.private ?? true) && archiveTokens.get(token) !== fullName)) {
+        response.writeHead(404, { "content-type": "text/plain" });
+        response.end("404: Not Found");
+        return;
+      }
+      archiveTokens.delete(token);
+      response.writeHead(200, { "content-type": "application/x-gzip", "content-disposition": `attachment; filename=${archiveOwner}-${archiveName}-${sha.slice(0, 7)}.tar.gz` });
+      response.end(await archiveOf(repo, sha, tree));
+      return;
+    }
+    // ---- milestone 8 (ticket 02): a public repo's commits and tarball, read with no credentials
+    const anonymousRead = auth === undefined ? /^\/repos\/([^/]+)\/([^/]+)\/(commits|tarball)\/(.+)$/.exec(path) : null;
+    if (method === "GET" && anonymousRead !== null) {
+      if (anonymousRemaining <= 0) {
+        send(response, 403, { message: "API rate limit exceeded for 127.0.0.1. (But here's the good news: Authenticated requests get a higher rate limit.)" }, anonymousHeaders());
+        return;
+      }
+      anonymousRemaining -= 1;
+      const [, readOwner = "", readName = "", kind = "", rawRef = ""] = anonymousRead;
+      const repo = repoOf(readOwner, readName);
+      // A private repo, read anonymously, is no repo at all.
+      if (repo === undefined || (repo.private ?? true)) {
+        send(response, 404, { message: "Not Found" }, anonymousHeaders());
+        return;
+      }
+      const ref = decodeURIComponent(rawRef);
+      if (kind === "commits") {
+        sendCommit(response, `${readOwner}/${readName}`, ref, anonymousHeaders());
+      } else {
+        sendTarballRedirect(response, repo, ref, anonymousHeaders());
+      }
       return;
     }
     if (method === "GET" && path === "/rate_limit") {
@@ -1159,6 +1286,21 @@ export const createFakeGitHub = async (options: {
       send(response, 200, checkRunJson(run));
       return;
     }
+    // ---- milestone 8 (ticket 02): a repo's commits and tarball, through the installation
+    const treeRead = /^\/(commits|tarball)\/(.+)$/.exec(rest);
+    if (method === "GET" && treeRead !== null) {
+      if (!needs("contents", "read")) {
+        forbid();
+        return;
+      }
+      const ref = decodeURIComponent(treeRead[2] ?? "");
+      if (treeRead[1] === "commits") {
+        sendCommit(response, `${owner}/${name}`, ref, {});
+      } else {
+        sendTarballRedirect(response, repo, ref, {});
+      }
+      return;
+    }
     const jobLogs = /^\/actions\/jobs\/(\d+)\/logs$/.exec(rest);
     if (method === "GET" && jobLogs?.[1] !== undefined) {
       if (!needs("actions", "read")) {
@@ -1465,6 +1607,11 @@ export const createFakeGitHub = async (options: {
     reviewComments: (repo, number) => [...(postedComments.get(`${repo}#${String(number)}`) ?? [])],
     reviewCount: (repo, number) => reviews.filter((review) => review.repo === repo && review.number === number).length,
     authorizedLogDownloads: () => authorizedLogDownloads,
+    setAnonymousRemaining: (remaining) => {
+      anonymousRemaining = remaining;
+    },
+    authorizedArchiveDownloads: () => authorizedArchiveDownloads,
+    trees: options.trees,
     setAppEvents: (events) => {
       appEvents = [...events];
     },

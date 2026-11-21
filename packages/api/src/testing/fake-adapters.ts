@@ -150,7 +150,7 @@ export type FakeApp = {
 /** A code host with a few Apps, their installations, repos and files. */
 export class FakeCodeHost extends CodeHostAdapter {
   readonly name = "fake-code-host";
-  readonly capabilities: CodeHostCapabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: [], branchRules: true, compare: false, draftPullRequests: false, prComments: false, userLink: true, reviews: false, installableByOtherAccounts: true, ciResults: false, ciLogs: false, reviewComments: false, requestedReviewers: false, codeOwners: false };
+  readonly capabilities: CodeHostCapabilities = { checkRuns: true, prTemplates: true, lfsActionHosts: [], branchRules: true, compare: false, draftPullRequests: false, prComments: false, userLink: true, reviews: false, installableByOtherAccounts: true, ciResults: false, ciLogs: false, reviewComments: false, requestedReviewers: false, codeOwners: false, readTree: false };
   /** Milestone 4 (F-136): the installations `removeInstallation` uninstalled, by App and installation. */
   readonly removedInstallations: { readonly appId: string; readonly installationId: string }[] = [];
   /** When set, `removeInstallation` fails as the host would. */

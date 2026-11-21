@@ -43,4 +43,11 @@ export type CodeHostCapabilities = {
   readonly requestedReviewers: boolean;
   /** `readCodeOwners` reads the repo's `CODEOWNERS` file at a ref. */
   readonly codeOwners: boolean;
+  // ---- milestone 8 (F-145, ADR 0069, ADR 0025 amended) ----
+  /**
+   * `resolveRef` and `readTree` read a repo's files at a commit, a public repo anonymously and a
+   * private one through an installation, for the library's skills. Without it, both answer
+   * `unsupported`, and an install from the host is refused with `readTreeRefusal`'s words.
+   */
+  readonly readTree: boolean;
 };

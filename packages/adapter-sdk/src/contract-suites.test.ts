@@ -9,6 +9,9 @@ import { fixtureIds, taskSpecFixture } from "@ostra/protocol/testing";
 import { memoryAdapterContext, memorySecretRowStore } from "./testing/memory.ts";
 import { defineAgentContractSuite } from "./testing/agent-suite.ts";
 import { defineCodeHostContractSuite } from "./testing/code-host-suite.ts";
+import type { CodeHostFixture } from "./testing/code-host-suite.ts";
+import { createFakeRepoTrees, movedSkillTree } from "./testing/fake-repo-trees.ts";
+import type { FakeRepoTrees } from "./testing/fake-repo-trees.ts";
 import type { BoxRef } from "./executor/base.ts";
 import { TASK_TOKEN_FILE } from "./executor/task-token.ts";
 import { defineExecutorContractSuite } from "./testing/executor-suite.ts";
@@ -228,11 +231,28 @@ const ciLogText = ["##[group]Run pnpm test", "TOKEN-LIKE-LINE do-not-echo-0b7f",
  * The tiny code host's suite. Without `ci` it declares none of milestone 6's capabilities; with
  * it, it's the fake code host, and holds the CI, reviews, reviewers and `CODEOWNERS` the suite reads.
  */
+/** Milestone 8 (ticket 02): the suite's view of the fake's repos read at a commit. */
+const treesFixture = (trees: FakeRepoTrees): NonNullable<CodeHostFixture["trees"]> => {
+  const [publicRepo, privateRepo] = trees.repos;
+  if (publicRepo === undefined || privateRepo === undefined) throw new Error("the fake has its two repos");
+  return {
+    publicRepo: publicRepo.fullName,
+    branch: publicRepo.defaultBranch,
+    privateRepo: privateRepo.fullName,
+    moveBranch: () => {
+      trees.commit(publicRepo.fullName, publicRepo.defaultBranch, movedSkillTree);
+      return Promise.resolve();
+    },
+  };
+};
+
 const defineTinyCodeHostSuite = (name: string, withCi: boolean): void => {
 defineCodeHostContractSuite({
   name,
   create: async () => {
     const ci = withCi ? new FakeCiHost() : undefined;
+    // Milestone 8 (ticket 02): the fake code host reads repos at a commit; the tiny one declares it can't.
+    const trees = withCi ? createFakeRepoTrees("test-org") : undefined;
     const host = new TinyCodeHost({
       app,
       installationId: "7",
@@ -272,7 +292,7 @@ defineCodeHostContractSuite({
         { installationId: "91", accountLogin: "stranger-co", accountId: "9100", accountKind: "organization", repositorySelection: "selected" },
         { installationId: "92", accountLogin: "another-co", accountId: "9200", accountKind: "organization", repositorySelection: "all" },
       ],
-    }, ci === undefined ? {} : { ci });
+    }, { ...(ci === undefined ? {} : { ci }), ...(trees === undefined ? {} : { trees }) });
     // Milestone 4: a PR with reviews: a changes request later dismissed, a bot's comment and an approval.
     const reviewed = await host.openPullRequest({
       access: { app: { appId: app.appId, privateKey: app.privateKey }, installationId: "7", repo },
@@ -429,6 +449,7 @@ defineCodeHostContractSuite({
           stranger: { installationId: "91", accountLogin: "stranger-co", accountId: "9100" },
         },
         removal: { installationId: "92", unknownInstallationId: "404404", calls: () => host.installationRemovals },
+        ...(trees === undefined ? {} : { trees: treesFixture(trees) }),
         installationWebhooks: [
           ...(["created", "deleted", "suspend", "unsuspend"] as const).map((action) => ({
             input: signed("installation", installationBody(action, 91, strangerAccount)),

@@ -56,6 +56,9 @@ export const treeSchema = z.looseObject({
   truncated: z.boolean().optional(),
 });
 
+/** Milestone 8 (F-145): `GET /repos/{owner}/{repo}/commits/{ref}`, of which ostra reads the commit's SHA. */
+export const commitShaSchema = z.looseObject({ sha: z.string() });
+
 export const userSchema = z.looseObject({ id: z.number().int(), login: z.string() });
 
 export const pullRequestSchema = z.looseObject({

@@ -4,9 +4,9 @@ import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { repoFullNameSchema, segmentIdSchema } from "@ostra/protocol";
+import { gitShaSchema, repoFullNameSchema, segmentIdSchema } from "@ostra/protocol";
 import { z } from "zod";
-import type { BoxState, EffortLevel, GitPerson, OrganizationId, RepoFullName, StopReason, TaskEvent } from "@ostra/protocol";
+import type { BoxState, EffortLevel, GitPerson, GitSha, OrganizationId, RepoFullName, StopReason, TaskEvent } from "@ostra/protocol";
 
 import { AgentAdapter } from "../agent/base.ts";
 import type {
@@ -55,7 +55,10 @@ import type {
   UpdatePullRequestBodyInput,
   WebhookInput,
 } from "../code-host/base.ts";
-import { logTail, pullRequestReviewStates } from "../code-host/base.ts";
+import { logTail, pullRequestReviewStates, readTreeRefusal } from "../code-host/base.ts";
+import type { InstallationAccess, RepoTree, ResolvedRef, TreeLimits } from "../code-host/base.ts";
+import { readFakeTree } from "../testing/fake-repo-trees.ts";
+import type { FakeRepoTrees } from "../testing/fake-repo-trees.ts";
 import type {
   CiLog,
   CiLogRef,
@@ -401,13 +404,23 @@ type TinyPullRequest = PullRequest & {
  * CI, comment-type reviews, requested reviewers and `CODEOWNERS` from that state, and declares
  * them. Without it, it declares none of them, so core's paths for a host without them are tested.
  */
-export type TinyCodeHostOptions = { readonly ci?: FakeCiHost };
+export type TinyCodeHostOptions = {
+  readonly ci?: FakeCiHost;
+  /**
+   * Milestone 8 (ticket 02, F-145): with `trees`, the fake code host also reads repos at a commit
+   * (`readTree`), a public repo anonymously and a private one through the installation. Without
+   * it, it declares `readTree: false`, as a host without the capability.
+   */
+  readonly trees?: FakeRepoTrees;
+};
 
 export class TinyCodeHost extends CodeHostAdapter {
   readonly name = "tiny-code-host";
   readonly capabilities: CodeHostCapabilities;
   /** Milestone 6: the CI and reviewers state, when this is the fake code host. */
   readonly ci: FakeCiHost | undefined;
+  /** Milestone 8: the repos it reads at a commit, when it's the fake code host. */
+  readonly trees: FakeRepoTrees | undefined;
   /** Milestone 4, for tests: the PRs' reviews, the check runs and branch protection. */
   readonly reviewsAndChecks = new FakeReviewsAndChecks();
   readonly #world: MemoryHostWorld;
@@ -432,6 +445,7 @@ export class TinyCodeHost extends CodeHostAdapter {
     super();
     this.#world = world;
     this.ci = options.ci;
+    this.trees = options.trees;
     const milestone6 = options.ci !== undefined;
     this.capabilities = {
       checkRuns: true,
@@ -449,6 +463,7 @@ export class TinyCodeHost extends CodeHostAdapter {
       reviewComments: milestone6,
       requestedReviewers: milestone6,
       codeOwners: milestone6,
+      readTree: options.trees !== undefined,
     };
     for (const repo of world.repos) {
       this.#refs.set(repo.fullName, new Set(repo.refs ?? []));
@@ -1035,6 +1050,44 @@ export class TinyCodeHost extends CodeHostAdapter {
   override readCodeOwners(access: RepoAccess, ref: string): Promise<AdapterResult<string | null>> {
     const ci = this.#ciRepo(access, "readCodeOwners");
     return Promise.resolve(ci.ok ? ok(ci.value.codeOwners(access.repo, ref)) : ci);
+  }
+
+  // ---------- milestone 8 (ticket 02, F-145): a repo's files at a commit ----------
+
+  /** The repo, if this access may read it: a public one anonymously, any one through the installation. */
+  #treeRepo(access: InstallationAccess | null, repo: RepoFullName): AdapterResult<FakeRepoTrees> {
+    const trees = this.trees;
+    if (trees === undefined) {
+      return adapterError("unsupported", readTreeRefusal(this) ?? "no trees");
+    }
+    if (access !== null && !this.#authorized(access.app)) {
+      return adapterError("unauthorized", "the App's credentials were refused");
+    }
+    const found = trees.repo(repo);
+    const covered = access === null ? found?.private === false : access.installationId === this.#world.installationId && !this.#removedInstallations.has(access.installationId);
+    // As GitHub answers: a private repo read anonymously is no repo at all.
+    return found !== undefined && covered ? ok(trees) : adapterError("not-found", "no such repo, or it isn't public and no installation covers it");
+  }
+
+  override resolveRef(access: InstallationAccess | null, repo: RepoFullName, ref: string): Promise<AdapterResult<ResolvedRef | null>> {
+    const trees = this.#treeRepo(access, repo);
+    if (!trees.ok) {
+      return Promise.resolve(trees);
+    }
+    const commit = trees.value.resolve(repo, ref);
+    return Promise.resolve(ok(commit === undefined ? null : { commit }));
+  }
+
+  override readTree(access: InstallationAccess | null, repo: RepoFullName, commit: GitSha, path: string, limits: TreeLimits): Promise<AdapterResult<RepoTree>> {
+    if (!gitShaSchema.safeParse(commit).success) {
+      return Promise.resolve(adapterError("invalid-input", "a tree is read at a commit's full SHA, never at a branch"));
+    }
+    const trees = this.#treeRepo(access, repo);
+    if (!trees.ok) {
+      return Promise.resolve(trees);
+    }
+    const tree = trees.value.tree(repo, commit);
+    return Promise.resolve(tree === undefined ? adapterError("not-found", "no such commit in the repo") : readFakeTree(tree, path, limits));
   }
 }
 

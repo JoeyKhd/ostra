@@ -15,6 +15,8 @@ export * from "./tracker/capabilities.ts";
 export * from "./tracker/base.ts";
 export * from "./code-host/capabilities.ts";
 export * from "./code-host/base.ts";
+export * from "./code-host/tree.ts";
+export * from "./code-host/tar.ts";
 export * from "./agent/capabilities.ts";
 export * from "./agent/base.ts";
 export * from "./agent/permission-subject.ts";
