@@ -34,7 +34,14 @@ import { harnessSettings } from "./settings.ts";
 // clock and core's heartbeat is a minute (10 of Linear's), so the turn takes 3.5 minutes; the
 // silent task waits queued (no runner). It proves the harness and ostra's side on the fake; it
 // proves nothing about Linear, which only the live run does (ticket 38's log, F-012.md).
+//
+// It's a load check (50 delegations, each first thought under 10 s after the 200), so it runs once,
+// at the launch gate, in proof.yml's e2e job (OSTRA_LINEAR_REHEARSAL=1), and skips itself in
+// `pnpm test` (the maintainer, 2026-11-21: load tests and live proofs at the gate, CI light). On
+// CI's runner, with every package testing at once, its timings sometimes missed (run 44881873721:
+// a p95 of 13.2 s). Its judges run in CI on spike 5's figures (`harness.test.ts`).
 
+const enabled = process.env["OSTRA_LINEAR_REHEARSAL"] === "1";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const coreChild = path.resolve(here, "..", "..", "..", "apps", "core", "src", "testing", "restart-child.ts");
 const SCALE = 10;
@@ -66,26 +73,26 @@ let dataDir = "";
 const clock = linkedClock();
 const lines: string[] = [];
 
-beforeAll(async () => {
-  test = await createTestDatabase();
-  fixture = await seedIsolationFixture(test.db);
-  github = await createFakeGitHub({ repos: [{ id: 101, owner: "fake-org", name: "test1", defaultBranch: "main", files: {}, branches: ["main"] }] });
-  linear = await createFakeLinear({ clock });
-  configDir = await mkdtemp(path.join(tmpdir(), "ostra-lam-config-"));
-  dataDir = await mkdtemp(path.join(tmpdir(), "ostra-lam-data-"));
-}, 180_000);
+describe.skipIf(!enabled)(`the Linear agent-mode harness's rehearsal (ticket 38) (skipped: ${enabled ? "no" : "it runs at the launch gate, in proof.yml (OSTRA_LINEAR_REHEARSAL=1)"})`, () => {
+  beforeAll(async () => {
+    test = await createTestDatabase();
+    fixture = await seedIsolationFixture(test.db);
+    github = await createFakeGitHub({ repos: [{ id: 101, owner: "fake-org", name: "test1", defaultBranch: "main", files: {}, branches: ["main"] }] });
+    linear = await createFakeLinear({ clock });
+    configDir = await mkdtemp(path.join(tmpdir(), "ostra-lam-config-"));
+    dataDir = await mkdtemp(path.join(tmpdir(), "ostra-lam-data-"));
+  }, 180_000);
 
-afterAll(async () => {
-  await core?.kill();
-  await jobs.stop({ graceful: false, timeoutMs: 2_000 }).catch(() => undefined);
-  await github.close();
-  await linear.close();
-  await test.dispose();
-  await rm(configDir, { recursive: true, force: true });
-  await rm(dataDir, { recursive: true, force: true });
-}, 60_000);
+  afterAll(async () => {
+    await core?.kill();
+    await jobs.stop({ graceful: false, timeoutMs: 2_000 }).catch(() => undefined);
+    await github.close();
+    await linear.close();
+    await test.dispose();
+    await rm(configDir, { recursive: true, force: true });
+    await rm(dataDir, { recursive: true, force: true });
+  }, 60_000);
 
-describe("the Linear agent-mode harness's rehearsal (ticket 38)", () => {
   it(
     "F-012/c6: the harness's four bullets pass against ostra's core on the fake Linear: the install, 50 delegations, a follow-up and a stop, and 35 silent minutes",
     async () => {

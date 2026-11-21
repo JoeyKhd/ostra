@@ -1,16 +1,16 @@
 name: Proof
 
-# The checks CI doesn't run: apps/web's Playwright e2e suite, the docs' commands, and milestone 5's
-# live jobs on Linux with Docker, on kind and on macOS (ticket 35, ADR 0061). It runs once, at the
-# launch gate, with the security review and the load test: the lead dispatches it on the
-# maintainer's word (`gh workflow run Proof -f jobs=all`), and never while building (the
-# maintainer, 2026-11-21: "they slow things down a lot"). Never on push, never on a schedule. The
-# everyday checks are in ci.yml.
+# The checks CI doesn't run: apps/web's Playwright e2e suite, milestone 6's Linear rehearsal (a load
+# check), the docs' commands, and milestone 5's live jobs on Linux with Docker, on kind and on macOS
+# (ticket 35, ADR 0061). It runs once, at the launch gate, with the security review and the load
+# test: the lead dispatches it on the maintainer's word (`gh workflow run Proof -f jobs=all`), and
+# never while building (the maintainer, 2026-11-21: "they slow things down a lot"). Never on push,
+# never on a schedule. The everyday checks are in ci.yml.
 on:
   workflow_dispatch:
     inputs:
       jobs:
-        description: "Which jobs: all, panel (e2e, docs commands) or fleet (the live Docker, kind and macOS jobs)"
+        description: "Which jobs: all, panel (e2e with the Linear rehearsal, docs commands) or fleet (the live Docker, kind and macOS jobs)"
         type: choice
         default: all
         options: [all, panel, fleet]
@@ -21,10 +21,11 @@ permissions:
 jobs:
   # The panel's Playwright suite (apps/web/e2e/): the production build on a throwaway stack, with an
   # embedded Postgres, a fake GitHub, a stub model endpoint, core and a runner on the host executor.
+  # Then milestone 6's Linear rehearsal, on the same kind of fakes (about 5 minutes).
   e2e:
     if: inputs.jobs != 'fleet'
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -36,8 +37,9 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      # Prisma's client, which the panel's build imports.
-      - run: pnpm turbo run generate
+      # Prisma's client, which the panel's build and the rehearsal import.
+      - id: generate
+        run: pnpm turbo run generate
 
       # The browsers are cached per Playwright version; the system libraries they need are not.
       - id: playwright
@@ -65,6 +67,15 @@ jobs:
       # F-083 (ticket 20): the pseudo-locale pass, on a build of its own (.next-pseudo) in which
       # every message reads ⟦…⟧; any visible text outside the brackets bypassed `t`.
       - run: set -o pipefail; (OSTRA_PSEUDO_LOCALE=1 pnpm --filter @ostra/web exec next build && OSTRA_PSEUDO_LOCALE=1 pnpm --filter @ostra/web exec playwright test -c playwright.pseudo.config.ts) 2>&1 | tee -a e2e.log
+
+      # F-012/c6 (milestone 6's ticket 38): the Linear agent-mode harness's four bullets against core
+      # as its own process and the fake Linear, on an embedded Postgres. A load check (50 delegations,
+      # each first thought under 10 s after the 200), so it runs here, alone on the machine, and never
+      # in ci.yml's `pnpm test`, where it skips itself. It runs whatever the Playwright suite did.
+      - if: ${{ !cancelled() && steps.generate.outcome == 'success' }}
+        env:
+          OSTRA_LINEAR_REHEARSAL: "1"
+        run: pnpm --filter @ostra/e2e-m6-linear-agent-mode exec vitest run src/rehearsal.test.ts
 
       - if: failure()
         run: |

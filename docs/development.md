@@ -154,7 +154,11 @@ set -a; . ~/.config/ostra-dev/github.env; . ~/.config/ostra-dev/github-test.env;
 pnpm e2e:linear-agent-mode              # --record keeps the log in context/specs/m6-whole-team/demo/linear-agent-mode.log
 ```
 
-Its rehearsal, the same phases against core and the fake Linear on a clock 10 times the wall clock, is `e2e/m6-linear-agent-mode/src/rehearsal.test.ts`, in the package's tests.
+Its rehearsal, the same phases against core and the fake Linear on a clock 10 times the wall clock, is `e2e/m6-linear-agent-mode/src/rehearsal.test.ts`. It's a load check (50 delegations, each first thought under 10 s), so `pnpm test` skips it and the launch gate's Proof run runs it, in `proof.yml`'s e2e job. It needs no secret and takes about 5 minutes:
+
+```
+OSTRA_LINEAR_REHEARSAL=1 pnpm --filter @ostra/e2e-m6-linear-agent-mode exec vitest run src/rehearsal.test.ts
+```
 
 ## Database
 

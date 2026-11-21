@@ -1,8 +1,9 @@
 name: CI
 
 # The checks below run on every push to main and on pull requests. The Playwright e2e suite, the
-# docs' commands and the live jobs are in proof.yml, which runs once, at the launch gate: the
-# maintainer, 2026-11-19 and 2026-11-21. Don't add those to this file.
+# Linear rehearsal (a load check, skipped in `pnpm test`), the docs' commands and the live jobs are
+# in proof.yml, which runs once, at the launch gate: the maintainer, 2026-11-19 and 2026-11-21.
+# Don't add those to this file.
 on:
   push:
     branches: [main]

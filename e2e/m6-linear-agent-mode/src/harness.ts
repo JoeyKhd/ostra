@@ -19,7 +19,8 @@
 //   `context/specs/m6-whole-team/demo/linear-agent-mode.log`. The tickets it made are archived.
 //
 // It has never run against real Linear: the token waits for the maintainer (ticket 40). Its
-// phases, judges and ostra's side run in CI against core and the fake Linear (`rehearsal.test.ts`).
+// phases, judges and ostra's side run against core and the fake Linear in the launch gate's Proof
+// run (`rehearsal.test.ts`, OSTRA_LINEAR_REHEARSAL=1); its judges also run in CI (`harness.test.ts`).
 
 import { appendFile, copyFile, mkdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
