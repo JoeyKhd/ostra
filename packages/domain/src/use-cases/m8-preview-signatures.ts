@@ -47,16 +47,20 @@ export type PreviewDeps = { readonly db: Db } & Ports & { readonly settings: Pre
 
 // ---------- app processes (F-140; tickets 15, 16) ----------
 
-/** A project admin saves the environment's app processes and screenshot settings, as a whole list in order. */
+/**
+ * A project admin saves the environment's app processes and screenshot settings, as a whole list in
+ * order. A part left out is kept as it is (ticket 16: the App tab saves its processes, its
+ * screenshots and a service's label apart).
+ */
 export type SaveAppProcesses = (
   deps: PreviewDeps,
   scope: MemberScope,
   input: {
     readonly projectId: ProjectId;
-    readonly processes: readonly AppProcessForm[];
-    readonly screenshots: ScreenshotSettings;
+    readonly processes?: readonly AppProcessForm[];
+    readonly screenshots?: ScreenshotSettings;
     /** Each service's preview label, by name; a service left out keeps its own. */
-    readonly servicePreviews: Readonly<Record<string, string | null>>;
+    readonly servicePreviews?: Readonly<Record<string, string | null>>;
   },
 ) => Promise<
   | UseCaseResult<{ readonly saved: number }, "forbidden" | "not-found" | "invalid-input">

@@ -32,6 +32,7 @@ import { z } from "zod";
 import type { Context } from "../trpc/context.ts";
 import { loadProjectAccess, memberProcedure, projectProcedure, router, taskProcedure, unwrap } from "../trpc/init.ts";
 import { diffFileViews } from "./diff.ts";
+import { attachmentViewsOf } from "./task-attachments.ts";
 
 // F-102, F-100, F-101, F-035, F-105, F-111 (milestone 6's ticket 28; spec section 4): the review
 // screen of a code task, its rounds, and a project's "Review" settings.
@@ -72,6 +73,9 @@ const checksOf = (stored: unknown): readonly { readonly name: string; readonly c
   const parsed = storedChecksSchema.safeParse(stored);
   return parsed.success ? parsed.data.map((check) => ({ name: check.name, conclusion: check.conclusion ?? null })) : [];
 };
+
+/** A finding's attachments as the review stored them (a JSON array of the runner's IDs); one that doesn't read names none. */
+const findingAttachmentIdsSchema = z.array(z.string()).max(runnerLimits.findingAttachmentsMax).catch([]);
 
 /** The round limits as the install sets them: the panel shows them and changes none. */
 const limitsOf = (ctx: Context) => ctx.deps.settings.team.roundLimits;
@@ -151,7 +155,8 @@ export const reviewRouter = router({
           postedAs: true,
           state: true,
           resolvedInRunId: true,
-          reviewRun: { select: { id: true, round: true, state: true } },
+          attachmentIds: true,
+          reviewRun: { select: { id: true, round: true, state: true, reviewTaskId: true } },
         },
       }),
       db.taskReviewer.findMany({
@@ -162,6 +167,12 @@ export const reviewRouter = router({
       db.reviewRun.findMany({ where: { organizationId, codeTaskId: task.id }, orderBy: { round: "asc" }, select: { id: true, round: true, state: true, summary: true, blocking: true, nits: true, postedAt: true, heads: true } }),
     ]);
     const names = await nameMap(ctx, organizationId, reviewers.map((reviewer) => reviewer.memberId));
+    // Milestone 8 (F-121, ticket 16): each finding's screenshots, the review task's own, in the same project.
+    const attachmentIdsOf = (finding: { readonly attachmentIds: unknown }): readonly string[] => findingAttachmentIdsSchema.parse(finding.attachmentIds);
+    const reviewTaskIds = [...new Set(findings.flatMap((finding) => (finding.reviewRun.reviewTaskId === null || attachmentIdsOf(finding).length === 0 ? [] : [taskIdSchema.parse(finding.reviewRun.reviewTaskId)])))];
+    const findingAttachments = await attachmentViewsOf(db, organizationId, reviewTaskIds, [...new Set(findings.flatMap(attachmentIdsOf))]);
+    const attachmentsOfFinding = (finding: { readonly attachmentIds: unknown; readonly reviewRun: { readonly reviewTaskId: string | null } }) =>
+      attachmentIdsOf(finding).flatMap((id) => findingAttachments.filter((attachment) => attachment.taskId === finding.reviewRun.reviewTaskId && attachment.attachmentId === id));
     const ticket = task.ticketId === null ? null : await db.ticket.findFirst({ where: { id: task.ticketId, organizationId }, select: { key: true, title: true, url: true, description: true } });
     const criteria = await acceptedCriteriaOfTicketInTx(db, task.ticketId);
     const limits = limitsOf(ctx);
@@ -243,6 +254,8 @@ export const reviewRouter = router({
             state: finding.state,
             /** Ticket 41: the round of the review run that found it resolved (`Resolved in round {n}`). */
             resolvedInRound: finding.state === "resolved" ? (runs.find((run) => run.id === finding.resolvedInRunId)?.round ?? null) : null,
+            /** Milestone 8 (F-121): the review task's screenshots or recordings that show it, in the order it named them. */
+            attachments: attachmentsOfFinding(finding),
           })),
           reviewers: reviewers
             .filter((reviewer) => reviewer.taskRepoId === repo.id)

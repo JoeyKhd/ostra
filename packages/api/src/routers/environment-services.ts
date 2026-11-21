@@ -24,6 +24,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { projectProcedure, router } from "../trpc/init.ts";
+import { servicePreviewProcedure } from "./environment-app.ts";
 
 // Milestone 3, ticket 40 (F-094, F-051, F-054; ADR 0038 as amended, ADR 0052): the environment's
 // services, its checks and its snapshot. Reading is for anyone who can open the project (a
@@ -156,6 +157,8 @@ const serviceViewSchema = z.object({
   variables: z.array(serviceVariableViewSchema),
   healthCheck: z.string().nullable(),
   lastBox: lastBoxSchema.nullable(),
+  /** Milestone 8 (F-140): a service with a web UI opens as a preview under this label; `null`: not a preview. */
+  previewLabel: z.string().nullable(),
 });
 export type ServiceView = z.infer<typeof serviceViewSchema>;
 
@@ -209,6 +212,7 @@ const servicesRouter = router({
           variables: variableViews(serviceVariablesFromDb(row.variables)),
           healthCheck: row.healthCheck,
           lastBox: await lastBoxOf(db, organizationId, input.projectId, row),
+          previewLabel: row.previewLabel,
         });
       }
       return out;
@@ -332,6 +336,9 @@ const servicesRouter = router({
       await Promise.allSettled(refsOf(serviceVariablesFromDb(removed.variables)).map((ref) => ports.adapters.secretStore.delete(organizationId, ref)));
       return { deleted: true as const };
     }),
+
+  /** Milestone 8 (F-140, ticket 16): a service with a web UI opens as a preview under its label. A project admin's. */
+  setPreview: servicePreviewProcedure,
 });
 
 // ---------- checks ----------

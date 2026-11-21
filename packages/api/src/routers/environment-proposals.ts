@@ -1,11 +1,13 @@
-import { decideEnvironmentProposal, environmentBaselineInTx, environmentBaselineSchema, startOnboarding } from "@ostra/domain";
-import type { EnvironmentBaseline, EnvironmentDecision } from "@ostra/domain";
+import { appProcessesInTx, decideEnvironmentProposal, environmentBaselineInTx, environmentBaselineSchema, keptProcessWithoutCommand, startOnboarding } from "@ostra/domain";
+import type { AppProcess, EnvironmentBaseline, EnvironmentDecision } from "@ostra/domain";
 import { environmentProposalIdSchema, environmentProposalSchema, projectIdSchema, repoIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { EnvironmentProposal, ProposedCheck, ProposedService } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { memberProcedure, projectProcedure, unwrap } from "../trpc/init.ts";
+import { keptByOf } from "./environment-app.ts";
+import { attachmentViewsOf } from "./task-attachments.ts";
 
 // F-113 (milestone 6's ticket 29; spec section 4, "The onboarding task"; ADR 0038 amended): the
 // onboarding task and its environment proposal in the panel. `environments.startOnboarding` is a
@@ -40,6 +42,16 @@ const byName = <Current extends { readonly name: string }, Proposed extends { re
 });
 
 const sameCheck = (one: CheckRow, other: ProposedCheck): boolean => one.command === other.command && one.timeoutSeconds === other.timeoutSeconds;
+/** Milestone 8 (F-140): two app processes alike in every field "Accept" writes. */
+const sameProcess = (one: AppProcess, other: AppProcess): boolean =>
+  one.repoId === other.repoId &&
+  one.folder === other.folder &&
+  one.command === other.command &&
+  one.port === other.port &&
+  JSON.stringify(one.ready) === JSON.stringify(other.ready) &&
+  one.label === other.label &&
+  one.primary === other.primary &&
+  one.hostRewrite === other.hostRewrite;
 const sameService = (one: ServiceRow, other: ProposedService): boolean => one.image === other.image && one.port === other.port && one.healthCheck === other.healthCheck;
 
 /** What a decision is, as the panel sends it, in the domain's terms. */
@@ -80,6 +92,7 @@ const proposalSelect = {
   decidedByMemberId: true,
   resultVersion: true,
   baseline: true,
+  source: true,
   task: { select: { title: true, state: true } },
 } as const;
 
@@ -202,6 +215,12 @@ export const onboardingProcedures = {
     const decidedAt = row.decidedAt?.getTime() ?? null;
     const saved = current.saved;
     const firstRepoId = repos[0]?.id ?? null;
+    // Milestone 8 (F-140, ticket 16): the app's processes against the environment's now, while it's
+    // open (a decided proposal's baseline keeps no processes); who kept it from a task; and the
+    // onboarding task's newest screenshot of the app it started.
+    const proposedApps: readonly AppProcess[] = proposal.appProcesses ?? [];
+    const savedApps = row.state === "proposed" ? await appProcessesInTx(db, row.environmentId) : null;
+    const screenshots = (await attachmentViewsOf(db, organizationId, [taskIdSchema.parse(row.taskId)])).filter((attachment) => attachment.kind === "screenshot");
     return {
       proposalId: environmentProposalIdSchema.parse(row.id),
       createdAt: row.createdAt.getTime(),
@@ -246,6 +265,19 @@ export const onboardingProcedures = {
         proposal.services,
         sameService,
       ),
+      /** Milestone 8 (F-140): onboarding's proposal, or a port an agent announced and a member kept ("Keep it"). */
+      source: row.source,
+      /** Who kept it from a task; `null` for onboarding's. */
+      keptBy: row.source === "kept" ? await keptByOf(db, organizationId, row.id) : null,
+      /**
+       * The app's processes as proposed, each in place of the one of its name or port on "Accept";
+       * against the environment's while it's open, and `null` once it's decided.
+       */
+      appProcesses: { proposed: [...proposedApps], diff: savedApps === null ? null : byName(savedApps, proposedApps, sameProcess) },
+      /** A kept process without the command that starts it: "Accept" waits for "Edit and accept" to name it. */
+      waitsForCommand: row.source === "kept" ? (keptProcessWithoutCommand(proposedApps)?.name ?? null) : null,
+      /** The proposal's task's newest screenshot of the app, as onboarding took it of the primary. */
+      screenshot: screenshots.at(-1) ?? null,
     };
   }),
 

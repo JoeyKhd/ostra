@@ -98,8 +98,14 @@ export const appProcessListRefusal = (processes: readonly AppProcess[], repoIds:
   return first === undefined ? null : { message: appProcessListWords(first), issues };
 };
 
-/** What changed between two lists, by name and field: the audit entry's words, never a command's text. */
-export const appProcessChanges = (before: readonly AppProcess[], after: readonly AppProcess[]): { readonly added: string; readonly removed: string; readonly changed: string } => {
+/**
+ * What changed between two lists, by name and field, and whether the ones in both moved (the start
+ * order): the audit entry's words, never a command's text.
+ */
+export const appProcessChanges = (
+  before: readonly AppProcess[],
+  after: readonly AppProcess[],
+): { readonly added: string; readonly removed: string; readonly changed: string; readonly reordered: boolean } => {
   const fields = ["repoId", "folder", "command", "port", "ready", "label", "primary", "hostRewrite"] as const;
   const changed = after.flatMap((process) => {
     const old = before.find((one) => one.name === process.name);
@@ -113,29 +119,38 @@ export const appProcessChanges = (before: readonly AppProcess[], after: readonly
     added: after.filter((process) => !before.some((one) => one.name === process.name)).map((process) => process.name).join(","),
     removed: before.filter((process) => !after.some((one) => one.name === process.name)).map((process) => process.name).join(","),
     changed: changed.join(","),
+    reordered:
+      after.filter((process) => before.some((one) => one.name === process.name)).map((process) => process.name).join(",") !==
+      before.filter((process) => after.some((one) => one.name === process.name)).map((process) => process.name).join(","),
   };
 };
 
 /**
  * A project admin saves the environment's app processes, its "Screenshots after each turn" and each
  * service's preview label (F-140, F-121): the whole list in its order, refused with each rule's
- * words, in one transaction with its audit entry. A service left out keeps its own label.
+ * words, in one transaction with its audit entry. A part left out is kept as it is (ticket 16: the
+ * App tab saves them apart), and a service left out keeps its own label. A service without a port
+ * is no preview: nothing would answer.
  */
 export const saveAppProcesses: SaveAppProcesses = async (deps, scope, input) => {
   const organizationId = scope.organizationId;
-  const parsed: AppProcess[] = [];
-  for (const form of input.processes) {
-    const one = appProcessSchema.safeParse(form);
-    if (!one.success) {
-      return { ok: false, error: "invalid-input", message: `An app process doesn't read: ${one.error.issues[0]?.message ?? "check its fields"}` };
+  let parsed: AppProcess[] | null = null;
+  if (input.processes !== undefined) {
+    parsed = [];
+    for (const form of input.processes) {
+      const one = appProcessSchema.safeParse(form);
+      if (!one.success) {
+        return { ok: false, error: "invalid-input", message: `An app process doesn't read: ${one.error.issues[0]?.message ?? "check its fields"}` };
+      }
+      parsed.push(one.data);
     }
-    parsed.push(one.data);
   }
-  const screenshots = screenshotSettingsSchema.safeParse(input.screenshots);
-  if (!screenshots.success) {
+  const screenshots = input.screenshots === undefined ? null : screenshotSettingsSchema.safeParse(input.screenshots);
+  if (screenshots?.success === false) {
     return { ok: false, error: "invalid-input", message: "The screenshots' routes or widths don't read" };
   }
-  for (const label of Object.values(input.servicePreviews)) {
+  const servicePreviews = input.servicePreviews ?? {};
+  for (const label of Object.values(servicePreviews)) {
     if (!servicePreviewLabelSchema.safeParse(label).success) {
       return { ok: false, error: "invalid-input", message: "A service's preview label doesn't read" };
     }
@@ -155,28 +170,43 @@ export const saveAppProcesses: SaveAppProcesses = async (deps, scope, input) => 
       return { ok: false, error: "not-found", message: "This project has no environment" };
     }
     await tx.$queryRaw`SELECT 1 FROM "environment" WHERE "id" = ${environment.id} FOR UPDATE`;
-    const repoIds = (await tx.repo.findMany({ where: { projectId, organizationId }, select: { id: true } })).map((repo) => repoIdSchema.parse(repo.id));
-    const refusal = appProcessListRefusal(parsed, repoIds);
-    if (refusal !== null) {
-      return refusal.issues.length === 0 ? { ok: false, error: "invalid-input", message: refusal.message } : { ok: false, error: "rule-broken", ...refusal };
+    if (parsed !== null) {
+      const repoIds = (await tx.repo.findMany({ where: { projectId, organizationId }, select: { id: true } })).map((repo) => repoIdSchema.parse(repo.id));
+      const refusal = appProcessListRefusal(parsed, repoIds);
+      if (refusal !== null) {
+        return refusal.issues.length === 0 ? { ok: false, error: "invalid-input", message: refusal.message } : { ok: false, error: "rule-broken", ...refusal };
+      }
     }
-    const services = await tx.service.findMany({ where: { environmentId: environment.id }, select: { id: true, name: true } });
-    if (Object.keys(input.servicePreviews).some((name) => !services.some((service) => service.name === name))) {
-      return { ok: false, error: "invalid-input", message: "A preview label names a service the environment doesn't have" };
+    const services = await tx.service.findMany({ where: { environmentId: environment.id }, select: { id: true, name: true, port: true } });
+    for (const [name, label] of Object.entries(servicePreviews)) {
+      const service = services.find((one) => one.name === name);
+      if (service === undefined) {
+        return { ok: false, error: "invalid-input", message: "A preview label names a service the environment doesn't have" };
+      }
+      if (label !== null && service.port === null) {
+        return { ok: false, error: "invalid-input", message: `The service ${name} has no port, so it can't be a preview` };
+      }
     }
     const before = await appProcessesInTx(tx, environment.id);
-    const env: AppEnvironment = { id: environment.id, organizationId, projectId };
-    await writeAppProcessesInTx(tx, env, parsed);
-    await tx.environment.update({
-      where: { id: environment.id },
-      data: { screenshotsAfterTurn: screenshots.data.afterTurn, screenshotRoutes: [...screenshots.data.routes], screenshotWidths: [...screenshots.data.widths] },
-    });
+    const after = parsed ?? before;
+    if (parsed !== null) {
+      await writeAppProcessesInTx(tx, { id: environment.id, organizationId, projectId }, parsed);
+    }
+    const saved =
+      screenshots === null
+        ? await tx.environment.findUniqueOrThrow({ where: { id: environment.id }, select: { screenshotsAfterTurn: true } })
+        : await tx.environment.update({
+            where: { id: environment.id },
+            data: { screenshotsAfterTurn: screenshots.data.afterTurn, screenshotRoutes: [...screenshots.data.routes], screenshotWidths: [...screenshots.data.widths] },
+            select: { screenshotsAfterTurn: true },
+          });
     for (const service of services) {
-      const label = input.servicePreviews[service.name];
+      const label = servicePreviews[service.name];
       if (label !== undefined) {
         await tx.service.update({ where: { id: service.id }, data: { previewLabel: label } });
       }
     }
+    const parts = [parsed === null ? null : "processes", screenshots === null ? null : "screenshots", Object.keys(servicePreviews).length === 0 ? null : "service-previews"].filter((part) => part !== null);
     await deps.audit.recordInTx(tx, {
       organizationId,
       projectId,
@@ -184,10 +214,16 @@ export const saveAppProcesses: SaveAppProcesses = async (deps, scope, input) => 
       action: "environment.app-processes-saved",
       entity: "environment",
       entityId: environmentIdSchema.parse(environment.id),
-      data: { processes: parsed.length, ...appProcessChanges(before, parsed), screenshotsAfterTurn: screenshots.data.afterTurn, servicePreviews: Object.keys(input.servicePreviews).length },
+      data: {
+        parts: parts.join(","),
+        processes: after.length,
+        ...appProcessChanges(before, after),
+        screenshotsAfterTurn: saved.screenshotsAfterTurn,
+        servicePreviews: Object.keys(servicePreviews).length,
+      },
     });
     await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "environment", entityId: environmentIdSchema.parse(environment.id) });
-    return { ok: true, saved: parsed.length };
+    return { ok: true, saved: after.length };
   });
 };
 

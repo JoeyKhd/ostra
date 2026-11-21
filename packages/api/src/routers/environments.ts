@@ -6,6 +6,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { loadGitHubConnection } from "../services/github-connection.ts";
+import { appProcessesRouter, detectedAppProcessViewSchema, screenshotsRouter } from "./environment-app.ts";
 import { checksRouter, servicesRouter, snapshotRouter, whereTasksRun, whereTasksRunSchema } from "./environment-services.ts";
 import { onboardingProcedures } from "./environment-proposals.ts";
 import { projectProcedure, router, unwrap } from "../trpc/init.ts";
@@ -32,6 +33,11 @@ export const detectionViewSchema = z.object({
       runsOnHost: z.literal(false),
     }),
   ).readonly(),
+  /**
+   * Milestone 8 (F-140, ticket 16): the app's processes it read, with the primary first, each
+   * command as a file says it or `null`. Read as text, never run.
+   */
+  appProcesses: z.array(detectedAppProcessViewSchema).readonly(),
   /** What it found and why, per file, for the panel to show. */
   reasons: z.array(z.object({ file: z.string(), finding: z.string() })).readonly(),
 });
@@ -150,6 +156,10 @@ export const environmentsRouter = router({
   checks: checksRouter,
   /** The snapshot a box starts from on `docker` (F-051). */
   snapshot: snapshotRouter,
+  /** Milestone 8 (F-140, ticket 16): the app's processes, in their start order. */
+  appProcesses: appProcessesRouter,
+  /** Milestone 8 (F-121, ticket 16): "Screenshots after each turn". */
+  screenshots: screenshotsRouter,
 
   /**
    * Saves the environment: the setup script, and each repo's variables, secrets and files. Secret

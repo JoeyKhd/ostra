@@ -3,11 +3,15 @@ import { randomUUID } from "node:crypto";
 import { mapMember } from "@ostra/db";
 import { Prisma } from "@ostra/db";
 import type { SeededMember } from "@ostra/db/testing";
+import { saveDraft } from "@ostra/domain";
 import {
   agentProfileIdSchema,
   clientMessageIdSchema,
+  draftIdSchema,
   repoFullNameSchema,
   repoIdSchema,
+  serviceIdSchema,
+  taskIdSchema,
 } from "@ostra/protocol";
 import type { ProjectId } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
@@ -18,10 +22,13 @@ import {
   createApiHarness,
   seedConnectionAndModel,
   seedLease,
+  seedAnnouncedPreview,
+  seedAttachment,
   seedLinearConnection,
   seedPersonalRunner,
   seedPreviewableTask,
   seedProject,
+  seedTask,
   trpcFailure,
 } from "../testing/index.ts";
 import type { ApiHarness, AppCaller } from "../testing/index.ts";
@@ -702,5 +709,86 @@ describe("a preview's writes, by each kind of viewer (F-142)", () => {
     for (const call of [() => visitor.previews.list({ taskId: task.taskId }), () => visitor.tasks.get({ taskId: task.taskId }), () => visitor.previews.open({ taskId: task.taskId, key: task.key })]) {
       expect(await trpcFailure(call())).toMatchObject({ code: "UNAUTHORIZED" });
     }
+  });
+});
+
+// ---------- the app's processes and a task's screenshots (milestone 8, F-140, F-121) ----------
+
+describe("the App tab's and the thread's writes, by each role (F-140, F-121)", () => {
+  type Role = "organization admin" | "project admin" | "project member" | "outsider" | "another organization";
+  const roles: readonly Role[] = ["organization admin", "project admin", "project member", "outsider", "another organization"];
+
+  it("F-140/c1, F-121/c7: every write of the environment's app, and of a task's screenshots, gives each role what the table says: the environment's are a project admin's, a task's any member's who can open it", async () => {
+    const { projectId, projectAdmin, driver } = await restrictedProject("app-writes");
+    const organizationId = harness.fixture.a.organization.id;
+    const outsider = await seedMember();
+    const callerOf = (role: Role): Promise<AppCaller> => {
+      switch (role) {
+        case "organization admin":
+          return harness.as(harness.fixture.a.admin);
+        case "project admin":
+          return harness.as(projectAdmin);
+        case "project member":
+          return harness.as(driver);
+        case "outsider":
+          return harness.as(outsider);
+        case "another organization":
+          return harness.as(harness.fixture.b.admin);
+        default:
+          return role satisfies never;
+      }
+    };
+    const place = { organizationId, projectId };
+    const repoId = repoIdSchema.parse((await harness.test.db.repo.findFirstOrThrow({ where: { projectId }, select: { id: true } })).id);
+    const environmentId = (await harness.test.db.environment.findUniqueOrThrow({ where: { projectId }, select: { id: true } })).id;
+    // A service with a web UI to mark; a kept process's proposal carries the environment's services as they are.
+    const service = await harness.test.db.service.create({ data: { ...place, environmentId, name: "mailpit", image: "axllent/mailpit:v1.20", port: 8025, variables: [] }, select: { id: true } });
+    /** What each call needs, fresh: a refine task's draft with a screenshot, and a task with an announced port. */
+    const fresh = async () => {
+      const refine = await harness.test.db.task.create({
+        data: { ...place, kind: "refine", source: "prompt", title: "Refine it", prompt: "Refine it", branchName: `ostra/${label("refine")}`, state: "needs_you", needsYouReason: "draft_ready", driverMemberId: driver.id },
+        select: { id: true },
+      });
+      const refineId = taskIdSchema.parse(refine.id);
+      await harness.test.db.$transaction((tx) => saveDraft({ tx, ...harness.deps.ports }, { organizationId, taskId: refineId, draft: { description: "Fast.", acceptanceCriteria: [], edgeCases: [], openQuestions: [], subTickets: [] } }));
+      const draft = await harness.test.db.refineDraft.findFirstOrThrow({ where: { taskId: refineId }, select: { id: true } });
+      const shot = await seedAttachment(harness, { ...place, taskId: refineId });
+      const task = await seedTask(harness, { ...place, state: "running", driverMemberId: driver.id });
+      const key = await seedAnnouncedPreview(harness, { ...place, taskId: task.taskId }, { port: 6006, label: "Storybook" });
+      return { serviceId: serviceIdSchema.parse(service.id), refineId, draftId: draftIdSchema.parse(draft.id), attachmentId: shot.attachmentId, taskId: task.taskId, key };
+    };
+    type Fresh = Awaited<ReturnType<typeof fresh>>;
+    const web = { name: "web", repoId, command: "pnpm dev", port: 5173, ready: { kind: "http" as const, path: "/" }, label: "Web", primary: true };
+    const writes: Readonly<Record<string, (caller: AppCaller, at: Fresh) => Promise<unknown>>> = {
+      "environments.appProcesses.save": (caller) => caller.environments.appProcesses.save({ projectId, processes: [web] }),
+      "environments.screenshots.save": (caller) => caller.environments.screenshots.save({ projectId, afterTurn: true, routes: ["/"], widths: ["desktop"] }),
+      "environments.services.setPreview": (caller, at) => caller.environments.services.setPreview({ projectId, serviceId: at.serviceId, label: "Mail" }),
+      "tasks.attachmentToDraft": (caller, at) => caller.tasks.attachmentToDraft({ taskId: at.refineId, attachmentId: at.attachmentId, draftId: at.draftId }),
+      "tasks.keepPreview": (caller, at) => caller.tasks.keepPreview({ taskId: at.taskId, key: at.key }),
+    };
+    const outside = { outsider: "NOT_FOUND", "another organization": "NOT_FOUND" } as const;
+    const admins = { "organization admin": "ok", "project admin": "ok", "project member": "FORBIDDEN", ...outside } as const;
+    const members = { "organization admin": "ok", "project admin": "ok", "project member": "ok", ...outside } as const;
+    const table: Readonly<Record<string, Readonly<Record<Role, string>>>> = {
+      "environments.appProcesses.save": admins,
+      "environments.screenshots.save": admins,
+      "environments.services.setPreview": admins,
+      "tasks.attachmentToDraft": members,
+      "tasks.keepPreview": members,
+    };
+    // The guard: every write of the App tab's routers has a row.
+    expect(mutationPaths().filter((path) => (path.startsWith("environments.appProcesses.") || path.startsWith("environments.screenshots.")) && !Object.hasOwn(writes, path))).toEqual([]);
+    const seen: Record<string, Record<string, string>> = {};
+    for (const [path, write] of Object.entries(writes)) {
+      const row: Record<string, string> = {};
+      for (const role of roles) {
+        const at = await fresh();
+        row[role] = await outcomeOf(async () => write(await callerOf(role), at));
+      }
+      seen[path] = row;
+    }
+    expect(seen).toEqual(table);
+    // A refused write changed nothing: no proposal is the outsider's, and no draft image came from outside.
+    expect(await harness.test.db.auditEntry.count({ where: { projectId, actorId: { in: [outsider.id, driver.id] }, action: "environment.app-processes-saved" } })).toBe(0);
   });
 });

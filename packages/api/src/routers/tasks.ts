@@ -61,6 +61,7 @@ import { runnerChoicesProcedure } from "./task-runner-choices.ts";
 import { taskMemoryProcedure } from "./memory.ts";
 import { taskRoundsProcedure } from "./review.ts";
 import { approveProcedure, needsApprovalProcedure, rejectProcedure } from "./task-approval.ts";
+import { attachmentToDraftProcedure, keepPreviewProcedure, taskAttachmentsProcedure } from "./task-attachments.ts";
 import { z } from "zod";
 
 import { loadAgentProfileView } from "./agent-profile-view.ts";
@@ -199,6 +200,13 @@ export const tasksRouter = router({
   needsApproval: needsApprovalProcedure,
   approve: approveProcedure,
   reject: rejectProcedure,
+
+  /** Milestone 8 (F-121, F-140, ticket 16): the thread's screenshots and recordings, and whether the runner runs the app. */
+  attachments: taskAttachmentsProcedure,
+  /** "Add to draft": a screenshot among a refine draft's images. */
+  attachmentToDraft: attachmentToDraftProcedure,
+  /** "Keep it": a port the agent announced becomes an environment proposal for a project admin. */
+  keepPreview: keepPreviewProcedure,
 
   /**
    * Cancels a queued task (F-067, Q248): an organization admin any, the task's member their own. It

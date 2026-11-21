@@ -150,8 +150,12 @@ const procedures: Readonly<Record<string, { readonly input: InputOf; readonly ab
   "email.on": { input: none, about: "organization" },
   "email.settings.get": { input: none, about: "organization" },
   "email.status": { input: none, about: "organization" },
+  // Milestone 8 (ticket 16): the environment's App tab and a task's screenshots.
+  "environments.appProcesses.detected": { input: project, about: "project" },
+  "environments.appProcesses.list": { input: project, about: "project" },
   "environments.checks.list": { input: project, about: "project" },
   "environments.get": { input: project, about: "project" },
+  "environments.screenshots.get": { input: project, about: "project" },
   "environments.services.list": { input: project, about: "project" },
   "environments.snapshot.get": { input: project, about: "project" },
   "github.appRequest": { input: none, about: "organization" },
@@ -233,6 +237,7 @@ const procedures: Readonly<Record<string, { readonly input: InputOf; readonly ab
   "spend.modelPrice": { input: (target) => ({ modelId: row(target, "Model"), month: currentMonth() }), about: "organization" },
   "spend.month": { input: () => ({ month: currentMonth() }), about: "organization" },
   "spend.project": { input: (target) => ({ projectId: target.projectId, month: currentMonth() }), about: "project" },
+  "tasks.attachments": { input: task, about: "project" },
   "tasks.checks": { input: task, about: "project" },
   "tasks.eventLog": { input: task, about: "project" },
   "tasks.get": { input: task, about: "project" },
@@ -340,12 +345,13 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   ReviewRun: ["review.screen"],
   Finding: ["review.screen", "tasks.rounds"],
   TaskReviewer: ["review.screen"],
-  EnvironmentProposal: ["environments.proposal"],
+  EnvironmentProposal: ["environments.proposal", "environments.appProcesses.list"],
   // Milestone 8 (its ticket 04). Ticket 20's pane list reads the previews (the app processes, the
   // announced ports, the latest screenshot) and their sharing: levels, named people, links and the
-  // open views. Tickets 16 and 30 add theirs; a code is ticket 23's and 25's (no read lists one).
-  AppProcess: ["previews.list"],
-  TaskAttachment: ["previews.list"],
+  // open views. Ticket 16's App tab reads the processes, and the thread a task's screenshots and
+  // recordings. Ticket 30 adds its own; a code is ticket 23's and 25's (no read lists one).
+  AppProcess: ["previews.list", "environments.appProcesses.list", "environments.appProcesses.detected", "environments.screenshots.get"],
+  TaskAttachment: ["previews.list", "tasks.attachments", "environments.proposal"],
   TaskPreview: ["previews.list"],
   PreviewAccess: ["previews.list"],
   PreviewAccessMember: ["previews.list"],
@@ -591,8 +597,11 @@ const matrix: Readonly<Record<string, readonly [Outcome, Outcome, Outcome, Outco
   "email.on": ["ok", "ok", "ok", "ok", "ok"],
   "email.settings.get": ["FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "email.status": ["ok", "ok", "ok", "ok", "ok"],
+  "environments.appProcesses.detected": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "environments.appProcesses.list": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "environments.checks.list": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "environments.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "environments.screenshots.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "environments.services.list": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "environments.snapshot.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "github.appRequest": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
@@ -672,6 +681,7 @@ const matrix: Readonly<Record<string, readonly [Outcome, Outcome, Outcome, Outco
   "spend.modelPrice": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "spend.month": ["ok", "ok", "ok", "ok", "ok"],
   "spend.project": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "tasks.attachments": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "tasks.checks": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "tasks.eventLog": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "tasks.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],

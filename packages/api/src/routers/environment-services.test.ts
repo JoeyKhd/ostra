@@ -102,6 +102,7 @@ describe("services, checks and the snapshot through the API", () => {
         ],
         healthCheck: "pg_isready -U app",
         lastBox: null,
+        previewLabel: null,
       },
     ]);
     // Stored as a reference in the secret store; the value is in no output and no row.

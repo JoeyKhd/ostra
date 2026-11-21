@@ -24,6 +24,7 @@ const finding: ReviewFinding = {
   postedAs: "line_comment",
   state: "open",
   resolvedInRound: null,
+  attachments: [],
 };
 
 const actions = (prOpen: boolean): FindingActions => ({
