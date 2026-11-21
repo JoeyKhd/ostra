@@ -233,7 +233,7 @@ const SecretValue = ({ row, admin, onChange }: { readonly row: Extract<Row, { ki
         type="password"
         autoComplete="off"
         aria-label={t("environment.secretValue")}
-        className="h-[30px] w-[240px] min-w-0 rounded-md border border-control-line bg-surface px-2.5 font-mono text-body text-text placeholder:text-faint focus-visible:border-faint"
+        className="h-[28px] w-[240px] min-w-0 rounded-md border border-control-line bg-surface px-2.5 font-mono text-body text-text placeholder:text-faint focus-visible:border-faint"
         value={row.value}
         placeholder={row.hasValue ? t("environment.secretSet") : t("environment.secretEmpty")}
         onChange={(e) => { onChange(e.target.value); }}
@@ -514,10 +514,10 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
                         );
                         return (
                           <TableRow key={row.key} data-kind={row.kind}>
-                            <TableCell className="h-10">
+                            <TableCell className="h-[37px]">
                               <Icon role="img" aria-label={t(`environment.kind.${row.kind}`)} className="size-[15px] stroke-[1.75] text-faint" />
                             </TableCell>
-                            <TableCell className="h-10 pr-2">
+                            <TableCell className="h-[37px] pr-2">
                               {row.kind === "file" ? (
                                 <span className="block truncate px-2 font-mono text-body text-text">{row.path}</span>
                               ) : (
@@ -531,7 +531,7 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
                                 />
                               )}
                             </TableCell>
-                            <TableCell className="h-10 py-1.5 pr-2">
+                            <TableCell className="h-[37px] py-1 pr-2">
                               {row.kind === "variable" ? (
                                 <input
                                   aria-label={t("environment.value")}
@@ -556,14 +556,14 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
                                 {t("environment.duringSetup")}
                               </label>
                             </TableCell>
-                            <TableCell className="hidden h-10 text-center md:table-cell">
+                            <TableCell className="hidden h-[37px] text-center md:table-cell">
                               <div className="flex items-center justify-center">
                                 <Tooltip content={t("environment.duringSetupHelp")}>
                                   <span className="inline-flex">{duringSetup}</span>
                                 </Tooltip>
                               </div>
                             </TableCell>
-                            <TableCell className="h-10 text-right">
+                            <TableCell className="h-[37px] text-right">
                               {admin ? (
                                 <button
                                   type="button"

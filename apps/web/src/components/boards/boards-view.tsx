@@ -318,10 +318,10 @@ const integrationLine = (integration: BoardView["integration"]): ReactNode => {
 };
 
 const Step = ({ name, hint, hintRed = false, children }: { readonly name: string; readonly hint?: string; readonly hintRed?: boolean; readonly children: ReactNode }) => (
-  <div className="grid min-h-12 grid-cols-1 items-center gap-x-4 gap-y-1.5 border-b border-line py-2 sm:grid-cols-[200px_minmax(0,1fr)]">
+  <div className="grid min-h-12 grid-cols-1 items-center gap-x-4 gap-y-1.5 border-b border-line py-1.5 sm:grid-cols-[200px_minmax(0,1fr)]">
     <div>
-      <div className="text-body font-medium text-text">{name}</div>
-      {hint === undefined ? null : <div className={cn("text-xs", hintRed ? "text-red" : "text-faint")}>{hint}</div>}
+      <div className="text-body leading-5 font-medium text-text">{name}</div>
+      {hint === undefined ? null : <div className={cn("text-xs leading-4", hintRed ? "text-red" : "text-faint")}>{hint}</div>}
     </div>
     <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5">{children}</div>
   </div>

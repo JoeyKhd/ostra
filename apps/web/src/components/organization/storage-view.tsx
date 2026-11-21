@@ -28,7 +28,7 @@ const REFERENCE_URL = "https://github.com/JoeyKhd/ostra/blob/main/docs/configura
 const MiB = 1024 * 1024;
 
 const KeyRow = ({ label, children, end }: { readonly label: string; readonly children: ReactNode; readonly end?: ReactNode }) => (
-  <li className="grid min-h-10 grid-cols-[140px_minmax(0,1fr)_auto] items-center gap-x-4 py-1.5 sm:grid-cols-[180px_minmax(0,1fr)_auto]">
+  <li className="grid min-h-[34px] grid-cols-[140px_minmax(0,1fr)_auto] items-center gap-x-4 py-1 sm:grid-cols-[180px_minmax(0,1fr)_auto]">
     <span className="text-body text-muted">{label}</span>
     <span className="flex min-w-0 flex-wrap items-center gap-x-[74px] gap-y-0.5 text-body text-text">{children}</span>
     {end === undefined ? <span /> : <span className="shrink-0">{end}</span>}
