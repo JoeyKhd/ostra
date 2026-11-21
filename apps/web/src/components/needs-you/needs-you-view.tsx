@@ -72,7 +72,8 @@ const askOf = (view: ApiView, me: string | null): InlineAsk | null => {
             kind: "approval",
             approvalId: answer.approvalId,
             agent: answer.agentName,
-            summary: view.detail.reason === "approval" && view.detail.command !== null ? view.detail.command : subjectText(view),
+            // needs-you.md: `{agent} wants to {summary}`, what kind of thing it asks for; the subject itself is in the code chip.
+            summary: answer.subject === null ? subjectText(view) : t(`needsYouPage.wantsTo.${answer.subject.kind}`),
             rule: answer.rule?.name ?? null,
             subject: subjectText(view),
             pattern: answer.forThisTask?.pattern ?? null,

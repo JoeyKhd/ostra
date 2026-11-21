@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckIcon, ChevronUpIcon, CircleAlertIcon, CircleDotIcon, CircleIcon, LoaderCircleIcon, XIcon } from "lucide-react";
+import { ArrowUpRightIcon, CheckIcon, ChevronUpIcon, CircleAlertIcon, CircleDotIcon, CircleIcon, HandIcon, InfoIcon, LoaderCircleIcon, MessageSquareIcon, PencilIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import type { FocusEvent, KeyboardEvent, ReactNode } from "react";
@@ -16,9 +16,11 @@ import { projectColour } from "@/components/shell/project-colour";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { NeedsYou } from "@/components/ui/needs-you";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 import { UnderlineTabs } from "@/components/ui/underline-tabs";
+import { usePhone } from "@/components/tasks/take-it-local";
 import { cn } from "@/lib/cn";
 import { formatAge } from "@/lib/format";
 import { tNodes } from "@/lib/message-nodes";
@@ -111,17 +113,60 @@ export const ApprovalAnswer = ({
   ask,
   answers,
   onAnswered,
+  phone = false,
 }: {
   readonly row: NotificationView;
   readonly ask: ApprovalAsk;
   readonly answers: Answers;
   readonly onAnswered: (outcome: Outcome) => void;
+  /** phone-approval.md: under 640px the item carries the rule and the title; the answers stack full width. */
+  readonly phone?: boolean;
 }) => {
   const [state, setState] = useState<AnswerState>({ kind: "idle" });
   const [denying, setDenying] = useState(false);
   const [reason, setReason] = useState("");
   const busy = state.kind === "sending";
   const pressed = (name: string) => (state.kind === "sending" && state.pressed === name ? <Spinner /> : null);
+  const deny = () => { void run("deny", setState, () => answers.approval(row, ask, { kind: "deny", reason: reason.trim() }), onAnswered); };
+  if (phone) {
+    return (
+      <div role="group" aria-label={askTitle(ask)} data-testid="needs-you" className="mt-2">
+        <p className="text-ui text-text">{t("needsYouPage.wants", { agent: ask.agent, summary: ask.summary })}</p>
+        <code className="mt-2 block whitespace-pre-wrap rounded-[6px] border border-line-2 bg-surface px-3 py-2.5 font-mono text-[13px] text-text [overflow-wrap:anywhere]">{ask.subject}</code>
+        <p className="mt-2 text-[12.5px] text-muted">{t("needsYouPage.rule")} {ask.rule ?? t("needsYouPage.customRule")}</p>
+        {denying ? (
+          <div className="mt-3">
+            <Textarea autoFocus rows={2} aria-label={t("needsYouPage.denyReason")} placeholder={t("needsYouPage.denyReason")} value={reason} onChange={(event) => { setReason(event.target.value); }} className="min-h-0 text-body" />
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <Button variant="ghost" className="h-11" onClick={() => { setDenying(false); setReason(""); }}>{t("common.cancel")}</Button>
+              <Button variant="danger" className="h-11" disabled={busy} onClick={deny}>{pressed("deny")}{t("needsYouPage.deny")}</Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <Button variant="amber" className="mt-3 h-11 w-full" disabled={busy} onClick={() => { void run("once", setState, () => answers.approval(row, ask, { kind: "once" }), onAnswered); }}>
+              {pressed("once") ?? <CheckIcon aria-hidden />}
+              {t("needsYouPage.approveOnce")}
+            </Button>
+            <div className={cn("mt-2 grid gap-2", ask.pattern === null ? "grid-cols-1" : "grid-cols-2")}>
+              {ask.pattern === null ? null : (
+                <Button className="h-11" disabled={busy} onClick={() => { void run("task", setState, () => answers.approval(row, ask, { kind: "task" }), onAnswered); }}>
+                  {pressed("task")}{t("needsYouPage.approveTask")}
+                </Button>
+              )}
+              <Button className="h-11" disabled={busy} onClick={() => { setDenying(true); }} data-action="deny">{t("needsYouPage.deny")}</Button>
+            </div>
+          </>
+        )}
+        <p className="mt-2.5 text-xs text-faint">
+          {ask.pattern === null
+            ? t("needsYouPage.anyMember", { project: row.project.name })
+            : tNodes("needsYouPage.forThisTaskAdds", { pattern: <code className="font-mono text-muted">{ask.pattern}</code>, project: row.project.name })}
+        </p>
+        <Refusal state={state} />
+      </div>
+    );
+  }
   return (
     <NeedsYou
       title={askTitle(ask)}
@@ -150,7 +195,7 @@ export const ApprovalAnswer = ({
                 onChange={(event) => { setReason(event.target.value); }}
                 className="h-7 max-w-[360px] flex-1 text-sm"
               />
-              <Button size="sm" className="h-7" disabled={busy} onClick={() => { void run("deny", setState, () => answers.approval(row, ask, { kind: "deny", reason: reason.trim() }), onAnswered); }}>
+              <Button size="sm" className="h-7" disabled={busy} onClick={deny}>
                 {t("needsYouPage.deny")}
               </Button>
               <Button size="sm" variant="ghost" className="h-7" onClick={() => { setDenying(false); setReason(""); }}>{t("common.cancel")}</Button>
@@ -190,13 +235,62 @@ const EntryGlyph = ({ status }: { readonly status: PlanEntryView["status"] }) =>
   }
 };
 
-export const PlanAnswer = ({ row, ask, answers, onAnswered }: { readonly row: NotificationView; readonly ask: PlanAsk; readonly answers: Answers; readonly onAnswered: (outcome: Outcome) => void }) => {
+export const PlanAnswer = ({ row, ask, answers, onAnswered, phone = false }: {
+  readonly row: NotificationView;
+  readonly ask: PlanAsk;
+  readonly answers: Answers;
+  readonly onAnswered: (outcome: Outcome) => void;
+  /** phone-approval.md, "The plan sheet": numbered rows, `Approve plan` full width, the other two side by side. */
+  readonly phone?: boolean;
+}) => {
   const [state, setState] = useState<AnswerState>({ kind: "idle" });
   const [changing, setChanging] = useState(false);
   const [message, setMessage] = useState("");
   const busy = state.kind === "sending";
   const shown = ask.entries.slice(0, PLAN_SHOWN);
   const rest = ask.entries.length - shown.length;
+  const approve = () => { void run("approve", setState, () => answers.plan(row, ask, { kind: "approve" }), onAnswered); };
+  const sendChanges = () => { void run("changes", setState, () => answers.plan(row, ask, { kind: "changes", message: message.trim() }), onAnswered); };
+  if (phone) {
+    return (
+      <div role="group" aria-label={askTitle(ask)} data-testid="needs-you">
+        <p className="text-ui font-semibold text-text">{t("needsYouPage.planLabel")}</p>
+        <ol className="mt-1">
+          {shown.map((entry, i) => (
+            <li key={i} className="flex min-h-10 items-start gap-0 border-b border-line py-2.5 text-ui text-text last:border-b-0">
+              <span className="w-6 shrink-0 font-mono text-xs leading-5 text-faint">{i + 1}</span>
+              <span className="min-w-0 [overflow-wrap:anywhere]">{entry.text}</span>
+            </li>
+          ))}
+        </ol>
+        {rest > 0 ? <Link href={`/tasks/${row.taskId}`} className="text-sm text-teal hover:underline">{t("needsYouPage.moreOnTask", { n: rest })}</Link> : null}
+        {ask.driver !== null ? (
+          <div className="mt-3"><NotDriver driver={ask.driver} taskId={row.taskId} /></div>
+        ) : changing ? (
+          <div className="mt-3">
+            <Textarea autoFocus rows={3} aria-label={t("needsYouPage.whatChange")} placeholder={t("needsYouPage.whatChange")} value={message} onChange={(event) => { setMessage(event.target.value); }} className="min-h-0 text-body" />
+            <Button variant="primary" className="mt-2 h-11 w-full" disabled={busy || message.trim() === ""} onClick={sendChanges}>{t("needsYouPage.send")}</Button>
+            <Button variant="ghost" className="mt-2 h-11 w-full" onClick={() => { setChanging(false); }}>{t("common.cancel")}</Button>
+          </div>
+        ) : (
+          <>
+            <Button variant="amber" className="mt-3 h-11 w-full" disabled={busy} onClick={approve}>
+              {state.kind === "sending" && state.pressed === "approve" ? <Spinner /> : <CheckIcon aria-hidden />}
+              {t("needsYouPage.approvePlan")}
+            </Button>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <Button className="h-11" asChild>
+                <Link href={`/tasks/${row.taskId}?plan=edit`}><PencilIcon aria-hidden />{t("needsYouPage.editOnTask")}</Link>
+              </Button>
+              <Button className="h-11" disabled={busy} onClick={() => { setChanging(true); }}><MessageSquareIcon aria-hidden />{t("needsYouPage.askChanges")}</Button>
+            </div>
+            <p className="mt-2.5 flex items-start gap-1.5 text-xs text-faint"><InfoIcon aria-hidden className="mt-px size-[13px] shrink-0" />{t("needsYouPage.planDriverOnly")}</p>
+          </>
+        )}
+        <Refusal state={state} />
+      </div>
+    );
+  }
   return (
     <NeedsYou
       title={askTitle(ask)}
@@ -306,6 +400,73 @@ const InlineAnswer = ({ row, ask, answers, onAnswered }: { readonly row: Notific
 
 // The reason column gives the title room at the double sidebar's narrower page (needs-you.md drew 300px beside a 232px sidebar).
 const ROW_GRID = "md:grid-cols-[14px_80px_minmax(0,1fr)_260px_44px_112px]";
+
+/**
+ * One needs-you item at phone width (phone-approval.md): a 2px amber rule, `Needs you · {reason}` and
+ * the age, then the key and title with the reason's verb. An approval is always open in place; a plan
+ * or a question opens in a bottom sheet; anything else opens its task.
+ */
+const PhoneItem = ({ row, now, answers, onAnswered }: {
+  readonly row: NotificationView;
+  readonly now: number;
+  readonly answers: Answers;
+  readonly onAnswered: (row: NotificationView, outcome: Outcome) => void;
+}) => {
+  const [sheet, setSheet] = useState(false);
+  const href = `/tasks/${row.taskId}`;
+  const ask = row.outcome === null ? row.ask : null;
+  const line = ask === null ? t("needsYouPage.phoneLine", { reason: partsText(reasonParts(row.detail)) }) : askTitle(ask);
+  const answered = (outcome: Outcome) => { setSheet(false); onAnswered(row, outcome); };
+  const action =
+    row.outcome !== null ? (
+      <span className="shrink-0 text-xs text-faint">{t("needsYouPage.done")}</span>
+    ) : ask === null ? (
+      <Button size="sm" className="h-8 shrink-0" asChild>
+        <Link href={actionHref(row.detail.reason, row.project.id, row.taskId)}>{t(detailActionKey(row.detail))}</Link>
+      </Button>
+    ) : ask.kind === "approval" ? null : (
+      <Button size="sm" className="h-8 shrink-0" onClick={() => { setSheet(true); }}>{t(detailActionKey(row.detail))}</Button>
+    );
+  return (
+    <li className="border-b border-line py-3.5 pl-3.5 pr-4" data-notification={row.id}>
+      <div className="border-l-2 border-amber pl-3">
+        <div className="flex items-center gap-2 text-[12.5px] font-medium text-amber-text">
+          <HandIcon aria-hidden className="size-[14px] shrink-0 stroke-[1.75]" />
+          <span className="min-w-0 flex-1 truncate">{row.outcome === null ? line : outcomeWords(row.outcome)}</span>
+          <span className="shrink-0 font-mono text-xs font-normal text-faint" suppressHydrationWarning>{formatAge(row.at, now)}</span>
+        </div>
+        <div className="mt-1 flex items-center gap-2">
+          <Link href={href} className="flex min-w-0 flex-1 items-baseline gap-2">
+            <span className="shrink-0 font-mono text-sm text-faint">{row.key}</span>
+            <span className={cn("min-w-0 truncate text-text", ask?.kind === "approval" ? "text-[15px] font-medium" : "text-ui")}>{row.title}</span>
+          </Link>
+          {action}
+        </div>
+        {ask?.kind === "approval" ? <ApprovalAnswer row={row} ask={ask} answers={answers} onAnswered={answered} phone /> : null}
+      </div>
+      {ask === null || ask.kind === "approval" ? null : (
+        <Sheet open={sheet} onOpenChange={setSheet}>
+          <SheetContent side="bottom" title={row.title} className="max-h-[90dvh] px-4 pb-[max(16px,env(safe-area-inset-bottom))] pt-3">
+            <div aria-hidden className="mx-auto mb-3 h-1 w-9 rounded-full bg-line-2" />
+            <div className="flex items-center gap-2 pr-8">
+              <span className="min-w-0 flex-1 truncate font-mono text-sm text-faint">{row.key} · <span className="font-sans text-muted">{row.project.name}</span></span>
+              <Link href={href} className="inline-flex shrink-0 items-center gap-1 text-sm text-teal hover:underline">{t("home.action.openTask")}<ArrowUpRightIcon aria-hidden className="size-[13px]" /></Link>
+            </div>
+            <h2 className="mt-1 text-[18px] font-semibold text-text">{row.title}</h2>
+            <p className="mt-1 flex items-center gap-1.5 text-sm font-medium text-amber-text">
+              <HandIcon aria-hidden className="size-[14px] shrink-0 stroke-[1.75]" />
+              {askTitle(ask)}
+              {ask.driver === null ? <span className="font-normal text-muted">{t("needsYouPage.youDrive")}</span> : null}
+            </p>
+            <div className="mt-3 border-t border-line pt-3">
+              {ask.kind === "plan" ? <PlanAnswer row={row} ask={ask} answers={answers} onAnswered={answered} phone /> : <QuestionAnswer row={row} ask={ask} answers={answers} onAnswered={answered} />}
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
+    </li>
+  );
+};
 
 export const NotificationRow = ({
   row,
@@ -418,6 +579,7 @@ export type OpenListProps = {
 
 /** The Open tab: groups by project, one row expanded at a time, ↑/↓, Enter and Esc. */
 export const OpenList = ({ rows, now, answers, unreadAtLoad }: OpenListProps) => {
+  const phone = usePhone();
   const groups = groupByProject(rows);
   const [expanded, setExpanded] = useState<string | null | undefined>(undefined);
   const [current, setCurrent] = useState<string | null>(null);
@@ -479,7 +641,15 @@ export const OpenList = ({ rows, now, answers, unreadAtLoad }: OpenListProps) =>
         <section key={group.project.id} data-group={group.project.id}>
           <GroupBand group={group} />
           <ul>
-            {group.rows.map((row) => (
+            {group.rows.map((row) => phone ? (
+              <PhoneItem
+                key={row.id}
+                row={shown(row)}
+                now={now}
+                answers={answers}
+                onAnswered={(target, outcome) => { setAnswered((now) => new Map(now).set(target.id, outcome)); }}
+              />
+            ) : (
               <NotificationRow
                 key={row.id}
                 row={shown(row)}

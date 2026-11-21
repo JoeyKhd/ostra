@@ -107,24 +107,25 @@ const expectTaskState = async (page: Page, taskId: string, state: string): Promi
 test("F-075/c1: approve, answer and reopen work by tap from Needs you to the task's new state", async ({ page }) => {
   await signIn(page, world.username);
 
-  // Approve: the approval opens in the list; one tap on "Approve once".
+  // Approve: an approval is open in the list at phone width; one tap on "Approve once".
   await page.goto("/needs-you");
   const approval = needsYouRow(page, world.approval.taskId);
   await expect(approval).toBeVisible();
-  if ((await approval.getByRole("button", { name: "Approve once" }).count()) === 0) await approval.getByRole("button", { name: "Approve" }).tap();
   await approval.getByRole("button", { name: "Approve once" }).tap();
   // Answered, the row leaves the open list (its outcome is under Done).
   await expect(approval.getByRole("button", { name: "Approve once" })).toHaveCount(0);
   await expectTaskState(page, world.approval.taskId, "running");
 
-  // Answer: tap "Answer", type the answer, tap "Send answer".
+  // Answer: tap "Answer", which opens the question in a bottom sheet (phone-approval.md), type the
+  // answer, tap "Send answer"; the sheet closes once it's answered.
   await page.goto("/needs-you");
   const question = needsYouRow(page, world.question.taskId);
   await expect(question).toBeVisible();
-  if ((await question.getByLabel("Your answer").count()) === 0) await question.getByRole("button", { name: "Answer" }).tap();
-  await question.getByLabel("Your answer").fill("config/settings.json");
-  await question.getByRole("button", { name: "Send answer" }).tap();
-  await expect(question.getByRole("button", { name: "Send answer" })).toHaveCount(0);
+  await question.getByRole("button", { name: "Answer" }).tap();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByLabel("Your answer").fill("config/settings.json");
+  await sheet.getByRole("button", { name: "Send answer" }).tap();
+  await expect(sheet).toHaveCount(0);
   // No runner holds the seeded session, so the answer starts the task's next turn: it queues for one.
   await expectTaskState(page, world.question.taskId, "queued");
 

@@ -4276,6 +4276,16 @@
     "ledeNone": "What waits on you across your projects.",
     "tabsLabel": "Notifications",
     "markAll": "Mark all as read",
+    "phoneLine": "Needs you · {reason}",
+    "planLabel": "Plan",
+    "youDrive": " · you're driving",
+    "planDriverOnly": "Only the driver answers a plan. The agent starts from the approved text.",
+    "wantsTo": {
+      "command": "run a command",
+      "path": "edit a file",
+      "url": "reach the network",
+      "tool": "call an MCP tool"
+    },
     "open": "Open",
     "done": "Done",
     "unread": "Unread",
