@@ -20,6 +20,7 @@ import { plural, t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterInputs, RouterOutputs } from "@/lib/trpc";
 
+import { shortDate } from "@/components/members/member-words";
 import { hostOf } from "@/components/models/keys-words";
 import { ProvidersPreview } from "@/components/models/providers-preview";
 
@@ -117,9 +118,22 @@ const ChangeChoice = ({ projectId, model, info, options }: {
 };
 
 /** The panel without changes: who last changed the project's keys, and when. */
-const SummaryPanel = ({ view, projectName, projectId, canEdit }: { readonly view: View; readonly projectName: string; readonly projectId: ProjectId; readonly canEdit: boolean }) => (
+const SummaryPanel = ({ view, projectName, projectId, canEdit, lastChange }: {
+  readonly view: View;
+  readonly projectName: string;
+  readonly projectId: ProjectId;
+  readonly canEdit: boolean;
+  /** The newest change to the project's keys, from its audit log: who and when. */
+  readonly lastChange: { readonly name: string | null; readonly at: number } | null;
+}) => (
   <PropGroup title={projectName}>
     <PropRow label={t("projectModels.summary.keys")}>{view.mode === "own" ? t("projectModels.summary.own") : t("projectModels.summary.default")}</PropRow>
+    {lastChange === null ? null : (
+      <>
+        <PropRow label={t("projectModels.summary.changedBy")}>{lastChange.name ?? t("projectModels.summary.someone")}</PropRow>
+        <PropRow label={t("projectModels.summary.lastChange")}><span className="font-mono">{shortDate(lastChange.at)}</span></PropRow>
+      </>
+    )}
     {canEdit ? (
       <Link href={`/projects/${projectId}/settings/audit`} className="mt-2 inline-flex items-center gap-1 text-sm text-teal hover:underline">
         {t("projectModels.summary.auditLog")}
@@ -143,6 +157,10 @@ export const ProjectModelsView = ({ projectId }: { readonly projectId: ProjectId
   const data = view.data;
   // Only an organization admin changes a project's keys (the API refuses anyone else).
   const canEdit = me.data?.organization?.role === "admin";
+  // The panel's `Changed by` and `Last change`: the newest change to the project's keys in its audit log.
+  const changes = useQuery({ ...trpc.audit.list.queryOptions({ projectId, action: "project.providers-changed", limit: 1 }), enabled: canEdit });
+  const newest = changes.data?.entries[0];
+  const lastChange = newest === undefined ? null : { name: newest.actor.name, at: newest.at };
   // An organization admin reads every key and what each lists; a member reads the project's keys by name only.
   const all = useQuery(trpc.providers.list.queryOptions(undefined, { enabled: canEdit }));
   const listedModels = useQueries({
@@ -234,7 +252,7 @@ export const ProjectModelsView = ({ projectId }: { readonly projectId: ProjectId
     data === undefined ? undefined : dirty ? (
       <ProvidersPreview preview={plan} error={preview.error === null ? null : errorText(preview.error)} conflict={conflict} used={new Set(data.models.map((model) => model.text))} />
     ) : (
-      <SummaryPanel view={data} projectName={projectName} projectId={projectId} canEdit={canEdit} />
+      <SummaryPanel view={data} projectName={projectName} projectId={projectId} canEdit={canEdit} lastChange={lastChange} />
     );
 
   return (
@@ -380,6 +398,7 @@ export const ProjectModelsView = ({ projectId }: { readonly projectId: ProjectId
                 <tr className="h-[30px] border-b border-line text-left text-xs font-medium text-faint">
                   <th className="pr-3 font-medium">{t("projectModels.models.model")}</th>
                   <th className="pr-3 font-medium">{t("projectModels.models.servedBy")}</th>
+                  <th className="pr-3 font-medium max-sm:hidden">{t("projectModels.models.profiles")}</th>
                   <th className="w-[90px]" aria-label={t("projectModels.models.change")} />
                 </tr>
               </thead>
@@ -424,6 +443,7 @@ export const ProjectModelsView = ({ projectId }: { readonly projectId: ProjectId
                           <span className="font-mono text-ui text-text">{model.served.providerName}</span>
                         )}
                       </td>
+                      <td className="max-w-[180px] truncate pr-3 text-ui text-muted max-sm:hidden" title={model.profiles.join(", ")}>{model.profiles.join(", ")}</td>
                       <td className="text-right">
                         {pinned !== null ? (
                           <span className="text-xs text-faint">{t("projectModels.models.profileKey")}</span>

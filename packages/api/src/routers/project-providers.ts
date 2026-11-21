@@ -56,6 +56,8 @@ export const projectProvidersViewSchema = z.object({
       served: servedSchema,
       needsConfirm: z.boolean(),
       pinned: z.object({ providerId: providerIdSchema, providerName: z.string() }).nullable(),
+      /** The live profiles that name it (project-models-keys.md, the `Profiles` column), by name. */
+      profiles: z.array(z.string()),
     }),
   ),
 });
@@ -227,7 +229,12 @@ export const planView = async (
 };
 
 /** A model the organization's live profiles use: by name (`pinned` null), or on one provider. */
-export type ProfileModelUse = { readonly name: ModelName; readonly pinned: { readonly providerId: ProviderId; readonly providerName: string } | null };
+export type ProfileModelUse = {
+  readonly name: ModelName;
+  readonly pinned: { readonly providerId: ProviderId; readonly providerName: string } | null;
+  /** The profiles that name it, by name, sorted. */
+  readonly profiles: readonly string[];
+};
 
 /**
  * The models the organization's live profiles use, once each: by name for the profiles saved
@@ -236,17 +243,22 @@ export type ProfileModelUse = { readonly name: ModelName; readonly pinned: { rea
 export const profileModelUses = async (db: DbOrTx, organizationId: OrganizationId): Promise<readonly ProfileModelUse[]> => {
   const profiles = await db.agentProfile.findMany({
     where: { organizationId, archivedAt: null },
-    select: { modelCatalogId: true, modelCustomName: true, model: { select: { catalogId: true, endpointModelId: true } }, provider: { select: { id: true, name: true } } },
+    select: { name: true, modelCatalogId: true, modelCustomName: true, model: { select: { catalogId: true, endpointModelId: true } }, provider: { select: { id: true, name: true } } },
   });
-  const byKey = new Map<string, ProfileModelUse>();
+  const byKey = new Map<string, { readonly name: ModelName; readonly pinned: ProfileModelUse["pinned"]; readonly profiles: string[] }>();
   for (const profile of profiles) {
     const name = profileModelName(profile);
     if (name !== null) {
       const pinned = profile.provider === null ? null : { providerId: providerIdSchema.parse(profile.provider.id), providerName: profile.provider.name };
-      byKey.set(`${modelNameKey(name)}|${pinned?.providerId ?? ""}`, { name, pinned });
+      const key = `${modelNameKey(name)}|${pinned?.providerId ?? ""}`;
+      const known = byKey.get(key);
+      if (known === undefined) byKey.set(key, { name, pinned, profiles: [profile.name] });
+      else known.profiles.push(profile.name);
     }
   }
-  return [...byKey.entries()].sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0)).map(([, use]) => use);
+  return [...byKey.entries()]
+    .sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))
+    .map(([, use]) => ({ name: use.name, pinned: use.pinned, profiles: [...use.profiles].sort((a, b) => a.localeCompare(b)) }));
 };
 
 /** A project's providers and what serves each model, as anyone who can open it reads them. */
@@ -269,7 +281,7 @@ export const loadProjectProviders = async (db: Db, organizationId: OrganizationI
       const provider = mapModelProvider(row);
       return { providerId: provider.id, name: provider.name, host: hostOf(provider.baseUrl), apiFormat: provider.apiFormat };
     }),
-    models: names.map(({ name, pinned }) => {
+    models: names.map(({ name, pinned, profiles }) => {
       const resolved = resolveProfileModel(state.list, state.choices, state.models, name, pinned?.providerId ?? null);
       return {
         name,
@@ -280,6 +292,7 @@ export const loadProjectProviders = async (db: Db, organizationId: OrganizationI
         // A model on a profile's own provider has no choice of this project's to confirm.
         needsConfirm: pinned === null && unconfirmed.has(modelNameKey(name)),
         pinned,
+        profiles: [...profiles],
       };
     }),
   };

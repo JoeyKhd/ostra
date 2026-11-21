@@ -102,7 +102,7 @@ describe("F-135: provider lists in the API", () => {
     expect(before.mode).toBe("default");
     expect(before.providers).toEqual([{ providerId: providerA, name: "Client A", host: "client-a-models.example.com", apiFormat: "openai-compatible" }]);
     expect(before.models).toEqual([
-      { name: SHARED, text: "shared-model", displayName: "Shared", logoPath: null, served: { providerId: providerA, providerName: "Client A", modelId: row(providerA, "shared-model") }, needsConfirm: false, pinned: null },
+      { name: SHARED, text: "shared-model", displayName: "Shared", logoPath: null, served: { providerId: providerA, providerName: "Client A", modelId: row(providerA, "shared-model") }, needsConfirm: false, pinned: null, profiles: ["Shared model"] },
     ]);
     // An idle box holding A's key, and an unfinished task on A's own model: what the move would do to them.
     const runnerId = await seedPersonalRunner(harness, a.admin.id, "preview-runner");
