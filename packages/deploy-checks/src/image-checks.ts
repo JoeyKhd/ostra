@@ -25,7 +25,8 @@ export type ImageRule =
   | "compose-images"
   | "release-version"
   | "notices"
-  | "no-agent";
+  | "no-agent"
+  | "pruned-root";
 
 export type Problem = { readonly file: string; readonly line: number | null; readonly rule: ImageRule; readonly message: string };
 
@@ -188,6 +189,30 @@ const serverImage = (file: string, final: Stage | undefined, entrypoint: string)
   return problems;
 };
 
+/** The stage whose RUN does `needle`, such as the server's `@ostra/db generate`. */
+const stageRunning = (stages: readonly Stage[], needle: string): Stage | undefined =>
+  stages.find((stage) => stage.instructions.some((instruction) => instruction.keyword === "RUN" && instruction.args.includes(needle)));
+
+/** Whether a COPY of the build context names `source` among its sources. */
+const copiesFromContext = (stage: Stage, source: string): boolean =>
+  stage.instructions.some((instruction) => {
+    const words = instruction.args.split(/\s+/);
+    return instruction.keyword === "COPY" && !words.some((word) => word.startsWith("--from=")) && words.slice(0, -1).includes(source);
+  });
+
+/**
+ * The server builds in `turbo prune`'s tree, which keeps the packages and the root's package.json,
+ * lockfile and turbo.json, but not the root tsconfig.base.json every package's tsconfig extends:
+ * Prisma's generate and `next build` read those tsconfigs, and fail without it (the Proof run of
+ * 2026-11-21). The runner and the base image run their TypeScript with Node, which reads none.
+ */
+const prunedRoot = (file: string, stages: readonly Stage[]): Problem[] => {
+  const build = stageRunning(stages, "@ostra/db generate");
+  return build !== undefined && copiesFromContext(build, "tsconfig.base.json")
+    ? []
+    : [{ file, line: null, rule: "pruned-root", message: "the stage that runs @ostra/db generate and next build must COPY tsconfig.base.json, which turbo prune leaves out" }];
+};
+
 /** A RUN option's value: `--out /x` gives `/x`. */
 const optionOf = (args: string, option: string): string | null => new RegExp(String.raw`(?:^|\s)${option}\s+(\S+)`).exec(args)?.[1] ?? null;
 
@@ -257,7 +282,7 @@ export const checkDockerfile = (name: ImageName, text: string, entrypoint: strin
   const own = ((): Problem[] => {
     switch (name) {
       case "server":
-        return serverImage(file, final, entrypoint);
+        return [...serverImage(file, final, entrypoint), ...prunedRoot(file, stages)];
       case "runner":
         return [...nonRoot(file, final), ...entrypointIs(file, final, ["ostra"]), ...noAgent(file, instructions)];
       case "base":

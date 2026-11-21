@@ -157,6 +157,15 @@ describe("each image's own rules", () => {
     expect(rulesOf({ entrypoint: files.entrypoint.replace("  health)", "  check)") })).toContain("entrypoint");
   });
 
+  it("F-039/c1: the server's build copies the root tsconfig.base.json into turbo prune's tree, which leaves it out", () => {
+    expect(rulesOf({})).not.toContain("pruned-root");
+    expect(rulesOf(withDockerfile("server", "COPY tsconfig.base.json ./\n", ""))).toContain("pruned-root");
+    // Copied in a stage that builds nothing, it doesn't count.
+    const inPrune = files.dockerfiles.server.replace("COPY tsconfig.base.json ./\n", "").replace("WORKDIR /src\n", "WORKDIR /src\nCOPY tsconfig.base.json ./\n");
+    expect(inPrune).not.toBe(files.dockerfiles.server);
+    expect(rulesOf({ dockerfiles: { ...files.dockerfiles, server: inPrune } })).toContain("pruned-root");
+  });
+
   it("F-039/c1: the runner is the ostra CLI, as a non-root user", () => {
     expect(rulesOf(withDockerfile("runner", "USER node\n", "USER 0\n"))).toContain("non-root");
     expect(rulesOf(withDockerfile("runner", 'ENTRYPOINT ["ostra"]', 'ENTRYPOINT ["node", "/app/apps/runner/src/main.ts"]'))).toContain("entrypoint");

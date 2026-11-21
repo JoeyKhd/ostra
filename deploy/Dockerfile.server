@@ -23,6 +23,10 @@ WORKDIR /app
 COPY --from=prune /src/out/json/ ./
 RUN pnpm install --frozen-lockfile
 COPY --from=prune /src/out/full/ ./
+# `turbo prune` keeps the packages and the root's package.json, lockfile and turbo.json, not the
+# root tsconfig.base.json every package's tsconfig extends, which Prisma's generate and next build
+# read (`pnpm check:images` checks it's here).
+COPY tsconfig.base.json ./
 RUN pnpm --filter @ostra/db generate && pnpm --filter @ostra/web build
 # THIRD_PARTY_NOTICES (milestone 7's ticket 29): every third-party package this install bundles,
 # each with its license and the license and notice files it ships, from pnpm's own report. The
