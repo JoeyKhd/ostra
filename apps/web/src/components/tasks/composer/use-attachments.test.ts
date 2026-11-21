@@ -20,7 +20,7 @@ const item = (key: string, name: string, type: string): TrayItem => ({
   upload: { state: "uploading", progress: 0 },
 });
 
-const answer = (name: string, kind: RecordedUpload["kind"], text: RecordedUpload["text"] = { state: "none", words: null }): RecordedUpload => ({
+const answer = (name: string, kind: RecordedUpload["kind"], text: RecordedUpload["text"] = { state: "none", reason: null, words: null }): RecordedUpload => ({
   fileId: messageFileIdSchema.parse("0196f1a0-0000-7000-8000-0000000000f1"),
   name,
   kind,
@@ -47,9 +47,9 @@ describe("the tray", () => {
       { type: "progress", key: "t1", progress: 0.4 },
     ]);
     expect(state.items[0]?.upload).toEqual({ state: "uploading", progress: 0.62 });
-    const done = run([{ type: "uploaded", key: "t1", file: answer("Specification.docx", "document", { state: "ready", words: 2140 }) }], state);
+    const done = run([{ type: "uploaded", key: "t1", file: answer("Specification.docx", "document", { state: "ready", reason: null, words: 2140 }) }], state);
     expect(done.items[0]?.name).toBe("Specification.docx");
-    expect(done.items[0]?.upload.state === "ready" ? done.items[0].upload.uploaded.text : null).toEqual({ state: "ready", words: 2140 });
+    expect(done.items[0]?.upload.state === "ready" ? done.items[0].upload.uploaded.text : null).toEqual({ state: "ready", reason: null, words: 2140 });
     expect(done.announcement).toBe("Specification.docx uploaded");
   });
 

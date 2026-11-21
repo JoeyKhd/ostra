@@ -11,7 +11,7 @@ import type { TrayItemView } from "./tray-item";
 const MiB = 1024 * 1024;
 const limits = { maxFiles: 10, maxFileBytes: 10 * MiB, maxTotalBytes: 25 * MiB };
 const noop = () => undefined;
-const ready = (state: "none" | "ready" | "failed" | "off" = "none"): TrayItemView["upload"] => ({ state: "ready", uploaded: { kind: state === "none" ? "text" : "document", text: { state, words: state === "ready" ? 2140 : null } } });
+const ready = (state: "none" | "ready" | "failed" | "off" = "none"): TrayItemView["upload"] => ({ state: "ready", uploaded: { kind: state === "none" ? "text" : "document", text: { state, reason: state === "failed" ? "encrypted" : null, words: state === "ready" ? 2140 : null } } });
 const item = (key: string, name: string, look: TrayItemView["look"], upload: TrayItemView["upload"], size = 48 * 1024): TrayItemView => ({ key, name, size, look, previewUrl: look === "image" ? `blob:${key}` : null, upload });
 
 const tray = (items: readonly TrayItemView[]) => renderToStaticMarkup(<ComposerTray items={items} announcement="" onRemove={noop} onRetry={noop} onOpen={noop} returnFocus={noop} />);
