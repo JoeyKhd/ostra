@@ -557,7 +557,9 @@ describe(`the browser view through core (${live ? "the machine's browser" : "the
     expect([first.jpeg[0], first.jpeg[1]]).toEqual([0xff, 0xd8]);
     expect(first.header).toMatchObject({ width: 1440, height: 900 });
     const clock = clockFrames(panel);
+    // Three seconds of the stream at least, and as long as a loaded machine takes to send that many.
     await sleep(3_000);
+    await waitFor("the panel's frames", () => clock.times.length >= (live ? 20 : 15), 30_000);
     clock.stop();
     expect(clock.times.length).toBeGreaterThanOrEqual(live ? 20 : 15);
     // The cap holds the browser's acks 1/15 s apart; the network's jitter may bunch one or two arrivals.
@@ -634,7 +636,9 @@ describe(`the browser view through core (${live ? "the machine's browser" : "the
       await onHttp.pages.evaluate(WEB, ANIMATE, z.boolean());
     }
     const clock = clockFrames(panel);
+    // Four seconds of the stream at least, and as long as a loaded machine takes to post that many.
     await sleep(4_000);
+    await waitFor("the panel's frames", () => clock.times.length >= 5, 30_000);
     clock.stop();
     expect(clock.times.length).toBeGreaterThanOrEqual(5);
     expect(mostInOneSecond(clock.times)).toBeLessThanOrEqual(runnerLimits.httpCarrierFramesPerSecond + 1);

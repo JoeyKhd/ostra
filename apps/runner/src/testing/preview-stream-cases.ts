@@ -297,7 +297,9 @@ export const previewStreamCases = (mode: PreviewStreamMode) => {
       }
       // As fast as the page changes, but no faster than the cap: frames numbered in order.
       const from = view.frames.length;
+      // Three seconds of the stream at least, and as long as a loaded machine takes to send that many.
       await sleep(3_000);
+      await h.gateway.waitFor(() => view.frames.length - from >= (live ? 20 : 15), 30_000);
       const times = view.frames.slice(from).map((frame) => frame.receivedAt);
       expect(times.length).toBeGreaterThanOrEqual(live ? 20 : 15);
       // The cap holds the browser's acks 1/15 s apart; the network's jitter may bunch one or two arrivals.
@@ -483,7 +485,9 @@ export const previewStreamCases = (mode: PreviewStreamMode) => {
         await evaluate(h, ANIMATE, z.boolean());
       }
       const from = view.frames.length;
+      // Four seconds of the stream at least, and as long as a loaded machine takes to post that many.
       await sleep(4_000);
+      await h.gateway.waitFor(() => view.frames.length - from >= 5, 30_000);
       const times = view.frames.slice(from).map((frame) => frame.receivedAt);
       expect(times.length).toBeGreaterThanOrEqual(5);
       expect(mostInOneSecond(times)).toBeLessThanOrEqual(runnerLimits.httpCarrierFramesPerSecond);
