@@ -119,6 +119,14 @@ type RemoteProc = {
   readonly stderr: Readable;
   status: ProcessExit | undefined;
   readonly resolveExit: (exit: ProcessExit) => void;
+  /** The streams whose `eof` came. */
+  readonly ended: Set<"stdout" | "stderr">;
+  /**
+   * An app process (milestone 8) is forgotten once it's over: its exit and both its `eof`s in, in
+   * whatever order they come. Node can report a child's exit before its output ends, so a proc
+   * dropped at its exit would drop the app's last output, and its log would never end (ticket 12).
+   */
+  readonly forgetWhenOver: boolean;
 };
 
 type Pending = { readonly resolve: (frame: InitFrame) => void; readonly reject: (error: Error) => void };
@@ -140,6 +148,14 @@ const bridgeOverSocket = (socket: Socket, context: Context): Bridge => {
   const closed = new Promise<void>((resolve) => {
     resolveClosed = resolve;
   });
+
+  /** An app process whose exit and both `eof`s are in is over: nothing more of it comes. */
+  const forgetIfOver = (procId: ProcId): void => {
+    const proc = procs.get(procId);
+    if (proc?.forgetWhenOver === true && proc.status !== undefined && proc.ended.size === 2) {
+      procs.delete(procId);
+    }
+  };
 
   const send = (frame: SidecarFrame, callback?: (error?: Error | null) => void): void => {
     if (isClosed) {
@@ -225,6 +241,8 @@ const bridgeOverSocket = (socket: Socket, context: Context): Bridge => {
       case "eof": {
         const proc = procs.get(frame.procId);
         (frame.stream === "stdout" ? proc?.stdout : proc?.stderr)?.push(null);
+        proc?.ended.add(frame.stream);
+        forgetIfOver(frame.procId);
         return;
       }
       case "exit": {
@@ -233,6 +251,7 @@ const bridgeOverSocket = (socket: Socket, context: Context): Bridge => {
           proc.status = { code: frame.code, signal: frame.signal };
           proc.resolveExit(proc.status);
         }
+        forgetIfOver(frame.procId);
         return;
       }
       default:
@@ -313,6 +332,8 @@ const bridgeOverSocket = (socket: Socket, context: Context): Bridge => {
       stderr: new Readable({ read: resume, highWaterMark: 1024 * 1024 }),
       status: undefined,
       resolveExit,
+      ended: new Set(),
+      forgetWhenOver: false,
     };
     procs.set(procId, proc);
     const answer = await request((reqId) => ({
@@ -373,6 +394,8 @@ const bridgeOverSocket = (socket: Socket, context: Context): Bridge => {
       stderr: new Readable({ read: resume, highWaterMark: 1024 * 1024 }),
       status: undefined,
       resolveExit,
+      ended: new Set(),
+      forgetWhenOver: true,
     };
     procs.set(procId, proc);
     const answer = await request((reqId) => ({ t: "app_spawn", reqId, procId, command: launch.command, args: [...launch.args], cwd: launch.cwd, env: { ...launch.env } }));
@@ -384,7 +407,6 @@ const bridgeOverSocket = (socket: Socket, context: Context): Bridge => {
       procs.delete(procId);
       throw unexpected(answer, "spawned");
     }
-    void exited.then(() => procs.delete(procId));
     return {
       pid: answer.pid,
       stdout: proc.stdout,
