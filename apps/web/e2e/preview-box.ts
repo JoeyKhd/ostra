@@ -38,7 +38,7 @@ const freePort = (): Promise<number> =>
   });
 
 /** A runner's access token for core, as core issues one (an HMAC under its key, 10 minutes). */
-const runnerToken = async (dataDir: string, runnerId: string, organizationId: string): Promise<string> => {
+export const runnerToken = async (dataDir: string, runnerId: string, organizationId: string): Promise<string> => {
   const key = Buffer.from((await readFile(path.join(dataDir, "runner-token.key"), "utf8")).trim(), "base64url");
   const body = Buffer.from(JSON.stringify({ v: 1, r: runnerId, o: organizationId, e: Date.now() + 9 * 60_000 })).toString("base64url");
   return `ostra-runner-${body}.${createHmac("sha256", key).update(body).digest("base64url")}`;
@@ -80,6 +80,8 @@ export type BoxView = {
 export type FixtureBox = {
   /** The page in the box's browser: the fixture app. */
   readonly page: Page;
+  /** The fixture's Vite on this machine: the native preview's tunnel reaches the app here (ticket 26). */
+  readonly webPort: number;
   /** Opens the box's preview connection for a view, as the runner does once core sends `preview.open`. */
   readonly serve: (viewId: string, leaseEpoch: number) => Promise<BoxView>;
   readonly stop: () => Promise<void>;
@@ -216,7 +218,7 @@ export const startFixtureBox = async (browser: Browser, options: { readonly data
       };
     };
 
-    return { page, serve, stop };
+    return { page, webPort, serve, stop };
   } catch (error) {
     await stop();
     throw error;

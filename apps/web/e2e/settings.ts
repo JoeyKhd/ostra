@@ -110,3 +110,11 @@ export const e2eLockedEmail = {
   OSTRA_SMTP_SECURE: "starttls",
   OSTRA_SMTP_USER: "ostra",
 } as const;
+
+/**
+ * Milestone 8 (ticket 26, F-144): the main stack's preview domain, which needs no DNS record or
+ * certificate (`stack.ts`), and the second stack's, a name under `.invalid` that never resolves, so
+ * Instance › Previews' check reports the missing record.
+ */
+export const e2ePreviewDomain = "preview.localhost";
+export const e2eMissingPreviewDomain = "preview.ostra-e2e.invalid";

@@ -52,6 +52,8 @@ export const auditActions = {
   "instance.first-admin-created": "member",
   "instance.admin-granted": "user",
   "instance.admin-revoked": "user",
+  /** Milestone 8 (F-144, ticket 26): the preview domain's check ran, with whether it passed and no result text. */
+  "instance.preview_domain_checked": "organization",
   "invitation.created": "invitation",
   "invitation.revoked": "invitation",
   "invitation.accepted": "invitation",

@@ -3,10 +3,14 @@ import {
   closeView,
   closeViewInTx,
   createPreviewLink,
+  enterNativePreview,
   heartbeatView,
   listPreviews,
+  nativePreviewOn,
   openView,
   previewLinkTokenHash,
+  previewDomainStatus,
+  previewFramingOf,
   previewShownInTx,
   previewViewInTx,
   resolvePreviewLinkInTx,
@@ -15,7 +19,7 @@ import {
   takeMemberScreenshot,
   usePreviewLink,
 } from "@ostra/domain";
-import type { MemberScope, PreviewLinkResolution, PreviewViewRow } from "@ostra/domain";
+import type { MemberScope, NativePreviewOpener, PreviewDomainStatus, PreviewLinkResolution, PreviewViewRow } from "@ostra/domain";
 import {
   appPathSchema,
   memberIdSchema,
@@ -27,7 +31,7 @@ import {
   taskIdSchema,
   viewportPresetSchema,
 } from "@ostra/protocol";
-import type { PreviewViewId } from "@ostra/protocol";
+import type { PreviewKey, PreviewViewId, TaskId } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -50,8 +54,15 @@ import { memberProcedure, publicProcedure, router, taskProcedure } from "../trpc
 //   open, heartbeat and close. Tries are limited by address. An unknown token never says whether it
 //   existed.
 //
+// Ticket 26 (F-144, F-142): the native preview. With `OSTRA_PREVIEW_DOMAIN` set, `previews.enter`
+// mints the one-time code for the preview host (`enterNativePreview`), for a member who can open the
+// task, and `previews.link.enter` for a link that allows input; a watch-only viewer never gets one.
+// The list says whether the domain's last check passed (the pane opens "in your browser" by default
+// only then) and, per preview, the framing header core's proxy replaced. A link that allows input
+// opens the native preview on the viewer page when it's on.
+//
 // Every refusal a person can act on comes as a code (`reason`) the panel words through `t`, never
-// as task content. Never logged: a link's token.
+// as task content. Never logged: a link's token, a code.
 
 /** Why a view didn't open, for a member: the pane's words come from it. */
 const openRefusalSchema = z.enum(["no-box", "port-not-allowed", "runner-needs-upgrade", "runner-cannot-preview", "level-unknown"]);
@@ -64,10 +75,53 @@ const screenshotRefusalSchema = z.enum(["no-box", "port-not-allowed", "runner-ne
 
 const viewStateSchema = z.enum(["opening", "open", "closed"]);
 
+/**
+ * Why no one-time code was minted for the native preview (ticket 26), for the pane's words: no
+ * preview domain, no box, a port that isn't a preview, a viewer who may only watch, a runner on the
+ * HTTP carrier or below minor 7, or a level this build doesn't know.
+ */
+export const enterRefusalSchema = z.enum([
+  "no-preview-domain",
+  "no-box",
+  "port-not-allowed",
+  "watch-only",
+  "runner-cannot-tunnel",
+  "runner-needs-upgrade",
+  "runner-cannot-preview",
+  "level-unknown",
+]);
+export type EnterRefusal = z.infer<typeof enterRefusalSchema>;
+
+/** A code minted: the preview host's `/.ostra/enter?code=…` to frame or open, its origin and host, and when the code expires. */
+const enteredSchema = z.strictObject({ ok: z.literal(true), url: z.string(), origin: z.string(), host: z.string(), expiresAt: z.number().int() });
+
+/** What a link's holder gets from `previews.link.enter`: a code, or why not, a link that ended among them. */
+const linkEnterRefusalSchema = z.enum([...enterRefusalSchema.options, "link-expired", "link-revoked", "not-allowed", "unknown"]);
+
+/** The preview domain as the pane needs it: not set, never checked, its last check failing, or passed (`nativePreviewOn`). */
+export type NativeState = "not-set" | "unchecked" | "failing" | "passed";
+
+const nativeStateOf = (status: PreviewDomainStatus): NativeState => {
+  switch (status.state) {
+    case "not-set":
+    case "unchecked":
+      return status.state;
+    case "checked":
+      return status.passed ? "passed" : "failing";
+    default:
+      return status satisfies never;
+  }
+};
+
 /** The viewer page's data (`preview-viewer.md`, "Data it needs"): nothing else of the task. */
 const shownSchema = { label: z.string(), port: z.number().int().nullable(), organizationName: z.string() };
 export const previewViewerPageSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("live"), viewId: previewViewIdSchema, ...shownSchema, expiresAt: z.number().int().nullable(), input: z.boolean() }),
+  /**
+   * Ticket 26 (F-142, F-144): a link that allows input, on an install whose preview domain works,
+   * opens the native preview: the preview host's one-time URL to frame, and its host for the footer.
+   */
+  z.strictObject({ state: z.literal("native"), ...shownSchema, expiresAt: z.number().int().nullable(), input: z.literal(true), url: z.string(), origin: z.string(), host: z.string() }),
   /** The box isn't running, or the preview is gone from it: the page picks it up again by itself. */
   z.strictObject({ state: z.literal("not-running"), ...shownSchema, expiresAt: z.number().int().nullable(), input: z.boolean() }),
   /** The task's runner can't show a preview: the page names no runner and no version. */
@@ -105,6 +159,36 @@ const sharingDeps = (deps: ApiDeps) => ({
 });
 
 const notFound = (what: string): TRPCError => new TRPCError({ code: "NOT_FOUND", message: `No such ${what}` });
+
+// ---------- the native preview (ticket 26) ----------
+
+type Entered = z.infer<typeof enteredSchema>;
+
+/** Why `enterNativePreview` minted no code, for either kind of opener. */
+type EnterError = Extract<Awaited<ReturnType<typeof enterNativePreview>>, { readonly ok: false }>["error"];
+
+/**
+ * The handshake's panel half (`enterNativePreview`, ticket 25): the preview host's one-time URL, its
+ * origin, its host (with a port only where core's public address has one) and the code's expiry.
+ */
+const enterFor = async (
+  deps: ApiDeps,
+  opener: NativePreviewOpener,
+  input: { readonly taskId: TaskId; readonly key: PreviewKey; readonly path: string | null },
+): Promise<Entered | { readonly ok: false; readonly error: EnterError }> => {
+  const entered = await enterNativePreview(
+    { db: deps.db, clock: deps.ports.clock, settings: deps.settings.previews, corePublicUrl: deps.settings.corePublicUrl },
+    opener,
+    { taskId: input.taskId, key: input.key, path: input.path },
+  );
+  if (!entered.ok) {
+    return { ok: false, error: entered.error };
+  }
+  return { ok: true, url: entered.url, origin: entered.origin, host: new URL(entered.origin).host, expiresAt: entered.expiresAt };
+};
+
+/** Whether the native preview is on for this install: a preview domain, and its last check passed. */
+const nativeOn = async (deps: ApiDeps): Promise<boolean> => nativePreviewOn(await previewDomainStatus(deps.db, deps.settings.previews.domain));
 
 /** A member's own view, inside their organization: someone else's is NOT_FOUND. */
 const ownViewOf = async (ctx: { readonly deps: ApiDeps; readonly scope: MemberScope }, viewId: PreviewViewId): Promise<PreviewViewRow> => {
@@ -176,6 +260,17 @@ export const openLinkViewer = async (ctx: Context, input: { readonly token: stri
       return used satisfies never;
   }
   const shown = { label: used.label, port: used.port, organizationName: used.organizationName, expiresAt: used.expiresAt, input: used.input };
+  // Ticket 26 (F-142, F-144): a link that allows input opens the native preview where it's on. A
+  // box that can't tunnel (the HTTP carrier) still gets the browser view below.
+  if (used.input && (await nativeOn(ctx.deps))) {
+    const entered = await enterFor(ctx.deps, { kind: "link", token: input.token }, { taskId: used.taskId, key: used.key, path: null });
+    if (entered.ok) {
+      return { state: "native", ...shown, input: true, url: entered.url, origin: entered.origin, host: entered.host };
+    }
+    if (entered.error === "no-box" || entered.error === "port-not-allowed") {
+      return { state: "not-running", ...shown };
+    }
+  }
   const opened = await openView(viewDeps(ctx.deps), { kind: "link", token: input.token }, { taskId: used.taskId, key: used.key, mode: "stream", viewport: input.viewport });
   if (opened.ok) {
     return { state: "live", viewId: opened.viewId, ...shown, input: opened.input };
@@ -279,6 +374,79 @@ const linkRouter = router({
       return { state: await beat(ctx.deps, input.viewId) };
     }),
 
+  /**
+   * The viewer page's native preview (ticket 26, F-142): a new one-time code for a link that allows
+   * input, to frame again after a sign-in that failed. A watch-only link never gets one, and a link
+   * that ended says so, as the heartbeat does.
+   */
+  enter: publicProcedure
+    .input(z.strictObject({ token: tokenSchema }))
+    .output(z.discriminatedUnion("ok", [enteredSchema, z.strictObject({ ok: z.literal(false), reason: linkEnterRefusalSchema })]))
+    .mutation(async ({ ctx, input }) => {
+      const address = linkTry(ctx);
+      const resolved = await ctx.deps.db.$transaction((tx) => resolvePreviewLinkInTx(tx, input.token, ctx.deps.ports.clock.now()));
+      switch (resolved.state) {
+        case "unknown":
+          missed(ctx, address);
+          return { ok: false as const, reason: "unknown" as const };
+        case "expired":
+          return { ok: false as const, reason: "link-expired" as const };
+        case "revoked":
+          return { ok: false as const, reason: "link-revoked" as const };
+        case "not-allowed":
+          return { ok: false as const, reason: "not-allowed" as const };
+        case "active":
+          break;
+        default:
+          return resolved satisfies never;
+      }
+      const entered = await enterFor(ctx.deps, { kind: "link", token: input.token }, { taskId: resolved.taskId, key: resolved.key, path: null });
+      if (entered.ok) {
+        return entered;
+      }
+      const { error } = entered;
+      switch (error) {
+        case "link-expired":
+        case "link-revoked":
+          return { ok: false as const, reason: error };
+        case "public-links-off":
+          return { ok: false as const, reason: "not-allowed" as const };
+        case "not-found":
+        case "not-allowed":
+        case "link-unknown":
+          missed(ctx, address);
+          return { ok: false as const, reason: "unknown" as const };
+        case "no-preview-domain":
+        case "no-box":
+        case "port-not-allowed":
+        case "watch-only":
+        case "runner-cannot-tunnel":
+        case "runner-needs-upgrade":
+        case "runner-cannot-preview":
+        case "level-unknown":
+          return { ok: false as const, reason: error };
+        default:
+          return error satisfies never;
+      }
+    }),
+
+  /**
+   * The link's state alone, for a viewer page showing the native preview, which has no view of its
+   * own to heartbeat (core keeps the native view): it learns of an expiry, a revoke or a switch
+   * turned off while it's open.
+   */
+  state: publicProcedure
+    .input(z.strictObject({ token: tokenSchema }))
+    .output(z.strictObject({ state: z.enum(["active", "expired", "revoked", "not-allowed", "unknown"]) }))
+    .mutation(async ({ ctx, input }) => {
+      const address = linkTry(ctx);
+      const resolved = await ctx.deps.db.$transaction((tx) => resolvePreviewLinkInTx(tx, input.token, ctx.deps.ports.clock.now()));
+      if (resolved.state === "unknown") {
+        missed(ctx, address);
+      }
+      return { state: resolved.state };
+    }),
+
   /** The viewer page closed. */
   close: publicProcedure
     .input(z.strictObject({ token: tokenSchema, viewId: previewViewIdSchema }))
@@ -308,8 +476,11 @@ export const previewsRouter = router({
     if (!listed.ok) {
       throw notFound("task");
     }
+    const framing = await previewFramingOf(ctx.deps.db, ctx.scope.organizationId, input.taskId);
     return {
-      previews: listed.previews,
+      previews: listed.previews.map((item) => ({ ...item, framing: framing.get(item.key) ?? null })),
+      /** Ticket 26 (F-144): the preview domain's state; the pane opens "in your browser" by default once it `passed`. */
+      native: nativeStateOf(await previewDomainStatus(ctx.deps.db, ctx.deps.settings.previews.domain)),
       box: listed.box,
       can: listed.can,
       carrier: listed.carrier,
@@ -362,6 +533,45 @@ export const previewsRouter = router({
               previewShownInTx(tx, { id: input.taskId, organizationId: ctx.scope.organizationId, projectId: projectIdSchema.parse(task.projectId) }, input.key),
             );
       return { ok: true as const, viewId: opened.viewId, input: opened.input, ...shown };
+    }),
+
+  /**
+   * The native preview's handshake (ticket 26, F-144, ADR 0068): a one-time code (60 s, single use,
+   * bound to the member and this panel login session, the task, the port and the lease) and the
+   * preview host's `/.ostra/enter?code=…&path=…`, which the pane frames, or opens in a new tab after
+   * a second call. For a member who can open the task; a person the preview names may only watch,
+   * so gets `watch-only` and no code. Core keeps the view warm while the browser uses it, so the
+   * pane sends no heartbeat in this mode.
+   */
+  enter: memberProcedure
+    .input(z.strictObject({ taskId: taskIdSchema, key: previewKeySchema, path: appPathSchema.nullable().optional() }))
+    .output(z.discriminatedUnion("ok", [enteredSchema, z.strictObject({ ok: z.literal(false), reason: enterRefusalSchema })]))
+    .mutation(async ({ ctx, input }) => {
+      const entered = await enterFor(ctx.deps, { kind: "member", scope: ctx.scope, loginSessionId: ctx.user.sessionId }, { taskId: input.taskId, key: input.key, path: input.path ?? null });
+      if (entered.ok) {
+        return entered;
+      }
+      const { error } = entered;
+      switch (error) {
+        case "not-found":
+        case "not-allowed":
+        case "link-expired":
+        case "link-revoked":
+        case "public-links-off":
+        case "link-unknown":
+          throw notFound("preview");
+        case "no-preview-domain":
+        case "no-box":
+        case "port-not-allowed":
+        case "watch-only":
+        case "runner-cannot-tunnel":
+        case "runner-needs-upgrade":
+        case "runner-cannot-preview":
+        case "level-unknown":
+          return { ok: false as const, reason: error };
+        default:
+          return error satisfies never;
+      }
     }),
 
   /** The pane's heartbeat on its own view, every 30 s while it's open and the tab visible (Q299). */

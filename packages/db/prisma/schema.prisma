@@ -304,6 +304,14 @@ model InstanceSetting {
   retentionSetAt          DateTime?
   /// Milestone 3 (F-115): how long a needs-you mail waits, or `null` for `OSTRA_EMAIL_DELAY_SECONDS`.
   emailDelaySeconds       Int?
+  // ---- milestone 8 (ticket 26, F-144): the preview domain's last check, for Instance › Previews ----
+  /// The `OSTRA_PREVIEW_DOMAIN` the last check ran on: a result for another domain is no result.
+  previewCheckDomain      String?
+  /// The check's answer (`previewDomainCheckSchema`'s `checked` state), read back through it.
+  previewCheck            Json?
+  previewCheckAt          DateTime?
+  /// The account that ran it. Not a relation: the account may go, and the line keeps its time.
+  previewCheckByUserId    String?
   updatedAt               DateTime  @updatedAt
 
   @@map("instance_setting")
@@ -4246,6 +4254,12 @@ model PreviewView {
   /// Why its box refused its `preview.open` (`previewOpenRefusalSchema`): the pane's stream ends
   /// with it. `null` for a view its box didn't refuse. Only a closed view has one (`ostra:` check).
   refusal          String?
+  /// A native view (ticket 26, F-144): the framing header core's proxy replaced on the app's answers,
+  /// `x-frame-options` or `frame-ancestors`, the first time it did, for the pane's notice. `null`
+  /// until it replaces one. The app's own header, never a cookie or a body.
+  framingHeader    String?
+  /// That header's value as the app sent it, at most 256 characters.
+  framingValue     String?
 
   @@index([state, lastHeartbeatAt])
   @@index([taskId, key])

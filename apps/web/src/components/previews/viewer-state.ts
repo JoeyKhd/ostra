@@ -23,6 +23,12 @@ export type Shown = { readonly label: string; readonly port: number | null; read
 
 export type Viewer =
   | { readonly kind: "live"; readonly viewId: PreviewViewId; readonly shown: Shown }
+  /**
+   * Ticket 26 (F-142, F-144): a link that allows input, framed on the preview's own host. `url` is
+   * the host's one-time `/.ostra/enter`; `attempt` counts the codes the page asked for, and a new
+   * one remounts the frame.
+   */
+  | { readonly kind: "native"; readonly url: string; readonly host: string; readonly attempt: number; readonly shown: Shown }
   | { readonly kind: "not-running"; readonly shown: Shown }
   | { readonly kind: "ended"; readonly end: ViewerEnd; readonly shown: Shown | null };
 
@@ -31,6 +37,8 @@ export const viewerOf = (data: PreviewViewerData, before: Shown | null = null): 
   switch (data.state) {
     case "live":
       return { kind: "live", viewId: data.viewId, shown: { label: data.label, port: data.port, organizationName: data.organizationName, expiresAt: data.expiresAt, input: data.input } };
+    case "native":
+      return { kind: "native", url: data.url, host: data.host, attempt: 0, shown: { label: data.label, port: data.port, organizationName: data.organizationName, expiresAt: data.expiresAt, input: data.input } };
     case "not-running":
       return { kind: "not-running", shown: { label: data.label, port: data.port, organizationName: data.organizationName, expiresAt: data.expiresAt, input: data.input } };
     case "expired":

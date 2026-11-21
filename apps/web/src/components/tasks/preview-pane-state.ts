@@ -97,7 +97,11 @@ export type PaneState =
   /** The app stopped answering: the last picture dimmed, with a banner. */
   | { readonly kind: "crashed" }
   /** The view couldn't open, or its stream was refused, in words. */
-  | { readonly kind: "failed"; readonly words: string };
+  | { readonly kind: "failed"; readonly words: string }
+  /** Ticket 26: the native preview's one-time code in flight, or the frame following its redirect. */
+  | { readonly kind: "signing-in" }
+  /** Ticket 26: no code, or the sign-in didn't finish: why, `Try again` and `Use the box's browser`. */
+  | { readonly kind: "native-failed"; readonly words: string };
 
 /** Why `previews.open` didn't. */
 export type OpenRefusal = "no-box" | "port-not-allowed" | "runner-needs-upgrade" | "runner-cannot-preview" | "level-unknown";
@@ -111,8 +115,8 @@ export type PaneView =
 
 const finished: ReadonlySet<string> = new Set(["stopped", "merged", "done", "failed"]);
 
-/** The pane's state from the list, the task's state and the view. */
-export const paneStateOf = (list: Pick<PreviewList, "previews" | "box" | "can">, taskState: string, view: PaneView, words: { readonly failed: (view: PaneView) => string }): PaneState => {
+/** What the box alone decides, in either view: nothing to preview, a runner that can't, no box, or `null` once it runs. */
+const boxStateOf = (list: Pick<PreviewList, "previews" | "box" | "can">, taskState: string): PaneState | null => {
   if (list.previews.length === 0) return { kind: "none" };
   if ("refused" in list.can) return { kind: "too-old", reason: list.can.refused };
   switch (list.box) {
@@ -122,10 +126,17 @@ export const paneStateOf = (list: Pick<PreviewList, "previews" | "box" | "can">,
     case "starting":
       return { kind: "starting" };
     case "running":
-      break;
+      return null;
     default:
       return list.box satisfies never;
   }
+};
+
+/** The pane's state from the list, the task's state and the view. */
+export const paneStateOf = (list: Pick<PreviewList, "previews" | "box" | "can">, taskState: string, view: PaneView, words: { readonly failed: (view: PaneView) => string }): PaneState => {
+  const boxState = boxStateOf(list, taskState);
+  if (boxState !== null) return boxState;
+  if ("refused" in list.can) return { kind: "too-old", reason: list.can.refused };
   // A box that runs but can't stream (no browser in it): the same refusal as a runner that can't.
   if (!list.can.stream) return { kind: "too-old", reason: "runner-cannot-preview" };
   switch (view.kind) {
@@ -157,6 +168,91 @@ export const paneStateOf = (list: Pick<PreviewList, "previews" | "box" | "can">,
     default:
       return frame satisfies never;
   }
+};
+
+// ---------- the native preview (ticket 26, F-144; preview-native.md) ----------
+
+/** The pane's two views: the box's browser streamed, or the app in the member's own browser. */
+export const paneModes = ["stream", "native"] as const;
+export type PaneMode = (typeof paneModes)[number];
+
+export const isPaneMode = (value: string | null | undefined): value is PaneMode => paneModes.some((mode) => mode === value);
+
+/** Why no code came, or why the sign-in didn't finish: the API's refusals, a 10 s wait, or a failed call. */
+export type NativeFailure = Extract<RouterOutputs["previews"]["enter"], { readonly ok: false }>["reason"] | "timeout" | "error";
+
+/** The native view: its code in flight, the frame on the preview host (until its first load, signing in), or why not. */
+export type NativeView =
+  | { readonly kind: "idle" }
+  | { readonly kind: "entering" }
+  | { readonly kind: "framed"; readonly url: string; readonly host: string; readonly loaded: boolean }
+  | { readonly kind: "failed"; readonly reason: NativeFailure };
+
+/** How long the frame may take to load the preview host after its redirect before it's a failure (preview-native.md, "Signing in"). */
+export const SIGN_IN_FOR_MS = 10_000;
+
+/**
+ * Whether the pane may show the app in the member's own browser: a preview domain whose last check
+ * passed (the target's open point 3: a half-set domain never shows a broken frame), and a box whose
+ * runner can tunnel (never over the HTTP carrier).
+ */
+export const nativeOffered = (list: Pick<PreviewList, "can" | "native">): boolean => !("refused" in list.can) && list.can.native && list.native === "passed";
+
+/**
+ * The view the pane shows: the address's (`&mode=`), else the member's own choice for this preview,
+ * else "in your browser" (the default with a working preview domain, open point 1). Without the
+ * native preview, always the box's browser.
+ */
+export const paneModeOf = (offered: boolean, address: string | null, stored: PaneMode | null): PaneMode => {
+  if (!offered) return "stream";
+  if (isPaneMode(address)) return address;
+  return stored ?? "native";
+};
+
+/** The pane's state in the native view: what the box decides first, then the sign-in. */
+export const nativePaneStateOf = (list: Pick<PreviewList, "previews" | "box" | "can">, taskState: string, view: NativeView, words: { readonly failed: (reason: NativeFailure) => string }): PaneState => {
+  const boxState = boxStateOf(list, taskState);
+  if (boxState !== null) return boxState;
+  switch (view.kind) {
+    case "idle":
+    case "entering":
+      return { kind: "signing-in" };
+    case "framed":
+      return view.loaded ? { kind: "live" } : { kind: "signing-in" };
+    case "failed":
+      return { kind: "native-failed", words: words.failed(view.reason) };
+    default:
+      return view satisfies never;
+  }
+};
+
+/**
+ * The footer's offer at its right end while the pane shows the box's browser (preview-native.md):
+ * `Open it in your browser` once the native preview works; on the HTTP carrier, why it isn't
+ * available; while the check isn't passing, `Previews in settings` for an instance admin; nothing
+ * on an install with no preview domain.
+ */
+export type NativeOffer = { readonly kind: "none" } | { readonly kind: "open-here" } | { readonly kind: "http-only" } | { readonly kind: "settings" };
+
+export const nativeOfferOf = (list: Pick<PreviewList, "can" | "native" | "carrier" | "box">, instanceAdmin: boolean): NativeOffer => {
+  if (list.native === "not-set" || list.box !== "running") return { kind: "none" };
+  if (list.carrier === "http") return { kind: "http-only" };
+  if (nativeOffered(list)) return { kind: "open-here" };
+  return list.native === "passed" || !instanceAdmin ? { kind: "none" } : { kind: "settings" };
+};
+
+/** Where the member's choice of view is kept: per member and per preview, in this browser. */
+export const paneModeStorageKey = (memberId: string, taskId: string, key: string): string => `ostra.preview.view.${memberId}.${taskId}.${key}`;
+
+/** Where a dismissed framing notice is kept: per preview, in this browser (preview-native.md, open point 3). */
+export const framingNoticeStorageKey = (taskId: string, key: string): string => `ostra.preview.framing.${taskId}.${key}`;
+
+/** A host split for a middle ellipsis: the preview's own part shrinks, the domain's last labels never do. */
+export const hostParts = (host: string): { readonly head: string; readonly tail: string } => {
+  const labels = host.split(".");
+  if (labels.length < 3) return { head: host, tail: "" };
+  const tail = `.${labels.slice(-Math.min(3, labels.length - 1)).join(".")}`;
+  return { head: host.slice(0, host.length - tail.length), tail };
 };
 
 /** A view core closed: the app stopped (the banner), or it went and the pane opens another. */

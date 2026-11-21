@@ -16,7 +16,7 @@ import { errnoCode } from "@ostra/protocol";
 import EmbeddedPostgres from "embedded-postgres";
 
 import { startFakes, writeStackFile } from "./fakes.ts";
-import { e2eCorePort, e2eLockedEmail, e2ePort } from "./settings.ts";
+import { e2eCorePort, e2eLockedEmail, e2ePort, e2ePreviewDomain } from "./settings.ts";
 
 const clustersDir = path.join(devDataDir, "test");
 /** F-001: the second stack runs with the default password allowed (`06-default-password.spec.ts`). */
@@ -30,6 +30,14 @@ const emailSettings = process.env["OSTRA_E2E_EMAIL_LOCKED"] === "1" ? e2eLockedE
  * production build, for working on a screen against the stack. The specs always run on the build.
  */
 const devPanel = process.env["OSTRA_E2E_DEV"] === "1";
+/**
+ * Milestone 8 (ticket 26, F-144): the install's preview domain. `preview.localhost` by default,
+ * which needs no DNS record and no certificate (browsers send every `*.localhost` name to the
+ * machine), so the native preview runs against core's real proxy; OSTRA_E2E_PREVIEW_DOMAIN names
+ * another (the second stack's, a name that never resolves), and `none` leaves it unset.
+ */
+const previewDomain = process.env["OSTRA_E2E_PREVIEW_DOMAIN"] ?? e2ePreviewDomain;
+const previewSettings = previewDomain === "none" ? {} : { OSTRA_PREVIEW_DOMAIN: previewDomain };
 const webDir = path.resolve(import.meta.dirname, "..");
 const repoRoot = path.resolve(webDir, "..", "..");
 
@@ -145,6 +153,7 @@ const main = async (): Promise<void> => {
       OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE: "true",
       // Core as the panel reaches it: the panel hands core the files a member uploads (a skill's files, ticket 42).
       OSTRA_CORE_INTERNAL_URL: coreUrl,
+      ...previewSettings,
     },
   });
 
@@ -167,6 +176,7 @@ const main = async (): Promise<void> => {
       OSTRA_RESEND_API_URL: resend.url,
       ...emailSettings,
       OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE: "true",
+      ...previewSettings,
     },
   });
 

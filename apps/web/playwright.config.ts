@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-import { e2eBaseUrl, e2eDefaultPasswordBaseUrl, e2eDefaultPasswordPort, e2eExternalStack } from "./e2e/settings.ts";
+import { e2eBaseUrl, e2eDefaultPasswordBaseUrl, e2eDefaultPasswordPort, e2eExternalStack, e2eMissingPreviewDomain } from "./e2e/settings.ts";
 
 // The panel's browser checks (ADR 0007): a throwaway stack (`e2e/stack.ts`) and Chromium at
 // desktop and phone width. Run with `pnpm --filter @ostra/web test:e2e`, which builds the panel first.
@@ -21,7 +21,7 @@ export default defineConfig({
     {
       name: "desktop",
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
-      testIgnore: ["**/06-default-password.spec.ts", "**/06-email-locked.spec.ts", "phone/**", "**/pseudo-locale.spec.ts", "a11y/**"],
+      testIgnore: ["**/06-default-password.spec.ts", "**/06-email-locked.spec.ts", "**/25-preview-domain-missing.spec.ts", "phone/**", "**/pseudo-locale.spec.ts", "a11y/**"],
     },
     // The setup specs write data and run once, at desktop width; the phone project leaves them out,
     // and a test tagged `@desktop-only` (it changes state once: the seeded admin's default password).
@@ -29,7 +29,7 @@ export default defineConfig({
       name: "phone",
       use: { ...devices["Pixel 7"] },
       dependencies: ["desktop"],
-      testIgnore: ["**/02-setup.spec.ts", "**/03-first-run.spec.ts", "**/06-default-password.spec.ts", "**/06-email-locked.spec.ts", "phone/**", "**/pseudo-locale.spec.ts", "a11y/**"],
+      testIgnore: ["**/02-setup.spec.ts", "**/03-first-run.spec.ts", "**/06-default-password.spec.ts", "**/06-email-locked.spec.ts", "**/25-preview-domain-missing.spec.ts", "phone/**", "**/pseudo-locale.spec.ts", "a11y/**"],
       grepInvert: /@desktop-only/,
     },
     // F-075 (ticket 19): the phone sweep, every route on a touch phone at 390 × 844. It seeds its
@@ -53,11 +53,12 @@ export default defineConfig({
       testMatch: "a11y/**/*.spec.ts",
     },
     // F-001: the second stack, with OSTRA_ALLOW_DEFAULT_PASSWORD=true, and only its specs. Its email
-    // is set by its settings too (F-115, ticket 45), which lock the email page.
+    // is set by its settings too (F-115, ticket 45), which lock the email page, and its preview domain
+    // is a name that never resolves (F-144, ticket 26), whose check reports the missing record.
     {
       name: "default-password",
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, baseURL: e2eDefaultPasswordBaseUrl },
-      testMatch: ["**/06-default-password.spec.ts", "**/06-email-locked.spec.ts"],
+      testMatch: ["**/06-default-password.spec.ts", "**/06-email-locked.spec.ts", "**/25-preview-domain-missing.spec.ts"],
     },
   ],
   // An outside stack (OSTRA_E2E_PANEL_URL, e2e/settings.ts) is already running, with the fakes beside
@@ -77,7 +78,7 @@ export default defineConfig({
           // whose settings set its email (F-115, `06-email-locked.spec.ts`).
           command: "node e2e/stack.ts",
           url: `${e2eDefaultPasswordBaseUrl}/sign-in`,
-          env: { OSTRA_E2E_PORT: String(e2eDefaultPasswordPort), OSTRA_ALLOW_DEFAULT_PASSWORD: "true", OSTRA_E2E_EMAIL_LOCKED: "1" },
+          env: { OSTRA_E2E_PORT: String(e2eDefaultPasswordPort), OSTRA_ALLOW_DEFAULT_PASSWORD: "true", OSTRA_E2E_EMAIL_LOCKED: "1", OSTRA_E2E_PREVIEW_DOMAIN: e2eMissingPreviewDomain },
           timeout: 180_000,
           reuseExistingServer: false,
           stdout: "ignore",

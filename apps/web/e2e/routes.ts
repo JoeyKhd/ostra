@@ -64,6 +64,8 @@ export const memberRoutes = (world: RoutesWorld): readonly PanelRoute[] => {
     { pattern: "/account/notifications", path: "/account/notifications" },
     { pattern: "/device", path: "/device" },
     { pattern: "/instance/accounts", path: "/instance/accounts" },
+    // Milestone 8 (ticket 26): the preview domain and its check.
+    { pattern: "/instance/previews", path: "/instance/previews" },
     { pattern: "/organization/agent-profiles", path: "/organization/agent-profiles" },
     { pattern: "/organization/agent-profiles/new", path: "/organization/agent-profiles/new" },
     { pattern: "/organization/agent-profiles/[profile-id]", path: `/organization/agent-profiles/${world.profileId}` },

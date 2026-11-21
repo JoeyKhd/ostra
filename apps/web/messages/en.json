@@ -6,7 +6,8 @@
     "stillTesting": "{key} is still testing this environment.",
     "retry": "Retry",
     "task": {
-      "running": "onboarding task · running {age}", "waiting": "onboarding task · waiting for a decision",
+      "running": "onboarding task · running {age}",
+      "waiting": "onboarding task · waiting for a decision",
       "done": "onboarding task · done {age} ago",
       "stopped": "onboarding task · stopped"
     },
@@ -607,7 +608,8 @@
     },
     "menu": {
       "openWithCount": "Open navigation, {n} need you"
-    }
+    },
+    "previews": "Previews"
   },
   "signIn": {
     "title": "Sign in",
@@ -2032,6 +2034,39 @@
         "failed": "No view",
         "failedLine": "see why above",
         "watching": "{n} watching"
+      },
+      "native": {
+        "inYourBrowser": "in your browser",
+        "useBox": "Use the box's browser",
+        "openHere": "Open it in your browser",
+        "settings": "Previews in settings",
+        "newTabTip": "Open in a new tab · it signs you in on the preview's own host",
+        "frameName": "{label} :{port} at {path}, in your browser",
+        "signingInTitle": "Opening {label} :{port} in your browser",
+        "signingInBody": "Signing you in on {host}",
+        "failedTitle": "Couldn't open it in your browser.",
+        "tryAgain": "Try again",
+        "httpOnly": "In your browser isn't available: {runner} reaches ostra over HTTP only.",
+        "httpOnlyNoRunner": "In your browser isn't available: this task's runner reaches ostra over HTTP only.",
+        "newTabBlocked": "The browser blocked the new tab. Allow pop-ups for this panel, then try again.",
+        "notice": {
+          "xfo": "{label} sent {header}. ostra replaced it: only this panel can frame the preview.",
+          "ancestors": "{label} sent a {header} policy. ostra replaced it: only this panel can frame the preview.",
+          "full": "{label} sent {header}: {value}. ostra replaced it: only this panel can frame the preview.",
+          "dismiss": "Dismiss"
+        },
+        "refused": {
+          "no-preview-domain": "This install has no preview domain any more.",
+          "no-box": "The task's box isn't running: start the app to see it.",
+          "port-not-allowed": "This isn't one of the task's previews any more.",
+          "watch-only": "This preview is shared with you to watch: it opens in the box's browser.",
+          "runner-cannot-tunnel": "This task's runner reaches ostra over HTTP only.",
+          "runner-needs-upgrade": "This task's runner needs upgrading to show a preview.",
+          "runner-cannot-preview": "This task's runner can't show a preview.",
+          "level-unknown": "This preview's sharing is set by a newer ostra.",
+          "timeout": "The sign-in took too long. Try again.",
+          "error": "The panel couldn't ask for a sign-in code. Try again."
+        }
       }
     },
     "agent": "Agent",
@@ -2648,7 +2683,10 @@
       "title": "Too many tries from here",
       "body": "Wait a minute, then open the link again."
     },
-    "fine": "Nothing of the app is shown after a link ends."
+    "fine": "Nothing of the app is shown after a link ends.",
+    "inYourBrowser": "in your browser",
+    "signingIn": "Signing you in on {host}",
+    "nativeFailed": "Couldn't open it in your browser. Try again."
   },
   "previewWords": {
     "boxRefusal": {
@@ -5241,6 +5279,121 @@
       "adminSince": "Instance admin since {date}.",
       "grantTitle": "Make {name} an instance admin?",
       "grantBody": "{name} will set email and storage, and make reset links for any account. It opens nothing inside an organization {name} isn't in."
+    },
+    "previews": {
+      "title": "Previews",
+      "docs": "Previews in the docs",
+      "lede": "How a task's app opens in a member's own browser. Optional: without it, previews stream from the box.",
+      "domain": {
+        "title": "Preview domain",
+        "note": "from ostra's settings, so it's read-only here",
+        "notSet": "not set",
+        "opensOn": "a preview opens on",
+        "pattern": "<port>-<preview>.{domain}"
+      },
+      "warning": {
+        "line": "{domain} is on the panel's own site, {site}.",
+        "sub": "Previews work, but a domain of its own, such as {example}, keeps their cookies apart.",
+        "why": "Why"
+      },
+      "add": {
+        "title": "Add these once",
+        "note": "at your DNS provider, and at the ingress in front of core",
+        "dns": "One DNS record",
+        "certificate": "A wildcard certificate for {name}",
+        "certificateBody": "Let's Encrypt issues one only through DNS-01: your ACME client needs your DNS provider's API.",
+        "upgrades": "WebSocket upgrades on those hosts",
+        "upgradesBody": "As runners need on core's own host. A dev server's live reload rides them.",
+        "notNeeded": "Not needed for {domain}."
+      },
+      "check": {
+        "title": "Check",
+        "note": "resolves a random name under the domain and opens it over HTTPS",
+        "noteLocal": "opens a random name under the domain over http",
+        "dns": "DNS record",
+        "certificate": "Certificate",
+        "proxy": "ostra answers on it",
+        "upgrade": "WebSocket upgrades",
+        "notChecked": "Not checked yet.",
+        "run": "Check",
+        "again": "Check again",
+        "checking": "Checking…",
+        "at": "Checked at {time} by {name}.",
+        "atNoName": "Checked at {time}.",
+        "failing": "Until it passes, previews stream from the box's browser.",
+        "working": "Previews open in members' own browsers.",
+        "couldNot": "The check didn't finish: {reason}.",
+        "result": {
+          "passed": "{name}: passed. {detail}",
+          "failed": "{name}: failed. {detail}",
+          "skipped": "{name}: not checked. {detail}",
+          "not-needed": "{name}: not needed. {detail}"
+        }
+      },
+      "unset": {
+        "body": "Previews work without it: the pane streams the box's own browser, {cli} serves a port on a member's own {localhost}, and screenshots land in the thread. With a preview domain, the app also runs in the member's own browser, with its devtools.",
+        "title": "To turn it on",
+        "note": "once, by whoever runs this install",
+        "step1": "Pick a domain of its own",
+        "step1Body": "Such as {own}. A name on the panel's own site, such as {shared}, works too, with a warning.",
+        "step2": "Add one DNS record",
+        "step3": "Get a wildcard certificate, and pass WebSocket upgrades",
+        "step3Body": "For {name}, through the DNS-01 challenge, at the ingress in front of core.",
+        "step4": "Set the domain, restart core, and check it here",
+        "localhost": "On a development machine, {domain} needs no record and no certificate: browsers send every {any} name to the machine itself."
+      },
+      "copy": "Copy",
+      "copied": "Copied",
+      "public": {
+        "title": "Public preview links",
+        "note": "{organization}'s setting",
+        "label": "Allow public preview links",
+        "off": "off: a link expires within {days} days",
+        "on": "on: members may make a link that doesn't expire",
+        "help": "A public link opens a preview for anyone who has it, signed in or not, until a member revokes it. Members still choose it per preview, and each change is in the audit log.",
+        "notAdmin": "Public links are each organization's choice: an admin of {organization} turns them on.",
+        "confirmTitle": "Allow public preview links in {organization}?",
+        "confirmBody": "Anyone with a public link sees that preview, and with \"Allow input\" clicks and types in it, until a member revokes it. Turning this off ends every public link.",
+        "cancel": "Cancel",
+        "confirm": "Allow public links"
+      },
+      "props": {
+        "domain": "Preview domain",
+        "status": "Status",
+        "failing": "Check failing",
+        "working": "Working",
+        "notChecked": "Not checked",
+        "notSet": "Not set",
+        "lastCheck": "Last check",
+        "passedOf": "· {n} of 4 passed",
+        "inBrowser": "In your browser",
+        "offUntil": "Off until it passes",
+        "on": "On",
+        "off": "Off",
+        "panel": "Panel",
+        "core": "Core",
+        "signing": "Signing in on a preview",
+        "cookie": "Cookie",
+        "scope": "Scope",
+        "scopeValue": "The preview's host only",
+        "sameSite": "SameSite",
+        "lax": "Lax",
+        "laxNote": "· the panel's site",
+        "none": "None, partitioned",
+        "noneNote": "· another site",
+        "lasts": "Lasts",
+        "lastsValue": "12 h at most",
+        "signingHelp": "A one-time code sets it. The panel's own cookie never reaches a preview, and only the panel may frame one.",
+        "without": "Without a preview domain",
+        "browserView": "The browser view",
+        "browserViewNote": "every runner",
+        "cli": "ostra preview",
+        "cliNote": "a member's localhost",
+        "screenshots": "Screenshots",
+        "screenshotsNote": "in the thread",
+        "native": "The app in your browser",
+        "nativeNote": "needs it"
+      }
     }
   },
   "audit": {

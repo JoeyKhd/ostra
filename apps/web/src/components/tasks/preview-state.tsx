@@ -1,6 +1,6 @@
 "use client";
 
-import { AppWindowIcon, ArrowRightIcon, CheckIcon, MessageSquareIcon, MoonIcon, PowerIcon, RotateCwIcon, ServerOffIcon, TriangleAlertIcon, XIcon } from "lucide-react";
+import { AppWindowIcon, ArrowRightIcon, CheckIcon, CircleAlertIcon, MessageSquareIcon, MonitorIcon, MoonIcon, PowerIcon, RotateCwIcon, ServerOffIcon, TriangleAlertIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -216,4 +216,31 @@ export const DroppedPill = ({ lost, onRetry }: { readonly lost: boolean; readonl
       </>
     )}
   </div>
+);
+
+/**
+ * The native preview signing in (ticket 26; preview-native.md, "Signing in"): the starting block,
+ * shortened, over the frame while its one-time code redirects. It lasts one redirect.
+ */
+export const SigningInBlock = ({ label, port, host }: { readonly label: string; readonly port: number; readonly host: string | null }) => (
+  <StateBlock width={400} testId="preview-signing-in">
+    <IconBox><Spinner className="size-4" /></IconBox>
+    <Title>{t("task.preview.native.signingInTitle", { label, port })}</Title>
+    {host === null ? null : <Line>{t("task.preview.native.signingInBody", { host })}</Line>}
+  </StateBlock>
+);
+
+/** The native preview's handshake failed (ticket 26): why, `Try again`, and the box's browser. */
+export const NativeFailedBlock = ({ words, onRetry, onUseBox }: { readonly words: string; readonly onRetry: () => void; readonly onUseBox: (() => void) | null }) => (
+  <StateBlock width={430} testId="preview-native-failed">
+    <div aria-hidden className="mb-3.5 grid size-9 place-items-center rounded-[9px] border border-line-2 text-red [&_svg]:size-[17px] [&_svg]:stroke-[1.75]"><CircleAlertIcon /></div>
+    <Title>{t("task.preview.native.failedTitle")}</Title>
+    <Line>{words}</Line>
+    <div className="mt-4 flex flex-wrap gap-2">
+      <Button variant="outline" onClick={onRetry} data-action="preview-native-again"><RotateCwIcon aria-hidden /> {t("task.preview.native.tryAgain")}</Button>
+      {onUseBox === null ? null : (
+        <Button variant="ghost" className="text-teal hover:text-teal" onClick={onUseBox} data-action="preview-use-box"><MonitorIcon aria-hidden /> {t("task.preview.native.useBox")}</Button>
+      )}
+    </div>
+  </StateBlock>
 );

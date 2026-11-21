@@ -631,6 +631,8 @@ describe("a preview's writes, by each kind of viewer (F-142)", () => {
     type Fresh = Awaited<ReturnType<typeof fresh>>;
     const writes: Readonly<Record<string, (caller: AppCaller, at: Fresh) => Promise<unknown>>> = {
       "previews.open": (caller, at) => caller.previews.open({ taskId: at.task.taskId, key: at.task.key }),
+      // Ticket 26: the native preview's code. With no preview domain here, a viewer who may open it hears so.
+      "previews.enter": (caller, at) => caller.previews.enter({ taskId: at.task.taskId, key: at.task.key }),
       // On the project member's own view: nobody else's to beat or close.
       "previews.heartbeat": (caller, at) => caller.previews.heartbeat({ viewId: at.viewId }),
       "previews.close": (caller, at) => caller.previews.close({ viewId: at.viewId }),
@@ -651,6 +653,8 @@ describe("a preview's writes, by each kind of viewer (F-142)", () => {
     const members = { "organization admin": "ok", "project member": "ok", "named person": "NOT_FOUND", ...outsiders } as const;
     const table: Readonly<Record<string, Readonly<Record<Viewer, string>>>> = {
       "previews.open": { ...members, "named person": "ok" },
+      // The named person gets `watch-only` and no code; nobody outside the task learns of it.
+      "previews.enter": { ...members, "named person": "ok" },
       "previews.heartbeat": { ...members, "organization admin": "NOT_FOUND" },
       "previews.close": { ...members, "organization admin": "NOT_FOUND" },
       "previews.startApp": members,

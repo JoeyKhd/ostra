@@ -31,6 +31,7 @@ import {
   previewRedirectPath,
   previewSiteLayout,
   previewViewInTx,
+  recordPreviewFraming,
   redeemNativeEntry,
   REPLICA_SIGNATURE_HEADER,
   rewriteRequest,
@@ -493,10 +494,26 @@ export const createNativePreviews = (deps: NativePreviewsDeps): NativePreviews =
     return `${url.pathname}${url.search}`;
   };
 
-  /** Sends the box's answer on to the browser, rewritten. */
+  /** The views whose framing header is recorded already: the pane's notice needs it once (ticket 26). */
+  const framed = new Set<PreviewViewId>();
+
+  /** Sends the box's answer on to the browser, rewritten, and records a framing header it replaced. */
   const answer = (response: ServerResponse, status: number, headers: HeaderMap, view: NativeView, host: string): void => {
     const rewritten = rewriteResponse(headers, { panelOrigin, previewHost: host, port: view.port, scheme: origin.scheme });
     response.writeHead(status, outgoingOf(rewritten.headers));
+    const framing = rewritten.framing;
+    if (framing !== null && !framed.has(view.viewId)) {
+      // A bounded memory: the row itself keeps the first header, so forgetting only costs a write.
+      if (framed.size >= 4_096) {
+        framed.clear();
+      }
+      framed.add(view.viewId);
+      // The app's own header, kept for the pane's notice; never logged.
+      recordPreviewFraming(deps.db, view.viewId, framing).catch((error: unknown) => {
+        framed.delete(view.viewId);
+        logger.warn("preview.native-framing-not-recorded", { viewId: view.viewId, error: error instanceof Error ? error.name : "unknown" });
+      });
+    }
   };
 
   const proxyHere = (session: ClientHttp2Session, request: IncomingMessage, response: ServerResponse, headers: HeaderMap, view: NativeView, host: string): Promise<void> =>

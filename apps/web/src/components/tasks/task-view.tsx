@@ -377,7 +377,8 @@ const useNarrow = (): boolean => {
  * The task page (task.md; ADR 0036, F-023, F-025): the header, the live thread with its composer, and
  * the properties panel. Stop is optimistic and confirmed by the stream's change notice. Milestone 8
  * (F-141): the top bar's `Preview | Properties` chooses the side pane, kept in the address
- * (`?pane=preview&preview={key}&path=/history`, and `&view=full` expanded), so a link reopens it.
+ * (`?pane=preview&preview={key}&path=/history`, `&view=full` expanded, and ticket 26's `&mode=native`
+ * or `stream` for the app in the member's own browser or the box's), so a link reopens it.
  */
 export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const trpc = useTRPC();
@@ -735,6 +736,10 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
       members={members.data ?? []}
       now={now}
       phone={narrowScreen}
+      mode={params.get("mode")}
+      onMode={(next) => { setQuery({ pane: "preview", mode: next }); }}
+      memberId={me.data?.memberId ?? null}
+      instanceAdmin={me.data?.instanceAdmin ?? false}
     />
   ) : null;
 

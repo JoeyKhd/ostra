@@ -38,7 +38,8 @@ export type ShellIcon =
   | "mail"
   | "user"
   | "monitor-smartphone"
-  | "blocks";
+  | "blocks"
+  | "app-window";
 
 export type HomeRow = "overview" | "board" | "all-tasks";
 export type ProjectRow = "tasks" | "needs-approval" | "inbox" | "boards" | "environment" | "automations" | "memory" | "insights" | "settings";
@@ -58,7 +59,8 @@ export type OrganizationRow =
   | "audit"
   | "accounts"
   | "storage"
-  | "email";
+  | "email"
+  | "previews";
 export type SettingsRow = "account" | "notifications" | "device";
 
 /** Where a page sits: its space, and the row of that space's panel that is the page (none for New task). */
@@ -178,6 +180,8 @@ export const organizationGroups: readonly RowGroup<OrganizationRow>[] = [
       { id: "accounts", href: "/instance/accounts", label: "shell.accounts", icon: "circle-user-round", gate: "instance-admin" },
       { id: "storage", href: "/organization/storage", label: "shell.storage", icon: "hard-drive", gate: "instance-admin" },
       { id: "email", href: "/organization/email", label: "shell.email", icon: "mail", gate: "instance-admin" },
+      // Milestone 8 (F-144, ticket 26; instance-preview-domain.md): the preview domain and its check.
+      { id: "previews", href: "/instance/previews", label: "shell.previews", icon: "app-window", gate: "instance-admin" },
     ],
   },
 ];
@@ -271,6 +275,7 @@ export const pagePlaces: readonly { readonly pattern: string; readonly place: Pl
   { pattern: "/organization/storage", place: organization("storage") },
   { pattern: "/organization/email", place: organization("email") },
   { pattern: "/instance/accounts", place: organization("accounts") },
+  { pattern: "/instance/previews", place: organization("previews") },
   { pattern: "/account", place: settings("account") },
   { pattern: "/account/notifications", place: settings("notifications") },
   { pattern: "/device", place: settings("device") },

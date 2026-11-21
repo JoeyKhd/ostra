@@ -1,10 +1,11 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import { ClockIcon, EyeIcon, MousePointerClickIcon } from "lucide-react";
+import { ClockIcon, EyeIcon, MousePointerClickIcon, RotateCwIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
+import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import { formatClock } from "@/lib/format";
@@ -23,6 +24,11 @@ import type { PreviewViewerData, Shown, Viewer } from "./viewer-state";
 // pictures. Nothing else of the task: its route reaches only the link's own procedures
 // (`previews.link.open`, `.heartbeat`, `.close`) and the view's stream and input routes, with the
 // link's token. A link that ends while the page is open loses the stream at once and says why.
+//
+// Ticket 26 (F-142, F-144): a link that allows input, on an install whose preview domain works,
+// frames the app on its preview host instead (`state: "native"`), as the pane does. Core keeps that
+// view itself, so the page asks only the link's state every 30 s (`previews.link.state`), and a new
+// one-time code on `Try again` (`previews.link.enter`).
 
 /** The heartbeat (Q299): it keeps the box warm while someone watches, and learns of a link's end. */
 const HEARTBEAT_MS = 30_000;
@@ -64,6 +70,12 @@ export const ViewerPage = ({ token, initial }: { readonly token: string; readonl
   const open = useMutation(trpc.previews.link.open.mutationOptions());
   const heartbeat = useMutation(trpc.previews.link.heartbeat.mutationOptions());
   const close = useMutation(trpc.previews.link.close.mutationOptions());
+  const linkState = useMutation(trpc.previews.link.state.mutationOptions());
+  const enterAgain = useMutation(trpc.previews.link.enter.mutationOptions());
+  const { mutateAsync: askState } = linkState;
+  const { mutateAsync: askCode } = enterAgain;
+  /** The native frame's sign-in: loaded once its redirect finished, or failed after 10 s. */
+  const [nativeLoad, setNativeLoad] = useState<"signing-in" | "loaded" | "failed">("signing-in");
   const { mutateAsync: openAgain } = open;
   const { mutateAsync: beat } = heartbeat;
   const { mutate: closeView } = close;
@@ -90,6 +102,15 @@ export const ViewerPage = ({ token, initial }: { readonly token: string; readonl
   /** What the link's view is now: an ended link shows its block; a closed view opens again. */
   const learn = useCallback(async () => {
     const state = current.current;
+    if (state.kind === "native") {
+      try {
+        const answer = await askState({ token });
+        if (answer.state !== "active") setViewer({ kind: "ended", end: learnedEnd(answer.state, state.shown, Date.now()), shown: state.shown });
+      } catch {
+        // The next tick asks again.
+      }
+      return;
+    }
     if (state.kind !== "live") return;
     try {
       const answer = await beat({ token, viewId: state.viewId });
@@ -112,7 +133,7 @@ export const ViewerPage = ({ token, initial }: { readonly token: string; readonl
     } catch {
       // The heartbeat comes again.
     }
-  }, [beat, reopen, token]);
+  }, [beat, reopen, token, askState]);
 
   // The heartbeat while the page is visible.
   const liveViewId = viewer.kind === "live" ? viewer.viewId : null;
@@ -129,6 +150,70 @@ export const ViewerPage = ({ token, initial }: { readonly token: string; readonl
       window.removeEventListener("pagehide", leave);
     };
   }, [liveViewId, learn, closeView, token]);
+
+  // The native view's link, asked about every 30 s while the page is visible.
+  const nativeShown = viewer.kind === "native";
+  useEffect(() => {
+    if (!nativeShown) return;
+    const tick = () => { if (document.visibilityState === "visible") void learn(); };
+    const timer = setInterval(tick, HEARTBEAT_MS);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, [nativeShown, learn]);
+
+  // The sign-in is one redirect: a frame that hasn't loaded in 10 s failed.
+  const nativeAttempt = viewer.kind === "native" ? viewer.attempt : -1;
+  useEffect(() => {
+    if (nativeAttempt < 0) return;
+    setNativeLoad("signing-in");
+    const timer = setTimeout(() => { setNativeLoad((now) => (now === "loaded" ? now : "failed")); }, 10_000);
+    return () => { clearTimeout(timer); };
+  }, [nativeAttempt]);
+
+  /** `Try again`: a new one-time code for the link, or the link's end. */
+  const nativeAgain = useCallback(async () => {
+    const state = current.current;
+    if (state.kind !== "native") return;
+    try {
+      const answer = await askCode({ token });
+      if (answer.ok) {
+        setViewer({ kind: "native", url: answer.url, host: answer.host, attempt: state.attempt + 1, shown: state.shown });
+        return;
+      }
+      switch (answer.reason) {
+        case "link-expired":
+          setViewer({ kind: "ended", end: learnedEnd("expired", state.shown, Date.now()), shown: state.shown });
+          return;
+        case "link-revoked":
+          setViewer({ kind: "ended", end: learnedEnd("revoked", state.shown, Date.now()), shown: state.shown });
+          return;
+        case "not-allowed":
+        case "unknown":
+          setViewer({ kind: "ended", end: learnedEnd(answer.reason, state.shown, Date.now()), shown: state.shown });
+          return;
+        case "no-box":
+        case "port-not-allowed":
+          setViewer({ kind: "not-running", shown: state.shown });
+          return;
+        case "no-preview-domain":
+        case "watch-only":
+        case "runner-cannot-tunnel":
+        case "runner-needs-upgrade":
+        case "runner-cannot-preview":
+        case "level-unknown":
+          // The browser view instead, as the server's open would give it now.
+          await reopen();
+          return;
+        default:
+          answer.reason satisfies never;
+      }
+    } catch {
+      setNativeLoad("failed");
+    }
+  }, [askCode, reopen, token]);
 
   // An app that isn't running: asked again until it is.
   const notRunning = viewer.kind === "not-running";
@@ -152,6 +237,7 @@ export const ViewerPage = ({ token, initial }: { readonly token: string; readonl
 
   const shown = viewer.shown;
   const showChips = viewer.kind !== "ended" && shown !== null;
+  const footLive = viewer.kind === "native" ? nativeLoad === "loaded" : frame.kind === "live";
   const expiryChip = showChips && shown.expiresAt !== null ? (
     <Chip icon={<ClockIcon aria-hidden />} tip={t("previewViewer.expiresAt", { date: shortDate(shown.expiresAt), time: formatClock(shown.expiresAt) })} testId="viewer-expiry">
       {expiryWords(shown.expiresAt, now)}
@@ -220,6 +306,36 @@ export const ViewerPage = ({ token, initial }: { readonly token: string; readonl
           </div>
         );
       }
+      case "native": {
+        const name = t("task.preview.native.frameName", { label: viewer.shown.label, port: viewer.shown.port ?? "", path: "/" });
+        return (
+          <div className="relative min-h-0 flex-1 bg-surface px-3 py-3 sm:px-5 sm:py-[18px]">
+            <div className="size-full rounded-lg border border-line-2">
+              <PreviewFrame key={viewer.attempt} mode="native" host={viewer.host} enterUrl={viewer.url} name={name} onLoad={() => { setNativeLoad("loaded"); }} />
+            </div>
+            {nativeLoad === "loaded" ? null : (
+              <div className="absolute inset-0 grid place-items-center bg-surface p-5" data-testid={nativeLoad === "failed" ? "viewer-native-failed" : "viewer-starting"}>
+                <div role="status" className="w-full max-w-[380px]">
+                  {nativeLoad === "failed" ? (
+                    <>
+                      <p className="mb-3 text-[14px] text-muted">{t("previewViewer.nativeFailed")}</p>
+                      <Button variant="outline" onClick={() => { void nativeAgain(); }} data-action="viewer-native-again"><RotateCwIcon aria-hidden /> {t("task.preview.native.tryAgain")}</Button>
+                    </>
+                  ) : (
+                    <>
+                      <div aria-hidden className="mb-3 grid size-9 place-items-center rounded-[9px] border border-line-2">
+                        <span className="inline-block size-4 animate-spin rounded-full border-2 border-line-2 border-t-muted motion-reduce:animate-none" />
+                      </div>
+                      <h1 className="mb-1 text-[16px] font-semibold text-text">{t("previewViewer.opening", { label: viewer.shown.label, port: viewer.shown.port ?? "" })}</h1>
+                      <p className="text-[14px] text-muted">{t("previewViewer.signingIn", { host: viewer.host })}</p>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
       default:
         return viewer satisfies never;
     }
@@ -251,12 +367,19 @@ export const ViewerPage = ({ token, initial }: { readonly token: string; readonl
         </div>
       )}
       {stage()}
-      {viewer.kind === "live" ? (
-        <footer className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-2 gap-y-0.5 whitespace-nowrap border-t border-line px-4 py-2 pb-[max(8px,env(safe-area-inset-bottom))] text-[13px] text-muted sm:h-10 sm:px-[22px] sm:py-0">
-          <span aria-hidden className={cn("inline-block size-[7px] rounded-full", frame.kind === "live" ? "bg-green" : "bg-faint")} />
-          <span className="font-medium text-text">{frame.kind === "live" ? t("task.preview.foot.live") : t("task.preview.foot.starting")}</span>
-          <span className="text-faint">· {t("previewViewer.streamed")}</span>
-          {size === null ? null : (
+      {viewer.kind === "live" || viewer.kind === "native" ? (
+        <footer className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-2 gap-y-0.5 whitespace-nowrap border-t border-line px-4 py-2 pb-[max(8px,env(safe-area-inset-bottom))] text-[13px] text-muted sm:h-10 sm:px-[22px] sm:py-0" data-mode={viewer.kind === "native" ? "native" : "stream"}>
+          <span aria-hidden className={cn("inline-block size-[7px] rounded-full", footLive ? "bg-green" : "bg-faint")} />
+          <span className="font-medium text-text">{footLive ? t("task.preview.foot.live") : t("task.preview.foot.starting")}</span>
+          {viewer.kind === "native" ? (
+            <>
+              <span className="text-faint">· {t("previewViewer.inYourBrowser")} ·</span>
+              <span className="min-w-0 truncate font-mono text-[12.5px] text-muted" data-testid="viewer-host">{viewer.host}</span>
+            </>
+          ) : (
+            <span className="text-faint">· {t("previewViewer.streamed")}</span>
+          )}
+          {size === null || viewer.kind === "native" ? null : (
             <span className="ml-auto font-mono text-[12.5px] text-faint max-sm:hidden" data-testid="viewer-size">
               {size.width} × {size.height} · {scale}%
             </span>

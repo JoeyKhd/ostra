@@ -176,6 +176,8 @@ const procedures: Readonly<Record<string, { readonly input: InputOf; readonly ab
   "insights.get": { input: (target) => ({ projectId: target.projectId, period: { kind: "preset", days: 30 } }), about: "project" },
   "instance.accounts.search": { input: () => ({ query: "" }), about: "organization" },
   "instance.admins": { input: none, about: "organization" },
+  // Ticket 26 (F-144): Instance › Previews, the instance admin's alone.
+  "instance.previews": { input: none, about: "organization" },
   "invitations.preview": { input: (target) => ({ invitationId: row(target, "Invitation") }), about: "organization" },
   // Milestone 8 (F-145, F-146, ticket 30): the library, any member's to read; its sources, suggestions, counts, files and switch an admin's.
   "library.list": { input: none, about: "organization" },
@@ -624,6 +626,7 @@ const matrix: Readonly<Record<string, readonly [Outcome, Outcome, Outcome, Outco
   "insights.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "instance.accounts.search": ["FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "instance.admins": ["FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  "instance.previews": ["FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "invitations.preview": ["ok", "ok", "ok", "ok", "ok"],
   // Milestone 8 (F-145, ticket 30): any member reads the library; the rest is an organization admin's.
   // The fixture's version holds no file, so an admin's read of one finds none.

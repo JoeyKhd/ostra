@@ -1,7 +1,22 @@
-import { checkPreviewDomain, createPreviewDomainProbe, grantInstanceAdmin, previewDomainCheckSchema } from "@ostra/domain";
-import { userIdSchema } from "@ostra/protocol";
+import {
+  checkPreviewDomain,
+  createPreviewDomainProbe,
+  grantInstanceAdmin,
+  previewDomainCheckedSchema,
+  previewDomainCheckSchema,
+  previewDomainStatus,
+  previewHost,
+  previewHostOrigin,
+  previewOriginOf,
+  previewSharedSite,
+  previewSiteLayout,
+  savePreviewDomainCheck,
+} from "@ostra/domain";
+import type { PreviewDomainStatus } from "@ostra/domain";
+import { previewIdSchema, userIdSchema } from "@ostra/protocol";
 import { z } from "zod";
 
+import type { ApiDeps } from "../trpc/context.ts";
 import { instanceAdminProcedure, router, unwrap } from "../trpc/init.ts";
 
 // The install's own settings (ticket 31): instance admins only, apart from organization admins.
@@ -33,6 +48,69 @@ const accountViewSchema = z.strictObject({
   instanceAdminSince: z.number().int().nullable(),
 });
 
+// ---------- Instance › Previews (milestone 8, ticket 26, F-144; `instance-preview-domain.md`) ----------
+
+/** The domain's last check, as the page shows it. */
+const domainStatusSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("not-set") }),
+  z.strictObject({ state: z.literal("unchecked"), domain: z.string() }),
+  z.strictObject({ state: z.literal("checked"), domain: z.string(), check: previewDomainCheckedSchema, at: z.number().int(), byName: z.string().nullable(), passed: z.boolean() }),
+]);
+
+/** The one DNS record to add: a CNAME to core's host, or an A or AAAA record when core's public address is an IP. */
+const dnsRecordSchema = z.strictObject({ name: z.string(), type: z.enum(["CNAME", "A", "AAAA"]), value: z.string() });
+
+/**
+ * The page's data: the settings it reads (never writes), whether the domain shares the panel's site
+ * (Q307: allowed, with a warning), the record to add, a real preview's host as the example, the
+ * cookie's `SameSite` by the install's layout, the check's last result, and the organization's
+ * public-links switch with whether the viewer may change it.
+ */
+const instancePreviewsSchema = z.strictObject({
+  domain: z.string().nullable(),
+  /** Under `localhost`: browsers send every name to the machine itself, so no record or certificate. */
+  localhost: z.boolean(),
+  panelHost: z.string(),
+  coreHost: z.string(),
+  /** The panel's site when the preview domain is on it, for the warning; `null` on a site of its own. */
+  sharedSite: z.string().nullable(),
+  sameSite: z.enum(["lax", "none-partitioned"]).nullable(),
+  record: dnsRecordSchema.nullable(),
+  /** A real preview's host in the organization, or `null` for the pattern. */
+  exampleHost: z.string().nullable(),
+  status: domainStatusSchema,
+  organization: z.strictObject({ name: z.string(), admin: z.boolean(), publicPreviewLinks: z.boolean() }),
+  linkMaxDays: z.number().int(),
+  /** The docs' page on the preview domain (`OSTRA_DOCS_URL`), for the top bar's link and `Why`. */
+  docs: z.string(),
+});
+export type InstancePreviews = z.infer<typeof instancePreviewsSchema>;
+
+const isIpv4 = (host: string): boolean => /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host);
+
+/** The record for `*.<domain>`, pointing at core's public host. */
+const recordFor = (domain: string, corePublicUrl: string): z.infer<typeof dnsRecordSchema> => {
+  const host = new URL(corePublicUrl).hostname.replace(/^\[|\]$/g, "");
+  return { name: `*.${domain}`, type: isIpv4(host) ? "A" : host.includes(":") ? "AAAA" : "CNAME", value: host };
+};
+
+/** The host of the organization's newest native preview, for the page's example; `null` before one opened. */
+const exampleHostOf = async (deps: ApiDeps, organizationId: string, domain: string): Promise<string | null> => {
+  const code = await deps.db.previewCode.findFirst({
+    where: { organizationId, kind: "enter", task: { previewId: { not: null } } },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: { port: true, task: { select: { previewId: true } } },
+  });
+  const previewId = previewIdSchema.safeParse(code?.task.previewId);
+  if (code === null || !previewId.success) {
+    return null;
+  }
+  return new URL(previewHostOrigin(previewHost(code.port, previewId.data, domain), previewOriginOf(deps.settings.corePublicUrl))).host;
+};
+
+/** The status as the page's schema holds it. */
+const statusView = (status: PreviewDomainStatus): z.infer<typeof domainStatusSchema> => status;
+
 /** What `grantInstanceAdmin` answers, as the panel reads it. */
 const grantCodes = { forbidden: "FORBIDDEN", "not-found": "NOT_FOUND", "last-instance-admin": "CONFLICT" } as const;
 
@@ -44,12 +122,47 @@ export const instanceRouter = router({
    * whether core's preview proxy answered and whether a WebSocket upgrade went through. `not-set`
    * with no domain. It reaches the install's own domain only, and sends nothing of a member's.
    */
-  previewDomainCheck: instanceAdminProcedure.output(previewDomainCheckSchema).mutation(({ ctx }) =>
-    checkPreviewDomain(
+  previewDomainCheck: instanceAdminProcedure.output(previewDomainCheckSchema).mutation(async ({ ctx }) => {
+    const domain = ctx.deps.settings.previews.domain;
+    const check = await checkPreviewDomain(
       { probe: ctx.deps.previews.domainProbe ?? createPreviewDomainProbe(), mark: ctx.deps.previews.checkMark, clock: ctx.deps.ports.clock },
-      { domain: ctx.deps.settings.previews.domain, corePublicUrl: ctx.deps.settings.corePublicUrl },
-    ),
-  ),
+      { domain, corePublicUrl: ctx.deps.settings.corePublicUrl },
+    );
+    // Ticket 26: its result is kept for the install, with who ran it, and the run is audited.
+    await savePreviewDomainCheck({ db: ctx.deps.db, audit: ctx.deps.ports.audit, clock: ctx.deps.ports.clock }, { userId: ctx.user.userId, scope: ctx.scope }, { domain, check });
+    return check;
+  }),
+
+  /**
+   * Instance › Previews (ticket 26, F-144, F-142; `instance-preview-domain.md`): the preview domain as
+   * configured, read-only; the record and certificate to add; the check's last result; and the
+   * organization's "Allow public preview links", which only its admins change.
+   */
+  previews: instanceAdminProcedure.output(instancePreviewsSchema).query(async ({ ctx }) => {
+    const { db, settings } = ctx.deps;
+    const domain = settings.previews.domain;
+    const organizationId = ctx.scope.organizationId;
+    const [organization, setting, status] = await Promise.all([
+      db.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true } }),
+      db.organizationSetting.findUnique({ where: { organizationId }, select: { publicPreviewLinks: true } }),
+      previewDomainStatus(db, domain),
+    ]);
+    const localhost = domain !== null && (domain === "localhost" || domain.endsWith(".localhost"));
+    return {
+      domain,
+      localhost,
+      panelHost: new URL(settings.publicUrl).host,
+      coreHost: new URL(settings.corePublicUrl).host,
+      sharedSite: domain === null ? null : previewSharedSite(settings.publicUrl, domain),
+      sameSite: domain === null ? null : previewSiteLayout(settings.publicUrl, domain) === "same-site" ? "lax" : "none-partitioned",
+      record: domain === null || localhost ? null : recordFor(domain, settings.corePublicUrl),
+      exampleHost: domain === null ? null : await exampleHostOf(ctx.deps, organizationId, domain),
+      status: statusView(status),
+      organization: { name: organization.name, admin: ctx.scope.role === "admin", publicPreviewLinks: setting?.publicPreviewLinks ?? false },
+      linkMaxDays: settings.previews.linkMaxDays,
+      docs: `${settings.docsUrl}install/preview-domain/`,
+    };
+  }),
   /**
    * The install's accounts (instance admin only, F-003, ticket 43): by a prefix of the username, the
    * address or the name, case-insensitive, sorted by name, 50 at a time.

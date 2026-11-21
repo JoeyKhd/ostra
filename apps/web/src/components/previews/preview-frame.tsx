@@ -18,8 +18,15 @@ import type { PreviewFrame as StreamFrame } from "./preview-stream";
 // scaled down to fit and never up. With input, the frame takes the focus and sends the member's
 // mouse, wheel, keys and pasted text to the shared page; Tab still moves the focus on, and Escape
 // or ⌘. (Ctrl+. elsewhere) hands it back, so the panel's keyboard rules hold (milestone 7). One
-// interface for the pane and the viewer page: ticket 26 adds the native preview's `<iframe>` behind
-// the same props (`mode`).
+// interface for the pane and the viewer page, by `mode`:
+//
+// - `stream`: the browser view's canvas, above;
+// - `native` (ticket 26, F-144; preview-native.md): the app itself in an `<iframe>` on its preview
+//   host, whose `src` is the host's `/.ostra/enter?code=…` (it sets the preview's cookie and
+//   redirects to the path). Sandboxed to run the app, keep its own origin, submit its forms and open
+//   its pop-ups, dialogs and downloads, and never to navigate the panel. The member's pointer, keys
+//   and devtools are the browser's own: no input relay. Its `src` is set once, so a re-render, or
+//   the pane's Expand, never reloads the app.
 
 /** What the frame shows now, for its owner's footer and states. */
 export type FrameStatus =
@@ -52,8 +59,30 @@ const wait = (ms: number, signal: AbortSignal): Promise<void> =>
     signal.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
   });
 
-export type PreviewFrameProps = {
-  /** The browser view today; ticket 26 adds `native` (an `<iframe>` on the preview host). */
+/** The `sandbox` of the native preview's frame (ticket 26): no `allow-top-navigation`, so the app never moves the panel. */
+export const NATIVE_FRAME_SANDBOX = "allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads";
+
+/** The native preview's frame (ticket 26): the app on its preview host. */
+export type NativeFrameProps = {
+  readonly mode: "native";
+  /** The preview's host, for the frame's data and the owner's footer. */
+  readonly host: string;
+  /** The preview host's `/.ostra/enter?code=…`: set once, never changed while the frame lives. */
+  readonly enterUrl: string;
+  /** The frame's accessible name: `web :5173 at /history, in your browser`. */
+  readonly name: string;
+  /** The frame loaded a page: the first time, the sign-in's redirect finished. */
+  readonly onLoad: () => void;
+  /** A page to load in the frame now (the path field, reload): each new `seq` loads `url` once. */
+  readonly nav?: { readonly url: string; readonly seq: number } | null;
+  /** The width preset's page size, scaled down to fit and never up; `null` fills the viewport (`Fit`). */
+  readonly size?: FrameSize | null;
+  readonly className?: string;
+};
+
+export type PreviewFrameProps = StreamFrameProps | NativeFrameProps;
+
+export type StreamFrameProps = {
   readonly mode: "stream";
   readonly viewId: PreviewViewId;
   /** The viewer page's link token, sent in `x-ostra-preview-link`; `null` in the pane (the session). */
@@ -81,7 +110,68 @@ export type PreviewFrameProps = {
   readonly className?: string;
 };
 
-export const PreviewFrame = ({ viewId, linkToken, input, name, onStatus, onSize, onScale, onLeave, attempt, dimmed = false, overlay, wrap, hug = false, className }: PreviewFrameProps) => {
+/** The frame of a view: the browser view's canvas, or the native preview's `<iframe>`. */
+export const PreviewFrame = (props: PreviewFrameProps) => {
+  switch (props.mode) {
+    case "stream":
+      return <StreamFrame {...props} />;
+    case "native":
+      return <NativeFrame {...props} />;
+    default:
+      return props satisfies never;
+  }
+};
+
+/**
+ * The app in the member's own browser (ticket 26): an ordinary focusable frame. While it has the
+ * focus, keys are the app's and none of the panel's shortcuts fire; Tab and Shift+Tab leave it.
+ */
+const NativeFrame = ({ host, enterUrl, name, onLoad, nav = null, size = null, className }: NativeFrameProps) => {
+  // The first `src` stays: a new code (a new tab's, a retry's) never reloads a frame already shown.
+  const [src] = useState(enterUrl);
+  const frame = useRef<HTMLIFrameElement | null>(null);
+  const box = useRef<HTMLDivElement | null>(null);
+  const [room, setRoom] = useState<FrameSize | null>(null);
+  const seq = nav?.seq ?? 0;
+  const target = nav?.url ?? null;
+  useEffect(() => {
+    if (seq === 0 || target === null || frame.current === null) return;
+    frame.current.src = target;
+  }, [seq, target]);
+  useEffect(() => {
+    const node = box.current;
+    if (node === null) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry === undefined) return;
+      setRoom({ width: Math.floor(entry.contentRect.width), height: Math.floor(entry.contentRect.height) });
+    });
+    observer.observe(node);
+    return () => { observer.disconnect(); };
+  }, []);
+  const fit = size === null || room === null ? 1 : Math.min(1, room.width / size.width, room.height / size.height);
+  return (
+    <div ref={box} data-testid="preview-frame" data-mode="native" data-host={host} className={cn("relative grid size-full min-h-0 min-w-0 place-items-center overflow-hidden rounded-[7px]", className)}>
+      <div
+        className={size === null ? "size-full" : "relative overflow-hidden"}
+        style={size === null ? undefined : { width: Math.floor(size.width * fit), height: Math.floor(size.height * fit) }}
+      >
+        <iframe
+          ref={frame}
+          data-testid="preview-iframe"
+          src={src}
+          title={name}
+          sandbox={NATIVE_FRAME_SANDBOX}
+          referrerPolicy="no-referrer"
+          onLoad={onLoad}
+          className="block border-0 bg-white focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-teal"
+          style={size === null ? { width: "100%", height: "100%" } : { width: size.width, height: size.height, transform: `scale(${String(fit)})`, transformOrigin: "0 0" }}
+        />
+      </div>
+    </div>
+  );
+};
+
+const StreamFrame = ({ viewId, linkToken, input, name, onStatus, onSize, onScale, onLeave, attempt, dimmed = false, overlay, wrap, hug = false, className }: StreamFrameProps) => {
   const box = useRef<HTMLDivElement | null>(null);
   const canvas = useRef<HTMLCanvasElement | null>(null);
   const [size, setSize] = useState<FrameSize | null>(null);

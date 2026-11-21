@@ -25,6 +25,7 @@ export const generateMetadata = async ({ params }: Props): Promise<Metadata> => 
   const robots = { index: false, follow: false };
   switch (data.state) {
     case "live":
+    case "native":
     case "not-running":
       return {
         title: { absolute: t("previewViewer.title", { label: data.port === null ? data.label : `${data.label} :${String(data.port)}`, organization: data.organizationName }) },

@@ -21,6 +21,7 @@ const item = (key: string, label: string, over: Partial<PreviewItem> = {}): Prev
   source: key.startsWith("port-") ? "announced" : "declared",
   sharing: sharing(),
   watchers: 0,
+  framing: null,
   ...over,
 });
 

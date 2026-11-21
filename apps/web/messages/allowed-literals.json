@@ -37,6 +37,12 @@
     { "text": "typecheck", "reason": "An example of the field's format (a check's name)." },
     { "text": "pnpm typecheck", "reason": "An example of the field's format (a command)." },
     { "text": "pnpm install --frozen-lockfile", "reason": "An example of the field's format (a command)." },
-    { "text": "config/local.json", "reason": "An example of the field's format (a path)." }
+    { "text": "config/local.json", "reason": "An example of the field's format (a path)." },
+    { "text": "OSTRA_PREVIEW_DOMAIN", "reason": "A setting's name." },
+    { "text": "__Host-ostra-preview", "reason": "A cookie's name." },
+    { "text": "ostra preview", "reason": "A command of ostra's CLI." },
+    { "text": "localhost", "reason": "A host's name." },
+    { "text": "preview.localhost", "reason": "A host's name (the development preview domain)." },
+    { "text": "*.localhost", "reason": "A host name's pattern." }
   ]
 }

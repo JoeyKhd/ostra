@@ -160,9 +160,6 @@ export const RUNNER_CANNOT_TUNNEL_WORDS = "This task's runner reaches the server
  */
 export const enterNativePreview = async (deps: EnterNativePreviewDeps, opener: Parameters<EnterNativePreview>[1], input: Parameters<EnterNativePreview>[2]): Promise<EnterResult> => {
   const domain = deps.settings.domain;
-  if (domain === null) {
-    return refusedEnter("no-preview-domain", "This install has no preview domain: the preview shows in the browser view");
-  }
   const now = deps.clock.now();
   return deps.db.$transaction(async (tx): Promise<EnterResult> => {
     let organizationId: OrganizationId;
@@ -204,6 +201,11 @@ export const enterNativePreview = async (deps: EnterNativePreviewDeps, opener: P
     }
     if (!access.input) {
       return refusedEnter("watch-only", "This preview is shared with you to watch: it opens in the browser view");
+    }
+    // After the viewer's access (ticket 26): with no preview domain, someone who can't open the task
+    // still learns nothing of it, as with one.
+    if (domain === null) {
+      return refusedEnter("no-preview-domain", "This install has no preview domain: the preview shows in the browser view");
     }
     const box = await previewBoxInTx(tx, organizationId, taskId);
     const sessionId = box?.sessionId ?? null;

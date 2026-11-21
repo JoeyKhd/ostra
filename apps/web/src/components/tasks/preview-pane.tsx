@@ -1,7 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CameraIcon, ChevronDownIcon, EllipsisIcon, ExternalLinkIcon, EyeIcon, Maximize2Icon, Minimize2Icon, MonitorIcon, RotateCwIcon } from "lucide-react";
+import { AppWindowIcon, CameraIcon, ChevronDownIcon, EllipsisIcon, ExternalLinkIcon, EyeIcon, Maximize2Icon, Minimize2Icon, MonitorIcon, RotateCwIcon } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 
@@ -9,6 +10,7 @@ import { appPathSchema, runnerLimits } from "@ostra/protocol";
 import type { PreviewPageControl, PreviewViewId, PreviewViewport, StoredEvent, TaskId } from "@ostra/protocol";
 
 import { PreviewFrame } from "@/components/previews/preview-frame";
+import { PreviewFramingNotice } from "@/components/previews/preview-framing-notice";
 import type { FrameSize, FrameStatus } from "@/components/previews/preview-frame";
 import { postPreviewInput } from "@/components/previews/preview-input";
 import { boxRefusalWords, previewabilityWords, refusalActionable, routeWords } from "@/components/previews/preview-words";
@@ -22,16 +24,35 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 
-import { isWidthPreset, paneStateOf, presetName, reopens, screenshotPreset, selectedPreview, viewportFor, widthPresets } from "./preview-pane-state";
-import type { OpenRefusal, PaneState, PaneView, PreviewItem, WidthPreset } from "./preview-pane-state";
+import {
+  framingNoticeStorageKey,
+  hostParts,
+  isPaneMode,
+  isWidthPreset,
+  nativeOffered,
+  nativeOfferOf,
+  nativePaneStateOf,
+  paneModeOf,
+  paneModeStorageKey,
+  paneStateOf,
+  presetName,
+  reopens,
+  screenshotPreset,
+  selectedPreview,
+  SIGN_IN_FOR_MS,
+  viewportFor,
+  widthPresets,
+} from "./preview-pane-state";
+import type { NativeFailure, NativeView, OpenRefusal, PaneMode, PaneState, PaneView, PreviewItem, WidthPreset } from "./preview-pane-state";
 import { StateDot, PreviewServicesMenu } from "./preview-services-menu";
 import { PreviewShareMenu } from "./preview-share-menu";
-import { CrashedBanner, DroppedPill, FailedBlock, NoneBlock, PreviewSpinner, StartingBlock, StoppedBlock, TooOldBlock } from "./preview-state";
+import { CrashedBanner, DroppedPill, FailedBlock, NativeFailedBlock, NoneBlock, PreviewSpinner, SigningInBlock, StartingBlock, StoppedBlock, TooOldBlock } from "./preview-state";
 
 // The task page's preview pane (milestone 8, F-141, F-142; task-preview.md; `task-preview-pane`):
 // a toolbar (the service switcher, reload, the path, the width preset, Share, a screenshot, a new
@@ -39,7 +60,14 @@ import { CrashedBanner, DroppedPill, FailedBlock, NoneBlock, PreviewSpinner, Sta
 // line, the watchers and the size. The pane opens a view of the chosen preview while it's shown,
 // keeps it warm with a heartbeat every 30 s while the tab is visible, and closes it when it goes.
 // Expand only changes the page's grid around it: this element never moves, so the stream and the
-// app's own state survive it. Ticket 26 adds the native preview to the same frame.
+// app's own state survive it.
+//
+// Ticket 26 (F-144; preview-native.md): with a preview domain whose check passed, the pane shows the
+// app in the member's own browser by default (`&mode=native`, or `stream` for the box's browser,
+// kept per member and preview): `previews.enter` mints a one-time code and the frame loads the
+// preview host's `/.ostra/enter`, with the framing notice when core replaced the app's framing
+// header. "Open in a new tab" makes its own handshake. Core keeps a native view warm itself, so no
+// heartbeat goes in this mode, and a screenshot still comes from the box's browser.
 
 /** The heartbeat's interval (Q299): a view without one for 90 s closes, and the box can sleep again. */
 export const HEARTBEAT_MS = 30_000;
@@ -78,6 +106,30 @@ export type PreviewPaneProps = {
   readonly now: number;
   /** The phone's toolbar: 44px controls, the width preset and the screenshot under `ellipsis`. */
   readonly phone: boolean;
+  /** Ticket 26: the view in the address (`&mode=native|stream`), and the member's choice of it. */
+  readonly mode: string | null;
+  readonly onMode: (mode: PaneMode) => void;
+  /** Whose choice of view this browser keeps; `null` before the member is known. */
+  readonly memberId: string | null;
+  /** An instance admin: while the preview domain's check isn't passing, the footer links its settings. */
+  readonly instanceAdmin: boolean;
+};
+
+/** Reads one of this browser's own keys: `null` where storage isn't allowed. */
+const readStored = (key: string): string | null => {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const writeStored = (key: string, value: string): void => {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // A browser that keeps nothing: the choice lasts this page.
+  }
 };
 
 /** The app's last `app.process` state for a process, in the box the pane shows; `null` before the box says. */
@@ -117,6 +169,30 @@ const startRefusalKey = {
   "core-unreachable": "task.preview.startRefused.core-unreachable",
 } as const;
 
+const nativeFailureKey = {
+  "no-preview-domain": "task.preview.native.refused.no-preview-domain",
+  "no-box": "task.preview.native.refused.no-box",
+  "port-not-allowed": "task.preview.native.refused.port-not-allowed",
+  "watch-only": "task.preview.native.refused.watch-only",
+  "runner-cannot-tunnel": "task.preview.native.refused.runner-cannot-tunnel",
+  "runner-needs-upgrade": "task.preview.native.refused.runner-needs-upgrade",
+  "runner-cannot-preview": "task.preview.native.refused.runner-cannot-preview",
+  "level-unknown": "task.preview.native.refused.level-unknown",
+  timeout: "task.preview.native.refused.timeout",
+  error: "task.preview.native.refused.error",
+} as const satisfies Record<NativeFailure, string>;
+
+/** The preview's host, its middle cut when the footer is narrow: the preview's part shrinks, the domain stays. */
+const HostText = ({ host }: { readonly host: string }) => {
+  const { head, tail } = hostParts(host);
+  return (
+    <span className="flex min-w-0 font-mono text-[12.5px] text-muted" title={host} data-testid="preview-host">
+      <span className="min-w-0 truncate">{head}</span>
+      <span className="shrink-0">{tail}</span>
+    </span>
+  );
+};
+
 const screenshotRefusalKey = {
   "no-box": "task.preview.screenshot.no-box",
   "port-not-allowed": "task.preview.screenshot.port-not-allowed",
@@ -155,7 +231,7 @@ const moveAlong = (event: KeyboardEvent<HTMLDivElement>) => {
   next.focus();
 };
 
-export const PreviewPane = ({ task, events, previewKey, path: addressPath, onAddress, expanded, onExpand, onAskAgent, steer, members, now, phone }: PreviewPaneProps) => {
+export const PreviewPane = ({ task, events, previewKey, path: addressPath, onAddress, expanded, onExpand, onAskAgent, steer, members, now, phone, mode: addressMode, onMode, memberId, instanceAdmin }: PreviewPaneProps) => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const listKey = trpc.previews.list.queryKey({ taskId: task.id });
@@ -167,6 +243,7 @@ export const PreviewPane = ({ task, events, previewKey, path: addressPath, onAdd
   const startApp = useMutation(trpc.previews.startApp.mutationOptions({ onSettled: refresh }));
   const screenshot = useMutation(trpc.previews.takeScreenshot.mutationOptions());
   const keep = useMutation(trpc.tasks.keepPreview.mutationOptions({ onSettled: refresh }));
+  const enter = useMutation(trpc.previews.enter.mutationOptions());
 
   const data = list.data;
   const previews = data?.previews ?? [];
@@ -190,7 +267,27 @@ export const PreviewPane = ({ task, events, previewKey, path: addressPath, onAdd
   const [pathField, setPathField] = useState(path);
   useEffect(() => { setPathField(path); }, [path]);
 
-  const running = data?.box === "running" && !("refused" in data.can) && data.can.stream;
+  // Ticket 26: which view the pane shows. The member's own choice is read once the page is in the browser.
+  const offered = data !== undefined && nativeOffered(data);
+  const modeKey = memberId === null || selectedKey === null ? null : paneModeStorageKey(memberId, task.id, selectedKey);
+  const [storedMode, setStoredMode] = useState<PaneMode | null>(null);
+  // Until the choice is read, no code is minted: a member who chose the box's browser never signs in.
+  const [modeRead, setModeRead] = useState(false);
+  useEffect(() => {
+    const stored = modeKey === null ? null : readStored(modeKey);
+    setStoredMode(isPaneMode(stored) ? stored : null);
+    setModeRead(modeKey !== null);
+  }, [modeKey]);
+  const mode = paneModeOf(offered, addressMode, storedMode);
+  const native = mode === "native";
+  const chooseMode = (next: PaneMode) => {
+    if (modeKey !== null) writeStored(modeKey, next);
+    setStoredMode(next);
+    onMode(next);
+  };
+
+  const running = !native && data?.box === "running" && !("refused" in data.can) && data.can.stream;
+  const nativeRunning = native && modeRead && data?.box === "running";
 
   // The room the viewport has, for `Fit` (less its 10px padding).
   useEffect(() => {
@@ -266,6 +363,55 @@ export const PreviewPane = ({ task, events, previewKey, path: addressPath, onAdd
     };
   }, [viewId, beat]);
 
+  // Ticket 26: the native view. A one-time code for the preview host while the box runs; the frame
+  // loads it once, and a new code comes only on `Try again` (`nativeAttempt`).
+  const [nativeView, setNativeView] = useState<NativeView>({ kind: "idle" });
+  const [nativeAttempt, setNativeAttempt] = useState(0);
+  const [nav, setNav] = useState<{ readonly url: string; readonly seq: number } | null>(null);
+  const { mutateAsync: enterNative } = enter;
+  const startPath = useRef(path);
+  startPath.current = path;
+  useEffect(() => {
+    if (!nativeRunning || selectedKey === null) {
+      setNativeView({ kind: "idle" });
+      return;
+    }
+    let cancelled = false;
+    setNativeView({ kind: "entering" });
+    setNav(null);
+    void enterNative({ taskId: task.id, key: selectedKey, path: startPath.current })
+      .then((answer) => {
+        if (cancelled) return;
+        setNativeView(answer.ok ? { kind: "framed", url: answer.url, host: answer.host, loaded: false } : { kind: "failed", reason: answer.reason });
+      })
+      .catch(() => {
+        if (!cancelled) setNativeView({ kind: "failed", reason: "error" });
+      });
+    return () => { cancelled = true; };
+  }, [nativeRunning, selectedKey, task.id, nativeAttempt, enterNative]);
+
+  // The sign-in is one redirect: a frame that hasn't loaded in 10 s failed (preview-native.md).
+  const signingIn = nativeView.kind === "framed" && !nativeView.loaded;
+  useEffect(() => {
+    if (!signingIn) return;
+    const timer = setTimeout(() => { setNativeView({ kind: "failed", reason: "timeout" }); }, SIGN_IN_FOR_MS);
+    return () => { clearTimeout(timer); };
+  }, [signingIn]);
+  const onNativeLoad = useCallback(() => {
+    setNativeView((current) => (current.kind === "framed" && !current.loaded ? { ...current, loaded: true } : current));
+  }, []);
+  const nativeOrigin = nativeView.kind === "framed" ? new URL(nativeView.url).origin : null;
+  const nativeHost = nativeView.kind === "framed" ? nativeView.host : null;
+
+  // The framing notice: shown until dismissed, per preview, in this browser.
+  const noticeKey = selectedKey === null ? null : framingNoticeStorageKey(task.id, selectedKey);
+  const [noticeDismissed, setNoticeDismissed] = useState(true);
+  useEffect(() => { setNoticeDismissed(noticeKey === null || readStored(noticeKey) !== null); }, [noticeKey]);
+  const dismissNotice = () => {
+    if (noticeKey !== null) writeStored(noticeKey, "dismissed");
+    setNoticeDismissed(true);
+  };
+
   // The frame's news: a view core closed for a reason not the app's opens again.
   const onStatus = useCallback((status: FrameStatus) => {
     setPaneView({ kind: "open", frame: status });
@@ -274,12 +420,19 @@ export const PreviewPane = ({ task, events, previewKey, path: addressPath, onAdd
     if (status.kind === "live") setCrashedAt(null);
   }, []);
 
-  // One of the page's controls, for a viewer who may give input.
+  // One of the page's controls, for a viewer who may give input. In the native view the frame is the
+  // member's own page: a path and a reload load it again on the preview's host (its cookie is set).
   const control = useCallback(async (body: PreviewPageControl) => {
+    if (native) {
+      if (nativeOrigin === null || (body.kind !== "navigate" && body.kind !== "reload")) return;
+      const target = body.kind === "navigate" ? body.path : startPath.current;
+      setNav((current) => ({ url: `${nativeOrigin}${target}`, seq: (current?.seq ?? 0) + 1 }));
+      return;
+    }
     if (!view?.input) return;
     const answer = await postPreviewInput(view.id, null, { control: body });
     if (!answer.ok) setNotice(routeWords(answer.code));
-  }, [view]);
+  }, [view, native, nativeOrigin]);
 
   // The width preset, and `Fit` following the pane's size once it settles. The page is shared
   // (Q314): the pane moves it only when its own choice changes, never to undo another viewer's.
@@ -320,6 +473,40 @@ export const PreviewPane = ({ task, events, previewKey, path: addressPath, onAdd
     void control({ kind: "navigate", path: parsed.data });
   };
 
+  /**
+   * "Open in a new tab": with the native preview on, the preview's own host after its own one-time
+   * code (a frame's cookie is partitioned, so a tab signs in again; ADR 0068). The tab is opened at
+   * once, so the browser counts it as the click's, and sent on once the code comes. Without it, the
+   * task's pane expanded.
+   */
+  const openNewTab = () => {
+    if (selected === null) return;
+    if (!offered) {
+      const query = new URLSearchParams({ pane: "preview", preview: selected.key, path, view: "full" });
+      window.open(`/tasks/${task.id}?${query.toString()}`, "_blank", "noopener,noreferrer");
+      return;
+    }
+    const tab = window.open("about:blank", "_blank");
+    if (tab === null) {
+      setNotice(t("task.preview.native.newTabBlocked"));
+      return;
+    }
+    tab.opener = null;
+    void enterNative({ taskId: task.id, key: selected.key, path })
+      .then((answer) => {
+        if (answer.ok) {
+          tab.location.href = answer.url;
+          return;
+        }
+        tab.close();
+        setNotice(t(nativeFailureKey[answer.reason]));
+      })
+      .catch(() => {
+        tab.close();
+        setNotice(t(nativeFailureKey.error));
+      });
+  };
+
   const startTheApp = () => {
     setNotice(null);
     startApp.mutate({ taskId: task.id });
@@ -337,17 +524,22 @@ export const PreviewPane = ({ task, events, previewKey, path: addressPath, onAdd
 
   const state: PaneState = data === undefined
     ? { kind: "starting" }
-    : paneStateOf(data, task.state, paneView, {
-        failed: (failed) => {
-          if (failed.kind === "refused") return t(openRefusalKey[failed.reason]);
-          if (failed.kind === "open" && failed.frame.kind === "refused") return routeWords(failed.frame.code);
-          return routeWords(null);
-        },
-      });
+    : native
+      ? nativePaneStateOf(data, task.state, nativeView, { failed: (reason) => t(nativeFailureKey[reason]) })
+      : paneStateOf(data, task.state, paneView, {
+          failed: (failed) => {
+            if (failed.kind === "refused") return t(openRefusalKey[failed.reason]);
+            if (failed.kind === "open" && failed.frame.kind === "refused") return routeWords(failed.frame.code);
+            return routeWords(null);
+          },
+        });
+  // The native view's app stopped answering: its process failed while the frame shows it.
+  const nativeCrashed = native && state.kind === "live" && processState(events, selected) === "failed";
   const live = state.kind === "live" || state.kind === "dropped" || state.kind === "crashed";
   const frameShown = view !== null && (state.kind === "live" || state.kind === "dropped" || state.kind === "crashed" || state.kind === "starting");
+  const nativeShown = native && nativeView.kind === "framed" && (state.kind === "live" || state.kind === "signing-in");
   const inert = selected === null || state.kind === "none" || state.kind === "too-old";
-  const canControl = view?.input === true && live;
+  const canControl = native ? state.kind === "live" : view?.input === true && live;
   const runner = task.runnerName;
   const environmentHref = `/projects/${task.projectId}/environment`;
 
@@ -359,6 +551,7 @@ export const PreviewPane = ({ task, events, previewKey, path: addressPath, onAdd
     return () => { clearInterval(timer); };
   }, [state.kind]);
 
+  const nativeFrameName = selected === null ? "" : t("task.preview.native.frameName", { label: selected.label, port: selected.port, path });
   const frameName = selected === null ? "" : t("task.preview.frameName", { label: selected.label, port: selected.port, path, state: state.kind === "live" ? t("task.preview.foot.live").toLowerCase() : t("task.preview.foot.starting").toLowerCase() });
   const focusToolbar = () => { toolbar.current?.querySelector<HTMLElement>("button:not([disabled]), input:not([disabled])")?.focus(); };
 
@@ -405,6 +598,10 @@ export const PreviewPane = ({ task, events, previewKey, path: addressPath, onAdd
       }
       case "failed":
         return <FailedBlock title={t("task.preview.failedTitle")} words={state.words} action={{ label: t("task.preview.again"), run: () => { setAttempt((n) => n + 1); }, pending: false }} />;
+      case "signing-in":
+        return selected === null ? null : <SigningInBlock label={selected.label} port={selected.port} host={nativeHost} />;
+      case "native-failed":
+        return <NativeFailedBlock words={state.words} onRetry={() => { setNativeAttempt((n) => n + 1); }} onUseBox={data !== undefined && !("refused" in data.can) && data.can.stream ? () => { chooseMode("stream"); } : null} />;
       case "live":
       case "dropped":
       case "crashed":
@@ -433,12 +630,45 @@ export const PreviewPane = ({ task, events, previewKey, path: addressPath, onAdd
         return { dot: grey, word: t("task.preview.foot.tooOld"), line: t("task.preview.foot.tooOldLine") };
       case "refused":
       case "failed":
+      case "native-failed":
         return { dot: grey, word: t("task.preview.foot.failed"), line: t("task.preview.foot.failedLine") };
+      case "signing-in":
+        return { dot: <PreviewSpinner />, word: t("task.preview.foot.starting"), line: t("task.preview.native.inYourBrowser") };
       default:
         return state satisfies never;
     }
   };
   const foot = footLine();
+
+  /** The stream footer's right end: the way to the native preview, or why there's none (ticket 26). */
+  const nativeOfferView = (): ReactNode => {
+    if (data === undefined) return null;
+    const offer = nativeOfferOf(data, instanceAdmin);
+    switch (offer.kind) {
+      case "none":
+        return null;
+      case "open-here":
+        return (
+          <Button variant="ghost" size="sm" className="-mr-1.5 text-teal hover:text-teal" onClick={() => { chooseMode("native"); }} data-action="preview-open-here">
+            <AppWindowIcon aria-hidden className="size-[14px]" /> {t("task.preview.native.openHere")}
+          </Button>
+        );
+      case "http-only":
+        return (
+          <span className="max-w-[320px] truncate text-faint" data-testid="preview-native-http">
+            {runner === null ? t("task.preview.native.httpOnlyNoRunner") : t("task.preview.native.httpOnly", { runner })}
+          </span>
+        );
+      case "settings":
+        return (
+          <Link href="/instance/previews" className="inline-flex h-[26px] items-center gap-1.5 rounded-sm px-2 text-teal hover:bg-sel" data-action="preview-settings">
+            <AppWindowIcon aria-hidden className="size-[14px]" /> {t("task.preview.native.settings")}
+          </Link>
+        );
+      default:
+        return offer satisfies never;
+    }
+  };
   const watchers = selected?.watchers ?? 0;
   const scale = frameSize === null ? 100 : Math.round(Math.min(1, roomNow.width / frameSize.width, roomNow.height / frameSize.height) * 100);
 
@@ -538,6 +768,13 @@ export const PreviewPane = ({ task, events, previewKey, path: addressPath, onAdd
               {presetMenu}
               <DropdownMenuSeparator />
               <DropdownMenuItem disabled={!live} onSelect={takeScreenshot}><CameraIcon aria-hidden /> {t("task.preview.screenshot.take")}</DropdownMenuItem>
+              {offered ? (
+                native ? (
+                  <DropdownMenuItem onSelect={() => { chooseMode("stream"); }} data-action="preview-use-box"><MonitorIcon aria-hidden /> {t("task.preview.native.useBox")}</DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem onSelect={() => { chooseMode("native"); }} data-action="preview-open-here"><AppWindowIcon aria-hidden /> {t("task.preview.native.openHere")}</DropdownMenuItem>
+                )
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
         ) : (
@@ -546,14 +783,10 @@ export const PreviewPane = ({ task, events, previewKey, path: addressPath, onAdd
               <CameraIcon aria-hidden />
             </ToolButton>
             <ToolButton
-              label={t("task.preview.newTab")}
+              label={offered ? t("task.preview.native.newTabTip") : t("task.preview.newTab")}
               action="preview-new-tab"
               disabled={inert}
-              onClick={() => {
-                if (selected === null) return;
-                const query = new URLSearchParams({ pane: "preview", preview: selected.key, path, view: "full" });
-                window.open(`/tasks/${task.id}?${query.toString()}`, "_blank", "noopener,noreferrer");
-              }}
+              onClick={openNewTab}
             >
               <ExternalLinkIcon aria-hidden />
             </ToolButton>
@@ -563,10 +796,14 @@ export const PreviewPane = ({ task, events, previewKey, path: addressPath, onAdd
           </>
         )}
       </div>
+      {native && selected?.framing !== null && selected?.framing !== undefined && !noticeDismissed && (state.kind === "live" || state.kind === "signing-in") ? (
+        <PreviewFramingNotice label={selected.label} framing={selected.framing} onDismiss={dismissNotice} />
+      ) : null}
       <div
         ref={viewport}
         className={cn("relative min-h-0 flex-1 bg-surface p-2.5", expanded && "pb-[124px]")}
         data-testid="preview-viewport"
+        data-mode={mode}
       >
         {frameShown && selected !== null ? (
           <div className="size-full rounded-lg border border-line-2">
@@ -585,6 +822,23 @@ export const PreviewPane = ({ task, events, previewKey, path: addressPath, onAdd
             />
           </div>
         ) : null}
+        {nativeShown && selected !== null ? (
+          <div className="size-full rounded-lg border border-line-2">
+            <PreviewFrame
+              key={nativeView.url}
+              mode="native"
+              host={nativeView.host}
+              enterUrl={nativeView.url}
+              name={nativeFrameName}
+              onLoad={onNativeLoad}
+              nav={nav}
+              size={preset === "fit" ? null : viewportFor(preset, roomNow)}
+            />
+          </div>
+        ) : null}
+        {nativeCrashed && selected !== null ? (
+          <CrashedBanner label={selected.label} port={selected.port} at={now} onRestart={startTheApp} restarting={startApp.isPending} />
+        ) : null}
         {state.kind === "crashed" && selected !== null ? (
           <CrashedBanner label={selected.label} port={selected.port} at={crashedAt ?? now} onRestart={startTheApp} restarting={startApp.isPending} />
         ) : null}
@@ -593,7 +847,23 @@ export const PreviewPane = ({ task, events, previewKey, path: addressPath, onAdd
       {notice === null ? null : (
         <p role="status" className="shrink-0 border-t border-line px-3 py-1.5 text-[12.5px] text-muted" data-testid="preview-notice">{notice}</p>
       )}
-      <div className="flex h-8 shrink-0 items-center gap-2 border-t border-line px-3 text-[13px] text-muted max-lg:pb-[env(safe-area-inset-bottom)]" data-testid="preview-foot">
+      {native && (state.kind === "live" || state.kind === "signing-in" || state.kind === "native-failed") ? (
+        <div className="flex min-h-8 shrink-0 flex-wrap items-center gap-x-2 border-t border-line px-3 text-[13px] text-muted max-lg:py-1.5 max-lg:pb-[max(6px,env(safe-area-inset-bottom))]" data-testid="preview-foot" data-mode="native">
+          <span className="flex min-w-0 flex-1 items-center gap-2 max-lg:basis-full">
+            {foot.dot}
+            <span className="shrink-0 font-medium text-text">{foot.word}</span>
+            <span className="shrink-0 text-faint">· {t("task.preview.native.inYourBrowser")}{nativeHost === null || phone ? "" : " ·"}</span>
+            {nativeHost === null || phone ? null : <HostText host={nativeHost} />}
+          </span>
+          {nativeHost === null || !phone ? null : <span className="flex min-w-0 basis-full pl-[15px]"><HostText host={nativeHost} /></span>}
+          {phone ? null : (
+            <Button variant="ghost" size="sm" className="ml-auto shrink-0 text-teal hover:text-teal" onClick={() => { chooseMode("stream"); }} data-action="preview-use-box">
+              <MonitorIcon aria-hidden className="size-[14px]" /> {t("task.preview.native.useBox")}
+            </Button>
+          )}
+        </div>
+      ) : (
+      <div className="flex h-8 shrink-0 items-center gap-2 border-t border-line px-3 text-[13px] text-muted max-lg:pb-[env(safe-area-inset-bottom)]" data-testid="preview-foot" data-mode="stream">
         {foot.dot}
         <span className="font-medium text-text">{foot.word}</span>
         <span className="min-w-0 truncate text-faint">· {foot.line}</span>
@@ -618,8 +888,10 @@ export const PreviewPane = ({ task, events, previewKey, path: addressPath, onAdd
               <span className="font-mono text-[12.5px] text-faint">{runner}</span>
             </>
           )}
+          {phone ? null : nativeOfferView()}
         </span>
       </div>
+      )}
       {expanded ? steer : null}
     </section>
   );

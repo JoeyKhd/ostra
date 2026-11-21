@@ -108,7 +108,7 @@ describe("the rail and the context panel (F-147)", () => {
       ["shell.panel.connections", ["github", "linear"]],
       ["shell.panel.people", ["members", "audit"]],
     ]);
-    expect(ids(admin).at(-1)).toEqual(["shell.instance", ["accounts", "storage", "email"]]);
+    expect(ids(admin).at(-1)).toEqual(["shell.instance", ["accounts", "storage", "email", "previews"]]);
   });
 
   it("F-147/c1: a project's live tasks put what needs the member first, then running, preparing and queued", () => {

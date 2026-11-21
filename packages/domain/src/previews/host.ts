@@ -120,6 +120,19 @@ export const previewSiteLayout = (panelUrl: string, domain: string): PreviewSite
   return root === base || root.endsWith(`.${base}`) ? "same-site" : "cross-site";
 };
 
+/**
+ * The site the settings page names when the preview domain shares the panel's (ticket 26, Q307):
+ * `acme.dev` for a panel on `ostra.acme.dev`, by the same reading as `previewSiteLayout`; `null`
+ * when the two are on different sites.
+ */
+export const previewSharedSite = (panelUrl: string, domain: string): string | null => {
+  if (previewSiteLayout(panelUrl, domain) === "cross-site") {
+    return null;
+  }
+  const labels = new URL(panelUrl).hostname.toLowerCase().replace(/\.$/, "").split(".");
+  return labels.length >= 3 ? labels.slice(1).join(".") : labels.join(".");
+};
+
 // ---------- the handshake's cookie ----------
 
 /** The longest a preview's cookie lives, whatever the session or the link allows *(working value)*. */
@@ -290,10 +303,18 @@ export type RewriteResponseOptions = {
   readonly scheme?: PreviewScheme;
 };
 
+/** Which framing header the proxy replaced, and its value as the app sent it (at most 256 characters). */
+export type PreviewFraming = { readonly header: "x-frame-options" | "frame-ancestors"; readonly value: string };
+
+/** The longest framing value kept for the pane's notice. */
+export const PREVIEW_FRAMING_VALUE_MAX = 256;
+
 export type RewrittenResponse = {
   readonly headers: HeaderMap;
   /** Whether the app sent a framing header the proxy replaced: the pane says so. */
   readonly framingReplaced: boolean;
+  /** The header it replaced, `X-Frame-Options` first, for the pane's notice (ticket 26); `null` when none. */
+  readonly framing: PreviewFraming | null;
 };
 
 /** A CSP value with its `frame-ancestors` directive replaced by the panel's origin only. */
@@ -314,15 +335,24 @@ const withFrameAncestors = (policy: string, panelOrigin: string): string => {
 export const rewriteResponse = (headers: HeaderMap, options: RewriteResponseOptions): RewrittenResponse => {
   const out: Record<string, string | readonly string[]> = {};
   let framingReplaced = false;
+  let framing: PreviewFraming | null = null;
   let policies: readonly string[] = [];
   for (const [name, value] of Object.entries(headers)) {
     if (name === "x-frame-options") {
       framingReplaced = true;
+      framing = { header: "x-frame-options", value: (typeof value === "string" ? value : value.join(", ")).trim().slice(0, PREVIEW_FRAMING_VALUE_MAX) };
       continue;
     }
     if (name === "content-security-policy") {
       const sent = typeof value === "string" ? [value] : value;
-      framingReplaced ||= sent.some((policy) => /(?:^|;)\s*frame-ancestors(?:\s|;|$)/i.test(policy));
+      const directive = sent
+        .flatMap((policy) => policy.split(";"))
+        .map((part) => part.trim())
+        .find((part) => /^frame-ancestors(?:\s|$)/i.test(part));
+      if (directive !== undefined) {
+        framingReplaced = true;
+        framing ??= { header: "frame-ancestors", value: directive.slice(0, PREVIEW_FRAMING_VALUE_MAX) };
+      }
       policies = sent.map((policy) => withFrameAncestors(policy, options.panelOrigin));
       continue;
     }
@@ -344,5 +374,6 @@ export const rewriteResponse = (headers: HeaderMap, options: RewriteResponseOpti
   }
   const [onlyPolicy, ...morePolicies] = policies;
   out["content-security-policy"] = onlyPolicy === undefined ? `frame-ancestors ${options.panelOrigin}` : morePolicies.length === 0 ? onlyPolicy : policies;
-  return { headers: out, framingReplaced };
+  // `X-Frame-Options` is named first when the app sent both: it's the one that blocked the frame.
+  return { headers: out, framingReplaced, framing };
 };

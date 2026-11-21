@@ -546,13 +546,14 @@ describe("the native preview's hosts and rewrites (F-144)", () => {
     expect(outside.ok && outside.headers["host"]).toBe("localhost:5173");
   });
 
-  it("F-144: the framing headers are replaced by the panel's origin, and Location goes back to the preview's host", () => {
+  it("F-144/c4: the framing headers are replaced by the panel's origin, and Location goes back to the preview's host", () => {
     const out = rewriteResponse(
       { "x-frame-options": "DENY", "content-security-policy": "default-src 'self'; frame-ancestors 'none'; img-src *", location: "http://localhost:5173/login?next=/", "set-cookie": ["a=1", "b=2"] },
       { panelOrigin, previewHost: host, port: 5173 },
     );
     expect(out).toEqual({
       framingReplaced: true,
+      framing: { header: "x-frame-options", value: "DENY" },
       headers: {
         "content-security-policy": `default-src 'self'; img-src *; frame-ancestors ${panelOrigin}`,
         location: `https://${host}/login?next=/`,
@@ -562,8 +563,14 @@ describe("the native preview's hosts and rewrites (F-144)", () => {
     // With no framing header, the panel's origin is still the only one that may frame it.
     expect(rewriteResponse({ "content-type": "text/html" }, { panelOrigin, previewHost: host, port: 5173 })).toEqual({
       framingReplaced: false,
+      framing: null,
       headers: { "content-type": "text/html", "content-security-policy": `frame-ancestors ${panelOrigin}` },
     });
+    // Ticket 26: the pane's notice names a `frame-ancestors` policy too, its directive kept to 256 characters.
+    const policy = rewriteResponse({ "content-security-policy": `frame-ancestors 'self' ${"https://a.example ".repeat(30)}` }, { panelOrigin, previewHost: host, port: 5173 });
+    expect(policy.framing?.header).toBe("frame-ancestors");
+    expect(policy.framing?.value.startsWith("frame-ancestors 'self' https://a.example")).toBe(true);
+    expect(policy.framing?.value.length).toBe(256);
     // A Location on another port or host is the app's business, left as it is.
     const away = rewriteResponse({ location: "http://localhost:3001/x" }, { panelOrigin, previewHost: host, port: 5173 });
     expect(away.headers["location"]).toBe("http://localhost:3001/x");

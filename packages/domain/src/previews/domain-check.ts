@@ -47,23 +47,23 @@ export const previewCheckRowSchema = z.discriminatedUnion("state", [
 ]);
 export type PreviewCheckRow = z.infer<typeof previewCheckRowSchema>;
 
+/** The check's answer once it ran: each row's result (kept per install, ticket 26). */
+export const previewDomainCheckedSchema = z.strictObject({
+  state: z.literal("checked"),
+  /** The random name it tried, under the domain. */
+  name: z.string(),
+  /** Epoch ms. */
+  at: z.number().int(),
+  dns: previewCheckRowSchema,
+  certificate: previewCheckRowSchema,
+  proxy: previewCheckRowSchema,
+  upgrade: previewCheckRowSchema,
+  /** Every row passed (or wasn't needed): the native preview works. */
+  passed: z.boolean(),
+});
+
 /** The check's answer (`instance.previewDomainCheck`): not set, or each row's result. */
-export const previewDomainCheckSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("not-set") }),
-  z.strictObject({
-    state: z.literal("checked"),
-    /** The random name it tried, under the domain. */
-    name: z.string(),
-    /** Epoch ms. */
-    at: z.number().int(),
-    dns: previewCheckRowSchema,
-    certificate: previewCheckRowSchema,
-    proxy: previewCheckRowSchema,
-    upgrade: previewCheckRowSchema,
-    /** Every row passed (or wasn't needed): the native preview works. */
-    passed: z.boolean(),
-  }),
-]);
+export const previewDomainCheckSchema = z.discriminatedUnion("state", [z.strictObject({ state: z.literal("not-set") }), previewDomainCheckedSchema]);
 export type PreviewDomainCheck = z.infer<typeof previewDomainCheckSchema>;
 
 /** What a fetch of the check path saw. */

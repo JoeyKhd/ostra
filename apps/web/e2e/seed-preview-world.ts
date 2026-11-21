@@ -9,22 +9,29 @@
 //   would (accepted, the box ready), for "Start the app", and prints its epoch;
 // - `{ "databaseUrl", "mode": "read", "taskId" }` prints the box's `previewWatchedAt` and the views;
 // - `{ "databaseUrl", "mode": "expire", "taskId" }` moves the task's expiring links' ends an hour back.
+// Ticket 26 (F-144): `"tunnel": true` on `seed` gives the runner the tunnel too (the native preview);
+// `read` names each view's mode and counts the task's native one-time codes; and
+// `{ "databaseUrl", "mode": "clear-check" }` forgets the preview domain's last check, so the specs
+// after the native preview's see the browser view again.
 
 import { randomUUID } from "node:crypto";
 
-import { createDb } from "@ostra/db";
+import { createDb, Prisma } from "@ostra/db";
 import { postgresChangeNotices } from "@ostra/domain";
 import { organizationIdSchema, projectIdSchema, taskIdSchema } from "@ostra/protocol";
 import { z } from "zod";
 
 const argsSchema = z.discriminatedUnion("mode", [
-  z.strictObject({ databaseUrl: z.string(), mode: z.literal("seed"), tag: z.string().regex(/^[a-z0-9-]{1,24}$/) }),
+  z.strictObject({ databaseUrl: z.string(), mode: z.literal("seed"), tag: z.string().regex(/^[a-z0-9-]{1,24}$/), tunnel: z.boolean().optional() }),
   z.strictObject({ databaseUrl: z.string(), mode: z.literal("accept"), taskId: z.string() }),
   z.strictObject({ databaseUrl: z.string(), mode: z.literal("read"), taskId: z.string() }),
   z.strictObject({ databaseUrl: z.string(), mode: z.literal("expire"), taskId: z.string() }),
+  z.strictObject({ databaseUrl: z.string(), mode: z.literal("clear-check") }),
 ]);
 const args = argsSchema.parse(JSON.parse(process.argv[2] ?? "{}"));
 const db = createDb(args.databaseUrl);
+
+const DbNull = Prisma.DbNull;
 
 /** A presence and a runner seen "now" for good: core's sweeps never take them for gone. */
 const FOREVER = new Date("2099-01-01T00:00:00Z");
@@ -34,7 +41,7 @@ const notifyTask = async (organizationId: string, projectId: string, taskId: str
   await db.$transaction((tx) => postgresChangeNotices.emitInTx(tx, { organizationId: organizationIdSchema.parse(organizationId), projectId: projectIdSchema.parse(projectId), entity: "task", entityId: taskIdSchema.parse(taskId) }));
 };
 
-const seed = async (tag: string): Promise<Record<string, string>> => {
+const seed = async (tag: string, tunnel: boolean): Promise<Record<string, string>> => {
   const admin = await db.member.findFirstOrThrow({ where: { role: "admin" }, orderBy: { createdAt: "asc" }, include: { organization: true } });
   const organizationId = admin.organizationId;
 
@@ -81,7 +88,7 @@ const seed = async (tag: string): Promise<Record<string, string>> => {
         slots: 4,
         version: "0.8.0",
         minor,
-        ...(minor >= 7 ? { preview: { stream: true, tunnel: false } } : {}),
+        ...(minor >= 7 ? { preview: { stream: true, tunnel } } : {}),
         state: "online",
         lastSeenAt: FOREVER,
       },
@@ -161,10 +168,11 @@ const accept = async (taskId: string): Promise<Record<string, string | number>> 
 
 const read = async (taskId: string): Promise<Record<string, unknown>> => {
   const lease = await db.lease.findFirst({ where: { taskId, state: "active" }, orderBy: { epoch: "desc" }, include: { box: true } });
-  const views = await db.previewView.findMany({ where: { taskId }, orderBy: { openedAt: "asc" }, select: { id: true, state: true, lastHeartbeatAt: true, leaseEpoch: true, linkId: true } });
+  const views = await db.previewView.findMany({ where: { taskId }, orderBy: { openedAt: "asc" }, select: { id: true, state: true, lastHeartbeatAt: true, leaseEpoch: true, linkId: true, mode: true } });
   return {
     previewWatchedAt: lease?.box.previewWatchedAt?.getTime() ?? null,
-    views: views.map((view) => ({ id: view.id, state: view.state, lastHeartbeatAt: view.lastHeartbeatAt.getTime(), leaseEpoch: view.leaseEpoch, linkId: view.linkId })),
+    views: views.map((view) => ({ id: view.id, state: view.state, lastHeartbeatAt: view.lastHeartbeatAt.getTime(), leaseEpoch: view.leaseEpoch, linkId: view.linkId, mode: view.mode })),
+    enterCodes: await db.previewCode.count({ where: { taskId, kind: "enter" } }),
   };
 };
 
@@ -173,7 +181,27 @@ const expire = async (taskId: string): Promise<Record<string, number>> => {
   return { expired: moved.count };
 };
 
-const out =
-  args.mode === "seed" ? await seed(args.tag) : args.mode === "accept" ? await accept(args.taskId) : args.mode === "expire" ? await expire(args.taskId) : await read(args.taskId);
+const clearCheck = async (): Promise<Record<string, number>> => {
+  const cleared = await db.instanceSetting.updateMany({ data: { previewCheckDomain: null, previewCheck: DbNull, previewCheckAt: null, previewCheckByUserId: null } });
+  return { cleared: cleared.count };
+};
+
+const run = (): Promise<Record<string, unknown>> => {
+  switch (args.mode) {
+    case "seed":
+      return seed(args.tag, args.tunnel ?? false);
+    case "accept":
+      return accept(args.taskId);
+    case "expire":
+      return expire(args.taskId);
+    case "read":
+      return read(args.taskId);
+    case "clear-check":
+      return clearCheck();
+    default:
+      return args satisfies never;
+  }
+};
+const out = await run();
 process.stdout.write(`${JSON.stringify(out)}\n`);
 await db.$disconnect();
