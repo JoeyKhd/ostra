@@ -76,7 +76,8 @@ egress_baseline() {
   subnet="172.30.0.0/16"
   gateway="$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}')"
   # The server's port: core's, as compose publishes it on the host (deploy/compose.yaml).
-  sudo ./deploy/egress-baseline.sh "$subnet" "$gateway" 8787 && sudo iptables -S | grep -i ostra
+  # The rules name no "ostra": they're the ones from the egress subnet, in DOCKER-USER and INPUT.
+  sudo ./deploy/egress-baseline.sh "$subnet" "$gateway" 8787 && sudo iptables -S | grep -F -- "-s $subnet"
 }
 step egress-baseline egress_baseline
 
