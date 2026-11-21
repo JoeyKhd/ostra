@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRightIcon, ChevronRightIcon, PanelLeftOpenIcon } from "lucide-react";
+import { ArrowRightIcon, ChevronRightIcon, PanelLeftOpenIcon, PlusIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Fragment, useRef, useState } from "react";
@@ -28,6 +28,11 @@ export type PageFrameProps = {
   readonly padded?: boolean;
   /** A side pane in place of the properties panel: the task page's preview (milestone 8, F-141). */
   readonly pane?: SidePane;
+  /**
+   * Below 768px, the page's title over its line in place of the breadcrumb: a task's
+   * `CALC-192 · ● Running` (app-shell.md, "Phone").
+   */
+  readonly phoneTitle?: { readonly title: string; readonly line: ReactNode };
   readonly children: ReactNode;
 };
 
@@ -58,9 +63,25 @@ const PANE_MIN = 420;
  * form; padding 20px 18px), which stacks under the page below `xl`. The sizes are the approved
  * pictures' (app-targets/m1/README.md, "Scale").
  */
-export const PageFrame = ({ crumbs, actions, properties, wideProperties = false, padded = true, pane, children }: PageFrameProps) => {
+export const PageFrame = ({ crumbs, actions, properties, wideProperties = false, padded = true, pane, phoneTitle, children }: PageFrameProps) => {
   const { openNavigation, navigationOpen, passwordChange } = useShell();
   const shell = useOptionalShellState();
+  // Below 768px a project's page with no action of its own offers New task in the project, as a
+  // 44px `plus` (app-shell.md, "Phone": the page's one main action).
+  const place = shell?.place;
+  const projectId = place?.space === "projects" && place.taskId === null ? place.projectId : null;
+  const project = crumbs[0]?.label ?? "";
+  const phoneAction =
+    actions !== undefined || projectId === null || project === "" ? null : (
+      <Link
+        href={`/tasks/new?project=${encodeURIComponent(projectId)}`}
+        aria-label={t("shell.panel.newTaskIn", { project })}
+        title={t("shell.panel.newTaskIn", { project })}
+        className="ml-auto grid size-11 shrink-0 place-items-center rounded-md text-muted hover:bg-hover hover:text-text md:hidden"
+      >
+        <PlusIcon aria-hidden className="size-5 stroke-[1.75]" />
+      </Link>
+    );
   const path = usePathname();
   const split = useRef<HTMLDivElement | null>(null);
   const [pageWidth, setPageWidth] = useState<number | null>(null);
@@ -94,7 +115,13 @@ export const PageFrame = ({ crumbs, actions, properties, wideProperties = false,
             <PanelLeftOpenIcon aria-hidden className="size-4 stroke-[1.75]" />
           </button>
         )}
-        <nav aria-label={t("shell.breadcrumbs")} className="flex min-w-0 flex-1 items-center gap-1.5 text-base md:gap-2 md:text-body">
+        {phoneTitle === undefined ? null : (
+          <div className="min-w-0 flex-1 md:hidden" data-testid="phone-title">
+            <p className="truncate text-[15px] font-semibold leading-5 text-text">{phoneTitle.title}</p>
+            <p className="flex min-w-0 items-center gap-1.5 truncate font-mono text-xs leading-4 text-faint">{phoneTitle.line}</p>
+          </div>
+        )}
+        <nav aria-label={t("shell.breadcrumbs")} className={cn("flex min-w-0 flex-1 items-center gap-1.5 text-base md:gap-2 md:text-body", phoneTitle !== undefined && "max-md:hidden")}>
           {crumbs.map((crumb, i) => {
             const last = i === crumbs.length - 1;
             return (
@@ -118,6 +145,7 @@ export const PageFrame = ({ crumbs, actions, properties, wideProperties = false,
           })}
         </nav>
         {actions === undefined ? null : <div className="ml-auto flex shrink-0 items-center gap-1.5">{actions}</div>}
+        {phoneAction}
       </header>
       <DefaultPasswordBanner passwordChange={passwordChange} path={path} />
       <div className={cn("shrink-0 lg:hidden", pane === undefined && "hidden")}>{pane?.switcher}</div>

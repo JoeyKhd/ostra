@@ -1,7 +1,7 @@
 "use client";
 
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppWindowIcon, CheckIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestIcon, LinkIcon, Minimize2Icon, PanelRightIcon, ScanSearchIcon, SquareIcon } from "lucide-react";
+import { AppWindowIcon, CheckIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestIcon, LinkIcon, MessageSquareIcon, Minimize2Icon, PanelRightIcon, ScanSearchIcon, SquareIcon } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -777,6 +777,8 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
         { label: t("shell.tasks"), href: `/projects/${data.projectId}` },
         { label: data.key },
       ]}
+      // A phone's top bar: the title over `CALC-192 · ● Running` (app-shell.md, "Phone").
+      phoneTitle={{ title: data.title, line: <>{data.key} · <Status tone={stateTone(data.state)} className="min-w-0 gap-1.5"><span className="truncate">{stateText}</span></Status></> }}
       actions={
         expanded ? (
           <>
@@ -817,8 +819,8 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
                   onValueChange={(value) => { if (value === "preview" || value === "chat") setQuery({ pane: value === "preview" ? "preview" : null }); }}
                   className="mx-3 my-2 flex h-11"
                 >
-                  <ToggleGroupItem value="chat" className="flex-1">{t("task.preview.chat")}</ToggleGroupItem>
-                  <ToggleGroupItem value="preview" className="flex-1">{t("task.preview.sidePreview")}</ToggleGroupItem>
+                  <ToggleGroupItem value="chat" className="flex flex-1 items-center justify-center gap-1.5 [&_svg]:size-[15px] [&_svg]:stroke-[1.75]"><MessageSquareIcon aria-hidden /> {t("task.preview.chat")}</ToggleGroupItem>
+                  <ToggleGroupItem value="preview" className="flex flex-1 items-center justify-center gap-1.5 [&_svg]:size-[15px] [&_svg]:stroke-[1.75]"><AppWindowIcon aria-hidden /> {t("task.preview.sidePreview")}</ToggleGroupItem>
                 </ToggleGroup>
               ),
             },
