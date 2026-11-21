@@ -87,9 +87,6 @@ const FieldLabel = ({ htmlFor, children }: { readonly htmlFor?: string; readonly
 const FieldError = ({ id, children }: { readonly id: string; readonly children: string | null }) =>
   children === null ? null : <p id={id} role="alert" className="mt-1.5 text-sm text-red">{children}</p>;
 
-/** The Shell-on switch of the sheet (pool-new.md: Shell track with an Abyss knob when on). */
-const shellSwitch = "data-[state=checked]:border-primary data-[state=checked]:bg-primary";
-
 /** How long a pool's tokens last, as the three radio rows choose it. */
 type Lifetime = { readonly kind: "default" } | { readonly kind: "days"; readonly days: string } | { readonly kind: "none" };
 
@@ -258,7 +255,7 @@ const PoolForm = ({ edit, settings, onShown, onClose }: {
               <span className="block text-body text-text">{t("runners.poolRequiresApproval")}</span>
               <span className="block text-[12.5px] text-faint">{t("runners.poolForm.approvalHelp")}</span>
             </span>
-            <Switch id="pool-approval" checked={requiresApproval} onCheckedChange={setRequiresApproval} className={shellSwitch} />
+            <Switch id="pool-approval" checked={requiresApproval} onCheckedChange={setRequiresApproval} />
           </label>
           <div>
             <FieldLabel htmlFor="pool-max">{t("runners.poolMaxBoxes")}</FieldLabel>

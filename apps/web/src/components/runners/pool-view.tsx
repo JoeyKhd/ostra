@@ -364,7 +364,6 @@ const ApprovalSwitch = ({ pool, onError }: { readonly pool: Pool; readonly onErr
           aria-label={t("runners.poolRequiresApproval")}
           checked={on}
           disabled={update.isPending}
-          className="data-[state=checked]:border-primary data-[state=checked]:bg-primary"
           onCheckedChange={(next) => { setOptimistic(next); update.mutate({ poolId: pool.id, requiresApproval: next }); }}
         />
         {on ? t("runners.pool.required") : t("runners.approvalNotRequired")}

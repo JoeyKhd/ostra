@@ -59,9 +59,12 @@ The values live in `app-concepts/html/graphite.css` until milestone 1 turns them
 | Healthy, success, additions | `#4FB286`, always with an icon or label |
 | Errors and deletions | `#E5675C`. Never amber |
 | Links and inline actions ("Take over", "Copy") | teal `#6FB8AA` |
+| A switch that is on | teal `#6FB8AA` track and edge, with an Abyss `#0C1D21` knob |
 | Primary button | filled Shell `#F3F0E8` with Abyss text |
 | Charts | Mist `#CFD8D4` |
 | Project markers | one colour per project, only on its 8px square |
+
+**Switches are teal (decided 2026-11-21).** The approved targets disagreed on a switch's on state: `--teal` (agent-profile, memory-note), the Shell primary (instance-settings, the pool sheet) and `--green`, which the panel used. The maintainer picked teal, the panel's accent, for every switch in both themes: `--teal` for the track and its edge, and `--on-primary` for the knob (Abyss in dark, the page's near-white in light). Measured against WCAG's 3:1 for controls: the knob against the track is 7.5:1 in dark and 6.1:1 in light, and the track against the page, the sidebar, a surface, a raised panel and a selected row is 7.5:1 to 8.6:1 in dark and 5.2:1 to 6.3:1 in light. The off state is unchanged: a `--surface` track with a `--control-line` edge and a `--text` knob. Green stays for health and success.
 
 The light theme (milestone 7, ticket 18) mirrors this table token for token in neutral greys, with graphite ink and no Abyss: `app-targets/m7/light-home.md`, "The light tokens" (page `#FAFAFB`, text `#141518`, re-based on graphite on 2026-11-20).
 

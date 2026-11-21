@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 
 const repo = path.join(import.meta.dirname, "..", "..", "..", "..");
 const cssPath = path.join(import.meta.dirname, "globals.css");
+const switchPath = path.join(import.meta.dirname, "..", "components", "ui", "switch.tsx");
 const lightHomePath = path.join(repo, "context", "brand", "app-targets", "m7", "light-home.md");
 
 type Tokens = ReadonlyMap<string, string>;
@@ -144,6 +145,25 @@ describe("the panel's light theme", () => {
       ];
       for (const [text, surface, minimum] of pairs) {
         expect(contrast(text, surface), `${theme}: ${text} on ${surface}`).toBeGreaterThanOrEqual(minimum);
+      }
+    }
+  });
+
+  it("F-082: a switch that is on is teal in both themes, its knob against its track and its track against every surface at 3:1 (app-design.md, 2026-11-21)", async () => {
+    const { dark, light } = await read();
+    const source = await readFile(switchPath, "utf8");
+    // The on state's track, edge and knob, as the component draws them.
+    expect(source).toContain("data-[state=checked]:border-teal data-[state=checked]:bg-teal");
+    expect(source).toContain("data-[state=checked]:bg-on-primary");
+    expect(source).not.toMatch(/data-\[state=checked\]:(?:bg|border)-(?:green|primary)/);
+    for (const [theme, tokens] of [
+      ["dark", dark],
+      ["light", light],
+    ] as const) {
+      const colour = (name: string): string => required(tokens.get(name), `${theme} ${name}`);
+      expect(contrast(colour("--on-primary"), colour("--teal")), `${theme}: the knob on the track`).toBeGreaterThanOrEqual(3);
+      for (const surface of surfaces) {
+        expect(contrast(colour("--teal"), colour(surface)), `${theme}: the track on ${surface}`).toBeGreaterThanOrEqual(3);
       }
     }
   });
