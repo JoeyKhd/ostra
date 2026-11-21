@@ -226,6 +226,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       personalRunnerCapacity: installDefaults.personalRunnerCapacity,
       // Milestone 8's library, as a fresh install has it: search may be turned on, at skills.sh's address.
       library: installDefaults.library,
+      memoryProposalsPerTask: installDefaults.memoryProposalsPerTask,
     },
     blobStore: {
       name: "postgres",

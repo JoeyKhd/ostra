@@ -415,6 +415,63 @@ describe("proposals", () => {
   });
 });
 
+describe("the note's and the proposal's panels (memory-note.md, memory-proposals.md)", () => {
+  it("F-109: a note's Used counts the tasks that read it or found it by search, and a version from a proposal names its agent and task, when the viewer can open it", async () => {
+    const { a } = harness.fixture;
+    const admin = await harness.as(a.admin);
+    const note = await admin.memory.save({ noteId: null, expectedVersion: null, scope: "organization", projectId: null, title: "Release notes", body: "Write them in the PR.", kind: "convention", always: false });
+    const first = await seedTask(harness, { organizationId: a.organization.id, projectId: a.openProject.id });
+    const second = await seedTask(harness, { organizationId: a.organization.id, projectId: a.openProject.id });
+    const third = await seedTask(harness, { organizationId: a.organization.id, projectId: a.openProject.id });
+    // Two tasks read it or found it (one of them twice); the third only had it in its index, which isn't a use.
+    for (const [task, via] of [[first, "read"], [first, "search"], [second, "read"], [third, "index"]] as const) {
+      await harness.test.db.memoryUse.create({ data: { organizationId: a.organization.id, projectId: a.openProject.id, taskId: task.taskId, sessionId: task.sessionId, noteId: note.noteId, via } });
+    }
+    expect((await admin.memory.note({ noteId: note.noteId })).usedInTasks).toBe(2);
+
+    // A version merged from an agent's proposal of an open project's task names the agent and the task's key.
+    const fromOpen = await proposal({ projectId: null, title: "Release notes", body: "Write them in the PR, under Changes.", taskId: first.taskId });
+    await admin.memory.decide({ proposalId: fromOpen, decision: "merge", intoNoteId: note.noteId, expectedVersion: 1, title: "Release notes", body: "Write them in the PR, under Changes." });
+    // One from a restricted project's task: its task isn't named to a member who can't open it.
+    const hiddenTask = await seedTask(harness, { organizationId: a.organization.id, projectId: a.restrictedProject.id });
+    const fromHidden = await proposal({ projectId: null, title: "Release notes", body: "Write them in the PR, under Changes, newest first.", taskId: hiddenTask.taskId });
+    await admin.memory.decide({ proposalId: fromHidden, decision: "merge", intoNoteId: note.noteId, expectedVersion: 2, title: "Release notes", body: "Write them in the PR, under Changes, newest first." });
+
+    const keyOf = (taskId: string): string => taskId.replaceAll("-", "").slice(-8);
+    const seen = await (await harness.as(a.member)).memory.note({ noteId: note.noteId });
+    expect(seen.versions.map((version) => [version.version, version.source])).toEqual([
+      [3, { kind: "agent", agent: "OpenCode", by: null, task: null }],
+      [2, { kind: "agent", agent: "OpenCode", by: null, task: { taskId: first.taskId, key: keyOf(first.taskId) } }],
+      [1, null],
+    ]);
+    const insiders = await (await harness.as(a.insider)).memory.note({ noteId: note.noteId });
+    expect(insiders.versions[0]?.source?.task).toEqual({ taskId: hiddenTask.taskId, key: keyOf(hiddenTask.taskId) });
+  });
+
+  it("F-111: a proposal's panel names its task's driver, its session's number, and the agent's proposals of the task's cap", async () => {
+    const { a } = harness.fixture;
+    const task = await seedTask(harness, { organizationId: a.organization.id, projectId: a.openProject.id, driverMemberId: a.member.id });
+    const made = async (sourceKind: "agent" | "closing_turn" | "diff_comment", title: string): Promise<ProposalId> =>
+      proposalIdSchema.parse(
+        (
+          await harness.test.db.memoryProposal.create({
+            data: { organizationId: a.organization.id, projectId: a.openProject.id, scope: "project", title, body: title, kind: "gotcha", sourceKind, taskId: task.taskId, sessionId: task.sessionId, proposedByMemberId: sourceKind === "diff_comment" ? a.member.id : null },
+            select: { id: true },
+          })
+        ).id,
+      );
+    const proposed = await made("agent", "The mock needs Node 24");
+    await made("closing_turn", "Run the mock first");
+    // A member's comment isn't the agent's, so it doesn't count against the task's cap.
+    await made("diff_comment", "Name ports in the README");
+    const opened = await (await harness.as(a.member)).memory.proposal({ proposalId: proposed });
+    expect(opened.taskFacts).toEqual({ driver: { memberId: a.member.id, name: "member-a" }, session: 1, proposals: { made: 2, cap: 20 } });
+    // A proposal with no task has none of these.
+    const alone = await proposal({ projectId: a.openProject.id, title: "Alone", body: "No task." });
+    expect((await (await harness.as(a.member)).memory.proposal({ proposalId: alone })).taskFacts).toBeNull();
+  });
+});
+
 describe("tasks.memory", () => {
   it("F-110/c4: tasks.memory lists what the session's MemoryUse rows say, and the proposals the task made", async () => {
     const { a } = harness.fixture;

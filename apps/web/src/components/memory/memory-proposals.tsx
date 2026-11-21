@@ -52,6 +52,37 @@ const fromWords = (proposal: Proposal): string => {
   }
 };
 
+/**
+ * The panel's rows about the proposal's task (memory-proposals.md, Source and This task): the
+ * driver, the session's number, and how many proposals the task's agent made of its cap, which a
+ * member's proposal from a comment doesn't count against.
+ */
+const ProposalTaskRows = ({ proposalId, source }: { readonly proposalId: Proposal["proposalId"]; readonly source: Proposal["source"] }) => {
+  const trpc = useTRPC();
+  const detail = useQuery(trpc.memory.proposal.queryOptions({ proposalId }));
+  const facts = detail.data?.taskFacts ?? null;
+  if (facts === null) return null;
+  const agentMade = source === "agent" || source === "closing_turn";
+  return (
+    <>
+      <PropRow label={t("memory.proposalsList.driver")} labelWidth={96}>
+        {facts.driver === null ? <span className="text-faint">–</span> : <span className="truncate">{facts.driver.name}</span>}
+      </PropRow>
+      {facts.session === null ? null : (
+        <PropRow label={t("memory.proposalsList.session")} labelWidth={96}><span className="font-mono">{facts.session}</span></PropRow>
+      )}
+      {agentMade ? (
+        <div className="mt-3 border-t border-line pt-3" data-testid="proposal-this-task">
+          <h3 className="mb-1 text-xs font-medium text-faint">{t("memory.proposalsList.thisTask")}</h3>
+          <PropRow label={t("memory.proposalsList.proposals")} labelWidth={96}>
+            <span className="font-mono">{t("memory.proposalsList.proposalsOf", { made: facts.proposals.made, cap: facts.proposals.cap })}</span>
+          </PropRow>
+        </div>
+      ) : null}
+    </>
+  );
+};
+
 const stateWord = (state: Proposal["state"]): string => {
   switch (state) {
     case "proposed":
@@ -256,6 +287,7 @@ export const MemoryProposals = ({ memoryRef, projectName, organizationName }: { 
                   <Link href={`/tasks/${selected.task.taskId}`} className="truncate text-teal hover:underline" data-testid="proposal-task">{selected.task.title}</Link>
                 </PropRow>
               )}
+              {selected.task === null ? null : <ProposalTaskRows proposalId={selected.proposalId} source={selected.source} />}
             </div>
             <p className="mt-3 border-t border-line pt-3 text-sm text-muted">{t("memory.proposalsList.reachesNext")}</p>
           </div>

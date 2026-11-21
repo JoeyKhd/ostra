@@ -1,4 +1,5 @@
 import {
+  agentDisplayName,
   archiveNote,
   buildMemoryIndex,
   canArchiveNote,
@@ -12,7 +13,7 @@ import {
   saveNote,
 } from "@ostra/domain";
 import type { MemberScope, NotesDeps, RememberThisSource } from "@ostra/domain";
-import type { DbOrTx } from "@ostra/db";
+import type { Db, DbOrTx } from "@ostra/db";
 import {
   diffCommentIdSchema,
   memberIdSchema,
@@ -33,6 +34,7 @@ import { z } from "zod";
 
 import type { Context } from "../trpc/context.ts";
 import { loadProjectAccess, memberProcedure, router, taskProcedure } from "../trpc/init.ts";
+import { boardProjectIds } from "./home-board.ts";
 
 // F-109, F-110, F-111 (ticket 29; ADR 0044 amended): memory in the panel. A scope's notes, searched
 // by full text; a note with its versions; saving and archiving through ticket 16's use cases; the
@@ -191,6 +193,61 @@ const proposalViews = async (db: DbOrTx, organizationId: OrganizationId, rows: r
   });
 };
 
+/** A task's short key: its ticket's, or the end of its ID (as Home and Needs you say it). */
+const taskKeyOf = (task: { readonly id: string; readonly ticketKey: string | null }): string => task.ticketKey ?? task.id.replaceAll("-", "").slice(-8);
+
+/**
+ * Where each proposal a note's versions came from, by proposal ID: its kind, the agent (an agent's
+ * or a closing turn's) or the member (a comment's), and its task with its key while the viewer can
+ * open the task's project; a task they can't open isn't named.
+ */
+const versionSources = async (db: Db, scope: MemberScope, proposalIds: readonly string[]) => {
+  type Source = { readonly kind: ProposalRow["sourceKind"]; readonly agent: string | null; readonly by: { readonly memberId: MemberId; readonly name: string } | null; readonly task: { readonly taskId: ReturnType<typeof taskIdSchema.parse>; readonly key: string } | null };
+  const out = new Map<string, Source>();
+  if (proposalIds.length === 0) return out;
+  const { organizationId } = scope;
+  const proposals = await db.memoryProposal.findMany({ where: { organizationId, id: { in: [...proposalIds] } }, select: { id: true, sourceKind: true, taskId: true, proposedByMemberId: true } });
+  const taskIds = [...new Set(proposals.flatMap((proposal) => (proposal.taskId === null ? [] : [proposal.taskId])))];
+  const [tasks, visible, names] = await Promise.all([
+    taskIds.length === 0 ? [] : db.task.findMany({ where: { organizationId, id: { in: taskIds } }, select: { id: true, ticketKey: true, projectId: true, agentProfileId: true } }),
+    boardProjectIds(db, scope, undefined),
+    namesOf(db, organizationId, proposals.map((proposal) => proposal.proposedByMemberId)),
+  ]);
+  const profileIds = [...new Set(tasks.flatMap((task) => (task.agentProfileId === null ? [] : [task.agentProfileId])))];
+  const profiles = profileIds.length === 0 ? [] : await db.agentProfile.findMany({ where: { organizationId, id: { in: profileIds } }, select: { id: true, adapter: true } });
+  const adapterOf = new Map(profiles.map((profile) => [profile.id, profile.adapter] as const));
+  const taskOf = new Map(tasks.map((task) => [task.id, task] as const));
+  const open = new Set(visible ?? []);
+  for (const proposal of proposals) {
+    const task = proposal.taskId === null ? undefined : taskOf.get(proposal.taskId);
+    const agentMade = proposal.sourceKind === "agent" || proposal.sourceKind === "closing_turn";
+    out.set(proposal.id, {
+      kind: proposal.sourceKind,
+      agent: agentMade ? agentDisplayName(task?.agentProfileId == null ? "opencode" : (adapterOf.get(task.agentProfileId) ?? "opencode")) : null,
+      by: agentMade ? null : personOf(names, proposal.proposedByMemberId),
+      task: task === undefined || !open.has(task.projectId) ? null : { taskId: taskIdSchema.parse(task.id), key: taskKeyOf(task) },
+    });
+  }
+  return out;
+};
+
+/** The proposal panel's facts of its task: the driver, the session's number, the agent's proposals of the cap. */
+const proposalTaskFacts = async (db: DbOrTx, organizationId: OrganizationId, at: { readonly taskId: string; readonly sessionId: string | null }, cap: number) => {
+  const [task, sessions, made] = await Promise.all([
+    db.task.findFirst({ where: { id: at.taskId, organizationId }, select: { driverMemberId: true } }),
+    at.sessionId === null ? [] : db.session.findMany({ where: { organizationId, taskId: at.taskId }, orderBy: [{ startedAt: "asc" }, { id: "asc" }], select: { id: true } }),
+    // The cap's own count (`proposeNote`): what the task's agent proposed, not members' comments.
+    db.memoryProposal.count({ where: { organizationId, taskId: at.taskId, sourceKind: { in: ["agent", "closing_turn"] } } }),
+  ]);
+  const names = await namesOf(db, organizationId, [task?.driverMemberId ?? null]);
+  const index = sessions.findIndex((session) => session.id === at.sessionId);
+  return {
+    driver: personOf(names, task?.driverMemberId ?? null),
+    session: index === -1 ? null : index + 1,
+    proposals: { made, cap },
+  };
+};
+
 const notesDeps = (ctx: Pick<Context, "deps">): NotesDeps => ({
   db: ctx.deps.db,
   audit: ctx.deps.ports.audit,
@@ -297,6 +354,8 @@ export const memoryRouter = router({
     .input(z.strictObject({ noteId: noteIdSchema }))
     .output(
       noteViewSchema.extend({
+        /** How many tasks read it or found it by search (memory-note.md, `Used · 9 times in 6 tasks`). */
+        usedInTasks: z.number().int(),
         versions: z.array(
           z.object({
             version: z.number().int(),
@@ -306,6 +365,19 @@ export const memoryRouter = router({
             always: z.boolean(),
             editedBy: personSchema.nullable(),
             proposalId: proposalIdSchema.nullable(),
+            /**
+             * Where a version from a proposal came from (memory-note.md, Versions' Source): the
+             * proposal's kind, the agent or the member who made it, and its task with its key, when
+             * the viewer can open that task's project. `null` for a member's own save.
+             */
+            source: z
+              .object({
+                kind: proposalSourceSchema,
+                agent: z.string().nullable(),
+                by: personSchema.nullable(),
+                task: z.object({ taskId: taskIdSchema, key: z.string() }).nullable(),
+              })
+              .nullable(),
             at: z.number(),
           }),
         ),
@@ -324,9 +396,15 @@ export const memoryRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "No such note" });
       }
       const versions = await db.memoryNoteVersion.findMany({ where: { noteId: row.id, organizationId }, orderBy: { version: "desc" } });
+      const [uses, sources] = await Promise.all([
+        // A use is a read or a search hit (ADR 0044, Q91): its place in the index or the always block isn't.
+        db.memoryUse.groupBy({ by: ["taskId"], where: { organizationId, noteId: row.id, via: { in: ["read", "search"] } } }),
+        versionSources(db, ctx.scope, versions.flatMap((version) => (version.proposalId === null ? [] : [version.proposalId]))),
+      ]);
       const names = await namesOf(db, organizationId, versions.map((version) => version.editedByMemberId));
       return {
         ...view,
+        usedInTasks: uses.length,
         versions: versions.map((version) => ({
           version: version.version,
           title: version.title,
@@ -335,6 +413,7 @@ export const memoryRouter = router({
           always: version.always,
           editedBy: personOf(names, version.editedByMemberId),
           proposalId: version.proposalId === null ? null : proposalIdSchema.parse(version.proposalId),
+          source: version.proposalId === null ? null : (sources.get(version.proposalId) ?? null),
           at: version.createdAt.getTime(),
         })),
       };
@@ -400,6 +479,18 @@ export const memoryRouter = router({
     .input(z.strictObject({ proposalId: proposalIdSchema }))
     .output(
       proposalViewSchema.extend({
+        /**
+         * The panel's Source and This task rows (memory-proposals.md): the task's driver, the
+         * proposal's session as its number among the task's sessions, and how many proposals the
+         * task's agent has made of its cap (`OSTRA_MEMORY_PROPOSALS_PER_TASK`). `null` without a task.
+         */
+        taskFacts: z
+          .object({
+            driver: personSchema.nullable(),
+            session: z.number().int().nullable(),
+            proposals: z.object({ made: z.number().int(), cap: z.number().int() }),
+          })
+          .nullable(),
         related: z.array(
           z.object({
             noteId: noteIdSchema,
@@ -431,6 +522,7 @@ export const memoryRouter = router({
       const byId = new Map(notes.map((note) => [note.id, note] as const));
       return {
         ...view,
+        taskFacts: view.task === null ? null : await proposalTaskFacts(db, ctx.scope.organizationId, { taskId: view.task.taskId, sessionId: row.sessionId }, ctx.deps.settings.memoryProposalsPerTask),
         related: related.flatMap((note) => {
           const found = byId.get(note.noteId);
           return found === undefined ? [] : [{ ...note, kind: found.kind, firstLine: found.body.split("\n", 1)[0] ?? "" }];

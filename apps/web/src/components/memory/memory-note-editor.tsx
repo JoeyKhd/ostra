@@ -26,7 +26,7 @@ import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
 import { KindIcon } from "./memory-parts";
-import { MEMORY_KINDS, NOTE_BODY_MAX_BYTES, bodySize, conflictOf, kindWord, memoryBase, secretFoundOf, sourceFilterOf, sourceWord } from "./memory-words";
+import { MEMORY_KINDS, NOTE_BODY_MAX_BYTES, bodySize, conflictOf, kindWord, memoryBase, secretFoundOf, sourceFilterOf, sourceWord, usedText, versionSourceParts } from "./memory-words";
 import type { MemoryScopeRef } from "./memory-words";
 
 // A memory note (F-109; app-targets/m4/memory-note.md): write one, or edit one at the version the
@@ -193,7 +193,9 @@ export const MemoryNoteEditor = ({ memoryRef, noteId, projectName, organizationN
             <PropRow label={t("memory.panel.lastUsed")} labelWidth={116}>
               {note.data.lastUsedAt === null ? <span className="text-muted">{t("memory.never")}</span> : <span className="font-mono" suppressHydrationWarning>{formatAge(note.data.lastUsedAt, now)}</span>}
             </PropRow>
-            <PropRow label={t("memory.panel.used")} labelWidth={116}><span className="font-mono">{note.data.useCount}</span>&nbsp;<span className="text-muted">{t("memory.panel.reads")}</span></PropRow>
+            <PropRow label={t("memory.panel.used")} labelWidth={116}>
+              {note.data.useCount === 0 ? <span className="text-faint">–</span> : <span data-testid="note-used">{usedText(note.data.useCount, note.data.usedInTasks)}</span>}
+            </PropRow>
           </>
         )}
         <div className="mt-3 border-t border-line pt-3">
@@ -342,10 +344,23 @@ export const MemoryNoteEditor = ({ memoryRef, noteId, projectName, organizationN
             <ul className="mt-2.5 border-t border-line">
               {note.data.versions.map((version) => (
                 <li key={version.version} className="border-b border-line">
-                  <div className="grid min-h-10 grid-cols-[48px_minmax(0,1fr)_64px_40px] items-center gap-x-3 text-ui sm:grid-cols-[48px_180px_minmax(0,1fr)_64px_40px]">
+                  <div className="grid min-h-10 grid-cols-[48px_minmax(0,1fr)_64px_40px] items-center gap-x-3 text-ui sm:grid-cols-[48px_180px_120px_minmax(0,1fr)_64px_40px]">
                     <span className="font-mono text-[13px] text-faint">v{version.version}</span>
                     <span className="truncate text-text">{versionWhat(version)}</span>
                     <span className="hidden truncate text-muted sm:inline">{version.editedBy?.name ?? t("memory.someone")}</span>
+                    {/* Source: where a version from a proposal came from, the task's key a link (memory-note.md). */}
+                    {/* The words give way before the key, which stays whole. */}
+                    <span className="hidden min-w-0 items-center whitespace-pre text-sm text-muted sm:flex" data-testid="version-source">
+                      {version.source === null
+                        ? null
+                        : versionSourceParts(version.source).map((part, i) =>
+                            "task" in part ? (
+                              <Link key={`task-${String(i)}`} href={`/tasks/${part.task.taskId}`} className="shrink-0 font-mono text-teal hover:underline">{part.task.key}</Link>
+                            ) : (
+                              <span key={`text-${String(i)}`} className="min-w-0 truncate">{part.text}</span>
+                            ),
+                          )}
+                    </span>
                     <span className="text-right font-mono text-xs text-faint" suppressHydrationWarning>{formatAge(version.at, now)}</span>
                     <button type="button" aria-expanded={opened === version.version} className="text-right text-teal hover:underline" onClick={() => { setOpened(opened === version.version ? null : version.version); }}>
                       {opened === version.version ? t("memory.note.hide") : t("memory.note.view")}

@@ -5927,6 +5927,8 @@
       "lastUsed": "Last used",
       "used": "Used",
       "reads": "reads",
+      "usedTimes": { "one": "{n} time", "other": "{n} times" },
+      "inTasks": { "one": "in {n} task", "other": "in {n} tasks" },
       "versions": "Versions"
     },
     "note": {
@@ -5964,6 +5966,18 @@
       "archiveHelp": "Archived, it leaves the index and search. Its versions stay.",
       "versionsHelp": "every save keeps the one before it",
       "writtenBy": "Written by {name}",
+      "versionSource": {
+        "agent": "proposed by {agent} in {task}",
+        "agentAlone": "proposed by {agent}",
+        "closing": "the closing turn of {task}",
+        "closingAlone": "a closing turn",
+        "diff": "{name}'s diff comment on {task}",
+        "diffAlone": "{name}'s diff comment",
+        "pr": "{name}'s PR comment on {task}",
+        "prAlone": "{name}'s PR comment",
+        "finding": "{name}'s AI review finding on {task}",
+        "findingAlone": "{name}'s AI review finding"
+      },
       "whatWritten": "Written by hand",
       "whatEdited": "Edited",
       "whatApproved": "Approved from a proposal",
@@ -6014,7 +6028,12 @@
       "state": "State",
       "kind": "Kind",
       "proposedAt": "Proposed",
-      "reachesNext": "An approved note reaches the next session, never a running one."
+      "reachesNext": "An approved note reaches the next session, never a running one.",
+      "driver": "Driver",
+      "session": "Session",
+      "thisTask": "This task",
+      "proposals": "Proposals",
+      "proposalsOf": "{made} of {cap}"
     },
     "task": {
       "title": "Memory",

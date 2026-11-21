@@ -59,6 +59,8 @@ export type ApiSettings = Pick<
   // Milestone 8: the library's update hours, the marketplace search's instance switch and the
   // skills search's address (ticket 30).
   | "library"
+  // Memory (F-111): a task's proposal cap, which the proposals panel shows (`1 of 20`).
+  | "memoryProposalsPerTask"
 >;
 
 /**

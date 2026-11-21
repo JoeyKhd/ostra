@@ -4,7 +4,7 @@
 
 import type { MemoryKind, ProjectId } from "@ostra/protocol";
 
-import { t } from "@/lib/messages";
+import { plural, t } from "@/lib/messages";
 import type { MessageKey } from "@/lib/messages";
 
 export const MEMORY_KINDS = ["convention", "command", "gotcha", "decision", "preference", "term"] as const satisfies readonly MemoryKind[];
@@ -78,4 +78,37 @@ export const bodySize = (body: string): { readonly bytes: number; readonly text:
   const bytes = new TextEncoder().encode(body).length;
   const shown = bytes < 1024 ? `${String(bytes)} B` : `${(bytes / 1024).toFixed(1)} KiB`;
   return { bytes, text: t("memory.note.size", { size: shown }) };
+};
+
+/** The note panel's `Used` (memory-note.md): `9 times in 6 tasks`. */
+export const usedText = (times: number, tasks: number): string =>
+  `${plural(times, "memory.panel.usedTimes.one", "memory.panel.usedTimes.other")} ${plural(tasks, "memory.panel.inTasks.one", "memory.panel.inTasks.other")}`;
+
+/** Where a version from a proposal came from: its kind, who made it, and its task's key when the viewer can open it. */
+export type VersionSource = {
+  readonly kind: "agent" | "closing_turn" | "diff_comment" | "pr_comment" | "ai_finding";
+  readonly agent: string | null;
+  readonly by: { readonly name: string } | null;
+  readonly task: { readonly taskId: string; readonly key: string } | null;
+};
+
+const versionSourceKeys: Readonly<Record<VersionSource["kind"], readonly [MessageKey, MessageKey]>> = {
+  agent: ["memory.note.versionSource.agent", "memory.note.versionSource.agentAlone"],
+  closing_turn: ["memory.note.versionSource.closing", "memory.note.versionSource.closingAlone"],
+  diff_comment: ["memory.note.versionSource.diff", "memory.note.versionSource.diffAlone"],
+  pr_comment: ["memory.note.versionSource.pr", "memory.note.versionSource.prAlone"],
+  ai_finding: ["memory.note.versionSource.finding", "memory.note.versionSource.findingAlone"],
+};
+
+/**
+ * A version's Source (memory-note.md, Versions): `proposed by OpenCode in CALC-161`, `Sam Rivera's
+ * diff comment on CALC-161`, `the closing turn of CALC-161`, as parts, so the key can be a link.
+ * Without a task the viewer can open, the words leave it out.
+ */
+export const versionSourceParts = (source: VersionSource): readonly ({ readonly text: string } | { readonly task: { readonly taskId: string; readonly key: string } })[] => {
+  const [withTask, alone] = versionSourceKeys[source.kind];
+  const params = { agent: source.agent ?? "", name: source.by?.name ?? t("memory.someone") };
+  if (source.task === null) return [{ text: t(alone, params) }];
+  const [before = "", after = ""] = t(withTask, { ...params, task: "\u0000" }).split("\u0000");
+  return [{ text: before }, { task: source.task }, { text: after }].filter((part) => !("text" in part) || part.text !== "");
 };
