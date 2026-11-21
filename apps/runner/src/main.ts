@@ -2,7 +2,7 @@
 // The `ostra` CLI's entry point (ADR 0046). `pnpm ostra ...` runs it from source.
 import http from "node:http";
 import { runCli } from "./cli/cli.ts";
-import { createTerminal } from "./cli/terminal.ts";
+import { createAsk, createTerminal } from "./cli/terminal.ts";
 import { runSidecarCommand } from "./run-sidecar.ts";
 import { runSignedInRunner } from "./run-runner.ts";
 
@@ -39,5 +39,9 @@ const code = await runCli(process.argv.slice(2), {
   signal: controller.signal,
   runSignedIn: runSignedInRunner,
   runSidecar: runSidecarCommand,
+  // `ostra preview`'s "Start the app? [y/N]": a Ctrl+C there ends the command as one anywhere else does.
+  ask: createAsk(process.stdin, process.stdout, () => {
+    controller.abort();
+  }),
 });
 process.exitCode = code;

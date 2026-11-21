@@ -19,11 +19,12 @@ import { runCheckout } from "./checkout.ts";
 import { helpText } from "./help.ts";
 import { runLogin, runLogout } from "./login.ts";
 import type { CliOutcome } from "./login.ts";
-import type { Terminal } from "./terminal.ts";
+import { runPreview } from "./preview.ts";
+import type { Ask, Terminal } from "./terminal.ts";
 
 // The `ostra` CLI (ADR 0046): one program that is the runner, the sidecar, and a member's `login`,
-// `checkout` and `logout` (F-103, ADR 0051). `runCli` returns the exit code; `main.ts` wires it to
-// the process.
+// `checkout` and `logout` (F-103, ADR 0051) and `preview` (F-143, ADR 0068). `runCli` returns the
+// exit code; `main.ts` wires it to the process.
 
 export const exitCodes = {
   ok: 0,
@@ -80,7 +81,11 @@ export type CliDeps = {
     readonly sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
     readonly machineName?: string;
     readonly cwd?: string;
+    /** How long `preview`'s "Start the app" waits for the task's box. */
+    readonly startWaitMs?: number;
   };
+  /** Asks the person a question (`preview`'s "Start the app? [y/N]"). Unset, nobody is asked. */
+  readonly ask?: Ask;
 };
 
 const exitOf = (outcome: CliOutcome): number => {
@@ -288,7 +293,8 @@ export const runCli = async (args: readonly string[], deps: CliDeps): Promise<nu
       return exitCodes.usage;
     case "login":
     case "logout":
-    case "checkout": {
+    case "checkout":
+    case "preview": {
       const local = {
         env: deps.env,
         terminal: deps.terminal,
@@ -298,6 +304,19 @@ export const runCli = async (args: readonly string[], deps: CliDeps): Promise<nu
         ...(deps.local?.machineName === undefined ? {} : { machineName: deps.local.machineName }),
         ...(deps.local?.cwd === undefined ? {} : { cwd: deps.local.cwd }),
       };
+      if (command === "preview") {
+        if (rest.length > 1) {
+          deps.terminal.warn("ostra preview: one task and at most one port: `ostra preview <task> [port] [--local <port>]`.");
+          return exitCodes.usage;
+        }
+        return exitOf(
+          await runPreview(sub, rest[0], flags, {
+            ...local,
+            ...(deps.ask === undefined ? {} : { ask: deps.ask }),
+            ...(deps.local?.startWaitMs === undefined ? {} : { startWaitMs: deps.local.startWaitMs }),
+          }),
+        );
+      }
       if (command === "checkout") {
         if (rest.length > 0) {
           deps.terminal.warn("ostra checkout: one task at a time: `ostra checkout <task> [--dir <folder>]`.");

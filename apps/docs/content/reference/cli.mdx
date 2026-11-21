@@ -1,10 +1,10 @@
 ---
 title: "CLI commands"
 description: "The ostra CLI's commands and flags."
-summary: "One program: the runner, and a member's login, checkout and logout."
+summary: "One program: the runner, and a member's login, checkout, preview and logout."
 ---
 
-`ostra` is one program: a runner (`ostra runner`), the sidecar inside each `docker` box, and a member's own `login`, `checkout` and `logout`. This page matches what `ostra --help` prints, and a test holds the two together.
+`ostra` is one program: a runner (`ostra runner`), the sidecar inside each `docker` box, and a member's own `login`, `checkout`, `preview` and `logout`. This page matches what `ostra --help` prints, and a test holds the two together.
 
 ```sh
 ostra --help
@@ -18,6 +18,7 @@ ostra --help
 | `ostra runner status [flags]` | Show the runner's ID, server, version window and last refusal |
 | `ostra login [--server <url>]` | Sign in as yourself, with a code you approve in the browser |
 | `ostra checkout <task> [--dir <folder>]` | Put a task's branches in your own clones (ticket key, task ID or URL) |
+| `ostra preview <task> [port] [--local <port>]` | Serve a task's preview on your own localhost, the primary's by default |
 | `ostra logout` | Sign out, and revoke the CLI session on the server |
 | `ostra --version` | Print the CLI's version |
 
@@ -31,11 +32,26 @@ ostra runner --server http://localhost:8787 --executor docker --slots 2
 
 ### ostra login
 
-Signs the CLI in as you, with a device code you approve in the browser. The CLI session lasts 30 days (`OSTRA_CLI_SESSION_DAYS`), and you can revoke it sooner in your Account. It can read a task's branches for `ostra checkout`, and nothing else.
+Signs the CLI in as you, with a device code you approve in the browser. The CLI session lasts 30 days (`OSTRA_CLI_SESSION_DAYS`), and you can revoke it sooner in your Account. It can read a task's branches for `ostra checkout` and open a task's previews for `ostra preview`, and nothing else.
 
 ### ostra checkout
 
 Fetches each of a task's branches into your own clones and checks them out. Name the task by its ticket key, its task ID or its URL. Without `--dir`, it looks for your clones from the current folder.
+
+### ostra preview
+
+Serves one of a task's previews on your own machine, at `http://localhost:<port>`, while its box runs: the primary preview by default, or the one on the port you name. Your browser talks to the app in the task's box through the server, so a dev server's hot reload, its WebSockets and the frontend's `/api` work as they do on the box. Name the task as for `ostra checkout`.
+
+```sh
+ostra preview OST-12
+ostra preview OST-12 3001 --local 4001
+```
+
+- It listens on `127.0.0.1` only, never on another network interface. The local port is the preview's own when it's free on your machine, else the next free one, or `--local`'s.
+- Only the ports of the task's previews are served; any other is refused with the reason.
+- With no box running, it asks to start the task's app, with no agent turn, and waits for it.
+- If the connection drops, it reconnects up to three times, and says so. Ctrl+C stops it.
+- It needs the task's runner on protocol 1.7 or later over a WebSocket. A runner on the HTTP fallback can't carry it: use the preview pane in the panel.
 
 ## Exit codes
 

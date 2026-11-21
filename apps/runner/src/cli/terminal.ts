@@ -1,3 +1,4 @@
+import { createInterface } from "node:readline";
 import { createLogger } from "@ostra/adapter-sdk";
 import type { LogPrimitive, LogRecord, Logger } from "@ostra/adapter-sdk";
 
@@ -49,6 +50,52 @@ export const createTerminal = (streams: TerminalStreams): Terminal => ({
     streams.stderr.write(`${formatLogRecord(record)}\n`);
   }),
 });
+
+/**
+ * Asks the person at the terminal one question and reads the line they answer (`ostra preview`'s
+ * "Start the app? [y/N]"): `null` when there's no answer, because the input ended, the signal
+ * aborted, or they pressed Ctrl+C.
+ */
+export type Ask = (question: string, signal: AbortSignal) => Promise<string | null>;
+
+/**
+ * An `Ask` on the process's own streams. A TTY's Ctrl+C reaches readline as input rather than as
+ * SIGINT, so `onInterrupt` stands in for the process's own handler.
+ */
+export const createAsk =
+  (input: NodeJS.ReadableStream, output: NodeJS.WritableStream, onInterrupt: () => void): Ask =>
+  (question, signal) =>
+    new Promise((resolve) => {
+      if (signal.aborted) {
+        resolve(null);
+        return;
+      }
+      const lines = createInterface({ input, output });
+      let done = false;
+      const finish = (answer: string | null): void => {
+        if (done) {
+          return;
+        }
+        done = true;
+        signal.removeEventListener("abort", aborted);
+        lines.close();
+        resolve(answer);
+      };
+      const aborted = (): void => {
+        finish(null);
+      };
+      signal.addEventListener("abort", aborted, { once: true });
+      lines.on("SIGINT", () => {
+        onInterrupt();
+        finish(null);
+      });
+      lines.on("close", () => {
+        finish(null);
+      });
+      lines.question(question, (answer) => {
+        finish(answer);
+      });
+    });
 
 /** A terminal that keeps every line, for tests that check what was printed. */
 export const createCapturingTerminal = (): Terminal & { readonly lines: () => readonly string[] } => {

@@ -100,7 +100,8 @@ describe("ostra preview's ticket", () => {
     const answer = await post(cliPaths.previewTunnel(boxed.taskId), { port: null });
     expect(answer.status).toBe(200);
     const grant = cliPreviewTunnelGrantSchema.parse(await answer.json());
-    expect(grant).toMatchObject({ coreUrl: "http://localhost:8787", port: WEB });
+    // The preview's label comes with it, for the line `ostra preview` prints (ticket 24).
+    expect(grant).toMatchObject({ coreUrl: "http://localhost:8787", port: WEB, label: "web" });
     expect(cliTunnelTicketSchema.safeParse(grant.ticket).success).toBe(true);
     // Stored as its hash, for 60 s, bound to the member, this CLI session, the task, the port and the lease epoch.
     const row = await harness.test.db.previewCode.findUniqueOrThrow({ where: { codeHash: createHash("sha256").update(grant.ticket).digest("hex") } });
@@ -148,5 +149,11 @@ describe("ostra preview's ticket", () => {
     const other = await sessionFor(harness.fixture.b.admin);
     const foreign = await post(cliPaths.startApp(boxed.taskId), {}, other.token);
     expect([foreign.status, await foreign.json()]).toEqual([404, { code: "not-found" }]);
+    // Core out of reach is its own code (ticket 24), with a 503: nothing started, and the CLI says to try again.
+    const unreachable = await handleCliRequest(
+      { ...harness.deps, appStart: () => Promise.resolve({ ok: false, error: "core-unreachable", message: "ostra's server can't be reached" }) },
+      new Request(`${origin}${cliPaths.startApp(boxed.taskId)}`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: "{}" }),
+    );
+    expect([unreachable.status, cliStartAppResponseSchema.parse(await unreachable.json())]).toEqual([503, { code: "core-unreachable" }]);
   });
 });

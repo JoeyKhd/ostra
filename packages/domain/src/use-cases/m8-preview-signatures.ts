@@ -282,13 +282,16 @@ export type EnterNativePreview = (
  * `ostra preview`'s ticket (F-143): a member's CLI session, a task they can open, one of its
  * previews' ports (the primary's when none is given). The ticket is bound to the CLI session too,
  * so core checks that session again while the tunnel lasts (ticket 23). `coreUrl` is core's public
- * address (`OSTRA_CORE_PUBLIC_URL`), which the CLI opens the tunnel on.
+ * address (`OSTRA_CORE_PUBLIC_URL`), which the CLI opens the tunnel on; `label` is the preview's,
+ * which the CLI prints with its address (ticket 24).
  */
 export type IssueCliTicket = (
   deps: { readonly db: Db; readonly clock: Clock; readonly coreUrl: string },
   scope: MemberScope,
   input: { readonly taskId: TaskId; readonly port: number | null; readonly cliSessionId: CliSessionId },
-) => Promise<UseCaseResult<{ readonly ticket: string; readonly port: number; readonly coreUrl: string }, "not-found" | "port-not-allowed" | "runner-cannot-tunnel" | "no-box">>;
+) => Promise<
+  UseCaseResult<{ readonly ticket: string; readonly port: number; readonly label: string; readonly coreUrl: string }, "not-found" | "port-not-allowed" | "runner-cannot-tunnel" | "no-box">
+>;
 
 /** A code's or a ticket's one use: the check (`checkPreviewCode`) and `usedAt`, in one statement. */
 export type RedeemCode = (

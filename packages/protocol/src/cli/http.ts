@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { cliSessionIdSchema, taskIdSchema, ticketKeySchema } from "../ids.ts";
 import { branchNameSchema, epochMsSchema, gitShaSchema, httpUrlSchema, repoFullNameSchema } from "../common.ts";
+import { appLabelSchema } from "../task/app.ts";
 
 // The `ostra` CLI's HTTP on the web app (F-103, ADR 0051, protocol minor 2): `ostra login`'s
 // device-code grant, `ostra checkout`'s branches and `ostra logout`. Request and response schemas
@@ -171,6 +172,8 @@ export const cliPreviewTunnelGrantSchema = z.strictObject({
   coreUrl: httpUrlSchema,
   ticket: cliTunnelTicketSchema,
   port: z.number().int().min(1).max(65_535),
+  /** The preview's label, such as "Web", which `ostra preview` prints with its address (ticket 24). */
+  label: appLabelSchema,
 });
 export type CliPreviewTunnelGrant = z.infer<typeof cliPreviewTunnelGrantSchema>;
 
@@ -212,10 +215,11 @@ export const cliStartAppStartedSchema = z.strictObject({ state: z.enum(["startin
 
 /**
  * Why the app didn't start: the task isn't there or the member's (`not-found`), it declares no app
- * process, no runner can take it now, or its runner is below minor 7.
+ * process, no runner can take it now, its runner is below minor 7, or the web app couldn't reach
+ * core to ask (`core-unreachable`, with a `503`; ticket 24, additive).
  */
 export const cliStartAppRefusalSchema = z.strictObject({
-  code: z.enum(["not-found", "no-app-processes", "no-runner", "runner-needs-upgrade"]),
+  code: z.enum(["not-found", "no-app-processes", "no-runner", "runner-needs-upgrade", "core-unreachable"]),
 });
 export type CliStartAppRefusal = z.infer<typeof cliStartAppRefusalSchema>;
 
@@ -233,6 +237,8 @@ export const cliStartAppRefusalWords = (refusal: CliStartAppRefusal): string => 
       return "No runner can take this task now. Try again when one is online.";
     case "runner-needs-upgrade":
       return "This task's runner needs protocol 1.7 or later to start its app: update the runner.";
+    case "core-unreachable":
+      return "The server couldn't reach its core to start the app. Try again in a moment.";
     default:
       return refusal.code satisfies never;
   }

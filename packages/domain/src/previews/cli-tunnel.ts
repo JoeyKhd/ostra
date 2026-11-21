@@ -107,7 +107,7 @@ export const issueCliTicket = async (
         cliSessionId: input.cliSessionId,
       },
     });
-    return { ok: true, ticket: issued.code, port, coreUrl: deps.coreUrl };
+    return { ok: true, ticket: issued.code, port, label: target.label, coreUrl: deps.coreUrl };
   });
 };
 issueCliTicket satisfies IssueCliTicket;

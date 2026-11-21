@@ -29,3 +29,7 @@ export type { PreviewConnectionFailure, PreviewConnectionResult } from "./connec
 export { TUNNEL_NEEDS_WEBSOCKET } from "./connection/peer.ts";
 export { createPreviewViews, RUNNER_PREVIEW_SUPPORT } from "./task-host/preview-views.ts";
 export type { PreviewViews, PreviewViewsDeps } from "./task-host/preview-views.ts";
+// Milestone 8 (ticket 24): the member's CLI session file, for core's test of `ostra preview` against
+// the web app's route, core's tunnel and the runner's side (`apps/core/src/previews/cli-preview.test.ts`).
+export { cliSessionPath, saveCliSession } from "./cli/cli-session.ts";
+export type { CliSessionFile } from "./cli/cli-session.ts";

@@ -1647,11 +1647,11 @@ export const minor7ReviewRequestFixture: ReviewRequestBody = {
 /** `ostra preview`'s endpoints, a request and an answer each, and every refusal. */
 export const cliPreviewFixtures = {
   tunnelRequest: { port: null },
-  tunnelGrant: { coreUrl: "https://ostra.example.com", ticket: `ostra_pt_${"a".repeat(43)}`, port: 5173 },
+  tunnelGrant: { coreUrl: "https://ostra.example.com", ticket: `ostra_pt_${"a".repeat(43)}`, port: 5173, label: "Web" },
   tunnelRefusals: [{ code: "not-found" }, { code: "port-not-allowed" }, { code: "runner-cannot-tunnel" }, { code: "no-box" }],
   startAppRequest: {},
   startAppStarted: { state: "starting" },
-  startAppRefusals: [{ code: "not-found" }, { code: "no-app-processes" }, { code: "no-runner" }, { code: "runner-needs-upgrade" }],
+  startAppRefusals: [{ code: "not-found" }, { code: "no-app-processes" }, { code: "no-runner" }, { code: "runner-needs-upgrade" }, { code: "core-unreachable" }],
   tunnelQuery: { ticket: `ostra_pt_${"a".repeat(43)}` },
 } as const satisfies {
   readonly tunnelRequest: CliPreviewTunnelRequest;

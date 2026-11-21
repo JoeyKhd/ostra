@@ -14,6 +14,8 @@ export const helpText = (): string => {
     "  ostra login [--server <url>] Sign in as yourself, with a code you approve in the browser",
     "  ostra checkout <task> [--dir <folder>]",
     "                               Put a task's branches in your own clones (ticket key, task ID or URL)",
+    "  ostra preview <task> [port] [--local <port>]",
+    "                               Serve a task's preview on your own localhost, the primary's by default",
     "  ostra logout                 Sign out, and revoke the CLI session on the server",
     "  ostra --version",
     "",

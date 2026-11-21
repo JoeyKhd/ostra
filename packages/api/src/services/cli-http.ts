@@ -295,13 +295,10 @@ const previewTunnel = async (deps: ApiDeps, caller: CliSessionCaller, rawRef: st
     return tunnelRefused(issued.error);
   }
   deps.logger.info("cli.preview-ticket", { taskId: task.found.id, port: issued.port, sessionId: caller.sessionId });
-  return json({ coreUrl: issued.coreUrl, ticket: issued.ticket, port: issued.port } satisfies CliPreviewTunnelGrant);
+  return json({ coreUrl: issued.coreUrl, ticket: issued.ticket, port: issued.port, label: issued.label } satisfies CliPreviewTunnelGrant);
 };
 
-/**
- * The protocol's code for a refused start. Core out of reach reads as no runner taking it now, with
- * a `503`: the CLI's protocol has no code of its own for it, and either way the member tries again.
- */
+/** The protocol's code for a refused start. Core out of reach is its own code, `core-unreachable`, with a `503` (ticket 24). */
 const startRefusalOf = (error: Extract<AppStartAnswer, { readonly ok: false }>["error"]): CliStartAppRefusal["code"] => {
   switch (error) {
     case "forbidden":
@@ -310,11 +307,10 @@ const startRefusalOf = (error: Extract<AppStartAnswer, { readonly ok: false }>["
     case "no-app-processes":
     case "no-runner":
     case "runner-needs-upgrade":
+    case "core-unreachable":
       return error;
     case "runner-cannot-preview":
       return "runner-needs-upgrade";
-    case "core-unreachable":
-      return "no-runner";
     default:
       return error satisfies never;
   }
@@ -337,7 +333,7 @@ const startTaskApp = async (deps: ApiDeps, caller: CliSessionCaller, rawRef: str
   const started = await deps.appStart({ organizationId: task.scope.organizationId, memberId: task.scope.memberId, taskId: taskIdSchema.parse(task.found.id) });
   if (!started.ok) {
     const code = startRefusalOf(started.error);
-    return json({ code } satisfies CliStartAppRefusal, code === "not-found" ? 404 : started.error === "core-unreachable" ? 503 : 409);
+    return json({ code } satisfies CliStartAppRefusal, code === "not-found" ? 404 : code === "core-unreachable" ? 503 : 409);
   }
   return json({ state: started.state } satisfies CliStartAppResponse);
 };
