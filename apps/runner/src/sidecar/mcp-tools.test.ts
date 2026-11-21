@@ -299,3 +299,110 @@ describe("ostra's memory tools (ticket 20)", () => {
     }
   });
 });
+
+// 2026-11-21 (ADR 0044, borrowed from claude-mem): `memory_read` reads several notes in one call.
+
+describe("memory_read of several notes (F-110/c9)", () => {
+  it("F-110/c9: lists noteIds beside noteId, and its description tells the agent to read several in one call", async () => {
+    const { link } = memoryLinkStub();
+    const { tools: server } = await startWithMemory(link);
+    const client = await connect(server);
+    const read = (await client.listTools()).tools.find((tool) => tool.name === MEMORY_READ_TOOL);
+    expect(Object.keys(read?.inputSchema.properties ?? {})).toEqual(["noteId", "noteIds"]);
+    expect(read?.inputSchema.required ?? []).toEqual([]);
+    expect(read?.description).toContain("name them all in noteIds (up to 10) in one call");
+    const search = (await client.listTools()).tools.find((tool) => tool.name === MEMORY_SEARCH_TOOL);
+    expect(search?.description).toContain("with memory_read, all in one call");
+  });
+
+  it("F-110/c9: reads each note through core in one call, says which weren't found, and reports the reads by how the agent found them", async () => {
+    const { link, calls } = memoryLinkStub();
+    const { tools: server, used, logs } = await startWithMemory(link);
+    const client = await connect(server);
+    await client.callTool({ name: MEMORY_SEARCH_TOOL, arguments: { query: "pnpm test" } });
+    const result = await client.callTool({
+      name: MEMORY_READ_TOOL,
+      arguments: { noteIds: [note.noteId, "note-other", "note-gone", "not an id", note.noteId] },
+    });
+    expect(result.isError).toBeUndefined();
+    const text = textOf(result);
+    expect(text).toContain("Read 2 of the 4 memory notes asked for.");
+    expect(text).toContain(`An approved project note (command), ${note.noteId}, version 3.`);
+    expect(text).toContain("An approved project note (command), note-other, version 3.");
+    expect(text.split(note.body)).toHaveLength(3);
+    expect(text).toContain("Not found: note-gone, not an id. None of these is an approved memory note of this project or its organization.");
+    // Every ID that is one went to core's endpoint for one note, which checks it against the task's scope; a repeat went once.
+    expect([...calls.read].sort()).toEqual(["note-gone", note.noteId, "note-other"].sort());
+    expect(used).toEqual([
+      { kind: "memory.used", noteIds: [note.noteId], via: "search" },
+      { kind: "memory.used", noteIds: ["note-other"], via: "read" },
+    ]);
+    // Counts only: no title, no body, no ID the agent made up.
+    const logged = JSON.stringify(logs);
+    expect(logged).toContain("memory notes read");
+    for (const text of [note.title, note.body, "not an id"]) {
+      expect(logged).not.toContain(text);
+    }
+  });
+
+  it("F-110/c9: a note of another scope reads exactly as one that doesn't exist", async () => {
+    const { link } = memoryLinkStub();
+    const { tools: server, used } = await startWithMemory(link);
+    const client = await connect(server);
+    // The stand-in answers 404 for both, as core does (`readNote` scopes the query): the words can't tell them apart.
+    const other = textOf(await client.callTool({ name: MEMORY_READ_TOOL, arguments: { noteIds: [note.noteId, "note-of-another-org"] } }));
+    const none = textOf(await client.callTool({ name: MEMORY_READ_TOOL, arguments: { noteIds: [note.noteId, "note-never-written"] } }));
+    expect(other.replace("note-of-another-org", "<id>")).toBe(none.replace("note-never-written", "<id>"));
+    expect(used.flatMap((event) => event.noteIds)).toEqual([note.noteId, note.noteId]);
+  });
+
+  it("F-110/c9: the one-ID form answers as before, and more than 10 IDs, none, or none found is the tool's error", async () => {
+    const { link, calls } = memoryLinkStub();
+    const { tools: server, used } = await startWithMemory(link);
+    const client = await connect(server);
+    const one = await client.callTool({ name: MEMORY_READ_TOOL, arguments: { noteId: note.noteId } });
+    expect(textOf(one)).toBe([`# ${note.title}`, "", `An approved project note (command), ${note.noteId}, version 3.`, "", note.body].join("\n"));
+    // The same ID twice, or once in each field, is one note.
+    const twice = await client.callTool({ name: MEMORY_READ_TOOL, arguments: { noteId: note.noteId, noteIds: [note.noteId] } });
+    expect(textOf(twice)).toBe(textOf(one));
+    const eleven = Array.from({ length: 11 }, (_, index) => `note-${String(index)}`);
+    const tooMany = await client.callTool({ name: MEMORY_READ_TOOL, arguments: { noteIds: eleven } });
+    expect(tooMany.isError).toBe(true);
+    expect(textOf(tooMany)).toBe("Name the notes to read: one ID in noteId, or up to 10 in noteIds.");
+    const empty = await client.callTool({ name: MEMORY_READ_TOOL, arguments: { noteIds: [] } });
+    expect(empty.isError).toBe(true);
+    const noArguments = await client.callTool({ name: MEMORY_READ_TOOL, arguments: {} });
+    expect(noArguments.isError).toBe(true);
+    expect(calls.read).toEqual([note.noteId, note.noteId]);
+    const noneFound = await client.callTool({ name: MEMORY_READ_TOOL, arguments: { noteIds: ["note-gone", "note-lost"] } });
+    expect(noneFound.isError).toBe(true);
+    expect(textOf(noneFound)).toContain("Not found: note-gone, note-lost.");
+    expect(used).toHaveLength(2);
+  });
+
+  it("F-110/c9: with core unreachable, a read of several says memory is unavailable; with part of it down, it reads the rest", async () => {
+    const { link } = memoryLinkStub({ down: true });
+    const { tools: server, used } = await startWithMemory(link);
+    const client = await connect(server);
+    const down = await client.callTool({ name: MEMORY_READ_TOOL, arguments: { noteIds: [note.noteId, "note-other"] } });
+    expect(down.isError).toBe(true);
+    expect(textOf(down)).toBe(MEMORY_UNAVAILABLE);
+    expect(used).toEqual([]);
+    for (const open of clients.splice(0)) {
+      await open.close();
+    }
+    await tools?.close();
+    // One read times out: the other note still comes back, and the one that didn't is named.
+    const { link: healthy } = memoryLinkStub();
+    const flaky: MemoryLink = {
+      ...healthy,
+      read: (taskId, noteId) => (noteId === "note-other" ? Promise.resolve({ ok: false, failure: { kind: "unavailable" } }) : healthy.read(taskId, noteId)),
+    };
+    const again = await startWithMemory(flaky);
+    const other = await connect(again.tools);
+    const part = textOf(await other.callTool({ name: MEMORY_READ_TOOL, arguments: { noteIds: [note.noteId, "note-other"] } }));
+    expect(part).toContain("Read 1 of the 2 memory notes asked for.");
+    expect(part).toContain("Not read: note-other. Memory couldn't answer for these right now");
+    expect(again.used).toEqual([{ kind: "memory.used", noteIds: [note.noteId], via: "read" }]);
+  });
+});

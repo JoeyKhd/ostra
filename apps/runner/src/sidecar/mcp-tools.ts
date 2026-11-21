@@ -80,6 +80,10 @@ import { RUNNER_VERSION } from "../version.ts";
 // refusal from core goes back as the tool's error text, a network failure as "Memory is unavailable
 // right now". A read is reported as `memory.used` (`search` when the note came from a search in the
 // same turn). A query, a note's text and a proposal's text are never logged: counts and IDs only.
+// Since 2026-11-21 (ADR 0044, borrowed from claude-mem's batched `get_observations`), `memory_read`
+// takes up to 10 IDs in `noteIds` beside the one `noteId`: each is read from core's endpoint for one
+// note, so core checks every one against the task's organization and project, and an ID it doesn't
+// answer for is "not found", whether no such note exists or it's another scope's.
 //
 // Milestone 6 (tickets 22 and 23, protocol minor 5): the server serves exactly the tool sets the
 // spec's `tools` names (`taskSpecToolSets`): `pr-text` is `set_pull_request_text`, `memory` the three
@@ -192,8 +196,15 @@ const memorySearchInputSchema = z.strictObject({
     .describe(`How many notes at most, 1 to ${String(runnerLimits.memorySearchResultsMax)}. Default ${String(DEFAULT_SEARCH_LIMIT)}.`),
 });
 
+/** The most notes one `memory_read` reads (ADR 0044, 2026-11-21). */
+const READ_NOTES_MAX = runnerLimits.memoryReadNotesMax;
+
 const memoryReadInputSchema = z.strictObject({
-  noteId: z.string().describe("The note's ID, as the memory index or a search lists it."),
+  noteId: z.string().optional().describe("One note's ID, as the memory index or a search lists it."),
+  noteIds: z
+    .array(z.string())
+    .optional()
+    .describe(`Several notes' IDs, up to ${String(READ_NOTES_MAX)}, to read them all in this one call.`),
 });
 
 const memoryProposeInputSchema = z.strictObject({
@@ -207,9 +218,13 @@ const memoryProposeInputSchema = z.strictObject({
 
 const SEARCH_DESCRIPTION = [
   "Search this project's memory: the organization's and the project's approved notes.",
-  "Returns each match's ID, title, kind and the line that matched. Read one in full with memory_read.",
+  "Returns each match's ID, title, kind and the line that matched. Read the ones you need in full with memory_read, all in one call.",
 ].join(" ");
-const READ_DESCRIPTION = "Read one approved memory note in full, by its ID from the memory index or a search.";
+const READ_DESCRIPTION = [
+  "Read approved memory notes in full, by their IDs from the memory index or a search.",
+  `To read several, name them all in noteIds (up to ${String(READ_NOTES_MAX)}) in one call, rather than calling once per note.`,
+  "An ID that isn't an approved note of this project or its organization is reported as not found.",
+].join(" ");
 const PROPOSE_DESCRIPTION = [
   "Propose a memory note for the next tasks: a convention, a command, a gotcha, a decision, a preference or a term you learned here.",
   "A member approves it before any agent sees it, so it doesn't reach this session.",
@@ -267,7 +282,7 @@ const searchText = (response: MemorySearchResponse): string => {
     return "No approved memory note matches that search.";
   }
   return [
-    `${String(response.results.length)} approved memory note${response.results.length === 1 ? "" : "s"} matched. Read one in full with memory_read.`,
+    `${String(response.results.length)} approved memory note${response.results.length === 1 ? "" : "s"} matched. Read the ones you need in full with memory_read, in one call.`,
     ...response.results.map((result) => `- ${result.noteId} (${result.kind}, ${result.scope}): ${result.title}\n  ${result.line}`),
   ].join("\n");
 };
@@ -275,6 +290,33 @@ const searchText = (response: MemorySearchResponse): string => {
 /** A note as the agent reads it. Never logged. */
 const noteText = (note: MemoryNoteResponse): string =>
   [`# ${note.title}`, "", `An approved ${note.scope} note (${note.kind}), ${note.noteId}, version ${String(note.version)}.`, "", note.body].join("\n");
+
+/** An ID the agent named, as the answer quotes it back: one line, cut. */
+const quotedId = (raw: string): string => raw.replaceAll(/\s+/g, " ").slice(0, 100);
+
+/** One note's read in a read of several: the note, or why there's none. */
+type NoteRead =
+  | { readonly kind: "read"; readonly note: MemoryNoteResponse }
+  | { readonly kind: "not-found"; readonly asked: string }
+  | { readonly kind: "failed"; readonly asked: string; readonly failure: MemoryCallFailure };
+
+/**
+ * A read of several notes as the agent reads them (F-110/c9): each note found, in the order asked,
+ * then the IDs not found, in one line that never says whether such a note is somewhere else. Never logged.
+ */
+const notesText = (reads: readonly NoteRead[]): string => {
+  const found = reads.flatMap((read) => (read.kind === "read" ? [read.note] : []));
+  const missing = reads.flatMap((read) => (read.kind === "not-found" ? [quotedId(read.asked)] : []));
+  const failed = reads.flatMap((read) => (read.kind === "failed" ? [quotedId(read.asked)] : []));
+  const parts = [`Read ${String(found.length)} of the ${String(reads.length)} memory notes asked for.`, ...found.map(noteText)];
+  if (missing.length > 0) {
+    parts.push(`Not found: ${missing.join(", ")}. None of these is an approved memory note of this project or its organization.`);
+  }
+  if (failed.length > 0) {
+    parts.push(`Not read: ${failed.join(", ")}. Memory couldn't answer for these right now; try them again later if you need them.`);
+  }
+  return parts.join("\n\n");
+};
 
 /** Core's answer to a proposal, in words for the agent. */
 const proposalText = (response: MemoryProposalResponse): ToolAnswer => {
@@ -352,20 +394,73 @@ export const startMcpTools = async (options: McpToolsOptions): Promise<McpTools>
     return answer(searchText(result.value));
   };
 
+  /** The notes read, as `memory.used`: those this turn's search found as `search`, the others as `read`. */
+  const reportReads = (memory: McpMemoryOptions, notes: readonly MemoryNoteResponse[]): void => {
+    const searched = notes.filter((note) => searchedThisTurn.has(note.noteId)).map((note) => note.noteId);
+    const read = notes.filter((note) => !searchedThisTurn.has(note.noteId)).map((note) => note.noteId);
+    if (searched.length > 0) {
+      memory.onUsed({ kind: "memory.used", noteIds: searched, via: "search" });
+    }
+    if (read.length > 0) {
+      memory.onUsed({ kind: "memory.used", noteIds: read, via: "read" });
+    }
+  };
+
   const memoryRead = async (memory: McpMemoryOptions, input: z.infer<typeof memoryReadInputSchema>): Promise<ToolAnswer> => {
-    const noteId = noteIdSchema.safeParse(input.noteId.trim());
-    if (!noteId.success) {
-      log.info("tool call refused", { tool: MEMORY_READ_TOOL, reason: "invalid" });
-      return answer("That isn't a note's ID: use one the memory index or a search lists.", true);
+    const asked = [...new Set([...(input.noteId === undefined ? [] : [input.noteId]), ...(input.noteIds ?? [])].map((id) => id.trim()))];
+    if (asked.length === 0 || asked.length > READ_NOTES_MAX) {
+      log.info("tool call refused", { tool: MEMORY_READ_TOOL, reason: asked.length === 0 ? "no-id" : "too-many", ids: asked.length });
+      return answer(`Name the notes to read: one ID in noteId, or up to ${String(READ_NOTES_MAX)} in noteIds.`, true);
     }
-    const result = await memory.link.read(options.taskId, noteId.data);
-    if (!result.ok) {
-      return failed(MEMORY_READ_TOOL, result.failure);
+    const [only] = asked;
+    if (asked.length === 1 && only !== undefined) {
+      // One note: its text, or core's words for why not, as before the reads of several.
+      const noteId = noteIdSchema.safeParse(only);
+      if (!noteId.success) {
+        log.info("tool call refused", { tool: MEMORY_READ_TOOL, reason: "invalid" });
+        return answer("That isn't a note's ID: use one the memory index or a search lists.", true);
+      }
+      const result = await memory.link.read(options.taskId, noteId.data);
+      if (!result.ok) {
+        return failed(MEMORY_READ_TOOL, result.failure);
+      }
+      reportReads(memory, [result.value]);
+      log.info("memory note read", { noteId: result.value.noteId, via: searchedThisTurn.has(result.value.noteId) ? "search" : "read" });
+      return answer(noteText(result.value));
     }
-    const via = searchedThisTurn.has(result.value.noteId) ? "search" : "read";
-    memory.onUsed({ kind: "memory.used", noteIds: [result.value.noteId], via });
-    log.info("memory note read", { noteId: result.value.noteId, via });
-    return answer(noteText(result.value));
+    // Several (F-110/c9): each through core's own endpoint, which answers within the task's
+    // organization and project only, so a note of another scope is a 404 like a note that isn't.
+    const reads = await Promise.all(
+      asked.map(async (raw): Promise<NoteRead> => {
+        const noteId = noteIdSchema.safeParse(raw);
+        if (!noteId.success) {
+          return { kind: "not-found", asked: raw };
+        }
+        const result = await memory.link.read(options.taskId, noteId.data);
+        if (result.ok) {
+          return { kind: "read", note: result.value };
+        }
+        return result.failure.kind === "refused" && result.failure.status === 404
+          ? { kind: "not-found", asked: raw }
+          : { kind: "failed", asked: raw, failure: result.failure };
+      }),
+    );
+    const notes = reads.flatMap((read) => (read.kind === "read" ? [read.note] : []));
+    log.info("memory notes read", {
+      asked: asked.length,
+      read: notes.length,
+      notFound: reads.filter((read) => read.kind === "not-found").length,
+      failed: reads.filter((read) => read.kind === "failed").length,
+    });
+    if (notes.length === 0) {
+      const failure = reads.find((read) => read.kind === "failed");
+      if (failure?.kind === "failed" && reads.every((read) => read.kind === "failed")) {
+        return failed(MEMORY_READ_TOOL, failure.failure);
+      }
+      return answer(notesText(reads), true);
+    }
+    reportReads(memory, notes);
+    return answer(notesText(reads));
   };
 
   const memoryPropose = async (memory: McpMemoryOptions, input: z.infer<typeof memoryProposeInputSchema>): Promise<ToolAnswer> => {

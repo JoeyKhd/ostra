@@ -142,6 +142,8 @@ export const runnerLimits = {
   memoryQueryMaxChars: 500,
   /** ADR 0044, F-110: the most results one memory search returns. */
   memorySearchResultsMax: 20,
+  /** ADR 0044 (2026-11-21), F-110: the most notes one `memory_read` reads, each from core's endpoint. */
+  memoryReadNotesMax: 10,
   /** ADR 0044, F-111: the most proposals one task makes (`OSTRA_MEMORY_PROPOSALS_PER_TASK`). */
   memoryProposalsPerTask: 20,
   /** ADR 0054, F-080: one search entry's text, in UTF-8 bytes (`OSTRA_SEARCH_ENTRY_MAX_KIB`). */

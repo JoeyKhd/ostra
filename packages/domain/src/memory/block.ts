@@ -135,7 +135,7 @@ export const buildMemoryIndex = (notes: readonly BlockNote[], limits: MemoryLimi
 export const standingInstruction = (tools: boolean): string =>
   tools
     ? [
-        "Before you guess at a convention, a command or a term, search memory with `memory_search`, and read a note with `memory_read`.",
+        "Before you guess at a convention, a command or a term, search memory with `memory_search`, and read the notes you need with `memory_read`, several in one call.",
         "When you learn something the next task in this project should know, propose a note with `memory_propose`. A member approves it before any agent sees it.",
         'When the code disagrees with a note, don\'t follow the note: propose a correction with `memory_propose` and `relation: "contradicts"`, naming the note.',
       ].join("\n")
