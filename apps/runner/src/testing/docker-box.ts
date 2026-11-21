@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { BRIDGE_FEATURES, DockerExecutor, listenForInit } from "@ostra/adapter-executor-docker";
 import { killTree, silentLogger } from "@ostra/adapter-sdk";
+import { FAKE_BROWSER_MAIN } from "@ostra/adapter-sdk/testing";
 import type { Logger } from "@ostra/adapter-sdk";
 import { boxIdSchema } from "@ostra/protocol";
 import { sidecarAppReach } from "../run-sidecar.ts";
@@ -19,8 +20,13 @@ import { sidecarAppReach } from "../run-sidecar.ts";
 // (`OSTRA_BRIDGE_FEATURES`), so it runs the app's processes and forwards; and a pod's sidecar is the
 // same executor reaching the app at the pod's `localhost` (`appReach: "loopback"`), as
 // `run-sidecar.ts` builds it in a `kubernetes` box: `startLocalPodBox`.
+//
+// Milestone 8 (ticket 13): this machine has no image, so a box's browser is the fake box browser
+// over the same DevTools pipe, from the init the executor suites use (`init-with-fake-browser.ts`):
+// `localBoxWithFakeBrowser`. The plain init's box has none (`not-in-image`).
 
 const INIT = fileURLToPath(new URL("./init/main.ts", import.meta.resolve("@ostra/adapter-executor-docker")));
+const INIT_WITH_FAKE_BROWSER = fileURLToPath(new URL("./testing/init-with-fake-browser.ts", import.meta.resolve("@ostra/adapter-executor-docker")));
 
 export type LocalDockerBox = {
   readonly executor: DockerExecutor;
@@ -28,11 +34,11 @@ export type LocalDockerBox = {
   readonly dispose: () => Promise<void>;
 };
 
-const startLocalBox = async (input: { readonly dataDir: string; readonly logger: Logger }, kind: LocalDockerBox["kind"]): Promise<LocalDockerBox> => {
+const startLocalBox = async (input: { readonly dataDir: string; readonly logger: Logger }, kind: LocalDockerBox["kind"], fakeBrowser = false): Promise<LocalDockerBox> => {
   const boxId = boxIdSchema.parse(`local-box-${randomBytes(4).toString("hex")}`);
   const nonce = randomBytes(32).toString("base64url");
   const listener = await listenForInit({ boxId, nonce, host: "127.0.0.1", port: 0, logger: silentLogger });
-  const init: ChildProcess = spawn(process.execPath, [INIT], {
+  const init: ChildProcess = spawn(process.execPath, fakeBrowser ? [INIT_WITH_FAKE_BROWSER, FAKE_BROWSER_MAIN] : [INIT], {
     env: {
       ...process.env,
       OSTRA_BOX_ID: boxId,
@@ -64,3 +70,9 @@ export const startLocalDockerBox = (input: { readonly dataDir: string; readonly 
 
 /** A `kubernetes` box's sidecar side: the same, reaching the app at the pod's `localhost`, as `run-sidecar.ts` builds it in a pod. */
 export const startLocalPodBox = (input: { readonly dataDir: string; readonly logger: Logger }): Promise<LocalDockerBox> => startLocalBox(input, "kubernetes");
+
+/** Ticket 13: a box of the kind given whose browser is the fake box browser, over the init's real pipe. */
+export const localBoxWithFakeBrowser =
+  (kind: LocalDockerBox["kind"]) =>
+  (input: { readonly dataDir: string; readonly logger: Logger }): Promise<LocalDockerBox> =>
+    startLocalBox(input, kind, true);

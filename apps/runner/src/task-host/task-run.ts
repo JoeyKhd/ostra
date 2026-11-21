@@ -27,6 +27,8 @@ import type {
 } from "@ostra/adapter-sdk";
 import {
   APP_LOG_CONTENT_TYPE,
+  APP_RECORDING_CONTENT_TYPE,
+  APP_SCREENSHOT_CONTENT_TYPE,
   approvalIdSchema,
   approvedPlanPrompt,
   denyPrompt,
@@ -76,6 +78,9 @@ import type {
   TaskSpec,
   TurnId,
 } from "@ostra/protocol";
+import { boxBrowser } from "../browser/box-browser.ts";
+import type { BoxBrowserHolder } from "../browser/box-browser.ts";
+import type { PictureTiming } from "../browser/pictures.ts";
 import type { CommandOutcome, SessionChannel } from "../connection/peer.ts";
 import { startGitProxy } from "../sidecar/git-proxy/git-proxy.ts";
 import type { GitProxy } from "../sidecar/git-proxy/git-proxy.ts";
@@ -89,6 +94,8 @@ import type { McpTools } from "../sidecar/mcp-tools.ts";
 import { agentCwd } from "./agent-cwd.ts";
 import type { AgentRegistry } from "./agents.ts";
 import { launchAppOf } from "./app-block.ts";
+import { createAppPictures } from "./app-pictures.ts";
+import type { AppPictures, PictureEvent } from "./app-pictures.ts";
 import { createAppProcesses } from "./app-processes.ts";
 import type { AppEvent, AppProcesses, AppTiming } from "./app-processes.ts";
 import { checkLaunchEnvironment, checkLaunchFiles } from "./environment-check.ts";
@@ -212,6 +219,8 @@ export type TaskRunDeps = {
   readonly appBaseEnv?: Readonly<Record<string, string>>;
   /** The app's ready checks' timings (spec section 8: tests shorten them). */
   readonly appTiming?: Partial<AppTiming>;
+  /** Ticket 13: the pictures' timings (spec section 8: tests shorten the network's quiet wait and a step's deadline). */
+  readonly pictureTiming?: Partial<PictureTiming>;
 };
 
 /** A timer port: `after` calls `fire` once, `ms` from now, unless the answer is called first. */
@@ -275,6 +284,12 @@ export type TaskRun = {
   readonly previewClose: (body: CommandBody<"preview.close">) => Promise<CommandOutcome>;
   /** Milestone 8: the box's open views. */
   readonly views: () => PreviewViews;
+  /**
+   * Minor 7 (ticket 13): a member's screenshot of one of the task's previews, from the pane:
+   * `accepted` at once, the picture going up as `attachment.added` with the request's ID, or as
+   * `attachment.skipped` when it can't be taken.
+   */
+  readonly screenshotTake: (body: CommandBody<"screenshot.take">) => Promise<CommandOutcome>;
   /** The self-fence: end the agent, keep the workspace, send nothing more. */
   readonly fence: () => Promise<void>;
   /** The server refused the lease: end the agent and release, without pushing. */
@@ -420,6 +435,9 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   let mcp: McpTools | undefined;
   /** Milestone 8 (ticket 12): the box's app processes and previews, once the box is ready. */
   let app: AppProcesses | undefined;
+  /** Milestone 8 (ticket 13): the box's browser, started on first use, and the pictures taken in it. */
+  let browser: BoxBrowserHolder | undefined;
+  let pictures: AppPictures | undefined;
   /** Resolves with the box's app once it's ready, or `undefined` once it never will be: a start asked before then waits. */
   const appOpened = deferred<AppProcesses | undefined>();
   /** "Start the app" (Q300, F-141): this dispatch starts the box and its app, and the agent only for a member's message. */
@@ -1088,6 +1106,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       log.info("an automatic turn starts", { turnOrdinal });
     }
     mcp?.turnStarted();
+    pictures?.turnStarted();
     unsaved = true;
     turnRunning = true;
     planRefusedInTurn = false;
@@ -1275,26 +1294,40 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
    * apply to the repos the turn changed (Q188). `undefined` when the spec has none, the peer is older
    * than minor 2, or the session is being stopped; then `commitAndPush` commits as before. A turn that
    * changed nothing runs none. Nothing here fails the turn or holds the push.
+   *
+   * Milestone 8 (ticket 13): the turn is committed this way too when the after-turn screenshots may
+   * follow (a primary, "Screenshots after each turn" on, a minor-7 peer), since they're taken only
+   * after a turn that changed a repo: `changed` says whether it did, `null` when it wasn't committed here.
    */
   const commitAndCheck = async (
     currentSpec: TaskSpec,
     message: string,
     ordinal: number,
-  ): Promise<{ readonly committed: boolean; readonly checks: readonly { readonly checkId: CheckId; readonly status: CheckStatus }[] | undefined }> => {
+  ): Promise<{
+    readonly committed: boolean;
+    readonly checks: readonly { readonly checkId: CheckId; readonly status: CheckStatus }[] | undefined;
+    readonly changed: boolean | null;
+  }> => {
     const how = endingNow()?.kind;
     const settled = how === undefined || how === "finished" || how === "idle";
-    if ((currentSpec.checks?.length ?? 0) === 0 || channel?.supports("check.started") !== true || !settled || dirsCache === undefined) {
-      return { committed: false, checks: undefined };
+    const checksWanted = (currentSpec.checks?.length ?? 0) > 0 && channel?.supports("check.started") === true;
+    const shotsWanted =
+      pictures !== undefined &&
+      currentSpec.environment.screenshots?.afterTurn === true &&
+      (currentSpec.environment.appProcesses ?? []).some((process) => process.primary);
+    if ((!checksWanted && !shotsWanted) || !settled || dirsCache === undefined) {
+      return { committed: false, checks: undefined, changed: null };
     }
     const committed = await deps.executor.commitWork({ box, message, author: currentSpec.gitIdentity, coAuthors: currentSpec.coAuthors });
     if (!committed.ok) {
       log.warn("committing the turn before its checks failed: no checks", { turnOrdinal: ordinal, code: committed.error.code });
-      return { committed: false, checks: undefined };
+      return { committed: false, checks: undefined, changed: null };
     }
     await reportFiltered(committed.value);
     const changedRepoIds = committed.value.filter((repo) => repo.changed).map((repo) => repo.repoId);
-    if (changedRepoIds.length === 0) {
-      return { committed: true, checks: undefined };
+    const changed = changedRepoIds.length > 0;
+    if (!changed || !checksWanted) {
+      return { committed: true, checks: undefined, changed };
     }
     const checks = await runTurnChecks(
       { executor: deps.executor, link: deps.link, emit, logger: log, now },
@@ -1307,7 +1340,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         signal: endingSignal.signal,
       },
     );
-    return { committed: true, checks: checks.length === 0 ? undefined : checks };
+    return { committed: true, checks: checks.length === 0 ? undefined : checks, changed };
   };
 
   /**
@@ -1328,7 +1361,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     // a reopen restores the conversation (what the agent prototyped in the box isn't kept).
     const pushes = pushesWork(currentSpec);
     // 0. The commit, then the checks, whatever they find: a failing check never holds the push.
-    const checked = pushes ? await commitAndCheck(currentSpec, message, ordinal) : { committed: false, checks: undefined };
+    const checked = pushes ? await commitAndCheck(currentSpec, message, ordinal) : { committed: false, checks: undefined, changed: null };
     // 1. The task's branch in every repo: what the PR is made of.
     const pushed = pushes ? await pushWork(currentSpec, message, { hiddenRefEvent: false, pushOnly: checked.committed }) : ({ ok: true, repos: [] } as const);
     if (pushed.ok) {
@@ -1348,6 +1381,14 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       if (sha !== null) {
         await emit({ kind: "git.pushed", repoId: repo.repoId, branch: repoBranchName(currentSpec, repo), headSha: sha, ref: hiddenRef });
       }
+    }
+    // 2b. Milestone 8 (ticket 13, F-121): after a turn that changed a repo, the environment's routes
+    // at its widths, before `session.saved`, so the PR's line counts them. Never more than the
+    // primary's ready check holds the turn's end; nothing here fails it.
+    if (checked.changed !== null) {
+      await pictures?.afterTurn(checked.changed).catch((error: unknown) => {
+        log.warn("the after-turn screenshots failed", { turnOrdinal: ordinal, error: errorName(error) });
+      });
     }
     // 3. The session archive: export, gzip, upload with its digest.
     const context = archiveContext(currentSpec);
@@ -1600,9 +1641,10 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     session = undefined;
     if (boxCreated) {
       // Milestone 8: the box's views end first (ticket 22), then the app's processes stop with the
-      // box, each reported `stopped` (`box-stopped`).
+      // box, each reported `stopped` (`box-stopped`), and its browser ends with its profile (ticket 13).
       views.closeAll("box-stopping");
       await app?.stopAll();
+      await browser?.close();
       await deps.executor.stop({ box, graceMs: deps.stopGraceMs });
     }
     // The repo's own agent config is back before anything is committed or the box is kept.
@@ -1751,6 +1793,9 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       app: {
         start: (names) => (app === undefined ? Promise.resolve({ text: BOX_NOT_READY, isError: true }) : app.startForTool(names)),
         announce: (input) => (app === undefined ? Promise.resolve({ text: BOX_NOT_READY, isError: true }) : app.announce(input)),
+        // Ticket 13: the pictures, in the box's browser.
+        screenshot: (input) => (pictures === undefined ? Promise.resolve({ text: BOX_NOT_READY, isError: true }) : pictures.screenshotForTool(input)),
+        record: (input) => (pictures === undefined ? Promise.resolve({ text: BOX_NOT_READY, isError: true }) : pictures.recordForTool(input)),
       },
       // Minor 3 (ticket 20, F-110): the memory tools, when the spec offers them.
       ...(taskSpec.memory?.tools === true
@@ -2341,6 +2386,10 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   /** An app event, sent when the server reads it: a minor-6 server gives no app process and reads none. */
   const emitApp = (event: AppEvent): Promise<void> => (channel?.supports(event.kind) === true ? emit(event) : Promise.resolve());
 
+  /** A picture's event, or the box's browser's, sent when the server reads it (minor 7). */
+  const emitPicture = (event: PictureEvent | TaskEventOf<"app.browser">): Promise<void> =>
+    channel?.supports(event.kind) === true ? emit(event) : Promise.resolve();
+
   /**
    * The box's app, once the box is ready: its processes start only when something asks, and its
    * previews' list goes up now, with the declared ones. Every executor alike; on a server below minor
@@ -2389,6 +2438,40 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       logger: log,
       ...(deps.appTiming === undefined ? {} : { timing: deps.appTiming }),
     });
+    // Ticket 13: the box's browser (started on first use, reported once as `app.browser`) and the
+    // pictures taken in it, for the tools, the after-turn screenshots and a member's.
+    if (channel.supports("attachment.added")) {
+      browser = boxBrowser({
+        start: () => deps.executor.startBrowser(box),
+        report: (report) => {
+          void emitPicture({ kind: "app.browser", browser: report });
+        },
+      });
+      pictures = createAppPictures({
+        browser,
+        app,
+        spec: taskSpec,
+        executorKind,
+        upload: async (kind, bytes) => {
+          const uploaded = await deps.link.uploadBlob({
+            taskId: taskSpec.taskId,
+            leaseEpoch: taskSpec.leaseEpoch,
+            ...(kind === "screenshot"
+              ? { purpose: "app-screenshot", contentType: APP_SCREENSHOT_CONTENT_TYPE }
+              : { purpose: "app-recording", contentType: APP_RECORDING_CONTENT_TYPE }),
+            bytes,
+          });
+          if (!uploaded.ok) {
+            log.warn("a picture wasn't uploaded", { kind, reason: uploaded.failure.kind });
+            return null;
+          }
+          return uploaded.value.blobId;
+        },
+        emit: emitPicture,
+        logger: log,
+        ...(deps.pictureTiming === undefined ? {} : { timing: deps.pictureTiming }),
+      });
+    }
     appOpened.resolve(app);
     if (app.previews().length > 0) {
       await app.sendPreviewList();
@@ -2695,6 +2778,24 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     },
     previewClose: (body) => Promise.resolve(views.close(body.viewId, "closed") ? { result: "done" } : { result: "done", reason: "unknown-view" }),
     views: () => views,
+    screenshotTake: (body) => {
+      if (ending !== undefined) {
+        return Promise.resolve({ result: "rejected", reason: "session-ending" });
+      }
+      const taking = pictures;
+      if (taking === undefined) {
+        return Promise.resolve({ result: "rejected", reason: app === undefined ? "box-not-ready" : "not-supported" });
+      }
+      const refused = taking.memberRefusal(body);
+      if (refused !== null) {
+        return Promise.resolve({ result: "rejected", reason: refused });
+      }
+      log.info("a member's screenshot asked", { requestId: body.requestId, key: body.key, width: body.width });
+      void taking.memberScreenshot(body).catch((error: unknown) => {
+        log.warn("a member's screenshot failed", { requestId: body.requestId, error: errorName(error) });
+      });
+      return Promise.resolve({ result: "accepted" });
+    },
     endBetweenTurns: async () => {
       if (turnRunning) {
         return false;

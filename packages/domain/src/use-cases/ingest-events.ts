@@ -653,9 +653,11 @@ const applyEffects = async (
       case "subagent.started":
       case "subagent.status":
       // Protocol minor 7 (milestone 8, ADR 0068): stored for the task page and its pane. A process's
-      // state and the box's browser move nothing here; a view's presence is ticket 19's.
+      // state and the box's browser move nothing here; a view's presence is ticket 19's. Pictures
+      // that weren't taken (ticket 13) are the thread's note, and store no row.
       case "app.process":
       case "app.browser":
+      case "attachment.skipped":
       case "preview.opened":
       case "preview.closed":
       case "preview.level_changed":

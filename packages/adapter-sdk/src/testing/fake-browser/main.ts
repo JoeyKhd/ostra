@@ -7,7 +7,8 @@
 // (flattened sessions), `closeTarget` and `getTargets`; `Page.navigate`, which really fetches the
 // page over HTTP (so a page "loads at the app's localhost" only when the app answers), then sends
 // `Page.loadEventFired`; `Runtime.evaluate` of `document.title` and `location.href`;
-// `Page.captureScreenshot` as a real PNG of the viewport's size; `Page.startScreencast` with
+// `Page.captureScreenshot` as a real PNG of the viewport's size (or of its clip); `Page.getLayoutMetrics`
+// as a page twice the viewport's height (ticket 13's full page); `Page.startScreencast` with
 // `maxFramesInFlight` and `Page.screencastFrameAck`, its frames shaped as JPEGs (SOI to EOI, no
 // pixels); and `Input.*`, counted. The rest of the domains' enables and settings answer `{}`; an
 // unknown method gets DevTools' error. Like a browser, it takes its flags, writes nothing to its
@@ -243,6 +244,12 @@ const handle = async (message: Record<string, unknown>): Promise<void> => {
       const height = Number(params["height"]);
       if (Number.isInteger(width) && Number.isInteger(height) && width > 0 && height > 0) page.viewport = { width, height };
       reply({});
+      return;
+    }
+    case "Page.getLayoutMetrics": {
+      const content = { x: 0, y: 0, width: page.viewport.width, height: page.viewport.height * 2 };
+      const viewport = { pageX: 0, pageY: 0, clientWidth: page.viewport.width, clientHeight: page.viewport.height };
+      reply({ cssContentSize: content, contentSize: content, cssLayoutViewport: viewport, layoutViewport: viewport });
       return;
     }
     case "Page.captureScreenshot": {

@@ -97,6 +97,7 @@ export const foldCoverage = {
   "app.process": "no row (milestone 8)",
   "app.browser": "no row (milestone 8)",
   "attachment.added": "no row (milestone 8)",
+  "attachment.skipped": "no row (milestone 8)",
   "preview.list": "no row (milestone 8)",
   "preview.opened": "no row (milestone 8)",
   "preview.closed": "no row (milestone 8)",

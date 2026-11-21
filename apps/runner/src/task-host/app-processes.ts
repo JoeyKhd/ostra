@@ -20,6 +20,7 @@ import {
 import type {
   AnnouncedPreview,
   AppProcessReason,
+  AppToolRefusal,
   AppProcessState,
   BlobId,
   ExecutorKind,
@@ -175,6 +176,13 @@ export type AppProcesses = {
    * `timeoutMs`: a view's stream to an app that's getting ready waits for it (ticket 22).
    */
   readonly settled: (name: string, timeoutMs: number) => Promise<void>;
+  /**
+   * Ticket 13: whether a port is the box's own (below 1024, a reserved port by name or number, or
+   * one the sidecar listens on for the task), as the app tools refuse it; `null` when it may be an app's.
+   */
+  readonly refusePort: (port: number) => AppToolRefusal | null;
+  /** Ticket 13: how long a process has to get ready, which the after-turn screenshots wait at most. */
+  readonly readyTimeoutMs: number;
 };
 
 const sleep = (ms: number): Promise<void> =>
@@ -274,6 +282,8 @@ export const createAppProcesses = (options: AppProcessesOptions): AppProcesses =
   const stopAsked = new Map<string, Extract<EndingReason, "stopped" | "box-stopped">>();
   /** Starts run one at a time: a second asks after the first, and finds what it started running. */
   let chain: Promise<unknown> = Promise.resolve();
+  /** How many times the box's stop came (`stopAll`): a start under way when it does starts nothing. */
+  let boxStops = 0;
 
   const services = options.spec.services ?? [];
   const addresses = appAddresses(processes, services, options.executorKind);
@@ -476,6 +486,7 @@ export const createAppProcesses = (options: AppProcessesOptions): AppProcesses =
     if (current?.state === "starting" || current?.state === "ready") {
       return;
     }
+    const stopsBefore = boxStops;
     const cwd = cwdOf(process);
     // A port the box keeps for itself is never an app's (the environment refuses it when saved, too).
     if (cwd === null || boxPortRefusal(process.port, options.reservedPorts) !== null || ownPorts.has(process.port)) {
@@ -491,6 +502,10 @@ export const createAppProcesses = (options: AppProcessesOptions): AppProcesses =
       // Something in the box holds the port already, such as the agent's own dev server.
       if (await portAnswers(reach.value, process.port)) {
         await failNow(process, "port-in-use");
+        return;
+      }
+      // Ticket 13: the box began to stop while its port was checked: nothing starts behind its stop.
+      if (boxStops !== stopsBefore) {
         return;
       }
       stopAsked.delete(process.name);
@@ -620,6 +635,7 @@ export const createAppProcesses = (options: AppProcessesOptions): AppProcesses =
   };
 
   const stopAll = async (): Promise<void> => {
+    boxStops += 1;
     await Promise.all(processes.map((process) => stopRun(process, "box-stopped")));
   };
 
@@ -638,12 +654,18 @@ export const createAppProcesses = (options: AppProcessesOptions): AppProcesses =
     await options.emit({ kind: "preview.list", previews: [...previews()] });
   };
 
+  /** `mayReach`'s rule: never below 1024, never one of the box's own ports, by name or by number. */
+  const refusePort = (port: number): AppToolRefusal | null => {
+    const own = boxPortRefusal(port, options.reservedPorts) ?? (ownPorts.has(port) ? ({ reason: "reserved", name: "mcp-proxy" } as const) : null);
+    return own === null ? null : { code: "port-not-allowed", port, why: own.reason };
+  };
+
   const announce = async (input: ShowPreviewInput): Promise<{ readonly text: string; readonly isError: boolean }> => {
-    // `mayReach`'s rule first: never below 1024, never one of the box's own ports, by name or by number.
-    const own = boxPortRefusal(input.port, options.reservedPorts) ?? (ownPorts.has(input.port) ? ({ reason: "reserved", name: "mcp-proxy" } as const) : null);
+    // `mayReach`'s rule first.
+    const own = refusePort(input.port);
     if (own !== null) {
-      log.info("a preview refused", { taskId: options.box.taskId, port: input.port, reason: own.reason });
-      return { text: appToolRefusalText({ code: "port-not-allowed", port: input.port, why: own.reason }), isError: true };
+      log.info("a preview refused", { taskId: options.box.taskId, port: input.port, reason: own.code === "port-not-allowed" ? own.why : own.code });
+      return { text: appToolRefusalText(own), isError: true };
     }
     const listed = previews();
     const refused = appToolRefusal(
@@ -697,5 +719,7 @@ export const createAppProcesses = (options: AppProcessesOptions): AppProcesses =
     sendPreviewList,
     reach: reachRule,
     settled,
+    refusePort,
+    readyTimeoutMs: timing.readyTimeoutMs,
   };
 };

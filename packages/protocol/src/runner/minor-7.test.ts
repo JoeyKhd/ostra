@@ -122,7 +122,7 @@ import { minorWindow, negotiate, PROTOCOL_MAJOR, PROTOCOL_MINOR } from "./versio
 
 const roundTrip = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
 
-const runnerKinds = ["app.process", "app.browser", "attachment.added", "preview.list"] as const satisfies readonly TaskEventKind[];
+const runnerKinds = ["app.process", "app.browser", "attachment.added", "attachment.skipped", "preview.list"] as const satisfies readonly TaskEventKind[];
 const serverKinds = [
   "preview.opened",
   "preview.closed",

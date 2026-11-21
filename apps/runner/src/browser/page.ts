@@ -35,9 +35,16 @@ export type ScreenshotOptions = {
   readonly format: "png" | "jpeg";
   /** JPEG only, 0 to 100. */
   readonly quality?: number;
-  /** The whole page, past the viewport, up to `maxHeight` CSS pixels. */
+  /** The whole page, past the viewport, up to `maxHeight` pixels high in the picture. */
   readonly fullPage?: boolean;
   readonly maxHeight?: number;
+  /** Ticket 13: the whole page's picture at most this wide, in pixels: a page wider than its viewport. */
+  readonly maxWidth?: number;
+  /**
+   * Ticket 13: a phone's width. A page laid out wider than it (one with no viewport tag lays out at
+   * 980 px on a phone) is zoomed out to fit, as the phone shows it, in the full page too.
+   */
+  readonly fitWidth?: number;
 };
 
 export type ScreencastOptions = {
@@ -157,9 +164,13 @@ export const openPage = async (client: DevToolsClient, viewport: Viewport): Prom
     const params: Record<string, unknown> = { format: options.format, ...(options.format === "jpeg" && options.quality !== undefined ? { quality: options.quality } : {}) };
     if (options.fullPage === true) {
       const { cssContentSize } = await client.call("Page.getLayoutMetrics", {}, layoutSchema, on);
-      const height = Math.min(Math.ceil(cssContentSize.height), options.maxHeight ?? Number.MAX_SAFE_INTEGER);
+      const contentWidth = Math.max(1, Math.ceil(cssContentSize.width));
+      const scale = options.fitWidth !== undefined && contentWidth > options.fitWidth ? options.fitWidth / contentWidth : 1;
+      // The caps are the picture's pixels: the page's CSS pixels times the scale.
+      const width = Math.max(1, Math.min(contentWidth, Math.floor((options.maxWidth ?? Number.MAX_SAFE_INTEGER) / scale)));
+      const height = Math.max(1, Math.min(Math.ceil(cssContentSize.height), Math.floor((options.maxHeight ?? Number.MAX_SAFE_INTEGER) / scale)));
       params["captureBeyondViewport"] = true;
-      params["clip"] = { x: 0, y: 0, width: Math.ceil(cssContentSize.width), height, scale: 1 };
+      params["clip"] = { x: 0, y: 0, width, height, scale };
     }
     const { data } = await client.call("Page.captureScreenshot", params, screenshotSchema, on);
     return Buffer.from(data, "base64");

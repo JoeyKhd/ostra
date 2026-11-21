@@ -672,6 +672,50 @@ export const showPreviewResultText = (input: { readonly label: string; readonly 
   `${input.label} (port ${String(input.port)}) is shown in the task's preview pane. ` +
   "The members of the project can open it, and one may keep it in the environment.";
 
+/**
+ * Why a recording's step failed (ticket 13), in ostra's words: nothing on the page matched it in
+ * time, its selector isn't CSS, its page didn't load, it ran past its own deadline or the
+ * recording's length, its key isn't one ostra knows, or the browser stopped answering.
+ */
+export type RecordStepFailureReason = "not-found" | "invalid-selector" | "navigation-failed" | "deadline" | "out-of-time" | "unknown-key" | "browser-failed";
+
+/**
+ * The step a recording stopped at: its number from 1, its action, why, and Chromium's own words
+ * for a page that didn't load (`detail`). For the agent's answer only: never logged.
+ */
+export type RecordStepFailure = {
+  readonly number: number;
+  readonly action: RecordStepAction;
+  readonly reason: RecordStepFailureReason;
+  readonly detail: string | null;
+};
+
+/** How long one step of a recording may take, in ms (ticket 13, working value): the recording's own length bounds it too. */
+export const RECORD_STEP_DEADLINE_MS = 10_000;
+
+/** Why a step failed, in words for the agent. */
+export const recordStepFailureText = (failure: RecordStepFailure): string => {
+  const step = `Step ${String(failure.number)} (${failure.action})`;
+  switch (failure.reason) {
+    case "not-found":
+      return `${step} failed: nothing on the page matched it within ${String(RECORD_STEP_DEADLINE_MS / 1000)} s.`;
+    case "invalid-selector":
+      return `${step} failed: its selector isn't a valid CSS selector.`;
+    case "navigation-failed":
+      return `${step} failed: the page didn't load${failure.detail === null ? "" : ` (${failure.detail.slice(0, 200)})`}.`;
+    case "deadline":
+      return `${step} failed: it didn't finish within ${String(RECORD_STEP_DEADLINE_MS / 1000)} s.`;
+    case "out-of-time":
+      return `${step} didn't run: the recording reached its length first.`;
+    case "unknown-key":
+      return `${step} failed: ostra doesn't know that key. Name one character, or a key such as Enter, Tab, Escape, Backspace or ArrowDown, with Control+, Shift+, Alt+ or Meta+ before it.`;
+    case "browser-failed":
+      return `${step} failed: the box's browser stopped answering.`;
+    default:
+      return failure.reason satisfies never;
+  }
+};
+
 /** The text `take_screenshot` and `record_app` return: the picture's ID, which a finding may name, and what it holds. */
 export const attachmentResultText = (result: {
   readonly attachmentId: string;
@@ -680,13 +724,52 @@ export const attachmentResultText = (result: {
   readonly height: number;
   readonly durationMs: number | null;
   readonly frameCount: number | null;
+  /** Ticket 13: the step a recording stopped at, when one failed: the recording keeps what it had. */
+  readonly failedStep?: RecordStepFailure | null;
 }): string => {
   const size = `${String(result.width)}×${String(result.height)}`;
   if (result.kind === "screenshot") {
     return `Screenshot ${result.attachmentId} (${size}) is in the task's thread for the members of the project.`;
   }
   const seconds = ((result.durationMs ?? 0) / 1000).toFixed(1);
-  return `Recording ${result.attachmentId} (${size}, ${seconds} s, ${String(result.frameCount ?? 0)} frames) is in the task's thread for the members of the project.`;
+  const kept = `Recording ${result.attachmentId} (${size}, ${seconds} s, ${String(result.frameCount ?? 0)} frames) is in the task's thread for the members of the project.`;
+  const failed = result.failedStep ?? null;
+  return failed === null ? kept : `${recordStepFailureText(failed)} The recording ends there, with what it had. ${kept}`;
+};
+
+/**
+ * Why a picture didn't come out (ticket 13), for the agent: its page didn't load (with Chromium's
+ * own words), it's over its size, the browser stopped answering, it couldn't be saved, or a
+ * recording's first step failed before a frame. Names, numbers and the address the box opened.
+ */
+export type AppPictureFailure =
+  | { readonly code: "page-failed"; readonly url: string; readonly detail: string | null }
+  | { readonly code: "too-large"; readonly kind: "screenshot" | "recording" }
+  | { readonly code: "browser-failed" }
+  | { readonly code: "upload-failed" }
+  | { readonly code: "nothing-recorded"; readonly step: RecordStepFailure };
+
+/** The text `take_screenshot` and `record_app` return when the picture didn't come out. */
+export const appPictureFailureText = (failure: AppPictureFailure): string => {
+  switch (failure.code) {
+    case "page-failed":
+      return (
+        `The page at ${failure.url.slice(0, 300)} didn't load${failure.detail === null ? "" : ` (${failure.detail.slice(0, 200)})`}. ` +
+        "Check that the app answers on that port in this box (start_app gives each process's state and log), and call the tool again."
+      );
+    case "too-large":
+      return failure.kind === "screenshot"
+        ? `The screenshot is over ${String(runnerLimits.screenshotMaxBytes / (1024 * 1024))} MiB. Take the viewport instead of the full page, or a smaller size.`
+        : `The recording is over ${String(runnerLimits.recordingMaxBytes / (1024 * 1024))} MiB. Record fewer seconds, or a smaller size.`;
+    case "browser-failed":
+      return "The box's browser stopped answering, so nothing was taken. Call the tool again; it starts the browser again.";
+    case "upload-failed":
+      return "The picture was taken but couldn't be saved to ostra. Call the tool again in a moment.";
+    case "nothing-recorded":
+      return `${recordStepFailureText(failure.step)} Nothing was recorded.`;
+    default:
+      return failure satisfies never;
+  }
 };
 
 // ---------- what each tool returns to the agent ----------

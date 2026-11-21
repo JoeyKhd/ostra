@@ -537,6 +537,12 @@ const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
       expect(typesOf(m)).not.toContain("data-system");
     },
   },
+  "attachment.skipped": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
   "preview.list": {
     prefix: [],
     check: (m) => {

@@ -188,6 +188,39 @@ export type AttachmentKind = z.infer<typeof attachmentKindSchema>;
 export const attachmentSourceSchema = z.enum(["agent", "after-turn", "member"]);
 export type AttachmentSource = z.infer<typeof attachmentSourceSchema>;
 
+/**
+ * Why pictures ostra was to take itself weren't taken (milestone 8's ticket 13): the turn already
+ * added `attachmentsPerTurnMax`, the box has no browser, the primary didn't get ready, the page
+ * didn't load, the picture was over its size, or it failed another way (the browser stopped
+ * answering, the upload failed). The agent's own tools say so in their answers instead.
+ */
+export const attachmentSkipReasonSchema = z.enum(["limit-reached", "no-browser", "not-ready", "page-failed", "too-large", "failed"]);
+export type AttachmentSkipReason = z.infer<typeof attachmentSkipReasonSchema>;
+
+/** The thread's note for pictures that weren't taken, in the panel's words (ticket 17 shows it). */
+export const attachmentSkippedWords = (skipped: { readonly source: "after-turn" | "member"; readonly reason: AttachmentSkipReason; readonly count: number }): string => {
+  const what =
+    skipped.source === "member"
+      ? "The screenshot wasn't taken"
+      : `${skipped.count === 1 ? "The screenshot" : `${String(skipped.count)} screenshots`} after this turn ${skipped.count === 1 ? "wasn't" : "weren't"} taken`;
+  switch (skipped.reason) {
+    case "limit-reached":
+      return `${what}: the turn already added ${String(runnerLimits.attachmentsPerTurnMax)} screenshots and recordings, as many as a turn may.`;
+    case "no-browser":
+      return `${what}: this box has no browser.`;
+    case "not-ready":
+      return `${what}: the app's primary process didn't get ready. Its log says why.`;
+    case "page-failed":
+      return `${what}: the page didn't load in the box's browser.`;
+    case "too-large":
+      return `${what}: it was over ${String(runnerLimits.screenshotMaxBytes / (1024 * 1024))} MiB.`;
+    case "failed":
+      return `${what}: the box's browser stopped answering, or the picture couldn't be saved.`;
+    default:
+      return skipped.reason satisfies never;
+  }
+};
+
 /** An app process's state in a box (F-140, ADR 0068). */
 export const appProcessStateSchema = z.enum(["starting", "ready", "exited", "failed", "stopped"]);
 export type AppProcessState = z.infer<typeof appProcessStateSchema>;

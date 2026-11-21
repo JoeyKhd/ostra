@@ -504,6 +504,7 @@ export const eventFixtures: { readonly [K in TaskEventKind]: TaskEventOf<K> } = 
     memberId: null,
     requestId: null,
   },
+  "attachment.skipped": { kind: "attachment.skipped", source: "after-turn", reason: "limit-reached", count: 2, requestId: null },
   "preview.list": {
     kind: "preview.list",
     previews: [

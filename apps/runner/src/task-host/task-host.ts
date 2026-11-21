@@ -188,9 +188,10 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
       const run = runs.get(command.body.sessionId);
       return run === undefined ? done({ result: "rejected", reason: "unknown-session" }) : run.setEffort(command.body);
     },
-    // Protocol minor 7 (milestone 8, ADR 0068): the app's processes (ticket 12) and the views
-    // (ticket 22's tunnel), by the session's box. A member's screenshot and the browser view are
-    // refused until tickets 13 and 18 serve them: the runner reports `stream: false` until then.
+    // Protocol minor 7 (milestone 8, ADR 0068): the app's processes (ticket 12), a member's
+    // screenshot (ticket 13) and the views (ticket 22's tunnel), by the session's box. The browser
+    // view is refused until ticket 18 serves it: the runner reports `stream: false` until then, so
+    // core sends no `screenshot.take` either.
     "app.start": (command) => {
       const run = runs.get(command.body.sessionId);
       return run === undefined ? done({ result: "rejected", reason: "unknown-session" }) : run.appStart(command.body);
@@ -200,7 +201,10 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
       // No session here: nothing of its app runs either.
       return run === undefined ? done({ result: "done", reason: "unknown-session" }) : run.appStop(command.body);
     },
-    "screenshot.take": () => done({ result: "rejected", reason: "not-supported" }),
+    "screenshot.take": (command) => {
+      const run = runs.get(command.body.sessionId);
+      return run === undefined ? done({ result: "rejected", reason: "unknown-session" }) : run.screenshotTake(command.body);
+    },
     "preview.open": (command) => {
       const run = runs.get(command.body.sessionId);
       return run === undefined ? done({ result: "rejected", reason: "unknown-session" }) : run.previewOpen(command.body);

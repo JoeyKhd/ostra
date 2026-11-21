@@ -1144,6 +1144,7 @@ export const foldTaskEvents = (
       case "app.process":
       case "app.browser":
       case "attachment.added":
+      case "attachment.skipped":
       case "preview.list":
       case "preview.opened":
       case "preview.closed":

@@ -208,6 +208,15 @@ export const fakeScripts = [
   "start-app",
   /** Calls `show_preview` with its args' input, and says the answer. */
   "show-preview",
+  // Milestone 8 (ticket 13).
+  /** Calls `record_app` with its args' input, and says the answer. */
+  "record-app",
+  /**
+   * Writes the files its args name (`write`, session-relative, as `write` does), then calls each of
+   * ostra's tools its args list (`calls`, `{ tool, arguments }`) in order, saying each answer as a
+   * message of its own: `fakeAppCalls` makes its args.
+   */
+  "app-calls",
   /** Runs `git push origin HEAD:refs/heads/<branch>` (or `HEAD:<ref>` for a full ref name) in the repo folder given, and says `pushed` or `push refused`. */
   "git-push",
   /** Says each git repo's HEAD under the session's folder, one `<folder> <sha>` line each. */
@@ -280,6 +289,17 @@ const readToolArgs = (args: string): unknown => {
     return {};
   }
 };
+
+/** Ticket 13: one of `app-calls`' calls: an ostra tool by its name, and its arguments. */
+export type FakeAppCall = { readonly tool: string; readonly arguments: unknown };
+
+/** Ticket 13: `[[fake:app-calls]]`'s args: the files to write first, then the calls in order. */
+export const fakeAppCalls = (calls: readonly FakeAppCall[], write: readonly string[] = []): string => fakeToolArgs({ calls, write });
+
+const appCallsSchema = z.looseObject({
+  calls: z.array(z.looseObject({ tool: z.string().min(1), arguments: z.unknown() })),
+  write: z.array(z.string().min(1)).optional(),
+});
 
 /** Milestone 6: the field the asking fake's question has, which an answer fills. */
 export const FAKE_AGENT_QUESTION_FIELD = "approach";
@@ -1441,8 +1461,43 @@ export const createFakeAgent = (options: FakeAgentOptions): FakeAgent => {
       case "propose-environment":
       case "take-screenshot":
       case "start-app":
-      case "show-preview": {
+      case "show-preview":
+      case "record-app":
+      case "app-calls": {
         const config = await readConfig();
+        const ostraMcp = config.ostraMcp;
+        /** One call of ostra's tool, reported as the agent's tool call, and its answer said. */
+        const callTool = async (tool: string, toolArgs: unknown, toolCallId: string): Promise<void> => {
+          if (ostraMcp === undefined) {
+            await say(`${tool}: no such tool`);
+            return;
+          }
+          await update({ sessionUpdate: "tool_call", toolCallId, title: `ostra/${tool}`, kind: "other", status: "in_progress", rawInput: { mcpServer: "ostra", tool } });
+          const result = z
+            .looseObject({ content: z.array(z.looseObject({ type: z.string(), text: z.string().optional() })), isError: z.boolean().optional() })
+            .safeParse(await mcpCall(ostraMcp, "tools/call", { name: tool, arguments: toolArgs }));
+          const text = result.success ? result.data.content.map((part) => part.text ?? "").join("") : "no such tool";
+          const failed = !result.success || result.data.isError === true;
+          await update({ sessionUpdate: "tool_call_update", toolCallId, status: failed ? "failed" : "completed", content: [{ type: "content", content: { type: "text", text } }] });
+          await say(`${tool}: ${text}`);
+        };
+        if (script === "app-calls") {
+          // Ticket 13: files written first (a turn that changed a repo), then each call in order.
+          const plan = appCallsSchema.safeParse(readToolArgs(args));
+          const calls = plan.success ? plan.data.calls : [];
+          const root = session.cwd;
+          for (const relative of plan.success ? (plan.data.write ?? []) : []) {
+            const target = root === null ? null : path.resolve(root, relative);
+            if (root !== null && target?.startsWith(`${path.resolve(root)}${path.sep}`) === true) {
+              await mkdir(path.dirname(target), { recursive: true });
+              await writeFile(target, "Written by the fake agent.\n");
+            }
+          }
+          for (const [index, call] of calls.entries()) {
+            await callTool(call.tool, call.arguments, `t-app-call-${String(index + 1)}`);
+          }
+          return "end_turn";
+        }
         const tools = {
           "submit-draft": "submit_draft",
           "submit-review": "submit_review",
@@ -1450,22 +1505,9 @@ export const createFakeAgent = (options: FakeAgentOptions): FakeAgent => {
           "take-screenshot": "take_screenshot",
           "start-app": "start_app",
           "show-preview": "show_preview",
+          "record-app": "record_app",
         } as const;
-        const tool = tools[script];
-        if (config.ostraMcp === undefined) {
-          await say(`${tool}: no such tool`);
-          return "end_turn";
-        }
-        const toolArgs = readToolArgs(args);
-        const toolCallId = `t-${script}`;
-        await update({ sessionUpdate: "tool_call", toolCallId, title: `ostra/${tool}`, kind: "other", status: "in_progress", rawInput: { mcpServer: "ostra", tool } });
-        const result = z
-          .looseObject({ content: z.array(z.looseObject({ type: z.string(), text: z.string().optional() })), isError: z.boolean().optional() })
-          .safeParse(await mcpCall(config.ostraMcp, "tools/call", { name: tool, arguments: toolArgs }));
-        const text = result.success ? result.data.content.map((part) => part.text ?? "").join("") : "no such tool";
-        const failed = !result.success || result.data.isError === true;
-        await update({ sessionUpdate: "tool_call_update", toolCallId, status: failed ? "failed" : "completed", content: [{ type: "content", content: { type: "text", text } }] });
-        await say(`${tool}: ${text}`);
+        await callTool(tools[script], readToolArgs(args), `t-${script}`);
         return "end_turn";
       }
 

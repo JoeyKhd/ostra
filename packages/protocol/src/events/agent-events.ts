@@ -59,6 +59,7 @@ import {
   appProcessReasonSchema,
   appProcessStateSchema,
   attachmentKindSchema,
+  attachmentSkipReasonSchema,
   attachmentSourceSchema,
   boxBrowserSchema,
   captionSchema,
@@ -1062,6 +1063,22 @@ const minor7NewEventOptions = [
     caption: captionSchema.nullable(),
     browser: boxBrowserSchema,
     memberId: memberIdSchema.nullable(),
+    requestId: screenshotRequestIdSchema.nullable(),
+  }),
+  /**
+   * Ticket 13: pictures ostra was to take itself weren't taken: the after-turn screenshots (how
+   * many, and why), or a member's from the pane (its `requestId`), so the thread and the pane can
+   * say so (`attachmentSkippedWords`). The agent's own tools answer it in words instead.
+   */
+  z.strictObject({
+    kind: z.literal("attachment.skipped"),
+    source: z.enum(["after-turn", "member"]),
+    reason: attachmentSkipReasonSchema,
+    count: z
+      .number()
+      .int()
+      .positive()
+      .max(runnerLimits.screenshotRoutesMax * runnerLimits.screenshotWidthsMax),
     requestId: screenshotRequestIdSchema.nullable(),
   }),
   // ---- previews (F-141) ----

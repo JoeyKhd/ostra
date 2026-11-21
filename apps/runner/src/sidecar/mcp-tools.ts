@@ -20,6 +20,9 @@ import {
   proposeEnvironmentDescription,
   proposeEnvironmentInputSchema,
   proposalRelationSchema,
+  RECORD_APP_TOOL,
+  recordAppDescription,
+  recordAppInputSchema,
   reviewRequestFromTool,
   reviewResultText,
   runnerLimits,
@@ -35,6 +38,9 @@ import {
   submitDraftInputSchema,
   submitReviewDescription,
   submitReviewInputSchema,
+  TAKE_SCREENSHOT_TOOL,
+  takeScreenshotDescription,
+  takeScreenshotInputSchema,
   unknownRepoText,
 } from "@ostra/protocol";
 import type {
@@ -44,11 +50,13 @@ import type {
   NoteId,
   OstraToolSet,
   ProposeEnvironmentInput,
+  RecordAppInput,
   RepoFullName,
   RepoId,
   ShowPreviewInput,
   SubmitDraftInput,
   SubmitReviewInput,
+  TakeScreenshotInput,
   TaskEventOf,
   TaskId,
 } from "@ostra/protocol";
@@ -85,8 +93,13 @@ import { RUNNER_VERSION } from "../version.ts";
 // Milestone 8 (ticket 12, protocol minor 7): with the `app` set, `start_app` and `show_preview`,
 // the box's own app (`task-host/app-processes.ts`): the start waits for each process's ready check
 // and answers each one's state, address and log path; a shown port is checked against the box's own
-// ports and the limit before it joins the task's previews. Ticket 13 adds `take_screenshot` and
-// `record_app`. A process's command and its log never reach a log line or the tool's answer.
+// ports and the limit before it joins the task's previews. A process's command and its log never
+// reach a log line or the tool's answer.
+//
+// Milestone 8 (ticket 13): `take_screenshot` and `record_app`, the box's pictures
+// (`task-host/app-pictures.ts`): each in a page of its own in the box's browser, uploaded as a blob
+// of the task, its answer the attachment's ID or why there's none. A caption, a step and a path
+// never reach a log line: the tool's name and counts only.
 
 export const SET_PR_TEXT_TOOL = "set_pull_request_text";
 export const MEMORY_SEARCH_TOOL = "memory_search";
@@ -139,6 +152,10 @@ export type McpAppTools = {
   readonly start: (names: readonly string[] | null) => Promise<{ readonly text: string; readonly isError: boolean }>;
   /** `show_preview`: a port the agent started, for the task's previews. */
   readonly announce: (input: ShowPreviewInput) => Promise<{ readonly text: string; readonly isError: boolean }>;
+  /** Ticket 13, `take_screenshot`: a screenshot of the app in the box's browser. */
+  readonly screenshot: (input: TakeScreenshotInput) => Promise<{ readonly text: string; readonly isError: boolean }>;
+  /** Ticket 13, `record_app`: a recording of the app while its steps run. */
+  readonly record: (input: RecordAppInput) => Promise<{ readonly text: string; readonly isError: boolean }>;
 };
 
 export type McpMemoryOptions = {
@@ -478,6 +495,26 @@ export const startMcpTools = async (options: McpToolsOptions): Promise<McpTools>
         async (input) => {
           log.info("app tool called", { tool: SHOW_PREVIEW_TOOL, port: input.port });
           const result = await app.announce(input);
+          return answer(result.text, result.isError);
+        },
+      );
+      server.registerTool(
+        TAKE_SCREENSHOT_TOOL,
+        { title: "Take a screenshot of the app", description: takeScreenshotDescription, inputSchema: takeScreenshotInputSchema },
+        async (input) => {
+          // The target's kind and the size asked: never the caption or the path.
+          log.info("app tool called", { tool: TAKE_SCREENSHOT_TOOL, target: "process" in input.target ? "process" : "port", width: input.width ?? null, fullPage: input.fullPage === true });
+          const result = await app.screenshot(input);
+          return answer(result.text, result.isError);
+        },
+      );
+      server.registerTool(
+        RECORD_APP_TOOL,
+        { title: "Record the app while steps run", description: recordAppDescription, inputSchema: recordAppInputSchema },
+        async (input) => {
+          // How many steps and seconds: never a step or the caption.
+          log.info("app tool called", { tool: RECORD_APP_TOOL, target: "process" in input.target ? "process" : "port", steps: input.steps.length, seconds: input.seconds ?? null });
+          const result = await app.record(input);
           return answer(result.text, result.isError);
         },
       );
