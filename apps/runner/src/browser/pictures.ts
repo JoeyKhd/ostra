@@ -1,4 +1,4 @@
-import { encodeFrameReel, frameReelMaxFrames, RECORD_STEP_DEADLINE_MS, runnerLimits } from "@ostra/protocol";
+import { browserViewFrameBounds, encodeFrameReel, frameReelMaxFrames, RECORD_STEP_DEADLINE_MS, runnerLimits } from "@ostra/protocol";
 import type { FrameReelFrame, FrameReelStep, RecordStep, RecordStepFailure, RecordStepFailureReason } from "@ostra/protocol";
 import { z } from "zod";
 import { isDevToolsError } from "./devtools-client.ts";
@@ -476,12 +476,14 @@ export const recordApp = async (client: DevToolsClient, request: RecordingReques
     let capturing = true;
     const startedAt = Date.now();
     const sinceStart = (): number => Math.round(Date.now() - startedAt);
+    // The reel's frames within the browser view's caps (Q326), at the page's size when it fits.
+    const bounds = browserViewFrameBounds(request.viewport);
     const stopCast = await page.startScreencast(
       {
         format: "jpeg",
         quality: RECORDING_QUALITY,
-        maxWidth: Math.min(request.viewport.width, runnerLimits.browserViewMaxWidth),
-        maxHeight: Math.min(request.viewport.height, runnerLimits.browserViewMaxHeight),
+        maxWidth: bounds.width,
+        maxHeight: bounds.height,
         maxFramesInFlight: 1,
         sendLastFrame: true,
       },

@@ -2,7 +2,7 @@
 
 **Who answers:** 👤 = the maintainer's call · 🔬 = research informs it, then we decide together · 🔧 = a build task with a known fix: no decision is needed, and the row leaves when the fix is committed.
 
-A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q325). They are two separate ranges: Q-20 and Q20 are different questions.
+A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q326). They are two separate ranges: Q-20 and Q20 are different questions.
 
 ## Settled
 
@@ -504,12 +504,9 @@ Ticket 34 of that spec asks the maintainer to review the lead's calls; any the m
 | Question | Settled in |
 |---|---|
 | Q325 How does ostra tell the panel's site from the preview domain's, without the public suffix list? | ADR 0068 ("Decided by the lead"), F-144, the lead on the builder's recommendation: by the browser's own `Sec-Fetch-Site` and `Sec-Fetch-Dest` at each handshake. `None; Partitioned` for a frame on another site, `Lax` in a tab or on the panel's site, and a browser's `cross-site` is never read as the panel's site. Ticket 25's rule (`previewSiteLayout`) is the fallback for a browser that sends neither. No dependency |
+| Q326 How tall is the browser view's tablet preset? | ADR 0068 ("Decided by the lead"), F-141, the lead's call: as tall as the preset, 834×1112. A browser view's page is capped by its pixels, at most 1440×900's in all and 1920 a side, so every preset fits, and the screencast sends each page at its own size |
 
 ## Open
-
-### Raised by milestone 8 (2026-11-21)
-
-**Q326 👤 How tall is the browser view's tablet preset?** (F-141, ADR 0068's note of 2026-11-21 on the pane's controls; found while wiring the width preset). The width presets are desktop 1440×900, tablet 834×1112 and phone 390×844 (`viewportPresetSizes`, the screenshots' too), but a browser view's page is at most 1440×900 (`previewViewportSchema`, the screencast's bounds), so `previews.open` and the pane's width control refuse the tablet as it is. *Options:* the pane sends the tablet at 834×900, its width with the page's height cap; or the page's height cap rises to 1112, and the screencast scales the tablet's frames down to fit 1440×900 (about 675×900). *Recommendation:* raise the cap to the tablet's height, since a tablet's page is taller than it is wide and the frames are scaled in the pane anyway; until it's settled, the pane sends 834×900.
 
 ### Raised by milestone 5 (2026-11-20)
 

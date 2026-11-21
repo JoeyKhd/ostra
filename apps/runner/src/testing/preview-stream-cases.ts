@@ -48,6 +48,8 @@ const DESKTOP: PreviewViewport = viewportPresetSizes.desktop;
 /** The primary's preview, the fixture's Vite. */
 const WEB = previewKeySchema.parse("app-web");
 const PHONE: PreviewViewport = viewportPresetSizes.phone;
+/** The tablet's preset as it is (Q326): taller than 900, within 1440×900's pixels. */
+const TABLET: PreviewViewport = viewportPresetSizes.tablet;
 
 const freePort = (): Promise<number> =>
   new Promise((resolve, reject) => {
@@ -113,6 +115,22 @@ const middleOf = (selector: string): string =>
 /** A page that changes every frame, so the screencast sends as fast as its acks let it. */
 const ANIMATE = "(() => { const tick = document.createElement('div'); tick.id = 'ostra-tick'; document.body.appendChild(tick); let n = 0; window.ostraTick = setInterval(() => { tick.textContent = String(n++); }, 8); return true; })()";
 const STILL = "(() => { clearInterval(window.ostraTick); return true; })()";
+
+/**
+ * A frame's picture's size, from its JPEG's frame header (SOF): the machine's browser's, or the
+ * fake one's, which writes one. `null` for bytes with none.
+ */
+const pictureSize = (jpeg: Uint8Array | undefined): { readonly width: number; readonly height: number } | null => {
+  if (jpeg === undefined) return null;
+  const bytes = Buffer.from(jpeg.buffer, jpeg.byteOffset, jpeg.byteLength);
+  for (let at = 2; at + 9 <= bytes.length && bytes.readUInt8(at) === 0xff; at += 2 + bytes.readUInt16BE(at + 2)) {
+    const marker = bytes.readUInt8(at + 1);
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      return { width: bytes.readUInt16BE(at + 7), height: bytes.readUInt16BE(at + 5) };
+    }
+  }
+  return null;
+};
 
 /** The fake browser's frames name how many input events reached its page. */
 const inputsInFrame = (frame: FakeStreamView["frames"][number] | undefined): number => Number(/after (\d+) inputs/.exec(Buffer.from(frame?.jpeg ?? new Uint8Array()).toString("latin1"))?.[1] ?? "-1");
@@ -342,11 +360,18 @@ export const previewStreamCases = (mode: PreviewStreamMode) => {
       await h.gateway.waitFor(() => one.frames.at(-1)?.header.width === PHONE.width && two.frames.at(-1)?.header.width === PHONE.width, 20_000);
       expect(one.frames.at(-1)?.header).toMatchObject({ width: PHONE.width, height: PHONE.height });
       if (live) await pageSays(h, "String(window.innerWidth)", String(PHONE.width));
+      // The tablet's preset as it is, 834×1112 (Q326): its pictures come at its own size, not scaled down to 900 high.
+      core.control(first, { kind: "viewport", viewport: TABLET });
+      const atTablet = (frame: FakeStreamView["frames"][number]): boolean => frame.header.width === TABLET.width && frame.header.height === TABLET.height;
+      await h.gateway.waitFor(() => one.frames.some(atTablet) && two.frames.some(atTablet), 20_000);
+      await h.gateway.waitFor(() => one.frames.some((frame) => atTablet(frame) && pictureSize(frame.jpeg)?.height === TABLET.height), 20_000);
+      expect(pictureSize(one.frames.findLast(atTablet)?.jpeg)).toEqual(TABLET);
+      if (live) await pageSays(h, "String(window.innerHeight)", String(TABLET.height));
       // The width preset from core, on the shared page: back to the desktop's, on both.
       core.control(first, { kind: "viewport", viewport: DESKTOP });
       await h.gateway.waitFor(() => one.frames.at(-1)?.header.width === DESKTOP.width && two.frames.at(-1)?.header.width === DESKTOP.width, 20_000);
       if (live) await pageSays(h, "String(window.innerWidth)", String(DESKTOP.width));
-      await h.gateway.waitFor(() => one.controlAcks.length === 1, 10_000);
+      await h.gateway.waitFor(() => one.controlAcks.length === 2, 10_000);
       // The first view goes; the second streams on from the same page.
       expect(await h.waitForAck(h.command("preview.close", { sessionId: spec.sessionId, viewId: first }))).toMatchObject({ result: "done" });
       expect(await one.closed).toBe(1000);

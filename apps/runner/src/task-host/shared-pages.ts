@@ -1,5 +1,5 @@
 import type { Logger } from "@ostra/adapter-sdk";
-import { runnerLimits, viewportPresetSizes } from "@ostra/protocol";
+import { browserViewFrameBounds, runnerLimits, viewportPresetSizes } from "@ostra/protocol";
 import type { PreviewControl, PreviewInputEvent, PreviewKey, PreviewPageControl, PreviewViewId, PreviewViewport } from "@ostra/protocol";
 import type { z } from "zod";
 import type { OpenBoxBrowser } from "../browser/box-browser.ts";
@@ -13,9 +13,10 @@ import type { PreviewFrame } from "../connection/preview-frames.ts";
 //
 // - **The page** opens on the first view of its preview, loads the preview at its path, and closes
 //   with the last view. The width is the last one chosen.
-// - **The screencast** (spike 07's defaults): JPEG at quality 60, at most 1440×900, one frame in
-//   flight, `sendLastFrame` on. The rate is capped by holding each frame's ack to the browser,
-//   never by dropping frames: 15 a second on the WebSocket, 2 on the HTTP carrier. The ack goes
+// - **The screencast** (spike 07's defaults): JPEG at quality 60, at the page's own size (within
+//   1440×900's pixels, Q326), one frame in flight, `sendLastFrame` on. The rate is capped by
+//   holding each frame's ack to the browser, never by dropping frames: 15 a second on the
+//   WebSocket, 2 on the HTTP carrier. The ack goes
 //   back once a view's core took the newest frame, so `maxFramesInFlight` holds the browser to what
 //   core takes: a member who reads slowly slows the browser rather than queueing frames in core.
 // - **Each view** has at most one frame with its core. A view that's behind gets the newest frame
@@ -231,20 +232,25 @@ export const createSharedPages = (deps: SharedPagesDeps): SharedPages => {
     shared.lastAckAt = Date.now();
   };
 
-  /** The page's screencast, spike 07's: its frames to `onFrame`, each acked once a view took it and the rate's gap passed. */
-  const startCast = (shared: Shared, page: Page): Promise<() => Promise<void>> =>
-    page.startScreencast(
+  /**
+   * The page's screencast, spike 07's: its frames to `onFrame`, each acked once a view took it and
+   * the rate's gap passed, at the page's own size (Q326: within the browser view's pixel cap).
+   */
+  const startCast = (shared: Shared, page: Page): Promise<() => Promise<void>> => {
+    const bounds = browserViewFrameBounds(shared.viewport);
+    return page.startScreencast(
       {
         format: "jpeg",
         quality: runnerLimits.browserViewQuality,
-        maxWidth: runnerLimits.browserViewMaxWidth,
-        maxHeight: runnerLimits.browserViewMaxHeight,
+        maxWidth: bounds.width,
+        maxHeight: bounds.height,
         maxFramesInFlight: runnerLimits.browserViewFramesInFlight,
         sendLastFrame: true,
         everyNthFrame: 1,
       },
       (frame) => onFrame(shared, frame),
     );
+  };
 
   /** Opens the page: the box's browser, a page of its own at the first view's width, the preview loaded, the screencast on. */
   const open = async (shared: Shared, path: string): Promise<Opened> => {

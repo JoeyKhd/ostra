@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { previewViewIdSchema } from "../ids.ts";
+import { browserViewFrameBounds, previewViewportSchema, viewportPresetSizes } from "../task/app.ts";
+import { runnerLimits } from "./limits.ts";
 import { createPanelStreamReader, encodePanelStreamRecord, panelPreviewInputBodySchema, previewMessageMaxBytes } from "./preview.ts";
 import type { PreviewMessage } from "./preview.ts";
 
@@ -52,19 +54,42 @@ describe("the panel's preview stream", () => {
   });
 
   it("takes one of the pane's controls as a strict object: the width preset, a path on the preview's origin, a reload", () => {
-    for (const control of [{ kind: "viewport", viewport: { width: 834, height: 900 } }, { kind: "navigate", path: "/history" }, { kind: "reload" }]) {
+    for (const control of [{ kind: "viewport", viewport: viewportPresetSizes.tablet }, { kind: "navigate", path: "/history" }, { kind: "reload" }]) {
       expect(panelPreviewInputBodySchema.safeParse({ control }).success).toBe(true);
     }
     for (const body of [
       { control: { kind: "print" } },
       { control: { kind: "viewport", viewport: { width: 100, height: 844 } } },
-      // The browser view's page is at most 1440×900: the tablet's screenshot preset, 834×1112, isn't one.
-      { control: { kind: "viewport", viewport: { width: 834, height: 1112 } } },
+      // More pixels than 1440×900's.
+      { control: { kind: "viewport", viewport: { width: 1440, height: 901 } } },
       { control: { kind: "navigate", path: "https://evil.example/" } },
       { control: { kind: "reload", seq: 1 } },
       { control: { kind: "reload" }, events: [{ kind: "text", text: "hello" }] },
     ]) {
       expect(panelPreviewInputBodySchema.safeParse(body).success).toBe(false);
     }
+  });
+
+  it("F-141/c3: every width preset is a browser view's page as it is, the tablet's 834×1112 too, within 1440×900's pixels and 1920 a side, and its frames come at its own size", () => {
+    for (const preset of ["desktop", "tablet", "phone"] as const) {
+      const size = viewportPresetSizes[preset];
+      expect(previewViewportSchema.safeParse(size).success).toBe(true);
+      expect(panelPreviewInputBodySchema.safeParse({ control: { kind: "viewport", viewport: size } }).success).toBe(true);
+      // The screencast's bounds are the page's own size: its pictures aren't scaled down.
+      expect(browserViewFrameBounds(size)).toEqual(size);
+    }
+    // The cap is the pixels in all, and each side's.
+    expect(runnerLimits.browserViewMaxPixels).toBe(1440 * 900);
+    for (const fits of [{ width: 900, height: 1440 }, { width: 1920, height: 675 }, { width: 675, height: 1920 }, { width: 200, height: 200 }]) {
+      expect(previewViewportSchema.safeParse(fits).success).toBe(true);
+    }
+    for (const past of [{ width: 1441, height: 900 }, { width: 1200, height: 1200 }, { width: 1921, height: 300 }, { width: 300, height: 1921 }, { width: 199, height: 844 }, { width: 834, height: 199 }, { width: 834.5, height: 900 }]) {
+      expect(previewViewportSchema.safeParse(past).success).toBe(false);
+    }
+    // A page past the caps is screencast scaled down within them, its shape kept.
+    const scaled = browserViewFrameBounds({ width: 2560, height: 1600 });
+    expect(scaled.width * scaled.height).toBeLessThanOrEqual(runnerLimits.browserViewMaxPixels);
+    expect(scaled.width / scaled.height).toBeCloseTo(2560 / 1600, 2);
+    expect(browserViewFrameBounds({ width: 3000, height: 300 })).toEqual({ width: 1920, height: 192 });
   });
 });

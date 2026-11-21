@@ -236,10 +236,16 @@ export const runnerLimits = {
   boxPagesMax: 4,
   /** F-141: the browser view's frames a second on the WebSocket. */
   browserViewFramesPerSecond: 15,
-  /** F-141: the browser view's largest width, in pixels. */
-  browserViewMaxWidth: 1440,
-  /** F-141: the browser view's largest height, in pixels. */
-  browserViewMaxHeight: 900,
+  /**
+   * F-141, Q326: the browser view's largest page, in pixels (width × height): the desktop preset's
+   * 1440×900, whose frames spike 07 measured (about 74 KB each at quality 60). The tablet's 834×1112
+   * and the phone's 390×844 fit, and a frame stays within the same count of pixels, so its bytes do.
+   */
+  browserViewMaxPixels: 1440 * 900,
+  /** F-141, Q326: the browser view's longest side, either way, in pixels. */
+  browserViewMaxSide: 1920,
+  /** F-141: the browser view's shortest side, in pixels. */
+  browserViewMinSide: 200,
   /** F-141: the browser view's JPEG quality. */
   browserViewQuality: 60,
   /** F-141, Q306: the browser view's frames a second on the HTTP carrier. */

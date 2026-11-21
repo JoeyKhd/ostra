@@ -81,12 +81,38 @@ export const screenshotSizeSchema = z.strictObject({
   height: z.number().int().min(200).max(runnerLimits.screenshotMaxHeightPx),
 });
 
-/** The browser view's viewport: at most `browserViewMaxWidth` by `browserViewMaxHeight`. */
-export const previewViewportSchema = z.strictObject({
-  width: z.number().int().min(200).max(runnerLimits.browserViewMaxWidth),
-  height: z.number().int().min(200).max(runnerLimits.browserViewMaxHeight),
-});
+/** Whether a page of `size` is within the browser view's pixel cap (Q326). */
+const withinBrowserViewPixels = (size: ViewportSize): boolean => size.width * size.height <= runnerLimits.browserViewMaxPixels;
+
+/**
+ * The browser view's viewport (Q326, the lead's call of 2026-11-21): each side from
+ * `browserViewMinSide` to `browserViewMaxSide`, and at most `browserViewMaxPixels` in all, the
+ * desktop preset's 1440×900. So every preset fits as it is, the tablet's 834×1112 too, and a
+ * frame's bytes stay bounded by the same count of pixels.
+ */
+export const previewViewportSchema = z
+  .strictObject({
+    width: z.number().int().min(runnerLimits.browserViewMinSide).max(runnerLimits.browserViewMaxSide),
+    height: z.number().int().min(runnerLimits.browserViewMinSide).max(runnerLimits.browserViewMaxSide),
+  })
+  .refine(withinBrowserViewPixels, { message: "at most 1440×900's pixels in all (browserViewMaxPixels)" });
 export type PreviewViewport = z.infer<typeof previewViewportSchema>;
+
+/**
+ * The largest frame the browser view's screencast sends of a page of `size` (`maxWidth` and
+ * `maxHeight`): the page's own size when it's within the caps, as every viewport
+ * `previewViewportSchema` takes is, so its frames come at the page's size; else scaled down,
+ * keeping its shape, to fit them.
+ */
+export const browserViewFrameBounds = (size: ViewportSize): ViewportSize => {
+  const scale = Math.min(
+    1,
+    runnerLimits.browserViewMaxSide / size.width,
+    runnerLimits.browserViewMaxSide / size.height,
+    Math.sqrt(runnerLimits.browserViewMaxPixels / (size.width * size.height)),
+  );
+  return { width: Math.max(1, Math.floor(size.width * scale)), height: Math.max(1, Math.floor(size.height * scale)) };
+};
 
 // ---------- a preview's target and key ----------
 

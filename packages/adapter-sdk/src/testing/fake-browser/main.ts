@@ -10,8 +10,9 @@
 // load's navigation type (`performance.getEntriesByType("navigation")`: `navigate` or `reload`);
 // `Page.captureScreenshot` as a real PNG of the viewport's size (or of its clip); `Page.getLayoutMetrics`
 // as a page twice the viewport's height (ticket 13's full page); `Page.startScreencast` with
-// `maxFramesInFlight` and `Page.screencastFrameAck`, its frames shaped as JPEGs (SOI to EOI, no
-// pixels); and `Input.*`, counted. The rest of the domains' enables and settings answer `{}`; an
+// `maxFramesInFlight`, `maxWidth` and `maxHeight`, and `Page.screencastFrameAck`, its frames
+// shaped as JPEGs (SOI to EOI, a frame header with the picture's size, no pixels); and
+// `Input.*`, counted. The rest of the domains' enables and settings answer `{}`; an
 // unknown method gets DevTools' error. Like a browser, it takes its flags, writes nothing to its
 // profile folder beyond a marker, and exits when its pipe closes.
 
@@ -36,8 +37,11 @@ type Page = {
   /** How the page last loaded, as its navigation timing's `type` says it. */
   loaded: "navigate" | "reload";
   inputs: number;
-  screencast: { inFlight: number; max: number; timer: NodeJS.Timeout | undefined; frame: number } | null;
+  screencast: Screencast | null;
 };
+
+/** A page's screencast: its frames in flight and their cap, and the largest picture it sends (`maxWidth`, `maxHeight`). */
+type Screencast = { inFlight: number; max: number; timer: NodeJS.Timeout | undefined; frame: number; readonly maxWidth: number | null; readonly maxHeight: number | null };
 
 const pages = new Map<string, Page>();
 const sessions = new Map<string, Page>();
@@ -77,9 +81,26 @@ const png = async (viewport: Viewport): Promise<Buffer> => {
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", header), chunk("IDAT", await deflateAsync(raw)), chunk("IEND", Buffer.alloc(0))]);
 };
 
-/** A frame shaped as a JPEG (its start and end markers) with no pixels: for the tests that count frames. */
-const frame = (page: Page, n: number): Buffer =>
-  Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from(`fake frame ${String(n)} of ${page.url} after ${String(page.inputs)} inputs`), Buffer.from([0xff, 0xd9])]);
+/** A frame's picture, as Chromium's: the page's viewport, scaled down (never up), keeping its shape, to fit the screencast's `maxWidth` and `maxHeight`. */
+const castSize = (page: Page, cast: Screencast): Viewport => {
+  const scale = Math.min(1, (cast.maxWidth ?? Number.POSITIVE_INFINITY) / page.viewport.width, (cast.maxHeight ?? Number.POSITIVE_INFINITY) / page.viewport.height);
+  return { width: Math.max(1, Math.floor(page.viewport.width * scale)), height: Math.max(1, Math.floor(page.viewport.height * scale)) };
+};
+
+/**
+ * A frame shaped as a JPEG with no pixels, for the tests that count frames and read their size:
+ * its start marker, a baseline frame header (SOF0) naming the picture's size, a comment saying
+ * which frame of which page it is and how many input events reached the page, and its end marker.
+ */
+const frame = (page: Page, n: number, size: Viewport): Buffer => {
+  const header = Buffer.from([0xff, 0xc0, 0x00, 0x11, 0x08, 0, 0, 0, 0, 0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01]);
+  header.writeUInt16BE(size.height, 5);
+  header.writeUInt16BE(size.width, 7);
+  const text = Buffer.from(`fake frame ${String(n)} of ${page.url} after ${String(page.inputs)} inputs`);
+  const comment = Buffer.from([0xff, 0xfe, 0, 0]);
+  comment.writeUInt16BE(text.length + 2, 2);
+  return Buffer.concat([Buffer.from([0xff, 0xd8]), header, comment, text, Buffer.from([0xff, 0xd9])]);
+};
 
 /** Fetches a page over HTTP, at `localhost` over IPv6 and IPv4, as a browser would. */
 const fetchPage = (url: string): Promise<{ readonly ok: true; readonly body: string } | { readonly ok: false; readonly error: string }> =>
@@ -145,7 +166,7 @@ const pumpScreencast = (page: Page, sessionId: string): void => {
   event(
     "Page.screencastFrame",
     {
-      data: frame(page, cast.frame).toString("base64"),
+      data: frame(page, cast.frame, castSize(page, cast)).toString("base64"),
       metadata: { offsetTop: 0, pageScaleFactor: 1, deviceWidth: page.viewport.width, deviceHeight: page.viewport.height, scrollOffsetX: 0, scrollOffsetY: 0, timestamp: Date.now() / 1000 },
       sessionId: cast.frame,
     },
@@ -266,7 +287,11 @@ const handle = async (message: Record<string, unknown>): Promise<void> => {
     case "Page.startScreencast": {
       stopScreencast(page);
       const max = typeof params["maxFramesInFlight"] === "number" ? params["maxFramesInFlight"] : 1;
-      page.screencast = { inFlight: 0, max, timer: undefined, frame: 0 };
+      const side = (name: string): number | null => {
+        const value = params[name];
+        return typeof value === "number" && value > 0 ? value : null;
+      };
+      page.screencast = { inFlight: 0, max, timer: undefined, frame: 0, maxWidth: side("maxWidth"), maxHeight: side("maxHeight") };
       reply({});
       const attached = sessionId;
       if (attached !== undefined) {
