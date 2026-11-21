@@ -51,6 +51,7 @@ import { TRPCError } from "@trpc/server";
 import type { TRPC_ERROR_CODE_KEY } from "@trpc/server";
 import { z } from "zod";
 
+import { blobBytes } from "../services/blob-store-view.ts";
 import { libraryDepsOf } from "../services/library-deps.ts";
 import { adminProcedure, memberProcedure, router, unwrap } from "../trpc/init.ts";
 import { fileTextOf, libraryItemSelect, libraryItemViews } from "./library-views.ts";
@@ -295,8 +296,8 @@ export const libraryRouter = router({
 
   /**
    * A file of one of an item's versions as text, with a cap, for an organization admin: the
-   * update's diff and the current pin. Data, never a page. Read from the built-in store and checked
-   * against the digest its version pinned.
+   * update's diff and the current pin. Data, never a page. Read through core's blob service, from
+   * whichever store keeps it, and checked against the digest its version pinned.
    */
   file: adminProcedure
     .input(z.strictObject({ versionId: libraryItemVersionIdSchema, path: z.string().min(1).max(1024) }))
@@ -312,14 +313,21 @@ export const libraryRouter = router({
       switch (read.kind) {
         case "not-found":
           throw notFound("file in that version");
-        case "other-store":
-          throw new TRPCError({ code: "PRECONDITION_FAILED", message: `The file is kept in the ${read.store} blob store, which the panel doesn't read yet` });
-        case "found":
-          if (sha256Of(read.blob.bytes) !== file.sha256) {
+        case "unavailable":
+          throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "The file can't be read from the blob store just now: try again" });
+        case "found": {
+          // A stream that stops short, or whose bytes aren't its row's, reads as the store not answering.
+          const bytes = await blobBytes(read.blob).catch(() => null);
+          if (bytes === null) {
+            ctx.deps.logger.warn("library.file.read-failed", { organizationId, versionId: input.versionId });
+            throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "The file can't be read from the blob store just now: try again" });
+          }
+          if (sha256Of(bytes) !== file.sha256) {
             ctx.deps.logger.warn("library.file.digest-mismatch", { organizationId, versionId: input.versionId });
             throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The stored file doesn't match the digest its version pinned" });
           }
-          return fileTextOf(file.path, read.blob.bytes);
+          return fileTextOf(file.path, bytes);
+        }
         default:
           return read satisfies never;
       }

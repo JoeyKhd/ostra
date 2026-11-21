@@ -9,7 +9,8 @@ import type { Context } from "../trpc/context.ts";
 // fixed type (a PNG, a frame reel), never the type the blob was stored with, never as a page: the
 // pixels are the app's, which the agent ran. Another organization's task, a restricted project the
 // member isn't on, an attachment of another task and an unknown one are all the same 404, so
-// nothing about them leaks. The panel draws a screenshot from this download (`img-src 'self'`).
+// nothing about them leaks. The panel draws a screenshot from this download (`img-src 'self'`). The
+// bytes come through core's blob service from whichever store keeps them (`coreBlobReader`).
 
 const textHeaders = { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } as const;
 
@@ -56,10 +57,10 @@ export const serveTaskAttachment = async (ctx: Context, taskIdText: string, atta
   if (read.kind === "not-found") {
     return notFound();
   }
-  if (read.kind === "other-store") {
-    return new Response(`The picture is kept in the ${read.store} store, which the panel does not read yet`, { status: 503, headers: textHeaders });
+  if (read.kind === "unavailable") {
+    return new Response("The picture can't be read from the blob store just now: try again", { status: 503, headers: textHeaders });
   }
-  return new Response(read.blob.bytes.slice().buffer, {
+  return new Response(read.blob.stream, {
     status: 200,
     headers: {
       "content-type": attachmentContentTypes[attachment.kind],

@@ -276,7 +276,7 @@ describe("a check's full output", () => {
     expect((await serveCheckOutput(asMember, task.taskId, randomUUID())).status).toBe(404);
   });
 
-  it("F-054/c2: a run in a restricted project is not served to a member who is not on it, and a blob kept elsewhere is said so", async () => {
+  it("F-054/c2: a run in a restricted project is not served to a member who is not on it, and a blob store that doesn't answer is said so", async () => {
     const restrictedTask = await seedTask(harness, { organizationId: orgA, projectId: harness.fixture.a.restrictedProject.id, title: "restricted output" });
     const runId = randomUUID();
     const blobId = randomUUID();
@@ -286,8 +286,9 @@ describe("a check's full output", () => {
     });
     expect((await serveCheckOutput(await harness.contextOf(harness.fixture.a.member), restrictedTask.taskId, runId)).status).toBe(404);
     const insider = await serveCheckOutput(await harness.contextOf(harness.fixture.a.insider), restrictedTask.taskId, runId);
+    // The harness's stand-in for core can't reach an S3-compatible store (core's own test reads one).
     expect(insider.status).toBe(503);
-    expect(await insider.text()).toContain("s3");
+    expect(await insider.text()).toContain("try again");
   });
 });
 

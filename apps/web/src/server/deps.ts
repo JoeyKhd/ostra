@@ -9,7 +9,7 @@ import { GitHubAdapter } from "@ostra/adapter-github";
 import { LinearAdapter, linearAppEndpoints } from "@ostra/adapter-linear";
 import { bundledCatalogSchema, catalogEntries, ModelEndpointAdapter, parseModelsDevCatalog } from "@ostra/adapter-model-endpoint";
 import { BuiltinSecretStore, generateSecretsKey, parseSecretsKey } from "@ostra/adapter-secret-store-builtin";
-import { corePanelUploader, createApiRuntime, createCatalogSource, postgresBlobReader } from "@ostra/api";
+import { coreBlobReader, corePanelUploader, createApiRuntime, createCatalogSource } from "@ostra/api";
 import type { ApiDeps, ApiRuntime } from "@ostra/api";
 import { createDb } from "@ostra/db";
 import { repoRoot } from "@ostra/db/dev";
@@ -191,8 +191,9 @@ const build = async (): Promise<ApiRuntime> => {
           return { status: "down", reason: "The database did not answer." };
         }
       },
-      // A check's full output (F-054) is read from the built-in store's tables; a blob kept in S3 is core's to serve.
-      read: postgresBlobReader(db),
+      // A check's full output (F-054), a task's screenshot (F-121) or a library file (F-145): core's
+      // blob service reads it from whichever store its row names, so every store reads the same.
+      read: coreBlobReader({ db, coreUrl: settings.coreInternalUrl, secret: secretsKeyText, logger }),
       // A member's file (a skill's) goes to core's blob service, whichever store the install keeps blobs in.
       upload: corePanelUploader({ coreUrl: settings.coreInternalUrl, secret: secretsKeyText, logger }),
     },

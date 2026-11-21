@@ -8,7 +8,7 @@ import type { AgentProfileId, OrganizationId } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { postgresBlobReader } from "../services/blob-store-view.ts";
+import { blobBytes } from "../services/blob-store-view.ts";
 import { libraryDepsOf } from "../services/library-deps.ts";
 import { createApiHarness, REGISTRY_URL, SITE_URL, trpcFailure } from "../testing/index.ts";
 import type { ApiHarness, AppCaller } from "../testing/index.ts";
@@ -456,8 +456,8 @@ describe("profiles, updates, sources and suggestions (F-145)", () => {
 
     // Core's job runs the domain's check; here the same body, after the site changed its skill.
     const readBlob: LibraryBlobRead = async (organizationId, blobId) => {
-      const read = await postgresBlobReader(harness.test.db)(organizationId, null, blobId);
-      return read.kind === "found" ? { ok: true, bytes: read.blob.bytes } : { ok: false, message: "no such blob" };
+      const read = await harness.deps.blobStore.read(organizationId, null, blobId);
+      return read.kind === "found" ? { ok: true, bytes: await blobBytes(read.blob) } : { ok: false, message: "no such blob" };
     };
     const check = () => checkUpdates({ ...libraryDepsOf(harness.deps), readBlob }, { organizationId: orgA(), itemId: skill.itemId });
     const site = harness.fakes.library.site;

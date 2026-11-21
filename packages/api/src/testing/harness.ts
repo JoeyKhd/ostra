@@ -30,7 +30,7 @@ import type { LinearEndpoints } from "../services/linear-app.ts";
 import { createTrackerDirectory } from "../services/trackers.ts";
 import { noEmailDirectory } from "../services/email.ts";
 import type { EmailDirectory } from "../services/email.ts";
-import { postgresBlobReader } from "../services/blob-store-view.ts";
+import type { BlobStoreView } from "../services/blob-store-view.ts";
 import { createStreamHub } from "../stream/hub.ts";
 import type { StreamHub } from "../stream/hub.ts";
 import type { ApiDeps, Context } from "../trpc/context.ts";
@@ -51,6 +51,34 @@ const callerFactory = createCallerFactory(appRouter);
 /** The secrets key's text the harness's panel signs a view's token under: a relay test's fake core verifies with it. */
 export const PREVIEW_SECRET = randomBytes(32).toString("hex");
 
+
+/**
+ * What core's blob service answers the panel's read with, in this process: the built-in store's
+ * chunks for a blob of that owner, and `unavailable` for a blob in another store, as a core that
+ * can't reach it answers. A test of the read itself points `coreBlobReader` at a real core.
+ */
+const builtInRowsReader =
+  (db: TestDatabase["db"]): BlobStoreView["read"] =>
+  async (organizationId, taskId, blobId) => {
+    const blob = await db.blob.findFirst({ where: { id: blobId, organizationId, taskId }, select: { id: true, store: true } });
+    if (blob === null) {
+      return { kind: "not-found" };
+    }
+    if (blob.store !== "postgres") {
+      return { kind: "unavailable" };
+    }
+    const chunks = await db.blobChunk.findMany({ where: { blobId: blob.id, organizationId }, orderBy: { ordinal: "asc" }, select: { bytes: true } });
+    const size = chunks.reduce((total, chunk) => total + chunk.bytes.length, 0);
+    const stream = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        for (const chunk of chunks) {
+          controller.enqueue(new Uint8Array(chunk.bytes));
+        }
+        controller.close();
+      },
+    });
+    return { kind: "found", blob: { size, stream } };
+  };
 
 /** A router caller: what a test calls procedures on. */
 export type AppCaller = ReturnType<typeof callerFactory>;
@@ -198,7 +226,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
     blobStore: {
       name: "postgres",
       health: () => Promise.resolve({ status: "ok" }),
-      read: postgresBlobReader(test.db),
+      read: builtInRowsReader(test.db),
       // Core's blob service stands behind this in a real install: here it is a row, as core writes one.
       upload: async ({ organizationId, purpose, bytes }) => {
         if (bytes.length > (purpose === "draft-image" ? DRAFT_IMAGE_MAX_BYTES : profileLimits.skillFileMaxBytes)) {

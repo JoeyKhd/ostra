@@ -172,7 +172,8 @@ describe("a task's screenshots and recordings (F-121)", () => {
     expect((await serveTaskAttachment(member, other.taskId, shot.attachmentId)).status).toBe(404);
     expect((await serveTaskAttachment(member, task.taskId, "no-such-attachment")).status).toBe(404);
     expect((await serveTaskAttachment({ ...member, user: null, member: null }, task.taskId, shot.attachmentId)).status).toBe(401);
-    // A blob kept in a store the panel doesn't read says so.
+    // A blob store that doesn't answer says so: the harness's stand-in for core can't reach an
+    // S3-compatible store (core's own test reads one).
     await harness.test.db.blob.update({ where: { id: shot.blobId }, data: { store: "s3" } });
     const elsewhere = await serveTaskAttachment(member, task.taskId, shot.attachmentId);
     expect(elsewhere.status).toBe(503);

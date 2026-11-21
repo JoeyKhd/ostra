@@ -69,13 +69,16 @@ export type BlobService = {
     chunk: Uint8Array,
   ) => Promise<BlobServiceResult<{ readonly receivedBytes: number }>>;
   readonly finishUpload: (owner: BlobScopeOwner, uploadId: UploadId) => Promise<BlobServiceResult<BlobRef>>;
-  /** A blob's row, only for its own organization, and its own task when `taskId` is given. */
-  readonly find: (organizationId: OrganizationId, blobId: BlobId, taskId?: TaskId) => Promise<StoredBlobRow | null>;
-  /** A blob's bytes, only for its own organization, and its own task when `taskId` is given. */
+  /**
+   * A blob's row, only for its own organization, and its own task when `taskId` is given; `null`
+   * asks for one of the organization's own with no task (a task's blob is then not found).
+   */
+  readonly find: (organizationId: OrganizationId, blobId: BlobId, taskId?: TaskId | null) => Promise<StoredBlobRow | null>;
+  /** A blob's bytes, from whichever store its row names, with `find`'s owner rules. */
   readonly read: (
     organizationId: OrganizationId,
     blobId: BlobId,
-    taskId?: TaskId,
+    taskId?: TaskId | null,
   ) => Promise<BlobServiceResult<StoredBlobRow & { readonly bytes: Uint8Array }>>;
   readonly delete: (organizationId: OrganizationId, blobId: BlobId) => Promise<BlobServiceResult<void>>;
 };

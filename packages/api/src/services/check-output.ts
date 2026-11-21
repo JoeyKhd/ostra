@@ -8,7 +8,8 @@ import type { Context } from "../trpc/context.ts";
 // and the blob must be the task's own. It goes out as plain text and an attachment, never as a page:
 // the output is the repo's own program's, and nothing in it is interpreted. Another organization's
 // task, a restricted project the member is not on, a run of another task and a run with no saved
-// output are all the same 404, so nothing about them leaks.
+// output are all the same 404, so nothing about them leaks. The bytes come through core's blob
+// service from whichever store keeps them (`coreBlobReader`), and stream out as they arrive.
 
 const textHeaders = { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } as const;
 
@@ -47,10 +48,10 @@ export const serveCheckOutput = async (ctx: Context, taskId: string, runId: stri
   if (read.kind === "not-found") {
     return notFound();
   }
-  if (read.kind === "other-store") {
-    return new Response(`The output is kept in the ${read.store} store, which the panel does not read yet`, { status: 503, headers: textHeaders });
+  if (read.kind === "unavailable") {
+    return new Response("The output can't be read from the blob store just now: try again", { status: 503, headers: textHeaders });
   }
-  return new Response(read.blob.bytes.slice().buffer, {
+  return new Response(read.blob.stream, {
     status: 200,
     headers: {
       "content-type": "text/plain; charset=utf-8",

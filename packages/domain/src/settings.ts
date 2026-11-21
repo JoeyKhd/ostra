@@ -161,7 +161,7 @@ export const settingFields = {
   },
   OSTRA_CORE_INTERNAL_URL: {
     default: "http://127.0.0.1:<OSTRA_CORE_PORT>",
-    description: "Core's address as the panel reaches it, to hand it the files a member uploads (a skill's files). Set it only when the panel and core run apart.",
+    description: "Core's address as the panel reaches it, to hand it the files a member uploads (a skill's files) and to read the blobs a member downloads (a check's output, a screenshot, a library file), from whichever blob store keeps them. Set it only when the panel and core run apart.",
   },
   OSTRA_GITHUB_API_URL: {
     default: "https://api.github.com",
