@@ -404,3 +404,13 @@ export type LibrarySourceId = z.infer<typeof librarySourceIdSchema>;
 /** The ID of a member's suggestion of a library item. */
 export const librarySuggestionIdSchema = idBase.brand<"LibrarySuggestionId">();
 export type LibrarySuggestionId = z.infer<typeof librarySuggestionIdSchema>;
+
+// ---- milestone 9 (F-148, F-149, ADR 0070): files for the agent ----
+
+/** The ID of a file of a message: a member's upload, or a file core fetched from a ticket. */
+export const messageFileIdSchema = idBase.brand<"MessageFileId">();
+export type MessageFileId = z.infer<typeof messageFileIdSchema>;
+
+/** The ID of one read of a ticket for a task (`TaskTicketRead`): its round's record. */
+export const ticketReadIdSchema = idBase.brand<"TicketReadId">();
+export type TicketReadId = z.infer<typeof ticketReadIdSchema>;

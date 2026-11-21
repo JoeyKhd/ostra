@@ -673,6 +673,11 @@ const applyEffects = async (
       case "preview.link_created":
       case "preview.link_revoked":
       case "app.started_by":
+      // Protocol minor 8 (milestone 9, ADR 0070): stored for the task page. What the runner wrote
+      // (`files.written`) is milestone 9's core tickets' (11, 13); a read of the ticket is written
+      // by core itself (ticket 12).
+      case "files.written":
+      case "ticket.context_read":
         // Stored for the task page; nothing else moves.
         break;
       default:

@@ -23,6 +23,7 @@ export * from "./task/previews.ts";
 export * from "./task/spec.ts";
 export * from "./task/frame-reel.ts";
 export * from "./task/credentials.ts";
+export * from "./task/files.ts";
 
 export * from "./config/model-provider.ts";
 export * from "./config/environment.ts";

@@ -378,6 +378,10 @@ export const readAgentMessage = (message: { readonly text: string; readonly inte
       return quotedOr(intent, blocks, fixFindings(blocks));
     case "changes-requested":
       return quotedOr(intent, blocks, changesRequested(blocks));
+    case "ticket-update":
+      // Milestone 9 (F-149): ostra's words around the ticket's changes, drawn by their blocks until
+      // the thread reads them (ticket 16).
+      return quotedOr(intent, blocks, null);
     default:
       return intent satisfies never;
   }

@@ -55,7 +55,7 @@ const eventOf = (frame: unknown): unknown => {
 describe("the version", () => {
   it("F-061, F-138: a minor-6 server took minors 5 to 7, and minor 6 stays in the codecs after minor 7", () => {
     // Milestone 8 moved the build to minor 7 (`minor-7.test.ts`); a minor-6 build's window is as it was.
-    expect(PROTOCOL_MINOR).toBe(7);
+    expect(PROTOCOL_MINOR).toBe(8);
     expect(minorWindow(6)).toEqual({ min: 5, max: 7 });
     expect(negotiate(6, PROTOCOL_MAJOR, 5)).toEqual({ ok: true, minor: 5 });
     expect(negotiate(6, PROTOCOL_MAJOR, 6)).toEqual({ ok: true, minor: 6 });
@@ -63,7 +63,9 @@ describe("the version", () => {
     expect(negotiate(6, PROTOCOL_MAJOR, 4)).toEqual({ ok: false, reason: "minor", window: { min: 5, max: 7 } });
     // A minor-6 runner against a minor-5 server speaks minor 5, and against today's server minor 6.
     expect(negotiate(5, PROTOCOL_MAJOR, 6)).toEqual({ ok: true, minor: 5 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 6)).toEqual({ ok: true, minor: 6 });
+    expect(negotiate(7, PROTOCOL_MAJOR, 6)).toEqual({ ok: true, minor: 6 });
+    // Today's minor-8 server refuses it.
+    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 6)).toEqual({ ok: false, reason: "minor", window: { min: 7, max: 9 } });
     expect(upFrameCodec.minors).toContain(6);
     expect(downFrameCodec.minors).toContain(6);
   });
@@ -158,7 +160,8 @@ describe("minor 6's spec field (F-021, 2026-11-21)", () => {
     expect("repoSkills" in down.agent).toBe(false);
     expect(taskSpecResponseSchemaFor(5).parse(roundTrip(down))).toEqual({ ...off, agent: taskSpecFixture.agent });
     expect(encodeTaskSpecForMinor(off, 6)).toEqual(off);
-    expect(encodeTaskSpecForMinor(off, 7)).toBe(off);
+    expect(encodeTaskSpecForMinor(off, 7)).toEqual(off);
+    expect(encodeTaskSpecForMinor(off, 8)).toBe(off);
     expect("repoSkills" in encodeTaskSpecForMinor(on, 4).agent).toBe(false);
     // Off needs minor 6, with its own words; on, or missing, needs nothing new.
     expect(taskSpecMinMinor(off)).toBe(6);

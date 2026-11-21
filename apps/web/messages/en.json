@@ -4841,7 +4841,8 @@
       "fix-ci": "fix CI",
       "fix-findings": "fix review findings",
       "changes-requested": "changes requested",
-      "linear-follow-up": "from Linear"
+      "linear-follow-up": "from Linear",
+      "ticket-update": "ticket updates"
     },
     "tabs": {
       "activity": "Activity",

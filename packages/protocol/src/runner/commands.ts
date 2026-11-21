@@ -7,6 +7,7 @@ import {
   commandIdSchema,
   effortChangeIdSchema,
   memberIdSchema,
+  messageFileIdSchema,
   previewViewIdSchema,
   projectIdSchema,
   questionIdSchema,
@@ -35,9 +36,11 @@ import {
   denyReasonSchema,
   messageIntentSchema,
   messageIntentSchemaV4,
+  messageIntentSchemaV7,
   messageIntentSupportedAt,
   planTextSchema,
 } from "../events/agent-events.ts";
+import { messageBoxFilesSchema } from "../task/files.ts";
 import {
   checkoutDirSchema,
   repoRelativePathSchema,
@@ -205,17 +208,44 @@ export const steerBodySchemaV4 = steerBodySchemaV1.extend({
 });
 
 /**
- * `steer` at the current minor (5): minor 2's, with milestone 6's intents and whether the turn it
- * starts is an automatic round (F-101, ADR 0041). Missing `automatic` means `false`. The text of a
+ * `steer` at minors 5 to 7: minor 2's, with milestone 6's intents and whether the turn it starts
+ * is an automatic round (F-101, ADR 0041). Missing `automatic` means `false`. The text of a
  * `fix-ci`, `fix-findings`, `changes-requested` or `linear-follow-up` message is ostra's prompt
  * around untrusted text, and is never logged.
  */
-export const steerBodySchema = steerBodySchemaV1.extend({
+export const steerBodySchemaV7 = steerBodySchemaV1.extend({
   /** Minor 2: why the message was written, for the thread's marker. Missing means `message`. */
-  intent: messageIntentSchema.optional(),
+  intent: messageIntentSchemaV7.optional(),
   /** Minor 5: the turn is an automatic round: the runner answers its questions with the neutral reply. */
   automatic: z.boolean().optional(),
 });
+
+/**
+ * `steer` at the current minor (8): minor 5's, with `ticket-update` and the message's files
+ * (F-148, ADR 0070): each as the box gets it, written under the workspace root's `.ostra/` before
+ * the message goes to the agent, and the IDs of those that go as images. A message with files may
+ * have no text. Missing `files` and `images` mean none. A minor-7 peer is never sent a steer with
+ * files (`canSendFiles`): its codec refuses to encode one. Names and text are never logged.
+ */
+export const steerBodySchema = steerBodySchemaV1
+  .extend({
+    /** Minor 8: may be empty when the message carries files. */
+    text: z.string().max(runnerLimits.steerTextMaxChars),
+    /** Minor 2: why the message was written, for the thread's marker. Missing means `message`. */
+    intent: messageIntentSchema.optional(),
+    /** Minor 5: the turn is an automatic round: the runner answers its questions with the neutral reply. */
+    automatic: z.boolean().optional(),
+    /** Minor 8: the message's own files, in its order. */
+    files: messageBoxFilesSchema.optional(),
+    /** Minor 8: the IDs of the message's files that go to the agent as images too. */
+    images: z.array(messageFileIdSchema).max(runnerLimits.promptImagesMax).optional(),
+  })
+  .refine((body) => body.text.length > 0 || (body.files?.length ?? 0) > 0, "a message has text or files")
+  .refine((body) => new Set(body.images ?? []).size === (body.images ?? []).length, "each image once")
+  .refine(
+    (body) => (body.images ?? []).every((id) => (body.files ?? []).some((file) => file.fileId === id && file.kind === "image")),
+    "an image is one of the message's image files",
+  );
 
 /** `interrupt`: cancel the session's current turn, keep the session. */
 export const interruptBodySchema = z.strictObject({ sessionId: sessionIdSchema });
@@ -528,6 +558,7 @@ const minor2CommandOptions = [
 const snapshotBuild = z.strictObject({ ...envelope, kind: z.literal("snapshot-build"), body: snapshotBuildBodySchema });
 const resume = z.strictObject({ ...envelope, kind: z.literal("resume"), body: resumeBodySchema });
 
+const steerV7 = z.strictObject({ ...envelope, kind: z.literal("steer"), body: steerBodySchemaV7 });
 const steer = z.strictObject({ ...envelope, kind: z.literal("steer"), body: steerBodySchema });
 
 /** Minor 7's new commands, with every carrier's: `preview.input` is the HTTP carrier's only. */
@@ -541,9 +572,8 @@ const minor7CommandOptions = [
 const previewInput = z.strictObject({ ...envelope, kind: z.literal("preview.input"), body: previewInputBodySchema });
 
 /**
- * Commands at the current minor (7): minor 5's, with the dispatch's purpose, the app's processes,
- * a member's screenshot and the views. `preview.input` is in the type, and only the HTTP
- * carrier's codec reads it (`httpDownFrameCodec`).
+ * Commands at the current minor (8): minor 7's, with the steer's files (ADR 0070). `preview.input`
+ * is in the type, and only the HTTP carrier's codec reads it (`httpDownFrameCodec`).
  */
 export const commandSchema = z.discriminatedUnion("kind", [
   ...sharedCommandOptions,
@@ -562,11 +592,46 @@ export const commandSchema = z.discriminatedUnion("kind", [
 export type Command = z.infer<typeof commandSchema>;
 export type CommandOf<K extends CommandKind> = Extract<Command, { kind: K }>;
 
+/** Minor 8's commands on the WebSocket: every kind but `preview.input`, which rides the preview connection there. */
+export const commandSchemaV8WebSocket = z.discriminatedUnion("kind", [
+  ...sharedCommandOptions,
+  z.strictObject({ ...envelope, kind: z.literal("dispatch"), body: dispatchBodySchema }),
+  steer,
+  approvalAnswer,
+  release,
+  questionAnswer,
+  planAnswer,
+  snapshotBuild,
+  setEffort,
+  resume,
+  ...minor7CommandOptions,
+]);
+
+/**
+ * Minor 7's commands, for the HTTP carrier's down codec: minor 5's, with the dispatch's purpose,
+ * the app's processes, a member's screenshot and the views, `preview.input` included. Its steer
+ * has no files and no `ticket-update`.
+ */
+export const commandSchemaV7 = z.discriminatedUnion("kind", [
+  ...sharedCommandOptions,
+  z.strictObject({ ...envelope, kind: z.literal("dispatch"), body: dispatchBodySchema }),
+  steerV7,
+  approvalAnswer,
+  release,
+  questionAnswer,
+  planAnswer,
+  snapshotBuild,
+  setEffort,
+  resume,
+  ...minor7CommandOptions,
+  previewInput,
+]);
+
 /** Minor 7's commands on the WebSocket: every kind but `preview.input`, which rides the preview connection there. */
 export const commandSchemaV7WebSocket = z.discriminatedUnion("kind", [
   ...sharedCommandOptions,
   z.strictObject({ ...envelope, kind: z.literal("dispatch"), body: dispatchBodySchema }),
-  steer,
+  steerV7,
   approvalAnswer,
   release,
   questionAnswer,
@@ -581,7 +646,7 @@ export const commandSchemaV7WebSocket = z.discriminatedUnion("kind", [
 export const commandSchemaV5 = z.discriminatedUnion("kind", [
   ...sharedCommandOptions,
   z.strictObject({ ...envelope, kind: z.literal("dispatch"), body: dispatchBodySchemaV5 }),
-  steer,
+  steerV7,
   approvalAnswer,
   release,
   questionAnswer,
@@ -618,7 +683,33 @@ export const commandSchemaV1 = z.discriminatedUnion("kind", [...sharedCommandOpt
 export const commandSchemaV0 = z.discriminatedUnion("kind", [...sharedCommandOptions, dispatchV3, steerV1, approvalAnswerV1]);
 
 /**
- * A command as a peer at `minor` reads it: below minor 7, `dispatch` loses its purpose; below
+ * Whether a peer at `minor` may be sent a message with files (ADR 0070, Q340): a minor-8 one. Core
+ * checks it before it writes a steer with files, and the box says the task's runner needs
+ * upgrading when it can't.
+ */
+export const canSendFiles = (peerMinor: number): boolean => peerMinor >= 8;
+
+/**
+ * A steer as a minor-7 peer reads it: without `files` and `images`, and a `ticket-update` intent
+ * read as `message`. A steer that carries files is refused: core never sends one below minor 8
+ * (`canSendFiles`), and dropping them would lose the member's files without a word.
+ */
+const steerForMinor7 = (body: CommandOf<"steer">["body"]): CommandOf<"steer">["body"] => {
+  if ((body.files?.length ?? 0) > 0) {
+    throw new Error("a steer with files can't be sent below protocol minor 8: check canSendFiles first");
+  }
+  const minor7 = { ...body };
+  Reflect.deleteProperty(minor7, "files");
+  Reflect.deleteProperty(minor7, "images");
+  if (minor7.intent !== undefined && !messageIntentSupportedAt(minor7.intent, 7)) {
+    Reflect.deleteProperty(minor7, "intent");
+  }
+  return minor7;
+};
+
+/**
+ * A command as a peer at `minor` reads it: below minor 8, `steer` loses its files (one that carries
+ * any is refused) and `ticket-update`; below minor 7, `dispatch` loses its purpose; below
  * minor 5, `dispatch` and `steer` lose
  * `automatic`, and a steer's intent of milestone 6's is dropped (it reads as `message`); below
  * minor 4, `dispatch` loses `box` and
@@ -627,7 +718,11 @@ export const commandSchemaV0 = z.discriminatedUnion("kind", [...sharedCommandOpt
  * field. A kind the minor lacks is returned as it is,
  * and that peer refuses it: the outbox checks `commandKindSupportedAt` first.
  */
-export const encodeCommandForMinor = (command: Command, minor: number): Command => {
+export const encodeCommandForMinor = (current: Command, minor: number): Command => {
+  if (minor >= 8) {
+    return current;
+  }
+  const command: Command = current.kind === "steer" ? { ...current, body: steerForMinor7(current.body) } : current;
   if (minor >= 7) {
     return command;
   }

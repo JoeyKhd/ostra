@@ -282,6 +282,36 @@ export const runnerLimits = {
   previewInputTextMaxChars: 4096,
   /** F-141: a path a preview opens or a screenshot takes, in characters. */
   appPathMaxChars: 2048,
+
+  // ---- milestone 9, protocol minor 8 (working values, spec section 5.1, ADR 0070) ----
+  /** F-148: the most files one message carries: `OSTRA_MESSAGE_FILES_MAX`'s ceiling. */
+  messageFilesMax: 20,
+  /** F-148: one file of a message: `OSTRA_MESSAGE_FILE_MAX_MIB`'s ceiling, and `OSTRA_TICKET_FILE_MAX_MIB`'s. */
+  messageFileMaxBytes: 25 * MiB,
+  /** F-148: one message's files together: `OSTRA_MESSAGE_FILES_TOTAL_MIB`'s ceiling. */
+  messageFilesTotalBytes: 64 * MiB,
+  /** F-149: the most files one read of a ticket gives the agent: `OSTRA_TICKET_FILES_MAX`'s ceiling. */
+  ticketContextFilesMax: 50,
+  /** F-148: the most files a spec's `files` carries: every sent file of the task, oldest first. */
+  taskFilesMax: 500,
+  /** F-148: a spec's `files` together, in bytes, their texts included. */
+  taskFilesTotalBytes: 512 * MiB,
+  /** F-148: the most images one prompt carries as images; the rest go as files (research §1). */
+  promptImagesMax: 10,
+  /** F-148: the largest image a prompt carries as one: OpenCode fails a prompt over 20 MiB (research §1). */
+  promptImageMaxBytes: 10 * MiB,
+  /** F-150: a document's text beside it, all of it: its first line and the cut's last line included. */
+  fileTextMaxBytes: 1 * MiB,
+  /** F-148, F-149: the most left-out or failed files one message or one read of a ticket names; past it they aren't named. */
+  fileNotesMax: 100,
+  /** F-149: a ticket's description as one read of it carries it, in UTF-8 bytes: the template's cap. */
+  ticketDescriptionMaxBytes: 64 * KiB,
+  /** F-149: one comment as one read of a ticket carries it, in UTF-8 bytes: the template's cap. */
+  ticketCommentMaxBytes: 16 * KiB,
+  /** F-149: the most comments one read of a ticket carries: the template's cap. */
+  ticketCommentsMax: 100,
+  /** F-149: the most links one read of a ticket carries. */
+  ticketLinksMax: 100,
 } as const;
 
 export type RunnerLimits = typeof runnerLimits;

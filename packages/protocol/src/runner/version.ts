@@ -56,8 +56,16 @@ export const PROTOCOL_MAJOR = 1;
  * window: it's never sent any of them (so it searches for every header, as before), never offered a
  * task with app processes or the app tools (`isTaskOfferable`), and no view of its tasks opens
  * (`isPreviewable`), so the pane says the runner needs upgrading. A minor-5 peer is outside the window.
+ * Milestone 9 ships minor 8 (ADR 0070): files for the agent. The spec's `files`, `promptFiles`, each
+ * pending message's files and `agent.inputModalities`; the steer's `files` and `images`; the
+ * runner's `files.written`; a `user.message`'s files, `filesLeftOut` and `imagesNotSent`; the
+ * server's `ticket.context_read`; and the intent `ticket-update`. A minor-7 peer still works inside
+ * the window: it's never offered a task with files (`isTaskOfferable`'s `message-files`), never sent
+ * a steer with files (`canSendFiles`; its codec refuses to encode one), and never sent any new
+ * field; `ticket-update` reads as `message`, and a minor-8 runner sends it no `files.written`. A
+ * minor-6 peer is outside the window.
  */
-export const PROTOCOL_MINOR = 7;
+export const PROTOCOL_MINOR = 8;
 
 /** The URL prefix of every runner endpoint. */
 export const RUNNER_PATH_PREFIX = `/runner/v${String(PROTOCOL_MAJOR)}`;

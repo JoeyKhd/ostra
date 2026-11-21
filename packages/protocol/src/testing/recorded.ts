@@ -19,6 +19,8 @@ import { z } from "zod";
 //   (synthetic, a `hello` only) is two ahead of it, and minor 4's build is one behind the window.
 // - Milestone 8 moved the server to minor 7 (ADR 0068), whose window is minors 6 to 8: minor 9
 //   (synthetic, a `hello` only) is two ahead of it, and minor 5's build is one behind the window.
+// - Milestone 9 moved the server to minor 8 (ADR 0070), whose window is minors 7 to 9: minor 10
+//   (synthetic, a `hello` only) is two ahead of it, and minor 6's build is one behind the window.
 
 /** One recorded build. The frames are raw JSON, as they went over the wire. */
 export const recordedBuildSchema = z.strictObject({
@@ -34,7 +36,7 @@ export const recordedBuildSchema = z.strictObject({
 export type RecordedBuild = z.infer<typeof recordedBuildSchema>;
 
 /** The recorded minors, oldest first. */
-export const recordedMinors = [2, 3, 4, 5, 6, 7, 8, 9] as const;
+export const recordedMinors = [2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
 /** The server minor the recordings were made against: `negotiated` in each file is that server's answer. */
 export const RECORDED_SERVER_MINOR = 4;

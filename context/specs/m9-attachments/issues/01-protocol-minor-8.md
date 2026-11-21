@@ -1,6 +1,6 @@
 # 01: Protocol: minor 8
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: none
 Features: F-148, F-149, F-150
@@ -25,11 +25,22 @@ Minor 8 of the runner protocol, additive only, with minor 7's codecs kept (`src/
 
 ## Done when
 
-- [ ] Tests named for `F-148/c4,c8`: `taskSpecFileSchema` refuses a path with `..`, an absolute path, a separator in a name, a leading dot, and a name over 124 characters; `safeFileName` over shell syntax, prompt-like text, `../../etc/passwd`, `CON.txt`, an empty name and a 300-character one (break-it: let `..` through, and the path test fails).
-- [ ] Tests named for `F-148/c9`: a spec with files is not offerable to a minor-7 peer, with the reason and its words; a steer with files can't be encoded for minor 7; a minor-7 peer's codecs drop every new field.
-- [ ] Tests named for `F-148/c4`: `messageFilesBlock` names each absolute path, the text's path, the images sent as images and the left-out ones, and says the files are data and outside the repos.
-- [ ] The version matrix and `minor-8.test.ts` pass.
-- [ ] Checks for the whole repo pass (spec section 10: the runner protocol).
-- [ ] Committed as `✨ add protocol minor 8: files for the agent`.
+- [x] Tests named for `F-148/c4,c8`: `taskSpecFileSchema` refuses a path with `..`, an absolute path, a separator in a name, a leading dot, and a name over 124 characters; `safeFileName` over shell syntax, prompt-like text, `../../etc/passwd`, `CON.txt`, an empty name and a 300-character one (break-it: let `..` through, and the path test fails).
+- [x] Tests named for `F-148/c9`: a spec with files is not offerable to a minor-7 peer, with the reason and its words; a steer with files can't be encoded for minor 7; a minor-7 peer's codecs drop every new field.
+- [x] Tests named for `F-148/c4`: `messageFilesBlock` names each absolute path, the text's path, the images sent as images and the left-out ones, and says the files are data and outside the repos.
+- [x] The version matrix and `minor-8.test.ts` pass.
+- [x] Checks for the whole repo pass (spec section 10: the runner protocol).
+- [x] Committed as `✨ add protocol minor 8: files for the agent`.
 
 ## Comments
+
+- 2026-11-21, core: built as `✨ add protocol minor 8: files for the agent`. `origin/main` was at minor 7, so this is minor 8 (window 7 to 9), with a synthetic minor 10 recording two ahead. Readings and differences:
+  - **One name differs from the spec:** `taskSpecFileSchema` already names a repo's environment file in `spec.ts`, and nothing is renamed, so a file for the box is `taskSpecMessageFileSchema` (`TaskSpecMessageFile`) in `src/task/files.ts`, with the spec's fields. A message's files as the box gets them are `messageBoxFilesSchema` (each file once, each place once, at most 50).
+  - **Names:** `safeFileName` keeps the last part of a path, folds accents (`Spécification` → `Specification`), turns any other character into `_`, drops leading and trailing dots and spaces, and makes at most 120 characters (ADR 0070), so `boxPathFor`'s ` (n)` still fits the schema's 124. The schema also refuses a trailing dot or space, which Windows drops. A text's path is checked as its file's with `.md`, not as a name of its own, so a 124-character file still has one.
+  - **Paths in the prompt** are absolute, in backticks a safe name can't hold, with `/` between parts: the runner hands `messageFilesBlock` the root that way. The words say an image sent as one can be seen "in this message", since the image blocks come after the text.
+  - **A message may have no text when it has files:** the minor-8 `steer` and pending message allow empty text with files (a refine checks one or the other). Minor 7's shapes keep `min(1)`.
+  - **`ticket-update`** is minor 8's (`messageIntentSchemaV7` keeps minors 5 to 7). Until ticket 04 adds its own turn origin, `turnOriginOfIntent` gives it `message`, and the thread draws it by its blocks (`quoted`), with the words "ticket updates".
+  - **Added beyond the spec:** `messageFileIdSchema` and `ticketReadIdSchema`; the limits `fileNotesMax` (100 left-out or failed names), and the template's caps for a read of the ticket (`ticketDescriptionMaxBytes`, `ticketCommentMaxBytes`, `ticketCommentsMax`, `ticketLinksMax`); `fileTextMaxBytes` counts the whole text, its first line and the cut's note included (ticket 07); `fileKindWords`, `fileSizeWords` (the panel's `212 KB` and `3.1 MB`) and `fileLeftOutWords`. `files.written`'s `imagesAsFiles` is an enum of one value, so a later reason is additive.
+  - **Offering:** `taskSpecMinMinor` is 8 for a spec with `files`, `promptFiles` or a pending message's files; `agent.inputModalities` alone needs nothing (a minor-7 runner tells the agent nothing of them, as before). `canSendFiles(peerMinor)` is the steer's check, and minor 7's encode throws for a steer that carries files.
+  - **Callers:** the fold, the task state and the ingest store the two new kinds with no row yet; the pinned minors in the protocol's, core's and the runner's tests move up one (a minor-6 runner is now refused at hello, so core's preview test makes one by its presence).
+  - **Checks:** the whole repo's typecheck, lint and tests. Two failures predate this commit and are on `origin/main` without it: `e2e/dev-tools`' typecheck and tests (`renderInvitationMail` now needs an `address`, `d99ec653`) and `packages/api`'s lint (`eqeqeq` in `src/routers/memory.ts`).

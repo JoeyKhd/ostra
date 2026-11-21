@@ -22,6 +22,7 @@ import {
   runnerEventSchemaV4,
   runnerEventSchemaV5,
   runnerEventSchemaV6,
+  runnerEventSchemaV7,
   runnerScopedEventKinds,
   taskEventSchema,
 } from "../events/agent-events.ts";
@@ -35,7 +36,9 @@ import {
   commandSchemaV3,
   commandSchemaV4,
   commandSchemaV5,
+  commandSchemaV7,
   commandSchemaV7WebSocket,
+  commandSchemaV8WebSocket,
   encodeCommandForMinor,
 } from "./commands.ts";
 import { boxBrowserSchema } from "../task/app.ts";
@@ -49,6 +52,10 @@ import type { FrameParse } from "./version.ts";
 // discriminated on `type`. ostra owns the format, so every frame is a strict object except
 // `hello`, the negotiation, which tolerates unknown fields. Ported from
 // spikes/runner-transport/src/protocol/messages.ts.
+//
+// Minor 8 (milestone 9, ADR 0070) adds files for the agent: `files.written`, a `user.message`'s
+// files, `ticket.context_read`, `ticket-update`, and a steer's files and images. Minor 7's codec
+// refuses them, and its encode drops the fields; it refuses to encode a steer that carries files.
 //
 // Minor 7 (milestone 8, ADR 0068) adds the app's and the previews' events and commands, the
 // dispatch's purpose, and what a runner can preview in `hello` and `status`: minor 6's codec
@@ -212,6 +219,11 @@ export const eventsFrameSchema = z.strictObject({
 });
 export type EventsFrame = z.infer<typeof eventsFrameSchema>;
 
+/** Minor 7's `events` frame: its events refuse minor 8's kinds and fields. */
+const eventsFrameSchemaV7 = eventsFrameSchema.extend({
+  events: z.array(runnerEventSchemaV7).min(1).max(runnerLimits.eventsPerFrameMax),
+});
+
 /** Minor 6's `events` frame: its events refuse minor 7's kinds. */
 const eventsFrameSchemaV6 = eventsFrameSchema.extend({
   events: z.array(runnerEventSchemaV6).min(1).max(runnerLimits.eventsPerFrameMax),
@@ -324,7 +336,10 @@ const statusSchemaV3 = statusSchemaV0.extend({
  */
 const statusSchemaV6 = statusSchemaV3.extend(runnerReportFieldsV6);
 
-/** The status at the current minor (7): minor 4's, with what the runner can preview and a `host` runner's browser. */
+/**
+ * The status at the current minor (8), which minor 7 shaped: minor 4's, with what the runner can
+ * preview and a `host` runner's browser.
+ */
 export const statusSchema = statusSchemaV6.extend(runnerReportFieldsV7);
 export type Status = z.infer<typeof statusSchema>;
 
@@ -335,9 +350,17 @@ export const liveTextSchema = z.strictObject({
 });
 export type LiveText = z.infer<typeof liveTextSchema>;
 
-const upFrameV7 = z.discriminatedUnion("type", [
+const upFrameV8 = z.discriminatedUnion("type", [
   helloSchema,
   eventsFrameSchema,
+  commandAckSchema,
+  statusSchema,
+  liveTextSchema,
+  runnerEventFrameSchema,
+]);
+const upFrameV7 = z.discriminatedUnion("type", [
+  helloSchema,
+  eventsFrameSchemaV7,
   commandAckSchema,
   statusSchema,
   liveTextSchema,
@@ -397,7 +420,7 @@ const upFrameV0 = z.discriminatedUnion("type", [
   statusSchemaV0,
   liveTextSchema,
 ]);
-export type UpFrame = z.infer<typeof upFrameV7>;
+export type UpFrame = z.infer<typeof upFrameV8>;
 export type UpFrameType = UpFrame["type"];
 
 // ---------- down: server to peer ----------
@@ -510,12 +533,32 @@ export const evictSchema = z.strictObject({
 });
 export type Evict = z.infer<typeof evictSchema>;
 
-/** Minor 7's down frames on the HTTP carrier: every command, `preview.input` included. */
-const downFrameV7Http = z.discriminatedUnion("type", [
+/** Minor 8's down frames on the HTTP carrier: every command, `preview.input` included. */
+const downFrameV8Http = z.discriminatedUnion("type", [
   welcomeSchema,
   ackSchema,
   creditSchema,
   commandSchema,
+  goawaySchema,
+  errorFrameSchema,
+  evictSchema,
+]);
+/** Minor 8's down frames on the WebSocket: no `preview.input`, which rides the preview connection there. */
+const downFrameV8 = z.discriminatedUnion("type", [
+  welcomeSchema,
+  ackSchema,
+  creditSchema,
+  commandSchemaV8WebSocket,
+  goawaySchema,
+  errorFrameSchema,
+  evictSchema,
+]);
+/** Minor 7's down frames on the HTTP carrier: every command, `preview.input` included; a steer without files. */
+const downFrameV7Http = z.discriminatedUnion("type", [
+  welcomeSchema,
+  ackSchema,
+  creditSchema,
+  commandSchemaV7,
   goawaySchema,
   errorFrameSchema,
   evictSchema,
@@ -584,7 +627,7 @@ const downFrameV0 = z.discriminatedUnion("type", [
   errorFrameSchema,
   evictSchema,
 ]);
-export type DownFrame = z.infer<typeof downFrameV7Http>;
+export type DownFrame = z.infer<typeof downFrameV8Http>;
 export type DownFrameType = DownFrame["type"];
 
 // ---------- codecs and parsing ----------
@@ -674,7 +717,8 @@ export const upFrameCodec = createVersionedCodec<UpFrame>([
   { minor: 4, decode: upFrameV4, encode: encodeUpFrameFor(4) },
   { minor: 5, decode: upFrameV5, encode: encodeUpFrameFor(5) },
   { minor: 6, decode: upFrameV6, encode: encodeUpFrameFor(6) },
-  { minor: 7, decode: upFrameV7, encode: (frame) => frame },
+  { minor: 7, decode: upFrameV7, encode: encodeUpFrameFor(7) },
+  { minor: 8, decode: upFrameV8, encode: (frame) => frame },
 ]);
 
 /**
@@ -686,7 +730,9 @@ export const upFrameCodec = createVersionedCodec<UpFrame>([
  * the steer's four new intents, which minor 4's encode drops and its decode refuses. Minor 6
  * (F-138) adds events only: its down frames are minor 5's. Minor 7 adds the dispatch's purpose,
  * which minor 6's encode drops, and the app's and the views' commands, which its decode refuses.
- * This is the WebSocket's codec: it refuses `preview.input`, the HTTP carrier's only command.
+ * Minor 8 adds the steer's files and `ticket-update`, which minor 7's encode drops (and refuses
+ * for a steer that carries files) and its decode refuses. This is the WebSocket's codec: it
+ * refuses `preview.input`, the HTTP carrier's only command.
  */
 export const downFrameCodec = createVersionedCodec<DownFrame>([
   { minor: 0, decode: downFrameV0, encode: encodeDownFrameFor(0) },
@@ -696,7 +742,8 @@ export const downFrameCodec = createVersionedCodec<DownFrame>([
   { minor: 4, decode: downFrameV4, encode: encodeDownFrameFor(4) },
   { minor: 5, decode: downFrameV5, encode: encodeDownFrameFor(5) },
   { minor: 6, decode: downFrameV5, encode: encodeDownFrameFor(6) },
-  { minor: 7, decode: downFrameV7, encode: (frame) => frame },
+  { minor: 7, decode: downFrameV7, encode: encodeDownFrameFor(7) },
+  { minor: 8, decode: downFrameV8, encode: (frame) => frame },
 ]);
 
 /**
@@ -711,7 +758,8 @@ export const httpDownFrameCodec = createVersionedCodec<DownFrame>([
   { minor: 4, decode: downFrameV4, encode: encodeDownFrameFor(4) },
   { minor: 5, decode: downFrameV5, encode: encodeDownFrameFor(5) },
   { minor: 6, decode: downFrameV5, encode: encodeDownFrameFor(6) },
-  { minor: 7, decode: downFrameV7Http, encode: (frame) => frame },
+  { minor: 7, decode: downFrameV7Http, encode: encodeDownFrameFor(7) },
+  { minor: 8, decode: downFrameV8Http, encode: (frame) => frame },
 ]);
 
 /** Parse a frame a peer sent at `minor`. Never throws; the error names paths, never values. */

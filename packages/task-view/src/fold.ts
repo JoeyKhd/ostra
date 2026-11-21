@@ -1316,6 +1316,10 @@ export const foldTaskEvents = (
       case "app.started_by":
         // Protocol minor 7 (milestone 8, ADR 0068). No row: the preview pane (ticket 21) reads them.
         break;
+      case "files.written":
+      case "ticket.context_read":
+        // Protocol minor 8 (milestone 9, ADR 0070). No row until the thread draws them (ticket 16).
+        break;
       case "subagent.started": {
         // F-138: placed in the tree of its parent's turn, or of the turn of the call that started it.
         const parent = event.parentSubagentId === undefined ? undefined : subagents.get(event.parentSubagentId);

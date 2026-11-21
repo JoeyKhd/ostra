@@ -249,6 +249,10 @@ export const turnOriginOfIntent = (intent: MessageIntent | undefined): TurnOrigi
       return "changes-requested";
     case "linear-follow-up":
       return "linear-follow-up";
+    // Milestone 9 (F-149): a ticket's changes, sent on a reopen or a member's "Send ticket
+    // updates", are a member's message through the same gate.
+    case "ticket-update":
+      return "message";
     default:
       return intent satisfies never;
   }

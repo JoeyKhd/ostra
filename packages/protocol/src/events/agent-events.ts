@@ -14,6 +14,7 @@ import {
   draftIdSchema,
   environmentProposalIdSchema,
   memberIdSchema,
+  messageFileIdSchema,
   modelIdSchema,
   noteIdSchema,
   optionIdSchema,
@@ -70,6 +71,14 @@ import {
 } from "../task/app.ts";
 import { runnerLimits } from "../runner/limits.ts";
 import { previewOpenRefusalSchema } from "../runner/preview.ts";
+import {
+  fileNotesSchema,
+  fileSkipReasonSchema,
+  imagesAsFilesReasonSchema,
+  imagesNotSentSchema,
+  ticketContextReadSchema,
+  userMessageFileSchema,
+} from "../task/files.ts";
 import { toolKindSchema } from "./tools.ts";
 
 // ostra's event union (ADR 0018, ADR 0035, ADR 0036): one thing the agent or ostra did in a
@@ -354,25 +363,32 @@ export const messageIntentSchemaV4 = z.enum([
 ]);
 
 /**
- * Why a message was written, at the current minor (5): minor 2's, with milestone 6's rounds and
- * follow-ups (ADR 0041, ADR 0057, ADR 0058): a failing CI's round (`fix-ci`), an AI review's
- * blocking findings (`fix-findings`), a reviewer's "changes requested" on the code host
- * (`changes-requested`), and a member's follow-up from the tracker's agent session
- * (`linear-follow-up`). The thread draws each with its own marker. A minor-4 peer is sent none
- * of the new four: its `steer` loses the intent, which reads as `message`.
+ * Why a message was written, minors 5 to 7: minor 2's, with milestone 6's rounds and follow-ups
+ * (ADR 0041, ADR 0057, ADR 0058): a failing CI's round (`fix-ci`), an AI review's blocking findings
+ * (`fix-findings`), a reviewer's "changes requested" on the code host (`changes-requested`), and a
+ * member's follow-up from the tracker's agent session (`linear-follow-up`). The thread draws each
+ * with its own marker. A minor-4 peer is sent none of the new four: its `steer` loses the intent,
+ * which reads as `message`. Kept for the codecs of a minor-7 peer.
  */
-export const messageIntentSchema = z.enum([
+export const messageIntentSchemaV7 = z.enum([
   ...messageIntentSchemaV4.options,
   "fix-ci",
   "fix-findings",
   "changes-requested",
   "linear-follow-up",
 ]);
+
+/**
+ * Why a message was written, at the current minor (8): minor 5's, with a ticket's changes since
+ * the agent last read it (`ticket-update`, F-149, ADR 0070): ostra's words around the ticket's new
+ * text, on a reopen or a member's "Send ticket updates". A minor-7 peer is sent it as `message`.
+ */
+export const messageIntentSchema = z.enum([...messageIntentSchemaV7.options, "ticket-update"]);
 export type MessageIntent = z.infer<typeof messageIntentSchema>;
 
-/** Whether a peer at `minor` knows an intent: milestone 6's four are new in minor 5. */
+/** Whether a peer at `minor` knows an intent: milestone 6's four are new in minor 5, `ticket-update` in minor 8. */
 export const messageIntentSupportedAt = (intent: MessageIntent, minor: number): boolean =>
-  minor >= 5 || messageIntentSchemaV4.safeParse(intent).success;
+  minor >= 8 || (minor >= 5 && messageIntentSchemaV7.safeParse(intent).success) || messageIntentSchemaV4.safeParse(intent).success;
 
 /** A check's result (ADR 0052, F-054). */
 export const checkStatusSchema = z.enum(["passed", "failed", "timed-out", "error"]);
@@ -456,10 +472,27 @@ const userMessageV2 = userMessage.extend({
   intent: messageIntentSchemaV4.optional(),
 });
 
-/** `user.message` at the current minor (5): minor 2's, with milestone 6's intents. */
+/** `user.message` at minors 5 to 7: minor 2's, with milestone 6's intents. */
 const userMessageV5 = userMessage.extend({
   /** Minor 2: why the message was written. Missing means `message`. Minor 5 adds four intents. */
+  intent: messageIntentSchemaV7.optional(),
+});
+
+/**
+ * `user.message` at the current minor (8): minor 5's, with `ticket-update` and the message's files
+ * (F-148, F-149, ADR 0070): each as the thread shows it, those left out with why, and why its
+ * images went as files only. A message with files may have no text. Names are safe names, never
+ * logged.
+ */
+const userMessageV8 = userMessage.extend({
+  /** Minor 2: why the message was written. Missing means `message`. Minor 8 adds `ticket-update`. */
   intent: messageIntentSchema.optional(),
+  /** Minor 8: the message's files, in its order. Missing means none. */
+  files: z.array(userMessageFileSchema).max(runnerLimits.ticketContextFilesMax).optional(),
+  /** Minor 8: the files left out at send (over a limit), or a ticket's not given, with why. */
+  filesLeftOut: fileNotesSchema.optional(),
+  /** Minor 8: why the message's images went as files only, or `null` when none did. */
+  imagesNotSent: imagesNotSentSchema.nullable().optional(),
 });
 
 const sessionRestoredV2 = sessionRestored.extend({
@@ -1124,6 +1157,31 @@ const minor7NewEventOptions = [
   z.strictObject({ kind: z.literal("app.started_by"), memberId: memberIdSchema }),
 ] as const;
 
+// ---------- the events new in minor 8 ----------
+
+const minor8NewEventOptions = [
+  /**
+   * The runner's (F-148, ADR 0070): the files it wrote under the workspace root's `.ostra/` (each
+   * with whether its text was written beside it), those it skipped with why, how many images went
+   * to the agent as images, and why they went as files only although core marked them. Once per
+   * prompt that carried files, and once per fresh box. File IDs only: never a name.
+   */
+  z.strictObject({
+    kind: z.literal("files.written"),
+    files: z.array(z.strictObject({ fileId: messageFileIdSchema, textWritten: z.boolean() })).max(runnerLimits.taskFilesMax),
+    skipped: z.array(z.strictObject({ fileId: messageFileIdSchema, reason: fileSkipReasonSchema })).max(runnerLimits.taskFilesMax),
+    imagesSent: z.number().int().nonnegative().max(runnerLimits.promptImagesMax),
+    imagesAsFiles: imagesAsFilesReasonSchema.nullable(),
+  }),
+  // ---- server-only (milestone 9) ----
+  /**
+   * What one read of the ticket gave the agent (F-149): its round and reason, the description (or
+   * `null` when unchanged), comments, links, files, and those left out and failed. The ticket's
+   * text: never logged.
+   */
+  z.strictObject({ kind: z.literal("ticket.context_read"), ...ticketContextReadSchema.shape }),
+] as const;
+
 // ---------- the events every minor shares ----------
 
 const sharedEventOptions = [
@@ -1244,8 +1302,36 @@ const sharedEventOptions = [
   }),
 ] as const;
 
-/** The event union at the current minor (7). */
+/** The event union at the current minor (8). */
 export const taskEventSchema = z.discriminatedUnion("kind", [
+  userMessageV8,
+  sessionRestoredV2,
+  sessionCrashed,
+  sessionSavedV2,
+  sessionLimitReached,
+  ticketFilesReadyV2,
+  workspaceFilesOutsideRepos,
+  turnStarted,
+  usageRecorded,
+  approvalRequested,
+  approvalAnswered,
+  setupFinished,
+  ...minor2NewEventOptions,
+  ...minor3NewEventOptions,
+  ...minor4NewEventOptions,
+  ...minor5NewEventOptions,
+  ...minor6NewEventOptions,
+  ...minor7NewEventOptions,
+  ...minor8NewEventOptions,
+  ...agentOutputOptions,
+  ...sharedEventOptions,
+]);
+
+/**
+ * Minor 7's event union, kept for the codecs (ADR 0034): a minor-7 peer's events parse with it,
+ * and it refuses minor 8's kinds, `ticket-update` and a message's files.
+ */
+export const taskEventSchemaV7 = z.discriminatedUnion("kind", [
   userMessageV5,
   sessionRestoredV2,
   sessionCrashed,
@@ -1508,8 +1594,20 @@ export const minor7EventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKin
   minor7NewEventOptions.map((option) => option.shape.kind.value),
 );
 
+/**
+ * The kinds minor 8 added (milestone 9, ADR 0070): the runner's `files.written` and the server's
+ * `ticket.context_read`. A minor-8 runner talking to a minor-7 server sends no `files.written`:
+ * that server gives it no file.
+ */
+export const minor8EventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind>(
+  minor8NewEventOptions.map((option) => option.shape.kind.value),
+);
+
 /** The lowest minor that carries an event kind. */
 export const eventKindMinMinor = (kind: TaskEventKind): number => {
+  if (minor8EventKinds.has(kind)) {
+    return 8;
+  }
   if (minor7EventKinds.has(kind)) {
     return 7;
   }
@@ -1545,6 +1643,31 @@ const sessionSavedStripV1 = z.object(sessionSaved.shape);
 const sessionRestoredStripV1 = z.object(sessionRestored.shape);
 const ticketFilesReadyStripV1 = z.object(ticketFilesReady.shape);
 const setupFinishedStripV1 = z.object(setupFinishedV1.shape);
+
+/** The fields minor 8 added to `user.message`. */
+const minor8UserMessageKeys = ["files", "filesLeftOut", "imagesNotSent"] as const;
+
+/**
+ * An event without what minor 8 added to an existing kind: a `user.message` loses its files, and
+ * a `ticket-update` intent, which a minor-7 reader reads as `message`.
+ */
+const dropMinor8Fields = (event: TaskEvent): TaskEvent => {
+  if (event.kind !== "user.message") {
+    return event;
+  }
+  const grown = minor8UserMessageKeys.some((key) => key in event) || event.intent === "ticket-update";
+  if (!grown) {
+    return event;
+  }
+  const minor7 = { ...event };
+  for (const key of minor8UserMessageKeys) {
+    Reflect.deleteProperty(minor7, key);
+  }
+  if (minor7.intent !== undefined && !messageIntentSupportedAt(minor7.intent, 7)) {
+    Reflect.deleteProperty(minor7, "intent");
+  }
+  return minor7;
+};
 
 /**
  * An event without what minor 6 added to an existing kind: the subagent on the agent's output and
@@ -1622,16 +1745,21 @@ const dropMinor2Fields = (event: TaskEvent): TaskEvent => {
  * An event as a peer at `minor` reads it: below minor 2, the fields minor 2 added are dropped;
  * below minor 1, minor 1's too. Below minor 3, `turn.started` loses its level and
  * `usage.recorded` its reasoning tokens (F-137). Below minor 6, the agent's output and an
- * approval's request lose their subagent (F-138). A kind the minor lacks is returned as it is, and
- * that peer refuses it: senders check `eventKindSupportedAt` first.
+ * approval's request lose their subagent (F-138). Below minor 8, a `user.message` loses its files
+ * and a `ticket-update` intent (ADR 0070). A kind the minor lacks is returned as it is, and that
+ * peer refuses it: senders check `eventKindSupportedAt` first.
  */
 export const encodeEventForMinor = (event: TaskEvent, minor: number): TaskEvent => {
-  // Minor 7 added kinds only, no field to an existing kind: a minor-6 reader reads every event it
-  // has a kind for as it is.
-  if (minor >= 6) {
+  if (minor >= 8) {
     return event;
   }
-  const v5 = dropMinor6Fields(event);
+  const v7 = dropMinor8Fields(event);
+  // Minor 7 added kinds only, no field to an existing kind: a minor-6 reader reads every event it
+  // has a kind for as minor 7 does.
+  if (minor >= 6) {
+    return v7;
+  }
+  const v5 = dropMinor6Fields(v7);
   if (minor >= 5) {
     return v5;
   }
@@ -1725,6 +1853,8 @@ export const serverOnlyKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind
   "preview.link_created",
   "preview.link_revoked",
   "app.started_by",
+  // Minor 8 (milestone 9):
+  "ticket.context_read",
 ]);
 
 // ---------- the read side ----------
@@ -1780,6 +1910,13 @@ export const runnerEventSchema = z.strictObject({
   }),
 });
 export type RunnerEvent = z.infer<typeof runnerEventSchema>;
+
+/** Minor 7's `runnerEventSchema`, for the up codec of a minor-7 peer. */
+export const runnerEventSchemaV7 = runnerEventSchema.extend({
+  event: taskEventSchemaV7.refine((event) => !serverOnlyKinds.has(event.kind), {
+    message: "only the server writes this kind",
+  }),
+});
 
 /** Minor 6's `runnerEventSchema`, for the up codec of a minor-6 peer. */
 export const runnerEventSchemaV6 = runnerEventSchema.extend({

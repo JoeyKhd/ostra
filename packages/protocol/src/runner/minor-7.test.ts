@@ -55,6 +55,7 @@ import {
   taskSpecResponseSchemaFor,
   taskSpecSchema,
   taskSpecSchemaV6,
+  taskSpecSchemaV7,
 } from "../task/spec.ts";
 import type { TaskSpec } from "../task/spec.ts";
 import {
@@ -151,18 +152,20 @@ const noPorts: AppToolContext = {
 };
 
 describe("the version", () => {
-  it("F-061: is minor 7; a minor-6 peer is inside the window and a minor-5 peer is outside it", () => {
-    expect(PROTOCOL_MINOR).toBe(7);
-    expect(minorWindow(PROTOCOL_MINOR)).toEqual({ min: 6, max: 8 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 6)).toEqual({ ok: true, minor: 6 });
+  it("F-061: a minor-7 server took minors 6 to 8, and minor 7 stays in the codecs after minor 8", () => {
+    // Milestone 9 moved the build to minor 8 (`minor-8.test.ts`); a minor-7 build's window is as it was.
+    expect(PROTOCOL_MINOR).toBe(8);
+    expect(minorWindow(7)).toEqual({ min: 6, max: 8 });
+    expect(negotiate(7, PROTOCOL_MAJOR, 6)).toEqual({ ok: true, minor: 6 });
+    expect(negotiate(7, PROTOCOL_MAJOR, 7)).toEqual({ ok: true, minor: 7 });
+    expect(negotiate(7, PROTOCOL_MAJOR, 8)).toEqual({ ok: true, minor: 7 });
+    expect(negotiate(7, PROTOCOL_MAJOR, 5)).toEqual({ ok: false, reason: "minor", window: { min: 6, max: 8 } });
+    // A minor-7 runner against a minor-6 server speaks minor 6, and against today's server minor 7.
+    expect(negotiate(6, PROTOCOL_MAJOR, 7)).toEqual({ ok: true, minor: 6 });
     expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 7)).toEqual({ ok: true, minor: 7 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 8)).toEqual({ ok: true, minor: 7 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 5)).toEqual({ ok: false, reason: "minor", window: { min: 6, max: 8 } });
-    // A minor-7 runner against a minor-6 server speaks minor 6.
-    expect(negotiate(6, PROTOCOL_MAJOR, PROTOCOL_MINOR)).toEqual({ ok: true, minor: 6 });
-    expect(upFrameCodec.minors).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
-    expect(downFrameCodec.minors).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
-    expect(httpDownFrameCodec.minors).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(upFrameCodec.minors).toContain(7);
+    expect(downFrameCodec.minors).toContain(7);
+    expect(httpDownFrameCodec.minors).toContain(7);
   });
 });
 
@@ -301,7 +304,8 @@ describe("the task spec at minor 7", () => {
       expect(taskSpecSchemaV6.parse(roundTrip(spec))).toEqual(spec);
     }
     expect(taskSpecSchemaV6.safeParse(taskSpecAppFixture).success).toBe(false);
-    expect(taskSpecResponseSchemaFor(7)).toBe(taskSpecSchema);
+    expect(taskSpecResponseSchemaFor(7)).toBe(taskSpecSchemaV7);
+    expect(taskSpecResponseSchemaFor(8)).toBe(taskSpecSchema);
     expect(taskSpecResponseSchemaFor(6)).toBe(taskSpecSchemaV6);
   });
 
@@ -315,7 +319,8 @@ describe("the task spec at minor 7", () => {
     // Everything else is as it was.
     expect(down.environment.repos).toEqual(taskSpecAppFixture.environment.repos);
     expect(down.services?.[0]?.image).toBe("axllent/mailpit:v1.21");
-    expect(encodeTaskSpecForMinor(taskSpecAppFixture, 7)).toBe(taskSpecAppFixture);
+    expect(encodeTaskSpecForMinor(taskSpecAppFixture, 7)).toEqual(taskSpecAppFixture);
+    expect(encodeTaskSpecForMinor(taskSpecAppFixture, 8)).toBe(taskSpecAppFixture);
     // And down to minor 0, every older shape still reads it.
     for (const minor of [0, 1, 2, 3, 4, 5]) {
       expect(taskSpecResponseSchemaFor(minor).safeParse(roundTrip(encodeTaskSpecForMinor(taskSpecAppFixture, minor))).success, String(minor)).toBe(true);

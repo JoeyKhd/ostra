@@ -35,6 +35,7 @@ import { blobRefSchema, contentTypeSchema } from "../runner/blobs.ts";
 import { utf8ByteLength } from "../json.ts";
 import { runnerLimits } from "../runner/limits.ts";
 import { appLabelSchema, appPathSchema, appPortSchema, appProcessNameSchema, screenshotWidthSchema } from "./app.ts";
+import { inputModalitySchema, promptFilesSchema, taskSpecMessageFileSchema } from "./files.ts";
 
 // The task spec: what a dispatch hands the runner, fetched from
 // `GET /runner/v1/tasks/:taskId/spec` once the runner has accepted the offer (ADR 0034). It holds
@@ -226,10 +227,10 @@ export const taskSpecAgentSchemaV3 = taskSpecAgentSchemaV2.extend({
 });
 
 /**
- * The agent section at the current minor (6): minor 3's, with whether the repos' own skills reach
- * the agent.
+ * The agent section at minors 6 and 7: minor 3's, with whether the repos' own skills reach the
+ * agent.
  */
-export const taskSpecAgentSchema = taskSpecAgentSchemaV3.extend({
+export const taskSpecAgentSchemaV6 = taskSpecAgentSchemaV3.extend({
   /**
    * Minor 6: whether each repo's own skills (its `.agents/skills`, `.claude/skills` and
    * `.opencode/skills`, read from the task's checkout) reach the agent beside the profile's: the
@@ -237,6 +238,21 @@ export const taskSpecAgentSchema = taskSpecAgentSchemaV3.extend({
    * minor 6 is never offered a task with them off (`isTaskOfferable`).
    */
   repoSkills: z.boolean().optional(),
+});
+
+/**
+ * The agent section at the current minor (8): minor 6's, with the model's input modalities, for
+ * the agent's config (ADR 0070, Q335): OpenCode treats a model without `image` as text-only and
+ * swaps every image for an error line. Missing means `["text"]`. A minor-7 runner is never sent it.
+ */
+export const taskSpecAgentSchema = taskSpecAgentSchemaV6.extend({
+  /** Minor 8: the model's inputs, each once. Missing means `["text"]`. */
+  inputModalities: z
+    .array(inputModalitySchema)
+    .min(1)
+    .max(inputModalitySchema.options.length)
+    .refine((modalities) => new Set(modalities).size === modalities.length, "each input once")
+    .optional(),
 });
 export type TaskSpecAgent = z.infer<typeof taskSpecAgentSchema>;
 
@@ -451,24 +467,42 @@ export const hiddenRefRestoreSchema = z.strictObject({
 });
 export type HiddenRefRestore = z.infer<typeof hiddenRefRestoreSchema>;
 
-/** A member's message the session hasn't answered yet: replayed as the first prompt (F-047). */
-export const pendingMessageSchema = z.strictObject({
+/** A member's message the session hasn't answered yet, at minors 1 to 7: replayed as the first prompt (F-047). */
+export const pendingMessageSchemaV7 = z.strictObject({
   clientMessageId: clientMessageIdSchema,
   /** The member's text. Never logged. */
   text: z.string().min(1).max(runnerLimits.steerTextMaxChars),
 });
+
+/**
+ * A pending message at the current minor (8): minor 1's, with its files (ADR 0070), as IDs of the
+ * spec's `files`, and those that go as images. A message with files may have no text.
+ */
+export const pendingMessageSchema = pendingMessageSchemaV7
+  .extend({
+    /** Minor 8: may be empty when the message carries files. Never logged. */
+    text: z.string().max(runnerLimits.steerTextMaxChars),
+    /** Minor 8: the message's files. Missing means none. */
+    files: promptFilesSchema.optional(),
+  })
+  .refine((message) => message.text.length > 0 || message.files !== undefined, "a message has text or files");
 export type PendingMessage = z.infer<typeof pendingMessageSchema>;
 
 /**
- * The restore section (ADR 0039). `resumed` uses the box the runner still holds. `restored` imports
- * the archive and the hidden refs on a fresh box. `rebuilt` starts a new agent session whose first
- * prompt is the rebuild template, which is the spec's `prompt`.
+ * The restore section at minors 1 to 7 (ADR 0039). `resumed` uses the box the runner still holds.
+ * `restored` imports the archive and the hidden refs on a fresh box. `rebuilt` starts a new agent
+ * session whose first prompt is the rebuild template, which is the spec's `prompt`.
  */
-export const taskSpecRestoreSchema = z.strictObject({
+export const taskSpecRestoreSchemaV7 = z.strictObject({
   origin: restoreStepSchema,
   /** The session archive to import, for `restored`. */
   archive: blobRefSchema.nullable(),
   hiddenRefs: z.array(hiddenRefRestoreSchema),
+  pendingMessages: z.array(pendingMessageSchemaV7).max(100),
+});
+
+/** The restore section at the current minor (8): minor 1's, with each pending message's files. */
+export const taskSpecRestoreSchema = taskSpecRestoreSchemaV7.extend({
   pendingMessages: z.array(pendingMessageSchema).max(100),
 });
 export type TaskSpecRestore = z.infer<typeof taskSpecRestoreSchema>;
@@ -547,7 +581,7 @@ const taskSpecShapeV1 = {
   /** Minor 1: ticket images to write under `TICKET_FILES_DIR` before the agent starts. */
   contextFiles: z.array(taskSpecContextFileSchemaV4).max(runnerLimits.ticketFilesMax).optional(),
   /** Minor 1: how the session starts. Missing means `new`. The pending messages' text is never logged. */
-  restore: taskSpecRestoreSchema.optional(),
+  restore: taskSpecRestoreSchemaV7.optional(),
 };
 
 /** Minor 1's task spec, kept for the spec endpoint's answer to a minor-1 runner. */
@@ -757,7 +791,7 @@ export const taskSpecSchemaV5 = z
 const taskSpecShapeV6 = {
   ...taskSpecShapeV5,
   /** Minor 6: the agent section with `repoSkills`. */
-  agent: taskSpecAgentSchema,
+  agent: taskSpecAgentSchemaV6,
 };
 
 /** Minor 6's task spec: the spec endpoint's answer to a minor-6 runner. */
@@ -765,25 +799,75 @@ export const taskSpecSchemaV6 = z
   .strictObject(taskSpecShapeV6)
   .describe("The task spec a dispatch hands a minor-6 runner. It holds no secret.");
 
+const taskSpecShapeV7 = {
+  ...taskSpecShapeV6,
+  /** Minor 7 grows it: the app's processes and the after-turn screenshots. */
+  environment: taskSpecEnvironmentSchema,
+  /** Minor 2; minor 7 adds each service's preview. */
+  services: z.array(taskSpecServiceSchema).max(runnerLimits.servicesMax).optional(),
+  /** Minor 5; minor 7 adds the `app` tools. Missing means `defaultOstraToolSets`. */
+  tools: z
+    .array(ostraToolSetSchema)
+    .max(ostraToolSetSchema.options.length)
+    .refine((tools) => new Set(tools).size === tools.length, "each tool set once")
+    .optional(),
+};
+
+/** Minor 7's task spec: the spec endpoint's answer to a minor-7 runner. */
+export const taskSpecSchemaV7 = z
+  .strictObject(taskSpecShapeV7)
+  .describe("The task spec a dispatch hands a minor-7 runner. It holds no secret.");
+
+/** The IDs a spec's prompts name: the first prompt's files and each pending message's. */
+const promptedFileIds = (spec: {
+  readonly promptFiles?: { readonly fileIds: readonly string[] } | undefined;
+  readonly restore?: { readonly pendingMessages: readonly { readonly files?: { readonly fileIds: readonly string[] } | undefined }[] } | undefined;
+}): readonly string[] => [...(spec.promptFiles?.fileIds ?? []), ...(spec.restore?.pendingMessages ?? []).flatMap((message) => message.files?.fileIds ?? [])];
+
 /**
- * The task spec at the current minor (7). Every field added since minor 0 is optional, so a spec
- * of any earlier minor parses. A minor-6 runner is sent minor 6's shape, a minor-5 runner minor
- * 5's and a minor-4 runner minor 3's (`encodeTaskSpecForMinor`), and core never offers a runner a
- * task that needs a later minor than its own (`isTaskOfferable`).
+ * The task spec at the current minor (8). Every field added since minor 0 is optional, so a spec
+ * of any earlier minor parses. A minor-7 runner is sent minor 7's shape, a minor-6 runner minor
+ * 6's, a minor-5 runner minor 5's and a minor-4 runner minor 3's (`encodeTaskSpecForMinor`), and
+ * core never offers a runner a task that needs a later minor than its own (`isTaskOfferable`).
+ *
+ * Minor 8 (ADR 0070): every sent file of the task (`files`), written under the workspace root's
+ * `.ostra/` before a session starts and again on every fresh box; the first prompt's files
+ * (`promptFiles`); each pending message's; and the model's inputs. Every file a prompt names is one
+ * of `files`. Names, contents and texts are never logged.
  */
 export const taskSpecSchema = z
   .strictObject({
-    ...taskSpecShapeV6,
-    /** Minor 7 grows it: the app's processes and the after-turn screenshots. */
-    environment: taskSpecEnvironmentSchema,
-    /** Minor 2; minor 7 adds each service's preview. */
-    services: z.array(taskSpecServiceSchema).max(runnerLimits.servicesMax).optional(),
-    /** Minor 5; minor 7 adds the `app` tools. Missing means `defaultOstraToolSets`. */
-    tools: z
-      .array(ostraToolSetSchema)
-      .max(ostraToolSetSchema.options.length)
-      .refine((tools) => new Set(tools).size === tools.length, "each tool set once")
-      .optional(),
+    ...taskSpecShapeV7,
+    /** Minor 8: the model's input modalities. */
+    agent: taskSpecAgentSchema,
+    /** Minor 1; minor 8 adds each pending message's files. */
+    restore: taskSpecRestoreSchema.optional(),
+    /** Minor 8: every sent file of the task, oldest first, within `taskFilesMax` and `taskFilesTotalBytes`. Missing means none. */
+    files: z.array(taskSpecMessageFileSchema).max(runnerLimits.taskFilesMax).optional(),
+    /** Minor 8: the first prompt's files. Missing means none. */
+    promptFiles: promptFilesSchema.optional(),
+  })
+  .superRefine((spec, context) => {
+    const files = spec.files ?? [];
+    const ids = new Set<string>(files.map((file) => file.fileId));
+    if (ids.size !== files.length) {
+      context.addIssue({ code: "custom", path: ["files"], message: "each file once" });
+    }
+    if (new Set(files.map((file) => file.path)).size !== files.length) {
+      context.addIssue({ code: "custom", path: ["files"], message: "each place once" });
+    }
+    const bytes = files.reduce((sum, file) => sum + file.size + (file.text?.size ?? 0), 0);
+    if (bytes > runnerLimits.taskFilesTotalBytes) {
+      context.addIssue({ code: "custom", path: ["files"], message: `at most ${String(runnerLimits.taskFilesTotalBytes)} bytes in all` });
+    }
+    if (promptedFileIds(spec).some((id) => !ids.has(id))) {
+      context.addIssue({ code: "custom", path: ["promptFiles"], message: "a prompt's file is one of the spec's files" });
+    }
+    const images = new Set<string>(files.filter((file) => file.kind === "image").map((file) => file.fileId));
+    const promptImages = [...(spec.promptFiles?.images ?? []), ...(spec.restore?.pendingMessages ?? []).flatMap((message) => message.files?.images ?? [])];
+    if (promptImages.some((id) => !images.has(id))) {
+      context.addIssue({ code: "custom", path: ["promptFiles"], message: "an image is one of the spec's image files" });
+    }
   })
   .describe("The task spec a dispatch hands the runner. It holds no secret.");
 export type TaskSpec = z.infer<typeof taskSpecSchema>;
@@ -813,7 +897,9 @@ const agentForMinor1 = (agent: TaskSpecAgent): TaskSpecAgent => ({
 });
 
 /**
- * The spec in the shape a runner at `minor` reads: below minor 7, minor 7's fields are dropped
+ * The spec in the shape a runner at `minor` reads: below minor 8, minor 8's fields are dropped (the
+ * files, the prompt's and each pending message's files, and the model's inputs); below minor 7,
+ * minor 7's fields are dropped
  * (the app's processes, the after-turn screenshots, the `app` tools and each service's preview);
  * below minor 6, `agent.repoSkills` is dropped;
  * below minor 5, minor 5's fields are dropped
@@ -826,10 +912,14 @@ const agentForMinor1 = (agent: TaskSpecAgent): TaskSpecAgent => ({
  * (`taskSpecNeedsMinor2`, `taskSpecNeedsMinor3`, `isTaskOfferable`), so nothing it needs is lost.
  */
 export const encodeTaskSpecForMinor = (current: TaskSpec, minor: number): TaskSpec => {
-  if (minor >= 7) {
+  if (minor >= 8) {
     return current;
   }
-  const v6 = specForMinor6(current);
+  const v7 = specForMinor7(current);
+  if (minor >= 7) {
+    return v7;
+  }
+  const v6 = specForMinor6(v7);
   if (minor >= 6) {
     return v6;
   }
@@ -867,6 +957,25 @@ export const encodeTaskSpecForMinor = (current: TaskSpec, minor: number): TaskSp
     limits: { turnMaxMinutes: spec.limits.turnMaxMinutes },
   };
 };
+
+/**
+ * The spec without minor 8's fields: no files, no prompt's or pending message's files, and an agent
+ * section without the model's inputs. Core never offers a minor-7 runner a spec with files
+ * (`isTaskOfferable`), so a pending message keeps its text.
+ */
+const specForMinor7 = (current: TaskSpec): TaskSpec => {
+  const spec: Record<string, unknown> = { ...current, agent: agentStripV6.parse(current.agent) };
+  Reflect.deleteProperty(spec, "files");
+  Reflect.deleteProperty(spec, "promptFiles");
+  if (current.restore !== undefined) {
+    spec["restore"] = { ...current.restore, pendingMessages: current.restore.pendingMessages.map((message) => pendingMessageStripV7.parse(message)) };
+  }
+  return taskSpecSchemaV7.parse(spec);
+};
+
+/** Minor 7's agent section and pending message as stripping objects: parsing a current one drops minor 8's fields. */
+const agentStripV6 = z.object(taskSpecAgentSchemaV6.shape);
+const pendingMessageStripV7 = z.object(pendingMessageSchemaV7.shape);
 
 /**
  * The spec without minor 7's fields: the environment without its app processes and screenshots,
@@ -953,6 +1062,8 @@ export const taskSpecNeedsMinor6 = (spec: TaskSpec): boolean => spec.agent.repoS
  * in the dispatch note's words (`taskNotOfferableWords`).
  */
 export const taskNotOfferableReasonSchema = z.enum([
+  /** A message's or a ticket's files (minor 8, F-148): a minor-7 runner would never write them. */
+  "message-files",
   /** The environment's app processes (minor 7, F-140): a minor-6 runner would never start them. */
   "app-processes",
   /** The app tools, `start_app`, `show_preview`, `take_screenshot` and `record_app` (minor 7, F-121). */
@@ -1029,8 +1140,19 @@ const taskNeedsMinor7Reason = (spec: TaskSpec): TaskNotOfferableReason | null =>
 /** Whether a spec uses anything a runner below minor 7 can't do (milestone 8). */
 export const taskSpecNeedsMinor7 = (spec: TaskSpec): boolean => taskNeedsMinor7Reason(spec) !== null;
 
+/**
+ * Whether a spec carries files a runner below minor 8 can't write (milestone 9, ADR 0070, Q340):
+ * the task's files, the first prompt's or a pending message's. The model's inputs need nothing: a
+ * minor-7 runner tells the agent nothing of them, as before.
+ */
+export const taskSpecNeedsMinor8 = (spec: TaskSpec): boolean =>
+  (spec.files?.length ?? 0) > 0 || spec.promptFiles !== undefined || (spec.restore?.pendingMessages ?? []).some((message) => message.files !== undefined);
+
 /** The lowest runner minor a spec needs (ADR 0034). */
 export const taskSpecMinMinor = (spec: TaskSpec): number => {
+  if (taskSpecNeedsMinor8(spec)) {
+    return 8;
+  }
   if (taskSpecNeedsMinor7(spec)) {
     return 7;
   }
@@ -1052,7 +1174,8 @@ export type TaskOffer =
 
 /**
  * Whether core may offer a task with this spec to a runner at `peerMinor` (ADR 0034's one-minor
- * window): a minor-6 runner gets no task with app processes or the app tools (milestone 8), a
+ * window): a minor-7 runner gets no task with files (milestone 9), a minor-6 runner gets no task
+ * with app processes or the app tools (milestone 8), a
  * minor-5 runner no task whose project keeps the repos' own skills off, a minor-4 runner no refine, review or onboarding task and no automatic round, and the
  * dispatch note says why (`taskNotOfferableWords`).
  */
@@ -1060,6 +1183,9 @@ export const isTaskOfferable = (spec: TaskSpec, peerMinor: number): TaskOffer =>
   const minMinor = taskSpecMinMinor(spec);
   if (peerMinor >= minMinor) {
     return { offerable: true };
+  }
+  if (minMinor === 8) {
+    return { offerable: false, reason: "message-files", minMinor };
   }
   if (minMinor === 7) {
     return { offerable: false, reason: taskNeedsMinor7Reason(spec) ?? "app-processes", minMinor };
@@ -1077,6 +1203,8 @@ export const isTaskOfferable = (spec: TaskSpec, peerMinor: number): TaskOffer =>
 export const taskNotOfferableWords = (reason: TaskNotOfferableReason, minMinor: number): string => {
   const needs = `a runner at protocol 1.${String(minMinor)} or later: update the runner`;
   switch (reason) {
+    case "message-files":
+      return `A task with files needs ${needs}.`;
     case "app-processes":
       return `The environment's app processes need ${needs}.`;
     case "app-tools":
@@ -1106,14 +1234,18 @@ export const taskSpecResponseSchemaFor = (
   minor: number,
 ):
   | typeof taskSpecSchema
+  | typeof taskSpecSchemaV7
   | typeof taskSpecSchemaV6
   | typeof taskSpecSchemaV5
   | typeof taskSpecSchemaV3
   | typeof taskSpecSchemaV2
   | typeof taskSpecSchemaV1
   | typeof taskSpecSchemaV0 => {
-  if (minor >= 7) {
+  if (minor >= 8) {
     return taskSpecSchema;
+  }
+  if (minor >= 7) {
+    return taskSpecSchemaV7;
   }
   if (minor >= 6) {
     return taskSpecSchemaV6;
