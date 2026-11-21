@@ -23,7 +23,10 @@ export { BRANCH_ID_DIGITS, BRANCH_INDEX, branchNameFor, claimBranchNameInTx } fr
 
 export const createPromptTaskInputSchema = z.strictObject({
   projectId: projectIdSchema,
-  /** The prompt: untrusted text, passed as data. Never logged. Milestone 9: may be empty when files come. */
+  /**
+   * The prompt: untrusted text, passed as data. Never logged. Words are required even when files
+   * come (the maintainer, milestone 9's design choices, 4.2): an empty one is `prompt-required`.
+   */
   prompt: z.string().trim().max(262_144),
   /** Defaults to the prompt's first line. */
   title: z.string().trim().min(1).max(512).optional(),
@@ -50,7 +53,7 @@ export type CreatePromptTaskResult = UseCaseResult<
   | "no-repo"
   /** A repo's default branch requires signed commits (F-055, ticket 31). */
   | "repo-unsupported"
-  /** Milestone 9: neither words nor files. */
+  /** No words: a new task needs a few, even with files (milestone 9's design choices, 4.2). */
   | "prompt-required"
   /** Milestone 9: a file that isn't one of the member's unsent uploads in the project. */
   | "file-not-found"
@@ -85,17 +88,17 @@ export const createPromptTask: CreatePromptTask = async (deps, input) => {
   if (!access.ok) {
     return access.code === "not-found" ? refuse("not-found", "No such project") : refuse("forbidden", "You may not start a task in this project");
   }
-  // Milestone 9 (F-148/c1): files alone make a message; neither words nor files don't.
-  const fileIds = input.fileIds ?? [];
-  if (input.prompt === "" && fileIds.length === 0) {
-    return refuse("prompt-required", "Say what the agent should do, or attach a file");
+  // Milestone 9: a new task needs a few words even when files come (the maintainer, the approved
+  // designs' choices, 4.2); a later message may be files alone (`tasks.send`, `tasks.reopen`).
+  if (input.prompt === "") {
+    return refuse("prompt-required", "Say in a few words what the agent should do");
   }
   // The files are the member's own unsent uploads of the project, checked before anything is made.
-  const uploads = await uploadsOfInTx(tx, scope, projectIdSchema.parse(project.id), fileIds);
-  if (uploads === null) {
+  const fileIds = input.fileIds ?? [];
+  if ((await uploadsOfInTx(tx, scope, projectIdSchema.parse(project.id), fileIds)) === null) {
     return refuse("file-not-found", "One of the files isn't one of your unsent uploads in this project");
   }
-  const title = input.title ?? (input.prompt === "" ? (uploads[0]?.name ?? "Files") : titleFromPrompt(input.prompt));
+  const title = input.title ?? titleFromPrompt(input.prompt);
   // Milestone 6 (ticket 11): the one start every origin goes through.
   const started = await startTask(
     {

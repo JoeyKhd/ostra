@@ -27,6 +27,12 @@ export { corePanelUploader } from "./services/panel-blobs.ts";
 export type { PanelUploaderOptions } from "./services/panel-blobs.ts";
 export { serveSkillFileUpload } from "./services/skill-file-upload.ts";
 export { serveAuditExport } from "./services/audit-log.ts";
+// Milestone 9 (ticket 14): a member's upload through the panel to core, and a sent file's download.
+export { serveMessageFileUpload, UPLOAD_FORM_OVERHEAD_BYTES } from "./services/message-file-upload.ts";
+export { serveTaskFile } from "./services/message-file-download.ts";
+export { corePanelFileUploader, PANEL_FILE_UPLOAD_TIMEOUT_MS } from "./services/panel-files.ts";
+export type { MessageFileUploader, MessageFileUploadInput, MessageFileUploadResult } from "./services/panel-files.ts";
+export type { PeopleFiles, TaskFileView, TicketAttachmentView, TicketContextView, TicketFailure, TicketFileFrom, TicketRoundView } from "./routers/task-files.ts";
 // Milestone 8 (ticket 20): a view's stream and input, relayed to core, and the viewer page's data.
 export { previewRouteErrorCodeSchema, servePreviewInput, servePreviewStream } from "./services/preview-relay.ts";
 export type { PreviewRouteErrorCode } from "./services/preview-relay.ts";

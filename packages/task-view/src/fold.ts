@@ -6,8 +6,10 @@ import type {
   ApprovalId,
   ApprovalOption,
   ClientMessageId,
+  ImagesNotSent,
   MemberId,
   MessageDelivery,
+  MessageFileId,
   MessageIntent,
   PlanEntry,
   QuestionField,
@@ -25,6 +27,7 @@ import type {
 } from "@ostra/protocol";
 
 import type { LiveText } from "./live-text.ts";
+import { messageFileViewOf, noRemovedFiles } from "./message-files.ts";
 import type {
   ApprovalDescriptor,
   ApprovalReceipt,
@@ -32,6 +35,9 @@ import type {
   AppProcessData,
   AttachmentItem,
   AttachmentsData,
+  MessageFileLeftOut,
+  MessageFileSkipped,
+  MessageFileView,
   PullRequestData,
   QuestionStatus,
   SetupData,
@@ -63,6 +69,11 @@ export type FoldOptions = {
   readonly optimistic?: readonly OptimisticMessage[];
   /** The previous result, so unchanged messages keep their identity. */
   readonly previous?: readonly TaskUIMessage[];
+  /**
+   * Milestone 9 (ticket 14): the message files whose blobs are gone (`tasks.files`' `downloadPath:
+   * null`), so their downloads show as removed. Every other file downloads from its route.
+   */
+  readonly removedFiles?: ReadonlySet<MessageFileId>;
 };
 
 type ApprovalRecord = {
@@ -162,8 +173,18 @@ type SetupRecord = {
   dependencyCache?: "warm" | "cold";
 };
 
+/** Milestone 9 (ticket 14): a member's message's files, as the fold builds them: `files.written` updates them. */
+type MessageFilesRecord = {
+  seq: number;
+  files: MessageFileView[];
+  leftOut: MessageFileLeftOut[];
+  imagesNotSent: ImagesNotSent | null;
+  skipped: MessageFileSkipped[];
+};
+
 type Slot =
   | { t: "part"; part: TaskUIPart }
+  | { t: "message-files"; id: string; rec: MessageFilesRecord }
   | { t: "tool"; rec: ToolRecord }
   | { t: "question"; rec: QuestionRecord }
   | { t: "plan"; id: string; entries: PlanEntry[] }
@@ -369,6 +390,12 @@ const slotToPart = (slot: Slot): TaskUIPart => {
   switch (slot.t) {
     case "part":
       return slot.part;
+    case "message-files":
+      return {
+        type: "data-message-files",
+        id: slot.id,
+        data: { seq: slot.rec.seq, files: slot.rec.files.map((file) => ({ ...file })), leftOut: [...slot.rec.leftOut], imagesNotSent: slot.rec.imagesNotSent, skipped: [...slot.rec.skipped] },
+      };
     case "tool":
       return toolPart(slot.rec);
     case "question":
@@ -583,6 +610,10 @@ export const foldTaskEvents = (
   const openApps = new Map<string, { readonly rec: AppProcessRecord; readonly owner: Builder }>();
   // F-121: "the box has no browser" is said once per task.
   let noBrowserShown = false;
+  // Milestone 9 (ticket 14): each message's files, by each file's ID, so the runner's `files.written`
+  // finds the message it wrote them for; and the files whose blobs are gone.
+  const messageFilesOf = new Map<MessageFileId, { readonly rec: MessageFilesRecord; readonly owner: Builder }>();
+  const removedFiles = options.removedFiles ?? noRemovedFiles;
 
   const push = (builder: Builder): Builder => {
     builders.push(builder);
@@ -769,10 +800,26 @@ export const foldTaskEvents = (
         if (first === undefined) sentFirst.set(event.clientMessageId, { seq, intent: event.intent });
         const replayOf = event.replayed === true && first !== undefined ? first : null;
         const intent = event.intent ?? replayOf?.intent;
-        push({
+        const slots: Slot[] = [{ t: "part", part: text(event.text, "done") }];
+        // Milestone 9 (F-148, ticket 14): its files under its words, each with its download, and
+        // what the limits left out. A replay's files keep their folder: the first message's number.
+        const files = event.files ?? [];
+        const leftOut = event.filesLeftOut ?? [];
+        let filesRecord: MessageFilesRecord | null = null;
+        if (files.length > 0 || leftOut.length > 0) {
+          filesRecord = {
+            seq: replayOf?.seq ?? seq,
+            files: files.map((file) => messageFileViewOf(stored.taskId, file, removedFiles.has(file.fileId))),
+            leftOut: leftOut.map((note) => ({ name: note.name, reason: note.reason, size: note.size ?? null })),
+            imagesNotSent: event.imagesNotSent ?? null,
+            skipped: [],
+          };
+          slots.push({ t: "message-files", id: `files:${String(seq)}`, rec: filesRecord });
+        }
+        const owner = push({
           id: `user:${event.clientMessageId}`,
           role: "user",
-          slots: [{ t: "part", part: text(event.text, "done") }],
+          slots,
           meta: {
             firstSeq: seq,
             lastSeq: seq,
@@ -790,6 +837,9 @@ export const foldTaskEvents = (
             },
           },
         });
+        if (filesRecord !== null) {
+          for (const file of files) messageFilesOf.set(file.fileId, { rec: filesRecord, owner });
+        }
         break;
       }
       case "turn.started": {
@@ -1316,9 +1366,37 @@ export const foldTaskEvents = (
       case "app.started_by":
         // Protocol minor 7 (milestone 8, ADR 0068). No row: the preview pane (ticket 21) reads them.
         break;
-      case "files.written":
+      case "files.written": {
+        // Milestone 9 (ticket 14): what the runner wrote into the box, onto the messages the files
+        // are of. A file written clears an earlier skip (a fresh box writes every file again); a
+        // skipped one is named under its message with why. A prompt whose images went as files
+        // because the agent advertised none says so under its message.
+        const touched = new Set<MessageFilesRecord>();
+        for (const written of event.files) {
+          const found = messageFilesOf.get(written.fileId);
+          if (found === undefined) continue;
+          found.rec.skipped = found.rec.skipped.filter((skip) => skip.fileId !== written.fileId);
+          touched.add(found.rec);
+          touch(found.owner, seq);
+        }
+        for (const skip of event.skipped) {
+          const found = messageFilesOf.get(skip.fileId);
+          const file = found?.rec.files.find((one) => one.fileId === skip.fileId);
+          if (found === undefined || file === undefined) continue;
+          found.rec.skipped = [...found.rec.skipped.filter((one) => one.fileId !== skip.fileId), { fileId: skip.fileId, name: file.name, reason: skip.reason }];
+          touched.add(found.rec);
+          touch(found.owner, seq);
+        }
+        const [only] = touched;
+        if (event.imagesAsFiles !== null && touched.size === 1 && only?.files.some((file) => file.asImage) === true) {
+          only.files = only.files.map((file) => ({ ...file, asImage: false }));
+          only.imagesNotSent = "agent";
+        }
+        break;
+      }
       case "ticket.context_read":
-        // Protocol minor 8 (milestone 9, ADR 0070). No row until the thread draws them (ticket 16).
+        // Protocol minor 8 (milestone 9, ADR 0070): server-only; "What the agent got" reads the
+        // rounds from `tasks.ticketContext` (ticket 14), and the thread draws it (ticket 16).
         break;
       case "subagent.started": {
         // F-138: placed in the tree of its parent's turn, or of the turn of the call that started it.

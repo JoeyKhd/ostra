@@ -114,6 +114,10 @@ const convertPart = (part: TaskUIPart): ThreadPart | null => {
     case "reasoning-file":
     case "steering-message":
       return null;
+    // Milestone 9 (ticket 14): a member's message's files, from the fold. The thread draws them under
+    // the message from the fold's part (ticket 16); assistant-ui's user content takes none.
+    case "data-message-files":
+      return null;
     default:
       return part satisfies never;
   }

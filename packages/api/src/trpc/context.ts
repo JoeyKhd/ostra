@@ -1,6 +1,6 @@
 import type { Db } from "@ostra/db";
 import type { Logger } from "@ostra/adapter-sdk";
-import type { LinearAppKit, MemberScope, PanelPreviewTokens, Ports, PreviewDomainProbe, ServerSettings } from "@ostra/domain";
+import type { LinearAppKit, MemberScope, MessageFilesDeps, PanelPreviewTokens, Ports, PreviewDomainProbe, ServerSettings } from "@ostra/domain";
 
 import type { OstraAuth } from "../auth/create-auth.ts";
 import { loadMemberContext, resolveSession } from "../auth/scope.ts";
@@ -10,6 +10,7 @@ import type { AgentEffort } from "../services/agent-effort.ts";
 import type { BlobStoreView } from "../services/blob-store-view.ts";
 import type { AppStarter } from "../services/core-app-start.ts";
 import type { EmailDirectory } from "../services/email.ts";
+import type { MessageFileUploader } from "../services/panel-files.ts";
 import type { TrackerDirectory } from "../services/trackers.ts";
 import type { StreamHub } from "../stream/hub.ts";
 
@@ -61,6 +62,9 @@ export type ApiSettings = Pick<
   | "library"
   // Memory (F-111): a task's proposal cap, which the proposals panel shows (`1 of 20`).
   | "memoryProposalsPerTask"
+  // Milestone 9 (F-148, F-149, ticket 14): a message's and a ticket's file limits, for the box,
+  // the upload route and every send.
+  | "files"
 >;
 
 /**
@@ -133,6 +137,13 @@ export type ApiDeps = {
   readonly streamRecheckMs?: number;
   /** Milestone 8 (F-145, F-146, ticket 30): the library's calls out. */
   readonly library: ApiLibraryDeps;
+  /**
+   * Milestone 9 (F-148, ticket 14): what every send binds its files with: the message limits
+   * (`settings.files`) and which agents take images in their prompt (`panelMessageFilesDeps`).
+   */
+  readonly messageFiles: MessageFilesDeps;
+  /** Milestone 9 (F-148, ticket 14): a member's upload, to core's `POST /panel/v1/files` (`corePanelFileUploader`). */
+  readonly fileUploader: MessageFileUploader;
 };
 
 /** What each request resolves once: the session, and the member it is acting as. */

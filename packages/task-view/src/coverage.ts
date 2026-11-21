@@ -106,7 +106,8 @@ export const foldCoverage = {
   "preview.link_created": "no row (milestone 8)",
   "preview.link_revoked": "no row (milestone 8)",
   "app.started_by": "no row (milestone 8)",
-  // Protocol minor 8 (milestone 9, ADR 0070): no row until ticket 16 draws them.
-  "files.written": "no row (milestone 9)",
-  "ticket.context_read": "no row (milestone 9)",
+  // Protocol minor 8 (milestone 9, ADR 0070): the runner's writes land on their messages' files
+  // (ticket 14); a read of the ticket is `tasks.ticketContext`'s, drawn by ticket 16.
+  "files.written": "user message files",
+  "ticket.context_read": "no row (milestone 9: tasks.ticketContext)",
 } as const satisfies Record<TaskEventKind, string>;

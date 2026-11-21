@@ -29,6 +29,7 @@ import type { OpenCodeBinary } from "./binary.ts";
 import { buildAgentEnv, buildCliEnv, launchFiles, ownFolderSpellings, taskDirs } from "./config.ts";
 import { OPENCODE_ON_VARIANT, OPENCODE_REASONING_EFFORT, openCodeEffortLevels } from "./effort.ts";
 import { OSTRA_MCP_SERVER } from "./permissions.ts";
+import { OPENCODE_PROMPT_IMAGES } from "./prompt-images.ts";
 import { createTodoTracker } from "./todo-plan.ts";
 import type { TodoTracker } from "./todo-plan.ts";
 
@@ -128,8 +129,9 @@ export class OpenCodeAdapter extends AgentAdapter {
     subagents: "background",
     // Milestone 9 (ADR 0070): OpenCode advertises `promptCapabilities.image`, and shows an image to
     // a model whose inputs its config and catalog name (`modelInputModalities`, ticket 09); to one
-    // they don't, it sends an error line, so the driver sends images only to such a model.
-    promptImages: true,
+    // they don't, it sends an error line, so the driver sends images only to such a model. The panel
+    // reads the same declaration (`@ostra/adapter-opencode/prompt-images`).
+    promptImages: OPENCODE_PROMPT_IMAGES,
   };
 
   /** The repo files OpenCode reads its project config from, hidden without `projectConfigOverride` (Q171). */

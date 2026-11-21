@@ -13,8 +13,8 @@ import type { Transition } from "./transition.ts";
 /**
  * A member's upload: `uploaded` (the member's, in a project, no task's) until a message takes it,
  * `sent` (its task's, at its place in the box), or `expired` when no message took it within a day
- * (`files.sweep-unsent`, which deletes it and its blobs). A member's "remove" before sending
- * deletes it (`discardUpload`): no state.
+ * (`files.sweep-unsent`, which deletes its blobs), or at once when its member removes it before
+ * sending (`discardUpload`, ticket 14: the sweep's next pass deletes its blobs).
  */
 export type MemberFileLifecycle =
   | { readonly state: Extract<DbEnum.MessageFileState, "uploaded"> }
@@ -43,7 +43,7 @@ export type MemberFileInput =
       readonly asImage: boolean;
       readonly at: number;
     }
-  /** The sweep found it unsent past its day. */
+  /** The sweep found it unsent past its day, or its member removed it before sending (`discardUpload`). */
   | { readonly type: "expire"; readonly at: number };
 
 export const transitionMemberFile = (file: MemberFileLifecycle, input: MemberFileInput): Transition<MemberFileLifecycle> => {

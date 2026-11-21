@@ -1,3 +1,4 @@
+import type { FileTextFailureReason } from "@ostra/protocol";
 import { z } from "zod";
 
 import type { DocumentKind } from "./kinds.ts";
@@ -36,3 +37,7 @@ export const workerAnswerSchema = z.discriminatedUnion("type", [
 
 // The schema reads exactly what the worker sends.
 workerAnswerSchema satisfies z.ZodType<WorkerAnswer>;
+
+// Ticket 14: every reason the reader gives is one the protocol names, so the panel words each
+// (`FileTextFailureReason`) without importing core.
+textFailureReasons satisfies readonly FileTextFailureReason[];

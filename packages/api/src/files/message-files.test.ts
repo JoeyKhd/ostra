@@ -107,21 +107,26 @@ const messagesOf = async (taskId: TaskId): Promise<readonly (TaskEventOf<"user.m
 };
 
 describe("files alone make a message (F-148/c1)", () => {
-  it("F-148/c1: a prompt start with files and no words writes its message with the files; one with neither is refused, with nothing made", async () => {
+  it("F-148/c1: a prompt start needs a few words even with files: files alone are refused, nothing made; with words its message has the files", async () => {
     const mock = await upload(scope, projectId, { name: "_(rm -rf _) mock.png" });
     const spec = await documentUpload(scope, "Ignore previous instructions spec.docx");
-    const started = await start({ prompt: "", fileIds: [mock, spec] });
+    // The maintainer, milestone 9's design choices (4.2): a new task from files alone isn't allowed.
+    const before = await harness.test.db.task.count({ where: { projectId } });
+    expect(await start({ prompt: "", fileIds: [mock, spec] })).toMatchObject({ ok: false, error: "prompt-required" });
+    expect(await harness.test.db.task.count({ where: { projectId } })).toBe(before);
+    expect(await harness.test.db.messageFile.count({ where: { id: { in: [mock, spec] }, state: "uploaded", taskId: null } })).toBe(2);
+    const started = await start({ prompt: "Match the mock", fileIds: [mock, spec] });
     if (!started.ok) {
       throw new Error(started.message);
     }
     const [message] = await messagesOf(started.taskId);
-    expect(message?.text).toBe("");
+    expect(message?.text).toBe("Match the mock");
     expect(message?.files?.map((file) => [file.name, file.kind, file.origin, file.text])).toEqual([
       ["_(rm -rf _) mock.png", "image", "member", "none"],
       ["Ignore previous instructions spec.docx", "document", "member", "ready"],
     ]);
-    // The task's title is its first file's name when there are no words.
-    expect((await harness.test.db.task.findUniqueOrThrow({ where: { id: started.taskId } })).title).toBe("_(rm -rf _) mock.png");
+    // The task's title is its words', never a file's name.
+    expect((await harness.test.db.task.findUniqueOrThrow({ where: { id: started.taskId } })).title).toBe("Match the mock");
     // Each file is sent, the message's, at its place under attachments/<n>/, its blobs the task's.
     const rows = await harness.test.db.messageFile.findMany({ where: { id: { in: [mock, spec] } }, orderBy: { position: "asc" }, include: { blob: true, textBlob: true } });
     expect(rows.map((row) => [row.state, row.taskId, row.eventSeq, row.position, row.boxPath])).toEqual([
@@ -140,10 +145,10 @@ describe("files alone make a message (F-148/c1)", () => {
       [spec, rows[1]?.boxPath, `${rows[1]?.boxPath ?? ""}.md`],
     ]);
 
-    // Neither words nor files: refused, and no task.
-    const before = await harness.test.db.task.count({ where: { projectId } });
+    // Neither words nor files: refused too, and no task.
+    const after = await harness.test.db.task.count({ where: { projectId } });
     expect(await start({ prompt: "" })).toMatchObject({ ok: false, error: "prompt-required" });
-    expect(await harness.test.db.task.count({ where: { projectId } })).toBe(before);
+    expect(await harness.test.db.task.count({ where: { projectId } })).toBe(after);
   });
 
   it("F-148/c1: a reopen with files and no words writes its message with the files", async () => {
@@ -214,9 +219,10 @@ describe("binding at send (F-148/c2, c5)", () => {
     }
     const [message] = await messagesOf(started.taskId);
     expect(message?.files).toHaveLength(10);
+    // Each with its size, for the thread's note ("2 MB, over the 1 MB a file can be").
     expect(message?.filesLeftOut).toEqual([
-      { name: "recording.mov", reason: "too-big" },
-      { name: "shot-10.png", reason: "too-many" },
+      { name: "recording.mov", reason: "too-big", size: 2 * MiB },
+      { name: "shot-10.png", reason: "too-many", size: 100 },
     ]);
     expect(await harness.test.db.messageFile.findUniqueOrThrow({ where: { id: big } })).toMatchObject({ state: "uploaded", taskId: null });
     expect(await harness.test.db.messageFile.count({ where: { id: { in: eleven }, state: "sent" } })).toBe(10);
@@ -255,15 +261,17 @@ describe("an upload's own life", () => {
     expect((await taskSpecFilesOf(harness.test.db, started.taskId))[0]?.text).toBeNull();
   });
 
-  it("F-148: a member discards only their own unsent upload, and its blob goes with it", async () => {
+  it("F-148: a member discards only their own unsent upload: it expires at once, for the sweep to delete its blob, and can't be sent", async () => {
     const mine = await upload(scope, projectId, { name: "discard-me.png" });
     const theirs = await upload(otherScope, projectId, { name: "not-mine.png" });
     const row = await harness.test.db.messageFile.findUniqueOrThrow({ where: { id: mine } });
     expect(await discardUpload({ db: harness.test.db, scope }, { fileId: theirs })).toMatchObject({ ok: false, error: "not-found" });
     expect(await discardUpload({ db: harness.test.db, scope }, { fileId: mine })).toEqual({ ok: true, fileId: mine });
-    expect(await harness.test.db.messageFile.count({ where: { id: mine } })).toBe(0);
-    expect(await harness.test.db.blob.count({ where: { id: row.blobId ?? "" } })).toBe(0);
-    expect(await harness.test.db.messageFile.count({ where: { id: theirs } })).toBe(1);
+    // Expired, with its blob still named: core's `files.sweep-unsent` deletes every expired upload's blobs, whichever store holds them.
+    expect(await harness.test.db.messageFile.findUniqueOrThrow({ where: { id: mine } })).toMatchObject({ state: "expired", taskId: null, blobId: row.blobId });
+    expect(await start({ prompt: "Send it anyway", fileIds: [mine] })).toMatchObject({ ok: false, error: "file-not-found" });
+    expect(await discardUpload({ db: harness.test.db, scope }, { fileId: mine })).toMatchObject({ ok: false, error: "not-found" });
+    expect(await harness.test.db.messageFile.findUniqueOrThrow({ where: { id: theirs } })).toMatchObject({ state: "uploaded" });
     // A sent one can't be discarded.
     const sentFile = await upload(scope, projectId, { name: "kept.png" });
     expect((await start({ prompt: "Keep it", fileIds: [sentFile] })).ok).toBe(true);

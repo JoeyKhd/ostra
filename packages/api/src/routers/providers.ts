@@ -1,4 +1,15 @@
-import { BUILT_IN_PROFILE_ADAPTER, loadListedModelsInTx, resolveProjectModel, syncProviderModels, addModelProvider, setModelPrice, setModelReasoningInTx } from "@ostra/domain";
+import {
+  BUILT_IN_PROFILE_ADAPTER,
+  loadListedModelsInTx,
+  modelImageInputSchema,
+  modelImageInputView,
+  resolveProjectModel,
+  syncProviderModels,
+  addModelProvider,
+  setModelImageInput,
+  setModelPrice,
+  setModelReasoningInTx,
+} from "@ostra/domain";
 import {
   addModelProviderInputSchema,
   apiFormatSchema,
@@ -120,6 +131,13 @@ const modelViewSchema = z.object({
     levels: z.array(effortLevelViewSchema),
     reasoningPriceDiffers: z.boolean(),
   }),
+  /**
+   * Milestone 9 (F-148/c5, ADR 0070, Q335, ticket 14): whether the model sees images: what applies
+   * (`imageInput`: the admin's "Reads images", then the catalog's; unknown counts as no), what
+   * models.dev's `modalities.input` says (`catalogImageInput`), and the admin's word (`null`:
+   * follow the catalog). `providers.setModelImageInput` sets or clears it.
+   */
+  images: z.object({ imageInput: modelImageInputSchema, catalogImageInput: modelImageInputSchema, adminImageInput: z.boolean().nullable() }),
 });
 
 /**
@@ -401,8 +419,25 @@ export const providersRouter = router({
             levels: toLevelViews(levelsOfModel(ctx.deps.agentEffort, adapter, { ...row, provider: { apiFormat: provider.apiFormat } })),
             reasoningPriceDiffers: reasoningPriceDiffersOf(entry),
           },
+          images: modelImageInputView(row),
         };
       });
+    }),
+
+  /**
+   * Milestone 9 (F-148/c5, ADR 0070, Q335, ticket 14): an organization admin's "Reads images" on a
+   * model: `true` it reads images, `false` it doesn't, `null` to follow the catalog again. It wins
+   * over the catalog's `modalities.input`, which a catalog refresh keeps writing beside it, so a
+   * refresh never undoes it. A change is an audit entry (`model.image-input-changed`); the next
+   * message to the model decides its images by it.
+   */
+  setModelImageInput: adminProcedure
+    .input(z.strictObject({ modelId: modelIdSchema, imageInput: z.boolean().nullable() }))
+    .output(z.object({ changed: z.boolean(), imageInput: modelImageInputSchema, catalogImageInput: modelImageInputSchema, adminImageInput: z.boolean().nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      const { db, ports } = ctx.deps;
+      const set = unwrap(await setModelImageInput({ db, audit: ports.audit, notices: ports.notices }, ctx.scope, input), { "not-found": "NOT_FOUND", forbidden: "FORBIDDEN" });
+      return { changed: set.changed, imageInput: set.imageInput, catalogImageInput: set.catalogImageInput, adminImageInput: set.adminImageInput };
     }),
 
   /**

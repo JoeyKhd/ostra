@@ -468,15 +468,14 @@ A **message file** is a file the agent gets with a message: a member's, attached
 
 ```
  uploaded ──┬──▶ sent      (bound to the message that took it)
-            └──▶ expired   (no message took it within a day: swept, with its blobs)
- (the member's "remove" before sending deletes it)
+            └──▶ expired   (no message took it within a day, or its member removed it: swept, with its blobs)
 ```
 
 | State | Means | Leaves when |
 |---|---|---|
-| **uploaded** | The member's, in a project, no task's; its blobs the project's. Only that member can send or discard it. A member holds at most twice `OSTRA_MESSAGE_FILES_MAX` in a project at once, and core refuses the next upload | A message of that member in that project takes it, within the limits again (→ sent); left out at send, it stays an upload. A day passes unsent (→ expired, deleted by `files.sweep-unsent`) |
+| **uploaded** | The member's, in a project, no task's; its blobs the project's. Only that member can send or discard it. A member holds at most twice `OSTRA_MESSAGE_FILES_MAX` in a project at once, and core refuses the next upload | A message of that member in that project takes it, within the limits again (→ sent); left out at send, it stays an upload. A day passes unsent, or the member removes it from the box (`files.discard`) (→ expired, its blobs deleted by `files.sweep-unsent`) |
 | **sent** | Its message's: its task, its place in the message and in the box, and whether it went to the model as an image too | Never |
-| **expired** | Its blobs deleted, the row kept as its record; a store that didn't answer leaves them for the next hour's sweep | Never |
+| **expired** | No message can take it. Its blobs deleted by the sweep (removed by its member, within the hour), the row kept as its record; a store that didn't answer leaves them for the next hour's sweep | Never |
 
 **A ticket's file** is what one read of the ticket made of a file it holds.
 

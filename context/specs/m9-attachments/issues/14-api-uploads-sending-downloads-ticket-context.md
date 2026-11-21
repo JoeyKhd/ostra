@@ -1,6 +1,6 @@
 # 14: API: uploads, sending with files, downloads and the ticket's context
 
-Status: ready-for-agent
+Status: done
 Builder: api
 Blocked by: 10, 11, 12
 Features: F-148, F-149, F-150
@@ -21,15 +21,24 @@ Spec: `../spec.md`, sections 4 and 5; ADR 0070
 
 ## Done when
 
-- [ ] Tests named for `F-148/c1`: a message with files and no words is sent; files sent with `create`, `send` (queue and interrupt) and `reopen`; a file another member uploaded can't be sent.
-- [ ] Tests named for `F-148/c2`: an upload over the per-file limit is refused before core is asked; a send over a limit leaves out what's over and the thread's message says so.
-- [ ] Tests named for `F-148/c3`: the download's headers for a PNG, an SVG, a `.docx` and a `.html`; the same 404 for each outsider case (break-it: serve the stored type, and the `.html` case fails).
-- [ ] Tests named for `F-148/c5`: `model.imageInput` for each case, and an admin's override changing it; a member who isn't an admin can't set it.
-- [ ] Tests named for `F-148/c9`: a send with files to a minor-7 runner's session is refused with the box's words.
-- [ ] Tests named for `F-149/c3,c5,c8`: `ticketContext` shows the rounds; Retry and Send ticket updates by the driver only.
-- [ ] Tests named for `F-150/c1`: a document's file view says `text: ready` with its words.
-- [ ] The isolation matrices' new rows pass.
-- [ ] Checks for `packages/api` and `apps/web`'s typecheck and lint pass (spec section 10).
-- [ ] Committed as `✨ add file uploads, sends and downloads`.
+- [x] Tests named for `F-148/c1`: a message with files and no words is sent; files sent with `create`, `send` (queue and interrupt) and `reopen`; a file another member uploaded can't be sent.
+- [x] Tests named for `F-148/c2`: an upload over the per-file limit is refused before core is asked; a send over a limit leaves out what's over and the thread's message says so.
+- [x] Tests named for `F-148/c3`: the download's headers for a PNG, an SVG, a `.docx` and a `.html`; the same 404 for each outsider case (break-it: serve the stored type, and the `.html` case fails).
+- [x] Tests named for `F-148/c5`: `model.imageInput` for each case, and an admin's override changing it; a member who isn't an admin can't set it.
+- [x] Tests named for `F-148/c9`: a send with files to a minor-7 runner's session is refused with the box's words.
+- [x] Tests named for `F-149/c3,c5,c8`: `ticketContext` shows the rounds; Retry and Send ticket updates by the driver only.
+- [x] Tests named for `F-150/c1`: a document's file view says `text: ready` with its words.
+- [x] The isolation matrices' new rows pass.
+- [x] Checks for `packages/api` and `apps/web`'s typecheck and lint pass (spec section 10).
+- [x] Committed as `✨ add file uploads, sends and downloads`.
 
 ## Comments
+
+- **2026-11-22, done** (`✨ add file uploads, sends and downloads`). What landed, and where it differs from the text above:
+  - **The maintainer's call that overrides this ticket** (the approved designs' choices, 4.2): a new task from files alone isn't allowed. `tasks.create` needs words even when files come (`createPromptTask` refuses `prompt-required`, and the title fallback to the first file's name is gone); `tasks.send` and `tasks.reopen` still take files with no words. Spec section 4 ("Sending") and 5.4 say so.
+  - **Routes:** `POST /api/projects/<projectId>/files` (`serveMessageFileUpload`) and `GET /api/tasks/<taskId>/files/<fileId>` (`serveTaskFile`), with the web app's handlers. The upload's answer and refusals are `@ostra/domain/file-uploads` (`recordedUploadSchema`, `uploadRefusalSchema`, client-safe); core is reached through `corePanelFileUploader` (90 s, over core's wait for a document's text), the runtime's default under the secrets key.
+  - **`files.discard` expires the upload** instead of deleting its row and blobs: the panel deletes no blob (ADR 0043), and core's `files.sweep-unsent` already deletes every expired upload's blobs from whichever store holds them. `domain-model.md` says so.
+  - **Contract additions** (protocol, additive, every caller updated): `user.message`'s files gain optional `textWords` and `textReason` (`fileTextFailureReasonSchema`, core's reader's codes and `not-read`, checked against core's own list at compile time), and a left-out file optional `size`. A ticket's files are positioned in the ticket's order (`TicketFileSource.place`), so "What the agent got" lists given, left out and failed where the ticket has them.
+  - **The thread:** the fold makes a `data-message-files` part under each member's message (`MessageFileView`: the event's file, its `downloadPath` from `messageFileDownloadPath`, `textWords`, `textReason`; `leftOut` with sizes; `imagesNotSent`; `files.written`'s skips; the message's number), and `FoldOptions.removedFiles` marks files whose blob is gone (`tasks.files` says which). The panel's renderers skip the part until ticket 16 draws it.
+  - **Images:** `@ostra/adapter-opencode/prompt-images` declares OpenCode's `promptImages` without its process code, so the panel's sends decide images as core's do (`panelMessageFilesDeps`).
+  - **Out of reach here:** a ticket file's failed download keeps no tracker status, so `tasks.ticketContext`'s `failure.status` is always `null` (its tries and last try's time come from the retry chain); a comment's author is matched for round 1's files only (later rounds' comments carry no IDs).

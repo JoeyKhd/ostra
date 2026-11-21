@@ -266,6 +266,9 @@ export * from "./files/limits.ts";
 export * from "./files/images.ts";
 export * from "./files/panel-file-token.ts";
 export * from "./files/message-files.ts";
+// Ticket 14: the upload route's answer (client-safe, `@ostra/domain/file-uploads`), and a model's "Reads images".
+export * from "./files/upload-answer.ts";
+export * from "./files/model-image-input.ts";
 // Milestone 9 (ticket 06, ADR 0070): a ticket's files and its changes, and reading it again.
 export * from "./tickets/ticket-files.ts";
 export * from "./tickets/read-ticket.ts";

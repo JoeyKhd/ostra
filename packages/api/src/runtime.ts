@@ -13,6 +13,9 @@ import { loadServerSecrets } from "./auth/server-secrets.ts";
 import type { CatalogSource } from "./catalog/catalog-source.ts";
 import { shippedAgentEffort } from "./services/agent-effort.ts";
 import type { AgentEffort } from "./services/agent-effort.ts";
+import { panelMessageFilesDeps } from "./services/agent-images.ts";
+import { corePanelFileUploader } from "./services/panel-files.ts";
+import type { MessageFileUploader } from "./services/panel-files.ts";
 import type { BlobStoreView } from "./services/blob-store-view.ts";
 import { coreAppStarter } from "./services/core-app-start.ts";
 import { accountMailIsOn, noEmailDirectory } from "./services/email.ts";
@@ -62,6 +65,12 @@ export type ApiRuntimeInput = {
   readonly serverVersion?: string;
   /** The fetch the library's calls out go through. Unset, the platform's. */
   readonly libraryFetch?: typeof fetch;
+  /**
+   * Milestone 9 (F-148, ticket 14): how a member's upload reaches core. Unset, core's
+   * `POST /panel/v1/files` at `OSTRA_CORE_INTERNAL_URL`, each file with a token signed under
+   * `previewSecret` (the secrets key core holds too): without that key, core refuses every upload.
+   */
+  readonly fileUploader?: MessageFileUploader;
   readonly logger: Logger;
 };
 
@@ -124,6 +133,8 @@ export const createApiRuntime = async (input: ApiRuntimeInput): Promise<ApiRunti
     },
     appStart: coreAppStarter({ coreUrl: settings.coreInternalUrl, secret: previewSecret, logger: input.logger }),
     library: { fetch: input.libraryFetch ?? globalThis.fetch, serverVersion: input.serverVersion ?? "0.0.0" },
+    messageFiles: panelMessageFilesDeps(settings.files),
+    fileUploader: input.fileUploader ?? corePanelFileUploader({ coreUrl: settings.coreInternalUrl, secret: previewSecret, logger: input.logger }),
   };
 
   return {

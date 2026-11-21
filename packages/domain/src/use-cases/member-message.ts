@@ -86,6 +86,12 @@ export type SendMemberMessageResult = UseCaseResult<
 /** The session states a message is steered into, rather than reopening the task. */
 const GOING_SESSION_STATES = ["starting", "running", "waiting", "idle"] as const;
 
+/**
+ * Milestone 9 (Q340): the box's words when a message with files would be steered to a runner below
+ * protocol minor 8, which never writes them into the box: the send is refused, nothing written.
+ */
+export const RUNNER_NEEDS_UPGRADE_FOR_FILES = "This task's runner needs upgrading to take files: update it, or reopen the task on another runner";
+
 /** A message longer than a steer may carry is cut, so a send never fails on its length. */
 const fitText = (text: string): string => (text.length <= runnerLimits.steerTextMaxChars ? text : text.slice(0, runnerLimits.steerTextMaxChars));
 
@@ -228,7 +234,7 @@ export const sendMemberMessageInTx = async (
   const steered = going || (lease?.purpose === "app" && session?.boxId === lease.boxId) ? lease : null;
   const hasFiles = fileIds.length > 0 || (input.ticketFiles?.stored.length ?? 0) > 0;
   if (hasFiles && steered !== null && !(await runnerTakesFilesInTx(tx, steered.runnerId))) {
-    return { ok: false, error: "runner-needs-upgrade", message: "This task's runner needs upgrading to take files: update it, or reopen the task on another runner" };
+    return { ok: false, error: "runner-needs-upgrade", message: RUNNER_NEEDS_UPGRADE_FOR_FILES };
   }
   // Milestone 6 (ADR 0041, F-101): a person acted, so the automatic turns count from nothing again.
   await recordPersonActionInTx(tx, task.id, new Date(deps.clock.now()));

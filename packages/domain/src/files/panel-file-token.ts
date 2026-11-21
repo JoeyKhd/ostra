@@ -1,23 +1,12 @@
 import { createHmac } from "node:crypto";
 
 import { base64urlMacEqual } from "@ostra/adapter-sdk";
-import {
-  fileTextStateSchema,
-  memberIdSchema,
-  messageFileIdSchema,
-  messageFileKindSchema,
-  organizationIdSchema,
-  parseJson,
-  projectIdSchema,
-  runnerLimits,
-  safeFileNameSchema,
-  sha256HexSchema,
-} from "@ostra/protocol";
+import { memberIdSchema, organizationIdSchema, parseJson, projectIdSchema, runnerLimits, sha256HexSchema } from "@ostra/protocol";
 import type { MemberId, OrganizationId, ProjectId, Sha256Hex } from "@ostra/protocol";
 import { z } from "zod";
 
 import { PANEL_BLOB_TOKEN_PREFIX } from "../panel-blob-token.ts";
-import type { RecordedUpload } from "./message-files.ts";
+import { recordedUploadSchema } from "./upload-answer.ts";
 
 // A member's upload goes through the web app to core (ADR 0043 amended, ADR 0070, Q338): the web
 // app checks the member can open the project, the file's size against the limit and the member's
@@ -108,22 +97,8 @@ export const PANEL_FILE_NAME_HEADER_MAX = 2048;
  * What core answers when it stored a member's upload: the file, as the tray shows it, and its
  * text's state (`none`, `off`, `ready` with its words, `failed` with the reader's reason).
  */
-export const panelFileResponseSchema = z.strictObject({
-  fileId: messageFileIdSchema,
-  name: safeFileNameSchema,
-  kind: messageFileKindSchema,
-  contentType: z.string().min(1).max(255),
-  size: z.number().int().min(1),
-  text: z.strictObject({
-    state: fileTextStateSchema,
-    reason: z.string().max(64).nullable(),
-    words: z.number().int().nonnegative().nullable(),
-  }),
-});
+export const panelFileResponseSchema = recordedUploadSchema;
 export type PanelFileResponse = z.infer<typeof panelFileResponseSchema>;
-
-// The schema reads exactly what `recordUpload` answers.
-panelFileResponseSchema satisfies z.ZodType<RecordedUpload>;
 
 /**
  * Why core refused an upload, each a code the panel words (ticket 15):

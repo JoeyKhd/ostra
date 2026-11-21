@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { mapMember } from "@ostra/db";
 import { Prisma } from "@ostra/db";
@@ -7,6 +7,7 @@ import { saveDraft } from "@ostra/domain";
 import {
   agentProfileIdSchema,
   clientMessageIdSchema,
+  connectionIdSchema,
   draftIdSchema,
   previewAccessIdSchema,
   repoFullNameSchema,
@@ -25,12 +26,15 @@ import {
   seedLease,
   seedAnnouncedPreview,
   seedAttachment,
+  seedBoard,
   seedLinearConnection,
   seedPersonalRunner,
   seedPreviewableTask,
   seedProject,
   seedTask,
+  seedTicket,
   trpcFailure,
+  uploadThroughRoute,
 } from "../testing/index.ts";
 import type { ApiHarness, AppCaller } from "../testing/index.ts";
 
@@ -166,6 +170,8 @@ const ORGANIZATION_ADMIN_WRITES: Readonly<Record<string, readonly string[]>> = {
     "providers.create",
     "providers.refresh",
     "providers.setDefaultList",
+    // Milestone 9 (F-148/c5, ticket 14): a model's "Reads images".
+    "providers.setModelImageInput",
     "providers.setModelPrice",
     "providers.testConnection",
     "providers.update",
@@ -813,5 +819,76 @@ describe("the App tab's and the thread's writes, by each role (F-140, F-121)", (
     expect(seen).toEqual(table);
     // A refused write changed nothing: no proposal is the outsider's, and no draft image came from outside.
     expect(await harness.test.db.auditEntry.count({ where: { projectId, actorId: { in: [outsider.id, driver.id] }, action: "environment.app-processes-saved" } })).toBe(0);
+  });
+});
+
+// ---------- a message's files and a ticket's context (milestone 9, F-148, F-149) ----------
+
+describe("a message's files and a ticket's presses, by each role (F-148, F-149)", () => {
+  type Role = "organization admin" | "project admin" | "project member" | "outsider" | "another organization";
+  const roles: readonly Role[] = ["organization admin", "project admin", "project member", "outsider", "another organization"];
+  const PNG = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64"));
+
+  it("F-148/c1, F-149/c3,c8: removing an unsent upload is its uploader's alone; Retry and Send ticket updates are the driver's; outside the project, NOT_FOUND", async () => {
+    const { projectId, projectAdmin, driver } = await restrictedProject("file-writes");
+    const organizationId = harness.fixture.a.organization.id;
+    const outsider = await seedMember();
+    const callerOf = (role: Role): Promise<AppCaller> => {
+      switch (role) {
+        case "organization admin":
+          return harness.as(harness.fixture.a.admin);
+        case "project admin":
+          return harness.as(projectAdmin);
+        case "project member":
+          return harness.as(driver);
+        case "outsider":
+          return harness.as(outsider);
+        case "another organization":
+          return harness.as(harness.fixture.b.admin);
+        default:
+          return role satisfies never;
+      }
+    };
+    // The organization's Linear connection: an earlier case may have made it.
+    const linear = await harness.test.db.connection.findFirst({ where: { organizationId, kind: "linear" }, select: { id: true } });
+    const connectionId = linear === null ? await seedLinearConnection(harness) : connectionIdSchema.parse(linear.id);
+    const boardId = await seedBoard(harness, { projectId, connectionId, externalId: `team-${label("files")}` });
+    /** What each call needs, fresh: the driver's unsent upload, and a running ticket task the driver drives with a failed file. */
+    const fresh = async () => {
+      const upload = await uploadThroughRoute(harness, driver, projectId, { name: "mock.png", bytes: PNG });
+      const ticketId = await seedTicket(harness, { projectId, boardId, connectionId });
+      const task = await seedTask(harness, { organizationId, projectId, state: "running", driverMemberId: driver.id });
+      await harness.test.db.task.update({ where: { id: task.taskId }, data: { ticketId, boardId, ticketKey: "ENG-1", source: "ticket" } });
+      await harness.test.db.messageFile.create({
+        data: { organizationId, projectId, taskId: task.taskId, origin: "ticket", state: "failed", reason: "download-failed", name: "spec.docx", kind: "file", contentType: "application/octet-stream", size: 0, ticketWhere: "attachment", ticketSourceKey: createHash("sha256").update(label("key")).digest("hex") },
+      });
+      return { fileId: upload.fileId, taskId: task.taskId };
+    };
+    type Fresh = Awaited<ReturnType<typeof fresh>>;
+    const writes: Readonly<Record<string, (caller: AppCaller, at: Fresh) => Promise<unknown>>> = {
+      "files.discard": (caller, at) => caller.files.discard({ fileId: at.fileId }),
+      "tasks.ticketUpdates": (caller, at) => caller.tasks.ticketUpdates({ taskId: at.taskId }),
+      "tasks.retryTicketFiles": (caller, at) => caller.tasks.retryTicketFiles({ taskId: at.taskId }),
+    };
+    const outside = { outsider: "NOT_FOUND", "another organization": "NOT_FOUND" } as const;
+    const table: Readonly<Record<string, Readonly<Record<Role, string>>>> = {
+      // Another member's upload is no file of theirs: the same NOT_FOUND as an unknown one.
+      "files.discard": { "organization admin": "NOT_FOUND", "project admin": "NOT_FOUND", "project member": "ok", ...outside },
+      // Only the driver presses; anyone else who can open the task is told to take over.
+      "tasks.ticketUpdates": { "organization admin": "FORBIDDEN", "project admin": "FORBIDDEN", "project member": "ok", ...outside },
+      "tasks.retryTicketFiles": { "organization admin": "FORBIDDEN", "project admin": "FORBIDDEN", "project member": "ok", ...outside },
+    };
+    // The guard: every write of the files router has a row.
+    expect(mutationPaths().filter((path) => path.startsWith("files.") && !Object.hasOwn(writes, path))).toEqual([]);
+    const seen: Record<string, Record<string, string>> = {};
+    for (const [path, write] of Object.entries(writes)) {
+      const row: Record<string, string> = {};
+      for (const role of roles) {
+        const at = await fresh();
+        row[role] = await outcomeOf(async () => write(await callerOf(role), at));
+      }
+      seen[path] = row;
+    }
+    expect(seen).toEqual(table);
   });
 });

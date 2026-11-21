@@ -1,5 +1,6 @@
 import type { FileLimits } from "@ostra/domain/file-limits";
-import type { FileLeftOutReason, FileSkipReason, ImagesNotSent, UserMessageFile } from "@ostra/protocol";
+import type { FileLeftOutReason, FileSkipReason, ImagesNotSent } from "@ostra/protocol";
+import type { MessageFileView } from "@ostra/task-view";
 
 import { formatCount } from "@/lib/format";
 import { plural, t } from "@/lib/messages";
@@ -76,15 +77,11 @@ export const fileMeta = (name: string, size: number): string => `${typeLabel(nam
 
 /**
  * A member's or a ticket's file as the thread draws it: what the `user.message` event recorded
- * (`UserMessageFile`), the panel's download route for it (`null` once the task's retention removed
- * it), and its text's word count when core read one.
+ * (`UserMessageFile`), the panel's download route for it (`null` once its blob is gone), its text's
+ * word count when core read one, and why core couldn't read a document's text (its reader's code,
+ * for `no text`'s tooltip). The fold's and the API's own type (ticket 14), `MessageFileView`.
  */
-export type ThreadFile = UserMessageFile & {
-  readonly downloadPath: string | null;
-  readonly textWords: number | null;
-  /** Why core couldn't read a document's text (its reader's code), for `no text`'s tooltip. */
-  readonly textReason: string | null;
-};
+export type ThreadFile = MessageFileView;
 
 /** `text extracted`'s tooltip: what ostra read out of the file, and what the agent got. */
 export const textExtractedTip = (file: Pick<ThreadFile, "name" | "textWords">, agent: string): string =>

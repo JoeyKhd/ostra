@@ -25,6 +25,7 @@
     "@ostra/db": "workspace:*",
     "@ostra/domain": "workspace:*",
     "@ostra/protocol": "workspace:*",
+    "@ostra/task-view": "workspace:*",
     "@trpc/server": "11.28.6",
     "better-auth": "1.7.25",
     "pg": "8.23.1",

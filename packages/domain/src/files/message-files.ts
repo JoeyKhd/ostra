@@ -2,6 +2,7 @@ import type { Db, Tx } from "@ostra/db";
 import {
   blobIdSchema,
   canSendFiles,
+  fileTextFailureReasonSchema,
   fileTextPathOf,
   isPromptImageContentType,
   messageFileIdSchema,
@@ -40,6 +41,7 @@ import { modelImageInput, promptImagesFor } from "./images.ts";
 import { checkMessageFiles } from "./limits.ts";
 import type { FileLimits } from "./limits.ts";
 import { boxPathFor } from "./places.ts";
+import type { RecordedUpload } from "./upload-answer.ts";
 
 // A member's files (F-148, ADR 0070, spec section 5.4): an upload is recorded as the member's in a
 // project (core's `POST /panel/v1/files`, ticket 10), discarded by its member before sending, and
@@ -88,15 +90,8 @@ export type RecordUploadInput = {
   readonly text: UploadText;
 };
 
-/** What the upload answers the box: the file, and its text's state, a failed one's reason, and a ready one's words. */
-export type RecordedUpload = {
-  readonly fileId: MessageFileId;
-  readonly name: SafeFileName;
-  readonly kind: MessageFileKind;
-  readonly contentType: string;
-  readonly size: number;
-  readonly text: { readonly state: FileTextLifecycle["state"]; readonly reason: string | null; readonly words: number | null };
-};
+// What the upload answers the box is `RecordedUpload` (`recordedUploadSchema`, `upload-answer.ts`):
+// the file, and its text's state, a failed one's reason, and a ready one's words.
 
 /** Records a member's upload, `uploaded`, no task's (core's endpoint, after it stored the blobs). */
 export const recordUpload = async (tx: Tx, input: RecordUploadInput): Promise<RecordedUpload> => {
@@ -126,7 +121,12 @@ export const recordUpload = async (tx: Tx, input: RecordUploadInput): Promise<Re
     kind: input.kind,
     contentType: input.contentType,
     size: input.size,
-    text: { state: text.state, reason: text.state === "failed" ? text.reason : null, words: text.state === "ready" ? text.words : null },
+    text: {
+      state: text.state,
+      // The reader's reasons are the protocol's (`fileTextFailureReasonSchema`); one it doesn't name is a text never stored.
+      reason: text.state === "failed" ? fileTextFailureReasonSchema.catch("not-read").parse(text.reason) : null,
+      words: text.state === "ready" ? text.words : null,
+    },
   };
 };
 
@@ -161,40 +161,46 @@ export const recordUploadWithinCapInTx = async (tx: Tx, input: RecordUploadInput
 export type DiscardUploadDeps = {
   readonly db: Db;
   readonly scope: MemberScope;
-  /** Deletes a blob from its store and its row; by default its row (the Postgres store's chunks go with it). */
-  readonly deleteBlob?: (organizationId: OrganizationId, blobId: BlobId) => Promise<boolean>;
 };
 
 export type DiscardUploadResult = UseCaseResult<{ readonly fileId: MessageFileId }, "not-found">;
 
 /**
- * Deletes a member's own unsent upload, the "remove" before sending, and its blobs with it.
- * Another member's, a sent one or an unknown one is the same `not-found`.
+ * A member's "remove" before sending (ticket 14): their own unsent upload is `expired` at once,
+ * guarded on its state, so no message can take it from then on and it no longer counts against
+ * the member's unsent cap. Its blobs go with core's next `files.sweep-unsent` pass, which deletes
+ * every expired upload's blobs from whichever store holds them (the panel deletes no blob, ADR
+ * 0043). Another member's, a sent one, an expired one or an unknown one is the same `not-found`.
  */
 export const discardUpload = async (deps: DiscardUploadDeps, input: { readonly fileId: MessageFileId }): Promise<DiscardUploadResult> => {
   const { scope } = deps;
-  const blobs = await deps.db.$transaction(async (tx) => {
-    const file = await tx.messageFile.findFirst({
-      where: { id: input.fileId, organizationId: scope.organizationId, memberId: scope.memberId, origin: "member", state: "uploaded" },
-      select: { id: true, blobId: true, textBlobId: true },
-    });
-    if (file === null) {
-      return null;
-    }
-    await tx.messageFile.delete({ where: { id: file.id } });
-    return [file.blobId, file.textBlobId].flatMap((id) => (id === null ? [] : [blobIdSchema.parse(id)]));
+  const expired = await deps.db.messageFile.updateMany({
+    where: { id: input.fileId, organizationId: scope.organizationId, memberId: scope.memberId, origin: "member", state: "uploaded", taskId: null },
+    data: { state: "expired" },
   });
-  if (blobs === null) {
+  if (expired.count === 0) {
     return { ok: false, error: "not-found", message: "No such file" };
   }
-  for (const blobId of blobs) {
-    if (deps.deleteBlob === undefined) {
-      await deps.db.blob.deleteMany({ where: { id: blobId, organizationId: scope.organizationId } });
-    } else {
-      await deps.deleteBlob(scope.organizationId, blobId);
-    }
-  }
   return { ok: true, fileId: input.fileId };
+};
+
+// ---------- a file's text, as the thread shows it ----------
+
+/** A file's text facts as its message records them (ticket 14): a `ready` text's words, a `failed` one's reason. */
+export const textFactsOf = (text: { readonly state: FileTextLifecycle["state"]; readonly words: number | null; readonly reason: string | null }): Pick<UserMessageFile, "textWords" | "textReason"> => {
+  switch (text.state) {
+    case "ready":
+      return text.words === null ? {} : { textWords: text.words };
+    case "failed": {
+      const reason = fileTextFailureReasonSchema.safeParse(text.reason);
+      return reason.success ? { textReason: reason.data } : {};
+    }
+    case "none":
+    case "off":
+      return {};
+    default:
+      return text.state satisfies never;
+  }
 };
 
 // ---------- binding at send ----------
@@ -271,6 +277,8 @@ const uploadSelect = {
   sha256: true,
   blobId: true,
   textState: true,
+  textWords: true,
+  textReason: true,
   textBlobId: true,
   textBlob: { select: { id: true, size: true, sha256: true } },
 } as const;
@@ -284,6 +292,8 @@ type UploadRow = {
   readonly sha256: string | null;
   readonly blobId: string | null;
   readonly textState: FileTextLifecycle["state"];
+  readonly textWords: number | null;
+  readonly textReason: string | null;
   readonly textBlobId: string | null;
   readonly textBlob: { readonly id: string; readonly size: number; readonly sha256: string } | null;
 };
@@ -368,6 +378,7 @@ export const bindMessageFilesInTx = async (tx: Tx, scope: Pick<MemberScope, "org
       origin: "member",
       asImage: asImage.has(file.row.id),
       text: file.row.textState,
+      ...textFactsOf({ state: file.row.textState, words: file.row.textWords, reason: file.row.textReason }),
     });
     const boxFile = boxFileOf(file.row, boxPath);
     if (boxFile !== null) {
@@ -377,7 +388,8 @@ export const bindMessageFilesInTx = async (tx: Tx, scope: Pick<MemberScope, "org
   return {
     ok: true,
     files,
-    filesLeftOut: checked.leftOut.slice(0, runnerLimits.fileNotesMax).map((left) => ({ name: left.name, reason: left.reason })),
+    // Ticket 14: each with its size, so the thread's note says how big it was.
+    filesLeftOut: checked.leftOut.slice(0, runnerLimits.fileNotesMax).map((left) => ({ name: left.name, reason: left.reason, size: left.file.size })),
     imagesNotSent: decision.notSent,
     steer: { files: boxFiles, images: decision.images.filter((id) => boxFiles.some((file) => file.fileId === id)) },
   };
@@ -601,6 +613,11 @@ export type TicketFileSource = {
   readonly sourceKey: string;
   /** The failed file a Retry fetched again. */
   readonly retryOfId?: MessageFileId | undefined;
+  /**
+   * Ticket 14: its place among the files of the read, in the ticket's order, so the thread lists
+   * given, left-out and failed files where the ticket has them. Missing: after the stored ones.
+   */
+  readonly place?: number | undefined;
 };
 
 /** A ticket's file core fetched and stored as a blob of the task: what detection made of it, and its text. */
@@ -662,7 +679,7 @@ export const bindTicketFilesInTx = async (
           sessionId: where.sessionId,
           clientMessageId: where.clientMessageId,
           eventSeq: where.eventSeq,
-          position,
+          position: file.place ?? position,
           name: file.name,
           kind: file.kind,
           contentType: file.contentType,
@@ -698,7 +715,7 @@ export const bindTicketFilesInTx = async (
         sessionId: where.sessionId,
         clientMessageId: where.clientMessageId,
         eventSeq: where.eventSeq,
-        position: files.stored.length + index,
+        position: note.place ?? files.stored.length + index,
         name: note.name,
         kind: "file",
         contentType: "application/octet-stream",
@@ -734,8 +751,13 @@ export const bindTicketFilesInTx = async (
       origin: "ticket",
       asImage: asImage.has(row.id),
       text: row.file.text.state,
+      ...textFactsOf(
+        row.file.text.state === "ready"
+          ? { state: "ready", words: row.file.text.words, reason: null }
+          : { state: row.file.text.state, words: null, reason: row.file.text.state === "failed" ? row.file.text.reason : null },
+      ),
     })),
-    filesLeftOut: files.notes.slice(0, runnerLimits.fileNotesMax).map((note) => ({ name: note.name, reason: note.reason })),
+    filesLeftOut: files.notes.slice(0, runnerLimits.fileNotesMax).map((note) => ({ name: note.name, reason: note.reason, ...(note.size === null ? {} : { size: note.size }) })),
     imagesNotSent: decided.notSent,
     steer: { files: allBoxFiles, images: decided.images.filter((id) => allBoxFiles.some((file) => file.fileId === id)) },
   };

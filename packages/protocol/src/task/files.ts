@@ -201,6 +201,17 @@ export const fileTextStateSchema = z.enum(["ready", "none", "failed", "off"]);
 export type FileTextState = z.infer<typeof fileTextStateSchema>;
 
 /**
+ * Why a document has no text (F-150/c3), as core's reader says it (spec section 5.5): it needs a
+ * password (`encrypted`); it can't be read as its kind (`damaged`); a part, or all of them, past
+ * the cap (`too-big`); a zip of more entries than the cap (`too-many-parts`); a part holding a
+ * `<!DOCTYPE` (`doctype`); past the time a file may take (`timeout`); read, and nothing in it
+ * (`no-text`); no worker free in time (`busy`); or its text never stored (`not-read`). The file
+ * is still attached, marked "no text" with this.
+ */
+export const fileTextFailureReasonSchema = z.enum(["encrypted", "damaged", "too-big", "too-many-parts", "doctype", "timeout", "no-text", "busy", "not-read"]);
+export type FileTextFailureReason = z.infer<typeof fileTextFailureReasonSchema>;
+
+/**
  * Why a file didn't reach the agent: over one file's limit, past the count, past the total,
  * unreadable, a ticket's file whose download failed, or a ticket's file not fetched (a tracker
  * whose `ticketFiles` leaves it out).
@@ -293,13 +304,21 @@ export const userMessageFileSchema = z
     origin: messageFileOriginSchema,
     asImage: z.boolean(),
     text: fileTextStateSchema,
+    /** Ticket 14: a `ready` text's words, for the chip's "text extracted". Missing on a message written before it. */
+    textWords: z.number().int().nonnegative().optional(),
+    /** Ticket 14: why a `failed` text has none, for the chip's "no text". Missing on a message written before it. */
+    textReason: fileTextFailureReasonSchema.optional(),
   })
   .describe("A message's file. Its name is never logged.");
 export type UserMessageFile = z.infer<typeof userMessageFileSchema>;
 
-/** A file left out of a message or a ticket's read, by its safe name, with why. Never logged. */
+/**
+ * A file left out of a message or a ticket's read, by its safe name, with why, and (ticket 14) its
+ * size in bytes when it's known, for the thread's note ("84 MB, over the 10 MB a file can be").
+ * Never logged.
+ */
 export const fileLeftOutSchema = z
-  .strictObject({ name: safeFileNameSchema, reason: fileLeftOutReasonSchema })
+  .strictObject({ name: safeFileNameSchema, reason: fileLeftOutReasonSchema, size: z.number().int().nonnegative().optional() })
   .describe("A file left out. Its name is never logged.");
 export type FileLeftOut = z.infer<typeof fileLeftOutSchema>;
 

@@ -9,7 +9,8 @@ import { z } from "zod";
 // or a model can't take, go as files only, and the prompt and the thread say why.
 
 /** Whether a model sees images: an admin's word, then the catalog's, else `unknown` (counted as no). */
-export type ModelImageInput = "yes" | "no" | "unknown";
+export const modelImageInputSchema = z.enum(["yes", "no", "unknown"]);
+export type ModelImageInput = z.infer<typeof modelImageInputSchema>;
 
 /** The catalog's inputs as the model row keeps them: models.dev's words, the ones ostra doesn't know dropped. */
 const catalogInputsSchema = z.array(z.string()).transform((words) => words.filter((word): word is InputModality => inputModalitySchema.safeParse(word).success));

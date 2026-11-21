@@ -188,11 +188,12 @@ export const fetchTicketFiles = async (
   const notes: TicketFileNote[] = [];
   let given = 0;
   let total = 0;
-  for (const file of files) {
+  for (const [place, file] of files.entries()) {
     if (file.byOstra) {
       continue;
     }
-    const source = { where: file.where, commentId: file.commentId, sourceKey: ticketFileSourceKey(file.url), ...(file.retryOfId === undefined ? {} : { retryOfId: file.retryOfId }) };
+    // Ticket 14: each keeps its place in the ticket's order, given, left out or failed alike.
+    const source = { where: file.where, commentId: file.commentId, sourceKey: ticketFileSourceKey(file.url), place, ...(file.retryOfId === undefined ? {} : { retryOfId: file.retryOfId }) };
     const note = (state: TicketFileNote["state"], reason: TicketFileNote["reason"]): void => {
       notes.push({ ...source, name: safeFileName(file.name, null), state, reason, size: file.size });
     };
@@ -265,10 +266,14 @@ const recordedFileKeys = (earlier: readonly string[], files: TicketFilesToBind):
 ];
 
 /** A round's left-out and failed notes, as `ticket.context_read` holds them. */
-const roundNotes = (notes: readonly TicketFileNote[]): Pick<TaskEventOf<"ticket.context_read">, "leftOut" | "failed"> => ({
-  leftOut: notes.filter((note) => note.state === "left_out").slice(0, runnerLimits.fileNotesMax).map((note) => ({ name: note.name, reason: note.reason })),
-  failed: notes.filter((note) => note.state === "failed").slice(0, runnerLimits.fileNotesMax).map((note) => ({ name: note.name, reason: note.reason })),
-});
+const roundNotes = (notes: readonly TicketFileNote[]): Pick<TaskEventOf<"ticket.context_read">, "leftOut" | "failed"> => {
+  // Ticket 14: each with the size the tracker said, when it said one.
+  const noteOf = (note: TicketFileNote) => ({ name: note.name, reason: note.reason, ...(note.size === null ? {} : { size: note.size }) });
+  return {
+    leftOut: notes.filter((note) => note.state === "left_out").slice(0, runnerLimits.fileNotesMax).map(noteOf),
+    failed: notes.filter((note) => note.state === "failed").slice(0, runnerLimits.fileNotesMax).map(noteOf),
+  };
+};
 
 // ---------- the start's read (round 1) ----------
 

@@ -12,6 +12,7 @@
     "./app-processes": "./src/previews/app-processes.ts",
     "./branch-name": "./src/branch-name.ts",
     "./file-limits": "./src/files/limits.ts",
+    "./file-uploads": "./src/files/upload-answer.ts",
     "./palette": "./src/palette/actions.ts",
     "./preview-host": "./src/previews/host.ts",
     "./theme": "./src/use-cases/theme.ts",

@@ -260,6 +260,10 @@ const procedures: Readonly<Record<string, { readonly input: InputOf; readonly ab
   "review.screen": { input: task, about: "project" },
   "tasks.startCheck": { input: project, about: "project" },
   "tasks.runnerChoices": { input: project, about: "project" },
+  // Milestone 9 (ticket 14): the message box's limits, a task's files and its ticket's context.
+  "files.limits": { input: none, about: "organization" },
+  "tasks.files": { input: task, about: "project" },
+  "tasks.ticketContext": { input: task, about: "project" },
 };
 
 /** Which procedures read each model's rows: what the suite calls for it. */
@@ -374,10 +378,11 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   AgentProfileLibraryItem: ["library.list", "library.get", "agentProfiles.get"],
   LibrarySource: ["library.sources.list", "library.list", "library.searchState"],
   LibrarySuggestion: ["library.suggestions.list", "library.suggestions.mine", "library.counts"],
-  // Milestone 9 (its ticket 04): no procedure reads them yet; ticket 14 adds theirs (the thread's
-  // files, downloads, "What the agent got"). The every-ID case below covers their rows meanwhile.
-  MessageFile: [],
-  TaskTicketRead: [],
+  // Milestone 9 (its ticket 04; ticket 14's readers): a task's files, the thread's and the
+  // Attachments group's, and the ticket's reads with their files ("What the agent got"). A file's
+  // download is a route (`serveTaskFile`), whose own suite has its outsider cases.
+  MessageFile: ["tasks.files", "tasks.ticketContext"],
+  TaskTicketRead: ["tasks.ticketContext"],
 };
 
 /** Calls a procedure by its dotted path, as the panel does. */
@@ -442,6 +447,16 @@ describe("the guards (F-049)", () => {
       expect(idsOfB).not.toContain(inOpen);
       expect(idsOfRestricted).not.toContain(inOpen);
     }
+  });
+
+  it("F-148/c3: a task's files reach who can open the task: its readers return the row, so the leak checks below would see one crossing", async () => {
+    const { a } = harness.fixture;
+    const asMember = await harness.as(a.member);
+    const openFiles = await asMember.tasks.files({ taskId: taskIdSchema.parse(row({ rows: open, projectId: a.openProject.id }, "Task")) });
+    expect(openFiles.files.map((file) => file.fileId)).toContain(open.get("MessageFile"));
+    const asInsider = await harness.as(a.insider);
+    const restrictedFiles = await asInsider.tasks.files({ taskId: taskIdSchema.parse(row({ rows: restricted, projectId: a.restrictedProject.id }, "Task")) });
+    expect(restrictedFiles.files.map((file) => file.fileId)).toContain(restricted.get("MessageFile"));
   });
 });
 
@@ -733,6 +748,11 @@ const matrix: Readonly<Record<string, readonly [Outcome, Outcome, Outcome, Outco
   "previews.list": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "tasks.startCheck": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "tasks.runnerChoices": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  // Milestone 9 (ticket 14): the box's limits are every member's; a task's files and ticket context
+  // every member's who can open the task, and the same NOT_FOUND for anyone else.
+  "files.limits": ["ok", "ok", "ok", "ok", "ok"],
+  "tasks.files": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "tasks.ticketContext": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
 };
 
 describe("the matrix of procedures and roles (F-003, F-087)", () => {

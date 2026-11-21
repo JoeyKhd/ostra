@@ -1017,6 +1017,9 @@ importers:
       '@ostra/protocol':
         specifier: workspace:*
         version: link:../protocol
+      '@ostra/task-view':
+        specifier: workspace:*
+        version: link:../task-view
       '@trpc/server':
         specifier: 11.28.6
         version: 11.28.6(@types/ws@8.18.2)(next@16.4.6(@opentelemetry/api@1.10.0)(@playwright/test@1.65.1)(@types/node@26.6.6)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(typescript@6.0.3)

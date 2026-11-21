@@ -84,6 +84,8 @@ export const auditActions = {
   "model.updated": "model",
   "model.price-changed": "model",
   "model.reasoning-changed": "model",
+  /** Milestone 9 (F-148, ADR 0070): an admin's "Reads images" on a model, set or cleared. */
+  "model.image-input-changed": "model",
   "providers.default-changed": "organization",
   "project.providers-changed": "project",
   "project.model-choice-changed": "project",

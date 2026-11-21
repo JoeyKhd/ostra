@@ -36,6 +36,13 @@ import {
   taskToColumns,
   transitionTask,
   cancelQueuedTask,
+  appendMemberMessageInTx,
+  filesToBindInTx,
+  modelImageInput,
+  runnerTakesFilesInTx,
+  RUNNER_NEEDS_UPGRADE_FOR_FILES,
+  steerFileFields,
+  uploadsOfInTx,
 } from "@ostra/domain";
 import type { TaskLifecycle, Waiting } from "@ostra/domain";
 import { effortLevelFromDb, mapEventToStored, mapTask } from "@ostra/db";
@@ -49,6 +56,8 @@ import {
   effortLevelSchema,
   eventLogFoldedKinds,
   memberIdSchema,
+  messageFileIdSchema,
+  modelIdSchema,
   needsYouItemIdSchema,
   projectIdSchema,
   runnerIdSchema,
@@ -64,6 +73,8 @@ import { taskMemoryProcedure } from "./memory.ts";
 import { taskRoundsProcedure } from "./review.ts";
 import { approveProcedure, needsApprovalProcedure, rejectProcedure } from "./task-approval.ts";
 import { attachmentToDraftProcedure, keepPreviewProcedure, taskAttachmentsProcedure } from "./task-attachments.ts";
+import { retryTicketFilesProcedure, taskFilesProcedure, ticketContextProcedure, ticketUpdatesProcedure } from "./task-files.ts";
+import { GOING_SESSION_STATES, waitsForReopen } from "./task-reopen-state.ts";
 import { z } from "zod";
 
 import { loadAgentProfileView } from "./agent-profile-view.ts";
@@ -140,10 +151,6 @@ const lifecycleOf = (task: Parameters<typeof taskFromColumns>[0]): TaskLifecycle
 
 const notFoundTask = () => new TRPCError({ code: "NOT_FOUND", message: "No such task" });
 
-/** The task states a finished or waiting task can be reopened from (merged is refused in milestone 2: F-066). */
-const REOPEN_FROM = ["stopped", "in_review", "done"] as const;
-/** The needs-you reasons that wait for a reopen, not for an answer to the agent. */
-const REOPEN_FROM_NEEDS_YOU = ["no_changes", "stalled", "spend_cap", "crashed", "setup_failed", "ticket_closed", "files_outside_repos"] as const;
 /** The reasons a one-click reopen needs no message for (the carry-on text is written for the member). */
 const CARRY_ON_REASONS = ["stalled", "spend_cap", "crashed"] as const;
 const finishedTaskStates = ["stopped", "merged", "done"] as const;
@@ -200,6 +207,15 @@ export const tasksRouter = router({
 
   /** Milestone 8 (F-121, F-140, ticket 16): the thread's screenshots and recordings, and whether the runner runs the app. */
   attachments: taskAttachmentsProcedure,
+
+  /** Milestone 9 (F-148, F-150, ticket 14): every file sent with the task's messages, and people's files counted. */
+  files: taskFilesProcedure,
+  /** Milestone 9 (F-149/c3, c5, ticket 14): each read of the ticket: "What the agent got", Retry's state. */
+  ticketContext: ticketContextProcedure,
+  /** Milestone 9 (F-149/c8): "Send ticket updates", the driver's; the answer is the next round. */
+  ticketUpdates: ticketUpdatesProcedure,
+  /** Milestone 9 (F-149/c3): "Retry" of the ticket's failed files, the driver's; the answer is the next round. */
+  retryTicketFiles: retryTicketFilesProcedure,
   /** "Add to draft": a screenshot among a refine draft's images. */
   attachmentToDraft: attachmentToDraftProcedure,
   /** "Keep it": a port the agent announced becomes an environment proposal for a project admin. */
@@ -219,16 +235,20 @@ export const tasksRouter = router({
     return { taskId: input.taskId, state: cancelled.state };
   }),
 
-  /** Starts a code task from a prompt (F-097): no ticket is created. */
+  /**
+   * Starts a code task from a prompt (F-097): no ticket is created. Milestone 9 (F-148, ticket 14):
+   * with the member's uploads (`fileIds`), bound to the first message within the limits; a few
+   * words are still required with them (the maintainer, the approved designs' choices, 4.2).
+   */
   create: projectProcedure("read", createPromptTaskInputSchema).mutation(async ({ ctx, input }) => {
-    const { db, ports } = ctx.deps;
+    const { db, ports, messageFiles } = ctx.deps;
     // F-055: the repos' branch rules are read again as a task starts, so the use case refuses on a
     // current answer. A host that can't say never refuses.
     await checkProjectRepos(
       { db, clock: ports.clock, adapters: ports.adapters },
       { organizationId: ctx.scope.organizationId, projectId: input.projectId, force: true },
     );
-    const result = await db.$transaction((tx) => createPromptTask({ tx, scope: ctx.scope, ...ports }, input));
+    const result = await db.$transaction((tx) => createPromptTask({ tx, scope: ctx.scope, ...ports, files: messageFiles }, input));
     const created = unwrap(result, {
       "not-found": "NOT_FOUND",
       forbidden: "FORBIDDEN",
@@ -408,6 +428,12 @@ export const tasksRouter = router({
     const [extras, followUp] = await Promise.all([loadTaskExtras(ctx.deps, task, agent?.model?.id ?? null, runner?.name ?? null), loadFollowUp(db, organizationId, task)]);
     // F-137: the levels of the model the newest session runs, or the profile's before there's one.
     const effortLevels = await taskEffortLevels(ctx.deps, organizationId, session?.modelId ?? agent?.model?.id ?? null, agent?.adapter ?? null);
+    // Milestone 9 (F-148/c5, c9, ticket 14): the same model's image input, and whether the runner takes files.
+    const messageFiles = await messageFilesOfTask(ctx.deps, organizationId, {
+      modelId: session?.modelId ?? agent?.model?.id ?? null,
+      adapter: agent?.adapter ?? null,
+      runner: runner === null ? null : { id: runner.id, name: runner.name },
+    });
     // Milestone 3 (ticket 35): the approvals, questions and plan the page answers from, and the task's rules.
     const answerable = await loadApprovalsAndPlan(ctx.deps, task);
     const isDriver = task.driverMemberId === ctx.scope.memberId;
@@ -425,13 +451,10 @@ export const tasksRouter = router({
     // F-066 (ticket 24): a merged task reopens on a fresh branch from each merged repo's base; one
     // whose repos record no merge has no base to start from, and stays blocked as before.
     const mergedRepo = task.repos.some((repo) => repo.state === "merged");
-    const sessionGoing = session !== undefined && ["starting", "running", "waiting", "idle"].includes(session.state);
+    const sessionGoing = session !== undefined && isOneOf(GOING_SESSION_STATES, session.state);
     // A needs-you task whose session has ended (a question that expired cancels its turn) has no
     // agent left to answer: a reopen with the member's message is the only way on.
-    const reopenState =
-      isOneOf(REOPEN_FROM, state) ||
-      (state === "merged" && mergedRepo) ||
-      (state === "needs_you" && (isOneOf(REOPEN_FROM_NEEDS_YOU, task.needsYouReason) || (session !== undefined && !sessionGoing)));
+    const reopenState = waitsForReopen({ state, needsYouReason: task.needsYouReason, mergedRepo, sessionState: session?.state ?? null });
     const reopenBlocked =
       state === "merged" && !mergedRepo
         ? ("merged_reopen_later" as const)
@@ -536,6 +559,14 @@ export const tasksRouter = router({
        * model offers, `Default` first (`Default` alone: no control). Each turn's level is in `usage`.
        */
       effort: { level: effortLevelFromDb[task.effort], levels: toLevelViews(effortLevels) },
+      /**
+       * Milestone 9 (F-148, ticket 14): what the message box says of files before sending: the
+       * model the next message goes to (the newest session's, else the profile's), by name, and
+       * whether it sees images (`yes`, `no`, `unknown`: unknown counts as no); whether the agent
+       * takes images in its prompt; and the task's runner by name when it speaks below protocol
+       * minor 8 and can't take files (`oldRunner`: a send with files is refused).
+       */
+      messageFiles,
       // Ticket 36: the item's ID, so the page can answer it (`tasks.dismissNeedsYou`).
       needsYou: task.needsYouItems.map((item) => ({ id: needsYouItemIdSchema.parse(item.id), reason: item.reason, audience: item.audience, approvalId: item.approvalId, summary: item.summary })),
       ...extras,
@@ -664,10 +695,11 @@ export const tasksRouter = router({
    * for the one-click reopen from a limit or a crash; a merged task is refused until F-066.
    */
   reopen: taskProcedure("read", reopenTaskInputSchema.extend({ intent: memberIntentSchema })).mutation(async ({ ctx, input }) => {
-    const { db, ports, settings } = ctx.deps;
+    const { db, ports, settings, messageFiles } = ctx.deps;
     // A task at its spend cap stays stopped until the cap is raised (F-068, ticket 19).
     const spendCap = { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap };
-    const result = await db.$transaction((tx) => reopenTask({ tx, scope: ctx.scope, ...ports, spendCap }, input));
+    // Milestone 9 (F-148, ticket 14): the reopen's files (`fileIds`) are bound within the limits, and may come without words.
+    const result = await db.$transaction((tx) => reopenTask({ tx, scope: ctx.scope, ...ports, spendCap, files: messageFiles }, input));
     const reopened = unwrap(result, {
       "not-found": "NOT_FOUND",
       forbidden: "FORBIDDEN",
@@ -814,15 +846,20 @@ export const tasksRouter = router({
    */
   send: taskProcedure(
     "read",
-    z.strictObject({
-      taskId: taskIdSchema,
-      clientMessageId: clientMessageIdSchema,
-      text: z.string().trim().min(1).max(runnerLimits.steerTextMaxChars),
-      delivery: z.enum(["queue", "interrupt"]).default("queue"),
-      intent: memberIntentSchema,
-    }),
+    z
+      .strictObject({
+        taskId: taskIdSchema,
+        clientMessageId: clientMessageIdSchema,
+        /** The member's words. Milestone 9 (F-148/c1): may be empty when files come. Never logged. */
+        text: z.string().trim().max(runnerLimits.steerTextMaxChars),
+        delivery: z.enum(["queue", "interrupt"]).default("queue"),
+        intent: memberIntentSchema,
+        /** Milestone 9 (F-148, ticket 14): the member's own unsent uploads in the task's project, in their order. */
+        fileIds: z.array(messageFileIdSchema).max(runnerLimits.messageFilesMax).optional(),
+      })
+      .refine((input) => input.text !== "" || (input.fileIds?.length ?? 0) > 0, { message: "Say what the agent should do, or attach a file", path: ["text"] }),
   ).mutation(async ({ ctx, input }) => {
-    const { db, ports } = ctx.deps;
+    const { db, ports, messageFiles } = ctx.deps;
     const organizationId = ctx.scope.organizationId;
     return db.$transaction(async (tx) => {
       const task = await lockTask(tx, input.taskId, organizationId);
@@ -850,6 +887,23 @@ export const tasksRouter = router({
       const now = ports.clock.now();
       const projectId = projectIdSchema.parse(task.projectId);
       const sessionId = sessionIdSchema.parse(session.id);
+      // Milestone 9 (F-148, ticket 14): the files are the sender's own unsent uploads of the task's
+      // project, and the runner holding the session must take files (protocol minor 8, Q340): both
+      // checked before anything is written. They're bound to the message in this transaction.
+      const fileIds = input.fileIds ?? [];
+      if (fileIds.length > 0) {
+        if ((await uploadsOfInTx(tx, ctx.scope, projectId, fileIds)) === null) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "One of the files isn't one of your unsent uploads in this project" });
+        }
+        if (!(await runnerTakesFilesInTx(tx, lease.runnerId))) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: RUNNER_NEEDS_UPGRADE_FOR_FILES });
+        }
+      }
+      // The session's model: its images decide the files', and between turns the budget gate reads it.
+      const modelId =
+        fileIds.length > 0 || session.state === "idle" ? await sessionModelIdInTx(tx, organizationId, { agentProfileId: session.agentProfileId, modelId: session.modelId }) : null;
+      const files = await filesToBindInTx(tx, organizationId, messageFiles, { fileIds, modelId, agentProfileId: session.agentProfileId });
+      const where = { organizationId, projectId, taskId: input.taskId, sessionId, at: now };
       // Milestone 4 (F-037, ADR 0055): between turns a message starts one, so it passes the budget
       // gate first; a closed gate saves it and holds the turn. A turn going takes it, gate or not.
       if (session.state === "idle") {
@@ -862,24 +916,16 @@ export const tasksRouter = router({
             clientMessageId: input.clientMessageId,
             text: input.text,
             intent: input.intent,
+            files,
           });
           return { seq: restarted.seq, duplicate: false as const };
         }
-        const gate = await checkBudget(tx, {
-          organizationId,
-          projectId,
-          modelId: await sessionModelIdInTx(tx, organizationId, { agentProfileId: session.agentProfileId, modelId: session.modelId }),
-          origin: turnOriginOfIntent(input.intent),
-          now,
-        });
+        const gate = await checkBudget(tx, { organizationId, projectId, modelId, origin: turnOriginOfIntent(input.intent), now });
         if (gate.kind === "held") {
-          const heldSeq = await appendServerEvent(tx, {
-            organizationId,
-            projectId,
-            taskId: input.taskId,
-            sessionId,
-            at: now,
-            event: {
+          const { seq: heldSeq } = await appendMemberMessageInTx(
+            tx,
+            where,
+            {
               kind: "user.message",
               memberId: ctx.scope.memberId,
               clientMessageId: input.clientMessageId,
@@ -887,7 +933,8 @@ export const tasksRouter = router({
               delivery: "queued",
               ...(input.intent === undefined ? {} : { intent: input.intent }),
             },
-          });
+            files,
+          );
           await holdTurnInTx(ports, tx, { organizationId, projectId, taskId: input.taskId, sessionId, held: gate, pendingMessageSeq: heldSeq, now, queued: false });
           return { seq: heldSeq, duplicate: false as const, held: true as const };
         }
@@ -908,13 +955,10 @@ export const tasksRouter = router({
       // until that turn starts (`messageDeliveries`).
       const adapter = session.state === "running" ? await sessionAdapterInTx(tx, session.agentProfileId, organizationId) : null;
       const steers = adapter !== null && agentSteersMidTurn(adapter);
-      const seq = await appendServerEvent(tx, {
-        organizationId,
-        projectId,
-        taskId: input.taskId,
-        sessionId,
-        at: now,
-        event: {
+      const { seq, bound } = await appendMemberMessageInTx(
+        tx,
+        where,
+        {
           kind: "user.message",
           memberId: ctx.scope.memberId,
           clientMessageId: input.clientMessageId,
@@ -922,10 +966,19 @@ export const tasksRouter = router({
           delivery: input.delivery === "interrupt" ? "after-interrupt" : steers ? "immediate" : "queued",
           ...(input.intent === undefined ? {} : { intent: input.intent }),
         },
-      });
+        files,
+      );
       await ports.outbox.enqueueInTx(tx, organizationId, runnerIdSchema.parse(lease.runnerId), {
         kind: "steer",
-        body: { sessionId, clientMessageId: input.clientMessageId, text: input.text, delivery: input.delivery, ...(input.intent === undefined ? {} : { intent: input.intent }) },
+        // The steer carries the message's files and which go as images (ticket 11's runner writes them before the agent gets it).
+        body: {
+          sessionId,
+          clientMessageId: input.clientMessageId,
+          text: input.text,
+          delivery: input.delivery,
+          ...(input.intent === undefined ? {} : { intent: input.intent }),
+          ...steerFileFields(bound),
+        },
         notAfter: now + runnerLimits.offerTimeoutMs,
         task: { taskId: input.taskId, projectId },
       });
@@ -1029,6 +1082,28 @@ export const tasksRouter = router({
     });
   }),
 });
+
+/**
+ * Milestone 9 (F-148/c5, c9, ticket 14): the files a task's message box can send, as the box says
+ * them before sending: the model by name and its image input, whether the agent takes images, and
+ * the runner's name when it can't take files (below protocol minor 8).
+ */
+const messageFilesOfTask = async (
+  deps: ApiDeps,
+  organizationId: OrganizationId,
+  input: { readonly modelId: string | null; readonly adapter: string | null; readonly runner: { readonly id: string; readonly name: string } | null },
+) => {
+  const model =
+    input.modelId === null
+      ? null
+      : await deps.db.model.findFirst({ where: { id: input.modelId, organizationId }, select: { id: true, displayName: true, endpointModelId: true, adminImageInput: true, catalogInputModalities: true } });
+  const takesFiles = input.runner === null ? true : await runnerTakesFilesInTx(deps.db, input.runner.id);
+  return {
+    model: model === null ? null : { id: modelIdSchema.parse(model.id), name: model.displayName ?? model.endpointModelId, imageInput: modelImageInput(model) },
+    agentTakesImages: input.adapter !== null && deps.messageFiles.agentTakesImages(input.adapter),
+    oldRunner: input.runner === null || takesFiles ? null : input.runner.name,
+  };
+};
 
 /** The levels a model offers for an agent; `default` alone without either. */
 const taskEffortLevels = async (deps: ApiDeps, organizationId: OrganizationId, modelId: string | null, adapter: string | null): Promise<readonly EffortLevel[]> => {

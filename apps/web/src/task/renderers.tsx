@@ -743,6 +743,9 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
           {part.data.text}
         </Line>
       );
+    case "data-message-files":
+      // Milestone 9 (ticket 14): a member's message's files are drawn under the message (ticket 16), never as a row.
+      return null;
     default:
       return part satisfies never;
   }

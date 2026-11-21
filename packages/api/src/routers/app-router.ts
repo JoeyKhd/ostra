@@ -6,6 +6,7 @@ import { draftsRouter } from "./drafts.ts";
 import { reviewRouter } from "./review.ts";
 import { emailRouter } from "./email.ts";
 import { environmentsRouter } from "./environments.ts";
+import { filesRouter } from "./files.ts";
 import { githubRouter } from "./github.ts";
 import { homeRouter } from "./home.ts";
 import { inboxRouter } from "./inbox.ts";
@@ -87,6 +88,8 @@ export const appRouter = router({
   review: reviewRouter,
   // Milestone 8 (ticket 20): previews, their views and sharing.
   previews: previewsRouter,
+  // Milestone 9 (ticket 14): the message box's limits and its "remove"; uploads are a route.
+  files: filesRouter,
 });
 
 export type AppRouter = typeof appRouter;

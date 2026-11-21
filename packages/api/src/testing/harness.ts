@@ -14,6 +14,7 @@ import {
   startAppForMember,
   systemClock,
 } from "@ostra/domain";
+import type { FileSettings } from "@ostra/domain";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, SeededMember, TestDatabase } from "@ostra/db/testing";
 import { hashPassword } from "better-auth/crypto";
@@ -25,6 +26,7 @@ import type { SessionUser } from "../auth/scope.ts";
 import { createCatalogSource } from "../catalog/catalog-source.ts";
 import { shippedAgentEffort } from "../services/agent-effort.ts";
 import type { AgentEffort } from "../services/agent-effort.ts";
+import { panelMessageFilesDeps } from "../services/agent-images.ts";
 import { appRouter } from "../routers/app-router.ts";
 import { createLinearAppKit } from "../services/linear-app.ts";
 import type { LinearEndpoints } from "../services/linear-app.ts";
@@ -37,6 +39,8 @@ import type { StreamHub } from "../stream/hub.ts";
 import type { ApiDeps, Context } from "../trpc/context.ts";
 import { createCallerFactory } from "../trpc/init.ts";
 import { FakeCodeHost, FakeModelProvider, FakeSecretStore } from "./fake-adapters.ts";
+import { fakeCoreUploads } from "./files.ts";
+import type { FakeCoreUploads } from "./files.ts";
 import { createFakeLibrary } from "./library-fakes.ts";
 import type { FakeLibrary } from "./library-fakes.ts";
 import { memoryJobQueue, memoryOutbox } from "./memory-ports.ts";
@@ -106,6 +110,8 @@ export type BareHarness = {
     readonly trackerTokens: string[];
     /** Milestone 8 (ticket 30): the library's sources, which the library's calls out reach and nothing else. */
     readonly library: FakeLibrary;
+    /** Milestone 9 (ticket 14): core's side of a member's upload (`deps.fileUploader`), and every upload it was asked for. */
+    readonly core: FakeCoreUploads;
   };
   /** Whether the install's email counts as set up (F-002): off by default, as on a fresh install. A test flips it. */
   readonly emailSwitch: { on: boolean };
@@ -147,6 +153,8 @@ export type BareHarnessOptions = {
   readonly devHostPoolSameUser?: boolean;
   /** `OSTRA_SCHEDULE_MIN_INTERVAL_MINUTES`. Default 60, as on an install. */
   readonly scheduleMinIntervalMinutes?: number;
+  /** Milestone 9 (ticket 14): the file limits (`OSTRA_MESSAGE_FILES_*`, `OSTRA_TICKET_FILES_*`). Default: a fresh install's. */
+  readonly files?: Partial<FileSettings>;
 };
 
 /** A harness on an empty install: no account, no organization (the first-run tests). */
@@ -189,6 +197,9 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
     throw new Error("the install's default settings don't parse");
   }
   const installDefaults = parsedDefaults.settings;
+  // Milestone 9 (ticket 14): the file limits, as a fresh install has them unless the test says.
+  const files: FileSettings = { ...installDefaults.files, ...options.files };
+  const core = fakeCoreUploads(test.db, { maxFiles: files.messageFilesMax });
   const deps: ApiDeps = {
     db: test.db,
     auth,
@@ -227,7 +238,11 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       // Milestone 8's library, as a fresh install has it: search may be turned on, at skills.sh's address.
       library: installDefaults.library,
       memoryProposalsPerTask: installDefaults.memoryProposalsPerTask,
+      files,
     },
+    // Milestone 9 (ticket 14): every send binds its files as the runtime's does; core's upload, faked at its port.
+    messageFiles: panelMessageFilesDeps(files),
+    fileUploader: core.uploader,
     blobStore: {
       name: "postgres",
       health: () => Promise.resolve({ status: "ok" }),
@@ -335,7 +350,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
     deps,
     auth,
     hub,
-    fakes: { secretStore, modelProvider, codeHost, jobs, outbox, tracker, trackerTokens, library },
+    fakes: { secretStore, modelProvider, codeHost, jobs, outbox, tracker, trackerTokens, library, core },
     emailSwitch,
     logs,
     uploads,

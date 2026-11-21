@@ -18,7 +18,12 @@ import type {
   BlobId,
   BudgetScope,
   EffortLevel,
+  FileLeftOutReason,
+  FileSkipReason,
+  FileTextFailureReason,
+  ImagesNotSent,
   MemberId,
+  MessageFileId,
   MessageDelivery,
   MessageDeliveryState,
   MessageIntent,
@@ -38,6 +43,7 @@ import type {
   TurnMode,
   TurnOrigin,
   TypedToolKind,
+  UserMessageFile,
 } from "@ostra/protocol";
 
 // The AI SDK's UIMessage with ostra's generics, derived from the protocol's Zod schemas and never
@@ -261,6 +267,39 @@ export type AppProcessData = {
 /** F-121: the box has no browser (`app.browser`), shown once per task. */
 export type NoBrowserData = { readonly reason: NoBrowserReason };
 
+/**
+ * Milestone 9 (F-148, F-150, ticket 14): one of a message's files as the thread draws it: what its
+ * `user.message` recorded (`UserMessageFile`: its safe name, kind, detected type, size, whose, and
+ * whether it went as an image), where it downloads (`null` once its blob is gone), and its text's
+ * words (`ready`) or why it has none (`failed`), `null` otherwise.
+ */
+export type MessageFileView = Omit<UserMessageFile, "textWords" | "textReason"> & {
+  readonly downloadPath: string | null;
+  readonly textWords: number | null;
+  readonly textReason: FileTextFailureReason | null;
+};
+
+/** A file the limits left out of a message, by its safe name, with why, and its size when known. */
+export type MessageFileLeftOut = { readonly name: string; readonly reason: FileLeftOutReason; readonly size: number | null };
+
+/** A file the runner couldn't write into the box (`files.written`'s `skipped`), by its safe name, with why. */
+export type MessageFileSkipped = { readonly fileId: MessageFileId; readonly name: string; readonly reason: FileSkipReason };
+
+/**
+ * Milestone 9 (F-148, ticket 14): a member's message's files, under its text: the files in its
+ * order, what the limits left out, why its images went as files only (the model, or the agent:
+ * the event's, or the runner's word that the agent advertised no images), and what the runner
+ * couldn't write into the box. `seq` is the message's number in the task's log: its files' folder,
+ * `.ostra/attachments/<seq>/`.
+ */
+export type MessageFilesData = {
+  readonly seq: number;
+  readonly files: readonly MessageFileView[];
+  readonly leftOut: readonly MessageFileLeftOut[];
+  readonly imagesNotSent: ImagesNotSent | null;
+  readonly skipped: readonly MessageFileSkipped[];
+};
+
 export type TaskDataParts = {
   plan: { entries: PlanEntry[] };
   question: QuestionData;
@@ -284,6 +323,7 @@ export type TaskDataParts = {
   "attachment-skipped": AttachmentSkippedData;
   "app-process": AppProcessData;
   "no-browser": NoBrowserData;
+  "message-files": MessageFilesData;
   system: { seq: number; event: SystemEvent };
   unsupported: { seq: number; rawKind: string; acp: boolean };
   problem: { seq: number; text: string };

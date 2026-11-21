@@ -5,3 +5,4 @@ export * from "./live-text.ts";
 export * from "./fold.ts";
 export * from "./derive-state.ts";
 export * from "./coverage.ts";
+export * from "./message-files.ts";

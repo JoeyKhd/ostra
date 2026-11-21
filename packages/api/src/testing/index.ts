@@ -7,3 +7,4 @@ export * from "./auth-helpers.ts";
 export * from "./world.ts";
 export * from "./previews.ts";
 export * from "./library-fakes.ts";
+export * from "./files.ts";

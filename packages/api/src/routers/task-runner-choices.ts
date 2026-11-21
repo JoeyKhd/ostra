@@ -8,12 +8,15 @@ import {
   poolsInTx,
   projectPoolsInTx,
   projectSizeInTx,
+  modelImageInput,
+  modelImageInputSchema,
   resolveProfileModelInTx,
   resolveStartProfileInTx,
   runnerRoom,
+  runnerTakesFilesInTx,
 } from "@ostra/domain";
 import type { ChooseTask, DispatchWait, FleetRunner } from "@ostra/domain";
-import { agentProfileIdSchema, poolIdSchema, projectIdSchema, runnerIdSchema, taskIdSchema } from "@ostra/protocol";
+import { agentProfileIdSchema, modelIdSchema, poolIdSchema, projectIdSchema, runnerIdSchema, taskIdSchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -56,8 +59,18 @@ export const runnerChoicesSchema = z.object({
       /** Boxes it holds now, against its slots: "busy (2 of 2)". */
       busy: z.number().int(),
       slots: z.number().int(),
+      /** Milestone 9 (F-148/c9, Q340): whether it speaks protocol minor 8, so a task with files can run on it. */
+      takesFiles: z.boolean(),
     }),
   ),
+  /**
+   * Milestone 9 (F-148/c5, ticket 14): the model the task would start on (the profile's, as the
+   * project's providers serve it), by name, and whether it sees images (`yes`, `no`, `unknown`:
+   * unknown counts as no), for the new-task box's note; `null` when nothing serves it.
+   */
+  model: z.object({ id: modelIdSchema, name: z.string(), imageInput: modelImageInputSchema }).nullable(),
+  /** Whether the profile's agent takes images in its prompt (its adapter's `promptImages`). */
+  agentTakesImages: z.boolean(),
 });
 export type RunnerChoices = z.infer<typeof runnerChoicesSchema>;
 
@@ -83,7 +96,7 @@ export const runnerChoicesProcedure = projectProcedure("read", z.strictObject({ 
       if (!resolved.ok) {
         throw new TRPCError({ code: resolved.error === "forbidden" ? "FORBIDDEN" : "PRECONDITION_FAILED", message: resolved.message });
       }
-      const profile = await tx.agentProfile.findFirstOrThrow({ where: { id: resolved.profileId, organizationId }, select: { runnerLabels: true } });
+      const profile = await tx.agentProfile.findFirstOrThrow({ where: { id: resolved.profileId, organizationId }, select: { runnerLabels: true, adapter: true } });
       const [serviceCount, size, served] = await Promise.all([
         tx.service.count({ where: { projectId, organizationId } }),
         projectSizeInTx(tx, organizationId, projectId),
@@ -132,6 +145,8 @@ export const runnerChoicesProcedure = projectProcedure("read", z.strictObject({ 
         options,
       );
       const providerAllowed = served.ok && served.allowOnPersonalRunners;
+      // Milestone 9 (Q340): a task with files goes only to a runner at protocol minor 8.
+      const takesFiles = new Map(await Promise.all(owned.map(async (row) => [row.id, await runnerTakesFilesInTx(tx, row.id)] as const)));
       const personal = owned.flatMap((row) => {
         const runner = mine.runners.find((candidate) => candidate.id === row.id);
         if (runner === undefined) {
@@ -148,8 +163,17 @@ export const runnerChoicesProcedure = projectProcedure("read", z.strictObject({ 
                 : !fits(room, task.size?.footprint ?? null)
                   ? "busy"
                   : null;
-        return [{ runnerId: runner.id, name: row.name, canRun: block === null, reason: block, busy: Math.max(0, runner.slots - room.slots), slots: runner.slots }];
+        return [{ runnerId: runner.id, name: row.name, canRun: block === null, reason: block, busy: Math.max(0, runner.slots - room.slots), slots: runner.slots, takesFiles: takesFiles.get(row.id) ?? false }];
       });
-      return { pool: { canRun: all.kind === "runner", reason: nearest, pools: perPool }, personal };
+      // Milestone 9 (F-148/c5): the model the task would start on, and whether it sees images.
+      const model = served.ok
+        ? await tx.model.findFirst({ where: { id: served.modelId, organizationId }, select: { id: true, displayName: true, endpointModelId: true, adminImageInput: true, catalogInputModalities: true } })
+        : null;
+      return {
+        pool: { canRun: all.kind === "runner", reason: nearest, pools: perPool },
+        personal,
+        model: model === null ? null : { id: modelIdSchema.parse(model.id), name: model.displayName ?? model.endpointModelId, imageInput: modelImageInput(model) },
+        agentTakesImages: ctx.deps.messageFiles.agentTakesImages(profile.adapter),
+      };
     });
   });
