@@ -334,7 +334,7 @@ export const AppProcessSheet = ({ projectId, mode, processes, repos, serviceCoun
             <Switch className="mt-0.5" checked={form.hostRewrite} disabled={!canEdit} aria-label={t("environment.app.sheet.hostRewrite")} onCheckedChange={(hostRewrite) => { set({ hostRewrite }); }} />
             <span>
               <span className="block text-body font-medium text-text">{t("environment.app.sheet.hostRewrite")}</span>
-              <span className="block text-[12.5px] text-faint">{monoParts(t("environment.app.sheet.hostRewriteHelp", { host: `localhost:${form.port.trim() === "" ? "<port>" : form.port.trim()}` }), /(Host|Origin|localhost:\S+?)(?=[ ,])/)}</span>
+              <span className="block text-[12.5px] text-faint">{monoParts(t("environment.app.sheet.hostRewriteHelp", { host: `localhost:${form.port.trim() === "" ? "<port>" : form.port.trim()}` }), /(Host|Origin|localhost:[^\s,]+)(?=[\s,])/)}</span>
             </span>
           </label>
           <Hairline />
