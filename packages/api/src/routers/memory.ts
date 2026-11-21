@@ -5,7 +5,7 @@ import {
   decideProposal,
   loadBlockNotes,
   proposeRememberThis,
-  queryWords,
+  rankNotes,
   readNoteForMember,
   relatedNotes,
   rememberThis,
@@ -225,8 +225,10 @@ const MAX_NOTES = 500;
 
 export const memoryRouter = router({
   /**
-   * A scope's notes, newest first, or the best matches for `query` (full text, `ts_rank`, by bound
-   * parameter), with the count of the scope's open proposals.
+   * A scope's notes, newest first, or the best matches for `query`, ranked as `memory_search`
+   * ranks (`rankNotes`: a question's meaningful words, and a path, a flag or an identifier as
+   * written, by bound parameter), with the count of the scope's open proposals. Only the scope's
+   * own notes, after its access check.
    */
   /**
    * What a new task gets from the scope's memory (memory.md, the index line), counted by the
@@ -262,23 +264,14 @@ export const memoryRouter = router({
       const organizationId = ctx.scope.organizationId;
       const projectId = await scopeProject(ctx, input);
       const status = input.status ?? "active";
-      const words = input.query === undefined ? [] : queryWords(input.query);
-      if (input.query !== undefined && input.query.trim() !== "" && words.length === 0) {
-        return { notes: [], openProposals: await openProposals(db, organizationId, projectId) };
-      }
+      const query = input.query?.trim() ?? "";
       let ids: readonly string[] | null = null;
-      if (words.length > 0) {
-        const tsquery = words.map((word) => `${word}:*`).join(" & ");
-        const ranked = await db.$queryRaw<readonly { id: string }[]>`
-          SELECT "id" FROM "memory_note"
-          WHERE "organizationId" = ${organizationId}
-            AND "scope"::text = ${input.scope}
-            AND "projectId" IS NOT DISTINCT FROM ${projectId}
-            AND "status"::text = ${status}
-            AND "vector" @@ to_tsquery('simple', ${tsquery})
-          ORDER BY ts_rank("vector", to_tsquery('simple', ${tsquery})) DESC, "updatedAt" DESC, "id"
-          LIMIT ${MAX_NOTES}`;
-        ids = ranked.map((row) => row.id);
+      if (query !== "") {
+        const ranked = await rankNotes(db, { kind: "scope", organizationId, scope: input.scope, projectId, status }, query, MAX_NOTES);
+        if (ranked.length === 0) {
+          return { notes: [], openProposals: await openProposals(db, organizationId, projectId) };
+        }
+        ids = ranked.map((note) => note.noteId);
       }
       const rows = await db.memoryNote.findMany({
         where: {

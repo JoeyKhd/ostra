@@ -21,7 +21,7 @@ import { checkNoteVersion } from "./block.ts";
 import { rememberThisSourceRef } from "./remember-this.ts";
 import type { RememberThisSource } from "./remember-this.ts";
 import { scanMemoryText, secretScanMessage } from "./secret-scan.ts";
-import { organizationSecretValues, queryWords } from "./store.ts";
+import { organizationSecretValues, rankNotes } from "./store.ts";
 
 // A member's notes and the proposals' decisions (F-109, F-111, ADR 0044 amended, Q91; milestone 4's
 // ticket 16). Each write is one transaction with its audit entry, by the note's or the proposal's ID.
@@ -446,7 +446,8 @@ export type RelatedNote = {
 
 /**
  * The notes to show beside a proposal: the one it declares it relates to, then the three active
- * notes of its scope that rank highest against its title and body (`ts_rank`), by bound parameter.
+ * notes of its scope (its project's and the organization's, or the organization's alone) that rank
+ * highest against its title and body, ranked as `memory_search` ranks (`rankNotes`).
  */
 export const relatedNotes = async (db: DbOrTx, scope: MemberScope, proposalId: ProposalId): Promise<readonly RelatedNote[] | null> => {
   const proposal = await db.memoryProposal.findFirst({ where: { id: proposalId, organizationId: scope.organizationId } });
@@ -464,24 +465,21 @@ export const relatedNotes = async (db: DbOrTx, scope: MemberScope, proposalId: P
           where: { id: proposal.relatesToNoteId, organizationId: scope.organizationId, status: "active" },
           select: { id: true, title: true, version: true },
         });
-  const words = queryWords(`${proposal.title} ${proposal.body}`);
-  const ranked =
-    words.length === 0
-      ? []
-      : await db.$queryRaw<readonly { id: string; title: string; version: number }[]>`
-          SELECT "id", "title", "version"
-          FROM "memory_note"
-          WHERE "organizationId" = ${scope.organizationId}
-            AND "status" = 'active'
-            AND ("projectId" IS NULL OR "projectId" = ${proposal.projectId})
-            AND "id" <> ${proposal.relatesToNoteId ?? ""}
-            AND "vector" @@ to_tsquery('simple', ${words.map((word) => `${word}:*`).join(" | ")})
-          ORDER BY ts_rank("vector", to_tsquery('simple', ${words.map((word) => `${word}:*`).join(" | ")})) DESC, "updatedAt" DESC, "id"
-          LIMIT 3`;
+  const ranked = await rankNotes(
+    db,
+    {
+      kind: "visible",
+      organizationId: scope.organizationId,
+      projectId: proposal.projectId === null ? null : projectIdSchema.parse(proposal.projectId),
+      excluding: proposal.relatesToNoteId === null ? null : noteIdSchema.parse(proposal.relatesToNoteId),
+    },
+    `${proposal.title} ${proposal.body}`,
+    3,
+  );
   const relation = proposal.relation;
   return [
     ...(declared === null ? [] : [{ noteId: noteIdSchema.parse(declared.id), title: declared.title, version: declared.version, relation }]),
-    ...ranked.map((row) => ({ noteId: noteIdSchema.parse(row.id), title: row.title, version: row.version, relation: null })),
+    ...ranked.map((note) => ({ noteId: note.noteId, title: note.title, version: note.version, relation: null })),
   ];
 };
 

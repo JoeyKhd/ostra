@@ -1,5 +1,7 @@
-import { diffCommentIdSchema, noteIdSchema, proposalIdSchema } from "@ostra/protocol";
-import type { NoteId, ProposalId, TaskId } from "@ostra/protocol";
+import { randomUUID } from "node:crypto";
+
+import { diffCommentIdSchema, noteIdSchema, projectIdSchema, proposalIdSchema } from "@ostra/protocol";
+import type { MemoryKind, NoteId, ProjectId, ProposalId, TaskId } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { appendEvent, createApiHarness, seedConnectionAndModel, seedProject, seedTask } from "../testing/index.ts";
@@ -40,6 +42,31 @@ const proposal = async (input: {
   });
   return proposalIdSchema.parse(row.id);
 };
+
+/** An open project of organization A with no notes yet, so a search's results are only the test's own. */
+const freshProject = async (name: string): Promise<ProjectId> => {
+  const row = await harness.test.db.project.create({
+    data: { organizationId: harness.fixture.a.organization.id, name, slug: `${name}-${randomUUID().slice(0, 8)}`, access: "open" },
+    select: { id: true },
+  });
+  return projectIdSchema.parse(row.id);
+};
+
+/** Organization A's admin saves a note in `projectId`, or in the organization's own memory for `null`. */
+const saveNote = async (projectId: ProjectId | null, title: string, body: string, kind: MemoryKind = "convention"): Promise<NoteId> => {
+  const admin = await harness.as(harness.fixture.a.admin);
+  const saved = await admin.memory.save({ noteId: null, expectedVersion: null, ...(projectId === null ? { scope: "organization", projectId: null } : { scope: "project", projectId }), title, body, kind, always: false });
+  return saved.noteId;
+};
+
+/** Notes that share a question's common words ("we", "do", "the", "a") and none of its meaningful ones. */
+const COMMON_WORD_NOTES = [
+  [
+    "We do code review on every pull request",
+    "Do not merge your own pull request. We ask for one approval, and the reviewer opens the app when the change is visual. Do it before the end of the day if you can.",
+  ],
+  ["How we cut a release", "We do releases on Tuesdays. First we run the changelog script, then we tag the commit and we push the tag. We do it before noon, and we do not do it on a Friday."],
+] as const;
 
 beforeAll(async () => {
   harness = await createApiHarness();
@@ -119,6 +146,73 @@ describe("notes", () => {
     // A query is data, never SQL.
     expect((await admin.memory.notes({ scope: "project", projectId: a.openProject.id, query: "'); DROP TABLE memory_note; --" })).notes).toEqual([]);
     expect(await harness.test.db.memoryNote.count()).toBeGreaterThan(0);
+  });
+
+  it("F-109/c1,c3: the page's search ranks a question by its meaningful words, as memory_search does, and finds only the scope's notes", async () => {
+    const { a, b } = harness.fixture;
+    const member = await harness.as(a.member);
+    const projectId = await freshProject("handbook");
+    const apiTests = await saveNote(
+      projectId,
+      "Run the API tests with pnpm test:api",
+      "The API tests need the dev database: start it with `pnpm dev:db`, then run `pnpm test:api` from the repo root.",
+      "command",
+    );
+    const migration = await saveNote(
+      projectId,
+      "The migration fails on Windows without long paths",
+      "Prisma's migrate step fails on Windows when the checkout's path is long. Turn long paths on (`git config core.longpaths true`), or clone closer to the drive's root.",
+      "gotcha",
+    );
+    const lockfile = await saveNote(projectId, "CI installs from the lockfile", "CI runs `pnpm install --frozen-lockfile`. A package.json change without its pnpm-lock.yaml fails every later build.", "gotcha");
+    for (const [title, body] of COMMON_WORD_NOTES) {
+      await saveNote(projectId, title, body);
+    }
+    const search = async (query: string, status?: "active" | "archived"): Promise<readonly NoteId[]> =>
+      (await member.memory.notes({ scope: "project", projectId, query, ...(status === undefined ? {} : { status }) })).notes.map((note) => note.noteId);
+
+    // A question finds the note that answers it first, and its common words find nothing by themselves.
+    expect((await search("how do we run the api tests"))[0]).toBe(apiTests);
+    expect((await search("why does the migration fail on windows"))[0]).toBe(migration);
+    expect((await search("can I clone it with long paths on Windows"))[0]).toBe(migration);
+    expect(await search("how do we do it")).toEqual([]);
+    // A flag and an identifier match as written, ahead of the notes that only share their words.
+    expect((await search("pnpm install --frozen-lockfile fails"))[0]).toBe(lockfile);
+    expect((await search("test:api"))[0]).toBe(apiTests);
+
+    // Only the scope's notes, of the status asked for: the organization's own memory, a restricted
+    // project's and another organization's notes hold the same words, and none of them is found here.
+    const orgMigration = await saveNote(null, "Migrations on Windows need long paths too", "Every checkout on Windows needs core.longpaths, whichever repo it is.", "gotcha");
+    const restricted = await (await harness.as(a.insider)).memory.save({
+      noteId: null,
+      expectedVersion: null,
+      scope: "project",
+      projectId: a.restrictedProject.id,
+      title: "The migration fails on Windows",
+      body: "Turn long paths on before the migration.",
+      kind: "gotcha",
+      always: false,
+    });
+    const elsewhere = await (await harness.as(b.admin)).memory.save({
+      noteId: null,
+      expectedVersion: null,
+      scope: "organization",
+      projectId: null,
+      title: "The migration fails on Windows",
+      body: "Turn long paths on before the migration.",
+      kind: "gotcha",
+      always: false,
+    });
+    const projectFound = await search("why does the migration fail on windows");
+    // The lockfile's note says a build "fails": a meaningful word, so it's found too, below.
+    expect(projectFound).toEqual([migration, lockfile]);
+    const orgFound = (await member.memory.notes({ scope: "organization", query: "why does the migration fail on windows" })).notes.map((note) => note.noteId);
+    expect(orgFound).toEqual([orgMigration]);
+    expect([...projectFound, ...orgFound]).not.toContain(restricted.noteId);
+    expect([...projectFound, ...orgFound]).not.toContain(elsewhere.noteId);
+    await (await harness.as(a.admin)).memory.archive({ noteId: lockfile });
+    expect(await search("pnpm install --frozen-lockfile fails")).not.toContain(lockfile);
+    expect(await search("pnpm install --frozen-lockfile fails", "archived")).toEqual([lockfile]);
   });
 
   it("F-109/c4: a secret is refused as BAD_REQUEST naming its kind, never its value, and nothing is stored", async () => {
@@ -209,6 +303,59 @@ describe("proposals", () => {
     await expect(member.memory.proposal({ proposalId: hidden })).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(member.memory.decide({ proposalId: hidden, decision: "approve" })).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(await harness.test.db.memoryProposal.findUniqueOrThrow({ where: { id: hidden }, select: { state: true } })).toEqual({ state: "proposed" });
+  });
+
+  it("F-111/c3: a proposal's related notes rank as memory_search does, and stay in the proposal's scope", async () => {
+    const { a, b } = harness.fixture;
+    const admin = await harness.as(a.admin);
+    const projectId = await freshProject("keys");
+    const apiKeys = await saveNote(projectId, "Where the API keys live", "The model provider's API key is in the secret store, never in a .env file. Ask an admin to rotate it.");
+    const apiTests = await saveNote(
+      projectId,
+      "Run the API tests with pnpm test:api",
+      "The API tests need the dev database: start it with `pnpm dev:db`, then run `pnpm test:api` from the repo root.",
+      "command",
+    );
+    // Notes of the proposal's scope that share only its common words.
+    for (const [title, body] of COMMON_WORD_NOTES) {
+      await saveNote(projectId, title, body);
+    }
+    // Notes out of its scope that hold its very words: a restricted project's and another organization's.
+    const restricted = await (await harness.as(a.insider)).memory.save({
+      noteId: null,
+      expectedVersion: null,
+      scope: "project",
+      projectId: a.restrictedProject.id,
+      title: "Where the API keys live",
+      body: "The API keys live in the secret store, not in a .env file.",
+      kind: "convention",
+      always: false,
+    });
+    const elsewhere = await (await harness.as(b.admin)).memory.save({
+      noteId: null,
+      expectedVersion: null,
+      scope: "organization",
+      projectId: null,
+      title: "Where the API keys live",
+      body: "The API keys live in the secret store, not in a .env file.",
+      kind: "convention",
+      always: false,
+    });
+    const proposed = await proposal({ projectId, title: "Where do the API keys live?", body: "In the secret store, not in a .env file." });
+    const opened = await admin.memory.proposal({ proposalId: proposed });
+    // The note that answers it first, then the one that shares a word; none for common words alone.
+    expect(opened.related.map((note) => [note.noteId, note.relation])).toEqual([
+      [apiKeys, null],
+      [apiTests, null],
+    ]);
+    expect(opened.related.map((note) => note.noteId)).not.toContain(restricted.noteId);
+    expect(opened.related.map((note) => note.noteId)).not.toContain(elsewhere.noteId);
+    // A declared note comes first, and isn't ranked again.
+    const declaring = await proposal({ projectId, title: "Where do the API keys live?", body: "In the secret store, not in a .env file.", relatesTo: apiKeys });
+    expect((await admin.memory.proposal({ proposalId: declaring })).related.map((note) => [note.noteId, note.relation])).toEqual([
+      [apiKeys, "refines"],
+      [apiTests, null],
+    ]);
   });
 
   it("F-111/c1: Remember this on a diff comment and on an accepted @ostra comment proposes a project note with the comment as its source", async () => {

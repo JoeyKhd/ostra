@@ -1,6 +1,7 @@
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { SecretStoreAdapter } from "@ostra/adapter-sdk";
 import type { Db, DbOrTx, Tx } from "@ostra/db";
+import { Prisma } from "@ostra/db";
 import {
   memberIdSchema,
   noteIdSchema,
@@ -114,10 +115,6 @@ export const buildMemoryBlock = (async (db: Db, input, limits: MemoryLimits = de
 
 // ---------- the memory tools (the sidecar's endpoints) ----------
 
-/** The words of a query, for the prefix query and the matched line. Letters, digits and `_` only. */
-export const queryWords = (query: string): readonly string[] =>
-  [...new Set(query.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? [])].filter((word) => word.length > 0).slice(0, 32);
-
 /** A character a word doesn't hold: a term with one inside or in front is code-ish (`OSTRA_CORE_URL`, `--frozen-lockfile`, `a/b.ts`). */
 const CODE_CHARACTER = /[_\-/.:@$=\\#~+]/u;
 /** The sentence's punctuation around a term, which isn't part of it: quotes and brackets, and a trailing stop or colon. */
@@ -166,26 +163,68 @@ const bestLine = (title: string, body: string, words: readonly string[]): string
   return chars.length <= runnerLimits.memoryQueryMaxChars ? best : `${chars.slice(0, runnerLimits.memoryQueryMaxChars - 1).join("")}…`;
 };
 
+/** Which notes a ranked search reads: always one organization's, and only these. */
+export type NoteSearchScope =
+  /**
+   * `memory_search`'s, and a proposal's related notes': the active notes of the organization and,
+   * when given, of its project, less the one `excluding` names.
+   */
+  | { readonly kind: "visible"; readonly organizationId: OrganizationId; readonly projectId: ProjectId | null; readonly excluding?: NoteId | null }
+  /** The Memory page's: one scope's notes (the organization's own, or one project's), of one status. */
+  | {
+      readonly kind: "scope";
+      readonly organizationId: OrganizationId;
+      readonly scope: MemoryScope;
+      readonly projectId: ProjectId | null;
+      readonly status: "active" | "archived";
+    };
+
+/** One ranked note, best first: its line is the one that holds most of the query's terms. */
+export type RankedNote = {
+  readonly noteId: NoteId;
+  readonly title: string;
+  readonly version: number;
+  readonly kind: MemoryKind;
+  readonly scope: MemoryScope;
+  readonly line: string;
+};
+
+const noteSearchWhere = (where: NoteSearchScope): Prisma.Sql => {
+  switch (where.kind) {
+    case "visible":
+      return Prisma.sql`n."organizationId" = ${where.organizationId}
+        AND n."status" = 'active'
+        AND (n."projectId" IS NULL OR n."projectId" = ${where.projectId})
+        AND n."id" <> ${where.excluding ?? ""}`;
+    case "scope":
+      return Prisma.sql`n."organizationId" = ${where.organizationId}
+        AND n."scope"::text = ${where.scope}
+        AND n."projectId" IS NOT DISTINCT FROM ${where.projectId}
+        AND n."status"::text = ${where.status}`;
+    default:
+      return where satisfies never;
+  }
+};
+
 /**
- * Full-text search over the active notes of the organization and, when given, the project
- * (`memory_search`, F-110/c9; ADR 0044's 2026-11-21 note, borrowed from claude-mem). A question
- * ranks by the words that carry it: Postgres's `english` configuration drops its stop words ("how
- * do we", "the") and stems the rest, a word of three letters or more matching as a prefix, and the
- * `simple` vector backs a word the stemmer cuts differently in a note. A code-ish term (a path, a
- * flag, an identifier) matches the note's text as written. A note ranks by the code-ish terms it
- * holds, then by how many of the query's words it holds, a word or a term in its title counting
- * half again, then by how close together they are (`ts_rank_cd`, normalised to below 1). A note
- * that holds only the query's stop words isn't a result. Every term is a bound parameter, and at
- * most 20 results come back.
+ * Full-text search over the notes `where` names (F-110/c8; ADR 0044's 2026-11-21 note, borrowed
+ * from claude-mem): `memory_search`, the Memory page's search and a proposal's related notes all
+ * rank this way. A question ranks by the words that carry it: Postgres's `english` configuration
+ * drops its stop words ("how do we", "the") and stems the rest, a word of three letters or more
+ * matching as a prefix, and the `simple` vector backs a word the stemmer cuts differently in a
+ * note. A code-ish term (a path, a flag, an identifier) matches the note's text as written. A note
+ * ranks by the code-ish terms it holds, then by how many of the query's words it holds, a word or a
+ * term in its title counting half again, then by how close together they are (`ts_rank_cd`,
+ * normalised to below 1). A note that holds only the query's stop words isn't a result. Every term
+ * is a bound parameter, and at most `limit` results come back.
  */
-export const searchNotes = (async (db, input): Promise<readonly MemorySearchResult[]> => {
-  const { words, codes } = queryTerms(input.query);
+export const rankNotes = async (db: DbOrTx, where: NoteSearchScope, query: string, limit: number): Promise<readonly RankedNote[]> => {
+  const { words, codes } = queryTerms(query);
   if (words.length === 0 && codes.length === 0) {
     return [];
   }
-  const limit = Math.max(1, Math.min(input.limit, runnerLimits.memorySearchResultsMax));
   const rows = await db.$queryRaw<
-    readonly { id: string; title: string; body: string; kind: MemoryKind; scope: MemoryScope; terms: readonly string[] | null }[]
+    readonly { id: string; title: string; body: string; version: number; kind: MemoryKind; scope: MemoryScope; terms: readonly string[] | null }[]
   >`
     WITH "terms" AS (
       SELECT DISTINCT ON (l."lexeme") l."lexeme", w."word",
@@ -197,7 +236,7 @@ export const searchNotes = (async (db, input): Promise<readonly MemorySearchResu
       ORDER BY l."lexeme", length(w."word")
     ),
     "codes" AS (SELECT c."code" FROM unnest(${codes}::text[]) AS c("code"))
-    SELECT n."id", n."title", n."body", n."kind"::text AS "kind", n."scope"::text AS "scope",
+    SELECT n."id", n."title", n."body", n."version", n."kind"::text AS "kind", n."scope"::text AS "scope",
       ARRAY(SELECT t."lexeme" FROM "terms" t) || ARRAY(SELECT t."word" FROM "terms" t) AS "terms"
     FROM "memory_note" n
     CROSS JOIN LATERAL (
@@ -211,19 +250,25 @@ export const searchNotes = (async (db, input): Promise<readonly MemorySearchResu
           0
         ) AS "closeness"
     ) s
-    WHERE n."organizationId" = ${input.organizationId}
-      AND n."status" = 'active'
-      AND (n."projectId" IS NULL OR n."projectId" = ${input.projectId})
+    WHERE ${noteSearchWhere(where)}
       AND (s."codeHits" > 0 OR s."wordHits" > 0)
     ORDER BY s."codeHits" DESC, (s."wordHits" + 0.5 * (s."titleHits" + s."codeTitleHits") + s."closeness") DESC, n."updatedAt" DESC, n."id"
-    LIMIT ${limit}`;
+    LIMIT ${Math.max(1, limit)}`;
   return rows.map((row) => ({
     noteId: noteIdSchema.parse(row.id),
     title: row.title,
-    line: bestLine(row.title, row.body, [...(row.terms ?? []), ...codes]),
+    version: row.version,
     kind: row.kind,
     scope: row.scope,
+    line: bestLine(row.title, row.body, [...(row.terms ?? []), ...codes]),
   }));
+};
+
+/** `memory_search` (F-110/c8, c9): the active notes of the organization and the session's project, ranked, at most 20. */
+export const searchNotes = (async (db, input): Promise<readonly MemorySearchResult[]> => {
+  const limit = Math.max(1, Math.min(input.limit, runnerLimits.memorySearchResultsMax));
+  const found = await rankNotes(db, { kind: "visible", organizationId: input.organizationId, projectId: input.projectId }, input.query, limit);
+  return found.map((note) => ({ noteId: note.noteId, title: note.title, line: note.line, kind: note.kind, scope: note.scope }));
 }) satisfies SearchNotes;
 
 /** One active note of the project or its organization (`memory_read`), or `null` for any other. */
