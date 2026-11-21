@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { attachmentIdSchema, memberIdSchema, taskIdSchema, turnIdSchema } from "@ostra/protocol";
 
-import { bytesText, capturedText, captions, captureSubject, durationText, earlierOf, frameAt, stepAt, stepWords, thumbWidth, viewerSet, widthsText } from "./attachment-words";
+import { bytesText, capturedText, captions, captureSubject, durationText, earlierOf, frameAt, stepAt, stepWords, thumbWidth, viewerSet } from "./attachment-words";
 import type { AttachmentView } from "./attachment-words";
 
 // Milestone 8's ticket 17 (F-121): the thread's pictures, their captions and sizes, the viewer's
@@ -70,10 +70,9 @@ describe("the thread's pictures (F-121)", () => {
     expect(viewerSet([...all, member], member)).toEqual([member]);
   });
 
-  it("F-121/c4: the properties group counts the pictures, their size and their widths", () => {
+  it("F-121/c4: the properties group counts the pictures and their size", () => {
     const all = [view("att-1"), view("att-2", { width: 768 }), view("att-3", { width: 390 }), view("att-rec", { kind: "recording", bytes: 3_250_586 })];
     expect(capturedText(all)).toBe("3 screenshots · 1 recording");
-    expect(widthsText(all)).toBe("1280 · 768 · 390");
     expect(bytesText(217_088)).toBe("212 KB");
     expect(bytesText(3_250_586)).toBe("3.1 MB");
     expect(durationText(42_000)).toBe("0:42");

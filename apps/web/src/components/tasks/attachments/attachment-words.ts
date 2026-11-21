@@ -70,10 +70,6 @@ export const thumbName = (item: Pick<AttachmentItem, "kind" | "path" | "width" |
     ? t("task.attachments.openRecording", { route: item.path, width: item.width, time: formatClock(item.at) })
     : t("task.attachments.openScreenshot", { route: item.path, width: item.width, time: formatClock(item.at) });
 
-/** The properties panel's widths: each once, widest first, `1280 · 768 · 390`. */
-export const widthsText = (views: readonly Pick<AttachmentView, "width">[]): string =>
-  [...new Set(views.map((view) => view.width))].sort((a, b) => b - a).join(" · ");
-
 /** The panel's "Captured": `3 screenshots · 1 recording`. */
 export const capturedText = (views: readonly Pick<AttachmentView, "kind">[]): string => {
   const shots = views.filter((view) => view.kind === "screenshot").length;

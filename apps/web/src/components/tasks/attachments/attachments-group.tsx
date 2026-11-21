@@ -9,34 +9,65 @@ import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import { safeHref } from "@/task/renderers";
 
-import { bytesText, capturedText, widthsText } from "./attachment-words";
+import { bytesText, capturedText } from "./attachment-words";
+import type { AttachmentView } from "./attachment-words";
+import { peopleText } from "./file-words";
 
-// The task page's "Screenshots and recordings" group (task-attachments.md; F-121): what the task
-// holds, its size, where it's kept and the widths, shown once it has any. And, under the task's
-// header, the line for a runner too old to run the app (F-121/c11, `tasks.attachments.app`).
+// The task page's `Attachments` group (message-attachments.md, "The properties panel"; F-121,
+// F-148): one group for the agent's captures, members' files and the ticket's. From people (a
+// member's uploads and the ticket's files), Captured (milestone 8's screenshots and recordings),
+// their size together, where they're kept, where people's files are in the box, and the PR whose
+// description shows the captures. Shown once the task holds any. And, under the task's header, the
+// line for a runner too old to run the app (F-121/c11, `tasks.attachments.app`).
 
-export const TaskAttachmentsGroup = ({ taskId, pr }: { readonly taskId: TaskId; readonly pr: { readonly number: number; readonly url: string } | null }) => {
-  const trpc = useTRPC();
-  const list = useQuery(trpc.tasks.attachments.queryOptions({ taskId }));
-  const views = list.data?.attachments ?? [];
-  if (views.length === 0) return null;
+/** People's files in the group: how many pictures and other files, their size, and their folders in the box. */
+export type PeopleFiles = {
+  readonly images: number;
+  readonly files: number;
+  readonly bytes: number;
+  /** `.ostra/attachments/`, `.ostra/ticket/`: where they are in the box. */
+  readonly folders: readonly string[];
+};
+
+export const AttachmentsGroupView = ({ captures, people, pr }: {
+  readonly captures: readonly Pick<AttachmentView, "kind" | "bytes">[];
+  readonly people: PeopleFiles | null;
+  readonly pr: { readonly number: number; readonly url: string } | null;
+}) => {
+  const fromPeople = people !== null && people.images + people.files > 0 ? people : null;
+  if (captures.length === 0 && fromPeople === null) return null;
   const href = pr === null ? null : safeHref(pr.url);
+  const bytes = captures.reduce((sum, view) => sum + view.bytes, 0) + (fromPeople?.bytes ?? 0);
   return (
     <div data-testid="attachments-group">
-      <PropGroup title={t("task.attachments.group")}>
-        <PropRow label={t("task.attachments.groupCaptured")}><span className="truncate">{capturedText(views)}</span></PropRow>
-        <PropRow label={t("task.attachments.groupSize")}><span className="font-mono">{bytesText(views.reduce((sum, view) => sum + view.bytes, 0))}</span></PropRow>
+      <PropGroup title={t("task.files.group")}>
+        {fromPeople === null ? null : (
+          <PropRow label={t("task.files.groupPeople")}><span className="truncate">{peopleText(fromPeople.images, fromPeople.files)}</span></PropRow>
+        )}
+        {captures.length === 0 ? null : (
+          <PropRow label={t("task.attachments.groupCaptured")}><span className="truncate">{capturedText(captures)}</span></PropRow>
+        )}
+        <PropRow label={t("task.attachments.groupSize")}><span className="font-mono">{bytesText(bytes)}</span></PropRow>
         <PropRow label={t("task.attachments.groupWhere")}><span className="truncate">{t("task.attachments.groupWhereValue")}</span></PropRow>
-        {pr === null || href === null ? null : (
+        {fromPeople === null || fromPeople.folders.length === 0 ? null : (
+          <PropRow label={t("task.files.inTheBox")}><span className="truncate font-mono">{fromPeople.folders.join(" · ")}</span></PropRow>
+        )}
+        {captures.length === 0 || pr === null || href === null ? null : (
           <PropRow label={t("task.attachments.groupInPr")}>
             <a href={href} target="_blank" rel="noopener noreferrer" className="font-mono text-teal hover:underline">#{pr.number}</a>
             <span className="text-faint">{t("task.attachments.groupDescription")}</span>
           </PropRow>
         )}
-        <PropRow label={t("task.attachments.groupWidths")}><span className="truncate font-mono">{widthsText(views)}</span></PropRow>
       </PropGroup>
     </div>
   );
+};
+
+/** The group on the task page: the captures from `tasks.attachments`; people's files once the thread's fold carries them. */
+export const TaskAttachmentsGroup = ({ taskId, pr, people = null }: { readonly taskId: TaskId; readonly pr: { readonly number: number; readonly url: string } | null; readonly people?: PeopleFiles | null }) => {
+  const trpc = useTRPC();
+  const list = useQuery(trpc.tasks.attachments.queryOptions({ taskId }));
+  return <AttachmentsGroupView captures={list.data?.attachments ?? []} people={people} pr={pr} />;
 };
 
 /** "This task's runner runs an older ostra": its app, its pictures and its previews need minor 7. */
