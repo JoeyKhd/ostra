@@ -46,6 +46,7 @@ import {
   clientMessageIdSchema,
   effortChangeIdSchema,
   effortLevelSchema,
+  eventLogFoldedKinds,
   memberIdSchema,
   needsYouItemIdSchema,
   projectIdSchema,
@@ -637,6 +638,17 @@ export const tasksRouter = router({
       /** The `afterSeq` of the next page, or `null` when this page reaches the newest event. */
       nextAfterSeq: rows.length > limit ? (events.at(-1)?.seq ?? null) : null,
     };
+  }),
+
+  /**
+   * The Event log tab's count (task-event-log.md, "Layout"): the log's rows, every event but the
+   * ones folded into another row or never shown (`eventLogFoldedKinds`), so it is the tab's `All`.
+   */
+  eventLogCount: taskProcedure("read", taskInput).query(async ({ ctx, input }) => {
+    const rows = await ctx.deps.db.event.count({
+      where: { taskId: input.taskId, organizationId: ctx.scope.organizationId, kind: { notIn: [...eventLogFoldedKinds] } },
+    });
+    return { rows };
   }),
 
   /**

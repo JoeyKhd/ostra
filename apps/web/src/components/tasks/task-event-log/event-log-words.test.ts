@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { storedEventSchema } from "@ostra/protocol";
+import { eventLogFoldedKinds, storedEventSchema } from "@ostra/protocol";
 import type { StoredEvent } from "@ostra/protocol";
 
 import { buildRows, durationText, isFailed } from "./event-log-words";
@@ -35,6 +35,11 @@ const log: readonly StoredEvent[] = [
 
 describe("buildRows", () => {
   const rows = buildRows(log, names);
+
+  it("F-073/c3: the tab's count (`tasks.eventLogCount`) is the rows: every event but the folded kinds", () => {
+    const folded: readonly string[] = eventLogFoldedKinds;
+    expect(rows).toHaveLength(log.filter((one) => !folded.includes(one.event.kind)).length);
+  });
 
   it("F-073/c4: one row per tool call, its completion folded in, with the full input as stored and the error of a failed call", () => {
     expect(rows.map((row) => row.seq)).toEqual([1, 2, 3, 6, 8, 9, 10, 13, 14]);

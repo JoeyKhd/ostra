@@ -1431,6 +1431,13 @@ export type TaskEventKind = TaskEvent["kind"];
 export type TaskEventOf<K extends TaskEventKind> = Extract<TaskEvent, { kind: K }>;
 
 /**
+ * The kinds that are never a row of a task's event log (task-event-log.md, "The kinds"): streaming
+ * deltas and thoughts (the finished `agent.message` is the row), a tool call's progress, and its
+ * end, which folds into its `tool.called` row. The Event log tab's count is every other event.
+ */
+export const eventLogFoldedKinds = ["agent.content", "agent.thought", "tool.progress", "tool.completed", "tool.failed"] as const satisfies readonly TaskEventKind[];
+
+/**
  * The kinds minor 1 added. A sender never makes one for a peer at a lower minor: the runner
  * checks the negotiated minor before it records one, so its session numbers stay gap-free.
  */

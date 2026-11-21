@@ -449,6 +449,8 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const [localOpened, setLocalOpened] = useState(false);
   const local = useQuery(trpc.tasks.local.queryOptions(localOpened ? { taskId } : skipToken));
   const checksMarker = useQuery({ ...trpc.tasks.checks.queryOptions({ taskId }), refetchInterval: 15_000 });
+  // The Event log tab's marker: the log's row count (task-event-log.md), its `All`.
+  const eventRows = useQuery({ ...trpc.tasks.eventLogCount.queryOptions({ taskId }), refetchInterval: 15_000 });
   // Milestone 6 (ticket 35): a code task's review rounds, and whether its project's AI review is on.
   const codeTask = task.data?.kind === "code";
   const rounds = useQuery({ ...trpc.tasks.rounds.queryOptions(codeTask ? { taskId } : skipToken), refetchInterval: 15_000 });
@@ -732,6 +734,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
     );
 
   const previewing = side === "preview";
+  const eventsMarker = eventRows.data === undefined || eventRows.data.rows === 0 ? null : <span className="font-mono text-xs text-faint" data-testid="event-log-count">{eventRows.data.rows}</span>;
   const sideToggle = codeTask ? (
     <ToggleGroup
       type="single"
@@ -957,13 +960,13 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
                     { id: "activity", label: t("taskAnswers.tabs.activity") },
                     // A refine task changes nothing: no Changes or Checks tab (refine-draft.md).
                     { id: "draft", label: t("draft.tab"), extra: draft.data?.draft === null || draft.data?.draft === undefined ? null : <span className="font-mono text-faint">{t("draft.versionShort", { n: draft.data.draft.version })}</span> },
-                    { id: "events", label: t("taskAnswers.tabs.events") },
+                    { id: "events", label: t("taskAnswers.tabs.events"), extra: eventsMarker },
                   ]
                 : [
                     { id: "activity", label: t("taskAnswers.tabs.activity") },
                     { id: "changes", label: t("taskAnswers.tabs.changes"), extra: changedFiles === 0 ? null : <span className="text-faint">{changedFiles}</span> },
                     { id: "checks", label: t("taskAnswers.tabs.checks"), extra: <ChecksTabMarker marker={checksMarkerOf(checksMarker.data)} /> },
-                    { id: "events", label: t("taskAnswers.tabs.events") },
+                    { id: "events", label: t("taskAnswers.tabs.events"), extra: eventsMarker },
                   ]
             }
           />

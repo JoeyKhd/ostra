@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mapMember } from "@ostra/db";
 import type { SeededMember } from "@ostra/db/testing";
 import type { AuditInput } from "@ostra/domain";
-import { approvalIdSchema, memberIdSchema, poolIdSchema, taskIdSchema, toolCallIdSchema, turnIdSchema } from "@ostra/protocol";
+import { approvalIdSchema, memberIdSchema, poolIdSchema, segmentIdSchema, taskIdSchema, toolCallIdSchema, turnIdSchema } from "@ostra/protocol";
 import { minor2FieldFixtures } from "@ostra/protocol/testing";
 import type { OrganizationId, ProjectId } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -262,6 +262,28 @@ describe("tasks.eventLog", () => {
     const rest = await member.tasks.eventLog({ taskId: task.taskId, afterSeq: first.nextAfterSeq ?? 0 });
     expect([...first.events, ...rest.events]).toEqual(log.events);
     expect(rest.nextAfterSeq).toBeNull();
+  });
+
+  it("F-073/c3: the Event log tab's count is the log's rows: a tool call's progress and end, streaming text and thoughts aren't rows", async () => {
+    const at = { organizationId: orgA, projectId: openId };
+    const task = await seedTask(harness, at);
+    const turnId = turnIdSchema.parse("turn-count");
+    const segmentId = segmentIdSchema.parse("segment-1");
+    const call = toolCallIdSchema.parse("call-count");
+    // Rows: the turn's start, the call (its progress and end fold into it), the agent's message.
+    await appendEvent(harness, task, at, { kind: "turn.started", turnId });
+    await appendEvent(harness, task, at, { kind: "agent.thought", turnId, segmentId, text: "thinking" });
+    await appendEvent(harness, task, at, { kind: "agent.content", turnId, block: { type: "resource_link", uri: "file:///workspace/src/index.ts", title: "index.ts" } });
+    await appendEvent(harness, task, at, { kind: "tool.called", turnId, toolCallId: call, toolKind: "read", title: "read", input: { path: "src/index.ts" } });
+    await appendEvent(harness, task, at, { kind: "tool.progress", toolCallId: call, output: { lines: 10 } });
+    await appendEvent(harness, task, at, { kind: "tool.completed", toolCallId: call, output: { lines: 20 } });
+    await appendEvent(harness, task, at, { kind: "agent.message", turnId, segmentId, text: "Read it." });
+    const member = await harness.as(harness.fixture.a.member);
+    expect(await member.tasks.eventLogCount({ taskId: task.taskId })).toEqual({ rows: 3 });
+    expect((await member.tasks.eventLog({ taskId: task.taskId })).events).toHaveLength(7);
+    // As every read of the task: NOT_FOUND where the member can't open it.
+    const hidden = await seedTask(harness, { organizationId: orgA, projectId: restrictedId });
+    expect(await trpcFailure(member.tasks.eventLogCount({ taskId: hidden.taskId }))).toMatchObject({ code: "NOT_FOUND" });
   });
 
   it("F-073/c3: a member who can't open the task's project gets NOT_FOUND", async () => {
