@@ -112,6 +112,9 @@ export const jobNames = [
   // ---- milestone 8 (spec section 5.4, ADR 0069) ----
   "library.check-updates",
   "library.seed-sources",
+  // ---- milestone 8 (spec section 5.4, ADR 0068): previews ----
+  "preview.views-sweep",
+  "preview.codes-sweep",
 ] as const;
 
 export type JobName = (typeof jobNames)[number];
@@ -308,6 +311,10 @@ export const jobPayloadSchemas = {
   ]),
   /** GitHub's MCP registry on the organization's allowlist of sources (Q324): when it's seeded, and once for each existing one. */
   "library.seed-sources": z.strictObject({ organizationId: organizationIdSchema }),
+  /** Closes the views with no heartbeat for 2 minutes (F-141), once a minute. */
+  "preview.views-sweep": z.strictObject({}),
+  /** Removes the used and expired one-time codes and CLI tickets (F-143, F-144), once a day. */
+  "preview.codes-sweep": z.strictObject({}),
 } as const satisfies Record<JobName, z.ZodType>;
 
 export type JobPayload<N extends JobName> = z.infer<(typeof jobPayloadSchemas)[N]>;
@@ -377,6 +384,8 @@ const jobKeys: { readonly [N in JobName]: (payload: JobPayload<N>) => string } =
   "library.check-updates": (payload) =>
     "itemId" in payload ? `library-item:${payload.itemId}:check-updates` : `organization:${payload.organizationId}:library-check-updates:${String(payload.windowStart)}`,
   "library.seed-sources": (payload) => `organization:${payload.organizationId}:library-seed-sources`,
+  "preview.views-sweep": () => "previews:views-sweep",
+  "preview.codes-sweep": () => "previews:codes-sweep",
 };
 
 /** How a job is sent (ADR 0037, as amended after spike 8). */
@@ -459,6 +468,9 @@ export const jobSending: Readonly<Record<JobName, JobSending>> = {
   // Sent per organization by a pass over the windows, and per item by an admin.
   "library.check-updates": { kind: "event" },
   "library.seed-sources": { kind: "event" },
+  // A pg-boss schedule every minute (`EVERY_MINUTE_CRON`), and one a day: idempotent passes.
+  "preview.views-sweep": { kind: "schedule" },
+  "preview.codes-sweep": { kind: "schedule" },
 };
 
 /** The window of `OSTRA_LIBRARY_UPDATE_HOURS` a time falls in: its first ms, which keys an organization's check. */

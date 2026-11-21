@@ -42,6 +42,9 @@ export const runnerConfigKeys = [
   "serviceMemoryMiB",
   // Subagents (2026-11-20).
   "subagentWaitMinutes",
+  // Milestone 8 (spec section 5.4, ADR 0068): the box's browser on `host`.
+  "browser",
+  "browserDownload",
 ] as const;
 
 export type RunnerConfigKey = (typeof runnerConfigKeys)[number];
@@ -230,6 +233,20 @@ export const runnerConfigFields = {
     description:
       "How long a turn waits, once its agent's prompt is answered, for the subagents it started and the turns their reports wake (OpenCode runs subagents in the background). Past it, ostra stops them, fails each one on the call that started it, and ends the turn.",
   },
+  browser: {
+    flag: "browser",
+    env: "OSTRA_RUNNER_BROWSER",
+    default: "(none: the runner finds Chrome, Chromium or Edge, else downloads its pinned headless shell)",
+    description:
+      "The Chromium-family browser a host runner takes screenshots, recordings and the browser view with (F-121, F-141): its executable's path. Unset, the runner finds Chrome, Chromium or Edge, else downloads Chrome for Testing's headless shell at the version pinned in its release, checks its SHA-256 and keeps it in its folder. docker and kubernetes boxes use the image's.",
+  },
+  browserDownload: {
+    flag: "browser-download",
+    env: "OSTRA_RUNNER_BROWSER_DOWNLOAD",
+    default: "true",
+    description:
+      "Whether a host runner with no browser of the machine's may download the pinned headless shell (F-121). false never downloads: the runner then reports no browser, and the panel says how to fix it.",
+  },
 } as const satisfies Record<
   RunnerConfigKey,
   { readonly flag: string; readonly env: string; readonly default: string; readonly description: string }
@@ -283,6 +300,9 @@ export const runnerConfigSchema = z.strictObject({
   serviceCpuMillis: whole(1, 1_000_000).default(1000).describe(describe("serviceCpuMillis")),
   serviceMemoryMiB: whole(1, 16_777_216).default(1024).describe(describe("serviceMemoryMiB")),
   subagentWaitMinutes: whole(1, 1440).default(30).describe(describe("subagentWaitMinutes")),
+  /** Unset: the runner finds the machine's browser, or downloads its pinned one (`browserDownload`). */
+  browser: z.string().min(1).max(4096).optional().describe(describe("browser")),
+  browserDownload: booleanSetting.default(true).describe(describe("browserDownload")),
 });
 export type RunnerConfig = z.infer<typeof runnerConfigSchema>;
 

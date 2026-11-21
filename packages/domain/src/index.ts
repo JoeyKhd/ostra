@@ -210,3 +210,14 @@ export * from "./library/diffs.ts";
 export * from "./library/profile-items.ts";
 export * from "./lifecycles/m8-library.ts";
 export * from "./use-cases/m8-library-signatures.ts";
+
+// Milestone 8 (ticket 05, ADR 0068): app processes, attachments, previews and sharing.
+export * from "./previews/app-processes.ts";
+export * from "./previews/targets.ts";
+export * from "./previews/access.ts";
+export * from "./previews/warm.ts";
+export * from "./previews/host.ts";
+export * from "./previews/tokens.ts";
+export * from "./environment/detect-app.ts";
+export * from "./lifecycles/m8-previews.ts";
+export * from "./use-cases/m8-preview-signatures.ts";

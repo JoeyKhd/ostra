@@ -28,6 +28,7 @@ describe("the runner's config", () => {
         serviceCpuMillis: 1000,
         serviceMemoryMiB: 1024,
         subagentWaitMinutes: 30,
+        browserDownload: true,
       },
     });
   });

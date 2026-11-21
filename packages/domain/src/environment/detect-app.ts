@@ -1,0 +1,360 @@
+// Detecting an app's processes (milestone 8, F-112, F-140, ADR 0068): readers for the files that
+// say how a repo's app runs, and the processes they suggest. Every reader takes the file's text and
+// reads it as text: nothing here runs a script, loads a config or evaluates a line, so a file whose
+// command would write a marker if run leaves none. A proposal is a draft for a project admin, who
+// fills in what detection can't know.
+
+/** The files the app's processes are read from, besides `package.json` and the devcontainer, which detection reads already. */
+export const appContentPaths = [".gitpod.yml", ".replit", "vite.config.ts", "vite.config.mts", "vite.config.js", "vite.config.mjs"] as const;
+
+/** A port a file names, with what it says about it. */
+export type DetectedPort = {
+  readonly port: number;
+  /** The label the file gives it, or `null`. */
+  readonly label: string | null;
+  /** The file says to open it as a preview (`onAutoForward: openPreview`, `onOpen: open-preview`). */
+  readonly preview: boolean;
+};
+
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> => typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** A whole port, 1 to 65535, from a number or a string of digits. */
+const portOf = (value: unknown): number | null => {
+  const number = typeof value === "number" ? value : typeof value === "string" && /^\d{1,5}$/.test(value.trim()) ? Number(value.trim()) : Number.NaN;
+  return Number.isInteger(number) && number >= 1 && number <= 65_535 ? number : null;
+};
+
+const cleanLabel = (value: unknown): string | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+  let label = "";
+  for (const character of value.trim()) {
+    if ((character.codePointAt(0) ?? 0) >= 0x20) {
+      label += character;
+    }
+  }
+  label = label.slice(0, 60);
+  return label === "" ? null : label;
+};
+
+/**
+ * A devcontainer's `forwardPorts` (numbers, or `"host:port"` strings, whose port is taken) and its
+ * `portsAttributes` (a port's `label`, and `onAutoForward: openPreview` as the primary's hint).
+ * Takes the parsed JSON, which detection already reads with comments.
+ */
+export const readDevcontainerPorts = (parsed: unknown): readonly DetectedPort[] => {
+  if (!isRecord(parsed)) {
+    return [];
+  }
+  const attributes = isRecord(parsed["portsAttributes"]) ? parsed["portsAttributes"] : {};
+  const ports = new Map<number, DetectedPort>();
+  const forward = Array.isArray(parsed["forwardPorts"]) ? parsed["forwardPorts"] : [];
+  for (const entry of forward) {
+    const port = portOf(typeof entry === "string" ? entry.split(":").at(-1) : entry);
+    if (port !== null) {
+      ports.set(port, { port, label: null, preview: false });
+    }
+  }
+  for (const [key, value] of Object.entries(attributes)) {
+    const port = portOf(key);
+    if (port === null || !isRecord(value)) {
+      continue;
+    }
+    ports.set(port, { port, label: cleanLabel(value["label"]), preview: value["onAutoForward"] === "openPreview" });
+  }
+  return [...ports.values()];
+};
+
+/** The YAML scalar after `key:` on a line, unquoted, or `null`. */
+const yamlValue = (line: string, key: string): string | null => {
+  const found = new RegExp(`^\\s*-?\\s*${key}\\s*:\\s*(.*?)\\s*(?:#.*)?$`).exec(line);
+  if (found === null) {
+    return null;
+  }
+  const raw = found[1] ?? "";
+  return raw.replace(/^(["'])(.*)\1$/, "$2");
+};
+
+/**
+ * `.gitpod.yml`'s `ports:` list: each entry's `port`, its `name` and `onOpen: open-preview` as the
+ * primary's hint. Read line by line: a port range (`3000-3010`) is skipped.
+ */
+export const readGitpodPorts = (text: string): readonly DetectedPort[] => {
+  const lines = text.split(/\r?\n/);
+  const start = lines.findIndex((line) => /^ports\s*:\s*(?:#.*)?$/.test(line));
+  if (start === -1) {
+    return [];
+  }
+  const ports: DetectedPort[] = [];
+  let current: { port: number | null; label: string | null; preview: boolean } | null = null;
+  const flush = (): void => {
+    if (current?.port !== null && current !== null) {
+      ports.push({ port: current.port, label: current.label, preview: current.preview });
+    }
+    current = null;
+  };
+  for (const line of lines.slice(start + 1)) {
+    if (/^\S/.test(line)) {
+      break;
+    }
+    if (/^\s*-\s/.test(line)) {
+      flush();
+      current = { port: null, label: null, preview: false };
+    }
+    if (current === null) {
+      continue;
+    }
+    const port = yamlValue(line, "port");
+    if (port !== null) {
+      current.port = portOf(port);
+    }
+    const name = yamlValue(line, "name");
+    if (name !== null) {
+      current.label = cleanLabel(name);
+    }
+    if (yamlValue(line, "onOpen") === "open-preview") {
+      current.preview = true;
+    }
+  }
+  flush();
+  return ports;
+};
+
+/** `.replit`'s `[[ports]]` tables: each `localPort`, read as TOML text. */
+export const readReplitPorts = (text: string): readonly DetectedPort[] => {
+  const ports: DetectedPort[] = [];
+  let inPorts = false;
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("[")) {
+      inPorts = trimmed === "[[ports]]";
+      continue;
+    }
+    const found = /^localPort\s*=\s*(\d{1,5})\s*(?:#.*)?$/.exec(trimmed);
+    if (inPorts && found !== null) {
+      const port = portOf(found[1]);
+      if (port !== null) {
+        ports.push({ port, label: null, preview: false });
+      }
+    }
+  }
+  return ports;
+};
+
+/** The dev servers whose default port detection knows, by the tool a script runs. */
+const toolPorts: readonly { readonly tool: string; readonly pattern: RegExp; readonly port: number }[] = [
+  { tool: "vite", pattern: /(?:^|[\s;&|])vite(?:\s+(?:dev|serve))?(?=\s|$)/, port: 5173 },
+  { tool: "next", pattern: /(?:^|[\s;&|])next\s+(?:dev|start)\b/, port: 3000 },
+  { tool: "astro", pattern: /(?:^|[\s;&|])astro\s+dev\b/, port: 4321 },
+  { tool: "nuxt", pattern: /(?:^|[\s;&|])nuxi?\s+dev\b/, port: 3000 },
+  { tool: "react-scripts", pattern: /(?:^|[\s;&|])react-scripts\s+start\b/, port: 3000 },
+  { tool: "remix", pattern: /(?:^|[\s;&|])remix\s+(?:vite:)?dev\b/, port: 5173 },
+];
+
+/** A `package.json` script that starts the app: its name, the tool it runs, and the port it names or the tool's default. */
+export type DetectedScript = {
+  readonly script: "dev" | "start";
+  readonly tool: string | null;
+  readonly port: number | null;
+};
+
+/**
+ * `package.json`'s `dev` and `start` scripts: the tool each runs (Vite, Next.js, Astro, Nuxt,
+ * Create React App, Remix) and the port it names (`--port 4000`, `-p 4000`, `PORT=4000`), else the
+ * tool's default. The script's text is data: it's matched, never run.
+ */
+export const readPackageScripts = (parsed: unknown): readonly DetectedScript[] => {
+  if (!isRecord(parsed) || !isRecord(parsed["scripts"])) {
+    return [];
+  }
+  const scripts = parsed["scripts"];
+  const found: DetectedScript[] = [];
+  for (const script of ["dev", "start"] as const) {
+    const text = scripts[script];
+    if (typeof text !== "string" || text.trim() === "") {
+      continue;
+    }
+    const tool = toolPorts.find((entry) => entry.pattern.test(text)) ?? null;
+    const named = /(?:--port[=\s]+|(?:^|\s)-p\s+|(?:^|[\s;&])PORT=)(\d{2,5})\b/.exec(text)?.[1];
+    found.push({ script, tool: tool?.tool ?? null, port: portOf(named) ?? tool?.port ?? null });
+  }
+  return found;
+};
+
+/** A Vite config's `server.port` and the paths and targets of its `server.proxy`. */
+export type DetectedViteConfig = {
+  readonly port: number | null;
+  readonly proxy: readonly { readonly path: string; readonly targetPort: number | null }[];
+};
+
+/** The text of the `{ … }` block that starts at `open`, balanced by braces, or `null` when it never closes. */
+const blockAt = (text: string, open: number): string | null => {
+  let depth = 0;
+  for (let index = open; index < text.length; index += 1) {
+    const character = text.charAt(index);
+    if (character === "{") {
+      depth += 1;
+    } else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return text.slice(open + 1, index);
+      }
+    }
+  }
+  return null;
+};
+
+/** The block after `key:` in `text`, or `null`. */
+const blockOf = (text: string, key: string): string | null => {
+  const found = new RegExp(`(?:^|[\\s,{])${key}\\s*:\\s*\\{`).exec(text);
+  return found === null ? null : blockAt(text, found.index + found[0].length - 1);
+};
+
+/**
+ * A Vite config's `server.port` and `server.proxy` keys (ADR 0068): read from its text, never
+ * loaded, since loading a config runs it. A proxy's target names the port of the API behind it.
+ */
+export const readViteConfig = (text: string): DetectedViteConfig => {
+  const server = blockOf(text, "server");
+  if (server === null) {
+    return { port: null, proxy: [] };
+  }
+  const proxyBlock = blockOf(server, "proxy");
+  const outside = proxyBlock === null ? server : server.replace(proxyBlock, "");
+  const port = portOf(/(?:^|[\s,{])port\s*:\s*(\d{2,5})\b/.exec(outside)?.[1]);
+  const proxy: { path: string; targetPort: number | null }[] = [];
+  if (proxyBlock !== null) {
+    const entry = /(["'])(\/[^"']*)\1\s*:\s*(?:(["'])([^"']*)\3|\{)/g;
+    for (let found = entry.exec(proxyBlock); found !== null; found = entry.exec(proxyBlock)) {
+      const path = found[2] ?? "";
+      const target = found[4] ?? (blockAt(proxyBlock, found.index + found[0].length - 1) ?? "");
+      proxy.push({ path, targetPort: portOf(/:(\d{2,5})(?=[/"'\s,]|$)/.exec(target)?.[1]) });
+    }
+  }
+  return { port, proxy };
+};
+
+// ---------- the processes they suggest ----------
+
+/** An app process detection proposes. The admin fills in what's `null`. */
+export type DetectedAppProcess = {
+  /** Lower-case letters, digits and dashes, unique among the proposed. */
+  readonly name: string;
+  readonly label: string;
+  readonly port: number;
+  /** The command that starts it, or `null` when no file says. Never logged. */
+  readonly command: string | null;
+  readonly folder: string;
+  readonly ready: { readonly kind: "http"; readonly path: string } | { readonly kind: "port" };
+  readonly primary: boolean;
+  /** The file it was found in. */
+  readonly source: string;
+};
+
+export type AppDetectionInput = {
+  /** `package.json`, parsed, or `null`. */
+  readonly packageJson: unknown;
+  /** The devcontainer, parsed, or `null`. */
+  readonly devcontainer: unknown;
+  readonly devcontainerFile: string | null;
+  /** The other files' text, by path (`appContentPaths`). */
+  readonly files: ReadonlyMap<string, string>;
+  /** The package manager detection chose, which runs a script: `pnpm`, `yarn`, `bun` or `npm`. */
+  readonly manager: "pnpm" | "yarn" | "bun" | "npm";
+};
+
+export type AppDetection = {
+  readonly processes: readonly DetectedAppProcess[];
+  readonly reasons: readonly { readonly file: string; readonly finding: string }[];
+};
+
+const slug = (label: string): string =>
+  label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40)
+    .replace(/-+$/, "");
+
+/**
+ * The app processes the repo's files suggest (ADR 0068): the dev server a `package.json` script
+ * or a Vite config starts, as the primary, with each API its Vite proxy points at; and the ports
+ * a devcontainer, `.gitpod.yml` or `.replit` names, a file's preview hint winning the primary.
+ * Ports below 1024 are left out, as previews never reach them; at most 10.
+ */
+export const detectAppProcesses = (input: AppDetectionInput): AppDetection => {
+  const reasons: { file: string; finding: string }[] = [];
+  const byPort = new Map<number, DetectedAppProcess>();
+  const add = (process: DetectedAppProcess): void => {
+    const known = byPort.get(process.port);
+    byPort.set(process.port, known === undefined ? process : { ...known, label: known.label === `Port ${String(known.port)}` ? process.label : known.label, primary: known.primary || process.primary });
+  };
+  const run = (script: string): string => (input.manager === "npm" ? `npm run ${script}` : `${input.manager} ${script}`);
+
+  const viteFile = appContentPaths.filter((path) => path.startsWith("vite.config.")).find((path) => input.files.has(path));
+  const vite = viteFile === undefined ? null : readViteConfig(input.files.get(viteFile) ?? "");
+  const scripts = readPackageScripts(input.packageJson);
+  const devScript = scripts.find((script) => script.script === "dev") ?? scripts[0];
+  const webPort = vite?.port ?? devScript?.port ?? (vite === null ? null : 5173);
+  if (webPort !== null && (devScript !== undefined || vite !== null)) {
+    add({
+      name: "web",
+      label: "Web",
+      port: webPort,
+      command: devScript === undefined ? null : run(devScript.script),
+      folder: ".",
+      ready: { kind: "http", path: "/" },
+      primary: true,
+      source: viteFile ?? "package.json",
+    });
+    reasons.push({ file: viteFile ?? "package.json", finding: `a dev server on port ${String(webPort)}: proposed as the primary preview, Web` });
+  }
+  for (const proxy of vite?.proxy ?? []) {
+    if (proxy.targetPort === null || proxy.targetPort === webPort) {
+      continue;
+    }
+    const name = slug(proxy.path) === "" ? `api-${String(proxy.targetPort)}` : slug(proxy.path);
+    add({ name, label: name === "api" ? "API" : name, port: proxy.targetPort, command: null, folder: ".", ready: { kind: "port" }, primary: false, source: viteFile ?? "vite.config" });
+    reasons.push({ file: viteFile ?? "vite.config", finding: `${proxy.path} goes to port ${String(proxy.targetPort)} through the dev server's proxy: proposed as a process, with one origin kept` });
+  }
+  const named: { readonly file: string; readonly ports: readonly DetectedPort[] }[] = [
+    { file: input.devcontainerFile ?? ".devcontainer/devcontainer.json", ports: readDevcontainerPorts(input.devcontainer) },
+    { file: ".gitpod.yml", ports: input.files.has(".gitpod.yml") ? readGitpodPorts(input.files.get(".gitpod.yml") ?? "") : [] },
+    { file: ".replit", ports: input.files.has(".replit") ? readReplitPorts(input.files.get(".replit") ?? "") : [] },
+  ];
+  for (const { file, ports } of named) {
+    for (const port of ports) {
+      if (port.port < 1024) {
+        reasons.push({ file, finding: `port ${String(port.port)} is below 1024: no preview reaches it, so it isn't proposed` });
+        continue;
+      }
+      const label = port.label ?? `Port ${String(port.port)}`;
+      add({
+        name: slug(label) === "" || /^\d/.test(slug(label)) ? `app-${String(port.port)}` : slug(label),
+        label,
+        port: port.port,
+        command: null,
+        folder: ".",
+        ready: { kind: "port" },
+        primary: port.preview,
+        source: file,
+      });
+      reasons.push({ file, finding: `port ${String(port.port)}${port.label === null ? "" : ` (${port.label})`}${port.preview ? ", opened as a preview" : ""}: proposed as a process` });
+    }
+  }
+  // One primary: a file's preview hint first, then the dev server; names once.
+  const all = [...byPort.values()];
+  const hinted = all.find((process) => process.primary && process.source !== (viteFile ?? "package.json") && process.name !== "web");
+  const primaryPort = hinted?.port ?? all.find((process) => process.primary)?.port ?? null;
+  const names = new Set<string>();
+  const processes = all.slice(0, 10).map((process) => {
+    let name = process.name;
+    for (let n = 2; names.has(name); n += 1) {
+      name = `${process.name.slice(0, 36)}-${String(n)}`;
+    }
+    names.add(name);
+    return { ...process, name, primary: process.port === primaryPort };
+  });
+  return { processes, reasons };
+};

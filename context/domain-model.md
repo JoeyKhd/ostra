@@ -15,14 +15,16 @@ Install ── Organization ─┬─ Member (admin | member)
                          └─ Project ─┬─ Project member (admin | member), when the project is restricted
                                      ├─ Repo (linked), Board
                                      ├─ Provider list (its own, or the organization's default) ── Model choice
-                                     ├─ Environment ── Variable or secret (per repo), Service, Check, Snapshot
+                                     ├─ Environment ── Variable or secret (per repo), Service, Check, Snapshot, App process
                                      ├─ Automation (intake rule | schedule)
                                      ├─ Memory note, Proposal, Budget
                                      └─ Task (refine | code | review)
                                           ├─ Session ── Turn ── Event
                                           ├─ Needs-you item, Approval
                                           ├─ Task repo (branch, PR)        one per repo the task changed
-                                          ├─ Box (through a lease)
+                                          ├─ Box (through a lease) ── App process in the box, View of a preview
+                                          ├─ Attachment (screenshot | recording), Announced preview
+                                          ├─ Preview access (level, named people), Preview link, One-time code
                                           └─ Draft (refine) · Finding (review)
 
 Outside ostra:  Ticket (the tracker) ── source of ──▶ Task ──▶ PR (the code host), one per task repo
@@ -398,6 +400,62 @@ An organization's library holds items, each a skill or an MCP server, pinned to 
 | **dismissed** | Nothing was installed | Never |
 
 **An item** is `installed` until an admin removes it (→ `removed`), which detaches it from every profile; tasks lose it at their next session. A removed item is kept for history and never comes back: installing it again makes a new item.
+
+## The previews' lifecycles
+
+*Added 2026-11-21 for milestone 8 (ADR 0068, F-140 to F-144). The code: `packages/domain/src/lifecycles/m8-previews.ts`; the rules beside it in `packages/domain/src/previews/`.*
+
+**An app process in a box** is the environment's process as one box runs it. Nothing starts it until something asks: the agent's `start_app`, the after-turn screenshots, an opened view, or "Start the app". Every process stops with its box.
+
+```
+ stopped ──▶ starting ──┬──▶ ready ──┬──▶ exited
+    ▲            │       │            └──▶ stopped (app.stop, or the box stops)
+    │            │       └──▶ failed
+    │            └──▶ stopped
+    └── exited or failed ── start again ──▶ starting
+```
+
+| State | Means | Leaves when |
+|---|---|---|
+| **stopped** | Not running: the box just started, or it was stopped | Something asks for it (→ starting) |
+| **starting** | Its command runs; its ready check is tried every 2 s for at most 120 s *(working values)* | The check passes (→ ready), it couldn't start, didn't get ready or exited first (→ failed, with its log's tail), or it's stopped (→ stopped) |
+| **ready** | It serves its port: previews and screenshots reach it | It exits on its own (→ exited, with its log's tail), or it's stopped (→ stopped) |
+| **exited** | It ended after it was ready | It's started again (→ starting) |
+| **failed** | It never got ready; `app.process` names why, never its log | It's started again (→ starting) |
+
+**A view** is one opening of a preview: the browser view, a tunnel, the native preview, or `ostra preview`, by a member or a link.
+
+```
+ opening ──▶ open ──▶ closed
+    └──────────────▶ closed
+```
+
+| State | Means | Leaves when |
+|---|---|---|
+| **opening** | Its row and audit entry are written, and `preview.open` went to the box's runner | The box's preview connection reaches a replica, which writes its presence (→ open), or it's refused (→ closed) |
+| **open** | Its stream or tunnel runs; the pane's heartbeat comes every 30 s and keeps a watched box warm, up to `OSTRA_PREVIEW_WARM_MINUTES` | Its viewer closes it, 2 minutes pass with no heartbeat (`preview.views-sweep`), its link ends, or its box goes (→ closed) |
+| **closed** | Over; the page shows the last frame | Never |
+
+**A preview link** opens one preview for whoever holds it: an expiring one (24 hours by default, `OSTRA_PREVIEW_LINK_MAX_DAYS` at most), or a public one where the organization allows them. Watch-only unless it allows input. Its token is kept as a hash.
+
+```
+ active ──┬──▶ expired
+          └──▶ revoked
+```
+
+| State | Means | Leaves when |
+|---|---|---|
+| **active** | It opens its preview's viewer page | Its time passes (→ expired; a public link has none), or a member revokes it (→ revoked) |
+| **expired** | Its page says it expired | Never |
+| **revoked** | Its page says it was revoked | Never |
+
+**A lease's purpose** says why its box runs: a `turn` of the agent, or the `app` alone. "Start the app" admits a lease with the purpose `app`: the box starts as for a reopen, runs the setup, restores the hidden ref, starts the app's processes, and launches no agent, so the key proxy counts no model call.
+
+```
+ app ── a member's message ──▶ turn      (the agent starts in the same box)
+```
+
+**Who may open a preview** is its level: the project's members (the default, with no row), or named people, who see that preview and nothing else of the task, watch-only; and its links. It fails closed: a level, a link or a runner it can't read gives no view, and the page says why (`previewAccess`).
 
 ## Events and their two numbers
 

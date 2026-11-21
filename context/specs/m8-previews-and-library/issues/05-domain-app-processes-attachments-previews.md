@@ -1,6 +1,6 @@
 # 05: Domain: app processes, attachments, previews and sharing
 
-Status: ready-for-agent
+Status: done
 Builder: core (contracts, first)
 Blocked by: 01, 04
 Features: F-121, F-140, F-141, F-142, F-143, F-144
@@ -42,22 +42,34 @@ The pure rules and the use-case signatures that core, the API and the runner's t
 
 ## Done when
 
-- [ ] Tests named for `F-140`:
+- [x] Tests named for `F-140`:
   - the environment's rules, with a near miss for each;
   - the readers over each file kind, with a file that holds a command line that would write a marker if run, and doesn't;
   - the addresses per executor.
-- [ ] Tests named for `F-141`:
+- [x] Tests named for `F-141`:
   - `mayReach` refuses every reserved port (break-it: drop the reserved list, and the case fails);
   - `warmHold` holds to the cap and not past it, and ignores the app's own sockets.
-- [ ] Tests named for `F-142`: each level for a member, a named person, an outsider, an expired link, a revoked link, and a public link where the organization forbids it, each with its reason, and none allowed by default.
-- [ ] Tests named for `F-144`:
+- [x] Tests named for `F-142`: each level for a member, a named person, an outsider, an expired link, a revoked link, and a public link where the organization forbids it, each with its reason, and none allowed by default.
+- [x] Tests named for `F-144`:
   - the rewrites for `hostRewrite` on and off, and for an outside link's upgrade;
   - the framing header replaced;
   - a client's `X-Forwarded-Host` stripped;
   - `parsePreviewHost` with a malformed or too-long label.
-- [ ] The tokens' tests pass, and none of them appears in a log line in any test (the log guard).
-- [ ] `domain-model.md` draws the new lifecycles, and `packages/domain`'s settings test passes with the new lines in `docs/configuration.md`.
-- [ ] Checks for the touched packages pass (spec section 10).
-- [ ] Committed as `✨ add the previews and app processes domain`.
+- [x] The tokens' tests pass, and none of them appears in a log line in any test (the log guard).
+- [x] `domain-model.md` draws the new lifecycles, and `packages/domain`'s settings test passes with the new lines in `docs/configuration.md`.
+- [x] Checks for the touched packages pass (spec section 10).
+- [x] Committed as `✨ add the previews and app processes domain`.
 
 ## Comments
+
+- 2026-11-21, core: built as `✨ add the previews and app processes domain`, beside ticket 06's library (its `organization.public_preview_links_changed` audit action is reused, not added again). The pure parts are in `packages/domain/src/previews/` (`app-processes.ts`, `targets.ts`, `access.ts`, `warm.ts`, `host.ts`, `tokens.ts`), the readers in `environment/detect-app.ts`, the lifecycles in `lifecycles/m8-previews.ts`, the signatures in `use-cases/m8-preview-signatures.ts`, and the tests in `milestone-8-previews.test.ts`. Readings and decisions:
+  - **Reserved ports:** the box picks most of its own ports when it starts, so an environment refuses only the one it keeps at a fixed number (7101, the sidecar's control API on `docker` and `kubernetes`) when it's saved; `mayReach` refuses every reserved port by name at run time (protocol's `ReservedPorts`), and that fixed one too, even when the list names it.
+  - **Named people watch:** a named person sees the preview watch-only, as a link does unless it allows input (Q301's rule for people outside the project); only a member who can open the task gives input (Q314).
+  - **Fail closed:** `previewAccess` refuses a level or a link kind this build doesn't know, a link for another task or preview (read as no link), and an expiring link with no end (read as expired). `isPreviewable` (ticket 01) refuses a runner that reported nothing.
+  - **Tokens:** a link's token is `ostra-preview-` and 32 random bytes; a one-time code `ostra-code-`; a CLI ticket the protocol's `ostra_pt_`; the panel's view token `ostra-view-` (an HMAC over the organization, the view, the member or link, and a deadline at most a minute ahead). Each is kept as its SHA-256 or checked by its MAC, in constant time. `@ostra/adapter-sdk`'s logger now redacts all four prefixes (the log guard); the test logs each one and finds none. A CLI ticket is a member's only. The replica signature is `<time>.<HMAC>` in `x-ostra-replica-signature`, over the method, the path, the view and the time, refused 30 s either way.
+  - **The rewrites:** `rewriteRequest` also drops `Forwarded` and every `X-Ostra-*`, and refuses a WebSocket upgrade with no `Origin`. `rewriteResponse` always sets `frame-ancestors <panel>`, even when the app sent no framing header, and says whether it replaced one.
+  - **The preview domain** is refused at start when the panel's own host is under it (`OSTRA_PUBLIC_URL`); a sibling subdomain is fine.
+  - **Runner settings:** `OSTRA_RUNNER_BROWSER` (`--browser`) and `OSTRA_RUNNER_BROWSER_DOWNLOAD` (`--browser-download`) live where the runner's settings are parsed, `packages/protocol/src/runner/config.ts`; the four server settings are `ServerSettings.previews`.
+  - **Detection** reads `.gitpod.yml`, `.replit` and the Vite configs too (`contentPaths`), and `DetectedEnvironment` gains `appProcesses`: the dev server as the primary (Web), each API a Vite proxy points at, and the ports a devcontainer, `.gitpod.yml` or `.replit` names, a file's preview hint winning the primary. Ports below 1024 are left out with a reason.
+  - **Added beyond the list:** `TakeMemberScreenshot` (the pane's screenshot), `previewLevelChoices`, `specScreenshots` (off without a primary) and the row mappers. The jobs are schedules with empty payloads, like milestone 2's sweeps; core registers their crons (ticket 19).
+  - **Break-it passes** are dropped (the maintainer, 2026-11-21). **Checks:** the whole repo's typecheck; lint and tests of domain, protocol, adapter-sdk, jobs, deploy-checks and docs.

@@ -130,6 +130,11 @@ export const settingNames = [
   "OSTRA_LIBRARY_UPDATE_HOURS",
   "OSTRA_MARKETPLACE_SEARCH",
   "OSTRA_SKILLS_SEARCH_URL",
+  // Milestone 8 (spec section 5.4, ADR 0068): previews.
+  "OSTRA_PREVIEW_DOMAIN",
+  "OSTRA_PREVIEW_WARM_MINUTES",
+  "OSTRA_PREVIEW_LINK_MAX_DAYS",
+  "OSTRA_CORE_REPLICA_URL",
 ] as const;
 
 export type SettingName = (typeof settingNames)[number];
@@ -512,6 +517,25 @@ export const settingFields = {
     default: "true",
     description: "Whether organization admins may turn on the library's search of skills.sh and their MCP registries (F-146), which is off in each organization until an admin turns it on. false keeps it off on the whole install; installing by reference still works.",
   },
+  OSTRA_PREVIEW_DOMAIN: {
+    default: "(none: no native preview)",
+    description:
+      "The domain a task's app is served on in the member's own browser, one host per port, such as previews.example.com (F-144). Optional: unset, the browser view, ostra preview and screenshots still work. Set, it needs a wildcard DNS record and a wildcard certificate for *.<domain> pointing at core, and previews serve on <port>-<previewId>.<domain>. A registrable domain of its own is safest; a subdomain of the panel's works, with the panel's cookies kept host-only.",
+  },
+  OSTRA_PREVIEW_WARM_MINUTES: {
+    default: "60",
+    description:
+      "How long, in minutes after its last turn ended or its app started, a box stays running while someone watches one of its previews (F-141). Past it, the box idles out as OSTRA_BOX_IDLE_MINUTES says, watched or not. The app's own sockets never count as watching.",
+  },
+  OSTRA_PREVIEW_LINK_MAX_DAYS: {
+    default: "7",
+    description: "The longest an expiring preview link may last, in days (F-142). A new link lasts 24 hours unless its member picks less or more, up to this.",
+  },
+  OSTRA_CORE_REPLICA_URL: {
+    default: "this process's first non-loopback address and OSTRA_CORE_PORT, over http",
+    description:
+      "This core process's address as the other core processes reach it, to forward a preview's stream to the one that holds its box's connection (F-141). Set it when the default address isn't the one the others reach; the Helm chart sets the pod's IP. A one-machine install never forwards.",
+  },
   OSTRA_SKILLS_SEARCH_URL: {
     default: "https://skills.sh/api/search",
     description: "Where the library's skill search asks, from core, with the admin's words and nothing else (F-146). It's the skills CLI's search endpoint, not a documented public API: when it fails, the page says search is unavailable.",
@@ -587,6 +611,9 @@ const decodeKey32 = (text: string): Buffer =>
 const port = z.coerce.number().pipe(z.number().int().min(1).max(65_535));
 const whole = (min: number, max: number) => z.coerce.number().pipe(z.number().int().min(min).max(max));
 const url = z.url({ protocol: /^https?$/ });
+
+/** A preview domain: two labels or more, lower-case, no scheme, port or wildcard. `preview.localhost` is one. */
+const previewDomainPattern = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 const rawSettingsSchema = z.strictObject({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development").describe(describe("NODE_ENV")),
@@ -707,6 +734,15 @@ const rawSettingsSchema = z.strictObject({
   OSTRA_LIBRARY_UPDATE_HOURS: whole(1, 24 * 30).default(24).describe(describe("OSTRA_LIBRARY_UPDATE_HOURS")),
   OSTRA_MARKETPLACE_SEARCH: flag.default(true).describe(describe("OSTRA_MARKETPLACE_SEARCH")),
   OSTRA_SKILLS_SEARCH_URL: url.default(SKILLS_SEARCH_URL).describe(describe("OSTRA_SKILLS_SEARCH_URL")),
+  OSTRA_PREVIEW_DOMAIN: z
+    .string()
+    .transform((domain) => domain.trim().toLowerCase().replace(/\.$/, ""))
+    .pipe(z.string().max(200).regex(previewDomainPattern, "a domain name such as previews.example.com, without a scheme or a port"))
+    .optional()
+    .describe(describe("OSTRA_PREVIEW_DOMAIN")),
+  OSTRA_PREVIEW_WARM_MINUTES: whole(1, 24 * 60).default(60).describe(describe("OSTRA_PREVIEW_WARM_MINUTES")),
+  OSTRA_PREVIEW_LINK_MAX_DAYS: whole(1, 365).default(7).describe(describe("OSTRA_PREVIEW_LINK_MAX_DAYS")),
+  OSTRA_CORE_REPLICA_URL: url.optional().describe(describe("OSTRA_CORE_REPLICA_URL")),
 });
 
 /** The server's settings, resolved: every default filled in. Holds secrets: never logged whole. */
@@ -821,6 +857,20 @@ export type ServerSettings = {
   readonly team: TeamSettings;
   /** Milestone 8's library (spec section 5.4, ADR 0069). */
   readonly library: LibrarySettings;
+  /** Milestone 8's previews (spec section 5.4, ADR 0068). */
+  readonly previews: PreviewSettings;
+};
+
+/** The previews' settings, resolved (F-141, F-142, F-144). */
+export type PreviewSettings = {
+  /** OSTRA_PREVIEW_DOMAIN, lower-case, or `null`: no native preview. */
+  readonly domain: string | null;
+  /** OSTRA_PREVIEW_WARM_MINUTES. */
+  readonly warmMinutes: number;
+  /** OSTRA_PREVIEW_LINK_MAX_DAYS. */
+  readonly linkMaxDays: number;
+  /** OSTRA_CORE_REPLICA_URL, or `null`: core takes its first non-loopback address and its port. */
+  readonly replicaUrl: string | null;
 };
 
 /** The library's settings, resolved (F-145, F-146). */
@@ -964,6 +1014,16 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
       errors: ["OSTRA_DEV_HOST_POOL_SAME_USER is for development and tests only: a host pool runs the agent as its own OS user (OSTRA_HOST_POOL_AGENT_USER)"],
     };
   }
+  // The panel can't sit under the preview domain: its host would be a preview host, framed by and
+  // sharing cookies with agent-written code (ADR 0068, the panel's own defences).
+  const previewDomain = value.OSTRA_PREVIEW_DOMAIN ?? null;
+  const panelHost = new URL(value.OSTRA_PUBLIC_URL).hostname.toLowerCase();
+  if (previewDomain !== null && (panelHost === previewDomain || panelHost.endsWith(`.${previewDomain}`))) {
+    return {
+      ok: false,
+      errors: ["OSTRA_PREVIEW_DOMAIN can't hold the panel's own host (OSTRA_PUBLIC_URL): give previews a domain of their own, or a subdomain beside the panel's"],
+    };
+  }
   const maxBytes = value.OSTRA_BLOB_MAX_MIB * 1024 * 1024;
   let blobStore: BlobStoreSettings = { kind: "postgres", maxBytes };
   if (value.OSTRA_BLOB_STORE === "s3") {
@@ -1083,6 +1143,12 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
         updateHours: value.OSTRA_LIBRARY_UPDATE_HOURS,
         marketplaceSearch: value.OSTRA_MARKETPLACE_SEARCH,
         skillsSearchUrl: value.OSTRA_SKILLS_SEARCH_URL,
+      },
+      previews: {
+        domain: previewDomain,
+        warmMinutes: value.OSTRA_PREVIEW_WARM_MINUTES,
+        linkMaxDays: value.OSTRA_PREVIEW_LINK_MAX_DAYS,
+        replicaUrl: value.OSTRA_CORE_REPLICA_URL ?? null,
       },
     },
   };

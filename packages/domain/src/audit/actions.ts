@@ -196,6 +196,14 @@ export const auditActions = {
   // An organization admin's switches (F-146, F-142).
   "organization.marketplace_search_changed": "organization",
   "organization.public_preview_links_changed": "organization",
+  // ---- previews (milestone 8, F-141, F-142, ADR 0068): levels, links and starts, never a token ----
+  /** "Start the app": a box for the app alone, with no agent turn. */
+  "app.started": "task",
+  "preview.level_changed": "task",
+  "preview.link_created": "task",
+  "preview.link_revoked": "task",
+  /** A link's first use, once per link. */
+  "preview.link_first_used": "task",
 } as const;
 
 export type AuditAction = keyof typeof auditActions;

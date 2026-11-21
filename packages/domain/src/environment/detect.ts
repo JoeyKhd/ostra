@@ -1,3 +1,6 @@
+import { detectAppProcesses } from "./detect-app.ts";
+import type { DetectedAppProcess } from "./detect-app.ts";
+
 // Environment detection (F-112, ticket 32): a draft environment from what is in the repo, without
 // an agent or a model. A pure function: it gets the repo's file list and the contents of the files
 // it asked for, and returns the draft with the reasons for each line, so the panel can show them.
@@ -25,6 +28,13 @@ export const contentPaths = [
   "compose.yaml",
   "requirements.txt",
   "requirements-dev.txt",
+  // Milestone 8 (F-140): the files an app's processes are read from (`detect-app.ts`).
+  ".gitpod.yml",
+  ".replit",
+  "vite.config.ts",
+  "vite.config.mts",
+  "vite.config.js",
+  "vite.config.mjs",
 ] as const;
 
 /** Lockfiles: only their presence matters, so they are read only when the host can't list files. */
@@ -78,6 +88,8 @@ export type DetectedEnvironment = {
   readonly variables: readonly DetectedVariable[];
   readonly tools: readonly DetectedTool[];
   readonly services: readonly DetectedService[];
+  /** Milestone 8 (F-140): the app's processes the files suggest, the primary among them. */
+  readonly appProcesses: readonly DetectedAppProcess[];
   readonly reasons: readonly DetectionReason[];
 };
 
@@ -290,6 +302,7 @@ export const detectEnvironment = (input: DetectionInput): DetectedEnvironment =>
   // ---- Node: package.json and its lockfile ----
   const packageText = files.get("package.json");
   let declaredManager: NodeManager | null = null;
+  let chosenManager: NodeManager | null = null;
   let packageManagerText: string | null = null;
   if (packageText !== undefined) {
     const parsed: unknown = parseJsonc(packageText);
@@ -317,6 +330,7 @@ export const detectEnvironment = (input: DetectionInput): DetectedEnvironment =>
     }
     const present = nodeLockfiles.filter((lock) => exists(lock.file));
     const chosen = present.find((lock) => lock.manager === declaredManager) ?? present[0];
+    chosenManager = chosen?.manager ?? declaredManager;
     if (chosen === undefined) {
       setup("package.json", "has no lockfile: installs with `npm install`", "npm install");
     } else {
@@ -470,6 +484,17 @@ export const detectEnvironment = (input: DetectionInput): DetectedEnvironment =>
   }
   services = found;
 
+  // ---- the app's processes (milestone 8, F-140): read as text, never run ----
+  const devcontainerFile = ([".devcontainer/devcontainer.json", ".devcontainer.json"] as const).find((file) => files.has(file)) ?? null;
+  const app = detectAppProcesses({
+    packageJson: packageText === undefined ? null : parseJsonc(packageText),
+    devcontainer: devcontainerFile === null ? null : parseJsonc(files.get(devcontainerFile) ?? ""),
+    devcontainerFile,
+    files,
+    manager: chosenManager ?? "npm",
+  });
+  reasons.push(...app.reasons);
+
   return {
     baseImage,
     setupLines: lines,
@@ -477,6 +502,7 @@ export const detectEnvironment = (input: DetectionInput): DetectedEnvironment =>
     variables,
     tools,
     services,
+    appProcesses: app.processes,
     reasons,
   };
 };

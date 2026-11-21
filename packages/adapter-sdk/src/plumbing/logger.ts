@@ -48,6 +48,10 @@ const tokenPatterns: readonly RegExp[] = [
   /\bostra-task-[A-Za-z0-9_.-]+/g,
   // A panel token (ticket 42): what the panel gives core to store a member's file; body and MAC, joined by a dot.
   /\bostra-panel-[A-Za-z0-9_.-]+/g,
+  // Milestone 8 (ADR 0068): a preview link's token, a one-time code, the panel's token for a view
+  // (body and MAC, joined by a dot), and a CLI tunnel's ticket.
+  /\bostra-(?:preview|code|view)-[A-Za-z0-9_.-]+/g,
+  /\bostra_pt_[A-Za-z0-9_-]+/g,
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
 ];
 
