@@ -54,7 +54,11 @@ const demoApp = (entries: number, display: string): string => {
 /** Takes the pictures the seed stores: PNGs at three widths, an older one, a refine task's, and the recording's frames. */
 const takePictures = async (browser: Browser): Promise<Record<string, string | string[]>> => {
   const folder = await mkdtemp(path.join(tmpdir(), "ostra-e2e-pictures-"));
-  const page = await browser.newPage();
+  // One device pixel per CSS pixel, as the runner's box browser takes them (`openPage` sets
+  // `deviceScaleFactor: 1`), so a picture's width is its viewport's. The phone project's own scale
+  // (2.625) would make the 1280-wide shot 3360 pixels wide.
+  const context = await browser.newContext({ deviceScaleFactor: 1 });
+  const page = await context.newPage();
   const png = async (name: string, width: number, height: number, entries: number, display: string): Promise<string> => {
     await page.setViewportSize({ width, height });
     await page.setContent(demoApp(entries, display));
@@ -75,7 +79,7 @@ const takePictures = async (browser: Browser): Promise<Record<string, string | s
     await writeFile(file, await page.screenshot({ type: "jpeg", quality: 60 }));
     frames.push(file);
   }
-  await page.close();
+  await context.close();
   return { desktop, tablet, phone, older, refine, frames };
 };
 
