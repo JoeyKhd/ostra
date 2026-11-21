@@ -3,7 +3,7 @@ import { ModelEndpointAdapter } from "@ostra/adapter-model-endpoint";
 import { systemClock as adapterClock } from "@ostra/adapter-sdk";
 import type { AdapterContext, Logger, SecretRowStore } from "@ostra/adapter-sdk";
 import { BuiltinSecretStore, parseSecretsKey } from "@ostra/adapter-secret-store-builtin";
-import { appRouter, createApiRuntime, createCallerFactory, createCatalogSource, postgresBlobReader } from "@ostra/api";
+import { appRouter, coreBlobReader, createApiRuntime, createCallerFactory, createCatalogSource } from "@ostra/api";
 import type { ApiRuntime } from "@ostra/api";
 import { createDb } from "@ostra/db";
 import type { Db } from "@ostra/db";
@@ -72,7 +72,13 @@ export const startHarnessApi = async (input: {
     makeLinearTracker: () => {
       throw new Error("the load test has no Linear connection");
     },
-    blobStore: { name: "postgres", health: () => Promise.resolve({ status: "ok" }), read: postgresBlobReader(db), upload: () => Promise.reject(new Error("no uploads in the load test")) },
+    blobStore: {
+      name: "postgres",
+      health: () => Promise.resolve({ status: "ok" }),
+      // As the panel reads a blob: through core's blob service, whichever store keeps it.
+      read: coreBlobReader({ db, coreUrl: settings.coreInternalUrl, secret: input.secretsKey, logger }),
+      upload: () => Promise.reject(new Error("no uploads in the load test")),
+    },
     logger,
   });
   const signedIn = await runtime.auth.api.signInEmail({ body: { email: input.adminEmail, password: input.adminPassword }, returnHeaders: true });
