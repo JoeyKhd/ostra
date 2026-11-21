@@ -1,12 +1,15 @@
 import {
   CI_FILES_DIR,
   markedBlock,
+  ONE_ORIGIN_RULE,
   PROPOSE_ENVIRONMENT_TOOL,
   roundFraming,
   roundPrompt,
   runnerLimits,
+  START_APP_TOOL,
   SUBMIT_DRAFT_TOOL,
   SUBMIT_REVIEW_TOOL,
+  TAKE_SCREENSHOT_TOOL,
   truncateBytes,
 } from "@ostra/protocol";
 import type { DiffSide, FindingSeverity, RefineDraft, RoundQuote } from "@ostra/protocol";
@@ -110,8 +113,65 @@ export const reviewPrompt = (input: {
 
 export type DraftEnvironmentRepo = { readonly fullName: string; readonly setupScript: string; readonly checks: readonly { readonly name: string; readonly command: string }[]; readonly hasAgentsMd: boolean };
 
-/** An onboarding task's prompt: the detected draft environment, the checks to pass, the proposal tool. */
-export const onboardingPrompt = (input: { readonly repos: readonly DraftEnvironmentRepo[] }): string => {
+/**
+ * An app process the onboarding task tests (milestone 8, F-140, F-113): the environment's, or what
+ * detection found. Its command is `null` when no file says it. Every text is data in the prompt.
+ */
+export type DraftAppProcess = {
+  readonly repo: string;
+  readonly name: string;
+  readonly label: string;
+  readonly port: number;
+  readonly folder: string;
+  readonly command: string | null;
+  /** The ready check in words: `GET /` answering, or the port taking a connection. */
+  readonly ready: string;
+  readonly primary: boolean;
+};
+
+/** The marked block's label each app process of an onboarding prompt sits in. */
+export const DRAFT_APP_PROCESS_BLOCK = "draft-app-process";
+
+/**
+ * The onboarding prompt's part about the app (F-140, ADR 0068): the processes as data, then what to
+ * do with them: start each with `start_app`, check it's ready, take a screenshot of the primary,
+ * and hand them in through `propose_environment`'s `appProcesses`, keeping one origin and saying in
+ * the notes when the frontend calls the API by an absolute URL. Empty with no process.
+ */
+export const onboardingAppLines = (processes: readonly DraftAppProcess[]): readonly string[] => {
+  if (processes.length === 0) {
+    return [];
+  }
+  return [
+    "ostra also found the app's processes below, as data: what runs so a member can see the app. Change what doesn't work.",
+    ...processes.map((process) =>
+      markedBlock(
+        DRAFT_APP_PROCESS_BLOCK,
+        [
+          `${process.name} (${process.label}${process.primary ? ", the primary preview" : ""}) in ${process.repo}, folder ${process.folder}, on port ${String(process.port)}`,
+          `started with: ${process.command ?? "(ostra couldn't tell: find it in the repository)"}`,
+          `ready when: ${process.ready}`,
+        ].join("\n"),
+      ),
+    ),
+    [
+      `Start the app's processes with the ${START_APP_TOOL} tool, which starts each one ostra knows the command of, and check that each one gets ready; start one without a command yourself in the box until it answers on its port.`,
+      `Take a screenshot of the primary with the ${TAKE_SCREENSHOT_TOOL} tool, so a project admin sees the app.`,
+      `Then give ${PROPOSE_ENVIRONMENT_TOOL} the processes that got ready, in appProcesses: each one's name, repository, folder, command, port, ready check, label and whether it's the primary preview (one at most).`,
+      ONE_ORIGIN_RULE,
+      "If the frontend calls its API by an absolute URL (another port or host) instead of a path through its dev server's proxy, say so in the proposal's notes.",
+    ].join("\n"),
+  ];
+};
+
+/**
+ * The line an onboarding prompt with app processes gains when the box serves no app tools (a runner
+ * below protocol minor 7, or an agent that can't reach ostra's tools): the processes are left out.
+ */
+export const ONBOARDING_NO_APP_TOOLS_LINE = `This box has no app tools (${START_APP_TOOL}, ${TAKE_SCREENSHOT_TOOL}): leave the app's processes out of the proposal. A project admin adds them on the environment page.`;
+
+/** An onboarding task's prompt: the detected draft environment, the checks to pass, the proposal tool, and milestone 8's app. */
+export const onboardingPrompt = (input: { readonly repos: readonly DraftEnvironmentRepo[]; readonly appProcesses?: readonly DraftAppProcess[] }): string => {
   const missing = input.repos.filter((repo) => !repo.hasAgentsMd).map((repo) => repo.fullName);
   return [
     "Your task is to set up this project's environment: make each repository's setup script work and its checks pass in this box, then propose the environment.",
@@ -124,6 +184,7 @@ export const onboardingPrompt = (input: { readonly repos: readonly DraftEnvironm
         ...repo.checks.map((check) => markedBlock("draft-check", `${check.name}: ${check.command}`)),
       ].join("\n"),
     ),
+    ...onboardingAppLines(input.appProcesses ?? []),
     [
       `When the setup runs and the checks pass, call the ${PROPOSE_ENVIRONMENT_TOOL} tool once with each repository's setup script, checks and the names of the variables it needs.`,
       "Never put a variable's value, a token or a key in the proposal: name the variable, and a project admin sets its value.",

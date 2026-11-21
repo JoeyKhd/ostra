@@ -182,6 +182,34 @@ export const readPackageScripts = (parsed: unknown): readonly DetectedScript[] =
   return found;
 };
 
+/** Another `package.json` script that names the port it serves on: an API, a docs site, Storybook. */
+export type DetectedPortScript = { readonly script: string; readonly port: number };
+
+/** The scripts that build, test or check something: never a process, whatever port they name. */
+const ONE_SHOT_SCRIPT = /^(?:pre|post)?(?:build|test|lint|format|typecheck|check|e2e|clean|install|prepare|release|deploy)(?:$|[:.-])/;
+
+/**
+ * `package.json`'s other scripts that name their port (`--port 4000`, `-p 4000`, `PORT=4000`),
+ * beside `dev` and `start`: each one a process that serves, such as `"docs": "node docs/server.js
+ * --port 4000"`. A script that builds, tests or checks is left out. Matched as text, never run.
+ */
+export const readPortScripts = (parsed: unknown): readonly DetectedPortScript[] => {
+  if (!isRecord(parsed) || !isRecord(parsed["scripts"])) {
+    return [];
+  }
+  const found: DetectedPortScript[] = [];
+  for (const [script, text] of Object.entries(parsed["scripts"])) {
+    if (script === "dev" || script === "start" || typeof text !== "string" || ONE_SHOT_SCRIPT.test(script)) {
+      continue;
+    }
+    const port = portOf(/(?:--port[=\s]+|(?:^|\s)-p\s+|(?:^|[\s;&])PORT=)(\d{2,5})\b/.exec(text)?.[1]);
+    if (port !== null) {
+      found.push({ script, port });
+    }
+  }
+  return found;
+};
+
 /** A Vite config's `server.port` and the paths and targets of its `server.proxy`. */
 export type DetectedViteConfig = {
   readonly port: number | null;
@@ -211,9 +239,43 @@ const blockOf = (text: string, key: string): string | null => {
   return found === null ? null : blockAt(text, found.index + found[0].length - 1);
 };
 
+/** A name a config may declare a port under: plain letters, digits and underscores. */
+const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * The port a file's own declaration of `name` gives, read as text: `const apiPort =
+ * process.env.API_PORT ?? "3001"` or `const target = "http://localhost:3001"` gives 3001, the
+ * first port-sized number on the line. A config that moves its ports by a variable keeps its
+ * default in the text; nothing is evaluated.
+ */
+const declaredPort = (text: string, name: string): number | null => {
+  if (!NAME.test(name)) {
+    return null;
+  }
+  const declaration = new RegExp(`(?:^|[\\s;(])(?:const|let|var)\\s+${name}\\s*=\\s*([^;\\n]*)`).exec(text)?.[1] ?? "";
+  return portOf(/(?:^|[^\w.])(\d{2,5})(?![\w.])/.exec(declaration)?.[1]);
+};
+
+/** A port from an expression in the file: a number in it, else a name it uses that the file declares. */
+const portOfExpression = (expression: string, text: string): number | null => {
+  const literal = portOf(/(?:^|[^\w.$])(\d{2,5})(?![\w.])/.exec(expression)?.[1]);
+  if (literal !== null) {
+    return literal;
+  }
+  for (const [name] of expression.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)) {
+    const declared = declaredPort(text, name);
+    if (declared !== null) {
+      return declared;
+    }
+  }
+  return null;
+};
+
 /**
  * A Vite config's `server.port` and `server.proxy` keys (ADR 0068): read from its text, never
- * loaded, since loading a config runs it. A proxy's target names the port of the API behind it.
+ * loaded, since loading a config runs it. A proxy's target names the port of the API behind it. A
+ * port a variable holds (`port,`, `target: \`http://localhost:${apiPort}\``) is the number the
+ * file declares that variable with.
  */
 export const readViteConfig = (text: string): DetectedViteConfig => {
   const server = blockOf(text, "server");
@@ -222,14 +284,19 @@ export const readViteConfig = (text: string): DetectedViteConfig => {
   }
   const proxyBlock = blockOf(server, "proxy");
   const outside = proxyBlock === null ? server : server.replace(proxyBlock, "");
-  const port = portOf(/(?:^|[\s,{])port\s*:\s*(\d{2,5})\b/.exec(outside)?.[1]);
+  // `port: 4000`, `port: webPort`, or `port,` (the name `port` itself).
+  const portEntry = /(?:^|[\s,{])port\s*(?::\s*([^,}\n]+))?\s*(?=[,}\n]|$)/.exec(outside);
+  const port = portEntry === null ? null : portOfExpression(portEntry[1] ?? "port", text);
   const proxy: { path: string; targetPort: number | null }[] = [];
   if (proxyBlock !== null) {
-    const entry = /(["'])(\/[^"']*)\1\s*:\s*(?:(["'])([^"']*)\3|\{)/g;
+    const entry = /(["'`])(\/[^"'`]*)\1\s*:\s*(?:(["'`])([^"'`]*)\3|\{)/g;
     for (let found = entry.exec(proxyBlock); found !== null; found = entry.exec(proxyBlock)) {
       const path = found[2] ?? "";
       const target = found[4] ?? (blockAt(proxyBlock, found.index + found[0].length - 1) ?? "");
-      proxy.push({ path, targetPort: portOf(/:(\d{2,5})(?=[/"'\s,]|$)/.exec(target)?.[1]) });
+      const named = portOf(/:(\d{2,5})(?=[/"'`\s,]|$)/.exec(target)?.[1]);
+      // A template's `${name}`, or `target: name`: the port the file declares it with.
+      const variable = /\$\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}/.exec(target)?.[1] ?? /(?:^|[\s,{])target\s*:\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?=[,}\n]|$)/.exec(target)?.[1];
+      proxy.push({ path, targetPort: named ?? (variable === undefined ? null : declaredPort(text, variable)) });
     }
   }
   return { port, proxy };
@@ -277,18 +344,33 @@ const slug = (label: string): string =>
     .slice(0, 40)
     .replace(/-+$/, "");
 
+/** A label from a script's or a path's name: `api` is "API", `docs` "Docs", `dev-api` "Dev api". */
+const scriptLabel = (name: string): string => {
+  if (name === "api") {
+    return "API";
+  }
+  const words = name.replace(/-/g, " ");
+  return `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+};
+
 /**
  * The app processes the repo's files suggest (ADR 0068): the dev server a `package.json` script
- * or a Vite config starts, as the primary, with each API its Vite proxy points at; and the ports
- * a devcontainer, `.gitpod.yml` or `.replit` names, a file's preview hint winning the primary.
- * Ports below 1024 are left out, as previews never reach them; at most 10.
+ * or a Vite config starts, as the primary, with each API its Vite proxy points at; the other
+ * scripts that name their port; and the ports a devcontainer, `.gitpod.yml` or `.replit` names, a
+ * file's preview hint winning the primary. Ports below 1024 are left out, as previews never reach
+ * them; at most 10.
  */
 export const detectAppProcesses = (input: AppDetectionInput): AppDetection => {
   const reasons: { file: string; finding: string }[] = [];
   const byPort = new Map<number, DetectedAppProcess>();
   const add = (process: DetectedAppProcess): void => {
     const known = byPort.get(process.port);
-    byPort.set(process.port, known === undefined ? process : { ...known, label: known.label === `Port ${String(known.port)}` ? process.label : known.label, primary: known.primary || process.primary });
+    byPort.set(
+      process.port,
+      known === undefined
+        ? process
+        : { ...known, label: known.label === `Port ${String(known.port)}` ? process.label : known.label, command: known.command ?? process.command, primary: known.primary || process.primary },
+    );
   };
   const run = (script: string): string => (input.manager === "npm" ? `npm run ${script}` : `${input.manager} ${script}`);
 
@@ -317,6 +399,16 @@ export const detectAppProcesses = (input: AppDetectionInput): AppDetection => {
     const name = slug(proxy.path) === "" ? `api-${String(proxy.targetPort)}` : slug(proxy.path);
     add({ name, label: name === "api" ? "API" : name, port: proxy.targetPort, command: null, folder: ".", ready: { kind: "port" }, primary: false, source: viteFile ?? "vite.config" });
     reasons.push({ file: viteFile ?? "vite.config", finding: `${proxy.path} goes to port ${String(proxy.targetPort)} through the dev server's proxy: proposed as a process, with one origin kept` });
+  }
+  // Milestone 8 (ticket 15): another script that names its port serves something too, an API or a
+  // docs site; it gives a process the proxy found its command.
+  for (const script of readPortScripts(input.packageJson)) {
+    if (script.port < 1024 || script.port === webPort) {
+      continue;
+    }
+    const name = slug(script.script) === "" || /^\d/.test(slug(script.script)) ? `app-${String(script.port)}` : slug(script.script);
+    add({ name, label: scriptLabel(name), port: script.port, command: run(script.script), folder: ".", ready: { kind: "port" }, primary: false, source: "package.json" });
+    reasons.push({ file: "package.json", finding: `the ${script.script} script serves on port ${String(script.port)}: proposed as a process` });
   }
   const named: { readonly file: string; readonly ports: readonly DetectedPort[] }[] = [
     { file: input.devcontainerFile ?? ".devcontainer/devcontainer.json", ports: readDevcontainerPorts(input.devcontainer) },

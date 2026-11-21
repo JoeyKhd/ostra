@@ -4,6 +4,9 @@ import type { Logger } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
 import type { Clock } from "@ostra/domain";
 import {
+  APP_LOG_CONTENT_TYPE,
+  APP_RECORDING_CONTENT_TYPE,
+  APP_SCREENSHOT_CONTENT_TYPE,
   blobChunkQuerySchema,
   blobDownloadQuerySchema,
   blobIdSchema,
@@ -15,7 +18,7 @@ import {
   taskIdSchema,
   uploadIdSchema,
 } from "@ostra/protocol";
-import type { BlobChunkResponse, BlobUploadFinishResponse, BlobUploadStartResponse, LeaseEpoch, OrganizationId, RunnerId, TaskId } from "@ostra/protocol";
+import type { BlobChunkResponse, BlobUploadFinishResponse, BlobUploadPurpose, BlobUploadStartRequest, BlobUploadStartResponse, LeaseEpoch, OrganizationId, RunnerId, TaskId } from "@ostra/protocol";
 
 import { bearerToken, runnerIsLive } from "../gateway/access-token.ts";
 import type { AccessTokens } from "../gateway/access-token.ts";
@@ -40,6 +43,29 @@ export type BlobEndpointDeps = {
   readonly blobs: BlobService;
   readonly clock: Clock;
   readonly logger: Logger;
+};
+
+/**
+ * Milestone 8 (F-121, F-140, ADR 0068; ticket 15): what the box's pictures and logs may be, each
+ * purpose with its content type and its cap, checked before a byte is taken. A session archive and
+ * a check's output keep the blob cap alone.
+ */
+const appPurposeLimits: Partial<Readonly<Record<BlobUploadPurpose, { readonly contentType: string; readonly maxBytes: number }>>> = {
+  "app-screenshot": { contentType: APP_SCREENSHOT_CONTENT_TYPE, maxBytes: runnerLimits.screenshotMaxBytes },
+  "app-recording": { contentType: APP_RECORDING_CONTENT_TYPE, maxBytes: runnerLimits.recordingMaxBytes },
+  "app-log": { contentType: APP_LOG_CONTENT_TYPE, maxBytes: runnerLimits.appLogTailMaxBytes },
+};
+
+/** Why an upload of an app purpose is refused before it starts, or `null`. Words and sizes, never content. */
+export const appUploadRefusal = (start: Pick<BlobUploadStartRequest, "purpose" | "size" | "contentType">): { readonly status: 400 | 413; readonly code: "bad-request" | "too-large"; readonly message: string } | null => {
+  const limits = appPurposeLimits[start.purpose];
+  if (limits === undefined) {
+    return null;
+  }
+  if (start.contentType !== limits.contentType) {
+    return { status: 400, code: "bad-request", message: `a ${start.purpose} blob is ${limits.contentType}` };
+  }
+  return start.size > limits.maxBytes ? { status: 413, code: "too-large", message: `a ${start.purpose} blob is at most ${String(limits.maxBytes)} bytes` } : null;
 };
 
 type Caller = { readonly runnerId: RunnerId; readonly organizationId: OrganizationId; readonly taskTokenEpoch: LeaseEpoch | null };
@@ -185,6 +211,12 @@ export const handleBlobEndpoint =
       }
       const owner = await leaseOr409(parsed.data.leaseEpoch);
       if (owner === null) {
+        return true;
+      }
+      const refused = appUploadRefusal(parsed.data);
+      if (refused !== null) {
+        logger.info("blob.start-refused", { leaseEpoch: parsed.data.leaseEpoch, size: parsed.data.size, purpose: parsed.data.purpose, error: refused.code });
+        sendError(response, refused.status, refused.code, refused.message);
         return true;
       }
       const started = await deps.blobs.startUpload(owner, {

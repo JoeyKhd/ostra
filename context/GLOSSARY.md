@@ -326,7 +326,7 @@ A command the environment names that ostra runs after every turn with changes, b
 _Avoid_: test, CI (for ostra's checks)
 
 **Environment proposal**:
-The corrected environment an onboarding task hands in after running the setup, the services and the checks: scripts, checks and variable names per repo, never a secret's value. A project admin accepts, edits or rejects it.
+The corrected environment an onboarding task hands in after running the setup, the services, the checks and the app's processes: scripts, checks and variable names per repo, and the processes it saw ready, never a secret's value. "Keep it" on a port an agent announced makes one too, with that one app process alone, whose command a project admin names. A project admin accepts, edits or rejects it.
 _Avoid_: suggestion, draft (a refine task hands in drafts), proposal (alone, that's memory)
 
 ### Seeing the running app

@@ -161,6 +161,10 @@ export const auditActions = {
   // Milestone 6 (F-113): a project admin decided an onboarding task's environment proposal.
   "environment.proposal-accepted": "environment",
   "environment.proposal-rejected": "environment",
+  // Milestone 8 (F-140, ticket 15): the app's processes saved, by name and field, never a command;
+  // "Keep it" on a port an agent announced, which proposes it for a project admin.
+  "environment.app-processes-saved": "environment",
+  "environment.app-process-kept": "environment",
   // ---- memory (ADR 0044) ----
   "memory.note-created": "memory-note",
   "memory.note-edited": "memory-note",

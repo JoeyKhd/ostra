@@ -21,7 +21,7 @@ import { describe, expect, it } from "vitest";
 
 import { auditActions } from "./audit/actions.ts";
 import { detectEnvironment } from "./environment/detect.ts";
-import { readDevcontainerPorts, readGitpodPorts, readPackageScripts, readReplitPorts, readViteConfig } from "./environment/detect-app.ts";
+import { readDevcontainerPorts, readGitpodPorts, readPackageScripts, readPortScripts, readReplitPorts, readViteConfig } from "./environment/detect-app.ts";
 import { jobKey, jobNames, jobSending, parseJobPayload } from "./jobs.ts";
 import { transitionAppProcess, transitionLeasePurpose, transitionPreviewLink, transitionPreviewView, previewLinkFromRow } from "./lifecycles/m8-previews.ts";
 import type { AppProcessInput, AppProcessLifecycle, PreviewLinkInput, PreviewLinkLifecycle, PreviewViewInput, PreviewViewLifecycle } from "./lifecycles/m8-previews.ts";
@@ -199,6 +199,59 @@ describe("detection's readers (F-112, F-140)", () => {
       ],
     });
     expect(readViteConfig("export default { build: { outDir: 'dist' } }")).toEqual({ port: null, proxy: [] });
+  });
+
+  it("F-140/c7: reads a port a Vite config keeps in a variable from its declaration, and the other scripts that name their port", () => {
+    // Ticket 15: the `test-web` fixture's form, every port movable by a variable with its default in the text.
+    const config = [
+      'const port = Number(process.env["TEST_WEB_PORT"] ?? "5174");',
+      'const apiPort = process.env["TEST_WEB_API_PORT"] ?? "3011";',
+      "const docs = 'http://localhost:4010';",
+      "export default defineConfig({",
+      "  server: {",
+      "    port,",
+      "    strictPort: true,",
+      "    proxy: {",
+      "      '/api': { target: `http://localhost:${apiPort}`, ws: true },",
+      "      '/docs': { target: docs },",
+      "      '/nowhere': { target: `http://localhost:${notDeclared}` },",
+      "    },",
+      "  },",
+      "});",
+    ].join("\n");
+    expect(readViteConfig(config)).toEqual({
+      port: 5174,
+      proxy: [
+        { path: "/api", targetPort: 3011 },
+        { path: "/docs", targetPort: 4010 },
+        { path: "/nowhere", targetPort: null },
+      ],
+    });
+    // `port: webPort` reads the same; a port it can't find is left out.
+    expect(readViteConfig("const webPort = 5175;\nexport default { server: { port: webPort } }").port).toBe(5175);
+    expect(readViteConfig("export default { server: { port: process.env.PORT } }").port).toBeNull();
+    // The other scripts that name their port serve something; one that builds or tests doesn't, whatever it names.
+    expect(
+      readPortScripts({ scripts: { dev: "vite", api: "node api/server.js --port 3001", "dev:docs": "PORT=4000 node docs.js", storybook: "storybook dev -p 6006", "test:e2e": "playwright test --port 9323", build: "vite build --port 1" } }),
+    ).toEqual([
+      { script: "api", port: 3001 },
+      { script: "dev:docs", port: 4000 },
+      { script: "storybook", port: 6006 },
+    ]);
+    expect(readPortScripts({ scripts: { lint: "eslint .", api: "node api/server.js" } })).toEqual([]);
+    const detected = detectEnvironment({
+      tree: null,
+      files: new Map([
+        ["package.json", JSON.stringify({ scripts: { dev: "vite", api: "node api/server.js --port 3011" } })],
+        ["vite.config.js", config],
+      ]),
+    });
+    // The proxy's API takes the script's command; one port is one process.
+    expect(detected.appProcesses.map((process) => [process.name, process.port, process.command])).toEqual([
+      ["web", 5174, "npm run dev"],
+      ["api", 3011, "npm run api"],
+      ["docs", 4010, null],
+    ]);
   });
 
   it("F-140: proposes the frontend as the primary and its API behind the proxy, and runs nothing it reads", async () => {

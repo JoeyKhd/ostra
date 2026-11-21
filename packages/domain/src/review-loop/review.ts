@@ -336,14 +336,41 @@ export const submitReview = async (
   const repoOf = new Map(taskRepos.map((row) => [row.repoId, row.id]));
   const blocking = input.review.findings.filter((finding) => finding.severity === "blocking").length;
   const nits = input.review.findings.length - blocking;
+  // Milestone 8 (F-121, ticket 15): a finding's screenshots, checked against the review task's own
+  // attachments; an ID that isn't one of them is left off the finding, which is kept.
+  const named = [...new Set(input.review.findings.flatMap((finding) => finding.attachmentIds ?? []))];
+  const known =
+    named.length === 0
+      ? new Set<string>()
+      : new Set((await tx.taskAttachment.findMany({ where: { taskId: task.id, organizationId, attachmentId: { in: named } }, select: { attachmentId: true } })).map((row) => row.attachmentId));
+  const attachmentsOf = (ids: readonly string[] | undefined): string[] => [...new Set(ids ?? [])].filter((id) => known.has(id)).slice(0, runnerLimits.findingAttachmentsMax);
   await tx.finding.createMany({
     data: input.review.findings.flatMap((finding) => {
       const taskRepoId = repoOf.get(finding.repoId);
       return taskRepoId === undefined
         ? []
-        : [{ organizationId, projectId, reviewRunId: run.id, taskRepoId, path: finding.path, line: finding.line, side: finding.side, severity: finding.severity, title: finding.title, body: finding.body, suggestion: finding.suggestion }];
+        : [
+            {
+              organizationId,
+              projectId,
+              reviewRunId: run.id,
+              taskRepoId,
+              path: finding.path,
+              line: finding.line,
+              side: finding.side,
+              severity: finding.severity,
+              title: finding.title,
+              body: finding.body,
+              suggestion: finding.suggestion,
+              attachmentIds: attachmentsOf(finding.attachmentIds),
+            },
+          ];
     }),
   });
+  const dropped = named.filter((id) => !known.has(id)).length;
+  if (dropped > 0) {
+    deps.logger?.info("review.attachments-dropped", { reviewTaskId: task.id, dropped });
+  }
   await tx.reviewRun.update({ where: { id: run.id }, data: { state: "submitted", summary: input.review.summary, blocking, nits } });
   const reviewRunId = reviewRunIdSchema.parse(run.id);
   const now = deps.clock.now();

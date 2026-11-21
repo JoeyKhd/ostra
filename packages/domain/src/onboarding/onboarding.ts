@@ -10,7 +10,10 @@ import { scanMemoryText } from "../memory/secret-scan.ts";
 import { organizationSecretValues } from "../memory/store.ts";
 import type { Ports, ServerAdapters } from "../ports.ts";
 import { onboardingPrompt } from "../prompts/m6.ts";
-import type { DraftEnvironmentRepo } from "../prompts/m6.ts";
+import type { DraftAppProcess, DraftEnvironmentRepo } from "../prompts/m6.ts";
+import type { DetectedAppProcess } from "../environment/detect-app.ts";
+import type { AppProcess } from "../previews/app-processes.ts";
+import { appProcessesInTx, appProcessListRefusal, detectedAppProcesses, keptProcessWithoutCommand, mergeAppProcesses, writeAppProcessesInTx } from "../previews/environment-app.ts";
 import type { UseCaseResult } from "../use-cases/common.ts";
 import { createPromptTask } from "../use-cases/create-prompt-task.ts";
 import type { CreatePromptTaskResult } from "../use-cases/create-prompt-task.ts";
@@ -36,7 +39,14 @@ import { appendServerEvent } from "../use-cases/server-events.ts";
 //   environment's next version through milestone 1's `saveEnvironment`, keeping its entries and
 //   secrets, in one transaction with the audit entry; "Reject" with a reason. A proposal never holds
 //   a secret's value.
-// Scripts, notes and the agent's words never reach a log line.
+// Milestone 8 (F-140, ticket 15): the prompt names the app's processes (the environment's, else the
+// ones detection finds) and asks the agent to start each with `start_app`, check it's ready,
+// screenshot the primary and hand them in as `appProcesses`, keeping one origin; the proposal
+// stores them, the scan reads their commands, and "Accept" merges them into the environment's,
+// each in place of the one of its name or port. A proposal "Keep it" made (`source: kept`) changes
+// the app's processes alone, once an admin named the kept process's command, and leaves the setup
+// and its snapshot as they are; an onboarding proposal supersedes only another onboarding one.
+// Scripts, commands, notes and the agent's words never reach a log line.
 
 /** The sidecar's tools for an onboarding task: the proposal, and the PR's text for its `AGENTS.md` PR. */
 export const ONBOARDING_TOOLS = ["environment", "pr-text"] as const satisfies readonly OstraToolSet[];
@@ -68,12 +78,26 @@ export type StartOnboardingResult = UseCaseResult<
   "forbidden" | "not-found" | "already-running" | Exclude<CreatePromptTaskResult, { readonly ok: true }>["error"]
 >;
 
-/** Each repo's draft for the prompt: the saved environment's, else what detection reads from the repo (F-112). */
+/** A ready check in the onboarding prompt's words (F-140). */
+const readyWords = (process: Pick<AppProcess, "ready" | "port"> | Pick<DetectedAppProcess, "ready" | "port">): string => {
+  switch (process.ready.kind) {
+    case "http":
+      return `GET ${process.ready.path} answers below 500`;
+    case "command":
+      return `${process.ready.command} exits 0`;
+    case "port":
+      return `port ${String(process.port)} takes a connection`;
+    default:
+      return process.ready satisfies never;
+  }
+};
+
+/** Each repo's draft for the prompt: the saved environment's, else what detection reads from the repo (F-112); and the app's processes (F-140). */
 const draftReposOf = async (
   deps: OnboardingDeps,
   organizationId: OrganizationId,
   projectId: ProjectId,
-): Promise<readonly DraftEnvironmentRepo[]> => {
+): Promise<{ readonly repos: readonly DraftEnvironmentRepo[]; readonly appProcesses: readonly DraftAppProcess[] }> => {
   const { db } = deps;
   const { codeHost, secretStore } = deps.adapters;
   const [repos, environment] = await Promise.all([
@@ -82,6 +106,10 @@ const draftReposOf = async (
   ]);
   const saved = environment?.status === "saved" ? environment : null;
   const checks = saved === null ? [] : await db.check.findMany({ where: { environmentId: saved.id }, orderBy: { position: "asc" }, select: { name: true, command: true, repoId: true } });
+  // Milestone 8 (F-140): the environment's app processes; with none, the ones detection finds.
+  const declared = environment === null ? [] : await appProcessesInTx(db, environment.id);
+  const nameOf = (repoId: string): string => repos.find((repo) => repo.id === repoId)?.fullName ?? repoId;
+  const detectedApp: { readonly repoId: RepoId; readonly processes: readonly DetectedAppProcess[] }[] = [];
   const drafts: DraftEnvironmentRepo[] = [];
   for (const [index, repo] of repos.entries()) {
     const access = await repoAccessFor(db, secretStore, organizationId, repoIdSchema.parse(repo.id));
@@ -94,6 +122,7 @@ const draftReposOf = async (
     }
     const hasAgentsMd = agentsMd.value.files.some((file) => file.path === "AGENTS.md");
     const fullName = repoFullNameSchema.parse(repo.fullName);
+    const repoId = repoIdSchema.parse(repo.id);
     if (saved !== null) {
       // The environment's one setup script runs in the workspace: it's shown with the first repo.
       drafts.push({
@@ -102,12 +131,29 @@ const draftReposOf = async (
         checks: checks.filter((check) => check.repoId === repo.id || (check.repoId === null && index === 0)).map((check) => ({ name: check.name, command: check.command })),
         hasAgentsMd,
       });
+      if (declared.length === 0) {
+        detectedApp.push({ repoId, processes: (await detectRepoEnvironment(codeHost, access.access, repo.defaultBranch)).appProcesses });
+      }
       continue;
     }
     const detected = await detectRepoEnvironment(codeHost, access.access, repo.defaultBranch);
     drafts.push({ fullName, setupScript: detected.setupScript ?? "", checks: [], hasAgentsMd });
+    detectedApp.push({ repoId, processes: detected.appProcesses });
   }
-  return drafts;
+  const appProcesses: DraftAppProcess[] =
+    declared.length > 0
+      ? declared.map((process) => ({ repo: nameOf(process.repoId), name: process.name, label: process.label, port: process.port, folder: process.folder, command: process.command, ready: readyWords(process), primary: process.primary }))
+      : detectedAppProcesses(detectedApp).map(({ repoId, process }) => ({
+          repo: nameOf(repoId),
+          name: process.name,
+          label: process.label,
+          port: process.port,
+          folder: process.folder,
+          command: process.command,
+          ready: readyWords(process),
+          primary: process.primary,
+        }));
+  return { repos: drafts, appProcesses };
 };
 
 /**
@@ -125,8 +171,8 @@ export const startOnboarding = async (deps: OnboardingDeps, scope: MemberScope, 
   if (!access.ok) {
     return access.code === "not-found" ? { ok: false, error: "not-found", message: "No such project" } : { ok: false, error: "forbidden", message: "Only a project admin starts the onboarding task" };
   }
-  const repos = await draftReposOf(deps, organizationId, input.projectId);
-  const prompt = onboardingPrompt({ repos });
+  const { repos, appProcesses } = await draftReposOf(deps, organizationId, input.projectId);
+  const prompt = onboardingPrompt({ repos, appProcesses });
   return db.$transaction(
     async (tx): Promise<StartOnboardingResult> => {
       // One open onboarding task per project: the project's row is the lock two starts meet on.
@@ -160,10 +206,11 @@ export type ProposeEnvironmentResult =
   | { readonly ok: false; readonly error: "wrong-kind" | "invalid"; readonly message: string }
   | { readonly ok: false; readonly error: "secret-found"; readonly message: string; readonly found: readonly string[] };
 
-/** Every piece of a proposal's text the secret scan reads: the scripts, the checks, the services and the notes. */
+/** Every piece of a proposal's text the secret scan reads: the scripts, the checks, the services, milestone 8's app processes and the notes. */
 export const proposalTexts = (proposal: EnvironmentProposal): readonly string[] => [
   ...proposal.repos.flatMap((repo) => [repo.setupScript ?? "", ...repo.checks.flatMap((check) => [check.name, check.command]), ...repo.variableNames]),
   ...proposal.services.flatMap((service) => [service.name, service.image, service.healthCheck ?? "", ...service.variableNames]),
+  ...(proposal.appProcesses ?? []).flatMap((process) => [process.name, process.label, process.folder, process.command, process.ready.kind === "command" ? process.ready.command : ""]),
   proposal.notes,
 ];
 
@@ -184,6 +231,10 @@ export const proposeEnvironment = async (deps: ProposeEnvironmentDeps, input: { 
   if (proposal.repos.some((repo) => !repoIds.has(repo.repoId)) || new Set(proposal.repos.map((repo) => repo.repoId)).size !== proposal.repos.length) {
     return { ok: false, error: "invalid", message: "The proposal names a repo that isn't the project's, or one twice" };
   }
+  // Milestone 8 (F-140): each app process runs in one of the project's repos, by the environment's rules.
+  if (appProcessListRefusal(proposal.appProcesses ?? [], [...repoIds].map((id) => repoIdSchema.parse(id))) !== null) {
+    return { ok: false, error: "invalid", message: "The proposal's app processes break the environment's rules" };
+  }
   // Milestone 4's scan: the organization's secret values (the environment's own among them) and the credential shapes.
   const scan = scanMemoryText(proposalTexts(proposal), await organizationSecretValues(db, deps.adapters.secretStore, input.organizationId));
   if (!scan.ok) {
@@ -197,10 +248,18 @@ export const proposeEnvironment = async (deps: ProposeEnvironmentDeps, input: { 
       const environment =
         (await tx.environment.findFirst({ where: { projectId, organizationId: input.organizationId }, select: { id: true } })) ??
         (await tx.environment.create({ data: { organizationId: input.organizationId, projectId, status: "draft" }, select: { id: true } }));
-      // An earlier open proposal is superseded by this one.
-      await tx.environmentProposal.updateMany({ where: { environmentId: environment.id, state: "proposed" }, data: { state: "superseded" } });
+      // An earlier open onboarding proposal is superseded by this one; a process a member kept from a task waits on its own.
+      await tx.environmentProposal.updateMany({ where: { environmentId: environment.id, state: "proposed", source: "onboarding" }, data: { state: "superseded" } });
       const row = await tx.environmentProposal.create({
-        data: { organizationId: input.organizationId, projectId, environmentId: environment.id, taskId: task.id, body: { repos: proposal.repos, services: proposal.services, notes: proposal.notes }, notes: proposal.notes, state: "proposed" },
+        data: {
+          organizationId: input.organizationId,
+          projectId,
+          environmentId: environment.id,
+          taskId: task.id,
+          body: { repos: proposal.repos, services: proposal.services, notes: proposal.notes, ...(proposal.appProcesses === undefined ? {} : { appProcesses: proposal.appProcesses }) },
+          notes: proposal.notes,
+          state: "proposed",
+        },
         select: { id: true },
       });
       const id = environmentProposalIdSchema.parse(row.id);
@@ -215,7 +274,7 @@ export const proposeEnvironment = async (deps: ProposeEnvironmentDeps, input: { 
     },
     { timeout: 20_000 },
   );
-  deps.logger?.info("environment.proposed", { taskId: input.taskId, proposalId, repos: proposal.repos.length, services: proposal.services.length });
+  deps.logger?.info("environment.proposed", { taskId: input.taskId, proposalId, repos: proposal.repos.length, services: proposal.services.length, appProcesses: proposal.appProcesses?.length ?? 0 });
   return { ok: true, proposalId };
 };
 
@@ -348,6 +407,20 @@ export const decideEnvironmentProposal = (deps: DecideEnvironmentProposalDeps, s
       if (new Set(names).size !== names.length || new Set(accepted.services.map((service) => service.name)).size !== accepted.services.length) {
         return refuse("invalid-input", "Two checks, or two services, have one name");
       }
+      // Milestone 8 (F-140): a process kept from a task changes the app's processes alone, and only
+      // once an admin named its command; the proposal's processes go into the environment's, each in
+      // place of the one of its name or port, by the environment's rules.
+      const kept = proposal.source === "kept";
+      const proposedApps: readonly AppProcess[] = accepted.appProcesses ?? [];
+      const unnamed = kept ? keptProcessWithoutCommand(proposedApps) : null;
+      if (unnamed !== null) {
+        return refuse("invalid-input", `Name the command that starts ${unnamed.label} first: edit the proposal, then accept it.`);
+      }
+      const apps = proposedApps.length === 0 ? null : mergeAppProcesses(await appProcessesInTx(tx, proposal.environmentId), proposedApps);
+      const appsRefusal = apps === null ? null : appProcessListRefusal(apps, repos.map((repo) => repoIdSchema.parse(repo.id)));
+      if (appsRefusal !== null) {
+        return refuse("invalid-input", appsRefusal.message);
+      }
       // The environment as it is: its entries are kept, and a secret is kept by its reference (no value is sent).
       const environment = await tx.environment.findUniqueOrThrow({ where: { id: proposal.environmentId } });
       const entries = await tx.environmentEntry.findMany({ where: { environmentId: environment.id }, orderBy: { createdAt: "asc" } });
@@ -359,7 +432,7 @@ export const decideEnvironmentProposal = (deps: DecideEnvironmentProposalDeps, s
           projectId,
           environment: {
             baseImage: environment.baseImage,
-            setupScript: proposedSetupScript(repos.map((repo) => ({ checkoutDir: repo.checkoutDir, setupScript: scriptOf.get(repoIdSchema.parse(repo.id)) ?? null }))),
+            setupScript: kept ? environment.setupScript : proposedSetupScript(repos.map((repo) => ({ checkoutDir: repo.checkoutDir, setupScript: scriptOf.get(repoIdSchema.parse(repo.id)) ?? null }))),
             envFiles: repoRows.map((repo) => ({ repoId: repoIdSchema.parse(repo.id), path: repo.envFile })),
             entries: entries.flatMap((entry): EnvironmentEntry[] => {
               const repoId: RepoId = repoIdSchema.parse(entry.repoId);
@@ -381,21 +454,27 @@ export const decideEnvironmentProposal = (deps: DecideEnvironmentProposalDeps, s
       if (!saved.ok) {
         return refuse("invalid-input", saved.message);
       }
-      // The checks and services by name: the proposal's are written, the others are kept.
-      for (const [position, check] of accepted.repos.flatMap((repo) => repo.checks.map((one) => ({ ...one, repoId: repo.repoId }))).entries()) {
+      // The checks and services by name: the proposal's are written, the others are kept. A kept
+      // process's proposal carries them as they are, so it writes none.
+      for (const [position, check] of (kept ? [] : accepted.repos.flatMap((repo) => repo.checks.map((one) => ({ ...one, repoId: repo.repoId })))).entries()) {
         const data = { command: check.command, repoId: check.repoId, timeoutSeconds: check.timeoutSeconds, position };
         await tx.check.upsert({ where: { environmentId_name: { environmentId: environment.id, name: check.name } }, create: { organizationId, projectId, environmentId: environment.id, name: check.name, ...data }, update: data });
       }
-      for (const service of accepted.services) {
-        const data = { image: service.image, port: service.port, healthCheck: service.healthCheck };
+      for (const service of kept ? [] : accepted.services) {
+        // Milestone 8 (F-140): a service with a web UI is a preview; a proposal that says nothing keeps the label.
+        const data = { image: service.image, port: service.port, healthCheck: service.healthCheck, ...(service.preview === undefined ? {} : { previewLabel: service.preview?.label ?? null }) };
         await tx.service.upsert({
           where: { environmentId_name: { environmentId: environment.id, name: service.name } },
           create: { organizationId, projectId, environmentId: environment.id, name: service.name, variables: [], ...data },
           update: data,
         });
       }
+      if (apps !== null) {
+        await writeAppProcessesInTx(tx, { id: environment.id, organizationId, projectId }, apps);
+      }
       const resultVersion = await environmentVersionInTx(tx, environment.id);
-      await tx.environmentProposal.update({ where: { id: proposal.id }, data: { state: "accepted", decidedByMemberId: scope.memberId, decidedAt: now, resultVersion, baseline, ...(input.decision.edited === null ? {} : { body: { repos: accepted.repos, services: accepted.services, notes: accepted.notes } }) } });
+      const editedBody = { repos: accepted.repos, services: accepted.services, notes: accepted.notes, ...(accepted.appProcesses === undefined ? {} : { appProcesses: accepted.appProcesses }) };
+      await tx.environmentProposal.update({ where: { id: proposal.id }, data: { state: "accepted", decidedByMemberId: scope.memberId, decidedAt: now, resultVersion, baseline, ...(input.decision.edited === null ? {} : { body: editedBody }) } });
       await deps.audit.recordInTx(tx, {
         organizationId,
         projectId,
@@ -403,10 +482,13 @@ export const decideEnvironmentProposal = (deps: DecideEnvironmentProposalDeps, s
         action: "environment.proposal-accepted",
         entity: "environment",
         entityId: environmentIdSchema.parse(environment.id),
-        data: { proposalId: proposal.id, taskId, edited: input.decision.edited !== null, resultVersion, checks: names.length, services: accepted.services.length },
+        data: { proposalId: proposal.id, taskId, edited: input.decision.edited !== null, resultVersion, checks: kept ? 0 : names.length, services: kept ? 0 : accepted.services.length, appProcesses: proposedApps.length, source: proposal.source },
       });
-      // The environment changed: its snapshot is rebuilt, as a saved check or service does.
-      await deps.jobs.enqueueInTx(tx, "snapshot.schedule", { organizationId: organizationIdSchema.parse(organizationId), projectId, reason: "environment-changed" });
+      // The environment changed: its snapshot is rebuilt, as a saved check or service does. A kept
+      // process changes what runs after the setup, not the setup, so the snapshot stands.
+      if (!kept) {
+        await deps.jobs.enqueueInTx(tx, "snapshot.schedule", { organizationId: organizationIdSchema.parse(organizationId), projectId, reason: "environment-changed" });
+      }
       await answerItem();
       return { ok: true, resultVersion };
     },

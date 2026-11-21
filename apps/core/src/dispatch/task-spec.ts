@@ -4,11 +4,13 @@ import { apiFormatFromDb, effortLevelFromDb, mapModel } from "@ostra/db";
 import type { Db } from "@ostra/db";
 import { buildMemoryBlock, githubNoReplyAddress, INSTALLATION_NOT_LINKED, installationStateSelect, installationUsable, modelEffort, modelTokenPrices, sessionRowAllowedInTx, spendCapFor, taskTokensInTx } from "@ostra/domain";
 import type { AgentEffortLevels, MemoryLimits, SpendCapSettings } from "@ostra/domain";
-import { gitPersonSchema, organizationIdSchema, PROTOCOL_MINOR, projectIdSchema, repoFullNameSchema, taskIdSchema, taskSpecSchema } from "@ostra/protocol";
+import { gitPersonSchema, organizationIdSchema, PROTOCOL_MINOR, projectIdSchema, repoFullNameSchema, repoIdSchema, taskIdSchema, taskSpecSchema } from "@ostra/protocol";
 import type { GitPerson, LeaseEpoch, OrganizationId, RunnerId, TaskId, TaskSpec } from "@ostra/protocol";
 import { agentEffortLevels } from "../agents/effort-levels.ts";
 import type { BlobService } from "../blobs/blob-service.ts";
 import { agentInstructions } from "./agent-instructions.ts";
+import { specAppParts, specToolSets } from "./app-spec.ts";
+import type { AppSpecRepo } from "./app-spec.ts";
 import { specChecks, specServices, specSnapshot } from "./environment-spec.ts";
 import { profileSpecParts } from "./profile-spec.ts";
 import { specMilestone2Parts } from "./restore-spec.ts";
@@ -156,6 +158,8 @@ export const buildTaskSpec = async (
   const readsRepoBots = (input.minor ?? PROTOCOL_MINOR) >= 3;
   // Plain data until `taskSpecSchema` parses the whole spec below, which checks every field.
   const repos: Record<string, unknown>[] = [];
+  // Milestone 8 (F-140): each repo's access, for an onboarding task's detected app processes.
+  const appRepos: AppSpecRepo[] = [];
   for (const { repo, branchName: repoBranch } of taskRepos) {
     // Milestone 4 (F-136): nothing is minted through an installation that isn't linked.
     if (!installationUsable(repo.installation)) {
@@ -166,6 +170,7 @@ export const buildTaskSpec = async (
       return { ok: false, error: "code-host-failed", message: "the repo's App credentials couldn't be read" };
     }
     const access = { app, installationId: repo.installationId, repo: repoFullNameSchema.parse(repo.fullName) };
+    appRepos.push({ repoId: repoIdSchema.parse(repo.id), access, defaultBranch: repo.defaultBranch });
     // The clone URL is the code host's own, from its listing: core never builds a host's URL.
     const listed = await deps.codeHost.listRepos(app, repo.installationId);
     const hostRepo = listed.ok ? listed.value.find((candidate) => candidate.hostRepoId === repo.hostRepoId) : undefined;
@@ -240,7 +245,8 @@ export const buildTaskSpec = async (
   // Milestone 2 (ticket 18): the ticket, its images, and a reopen's restore section and template.
   const extras = await specMilestone2Parts(db, task, session);
   // Milestone 3 (ticket 27): the environment's services, for a runner that can start them.
-  const services = await specServices(db, task);
+  // Milestone 8 (F-140): a minor-7 runner also gets each one's preview label.
+  const services = await specServices(db, task, input.minor ?? PROTOCOL_MINOR);
   // Milestone 3 (ticket 23): the environment's checks, run after every turn with changes.
   const checks = await specChecks(db, task, taskRepos.map(({ repo }) => repo.id));
   // Milestone 3 (ticket 26): the snapshot this runner holds, or the host's dependency cache.
@@ -256,6 +262,11 @@ export const buildTaskSpec = async (
   const tools = minor >= 3 && deps.agentMemory?.(profile.adapter) === "mcp";
   const memory = await buildMemoryBlock(db, { organizationId, projectId: projectIdSchema.parse(task.projectId), tools }, deps.memoryLimits);
   const folded = minor < 3 ? (memory?.block ?? null) : null;
+  // Milestone 8 (F-121, F-140, ticket 15): the app's processes, the after-turn screenshots and the
+  // `app` tools, for a minor-7 runner; the tools for an agent that reaches ostra's MCP server, as
+  // the memory tools are.
+  const app = await specAppParts({ db, codeHost: deps.codeHost }, task, { minor, agentHasMcp: tools, repos: appRepos });
+  const specTools = specToolSets(onboarding?.tools ?? team.tools ?? (task.kind === "refine" ? ["draft", "memory"] : undefined), app.appTools);
   // Milestone 4 (F-137, ADR 0066): the task's level clamped to the model's levels, with the
   // model's controls and real limits. Every session's spec reads the task's level the same way, so
   // a reopen in a fresh box or on the template starts at it too.
@@ -267,10 +278,8 @@ export const buildTaskSpec = async (
     projectId: task.projectId,
     organizationId,
     kind: task.kind,
-    // Milestone 6 (F-099, ADR 0028): a refine task's sidecar serves the draft tool and memory, not the PR's text.
-    ...(task.kind === "refine" ? { tools: ["draft", "memory"] } : {}),
     title: task.title,
-    prompt: onboardingPromptOf(extras.prompt ?? task.prompt ?? "", onboarding),
+    prompt: onboardingPromptOf(extras.prompt ?? task.prompt ?? "", onboarding, app.appTools),
     ticket: extras.ticket,
     contextFiles: [...extras.contextFiles, ...team.ciFiles],
     ...(extras.restore === undefined ? {} : { restore: extras.restore }),
@@ -320,6 +329,8 @@ export const buildTaskSpec = async (
           .map((entry) => ({ path: entry.path, content: entry.value ?? "" })),
         envFile: repo.envFile,
       })),
+      ...(app.appProcesses === undefined ? {} : { appProcesses: app.appProcesses }),
+      ...(app.screenshots === undefined ? {} : { screenshots: app.screenshots }),
     },
     gitIdentity,
     coAuthors,
@@ -329,10 +340,12 @@ export const buildTaskSpec = async (
     ...(snapshot === undefined ? {} : { snapshot }),
     ...(minor >= 3 ? { memory } : {}),
     ...(team.review === undefined ? {} : { review: team.review }),
-    ...(team.tools === undefined ? {} : { tools: team.tools }),
     ...(team.automatic === undefined ? {} : { automatic: true }),
-    // Milestone 6 (F-113): the proposal's tool and the PR text, and only `AGENTS.md` committed.
-    ...(onboarding === null ? {} : { tools: [...onboarding.tools], commitPaths: [...onboarding.commitPaths] }),
+    // Milestone 6 (F-099, F-100, F-113, ADR 0028): a refine task's draft tool and memory, a review
+    // task's and an onboarding task's own sets (the proposal's tool and the PR text, and only
+    // `AGENTS.md` committed); milestone 8's `app` tools beside them.
+    ...(specTools === undefined ? {} : { tools: [...specTools] }),
+    ...(onboarding === null ? {} : { commitPaths: [...onboarding.commitPaths] }),
   });
   return { ok: true, spec };
 };

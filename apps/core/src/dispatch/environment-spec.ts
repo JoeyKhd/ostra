@@ -7,8 +7,11 @@ import { projectIdSchema, runnerLimits } from "@ostra/protocol";
 // service's plain variables only; its secrets go through the credentials endpoint after the lease
 // check (`issueTaskCredentials`), never here.
 
-/** The environment's services as the spec carries them, by name. Plain data: `taskSpecSchema` checks it. */
-export const specServices = async (db: Db, task: { readonly projectId: string; readonly organizationId: string }): Promise<Record<string, unknown>[]> => {
+/**
+ * The environment's services as the spec carries them, by name. Plain data: `taskSpecSchema` checks it.
+ * Milestone 8 (F-140): at minor 7, a service with a web UI names its preview label.
+ */
+export const specServices = async (db: Db, task: { readonly projectId: string; readonly organizationId: string }, minor = 0): Promise<Record<string, unknown>[]> => {
   const rows = await db.service.findMany({ where: { projectId: task.projectId, organizationId: task.organizationId }, orderBy: { name: "asc" } });
   return rows.map((row) => ({
     name: row.name,
@@ -16,6 +19,7 @@ export const specServices = async (db: Db, task: { readonly projectId: string; r
     port: row.port,
     variables: serviceVariablesFromDb(row.variables).flatMap((variable) => (variable.kind === "plain" ? [{ name: variable.name, value: variable.value }] : [])),
     healthCheck: row.healthCheck,
+    ...(minor >= 7 && row.previewLabel !== null ? { preview: { label: row.previewLabel } } : {}),
   }));
 };
 

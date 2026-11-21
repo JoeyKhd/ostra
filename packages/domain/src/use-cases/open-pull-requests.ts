@@ -7,6 +7,7 @@ import type { OrganizationId, ProjectId, RepoId, TaskId } from "@ostra/protocol"
 import { z } from "zod";
 
 import { checksSection, isFailingCheck, withChecksSection } from "../checks/pr-checks.ts";
+import { screenshotsLine, taskAttachmentCount, withScreenshotsLine } from "../previews/attachments.ts";
 import type { PrCheck } from "../checks/pr-checks.ts";
 
 import type { JobPayload } from "../jobs.ts";
@@ -73,12 +74,15 @@ export const pullRequestTitle = (title: string): string => {
 
 /**
  * The PR's body: the agent's text, a ticket task's `Closes <KEY>` (or the board's word, spec
- * section 11, item 5), then a footer that links the task and its other PRs.
+ * section 11, item 5), then a footer that links the task and its other PRs. Milestone 8 (F-121): a
+ * task with screenshots or recordings gets "Screenshots: N in ostra" under the "Opened by" line,
+ * linking to the task's attachments, never to a blob.
  */
-export const pullRequestBody = (text: string, taskUrl: string, others: readonly string[], magicLine: string | null = null, checks: string | null = null): string => {
+export const pullRequestBody = (text: string, taskUrl: string, others: readonly string[], magicLine: string | null = null, checks: string | null = null, screenshots: string | null = null): string => {
   const footer = [
     "---",
     `Opened by [ostra](${taskUrl}) for this task: ${taskUrl}`,
+    ...(screenshots === null ? [] : [screenshots]),
     ...(others.length === 0 ? [] : ["", "The task's other PRs:", ...others.map((url) => `- ${url}`)]),
   ];
   // Milestone 3 (F-054): the checks section sits between the agent's text and the trailers.
@@ -120,6 +124,8 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
   const projectId = projectIdSchema.parse(task.projectId);
   const taskUrl = `${deps.publicUrl.replace(/\/+$/, "")}/tasks/${task.id}`;
   const fallbackBody = (await db.$transaction((tx) => lastAgentMessageInTx(tx, task.id, input.sessionId))) ?? task.title;
+  // Milestone 8 (F-121): the task's screenshots and recordings, as a count and a link to the task.
+  const screenshots = screenshotsLine(await taskAttachmentCount(db, task.id), taskUrl);
   const ticketText = await ticketTextOf(db, task);
   const taskRepos = await db.taskRepo.findMany({
     where: { taskId: task.id, ahead: true },
@@ -171,7 +177,7 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
     if (pull === null) {
       // The body is the agent's text (untrusted, sent as data), and the footer is ostra's.
       const text = taskRepo.prBody ?? fallbackBody;
-      const body = pullRequestBody(text, taskUrl, opened.map((other) => other.url), ticketText?.magicLine ?? null, checks);
+      const body = pullRequestBody(text, taskUrl, opened.map((other) => other.url), ticketText?.magicLine ?? null, checks, screenshots);
       const created = await deps.adapters.codeHost.openPullRequest({
         access,
         head: taskRepo.branchName,
@@ -272,29 +278,32 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
     const updated = await deps.adapters.codeHost.updatePullRequestBody({
       access: mine.access,
       number: mine.number,
-      body: pullRequestBody(mine.text, taskUrl, others, ticketText?.magicLine ?? null, mine.checks),
+      body: pullRequestBody(mine.text, taskUrl, others, ticketText?.magicLine ?? null, mine.checks, screenshots),
     });
     if (!updated.ok) {
       deps.logger?.warn("a PR couldn't link the task's other PRs", { taskId: task.id, repoId: mine.repoId, prNumber: mine.number, code: updated.error.code });
     }
   }
 
-  // The PRs open before this run: the turn's checks edit their section and their draft state.
-  if (existing.length > 0 && latestChecks.length > 0) {
-    const changed = await reposChangedInSave(db, task.id, input.eventSeq);
+  // The PRs open before this run: the turn's checks edit their section and their draft state, and
+  // milestone 8's screenshots line its count (F-121), on every open PR of the task.
+  if (existing.length > 0 && (latestChecks.length > 0 || screenshots !== null)) {
+    const changed = latestChecks.length > 0 ? await reposChangedInSave(db, task.id, input.eventSeq) : null;
     for (const pr of existing) {
-      if (changed !== null && !changed.has(pr.repoId)) {
+      const body = { taskUrl, others: opened.filter((other) => other.repoId !== pr.repoId).map((other) => other.url), magicLine: ticketText?.magicLine ?? null, screenshots };
+      const checksApply = latestChecks.length > 0 && (changed === null || changed.has(pr.repoId));
+      if (!checksApply && screenshots === null) {
         continue;
       }
-      const updated = await updatePullRequestChecks(deps, {
-        organizationId,
-        projectId,
-        taskId: task.id,
-        pr,
-        checks: prChecksFor(latestChecks, pr.repoId),
-        drafts,
-        body: { taskUrl, others: opened.filter((other) => other.repoId !== pr.repoId).map((other) => other.url), magicLine: ticketText?.magicLine ?? null },
-      });
+      if (!checksApply) {
+        // Only the count moved: a host that refuses it now gets it again after the next turn.
+        const counted = await updatePullRequestScreenshots(deps, { organizationId, pr, body });
+        if (!counted.ok) {
+          deps.logger?.warn("a PR's screenshots line couldn't be updated", { taskId: task.id, repoId: pr.repoId, prNumber: pr.number });
+        }
+        continue;
+      }
+      const updated = await updatePullRequestChecks(deps, { organizationId, projectId, taskId: task.id, pr, checks: prChecksFor(latestChecks, pr.repoId), drafts, body });
       if (!updated.ok) {
         return updated;
       }
@@ -352,6 +361,47 @@ const reposChangedInSave = async (db: Db, taskId: string, eventSeq: number): Pro
   return new Set(saved.data.repos.filter((repo) => repo.headSha !== null && heads.get(repo.repoId) !== repo.headSha).map((repo) => repo.repoId));
 };
 
+/** What an open PR's body is rebuilt from when the host doesn't say what it is now. */
+type ExistingBodyParts = {
+  readonly taskUrl: string;
+  readonly others: readonly string[];
+  readonly magicLine: string | null;
+  /** Milestone 8 (F-121): the screenshots line, or `null` when the task has none. */
+  readonly screenshots: string | null;
+};
+
+/** A body with its screenshots line brought up to date; with none to write, as it is (a person's edit stays). */
+const withScreenshots = (body: string, line: string | null): string => (line === null ? body : withScreenshotsLine(body, line));
+
+/**
+ * An open PR whose checks this turn didn't touch, after a turn that added screenshots (F-121): its
+ * screenshots line's count edited in place, in the description as the host has it now.
+ */
+const updatePullRequestScreenshots = async (
+  deps: OpenPullRequestsDeps,
+  input: { readonly organizationId: OrganizationId; readonly pr: ExistingPullRequest; readonly body: ExistingBodyParts },
+): Promise<{ readonly ok: true } | { readonly ok: false; readonly error: "code-host-failed"; readonly message: string }> => {
+  const { pr } = input;
+  const access = await repoAccessFor(deps.db, deps.adapters.secretStore, input.organizationId, pr.repoId);
+  if (!access.ok) {
+    return { ok: false, error: "code-host-failed", message: access.reason };
+  }
+  const details = await deps.adapters.codeHost.getPullRequest(access.access, pr.number);
+  if (!details.ok) {
+    return { ok: false, error: "code-host-failed", message: `the code host couldn't read the PR (${details.error.code})` };
+  }
+  const current = details.value.body;
+  if (details.value.state !== "open" || typeof current !== "string") {
+    return { ok: true };
+  }
+  const body = withScreenshots(current, input.body.screenshots);
+  if (body === current) {
+    return { ok: true };
+  }
+  const edited = await deps.adapters.codeHost.updatePullRequestBody({ access: access.access, number: pr.number, body });
+  return edited.ok ? { ok: true } : { ok: false, error: "code-host-failed", message: `the code host refused the PR's body (${edited.error.code})` };
+};
+
 /**
  * One open PR after a turn with checks (F-054, ADR 0052): its checks section edited in place (the
  * description as the host has it now, so a person's edits stay; rebuilt from ostra's parts when the
@@ -367,7 +417,7 @@ const updatePullRequestChecks = async (
     readonly pr: ExistingPullRequest;
     readonly checks: readonly PrCheck[];
     readonly drafts: boolean;
-    readonly body: { readonly taskUrl: string; readonly others: readonly string[]; readonly magicLine: string | null };
+    readonly body: ExistingBodyParts;
   },
 ): Promise<{ readonly ok: true } | { readonly ok: false; readonly error: "code-host-failed"; readonly message: string }> => {
   const { db } = deps;
@@ -387,8 +437,8 @@ const updatePullRequestChecks = async (
   const current = details.value.body;
   const body =
     typeof current === "string"
-      ? withChecksSection(current, section, input.body.magicLine)
-      : pullRequestBody(pr.text, input.body.taskUrl, input.body.others, input.body.magicLine, section);
+      ? withScreenshots(withChecksSection(current, section, input.body.magicLine), input.body.screenshots)
+      : pullRequestBody(pr.text, input.body.taskUrl, input.body.others, input.body.magicLine, section, input.body.screenshots);
   if (body !== current) {
     const edited = await deps.adapters.codeHost.updatePullRequestBody({ access: access.access, number: pr.number, body });
     if (!edited.ok) {

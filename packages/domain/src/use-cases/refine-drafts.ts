@@ -4,6 +4,7 @@ import {
   agentProfileIdSchema,
   connectionIdSchema,
   draftIdSchema,
+  draftImageIdSchema,
   projectIdSchema,
   refineDraftSchema,
   sessionIdSchema,
@@ -35,6 +36,7 @@ import type {
   SaveDraft,
   SeedBuiltInProfiles,
 } from "./m6-signatures.ts";
+import type { AddAttachmentToDraft } from "./m8-preview-signatures.ts";
 import { moveTaskInTx } from "./moves.ts";
 import { createTicketForTask } from "./tickets.ts";
 import { draftAsDescription } from "../prompts/m6.ts";
@@ -534,6 +536,60 @@ export const addDraftImage = (
       entityId: found.task.id,
     });
     return { ok: true, version: latest.version, imageId: image.id };
+  });
+
+/** A draft's images at most when no setting is given: `OSTRA_DRAFT_IMAGES_MAX`'s default. */
+const DRAFT_IMAGES_MAX_DEFAULT = 10;
+
+/**
+ * "Add to draft" (F-099, F-121; milestone 8's ticket 15): a screenshot the refine task's own box
+ * took, among its latest draft's images, so "Update ticket" attaches it to the tracker as any
+ * draft image. The same people as `addDraftImage`; the blob is the attachment's, which the task
+ * owns already, so nothing is copied. Adding one twice answers the image it made.
+ */
+export const addAttachmentToDraft: AddAttachmentToDraft = (deps, scope, input, limits = { max: DRAFT_IMAGES_MAX_DEFAULT }) =>
+  deps.db.$transaction(async (tx) => {
+    const found = await lockRefineTaskInTx(tx, scope, input.taskId);
+    if (!found.ok) return found;
+    if (found.task.done) return { ok: false, error: "task-done", message: DONE_MESSAGE };
+    const latest = await latestDraftInTx(tx, found.task.id);
+    if (latest?.id !== input.draftId) {
+      return { ok: false, error: "not-found", message: "No such draft: a screenshot goes on the draft's latest version" };
+    }
+    const attachment = await tx.taskAttachment.findFirst({
+      where: { taskId: found.task.id, organizationId: scope.organizationId, attachmentId: input.attachmentId },
+      select: { id: true, kind: true, draftImageId: true, blob: { select: { id: true, contentType: true, size: true } } },
+    });
+    if (attachment === null) {
+      return { ok: false, error: "not-found", message: "No such screenshot in this task" };
+    }
+    if (attachment.kind !== "screenshot") {
+      return { ok: false, error: "not-a-screenshot", message: "Only a screenshot goes in a draft: a recording stays in the task" };
+    }
+    if (attachment.draftImageId !== null) {
+      const made = await tx.refineDraftImage.findFirst({ where: { id: attachment.draftImageId, draftId: latest.id }, select: { id: true } });
+      if (made !== null) {
+        return { ok: true, draftImageId: draftImageIdSchema.parse(made.id) };
+      }
+    }
+    if ((await tx.refineDraftImage.count({ where: { draftId: latest.id } })) >= limits.max) {
+      return { ok: false, error: "draft-full", message: `A draft holds at most ${String(limits.max)} images` };
+    }
+    const image = await tx.refineDraftImage.create({
+      select: { id: true },
+      data: {
+        organizationId: scope.organizationId,
+        projectId: found.task.projectId,
+        draftId: latest.id,
+        blobId: attachment.blob.id,
+        name: `screenshot-${input.attachmentId}.png`.slice(0, 200),
+        contentType: attachment.blob.contentType.slice(0, 100),
+        size: attachment.blob.size,
+      },
+    });
+    await tx.taskAttachment.update({ where: { id: attachment.id }, data: { draftImageId: image.id } });
+    await deps.notices.emitInTx(tx, { organizationId: scope.organizationId, projectId: found.task.projectId, entity: "task", entityId: found.task.id });
+    return { ok: true, draftImageId: draftImageIdSchema.parse(image.id) };
   });
 
 /** A member takes an image off the latest version (ticket 27): its blob stays, as milestone 2's do. */

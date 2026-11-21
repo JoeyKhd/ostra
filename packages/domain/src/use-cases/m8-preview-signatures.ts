@@ -93,14 +93,18 @@ export type RecordAttachment = (
     readonly browser: BoxBrowser;
     readonly memberId: MemberId | null;
   },
-) => Promise<UseCaseResult<{ readonly stored: boolean }, "not-found" | "blob-not-the-task-s" | "limit-reached">>;
+  /** `invalid` (ticket 15): a recording without its length and frames, or a member's screenshot without its member. */
+) => Promise<UseCaseResult<{ readonly stored: boolean }, "not-found" | "blob-not-the-task-s" | "limit-reached" | "invalid">>;
 
 /** "Add to draft" (F-099, F-121): a screenshot among a refine draft's images. */
 export type AddAttachmentToDraft = (
   deps: PreviewDeps,
   scope: MemberScope,
   input: { readonly taskId: TaskId; readonly attachmentId: AttachmentId; readonly draftId: DraftId },
-) => Promise<UseCaseResult<{ readonly draftImageId: DraftImageId }, "forbidden" | "not-found" | "not-a-screenshot" | "draft-full">>;
+  /** A draft's images, at most (`OSTRA_DRAFT_IMAGES_MAX`, as `addDraftImage` takes it; 10 without it). */
+  limits?: { readonly max: number },
+  /** `task-done` (ticket 15): the refine task's draft went to the tracker, as `addDraftImage` refuses. */
+) => Promise<UseCaseResult<{ readonly draftImageId: DraftImageId }, "forbidden" | "not-found" | "not-a-screenshot" | "draft-full" | "task-done">>;
 
 /** A member's screenshot from the pane: `screenshot.take` to the box's runner. */
 export type TakeMemberScreenshot = (

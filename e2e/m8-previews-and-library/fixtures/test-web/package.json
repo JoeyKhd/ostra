@@ -7,8 +7,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "api": "node api/server.js",
-    "docs": "node docs/server.js"
+    "api": "node api/server.js --port 3001",
+    "docs": "node docs/server.js --port 4000"
   },
   "dependencies": {
     "react": "19.3.1",

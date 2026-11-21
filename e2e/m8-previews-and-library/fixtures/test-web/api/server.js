@@ -5,7 +5,9 @@ import { WebSocketServer } from "ws";
 // The app's API, on 3001: the frontend calls it as /api/... on its own origin, and Vite's
 // server.proxy sends the call here (ADR 0068, "One origin is the convention"). /api/ws echoes
 // each WebSocket message back, through the same proxy.
-const port = Number(process.env["TEST_WEB_API_PORT"] ?? "3001");
+// The variable wins over the script's --port, which names it for ostra's detection (F-140).
+const portArgument = process.argv.indexOf("--port") === -1 ? undefined : process.argv[process.argv.indexOf("--port") + 1];
+const port = Number(process.env["TEST_WEB_API_PORT"] ?? portArgument ?? "3001");
 const started = Date.now();
 
 const json = (response, status, body) => {

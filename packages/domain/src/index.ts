@@ -221,6 +221,9 @@ export * from "./previews/tokens.ts";
 export * from "./environment/detect-app.ts";
 export * from "./lifecycles/m8-previews.ts";
 export * from "./use-cases/m8-preview-signatures.ts";
+// Milestone 8 (ticket 15, ADR 0068): the app's processes, attachments and "Keep it", as core keeps them.
+export * from "./previews/attachments.ts";
+export * from "./previews/environment-app.ts";
 
 // Milestone 8 (ticket 27, ADR 0069): the library's install by reference, its sources and its test call.
 export * from "./library/stored.ts";

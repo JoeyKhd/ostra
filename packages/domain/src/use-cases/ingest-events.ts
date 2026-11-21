@@ -20,6 +20,7 @@ import { storableEvent } from "./storable-event.ts";
 import type { TaskMoveDeps } from "./moves.ts";
 import { recordCheckFinishedInTx, recordCheckStartedInTx } from "./checks.ts";
 import { recordMemoryUse } from "../memory/store.ts";
+import { recordAnnouncedPreviewsInTx, recordAttachmentInTx } from "../previews/attachments.ts";
 import { sendClosingTurnInTx } from "../memory/closing-turn.ts";
 import type { ReviewLoopCapabilities } from "../review-loop/loop.ts";
 import { cancelBoxIdleTimerInTx, endSessionTimersInTx, markBoxBusyInTx, recordLimitReached, recordWorkSaved, startSessionTimersInTx } from "./sessions-m2.ts";
@@ -545,6 +546,38 @@ const applyEffects = async (
         }
         break;
       }
+      case "attachment.added": {
+        // Milestone 8 (F-121, ticket 15): the screenshot or recording as a `TaskAttachment`, once per
+        // `attachmentId`, only for a blob of this task's of its purpose. The event stays in the log;
+        // the thread shows the rows. IDs only in the log line, never the caption.
+        const turn = event.source === "member" ? null : await tx.turn.findFirst({ where: { sessionId: session.id }, orderBy: { ordinal: "desc" }, select: { id: true } });
+        const recorded = await recordAttachmentInTx(deps, tx, taskRow, {
+          attachmentId: event.attachmentId,
+          kind: event.attachmentKind,
+          blobId: event.blobId,
+          source: event.source,
+          target: event.target,
+          path: event.path,
+          width: event.width,
+          height: event.height,
+          durationMs: event.durationMs,
+          frameCount: event.frameCount,
+          caption: event.caption,
+          browser: event.browser,
+          memberId: event.memberId,
+          turnId: turn?.id ?? null,
+        });
+        if (!recorded.ok) {
+          deps.logger?.warn("ingest.attachment-refused", { taskId: task.id, sessionId: session.id, attachmentId: event.attachmentId, blobId: event.blobId, error: recorded.error });
+        }
+        break;
+      }
+      case "preview.list": {
+        // Milestone 8 (F-140, ticket 15): the ports the agent announced, as the task's `TaskPreview` rows.
+        const turn = await tx.turn.findFirst({ where: { sessionId: session.id }, orderBy: { ordinal: "desc" }, select: { id: true } });
+        await recordAnnouncedPreviewsInTx(deps, tx, taskRow, event.previews, turn?.id ?? null);
+        break;
+      }
       case "user.message":
       case "turn.cancel_requested":
       case "agent.content":
@@ -619,13 +652,10 @@ const applyEffects = async (
       // task page's tree; the turn's wait for them is the runner's (ADR 0067), so nothing moves here.
       case "subagent.started":
       case "subagent.status":
-      // Protocol minor 7 (milestone 8, ADR 0068): stored for the task page. Each one's own effect
-      // (an attachment's row, a process's state, the previews' list, a view's presence) is the
-      // milestone 8 core tickets' (15, 19), which apply it from here.
+      // Protocol minor 7 (milestone 8, ADR 0068): stored for the task page and its pane. A process's
+      // state and the box's browser move nothing here; a view's presence is ticket 19's.
       case "app.process":
       case "app.browser":
-      case "attachment.added":
-      case "preview.list":
       case "preview.opened":
       case "preview.closed":
       case "preview.level_changed":

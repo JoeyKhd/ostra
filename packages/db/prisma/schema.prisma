@@ -1679,6 +1679,11 @@ model Finding {
   /// The review run that found it resolved or outdated.
   resolvedInRunId   String?
   createdAt         DateTime        @default(now())
+  // ---- milestone 8 (F-121, ADR 0068) ----
+  /// The review task's screenshots or recordings that show it, by the runner's attachment ID
+  /// (`TaskAttachment.attachmentId`): a JSON array of strings, at most 5, each one checked against
+  /// the review task's attachments when the review was handed in.
+  attachmentIds     Json            @default("[]")
 
   @@index([reviewRunId])
   @@map("finding")
@@ -1733,6 +1738,9 @@ model EnvironmentProposal {
   /// domain's `environmentBaselineSchema` (its script, checks, services and variable names, never
   /// a value), so a decided proposal's diff stays readable for 7 days. `null` before this release.
   baseline          Json?
+  /// Milestone 8 (F-140): where it came from: the onboarding task's `propose_environment`, or
+  /// "Keep it" on a port an agent announced in a task, which proposes that one app process alone.
+  source            EnvironmentProposalSource @default(onboarding)
 
   @@map("environment_proposal")
 }
@@ -2969,6 +2977,13 @@ enum EnvironmentProposalState {
   accepted
   rejected
   superseded
+}
+
+/// Where an environment proposal came from (F-113, F-140): the onboarding task, or "Keep it" on a
+/// port an agent announced in a task.
+enum EnvironmentProposalSource {
+  onboarding
+  kept
 }
 
 /// The built-in profiles a fresh organization is seeded with (F-099, F-100).
