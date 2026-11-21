@@ -56,7 +56,9 @@ await db.user.update({ where: { id: keeper.seeded.userId }, data: { name: "Sam R
 // The repo's GitHub, as rows: the spec reads nothing from it (detection finds no file and says so).
 const connection = await db.connection.create({ data: { organizationId, kind: "github", appId: `e2e-app-${args.tag}`, slug: `e2e-app-${args.tag}`, state: "active" } });
 const installation = await db.codeHostInstallation.create({ data: { organizationId, connectionId: connection.id, installationId: `inst-${args.tag}`, accountLogin: "acme", accountKind: "organization" } });
-const project = await db.project.create({ data: { organizationId, name: "calculator", slug: `calculator-${args.tag}`, access: "open" } });
+// Named for the demo app (Tally), not `calculator`: an open project every member sees, and the keys
+// spec picks its own `calculator` project by name when it runs after this one (the phone project).
+const project = await db.project.create({ data: { organizationId, name: "tally", slug: `tally-${args.tag}`, access: "open" } });
 const repo = await db.repo.create({
   data: { organizationId, projectId: project.id, connectionId: connection.id, installationId: installation.installationId, hostRepoId: `e2e-${args.tag}`, fullName: "acme/calculator-web", defaultBranch: "main", checkoutDir: "calculator-web" },
 });
