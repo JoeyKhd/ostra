@@ -46,6 +46,8 @@ import type { CliTunnels } from "./cli-tunnel.ts";
 import { createPreviewHub } from "./hub.ts";
 import { parseMultipart } from "./multipart.ts";
 import type { PreviewHub } from "./hub.ts";
+import { createNativePreviews } from "./native.ts";
+import type { NativePreviews } from "./native.ts";
 import { createTunnelHub } from "./tunnels.ts";
 import type { TunnelHub } from "./tunnels.ts";
 
@@ -84,8 +86,16 @@ export type PreviewsDeps = {
   readonly presenceWaitMs?: number;
   /** How often the views held here are checked against their rows. */
   readonly checkMs?: number;
-  /** The warm cap a new tunnel view is refused past (`OSTRA_PREVIEW_WARM_MINUTES`). */
-  readonly settings: { readonly warmMinutes: number };
+  /**
+   * The warm cap a new tunnel view is refused past (`OSTRA_PREVIEW_WARM_MINUTES`), and the preview
+   * domain (`OSTRA_PREVIEW_DOMAIN`): set, the native preview's proxy is built (ticket 25).
+   */
+  readonly settings: { readonly warmMinutes: number; readonly domain?: string | null };
+  /** The panel's and core's public addresses, which the native preview's frames and hosts follow. */
+  readonly urls?: { readonly publicUrl: string; readonly corePublicUrl: string };
+  /** The native preview's heartbeat and check intervals (30 s and 5 minutes; tests shorten them). */
+  readonly nativeHeartbeatMs?: number;
+  readonly nativeRecheckMs?: number;
   /** How often a CLI's tunnel checks its CLI session again (5 minutes; tests shorten it). */
   readonly cliRecheckMs?: number;
   /** How often a CLI's tunnel heartbeats its view (30 s; tests shorten it). */
@@ -102,6 +112,8 @@ export type Previews = {
   /** The tunnel views' HTTP/2 sessions to their boxes: the native preview's proxy (ticket 25) sends on `tunnels.session(viewId)`. */
   readonly tunnels: TunnelHub;
   readonly cliTunnels: CliTunnels;
+  /** The native preview's proxy (ticket 25), only with a preview domain: core's server hands it the preview hosts. */
+  readonly native: NativePreviews | null;
   readonly start: () => void;
   readonly stop: () => Promise<void>;
 };
@@ -169,6 +181,24 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
     ...(deps.cliHeartbeatMs === undefined ? {} : { heartbeatMs: deps.cliHeartbeatMs }),
     ...(deps.cliCloseWaitMs === undefined ? {} : { closeWaitMs: deps.cliCloseWaitMs }),
   });
+  const domain = deps.settings.domain ?? null;
+  const native =
+    domain === null
+      ? null
+      : createNativePreviews({
+          db: deps.db,
+          outbox: deps.outbox,
+          notices: deps.notices,
+          clock: deps.clock,
+          logger,
+          settings: { domain, publicUrl: deps.urls?.publicUrl ?? "http://localhost:3000", corePublicUrl: deps.urls?.corePublicUrl ?? "http://localhost:8787", warmMinutes: deps.settings.warmMinutes },
+          tunnels,
+          secret: deps.secret,
+          replicaUrl: deps.replicaUrl,
+          presenceWaitMs,
+          ...(deps.nativeHeartbeatMs === undefined ? {} : { heartbeatMs: deps.nativeHeartbeatMs }),
+          ...(deps.nativeRecheckMs === undefined ? {} : { recheckMs: deps.nativeRecheckMs }),
+        });
   let panelTokens: Promise<PanelPreviewTokens> | undefined;
   const tokensOnce = (): Promise<PanelPreviewTokens> => (panelTokens ??= deps.secret().then(createPanelPreviewTokens));
   /** The frames each view took over the HTTP carrier in the last second, on this replica. */
@@ -236,6 +266,12 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
   };
 
   const takeUpgrade = async (request: IncomingMessage, socket: Duplex, head: Buffer, url: URL): Promise<void> => {
+    // The box's connection is the sidecar's or the `host` runner's, never a browser page's: a page's
+    // upgrade names its `Origin`, such as a preview host's (ADR 0068, the panel's own defences).
+    if (request.headers.origin !== undefined) {
+      rejectUpgrade(socket, 400, "bad-request", "a browser's page never opens the box's preview connection");
+      return;
+    }
     const query = previewConnectionQuerySchema.safeParse({ view: url.searchParams.get("view"), leaseEpoch: url.searchParams.get("leaseEpoch") });
     if (!query.success) {
       rejectUpgrade(socket, 400, "bad-request", "the query names a view and its lease epoch");
@@ -303,6 +339,9 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
 
   const handleUpgrade = (request: IncomingMessage, socket: Duplex, head: Buffer): boolean => {
     if (cliTunnels.handleUpgrade(request, socket, head)) {
+      return true;
+    }
+    if (native?.handleForwardedUpgrade(request, socket, head) === true) {
       return true;
     }
     const url = new URL(request.url ?? "/", "http://ostra.invalid");
@@ -652,6 +691,9 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
   };
 
   const handleRequest: RouteHandler = async (request, response, url) => {
+    if (native !== null && (await native.handleForwarded(request, response, url))) {
+      return true;
+    }
     if (url.pathname === previewPaths.frames) {
       if (request.method !== "POST") {
         sendJson(response, 404, { error: { code: "not-found", message: "no such route" } });
@@ -682,7 +724,9 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
     hub,
     tunnels,
     cliTunnels,
+    native,
     start: () => {
+      native?.start();
       checkTimer = setInterval(() => {
         checkHeld().catch((error: unknown) => {
           logger.warn("preview.check-failed", { error: error instanceof Error ? error.name : "unknown" });
@@ -692,6 +736,7 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
     },
     stop: async () => {
       clearInterval(checkTimer);
+      native?.stop();
       hub.stop();
       cliTunnels.stop();
       tunnels.stop();

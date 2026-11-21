@@ -1,12 +1,24 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
-import { cliTunnelTicketSchema, memberIdSchema, organizationIdSchema, parseJson, previewLinkIdSchema, previewViewIdSchema } from "@ostra/protocol";
-import type { MemberId, OrganizationId, PreviewKey, PreviewLinkId, PreviewViewId, Sha256Hex, TaskId } from "@ostra/protocol";
+import {
+  cliTunnelTicketSchema,
+  loginSessionIdSchema,
+  memberIdSchema,
+  organizationIdSchema,
+  parseJson,
+  previewKeySchema,
+  previewLinkIdSchema,
+  previewViewIdSchema,
+  taskIdSchema,
+} from "@ostra/protocol";
+import type { LoginSessionId, MemberId, OrganizationId, PreviewKey, PreviewLinkId, PreviewViewId, Sha256Hex, TaskId } from "@ostra/protocol";
 import { z } from "zod";
 
+import { PREVIEW_COOKIE_MAX_MS } from "./host.ts";
+
 // The previews' secrets (milestone 8, F-142, F-143, F-144, ADR 0068): a link's token, the native
-// preview's one-time code and the CLI's tunnel ticket, the panel's token for one view, and the
-// signature one replica puts on a request it forwards to another. Each is a bearer secret: it's
+// preview's one-time code and the CLI's tunnel ticket, the panel's token for one view, the native
+// preview's cookie, and the signature one replica puts on a request it forwards to another. Each is a bearer secret: it's
 // kept only as its SHA-256 (or checked by its MAC), compared in constant time, and never logged:
 // each has a prefix the logger redacts (`@ostra/adapter-sdk`'s `redactTokens`).
 
@@ -243,6 +255,106 @@ export const createPanelPreviewTokens = (secret: string): PanelPreviewTokens => 
       const viewer: PreviewCodeViewer | null = m !== null && l === null ? { kind: "member", memberId: m } : l !== null && m === null ? { kind: "link", linkId: l } : null;
       return viewer === null ? null : { organizationId: o, viewId: w, viewer, expiresAt: x };
     },
+  };
+};
+
+// ---------- the native preview's cookie (F-144) ----------
+
+/** A preview cookie's value's prefix, which the logger redacts (`ostra-preview-…`). */
+export const PREVIEW_COOKIE_TOKEN_PREFIX = "ostra-preview-cookie-";
+
+/** Who a preview cookie is for: a member in one panel login session, or a link. */
+export type PreviewCookieViewer =
+  | { readonly kind: "member"; readonly memberId: MemberId; readonly loginSessionId: LoginSessionId }
+  | { readonly kind: "link"; readonly linkId: PreviewLinkId };
+
+/** What the handshake's cookie carries (ADR 0068): the preview it opens, its viewer, and its deadline. Never logged. */
+export type PreviewCookieClaims = {
+  /** A random ID of this handshake's grant: what a replica keys what it checked by. Not a secret. */
+  readonly grantId: string;
+  readonly organizationId: OrganizationId;
+  readonly taskId: TaskId;
+  readonly key: PreviewKey;
+  readonly port: number;
+  readonly viewer: PreviewCookieViewer;
+  /** Epoch ms: no good from then on. */
+  readonly expiresAt: number;
+};
+
+const cookieClaimsSchema = z.strictObject({
+  v: z.literal(1),
+  g: z.string().regex(/^[A-Za-z0-9_-]{22}$/),
+  o: organizationIdSchema,
+  t: taskIdSchema,
+  k: previewKeySchema,
+  p: z.number().int().min(1024).max(65_535),
+  m: memberIdSchema.nullable(),
+  s: loginSessionIdSchema.nullable(),
+  l: previewLinkIdSchema.nullable(),
+  x: z.number().int(),
+});
+
+export type PreviewCookies = {
+  /** A new grant's claims' cookie value, under the secrets key. */
+  readonly issue: (claims: PreviewCookieClaims) => string;
+  /** The claims, or `null` when the value is forged, malformed or past its deadline (or more than 12 hours ahead). */
+  readonly verify: (value: string, now: number) => PreviewCookieClaims | null;
+  /** A new grant's random ID. */
+  readonly newGrantId: () => string;
+};
+
+/**
+ * The native preview's cookie (ADR 0068, "The handshake"): an HMAC under the secrets key every
+ * replica shares, over the organization, the task, the preview's key and port, the member and the
+ * panel login session (or the link), and a deadline at most 12 hours ahead. Stateless, so any
+ * replica reads it; core still checks the viewer and the lease against the rows on each new
+ * connection and every 5 minutes, so a removed member, a revoked link or a signed-out session ends
+ * it before its deadline. Never logged.
+ */
+export const createPreviewCookies = (secret: string, random: RandomBytes = randomBytes): PreviewCookies => {
+  const sign = (body: string): Buffer => createHmac("sha256", secret).update(`preview-cookie\n${body}`).digest();
+  return {
+    issue: (claims) => {
+      const body = Buffer.from(
+        JSON.stringify({
+          v: 1,
+          g: claims.grantId,
+          o: claims.organizationId,
+          t: claims.taskId,
+          k: claims.key,
+          p: claims.port,
+          m: claims.viewer.kind === "member" ? claims.viewer.memberId : null,
+          s: claims.viewer.kind === "member" ? claims.viewer.loginSessionId : null,
+          l: claims.viewer.kind === "link" ? claims.viewer.linkId : null,
+          x: claims.expiresAt,
+        }),
+      ).toString("base64url");
+      return `${PREVIEW_COOKIE_TOKEN_PREFIX}${body}.${sign(body).toString("base64url")}`;
+    },
+    verify: (value, now) => {
+      if (!value.startsWith(PREVIEW_COOKIE_TOKEN_PREFIX) || value.length > 2048) {
+        return null;
+      }
+      const [body, mac, ...rest] = value.slice(PREVIEW_COOKIE_TOKEN_PREFIX.length).split(".");
+      if (body === undefined || mac === undefined || rest.length > 0) {
+        return null;
+      }
+      const given = Buffer.from(mac, "base64url");
+      const wanted = sign(body);
+      if (given.length !== wanted.length || !timingSafeEqual(given, wanted)) {
+        return null;
+      }
+      const json = parseJson(Buffer.from(body, "base64url").toString("utf8"));
+      const claims = json.ok ? cookieClaimsSchema.safeParse(json.value) : undefined;
+      if (claims?.success !== true || claims.data.x <= now || claims.data.x - now > PREVIEW_COOKIE_MAX_MS + 60_000) {
+        return null;
+      }
+      const { g, o, t, k, p, m, s, l, x } = claims.data;
+      const viewer: PreviewCookieViewer | null =
+        m !== null && s !== null && l === null ? { kind: "member", memberId: m, loginSessionId: s } : l !== null && m === null && s === null ? { kind: "link", linkId: l } : null;
+      return viewer === null ? null : { grantId: g, organizationId: o, taskId: t, key: k, port: p, viewer, expiresAt: x };
+    },
+    newGrantId: () => Buffer.from(random(16)).toString("base64url"),
   };
 };
 

@@ -1,4 +1,4 @@
-import { grantInstanceAdmin } from "@ostra/domain";
+import { checkPreviewDomain, createPreviewDomainProbe, grantInstanceAdmin, previewDomainCheckSchema } from "@ostra/domain";
 import { userIdSchema } from "@ostra/protocol";
 import { z } from "zod";
 
@@ -37,6 +37,19 @@ const accountViewSchema = z.strictObject({
 const grantCodes = { forbidden: "FORBIDDEN", "not-found": "NOT_FOUND", "last-instance-admin": "CONFLICT" } as const;
 
 export const instanceRouter = router({
+  /**
+   * The preview domain's check (milestone 8, ticket 25, F-144; `instance-preview-domain.md`), for
+   * the instance's settings page (ticket 26): a random name under `OSTRA_PREVIEW_DOMAIN` resolved,
+   * then opened over core's public scheme and port, reporting the DNS record, the certificate,
+   * whether core's preview proxy answered and whether a WebSocket upgrade went through. `not-set`
+   * with no domain. It reaches the install's own domain only, and sends nothing of a member's.
+   */
+  previewDomainCheck: instanceAdminProcedure.output(previewDomainCheckSchema).mutation(({ ctx }) =>
+    checkPreviewDomain(
+      { probe: ctx.deps.previews.domainProbe ?? createPreviewDomainProbe(), mark: ctx.deps.previews.checkMark, clock: ctx.deps.ports.clock },
+      { domain: ctx.deps.settings.previews.domain, corePublicUrl: ctx.deps.settings.corePublicUrl },
+    ),
+  ),
   /**
    * The install's accounts (instance admin only, F-003, ticket 43): by a prefix of the username, the
    * address or the name, case-insensitive, sorted by name, 50 at a time.

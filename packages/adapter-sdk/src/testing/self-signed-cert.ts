@@ -89,11 +89,15 @@ const signed = (data: Buffer, key: KeyObject): Promise<Buffer> =>
     });
   });
 
-export const makeSelfSignedCert = async (now: Date = new Date(), serial: Buffer = randomBytes(8)): Promise<SelfSignedCert> => {
+/**
+ * `dnsNames` (milestone 8, ticket 25) are the names it covers in place of `localhost`, such as a
+ * preview domain's wildcard `*.previews.example.test`; `127.0.0.1` stays among them.
+ */
+export const makeSelfSignedCert = async (now: Date = new Date(), serial: Buffer = randomBytes(8), dnsNames: readonly string[] = ["localhost"]): Promise<SelfSignedCert> => {
   const { publicKey, privateKey } = await ecKeyPair();
-  const name = sequence(set(sequence(oid(COMMON_NAME), utf8("localhost"))));
+  const name = sequence(set(sequence(oid(COMMON_NAME), utf8(dnsNames[0] ?? "localhost"))));
   const algorithm = sequence(oid(ECDSA_WITH_SHA256));
-  const altNames = sequence(tlv(0x82, Buffer.from("localhost", "ascii")), tlv(0x87, Buffer.from([127, 0, 0, 1])));
+  const altNames = sequence(...dnsNames.map((dnsName) => tlv(0x82, Buffer.from(dnsName, "ascii"))), tlv(0x87, Buffer.from([127, 0, 0, 1])));
   const extensions = tlv(0xa3, sequence(sequence(oid(SUBJECT_ALT_NAME), octetString(altNames))));
   const tbs = sequence(
     tlv(0xa0, derInteger(Buffer.from([2]))),

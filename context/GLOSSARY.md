@@ -359,6 +359,14 @@ _Avoid_: tunnel, iframe preview, port forward (that's `ostra preview`)
 The optional wildcard domain under which core serves native previews, as `<port>-<previewId>.<domain>`. It needs one wildcard DNS record and a wildcard certificate, and a domain of its own is recommended.
 _Avoid_: wildcard URL, app domain
 
+**Preview host**:
+One preview's own name under the preview domain, `<port>-<previewId>.<domain>`, where the native preview opens. The preview ID belongs to the task, so the host outlives a box. Core answers every name under the domain with the preview proxy alone, and a host whose preview ID no task has answers nothing of an app.
+_Avoid_: subdomain (alone), app URL
+
+**Preview handshake**:
+How a browser gets into a preview host: the panel mints a one-time code (single use, 60 seconds, bound to the member and their login session or the link, the task, the port and the box's lease), the browser takes it to the host's `/.ostra/enter`, and core sets the host's own `__Host-ostra-preview` cookie there, for at most 12 hours. Every request on the host needs that cookie.
+_Avoid_: login, sign-in (that's the panel's), ticket (that's `ostra preview`'s)
+
 **Preview link**:
 A link that lets someone open one preview without being in its project: expiring, or public where an organization admin allows it. It opens a viewer page that shows only that preview, watch-only unless the link allows input. Its token is a bearer secret.
 _Avoid_: share URL, public URL, invite (an invitation adds a member)

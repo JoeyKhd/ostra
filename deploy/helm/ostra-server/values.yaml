@@ -56,6 +56,22 @@ ingress:
   webHost: ""
   # Empty: no rule for core. Runners outside the cluster need one.
   coreHost: ""
+  # The native preview (F-144) is optional and off. To turn it on, set env.OSTRA_PREVIEW_DOMAIN
+  # (say previews.example.com), point one wildcard DNS record at this ingress, and add a rule of
+  # your own for the wildcard host to core, with a wildcard certificate (Let's Encrypt issues one
+  # only through DNS-01) and the same WebSocket timeouts as coreHost's. Every replica forwards a
+  # preview to the one that holds its box's connection. See OSTRA_PREVIEW_DOMAIN in
+  # docs/configuration.md. The rule, in an Ingress beside this chart's:
+  #   - host: "*.previews.example.com"
+  #     http:
+  #       paths:
+  #         - path: /
+  #           pathType: Prefix
+  #           backend:
+  #             service:
+  #               name: <release>-ostra-server-core
+  #               port:
+  #                 name: http
   tlsSecretName: ""
   # Runners and the panel hold WebSockets open (ADR 0034): the proxy's idle timeout is raised.
   idleTimeoutSeconds: 3600

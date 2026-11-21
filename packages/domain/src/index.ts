@@ -241,6 +241,8 @@ export * from "./previews/views.ts";
 export * from "./previews/start-app.ts";
 export * from "./previews/start-app-on-core.ts";
 export * from "./previews/cli-tunnel.ts";
+export * from "./previews/native.ts";
+export * from "./previews/domain-check.ts";
 export * from "./previews/app-lease.ts";
 // Milestone 8 (ticket 28, ADR 0069): attaching, every profile, delivery, updates and suggestions.
 export * from "./library/server-request.ts";

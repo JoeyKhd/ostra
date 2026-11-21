@@ -1,6 +1,6 @@
 import type { Db } from "@ostra/db";
 import type { Logger } from "@ostra/adapter-sdk";
-import type { LinearAppKit, MemberScope, PanelPreviewTokens, Ports, ServerSettings } from "@ostra/domain";
+import type { LinearAppKit, MemberScope, PanelPreviewTokens, Ports, PreviewDomainProbe, ServerSettings } from "@ostra/domain";
 
 import type { OstraAuth } from "../auth/create-auth.ts";
 import { loadMemberContext, resolveSession } from "../auth/scope.ts";
@@ -72,6 +72,13 @@ export type PreviewRelay = {
   readonly panelTokens: PanelPreviewTokens;
   /** The fetch the relay calls core with: the platform's by default. */
   readonly fetch?: typeof fetch;
+  /**
+   * Milestone 8 (ticket 25, F-144): the mark core's preview proxy puts on the instance check's answer
+   * for a host (`previewCheckMark` under the secrets key), so the check knows the answer is ostra's.
+   */
+  readonly checkMark: (host: string) => string;
+  /** The preview domain check's network calls: Node's own by default; a test hands in fakes. */
+  readonly domainProbe?: PreviewDomainProbe;
 };
 
 /**

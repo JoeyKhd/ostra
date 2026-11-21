@@ -3,6 +3,9 @@
 export { appRouter } from "./routers/app-router.ts";
 export type { AppRouter } from "./routers/app-router.ts";
 export { createContext } from "./trpc/context.ts";
+// Milestone 8 (ticket 25): `/api/trpc`, refusing a change from any origin but the panel's own.
+export { handleTrpcRequest } from "./trpc/http.ts";
+export { handleAuthRequest } from "./auth/http.ts";
 export type { ApiDeps, ApiSettings, Context, CreateContextInput } from "./trpc/context.ts";
 export { createCallerFactory } from "./trpc/init.ts";
 export { createCatalogSource } from "./catalog/catalog-source.ts";

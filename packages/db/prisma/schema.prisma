@@ -4275,6 +4275,11 @@ model PreviewCode {
   /// the tunnel once it's revoked. `null` for a native preview's code.
   cliSessionId   String?
   cliSession     CliSession?     @relation(fields: [cliSessionId], references: [id], onDelete: Cascade)
+  /// A native preview's code for a member (ticket 25, F-144): the panel's login session it was
+  /// minted in (`AuthSession.id`, never its token), so the preview's cookie lasts no longer than
+  /// that session and ends when it's signed out. `null` for a link's code and a CLI ticket. No
+  /// foreign key: a code lives 60 s, and one whose session is gone is refused when it's redeemed.
+  authSessionId  String?
 
   @@index([expiresAt])
   @@index([cliSessionId])

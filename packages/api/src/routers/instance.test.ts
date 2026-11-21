@@ -66,6 +66,8 @@ describe("the instance admin role", () => {
       "instance.grantAdmin": (c) => c.instance.grantAdmin({ userId: someone }),
       "instance.revokeAdmin": (c) => c.instance.revokeAdmin({ userId: someone }),
       "instance.saveRetention": (c) => c.instance.saveRetention({ days: 30 }),
+      // Milestone 8 (ticket 25, F-144): the preview domain's check reaches out to the install's domain.
+      "instance.previewDomainCheck": (c) => c.instance.previewDomainCheck(),
     };
     // Every procedure under `instance.` has a row: a new one without its check fails here.
     const procedures = Object.keys(appRouter._def.procedures).filter((path) => path.startsWith("instance."));

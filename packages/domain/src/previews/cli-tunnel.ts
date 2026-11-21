@@ -2,6 +2,7 @@ import type { Db, Tx } from "@ostra/db";
 import {
   cliSessionIdSchema,
   commandKindSupportedOn,
+  loginSessionIdSchema,
   memberIdSchema,
   organizationIdSchema,
   previewKeySchema,
@@ -11,7 +12,7 @@ import {
   runnerLimits,
   taskIdSchema,
 } from "@ostra/protocol";
-import type { CliSessionId, MemberId, OrganizationId, PreviewKey, PreviewViewId, ProjectId, TaskId } from "@ostra/protocol";
+import type { CliSessionId, LoginSessionId, MemberId, OrganizationId, PreviewKey, PreviewViewId, ProjectId, TaskId } from "@ostra/protocol";
 
 import { requireProjectAccess } from "../access.ts";
 import type { Clock, Ports } from "../ports.ts";
@@ -122,6 +123,8 @@ export type RedeemedPreviewCode =
       readonly leaseEpoch: number;
       /** A CLI ticket's CLI session; `null` for a native preview's code. */
       readonly cliSessionId: CliSessionId | null;
+      /** A native preview's code for a member: the panel login session it was minted in (ticket 25). */
+      readonly loginSessionId: LoginSessionId | null;
     })
   | Extract<PreviewCodeCheck, { readonly ok: false }>;
 
@@ -174,6 +177,7 @@ export const redeemPreviewCodeInTx = async (tx: Tx, input: Parameters<RedeemCode
     projectId: projectIdSchema.parse(row.projectId),
     leaseEpoch: row.leaseEpoch,
     cliSessionId: row.cliSessionId === null ? null : cliSessionIdSchema.parse(row.cliSessionId),
+    loginSessionId: row.authSessionId === null ? null : loginSessionIdSchema.parse(row.authSessionId),
   };
 };
 

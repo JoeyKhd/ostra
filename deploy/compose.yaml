@@ -42,6 +42,13 @@ services:
       DATABASE_URL: postgres://ostra@postgres:5432/ostra
       OSTRA_PUBLIC_URL: ${OSTRA_PUBLIC_URL:-http://localhost:3000}
       OSTRA_CORE_PUBLIC_URL: ${OSTRA_CORE_PUBLIC_URL:-http://localhost:8787}
+      # The native preview (F-144), optional and off: a task's app in the member's own browser on
+      # <port>-<previewId>.<domain>. Every name under the domain must reach core's port 8787, on
+      # OSTRA_CORE_PUBLIC_URL's scheme and port: one wildcard DNS record (*.previews.example.com)
+      # to your TLS proxy in front of this host, with a wildcard certificate, passing WebSocket
+      # upgrades. On this machine alone, preview.localhost needs neither. See OSTRA_PREVIEW_DOMAIN
+      # in docs/configuration.md.
+      # OSTRA_PREVIEW_DOMAIN: previews.example.com
       # Holds the generated keys and the bootstrap join token. Back it up (docs/configuration.md).
       OSTRA_DATA_DIR: /var/lib/ostra
     ports:

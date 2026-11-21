@@ -2,7 +2,7 @@ import type { Logger, TrackerAdapter } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
 import { randomBytes } from "node:crypto";
 
-import { createPanelPreviewTokens, postgresAuditLog, postgresChangeNotices, systemClock, warnIgnoredSettings } from "@ostra/domain";
+import { createPanelPreviewTokens, postgresAuditLog, postgresChangeNotices, previewCheckMark, systemClock, warnIgnoredSettings } from "@ostra/domain";
 import type { CommandOutbox, JobQueue, ServerAdapters, ServerSettings } from "@ostra/domain";
 import { hashPassword } from "better-auth/crypto";
 
@@ -120,6 +120,7 @@ export const createApiRuntime = async (input: ApiRuntimeInput): Promise<ApiRunti
     previews: {
       coreUrl: settings.coreInternalUrl,
       panelTokens: createPanelPreviewTokens(previewSecret),
+      checkMark: (host) => previewCheckMark(previewSecret, host),
     },
     appStart: coreAppStarter({ coreUrl: settings.coreInternalUrl, secret: previewSecret, logger: input.logger }),
     library: { fetch: input.libraryFetch ?? globalThis.fetch, serverVersion: input.serverVersion ?? "0.0.0" },

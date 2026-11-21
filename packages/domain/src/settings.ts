@@ -520,7 +520,7 @@ export const settingFields = {
   OSTRA_PREVIEW_DOMAIN: {
     default: "(none: no native preview)",
     description:
-      "The domain a task's app is served on in the member's own browser, one host per port, such as previews.example.com (F-144). Optional: unset, the browser view, ostra preview and screenshots still work. Set, it needs a wildcard DNS record and a wildcard certificate for *.<domain> pointing at core, and previews serve on <port>-<previewId>.<domain>. A registrable domain of its own is safest; a subdomain of the panel's works, with the panel's cookies kept host-only.",
+      "The domain a task's app is served on in the member's own browser, one host per port, such as previews.example.com (F-144). Optional: unset, the browser view, ostra preview and screenshots still work. Set, it needs a wildcard DNS record and a wildcard certificate for *.<domain> pointing at core, and previews serve on <port>-<previewId>.<domain> on OSTRA_CORE_PUBLIC_URL's scheme and port (https for a real domain). A registrable domain of its own is safest; a subdomain of the panel's works, with the panel's cookies kept host-only. Neither the panel's nor core's own host may be under it.",
   },
   OSTRA_PREVIEW_WARM_MINUTES: {
     default: "60",
@@ -1022,6 +1022,15 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
     return {
       ok: false,
       errors: ["OSTRA_PREVIEW_DOMAIN can't hold the panel's own host (OSTRA_PUBLIC_URL): give previews a domain of their own, or a subdomain beside the panel's"],
+    };
+  }
+  // Nor can core's own: core answers a host under the preview domain with the preview proxy alone,
+  // so runners and the CLI would never reach it (ticket 25).
+  const coreHost = new URL(value.OSTRA_CORE_PUBLIC_URL).hostname.toLowerCase();
+  if (previewDomain !== null && (coreHost === previewDomain || coreHost.endsWith(`.${previewDomain}`))) {
+    return {
+      ok: false,
+      errors: ["OSTRA_PREVIEW_DOMAIN can't hold core's own host (OSTRA_CORE_PUBLIC_URL): core answers every name under the preview domain with the preview proxy alone"],
     };
   }
   const maxBytes = value.OSTRA_BLOB_MAX_MIB * 1024 * 1024;

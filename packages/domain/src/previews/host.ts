@@ -52,6 +52,104 @@ export const parsePreviewHost = (host: string, domain: string): PreviewHostKey |
   return { port, previewId: previewId.data };
 };
 
+/** A `Host` header's name without its port and trailing dot, lower-case. */
+const bareHost = (host: string): string => host.toLowerCase().replace(/:\d{1,5}$/, "").replace(/\.$/, "");
+
+/**
+ * Whether a request's `Host` is the preview domain or a name under it, at any depth (ticket 25):
+ * core answers such a host with the preview proxy alone, and none of its own routes.
+ */
+export const isPreviewDomainHost = (host: string | undefined, domain: string): boolean => {
+  if (host === undefined || host.length > 253) {
+    return false;
+  }
+  const bare = bareHost(host);
+  const root = domain.toLowerCase().replace(/\.$/, "");
+  return bare === root || bare.endsWith(`.${root}`);
+};
+
+// ---------- how a browser reaches a preview host ----------
+
+export type PreviewScheme = "http" | "https";
+
+/**
+ * How the browser reaches a preview host (ticket 25): on core's public address's scheme and port
+ * (`OSTRA_CORE_PUBLIC_URL`), since the wildcard record points at the ingress in front of core. A
+ * real preview domain needs `https`: browsers drop a `__Host-` cookie on plain `http`, except
+ * under `localhost` (spike 08 §3.5). `port` is empty for the scheme's default.
+ */
+export type PreviewOrigin = { readonly scheme: PreviewScheme; readonly port: string };
+
+export const previewOriginOf = (corePublicUrl: string): PreviewOrigin => {
+  const url = new URL(corePublicUrl);
+  return { scheme: url.protocol === "http:" ? "http" : "https", port: url.port };
+};
+
+/** A preview host's origin as the browser names it, such as `https://5173-k3f9….previews.example.com`. */
+export const previewHostOrigin = (host: string, origin: PreviewOrigin): string => `${origin.scheme}://${bareHost(host)}${origin.port === "" ? "" : `:${origin.port}`}`;
+
+/**
+ * The panel's CSP `frame-src` for the preview domain (ADR 0068): its hosts, on core's scheme and
+ * port, and nothing wider. Only when the domain is set; the panel itself keeps `frame-ancestors 'none'`.
+ */
+export const previewFrameSource = (domain: string, corePublicUrl: string): string => previewHostOrigin(`*.${domain}`, previewOriginOf(corePublicUrl));
+
+/**
+ * Whether the preview domain is the panel's site (`same-site`: the cookie is `SameSite=Lax`) or
+ * another (`cross-site`: `SameSite=None; Partitioned`, which a cross-site frame needs), as a
+ * browser reads the two hosts (ADR 0068, Q307):
+ * - a panel on an IP address or a one-label name (`localhost`) shares a site with no domain under
+ *   it: browsers treat `localhost` as a suffix of its own (spike 08 §3.5);
+ * - otherwise the domain is the panel's site when it's under the panel's host, or under the
+ *   panel's parent name when the panel's host has three labels or more (`ostra.acme.dev` and
+ *   `preview.acme.dev`).
+ * Without the public suffix list (a dependency ostra doesn't take), a panel on a two-part suffix's
+ * apex (`acme.co.uk`) beside a preview domain on another name of it reads as one site: the frame
+ * then needs "Open in a new tab". Every other mistake it can make reads `cross-site`, which works
+ * in both a frame and a tab.
+ */
+export type PreviewSiteLayout = "same-site" | "cross-site";
+
+export const previewSiteLayout = (panelUrl: string, domain: string): PreviewSiteLayout => {
+  const panelHost = new URL(panelUrl).hostname.toLowerCase().replace(/\.$/, "");
+  const root = domain.toLowerCase().replace(/\.$/, "");
+  const labels = panelHost.split(".");
+  if (panelHost.includes(":") || panelHost.startsWith("[") || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(panelHost) || labels.length < 2) {
+    return "cross-site";
+  }
+  const base = labels.length >= 3 ? labels.slice(1).join(".") : panelHost;
+  return root === base || root.endsWith(`.${base}`) ? "same-site" : "cross-site";
+};
+
+// ---------- the handshake's cookie ----------
+
+/** The longest a preview's cookie lives, whatever the session or the link allows *(working value)*. */
+export const PREVIEW_COOKIE_MAX_MS = 12 * 60 * 60_000;
+
+/**
+ * The handshake's `Set-Cookie` (ADR 0068): `__Host-ostra-preview`, host-only (no `Domain`),
+ * `Path=/`, `Secure`, `HttpOnly`, and `SameSite=None; Partitioned` when the preview domain is
+ * another site than the panel's, `SameSite=Lax` when it's the same. `maxAgeSeconds` 0 clears it.
+ */
+export const previewCookieHeader = (value: string, layout: PreviewSiteLayout, maxAgeSeconds: number): string =>
+  `${PREVIEW_COOKIE}=${value}; Path=/; Secure; HttpOnly; ${layout === "cross-site" ? "SameSite=None; Partitioned" : "SameSite=Lax"}; Max-Age=${String(Math.max(0, Math.floor(maxAgeSeconds)))}`;
+
+/** The preview's cookie's value in a `Cookie` header, or `null`. The first one wins, as browsers send the most specific first. */
+export const previewCookieValue = (cookie: string | readonly string[] | undefined): string | null => {
+  const lines = cookie === undefined ? [] : typeof cookie === "string" ? [cookie] : cookie;
+  for (const part of lines.flatMap((line) => line.split(";"))) {
+    const trimmed = part.trim();
+    if (trimmed.startsWith(`${PREVIEW_COOKIE}=`)) {
+      return trimmed.slice(PREVIEW_COOKIE.length + 1);
+    }
+  }
+  return null;
+};
+
+/** Where the handshake redirects: a path on the preview's own host (`/…`, never `//…` or `/\…`), else `/`. */
+export const previewRedirectPath = (path: string | null | undefined): string =>
+  path !== null && path !== undefined && path.length <= 2048 && path.startsWith("/") && !path.startsWith("//") && !path.startsWith("/\\") && !/[\s\\]/.test(path) ? path : "/";
+
 // ---------- the proxy's rewrites ----------
 
 /** HTTP headers, lower-case names. A repeated header is a list. */
@@ -82,12 +180,14 @@ const isUpgrade = (headers: HeaderMap): boolean => (firstHeader(headers, "upgrad
 export type RewriteRequestOptions = {
   /** The app's port in the box. */
   readonly port: number;
-  /** The preview's host, as the browser named it. */
+  /** The preview's host, as the browser named it (its `Host`, with a port when the browser sent one). */
   readonly previewHost: string;
   /** The app process's `hostRewrite` (Q304): off, the app gets the real host. */
   readonly hostRewrite: boolean;
   /** The viewer came by a link for people outside the project: the browser's `Origin` is kept on a WebSocket upgrade. */
   readonly outsideLink: boolean;
+  /** The scheme the browser reached the preview on (`previewOriginOf`): `https` unless core's public address is `http`. */
+  readonly scheme?: PreviewScheme;
 };
 
 export type RewrittenRequest =
@@ -98,14 +198,16 @@ export type RewrittenRequest =
 /**
  * A request's headers as the app gets them (ADR 0068, "What the proxy does on every request"):
  * - the preview's cookie, every `X-Forwarded-*` and `Forwarded` the client sent, and every
- *   `X-Ostra-*` are removed, so nothing names the member to the app;
+ *   `X-Ostra-*` and `Ostra-*` are removed, so nothing names the member to the app and no client
+ *   names another port to the box (`ostra-target-port`, which only core sets);
  * - a WebSocket upgrade must come from the preview's own origin, or it's refused;
  * - with `hostRewrite` on, `Host` becomes `localhost:<port>`, and `Origin` too when it's the
  *   preview's own, except on an outside link's WebSocket upgrade, which keeps the browser's;
  * - with it off, `Host` stays the preview's host, with `X-Forwarded-Host` and `X-Forwarded-Proto`.
  */
 export const rewriteRequest = (headers: HeaderMap, options: RewriteRequestOptions): RewrittenRequest => {
-  const ownOrigin = `https://${options.previewHost}`;
+  const scheme = options.scheme ?? "https";
+  const ownOrigin = `${scheme}://${options.previewHost}`;
   const origin = firstHeader(headers, "origin");
   const upgrade = isUpgrade(headers);
   if (upgrade && origin !== ownOrigin) {
@@ -113,7 +215,7 @@ export const rewriteRequest = (headers: HeaderMap, options: RewriteRequestOption
   }
   const out: Record<string, string | readonly string[]> = {};
   for (const [name, value] of Object.entries(headers)) {
-    if (name === "cookie" || name === "host" || name === "origin" || name === "forwarded" || name.startsWith("x-forwarded-") || name.startsWith("x-ostra-")) {
+    if (name === "cookie" || name === "host" || name === "origin" || name === "forwarded" || name.startsWith("x-forwarded-") || name.startsWith("x-ostra-") || name.startsWith("ostra-")) {
       continue;
     }
     out[name] = value;
@@ -131,7 +233,7 @@ export const rewriteRequest = (headers: HeaderMap, options: RewriteRequestOption
   } else {
     out["host"] = options.previewHost;
     out["x-forwarded-host"] = options.previewHost;
-    out["x-forwarded-proto"] = "https";
+    out["x-forwarded-proto"] = scheme;
     if (origin !== undefined) {
       out["origin"] = origin;
     }
@@ -146,6 +248,8 @@ export type RewriteResponseOptions = {
   readonly previewHost: string;
   /** The app's port in the box, whose own URLs `Location` turns back into the preview's. */
   readonly port: number;
+  /** The scheme the browser reached the preview on: `https` unless core's public address is `http`. */
+  readonly scheme?: PreviewScheme;
 };
 
 export type RewrittenResponse = {
@@ -184,10 +288,18 @@ export const rewriteResponse = (headers: HeaderMap, options: RewriteResponseOpti
       policies = sent.map((policy) => withFrameAncestors(policy, options.panelOrigin));
       continue;
     }
+    if (name === "set-cookie") {
+      // The app can't set, replace or clear the preview's own cookie: it's core's.
+      const kept = (typeof value === "string" ? [value] : value).filter((line) => !line.trimStart().startsWith(`${PREVIEW_COOKIE}=`));
+      if (kept.length > 0) {
+        out[name] = kept;
+      }
+      continue;
+    }
     if (name === "location") {
       const location = typeof value === "string" ? value : (value[0] ?? "");
       const local = new RegExp(`^https?://(?:localhost|127\\.0\\.0\\.1):${String(options.port)}(?=/|$)`, "i");
-      out[name] = location.replace(local, `https://${options.previewHost}`);
+      out[name] = location.replace(local, `${options.scheme ?? "https"}://${options.previewHost}`);
       continue;
     }
     out[name] = value;

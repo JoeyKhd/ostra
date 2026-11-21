@@ -740,6 +740,7 @@ export const startCore = async (
     secret: () => loadSecretsKey(settings),
     replicaUrl: () => replicaUrl,
     settings: settings.previews,
+    urls: { publicUrl: settings.publicUrl, corePublicUrl: settings.corePublicUrl },
   });
   const previewSweepDeps = { db, outbox: postgresCommandOutbox, notices, clock: systemClock, logger, settings: settings.previews };
   await jobs.work("preview.views-sweep", viewsSweepHandler(previewSweepDeps), { localConcurrency: 1 });
@@ -757,6 +758,8 @@ export const startCore = async (
         gateway.handleUpgrade(request, socket, head);
       }
     },
+    // Ticket 25 (F-144): with a preview domain, its hosts reach the native preview's proxy alone.
+    ...(previews.native === null ? {} : { hosts: { takes: previews.native.takes, handle: previews.native.handleRequest, upgrade: previews.native.handleUpgrade } }),
     logger,
   });
   await gateway.start();

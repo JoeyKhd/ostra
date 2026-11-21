@@ -1,9 +1,8 @@
 import { themeFromCookie } from "@ostra/domain";
 import type { MemberScope, ProjectRole, ThemePreference } from "@ostra/domain";
 import type { Db } from "@ostra/db";
-import { memberIdSchema, organizationIdSchema, projectIdSchema, userIdSchema } from "@ostra/protocol";
-import type { MemberId, OrganizationId, ProjectId, UserId } from "@ostra/protocol";
-import { z } from "zod";
+import { loginSessionIdSchema, memberIdSchema, organizationIdSchema, projectIdSchema, userIdSchema } from "@ostra/protocol";
+import type { LoginSessionId, MemberId, OrganizationId, ProjectId, UserId } from "@ostra/protocol";
 
 import { mustChangePasswordOf } from "./create-auth.ts";
 import type { OstraAuth } from "./create-auth.ts";
@@ -16,9 +15,9 @@ import { highestRole } from "./roles.ts";
 // things that make one are the functions here, which prove from the session and the member table
 // that the caller belongs to that organization.
 
-/** The ID of a login session: better-auth's, apart from the `SessionId` of an agent session. */
-export const loginSessionIdSchema = z.string().min(1).brand<"LoginSessionId">();
-export type LoginSessionId = z.infer<typeof loginSessionIdSchema>;
+/** The ID of a login session: better-auth's, apart from the `SessionId` of an agent session (the protocol's, so the domain names it too). */
+export { loginSessionIdSchema };
+export type { LoginSessionId };
 
 /** Who is signed in, as better-auth resolved their session. */
 export type SessionUser = {

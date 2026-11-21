@@ -9,6 +9,7 @@ import {
   parseServerSettings,
   postgresAuditLog,
   postgresChangeNotices,
+  previewCheckMark,
   profileLimits,
   startAppForMember,
   systemClock,
@@ -281,7 +282,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
     emailOn,
     stream: hub,
     // Core stands behind this in a real install; a relay test points `coreUrl` at its fake core.
-    previews: { coreUrl: "http://127.0.0.1:9", panelTokens: createPanelPreviewTokens(PREVIEW_SECRET) },
+    previews: { coreUrl: "http://127.0.0.1:9", panelTokens: createPanelPreviewTokens(PREVIEW_SECRET), checkMark: (host) => previewCheckMark(PREVIEW_SECRET, host) },
     // Core runs "Start the app" in a real install (`coreAppStarter`): here its body runs in this
     // process, on the harness's ports. A test of the request itself points a starter at its fake core.
     appStart: (request) =>

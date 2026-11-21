@@ -11,6 +11,7 @@
     "./agent-message": "./src/prompts/agent-message.ts",
     "./branch-name": "./src/branch-name.ts",
     "./palette": "./src/palette/actions.ts",
+    "./preview-host": "./src/previews/host.ts",
     "./theme": "./src/use-cases/theme.ts",
     "./ticket-template": "./src/tickets/ticket-template.ts",
     "./webhook-template": "./src/automations/webhook-template.ts",

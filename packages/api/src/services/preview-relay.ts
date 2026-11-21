@@ -5,6 +5,7 @@ import type { PreviewViewId } from "@ostra/protocol";
 import { z } from "zod";
 
 import type { Context } from "../trpc/context.ts";
+import { fromPanelOrigin } from "./panel-origin.ts";
 import { PREVIEW_LINK_HEADER, previewLinkMisses } from "./preview-link-tries.ts";
 import { clientAddressOf } from "./rate-limit.ts";
 
@@ -224,11 +225,8 @@ const readCapped = async (request: Request, cap: number): Promise<Uint8Array | n
   return bytes;
 };
 
-/** Whether the request came from the panel's own pages: a browser names its origin on a POST. */
-const fromThePanel = (ctx: Context, request: Request): boolean => {
-  const origin = request.headers.get("origin");
-  return origin === null || origin === new URL(ctx.deps.settings.publicUrl).origin;
-};
+/** Whether the request came from the panel's own pages: a browser names its origin on a POST (`fromPanelOrigin`). */
+const fromThePanel = (ctx: Context, request: Request): boolean => fromPanelOrigin(request, ctx.deps.settings.publicUrl);
 
 /** `POST /api/previews/:viewId/input`: a batch of the viewer's input, `{ events }`, relayed to core. */
 export const servePreviewInput = async (ctx: Context, request: Request, rawViewId: string): Promise<Response> => {

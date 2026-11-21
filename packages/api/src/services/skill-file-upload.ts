@@ -1,6 +1,7 @@
 import { profileLimits, requireOrganizationAdmin } from "@ostra/domain";
 
 import { PASSWORD_CHANGE_REQUIRED } from "../trpc/init.ts";
+import { foreignOriginRefusal, fromPanelOrigin } from "./panel-origin.ts";
 import type { Context } from "../trpc/context.ts";
 
 // A skill's file, uploaded from the profile editor (F-021, ticket 42; spec section 13, item 6): the
@@ -66,6 +67,10 @@ export const serveSkillFileUpload = async (ctx: Context, request: Request): Prom
   const scope = ctx.member.scope;
   if (!requireOrganizationAdmin(scope, scope.organizationId).ok) {
     return refuse(403, "Only an organization admin may add a skill's files");
+  }
+  // From the panel's own pages only (ticket 25): a preview host's page sends nothing with the member's cookie.
+  if (!fromPanelOrigin(request, ctx.deps.settings.publicUrl)) {
+    return foreignOriginRefusal();
   }
   // Not a form and not text: a page on another site can't send it with the member's cookie.
   if (request.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() !== "application/octet-stream") {

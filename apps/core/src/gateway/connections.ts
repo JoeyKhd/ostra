@@ -756,6 +756,12 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
       rejectUpgrade(socket, 404, "not-found", "no such route");
       return;
     }
+    // Runners and boxes aren't browser pages: a page's upgrade names its `Origin`, such as a
+    // preview host's, and is refused before any token is read (ADR 0068, the panel's own defences).
+    if (request.headers.origin !== undefined) {
+      rejectUpgrade(socket, 403, "forbidden", "a browser's page never opens the runner connection");
+      return;
+    }
     const token = bearerToken(request.headers.authorization);
     if (token !== null && isTaskToken(token)) {
       // A box's sidecar, with its task token (ADR 0034, Q129).

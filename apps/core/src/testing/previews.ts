@@ -49,6 +49,13 @@ export const startPreviewReplica = async (
     readonly cliRecheckMs?: number;
     /** "Start the app"'s personal runner slots: 2 by default, as an install's. */
     readonly personalSlots?: number;
+    /** `OSTRA_PREVIEW_DOMAIN`: set, the replica serves the native preview on its hosts (ticket 25). */
+    readonly previewDomain?: string;
+    /** `OSTRA_PUBLIC_URL`, the panel's address: `http://localhost:3000` by default. */
+    readonly publicUrl?: string;
+    /** The native preview's heartbeat and check intervals (30 s and 5 minutes in production). */
+    readonly nativeHeartbeatMs?: number;
+    readonly nativeRecheckMs?: number;
   },
 ): Promise<PreviewReplica> => {
   const clock = options.clock ?? systemClock;
@@ -79,8 +86,12 @@ export const startPreviewReplica = async (
     presenceWaitMs: 3_000,
     ...(options.cliCloseWaitMs === undefined ? {} : { cliCloseWaitMs: options.cliCloseWaitMs }),
     checkMs: 100,
-    settings: { warmMinutes: options.warmMinutes ?? 60 },
+    settings: { warmMinutes: options.warmMinutes ?? 60, domain: options.previewDomain ?? null },
+    // Core's public address as a browser reaches the preview hosts here: plain http on loopback.
+    urls: { publicUrl: options.publicUrl ?? "http://localhost:3000", corePublicUrl: "http://127.0.0.1" },
     ...(options.cliRecheckMs === undefined ? {} : { cliRecheckMs: options.cliRecheckMs }),
+    ...(options.nativeHeartbeatMs === undefined ? {} : { nativeHeartbeatMs: options.nativeHeartbeatMs }),
+    ...(options.nativeRecheckMs === undefined ? {} : { nativeRecheckMs: options.nativeRecheckMs }),
   });
   // "Start the app" from the panel, with the dispatch settings core's own reads (`core.ts`).
   const startApp = handlePanelStartApp({
@@ -104,6 +115,7 @@ export const startPreviewReplica = async (
         gateway.handleUpgrade(request, socket, head);
       }
     },
+    ...(previews.native === null ? {} : { hosts: { takes: previews.native.takes, handle: previews.native.handleRequest, upgrade: previews.native.handleUpgrade } }),
     logger,
   });
   await gateway.start();

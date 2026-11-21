@@ -9,6 +9,7 @@ import type {
   DraftId,
   DraftImageId,
   EnvironmentProposalId,
+  LoginSessionId,
   MemberId,
   PreviewCarrier,
   PreviewId,
@@ -266,15 +267,30 @@ export type SetPublicPreviewLinks = (
 
 // ---------- the native preview and the tunnel (F-143, F-144; tickets 23, 25, 26) ----------
 
-/** The native preview's handshake (F-144): a one-time code for the preview host, after the same check a view makes. */
+/**
+ * Who enters a native preview (ticket 25): a member, with the panel login session the code is bound
+ * to, so the preview's cookie lasts no longer than it; or someone with a link that allows input.
+ */
+export type NativePreviewOpener =
+  | { readonly kind: "member"; readonly scope: MemberScope; readonly loginSessionId: LoginSessionId }
+  | { readonly kind: "link"; readonly token: string };
+
+/**
+ * The native preview's handshake (F-144): a one-time code for the preview host, after the same check
+ * a view makes, for a member who can open the task or a link that allows input. `url` is the preview
+ * host's `/.ostra/enter?code=…`, which the pane frames or "Open in a new tab" opens; `origin` is the
+ * preview host's, for the pane's footer. `path` is where the handshake lands, the preview's own by
+ * default. A watch-only viewer (a named person, a link without input) gets no code (`watch-only`),
+ * and neither does a runner on the HTTP carrier (`runner-cannot-tunnel`, ADR 0068).
+ */
 export type EnterNativePreview = (
-  deps: PreviewDeps,
-  opener: ViewOpener,
-  input: { readonly taskId: TaskId; readonly key: PreviewKey },
+  deps: { readonly db: Db; readonly clock: Clock; readonly settings: Pick<PreviewSettings, "domain" | "warmMinutes">; readonly corePublicUrl: string },
+  opener: NativePreviewOpener,
+  input: { readonly taskId: TaskId; readonly key: PreviewKey; readonly path?: string | null },
 ) => Promise<
   UseCaseResult<
-    { readonly url: string; readonly previewId: PreviewId },
-    "not-found" | "no-preview-domain" | "no-box" | "port-not-allowed" | PreviewAccessRefusal | PreviewRefusalReason
+    { readonly url: string; readonly origin: string; readonly previewId: PreviewId; readonly expiresAt: number },
+    "not-found" | "no-preview-domain" | "no-box" | "port-not-allowed" | "watch-only" | "runner-cannot-tunnel" | PreviewAccessRefusal | PreviewRefusalReason
   >
 >;
 

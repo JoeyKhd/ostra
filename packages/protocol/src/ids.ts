@@ -251,6 +251,14 @@ export type NotificationDeliveryId = z.infer<typeof notificationDeliveryIdSchema
 export const cliSessionIdSchema = idBase.brand<"CliSessionId">();
 export type CliSessionId = z.infer<typeof cliSessionIdSchema>;
 
+/**
+ * The ID of a login session: better-auth's (`AuthSession`), apart from the `SessionId` of an agent
+ * session. Never its token. A native preview's code is bound to it (F-144), so the preview's
+ * cookie lasts no longer than the panel's session.
+ */
+export const loginSessionIdSchema = idBase.brand<"LoginSessionId">();
+export type LoginSessionId = z.infer<typeof loginSessionIdSchema>;
+
 /** The ID of a skill of an agent profile (F-021). */
 export const agentProfileSkillIdSchema = idBase.brand<"AgentProfileSkillId">();
 export type AgentProfileSkillId = z.infer<typeof agentProfileSkillIdSchema>;
