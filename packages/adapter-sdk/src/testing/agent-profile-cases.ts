@@ -78,6 +78,8 @@ export type ProfileCaseFixture = {
   readonly launchInput: PrepareLaunchInput;
   readonly start: (launch: AgentLaunch) => Promise<{ readonly io: AgentIo; readonly stop: () => Promise<void> }>;
   readonly longPrompt: string;
+  /** Whether the long prompt's turn is at work (`AgentFixture.longPromptAtWork`). */
+  readonly longPromptAtWork?: (since: number) => boolean;
   readonly profile?: AgentProfileProbes;
 };
 
@@ -100,6 +102,21 @@ const mcpUrlOf = (profile: AgentProfileProbes, name: string): string => profile.
 
 const textOf = (events: readonly TaskEvent[]): string =>
   events.flatMap((event) => (event.kind === "agent.message" ? [event.text] : [])).join("");
+
+/** How long a turn may take to get to work, on a loaded machine, within the case's own timeout. */
+const AT_WORK_WAIT_MS = 20_000;
+
+/** Polls `check` until it holds, or `timeoutMs` has passed; whether it held. */
+const until = async (check: () => boolean, timeoutMs: number): Promise<boolean> => {
+  const deadline = Date.now() + timeoutMs;
+  while (!check()) {
+    if (Date.now() >= deadline) {
+      return false;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return true;
+};
 
 const exists = async (file: string): Promise<boolean> => {
   try {
@@ -546,8 +563,21 @@ export const defineAgentProfileCases = (subject: Subject): void => {
     const events: TaskEvent[] = [];
     const running = await profileSession({}, events);
     try {
+      const since = Date.now();
       const long = running.prompt(1, fixture.longPrompt);
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      // Mid-turn: the turn is at work, not still being set up. A fixed wait of 150 ms often came
+      // before OpenCode's model call on a loaded machine, so the cancel raced its set-up of the turn,
+      // and the case ran out of time on CI now and then.
+      const atWork = fixture.longPromptAtWork;
+      if (atWork !== undefined) {
+        const ended = { value: false };
+        const end = (): void => {
+          ended.value = true;
+        };
+        void long.then(end, end);
+        expect(await until(() => ended.value || atWork(since), AT_WORK_WAIT_MS), "the long turn got to work").toBe(true);
+        expect(ended.value, "the long turn ended before it was cancelled").toBe(false);
+      }
       const canSteer = adapter.capabilities.steerMidTurn && running.session.connection.steeringAdvertised;
       if (!canSteer) {
         // Mid-turn steering is the ADR 0032 case's; here, an agent without it refuses the steer.

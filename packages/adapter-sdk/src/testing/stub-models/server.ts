@@ -12,7 +12,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { AddressInfo } from "node:net";
 import { anthropicRequestSchema, normalizeAnthropic, normalizeOpenAi, openAiRequestSchema } from "./normalize.ts";
-import type { StubBrain, StubCallRecord, StubFormat, StubReply, StubRequest, StubUsage } from "./types.ts";
+import type { StubBrain, StubCallRecord, StubFormat, StubOpenCall, StubReply, StubRequest, StubUsage } from "./types.ts";
 
 export type StubServerOptions = {
   readonly format: StubFormat;
@@ -31,7 +31,13 @@ export type StubServer = {
   readonly format: StubFormat;
   /** Base URL including `/v1`, as an SDK or an agent's provider config expects it. */
   readonly baseUrl: string;
+  /** Each call once it has ended, in the order they ended. */
   readonly calls: readonly StubCallRecord[];
+  /**
+   * The calls that have reached the stub and not ended yet, in arrival order. A turn whose model
+   * call is open here is at work: past the agent's own set-up, waiting on its model.
+   */
+  readonly openCalls: () => readonly StubOpenCall[];
   readonly close: () => Promise<void>;
 };
 
@@ -310,6 +316,7 @@ const modelList = (format: StubFormat, models: readonly string[]): unknown =>
 
 export const startStubModelServer = async (options: StubServerOptions): Promise<StubServer> => {
   const calls: StubCallRecord[] = [];
+  const open = new Set<StubOpenCall>();
   const chunkChars = options.chunkChars ?? 24;
   const { format } = options;
 
@@ -383,6 +390,11 @@ export const startStubModelServer = async (options: StubServerOptions): Promise<
       messages: request.messages,
       body: json,
     };
+    // Open from here until the response is done or its connection drops, whichever way it ends.
+    open.add(base);
+    res.once("close", () => {
+      open.delete(base);
+    });
 
     if (!ok) {
       calls.push({ ...base, billed: undefined, usageReported: false, reply: undefined, aborted: false });
@@ -485,6 +497,7 @@ export const startStubModelServer = async (options: StubServerOptions): Promise<
     format,
     baseUrl: `http://${options.host ?? "127.0.0.1"}:${String(port)}/v1`,
     calls,
+    openCalls: () => [...open],
     close: async () => {
       server.closeAllConnections();
       await new Promise<void>((resolve) => {

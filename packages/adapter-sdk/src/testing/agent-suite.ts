@@ -113,6 +113,13 @@ export type AgentFixture = {
   readonly simplePrompt: string;
   /** A prompt the agent keeps working on until it's cancelled. */
   readonly longPrompt: string;
+  /**
+   * Whether the turn of the long prompt sent at `since` (ms since the epoch) is at work: past the
+   * agent's own set-up of the turn, as when its model call is open at the stub. A case that means
+   * "mid-turn" waits for it rather than for a fixed time, which a loaded machine can outrun (F-024).
+   * Absent: the agent's turn is at work from the moment it reads the prompt, as the scripted fakes' is.
+   */
+  readonly longPromptAtWork?: (since: number) => boolean;
   readonly probes?: AgentProbes;
   /**
    * Milestone 2 (ADR 0039): moving a session to a fresh box. Absent, or without the capability

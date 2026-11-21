@@ -88,3 +88,6 @@ export type StubCallRecord = {
   readonly reply: StubReply | undefined;
   readonly aborted: boolean;
 };
+
+/** A call that has reached the stub and not ended yet: what the agent is waiting on now. */
+export type StubOpenCall = Omit<StubCallRecord, "billed" | "usageReported" | "reply" | "aborted">;

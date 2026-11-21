@@ -103,6 +103,37 @@ describe.each(cases)("usage parsing: $format", (spec) => {
     expect(result.responseModel).toBe("stub-model");
   });
 
+  it("keeps a call open from its arrival until it ends, or until its client goes away", async () => {
+    /** How many calls are open once they settle at `count`, or after 5 s. */
+    const openOnceAt = async (server: StubServer, count: number): Promise<number> => {
+      const deadline = Date.now() + 5000;
+      while (server.openCalls().length !== count && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      return server.openCalls().length;
+    };
+    const silent = await start(spec.format, () => ({ text: "Not yet.", delayMs: 60_000, keepalive: false }));
+    const client = new AbortController();
+    const since = Date.now();
+    const waiting = fetch(`${silent.baseUrl}${spec.path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...spec.headers },
+      body: JSON.stringify(spec.request(true)),
+      signal: client.signal,
+    }).then((response) => response.arrayBuffer());
+    expect(await openOnceAt(silent, 1)).toBe(1);
+    expect(silent.openCalls()[0]?.at).toBeGreaterThanOrEqual(since);
+    expect(silent.calls).toHaveLength(0);
+    client.abort();
+    await expect(waiting).rejects.toThrow();
+    expect(await openOnceAt(silent, 0)).toBe(0);
+
+    const answered = await start(spec.format, () => text);
+    await call(answered, spec, true);
+    expect(await openOnceAt(answered, 0)).toBe(0);
+    expect(answered.calls).toHaveLength(1);
+  });
+
   it.each([1, 2, 7, 64])("reads the same usage when the stream arrives in pieces of %i bytes", async (size) => {
     const server = await start(spec.format, () => ({ ...text, reasoning: "Thinking it over first." }));
     const { body } = await call(server, spec, true);

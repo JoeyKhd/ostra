@@ -210,6 +210,11 @@ const fixtureFor = async (format: ApiFormat): Promise<AgentFixture> => {
     start: spawnAgentProcess,
     simplePrompt: `${stubMarker("hello")} say hello`,
     longPrompt: `${stubMarker("long")} wait`,
+    // At work once its model call, which never answers, is open at the stub: OpenCode has set the turn up.
+    longPromptAtWork: (since) =>
+      stub
+        .openCalls()
+        .some((call) => call.at >= since && call.toolNames.length > 0 && call.messages.findLast((message) => message.role === "user")?.text.includes(stubMarker("long")) === true),
     // ADR 0039: the session moves to a fresh box (a new agent folder and workspace), as the runner does it.
     archive: {
       run: runAgentCommand,
