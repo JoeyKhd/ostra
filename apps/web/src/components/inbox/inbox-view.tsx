@@ -16,10 +16,12 @@ import { PageFrame, PageHeading, PropRow } from "@/components/shell/page-frame";
 import { ProfilePicker, useStartProfile } from "@/components/agent-profiles/profile-picker";
 import { POOLS, RunOnPicker, useRunOn } from "@/components/tasks/run-on";
 import { budgetWaitText } from "@/components/tasks/budget-reason";
+import { usePhone } from "@/components/tasks/take-it-local";
 import { stateTone, taskStateText } from "@/components/tasks/task-words";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Chip, Status } from "@/components/ui/status";
 import { cn } from "@/lib/cn";
@@ -55,7 +57,8 @@ export const TaskMark = ({ task }: { readonly task: NonNullable<InboxTicket["tas
 const rowGrid = (several: boolean, tasks: boolean) =>
   cn(
     "grid min-h-10 w-full items-center gap-x-2.5 text-left",
-    "grid-cols-[16px_72px_minmax(0,1fr)_36px] md:grid-cols-[16px_76px_minmax(0,1fr)_112px_110px_36px]",
+    // A phone: two lines (phone-inbox.md), the priority, key and age over the title, 56px.
+    "grid-cols-[16px_minmax(0,1fr)_auto] max-md:min-h-14 max-md:gap-y-0.5 max-md:py-2 md:grid-cols-[16px_76px_minmax(0,1fr)_112px_110px_36px]",
     // With the Task column, the labels, status and task columns are narrower, so the title keeps room beside the panel.
     several && tasks
       ? "xl:grid-cols-[16px_76px_minmax(0,1fr)_88px_100px_100px_136px_36px]"
@@ -131,9 +134,17 @@ export const TicketRow = ({ ticket, several, tasks = true, selected, onSelect, n
       <span title={priorityText(ticket.priority)} className="text-muted">
         <PriorityIcon priority={ticket.priority} />
       </span>
-      <span className="font-mono text-ui text-faint">{ticket.key}</span>
+      <span className="flex min-w-0 items-center gap-2 font-mono text-ui text-faint">
+        {ticket.key}
+        {/* A phone has no Task column: the task's mark and word sit after the key (phone-inbox.md). */}
+        {ticket.task?.active === true ? (
+          <Status tone={stateTone(ticket.task.state)} className="min-w-0 font-sans md:hidden">
+            <span className="truncate text-muted">{taskStateText(ticket.task.state)}</span>
+          </Status>
+        ) : null}
+      </span>
       {/* A container: a parent's chip reads the title cell's width, and gives way before the title does. */}
-      <span className="@container flex min-w-0 items-center gap-2">
+      <span className="@container flex min-w-0 items-center gap-2 max-md:col-span-2 max-md:col-start-2 max-md:row-start-2">
         <span className="truncate text-body text-text">{ticket.title}</span>
         {ticket.subIssues > 0 ? (
           tick?.parentHref === null || tick?.parentHref === undefined ? (
@@ -290,6 +301,17 @@ export const TicketPanel = ({ detail, several, now, start }: { readonly detail: 
   const unprotected = unprotectedRepos(start.repos)[0];
   const active = detail.task?.active === true ? detail.task : null;
   const earlier = detail.task !== null && !detail.task.active ? detail.task : null;
+  const phone = usePhone();
+  /** A phone's start row (phone-inbox.md): a 40px box with its label inside, full width. */
+  const startRow = (label: string, value: ReactNode) =>
+    phone ? (
+      <div className="mb-2 flex h-10 min-w-0 items-center gap-2 rounded-md border border-control-line bg-surface pl-3 pr-1 [&_svg]:size-[14px] [&_svg]:text-muted">
+        <span className="w-[96px] shrink-0 text-ui text-muted">{label}</span>
+        <span className="flex min-w-0 flex-1 items-center gap-[7px] text-text">{value}</span>
+      </div>
+    ) : (
+      <PropRow label={label}>{value}</PropRow>
+    );
   return (
     <div data-testid="ticket-panel">
       <div className="flex items-center justify-between gap-3">
@@ -299,7 +321,27 @@ export const TicketPanel = ({ detail, several, now, start }: { readonly detail: 
           <ArrowUpRightIcon aria-hidden className="size-3 stroke-[1.75]" />
         </a>
       </div>
-      <h2 className="mb-2.5 mt-1 break-words text-[16px] font-semibold leading-snug text-text">{detail.title}</h2>
+      <h2 className="mb-2.5 mt-1 break-words text-[16px] font-semibold leading-snug text-text max-sm:text-[17px]">{detail.title}</h2>
+      {phone ? (
+        // The meta line replaces the key/value rows on a phone (phone-inbox.md, "Bottom sheet").
+        <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12.5px] text-muted [&_svg]:size-[14px]" data-testid="ticket-meta">
+          <span className="inline-flex items-center gap-1.5">
+            <TicketStatusIcon category={detail.status.category} />
+            {detail.status.name ?? "–"}
+          </span>
+          <span aria-hidden className="text-faint">·</span>
+          <span className="inline-flex items-center gap-1.5">
+            <PriorityIcon priority={detail.priority} />
+            {priorityText(detail.priority)}
+          </span>
+          {detail.labels.map((label) => (
+            <Chip key={label}>{label}</Chip>
+          ))}
+          <span aria-hidden className="text-faint">·</span>
+          <span>{detail.assignee === null ? t("inbox.panel.unassigned") : detail.assignee.name}</span>
+        </p>
+      ) : null}
+      <div className={phone ? "hidden" : undefined}>
       <PropRow label={t("inbox.panel.status")}>
         <TicketStatusIcon category={detail.status.category} />
         {detail.status.name ?? "–"}
@@ -324,22 +366,24 @@ export const TicketPanel = ({ detail, several, now, start }: { readonly detail: 
           {cacheAge(detail.updatedAt, now)}
         </span>
       </PropRow>
+      </div>
       <Sep />
       <Description detail={detail} />
       <Sep />
       {active === null ? (
         <div data-testid="start-task">
           <h3 className="mb-2 text-xs font-medium text-faint">{t("inbox.panel.start")}</h3>
-          <PropRow label={t("inbox.panel.kind")}>{t("inbox.panel.code")}</PropRow>
-          <PropRow label={t("inbox.panel.profile")}>
-            {start.profile ?? (
+          {startRow(t("inbox.panel.kind"), t("inbox.panel.code"))}
+          {startRow(
+            t("inbox.panel.profile"),
+            start.profile ?? (
               <>
                 <BotIcon aria-hidden />
                 <span className="truncate">{t("inbox.panel.noProfile")}</span>
               </>
-            )}
-          </PropRow>
-          <PropRow label={t("inbox.panel.runOn")}>{start.runOn}</PropRow>
+            ),
+          )}
+          {startRow(t("inbox.panel.runOn"), start.runOn)}
           <p className="mt-2 flex items-start gap-2 text-xs text-faint">
             <InfoIcon aria-hidden className="mt-0.5 size-[13px] shrink-0 stroke-[1.75]" />
             {contextLine(detail)}
@@ -448,6 +492,10 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
   const params = useSearchParams();
   const filters = filtersFrom(params);
   const [text, setText] = useState(filters.text);
+  // A phone (phone-inbox.md): the text filter hides behind the top bar's search button, and the
+  // selected ticket opens as a bottom sheet, only once a row is tapped (`?ticket=`).
+  const phone = usePhone();
+  const [searching, setSearching] = useState(false);
   const [mounted] = useState(() => Date.now());
   const project = useQuery(trpc.projects.get.queryOptions({ projectId }));
   const options = useQuery(trpc.inbox.filters.queryOptions({ projectId }));
@@ -655,8 +703,51 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
       />
     );
 
+  const closeSheet = () => {
+    const next = new URLSearchParams(params.toString());
+    next.delete("ticket");
+    router.replace(next.size === 0 ? pathname : `${pathname}?${next.toString()}`, { scroll: false });
+  };
+  const searchButton = (
+    <button
+      type="button"
+      aria-label={t("inbox.filter.text")}
+      aria-expanded={searching || text !== ""}
+      onClick={() => { setSearching(true); }}
+      className="relative grid size-11 place-items-center rounded-sm text-muted hover:bg-hover hover:text-text sm:hidden"
+    >
+      <SearchIcon aria-hidden className="size-[18px] stroke-[1.75]" />
+      {text === "" ? null : <span aria-hidden className="absolute right-2.5 top-2.5 size-1.5 rounded-full bg-muted" />}
+    </button>
+  );
+
   return (
-    <PageFrame crumbs={[{ label: project.data?.name ?? "", href: `/projects/${projectId}` }, { label: t("inbox.title") }]} {...(panel === undefined ? {} : { properties: panel, wideProperties: true })}>
+    <PageFrame
+      crumbs={[{ label: project.data?.name ?? "", href: `/projects/${projectId}` }, { label: t("inbox.title") }]}
+      {...(phone ? { actions: searchButton } : {})}
+      {...(panel === undefined || phone ? {} : { properties: panel, wideProperties: true })}
+    >
+      {phone && panel !== undefined ? (
+        // While rows are ticked, the selection bar holds the bulk start: the sheet stays shut, so more rows can be ticked.
+        <Sheet open={params.has("ticket") && !selecting} onOpenChange={(open) => { if (!open) closeSheet(); }}>
+          <SheetContent
+            side="bottom"
+            title={selected?.title ?? t("inbox.title")}
+            closeButton={false}
+            className="p-4 pt-6 pb-[max(16px,env(safe-area-inset-bottom))]"
+            // The sheet itself takes the focus, not its grab handle: a tap opened it, not a key.
+            onOpenAutoFocus={(event) => {
+              event.preventDefault();
+              if (event.currentTarget instanceof HTMLElement) event.currentTarget.focus();
+            }}
+          >
+            <button type="button" onClick={closeSheet} aria-label={t("common.close")} className="absolute left-1/2 top-0 grid h-5 w-14 -translate-x-1/2 place-items-center rounded-sm">
+              <span aria-hidden className="h-1 w-9 rounded-sm bg-line-2" />
+            </button>
+            {panel}
+          </SheetContent>
+        </Sheet>
+      ) : null}
       <PageHeading title={t("inbox.title")} lede={source === undefined ? <Skeleton className="mt-1 w-[320px]" /> : <InboxLede source={source} now={now} />} />
       {empty === "no-connection" || empty === "no-boards" ? (
         <InboxEmpty kind={empty} board={null} projectId={projectId} admin={empty === "no-connection" ? admin : project.data?.role === "admin"} />
@@ -677,13 +768,15 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
               onStart={startTicked}
             />
           ) : (
-          <div className="mt-[18px] flex flex-wrap items-center gap-2" data-testid="inbox-filters">
-            <label className="relative w-full sm:w-[240px]">
+          <div className="mt-[18px] flex items-center gap-2 max-sm:-mx-4 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:px-4 max-sm:[scrollbar-width:none] sm:flex-wrap" data-testid="inbox-filters">
+            <label className={cn("relative w-full shrink-0 sm:w-[240px]", !searching && text === "" && "max-sm:hidden")}>
               <SearchIcon aria-hidden className="absolute left-2.5 top-1/2 size-[14px] -translate-y-1/2 stroke-[1.75] text-faint" />
               <input
                 aria-label={t("inbox.filter.text")}
                 placeholder={t("inbox.filter.text")}
                 value={text}
+                autoFocus={searching}
+                onBlur={() => { if (text === "") setSearching(false); }}
                 onChange={(event) => { setText(event.target.value); }}
                 className="h-[30px] w-full rounded-md border border-control-line bg-surface pl-8 pr-2.5 text-ui text-text placeholder:text-faint focus-visible:border-faint"
               />
