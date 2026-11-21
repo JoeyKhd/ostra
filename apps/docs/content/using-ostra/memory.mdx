@@ -14,6 +14,8 @@ At the start of each session the agent gets a short index: each note's title and
 
 The agent's search takes a question as it would ask it. Common words such as "how", "do" and "the" don't count, other words match their other forms ("tests" finds "test"), and the notes holding more of the question's words, closer together and in their title, come first. A path, a flag or an identifier, such as `packages/db/prisma/schema.prisma`, `--frozen-lockfile` or `OSTRA_CORE_URL`, matches as it's written. The agent then reads the notes it needs in full, up to 10 in one call, each checked against the task's organization and project.
 
+Wherever a note reaches the agent, its text is quoted: the title in backticks and the body in a fence that no line of the note can close, with its headings and anything shaped like ostra's own markers escaped. A note can't add a section to the instructions or pass for an instruction from ostra, and a command in it reads as it was written.
+
 The agent's own memory feature is turned off, so nothing an agent keeps for itself outlives the task.
 
 ## Editing it

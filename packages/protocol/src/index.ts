@@ -15,6 +15,7 @@ export * from "./agent/prompts.ts";
 export * from "./agent/effort.ts";
 
 export * from "./memory/notes.ts";
+export * from "./memory/quote.ts";
 export * from "./mcp/tools.ts";
 
 export * from "./task/app.ts";

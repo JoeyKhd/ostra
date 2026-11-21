@@ -224,7 +224,7 @@ describe("memory proposals through the sidecar (F-111)", () => {
     h.server.memory.down = false;
     h.steer(spec, fakeMarker("memory-search", "pnpm install"));
     await h.waitForKind(spec, "session.saved", 2);
-    expect(said(h, spec)).toContain(`${pnpmNote.noteId} (command, organization): ${pnpmNote.title}`);
+    expect(said(h, spec)).toContain(`${pnpmNote.noteId} (command, organization): \`${pnpmNote.title}\``);
   }, 120_000);
 });
 

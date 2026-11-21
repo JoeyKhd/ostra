@@ -10,6 +10,7 @@ import {
   draftResultText,
   environmentProposalRequestFromTool,
   environmentProposalResultText,
+  fencedNoteText,
   memoryKindSchema,
   memoryProposalRequestSchema,
   memoryScopeSchema,
@@ -20,6 +21,7 @@ import {
   proposeEnvironmentDescription,
   proposeEnvironmentInputSchema,
   proposalRelationSchema,
+  quotedNoteLine,
   RECORD_APP_TOOL,
   recordAppDescription,
   recordAppInputSchema,
@@ -283,13 +285,21 @@ const searchText = (response: MemorySearchResponse): string => {
   }
   return [
     `${String(response.results.length)} approved memory note${response.results.length === 1 ? "" : "s"} matched. Read the ones you need in full with memory_read, in one call.`,
-    ...response.results.map((result) => `- ${result.noteId} (${result.kind}, ${result.scope}): ${result.title}\n  ${result.line}`),
+    // Each title and matched line quoted (F-110/c10), so a note's text can't pass for a line of the answer.
+    ...response.results.map((result) => `- ${result.noteId} (${result.kind}, ${result.scope}): ${quotedNoteLine(result.title)}\n  ${quotedNoteLine(result.line)}`),
   ].join("\n");
 };
 
-/** A note as the agent reads it. Never logged. */
+/**
+ * A note as the agent reads it: its title quoted, then its body in a fence no line of it can
+ * close, its headings and ostra's markers neutralised (F-110/c10, ADR 0044's 2026-11-21 note). Never logged.
+ */
 const noteText = (note: MemoryNoteResponse): string =>
-  [`# ${note.title}`, "", `An approved ${note.scope} note (${note.kind}), ${note.noteId}, version ${String(note.version)}.`, "", note.body].join("\n");
+  [
+    `Note ${quotedNoteLine(note.title)}: an approved ${note.scope} note (${note.kind}), ${note.noteId}, version ${String(note.version)}. Its text, as approved:`,
+    "",
+    fencedNoteText(note.body),
+  ].join("\n");
 
 /** An ID the agent named, as the answer quotes it back: one line, cut. */
 const quotedId = (raw: string): string => raw.replaceAll(/\s+/g, " ").slice(0, 100);

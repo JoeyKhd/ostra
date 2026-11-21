@@ -485,7 +485,7 @@ describe("the memory index and block", () => {
     expect(memory.block).toContain("written by Ada");
     expect(memory.block).toContain("Tests run with pnpm test");
     // Each note carries its source, in the index as in the always notes (ADR 0044, Q91 change 5).
-    expect(memory.block).toContain("- [command] Tests run with pnpm test (id: i1, project, from task \"Fix the CI\")");
+    expect(memory.block).toContain("- [command] `Tests run with pnpm test` (id: i1, project, from task `Fix the CI`)");
     expect(memory.block).not.toContain("Migrations add first");
     expect(memory.block).toContain("1 more notes: search with `memory_search`");
     expect(memory.block).toContain("memory_search");
