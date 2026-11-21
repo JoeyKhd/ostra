@@ -6,11 +6,12 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
-import { proposalIdSchema } from "@ostra/protocol";
+import { noteIdSchema, proposalIdSchema } from "@ostra/protocol";
 import type { NoteId } from "@ostra/protocol";
 
 import { PageFrame, PageHeading, PropRow } from "@/components/shell/page-frame";
 import { Button } from "@/components/ui/button";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Chip } from "@/components/ui/status";
@@ -75,13 +76,14 @@ const Relation = ({ relation }: { readonly relation: "contradicts" | "refines" |
   );
 
 /** One proposal: its text, the related notes, and the four decisions. */
-const ProposalDetail = ({ proposalId, memoryRef }: { readonly proposalId: Proposal["proposalId"]; readonly memoryRef: MemoryScopeRef }) => {
+const ProposalDetail = ({ proposalId, memoryRef, scopeName }: { readonly proposalId: Proposal["proposalId"]; readonly memoryRef: MemoryScopeRef; readonly scopeName: string | null }) => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const router = useRouter();
   const detail = useQuery(trpc.memory.proposal.queryOptions({ proposalId }));
   const [merging, setMerging] = useState<{ readonly noteId: NoteId; readonly title: string; readonly version: number } | null>(null);
   const [mergedBody, setMergedBody] = useState("");
+  const [target, setTarget] = useState<NoteId | null>(null);
   const decide = useMutation(
     trpc.memory.decide.mutationOptions({
       onSuccess: async ({ noteId }) => {
@@ -93,7 +95,10 @@ const ProposalDetail = ({ proposalId, memoryRef }: { readonly proposalId: Propos
   const data = detail.data;
   if (data === undefined) return detail.error === null ? <Skeleton className="mt-6 h-24 w-full" /> : <p role="alert" className="mt-6 text-red">{errorText(detail.error)}</p>;
   const open = data.state === "proposed";
-  const declared = data.related.find((note) => note.relation !== null) ?? data.related[0];
+  // The target of `Approve and archive` and `Merge into`: the picked related note, else the declared one, else the top-ranked.
+  const declared = data.related.find((note) => note.noteId === target) ?? data.related.find((note) => note.relation !== null) ?? data.related[0];
+  const told = data.relatesTo === null ? undefined : data.related.find((note) => note.noteId === data.relatesTo?.noteId);
+  const toldRelation = data.relatesTo?.relation ?? null;
   const conflict = conflictOf(decide.error?.message);
   return (
     <div className="mt-6 border-t border-line pt-5" data-testid="proposal-detail">
@@ -103,23 +108,35 @@ const ProposalDetail = ({ proposalId, memoryRef }: { readonly proposalId: Propos
           <p className="mt-1 text-[17px] font-semibold text-text">{data.title}</p>
           <p className="mt-1.5 flex items-center gap-2 text-sm text-muted">
             <Chip>{kindWord(data.kind)}</Chip>
-            {data.scope === "organization" ? t("memory.proposalsList.forOrganization") : t("memory.proposalsList.forProject")}
+            {data.scope === "organization" ? t("memory.proposalsList.forOrganization") : scopeName === null ? t("memory.proposalsList.forProject") : t("memory.proposalsList.forNamed", { project: scopeName })}
           </p>
           <NoteBody body={data.body} className="mt-3" />
+          {told === undefined || toldRelation === null ? null : (
+            <p className="mt-3 text-sm text-muted">
+              {toldRelation === "contradicts" ? t("memory.proposalsList.saysContradicts") : t("memory.proposalsList.saysRefines")}{" "}
+              <Link href={`${memoryBase(memoryRef)}/${told.noteId}`} className="font-medium text-text hover:underline">{told.title}</Link>.
+            </p>
+          )}
         </div>
         <div>
           <h3 className="text-xs font-medium text-faint">{t("memory.proposalsList.related")} <span className="font-normal">{t("memory.proposalsList.rankedBy")}</span></h3>
           {data.related.length === 0 ? (
             <p className="mt-2 text-sm text-muted">{t("memory.proposalsList.noRelated")}</p>
           ) : (
-            <ul className="mt-1">
+            // The rows are the target picker (memory-proposals.md): the picked one names the target in the buttons below.
+            <RadioGroup className="mt-1 border-t border-line" value={declared?.noteId ?? ""} onValueChange={(value) => { setTarget(noteIdSchema.parse(value)); }} aria-label={t("memory.proposalsList.related")}>
               {data.related.map((note) => (
-                <li key={note.noteId} className="flex items-center gap-2 border-b border-line py-2 text-ui">
-                  <span className="min-w-0 flex-1 truncate font-medium text-text">{note.title}</span>
-                  <Relation relation={note.relation} />
-                </li>
+                <label key={note.noteId} className={cn("block cursor-pointer border-b border-line px-1.5 py-[9px]", declared?.noteId === note.noteId && "rounded-md bg-sel")}>
+                  <span className="flex items-center gap-2 text-ui">
+                    <RadioGroupItem value={note.noteId} aria-label={note.title} />
+                    <Link href={`${memoryBase(memoryRef)}/${note.noteId}`} className="min-w-0 truncate font-medium text-text hover:underline">{note.title}</Link>
+                    <Relation relation={note.relation} />
+                    <Chip className="ml-auto shrink-0">{kindWord(note.kind)}</Chip>
+                  </span>
+                  <span className="mt-0.5 block truncate text-sm text-muted">{note.firstLine}</span>
+                </label>
               ))}
-            </ul>
+            </RadioGroup>
           )}
         </div>
       </div>
@@ -286,7 +303,7 @@ export const MemoryProposals = ({ memoryRef, projectName, organizationName }: { 
           ))}
         </ul>
       )}
-      {selected === null ? null : <ProposalDetail key={selected.proposalId} proposalId={selected.proposalId} memoryRef={memoryRef} />}
+      {selected === null ? null : <ProposalDetail key={selected.proposalId} proposalId={selected.proposalId} memoryRef={memoryRef} scopeName={projectName} />}
     </PageFrame>
   );
 };

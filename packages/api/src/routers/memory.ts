@@ -398,7 +398,21 @@ export const memoryRouter = router({
   /** One proposal, with the note it declares it relates to and the three that rank highest against it. */
   proposal: memberProcedure
     .input(z.strictObject({ proposalId: proposalIdSchema }))
-    .output(proposalViewSchema.extend({ related: z.array(z.object({ noteId: noteIdSchema, title: z.string(), version: z.number().int(), relation: z.enum(["contradicts", "refines"]).nullable() })) }))
+    .output(
+      proposalViewSchema.extend({
+        related: z.array(
+          z.object({
+            noteId: noteIdSchema,
+            title: z.string(),
+            version: z.number().int(),
+            relation: z.enum(["contradicts", "refines"]).nullable(),
+            /** The note's kind and its body's first line (memory-proposals.md, a related note's two lines). */
+            kind: memoryKindSchema,
+            firstLine: z.string(),
+          }),
+        ),
+      }),
+    )
     .query(async ({ ctx, input }) => {
       const { db } = ctx.deps;
       const related = await relatedNotes(db, ctx.scope, input.proposalId);
@@ -410,7 +424,18 @@ export const memoryRouter = router({
       if (view === undefined) {
         throw new TRPCError({ code: "NOT_FOUND", message: "No such proposal" });
       }
-      return { ...view, related: [...related] };
+      const notes = await db.memoryNote.findMany({
+        where: { organizationId: ctx.scope.organizationId, id: { in: related.map((note) => note.noteId) } },
+        select: { id: true, kind: true, body: true },
+      });
+      const byId = new Map(notes.map((note) => [note.id, note] as const));
+      return {
+        ...view,
+        related: related.flatMap((note) => {
+          const found = byId.get(note.noteId);
+          return found === undefined ? [] : [{ ...note, kind: found.kind, firstLine: found.body.split("\n", 1)[0] ?? "" }];
+        }),
+      };
     }),
 
   /**
