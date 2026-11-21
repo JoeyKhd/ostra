@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { t } from "@/lib/messages";
 
-import { doingText, headerActivity, taskStateLine } from "./task-words";
+import { doingText, headerActivity, planRowText, taskStateLine } from "./task-words";
 
 describe("doingText", () => {
   it("says nothing when the agent is doing nothing", () => {
@@ -23,9 +23,10 @@ describe("doingText", () => {
 });
 
 describe("taskStateLine", () => {
-  it("names what waits on a person when it's an approval or a question", () => {
+  it("names what waits on a person when it's an approval, a question or a plan", () => {
     expect(taskStateLine("needs_you", "approval")).toBe("Needs you · approval");
     expect(taskStateLine("needs_you", "question")).toBe("Needs you · question");
+    expect(taskStateLine("needs_you", "plan")).toBe("Needs you · plan");
     expect(taskStateLine("needs_you", "no_changes")).toBe("Needs you");
     expect(taskStateLine("awaiting_approval", null)).toBe("Awaiting approval");
     expect(taskStateLine("running", null)).toBe("Running");
@@ -44,5 +45,16 @@ describe("headerActivity", () => {
     expect(headerActivity({ kind: "waiting-approval" })).toBe("");
     expect(headerActivity({ kind: "waiting-answer" })).toBe("");
     expect(headerActivity({ kind: "thinking" })).toBe(t("doing.thinking"));
+  });
+});
+
+describe("planRowText", () => {
+  const proposed = { state: "proposed" as const, turn: 1, approved: null, revision: null };
+  it("F-063/c1: the properties' Plan row says where the plan stands", () => {
+    expect(planRowText(proposed)).toBe("Proposed · turn 1");
+    expect(planRowText({ ...proposed, turn: null })).toBe("Proposed");
+    expect(planRowText({ ...proposed, revision: { request: "Smaller steps" } })).toBe("Changes asked");
+    expect(planRowText({ ...proposed, state: "approved", approved: { edited: [false] } })).toBe("Approved");
+    expect(planRowText({ ...proposed, state: "approved", approved: { edited: [false, true] } })).toBe("Approved · edited");
   });
 });

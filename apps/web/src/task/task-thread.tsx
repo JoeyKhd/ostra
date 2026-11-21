@@ -107,8 +107,10 @@ const MessageHeader = ({ message, agentMessage }: { readonly message: TaskUIMess
         <span className="min-w-0">
           {time === null ? null : <Meta dot={false}>{time}</Meta>}
           {agent.model === null ? null : <Meta dot={time !== null}>{agent.model}</Meta>}
-          {meta?.turnMode === "plan" ? <Meta className="text-amber-text">{t("taskAnswers.planning")}</Meta> : null}
-          {meta?.turnState === "running" ? <Meta className="text-teal">{t("task.working")}</Meta> : null}
+          {/* F-063 (task-plan.md, "The agent message's status word"): a plan turn reads teal `planning` while it
+              runs, in the `working` slot, then `--faint` `proposed a plan`. Amber is only for what needs you. */}
+          {meta?.turnState === "running" ? <Meta className="text-teal">{meta.turnMode === "plan" ? t("taskAnswers.planning") : t("task.working")}</Meta> : null}
+          {meta?.turnMode === "plan" && meta.turnState === "ended" && meta.stopReason !== "cancelled" ? <Meta>{t("taskAnswers.proposedPlan")}</Meta> : null}
           {meta?.turnState === "failed" ? <Meta className="text-red">{t("task.turnFailed")}</Meta> : null}
           {meta?.stopReason === "cancelled" ? <Meta>{t("task.turnStopped")}</Meta> : null}
         </span>

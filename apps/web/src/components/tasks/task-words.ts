@@ -40,7 +40,7 @@ export type TaskLimit = RouterOutputs["tasks"]["get"]["limit"];
 
 /**
  * A task's state for its header and properties (task.md, "Header status line"): needs-you states
- * name what waits when it's an approval or a question, `Needs you · approval`.
+ * name what waits when it's an approval, a question or a plan, `Needs you · approval`.
  */
 export const taskStateLine = (state: TaskState, reason: TaskReason, limit: TaskLimit = null): string => {
   if (state === "needs_you" && reason === "approval") return t("taskState.needsYouApproval");
@@ -50,6 +50,8 @@ export const taskStateLine = (state: TaskState, reason: TaskReason, limit: TaskL
   if (state === "needs_you" && reason === "spend_cap") return t("taskState.needsYouSpendCap");
   if (state === "needs_you" && reason === "crashed") return t("taskState.needsYouCrashed");
   if (state === "needs_you" && reason === "question") return t("taskState.needsYouQuestion");
+  // F-063 (task-plan.md, "Header and properties"): a proposed plan waits on its driver.
+  if (state === "needs_you" && reason === "plan") return t("taskState.needsYouPlan");
   // Milestone 6 (ticket 34): a refine task's draft, or milestone 1's draft PR.
   if (state === "needs_you" && reason === "draft_ready") return t("taskState.needsYouDraftReady");
   // Milestone 6 (ticket 35): the review loop stopped at a round limit.
@@ -157,4 +159,17 @@ export const doingText = (doing: Doing | null): string => {
     default:
       return doing.kind satisfies never;
   }
+};
+
+type TaskPlan = NonNullable<RouterOutputs["tasks"]["get"]["plan"]>;
+
+/**
+ * The properties' `Plan` row (task-plan.md, "Header and properties"): `Proposed · turn 1` while it
+ * waits, `Approved` or `Approved · edited` once answered, `Changes asked` while the revise turn runs.
+ */
+export const planRowText = (plan: Pick<TaskPlan, "turn" | "state"> & { readonly approved: { readonly edited: readonly boolean[] } | null; readonly revision: object | null }): string => {
+  if (plan.approved !== null) return plan.approved.edited.some(Boolean) ? t("taskAnswers.usage.planApprovedEdited") : t("taskAnswers.usage.planApproved");
+  if (plan.revision !== null) return t("taskAnswers.usage.planChangesAsked");
+  if (plan.state === "approved") return t("taskAnswers.usage.planApproved");
+  return plan.turn === null ? t("taskAnswers.usage.planProposed") : t("taskAnswers.usage.planProposedTurn", { n: plan.turn });
 };

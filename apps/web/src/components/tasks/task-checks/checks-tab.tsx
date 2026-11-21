@@ -9,6 +9,7 @@ import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
+import { propertyOf } from "./check-words";
 import type { ChecksMarker, CheckRunView, FixDelivery, PrDraftLine, TurnChecksView } from "./check-words";
 import { ChecksBody } from "./task-checks";
 import type { FixState } from "./task-checks";
@@ -60,6 +61,9 @@ export const prLinesOf = (checks: Checks, newestTurn: number): readonly PrDraftL
       turn: newestTurn,
     }));
 };
+
+/** The properties panel's `Checks` row (task-checks.md, "Properties"), or `null` when no check ran. */
+export const checksPropertyOf = (checks: Checks | undefined) => (checks === undefined ? null : propertyOf(turnsViewOf(checks)));
 
 /** The tab's marker: running, passed, or how many failed in the newest finished turn. */
 export const checksMarkerOf = (checks: Checks | undefined): ChecksMarker => {

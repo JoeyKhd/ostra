@@ -162,6 +162,8 @@ export const loadApprovalsAndPlan = async (deps: ApiDeps, task: TaskRow) => {
   const answered = answeredRow === undefined ? null : planAnswerParse(answeredRow.payload);
   const planItem = openItems.find((item) => item.reason === "plan");
   const answeredAfterProposal = answeredRow !== undefined && proposedRow !== undefined && answeredRow.seq > proposedRow.seq;
+  // The task's turn that proposed it, counted from its first (task-plan.md: `Proposed · turn 1`).
+  const planTurn = proposedRow === undefined ? 0 : await db.turn.count({ where: { taskId: task.id, organizationId, startSeq: { lte: proposedRow.seq } } });
   const plan =
     !proposed?.success
       ? null
@@ -169,6 +171,8 @@ export const loadApprovalsAndPlan = async (deps: ApiDeps, task: TaskRow) => {
           state: task.planState,
           itemId: planItem === undefined ? null : needsYouItemIdSchema.parse(planItem.id),
           turnId: proposed.data.turnId,
+          /** The proposing turn's number in the task, from 1; `null` when its turn row isn't there. */
+          turn: planTurn === 0 ? null : planTurn,
           entries: proposed.data.entries,
           message: proposed.data.message,
           proposedAt: proposedRow?.occurredAt.getTime() ?? null,

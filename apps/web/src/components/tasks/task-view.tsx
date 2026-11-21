@@ -1,7 +1,7 @@
 "use client";
 
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppWindowIcon, CheckIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestIcon, LinkIcon, MessageSquareIcon, Minimize2Icon, PanelRightIcon, ScanSearchIcon, SquareIcon } from "lucide-react";
+import { AppWindowIcon, CheckIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestDraftIcon, GitPullRequestIcon, LinkIcon, MessageSquareIcon, Minimize2Icon, PanelRightIcon, ScanSearchIcon, SquareIcon } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -40,14 +40,14 @@ import { HeldNoKey, KeyRow, NoKeySentence, WhoPicks } from "./no-key";
 import { adminNames } from "./no-key-words";
 import type { NoKey } from "./no-key";
 import { AgentGot, MergedHint, TicketLine, TicketProperties, boxText, composerInputOf, composerMode, idleHeader, limitStateOf, sessionText, SpendCapComposer, SpendValue, trackerName } from "./task-ticket";
-import { headerActivity, stateTone, taskStateLine } from "./task-words";
+import { headerActivity, planRowText, stateTone, taskStateLine } from "./task-words";
 import { ApprovalCard, PlanBlock, QuestionCard, WatcherBar, approvalReceipt } from "./task-answers";
 import { NeedsYouCards, NeedsYouLive } from "./needs-you-cards";
 import { needsOf, questionRepeatsMessage, replyHint } from "./needs-you-card-words";
 import type { ReplyHow } from "./needs-you-card-words";
 import { ChangesTab } from "./task-changes/changes-tab";
 import { EventLogTab } from "./task-event-log/event-log-tab";
-import { ChecksTab, checksMarkerOf } from "./task-checks/checks-tab";
+import { ChecksTab, checksMarkerOf, checksPropertyOf } from "./task-checks/checks-tab";
 import { ChecksTabMarker } from "./task-checks/task-checks";
 import { ReasoningRow, TaskEffortRow } from "./task-effort";
 import type { TaskEffort } from "./task-effort";
@@ -131,7 +131,11 @@ const CopyLink = () => {
 };
 
 /** A PR the top bar links to: the repo's current one, with a safe address. */
-type BarPr = { readonly number: number; readonly href: string; readonly state: "open" | "merged" | "closed"; readonly repo: string };
+type BarPr = { readonly number: number; readonly href: string; readonly state: "open" | "merged" | "closed"; readonly repo: string; readonly draft: boolean };
+
+/** Whether a repo's current PR is a draft (task-checks.md: `git-pull-request-draft`, `#483 · draft`). */
+const prIsDraft = (repo: Task["repos"][number]): boolean =>
+  repo.pr !== null && repo.pr.state === "open" && repo.pullRequests.some((pr) => pr.number === repo.pr?.number && pr.draft);
 
 const PrStateIcon = ({ state }: { readonly state: BarPr["state"] }) => {
   const className = "size-[15px] shrink-0 stroke-[1.75] text-muted";
@@ -155,7 +159,7 @@ const PrStateIcon = ({ state }: { readonly state: BarPr["state"] }) => {
 const PrButtons = ({ prs }: { readonly prs: readonly BarPr[] }) => {
   const button = (pr: BarPr, className?: string) => (
     <a key={`${pr.repo}#${String(pr.number)}`} href={pr.href} target="_blank" rel="noopener noreferrer" className={cn(buttonVariants(), className)}>
-      <GitPullRequestIcon /> {t("taskPage.prButton", { n: pr.number })}
+      {pr.draft ? <GitPullRequestDraftIcon /> : <GitPullRequestIcon />} {t("taskPage.prButton", { n: pr.number })}
     </a>
   );
   if (prs.length < 2) return <>{prs.map((pr) => button(pr))}</>;
@@ -191,8 +195,10 @@ const PrButtons = ({ prs }: { readonly prs: readonly BarPr[] }) => {
  * to turn. Values carry no icons, so they all start at one x; the status dot and the driver's avatar
  * are the only markers. Spend (F-084) and the Changes group (F-027) come later.
  */
-const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, takingOver, ticket, effort, noKey, projectName }: {
+const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, takingOver, ticket, effort, noKey, projectName, checks }: {
   readonly task: Task;
+  /** The newest turn's checks, for the Code group's `Checks` row (task-checks.md); `null` when none ran. */
+  readonly checks: { readonly failing: number; readonly passed: number; readonly running: boolean } | null;
   /** F-137: the Effort row, built by the view (it holds the change's mutation). */
   readonly effort: ReactNode;
   /** F-135: queued with no key for its model. */
@@ -242,6 +248,7 @@ const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, t
           {task.agent === null ? <span className="text-faint">{t("taskAnswers.usage.none")}</span> : <span className="truncate" data-testid="task-profile">{task.agent.name}</span>}
           {task.agent?.builtInKind === null || task.agent?.builtInKind === undefined ? null : <Chip className="h-5 shrink-0 px-1.5 text-xs">{t("draft.builtIn")}</Chip>}
         </PropRow>
+        {task.plan === null ? null : <PropRow label={t("taskAnswers.usage.plan")}><span className="truncate" data-testid="task-plan-row">{planRowText(task.plan)}</span></PropRow>}
         {task.agent === null ? null : (
           <>
             <PropRow label={t("taskPage.agent")}><span className="truncate">{task.agent.agentName}</span></PropRow>
@@ -343,7 +350,7 @@ const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, t
                     </a>
                     <span className="text-faint">·</span>
                     <span className={cn("text-ui", repo.pr.state === "merged" ? "text-green" : repo.pr.state === "closed" ? "text-faint" : "text-muted")} data-pr-state={repo.pr.state}>
-                      {t(`taskPage.prState.${repo.pr.state}`)}
+                      {prIsDraft(repo) ? t("taskPage.prState.draft") : t(`taskPage.prState.${repo.pr.state}`)}
                     </span>
                   </>
                 )}
@@ -351,6 +358,22 @@ const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, t
             </div>
           );
         })}
+        {checks === null ? null : (
+          <PropRow label={t("checks.property.label")}>
+            <span className="truncate text-[12.5px]" data-testid="task-checks-row">
+              {checks.running ? (
+                <span className="text-muted">{t("checks.property.running")}</span>
+              ) : checks.failing > 0 ? (
+                <>
+                  <span className="text-red">{t("checks.summary.failed", { n: checks.failing })}</span>
+                  {checks.passed > 0 ? <span className="text-muted">{t("checks.property.andPassed", { n: checks.passed })}</span> : null}
+                </>
+              ) : (
+                <span className="text-green">{t("checks.property.allPassed", { n: checks.passed })}</span>
+              )}
+            </span>
+          </PropRow>
+        )}
       </PropGroup>
     </div>
   );
@@ -598,7 +621,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const finished = stopped || data.state === "merged" || data.state === "done";
   const prs = data.repos.flatMap((repo): BarPr[] => {
     const href = repo.pr === null ? null : safeHref(repo.pr.url);
-    return repo.pr === null || href === null ? [] : [{ number: repo.pr.number, href, state: repo.pr.state, repo: repo.fullName }];
+    return repo.pr === null || href === null ? [] : [{ number: repo.pr.number, href, state: repo.pr.state, repo: repo.fullName, draft: prIsDraft(repo) }];
   });
   const running = view.turnRunning || data.state === "running" || data.state === "preparing";
   // F-137: the level from the newest `effort.changed` on the stream, else `tasks.get`'s.
@@ -621,7 +644,8 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const admins = (members.data ?? []).filter((member) => member.role === "admin").map((member) => member.name);
   // A task that ran before and lost its key holds the member's message (section 3): the marker under it.
   const heldNoKey = noKey !== null && log.state.events.some(({ event }) => event.kind === "turn.started");
-  const activity = idleHeader(data.box, now) ?? headerActivity(view.activity);
+  // A plan waiting on its driver says so in the status (`Needs you · plan`): the ended turn isn't said again (task-plan.md).
+  const activity = idleHeader(data.box, now) ?? (data.state === "needs_you" && data.reason === "plan" ? "" : headerActivity(view.activity));
   // F-067: a queued task an admin or its member cancelled names who did.
   const cancelled = data.state === "stopped" ? log.state.events.findLast(({ event }) => event.kind === "task.cancelled")?.event : undefined;
   const cancelledBy = cancelled?.kind === "task.cancelled" ? ((members.data ?? []).find((member) => member.memberId === cancelled.memberId)?.name ?? null) : undefined;
@@ -836,6 +860,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
       properties={
         <Properties
           task={data}
+          checks={checksPropertyOf(checksMarker.data)}
           tokens={view.tokens}
           reasoningTokens={view.reasoningTokens}
           context={view.context}

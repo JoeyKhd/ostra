@@ -189,6 +189,7 @@ describe("what needs you, as cards in the chat", () => {
       state: "proposed",
       itemId,
       turnId,
+      turn: 1,
       entries: [{ content: "Read the version at build time", priority: "medium", status: "pending" }],
       message: "Here is my plan. **Step one** reads the version.",
       proposedAt: 0,

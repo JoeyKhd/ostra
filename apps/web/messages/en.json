@@ -2491,6 +2491,7 @@
     "done": "Done",
     "needsYouApproval": "Needs you · approval",
     "needsYouQuestion": "Needs you · question",
+    "needsYouPlan": "Needs you · plan",
     "needsYouDraftReady": "Needs you · draft ready",
     "needsYouRoundCap": "Needs you · round limit",
     "needsYouStalled": "Needs you · stalled",
@@ -2881,6 +2882,7 @@
     },
     "prState": {
       "open": "open",
+      "draft": "draft",
       "merged": "merged",
       "closed": "closed unmerged"
     },
@@ -3993,6 +3995,12 @@
       "timedOut": "timed out after {limit}",
       "error": "couldn't run"
     },
+    "property": {
+      "label": "Checks",
+      "running": "Running",
+      "allPassed": "All {n} passed",
+      "andPassed": " · {n} passed"
+    },
     "summary": {
       "failed": "{n} failed",
       "timedOut": "{n} timed out",
@@ -4771,11 +4779,18 @@
       "agentTime": "Agent time",
       "profile": "Profile",
       "none": "None",
+      "plan": "Plan",
+      "planProposed": "Proposed",
+      "planProposedTurn": "Proposed · turn {n}",
+      "planApproved": "Approved",
+      "planApprovedEdited": "Approved · edited",
+      "planChangesAsked": "Changes asked",
       "turn": "{input} in · {output} out",
       "rules": "Approval rules",
       "fromTask": "this task · {name}"
     },
-    "planning": "Planning",
+    "planning": "planning",
+    "proposedPlan": "proposed a plan",
     "intent": {
       "diff-comments": "from diff comments",
       "update-branch": "update branch",
