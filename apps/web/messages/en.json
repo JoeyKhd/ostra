@@ -320,6 +320,23 @@
       "footFindings": "Keep working starts one more findings round and resets the count. You can also message {agent} below.",
       "footTurns": "Keep working resets the count. You can also message {agent} below.",
       "driverDecides": "{driver} decides. Take over to decide."
+    },
+    "followUp": {
+      "reviews": "Reviews",
+      "pr": "PR #{number}",
+      "openReview": "Open the review",
+      "openCodeTask": "Open the code task",
+      "openReviewTask": "Open the review task",
+      "connectRunner": "Connect a runner",
+      "waiting": "Waiting for a runner.",
+      "waitsBusy": "AI review runs on {runner}, the runner its code task ran on, or on one of {project}'s pools; none is free right now.",
+      "waitsOffline": "AI review runs on {runner}, the runner its code task ran on, or on one of {project}'s pools. {runner} is offline, and no pool runner is free.",
+      "waitsOutdated": "AI review runs on {runner}, the runner its code task ran on, or on one of {project}'s pools. {runner} needs an update to run reviews, and no pool runner is free.",
+      "waitsNotAllowed": "AI review runs on one of {project}'s pools: its model provider isn't allowed on personal runners, so it can't use {runner}. None is free right now.",
+      "waitsPools": "AI review runs on one of {project}'s pools; none is free right now.",
+      "lineWaiting": "AI review: waiting for a runner",
+      "lineRunning": "AI review: running",
+      "lineStopped": "AI review: stopped"
     }
   },
   "draft": {

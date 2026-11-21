@@ -66,6 +66,8 @@ import { DraftView } from "./draft/draft-view";
 import { DraftProperties } from "./draft/draft-properties";
 import { capOf } from "./review/review-words";
 import { CodeHeadRows, RoundsGroup, RoundsInThread, StageLine, statusWithSubState } from "./review/task-rounds";
+import { AiReviewLine, FollowUpWaiting, ReviewOfLine } from "./review/follow-up";
+import { followUpWaitWords } from "./review/follow-up-words";
 import { formatClock } from "@/lib/format";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -702,20 +704,35 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const failingCheck = lastCi?.cause.kind === "ci" ? (lastCi.cause.failing[0]?.name ?? null) : null;
   const lastFindings = roundList.findLast((round) => round.cause.kind === "findings");
   const blockingSent = lastFindings?.cause.kind === "findings" ? lastFindings.cause.findings.filter((finding) => finding.severity === "blocking").length : 0;
+  // 2026-11-21 (F-100/c6): the code task's thread ends with its AI review's state, linking to it.
+  const aiReviewTail = inLoop && data.aiReview !== null ? <AiReviewLine review={data.aiReview} /> : null;
   const roundsTail =
-    rounds.data === undefined ? null : (
-      <RoundsInThread
-        taskId={taskId}
-        rounds={roundList}
-        limits={rounds.data.limits}
-        cap={cap}
-        capInput={{ agent: agentName, failing: failingCheck, blocking: blockingSent }}
-        isDriver={isDriver}
-        driver={driverName}
-        keep={{ run: () => { keepWorking.mutate({ taskId }); }, pending: keepWorking.isPending, error: errorText(keepWorking.error) }}
-        onTakeOver={takeOverNow}
-      />
+    rounds.data === undefined ? aiReviewTail : (
+      <>
+        <RoundsInThread
+          taskId={taskId}
+          rounds={roundList}
+          limits={rounds.data.limits}
+          cap={cap}
+          capInput={{ agent: agentName, failing: failingCheck, blocking: blockingSent }}
+          isDriver={isDriver}
+          driver={driverName}
+          keep={{ run: () => { keepWorking.mutate({ taskId }); }, pending: keepWorking.isPending, error: errorText(keepWorking.error) }}
+          onTakeOver={takeOverNow}
+        />
+        {aiReviewTail}
+      </>
     );
+  // A review waiting for a runner says why and where it may run, with the way out (F-100/c6).
+  const followUpWait =
+    data.reviewOf !== null && data.waiting?.kind === "no-runner"
+      ? followUpWaitWords(data.waiting.reason, {
+          project: projectName,
+          poolNames: [],
+          poolName: (poolId) => (data.queue?.poolId === poolId ? data.queue.poolName : ""),
+          personal: null,
+        })
+      : null;
   const roundsGroup =
     data.kind === "code" && (roundList.length > 0 || inLoop) ? (
       <RoundsGroup
@@ -907,6 +924,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
             {log.state.connection === "reconnecting" ? <><Sep /><span className="text-muted">{t("taskPage.reconnecting")}</span></> : null}
           </p>
           {inLoop ? <StageLine subState={data.subState} aiReview={aiReview} counts={data.roundCounts} needsYou={cap !== null && isDriver} held={heldNow} /> : null}
+          {data.reviewOf === null ? null : <ReviewOfLine reviewOf={data.reviewOf} />}
           <div className="max-sm:hidden">
             <TaskPrs repos={data.repos} />
           </div>
@@ -923,13 +941,14 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           <TaskWaiting
             projectId={data.projectId}
             project={project.data?.name ?? ""}
-            waiting={data.waiting?.kind === "no-runner" && wordedElsewhere.has(data.waiting.reason.code) ? null : data.waiting}
-            queue={data.queue}
+            waiting={followUpWait !== null || (data.waiting?.kind === "no-runner" && wordedElsewhere.has(data.waiting.reason.code)) ? null : data.waiting}
+            queue={followUpWait === null ? data.queue : null}
             boxWaiting={data.box?.waiting ?? null}
             runnerId={data.runner?.kind === "personal" ? data.runner.id : null}
             cancelledBy={cancelledBy}
             now={now}
           />
+          {followUpWait === null || data.reviewOf === null ? null : <FollowUpWaiting words={followUpWait} codeTaskId={data.reviewOf.taskId} admin={organizationAdmin} />}
           {noKey === null ? null : (
             <div className="mt-2.5 border-l-2 border-line-2 pl-3" data-testid="task-no-key">
               <p className="text-body text-text"><NoKeySentence noKey={noKey} /></p>

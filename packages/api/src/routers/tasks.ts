@@ -20,6 +20,7 @@ import {
   createTicketForTaskInputSchema,
   dismissNeedsYou,
   dismissNeedsYouInputSchema,
+  followUpOf,
   reopenTask,
   restartOnProviderChangeInTx,
   sessionProviderGateInTx,
@@ -74,6 +75,7 @@ import { loadUsageView } from "./task-usage.ts";
 import { levelRefusal, loadModelEffort, toLevelViews } from "../services/agent-effort.ts";
 import type { ApiDeps } from "../trpc/context.ts";
 import { loadTaskExtras, prStateOf } from "./task-extras.ts";
+import { loadFollowUp, shortKeyOf } from "./task-follow-up.ts";
 import { queuePlacesOf } from "./fleet-view.ts";
 import { loadProjectAccess, memberProcedure, projectProcedure, router, taskProcedure, unwrap } from "../trpc/init.ts";
 
@@ -135,12 +137,6 @@ const lifecycleOf = (task: Parameters<typeof taskFromColumns>[0]): TaskLifecycle
   }
   return decoded.value;
 };
-
-/**
- * A prompt task's short ID: the last 8 hex digits, as in its branch name (`branchNameFor`). A
- * UUIDv7's first 8 are its timestamp, the same for every task made within about a minute.
- */
-const shortKeyOf = (id: string): string => id.replaceAll("-", "").slice(-8);
 
 const notFoundTask = () => new TRPCError({ code: "NOT_FOUND", message: "No such task" });
 
@@ -334,6 +330,8 @@ export const tasksRouter = router({
         key: row.ticketKey ?? shortKeyOf(row.id),
         title: row.title,
         kind: row.kind,
+        /** 2026-11-21 (F-147): the code task a follow-up (its AI review) belongs to, which a live list nests it under. */
+        reviewOf: followUpOf(row),
         state: row.state,
         subState: row.subState,
         /** Why it needs a person, or why it stopped. */
@@ -405,7 +403,7 @@ export const tasksRouter = router({
     ]);
     const pinnedRunner = lease === null && task.runnerId !== null ? await db.runner.findFirst({ where: { id: task.runnerId, organizationId }, select: { id: true, name: true, kind: true, executor: true } }) : null;
     const runner = lease === null ? pinnedRunner : lease.runner;
-    const extras = await loadTaskExtras(ctx.deps, task, agent?.model?.id ?? null, runner?.name ?? null);
+    const [extras, followUp] = await Promise.all([loadTaskExtras(ctx.deps, task, agent?.model?.id ?? null, runner?.name ?? null), loadFollowUp(db, organizationId, task)]);
     // F-137: the levels of the model the newest session runs, or the profile's before there's one.
     const effortLevels = await taskEffortLevels(ctx.deps, organizationId, session?.modelId ?? agent?.model?.id ?? null, agent?.adapter ?? null);
     // Milestone 3 (ticket 35): the approvals, questions and plan the page answers from, and the task's rules.
@@ -451,6 +449,13 @@ export const tasksRouter = router({
       source: task.source,
       state,
       subState: task.subState,
+      /**
+       * 2026-11-21 (F-100, ADR 0059 amended): for a review task, the code task and PRs it reviews and
+       * its newest round; `null` for any other task.
+       */
+      reviewOf: followUp.reviewOf,
+      /** For a code task with an AI review: its review task's state and the newest round's; else `null`. */
+      aiReview: followUp.aiReview,
       /**
        * Milestone 6 (F-035, F-101, ticket 35): the review loop's counters since a person last acted,
        * with the install's limits, for the task page's stage line and its Rounds group.

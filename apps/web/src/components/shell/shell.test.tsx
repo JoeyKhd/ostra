@@ -117,7 +117,7 @@ describe("the rail and the context panel (F-147)", () => {
   });
 
   it("F-147/c1: a project's live tasks put what needs the member first, then running, preparing and queued", () => {
-    const task = (taskId: string, mark: LiveTask["mark"]): LiveTask => ({ taskId, key: taskId, title: taskId, mark, line: { tone: "plain", text: "" } });
+    const task = (taskId: string, mark: LiveTask["mark"]): LiveTask => ({ taskId, key: taskId, title: taskId, mark, line: { tone: "plain", text: "" }, followUp: null });
     expect(liveOrder([task("q", "queued"), task("r1", "green"), task("n", "amber"), task("p", "preparing"), task("r2", "green")]).map((one) => one.taskId)).toEqual(["n", "r1", "r2", "p", "q"]);
     expect(needsYouLine("approval")).toBe(t("shell.live.approval"));
     expect(needsYouLine("question")).toBe(t("shell.live.question"));

@@ -9,6 +9,7 @@ const row = (overrides: Partial<TaskRow>): TaskRow => ({
   key: "3964702f",
   title: "Add a history panel",
   kind: "code",
+  reviewOf: null,
   state: "running",
   subState: null,
   reason: null,

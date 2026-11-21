@@ -1,11 +1,12 @@
-import { taskIdSchema } from "@ostra/protocol";
+import { memberIdSchema, projectIdSchema, taskIdSchema } from "@ostra/protocol";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { t } from "@/lib/messages";
+import type { RouterOutputs } from "@/lib/trpc";
 
-import { LiveTaskRow } from "./live-task-row";
-import { liveFromRow, runningLine } from "./live-tasks";
+import { LiveFamilyRows, LiveTaskRow } from "./live-task-row";
+import { liveCount, liveFromRow, projectLive, runningLine, yoursLive } from "./live-tasks";
 import type { LiveMark, LiveTask } from "./live-tasks";
 import { DensityProvider } from "./nav-link";
 import type { Density } from "./nav-link";
@@ -17,7 +18,7 @@ import type { Density } from "./nav-link";
 const where = vi.hoisted(() => ({ pathname: "/" }));
 vi.mock("next/navigation", () => ({ usePathname: () => where.pathname }));
 
-const marks: readonly LiveMark[] = ["amber", "green", "preparing", "queued"];
+const marks: readonly LiveMark[] = ["amber", "green", "preparing", "queued", "in-review"];
 const densities: readonly Density[] = ["desktop", "sheet"];
 
 const liveTask = (mark: LiveMark): LiveTask => ({
@@ -25,7 +26,8 @@ const liveTask = (mark: LiveMark): LiveTask => ({
   key: "3964702f",
   title: "Add a history panel",
   mark,
-  line: mark === "amber" ? { tone: "needs-you", text: t("shell.live.approval") } : { tone: "plain", text: mark === "green" ? runningLine(null) : t(mark === "preparing" ? "tasks.row.preparing" : "tasks.row.queued") },
+  line: mark === "amber" ? { tone: "needs-you", text: t("shell.live.approval") } : { tone: "plain", text: mark === "green" ? runningLine(null) : t(mark === "preparing" ? "tasks.row.preparing" : mark === "in-review" ? "taskState.inReview" : "tasks.row.queued") },
+  followUp: null,
 });
 
 const draw = (task: LiveTask, density: Density): string =>
@@ -76,6 +78,7 @@ describe("a live task's row (F-147, app-shell.md \"A live task row\")", () => {
       key: "3964702f",
       title: "Add a history panel",
       kind: "code",
+      reviewOf: null,
       state: "running",
       subState: null,
       reason: null,
@@ -98,6 +101,7 @@ describe("a live task's row (F-147, app-shell.md \"A live task row\")", () => {
       green: t("taskState.running"),
       preparing: t("tasks.row.preparing"),
       queued: t("tasks.row.queued"),
+      "in-review": t("taskState.inReview"),
     };
     for (const mark of marks) {
       const markup = draw(liveTask(mark), "desktop");
@@ -106,5 +110,115 @@ describe("a live task's row (F-147, app-shell.md \"A live task row\")", () => {
       expect(spoken(markup), mark).toBe(`Add a history panel3964702f · ${words[mark]}`);
       expect(markup, mark).toContain(`title="Add a history panel · 3964702f · ${words[mark]}"`);
     }
+  });
+});
+
+// F-147/c8 (2026-11-21, ADR 0059 amended): a follow-up, its code task's AI review, sits under that
+// task, indented with its tag, and never as a look-alike row of its own.
+
+type ListRow = RouterOutputs["tasks"]["list"][number]["tasks"][number];
+type Card = RouterOutputs["home"]["board"]["columns"][number]["cards"][number];
+
+const codeId = taskIdSchema.parse("01a1f173-8696-70be-a85a-85223964702f");
+const reviewId = taskIdSchema.parse("01a1f173-8696-70be-a85a-8522396470aa");
+const otherId = taskIdSchema.parse("01a1f173-8696-70be-a85a-8522396470bb");
+
+const listRow = (over: Partial<ListRow> & Pick<ListRow, "id" | "state">): ListRow => ({
+  key: over.id.slice(-8),
+  title: "add a simple index.html file that i can preview",
+  kind: "code",
+  reviewOf: null,
+  subState: null,
+  reason: null,
+  needsYouReason: null,
+  stoppedReason: null,
+  group: "running",
+  waiting: null,
+  queue: null,
+  doing: null,
+  runner: null,
+  driver: null,
+  prs: [],
+  createdAt: 0,
+  updatedAt: 0,
+  ...over,
+});
+
+const groupsOf = (rows: readonly ListRow[]): RouterOutputs["tasks"]["list"] => [{ group: "running", tasks: [...rows] }];
+
+describe("a follow-up in the live lists (F-147/c8)", () => {
+  it("F-147/c8: a review sits under its code task, drawn in review when it isn't live itself, and counts once", () => {
+    const rows = [
+      listRow({ id: codeId, state: "in_review", subState: "ai_review" }),
+      listRow({ id: reviewId, state: "queued", kind: "review", reviewOf: codeId, title: "Review: add a simple index.html file that i can preview" }),
+      listRow({ id: otherId, state: "running", title: "Add a history panel" }),
+    ];
+    const families = projectLive(groupsOf(rows), null);
+    // Running first; then the code task, held for its queued review.
+    expect(families.map((family) => family.task.taskId)).toEqual([otherId, codeId]);
+    const [, family] = families;
+    expect(family).toMatchObject({ context: true, task: { mark: "in-review", line: { text: t("taskState.inReview") } } });
+    expect(family?.followUps.map((task) => [task.taskId, task.followUp, task.mark])).toEqual([[reviewId, "review", "queued"]]);
+    // Two live tasks: the code task in review isn't one.
+    expect(liveCount(families)).toBe(2);
+
+    // Drawn: the code task's row, then the review's, indented, with its tag and what it does now.
+    where.pathname = "/";
+    const markup = renderToStaticMarkup(
+      <DensityProvider value="desktop">
+        {family === undefined ? null : <LiveFamilyRows family={family} onNavigate={() => undefined} />}
+      </DensityProvider>,
+    );
+    expect(markup.match(/<a\b/g)).toHaveLength(2);
+    const [, nested] = markup.split(/(?=<a\b)/);
+    expect(nested).toContain('data-follow-up="review"');
+    expect(nested).toMatch(/class="[^"]*pl-\[30px\]/);
+    expect(spoken(nested ?? "")).toBe(`${t("draft.chipReview")}${t("tasks.row.queued")}`);
+    // Its title is never drawn as a row of its own: the code task's is.
+    expect(spoken(markup).startsWith("add a simple index.html file that i can preview")).toBe(true);
+    expect(spoken(markup)).not.toContain("Review: add a simple");
+  });
+
+  it("F-147/c8: a live code task keeps its place with its review under it; a review whose task isn't known keeps a row of its own, tagged", () => {
+    const families = projectLive(
+      groupsOf([listRow({ id: codeId, state: "running" }), listRow({ id: reviewId, state: "running", kind: "review", reviewOf: codeId })]),
+      null,
+    );
+    expect(families).toHaveLength(1);
+    expect(families[0]).toMatchObject({ context: false, task: { taskId: codeId, mark: "green" }, followUps: [{ taskId: reviewId, followUp: "review" }] });
+    expect(liveCount(families)).toBe(2);
+
+    const alone = projectLive(groupsOf([listRow({ id: reviewId, state: "queued", kind: "review", reviewOf: otherId })]), null);
+    expect(alone).toHaveLength(1);
+    expect(alone[0]).toMatchObject({ task: { taskId: reviewId, followUp: "review" }, followUps: [], context: false });
+    const markup = renderToStaticMarkup(
+      <DensityProvider value="desktop">
+        {alone[0] === undefined ? null : <LiveFamilyRows family={alone[0]} onNavigate={() => undefined} />}
+      </DensityProvider>,
+    );
+    expect(spoken(markup)).toContain(`${t("draft.chipReview")} ${reviewId.slice(-8)}`);
+  });
+
+  it("F-147/c8: Home's own live tasks nest a running review under its code task, named from the board", () => {
+    const memberId = memberIdSchema.parse("01a1f173-8696-70be-a85a-8522396470cc");
+    const card: Card = {
+      taskId: reviewId,
+      key: null,
+      title: "Review: add a simple index.html file that i can preview",
+      kind: "review",
+      reviewOf: { taskId: codeId, key: null, title: "add a simple index.html file that i can preview" },
+      state: "running",
+      project: { id: projectIdSchema.parse("01a1f173-8696-70be-a85a-8522396470dd"), name: "test1" },
+      driver: { memberId, name: "demo" },
+      enteredAt: 0,
+      status: { kind: "running", doing: null },
+    };
+    const families = yoursLive([card], memberId);
+    expect(families).toHaveLength(1);
+    expect(families[0]?.task).toEqual({ taskId: codeId, key: codeId.slice(-7), title: "add a simple index.html file that i can preview", mark: "in-review", line: { tone: "plain", text: t("taskState.inReview") }, followUp: null });
+    expect(families[0]).toMatchObject({ context: true, followUps: [{ taskId: reviewId, followUp: "review", mark: "green" }] });
+    expect(liveCount(families)).toBe(1);
+    // Someone else's review isn't the member's own.
+    expect(yoursLive([{ ...card, driver: null }], memberId)).toEqual([]);
   });
 });

@@ -78,6 +78,7 @@ At 1440 wide, left to right: rail 64 | panel 240 | page 1136. The page is the to
   - **Line 2:** Plex Mono 12px/17px `--faint`, the key, ` · ` and what the agent does now (`Editing panel.tsx`). Needs-you words are in Plex Sans 500 `--amber-text`: `Needs you · approval`, `Question`.
   - The open task's row has a `--sel` fill.
   - A click opens the task, and the row updates live from the same stream as the task list.
+- **A follow-up** (a code task's AI review; added 2026-11-21, ADR 0059 amended, F-147/c8): one line under its code task, indented to the code task's title (30px), padding `3px 8px`: its state mark, then a `review` tag (Plex Mono 11px `--muted` in a 1px `--line-2` box, 3px radius) and what it does now in 12px `--faint`. Its code task shows above it even when it's only in review (`git-pull-request`, `In review`), and the section's count is the live tasks alone.
 - **Resizing:** drag the right edge (a 5px hit area, `col-resize`) from 200 to 320. A double-click resets it to 240.
 
 ### The page column

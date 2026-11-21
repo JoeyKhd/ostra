@@ -9,8 +9,8 @@ import { useTRPC } from "@/lib/trpc";
 
 import type { PanelMode } from "../context-panel";
 import { PanelFrame, PanelTitle } from "../context-panel";
-import { LiveFailed, LiveSkeleton, LiveTaskRow } from "../live-task-row";
-import { yoursLive } from "../live-tasks";
+import { LiveFailed, LiveFamilyRows, LiveSkeleton } from "../live-task-row";
+import { liveCount, yoursLive } from "../live-tasks";
 import { NavLink, SectionLabel } from "../nav-link";
 import { homeRows } from "../places";
 import { ShellIconView } from "../shell-icons";
@@ -53,7 +53,7 @@ export const HomePanel = ({ mode, onNavigate }: { readonly mode: PanelMode; read
         </NavLink>
       ))}
 
-      <SectionLabel {...(loading || failed ? {} : { count: live.length })}>{t("shell.panel.yoursLive")}</SectionLabel>
+      <SectionLabel {...(loading || failed ? {} : { count: liveCount(live) })}>{t("shell.panel.yoursLive")}</SectionLabel>
       {loading ? (
         <LiveSkeleton />
       ) : failed ? (
@@ -67,12 +67,12 @@ export const HomePanel = ({ mode, onNavigate }: { readonly mode: PanelMode; read
         </p>
       ) : (
         <>
-          {live.slice(0, YOURS_SHOWN).map((task) => (
-            <LiveTaskRow key={task.taskId} task={task} onNavigate={onNavigate} />
+          {live.slice(0, YOURS_SHOWN).map((family) => (
+            <LiveFamilyRows key={family.task.taskId} family={family} onNavigate={onNavigate} />
           ))}
           {live.length > YOURS_SHOWN ? (
             <NavLink href="/search?q=by%3Ame" current={false} onNavigate={onNavigate}>
-              {t("shell.panel.more", { n: live.length - YOURS_SHOWN })}
+              {t("shell.panel.more", { n: liveCount(live.slice(YOURS_SHOWN)) })}
             </NavLink>
           ) : null}
         </>

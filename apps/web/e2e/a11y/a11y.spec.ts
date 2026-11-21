@@ -1,5 +1,10 @@
+import { execFile } from "node:child_process";
+import path from "node:path";
+import { promisify } from "node:util";
+
 import { expect, test } from "@playwright/test";
 import type { Page, TestInfo } from "@playwright/test";
+import { z } from "zod";
 
 import { readStack, signIn } from "../helpers.ts";
 import { appRoutePatterns, memberRoutes, seedRoutesWorld, settleRoute, sharedRoutes, visitorRoutes } from "../routes.ts";
@@ -73,7 +78,11 @@ const onlyRoutes = (process.env["OSTRA_A11Y_ROUTES"] ?? "").split(",").map((pref
 const wanted = (visit: Visit): boolean => onlyRoutes.length === 0 || onlyRoutes.some((prefix) => visit.pattern.startsWith(prefix));
 
 /** Every route, and the task page in each "needs you" state: an approval card, a question's form, a spend cap. */
-const visits = (world: RoutesWorld): { readonly member: readonly Visit[]; readonly visitor: readonly Visit[] } => {
+/** 2026-11-21 (F-100/c6, F-147/c8): an AI review waiting for a runner, and its code task (`seed-follow-up-world.ts`). */
+const followUpSchema = z.object({ codeTaskId: z.string(), reviewTaskId: z.string() });
+type FollowUp = z.infer<typeof followUpSchema>;
+
+const visits = (world: RoutesWorld, followUp: FollowUp): { readonly member: readonly Visit[]; readonly visitor: readonly Visit[] } => {
   const visit = (route: PanelRoute, label = route.pattern): Visit => ({ ...route, label, keyed: label === route.pattern ? (keyedOverlays[route.pattern] ?? []) : [] });
   const task = "/tasks/[task-id]";
   return {
@@ -86,6 +95,9 @@ const visits = (world: RoutesWorld): { readonly member: readonly Visit[]; readon
       visit({ pattern: task, path: `/tasks/${world.capped.taskId}` }, `${task} (a spend cap)`),
       // Milestone 8 (ticket 21): the preview pane, its switcher, its width preset and its share menu.
       visit({ pattern: task, path: `/tasks/${world.preview.taskId}?pane=preview` }, `${task} (the preview pane)`),
+      // 2026-11-21: a review waiting for a runner, under its code task in the panel, and that code task.
+      visit({ pattern: task, path: `/tasks/${followUp.reviewTaskId}` }, `${task} (an AI review waiting for a runner)`),
+      visit({ pattern: task, path: `/tasks/${followUp.codeTaskId}` }, `${task} (a code task in its AI review)`),
     ],
     visitor: visitorRoutes(world).map((route) => visit(route)),
   };
@@ -177,10 +189,17 @@ const chooseTheme = async (page: Page, theme: Theme): Promise<void> => {
 };
 
 let world: RoutesWorld;
+let followUp: FollowUp;
 
 test.beforeAll(async () => {
   const { databaseUrl } = await readStack();
   world = await seedRoutesWorld(databaseUrl, `a11y-${Date.now().toString(36)}`);
+  const { stdout } = await promisify(execFile)(
+    process.execPath,
+    [path.join(import.meta.dirname, "..", "seed-follow-up-world.ts"), JSON.stringify({ databaseUrl, projectId: world.projectId, personal: true, title: "Add a simple index.html", steady: true })],
+    { cwd: path.resolve(import.meta.dirname, "..", "..") },
+  );
+  followUp = followUpSchema.parse(JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}"));
 });
 
 test.beforeEach(async ({ page }) => {
@@ -188,7 +207,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("F-081/c2: the walk and the contrast check name every route of the panel", async () => {
-  const { member, visitor } = visits(world);
+  const { member, visitor } = visits(world, followUp);
   const named = new Set([...member, ...visitor].map((visit) => visit.pattern));
   expect((await appRoutePatterns()).filter((pattern) => !named.has(pattern)), "a route of src/app the checks don't open").toEqual([]);
 });
@@ -196,7 +215,7 @@ test("F-081/c2: the walk and the contrast check name every route of the panel", 
 /** Every route and every overlay it opens, in one theme: the walk's and the contrast check's failures, each failing the test. */
 const checkEverything = async (page: Page, theme: Theme, testInfo: TestInfo): Promise<void> => {
   const report: Report = { walk: [], contrast: [], disabled: [] };
-  const all = visits(world);
+  const all = visits(world, followUp);
   const member = all.member.filter(wanted);
   const visitor = all.visitor.filter(wanted);
   await signIn(page, world.username);

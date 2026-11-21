@@ -72,6 +72,11 @@ export type BoardCard = {
   readonly key: string | null;
   readonly title: string;
   readonly kind: DbEnum.TaskKind;
+  /**
+   * 2026-11-21 (F-147, ADR 0059 amended): the code task a follow-up (its AI review) belongs to, so
+   * a live list nests it under that task; `null` for any other task.
+   */
+  readonly reviewOf: { readonly taskId: TaskId; readonly key: string | null; readonly title: string } | null;
   readonly state: DbEnum.TaskState;
   readonly project: { readonly id: ReturnType<typeof projectIdSchema.parse>; readonly name: string };
   readonly driver: { readonly memberId: ReturnType<typeof memberIdSchema.parse>; readonly name: string } | null;
@@ -196,6 +201,10 @@ export const loadBoardColumn = async (
   ]);
   const stopperIds = [...new Set(stops.flatMap((stop) => (stop.actorId === null ? [] : [stop.actorId])))];
   const stoppers = stopperIds.length === 0 ? [] : await db.member.findMany({ where: { organizationId, id: { in: stopperIds } }, select: { id: true, user: { select: { name: true } } } });
+  // A follow-up's code task, for the live lists' nesting (2026-11-21).
+  const parentIds = [...new Set(ordered.flatMap((task) => (task.kind === "review" && task.reviewOfTaskId !== null ? [task.reviewOfTaskId] : [])))];
+  const parents = parentIds.length === 0 ? [] : await db.task.findMany({ where: { organizationId, id: { in: parentIds } }, select: { id: true, ticketKey: true, title: true } });
+  const parentOf = new Map(parents.map((parent) => [parent.id, { taskId: taskIdSchema.parse(parent.id), key: parent.ticketKey, title: parent.title }] as const));
 
   // The newest open item of each needs-you task is its status line.
   const newestItem = new Map<string, (typeof items)[number]>();
@@ -265,6 +274,7 @@ export const loadBoardColumn = async (
       key: task.ticketKey,
       title: task.title,
       kind: task.kind,
+      reviewOf: task.kind === "review" && task.reviewOfTaskId !== null ? (parentOf.get(task.reviewOfTaskId) ?? null) : null,
       state: task.state,
       project: { id: projectIdSchema.parse(task.project.id), name: task.project.name },
       driver: task.driverMemberId === null ? null : { memberId: memberIdSchema.parse(task.driverMemberId), name: nameOf.get(task.driverMemberId) ?? "" },

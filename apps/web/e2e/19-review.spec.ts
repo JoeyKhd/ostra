@@ -16,7 +16,9 @@ import { e2eRepo } from "./settings.ts";
 // blocking finding resolved), since this stack runs no agent. Everything after goes through the
 // pages: "Fix this" and "Send to agent", "Remember this", "Keep working" at the CI round limit, and
 // the AI review switch. `OSTRA_E2E_SHOTS` names a folder for the screenshots compared with the
-// targets (app-targets/m6/review-screen.webp, task-rounds.webp, review-settings.webp).
+// targets (app-targets/m6/review-screen.webp, task-rounds.webp, review-settings.webp). A review
+// waiting for a runner (`seed-follow-up-world.ts`, 2026-11-21) says what it reviews and why it
+// waits, its code task says so too, and the Live list holds it under its code task.
 
 const run = promisify(execFile);
 const shots = process.env["OSTRA_E2E_SHOTS"];
@@ -100,6 +102,49 @@ test("F-102/c1,c4, F-111/c1, F-035/c1: a reviewer reads the PR with its findings
   await open.getByRole("link", { name: "See it" }).click();
   await page.waitForURL(/\/memory\/proposals/);
   await expect(page.getByText("An unused import").first()).toBeVisible();
+  await expectNoHorizontalScroll(page);
+});
+
+const followUpSchema = z.object({ codeTaskId: z.string(), reviewTaskId: z.string(), runner: z.string() });
+
+test("F-100/c6, F-147/c8: a review waiting for a runner says what it reviews, why it waits and where it may run, and sits under its code task", async ({ page }) => {
+  test.setTimeout(120_000);
+  await signIn(page);
+  const world = await seedWorld(page);
+  // A code task that ran on the admin's laptop, now offline, and the AI review it waits on (`seed-follow-up-world.ts`).
+  const { databaseUrl } = await readStack();
+  const title = `Add a simple index.html ${Date.now().toString(36)}`;
+  const { stdout } = await run(process.execPath, [path.join(import.meta.dirname, "seed-follow-up-world.ts"), JSON.stringify({ databaseUrl, projectId: world.projectId, personal: true, title })], {
+    cwd: path.resolve(import.meta.dirname, ".."),
+  });
+  const followUp = followUpSchema.parse(JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}"));
+
+  // The review's page: the task and PR it reviews, and why it waits, with the way out.
+  await page.goto(`/tasks/${followUp.reviewTaskId}`);
+  const reviews = page.getByTestId("review-of");
+  await expect(reviews.locator('[data-link="code-task"]')).toContainText(title);
+  await expect(reviews).toContainText("PR #14");
+  const waiting = page.getByTestId("follow-up-waiting");
+  await expect(waiting).toContainText("Waiting for a runner.");
+  await expect(waiting).toContainText(`AI review runs on ${followUp.runner}, the runner its code task ran on, or on one of`);
+  await expect(waiting.locator('[data-action="connect-runner"]')).toHaveAttribute("href", "/organization/runners");
+  // The pools' place and reason aren't said again under it.
+  await expect(page.getByTestId("task-wait-line")).toHaveCount(0);
+  // The Live list: the review under its code task, with its tag, never a row of its own.
+  if ((page.viewportSize()?.width ?? 1440) >= 1280) {
+    await expect(page.locator(`[data-live-task="${followUp.codeTaskId}"]`)).toContainText(title);
+    await expect(page.locator(`[data-live-task="${followUp.reviewTaskId}"]`)).toHaveAttribute("data-follow-up", "review");
+    await expect(page.locator(`[data-live-task="${followUp.reviewTaskId}"]`)).not.toContainText(`Review: ${title}`);
+  }
+
+  // Its code task's page: the AI review's state at the end of the thread, linking back to it.
+  await waiting.getByRole("link", { name: "Open the code task" }).click();
+  await page.waitForURL(new RegExp(`/tasks/${followUp.codeTaskId}$`));
+  const line = page.getByTestId("ai-review-line");
+  await expect(line).toHaveAttribute("data-state", "waiting");
+  await expect(line).toContainText("AI review: waiting for a runner");
+  await line.getByRole("link", { name: "Open the review task" }).click();
+  await page.waitForURL(new RegExp(`/tasks/${followUp.reviewTaskId}$`));
   await expectNoHorizontalScroll(page);
 });
 

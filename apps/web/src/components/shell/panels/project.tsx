@@ -15,8 +15,8 @@ import type { RouterOutputs } from "@/lib/trpc";
 
 import type { PanelMode } from "../context-panel";
 import { HeadButton, PanelFrame } from "../context-panel";
-import { LiveFailed, LiveSkeleton, LiveTaskRow } from "../live-task-row";
-import { projectLive } from "../live-tasks";
+import { LiveFailed, LiveFamilyRows, LiveSkeleton } from "../live-task-row";
+import { liveCount, projectLive } from "../live-tasks";
 import { AmberCount, NavLink, RowCount, SectionLabel, useDensity } from "../nav-link";
 import { projectRows } from "../places";
 import type { ProjectRow } from "../places";
@@ -176,7 +176,7 @@ export const ProjectPanel = ({ projectId, mode, onNavigate }: { readonly project
       })}
 
       <SectionLabel
-        {...(tasks.data === undefined ? {} : { count: live.length })}
+        {...(tasks.data === undefined ? {} : { count: liveCount(live) })}
         end={
           <button
             type="button"
@@ -200,12 +200,12 @@ export const ProjectPanel = ({ projectId, mode, onNavigate }: { readonly project
         <p className="px-2 py-1 text-sm text-faint">{t("shell.panel.noLive", { project: name })}</p>
       ) : (
         <>
-          {live.slice(0, LIVE_SHOWN).map((task) => (
-            <LiveTaskRow key={task.taskId} task={task} onNavigate={onNavigate} />
+          {live.slice(0, LIVE_SHOWN).map((family) => (
+            <LiveFamilyRows key={family.task.taskId} family={family} onNavigate={onNavigate} />
           ))}
           {live.length > LIVE_SHOWN ? (
             <NavLink href={`/projects/${projectId}`} current={false} onNavigate={onNavigate}>
-              {t("shell.panel.more", { n: live.length - LIVE_SHOWN })}
+              {t("shell.panel.more", { n: liveCount(live.slice(LIVE_SHOWN)) })}
             </NavLink>
           ) : null}
         </>
