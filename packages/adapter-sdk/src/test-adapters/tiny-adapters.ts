@@ -1516,8 +1516,10 @@ export class TinyExecutor extends ExecutorAdapter {
           processContainment: "process-tree",
           registry: "optional",
           nodeWait: true,
+          boxBrowser: "image",
+          appReach: "loopback",
         }
-      : { isolation: "none", services: false, boxSizes: false, snapshots: "none", processContainment: "process-tree", registry: "none", nodeWait: false };
+      : { isolation: "none", services: false, boxSizes: false, snapshots: "none", processContainment: "process-tree", registry: "none", nodeWait: false, boxBrowser: "machine", appReach: "loopback" };
   }
 
   /** Milestone 5: the fleet variant offers two slots, 4 CPUs and 8 GiB; the plain one counts slots only. */

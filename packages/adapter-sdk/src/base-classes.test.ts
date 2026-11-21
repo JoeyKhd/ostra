@@ -164,6 +164,8 @@ describe("a missing operation", () => {
         processContainment: "process-tree",
         registry: "none",
         nodeWait: false,
+        boxBrowser: "machine",
+        appReach: "loopback",
       } as const;
       health(): Promise<HealthReport> {
         return ok();

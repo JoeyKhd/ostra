@@ -125,6 +125,8 @@ describe("the host executor", () => {
       processContainment: "process-tree",
       registry: "none",
       nodeWait: false,
+      boxBrowser: "machine",
+      appReach: "loopback",
     });
   });
 

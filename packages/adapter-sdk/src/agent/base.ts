@@ -1,8 +1,10 @@
 import type { Readable, Writable } from "node:stream";
 
-import { clampEffort, effortLevels as allEffortLevels, noReasoning } from "@ostra/protocol";
+import { appInstructionsBlock, clampEffort, defaultOstraToolSets, effortLevels as allEffortLevels, noReasoning } from "@ostra/protocol";
 import type {
   ApiFormat,
+  AppBlockProcess,
+  AppBlockService,
   ApprovalRequestSubject,
   ApprovalRule,
   EffortLevel,
@@ -69,6 +71,15 @@ export type LaunchMcpServer =
  * adapter that declares `memory: "mcp"` offers. The block's text is never logged.
  */
 export type LaunchMemory = { readonly block: string; readonly tools: boolean };
+
+/**
+ * Milestone 8 (ADR 0068, F-140): the task's running app, as the agent's instructions name it: each
+ * app process with its label and port, and each service with its address on this executor. The
+ * adapter writes the app's block (`appInstructionsBlock`, through `composeLaunchInstructions`)
+ * beside the profile's instructions, in the task's config folder and never in a repo. With no
+ * process, there's no block.
+ */
+export type LaunchApp = { readonly processes: readonly AppBlockProcess[]; readonly services: readonly AppBlockService[] };
 
 /** A file the agent needs before it starts, such as its per-task config. */
 export type LaunchFile = {
@@ -198,22 +209,33 @@ export type PrepareLaunchInput = {
    * agent those tools and no other of ostra's. Absent: `defaultOstraToolSets`, a code task's.
    */
   readonly tools?: readonly OstraToolSet[];
+
+  // ---- milestone 8 (ADR 0068, protocol minor 7) ----
+  /** The task's running app, for the instructions' app block (F-140). Absent, `null` or with no process: no block. */
+  readonly app?: LaunchApp | null;
 };
+
+/** Whether a launch offers the agent the app tools: its tool sets hold `app` (the spec's `tools`, F-121). */
+export const launchHasAppTools = (input: Pick<PrepareLaunchInput, "tools">): boolean => (input.tools ?? defaultOstraToolSets).includes("app");
 
 /**
  * Milestone 4: the instructions an agent starts with, in one text: the profile's, then, for a task
  * with several repos (F-098), the list of them side by side under the workspace's root, where the
- * agent works, then the memory block (F-110). `null` when there's none of them. An adapter writes it
- * where its agent reads instructions, in the task's config folder: never in a repo.
+ * agent works, then the memory block (F-110), then, milestone 8, the app's block (F-140). `null`
+ * when there's none of them. An adapter writes it where its agent reads instructions, in the task's
+ * config folder: never in a repo. `appTools` says whether the block names the app tools: by default
+ * when the launch's tool sets hold `app`; an adapter that can't reach ostra's MCP server passes false.
  */
-export const composeLaunchInstructions = (input: PrepareLaunchInput): string | null => {
+export const composeLaunchInstructions = (input: PrepareLaunchInput, options: { readonly appTools?: boolean } = {}): string | null => {
   const repos = input.repoDirs ?? [];
+  const app = input.app ?? null;
   const parts = [
     input.instructions ?? "",
     repos.length > 1
       ? `This task's workspace holds ${String(repos.length)} repos side by side, each in its own folder under the workspace's root, where you work: ${repos.join(", ")}.`
       : "",
     input.memory?.block ?? "",
+    app === null ? "" : appInstructionsBlock({ processes: app.processes, services: app.services, tools: options.appTools ?? launchHasAppTools(input) }),
   ].filter((part) => part.trim() !== "");
   return parts.length === 0 ? null : parts.join("\n\n");
 };

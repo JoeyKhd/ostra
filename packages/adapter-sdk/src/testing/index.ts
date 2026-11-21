@@ -11,6 +11,7 @@ export * from "./agent-memory-cases.ts";
 export * from "./agent-effort-cases.ts";
 // Milestone 6 (ticket 04): the whole team's cases, and their samples for the runner's tests (tickets 22 and 23).
 export * from "./agent-team-cases.ts";
+export * from "./agent-app-cases.ts";
 export * from "./fake-memory-core.ts";
 export * from "./executor-suite.ts";
 export * from "./model-provider-suite.ts";

@@ -199,6 +199,10 @@ export class KubernetesExecutor extends ExecutorAdapter {
     // Kubelets pull, so a box's snapshot comes from the organization's registry (ADR 0060).
     registry: "required",
     nodeWait: true,
+    // Milestone 8 (ADR 0068): Chromium from the base image, in the agent's container; the pod's
+    // containers share one `localhost`, so the sidecar reaches an app's port at `localhost`.
+    boxBrowser: "image",
+    appReach: "loopback",
   };
 
   readonly #kube: KubeApi;

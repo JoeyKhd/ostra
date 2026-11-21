@@ -384,6 +384,9 @@ export class HostExecutor extends ExecutorAdapter {
       // Milestone 5: a worktree takes no registry image and never waits for a node.
       registry: "none",
       nodeWait: false,
+      // Milestone 8 (ADR 0068): the machine's own browser, and the machine's loopback.
+      boxBrowser: "machine",
+      appReach: "loopback",
     };
   }
 

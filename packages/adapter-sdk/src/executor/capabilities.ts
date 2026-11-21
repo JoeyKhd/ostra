@@ -35,4 +35,17 @@ export type ExecutorCapabilities = {
    * says so through `create`'s `onWaiting` (`kubernetes`).
    */
   readonly nodeWait: boolean;
+  /**
+   * Milestone 8 (ADR 0068, F-121): where the box's browser comes from: the box's image, Chromium in
+   * the agent's container (`docker`, `kubernetes`), or the machine's own Chromium-family browser
+   * (`host`). Neither is an allowed difference (ADR 0029): the task does the same with either, and
+   * each picture names the browser that took it.
+   */
+  readonly boxBrowser: "image" | "machine";
+  /**
+   * Milestone 8 (ADR 0068, F-141, F-143): how the runner reaches an app's port: through the init's
+   * forwarder, since the agent's container has a loopback of its own (`docker`), or at `localhost`,
+   * the pod's or the machine's, over IPv6 and IPv4 (`kubernetes`, `host`; spike 08).
+   */
+  readonly appReach: "forwarder" | "loopback";
 };

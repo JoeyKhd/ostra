@@ -77,6 +77,21 @@ export type ExecutorFixture = {
    * `holdNextBox` with `nodeWait`.
    */
   readonly fleet?: FleetFixture;
+  /**
+   * Milestone 8 (ticket 03, ADR 0068): how the suite runs the running app's cases: a process with
+   * a log, the browser, and reaching an app's port. Absent: those cases are skipped (the tiny
+   * executor). Every shipped executor's fixture gives it: on its fake for `docker` and `kubernetes`,
+   * live on `host`, and live in the Linux jobs.
+   */
+  readonly app?: AppFixture;
+};
+
+/** Milestone 8: what the suite needs to run the app's cases in a box. */
+export type AppFixture = {
+  /** A Node program the box can run, from its source: its command and arguments, and the variables a process needs to start at all here. */
+  readonly node: (script: string) => { readonly command: string; readonly args: readonly string[]; readonly env: Readonly<Record<string, string>> };
+  /** Whether a path exists as the box sees it (the browser's profile folder). Default: this machine's file system, where a test's box is. */
+  readonly pathExists?: (target: string) => Promise<boolean>;
 };
 
 /** Milestone 5: what the suite reads of a box, through the executor's own inspection. */
@@ -232,6 +247,8 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
       processContainment: "string",
       registry: "string",
       nodeWait: "boolean",
+      boxBrowser: "string",
+      appReach: "string",
     });
 
     /** A box, prepared. With `sameTaskAs`, a fresh box of that box's task, as a reopen gets. */

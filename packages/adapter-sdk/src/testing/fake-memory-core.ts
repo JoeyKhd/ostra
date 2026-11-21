@@ -36,8 +36,26 @@ import {
   proposalIdSchema,
   runnerLimits,
   runnerPaths,
+  appToolNames,
+  attachmentResultText,
+  RECORD_APP_TOOL,
+  recordAppDescription,
+  recordAppInputSchema,
+  SHOW_PREVIEW_TOOL,
+  showPreviewDescription,
+  showPreviewInputSchema,
+  showPreviewResultText,
+  START_APP_TOOL,
+  startAppDescription,
+  startAppInputSchema,
+  startAppResultText,
+  TAKE_SCREENSHOT_TOOL,
+  takeScreenshotDescription,
+  takeScreenshotInputSchema,
+  viewportPresetSizes,
 } from "@ostra/protocol";
 import type {
+  TakeScreenshotInput,
   DraftRefusal,
   DraftRequestBody,
   DraftResponse,
@@ -123,6 +141,9 @@ export type FakeMemoryCore = {
   readonly environmentProposals: EnvironmentProposal[];
   /** How many requests each new endpoint answered, refused ones included. */
   readonly teamCalls: { draft: number; review: number; environment: number };
+  // ---- milestone 8 (ADR 0068) ----
+  /** Each `take_screenshot` the agent made, its input as the tool parsed it. */
+  readonly screenshots: TakeScreenshotInput[];
   readonly close: () => Promise<void>;
 };
 
@@ -177,13 +198,27 @@ const teamTools = {
   },
 } as const;
 
-/** The tools a task's tool sets list, memory's and milestone 6's; `pr-text` is the sidecar's own (ticket 20), not this stand-in's. */
+const toolJsonSchema = (schema: z.ZodType): unknown => z.toJSONSchema(schema, { io: "input", unrepresentable: "any" });
+
+/** Milestone 8 (ADR 0068): the four app tools, as `tools/list` offers them, by the protocol's descriptions and schemas. */
+const appTools = [
+  { name: START_APP_TOOL, description: startAppDescription, inputSchema: toolJsonSchema(startAppInputSchema) },
+  { name: SHOW_PREVIEW_TOOL, description: showPreviewDescription, inputSchema: toolJsonSchema(showPreviewInputSchema) },
+  { name: TAKE_SCREENSHOT_TOOL, description: takeScreenshotDescription, inputSchema: toolJsonSchema(takeScreenshotInputSchema) },
+  { name: RECORD_APP_TOOL, description: recordAppDescription, inputSchema: toolJsonSchema(recordAppInputSchema) },
+] as const;
+
+/** The tools a task's tool sets list, memory's, milestone 6's and milestone 8's; `pr-text` is the sidecar's own (ticket 20), not this stand-in's. */
 export const fakeCoreToolNames = (tools: readonly OstraToolSet[]): readonly string[] => [
   ...(tools.includes("memory") ? memoryToolNames : []),
   ...(tools.includes("draft") ? [SUBMIT_DRAFT_TOOL] : []),
   ...(tools.includes("review") ? [SUBMIT_REVIEW_TOOL] : []),
   ...(tools.includes("environment") ? [PROPOSE_ENVIRONMENT_TOOL] : []),
+  ...(tools.includes("app") ? appToolNames : []),
 ];
+
+/** The attachment ID the stand-in gives the first screenshot, `att-1`, then `att-2` and on: the protocol's words carry it back. */
+export const fakeAttachmentId = (n: number): string => `att-${String(n)}`;
 
 const jsonRpcSchema = z.looseObject({
   jsonrpc: z.literal("2.0"),
@@ -238,6 +273,7 @@ export const startFakeMemoryCore = async (options: FakeMemoryCoreOptions): Promi
   const teamCalls = { draft: 0, review: 0, environment: 0 };
   const calls = { search: 0, read: 0, propose: 0 };
   const toolCalls: string[] = [];
+  const screenshots: TakeScreenshotInput[] = [];
   const proposals: MemoryProposalInput[] = [];
   let base = "";
 
@@ -348,6 +384,38 @@ export const startFakeMemoryCore = async (options: FakeMemoryCoreOptions): Promi
   };
 
   /**
+   * Milestone 8: the sidecar's side of the app tools, as a box with no app would answer them: the
+   * input parsed by the tool's schema, a screenshot recorded with the attachment's ID in the
+   * protocol's words. The real tools are the runner's (tickets 12 and 13).
+   */
+  const callAppTool = (name: string, args: Readonly<Record<string, unknown>>): { readonly text: string; readonly saved: boolean } | undefined => {
+    switch (name) {
+      case START_APP_TOOL:
+        return startAppInputSchema.safeParse(args).success ? { text: startAppResultText({ processes: [] }), saved: true } : { text: "invalid input", saved: false };
+      case SHOW_PREVIEW_TOOL: {
+        const input = showPreviewInputSchema.safeParse(args);
+        return input.success ? { text: showPreviewResultText(input.data), saved: true } : { text: "invalid input", saved: false };
+      }
+      case TAKE_SCREENSHOT_TOOL: {
+        const input = takeScreenshotInputSchema.safeParse(args);
+        if (!input.success) return { text: "invalid input", saved: false };
+        screenshots.push(input.data);
+        const size = input.data.size ?? viewportPresetSizes[input.data.width ?? "desktop"];
+        return {
+          text: attachmentResultText({ attachmentId: fakeAttachmentId(screenshots.length), kind: "screenshot", width: size.width, height: size.height, durationMs: null, frameCount: null }),
+          saved: true,
+        };
+      }
+      case RECORD_APP_TOOL:
+        return recordAppInputSchema.safeParse(args).success
+          ? { text: attachmentResultText({ attachmentId: fakeAttachmentId(screenshots.length + 1), kind: "recording", width: 1440, height: 900, durationMs: 1000, frameCount: 10 }), saved: true }
+          : { text: "invalid input", saved: false };
+      default:
+        return undefined;
+    }
+  };
+
+  /**
    * Milestone 6: the sidecar's side of `submit_draft`, `submit_review` and `propose_environment`:
    * the agent's input parsed by the tool's schema, the repos named by ID, core's answer in the
    * protocol's words. A text result, as MCP's `content` carries it; `undefined` for another tool.
@@ -438,6 +506,7 @@ export const startFakeMemoryCore = async (options: FakeMemoryCoreOptions): Promi
             ...(toolSets.includes("draft") ? [teamTools.draft] : []),
             ...(toolSets.includes("review") ? [teamTools.review] : []),
             ...(toolSets.includes("environment") ? [teamTools.environment] : []),
+            ...(toolSets.includes("app") ? appTools : []),
           ],
         });
         return;
@@ -448,7 +517,7 @@ export const startFakeMemoryCore = async (options: FakeMemoryCoreOptions): Promi
           send(response, 200, { jsonrpc: "2.0", id, error: { code: -32602, message: "no such tool" } });
           return;
         }
-        const team = call.success ? await callTeamTool(call.data.name, call.data.arguments ?? {}) : undefined;
+        const team = call.success ? (callAppTool(call.data.name, call.data.arguments ?? {}) ?? (await callTeamTool(call.data.name, call.data.arguments ?? {}))) : undefined;
         if (call.success && team !== undefined) {
           toolCalls.push(call.data.name);
           reply({ content: [{ type: "text", text: team.text }], isError: !team.saved });
@@ -501,6 +570,7 @@ export const startFakeMemoryCore = async (options: FakeMemoryCoreOptions): Promi
     reviews,
     environmentProposals,
     teamCalls,
+    screenshots,
     close: () =>
       new Promise<void>((resolve) => {
         server.closeAllConnections();

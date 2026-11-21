@@ -110,6 +110,10 @@ export class DockerExecutor extends ExecutorAdapter {
     // runner builds and keeps its own snapshot (milestone 3). A Docker host never waits for a node.
     registry: "optional",
     nodeWait: false,
+    // Milestone 8 (ADR 0068): Chromium from the base image, in the agent's container, which has its
+    // own loopback: the init's forwarder reaches an app's port.
+    boxBrowser: "image",
+    appReach: "forwarder",
   };
 
   readonly #inner: HostExecutor;

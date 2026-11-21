@@ -18,11 +18,15 @@ import type {
   TaskSpec,
 } from "@ostra/protocol";
 
+import { portRefusal } from "@ostra/protocol";
+
 import { createPlumbing, defaultAdapterContext } from "../common/context.ts";
 import type { AdapterContext, Plumbing } from "../common/context.ts";
 import { adapterError } from "../common/result.ts";
 import type { AdapterResult, HealthReport } from "../common/result.ts";
 import type { AgentCommand, AgentLaunch } from "../agent/base.ts";
+import { portRefusalWords } from "./app.ts";
+import type { AppPortReach, AppProcessHandle, BrowserStart, ReachAppPortInput, StartAppProcessInput, StopAppProcessInput } from "./app.ts";
 import type { ExecutorCapabilities } from "./capabilities.ts";
 import type { CheckRunResult, RunChecksInput } from "./checks.ts";
 import type { StagedCommitPaths } from "./commit-paths.ts";
@@ -516,5 +520,63 @@ export abstract class ExecutorAdapter {
   prepareCache(input: PrepareCacheInput): Promise<AdapterResult<PreparedCache>> {
     this.plumbing.logger.debug("prepareCache is not supported", { projectId: input.projectId });
     return Promise.resolve(adapterError("unsupported", `${this.name} keeps no host cache`));
+  }
+
+  // ---------- milestone 8 (ADR 0068): the running app; additive, so each answers `unsupported` until an executor has it ----------
+
+  /**
+   * Starts one of the app's processes in a `ready` or `idle` box (F-140): from its argument array
+   * in its folder, with exactly its environment, as the agent's user and in the task's unit, its
+   * output to its log (`AppProcessHandle.logPath`). Its ready check is the runner's. The processes
+   * stop with the box (`stop`, `release`). `conflict` when one of that name is running already.
+   */
+  startAppProcess(input: StartAppProcessInput): Promise<AdapterResult<AppProcessHandle>> {
+    this.plumbing.logger.debug("startAppProcess is not supported", { taskId: input.box.taskId });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't run the app's processes yet`));
+  }
+
+  /** Stops an app process and its tree: a polite signal, then a kill after `graceMs`. Answers its exit; `not-found` when none of that name runs. */
+  stopAppProcess(input: StopAppProcessInput): Promise<AdapterResult<ProcessExit>> {
+    this.plumbing.logger.debug("stopAppProcess is not supported", { taskId: input.box.taskId });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't run the app's processes yet`));
+  }
+
+  /**
+   * Starts the box's browser (F-121, F-141): beside the app, so its `localhost` is the app's, with a
+   * fresh profile in a temporary folder, its DevTools pipe handed back as a channel of its own. A box
+   * without one answers `{ available: false, reason }`, never an error. The browser and its profile
+   * go with the box (`stop`, `release`); a box may start more than one.
+   */
+  startBrowser(box: BoxRef): Promise<AdapterResult<BrowserStart>> {
+    this.plumbing.logger.debug("startBrowser is not supported", { taskId: box.taskId });
+    return Promise.resolve(adapterError("unsupported", `${this.name} has no browser yet`));
+  }
+
+  /**
+   * Where the runner dials an app's port (F-141, F-143, ADR 0068): a port below 1024 or one of the
+   * box's own (`reserved`) is refused first, on every executor alike (`invalid-input`, in the words
+   * of `portRefusalWords`). Then `loopback` answers `localhost`, which `dialApp` dials over IPv6
+   * and IPv4 (spike 08), and `forwarder` opens one (`openForward`).
+   */
+  reachAppPort(input: ReachAppPortInput): Promise<AdapterResult<AppPortReach>> {
+    const refusal = portRefusal(input.port, input.reserved);
+    if (refusal !== null) {
+      this.plumbing.logger.info("a port refused", { taskId: input.box.taskId, port: input.port, reason: refusal.reason });
+      return Promise.resolve(adapterError("invalid-input", portRefusalWords(input.port, refusal)));
+    }
+    switch (this.capabilities.appReach) {
+      case "loopback":
+        return Promise.resolve({ ok: true, value: { host: "localhost", port: input.port, close: () => Promise.resolve() } });
+      case "forwarder":
+        return this.openForward(input.box, input.port);
+      default:
+        return this.capabilities.appReach satisfies never;
+    }
+  }
+
+  /** `forwarder` only: a forwarder from where the runner can dial to the app's `localhost:<port>` in the box, IPv6 and IPv4. The port is already checked. */
+  protected openForward(box: BoxRef, port: number): Promise<AdapterResult<AppPortReach>> {
+    this.plumbing.logger.debug("openForward is not supported", { taskId: box.taskId, port });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't forward a port yet`));
   }
 }
