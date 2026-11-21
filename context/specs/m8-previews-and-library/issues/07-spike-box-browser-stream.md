@@ -46,7 +46,7 @@ Record each, with the machine and the browser's version:
 
 ## Comments
 
-- 2026-11-21, runner: the spike is commit `25c480d0`, and the finding is this commit. It passes on this machine, headless Edge 157 on Windows (`research/spike-box-browser-stream.md`, section 2):
+- 2026-11-21, runner: the spike is commit `8f6e7602`, and the finding is this commit. It passes on this machine, headless Edge 157 on Windows (`research/spike-box-browser-stream.md`, section 2):
   - 15 fps at 1280×800 while typing at 15 keys a second (8.2 at the fallback's cap of 8);
   - a click back in 33 ms at p50 and 56 ms at p95, through core and the web hop;
   - keys typed at 15 a second back in 53 ms at p95;
