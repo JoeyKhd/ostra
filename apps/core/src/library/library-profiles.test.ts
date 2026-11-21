@@ -193,10 +193,10 @@ const fetchSpec = async (taskId: TaskId, epoch: number): Promise<{ readonly spec
   return { spec: taskSpecSchema.parse(JSON.parse(text)), text };
 };
 
-const fetchCredentials = async (taskId: TaskId, epoch: number) => {
+const fetchCredentials = async (taskId: TaskId, epoch: number, minor: number = PROTOCOL_MINOR) => {
   const response = await fetch(`${harness.url}${runnerPaths.taskCredentials(taskId)}`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${await bearer()}`, [runnerHeaders.minor]: String(PROTOCOL_MINOR) },
+    headers: { "content-type": "application/json", authorization: `Bearer ${await bearer()}`, [runnerHeaders.minor]: String(minor) },
     body: JSON.stringify({ taskId, leaseEpoch: epoch }),
   });
   if (response.status !== 200) throw new Error(`the credentials answered ${String(response.status)}`);
@@ -471,7 +471,12 @@ describe("delivery (F-145, ticket 28)", () => {
     expect(text).not.toContain(TOKEN);
     expect(text).not.toContain("mcp.example.test");
     const credentials = await fetchCredentials(taskId, 1);
-    expect(credentials.mcpServers).toEqual([{ name: "acme-mcp", url: "https://mcp.example.test/mcp", headers: { "X-Acme-Client": "ostra-library", Authorization: SECRET_HEADER } }]);
+    // The entry's fixed header is named plain, so the runner searches the agent's environment for the secret one only.
+    expect(credentials.mcpServers).toEqual([
+      { name: "acme-mcp", url: "https://mcp.example.test/mcp", headers: { "X-Acme-Client": "ostra-library", Authorization: SECRET_HEADER }, plainHeaders: ["X-Acme-Client"] },
+    ]);
+    // A minor-6 runner is sent every header without the names, and searches for each as a secret, as before.
+    expect((await fetchCredentials(taskId, 1, 6)).mcpServers).toEqual([{ name: "acme-mcp", url: "https://mcp.example.test/mcp", headers: { "X-Acme-Client": "ostra-library", Authorization: SECRET_HEADER } }]);
     // An admin marks it read-only: the next spec says so.
     expect(await setReadOnly(deps, admin(), { itemId: acme, readOnly: true })).toEqual({ ok: true, readOnly: true });
     expect((await firstSession(careful)).spec.agent.mcpServers).toEqual([{ name: "acme-mcp", transport: "http", proxyPath: "/mcp/acme-mcp", readOnly: true }]);
@@ -588,7 +593,9 @@ describe("updates (F-145, ticket 28)", () => {
     expect(await acceptUpdate(deps, admin(), { versionId: newest.versionId })).toEqual({ ok: true, currentVersionId: newest.versionId });
     // The next session's credentials still carry the header, from the reference the new version kept.
     const { taskId } = await firstSession(careful);
-    expect((await fetchCredentials(taskId, 1)).mcpServers).toEqual([{ name: "acme-mcp", url: "https://mcp.example.test/mcp", headers: { "X-Acme-Client": "ostra-library", Authorization: SECRET_HEADER } }]);
+    expect((await fetchCredentials(taskId, 1)).mcpServers).toEqual([
+      { name: "acme-mcp", url: "https://mcp.example.test/mcp", headers: { "X-Acme-Client": "ostra-library", Authorization: SECRET_HEADER }, plainHeaders: ["X-Acme-Client"] },
+    ]);
   });
 
   it("F-145/c10: a server version that asks for an input the item lacks is held, and can't be accepted until it's installed again", async () => {

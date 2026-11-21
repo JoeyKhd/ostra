@@ -44,6 +44,7 @@ import {
 } from "../mcp/tools.ts";
 import type { AppToolCall, AppToolContext } from "../mcp/tools.ts";
 import { appLogPath, appPathSchema, previewKeyFor, previewKeySchema } from "../task/app.ts";
+import { encodeTaskCredentialsForMinor, secretHeaderValues, taskCredentialsSchema } from "../task/credentials.ts";
 import { decodeFrameReel, encodeFrameReel, frameReelMaxFrames } from "../task/frame-reel.ts";
 import {
   appProcessesSchema,
@@ -75,6 +76,7 @@ import {
   previewMessageFixtures,
   recordStepFixtures,
   reservedPortsFixture,
+  taskCredentialsMinor2Fixture,
   taskSpecAppFixture,
   taskSpecMinor3Fixture,
   taskSpecOnboardingFixture,
@@ -349,6 +351,40 @@ describe("the task spec at minor 7", () => {
     expect(taskSpecSchema.safeParse({ ...taskSpecAppFixture, tools: ["app", "app"] }).success).toBe(false);
     expect(appPathSchema.safeParse("/a b").success).toBe(false);
     expect(appPathSchema.safeParse("/settings?tab=2#x").success).toBe(true);
+  });
+});
+
+describe("the credentials at minor 7", () => {
+  const library = taskCredentialsSchema.parse({
+    ...taskCredentialsMinor2Fixture,
+    mcpServers: [
+      ...(taskCredentialsMinor2Fixture.mcpServers ?? []),
+      { name: "acme-mcp", url: "https://mcp.example.com/mcp", headers: { "X-Acme-Version": "2025-06-18", Authorization: "Bearer fixture-acme-secret" }, plainHeaders: ["X-Acme-Version"] },
+    ],
+  });
+
+  it("F-145/c12: a server's plain headers round-trip by name, only its own and once; every other header is a secret, and a minor-6 runner is sent each header without the names", () => {
+    expect(taskCredentialsSchema.parse(roundTrip(library))).toEqual(library);
+    const [own, acme] = library.mcpServers ?? [];
+    if (own === undefined || acme === undefined) throw new Error("two servers");
+    expect(secretHeaderValues(acme)).toEqual(["Bearer fixture-acme-secret"]);
+    // No names: every header is a secret, as a profile's own server's are.
+    expect(secretHeaderValues(own)).toEqual(["Bearer fixture-mcp-secret"]);
+    const withPlain = (plainHeaders: readonly string[]) => ({ ...library, mcpServers: [{ ...acme, plainHeaders }] });
+    expect(taskCredentialsSchema.safeParse(withPlain(["X-Other"])).success).toBe(false);
+    expect(taskCredentialsSchema.safeParse(withPlain(["X-Acme-Version", "X-Acme-Version"])).success).toBe(false);
+    expect(taskCredentialsSchema.safeParse(withPlain(["x-acme-version"])).success).toBe(false);
+    expect(taskCredentialsSchema.safeParse({ ...library, mcpServers: [{ ...acme, secret: ["Authorization"] }] }).success).toBe(false);
+    for (const minor of [6, 2]) {
+      const down = encodeTaskCredentialsForMinor(library, minor);
+      expect(down.mcpServers?.map((server) => Object.keys(server).sort())).toEqual([
+        ["headers", "name", "url"],
+        ["headers", "name", "url"],
+      ]);
+      expect(down.mcpServers?.[1]?.headers).toEqual(acme.headers);
+    }
+    expect(encodeTaskCredentialsForMinor(library, 7)).toBe(library);
+    expect(encodeTaskCredentialsForMinor(taskCredentialsMinor2Fixture, 6)).toEqual(taskCredentialsMinor2Fixture);
   });
 });
 

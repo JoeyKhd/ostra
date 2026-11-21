@@ -50,10 +50,12 @@ export const PROTOCOL_MAJOR = 1;
  * processes, the after-turn screenshots, a service's preview and the `app` tools in the spec; the
  * dispatch's purpose, `app.start`, `app.stop`, `screenshot.take` and the `preview.*` commands;
  * `app.process`, `app.browser`, `attachment.added` and `preview.list`; the preview connection
- * (`preview.ts`); and what a runner can preview in `hello` and `status`. A minor-6 peer still works
- * inside the window: it's never sent any of them, never offered a task with app processes or the
- * app tools (`isTaskOfferable`), and no view of its tasks opens (`isPreviewable`), so the pane says
- * the runner needs upgrading. A minor-5 peer is outside the window.
+ * (`preview.ts`); what a runner can preview in `hello` and `status`; and the credentials' names of a
+ * library MCP server's plain headers (`plainHeaders`, F-145, 2026-11-21), so the environment check
+ * searches for the secret ones only. A minor-6 peer still works inside the window: it's never sent
+ * any of them (so it searches for every header, as before), never offered a task with app processes
+ * or the app tools (`isTaskOfferable`), and no view of its tasks opens (`isPreviewable`), so the pane
+ * says the runner needs upgrading. A minor-5 peer is outside the window.
  */
 export const PROTOCOL_MINOR = 7;
 

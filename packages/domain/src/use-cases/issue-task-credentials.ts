@@ -193,7 +193,7 @@ export const issueTaskCredentials: IssueTaskCredentials = async (deps, input) =>
   // The profile's HTTP MCP servers, for the sidecar alone. A column that doesn't parse gives none:
   // the spec's builder refuses such a profile, so the agent never sees a server without its headers.
   const stored = storedMcpServersSchema.safeParse(profile?.mcpServers ?? []);
-  const mcpServers: { name: string; url: string; headers: Record<string, string> }[] = [];
+  const mcpServers: { name: string; url: string; headers: Record<string, string>; plainHeaders?: string[] }[] = [];
   for (const server of stored.success ? stored.data : []) {
     if (server.transport !== "http") {
       continue;
@@ -217,7 +217,10 @@ export const issueTaskCredentials: IssueTaskCredentials = async (deps, input) =>
   }
   // Milestone 8 (F-145, ADR 0069, ticket 28): the profile's library servers, attached or on every
   // profile, at their current versions: the address with its variables put in and the headers,
-  // the secret ones read from the secret store, for the sidecar alone, as the spec names them.
+  // the secret ones read from the secret store, for the sidecar alone, as the spec names them. A
+  // profile's own server's headers are all secrets; a library server's plain ones (a fixed header,
+  // a plain input) are named, so the runner's environment check searches only for the secret ones
+  // (minor 7; a runner below it is sent none, and searches for every header).
   if (profile !== null) {
     const library = await profileLibraryOf(tx, { organizationId, profileId: agentProfileIdSchema.parse(profile.id) });
     for (const server of library.servers) {
@@ -225,7 +228,12 @@ export const issueTaskCredentials: IssueTaskCredentials = async (deps, input) =>
       if (!request.ok) {
         return failed(request.error === "secret-unreadable" ? "a library MCP server's input couldn't be read from the secret store" : "a library MCP server's address or header can't be sent");
       }
-      mcpServers.push({ name: server.name, url: request.url, headers: { ...request.headers } });
+      mcpServers.push({
+        name: server.name,
+        url: request.url,
+        headers: { ...request.headers },
+        ...(request.plainHeaders.length === 0 ? {} : { plainHeaders: [...request.plainHeaders] }),
+      });
     }
   }
 

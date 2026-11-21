@@ -3,7 +3,7 @@ import path from "node:path";
 import { createScenarioBrain, stubMarker } from "@ostra/adapter-sdk/testing";
 import type { Scenario } from "@ostra/adapter-sdk/testing";
 import { blobIdSchema, repoIdSchema, taskCredentialsSchema } from "@ostra/protocol";
-import type { TaskSpec, TaskSpecRepo } from "@ostra/protocol";
+import type { TaskCredentials, TaskSpec, TaskSpecRepo } from "@ostra/protocol";
 import { taskSpecFixture } from "@ostra/protocol/testing";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -23,6 +23,8 @@ import { defaultAgents } from "./agents.ts";
 // the repo-skills rule (ADR 0049, amended 2026-11-21): the profile's, the library's included, wins.
 
 const TOKEN = "library-mcp-token-3c4d5e6f7a8b";
+/** A registry entry's fixed header: no secret, and long enough to be searched for if it were one. */
+const PLAIN_HEADER = "acme-client-v1";
 const LF = String.fromCharCode(10);
 
 const scenarios: Readonly<Record<string, Scenario>> = {
@@ -116,6 +118,33 @@ const repo = (): TaskSpecRepo => {
   return { ...base, repoId: repoIdSchema.parse("0196f1a0-0000-7000-8000-0000000000af"), fullName: "ostra-test/library-skills", cloneUrl: "https://github.com/ostra-test/library-skills.git", checkoutDir: "library-skills" };
 };
 
+/** The credentials core sends for the library server: its fixed header named plain, and the secret one from the store. */
+const acmeCredentials = (base: TaskCredentials): TaskCredentials =>
+  taskCredentialsSchema.parse({
+    ...base,
+    mcpServers: [{ name: "acme-mcp", url: mcpServer.urlFor("acme-mcp"), headers: { "X-Acme-Client": PLAIN_HEADER, Authorization: `Bearer ${TOKEN}` }, plainHeaders: ["X-Acme-Client"] }],
+  });
+
+/** A task whose profile has the library server, with these variables in the repo's environment (each one set for the agent too). */
+const serverTask = (h: Harness, variables: TaskSpec["environment"]["repos"][number]["variables"]): { readonly spec: TaskSpec } => {
+  const made = h.taskFor(`${stubMarker("mcp-call", "acme-mcp_lookup")} Look it up.`, {
+    agent: {
+      ...taskSpecFixture.agent,
+      adapter: "opencode",
+      apiFormat: "anthropic-messages",
+      endpointModelId: "stub-model",
+      mcpServers: [{ name: "acme-mcp", transport: "http", proxyPath: "/mcp/acme-mcp", readOnly: false }],
+    },
+    environment: {
+      ...taskSpecFixture.environment,
+      setupScript: null,
+      repos: taskSpecFixture.environment.repos.map((repo) => ({ ...repo, variables: [...repo.variables, ...variables] })),
+    },
+  });
+  h.server.tasks.set(made.spec.taskId, { spec: made.spec, credentials: acmeCredentials(made.credentials) });
+  return made;
+};
+
 const configSchema = z.looseObject({ mcp: z.looseObject({ servers: z.record(z.string(), z.looseObject({ type: z.string(), url: z.string(), oauth: z.unknown() })) }) });
 
 describe("library items on OpenCode, with the stub models (F-145)", () => {
@@ -132,11 +161,8 @@ describe("library items on OpenCode, with the stub models (F-145)", () => {
       },
       environment: { ...taskSpecFixture.environment, setupScript: null },
     });
-    // As core's credentials carry it: the registry entry's fixed header and the secret one from the store.
-    const credentials = taskCredentialsSchema.parse({
-      ...made.credentials,
-      mcpServers: [{ name: "acme-mcp", url: mcpServer.urlFor("acme-mcp"), headers: { "X-Acme-Client": "acme-client-v1", Authorization: `Bearer ${TOKEN}` } }],
-    });
+    // As core's credentials carry it: the registry entry's fixed header, named plain, and the secret one from the store.
+    const credentials = acmeCredentials(made.credentials);
     h.server.tasks.set(made.spec.taskId, { spec: made.spec, credentials });
     const before = mcpServer.requests.length;
     h.dispatch(made.spec);
@@ -159,6 +185,31 @@ describe("library items on OpenCode, with the stub models (F-145)", () => {
     expect(JSON.stringify(launch)).not.toContain(TOKEN);
     const agentDir = path.dirname(path.dirname(path.dirname(path.dirname(config.path))));
     expect((await filesUnder(agentDir)).filter((entry) => entry.text.includes(TOKEN)).map((entry) => entry.file)).toEqual([]);
+    expect(JSON.stringify([h.eventsOf(made.spec), h.logs])).not.toContain(TOKEN);
+  }, 300_000);
+
+  it("F-145/c12: a library server's plain header whose value also sits in the agent's environment doesn't stop the session, and the call through the proxy still carries the secret one", async () => {
+    const h = await start();
+    const made = serverTask(h, [{ name: "ACME_CLIENT", value: PLAIN_HEADER, availableDuringSetup: false }]);
+    h.dispatch(made.spec);
+    await h.waitForKind(made.spec, "session.saved", 1, 150_000);
+    expect(h.kinds(made.spec)).not.toContain("session.crashed");
+    expect(h.launches.at(-1)?.env["ACME_CLIENT"]).toBe(PLAIN_HEADER);
+    expect(messages(h, made.spec)).toContain("acme-mcp_lookup answered: acme-mcp ran lookup with its token");
+    expect(JSON.stringify([h.launches, h.eventsOf(made.spec), h.logs])).not.toContain(TOKEN);
+  }, 300_000);
+
+  it("F-145/c12: a library server's secret header whose value would reach the agent's environment refuses the session before the agent starts, naming the variable and never the value", async () => {
+    const h = await start();
+    const made = serverTask(h, [
+      { name: "ACME_CLIENT", value: PLAIN_HEADER, availableDuringSetup: false },
+      { name: "ACME_AUTH", value: `Bearer ${TOKEN}`, availableDuringSetup: false },
+    ]);
+    h.dispatch(made.spec);
+    await h.waitForKind(made.spec, "session.crashed", 1, 150_000);
+    expect(h.ofKind(made.spec, "session.crashed")[0]?.error).toContain("the agent's environment held an MCP server's header (in ACME_AUTH): refused to start it");
+    expect(h.launches).toHaveLength(0);
+    expect(h.kinds(made.spec)).not.toContain("turn.started");
     expect(JSON.stringify([h.eventsOf(made.spec), h.logs])).not.toContain(TOKEN);
   }, 300_000);
 

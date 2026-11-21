@@ -34,7 +34,17 @@ const valueOf = async (secretStore: SecretStoreAdapter, organizationId: Organiza
 };
 
 export type ServerRequest =
-  | { readonly ok: true; readonly url: string; readonly headers: Readonly<Record<string, string>> }
+  | {
+      readonly ok: true;
+      readonly url: string;
+      readonly headers: Readonly<Record<string, string>>;
+      /**
+       * The sent headers that hold no secret, by name: the entry's fixed ones and the plain inputs.
+       * The credentials name them (`plainHeaders`), so the runner searches the agent's environment
+       * for the secret ones only (ADR 0030).
+       */
+      readonly plainHeaders: readonly string[];
+    }
   /** `secret-unreadable`: the secret store didn't give an input back; `bad-address`: not an https address once filled; `bad-header`: a value a header can't hold. */
   | { readonly ok: false; readonly error: "secret-unreadable" | "bad-address" | "bad-header" };
 
@@ -54,6 +64,9 @@ export const serverRequestOf = async (
     variables.set(name, value);
   }
   const headers: Record<string, string> = {};
+  // Which headers hold a secret: an input kept in the secret store (the entry marks it secret, or the
+  // admin did). A fixed header is never one; an input of the same name decides for itself.
+  const secret = new Set<string>();
   for (const [name, value] of Object.entries(entry.fixedHeaders)) {
     headers[name] = value.trim();
   }
@@ -63,6 +76,9 @@ export const serverRequestOf = async (
       return { ok: false, error: "secret-unreadable" };
     }
     headers[name] = value.trim();
+    if (stored.kind === "secret") {
+      secret.add(name);
+    }
   }
   // An empty value isn't sent at all; any other must be one a header can hold.
   const sent = Object.fromEntries(Object.entries(headers).filter(([, value]) => value !== ""));
@@ -70,5 +86,6 @@ export const serverRequestOf = async (
     return { ok: false, error: "bad-header" };
   }
   const url = remoteUrlWith(entry.remoteUrl, variables);
-  return url === null ? { ok: false, error: "bad-address" } : { ok: true, url, headers: sent };
+  const plainHeaders = Object.keys(sent).filter((name) => !secret.has(name));
+  return url === null ? { ok: false, error: "bad-address" } : { ok: true, url, headers: sent, plainHeaders };
 };

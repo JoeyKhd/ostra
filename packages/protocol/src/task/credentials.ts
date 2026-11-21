@@ -67,17 +67,40 @@ const taskCredentialsShapeV1 = {
   mcpToken: secretValue,
 };
 
+const headerNameSchema = z.string().min(1).max(256);
+
 /**
- * An HTTP MCP server's address and secret headers (minor 2, ADR 0049, Q170), for the sidecar's MCP
- * proxy, which forwards the agent's calls on the spec's `proxyPath` and adds the headers. Never
- * logged; the agent never sees them.
+ * An HTTP MCP server's address and headers (minor 2, ADR 0049, Q170), for the sidecar's MCP proxy,
+ * which forwards the agent's calls on the spec's `proxyPath` and adds the headers. Never logged;
+ * the agent never sees them.
  */
-export const mcpServerCredentialsSchema = z.strictObject({
-  name: agentItemNameSchema,
-  url: z.url({ protocol: /^https?$/ }),
-  headers: z.record(z.string().min(1).max(256), mcpHeaderValueSchema),
-});
+export const mcpServerCredentialsSchema = z
+  .strictObject({
+    name: agentItemNameSchema,
+    url: z.url({ protocol: /^https?$/ }),
+    /** Every header the proxy adds. Each is a secret unless `plainHeaders` names it. */
+    headers: z.record(headerNameSchema, mcpHeaderValueSchema),
+    /**
+     * Minor 7 (F-145, ADR 0069): the headers among `headers` that hold no secret, by name: a
+     * library server's fixed header, or an input its registry entry doesn't mark secret and the
+     * admin gave as plain text. The proxy sends them like the others; the runner's environment
+     * check doesn't search for their values (ADR 0030), so a plain value that also sits in the
+     * agent's environment doesn't stop the session. Missing means every header is a secret: a
+     * profile's own server, and every server a runner below minor 7 is sent.
+     */
+    plainHeaders: z.array(headerNameSchema).max(100).optional(),
+  })
+  .refine(
+    (server) => (server.plainHeaders ?? []).every((name, index, names) => Object.hasOwn(server.headers, name) && names.indexOf(name) === index),
+    "each plain header is one of the server's headers, named once",
+  );
 export type McpServerCredentials = z.infer<typeof mcpServerCredentialsSchema>;
+
+/** The values of the server's secret headers: every header `plainHeaders` doesn't name. */
+export const secretHeaderValues = (server: McpServerCredentials): readonly string[] => {
+  const plain = new Set(server.plainHeaders ?? []);
+  return Object.entries(server.headers).flatMap(([name, value]) => (plain.has(name) ? [] : [value]));
+};
 
 /**
  * A service's secret variables (minor 2, F-094, ADR 0038): the spec names the service and carries
@@ -96,11 +119,11 @@ export const taskCredentialsSchemaV1 = z
   .describe(NEVER_LOGGED)
   .brand<"TaskCredentials">();
 
-/** The credentials at the current minor (2). */
+/** The credentials at the current minor (7): minor 2's, with a server's `plainHeaders` from minor 7. */
 export const taskCredentialsSchema = z
   .strictObject({
     ...taskCredentialsShapeV1,
-    /** Minor 2: the profile's HTTP MCP servers. Never logged. */
+    /** Minor 2: the profile's HTTP MCP servers; minor 7 adds their `plainHeaders`. Never logged. */
     mcpServers: z.array(mcpServerCredentialsSchema).max(runnerLimits.mcpServersMax).optional(),
     /** Minor 2: the environment's services' secret variables, by service. Never logged. */
     services: z.array(serviceSecretsSchema).max(runnerLimits.servicesMax).optional(),
@@ -109,10 +132,25 @@ export const taskCredentialsSchema = z
   .brand<"TaskCredentials">();
 export type TaskCredentials = z.infer<typeof taskCredentialsSchema>;
 
-/** The credentials as a runner at `minor` reads them: below minor 2, without the MCP servers and the services' secrets. */
+/**
+ * The credentials as a runner at `minor` reads them: below minor 7, each server without its
+ * `plainHeaders` (every header still sent, and searched for as a secret, as before); below minor 2,
+ * without the MCP servers and the services' secrets.
+ */
 export const encodeTaskCredentialsForMinor = (credentials: TaskCredentials, minor: number): TaskCredentials => {
-  if (minor >= 2) {
+  if (minor >= 7) {
     return credentials;
+  }
+  if (minor >= 2) {
+    if (credentials.mcpServers === undefined) {
+      return credentials;
+    }
+    const mcpServers = credentials.mcpServers.map((server) => {
+      const down: Record<string, unknown> = { ...server };
+      Reflect.deleteProperty(down, "plainHeaders");
+      return down;
+    });
+    return taskCredentialsSchema.parse({ ...credentials, mcpServers });
   }
   return taskCredentialsSchema.parse(z.object(taskCredentialsShapeV1).parse(credentials));
 };

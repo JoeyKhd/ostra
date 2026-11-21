@@ -1,3 +1,4 @@
+import { secretHeaderValues } from "@ostra/protocol";
 import type { TaskCredentials } from "@ostra/protocol";
 
 // The environment check (ticket 21, ADR 0030): before the agent starts, the task host looks at the
@@ -15,8 +16,10 @@ export const credentialValues = (credentials: TaskCredentials): readonly { reado
   { label: "the model provider's token", value: credentials.model.token },
   { label: "the runner's MCP token", value: credentials.mcpToken },
   ...credentials.repos.map((repo) => ({ label: "a repo's git token", value: repo.gitToken })),
-  // Ticket 29: an MCP server's headers stay in the sidecar's proxy.
-  ...(credentials.mcpServers ?? []).flatMap((server) => Object.values(server.headers).map((value) => ({ label: "an MCP server's header", value }))),
+  // Ticket 29: an MCP server's headers stay in the sidecar's proxy. Minor 7 (F-145): a library
+  // server's plain headers (a registry's fixed version or tenant header) are no secret, so only the
+  // secret ones are searched for; with no `plainHeaders`, every header is.
+  ...(credentials.mcpServers ?? []).flatMap((server) => secretHeaderValues(server).map((value) => ({ label: "an MCP server's header", value }))),
   ...credentials.secrets.flatMap((repo) =>
     repo.entries.flatMap((entry) =>
       entry.kind === "variable" ? [{ label: "an environment secret", value: entry.value }] : [{ label: "an environment secret file", value: entry.content }],
