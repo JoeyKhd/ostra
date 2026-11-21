@@ -8,7 +8,7 @@ import { progressOf } from "@/components/tickets/parent-progress";
 import type { Child } from "@/components/tickets/parent-progress";
 import type { RouterOutputs } from "@/lib/trpc";
 
-import { planOf, plannedTasks, ResultLine, resultOfItem } from "./bulk-start";
+import { doneHeadText, planOf, plannedTasks, ResultLine, resultOfItem } from "./bulk-start";
 import { TicketRow } from "./inbox-view";
 import type { InboxTicket } from "./inbox-words";
 
@@ -94,6 +94,12 @@ describe("a bulk start's results (inbox-bulk-start.md)", () => {
       },
       "calculator",
     );
+
+  it("the results' head counts each number in its own words", () => {
+    expect(doneHeadText(3, 3, 1)).toBe("Started 3 tasks from 3 tickets. 1 skipped.");
+    expect(doneHeadText(1, 1, 1)).toBe("Started 1 task from 1 ticket. 1 skipped.");
+    expect(doneHeadText(3, 1, 0)).toBe("Started 3 tasks from 1 ticket.");
+  });
 
   it("F-107/c1: a started task says its state with its ID, and a queued one says why it waits", () => {
     const running = renderToStaticMarkup(<ResultLine result={item("running", null)} />);

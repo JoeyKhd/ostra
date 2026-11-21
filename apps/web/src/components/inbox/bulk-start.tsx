@@ -359,6 +359,12 @@ export const ResultLine = ({ result }: { readonly result: Result }) => {
   }
 };
 
+/** The results' head: `Started 3 tasks from 3 tickets. 1 skipped.`, each count in its own number. */
+export const doneHeadText = (startedTasks: number, startedTickets: number, skipped: number): string => {
+  const head = t("bulkStart.doneHead", { tasks: plural(startedTasks, "bulkStart.tasks.one", "bulkStart.tasks.other"), tickets: plural(startedTickets, "bulkStart.tickets.one", "bulkStart.tickets.other") });
+  return skipped === 0 ? head : `${head} ${t("bulkStart.doneSkipped", { n: skipped })}`;
+};
+
 /** The properties panel while tickets are ticked: the start for all, what each one does, and the results. */
 export const BulkStartPanel = ({
   ticked,
@@ -393,7 +399,7 @@ export const BulkStartPanel = ({
     <div data-testid="bulk-start">
       <h2 className="text-[17px] font-semibold text-text" data-testid="bulk-head">
         {bulk.done
-          ? `${t("bulkStart.doneHead", { n: startedTasks, m: startedTickets })}${skipped === 0 ? "" : ` ${t("bulkStart.doneSkipped", { n: skipped })}`}`
+          ? doneHeadText(startedTasks, startedTickets, skipped)
           : bulk.starting
             ? plural(tasks, "bulkStart.startingHead.one", "bulkStart.startingHead.other")
             : `${plural(ticked.length, "bulkStart.tickets.one", "bulkStart.tickets.other")}, ${plural(tasks, "bulkStart.tasks.one", "bulkStart.tasks.other")}`}

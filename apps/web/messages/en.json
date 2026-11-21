@@ -19,6 +19,7 @@
     "editingTitle": "Editing the proposal · not saved yet",
     "againstSaved": "against the saved environment",
     "againstDraft": "the environment is still a draft",
+    "againstDraftThen": "against the draft environment",
     "unreadable": "This proposal can't be read by this version of ostra. Only rejecting it is left.",
     "noChanges": "No changes",
     "changes": "{n} changes",
@@ -46,6 +47,7 @@
     "openSetup": "Open Setup",
     "rejected": "Rejected.",
     "ago": "{age} ago",
+    "justNow": "just now",
     "panel": {
       "proposal": "Proposal",
       "state": "State",
@@ -5722,7 +5724,7 @@
       "one": "Starting {n} task",
       "other": "Starting {n} tasks"
     },
-    "doneHead": "Started {n} tasks from {m} tickets.",
+    "doneHead": "Started {tasks} from {tickets}.",
     "doneSkipped": "{n} skipped.",
     "done": "Done",
     "footnote": "Up to {max} tickets at once. Each goes through the queue and the budget like any start.",

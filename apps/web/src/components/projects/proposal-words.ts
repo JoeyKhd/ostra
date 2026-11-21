@@ -1,5 +1,6 @@
 import type { EnvironmentProposal } from "@ostra/protocol";
 
+import { formatAge } from "@/lib/format";
 import { t } from "@/lib/messages";
 import type { RouterOutputs } from "@/lib/trpc";
 
@@ -66,6 +67,9 @@ export const lineDiff = (before: string | null, after: string | null): readonly 
   flush(true);
   return out.filter((row, index, all) => !(row.sign === "fold" && all.length === 1));
 };
+
+/** When something happened, as the panel says it: `just now`, else `4m ago` (never `now ago`). */
+export const agoText = (at: number, now: number): string => (now - at < 45_000 ? t("proposal.justNow") : t("proposal.ago", { age: formatAge(at, now) }));
 
 /** The onboarding task's state, as its line says it. */
 export const taskStateWords = (task: NonNullable<Onboarding["task"]>, age: string): string => {

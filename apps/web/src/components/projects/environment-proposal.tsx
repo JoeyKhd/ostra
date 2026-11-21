@@ -21,7 +21,7 @@ import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import { safeHref } from "@/task/renderers";
 
-import { changesOf, decidedOf, editedProposal, lineDiff, taskStateWords } from "./proposal-words";
+import { agoText, changesOf, decidedOf, editedProposal, lineDiff, taskStateWords } from "./proposal-words";
 import type { Decided, DiffRow, Onboarding, ProposalView } from "./proposal-words";
 
 // The environment page's Proposal tab (app-targets/m6/environment-proposal.md; F-113, ticket 36):
@@ -239,7 +239,7 @@ export const ProposalProperties = ({ proposal, onboarding, now }: { readonly pro
       {proposal === null ? null : (
         <>
           <PropRow label={t("proposal.panel.scan")} labelWidth={120}><span aria-hidden className="size-[7px] rounded-full bg-green" /><span>{t("proposal.panel.noValues")}</span></PropRow>
-          <PropRow label={t("proposal.panel.proposedAt")} labelWidth={120}><span>{t("proposal.ago", { age: formatAge(proposal.createdAt, now) })}</span></PropRow>
+          <PropRow label={t("proposal.panel.proposedAt")} labelWidth={120}><span>{agoText(proposal.createdAt, now)}</span></PropRow>
         </>
       )}
     </PropGroup>
@@ -332,7 +332,7 @@ export const EnvironmentProposalTab = ({ projectId, projectName, onboarding, now
         <div className="mt-6 border-t border-line pt-4" data-testid="proposal">
           <h2 className="text-[15px] font-semibold text-text">
             {editing ? t("proposal.editingTitle") : t("proposal.title")}
-            <span className="text-sm font-normal text-faint">{data.saved ? ` · ${t("proposal.againstSaved")}` : ` · ${t("proposal.againstDraft")}`}</span>
+            <span className="text-sm font-normal text-faint">{data.saved ? ` · ${t("proposal.againstSaved")}` : data.decision === null ? ` · ${t("proposal.againstDraft")}` : ` · ${t("proposal.againstDraftThen")}`}</span>
           </h2>
           {data.notes === "" ? null : <p className="mt-2 max-w-[680px] whitespace-pre-wrap text-ui leading-[1.6] text-muted" data-testid="proposal-notes">{data.notes}</p>}
           {!data.readable ? (

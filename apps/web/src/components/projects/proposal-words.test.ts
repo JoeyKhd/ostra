@@ -1,7 +1,7 @@
 import { repoIdSchema } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
-import { decidedOf, editedProposal, lineDiff } from "./proposal-words";
+import { agoText, decidedOf, editedProposal, lineDiff } from "./proposal-words";
 
 // F-113 (ticket 36): the proposal's setup script as a diff against the saved one, and the proposal
 // an admin's edits make for "Edit and accept".
@@ -41,5 +41,13 @@ describe("the proposal's decision (environment-proposal.md)", () => {
     expect(decidedOf(null, { kind: "rejected", version: null, at: 1 })).toEqual({ kind: "rejected" });
     expect(decidedOf(null, null)).toBeNull();
     expect(decidedOf({ kind: "rejected" }, { kind: "accepted", version: 5, at: 1 })).toEqual({ kind: "rejected" });
+  });
+});
+
+describe("the proposal's age (environment-proposal.md, Properties)", () => {
+  it("says just now under a minute, never now ago", () => {
+    const now = Date.UTC(2026, 10, 21, 9);
+    expect(agoText(now - 10_000, now)).toBe("just now");
+    expect(agoText(now - 5 * 60_000, now)).toBe("5m ago");
   });
 });
