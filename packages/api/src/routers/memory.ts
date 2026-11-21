@@ -225,12 +225,6 @@ const MAX_NOTES = 500;
 
 export const memoryRouter = router({
   /**
-   * A scope's notes, newest first, or the best matches for `query`, ranked as `memory_search`
-   * ranks (`rankNotes`: a question's meaningful words, and a path, a flag or an identifier as
-   * written, by bound parameter), with the count of the scope's open proposals. Only the scope's
-   * own notes, after its access check.
-   */
-  /**
    * What a new task gets from the scope's memory (memory.md, the index line), counted by the
    * domain's own index builder: the "always" notes in full, then the index, within ADR 0044's limits.
    */
@@ -250,6 +244,12 @@ export const memoryRouter = router({
       };
     }),
 
+  /**
+   * A scope's notes, newest first, or the best matches for `query`, ranked as `memory_search`
+   * ranks (`rankNotes`: a question's meaningful words, and a path, a flag or an identifier as
+   * written, by bound parameter), with the count of the scope's open proposals. Only the scope's
+   * own notes, after its access check.
+   */
   notes: memberProcedure
     .input(
       scopeInputSchema.extend({
