@@ -21,7 +21,7 @@ type Mine = RouterOutputs["runners"]["mine"][number];
  * line up across both sections: state, name, pool or owner, executor, carrier, busy, version, age,
  * and the row menu.
  */
-export const runnerGrid = "grid grid-cols-[100px_minmax(0,112px)_minmax(0,1fr)_68px_minmax(0,84px)_92px_minmax(64px,auto)_minmax(0,92px)_24px] items-center";
+export const runnerGrid = "grid grid-cols-[92px_minmax(0,92px)_minmax(0,1fr)_60px_minmax(0,40px)_100px_minmax(0,128px)_minmax(0,84px)_24px] items-center";
 
 const dotClass: Record<RunnerDot, string> = {
   green: "bg-green shadow-(--dot-green)",
@@ -63,11 +63,11 @@ const Row = ({ runner, where, carrier, chip, menu, now }: {
   <li data-runner={runner.name} className={cn(runnerGrid, "group h-[38px] px-2 hover:bg-sel")}>
     <RunnerStatus state={runner.state} />
     <Link href={`/organization/runners/${runner.id}`} className="truncate pr-3 font-mono text-ui text-text hover:underline" title={runner.name}>{runner.name}</Link>
-    <span className="flex min-w-0 items-center gap-2 pr-3 text-muted">{where}</span>
+    <span className="flex min-w-0 items-center gap-2 overflow-hidden pr-3 text-muted">{where}</span>
     <span className="font-mono text-ui text-text">{runner.executor}</span>
     <span className="text-ui text-muted">{carrier}</span>
     <span className="font-mono text-ui text-muted">{busyText(runner)}</span>
-    <span className="flex items-center gap-2 font-mono text-ui text-muted">
+    <span className="flex min-w-0 items-center gap-2 overflow-hidden font-mono text-ui text-muted">
       v{runner.version}
       {chip === null ? null : <Chip className="font-sans text-[12px]">{chip}</Chip>}
     </span>

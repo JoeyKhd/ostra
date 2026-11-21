@@ -26,7 +26,7 @@ const Meter = ({ value, max }: { readonly value: number; readonly max: number })
   </span>
 );
 
-const th = "h-[30px] pr-3 text-left text-[12.5px] font-medium text-faint";
+const th = "h-[30px] whitespace-nowrap pr-3 text-left text-[12.5px] font-medium text-faint";
 
 /** Organization › Runners › Pools: a selectable row per pool (runners.md, "Pools"). */
 export const PoolsTable = ({ pools, selectedId, onSelect }: { readonly pools: readonly Pool[]; readonly selectedId: string | null; readonly onSelect: (poolId: string) => void }) => {
@@ -41,13 +41,13 @@ export const PoolsTable = ({ pools, selectedId, onSelect }: { readonly pools: re
       {/* At 1440 the page column is 744px (the double sidebar): every column fits it, and it scrolls only narrower. */}
       <table className="w-full min-w-[740px] border-collapse text-body">
         <colgroup>
-          <col className="w-[168px]" />
+          <col className="w-[160px]" />
+          <col className="w-[68px]" />
+          <col className="w-[88px]" />
+          <col className="w-[104px]" />
+          <col className="w-[52px]" />
+          <col className="w-[52px]" />
           <col className="w-[72px]" />
-          <col className="w-[92px]" />
-          <col className="w-[112px]" />
-          <col className="w-[56px]" />
-          <col className="w-[64px]" />
-          <col className="w-[76px]" />
           <col className="w-[60px]" />
           <col />
         </colgroup>
@@ -111,7 +111,7 @@ export const PoolsTable = ({ pools, selectedId, onSelect }: { readonly pools: re
                     </span>
                   )}
                 </td>
-                <td className="pr-3">
+                <td className="whitespace-nowrap pr-3">
                   {pool.activeJoinTokens === 0 ? <span className="text-faint">{t("runners.noTokens")}</span> : t("runners.activeTokens", { n: pool.activeJoinTokens })}
                 </td>
                 <td className="pr-3 font-mono text-ui">{pool.projectCount}</td>
