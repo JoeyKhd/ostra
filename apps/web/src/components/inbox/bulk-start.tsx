@@ -410,7 +410,7 @@ export const BulkStartPanel = ({
         <PropRow label={t("bulkStart.kind")}>
           <KindSelect value={kind} onChange={onKind} disabled={busy} className="w-full" />
         </PropRow>
-        <PropRow label={t("bulkStart.profile")}>
+        <PropRow label={t("bulkStart.agentProfile")}>
           <ProfileSelect projectId={projectId} kind={kind} value={profile} onChange={onProfile} disabled={busy} className="w-full" />
         </PropRow>
         <PropRow label={t("bulkStart.runOn")}>{t("bulkStart.pools")}</PropRow>

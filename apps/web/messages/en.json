@@ -6767,6 +6767,7 @@
     "code": "Code",
     "refine": "Refine",
     "profile": "Profile",
+    "agentProfile": "Agent profile",
     "defaultProfile": "Project default",
     "runOn": "Run on",
     "pools": "The project's pools",

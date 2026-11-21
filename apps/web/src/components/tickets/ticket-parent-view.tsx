@@ -30,8 +30,9 @@ import type { Child } from "./parent-progress";
 const LIVE_MS = 5_000;
 
 // The picture's proportions (ticket-parent.webp): beside the panel, the title keeps about 180px at
-// 1440. The build spec's `130px 260px 90px 50px 100px` left it 40px there.
-const grid = "grid grid-cols-[84px_minmax(0,1fr)_120px] items-center gap-x-3 md:grid-cols-[84px_minmax(0,1fr)_104px_minmax(0,200px)_56px_44px_76px]";
+// 1440. The build spec's `130px 260px 90px 50px 100px` left it 40px there; in the double sidebar the
+// page is 70px narrower, so the title and `Now` share what's left, the title a little more.
+const grid = "grid grid-cols-[84px_minmax(0,1fr)_120px] items-center gap-x-3 md:grid-cols-[84px_minmax(0,1.25fr)_104px_minmax(0,1fr)_56px_44px_76px]";
 
 const TaskCell = ({ child }: { readonly child: Child }) =>
   child.task === null ? (

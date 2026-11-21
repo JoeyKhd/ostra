@@ -59,14 +59,15 @@ const rowGrid = (several: boolean, tasks: boolean) =>
     "grid min-h-10 w-full items-center gap-x-2.5 text-left",
     // A phone: two lines (phone-inbox.md), the priority, key and age over the title, 56px.
     "grid-cols-[16px_minmax(0,1fr)_auto] max-md:min-h-14 max-md:gap-y-0.5 max-md:py-2 md:grid-cols-[16px_76px_minmax(0,1fr)_112px_110px_36px]",
-    // With the Task column, the labels, status and task columns are narrower, so the title keeps room beside the panel.
+    // With the Task column, the labels, status and task columns are narrower, so the title keeps room beside
+    // the panel: the double sidebar leaves the page 70px less than the target's single one (inbox-bulk-start).
     several && tasks
-      ? "xl:grid-cols-[16px_76px_minmax(0,1fr)_88px_100px_100px_136px_36px]"
+      ? "xl:grid-cols-[16px_72px_minmax(0,1fr)_76px_92px_92px_124px_32px]"
       : several
-        ? "xl:grid-cols-[16px_76px_minmax(0,1fr)_112px_100px_110px_36px]"
+        ? "xl:grid-cols-[16px_72px_minmax(0,1fr)_100px_92px_104px_32px]"
         : tasks
-          ? "xl:grid-cols-[16px_76px_minmax(0,1fr)_88px_100px_136px_36px]"
-          : "xl:grid-cols-[16px_76px_minmax(0,1fr)_112px_110px_36px]",
+          ? "xl:grid-cols-[16px_72px_minmax(0,1fr)_76px_92px_124px_32px]"
+          : "xl:grid-cols-[16px_72px_minmax(0,1fr)_100px_104px_32px]",
   );
 
 /** F-107: a row's tick for a bulk start, and what a ticked parent's code start starts (F-077). */

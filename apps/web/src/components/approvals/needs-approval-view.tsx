@@ -28,7 +28,9 @@ import type { WaitingTask } from "./approval-block";
 const LIVE_MS = 10_000;
 // The picture's proportions (needs-approval.webp): beside the panel, the title keeps about 180px at
 // 1440. The build spec's `230px 170px 44px 140px` left it under 100px there.
-const grid = "grid grid-cols-[84px_minmax(0,1fr)_auto] items-center gap-x-3 md:grid-cols-[84px_minmax(0,1fr)_180px_140px_40px_132px]";
+// The double sidebar leaves the page 70px less than the target's single one: the fixed columns give
+// some back, so a title like "Retry failed invoice exports" stays whole (needs-approval.webp).
+const grid = "grid grid-cols-[84px_minmax(0,1fr)_auto] items-center gap-x-3 md:grid-cols-[72px_minmax(0,1fr)_164px_124px_36px_132px] md:gap-x-2.5";
 
 export const NeedsApprovalView = ({ projectId, organizationAdmin }: { readonly projectId: ProjectId; readonly organizationAdmin: boolean }) => {
   const trpc = useTRPC();
