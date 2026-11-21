@@ -1,4 +1,3 @@
-import { createServer } from "node:net";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -14,6 +13,7 @@ import { z } from "zod";
 import { boxBrowser } from "./box-browser.ts";
 import type { BoxBrowserReport } from "./box-browser.ts";
 import { openPage } from "./page.ts";
+import { testPort } from "@ostra/adapter-sdk/testing/net";
 
 // Milestone 8 (ticket 11, F-121/c2), live on `host`: the runner finds the machine's browser as ADR
 // 0068 orders it (Edge here, which every Windows machine has; OSTRA_RUNNER_BROWSER when it's set),
@@ -27,19 +27,6 @@ import { openPage } from "./page.ts";
 const FIXTURE = fileURLToPath(new URL("../../../../e2e/m8-previews-and-library/fixtures/test-web/", import.meta.url));
 const VITE = path.join(FIXTURE, "node_modules", "vite", "bin", "vite.js");
 const live = process.platform !== "linux" || (process.env["OSTRA_RUNNER_BROWSER"] ?? "") !== "";
-
-const freePort = (): Promise<number> =>
-  new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen(0, "localhost", () => {
-      const address = server.address();
-      const port = address === null || typeof address === "string" ? 0 : address.port;
-      server.close(() => {
-        resolve(port);
-      });
-    });
-  });
 
 const nodeEnv = (extra: Readonly<Record<string, string>>): Record<string, string> => ({
   PATH: process.env["PATH"] ?? "",
@@ -87,7 +74,7 @@ describe(`the box's browser on host, live (${live ? "the machine's browser" : "t
     let profileDir = "";
     try {
       // The fixture app, as two of the task's app processes: its API, and Vite with `/api` behind its proxy.
-      const [webPort, apiPort] = [await freePort(), await freePort()];
+      const [webPort, apiPort] = [await testPort(), await testPort()];
       const ports = { TEST_WEB_PORT: String(webPort), TEST_WEB_API_PORT: String(apiPort) };
       for (const [name, args] of [
         ["api", [path.join(FIXTURE, "api", "server.js")]],

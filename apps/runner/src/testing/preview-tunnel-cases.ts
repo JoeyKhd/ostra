@@ -19,6 +19,7 @@ import { attachFakePreviewCore } from "./fake-preview-core.ts";
 import type { FakePreviewCore } from "./fake-preview-core.ts";
 import { ACCESS_TOKEN, manualTimers, startHarness, startShared } from "./task-host-harness.ts";
 import type { Harness, HarnessOptions, ManualTimers, Shared } from "./task-host-harness.ts";
+import { testPort } from "@ostra/adapter-sdk/testing/net";
 
 // Milestone 8's ticket 22 (F-143, F-144, ADR 0068 "The preview connection"): a view in `tunnel`
 // mode through the whole task host, on one executor. The fake server plays core: it takes the
@@ -44,19 +45,6 @@ const APP_REPO_ID: RepoId = repoIdSchema.parse("repo-tunnel-app");
 /** A Vite HMR message, and the API's hello: their kind and words are all a test reads. */
 const hmrMessageSchema = z.looseObject({ type: z.string() });
 const helloSchema = z.looseObject({ message: z.string() });
-
-const freePort = (): Promise<number> =>
-  new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen(0, "localhost", () => {
-      const address = server.address();
-      const port = typeof address === "object" && address !== null ? address.port : 0;
-      server.close(() => {
-        resolve(port);
-      });
-    });
-  });
 
 const textOf = (data: WebSocket.RawData): string =>
   Buffer.isBuffer(data) ? data.toString("utf8") : Array.isArray(data) ? Buffer.concat(data).toString("utf8") : Buffer.from(new Uint8Array(data)).toString("utf8");
@@ -236,7 +224,7 @@ export const previewTunnelCases = (mode: PreviewTunnelMode) => {
 
   /** The fixture's API and its Vite frontend (the primary), on free ports, as the environment declares them. */
   const webTask = async (h: Harness): Promise<{ readonly spec: TaskSpec; readonly api: number; readonly web: number }> => {
-    const [api, web] = await Promise.all([freePort(), freePort()]);
+    const [api, web] = await Promise.all([testPort(), testPort()]);
     const made = h.taskFor(fakeMarker("say"));
     const [base] = made.spec.repos;
     const [baseEnvironment] = made.spec.environment.repos;
@@ -433,7 +421,7 @@ export const previewTunnelCases = (mode: PreviewTunnelMode) => {
         socket.end();
       });
       holders.push(holder);
-      const unlisted = await freePort();
+      const unlisted = await testPort();
       await new Promise<void>((resolve) => holder.listen(unlisted, "localhost", resolve));
       const keyProxyPort = Number(new URL(h.launches[0]?.env["FAKE_AGENT_BASE_URL"] ?? "http://localhost:1").port);
       expect(keyProxyPort).toBeGreaterThan(1023);

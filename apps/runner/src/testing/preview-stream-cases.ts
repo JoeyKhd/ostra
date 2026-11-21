@@ -18,6 +18,7 @@ import type { FakePreviewCore, FakeStreamView } from "./fake-preview-core.ts";
 import { makeCommand } from "./fake-gateway.ts";
 import { ACCESS_TOKEN, startHarness, startShared } from "./task-host-harness.ts";
 import type { Harness, HarnessOptions, Shared } from "./task-host-harness.ts";
+import { testPort } from "@ostra/adapter-sdk/testing/net";
 
 // Milestone 8's ticket 18 (F-141, ADR 0068 "The browser view"): a view in `stream` mode through the
 // whole task host, on one executor. The fake server plays core: it takes the box's preview
@@ -52,19 +53,6 @@ const WEB = previewKeySchema.parse("app-web");
 const PHONE: PreviewViewport = viewportPresetSizes.phone;
 /** The tablet's preset as it is (Q326): taller than 900, within 1440×900's pixels. */
 const TABLET: PreviewViewport = viewportPresetSizes.tablet;
-
-const freePort = (): Promise<number> =>
-  new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen(0, "localhost", () => {
-      const address = server.address();
-      const port = typeof address === "object" && address !== null ? address.port : 0;
-      server.close(() => {
-        resolve(port);
-      });
-    });
-  });
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => {
@@ -177,7 +165,7 @@ export const previewStreamCases = (mode: PreviewStreamMode) => {
 
   /** The fixture's API and its Vite frontend (the primary), on free ports, as the environment declares them. */
   const webTask = async (h: Harness): Promise<{ readonly spec: TaskSpec; readonly api: number; readonly web: number }> => {
-    const [api, web] = await Promise.all([freePort(), freePort()]);
+    const [api, web] = await Promise.all([testPort(), testPort()]);
     const made = h.taskFor(fakeMarker("say"));
     const [base] = made.spec.repos;
     const [baseEnvironment] = made.spec.environment.repos;
@@ -448,7 +436,7 @@ export const previewStreamCases = (mode: PreviewStreamMode) => {
         socket.on("error", () => undefined);
       });
       holders.push(holder);
-      const unlisted = await freePort();
+      const unlisted = await testPort();
       await new Promise<void>((resolve) => holder.listen(unlisted, "localhost", resolve));
       const stray = newViewId();
       core.openView(stray, spec.leaseEpoch, "stream");

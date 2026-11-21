@@ -8,3 +8,4 @@ export * from "./net-proxies.ts";
 export * from "./fake-oci-registry.ts";
 export * from "./oci-client.ts";
 export * from "./fake-npm-registry.ts";
+export * from "./test-ports.ts";

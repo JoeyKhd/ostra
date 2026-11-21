@@ -24,6 +24,7 @@ import type { FakePreviewServer } from "../testing/fake-preview-server.ts";
 import { exitCodes, runCli } from "./cli.ts";
 import { cliSessionPath, saveCliSession } from "./cli-session.ts";
 import { createCapturingTerminal } from "./terminal.ts";
+import { testPort } from "@ostra/adapter-sdk/testing/net";
 
 // Ticket 24 (F-143, ADR 0068 "`ostra preview`"): the CLI's command against a fake of the web app's
 // two routes and core's tunnel (`testing/fake-preview-server.ts`), which bridges each CONNECT to a
@@ -47,18 +48,6 @@ const portOf = (server: Server | HttpServer): number => {
 
 const textOf = (data: RawData): string => (Buffer.isBuffer(data) ? data : Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data)).toString("utf8");
 
-const freePort = (): Promise<number> =>
-  new Promise((resolve, reject) => {
-    const probe = createNetServer();
-    probe.once("error", reject);
-    probe.listen(0, "127.0.0.1", () => {
-      const port = portOf(probe);
-      probe.close(() => {
-        resolve(port);
-      });
-    });
-  });
-
 /** Holds a port of this machine's IPv4 loopback, as another program would. */
 const hold = (port: number): Promise<void> =>
   new Promise((resolve, reject) => {
@@ -72,7 +61,7 @@ const hold = (port: number): Promise<void> =>
 
 /** A preview port of the fake's task, bridged to the app. */
 const previewPort = async (): Promise<number> => {
-  const port = await freePort();
+  const port = await testPort();
   fake.dial.set(port, appPort);
   return port;
 };
@@ -257,7 +246,7 @@ describe("ostra preview (F-143)", () => {
     expect(await next.done).toBe(exitCodes.ok);
 
     // --local names the port: used when free, refused when taken.
-    const chosen = await freePort();
+    const chosen = await testPort();
     const named = start(["OST-13", "--local", String(chosen)]);
     expect(await servedPort(named)).toBe(chosen);
     named.stop();

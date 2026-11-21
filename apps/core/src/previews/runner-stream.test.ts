@@ -1,6 +1,5 @@
 import { randomBytes } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,6 +59,7 @@ import { registerRunnerAt, waitFor } from "../testing/restart.ts";
 import type { RegisteredAt } from "../testing/restart.ts";
 import { dispatchPayload, seedQueuedTask, seedWorld } from "../testing/world.ts";
 import type { World } from "../testing/world.ts";
+import { testPort } from "@ostra/adapter-sdk/testing/net";
 
 // Milestone 8's ticket 18 (F-141, F-121, ADR 0068 "The browser view"): core's real preview code
 // (ticket 19: the box's preview connection, the HTTP carrier's frames, the panel's stream and input
@@ -122,19 +122,6 @@ let onHttp: RunnerSide;
 
 const scopeOf = (member: SeededMember): MemberScope => ({ organizationId: member.organizationId, memberId: member.id, role: member.role === "admin" ? "admin" : "member", projectRoles: new Map() });
 const viewDeps = () => ({ db: test.db, outbox: postgresCommandOutbox, notices: postgresChangeNotices, clock: systemClock, settings: { warmMinutes: 60 }, panelTokens });
-
-const freePort = (): Promise<number> =>
-  new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen(0, "localhost", () => {
-      const address = server.address();
-      const port = typeof address === "object" && address !== null ? address.port : 0;
-      server.close(() => {
-        resolve(port);
-      });
-    });
-  });
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => {
@@ -405,8 +392,8 @@ beforeAll(async () => {
   root = await mkdtemp(path.join(tmpdir(), "ostra-runner-stream-"));
   upstream = await startGitUpstream(path.join(root, "upstream"), { requireToken: false });
   await upstream.createRepo("ostra-test/test1", { "README.md": "# test1\n" });
-  webPort = await freePort();
-  apiPort = await freePort();
+  webPort = await testPort();
+  apiPort = await testPort();
   // The environment's app as core knows it: the frontend, the primary preview.
   const environment = await test.db.environment.findUniqueOrThrow({ where: { projectId: world.projectId } });
   await test.db.appProcess.create({

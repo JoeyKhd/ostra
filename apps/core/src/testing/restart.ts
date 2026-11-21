@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
-import { createServer } from "node:net";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
+import { testPort } from "@ostra/adapter-sdk/testing/net";
 import type { Db } from "@ostra/db";
 import type { SeededMember } from "@ostra/db/testing";
 import { PROTOCOL_MINOR, registerResponseSchema, runnerPaths, tokenResponseSchema } from "@ostra/protocol";
@@ -24,22 +24,12 @@ import { postJson, registerBody, seedDeviceSession } from "./harness.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-/** A free loopback port: core is started on the same one each time, as a restarted server is. */
-export const freePort = (): Promise<number> =>
-  new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      server.close(() => {
-        if (address === null || typeof address === "string") {
-          reject(new Error("no port"));
-          return;
-        }
-        resolve(address.port);
-      });
-    });
-  });
+/**
+ * A free loopback port: core is started on the same one each time, as a restarted server is. One
+ * of this test process's own (`testPort`), below the ephemeral range, so no other server takes it
+ * while core starts, or between a kill and the restart.
+ */
+export const freePort = (): Promise<number> => testPort();
 
 /** Polls `check` until it's true, or fails after `timeoutMs` with `what`. */
 export const waitFor = async (what: string, check: () => Promise<boolean> | boolean, timeoutMs = 60_000): Promise<void> => {

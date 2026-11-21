@@ -1,6 +1,5 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createServer } from "node:net";
 import { baseEnv, localShellProbe, machineBrowserSource, resolveMachineBrowser, resolveSetupShell } from "@ostra/adapter-executor-host";
 import { createScenarioBrain, fakeBrowserProgram, stubMarker } from "@ostra/adapter-sdk/testing";
 import type { Scenario } from "@ostra/adapter-sdk/testing";
@@ -13,6 +12,7 @@ import { liveBrowser } from "../testing/app-pictures-cases.ts";
 import { startHarness, startShared } from "../testing/task-host-harness.ts";
 import type { Harness, Shared } from "../testing/task-host-harness.ts";
 import { defaultAgents } from "./agents.ts";
+import { testPort } from "@ostra/adapter-sdk/testing/net";
 
 // Milestone 8's ticket 13 (F-121) on the agent the runner ships: the real, pinned OpenCode on the
 // host executor, with a scripted stub model behind the real key proxy, calls `take_screenshot` on
@@ -39,19 +39,6 @@ const takeIt: Scenario = ({ step, lastToolResults, request }) => {
   }
   return step === 1 ? { text: `answered: ${lastToolResults.map((result) => result.text).join(" | ")}` } : undefined;
 };
-
-const freePort = (): Promise<number> =>
-  new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen(0, "localhost", () => {
-      const address = server.address();
-      const port = typeof address === "object" && address !== null ? address.port : 0;
-      server.close(() => {
-        resolve(port);
-      });
-    });
-  });
 
 let shared: Shared;
 let harness: Harness | undefined;
@@ -86,7 +73,7 @@ describe(`take_screenshot from OpenCode, with the stub model (${liveBrowser ? "t
     if (repo === undefined || environment === undefined) {
       throw new Error("the fixture has a repo");
     }
-    const port = await freePort();
+    const port = await testPort();
     const docs: TaskSpecAppProcess = {
       name: "docs",
       repoId: repo.repoId,

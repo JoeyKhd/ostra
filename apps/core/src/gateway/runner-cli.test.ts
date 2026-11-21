@@ -3,7 +3,6 @@ import type { ChildProcess } from "node:child_process";
 import { createPrivateKey, randomBytes } from "node:crypto";
 import { cp, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
@@ -31,6 +30,7 @@ import { BOOTSTRAP_JOIN_TOKEN_FILE, ensureBootstrapJoinToken } from "./bootstrap
 import { postgresDeviceSessions } from "./device-sessions.ts";
 import { createGateway } from "./gateway.ts";
 import type { Gateway } from "./gateway.ts";
+import { testPort } from "@ostra/adapter-sdk/testing/net";
 
 // F-013, end to end on one machine: the real `ostra runner` CLI (apps/runner/src/main.ts, spawned
 // as a child process, the way a member runs it), against core's real gateway and the real
@@ -60,22 +60,6 @@ let port = 0;
 let core: Core | undefined;
 /** The session tokens better-auth's device route handed out, read off its answers. */
 const deviceTokens: string[] = [];
-
-const freePort = (): Promise<number> =>
-  new Promise((resolve, reject) => {
-    const probe = net.createServer();
-    probe.once("error", reject);
-    probe.listen(0, "127.0.0.1", () => {
-      const address = probe.address();
-      probe.close(() => {
-        if (address === null || typeof address === "string") {
-          reject(new Error("no port"));
-        } else {
-          resolve(address.port);
-        }
-      });
-    });
-  });
 
 const coreUrl = (): string => `http://127.0.0.1:${String(port)}`;
 
@@ -291,7 +275,7 @@ const tokenRefusals = (runnerId: string, reason?: string) =>
 
 beforeAll(async () => {
   test = await createTestDatabase();
-  port = await freePort();
+  port = await testPort();
   auth = createAuth({ db: test.db, baseUrl: coreUrl(), secret: randomBytes(32).toString("hex"), deviceInterval: "1s", logLevel: "error" });
   const context = await auth.$context;
   const seeded = await ensureFirstAdmin({
