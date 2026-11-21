@@ -23,7 +23,9 @@ import { sidecarAppReach } from "../run-sidecar.ts";
 //
 // Milestone 8 (ticket 13): this machine has no image, so a box's browser is the fake box browser
 // over the same DevTools pipe, from the init the executor suites use (`init-with-fake-browser.ts`):
-// `localBoxWithFakeBrowser`. The plain init's box has none (`not-in-image`).
+// `localBoxWithFakeBrowser`. The plain init's box has none (`not-in-image`), on every machine: its
+// `OSTRA_BOX_BROWSER` names no file, so a machine's own `/usr/bin/chromium` (a GitHub runner has
+// one) is never the box's.
 
 const INIT = fileURLToPath(new URL("./init/main.ts", import.meta.resolve("@ostra/adapter-executor-docker")));
 const INIT_WITH_FAKE_BROWSER = fileURLToPath(new URL("./testing/init-with-fake-browser.ts", import.meta.resolve("@ostra/adapter-executor-docker")));
@@ -45,6 +47,8 @@ const startLocalBox = async (input: { readonly dataDir: string; readonly logger:
       OSTRA_BRIDGE_NONCE: nonce,
       OSTRA_BRIDGE_ADDR: `127.0.0.1:${String(listener.port)}`,
       OSTRA_BRIDGE_FEATURES: BRIDGE_FEATURES.join(","),
+      // The image's browser: none in the plain init's box (the fake browser's init ignores it).
+      ...(fakeBrowser ? {} : { OSTRA_BOX_BROWSER: path.join(input.dataDir, "no-browser", "chromium") }),
     },
     stdio: ["ignore", "ignore", "ignore"],
     windowsHide: true,
