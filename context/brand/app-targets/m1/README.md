@@ -56,7 +56,7 @@ The panel's values were measured from the pictures on 2026-11-19 (home, task, pr
 | Buttons | 28px | 30px | 30px (sm 26px) |
 | Inputs | 32px | | 34px |
 | Properties panel | 300px, 340px with a form | 319 to 343px (task pages 336px), 380px with a form | 320px, 380px with a form |
-| Page padding | 28px 40px | 32 to 46px, median ≈36px | 28px 36px |
+| Page padding | 28px 40px | 32 to 46px, median ≈36px | 28px 36px; 26px 36px since 2026-11-21, milestone 8's targets (the title at 26px, or 47px under a 17px key line) |
 | `--text` | `#EDEDEE` | `#F3F4F5` to `#FCFCFD` | `#F2F3F4` |
 | Sidebar rows | `--muted` | `#D3D5D8` to `#DBDEE0` | `--text-2` `#D6D8DB` |
 | `--muted` (secondary) | `#9A9DA3` | `#B2B4B7` to `#BFC1C5` | `#B4B7BB` |

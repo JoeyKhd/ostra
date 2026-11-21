@@ -9,13 +9,14 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { libraryItemIdSchema, modelIdSchema } from "@ostra/protocol";
 import type { AgentProfileId, ApprovalRulePreset } from "@ostra/protocol";
 
-import { PageFrame } from "@/components/shell/page-frame";
+import { PageFrame, pageKeyLine, pageTitleGap } from "@/components/shell/page-frame";
 import { AlertDialog, AlertDialogContent } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Chip } from "@/components/ui/status";
+import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { formatAge } from "@/lib/format";
 import { t } from "@/lib/messages";
@@ -295,8 +296,8 @@ const useCoverage = (draft: ProfileDraft, openKey: string | null): Coverage | un
 
 const Heading = ({ eyebrow, title, builtIn, loading }: { readonly eyebrow: string; readonly title: string; readonly builtIn: boolean; readonly loading: boolean }) => (
   <div>
-    <div className="font-mono text-sm text-faint" data-testid="profile-eyebrow">{loading ? <Skeleton className="w-[160px]" /> : eyebrow}</div>
-    <div className="my-1.5 flex min-w-0 items-center gap-2.5">
+    <div className={pageKeyLine} data-testid="profile-eyebrow">{loading ? <Skeleton className="w-[160px]" /> : eyebrow}</div>
+    <div className={cn("flex min-w-0 items-center gap-2.5", pageTitleGap(true))}>
       {loading ? <Skeleton className="h-7 w-[180px]" /> : <h1 className="page-title break-words">{title}</h1>}
       {builtIn ? <Chip className="shrink-0">{t("agentProfiles.builtIn")}</Chip> : null}
     </div>

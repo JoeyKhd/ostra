@@ -883,14 +883,14 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
         />
       }
     >
-      <div className={cn("flex min-h-full flex-col", previewing ? "px-4 pb-4 pt-6 sm:px-7 sm:pt-[22px] lg:h-full" : "px-4 pb-5 pt-6 sm:px-10 sm:pt-7 xl:h-full")}>
+      <div className={cn("flex min-h-full flex-col", previewing ? "px-4 pb-4 pt-6 sm:px-7 sm:pt-[22px] lg:h-full" : "px-4 pb-5 pt-6 sm:px-10 sm:pt-[26px] xl:h-full")}>
         <div className="shrink-0">
-          <div className="flex items-center gap-2.5 font-mono text-sm text-faint">
+          <div className="flex items-center gap-2.5 font-mono text-sm leading-[17px] text-faint">
             <span>{data.key} · {data.source === "prompt" ? t("taskPage.fromPrompt") : data.ticket === null ? t("taskPage.fromTicket") : t("taskPage.fromTracker", { tracker: trackerName(data.ticket.tracker) })}</span>
             {waitingTask?.startedBy.kind === "outside" ? <span className="font-sans text-ui">· <StartedInLinear task={waitingTask} /></span> : null}
             {data.kind === "code" ? null : <Chip className="font-mono text-muted">{data.kind === "refine" ? t("draft.chipRefine") : t("draft.chipReview")}</Chip>}
           </div>
-          <h1 className={cn("page-title my-1.5 break-words", previewing && "lg:text-[24px]")}>{data.title}</h1>
+          <h1 className={cn("page-title mb-1.5 mt-1 break-words", previewing && "lg:text-[24px]")}>{data.title}</h1>
           <p className="flex flex-wrap items-center gap-x-2 text-body" data-testid="task-doing" data-state={data.state}>
             <Status tone={stateTone(data.state)}><span className="font-medium text-text">{noKey === null ? stateText : t("noKey.queued")}</span></Status>
             {activity === "" ? null : <><Sep /><span className="text-muted">{activity}</span></>}

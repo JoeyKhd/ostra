@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 
 import { PROTOCOL_MINOR } from "@ostra/protocol";
 
-import { PageFrame, PropGroup, PropRow, Section } from "@/components/shell/page-frame";
+import { PageFrame, pageTitleGap, PropGroup, PropRow, Section } from "@/components/shell/page-frame";
 import { projectColour } from "@/components/shell/project-colour";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Chip } from "@/components/ui/status";
@@ -283,7 +283,7 @@ export const RunnerView = ({ runnerId, admin, serverVersion }: { readonly runner
       actions={actionRunner === null || joining ? null : <RunnerButtons runner={actionRunner} admin={admin && !own} own={own} />}
       properties={<Panel page={page} admin={admin} own={own} now={now} />}
     >
-      <div className="my-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+      <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1", pageTitleGap(false))}>
         <h1 className="page-title break-all">{page?.name ?? ""}</h1>
         {page === undefined ? null : (
           <span data-testid="runner-state">

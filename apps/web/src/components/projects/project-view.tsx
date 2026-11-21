@@ -19,7 +19,7 @@ import { Fragment, useEffect, useState } from "react";
 
 import type { ProjectId } from "@ostra/protocol";
 
-import { PageFrame } from "@/components/shell/page-frame";
+import { PageFrame, pageTitleGap } from "@/components/shell/page-frame";
 import { groupText, taskStateText } from "@/components/tasks/task-words";
 import type { TaskGroup } from "@/components/tasks/task-words";
 import { Avatar } from "@/components/ui/avatar";
@@ -230,7 +230,7 @@ export const ProjectView = ({ projectId }: { readonly projectId: ProjectId }) =>
         ) : null
       ) : (
         <div className="mb-2">
-          <h1 className="page-title my-1.5 break-words">{project.data.name}</h1>
+          <h1 className={cn("page-title break-words", pageTitleGap(false))}>{project.data.name}</h1>
           <p className="text-lede text-muted">
             {project.data.repos.map((repo, i) => (
               <Fragment key={repo.repoId}>

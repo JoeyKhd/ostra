@@ -9,7 +9,7 @@ import { useEffect, useId, useState } from "react";
 import type { LibraryItemId } from "@ostra/protocol";
 
 import { useShellActions } from "@/components/shell/actions/shell-actions";
-import { PageFrame, PropGroup, PropRow } from "@/components/shell/page-frame";
+import { PageFrame, pageKeyLine, pageTitleGap, PropGroup, PropRow } from "@/components/shell/page-frame";
 import { AlertDialog, AlertDialogContent } from "@/components/ui/alert-dialog";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Chip } from "@/components/ui/status";
 import { Switch } from "@/components/ui/switch";
 import { UnderlineTabs } from "@/components/ui/underline-tabs";
+import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { plural, t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
@@ -145,8 +146,8 @@ export const ItemPage = ({ itemId }: { readonly itemId: LibraryItemId }) => {
   return (
     <PageFrame crumbs={crumbs} actions={actions} properties={<ItemProperties item={data} onChanged={refresh} />}>
       <div data-testid="library-item" data-item={data.name}>
-        <div className="font-mono text-sm text-faint">{t(skill ? "library.item.keySkill" : "library.item.keyServer", { date: dayText(data.installedAt) })}</div>
-        <h1 className="page-title my-1.5 break-words">{data.name}</h1>
+        <div className={pageKeyLine}>{t(skill ? "library.item.keySkill" : "library.item.keyServer", { date: dayText(data.installedAt) })}</div>
+        <h1 className={cn("page-title break-words", pageTitleGap(true))}>{data.name}</h1>
         {description === null || description === "" ? null : <p className="max-w-[760px] text-lede text-muted" data-testid="item-description">{description}</p>}
         <p className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-ui text-muted" data-testid="item-source">
           {skill ? <FolderGit2Icon aria-hidden className="size-[14px] shrink-0" /> : <PlugIcon aria-hidden className="size-[14px] shrink-0" />}

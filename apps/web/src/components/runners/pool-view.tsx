@@ -7,7 +7,7 @@ import { AlertDialog as Dialog } from "radix-ui";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
-import { PageFrame, PageHeading, PropGroup, PropRow, Section } from "@/components/shell/page-frame";
+import { PageFrame, PageHeading, pageTitleGap, PropGroup, PropRow, Section } from "@/components/shell/page-frame";
 import { projectColour } from "@/components/shell/project-colour";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/sheet";
@@ -455,7 +455,7 @@ export const PoolView = ({ poolId, settings }: { readonly poolId: string; readon
         properties={data === undefined ? <Skeleton className="w-3/4" /> : <PoolPanel pool={data} summary={summary} defaultDays={settings.joinTokenDays} onEdit={() => { if (sheetPool !== null) open({ kind: "edit", pool: sheetPool }); }} />}
       >
         <div className="mb-2">
-          <div className="my-1.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+          <div className={cn("flex flex-wrap items-baseline gap-x-2.5 gap-y-1", pageTitleGap(false))}>
             <h1 className="page-title break-words">{data?.name ?? ""}</h1>
             {executors.map((executor) => <Chip key={executor} className="font-mono text-[13px]">{executor}</Chip>)}
             {data?.isDefault === true ? <Chip className="font-mono text-[13px]">{t("runners.defaultPool")}</Chip> : null}

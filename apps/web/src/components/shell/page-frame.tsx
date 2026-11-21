@@ -59,9 +59,10 @@ const PANE_MIN = 420;
 /**
  * The 46px top bar with breadcrumbs and the page's actions (54px at phone width, with the menu
  * button that opens the rail and the panel as one sheet, F-147), the default-password banner under it
- * while it applies, the page (padding 28px 36px), and its properties panel (320px, or 380px for a
- * form; padding 20px 18px), which stacks under the page below `xl`. The sizes are the approved
- * pictures' (app-targets/m1/README.md, "Scale").
+ * while it applies, the page (padding 26px 36px, milestone 8's targets: m1's measured 28px set every
+ * heading a little low), and its properties panel (320px, or 380px for a form; padding 20px 18px),
+ * which stacks under the page below `xl`. The other sizes are the approved pictures'
+ * (app-targets/m1/README.md, "Scale").
  */
 export const PageFrame = ({ crumbs, actions, properties, wideProperties = false, padded = true, pane, phoneTitle, children }: PageFrameProps) => {
   const { openNavigation, navigationOpen, passwordChange } = useShell();
@@ -170,7 +171,7 @@ export const PageFrame = ({ crumbs, actions, properties, wideProperties = false,
             pane === undefined ? "xl:overflow-y-auto" : "lg:overflow-y-auto",
             pane?.expanded === true && "lg:hidden",
             pane?.narrow === "pane" && "max-lg:hidden",
-            padded && "px-4 pb-8 pt-6 sm:px-9 sm:pt-7",
+            padded && "px-4 pb-8 pt-6 sm:px-9 sm:pt-[26px]",
           )}
         >
           {children}
@@ -203,11 +204,20 @@ export const PageFrame = ({ crumbs, actions, properties, wideProperties = false,
   );
 };
 
+/** A page's key line over its title (milestone 8's `.key`): Plex Mono 13px `--faint`, one 17px line. */
+export const pageKeyLine = "font-mono text-sm leading-[17px] text-faint";
+
+/**
+ * The title's margins (milestone 8's `h1`): 4px under a key line, none at the page's top, 6px over
+ * the lede. With the page's 26px top, a title starts 26px down, or 47px under a key line.
+ */
+export const pageTitleGap = (keyed: boolean): string => (keyed ? "mt-1 mb-1.5" : "mt-0 mb-1.5");
+
 /** The page heading: an optional key line, the title (Manrope 700, 26px) and a one-line lede. */
 export const PageHeading = ({ eyebrow, title, lede, children }: { readonly eyebrow?: ReactNode; readonly title: string; readonly lede?: ReactNode; readonly children?: ReactNode }) => (
   <div className="mb-2">
-    {eyebrow === undefined ? null : <div className="font-mono text-sm text-faint">{eyebrow}</div>}
-    <h1 className="page-title my-1.5 break-words">{title}</h1>
+    {eyebrow === undefined ? null : <div className={pageKeyLine}>{eyebrow}</div>}
+    <h1 className={cn("page-title break-words", pageTitleGap(eyebrow !== undefined))}>{title}</h1>
     {lede === undefined ? null : <p className="max-w-[720px] text-lede text-muted">{lede}</p>}
     {children}
   </div>

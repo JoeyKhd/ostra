@@ -11,7 +11,7 @@ import { findingIdSchema } from "@ostra/protocol";
 import type { TaskId } from "@ostra/protocol";
 
 import { GitHubMark } from "@/components/github/github-mark";
-import { PageFrame, PropGroup, PropRow } from "@/components/shell/page-frame";
+import { PageFrame, pageKeyLine, pageTitleGap, PropGroup, PropRow } from "@/components/shell/page-frame";
 import { initials } from "@/components/shell/user-menu";
 import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -289,10 +289,10 @@ export const ReviewScreen = ({ taskId }: { readonly taskId: TaskId }) => {
         )
       }
     >
-      <div className="flex min-h-full flex-col px-4 pb-5 pt-6 sm:px-9 sm:pt-7 xl:h-full" data-testid="review-screen">
+      <div className="flex min-h-full flex-col px-4 pb-5 pt-6 sm:px-9 sm:pt-[26px] xl:h-full" data-testid="review-screen">
         <div className="shrink-0">
-          <div className="font-mono text-sm text-faint">{key} · {task.data?.source === "prompt" ? t("taskPage.fromPrompt") : t("taskPage.fromTicket")}</div>
-          <h1 className="page-title my-1.5 break-words">{task.data?.title ?? data?.title ?? ""}</h1>
+          <div className={pageKeyLine}>{key} · {task.data?.source === "prompt" ? t("taskPage.fromPrompt") : t("taskPage.fromTicket")}</div>
+          <h1 className={cn("page-title break-words", pageTitleGap(true))}>{task.data?.title ?? data?.title ?? ""}</h1>
           {data === undefined ? <Skeleton className="h-4 w-[420px] max-w-full" /> : <RoundLine screen={data} pr={pr} meId={meId} />}
           {screen.error === null ? null : (
             <p role="alert" className="mt-3 text-red">

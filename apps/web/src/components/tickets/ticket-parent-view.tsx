@@ -9,7 +9,7 @@ import type { ProjectId, TicketId } from "@ostra/protocol";
 
 import { rowAge } from "@/components/inbox/inbox-words";
 import { TicketStatusIcon } from "@/components/inbox/ticket-icons";
-import { PageFrame, PropGroup, PropRow } from "@/components/shell/page-frame";
+import { PageFrame, pageKeyLine, pageTitleGap, PropGroup, PropRow } from "@/components/shell/page-frame";
 import { stateTone, taskStateText } from "@/components/tasks/task-words";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -203,8 +203,8 @@ export const TicketParentView = ({ projectId, ticketId }: { readonly projectId: 
         </div>
       ) : (
         <div className="max-w-[1120px]">
-          <div className="font-mono text-sm text-faint">{t("ticketParent.keyLine", { key: data.ticket.key })}</div>
-          <h1 className="page-title my-1.5 break-words">{data.ticket.title}</h1>
+          <div className={pageKeyLine}>{t("ticketParent.keyLine", { key: data.ticket.key })}</div>
+          <h1 className={cn("page-title break-words", pageTitleGap(true))}>{data.ticket.title}</h1>
           <p className="text-ui text-muted" data-testid="parent-status-line">
             {plural(onBoards.length, "ticketParent.statusLine.one", "ticketParent.statusLine.other", { project: projectName })}
             {" · "}
