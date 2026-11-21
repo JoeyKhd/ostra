@@ -321,7 +321,7 @@ describe("no mint through an installation that isn't linked", () => {
       );
       const protectedRule = checks.find((checked) => checked.repoId === repoId)?.rules.protected;
       expect(protectedRule?.result).toBe("unknown");
-      expect(protectedRule !== undefined && "reason" in protectedRule ? protectedRule.reason : "").toContain("isn't linked");
+      expect(protectedRule !== undefined && "reason" in protectedRule ? protectedRule.reason : null).toBe("installation-unlinked");
       // Not one call reached the installation, and no token was minted.
       expect(reached.filter((call) => call.installationId === INSTALLATION_ID)).toEqual([]);
       expect(codeHost.minted.length).toBe(minted);
