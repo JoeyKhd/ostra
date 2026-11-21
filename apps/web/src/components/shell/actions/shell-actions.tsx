@@ -91,6 +91,10 @@ export const ShellActions = ({ me, children }: { readonly me: RouterOutputs["me"
     const target = returnTo.current;
     if (target?.isConnected !== true) return;
     event.preventDefault();
+    // Radix gives the focus back a tick after the dialog goes: a dialog opened within that tick
+    // (⌘K pressed again at once, or on a busy page) has the focus by then, and keeps it.
+    const holder = document.activeElement;
+    if (holder !== null && holder.closest("[role='dialog'], [role='alertdialog']") !== null) return;
     target.focus();
   }, []);
   const openPalette = useCallback((step: PaletteStep | null) => {

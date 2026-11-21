@@ -593,6 +593,15 @@ export const SearchPalette = ({
           data-testid="search-palette"
           data-step={step?.kind ?? "root"}
           {...(onCloseAutoFocus === undefined ? {} : { onCloseAutoFocus })}
+          // The field takes the focus here, once Radix's focus trap listens, and never by `autoFocus`
+          // during the first render: the trap then knows it, and gives it back to the field when
+          // anything outside takes it after the palette opened (a dialog closed just before, giving
+          // the focus back to its trigger a tick late). Typed keys always reach the palette.
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            if (start.step?.kind === "reopen-message") message.current?.focus();
+            else input.current?.focus();
+          }}
           onEscapeKeyDown={(event) => {
             if (step !== null) {
               event.preventDefault();
@@ -617,7 +626,6 @@ export const SearchPalette = ({
             ))}
             <input
               ref={input}
-              autoFocus
               value={text}
               readOnly={busy}
               hidden={step?.kind === "reopen-message"}

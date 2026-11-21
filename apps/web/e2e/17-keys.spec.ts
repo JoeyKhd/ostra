@@ -357,6 +357,49 @@ test.describe("F-081: the core actions by keyboard", { tag: "@desktop-only" }, (
     await expect.poll(() => focusedMark(page)).toBe("user-menu");
   });
 
+  test("F-081/c2: the palette takes the focus when it opens, even in the tick after it closed, and keeps it when a late focus return takes it outside", async ({ page }) => {
+    await signIn(page);
+    const search = page.locator("[data-action='open-palette']").filter({ visible: true });
+    await focusRailItem(page, search);
+    await page.keyboard.press("Enter");
+    const field = palette(page).getByRole("combobox");
+    await expect(field).toBeFocused();
+    // Escape, then ⌘K again before Radix's timer gives the focus back to Search, as a busy page
+    // runs them: both keys in one task, with only React's commit between them. Then the page's
+    // timers that were due run (the focus given back among them), and the field still has it.
+    await page.evaluate(async () => {
+      const press = (target: EventTarget, init: KeyboardEventInit) => target.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+      const open = () => document.querySelector("[data-testid='search-palette']") !== null;
+      /** React commits a key's update in a microtask: wait for that, and nothing longer. */
+      const committed = async (shown: boolean) => {
+        for (let turn = 0; turn < 20 && open() !== shown; turn += 1) await new Promise<void>((resolve) => { queueMicrotask(resolve); });
+        if (open() !== shown) throw new Error(shown ? "⌘K didn't open the palette in the same task" : "Escape didn't close the palette in the same task");
+      };
+      press(document.activeElement ?? document.body, { key: "Escape", code: "Escape" });
+      await committed(false);
+      press(document.body, { key: "k", code: "KeyK", ctrlKey: true });
+      await committed(true);
+      for (let round = 0; round < 2; round += 1) await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
+    });
+    await expect(palette(page)).toBeVisible();
+    await expect(field).toBeFocused();
+    // A focus given back late, after the palette's first frames (another overlay's trigger taking it
+    // as Radix's timer runs on a busy page): the palette's focus trap brings it straight back.
+    await page.evaluate(async () => {
+      for (let frame = 0; frame < 2; frame += 1) await new Promise<void>((resolve) => { requestAnimationFrame(() => { resolve(); }); });
+      const outside = [...document.querySelectorAll<HTMLElement>("[data-action='open-palette']")].find((element) => element.checkVisibility());
+      if (outside === undefined) throw new Error("no Search button to take the focus");
+      outside.focus();
+    });
+    await expect(field).toBeFocused();
+    // Typed keys reach it, not the page's single-key shortcuts.
+    await page.keyboard.type("needs");
+    await expect(field).toHaveValue("needs");
+    await page.keyboard.press("Escape");
+    await expect(palette(page)).toHaveCount(0);
+    await expect(search).toBeFocused();
+  });
+
   test("F-081/c2: the live region announces a new needs-you item", async ({ page }) => {
     await signIn(page);
     await expect(page.locator("[data-action='open-palette']")).toBeVisible();
