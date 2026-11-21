@@ -375,15 +375,16 @@ An organization's library holds items, each a skill or an MCP server, pinned to 
 
 ```
  available ──┬──▶ current ──▶ superseded
-             └──▶ dismissed
+             ├──▶ dismissed
+             └──▶ superseded (a newer update found while it waited)
  (an install's first version starts current)
 ```
 
 | State | Means | Leaves when |
 |---|---|---|
-| **available** | The update check found the pin moved and the content changed, and wrote its diff. A quiet count shows it to admins | An admin accepts it (→ current), or dismisses it (→ dismissed) |
+| **available** | The update check found the pin moved and the content changed, and wrote its diff against the current version. A quiet count shows it to admins. An item has at most one waiting | An admin accepts it (→ current), or dismisses it (→ dismissed). A newer update found before anyone decided takes its place (→ superseded), so an accept always names the content the admin saw |
 | **current** | The item's pin. Every attached profile's tasks take it at their next session | A newer version is accepted (→ superseded) |
-| **dismissed** | An admin left the item where it was. A newer one shows again | Never |
+| **dismissed** | An admin left the item where it was. The same content found again stays dismissed; a newer one shows again | Never |
 | **superseded** | A newer version took its place | Never |
 
 **A suggestion** is a member's reference and note (the note is never logged).

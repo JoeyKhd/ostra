@@ -1,4 +1,3 @@
-import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { SecretRef } from "@ostra/adapter-sdk";
 import { Prisma } from "@ostra/db";
 import type { Tx } from "@ostra/db";
@@ -26,9 +25,10 @@ import type { OutboundDeps } from "./outbound.ts";
 import { librarySourceKindOf, librarySourceSchema, parseLibraryReference } from "./reference.ts";
 import type { LibraryReference, LibrarySource } from "./reference.ts";
 import { readRegistryServer, serverItemNameOf, serverOfferOf, serverRefusalWords, templateVariables } from "./registry-source.ts";
+import { remoteUrlWith, serverRequestOf } from "./server-request.ts";
 import { addSourceInTx, allowlistOf } from "./sources.ts";
 import { libraryVersionFilesSchema, storedServerEntrySchema, storedServerInputsSchema, storedToolNamesSchema } from "./stored.ts";
-import type { LibraryVersionFile, StoredServerInput, StoredServerInputs } from "./stored.ts";
+import type { LibraryVersionFile, StoredServerEntry, StoredServerInput, StoredServerInputs } from "./stored.ts";
 import { readWellKnownSkills } from "./well-known-source.ts";
 
 // F-145 (ADR 0069, spec sections 4 and 5.4, ticket 27): the library's install by reference.
@@ -46,14 +46,15 @@ import { readWellKnownSkills } from "./well-known-source.ts";
 // content, a header's value, a secret or a reference's text.
 
 /** The secret store's purpose for a server's secret input. */
-const SECRET_PURPOSE = "library-server-input";
+export const LIBRARY_SECRET_PURPOSE = "library-server-input";
+const SECRET_PURPOSE = LIBRARY_SECRET_PURPOSE;
 
 const refuse = <E extends string>(error: E, message: string): { readonly ok: false; readonly error: E; readonly message: string } => ({ ok: false, error, message });
 
 const githubDeps = (deps: LibraryDeps): GitHubSourceDeps => ({ db: deps.db, codeHost: deps.adapters.codeHost, secretStore: deps.adapters.secretStore });
-const outbound = (deps: LibraryDeps): OutboundDeps => ({ fetch: deps.fetch, serverVersion: deps.serverVersion });
+const outbound = (deps: Pick<LibraryDeps, "fetch" | "serverVersion">): OutboundDeps => ({ fetch: deps.fetch, serverVersion: deps.serverVersion });
 
-const loggerOf = (deps: LibraryDeps) => deps.logger.child({ component: "library" });
+const loggerOf = (deps: Pick<LibraryDeps, "logger">) => deps.logger.child({ component: "library" });
 
 /** A source's refusal, as the look's and the install's error. */
 const failed = (failure: SourceFailure | { readonly ok: false; readonly error: "digest-mismatch"; readonly message: string }): { readonly ok: false; readonly error: ResolveReferenceError; readonly message: string } =>
@@ -326,18 +327,6 @@ const collectInputs = (
   return { ok: true, values };
 };
 
-/** The remote's URL with its variables put in, each value as a URL part. */
-export const remoteUrlWith = (template: string, variables: ReadonlyMap<string, string>): string | null => {
-  const url = template.replace(/\{([^{}]+)\}/g, (whole, name: string) => {
-    const value = variables.get(name);
-    return value === undefined ? whole : encodeURIComponent(value);
-  });
-  if (/\{[^{}]+\}/.test(url) || !URL.canParse(url)) {
-    return null;
-  }
-  return new URL(url).protocol === "https:" ? url : null;
-};
-
 /** A server: its entry read again at the look's version, its inputs checked, its secrets in the secret store. */
 const installServer = async (deps: LibraryDeps, organizationId: OrganizationId, memberId: MemberId, reference: LibraryReference, input: Extract<InstallItemInput, { readonly kind: "server" }>): Promise<InstallResult> => {
   const logger = loggerOf(deps);
@@ -455,25 +444,65 @@ export const installItem: InstallItem = async (deps, scope, input) => {
 
 // ---------- the test call ----------
 
-/** An input's value as it's sent: a plain one as kept, a secret one read from the secret store. */
-const valueOf = async (deps: LibraryDeps, organizationId: OrganizationId, input: StoredServerInput): Promise<string | null> => {
-  if (input.kind === "plain") {
-    return input.value;
+type TestCallResult = Awaited<ReturnType<TestServer>>;
+
+/**
+ * The test call to a server's version, from core with its headers, with no access check: the tools'
+ * names or the OAuth mark, or why it failed, in the dialog's words. Attaching a server never
+ * tested (ticket 28) and the update check's fresh test call make it too.
+ */
+export const testCallOf = async (
+  deps: Pick<LibraryDeps, "adapters" | "fetch" | "serverVersion" | "logger">,
+  organizationId: OrganizationId,
+  itemId: LibraryItemId,
+  entry: StoredServerEntry,
+  inputs: StoredServerInputs,
+): Promise<TestCallResult> => {
+  const logger = loggerOf(deps);
+  const request = await serverRequestOf(deps.adapters.secretStore, organizationId, entry, inputs);
+  if (!request.ok) {
+    switch (request.error) {
+      case "secret-unreadable":
+        return refuse("unavailable", "A secret input couldn't be read from the secret store");
+      case "bad-address":
+        return refuse("invalid-response", "The server's address, with its variables put in, isn't an https address");
+      case "bad-header":
+        return refuse("invalid-response", "A header of the server's holds a character it can't be sent with");
+      default:
+        return request.error satisfies never;
+    }
   }
-  const ref = secretRefSchema.safeParse(input.ref);
-  const value = ref.success ? await deps.adapters.secretStore.get(organizationId, ref.data) : null;
-  return value?.ok === true ? value.value : null;
+  const listed = await listMcpTools(outbound(deps), request.url, request.headers);
+  switch (listed.kind) {
+    case "tools":
+      return { ok: true, toolNames: listed.names, needsOAuth: false };
+    case "oauth":
+      return { ok: true, toolNames: [], needsOAuth: true };
+    case "refused":
+      logger.info("library.server.test-refused", { organizationId, itemId, kind: "mcp_server", sourceKind: "registry", status: listed.status });
+      return refuse("unavailable", `The server refused the test call (HTTP ${String(listed.status)}): check its headers`);
+    case "unavailable":
+      logger.info("library.server.test-failed", { organizationId, itemId, kind: "mcp_server", sourceKind: "registry", reason: listed.reason, status: listed.status });
+      return refuse(
+        "unavailable",
+        listed.reason === "timeout" ? "The server didn't answer the test call within 10 s" : listed.reason === "status" ? `The server answered the test call with HTTP ${String(listed.status)}` : "The server couldn't be reached",
+      );
+    case "invalid":
+      logger.info("library.server.test-failed", { organizationId, itemId, kind: "mcp_server", sourceKind: "registry", reason: "invalid" });
+      return refuse("invalid-response", "The server's answer to the test call isn't an MCP tool list");
+    default:
+      return listed satisfies never;
+  }
 };
 
-/** An organization admin's test call: the server's tools, or the OAuth mark, kept on its current version. */
-export const testServer: TestServer = async (deps, scope, input) => {
-  const organizationId = scope.organizationId;
-  if (!requireOrganizationAdmin(scope, organizationId).ok) {
-    return refuse("forbidden", "Only an organization admin tests a library server");
-  }
-  const logger = loggerOf(deps);
+/**
+ * The test call on an item's current version, its tools' names or the OAuth mark kept on the
+ * version, with no access check: the admin's `testServer`, and an attach of a server whose
+ * version lists no tools yet (ticket 28).
+ */
+export const testCurrentVersion = async (deps: LibraryDeps, organizationId: OrganizationId, itemId: LibraryItemId): Promise<TestCallResult> => {
   const item = await deps.db.libraryItem.findFirst({
-    where: { id: input.itemId, organizationId, kind: "mcp_server", removedAt: null },
+    where: { id: itemId, organizationId, kind: "mcp_server", removedAt: null },
     select: { id: true, currentVersion: { select: { id: true, serverEntry: true, serverInputs: true } } },
   });
   const entry = storedServerEntrySchema.safeParse(item?.currentVersion?.serverEntry);
@@ -482,57 +511,23 @@ export const testServer: TestServer = async (deps, scope, input) => {
   if (item === null || versionId === undefined || !entry.success || !inputs.success) {
     return refuse("not-found", "No such MCP server in the library");
   }
-  const variables = new Map<string, string>();
-  for (const [name, stored] of Object.entries(inputs.data.variables)) {
-    const value = await valueOf(deps, organizationId, stored);
-    if (value === null) {
-      return refuse("unavailable", "A secret input couldn't be read from the secret store");
-    }
-    variables.set(name, value);
-  }
-  const headers: Record<string, string> = { ...entry.data.fixedHeaders };
-  for (const [name, stored] of Object.entries(inputs.data.headers)) {
-    const value = await valueOf(deps, organizationId, stored);
-    if (value === null) {
-      return refuse("unavailable", "A secret input couldn't be read from the secret store");
-    }
-    headers[name] = value;
-  }
-  const url = remoteUrlWith(entry.data.remoteUrl, variables);
-  if (url === null) {
-    return refuse("invalid-response", "The server's address, with its variables put in, isn't an https address");
-  }
-  const listed = await listMcpTools(outbound(deps), url, headers);
-  let toolNames: readonly string[];
-  let needsOAuth: boolean;
-  switch (listed.kind) {
-    case "tools":
-      toolNames = listed.names;
-      needsOAuth = false;
-      break;
-    case "oauth":
-      toolNames = [];
-      needsOAuth = true;
-      break;
-    case "refused":
-      logger.info("library.server.test-refused", { organizationId, itemId: input.itemId, kind: "mcp_server", sourceKind: "registry", status: listed.status });
-      return refuse("unavailable", `The server refused the test call (HTTP ${String(listed.status)}): check its headers`);
-    case "unavailable":
-      logger.info("library.server.test-failed", { organizationId, itemId: input.itemId, kind: "mcp_server", sourceKind: "registry", reason: listed.reason, status: listed.status });
-      return refuse(
-        "unavailable",
-        listed.reason === "timeout" ? "The server didn't answer the test call within 10 s" : listed.reason === "status" ? `The server answered the test call with HTTP ${String(listed.status)}` : "The server couldn't be reached",
-      );
-    case "invalid":
-      logger.info("library.server.test-failed", { organizationId, itemId: input.itemId, kind: "mcp_server", sourceKind: "registry", reason: "invalid" });
-      return refuse("invalid-response", "The server's answer to the test call isn't an MCP tool list");
-    default:
-      return listed satisfies never;
+  const tested = await testCallOf(deps, organizationId, itemId, entry.data, inputs.data);
+  if (!tested.ok) {
+    return tested;
   }
   await deps.db.$transaction(async (tx) => {
-    await tx.libraryItemVersion.update({ where: { id: versionId }, data: { toolNames: storedToolNamesSchema.parse([...toolNames]), needsOAuth } });
+    await tx.libraryItemVersion.update({ where: { id: versionId }, data: { toolNames: storedToolNamesSchema.parse([...tested.toolNames]), needsOAuth: tested.needsOAuth } });
     await deps.notices.emitInTx(tx, { organizationId, projectId: null, entity: "organization", entityId: organizationId });
   });
-  logger.info("library.server.tested", { organizationId, itemId: input.itemId, kind: "mcp_server", sourceKind: "registry", tools: toolNames.length, needsOAuth });
-  return { ok: true, toolNames, needsOAuth };
+  loggerOf(deps).info("library.server.tested", { organizationId, itemId, kind: "mcp_server", sourceKind: "registry", tools: tested.toolNames.length, needsOAuth: tested.needsOAuth });
+  return tested;
+};
+
+/** An organization admin's test call: the server's tools, or the OAuth mark, kept on its current version. */
+export const testServer: TestServer = async (deps, scope, input) => {
+  const organizationId = scope.organizationId;
+  if (!requireOrganizationAdmin(scope, organizationId).ok) {
+    return refuse("forbidden", "Only an organization admin tests a library server");
+  }
+  return testCurrentVersion(deps, organizationId, input.itemId);
 };

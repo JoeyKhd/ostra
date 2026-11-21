@@ -12,7 +12,7 @@ const by = memberIdSchema.parse("member-1");
 const itemId = libraryItemIdSchema.parse("item-1");
 
 describe("the library's lifecycles", () => {
-  it("F-145: a version is available, then current or dismissed, and a current one superseded; nothing else moves", () => {
+  it("F-145: a version is available, then current, dismissed or superseded by a newer update, and a current one superseded; nothing else moves", () => {
     const available: LibraryVersionLifecycle = { state: "available", fetchedAt: at };
     const current: LibraryVersionLifecycle = { state: "current", decidedBy: by, at };
     const dismissed: LibraryVersionLifecycle = { state: "dismissed", decidedBy: by, at };
@@ -23,7 +23,7 @@ describe("the library's lifecycles", () => {
     const table: readonly (readonly [LibraryVersionLifecycle, LibraryVersionInput, LibraryVersionLifecycle | null])[] = [
       [available, accept, current],
       [available, dismiss, dismissed],
-      [available, supersede, null],
+      [available, supersede, superseded],
       [current, accept, null],
       [current, dismiss, null],
       [current, supersede, superseded],

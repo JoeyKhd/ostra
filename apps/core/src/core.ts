@@ -84,7 +84,7 @@ import { fetchContextHandler } from "./tracker/context.ts";
 import { drainTicketWrites, ticketSyncHandler } from "./tracker/writer.ts";
 import { agentEventHandler } from "./linear/agent-mode/events.ts";
 import { draftApplyHandler, enqueueBuiltInProfileSeeds, seedProfilesHandler } from "./refine/apply.ts";
-import { enqueueLibrarySourceSeeds, libraryBlobs, seedSourcesHandler } from "./library/library.ts";
+import { checkUpdatesHandler, enqueueLibrarySourceSeeds, enqueueLibraryUpdateChecks, libraryBlobRead, libraryBlobs, seedSourcesHandler } from "./library/library.ts";
 import { handleDraftEndpoint } from "./runner-http/draft.ts";
 import { activitySendHandler, ensureHeartbeatSchedule, heartbeatHandler } from "./linear/agent-mode/outbox.ts";
 import { applyBoxRunnerEvent } from "./dispatch/box-waits.ts";
@@ -578,6 +578,8 @@ export const startCore = async (
     logger,
   };
   await jobs.work("library.seed-sources", seedSourcesHandler(libraryDeps), { localConcurrency: 1 });
+  // Ticket 28: the update check, an organization's window or one item an admin asked for.
+  await jobs.work("library.check-updates", checkUpdatesHandler({ ...libraryDeps, readBlob: libraryBlobRead(blobs) }), { localConcurrency: 2 });
   await enqueueLibrarySourceSeeds({ db, jobs }).catch((error: unknown) => {
     logger.warn("library.seed-enqueue-failed", { error: error instanceof Error ? error.name : "unknown" });
   });
@@ -783,6 +785,10 @@ export const startCore = async (
     });
     await ensureSnapshotNightlySchedule(jobs, settings.snapshotNightlyHour).catch((error: unknown) => {
       logger.warn("schedules.failed", { job: "snapshot.nightly", error: error instanceof Error ? error.name : "unknown" });
+    });
+    // Ticket 28: each organization's next library update check, once per `OSTRA_LIBRARY_UPDATE_HOURS`.
+    await enqueueLibraryUpdateChecks({ db, jobs, clock: systemClock, updateHours: settings.library.updateHours }).catch((error: unknown) => {
+      logger.warn("schedules.failed", { job: "library.check-updates", error: error instanceof Error ? error.name : "unknown" });
     });
   };
   await schedules();

@@ -186,6 +186,7 @@ export const handleTaskEndpoint =
           secretStore: deps.adapters.secretStore,
           ...(deps.specSettings === undefined ? {} : { settings: deps.specSettings }),
           ...(deps.blobs === undefined ? {} : { blobs: deps.blobs }),
+          logger,
         },
         { taskId: taskId.data, runnerId: caller.runnerId, leaseEpoch: query.data.leaseEpoch, minor },
       );

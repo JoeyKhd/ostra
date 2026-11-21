@@ -1,7 +1,7 @@
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import { apiFormatFromDb, authSchemeFromDb } from "@ostra/db";
 import type { Tx } from "@ostra/db";
-import { HTTP_HEADER_VALUE, organizationIdSchema, projectIdSchema, repoFullNameSchema, repoIdSchema, runnerIdSchema, taskCredentialsRequestSchema, taskCredentialsSchema } from "@ostra/protocol";
+import { agentProfileIdSchema, HTTP_HEADER_VALUE, organizationIdSchema, projectIdSchema, repoFullNameSchema, repoIdSchema, runnerIdSchema, taskCredentialsRequestSchema, taskCredentialsSchema } from "@ostra/protocol";
 import type { LeaseEpoch, OrganizationId, RepoSecret, ServiceSecrets, TaskCredentials, TaskId } from "@ostra/protocol";
 import type { z } from "zod";
 
@@ -9,6 +9,8 @@ import { serviceVariablesFromDb } from "../environment/services.ts";
 import type { Ports } from "../ports.ts";
 import { providerAuditActions } from "../providers/provider-lists.ts";
 import { sessionRowAllowedInTx } from "../providers/session-model.ts";
+import { profileLibraryOf } from "../library/profile-library.ts";
+import { serverRequestOf } from "../library/server-request.ts";
 import { storedMcpServersSchema } from "./task-profile.ts";
 import { INSTALLATION_NOT_LINKED, installationStateSelect, installationUsable } from "../code-host/installations.ts";
 
@@ -212,6 +214,19 @@ export const issueTaskCredentials: IssueTaskCredentials = async (deps, input) =>
       headers[header] = trimmed;
     }
     mcpServers.push({ name: server.name, url: server.url, headers });
+  }
+  // Milestone 8 (F-145, ADR 0069, ticket 28): the profile's library servers, attached or on every
+  // profile, at their current versions: the address with its variables put in and the headers,
+  // the secret ones read from the secret store, for the sidecar alone, as the spec names them.
+  if (profile !== null) {
+    const library = await profileLibraryOf(tx, { organizationId, profileId: agentProfileIdSchema.parse(profile.id) });
+    for (const server of library.servers) {
+      const request = await serverRequestOf(secretStore, organizationId, server.entry, server.inputs);
+      if (!request.ok) {
+        return failed(request.error === "secret-unreadable" ? "a library MCP server's input couldn't be read from the secret store" : "a library MCP server's address or header can't be sent");
+      }
+      mcpServers.push({ name: server.name, url: request.url, headers: { ...request.headers } });
+    }
   }
 
   const credentials = taskCredentialsSchema.parse({

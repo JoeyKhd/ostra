@@ -415,9 +415,13 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   const needsServices = (await tx.service.count({ where: { projectId: task.projectId, organizationId: task.organizationId } })) > 0;
   // Milestone 3 (F-021, ticket 16): a profile with rules, plan first, skills or MCP servers goes only
   // to a runner at minor 2 or later. When only older runners could take it, the task says so.
+  // Milestone 8 (F-145, ticket 28): the library items on it, attached or on every profile, count.
+  const libraryItems = severalApps
+    ? 0
+    : await tx.libraryItem.count({ where: { organizationId: task.organizationId, removedAt: null, OR: [{ everyProfile: true }, { profiles: { some: { profileId: profile.id } } }] } });
   const profileMinor = severalApps
     ? SEVERAL_APPS_MINOR
-    : profileNeedsMinor2({ approvalRules: profile.approvalRules, planFirst: profile.planFirst, mcpServers: profile.mcpServers, skillCount: profile._count.skills })
+    : profileNeedsMinor2({ approvalRules: profile.approvalRules, planFirst: profile.planFirst, mcpServers: profile.mcpServers, skillCount: profile._count.skills + libraryItems })
       ? PROFILE_FEATURES_MINOR
       : 0;
   // Milestone 4 (F-137, ADR 0066): a task that runs at a level other than `default` goes only to a

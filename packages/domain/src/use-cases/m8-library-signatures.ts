@@ -186,8 +186,11 @@ export type TestServer = (
 
 // ---------- attaching, every profile, removing (ticket 28) ----------
 
-/** A refusal `profileItems` gave, naming the profile; or a server that needs a sign-in ostra doesn't do yet. */
-export type AttachError = "forbidden" | "not-found" | "needs-oauth" | ProfileItemsRefusal["code"];
+/**
+ * A refusal `profileItems` gave, naming the profile; a server that needs a sign-in ostra doesn't do
+ * yet; or (ticket 28) a server whose version lists no tools, tested first, that didn't answer.
+ */
+export type AttachError = "forbidden" | "not-found" | "needs-oauth" | "unavailable" | ProfileItemsRefusal["code"];
 
 export type AttachItem = (
   deps: LibraryDeps,
@@ -208,6 +211,13 @@ export type SetEveryProfile = (
   input: { readonly itemId: LibraryItemId; readonly everyProfile: boolean },
 ) => Promise<UseCaseResult<{ readonly everyProfile: boolean }, AttachError>>;
 
+/** Ticket 28: an admin marks a library server read-only (plan mode may call it, and "Reaching the network" doesn't ask), or not. */
+export type SetReadOnly = (
+  deps: LibraryDeps,
+  scope: MemberScope,
+  input: { readonly itemId: LibraryItemId; readonly readOnly: boolean },
+) => Promise<UseCaseResult<{ readonly readOnly: boolean }, "forbidden" | "not-found">>;
+
 /** Detaches it everywhere; tasks lose it at their next session. */
 export type RemoveItem = (
   deps: LibraryDeps,
@@ -220,25 +230,56 @@ export type RemoveItem = (
 /** What one item's check found. */
 export type UpdateFound =
   | { readonly kind: "none" }
-  | { readonly kind: "skill"; readonly versionId: LibraryItemVersionId; readonly commit: GitSha; readonly diff: SkillDiff }
+  /** `commit` is `null` for a site's well-known skill, which has none. */
+  | { readonly kind: "skill"; readonly versionId: LibraryItemVersionId; readonly commit: GitSha | null; readonly diff: SkillDiff }
   | { readonly kind: "server"; readonly versionId: LibraryItemVersionId; readonly registryVersion: string; readonly diff: ServerDiff };
+
+/** Reads a library file's bytes back: the update check diffs the current version's files (ticket 28). */
+export type LibraryBlobRead = (
+  organizationId: OrganizationId,
+  blobId: BlobId,
+) => Promise<{ readonly ok: true; readonly bytes: Uint8Array } | { readonly ok: false; /** Words, never content. */ readonly message: string }>;
+
+/** What the update check takes beyond the library's deps: core's reader of the organization's blobs. */
+export type LibraryCheckDeps = LibraryDeps & { readonly readBlob: LibraryBlobRead };
 
 /**
  * `library.check-updates`: each item of an organization (or one item, on demand) read again at its
- * source; an `available` version with its diff when the pin moved and the content changed. A
- * source taken off the allowlist refuses its items' updates.
+ * source; an `available` version with its diff when the pin moved and the content changed. An
+ * update whose source was taken off the allowlist is stored and can't be accepted (`refused`
+ * counts them). `found` holds each item whose check ran to the end, `none` included; `failed`
+ * counts those whose source couldn't be read, or whose new version ostra can't take.
  */
 export type CheckUpdates = (
-  deps: LibraryDeps,
+  deps: LibraryCheckDeps,
   input: { readonly organizationId: OrganizationId; readonly itemId: LibraryItemId | null },
-) => Promise<{ readonly checked: number; readonly found: readonly { readonly itemId: LibraryItemId; readonly update: UpdateFound }[]; readonly refused: number }>;
+) => Promise<{
+  readonly checked: number;
+  readonly found: readonly { readonly itemId: LibraryItemId; readonly update: UpdateFound }[];
+  readonly refused: number;
+  readonly failed: number;
+}>;
 
-/** The available version becomes current, and the old one superseded; the next dispatch of every attached profile's tasks takes it. */
+/** An admin's "Check for updates" on one item: `library.check-updates` for it, keyed by the item. */
+export type RequestUpdateCheck = (
+  deps: LibraryDeps,
+  scope: MemberScope,
+  input: { readonly itemId: LibraryItemId },
+) => Promise<UseCaseResult<{ readonly requested: true }, "forbidden" | "not-found">>;
+
+/**
+ * The available version becomes current, and the old one superseded; the next dispatch of every
+ * attached profile's tasks takes it. Refused when its source is off the list (`not-allowed`), and
+ * for a server that now asks for a sign-in (`needs-oauth`) or for an input the item lacks
+ * (`needs-input`, which a new install gives).
+ */
 export type AcceptUpdate = (
   deps: LibraryDeps,
   scope: MemberScope,
   input: { readonly versionId: LibraryItemVersionId },
-) => Promise<UseCaseResult<{ readonly currentVersionId: LibraryItemVersionId }, "forbidden" | "not-found" | "not-allowed-in-state" | "not-allowed">>;
+) => Promise<
+  UseCaseResult<{ readonly currentVersionId: LibraryItemVersionId }, "forbidden" | "not-found" | "not-allowed-in-state" | "not-allowed" | "needs-oauth" | "needs-input">
+>;
 
 /** The item stays where it is; a newer version shows again. */
 export type DismissUpdate = (
@@ -255,6 +296,12 @@ export type SuggestItem = (
   scope: MemberScope,
   input: { readonly reference: string; readonly note: string },
 ) => Promise<UseCaseResult<{ readonly suggestionId: LibrarySuggestionId; readonly sourceAllowed: boolean }, "invalid-reference" | "invalid-input">>;
+
+/** The admins' quiet counts on the library: open suggestions, and items with an update waiting. */
+export type LibraryCounts = (
+  deps: Pick<LibraryDeps, "db">,
+  scope: MemberScope,
+) => Promise<UseCaseResult<{ readonly openSuggestions: number; readonly updatesWaiting: number }, "forbidden">>;
 
 export type DecideSuggestion = (
   deps: LibraryDeps,

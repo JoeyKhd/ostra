@@ -136,6 +136,12 @@ export const suiteCases = {
  * changes. Each runs on the scripted fake agent, which drives the runner as any agent does.
  */
 export const sharedCases = {
+  // Milestone 8 (F-145, ticket 28): core hands a library item to every agent as a profile's own.
+  coreLibrarySkills: { file: "apps/core/src/library/library-profiles.test.ts", title: "F-145/c12: a library skill reaches the task as the task's blobs with their digests, exactly as the profile's own skill does" },
+  coreLibraryServers: {
+    file: "apps/core/src/library/library-profiles.test.ts",
+    title: "F-145/c12: a library server reaches the task as an HTTP server on the MCP proxy, read-only when marked, its address and header in the credentials only",
+  },
   gitProxy: { file: "apps/runner/src/task-host/task-host.test.ts", title: "F-090/c1,c2: the agent's own git clones, fetches and pushes through the proxy, which adds the repo's token; its push to main is refused" },
   crash: { file: "apps/runner/src/task-host/task-host.test.ts", title: "F-047/c1: a run whose agent crashes frees the runner's one slot, and the next dispatch is accepted and starts" },
   prText: { file: "apps/runner/src/sidecar/mcp-tools.test.ts", title: "F-030/c4: emits pr.text_set for a call naming one of the task's repos" },
@@ -190,6 +196,15 @@ export const sharedCases = {
   openCodeNoSignInConfig: {
     file: "packages/adapters/adapter-opencode/src/permissions.test.ts",
     title: "F-145/c12: every remote MCP server in OpenCode's config says oauth: false, a profile's, a library's and ostra's own, with no header but ostra's bearer",
+  },
+  runnerLibrarySkill: {
+    file: "apps/runner/src/task-host/library-items.opencode.test.ts",
+    title: "F-145/c12: a library skill reaches OpenCode from the task's agent folder, its files beside it, and wins over the repo's own skill of its name, which the runner logs by name only",
+  },
+  runnerLibraryServer: {
+    file: "apps/runner/src/task-host/library-items.opencode.test.ts",
+    title:
+      "F-145/c12: a library MCP server reaches OpenCode's config as a proxy path with oauth: false and no header, the config searched for the header's value, and its call through the proxy carries it",
   },
   openCodeNoSignIn: {
     file: "packages/adapters/adapter-opencode/src/opencode-adapter.contract.test.ts",
@@ -287,8 +302,8 @@ const milestone6IndexOnly = {
 const milestone8OpenCode = {
   "F-121, F-140 The app tools": cases(suiteCases.appTools, suiteCases.appScreenshot, sharedCases.openCodeAppToolsFiltered, sharedCases.openCodeAppToolsAskNoOne),
   "F-140 The app's block": cases(suiteCases.appBlock, sharedCases.openCodeAppBlock, sharedCases.runnerAppBlock),
-  "F-145 Library skills": cases(suiteCases.skillsMcp),
-  "F-145 Library MCP servers": cases(suiteCases.skillsMcp, sharedCases.openCodeNoSignInConfig, sharedCases.openCodeNoSignIn),
+  "F-145 Library skills": cases(suiteCases.skillsMcp, sharedCases.coreLibrarySkills, sharedCases.runnerLibrarySkill),
+  "F-145 Library MCP servers": cases(suiteCases.skillsMcp, sharedCases.coreLibraryServers, sharedCases.openCodeNoSignInConfig, sharedCases.openCodeNoSignIn, sharedCases.runnerLibraryServer),
 } as const;
 
 /**
@@ -299,8 +314,8 @@ const milestone8OpenCode = {
 const milestone8Fakes = {
   "F-121, F-140 The app tools": cases(suiteCases.appTools, suiteCases.appScreenshot),
   "F-140 The app's block": cases(suiteCases.appBlock),
-  "F-145 Library skills": cases(suiteCases.skillsMcp),
-  "F-145 Library MCP servers": cases(suiteCases.skillsMcp),
+  "F-145 Library skills": cases(suiteCases.skillsMcp, sharedCases.coreLibrarySkills),
+  "F-145 Library MCP servers": cases(suiteCases.skillsMcp, sharedCases.coreLibraryServers),
 } as const;
 
 /**

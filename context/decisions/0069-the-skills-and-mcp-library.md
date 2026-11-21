@@ -71,7 +71,11 @@ Delivery was already right. Core copies a profile's skills into the task's blobs
 
 **A name a profile already uses is refused at attach.** For a skill that's the profile's own skill of that name. For a server, the profile's own server of that name. A library item and a repo's own skill of the same name follow the `repo-skills` work's rule.
 
-**A library MCP server starts as not read-only:** a registry has no trustworthy read-only flag (research §6). So plan mode leaves it alone, and "Reaching the network" asks before its tools (ADR 0049). An admin can mark it read-only.
+**A library MCP server starts as not read-only:** a registry has no trustworthy read-only flag (research §6). So plan mode leaves it alone, and "Reaching the network" asks before its tools (ADR 0049). An admin can mark it read-only, with an audit entry (`library.read_only_changed`, added 2026-11-21 by ticket 28).
+
+**A server never tested is tested at attach** (ticket 28, 2026-11-21). An install makes no test call, so a server whose version lists no tools gets its test call when an admin attaches it or puts it on every profile; one that answers with an OAuth challenge is marked then, and refused. "Every profile" checks every profile that isn't archived; an archived one's reopened tasks get what still fits.
+
+**A dispatch never refuses a task for the library** (ticket 28). The profile's own skills and servers come first; a library item that no longer fits (an own skill of its name added since, a limit passed) or a server that now asks for a sign-in is left out of that session and logged by its ID.
 
 ## Delivery: unchanged
 
@@ -91,6 +95,9 @@ Delivery was already right. Core copies a profile's skills into the task's blobs
 - **The admin decides.** "Accept" makes it the current pin. "Dismiss" leaves the item where it is, and the next newer one shows again.
 - **Nothing moves by itself.** Socket, one of skills.sh's own audit partners: "skills can become malicious at any point" (research §2.6).
 - **A running task gets the accepted pin at its next session,** as a profile edit does today (ADR 0049).
+- **One update waits at a time, and an accept names what the admin saw** (ticket 28, 2026-11-21). Each find is a new version; a newer one found while one waits takes its place (the waiting one → `superseded`), so an admin's accept of the one they read is refused once a newer one came. Content found before, waiting or dismissed, isn't found again: a dismissed update stays dismissed until different content comes. A version ostra wouldn't install (a skill that fails its checks, a registry version with no streamable-HTTP remote) isn't offered.
+- **A server's update keeps the item's inputs by name** (ticket 28): its secret ones as the same references, a plain one the new version marks secret moved to the secret store. A new version that asks for an input the item lacks is shown and can't be accepted; installing it again gives the input.
+- **The check's schedule** (ticket 28): each organization with an installed item gets one check in each window of `OSTRA_LIBRARY_UPDATE_HOURS` (from midnight UTC), sent ahead and held until the window begins, keyed by the organization and the window.
 - **A server that changes its tools without a new version** (a "rug pull", research §7.4) isn't caught by this. A hash of its `tools/list` in the MCP proxy comes later.
 
 ## The marketplace browser (F-146)

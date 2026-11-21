@@ -1,5 +1,5 @@
 import { secretRefSchema } from "@ostra/adapter-sdk";
-import type { CodeHostAdapter, CodeHostAppCredentials, SecretStoreAdapter } from "@ostra/adapter-sdk";
+import type { CodeHostAdapter, CodeHostAppCredentials, Logger, SecretStoreAdapter } from "@ostra/adapter-sdk";
 import { apiFormatFromDb, effortLevelFromDb, mapModel } from "@ostra/db";
 import type { Db } from "@ostra/db";
 import { buildMemoryBlock, githubNoReplyAddress, INSTALLATION_NOT_LINKED, installationStateSelect, installationUsable, modelEffort, modelTokenPrices, sessionRowAllowedInTx, spendCapFor, taskTokensInTx } from "@ostra/domain";
@@ -61,6 +61,8 @@ export type SpecDeps = {
   readonly memoryLimits?: MemoryLimits;
   /** Milestone 4 (F-137): the levels each agent can send for a model. Core's agent registry when unset. */
   readonly effortLevels?: AgentEffortLevels;
+  /** Milestone 8 (F-145): where a library item the profile can't hand its task is named, by its ID. */
+  readonly logger?: Logger;
 };
 
 /**
@@ -224,7 +226,7 @@ export const buildTaskSpec = async (
     .flatMap((parsed) => (parsed.success ? [parsed.data] : []));
 
   // Milestone 3 (ticket 16): the profile's skills, MCP servers and rules, the task's rules, plan first.
-  const profileParts = await profileSpecParts({ db, ...(deps.blobs === undefined ? {} : { blobs: deps.blobs }) }, task, session, profile);
+  const profileParts = await profileSpecParts({ db, ...(deps.blobs === undefined ? {} : { blobs: deps.blobs }), ...(deps.logger === undefined ? {} : { logger: deps.logger }) }, task, session, profile);
   if (!profileParts.ok) {
     return { ok: false, error: "profile-unusable", message: profileParts.message };
   }

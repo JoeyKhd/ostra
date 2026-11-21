@@ -60,6 +60,7 @@ describe("the library's audit actions", () => {
       ["library.detached", "library-item"],
       ["library.every_profile_changed", "library-item"],
       ["library.installed", "library-item"],
+      ["library.read_only_changed", "library-item"],
       ["library.removed", "library-item"],
       ["library.source_added", "library-source"],
       ["library.source_removed", "library-source"],

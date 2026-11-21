@@ -161,6 +161,8 @@ const rpcSchema = z.looseObject({
 export type StubMcp = Listening & {
   /** The JSON-RPC methods it answered on `/mcp`, in order. */
   readonly methods: readonly string[];
+  /** The tools `tools/list` answers from now on (ticket 28: a server whose tools changed). */
+  readonly setTools: (tools: readonly string[]) => void;
 };
 
 /**
@@ -170,6 +172,7 @@ export type StubMcp = Listening & {
  */
 export const startStubMcp = async (input: { readonly token: string; readonly tools: readonly string[] }): Promise<StubMcp> => {
   const methods: string[] = [];
+  let tools = [...input.tools];
   const listening = await listen(async (request, response, path) => {
     if (path === "/oauth") {
       response.writeHead(401, { "www-authenticate": 'Bearer resource_metadata="https://mcp.example.test/.well-known/oauth-protected-resource"' }).end();
@@ -202,13 +205,19 @@ export const startStubMcp = async (input: { readonly token: string; readonly too
       }
       response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
       response.write(": a comment first\n\n");
-      response.write(`event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", id, result: { tools: input.tools.map((name) => ({ name, inputSchema: { type: "object" } })) } })}\n\n`);
+      response.write(`event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", id, result: { tools: tools.map((name) => ({ name, inputSchema: { type: "object" } })) } })}\n\n`);
       // Left open: the client stops reading once it has its answer.
       return;
     }
     sendJson(response, 200, { jsonrpc: "2.0", id, error: { code: -32601, message: "no such method" } });
   });
-  return { ...listening, methods };
+  return {
+    ...listening,
+    methods,
+    setTools: (next) => {
+      tools = [...next];
+    },
+  };
 };
 
 // ---------- the fake MCP registry ----------

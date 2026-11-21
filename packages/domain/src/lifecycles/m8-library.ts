@@ -16,7 +16,9 @@ import type { Transition } from "./transition.ts";
 /**
  * A version: `available` when the update check found a newer pin, `current` once accepted (an
  * install's first version starts current), `dismissed` when an admin left the item where it is,
- * and `superseded` when a newer one became current.
+ * and `superseded` when a newer one took its place: a newer version became current, or (ticket
+ * 28) the check found a newer update while this one still waited, so an item has at most one
+ * update waiting, and an accept names the exact content the admin saw.
  */
 export type LibraryVersionLifecycle =
   | { readonly state: Extract<DbEnum.LibraryVersionState, "available">; readonly fetchedAt: number }
@@ -32,7 +34,7 @@ export type LibraryVersionInput =
   | { readonly type: "accept"; readonly by: MemberId; readonly at: number }
   /** An admin's "Dismiss": a newer one shows again. */
   | { readonly type: "dismiss"; readonly by: MemberId; readonly at: number }
-  /** A newer version became current. */
+  /** A newer version became current, or a newer update was found while this one waited. */
   | { readonly type: "supersede"; readonly at: number };
 
 export const transitionLibraryVersion = (version: LibraryVersionLifecycle, input: LibraryVersionInput): Transition<LibraryVersionLifecycle> => {
@@ -44,7 +46,7 @@ export const transitionLibraryVersion = (version: LibraryVersionLifecycle, input
         case "dismiss":
           return moveTo({ state: "dismissed", decidedBy: input.by, at: input.at });
         case "supersede":
-          return refuse(input, version.state);
+          return moveTo({ state: "superseded", at: input.at });
         default:
           return input satisfies never;
       }

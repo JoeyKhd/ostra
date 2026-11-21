@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 
 import type { Db } from "@ostra/db";
-import { mcpProxyPathFor, storedMcpServersSchema, storedSkillFilesSchema } from "@ostra/domain";
-import { approvalRulesSchema, blobIdSchema, organizationIdSchema, projectIdSchema, runnerLimits, taskIdSchema, taskRuleSchema } from "@ostra/protocol";
+import type { Logger } from "@ostra/adapter-sdk";
+import { mcpProxyPathFor, profileLibraryOf, storedMcpServersSchema, storedSkillFilesSchema } from "@ostra/domain";
+import { agentProfileIdSchema, approvalRulesSchema, blobIdSchema, organizationIdSchema, projectIdSchema, runnerLimits, taskIdSchema, taskRuleSchema } from "@ostra/protocol";
 import type { ApprovalRule, BlobId, TaskRule, TaskSpecMcpServer, TaskSpecSkill, TurnMode } from "@ostra/protocol";
 
 import type { BlobService } from "../blobs/blob-service.ts";
@@ -15,6 +16,15 @@ import type { BlobService } from "../blobs/blob-service.ts";
 // server keeps its command and its variables, which hold no secret; the profile's approval rules
 // and the task's own rules; plan first. The first turn runs in plan mode only for the task's first
 // session, with plan first on and no plan proposed yet.
+//
+// Milestone 8 (F-145, ADR 0069, "Delivery: unchanged", ticket 28): the library items on the profile,
+// attached or on every profile, at their current versions, after its own. A library skill's files
+// are the organization's blobs, each checked against the digest its version pinned and copied into
+// the task's blobs exactly as an own skill's are, so the runner's path doesn't change and nothing is
+// fetched in the box; a library server is an HTTP server on the sidecar's MCP proxy, whose address
+// and headers go in the credentials only (`issueTaskCredentials`), read-only when an admin marked it.
+// An item the profile can't hold any more, or a server that asks for a sign-in, is left out and
+// logged by its ID.
 
 /** The purposes the copied skill blobs are stored under: words, never content. */
 export const SKILL_BODY_PURPOSE = "agent-skill";
@@ -65,7 +75,7 @@ const taskBlob = async (
 };
 
 export const profileSpecParts = async (
-  deps: { readonly db: Db; readonly blobs?: Pick<BlobService, "put" | "read"> },
+  deps: { readonly db: Db; readonly blobs?: Pick<BlobService, "put" | "read">; readonly logger?: Logger },
   task: Task,
   session: { readonly id: string },
   profile: Profile,
@@ -120,6 +130,51 @@ export const profileSpecParts = async (
       copied.push({ path: file.path, blobId });
     }
     skills.push({ name: skill.name, blobId: body, files: copied });
+  }
+
+  // Milestone 8 (F-145, ticket 28): the library's, after the profile's own.
+  const organizationId = organizationIdSchema.parse(task.organizationId);
+  const library = await profileLibraryOf(db, { organizationId, profileId: agentProfileIdSchema.parse(profile.id) });
+  for (const left of library.leftOut) {
+    deps.logger?.warn("dispatch.library-item-left-out", { taskId: task.id, profileId: profile.id, itemId: left.itemId, reason: left.reason });
+  }
+  if (library.skills.length > 0 && deps.blobs === undefined) {
+    return { ok: false, message: "the profile has library skills, and this server has no blob store to hand them over" };
+  }
+  for (const skill of library.skills) {
+    if (deps.blobs === undefined) {
+      break;
+    }
+    let body: BlobId | null = null;
+    const copied: { path: string; blobId: BlobId }[] = [];
+    for (const file of skill.files) {
+      // The library's file is its organization's: read for that organization only, its bytes the ones its version pinned.
+      const read = await deps.blobs.read(organizationId, file.blobId);
+      if (!read.ok || read.value.size > runnerLimits.skillFileMaxBytes || sha256(read.value.bytes) !== file.sha256) {
+        return { ok: false, message: "a library skill's file couldn't be read from the blob store as its version pinned it" };
+      }
+      const isBody = file.path === "SKILL.md";
+      const blobId = await taskBlob(db, deps.blobs, task, {
+        purpose: isBody ? SKILL_BODY_PURPOSE : SKILL_FILE_PURPOSE,
+        contentType: isBody ? "text/markdown" : read.value.contentType,
+        bytes: read.value.bytes,
+      });
+      if (blobId === null) {
+        return { ok: false, message: "a library skill's file couldn't be copied into the blob store" };
+      }
+      if (isBody) {
+        body = blobId;
+      } else {
+        copied.push({ path: file.path, blobId });
+      }
+    }
+    if (body === null) {
+      return { ok: false, message: "a library skill has no SKILL.md" };
+    }
+    skills.push({ name: skill.name, blobId: body, files: copied });
+  }
+  for (const server of library.servers) {
+    mcpServers.push({ name: server.name, transport: "http", proxyPath: mcpProxyPathFor(server.name), readOnly: server.readOnly });
   }
 
   const taskRules: TaskRule[] = (

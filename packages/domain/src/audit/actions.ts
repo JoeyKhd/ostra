@@ -189,6 +189,8 @@ export const auditActions = {
   "library.update_accepted": "library-item",
   "library.update_dismissed": "library-item",
   "library.removed": "library-item",
+  /** A library server marked read-only, or not (ticket 28): plan mode may call a read-only one's tools. */
+  "library.read_only_changed": "library-item",
   "library.source_added": "library-source",
   "library.source_removed": "library-source",
   /** A member's suggestion installed or dismissed. Never its note. */

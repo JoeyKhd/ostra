@@ -237,3 +237,9 @@ export * from "./library/search.ts";
 export * from "./previews/views.ts";
 export * from "./previews/start-app.ts";
 export * from "./previews/app-lease.ts";
+// Milestone 8 (ticket 28, ADR 0069): attaching, every profile, delivery, updates and suggestions.
+export * from "./library/server-request.ts";
+export * from "./library/profile-library.ts";
+export * from "./library/attach.ts";
+export * from "./library/updates.ts";
+export * from "./library/suggestions.ts";
