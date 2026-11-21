@@ -281,8 +281,8 @@ describe("the spec's agent section", () => {
     runner = await personalRunner(fixture.a.member, 2);
   });
 
-  const fetchSpec = async (taskId: TaskId, minor: number) => {
-    const token = await accessToken(harness, runner);
+  const fetchSpec = async (taskId: TaskId, minor: number, by: RegisteredRunner = runner) => {
+    const token = await accessToken(harness, by);
     const response = await fetch(`${harness.url}${runnerPaths.taskSpec(taskId)}?leaseEpoch=1`, {
       headers: { authorization: `Bearer ${token.accessToken}`, [runnerHeaders.minor]: String(minor) },
     });
@@ -419,6 +419,31 @@ describe("the spec's agent section", () => {
     // Once the runner speaks minor 2, the task goes.
     await test.db.runnerPresence.update({ where: { runnerId: old.runnerId }, data: { minor: 2 } });
     expect(await dispatch(world.organizationId, needing)).toMatchObject({ ok: true, runnerId: old.runnerId });
+  });
+
+  it("F-021/c9: a project with the repos' own skills off sends agent.repoSkills false, only to a minor-6 runner; on again, the spec carries nothing", async () => {
+    await test.db.project.update({ where: { id: world.projectId }, data: { repoSkills: false } });
+    try {
+      // A minor-5 runner isn't offered the task, and the task says why.
+      const recent = await personalRunner(fixture.a.member, 5);
+      const task = await started(fixture.a.member, { agentProfileId: agentProfileIdSchema.parse(world.profileId), runnerId: recent.runnerId });
+      expect(await dispatch(world.organizationId, task)).toMatchObject({ ok: false, error: "no-runner", message: "needs-protocol" });
+      expect((await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).dispatchWait).toEqual({ code: "needs-protocol", minor: 6 });
+      expect(await test.db.lease.count({ where: { taskId: task.taskId } })).toBe(0);
+      // At minor 6 it goes, and its spec says the repos' skills are off.
+      await test.db.runnerPresence.update({ where: { runnerId: recent.runnerId }, data: { minor: 6 } });
+      expect(await dispatch(world.organizationId, task)).toMatchObject({ ok: true, runnerId: recent.runnerId });
+      const fetched = await fetchSpec(task.taskId, 6, recent);
+      expect(fetched.status).toBe(200);
+      expect(taskSpecSchema.parse(JSON.parse(fetched.text)).agent.repoSkills).toBe(false);
+    } finally {
+      await test.db.project.update({ where: { id: world.projectId }, data: { repoSkills: true } });
+    }
+    // On, the default: the spec carries nothing, which a runner reads as on, and a minor-2 runner takes it.
+    const plain = await started(fixture.a.member, { agentProfileId: agentProfileIdSchema.parse(world.profileId), runnerId: runner.runnerId });
+    expect(await dispatch(world.organizationId, plain)).toMatchObject({ ok: true, runnerId: runner.runnerId });
+    const spec = taskSpecSchema.parse(JSON.parse((await fetchSpec(plain.taskId, 6)).text));
+    expect(spec.agent.repoSkills).toBeUndefined();
   });
 
   it("F-021/c4: a session naming another organization's profile is never dispatched or specced with it", async () => {

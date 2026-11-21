@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { plural, t } from "@/lib/messages";
@@ -320,8 +321,49 @@ export const ProjectReposView = ({ projectId, maxRepos }: { readonly projectId: 
             <InfoIcon aria-hidden className="mt-0.5 size-[13px] shrink-0 stroke-[1.75]" />
             <span>{t("projectRepos.help", { max: maxRepos })}</span>
           </p>
+          <RepoSkillsSetting projectId={projectId} on={project.data.repoSkills} admin={admin} />
         </div>
       )}
     </PageFrame>
+  );
+};
+
+/**
+ * Whether each repo's own skills reach the agent (F-021, ADR 0049 amended 2026-11-21): on by
+ * default, a project admin's switch, saved on its own as the Review settings' switches are.
+ */
+const RepoSkillsSetting = ({ projectId, on, admin }: { readonly projectId: ProjectId; readonly on: boolean; readonly admin: boolean }) => {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const key = trpc.projects.get.queryKey({ projectId });
+  const set = useMutation(
+    trpc.projects.setRepoSkills.mutationOptions({
+      onMutate: async (input) => {
+        await queryClient.cancelQueries({ queryKey: key });
+        queryClient.setQueryData(key, (old) => (old === undefined ? old : { ...old, repoSkills: input.on }));
+      },
+      onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
+    }),
+  );
+  return (
+    <section className="mt-8 border-t border-line py-5" data-testid="repo-skills">
+      <div className="flex items-start gap-4">
+        <div className="min-w-0 flex-1">
+          <h2 id="repo-skills-title" className="text-[15px] font-semibold text-text">{t("projectRepos.skillsTitle")}</h2>
+          <div className="mt-1 max-w-[600px] text-sm text-muted">
+            <p>{on ? t("projectRepos.skillsOnBody") : t("projectRepos.skillsOffBody")}</p>
+            <p className="mt-1 text-xs text-faint">{t("projectRepos.skillsNote")}</p>
+            {set.error === null ? null : <p className="mt-1 text-xs text-red" role="alert">{errorText(set.error)}</p>}
+          </div>
+        </div>
+        <Switch
+          aria-labelledby="repo-skills-title"
+          checked={on}
+          disabled={!admin || set.isPending}
+          onCheckedChange={(next) => { set.mutate({ projectId, on: next }); }}
+          data-testid="repo-skills-switch"
+        />
+      </div>
+    </section>
   );
 };

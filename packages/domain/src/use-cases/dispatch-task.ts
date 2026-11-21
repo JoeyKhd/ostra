@@ -80,6 +80,13 @@ export const SEVERAL_APPS_MINOR = 3;
 /** The runner minor that reads milestone 6's kinds and automatic rounds (protocol minor 5). */
 export const TEAM_MINOR = 5;
 
+/**
+ * The runner minor that keeps the repos' own skills from the agent (protocol minor 6, F-021): a
+ * task whose project turned them off needs it, since an older runner hands the agent a repo's
+ * `.opencode/skills` whatever the project says.
+ */
+export const REPO_SKILLS_OFF_MINOR = 6;
+
 /** How a dispatch starts its session: fresh (the task's first), or by one of ADR 0039's steps. */
 export type DispatchPlan = { readonly step: "new" } | (ReopenStep & { readonly keptRunnerId?: RunnerId });
 
@@ -417,7 +424,10 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   // them (an older one would drop the onboarding task's tools and commit paths).
   const automaticRound = await automaticRoundOfSessionInTx(tx, { taskId: task.id, sessionId: session.id });
   const kindMinor = task.kind !== "code" || task.onboarding || automaticRound !== null ? TEAM_MINOR : 0;
-  const minMinor = Math.max(runsAtLevel ? Math.max(profileMinor, EFFORT_MINOR) : profileMinor, kindMinor);
+  // 2026-11-21 (F-021, ADR 0049 amended): a project that keeps the repos' own skills off goes only
+  // to a runner at minor 6, the first that reads `agent.repoSkills`.
+  const repoSkillsOff = (await tx.project.findFirst({ where: { id: task.projectId, organizationId: task.organizationId }, select: { repoSkills: true } }))?.repoSkills === false;
+  const minMinor = Math.max(runsAtLevel ? Math.max(profileMinor, EFFORT_MINOR) : profileMinor, kindMinor, repoSkillsOff ? REPO_SKILLS_OFF_MINOR : 0);
   /**
    * Milestone 3's words when services are why (F-094): a services runner missing, when only runners
    * that can't start them are online in the same scope. Otherwise the choice's own reason.

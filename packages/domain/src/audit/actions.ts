@@ -144,6 +144,8 @@ export const auditActions = {
   "project.repo-added": "project",
   "project.repo-removed": "project",
   "project.repos-reordered": "project",
+  // 2026-11-21 (F-021, ADR 0049 amended): whether the repos' own skills reach the agent.
+  "project.repo-skills-set": "project",
   "project.review-check-changed": "project",
   // Milestone 6 (F-040): "Outside tasks need approval", an organization admin's switch.
   "project.outside-approval-changed": "project",

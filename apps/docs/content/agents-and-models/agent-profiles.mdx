@@ -22,6 +22,14 @@ Press **New profile** and fill in its sections.
 
 A profile's permissions and MCP servers win over a repo's own agent config. Its instructions and skills sit beside the repo's.
 
+## A repo's own skills
+
+A repo can carry skills of its own, in the folders the agents and `npx skills add` write them to: `.agents/skills`, `.claude/skills` and `.opencode/skills`. Each skill is a folder holding a `SKILL.md`. By default the agent gets every repo's skills beside the profile's. They're read from the task's own checkout in the box, so nothing is fetched, on every executor, and in a task with several repos each one's count.
+
+- **The profile wins a clash.** When a profile's skill has the same name as a repo's, the agent gets the profile's. The runner's log names the repo's skill it left out, by its name only.
+- **A repo's config is still never read.** Only its skills folders are. A repo's `opencode.json`, with its MCP servers and permissions, stays unread.
+- **A project can turn them off.** A project admin turns **Repo skills** off under the project's **Settings › Repos**, and the agent then gets the profile's skills alone. The change is in the project's audit log, and reaches each task at its next session. A task in such a project runs only on a runner at protocol 1.6 or later, since an older runner hands the agent a repo's `.opencode/skills` whatever the setting says. Until one is online, the task waits and says why.
+
 A profile you no longer use can be archived. Archived profiles stay listed under **Show archived profiles**.
 
 ## Where a profile runs

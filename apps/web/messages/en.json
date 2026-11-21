@@ -5211,7 +5211,11 @@
     "orderTitle": "Order",
     "orderBody": "Sessions check repos out in this order, and the agent's instructions list them in it. The order changes nothing for a running session.",
     "move": "Move {repo}: press ↑ or ↓",
-    "help": "Drag a repo by its handle, or focus the handle and press ↑ or ↓. A repo you add joins each open task at its next session. A project holds up to {max} repos."
+    "help": "Drag a repo by its handle, or focus the handle and press ↑ or ↓. A repo you add joins each open task at its next session. A project holds up to {max} repos.",
+    "skillsTitle": "Repo skills",
+    "skillsOnBody": "The agent gets each repo's own skills, from its .agents/skills, .claude/skills and .opencode/skills, beside the profile's. When a profile's skill has the same name as a repo's, the agent gets the profile's.",
+    "skillsOffBody": "The agent gets only the profile's skills. Each repo's .agents/skills, .claude/skills and .opencode/skills stay in the repo, unread.",
+    "skillsNote": "A change reaches each task at its next session. A repo's own agent config, with its MCP servers and permissions, is never read either way."
   },
   "taskPrs": {
     "draft": "draft",

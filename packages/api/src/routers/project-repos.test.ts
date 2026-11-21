@@ -148,3 +148,33 @@ describe("F-098: a project's repos", () => {
     await expect(caller.projects.removeRepo({ projectId, repoId: last })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
   });
 });
+
+describe("F-021: a project's repo skills", () => {
+  it("F-021/c9: on by default; a project admin turns the repos' own skills off and on, each change audited once; a member can't, and an outsider gets NOT_FOUND", async () => {
+    const { a, b } = harness.fixture;
+    const restricted = a.restrictedProject.id;
+    // The insider is the restricted project's admin, and no organization admin.
+    const insider = await harness.as(a.insider);
+    expect((await insider.projects.get({ projectId: restricted })).repoSkills).toBe(true);
+    expect(await insider.projects.setRepoSkills({ projectId: restricted, on: false })).toEqual({ repoSkills: false });
+    expect((await insider.projects.get({ projectId: restricted })).repoSkills).toBe(false);
+    expect((await harness.test.db.project.findUniqueOrThrow({ where: { id: restricted } })).repoSkills).toBe(false);
+    // The value it already has writes nothing.
+    expect(await insider.projects.setRepoSkills({ projectId: restricted, on: false })).toEqual({ repoSkills: false });
+    const entries = async () =>
+      (await harness.test.db.auditEntry.findMany({ where: { action: "project.repo-skills-set", entityId: restricted }, orderBy: { createdAt: "asc" } })).map((entry) => [entry.actorId, entry.data]);
+    expect(await entries()).toEqual([[a.insider.id, { on: false }]]);
+    // A member who isn't its admin can't; another organization's admin and a member it's hidden from see no project.
+    const member = await harness.as(a.member);
+    await expect(member.projects.setRepoSkills({ projectId: a.openProject.id, on: false })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(member.projects.setRepoSkills({ projectId: restricted, on: true })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect((await harness.as(b.admin)).projects.setRepoSkills({ projectId: restricted, on: true })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect((await harness.test.db.project.findUniqueOrThrow({ where: { id: a.openProject.id } })).repoSkills).toBe(true);
+    // An organization admin may too; on again, audited.
+    expect(await (await admin()).projects.setRepoSkills({ projectId: restricted, on: true })).toEqual({ repoSkills: true });
+    expect(await entries()).toEqual([
+      [a.insider.id, { on: false }],
+      [a.admin.id, { on: true }],
+    ]);
+  });
+});

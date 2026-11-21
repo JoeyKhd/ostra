@@ -114,6 +114,7 @@ export * from "./repos/several-repos.ts";
 export * from "./review/independent-review.ts";
 export * from "./review/review-check.ts";
 export * from "./repos/project-repos.ts";
+export * from "./repos/repo-skills.ts";
 export * from "./mail/account-mails.ts";
 export * from "./mail/account-mail-links.ts";
 export * from "./audit/actions.ts";

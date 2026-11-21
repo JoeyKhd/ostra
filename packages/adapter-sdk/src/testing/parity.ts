@@ -148,6 +148,14 @@ export const sharedCases = {
     file: "packages/adapters/adapter-opencode/src/opencode-adapter.contract.test.ts",
     title: "F-021/c6: the repo's own AGENTS.md and skills reach OpenCode beside the profile's instructions and skill, with the repo's config off",
   },
+  openCodeRepoSkills: {
+    file: "packages/adapters/adapter-opencode/src/opencode-adapter.contract.test.ts",
+    title: "F-021/c5,c8: a repo's skills in .agents, .claude and .opencode all reach OpenCode, the profile's skill wins over the repo's of its name, and the repo's opencode.json is still never read",
+  },
+  openCodeRepoSkillsOff: {
+    file: "packages/adapters/adapter-opencode/src/opencode-adapter.contract.test.ts",
+    title: "F-021/c9: with the project's repo skills off, OpenCode lists none of the repo's skills, in any of the three folders, and keeps the profile's",
+  },
 } as const satisfies Record<string, ParityCase>;
 
 /**
@@ -259,7 +267,8 @@ export const parityTable: Readonly<Record<string, Readonly<Record<string, Parity
     "F-089 Key proxy": cases(suiteCases.everyCall, suiteCases.usageMatch),
     "F-078 Repo conventions": cases(sharedCases.openCodeRepoAgents, sharedCases.trailer),
     "F-032, F-033, F-096 Reopen anywhere": cases(suiteCases.archive),
-    "F-021 Agent profiles": cases(suiteCases.skillsMcp, suiteCases.repoAllowsAll),
+    // 2026-11-21: a repo's own skills, the profile's winning a clash, and the project's switch off (ADR 0049 amended).
+    "F-021 Agent profiles": cases(suiteCases.skillsMcp, suiteCases.repoAllowsAll, sharedCases.openCodeRepoSkills, sharedCases.openCodeRepoSkillsOff),
     "F-024 Steer": cases(suiteCases.steer, suiteCases.nextTurn),
     "F-026 Approvals": cases(suiteCases.ruleAsks, suiteCases.taskRule, suiteCases.allowForTask, suiteCases.denyReason),
     "F-063 Plan first": cases(suiteCases.planTurn, suiteCases.buildMode),

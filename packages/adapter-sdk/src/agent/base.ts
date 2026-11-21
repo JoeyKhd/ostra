@@ -172,6 +172,14 @@ export type PrepareLaunchInput = {
    * own skills from them, so the profile's sit beside the repo's (F-021). Absent: none named.
    */
   readonly repoDirs?: readonly string[];
+  /**
+   * 2026-11-21 (F-021, ADR 0049 amended): whether each repo's own skills, its `REPO_SKILL_FOLDERS`
+   * (and the workspace root's), reach the agent beside the profile's: the project's setting. An
+   * adapter that names them (OpenCode, in its config) names none when this is false, and names the
+   * profile's after the repos', so a profile's skill wins over a repo's of the same name. Every
+   * adapter honours it, whatever its agent reads on its own. Absent: true.
+   */
+  readonly repoSkills?: boolean;
 
   // ---- milestone 4 (ADR 0044) ----
   /** The task's memory. Absent or `null`: the task has none, or its spec came without it. */

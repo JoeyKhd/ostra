@@ -124,6 +124,8 @@ const projectDetailSchema = projectSummarySchema.extend({
   defaultCodeProfile: agentProfileViewSchema.nullable(),
   /** The default profile for each task kind (F-021, ticket 34); `code` is `defaultCodeProfile`. */
   defaultProfiles: z.object({ refine: agentProfileViewSchema.nullable(), code: agentProfileViewSchema.nullable(), review: agentProfileViewSchema.nullable() }),
+  /** Whether each repo's own skills reach the agent beside the profile's (F-021, 2026-11-21); a project admin's switch. */
+  repoSkills: z.boolean(),
 });
 
 const createdSchema = z.object({
@@ -281,6 +283,7 @@ export const projectsRouter = router({
           code: profile,
           review: await loadAgentProfileView(db, organizationId, project.defaultReviewProfileId),
         },
+        repoSkills: project.repoSkills,
       };
     }),
 

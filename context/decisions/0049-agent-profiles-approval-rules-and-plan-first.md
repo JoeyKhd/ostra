@@ -1,6 +1,6 @@
 # Agent profiles, approval rules and plan first
 
-**Status:** accepted (2026-11-19, on the maintainer's delegation for milestone 3's spec: "continue working on everything throughout the night"). Settles Q166 to Q171. **Amended 2026-11-19 by ADR 0065** (Q271, Q272): a profile names its model by name, and pins no provider ("The model by name" below). Covers F-021, F-026 and F-063, and builds on ADR 0031 (explicit permissions and approvals), ADR 0032 (OpenCode's steering, plan and deny) and ADR 0036 (the approval card and its race). **Amended 2026-11-19 by ADR 0066** (Q285, Q288): a profile sets a reasoning effort for its model; a task copies it when it's created, and its driver changes it for the next turn. **Amended 2026-11-21 by ADR 0069:** a profile's skills and MCP servers also come from the organization's library, attached or marked "every profile", within the same limits; proxied servers get `oauth: false`. Repo skills by default and name clashes with a repo's own skills are a separate amendment, from the `repo-skills` work.
+**Status:** accepted (2026-11-19, on the maintainer's delegation for milestone 3's spec: "continue working on everything throughout the night"). Settles Q166 to Q171. **Amended 2026-11-19 by ADR 0065** (Q271, Q272): a profile names its model by name, and pins no provider ("The model by name" below). Covers F-021, F-026 and F-063, and builds on ADR 0031 (explicit permissions and approvals), ADR 0032 (OpenCode's steering, plan and deny) and ADR 0036 (the approval card and its race). **Amended 2026-11-19 by ADR 0066** (Q285, Q288): a profile sets a reasoning effort for its model; a task copies it when it's created, and its driver changes it for the next turn. **Amended 2026-11-21 by ADR 0069:** a profile's skills and MCP servers also come from the organization's library, attached or marked "every profile", within the same limits; proxied servers get `oauth: false`. **Amended 2026-11-21 by the maintainer ("yes")**: each repo's own skills, in `.agents/skills`, `.claude/skills` and `.opencode/skills`, reach the agent by default; on a name clash the profile's skill wins; a project admin can turn the repos' skills off ("A repo's own skills" below).
 
 An agent profile is the organization's named setup of an agent: the agent, a model, instructions, skills, MCP servers, approval rules, plan first, and who may use it (F-021). Milestone 1 built the row and a built-in OpenCode profile. Milestone 3 gives it the rest, and this ADR fixes the parts that are hard to change once tasks depend on them.
 
@@ -42,7 +42,7 @@ An agent profile is the organization's named setup of an agent: the agent, a mod
 ## The profile wins over the repo
 
 - **On permissions and MCP servers, the profile's settings win over a repo's own agent config** (Q171, F-021). A repo is untrusted input; its `opencode.json` could otherwise allow everything or add a server that leaks the workspace. The adapter launches the agent so its task config takes precedence, and the agent contract suite proves it with a repo config that allows everything. An agent that can't guarantee that declares `projectConfigOverride: false`, and the runner hides the repo's agent config files from the agent for the task and puts them back before the commit.
-- Instructions and skills are added, never replacing the repo's `AGENTS.md` and skills.
+- Instructions and skills are added, never replacing the repo's `AGENTS.md` and skills. When a profile's skill and a repo's share a name, the agent gets the profile's (amended 2026-11-21, below).
 
 ## Who may use a profile
 
@@ -71,3 +71,22 @@ Added 2026-11-19 by ADR 0065, for F-135.
 - **A profile names its model by its model name:** its models.dev catalog ID, or a custom model's endpoint ID, not one provider's model row. Each project serves it from one provider on its own list, so one profile works in every client's project, each on its own key.
 - **A profile pins no provider.** The project's list is the one place that decides a task's key.
 - **Milestone 3 builds profiles on `modelId`.** Milestone 4 adds the name beside it, fills it from the model row, and a later release drops `modelId`.
+
+## A repo's own skills
+
+Added 2026-11-21, on the maintainer's "yes" to the gap `context/research/skills-and-mcp-marketplaces.md` found (its section 1.4). Covers F-021.
+
+- **The gap.** A repo set up with `npx skills add -a opencode` keeps its skills in `.agents/skills`, and Claude Code's go in `.claude/skills`. Neither reached the agent. `OPENCODE_DISABLE_PROJECT_CONFIG` turns off OpenCode's whole project walk, `OPENCODE_DISABLE_CLAUDE_CODE` drops `.claude`, and ostra named only `<repo>/.opencode/skills`. It also named the profile's folders first, so OpenCode's array order let a repo's skill replace the profile's of the same name, against "the profile wins".
+- **Every repo's three folders, by default.** The adapter names `.agents/skills`, `.claude/skills` and `.opencode/skills`, at the workspace's root and in each repo's checkout in the task's order, in the agent's own config. A task with several repos (F-098) gets each one's. They're read from the task's own checkout inside the box, so nothing is fetched, and the paths are the same on `docker`, `host` and `kubernetes`.
+- **The project config stays off.** Only the skills folders are named. A repo's `opencode.json`, its MCP servers and its permissions are still never read (Q171, ADR 0031), and the contract suite proves it with all three folders present.
+- **The profile wins a clash.** The profile's folders come last, and OpenCode 2.3.2 lets the later of two skills of one name win (it keys a skill by its folder's name). The runner logs each repo skill a profile's skill shadows, by its name only, never its content.
+- **A project admin can turn them off.** `Project.repoSkills`, on by default, under the project's Settings › Repos, with an audit entry (`project.repo-skills-set`). The dispatch reads it into the spec's `agent.repoSkills`, sent only when off, so a change reaches each task's next session. With it off, the agent gets the profile's skills alone.
+- **Protocol minor 6 carries `agent.repoSkills`.** A minor-5 runner is sent the spec without it, and is never offered a task with it off: it would hand the agent a repo's `.opencode/skills` whatever the project says. Such a task waits with `needs-protocol` until a minor-6 runner is online.
+- **The interface.** `PrepareLaunchInput.repoSkills` (absent: on) and the SDK's `REPO_SKILL_FOLDERS`. Every adapter honours it; no capability is declared, since an agent that couldn't keep a repo's skills out would have to have them hidden as `repoConfigPaths` are.
+
+### Considered options
+
+- **Only for a repo an admin marks trusted,** as the Agent Skills client guide suggests for project skills. Rejected: every comparable product reads a repo's skills by default (the research's section 4), the repo's code already runs in the box, and the per-project switch covers a team that doesn't want them.
+- **The repo's skill wins a clash,** the Agent Skills convention ("project-level skills override user-level skills"). Rejected: the profile is the organization's setup, and on everything else it wins over the repo.
+- **Turning OpenCode's project walk back on for skills.** Rejected: the walk also reads `opencode.json`, its MCP servers and permissions, and nothing in 2.3.2 splits them.
+- **Fetching the skills in core, like the profile's.** Rejected: they're in the checkout the box already has.

@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { composeLaunchInstructions, effortModelOf, GIT_GUARD_ENV_NAMES } from "@ostra/adapter-sdk";
+import { composeLaunchInstructions, effortModelOf, GIT_GUARD_ENV_NAMES, REPO_SKILL_FOLDERS } from "@ostra/adapter-sdk";
 import type { LaunchFile, LaunchMcpServer, PrepareLaunchInput } from "@ostra/adapter-sdk";
 
 import { agentForMode, buildPermissions, EXPLORE_AGENT, explorePermissions, OSTRA_MCP_SERVER, planModePermissions } from "./permissions.ts";
@@ -107,15 +107,30 @@ export const repoInstructionGlobs = (workspaceDir: string): readonly string[] =>
 };
 
 /**
- * The repos' own skill folders, which OpenCode reads from the project only when its project config
- * is on. With it off they're named here, at the workspace's root and in each repo's checkout,
- * because a wildcard in `skills` finds nothing (checked on 2.3.2), and a folder that isn't there is
- * passed over. So the profile's skills sit beside the repo's, never replacing them (F-021).
+ * The repos' own skill folders (`REPO_SKILL_FOLDERS`: `.agents/skills`, which `npx skills add -a
+ * opencode` writes, `.claude/skills` and `.opencode/skills`), which OpenCode reads from the project
+ * only when its project config is on, and `.claude` only without `OPENCODE_DISABLE_CLAUDE_CODE`.
+ * With both off they're named here, at the workspace's root and in each repo's checkout, because a
+ * wildcard in `skills` finds nothing (checked on 2.3.2), and a folder that isn't there is passed
+ * over. So the profile's skills sit beside the repo's, never replacing them (F-021). The project
+ * config stays off: a repo's `opencode.json`, MCP servers and permissions are still never read.
  */
 export const repoSkillDirs = (workspaceDir: string, repoDirs: readonly string[]): readonly string[] => {
   const root = slashed(workspaceDir);
-  return [root, ...repoDirs.map((dir) => `${root}/${dir}`)].map((dir) => `${dir}/.opencode/skills`);
+  return [root, ...repoDirs.map((dir) => `${root}/${dir}`)].flatMap((dir) => REPO_SKILL_FOLDERS.map((folder) => `${dir}/${folder}`));
 };
+
+/**
+ * The task's `skills` (F-021, ADR 0049 amended 2026-11-21): the repos' own folders first, unless
+ * the project keeps them off (`repoSkills: false`), then the profile's skill folders, which the
+ * runner wrote into the task's agent folder. OpenCode 2.3.2 keys a skill by its folder's name and
+ * lets a later entry replace an earlier one of the same name ("the source registered later
+ * supplies the skill"), so a profile's skill wins over a repo's of the same name.
+ */
+export const taskSkillDirs = (input: PrepareLaunchInput): readonly string[] => [
+  ...(input.repoSkills === false ? [] : repoSkillDirs(input.workspaceDir, input.repoDirs ?? [])),
+  ...(input.skills ?? []).map((skill) => skill.dir),
+];
 
 /** One of OpenCode's permission rules (the name ticket 30 gave it). */
 export type OpenCodePermissionRule = OpenCodePermission;
@@ -144,7 +159,6 @@ export const buildOpenCodeConfig = (input: PrepareLaunchInput, instructionsPath:
     capabilities: { reasoning: modelReasoning(input) },
   };
   const mcpServers = input.mcpServers ?? [];
-  const skills = input.skills ?? [];
   return {
     $schema: "https://opencode.ai/config.json",
     model: `${PROVIDER_ID}/${model.endpointModelId}`,
@@ -161,9 +175,9 @@ export const buildOpenCodeConfig = (input: PrepareLaunchInput, instructionsPath:
       [EXPLORE_AGENT]: { permissions: explorePermissions(input.approvalRules ?? []) },
     },
     default_agent: agentForMode(input.mode ?? "build"),
-    // The profile's skills, from the folders the runner wrote them to in the task's agent folder,
-    // then the repos' own, which the project config being off would otherwise drop.
-    skills: [...skills.map((skill) => skill.dir), ...repoSkillDirs(input.workspaceDir, input.repoDirs ?? [])],
+    // The repos' own skills, which the project config being off would otherwise drop, unless the
+    // project keeps them off; then the profile's, from the task's agent folder, last, so they win.
+    skills: taskSkillDirs(input),
     experimental: { todo: true },
     providers: {
       [PROVIDER_ID]: {

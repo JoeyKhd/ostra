@@ -10,10 +10,10 @@ summary: "v1's one agent, driven over ACP, pinned in the base image."
 
 ostra drives OpenCode over the Agent Client Protocol (ACP), with its own driver on ACP's official SDK. For each task, the runner:
 
-- writes OpenCode a config of its own, in the task's own folder, never in the repo: the model, the permissions from the profile's [approval rules](/docs/agents-and-models/approval-rules), the profile's skills and MCP servers;
+- writes OpenCode a config of its own, in the task's own folder, never in the repo: the model, the permissions from the profile's [approval rules](/docs/agents-and-models/approval-rules), the profile's skills and MCP servers, and each repo's own skill folders, `.agents/skills`, `.claude/skills` and `.opencode/skills`, unless the project turned [repo skills](/docs/agents-and-models/agent-profiles) off;
 - starts it with an allowlisted environment, at the workspace root, with every repo of the project checked out side by side;
 - turns off the repo's own OpenCode config, so a repo can't widen the agent's permissions or add an MCP server;
-- turns off OpenCode's reading of `.claude/` files and its self-update, so it follows only what ostra and the repo's `AGENTS.md` say, at the version ostra pinned.
+- turns off OpenCode's own reading of `.claude/` files and its self-update, so it follows only what ostra names, the repo's `AGENTS.md` and its skills, at the version ostra pinned.
 
 OpenCode reads each repo's `AGENTS.md` itself. The profile's instructions are added beside it, never replacing it.
 
@@ -32,7 +32,7 @@ Every feature that touches the agent goes through the agent interface. Where an 
 | Model base URL and a placeholder key | yes | Every model call goes through the key proxy. |
 | Permission rules | native | Approval rules become OpenCode's own "ask" permissions. The runner checks every request against the rules as well. |
 | Plan mode | session mode | [Plan first](/docs/agents-and-models/plan-first) switches OpenCode to its read-only plan agent for the first turn. |
-| Skills | yes | A profile's skills are folders OpenCode reads. |
+| Skills | yes | A profile's skills are folders OpenCode reads, after each repo's own, so a profile's skill wins over a repo's of the same name. |
 | MCP | HTTP and stdio | Both kinds of MCP server work, through the sidecar. |
 | Profile over repo config | yes | A profile's permissions and MCP servers win over the repo's. |
 | Memory | through MCP | ostra's [memory](/docs/using-ostra/memory) reaches it as the index and ostra's memory tools. OpenCode has no memory of its own to turn off. |

@@ -913,6 +913,10 @@ model Project {
   findings           Finding[]
   taskReviewers      TaskReviewer[]
   environmentProposals EnvironmentProposal[]
+  // ---- 2026-11-21 (F-021, ADR 0049 amended) ----
+  /// Whether each repo's own skills (`.agents/skills`, `.claude/skills`, `.opencode/skills`) reach
+  /// the agent beside the profile's. On by default; a project admin's switch, audited.
+  repoSkills         Boolean @default(true)
 
   // The target of every project record's composite foreign key (ADR 0026).
   @@unique([id, organizationId])

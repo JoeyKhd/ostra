@@ -289,7 +289,9 @@ describe("the task spec at minor 5", () => {
     expect(encodeTaskSpecForMinor(taskSpecCiRoundFixture, 4).contextFiles).toEqual(taskSpecMinor3Fixture.contextFiles);
     // A minor-3 spec encodes to itself at minor 4.
     expect(encodeTaskSpecForMinor(taskSpecMinor3Fixture, 4)).toEqual(taskSpecMinor3Fixture);
-    expect(encodeTaskSpecForMinor(taskSpecReviewFixture, 5)).toBe(taskSpecReviewFixture);
+    // Minor 5 reads minor 6's spec but `agent.repoSkills`, which the fixture doesn't set.
+    expect(encodeTaskSpecForMinor(taskSpecReviewFixture, 5)).toEqual(taskSpecReviewFixture);
+    expect(encodeTaskSpecForMinor(taskSpecReviewFixture, 6)).toBe(taskSpecReviewFixture);
   });
 
   it("F-099: isTaskOfferable refuses each new kind and an automatic round to a minor-4 runner, and allows them at minor 5", () => {

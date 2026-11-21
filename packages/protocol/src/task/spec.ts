@@ -207,10 +207,10 @@ export const taskSpecModelLimitsSchema = z.strictObject({
 export type TaskSpecModelLimits = z.infer<typeof taskSpecModelLimitsSchema>;
 
 /**
- * The agent section at the current minor (3): minor 2's, with the profile's closing turn, and the
- * task's reasoning level with its model's controls and limits.
+ * The agent section at minors 3 to 5: minor 2's, with the profile's closing turn, and the task's
+ * reasoning level with its model's controls and limits.
  */
-export const taskSpecAgentSchema = taskSpecAgentSchemaV2.extend({
+export const taskSpecAgentSchemaV3 = taskSpecAgentSchemaV2.extend({
   /**
    * Minor 3: the profile's closing turn (F-111, ADR 0044). After the task's last turn the runner
    * runs one more, asking the agent to propose what the next task should know. Missing means off.
@@ -222,6 +222,20 @@ export const taskSpecAgentSchema = taskSpecAgentSchemaV2.extend({
   reasoning: reasoningControlsSchema.optional(),
   /** Minor 3: the model's real limits. Missing, or both `null`, keeps the agent's fixed ones. */
   limits: taskSpecModelLimitsSchema.optional(),
+});
+
+/**
+ * The agent section at the current minor (6): minor 3's, with whether the repos' own skills reach
+ * the agent.
+ */
+export const taskSpecAgentSchema = taskSpecAgentSchemaV3.extend({
+  /**
+   * Minor 6: whether each repo's own skills (its `.agents/skills`, `.claude/skills` and
+   * `.opencode/skills`, read from the task's checkout) reach the agent beside the profile's: the
+   * project's setting (F-021, ADR 0049 amended 2026-11-21). Missing means they do. A runner below
+   * minor 6 is never offered a task with them off (`isTaskOfferable`).
+   */
+  repoSkills: z.boolean().optional(),
 });
 export type TaskSpecAgent = z.infer<typeof taskSpecAgentSchema>;
 
@@ -517,7 +531,7 @@ export type TaskSpecMemory = z.infer<typeof taskSpecMemorySchema>;
 const taskSpecShapeV3 = {
   ...taskSpecShapeV2,
   repos: z.array(taskSpecRepoSchema).min(1),
-  agent: taskSpecAgentSchema,
+  agent: taskSpecAgentSchemaV3,
   /** Minor 3: the organization's and the project's approved notes, or `null` for none. */
   memory: taskSpecMemorySchema.nullable().optional(),
 };
@@ -569,36 +583,47 @@ export const defaultOstraToolSets: readonly OstraToolSet[] = ["pr-text", "memory
  */
 export const commitPathSchema = repoRelativePathSchema;
 
+const taskSpecShapeV5 = {
+  ...taskSpecShapeV3,
+  /** Minor 1; minor 5 adds each file's folder, for a CI round's log tails. */
+  contextFiles: z
+    .array(taskSpecContextFileSchema)
+    .max(runnerLimits.ticketFilesMax + runnerLimits.ciLogChecksMax)
+    .optional(),
+  /** Minor 5: a review task's checkout, each repo at its PR's head. `null` or missing for every other task. */
+  review: taskSpecReviewSchema.nullable().optional(),
+  /** Minor 5: which of ostra's MCP tools the sidecar serves. Missing means `defaultOstraToolSets`. */
+  tools: z
+    .array(ostraToolSetSchema)
+    .max(ostraToolSetSchema.options.length)
+    .refine((tools) => new Set(tools).size === tools.length, "each tool set once")
+    .optional(),
+  /**
+   * Minor 5: the paths the runner may commit, in every repo; the rest stays uncommitted and is
+   * reported in `commit.filtered`. `null` or missing means everything (an onboarding task has
+   * `["AGENTS.md"]`).
+   */
+  commitPaths: z.array(commitPathSchema).min(1).max(runnerLimits.commitPathsMax).nullable().optional(),
+  /** Minor 5: the session's first turn is an automatic round (F-101): its questions get the neutral reply. */
+  automatic: z.boolean().optional(),
+};
+
+/** Minor 5's task spec: the spec endpoint's answer to a minor-5 runner. */
+export const taskSpecSchemaV5 = z
+  .strictObject(taskSpecShapeV5)
+  .describe("The task spec a dispatch hands a minor-5 runner. It holds no secret.");
+
 /**
- * The task spec at the current minor (5). Every field added since minor 0 is optional, so a
- * minor-4, minor-3, minor-2, minor-1 or minor-0 spec parses. A minor-4 runner is sent minor 3's
- * shape (`encodeTaskSpecForMinor`), and core never offers it a task that needs minor 5
- * (`isTaskOfferable`).
+ * The task spec at the current minor (6). Every field added since minor 0 is optional, so a
+ * minor-5, minor-4, minor-3, minor-2, minor-1 or minor-0 spec parses. A minor-5 runner is sent
+ * minor 5's shape and a minor-4 runner minor 3's (`encodeTaskSpecForMinor`), and core never offers
+ * a runner a task that needs a later minor than its own (`isTaskOfferable`).
  */
 export const taskSpecSchema = z
   .strictObject({
-    ...taskSpecShapeV3,
-    /** Minor 1; minor 5 adds each file's folder, for a CI round's log tails. */
-    contextFiles: z
-      .array(taskSpecContextFileSchema)
-      .max(runnerLimits.ticketFilesMax + runnerLimits.ciLogChecksMax)
-      .optional(),
-    /** Minor 5: a review task's checkout, each repo at its PR's head. `null` or missing for every other task. */
-    review: taskSpecReviewSchema.nullable().optional(),
-    /** Minor 5: which of ostra's MCP tools the sidecar serves. Missing means `defaultOstraToolSets`. */
-    tools: z
-      .array(ostraToolSetSchema)
-      .max(ostraToolSetSchema.options.length)
-      .refine((tools) => new Set(tools).size === tools.length, "each tool set once")
-      .optional(),
-    /**
-     * Minor 5: the paths the runner may commit, in every repo; the rest stays uncommitted and is
-     * reported in `commit.filtered`. `null` or missing means everything (an onboarding task has
-     * `["AGENTS.md"]`).
-     */
-    commitPaths: z.array(commitPathSchema).min(1).max(runnerLimits.commitPathsMax).nullable().optional(),
-    /** Minor 5: the session's first turn is an automatic round (F-101): its questions get the neutral reply. */
-    automatic: z.boolean().optional(),
+    ...taskSpecShapeV5,
+    /** Minor 6: the agent section with `repoSkills`. */
+    agent: taskSpecAgentSchema,
   })
   .describe("The task spec a dispatch hands the runner. It holds no secret.");
 export type TaskSpec = z.infer<typeof taskSpecSchema>;
@@ -628,7 +653,8 @@ const agentForMinor1 = (agent: TaskSpecAgent): TaskSpecAgent => ({
 });
 
 /**
- * The spec in the shape a runner at `minor` reads: below minor 5, minor 5's fields are dropped
+ * The spec in the shape a runner at `minor` reads: below minor 6, `agent.repoSkills` is dropped;
+ * below minor 5, minor 5's fields are dropped
  * (the review checkout, the tool sets, the commit paths, `automatic` and the CI round's context
  * files); below minor 3, minor 3's fields are dropped
  * (the memory section, the closing turn, the reasoning level with the model's controls and limits,
@@ -638,10 +664,14 @@ const agentForMinor1 = (agent: TaskSpecAgent): TaskSpecAgent => ({
  * (`taskSpecNeedsMinor2`, `taskSpecNeedsMinor3`, `isTaskOfferable`), so nothing it needs is lost.
  */
 export const encodeTaskSpecForMinor = (current: TaskSpec, minor: number): TaskSpec => {
-  if (minor >= 5) {
+  if (minor >= 6) {
     return current;
   }
-  const v3 = specForMinor4(current);
+  const v5 = specForMinor5(current);
+  if (minor >= 5) {
+    return v5;
+  }
+  const v3 = specForMinor4(v5);
   if (minor >= 3) {
     return v3;
   }
@@ -670,6 +700,13 @@ export const encodeTaskSpecForMinor = (current: TaskSpec, minor: number): TaskSp
     coAuthors: spec.coAuthors,
     limits: { turnMaxMinutes: spec.limits.turnMaxMinutes },
   };
+};
+
+/** The spec without minor 6's field: the agent section without `repoSkills`. */
+const specForMinor5 = (current: TaskSpec): TaskSpec => {
+  const agent: Record<string, unknown> = { ...current.agent };
+  Reflect.deleteProperty(agent, "repoSkills");
+  return taskSpecSchemaV5.parse({ ...current, agent });
 };
 
 /**
@@ -721,10 +758,18 @@ export const taskSpecNeedsMinor3 = (spec: TaskSpec): boolean =>
 export const taskSpecNeedsMinor5 = (spec: TaskSpec): boolean => taskNeedsMinor5Reason(spec) !== null;
 
 /**
+ * Whether a spec keeps the repos' own skills from the agent (F-021, `agent.repoSkills`): a runner
+ * below minor 6 can't, since it hands the agent a repo's `.opencode/skills` whatever the project says.
+ */
+export const taskSpecNeedsMinor6 = (spec: TaskSpec): boolean => spec.agent.repoSkills === false;
+
+/**
  * Why a task can't be offered to a runner at a lower minor (ADR 0034): the kind or the feature,
  * in the dispatch note's words (`taskNotOfferableWords`).
  */
 export const taskNotOfferableReasonSchema = z.enum([
+  /** A project that keeps the repos' own skills from the agent (minor 6). */
+  "repo-skills-off",
   /** A refine task: read-only, with `submit_draft` (minor 5). */
   "refine-task",
   /** A review task: read-only at its PRs' heads, with `submit_review` (minor 5). */
@@ -782,6 +827,9 @@ const taskNeedsMinor5Reason = (spec: TaskSpec): TaskNotOfferableReason | null =>
 
 /** The lowest runner minor a spec needs (ADR 0034). */
 export const taskSpecMinMinor = (spec: TaskSpec): number => {
+  if (taskSpecNeedsMinor6(spec)) {
+    return 6;
+  }
   if (taskSpecNeedsMinor5(spec)) {
     return 5;
   }
@@ -797,13 +845,17 @@ export type TaskOffer =
 
 /**
  * Whether core may offer a task with this spec to a runner at `peerMinor` (ADR 0034's one-minor
- * window, milestone 6): a minor-4 runner gets no refine, review or onboarding task and no
- * automatic round, and the dispatch note says why (`taskNotOfferableWords`).
+ * window, milestone 6): a minor-5 runner gets no task whose project keeps the repos' own skills
+ * off, a minor-4 runner no refine, review or onboarding task and no automatic round, and the
+ * dispatch note says why (`taskNotOfferableWords`).
  */
 export const isTaskOfferable = (spec: TaskSpec, peerMinor: number): TaskOffer => {
   const minMinor = taskSpecMinMinor(spec);
   if (peerMinor >= minMinor) {
     return { offerable: true };
+  }
+  if (minMinor === 6) {
+    return { offerable: false, reason: "repo-skills-off", minMinor };
   }
   if (minMinor === 5) {
     return { offerable: false, reason: taskNeedsMinor5Reason(spec) ?? "automatic-round", minMinor };
@@ -815,6 +867,8 @@ export const isTaskOfferable = (spec: TaskSpec, peerMinor: number): TaskOffer =>
 export const taskNotOfferableWords = (reason: TaskNotOfferableReason, minMinor: number): string => {
   const needs = `a runner at protocol 1.${String(minMinor)} or later: update the runner`;
   switch (reason) {
+    case "repo-skills-off":
+      return `A project with the repos' own skills off needs ${needs}.`;
     case "refine-task":
       return `A refine task needs ${needs}.`;
     case "review-task":
@@ -838,12 +892,16 @@ export const taskSpecResponseSchemaFor = (
   minor: number,
 ):
   | typeof taskSpecSchema
+  | typeof taskSpecSchemaV5
   | typeof taskSpecSchemaV3
   | typeof taskSpecSchemaV2
   | typeof taskSpecSchemaV1
   | typeof taskSpecSchemaV0 => {
-  if (minor >= 5) {
+  if (minor >= 6) {
     return taskSpecSchema;
+  }
+  if (minor >= 5) {
+    return taskSpecSchemaV5;
   }
   if (minor >= 3) {
     return taskSpecSchemaV3;

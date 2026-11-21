@@ -80,6 +80,8 @@ What ostra writes, as the adapter has it [OS-OC]:
 
 ### 1.4 The gap: the repo's `.agents/skills` and `.claude/skills` *(inferred, not run)*
 
+> **Closed 2026-11-21** (the maintainer's "yes", ADR 0049 amended, F-021). The adapter now names all three folders in every repo, the profile's after them, and a project admin can turn them off. Run on 2.3.2 since: without the change, a repo's `.agents/skills` and `.claude/skills` weren't listed; with it, OpenCode lists and loads all three, keys a skill by its folder's name, and gives a name clash to the later `skills` entry, so the profile's wins (`packages/adapters/adapter-opencode/src/opencode-adapter.contract.test.ts`, `apps/runner/src/task-host/repo-skills.opencode.test.ts`). The section below is the finding as it was.
+
 - **What OpenCode 2.3.2 does with those switches** [OC]:
   - With `OPENCODE_DISABLE_PROJECT_CONFIG` set, it passes `project: false` to config discovery. Discovery then skips the upward walk entirely (`options?.project === false ? [] : fs.up(...)`), and the walk is what finds a project's `.claude`, `.agents` and `.opencode` folders (`packages/core/src/config/discovery.ts`).
   - `OPENCODE_DISABLE_CLAUDE_CODE` also sets `claude: false`, with the comment "Config reads .claude only for skills" (`packages/cli/src/server-process.ts`).
@@ -564,8 +566,8 @@ Cached by core is the only one that fits a profile-level, executor-blind item. *
    - Is "an organization library, attached to profiles, with an 'every profile' switch" the right model?
    - Should a project be able to attach items, or only pick profiles, as now?
    - Should anything attach to a single task? No comparable product does (section 4).
-2. **Repo skills.** Should a task load a repo's `.agents/skills` and `.claude/skills` by default, as Codex, Copilot, Cursor and Devin do? Or only when a project admin marks the repo trusted, as the Agent Skills guide suggests [AS-CLIENT]?
-3. **Name clashes.** When a profile skill and a repo skill share a name, which one does the agent get?
+2. **Repo skills.** Should a task load a repo's `.agents/skills` and `.claude/skills` by default, as Codex, Copilot, Cursor and Devin do? Or only when a project admin marks the repo trusted, as the Agent Skills guide suggests [AS-CLIENT]? *Answered 2026-11-21 ("yes", ADR 0049 amended): by default, with a per-project switch to turn them off.*
+3. **Name clashes.** When a profile skill and a repo skill share a name, which one does the agent get? *Answered 2026-11-21 (ADR 0049 amended): the profile's.*
 4. **Outbound fetches.** May the server call skills.sh, a git host and an MCP registry when an admin searches or installs? Off by default, behind one setting, with ADR 0021 amended?
 5. **The search source.** skills.sh's documented API needs a Vercel OIDC token. Build on its unauthenticated CLI search endpoint, do without search (install by reference only), or use another index?
 6. **A dependency or our own code.** Should ostra run the `skills` CLI (MIT, Vercel, telemetry on by default), or implement the fetch, the discovery and the CLI's documented hash itself?

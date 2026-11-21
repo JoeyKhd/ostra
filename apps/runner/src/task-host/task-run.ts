@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { adapterError, GIT_GUARD_ENV_NAMES, gitGuardEnv, hideRepoAgentConfig, ok, toApprovalOptions, unknownModelLimits } from "@ostra/adapter-sdk";
+import { adapterError, GIT_GUARD_ENV_NAMES, gitGuardEnv, hideRepoAgentConfig, ok, shadowedRepoSkills, toApprovalOptions, unknownModelLimits } from "@ostra/adapter-sdk";
 import type {
   AdapterResult,
   AgentAdapter,
@@ -1973,8 +1973,21 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       launchSkills = [];
       return;
     }
-    const written = await writeSkills({ link: deps.link, taskId: taskSpec.taskId, leaseEpoch: taskSpec.leaseEpoch, skills, agentDir: workspaceOf().agentDir, logger: log });
+    const dirs = workspaceOf();
+    const written = await writeSkills({ link: deps.link, taskId: taskSpec.taskId, leaseEpoch: taskSpec.leaseEpoch, skills, agentDir: dirs.agentDir, logger: log });
     launchSkills = written.skills;
+    // F-021 (ADR 0049 amended 2026-11-21): a repo's own skill of a profile skill's name is the one
+    // the agent doesn't get; the profile's wins. Each is logged by its name, never its content.
+    if (taskSpec.agent.repoSkills !== false && written.skills.length > 0) {
+      const shadowed = await shadowedRepoSkills({
+        workspaceDir: dirs.workspaceDir,
+        repoDirs: taskSpec.repos.map((repo) => repo.checkoutDir),
+        profileSkills: written.skills.map((skill) => skill.name),
+      });
+      for (const skill of shadowed) {
+        log.info("a repo's own skill is shadowed by the profile's", { skill });
+      }
+    }
   };
 
   /**
@@ -2059,8 +2072,10 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       approvalRules: taskSpec.agent.approvalRules ?? [],
       taskRules: [...taskRules],
       mode,
-      // F-021: an agent that keeps the repo's own config out still reads each repo's own skills.
+      // F-021: an agent that keeps the repo's own config out still reads each repo's own skills,
+      // unless the project keeps them off (ADR 0049 amended 2026-11-21).
       repoDirs: taskSpec.repos.map((repo) => repo.checkoutDir),
+      repoSkills: taskSpec.agent.repoSkills ?? true,
       // Ticket 29 (F-021): the profile's skills, as written into the agent folder, and its MCP servers.
       skills: launchSkills ?? [],
       mcpServers: launchMcpServers(taskSpec),

@@ -229,6 +229,11 @@ export const buildTaskSpec = async (
     return { ok: false, error: "profile-unusable", message: profileParts.message };
   }
   const parts = profileParts.parts;
+  // 2026-11-21 (F-021, ADR 0049 amended): whether the repos' own skills reach the agent, the
+  // project's switch as it is now, so a change reaches the task's next session. Sent only when off:
+  // a spec without it means on, and the dispatch offers a task with it off only to a minor-6 runner.
+  const project = await db.project.findFirst({ where: { id: task.projectId, organizationId }, select: { repoSkills: true } });
+  const repoSkillsOff = project?.repoSkills === false;
 
   // Milestone 2 (ticket 18): the ticket, its images, and a reopen's restore section and template.
   const extras = await specMilestone2Parts(db, task, session);
@@ -297,6 +302,7 @@ export const buildTaskSpec = async (
       effort: effort.effort.level,
       reasoning: effort.reasoning,
       limits: effort.limits,
+      ...(repoSkillsOff ? { repoSkills: false } : {}),
     },
     firstTurnMode: parts.firstTurnMode,
     environment: {

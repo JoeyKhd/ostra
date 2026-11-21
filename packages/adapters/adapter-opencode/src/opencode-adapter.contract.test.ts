@@ -608,6 +608,79 @@ describe("milestone 3 on the pinned OpenCode", () => {
     }
   }, 180_000);
 
+  it("F-021/c5,c8: a repo's skills in .agents, .claude and .opencode all reach OpenCode, the profile's skill wins over the repo's of its name, and the repo's opencode.json is still never read", async () => {
+    const evil = await startTestMcpHttp("search");
+    mcpServers.push(evil);
+    const root = await mkdtemp(path.join(tmpdir(), "ostra-opencode-repo-skills-"));
+    roots.push(root);
+    const agentDir = path.join(root, "agent");
+    const skillDir = path.join(agentDir, "ostra-skills", "release-notes");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(path.join(skillDir, "SKILL.md"), "---\nname: release-notes\ndescription: Write the release notes\n---\n# The profile's release notes\n\nWrite them from the merged PRs.\n");
+    const repoSkill = async (workspaceDir: string, folder: string, name: string, heading: string): Promise<void> => {
+      const dir = path.join(workspaceDir, "web", ...folder.split("/"), name);
+      await mkdir(dir, { recursive: true });
+      await writeFile(path.join(dir, "SKILL.md"), `---\nname: ${name}\ndescription: The ${name} skill\n---\n# ${heading}\n\nFollow it.\n`);
+    };
+    const profiled = await openProfiled(
+      { agentDir, skills: [{ name: "release-notes", dir: skillDir }], repoDirs: ["web"], approvalRules: [rule("guard", "edit", { kind: "path-glob", glob: "guarded.txt" })] },
+      async (workspaceDir) => {
+        await repoSkill(workspaceDir, ".agents/skills", "agents-skill", "From .agents");
+        await repoSkill(workspaceDir, ".claude/skills", "claude-skill", "From .claude");
+        await repoSkill(workspaceDir, ".opencode/skills", "opencode-skill", "From .opencode");
+        // The repo's own skill of the profile's skill's name.
+        await repoSkill(workspaceDir, ".agents/skills", "release-notes", "The repo's release notes");
+        // And a config that would allow everything and add a server, were it read.
+        await writeFile(path.join(workspaceDir, "web", "opencode.json"), allowAllRepoConfig(evil.urlFor("evil")));
+        await writeFile(path.join(workspaceDir, "web", ".opencode", "opencode.json"), allowAllRepoConfig(evil.urlFor("evil")));
+        await writeFile(path.join(workspaceDir, "opencode.json"), allowAllRepoConfig(evil.urlFor("evil")));
+      },
+    );
+    try {
+      expect(await profiled.prompt(`${stubMarker("skills")} list them`)).toBe("end_turn");
+      const said = messageText(profiled.events);
+      expect(said).toContain("agents-skill (# From .agents)");
+      expect(said).toContain("claude-skill (# From .claude)");
+      expect(said).toContain("opencode-skill (# From .opencode)");
+      expect(said).toContain("release-notes (# The profile's release notes)");
+      expect(said).not.toContain("The repo's release notes");
+      // The project config stays off: the repo's server never reaches the model, and its rule still asks.
+      expect(await profiled.prompt(`${stubMarker("mcp-list", "evil=http")} list`)).toBe("end_turn");
+      expect(messageText(profiled.events)).toContain("servers: none");
+      expect(await profiled.prompt(`${stubMarker("ask-path", "guarded.txt")} write`)).toBe("end_turn");
+      expect(profiled.asked.map((request) => request.subject)).toEqual([{ tool: "edit", subject: { kind: "path", value: "guarded.txt" } }]);
+      expect(evil.calls).toEqual([]);
+    } finally {
+      await profiled.stop();
+    }
+  }, 180_000);
+
+  it("F-021/c9: with the project's repo skills off, OpenCode lists none of the repo's skills, in any of the three folders, and keeps the profile's", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "ostra-opencode-repo-skills-off-"));
+    roots.push(root);
+    const agentDir = path.join(root, "agent");
+    const skillDir = path.join(agentDir, "ostra-skills", "release-notes");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(path.join(skillDir, "SKILL.md"), "# Release notes\n\nWrite them from the merged PRs.\n");
+    const profiled = await openProfiled({ agentDir, skills: [{ name: "release-notes", dir: skillDir }], repoDirs: ["web"], repoSkills: false }, async (workspaceDir) => {
+      for (const folder of [".agents/skills", ".claude/skills", ".opencode/skills"]) {
+        const dir = path.join(workspaceDir, "web", ...folder.split("/"), `skill-${folder.split("/")[0]?.slice(1) ?? ""}`);
+        await mkdir(dir, { recursive: true });
+        await writeFile(path.join(dir, "SKILL.md"), "---\nname: repo-skill\ndescription: A repo's skill\n---\n# A repo's skill\n");
+      }
+    });
+    try {
+      expect(await profiled.prompt(`${stubMarker("skills")} list them`)).toBe("end_turn");
+      const said = messageText(profiled.events);
+      // OpenCode's own built-in skills are listed too; none of the repo's is.
+      expect(said).toContain("release-notes (# Release notes)");
+      expect(said).not.toContain("A repo's skill");
+      expect(said).not.toContain("repo-skill");
+    } finally {
+      await profiled.stop();
+    }
+  }, 180_000);
+
   it("F-063/c1: a plan-first task starts in OpenCode's plan agent, which refuses a write, a command off the read-only list and a writing MCP tool, and set_mode makes it build", async () => {
     const probe = await openProfiled({});
     const servers = docsAndFiles(probe.mcpUrl);

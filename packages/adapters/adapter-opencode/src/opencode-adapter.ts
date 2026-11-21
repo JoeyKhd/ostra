@@ -104,7 +104,8 @@ export class OpenCodeAdapter extends AgentAdapter {
     // Milestone 3 (ADR 0049, ticket 08), each checked against OpenCode 2.3.2 (the README) and in the
     // agent contract suite: the rules are written into OpenCode's own permissions as "ask"; plan
     // first is OpenCode's plan agent, switched with `session/set_mode` and made read-only by the
-    // config; skills are read from the folders the runner wrote; both MCP transports; and the
+    // config; skills are read from each repo's own skill folders (unless the project keeps them
+    // off), then the folders the runner wrote, so the profile's win; both MCP transports; and the
     // repo's own OpenCode config is never read (`OPENCODE_DISABLE_PROJECT_CONFIG`).
     permissionRules: "native",
     planMode: "session-mode",

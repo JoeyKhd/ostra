@@ -249,15 +249,19 @@ describe("the profile's side of the launch", () => {
     });
   });
 
-  it("F-021/c6: points OpenCode at the profile's skill folders, then the repos' own, names the profile's in the instructions, and refuses one outside the agent folder", async () => {
+  it("F-021/c6,c8: points OpenCode at the repos' own skill folders, all three of each, then the profile's last, names the profile's in the instructions, and refuses one outside the agent folder", async () => {
     const skillDir = path.join(agentDir, "ostra-skills", "release-notes");
     const adapter = newAdapter();
     const prepared = await adapter.prepareLaunch(input({ instructions: "Prefer small commits.\n", skills: [{ name: "release-notes", dir: skillDir }] }));
     if (!prepared.ok) throw new Error(prepared.error.message);
     const config = await configOf(adapter, { skills: [{ name: "release-notes", dir: skillDir }], repoDirs: ["web", "api"] });
-    // The repos' own skill folders, which the project config being off would otherwise drop.
+    // The repos' own skill folders, which the project config being off would otherwise drop, then
+    // the profile's: OpenCode lets the later of two skills of one name win, so the profile's does.
     const root = workspaceDir.replaceAll("\\", "/");
-    expect(config["skills"]).toEqual([skillDir, `${root}/.opencode/skills`, `${root}/web/.opencode/skills`, `${root}/api/.opencode/skills`]);
+    const folders = (dir: string): readonly string[] => [`${dir}/.agents/skills`, `${dir}/.claude/skills`, `${dir}/.opencode/skills`];
+    expect(config["skills"]).toEqual([...folders(root), ...folders(`${root}/web`), ...folders(`${root}/api`), skillDir]);
+    // Named outright: the project config stays off, so a repo's opencode.json is still never read.
+    expect(prepared.value.env["OPENCODE_DISABLE_PROJECT_CONFIG"]).toBe("1");
     const instructions = prepared.value.files.find((file) => file.path === taskDirs(agentDir).instructions);
     expect(instructions?.content).toBe(`Prefer small commits.\n\n${SKILLS_HEADING}: \`release-notes\`.\n`);
     for (const dir of [path.join(workspaceDir, ".opencode", "skills", "x"), path.join(agentDir, "..", "elsewhere"), "relative/skill"]) {
@@ -267,6 +271,16 @@ describe("the profile's side of the launch", () => {
     for (const dir of ["..", "web/../..", "/etc", ""]) {
       expect(await adapter.prepareLaunch(input({ repoDirs: [dir] })), dir).toMatchObject({ ok: false, error: { code: "invalid-input" } });
     }
+  });
+
+  it("F-021/c9: with the project's repo skills off, names only the profile's skill folders; on, or unset, the repos' too", async () => {
+    const skillDir = path.join(agentDir, "ostra-skills", "release-notes");
+    const skills = [{ name: "release-notes", dir: skillDir }];
+    expect((await configOf(newAdapter(), { skills, repoDirs: ["web"], repoSkills: false }))["skills"]).toEqual([skillDir]);
+    expect((await configOf(newAdapter(), { repoDirs: ["web"], repoSkills: false }))["skills"]).toEqual([]);
+    const root = workspaceDir.replaceAll("\\", "/");
+    expect((await configOf(newAdapter(), { skills, repoDirs: ["web"], repoSkills: true }))["skills"]).toContain(`${root}/web/.agents/skills`);
+    expect((await configOf(newAdapter(), { skills, repoDirs: ["web"] }))["skills"]).toContain(`${root}/web/.agents/skills`);
   });
 
   it("F-021/c5: never reads the repo's own OpenCode config, in the agent and in every other OpenCode command", async () => {

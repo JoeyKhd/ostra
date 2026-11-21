@@ -409,6 +409,10 @@ _Avoid_: proposal (that's memory's), request
 The organization admin's search of skills.sh and the organization's MCP registries, through core, off until an admin turns it on. A result installs through the library like any reference.
 _Avoid_: store, app store, marketplace (alone, that's skills.sh or a registry)
 
+**Repo skills**:
+The skills a repo carries itself, each a folder holding a `SKILL.md` in its `.agents/skills`, `.claude/skills` or `.opencode/skills`. The agent gets them from the task's checkout beside its profile's skills, and a profile's skill wins over a repo's of the same name. A project setting, on by default, that a project admin can turn off.
+_Avoid_: project skills (a project isn't a repo), local skills
+
 **Model provider**:
 An endpoint an organization adds for models: an API base URL and a token. ostra lists the models from the endpoint itself, except a model's batch listing (`x:batch` beside `x`, the endpoint's asynchronous batch API), which it keeps unlisted. Each one is one key: an organization may hold several that serve the same models, one per client, and a project uses only those on its provider list.
 _Avoid_: vendor, LLM, key (alone, when you mean the provider: the key is its token)

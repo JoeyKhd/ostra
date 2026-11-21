@@ -71,7 +71,7 @@ ostra then queues a member's message until the turn ends, reopens through the re
 
 An agent adapter writes only what is particular to its agent. ostra drives agents over the Agent Client Protocol (ACP) with one driver, `createAcpDriver`, which the base class uses. An agent adapter provides:
 
-- **`prepareLaunch`:** the command, the environment (an allowlist, never the runner's own) and the config files the agent starts with, from the task's profile: its model at the key proxy's base URL with the placeholder key, its permissions, skills and MCP servers;
+- **`prepareLaunch`:** the command, the environment (an allowlist, never the runner's own) and the config files the agent starts with, from the task's profile: its model at the key proxy's base URL with the placeholder key, its permissions, skills and MCP servers. Each repo's own skills (`REPO_SKILL_FOLDERS`) reach the agent beside the profile's unless the launch's `repoSkills` is `false`, and a profile's skill wins over a repo's of the same name;
 - **`mapUpdate`:** how the agent's ACP updates map to ostra's events: text, thinking, tool calls with their input and output, plans and usage;
 - **`effortLevels`:** the reasoning levels the agent can send for a model, from its controls, API format and model ID, with `default` first. With `reasoningEffort: "session-option"`, the base class's `setEffort` sets the level on the session's ACP option of category `thought_level`, clamped to the values the agent advertised;
 - **`capabilities`**, as above, each one checked by the agent suite.

@@ -1,4 +1,4 @@
-import { addProjectRepo, branchRuleCheckSchema, checkProjectRepos, removeProjectRepo, reorderProjectRepos } from "@ostra/domain";
+import { addProjectRepo, branchRuleCheckSchema, checkProjectRepos, removeProjectRepo, reorderProjectRepos, setRepoSkills } from "@ostra/domain";
 import type { ProjectReposDeps } from "@ostra/domain";
 import { projectIdSchema, repoFullNameSchema, repoIdSchema, taskIdSchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
@@ -152,6 +152,21 @@ export const projectReposProcedures = {
         return throwRefusal(result.error, result.message);
       }
       return { reordered: true as const };
+    }),
+
+  /**
+   * Whether each repo's own skills (`.agents/skills`, `.claude/skills`, `.opencode/skills`) reach
+   * the agent beside the profile's (F-021, ADR 0049 amended 2026-11-21). On by default; a project
+   * admin turns it off and on, audited. It reaches each task's next session.
+   */
+  setRepoSkills: projectProcedure("admin", z.strictObject({ projectId: projectIdSchema, on: z.boolean() }))
+    .output(z.object({ repoSkills: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await setRepoSkills({ db: ctx.deps.db, audit: ctx.deps.ports.audit, notices: ctx.deps.ports.notices }, ctx.scope, input);
+      if (!result.ok) {
+        return throwRefusal(result.error, result.message);
+      }
+      return { repoSkills: result.on };
     }),
 };
 

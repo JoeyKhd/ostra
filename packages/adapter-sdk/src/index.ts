@@ -20,6 +20,7 @@ export * from "./agent/base.ts";
 export * from "./agent/permission-subject.ts";
 export * from "./agent/plan-mode.ts";
 export * from "./agent/repo-config.ts";
+export * from "./agent/repo-skills.ts";
 export { createAcpDriver } from "./agent/acp/driver.ts";
 export type { AcpDriverOptions } from "./agent/acp/driver.ts";
 export { createAcpMapper, toApprovalOptions } from "./agent/acp/map.ts";

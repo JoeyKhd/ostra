@@ -14,7 +14,17 @@ import {
   taskEventSchemaV5,
 } from "../events/agent-events.ts";
 import type { TaskEvent, TaskEventKind } from "../events/agent-events.ts";
-import { eventFixtures, fixtureIds as ids, minor6FieldFixtures, nestedSubagentStartFixture } from "../testing/fixtures.ts";
+import {
+  encodeTaskSpecForMinor,
+  isTaskOfferable,
+  taskNotOfferableWords,
+  taskSpecMinMinor,
+  taskSpecResponseSchemaFor,
+  taskSpecSchema,
+  taskSpecSchemaV5,
+} from "../task/spec.ts";
+import type { TaskSpec } from "../task/spec.ts";
+import { eventFixtures, fixtureIds as ids, minor6FieldFixtures, nestedSubagentStartFixture, taskSpecFixture } from "../testing/fixtures.ts";
 import { runnerLimits } from "./limits.ts";
 import { downFrameCodec, encodeUpFrame, parseUpFrame, upFrameCodec } from "./messages.ts";
 import type { UpFrame } from "./messages.ts";
@@ -129,5 +139,32 @@ describe("the subagent on the agent's output (F-138)", () => {
     }
     // An event without a subagent goes down to every minor as it was.
     expect(encodeEventForMinor(eventFixtures["tool.called"], 5)).toBe(eventFixtures["tool.called"]);
+  });
+});
+
+describe("minor 6's spec field (F-021, 2026-11-21)", () => {
+  const off: TaskSpec = { ...taskSpecFixture, agent: { ...taskSpecFixture.agent, repoSkills: false } };
+  const on: TaskSpec = { ...taskSpecFixture, agent: { ...taskSpecFixture.agent, repoSkills: true } };
+
+  it("F-021/c9: agent.repoSkills round-trips at minor 6, a minor-5 runner is sent the spec without it, and a task with it off is offered only at minor 6", () => {
+    expect(taskSpecSchema.parse(roundTrip(off))).toEqual(off);
+    expect(taskSpecResponseSchemaFor(6).parse(roundTrip(off))).toEqual(off);
+    // Minor 5's schema refuses the field; encoded down, the spec is minor 5's.
+    expect(taskSpecSchemaV5.safeParse(off).success).toBe(false);
+    expect(taskSpecResponseSchemaFor(5).safeParse(off).success).toBe(false);
+    const down = encodeTaskSpecForMinor(off, 5);
+    expect("repoSkills" in down.agent).toBe(false);
+    expect(taskSpecResponseSchemaFor(5).parse(roundTrip(down))).toEqual({ ...off, agent: taskSpecFixture.agent });
+    expect(encodeTaskSpecForMinor(off, 6)).toBe(off);
+    expect("repoSkills" in encodeTaskSpecForMinor(on, 4).agent).toBe(false);
+    // Off needs minor 6, with its own words; on, or missing, needs nothing new.
+    expect(taskSpecMinMinor(off)).toBe(6);
+    expect(isTaskOfferable(off, 5)).toEqual({ offerable: false, reason: "repo-skills-off", minMinor: 6 });
+    expect(isTaskOfferable(off, 6)).toEqual({ offerable: true });
+    expect(isTaskOfferable(on, 5)).toEqual({ offerable: true });
+    expect(isTaskOfferable(taskSpecFixture, 5)).toEqual({ offerable: true });
+    expect(taskNotOfferableWords("repo-skills-off", 6)).toBe("A project with the repos' own skills off needs a runner at protocol 1.6 or later: update the runner.");
+    // A field ostra owns: anything but a boolean is refused.
+    expect(taskSpecSchema.safeParse({ ...taskSpecFixture, agent: { ...taskSpecFixture.agent, repoSkills: "no" } }).success).toBe(false);
   });
 });
