@@ -10,6 +10,7 @@ import { cn } from "@/lib/cn";
 import { plural, t } from "@/lib/messages";
 
 import { SentDiffCommentsList } from "./diff-comments-message";
+import { SafeLink } from "./renderers";
 
 // The thread's member messages that ostra wrote for the agent (F-072's fix for diff comments, for
 // every kind): their text is the agent's prompt, ostra's instructions around marked blocks, so the
@@ -25,12 +26,17 @@ export const agentMessageOf = (message: TaskUIMessage): AgentMessage | null => {
   return readAgentMessage({ text, intent: message.metadata?.author?.intent });
 };
 
-/** ostra sent it by itself (a round, the closing turn): the header names ostra, not the member it's written as. */
+/**
+ * ostra sent it by itself (a round, the closing turn, a review or refine task's first prompt): the
+ * header names ostra, not the member it's written as.
+ */
 export const isAutomatic = (message: AgentMessage): boolean => {
   switch (message.kind) {
     case "fix-ci":
     case "fix-findings":
     case "closing-turn":
+    case "ai-review":
+    case "refine":
       return true;
     case "pr-comment":
     case "fix-checks":
@@ -57,6 +63,37 @@ const conclusionWords = (conclusion: string | null): string | null =>
   conclusion === null ? null : isCiConclusion(conclusion) ? t(`task.agentMessage.ciConclusion.${conclusion}`) : conclusion;
 
 const blockingOf = (message: Extract<AgentMessage, { readonly kind: "fix-findings" }>) => message.findings.filter((finding) => finding.severity === "blocking");
+
+type AiReview = Extract<AgentMessage, { readonly kind: "ai-review" }>;
+
+/** The one PR an AI review reads, which its header names and links; `null` for several. */
+const onlyPullRequest = (message: AiReview) => (message.pullRequests.length === 1 ? (message.pullRequests[0] ?? null) : null);
+
+/** What the header names after "AI review of ": `PR #12`, or `2 PRs`. */
+const reviewedWords = (message: AiReview): string => {
+  const only = onlyPullRequest(message);
+  return only === null ? plural(message.pullRequests.length, "task.agentMessage.aiReview.prs.one", "task.agentMessage.aiReview.prs.other") : t("task.agentMessage.aiReview.pr", { n: only.number });
+};
+
+/** The folded summary's line: the change's size in all, and which review this is when it isn't the first. */
+const reviewedSummary = (message: AiReview): string => {
+  const files = message.pullRequests.reduce((sum, pr) => sum + pr.files, 0);
+  const added = message.pullRequests.reduce((sum, pr) => sum + pr.additions, 0);
+  const removed = message.pullRequests.reduce((sum, pr) => sum + pr.deletions, 0);
+  const size = `${plural(files, "task.agentMessage.aiReview.files.one", "task.agentMessage.aiReview.files.other")}, ${t("task.agentMessage.aiReview.lines", { added, removed })}`;
+  return message.round.number > 1 ? `${size} · ${t("task.agentMessage.aiReview.round", { n: message.round.number, of: message.round.of })}` : size;
+};
+
+/** What the review reads, folded: each PR's commits, then the ticket and its acceptance criteria as they were quoted. */
+const reviewedText = (message: AiReview): string => {
+  const compared = message.pullRequests.map((pr) => t("task.agentMessage.aiReview.compared", { repo: pr.repo, n: pr.number, base: pr.base, head: pr.head }));
+  const ticket =
+    message.ticket === null
+      ? [t("task.agentMessage.aiReview.noTicket")]
+      : [`${message.ticket.key} ${message.ticket.title}`.trim(), ...(message.ticket.description.trim() === "" ? [] : [message.ticket.description])];
+  const criteria = message.acceptanceCriteria === null ? [] : [`${t("task.agentMessage.aiReview.criteria")}\n${message.acceptanceCriteria}`];
+  return [compared.join("\n"), ...ticket, ...criteria].join("\n\n");
+};
 
 /** The header's words for the message, after its time. */
 export const agentMessageMark = (message: AgentMessage): string => {
@@ -89,6 +126,10 @@ export const agentMessageMark = (message: AgentMessage): string => {
       return t(`task.agentMessage.approval.${message.decision}`);
     case "closing-turn":
       return t("task.agentMessage.closingTurn");
+    case "ai-review":
+      return `${t("task.agentMessage.aiReview.before")}${reviewedWords(message)}`;
+    case "refine":
+      return message.ticket.key === "" ? t("task.agentMessage.refine.markNoKey") : t("task.agentMessage.refine.mark", { key: message.ticket.key });
     case "quoted":
       return t(`taskAnswers.intent.${message.intent}`);
     default:
@@ -96,13 +137,23 @@ export const agentMessageMark = (message: AgentMessage): string => {
   }
 };
 
-/** The mark after the header's time: ` · {words}`, in the header's mono `--faint`. */
-export const AgentMessageMark = ({ message, intent }: { readonly message: AgentMessage; readonly intent: MessageIntent | undefined }) => (
-  <span className="font-mono text-sm text-faint" data-tag="intent" data-intent={intent ?? "message"} data-agent-message={message.kind}>
-    <span> · </span>
-    {agentMessageMark(message)}
-  </span>
-);
+/** The mark after the header's time: ` · {words}`, in the header's mono `--faint`. An AI review's one PR links to it. */
+export const AgentMessageMark = ({ message, intent }: { readonly message: AgentMessage; readonly intent: MessageIntent | undefined }) => {
+  const only = message.kind === "ai-review" ? onlyPullRequest(message) : null;
+  return (
+    <span className="font-mono text-sm text-faint" data-tag="intent" data-intent={intent ?? "message"} data-agent-message={message.kind}>
+      <span> · </span>
+      {message.kind === "ai-review" && only !== null && only.url !== null ? (
+        <>
+          {t("task.agentMessage.aiReview.before")}
+          <SafeLink href={only.url}>{reviewedWords(message)}</SafeLink>
+        </>
+      ) : (
+        agentMessageMark(message)
+      )}
+    </span>
+  );
+};
 
 /** A Linear follow-up's mark: the member's own words came from a comment on the task's ticket. */
 export const LinearMark = ({ ticketKey }: { readonly ticketKey: string | undefined }) => (
@@ -143,6 +194,10 @@ export const agentMessageSummary = (message: AgentMessage): string => {
       return message.request === null ? mark : `${mark}: ${message.request}`;
     case "closing-turn":
       return t("task.agentMessage.closingTurnBody");
+    case "ai-review":
+      return listed(message.pullRequests.map((pr) => pr.repo));
+    case "refine":
+      return `${mark}: ${message.ticket.title}`;
     case "quoted":
       return message.blocks.map((block) => block.text).join("\n\n");
     default:
@@ -290,6 +345,37 @@ const Body = ({ message }: { readonly message: AgentMessage }) => {
         <>
           {message.request === null ? null : <Where>{message.request}</Where>}
           {message.reason === null ? null : <Words>{message.reason}</Words>}
+        </>
+      );
+    case "ai-review":
+      return (
+        <>
+          <List>
+            {message.pullRequests.map((pr) => (
+              <li key={`${pr.repo}#${String(pr.number)}`} data-item="pull-request" className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                <span className="font-mono text-text [overflow-wrap:anywhere]">{pr.repo}</span>
+                <span className="font-mono text-muted [overflow-wrap:anywhere]">{pr.branch}</span>
+                {message.pullRequests.length === 1 ? null : <SafeLink href={pr.url ?? undefined}>{t("task.agentMessage.aiReview.pr", { n: pr.number })}</SafeLink>}
+              </li>
+            ))}
+          </List>
+          <Folded summary={reviewedSummary(message)} text={reviewedText(message)} />
+        </>
+      );
+    case "refine":
+      return (
+        <>
+          <Words className="font-semibold">{message.ticket.title}</Words>
+          {message.repos.length === 0 ? null : (
+            <List>
+              {message.repos.map((repo) => (
+                <li key={repo} data-item="repo" className="font-mono text-sm text-text [overflow-wrap:anywhere]">
+                  {repo}
+                </li>
+              ))}
+            </List>
+          )}
+          {message.ticket.description.trim() === "" ? null : <Folded summary={t("task.agentMessage.refine.description")} text={message.ticket.description} />}
         </>
       );
     case "quoted":

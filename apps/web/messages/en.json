@@ -1881,6 +1881,28 @@
       },
       "closingTurn": "closing turn",
       "closingTurnBody": "Asked the agent for anything the next task should know, as memory proposals.",
+      "aiReview": {
+        "before": "AI review of ",
+        "pr": "PR #{n}",
+        "prs": {
+          "one": "{n} PR",
+          "other": "{n} PRs"
+        },
+        "files": {
+          "one": "{n} file changed",
+          "other": "{n} files changed"
+        },
+        "lines": "+{added} −{removed}",
+        "round": "round {n} of {of}",
+        "compared": "{repo}#{n}: base {base}, head {head}",
+        "noTicket": "The task has no ticket: the review reads the change on its own.",
+        "criteria": "Acceptance criteria"
+      },
+      "refine": {
+        "mark": "Refine {key}",
+        "markNoKey": "Refine the ticket",
+        "description": "The ticket’s description"
+      },
       "linearComment": "Linear comment on {key}",
       "linearCommentNoKey": "Linear comment"
     },

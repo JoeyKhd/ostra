@@ -116,7 +116,7 @@ export const startReview = async (deps: ReviewDeps, input: { readonly organizati
   const pullRequests: PullRequestForReview[] = [];
   for (const pr of await openTaskPrsInTx(db, code.id)) {
     const repoId = repoIdSchema.parse(pr.repoId);
-    const taskRepo = await db.taskRepo.findUniqueOrThrow({ where: { id: pr.taskRepoId }, select: { baseBranch: true, prUrl: true, repo: { select: { fullName: true } } } });
+    const taskRepo = await db.taskRepo.findUniqueOrThrow({ where: { id: pr.taskRepoId }, select: { branchName: true, baseBranch: true, prUrl: true, repo: { select: { fullName: true } } } });
     const access = await repoAccessFor(db, deps.adapters.secretStore, input.organizationId, repoId);
     if (!access.ok) {
       throw new Error(`review.start: ${access.reason}`);
@@ -131,7 +131,18 @@ export const startReview = async (deps: ReviewDeps, input: { readonly organizati
     }
     const headSha = gitShaSchema.parse(pr.headSha);
     heads.push({ repoId, prNumber: pr.prNumber, baseSha: baseSha.data, headSha });
-    pullRequests.push({ repo: taskRepo.repo.fullName, number: pr.prNumber, url: httpUrlSchema.safeParse(taskRepo.prUrl).success ? (taskRepo.prUrl ?? "") : "", baseSha: baseSha.data, headSha });
+    const files = compared.value.files;
+    pullRequests.push({
+      repo: taskRepo.repo.fullName,
+      number: pr.prNumber,
+      url: httpUrlSchema.safeParse(taskRepo.prUrl).success ? (taskRepo.prUrl ?? "") : "",
+      branch: taskRepo.branchName,
+      baseSha: baseSha.data,
+      headSha,
+      files: files.length,
+      additions: files.reduce((sum, file) => sum + file.additions, 0),
+      deletions: files.reduce((sum, file) => sum + file.deletions, 0),
+    });
   }
   return db.$transaction((tx) => startReviewInTx(deps, tx, input, heads, pullRequests), { timeout: 20_000 });
 };
@@ -166,9 +177,9 @@ const startReviewInTx = async (
   // ADR 0058 as amended 2026-11-21 (the maintainer's "all yes"): a review run again because the last
   // run never posted (a head moved under it) is one of the task's review rounds. Past their cap, the
   // new head gets no automatic review, and the task needs its driver, as at any round cap.
+  const limits = deps.limits ?? DEFAULT_ROUND_LIMITS;
   const previous = await tx.reviewRun.findFirst({ where: { codeTaskId: code.id }, orderBy: { round: "desc" }, select: { state: true } });
   if (previous !== null && previous.state !== "posted") {
-    const limits = deps.limits ?? DEFAULT_ROUND_LIMITS;
     const counters = await roundCountersInTx(tx, code.id);
     if (reviewRerunAllowed(counters, limits).kind === "capped") {
       await reviewRerunCappedInTx(deps, tx, code, limits);
@@ -180,11 +191,14 @@ const startReviewInTx = async (
   const now = deps.clock.now();
   const project = await tx.project.findUniqueOrThrow({ where: { id: projectId }, select: { organizationId: true, defaultReviewProfileId: true } });
   const ticket = code.ticketId === null ? null : await tx.ticket.findUnique({ where: { id: code.ticketId }, select: { key: true, title: true, description: true } });
+  // Which review this is since a person last acted: the first, then one per findings round or
+  // rerun (each counted above, or by its round), of the most the review rounds' cap lets run.
+  const reviewRounds = (await roundCountersInTx(tx, code.id)).reviewRounds;
   const prompt = reviewPrompt({
     ticket: ticket === null ? { key: "", title: code.title, description: code.prompt } : { key: ticket.key, title: ticket.title, description: ticket.description },
     acceptanceCriteria: await acceptedCriteriaInTx(tx, code.ticketId),
     pullRequests,
-    round: input.round,
+    round: { number: reviewRounds + 1, of: Math.max(limits.reviewRounds, reviewRounds) + 1 },
   });
 
   // The one review task: made the first time, reopened every round after.

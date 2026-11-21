@@ -9,6 +9,8 @@ import {
   KEEP_WORKING_PROMPT,
   lateQuestionAnswerPrompt,
 } from "./index.ts";
+import { refinePrompt, reviewPrompt } from "./m6.ts";
+import type { ReviewRound } from "./m6.ts";
 
 // The panel's reading of a member message ostra wrote for the agent (F-072's fix, generalised): the
 // text is the agent's prompt, ostra's instructions with each piece of member, PR, check, finding or
@@ -17,14 +19,16 @@ import {
 // a line number), never an instruction or a fence. Pure, and client-safe (`@ostra/domain/agent-message`).
 //
 // A message is read by its intent; the reopens that carry none (an approved plan, a late answer to a
-// question or an approval) and the closing turn by their fixed opening. `null` is a member's own
-// text, shown as typed: a message with no intent, a Linear follow-up (the member's own words), and
-// a message whose intent was set by hand that holds no block (an older log's: a member's
+// question or an approval) and the closing turn by their fixed opening; a review or refine task's
+// first prompt (F-100, F-099) only when it is that prompt word for word, rebuilt from what it read,
+// so a member's text can't pass for one, nor hide words behind one. `null` is a member's own text,
+// shown as typed: a message with no intent, a Linear follow-up (the member's own words), and a
+// message whose intent was set by hand that holds no block (an older log's: a member's
 // `tasks.send` and `tasks.reopen` take only plain words since 2026-11-21, and only ostra's server
-// code sets another intent). A known
-// intent whose blocks don't read as its prompt's (an older ostra's wording) is `quoted`: its blocks
-// alone, so the fence still never shows. Diff comments are drawn from the comments they carried
-// (`diff.comments.list`), never from here.
+// code sets another intent). A known intent whose blocks don't read as its prompt's (an older
+// ostra's wording) is `quoted`: its blocks alone, so the fence still never shows. Diff comments are
+// drawn from the comments they carried (`diff.comments.list`), never from here. A ticket task's
+// first prompt and the onboarding prompt are member-visible task prompts, shown as written.
 
 /** A check's result, as "Ask the agent to fix" words it. */
 export type FixChecksStatus = "failed" | "timed-out" | "error";
@@ -34,6 +38,23 @@ export type QuotedIntent = Exclude<MessageIntent, "message" | "diff-comments" | 
 
 /** One marked block: its label and its text, as it was quoted. */
 export type QuotedBlock = { readonly label: string; readonly text: string };
+
+/** The ticket a review or refine task's prompt quotes: its key (`""` for a prompt task's), title and description. */
+export type QuotedTicket = { readonly key: string; readonly title: string; readonly description: string };
+
+/** A PR an AI review reads, as its prompt's line names it; the commits by their first 12 digits. */
+export type ReviewedPullRequest = {
+  readonly repo: string;
+  readonly number: number;
+  /** `null` when ostra had no web address for it. */
+  readonly url: string | null;
+  readonly branch: string;
+  readonly base: string;
+  readonly head: string;
+  readonly files: number;
+  readonly additions: number;
+  readonly deletions: number;
+};
 
 /** A message ostra wrote for the agent, as the thread draws it. */
 export type AgentMessage =
@@ -61,6 +82,19 @@ export type AgentMessage =
   | { readonly kind: "approval-answer"; readonly decision: "allow_once" | "allow_task" | "deny"; readonly request: string | null; readonly reason: string | null }
   /** The closing turn (F-111): ostra asks for memory proposals. */
   | { readonly kind: "closing-turn" }
+  /**
+   * A review task's first prompt for a round (F-100): the PRs it reads, which review this is, and
+   * the ticket and acceptance criteria it reads them against (`null` for a task with no ticket).
+   */
+  | {
+      readonly kind: "ai-review";
+      readonly pullRequests: readonly ReviewedPullRequest[];
+      readonly round: ReviewRound;
+      readonly ticket: QuotedTicket | null;
+      readonly acceptanceCriteria: string | null;
+    }
+  /** A refine task's first prompt (F-099): the ticket it refines and the repos it reads. */
+  | { readonly kind: "refine"; readonly ticket: QuotedTicket; readonly repos: readonly string[] }
   /** A known intent whose prompt doesn't read as this version's: its blocks alone. */
   | { readonly kind: "quoted"; readonly intent: QuotedIntent; readonly blocks: readonly QuotedBlock[] };
 
@@ -209,7 +243,7 @@ const changesRequested = (blocks: readonly QuotedBlock[]): AgentMessage | null =
   return review === null && comments.length === 0 ? null : { kind: "changes-requested", review, comments };
 };
 
-// ---------- the messages without an intent, by their fixed opening ----------
+// ---------- the messages without an intent: the reopens by their fixed opening ----------
 
 /** The builders' own openings, so a change of wording reaches the reading. */
 const openings = {
@@ -221,10 +255,77 @@ const openings = {
     allow_task: openingOf(expiredApprovalAnswerPrompt({ decision: "allow_task", subject: null, reason: null })),
     deny: openingOf(expiredApprovalAnswerPrompt({ decision: "deny", subject: null, reason: null })),
   },
+  refine: openingOf(refinePrompt({ ticket: { key: "", title: "", description: null }, repos: [] })),
 } as const;
 
-const withoutIntent = (text: string, blocks: readonly QuotedBlock[]): AgentMessage | null => {
+// ---------- a review or refine task's first prompt, rebuilt word for word ----------
+
+/** ostra's line before the ticket's blocks (`ticketBlocks`). */
+const TICKET_LINE = /^The ticket is (.*)\. Its title and description are below\.$/m;
+
+/** The ticket a prompt quotes: its key from ostra's line, its title and description from their blocks. */
+const quotedTicketOf = (segments: readonly Segment[], blocks: readonly QuotedBlock[]): QuotedTicket | null => {
+  const title = blockText(blocks, "ticket-title");
+  const description = blockText(blocks, "ticket-description");
+  const line = segments.flatMap((segment) => (segment.kind === "words" ? [TICKET_LINE.exec(segment.text)] : [])).find((found) => found !== null);
+  const key = line?.[1];
+  return title === null || description === null || key === undefined ? null : { key, title, description };
+};
+
+/** The lines of ostra's words before the first block: where a review's PRs and a refine's repos are. */
+const leadingLines = (segments: readonly Segment[]): readonly string[] => {
+  const first = segments[0];
+  return first?.kind === "words" ? first.text.split("\n") : [];
+};
+
+/** The review prompt's opening (`reviewPrompt`): which review this is, of how many. */
+const REVIEW_OPENING = /^Your task is to review a coding agent's pull requests?, round (\d+) of (\d+): /;
+
+/** A PR's line in the review prompt (`reviewPullRequestLine`). */
+const REVIEW_PR_LINE = /^- (\S+)#(\d+) \((\S*)\) on (\S+): base ([0-9a-f]+), head ([0-9a-f]+); (\d+) files? changed, \+(\d+) -(\d+)$/;
+
+const aiReview = (text: string, segments: readonly Segment[], blocks: readonly QuotedBlock[]): AgentMessage | null => {
+  const opening = REVIEW_OPENING.exec(text);
+  if (opening === null) return null;
+  const pullRequests = leadingLines(segments).flatMap((line): ReviewedPullRequest[] => {
+    const found = REVIEW_PR_LINE.exec(line);
+    if (found === null) return [];
+    const [, repo = "", number = "", url = "", branch = "", base = "", head = "", files = "", additions = "", deletions = ""] = found;
+    return [{ repo, number: Number(number), url: url === "" ? null : url, branch, base, head, files: Number(files), additions: Number(additions), deletions: Number(deletions) }];
+  });
+  if (pullRequests.length === 0) return null;
+  const round = { number: Number(opening[1]), of: Number(opening[2]) };
+  const ticket = quotedTicketOf(segments, blocks);
+  const acceptanceCriteria = blockText(blocks, "acceptance-criteria");
+  const rebuilt = reviewPrompt({
+    ticket,
+    acceptanceCriteria,
+    round,
+    pullRequests: pullRequests.map((pr) => ({ ...pr, url: pr.url ?? "", baseSha: pr.base, headSha: pr.head })),
+  });
+  return rebuilt === text ? { kind: "ai-review", pullRequests, round, ticket, acceptanceCriteria } : null;
+};
+
+/** A repo's line in the refine prompt (`repoLines`). */
+const REFINE_REPO_LINE = /^- (\S+), checked out in (.+)\/$/;
+
+const refine = (text: string, segments: readonly Segment[], blocks: readonly QuotedBlock[]): AgentMessage | null => {
+  if (openingOf(text) !== openings.refine) return null;
+  const ticket = quotedTicketOf(segments, blocks);
+  if (ticket === null) return null;
+  const repos = leadingLines(segments).flatMap((line) => {
+    const found = REFINE_REPO_LINE.exec(line);
+    return found === null ? [] : [{ fullName: found[1] ?? "", checkoutDir: found[2] ?? "" }];
+  });
+  return refinePrompt({ ticket, repos }) === text ? { kind: "refine", ticket, repos: repos.map((repo) => repo.fullName) } : null;
+};
+
+// ---------- a message without an intent ----------
+
+const withoutIntent = (text: string, segments: readonly Segment[], blocks: readonly QuotedBlock[]): AgentMessage | null => {
   if (text === CLOSING_TURN_PROMPT) return { kind: "closing-turn" };
+  const firstPrompt = aiReview(text, segments, blocks) ?? refine(text, segments, blocks);
+  if (firstPrompt !== null) return firstPrompt;
   const opening = openingOf(text);
   const plan = blockText(blocks, "approved-plan");
   if (plan !== null && (opening === openings.planApproved || opening === openings.planApprovedEdited)) {
@@ -257,7 +358,7 @@ export const readAgentMessage = (message: { readonly text: string; readonly inte
   const intent = message.intent ?? "message";
   switch (intent) {
     case "message":
-      return withoutIntent(message.text, blocks);
+      return withoutIntent(message.text, segments, blocks);
     case "diff-comments":
     case "linear-follow-up":
       return null;

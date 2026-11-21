@@ -350,11 +350,11 @@ const outsideBlocks = (prompt: string): string => {
 describe("milestone 6's prompts", () => {
   const ticket = { key: "OST-42", title: HOSTILE, description: HOSTILE };
   const repos = [{ fullName: "ostra-test/test1", checkoutDir: "test1" }];
-  const pullRequests = [{ repo: "ostra-test/test1", number: 7, url: "https://github.com/ostra-test/test1/pull/7", baseSha: "b".repeat(40), headSha: "c".repeat(40) }];
+  const pullRequests = [{ repo: "ostra-test/test1", number: 7, url: "https://github.com/ostra-test/test1/pull/7", branch: "ostra/a1b2c3d4-add-a-switch", baseSha: "b".repeat(40), headSha: "c".repeat(40), files: 3, additions: 40, deletions: 12 }];
   const finding = { repo: "ostra-test/test1", path: "src/a.ts", line: 3, side: "new", title: HOSTILE, body: HOSTILE } as const;
   const prompts = {
     refine: refinePrompt({ ticket, repos }),
-    review: reviewPrompt({ ticket, acceptanceCriteria: HOSTILE, pullRequests, round: 1 }),
+    review: reviewPrompt({ ticket, acceptanceCriteria: HOSTILE, pullRequests, round: { number: 1, of: 3 } }),
     onboarding: onboardingPrompt({ repos: [{ fullName: "ostra-test/test1", setupScript: HOSTILE, checks: [{ name: "test", command: HOSTILE }], hasAgentsMd: false }] }),
     fixCi: fixCiPrompt([{ name: HOSTILE, conclusion: "failure", logFile: "test.log" }]),
     fixFindings: fixFindingsPrompt([{ ...finding, severity: "blocking" }, { ...finding, severity: "nit" }]),
@@ -409,7 +409,7 @@ describe("milestone 6's prompts", () => {
 
   it("stays the same words for the same input", () => {
     expect(refinePrompt({ ticket: { key: "OST-1", title: "Add a theme switch", description: "Dark and light." }, repos })).toMatchSnapshot();
-    expect(reviewPrompt({ ticket: null, acceptanceCriteria: null, pullRequests, round: 2 })).toMatchSnapshot();
+    expect(reviewPrompt({ ticket: null, acceptanceCriteria: null, pullRequests, round: { number: 2, of: 3 } })).toMatchSnapshot();
   });
 
   it("F-099: writes a draft as a description with a section per field, leaving out a field the tracker has", () => {

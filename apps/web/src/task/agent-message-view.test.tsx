@@ -13,6 +13,8 @@ import {
   lateQuestionAnswerPrompt,
   planRevisionPrompt,
   prCommentPrompt,
+  refinePrompt,
+  reviewPrompt,
   updateBranchPrompt,
 } from "@ostra/domain";
 import { clientMessageIdSchema, MARKED_BLOCK_TAG, memberIdSchema, sessionIdSchema, storedEventSchema } from "@ostra/protocol";
@@ -177,6 +179,62 @@ describe("a message ostra wrote for the agent, in the thread", () => {
     expect(shown.mark).toContain("closing turn");
     expect(shown.body).toContain("as memory proposals");
     expectNoPrompt(shown, ["Before this session ends", "memory_propose", "don&#x27;t push"]);
+  });
+
+  const pr = {
+    repo: "ostra-test/test1",
+    number: 12,
+    url: "https://github.com/ostra-test/test1/pull/12",
+    branch: "ostra/a1b2c3d4-add-a-theme-switch",
+    baseSha: "b".repeat(40),
+    headSha: "c".repeat(40),
+    files: 3,
+    additions: 40,
+    deletions: 12,
+  };
+  const ticket = { key: "OST-42", title: "Add a theme switch", description: "Dark & light." };
+
+  it("F-100: an AI review's first prompt is ostra's: the header names its PR and links it, the body its repo, branch and a folded summary, never the prompt", () => {
+    const shown = drawn(reviewPrompt({ ticket, acceptanceCriteria: "- It persists", pullRequests: [pr], round: { number: 2, of: 3 } }), undefined);
+    expect(shown.read === null ? false : isAutomatic(shown.read)).toBe(true);
+    expect(shown.mark).toContain("AI review of ");
+    expect(shown.mark).toContain('href="https://github.com/ostra-test/test1/pull/12"');
+    expect(shown.mark).toContain(">PR #12</a>");
+    expect(shown.body).toContain('data-kind="ai-review"');
+    expect(shown.body).toContain(">ostra-test/test1</span>");
+    expect(shown.body).toContain(">ostra/a1b2c3d4-add-a-theme-switch</span>");
+    // Folded: the size and the round in its line, what it reads against inside.
+    expect(shown.body).toContain("<details");
+    expect(shown.body).toContain("3 files changed, +40 −12 · round 2 of 3");
+    expect(shown.body).toContain("ostra-test/test1#12: base bbbbbbbbbbbb, head cccccccccccc");
+    expect(shown.body).toContain("OST-42 Add a theme switch");
+    expect(shown.body).toContain("Dark &amp; light.");
+    expect(shown.body).toContain("Acceptance criteria\n- It persists");
+    expect(shown.summary).toBe("AI review of PR #12: ostra-test/test1");
+    expectNoPrompt(shown, ["Your task is", "read-only", "submit_review", "Mark a finding blocking", "If you find nothing", "Its title and description are below"]);
+
+    // The first review says no round; several PRs are counted in the header, and each links from the body.
+    const first = drawn(reviewPrompt({ ticket: null, acceptanceCriteria: null, pullRequests: [pr], round: { number: 1, of: 3 } }), undefined);
+    expect(first.body).toContain("3 files changed, +40 −12</summary>");
+    expect(first.body).toContain("The task has no ticket");
+    const both = drawn(reviewPrompt({ ticket, acceptanceCriteria: null, pullRequests: [pr, { ...pr, repo: "ostra-test/test2", number: 4, url: "https://github.com/ostra-test/test2/pull/4", files: 1, additions: 2, deletions: 1 }], round: { number: 1, of: 3 } }), undefined);
+    expect(both.mark).toContain("AI review of 2 PRs");
+    expect(both.mark).not.toContain("<a");
+    expect(both.body).toContain('href="https://github.com/ostra-test/test2/pull/4"');
+    expect(both.body).toContain("4 files changed, +42 −13");
+  });
+
+  it("F-099: a refine task's first prompt is ostra's: the ticket's key and title, the repos it reads and its folded description", () => {
+    const shown = drawn(refinePrompt({ ticket, repos: [{ fullName: "ostra-test/test1", checkoutDir: "test1" }] }), undefined);
+    expect(shown.read === null ? false : isAutomatic(shown.read)).toBe(true);
+    expect(shown.mark).toContain("Refine OST-42");
+    expect(shown.body).toContain('data-kind="refine"');
+    expect(shown.body).toContain("Add a theme switch");
+    expect(shown.body).toContain(">ostra-test/test1</li>");
+    expect(shown.body).toContain("The ticket’s description");
+    expect(shown.body).toContain("Dark &amp; light.");
+    expect(shown.summary).toBe("Refine OST-42: Add a theme switch");
+    expectNoPrompt(shown, ["Your task is", "checked out in", "submit_draft", "end your turn", "The ticket is OST-42"]);
   });
 
   it("a member's own text stays as typed, escaped, whatever it holds", () => {

@@ -2,7 +2,8 @@ import { randomBytes } from "node:crypto";
 
 import { dispatchTask, jobPayloadSchemas, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, rememberFinding, submitReview } from "@ostra/domain";
 import type { MemberScope } from "@ostra/domain";
-import { boxIdSchema, findingIdSchema, leaseEpochSchema, memberIdSchema, reviewResponseSchema, runnerPaths, taskIdSchema, taskSpecMinMinor } from "@ostra/protocol";
+import { readAgentMessage } from "@ostra/domain/agent-message";
+import { boxIdSchema, findingIdSchema, leaseEpochSchema, memberIdSchema, reviewResponseSchema, runnerPaths, taskEventSchema, taskIdSchema, taskSpecMinMinor } from "@ostra/protocol";
 import type { BoxId, Finding, RepoId, TaskId } from "@ostra/protocol";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -166,6 +167,48 @@ describe("F-100: the review task", () => {
     const earlier = await h.db.finding.findFirstOrThrow({ where: { reviewRunId: run.id } });
     expect(earlier).toMatchObject({ state: "resolved", resolvedInRunId: second.id });
     expect(await stateOf(h, task.taskId)).toBe("in_review/waiting_for_reviewer");
+  });
+
+  it("F-100: each round's first message is ostra's AI review, read back from its prompt: the PR, its branch and size, and which round", async () => {
+    const task = await seedTaskInCi(h);
+    const pr = firstPr(task);
+    const { branchName } = await h.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
+    /** The PR's current head, compared at `files` files of `added` and `removed` lines each. */
+    const sized = (files: number, added: number, removed: number) => {
+      h.codeHost.setCompare(pr.repo, pr.head, {
+        aheadBy: 1,
+        behindBy: 0,
+        mergeBase: BASE_SHA,
+        files: Array.from({ length: files }, (_, index) => ({ path: `src/f${String(index)}.ts`, previousPath: null, status: "modified" as const, additions: added, deletions: removed, patch: null, truncated: false })),
+        filesTruncated: false,
+        limits: { maxFiles: 300, maxPatchBytes: 1_000_000 },
+      });
+    };
+    sized(2, 10, 3);
+    checkRun(h, pr, "test", "success");
+    await h.drain(["ci.evaluate"]);
+    await h.drain(["review.start"]);
+    // Round 1 finds a blocking problem; the findings round pushes a smaller change, which gets round 2.
+    const review = await reviewTaskOf(task);
+    await h.db.task.update({ where: { id: review.id }, data: { state: "running" } });
+    expect((await submit(taskIdSchema.parse(review.id), [finding(pr.repoId)])).ok).toBe(true);
+    h.codeHost.ci.setDiff(pr.repo, pr.number, [{ path: "src/index.ts", new: [{ start: 1, end: 20 }], old: [] }]);
+    await h.drain(["review.post"]);
+    await h.drain(["round.start"]);
+    await agentPushes(h, task);
+    sized(1, 4, 0);
+    checkRun(h, pr, "test", "success");
+    await h.drain(["ci.evaluate"]);
+    await h.drain(["review.start"]);
+    const messages = (await h.db.event.findMany({ where: { taskId: review.id, kind: "user.message" }, orderBy: { seq: "asc" } })).map((row) => {
+      const event = taskEventSchema.parse(row.payload);
+      return event.kind === "user.message" ? readAgentMessage({ text: event.text, intent: event.intent }) : null;
+    });
+    const named = { repo: pr.repo, number: pr.number, branch: branchName };
+    expect(messages).toMatchObject([
+      { kind: "ai-review", round: { number: 1, of: 3 }, pullRequests: [{ ...named, files: 2, additions: 20, deletions: 6 }] },
+      { kind: "ai-review", round: { number: 2, of: 3 }, pullRequests: [{ ...named, files: 1, additions: 4, deletions: 0 }] },
+    ]);
   });
 
   it("F-100/c5: AI review off skips it: CI passing goes straight to waiting for a reviewer", async () => {

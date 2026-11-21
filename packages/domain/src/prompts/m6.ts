@@ -58,7 +58,30 @@ export const refinePrompt = (input: { readonly ticket: TicketForPrompt; readonly
 
 // ---------- review (F-100) ----------
 
-export type PullRequestForReview = { readonly repo: string; readonly number: number; readonly url: string; readonly baseSha: string; readonly headSha: string };
+/** A PR the review reads: where it is, its branch, the commits it's compared at, and its compare's size. */
+export type PullRequestForReview = {
+  readonly repo: string;
+  readonly number: number;
+  readonly url: string;
+  /** The PR's head branch, the code task's. */
+  readonly branch: string;
+  readonly baseSha: string;
+  readonly headSha: string;
+  /** The compare's files, and the lines they add and remove. */
+  readonly files: number;
+  readonly additions: number;
+  readonly deletions: number;
+};
+
+/**
+ * Which review this is since a person last acted, of the most the review rounds' cap lets run
+ * (ADR 0058): the first review and one per findings round or rerun, so `round 2 of 3`.
+ */
+export type ReviewRound = { readonly number: number; readonly of: number };
+
+/** A PR's line in the review's prompt: ostra's own facts, which the thread reads back (`readAgentMessage`). */
+const reviewPullRequestLine = (pr: PullRequestForReview): string =>
+  `- ${pr.repo}#${String(pr.number)} (${pr.url}) on ${pr.branch}: base ${pr.baseSha.slice(0, 12)}, head ${pr.headSha.slice(0, 12)}; ${String(pr.files)} ${pr.files === 1 ? "file" : "files"} changed, +${String(pr.additions)} -${String(pr.deletions)}`;
 
 /** A review task's prompt for a round: the ticket, its acceptance criteria, the PRs, and the findings tool's contract. */
 export const reviewPrompt = (input: {
@@ -66,15 +89,12 @@ export const reviewPrompt = (input: {
   /** The ticket's acceptance criteria, when it has them as a field or a section. Untrusted. */
   readonly acceptanceCriteria: string | null;
   readonly pullRequests: readonly PullRequestForReview[];
-  readonly round: number;
+  readonly round: ReviewRound;
 }): string =>
   [
-    `Your task is to review a coding agent's pull request${input.pullRequests.length === 1 ? "" : "s"}, round ${String(input.round)}: find what's wrong before a person reviews it.`,
+    `Your task is to review a coding agent's pull request${input.pullRequests.length === 1 ? "" : "s"}, round ${String(input.round.number)} of ${String(input.round.of)}: find what's wrong before a person reviews it.`,
     "Each repository is checked out at its pull request's head, read-only. Read the change against its base, run read-only commands, and don't change any file.",
-    [
-      "The pull requests:",
-      ...input.pullRequests.map((pr) => `- ${pr.repo}#${String(pr.number)} (${pr.url}): base ${pr.baseSha.slice(0, 12)}, head ${pr.headSha.slice(0, 12)}`),
-    ].join("\n"),
+    ["The pull requests:", ...input.pullRequests.map(reviewPullRequestLine)].join("\n"),
     DATA_LINE,
     ...(input.ticket === null ? ["The task has no ticket: review the change on its own."] : ticketBlocks(input.ticket)),
     ...(input.acceptanceCriteria === null ? [] : ["The ticket's acceptance criteria are below.", markedBlock("acceptance-criteria", input.acceptanceCriteria)]),
