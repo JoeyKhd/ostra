@@ -1,11 +1,11 @@
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
-import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
 
 import { CoreV1Api, KubeConfig, VersionApi, Watch } from "@kubernetes/client-node";
 import type { V1Pod } from "@kubernetes/client-node";
 import { isAlive } from "@ostra/adapter-sdk";
+import { testPort } from "@ostra/adapter-sdk/testing/net";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { startFakeKubeApi } from "./fake-api.ts";
@@ -194,19 +194,6 @@ describe("the fake Kubernetes API (ticket 06)", () => {
   });
 });
 
-const freePort = (): Promise<number> =>
-  new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      const port = typeof address === "object" && address !== null ? address.port : 0;
-      server.close(() => {
-        resolve(port);
-      });
-    });
-  });
-
 const exists = async (file: string): Promise<boolean> => (await stat(file).catch(() => null)) !== null;
 
 describe("the fake Kubernetes API's process mode (ticket 06)", () => {
@@ -215,7 +202,7 @@ describe("the fake Kubernetes API's process mode (ticket 06)", () => {
     folders.push(root);
     const lines: string[] = [];
     const { core, fake } = await startFake({ processMode: { root, commands: { node: [process.execPath] }, log: (line) => lines.push(line) } });
-    const port = await freePort();
+    const port = await testPort();
     await core.createNamespacedSecret({ namespace: NAMESPACE, body: { metadata: { name: "box-token" }, stringData: { token: "ostra_tt_process" } } });
     // The sidecar serves the token it reads from its mount; the agent asks it over loopback and writes the answer to the shared folder.
     const sidecar = [
