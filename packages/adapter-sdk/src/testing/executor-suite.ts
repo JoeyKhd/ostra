@@ -1093,6 +1093,10 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
         ]);
         expect(first).toMatch(/^HTTP\/1\.1 200/);
         expect(second).toContain(APP_TITLE);
+        // The log trails the answers: the app's output takes its own way to it (on `docker`, the
+        // init's pipe, the bridge and the sidecar's file writes), so wait for both lines.
+        const logged = (text: string): boolean => text.includes("GET /through-one") && text.includes("GET /through-two");
+        await waitFor(async () => logged(await readLog(handle.logPath)), 10_000);
         const log = await readLog(handle.logPath);
         expect(log).toContain("GET /through-one");
         expect(log).toContain("GET /through-two");
