@@ -68,9 +68,10 @@ type Shown = {
   readonly expiresAt: number | null;
 };
 
+// Only the title keeps clear of the close button: the line under it runs the sheet's full width.
 const Header = ({ title, children }: { readonly title: string; readonly children: ReactNode }) => (
-  <div className="pr-8">
-    <h2 className="font-display text-[19px] font-bold leading-tight tracking-[-0.01em] text-text">{title}</h2>
+  <div>
+    <h2 className="pr-8 font-display text-[19px] font-bold leading-tight tracking-[-0.01em] text-text">{title}</h2>
     <p className="mt-1.5 text-[14px] text-muted">{children}</p>
   </div>
 );
@@ -78,7 +79,9 @@ const Header = ({ title, children }: { readonly title: string; readonly children
 const Body = ({ children }: { readonly children: ReactNode }) => <div className="min-h-0 flex-1 overflow-y-auto px-7 pb-6 pt-6">{children}</div>;
 
 const Footer = ({ children }: { readonly children: ReactNode }) => (
-  <div className="shrink-0 border-t border-line px-7 pb-[max(24px,env(safe-area-inset-bottom))] pt-4">{children}</div>
+  <div className="shrink-0 px-7 pb-[max(24px,env(safe-area-inset-bottom))]">
+    <div className="border-t border-line pt-4">{children}</div>
+  </div>
 );
 
 const FieldLabel = ({ htmlFor, children }: { readonly htmlFor?: string; readonly children: ReactNode }) =>
