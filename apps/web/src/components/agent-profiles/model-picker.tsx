@@ -118,7 +118,7 @@ export const ModelPicker = ({ options, chosenKey, onPick, onHighlight, labelledB
       <PopoverTrigger
         aria-labelledby={labelledBy}
         data-testid="profile-model"
-        className={cn("flex h-8 w-full items-center gap-2 rounded-[7px] border border-line-2 bg-surface px-2.5 text-left text-body", open && "border-text")}
+        className={cn("flex h-8 w-full items-center gap-2 rounded-[7px] border border-control-line bg-surface px-2.5 text-left text-body", open && "border-text")}
       >
         {chosen === undefined ? (
           <span className="truncate text-faint">{t("agentProfiles.editor.pickModelPlaceholder")}</span>
@@ -134,7 +134,7 @@ export const ModelPicker = ({ options, chosenKey, onPick, onHighlight, labelledB
       <PopoverContent className="w-[min(520px,calc(100vw-32px))] max-h-[min(460px,var(--radix-popover-content-available-height))] bg-surface p-0 shadow-none">
         {custom === null ? (
           <>
-            <div className="flex h-10 items-center gap-2 border-b border-line px-3">
+            <div className="flex h-10 items-center gap-2 border-b border-control-line px-3">
               <SearchIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-faint" />
               <input
                 role="combobox"
