@@ -95,21 +95,22 @@ describe("organization.rename and setMemberRole", () => {
 });
 
 describe("organization.previews", () => {
+  // Organization B's only admin: the cases above swap admin and member in organization A, and which
+  // of the two ends up the admin there is a race, so A's roles are no ground for this case.
   it("F-142/c2: Organization › Previews reads the organization's own public-links switch and the link limit, for its admins only, and follows each audited change", async () => {
     const { a, b } = harness.fixture;
-    const admin = await harness.as(a.admin);
-    // Its name as it is now (an earlier case renamed it).
-    const { name } = await harness.test.db.organization.findUniqueOrThrow({ where: { id: a.organization.id }, select: { name: true } });
+    const admin = await harness.as(b.admin);
+    const { name } = await harness.test.db.organization.findUniqueOrThrow({ where: { id: b.organization.id }, select: { name: true } });
     expect(await admin.organization.previews()).toEqual({ name, publicPreviewLinks: false, linkMaxDays: 7 });
-    await expect((await harness.as(a.member)).organization.previews()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect((await harness.as(a.insider)).organization.previews()).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(harness.anonymous().organization.previews()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
 
     await admin.organization.setPublicPreviewLinks({ enabled: true });
     expect(await admin.organization.previews()).toMatchObject({ publicPreviewLinks: true });
-    // Another organization's switch is its own.
-    expect(await (await harness.as(b.admin)).organization.previews()).toMatchObject({ name: b.organization.name, publicPreviewLinks: false });
+    // Another organization's switch is its own: A's stays off.
+    expect((await harness.test.db.organizationSetting.findUnique({ where: { organizationId: a.organization.id }, select: { publicPreviewLinks: true } }))?.publicPreviewLinks ?? false).toBe(false);
     await admin.organization.setPublicPreviewLinks({ enabled: false });
     expect(await admin.organization.previews()).toMatchObject({ publicPreviewLinks: false });
-    expect(await harness.test.db.auditEntry.count({ where: { organizationId: a.organization.id, action: "organization.public_preview_links_changed" } })).toBe(2);
+    expect(await harness.test.db.auditEntry.count({ where: { organizationId: b.organization.id, action: "organization.public_preview_links_changed" } })).toBe(2);
   });
 });
