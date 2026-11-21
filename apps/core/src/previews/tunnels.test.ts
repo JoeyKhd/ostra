@@ -22,7 +22,6 @@ import type { Jobs } from "@ostra/jobs";
 import { cliSessionIdSchema, cliTunnelCloseCodes, cliTunnelErrorSchema, previewKeyFor, previewViewIdSchema, runnerPaths, tokenResponseSchema } from "@ostra/protocol";
 import type { CliSessionId, DownFrame, PreviewViewId, RunnerId, TaskId } from "@ostra/protocol";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import WebSocket from "ws";
 import { z } from "zod";
 
 import { FakeCodeHost, FakeSecretStore } from "../testing/fake-adapters.ts";
@@ -35,6 +34,7 @@ import { freePort, registerRunnerAt, waitFor } from "../testing/restart.ts";
 import type { RegisteredAt } from "../testing/restart.ts";
 import { connectFakeTunnelBox, openFakeCli, openHostileCli } from "../testing/tunnels.ts";
 import type { CliRefused, FakeCli, FakeTunnelBox, HostileCli } from "../testing/tunnels.ts";
+import { nextMessage, openSocket, skipMessages } from "../testing/websockets.ts";
 import { dispatchPayload, seedQueuedTask, seedWorld } from "../testing/world.ts";
 import type { World } from "../testing/world.ts";
 
@@ -205,26 +205,6 @@ const answers = async (url: string): Promise<boolean> => {
   }
 };
 
-/** The next message on a WebSocket, as text. */
-const nextMessage = (ws: WebSocket, timeoutMs = 10_000): Promise<string> =>
-  new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error("no message"));
-    }, timeoutMs);
-    ws.once("message", (data) => {
-      clearTimeout(timer);
-      resolve(Buffer.isBuffer(data) ? data.toString("utf8") : Array.isArray(data) ? Buffer.concat(data).toString("utf8") : Buffer.from(new Uint8Array(data)).toString("utf8"));
-    });
-  });
-
-const openSocket = (url: string, protocol?: string): Promise<WebSocket> =>
-  new Promise((resolve, reject) => {
-    const ws = protocol === undefined ? new WebSocket(url) : new WebSocket(url, protocol);
-    ws.once("open", () => {
-      resolve(ws);
-    });
-    ws.once("error", reject);
-  });
 
 beforeAll(async () => {
   test = await createTestDatabase();
@@ -307,6 +287,8 @@ describe("core's tunnel for ostra preview", () => {
       const hmr = await openSocket(`ws://127.0.0.1:${String(local)}/?token=${encodeURIComponent(token ?? "")}`, "vite-hmr");
       expect(JSON.parse(await nextMessage(hmr))).toMatchObject({ type: "connected" });
       expect((await fetch(`${base}/src/${probe}`)).status).toBe(200);
+      // The edit's message, not one from before it.
+      skipMessages(hmr);
       const update = nextMessage(hmr, 20_000);
       await writeFile(probePath, "export const probe = 2;\n");
       expect(["update", "full-reload"]).toContain(hmrMessageSchema.parse(JSON.parse(await update)).type);

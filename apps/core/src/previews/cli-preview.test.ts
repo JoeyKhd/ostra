@@ -34,8 +34,7 @@ import type { DownFrame, PreviewListItem, PreviewViewId, ReservedPorts, RunnerId
 import { cliSessionPath, createCapturingTerminal, createPreviewViews, exitCodes, openPreviewConnection, runCli, saveCliSession } from "@ostra/runner";
 import type { PreviewViews } from "@ostra/runner";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import WebSocket from "ws";
-import type { RawData } from "ws";
+import type WebSocket from "ws";
 import { z } from "zod";
 
 import { FakeCodeHost, FakeSecretStore } from "../testing/fake-adapters.ts";
@@ -46,6 +45,7 @@ import { startPreviewReplica } from "../testing/previews.ts";
 import type { PreviewReplica } from "../testing/previews.ts";
 import { freePort, registerRunnerAt, waitFor } from "../testing/restart.ts";
 import type { RegisteredAt } from "../testing/restart.ts";
+import { nextMessage, openSocket as openTestSocket, skipMessages } from "../testing/websockets.ts";
 import { dispatchPayload, seedQueuedTask, seedWorld } from "../testing/world.ts";
 import type { World } from "../testing/world.ts";
 
@@ -98,8 +98,6 @@ const hmrMessageSchema = z.looseObject({ type: z.string() });
 const helloSchema = z.looseObject({ message: z.string() });
 
 const runnerToken = (runnerId: RunnerId = runner.runnerId): string => replica.gateway.context.tokens.issue(runnerId, harness.fixture.a.organization.id, Date.now()).accessToken;
-
-const textOf = (data: RawData): string => (Buffer.isBuffer(data) ? data : Array.isArray(data) ? Buffer.concat(data) : Buffer.from(new Uint8Array(data))).toString("utf8");
 
 const portOf = (server: Server | HttpServer): number => {
   const address: AddressInfo | string | null = server.address();
@@ -196,26 +194,12 @@ const answers = async (url: string): Promise<boolean> => {
   }
 };
 
-const nextMessage = (ws: WebSocket, timeoutMs = 20_000): Promise<string> =>
-  new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error("no message"));
-    }, timeoutMs);
-    ws.once("message", (data) => {
-      clearTimeout(timer);
-      resolve(textOf(data));
-    });
-  });
-
-const openSocket = (url: string, protocol?: string): Promise<WebSocket> =>
-  new Promise((resolve, reject) => {
-    const ws = protocol === undefined ? new WebSocket(url) : new WebSocket(url, protocol);
-    sockets.push(ws);
-    ws.once("open", () => {
-      resolve(ws);
-    });
-    ws.once("error", reject);
-  });
+/** A socket that keeps its messages from its first frame (`testing/websockets.ts`), closed with the test. */
+const openSocket = async (url: string, protocol?: string): Promise<WebSocket> => {
+  const ws = await openTestSocket(url, protocol);
+  sockets.push(ws);
+  return ws;
+};
 
 /** The web app's CLI routes, as its catch-all route passes them on: a Node request in, `handleCliRequest`'s answer out. */
 const toRequest = async (request: IncomingMessage, base: string): Promise<Request> => {
@@ -389,6 +373,8 @@ describe("ostra preview through core to the runner's tunnel", () => {
     const hmr = await openSocket(`ws://127.0.0.1:${String(local)}/?token=${encodeURIComponent(token)}`, "vite-hmr");
     expect(hmrMessageSchema.parse(JSON.parse(await nextMessage(hmr))).type).toBe("connected");
     expect((await fetch(`${base}/src/${path.basename(probe)}`)).status).toBe(200);
+    // The edit's message, not one from before it.
+    skipMessages(hmr);
     const update = nextMessage(hmr, 30_000);
     await writeFile(probe, "export const probe = 2;\n");
     expect(["update", "full-reload"]).toContain(hmrMessageSchema.parse(JSON.parse(await update)).type);

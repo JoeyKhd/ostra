@@ -30,7 +30,6 @@ import type { CliSessionId, CommandOf, DownFrame, PreviewListItem, PreviewViewId
 import { createPreviewViews, openPreviewConnection, startConnection, TUNNEL_NEEDS_WEBSOCKET } from "@ostra/runner";
 import type { CommandHandlers, PreviewViews, RunnerConnection, Transport } from "@ostra/runner";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import WebSocket from "ws";
 import { z } from "zod";
 
 import { FakeCodeHost, FakeSecretStore } from "../testing/fake-adapters.ts";
@@ -43,6 +42,7 @@ import { freePort, registerRunnerAt, waitFor } from "../testing/restart.ts";
 import type { RegisteredAt } from "../testing/restart.ts";
 import { openFakeCli } from "../testing/tunnels.ts";
 import type { CliRefused, FakeCli } from "../testing/tunnels.ts";
+import { nextMessage, openSocket, skipMessages } from "../testing/websockets.ts";
 import { dispatchPayload, seedQueuedTask, seedWorld } from "../testing/world.ts";
 import type { World } from "../testing/world.ts";
 
@@ -171,25 +171,6 @@ const answers = async (url: string): Promise<boolean> => {
   }
 };
 
-const nextMessage = (ws: WebSocket, timeoutMs = 20_000): Promise<string> =>
-  new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error("no message"));
-    }, timeoutMs);
-    ws.once("message", (data) => {
-      clearTimeout(timer);
-      resolve(Buffer.isBuffer(data) ? data.toString("utf8") : Array.isArray(data) ? Buffer.concat(data).toString("utf8") : Buffer.from(new Uint8Array(data)).toString("utf8"));
-    });
-  });
-
-const openSocket = (url: string, protocol?: string): Promise<WebSocket> =>
-  new Promise((resolve, reject) => {
-    const ws = protocol === undefined ? new WebSocket(url) : new WebSocket(url, protocol);
-    ws.once("open", () => {
-      resolve(ws);
-    });
-    ws.once("error", reject);
-  });
 
 /** Waits for one of the box session's streams to answer: its status and its first chunk, or its whole body. */
 const streamAnswer = (stream: ClientHttp2Stream, whole: boolean): Promise<{ readonly status: number; readonly body: Buffer }> =>
@@ -301,6 +282,8 @@ describe("core's tunnel to the runner's", () => {
     opened.push(hmr);
     expect(hmrMessageSchema.parse(JSON.parse(await nextMessage(hmr))).type).toBe("connected");
     expect((await fetch(`${base}/src/${path.basename(probe)}`)).status).toBe(200);
+    // The edit's message, not one from before it.
+    skipMessages(hmr);
     const update = nextMessage(hmr, 30_000);
     await writeFile(probe, "export const probe = 2;\n");
     expect(["update", "full-reload"]).toContain(hmrMessageSchema.parse(JSON.parse(await update)).type);
