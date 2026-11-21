@@ -148,7 +148,7 @@ export const Rail = ({ sheet = false, onNavigate, onSearch }: RailProps) => {
           onFocus={() => { setStop("new-task"); }}
           onClick={navigate}
           aria-label={t("shell.newTask")}
-          className={cn("my-1 grid shrink-0 place-items-center bg-primary text-on-primary hover:bg-primary/88", sheet ? "size-9 rounded-lg" : "size-8 rounded-[7px]")}
+          className={cn("grid shrink-0 place-items-center bg-primary text-on-primary hover:bg-primary/88", sheet ? "my-1 size-9 rounded-lg" : "mt-1 size-8 rounded-[7px]")}
         >
           <PlusIcon aria-hidden className="size-[17px] stroke-2" />
         </Link>
