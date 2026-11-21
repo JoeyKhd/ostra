@@ -23,8 +23,13 @@ export type FilterMenuProps = {
   readonly label: string;
   /** The chosen value, or `null` for the default. */
   readonly value: string | null;
-  /** What the button shows for the default (`All`). */
-  readonly defaultLabel: string;
+  /** What the button shows for the default (`All`), or `null` for the label alone (search.md's `Repo`). */
+  readonly defaultLabel: string | null;
+  /**
+   * How the label and the value read. `pair` (audit-log.md): `Actor  All`, a `--muted` label and a
+   * `--text` value. `colon` (search.md): `Project: All`, one phrase, the value after a colon.
+   */
+  readonly look?: "pair" | "colon";
   readonly options: readonly FilterOption[];
   readonly onChange: (value: string | null) => void;
   /** A search field at the menu's top (audit-log.md: Actor and Action). */
@@ -35,11 +40,11 @@ export type FilterMenuProps = {
 };
 
 /**
- * A filter button (audit-log.md, "Filters"): `Actor  All` with a chevron; a set filter shows its value
- * in `--text` and an `x` that resets it. The menu lists the choices, with a search field on top for the
- * long lists.
+ * A filter button (audit-log.md, "Filters"): `Actor  All` with a chevron (or search.md's `Project:
+ * All`); a set filter shows its value in `--text` and an `x` that resets it. The menu lists the
+ * choices, with a search field on top for the long lists.
  */
-export const FilterMenu = ({ label, value, defaultLabel, options, onChange, searchable = false, extra, testId }: FilterMenuProps) => {
+export const FilterMenu = ({ label, value, defaultLabel, look = "pair", options, onChange, searchable = false, extra, testId }: FilterMenuProps) => {
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const chosen = value === null ? undefined : options.find((option) => option.value === value);
@@ -55,10 +60,16 @@ export const FilterMenu = ({ label, value, defaultLabel, options, onChange, sear
             value === null ? "pr-2" : "pr-7",
           )}
         >
-          <span className="shrink-0 text-muted">{label}</span>
-          <span className={cn("min-w-0 truncate text-text", chosen?.mono === true && "font-mono text-[13px]")} data-testid={testId === undefined ? undefined : `${testId}-value`}>
-            {shown}
-          </span>
+          {look === "colon" ? (
+            <span className="-mr-[2px] shrink-0 font-medium text-text">{shown === null ? label : `${label}:`}</span>
+          ) : (
+            <span className="shrink-0 text-muted">{label}</span>
+          )}
+          {shown === null ? null : (
+            <span className={cn("min-w-0 truncate text-text", look === "colon" && "font-medium", chosen?.mono === true && "font-mono text-[13px]")} data-testid={testId === undefined ? undefined : `${testId}-value`}>
+              {shown}
+            </span>
+          )}
           {value === null ? <ChevronDownIcon aria-hidden className="size-[14px] shrink-0 stroke-[1.75] text-faint" /> : null}
         </PopoverTrigger>
         <PopoverContent className="w-[280px]">

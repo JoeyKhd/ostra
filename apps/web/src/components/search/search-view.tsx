@@ -301,29 +301,32 @@ export const SearchView = ({ organization }: { readonly organization: string }) 
       {typed.length >= MAX_QUERY ? <p className="mt-1 text-xs text-faint">{t("search.page.tooLong")}</p> : null}
 
       <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible" data-testid="search-filters">
-        <FilterMenu testId="search-filter-project" label={t("search.page.project")} value={filters.project} defaultLabel={t("search.page.all")} options={projectOptions} searchable onChange={(value) => { setParams({ project: value, task: null }); }} />
+        <FilterMenu testId="search-filter-project" look="colon" label={t("search.page.project")} value={filters.project} defaultLabel={t("search.page.all")} options={projectOptions} searchable onChange={(value) => { setParams({ project: value, task: null }); }} />
         <FilterMenu
           testId="search-filter-repo"
+          look="colon"
           label={t("search.page.repo")}
           value={filters.repo}
-          defaultLabel={t("search.page.all")}
+          defaultLabel={null}
           options={repoOptions}
           onChange={(value) => { setParams({ repo: value, task: null }); }}
           extra={<FreeValue label={t("search.page.repo")} onPick={(value) => { setParams({ repo: value, task: null }); }} />}
         />
         <FilterMenu
           testId="search-filter-ticket"
+          look="colon"
           label={t("search.page.ticket")}
           value={filters.ticket}
-          defaultLabel={t("search.page.all")}
+          defaultLabel={null}
           options={ticketOptions}
           onChange={(value) => { setParams({ ticket: value, task: null }); }}
           extra={<FreeValue label={t("search.page.ticket")} onPick={(value) => { setParams({ ticket: value, task: null }); }} />}
         />
-        <FilterMenu testId="search-filter-member" label={t("search.page.member")} value={filters.by} defaultLabel={t("search.page.all")} options={memberOptions} searchable onChange={(value) => { setParams({ by: value, task: null }); }} />
-        <FilterMenu testId="search-filter-state" label={t("search.page.state")} value={filters.status} defaultLabel={t("search.page.any")} options={stateOptions} onChange={(value) => { setParams({ state: value, task: null }); }} />
+        <FilterMenu testId="search-filter-member" look="colon" label={t("search.page.member")} value={filters.by} defaultLabel={null} options={memberOptions} searchable onChange={(value) => { setParams({ by: value, task: null }); }} />
+        <FilterMenu testId="search-filter-state" look="colon" label={t("search.page.state")} value={filters.status} defaultLabel={t("search.page.any")} options={stateOptions} onChange={(value) => { setParams({ state: value, task: null }); }} />
         <FilterMenu
           testId="search-filter-period"
+          look="colon"
           label={t("search.page.period")}
           value={period === "30d" ? null : period}
           defaultLabel={periodWord("30d")}
