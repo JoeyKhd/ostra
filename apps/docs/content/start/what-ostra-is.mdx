@@ -16,6 +16,8 @@ An agent works each task on its own branch, and ships a GitHub pull request for 
 - A **project** holds its repos and its **environment**: the setup script, services, variables and secrets every task starts from.
 - A **runner** is a machine that runs tasks. It dials out to your ostra, so it works behind NAT. Servers join a **pool** with a join token; a laptop joins as a **personal runner** that runs only its owner's tasks.
 - On the `docker` and `kubernetes` executors, each task gets its own **box**: the agent's container, a **sidecar** that holds the task's credentials and proxies its model calls and git, and the environment's services. The agent never holds a model key or a GitHub token.
+- A reviewer sees the **running app**, not only the diff: screenshots and recordings in the task's thread, and the app live in a preview pane beside it.
+- Skills and MCP servers come from the organization's **library**: installed once by reference, pinned and hashed, and attached to agent profiles.
 - Anything that waits on a person shows as **needs you**: an approval, a question, a plan, a pull request to review. One member drives a task at a time, and anyone can take over. A task can be reopened months later.
 
 ## What you host

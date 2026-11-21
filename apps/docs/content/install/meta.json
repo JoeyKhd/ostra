@@ -1,13 +1,14 @@
 {
   "title": "Install",
   "icon": "download",
-  "description": "Docker Compose, the first sign-in, setup, Helm, upgrading, from source.",
+  "description": "Docker Compose, the first sign-in, setup, Helm, the preview domain, upgrading, from source.",
   "pages": [
     "docker-compose",
     "first-sign-in",
     "setup",
     "linear",
     "helm",
+    "preview-domain",
     "upgrading",
     "from-source"
   ]

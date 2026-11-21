@@ -1,0 +1,155 @@
+---
+title: "The skills and MCP library"
+description: "Install skills and MCP servers once for the organization, by reference, pinned and hashed, and attach them to agent profiles."
+summary: "An organization admin installs a skill from a GitHub repo or an MCP server from a registry, and attaches it to the profiles that need it."
+---
+
+The library is the organization's own list of skills and MCP servers, under **Organization › Skills and MCP**. Each item is installed once, from its source, pinned to what was read, and attached to the [agent profiles](/docs/agents-and-models/agent-profiles) that need it. Agents get it at their next session. Nothing changes after that until an organization admin accepts an update.
+
+- **Organization admins install,** attach, update and remove items, and keep the list of allowed sources.
+- **Every member** sees the library, and can **suggest** an item for the admins to install.
+
+## Install a skill
+
+1. Press **Add from a source**, and pick **Skill**.
+2. Type its **Source**, and a **Ref** if you want one other than the default branch, then **Look up**.
+3. ostra reads the source and shows the skills it holds, the commit it read, each skill's files with their sizes, its checks and its hash. Pick the skills to install.
+4. Read what it points out: a file that looks like a script (in `scripts/`, with a shebang, or executable) is marked, since a skill can tell the agent to run it in the task's box.
+5. If the source isn't on the [allowlist](#the-allowlist) yet, **Allow this source** adds it, in your name.
+6. Press **Install**. The skill lands in the library on no profile, until you attach it.
+
+**The source** takes the forms the `skills` CLI takes for GitHub and for sites:
+
+| Source | What it installs |
+|---|---|
+| `acme/skills` | The repo's skills: each folder with a `SKILL.md`, up to four folders deep, to pick from |
+| `acme/skills@release-notes` | The skill named `release-notes` in the repo |
+| `acme/skills/tools/release-notes` | The skill in that folder |
+| `https://github.com/acme/skills/tree/main/tools` | The skills under that folder, at that ref |
+| Any of the above with `#v1.4` | The same, at that branch, tag or commit |
+| `https://docs.acme.com` | The skills a site lists in its `/.well-known/agent-skills/index.json` |
+
+A version after `@`, such as `acme/skills@v1.2.3`, or a full commit, pins it too, as the CLI reads it. A public repo is read with no sign-in. A private one is read through the organization's [GitHub App](/docs/install/setup#connect-github), when an installation of it covers the repo. A site's index is read over HTTPS only, at `/.well-known/agent-skills/index.json`, or the older `/.well-known/skills/index.json` when the first isn't there. Each entry's digest must match what the site serves, and a mismatch stops the install. Other git hosts, local paths, archives and a single file's address aren't sources ostra installs from.
+
+**The checks** follow the Agent Skills spec and the profile's limits. `SKILL.md`'s `name` is at most 64 lowercase letters, digits and dashes, and matches its folder. Its `description` is 1 to 1,024 characters. A skill holds at most 20 files of at most 1 MiB each.
+
+## Pins and hashes
+
+**A skill is pinned to a commit and a hash.** The look-up resolves the ref to a commit, and the install reads the skill again at that same commit. If its files changed between the two, the install stops, so what lands is what you read.
+
+**The hash is the `skills` CLI's own,** `computedHash`: a SHA-256 over each file's path, length and content, in the order of the paths, with Windows line ends read as Unix ones in text files, and `metadata.json`, `.git`, `__pycache__` and `__pypackages__` left out. So a skill's **Hash** in ostra is the same value as its `computedHash` in a repo's `skills-lock.json`, the lock file `npx skills add` writes, for the same files:
+
+```json
+{
+  "version": 1,
+  "skills": {
+    "release-notes": {
+      "source": "acme/skills",
+      "sourceType": "github",
+      "skillPath": "tools/release-notes/SKILL.md",
+      "computedHash": "<the same value as ostra's Hash>"
+    }
+  }
+}
+```
+
+Compare the two to check that a team's local skill and the organization's are the same files.
+
+**An MCP server is pinned to its registry version,** which a registry keeps unchanged once published.
+
+## The allowlist
+
+Every install, every update and every suggestion is matched against the organization's list of **Sources**, by where it comes from, never by a name: a name a source chose proves nothing. An entry is one of:
+
+- **a GitHub owner,** such as `acme`, for all its repos;
+- **a GitHub repo,** such as `acme/skills`;
+- **a site's well-known index,** by its host;
+- **an MCP registry,** by its address, and optionally narrowed to a namespace, such as `io.github.acme`.
+
+GitHub's curated MCP registry, `https://api.mcp.github.com`, is on every organization's list from the start, marked "Added by ostra". Remove it, and it stays removed. The official MCP Registry asks host applications not to call it directly, so it isn't listed: an admin can add it, or any other registry that speaks its `v0.1` API, by its address.
+
+The list says who added each entry and how many items it allows. An install from a source that isn't listed asks to add it in the same sheet. **A source taken off the list** leaves its items installed and on their profiles, marked, and refuses their updates until it's back.
+
+## Install an MCP server
+
+1. Press **Add from a source**, and pick **MCP server**.
+2. Type the **Server's name in the registry**, such as `io.github.acme/notes`, and pick the **Registry** from the organization's list.
+3. ostra reads the latest version, and offers it only when it's active and has a remote it connects to: streamable HTTP, on HTTPS.
+4. Fill in its **Inputs:** each variable of its address, and each header it asks for. An input the entry marks secret goes into the secret store, and is never shown again. A plain one is kept on the item.
+5. Press **Install**. ostra then calls the server's `tools/list` with those inputs and lists its tools.
+
+The item is named after the registry's name, without its namespace: `io.github.acme/notes` is `notes`.
+
+**The agent never sees the server's address or its headers.** A library server is reached through the sidecar's MCP proxy, which adds the headers outside the agent's container. The agent's config names only the proxy's path, and OpenCode is told not to start a sign-in of its own.
+
+**Read-only** is off for a new server, because a registry has no read-only flag ostra can trust. Plan mode then leaves its tools alone, and an [approval rule](/docs/agents-and-models/approval-rules) for **Any server not marked read-only** asks before them. An admin can turn it on, and the change is in the audit log.
+
+## What isn't installable yet
+
+- **A server that needs a sign-in.** One that answers the test call with an OAuth challenge stays in the library marked "needs sign-in", and no profile can attach it. Signing in to MCP servers comes later.
+- **A server that runs only as a package,** an npm, PyPI or OCI entry run over stdio with no remote. Running it would mean a download in the box, which a `docker` runner's network forbids, and every runner must behave the same; a server in a container of its own comes later. A stdio server whose command is already in the box's image can still be added by hand on a profile.
+- **A remote over SSE only,** which MCP deprecated, or a server the registry marks deprecated or deleted.
+- **A skill from a code host without repo reads.** GitHub has them; a code host that doesn't is refused with the reason.
+
+## Attach it to profiles
+
+On an item's page, **Used by** lists its profiles, and **Attach to a profile** adds one. A profile's editor shows the same from the other side: under **Skills** and **MCP servers**, its own, the ones attached from the library with their pins, and the ones it gets from every profile, in one picker, applied on **Save**.
+
+**Every profile** puts an item on every profile of the organization, the built-in ones included, and their editors show it as inherited. Turn it off to pick profiles again.
+
+- **The limits count everything.** A profile's own skills and servers, its attached items and the every-profile items together stay within 50 skills and 20 MCP servers. An attach, or **Every profile**, that would pass a limit is refused, naming the profile.
+- **A name a profile already uses is refused.** An item can't be attached to a profile that has its own skill or server of that name, and the editor won't give a profile its own skill or server named like an item it has from the library.
+- **Projects pick profiles, as before,** and nothing attaches to a single task.
+- **A server never tested** gets its test call when it's attached or put on every profile.
+
+**Delivery doesn't change.** At each session, core copies a profile's library skills into the task's own files, with their digests, as it does the profile's own, and the runner checks each one: nothing is fetched in the box, on any executor. A library server is added behind the MCP proxy. A dispatch never refuses a task over the library: an item that no longer fits a profile, or a server that has come to need a sign-in, is left out of that session.
+
+**Removing** an item takes it off every profile, and tasks lose it at their next session.
+
+## Repo skills and library skills
+
+A task also gets its repos' own skills, from `.agents/skills`, `.claude/skills` and `.opencode/skills` ([A repo's own skills](/docs/agents-and-models/agent-profiles#a-repos-own-skills)). A library skill reaches the task as one of the profile's own skills, so **the profile's wins** a clash with a repo skill of the same name, as a profile's own skill does: the agent gets the library's, and the runner's log names the repo skill it left out, by its name only. The library's policy panel says so.
+
+## Updates
+
+ostra checks each item's source once every `OSTRA_LIBRARY_UPDATE_HOURS` (24), and when an admin presses **Check for updates** on its page:
+
+- **a skill:** its ref is resolved again, and read when the commit moved and its hash changed;
+- **an MCP server:** the registry's latest version is read, and tested with the item's inputs.
+
+**An update waits for an admin, with its diff.** For a skill: the files added, removed and changed, and each changed file's lines, unified or side by side. For a server: the fields of its entry that changed (its version, its address, the headers it asks for, its description) and the tools a fresh test call lists. Members see that an update waits; only admins read its diff.
+
+- **Accept update** moves every profile that uses the item to the new pin. Running tasks get it at their next session, never in the middle of a turn.
+- **Keep** the current pin leaves the item where it is. The same content isn't offered again; the next different one is.
+- **One update waits at a time.** A newer one found meanwhile takes its place, so you accept only what you read.
+- **What ostra wouldn't install isn't offered:** a skill that fails its checks, or a server version with no remote it connects to. A server version that asks for an input the item doesn't have can't be accepted: install it again to give it.
+
+Nothing moves by itself. A server that changes its tools without publishing a new version isn't caught by this check; a check of each server's tools comes later. Files of versions no longer in use are removed once a day.
+
+## Suggestions
+
+Any member can press **Suggest a skill or server**, give its source, or a server's name in a registry, and say why the team wants it. The admins see a count on the library, and install or dismiss each one from **Suggestions**. The member sees the answer under **Your suggestions**. A suggestion from a source that isn't on the allowlist says so, and an admin can add the source as they install it.
+
+## The marketplace
+
+**Browse marketplace** searches for skills on [skills.sh](https://skills.sh), and for MCP servers in each registry on the organization's list. Each result shows its source, its install count or its version, and whether its source is allowed, and installs through the same sheet, allowlist, checks and pin as any other.
+
+**It's off until an organization admin turns it on,** in the library's policy panel, since a search sends the admin's words to skills.sh or to the registries. `OSTRA_MARKETPLACE_SEARCH=false` keeps it off for the whole install, and the switch says so.
+
+- **Searches go through the ostra server,** never your browser, and send your words and nothing that identifies the install.
+- **skills.sh's search** (`OSTRA_SKILLS_SEARCH_URL`) is the endpoint the `skills` CLI uses. It isn't a documented public API: skills.sh's documented API takes only a token from apps that run on Vercel. When it fails, the page says search is unavailable, and installing by reference still works.
+- Each source answers within 8 seconds, with up to 50 results, and a registry's first page only. A search for skills takes at least 2 characters, one for servers at least 3.
+- ostra shows no third-party audit verdict: what it knows is the source, the commit, the hash, the files, and who installed it.
+
+## What the server calls
+
+The library is the one part of ostra that makes outbound calls a person asks for, and none of them carries usage data:
+
+- reading an item's source, when an admin looks it up, installs it or checks it for updates;
+- the daily update check of each installed item, at the source the admin chose (an organization with no items makes none);
+- the test call to an MCP server;
+- the marketplace search, only while it's on, with the admin's own words.
+
+Each goes from the ostra server with `User-Agent: ostra/<version>`, follows redirects on the same origin only, and reads a capped answer.
+
+Every install, attach, detach, **Every profile** switch, **Read-only** change, update accepted or kept, removal, source added or removed, suggestion decided and marketplace switch is in the audit log, with names, never content.

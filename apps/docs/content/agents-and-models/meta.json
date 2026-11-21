@@ -1,11 +1,12 @@
 {
   "title": "Agents and models",
   "icon": "cpu",
-  "description": "Providers, OpenCode, agent profiles.",
+  "description": "Providers, OpenCode, agent profiles, the skills and MCP library.",
   "pages": [
     "model-providers",
     "opencode",
     "agent-profiles",
+    "library",
     "approval-rules",
     "plan-first"
   ]

@@ -1,0 +1,147 @@
+---
+title: "Previews"
+description: "The app live beside the thread: the box's browser, ostra preview on your own localhost, the app in your browser, and sharing."
+summary: "Open a task's preview pane to use the app the agent is building, share it with a link, or serve it on your own localhost."
+---
+
+A preview is one of the task's apps live: an [app process](/docs/using-ostra/the-running-app#app-processes) of the environment, a service marked as a preview, or a port the agent announced in this task. There are three ways to look at one, and each works without the next:
+
+| Way | Where the app runs for you | Needs |
+|---|---|---|
+| **The browser view** | The box's own browser, streamed into the pane as pictures | Nothing: every install, every runner |
+| **`ostra preview`** | Your own browser, on `http://localhost:<port>` | The CLI, signed in |
+| **The app in your browser** | Your own browser, on the preview's own host, in the pane or a tab | A [preview domain](/docs/install/preview-domain), set by whoever runs the install |
+
+Screenshots and recordings of the app land in the thread on top of these, with no setting ([Seeing the running app](/docs/using-ostra/the-running-app#screenshots-and-recordings)).
+
+## The preview pane
+
+On a task's page, the side pane switches between **Preview** and **Properties** (`p`). The pane holds:
+
+- **The task's previews,** the primary first, each with its label, its port and where it comes from: declared in the environment, a service, or opened by the agent in this task. **Keep it for** the project, on one the agent opened, makes it a proposal for a project admin.
+- **The path** in the app, and **Reload the page**.
+- **Width:** Fit (the pane's own size), Desktop 1440, Tablet 834 or Phone 390.
+- **Share**, **Take a screenshot**, which lands in the thread, and **Open in a new tab**.
+- **Expand** (`f`), which widens the same pane to the page's width with no reload, and keeps a bar to message the agent at the bottom. **Back to the chat** narrows it again.
+- **A line at its foot** that says what you're looking at, such as "Live · the box's browser, streamed", and how many people are watching.
+
+Below 1024 px wide, the task's page shows the chat or the preview, one at a time.
+
+## The browser view
+
+With no preview domain, the pane shows the box's own browser: ostra loads the preview at `localhost` in the box, streams the page to the pane as pictures, at up to 15 a second, and sends your clicks, scrolling and typing back to it. Pasting text into the page works; dropping files and reading your clipboard don't. Nothing of the app runs in your browser, so the pane needs no address, no DNS and no certificate.
+
+**One page per preview, shared.** Everyone watching a preview sees the same page in the box's browser, like a shared screen, and any member who can open the task can click and type in it. The width is the last one anyone chose. The agent's own screenshots use pages of their own, so watching never moves what the agent sees. The box's browser shows three previews at most at a time: close another preview's pane to open a fourth.
+
+## Warm while watched
+
+A box normally stops `OSTRA_BOX_IDLE_MINUTES` (15) after its last turn. While a preview pane or a link's page is open and visible, the panel tells ostra every 30 s, and the box stays up while it heard in the last 2 minutes, for at most `OSTRA_PREVIEW_WARM_MINUTES` (60) after its last turn ended or its app started. The pictures and the app's own sockets in the box, such as a dev server's hot reload, never count, so the pane's heartbeat is what keeps the box. An open `ostra preview`, and the app in your browser while a request or a socket of it is open, count as watching too, so a forgotten tab of either holds the box until the cap.
+
+Past the cap, the box idles out as before. The compute a watched box uses isn't counted in budgets, which count model spend only.
+
+## Start the app
+
+When the task's box has stopped, the pane shows the last screenshot and **Start the app** (**Wake to preview** for a box that went to sleep). Any member who can open the task can press it.
+
+- A box starts from the project's snapshot, on the task's branches and the work it saved, runs the setup script and starts the app processes. Pressed while the box runs, it starts the app processes that aren't running.
+- **No agent starts,** so it makes no model call and uses no tokens. The task's own state doesn't move.
+- It takes a runner slot like any box, and starts now or not at all: with no runner free, nothing starts, and the pane says so.
+- Each start is in the audit log.
+- A message you send while it runs starts an ordinary turn in that same box, with the agent's session restored. With no message, the box idles out as above.
+
+**Start the app** needs an app process in the environment, and the task's runner on protocol 1.7 or later.
+
+## Sharing a preview
+
+**Share** sets who can open one preview. Each preview of a task has its own setting, and any member who can open the task can change it.
+
+| Level | Who opens it |
+|---|---|
+| **Project members** | Everyone who can open the project. The default. In a restricted project, its members and the organization's admins. |
+| **Named people** | Only the members of the organization you pick. They see that preview alone, to watch, and nothing else of the task, even in a restricted project. |
+| **Anyone with the link** | Anyone who has the link, signed in or not, until it expires or you revoke it. |
+| **Public** | Anyone with the link, until you change it. Only where the organization allows public links. |
+
+> [!NOTE]
+> ostra doesn't tell named people yet, and they have no page of their own to watch from yet. For someone outside the project, a link works today.
+
+**A link** expires in 1 hour, 24 hours (the default) or 7 days, never later than `OSTRA_PREVIEW_LINK_MAX_DAYS`. It's **watch only** unless you turn on **Allow input**, which lets whoever has it click and type in the shared page, as members do. Its address is shown once, when you make it: copy it then. A link can't be changed afterwards: make another. The share menu lists each link with who made it, its expiry, and when it was first opened, with **Revoke**.
+
+**A public link** doesn't expire. It's offered only where an admin of the organization turned on **Allow public preview links**, which is off by default. For now that switch is on **Instance › Previews**, a page only the instance admin opens, so it takes someone who is both. Turning it off ends every public link at once.
+
+**One level at a time.** Choosing **Project members** or **Named people** revokes the preview's links, and closes the view of everyone who can no longer open it.
+
+**It fails closed.** An expired or revoked link, a level the organization doesn't allow, or a runner that can't serve the preview opens nothing, and the page says why. ostra never opens a preview wider than you asked.
+
+Choosing a level, making or revoking a link, and each link's first use are in the audit log.
+
+> [!WARNING]
+> A link is a key to the preview: anyone who has it can open it. Send it as you would a password, prefer the shortest expiry that works, and revoke it when you're done. ostra keeps only its hash, and never writes it to a log.
+
+## The link's page
+
+A link opens a page of the panel that needs no sign-in. It shows the preview live and nothing else of the task: the preview's label, the organization's name, when the link expires, and whether it's watch only or open to input. Its own heartbeat keeps the box warm, as the pane's does.
+
+- **The app isn't running:** the page says so, and picks the preview up by itself when someone at the organization starts the app.
+- **Expired, revoked or no longer allowed:** the page says which, and shows nothing of the app.
+- **A link with input, on an install with a preview domain,** opens the app in the viewer's own browser on the preview's host, as the pane does.
+
+The page sends no referrer and asks search engines not to index it. An address that tries links that open nothing waits a minute after 20 tries.
+
+## The app in your browser
+
+On an install with a [preview domain](/docs/install/preview-domain), the pane can frame the app itself, the **native preview**, served from the box on its own host, `<port>-<id>.<preview domain>`. It's your browser running the app, so devtools work on it, and the page loads the public fonts and scripts the box's network may not reach.
+
+- **It's the default** once the domain's check on the instance's Previews page has passed and the task's runner can carry it. **Use the box's browser** and **Open it in your browser** switch between the two, and the pane remembers your choice for each preview in this browser.
+- **The frame never reloads** when you expand the pane or come back to it; the path and reload load the preview's own host in the same frame.
+- **Open in a new tab** opens the app in a tab of its own, which signs you in on the preview's host by itself.
+- **Framing headers are replaced.** An app that sends `X-Frame-Options` or a `frame-ancestors` policy would refuse the frame, so ostra replaces both so that only the panel can frame it, and the pane says it did.
+- **Screenshots still come from the box's browser,** and someone who may only watch (a named person, a link without input) gets the browser view.
+
+## ostra preview
+
+`ostra preview` serves one of a task's previews on your own machine, so the app runs in your own browser at `http://localhost:<port>`, with its hot reload, its WebSockets and its `/api` working as they do in the box. It needs no preview domain. Sign the CLI in once, then name the task by its ticket key, its task ID or its URL:
+
+```sh
+ostra login --server https://ostra.example.com
+ostra preview OST-12
+```
+
+It prints where the preview is, such as "Web (the task's port 5173) is on http://localhost:5173". Open that address in a tab: Chrome won't let the panel frame a page on your own `localhost`.
+
+- **The port:** the primary preview's by default. Name another of the task's previews by its port, such as `ostra preview OST-12 3001`. Any other port is refused with the reason, before anything connects.
+- **The local port:** the preview's own when nothing on your machine uses it, else the next free one, or exactly the one `--local` names. It listens on `127.0.0.1` only, never on another network interface.
+- **No box running:** it asks "Start the app?", starts it with no agent turn if you say yes, and waits for it, up to 10 minutes. With nobody at the terminal to answer, it starts nothing.
+- **A dropped connection** is opened again with a new ticket, after 1, 2 and 4 s, and it says so; it gives up after three tries in a row. Your local port stays the same. A session that was revoked, or a view that was closed, ends it with the reason.
+- **Ctrl+C** stops it.
+
+It's for members who can open the task, through their own CLI session, never for a link. Each connection goes through the ostra server to the box, the way runners already connect, so it works wherever your machine reaches core's public address (`OSTRA_CORE_PUBLIC_URL`). The flags are in the [CLI reference](/docs/reference/cli#ostra-preview).
+
+## Limits by network and version
+
+- **A runner on the [HTTP fallback](/docs/runners/http-fallback)** streams the browser view at 2 frames a second, and carries no tunnel: no `ostra preview` and no app in your browser for its tasks. The pane and the CLI say so.
+- **A runner below protocol 1.7** gets no app processes, no app tools and no previews. The pane says which runner needs upgrading.
+
+## Webhooks into the app
+
+An app that receives webhooks, such as a payment provider calling its handler, gets them through a **forwarder that dials out** from the box:
+
+```sh
+stripe listen --forward-to localhost:4242/webhook
+gh webhook forward --repo=acme/shop --events=issues --url=http://localhost:4242/webhook
+```
+
+smee.io and the Svix CLI work the same way. The agent can start one in the box, or the app's own dev script can. Its login or key is an environment secret, which the code under test can see, so keep it a test account's ([What the box contains](/docs/security/the-box#what-it-can-reach)).
+
+A forwarder needs public egress from the agent's container, so it runs on `kubernetes` and `host`. On `docker` the agent's container has no way out but ostra's own proxies, so a forwarder there waits for network allowlists, which come in a later release.
+
+ostra has no address that forwards the internet to a task's port, and won't add one: it would open a door from anyone on the internet into agent-written code. This is about webhooks the app being built receives. [Webhook automations](/docs/using-ostra/automations), which start a task from a request to ostra, are a different thing and never reach a task's app.
+
+## OAuth callbacks
+
+A sign-in provider sends the browser back to an exact, registered callback address, and most allow no wildcards.
+
+- **In the box's browser and through `ostra preview`,** the app is on `http://localhost:<port>`. Register one `localhost` callback, such as `http://localhost:5173/auth/callback`, and it serves every task. Through `ostra preview` it holds while your local port is the box's port, which is the default; `--local 5173` insists on it.
+- **In your browser on a preview host,** the host is the task's own, `5173-<id>.previews.example.com`, so it can't be registered task by task. Turn **Rewrite the host** off for that process, so the app sees its real host in `Host` and `X-Forwarded-Host` and builds its callback from it. Since every task's host differs, register one stable callback, and have the app send the browser on from it to the preview's host, as Auth.js's redirect proxy does. With the rewrite on, an app that builds its callback from its host builds a `localhost` one.
+
+The OAuth client's keys are an environment secret, for development and test only.

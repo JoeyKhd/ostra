@@ -24,6 +24,10 @@ The panel labels every `host` runner "not isolated". The key proxy and the git p
 
 Each task's box is a pod in the runner's namespace: the agent's container, the sidecar, and the services as native sidecar containers. It needs Kubernetes 1.29 or later and a registry the cluster can pull from. The runner's service account has a role in its own namespaces only. It's installed with the runner's Helm chart: [Kubernetes with Helm](/docs/install/helm).
 
+## The box's browser and the app
+
+Every executor runs the app's processes and a Chromium-family browser beside them, for screenshots, recordings and the browser view: the base image's Chromium on `docker` and `kubernetes`, and the machine's own browser, or a pinned download, on `host`. A preview reaches the app at `localhost` on each, and a service by its name on `docker` and at `localhost` on `kubernetes`. What the browser can load follows what the box can reach, below. None of it is a difference of its own: the task does the same thing on each, with the same tools, pictures and views. See [Seeing the running app](/docs/using-ostra/the-running-app#the-boxs-browser).
+
 ## The allowed differences
 
 These four are the only ones:

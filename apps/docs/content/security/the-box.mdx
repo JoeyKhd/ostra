@@ -1,6 +1,6 @@
 ---
 title: "What the box contains"
-description: "What a task's box isolates, and what it doesn't."
+description: "What a task's box isolates, and what it doesn't: the agent, the box's browser, previews and library items."
 summary: "On docker and kubernetes, each task gets its own box, and only the box contains the agent."
 ---
 
@@ -42,3 +42,43 @@ Everything the agent does is on record: the task's event log saves every tool ca
 
 > [!CAUTION]
 > The `host` executor has no box. See [The host executor](/docs/security/host-executor).
+
+## The box's browser
+
+The screenshots, the recordings and the browser view come from a Chromium-family browser beside the app, in the box ([Seeing the running app](/docs/using-ostra/the-running-app#the-boxs-browser)). It holds nothing worth stealing: each box's browser starts with a fresh profile in a temporary folder, removed with the box, with no cookie, password or token of ostra's, and never the system's keychain. The agent can't attach to it: the box's init (on `host`, the runner) holds its one DevTools connection, over a pipe, not a port.
+
+On `docker` and `kubernetes` it runs without Chromium's own sandbox. That sandbox needs an unprivileged user namespace or a setuid helper, and a box allows neither, since granting one would loosen the box for every process in it, the agent's shell included. A page that escaped its renderer would be the agent's user in the agent's container, which the agent's shell already is: the box is the sandbox. On `host`, the machine's browser keeps its own.
+
+What the browser can load is what the box can reach: on `docker` the box's network only, on `kubernetes` public hosts too, on `host` what the machine reaches.
+
+## What a preview may reach
+
+A preview, through the browser view, `ostra preview` or the preview domain, reaches only the ports that belong to its task:
+
+- the environment's app processes;
+- the ports the agent announced in the task;
+- the services marked as previews.
+
+It never reaches the sidecar's ports (the key proxy, the git proxy, the MCP proxy, ostra's own MCP server and the sidecar's control port), the agent's own, or any port below 1024. The box checks every connection before it dials anything, the same way on every executor. In the browser view, a click that would take the shared page to one of the box's own ports is blocked before the request leaves, so neither a member nor a link with input can reach them.
+
+## The preview's origin and the panel's cookie
+
+Agent-written code never runs on the panel's origin:
+
+- **The browser view** draws pictures in the pane. Nothing of the app runs in the member's browser.
+- **`ostra preview`** serves the app on the member's own `localhost`, which the panel never frames.
+- **The app in your browser** runs on its own host under the [preview domain](/docs/install/preview-domain), never the panel's.
+
+The panel keeps its own defences either way. Its session cookie is kept to the panel's exact host, so no preview host ever gets it, and nothing that signs a member in is scoped to a parent domain. It refuses a change, to its API or its sign-in, from any other origin. Every WebSocket core serves refuses an upgrade that names an `Origin`. The panel can't be framed, and frames only the preview hosts, only while a preview domain is set. The preview's own cookie is a `__Host-` cookie, kept to its one host, set by a code used once, and never sent to the box: the app sees no member's identity. These follow from Gitpod's CVE-2023-0957 and CVE-2024-21583 and Coder's GHSA-5g4w-3vw9-478w.
+
+A preview's host isn't a secret: its ID only names the task's preview, and every request on it still needs the cookie.
+
+## Preview links are bearer secrets
+
+Anyone who has a preview link can open it, signed in or not, until it expires or someone revokes it. It's watch only unless it allows input. ostra shows a link's address once, keeps only its hash, and writes it to no log line. Its page shows the preview and nothing else of the task. Public links, which don't expire, exist only where an organization admin allowed them. See [Sharing a preview](/docs/using-ostra/previews#sharing-a-preview).
+
+## Library items are untrusted text
+
+A skill is text the agent reads, and a skill can tell the agent to run the scripts it carries. The marketplaces review nothing ostra relies on: the MCP Registry tells its users to "assume minimal-to-no moderation", and scans of skill registries have found malicious skills. So the [library](/docs/agents-and-models/library) installs only from sources on the organization's allowlist, pins each item to what an admin read, shows the files that look like scripts, and makes every update wait for an admin, with its diff. A changed skill can't arrive unseen. Once it's there, the box is what contains an agent it tricks.
+
+A library MCP server's secret headers stay in the sidecar, out of the agent's container, as a profile's own server's do. A new server isn't trusted as read-only, so plan mode leaves its tools alone.

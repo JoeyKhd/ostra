@@ -1,11 +1,13 @@
 {
   "title": "Using ostra",
   "icon": "list-checks",
-  "description": "Tasks, steering, approvals, reopening, automations.",
+  "description": "Tasks, steering, the running app and its previews, approvals, reopening, automations.",
   "pages": [
     "tasks",
     "task-kinds",
     "steering",
+    "the-running-app",
+    "previews",
     "approvals",
     "reopening",
     "review-loops",

@@ -14,8 +14,8 @@ Press **New profile** and fill in its sections.
 
 - **Agent and model.** The agent (OpenCode in v1), then the **Provider**, one of your organization's [model providers](/docs/agents-and-models/model-providers) by name, then the **Model**, picked from the models that provider lists. Changing the provider clears a model it doesn't list. The profile's tasks use that provider's key and base URL and no other, so a profile runs only in projects whose list allows its provider (see below). A profile without a provider or a model can't be saved. Set its reasoning effort here too: one of the levels the model has, or Default, which leaves the endpoint's own.
 - **Instructions.** What every task with this profile should know. They're added beside each repo's `AGENTS.md`, never replacing it.
-- **Skills.** A skill is a `SKILL.md` and up to 20 files, at most 1 MiB each, that the agent reads when it needs them. Skills are written to the task's own config folder, never to the repo.
-- **MCP servers.** An HTTP server by its URL and headers, or a stdio command that's in the image. They're reached through the runner's MCP proxy, so no header value or secret enters the box. A server can be marked read-only.
+- **Skills.** A skill is a `SKILL.md` and up to 20 files, at most 1 MiB each, that the agent reads when it needs them. Skills are written to the task's own config folder, never to the repo. Write or upload one here, or attach one from the organization's [library](/docs/agents-and-models/library), installed from its source and pinned.
+- **MCP servers.** An HTTP server by its URL and headers, or a stdio command that's in the image, or one from the [library](/docs/agents-and-models/library), installed from an MCP registry. They're reached through the runner's MCP proxy, so no header value or secret enters the box. A server can be marked read-only.
 - **Approval rules.** What waits for a member before the agent does it. See [Approval rules](/docs/agents-and-models/approval-rules).
 - **Plan first.** The first turn only proposes a plan. See [Plan first](/docs/agents-and-models/plan-first).
 - **Who may use it.** Everyone, or only the members you list.
@@ -26,7 +26,7 @@ A profile's permissions and MCP servers win over a repo's own agent config. Its 
 
 A repo can carry skills of its own, in the folders the agents and `npx skills add` write them to: `.agents/skills`, `.claude/skills` and `.opencode/skills`. Each skill is a folder holding a `SKILL.md`. By default the agent gets every repo's skills beside the profile's. They're read from the task's own checkout in the box, so nothing is fetched, on every executor, and in a task with several repos each one's count.
 
-- **The profile wins a clash.** When a profile's skill has the same name as a repo's, the agent gets the profile's. The runner's log names the repo's skill it left out, by its name only.
+- **The profile wins a clash.** When a profile's skill has the same name as a repo's, the agent gets the profile's, and a library skill attached to the profile counts as the profile's. The runner's log names the repo's skill it left out, by its name only.
 - **A repo's config is still never read.** Only its skills folders are. A repo's `opencode.json`, with its MCP servers and permissions, stays unread.
 - **A project can turn them off.** A project admin turns **Repo skills** off under the project's **Settings › Repos**, and the agent then gets the profile's skills alone. The change is in the project's audit log, and reaches each task at its next session. A task in such a project runs only on a runner at protocol 1.6 or later, since an older runner hands the agent a repo's `.opencode/skills` whatever the setting says. Until one is online, the task waits and says why.
 

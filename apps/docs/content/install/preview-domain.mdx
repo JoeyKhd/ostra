@@ -1,0 +1,201 @@
+---
+title: "The preview domain"
+description: "An optional domain that opens a task's app in a member's own browser: the DNS record, the certificate, the proxy and the check."
+summary: "Set OSTRA_PREVIEW_DOMAIN, add one wildcard DNS record and a wildcard certificate, and a task's app opens in the member's own browser."
+---
+
+A preview domain lets a task's app open in a member's own browser, on a host of its own, in the task's preview pane or a tab, with its devtools. It's **optional**. Without it, every install still has the browser view, `ostra preview` on a member's own `localhost`, and the screenshots in the thread ([Previews](/docs/using-ostra/previews)), and nothing of it listens.
+
+With `OSTRA_PREVIEW_DOMAIN` set to `previews.example.com`, each preview is served on `<port>-<id>.previews.example.com`: the app's port in the box, and an ID of the task's own, which stays the same when the task reopens on a fresh box. Core answers every name under the domain with its preview proxy, and with nothing else, and serves the app from the task's box over the connection the box already holds to core. Nothing connects in to a runner.
+
+## A domain of its own, or a subdomain
+
+**Use a registrable domain of its own,** such as `example-previews.com` for a panel on `ostra.example.com`. A preview runs code the agent wrote, and a separate site keeps the browser's own rules between that code and the panel: no shared cookies, and no request that counts as same-site.
+
+A subdomain of the panel's site, such as `previews.example.com` beside `ostra.example.com`, works too. ostra keeps the panel's own cookies to its exact host, refuses a change to the panel from any other origin, and refuses every WebSocket core serves that names an `Origin`. The instance's Previews page warns when the domain shares the panel's site.
+
+The panel's and core's own hosts must not be under the preview domain: core would answer them with the preview proxy alone, so the server refuses to start that way.
+
+## Why it must be HTTPS
+
+The preview's cookie is a `__Host-` cookie, so browsers keep it only when it's `Secure`, which they take only over HTTPS. Preview hosts are served on core's public address's scheme and port, so **`OSTRA_CORE_PUBLIC_URL` must be `https`** for a real preview domain. The one exception is `*.localhost` on a development machine, which browsers treat as secure over plain `http`.
+
+## 1. Add the DNS record
+
+One wildcard record, for every name under the domain, pointing at the TLS proxy in front of core: a `CNAME` to core's public host, or an `A` or `AAAA` record for its address.
+
+```text
+*.previews.example.com.  CNAME  core.ostra.example.com.
+```
+
+The instance's Previews page shows this record, with your own names in it.
+
+## 2. Get a wildcard certificate
+
+A certificate for `*.previews.example.com`. Let's Encrypt issues wildcard certificates only through the DNS-01 challenge, so your ACME client needs your DNS provider's API: cert-manager with a DNS-01 solver on Kubernetes, or your proxy's own ACME client with its DNS plugin.
+
+## 3. Route the domain to core
+
+At the proxy in front of core, send every host under the domain to core's port (`8787`), and:
+
+- **pass the browser's `Host` as it came,** since core tells a preview by its host;
+- **pass WebSocket upgrades,** as runners already need on core's own host, since a dev server's hot reload rides them;
+- **raise the idle timeout** past a minute, for the same reason.
+
+Core drops every `X-Forwarded-*` header a client sent, so the proxy's own don't reach the app.
+
+## 4. Set the domain
+
+Set `OSTRA_PREVIEW_DOMAIN` on the server, for the panel and core both, and restart them. The panel then allows frames from the preview hosts and from nowhere else. [Docker Compose](#docker-compose) and [Helm](#helm) below show where it goes.
+
+## 5. Check it
+
+Open **Instance › Previews** as the instance admin. It runs the check once by itself after the domain changes, and **Check again** runs it again. The check resolves a random name under the domain, opens it on core's public scheme and port, and reports four rows:
+
+| Row | Passes when |
+|---|---|
+| **DNS record** | The name resolves, to core's host. |
+| **Certificate** | The wildcard certificate is valid for the name. |
+| **ostra answers on it** | Core's preview proxy answered, with a mark only this install can make, so another server can't pass for it. |
+| **WebSocket upgrades** | An upgrade went through to core. |
+
+Under `localhost` the first two aren't needed. Until the check passes, the pane opens previews in the box's browser, so a half-set domain never shows members a broken frame, and the pane points an instance admin here. Each run is in the audit log.
+
+The same page holds the organization's **Allow public preview links** ([Sharing a preview](/docs/using-ostra/previews#sharing-a-preview)).
+
+## Docker Compose
+
+In `compose.yaml`, under the server's `environment:`, core's public address goes to `https`, and the commented `OSTRA_PREVIEW_DOMAIN` line is set:
+
+```yaml
+services:
+  server:
+    environment:
+      OSTRA_PUBLIC_URL: https://ostra.example.com
+      OSTRA_CORE_PUBLIC_URL: https://core.ostra.example.com
+      OSTRA_PREVIEW_DOMAIN: previews.example.com
+```
+
+```sh
+docker compose up -d
+```
+
+Then route the domain to port 8787 at the TLS proxy in front of the machine, as for core's own host. With nginx, beside the panel's and core's own server blocks:
+
+```nginx
+map $http_upgrade $connection_upgrade {
+  default upgrade;
+  ""      close;
+}
+
+server {
+  listen 443 ssl;
+  server_name *.previews.example.com;
+  ssl_certificate     /etc/ssl/previews.example.com/fullchain.pem;
+  ssl_certificate_key /etc/ssl/previews.example.com/privkey.pem;
+
+  location / {
+    proxy_pass http://127.0.0.1:8787;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+  }
+}
+```
+
+`proxy_set_header Host $host` matters here: nginx otherwise sends its upstream's name, and core wouldn't know the preview.
+
+## Helm
+
+In the server chart's values, core's public address goes to `https`, and the domain goes under `env`, which both the panel and core read:
+
+```yaml
+corePublicUrl: https://core.ostra.example.com
+env:
+  OSTRA_PREVIEW_DOMAIN: previews.example.com
+ingress:
+  enabled: true
+  webHost: ostra.example.com
+  coreHost: core.ostra.example.com
+```
+
+The chart's own ingress has no rule for the wildcard host, so add one beside it, with the wildcard certificate's secret and the same WebSocket timeouts as `coreHost`'s. With ingress-nginx, for a release named `ostra` in the namespace `ostra`:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ostra-previews
+  namespace: ostra
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - "*.previews.example.com"
+      secretName: previews-example-com-wildcard
+  rules:
+    - host: "*.previews.example.com"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ostra-ostra-server-core
+                port:
+                  name: http
+```
+
+The core service is `<release>-ostra-server-core`. The chart's `values.yaml` holds the same rule, commented, under `ingress`.
+
+### Several core replicas
+
+A preview's bytes go through the core replica that holds its box's connection. A request that reaches another replica is forwarded to that one, signed under the secrets key every replica shares, and a replica refuses a forwarded request it can't verify. Each replica says where the others reach it in `OSTRA_CORE_REPLICA_URL`: the chart sets it to the pod's IP, and a replica elsewhere takes its first address that isn't loopback, with core's port, over `http`. Set it yourself when that isn't the address the others reach. A one-machine install never forwards.
+
+## On a development machine
+
+`preview.localhost` needs no DNS record and no certificate: browsers send every `*.localhost` name to the machine itself, and treat it as secure over plain `http`. Previews are then served on `http://<port>-<id>.preview.localhost:8787`, on core's own port. From a clone:
+
+```sh
+OSTRA_PREVIEW_DOMAIN=preview.localhost pnpm dev
+```
+
+With Docker Compose on one machine, set `OSTRA_PREVIEW_DOMAIN: preview.localhost` in `compose.yaml` and keep core's address on `http://localhost:8787`. Vite, Next.js and webpack-dev-server each already allow every `*.localhost` name.
+
+## Signing in on a preview
+
+A preview's host never gets the panel's cookie, so a member signs in on it once per host, without seeing it:
+
+1. The panel checks that you can open the task, or that the link allows input, and asks core for a one-time code: 60 seconds, used once, bound to you or the link, the task, the port, the task's box and your panel session.
+2. The frame, or the new tab, opens `https://<host>/.ostra/enter` with the code. Core sets the preview's cookie there and sends you on to the page.
+3. Every request carries the cookie. Core checks it, and checks your access and the box again on each new connection and every 5 minutes.
+
+**The cookie,** `__Host-ostra-preview`, is `HttpOnly`, `Secure` and kept to that one host. It lasts no longer than your panel session, the link and 12 hours. Its `SameSite` follows what the browser reports of the request:
+
+- in the pane's frame, on a preview domain that's another site than the panel's, `SameSite=None; Partitioned`: kept for that frame on the panel's pages only;
+- in a tab of its own, or on the panel's own site, `SameSite=Lax`.
+
+A partitioned cookie set in the frame isn't the tab's, so **Open in a new tab** makes its own sign-in. Chrome, Edge and Firefox keep a partitioned cookie in a frame; Safari's is still to be checked. Where a browser keeps none, the frame shows core's small refusal page: open the preview in a new tab, or use the box's browser.
+
+Someone who may only watch (a named person, or a link without input) gets no code, so their preview stays in the box's browser.
+
+## What the proxy changes
+
+On every request, core's preview proxy:
+
+- removes its own cookie, and every `X-Forwarded-*` and `Ostra-*` header the client sent, and passes nothing of who you are to the app;
+- checks that a WebSocket upgrade's `Origin` is the preview's own host;
+- with **Rewrite the host** on (the default), sets `Host` and `Origin` to `localhost:<port>`, and turns a redirect to the app's own `localhost` back to the preview's host, so dev servers' host checks pass with no change; with it off, keeps the real host in `Host` and adds `X-Forwarded-Host` and `X-Forwarded-Proto` ([Dev servers](/docs/using-ostra/the-running-app#dev-servers));
+- for a link given to people outside the project, keeps the browser's own `Origin` on WebSocket upgrades, so a dev server's own check still guards a socket that can write files, such as Storybook's;
+- removes `X-Frame-Options` and sets `frame-ancestors` to the panel's origin alone, replacing any the app sent, so an app that refuses frames still shows in the pane, and no other site can frame it.
+
+The panel's own pages still refuse every frame, and its content policy allows frames from the preview hosts only while a preview domain is set. The pane's frame runs the app with scripts, forms, pop-ups and downloads, and can't navigate the panel.
+
+There's no app in your browser for a runner on the [HTTP fallback](/docs/runners/http-fallback): its tasks keep the browser view.

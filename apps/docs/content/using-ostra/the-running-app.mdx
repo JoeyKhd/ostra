@@ -1,0 +1,193 @@
+---
+title: "Seeing the running app"
+description: "App processes, one origin for the frontend and its API, screenshots and recordings, and the box's browser."
+summary: "Declare the app's processes in the environment, and every task shows what the app looks like after each turn."
+---
+
+A reviewer sees the app a task built, not only its diff. The app runs in the task's box, beside the agent, and ostra photographs it, records it, and shows it live in the task's [preview pane](/docs/using-ostra/previews). All of it works on every install with no setting, on every executor.
+
+It starts with the environment saying how to run the app.
+
+## App processes
+
+An **app process** is one of the project's own programs, run from its repo: a frontend's dev server, an API, a docs site. It sits beside the environment's services, which are containers from an image, such as a database. A project admin declares them on the environment's **App** tab, in the order they start:
+
+| Field | What it is |
+|---|---|
+| **Name** | Lowercase letters, digits and dashes, unique in the environment, such as `web` or `api`. |
+| **Label** | What people see in the pane: "Web", "API", "Docs". |
+| **Repo** and **Folder** | The repo it runs in, and the folder inside it, such as `apps/web` (`.` by default). |
+| **Command** | What starts it, and keeps running, such as `pnpm dev`. |
+| **Port** | The port it listens on, from 1024 to 65535. |
+| **Ready when** | **HTTP path**: the path answers below 500. **Command**: a command exits 0. **Port open**: the port takes a connection. Tried every 2 s for up to 120 s. |
+| **The primary preview** | At most one process. The pane and the screenshots open it first. |
+| **Rewrite the host** | On by default. See [Dev servers](#dev-servers). |
+
+The rules are checked on save: one primary at most, names and ports unique, at most 10 processes, no port below 1024, and not 7101, the sidecar's own control port.
+
+**Nothing starts until something asks.** The runner starts the processes when the agent calls `start_app`, before the screenshots after a turn, when someone opens a preview, and when a member presses **Start the app**. It starts them in the list's order, each once the one before it is ready or failed, so put the API above the frontend that calls it. They stop with the box.
+
+**Each process runs like the setup script.** Its command runs through the same shell (`bash -lc`), in its folder, with the repo's variables and secrets the setup script gets. Its output goes to `.ostra/app/<name>.log` in the task's config folder, never into a repo, and keeps its newest 4 MiB. A process that exits, or doesn't get ready, shows on its task with its exit code and its log's last lines, under **Show log**.
+
+**A service can be a preview too.** Under **Services with a web UI**, mark one, such as Mailpit on 8025, and give it a label. It's private like every preview. The `host` executor runs no services, so there it has none.
+
+> [!NOTE]
+> App processes need the task's runner on protocol 1.7 or later. An older runner starts none, and the App tab says which runner needs upgrading.
+
+### The in-box addresses
+
+Every process gets every other process's and service's address inside the box:
+
+| Variable | `docker` | `kubernetes` | `host` |
+|---|---|---|---|
+| `OSTRA_APP_<NAME>_URL`, for each app process | `http://localhost:<port>` | `http://localhost:<port>` | `http://localhost:<port>` |
+| `OSTRA_SERVICE_<NAME>_URL`, for each service with a port | `http://<name>:<port>` | `http://localhost:<port>` | none: no services |
+
+`<NAME>` is the name in capitals, with dashes as underscores: `OSTRA_APP_API_URL` for `api`. These are for server-side calls, and for the box's own browser. **No address is given for a member's browser,** since one inlined client variable can't point at the API for the box's browser and a member's at once. The next section is how a frontend reaches its API instead.
+
+## How a process gets in the list
+
+1. **Declared** by a project admin on the App tab.
+2. **Found in the repo.** Detection reads `devcontainer.json`'s `forwardPorts` and `portsAttributes` (a port's label, and `onAutoForward: openPreview` as the primary's hint), the ports in `.gitpod.yml` and `.replit`, `package.json`'s `dev` and `start` scripts and any other script that names its port, and a Vite config's `server.port` and `server.proxy`. It reads them as text and never runs them. What it finds is listed under **Found in the repo, not added**, with **Add**.
+3. **Proposed by onboarding.** **Test this environment** runs the onboarding task, which starts each process it found, checks that each gets ready, screenshots the primary, and hands the list in as a proposal. A project admin accepts it, as the rest of the environment: each proposed process takes the place of the one with its name or its port.
+4. **Kept from a task.** The agent can announce a port it started itself, with its `show_preview` tool. That preview is the task's alone. **Keep it for** the project, in the pane's list of previews, turns it into a proposal under **Kept from a task**. ostra doesn't know the command the agent ran, so a project admin gives the command before accepting it.
+
+ostra doesn't scan the box for listening ports. A preview reaches only the declared processes, the services marked as previews and the ports the agent announced.
+
+## One origin
+
+**Keep the browser on the primary's origin, and put the API behind the frontend's dev-server proxy.** The frontend then calls its API by a path, such as `/api`, never by another port. ostra tells the agent the same thing in its instructions:
+
+> Keep the browser on the primary's origin: put the API behind the frontend's dev-server proxy (Vite's server.proxy, Next.js rewrites), and have the frontend call it by a path such as /api, never by another port.
+
+It's the one pattern that works everywhere the app is seen: in the box's own browser (screenshots and the browser view), on a member's `localhost` (`ostra preview`), and in the member's own browser on a preview host (the native preview). The API call never leaves the box.
+
+With Vite, in `vite.config.js`:
+
+```js
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  server: {
+    port: 5173,
+    proxy: {
+      // In an ostra box, OSTRA_APP_API_URL is the api process's address in the box.
+      "/api": { target: process.env.OSTRA_APP_API_URL ?? "http://localhost:3001", ws: true },
+    },
+  },
+});
+```
+
+`ws: true` carries the API's WebSockets through the same proxy. With Next.js, in `next.config.mjs`:
+
+```js
+const api = process.env.OSTRA_APP_API_URL ?? "http://localhost:3001";
+
+export default {
+  async rewrites() {
+    return [{ source: "/api/:path*", destination: `${api}/api/:path*` }];
+  },
+};
+```
+
+### A frontend that calls its API by an absolute URL
+
+A frontend that calls `http://localhost:3001/api` directly, or builds the address from a variable such as `VITE_API_URL`, works in the box and nowhere else:
+
+| How the frontend reaches its API | Screenshots and the browser view | `ostra preview` | The native preview |
+|---|---|---|---|
+| By a path, through its dev server's proxy | Works | Works | Works |
+| `http://localhost:3001` in the client | Works: 3001 is the box's | Only while you also forward 3001 on the same port | Breaks: your browser asks your own machine's 3001 |
+| A preview host's address in a variable | Breaks: the box's browser has no preview cookie | Breaks | Only with CORS between the two hosts, which ostra doesn't offer yet |
+
+Vite's `VITE_*` and Next.js's `NEXT_PUBLIC_*` variables are written into the code the dev server serves, so one value can't serve the box's browser and a member's at once. Onboarding says in its proposal's notes when the frontend calls its API by an absolute URL.
+
+## Dev servers
+
+A dev server can listen on `localhost` as it does on a laptop: ostra reaches it there, over IPv6 and IPv4, on every executor. It doesn't need `--host 0.0.0.0`.
+
+In the box's browser and through `ostra preview`, the app is on `localhost`, so a dev server's own host checks pass as they do on a laptop. In the native preview, the browser is on the preview's own host, `<port>-<id>.<preview domain>`, and **Rewrite the host** decides what the app sees:
+
+- **On, the default:** the app sees `Host` and `Origin` as `localhost:<port>`, and a redirect to its own `localhost` goes back to the preview's host. Vite, Next.js and webpack-dev-server pass their host checks with no change, and their hot reload follows the page's host.
+- **Off:** the app sees the preview's real host in `Host`, with `X-Forwarded-Host` and `X-Forwarded-Proto`. Use it for an app that builds absolute URLs from its host, such as an OAuth callback ([OAuth callbacks](/docs/using-ostra/previews#oauth-callbacks)). The dev server's own host check then sees a host it doesn't know, so allow the preview domain in it.
+
+| Dev server | With the host rewrite off, allow the preview domain |
+|---|---|
+| Vite | `server.allowedHosts: [".previews.example.com"]` |
+| Next.js | `allowedDevOrigins: ["*.previews.example.com"]` |
+| webpack-dev-server | `allowedHosts: [".previews.example.com"]` |
+
+On `preview.localhost`, a development install's preview domain, none of them needs it: each already allows every `*.localhost` name.
+
+**webpack-dev-server's hot reload needs one line.** When a project sets its dev server's `port` or `host`, webpack-dev-server writes them into its client, which then dials that port directly, past ostra, and the reload never arrives. Make the client use the page's own host and port:
+
+```js
+// webpack.config.js
+module.exports = {
+  devServer: {
+    port: 8080,
+    client: { webSocketURL: "auto://0.0.0.0:0/ws" },
+  },
+};
+```
+
+The page itself loads without it. Through `ostra preview` it reloads without it too, while your local port is the box's port, which is the default.
+
+## Screenshots and recordings
+
+**The agent takes them,** with ostra's tools, beside `start_app` and `show_preview`:
+
+- **`take_screenshot`:** an app process or a port, a path, a width (desktop 1440×900, tablet 834×1112, phone 390×844, or a size of its own), the whole page or the screen, and a caption. A whole page is cut at 10,000 px high.
+- **`record_app`:** the same target, up to 20 steps from a closed list (`goto`, `click` on a CSS selector or a text, `fill`, `press`, `scroll`, and `wait` for a selector or a time), at most 30 s, and a caption, at desktop width.
+
+Each runs in a page of its own, never the page members are watching. A process target starts the processes above it in the list and waits for it to get ready. The picture is taken once the page's network goes quiet, up to 15 s. The tools come through ostra's MCP server: an agent without MCP still gets the screenshots after a turn and the preview pane.
+
+**ostra takes them after each turn.** On the App tab, **Screenshots after each turn** is on by default once the environment has a primary. After a turn that changed a repo, the runner commits and pushes, starts what isn't running, waits for the primary, and takes each of the environment's **Routes** (up to 5, `/` by default) at each of its **Widths** (Desktop, and Phone if you pick it). A turn that changed nothing takes none. A primary that doesn't get ready is reported with its log, and the turn ends anyway.
+
+**A member takes one** with **Take a screenshot** in the preview pane: the preview at its path and width.
+
+**What's kept:**
+
+- A screenshot is a PNG of at most 8 MiB.
+- A recording is a **frame reel**: its JPEG frames at up to 10 a second, their times and its steps, at most 32 MiB, which the panel plays. There's no MP4 or WebM.
+- A turn holds 20 at most; a member's screenshots don't count toward it.
+- Each names the browser and the version it was taken in.
+- They're kept with the task, not in the box, so they outlive the box, a reload and a reopen on a fresh box.
+
+**Where they show:**
+
+- **In the thread,** at their place in the turn. A picture opens in a viewer, with the turn's others, **Compare with** another, and its download. A recording plays with its steps beside it, which seek when you press them.
+- **On the pull request:** a line in its description, "Screenshots: N in ostra", that links to the task. GitHub can't take an image through its API, and ostra's own links need a sign-in, so a screenshot never becomes a public address.
+- **In a refine draft,** with **Add to draft** in the viewer, and **beside a finding** on the review screen, when the AI review names one.
+
+A caption, a recording's steps and an app's log are the agent's or the app's text, so ostra keeps them out of every log line.
+
+## The box's browser
+
+The pictures and the browser view come from a Chromium-family browser **beside the app,** on its network, so `http://localhost:5173` and the frontend's own calls to `localhost` work in it. It starts the first time a task needs it, never with the box.
+
+| Executor | The browser | What it can load |
+|---|---|---|
+| `docker` | Debian's Chromium, pinned in ostra's base image, in the agent's container | The box's network only: a page's fonts or scripts from a public host are missing from its pictures |
+| `kubernetes` | The same, in the agent's container of the pod | Public hosts too, as the agent's container can |
+| `host` | The machine's own Chrome, Chromium or Edge, or a pinned download | What the machine reaches |
+
+None of these is a difference between executors: a task does the same thing on each, with the same tools, pictures and views. On `host` the browser is the machine's, as every tool there is, so a picture's fonts can differ, and each picture names its browser.
+
+**On `docker` and `kubernetes`** the base image carries Chromium, with its fonts and notices, so every box has it with no setup. By Debian's package sizes it adds about 204 MiB to the image's download, and about 700 MiB unpacked, once per runner machine. Inside a box it runs without Chromium's own sandbox, since a box allows neither the user namespaces nor the setuid helper that sandbox needs: the box is its sandbox ([What the box contains](/docs/security/the-box#the-boxs-browser)).
+
+**An environment's own base image** needs Chromium at `/usr/bin/chromium`, where Debian's `chromium` package puts it. Without one, the box has no browser: the processes still start, the agent's picture tools say there's no browser, and the App tab says how to add one.
+
+**On `host`,** the runner uses `OSTRA_RUNNER_BROWSER` when it's set (`--browser`), else the first of Chrome, Chromium and Edge in the system's usual places; every Windows machine has Edge. With none, the first time a task needs a browser, it downloads Chrome for Testing's headless shell at the version pinned in its release, refuses it unless its SHA-256 is the pinned one, and keeps it in its data folder. A public download, it carries no usage data. `OSTRA_RUNNER_BROWSER_DOWNLOAD=false` (`--browser-download false`) turns the download off: the runner then reports no browser, and the panel says how to fix it. The machine's browser keeps its own sandbox.
+
+```sh
+ostra runner --server https://core.ostra.example.com --browser /usr/bin/chromium
+ostra runner --server https://core.ostra.example.com --browser-download false
+```
+
+> [!WARNING]
+> Ubuntu 23.10 and later restrict unprivileged user namespaces through AppArmor, and the downloaded headless shell's sandbox needs them. On those machines, install Chrome or Chromium from its package, which sets its sandbox up, or point `OSTRA_RUNNER_BROWSER` at one.
+
+**A `host` pool** starts the browser as the agent's user, which needs `closefrom_override` in the runner's sudoers rule ([A pool on the host executor](/docs/runners/pools#let-the-runners-user-act-as-the-agents)). Without it, the pool's tasks have no browser, and say so.
+
+**It holds nothing of yours.** Each box's browser starts with a fresh profile in a temporary folder, removed with the box: no cookie, password or token of ostra's or the machine's, and never the system's keychain.

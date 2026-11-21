@@ -9,9 +9,6 @@ A runner dials out to core and holds one WebSocket open, on core's address (`OST
 
 When the WebSocket can't be opened, or keeps dropping, the runner switches to HTTP by itself within 30 seconds, and reconnects on its own after any drop.
 
-> [!NOTE]
-> Today's runner speaks the WebSocket only; the fallback and `--transport` choices other than `websocket` come with milestone 5, before v1.
-
 ## Choosing a transport
 
 `--transport` (`OSTRA_RUNNER_TRANSPORT`) pins it:
@@ -21,3 +18,12 @@ When the WebSocket can't be opened, or keeps dropping, the runner switches to HT
 | `auto` | The WebSocket, falling back to HTTP when it can't hold one. |
 | `websocket` | The WebSocket only, and reconnects on its own when it drops. |
 | `http` | HTTP only, for a network that is known to refuse WebSockets. |
+
+## Previews over HTTP
+
+A task's previews work over HTTP with two limits, because a dev server's hundreds of module requests make a poor preview over long polls:
+
+- **The browser view** streams at 2 frames a second, against up to 15 over the WebSocket. Clicks and typing still reach the page.
+- **No tunnel:** no `ostra preview`, and no app in your browser on a preview domain, for that runner's tasks.
+
+The preview pane and the CLI say when a task's runner reaches the server over HTTP only. See [Previews](/docs/using-ostra/previews#limits-by-network-and-version).
