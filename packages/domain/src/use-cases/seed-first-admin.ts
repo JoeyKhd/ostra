@@ -9,6 +9,7 @@ import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, organizationNameSchema, usern
 import { slugify } from "../branch-name.ts";
 import type { AuditLog, ChangeNotices, Clock } from "../ports.ts";
 import { ensureBuiltInAgentProfile } from "./agent-profiles.ts";
+import { seedLibrarySourcesInTx } from "../library/sources.ts";
 import { ensureBuiltInKindProfilesInTx } from "./refine-drafts.ts";
 import { ensureBoxSizes, ensureDefaultPool } from "./pools.ts";
 import type { UseCaseResult } from "./common.ts";
@@ -155,6 +156,8 @@ export const seedFirstAdmin: SeedFirstAdmin = async (deps, input) => {
     // Milestone 5 (F-095): its three box sizes, for an install that first starts after the
     // migration that inserted them for the organizations it found.
     await ensureBoxSizes(tx, organizationId);
+    // Milestone 8 (F-145, Q324): GitHub's curated MCP registry on its library's list of sources.
+    await seedLibrarySourcesInTx(deps, tx, organizationId);
     const memberId = memberIdSchema.parse(randomUUID());
     await tx.member.create({ data: { id: memberId, organizationId, userId, role: "admin", createdAt: now } });
     await tx.instanceSetting.upsert({

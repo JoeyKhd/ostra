@@ -22,7 +22,7 @@ import {
   systemClock,
   warnIgnoredSettings,
 } from "@ostra/domain";
-import type { Clock, ServerAdapters, ServerSettings, SessionTimers } from "@ostra/domain";
+import type { Clock, LibraryDeps, ServerAdapters, ServerSettings, SessionTimers } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
 import { blobIdSchema, replicaIdSchema } from "@ostra/protocol";
@@ -84,6 +84,7 @@ import { fetchContextHandler } from "./tracker/context.ts";
 import { drainTicketWrites, ticketSyncHandler } from "./tracker/writer.ts";
 import { agentEventHandler } from "./linear/agent-mode/events.ts";
 import { draftApplyHandler, enqueueBuiltInProfileSeeds, seedProfilesHandler } from "./refine/apply.ts";
+import { enqueueLibrarySourceSeeds, libraryBlobs, seedSourcesHandler } from "./library/library.ts";
 import { handleDraftEndpoint } from "./runner-http/draft.ts";
 import { activitySendHandler, ensureHeartbeatSchedule, heartbeatHandler } from "./linear/agent-mode/outbox.ts";
 import { applyBoxRunnerEvent } from "./dispatch/box-waits.ts";
@@ -557,6 +558,26 @@ export const startCore = async (
   );
   await jobs.work("profiles.seed-built-in", seedProfilesHandler({ db, jobs, notices, audit: postgresAuditLog, clock: systemClock }), { localConcurrency: 1 });
   await enqueueBuiltInProfileSeeds({ db, jobs });
+  // Milestone 8 (F-145, ticket 27): the library's use cases, with core's blob service for a skill's
+  // files; and GitHub's curated MCP registry on the list of each organization from before it, once.
+  const libraryDeps: LibraryDeps = {
+    db,
+    jobs,
+    outbox: postgresCommandOutbox,
+    notices,
+    audit: postgresAuditLog,
+    clock: systemClock,
+    adapters,
+    fetch: globalThis.fetch,
+    settings: settings.library,
+    blobs: libraryBlobs(blobs),
+    serverVersion: CORE_VERSION,
+    logger,
+  };
+  await jobs.work("library.seed-sources", seedSourcesHandler(libraryDeps), { localConcurrency: 1 });
+  await enqueueLibrarySourceSeeds({ db, jobs }).catch((error: unknown) => {
+    logger.warn("library.seed-enqueue-failed", { error: error instanceof Error ? error.name : "unknown" });
+  });
   const trackerTick = async (): Promise<void> => {
     await pollSchedules.ensure().catch((error: unknown) => {
       logger.warn("tracker.schedules-failed", { error: error instanceof Error ? error.name : "unknown" });

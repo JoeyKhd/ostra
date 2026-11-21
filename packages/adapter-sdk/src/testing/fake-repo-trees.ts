@@ -28,7 +28,7 @@ export type FakeTreeRepo = { readonly fullName: RepoFullName; readonly private: 
 export type FakeRepoTrees = {
   readonly repos: readonly FakeTreeRepo[];
   readonly repo: (fullName: string) => FakeTreeRepo | undefined;
-  /** The commit a branch, a tag or a full SHA names now, or `undefined`. */
+  /** The commit a branch, a tag, a full SHA or `HEAD` (the default branch) names now, or `undefined`. */
   readonly resolve: (repo: RepoFullName, ref: string) => GitSha | undefined;
   readonly tree: (repo: RepoFullName, commit: string) => FakeTree | undefined;
   /** Makes `tree` a new commit on `branch`, moving the branch on, as a push does: its SHA. */
@@ -124,7 +124,9 @@ export const createFakeRepoTrees = (owner: string): FakeRepoTrees => {
   return {
     repos,
     repo: (fullName) => repos.find((candidate) => candidate.fullName === fullName),
-    resolve: (repo, ref) => refs.get(repo)?.get(ref) ?? (commits.get(repo)?.has(ref) === true ? ref : undefined),
+    // `HEAD` names the default branch's head, as GitHub's commits API reads it (ticket 27's look with no ref).
+    resolve: (repo, ref) =>
+      refs.get(repo)?.get(ref === "HEAD" ? (repos.find((candidate) => candidate.fullName === repo)?.defaultBranch ?? ref) : ref) ?? (commits.get(repo)?.has(ref) === true ? ref : undefined),
     tree: (repo, sha) => commits.get(repo)?.get(sha),
     commit,
   };

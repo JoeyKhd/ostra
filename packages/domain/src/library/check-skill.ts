@@ -34,7 +34,9 @@ export type SkillProblemCode =
   | "description-too-long"
   | "too-many-files"
   | "file-too-large"
-  | "path-outside";
+  | "path-outside"
+  /** Ticket 27: its files couldn't all be read at the source (an archive ostra doesn't read, or a read the caps cut short). */
+  | "unreadable";
 
 export type SkillProblem = { readonly code: SkillProblemCode; readonly message: string; readonly path: string | null };
 

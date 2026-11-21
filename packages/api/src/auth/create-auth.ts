@@ -9,6 +9,7 @@ import {
   MIN_PASSWORD_LENGTH,
   postgresAuditLog,
   postgresChangeNotices,
+  seedLibrarySourcesInTx,
   systemClock,
 } from "@ostra/domain";
 import { invitationIdSchema, organizationIdSchema, userIdSchema } from "@ostra/protocol";
@@ -474,6 +475,8 @@ export const createAuth = (input: CreateAuthInput) => {
               // Milestone 6 (F-099, F-100): its built-in Refine and Review profiles.
               await ensureBuiltInKindProfilesInTx(tx, organizationId);
               await ensureDefaultPool(tx, organizationId);
+              // Milestone 8 (F-145, Q324): GitHub's curated MCP registry on its library's list of sources.
+              await seedLibrarySourcesInTx({ audit: postgresAuditLog, notices: postgresChangeNotices }, tx, organizationId);
             });
           },
           beforeCreateInvitation: ({ invitation }) => {

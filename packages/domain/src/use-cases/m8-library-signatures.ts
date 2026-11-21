@@ -1,6 +1,8 @@
+import type { Logger } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
 import type {
   AgentProfileId,
+  BlobId,
   GitSha,
   LibraryItemId,
   LibraryItemVersionId,
@@ -27,6 +29,17 @@ import type { UseCaseResult } from "./common.ts";
 // a header's value, a secret input, a suggestion's note and a search's words.
 
 /**
+ * Writes a library file as one of the organization's blobs, with no task, purpose `library-file`
+ * (spec section 5.3). Core writes through its blob service; the panel through core's blob endpoint.
+ */
+export type LibraryBlobs = {
+  readonly put: (
+    organizationId: OrganizationId,
+    bytes: Uint8Array,
+  ) => Promise<{ readonly ok: true; readonly blobId: BlobId } | { readonly ok: false; /** Words, never content. */ readonly message: string }>;
+};
+
+/**
  * What a library use case takes: the database, the ports (the code host reads a repo at a commit,
  * the secret store keeps a server's secret inputs), the outbound fetch for well-known hosts,
  * registries, the test call and the search, and the library's settings.
@@ -35,6 +48,13 @@ export type LibraryDeps = { readonly db: Db } & Ports & {
     /** Calls only the source an admin named, with ostra's `User-Agent` and nothing that identifies the install. */
     readonly fetch: typeof fetch;
     readonly settings: LibrarySettings;
+    // ---- ticket 27 ----
+    /** Where an install writes a skill's files. */
+    readonly blobs: LibraryBlobs;
+    /** The server's version: every call out carries `User-Agent: ostra/<version>` and nothing else of the install's. */
+    readonly serverVersion: string;
+    /** Lines carry the item's ID, kind and source kind: never a file's content, a header's value or a secret. */
+    readonly logger: Logger;
   };
 
 // ---------- resolving a reference: an admin's look before installing (ticket 27) ----------

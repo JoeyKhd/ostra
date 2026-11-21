@@ -221,3 +221,13 @@ export * from "./previews/tokens.ts";
 export * from "./environment/detect-app.ts";
 export * from "./lifecycles/m8-previews.ts";
 export * from "./use-cases/m8-preview-signatures.ts";
+
+// Milestone 8 (ticket 27, ADR 0069): the library's install by reference, its sources and its test call.
+export * from "./library/stored.ts";
+export * from "./library/outbound.ts";
+export * from "./library/github-source.ts";
+export * from "./library/well-known-source.ts";
+export * from "./library/registry-source.ts";
+export * from "./library/mcp-test-call.ts";
+export * from "./library/sources.ts";
+export * from "./library/install.ts";

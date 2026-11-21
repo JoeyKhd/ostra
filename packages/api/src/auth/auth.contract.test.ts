@@ -166,6 +166,14 @@ describe("the organization roles (ADR 0026)", () => {
     expect(await harness.test.db.runnerPool.count({ where: { organizationId: created.id, isDefault: true } })).toBe(1);
   });
 
+  it("F-145/c6: an organization an instance admin makes later starts its library's list with GitHub's curated registry", async () => {
+    const { headers } = await harness.auth.api.signInUsername({ body: { username: "ada", password: TEST_PASSWORD }, returnHeaders: true });
+    const created = await harness.auth.api.createOrganization({ body: { name: "Third Org", slug: "third-org" }, headers: cookieHeaderFrom(headers) });
+    expect(await harness.test.db.librarySource.findMany({ where: { organizationId: created.id }, select: { kind: true, value: true, namespace: true, addedByMemberId: true } })).toEqual([
+      { kind: "registry", value: "https://api.mcp.github.com", namespace: null, addedByMemberId: null },
+    ]);
+  });
+
   it("F-002/c9: the organization roles accept admin and member, and refuse owner", async () => {
     const { headers } = await harness.auth.api.signInUsername({ body: { username: "ada", password: TEST_PASSWORD }, returnHeaders: true });
     const browser = cookieHeaderFrom(headers);

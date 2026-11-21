@@ -50,8 +50,8 @@ export const LIBRARY_SOURCES_WORDS =
   "ostra installs from a GitHub repo (owner/repo, owner/repo@skill, owner/repo/path or a github.com URL, each with an optional #ref), a site's https address that serves the well-known skills index, or registry:<server name>";
 
 /** A GitHub login: letters, digits and single dashes, at most 39. */
-const GITHUB_OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
-const GITHUB_REPO = /^[A-Za-z0-9._-]{1,100}$/;
+export const GITHUB_OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
+export const GITHUB_REPO = /^[A-Za-z0-9._-]{1,100}$/;
 /** The Agent Skills spec's name: lowercase letters, digits and dashes, at most 64. */
 export const SKILL_NAME = /^[a-z0-9-]{1,64}$/;
 /** An MCP server's name in a registry: `<namespace>/<name>`, exactly one slash (server.json's schema). */
