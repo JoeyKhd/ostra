@@ -3,13 +3,13 @@ import { connect as connectHttp2 } from "node:http2";
 import type { ClientHttp2Session, ClientHttp2Stream } from "node:http2";
 import { createServer } from "node:net";
 import type { Server, Socket } from "node:net";
-import { spliceStreams } from "@ostra/adapter-sdk";
+import { spliceStreams, webSocketDuplex } from "@ostra/adapter-sdk";
 import type { Logger } from "@ostra/adapter-sdk";
 import { CLI_TUNNEL_SUBPROTOCOL, CORE_CLI_TUNNEL_PATH, cliTunnelErrorSchema, parseJson, previewTunnel } from "@ostra/protocol";
 import type { CliTunnelErrorCode } from "@ostra/protocol";
 import { WebSocket } from "ws";
 import { errorCodeOf } from "../connection/http-carrier.ts";
-import { TUNNEL_CONNECTION_WINDOW_BYTES, TUNNEL_STREAM_WINDOW_BYTES, webSocketDuplex } from "../task-host/preview-tunnel.ts";
+import { TUNNEL_CONNECTION_WINDOW_BYTES, TUNNEL_STREAM_WINDOW_BYTES } from "../task-host/preview-tunnel.ts";
 import { userAgent } from "../version.ts";
 
 // `ostra preview`'s two ends on the member's machine (milestone 8, ticket 24, F-143, ADR 0068
@@ -18,7 +18,7 @@ import { userAgent } from "../version.ts";
 // - the tunnel: core's `/cli/v1/tunnel?ticket=…`, a binary WebSocket with the
 //   `ostra-cli-tunnel.v1` subprotocol and no `Origin`, whose messages are one HTTP/2 connection with
 //   the CLI as the client (core is the server, and bridges each stream to the box). The WebSocket
-//   is the session's socket through the runner's own `webSocketDuplex`, so core's close code
+//   is the session's socket through `webSocketDuplex` (`@ostra/adapter-sdk`), so core's close code
 //   (`cliTunnelCloseCodes`) is read as core sent it;
 // - the listener: `127.0.0.1` only, never another interface, and each TCP connection it accepts is
 //   one plain `CONNECT` stream to the preview's port, joined with `spliceStreams` (never

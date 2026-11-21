@@ -1,6 +1,8 @@
 import type { IncomingMessage } from "node:http";
+import type { ServerHttp2Session } from "node:http2";
 import type { Duplex } from "node:stream";
 
+import { webSocketDuplex } from "@ostra/adapter-sdk";
 import type { Logger } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
 import {
@@ -16,13 +18,13 @@ import {
 } from "@ostra/domain";
 import type { ChangeNotices, Clock, CliTunnelView, CommandOutbox } from "@ostra/domain";
 import { CLI_TUNNEL_SUBPROTOCOL, CORE_CLI_TUNNEL_PATH, cliTunnelErrorWords, cliTunnelQuerySchema, previewTunnel, previewViewIdSchema } from "@ostra/protocol";
-import type { CliTunnelCloseReason, CliTunnelError, CliTunnelErrorCode, PreviewViewId } from "@ostra/protocol";
-import { WebSocket, WebSocketServer, createWebSocketStream } from "ws";
+import type { CliTunnelError, CliTunnelErrorCode, PreviewViewId } from "@ostra/protocol";
+import { WebSocket, WebSocketServer } from "ws";
 import type { RawData } from "ws";
 import { z } from "zod";
 
 import { cliTunnelCloseCode, cliTunnelCloseText } from "./tunnels.ts";
-import type { TunnelHub } from "./tunnels.ts";
+import type { CliTunnelEnd, TunnelHub } from "./tunnels.ts";
 
 // Core's tunnel for `ostra preview` (milestone 8, ticket 23, F-143, ADR 0068 "`ostra preview`"):
 // `GET /cli/v1/tunnel?ticket=…`, upgraded to a binary WebSocket whose messages are one HTTP/2
@@ -39,6 +41,12 @@ import type { TunnelHub } from "./tunnels.ts";
 //   tunnel open is watching, as an open pane is) and checks the CLI session every 5 minutes: a
 //   revoked or expired session, or a member who can no longer open the task, ends it with 4401.
 //   The view closes with the CLI's socket.
+// - A CLI is anyone's client, a hostile one included, and never takes core down. Its HTTP/2
+//   session runs on its socket through `webSocketDuplex` (never `ws`'s `createWebSocketStream`,
+//   whose shutdown hangs once the socket is cut, and the session's next write then throws inside
+//   Node, uncaught). The two end together (`shut`): the session is destroyed with the close frame,
+//   the socket closes when the session ends (1002 for bytes that aren't HTTP/2 or a frame `ws`
+//   refuses), and a CLI that never answers the close frame is cut after `closeWaitMs`.
 //
 // Never logged: the ticket, a signature, a byte of the tunnel. Logged: IDs, codes and reasons.
 
@@ -60,6 +68,8 @@ export type CliTunnelsDeps = {
   readonly recheckMs?: number;
   /** How often the view's heartbeat is written: the pane's 30 s. */
   readonly heartbeatMs?: number;
+  /** How long a CLI gets to answer core's close frame before its socket is cut: `ws`'s own 30 s. */
+  readonly closeWaitMs?: number;
 };
 
 export type CliTunnels = {
@@ -74,6 +84,12 @@ export type CliTunnels = {
 
 /** The CLI session is checked again this often (ticket 23) *(working value)*. */
 export const CLI_TUNNEL_RECHECK_MS = 5 * 60_000;
+
+/** A CLI that hasn't answered core's close frame by then is cut: the 30 s `ws` waits itself. */
+export const CLI_TUNNEL_CLOSE_WAIT_MS = 30_000;
+
+/** A WebSocket close for a CLI whose bytes aren't HTTP/2, or a frame `ws` refuses (RFC 6455's protocol error). */
+const PROTOCOL_ERROR = { code: 1002, text: "protocol error" } as const;
 
 /** A forwarded tunnel's query: the view and the ticket's port, under the signature. */
 const forwardedQuerySchema = z.strictObject({ view: previewViewIdSchema, port: z.coerce.number().int().min(1024).max(65_535) });
@@ -109,12 +125,14 @@ const sleep = (ms: number): Promise<void> =>
     setTimeout(resolve, ms).unref();
   });
 
+/** A CLI's socket on this replica, and the HTTP/2 session on it once this replica serves one. */
+type CliSocket = { readonly ws: WebSocket; session: ServerHttp2Session | null };
+
 /** A CLI's tunnel whose socket is on this replica. */
-type OpenCli = {
+type OpenCli = CliSocket & {
   readonly view: CliTunnelView;
-  readonly ws: WebSocket;
-  /** Ends the tunnel: the CLI's socket closes with the reason's code. */
-  readonly end: (reason: CliTunnelCloseReason | "server-stopping") => void;
+  /** Ends the tunnel: the CLI's socket closes with the reason's code, and its session goes with it. */
+  readonly end: CliTunnelEnd;
   readonly timers: ReturnType<typeof setInterval>[];
 };
 
@@ -148,6 +166,65 @@ export const createCliTunnels = (deps: CliTunnelsDeps): CliTunnels => {
     handleProtocols: (protocols) => (protocols.has(CLI_TUNNEL_SUBPROTOCOL) ? CLI_TUNNEL_SUBPROTOCOL : false),
   });
   const open = new Map<PreviewViewId, Set<OpenCli>>();
+  const closeWaitMs = deps.closeWaitMs ?? CLI_TUNNEL_CLOSE_WAIT_MS;
+  /** The CLIs' sockets whose cut is already timed. */
+  const cutting = new WeakSet<WebSocket>();
+
+  /**
+   * Ends a CLI's tunnel here: the close frame with `code`, the HTTP/2 session destroyed with it,
+   * and the socket cut once `closeWaitMs` passes without the CLI's answer. Never the session alone,
+   * nor the socket alone; again on the same socket, it only makes sure of both.
+   */
+  const shut = (cli: CliSocket, code: number, text: string): void => {
+    const { ws } = cli;
+    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+      ws.close(code, text);
+    }
+    if (cli.session !== null && !cli.session.destroyed) {
+      cli.session.destroy();
+    }
+    if (ws.readyState !== WebSocket.CLOSED && !cutting.has(ws)) {
+      cutting.add(ws);
+      const cut = setTimeout(() => {
+        ws.terminate();
+      }, closeWaitMs);
+      cut.unref();
+      ws.once("close", () => {
+        clearTimeout(cut);
+      });
+    }
+  };
+
+  /**
+   * Serves the CLI's HTTP/2 on its socket here, on the box's session (`TunnelHub.serveCli`):
+   * whichever of the session and the socket ends first, the other goes with it.
+   */
+  const serveHere = (cli: CliSocket, viewId: PreviewViewId, port: number, end: CliTunnelEnd): void => {
+    const session = deps.tunnels.serveCli(viewId, port, webSocketDuplex(cli.ws), end);
+    if (session === null) {
+      end("box-gone");
+      return;
+    }
+    cli.session = session;
+    let failed = false;
+    session.on("error", () => {
+      failed = true;
+    });
+    // The CLI's own HTTP/2 ended under an open socket: its GOAWAY, or bytes that aren't HTTP/2.
+    session.once("close", () => {
+      if (failed) {
+        logger.info("preview.cli-protocol-error", { viewId });
+        shut(cli, PROTOCOL_ERROR.code, PROTOCOL_ERROR.text);
+      } else {
+        shut(cli, 1000, "closed");
+      }
+    });
+    cli.ws.once("close", () => {
+      if (!session.destroyed) {
+        session.destroy();
+      }
+    });
+  };
 
   const closeTheView = (viewId: PreviewViewId): void => {
     closeView(deps, { viewId, reason: "closed" }).catch((error: unknown) => {
@@ -161,11 +238,10 @@ export const createCliTunnels = (deps: CliTunnelsDeps): CliTunnels => {
     const cli: OpenCli = {
       view,
       ws,
+      session: null,
       timers,
       end: (reason) => {
-        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-          ws.close(cliTunnelCloseCode(reason), cliTunnelCloseText(reason));
-        }
+        shut(cli, cliTunnelCloseCode(reason), cliTunnelCloseText(reason));
       },
     };
     const set = open.get(view.viewId) ?? new Set<OpenCli>();
@@ -198,7 +274,10 @@ export const createCliTunnels = (deps: CliTunnelsDeps): CliTunnels => {
     heartbeat.unref();
     recheck.unref();
     timers.push(heartbeat, recheck);
-    ws.on("error", () => undefined);
+    // A frame `ws` refuses (bad framing, too large): `ws` sends its close, and the session goes too.
+    ws.on("error", () => {
+      shut(cli, PROTOCOL_ERROR.code, PROTOCOL_ERROR.text);
+    });
     ws.on("close", (code) => {
       for (const timer of timers) {
         clearInterval(timer);
@@ -247,19 +326,25 @@ export const createCliTunnels = (deps: CliTunnelsDeps): CliTunnels => {
     const url = `${target.replace(/^http/, "ws")}${path}`;
     return new Promise((resolve) => {
       const ws = new WebSocket(url, [CLI_TUNNEL_SUBPROTOCOL], { headers: { [REPLICA_SIGNATURE_HEADER]: signature }, perMessageDeflate: false, maxPayload: previewTunnel.messageMaxBytes });
+      let opened = false;
       const fail = (): void => {
         ws.terminate();
         resolve(null);
       };
       ws.once("open", () => {
-        ws.off("error", fail);
+        opened = true;
         resolve(ws);
       });
       ws.once("unexpected-response", (_request, response) => {
         response.resume();
         fail();
       });
-      ws.once("error", fail);
+      // Every error is heard, however many a failed handshake emits; after the open, they're the relay's.
+      ws.on("error", () => {
+        if (!opened) {
+          fail();
+        }
+      });
     });
   };
 
@@ -292,11 +377,7 @@ export const createCliTunnels = (deps: CliTunnelsDeps): CliTunnels => {
       case "here":
         wss.handleUpgrade(request, socket, head, (ws) => {
           const cli = track(view, ws, () => undefined);
-          const duplex = createWebSocketStream(ws);
-          duplex.on("error", () => undefined);
-          if (!deps.tunnels.serveCli(view.viewId, view.port, duplex, cli.end)) {
-            cli.end("box-gone");
-          }
+          serveHere(cli, view.viewId, view.port, cli.end);
         });
         return;
       case "replica": {
@@ -307,7 +388,6 @@ export const createCliTunnels = (deps: CliTunnelsDeps): CliTunnels => {
           refuseUpgrade(socket, "forwarding-failed");
           return;
         }
-        holder.on("error", () => undefined);
         if (socket.destroyed) {
           holder.close(1000, "closed");
           closeTheView(view.viewId);
@@ -315,18 +395,16 @@ export const createCliTunnels = (deps: CliTunnelsDeps): CliTunnels => {
         }
         logger.info("preview.cli-forwarded", { viewId: view.viewId });
         wss.handleUpgrade(request, socket, head, (ws) => {
-          track(view, ws, () => {
+          const cli = track(view, ws, () => {
             if (holder.readyState === WebSocket.OPEN) {
               holder.close(1000, "closed");
             }
           });
           relay(ws, holder);
           relay(holder, ws);
-          // The holder's close code (4401, 4404, 4410, 1001) reaches the CLI as it is.
+          // The holder's close code (4401, 4404, 4410, 1001) reaches the CLI as it is, its reason within a close frame's 123 bytes.
           holder.on("close", (code, reason) => {
-            if (ws.readyState === WebSocket.OPEN) {
-              ws.close(code >= 4000 && code <= 4999 ? code : code === 1001 ? 1001 : cliTunnelCloseCode("box-gone"), reason.toString("utf8").slice(0, 120));
-            }
+            shut(cli, code >= 4000 && code <= 4999 ? code : code === 1001 ? 1001 : cliTunnelCloseCode("box-gone"), reason.subarray(0, 120).toString("utf8"));
           });
         });
         return;
@@ -355,17 +433,13 @@ export const createCliTunnels = (deps: CliTunnelsDeps): CliTunnels => {
       return;
     }
     wss.handleUpgrade(request, socket, head, (ws) => {
-      ws.on("error", () => undefined);
-      const duplex = createWebSocketStream(ws);
-      duplex.on("error", () => undefined);
-      const end = (reason: CliTunnelCloseReason | "server-stopping"): void => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.close(cliTunnelCloseCode(reason), cliTunnelCloseText(reason));
-        }
-      };
-      if (!deps.tunnels.serveCli(viewId, query.data.port, duplex, end)) {
-        end("box-gone");
-      }
+      const cli: CliSocket = { ws, session: null };
+      ws.on("error", () => {
+        shut(cli, PROTOCOL_ERROR.code, PROTOCOL_ERROR.text);
+      });
+      serveHere(cli, viewId, query.data.port, (reason) => {
+        shut(cli, cliTunnelCloseCode(reason), cliTunnelCloseText(reason));
+      });
     });
   };
 

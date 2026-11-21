@@ -3,12 +3,11 @@ import { Agent, request as httpRequest } from "node:http";
 import type { IncomingMessage, OutgoingHttpHeaders } from "node:http";
 import { constants as http2, createServer as createHttp2Server } from "node:http2";
 import type { IncomingHttpHeaders, ServerHttp2Session, ServerHttp2Stream } from "node:http2";
-import { Duplex } from "node:stream";
-import { dialApp, spliceStreams } from "@ostra/adapter-sdk";
+import { dialApp, spliceStreams, webSocketDuplex } from "@ostra/adapter-sdk";
 import type { Logger } from "@ostra/adapter-sdk";
 import { previewTunnel } from "@ostra/protocol";
 import type { PreviewViewId } from "@ostra/protocol";
-import type { RawData, WebSocket } from "ws";
+import type { WebSocket } from "ws";
 
 // The box's side of a tunnel view (milestone 8, ticket 22, F-143, F-144, ADR 0068 "The preview
 // connection"), ported from spike 08's sidecar: one HTTP/2 connection on the preview connection's
@@ -27,7 +26,7 @@ import type { RawData, WebSocket } from "ws";
 // raw stream are joined with `spliceStreams`, never `stream.pipeline` (spike 08 §4.1).
 //
 // Back-pressure: each stream's own HTTP/2 window, and the WebSocket's send callbacks for the
-// connection (`webSocketDuplex`). The box gives each stream a window of
+// connection (`webSocketDuplex`, `@ostra/adapter-sdk`). The box gives each stream a window of
 // `TUNNEL_STREAM_WINDOW_BYTES` and the connection `TUNNEL_CONNECTION_WINDOW_BYTES`, so a stream
 // whose reader stalls holds its own window and not the connection's: the others go on.
 //
@@ -94,53 +93,6 @@ const forwardable = (headers: IncomingHttpHeaders | IncomingMessage["headers"]):
 };
 
 const first = (value: string | string[] | undefined): string | undefined => (Array.isArray(value) ? value[0] : value);
-
-const bytesOf = (data: RawData): Buffer => (Buffer.isBuffer(data) ? data : Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data));
-
-/**
- * The WebSocket as the HTTP/2 session's socket: each binary message the next bytes, each write
- * one message, its callback the WebSocket's own once the bytes are on their way (the connection's
- * back-pressure), and the reader paused while the session's buffer is full. Unlike `ws`'s
- * `createWebSocketStream`, destroying it never terminates the socket, so the tunnel's close sends
- * its code; a write after the close is dropped, as the session ends anyway.
- */
-export const webSocketDuplex = (socket: WebSocket): Duplex => {
-  const duplex = new Duplex({
-    read: () => {
-      if (socket.isPaused) {
-        socket.resume();
-      }
-    },
-    write: (chunk: Buffer, _encoding, callback) => {
-      if (socket.readyState !== socket.OPEN) {
-        callback();
-        return;
-      }
-      socket.send(chunk, { binary: true }, (error) => {
-        callback(error ?? null);
-      });
-    },
-    final: (callback) => {
-      callback();
-    },
-    destroy: (error, callback) => {
-      callback(error);
-    },
-  });
-  socket.on("message", (data) => {
-    if (!duplex.push(bytesOf(data))) {
-      socket.pause();
-    }
-  });
-  socket.once("close", () => {
-    duplex.push(null);
-  });
-  // The preview connection comes paused (`openPreviewConnection`): it's read from now on.
-  if (socket.isPaused) {
-    socket.resume();
-  }
-  return duplex;
-};
 
 /** A port from a header's text, or `null`. */
 const portOf = (text: string | undefined): number | null => {

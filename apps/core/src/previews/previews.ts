@@ -90,6 +90,8 @@ export type PreviewsDeps = {
   readonly cliRecheckMs?: number;
   /** How often a CLI's tunnel heartbeats its view (30 s; tests shorten it). */
   readonly cliHeartbeatMs?: number;
+  /** How long a CLI gets to answer core's close frame before its socket is cut (30 s; tests shorten it). */
+  readonly cliCloseWaitMs?: number;
 };
 
 export type Previews = {
@@ -165,6 +167,7 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
     presenceWaitMs,
     ...(deps.cliRecheckMs === undefined ? {} : { recheckMs: deps.cliRecheckMs }),
     ...(deps.cliHeartbeatMs === undefined ? {} : { heartbeatMs: deps.cliHeartbeatMs }),
+    ...(deps.cliCloseWaitMs === undefined ? {} : { closeWaitMs: deps.cliCloseWaitMs }),
   });
   let panelTokens: Promise<PanelPreviewTokens> | undefined;
   const tokensOnce = (): Promise<PanelPreviewTokens> => (panelTokens ??= deps.secret().then(createPanelPreviewTokens));

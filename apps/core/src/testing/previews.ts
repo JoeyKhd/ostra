@@ -43,6 +43,8 @@ export const startPreviewReplica = async (
     readonly logger?: Logger;
     readonly gateway?: Partial<GatewayOptions>;
     readonly warmMinutes?: number;
+    /** How long a CLI gets to answer core's close frame before its socket is cut (30 s in production). */
+    readonly cliCloseWaitMs?: number;
     /** How often a CLI's tunnel checks its session again (5 minutes in production). */
     readonly cliRecheckMs?: number;
     /** "Start the app"'s personal runner slots: 2 by default, as an install's. */
@@ -75,6 +77,7 @@ export const startPreviewReplica = async (
     secret: () => Promise.resolve(options.secret),
     replicaUrl: () => url,
     presenceWaitMs: 3_000,
+    ...(options.cliCloseWaitMs === undefined ? {} : { cliCloseWaitMs: options.cliCloseWaitMs }),
     checkMs: 100,
     settings: { warmMinutes: options.warmMinutes ?? 60 },
     ...(options.cliRecheckMs === undefined ? {} : { cliRecheckMs: options.cliRecheckMs }),

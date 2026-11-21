@@ -2,11 +2,10 @@ import { connect as connectHttp2, createServer as createHttp2Server } from "node
 import type { ClientHttp2Session, IncomingHttpHeaders, ServerHttp2Session, ServerHttp2Stream } from "node:http2";
 import type { Duplex } from "node:stream";
 
-import { spliceStreams } from "@ostra/adapter-sdk";
+import { spliceStreams, webSocketDuplex } from "@ostra/adapter-sdk";
 import type { Logger } from "@ostra/adapter-sdk";
 import { cliTunnelCloseCodes, previewTunnel } from "@ostra/protocol";
 import type { CliTunnelCloseReason, PreviewViewId } from "@ostra/protocol";
-import { createWebSocketStream } from "ws";
 import type { WebSocket } from "ws";
 
 // One replica's tunnels (milestone 8, ticket 23, F-143, F-144, ADR 0068 "The preview connection"):
@@ -17,6 +16,11 @@ import type { WebSocket } from "ws";
 // box's session with `spliceStreams` (never `stream.pipeline`, spike 08 §4.1). A CLI reaches only
 // its ticket's port. The native preview's proxy (ticket 25) sends its requests on `session(viewId)`.
 // Bytes, paths and headers are never logged: IDs, ports and status codes only.
+//
+// Every session runs on its WebSocket through `webSocketDuplex`, never `ws`'s
+// `createWebSocketStream`: under HTTP/2 that one's shutdown hangs once its socket is cut, and the
+// session's next write then throws inside Node, uncaught (the fix after ticket 24). A session is
+// always destroyed before or with its socket's close, and its socket closes when it ends.
 
 /** How a CLI's tunnel served here ends: the code the CLI's WebSocket closes with, and why. */
 export type CliTunnelEnd = (reason: CliTunnelCloseReason | "server-stopping") => void;
@@ -43,11 +47,12 @@ export type TunnelHub = {
   /** The session once it's ready, within `timeoutMs`; `null` when it isn't by then. */
   readonly waitForSession: (viewId: PreviewViewId, timeoutMs: number) => Promise<ClientHttp2Session | null>;
   /**
-   * Serves a CLI's HTTP/2 connection on `duplex` for the view: each plain `CONNECT` to `port` (the
-   * ticket's) is bridged to a `CONNECT` on the box's session. `end` runs when the box's side goes.
-   * `false` when this replica doesn't hold the view's session.
+   * Serves a CLI's HTTP/2 connection on `duplex` (a `webSocketDuplex`) for the view: each plain
+   * `CONNECT` to `port` (the ticket's) is bridged to a `CONNECT` on the box's session. `end` runs
+   * when the box's side goes, and the CLI's session is destroyed with it. The CLI's session, for
+   * its socket's owner to end with the socket; `null` when this replica doesn't hold the view's.
    */
-  readonly serveCli: (viewId: PreviewViewId, port: number, duplex: Duplex, end: CliTunnelEnd) => boolean;
+  readonly serveCli: (viewId: PreviewViewId, port: number, duplex: Duplex, end: CliTunnelEnd) => ServerHttp2Session | null;
   /** Ends the view's tunnel here: GOAWAY and the box's socket closed, and every CLI on it ended with `reason`. */
   readonly close: (viewId: PreviewViewId, reason: CliTunnelCloseReason) => void;
   readonly held: () => readonly PreviewViewId[];
@@ -164,11 +169,10 @@ export const createTunnelHub = (logger: Logger): TunnelHub => {
     attachBox: (viewId, ws, onGone) => {
       const old = tunnels.get(viewId);
       if (old !== undefined && old.ws !== ws) {
-        old.ws.close(4409, "replaced by a newer connection");
         drop(old, "box-gone");
+        old.ws.close(4409, "replaced by a newer connection");
       }
-      const duplex = createWebSocketStream(ws);
-      duplex.on("error", () => undefined);
+      const duplex = webSocketDuplex(ws);
       // Core is the client (ADR 0068): the box's sidecar, or the runner on `host`, serves HTTP/2.
       const session = connectHttp2("http://box.invalid", { createConnection: () => duplex });
       const tunnel: BoxTunnel = { viewId, ws, session, ready: false, waiters: new Set(), clis: new Set() };
@@ -183,6 +187,7 @@ export const createTunnelHub = (logger: Logger): TunnelHub => {
         }
         wake(tunnel);
       });
+      // The session ended under a socket that's still open (a GOAWAY, or bytes that aren't HTTP/2): the socket goes too.
       session.on("close", () => {
         if (ws.readyState === ws.OPEN) {
           ws.close(1000, "closed");
@@ -228,25 +233,27 @@ export const createTunnelHub = (logger: Logger): TunnelHub => {
     serveCli: (viewId, port, duplex, end) => {
       const tunnel = tunnels.get(viewId);
       if (tunnel?.ready !== true) {
-        return false;
+        return null;
       }
+      const made: { session: ServerHttp2Session | null } = { session: null };
       // One server per CLI, never listening: it only turns the CLI's bytes into its streams.
       const server = createHttp2Server();
       server.once("session", (session) => {
-        const served: ServedCli = { session, end };
-        tunnel.clis.add(served);
+        const cli: ServedCli = { session, end };
+        made.session = session;
+        tunnel.clis.add(cli);
         session.on("stream", (stream, headers) => {
           bridge(tunnel, port, stream, headers);
         });
         session.on("error", () => undefined);
         session.on("close", () => {
-          tunnel.clis.delete(served);
+          tunnel.clis.delete(cli);
         });
       });
       duplex.on("error", () => undefined);
       // The server makes the CLI's session at once, in this call.
       server.emit("connection", duplex);
-      return true;
+      return made.session;
     },
     close: (viewId, reason) => {
       const tunnel = tunnels.get(viewId);

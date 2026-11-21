@@ -6,7 +6,7 @@ import type { ServerHttp2Stream } from "node:http2";
 import { connect as netConnect } from "node:net";
 import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
-import { spliceStreams } from "@ostra/adapter-sdk";
+import { spliceStreams, webSocketDuplex } from "@ostra/adapter-sdk";
 import {
   CLI_PATH_PREFIX,
   CLI_TUNNEL_SUBPROTOCOL,
@@ -20,7 +20,6 @@ import {
 import type { CliPreviewTunnelRefusal, CliStartAppResponse, CliTunnelError, CliTunnelErrorCode } from "@ostra/protocol";
 import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
-import { webSocketDuplex } from "../task-host/preview-tunnel.ts";
 
 // `ostra preview`'s two servers in one, for the CLI's own tests (milestone 8, ticket 24): the web
 // app's two CLI routes (the ticket and "Start the app", answered with the protocol's schemas) and

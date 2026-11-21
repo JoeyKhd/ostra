@@ -33,8 +33,8 @@ import { startPreviewReplica } from "../testing/previews.ts";
 import type { PreviewReplica } from "../testing/previews.ts";
 import { freePort, registerRunnerAt, waitFor } from "../testing/restart.ts";
 import type { RegisteredAt } from "../testing/restart.ts";
-import { connectFakeTunnelBox, openFakeCli } from "../testing/tunnels.ts";
-import type { CliRefused, FakeCli, FakeTunnelBox } from "../testing/tunnels.ts";
+import { connectFakeTunnelBox, openFakeCli, openHostileCli } from "../testing/tunnels.ts";
+import type { CliRefused, FakeCli, FakeTunnelBox, HostileCli } from "../testing/tunnels.ts";
 import { dispatchPayload, seedQueuedTask, seedWorld } from "../testing/world.ts";
 import type { World } from "../testing/world.ts";
 
@@ -45,7 +45,8 @@ import type { World } from "../testing/world.ts";
 // ticket and carries local connections as CONNECT streams (ticket 24 builds the real one). The app
 // is the milestone's own fixture (`e2e/m8-previews-and-library/fixtures/test-web`): a real Vite
 // dev server with `/api` behind its proxy to a Node API, run on free ports on this machine (the
-// `host` executor's case). The two-replica case is in `replicas.test.ts`.
+// `host` executor's case). The two-replica case is in `replicas.test.ts`. A hostile CLI (one that
+// never answers core's close frame, or sends garbage) never takes core down (the fix after ticket 24).
 
 const fixtureDir = fileURLToPath(new URL("../../../../e2e/m8-previews-and-library/fixtures/test-web/", import.meta.url));
 
@@ -128,24 +129,61 @@ const tunnelOpenSchema = z.looseObject({ viewId: previewViewIdSchema, mode: z.li
 /** A Vite HMR message: its kind is all a test reads. */
 const hmrMessageSchema = z.looseObject({ type: z.string() });
 
-/**
- * Opens the CLI's tunnel with `ticket`, plays the runner's part (the box opens its preview
- * connection in `tunnel` mode once `preview.open` arrives), and resolves once the tunnel is up.
- */
-const tunnelUp = async (taskId: TaskId, ticket: string): Promise<{ readonly cli: FakeCli; readonly box: FakeTunnelBox; readonly viewId: PreviewViewId }> => {
-  const pending = openFakeCli(replica.url, ticket);
+/** Plays the runner's part for a CLI's new view: its box opens the preview connection in `tunnel` mode once `preview.open` arrives. */
+const boxUp = async (taskId: TaskId): Promise<{ readonly box: FakeTunnelBox; readonly viewId: PreviewViewId }> => {
   const open = await commandOf("preview.open", (body) => body["mode"] === "tunnel" && typeof body["viewId"] === "string" && !taken.has(body["viewId"]));
   const viewId = tunnelOpenSchema.parse(open.body).viewId;
   taken.add(viewId);
   expect(await test.db.previewView.findUniqueOrThrow({ where: { id: viewId } })).toMatchObject({ taskId, mode: "cli", openedByMemberId: fixture.a.member.id, leaseEpoch: 1 });
   const box = await connectFakeTunnelBox(replica.url, viewId, 1, runnerToken(), [vitePort]);
   opened.push(box);
+  return { box, viewId };
+};
+
+/**
+ * Opens the CLI's tunnel with `ticket`, plays the runner's part (the box opens its preview
+ * connection in `tunnel` mode once `preview.open` arrives), and resolves once the tunnel is up.
+ */
+const tunnelUp = async (taskId: TaskId, ticket: string): Promise<{ readonly cli: FakeCli; readonly box: FakeTunnelBox; readonly viewId: PreviewViewId }> => {
+  const pending = openFakeCli(replica.url, ticket);
+  const { box, viewId } = await boxUp(taskId);
   const cli = await pending;
   if (!isOpen(cli)) {
     throw new Error(`the tunnel was refused: ${JSON.stringify(cli.body)}`);
   }
   opened.push(cli);
   return { cli, box, viewId };
+};
+
+/** A hostile CLI's tunnel with `ticket`, the runner's part played as for any: resolves at core's 101. */
+const hostileUp = async (taskId: TaskId, ticket: string): Promise<{ readonly cli: HostileCli; readonly box: FakeTunnelBox; readonly viewId: PreviewViewId }> => {
+  const pending = openHostileCli(replica.url, ticket);
+  const { box, viewId } = await boxUp(taskId);
+  const cli = await pending;
+  opened.push({ close: cli.destroy });
+  return { cli, box, viewId };
+};
+
+/** Collects every uncaught exception while `run` runs: a tunnel's must never reach the process. */
+const uncaughtDuring = async (run: () => Promise<void>): Promise<readonly unknown[]> => {
+  const uncaught: unknown[] = [];
+  const onUncaught = (error: unknown): void => {
+    uncaught.push(error);
+  };
+  process.on("uncaughtException", onUncaught);
+  try {
+    await run();
+  } finally {
+    process.off("uncaughtException", onUncaught);
+  }
+  return uncaught;
+};
+
+/** Waits for a view's row to close, then checks nothing of its CLI is left on this replica. */
+const viewClosed = async (viewId: PreviewViewId): Promise<void> => {
+  await waitFor("the hostile CLI's view closed", async () => (await test.db.previewView.findUniqueOrThrow({ where: { id: viewId } })).state === "closed", 10_000);
+  expect(replica.previews.cliTunnels.open(viewId)).toBe(0);
+  expect(replica.previews.tunnels.clis(viewId)).toBe(0);
 };
 
 /** One of the fixture's processes, from its folder. */
@@ -207,7 +245,7 @@ beforeAll(async () => {
   await test.db.appProcess.create({
     data: { organizationId: world.organizationId, projectId: world.projectId, environmentId: environment.id, repoId: world.repoId, name: "web", command: "pnpm dev", port: vitePort, readyKind: "http", readyValue: "/", label: "Web", primary: true },
   });
-  replica = await startPreviewReplica(test.db, test.url, { signingKey: randomBytes(32), secret, jobs, logger, clock, cliRecheckMs: 300 });
+  replica = await startPreviewReplica(test.db, test.url, { signingKey: randomBytes(32), secret, jobs, logger, clock, cliRecheckMs: 300, cliCloseWaitMs: 500 });
   runner = await registerRunnerAt(replica.url, test.db, fixture.a.member);
   const token = tokenResponseSchema.parse((await postJson(`${replica.url}${runnerPaths.token}`, signAssertion(runner.key, runner.runnerId))).body).accessToken;
   peer = await connectPeer(replica.url, token, runner.runnerId, { preview: { stream: true, tunnel: true } });
@@ -377,5 +415,68 @@ describe("core's tunnel for ostra preview", () => {
     expect((await cli.closed).code).toBe(cliTunnelCloseCodes["session-ended"]);
     await waitFor("the cli view closed", async () => (await test.db.previewView.findUniqueOrThrow({ where: { id: viewId } })).state === "closed", 10_000);
     await expect(fetch(`http://127.0.0.1:${String(local)}/`)).rejects.toThrow();
+  }, 60_000);
+
+  it("F-143/c2: a CLI that never answers core's close frame is cut, and core stays up: its view closes, nothing escapes, other tunnels go on", async () => {
+    const task = await boxedTask();
+    const uncaught = await uncaughtDuring(async () => {
+      // A well-behaved CLI on its own view of the same task.
+      const { cli: other } = await tunnelUp(task.taskId, await ticketFor(task.taskId, await cliSession()));
+      const local = await other.listen(vitePort);
+      expect((await fetch(`http://127.0.0.1:${String(local)}/`)).status).toBe(200);
+
+      // The hostile one speaks HTTP/2 and holds a CONNECT to the app open, then goes silent.
+      const sessionId = await cliSession();
+      const { cli: hostile, box, viewId } = await hostileUp(task.taskId, await ticketFor(task.taskId, sessionId));
+      const session = hostile.http2();
+      const status = await new Promise<number>((resolve, reject) => {
+        const stream = session.request({ ":method": "CONNECT", ":authority": `localhost:${String(vitePort)}` });
+        stream.on("response", (headers) => {
+          resolve(Number(headers[":status"]));
+        });
+        stream.on("error", reject);
+      });
+      expect(status).toBe(200);
+      expect(replica.previews.tunnels.clis(viewId)).toBe(1);
+      hostile.silence();
+
+      // Core ends the tunnel (the CLI session revoked, 4401) while its HTTP/2 session is live. The
+      // CLI never answers the close frame, so core cuts its socket: the view closes.
+      await test.db.cliSession.update({ where: { id: sessionId }, data: { revokedAt: new Date() } });
+      await viewClosed(viewId);
+      expect(records.some((record) => record.message === "preview.cli-closed" && record.fields["viewId"] === viewId && record.fields["code"] === 1006)).toBe(true);
+      // The box goes after the cut: the CLI's session is gone with its socket, so nothing writes on it.
+      box.close();
+      await box.closed;
+      await waitFor("the box's tunnel dropped", () => !replica.previews.tunnels.holds(viewId), 10_000);
+
+      // The other tunnel goes on, on the same core.
+      expect((await fetch(`http://127.0.0.1:${String(local)}/`)).status).toBe(200);
+    });
+    expect(uncaught).toEqual([]);
+  }, 60_000);
+
+  it("F-143/c2: a CLI that sends garbage after the upgrade is closed, and core stays up: bytes that aren't HTTP/2, and bytes that aren't a WebSocket frame", async () => {
+    const task = await boxedTask();
+    const uncaught = await uncaughtDuring(async () => {
+      const { cli: other } = await tunnelUp(task.taskId, await ticketFor(task.taskId, await cliSession()));
+      const local = await other.listen(vitePort);
+      expect((await fetch(`http://127.0.0.1:${String(local)}/`)).status).toBe(200);
+
+      // Binary messages, but not HTTP/2's preface: the CLI's session fails, and its socket closes with 1002.
+      const notHttp2 = await hostileUp(task.taskId, await ticketFor(task.taskId, await cliSession()));
+      notHttp2.cli.sendFrame(Buffer.from("this is not HTTP/2\r\n\r\n".repeat(4)));
+      // Bytes that aren't a WebSocket frame at all (RSV2 and RSV3 set): `ws` refuses them.
+      const notWebSocket = await hostileUp(task.taskId, await ticketFor(task.taskId, await cliSession()));
+      notWebSocket.cli.sendRaw(Buffer.from("this is not a WebSocket frame\r\n"));
+
+      // Neither answers core's close frame: each view closes all the same.
+      await viewClosed(notHttp2.viewId);
+      await viewClosed(notWebSocket.viewId);
+      expect(records.some((record) => record.message === "preview.cli-protocol-error" && record.fields["viewId"] === notHttp2.viewId)).toBe(true);
+
+      expect((await fetch(`http://127.0.0.1:${String(local)}/`)).status).toBe(200);
+    });
+    expect(uncaught).toEqual([]);
   }, 60_000);
 });
