@@ -19,7 +19,7 @@ import { z } from "zod";
 import { loadEmailRow, viewEmail } from "../services/email.ts";
 import { memberProcedure, router, unwrap } from "../trpc/init.ts";
 import { boardProjectIds } from "./home-board.ts";
-import { countOpenNeedsYou, listOpenNeedsYou, loadNeedsYouViews, openNeedsYouWhere } from "./needs-you-view.ts";
+import { countOpenNeedsYou, countOpenNeedsYouByProject, listOpenNeedsYou, loadNeedsYouViews, openNeedsYouWhere } from "./needs-you-view.ts";
 import type { NeedsYouView } from "./needs-you-view.ts";
 
 // F-036, F-115 (tickets 36 and 37; ADR 0050): a member's notifications. `preferences` is their own
@@ -287,10 +287,13 @@ export const notificationsRouter = router({
   /**
    * The sidebar's count: everything that waits on the member, by Home's rule (`countOpenNeedsYou`),
    * so it is always Home's total and the Open tab's count. Reading doesn't lower it; an answer does.
+   * `byProject` splits it by project, by the same rule, for the shell's Needs you panel and the
+   * projects' amber dots: one answer, so the panel's counts always add up to the rail's.
    */
   openCount: memberProcedure.query(async ({ ctx }) => {
     const { db } = ctx.deps;
     const projectIds = (await boardProjectIds(db, ctx.scope, undefined)) ?? [];
-    return { count: await countOpenNeedsYou({ db }, ctx.scope, projectIds) };
+    const byProject = await countOpenNeedsYouByProject({ db }, ctx.scope, projectIds);
+    return { count: byProject.reduce((sum, project) => sum + project.count, 0), byProject };
   }),
 });

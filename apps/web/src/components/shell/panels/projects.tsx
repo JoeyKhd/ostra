@@ -20,12 +20,22 @@ import { useShellState } from "../shell-state";
 
 type Project = RouterOutputs["projects"]["list"][number];
 
-/** Needs-you ones first, then the list's order. */
-export const byNeedsYou = (projects: readonly Project[]): readonly Project[] =>
-  projects.map((project, at) => ({ project, at })).sort((a, b) => Number(b.project.needsYouCount > 0) - Number(a.project.needsYouCount > 0) || a.at - b.at).map(({ project }) => project);
+/** What waits on the member in each project, by project ID (the shell's `needsYouByProject`). */
+export type WaitingByProject = ReadonlyMap<string, number>;
+
+/** Projects where something waits on the member first, then the list's order. */
+export const byNeedsYou = (projects: readonly Project[], waiting: WaitingByProject): readonly Project[] =>
+  projects
+    .map((project, at) => ({ project, at, waits: (waiting.get(project.id) ?? 0) > 0 }))
+    .sort((a, b) => Number(b.waits) - Number(a.waits) || a.at - b.at)
+    .map(({ project }) => project);
+
+/** The amber dot of a project where `n` things wait on the member, or nothing. */
+export const NeedsYouDot = ({ n }: { readonly n: number }) =>
+  n > 0 ? <span aria-label={t("shell.needsYouHere", { n })} className="size-1.5 rounded-full bg-amber shadow-(--dot-amber)" /> : null;
 
 /** A project's row: its 9px square, its name, a lock when restricted, and an amber dot where something waits on the member. */
-export const ProjectRowLink = ({ project, onNavigate, end }: { readonly project: Project; readonly onNavigate: () => void; readonly end?: ReactNode }) => (
+export const ProjectRowLink = ({ project, waiting, onNavigate, end }: { readonly project: Project; readonly waiting: number; readonly onNavigate: () => void; readonly end?: ReactNode }) => (
   <NavLink
     href={`/projects/${project.id}`}
     current={false}
@@ -33,7 +43,7 @@ export const ProjectRowLink = ({ project, onNavigate, end }: { readonly project:
     end={
       <>
         {project.access === "restricted" ? <LockIcon aria-label={t("shell.restrictedProject")} className="size-3! text-faint" /> : null}
-        {project.needsYouCount > 0 ? <span aria-label={t("shell.needsYouHere", { n: project.needsYouCount })} className="size-1.5 rounded-full bg-amber shadow-(--dot-amber)" /> : null}
+        <NeedsYouDot n={waiting} />
         {end}
       </>
     }
@@ -55,7 +65,7 @@ export const ProjectsPanel = ({ mode, onNavigate }: { readonly mode: PanelMode; 
   const projects = useQuery(trpc.projects.list.queryOptions());
   const [filter, setFilter] = useState("");
   const words = filter.toLowerCase().split(/\s+/).filter((word) => word.length > 0);
-  const shown = byNeedsYou(projects.data ?? []).filter((project) => words.every((word) => project.name.toLowerCase().includes(word)));
+  const shown = byNeedsYou(projects.data ?? [], shell.needsYouByProject).filter((project) => words.every((word) => project.name.toLowerCase().includes(word)));
   const title = t("shell.projects");
   return (
     <PanelFrame
@@ -101,6 +111,7 @@ export const ProjectsPanel = ({ mode, onNavigate }: { readonly mode: PanelMode; 
             <ProjectRowLink
               key={project.id}
               project={project}
+              waiting={shell.needsYouByProject.get(project.id) ?? 0}
               onNavigate={onNavigate}
               {...(project.runningCount > 0 ? { end: <RowCount n={project.runningCount} label={t("shell.panel.runningCount", { n: project.runningCount })} /> } : {})}
             />

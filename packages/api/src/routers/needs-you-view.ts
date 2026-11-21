@@ -14,7 +14,7 @@ import {
   taskIdSchema,
   turnIdSchema,
 } from "@ostra/protocol";
-import type { ApprovalSubject, MemberId, NeedsYouItemId, OrganizationId, TaskId } from "@ostra/protocol";
+import type { ApprovalSubject, MemberId, NeedsYouItemId, OrganizationId, ProjectId, TaskId } from "@ostra/protocol";
 import { z } from "zod";
 
 import { loadDoingByTask } from "./task-doing.ts";
@@ -451,6 +451,27 @@ export const openNeedsYouWhere = (scope: OpenNeedsYouScope, projectIds: readonly
   };
   const legacyTasks = { organizationId, projectId: { in: [...projectIds] }, state: "needs_you" as const, needsYouItems: { none: { state: "open" as const } } };
   return { items, legacyTasks };
+};
+
+/**
+ * How many things wait on the member in each project, by the one rule: the shell's Needs you panel
+ * lists these beside the sidebar's count, which is their sum. A project with nothing waiting is left out.
+ */
+export const countOpenNeedsYouByProject = async (
+  deps: { readonly db: Db },
+  scope: OpenNeedsYouScope,
+  projectIds: readonly string[],
+): Promise<readonly { readonly projectId: ProjectId; readonly count: number }[]> => {
+  const where = openNeedsYouWhere(scope, projectIds);
+  const [items, legacy] = await Promise.all([
+    deps.db.needsYouItem.groupBy({ by: ["projectId"], where: where.items, _count: { _all: true } }),
+    deps.db.task.groupBy({ by: ["projectId"], where: where.legacyTasks, _count: { _all: true } }),
+  ]);
+  const counts = new Map<string, number>();
+  for (const row of [...items, ...legacy]) {
+    counts.set(row.projectId, (counts.get(row.projectId) ?? 0) + row._count._all);
+  }
+  return [...counts].map(([projectId, count]) => ({ projectId: projectIdSchema.parse(projectId), count }));
 };
 
 /** How many things wait on the member, by the one rule: the sidebar's count, and every total beside it. */

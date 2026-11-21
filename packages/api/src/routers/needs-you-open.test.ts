@@ -79,6 +79,10 @@ const surfaces = async (who: Member) => {
     pageStates: [...new Set(page.rows.map((row) => row.view.state))],
     unread: page.unread,
     sidebar: sidebar.count,
+    /** The shell's Needs you panel: each project's count beside the sidebar's. */
+    panel: Object.fromEntries(sidebar.byProject.map((project) => [project.projectId, project.count])),
+    /** The page's Open rows, counted by their project. */
+    pageByProject: page.rows.reduce<Record<string, number>>((counts, row) => ({ ...counts, [row.view.project.id]: (counts[row.view.project.id] ?? 0) + 1 }), {}),
   };
 };
 
@@ -255,7 +259,7 @@ describe("one rule for what waits", () => {
     }
   });
 
-  it("F-062/c2, F-036/c2: for every mix of item and task states, Home's total and rows, the page's Open tab and its count, and the sidebar's count agree", async () => {
+  it("F-062/c2, F-036/c2, F-147: for every mix of item and task states, Home's total and rows, the page's Open tab and its count, the sidebar's count and the Needs you panel's counts by project agree", async () => {
     const { a, b } = harness.fixture;
     const taskStates = ["needs_you", "running", "in_review", "stopped", "merged"] as const;
     const itemStates = ["open", "answered", "dismissed"] as const;
@@ -300,6 +304,10 @@ describe("one rule for what waits", () => {
       expect(seen.listTotal).toBe(seen.homeTotal);
       expect(seen.pageTotal).toBe(seen.homeTotal);
       expect(seen.sidebar).toBe(seen.homeTotal);
+      // The panel's counts are the page's rows of each project, so they add up to the rail's count:
+      // never every task of the project in needs you, which counts what waits on someone else.
+      expect(seen.panel).toEqual(seen.pageByProject);
+      expect(Object.values(seen.panel).reduce((sum, n) => sum + n, 0)).toBe(seen.sidebar);
       expect(seen.listRows).toHaveLength(seen.homeTotal);
       expect([...seen.pageRows].sort()).toEqual([...seen.listRows].sort());
       expect(seen.homeRows).toEqual(seen.listRows.slice(0, 5));

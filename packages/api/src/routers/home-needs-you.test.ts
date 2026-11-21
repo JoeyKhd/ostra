@@ -265,7 +265,7 @@ describe("notifications", () => {
     const waiting = (await member.home.needsYou({ limit: 50 })).total;
     const open1 = await member.notifications.list({ tab: "open" });
     expect(open1).toMatchObject({ tab: "open", total: waiting, unread: 1 });
-    expect(await member.notifications.openCount()).toEqual({ count: waiting });
+    expect(await member.notifications.openCount()).toMatchObject({ count: waiting });
     const row = open1.rows.find((candidate) => candidate.view.itemId === itemId);
     expect(row).toMatchObject({ kind: "approval", read: false, state: "open", failedDeliveries: [], view: { reason: "approval", taskId: task.taskId, itemId, project: { id: open } } });
     expect(row?.view.answer).toMatchObject({ kind: "approval", forThisTask: { tool: "execute", pattern: "pnpm test" } });
@@ -286,7 +286,7 @@ describe("notifications", () => {
     const read = await member.notifications.list({ tab: "open" });
     expect(read).toMatchObject({ total: waiting, unread: 0 });
     expect(read.rows.find((candidate) => candidate.view.itemId === itemId)).toMatchObject({ read: true });
-    expect(await member.notifications.openCount()).toEqual({ count: waiting });
+    expect(await member.notifications.openCount()).toMatchObject({ count: waiting });
 
     // An answer closes the item: it leaves the Open tab and every count at once, before its
     // fan-out runs; the fan-out closes the notification, and it moves to Done with its outcome.
@@ -297,7 +297,7 @@ describe("notifications", () => {
       await tx.task.update({ where: { id: task.taskId }, data: { state: "running", needsYouReason: null } });
     });
     expect((await member.notifications.list({ tab: "open" })).rows.map((candidate) => candidate.view.itemId)).not.toContain(itemId);
-    expect(await member.notifications.openCount()).toEqual({ count: waiting - 1 });
+    expect(await member.notifications.openCount()).toMatchObject({ count: waiting - 1 });
     await fanOutNotification({ db: harness.test.db, ...harness.deps.ports }, { itemId, change: "answered" });
     const done = await member.notifications.list({ tab: "done" });
     expect(done.rows).toHaveLength(1);

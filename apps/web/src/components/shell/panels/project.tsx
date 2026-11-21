@@ -23,8 +23,9 @@ import type { ProjectRow } from "../places";
 import { projectColour } from "../project-colour";
 import { otherProjects, readRecentProjects } from "../recent";
 import { ShellIconView } from "../shell-icons";
-import { useShellState } from "../shell-state";
-import { byNeedsYou, ProjectRowLink } from "./projects";
+import { useOptionalShellState, useShellState } from "../shell-state";
+import { byNeedsYou, NeedsYouDot, ProjectRowLink } from "./projects";
+import type { WaitingByProject } from "./projects";
 
 type Project = RouterOutputs["projects"]["list"][number];
 
@@ -49,36 +50,42 @@ const writeMine = (mine: boolean): void => {
   }
 };
 
+/** Nothing waits anywhere: the switcher drawn outside the shell (a unit test of a page alone). */
+const NONE_WAITING: WaitingByProject = new Map();
+
 /** The switcher's menu: the member's projects, needs-you ones first, and New project for an admin. */
-export const SwitcherMenu = ({ trigger, projects, admin, onNavigate }: { readonly trigger: ReactNode; readonly projects: readonly Project[]; readonly admin: boolean; readonly onNavigate: () => void }) => (
-  <DropdownMenu>
-    {trigger}
-    <DropdownMenuContent align="start" className="max-h-[min(420px,70vh)] w-[240px] overflow-y-auto">
-      <DropdownMenuLabel>{t("shell.projects")}</DropdownMenuLabel>
-      {byNeedsYou(projects).map((project) => (
-        <DropdownMenuItem key={project.id} asChild>
-          <Link href={`/projects/${project.id}`} onClick={onNavigate}>
-            <span aria-hidden className="size-[9px] shrink-0 rounded-[2px]" style={{ background: projectColour(project.id) }} />
-            <span className="min-w-0 flex-1 truncate">{project.name}</span>
-            {project.access === "restricted" ? <LockIcon aria-label={t("shell.restrictedProject")} className="size-3!" /> : null}
-            {project.needsYouCount > 0 ? <span aria-label={t("shell.needsYouHere", { n: project.needsYouCount })} className="size-1.5 rounded-full bg-amber shadow-(--dot-amber)" /> : null}
-          </Link>
-        </DropdownMenuItem>
-      ))}
-      {admin ? (
-        <>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem asChild>
-            <Link href="/projects/new" onClick={onNavigate}>
-              <PlusIcon aria-hidden />
-              {t("shell.newProject")}
+export const SwitcherMenu = ({ trigger, projects, admin, onNavigate }: { readonly trigger: ReactNode; readonly projects: readonly Project[]; readonly admin: boolean; readonly onNavigate: () => void }) => {
+  const waiting = useOptionalShellState()?.needsYouByProject ?? NONE_WAITING;
+  return (
+    <DropdownMenu>
+      {trigger}
+      <DropdownMenuContent align="start" className="max-h-[min(420px,70vh)] w-[240px] overflow-y-auto">
+        <DropdownMenuLabel>{t("shell.projects")}</DropdownMenuLabel>
+        {byNeedsYou(projects, waiting).map((project) => (
+          <DropdownMenuItem key={project.id} asChild>
+            <Link href={`/projects/${project.id}`} onClick={onNavigate}>
+              <span aria-hidden className="size-[9px] shrink-0 rounded-[2px]" style={{ background: projectColour(project.id) }} />
+              <span className="min-w-0 flex-1 truncate">{project.name}</span>
+              {project.access === "restricted" ? <LockIcon aria-label={t("shell.restrictedProject")} className="size-3!" /> : null}
+              <NeedsYouDot n={waiting.get(project.id) ?? 0} />
             </Link>
           </DropdownMenuItem>
-        </>
-      ) : null}
-    </DropdownMenuContent>
-  </DropdownMenu>
-);
+        ))}
+        {admin ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/projects/new" onClick={onNavigate}>
+                <PlusIcon aria-hidden />
+                {t("shell.newProject")}
+              </Link>
+            </DropdownMenuItem>
+          </>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+};
 
 /**
  * A project's panel (app-shell.md, "With a project open"): the switcher in its head, the project's
@@ -208,7 +215,7 @@ export const ProjectPanel = ({ projectId, mode, onNavigate }: { readonly project
         <>
           <SectionLabel>{t("shell.panel.otherProjects")}</SectionLabel>
           {others.map((other) => (
-            <ProjectRowLink key={other.id} project={other} onNavigate={onNavigate} />
+            <ProjectRowLink key={other.id} project={other} waiting={shell.needsYouByProject.get(other.id) ?? 0} onNavigate={onNavigate} />
           ))}
           {(projects.data?.length ?? 0) > others.length + 1 ? (
             <SwitcherMenu

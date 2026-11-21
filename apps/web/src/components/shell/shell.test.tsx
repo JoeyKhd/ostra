@@ -2,11 +2,12 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 
 import { paletteActions, shortcutClashes, shortcutText } from "@ostra/domain/palette";
-import { userIdSchema } from "@ostra/protocol";
+import { projectIdSchema, userIdSchema } from "@ostra/protocol";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { t } from "@/lib/messages";
+import type { RouterOutputs } from "@/lib/trpc";
 
 import { sheetLines } from "./actions/registry";
 import { destinations, placed } from "./destinations";
@@ -21,6 +22,8 @@ import { nextRovingIndex } from "./roving";
 import { ShellStateContext } from "./shell-state";
 import type { ShellState } from "./shell-state";
 import { PreviewFrameLines } from "./shortcut-sheet";
+import { waitingProjects } from "./panels/needs-you";
+import { byNeedsYou } from "./panels/projects";
 import { bandOf, clampWidth, defaultSidebar, panelShown, readSidebarCookie, sidebarCookieLine, sidebarCookieValue, toggled } from "./sidebar-state";
 
 // F-147 (milestone 8, ticket 10; app-shell.md): the double sidebar's rules, each alone. The browser
@@ -320,6 +323,7 @@ describe("the phone's menu (F-147)", () => {
       peekControl: { enter: noop, hold: noop, leave: noop, close: noop, dispose: noop },
       spaceHref: () => "/",
       needsYou,
+      needsYouByProject: new Map(),
       recentTasks: [],
     } as const satisfies ShellState;
   };
@@ -342,5 +346,36 @@ describe("the phone's menu (F-147)", () => {
     expect(waiting).toContain('aria-expanded="true"');
     expect(waiting).toContain("menu-needs-you-dot");
     expect(draw(null, false)).not.toContain("menu-needs-you-dot");
+  });
+});
+
+describe("the Needs you panel's projects (F-147)", () => {
+  const project = (id: string, name: string, needsYouCount: number): RouterOutputs["projects"]["list"][number] => ({
+    id: projectIdSchema.parse(id),
+    name,
+    slug: name,
+    access: "open",
+    repos: [],
+    needsYouCount,
+    runningCount: 0,
+    activeCount: needsYouCount,
+    inboxCount: 0,
+    createdAt: 0,
+  });
+  const projects = [project("p-calc", "calculator", 13), project("p-web", "web-storefront", 10), project("p-vault", "vault", 0)];
+  // What waits on the member, by the rail's own answer: 4 + 2 = the rail's 6.
+  const waiting = new Map([["p-web", 4], ["p-calc", 2]]);
+
+  it("F-147: By project counts what waits on the member, from the rail's answer, so the rows add up to All: never the project's tasks in needs you", () => {
+    const rows = waitingProjects(projects, waiting);
+    expect(rows.map((row) => [row.project.name, row.count])).toEqual([["web-storefront", 4], ["calculator", 2]]);
+    expect(rows.reduce((sum, row) => sum + row.count, 0)).toBe(6);
+    // Nothing waits on the member: no project is listed, however many of its tasks need someone else.
+    expect(waitingProjects(projects, new Map())).toEqual([]);
+  });
+
+  it("F-147: the projects where something waits on the member sort first, by the same answer", () => {
+    expect(byNeedsYou(projects, new Map([["p-vault", 1]])).map((one) => one.name)).toEqual(["vault", "calculator", "web-storefront"]);
+    expect(byNeedsYou(projects, new Map()).map((one) => one.name)).toEqual(["calculator", "web-storefront", "vault"]);
   });
 });

@@ -59,6 +59,11 @@ export type ShellState = {
   readonly spaceHref: (space: Space) => string;
   /** The member's open needs-you items, or `null` until it loads (or when it fails). */
   readonly needsYou: number | null;
+  /**
+   * The same items by project ID, from the same answer, so the Needs you panel's counts and the
+   * projects' amber dots add up to `needsYou`; empty until it loads. A project with none is absent.
+   */
+  readonly needsYouByProject: ReadonlyMap<string, number>;
   /** The tasks the member opened lately in this organization, in this browser (Home's `Recent`). */
   readonly recentTasks: readonly RecentTask[];
 };
@@ -215,6 +220,7 @@ export const ShellStateProvider = ({ me, initial, children }: { readonly me: Me;
   // What waits on the member: the same query the shell's live region reads (one request).
   const waiting = useQuery({ ...trpc.notifications.openCount.queryOptions(), refetchInterval: 10_000, enabled: organizationId !== null });
   const needsYou = waiting.data?.count ?? null;
+  const needsYouByProject = useMemo(() => new Map((waiting.data?.byProject ?? []).map((project) => [project.projectId, project.count] as const)), [waiting.data]);
 
   const value: ShellState = {
     me,
@@ -237,6 +243,7 @@ export const ShellStateProvider = ({ me, initial, children }: { readonly me: Me;
     peekControl,
     spaceHref,
     needsYou,
+    needsYouByProject,
     recentTasks,
   };
   return <ShellStateContext.Provider value={value}>{children}</ShellStateContext.Provider>;
