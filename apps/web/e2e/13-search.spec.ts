@@ -59,7 +59,8 @@ test("F-080/c1: the search page's filters round-trip through the URL", { tag: "@
   await page.goto(`/search?q=${m4World.word}&repo=m4calc&state=stopped&period=any`);
   await expect(page.getByTestId("search-query")).toHaveValue(m4World.word);
   await expect(page.getByTestId("search-filter-repo-value")).toHaveText("m4calc");
-  await expect(page.getByTestId("search-filter-state-value")).toHaveText("stopped");
+  // The state reads as the task list says it (search.md: `State: Stopped`).
+  await expect(page.getByTestId("search-filter-state-value")).toHaveText("Stopped");
   await expect(page.getByTestId("search-filter-period-value")).toHaveText("Any time");
   const result = page.getByTestId("search-result").and(page.locator(`[data-result="${world.taskId}"]`));
   await expect(result).toBeVisible();
