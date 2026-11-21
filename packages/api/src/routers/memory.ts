@@ -223,7 +223,7 @@ const versionSources = async (db: Db, scope: MemberScope, proposalIds: readonly 
     const agentMade = proposal.sourceKind === "agent" || proposal.sourceKind === "closing_turn";
     out.set(proposal.id, {
       kind: proposal.sourceKind,
-      agent: agentMade ? agentDisplayName(task?.agentProfileId == null ? "opencode" : (adapterOf.get(task.agentProfileId) ?? "opencode")) : null,
+      agent: agentMade ? agentDisplayName(task === undefined || task.agentProfileId === null ? "opencode" : (adapterOf.get(task.agentProfileId) ?? "opencode")) : null,
       by: agentMade ? null : personOf(names, proposal.proposedByMemberId),
       task: task === undefined || !open.has(task.projectId) ? null : { taskId: taskIdSchema.parse(task.id), key: taskKeyOf(task) },
     });
