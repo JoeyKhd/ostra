@@ -339,6 +339,10 @@ const preview = await (async () => {
   const environment = (await db.environment.findUnique({ where: { projectId: project.id } })) ?? (await db.environment.create({ data: { organizationId, projectId: project.id } }));
   await db.appProcess.create({ data: { organizationId, projectId: project.id, environmentId: environment.id, repoId: repo.id, name: "web", command: "pnpm dev", port: 5173, readyKind: "port", label: data("web"), primary: true } });
   const made = await createTask("Add a history panel", "running", null, "waiting");
+  // Its branch is pushed, so the top bar offers Take it local and the walks open its popover.
+  await db.taskRepo.create({
+    data: { organizationId, projectId: project.id, taskId: made.taskId, repoId: repo.id, branchName: data(`ostra/routes-${args.tag}`), baseBranch: "main", state: "branch_pushed", headSha: "4f2c1a9b8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a" },
+  });
   const box = await db.box.create({ data: { organizationId, projectId: project.id, taskId: made.taskId, executor: "host", state: "released", releasedAt: new Date(), stoppedAt: new Date() } });
   await db.lease.create({ data: { organizationId, projectId: project.id, taskId: made.taskId, epoch: 1, runnerId: runner.id, boxId: box.id, state: "ended", acceptedAt: new Date(Date.now() - 20 * 60_000), endedAt: new Date() } });
   const { token, tokenHash } = newPreviewLinkToken();

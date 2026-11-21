@@ -1,7 +1,7 @@
 "use client";
 
 import { Tooltip as TooltipPrimitive } from "radix-ui";
-import type { ReactNode } from "react";
+import type { FocusEvent, ReactNode } from "react";
 
 /**
  * shadcn/ui's tooltip, graphite: a `--raise` panel with a `--line-2` border, 13px text. It repeats
@@ -13,6 +13,7 @@ export const Tooltip = ({
   side,
   delay = 300,
   suppressed = false,
+  hoverOnly = false,
 }: {
   readonly content: ReactNode;
   readonly children: ReactNode;
@@ -22,10 +23,18 @@ export const Tooltip = ({
   readonly delay?: number;
   /** Kept closed while something else already says it (the rail's peek shows the space's panel). */
   readonly suppressed?: boolean;
+  /**
+   * Opens on hover only, never on keyboard focus: for a control whose name and outcome are already
+   * said to assistive tech, inside a popover or a sheet, where an open tooltip would take the first
+   * Escape and leave the popover open (F-081: one Escape closes an overlay).
+   */
+  readonly hoverOnly?: boolean;
 }) => (
   <TooltipPrimitive.Provider delayDuration={delay}>
     <TooltipPrimitive.Root {...(suppressed ? { open: false } : {})}>
-      <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
+      <TooltipPrimitive.Trigger asChild {...(hoverOnly ? { onFocus: (event: FocusEvent<HTMLButtonElement>) => { event.preventDefault(); } } : {})}>
+        {children}
+      </TooltipPrimitive.Trigger>
       <TooltipPrimitive.Portal>
         <TooltipPrimitive.Content
           {...(side === undefined ? {} : { side })}

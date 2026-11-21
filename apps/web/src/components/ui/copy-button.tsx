@@ -58,7 +58,9 @@ export const CopyButton = ({ text, selectId, disabled = false, className }: Copy
   const label = outcome === "copied" ? t("takeLocal.copied") : outcome === "refused" ? t("takeLocal.copyRefused") : t("takeLocal.copy");
   return (
     <>
-      <Tooltip content={label}>
+      {/* Its name is `Copy` and its outcome is announced below, so the tooltip is for the pointer:
+          on keyboard focus it would take a popover's first Escape (Take it local, F-081). */}
+      <Tooltip content={label} hoverOnly>
         <button
           type="button"
           aria-label={t("takeLocal.copy")}
