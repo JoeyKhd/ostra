@@ -19,7 +19,7 @@ import {
   syncProviderModels,
   systemClock,
 } from "@ostra/domain";
-import type { DispatchTaskResult, MemberScope, MessageFilesDeps, SendMemberMessageResult, SessionTimers } from "@ostra/domain";
+import type { DispatchTaskResult, MemberScope, MessageFilesDeps, SendMemberMessageResult, SessionTimers, TaskSpecFilesCaps } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
 import {
@@ -207,9 +207,12 @@ const accept = async (taskId: TaskId, offered: DispatchTaskResult, runner: Runne
   );
 };
 
-const specFor = async (taskId: TaskId, runnerId: RunnerId): Promise<TaskSpec> => {
+const specFor = async (taskId: TaskId, runnerId: RunnerId, taskFilesCaps?: TaskSpecFilesCaps): Promise<TaskSpec> => {
   const { leaseEpoch } = await test.db.task.findUniqueOrThrow({ where: { id: taskId } });
-  const built = await buildTaskSpec({ db: test.db, codeHost, secretStore, settings: SPEC_SETTINGS, logger }, { taskId, runnerId, leaseEpoch: leaseEpochSchema.parse(leaseEpoch) });
+  const built = await buildTaskSpec(
+    { db: test.db, codeHost, secretStore, settings: SPEC_SETTINGS, logger, ...(taskFilesCaps === undefined ? {} : { taskFilesCaps }) },
+    { taskId, runnerId, leaseEpoch: leaseEpochSchema.parse(leaseEpoch) },
+  );
   if (!built.ok) {
     throw new Error(`spec: ${built.error}`);
   }
@@ -371,6 +374,59 @@ describe("the spec's files (F-148/c4, c6)", () => {
       const fewer = await specFor(task.taskId, second.runnerId);
       expect(fewer.files?.map((file) => file.fileId)).toEqual([mock, later]);
       expect(fewer.restore?.pendingMessages[0]?.files).toEqual({ fileIds: [mock], images: [mock] });
+    } finally {
+      await setOnline(first, true);
+    }
+  });
+
+  it("past the spec's caps the newest files stay: a reopen's own on a fresh box always, the oldest left out, the rest oldest first", async () => {
+    await setModel(["text", "image"], null);
+    const oldest = await upload("oldest.png");
+    const older = await upload("older.png");
+    const task = await accepted("Make the history panel", [oldest, older], first);
+    // The first turn answers the first message, then the box goes with its runner.
+    await task.send({ kind: "turn.started", turnId }, { kind: "turn.ended", turnId, stopReason: "end_turn" });
+    await setOnline(first, false);
+    try {
+      await test.db.task.update({ where: { id: task.taskId }, data: { state: "stopped", subState: null, stoppedReason: "runner_lost" } });
+      const notes = await upload("reopen notes.pdf", "document");
+      const reopened = await test.db.$transaction((tx) =>
+        reopenTask(
+          { tx, scope, jobs, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock, spendCap: CAPS, timers, files: FILES },
+          { taskId: task.taskId, clientMessageId: clientMessageIdSchema.parse(randomUUID()), text: "Carry on, with these notes.", fileIds: [notes] },
+        ),
+      );
+      if (!reopened.ok) {
+        throw new Error(`reopen refused: ${reopened.error}`);
+      }
+      const offered = await dispatch(task.taskId, reopened.sessionId);
+      expect(offered).toMatchObject({ ok: true, runnerId: second.runnerId });
+      expect((await test.db.session.findUniqueOrThrow({ where: { id: reopened.sessionId } })).origin).toBe("rebuilt");
+      await accept(task.taskId, offered, second);
+      const reopening = (await messagesOf(task.taskId)).find((message) => message.reopen === true);
+      // Only the reopen's message is owed: the first turn answered the first.
+      const owed = [{ clientMessageId: reopening?.clientMessageId, text: "Carry on, with these notes.", files: { fileIds: [notes], images: [] } }];
+
+      // Within the caps, every file, oldest first.
+      const all = await specFor(task.taskId, second.runnerId);
+      expect(all.files?.map((file) => file.fileId)).toEqual([oldest, older, notes]);
+      expect(all.restore?.pendingMessages).toEqual(owed);
+
+      // Two files at most: the reopen's own stays, the newest earlier one with it, and the oldest is left out.
+      const two = await specFor(task.taskId, second.runnerId, { maxFiles: 2, maxBytes: 512 * MiB });
+      expect(two.files?.map((file) => file.fileId)).toEqual([older, notes]);
+      expect(two.files?.[1]?.path).toBe(`attachments/${String(reopening?.seq)}/reopen notes.pdf`);
+      expect(two.restore?.pendingMessages).toEqual(owed);
+
+      // One file at most: the reopen's own still, written and named.
+      const one = await specFor(task.taskId, second.runnerId, { maxFiles: 1, maxBytes: 512 * MiB });
+      expect(one.files?.map((file) => file.fileId)).toEqual([notes]);
+      expect(one.restore?.pendingMessages).toEqual(owed);
+
+      // The bytes' cap the same way: room for the notes with their text, and one image (2 KiB each, the text 300 bytes).
+      const bytes = await specFor(task.taskId, second.runnerId, { maxFiles: 500, maxBytes: 2048 + 300 + 2048 });
+      expect(bytes.files?.map((file) => file.fileId)).toEqual([older, notes]);
+      expect(bytes.restore?.pendingMessages).toEqual(owed);
     } finally {
       await setOnline(first, true);
     }

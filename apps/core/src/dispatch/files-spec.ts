@@ -1,5 +1,6 @@
 import type { Db } from "@ostra/db";
 import { modelInputModalities, promptFilesOfMessage, taskSpecFilesOf } from "@ostra/domain";
+import type { TaskSpecFilesCaps } from "@ostra/domain";
 import { taskEventSchema, taskIdSchema } from "@ostra/protocol";
 import type { InputModality, PendingMessage, PromptFiles, TaskSpecMessageFile, TaskSpecRestore } from "@ostra/protocol";
 
@@ -8,7 +9,9 @@ import type { InputModality, PendingMessage, PromptFiles, TaskSpecMessageFile, T
 //
 // - `files`: every sent file of the task, a member's and a ticket's, oldest first, so a fresh box
 //   gets every earlier file back at its place (ADR 0039). Each blob is the task's, so the runner's
-//   bulk downloads pass the lease's ownership check.
+//   bulk downloads pass the lease's ownership check. Past `taskFilesMax` or `taskFilesTotalBytes`
+//   the newest stay (the lead, 2026-11-21): the first prompt's files and every pending message's
+//   always, then the others newest first, and the oldest are left out.
 // - `promptFiles`: the session's first prompt's files, for a session that starts new (a new task's
 //   first message). A reopen's message, and every message no turn answered, is a pending message of
 //   the restore section, with its own files.
@@ -75,10 +78,14 @@ export const specFileParts = async (
   task: { readonly id: string },
   session: { readonly id: string; readonly origin: "new" | "resumed" | "restored" | "rebuilt" },
   restore: TaskSpecRestore | undefined,
+  caps?: TaskSpecFilesCaps,
 ): Promise<SpecFileParts> => {
-  const files = await taskSpecFilesOf(db, taskIdSchema.parse(task.id));
+  const firstPrompt = session.origin === "new" ? await firstPromptFilesOf(db, task.id, session.id) : undefined;
+  // The files the session's prompts name stay in the spec whatever the task holds besides.
+  const keep = new Set<string>([...(firstPrompt?.fileIds ?? []), ...(restore?.pendingMessages ?? []).flatMap((message) => message.files?.fileIds ?? [])]);
+  const files = await taskSpecFilesOf(db, taskIdSchema.parse(task.id), { keep, ...(caps === undefined ? {} : { caps }) });
   const carried = new Set<string>(files.map((file) => file.fileId));
-  const promptFiles = session.origin === "new" && files.length > 0 ? filesInSpec(await firstPromptFilesOf(db, task.id, session.id), carried) : undefined;
+  const promptFiles = files.length > 0 ? filesInSpec(firstPrompt, carried) : undefined;
   return {
     files,
     promptFiles,

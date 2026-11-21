@@ -169,7 +169,7 @@ Every contract change in milestone 9 is **additive**: a new optional field, a ne
   - `safeFileNameSchema`: letters, digits, spaces and `._-()`, 1 to 124 characters, not starting with `.`, not one of Windows' reserved names. `safeFileName(raw, fallbackExtension)` makes one from a member's or a tracker's name, and is shared by core and the runner's check.
   - `promptFilesSchema`: `{ fileIds, images }`, the message's files in order and those that go as images (a subset, at most `promptImagesMax`).
 - **The task spec, new optional fields:**
-  - `files`: every sent file of the task, at most `taskFilesMax` and `taskFilesTotalBytes`, oldest first. The runner writes each before a session starts, and again on a fresh box.
+  - `files`: every sent file of the task, at most `taskFilesMax` and `taskFilesTotalBytes`, oldest first. When the task holds more, the newest stay: the first prompt's files and every pending message's always, then the others newest first, and the oldest past a cap are left out (the lead, 2026-11-21). The runner writes each before a session starts, and again on a fresh box.
   - `promptFiles`: the first prompt's files.
   - `restore.pendingMessages[].files`: each pending message's.
   - `agent.inputModalities`: `("text" | "image" | "pdf" | "audio" | "video")[]`, the model's, for the agent's config. Missing means `["text"]`.
@@ -244,7 +244,7 @@ One new migration, after milestone 8's, additive only. Every row carries `organi
   - `recordUpload` (core's endpoint, ticket 10) and `discardUpload` (the member's own unsent file only);
   - `bindMessageFilesInTx(tx, scope, { taskId, sessionId, clientMessageId, eventSeq, fileIds, model, agent })` → the event's `files`, `filesLeftOut` and `imagesNotSent`, and the steer's `files` and `images`;
   - `createPromptTask`, `sendMemberMessageInTx` and `reopenTask` take `fileIds` and call it, and a message may then have empty text; `tasks.send`'s own transaction (ticket 14) calls it too;
-  - `taskSpecFilesOf(tx, taskId)`: every sent file of the task, for the spec.
+  - `taskSpecFilesOf(tx, taskId, { keep, caps })`: every sent file of the task, for the spec, the newest kept past a cap and `keep` (the session's prompts' files) always.
 - **Jobs, new names** (IDs only in payloads, ADR 0037): `files.sweep-unsent` (hourly; key: the hour).
 - **Settings** (ticket 05 adds them, each with its line in `docs/configuration.md`): section 5.6's table.
 

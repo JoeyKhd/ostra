@@ -441,33 +441,66 @@ export const steerFilesOfMessageInTx = async (tx: Pick<Tx, "messageFile">, taskI
 export const taskHasFilesInTx = async (tx: Pick<Tx, "messageFile">, taskId: TaskId): Promise<boolean> =>
   (await tx.messageFile.findFirst({ where: { ...specFileWhere(taskId), sha256: { not: null } }, select: { id: true } })) !== null;
 
+/** How much a spec's `files` holds: the protocol's `taskFilesMax` and `taskFilesTotalBytes`, or smaller ones a test passes. */
+export type TaskSpecFilesCaps = { readonly maxFiles: number; readonly maxBytes: number };
+
+const taskSpecFilesCaps: TaskSpecFilesCaps = { maxFiles: runnerLimits.taskFilesMax, maxBytes: runnerLimits.taskFilesTotalBytes };
+
+/** A file the spec carries, with its place in the task's log to put the list back in order. */
+type ChosenSpecFile = { readonly seq: number; readonly position: number; readonly createdAt: number; readonly file: TaskSpecMessageFile };
+
+const oldestFirst = (a: ChosenSpecFile, b: ChosenSpecFile): number => a.seq - b.seq || a.position - b.position || a.createdAt - b.createdAt;
+
 /**
  * Every sent file of the task, for the spec's `files` (ADR 0070): oldest first (by its message,
- * then its place in it), each with its blob and its text's, at most `taskFilesMax` and
- * `taskFilesTotalBytes`. A file whose blob is gone is left out: the runner can't write it.
+ * then its place in it), each with its blob and its text's, within `taskFilesMax` and
+ * `taskFilesTotalBytes`. When the task holds more, the newest stay (the lead, 2026-11-21): the
+ * files of `keep` always (the first prompt's and every pending message's, so a reopen's own files
+ * are written and named on a fresh box), then the others newest first, and the oldest past a cap
+ * are left out. A file whose blob is gone is left out: the runner can't write it.
  */
-export const taskSpecFilesOf = async (tx: Pick<Tx, "messageFile">, taskId: TaskId): Promise<readonly TaskSpecMessageFile[]> => {
-  const rows = await tx.messageFile.findMany({
-    where: specFileWhere(taskId),
-    orderBy: [{ eventSeq: "asc" }, { position: "asc" }, { createdAt: "asc" }],
-    select: { ...uploadSelect, boxPath: true },
-    take: runnerLimits.taskFilesMax,
+export const taskSpecFilesOf = async (
+  tx: Pick<Tx, "messageFile">,
+  taskId: TaskId,
+  options: { readonly keep?: ReadonlySet<string>; readonly caps?: TaskSpecFilesCaps } = {},
+): Promise<readonly TaskSpecMessageFile[]> => {
+  const caps = options.caps ?? taskSpecFilesCaps;
+  const keep = [...(options.keep ?? [])];
+  const select = { ...uploadSelect, boxPath: true, eventSeq: true, position: true, createdAt: true } as const;
+  // Newest first each, the kept files before the others: a cap drops the oldest.
+  const kept =
+    keep.length === 0
+      ? []
+      : await tx.messageFile.findMany({
+          where: { ...specFileWhere(taskId), id: { in: keep } },
+          orderBy: [{ eventSeq: "desc" }, { position: "desc" }, { createdAt: "desc" }],
+          select,
+          take: caps.maxFiles,
+        });
+  const others = await tx.messageFile.findMany({
+    where: { ...specFileWhere(taskId), ...(keep.length === 0 ? {} : { id: { notIn: keep } }) },
+    orderBy: [{ eventSeq: "desc" }, { position: "desc" }, { createdAt: "desc" }],
+    select,
+    take: caps.maxFiles,
   });
-  const files: TaskSpecMessageFile[] = [];
+  const chosen: ChosenSpecFile[] = [];
   let total = 0;
-  for (const row of rows) {
+  for (const row of [...kept, ...others]) {
+    if (chosen.length >= caps.maxFiles) {
+      break;
+    }
     const file = row.boxPath === null ? null : boxFileOf(row, row.boxPath);
     if (file === null) {
       continue;
     }
     const bytes = file.size + (file.text?.size ?? 0);
-    if (total + bytes > runnerLimits.taskFilesTotalBytes) {
+    if (total + bytes > caps.maxBytes) {
       break;
     }
     total += bytes;
-    files.push(file);
+    chosen.push({ seq: row.eventSeq ?? Number.MAX_SAFE_INTEGER, position: row.position ?? Number.MAX_SAFE_INTEGER, createdAt: row.createdAt.getTime(), file });
   }
-  return files;
+  return chosen.sort(oldestFirst).map(({ file }) => file);
 };
 
 // ---------- a member's message with its files ----------

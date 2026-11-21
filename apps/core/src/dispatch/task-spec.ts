@@ -3,7 +3,7 @@ import type { CodeHostAdapter, CodeHostAppCredentials, Logger, SecretStoreAdapte
 import { apiFormatFromDb, effortLevelFromDb, mapModel } from "@ostra/db";
 import type { Db } from "@ostra/db";
 import { buildMemoryBlock, githubNoReplyAddress, INSTALLATION_NOT_LINKED, installationStateSelect, installationUsable, modelEffort, modelTokenPrices, sessionRowAllowedInTx, spendCapFor, taskTokensInTx } from "@ostra/domain";
-import type { AgentEffortLevels, MemoryLimits, SpendCapSettings } from "@ostra/domain";
+import type { AgentEffortLevels, MemoryLimits, SpendCapSettings, TaskSpecFilesCaps } from "@ostra/domain";
 import { gitPersonSchema, organizationIdSchema, PROTOCOL_MINOR, projectIdSchema, repoFullNameSchema, repoIdSchema, taskIdSchema, taskSpecSchema } from "@ostra/protocol";
 import type { GitPerson, LeaseEpoch, OrganizationId, RunnerId, TaskId, TaskSpec } from "@ostra/protocol";
 import { agentEffortLevels } from "../agents/effort-levels.ts";
@@ -66,6 +66,8 @@ export type SpecDeps = {
   readonly effortLevels?: AgentEffortLevels;
   /** Milestone 8 (F-145): where a library item the profile can't hand its task is named, by its ID. */
   readonly logger?: Logger;
+  /** Milestone 9 (F-148): how many files, and bytes, the spec's `files` holds; the protocol's working values without it. */
+  readonly taskFilesCaps?: TaskSpecFilesCaps;
 };
 
 /**
@@ -247,7 +249,7 @@ export const buildTaskSpec = async (
   const extras = await specMilestone2Parts(db, task, session);
   // Milestone 9 (ticket 11, F-148, ADR 0070): every file of the task, the first prompt's, and each
   // pending message's, kept to the files the spec carries.
-  const fileParts = await specFileParts(db, task, session, extras.restore);
+  const fileParts = await specFileParts(db, task, session, extras.restore, deps.taskFilesCaps);
   // Milestone 3 (ticket 27): the environment's services, for a runner that can start them.
   // Milestone 8 (F-140): a minor-7 runner also gets each one's preview label.
   const services = await specServices(db, task, input.minor ?? PROTOCOL_MINOR);
