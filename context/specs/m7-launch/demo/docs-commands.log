@@ -1,0 +1,246 @@
+# The docs-commands job of the Proof workflow, kept as live evidence (ticket 22, F-058, F-076).
+# Run https://github.com/JoeyKhd/ostra/actions/runs/44850496542 (job 136680479365), commit 15310a47,
+# ubuntu-24.04, dispatched with jobs=ledger-and-panel on 2026-11-21. Its artifact's two logs, verbatim
+# but for terminal colour codes: docs-commands.log (the guide's checked commands against the images
+# built from that commit) and compose-e2e.log (milestone 1's setup specs on a fresh docker compose up).
+
+## docs-commands.log
+
+
+$ # install/docker-compose.mdx:11
+
+$ # install/docker-compose.mdx:20
+ postgres Pulling 
+ dd051e1b8c92 Pulling fs layer 
+ 02c52c643efd Pulling fs layer 
+ 9bb37150231e Pulling fs layer 
+ c655dd92eb76 Pulling fs layer 
+ 9b9b33d059d0 Pulling fs layer 
+ 45759bcf6a4b Pulling fs layer 
+ 98765332bf2e Pulling fs layer 
+ a8f8dff36ade Pulling fs layer 
+ f24ab7b12bc2 Pulling fs layer 
+ c7fa8ef43f35 Pulling fs layer 
+ 6432f252ba4f Pulling fs layer 
+ 447daba5d8af Pulling fs layer 
+ 4c15b1dacf71 Pulling fs layer 
+ c655dd92eb76 Waiting 
+ 9b9b33d059d0 Waiting 
+ 45759bcf6a4b Waiting 
+ 98765332bf2e Waiting 
+ a8f8dff36ade Waiting 
+ f24ab7b12bc2 Waiting 
+ c7fa8ef43f35 Waiting 
+ 6432f252ba4f Waiting 
+ 447daba5d8af Waiting 
+ 4c15b1dacf71 Waiting 
+ 9bb37150231e Downloading [>                                                  ]  50.65kB/4.534MB
+ dd051e1b8c92 Downloading [>                                                  ]  294.4kB/28.25MB
+ 02c52c643efd Downloading [==================================================>]  1.166kB/1.166kB
+ 02c52c643efd Verifying Checksum 
+ 02c52c643efd Download complete 
+ 9bb37150231e Verifying Checksum 
+ 9bb37150231e Download complete 
+ c655dd92eb76 Downloading [>                                                  ]  16.38kB/1.25MB
+ 9b9b33d059d0 Downloading [>                                                  ]  85.47kB/8.066MB
+ c655dd92eb76 Verifying Checksum 
+ c655dd92eb76 Download complete 
+ dd051e1b8c92 Downloading [=======================>                           ]  13.09MB/28.25MB
+ 9b9b33d059d0 Verifying Checksum 
+ 9b9b33d059d0 Download complete 
+ 45759bcf6a4b Downloading [>                                                  ]  16.38kB/1.196MB
+ 45759bcf6a4b Verifying Checksum 
+ 45759bcf6a4b Download complete 
+ 98765332bf2e Download complete 
+ a8f8dff36ade Downloading [==================================================>]  3.141kB/3.141kB
+ a8f8dff36ade Verifying Checksum 
+ a8f8dff36ade Download complete 
+ dd051e1b8c92 Downloading [=========================================>         ]   23.3MB/28.25MB
+ c7fa8ef43f35 Downloading [=====================>                             ]  8.423kB/19.32kB
+ c7fa8ef43f35 Downloading [==================================================>]  19.32kB/19.32kB
+ c7fa8ef43f35 Verifying Checksum 
+ c7fa8ef43f35 Download complete 
+ f24ab7b12bc2 Downloading [>                                                  ]  524.6kB/113.9MB
+ dd051e1b8c92 Verifying Checksum 
+ dd051e1b8c92 Download complete 
+ dd051e1b8c92 Extracting [>                                                  ]  294.9kB/28.25MB
+ 6432f252ba4f Downloading [==================================================>]     127B/127B
+ 6432f252ba4f Verifying Checksum 
+ 6432f252ba4f Download complete 
+ 447daba5d8af Downloading [==================================================>]  6.109kB/6.109kB
+ 447daba5d8af Verifying Checksum 
+ 447daba5d8af Download complete 
+ 4c15b1dacf71 Downloading [==================================================>]     184B/184B
+ 4c15b1dacf71 Verifying Checksum 
+ 4c15b1dacf71 Download complete 
+ f24ab7b12bc2 Downloading [=====>                                             ]  13.35MB/113.9MB
+ dd051e1b8c92 Extracting [===============>                                   ]  8.847MB/28.25MB
+ f24ab7b12bc2 Downloading [==========>                                        ]  23.47MB/113.9MB
+ dd051e1b8c92 Extracting [==========================>                        ]  15.04MB/28.25MB
+ f24ab7b12bc2 Downloading [==============>                                    ]  33.59MB/113.9MB
+ dd051e1b8c92 Extracting [==========================================>        ]  23.89MB/28.25MB
+ f24ab7b12bc2 Downloading [===================>                               ]  44.24MB/113.9MB
+ f24ab7b12bc2 Downloading [=======================>                           ]  54.37MB/113.9MB
+ dd051e1b8c92 Extracting [================================================>  ]  27.43MB/28.25MB
+ f24ab7b12bc2 Downloading [============================>                      ]  64.48MB/113.9MB
+ dd051e1b8c92 Extracting [==================================================>]  28.25MB/28.25MB
+ dd051e1b8c92 Pull complete 
+ 02c52c643efd Extracting [==================================================>]  1.166kB/1.166kB
+ 02c52c643efd Extracting [==================================================>]  1.166kB/1.166kB
+ 02c52c643efd Pull complete 
+ 9bb37150231e Extracting [>                                                  ]  65.54kB/4.534MB
+ f24ab7b12bc2 Downloading [================================>                  ]  74.63MB/113.9MB
+ 9bb37150231e Extracting [==================================================>]  4.534MB/4.534MB
+ 9bb37150231e Pull complete 
+ c655dd92eb76 Extracting [=>                                                 ]  32.77kB/1.25MB
+ c655dd92eb76 Extracting [==================================================>]   1.25MB/1.25MB
+ c655dd92eb76 Pull complete 
+ 9b9b33d059d0 Extracting [>                                                  ]   98.3kB/8.066MB
+ f24ab7b12bc2 Downloading [=====================================>             ]  84.78MB/113.9MB
+ 9b9b33d059d0 Extracting [====================================>              ]  5.898MB/8.066MB
+ 9b9b33d059d0 Extracting [==================================================>]  8.066MB/8.066MB
+ 9b9b33d059d0 Pull complete 
+ 45759bcf6a4b Extracting [=>                                                 ]  32.77kB/1.196MB
+ f24ab7b12bc2 Downloading [=========================================>         ]  94.89MB/113.9MB
+ 45759bcf6a4b Extracting [==================================================>]  1.196MB/1.196MB
+ 45759bcf6a4b Extracting [==================================================>]  1.196MB/1.196MB
+ 45759bcf6a4b Pull complete 
+ 98765332bf2e Extracting [==================================================>]     116B/116B
+ 98765332bf2e Extracting [==================================================>]     116B/116B
+ 98765332bf2e Pull complete 
+ a8f8dff36ade Extracting [==================================================>]  3.141kB/3.141kB
+ a8f8dff36ade Extracting [==================================================>]  3.141kB/3.141kB
+ a8f8dff36ade Pull complete 
+ f24ab7b12bc2 Downloading [==============================================>    ]    105MB/113.9MB
+ f24ab7b12bc2 Verifying Checksum 
+ f24ab7b12bc2 Download complete 
+ f24ab7b12bc2 Extracting [>                                                  ]  557.1kB/113.9MB
+ f24ab7b12bc2 Extracting [====>                                              ]   9.47MB/113.9MB
+ f24ab7b12bc2 Extracting [=======>                                           ]  17.83MB/113.9MB
+ f24ab7b12bc2 Extracting [===========>                                       ]   27.3MB/113.9MB
+ f24ab7b12bc2 Extracting [================>                                  ]  37.88MB/113.9MB
+ f24ab7b12bc2 Extracting [=====================>                             ]  48.46MB/113.9MB
+ f24ab7b12bc2 Extracting [========================>                          ]  56.82MB/113.9MB
+ f24ab7b12bc2 Extracting [============================>                      ]  65.73MB/113.9MB
+ f24ab7b12bc2 Extracting [=================================>                 ]  77.43MB/113.9MB
+ f24ab7b12bc2 Extracting [======================================>            ]  87.46MB/113.9MB
+ f24ab7b12bc2 Extracting [==========================================>        ]  96.93MB/113.9MB
+ f24ab7b12bc2 Extracting [============================================>      ]  102.5MB/113.9MB
+ f24ab7b12bc2 Extracting [===============================================>   ]  108.6MB/113.9MB
+ f24ab7b12bc2 Extracting [================================================>  ]  109.7MB/113.9MB
+ f24ab7b12bc2 Extracting [=================================================> ]  112.5MB/113.9MB
+ f24ab7b12bc2 Extracting [==================================================>]  113.9MB/113.9MB
+ f24ab7b12bc2 Pull complete 
+ c7fa8ef43f35 Extracting [==================================================>]  19.32kB/19.32kB
+ c7fa8ef43f35 Extracting [==================================================>]  19.32kB/19.32kB
+ c7fa8ef43f35 Pull complete 
+ 6432f252ba4f Extracting [==================================================>]     127B/127B
+ 6432f252ba4f Extracting [==================================================>]     127B/127B
+ 6432f252ba4f Pull complete 
+ 447daba5d8af Extracting [==================================================>]  6.109kB/6.109kB
+ 447daba5d8af Extracting [==================================================>]  6.109kB/6.109kB
+ 447daba5d8af Pull complete 
+ 4c15b1dacf71 Extracting [==================================================>]     184B/184B
+ 4c15b1dacf71 Extracting [==================================================>]     184B/184B
+ 4c15b1dacf71 Pull complete 
+ postgres Pulled 
+ Network ostra_default  Creating
+ Network ostra_default  Created
+ Volume "ostra_server-data"  Creating
+ Volume "ostra_server-data"  Created
+ Volume "ostra_postgres-data"  Creating
+ Volume "ostra_postgres-data"  Created
+ Container ostra-postgres-1  Creating
+ Container ostra-postgres-1  Created
+ Container ostra-server-1  Creating
+ Container ostra-server-1  Created
+ Container ostra-runner-1  Creating
+ Container ostra-runner-1  Created
+ Container ostra-postgres-1  Starting
+ Container ostra-postgres-1  Started
+ Container ostra-postgres-1  Waiting
+ Container ostra-postgres-1  Healthy
+ Container ostra-server-1  Starting
+ Container ostra-server-1  Started
+ Container ostra-runner-1  Starting
+ Container ostra-runner-1  Started
+NAME               IMAGE                                                                                            COMMAND                  SERVICE    CREATED         STATUS                                     PORTS
+ostra-postgres-1   postgres:18.6-bookworm@sha256:f1ea2a1a4fb7b68d4836be1fdcb8a6466a89b072158bf9d97663600538c294c5   "docker-entrypoint.s…"   postgres   7 seconds ago   Up 6 seconds (healthy)                     5432/tcp
+ostra-runner-1     ostra/runner:0.0.0                                                                               "ostra runner"           runner     7 seconds ago   Up Less than a second                      
+ostra-server-1     ostra/server:0.0.0                                                                               "ostra-server all"       server     7 seconds ago   Up Less than a second (health: starting)   0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp, 0.0.0.0:8787->8787/tcp, [::]:8787->8787/tcp
+
+$ # install/docker-compose.mdx:35
+curl: (52) Empty reply from server
+curl: (56) Recv failure: Connection reset by peer
+{"ok":true}
+
+$ # done
+docs commands: 3 blocks ran, every one passed
+
+## compose-e2e.log
+
+== a fresh install: the guide's stack down, with its volumes
+ Container ostra-runner-1  Stopping
+ Container ostra-runner-1  Stopped
+ Container ostra-runner-1  Removing
+ Container ostra-runner-1  Removed
+ Container ostra-server-1  Stopping
+ Container ostra-server-1  Stopped
+ Container ostra-server-1  Removing
+ Container ostra-server-1  Removed
+ Container ostra-postgres-1  Stopping
+ Container ostra-postgres-1  Stopped
+ Container ostra-postgres-1  Removing
+ Container ostra-postgres-1  Removed
+ Volume ostra_postgres-data  Removing
+ Network ostra_default  Removing
+ Volume ostra_server-data  Removing
+ Volume ostra_postgres-data  Removed
+ Volume ostra_server-data  Removed
+ Network ostra_default  Removed
+== the fakes: the fake GitHub and the stub model endpoints, on loopback
+the fakes are up: GitHub at http://127.0.0.1:43649, the model stubs on ports 3101 and 3103
+== docker compose up, with the overlay
+ Network ostra_default  Creating
+ Network ostra_default  Created
+ Volume "ostra_server-data"  Creating
+ Volume "ostra_server-data"  Created
+ Volume "ostra_postgres-data"  Creating
+ Volume "ostra_postgres-data"  Created
+ Container ostra-postgres-1  Creating
+ Container ostra-postgres-1  Created
+ Container ostra-server-1  Creating
+ Container ostra-server-1  Created
+ Container ostra-postgres-1  Starting
+ Container ostra-postgres-1  Started
+ Container ostra-postgres-1  Waiting
+ Container ostra-postgres-1  Healthy
+ Container ostra-server-1  Starting
+ Container ostra-server-1  Started
+NAME               IMAGE                                                                                            COMMAND                  SERVICE    CREATED         STATUS                                     PORTS
+ostra-postgres-1   postgres:18.6-bookworm@sha256:f1ea2a1a4fb7b68d4836be1fdcb8a6466a89b072158bf9d97663600538c294c5   "docker-entrypoint.s…"   postgres   6 seconds ago   Up 5 seconds (healthy)                     127.0.0.1:55432->5432/tcp
+ostra-server-1     ostra/server:0.0.0                                                                               "ostra-server all"       server     6 seconds ago   Up Less than a second (health: starting)   
+curl: (7) Failed to connect to 127.0.0.1 port 8787 after 0 ms: Couldn't connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 8787 after 0 ms: Couldn't connect to server
+{"ok":true}
+the stack is up
+== the setup specs, on the compose stack
+
+Running 13 tests using 1 worker
+
+  ✓   1 [desktop] › e2e/01-shell.spec.ts:14:1 › F-001/c6: a fresh install signs in as demo@demo.com / demo, and must choose a new password first @desktop-only (2.1s)
+  ✓   2 [desktop] › e2e/01-shell.spec.ts:59:1 › F-001/c6: the default password stops working once it is changed @desktop-only (514ms)
+  ✓   3 [desktop] › e2e/01-shell.spec.ts:63:1 › the old setup page sends a visitor to sign in (309ms)
+  ✓   4 [desktop] › e2e/01-shell.spec.ts:68:1 › F-002/c2: sign in by username and by email reaches Home; sign out returns to sign-in (1.4s)
+  ✓   5 [desktop] › e2e/01-shell.spec.ts:89:1 › a wrong password gets one line (515ms)
+  ✓   6 [desktop] › e2e/02-setup.spec.ts:11:1 › F-076/c1: a new organization's Home shows the checklist in its order, and its next step opens the model provider page (12.4s)
+  ✓   7 [desktop] › e2e/02-setup.spec.ts:45:1 › Add a model provider: a wrong token is refused in words, the right one lists the models (2.7s)
+  ✓   8 [desktop] › e2e/02-setup.spec.ts:101:1 › Connect GitHub refuses an App it can't read, in words (943ms)
+  ✓   9 [desktop] › e2e/02-setup.spec.ts:112:1 › F-006/c1,c4: Create a new App shows the manifest's permissions, leaves workflows out, and says it gets no webhook without a public address (12.1s)
+  ✓  10 [desktop] › e2e/03-first-run.spec.ts:23:1 › Connect GitHub with an existing App, create a project from its repo, and the checklist ticks (3.1s)
+  ✓  11 [desktop] › e2e/03-first-run.spec.ts:61:1 › Connect a runner: the command, the device approval, the runner online and not isolated (7.5s)
+  ✓  12 [desktop] › e2e/03-first-run.spec.ts:95:1 › F-076/c1: with the runner online, the checklist's last step starts the first task from a prompt, and setup is done without Linear (13.7s)
+  ✓  13 [desktop] › e2e/03-first-run.spec.ts:129:1 › F-076/c1: once setup is done, the checklist stays gone with every runner offline, and Home says no runner is online (1.8s)
+
+  13 passed (1.0m)
+::notice title=🎭 Playwright Run Summary::  13 passed (1.0m)
