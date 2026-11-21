@@ -406,7 +406,7 @@ An organization's library holds items, each a skill or an MCP server, pinned to 
 
 *Added 2026-11-21 for milestone 8 (ADR 0068, F-140 to F-144). The code: `packages/domain/src/lifecycles/m8-previews.ts`; the rules beside it in `packages/domain/src/previews/`.*
 
-**An app process in a box** is the environment's process as one box runs it. Nothing starts it until something asks: the agent's `start_app`, the after-turn screenshots, an opened view, or "Start the app". Every process stops with its box.
+**An app process in a box** is the environment's process as one box runs it. Nothing starts it until something asks: the agent's `start_app`, the after-turn screenshots, an opened view, or "Start the app". Every process stops with its box. A stop wins over every start asked before it: a start that hasn't gone up `starting` yet starts nothing, one that has goes up `stopped` once, and `ready` never follows a stop. A start asked after a stop starts the process again once it has ended.
 
 ```
  stopped ──▶ starting ──┬──▶ ready ──┬──▶ exited

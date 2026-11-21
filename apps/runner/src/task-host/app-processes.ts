@@ -61,6 +61,11 @@ import { slashed } from "./app-block.ts";
 //   (`app.stop`, the box's end). A process that exits names the last 64 KiB of its log as an `app-log`
 //   blob of the task. Its log is written by the executor at `.ostra/app/<name>.log` in the task's
 //   folder, never in a repo; its text, its command and its environment are never in a log line.
+// - **A stop wins** over every start asked before it, wherever that start is: one still checking its
+//   port starts nothing and sends nothing; one that sent `starting` goes up `stopped` once, and what
+//   it spawns is ended; one getting ready never goes up `ready`. A start asked after a stop starts
+//   afresh, once the stopped run has ended. Each start checks for a stop after every wait and
+//   before every state it sends (`startOne`).
 // - **Previews** (F-141): the task's list, primary first (`previewTargets`), with the ports the agent
 //   announced with `show_preview`, each checked against the box's own ports first (`boxPortRefusal`,
 //   `mayReach`'s rule) and the limit. The list goes up as `preview.list` when the box starts and
@@ -74,16 +79,16 @@ export type AppTiming = {
   readonly readyTimeoutMs: number;
   /** How long a process has to exit after a polite signal before its tree is killed. */
   readonly stopGraceMs: number;
+  /** How long past a stop's grace its exit may take to go up before the stop goes up without it. */
+  readonly stopReportMs: number;
 };
 
 export const defaultAppTiming: AppTiming = {
   readyIntervalMs: runnerLimits.appReadyIntervalMs,
   readyTimeoutMs: runnerLimits.appReadyTimeoutSeconds * 1000,
   stopGraceMs: 5_000,
+  stopReportMs: 10_000,
 };
-
-/** How long past a stop's grace its exit may take to go up before the stop goes up without it. */
-const STOP_REPORT_MS = 10_000;
 
 /** How long one HTTP ready check may take: a dev server compiles on its first request. */
 const HTTP_CHECK_MS = 10_000;
@@ -130,9 +135,29 @@ export type AppProcessesOptions = {
 
 /** Why ostra ends a process it started. */
 type EndingReason = Extract<AppProcessReason, "stopped" | "box-stopped" | "ready-timeout">;
+/** Why a stop came: `app.stop`, or the box's end. */
+type StopReason = Extract<EndingReason, "stopped" | "box-stopped">;
 
-/** One start of a process: its handle, why ostra is ending it (if it is), and its exit once reported. */
-type Run = { readonly handle: AppProcessHandle; ending: EndingReason | undefined; reported: Promise<void> };
+/**
+ * One start of a process: its handle, whether its exit came, why ostra is ending it (if it is),
+ * and `done`, resolved once its last state went up (`finish`): at its exit, or when a stop's exit
+ * didn't come in time. Every wait for a run's end waits on `done`, which a stop bounds.
+ */
+type Run = {
+  readonly handle: AppProcessHandle;
+  exited: boolean;
+  ending: EndingReason | undefined;
+  readonly done: Promise<void>;
+  readonly markDone: () => void;
+};
+
+const newRun = (handle: AppProcessHandle): Run => {
+  let markDone: () => void = () => undefined;
+  const done = new Promise<void>((resolve) => {
+    markDone = resolve;
+  });
+  return { handle, exited: false, ending: undefined, done, markDone };
+};
 
 /** An app process in this box: the domain's lifecycle (`AppProcessLifecycle`), as the runner holds it. */
 type Slot =
@@ -278,12 +303,16 @@ export const createAppProcesses = (options: AppProcessesOptions): AppProcesses =
       waiter();
     }
   };
-  /** A stop asked while a process's start was still with the executor: it's stopped the moment it starts. */
-  const stopAsked = new Map<string, Extract<EndingReason, "stopped" | "box-stopped">>();
+  /**
+   * How many stops each process has had (`app.stop`, the box's end), whether anything of it ran or
+   * not. A start notes the count when it's asked, and a stop since then wins over it (`startOne`).
+   * Ticket 13 counted the box's stops only, and only from the start's first step; a stop that came
+   * while a start checked its port was lost, and the process got ready behind it.
+   */
+  const stopCounts = new Map<string, number>();
+  const stopsOf = (name: string): number => stopCounts.get(name) ?? 0;
   /** Starts run one at a time: a second asks after the first, and finds what it started running. */
   let chain: Promise<unknown> = Promise.resolve();
-  /** How many times the box's stop came (`stopAll`): a start under way when it does starts nothing. */
-  let boxStops = 0;
 
   const services = options.spec.services ?? [];
   const addresses = appAddresses(processes, services, options.executorKind);
@@ -339,31 +368,35 @@ export const createAppProcesses = (options: AppProcessesOptions): AppProcesses =
    * executor reports it, or, when a stop's exit didn't come in time, the stop's own end.
    */
   const finish = async (process: TaskSpecAppProcess, run: Run, exitCode: number | null): Promise<void> => {
-    const slot = slots.get(process.name);
-    if (slot === undefined || (slot.state !== "starting" && slot.state !== "ready") || slot.run !== run) {
-      return;
-    }
-    switch (run.ending) {
-      case "stopped":
-      case "box-stopped": {
-        slots.set(process.name, { state: "stopped", reason: run.ending, exitCode });
-        await report(process, "stopped", { reason: run.ending, exitCode, logBlobId: null });
+    try {
+      const slot = slots.get(process.name);
+      if (slot === undefined || (slot.state !== "starting" && slot.state !== "ready") || slot.run !== run) {
         return;
       }
-      case "ready-timeout": {
-        slots.set(process.name, { state: "failed", reason: "ready-timeout", exitCode: null });
-        await report(process, "failed", { reason: "ready-timeout", exitCode: null, logBlobId: await logBlob(run.handle) });
-        return;
+      switch (run.ending) {
+        case "stopped":
+        case "box-stopped": {
+          slots.set(process.name, { state: "stopped", reason: run.ending, exitCode });
+          await report(process, "stopped", { reason: run.ending, exitCode, logBlobId: null });
+          return;
+        }
+        case "ready-timeout": {
+          slots.set(process.name, { state: "failed", reason: "ready-timeout", exitCode: null });
+          await report(process, "failed", { reason: "ready-timeout", exitCode: null, logBlobId: await logBlob(run.handle) });
+          return;
+        }
+        case undefined: {
+          // It ended on its own: before it was ready it failed; after, it exited, whatever its code.
+          const state = slot.state === "starting" ? "failed" : "exited";
+          slots.set(process.name, { state, reason: "exited", exitCode });
+          await report(process, state, { reason: "exited", exitCode, logBlobId: await logBlob(run.handle) });
+          return;
+        }
+        default:
+          run.ending satisfies never;
       }
-      case undefined: {
-        // It ended on its own: before it was ready it failed; after, it exited, whatever its code.
-        const state = slot.state === "starting" ? "failed" : "exited";
-        slots.set(process.name, { state, reason: "exited", exitCode });
-        await report(process, state, { reason: "exited", exitCode, logBlobId: await logBlob(run.handle) });
-        return;
-      }
-      default:
-        run.ending satisfies never;
+    } finally {
+      run.markDone();
     }
   };
 
@@ -379,7 +412,7 @@ export const createAppProcesses = (options: AppProcessesOptions): AppProcesses =
         log.warn("an app process didn't stop", { taskId: options.box.taskId, app: process.name, code: stopped.error.code });
       }
     });
-    const reported = await Promise.race([run.reported.then(() => true), sleep(timing.stopGraceMs + STOP_REPORT_MS).then(() => false)]);
+    const reported = await Promise.race([run.done.then(() => true), sleep(timing.stopGraceMs + timing.stopReportMs).then(() => false)]);
     if (!reported) {
       log.warn("an app process's exit didn't come after its stop", { taskId: options.box.taskId, app: process.name });
       await finish(process, run, null);
@@ -452,27 +485,34 @@ export const createAppProcesses = (options: AppProcessesOptions): AppProcesses =
     }
   };
 
-  /** Until it's ready, it ended, or its time is up. */
+  /**
+   * Whether a run is still getting ready: its exit hasn't come, no stop or timeout is ending it, and
+   * it's still the slot's. A function, so each read is fresh across the waits.
+   */
+  const stillStarting = (process: TaskSpecAppProcess, run: Run): boolean => {
+    const slot = slots.get(process.name);
+    return !run.exited && run.ending === undefined && slot?.state === "starting" && slot.run === run;
+  };
+
+  /** Until it's ready, it ended (on its own, or a stop is ending it), or its time is up. */
   const awaitReady = async (process: TaskSpecAppProcess, run: Run, reach: AppPortReach, cwd: string, env: Readonly<Record<string, string>>): Promise<"ready" | "ended" | "timeout"> => {
     const deadline = Date.now() + timing.readyTimeoutMs;
-    // Set from the exit's callback, and read through a function, which the type checker doesn't narrow.
-    const exit = { seen: false };
-    void run.handle.exited.then(() => {
-      exit.seen = true;
-    });
-    const exitedNow = (): boolean => exit.seen;
     for (;;) {
-      const slot = slots.get(process.name);
-      if (exitedNow() || slot?.state !== "starting" || slot.run !== run) {
+      if (!stillStarting(process, run)) {
         return "ended";
       }
-      if (await readyOnce(process, reach, cwd, env, deadline - Date.now())) {
-        return exitedNow() ? "ended" : "ready";
+      const passed = await readyOnce(process, reach, cwd, env, deadline - Date.now());
+      // A stop or an exit that came while the check ran wins over its answer.
+      if (!stillStarting(process, run)) {
+        return "ended";
+      }
+      if (passed) {
+        return "ready";
       }
       if (Date.now() >= deadline) {
         return "timeout";
       }
-      await Promise.race([sleep(Math.min(timing.readyIntervalMs, Math.max(0, deadline - Date.now()))), run.handle.exited]);
+      await Promise.race([sleep(Math.min(timing.readyIntervalMs, Math.max(0, deadline - Date.now()))), run.done]);
     }
   };
 
@@ -481,12 +521,30 @@ export const createAppProcesses = (options: AppProcessesOptions): AppProcesses =
     await report(process, "failed", { reason, exitCode: null, logBlobId: null });
   };
 
-  const startOne = async (process: TaskSpecAppProcess): Promise<void> => {
-    const current = slots.get(process.name);
-    if (current?.state === "starting" || current?.state === "ready") {
+  /**
+   * One process's start, asked when the process had had `stopsAsked` stops. A stop since then wins
+   * (`stoppedSince`), checked after every wait and before every state this sends: before `starting`
+   * goes up it starts nothing and sends nothing; after, its stop went up as `stopped` (`stopRun`),
+   * and what the executor spawned is ended; while it gets ready, `ready` never goes up.
+   */
+  const startOne = async (process: TaskSpecAppProcess, stopsAsked: number): Promise<void> => {
+    const stoppedSince = (): boolean => stopsOf(process.name) !== stopsAsked;
+    if (stoppedSince()) {
       return;
     }
-    const stopsBefore = boxStops;
+    // A run a stop is ending: a start asked after that stop starts afresh once it has ended (a restart).
+    const current = slots.get(process.name);
+    const ending = current?.state === "starting" || current?.state === "ready" ? current.run : undefined;
+    if (ending?.ending !== undefined) {
+      await ending.done;
+      if (stoppedSince()) {
+        return;
+      }
+    }
+    const now = slots.get(process.name);
+    if (now?.state === "starting" || now?.state === "ready") {
+      return;
+    }
     const cwd = cwdOf(process);
     // A port the box keeps for itself is never an app's (the environment refuses it when saved, too).
     if (cwd === null || boxPortRefusal(process.port, options.reservedPorts) !== null || ownPorts.has(process.port)) {
@@ -495,22 +553,28 @@ export const createAppProcesses = (options: AppProcessesOptions): AppProcesses =
     }
     const reach = await options.executor.reachAppPort({ box: options.box, port: process.port, reserved: options.reservedPorts });
     if (!reach.ok) {
-      await failNow(process, "start-failed");
+      if (!stoppedSince()) {
+        await failNow(process, "start-failed");
+      }
       return;
     }
     try {
       // Something in the box holds the port already, such as the agent's own dev server.
-      if (await portAnswers(reach.value, process.port)) {
+      const taken = await portAnswers(reach.value, process.port);
+      // A stop (or the box's, ticket 13) came while its port was checked: nothing starts behind it.
+      if (stoppedSince()) {
+        return;
+      }
+      if (taken) {
         await failNow(process, "port-in-use");
         return;
       }
-      // Ticket 13: the box began to stop while its port was checked: nothing starts behind its stop.
-      if (boxStops !== stopsBefore) {
-        return;
-      }
-      stopAsked.delete(process.name);
       slots.set(process.name, { state: "starting", run: undefined });
       await report(process, "starting", { reason: null, exitCode: null, logBlobId: null });
+      // From here a stop goes up as `stopped` itself (`stopRun`), and this start sends nothing more.
+      if (stoppedSince()) {
+        return;
+      }
       const env = envOf(process);
       const started = await options.executor.startAppProcess({
         box: options.box,
@@ -519,27 +583,35 @@ export const createAppProcesses = (options: AppProcessesOptions): AppProcesses =
       });
       if (!started.ok) {
         log.warn("an app process didn't start", { taskId: options.box.taskId, app: process.name, code: started.error.code });
-        if (stopAsked.has(process.name)) {
-          stopAsked.delete(process.name);
-          return;
+        if (!stoppedSince()) {
+          await failNow(process, "start-failed");
         }
-        await failNow(process, "start-failed");
         return;
       }
       // A stop came while the executor was starting it, and went up as `stopped`: it ends now, quietly.
-      if (stopAsked.has(process.name)) {
-        stopAsked.delete(process.name);
+      if (stoppedSince()) {
         await Promise.race([
           options.executor.stopAppProcess({ box: options.box, name: process.name, graceMs: timing.stopGraceMs }),
-          sleep(timing.stopGraceMs + STOP_REPORT_MS),
+          sleep(timing.stopGraceMs + timing.stopReportMs),
         ]);
         return;
       }
-      const run: Run = { handle: started.value, ending: undefined, reported: Promise.resolve() };
+      const run = newRun(started.value);
       slots.set(process.name, { state: "starting", run });
-      run.reported = started.value.exited.then((exit) => finish(process, run, exit.code)).catch(() => undefined);
+      const exited = (code: number | null): Promise<void> => {
+        run.exited = true;
+        return finish(process, run, code);
+      };
+      void started.value.exited
+        .then(
+          (exit) => exited(exit.code),
+          () => exited(null),
+        )
+        .catch(() => undefined);
       const outcome = await awaitReady(process, run, reach.value, cwd, env);
-      switch (outcome) {
+      // Read again here: a stop or an exit since the check's answer wins over it.
+      const settledAs = outcome === "ready" && !stillStarting(process, run) ? "ended" : outcome;
+      switch (settledAs) {
         case "ready": {
           slots.set(process.name, { state: "ready", run });
           await report(process, "ready", { reason: null, exitCode: null, logBlobId: null });
@@ -549,10 +621,11 @@ export const createAppProcesses = (options: AppProcessesOptions): AppProcesses =
           await endRun(process, run, "ready-timeout");
           return;
         case "ended":
-          await run.reported;
+          // Its exit, or the stop ending it, sends its last state; `done` is bounded by the stop.
+          await run.done;
           return;
         default:
-          outcome satisfies never;
+          settledAs satisfies never;
       }
     } finally {
       await reach.value.close();
@@ -563,21 +636,22 @@ export const createAppProcesses = (options: AppProcessesOptions): AppProcesses =
     names === null ? processes : processes.filter((process) => names.includes(process.name));
 
   const start = (names: readonly string[] | null): Promise<readonly AppProcessView[]> => {
-    const asked = selected(names);
-    for (const process of asked) {
+    // Each process's stops as the start is asked: a stop after this wins over it (`startOne`).
+    const asked = selected(names).map((process) => ({ process, stopsAsked: stopsOf(process.name) }));
+    for (const { process } of asked) {
       pendingStarts.set(process.name, (pendingStarts.get(process.name) ?? 0) + 1);
     }
     const next = chain.then(async () => {
       log.info("starting the app's processes", { taskId: options.box.taskId, asked: asked.length });
-      for (const process of asked) {
+      for (const { process, stopsAsked } of asked) {
         try {
-          await startOne(process);
+          await startOne(process, stopsAsked);
         } finally {
           pendingStarts.set(process.name, (pendingStarts.get(process.name) ?? 1) - 1);
           wakeSettled();
         }
       }
-      return asked.map(viewOf);
+      return asked.map(({ process }) => viewOf(process));
     });
     chain = next.catch(() => undefined);
     return next;
@@ -614,15 +688,18 @@ export const createAppProcesses = (options: AppProcessesOptions): AppProcesses =
     return mayReach(port, previews(), options.reservedPorts);
   };
 
-  const stopRun = async (process: TaskSpecAppProcess, reason: Extract<EndingReason, "stopped" | "box-stopped">): Promise<void> => {
+  const stopRun = async (process: TaskSpecAppProcess, reason: StopReason): Promise<void> => {
+    // Counted first, whatever runs: every start asked before it now starts nothing, or ends what it started.
+    stopCounts.set(process.name, stopsOf(process.name) + 1);
     const slot = slots.get(process.name);
     if (slot === undefined || (slot.state !== "starting" && slot.state !== "ready")) {
+      // Nothing runs. A start still checking its port went up as nothing, and sends nothing now.
       return;
     }
     const run = slot.run;
     if (run === undefined) {
-      // Asked to stop while the executor starts it: it's stopped the moment it runs, and goes up as stopped.
-      stopAsked.set(process.name, reason);
+      // `starting` went up and the executor is starting it: it goes up as stopped now, once, and
+      // its start ends it the moment it runs (`startOne`).
       slots.set(process.name, { state: "stopped", reason, exitCode: null });
       await report(process, "stopped", { reason, exitCode: null, logBlobId: null });
       return;
@@ -635,7 +712,6 @@ export const createAppProcesses = (options: AppProcessesOptions): AppProcesses =
   };
 
   const stopAll = async (): Promise<void> => {
-    boxStops += 1;
     await Promise.all(processes.map((process) => stopRun(process, "box-stopped")));
   };
 

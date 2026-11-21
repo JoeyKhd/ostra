@@ -436,6 +436,30 @@ export const appProcessesCases = (mode: AppProcessesMode) => {
     },
 
     /**
+     * `app.start`, then `app.stop`, sent with the dispatch, while the box still clones and sets up:
+     * the start waits for the box, and the stop after it wins, so the process never starts behind
+     * it. Nothing goes up `ready`, anything that went up ends `stopped`, and its port stays closed.
+     */
+    stoppedBeforeTheBox: async (): Promise<void> => {
+      const h = await runner();
+      const docs = await testPort();
+      const processes = [process_({ name: "docs", command: `node ${fixturePath("docs", "server.js")}`, port: docs, ready: { kind: "port" }, label: "Docs", primary: true })];
+      const spec = taskWith(h, fakeMarker("say", "waiting"), processes, { TEST_WEB_DOCS_PORT: String(docs) });
+      h.dispatch(spec);
+      const started = h.waitForAck(h.command("app.start", { sessionId: spec.sessionId, names: null }));
+      const stopped = h.waitForAck(h.command("app.stop", { sessionId: spec.sessionId, names: null }));
+      expect((await started).result).toBe("accepted");
+      expect((await stopped).result).toBe("accepted");
+      // Both came before the box was ready, so both waited for it.
+      expect(h.logs.filter((record) => record.message === "app stop asked").map((record) => record.fields["boxReady"])).toEqual([false]);
+      await waitFor(h, spec, "session.saved");
+      const states = statesOf(h, spec);
+      expect(states).not.toContain("docs:ready");
+      expect(states.at(-1) ?? "docs:stopped").toBe("docs:stopped");
+      expect(await fetchLocal(docs)).toBeNull();
+    },
+
+    /**
      * A port something in the box already holds (the agent's own dev server): `start_app` reports it
      * `failed` with `port-in-use`, and tells the agent to stop its own or show it with `show_preview`.
      * `show_preview` then adds that port to the task's previews and sends the list; a port of the

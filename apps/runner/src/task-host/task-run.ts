@@ -2801,13 +2801,10 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       return Promise.resolve({ result: "accepted" });
     },
     appStop: (body) => {
-      const opened = app;
-      if (opened === undefined) {
-        // Nothing of the app runs before the box is ready.
-        return Promise.resolve({ result: "done" });
-      }
-      log.info("app stop asked", { names: body.names?.length ?? null });
-      void opened.stop(body.names).catch((error: unknown) => {
+      log.info("app stop asked", { names: body.names?.length ?? null, boxReady: app !== undefined });
+      // Through the box's app as `appStart` goes, so it comes after every start accepted before it:
+      // one still waiting for the box then starts nothing behind it (a stop wins, `AppProcesses.stop`).
+      void appOpened.promise.then((opened) => opened?.stop(body.names)).catch((error: unknown) => {
         log.warn("stopping the app failed", { error: errorName(error) });
       });
       return Promise.resolve({ result: "accepted" });
