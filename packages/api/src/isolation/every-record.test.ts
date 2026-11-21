@@ -142,6 +142,7 @@ const procedures: Readonly<Record<string, { readonly input: InputOf; readonly ab
   "fleetUse.project": { input: project, about: "project" },
   "boards.available": { input: project, about: "project" },
   "boards.get": { input: project, about: "project" },
+  "boards.teams": { input: none, about: "organization" },
   "diff.comments.list": { input: task, about: "project" },
   // Milestone 6 (ticket 27): the fixture's task is a code task, which has no draft: `NOT_FOUND`. The drafts
   // tests call it on refine tasks of another organization and of a restricted project.
@@ -598,6 +599,8 @@ const matrix: Readonly<Record<string, readonly [Outcome, Outcome, Outcome, Outco
   "fleetUse.project": ["ok", "FORBIDDEN", "ok", "FORBIDDEN", "NOT_FOUND"],
   "boards.available": ["PRECONDITION_FAILED", "FORBIDDEN", "PRECONDITION_FAILED", "FORBIDDEN", "NOT_FOUND"],
   "boards.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  // Create a project's tracker teams: an organization admin's alone, and a precondition as for boards.available.
+  "boards.teams": ["PRECONDITION_FAILED", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "diff.comments.list": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "diff.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   // The fixture's task is a code task: it has no draft for anyone (ticket 27's tests hold the roles on a refine task).
