@@ -1,7 +1,9 @@
 import { createHmac, randomUUID } from "node:crypto";
 
-import { createLogger, silentLogger } from "@ostra/adapter-sdk";
-import type { LogRecord } from "@ostra/adapter-sdk";
+import { GitHubAdapter } from "@ostra/adapter-github";
+import { LinearAdapter } from "@ostra/adapter-linear";
+import { createLogger, silentLogger, systemClock as adapterClock } from "@ostra/adapter-sdk";
+import type { CodeHostAdapter, LogRecord, TrackerAdapter } from "@ostra/adapter-sdk";
 import { createJiraSite, JiraFakeAdapter } from "@ostra/adapter-sdk/testing";
 import type { JiraSite } from "@ostra/adapter-sdk/testing";
 import { createTestDatabase, seedInstallation, seedIsolationFixture } from "@ostra/db/testing";
@@ -51,13 +53,20 @@ const keep = async (organizationId: OrganizationId, value: string): Promise<stri
   return ref.value;
 };
 
-const startInbox = async (options: { readonly deadlineMs?: number; readonly blocked?: ReadonlySet<WebhookKind> } = {}): Promise<string> => {
+const startInbox = async (
+  options: {
+    readonly deadlineMs?: number;
+    readonly blocked?: ReadonlySet<WebhookKind>;
+    /** The real adapters' verifiers in place of the fakes: the vendors' own headers and signatures. */
+    readonly vendors?: { readonly linear: Pick<TrackerAdapter, "verifyWebhook">; readonly github: Pick<CodeHostAdapter, "verifyWebhook"> };
+  } = {},
+): Promise<string> => {
   const inbox = createWebhookInbox({
     db: test.db,
     jobs,
     secretStore,
-    trackerVerifiers: { linear: new JiraFakeAdapter({ site }) },
-    codeHost,
+    trackerVerifiers: { linear: options.vendors?.linear ?? new JiraFakeAdapter({ site }) },
+    codeHost: options.vendors?.github ?? codeHost,
     clock: systemClock,
     logger,
     insertDeadlineMs: options.deadlineMs ?? 2000,
@@ -300,6 +309,47 @@ describe("the webhook inbox", () => {
     const p99 = times[Math.floor(times.length * 0.99)] ?? 0;
     console.info(`webhook inbox, 200 deliveries: p50 ${p50.toFixed(1)} ms, p99 ${p99.toFixed(1)} ms`);
     expect(p99).toBeLessThan(2000);
+  });
+
+  it("F-046/c1: a delivery its vendor sends again is stored and handled once, by the vendor's delivery ID: Linear's retry signed afresh under its Linear-Delivery, GitHub's redelivery under its X-GitHub-Delivery", async () => {
+    const context = { logger: silentLogger, clock: adapterClock };
+    const vendors = { linear: new LinearAdapter({ auth: { kind: "oauth", token: "verify-only" } }, context), github: new GitHubAdapter({}, context) };
+    const url = await startInbox({ vendors });
+    const organizationId = fixture.a.organization.id;
+    // Organization A's connections and their secrets, signed here as the vendors sign.
+    const [linear, linearSecret, github, githubSecret] = [linearA, site.webhookSecret, githubA, codeHost.webhookSecret];
+
+    // Linear: one payload, its delivery ID; each attempt is stamped and signed when it's sent, so a retry's signature differs.
+    const linearId = randomUUID();
+    const linearAttempt = (sentAt: number) => {
+      const rawBody = JSON.stringify({ type: "Issue", action: "update", data: { id: "issue-vendor-1" }, createdAt: new Date(sentAt - 500).toISOString(), webhookTimestamp: sentAt });
+      const signature = createHmac("sha256", linearSecret).update(rawBody).digest("hex");
+      return { rawBody, headers: { "content-type": "application/json", "linear-delivery": linearId, "linear-event": "Issue", "linear-signature": signature } };
+    };
+    const first = linearAttempt(Date.now() - 2000);
+    const retry = linearAttempt(Date.now());
+    expect(retry.headers["linear-signature"]).not.toBe(first.headers["linear-signature"]);
+    expect(await post(`/webhooks/linear/${linear}`, first, url)).toEqual({ status: 200, body: { status: "accepted" } });
+    expect(await post(`/webhooks/linear/${linear}`, retry, url)).toEqual({ status: 200, body: { status: "duplicate" } });
+    expect(await rowsOf(linear, linearId)).toHaveLength(1);
+    expect(await jobsOf(organizationId, linear, linearId)).toHaveLength(1);
+
+    // GitHub: a redelivery carries the original's X-GitHub-Delivery and body.
+    const githubId = randomUUID();
+    const rawBody = JSON.stringify({ action: "synchronize", number: 7, installation: { id: LINKED_INSTALLATION } });
+    const signed = {
+      rawBody,
+      headers: {
+        "content-type": "application/json",
+        "x-github-event": "pull_request",
+        "x-github-delivery": githubId,
+        "x-hub-signature-256": `sha256=${createHmac("sha256", githubSecret).update(rawBody).digest("hex")}`,
+      },
+    };
+    expect(await post(`/webhooks/github/${github}`, signed, url)).toEqual({ status: 200, body: { status: "accepted" } });
+    expect(await post(`/webhooks/github/${github}`, signed, url)).toEqual({ status: 200, body: { status: "duplicate" } });
+    expect(await rowsOf(github, githubId)).toHaveLength(1);
+    expect(await jobsOf(organizationId, github, githubId)).toHaveLength(1);
   });
 });
 
