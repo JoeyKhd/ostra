@@ -243,6 +243,27 @@ const archivePath = (path: string): { readonly top: string; readonly path: strin
 };
 
 /** Counts what streams past, and ends the stream once it's over `maxBytes`, saying so in `over`. */
+/**
+ * A response body's chunks, read through its own reader, so the code is the same whichever
+ * `ReadableStream` the program's lib declares (Node's, or the DOM's when the web app compiles
+ * this package). Leaving early cancels the download.
+ */
+// eslint-disable-next-line func-style -- a generator can't be an arrow function
+async function* chunksOf(body: NonNullable<Response["body"]>): AsyncGenerator<Uint8Array> {
+  const reader = body.getReader();
+  try {
+    for (;;) {
+      const read = await reader.read();
+      if (read.done) {
+        return;
+      }
+      yield read.value;
+    }
+  } finally {
+    await reader.cancel();
+  }
+}
+
 // eslint-disable-next-line func-style -- a generator can't be an arrow function
 async function* unpackedUpTo(source: AsyncIterable<Uint8Array>, maxBytes: number, over: { exceeded: boolean }): AsyncGenerator<Uint8Array> {
   let total = 0;
@@ -1700,7 +1721,7 @@ export class GitHubAdapter extends CodeHostAdapter {
       await download.body.cancel();
       return adapterError(download.status >= 500 ? "unavailable" : "invalid-response", `reading a repo at a commit failed (HTTP ${String(download.status)})`);
     }
-    const unpacked = pipeline(Readable.fromWeb(download.body), createGunzip(), () => undefined);
+    const unpacked = pipeline(Readable.from(chunksOf(download.body)), createGunzip(), () => undefined);
     const over = { exceeded: false };
     /** What the archive showed while it streamed: its one top folder, a second one, and the commit it says it's of. */
     const seen: { top: string | null; foreign: boolean; archived: string | null } = { top: null, foreign: false, archived: null };
