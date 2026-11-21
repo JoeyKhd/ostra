@@ -86,7 +86,7 @@ const ProfileRow = ({ label, kind, projectId, current, canEdit }: { readonly lab
   const options = useQuery(trpc.agentProfiles.forStart.queryOptions({ projectId, kind }));
   const set = useMutation(trpc.projects.setDefaultProfile.mutationOptions({ onSettled: () => queryClient.invalidateQueries({ queryKey: trpc.projects.get.queryKey({ projectId }) }) }));
   return (
-    <div className="grid min-h-10 grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] items-center gap-3 border-b border-line last:border-b-0 sm:grid-cols-[360px_minmax(0,1fr)]" data-profile-kind={kind}>
+    <div className="grid min-h-10 grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] items-center gap-3 border-b border-line last:border-b-0 sm:grid-cols-[228px_minmax(0,1fr)]" data-profile-kind={kind}>
       <span className="text-ui text-muted">{label}</span>
       <span className="flex min-w-0 items-center gap-2">
         <Select
@@ -97,8 +97,12 @@ const ProfileRow = ({ label, kind, projectId, current, canEdit }: { readonly lab
             if (picked !== undefined) set.mutate({ projectId, kind, profileId: picked.profileId });
           }}
         >
-          <SelectTrigger className="h-[34px] w-full max-w-[280px]" aria-label={label}>
-            <SelectValue placeholder={current?.name ?? "–"} />
+          {/* The select takes the row, its built-in chip inside it after the name (review-settings.webp). */}
+          <SelectTrigger className="h-[34px] w-full" aria-label={label}>
+            <span className="flex min-w-0 items-center gap-2">
+              <SelectValue placeholder={current?.name ?? "–"} />
+              {current?.builtInKind === null || current === null ? null : <Chip className="h-5 shrink-0 px-1.5 font-mono text-[11px]">{t("draft.builtIn")}</Chip>}
+            </span>
           </SelectTrigger>
           <SelectContent>
             {(options.data ?? []).map((option) => (
@@ -107,7 +111,6 @@ const ProfileRow = ({ label, kind, projectId, current, canEdit }: { readonly lab
             {current !== null && !(options.data ?? []).some((option) => option.profileId === current.id) ? <SelectItem value={current.id}>{current.name}</SelectItem> : null}
           </SelectContent>
         </Select>
-        {current?.builtInKind === null || current === null ? null : <Chip className="h-5 shrink-0 px-1.5 font-mono text-[11px]">{t("draft.builtIn")}</Chip>}
       </span>
     </div>
   );
