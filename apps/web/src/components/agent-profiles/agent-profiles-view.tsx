@@ -124,7 +124,7 @@ const ProfileTableRow = ({ profile, selected, onSelect, onOpen }: {
           <span className={cn("truncate", archived ? "text-muted" : "text-text")}>{profile.name}</span>
           {profile.builtIn ? <Chip className="shrink-0">{t("agentProfiles.builtIn")}</Chip> : null}
         </button>
-        <span className="hidden truncate pl-[25px] text-sm text-faint sm:block min-[900px]:hidden">{narrowFacts(profile)}</span>
+        <span className="hidden truncate pl-[25px] text-sm text-faint sm:max-[899px]:block">{narrowFacts(profile)}</span>
         <span className="block truncate pl-[25px] text-sm text-faint sm:hidden" data-testid="phone-facts">{phoneFacts(profile)}</span>
       </td>
       <td className="hidden pr-3 sm:table-cell"><AgentModel profile={profile} /></td>
@@ -146,14 +146,14 @@ const ProfilesTable = ({ profiles, selectedId, onSelect, onOpen }: {
   readonly onSelect: (profile: ProfileRow) => void;
   readonly onOpen: (profile: ProfileRow) => void;
 }) => (
-  <table className="w-full table-fixed border-collapse text-body">
+  <table className="w-full table-fixed border-collapse text-sm">
     <thead>
-      <tr className="h-[30px] border-b border-line text-left text-[12.5px] text-faint">
-        <th className="pl-1 pr-3 font-medium min-[900px]:w-[188px]">{t("agentProfiles.column.profile")}</th>
-        <th className="hidden w-[46%] pr-3 font-medium sm:table-cell min-[900px]:w-[226px]">{t("agentProfiles.column.agentModel")}</th>
+      <tr className="h-[30px] whitespace-nowrap border-b border-line text-left text-[12.5px] text-faint">
+        <th className="pl-1 pr-3 font-medium min-[900px]:w-[180px]">{t("agentProfiles.column.profile")}</th>
+        <th className="hidden w-[46%] pr-3 font-medium sm:table-cell min-[900px]:w-[206px]">{t("agentProfiles.column.agentModel")}</th>
         <th className="hidden w-[72px] pr-3 font-medium min-[900px]:table-cell">{t("agentProfiles.column.planFirst")}</th>
         <th className="hidden w-[56px] pr-3 font-medium min-[900px]:table-cell">{t("agentProfiles.column.rules")}</th>
-        <th className="hidden w-[150px] pr-3 font-medium sm:table-cell">{t("agentProfiles.column.who")}</th>
+        <th className="hidden w-[126px] pr-3 font-medium sm:table-cell">{t("agentProfiles.column.who")}</th>
         <th className="hidden pr-1 font-medium min-[900px]:table-cell">{t("agentProfiles.column.defaultFor")}</th>
       </tr>
     </thead>
