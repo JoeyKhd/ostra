@@ -46,7 +46,7 @@ The form column is a flex column with three rows: a top row (32px inset), a midd
 | Field 2 | 14px below field 1. Label `Password`. Input 36px, `type="password"` |
 | Error line | Only in the error states; 6px below field 2 (see States) |
 | Button | 20px below the last field or error line. Full width (360px), 36px, primary |
-| Help line | 16px below the button. `Forgot your password? Ask your instance admin for a reset link.` Plex Sans 12px `--faint`. Ships with reset links (F-002, milestone 4); until then leave it out |
+| Help line | 16px below the button. `Forgot your password? Ask your instance admin for a reset link.` Plex Sans 12px `--faint`. Ships with reset links (F-002, milestone 4); until then leave it out. *Changed 2026-11-21: on one line, as drawn. Plex Sans sets it 339px wide against the 332px block, so it takes the title's tracking, -0.015em (about 328px)* |
 
 **Input** (`fieldClass`, at 36px): radius 7px, fill `--surface` `#131416`, 1px border `--line-2` `#2A2C30`, padding 0 10px, Plex Sans 13px `--text`, no placeholder. Focus-visible: border `--faint` `#64676D` (already in `fieldClass`). Invalid (`aria-invalid`): border `--red` `#E5675C`, which also wins over focus.
 

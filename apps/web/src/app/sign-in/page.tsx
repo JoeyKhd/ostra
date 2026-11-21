@@ -20,8 +20,12 @@ const SignInPage = async () => {
       <Suspense>
         <SignInForm />
       </Suspense>
-      {/* reset-password.md: a link with email set up; without it, who makes reset links. */}
-      <p className="mt-[16px] text-[12px] leading-[18px] text-faint">
+      {/*
+        reset-password.md: a link with email set up; without it, who makes reset links, on one line
+        as sign-in.md draws it: Plex Sans sets it 339px wide against the block's 332px, so it's
+        tightened by the title's -0.015em to about 328px.
+      */}
+      <p className="mt-[16px] text-[12px] leading-[18px] tracking-[-0.015em] text-faint">
         {email.on ? <Link href="/reset" className="font-medium text-teal hover:underline">{t("signIn.forgot")}</Link> : t("signIn.forgotOff")}
       </p>
     </AuthFrame>
