@@ -311,6 +311,8 @@ type Session = {
   /** What the agent said, so `session/load` can replay it. */
   readonly history: string[];
   cancel: AbortController;
+  /** A prompt has arrived and its handler hasn't run yet: `cancel` is already that prompt's turn's. */
+  armed: boolean;
   /** Set while a `steerable` turn waits for a steer. */
   steer: ((text: string) => void) | undefined;
   running: boolean;
@@ -390,7 +392,13 @@ const mcpCall = async (server: { readonly url: string; readonly bearer?: string 
   }
 };
 
-export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
+export type FakeAgent = {
+  readonly app: acp.AgentApp;
+  /** The transport read a `session/prompt` for this session, before the SDK dispatched it (`serveFakeAgent`). */
+  readonly promptArrived: (sessionId: string) => void;
+};
+
+export const createFakeAgent = (options: FakeAgentOptions): FakeAgent => {
   const capabilities = fakeAgentCapabilities[options.profile];
   const sessions = new Map<string, Session>();
   let counter = 0;
@@ -444,6 +452,7 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
       sessionMcp: mcp,
       history,
       cancel: new AbortController(),
+      armed: false,
       steer: undefined,
       running: false,
       children: new Map(),
@@ -495,6 +504,18 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
       throw acp.RequestError.invalidParams(undefined, "unknown session");
     }
     return found;
+  };
+
+  // As OpenCode registers a prompt's turn as it reads it, so a cancel sent right behind the prompt
+  // still reaches that turn. The SDK runs a message's handler only after a walk of the handlers
+  // registered before it, so the cancel's handler can run before the prompt's: the turn's
+  // controller is made when the prompt arrives, not when its handler starts.
+  const promptArrived = (sessionId: string): void => {
+    const session = sessions.get(sessionId);
+    if (session !== undefined) {
+      session.cancel = new AbortController();
+      session.armed = true;
+    }
   };
 
   const app = acp
@@ -639,7 +660,11 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
     // Milestone 7 (ticket 03): a prompt that starts with `/` is a slash command, as a real agent
     // reads it; ostra's own prompts never start with a ticket's text, so a ticket can't name one.
     const { script, args } = text.startsWith("/") ? { script: "slash", args: /^\/(\S*)/.exec(text)?.[1] ?? "" } : parsePrompt(text);
-    session.cancel = new AbortController();
+    // Made when the prompt arrived (`promptArrived`), so a cancel right behind it is already in it.
+    if (!session.armed) {
+      session.cancel = new AbortController();
+    }
+    session.armed = false;
     session.running = true;
     const { signal } = session.cancel;
     const say = async (text: string): Promise<void> => {
@@ -1649,7 +1674,7 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
     }
   };
 
-  return app;
+  return { app, promptArrived };
 };
 
 /** A tool call of every ACP kind, then one that fails. */
@@ -1709,9 +1734,16 @@ const writableToWeb = (stream: Writable): WritableStream<Uint8Array> =>
     },
   });
 
+/** A `session/prompt` request as it arrives on the wire: the client's, so unknown fields are tolerated. */
+const promptRequestSchema = z.looseObject({
+  method: z.literal(acp.methods.agent.session.prompt),
+  id: z.union([z.string(), z.number()]),
+  params: z.looseObject({ sessionId: z.string() }),
+});
+
 /** Serves the fake over a pair of node streams. Resolves when the client goes away. */
 export const serveFakeAgent = async (input: Readable, output: Writable, options: Omit<FakeAgentOptions, "crash"> & { readonly crash?: () => void }): Promise<void> => {
-  const app = createFakeAgent({
+  const fake = createFakeAgent({
     ...options,
     crash:
       options.crash ??
@@ -1720,6 +1752,19 @@ export const serveFakeAgent = async (input: Readable, output: Writable, options:
         input.destroy();
       }),
   });
-  const connection = app.connect(acp.ndJsonStream(writableToWeb(output), readableToWeb(input)));
+  const stream = acp.ndJsonStream(writableToWeb(output), readableToWeb(input));
+  // Each message in the order it arrived, before the SDK dispatches it: a prompt's turn exists from then on.
+  const readable = stream.readable.pipeThrough(
+    new TransformStream<acp.AnyMessage, acp.AnyMessage>({
+      transform: (message, controller) => {
+        const prompt = promptRequestSchema.safeParse(message);
+        if (prompt.success) {
+          fake.promptArrived(prompt.data.params.sessionId);
+        }
+        controller.enqueue(message);
+      },
+    }),
+  );
+  const connection = fake.app.connect({ readable, writable: stream.writable });
   await connection.closed;
 };
