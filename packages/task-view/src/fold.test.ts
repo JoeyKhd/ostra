@@ -1000,6 +1000,26 @@ describe("protocol minor 1's markers (ticket 36)", () => {
     );
     expect(messages[0]?.metadata?.author?.reopen).toBe(true);
   });
+
+  it("a replayed message keeps the intent of the one it sends again, and names its sequence", () => {
+    const memberId = memberIdSchema.parse("01900000-0000-7000-8000-0000000000b1");
+    const round = clientMessageIdSchema.parse("01900000-0000-7000-8000-0000000000c4");
+    const own = clientMessageIdSchema.parse("01900000-0000-7000-8000-0000000000c5");
+    const messages = foldTaskEvents(
+      [
+        stored(1, { kind: "user.message", memberId, clientMessageId: round, text: "CI failed.", delivery: "queued", intent: "fix-ci" }),
+        stored(2, { kind: "user.message", memberId, clientMessageId: own, text: "Also the README.", delivery: "queued" }),
+        stored(3, { kind: "user.message", memberId, clientMessageId: round, text: "CI failed.", delivery: "queued", replayed: true }),
+        stored(4, { kind: "user.message", memberId, clientMessageId: own, text: "Also the README.", delivery: "queued", replayed: true }),
+      ],
+      [],
+    );
+    const authors = messages.map((message) => message.metadata?.author);
+    expect(authors[2]).toMatchObject({ replayed: true, replayOf: 1, intent: "fix-ci" });
+    expect(authors[3]).toMatchObject({ replayed: true, replayOf: 2 });
+    expect(authors[3]?.intent).toBeUndefined();
+    expect(authors[0]?.replayOf).toBeUndefined();
+  });
 });
 
 

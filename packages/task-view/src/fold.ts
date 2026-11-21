@@ -8,6 +8,7 @@ import type {
   ClientMessageId,
   MemberId,
   MessageDelivery,
+  MessageIntent,
   PlanEntry,
   QuestionField,
   QuestionId,
@@ -532,6 +533,10 @@ export const foldTaskEvents = (
   const prTitles = new Map<RepoId, string>();
   const committedSegments = new Set<SegmentId>();
   const committedClientIds = new Set<ClientMessageId>();
+  // Each member message's first event: its sequence and why it was written. A reopen's replay of a
+  // message no turn answered carries no intent of its own (`reopen.ts`), so it keeps the first's,
+  // and the sequence that names what it carried (a diff-comments message's comments, F-072).
+  const sentFirst = new Map<ClientMessageId, { readonly seq: number; readonly intent: MessageIntent | undefined }>();
   // F-138: every subagent of the task, by its ID, and the call that started each one.
   const subagents = new Map<SubagentId, SubagentRecord>();
   // Where each member message stands, the same for every viewer (ticket 19): "queued" until the
@@ -683,6 +688,10 @@ export const foldTaskEvents = (
     switch (event.kind) {
       case "user.message": {
         committedClientIds.add(event.clientMessageId);
+        const first = sentFirst.get(event.clientMessageId);
+        if (first === undefined) sentFirst.set(event.clientMessageId, { seq, intent: event.intent });
+        const replayOf = event.replayed === true && first !== undefined ? first : null;
+        const intent = event.intent ?? replayOf?.intent;
         push({
           id: `user:${event.clientMessageId}`,
           role: "user",
@@ -699,7 +708,8 @@ export const foldTaskEvents = (
               ...(held.has(event.clientMessageId) ? { held: true } : {}),
               ...(event.reopen === true ? { reopen: true } : {}),
               ...(event.replayed === true ? { replayed: true } : {}),
-              ...(event.intent === undefined || event.intent === "message" ? {} : { intent: event.intent }),
+              ...(replayOf === null ? {} : { replayOf: replayOf.seq }),
+              ...(intent === undefined || intent === "message" ? {} : { intent }),
             },
           },
         });

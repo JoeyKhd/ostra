@@ -313,7 +313,9 @@ export type TaskMessageMeta = {
     held?: boolean;
     reopen?: boolean;
     replayed?: boolean;
-    /** Milestone 3 (ticket 46): why ostra sent it for the member (diff comments, update branch, a PR comment, fix checks, keep working). */
+    /** A replayed message: the sequence of the message it sends again, which names what that one carried. */
+    replayOf?: number;
+    /** Milestone 3 (ticket 46): why ostra sent it for the member (diff comments, update branch, a PR comment, fix checks, keep working). A replay keeps the first's. */
     intent?: MessageIntent;
   };
   optimistic?: boolean;
