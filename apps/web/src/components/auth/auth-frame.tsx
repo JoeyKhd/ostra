@@ -9,6 +9,8 @@ import webPackage from "../../../package.json";
  * lockup, the form and the version, and beside it the "Deep water" illustration with the tagline.
  * The form block's top sits on one guide, the top of a 300px box centred in the column's middle
  * row, so moving from sign-in to the forced password change changes the form and nothing else.
+ * Beside the illustration the block is 332px wide and sits where every auth picture draws it, past
+ * the column's middle: three quarters of the room beside it on its left (x 111 at 1200 wide).
  * Under 960px the illustration column goes, and with it the tagline. It keeps the scale its own
  * pictures were matched at (`.auth-scale` in globals.css), which the panel's larger scale leaves alone.
  */
@@ -20,7 +22,7 @@ export const AuthFrame = ({ children }: { readonly children: ReactNode }) => (
       </header>
       {/* A size container: the form's guide is half of what's left of this row after the 300px box. */}
       <main className="min-h-0 flex-1 overflow-y-auto px-[16px] [container-type:size]">
-        <div className="mx-auto w-full max-w-[360px] pt-[max(24px,calc((100cqh-300px)/2))] pb-[24px]">{children}</div>
+        <div className="mx-auto w-full max-w-[360px] pt-[max(24px,calc((100cqh-300px)/2))] pb-[24px] min-[960px]:ml-[calc((100%-332px)*0.74)] min-[960px]:max-w-[332px]">{children}</div>
       </main>
       <footer className="shrink-0 px-[16px] pb-[48px] font-mono text-[11.5px] leading-[20px] text-faint min-[420px]:px-[32px]">
         {t("signIn.version", { version: webPackage.version })}

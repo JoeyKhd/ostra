@@ -32,7 +32,7 @@ The form column is a flex column with three rows: a top row (32px inset), a midd
 - **Form guide.** The form block sits in a 300px-tall box, vertically centred in the middle row, content aligned to the box's top, so the "Sign in" title starts at y 252 at 1200×800. The version footer and the tagline share one baseline: y 747 at 1200×800, 53px above the bottom edge, as in the picture.
 - **Form column:**
   - Top row, at 32px from the top and left: the lockup, `lockup-horizontal-shell.svg` (copy it to `public/brand/`), 22px tall, `alt="ostra"`. Never type the wordmark live (`brief.md`).
-  - Middle: the form block, **360px wide**, centred horizontally in the column (the picture sits it ~25px right of centre; centring is the rule).
+  - Middle: the form block, **360px wide**, centred horizontally in the column (the picture sits it ~25px right of centre; centring is the rule). *Changed 2026-11-21 (the UI polish batch, on the lead's word): beside the illustration the block is where every auth picture draws it, 332px wide at x 111 at 1200×800, with three quarters of the room beside it on its left; below 960px it's centred and up to 360px wide.*
   - Bottom row, at 32px from the left: `ostra v0.1.0`, Plex Mono 400 11.5px `--faint`. The version comes from the server's package version at build time; omit the line if it isn't available, never hard-code it.
 - **Illustration column:** see "The illustration" below.
 
