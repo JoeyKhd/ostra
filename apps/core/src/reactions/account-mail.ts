@@ -57,7 +57,7 @@ const prepare = async (deps: AccountMailDeps, payload: Payload): Promise<Prepare
     case "invitation": {
       const invitation = await deps.db.invitation.findFirst({
         where: { id: payload.recordId, organizationId: payload.organizationId },
-        select: { id: true, email: true, status: true, expiresAt: true, acceptedAt: true, revokedAt: true, user: { select: { name: true } } },
+        select: { id: true, email: true, role: true, status: true, expiresAt: true, acceptedAt: true, revokedAt: true, user: { select: { name: true } } },
       });
       if (invitation === null) {
         return { send: false, why: "the invitation is gone" };
@@ -72,13 +72,21 @@ const prepare = async (deps: AccountMailDeps, payload: Payload): Promise<Prepare
         return { send: false, why: "the invitation expired" };
       }
       const link = invitationLink(deps.publicUrl, invitation.id);
-      const rendered = renderInvitationMail({ organizationName, inviterName: invitation.user.name, link, expiresAt: invitation.expiresAt.getTime(), publicUrl: deps.publicUrl });
+      const rendered = renderInvitationMail({
+        organizationName,
+        inviterName: invitation.user.name,
+        address: invitation.email,
+        role: invitation.role === "admin" ? "admin" : "member",
+        link,
+        expiresAt: invitation.expiresAt.getTime(),
+        publicUrl: deps.publicUrl,
+      });
       return { send: true, to: invitation.email, memberId: null, subject: organizationName, render: () => Promise.resolve(rendered) };
     }
     case "email_verification": {
       const member = await deps.db.member.findFirst({
         where: { id: payload.recordId, organizationId: payload.organizationId },
-        select: { id: true, state: true, userId: true, user: { select: { email: true } } },
+        select: { id: true, state: true, userId: true, user: { select: { email: true, username: true } } },
       });
       if (member === null) {
         return { send: false, why: "the membership is gone" };
@@ -102,14 +110,21 @@ const prepare = async (deps: AccountMailDeps, payload: Payload): Promise<Prepare
         subject: organizationName,
         render: async (tx) => {
           const token = await mintMembershipVerification(tx, { memberId: member.id, expiresAt });
-          return renderVerificationMail({ organizationName, link: verificationLink(deps.publicUrl, invitation.id, token), expiresAt: expiresAt.getTime(), publicUrl: deps.publicUrl });
+          return renderVerificationMail({
+            organizationName,
+            address: member.user.email,
+            username: member.user.username,
+            link: verificationLink(deps.publicUrl, invitation.id, token),
+            expiresAt: expiresAt.getTime(),
+            publicUrl: deps.publicUrl,
+          });
         },
       };
     }
     case "password_reset": {
       const grant = await deps.db.resetLinkGrant.findUnique({
         where: { id: payload.recordId },
-        select: { id: true, userId: true, usedAt: true, expiresAt: true, user: { select: { email: true, members: { where: { organizationId: payload.organizationId }, select: { id: true } } } } },
+        select: { id: true, userId: true, usedAt: true, expiresAt: true, createdAt: true, user: { select: { email: true, members: { where: { organizationId: payload.organizationId }, select: { id: true } } } } },
       });
       // The grant is the install's; the payload's organization is one the account belongs to.
       if (grant?.user.members.length !== 1) {
@@ -129,7 +144,14 @@ const prepare = async (deps: AccountMailDeps, payload: Payload): Promise<Prepare
         subject: organizationName,
         render: async (tx) => {
           const token = await mintPasswordReset(tx, { grantId: grant.id, userId: grant.userId, expiresAt });
-          return renderPasswordResetMail({ organizationName, link: resetLink(deps.publicUrl, token), expiresAt: expiresAt.getTime(), publicUrl: deps.publicUrl });
+          return renderPasswordResetMail({
+            organizationName,
+            address: grant.user.email,
+            link: resetLink(deps.publicUrl, token),
+            expiresAt: expiresAt.getTime(),
+            hours: Math.max(1, Math.round((expiresAt.getTime() - grant.createdAt.getTime()) / 3_600_000)),
+            publicUrl: deps.publicUrl,
+          });
         },
       };
     }

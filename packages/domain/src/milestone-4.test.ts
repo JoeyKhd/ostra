@@ -626,9 +626,9 @@ describe("milestone 4's mails", () => {
   const link = "https://ostra.example.com/invite/inv-123?token=abc";
   const budget = { organizationName: "Acme", budgetName: "platform", month: "2026-11", percent: 80, spent: "$80.00", budget: "$100.00", link: `${publicUrl}/settings/budgets`, publicUrl };
   const mails = {
-    invitation: renderInvitationMail({ organizationName: "Acme", inviterName: "Ada", link, expiresAt: Date.UTC(2026, 10, 26, 14, 5), publicUrl }),
-    verification: renderVerificationMail({ organizationName: "Acme", link, expiresAt: Date.UTC(2026, 10, 20), publicUrl }),
-    reset: renderPasswordResetMail({ organizationName: "Acme", link, expiresAt: Date.UTC(2026, 10, 20), publicUrl }),
+    invitation: renderInvitationMail({ organizationName: "Acme", inviterName: "Ada", address: "sam@acme.dev", link, expiresAt: Date.UTC(2026, 10, 26, 14, 5), publicUrl }),
+    verification: renderVerificationMail({ organizationName: "Acme", address: "sam@acme.dev", username: "sam", link, expiresAt: Date.UTC(2026, 10, 20), publicUrl }),
+    reset: renderPasswordResetMail({ organizationName: "Acme", address: "sam@acme.dev", link, expiresAt: Date.UTC(2026, 10, 20), publicUrl }),
     "budget warning": renderBudgetWarningMail(budget),
     "budget reached": renderBudgetReachedMail({ ...budget, percent: 100, spent: "$100.00" }),
   };
@@ -652,8 +652,21 @@ describe("milestone 4's mails", () => {
     expect(mails["budget reached"].text).toContain("Raise the budget: ");
   });
 
+  it("F-002: the account mails say what the link is for, for whom, and why they came (email-account.md)", () => {
+    expect(mails.invitation.text).toContain("Invitation · Acme");
+    expect(mails.invitation.text).toContain("Ada invited you to join Acme as a member. ostra is where the team runs coding agents on its tickets.");
+    expect(mails.invitation.text).toContain("For: sam@acme.dev");
+    expect(mails.invitation.text).toContain("Anyone who has it can join as you, so don't forward this mail.");
+    expect(mails.invitation.text).toContain("You get this because Ada invited sam@acme.dev. If you didn't expect it, ignore it: nothing happens.");
+    expect(mails.invitation.html).toContain("<strong style=\"font-weight:600;\">Ada</strong>");
+    expect(mails.invitation.html).toContain("prefers-color-scheme: dark");
+    expect(mails.verification.subject).toBe("Confirm your address to join Acme");
+    expect(mails.reset.text).toContain("Password reset · ostra.example.com");
+    expect(mails.reset.text).toContain("The link works once, for 24 hours.");
+  });
+
   it("escapes a name in the HTML", () => {
-    const mail = renderInvitationMail({ organizationName: "<script>", inviterName: "A&B", link, expiresAt: 0, publicUrl });
+    const mail = renderInvitationMail({ organizationName: "<script>", inviterName: "A&B", address: "sam@acme.dev", link, expiresAt: 0, publicUrl });
     expect(mail.html).not.toContain("<script>");
     expect(mail.html).toContain("A&amp;B");
   });
