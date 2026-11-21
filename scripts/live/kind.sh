@@ -44,6 +44,7 @@ HELM_SHA="d1c0278d46beab79582d7e50f5b3dc206944ba8e577cde618513fd07daa53983"
 say "live-kind on $(uname -srm), $(nproc) CPUs, $(free -g | awk '/Mem:/ {print $2}') GB, Docker $(docker version --format '{{.Server.Version}}'), images $VERSION"
 
 tools() {
+  local cluster kind_version kind_sha
   for cluster in "${CLUSTERS[@]}"; do
     read -r _ kind_version kind_sha _ _ <<<"$cluster"
     fetch_checked "https://github.com/kubernetes-sigs/kind/releases/download/$kind_version/kind-linux-amd64" "$kind_sha" "$BIN/kind-$kind_version" || return 1
@@ -75,7 +76,7 @@ step registry registry_up
 BASE_DIGEST="$(docker inspect --format '{{index .RepoDigests 0}}' localhost:5001/ostra/live-base:1 2>/dev/null | sed 's/.*@//')"
 
 make_cluster() {
-  name="$1" kind_version="$2" image="$3" cni="$4"
+  local name="$1" kind_version="$2" image="$3" cni="$4" config
   config="$BIN/kind-$name.yaml"
   {
     echo "kind: Cluster"
@@ -101,7 +102,7 @@ make_cluster() {
 }
 
 server_chart() {
-  ctx="kind-$1"
+  local ctx="kind-$1" forward code
   kubectl --context "$ctx" create namespace ostra || return 1
   kubectl --context "$ctx" -n ostra run postgres --image "$POSTGRES_IMAGE" --env POSTGRES_USER=ostra --env POSTGRES_DB=ostra --env POSTGRES_HOST_AUTH_METHOD=trust --port 5432 --labels app=postgres || return 1
   kubectl --context "$ctx" -n ostra expose pod postgres --port 5432 || return 1
@@ -123,7 +124,7 @@ server_chart() {
 }
 
 runner_chart() {
-  ctx="kind-$1"
+  local ctx="kind-$1" core
   # The pool's join token is the bootstrap one core wrote at first start; it goes from the pod's
   # data folder into the secret without passing through this log.
   core="$(kubectl --context "$ctx" -n ostra get pods -l app.kubernetes.io/component=core -o name | head -n 1)"
@@ -135,7 +136,7 @@ runner_chart() {
 }
 
 runner_joins() {
-  ctx="kind-$1"
+  local ctx="kind-$1"
   for _ in $(seq 1 36); do
     if kubectl --context "$ctx" -n ostra logs -l app.kubernetes.io/component=core --tail=-1 2>/dev/null | grep -q '"msg":"gateway.peer-open"'; then
       echo "the chart's runner connected"
@@ -153,7 +154,7 @@ runner_joins() {
 # the address answers: on Calico the probe is blocked and the control connects (enforced); on
 # flannel both connect (ignored, told apart). A timeout is inconclusive, never a pass.
 egress_probes() {
-  ctx="kind-$1" expect="$2"
+  local ctx="kind-$1" expect="$2" node_ip server_ip probe box control
   node_ip="$(kubectl --context "$ctx" get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')"
   server_ip="$(kubectl --context "$ctx" -n ostra get svc ostra-ostra-server-core -o jsonpath='{.spec.clusterIP}')"
   probe='for target in "$@"; do if nc -z -w 5 ${target%:*} ${target#*:}; then echo "$target connected"; else echo "$target blocked"; fi; done'
@@ -177,7 +178,7 @@ egress_probes() {
 
 # The kubelet pulls a box image by digest with a per-box pull secret, and is refused without one.
 kubelet_pull() {
-  ctx="kind-$1"
+  local ctx="kind-$1" ref reason
   [ -n "$BASE_DIGEST" ] || { echo "no digest from the push"; return 1; }
   kubectl --context "$ctx" -n ostra-boxes create secret docker-registry live-pull --docker-server=localhost:5001 --docker-username="$REGISTRY_USER" --docker-password="$REGISTRY_TOKEN" >/dev/null || return 1
   ref="localhost:5001/ostra/live-base@$BASE_DIGEST"
@@ -195,7 +196,7 @@ kubelet_pull() {
 # A node with no room: the pod is unschedulable and the scheduler says so, which is what the
 # executor reads as waiting (it isn't an autoscaler: that stays ticket 38's).
 unschedulable() {
-  ctx="kind-$1"
+  local ctx="kind-$1" node phase scheduled
   node="$(kubectl --context "$ctx" get nodes -o name | head -n 1)"
   kubectl --context "$ctx" cordon "$node" || return 1
   kubectl --context "$ctx" -n ostra-boxes run waiting --image "$BUSYBOX_IMAGE" --restart Never --command -- true || return 1
@@ -210,11 +211,25 @@ unschedulable() {
 }
 
 released_clean() {
-  ctx="kind-$1"
+  local ctx="kind-$1" left
   helm --kube-context "$ctx" uninstall ostra-runner -n ostra --wait || return 1
   left="$(kubectl --context "$ctx" -n ostra-boxes get all,secrets,networkpolicies --no-headers 2>/dev/null | grep -v '^secret/default-token' || true)"
   echo "left in ostra-boxes: ${left:-nothing}"
   [ -z "$left" ]
+}
+
+# on_cluster <cluster> <check> <function> [args...]: the step `<cluster>-<check>`, which runs
+# `<function> <cluster> [args...]` against the context kind-<cluster>. Each step is handed the
+# cluster's own name, never an earlier step's; when the cluster's step failed, there's no context
+# to run against, and the step is skipped.
+on_cluster() {
+  local cluster="$1" check="$2" fn="$3"
+  shift 3
+  if passed "$cluster-cluster"; then
+    step "$cluster-$check" "$fn" "$cluster" "$@"
+  else
+    skipped "$cluster-$check" "cluster failed, see $cluster-cluster.log"
+  fi
 }
 
 for cluster in "${CLUSTERS[@]}"; do
@@ -222,16 +237,18 @@ for cluster in "${CLUSTERS[@]}"; do
   expect="enforced"
   [ "$cni" = "calico" ] || expect="ignored"
   step "$name-cluster" make_cluster "$name" "$kind_version" "$image" "$cni"
-  step "$name-server-chart" server_chart "$name"
-  step "$name-runner-chart" runner_chart "$name"
-  step "$name-runner-joins" runner_joins "$name"
-  step "$name-egress-$expect" egress_probes "$name" "$expect"
-  step "$name-kubelet-pull" kubelet_pull "$name"
-  step "$name-unschedulable" unschedulable "$name"
+  on_cluster "$name" server-chart server_chart
+  on_cluster "$name" runner-chart runner_chart
+  on_cluster "$name" runner-joins runner_joins
+  on_cluster "$name" "egress-$expect" egress_probes "$expect"
+  on_cluster "$name" kubelet-pull kubelet_pull
+  on_cluster "$name" unschedulable unschedulable
   not_run "$name-box-as-a-pod" "a box as a pod with its services, ready in under 60 s, needs a task dispatched end to end on the cluster (a stub model and a git upstream the pod reaches), which this job doesn't set up yet"
   not_run "$name-buildkit" "the rootless BuildKit pod's build, scan and push needs a snapshot build requested through core on the cluster, which this job doesn't drive yet"
-  step "$name-released-clean" released_clean "$name"
-  kubectl --context "kind-$name" -n ostra logs -l app.kubernetes.io/name=ostra-server --tail=-1 --all-containers >"$LIVE_OUT/$name-server-pods.log" 2>&1
+  on_cluster "$name" released-clean released_clean
+  if passed "$name-cluster"; then
+    kubectl --context "kind-$name" -n ostra logs -l app.kubernetes.io/name=ostra-server --tail=-1 --all-containers >"$LIVE_OUT/$name-server-pods.log" 2>&1
+  fi
   "kind-$kind_version" delete cluster --name "$name" >/dev/null 2>&1
 done
 

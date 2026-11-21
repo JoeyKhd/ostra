@@ -1,7 +1,8 @@
 # Shared by the live proof scripts (ticket 35, ADR 0061): each step runs with its output in its own
-# log under $LIVE_OUT, and ends in one RESULT line: `pass`, `fail`, or `not-run` with the reason a
-# hosted runner can't do it. A script exits non-zero when any step failed; a step that didn't run
-# leaves its condition `partial` in the proof files, and says so here and in the log.
+# log under $LIVE_OUT, and ends in one RESULT line: `pass`, `fail`, `skipped` when a step it needs
+# failed, or `not-run` with the reason a hosted runner can't do it. A script exits non-zero when any
+# step failed; a step that didn't run leaves its condition `partial` in the proof files, and says so
+# here and in the log.
 #
 # Source it: `. scripts/live/lib.sh`. Nothing here prints a secret: the jobs use none, and
 # `scripts/live/check-logs.sh` checks the logs for anything that looks like one before they're kept.
@@ -13,32 +14,52 @@ mkdir -p "$LIVE_OUT"
 LIVE_RESULTS="$LIVE_OUT/results.txt"
 : >>"$LIVE_RESULTS"
 LIVE_FAILED=0
+# The steps that passed in this run, space-separated, for `passed`.
+LIVE_PASSED=" "
 
 # say <text>: one line of the job's own narration, with the time.
 say() {
   printf '%s %s\n' "$(date -u +%H:%M:%SZ)" "$*" | tee -a "$LIVE_OUT/steps.log"
 }
 
-# result <step> <pass|fail|not-run> <detail>
+# result <step> <pass|fail|skipped|not-run> <detail>
 result() {
   printf 'RESULT %s %s: %s\n' "$1" "$2" "$3" | tee -a "$LIVE_RESULTS" "$LIVE_OUT/steps.log"
   if [ "$2" = "fail" ]; then LIVE_FAILED=1; fi
 }
 
 # step <name> <command...>: runs the command with its output in $LIVE_OUT/<name>.log, and records
-# pass or fail with its time.
+# pass or fail with its time. Its variables are local: a step's command that sets `name` or `code`
+# (the scripts' functions do) can't rename the step, its log or the next step's argument.
 step() {
-  name="$1"
+  local step_name="$1" step_log step_started step_code
   shift
-  say "step $name: $*"
-  started=$(date +%s)
-  if "$@" >"$LIVE_OUT/$name.log" 2>&1; then
-    result "$name" pass "$(($(date +%s) - started)) s, log $name.log"
+  step_log="$LIVE_OUT/$step_name.log"
+  say "step $step_name: $*"
+  step_started=$(date +%s)
+  if "$@" >"$step_log" 2>&1; then
+    result "$step_name" pass "$(($(date +%s) - step_started)) s, log $step_name.log"
+    LIVE_PASSED="$LIVE_PASSED$step_name "
   else
-    code=$?
-    result "$name" fail "exit $code after $(($(date +%s) - started)) s, log $name.log"
-    tail -n 40 "$LIVE_OUT/$name.log" | sed 's/^/    /'
+    step_code=$?
+    result "$step_name" fail "exit $step_code after $(($(date +%s) - step_started)) s, log $step_name.log"
+    tail -n 40 "$step_log" | sed 's/^/    /'
   fi
+}
+
+# passed <name>: whether the step of that name ran in this run and passed.
+passed() {
+  case "$LIVE_PASSED" in
+    *" $1 "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# skipped <name> <why>: a step not run because a step it needs failed (that one's `fail` line
+# already fails the run), with the reason in its own log.
+skipped() {
+  echo "skipped: $2" >"$LIVE_OUT/$1.log"
+  result "$1" skipped "$2"
 }
 
 # not_run <name> <why>: a step this machine can't do, said in the log.
