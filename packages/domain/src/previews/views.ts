@@ -24,8 +24,8 @@ import type {
   LeaseEpoch,
   MemberId,
   OrganizationId,
+  PanelPreviewInputBody,
   PreviewCarrier,
-  PreviewInputEvent,
   PreviewKey,
   PreviewLinkId,
   PreviewListItem,
@@ -672,23 +672,25 @@ export const checkViewInput = async (db: Db, viewId: PreviewViewId, now: number)
   });
 
 /**
- * A viewer's input on the HTTP carrier (Q306): `preview.input` down the long poll, since there's
- * no preview connection to carry it. `false` when the runner can't take it there.
+ * A viewer's input, or one of the pane's controls (the width preset, a path, a reload), on the
+ * HTTP carrier (Q306): `preview.input` down the long poll, since there's no preview connection to
+ * carry it. `false` when the runner can't take it there.
  */
 export const enqueueViewInput = async (
   deps: Pick<ViewPorts, "db" | "outbox" | "clock">,
   view: PreviewViewRow,
   box: { readonly runnerId: RunnerId; readonly sessionId: SessionId; readonly minor: number; readonly carrier: PreviewCarrier },
-  events: readonly PreviewInputEvent[],
+  input: PanelPreviewInputBody,
 ): Promise<boolean> => {
   if (!commandKindSupportedOn("preview.input", box.minor, box.carrier)) {
     return false;
   }
   const now = deps.clock.now();
+  const at = { sessionId: box.sessionId, viewId: view.id };
   await deps.db.$transaction(async (tx) => {
     await deps.outbox.enqueueInTx(tx, view.organizationId, box.runnerId, {
       kind: "preview.input",
-      body: { sessionId: box.sessionId, viewId: view.id, events: [...events] },
+      body: "events" in input ? { ...at, events: [...input.events] } : { ...at, control: input.control },
       notAfter: now + runnerLimits.offerTimeoutMs,
       task: { taskId: view.taskId, projectId: view.projectId },
     });

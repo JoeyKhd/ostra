@@ -246,6 +246,16 @@ describe("minor 7's commands", () => {
     const input = commandFixtures["preview.input"];
     expect(parseDownFrame(JSON.stringify(input), 7).ok).toBe(false);
     expect(httpDownFrameCodec.parse(JSON.stringify(input), 7).ok).toBe(true);
+    // It carries the pane's width preset, path and reload too, one at a time, and never with input.
+    const at = { sessionId: input.body.sessionId, viewId: input.body.viewId };
+    for (const control of [{ kind: "viewport", viewport: { width: 390, height: 844 } }, { kind: "navigate", path: "/history?tab=2" }, { kind: "reload" }] as const) {
+      const command = { ...input, body: { ...at, control } };
+      expect(httpDownFrameCodec.parse(JSON.stringify(command), 7)).toEqual({ ok: true, frame: command });
+      expect(parseDownFrame(JSON.stringify(command), 7).ok).toBe(false);
+    }
+    for (const body of [{ ...at, control: { kind: "reload" }, events: [{ kind: "text", text: "hello" }] }, { ...at, control: { kind: "navigate", path: "//evil.example/" } }, { ...at, control: { kind: "reload", seq: 1 } }]) {
+      expect(httpDownFrameCodec.parse(JSON.stringify({ ...input, body }), 7).ok).toBe(false);
+    }
     expect(commandKindSupportedOn("preview.input", 7, "websocket")).toBe(false);
     expect(commandKindSupportedOn("preview.input", 7, "http")).toBe(true);
     for (const kind of newCommands.filter((kind) => kind !== "preview.input")) {

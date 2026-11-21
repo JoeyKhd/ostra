@@ -18,5 +18,5 @@ describe("the browser view on kubernetes", () => {
   it("F-141/c3, c1: on kubernetes, two views of a preview share one page, the width preset applies to it (the last one chosen), and the page goes with the last view", cases.shares, 300_000);
   it("F-141/c2: on kubernetes, a member's input reaches the page in order, and typed text reaches no log line", cases.input, 300_000);
   it("F-141/c4, c9: on kubernetes, a view of a port that isn't a preview is refused, and a stale lease's connection is refused", cases.refuses, 300_000);
-  it("F-141/c8: on kubernetes, on the HTTP carrier a view's frames are posted at most 2 a second, its input comes as preview.input naming an open view, and a closed view ends", cases.http, 300_000);
+  it("F-141/c8: on kubernetes, on the HTTP carrier a view's frames are posted at most 2 a second, its input and the pane's width preset come as preview.input naming an open view, and a closed view ends", cases.http, 300_000);
 });

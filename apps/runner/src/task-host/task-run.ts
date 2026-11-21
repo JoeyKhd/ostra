@@ -2845,8 +2845,11 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       return Promise.resolve({ result: "accepted" });
     },
     previewClose: (body) => Promise.resolve(views.close(body.viewId, "closed") ? { result: "done" } : { result: "done", reason: "unknown-view" }),
-    // The batch must name an open browser view of this box: its input goes onto that view's page, in order.
-    previewInput: (body) => Promise.resolve(views.input(body.viewId, body.events) ? { result: "accepted" } : { result: "rejected", reason: "unknown-view" }),
+    // The batch, or the pane's control, must name an open browser view of this box: it goes onto that view's page, in order.
+    previewInput: (body) => {
+      const taken = "events" in body ? views.input(body.viewId, body.events) : views.control(body.viewId, body.control);
+      return Promise.resolve(taken ? { result: "accepted" } : { result: "rejected", reason: "unknown-view" });
+    },
     views: () => views,
     pages: () => pages,
     screenshotTake: (body) => {

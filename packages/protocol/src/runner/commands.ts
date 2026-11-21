@@ -17,7 +17,7 @@ import {
   taskIdSchema,
 } from "../ids.ts";
 import { appPathSchema, appProcessNameSchema, previewKeySchema, previewViewportSchema, viewportPresetSchema } from "../task/app.ts";
-import { previewInputEventsSchema, previewModeSchema } from "./preview.ts";
+import { previewInputEventsSchema, previewModeSchema, previewPageControlSchema } from "./preview.ts";
 import {
   boxSizeNameSchema,
   branchNameSchema,
@@ -176,14 +176,15 @@ export const previewCloseBodySchema = z.strictObject({ sessionId: sessionIdSchem
 
 /**
  * `preview.input` (minor 7, the HTTP carrier only, Q306): a batch of a member's input for the
- * view's page, which on the WebSocket goes on the preview connection as a `control` instead. The
- * down codec of the WebSocket refuses it (`downFrameCodec`). Typed text is never logged.
+ * view's page, or one of its controls (the width preset, a path, a reload; added 2026-11-21, before
+ * minor 7's release), which on the WebSocket go on the preview connection as a `control` instead.
+ * The down codec of the WebSocket refuses it (`downFrameCodec`). Typed text and a path are never
+ * logged.
  */
-export const previewInputBodySchema = z.strictObject({
-  sessionId: sessionIdSchema,
-  viewId: previewViewIdSchema,
-  events: previewInputEventsSchema,
-});
+export const previewInputBodySchema = z.union([
+  z.strictObject({ sessionId: sessionIdSchema, viewId: previewViewIdSchema, events: previewInputEventsSchema }),
+  z.strictObject({ sessionId: sessionIdSchema, viewId: previewViewIdSchema, control: previewPageControlSchema }),
+]);
 
 /**
  * `steer`: a member's message for the running session (F-024, milestone 3). `queue` waits for the

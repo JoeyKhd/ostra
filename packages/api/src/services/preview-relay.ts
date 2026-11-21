@@ -11,14 +11,16 @@ import { clientAddressOf } from "./rate-limit.ts";
 
 // The web app's routes for one view's bytes (milestone 8, ticket 20, F-141, ADR 0068, "The bytes
 // stay off the session"): `GET /api/previews/:viewId/stream` relays core's stream of frames as a
-// streamed response, as it is, and `POST /api/previews/:viewId/input` relays a batch of input. Next.js
-// can't upgrade to a WebSocket (ADR 0035), so neither is one.
+// streamed response, as it is, and `POST /api/previews/:viewId/input` relays a batch of input, or one
+// of the pane's controls: `{ control: { kind: "viewport" | "navigate" | "reload" } }`, the width
+// preset, the path field and reload. Next.js can't upgrade to a WebSocket (ADR 0035), so neither is
+// one.
 //
 // Each request is a member's session, or the viewer page's link token in `x-ostra-preview-link`.
 // The view must be the one that member or that link opened, and its viewer must still be allowed:
 // the access is read again on every request. Then the panel asks core for that one view with a
-// token it signs for that view and that viewer, a minute long. A watch-only viewer's input is
-// dropped here, before core and the runner. Every refusal is a code (`error.code`) the panel words
+// token it signs for that view and that viewer, a minute long. A watch-only viewer's input and
+// controls are dropped here, before core and the runner. Every refusal is a code (`error.code`) the panel words
 // through `t`. Never logged: a link's token, the panel's token, a frame or typed text.
 
 /** Why a relay refused: what the pane and the viewer page word. */
@@ -228,7 +230,11 @@ const readCapped = async (request: Request, cap: number): Promise<Uint8Array | n
 /** Whether the request came from the panel's own pages: a browser names its origin on a POST (`fromPanelOrigin`). */
 const fromThePanel = (ctx: Context, request: Request): boolean => fromPanelOrigin(request, ctx.deps.settings.publicUrl);
 
-/** `POST /api/previews/:viewId/input`: a batch of the viewer's input, `{ events }`, relayed to core. */
+/**
+ * `POST /api/previews/:viewId/input`: a batch of the viewer's input, `{ events }`, or one of the
+ * pane's controls, `{ control }`, relayed to core. Each moves the page every viewer of the preview
+ * shares, so a control needs input as a batch does.
+ */
 export const servePreviewInput = async (ctx: Context, request: Request, rawViewId: string): Promise<Response> => {
   // JSON only, from the panel's own origin: a page elsewhere can't send it with the member's cookie.
   if (request.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() !== "application/json" || !fromThePanel(ctx, request)) {

@@ -1,6 +1,6 @@
 import type { AdapterResult, AppPortReach, Logger } from "@ostra/adapter-sdk";
 import { runnerLimits, viewportPresetSizes } from "@ostra/protocol";
-import type { PreviewInputEvent, PreviewKey, PreviewMode, PreviewSupport, PreviewTarget, PreviewViewId, PreviewViewport, Reach } from "@ostra/protocol";
+import type { PreviewInputEvent, PreviewKey, PreviewMode, PreviewPageControl, PreviewSupport, PreviewTarget, PreviewViewId, PreviewViewport, Reach } from "@ostra/protocol";
 import type { WebSocket } from "ws";
 import type { OpenBoxBrowser } from "../browser/box-browser.ts";
 import type { Carrier } from "../connection/http-carrier.ts";
@@ -109,6 +109,12 @@ export type PreviewViews = {
    * page in order. `false` when no `stream` view of that ID is open.
    */
   readonly input: (viewId: PreviewViewId, events: readonly PreviewInputEvent[]) => boolean;
+  /**
+   * One of the pane's controls for an open browser view (the HTTP carrier's `preview.input` with a
+   * `control`): the width preset, a path or a reload, applied to its shared page after what came
+   * before. `false` when no `stream` view of that ID is open.
+   */
+  readonly control: (viewId: PreviewViewId, control: PreviewPageControl) => boolean;
   /** The carrier a browser view's frames go up on, once it's attached; `null` before, or for a tunnel. */
   readonly streaming: (viewId: PreviewViewId) => StreamLink["carrier"] | null;
   /** Ends a view; `false` when none of that ID is open. */
@@ -382,6 +388,15 @@ export const createPreviewViews = (deps: PreviewViewsDeps): PreviewViews => {
         return false;
       }
       void stream.pages.input(viewId, events);
+      return true;
+    },
+    control: (viewId, control) => {
+      const view = views.get(viewId);
+      const stream = deps.stream;
+      if (view?.mode !== "stream" || stream === undefined) {
+        return false;
+      }
+      void stream.pages.control(viewId, control);
       return true;
     },
     streaming: (viewId) => views.get(viewId)?.stream?.carrier ?? null,

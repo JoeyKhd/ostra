@@ -8,7 +8,7 @@ import { silentLogger } from "@ostra/adapter-sdk";
 import { createPanelPreviewTokens, createPanelStartAppTokens, markViewConnected, PANEL_START_APP_PATH, parsePanelPreviewPath } from "@ostra/domain";
 import type { PanelPreviewClaims, PanelStartAppClaims } from "@ostra/domain";
 import { createPanelStreamReader, encodePanelStreamRecord, panelPreviewInputBodySchema, previewKeySchema, previewViewIdSchema } from "@ostra/protocol";
-import type { OrganizationId, PreviewInputEvent, PreviewViewId, ProjectId } from "@ostra/protocol";
+import type { OrganizationId, PanelPreviewInputBody, PreviewInputEvent, PreviewViewId, ProjectId } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -106,7 +106,7 @@ const setLinksAllowed = async (enabled: boolean): Promise<void> => {
 
 // ---------- the fake core ----------
 
-type CoreCall = { readonly route: "stream" | "input"; readonly viewId: PreviewViewId; readonly claims: PanelPreviewClaims; readonly events?: readonly PreviewInputEvent[] };
+type CoreCall = { readonly route: "stream" | "input"; readonly viewId: PreviewViewId; readonly claims: PanelPreviewClaims; readonly input?: PanelPreviewInputBody };
 type FakeCore = { readonly url: string; readonly calls: CoreCall[]; readonly starts: PanelStartAppClaims[]; readonly refused: string[]; readonly close: () => Promise<void> };
 
 const jpeg = (fill: number): Uint8Array => {
@@ -166,7 +166,7 @@ const startFakeCore = async (): Promise<FakeCore> => {
     request.on("data", (chunk: Buffer) => chunks.push(chunk));
     request.on("end", () => {
       const body = panelPreviewInputBodySchema.parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
-      calls.push({ route: "input", viewId: route.viewId, claims, events: body.events });
+      calls.push({ route: "input", viewId: route.viewId, claims, input: body });
       response.writeHead(204);
       response.end();
     });
@@ -589,7 +589,7 @@ describe("the stream and input routes (F-141)", () => {
     // The member's input: a batch, relayed in order.
     const input = await servePreviewInput(await memberContext(driver), inputRequest(viewId), viewId);
     expect(input.status).toBe(204);
-    expect(fakeCore.calls.filter((call) => call.viewId === viewId && call.route === "input").map((call) => call.events)).toEqual([[click]]);
+    expect(fakeCore.calls.filter((call) => call.viewId === viewId && call.route === "input").map((call) => call.input)).toEqual([{ events: [click] }]);
 
     // No session and no link: refused, and core never asked.
     const before = fakeCore.calls.length;
@@ -621,6 +621,38 @@ describe("the stream and input routes (F-141)", () => {
     expect([closed.status, await errorCode(closed)]).toEqual([410, "view-closed"]);
   });
 
+  it("F-142/c1: the pane's width preset, path and reload are relayed to core for a viewer who may give input, and a watch-only viewer's stop here, before core", async () => {
+    const target = await task();
+    const opened = await (await harness.as(driver)).previews.open({ taskId: target.taskId, key: target.key });
+    if (!opened.ok) {
+      throw new Error("not opened");
+    }
+    const controls: PanelPreviewInputBody[] = [{ control: { kind: "viewport", viewport: { width: 390, height: 844 } } }, { control: { kind: "navigate", path: "/history" } }, { control: { kind: "reload" } }];
+    for (const body of controls) {
+      expect((await servePreviewInput(await memberContext(driver), inputRequest(opened.viewId, {}, body), opened.viewId)).status).toBe(204);
+    }
+    expect(fakeCore.calls.filter((call) => call.viewId === opened.viewId && call.route === "input").map((call) => call.input)).toEqual(controls);
+    // A control that isn't one of the three, or a path to another host: refused here.
+    for (const body of [{ control: { kind: "print" } }, { control: { kind: "navigate", path: "https://evil.example/" } }]) {
+      const bad = await servePreviewInput(await memberContext(driver), inputRequest(opened.viewId, {}, body), opened.viewId);
+      expect([bad.status, await errorCode(bad)]).toEqual([400, "bad-request"]);
+    }
+    // From another origin, refused like input.
+    const elsewhere = await servePreviewInput(await memberContext(driver), inputRequest(opened.viewId, { origin: "https://evil.example" }, { control: { kind: "reload" } }), opened.viewId);
+    expect(elsewhere.status).toBe(403);
+    // A watch-only link: each control stops here, and core is never asked.
+    const watching = await linkTo(target);
+    const page = await visitor(address()).previews.link.open({ token: watching.token });
+    if (page.state !== "live") {
+      throw new Error("no view");
+    }
+    for (const body of controls) {
+      const dropped = await servePreviewInput(signedOutContext(), inputRequest(page.viewId, { [PREVIEW_LINK_HEADER]: watching.token, "x-forwarded-for": address() }, body), page.viewId);
+      expect([dropped.status, await errorCode(dropped)]).toEqual([403, "watch-only"]);
+    }
+    expect(fakeCore.calls.filter((call) => call.viewId === page.viewId && call.route === "input")).toEqual([]);
+  });
+
   it("F-141/c7: the viewer page's link token opens its own view's stream and input, watch-only unless the link allows input, and a wrong token is refused and limited", async () => {
     const target = await task();
     const watching = await linkTo(target);
@@ -643,7 +675,7 @@ describe("the stream and input routes (F-141)", () => {
     expect(fakeCore.calls.filter((call) => call.viewId === watchPage.viewId && call.route === "input")).toEqual([]);
     // A link that allows input: relayed.
     expect((await servePreviewInput(signedOutContext(), inputRequest(usePage.viewId, withToken(using.token)), usePage.viewId)).status).toBe(204);
-    expect(fakeCore.calls.filter((call) => call.viewId === usePage.viewId && call.route === "input").map((call) => call.events)).toEqual([[click]]);
+    expect(fakeCore.calls.filter((call) => call.viewId === usePage.viewId && call.route === "input").map((call) => call.input)).toEqual([{ events: [click] }]);
     // One link's token never opens another link's view.
     const crossed = await servePreviewStream(signedOutContext(), streamRequest(usePage.viewId, withToken(watching.token)), usePage.viewId);
     expect([crossed.status, await errorCode(crossed)]).toEqual([404, "not-found"]);

@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { baseEnv, localShellProbe, machineBrowserSource, resolveMachineBrowser, resolveSetupShell } from "@ostra/adapter-executor-host";
 import { fakeBrowserProgram, fakeMarker } from "@ostra/adapter-sdk/testing";
 import { previewKeySchema, previewSubprotocols, previewViewIdSchema, repoFullNameSchema, repoIdSchema, runnerLimits, viewportPresetSizes } from "@ostra/protocol";
-import type { PreviewInputEvent, PreviewViewId, PreviewViewport, RepoId, TaskEvent, TaskSpec, TaskSpecAppProcess } from "@ostra/protocol";
+import type { CommandBody, PreviewInputEvent, PreviewViewId, PreviewViewport, RepoId, TaskEvent, TaskSpec, TaskSpecAppProcess } from "@ostra/protocol";
 import { expect } from "vitest";
 import { z } from "zod";
 import type { AppTiming } from "../task-host/app-processes.ts";
@@ -452,8 +452,9 @@ export const previewStreamCases = (mode: PreviewStreamMode) => {
 
     /**
      * F-141/c8: on the HTTP carrier a view's frames are posted, never more than 2 in any second, and
-     * core never has to refuse one as too fast; a member's input comes as `preview.input` and must
-     * name one of the box's open views; a view core closed ends at its next frames.
+     * core never has to refuse one as too fast; a member's input, and the pane's width preset, come
+     * as `preview.input` and must name one of the box's open views; a view core closed ends at its
+     * next frames.
      */
     http: async (): Promise<void> => {
       const { h, core } = await runner({ previewCarrier: "http" });
@@ -472,11 +473,12 @@ export const previewStreamCases = (mode: PreviewStreamMode) => {
       expect(core.frameAnswers(viewId).every((status) => status === 200)).toBe(true);
       if (live) await evaluate(h, STILL, z.boolean());
       // Input down the long poll, as `preview.input` (the WebSocket's codec refuses it, so it's handed to the host here).
-      const input = (target: PreviewViewId, events: PreviewInputEvent[]) => {
-        const command = makeCommand({ seq: 1, id: `input-${randomBytes(3).toString("hex")}`, notAfter: Date.now() + 60_000, kind: "preview.input", body: { sessionId: spec.sessionId, viewId: target, events } });
+      const send = (body: CommandBody<"preview.input">) => {
+        const command = makeCommand({ seq: 1, id: `input-${randomBytes(3).toString("hex")}`, notAfter: Date.now() + 60_000, kind: "preview.input", body });
         if (command.kind !== "preview.input") throw new Error("not an input command");
         return h.host.handlers["preview.input"](command);
       };
+      const input = (target: PreviewViewId, events: PreviewInputEvent[]) => send({ sessionId: spec.sessionId, viewId: target, events });
       if (live) {
         const counter = await evaluate(h, middleOf("#counter"), pointSchema);
         expect(await input(viewId, clickAt(counter))).toMatchObject({ result: "accepted" });
@@ -486,6 +488,11 @@ export const previewStreamCases = (mode: PreviewStreamMode) => {
         await h.gateway.waitFor(() => inputsInFrame(view.frames.at(-1)) === 3, 20_000);
       }
       expect(await input(newViewId(), clickAt({ x: 10, y: 10 }))).toMatchObject({ result: "rejected", reason: "unknown-view" });
+      // The pane's width preset comes the same way, and moves the shared page: its frames come at the phone's size.
+      expect(await send({ sessionId: spec.sessionId, viewId, control: { kind: "viewport", viewport: PHONE } })).toMatchObject({ result: "accepted" });
+      await h.gateway.waitFor(() => view.frames.at(-1)?.header.width === PHONE.width, 20_000);
+      expect(view.frames.at(-1)?.header).toMatchObject({ width: PHONE.width, height: PHONE.height });
+      expect(await send({ sessionId: spec.sessionId, viewId: newViewId(), control: { kind: "reload" } })).toMatchObject({ result: "rejected", reason: "unknown-view" });
       // Core closed the view: its next frames are refused, and the view ends on the box's side.
       if (live) await evaluate(h, ANIMATE, z.boolean());
       core.closeStream(viewId, "closed");

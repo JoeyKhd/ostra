@@ -59,7 +59,8 @@ import type { TunnelHub } from "./tunnels.ts";
 //   presence (its `OSTRA_CORE_REPLICA_URL`) and relays its frames;
 // - the HTTP carrier's frames, `POST /runner/v1/preview/frames`, at most 2 a second a view (Q306);
 // - the panel's stream and input of one view, `/panel/v1/previews/:viewId/stream|input`, with the
-//   panel's token for that view (the web app relays them, ADR 0035). A replica that gets one for a
+//   panel's token for that view (the web app relays them, ADR 0035). Input is a batch of events or
+//   one of the pane's controls (the width preset, a path, a reload), for a viewer who may give input. A replica that gets one for a
 //   view another replica holds forwards it there, signed under the secrets key every replica
 //   shares, and a replica refuses a forwarded request it can't verify. One replica never forwards.
 //
@@ -517,13 +518,15 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
     const json = parseJson(raw.toString("utf8"));
     const body = json.ok ? panelPreviewInputBodySchema.safeParse(json.value) : null;
     if (body?.success !== true) {
-      panelError(response, 400, "bad-request", "the body is a batch of input events");
+      panelError(response, 400, "bad-request", "the body is a batch of input events, or one of the page's controls");
       return;
     }
     if ((await openViewFor(response, caller, viewId)) === null) {
       return;
     }
-    // The access is read again for every batch: a watch-only viewer's input stops here (Q301).
+    // What the log says of it: how many events, or which control. Never a typed text or a path.
+    const what = "events" in body.data ? { events: body.data.events.length } : { control: body.data.control.kind };
+    // The access is read again for every batch and control: a watch-only viewer's stop here (Q301).
     const check = await checkViewInput(deps.db, viewId, now());
     if (!check.ok) {
       switch (check.reason) {
@@ -534,7 +537,7 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
           panelError(response, 410, "view-closed", "this view is closed");
           return;
         case "watch-only":
-          logger.info("preview.input-dropped", { viewId, reason: "watch-only", events: body.data.events.length });
+          logger.info("preview.input-dropped", { viewId, reason: "watch-only", ...what });
           panelError(response, 403, "watch-only", "this view is watch-only");
           return;
         case "not-allowed":
@@ -543,7 +546,7 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
         case "public-links-off":
         case "link-unknown":
         case "level-unknown":
-          logger.info("preview.input-dropped", { viewId, reason: check.reason, events: body.data.events.length });
+          logger.info("preview.input-dropped", { viewId, reason: check.reason, ...what });
           panelError(response, 403, "forbidden", "this viewer may no longer give input");
           return;
         default:
@@ -551,7 +554,7 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
           return;
       }
     }
-    if (hub.sendInput(viewId, body.data.events)) {
+    if (hub.sendControl(viewId, body.data)) {
       response.writeHead(204, { "cache-control": "no-store" });
       response.end();
       return;
@@ -562,7 +565,7 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
       return;
     }
     // The HTTP carrier: down the long poll as `preview.input` (Q306).
-    if (check.box !== null && (await enqueueViewInput(deps, check.view, check.box, body.data.events))) {
+    if (check.box !== null && (await enqueueViewInput(deps, check.view, check.box, body.data))) {
       response.writeHead(204, { "cache-control": "no-store" });
       response.end();
       return;

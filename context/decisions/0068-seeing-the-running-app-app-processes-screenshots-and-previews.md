@@ -121,6 +121,13 @@ They run in a page of their own, never the shared page a member watches.
 - **A box with no browser** never connects its views: `app.browser` already told core, which takes the browser view away (ticket 19).
 - **The report:** every executor's runner now reports `{ stream: true, tunnel: true }` (`RUNNER_PREVIEW_SUPPORT`), so core sends `screenshot.take` (ticket 13) and opens browser views.
 
+**As built (2026-11-21), the pane's width preset, path field and reload** (the gap ticket 18 left: the box applied them, and nothing sent them):
+- **The route is input's.** `POST /api/previews/<viewId>/input` takes `{ events }`, or one control: `{ control: { kind: "viewport", viewport } }`, `{ control: { kind: "navigate", path } }` or `{ control: { kind: "reload" } }` (`panelPreviewInputBodySchema`). Each moves the page every viewer of the preview shares, so a control has input's rules: a member's session or the link's token, the caller's own view, JSON from the panel's own origin, and input access read again each time. A watch-only viewer's control stops at the panel, and again at core, before the runner.
+- **On the WebSocket** core sends it as a numbered `control` on the view's own connection, as input goes (`hub.sendControl`); the box acks it once applied.
+- **On the HTTP carrier** it goes down the long poll as `preview.input`, whose body takes one `control` in place of `events`: an additive change to minor 7 before its release (ADR 0034), with no new command kind, so the database's command kinds and every older minor are as they were, and the WebSocket's codec still refuses `preview.input`. The box applies it to the view's page after what came before, and an unknown view is `unknown-view`.
+- **A path** stays on the preview's own origin (`appPathSchema`) and reaches no log line; core logs a control's kind only.
+- **Open (Q326):** the tablet's preset, 834×1112, is taller than a browser view's page may be (`previewViewportSchema`, at most 1440×900, the screencast's bounds), so neither `previews.open` nor the control takes it as it is. Until the maintainer decides between sending the tablet at 834×900 and raising the page's height cap, the pane sends 834×900.
+
 ## What a preview may reach
 
 A preview reaches only ports that belong to the task:

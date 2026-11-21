@@ -2,7 +2,7 @@ import type { ServerResponse } from "node:http";
 
 import type { Logger } from "@ostra/adapter-sdk";
 import { decodePreviewMessage, encodePanelStreamRecord, encodePreviewMessage } from "@ostra/protocol";
-import type { PreviewCloseReason, PreviewFrameHeader, PreviewInputEvent, PreviewMessage, PreviewViewId } from "@ostra/protocol";
+import type { PanelPreviewInputBody, PreviewCloseReason, PreviewControl, PreviewFrameHeader, PreviewMessage, PreviewViewId } from "@ostra/protocol";
 import type { RawData, WebSocket } from "ws";
 
 // One replica's views whose box connection it holds (ADR 0068, "The preview connection"): the box's
@@ -41,8 +41,11 @@ export type PreviewHub = {
   readonly relayHttpFrame: (viewId: PreviewViewId, header: PreviewFrameHeader, jpeg: Uint8Array) => Promise<void>;
   /** A panel's stream (or a forwarded one) joins the view. `false` when this replica doesn't hold it. */
   readonly attachStream: (viewId: PreviewViewId, response: ServerResponse) => boolean;
-  /** A viewer's input, as a `control` on the box's socket. `false` without a socket here. */
-  readonly sendInput: (viewId: PreviewViewId, events: readonly PreviewInputEvent[]) => boolean;
+  /**
+   * A viewer's input, or one of the pane's controls (the width preset, a path, a reload), as a
+   * numbered `control` on the box's socket. `false` without a socket here.
+   */
+  readonly sendControl: (viewId: PreviewViewId, input: PanelPreviewInputBody) => boolean;
   /** Ends the view here: `close` to the box and to every stream. */
   readonly close: (viewId: PreviewViewId, reason: PreviewCloseReason) => void;
   readonly held: () => readonly PreviewViewId[];
@@ -221,13 +224,15 @@ export const createPreviewHub = (logger: Logger): PreviewHub => {
       }
       return true;
     },
-    sendInput: (viewId, events) => {
+    sendControl: (viewId, input) => {
       const held = views.get(viewId);
       if (held === undefined || held.socket === null) {
         return false;
       }
       held.controlSeq += 1;
-      sendToBox(held, { type: "control", control: { kind: "input", seq: held.controlSeq, events: [...events] } });
+      const seq = held.controlSeq;
+      const control: PreviewControl = "events" in input ? { kind: "input", seq, events: [...input.events] } : { ...input.control, seq };
+      sendToBox(held, { type: "control", control });
       return true;
     },
     close: (viewId, reason) => {

@@ -2,8 +2,9 @@ import { createContext, servePreviewInput } from "@ostra/api";
 
 import { getApiDeps } from "@/server/deps";
 
-// A batch of a viewer's input (milestone 8, F-141, F-142, ADR 0068): `{ events }`, relayed to core
-// for the view. A watch-only viewer's input stops here, before core and the runner. The checks and
+// A batch of a viewer's input (milestone 8, F-141, F-142, ADR 0068): `{ events }`, or one of the
+// pane's controls, `{ control }` (the width preset, a path, a reload), relayed to core for the view.
+// A watch-only viewer's input and controls stop here, before core and the runner. The checks and
 // the relay are `servePreviewInput`'s, tested in `@ostra/api`.
 
 export const dynamic = "force-dynamic";

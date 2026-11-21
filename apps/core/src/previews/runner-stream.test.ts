@@ -27,8 +27,8 @@ import {
 import type { MemberScope } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
-import { APP_RECORDING_CONTENT_TYPE, APP_SCREENSHOT_CONTENT_TYPE, boxIdSchema, inBoxAppAddress, leaseEpochSchema, previewKeySchema, previewSupportSchema, runnerLimits } from "@ostra/protocol";
-import type { BoxId, PreviewInputEvent, PreviewKey, PreviewViewId, RunnerId, SessionId, TaskId, TaskSpec } from "@ostra/protocol";
+import { APP_RECORDING_CONTENT_TYPE, APP_SCREENSHOT_CONTENT_TYPE, boxIdSchema, inBoxAppAddress, leaseEpochSchema, previewKeySchema, previewSupportSchema, runnerLimits, viewportPresetSizes } from "@ostra/protocol";
+import type { BoxId, PreviewInputEvent, PreviewKey, PreviewPageControl, PreviewViewId, RunnerId, SessionId, TaskId, TaskSpec } from "@ostra/protocol";
 import { taskSpecFixture } from "@ostra/protocol/testing";
 import { boxBrowser, createAppPictures, createAppProcesses, createPreviewViews, createSharedPages, RUNNER_PREVIEW_SUPPORT, runnerServerLink, startConnection } from "@ostra/runner";
 import type {
@@ -192,7 +192,12 @@ const handlersOf = (side: () => RunnerSide | undefined): CommandHandlers => {
       return Promise.resolve({ result: "accepted" });
     },
     "preview.close": (command) => Promise.resolve(side()?.views.close(command.body.viewId, "closed") === true ? { result: "done" } : { result: "done", reason: "unknown-view" }),
-    "preview.input": (command) => Promise.resolve(side()?.views.input(command.body.viewId, command.body.events) === true ? { result: "accepted" } : { result: "rejected", reason: "unknown-view" }),
+    "preview.input": (command) => {
+      const views = side()?.views;
+      const body = command.body;
+      const taken = views !== undefined && ("events" in body ? views.input(body.viewId, body.events) : views.control(body.viewId, body.control));
+      return Promise.resolve(taken ? { result: "accepted" } : { result: "rejected", reason: "unknown-view" });
+    },
     "screenshot.take": (command) => {
       const refusal = pictures.memberRefusal(command.body);
       if (refusal !== null) {
@@ -289,6 +294,14 @@ const postInput = (viewId: PreviewViewId, panelToken: string, events: readonly P
     body: JSON.stringify({ events }),
   });
 
+/** One of the pane's controls (the width preset, the path field, reload), through core's input route. */
+const postControl = (viewId: PreviewViewId, panelToken: string, control: PreviewPageControl) =>
+  fetch(`${replica.url}${panelPreviewPaths.input(viewId)}`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${panelToken}`, "content-type": "application/json" },
+    body: JSON.stringify({ control }),
+  });
+
 /** The most frames in any one second of `times`. */
 const mostInOneSecond = (times: readonly number[]): number => {
   let most = 0;
@@ -345,6 +358,38 @@ const clickAt = (point: { readonly x: number; readonly y: number }): PreviewInpu
   { kind: "mouse", action: "down", x: point.x, y: point.y, button: "left", clickCount: 1, modifiers: 0 },
   { kind: "mouse", action: "up", x: point.x, y: point.y, button: "left", clickCount: 1, modifiers: 0 },
 ];
+
+/** How the page last loaded (`navigate` or `reload`), and where it is: the fake browser answers both as the machine's does. */
+const loadedHow = "performance.getEntriesByType('navigation')[0]?.type ?? ''";
+const pathOf = async (pages: SharedPages): Promise<string> => new URL(await pages.evaluate(WEB, "location.href", z.string())).pathname;
+
+/**
+ * The pane's width preset, path field and reload on `side`'s carrier, through core's input route:
+ * the phone's width resizes the shared page's frames, the path loads `/history` on the preview's
+ * origin, and reload loads it again (live, the counter's count goes back to 0).
+ */
+const controlsReachThePage = async (side: RunnerSide, view: { readonly viewId: PreviewViewId; readonly panelToken: string }, panel: PanelStream): Promise<void> => {
+  const phone = viewportPresetSizes.phone;
+  expect((await postControl(view.viewId, view.panelToken, { kind: "viewport", viewport: phone })).status).toBe(204);
+  await waitFor("a frame at the phone's width", () => panel.messages.some((message) => message.type === "frame" && message.header.width === phone.width && message.header.height === phone.height), 30_000);
+  if (live) {
+    await pageSays(side.pages, "String(window.innerWidth)", String(phone.width));
+  }
+  expect((await postControl(view.viewId, view.panelToken, { kind: "navigate", path: "/history" })).status).toBe(204);
+  await waitFor("the page at /history", async () => (await pathOf(side.pages)) === "/history", 20_000);
+  await pageSays(side.pages, loadedHow, "navigate");
+  if (live) {
+    await pageSays(side.pages, counterText, "Count: 0", 30_000);
+    expect((await postInput(view.viewId, view.panelToken, clickAt(await counterPoint(side.pages)))).status).toBe(204);
+    await pageSays(side.pages, counterText, "Count: 1");
+  }
+  expect((await postControl(view.viewId, view.panelToken, { kind: "reload" })).status).toBe(204);
+  await pageSays(side.pages, loadedHow, "reload", 30_000);
+  expect(await pathOf(side.pages)).toBe("/history");
+  if (live) {
+    await pageSays(side.pages, counterText, "Count: 0", 30_000);
+  }
+};
 
 /** Where the counter is on the page: live, its middle; with the fake browser, any point. */
 const counterPoint = async (pages: SharedPages) => (live ? pages.evaluate(WEB, middleOf("#counter"), pointSchema) : { x: 40, y: 40 });
@@ -617,6 +662,62 @@ describe(`the browser view through core (${live ? "the machine's browser" : "the
     await waitFor("the input's ack", async () => (await test.db.command.count({ where: { runnerId: onHttp.ref.runnerId, kind: "preview_input", result: "accepted" } })) === 1, 30_000);
     await closeView(viewDeps(), { viewId: view.viewId, reason: "closed" });
     await waitFor("the box's view ended", () => !onHttp.views.has(view.viewId), 30_000);
+  }, 180_000);
+
+  it("F-141/c3, F-142/c1: the pane's width preset, path and reload go through core to the shared page on the box's connection, and a watch-only link's controls stop at core", async () => {
+    const member = await openStreamView(onWs.task);
+    const panel = await stream(member.viewId, member.panelToken);
+    await panel.next("frame", 60_000);
+    await controlsReachThePage(onWs, member, panel);
+    // A watch-only link on the same page: its controls stop at core, and the shared page stays as it is.
+    const made = newPreviewLinkToken();
+    await test.db.previewLink.create({
+      data: { organizationId: world.organizationId, projectId: world.projectId, taskId: onWs.task.taskId, key: WEB, kind: "expiring", tokenHash: made.tokenHash, allowInput: false, expiresAt: new Date(Date.now() + 3_600_000), createdByMemberId: fixture.a.member.id },
+    });
+    const watching = await openStreamView(onWs.task, { kind: "link", token: made.token });
+    expect(watching.input).toBe(false);
+    const watchPanel = await stream(watching.viewId, watching.panelToken);
+    await watchPanel.next("frame", 60_000);
+    // It opened at the desktop's width, the last one chosen (Q314): the shared page moved to it.
+    const desktop = viewportPresetSizes.desktop.width;
+    await waitFor("the page at the desktop's width", () => watchPanel.messages.filter((message) => message.type === "frame").at(-1)?.header.width === desktop, 30_000);
+    const seen = watchPanel.messages.length;
+    const refusals: PreviewPageControl[] = [{ kind: "viewport", viewport: viewportPresetSizes.phone }, { kind: "navigate", path: "/" }, { kind: "reload" }];
+    for (const control of refusals) {
+      const refused = await postControl(watching.viewId, watching.panelToken, control);
+      expect([refused.status, await refused.json()]).toEqual([403, { error: { code: "watch-only", message: "this view is watch-only" } }]);
+    }
+    // The page the member's reload left: still at `/history`, loaded by that reload, at the desktop's width.
+    await sleep(1_000);
+    expect(await pathOf(onWs.pages)).toBe("/history");
+    expect(await onWs.pages.evaluate(WEB, loadedHow, z.string())).toBe("reload");
+    expect(watchPanel.messages.slice(seen).flatMap((message) => (message.type === "frame" && message.header.width !== desktop ? [message.header.width] : []))).toEqual([]);
+    // A path reaches no log line of core's or the runner's.
+    expect(JSON.stringify([...records, ...runnerRecords])).not.toContain("/history");
+    for (const viewId of [member.viewId, watching.viewId]) {
+      await closeView(viewDeps(), { viewId, reason: "closed" });
+    }
+    await waitFor("the shared page closed", () => !onWs.pages.hasPage(WEB), 30_000);
+  }, 180_000);
+
+  it("F-141/c3, c8: on the HTTP carrier the pane's width preset, path and reload come down the long poll to the shared page", async () => {
+    const view = await openStreamView(onHttp.task);
+    const panel = await stream(view.viewId, view.panelToken);
+    await panel.next("frame", 90_000);
+    await waitFor("the view's frames posted", () => onHttp.views.streaming(view.viewId) === "http", 10_000);
+    const before = await test.db.command.count({ where: { runnerId: onHttp.ref.runnerId, kind: "preview_input" } });
+    await controlsReachThePage(onHttp, view, panel);
+    // Each control went down the long poll as `preview.input`, in order, and the runner took it.
+    const sent = await test.db.command.findMany({ where: { runnerId: onHttp.ref.runnerId, kind: "preview_input" }, orderBy: { seq: "asc" }, skip: before, select: { body: true } });
+    const controls = sent.flatMap((row) => {
+      const body: unknown = row.body;
+      return typeof body === "object" && body !== null && "control" in body ? [body.control] : [];
+    });
+    expect(controls).toEqual([{ kind: "viewport", viewport: viewportPresetSizes.phone }, { kind: "navigate", path: "/history" }, { kind: "reload" }]);
+    await waitFor("the controls' acks", async () => (await test.db.command.count({ where: { runnerId: onHttp.ref.runnerId, kind: "preview_input", result: "accepted" } })) === before + sent.length, 30_000);
+    await closeView(viewDeps(), { viewId: view.viewId, reason: "closed" });
+    await waitFor("the box's view ended", () => !onHttp.views.has(view.viewId), 30_000);
+    await waitFor("the shared page closed", () => !onHttp.pages.hasPage(WEB), 30_000);
   }, 180_000);
 
   it("F-121/c7: a member's screenshot from the pane goes through core to the runner that reports the browser view, and comes back as the task's attachment", async () => {

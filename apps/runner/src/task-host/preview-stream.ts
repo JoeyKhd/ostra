@@ -15,8 +15,9 @@ import type { FrameSink } from "./shared-pages.ts";
 //   violation, and the box closes the connection with 1008.
 // - **On the HTTP carrier,** no connection: each frame is posted (`POST /runner/v1/preview/frames`),
 //   one at a time and at most 2 a second, each post at least half a second after core answered the
-//   last, so core never counts three in a second however the network bunches them. Input comes down
-//   the long poll as `preview.input` (`task-host.ts`). A closed view or a stale lease ends the view;
+//   last, so core never counts three in a second however the network bunches them. Input, and the
+//   pane's width preset, path and reload, come down the long poll as `preview.input`
+//   (`task-host.ts`). A closed view or a stale lease ends the view;
 //   an unreachable core is tried again until the view ends.
 //
 // Only frames go up. A frame, a path and typed text are never logged: IDs and reasons are.

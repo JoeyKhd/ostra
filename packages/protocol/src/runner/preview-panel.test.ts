@@ -50,4 +50,21 @@ describe("the panel's preview stream", () => {
     expect(panelPreviewInputBodySchema.safeParse({ events, viewId: previewViewIdSchema.parse("view-1") }).success).toBe(false);
     expect(panelPreviewInputBodySchema.safeParse({ events: [] }).success).toBe(false);
   });
+
+  it("takes one of the pane's controls as a strict object: the width preset, a path on the preview's origin, a reload", () => {
+    for (const control of [{ kind: "viewport", viewport: { width: 834, height: 900 } }, { kind: "navigate", path: "/history" }, { kind: "reload" }]) {
+      expect(panelPreviewInputBodySchema.safeParse({ control }).success).toBe(true);
+    }
+    for (const body of [
+      { control: { kind: "print" } },
+      { control: { kind: "viewport", viewport: { width: 100, height: 844 } } },
+      // The browser view's page is at most 1440×900: the tablet's screenshot preset, 834×1112, isn't one.
+      { control: { kind: "viewport", viewport: { width: 834, height: 1112 } } },
+      { control: { kind: "navigate", path: "https://evil.example/" } },
+      { control: { kind: "reload", seq: 1 } },
+      { control: { kind: "reload" }, events: [{ kind: "text", text: "hello" }] },
+    ]) {
+      expect(panelPreviewInputBodySchema.safeParse(body).success).toBe(false);
+    }
+  });
 });

@@ -6,7 +6,8 @@
 // It answers `Browser.getVersion` and `Browser.close`; `Target.createTarget`, `attachToTarget`
 // (flattened sessions), `closeTarget` and `getTargets`; `Page.navigate`, which really fetches the
 // page over HTTP (so a page "loads at the app's localhost" only when the app answers), then sends
-// `Page.loadEventFired`; `Runtime.evaluate` of `document.title` and `location.href`;
+// `Page.loadEventFired`; `Runtime.evaluate` of `document.title`, `location.href` and the last
+// load's navigation type (`performance.getEntriesByType("navigation")`: `navigate` or `reload`);
 // `Page.captureScreenshot` as a real PNG of the viewport's size (or of its clip); `Page.getLayoutMetrics`
 // as a page twice the viewport's height (ticket 13's full page); `Page.startScreencast` with
 // `maxFramesInFlight` and `Page.screencastFrameAck`, its frames shaped as JPEGs (SOI to EOI, no
@@ -32,6 +33,8 @@ type Page = {
   url: string;
   title: string;
   viewport: Viewport;
+  /** How the page last loaded, as its navigation timing's `type` says it. */
+  loaded: "navigate" | "reload";
   inputs: number;
   screencast: { inFlight: number; max: number; timer: NodeJS.Timeout | undefined; frame: number } | null;
 };
@@ -107,8 +110,9 @@ const fetchPage = (url: string): Promise<{ readonly ok: true; readonly body: str
     });
   });
 
-const navigate = async (page: Page, url: string, sessionId: string | undefined): Promise<string | null> => {
+const navigate = async (page: Page, url: string, sessionId: string | undefined, loaded: Page["loaded"] = "navigate"): Promise<string | null> => {
   page.url = url;
+  page.loaded = loaded;
   if (url === "about:blank") {
     page.title = "";
     return null;
@@ -128,7 +132,7 @@ const navigate = async (page: Page, url: string, sessionId: string | undefined):
 
 const newPage = (url: string): Page => {
   counter += 1;
-  const page: Page = { targetId: `T${String(counter)}`, url, title: "", viewport: { width: 1440, height: 900 }, inputs: 0, screencast: null };
+  const page: Page = { targetId: `T${String(counter)}`, url, title: "", viewport: { width: 1440, height: 900 }, loaded: "navigate", inputs: 0, screencast: null };
   pages.set(page.targetId, page);
   return page;
 };
@@ -229,13 +233,14 @@ const handle = async (message: Record<string, unknown>): Promise<void> => {
     }
     case "Page.reload":
       reply({});
-      await navigate(page, page.url, sessionId);
+      await navigate(page, page.url, sessionId, "reload");
       return;
     case "Runtime.evaluate": {
       const expression = typeof params["expression"] === "string" ? params["expression"] : "";
       if (expression.includes("document.title")) reply({ result: { type: "string", value: page.title } });
       else if (expression.includes("location.href")) reply({ result: { type: "string", value: page.url } });
       else if (expression.includes("document.readyState")) reply({ result: { type: "string", value: "complete" } });
+      else if (expression.includes("getEntriesByType")) reply({ result: { type: "string", value: page.loaded } });
       else reply({ result: { type: "undefined" } });
       return;
     }

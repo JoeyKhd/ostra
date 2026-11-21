@@ -99,6 +99,18 @@ export const previewInputEventsSchema = z
   .max(runnerLimits.previewInputEventsMax)
   .describe("A member's input. Typed text is never logged.");
 
+/**
+ * A viewer's control of the view's page beside input, from the pane (added to minor 7 on
+ * 2026-11-21, before its release): the width preset, a path on the preview's own origin, or a
+ * reload. Each moves the shared page for every view of the preview (Q314). A path is never logged.
+ */
+export const previewPageControlSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("viewport"), viewport: previewViewportSchema }),
+  z.strictObject({ kind: z.literal("navigate"), path: appPathSchema }),
+  z.strictObject({ kind: z.literal("reload") }),
+]);
+export type PreviewPageControl = z.infer<typeof previewPageControlSchema>;
+
 // ---------- the `stream` mode's messages ----------
 
 /** Each message's first byte. */
@@ -501,6 +513,12 @@ export const createPanelStreamReader = (): PanelStreamReader => {
   };
 };
 
-/** `POST /panel/v1/previews/:viewId/input`: a batch of a viewer's input, in order. Typed text is never logged. */
-export const panelPreviewInputBodySchema = z.strictObject({ events: previewInputEventsSchema });
+/**
+ * `POST /panel/v1/previews/:viewId/input`: what a viewer does to the view's page, as the web app's
+ * `POST /api/previews/:viewId/input` takes it: a batch of input, in order, or one of the page's
+ * controls (the width preset, a path, a reload). Both need a viewer who may give input. Core sends
+ * it to the box as a `control` on the view's connection, or as `preview.input` down the HTTP
+ * carrier's long poll. Typed text and a path are never logged.
+ */
+export const panelPreviewInputBodySchema = z.union([z.strictObject({ events: previewInputEventsSchema }), z.strictObject({ control: previewPageControlSchema })]);
 export type PanelPreviewInputBody = z.infer<typeof panelPreviewInputBodySchema>;

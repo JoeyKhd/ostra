@@ -39,7 +39,7 @@ import {
   tokenResponseSchema,
   viewportPresetSizes,
 } from "@ostra/protocol";
-import type { BoxId, DownFrame, LeaseEpoch, PreviewInputEvent, PreviewViewId, RunnerId, SessionId, TaskId } from "@ostra/protocol";
+import type { BoxId, DownFrame, LeaseEpoch, PreviewInputEvent, PreviewPageControl, PreviewViewId, RunnerId, SessionId, TaskId } from "@ostra/protocol";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { FakeCodeHost, FakeSecretStore } from "../testing/fake-adapters.ts";
@@ -146,6 +146,14 @@ const postInput = (viewId: PreviewViewId, panelToken: string, events: readonly P
     body: JSON.stringify({ events }),
   });
 
+/** One of the pane's controls, through the same input route. */
+const postControl = (viewId: PreviewViewId, panelToken: string, control: PreviewPageControl) =>
+  fetch(`${replica.url}${panelPreviewPaths.input(viewId)}`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${panelToken}`, "content-type": "application/json" },
+    body: JSON.stringify({ control }),
+  });
+
 beforeAll(async () => {
   test = await createTestDatabase();
   fixture = await seedIsolationFixture(test.db);
@@ -206,9 +214,20 @@ describe("a preview's views on core", () => {
     expect([second.header.seq, Buffer.from(second.jpeg).equals(Buffer.from(fakeJpeg(2)))]).toEqual([2, true]);
     expect((await connected.next("ack")).ack.seq).toBe(2);
 
-    // A member's input reaches the box as a `control`, in order.
+    // A member's input reaches the box as a `control`, in order, and so do the pane's width preset, path and reload.
     expect((await postInput(view.viewId, view.panelToken)).status).toBe(204);
     expect((await connected.next("control")).control).toMatchObject({ kind: "input", events: [click] });
+    const controls: PreviewPageControl[] = [{ kind: "viewport", viewport: viewportPresetSizes.phone }, { kind: "navigate", path: "/history" }, { kind: "reload" }];
+    for (const [index, control] of controls.entries()) {
+      expect((await postControl(view.viewId, view.panelToken, control)).status).toBe(204);
+      // Numbered after the input's, in the order they came.
+      expect((await connected.next("control")).control).toEqual({ ...control, seq: index + 2 });
+    }
+    // A control is one of the three, and a path stays on the preview's own origin.
+    for (const body of [{ control: { kind: "print" } }, { control: { kind: "navigate", path: "https://evil.example/" } }, { control: { kind: "reload" }, events: [click] }]) {
+      const refused = await fetch(`${replica.url}${panelPreviewPaths.input(view.viewId)}`, { method: "POST", headers: { authorization: `Bearer ${view.panelToken}`, "content-type": "application/json" }, body: JSON.stringify(body) });
+      expect(refused.status).toBe(400);
+    }
 
     // The frames are the app's traffic: they never count as watching (only the heartbeat does).
     expect((await test.db.box.findUniqueOrThrow({ where: { id: task.boxId } })).previewWatchedAt).toBeNull();
@@ -421,9 +440,13 @@ describe("sharing a preview on core", () => {
     const panel = await stream(watchOnly.viewId, watchOnly.panelToken);
     watching.sendFrame(1);
     expect((await panel.next("frame")).header.seq).toBe(1);
-    // The link watches, and its clicks stop at core.
+    // The link watches, and its clicks stop at core, as do its width preset, path and reload.
     const refused = await postInput(watchOnly.viewId, watchOnly.panelToken);
     expect([refused.status, await refused.json()]).toEqual([403, { error: { code: "watch-only", message: "this view is watch-only" } }]);
+    for (const control of [{ kind: "viewport", viewport: viewportPresetSizes.phone }, { kind: "navigate", path: "/history" }, { kind: "reload" }] satisfies PreviewPageControl[]) {
+      const controlled = await postControl(watchOnly.viewId, watchOnly.panelToken, control);
+      expect([controlled.status, await controlled.json()]).toEqual([403, { error: { code: "watch-only", message: "this view is watch-only" } }]);
+    }
     await new Promise((wait) => setTimeout(wait, 300));
     expect(watching.received.filter((message) => message.type === "control")).toEqual([]);
     // A link that allows input reaches the box.
@@ -432,11 +455,14 @@ describe("sharing a preview on core", () => {
     const typed = await box(typing.viewId);
     expect((await postInput(typing.viewId, typing.panelToken)).status).toBe(204);
     expect((await typed.next("control")).control).toMatchObject({ kind: "input", events: [click] });
+    expect((await postControl(typing.viewId, typing.panelToken, { kind: "reload" })).status).toBe(204);
+    expect((await typed.next("control")).control).toEqual({ kind: "reload", seq: 2 });
     // A panel token for one view opens no other.
     expect((await postInput(typing.viewId, watchOnly.panelToken)).status).toBe(401);
     // And a revoked link stops at once, read again on the next batch.
     await test.db.previewLink.updateMany({ where: { taskId: task.taskId, allowInput: true }, data: { revokedAt: new Date(), revokedByMemberId: fixture.a.member.id } });
     expect((await postInput(typing.viewId, typing.panelToken)).status).toBe(403);
-    expect(typed.received.filter((message) => message.type === "control")).toHaveLength(1);
+    expect((await postControl(typing.viewId, typing.panelToken, { kind: "reload" })).status).toBe(403);
+    expect(typed.received.filter((message) => message.type === "control")).toHaveLength(2);
   }, 60_000);
 });

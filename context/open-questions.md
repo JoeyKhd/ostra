@@ -507,6 +507,10 @@ Ticket 34 of that spec asks the maintainer to review the lead's calls; any the m
 
 ## Open
 
+### Raised by milestone 8 (2026-11-21)
+
+**Q326 👤 How tall is the browser view's tablet preset?** (F-141, ADR 0068's note of 2026-11-21 on the pane's controls; found while wiring the width preset). The width presets are desktop 1440×900, tablet 834×1112 and phone 390×844 (`viewportPresetSizes`, the screenshots' too), but a browser view's page is at most 1440×900 (`previewViewportSchema`, the screencast's bounds), so `previews.open` and the pane's width control refuse the tablet as it is. *Options:* the pane sends the tablet at 834×900, its width with the page's height cap; or the page's height cap rises to 1112, and the screencast scales the tablet's frames down to fit 1440×900 (about 675×900). *Recommendation:* raise the cap to the tablet's height, since a tablet's page is taller than it is wide and the frames are scaled in the pane anyway; until it's settled, the pane sends 834×900.
+
 ### Raised by milestone 5 (2026-11-20)
 
 **Q293 👤 Is one agent user per `host` pool machine enough?** (F-015, ADR 0029 as amended, milestone 5's ticket 10). A `host` pool runs every task's processes as `OSTRA_HOST_POOL_AGENT_USER`, and hands each task's folder to that user's group, so two tasks running at once on one machine run as the same user, and one's agent can read the other's worktree while both run. The runner's key, its temp folder and anything it never handed over stay out of reach. Ticket 10's live check says "can't read another task's worktree", which holds only for a worktree the runner kept or removed. *Options:* keep one user and say so on the runner page; or a list of agent users, one per slot, so a running task has its own; or one slot per `host` pool runner. *Recommendation:* one user per slot (`OSTRA_HOST_POOL_AGENT_USER` taking a comma-separated list, the slots capped at its length), since a `host` pool is for machines that can't run containers and its tasks are the same organization's; until then the runner page says the pool's tasks share one user.

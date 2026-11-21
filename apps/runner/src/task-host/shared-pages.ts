@@ -1,6 +1,6 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import { runnerLimits, viewportPresetSizes } from "@ostra/protocol";
-import type { PreviewControl, PreviewInputEvent, PreviewKey, PreviewViewId, PreviewViewport } from "@ostra/protocol";
+import type { PreviewControl, PreviewInputEvent, PreviewKey, PreviewPageControl, PreviewViewId, PreviewViewport } from "@ostra/protocol";
 import type { z } from "zod";
 import type { OpenBoxBrowser } from "../browser/box-browser.ts";
 import { openPage } from "../browser/page.ts";
@@ -82,8 +82,12 @@ export type SharedPages = {
   readonly attach: (input: AttachInput) => Promise<AttachOutcome>;
   /** Detaches a view; the page closes with its last view. */
   readonly detach: (viewId: PreviewViewId) => Promise<void>;
-  /** Applies core's control to the view's page, after what came before it. `false` when the view has no page. */
-  readonly control: (viewId: PreviewViewId, control: PreviewControl) => Promise<boolean>;
+  /**
+   * Applies core's control to the view's page, after what came before it: one from the view's
+   * connection, or one of the pane's from the HTTP carrier's `preview.input`. `false` when the view
+   * has no page.
+   */
+  readonly control: (viewId: PreviewViewId, control: PreviewControl | PreviewPageControl) => Promise<boolean>;
   /** Applies a member's input to the view's page, in order (the HTTP carrier's `preview.input`). */
   readonly input: (viewId: PreviewViewId, events: readonly PreviewInputEvent[]) => Promise<boolean>;
   /** How many pages are open or opening: each a preview someone watches. */
