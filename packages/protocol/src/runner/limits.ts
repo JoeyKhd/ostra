@@ -248,8 +248,23 @@ export const runnerLimits = {
   browserViewMaxSide: 1920,
   /** F-141: the browser view's shortest side, in pixels. */
   browserViewMinSide: 200,
-  /** F-141: the browser view's JPEG quality. */
+  /** F-141: the browser view's JPEG quality while the page moves. */
   browserViewQuality: 60,
+  /**
+   * F-141 (the lead, 2026-11-21): a still page's sharp frame. Once the page sent no frame for
+   * `browserViewStillAfterMs`, the box sends one frame of it at this JPEG quality, at the viewers'
+   * device pixel ratio (`browserViewStillMaxScale` at most), so text reads as text, not video.
+   */
+  browserViewStillQuality: 90,
+  /** F-141: how long, in ms, the page sends no frame before its still frame is taken. */
+  browserViewStillAfterMs: 400,
+  /**
+   * F-141: the longest that wait grows to, in ms, on a page whose still frames keep being replaced
+   * within 2 s (a ticking clock), so such a page costs no sharp frame a second.
+   */
+  browserViewStillAfterMaxMs: 3_200,
+  /** F-141: the highest device pixel ratio a still frame is taken at: its pixels are the page's times its square. */
+  browserViewStillMaxScale: 2,
   /** F-141, Q306: the browser view's frames a second on the HTTP carrier. */
   httpCarrierFramesPerSecond: 2,
   /**

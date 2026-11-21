@@ -1,5 +1,5 @@
 import type { Logger } from "@ostra/adapter-sdk";
-import { browserViewFrameBounds, runnerLimits, viewportPresetSizes } from "@ostra/protocol";
+import { browserViewFrameBounds, browserViewStillScale, runnerLimits, viewportPresetSizes } from "@ostra/protocol";
 import type { PreviewControl, PreviewInputEvent, PreviewKey, PreviewPageControl, PreviewViewId, PreviewViewport } from "@ostra/protocol";
 import type { z } from "zod";
 import type { OpenBoxBrowser } from "../browser/box-browser.ts";
@@ -22,6 +22,15 @@ import type { PreviewFrame } from "../connection/preview-frames.ts";
 // - **Each view** has at most one frame with its core. A view that's behind gets the newest frame
 //   once it took the one it has, so a slow member never holds a fast one back, and a view that
 //   joins gets the newest frame at once (a still page sends no new one).
+// - **A still page is sharp** (the lead, 2026-11-21): once the page sent no frame for
+//   `browserViewStillAfterMs` after the last one's ack, the box takes one picture of it at
+//   `browserViewStillQuality` and sends it to every view as a `still` frame, which a view that joins
+//   then gets too. The page's device pixel ratio is its viewers' highest (`browserViewStillScale`,
+//   2 at most), so on a HiDPI screen the still is drawn at the screen's own pixels; the moving
+//   frames stay at the page's CSS size and quality 60, so motion costs what it did. A still the page
+//   replaced within 2 s makes the next wait twice as long, up to `browserViewStillAfterMaxMs`, so a
+//   page that ticks every second doesn't send a sharp frame each time. The browser's own frames of
+//   the picture (the same picture again, or one at the capture's size) aren't the page moving.
 // - **Control and input** (`viewport`, `navigate`, `reload`, `input`) apply to the shared page, one
 //   at a time, in the order they came.
 // - **The reach rule** holds on every document the page loads (`mayLoad`): a click on a link to the
@@ -76,6 +85,8 @@ export type SharedPageCounts = {
   readonly inputsFailed: number;
   /** Documents the reach rule kept from loading. */
   readonly blocked: number;
+  /** Still frames sent: the page at rest, sharp. */
+  readonly stills: number;
 };
 
 export type SharedPages = {
@@ -110,6 +121,8 @@ type Watcher = {
   behind: boolean;
   /** The last frame sent to it. */
   sent: number;
+  /** The viewer's device pixel ratio, for the page's still frames (`browserViewStillScale`). */
+  scale: number;
 };
 
 type Opened = { readonly ok: true; readonly page: Page } | { readonly ok: false; readonly reason: AttachRefusal };
@@ -134,7 +147,30 @@ type Shared = {
   inputs: number;
   inputsFailed: number;
   blocked: number;
+  // ---- the page at rest (2026-11-21) ----
+  /** The still frame's timer, while the page sends nothing. */
+  stillTimer: NodeJS.Timeout | null;
+  /** How long the page must send nothing before its still: longer while the page keeps replacing them. */
+  stillAfterMs: number;
+  /** When the last still went, until the page moves again. */
+  stillSentAt: number | null;
+  /** Frames of the page moving: a still taken while one came is dropped. */
+  moved: number;
+  /** The last moving frame's picture and size: the browser sending it again isn't the page moving. */
+  lastPicture: Buffer | null;
+  lastSize: { readonly width: number; readonly height: number } | null;
+  /** A still's picture is being taken, or was until `capturedAt`: the browser's frames of it aren't the page's. */
+  capturing: boolean;
+  capturedAt: number;
+  stills: number;
 };
+
+/** A still the page replaced within this long makes the next wait longer. */
+const STILL_KEPT_MS = 2_000;
+/** The browser's own frames of a still's picture come while it's taken or just after. */
+const CAPTURE_SETTLE_MS = 250;
+/** The still's JPEG qualities, tried in turn while the picture is over `previewFrameMaxBytes`. */
+const STILL_QUALITIES = [runnerLimits.browserViewStillQuality, 75] as const;
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => {
@@ -151,7 +187,10 @@ export const viewportOf = (viewport: PreviewViewport): Viewport => ({
 /** Whether a page ended, read through a function: it ends between awaits, which the type checker doesn't see. */
 const endedNow = (shared: Shared): boolean => shared.ended;
 
-const sameViewport = (a: Viewport, b: Viewport): boolean => a.width === b.width && a.height === b.height && a.mobile === b.mobile;
+const sameViewport = (a: Viewport, b: Viewport): boolean => a.width === b.width && a.height === b.height && a.mobile === b.mobile && (a.scale ?? 1) === (b.scale ?? 1);
+
+/** The page's device pixel ratio: its viewers' highest, for its still frames. */
+const stillScaleOf = (shared: Shared): number => browserViewStillScale(Math.max(1, ...[...shared.watchers.values()].map((watcher) => watcher.scale)));
 
 const isJpeg = (bytes: Uint8Array): boolean => bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xd8;
 
@@ -200,6 +239,85 @@ export const createSharedPages = (deps: SharedPagesDeps): SharedPages => {
     });
   };
 
+  const cancelStill = (shared: Shared): void => {
+    if (shared.stillTimer !== null) {
+      clearTimeout(shared.stillTimer);
+      shared.stillTimer = null;
+    }
+  };
+
+  /** The page at rest: its picture at the still quality and its device pixel ratio, to every view, unless it moved meanwhile. */
+  const takeStill = async (shared: Shared, moved: number, viewport: Viewport): Promise<void> => {
+    const resting = (): boolean => !shared.ended && shared.watchers.size > 0 && shared.moved === moved && shared.viewport === viewport;
+    const opened = await shared.opened;
+    if (!opened.ok || !resting()) {
+      return;
+    }
+    let picture: Buffer | null = null;
+    shared.capturing = true;
+    try {
+      for (const quality of STILL_QUALITIES) {
+        picture = await opened.page.screenshot({ format: "jpeg", quality });
+        if (picture.length <= runnerLimits.previewFrameMaxBytes || !resting()) {
+          break;
+        }
+      }
+    } catch {
+      picture = null;
+      log.info("preview.still-failed", { key: shared.key });
+    } finally {
+      shared.capturing = false;
+      shared.capturedAt = Date.now();
+    }
+    if (picture === null || !resting()) {
+      return;
+    }
+    if (!isJpeg(picture) || picture.length > runnerLimits.previewFrameMaxBytes) {
+      // Core would refuse it: the page keeps its last moving frame.
+      log.warn("preview.still-skipped", { key: shared.key, bytes: picture.length });
+      return;
+    }
+    shared.seq += 1;
+    shared.stills += 1;
+    shared.stillSentAt = Date.now();
+    const size = shared.lastSize ?? { width: side(viewport.width), height: side(viewport.height) };
+    shared.newest = {
+      header: { seq: shared.seq, at: Date.now(), width: size.width, height: size.height, still: true },
+      jpeg: new Uint8Array(picture.buffer, picture.byteOffset, picture.byteLength),
+    };
+    for (const watcher of shared.watchers.values()) {
+      offer(shared, watcher);
+    }
+  };
+
+  /** Once the page sends nothing for the wait, its still frame. */
+  const armStill = (shared: Shared): void => {
+    cancelStill(shared);
+    if (shared.ended || shared.watchers.size === 0) {
+      return;
+    }
+    const moved = shared.moved;
+    const viewport = shared.viewport;
+    const timer = setTimeout(() => {
+      shared.stillTimer = null;
+      void takeStill(shared, moved, viewport);
+    }, shared.stillAfterMs);
+    timer.unref();
+    shared.stillTimer = timer;
+  };
+
+  /**
+   * Whether a frame is the page moving: not the browser sending its last picture again, and not a
+   * frame of a still's capture (one at the capture's size, while it's taken or just after).
+   */
+  const moving = (shared: Shared, frame: ScreencastFrame): boolean => {
+    if (shared.lastPicture?.equals(frame.data) === true) {
+      return false;
+    }
+    const capture = shared.capturing || Date.now() - shared.capturedAt < CAPTURE_SETTLE_MS;
+    return !capture || shared.lastSize === null || (side(frame.width) === shared.lastSize.width && side(frame.height) === shared.lastSize.height);
+  };
+
   /** One frame from the browser: to every view, and its ack held until one took it and the rate's gap passed. */
   const onFrame = async (shared: Shared, frame: ScreencastFrame): Promise<void> => {
     if (shared.ended || shared.watchers.size === 0) {
@@ -211,9 +329,22 @@ export const createSharedPages = (deps: SharedPagesDeps): SharedPages => {
       log.warn("preview.frame-skipped", { key: shared.key, bytes: frame.data.length });
       return;
     }
+    if (!moving(shared, frame)) {
+      // Acked at once: the views have this picture, or a sharper one of it.
+      return;
+    }
+    // The page moves: its still waits for it to rest again, and a still it replaced soon makes that wait longer.
+    cancelStill(shared);
+    shared.moved += 1;
+    if (shared.stillSentAt !== null) {
+      shared.stillAfterMs = Date.now() - shared.stillSentAt < STILL_KEPT_MS ? Math.min(runnerLimits.browserViewStillAfterMaxMs, shared.stillAfterMs * 2) : runnerLimits.browserViewStillAfterMs;
+      shared.stillSentAt = null;
+    }
+    shared.lastPicture = frame.data;
+    shared.lastSize = { width: side(frame.width), height: side(frame.height) };
     shared.seq += 1;
     const current: PreviewFrame = {
-      header: { seq: shared.seq, at: Date.now(), width: side(frame.width), height: side(frame.height) },
+      header: { seq: shared.seq, at: Date.now(), width: shared.lastSize.width, height: shared.lastSize.height },
       jpeg: new Uint8Array(frame.data.buffer, frame.data.byteOffset, frame.data.byteLength),
     };
     shared.release?.();
@@ -230,6 +361,8 @@ export const createSharedPages = (deps: SharedPagesDeps): SharedPages => {
     const gap = 1000 / Math.max(1, deps.framesPerSecond());
     await sleep(shared.lastAckAt + gap - Date.now());
     shared.lastAckAt = Date.now();
+    // The ack goes now, so the browser may send the next frame: none for the wait is the page at rest.
+    armStill(shared);
   };
 
   /**
@@ -315,6 +448,7 @@ export const createSharedPages = (deps: SharedPagesDeps): SharedPages => {
       return;
     }
     shared.ended = true;
+    cancelStill(shared);
     if (pages.get(shared.key) === shared) {
       pages.delete(shared.key);
     }
@@ -328,7 +462,7 @@ export const createSharedPages = (deps: SharedPagesDeps): SharedPages => {
     if (opened.ok) {
       await opened.page.close();
     }
-    log.info("preview.page-closed", { key: shared.key, frames: shared.frames, taken: shared.taken });
+    log.info("preview.page-closed", { key: shared.key, frames: shared.frames, taken: shared.taken, stills: shared.stills });
   };
 
   /** Runs `work` on the view's page after what came before it, once the page is open. */
@@ -344,15 +478,21 @@ export const createSharedPages = (deps: SharedPagesDeps): SharedPages => {
     return shared.queue;
   };
 
+  /** Moves the page to `viewport`'s size, at its viewers' device pixel ratio (`stillScaleOf`). */
   const setViewport = (shared: Shared, viewport: Viewport): Promise<void> =>
     enqueue(shared, async (page) => {
-      if (sameViewport(shared.viewport, viewport)) {
+      const next: Viewport = { ...viewport, scale: stillScaleOf(shared) };
+      if (sameViewport(shared.viewport, next)) {
         return;
       }
-      shared.viewport = viewport;
-      await page.setViewport(viewport);
+      cancelStill(shared);
+      shared.viewport = next;
+      await page.setViewport(next);
       // The page at its new size comes as a new screencast's first frame: Chromium can hold the
       // resized page's frame behind the one in flight and send nothing until the page changes again.
+      // That frame is the page moving, whatever it shows, so a new scale's still follows it.
+      shared.lastPicture = null;
+      shared.lastSize = null;
       const stop = shared.stopCast;
       shared.stopCast = null;
       await stop?.();
@@ -362,7 +502,7 @@ export const createSharedPages = (deps: SharedPagesDeps): SharedPages => {
       if (!endedNow(shared)) {
         shared.stopCast = await startCast(shared, page);
       }
-      log.info("preview.page-viewport", { key: shared.key, width: viewport.width });
+      log.info("preview.page-viewport", { key: shared.key, width: next.width, scale: next.scale ?? 1 });
     });
 
   const detach = async (viewId: PreviewViewId): Promise<void> => {
@@ -379,12 +519,15 @@ export const createSharedPages = (deps: SharedPagesDeps): SharedPages => {
     for (const watcher of shared.watchers.values()) {
       offer(shared, watcher);
     }
+    // The page's device pixel ratio is the viewers' who stay.
+    void setViewport(shared, shared.viewport);
   };
 
   return {
     attach: async (input) => {
       let shared = pages.get(input.key);
       const viewport = viewportOf(input.viewport);
+      const scale = browserViewStillScale(input.viewport.scale);
       if (shared === undefined || shared.ended) {
         const created: Shared = {
           key: input.key,
@@ -392,7 +535,8 @@ export const createSharedPages = (deps: SharedPagesDeps): SharedPages => {
           watchers: new Map(),
           opened: Promise.resolve({ ok: false, reason: "detached" }),
           stopCast: null,
-          viewport,
+          // The first viewer's device pixel ratio from the start: a page isn't drawn twice to get it.
+          viewport: { ...viewport, scale },
           seq: 0,
           newest: null,
           release: null,
@@ -404,12 +548,21 @@ export const createSharedPages = (deps: SharedPagesDeps): SharedPages => {
           inputs: 0,
           inputsFailed: 0,
           blocked: 0,
+          stillTimer: null,
+          stillAfterMs: runnerLimits.browserViewStillAfterMs,
+          stillSentAt: null,
+          moved: 0,
+          lastPicture: null,
+          lastSize: null,
+          capturing: false,
+          capturedAt: 0,
+          stills: 0,
         };
         created.opened = open(created, input.path).catch((): Opened => ({ ok: false, reason: "browser-failed" }));
         pages.set(input.key, created);
         shared = created;
       }
-      const watcher: Watcher = { viewId: input.viewId, sink: input.sink, busy: false, behind: false, sent: 0 };
+      const watcher: Watcher = { viewId: input.viewId, sink: input.sink, busy: false, behind: false, sent: 0, scale };
       shared.watchers.set(input.viewId, watcher);
       byView.set(input.viewId, shared);
       const opened = await shared.opened;
@@ -436,9 +589,15 @@ export const createSharedPages = (deps: SharedPagesDeps): SharedPages => {
         return false;
       }
       switch (control.kind) {
-        case "viewport":
+        case "viewport": {
+          // The width is the last one chosen; the device pixel ratio is this viewer's, when it names one.
+          const watcher = shared.watchers.get(viewId);
+          if (watcher !== undefined && control.viewport.scale !== undefined) {
+            watcher.scale = browserViewStillScale(control.viewport.scale);
+          }
           await setViewport(shared, viewportOf(control.viewport));
           return true;
+        }
         case "navigate":
           await enqueue(shared, async (page) => {
             await page.go(`${shared.origin}${control.path}`).catch(() => {
@@ -478,7 +637,7 @@ export const createSharedPages = (deps: SharedPagesDeps): SharedPages => {
       const shared = pages.get(key);
       return shared === undefined
         ? undefined
-        : { frames: shared.frames, taken: shared.taken, views: shared.watchers.size, inputs: shared.inputs, inputsFailed: shared.inputsFailed, blocked: shared.blocked };
+        : { frames: shared.frames, taken: shared.taken, views: shared.watchers.size, inputs: shared.inputs, inputsFailed: shared.inputsFailed, blocked: shared.blocked, stills: shared.stills };
     },
     evaluate: async (key, expression, schema) => {
       const shared = pages.get(key);

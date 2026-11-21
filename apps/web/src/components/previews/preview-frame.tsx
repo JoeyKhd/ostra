@@ -20,7 +20,9 @@ import type { PreviewFrame as StreamFrame } from "./preview-stream";
 // or ⌘. (Ctrl+. elsewhere) hands it back, so the panel's keyboard rules hold (milestone 7). One
 // interface for the pane and the viewer page, by `mode`:
 //
-// - `stream`: the browser view's canvas, above;
+// - `stream`: the browser view's canvas, above. A page at rest comes as one `still` frame at the
+//   viewer's device pixel ratio and a higher quality (2026-11-21): the canvas takes the picture's own
+//   pixels and lays them out at the page's size, so the text is sharp on a HiDPI screen;
 // - `native` (ticket 26, F-144; preview-native.md): the app itself in an `<iframe>` on its preview
 //   host, whose `src` is the host's `/.ostra/enter?code=…` (it sets the preview's cookie and
 //   redirects to the path). Sandboxed to run the app, keep its own origin, submit its forms and open
@@ -199,12 +201,17 @@ const StreamFrame = ({ viewId, linkToken, input, name, onStatus, onSize, onScale
     };
     image.onload = () => {
       const { width, height } = frame.header;
-      if (target.width !== width || target.height !== height) {
-        target.width = width;
-        target.height = height;
+      // The canvas holds the picture's own pixels, and is laid out at the page's size: a still
+      // frame's are the page's times the viewer's device pixel ratio, so a HiDPI screen draws it sharp.
+      const pixelsWide = image.naturalWidth > 0 ? image.naturalWidth : width;
+      const pixelsHigh = image.naturalHeight > 0 ? image.naturalHeight : height;
+      if (target.width !== pixelsWide || target.height !== pixelsHigh) {
+        target.width = pixelsWide;
+        target.height = pixelsHigh;
       }
-      target.getContext("2d")?.drawImage(image, 0, 0, width, height);
+      target.getContext("2d")?.drawImage(image, 0, 0, pixelsWide, pixelsHigh);
       target.dataset["frameSeq"] = String(frame.header.seq);
+      target.dataset["frameStill"] = frame.header.still === true ? "true" : "false";
       const known = sizeRef.current;
       if (known?.width !== width || known.height !== height) {
         const next = { width, height };

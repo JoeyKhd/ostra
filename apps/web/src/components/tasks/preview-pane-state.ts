@@ -1,4 +1,4 @@
-import { browserViewFrameBounds, runnerLimits, viewportPresetSizes } from "@ostra/protocol";
+import { browserViewFrameBounds, browserViewStillScale, runnerLimits, viewportPresetSizes } from "@ostra/protocol";
 import type { PreviewCloseReason, PreviewKey, PreviewOpenRefusal, PreviewRefusalReason, PreviewViewport, ViewportPreset } from "@ostra/protocol";
 
 import type { FrameStatus } from "@/components/previews/preview-frame";
@@ -31,6 +31,13 @@ export const viewportFor = (preset: WidthPreset, room: { readonly width: number;
   const bounded = browserViewFrameBounds({ width, height });
   return { width: Math.max(runnerLimits.browserViewMinSide, bounded.width), height: Math.max(runnerLimits.browserViewMinSide, bounded.height) };
 };
+
+/**
+ * The viewport the pane asks for, with this screen's device pixel ratio (2026-11-21): the box takes
+ * a page at rest's still frame at it (2 at most), so a HiDPI screen draws the page sharp. `ratio`
+ * is `window.devicePixelRatio`; below 1 (a zoomed-out page) is 1.
+ */
+export const viewportWithScale = (viewport: PreviewViewport, ratio: number): PreviewViewport => ({ ...viewport, scale: browserViewStillScale(Number.isFinite(ratio) ? ratio : 1) });
 
 /** The preset a member's screenshot is taken at: a fixed preset as it is, and `fit` by its width. */
 export const screenshotPreset = (preset: WidthPreset, width: number): ViewportPreset => {

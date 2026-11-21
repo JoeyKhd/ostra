@@ -72,6 +72,13 @@ export type BoxView = {
   readonly controls: PreviewControl[];
   /** The frames sent so far. */
   readonly frames: () => number;
+  /**
+   * The page at rest, as the runner sends it (F-141/c10): the moving frames stop, and one `still`
+   * frame goes, at quality 90 and the box page's device pixel ratio (2), once core took the last.
+   */
+  readonly still: () => Promise<void>;
+  /** The page moves again: the moving frames, at the page's CSS size, come again. */
+  readonly resume: () => void;
   readonly input: () => readonly PreviewInputEvent[];
   readonly close: () => void;
   readonly closed: Promise<void>;
@@ -104,7 +111,9 @@ export const startFixtureBox = async (browser: Browser, options: { readonly data
   };
   try {
     await waitForPort(webPort, 60_000);
-    context = await browser.newContext({ viewport: { width: 800, height: 600 }, deviceScaleFactor: 1 });
+    // A HiDPI box browser, as a page whose viewer's screen is at 2 is (F-141/c10): its moving frames
+    // are taken at the page's CSS size, and only a still frame at its own pixels.
+    context = await browser.newContext({ viewport: { width: 800, height: 600 }, deviceScaleFactor: 2 });
     const page = await context.newPage();
     const origin = `http://localhost:${String(webPort)}`;
     await page.goto(origin);
@@ -113,7 +122,7 @@ export const startFixtureBox = async (browser: Browser, options: { readonly data
     const apply = async (control: PreviewControl): Promise<void> => {
       switch (control.kind) {
         case "viewport":
-          await page.setViewportSize(control.viewport);
+          await page.setViewportSize({ width: control.viewport.width, height: control.viewport.height });
           return;
         case "navigate":
           await page.goto(`${origin}${control.path}`);
@@ -163,7 +172,7 @@ export const startFixtureBox = async (browser: Browser, options: { readonly data
       sockets.add(socket);
       const controls: PreviewControl[] = [];
       // An object, since the socket's handlers change it between the loop's awaits.
-      const state = { acked: 0, sent: 0, open: true };
+      const state = { acked: 0, sent: 0, open: true, resting: false, moving: false };
       const closed = new Promise<void>((resolve) => {
         socket.addEventListener("close", () => {
           state.open = false;
@@ -197,10 +206,17 @@ export const startFixtureBox = async (browser: Browser, options: { readonly data
       // The pictures: one frame at a time, the next once core acked the last (its back-pressure).
       const live = (): boolean => state.open;
       const behind = (): boolean => state.acked < state.sent;
+      const resting = (): boolean => state.resting;
       void (async () => {
         while (live()) {
+          if (resting()) {
+            state.moving = false;
+            await new Promise((wait) => setTimeout(wait, 50));
+            continue;
+          }
+          state.moving = true;
           const size = page.viewportSize() ?? { width: 800, height: 600 };
-          const jpeg = await page.screenshot({ type: "jpeg", quality: 70 }).catch(() => null);
+          const jpeg = await page.screenshot({ type: "jpeg", quality: 70, scale: "css" }).catch(() => null);
           if (jpeg === null || !live()) break;
           state.sent += 1;
           socket.send(new Uint8Array(encodePreviewMessage({ type: "frame", header: { seq: state.sent, at: Date.now(), width: size.width, height: size.height }, jpeg: new Uint8Array(jpeg) })));
@@ -209,9 +225,28 @@ export const startFixtureBox = async (browser: Browser, options: { readonly data
           await new Promise((wait) => setTimeout(wait, 120));
         }
       })();
+      const waitTaken = async (): Promise<void> => {
+        const until = Date.now() + 5_000;
+        while (live() && behind() && Date.now() < until) await new Promise((wait) => setTimeout(wait, 20));
+      };
       return {
         controls,
         frames: () => state.sent,
+        still: async () => {
+          state.resting = true;
+          // The moving frame in flight first, as the runner's still waits for the page to rest.
+          const until = Date.now() + 5_000;
+          while (live() && state.moving && Date.now() < until) await new Promise((wait) => setTimeout(wait, 20));
+          await waitTaken();
+          const size = page.viewportSize() ?? { width: 800, height: 600 };
+          const jpeg = await page.screenshot({ type: "jpeg", quality: 90, scale: "device" });
+          state.sent += 1;
+          socket.send(new Uint8Array(encodePreviewMessage({ type: "frame", header: { seq: state.sent, at: Date.now(), width: size.width, height: size.height, still: true }, jpeg: new Uint8Array(jpeg) })));
+          await waitTaken();
+        },
+        resume: () => {
+          state.resting = false;
+        },
         input: () => controls.flatMap((control) => (control.kind === "input" ? control.events : [])),
         close: () => { socket.close(); },
         closed,

@@ -589,6 +589,23 @@ describe("a preview's views on core", () => {
     expect((await reading.next("frame")).header.seq).toBe(5);
     expect(reading.messages.flatMap((message) => (message.type === "frame" ? [message.header.seq] : []))).toEqual([2, 5]);
   }, 60_000);
+
+  it("F-141/c10: a page at rest's still frame stays one through core: posted over the HTTP carrier, it reaches the pane's stream as a still, its JPEG as the box sent it", async () => {
+    const task = await boxedTask();
+    const view = await openStreamView(task);
+    const sharp = fakeJpeg(9, 4_096);
+    const form = new FormData();
+    form.set(PREVIEW_FRAMES_BODY_PART, JSON.stringify({ viewId: view.viewId, leaseEpoch: 1, frames: [{ seq: 1, at: Date.now(), width: 1440, height: 900, still: true, part: previewFramesPartName(0) }] }));
+    form.set(previewFramesPartName(0), new Blob([sharp]));
+    const posted = await fetch(`${replica.url}${previewPaths.frames}`, { method: "POST", headers: { authorization: `Bearer ${runnerToken()}` }, body: form });
+    expect([posted.status, await posted.json()]).toEqual([200, { ackedUpTo: 1 }]);
+    // The pane's stream, opened once the box's first frames are in, gets the newest: the still.
+    const reading = await stream(view.viewId, view.panelToken);
+    expect(reading.status).toBe(200);
+    const frame = await reading.next("frame");
+    expect({ ...frame.header, at: 0 }).toEqual({ seq: 1, at: 0, width: 1440, height: 900, still: true });
+    expect(frame.jpeg).toEqual(sharp);
+  }, 60_000);
 });
 
 describe("sharing a preview on core", () => {

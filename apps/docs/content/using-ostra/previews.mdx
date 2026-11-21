@@ -31,6 +31,8 @@ Below 1024 px wide, the task's page shows the chat or the preview, one at a time
 
 With no preview domain, the pane shows the box's own browser: ostra loads the preview at `localhost` in the box, streams the page to the pane as pictures, at up to 15 a second, and sends your clicks, scrolling and typing back to it. Pasting text into the page works; dropping files and reading your clipboard don't. Nothing of the app runs in your browser, so the pane needs no address, no DNS and no certificate.
 
+**Sharp once it's still.** While the page moves, its pictures are light, so the stream keeps up. Once it has been still for a moment (under half a second), ostra sends one sharper picture of it, at your screen's own pixel density (up to twice the page's size on a HiDPI screen), so its text reads as text. A page that keeps changing, such as one with a ticking clock, gets them less often.
+
 **One page per preview, shared.** Everyone watching a preview sees the same page in the box's browser, like a shared screen, and any member who can open the task can click and type in it. The width is the last one anyone chose. The agent's own screenshots use pages of their own, so watching never moves what the agent sees. The box's browser shows three previews at most at a time: close another preview's pane to open a fourth.
 
 ## Warm while watched

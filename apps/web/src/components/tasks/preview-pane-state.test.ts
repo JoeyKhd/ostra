@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { memberIdSchema, previewKeySchema, previewLinkIdSchema, previewViewportSchema, runnerLimits, viewportPresetSizes } from "@ostra/protocol";
 
-import { orderedPreviews, paneStateOf, presetName, reopens, selectedPreview, shareLevelOf, shareShortName, viewportFor } from "./preview-pane-state";
+import { orderedPreviews, paneStateOf, presetName, reopens, selectedPreview, shareLevelOf, shareShortName, viewportFor, viewportWithScale } from "./preview-pane-state";
 import type { PaneView, PreviewItem, PreviewList, PreviewSharing } from "./preview-pane-state";
 
 // The preview pane's own rules (milestone 8, ticket 21; task-preview.md): which preview shows and
@@ -118,5 +118,15 @@ describe("the share button", () => {
     // An ended link opens nothing: the level below it is what holds.
     expect(shareLevelOf(sharing({ links: [link({ state: "revoked", revokedAt: now })] }))).toBe("members");
     expect(shareLevelOf(sharing({ level: "named", links: [link({ state: "expired" })] }))).toBe("named");
+  });
+
+  it("F-141/c10: the pane asks for its screen's device pixel ratio with the page's size, 1 to 2, and the box takes it", () => {
+    for (const [ratio, scale] of [[1, 1], [1.25, 1.25], [1.5, 1.5], [2, 2], [3, 2], [0.75, 1], [Number.NaN, 1]] as const) {
+      const asked = viewportWithScale(viewportFor("desktop", { width: 614, height: 772 }), ratio);
+      expect(asked, String(ratio)).toEqual({ ...viewportPresetSizes.desktop, scale });
+      expect(previewViewportSchema.safeParse(asked).success).toBe(true);
+    }
+    // The size is still the preset's, or the pane's own room: the ratio sharpens the picture, never the page's layout.
+    expect(viewportWithScale(viewportFor("fit", { width: 614, height: 772 }), 2)).toEqual({ width: 614, height: 772, scale: 2 });
   });
 });

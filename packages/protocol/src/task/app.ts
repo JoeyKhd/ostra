@@ -89,14 +89,26 @@ const withinBrowserViewPixels = (size: ViewportSize): boolean => size.width * si
  * `browserViewMinSide` to `browserViewMaxSide`, and at most `browserViewMaxPixels` in all, the
  * desktop preset's 1440×900. So every preset fits as it is, the tablet's 834×1112 too, and a
  * frame's bytes stay bounded by the same count of pixels.
+ *
+ * `scale` (added to minor 7 on 2026-11-21, before its release) is the viewer's device pixel ratio,
+ * 1 when absent: the still frame of a page at rest is taken at it (`browserViewStillScale`), so a
+ * HiDPI screen draws it sharp. The frames of a page that moves stay at 1.
  */
 export const previewViewportSchema = z
   .strictObject({
     width: z.number().int().min(runnerLimits.browserViewMinSide).max(runnerLimits.browserViewMaxSide),
     height: z.number().int().min(runnerLimits.browserViewMinSide).max(runnerLimits.browserViewMaxSide),
+    scale: z.number().min(1).max(4).optional(),
   })
   .refine(withinBrowserViewPixels, { message: "at most 1440×900's pixels in all (browserViewMaxPixels)" });
 export type PreviewViewport = z.infer<typeof previewViewportSchema>;
+
+/**
+ * The device pixel ratio a still frame is taken at for a viewer's `scale`: from 1 to
+ * `browserViewStillMaxScale`, to two decimals, so its pixels are at most the page's times 4.
+ */
+export const browserViewStillScale = (scale: number | undefined): number =>
+  Math.round(Math.min(runnerLimits.browserViewStillMaxScale, Math.max(1, scale ?? 1)) * 100) / 100;
 
 /**
  * The largest frame the browser view's screencast sends of a page of `size` (`maxWidth` and

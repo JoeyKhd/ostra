@@ -6,7 +6,7 @@ import { expect, test } from "@playwright/test";
 import type { Browser, Locator, Page } from "@playwright/test";
 import { z } from "zod";
 
-import { e2eAdmin } from "./settings.ts";
+import { e2eAdmin, e2eBaseUrl } from "./settings.ts";
 import { ensureGitHub, expectNoHorizontalScroll, readStack, signIn } from "./helpers.ts";
 import { startFixtureBox } from "./preview-box.ts";
 import type { BoxView, FixtureBox } from "./preview-box.ts";
@@ -415,6 +415,39 @@ test("F-142/c4: a revoked link shows its state on the open viewer page, and on a
   const again = await visit(browser, address);
   await expect(again.page.getByTestId("viewer-ended")).toHaveAttribute("data-end", "revoked");
   await expect(again.page.getByRole("heading", { name: "This link was revoked" })).toBeVisible();
+});
+
+test("F-141/c10: on a HiDPI screen the pane asks for its device pixel ratio, draws a page at rest's still frame at its own pixels laid out at the page's size, and a moving frame brings the page's size back", { tag: "@desktop-only" }, async ({ browser }) => {
+  // A member's screen at 2, as a HiDPI laptop's is.
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2, baseURL: e2eBaseUrl });
+  const page = await context.newPage();
+  try {
+    const { box: fixture, view } = await openLivePane(page, browser);
+    await expect.poll(() => frameSeq(page), { timeout: 15_000 }).toBeGreaterThan(1);
+    // A width preset goes to the shared page with the screen's ratio, through core, on the view's connection.
+    await page.getByTestId("preview-width").click();
+    await page.locator('[data-preset="phone"]').click();
+    await expect.poll(() => view.controls.some((control) => control.kind === "viewport" && control.viewport.width === 390 && control.viewport.scale === 2), { timeout: 15_000 }).toBe(true);
+    await expect.poll(() => fixture.page.viewportSize()?.width, { timeout: 15_000 }).toBe(390);
+    await expect.poll(() => canvasOf(page).evaluate((node) => (node instanceof HTMLCanvasElement ? node.width : 0)), { timeout: 15_000 }).toBe(390);
+    const pageSize = fixture.page.viewportSize() ?? { width: 0, height: 0 };
+    const drawn = () => canvasOf(page).evaluate((node) => (node instanceof HTMLCanvasElement ? { width: node.width, height: node.height, laidOut: Math.round(node.getBoundingClientRect().width) } : null));
+    const movingDrawn = await drawn();
+    // The page at rest: its still frame, at the box page's own pixels (twice its CSS size), laid out at the page's size, as a moving frame is.
+    await view.still();
+    await expect(canvasOf(page)).toHaveAttribute("data-frame-still", "true", { timeout: 15_000 });
+    expect(await drawn()).toEqual({ width: pageSize.width * 2, height: pageSize.height * 2, laidOut: movingDrawn?.laidOut });
+    expect(await drawnColours(page)).toBeGreaterThan(1);
+    // The footer still names the page's size, not the picture's.
+    await expect(page.getByTestId("preview-pane")).toContainText(`${String(pageSize.width)} × ${String(pageSize.height)}`);
+    await shoot(page, "pane-still-dpr2");
+    // It moves again: a moving frame, at the page's CSS size, laid out the same.
+    view.resume();
+    await expect(canvasOf(page)).toHaveAttribute("data-frame-still", "false", { timeout: 15_000 });
+    expect(await drawn()).toEqual({ width: pageSize.width, height: pageSize.height, laidOut: movingDrawn?.laidOut });
+  } finally {
+    await context.close();
+  }
 });
 
 test("F-141/c1: the pane works at a phone's width: Chat or Preview, one at a time, and no sideways scroll", async ({ page, browser }) => {

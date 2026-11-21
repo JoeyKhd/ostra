@@ -353,15 +353,19 @@ The pane beside a task's thread that shows its previews live, primary first. Its
 _Avoid_: preview tab, iframe, viewer (that's the page a link opens)
 
 **Browser view**:
-The live preview that needs no setting: the box's browser streamed to the pane as pictures, with a member's clicks and keys sent back. Everyone watching a preview shares one page.
+The live preview that needs no setting: the box's browser streamed to the pane as pictures, with a member's clicks and keys sent back. Everyone watching a preview shares one page. A page at rest is sent once more as a still frame.
 _Avoid_: screencast, remote desktop, live stream (that's the panel's event stream, ADR 0035)
 
+**Still frame**:
+The browser view's one sharp picture of a page at rest: sent once the page sent nothing for a moment, at a higher quality and at the viewers' device pixel ratio, while a moving page's frames stay light.
+_Avoid_: screenshot (that's an attachment of the thread), keyframe
+
 **Native preview**:
-The live preview in the member's own browser: the app itself on its preview host, served by core over the box's preview connection, with devtools and real device sizes. Only where an admin set a preview domain.
+The live preview in the member's own browser: the app itself on its preview host, served by core over the box's preview connection, with devtools and real device sizes. Only with a preview domain: one an admin set, or a one-machine install's `preview.localhost`.
 _Avoid_: tunnel, iframe preview, port forward (that's `ostra preview`)
 
 **Preview domain**:
-The optional wildcard domain under which core serves native previews, as `<port>-<previewId>.<domain>`. It needs one wildcard DNS record and a wildcard certificate, and a domain of its own is recommended.
+The optional wildcard domain under which core serves native previews, as `<port>-<previewId>.<domain>`. It needs one wildcard DNS record and a wildcard certificate, and a domain of its own is recommended. On one machine (the panel and core on loopback) it's `preview.localhost` unless set, which needs neither.
 _Avoid_: wildcard URL, app domain
 
 **Preview host**:

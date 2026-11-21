@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { previewViewIdSchema } from "../ids.ts";
-import { browserViewFrameBounds, previewViewportSchema, viewportPresetSizes } from "../task/app.ts";
+import { browserViewFrameBounds, browserViewStillScale, previewViewportSchema, viewportPresetSizes } from "../task/app.ts";
 import { runnerLimits } from "./limits.ts";
-import { createPanelStreamReader, encodePanelStreamRecord, panelPreviewInputBodySchema, previewMessageMaxBytes } from "./preview.ts";
+import { createPanelStreamReader, decodePreviewMessage, encodePanelStreamRecord, encodePreviewMessage, panelPreviewInputBodySchema, previewFrameHeaderSchema, previewFramesBodySchema, previewMessageMaxBytes } from "./preview.ts";
 import type { PreviewMessage } from "./preview.ts";
 
 // The panel's stream of a view (milestone 8, ticket 19): core's records, relayed by the web app and
@@ -91,5 +91,31 @@ describe("the panel's preview stream", () => {
     expect(scaled.width * scaled.height).toBeLessThanOrEqual(runnerLimits.browserViewMaxPixels);
     expect(scaled.width / scaled.height).toBeCloseTo(2560 / 1600, 2);
     expect(browserViewFrameBounds({ width: 3000, height: 300 })).toEqual({ width: 1920, height: 192 });
+  });
+
+  it("F-141/c10: a viewer names its device pixel ratio with the viewport, a still frame is taken at it within 2, and a still frame's header says so on either carrier", () => {
+    // The ratio rides the viewport, on the open and on the width control; absent is 1, and 1 to 4 is taken.
+    for (const scale of [1, 1.25, 1.5, 2, 2.625, 3, 4]) {
+      expect(previewViewportSchema.safeParse({ ...viewportPresetSizes.desktop, scale }).success, String(scale)).toBe(true);
+      expect(panelPreviewInputBodySchema.safeParse({ control: { kind: "viewport", viewport: { ...viewportPresetSizes.phone, scale } } }).success).toBe(true);
+    }
+    for (const scale of [0, 0.5, 0.99, 4.01, Number.NaN]) {
+      expect(previewViewportSchema.safeParse({ ...viewportPresetSizes.desktop, scale }).success, String(scale)).toBe(false);
+    }
+    // The still's ratio: the viewer's from 1 to 2, to two decimals, so its pixels are at most the page's times 4.
+    expect([undefined, 0.8, 1, 1.25, 1.333, 2, 3].map(browserViewStillScale)).toEqual([1, 1, 1, 1.25, 1.33, 2, 2]);
+    expect(runnerLimits.browserViewStillMaxScale).toBe(2);
+    expect(runnerLimits.browserViewStillQuality).toBeGreaterThanOrEqual(90);
+    expect(runnerLimits.browserViewQuality).toBe(60);
+    // A still frame's header names the page's size and `still`, and travels as it is on the WebSocket.
+    const still: PreviewMessage = { type: "frame", header: { seq: 7, at: 1_700_000_000_007, width: 1440, height: 900, still: true }, jpeg: jpeg(7) };
+    expect(decodePreviewMessage(encodePreviewMessage(still))).toEqual({ ok: true, message: still });
+    expect(previewFrameHeaderSchema.safeParse({ seq: 7, at: 1, width: 1440, height: 900, still: false }).success).toBe(false);
+    // And on the HTTP carrier's posted frames.
+    const viewId = previewViewIdSchema.parse("view-still");
+    expect(previewFramesBodySchema.safeParse({ viewId, leaseEpoch: 1, frames: [{ seq: 7, at: 1, width: 1440, height: 900, still: true, part: "frame-0" }] }).success).toBe(true);
+    // The pane's stream carries it too.
+    const reader = createPanelStreamReader();
+    expect(reader.push(encodePanelStreamRecord(still))).toEqual([{ ok: true, message: still }]);
   });
 });

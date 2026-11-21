@@ -33,7 +33,7 @@ import {
   previewViewIdSchema,
   runnerLimits,
 } from "@ostra/protocol";
-import type { LeaseEpoch, PreviewFramesResponse, PreviewOpenRefusal, PreviewViewId } from "@ostra/protocol";
+import type { LeaseEpoch, PreviewFrameHeader, PreviewFramesResponse, PreviewOpenRefusal, PreviewViewId } from "@ostra/protocol";
 import { WebSocketServer } from "ws";
 
 import { bearerToken } from "../gateway/access-token.ts";
@@ -661,7 +661,7 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
         return;
       }
     }
-    const frames: { readonly header: { readonly seq: number; readonly at: number; readonly width: number; readonly height: number }; readonly jpeg: Uint8Array }[] = [];
+    const frames: { readonly header: PreviewFrameHeader; readonly jpeg: Uint8Array }[] = [];
     for (const frame of body.data.frames) {
       const bytes = form.get(frame.part);
       const jpeg = bytes === undefined ? null : new Uint8Array(bytes);
@@ -669,7 +669,8 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
         framesAnswer(response, 400, { code: "invalid" });
         return;
       }
-      frames.push({ header: { seq: frame.seq, at: frame.at, width: frame.width, height: frame.height }, jpeg });
+      // A still page's sharp frame stays one on its way to the pane (2026-11-21).
+      frames.push({ header: { seq: frame.seq, at: frame.at, width: frame.width, height: frame.height, ...(frame.still === true ? { still: true } : {}) }, jpeg });
     }
     const me = deps.replicaUrl();
     if (!signed && view.replicaUrl !== null && view.replicaUrl !== me && !hub.holds(viewId)) {

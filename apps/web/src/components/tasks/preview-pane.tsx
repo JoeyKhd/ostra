@@ -47,6 +47,7 @@ import {
   selectedPreview,
   SIGN_IN_FOR_MS,
   viewportFor,
+  viewportWithScale,
   widthPresets,
 } from "./preview-pane-state";
 import type { NativeFailure, NativeView, OpenRefusal, PaneMode, PaneState, PaneView, PreviewItem, WidthPreset } from "./preview-pane-state";
@@ -318,7 +319,7 @@ export const PreviewPane = ({ task, events, previewKey, path: addressPath, onAdd
     setWaitSince(Date.now());
     setCrashedAt(null);
     sentViewport.current = null;
-    const size = viewportFor(preset, room.current);
+    const size = viewportWithScale(viewportFor(preset, room.current), window.devicePixelRatio);
     void openView({ taskId: task.id, key: selected?.key ?? selectedKey, viewport: size })
       .then((answer) => {
         if (!answer.ok) {
@@ -447,7 +448,7 @@ export const PreviewPane = ({ task, events, previewKey, path: addressPath, onAdd
     }
     const timer = setTimeout(() => {
       sentViewport.current = wantedKey;
-      void control({ kind: "viewport", viewport: viewportFor(preset, room.current) });
+      void control({ kind: "viewport", viewport: viewportWithScale(viewportFor(preset, room.current), window.devicePixelRatio) });
     }, RESIZE_SETTLE_MS);
     return () => { clearTimeout(timer); };
   }, [wantedKey, pageKey, view, control, preset]);

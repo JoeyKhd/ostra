@@ -334,6 +334,44 @@ export const previewStreamCases = (mode: PreviewStreamMode) => {
     },
 
     /**
+     * F-141/c10, live (the machine's browser): a page at rest's picture comes sharp. Once the page
+     * sends nothing for the wait, one `still` frame, its JPEG the page's pixels times the viewer's
+     * device pixel ratio (2) and far more bytes than a moving frame's (quality 90 against 60); once
+     * the page moves, frames at the page's own size again; at rest again, a still again. The fake
+     * browser's page never rests, so on it the shared page's own test plays this
+     * (`task-host/shared-pages.test.ts`).
+     */
+    sharpens: async (): Promise<void> => {
+      const { h, core } = await runner();
+      const { view } = await streamingTask(h, core, { ...DESKTOP, scale: 2 });
+      if (!live) return;
+      await appRendered(h);
+      const stills = () => view.frames.filter((frame) => frame.header.still === true);
+      await h.gateway.waitFor(() => stills().length >= 1, 20_000);
+      const [still] = stills();
+      const moving = view.frames.filter((frame) => frame.header.still !== true && frame.header.seq < (still?.header.seq ?? 0)).at(-1);
+      expect(still?.header).toMatchObject({ width: DESKTOP.width, height: DESKTOP.height, still: true });
+      expect(pictureSize(still?.jpeg)).toEqual({ width: DESKTOP.width * 2, height: DESKTOP.height * 2 });
+      expect(pictureSize(moving?.jpeg)).toEqual({ width: DESKTOP.width, height: DESKTOP.height });
+      // Four times the pixels at a higher quality: well past the moving frame's bytes, within a frame's cap.
+      const stillBytes = still?.jpeg.length ?? 0;
+      const movingBytes = moving?.jpeg.length ?? 0;
+      expect(stillBytes).toBeGreaterThan(2 * movingBytes);
+      expect(stillBytes).toBeLessThanOrEqual(runnerLimits.previewFrameMaxBytes);
+      // The page moves: frames at its own size, none of them still.
+      const from = view.frames.length;
+      await evaluate(h, ANIMATE, z.boolean());
+      await h.gateway.waitFor(() => view.frames.length - from >= 10, 20_000);
+      const moved = view.frames.slice(from, from + 10);
+      expect(moved.every((frame) => frame.header.still !== true && pictureSize(frame.jpeg)?.width === DESKTOP.width)).toBe(true);
+      // At rest again: a still again, once its wait (longer now the first was replaced within 2 s) passes.
+      await evaluate(h, STILL, z.boolean());
+      await h.gateway.waitFor(() => stills().length >= 2, 20_000);
+      expect(pictureSize(stills()[1]?.jpeg)).toEqual({ width: DESKTOP.width * 2, height: DESKTOP.height * 2 });
+      expect(runOf(h).pages().counts(WEB)?.stills).toBeGreaterThanOrEqual(2);
+    },
+
+    /**
      * F-141/c3, c1: everyone watching a preview shares one page: a second view of it joins the same
      * page and gets its newest frame at once; the width preset applies to the shared page, the last
      * one chosen, on every view; one view's close leaves the other streaming, and the page goes with

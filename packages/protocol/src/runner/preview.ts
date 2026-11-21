@@ -121,13 +121,20 @@ const sequenceSchema = z.number().int().positive();
 
 /**
  * A frame's header, before its JPEG: the frame's number in the view, when the box captured it, and
- * its size in device pixels.
+ * the page's size it shows, in CSS pixels. Its JPEG may hold more pixels than that: a still frame's
+ * are the page's times the viewers' device pixel ratio.
+ *
+ * `still` (added to minor 7 on 2026-11-21, before its release): the page at rest, sent once it sent
+ * no frame for `browserViewStillAfterMs`, at `browserViewStillQuality` and the viewers' scale
+ * (`browserViewStillScale`). A frame of a moving page has none. The pane draws either the same way,
+ * at the page's size.
  */
 export const previewFrameHeaderSchema = z.strictObject({
   seq: sequenceSchema,
   at: epochMsSchema,
   width: z.number().int().min(1).max(8192),
   height: z.number().int().min(1).max(8192),
+  still: z.literal(true).optional(),
 });
 export type PreviewFrameHeader = z.infer<typeof previewFrameHeaderSchema>;
 
@@ -421,6 +428,8 @@ export const previewFramesBodySchema = z.strictObject({
         at: epochMsSchema,
         width: z.number().int().min(1).max(8192),
         height: z.number().int().min(1).max(8192),
+        /** A still page's sharp frame, as the header's (added to minor 7 on 2026-11-21, before its release). */
+        still: z.literal(true).optional(),
         part: z.string().regex(/^frame-\d$/, "a frame's part"),
       }),
     )

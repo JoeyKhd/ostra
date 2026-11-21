@@ -32,8 +32,12 @@ const frameEventSchema = z.looseObject({
   metadata: z.looseObject({ deviceWidth: z.number(), deviceHeight: z.number(), timestamp: z.number().optional() }),
 });
 
-/** The page's size in CSS pixels, and whether it's a phone (touch, `mobile`). */
-export type Viewport = { readonly width: number; readonly height: number; readonly mobile: boolean };
+/**
+ * The page's size in CSS pixels, whether it's a phone (touch, `mobile`), and its device pixel ratio
+ * (1 when absent): a screenshot's picture holds the page's pixels times it; a screencast's frames
+ * stay within their own `maxWidth` and `maxHeight`.
+ */
+export type Viewport = { readonly width: number; readonly height: number; readonly mobile: boolean; readonly scale?: number };
 
 export type ScreenshotOptions = {
   readonly format: "png" | "jpeg";
@@ -136,7 +140,7 @@ export const openPage = async (client: DevToolsClient, viewport: Viewport): Prom
   const setViewport = async (next: Viewport): Promise<void> => {
     await client.command(
       "Emulation.setDeviceMetricsOverride",
-      { width: next.width, height: next.height, deviceScaleFactor: 1, mobile: next.mobile, screenWidth: next.width, screenHeight: next.height },
+      { width: next.width, height: next.height, deviceScaleFactor: next.scale ?? 1, mobile: next.mobile, screenWidth: next.width, screenHeight: next.height },
       on,
     );
     await client.command("Emulation.setTouchEmulationEnabled", { enabled: next.mobile }, on);
