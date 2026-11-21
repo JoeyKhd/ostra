@@ -401,7 +401,8 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
             { id: "services", label: t("environment.tabs.servicesAndChecks") },
             { id: "app", label: t("environment.tabs.app") },
             // Ticket 36: the onboarding task's proposal, once there's an onboarding task; a dot while a proposal waits (amber for its admins).
-            ...(onboarding.data?.task === null || onboarding.data === undefined
+            // A process kept from a task is a proposal too, with no onboarding task (environment-app-processes.md).
+            ...((onboarding.data?.task === null || onboarding.data === undefined) && !waiting
               ? []
               : [{ id: "proposal" as const, label: t("environment.tabs.proposal"), extra: !waiting ? null : <span aria-hidden className={cn("inline-block size-1.5 rounded-full", admin ? "bg-amber" : "bg-faint")} /> }]),
           ]}

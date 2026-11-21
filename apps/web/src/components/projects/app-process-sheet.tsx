@@ -67,6 +67,10 @@ const initialForm = (mode: SheetMode, firstRepo: string, hasPrimary: boolean): P
 
 const Hairline = () => <div className="my-3.5 h-px bg-line" />;
 
+/** Help text with its names and addresses in mono, as the target sets them (environment-app-processes.md, "The sheet"). */
+const monoParts = (text: string, pattern: RegExp): ReactNode =>
+  text.split(pattern).map((part, at) => (at % 2 === 1 ? <code key={`${part}-${String(at)}`} className="font-mono text-[12px] text-muted">{part}</code> : part));
+
 /** A label over its control, the help or the refusal under it. */
 const SheetField = ({ id, label, help, error, className, children }: { readonly id: string; readonly label: string; readonly help?: ReactNode; readonly error?: string | undefined; readonly className?: string; readonly children: ReactNode }) => (
   <div className={cn("mb-[13px]", className)}>
@@ -281,7 +285,7 @@ export const AppProcessSheet = ({ projectId, mode, processes, repos, serviceCoun
               <Input id={`${id}-folder`} className={inputClass} value={form.folder} readOnly={!canEdit} aria-invalid={shown("folder") !== undefined} onChange={(event) => { set({ folder: event.target.value }); }} onBlur={blur("folder")} />
             </SheetField>
           </div>
-          <SheetField id={`${id}-command`} label={t("environment.app.sheet.command")} error={shown("command")} help={t("environment.app.sheet.commandHelp", { log: `.ostra/app/${logName}.log` })}>
+          <SheetField id={`${id}-command`} label={t("environment.app.sheet.command")} error={shown("command")} help={monoParts(t("environment.app.sheet.commandHelp", { log: `.ostra/app/${logName}.log` }), /(\.ostra\/app\/\S+\.log)/)}>
             <Input id={`${id}-command`} className={inputClass} value={form.command} readOnly={!canEdit} aria-invalid={shown("command") !== undefined} placeholder="pnpm dev" onChange={(event) => { set({ command: event.target.value }); }} onBlur={blur("command")} />
           </SheetField>
           <SheetField id={`${id}-port`} label={t("environment.app.sheet.port")} error={shown("port")}>
@@ -323,19 +327,19 @@ export const AppProcessSheet = ({ projectId, mode, processes, repos, serviceCoun
             <Switch className="mt-0.5" checked={form.primary} disabled={!canEdit} aria-label={t("environment.app.sheet.primary")} onCheckedChange={(primary) => { set({ primary }); }} />
             <span>
               <span className="block text-body font-medium text-text">{t("environment.app.sheet.primary")}</span>
-              <span className="block text-[12.5px] text-faint">{primaryNow === null ? t("environment.app.sheet.primaryHelp") : t("environment.app.sheet.primaryMoves", { name: primaryNow.name })}</span>
+              <span className="block text-[12.5px] text-faint">{primaryNow === null ? t("environment.app.sheet.primaryHelp") : monoParts(t("environment.app.sheet.primaryMoves", { name: primaryNow.name }), new RegExp(`(${primaryNow.name.replace(/[^a-z0-9-]/g, "")})(?= is the)`))}</span>
             </span>
           </label>
           <label className="flex gap-3">
             <Switch className="mt-0.5" checked={form.hostRewrite} disabled={!canEdit} aria-label={t("environment.app.sheet.hostRewrite")} onCheckedChange={(hostRewrite) => { set({ hostRewrite }); }} />
             <span>
               <span className="block text-body font-medium text-text">{t("environment.app.sheet.hostRewrite")}</span>
-              <span className="block text-[12.5px] text-faint">{t("environment.app.sheet.hostRewriteHelp", { host: `localhost:${form.port.trim() === "" ? "<port>" : form.port.trim()}` })}</span>
+              <span className="block text-[12.5px] text-faint">{monoParts(t("environment.app.sheet.hostRewriteHelp", { host: `localhost:${form.port.trim() === "" ? "<port>" : form.port.trim()}` }), /(Host|Origin|localhost:\S+?)(?=[ ,])/)}</span>
             </span>
           </label>
           <Hairline />
           <p className="mb-1.5 text-ui font-medium text-muted">{t("environment.app.sheet.addresses")}</p>
-          <p className="text-[12.5px] text-faint" data-testid="sheet-addresses">{addressesNote(form.name, form.port, others, serviceCount)}</p>
+          <p className="text-[12.5px] text-faint" data-testid="sheet-addresses">{monoParts(addressesNote(form.name, form.port, others, serviceCount), /(OSTRA_[A-Z0-9_]+|https?:\/\/[^\s,]+?)(?=[,.]?(?:\s|$))/)}</p>
           {error === null ? null : <p role="alert" className="mt-3 text-sm text-red">{errorText(error)}</p>}
         </form>
         <div className="flex h-[60px] shrink-0 items-center gap-2 border-t border-line px-5 max-sm:[&_button]:h-11">
