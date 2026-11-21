@@ -119,10 +119,13 @@ export const PrChart = ({ days, endsToday, narrow }: { readonly days: readonly P
           const opacity = today ? 0.5 : 1;
           const mergedX = lineForm ? x0 : x0 + bar + 2;
           const labelHere = !lineForm && !empty && (i === tallest || i === count - 1) && day.prsOpened > 0;
+          // Today's bars are at half opacity; its count over them stays whole (F-081: text at 4.5:1).
           return (
-            <g key={day.day} opacity={opacity}>
-              {lineForm || h(day.prsOpened) === 0 ? null : <path d={barPath(x0, base, bar, h(day.prsOpened))} fill="var(--chart-2)" />}
-              {h(day.prsMerged) === 0 ? null : <path d={barPath(mergedX, base, bar, h(day.prsMerged))} fill="var(--chart)" />}
+            <g key={day.day}>
+              <g opacity={opacity}>
+                {lineForm || h(day.prsOpened) === 0 ? null : <path d={barPath(x0, base, bar, h(day.prsOpened))} fill="var(--chart-2)" />}
+                {h(day.prsMerged) === 0 ? null : <path d={barPath(mergedX, base, bar, h(day.prsMerged))} fill="var(--chart)" />}
+              </g>
               {labelHere ? (
                 <text x={x0 + bar / 2} y={base - h(day.prsOpened) - 6} textAnchor="middle" className="fill-muted font-mono text-[12.5px]">
                   {day.prsOpened}
