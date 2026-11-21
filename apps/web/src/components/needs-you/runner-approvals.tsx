@@ -15,7 +15,8 @@ import type { RouterOutputs } from "@/lib/trpc";
 
 type Listed = RouterOutputs["runners"]["list"][number];
 
-const ROW_GRID = "md:grid-cols-[14px_80px_minmax(0,1fr)_300px_44px_112px]";
+// The reason column gives the title room at the double sidebar's narrower page (needs-you.md drew 300px beside a 232px sidebar).
+const ROW_GRID = "md:grid-cols-[14px_80px_minmax(0,1fr)_260px_44px_112px]";
 
 /** The runners that wait for an admin, oldest first. */
 export const awaitingRunners = (runners: readonly Listed[]): readonly Listed[] =>

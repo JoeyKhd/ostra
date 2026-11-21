@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CheckCheckIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { approvalIdSchema, notificationIdSchema, taskIdSchema } from "@ostra/protocol";
@@ -10,6 +11,7 @@ import { needsYouRowKey } from "@/components/home/home-words";
 import { RunnerApproval } from "@/components/runners/runner-approval";
 import { PageFrame, PageHeading } from "@/components/shell/page-frame";
 import { BudgetNoticeRows, useBudgetNotices } from "@/components/spend/budget-notices";
+import { Button } from "@/components/ui/button";
 import { errorText } from "@/lib/errors";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
@@ -180,6 +182,10 @@ export const NeedsYouView = () => {
   }, [rows, tab]);
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: trpc.notifications.list.queryKey() });
+  // needs-you.md, "Reading": `Mark all as read` marks every open notification read, clears the dots and hides itself.
+  const markAll = useMutation(trpc.notifications.markRead.mutationOptions({ onSettled: () => Promise.all([refresh(), queryClient.invalidateQueries({ queryKey: trpc.notifications.pathKey() })]) }));
+  const openIds = [...rows.flatMap((row) => (row.notificationId === null ? [] : [row.notificationId])), ...notices.map((notice) => notice.notificationId), ...shares.map((share) => share.notificationId)];
+  const showMarkAll = tab === "open" && (open.data?.unread ?? 0) > 0 && openIds.length > 0;
   const answers: Answers = {
     approval: async (_row, ask, answer) => {
       const decision: ApprovalDecision = answer.kind === "once" ? "allow_once" : answer.kind === "task" ? "allow_task" : "deny";
@@ -237,7 +243,21 @@ export const NeedsYouView = () => {
 
   return (
     <PageFrame
-      crumbs={[{ label: t("needsYouPage.pageTitle") }]}
+      crumbs={[{ label: me.data?.organization?.name ?? t("shell.organization") }, { label: t("needsYouPage.pageTitle") }]}
+      actions={
+        showMarkAll ? (
+          <Button
+            variant="outline"
+            disabled={markAll.isPending}
+            onClick={() => {
+              setUnreadAtLoad(new Set());
+              markAll.mutate({ ids: openIds.slice(0, 200).map((id) => notificationIdSchema.parse(id)) });
+            }}
+          >
+            <CheckCheckIcon className="stroke-[1.75]" /> {t("needsYouPage.markAll")}
+          </Button>
+        ) : null
+      }
       wideProperties={selectedRunner !== null}
       properties={
         selectedRunner === null ? (

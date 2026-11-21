@@ -304,7 +304,8 @@ const InlineAnswer = ({ row, ask, answers, onAnswered }: { readonly row: Notific
 
 // ---------- the rows ----------
 
-const ROW_GRID = "md:grid-cols-[14px_80px_minmax(0,1fr)_300px_44px_112px]";
+// The reason column gives the title room at the double sidebar's narrower page (needs-you.md drew 300px beside a 232px sidebar).
+const ROW_GRID = "md:grid-cols-[14px_80px_minmax(0,1fr)_260px_44px_112px]";
 
 export const NotificationRow = ({
   row,
