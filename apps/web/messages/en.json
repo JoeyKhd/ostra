@@ -1643,7 +1643,6 @@
       "approvalTip": "Applies to runners that join from now on. A runner already waiting still needs its Approve.",
       "required": "Required",
       "lifetime": "Token lifetime",
-      "lifetimeDefault": "The default",
       "noExpiry": "No expiry"
     },
     "notIsolated": "not isolated",

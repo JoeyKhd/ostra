@@ -97,17 +97,17 @@ const LabelChips = ({ labels }: { readonly labels: readonly string[] }) => {
 const RunnersTable = ({ pool, runners }: { readonly pool: Pool; readonly runners: readonly Runner[] | undefined }) => (
   <Table
     label={t("runners.runnersSection")}
-    minWidth={860}
+    minWidth={700}
     head={
       <>
-        <th className={cn(th, "w-[150px] pl-2")}>{t("runners.col.state")}</th>
-        <th className={cn(th, "w-[130px]")}>{t("runners.pool.col.runner")}</th>
-        <th className={cn(th, "w-[100px]")}>{t("runners.pool.col.carrier")}</th>
-        <th className={cn(th, "w-[110px]")}>{t("runners.pool.col.containment")}</th>
+        <th className={cn(th, "pl-2")}>{t("runners.col.state")}</th>
+        <th className={th}>{t("runners.pool.col.runner")}</th>
+        <th className={th}>{t("runners.pool.col.carrier")}</th>
+        <th className={th}>{t("runners.pool.col.containment")}</th>
         <th className={th}>{t("runners.pool.col.labels")}</th>
-        <th className={cn(th, "w-[110px]")}>{t("runners.col.busy")}</th>
-        <th className={cn(th, "w-[130px]")}>{t("runners.col.version")}</th>
-        <th className={cn(th, "w-[36px]")}><span className="sr-only">{t("runner.actions")}</span></th>
+        <th className={th}>{t("runners.col.busy")}</th>
+        <th className={th}>{t("runners.col.version")}</th>
+        <th className={cn(th, "w-[30px] pr-0")}><span className="sr-only">{t("runner.actions")}</span></th>
       </>
     }
   >
@@ -119,16 +119,16 @@ const RunnersTable = ({ pool, runners }: { readonly pool: Pool; readonly runners
       const old = runner.minor !== null && runner.minor < 4 && runner.executor === "docker";
       return (
         <tr key={runner.id} data-runner={runner.name} className={cn(row, "group hover:bg-sel")}>
-          <td className="pl-2 pr-3">
+          <td className="whitespace-nowrap pl-2 pr-3">
             {runner.awaitingApproval ? <RunnerStatus state="joining" text={t("runners.pool.waitingApproval")} /> : <RunnerStatus state={runner.state} />}
           </td>
           <td className="pr-3">
             <Link href={`/organization/runners/${runner.id}`} className="truncate font-mono text-text hover:underline">{runner.name}</Link>
           </td>
-          <td className="pr-3 text-muted">{runner.connection === null ? "—" : carrierText(runner.connection.carrier)}</td>
-          <td className="pr-3 text-muted">
+          <td className="whitespace-nowrap pr-3 text-muted">{runner.connection === null ? "—" : carrierText(runner.connection.carrier)}</td>
+          <td className="whitespace-nowrap pr-3 text-muted">
             <span className="inline-flex items-center gap-1.5">
-              {containmentText(runner.processContainment)}
+              {containmentText(runner.processContainment).toLowerCase()}
               {runner.processContainment === "process-tree" ? (
                 <Tooltip content={t("runners.pool.treeTip")}>
                   <InfoIcon aria-label={t("runners.pool.treeTip")} className="size-[13px] stroke-[1.75] text-faint" />
@@ -144,13 +144,13 @@ const RunnersTable = ({ pool, runners }: { readonly pool: Pool; readonly runners
               </Tooltip>
             ) : t("runners.busyOf", { busy: runner.busy, slots: runner.slots })}
           </td>
-          <td className="pr-3">
+          <td className="whitespace-nowrap pr-3">
             <span className="flex items-center gap-2 font-mono text-muted">
               v{runner.version}
               {chip === null ? null : <Chip className="font-sans text-[12px]">{chip}</Chip>}
             </span>
           </td>
-          <td className="pr-1 text-right opacity-100 xl:opacity-0 xl:group-focus-within:opacity-100 xl:group-hover:opacity-100">
+          <td className="pr-0 text-right opacity-100 xl:opacity-0 xl:group-focus-within:opacity-100 xl:group-hover:opacity-100">
             <RunnerRowMenu runner={{ id: runner.id, name: runner.name, kind: runner.kind, state: runner.state, busy: runner.busy, minor: runner.minor, awaitingApproval: runner.awaitingApproval, poolName: pool.name }} />
           </td>
         </tr>
@@ -279,16 +279,16 @@ const QueueTable = ({ pool, busy, cap, queue, now }: { readonly pool: Pool; read
     <>
       <Table
         label={t("runners.pool.queue")}
-        minWidth={780}
+        minWidth={700}
         head={
           <>
-            <th className={cn(th, "w-[36px] pl-2")}>{t("runners.queue.col.place")}</th>
-            <th className={cn(th, "w-[110px] max-sm:hidden")}>{t("runners.queue.col.priority")}</th>
+            <th className={cn(th, "w-[32px] pl-2")}>{t("runners.queue.col.place")}</th>
+            <th className={cn(th, "w-[96px] max-sm:hidden")}>{t("runners.queue.col.priority")}</th>
             <th className={th}>{t("runners.queue.col.task")}</th>
-            <th className={cn(th, "w-[160px]")}>{t("runners.pool.col.project")}</th>
-            <th className={cn(th, "w-[70px] text-right")}>{t("runners.queue.col.waiting")}</th>
-            <th className={cn(th, "w-[180px] pl-4 max-sm:hidden")}>{t("runners.queue.col.why")}</th>
-            <th className={cn(th, "w-[70px]")}><span className="sr-only">{t("runners.queue.cancel")}</span></th>
+            <th className={cn(th, "w-[136px]")}>{t("runners.pool.col.project")}</th>
+            <th className={cn(th, "w-[60px] text-right")}>{t("runners.queue.col.waiting")}</th>
+            <th className={cn(th, "w-[160px] pl-4 max-sm:hidden")}>{t("runners.queue.col.why")}</th>
+            <th className={cn(th, "w-[60px]")}><span className="sr-only">{t("runners.queue.cancel")}</span></th>
           </>
         }
       >
@@ -378,10 +378,12 @@ const projectsText = (pool: Pool): string => {
   return pool.projects.length > 1 ? t("runners.moreProjects", { name: first.name, n: pool.projects.length - 1 }) : first.name;
 };
 
-const PoolPanel = ({ pool, summary, onEdit }: { readonly pool: Pool; readonly summary: Summary | undefined; readonly onEdit: () => void }) => {
+const PoolPanel = ({ pool, summary, defaultDays, onEdit }: { readonly pool: Pool; readonly summary: Summary | undefined; readonly defaultDays: number; readonly onEdit: () => void }) => {
   const [switchError, setSwitchError] = useState<string | null>(null);
   const v = (node: ReactNode) => (summary === undefined ? <Skeleton className="w-16" /> : node);
-  const lifetime = pool.joinTokenDays === null ? t("runners.pool.lifetimeDefault") : pool.joinTokenDays === 0 ? t("runners.pool.noExpiry") : t("runners.poolForm.days", { n: pool.joinTokenDays });
+  // The default reads as its number of days (pool.md, pool-new.md): `OSTRA_JOIN_TOKEN_DAYS`, 30 unless set.
+  const days = pool.joinTokenDays ?? defaultDays;
+  const lifetime = days === 0 ? t("runners.pool.noExpiry") : t("runners.poolForm.days", { n: days });
   return (
     <div data-testid="pool-panel">
       <PropGroup title={t("runners.pool.panelPool")}>
@@ -450,7 +452,7 @@ export const PoolView = ({ poolId, settings }: { readonly poolId: string; readon
             <PlusIcon className="stroke-[1.75]" /> {t("runners.newToken")}
           </Button>
         }
-        properties={data === undefined ? <Skeleton className="w-3/4" /> : <PoolPanel pool={data} summary={summary} onEdit={() => { if (sheetPool !== null) open({ kind: "edit", pool: sheetPool }); }} />}
+        properties={data === undefined ? <Skeleton className="w-3/4" /> : <PoolPanel pool={data} summary={summary} defaultDays={settings.joinTokenDays} onEdit={() => { if (sheetPool !== null) open({ kind: "edit", pool: sheetPool }); }} />}
       >
         <div className="mb-2">
           <div className="my-1.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
