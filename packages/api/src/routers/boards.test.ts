@@ -41,6 +41,18 @@ const teamOf = async (key = "CALC") => {
   return team;
 };
 
+describe("F-007: the tracker's teams before a project exists", () => {
+  it("lists the organization's teams for Create a project, for organization admins only", async () => {
+    const teams = await (await admin()).boards.teams();
+    expect(teams?.map((team) => team.key)).toContain("CALC");
+    await expect((await member()).boards.teams()).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("answers null while the organization has no tracker", async () => {
+    expect(await (await harness.as(harness.fixture.b.admin)).boards.teams()).toBeNull();
+  });
+});
+
 describe("F-007: attaching a board", () => {
   it("drafts the mapping from the team's statuses and the integration check, saves the board and enqueues the first poll", async () => {
     harness.fakes.jobs.clear();

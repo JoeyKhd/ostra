@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import type { TrackerLookup } from "../services/trackers.ts";
 import type { ApiDeps } from "../trpc/context.ts";
-import { boardProcedure, projectProcedure, router, unwrap } from "../trpc/init.ts";
+import { adminProcedure, boardProcedure, projectProcedure, router, unwrap } from "../trpc/init.ts";
 
 // F-007, F-031, ticket 28: a project's boards. A board is a tracker team attached to a project,
 // with the status mapping that says what the Inbox shows and how ticket sync moves a ticket. A
@@ -118,6 +118,23 @@ export const boardsRouter = router({
    * The connection's teams, marking those already attached to this project, and those which other
    * projects have too (a team may be a board in several projects). Project admins only.
    */
+  /**
+   * The tracker's teams before a project exists (project-new.md, "Tracker"): Create a project picks
+   * one and attaches it once the project is made. `null` while the organization has no tracker.
+   */
+  teams: adminProcedure
+    .output(z.array(z.object({ externalId: z.string(), key: z.string(), name: z.string() })).nullable())
+    .query(async ({ ctx }) => {
+      const organizationId = organizationIdSchema.parse(ctx.scope.organizationId);
+      if ((await ctx.deps.trackers.linearConnectionOf(organizationId)) === null) return null;
+      const tracker = await requireTracker(ctx.deps, organizationId);
+      const listed = await tracker.tracker.listBoards();
+      if (!listed.ok) {
+        throw new TRPCError({ code: "BAD_GATEWAY", message: `The tracker did not list its teams: ${listed.error.message}` });
+      }
+      return listed.value.map((team) => ({ externalId: team.externalId, key: team.key, name: team.name }));
+    }),
+
   available: projectProcedure("admin", z.strictObject({ projectId: projectIdSchema }))
     .output(z.array(teamSchema))
     .query(async ({ ctx, input }) => {
