@@ -45,7 +45,7 @@ import { startPreviewReplica } from "../testing/previews.ts";
 import type { PreviewReplica } from "../testing/previews.ts";
 import { freePort, registerRunnerAt, waitFor } from "../testing/restart.ts";
 import type { RegisteredAt } from "../testing/restart.ts";
-import { nextMessage, openSocket as openTestSocket, skipMessages } from "../testing/websockets.ts";
+import { editUntil, hasMessage, nextMessage, openSocket as openTestSocket, skipMessages } from "../testing/websockets.ts";
 import { dispatchPayload, seedQueuedTask, seedWorld } from "../testing/world.ts";
 import type { World } from "../testing/world.ts";
 
@@ -377,9 +377,8 @@ describe("ostra preview through core to the runner's tunnel", () => {
     expect((await fetch(`${base}/src/${path.basename(probe)}`)).status).toBe(200);
     // The edit's message, not one from before it.
     skipMessages(hmr);
-    const update = nextMessage(hmr, 30_000);
-    await writeFile(probe, "export const probe = 2;\n");
-    expect(["update", "full-reload"]).toContain(hmrMessageSchema.parse(JSON.parse(await update)).type);
+    await editUntil(probe, () => hasMessage(hmr));
+    expect(["update", "full-reload"]).toContain(hmrMessageSchema.parse(JSON.parse(await nextMessage(hmr))).type);
     const viewId = opened.at(-1);
     if (viewId === undefined) {
       throw new Error("no view");

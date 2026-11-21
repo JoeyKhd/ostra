@@ -56,6 +56,7 @@ import { startPreviewReplica } from "../testing/previews.ts";
 import type { PreviewReplica } from "../testing/previews.ts";
 import { freePort, registerRunnerAt, waitFor } from "../testing/restart.ts";
 import type { RegisteredAt } from "../testing/restart.ts";
+import { editUntil } from "../testing/websockets.ts";
 import { dispatchPayload, seedQueuedTask, seedWorld } from "../testing/world.ts";
 import type { World } from "../testing/world.ts";
 import { NATIVE_FORWARD_PREFIX } from "./native.ts";
@@ -733,8 +734,9 @@ describe("the fixtures through it", () => {
     await waitFor("Vite's connected message", () => said.length > 0, 10_000);
     expect(hmrSchema.parse(JSON.parse(said[0] ?? "{}")).type).toBe("connected");
     expect((await get(`/src/${path.basename(probe)}`)).status).toBe(200);
-    await writeFile(probe, "export const probe = 2;\n");
-    await waitFor("an HMR message after the edit", () => said.slice(1).some((text) => ["update", "full-reload"].includes(hmrSchema.parse(JSON.parse(text)).type ?? "")), 30_000);
+    // The edit's message, not one from before it (Vite holds a reload no socket heard for the next one).
+    const seen = said.length;
+    await editUntil(probe, () => said.slice(seen).some((text) => ["update", "full-reload"].includes(hmrSchema.parse(JSON.parse(text)).type ?? "")));
     // The API's WebSocket echo, behind Vite's proxy, through the same preview host.
     const echo = await openWs(a.url, entered.host, "/api/ws", { cookie: entered.cookie, origin: entered.origin });
     if (!echo.ok) {

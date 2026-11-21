@@ -61,10 +61,11 @@ const freePort = (): Promise<number> =>
 const textOf = (data: WebSocket.RawData): string =>
   Buffer.isBuffer(data) ? data.toString("utf8") : Array.isArray(data) ? Buffer.concat(data).toString("utf8") : Buffer.from(new Uint8Array(data)).toString("utf8");
 
-/** Texts in the order they came, each taken once: `next` waits for one, `clear` drops those not taken. */
+/** Texts in the order they came, each taken once: `next` waits for one, `has` says one is in, `clear` drops those not taken. */
 type Inbox = {
   readonly push: (text: string) => void;
   readonly next: (timeoutMs?: number) => Promise<string>;
+  readonly has: () => boolean;
   readonly clear: () => void;
 };
 
@@ -87,10 +88,34 @@ const inbox = (nothing: string): Inbox => {
       }
       return texts.shift() ?? "";
     },
+    has: () => texts.length > 0,
     clear: () => {
       texts.splice(0);
     },
   };
+};
+
+/**
+ * Edits a probe module the fixture's Vite has served until `heard()` holds, new content every
+ * 500 ms, for at most `timeoutMs`. One edit can go unheard: Vite's watcher (its chokidar 3) drops
+ * a file's change within 50 ms of the file's last one, and a probe's creation can give a change of
+ * its own (`writeFile`'s open and write, both seen), handled before the probe is in Vite's graph.
+ * The test's edit, milliseconds later, was then dropped too. Core's `testing/websockets.ts` has the
+ * same helper and the longer account.
+ */
+const editUntil = async (file: string, heard: () => boolean, timeoutMs = 30_000): Promise<void> => {
+  const deadline = Date.now() + timeoutMs;
+  for (let edit = 2; ; edit += 1) {
+    await writeFile(file, `export const probe = ${String(edit)};\n`);
+    const next = Math.min(Date.now() + 500, deadline);
+    while (!heard() && Date.now() < next) {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 20);
+      });
+    }
+    if (heard()) return;
+    if (Date.now() >= deadline) throw new Error("no HMR message after the edits");
+  }
 };
 
 /**
@@ -117,7 +142,7 @@ const openSocket = (url: string, protocol?: string): Promise<TestSocket> =>
  * The text frames a WebSocket's server sends on an extended CONNECT's stream (RFC 6455's framing,
  * unmasked from a server): what a browser reads through core's answer to its upgrade.
  */
-const serverTextFrames = (stream: ClientHttp2Stream): ((timeoutMs?: number) => Promise<string>) => {
+const serverTextFrames = (stream: ClientHttp2Stream): Inbox => {
   let held = Buffer.alloc(0);
   const frames = inbox("no frame");
   stream.on("data", (chunk: Buffer) => {
@@ -144,7 +169,7 @@ const serverTextFrames = (stream: ClientHttp2Stream): ((timeoutMs?: number) => P
       }
     }
   });
-  return frames.next;
+  return frames;
 };
 
 /** Whether something takes a connection on `host:port`. */
@@ -364,18 +389,18 @@ export const previewTunnelCases = (mode: PreviewTunnelMode) => {
       expect(upgraded.status).toBe(200);
       expect(upgraded.headers["sec-websocket-protocol"]).toBe("vite-hmr");
       const frames = serverTextFrames(upgraded.stream);
-      expect(hmrMessageSchema.parse(JSON.parse(await frames())).type).toBe("connected");
+      expect(hmrMessageSchema.parse(JSON.parse(await frames.next())).type).toBe("connected");
       const probe = `__tunnel-probe-${mode.name}-${randomBytes(4).toString("hex")}.js`;
       const probePath = path.join(FIXTURE, "src", probe);
       probes.push(probePath);
       await writeFile(probePath, "export const probe = 1;\n");
       expect((await core.request(viewId, web, `/src/${probe}`)).status).toBe(200);
-      // The edit's message, not one from before it.
+      // The edit's message on both sockets, not one from before it.
       hmr.messages.clear();
-      const viaConnect = hmr.messages.next(30_000);
-      await writeFile(probePath, "export const probe = 2;\n");
-      expect(["update", "full-reload"]).toContain(hmrMessageSchema.parse(JSON.parse(await frames(30_000))).type);
-      expect(["update", "full-reload"]).toContain(hmrMessageSchema.parse(JSON.parse(await viaConnect)).type);
+      frames.clear();
+      await editUntil(probePath, () => frames.has() && hmr.messages.has());
+      expect(["update", "full-reload"]).toContain(hmrMessageSchema.parse(JSON.parse(await frames.next())).type);
+      expect(["update", "full-reload"]).toContain(hmrMessageSchema.parse(JSON.parse(await hmr.messages.next())).type);
       upgraded.stream.close();
       hmr.ws.close();
 

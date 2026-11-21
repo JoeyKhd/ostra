@@ -34,7 +34,7 @@ import { freePort, registerRunnerAt, waitFor } from "../testing/restart.ts";
 import type { RegisteredAt } from "../testing/restart.ts";
 import { connectFakeTunnelBox, openFakeCli, openHostileCli } from "../testing/tunnels.ts";
 import type { CliRefused, FakeCli, FakeTunnelBox, HostileCli } from "../testing/tunnels.ts";
-import { nextMessage, openSocket, skipMessages } from "../testing/websockets.ts";
+import { editUntil, hasMessage, nextMessage, openSocket, skipMessages } from "../testing/websockets.ts";
 import { dispatchPayload, seedQueuedTask, seedWorld } from "../testing/world.ts";
 import type { World } from "../testing/world.ts";
 
@@ -289,9 +289,8 @@ describe("core's tunnel for ostra preview", () => {
       expect((await fetch(`${base}/src/${probe}`)).status).toBe(200);
       // The edit's message, not one from before it.
       skipMessages(hmr);
-      const update = nextMessage(hmr, 20_000);
-      await writeFile(probePath, "export const probe = 2;\n");
-      expect(["update", "full-reload"]).toContain(hmrMessageSchema.parse(JSON.parse(await update)).type);
+      await editUntil(probePath, () => hasMessage(hmr));
+      expect(["update", "full-reload"]).toContain(hmrMessageSchema.parse(JSON.parse(await nextMessage(hmr))).type);
       hmr.close();
     } finally {
       await rm(probePath, { force: true });

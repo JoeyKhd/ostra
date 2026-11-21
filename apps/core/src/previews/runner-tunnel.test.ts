@@ -42,7 +42,7 @@ import { freePort, registerRunnerAt, waitFor } from "../testing/restart.ts";
 import type { RegisteredAt } from "../testing/restart.ts";
 import { openFakeCli } from "../testing/tunnels.ts";
 import type { CliRefused, FakeCli } from "../testing/tunnels.ts";
-import { nextMessage, openSocket, skipMessages } from "../testing/websockets.ts";
+import { editUntil, hasMessage, nextMessage, openSocket, skipMessages } from "../testing/websockets.ts";
 import { dispatchPayload, seedQueuedTask, seedWorld } from "../testing/world.ts";
 import type { World } from "../testing/world.ts";
 
@@ -286,9 +286,8 @@ describe("core's tunnel to the runner's", () => {
     expect((await fetch(`${base}/src/${path.basename(probe)}`)).status).toBe(200);
     // The edit's message, not one from before it.
     skipMessages(hmr);
-    const update = nextMessage(hmr, 30_000);
-    await writeFile(probe, "export const probe = 2;\n");
-    expect(["update", "full-reload"]).toContain(hmrMessageSchema.parse(JSON.parse(await update)).type);
+    await editUntil(probe, () => hasMessage(hmr));
+    expect(["update", "full-reload"]).toContain(hmrMessageSchema.parse(JSON.parse(await nextMessage(hmr))).type);
     // Each local connection was a CONNECT the runner's tunnel took, and it refused none.
     expect(views.tunnel(viewId)?.counts.connects).toBeGreaterThanOrEqual(3);
     expect(views.tunnel(viewId)?.counts.refused).toBe(0);
@@ -385,8 +384,9 @@ describe("core's tunnel to the runner's", () => {
     const loaded = session.request({ ":method": "GET", ":path": `/src/${path.basename(probe)}`, ":authority": `localhost:${String(vitePort)}` });
     loaded.end();
     expect((await streamAnswer(loaded, true)).status).toBe(200);
-    await writeFile(probe, "export const probe = 2;\n");
-    await waitFor("an HMR message after the edit", () => texts.slice(1).some((text) => ["update", "full-reload"].includes(hmrMessageSchema.parse(JSON.parse(text)).type)), 30_000);
+    // The edit's message, not one from before it (Vite holds a reload no socket heard for the next one).
+    const seen = texts.length;
+    await editUntil(probe, () => texts.slice(seen).some((text) => ["update", "full-reload"].includes(hmrMessageSchema.parse(JSON.parse(text)).type)));
     upgrade.close();
     expect(views.tunnel(viewId)?.counts).toMatchObject({ websockets: 1, refused: 0 });
     expect(views.tunnel(viewId)?.counts.requests).toBeGreaterThanOrEqual(3);
