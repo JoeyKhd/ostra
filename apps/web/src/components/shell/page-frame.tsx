@@ -100,12 +100,16 @@ export const PageFrame = ({ crumbs, actions, properties, wideProperties = false,
             return (
               <Fragment key={`${crumb.label}-${String(i)}`}>
                 {i > 0 ? <ChevronRightIcon aria-hidden className="size-[15px] shrink-0 text-faint md:size-[14px]" /> : null}
+                {/* The parents give way first (shrink 5), the page's own name last (shrink 1). Its factor
+                    stays at least 1: once the parents are cut to nothing, a flex item alone with a
+                    factor under 1 takes only that share of what is still too wide, and the bar ran
+                    past a phone's edge on a long note's title. */}
                 {last || crumb.href === undefined ? (
-                  <span className={cn("min-w-0 truncate", last ? "shrink-[0.2] font-semibold text-text md:font-medium" : "font-medium")} aria-current={last ? "page" : undefined}>
+                  <span className={cn("min-w-0 truncate", last ? "font-semibold text-text md:font-medium" : "shrink-[5] font-medium")} aria-current={last ? "page" : undefined}>
                     {crumb.label}
                   </span>
                 ) : (
-                  <Link href={crumb.href} className="min-w-0 truncate font-medium hover:text-text md:font-normal">
+                  <Link href={crumb.href} className="min-w-0 shrink-[5] truncate font-medium hover:text-text md:font-normal">
                     {crumb.label}
                   </Link>
                 )}

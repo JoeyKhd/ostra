@@ -151,8 +151,9 @@ export const MarketplaceView = () => {
           <>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
               <ToggleGroup type="single" value={kind} onValueChange={(value) => { if (value === "skills" || value === "servers") { setKind(value); setSelected(null); } }} aria-label={t("library.market.source")} className="h-[44px] w-full shrink-0 sm:h-7 sm:w-auto">
-                <ToggleGroupItem value="skills" className="flex flex-1 items-center gap-1.5 whitespace-nowrap px-2.5 text-sm [&_svg]:size-[14px]"><BookOpenIcon aria-hidden /> {t("library.market.skills")}<span className="text-faint">{`· ${state.data?.sendsTo.skills ?? ""}`}</span></ToggleGroupItem>
-                <ToggleGroupItem value="servers" className="flex flex-1 items-center gap-1.5 whitespace-nowrap px-2.5 text-sm [&_svg]:size-[14px]"><PlugIcon aria-hidden /> {t("library.market.servers")}<span className="text-faint">{`· ${registryHost}`}</span></ToggleGroupItem>
+                {/* At a phone's width the hosts are cut, never the page: each half is as wide as it may be. */}
+                <ToggleGroupItem value="skills" className="flex min-w-0 flex-1 items-center gap-1.5 whitespace-nowrap px-2.5 text-sm [&_svg]:size-[14px] [&_svg]:shrink-0"><BookOpenIcon aria-hidden /> {t("library.market.skills")}<span className="min-w-0 truncate text-faint">{`· ${state.data?.sendsTo.skills ?? ""}`}</span></ToggleGroupItem>
+                <ToggleGroupItem value="servers" className="flex min-w-0 flex-1 items-center gap-1.5 whitespace-nowrap px-2.5 text-sm [&_svg]:size-[14px] [&_svg]:shrink-0"><PlugIcon aria-hidden /> {t("library.market.servers")}<span className="min-w-0 truncate text-faint">{`· ${registryHost}`}</span></ToggleGroupItem>
               </ToggleGroup>
               <label className="relative min-w-0 flex-1">
                 <span className="sr-only">{t("library.market.searchLabel")}</span>
