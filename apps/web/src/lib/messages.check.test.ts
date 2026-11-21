@@ -34,21 +34,35 @@ const readSources = async () => {
 const readAllowed = async () => allowedSchema.parse(JSON.parse(await readFile(path.join(webDir, "messages", "allowed-literals.json"), "utf8"))).allowed;
 const readMessages = async (): Promise<unknown> => JSON.parse(await readFile(path.join(webDir, "messages", "en.json"), "utf8"));
 
-describe("the message-file check", () => {
+const readInputs = async () => {
+  const [sources, allowed, messages] = await Promise.all([readSources(), readAllowed(), readMessages()]);
+  return { sources, tsx: sources.filter(({ file }) => file.endsWith(".tsx")), allowed, messages };
+};
+
+// The sources, the allowlist and en.json are read once for the file, by the first case that needs them.
+let inputs: ReturnType<typeof readInputs> | undefined;
+const loadInputs = () => (inputs ??= readInputs());
+
+// Each case parses every panel source with the TypeScript compiler (about 400 files and growing).
+// That takes a second or two here, but on CI's runner, where turbo tests every package at once,
+// it went past vitest's 5 s default. 60 s fits a loaded runner with a wide margin.
+const SCAN_TIMEOUT_MS = 60_000;
+
+describe("the message-file check", { timeout: SCAN_TIMEOUT_MS }, () => {
   it("F-083/c1: no JSX text, aria-label, title, placeholder, alt or toast in apps/web and task-view bypasses t", async () => {
-    const allowed = await readAllowed();
-    const findings = (await readSources()).filter(({ file }) => file.endsWith(".tsx")).flatMap(({ file, source }) => checkSource(file, source, allowed));
+    const { tsx, allowed } = await loadInputs();
+    const findings = tsx.flatMap(({ file, source }) => checkSource(file, source, allowed));
     expect(findings.map((finding) => `${finding.file}:${String(finding.line)} ${finding.kind}${finding.attribute === undefined ? "" : `[${finding.attribute}]`} ${JSON.stringify(finding.text)}`)).toEqual([]);
   });
 
   it("F-083/c1: every key of en.json is used somewhere, and none is unused", async () => {
-    expect(unusedKeys(await readMessages(), await readSources())).toEqual([]);
+    const { messages, sources } = await loadInputs();
+    expect(unusedKeys(messages, sources)).toEqual([]);
   });
 
   it("F-083/c1: every allowed literal is still in a source, with its reason", async () => {
-    const allowed = await readAllowed();
-    const sources = (await readSources()).filter(({ file }) => file.endsWith(".tsx"));
-    const all = sources.flatMap(({ file, source }) => checkSource(file, source));
+    const { tsx, allowed } = await loadInputs();
+    const all = tsx.flatMap(({ file, source }) => checkSource(file, source));
     expect(allowed.filter((entry) => !all.some((finding) => finding.text === entry.text)).map((entry) => entry.text)).toEqual([]);
   });
 
