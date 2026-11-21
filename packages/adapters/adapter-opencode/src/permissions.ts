@@ -23,8 +23,8 @@ import type { ApprovalRule, OstraToolSet, TaskKind, TurnMode } from "@ostra/prot
 // request that reaches it. A task rule only answers what a profile rule asks about, which reaches
 // the runner already, so it adds no ask of its own.
 //
-// `external_directory` is denied last, after every ask and allow, so nothing a rule adds reaches
-// outside the workspace.
+// `external_directory` is denied after every ask and allow, so nothing a rule adds reaches outside
+// the workspace. Only the task's own folders are allowed after it (`ownFolderPermissions`).
 
 /** One of OpenCode's permission rules. */
 export type OpenCodePermission = {
@@ -38,6 +38,35 @@ export const permissionRules: readonly [allowAll: OpenCodePermission, denyOutsid
   { action: "*", resource: "*", effect: "allow" },
   { action: "external_directory", resource: "*", effect: "deny" },
 ];
+
+/**
+ * The task's own folders outside OpenCode's project, reached as the project is (the maintainer's
+ * task of 2026-11-21). Read from OpenCode 2.3.2's source (tag v2.3.2, `packages/core/src`):
+ *
+ * - A path is the project's when it's inside the session's folder or its git checkout
+ *   (`file-access.ts`, `resolve`). Any other path asks `external_directory`, with its folder as
+ *   the resource: `<folder>/*`, with forward slashes. With one repo the session's folder is the
+ *   repo's checkout, so the workspace's root, which holds it, is outside, and so is the agent folder.
+ * - The shell tool asks it for the command's working folder (`workdir`) and each folder a `cd` or
+ *   `pushd` names (`tool/plugin/shell.ts`, `prepare`; `shell/parse.ts`): `python --version` run in
+ *   the temp folder is refused although it names no path.
+ * - OpenCode tells the model to prefer `<TMPDIR>/opencode`, "pre-created and approved for external
+ *   access" (`instructions/builtins.ts`), which only its default `allow *` approves, and the deny
+ *   overrides it. It saves a long tool output under `<XDG_DATA_HOME>/opencode/tool-output`, and a
+ *   background command's under `.../opencode/shell`, and names the file to the model to read
+ *   (`tool-output.ts`, `shell.ts`).
+ * - The last rule that matches wins (`permission.ts`, `evaluate`), so these go after the deny. A
+ *   resource's `*` crosses `/`, `\` reads as `/`, and Windows matches without case (`util/wildcard.ts`).
+ *
+ * A folder whose name holds a wildcard can't be written literally, so it gets no allow and stays
+ * denied. Everything else outside the workspace stays denied: the agent's home, its config, the runner's
+ * folders, another task's. On `docker` and `kubernetes` the box is the boundary (ADR 0031); on
+ * `host` this is a guard on the file tools, not on the shell (ADR 0029).
+ */
+export const ownFolderPermissions = (folders: readonly string[]): readonly OpenCodePermission[] => {
+  const resources = folders.filter((folder) => !/[*?]/.test(folder)).map((folder) => `${folder.replaceAll("\\", "/").replace(/\/+$/, "")}/*`);
+  return [...new Set(resources)].map((resource) => ({ action: "external_directory", resource, effect: "allow" as const }));
+};
 
 /** ostra's own MCP server for the task (the PR's title and body): never a profile server, never under a rule. */
 export const OSTRA_MCP_SERVER = "ostra";
@@ -115,6 +144,8 @@ export type PermissionInput = {
   readonly allowPrototyping?: boolean;
   /** Milestone 6: the tool sets of ostra's MCP server for the task. Absent: no filter, as before milestone 6. */
   readonly tools?: readonly OstraToolSet[];
+  /** The task's own folders outside OpenCode's project (`ownFolderPermissions`). Absent: none. */
+  readonly ownFolders?: readonly string[];
 };
 
 /**
@@ -165,7 +196,8 @@ export const toolFilterPermissions = (tools: readonly OstraToolSet[]): readonly 
 
 /**
  * The task's permissions in OpenCode's order (ADR 0049): everything allowed, then each rule as
- * `ask`, and `external_directory` denied last, so it always wins.
+ * `ask`, then `external_directory` denied, so it wins over all of them, and last the task's own
+ * folders allowed (`ownFolderPermissions`).
  */
 export const buildPermissions = (input: PermissionInput): readonly OpenCodePermission[] => {
   const { approvalRules, mcpServers } = input;
@@ -224,7 +256,7 @@ export const buildPermissions = (input: PermissionInput): readonly OpenCodePermi
   // Without the sets (a runner before milestone 6), the server is the filter: it serves the defaults.
   const filtered = input.tools === undefined ? [] : toolFilterPermissions(input.tools);
   const [allowAll, denyOutside] = permissionRules;
-  return [allowAll, ...allowlisted, ...asks, ...unreadable, ...readOnly, ...filtered, denyOutside];
+  return [allowAll, ...allowlisted, ...asks, ...unreadable, ...readOnly, ...filtered, denyOutside, ...ownFolderPermissions(input.ownFolders ?? [])];
 };
 
 /**
@@ -263,12 +295,12 @@ export const EXPLORE_AGENT = "explore";
  * could edit (`research/opencode-subagents.md`, section 3). Mirrored rule for rule, with two
  * differences. OpenCode allows explore any command and asks it, in its prompt, to run read-only
  * ones; ostra allows the read-only list alone, as the plan agent has it, since any other command
- * could write. And `external_directory` stays denied, as for every agent of a task. A profile's
- * rule still reaches what explore may do: with a rule on commands, each listed command asks, and
- * with a rule on the network, a fetch or a web search asks; the runner answers the requests no
- * rule covers, as for any over-ask.
+ * could write. And `external_directory` stays denied but for the task's own folders, as for every
+ * agent of a task. A profile's rule still reaches what explore may do: with a rule on commands,
+ * each listed command asks, and with a rule on the network, a fetch or a web search asks; the
+ * runner answers the requests no rule covers, as for any over-ask.
  */
-export const explorePermissions = (approvalRules: readonly ApprovalRule[]): readonly OpenCodePermission[] => {
+export const explorePermissions = (approvalRules: readonly ApprovalRule[], ownFolders: readonly string[] = []): readonly OpenCodePermission[] => {
   const watchesCommands = approvalRules.some((rule) => rule.tool === "execute");
   const watchesFetches = approvalRules.some((rule) => rule.tool === "fetch");
   const [, denyOutside] = permissionRules;
@@ -285,6 +317,7 @@ export const explorePermissions = (approvalRules: readonly ApprovalRule[]): read
     { action: "subagent", resource: "*", effect: "deny" },
     ...readOnlyShell(watchesCommands ? "ask" : "allow"),
     denyOutside,
+    ...ownFolderPermissions(ownFolders),
   ];
 };
 

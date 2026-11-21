@@ -13,8 +13,9 @@ import { z } from "zod";
 
 import { OPENCODE_VERSION, pinnedChecksums, platformPackages, resolveOpenCodeBinary, sha256File } from "./binary.ts";
 import type { OpenCodeBinary } from "./binary.ts";
-import { allowedEnvNames, KEY_ENV, repoInstructionGlobs, selfSetEnv } from "./config.ts";
+import { allowedEnvNames, KEY_ENV, ownFolderSpellings, repoInstructionGlobs, selfSetEnv } from "./config.ts";
 import { OpenCodeAdapter } from "./opencode-adapter.ts";
+import { ownFolderPermissions } from "./permissions.ts";
 import { createTodoTracker } from "./todo-plan.ts";
 
 const fakeBinary: OpenCodeBinary = { path: path.join(tmpdir(), "opencode-not-run"), packageName: "@opencode/cli-test", packageVersion: OPENCODE_VERSION, sha256: "0".repeat(64) };
@@ -32,6 +33,9 @@ const input = (overrides: Partial<PrepareLaunchInput> = {}): PrepareLaunchInput 
 });
 
 const adapter = () => new OpenCodeAdapter({ resolveBinary: () => Promise.resolve(ok(fakeBinary)) }, memoryAdapterContext());
+
+/** The allows for the task's own folders, which follow the deny (`ownFolderPermissions`). */
+const ownAllows = async () => ownFolderPermissions(await ownFolderSpellings(input().workspaceDir, input().agentDir));
 
 const launch = async (overrides: Partial<PrepareLaunchInput> = {}) => {
   const prepared = await adapter().prepareLaunch(input(overrides));
@@ -88,12 +92,9 @@ describe("the OpenCode adapter's launch", () => {
     expect(ostra).not.toHaveProperty("compatibility");
   });
 
-  it("F-019/c2: writes the permission rules into the task's own config: edit and shell allowed in the worktree, `external_directory` denied", async () => {
+  it("F-019/c2: writes the permission rules into the task's own config: edit and shell allowed in the worktree, `external_directory` denied but for the task's own folders", async () => {
     const config = jsonFile((await launch()).files, "opencode.json");
-    expect(config["permissions"]).toEqual([
-      { action: "*", resource: "*", effect: "allow" },
-      { action: "external_directory", resource: "*", effect: "deny" },
-    ]);
+    expect(config["permissions"]).toEqual([{ action: "*", resource: "*", effect: "allow" }, { action: "external_directory", resource: "*", effect: "deny" }, ...(await ownAllows())]);
   });
 
   it("F-026/c7: writes the profile's rules into OpenCode's own permissions as ask on what each covers, with `external_directory` denied last; a task rule or a plan turn adds none", async () => {
@@ -110,17 +111,16 @@ describe("the OpenCode adapter's launch", () => {
     );
     const permissions = z.array(z.strictObject({ action: z.string(), resource: z.string(), effect: z.string() })).parse(withRules["permissions"]);
     expect(permissions[0]).toEqual({ action: "*", resource: "*", effect: "allow" });
-    expect(permissions.at(-1)).toEqual({ action: "external_directory", resource: "*", effect: "deny" });
+    // The deny comes after every ask, and only the task's own folders are allowed after it.
+    const own = await ownAllows();
+    expect(permissions.slice(-own.length - 1)).toEqual([{ action: "external_directory", resource: "*", effect: "deny" }, ...own]);
     // Each rule asks on what it covers, not on its whole tool.
     expect(permissions).toContainEqual({ action: "shell", resource: "*pnpm*add*", effect: "ask" });
     expect(permissions).toContainEqual({ action: "edit", resource: "migrations/*", effect: "ask" });
     expect(permissions).not.toContainEqual({ action: "edit", resource: "*", effect: "ask" });
     // A task rule only answers what a profile rule asks about, so it adds no ask; a plan turn runs
     // as OpenCode's plan agent, whose own denies make it read-only.
-    const base = [
-      { action: "*", resource: "*", effect: "allow" },
-      { action: "external_directory", resource: "*", effect: "deny" },
-    ];
+    const base = [{ action: "*", resource: "*", effect: "allow" }, { action: "external_directory", resource: "*", effect: "deny" }, ...own];
     const withTaskRule = jsonFile(
       (await launch({ taskRules: [{ ruleId: taskApprovalRuleIdSchema.parse("task-rule-1"), tool: "fetch", pattern: "example.com" }] })).files,
       "opencode.json",

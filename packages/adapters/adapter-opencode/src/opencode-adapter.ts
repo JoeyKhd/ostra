@@ -26,7 +26,7 @@ import { z } from "zod";
 
 import { ARCHIVE_VERIFIED_VERSIONS, OPENCODE_VERSION, resolveOpenCodeBinary } from "./binary.ts";
 import type { OpenCodeBinary } from "./binary.ts";
-import { buildAgentEnv, buildCliEnv, launchFiles, taskDirs } from "./config.ts";
+import { buildAgentEnv, buildCliEnv, launchFiles, ownFolderSpellings, taskDirs } from "./config.ts";
 import { OPENCODE_ON_VARIANT, OPENCODE_REASONING_EFFORT, openCodeEffortLevels } from "./effort.ts";
 import { OSTRA_MCP_SERVER } from "./permissions.ts";
 import { createTodoTracker } from "./todo-plan.ts";
@@ -171,13 +171,15 @@ export class OpenCodeAdapter extends AgentAdapter {
       return adapterError("invalid-input", refused);
     }
     this.#mcpServersByWorkspace.set(path.resolve(input.workspaceDir), (input.mcpServers ?? []).map((server) => server.name));
+    // The task's own folders outside OpenCode's project, as given and as the file system spells them.
+    const folders = await ownFolderSpellings(input.workspaceDir, input.agentDir);
     return ok({
       command: binary.value.path,
       // `opencode acp` speaks ACP on its stdio (ADR 0018).
       args: ["acp"],
       env: buildAgentEnv(input, dirs),
       cwd: input.workspaceDir,
-      files: launchFiles(input, dirs),
+      files: launchFiles(input, dirs, folders),
     });
   }
 

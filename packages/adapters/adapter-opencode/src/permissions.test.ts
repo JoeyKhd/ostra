@@ -1,3 +1,4 @@
+import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 
@@ -12,9 +13,9 @@ import { z } from "zod";
 
 import { OPENCODE_VERSION } from "./binary.ts";
 import type { OpenCodeBinary } from "./binary.ts";
-import { allowedEnvNames, buildCliEnv, SKILLS_HEADING, taskDirs } from "./config.ts";
+import { allowedEnvNames, buildCliEnv, ownFolders, ownFolderSpellings, SKILLS_HEADING, taskDirs } from "./config.ts";
 import { OpenCodeAdapter } from "./opencode-adapter.ts";
-import { buildPermissions, EXPLORE_AGENT, explorePermissions, globToResource, planModePermissions, prefixToResource } from "./permissions.ts";
+import { buildPermissions, EXPLORE_AGENT, explorePermissions, globToResource, ownFolderPermissions, planModePermissions, prefixToResource } from "./permissions.ts";
 import type { OpenCodePermission } from "./permissions.ts";
 
 // The profile's side of OpenCode's config (ticket 08, ADR 0049): the rules as its own permissions,
@@ -28,12 +29,27 @@ const servers: readonly LaunchMcpServer[] = [
   { name: "files", transport: "stdio", command: "/usr/bin/mcp-files", args: ["--root", "."], env: { FILES_MODE: "rw" }, readOnly: false },
 ];
 
-/** OpenCode's wildcard as 2.3.2 reads it: `*` is any run of characters, `/` included; `?` one character. */
-const wildcard = (pattern: string): RegExp => new RegExp(`^${pattern.replaceAll(/[.+^${}()|[\]\\]/g, String.raw`\$&`).replaceAll("*", ".*").replaceAll("?", ".")}$`, "s");
+/**
+ * OpenCode's wildcard as 2.3.2 reads it (`packages/core/src/util/wildcard.ts`): `*` is any run of
+ * characters, `/` included; `?` one character; `\` reads as `/`; a pattern's last ` *` may match
+ * nothing; and Windows matches without case.
+ */
+const wildcardMatch = (input: string, pattern: string): boolean => {
+  const escaped = pattern
+    .replaceAll("\\", "/")
+    .replaceAll(/[.+^${}()|[\]\\]/g, String.raw`\$&`)
+    .replaceAll("*", ".*")
+    .replaceAll("?", ".");
+  const source = escaped.endsWith(" .*") ? `${escaped.slice(0, -3)}( .*)?` : escaped;
+  return new RegExp(`^${source}$`, process.platform === "win32" ? "si" : "s").test(input.replaceAll("\\", "/"));
+};
 
 /** What OpenCode decides for an action and a resource: the last rule that matches wins. */
 const decide = (rules: readonly OpenCodePermission[], action: string, resource: string): OpenCodePermission["effect"] | undefined =>
-  rules.findLast((candidate) => wildcard(candidate.action).test(action) && wildcard(candidate.resource).test(resource))?.effect;
+  rules.findLast((candidate) => wildcardMatch(action, candidate.action) && wildcardMatch(resource, candidate.resource))?.effect;
+
+/** The resource OpenCode 2.3.2 asks `external_directory` about for a folder (`file-access.ts`): the folder, `/*`, forward slashes. */
+const externalOf = (folder: string): string => `${folder.replaceAll("\\", "/")}/*`;
 
 const fakeBinary: OpenCodeBinary = { path: path.join(tmpdir(), "opencode-not-run"), packageName: "@opencode/cli-test", packageVersion: OPENCODE_VERSION, sha256: "0".repeat(64) };
 const agentDir = path.join(tmpdir(), "task-m3", "agent");
@@ -230,10 +246,108 @@ describe("OpenCode's explore subagent (2026-11-20)", () => {
     const config = await configOf(newAdapter(), { approvalRules: [rule("any-edit", "edit", { kind: "any" })] });
     const permission = z.object({ action: z.string(), resource: z.string(), effect: z.enum(["allow", "ask", "deny"]) });
     const agents = z.record(z.string(), z.object({ permissions: z.array(permission) })).parse(config["agents"]);
-    expect(agents[EXPLORE_AGENT]?.permissions).toEqual(explorePermissions([rule("any-edit", "edit", { kind: "any" })]));
+    expect(agents[EXPLORE_AGENT]?.permissions).toEqual(explorePermissions([rule("any-edit", "edit", { kind: "any" })], await ownFolderSpellings(workspaceDir, agentDir)));
     expect(Object.keys(agents).sort()).toEqual(["explore", "plan"]);
     const task = z.array(permission).parse(config["permissions"]);
     expect(decide(task, "edit", "README.md")).toBe("ask");
+  });
+});
+
+describe("the task's own folders outside OpenCode's project (2026-11-21)", () => {
+  // A `docker` or `kubernetes` box's paths: POSIX, whatever the runner's platform.
+  const boxWorkspace = "/task/tasks/t-1/workspace";
+  const boxAgent = "/task/tasks/t-1/agent";
+  const boxFolders = ownFolders(boxWorkspace, taskDirs(boxAgent));
+  const inside = [`${boxAgent}/tmp/opencode/badge-preview`, `${boxAgent}/tmp`, boxWorkspace, `${boxWorkspace}/notes`, `${boxAgent}/xdg/data/opencode/tool-output`, `${boxAgent}/xdg/data/opencode/shell/project-1`];
+  const outside = [
+    "/etc",
+    "/tmp",
+    "/task/tasks/t-1",
+    boxAgent,
+    `${boxAgent}/home`,
+    `${boxAgent}/xdg/config/opencode`,
+    `${boxAgent}/xdg/data/opencode`,
+    "/task/tasks/t-1/workspace-other",
+    "/task/tasks/t-2/agent/tmp",
+    "/task/tasks/t-2/workspace",
+  ];
+
+  it("F-026/c2: every agent of the task reaches its workspace's root, its temp folder and OpenCode's output folders, and nothing else outside, on a box's paths", () => {
+    const task = buildPermissions({ approvalRules: [], mcpServers: servers, ownFolders: boxFolders });
+    const explore = [...task, ...explorePermissions([], boxFolders)];
+    const plan = [...task, ...planModePermissions(servers)];
+    for (const [name, rules] of [
+      ["build", task],
+      ["explore", explore],
+      ["plan", plan],
+    ] as const) {
+      for (const folder of inside) {
+        expect(decide(rules, "external_directory", externalOf(folder)), `${name}: ${folder}`).toBe("allow");
+      }
+      for (const folder of outside) {
+        expect(decide(rules, "external_directory", externalOf(folder)), `${name}: ${folder}`).toBe("deny");
+      }
+    }
+    // Reaching a folder is no leave to edit in it: plan, explore and a review task still edit nothing.
+    expect(decide(plan, "edit", `${boxAgent}/tmp/x.html`)).toBe("deny");
+    expect(decide(explore, "edit", `${boxAgent}/tmp/x.html`)).toBe("deny");
+    const review = buildPermissions({ approvalRules: [], mcpServers: [], kind: "review", ownFolders: boxFolders });
+    expect(decide(review, "external_directory", externalOf(`${boxAgent}/tmp`))).toBe("allow");
+    expect(decide(review, "edit", `${boxAgent}/tmp/x.html`)).toBe("deny");
+    // A profile's rule on edits still asks there: the folders open the path, never the rule.
+    const asked = buildPermissions({ approvalRules: [rule("any-edit", "edit", { kind: "any" })], mcpServers: [], ownFolders: boxFolders });
+    expect(decide(asked, "edit", `${boxAgent}/tmp/x.html`)).toBe("ask");
+  });
+
+  it("F-026/c2: the launch's config allows them for the task and for explore, after the deny, on a host's paths spelled with either slash", async () => {
+    const config = await configOf(newAdapter(), {});
+    const task = permissionsSchema.parse(config["permissions"]);
+    const explore = [...task, ...z.object({ explore: z.object({ permissions: permissionsSchema }) }).parse(config["agents"]).explore.permissions];
+    const dirs = taskDirs(agentDir);
+    for (const rules of [task, explore]) {
+      expect(decide(rules, "external_directory", externalOf(path.join(dirs.tmp, "opencode", "badge-preview")))).toBe("allow");
+      expect(decide(rules, "external_directory", `${path.join(dirs.tmp, "opencode")}${path.sep}*`)).toBe("allow");
+      expect(decide(rules, "external_directory", externalOf(workspaceDir))).toBe("allow");
+      expect(decide(rules, "external_directory", externalOf(path.join(dirs.xdgData, "opencode", "tool-output")))).toBe("allow");
+      expect(decide(rules, "external_directory", externalOf(path.dirname(dirs.config)))).toBe("deny");
+      expect(decide(rules, "external_directory", externalOf(dirs.home))).toBe("deny");
+      expect(decide(rules, "external_directory", externalOf(path.dirname(agentDir)))).toBe("deny");
+    }
+    // A Windows host's task folder, as the live task's was.
+    const root = String.raw`C:\Users\member\.ostra\runner\tasks\01a1fbb0-0a0b-74fa-b1d8-323b5c722a8b`;
+    const windows = buildPermissions({ approvalRules: [], mcpServers: [], ownFolders: ownFolders(`${root}\\workspace`, taskDirs(`${root}\\agent`)) });
+    expect(decide(windows, "external_directory", String.raw`${root}\agent\tmp\opencode\badge-preview\*`)).toBe("allow");
+    expect(decide(windows, "external_directory", `${root.replaceAll("\\", "/")}/workspace/*`)).toBe("allow");
+    expect(decide(windows, "external_directory", String.raw`C:\Users\member\*`)).toBe("deny");
+  });
+
+  it("F-026/c2: a task folder under a link is allowed as given and as the file system spells it, as OpenCode spells its temp folder", async () => {
+    const base = await mkdtemp(path.join(tmpdir(), "own-folders-"));
+    try {
+      const real = path.join(base, "real");
+      await mkdir(path.join(real, "agent"), { recursive: true });
+      await mkdir(path.join(real, "workspace"), { recursive: true });
+      const linked = path.join(base, "linked");
+      // A junction on Windows, which needs no privilege; elsewhere the type is ignored.
+      await symlink(real, linked, "junction");
+      const rules = buildPermissions({ approvalRules: [], mcpServers: [], ownFolders: await ownFolderSpellings(path.join(linked, "workspace"), path.join(linked, "agent")) });
+      const resolved = await realpath(real);
+      expect(resolved).not.toBe(linked);
+      for (const spelling of [linked, resolved]) {
+        expect(decide(rules, "external_directory", externalOf(path.join(spelling, "agent", "tmp", "opencode"))), spelling).toBe("allow");
+        expect(decide(rules, "external_directory", externalOf(path.join(spelling, "workspace"))), spelling).toBe("allow");
+        expect(decide(rules, "external_directory", externalOf(path.join(spelling, "agent", "home"))), spelling).toBe("deny");
+      }
+      // A box's path the runner can't see is kept as given.
+      expect(await ownFolderSpellings("/no/such/box/workspace", "/no/such/box/agent")).toEqual(ownFolders("/no/such/box/workspace", taskDirs("/no/such/box/agent")));
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  it("F-026/c2: a folder whose name holds a wildcard gets no allow and stays denied; one folder spelled three ways is one allow", () => {
+    expect(ownFolderPermissions(["/data/we*ird/workspace", "/data/odd?/agent/tmp"])).toEqual([]);
+    expect(ownFolderPermissions(["/a/workspace/", "/a/workspace", String.raw`\a\workspace`])).toEqual([{ action: "external_directory", resource: "/a/workspace/*", effect: "allow" }]);
   });
 });
 

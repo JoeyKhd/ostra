@@ -1,3 +1,4 @@
+import { realpath } from "node:fs/promises";
 import path from "node:path";
 
 import { composeLaunchInstructions, effortModelOf, GIT_GUARD_ENV_NAMES, REPO_SKILL_FOLDERS } from "@ostra/adapter-sdk";
@@ -85,6 +86,34 @@ export const taskDirs = (agentDir: string) => ({
 export type TaskDirs = ReturnType<typeof taskDirs>;
 
 /**
+ * The task's own folders outside OpenCode's project, which its agent reaches as it does the
+ * project (`ownFolderPermissions`): the workspace's root, which holds the repos (F-098), the
+ * agent's temp folder (`TMPDIR`, `TEMP`), and the two folders OpenCode writes a tool's output to
+ * and tells the model to read. The paths are the executor's own, as the agent sees them, so the
+ * same holds on `docker`, `host` and `kubernetes`.
+ */
+export const ownFolders = (workspaceDir: string, dirs: TaskDirs): readonly string[] => [
+  workspaceDir,
+  dirs.tmp,
+  path.join(dirs.xdgData, "opencode", "tool-output"),
+  path.join(dirs.xdgData, "opencode", "shell"),
+];
+
+/** A folder as the file system spells it, links and Windows short names resolved; as given when it can't be (a box's path the runner doesn't see). */
+const realSpelling = (folder: string): Promise<string> => realpath(folder).catch(() => folder);
+
+/**
+ * The task's own folders as given and, where the file system spells them otherwise, as it does:
+ * OpenCode compares a tool's path as it's written, and spells its temp folder as the file system
+ * does (`Global`'s `realpath` of it, 2.3.2), so on a folder under a link (macOS's `/var`) or a
+ * short name both must match.
+ */
+export const ownFolderSpellings = async (workspaceDir: string, agentDir: string): Promise<readonly string[]> => {
+  const [realWorkspace, realAgent] = await Promise.all([realSpelling(workspaceDir), realSpelling(agentDir)]);
+  return [...new Set([...ownFolders(workspaceDir, taskDirs(agentDir)), ...ownFolders(realWorkspace, taskDirs(realAgent))])];
+};
+
+/**
  * Milestone 8 (ADR 0069, F-145; `research/skills-and-mcp-marketplaces.md` §7.2, fix 3): OpenCode
  * signs in to a remote MCP server with OAuth by default, and keeps the grant itself. In a box that
  * would let a sign-in start (`opencode mcp auth`, a callback listener on loopback, a URL to open),
@@ -150,10 +179,11 @@ export type OpenCodePermissionRule = OpenCodePermission;
 
 /**
  * The task's permissions (F-026): the profile's rules written into OpenCode's own as `ask`, after
- * everything allowed and before `external_directory` denied (`buildPermissions`). A plan turn adds
- * no ask here: it runs as OpenCode's plan agent, whose own denies make it read-only (F-063).
+ * everything allowed and before `external_directory` denied, and the task's own folders allowed
+ * after the deny (`buildPermissions`). A plan turn adds no ask here: it runs as OpenCode's plan
+ * agent, whose own denies make it read-only (F-063).
  */
-export const taskPermissionRules = (input: PrepareLaunchInput): readonly OpenCodePermissionRule[] =>
+export const taskPermissionRules = (input: PrepareLaunchInput, folders: readonly string[] = ownFolders(input.workspaceDir, taskDirs(input.agentDir))): readonly OpenCodePermissionRule[] =>
   buildPermissions({
     approvalRules: input.approvalRules ?? [],
     mcpServers: input.mcpServers ?? [],
@@ -161,9 +191,14 @@ export const taskPermissionRules = (input: PrepareLaunchInput): readonly OpenCod
     ...(input.kind === undefined ? {} : { kind: input.kind }),
     ...(input.allowPrototyping === undefined ? {} : { allowPrototyping: input.allowPrototyping }),
     ...(input.tools === undefined ? {} : { tools: input.tools }),
+    ownFolders: folders,
   });
 
-export const buildOpenCodeConfig = (input: PrepareLaunchInput, instructionsPath: string | null): Record<string, unknown> => {
+export const buildOpenCodeConfig = (
+  input: PrepareLaunchInput,
+  instructionsPath: string | null,
+  folders: readonly string[] = ownFolders(input.workspaceDir, taskDirs(input.agentDir)),
+): Record<string, unknown> => {
   const { model } = input;
   const providerModel = {
     name: model.endpointModelId,
@@ -179,13 +214,13 @@ export const buildOpenCodeConfig = (input: PrepareLaunchInput, instructionsPath:
     share: "disabled",
     update: "disable",
     // The profile's rules as OpenCode's own permissions, never its defaults (ADR 0031, ADR 0049).
-    permissions: taskPermissionRules(input),
+    permissions: taskPermissionRules(input, folders),
     // Plan first runs as OpenCode's plan agent, made read-only by the denies it adds (F-063). Its
     // read-only `explore` subagent keeps its own denies, which the task's `allow *` would override;
     // `general` keeps the task's permissions, the profile's asks included.
     agents: {
       [agentForMode("plan")]: { permissions: planModePermissions(mcpServers) },
-      [EXPLORE_AGENT]: { permissions: explorePermissions(input.approvalRules ?? []) },
+      [EXPLORE_AGENT]: { permissions: explorePermissions(input.approvalRules ?? [], folders) },
     },
     default_agent: agentForMode(input.mode ?? "build"),
     // The repos' own skills, which the project config being off would otherwise drop, unless the
@@ -362,11 +397,14 @@ export const buildAgentEnv = (input: PrepareLaunchInput, dirs: TaskDirs): Record
   return env;
 };
 
-/** Every file ostra writes before OpenCode starts. The folders they sit in are made with them. */
-export const launchFiles = (input: PrepareLaunchInput, dirs: TaskDirs): readonly LaunchFile[] => {
+/**
+ * Every file ostra writes before OpenCode starts. The folders they sit in are made with them.
+ * `folders` are the task's own folders outside OpenCode's project (`ownFolderSpellings`).
+ */
+export const launchFiles = (input: PrepareLaunchInput, dirs: TaskDirs, folders: readonly string[] = ownFolders(input.workspaceDir, dirs)): readonly LaunchFile[] => {
   const instructions = instructionsText(input);
   const files: LaunchFile[] = [
-    { path: dirs.config, content: `${JSON.stringify(buildOpenCodeConfig(input, instructions === null ? null : dirs.instructions), null, 2)}\n` },
+    { path: dirs.config, content: `${JSON.stringify(buildOpenCodeConfig(input, instructions === null ? null : dirs.instructions, folders), null, 2)}\n` },
     { path: dirs.catalog, content: `${JSON.stringify(buildModelsCatalog(input))}\n` },
     // Empty marker files, so the folders the agent expects exist when it starts.
     { path: path.join(dirs.home, ".ostra-keep"), content: "" },
