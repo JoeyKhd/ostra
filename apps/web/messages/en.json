@@ -5666,7 +5666,20 @@
       "matches": "Matches",
       "more": "+{n} more",
       "typeKey": "Type a key",
-      "task": "Task"
+      "justNow": "just now",
+      "minutesAgoOne": "1 minute ago",
+      "minutesAgoOther": "{n} minutes ago",
+      "hoursAgoOne": "1 hour ago",
+      "hoursAgoOther": "{n} hours ago",
+      "daysAgoOne": "1 day ago",
+      "daysAgoOther": "{n} days ago",
+      "repoRow": "Repo",
+      "driver": "Driver",
+      "nobody": "Nobody",
+      "pr": "PR",
+      "updated": "Updated",
+      "turn": "turn {n}",
+      "moreRepos": "+{n}"
     }
   },
   "spend": {

@@ -24,16 +24,25 @@ const snippetSchema = z.object({
   eventSeq: z.number().int().nullable(),
   /** The snippet's text, with what matched marked. Text, never HTML. */
   parts: z.array(z.object({ text: z.string(), match: z.boolean() })),
+  /** The turn it sits in, counted over the task (`turn 2` in the panel); `null` without an event. */
+  turn: z.number().int().nullable(),
 });
 
 const resultSchema = z.object({
   taskId: taskIdSchema,
   projectId: projectIdSchema,
   projectName: z.string(),
-  state: z.string(),
+  state: z.enum(["awaiting_approval", "queued", "preparing", "running", "needs_you", "in_review", "stopped", "merged", "done"]),
   ticketKey: z.string().nullable(),
   title: z.string(),
   snippets: z.array(snippetSchema),
+  /** The task's repos in the project's order, its driver's name and its PRs (search.md, the block's line 2 and the panel). */
+  repos: z.array(z.string()),
+  driverName: z.string().nullable(),
+  prs: z.array(z.object({ number: z.number().int(), url: z.string(), state: z.enum(["open", "merged", "closed_unmerged"]) })),
+  /** Epoch ms: the task's last change, and the newest matched entry's (the block's age). */
+  updatedAt: z.number().int(),
+  matchedAt: z.number().int().nullable(),
 });
 
 const searchOutputSchema = z.object({
@@ -108,11 +117,44 @@ const runSearch = async (db: Db, scope: MemberScope, query: string, limit: numbe
   }
   const found = await searchTasks(db, scope, filters);
   const shown = found.slice(0, limit);
-  const tasks = await db.task.findMany({
-    where: { organizationId: scope.organizationId, id: { in: shown.map((result) => result.taskId) } },
-    select: { id: true, state: true, ticketKey: true, title: true, project: { select: { name: true } } },
-  });
+  const organizationId = scope.organizationId;
+  const taskIds = shown.map((result) => result.taskId);
+  const [tasks, turns, entries] = await Promise.all([
+    db.task.findMany({
+      where: { organizationId, id: { in: taskIds } },
+      select: {
+        id: true,
+        state: true,
+        ticketKey: true,
+        title: true,
+        updatedAt: true,
+        driverMemberId: true,
+        project: { select: { name: true } },
+        repos: {
+          orderBy: { repo: { position: "asc" } },
+          select: { repo: { select: { fullName: true } }, pullRequests: { orderBy: { number: "asc" }, select: { number: true, url: true, state: true } } },
+        },
+      },
+    }),
+    db.turn.findMany({ where: { organizationId, taskId: { in: taskIds } }, orderBy: { startSeq: "asc" }, select: { taskId: true, startSeq: true } }),
+    db.searchEntry.findMany({ where: { organizationId, id: { in: shown.flatMap((result) => [...result.matched]) } }, select: { taskId: true, createdAt: true } }),
+  ]);
   const byId = new Map(tasks.map((task) => [task.id, task] as const));
+  const drivers = await db.member.findMany({
+    where: { organizationId, id: { in: tasks.flatMap((task) => (task.driverMemberId === null ? [] : [task.driverMemberId])) } },
+    select: { id: true, user: { select: { name: true } } },
+  });
+  const driverName = new Map(drivers.map((member) => [member.id, member.user.name] as const));
+  /** The task-wide turn an event sits in: the turns that started at or before it. */
+  const turnOf = (taskId: string, eventSeq: number | null): number | null => {
+    if (eventSeq === null) return null;
+    const count = turns.filter((turn) => turn.taskId === taskId && turn.startSeq <= eventSeq).length;
+    return count === 0 ? null : count;
+  };
+  const matchedAt = new Map<string, number>();
+  for (const entry of entries) {
+    matchedAt.set(entry.taskId, Math.max(matchedAt.get(entry.taskId) ?? 0, entry.createdAt.getTime()));
+  }
   return {
     results: shown.flatMap((result) => {
       const task = byId.get(result.taskId);
@@ -126,7 +168,12 @@ const runSearch = async (db: Db, scope: MemberScope, query: string, limit: numbe
               state: task.state,
               ticketKey: task.ticketKey,
               title: task.title,
-              snippets: result.snippets.map((snippet) => ({ kind: snippet.kind, eventSeq: snippet.eventSeq, parts: [...snippet.parts] })),
+              snippets: result.snippets.map((snippet) => ({ kind: snippet.kind, eventSeq: snippet.eventSeq, parts: [...snippet.parts], turn: turnOf(result.taskId, snippet.eventSeq) })),
+              repos: task.repos.map((taskRepo) => taskRepo.repo.fullName),
+              driverName: task.driverMemberId === null ? null : (driverName.get(task.driverMemberId) ?? null),
+              prs: task.repos.flatMap((taskRepo) => taskRepo.pullRequests.map((pr) => ({ number: pr.number, url: pr.url, state: pr.state }))),
+              updatedAt: task.updatedAt.getTime(),
+              matchedAt: matchedAt.get(result.taskId) ?? null,
             },
           ];
     }),

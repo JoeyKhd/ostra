@@ -32,8 +32,8 @@ describe("the query's tokens", () => {
 
 describe("a result's link and its snippet", () => {
   it("F-080: a result opens its task at the first matched event, or at the task for a title match", () => {
-    expect(resultHref("t-1", [{ kind: "title", eventSeq: null, parts: [] }, { kind: "agent_message", eventSeq: 7, parts: [] }])).toBe("/tasks/t-1?event=7");
-    expect(resultHref("t-1", [{ kind: "title", eventSeq: null, parts: [] }])).toBe("/tasks/t-1");
+    expect(resultHref("t-1", [{ kind: "title", eventSeq: null, parts: [], turn: null }, { kind: "agent_message", eventSeq: 7, parts: [], turn: 2 }])).toBe("/tasks/t-1?event=7");
+    expect(resultHref("t-1", [{ kind: "title", eventSeq: null, parts: [], turn: null }])).toBe("/tasks/t-1");
   });
 
   it("F-080: a long lead before the match is cut, so the match shows on one line", () => {

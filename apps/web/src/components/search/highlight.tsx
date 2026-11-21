@@ -49,3 +49,30 @@ export const resultHref = (taskId: string, snippets: readonly Snippet[]): string
   const seq = snippets.find((snippet) => snippet.eventSeq !== null)?.eventSeq;
   return seq === undefined || seq === null ? `/tasks/${taskId}` : `/tasks/${taskId}?event=${String(seq)}`;
 };
+
+/**
+ * The whole title with the words its title snippet matched in weight 600 (search.md, line 1): the
+ * snippet may be cut, the title never is.
+ */
+export const titleParts = (title: string, parts: Snippet["parts"]): Snippet["parts"] => {
+  const words = [...new Set(parts.filter((part) => part.match).map((part) => part.text.trim().toLowerCase()).filter((word) => word !== ""))];
+  if (words.length === 0) return [{ text: title, match: false }];
+  const escaped = words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return title
+    .split(new RegExp(`(${escaped.join("|")})`, "i"))
+    .filter((text) => text !== "")
+    .map((text) => ({ text, match: words.includes(text.toLowerCase()) }));
+};
+
+const minute = 60_000;
+const hour = 60 * minute;
+const day = 24 * hour;
+
+/** A block's age, mono and short (search.md, line 1): `5m`, `2h`, `3d`, `2w`. */
+export const shortAge = (at: number, now: number): string => {
+  const since = Math.max(0, now - at);
+  if (since < hour) return `${String(Math.max(1, Math.floor(since / minute)))}m`;
+  if (since < day) return `${String(Math.floor(since / hour))}h`;
+  if (since < 14 * day) return `${String(Math.floor(since / day))}d`;
+  return `${String(Math.floor(since / (7 * day)))}w`;
+};

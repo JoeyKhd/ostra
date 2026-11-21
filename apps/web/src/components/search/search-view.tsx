@@ -1,16 +1,20 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { ArrowRightIcon, CircleAlertIcon, LoaderCircleIcon, SearchIcon } from "lucide-react";
+import { ArrowRightIcon, CircleAlertIcon, GitMergeIcon, GitPullRequestIcon, LoaderCircleIcon, SearchIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 
 import { FilterMenu } from "@/components/organization/filter-menu";
+import { Mark } from "@/components/projects/project-view";
+import { taskMark } from "@/components/projects/task-row-words";
 import type { FilterOption } from "@/components/organization/filter-menu";
-import { PageFrame, PageHeading, PropGroup, PropRow } from "@/components/shell/page-frame";
+import { PageFrame, PageHeading, PropRow } from "@/components/shell/page-frame";
 import { projectColour } from "@/components/shell/project-colour";
+import { initials } from "@/components/shell/user-menu";
+import { taskStateText } from "@/components/tasks/task-words";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
@@ -21,7 +25,7 @@ import { plural, t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
-import { Highlight, isCodeSnippet, resultHref, snippetLabel, SnippetLine } from "./highlight";
+import { Highlight, isCodeSnippet, resultHref, shortAge, snippetLabel, SnippetLine, titleParts } from "./highlight";
 import { joinQuery, periodAfter, splitQuery, statusValues } from "./search-query";
 import type { Token, TokenKey } from "./search-query";
 
@@ -41,9 +45,34 @@ const periods = ["7d", "30d", "90d", "any"] as const;
 type Period = (typeof periods)[number];
 const periodWord = (period: Period): string => (period === "7d" ? t("search.page.last7") : period === "30d" ? t("search.page.last30") : period === "90d" ? t("search.page.last90") : t("search.page.anyTime"));
 
-const stateWord = (state: string): string => state.replaceAll("_", " ");
+/** A filter choice's word: `needs-you` → `Needs you`. */
+const stateWord = (state: string): string => {
+  const word = state.replaceAll("_", " ").replaceAll("-", " ");
+  return `${word.charAt(0).toUpperCase()}${word.slice(1)}`;
+};
 
-const ResultPanel = ({ result }: { readonly result: Result }) => {
+const minute = 60_000;
+const hour = 60 * minute;
+const day = 24 * hour;
+
+/** The panel's `Updated`: `just now`, `14 minutes ago`, `3 days ago`. */
+export const updatedText = (at: number, now: number): string => {
+  const since = Math.max(0, now - at);
+  if (since < minute) return t("search.page.justNow");
+  if (since < hour) return plural(Math.floor(since / minute), "search.page.minutesAgoOne", "search.page.minutesAgoOther");
+  if (since < day) return plural(Math.floor(since / hour), "search.page.hoursAgoOne", "search.page.hoursAgoOther");
+  return plural(Math.floor(since / day), "search.page.daysAgoOne", "search.page.daysAgoOther");
+};
+
+/** A task's state as a mark and its word (search.md: the project screen's marks). */
+const StateMark = ({ state, className }: { readonly state: Result["state"]; readonly className?: string }) => (
+  <span className={cn("flex min-w-0 items-center gap-2", className)}>
+    <span className="grid w-[15px] shrink-0 place-items-center"><Mark mark={taskMark(state)} /></span>
+    <span className="truncate">{taskStateText(state)}</span>
+  </span>
+);
+
+const ResultPanel = ({ result, now }: { readonly result: Result; readonly now: number }) => {
   const href = resultHref(result.taskId, result.snippets);
   return (
     <div data-testid="search-panel">
@@ -54,16 +83,50 @@ const ResultPanel = ({ result }: { readonly result: Result }) => {
         </Link>
       </div>
       <h2 className="mb-2.5 mt-1 break-words text-[15px] font-semibold text-text">{result.title}</h2>
-      <PropGroup title={t("search.page.task")}>
-        <PropRow label={t("search.page.state")} labelWidth={96}>{stateWord(result.state)}</PropRow>
+      <div className="mb-3.5 border-b border-line pb-3.5">
+        <PropRow label={t("search.page.state")} labelWidth={96}><StateMark state={result.state} /></PropRow>
         <PropRow label={t("search.page.project")} labelWidth={96}>
           <span aria-hidden className="size-2 shrink-0 rounded-[2px]" style={{ background: projectColour(result.projectId) }} />
           <span className="truncate">{result.projectName}</span>
         </PropRow>
+        <PropRow label={t("search.page.repoRow")} labelWidth={96}>
+          {result.repos.length === 0 ? (
+            <span className="text-faint">–</span>
+          ) : (
+            <span className="flex min-w-0 flex-col font-mono">{result.repos.map((repo) => <span key={repo} className="truncate">{repo}</span>)}</span>
+          )}
+        </PropRow>
         <PropRow label={t("search.page.ticket")} labelWidth={96}>
           {result.ticketKey === null ? <span className="text-faint">–</span> : <span className="font-mono">{result.ticketKey}</span>}
         </PropRow>
-      </PropGroup>
+        <PropRow label={t("search.page.driver")} labelWidth={96}>
+          {result.driverName === null ? (
+            <span className="text-faint">{t("search.page.nobody")}</span>
+          ) : (
+            <>
+              <span aria-hidden className="inline-grid size-[18px] shrink-0 place-items-center rounded-full bg-line-2 text-[9px] font-semibold text-text">{initials(result.driverName)}</span>
+              <span className="truncate">{result.driverName}</span>
+            </>
+          )}
+        </PropRow>
+        <PropRow label={t("search.page.pr")} labelWidth={96}>
+          {result.prs.length === 0 ? (
+            <span className="text-faint">–</span>
+          ) : (
+            <span className="flex flex-col">
+              {result.prs.map((pr) => (
+                <a key={pr.url} href={pr.url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 font-mono hover:underline">
+                  {pr.state === "merged" ? <GitMergeIcon aria-hidden className="size-[13px] stroke-[1.75] text-muted" /> : <GitPullRequestIcon aria-hidden className="size-[13px] stroke-[1.75] text-muted" />}
+                  #{pr.number}
+                </a>
+              ))}
+            </span>
+          )}
+        </PropRow>
+        <PropRow label={t("search.page.updated")} labelWidth={96}>
+          <span className="font-mono" title={new Date(result.updatedAt).toISOString()}>{updatedText(result.updatedAt, now)}</span>
+        </PropRow>
+      </div>
       <div className="mb-4">
         <h3 className="mb-2 flex items-center gap-2 text-xs font-medium text-faint">
           {t("search.page.matches")}
@@ -78,6 +141,7 @@ const ResultPanel = ({ result }: { readonly result: Result }) => {
               >
                 <span className="w-[96px] shrink-0 truncate text-xs text-faint">{snippetLabel(snippet)}</span>
                 <Highlight parts={snippet.parts} lead={12} className={cn("min-w-0 flex-1 truncate text-muted", isCodeSnippet(snippet) && "font-mono text-[13px]")} />
+                {snippet.turn === null ? null : <span className="shrink-0 font-mono text-[11.5px] text-faint">{t("search.page.turn", { n: snippet.turn })}</span>}
               </Link>
             </li>
           ))}
@@ -210,8 +274,10 @@ export const SearchView = ({ organization }: { readonly organization: string }) 
   return (
     <PageFrame
       crumbs={[{ label: organization }, { label: t("search.title") }]}
-      {...(showPanel ? { properties: <ResultPanel result={selected} /> } : {})}
+      {...(showPanel ? { properties: <ResultPanel result={selected} now={now} /> } : {})}
     >
+      {/* One column width with or without the panel, so the query and the empty state keep the results' width (search-empty.webp). */}
+      <div className="max-w-[760px]">
       <PageHeading title={t("search.title")} lede={t("search.page.lede")} />
       <div className="relative mt-[18px]">
         <SearchIcon aria-hidden className="absolute left-3 top-1/2 size-[15px] -translate-y-1/2 stroke-[1.75] text-faint" />
@@ -234,7 +300,7 @@ export const SearchView = ({ organization }: { readonly organization: string }) 
       </div>
       {typed.length >= MAX_QUERY ? <p className="mt-1 text-xs text-faint">{t("search.page.tooLong")}</p> : null}
 
-      <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1" data-testid="search-filters">
+      <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible" data-testid="search-filters">
         <FilterMenu testId="search-filter-project" label={t("search.page.project")} value={filters.project} defaultLabel={t("search.page.all")} options={projectOptions} searchable onChange={(value) => { setParams({ project: value, task: null }); }} />
         <FilterMenu
           testId="search-filter-repo"
@@ -309,14 +375,24 @@ export const SearchView = ({ organization }: { readonly organization: string }) 
                   className={cn("block cursor-default rounded-md border-b border-line px-3.5 py-3 hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-muted", isSelected && "bg-sel hover:bg-sel")}
                 >
                   <div className="flex h-[22px] items-center gap-3">
-                    <span className="w-[110px] shrink-0 truncate text-sm text-muted">{stateWord(result.state)}</span>
-                    <span className="min-w-0 flex-1 truncate text-body text-text">{titleSnippet === undefined ? result.title : <Highlight parts={titleSnippet.parts} />}</span>
+                    <StateMark state={result.state} className="w-[110px] shrink-0 text-sm text-muted" />
+                    <span className="min-w-0 flex-1 truncate text-body text-text">
+                      {titleParts(result.title, titleSnippet?.parts ?? []).map((part, index) => (part.match ? <strong key={index} className="font-semibold">{part.text}</strong> : <span key={index}>{part.text}</span>))}
+                    </span>
+                    <span className="shrink-0 font-mono text-xs text-faint">{shortAge(result.matchedAt ?? result.updatedAt, now)}</span>
                   </div>
-                  <div className="flex h-5 items-center gap-1.5 text-[13px] text-faint sm:pl-[122px]">
+                  <div className="flex h-5 min-w-0 items-center gap-1.5 text-[13px] text-faint sm:pl-[122px]">
                     <span aria-hidden className="size-2 shrink-0 rounded-[2px]" style={{ background: projectColour(result.projectId) }} />
-                    <span className="truncate text-muted">{result.projectName}</span>
-                    {result.ticketKey === null ? null : <span className="font-mono">· {result.ticketKey}</span>}
-                    <span className="hidden font-mono sm:inline">· {result.taskId.slice(0, 8)}</span>
+                    <span className="shrink-0 text-muted">{result.projectName}</span>
+                    {result.repos[0] === undefined ? null : (
+                      <span className="hidden min-w-0 truncate font-mono sm:inline">
+                        · {result.repos[0]}
+                        {result.repos.length > 1 ? ` ${t("search.page.moreRepos", { n: result.repos.length - 1 })}` : ""}
+                      </span>
+                    )}
+                    {result.ticketKey === null ? null : <span className="shrink-0 font-mono">· {result.ticketKey}</span>}
+                    <span className="hidden shrink-0 font-mono sm:inline">· {result.taskId.slice(0, 8)}</span>
+                    {result.driverName === null ? null : <span className="hidden min-w-0 truncate sm:inline">· {result.driverName}</span>}
                   </div>
                   {lines.slice(0, 2).map((snippet, index) => (
                     <Link
@@ -335,6 +411,7 @@ export const SearchView = ({ organization }: { readonly organization: string }) 
           })}
         </ul>
       )}
+      </div>
     </PageFrame>
   );
 };

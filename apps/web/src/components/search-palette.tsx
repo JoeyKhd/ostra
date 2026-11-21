@@ -20,15 +20,17 @@ import { destinations, matchDestinations } from "@/components/shell/destinations
 import type { Destination, DestinationIcon } from "@/components/shell/destinations";
 import { projectColour } from "@/components/shell/project-colour";
 import { Button } from "@/components/ui/button";
+import { stateTone, taskStateText } from "@/components/tasks/task-words";
 import { Kbd } from "@/components/ui/kbd";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dot } from "@/components/ui/status";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { plural, t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
-import { Highlight, resultHref, SnippetLine } from "./search/highlight";
+import { Highlight, resultHref, shortAge, SnippetLine, titleParts } from "./search/highlight";
 import { joinQuery, pendingKey, pendingValue, splitQuery, statusValues, tokenKeys } from "./search/search-query";
 import type { Token } from "./search/search-query";
 
@@ -128,7 +130,6 @@ type Item =
   | { readonly kind: "value"; readonly value: string }
   | { readonly kind: "action"; readonly row: ActionRow };
 
-const stateWord = (state: string): string => state.replaceAll("_", " ");
 
 type Failure = { readonly message: string; readonly data?: { readonly code?: string } | null | undefined };
 
@@ -225,6 +226,8 @@ export const SearchPalette = ({
     enabled: open && step === null && asked.trim() !== "" && pending === null,
     placeholderData: keepPreviousData,
   });
+  /** Each result's age, counted from when the results arrived. */
+  const now = suggest.dataUpdatedAt;
 
   const all = useMemo(
     () => destinations((projects.data ?? []).map((project) => ({ id: project.id, name: project.name, colour: projectColour(project.id) })), admin),
@@ -790,15 +793,20 @@ export const SearchPalette = ({
                       >
                         <span className="hidden truncate pt-0.5 font-mono text-[12.5px] text-faint sm:inline">{result.ticketKey ?? result.taskId.slice(0, 8)}</span>
                         <span className="min-w-0">
-                          <span className="block truncate text-ui text-text">{titleSnippet === undefined ? result.title : <Highlight parts={titleSnippet.parts} />}</span>
+                          <span className="block truncate text-ui text-text"><Highlight parts={titleParts(result.title, titleSnippet?.parts ?? [])} /></span>
                           {lines.map((snippet, line) => <SnippetLine key={line} snippet={snippet} className="mt-0.5" />)}
                         </span>
                         <span className="hidden min-w-0 items-start gap-2 pt-1 sm:flex">
                           <span aria-hidden className="mt-1 size-2 shrink-0 rounded-[2px]" style={{ background: projectColour(result.projectId) }} />
                           <span className="truncate text-[13px] text-muted">{result.projectName}</span>
                         </span>
-                        <span className="hidden truncate pt-0.5 text-[13px] text-muted sm:inline">{stateWord(result.state)}</span>
-                        <span className="flex justify-end pt-0.5">{selected(index) ? <Kbd><CornerDownLeftIcon aria-hidden className="size-3" /></Kbd> : null}</span>
+                        <span className="hidden h-5 min-w-0 items-center gap-2 self-start text-[13px] text-muted sm:flex">
+                          <Dot tone={stateTone(result.state)} />
+                          <span className="truncate">{taskStateText(result.state)}</span>
+                        </span>
+                        <span className="flex justify-end pt-0.5">
+                          {selected(index) ? <Kbd><CornerDownLeftIcon aria-hidden className="size-3" /></Kbd> : <span className="font-mono text-xs text-faint">{shortAge(result.matchedAt ?? result.updatedAt, now)}</span>}
+                        </span>
                       </div>
                     );
                   })
