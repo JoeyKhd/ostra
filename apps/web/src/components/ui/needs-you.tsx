@@ -17,6 +17,8 @@ export type NeedsYouProps = {
   readonly footer?: ReactNode;
   readonly className?: string;
   readonly "data-testid"?: string;
+  /** The limit or crash a limit card stands for (task-limits.md). */
+  readonly "data-limit"?: string;
   /** The item it answers, on `data-item`, for the shortcuts to find its controls (F-081). */
   readonly item?: string;
   /**
@@ -24,6 +26,12 @@ export type NeedsYouProps = {
    * so Tab goes on to its buttons in order.
    */
   readonly focusOnAppear?: boolean;
+  /** What waits, on `data-need`, for the thread's cards (`needs-you-card-words.ts`). */
+  readonly need?: string;
+  /** `quiet`: the same block for someone it doesn't wait on, with a `--line-2` rule and no amber. */
+  readonly tone?: "amber" | "quiet";
+  /** The title's icon, `hand` by default. */
+  readonly icon?: ReactNode;
 };
 
 /** The member is typing: a field, a select or something editable has the focus. */
@@ -46,7 +54,7 @@ export const useFocusOnAppear = <T extends HTMLElement,>(on: boolean) => {
   return node;
 };
 
-export const NeedsYou = ({ title, children, actions, footer, className, item, focusOnAppear = false, ...rest }: NeedsYouProps) => {
+export const NeedsYou = ({ title, children, actions, footer, className, item, need, tone = "amber", icon, focusOnAppear = false, ...rest }: NeedsYouProps) => {
   const node = useFocusOnAppear<HTMLDivElement>(focusOnAppear);
   const titleId = useId();
   return (
@@ -55,12 +63,14 @@ export const NeedsYou = ({ title, children, actions, footer, className, item, fo
       role="group"
       aria-labelledby={titleId}
       tabIndex={focusOnAppear ? -1 : undefined}
-      className={cn("border-l-(length:--rule-needs-you) border-amber pl-3 focus:outline-2 focus:outline-offset-2 focus:outline-teal", className)}
+      className={cn("border-l-(length:--rule-needs-you) pl-3 focus:outline-2 focus:outline-offset-2 focus:outline-teal", tone === "amber" ? "border-amber" : "border-line-2", className)}
       data-testid={rest["data-testid"] ?? "needs-you"}
       data-item={item}
+      data-need={need}
+      data-limit={rest["data-limit"]}
     >
-      <div id={titleId} className="flex items-center gap-2 text-body font-semibold text-amber-text">
-        <HandIcon aria-hidden className="size-[14px] stroke-[1.75]" />
+      <div id={titleId} className={cn("flex items-center gap-2 text-body font-semibold [&_svg]:size-[14px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75]", tone === "amber" ? "text-amber-text" : "text-muted")}>
+        {icon ?? <HandIcon aria-hidden />}
         {title}
       </div>
       {children === undefined ? null : <div className="mt-1 text-body text-text">{children}</div>}

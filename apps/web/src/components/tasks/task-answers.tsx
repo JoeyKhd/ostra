@@ -15,6 +15,7 @@ import { errorText } from "@/lib/errors";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
+import { AgentMarkdown } from "@/task/renderers";
 
 // Ticket 43 (task-approval.md, task-plan.md; F-026, F-063, F-024): what the task page answers. Any
 // member answers an approval; the driver answers the agent's questions and its plan, and a watcher
@@ -59,6 +60,24 @@ export const askSentence = (kind: "path" | "command" | "url" | "tool" | null, ag
       return t("taskAnswers.asks.url", { agent });
     case "tool":
       return t("taskAnswers.asks.tool", { agent });
+    case null:
+      return t("taskAnswers.asks.other", { agent });
+    default:
+      return kind satisfies never;
+  }
+};
+
+/** The same with no rule that asked: the agent's own settings held the call back (task-approval.md, "What asks"). */
+export const wantsSentence = (kind: "path" | "command" | "url" | "tool" | null, agent: string): string => {
+  switch (kind) {
+    case "path":
+      return t("taskAnswers.wants.path", { agent });
+    case "command":
+      return t("taskAnswers.wants.command", { agent });
+    case "url":
+      return t("taskAnswers.wants.url", { agent });
+    case "tool":
+      return t("taskAnswers.wants.tool", { agent });
     case null:
       return t("taskAnswers.asks.other", { agent });
     default:
@@ -225,7 +244,11 @@ export const ApprovalCard = ({
     >
       <p>
         {approval.rule === null ? null : <span className="font-semibold">{approval.rule.name} </span>}
-        {asker === undefined ? askSentence(approval.subject?.kind ?? null, agent) : subagentAskSentence(approval.subject?.kind ?? null, asker)}
+        {asker !== undefined
+          ? subagentAskSentence(approval.subject?.kind ?? null, asker)
+          : approval.rule === null
+            ? wantsSentence(approval.subject?.kind ?? null, agent)
+            : askSentence(approval.subject?.kind ?? null, agent)}
       </p>
       {approval.subject === null ? null : (
         <code className="mt-2 inline-block max-w-full break-all rounded-[6px] border border-line bg-surface px-2.5 py-1.5 font-mono text-[12.5px] leading-[1.4] text-text" data-part="subject">
@@ -236,6 +259,13 @@ export const ApprovalCard = ({
   );
 };
 
+/** The agent's question as the thread draws its messages: Markdown, no raw HTML, safe links (ADR 0036). */
+export const QuestionMessage = ({ text, className }: { readonly text: string; readonly className?: string }) => (
+  <div data-part="question-message" className={cn("font-medium", className)}>
+    <AgentMarkdown text={text} />
+  </div>
+);
+
 /** The agent's question: a form for the driver, read-only with "Take over to answer" for anyone else. */
 export const QuestionCard = ({
   taskId,
@@ -245,6 +275,7 @@ export const QuestionCard = ({
   driver,
   onTakeOver,
   takingOver,
+  repeats = false,
 }: {
   readonly taskId: TaskId;
   readonly question: QuestionView;
@@ -253,6 +284,8 @@ export const QuestionCard = ({
   readonly driver: string | null;
   readonly onTakeOver: () => void;
   readonly takingOver: boolean;
+  /** The question is the agent's own message, just above: the card points at it, never repeats it. */
+  readonly repeats?: boolean;
 }) => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
@@ -266,7 +299,11 @@ export const QuestionCard = ({
       <div className="flex items-center gap-2 text-body font-semibold text-amber-text">
         <MessageCircleQuestionIcon aria-hidden className="size-[14px] stroke-[1.75]" /> {t("task.question.title")}
       </div>
-      <p className="mt-1 whitespace-pre-wrap font-medium">{question.message}</p>
+      {repeats ? (
+        <p className="mt-1 text-muted" data-part="question-above">{t("taskPage.needsYouCard.questionAbove", { agent })}</p>
+      ) : (
+        <QuestionMessage text={question.message} className="mt-1" />
+      )}
       <fieldset disabled={!isDriver} aria-disabled={!isDriver} className={cn("mt-2 flex flex-col gap-2", !isDriver && "opacity-50")}>
         {question.fields.map((field) =>
           field.type === "select" && field.options !== undefined && field.options.length > 0 ? (
@@ -459,7 +496,8 @@ export const PlanBlock = ({
         </>
       }
     >
-      {plan.message.trim() === "" ? null : <p className="whitespace-pre-wrap text-muted">{plan.message.length > 600 ? `${plan.message.slice(0, 600)}…` : plan.message}</p>}
+      {/* The plan's message is the turn's last agent message, already in the thread: point at it. */}
+      <p className="text-muted" data-part="plan-line">{plan.message.trim() === "" ? t("taskPage.needsYouCard.planOnly", { agent }) : t("taskPage.needsYouCard.planAbove", { agent })}</p>
       {body}
     </NeedsYou>
   );
@@ -474,27 +512,26 @@ export const WatcherBar = ({ driver, onTakeOver, takingOver }: { readonly driver
   </div>
 );
 
+/** One of a card's calls, held by the page: run it, whether it's in flight, and why it was refused. */
+export type CardAction = { readonly run: () => void; readonly pending: boolean; readonly error: string | null };
+
 /** A ticket closed or cancelled while the task ran (F-066): stop the task, or keep working. */
-export const TicketClosedBlock = ({ taskId, summary }: { readonly taskId: TaskId; readonly summary: string | null }) => {
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
-  const settle = { onSettled: () => queryClient.invalidateQueries({ queryKey: trpc.tasks.get.queryKey({ taskId }) }) };
-  const stop = useMutation(trpc.tasks.stop.mutationOptions(settle));
-  const keep = useMutation(trpc.tasks.keepWorking.mutationOptions(settle));
-  const busy = stop.isPending || keep.isPending || stop.isSuccess || keep.isSuccess;
+export const TicketClosedBlock = ({ summary, stop, keep, className }: { readonly summary: string | null; readonly stop: CardAction; readonly keep: CardAction; readonly className?: string }) => {
+  const busy = stop.pending || keep.pending;
   const failed = stop.error ?? keep.error;
   return (
     <NeedsYou
       data-testid="ticket-closed"
+      need="ticket-closed"
       title={t("taskAnswers.ticketClosed.title")}
-      className="mt-4"
+      {...(className === undefined ? {} : { className })}
       actions={
         <>
-          <Button size="sm" className="h-7" disabled={busy} onClick={() => { keep.mutate({ taskId }); }} data-action="keep-working">{t("taskAnswers.ticketClosed.keep")}</Button>
-          <Button size="sm" variant="amber" className="h-7" disabled={busy} onClick={() => { stop.mutate({ taskId }); }} data-action="stop-task">{t("taskAnswers.ticketClosed.stop")}</Button>
+          <Button size="sm" className="h-7" disabled={busy} onClick={keep.run} data-action="keep-working">{t("taskAnswers.ticketClosed.keep")}</Button>
+          <Button size="sm" variant="amber" className="h-7" disabled={busy} onClick={stop.run} data-action="stop-task">{t("taskAnswers.ticketClosed.stop")}</Button>
         </>
       }
-      footer={<Refused message={failed === null ? null : errorText(failed)} />}
+      {...(failed === null ? {} : { footer: <Refused message={failed} /> })}
     >
       {/* The item's summary is core's own sentence about the move; without one, the page's. */}
       <p>{summary ?? t("taskAnswers.ticketClosed.body")}</p>

@@ -88,11 +88,30 @@ test("F-025/c1: Stop stops the task, optimistically, and the page shows it stopp
   await expect(page.locator('[data-action="stop"]')).toHaveCount(0);
 });
 
-test("a task that ended without changes shows its needs-you summary", async ({ page }) => {
+test("F-065/c2: a task that ended without changes shows the agent's summary once, in the thread as Markdown, and its needs-you card at the thread's end", async ({ page }) => {
   await signIn(page);
   const taskId = await seedTask("without-changes");
   await page.goto(`/tasks/${taskId}`);
-  await expect(page.getByTestId("needs-you")).toContainText("No changes: the tests live in test/");
+  const thread = page.locator('[data-part="thread"]');
+  // The maintainer, 2026-11-21: needs you is part of the chat, not a block above the tabs.
+  const card = thread.locator('[data-need="reply"]');
+  await expect(card).toContainText("finished without changes. Its message above says what happened.");
+  await expect(page.getByTestId("needs-you")).toHaveCount(await thread.getByTestId("needs-you").count());
+  expect(await card.evaluate((node) => {
+    const messages = [...document.querySelectorAll('[data-part="thread"] [data-message-id]')];
+    const last = messages.at(-1);
+    return last !== undefined && (last.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+  })).toBe(true);
+  // The summary is the agent's message: on the page once, drawn as Markdown, no raw marks.
+  const text = await page.locator("main").innerText();
+  expect(text.split("one file per module").length - 1).toBe(1);
+  expect(text).not.toContain("**");
+  expect(text).not.toContain("`");
+  await expect(thread.locator('[data-part="text"] strong', { hasText: "unit" })).toBeVisible();
+  await expect(thread.locator('[data-part="text"] code', { hasText: "test/e2e/" })).toBeVisible();
+  // The composer says the agent waits, and the live region holds the card's line (F-081/c2).
+  await expect(page.getByTestId("needs-you-live")).toHaveAttribute("aria-live", "polite");
+  await expect(page.getByTestId("needs-you-live")).toContainText("finished without changes");
   await expect(page.locator('[data-part="session-end"]')).toHaveAttribute("data-outcome", "without-changes");
   await expectNoHorizontalScroll(page);
 });

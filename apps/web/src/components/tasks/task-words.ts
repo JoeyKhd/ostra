@@ -37,9 +37,6 @@ export const taskStateText = (state: TaskState): string => {
 
 export type TaskReason = RouterOutputs["tasks"]["get"]["reason"];
 
-/** The reasons the thread itself shows as an amber block: the header names them, without a note. */
-export const shownInThread = (reason: TaskReason): boolean => reason === "approval" || reason === "question";
-
 /**
  * A task's state for its header and properties (task.md, "Header status line"): needs-you states
  * name what waits when it's an approval or a question, `Needs you · approval`.

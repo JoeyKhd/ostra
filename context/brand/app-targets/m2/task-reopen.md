@@ -79,7 +79,7 @@ Numbers: sizes as `2.4 MB` (one decimal, SI), counts as plain integers, SHAs 7 c
 
 ### The restore conflict
 
-A needs-you item for the driver (`restore_conflict`, spec section 11, item 7). Amber marks it because it waits on the viewer; for anyone else, the same block draws in `--muted` with a `--line-2` rule and no buttons.
+A needs-you item for the driver (`restore_conflict`, spec section 11, item 7). Amber marks it because it waits on the viewer; for anyone else, the same block draws in `--muted` with a `--line-2` rule and no buttons. *Changed 2026-11-21 (the maintainer): the block sits at the end of the thread, above the composer, not in the header (`../../app-design.md`, rule 3).*
 
 - **Title:** `git-merge` 14px + `Needs you · restore conflict`, amber, 13px 600.
 - **Body,** 13px `--text`: `The unfinished work saved after turn {n} conflicts with {count} commits pushed to the branch since. Nothing was restored from it; {agent} carries on from the branch's head.` With several repos, the repo's name follows `the branch` (`… pushed to the branch in calculator-api since.`), one block per repo.

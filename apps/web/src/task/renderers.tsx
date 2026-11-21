@@ -489,11 +489,11 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
         <div data-part="question">
           {status.state === "open" ? (
             <NeedsYou data-testid="question" title={t("task.question.title")} className="my-2.5" footer={t("task.question.readOnly")}>
-              <p className="whitespace-pre-wrap">{part.data.message}</p>
+              <AgentMarkdown text={part.data.message} />
             </NeedsYou>
           ) : (
             <div className="my-1">
-              <p className="whitespace-pre-wrap">{part.data.message}</p>
+              <AgentMarkdown text={part.data.message} />
               <p className="text-sm text-muted">
                 {status.state === "answered" ? t("task.question.answered", { name: memberName(status.answeredBy) }) : t("task.question.closed", { reason: status.closedReason })}
               </p>

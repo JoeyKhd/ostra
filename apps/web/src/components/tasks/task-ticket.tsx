@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import { TicketStatusIcon } from "@/components/inbox/ticket-icons";
 import { PropGroup, PropRow } from "@/components/shell/page-frame";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { NeedsYou } from "@/components/ui/needs-you";
 import { cn } from "@/lib/cn";
 import { formatTokens } from "@/lib/format";
 import { plural, t } from "@/lib/messages";
@@ -192,7 +193,7 @@ export const limitStateOf = (task: TaskDetail): LimitState => ({
   reopenWithoutText: task.capabilities.reopenWithoutText,
 });
 
-export const LimitBlock = ({ task, reopen }: { readonly task: LimitState; readonly reopen: { readonly run: () => void; readonly pending: boolean; readonly error: string | null } }) => {
+export const LimitBlock = ({ task, reopen, className }: { readonly task: LimitState; readonly reopen: { readonly run: () => void; readonly pending: boolean; readonly error: string | null }; readonly className?: string }) => {
   const crashed = task.reason === "crashed";
   const what = crashed ? "crashed" : task.limit;
   if (what === null || task.state !== "needs_you") return null;
@@ -207,46 +208,61 @@ export const LimitBlock = ({ task, reopen }: { readonly task: LimitState; readon
           ? t("taskPage.limit.spend-capBody", { spent: usd(task.spend.spent), cap: usd(task.spend.cap) })
           : t("taskPage.limit.spend-capTokens", { spent: formatTokens(task.spend.spent), cap: formatTokens(task.spend.cap) })
         : t(`taskPage.limit.${what}Body`);
+  // A card in the chat (2026-11-21): the shared needs-you block, at the end of the thread.
   return (
-    <div role="region" aria-label={t("taskPage.limit.title", { what: t(`taskPage.limit.${what}`) })} className="mt-4 rounded-r-md border-l-(length:--rule-needs-you) border-amber bg-surface px-4 py-3" data-testid="limit-block" data-limit={what}>
-      <div className="flex items-center gap-2 text-ui font-semibold text-amber-text">
-        <CircleAlertIcon aria-hidden className="size-[14px] stroke-[1.75]" />
-        {t("taskPage.limit.title", { what: t(`taskPage.limit.${what}`) })}
-      </div>
-      <p className="mt-1 text-body text-text">{body}</p>
-      {task.reopenWithoutText ? (
-        <Button variant="amber" className="mt-2.5" disabled={reopen.pending} onClick={reopen.run}>
-          <RotateCcwIcon aria-hidden />
-          {reopen.pending ? t("taskPage.limit.reopening") : t("taskPage.limit.reopen")}
-        </Button>
-      ) : null}
-      {reopen.error === null ? null : <p role="alert" className="mt-2 text-sm text-red">{reopen.error}</p>}
-    </div>
+    <NeedsYou
+      data-testid="limit-block"
+      need="limit"
+      data-limit={what}
+      title={t("taskPage.limit.title", { what: t(`taskPage.limit.${what}`) })}
+      icon={<CircleAlertIcon aria-hidden />}
+      {...(className === undefined ? {} : { className })}
+      {...(task.reopenWithoutText
+        ? {
+            actions: (
+              <Button size="sm" variant="amber" className="h-7 max-sm:w-full" disabled={reopen.pending} onClick={reopen.run} data-action="reopen-limit">
+                <RotateCcwIcon aria-hidden />
+                {reopen.pending ? t("taskPage.limit.reopening") : t("taskPage.limit.reopen")}
+              </Button>
+            ),
+          }
+        : {})}
+      {...(reopen.error === null ? {} : { footer: <span role="alert" className="text-red">{reopen.error}</span> })}
+    >
+      <p>{body}</p>
+    </NeedsYou>
   );
 };
 
 /** A restore conflict waiting on the driver: show the saved work, or carry on without it. */
-export const RestoreConflict = ({ savedWorkUrl, canAnswer, dismiss }: { readonly savedWorkUrl: string | null; readonly canAnswer: boolean; readonly dismiss: { readonly run: () => void; readonly pending: boolean } }) => (
-  <div role="region" aria-label={t("taskPage.restoreConflict.title")} className={cn("mt-4 rounded-r-md bg-surface px-4 py-3", canAnswer ? "border-l-(length:--rule-needs-you) border-amber" : "border-l-2 border-line-2")} data-testid="restore-conflict">
-    <div className={cn("flex items-center gap-2 text-ui font-semibold", canAnswer ? "text-amber-text" : "text-muted")}>
-      <GitMergeIcon aria-hidden className="size-[14px] stroke-[1.75]" />
-      {t("taskPage.restoreConflict.title")}
-    </div>
-    <p className="mt-1 text-body text-text">{t("taskPage.restoreConflict.body")}</p>
-    {canAnswer ? (
-      <div className="mt-2.5 flex flex-wrap gap-2">
-        {savedWorkUrl === null ? null : (
-          <a href={savedWorkUrl} target="_blank" rel="noopener noreferrer" className={buttonVariants()}>
-            {t("taskPage.restoreConflict.show")}
-          </a>
-        )}
-        <Button variant="amber" disabled={dismiss.pending} onClick={dismiss.run}>
-          {t("taskPage.restoreConflict.dismiss")}
-        </Button>
-      </div>
-    ) : null}
-    <p className="mt-2 text-xs text-faint">{t("taskPage.restoreConflict.footnote")}</p>
-  </div>
+export const RestoreConflict = ({ savedWorkUrl, canAnswer, dismiss, className }: { readonly savedWorkUrl: string | null; readonly canAnswer: boolean; readonly dismiss: { readonly run: () => void; readonly pending: boolean }; readonly className?: string }) => (
+  <NeedsYou
+    data-testid="restore-conflict"
+    need="restore-conflict"
+    tone={canAnswer ? "amber" : "quiet"}
+    title={t("taskPage.restoreConflict.title")}
+    icon={<GitMergeIcon aria-hidden />}
+    {...(className === undefined ? {} : { className })}
+    {...(canAnswer
+      ? {
+          actions: (
+            <>
+              {savedWorkUrl === null ? null : (
+                <a href={savedWorkUrl} target="_blank" rel="noopener noreferrer" className={cn(buttonVariants({ size: "sm" }), "h-7")}>
+                  {t("taskPage.restoreConflict.show")}
+                </a>
+              )}
+              <Button size="sm" variant="amber" className="h-7" disabled={dismiss.pending} onClick={dismiss.run}>
+                {t("taskPage.restoreConflict.dismiss")}
+              </Button>
+            </>
+          ),
+        }
+      : {})}
+    footer={t("taskPage.restoreConflict.footnote")}
+  >
+    <p>{t("taskPage.restoreConflict.body")}</p>
+  </NeedsYou>
 );
 
 /** Which call the composer makes and what it says (task-reopen.md, "The composer: send or reopen"). */

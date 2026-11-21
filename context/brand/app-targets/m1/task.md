@@ -119,7 +119,7 @@ Copy lives in `apps/web/messages/en.json`; keys in brackets. New or changed stri
 | running | teal | `Running` |
 | needs_you, approval | amber | **changed** `Needs you · approval` (today: `Needs you`) |
 | needs_you, question | amber | **changed** `Needs you · question` |
-| needs_you, other reason | amber | `Needs you`, and the reason under the line as the existing amber-ruled note (`needsYouDefault`: `The agent stopped and waits on a person.`) |
+| needs_you, other reason | amber | `Needs you`, and the reason under the line as the existing amber-ruled note (`needsYouDefault`: `The agent stopped and waits on a person.`). *Changed 2026-11-21 (the maintainer): the note is no longer under the line but a block at the end of the thread, above the composer; an agent that ended its turn gets `{agent} asked you something in its message above. Reply below.` and its message is never repeated (`../../app-design.md`, rule 3).* |
 | awaiting_approval (an outside task waiting to be accepted, F-040) | amber | **changed** `Awaiting approval` (today: `Approval`, which reads like a tool approval) |
 | in_review | green | `In review` |
 | stopped | grey | `Stopped` (`Stopping…` while the stop is in flight) |
@@ -172,7 +172,7 @@ Milestone 1 builds the layout above. These parts render only when their feature 
 
 ## Differences from the current code
 
-1. **Header.** Today: key, title, a status line with activity, a `needs-you` amber block under it, then a hairline. Target: the same, but the status line gets `<elapsed> on <runner>`, drops activity text that repeats the state, and the `needs-you` block is gone when the thing waiting is an approval or question already in the thread (keep it only for other needs-you reasons). No amber text in the line.
+1. **Header.** Today: key, title, a status line with activity, a `needs-you` amber block under it, then a hairline. Target: the same, but the status line gets `<elapsed> on <runner>`, drops activity text that repeats the state, and the `needs-you` block is gone when the thing waiting is an approval or question already in the thread (keep it only for other needs-you reasons). No amber text in the line. *Changed 2026-11-21 (the maintainer): no needs-you block in the header at all; the other reasons are blocks at the end of the thread (`../../app-design.md`, rule 3).*
 2. **Key line:** `from a ticket` → **changed** `from Linear` (the tracker's name; `from a prompt` stays).
 3. **Tool rows** (`renderers.tsx` `Line`): the verb gets a fixed 72px column so paths align; the end slot moves inline after the subject instead of `ml-auto`.
 4. **Disclosure buttons** (`ml-6 text-sm text-teal hover:underline`): indent to the path column, 12px; keep underline on hover only.

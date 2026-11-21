@@ -29,6 +29,8 @@ The frame is `../m1/task.md`'s, unchanged: sidebar 232px, top bar 44px, thread c
 
 This is milestone 1's amber-ruled `needs-you` note, which m1's spec keeps "only for other needs-you reasons": limits and crashes are exactly those. It is not a card.
 
+*Changed 2026-11-21 (the maintainer: needs you is part of the chat, not a component up top): the block keeps this content but sits at the end of the thread, just above the composer, indented to the messages' text, after the limit's system row; the header has none (`../../app-design.md`, rule 3).*
+
 - `border-left: 2px solid var(--amber)`, `padding-left: 12px`, `margin-top: 16px`. The block is as wide as the thread column (max 760px of text).
 - **Title:** Lucide `hand` 14px + `Needs you · <reason>`, `--amber`, 13px weight 600. This is the one amber text on the page.
 - **Body:** 13px/1.5 `--text`, one or two sentences: what stopped the session and that the work is kept. Numbers (money, minutes, tokens) in the body stay in Plex Sans, as the image shows them; mono is for keys, refs, setting names.

@@ -29,6 +29,10 @@ const argsSchema = z.strictObject({
 });
 
 const args = argsSchema.parse(JSON.parse(process.argv[2] ?? "{}"));
+
+/** The agent's last message of the `without-changes` session, which is also its needs-you summary. */
+const WITHOUT_CHANGES_SUMMARY = "The tests live in `test/`, one file per module:\n\n- **unit** tests beside each module\n- **e2e** tests in `test/e2e/`";
+
 const db = createDb(args.databaseUrl);
 
 const recorded: TaskEvent[] = recordedOpenCodeSession.flatMap((raw) => {
@@ -160,7 +164,7 @@ const main = async (): Promise<void> => {
         taskId,
         [
           { kind: "turn.started", turnId },
-          { kind: "agent.message", turnId, segmentId, text: "The tests live in `test/`, one file per module." },
+          { kind: "agent.message", turnId, segmentId, text: WITHOUT_CHANGES_SUMMARY },
           { kind: "turn.ended", turnId, stopReason: "end_turn" },
           { kind: "session.ended", outcome: "without-changes", repos: [{ repoId, ahead: false }] },
         ].map((event) => taskEventSchema.parse(event)),
@@ -174,7 +178,8 @@ const main = async (): Promise<void> => {
           taskId,
           reason: "no_changes",
           audience: "driver",
-          summary: "No changes: the tests live in test/, one file per module.",
+          // As core writes it: the agent's last message (F-065), Markdown and all.
+          summary: WITHOUT_CHANGES_SUMMARY,
         },
       });
       process.stdout.write(`${JSON.stringify({ taskId })}\n`);

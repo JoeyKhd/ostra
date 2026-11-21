@@ -21,7 +21,6 @@ import { Kbd } from "@/components/ui/kbd";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { initials } from "@/components/shell/user-menu";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { NeedsYou } from "@/components/ui/needs-you";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Status } from "@/components/ui/status";
 import { cn } from "@/lib/cn";
@@ -40,9 +39,12 @@ import { TaskPrs } from "./task-prs";
 import { HeldNoKey, KeyRow, NoKeySentence, WhoPicks } from "./no-key";
 import { adminNames } from "./no-key-words";
 import type { NoKey } from "./no-key";
-import { AgentGot, LimitBlock, MergedHint, RestoreConflict, TicketLine, TicketProperties, boxText, composerInputOf, composerMode, idleHeader, limitStateOf, spendText } from "./task-ticket";
-import { headerActivity, shownInThread, stateTone, taskStateLine } from "./task-words";
-import { ApprovalCard, PlanBlock, QuestionCard, TicketClosedBlock, WatcherBar, approvalReceipt } from "./task-answers";
+import { AgentGot, MergedHint, TicketLine, TicketProperties, boxText, composerInputOf, composerMode, idleHeader, limitStateOf, spendText } from "./task-ticket";
+import { headerActivity, stateTone, taskStateLine } from "./task-words";
+import { ApprovalCard, PlanBlock, QuestionCard, WatcherBar, approvalReceipt } from "./task-answers";
+import { NeedsYouCards, NeedsYouLive } from "./needs-you-cards";
+import { needsOf, questionRepeatsMessage, replyHint } from "./needs-you-card-words";
+import type { ReplyHow } from "./needs-you-card-words";
 import { ChangesTab } from "./task-changes/changes-tab";
 import { EventLogTab } from "./task-event-log/event-log-tab";
 import { ChecksTab, checksMarkerOf } from "./task-checks/checks-tab";
@@ -50,7 +52,7 @@ import { ChecksTabMarker } from "./task-checks/task-checks";
 import { ReasoningRow, TaskEffortRow } from "./task-effort";
 import type { TaskEffort } from "./task-effort";
 import { TakeItLocal } from "./take-it-local";
-import { AwaitingApprovalBanner, StartedInLinear } from "@/components/approvals/approval-block";
+import { StartedInLinear } from "@/components/approvals/approval-block";
 
 import { TaskWaiting } from "./task-waiting";
 import { PreviewPane } from "./preview-pane";
@@ -475,6 +477,9 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const keepWorking = useMutation(trpc.tasks.keepWorking.mutationOptions({ onSettled: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: getKey }), queryClient.invalidateQueries({ queryKey: trpc.tasks.rounds.queryKey({ taskId }) })]); } }));
   const retrySync = useMutation(trpc.tasks.retrySync.mutationOptions(settle));
   const dismiss = useMutation(trpc.tasks.dismissNeedsYou.mutationOptions(settle));
+  // F-066: the ticket-closed card's own calls, so their refusals show in the card.
+  const closedStop = useMutation(trpc.tasks.stop.mutationOptions(settle));
+  const closedKeep = useMutation(trpc.tasks.keepWorking.mutationOptions(settle));
   const createTicket = useMutation(trpc.tasks.createTicket.mutationOptions(settle));
   const boards = useQuery(trpc.boards.get.queryOptions(task.data === undefined ? skipToken : { projectId: task.data.projectId }));
 
@@ -514,14 +519,24 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
     },
     [approvals],
   );
+  const logEvents = log.state.events;
   const questionCard = useCallback(
     (questionId: string): ReactNode => {
       const question = questions?.find((one) => one.questionId === questionId);
       return question === undefined ? null : (
-        <QuestionCard taskId={taskId} question={question} agent={agentName} isDriver={isDriver} driver={driverName} onTakeOver={takeOverNow} takingOver={takeOver.isPending} />
+        <QuestionCard
+          taskId={taskId}
+          question={question}
+          agent={agentName}
+          isDriver={isDriver}
+          driver={driverName}
+          onTakeOver={takeOverNow}
+          takingOver={takeOver.isPending}
+          repeats={questionRepeatsMessage(logEvents, questionId, question.message)}
+        />
       );
     },
-    [questions, taskId, agentName, isDriver, driverName, takeOverNow, takeOver.isPending],
+    [questions, taskId, agentName, isDriver, driverName, takeOverNow, takeOver.isPending, logEvents],
   );
 
   // F-081 (ticket 13): the page, its viewer's capabilities and its open item, for the palette and the keys.
@@ -579,7 +594,6 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
     const href = repo.pr === null ? null : safeHref(repo.pr.url);
     return repo.pr === null || href === null ? [] : [{ number: repo.pr.number, href, state: repo.pr.state, repo: repo.fullName }];
   });
-  const summary = data.needsYou.find((item) => item.summary !== null)?.summary ?? null;
   const running = view.turnRunning || data.state === "running" || data.state === "preparing";
   // F-137: the level from the newest `effort.changed` on the stream, else `tasks.get`'s.
   const effort: TaskEffort = { level: view.effort ?? data.effort.level, levels: data.effort.levels.map((one) => one.level), runningTurn: view.runningEffort };
@@ -604,8 +618,20 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const cancelled = data.state === "stopped" ? log.state.events.findLast(({ event }) => event.kind === "task.cancelled")?.event : undefined;
   const cancelledBy = cancelled?.kind === "task.cancelled" ? ((members.data ?? []).find((member) => member.memberId === cancelled.memberId)?.name ?? null) : undefined;
   const mode = composerMode(composerInputOf(data));
+  // What needs you (2026-11-21): cards in the chat, never a block above the tabs.
+  const needs = needsOf({
+    state: data.state,
+    group: data.group,
+    reason: data.reason,
+    kind: data.kind,
+    limit: data.limit,
+    needsYou: data.needsYou,
+    openApprovals: data.approvals.filter((one) => one.state === "open" || one.answerableAnyway).length,
+    openQuestions: data.questions.length,
+    planWaiting: data.plan !== null && data.plan.approved === null && data.plan.itemId !== null,
+  });
+  const how: ReplyHow = mode.kind === "send" ? "send" : mode.kind === "reopen" ? "reopen" : data.capabilities.takeOver ? "watch" : "none";
   const conflict = data.needsYou.find((item) => item.reason === "restore_conflict");
-  const ticketClosed = data.needsYou.find((item) => item.reason === "ticket_closed");
   const sessionGoing = data.session !== null && ["starting", "running", "waiting", "idle"].includes(data.session.state);
   const changedFiles = data.repos.length;
   const localLoad: LocalLoad = local.data !== undefined
@@ -844,7 +870,6 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           {inLoop ? <StageLine subState={data.subState} aiReview={aiReview} counts={data.roundCounts} needsYou={cap !== null && isDriver} held={heldNow} /> : null}
           <TaskPrs repos={data.repos} />
           <TaskAppSupportLine taskId={taskId} />
-          {data.state === "awaiting_approval" ? <AwaitingApprovalBanner task={waitingTask} /> : null}
           {data.waiting?.kind === "no-runner" && data.waiting.reason.code === "needs-services-runner" ? (
             <p className="mt-1.5 text-ui text-muted" data-testid="task-dispatch-note">{servicesWaitText(data.waiting.reason.online)}</p>
           ) : null}
@@ -885,27 +910,6 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           {data.ticket === null ? null : <TicketLine ticket={data.ticket} />}
           {data.source === "ticket" && tab !== "draft" ? <AgentGot files={data.contextFiles} /> : null}
           {stop.error === null ? null : <p role="alert" className="mt-2 text-sm text-red">{errorText(stop.error)}</p>}
-          <LimitBlock
-            task={limitStateOf(data)}
-            reopen={{
-              run: () => { reopen.mutate({ taskId, clientMessageId: clientMessageIdSchema.parse(crypto.randomUUID()) }); },
-              pending: reopen.isPending,
-              error: errorText(reopen.error),
-            }}
-          />
-          {ticketClosed === undefined ? null : <TicketClosedBlock taskId={taskId} summary={ticketClosed.summary} />}
-          {conflict === undefined ? null : (
-            <RestoreConflict
-              savedWorkUrl={null}
-              canAnswer={data.driver?.memberId === me.data?.memberId}
-              dismiss={{ run: () => { dismiss.mutate({ taskId, itemId: conflict.id }); }, pending: dismiss.isPending }}
-            />
-          )}
-          {data.group === "needs-you" && !shownInThread(data.reason) && data.limit === null && data.reason !== "crashed" && conflict === undefined && ticketClosed === undefined && data.reason !== "plan" && data.reason !== "approval" && data.reason !== "question" && !(isRefine && data.reason === "draft_ready") && data.reason !== "round_cap" && data.state !== "awaiting_approval" ? (
-            <NeedsYou title={t("taskPage.needsYou")} className="mt-4">
-              <p className="whitespace-pre-wrap">{summary ?? t("taskPage.needsYouDefault")}</p>
-            </NeedsYou>
-          ) : null}
           <UnderlineTabs
             className="mt-4"
             label={t("taskAnswers.tabs.activity")}
@@ -964,7 +968,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           memberName={memberName}
           canSend={data.capabilities.send}
           canReopen={mode.kind === "reopen"}
-          composerHint={mode.kind === "send" || mode.kind === "reopen" ? (isRefine ? t("draft.composerHint") : mode.hint) : null}
+          composerHint={mode.kind === "send" || mode.kind === "reopen" ? (isRefine ? t("draft.composerHint") : ((mode.kind === "send" ? replyHint(needs, agentName) : null) ?? mode.hint)) : null}
           {...(mode.kind === "merged" ? { instead: <MergedHint inboxHref={data.ticket === null ? null : `/projects/${data.projectId}/inbox?ticket=${encodeURIComponent(data.ticket.key)}`} /> } : {})}
           canInterrupt={data.capabilities.interrupt}
           running={running}
@@ -974,7 +978,38 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           approvalReceipt={receiptOf}
           approvalLostRace={approvalLostRace}
           questionCard={questionCard}
-          tail={heldNoKey ? <HeldNoKey noKey={noKey} /> : data.plan === null ? roundsTail : <PlanBlock key={`${data.plan.turnId}:${String(data.plan.proposedAt)}`} taskId={taskId} plan={data.plan} agent={agentName} isDriver={isDriver} driver={driverName} onTakeOver={takeOverNow} takingOver={takeOver.isPending} />}
+          tail={
+            <>
+              {heldNoKey ? <HeldNoKey noKey={noKey} /> : data.plan === null ? roundsTail : (
+                <div className="ml-10">
+                  <PlanBlock key={`${data.plan.turnId}:${String(data.plan.proposedAt)}`} taskId={taskId} plan={data.plan} agent={agentName} isDriver={isDriver} driver={driverName} onTakeOver={takeOverNow} takingOver={takeOver.isPending} />
+                </div>
+              )}
+              <NeedsYouCards
+                needs={needs}
+                agent={agentName}
+                how={how}
+                limit={{
+                  task: limitStateOf(data),
+                  reopen: {
+                    run: () => { reopen.mutate({ taskId, clientMessageId: clientMessageIdSchema.parse(crypto.randomUUID()) }); },
+                    pending: reopen.isPending,
+                    error: errorText(reopen.error),
+                  },
+                }}
+                ticketClosed={{
+                  stop: { run: () => { closedStop.mutate({ taskId }); }, pending: closedStop.isPending || closedStop.isSuccess, error: errorText(closedStop.error) },
+                  keep: { run: () => { closedKeep.mutate({ taskId }); }, pending: closedKeep.isPending || closedKeep.isSuccess, error: errorText(closedKeep.error) },
+                }}
+                conflict={{
+                  canAnswer: data.driver?.memberId === me.data?.memberId,
+                  dismiss: { run: () => { if (conflict !== undefined) dismiss.mutate({ taskId, itemId: conflict.id }); }, pending: dismiss.isPending },
+                }}
+                awaiting={waitingTask}
+              />
+            </>
+          }
+          live={<NeedsYouLive needs={needs} agent={agentName} how={how} />}
           {...(notDriver === undefined ? {} : { notDriver })}
           hasEarlier={log.state.olderBefore !== null}
           loadEarlier={log.loadEarlier}

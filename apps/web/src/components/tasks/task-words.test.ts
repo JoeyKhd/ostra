@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { t } from "@/lib/messages";
 
-import { doingText, headerActivity, shownInThread, taskStateLine } from "./task-words";
+import { doingText, headerActivity, taskStateLine } from "./task-words";
 
 describe("doingText", () => {
   it("says nothing when the agent is doing nothing", () => {
@@ -29,13 +29,6 @@ describe("taskStateLine", () => {
     expect(taskStateLine("needs_you", "no_changes")).toBe("Needs you");
     expect(taskStateLine("awaiting_approval", null)).toBe("Awaiting approval");
     expect(taskStateLine("running", null)).toBe("Running");
-  });
-
-  it("leaves the note to the thread for approvals and questions only", () => {
-    expect(shownInThread("approval")).toBe(true);
-    expect(shownInThread("question")).toBe(true);
-    expect(shownInThread("no_changes")).toBe(false);
-    expect(shownInThread(null)).toBe(false);
   });
 });
 

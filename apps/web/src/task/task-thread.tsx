@@ -271,8 +271,10 @@ export type TaskThreadProps = {
   readonly approvalReceipt?: (approvalId: string) => string | null;
   readonly approvalLostRace?: (approvalId: string) => boolean;
   readonly questionCard?: (questionId: string) => ReactNode;
-  /** After the last message, inside the scroll: the plan waiting for the driver, or its receipt. */
+  /** After the last message, inside the scroll: the plan waiting for the driver, or its receipt, and what needs you. */
   readonly tail?: ReactNode;
+  /** The polite live region that reads out a need as it appears (always mounted beside the thread). */
+  readonly live?: ReactNode;
   /** In place of the composer when the viewer can't send: the take-over line, or nothing. */
   readonly notDriver?: ReactNode;
   /** The composer reopens the task (`tasks.reopen`) instead of sending (ticket 36). */
@@ -287,7 +289,7 @@ export type TaskThreadProps = {
   readonly onFold?: (ms: number, messages: number) => void;
 };
 
-export const TaskThread = ({ taskId, projectName, ticketKey = null, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, approvalLostRace, questionCard, tail, notDriver, canReopen = false, composerHint = null, instead, hasEarlier, loadEarlier, onFold }: TaskThreadProps) => {
+export const TaskThread = ({ taskId, projectName, ticketKey = null, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, approvalLostRace, questionCard, tail, live, notDriver, canReopen = false, composerHint = null, instead, hasEarlier, loadEarlier, onFold }: TaskThreadProps) => {
   const trpc = useTRPC();
   const [optimistic, setOptimistic] = useState<readonly OptimisticMessage[]>([]);
   const previous = useRef<readonly TaskUIMessage[]>([]);
@@ -468,6 +470,7 @@ export const TaskThread = ({ taskId, projectName, ticketKey = null, log, memberI
         <AttachmentsProvider taskId={taskId} added={attachmentsAdded} agentName={agentName}>
         <SentDiffCommentsContext.Provider value={sentDiffComments}>
           <ThreadPrimitive.Root data-part="thread" className="flex min-h-0 flex-1 flex-col">
+            {live}
             <ThreadPrimitive.Viewport autoScroll={focusSeq === null} className="min-h-0 flex-1 overflow-y-auto">
               {hasEarlier ? (
                 <div className="py-2">

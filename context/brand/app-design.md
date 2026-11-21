@@ -21,6 +21,7 @@ These come from the maintainer's verdict on round 2 ("the ui is FUCKING ugly") a
    - A section is a title line and rows separated by hairlines.
    - Boxes only for code, form fields, the composer and the selected row.
    - An approval is an amber left rule, not a card.
+   - **What needs you is part of the chat** (the maintainer, 2026-11-21: "needs you doesnt become a part of the chat window lol, it's a component up top"). On the task page nothing that waits on a person sits above the tabs: an approval stays under the tool row that asked and a question in the message that asked it; every other kind (the agent waiting for a reply, the plan, a limit or a crash, a closed ticket, a restore conflict, an outside task's approval to start, any other reason) is one amber-ruled block at the end of the thread, just above the composer, indented to the messages' text. Each has the amber `Needs you` mark, one line saying what's needed and its controls where it has them. The agent's own message stays in the thread, drawn as Markdown, and no block repeats it: one that waits on it points at it ("in its message above"). The header keeps only the status chip. A polite live region reads a new one out. Built in `components/tasks/needs-you-cards.tsx`.
    - Never a box inside a box.
 4. **One meaning per colour** (the table below). Colour never carries meaning alone: a dot or icon always has a label.
 5. **Real HTML, never image-model mockups.** Concepts are built with the real fonts, icons and density, then screenshotted (round 3 onward).

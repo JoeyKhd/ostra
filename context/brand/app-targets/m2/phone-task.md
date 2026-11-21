@@ -32,7 +32,7 @@ One column. The page scrolls as a whole, and only the composer is fixed.
 1. Key line, mono 12px `--faint`: `CALC-161 · from Linear`.
 2. Title, Manrope 700 **24px** (`page-title`), wrapping.
 3. Status line, 13px: the state's mark (`git-pull-request` `--muted` for in review; the dot otherwise) + the state in `--text` weight 500, then ` · ` and the box's state in `--muted`: `idle, stops in 11 min` / `running` / `stopped` / `released`.
-4. A needs-you item, when there is one (screens 6 and 7), sits right here under the status line. It has milestone 1's amber left rule, its text, and its action as a **full-width 44px** button. This is the one place amber appears.
+4. A needs-you item, when there is one (screens 6 and 7), sits right here under the status line. It has milestone 1's amber left rule, its text, and its action as a **full-width 44px** button. This is the one place amber appears. *Changed 2026-11-21 (the maintainer): the item is a block at the end of the thread, just above the composer, not under the status line; its action stays full width (`../../app-design.md`, rule 3).*
 
 ### Ticket (a section: a title line, then rows; no box)
 

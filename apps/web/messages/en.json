@@ -2779,6 +2779,24 @@
     "reconnecting": "Reconnecting…",
     "needsYou": "Needs you",
     "needsYouDefault": "The agent stopped and waits on a person.",
+    "needsYouCard": {
+      "asked": "{agent} asked you something in its message above.",
+      "finished": "{agent} finished without changes. Its message above says what happened.",
+      "replyBelow": "Reply below.",
+      "reopenBelow": "Reply below to reopen the task.",
+      "takeOver": "Take over to reply.",
+      "reason": "{reason}.",
+      "approval": "{agent} waits for an approval.",
+      "approvals": "{agent} waits for {n} approvals.",
+      "question": "{agent} asked a question. Answer it in the thread.",
+      "plan": "{agent} proposed a plan. Approve it or ask for changes.",
+      "roundCap": "The review loop reached its round limit.",
+      "awaitingApproval": "This task waits for a member's approval to start.",
+      "hint": "{agent} is waiting for your reply.",
+      "questionAbove": "{agent} asks this in its message above.",
+      "planAbove": "{agent} proposes this plan. Its message above explains it.",
+      "planOnly": "{agent} proposes this plan."
+    },
     "someone": "A member",
     "agent": "Agent",
     "model": "Model",
@@ -4639,6 +4657,12 @@
       "url": "asks before {agent} fetches this address:",
       "tool": "asks before {agent} uses this tool:",
       "other": "{agent} asks before it goes on:"
+    },
+    "wants": {
+      "path": "{agent} wants to edit this file:",
+      "command": "{agent} wants to run this command:",
+      "url": "{agent} wants to reach this address:",
+      "tool": "{agent} wants to call this tool:"
     },
     "forTask": {
       "edit": "Edit {pattern} in this task",
