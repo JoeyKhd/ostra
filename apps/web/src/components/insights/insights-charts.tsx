@@ -76,8 +76,10 @@ export const PrChart = ({ days, endsToday, narrow }: { readonly days: readonly P
   const lineForm = count > 60;
   const peak = Math.max(1, ...days.map((day) => Math.max(day.prsOpened, day.prsMerged)));
   const h = (n: number): number => (n === 0 ? 0 : Math.max(2, (n / peak) * plot));
-  const pairWidth = slot * 0.6;
-  const bar = lineForm ? pairWidth : Math.max(1, (pairWidth - 2) / 2);
+  // A day's pair fills most of its slot, the two bars almost touching (insights.webp).
+  const pairWidth = slot * 0.78;
+  const pairGap = 1.5;
+  const bar = lineForm ? pairWidth : Math.max(1, (pairWidth - pairGap) / 2);
   const step = lineForm || narrow ? 14 : 7;
   const tallest = days.reduce((best, day, i) => ((days[best]?.prsOpened ?? 0) < day.prsOpened ? i : best), 0);
   const totals = days.reduce((sum, day) => ({ opened: sum.opened + day.prsOpened, merged: sum.merged + day.prsMerged }), { opened: 0, merged: 0 });
@@ -117,7 +119,7 @@ export const PrChart = ({ days, endsToday, narrow }: { readonly days: readonly P
           const today = endsToday && i === count - 1;
           const x0 = i * slot + (slot - pairWidth) / 2;
           const opacity = today ? 0.5 : 1;
-          const mergedX = lineForm ? x0 : x0 + bar + 2;
+          const mergedX = lineForm ? x0 : x0 + bar + pairGap;
           const labelHere = !lineForm && !empty && (i === tallest || i === count - 1) && day.prsOpened > 0;
           // Today's bars are at half opacity; its count over them stays whole (F-081: text at 4.5:1).
           return (
