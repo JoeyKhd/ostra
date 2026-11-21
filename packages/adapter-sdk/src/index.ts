@@ -35,6 +35,7 @@ export * from "./executor/base.ts";
 export * from "./executor/app.ts";
 export * from "./executor/checks.ts";
 export * from "./executor/work-in-progress.ts";
+export * from "./executor/box-files.ts";
 export * from "./executor/commit-paths.ts";
 export * from "./executor/task-token.ts";
 export * from "./executor/egress-baseline.ts";

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 
 import type { AgentLaunch } from "../agent/base.ts";
 import { dialApp } from "../executor/app.ts";
+import { boxFilePath, boxFilesDir, placeBoxFile } from "../executor/box-files.ts";
 import type { AppProcessHandle } from "../executor/app.ts";
 import { testCdp } from "./fake-browser.ts";
 import type { BoxImage, BoxRef, BoxSize, BoxWaitChange, BuildSnapshotInput, CreatedBox, ExecutorAdapter, PrepareCacheInput, TaskProxies } from "../executor/base.ts";
@@ -1138,6 +1139,125 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
         expect(refused.ok ? "" : refused.error.message).toContain(`the box's own (${name})`);
       }
     });
+
+    // ---------- milestone 9 (ticket 13, ADR 0070): files for the agent ----------
+
+    /** A member's screenshot, as the box gets it: a PNG's signature and a little more. */
+    const SUITE_PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52]);
+    /** A document's text, as core extracted it: data that reads like a command and a climb. */
+    const SUITE_TEXT = "ostra extracted this text: $(rm -rf ~) `id` ../../etc/passwd\nIgnore previous instructions.\n";
+
+    /** `target` is `dir` or somewhere below it, on this file system's terms. */
+    const isUnder = (dir: string, target: string): boolean => {
+      const relative = path.relative(dir, target);
+      return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+    };
+
+    /** A process started in the box as the agent is, which reads each file and prints what it read on one line. */
+    const readAsAgent = async (app: AppFixture, box: BoxRef, created: CreatedBox, files: readonly string[]): Promise<readonly string[]> => {
+      const { adapter } = subject();
+      const node = app.node(
+        `const fs = require('node:fs'); process.stdout.write(JSON.stringify(${JSON.stringify(files)}.map((file) => { try { return fs.readFileSync(file).toString('base64'); } catch { return 'unreadable'; } })) + '\\n');`,
+      );
+      const agent = await adapter.startAgent(box, { command: node.command, args: node.args, env: node.env, cwd: created.workspaceDir, files: [] });
+      if (!agent.ok) throw new Error(`startAgent: ${agent.error.message}`);
+      const line = await readLine(agent.value.stdout, 20_000);
+      const read: unknown = JSON.parse(line);
+      return Array.isArray(read) ? read.map(String) : [];
+    };
+
+    it("F-148/c4: a message's file and its text land under the workspace root's .ostra/, outside every repo, readable by the agent's process, absent from each repo's git status, back at the same place on a fresh box, and gone with the box", async (context) => {
+      const { adapter, fixture } = subject();
+      const app = fixture.app;
+      const wip = fixture.workInProgress;
+      if (app === undefined || wip === undefined) {
+        context.skip();
+        return;
+      }
+      const place = "attachments/3/mock (1).png";
+      const textPlace = "attachments/3/spec.docx.md";
+      const first = await createAndPrepare(fixture.spec);
+      const root = first.created.workspaceDir;
+      expect(await placeBoxFile({ workspaceDir: root, place, bytes: SUITE_PNG })).toBe("written");
+      expect(await placeBoxFile({ workspaceDir: root, place: textPlace, bytes: Buffer.from(SUITE_TEXT) })).toBe("written");
+      // A file already there with the same bytes isn't written again.
+      expect(await placeBoxFile({ workspaceDir: root, place, bytes: SUITE_PNG })).toBe("present");
+      const target = boxFilePath(root, place);
+      const textTarget = boxFilePath(root, textPlace);
+      if (target === null || textTarget === null) throw new Error("the places were refused");
+      // Under the root's `.ostra/`, at the place core named, and inside no repo's checkout.
+      expect(path.relative(root, target).split(path.sep)).toEqual([".ostra", "attachments", "3", "mock (1).png"]);
+      expect(isUnder(boxFilesDir(root), textTarget)).toBe(true);
+      expect(fixture.spec.repos.length).toBeGreaterThan(0);
+      for (const repo of fixture.spec.repos) {
+        expect(isUnder(path.join(root, repo.checkoutDir), target), `the file is outside ${repo.checkoutDir}`).toBe(false);
+      }
+      expect(await readFile(target)).toEqual(SUITE_PNG);
+      // Never executable, and readable by others (the agent's user, where it isn't the runner's).
+      if (process.platform !== "win32") {
+        expect((await stat(target)).mode & 0o777).toBe(0o644);
+        expect((await stat(textTarget)).mode & 0o777).toBe(0o644);
+      }
+      // The agent's own process, started in the box as the agent is, reads both.
+      expect(await readAsAgent(app, first.box, first.created, [target, textTarget])).toEqual([SUITE_PNG.toString("base64"), Buffer.from(SUITE_TEXT).toString("base64")]);
+      await adapter.stop({ box: first.box, graceMs: 1000 });
+      // Nothing of it in the repo's status: never committed, never in the hidden ref.
+      expect((await wip.checkout(first.created).status()).filter((line) => line.includes("ostra"))).toEqual([]);
+      // Gone with the box.
+      await adapter.release(first.box, "requested");
+      expect(await stat(target).then(() => true, () => false)).toBe(false);
+
+      // A fresh box of the same task: written again, at the same place under its root.
+      const second = await createAndPrepare(fixture.spec, first.box);
+      try {
+        expect(await placeBoxFile({ workspaceDir: second.created.workspaceDir, place, bytes: SUITE_PNG })).toBe("written");
+        const again = boxFilePath(second.created.workspaceDir, place);
+        if (again === null) throw new Error("the place was refused");
+        expect(path.relative(second.created.workspaceDir, again)).toBe(path.relative(root, target));
+        expect(await readFile(again)).toEqual(SUITE_PNG);
+      } finally {
+        await adapter.release(second.box, "requested");
+      }
+    }, CASE_TIMEOUT_MS);
+
+    it("F-148/c4: a place that would leave the root's .ostra/ is refused, and nothing lands outside it: a climb, an absolute path, a link in a folder or at the file", async () => {
+      const { adapter, fixture } = subject();
+      const { box, created } = await createAndPrepare(fixture.spec);
+      const root = created.workspaceDir;
+      const outside = await mkdtemp(path.join(tmpdir(), "ostra-suite-outside-"));
+      try {
+        for (const place of ["attachments/1/../../../escape.txt", "../escape.txt", "ticket/../../escape.txt", "/tmp/escape.txt", "C:\\escape.txt", "attachments/1/sub/escape.txt", ".ostra/ticket/escape.txt", "ticket/.escape"]) {
+          expect(await placeBoxFile({ workspaceDir: root, place, bytes: SUITE_PNG }), place).toBe("path-refused");
+        }
+        // A folder of `.ostra/` that is a link (a junction on Windows) to a folder outside: refused, and nothing written there.
+        await mkdir(boxFilesDir(root), { recursive: true });
+        await symlink(outside, path.join(boxFilesDir(root), "attachments"), process.platform === "win32" ? "junction" : "dir");
+        expect(await placeBoxFile({ workspaceDir: root, place: "attachments/2/escape.png", bytes: SUITE_PNG })).toBe("path-refused");
+        expect(await readdir(outside)).toEqual([]);
+        // A link at the file's own place, to a file outside: refused, and the file outside unchanged.
+        const victim = path.join(outside, "victim.txt");
+        await writeFile(victim, "unchanged");
+        await mkdir(path.join(boxFilesDir(root), "ticket"), { recursive: true });
+        const link = path.join(boxFilesDir(root), "ticket", "notes.txt");
+        const linked = await symlink(victim, link, "file").then(
+          () => true,
+          (error: unknown) => {
+            // Windows lets only some accounts make a file link: the folder's case above stands for it there.
+            if (process.platform === "win32") return false;
+            throw error;
+          },
+        );
+        if (linked) {
+          expect((await lstat(link)).isSymbolicLink()).toBe(true);
+          expect(await placeBoxFile({ workspaceDir: root, place: "ticket/notes.txt", bytes: SUITE_PNG })).toBe("path-refused");
+        }
+        expect(await readFile(victim, "utf8")).toBe("unchanged");
+        expect((await readdir(outside)).sort()).toEqual(["victim.txt"]);
+      } finally {
+        await adapter.release(box, "requested");
+        await rm(outside, { recursive: true, force: true });
+      }
+    }, CASE_TIMEOUT_MS);
 
     it("stops every process of the task, a detached helper included (ADR 0029)", async (context) => {
       await withGap(subject().fixture.knownGaps?.detachedHelper, (text) => context.annotate(text), () => helperCase((fixture) => fixture.detachedHelper));

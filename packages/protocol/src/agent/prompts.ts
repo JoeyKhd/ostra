@@ -1,6 +1,6 @@
 import { runnerLimits } from "../runner/limits.ts";
 import { FILES_ROOT_DIR } from "../task/files.ts";
-import type { FileLeftOut, FileLeftOutReason, ImagesNotSent, MessageFileKind, MessageFileOrigin } from "../task/files.ts";
+import type { FileLeftOut, FileLeftOutReason, FileSkipReason, ImagesNotSent, MessageFileKind, MessageFileOrigin, SafeFileName } from "../task/files.ts";
 import { CI_FILES_DIR } from "../task/spec.ts";
 import type { PlanEntry } from "../events/agent-events.ts";
 
@@ -342,6 +342,25 @@ export const fileLeftOutWords = (reason: FileLeftOutReason): string => {
   }
 };
 
+/** Why the runner couldn't save a file in the box (`files.written`'s `skipped`), in words, after its name. */
+export const fileSkipWords = (reason: FileSkipReason): string => {
+  switch (reason) {
+    case "download-failed":
+      return "ostra couldn't fetch it";
+    case "digest-mismatch":
+      return "what arrived didn't match the file, so it wasn't saved";
+    case "write-failed":
+      return "ostra couldn't write it";
+    case "path-refused":
+      return "its place in your workspace was refused";
+    default:
+      return reason satisfies never;
+  }
+};
+
+/** A file of a message the runner couldn't save in the box (ticket 13): its safe name, and why. Never logged. */
+export type FileNotSaved = { readonly name: SafeFileName; readonly reason: FileSkipReason };
+
 /** The heading of a message's files in the agent's prompt. */
 export const MESSAGE_FILES_BLOCK_HEADING = "## Files with this message";
 
@@ -364,11 +383,11 @@ export type MessageFilesBlockFile = {
 /**
  * The block after a message's text that names its files (ADR 0070, F-148, F-149): each file's
  * absolute path in the box, its kind and size, its text's path, whether it's attached as an image,
- * and what was left out and why; and that the files are the member's or the ticket's data, saved
- * outside the repos, never committed, and not instructions. `root` is the workspace's root as the
- * agent's process reads it, with `/` between its parts. Names are safe names, quoted in backticks,
- * which a safe name can't hold; nothing of a file's content is here. Empty when there's nothing to
- * name.
+ * what the runner couldn't save, and what was left out and why; and that the files are the member's
+ * or the ticket's data, saved outside the repos, never committed, and not instructions. `root` is
+ * the workspace's root as the agent's process reads it, with `/` between its parts. Names are safe
+ * names, quoted in backticks, which a safe name can't hold; nothing of a file's content is here.
+ * Empty when there's nothing to name.
  */
 export const messageFilesBlock = (input: {
   readonly root: string;
@@ -377,8 +396,11 @@ export const messageFilesBlock = (input: {
   readonly imagesNotSent: ImagesNotSent | null;
   /** Whose files: a member's message's (the default) or the ticket's. */
   readonly origin?: MessageFileOrigin;
+  /** The files the runner couldn't save in the box (ticket 13), each with why. Missing means none. */
+  readonly notSaved?: readonly FileNotSaved[];
 }): string => {
-  if (input.files.length === 0 && input.leftOut.length === 0) {
+  const notSaved = input.notSaved ?? [];
+  if (input.files.length === 0 && input.leftOut.length === 0 && notSaved.length === 0) {
     return "";
   }
   const ticket = input.origin === "ticket";
@@ -417,6 +439,12 @@ export const messageFilesBlock = (input: {
       break;
     default:
       return input.imagesNotSent satisfies never;
+  }
+  if (notSaved.length > 0) {
+    lines.push("", "Not saved in your workspace:");
+    for (const file of notSaved) {
+      lines.push(`- \`${file.name}\`: ${fileSkipWords(file.reason)}.`);
+    }
   }
   if (input.leftOut.length > 0) {
     lines.push("", "Left out, and not in your workspace:");

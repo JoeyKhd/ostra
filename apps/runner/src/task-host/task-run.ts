@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { baseEnv } from "@ostra/adapter-executor-host";
-import { adapterError, GIT_GUARD_ENV_NAMES, gitGuardEnv, hideRepoAgentConfig, ok, shadowedRepoSkills, toApprovalOptions, unknownModelLimits } from "@ostra/adapter-sdk";
+import { adapterError, GIT_GUARD_ENV_NAMES, gitGuardEnv, hideRepoAgentConfig, ok, shadowedRepoSkills, textPrompt, toApprovalOptions, unknownModelLimits } from "@ostra/adapter-sdk";
 import type {
   AdapterResult,
   AgentAdapter,
   AgentIo,
   AgentLaunch,
+  AgentPromptInput,
   AgentProcess,
   AppPortReach,
   HiddenRepoConfig,
@@ -112,6 +113,8 @@ import type { ServerLink } from "./server-link.ts";
 import { allowOnce, decidePermission, rejectOnce, TASK_RULE_NAME } from "./permission-decision.ts";
 import { loadSessionArchive, saveSessionArchive } from "./session-archive.ts";
 import { writeCiFiles, writeTicketFiles } from "./ticket-files.ts";
+import { createMessageFiles, filesWrittenOf } from "./message-files.ts";
+import type { PromptMessage, PromptMessageFiles } from "./message-files.ts";
 import type { ArchiveContext } from "./session-archive.ts";
 import { writeSkills } from "./skills.ts";
 import { commandInBox } from "./stdio-command.ts";
@@ -468,8 +471,11 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   let credentials: TaskCredentials | undefined;
   let ending: Ending | undefined;
   const endingSignal = new AbortController();
-  /** Messages for the next turn, each with whether it's an automatic round's (minor 5, F-101). Never logged. */
-  const steers: { readonly text: string; readonly automatic: boolean }[] = [];
+  /**
+   * Messages for the next turn, each with whether it's an automatic round's (minor 5, F-101), and
+   * its files (minor 8, F-148). Never logged.
+   */
+  const steers: { readonly text: string; readonly automatic: boolean; readonly files: PromptMessageFiles | null }[] = [];
   /** Whether the running turn is an automatic round (F-101, ADR 0041): its questions get the neutral reply. */
   let turnAutomatic = false;
   /** Whether the text `takeQueued` last gave is an automatic round's only: no person's message is in it. */
@@ -509,8 +515,10 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   let effortHeld = false;
   /** One change at a time, in order: a change while idle and the next prompt never interleave. */
   let effortQueue: Promise<void> = Promise.resolve();
-  /** A reopen's pending messages, each a turn of its own, in order (F-047). Never logged. */
-  const pending: string[] = [];
+  /** A reopen's pending messages, each a turn of its own, in order (F-047), with its files (minor 8). Never logged. */
+  const pending: PromptMessage[] = [];
+  /** Milestone 9 (ticket 13, F-148): the messages' files in the box, and the prompts that name them. */
+  const messageFiles = createMessageFiles({ link: deps.link, taskId: dispatch.taskId, leaseEpoch: dispatch.leaseEpoch, logger: log });
   /**
    * Whether the session's first turn is an automatic round (F-101, minor 5): the spec's `automatic`,
    * which a box's sidecar reads as the runner does, or the dispatch's.
@@ -1154,8 +1162,31 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
 
   // ---------- one turn ----------
 
+  /**
+   * Milestone 9 (ticket 13, F-148, ADR 0070): what the agent gets for a prompt's or a steer's
+   * messages: their files written into the box first, each message's text then the block naming
+   * them, and the images core marked when the session takes images. `files.written` goes up when a
+   * message carried files, before the prompt or the steer reaches the agent.
+   */
+  const promptInputOf = async (messages: readonly PromptMessage[], currentSpec: TaskSpec, runningAgent: AgentAdapter, runningSession: AgentSession): Promise<AgentPromptInput> => {
+    const dirs = dirsCache;
+    if (dirs === undefined) {
+      return textPrompt(messages.map((message) => message.text).filter((text) => text !== "").join("\n\n"));
+    }
+    const built = await messageFiles.prompt({
+      workspaceDir: dirs.workspaceDir,
+      messages,
+      sessionTakesImages: runningAgent.promptsImages(runningSession),
+      modelTakesImages: (currentSpec.agent.inputModalities ?? []).includes("image"),
+    });
+    if (built.written !== null && channel?.supports("files.written") === true) {
+      await emit(built.written);
+    }
+    return built.input;
+  };
+
   const runTurn = async (
-    text: string,
+    messages: readonly PromptMessage[],
     currentSpec: TaskSpec,
     automatic = false,
   ): Promise<{ readonly crashed: string | null; readonly turnId: TurnId; readonly stopReason: StopReason | null }> => {
@@ -1195,7 +1226,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     );
     timer.unref();
     try {
-      const result = await promptTurn(text, turnId, runningAgent, runningSession, agentProcess);
+      const input = await promptInputOf(messages, currentSpec, runningAgent, runningSession);
+      const result = await promptTurn(input, turnId, runningAgent, runningSession, agentProcess);
       return { ...result, turnId };
     } finally {
       clearTimeout(timer);
@@ -1209,7 +1241,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   };
 
   const promptTurn = async (
-    text: string,
+    input: AgentPromptInput,
     turnId: TurnId,
     runningAgent: AgentAdapter,
     runningSession: AgentSession,
@@ -1220,7 +1252,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     const modeOption = channel?.supports("plan.proposed") === true ? { mode } : {};
     // Minor 3 (F-137): and the level it runs at, which a minor-2 peer's codec drops.
     const effortOption = effortNow.adjustedFrom === undefined ? { effort: effortNow.level } : { effort: effortNow.level, adjustedFrom: effortNow.adjustedFrom };
-    const prompted = runningAgent.prompt(runningSession, turnId, { text, images: [] }, { ...modeOption, ...effortOption }).then((result) => ({ kind: "prompted" as const, result }));
+    const prompted = runningAgent.prompt(runningSession, turnId, input, { ...modeOption, ...effortOption }).then((result) => ({ kind: "prompted" as const, result }));
     const within = <T>(promise: Promise<T>, ms: number): Promise<T | null> =>
       Promise.race([
         promise,
@@ -1492,18 +1524,24 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     return { pushError: pushed.ok ? null : pushed.error };
   };
 
-  /** The next turn's prompt: a reopen's pending message, one at a time, then the messages queued while a turn ran. */
-  const takeQueued = (): string | undefined => {
+  /** The spec's prompt as a session's first turn, with the first prompt's files (minor 8, `promptFiles`). */
+  const specPrompt = (taskSpec: TaskSpec): readonly PromptMessage[] => [{ text: taskSpec.prompt, files: taskSpec.promptFiles ?? null }];
+
+  /**
+   * The next turn's prompt: a reopen's pending message, one at a time, then the messages queued
+   * while a turn ran, each with its files (minor 8), which the turn writes into the box and names.
+   */
+  const takeQueued = (): readonly PromptMessage[] | undefined => {
     queuedAutomatic = false;
     // The runner's own prompt first: a deny's re-prompt answers the turn the deny ended.
     if (ownPrompt !== undefined) {
       const own = ownPrompt;
       ownPrompt = undefined;
-      return own;
+      return [{ text: own, files: null }];
     }
     const message = pending.shift();
     if (message !== undefined) {
-      return message;
+      return [message];
     }
     if (steers.length === 0) {
       return undefined;
@@ -1511,15 +1549,15 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     // F-101: a turn is automatic only when every message in it is an automatic round's; one from a person makes it theirs.
     const taken = steers.splice(0);
     queuedAutomatic = taken.every((steer) => steer.automatic);
-    return taken.map((steer) => steer.text).join("\n\n");
+    return taken.map((steer) => ({ text: steer.text, files: steer.files }));
   };
 
   /**
-   * Between turns: the next turn's text, or `undefined` once the session is ending. The idle timer
+   * Between turns: the next turn's messages, or `undefined` once the session is ending. The idle timer
    * runs while it waits (F-096): `limits.idleMinutes` with no new turn, and the session ends. A new
    * turn before then starts the timer again the next time the session waits.
    */
-  const nextTurn = async (taskSpec: TaskSpec): Promise<string | undefined> => {
+  const nextTurn = async (taskSpec: TaskSpec): Promise<readonly PromptMessage[] | undefined> => {
     const disarm = idleAfter(idleMs(taskSpec), () => {
       log.info("the session was idle for its limit: ending it", { idleMinutes: taskSpec.limits.idleMinutes ?? null });
       end({ kind: "idle" });
@@ -1563,13 +1601,18 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   /** How the session is ending, read fresh: commands end it between awaits. */
   const endingNow = (): Ending | undefined => ending;
 
+  /** Whether a turn of this session still runs, read fresh: a steer's files are written across awaits. */
+  const stillSteerable = (into: AgentSession): boolean => turnRunning && session === into && ending === undefined;
+
   /** Milestone 2's session: turn after turn, the work saved after each, until the session ends. */
   const runAcrossTurns = async (taskSpec: TaskSpec): Promise<void> => {
-    // A new or rebuilt session starts with the spec's prompt (the rebuild template for `rebuilt`); a
-    // resumed or restored one carries on from its own history, with the pending messages.
-    const opening = restored === undefined || restored.origin === "rebuilt" ? taskSpec.prompt : takeQueued();
+    // A new or rebuilt session starts with the spec's prompt (the rebuild template for `rebuilt`),
+    // with the first prompt's files (minor 8); a resumed or restored one carries on from its own
+    // history, with the pending messages, each with its own files.
+    const opening = restored === undefined || restored.origin === "rebuilt" ? specPrompt(taskSpec) : takeQueued();
     // F-063: a plan turn's prompt is the plan-mode preamble, then the task's own.
-    let next: string | undefined = opening !== undefined && mode === "plan" && restored === undefined ? planTurnPrompt(opening) : opening;
+    let next: readonly PromptMessage[] | undefined =
+      opening !== undefined && mode === "plan" && restored === undefined ? opening.map((message, index) => (index === 0 ? { ...message, text: planTurnPrompt(message.text) } : message)) : opening;
     // F-101 (minor 5): an automatic round that starts a fresh session says so in the spec (and the dispatch).
     let automaticNext = firstTurnAutomatic(taskSpec) || queuedAutomatic;
     while (ending === undefined) {
@@ -1896,13 +1939,14 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     const step = acrossTurns ? (taskSpec.restore?.origin ?? "new") : "new";
     if (step !== "new") {
       restored = { origin: step === "resumed" ? "rebuilt" : step, hiddenRef: "none", previousBox: undefined, fallbackReason: undefined, resumeId: undefined };
-      pending.push(...(taskSpec.restore?.pendingMessages ?? []).map((message) => message.text));
+      pending.push(...(taskSpec.restore?.pendingMessages ?? []).map((message) => ({ text: message.text, files: message.files ?? null })));
     }
     if (step === "resumed") {
       const resumed = await resumeKeptBox(taskSpec, proxies);
       if (resumed.ok) {
         restored = { origin: "resumed", hiddenRef: "none", previousBox: "kept", fallbackReason: undefined, resumeId: resumed.agentSessionId };
         await placeTicketFiles(taskSpec);
+        await placeTaskFiles(taskSpec);
         return { ok: true, spec: taskSpec };
       }
       fallBack(resumed.reason);
@@ -1969,6 +2013,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       await restoreOntoFreshBox(taskSpec);
     }
     await placeTicketFiles(taskSpec);
+    await placeTaskFiles(taskSpec);
     return { ok: true, spec: taskSpec };
   };
 
@@ -2164,6 +2209,25 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       logger: log,
     });
     await emit({ kind: "ticket.files_ready", files: [...placed.files], ...(placed.skipped.length > 0 ? { skipped: [...placed.skipped] } : {}) });
+  };
+
+  /**
+   * Milestone 9 (ticket 13, F-148, ADR 0070): every file of the task's messages (the spec's
+   * `files`) and its text, under the workspace root's `.ostra/` at its place, before the agent
+   * starts: on a fresh box every file comes back where the agent saw it, and a kept box keeps what
+   * it holds. `files.written` says what was written and skipped. A file that fails is skipped; the
+   * session starts anyway.
+   */
+  const placeTaskFiles = async (taskSpec: TaskSpec): Promise<void> => {
+    const files = taskSpec.files ?? [];
+    if (files.length === 0 || dirsCache === undefined) {
+      return;
+    }
+    messageFiles.learn(files);
+    const outcomes = await messageFiles.place(dirsCache.workspaceDir, files);
+    if (channel?.supports("files.written") === true) {
+      await emit(filesWrittenOf(outcomes, 0, null));
+    }
   };
 
   type AgentStart = { readonly ok: true } | { readonly ok: false; readonly error: string; readonly stage: "launch" | "session" };
@@ -2426,6 +2490,9 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       onQuestion,
       relaunch: (next) => relaunchAgent(taskSpec, next),
       ...(resumeAgentSessionId === undefined ? {} : { resumeAgentSessionId }),
+      // Milestone 9 (F-148): the model's inputs, as the launch gave them, so a prompt carries images
+      // only to a model that sees them (`promptsImages`). Absent: text only.
+      ...(taskSpec.agent.inputModalities === undefined ? {} : { modelInputModalities: taskSpec.agent.inputModalities }),
     });
     if (!opened.ok) {
       return failed(`the agent's session didn't start: ${opened.error.message}`, "session");
@@ -2639,7 +2706,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       return;
     }
     // Milestone 1 (a minor-0 spec): the turn, and any messages queued for after it.
-    let next: string | undefined = taskSpec?.prompt;
+    let next: readonly PromptMessage[] | undefined = taskSpec === undefined ? undefined : specPrompt(taskSpec);
     let automaticNext = taskSpec !== undefined && firstTurnAutomatic(taskSpec);
     while (ending === undefined && taskSpec !== undefined && next !== undefined) {
       await effortBeforePrompt();
@@ -2738,10 +2805,16 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       return { result: "done" };
     },
     steer: async (body) => {
+      // Minor 8 (ticket 13, F-148): the message's own files, written into the box before it reaches
+      // the agent, and named with it. IDs and counts only in the log.
+      const files: PromptMessageFiles | null =
+        body.files === undefined || body.files.length === 0 ? null : { fileIds: body.files.map((file) => file.fileId), images: body.images ?? [] };
+      messageFiles.learn(body.files ?? []);
+      const queued = { text: body.text, automatic: body.automatic === true, files };
       if (appOnly && session === undefined && ending === undefined) {
         // "Start the app" (Q300): a member's message is the lease's first turn; the agent starts for it.
-        log.info("a message for a box of the app alone: the agent starts for it", { delivery: body.delivery, intent: body.intent ?? "message", agentStarted });
-        steers.push({ text: body.text, automatic: body.automatic === true });
+        log.info("a message for a box of the app alone: the agent starts for it", { delivery: body.delivery, intent: body.intent ?? "message", agentStarted, files: files?.fileIds.length ?? 0 });
+        steers.push(queued);
         nudge();
         return { result: "accepted" };
       }
@@ -2749,10 +2822,10 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         return { result: "rejected", reason: "session-not-running" };
       }
       // Minor 2: the message's intent is core's `user.message` marker; the runner only names it, never the text.
-      log.info("a message for the session", { delivery: body.delivery, intent: body.intent ?? "message", turnRunning, mode });
+      log.info("a message for the session", { delivery: body.delivery, intent: body.intent ?? "message", turnRunning, mode, files: files?.fileIds.length ?? 0 });
       if (!turnRunning) {
         // Between turns (milestone 2): the message is the next turn.
-        steers.push({ text: body.text, automatic: body.automatic === true });
+        steers.push(queued);
         nudge();
         return { result: "accepted" };
       }
@@ -2761,11 +2834,20 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         if (body.automatic !== true) {
           turnAutomatic = false;
         }
-        const steered = await agent.steer(session, { text: body.text, images: [] });
+        const steering = agent;
+        const into = session;
+        const input = files === null || spec === undefined ? textPrompt(body.text) : await promptInputOf([queued], spec, steering, into);
+        if (!stillSteerable(into)) {
+          // The turn ended while the files were written: the message is the next turn, which names them again.
+          steers.push(queued);
+          nudge();
+          return { result: "accepted" };
+        }
+        const steered = await steering.steer(into, input);
         return steered.ok ? { result: "done" } : { result: "rejected", reason: steered.error.code };
       }
       // Queued for after the turn; an interrupt cancels the turn first.
-      steers.push({ text: body.text, automatic: body.automatic === true });
+      steers.push(queued);
       if (body.delivery === "interrupt") {
         await cancelTurn();
       }

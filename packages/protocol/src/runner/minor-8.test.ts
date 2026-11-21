@@ -498,6 +498,33 @@ describe("the fixed words (F-148/c4)", () => {
     }
   });
 
+  it("F-148/c8: a file the runner couldn't save is named by its safe name with why, in a block of its own even with no file saved", () => {
+    const block = messageFilesBlock({
+      root,
+      files: [],
+      leftOut: [],
+      imagesNotSent: null,
+      notSaved: [
+        { name: safeFileName("$(rm -rf ~).png", "png"), reason: "digest-mismatch" },
+        { name: safeFileName("spec.docx", null), reason: "download-failed" },
+        { name: safeFileName("notes.txt", null), reason: "write-failed" },
+        { name: safeFileName("../../etc/passwd", "bin"), reason: "path-refused" },
+      ],
+    });
+    expect(block.startsWith(MESSAGE_FILES_BLOCK_HEADING)).toBe(true);
+    expect(block).toContain(
+      [
+        "Not saved in your workspace:",
+        "- `_(rm -rf _).png`: what arrived didn't match the file, so it wasn't saved.",
+        "- `spec.docx`: ostra couldn't fetch it.",
+        "- `notes.txt`: ostra couldn't write it.",
+        "- `passwd.bin`: its place in your workspace was refused.",
+      ].join("\n"),
+    );
+    expect(block).not.toContain("Left out");
+    expect(messageFilesBlock({ root, files: [], leftOut: [], imagesNotSent: null, notSaved: [] })).toBe("");
+  });
+
   it("F-148: a file's kind and size in words, as the panel writes them", () => {
     expect(fileKindWords("image", "image/jpeg")).toBe("JPEG image");
     expect(fileKindWords("image", "image/webp")).toBe("WebP image");
