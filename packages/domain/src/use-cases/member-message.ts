@@ -1,7 +1,12 @@
 import type { Tx } from "@ostra/db";
 import { mapTask } from "@ostra/db";
-import { organizationIdSchema, projectIdSchema, runnerIdSchema, runnerLimits, sessionIdSchema } from "@ostra/protocol";
-import type { ClientMessageId, MessageIntent, SessionId, TaskId, TaskSeq } from "@ostra/protocol";
+import { memberIdSchema, organizationIdSchema, projectIdSchema, runnerIdSchema, runnerLimits, sessionIdSchema } from "@ostra/protocol";
+import type { ClientMessageId, MessageIntent, RunnerId, SessionId, TaskId, TaskSeq } from "@ostra/protocol";
+
+import { transitionLeasePurpose } from "../lifecycles/m8-previews.ts";
+import { taskFromColumns } from "../lifecycles/mapping.ts";
+import { transitionTask } from "../lifecycles/task.ts";
+import { resolveNeedsYouItemsInTx } from "./needs-you-items.ts";
 
 import { requireProjectAccess } from "../access.ts";
 import type { MemberScope } from "../access.ts";
@@ -71,6 +76,88 @@ const GOING_SESSION_STATES = ["starting", "running", "waiting", "idle"] as const
 const fitText = (text: string): string => (text.length <= runnerLimits.steerTextMaxChars ? text : text.slice(0, runnerLimits.steerTextMaxChars));
 
 /**
+ * A message while an `app` lease holds (milestone 8, Q300, ADR 0068): the turn starts in that box,
+ * on that lease and its session, as a reopen would carry on (the driver, the needs-you items, the
+ * task's move to `queued`, then `preparing` once the runner took the lease) but with no new box.
+ * The lease's purpose becomes `turn`, and the runner launches the agent at the `steer`. It passes
+ * the budget gate as any turn: a held one keeps the message for the release. `null`: the task
+ * can't carry on this way (a merged one), so the message reopens it as before.
+ */
+const turnOnAppLeaseInTx = async (
+  deps: SendMemberMessageDeps,
+  tx: Tx,
+  scope: MemberScope,
+  task: ReturnType<typeof mapTask>,
+  lease: { readonly id: string; readonly runnerId: RunnerId; readonly acceptedAt: Date | null; readonly appStartedByMemberId: string | null },
+  session: { readonly id: string; readonly agentProfileId: string | null; readonly modelId: string | null },
+  input: SendMemberMessageInput,
+  text: string,
+): Promise<SendMemberMessageResult | null> => {
+  const current = taskFromColumns(task);
+  if (!current.ok || !transitionTask(current.value, { type: "reopen" }).ok) {
+    return null;
+  }
+  const now = deps.clock.now();
+  const organizationId = organizationIdSchema.parse(scope.organizationId);
+  const projectId = projectIdSchema.parse(task.projectId);
+  const sessionId = sessionIdSchema.parse(session.id);
+  const message = { kind: "user.message", memberId: scope.memberId, clientMessageId: input.clientMessageId, text, delivery: "queued", intent: input.intent } as const;
+  const gate = await checkBudget(tx, {
+    organizationId,
+    projectId,
+    modelId: await sessionModelIdInTx(tx, organizationId, { agentProfileId: session.agentProfileId, modelId: session.modelId }),
+    origin: turnOriginOfIntent(input.intent),
+    now,
+  });
+  if (gate.kind === "held") {
+    const heldSeq = await appendServerEvent(tx, { organizationId, projectId, taskId: task.id, sessionId, at: now, event: message });
+    await holdTurnInTx(deps, tx, { organizationId, projectId, taskId: task.id, sessionId, held: gate, pendingMessageSeq: heldSeq, now, queued: false });
+    return { ok: true, delivery: "steer", sessionId, seq: heldSeq, duplicate: false, held: true };
+  }
+  // The lease's purpose: `app` becomes `turn` at the message, in the same box (`transitionLeasePurpose`).
+  const purpose = transitionLeasePurpose(
+    { purpose: "app", startedByMemberId: memberIdSchema.parse(lease.appStartedByMemberId ?? scope.memberId), at: now },
+    { type: "message", at: now },
+  );
+  if (purpose.ok) {
+    await tx.lease.update({ where: { id: lease.id }, data: { purpose: purpose.state.purpose, appStartedByMemberId: null } });
+  }
+  const moveDeps = { tx, notices: deps.notices, jobs: deps.jobs };
+  if (input.keepDriver !== true) {
+    await tx.task.update({ where: { id: task.id }, data: { driverMemberId: scope.memberId } });
+  }
+  await moveTaskInTx(moveDeps, task, { type: "reopen" });
+  if (lease.acceptedAt !== null) {
+    // The runner already took the box: the task is preparing it, and the turn's start makes it running.
+    await moveTaskInTx(moveDeps, mapTask(await tx.task.findUniqueOrThrow({ where: { id: task.id } })), { type: "runner_accepted" });
+  }
+  await resolveNeedsYouItemsInTx(
+    deps,
+    tx,
+    { taskId: task.id, reasonNotIn: ["restore_conflict", "files_outside_repos"] },
+    { state: "answered", at: new Date(now), byMemberId: scope.memberId },
+  );
+  const seq = await appendServerEvent(tx, { organizationId, projectId, taskId: task.id, sessionId, at: now, event: message });
+  await deps.outbox.enqueueInTx(tx, organizationId, lease.runnerId, {
+    kind: "steer",
+    body: { sessionId, clientMessageId: input.clientMessageId, text, delivery: "queue", intent: input.intent },
+    notAfter: now + runnerLimits.offerTimeoutMs,
+    task: { taskId: task.id, projectId },
+  });
+  await deps.audit.recordInTx(tx, {
+    organizationId,
+    projectId,
+    actor: { kind: "member", id: scope.memberId },
+    action: "task.reopened",
+    entity: "task",
+    entityId: task.id,
+    data: { sessionId, from: task.state, via: "app" },
+  });
+  await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: task.id });
+  return { ok: true, delivery: "steer", sessionId, seq, duplicate: false };
+};
+
+/**
  * Sends one member message in the caller's transaction. Takes the task's lock first, so the driver
  * read and the write commit together (ADR 0036's race): a take-over committed first makes the old
  * driver's send refused.
@@ -109,13 +196,20 @@ export const sendMemberMessageInTx = async (
   // Milestone 6 (ADR 0041, F-101): a person acted, so the automatic turns count from nothing again.
   await recordPersonActionInTx(tx, task.id, new Date(deps.clock.now()));
   const [lease, session] = await Promise.all([
-    tx.lease.findFirst({ where: { taskId: task.id, state: "active" }, select: { runnerId: true } }),
+    tx.lease.findFirst({ where: { taskId: task.id, state: "active" }, select: { id: true, runnerId: true, purpose: true, acceptedAt: true, appStartedByMemberId: true, boxId: true } }),
     tx.session.findFirst({
       where: { taskId: task.id, state: { in: [...GOING_SESSION_STATES] } },
       orderBy: { startedAt: "desc" },
-      select: { id: true, state: true, agentProfileId: true, providerId: true, modelId: true },
+      select: { id: true, state: true, agentProfileId: true, providerId: true, modelId: true, boxId: true },
     }),
   ]);
+  // Milestone 8 (Q300, ticket 19): a message while "Start the app"'s lease holds starts a turn in its box.
+  if (lease?.purpose === "app" && session?.boxId === lease.boxId) {
+    const turned = await turnOnAppLeaseInTx(deps, tx, scope, task, { ...lease, runnerId: runnerIdSchema.parse(lease.runnerId) }, session, input, text);
+    if (turned !== null) {
+      return turned;
+    }
+  }
   const going = (task.state === "running" || task.state === "needs_you") && lease !== null && session !== null;
   const origin = turnOriginOfIntent(input.intent);
   if (!going) {

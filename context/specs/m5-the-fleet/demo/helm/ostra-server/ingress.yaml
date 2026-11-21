@@ -282,6 +282,12 @@ spec:
               value: "https://ostra.example.com"
             - name: OSTRA_CORE_PUBLIC_URL
               value: "https://core.ostra.example.com"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: OSTRA_CORE_REPLICA_URL
+              value: "http://$(POD_IP):8787"
           readinessProbe:
             httpGet:
               path: /healthz

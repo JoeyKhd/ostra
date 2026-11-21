@@ -65,8 +65,11 @@ export type PreviewViewLifecycle =
   | { readonly state: "open"; readonly since: number; readonly lastHeartbeatAt: number }
   | { readonly state: "closed"; readonly at: number; readonly reason: PreviewViewCloseReason };
 
-/** Why a view closed: its viewer closed it, its heartbeats stopped, its link ended, or its box did. */
-export type PreviewViewCloseReason = "closed" | "no-heartbeat" | "link-ended" | "box-gone" | "refused";
+/**
+ * Why a view closed: its viewer closed it, its heartbeats stopped, its link ended, its box did, it
+ * was refused, or (ticket 19) its box passed the warm cap (`OSTRA_PREVIEW_WARM_MINUTES`) and idles out.
+ */
+export type PreviewViewCloseReason = "closed" | "no-heartbeat" | "link-ended" | "box-gone" | "refused" | "warm-cap";
 
 export type PreviewViewInput =
   /** The box's preview connection reached a replica, which wrote its presence. */

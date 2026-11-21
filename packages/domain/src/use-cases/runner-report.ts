@@ -2,7 +2,8 @@ import type { Logger } from "@ostra/adapter-sdk";
 import { Prisma, processContainmentToDb } from "@ostra/db";
 import type { Tx } from "@ostra/db";
 import { PROTOCOL_MINOR } from "@ostra/protocol";
-import type { ExecutorKind, ProcessContainment } from "@ostra/protocol";
+import { previewSupportSchema } from "@ostra/protocol";
+import type { ExecutorKind, PreviewSupport, ProcessContainment } from "@ostra/protocol";
 import { z } from "zod";
 
 import { runnerLabels } from "../fleet/labels.ts";
@@ -42,6 +43,11 @@ export type RunnerReportWithContainment = RunnerReport & {
   readonly processContainment?: ProcessContainment;
   readonly executor?: ExecutorKind;
   readonly capacity?: number;
+  /**
+   * Milestone 8 (protocol minor 7, F-141): what it can show of a preview, as `hello` or `status`
+   * said. Missing or `null`: it said nothing, and `isPreviewable` gives it no view.
+   */
+  readonly preview?: PreviewSupport | null;
 };
 
 /** A flat JSON object's text with its keys sorted: Postgres's `jsonb` keeps its own key order. */
@@ -70,6 +76,7 @@ export const recordRunnerReport = async (
       memoryMiB: true,
       capabilities: true,
       processContainment: true,
+      preview: true,
     },
   });
   if (row === null) {
@@ -93,6 +100,10 @@ export const recordRunnerReport = async (
   const containment = report.processContainment === undefined ? row.processContainment : processContainmentToDb[report.processContainment];
   const capabilities = canonical(report.capabilities);
   const capabilitiesChanged = canonical(row.capabilities) !== capabilities;
+  // Minor 7: a runner below it can show nothing, whatever an older row says.
+  const preview = report.minor >= 7 ? (report.preview ?? null) : null;
+  const kept = previewSupportSchema.safeParse(row.preview);
+  const previewChanged = canonical(kept.success ? kept.data : null) !== canonical(preview);
   const changed =
     row.executor !== executor ||
     row.capacity !== capacity ||
@@ -104,7 +115,8 @@ export const recordRunnerReport = async (
     row.cpuMillis !== cpuMillis ||
     row.memoryMiB !== memoryMiB ||
     row.processContainment !== containment ||
-    capabilitiesChanged;
+    capabilitiesChanged ||
+    previewChanged;
   const versionState = runnerVersionState(deps.server ?? { minor: PROTOCOL_MINOR, version: null }, { minor: report.minor, version: report.version });
   if (!changed) {
     return { ok: true, labels, droppedLabels: dropped, versionState };
@@ -123,6 +135,7 @@ export const recordRunnerReport = async (
       memoryMiB,
       processContainment: containment,
       capabilities: report.capabilities ?? Prisma.DbNull,
+      preview: preview ?? Prisma.DbNull,
     },
   });
   const grew =

@@ -1,6 +1,6 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import type { Db, Tx } from "@ostra/db";
-import { acceptOffer, admitQueued, dispatchTask, dispatchWaitColumns, goesToPersonalRunner, projectPoolsInTx, queueTask } from "@ostra/domain";
+import { acceptOffer, admitQueued, dispatchTask, dispatchWaitColumns, endAppLeaseInTx, goesToPersonalRunner, projectPoolsInTx, queueTask } from "@ostra/domain";
 import type { AgentEffortLevels, ChangeNotices, Clock, CommandOutbox, JobPayload, ReopenDispatchSettings } from "@ostra/domain";
 import type { JobHandler, Jobs } from "@ostra/jobs";
 import { onCurrentTask } from "@ostra/jobs";
@@ -96,10 +96,20 @@ const activeSessionOf = (tx: Tx, taskId: TaskId) =>
 /** An offer not accepted in time goes back to the queue (ADR 0034). */
 export const offerTimeoutHandler = (deps: DispatcherDeps): JobHandler<"task.offer-timeout"> =>
   onCurrentTask(deps.db, {
-    isCurrent: (task, payload) => task.leaseEpoch === payload.leaseEpoch && task.state === "queued",
+    // Milestone 8 (Q300): an `app` lease's task isn't queued; its offer times out all the same.
+    isCurrent: (task, payload) => task.leaseEpoch === payload.leaseEpoch,
     act: async (tx, task, context) => {
       const lease = await tx.lease.findFirst({ where: { taskId: task.id, epoch: context.payload.leaseEpoch, state: "active", acceptedAt: null } });
       if (lease === null) {
+        return;
+      }
+      if (lease.purpose === "app") {
+        // No requeue: the member starts the app again.
+        await endAppLeaseInTx(deps, tx, lease, "offer-timeout");
+        context.logger.info("app.offer-timed-out", { taskId: task.id, leaseEpoch: context.payload.leaseEpoch });
+        return;
+      }
+      if (task.state !== "queued") {
         return;
       }
       await tx.lease.update({ where: { id: lease.id }, data: { state: "ended", endedAt: new Date(deps.clock.now()), endReason: "offer-timeout" } });

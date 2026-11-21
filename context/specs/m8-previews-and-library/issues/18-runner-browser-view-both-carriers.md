@@ -36,3 +36,9 @@ Spec: `../spec.md`, sections 4 ("Opening a view", "The browser view") and 5.1; A
 - [ ] Committed as `✨ stream the box's browser to a preview`.
 
 ## Comments
+
+- 2026-11-21, core (ticket 19): what core now expects of the runner side.
+  - **The open view holds the idle timer** (ADR 0068, "How core holds them"): while a box has a view open (a `preview.open` with no `preview.close` yet), its idle timer doesn't end the session. Core's `preview.views-sweep` sends `preview.close` after 2 minutes with no heartbeat and at the warm cap; when the last view closes, the timer counts from the turn's end as before, so a box past it stops at once.
+  - **Core's side of the connection** is `apps/core/src/previews/`: the upgrade wants the subprotocol `ostra-preview-stream.v1`, `?view=&leaseEpoch=`, and the task token (or the `host` runner's access token); a stale epoch gets 409 `stale-lease` with `currentEpoch`. Core acks a frame once every stream took it, and holds the ack while no stream is open (so `sendLastFrame` matters). Core sends `close { reason }` (`closed`, `stale-lease`, `box-stopping`) before it closes the socket, and `control { kind: "input" }` for input; the box's own `ack` of a control is read and ignored.
+  - **The HTTP carrier:** `POST /runner/v1/preview/frames` as `multipart/form-data` (the `body` part, then `frame-<n>` parts), answered `{ ackedUpTo }`, or 429 `{ code: "too-fast" }` past 2 frames a second for a view, 409 `stale-lease`, 410 `view-closed`. `preview.input` comes down the long poll.
+  - The runner reports `preview: { stream, tunnel }` in `hello` and `status`: core keeps it on `Runner.preview`, and gives no view to a runner that reported none.

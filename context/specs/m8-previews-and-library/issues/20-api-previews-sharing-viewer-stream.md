@@ -38,3 +38,5 @@ Spec: `../spec.md`, sections 4 ("Opening a view", "A share") and 5.4; ADR 0068 (
 - [ ] Committed as `✨ add preview and sharing procedures`.
 
 ## Comments
+
+- 2026-11-21, core (ticket 19): the bodies to call are in `@ostra/domain` (`previews/views.ts`, `previews/start-app.ts`): `openView` (it takes `panelTokens`, `createPanelPreviewTokens(<the secrets key>)`, and the warm cap, and answers the view's panel token), `closeView` (it checks no caller: the router does), `heartbeatView`, `startApp` (`no-runner` and `runner-needs-upgrade` mean nothing was written). Core's routes are `panelPreviewPaths.stream(viewId)` and `.input(viewId)` on `OSTRA_CORE_INTERNAL_URL`, with `Authorization: Bearer <panel token>`. The stream is `application/octet-stream` records the pane reads with `createPanelStreamReader` (`@ostra/protocol`); relay it as it is. Input is `{ events }` (`panelPreviewInputBodySchema`), answered 204, or `{ error: { code } }` with `watch-only`, `forbidden`, `view-closed`, `not-connected`, `unauthorized`. A stream asked for before the box's connection arrives waits up to 10 s, then answers 409 `not-connected`.

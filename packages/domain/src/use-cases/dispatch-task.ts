@@ -2,7 +2,7 @@ import type { Logger } from "@ostra/adapter-sdk";
 import { apiFormatFromDb, mapModel, mapTask } from "@ostra/db";
 import type { Tx } from "@ostra/db";
 import { blobIdSchema, boxIdSchema, modelIdSchema, organizationIdSchema, projectIdSchema, runnerIdSchema, runnerLimits, sha256HexSchema } from "@ostra/protocol";
-import type { BlobRef, BoxId, CommandId, LeaseEpoch, OrganizationId, PoolId, RunnerId, TaskId } from "@ostra/protocol";
+import type { BlobRef, BoxId, CommandId, LeaseEpoch, MemberId, OrganizationId, PoolId, RunnerId, TaskId } from "@ostra/protocol";
 
 import type { JobPayload } from "../jobs.ts";
 import type { Ports } from "../ports.ts";
@@ -72,7 +72,17 @@ export type DispatchTaskDeps = Pick<Ports, "jobs" | "outbox" | "notices" | "cloc
   readonly personalSlots?: number;
   /** Milestone 5: the task's place in each pool's queue, from the admission's walk (`queued`'s place). */
   readonly places?: ReadonlyMap<PoolId, number>;
+  /**
+   * Milestone 8 (F-141, Q300, ticket 19): "Start the app". The lease's purpose is `app`: the box
+   * starts as for a reopen and launches no agent, so the dispatch passes no budget gate and no
+   * provider's hold or cap (it makes no model call), goes only to a runner at minor 7, and leaves
+   * the task's own state where it is (`startApp` holds the task's lock and calls this directly).
+   */
+  readonly app?: { readonly startedByMemberId: MemberId };
 };
+
+/** The runner minor that takes a dispatch with the purpose `app`, previews and app processes (protocol minor 7). */
+export const APP_MINOR = 7;
 
 /** The runner minor that reads each repo's own bot (F-136): a task across two Apps needs it. */
 export const SEVERAL_APPS_MINOR = 3;
@@ -254,12 +264,15 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
     return stale("no such task");
   }
   const task = mapTask(await tx.task.findUniqueOrThrow({ where: { id: input.taskId } }));
-  if (task.state !== "queued" || task.leaseEpoch + 1 !== input.leaseEpoch) {
+  // Milestone 8 (Q300): "Start the app" leaves the task in its state; it needs only the next epoch.
+  const app = deps.app;
+  if ((app === undefined && task.state !== "queued") || task.leaseEpoch + 1 !== input.leaseEpoch) {
     return stale("the task isn't waiting for this dispatch");
   }
   // A ticket task starts from its rendered ticket: `ticket.fetch-context` writes the prompt and
   // dispatches it. A requeue sweep that comes first would start the agent with no ticket at all.
-  if (task.source === "ticket" && task.prompt === null) {
+  // The app alone starts no agent.
+  if (app === undefined && task.source === "ticket" && task.prompt === null) {
     return stale("the ticket's prompt isn't rendered yet");
   }
   const session = await tx.session.findFirst({ where: { id: input.sessionId, taskId: task.id, state: "starting" } });
@@ -361,14 +374,16 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   // Milestone 4 (F-037, ADR 0055): the budget gate, in the task's lock, on the session's own model
   // row. A closed one leaves the task queued with its reason; the release (or the requeue sweep)
   // offers it again.
-  const budget = await checkBudget(tx, { organizationId: organization, projectId: project, modelId: modelIdSchema.parse(modelId), origin: "dispatch", now });
-  if (budget.kind === "held") {
+  // Milestone 8 (Q300): the app alone makes no model call, so neither gate applies to it; a message
+  // that later starts a turn in its box passes the budget gate as any turn does.
+  const budget = app === undefined ? await checkBudget(tx, { organizationId: organization, projectId: project, modelId: modelIdSchema.parse(modelId), origin: "dispatch", now }) : null;
+  if (budget?.kind === "held") {
     return noRunner(budgetWaitOf(budget));
   }
-  if (provider.dispatchHeldUntil !== null && provider.dispatchHeldUntil.getTime() > now) {
+  if (app === undefined && provider.dispatchHeldUntil !== null && provider.dispatchHeldUntil.getTime() > now) {
     return noRunner({ code: "provider-held", until: provider.dispatchHeldUntil.getTime() });
   }
-  if (provider.sessionsAtOnce !== null) {
+  if (app === undefined && provider.sessionsAtOnce !== null) {
     // The cap is the provider's, whichever project its sessions run in (F-088, F-135).
     const sameProvider = await tx.session.count({
       where: {
@@ -427,7 +442,8 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   // 2026-11-21 (F-021, ADR 0049 amended): a project that keeps the repos' own skills off goes only
   // to a runner at minor 6, the first that reads `agent.repoSkills`.
   const repoSkillsOff = (await tx.project.findFirst({ where: { id: task.projectId, organizationId: task.organizationId }, select: { repoSkills: true } }))?.repoSkills === false;
-  const minMinor = Math.max(runsAtLevel ? Math.max(profileMinor, EFFORT_MINOR) : profileMinor, kindMinor, repoSkillsOff ? REPO_SKILLS_OFF_MINOR : 0);
+  // Milestone 8 (Q300): a dispatch with the purpose `app` goes only to a runner at minor 7.
+  const minMinor = Math.max(runsAtLevel ? Math.max(profileMinor, EFFORT_MINOR) : profileMinor, kindMinor, repoSkillsOff ? REPO_SKILLS_OFF_MINOR : 0, app === undefined ? 0 : APP_MINOR);
   /**
    * Milestone 3's words when services are why (F-094): a services runner missing, when only runners
    * that can't start them are online in the same scope. Otherwise the choice's own reason.
@@ -673,7 +689,17 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
     data: { state: "ended", endedAt: new Date(now), endReason: "superseded" },
   });
   await tx.lease.create({
-    data: { organizationId, projectId, taskId: task.id, epoch: input.leaseEpoch, runnerId, boxId, state: "active" },
+    data: {
+      organizationId,
+      projectId,
+      taskId: task.id,
+      epoch: input.leaseEpoch,
+      runnerId,
+      boxId,
+      state: "active",
+      // Milestone 8 (Q300): the app alone, and who started it.
+      ...(app === undefined ? {} : { purpose: "app" as const, appStartedByMemberId: app.startedByMemberId }),
+    },
   });
   await tx.task.update({ where: { id: task.id }, data: { leaseEpoch: input.leaseEpoch, ...dispatchWaitColumns(null) } });
   await tx.session.update({ where: { id: session.id }, data: { boxId, origin: plan.step } });
@@ -688,6 +714,8 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
       ...(automaticRound === null ? {} : { automatic: true }),
       // Minor 4: the box's size and image; a minor-3 runner is never sent it (the outbox encodes down).
       ...(boxSize === null && image === null ? {} : { box: { size: boxSize, image } }),
+      // Minor 7 (Q300): start the app, and launch no agent.
+      ...(app === undefined ? {} : { purpose: "app" as const }),
     },
     notAfter: now + runnerLimits.offerTimeoutMs,
     task: { taskId: task.id, projectId },
@@ -699,6 +727,6 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
     { startAfterMs: runnerLimits.offerTimeoutMs },
   );
   await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: task.id });
-  deps.logger?.info("dispatch.offered", { taskId: task.id, runnerId, leaseEpoch: input.leaseEpoch, step: plan.step });
+  deps.logger?.info("dispatch.offered", { taskId: task.id, runnerId, leaseEpoch: input.leaseEpoch, step: plan.step, purpose: app === undefined ? "turn" : "app" });
   return { ok: true, runnerId, boxId, leaseEpoch: input.leaseEpoch, commandId: command.commandId };
 };

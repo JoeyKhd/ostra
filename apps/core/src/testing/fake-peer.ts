@@ -69,6 +69,8 @@ export type ConnectOptions = {
   readonly peer?: Hello["peer"];
   /** Minor 4: the executor hello names. Left out by default, as a minor-3 runner does. */
   readonly executor?: NonNullable<Hello["executor"]>;
+  /** Minor 7 (milestone 8): what the runner can show of a preview. Left out by default: it reports none. */
+  readonly preview?: NonNullable<Hello["preview"]>;
 };
 
 export const helloFrame = (runnerId: RunnerId, options: ConnectOptions = {}): Hello => ({
@@ -81,6 +83,7 @@ export const helloFrame = (runnerId: RunnerId, options: ConnectOptions = {}): He
   lastCommandSeq: options.lastCommandSeq ?? 0,
   sessions: options.sessions ?? [],
   ...(options.executor === undefined ? {} : { executor: options.executor }),
+  ...(options.preview === undefined ? {} : { preview: options.preview }),
 });
 
 /** Opens the WebSocket; rejects with the HTTP status when the upgrade is refused. */

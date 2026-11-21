@@ -34,3 +34,5 @@ Spec: `../spec.md`, sections 4 ("A tunnel") and 5.1; ADR 0068 ("`ostra preview`"
 - [ ] Committed as `✨ add tunnels through core for the CLI`.
 
 ## Comments
+
+- 2026-11-21, core (ticket 19): the seam for the tunnel is `apps/core/src/previews/previews.ts`'s upgrade, which refuses a view whose mode isn't `stream` (404) until this ticket takes the `ostra-preview-tunnel.v1` subprotocol there. The view's presence (`PreviewView.replicaUrl`), the replica signature (`x-ostra-replica-signature`, taken alone on a forwarded request) and the lease check (`checkBoxLease`) are shared; `forward` streams a request on to the holding replica.

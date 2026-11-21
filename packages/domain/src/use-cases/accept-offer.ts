@@ -14,6 +14,7 @@ import {
 import { z } from "zod";
 
 import { dispatchWaitColumns } from "../dispatch-wait.ts";
+import { endAppLeaseInTx } from "../previews/app-lease.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
 import { moveTaskInTx } from "./moves.ts";
@@ -31,7 +32,8 @@ export const acceptOfferInputSchema = z.strictObject({
 export type AcceptOfferInput = z.infer<typeof acceptOfferInputSchema>;
 
 export type AcceptOfferResult = UseCaseResult<
-  { readonly outcome: "accepted" | "requeued" },
+  /** `ended`: an `app` lease declined (milestone 8): it ends, with no requeue. */
+  { readonly outcome: "accepted" | "requeued" | "ended" },
   "unknown-command" | "not-a-dispatch" | "stale"
 >;
 
@@ -69,10 +71,20 @@ export const acceptOffer: AcceptOffer = async (deps, input) => {
         return { ok: true, outcome: "accepted" };
       }
       await tx.lease.update({ where: { id: lease.id }, data: { acceptedAt: new Date(deps.clock.now()) } });
+      if (lease.purpose === "app") {
+        // Milestone 8 (Q300): the app alone leaves the task's state where it was; the pane shows the box starting.
+        await deps.notices.emitInTx(tx, { organizationId: organizationIdSchema.parse(task.organizationId), projectId: projectIdSchema.parse(task.projectId), entity: "task", entityId: task.id });
+        return { ok: true, outcome: "accepted" };
+      }
       await moveTaskInTx(moveDeps, task, { type: "runner_accepted" });
       return { ok: true, outcome: "accepted" };
     }
     case "rejected": {
+      if (lease.purpose === "app") {
+        // Milestone 8 (Q300): no requeue: the member starts the app again.
+        await endAppLeaseInTx(deps, tx, lease, "rejected");
+        return { ok: true, outcome: "ended" };
+      }
       // The lease ends and the task goes back to the queue, for the next epoch's dispatch.
       await tx.lease.update({ where: { id: lease.id }, data: { state: "ended", endedAt: new Date(deps.clock.now()), endReason: "rejected" } });
       await tx.box.updateMany({ where: { id: lease.boxId, state: "creating" }, data: { state: "failed", failedReason: "the runner declined the offer" } });

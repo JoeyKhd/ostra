@@ -103,6 +103,9 @@ import {
 } from "./snapshots/snapshots.ts";
 import type { SnapshotDeps } from "./snapshots/snapshots.ts";
 import { createAutomationWebhooks } from "./webhooks/automation-webhooks.ts";
+import { createPreviews } from "./previews/previews.ts";
+import { replicaUrlFor } from "./previews/replica-url.ts";
+import { codesSweepHandler, ensurePreviewSweepSchedules, viewsSweepHandler } from "./previews/sweeps.ts";
 import { createWebhookInbox, parseBlockedWebhooks } from "./webhooks/inbox.ts";
 import { webhookProcessHandler } from "./webhooks/process.ts";
 import type { WebhookHandlers } from "./webhooks/process.ts";
@@ -713,9 +716,36 @@ export const startCore = async (
     });
   }, TICKET_DRAIN_MS);
   drain.unref();
-  const server = createCoreServer({ routes: [gateway.handleRequest, taskEndpoints, memoryEndpoints, reviewEndpoints, environmentProposalEndpoints, draftEndpoints, snapshotEndpoints, registryEndpoints, blobEndpoints, panelBlobEndpoints, inbox.handle, automationWebhooks.handle], upgrade: gateway.handleUpgrade, logger });
+  // Milestone 8 (ticket 19, F-141, ADR 0068): the preview connection, the panel's stream and input,
+  // forwarding between replicas, and the views' sweeps. This replica's address is known once it listens.
+  let replicaUrl = settings.previews.replicaUrl ?? "";
+  const previews = createPreviews({
+    db,
+    outbox: postgresCommandOutbox,
+    notices,
+    clock: systemClock,
+    logger,
+    tokens: gateway.context.tokens,
+    taskTokens: gateway.context.taskTokens,
+    secret: () => loadSecretsKey(settings),
+    replicaUrl: () => replicaUrl,
+  });
+  const previewSweepDeps = { db, outbox: postgresCommandOutbox, notices, clock: systemClock, logger, settings: settings.previews };
+  await jobs.work("preview.views-sweep", viewsSweepHandler(previewSweepDeps), { localConcurrency: 1 });
+  await jobs.work("preview.codes-sweep", codesSweepHandler(previewSweepDeps), { localConcurrency: 1 });
+  const server = createCoreServer({
+    routes: [previews.handleRequest, gateway.handleRequest, taskEndpoints, memoryEndpoints, reviewEndpoints, environmentProposalEndpoints, draftEndpoints, snapshotEndpoints, registryEndpoints, blobEndpoints, panelBlobEndpoints, inbox.handle, automationWebhooks.handle],
+    upgrade: (request, socket, head) => {
+      if (!previews.handleUpgrade(request, socket, head)) {
+        gateway.handleUpgrade(request, socket, head);
+      }
+    },
+    logger,
+  });
   await gateway.start();
   const port = await server.listen(settings.corePort, options.host);
+  replicaUrl = replicaUrlFor(settings.previews.replicaUrl, port);
+  previews.start();
 
   // The bootstrap join token waits for the first organization (a fresh install has none yet).
   let bootstrapTimer: ReturnType<typeof setTimeout> | undefined;
@@ -747,6 +777,9 @@ export const startCore = async (
     });
     await ensureStallSweepSchedule(jobs).catch((error: unknown) => {
       logger.warn("schedules.failed", { job: "session.stall-sweep", error: error instanceof Error ? error.name : "unknown" });
+    });
+    await ensurePreviewSweepSchedules(jobs).catch((error: unknown) => {
+      logger.warn("schedules.failed", { job: "preview.views-sweep", error: error instanceof Error ? error.name : "unknown" });
     });
     await ensureSnapshotNightlySchedule(jobs, settings.snapshotNightlyHour).catch((error: unknown) => {
       logger.warn("schedules.failed", { job: "snapshot.nightly", error: error instanceof Error ? error.name : "unknown" });
@@ -785,6 +818,7 @@ export const startCore = async (
       clearInterval(drain);
       clearInterval(trackerTimer);
       clearInterval(scheduleTimer);
+      await previews.stop();
       await gateway.stop();
       await server.close();
       ingest.stop();

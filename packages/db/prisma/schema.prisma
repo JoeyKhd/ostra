@@ -689,6 +689,10 @@ model Runner {
   drainedByMemberId  String?
   /// When it was last offered a task, so the one offered least recently wins a tie (ADR 0059).
   lastOfferedAt   DateTime?
+  // ---- milestone 8 (F-141, ADR 0068) ----
+  /// What it can show of a preview, as its last `hello` or `status` said (protocol minor 7,
+  /// `previewSupportSchema`): the browser view and the tunnel. `null`: it never said, so no view opens.
+  preview         Json?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 

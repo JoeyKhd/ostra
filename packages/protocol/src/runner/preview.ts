@@ -431,3 +431,61 @@ export const previewRefusalWords = (reason: PreviewRefusalReason): string => {
       return reason satisfies never;
   }
 };
+
+// ---------- the panel's stream (core → the web app → the pane, F-141) ----------
+
+/**
+ * The body of core's `GET /panel/v1/previews/:viewId/stream`, which the web app relays as it is
+ * (ADR 0068, "The bytes stay off the session"): a run of records, each a 4-byte big-endian length
+ * and one `stream` mode message (`encodePreviewMessage`). Core sends the box's `frame` messages, the
+ * newest first when a stream joins, and a `close` before it ends the response. The pane reads them
+ * with `createPanelStreamReader`. A frame is never logged.
+ */
+export const encodePanelStreamRecord = (message: PreviewMessage): Uint8Array => {
+  const body = encodePreviewMessage(message);
+  const record = new Uint8Array(4 + body.length);
+  new DataView(record.buffer).setUint32(0, body.length, false);
+  record.set(body, 4);
+  return record;
+};
+
+/** Reads the panel's stream as its chunks arrive, however the network split them. */
+export type PanelStreamReader = {
+  /** The records `chunk` completed, in order, each decoded or refused. A refused record ends the stream for its reader. */
+  readonly push: (chunk: Uint8Array) => readonly PreviewMessageParse[];
+  /** Bytes held for a record not yet complete. */
+  readonly pending: () => number;
+};
+
+export const createPanelStreamReader = (): PanelStreamReader => {
+  let held = new Uint8Array(0);
+  return {
+    push: (chunk) => {
+      const joined = new Uint8Array(held.length + chunk.length);
+      joined.set(held, 0);
+      joined.set(chunk, held.length);
+      const out: PreviewMessageParse[] = [];
+      let offset = 0;
+      while (joined.length - offset >= 4) {
+        const length = new DataView(joined.buffer, joined.byteOffset + offset, 4).getUint32(0, false);
+        if (length > previewMessageMaxBytes) {
+          out.push({ ok: false, reason: "too-large" });
+          held = new Uint8Array(0);
+          return out;
+        }
+        if (joined.length - offset - 4 < length) {
+          break;
+        }
+        out.push(decodePreviewMessage(joined.subarray(offset + 4, offset + 4 + length)));
+        offset += 4 + length;
+      }
+      held = joined.slice(offset);
+      return out;
+    },
+    pending: () => held.length,
+  };
+};
+
+/** `POST /panel/v1/previews/:viewId/input`: a batch of a viewer's input, in order. Typed text is never logged. */
+export const panelPreviewInputBodySchema = z.strictObject({ events: previewInputEventsSchema });
+export type PanelPreviewInputBody = z.infer<typeof panelPreviewInputBodySchema>;

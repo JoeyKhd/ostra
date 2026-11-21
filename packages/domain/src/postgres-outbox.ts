@@ -46,8 +46,25 @@ export const notifyRunnerInTx = async (tx: Tx, notification: RunnerNotification)
 const counterRowSchema = z.strictObject({ commandSeq: commandSeqSchema });
 const sidecarCounterRowSchema = z.strictObject({ sidecarCommandSeq: commandSeqSchema });
 
-/** The kinds a `docker` or `kubernetes` box's sidecar takes for its task, instead of the runner (Q129): the driver's answers too. */
-const sidecarKinds: ReadonlySet<CommandKind> = new Set<CommandKind>(["steer", "interrupt", "stop", "approval-answer", "question-answer", "plan-answer"]);
+/**
+ * The kinds a `docker` or `kubernetes` box's sidecar takes for its task, instead of the runner (Q129): the driver's answers too.
+ * Minor 7 (milestone 8, ticket 19): the app's processes, a member's screenshot and the views, which
+ * the sidecar serves in the box (the runner's own handlers say the sidecar takes them).
+ */
+const sidecarKinds: ReadonlySet<CommandKind> = new Set<CommandKind>([
+  "steer",
+  "interrupt",
+  "stop",
+  "approval-answer",
+  "question-answer",
+  "plan-answer",
+  "app.start",
+  "app.stop",
+  "screenshot.take",
+  "preview.open",
+  "preview.close",
+  "preview.input",
+]);
 
 /**
  * The box whose sidecar takes this command, or `null` when the runner does: the task's lease on

@@ -432,8 +432,8 @@ An organization's library holds items, each a skill or an MCP server, pinned to 
 
 | State | Means | Leaves when |
 |---|---|---|
-| **opening** | Its row and audit entry are written, and `preview.open` went to the box's runner | The box's preview connection reaches a replica, which writes its presence (→ open), or it's refused (→ closed) |
-| **open** | Its stream or tunnel runs; the pane's heartbeat comes every 30 s and keeps a watched box warm, up to `OSTRA_PREVIEW_WARM_MINUTES` | Its viewer closes it, 2 minutes pass with no heartbeat (`preview.views-sweep`), its link ends, or its box goes (→ closed) |
+| **opening** | Its row and its `preview.opened` event are written, and `preview.open` went to the box's runner | The box's preview connection reaches a replica, which writes its presence (→ open), or it's refused, or 2 minutes pass without it (→ closed) |
+| **open** | Its stream or tunnel runs; the pane's heartbeat comes every 30 s and keeps a watched box warm, up to `OSTRA_PREVIEW_WARM_MINUTES`. While it's open the runner's idle timer doesn't end the box | Its viewer closes it, 2 minutes pass with no heartbeat (`preview.views-sweep`), its link ends, its box goes, or its box passes the warm cap (→ closed, and the box idles out) |
 | **closed** | Over; the page shows the last frame | Never |
 
 **A preview link** opens one preview for whoever holds it: an expiring one (24 hours by default, `OSTRA_PREVIEW_LINK_MAX_DAYS` at most), or a public one where the organization allows them. Watch-only unless it allows input. Its token is kept as a hash.
@@ -449,10 +449,10 @@ An organization's library holds items, each a skill or an MCP server, pinned to 
 | **expired** | Its page says it expired | Never |
 | **revoked** | Its page says it was revoked | Never |
 
-**A lease's purpose** says why its box runs: a `turn` of the agent, or the `app` alone. "Start the app" admits a lease with the purpose `app`: the box starts as for a reopen, runs the setup, restores the hidden ref, starts the app's processes, and launches no agent, so the key proxy counts no model call.
+**A lease's purpose** says why its box runs: a `turn` of the agent, or the `app` alone. "Start the app" admits a lease with the purpose `app`: the box starts as for a reopen, runs the setup, restores the hidden ref, starts the app's processes, and launches no agent, so the key proxy counts no model call. The task's own state doesn't move while it runs; a declined or timed-out offer ends it with no requeue.
 
 ```
- app ── a member's message ──▶ turn      (the agent starts in the same box)
+ app ── a member's message ──▶ turn      (the agent starts in the same box and session; the task moves as a reopen does)
 ```
 
 **Who may open a preview** is its level: the project's members (the default, with no row), or named people, who see that preview and nothing else of the task, watch-only; and its links. It fails closed: a level, a link or a runner it can't read gives no view, and the page says why (`previewAccess`).

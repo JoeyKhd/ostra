@@ -233,3 +233,7 @@ export * from "./library/sources.ts";
 export * from "./library/install.ts";
 // Milestone 8 (ticket 29, ADR 0069): the marketplace search and its switch.
 export * from "./library/search.ts";
+// Milestone 8 (ticket 19, ADR 0068): views, warm boxes and "Start the app".
+export * from "./previews/views.ts";
+export * from "./previews/start-app.ts";
+export * from "./previews/app-lease.ts";

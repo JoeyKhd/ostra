@@ -367,6 +367,10 @@ _Avoid_: share URL, public URL, invite (an invitation adds a member)
 A box's second connection to core, opened only while someone watches, that carries a preview's bytes off the session: pictures for the browser view, or an HTTP/2 tunnel for `ostra preview` and the native preview.
 _Avoid_: tunnel (alone), session (that's the box's main connection)
 
+**View**:
+One opening of a preview by a member or a link: the browser view, a tunnel, the native preview or `ostra preview`. It's open while its heartbeats come, and its presence names the core replica that holds the box's preview connection, which the other replicas forward the viewer's stream and input to.
+_Avoid_: session (that's the agent's), watcher (that's the count the pane shows)
+
 **App-only start**:
 "Start the app" on a stopped task: a box started from the task's branches and hidden ref to run its app processes, with no agent and no model call. A member's message then starts a turn in that box.
 _Avoid_: preview box, wake, reopen (a reopen is a turn)

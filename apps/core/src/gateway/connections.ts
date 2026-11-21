@@ -181,6 +181,8 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
     executor: status.executor,
     capacity: status.capacity,
     ...(status.processContainment === undefined ? {} : { processContainment: status.processContainment }),
+    // Minor 7 (F-141): what it can show of a preview; `isPreviewable` reads it from the row.
+    preview: status.preview ?? null,
   });
 
   const reportDeps = (tx: Tx) => ({
@@ -311,6 +313,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
         os: null,
         arch: null,
         ...(hello.executor === undefined ? {} : { executor: hello.executor }),
+        preview: hello.preview ?? null,
       });
       if (state?.state === "online") {
         await enqueueRunnerAdmissionInTx({ jobs: context.ports.jobs }, tx, runner.organizationId, runner.runnerId);

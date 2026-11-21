@@ -29,7 +29,7 @@ import type { MemberScope } from "../access.ts";
 import type { Ports } from "../ports.ts";
 import type { PreviewAccessRefusal } from "../previews/access.ts";
 import type { AppProcessForm, AppProcessListIssue, ScreenshotSettings } from "../previews/app-processes.ts";
-import type { PreviewCodeCheck } from "../previews/tokens.ts";
+import type { PanelPreviewTokens, PreviewCodeCheck } from "../previews/tokens.ts";
 import type { PreviewSettings } from "../settings.ts";
 import type { UseCaseResult } from "./common.ts";
 
@@ -133,9 +133,12 @@ export type ListPreviews = (
 /** Who opens a view: a member (their scope), or someone with a link (its token, never logged). */
 export type ViewOpener = { readonly kind: "member"; readonly scope: MemberScope } | { readonly kind: "link"; readonly token: string };
 
-/** Opens a view: the access check, the `PreviewView` row with its audit entry, and `preview.open` to the box's runner. */
+/**
+ * Opens a view: the access check, the `PreviewView` row with its event, and `preview.open` to the
+ * box's runner. `panelTokens` signs the answer's token for core's stream and input (ticket 19).
+ */
 export type OpenView = (
-  deps: PreviewDeps,
+  deps: PreviewDeps & { readonly panelTokens: PanelPreviewTokens },
   opener: ViewOpener,
   input: { readonly taskId: TaskId; readonly key: PreviewKey; readonly mode: "stream" | "native"; readonly viewport: PreviewViewport | null },
 ) => Promise<
@@ -145,7 +148,10 @@ export type OpenView = (
   >
 >;
 
-export type CloseView = (deps: PreviewDeps, input: { readonly viewId: PreviewViewId; readonly reason: "closed" | "no-heartbeat" | "link-ended" | "box-gone" }) => Promise<UseCaseResult<{ readonly closed: boolean }, "not-found">>;
+export type CloseView = (
+  deps: PreviewDeps,
+  input: { readonly viewId: PreviewViewId; readonly reason: "closed" | "no-heartbeat" | "link-ended" | "box-gone" | "warm-cap" },
+) => Promise<UseCaseResult<{ readonly closed: boolean }, "not-found">>;
 
 /** The pane's or the viewer page's heartbeat (30 s): the view's `lastHeartbeatAt` and the box's `previewWatchedAt`. */
 export type HeartbeatView = (deps: PreviewDeps, input: { readonly viewId: PreviewViewId }) => Promise<UseCaseResult<{ readonly open: boolean }, "not-found" | "closed">>;

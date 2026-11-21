@@ -43,6 +43,15 @@ spec:
               containerPort: {{ $process.port }}
           env:
             {{- include "ostra-server.env" $ | nindent 12 }}
+            {{- if and (eq $role "core") (not (hasKey $.Values.env "OSTRA_CORE_REPLICA_URL")) }}
+            {{- /* Milestone 8 (ADR 0068, Q305): the address the other cores forward a preview's stream to, the pod's IP (`POD_IP` isn't a setting: an unknown `OSTRA_` name is refused). */}}
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: OSTRA_CORE_REPLICA_URL
+              value: {{ printf "http://$(POD_IP):%v" $process.port | quote }}
+            {{- end }}
           readinessProbe:
             httpGet:
               path: {{ ternary "/healthz" "/" (eq $role "core") }}

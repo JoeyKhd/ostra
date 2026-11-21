@@ -132,8 +132,10 @@ describe("the milestone 8 migration", () => {
   it("is additive: new enums, tables and columns, and no DROP, RENAME or changed column", async () => {
     const names = await migrationNames();
     expect(names).toContain(m8Migration);
-    // It comes after every earlier migration, milestone 7's and the ones since.
-    expect(names.at(-1)).toBe(m8Migration);
+    // It comes after every earlier migration, milestone 7's and the ones since (minor 7's commands
+    // last). Later ones may follow it: ticket 19's runner preview column is one.
+    expect(names.indexOf("20261201100000_command_minor_7")).toBeGreaterThan(-1);
+    expect(names.indexOf(m8Migration)).toBeGreaterThan(names.indexOf("20261201100000_command_minor_7"));
     const sql = (await migrationSql(m8Migration)).replace(/--.*$/gm, "");
     expect(sql).not.toMatch(/\bDROP\b|\bRENAME\b|ALTER COLUMN/i);
     for (const table of newTables) {
