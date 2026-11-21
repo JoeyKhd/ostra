@@ -69,12 +69,12 @@ Nobody signs in as either user, so their passwords are random and never shown.
 The runner's user may act as the agent's user, and as nobody else. Write the rule to `/etc/sudoers.d/ostra-runner`, on either system:
 
 ```sh
-printf 'ostra-runner ALL=(ostra-agent) NOPASSWD:SETENV: ALL\nDefaults>ostra-agent umask=0007, umask_override\n' | sudo tee /etc/sudoers.d/ostra-runner >/dev/null
+printf 'ostra-runner ALL=(ostra-agent) NOPASSWD:SETENV: ALL\nDefaults>ostra-agent umask=0007, umask_override, closefrom_override\n' | sudo tee /etc/sudoers.d/ostra-runner >/dev/null
 sudo chmod 0440 /etc/sudoers.d/ostra-runner
 sudo visudo -cf /etc/sudoers.d/ostra-runner
 ```
 
-`SETENV` lets a task's variables through by name, and the umask keeps what the agent writes open to the runner's user. Give the runner's user no other sudo rule. At start, the runner checks that sudo lets it act as the agent's user and not as root, that the agent's user gets through to the data folder, and that the agent's user can't read the runner's key. When a check fails, the runner stops and says which.
+`SETENV` lets a task's variables through by name, and the umask keeps what the agent writes open to the runner's user. `closefrom_override` lets the runner keep the box's browser's pipe open as it starts the browser as the agent's user (`sudo -C 5`); without it, a task on the pool has no browser for its screenshots and previews, and says so. Give the runner's user no other sudo rule. At start, the runner checks that sudo lets it act as the agent's user and not as root, that the agent's user gets through to the data folder, and that the agent's user can't read the runner's key. When a check fails, the runner stops and says which.
 
 ### Start the runner
 

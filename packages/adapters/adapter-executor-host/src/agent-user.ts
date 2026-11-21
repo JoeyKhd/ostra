@@ -1,10 +1,11 @@
 import { chmod, chown, lstat, readdir } from "node:fs/promises";
 import path from "node:path";
+import { BOX_BROWSER_PROFILE_PREFIX } from "@ostra/adapter-sdk";
 import { TASK_UNIT_ENV, markedInPs } from "./containment.ts";
 import type { MarkerSweep } from "./containment.ts";
 import { runProgram } from "./process.ts";
 import type { RunOptions, RunResult } from "./process.ts";
-import type { TaskProcesses } from "./task-processes.ts";
+import type { BrowserRunAs, TaskProcesses } from "./task-processes.ts";
 
 // A `host` pool's agent user (ADR 0029 as amended, Q242, F-015, ticket 10). On a pool, the agent
 // runs as a separate OS user, never as the runner's own: on Linux and macOS the runner starts every
@@ -14,7 +15,11 @@ import type { TaskProcesses } from "./task-processes.ts";
 // and no other (docs/configuration.md):
 //
 //   ostra-runner ALL=(ostra-agent) NOPASSWD:SETENV: ALL
-//   Defaults>ostra-agent umask=0007, umask_override
+//   Defaults>ostra-agent umask=0007, umask_override, closefrom_override
+//
+// `closefrom_override` (milestone 8, ticket 11) lets the runner keep the box's browser's DevTools
+// pipe, its fds 3 and 4, open through `sudo -C 5`: sudo closes every fd from 3 up before it runs a
+// command unless the rule allows `-C`. Without it, a pool's box has no browser, and says so.
 //
 // `SETENV` lets the launch's variables through (`--preserve-env=<names>`, never their values in an
 // argument), and the umask keeps what the agent writes in its worktree writable by the group the
@@ -114,13 +119,62 @@ export const sudoInvocation = (
   args: readonly string[],
   env: Readonly<Record<string, string>>,
   sudo: SudoProgram = DEFAULT_SUDO,
+  /** Milestone 8: the first fd sudo closes (`-C`), so the browser's pipe on fds 3 and 4 stays open. Needs `closefrom_override`. */
+  closeFrom?: number,
 ): { readonly command: string; readonly args: readonly string[] } => {
   const names = Object.keys(env)
     .filter((name) => ENV_NAME.test(name))
     .sort();
   return {
     command: sudo.command,
-    args: [...sudo.args, "-n", "-u", user, ...(names.length === 0 ? [] : [`--preserve-env=${names.join(",")}`]), "--", command, ...args],
+    args: [
+      ...sudo.args,
+      "-n",
+      ...(closeFrom === undefined ? [] : ["-C", String(closeFrom)]),
+      "-u",
+      user,
+      ...(names.length === 0 ? [] : [`--preserve-env=${names.join(",")}`]),
+      "--",
+      command,
+      ...args,
+    ],
+  };
+};
+
+/** The browser's DevTools pipe is its fds 3 and 4: sudo keeps every fd below this one. */
+export const BROWSER_PIPE_CLOSE_FROM = 5;
+
+/** Makes a fresh profile folder in the system's temporary folder, as the user who runs this, and prints its path. */
+const MAKE_PROFILE_SCRIPT =
+  "const fs = require('node:fs'); const os = require('node:os'); const path = require('node:path'); process.stdout.write(fs.mkdtempSync(path.join(os.tmpdir(), process.argv[1])));";
+
+/** Removes a profile folder as the user who owns it, retrying while the browser's helpers let go (spike 07). */
+const REMOVE_PROFILE_SCRIPT = "require('node:fs').rmSync(process.argv[1], { recursive: true, force: true, maxRetries: 50, retryDelay: 300 });";
+
+/**
+ * Milestone 8 (ticket 11, F-121): a pool's box's browser as the agent's user: started through
+ * `sudo -n -C 5 -u <user> --`, so its pipe survives sudo, with its profile made and removed as
+ * that user in the system's temporary folder (the runner's own is closed to the agent's user).
+ */
+export const agentUserBrowser = (user: string, options: { readonly sudo?: SudoProgram; readonly run?: RunCommand; readonly node?: string } = {}): BrowserRunAs => {
+  const sudo = options.sudo ?? DEFAULT_SUDO;
+  const run = options.run ?? runProgram;
+  const node = options.node ?? process.execPath;
+  const env = { PATH: "/usr/bin:/bin:/usr/sbin:/sbin", LC_ALL: "C", TMPDIR: "/tmp" };
+  const asAgent = (args: readonly string[]): Promise<RunResult> => {
+    const invoked = sudoInvocation(user, node, args, env, sudo);
+    return run(invoked.command, invoked.args, { cwd: "/", env });
+  };
+  return {
+    invoke: (command, args, browserEnv) => sudoInvocation(user, command, args, browserEnv, sudo, BROWSER_PIPE_CLOSE_FROM),
+    makeProfile: async () => {
+      const made = await asAgent(["-e", MAKE_PROFILE_SCRIPT, BOX_BROWSER_PROFILE_PREFIX]);
+      const dir = made.stdout.trim();
+      return made.code === 0 && path.posix.isAbsolute(dir) && path.posix.basename(dir).startsWith(BOX_BROWSER_PROFILE_PREFIX) ? dir : null;
+    },
+    removeProfile: async (dir) => {
+      await asAgent(["-e", REMOVE_PROFILE_SCRIPT, dir]).catch(() => undefined);
+    },
   };
 };
 
@@ -143,11 +197,11 @@ export const agentUserProcesses = (user: string, inner: TaskProcesses, sudo: Sud
     const invoked = sudoInvocation(user, launch.command, launch.args, launch.env, sudo);
     return inner.startApp({ ...launch, command: invoked.command, args: [...invoked.args] }, unit);
   },
-  // Milestone 8 (F-121): the browser's DevTools pipe is its fd 3 and 4, which `sudo` closes unless
-  // the pool's sudoers rule allows `closefrom_override` (ticket 11 sets that up and starts it as the
-  // agent's user). Until then a pool with its own agent user reports no browser, never one running
-  // as the runner's user.
-  startBrowser: () => Promise.resolve({ available: false, reason: "failed-to-start" }),
+  // Milestone 8 (F-121, ticket 11): the browser as the agent's user too, its DevTools pipe (fds 3
+  // and 4) kept open through `sudo -C 5`, which the pool's sudoers rule allows with
+  // `closefrom_override`. Without it sudo refuses, the browser never answers, and the box reports
+  // no browser: never one running as the runner's own user.
+  startBrowser: (unit, env) => inner.startBrowser(unit, env, agentUserBrowser(user, { sudo })),
 });
 
 /** Runs a program to its end: `runProgram`, or a test's stand-in. */

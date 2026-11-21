@@ -1,7 +1,7 @@
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { BoxRef } from "@ostra/adapter-sdk";
-import { startGitUpstream } from "@ostra/adapter-sdk/testing";
+import { fakeBrowserProgram, startGitUpstream, testCdp } from "@ostra/adapter-sdk/testing";
 import { boxIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { TaskSpec } from "@ostra/protocol";
 import { taskSpecFixture } from "@ostra/protocol/testing";
@@ -16,7 +16,7 @@ import { runProgram } from "./process.ts";
 // The runner's own user (`ostra-runner`), which sudo lets act as the agent's user and as nobody
 // else, runs this suite. The agent's user (`OSTRA_TEST_HOST_POOL_AGENT_USER`) has a group of its
 // own that the runner's user is in, and the sudoers rule is `<runner> ALL=(<agent>) NOPASSWD:SETENV:
-// ALL` and `Defaults><agent> umask=0007, umask_override`. On Linux the suite runs as a systemd
+// ALL` and `Defaults><agent> umask=0007, umask_override, closefrom_override`. On Linux the suite runs as a systemd
 // service with `Delegate=yes`, as the runner's unit does, so each task gets a cgroup of its own.
 // It skips itself everywhere else: Windows refuses a host pool, and a machine without the user has
 // nothing to show. One agent user serves all of a pool's tasks on a machine, so a running task's
@@ -47,7 +47,8 @@ const pool = async (name: string) => {
   await upstream.createRepo("ostra-test/test1", { "README.md": "# test1\n" });
   // Why the executor fell back to the process tree, if it did: the cgroup case's message.
   const fallbacks: string[] = [];
-  const started = await HostExecutor.startPool({ dataDir, agentUser, secrets: [key, kept] }, undefined, { onFallback: (why) => fallbacks.push(why) });
+  // Milestone 8 (ticket 11): the fake box browser, which the agent's user can run from the checkout.
+  const started = await HostExecutor.startPool({ dataDir, agentUser, secrets: [key, kept], browser: fakeBrowserProgram() }, undefined, { onFallback: (why) => fallbacks.push(why) });
   if (!started.ok) throw new Error(started.reason);
   return {
     executor: started.value,
@@ -171,6 +172,42 @@ describe.skipIf(!ready)(`a host pool's agent user, live (skipped: ${ready ? "no"
         await runProgram(ended.command, ended.args, { cwd: "/", env: { PATH: "/usr/bin:/bin" } });
       }
       expect(typeof gap).toBe("boolean");
+    } finally {
+      await live.dispose();
+    }
+  }, 180_000);
+
+  it("F-121/c2: a pool's box starts its browser as the agent's user, its DevTools pipe kept open through sudo -C 5, and its profile goes with the box", async () => {
+    const live = await pool("browser");
+    try {
+      const box: BoxRef = { taskId: taskIdSchema.parse("live-pool-browser"), boxId: boxIdSchema.parse("live-pool-browser") };
+      const spec = specWith(box, "echo ready\n");
+      const created = await live.executor.create({ ...box, spec, proxies: live.proxies });
+      if (!created.ok) throw new Error(created.error.message);
+      const prepared = await live.executor.prepare({ box, spec, secrets: [], onSetupOutput: () => undefined });
+      if (!prepared.ok) throw new Error(prepared.error.message);
+      const started = await live.executor.startBrowser(box);
+      if (!started.ok) throw new Error(started.error.message);
+      // Without closefrom_override in the rule, sudo refuses -C and this is `failed-to-start`.
+      if (!started.value.available) throw new Error(`no browser in the pool's box: ${started.value.reason}`);
+      const { profileDir, channel, name } = started.value.browser;
+      expect(name).toBe("OstraFakeBrowser");
+      // Made by the agent's user, who runs the browser, in the system's temporary folder: not the runner's.
+      expect((await stat(profileDir)).uid).not.toBe(process.getuid?.());
+      const cdp = testCdp(channel);
+      const target = await cdp.send("Target.createTarget", { url: "about:blank" });
+      expect(typeof target["targetId"]).toBe("string");
+      await live.executor.release(box, "requested");
+      await channel.closed;
+      let gone = false;
+      for (let round = 0; !gone && round < 80; round += 1) {
+        gone = await stat(profileDir).then(
+          () => false,
+          () => true,
+        );
+        if (!gone) await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      expect(gone, "the profile went with the box").toBe(true);
     } finally {
       await live.dispose();
     }

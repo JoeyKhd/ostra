@@ -159,6 +159,27 @@ export type BoxBrowser = z.infer<typeof boxBrowserSchema>;
 export const noBrowserReasonSchema = z.enum(["not-in-image", "not-found", "download-off", "download-failed", "failed-to-start"]);
 export type NoBrowserReason = z.infer<typeof noBrowserReasonSchema>;
 
+/**
+ * "No browser in this box", with its fix, in the words the app tools give the agent and the panel
+ * shows (ticket 11; the environment page's warning is ticket 17's). Settings' names only.
+ */
+export const noBrowserWords = (reason: NoBrowserReason): string => {
+  switch (reason) {
+    case "not-in-image":
+      return "No browser in this box: the environment's image has no Chromium at /usr/bin/chromium. Build the image from ostra's base image, or install Debian's chromium package in it.";
+    case "not-found":
+      return "No browser in this box: the runner found no Chrome, Chromium or Edge, and has no headless shell for this machine. Install one, or set OSTRA_RUNNER_BROWSER to its program.";
+    case "download-off":
+      return "No browser in this box: the runner found no Chrome, Chromium or Edge, and OSTRA_RUNNER_BROWSER_DOWNLOAD is false. Install one, set OSTRA_RUNNER_BROWSER to its program, or allow the download.";
+    case "download-failed":
+      return "No browser in this box: the runner found no Chrome, Chromium or Edge, and couldn't download its pinned headless shell. Let it reach storage.googleapis.com, install a browser, or set OSTRA_RUNNER_BROWSER.";
+    case "failed-to-start":
+      return "No browser in this box: the browser didn't start or didn't answer. The runner's log says why; on a host pool, its sudoers rule needs closefrom_override.";
+    default:
+      return reason satisfies never;
+  }
+};
+
 /** A screenshot or a recording (F-121). */
 export const attachmentKindSchema = z.enum(["screenshot", "recording"]);
 export type AttachmentKind = z.infer<typeof attachmentKindSchema>;

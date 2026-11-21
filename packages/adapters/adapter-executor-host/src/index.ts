@@ -38,3 +38,11 @@ export { localProcesses, stopTree } from "./task-processes.ts";
 export type { BrowserProcessResult, BrowserProgram, StartAgentResult, StartAppResult, StartedAgent, StartedApp, StartedBrowserProcess, TaskProcesses } from "./task-processes.ts";
 export { baseEnv, runProgram } from "./process.ts";
 export type { RunOptions, RunResult } from "./process.ts";
+// Milestone 8 (ticket 11, F-121): the machine's browser, or the pinned headless shell.
+export { machineBrowserCandidates, machineBrowserSource, resolveMachineBrowser } from "./machine-browser.ts";
+export type { BrowserResolution, ResolveBrowserOptions } from "./machine-browser.ts";
+export { ensureHeadlessShell, HEADLESS_SHELL_MAX_BYTES, HEADLESS_SHELL_PIN, headlessShellPlatform, headlessShellProgram, headlessShellUrl } from "./headless-shell.ts";
+export type { EnsureHeadlessShellOptions, EnsureHeadlessShellResult, FetchZip, HeadlessShellPin, HeadlessShellPlatform } from "./headless-shell.ts";
+export { extractZip, safeEntryPath } from "./zip-extract.ts";
+export { agentUserBrowser, BROWSER_PIPE_CLOSE_FROM } from "./agent-user.ts";
+export type { BrowserRunAs } from "./task-processes.ts";

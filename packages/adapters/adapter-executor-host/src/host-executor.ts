@@ -69,6 +69,7 @@ import {
 import type { AgentUser, HandOver, SudoProgram } from "./agent-user.ts";
 import { localProcesses } from "./task-processes.ts";
 import type { BrowserProgram, TaskProcesses } from "./task-processes.ts";
+import type { BrowserResolution } from "./machine-browser.ts";
 import type { Containment, ContainmentProbe, ContainmentUnit } from "./containment.ts";
 import { excludeFromGit, insideCheckout, renderEnvFile, writeCheckoutFile } from "./env-file.ts";
 import { baseEnv, codeHostRefusal, ostraLines, runProgram } from "./process.ts";
@@ -140,11 +141,12 @@ export type HostExecutorOptions = {
   readonly agentUser?: HostAgentUserOptions;
   /**
    * Milestone 8 (ADR 0068, F-121): the machine's browser, which each box starts in its unit with a
-   * fresh profile. Ticket 11 finds it (`OSTRA_RUNNER_BROWSER`, Chrome, Chromium, Edge, or the pinned
-   * download). Absent or `null`: a box has no browser (`not-found`). Read when a box asks, so a
-   * download that lands later counts. Ignored with `processes`, which starts its own.
+   * fresh profile. Ticket 11 finds it (`resolveMachineBrowser`: `OSTRA_RUNNER_BROWSER`, Chrome,
+   * Chromium, Edge, or the pinned download), as a source a box asks when it wants one, which gives
+   * the reason when there's none. Absent or `null`: a box has no browser (`not-found`). Ignored with
+   * `processes`, which starts its own.
    */
-  readonly browser?: BrowserProgram | null | (() => BrowserProgram | null);
+  readonly browser?: BrowserProgram | null | (() => Promise<BrowserResolution>);
 };
 
 /** Milestone 8 (F-140): one of the app's processes in a box, its log open until it exits. */
@@ -393,7 +395,14 @@ export class HostExecutor extends ExecutorAdapter {
           this.#containment ??= processTreeContainment();
           return this.#containment;
         },
-        typeof browser === "function" ? browser : () => browser,
+        typeof browser === "function"
+          ? browser
+          : () =>
+              Promise.resolve(
+                browser === null
+                  ? { available: false, reason: "not-found", detail: "this runner names no browser" }
+                  : { available: true, program: browser, source: "setting" },
+              ),
       );
     this.#agentUser = options.agentUser ?? { user: { kind: "runner" } };
     const agentUser = this.#agentUser.user;

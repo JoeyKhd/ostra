@@ -6,6 +6,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { isKnownBundledLicense } from "../../../scripts/known-licenses.ts";
 import { checkoutNotices } from "./checkout-notices.ts";
+import { CHROMIUM_PIN } from "./chromium.ts";
 import { imageNames } from "./images.ts";
 import { runNotices } from "./notices-main.ts";
 import { installedInPnpmStore, isAgentPackage, listedInNotices, packagesFromNodeModules, readExtraNotice, refOf, renderNotices } from "./notices.ts";
@@ -158,6 +159,16 @@ describe("the generator an image's build runs", () => {
     const result = await runNotices(["--image", "base", "--pnpm-licenses", await writeJson(path.join(temp, "base.json"), report), "--pnpm-store", store, "--without-agent", "--npm-modules", modules, "--extra", path.join(repoRoot, "deploy", "notices", "models-dev.json"), "--out", out]);
     expect(result.code).toBe(0);
     expect(listedInNotices(await readFile(out, "utf8")).map(refOf)).toEqual(["@opencode/cli@2.3.2", "@opencode/cli-linux-x64@2.3.2", "models.dev@catalog", "nested@0.0.1", "zod@4.6.7"]);
+  });
+
+  it("F-121/c2: the base image's notices list Chromium at the pinned version, its BSD-3-Clause license, and where its components' licenses are", async () => {
+    const chromium = await readExtraNotice(path.join(repoRoot, "deploy", "notices", "chromium.json"));
+    expect(chromium).toMatchObject({ name: "chromium", version: CHROMIUM_PIN.version, license: "BSD-3-Clause" });
+    expect(isKnownBundledLicense(chromium.license)).toBe(true);
+    const text = renderNotices("base", [chromium]);
+    expect(listedInNotices(text).map(refOf)).toEqual([`chromium@${CHROMIUM_PIN.version}`]);
+    expect(text).toContain("Copyright 2015 The Chromium Authors");
+    expect(text).toContain("/usr/share/doc/chromium/copyright");
   });
 
   it("F-039/c1: an extra notice is ostra's own format: an unknown field fails", async () => {

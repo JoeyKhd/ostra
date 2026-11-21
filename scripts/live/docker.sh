@@ -123,6 +123,20 @@ docker_live() {
 step docker-executor-live docker_live
 step docker-executor-contract pnpm --filter @ostra/adapter-executor-docker exec vitest run --reporter verbose src/docker-executor.contract.test.ts
 
+# ---- F-121 (milestone 8's ticket 11): the executor suite's browser case in the base image, under
+# the agent container's hardening and a small box's size: the real init and bridge, Debian's
+# Chromium as the agent's user with its container flags (src/init/box-browser-flags.ts), a page at
+# the app's localhost, a PNG, and no profile left (src/init/browser-probe.ts). Then the pinned
+# Chromium and its fonts, as the image carries them ----
+box_browser() {
+  docker run --rm --user 0:0 --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add KILL \
+    --security-opt no-new-privileges:true --init --network none --pids-limit 4096 --cpus 2 --memory 4g --memory-swap 4g \
+    --entrypoint node "$BASE" /opt/ostra/app/packages/adapters/adapter-executor-docker/src/init/browser-probe-main.ts || return 1
+  docker run --rm --entrypoint sh "$BASE" -c \
+    'dpkg-query -W -f "\${Package} \${Version}\n" chromium chromium-common fonts-liberation fonts-noto-color-emoji && fc-list : family | grep -E "Liberation|Noto Color Emoji" | sort -u && grep -c "^Package: chromium@" /usr/share/doc/ostra/THIRD_PARTY_NOTICES && test -s /usr/share/doc/chromium/copyright'
+}
+step box-browser box_browser
+
 # ---- F-014 and F-015: a `host` pool as the docs make it: the runner's user and the agent's, the
 # sudoers rule for the agent's user alone, and the runner as a systemd service with Delegate=yes,
 # so each task gets a cgroup of its own (scripts/live/host-pool.sh) ----

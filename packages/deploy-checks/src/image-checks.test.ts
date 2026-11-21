@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { readDeployFiles } from "./deploy-files.ts";
 import { checkCompose, checkDockerfile, checkImages } from "./image-checks.ts";
 import type { DeployFiles, ImageRule } from "./image-checks.ts";
+import { CHROMIUM_PIN } from "./chromium.ts";
 import { buildPlan } from "./images.ts";
 import { NOTICES_PATH } from "./notices.ts";
 import { parseYaml, yamlAt } from "./yaml.ts";
@@ -226,5 +227,24 @@ describe("the notices in each image", () => {
     // The runner's build checks that its install holds no agent, and it installs none.
     expect(rulesOf(withDockerfile("runner", "/app/node_modules/.pnpm --without-agent", "/app/node_modules/.pnpm"))).toContain("notices");
     expect(rulesOf(withDockerfile("runner", "USER node", "RUN npm install --ignore-scripts @opencode/cli@2.3.2\nUSER node"))).toContain("no-agent");
+  });
+});
+
+// Milestone 8's ticket 11 (ADR 0068): the box's browser in the base image.
+describe("the base image's Chromium", () => {
+  it("F-121/c2: Debian's chromium and chromium-common at the pinned version, with their fonts, the snapshot as the only other source, and the notice at the same version", () => {
+    const base = files.dockerfiles.base;
+    expect(base).toContain(`chromium=${CHROMIUM_PIN.version} chromium-common=${CHROMIUM_PIN.version} fonts-liberation fonts-noto-color-emoji`);
+    expect(base).toContain(`http://snapshot.debian.org/archive/debian-security/${CHROMIUM_PIN.snapshot} bookworm-security main`);
+    // Any other version, or none, of either package fails.
+    expect(rulesOf(withDockerfile("base", ` chromium=${CHROMIUM_PIN.version} `, " chromium=157.0.0.0-1~deb12u1 "))).toContain("chromium-pin");
+    expect(rulesOf(withDockerfile("base", ` chromium-common=${CHROMIUM_PIN.version}`, " chromium-common"))).toContain("chromium-pin");
+    expect(rulesOf(withDockerfile("base", " fonts-noto-color-emoji", ""))).toContain("chromium-pin");
+    // The snapshot at another time, or a source that isn't Debian's archive key's, fails.
+    expect(rulesOf(withDockerfile("base", CHROMIUM_PIN.snapshot, "20250101T000000Z"))).toContain("chromium-pin");
+    expect(rulesOf(withDockerfile("base", "signed-by=/usr/share/keyrings/debian-archive-keyring.gpg ", ""))).toContain("chromium-pin");
+    // THIRD_PARTY_NOTICES lists Chromium, at the pinned version.
+    expect(rulesOf(withDockerfile("base", " --extra /opt/notices/extra/chromium.json", ""))).toContain("chromium-pin");
+    expect(rulesOf({ chromiumNotice: files.chromiumNotice.replace(CHROMIUM_PIN.version, "155.0.0.0-1~deb12u1") })).toContain("chromium-pin");
   });
 });

@@ -148,10 +148,13 @@ export const portRefusalWords = (port: number, refusal: PortRefusal): string =>
 /**
  * The flags a box's browser runs with (spike 07's `boxBrowserArgs`, ADR 0068): headless, the
  * DevTools pipe and no port, a fresh profile, no first run, sync, extensions, crash reporter or
- * background traffic, and software rendering (a container has no GPU). Ticket 11 adds what
- * Chromium's own sandbox needs in a container.
+ * background traffic, and software rendering (a container has no GPU). Nor the machine's password
+ * store or keychain (`--password-store=basic`, `--use-mock-keychain`, as Puppeteer launches it), so
+ * a `host` box's browser never reads or asks for the member's. `extra` goes before the first page:
+ * what a container needs for Chromium's own sandbox is the init's (`CONTAINER_BROWSER_FLAGS`,
+ * ticket 11); on `host` the machine's browser keeps its sandbox and gets none.
  */
-export const boxBrowserFlags = (profileDir: string): readonly string[] => [
+export const boxBrowserFlags = (profileDir: string, extra: readonly string[] = []): readonly string[] => [
   "--headless=new",
   "--remote-debugging-pipe",
   `--user-data-dir=${profileDir}`,
@@ -165,7 +168,10 @@ export const boxBrowserFlags = (profileDir: string): readonly string[] => [
   "--disable-gpu",
   "--disable-breakpad",
   "--disable-crash-reporter",
+  "--password-store=basic",
+  "--use-mock-keychain",
   "--mute-audio",
+  ...extra,
   "about:blank",
 ];
 

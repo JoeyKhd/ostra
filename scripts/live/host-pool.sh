@@ -19,7 +19,8 @@ else
 fi
 
 # host_pool_users: the docs' steps, as written there: the two users, the agent's group with the
-# runner's user in it, the data folder, and the sudoers rule.
+# runner's user in it, the data folder, and the sudoers rule (with milestone 8's
+# `closefrom_override`, for the box's browser's pipe).
 host_pool_users() {
   if [ "$(uname -s)" = "Darwin" ]; then
     sudo dseditgroup -o create "$HOST_POOL_AGENT" || return 1
@@ -34,7 +35,7 @@ host_pool_users() {
     sudo usermod -aG "$HOST_POOL_AGENT" "$HOST_POOL_RUNNER" || return 1
   fi
   sudo install -d -o "$HOST_POOL_RUNNER" -m 0711 "$HOST_POOL_DATA" || return 1
-  printf '%s ALL=(%s) NOPASSWD:SETENV: ALL\nDefaults>%s umask=0007, umask_override\n' "$HOST_POOL_RUNNER" "$HOST_POOL_AGENT" "$HOST_POOL_AGENT" | sudo tee /etc/sudoers.d/ostra-runner >/dev/null || return 1
+  printf '%s ALL=(%s) NOPASSWD:SETENV: ALL\nDefaults>%s umask=0007, umask_override, closefrom_override\n' "$HOST_POOL_RUNNER" "$HOST_POOL_AGENT" "$HOST_POOL_AGENT" | sudo tee /etc/sudoers.d/ostra-runner >/dev/null || return 1
   sudo chmod 0440 /etc/sudoers.d/ostra-runner || return 1
   sudo visudo -cf /etc/sudoers.d/ostra-runner || return 1
   # What the log shows: both users and their groups, the data folder, and what sudo lets the

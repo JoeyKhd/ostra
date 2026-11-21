@@ -8,6 +8,7 @@ import { BOX_BROWSER_PROFILE_PREFIX, boxBrowserFlags, killTree, removeProfileDir
 import type { AgentLaunch, AgentProcess, AppProcessLaunch, BrowserProcessEnds, ProcessExit } from "@ostra/adapter-sdk";
 import type { NoBrowserReason } from "@ostra/protocol";
 import type { Containment, ContainmentUnit } from "./containment.ts";
+import type { BrowserResolution } from "./machine-browser.ts";
 import { runProgram } from "./process.ts";
 import type { RunOptions, RunResult } from "./process.ts";
 
@@ -53,10 +54,23 @@ export type BrowserProcessResult = StartedBrowserProcess | { readonly available:
 
 /**
  * The browser a `host` runner starts (ADR 0068): a Chromium-family program, and the arguments
- * before ostra's flags (a test's fake browser is `node` and its script). Ticket 11 finds it:
- * `OSTRA_RUNNER_BROWSER`, then Chrome, Chromium and Edge, then the pinned download.
+ * before ostra's flags (a test's fake browser is `node` and its script). Ticket 11 finds it
+ * (`machine-browser.ts`): `OSTRA_RUNNER_BROWSER`, then Chrome, Chromium and Edge, then the pinned download.
  */
 export type BrowserProgram = { readonly command: string; readonly args?: readonly string[] };
+
+/**
+ * Milestone 8 (ticket 11): who a box's browser runs as when that isn't the runner's own user (a
+ * `host` pool's agent user): how its command is started, and how its profile is made and removed
+ * as that user, who owns what the browser writes in it.
+ */
+export type BrowserRunAs = {
+  readonly invoke: (command: string, args: readonly string[], env: Readonly<Record<string, string>>) => { readonly command: string; readonly args: readonly string[] };
+  /** Makes a fresh profile folder as that user, named `BOX_BROWSER_PROFILE_PREFIX` and random letters; `null` when it couldn't. */
+  readonly makeProfile: () => Promise<string | null>;
+  /** Removes the profile as that user, retrying while the browser's helpers let go. */
+  readonly removeProfile: (dir: string) => Promise<void>;
+};
 
 export type TaskProcesses = {
   /** The task's unit (ticket 42): made with its workspace, and every process of the task joins it. */
@@ -67,8 +81,11 @@ export type TaskProcesses = {
   readonly run: (command: string, args: readonly string[], options: RunOptions) => Promise<RunResult>;
   /** Milestone 8 (F-140): starts one of the app's processes, with exactly its environment and no stdin, in `unit`. */
   readonly startApp: (launch: AppProcessLaunch, unit: ContainmentUnit) => Promise<StartAppResult>;
-  /** Milestone 8 (F-121): starts the box's browser with a fresh profile and its DevTools pipe, in `unit`, with `env` as its whole environment. */
-  readonly startBrowser: (unit: ContainmentUnit, env: Readonly<Record<string, string>>) => Promise<BrowserProcessResult>;
+  /**
+   * Milestone 8 (F-121): starts the box's browser with a fresh profile and its DevTools pipe, in
+   * `unit`, with `env` as its whole environment, as `runAs`'s user when it's given.
+   */
+  readonly startBrowser: (unit: ContainmentUnit, env: Readonly<Record<string, string>>, runAs?: BrowserRunAs) => Promise<BrowserProcessResult>;
 };
 
 /** A spawned child's start: its PID, or the error's code. */
@@ -107,7 +124,10 @@ export const stopTree = async (pid: number, exited: Promise<unknown>, graceMs: n
 };
 
 /** This machine: the runner's own children, ended together through `containment`. */
-export const localProcesses = (containment: () => Containment, browser: () => BrowserProgram | null = () => null): TaskProcesses => ({
+export const localProcesses = (
+  containment: () => Containment,
+  browser: () => Promise<BrowserResolution> = () => Promise.resolve({ available: false, reason: "not-found", detail: "this runner names no browser" }),
+): TaskProcesses => ({
   createUnit: (name, marker) => containment().create(name, marker),
   startAgent: async (launch, unit) => {
     // Exactly the launch's environment: nothing of the runner's is inherited (ADR 0030).
@@ -166,15 +186,26 @@ export const localProcesses = (containment: () => Containment, browser: () => Br
     const pid = started.pid;
     return { ok: true, value: { pid, stdout: child.stdout, stderr: child.stderr, exited, stop: (graceMs) => stopTree(pid, exited, graceMs) } };
   },
-  startBrowser: async (unit, env) => {
-    const program = browser();
-    if (program === null) {
-      return { available: false, reason: "not-found" };
+  startBrowser: async (unit, env, runAs) => {
+    const resolution = await browser();
+    if (!resolution.available) {
+      return { available: false, reason: resolution.reason };
     }
-    // A fresh profile in a temporary folder, for this browser only (ADR 0068).
-    const profileDir = await mkdtemp(path.join(tmpdir(), BOX_BROWSER_PROFILE_PREFIX));
-    const child = spawn(program.command, [...(program.args ?? []), ...boxBrowserFlags(profileDir)], {
-      env: { ...env },
+    const program = resolution.program;
+    // A fresh profile in a temporary folder, for this browser only (ADR 0068), made by the user who runs it.
+    const profileDir = runAs === undefined ? await mkdtemp(path.join(tmpdir(), BOX_BROWSER_PROFILE_PREFIX)) : await runAs.makeProfile();
+    if (profileDir === null) {
+      return { available: false, reason: "failed-to-start" };
+    }
+    const removeProfile = (): Promise<void> => (runAs === undefined ? removeProfileDir(profileDir) : runAs.removeProfile(profileDir));
+    // The machine's browser with its own sandbox: no container flag on `host` (ticket 11).
+    const args = [...(program.args ?? []), ...boxBrowserFlags(profileDir)];
+    // On Linux, what Chromium keeps beside its profile (its NSS database in `~/.pki`, its caches)
+    // goes in the profile too, so nothing of it outlives the box (ADR 0068).
+    const browserEnv = process.platform === "linux" ? { ...env, HOME: profileDir, XDG_CONFIG_HOME: profileDir, XDG_CACHE_HOME: profileDir } : { ...env };
+    const invoked = runAs === undefined ? { command: program.command, args } : runAs.invoke(program.command, args, browserEnv);
+    const child = spawn(invoked.command, [...invoked.args], {
+      env: browserEnv,
       stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"],
       detached: process.platform !== "win32",
       windowsHide: true,
@@ -191,7 +222,7 @@ export const localProcesses = (containment: () => Containment, browser: () => Br
     const fromBrowser = child.stdio[4];
     if (!started.ok || !(toBrowser instanceof Writable) || !(fromBrowser instanceof Readable)) {
       if (started.ok) await killTree(started.pid);
-      await removeProfileDir(profileDir);
+      await removeProfile();
       return { available: false, reason: "failed-to-start" };
     }
     toBrowser.on("error", () => {
@@ -199,7 +230,7 @@ export const localProcesses = (containment: () => Containment, browser: () => Br
     });
     const pid = started.pid;
     // The profile goes with the browser, however it ends (ADR 0068).
-    const gone = exited.then(() => removeProfileDir(profileDir));
+    const gone = exited.then(removeProfile);
     return {
       available: true,
       program: path.basename(program.command),

@@ -222,6 +222,26 @@ unschedulable() {
   [ "$phase" = "Pending" ] && [ "$scheduled" = "Unschedulable" ]
 }
 
+# F-121 (milestone 8's ticket 11): the executor suite's browser case in a pod of the base image,
+# under the agent container's security context (pod.ts): root for the init alone, every capability
+# dropped but its three, no privilege escalation, a read-only root file system with an in-memory
+# `/tmp` for the profile, RuntimeDefault seccomp, and a small box's limits. The probe
+# (src/init/browser-probe.ts) prints its result; the step passes when the pod succeeds.
+box_browser() {
+  local ctx="kind-$1" overrides phase=""
+  overrides='{"spec":{"restartPolicy":"Never","securityContext":{"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"box-browser","image":"'"$BASE"'","imagePullPolicy":"Never","command":["node","/opt/ostra/app/packages/adapters/adapter-executor-docker/src/init/browser-probe-main.ts"],"securityContext":{"runAsUser":0,"runAsNonRoot":false,"allowPrivilegeEscalation":false,"readOnlyRootFilesystem":true,"capabilities":{"drop":["ALL"],"add":["SETUID","SETGID","KILL"]}},"resources":{"limits":{"cpu":"2","memory":"4Gi"}},"volumeMounts":[{"name":"tmp","mountPath":"/tmp"}]}],"volumes":[{"name":"tmp","emptyDir":{"medium":"Memory"}}]}}'
+  kubectl --context "$ctx" -n ostra-boxes run box-browser --image "$BASE" --restart Never --overrides "$overrides" || return 1
+  for _ in $(seq 1 60); do
+    phase="$(kubectl --context "$ctx" -n ostra-boxes get pod box-browser -o jsonpath='{.status.phase}')"
+    case "$phase" in Succeeded | Failed) break ;; esac
+    sleep 3
+  done
+  kubectl --context "$ctx" -n ostra-boxes logs box-browser
+  kubectl --context "$ctx" -n ostra-boxes delete pod box-browser --wait=false >/dev/null
+  echo "phase $phase"
+  [ "$phase" = "Succeeded" ]
+}
+
 released_clean() {
   local ctx="kind-$1" left
   helm --kube-context "$ctx" uninstall ostra-runner -n ostra --wait || return 1
@@ -255,6 +275,7 @@ for cluster in "${CLUSTERS[@]}"; do
   on_cluster "$name" "egress-$expect" egress_probes "$expect"
   on_cluster "$name" kubelet-pull kubelet_pull
   on_cluster "$name" unschedulable unschedulable
+  on_cluster "$name" box-browser box_browser
   not_run "$name-box-as-a-pod" "a box as a pod with its services, ready in under 60 s, needs a task dispatched end to end on the cluster (a stub model and a git upstream the pod reaches), which this job doesn't set up yet"
   not_run "$name-buildkit" "the rootless BuildKit pod's build, scan and push needs a snapshot build requested through core on the cluster, which this job doesn't drive yet"
   on_cluster "$name" released-clean released_clean

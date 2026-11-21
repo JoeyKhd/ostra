@@ -55,13 +55,28 @@ COPY --from=opencode /opt/opencode/node_modules /tmp/opencode/node_modules
 COPY scripts/known-licenses.ts /opt/notices/scripts/
 COPY packages/deploy-checks/src/notices.ts packages/deploy-checks/src/notices-main.ts /opt/notices/packages/deploy-checks/src/
 COPY deploy/notices/ /opt/notices/extra/
-RUN pnpm licenses list --json --recursive --prod > /tmp/licenses.json   && node /opt/notices/packages/deploy-checks/src/notices-main.ts --image base --pnpm-licenses /tmp/licenses.json      --pnpm-store /app/node_modules/.pnpm --without-agent --npm-modules /tmp/opencode/node_modules      --extra /opt/notices/extra/models-dev.json --out /opt/notices/out/THIRD_PARTY_NOTICES
+RUN pnpm licenses list --json --recursive --prod > /tmp/licenses.json   && node /opt/notices/packages/deploy-checks/src/notices-main.ts --image base --pnpm-licenses /tmp/licenses.json      --pnpm-store /app/node_modules/.pnpm --without-agent --npm-modules /tmp/opencode/node_modules      --extra /opt/notices/extra/models-dev.json --extra /opt/notices/extra/chromium.json --out /opt/notices/out/THIRD_PARTY_NOTICES
 
 FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS runtime
 RUN apt-get update \
   && apt-get install --yes --no-install-recommends \
      tini bash git git-lfs ca-certificates curl ripgrep python3 build-essential procps \
   && rm -rf /var/lib/apt/lists/*
+# Milestone 8 (ticket 11, ADR 0068): the box's browser, Debian bookworm's Chromium at the version
+# the repo pins (packages/deploy-checks/src/chromium.ts; `pnpm check:images` holds this line to it),
+# with the fonts a page's text and emoji render in. The init starts it as the agent's user
+# (OSTRA_BOX_BROWSER, /usr/bin/chromium). bookworm-security keeps only its newest Chromium, so once
+# the pin is older, the build takes these two packages from Debian's snapshot archive at the pinned
+# time, signed by the same archive key; everything else comes from the image's own sources.
+RUN set -eu; \
+  apt-get update; \
+  if ! apt-cache show chromium=156.0.8078.79-1~deb12u1 >/dev/null 2>&1; then \
+    echo "deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg check-valid-until=no] http://snapshot.debian.org/archive/debian-security/20261120T000000Z bookworm-security main" >/etc/apt/sources.list.d/chromium-snapshot.list; \
+    apt-get update; \
+  fi; \
+  apt-get install --yes --no-install-recommends chromium=156.0.8078.79-1~deb12u1 chromium-common=156.0.8078.79-1~deb12u1 fonts-liberation fonts-noto-color-emoji; \
+  rm -f /etc/apt/sources.list.d/chromium-snapshot.list; \
+  rm -rf /var/lib/apt/lists/*
 COPY --from=opencode /opt/opencode /opt/opencode
 COPY --from=init /app /opt/ostra/app
 COPY packages/adapters/adapter-model-endpoint/catalog/models-dev.json /opt/ostra/catalog/models-dev.json

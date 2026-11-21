@@ -6,6 +6,7 @@
 import { OPENCODE_VERSION, pinnedChecksums } from "@ostra/adapter-opencode";
 import { redactTokens } from "@ostra/adapter-sdk";
 
+import { CHROMIUM_FONTS, CHROMIUM_PIN } from "./chromium.ts";
 import { envValue, execForm, namesSet, parseDockerfile, stagesOf } from "./dockerfile.ts";
 import type { Instruction, Stage } from "./dockerfile.ts";
 import { buildPlan, dockerfileOf, imageBundles, imageNames } from "./images.ts";
@@ -27,7 +28,8 @@ export type ImageRule =
   | "notices"
   | "no-agent"
   | "pruned-root"
-  | "openssl";
+  | "openssl"
+  | "chromium-pin";
 
 export type Problem = { readonly file: string; readonly line: number | null; readonly rule: ImageRule; readonly message: string };
 
@@ -42,6 +44,8 @@ export type DeployFiles = {
   readonly imageNamespace: string;
   /** apps/runner/package.json's version, which `ostra --version` prints. */
   readonly runnerVersion: string;
+  /** Milestone 8: deploy/notices/chromium.json, the base image's Chromium notice. */
+  readonly chromiumNotice: string;
 };
 
 /** An image reference pinned by tag and digest: `name:tag@sha256:<64 hex>`. */
@@ -278,7 +282,7 @@ const notices = (name: ImageName, file: string, instructions: readonly Instructi
   if (!bundle.agent && !/\s--without-agent(?:\s|$)/.test(generate.args)) {
     problems.push(problem("the install carries no agent, so notices-main.ts must check it with --without-agent", generate.line));
   }
-  if (name === "base" && (optionOf(generate.args, "--npm-modules") === null || optionOf(generate.args, "--extra") === null)) {
+  if (name === "base" && (optionOf(generate.args, "--npm-modules") === null || !/\s--extra \/opt\/notices\/extra\/models-dev\.json(?:\s|$)/.test(generate.args))) {
     problems.push(problem("the base image's notices also read OpenCode's npm install (--npm-modules) and the catalog's notice (--extra)", generate.line));
   }
   const out = optionOf(generate.args, "--out");
@@ -288,6 +292,66 @@ const notices = (name: ImageName, file: string, instructions: readonly Instructi
   });
   if (out === null || copied !== true) {
     problems.push(problem(`the final stage must COPY --from the notices notices-main.ts wrote (its --out) to ${NOTICES_PATH}`));
+  }
+  return problems;
+};
+
+/** A word of a RUN, as the shell would split it, without quotes. */
+const runWords = (args: string): readonly string[] => args.split(/[\s;&|]+/).map((word) => word.replace(/^["']|["']$/g, ""));
+
+/**
+ * Milestone 8 (ticket 11, ADR 0068): the base image's Chromium, Debian's at `CHROMIUM_PIN`'s
+ * version for `chromium` and `chromium-common` both, installed in the final stage with its fonts,
+ * the snapshot archive at the pin's time as the only other source (signed by Debian's archive key),
+ * and listed in THIRD_PARTY_NOTICES by `deploy/notices/chromium.json` at the same version.
+ */
+const chromiumPin = (file: string, text: string, notice: string): Problem[] => {
+  const problem = (message: string, line: number | null = null): Problem => ({ file, line, rule: "chromium-pin", message });
+  const instructions = parseDockerfile(text);
+  const final = stagesOf(instructions).at(-1);
+  const runs = final?.instructions.filter((instruction) => instruction.keyword === "RUN") ?? [];
+  const install = runs.find((run) => /apt-get install\b/.test(run.args) && /\schromium(?:=|\s)/.test(run.args));
+  if (install === undefined) {
+    return [problem("the final stage must apt-get install Debian's chromium, the box's browser")];
+  }
+  const problems: Problem[] = [];
+  const words = runWords(install.args);
+  const pinned = (name: string): string | undefined => words.find((word) => word === name || word.startsWith(`${name}=`));
+  for (const name of ["chromium", "chromium-common"]) {
+    if (pinned(name) !== `${name}=${CHROMIUM_PIN.version}`) {
+      problems.push(problem(`${name} must be installed at the pinned version: ${name}=${CHROMIUM_PIN.version}`, install.line));
+    }
+  }
+  for (const font of CHROMIUM_FONTS) {
+    if (!words.includes(font)) problems.push(problem(`${font} must be installed beside Chromium, so pages render text and emoji`, install.line));
+  }
+  if (!words.includes("--no-install-recommends")) problems.push(problem("Chromium is installed without its recommends (--no-install-recommends)", install.line));
+  const snapshot = `http://snapshot.debian.org/archive/debian-security/${CHROMIUM_PIN.snapshot} bookworm-security main`;
+  const sources = [...install.args.matchAll(/echo\s+"deb\s+\[([^\]]*)\]\s+([^"]+)"/g)];
+  const [source] = sources;
+  if (sources.length !== 1 || source?.[2]?.trim() !== snapshot || !(source[1] ?? "").split(/\s+/).includes("signed-by=/usr/share/keyrings/debian-archive-keyring.gpg")) {
+    problems.push(problem(`the one extra source must be ${snapshot}, signed by /usr/share/keyrings/debian-archive-keyring.gpg`, install.line));
+  }
+  if (!install.args.includes(`apt-cache show chromium=${CHROMIUM_PIN.version}`)) {
+    problems.push(problem("the snapshot is added only when the image's own sources lack the pinned version (apt-cache show)", install.line));
+  }
+  if (!instructions.some((instruction) => instruction.keyword === "RUN" && instruction.args.includes("notices-main.ts") && /\s--extra \/opt\/notices\/extra\/chromium\.json(?:\s|$)/.test(instruction.args))) {
+    problems.push(problem("THIRD_PARTY_NOTICES must list Chromium: notices-main.ts --extra /opt/notices/extra/chromium.json"));
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(notice);
+  } catch {
+    parsed = null;
+  }
+  const field = (key: string): unknown => (typeof parsed === "object" && parsed !== null ? Reflect.get(parsed, key) : undefined);
+  if (field("name") !== "chromium" || field("version") !== CHROMIUM_PIN.version || field("license") !== "BSD-3-Clause" || field("licenseFile") !== "chromium.LICENSE") {
+    problems.push({
+      file: "deploy/notices/chromium.json",
+      line: null,
+      rule: "chromium-pin",
+      message: `Chromium's notice must name chromium at ${CHROMIUM_PIN.version}, BSD-3-Clause, with chromium.LICENSE`,
+    });
   }
   return problems;
 };
@@ -386,6 +450,7 @@ export const checkCompose = (text: string, version: string, namespace: string): 
 /** Every check over the deploy files. Empty when they pass. */
 export const checkImages = (files: DeployFiles): readonly Problem[] => [
   ...imageNames.flatMap((name) => checkDockerfile(name, files.dockerfiles[name], files.entrypoint)),
+  ...chromiumPin(dockerfileOf("base"), files.dockerfiles.base, files.chromiumNotice),
   ...checkCompose(files.compose, files.releaseVersion, files.imageNamespace),
   ...(files.runnerVersion === files.releaseVersion
     ? []

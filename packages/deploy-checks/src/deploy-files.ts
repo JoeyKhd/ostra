@@ -17,5 +17,6 @@ export const readDeployFiles = async (root: string = repoRoot): Promise<DeployFi
     releaseVersion: await releaseVersion(root),
     imageNamespace: await imageNamespace(root),
     runnerVersion: typeof runnerVersion === "string" ? runnerVersion : "",
+    chromiumNotice: await readRepoFile("deploy/notices/chromium.json", root),
   };
 };

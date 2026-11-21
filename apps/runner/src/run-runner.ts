@@ -1,7 +1,8 @@
 import path from "node:path";
 import { createDockerBoxes, createDockerSnapshots, createEngine, engineAddressFrom } from "@ostra/adapter-executor-docker";
-import { HostExecutor } from "@ostra/adapter-executor-host";
+import { HostExecutor, machineBrowserSource, resolveMachineBrowser } from "@ostra/adapter-executor-host";
 import { KubernetesExecutor } from "@ostra/adapter-executor-kubernetes";
+import { noBrowserWords } from "@ostra/protocol";
 import type { RunnerConfig } from "@ostra/protocol";
 import type { RunSignedIn } from "./cli/cli.ts";
 import { exitCodes } from "./cli/cli.ts";
@@ -69,12 +70,24 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
   switch (config.executor) {
     case "host": {
       const context = { logger, clock: { now: () => Date.now() } };
+      // Milestone 8 (ticket 11, ADR 0068): the boxes' browser, the machine's or the pinned headless
+      // shell, found when a box first wants one, so a runner that never takes a picture downloads nothing.
+      const browserOptions = { named: config.browser, download: config.browserDownload, dataDir: path.resolve(dataDir) };
+      const browser = machineBrowserSource(() => resolveMachineBrowser(browserOptions));
+      const onMachine = await resolveMachineBrowser({ ...browserOptions, download: false });
+      if (!onMachine.available) {
+        if (onMachine.reason === "download-off" && config.browserDownload) {
+          terminal.say("No Chrome, Chromium or Edge here: the runner downloads its pinned headless shell when a task first needs a browser.");
+        } else {
+          terminal.warn(onMachine.reason === "download-off" ? noBrowserWords("download-off") : `No browser for this runner's boxes: ${onMachine.detail}.`);
+        }
+      }
       // Milestone 5 (ticket 10): a pool runs the agent as a separate OS user, and refuses to start
       // where it can't (Windows), without that user, or on the development switch in production.
       let executor: HostExecutor;
       if (record.kind === "pool") {
         const started = await HostExecutor.startPool(
-          { dataDir: path.resolve(dataDir), shell: config.shell, agentUser: config.hostPoolAgentUser, secrets: [dataPaths(path.resolve(dataDir)).privateKey] },
+          { dataDir: path.resolve(dataDir), shell: config.shell, agentUser: config.hostPoolAgentUser, secrets: [dataPaths(path.resolve(dataDir)).privateKey], browser },
           context,
         );
         if (!started.ok) {
@@ -83,7 +96,7 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
         }
         executor = started.value;
       } else {
-        executor = await HostExecutor.start({ dataDir: path.resolve(dataDir), shell: config.shell }, context);
+        executor = await HostExecutor.start({ dataDir: path.resolve(dataDir), shell: config.shell, browser }, context);
       }
       const health = await executor.health();
       // A pool on the development switch says so and runs; anything else short of ok stops here.

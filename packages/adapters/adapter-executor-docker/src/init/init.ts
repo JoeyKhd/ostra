@@ -16,6 +16,7 @@ import { z } from "zod";
 import { createLineSplitter, encodeFrame, parseFrame, toBase64Chunks } from "../bridge/framing.ts";
 import { BRIDGE_FEATURES, BRIDGE_VERSION, bridgeBoxIdSchema, bridgeFeatureSchema, CHUNK_BYTES, sidecarFrameSchema } from "../bridge/protocol.ts";
 import type { BrowserId, ForwardId, InitFrame, PrepareJob, ProcId, SidecarFrame } from "../bridge/protocol.ts";
+import { CONTAINER_BROWSER_FLAGS } from "./box-browser-flags.ts";
 import { PREPARE_FAILURE_PREFIX } from "./prepare.ts";
 
 // The box's init program (ADR 0046's "small init" of the base image), in the agent's container.
@@ -53,7 +54,7 @@ export const initEnvSchema = z.object({
     .default("")
     .transform((text) => text.split(",").map((each) => each.trim()).filter((each) => each !== ""))
     .pipe(z.array(z.string())),
-  /** Milestone 8 (ADR 0068): the image's browser. Ticket 11 puts Debian's Chromium there; an image without one has no browser. */
+  /** Milestone 8 (ADR 0068): the image's browser, Debian's Chromium in ostra's base image (ticket 11); an image without one has no browser. */
   OSTRA_BOX_BROWSER: z.string().min(1).default("/usr/bin/chromium"),
 });
 export type InitEnv = z.infer<typeof initEnvSchema>;
@@ -228,8 +229,11 @@ export const runInit = async (env: InitEnv, options: InitOptions = {}): Promise<
       const value = process.env[name];
       if (value !== undefined) browserEnv[name] = value;
     }
-    if (process.platform !== "win32") browserEnv["HOME"] = profileDir;
-    const child = spawn(program.command, [...program.args, ...boxBrowserFlags(profileDir)], {
+    // What Chromium keeps beside its profile (its NSS database, its config and caches) goes in the
+    // profile too, which is in `/tmp`: writable even where the root file system isn't (a pod's).
+    if (process.platform !== "win32") Object.assign(browserEnv, { HOME: profileDir, XDG_CONFIG_HOME: profileDir, XDG_CACHE_HOME: profileDir });
+    // Ticket 11: in a container, without Chromium's own sandbox, inside the box's (`box-browser-flags.ts`).
+    const child = spawn(program.command, [...program.args, ...boxBrowserFlags(profileDir, CONTAINER_BROWSER_FLAGS)], {
       ...asAgent,
       env: browserEnv,
       stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"],
