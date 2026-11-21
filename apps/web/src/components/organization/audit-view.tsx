@@ -273,6 +273,13 @@ export const AuditView = ({ organization, project, canExport, tabs }: AuditViewP
   const entryParam = params.get("entry");
   const selected = entries.find((entry) => entry.id === entryParam) ?? (entryParam === null ? entries[0] : undefined);
   const select = (entry: Entry) => { setParams({ entry: entry.id }); };
+  // The list's one Tab stop (F-081): the selected entry, or the first row drawn while the selected
+  // one is scrolled out of the virtual list. The arrows move between the rows (`onRowKey`).
+  const drawn = items.flatMap((item) => {
+    const row = rows[item.index];
+    return row?.kind === "entry" ? [row.entry.id] : [];
+  });
+  const stop = selected !== undefined && drawn.includes(selected.id) ? selected.id : (drawn[0] ?? null);
 
   const onRowKey = (event: KeyboardEvent<HTMLButtonElement>, entry: Entry) => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -432,6 +439,7 @@ export const AuditView = ({ organization, project, canExport, tabs }: AuditViewP
                       type="button"
                       role="option"
                       aria-selected={picked}
+                      tabIndex={entry.id === stop ? 0 : -1}
                       data-entry={entry.id}
                       data-testid="audit-row"
                       data-action={entry.action}
