@@ -33,9 +33,13 @@ const organizationsText = (names: readonly string[]): string => {
   return `${names[0] ?? ""}, +${String(names.length - 1)}`;
 };
 
-/** The middle of a long link gives way to `…`, so its start and its end both show. */
-const middleTruncate = (text: string, keep = 44): string =>
-  text.length <= keep ? text : `${text.slice(0, Math.ceil(keep * 0.7))}…${text.slice(-Math.floor(keep * 0.3))}`;
+/**
+ * The middle of a long link gives way to `…`, so its start and its end both show at any width: the
+ * head truncates with an ellipsis, and the tail, its last characters, always shows.
+ */
+const tailLength = 6;
+const middleHead = (text: string): string => text.slice(0, -tailLength);
+const middleTail = (text: string): string => text.slice(-tailLength);
 
 type ResetLink = { readonly userId: string; readonly link: string; readonly count: number };
 
@@ -91,7 +95,10 @@ const AccountPanel = ({
             {reset === null ? null : (
               <>
                 <div className="flex min-h-9 items-center gap-3 rounded-lg border border-line bg-surface px-3 py-1.5">
-                  <code data-testid="reset-link" aria-label={reset.link} className="min-w-0 flex-1 truncate font-mono text-[13px] text-text">{middleTruncate(reset.link)}</code>
+                  <code data-testid="reset-link" aria-label={reset.link} className="flex min-w-0 flex-1 font-mono text-[13px] text-text">
+                    <span className="min-w-0 truncate">{middleHead(reset.link)}</span>
+                    <span className="shrink-0">{middleTail(reset.link)}</span>
+                  </code>
                   <CopyLink text={reset.link} />
                 </div>
                 <p className="mt-1.5 text-xs text-muted">{t("instance.accounts.resetShown", { hours })}</p>
