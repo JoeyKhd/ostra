@@ -40,6 +40,8 @@ export const actionWords = {
   steer: { sheet: "palette.actions.steer", palette: "palette.labels.steer", keywords: "palette.keywords.steer" },
   "toggle-side-pane": { sheet: "palette.actions.toggle-side-pane", palette: "palette.labels.toggle-side-pane", keywords: "palette.keywords.toggle-side-pane" },
   "expand-preview": { sheet: "palette.actions.expand-preview", palette: "palette.labels.expand-preview", keywords: "palette.keywords.expand-preview" },
+  "add-from-source": { sheet: "palette.actions.add-from-source", palette: "palette.labels.add-from-source", keywords: "palette.keywords.add-from-source" },
+  "browse-marketplace": { sheet: "palette.actions.browse-marketplace", palette: "palette.labels.browse-marketplace", keywords: "palette.keywords.browse-marketplace" },
 } as const satisfies Record<PaletteActionId, { readonly sheet: MessageKey; readonly palette: MessageKey; readonly keywords: MessageKey }>;
 
 /** The sheet's scopes, in its order, each with its label and the condition it holds under. */

@@ -1,7 +1,7 @@
 "use client";
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppWindowIcon, ArrowRightIcon, BoxIcon, Building2Icon, CheckIcon, ChevronRightIcon, CircleStopIcon, CornerDownLeftIcon, CpuIcon, FolderIcon, FolderPlusIcon, GitPullRequestIcon, HandIcon, HouseIcon, KeyboardIcon, ListChecksIcon, Maximize2Icon, MessageSquareIcon, MessageSquareReplyIcon, MoonIcon, PanelLeftIcon, PlusIcon, RotateCcwIcon, SearchIcon, ServerIcon, SlidersHorizontalIcon, SquarePenIcon, SunIcon, XIcon } from "lucide-react";
+import { AppWindowIcon, ArrowRightIcon, BoxIcon, Building2Icon, CheckIcon, ChevronRightIcon, CircleStopIcon, CornerDownLeftIcon, CpuIcon, FolderIcon, FolderPlusIcon, GitPullRequestIcon, HandIcon, HouseIcon, KeyboardIcon, LinkIcon, ListChecksIcon, Maximize2Icon, MessageSquareIcon, MessageSquareReplyIcon, MoonIcon, PanelLeftIcon, PlusIcon, RotateCcwIcon, SearchIcon, ServerIcon, SlidersHorizontalIcon, SquarePenIcon, StoreIcon, SunIcon, XIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Dialog } from "radix-ui";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
@@ -88,6 +88,11 @@ const actionIcon = (id: PaletteActionId, shownTheme: "dark" | "light"): ReactNod
       return <AppWindowIcon />;
     case "expand-preview":
       return <Maximize2Icon />;
+    // The library's top bar draws the same two (library-browse.md, library.md).
+    case "add-from-source":
+      return <LinkIcon />;
+    case "browse-marketplace":
+      return <StoreIcon />;
     default:
       return id satisfies never;
   }

@@ -17,8 +17,12 @@ export type PaletteScope = (typeof paletteScopes)[number];
 /** The keys pressed one after the other, without a modifier: `["g", "n"]` is `g` then `n`. */
 export type PaletteShortcut = readonly [string] | readonly [string, string];
 
-/** The panel's own destinations an action can go to. */
-export const paletteRoutes = ["needs-you", "home", "tasks", "new-task", "new-project", "projects", "organization"] as const;
+/**
+ * The panel's own destinations an action can go to. Milestone 8 (F-145, F-146): the library's
+ * install sheet (`library-add`, Organization › Skills and MCP with Add from a source open) and its
+ * marketplace browser.
+ */
+export const paletteRoutes = ["needs-you", "home", "tasks", "new-task", "new-project", "projects", "organization", "library-add", "marketplace"] as const;
 export type PaletteRoute = (typeof paletteRoutes)[number];
 
 /** The tRPC procedures an action calls. The API's routers name these same paths. */
@@ -59,7 +63,9 @@ export type PaletteActionId =
   | "stop"
   | "steer"
   | "toggle-side-pane"
-  | "expand-preview";
+  | "expand-preview"
+  | "add-from-source"
+  | "browse-marketplace";
 
 /** One action of the registry: its ID, its words, its shortcut, when it's offered and what it does. */
 export type PaletteAction = {
@@ -95,7 +101,9 @@ const action = (
  * Spec section 12, item 11: every action and shortcut of milestone 7, milestone 8's three for the
  * double sidebar (F-147, app-shell.md "Keyboard"): `g p`, `g o` and `[`, and its two for the task
  * page's preview (F-141, task-preview.md "Keyboard"): `p` switches the side pane between the
- * preview and the properties, and `f` expands the preview to the page's width and back.
+ * preview and the properties, and `f` expands the preview to the page's width and back. Then the
+ * library's two (F-145, F-146; library.md, the top bar's buttons), for an organization admin only,
+ * as those buttons are: Add from a source, and Browse marketplace. Neither has a shortcut.
  */
 export const paletteActions: readonly PaletteAction[] = Object.freeze([
   action("go-needs-you", ["g", "n"], "global", { kind: "navigate", route: "needs-you" }),
@@ -118,6 +126,8 @@ export const paletteActions: readonly PaletteAction[] = Object.freeze([
   action("steer", null, "task", { kind: "call", procedure: "tasks.send" }),
   action("toggle-side-pane", ["p"], "task", { kind: "panel", does: "toggle-side-pane" }),
   action("expand-preview", ["f"], "task", { kind: "panel", does: "expand-preview" }),
+  action("add-from-source", null, "global", { kind: "navigate", route: "library-add" }, { role: "admin" }),
+  action("browse-marketplace", null, "global", { kind: "navigate", route: "marketplace" }, { role: "admin" }),
 ]);
 
 /** A shortcut as the sheet and the clash check spell it: `g n`. */

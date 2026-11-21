@@ -186,6 +186,13 @@ export const ShellActions = ({ me, children }: { readonly me: RouterOutputs["me"
       case "expand-preview":
         task?.preview?.expand();
         return;
+      // Milestone 8's library (F-145, F-146): the library page's own two buttons, for its admins.
+      case "add-from-source":
+        router.push("/organization/skills?add=skill");
+        return;
+      case "browse-marketplace":
+        router.push("/organization/skills/marketplace");
+        return;
       default:
         id satisfies never;
     }

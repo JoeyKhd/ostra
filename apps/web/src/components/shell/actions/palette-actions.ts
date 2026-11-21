@@ -85,6 +85,8 @@ const taskRow = (entry: PaletteAction, scope: ActionScope): ActionRow | null => 
     case "new-task":
     case "new-project":
     case "toggle-theme":
+    case "add-from-source":
+    case "browse-marketplace":
       return null;
     default:
       return entry.id satisfies never;
@@ -120,6 +122,8 @@ const pickRow = (entry: PaletteAction, waiting: Waiting): ActionRow | null => {
     case "steer":
     case "toggle-side-pane":
     case "expand-preview":
+    case "add-from-source":
+    case "browse-marketplace":
       return null;
     default:
       return entry.id satisfies never;

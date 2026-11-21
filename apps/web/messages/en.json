@@ -6091,7 +6091,9 @@
       "stop": "Stop",
       "steer": "Message the agent",
       "toggle-side-pane": "Switch between the preview and the properties",
-      "expand-preview": "Expand the preview, or go back to the chat"
+      "expand-preview": "Expand the preview, or go back to the chat",
+      "add-from-source": "Add a skill or MCP server from a source",
+      "browse-marketplace": "Browse the marketplace for skills and MCP servers"
     },
     "labels": {
       "go-needs-you": "Needs you",
@@ -6114,6 +6116,8 @@
       "steer": "Message the agent",
       "toggle-side-pane": "Switch the side pane",
       "expand-preview": "Expand the preview",
+      "add-from-source": "Add from a source",
+      "browse-marketplace": "Browse marketplace",
       "approveThis": "Approve",
       "denyThis": "Deny",
       "answerThis": "Answer",
@@ -6141,7 +6145,9 @@
       "stop": "cancel halt end",
       "steer": "send tell composer",
       "toggle-side-pane": "preview properties pane app",
-      "expand-preview": "full width app preview"
+      "expand-preview": "full width app preview",
+      "add-from-source": "library skill mcp server install github repo url",
+      "browse-marketplace": "library skills mcp servers search install registry"
     },
     "hint": {
       "waiting": "{n} waiting",

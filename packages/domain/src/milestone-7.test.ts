@@ -10,6 +10,7 @@ import {
   offeredPaletteActions,
   paletteActions,
   paletteProcedures,
+  paletteRoutes,
   paletteScopes,
   registryProblems,
   shortcutClashes,
@@ -55,6 +56,9 @@ describe("the palette's actions and shortcuts (F-081)", () => {
         "shortcut-sheet",
         "toggle-side-pane",
         "expand-preview",
+        // Milestone 8's library (F-145, F-146): the top bar's two buttons.
+        "add-from-source",
+        "browse-marketplace",
       ].sort(),
     );
     for (const entry of paletteActions) {
@@ -91,6 +95,8 @@ describe("the palette's actions and shortcuts (F-081)", () => {
       steer: null,
       "toggle-side-pane": "p",
       "expand-preview": "f",
+      "add-from-source": null,
+      "browse-marketplace": null,
     });
     expect(shortcutClashes(paletteActions)).toEqual([]);
     // Stop asks first; nothing else does.
@@ -145,6 +151,23 @@ describe("the palette's actions and shortcuts (F-081)", () => {
     expect(actionForShortcut(["a"], onTask)).toBeNull();
     expect(actionForShortcut(["g", "t"], onTask)?.id).toBe("go-tasks");
     expect(actionForShortcut(["g"], onTask)).toBeNull();
+  });
+
+  it("F-081/c1: the library's Add from a source and Browse marketplace are offered to an organization admin anywhere, each going to its page, and never to a member", () => {
+    const member: PaletteContext = { role: "member", scopes: ["global", "task"] };
+    const admin: PaletteContext = { role: "admin", scopes: ["global"] };
+    expect(byId("add-from-source").effect).toEqual({ kind: "navigate", route: "library-add" });
+    expect(byId("browse-marketplace").effect).toEqual({ kind: "navigate", route: "marketplace" });
+    expect(paletteRoutes).toEqual(expect.arrayContaining(["library-add", "marketplace"]));
+    for (const id of ["add-from-source", "browse-marketplace"] as const) {
+      expect(byId(id).role, id).toBe("admin");
+      expect(byId(id).shortcut, id).toBeNull();
+      expect(isPaletteActionOffered(byId(id), admin), id).toBe(true);
+      expect(isPaletteActionOffered(byId(id), member), id).toBe(false);
+    }
+    const offered = offeredPaletteActions(member).map((entry) => entry.id);
+    expect(offered).not.toContain("add-from-source");
+    expect(offered).not.toContain("browse-marketplace");
   });
 });
 

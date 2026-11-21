@@ -70,6 +70,18 @@ describe("the palette's groups", () => {
     expect(ids(admin.actions)).toContain("new-project");
   });
 
+  it("F-081/c1: an organization admin's Actions hold the library's Add from a source and Browse marketplace, found by their words; a member's don't", () => {
+    const member = paletteRows({ role: "member", scope: scopeOf(null, null), shownTheme: "dark", waiting: null, query: "" });
+    const admin = paletteRows({ role: "admin", scope: scopeOf(null, null), shownTheme: "dark", waiting: null, query: "" });
+    expect(ids(member.actions)).not.toContain("add-from-source");
+    expect(ids(member.actions)).not.toContain("browse-marketplace");
+    expect(admin.actions.filter((row) => row.id === "add-from-source" || row.id === "browse-marketplace")).toEqual([
+      { id: "add-from-source", label: "Add from a source", hint: null, shortcut: null, step: false },
+      { id: "browse-marketplace", label: "Browse marketplace", hint: null, shortcut: null, step: false },
+    ]);
+    expect(ids(paletteRows({ role: "admin", scope: scopeOf(null, null), shownTheme: "dark", waiting: null, query: "mcp install" }).actions)).toEqual(["add-from-source", "browse-marketplace"]);
+  });
+
   it("F-081/c1: on a running task the driver gets Message the agent and Stop; another member Take over; a stopped one Reopen…", () => {
     expect(ids(paletteRows({ role: "member", scope: scopeOf(task(), null), shownTheme: "dark", waiting: null, query: "" }).page)).toEqual(["stop", "steer"]);
     expect(ids(paletteRows({ role: "member", scope: scopeOf(task({ canSend: false, canStop: false, canTakeOver: true }), null), shownTheme: "dark", waiting: null, query: "" }).page)).toEqual(["take-over"]);
