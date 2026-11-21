@@ -89,12 +89,20 @@ registry_up() {
     -e REGISTRY_AUTH=htpasswd -e REGISTRY_AUTH_HTPASSWD_REALM=ostra-live -e REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd \
     "$REGISTRY_IMAGE" || return 1
   # The second Engine shares this host's network, so `localhost:5000` is the same registry to it;
-  # its own bridge and rules are off so they don't touch the first Engine's.
+  # its own bridge and rules are off so they don't touch the first Engine's. With no bridge it has
+  # no address for a box sidecar's `host-gateway` entry, so it's given one (the box never calls it).
   docker run -d --name ostra-live-dind --privileged --network host -e DOCKER_TLS_CERTDIR= \
     "$DIND_IMAGE" dockerd --host tcp://127.0.0.1:2375 --bridge none --iptables=false --ip6tables=false \
+    --host-gateway-ip 127.0.0.1 \
     --data-root /var/lib/docker-second --exec-root /var/run/docker-second --pidfile /var/run/docker-second.pid || return 1
   for _ in $(seq 1 30); do
-    if DOCKER_HOST=tcp://127.0.0.1:2375 docker version >/dev/null 2>&1; then echo "the second Engine answers"; return 0; fi
+    if DOCKER_HOST=tcp://127.0.0.1:2375 docker version >/dev/null 2>&1; then
+      echo "the second Engine answers"
+      # A second pool host has the runner's image, which runs every box's sidecar: it's loaded
+      # there, and only the box's own image comes from the registry.
+      docker save "$RUNNER" | DOCKER_HOST=tcp://127.0.0.1:2375 docker load || return 1
+      return 0
+    fi
     sleep 2
   done
   docker logs ostra-live-dind 2>&1 | tail -n 30

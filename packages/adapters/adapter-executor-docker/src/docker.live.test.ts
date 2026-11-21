@@ -1,7 +1,9 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { baselineHeld, egressProbePlan, parseProbeOutput, probeCommand, runEgressProbes } from "@ostra/adapter-sdk/testing";
+import type { ConnectOutcome, ProbeAddress } from "@ostra/adapter-sdk/testing";
 import { boxIdSchema, leaseEpochSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -45,11 +47,28 @@ describe.skipIf(!ready)(`a box on Docker, live (skipped: ${ready ? "no" : reason
       if (!created.ok) {
         return;
       }
+      // The container's own environment holds no credential.
       const agentEnv = await engine.exec(created.value.agentId, ["env"], "1000:1000");
       expect(agentEnv.ok).toBe(true);
       if (agentEnv.ok) {
         expect(agentEnv.value.output).not.toContain("ostra-runner-live-test-token-not-real");
-        expect(agentEnv.value.output).not.toContain("OSTRA_BRIDGE_NONCE");
+      }
+      // It does hold the init's bridge nonce, which `docker exec` hands to every process it starts,
+      // but the init starts the agent's processes with only the environment the sidecar sends. So a
+      // process of the agent's user started that way, reading every environment it may (its own and
+      // each /proc/<pid>/environ, the init's and tini's root-owned), finds no nonce.
+      const nonce = created.value.resources.bridgeNonce;
+      const agentView = await engine.exec(
+        created.value.agentId,
+        ["env", "-i", "OSTRA_PROBE=read", "/bin/sh", "-c", "cat /proc/[0-9]*/environ 2>/dev/null | tr '\\0' '\\n'; true"],
+        "1000:1000",
+      );
+      expect(agentView.ok).toBe(true);
+      if (agentView.ok) {
+        // The probe reads environments at all: its own is there.
+        expect(agentView.value.output).toContain("OSTRA_PROBE=read");
+        expect(agentView.value.output).not.toContain("OSTRA_BRIDGE_NONCE");
+        expect(agentView.value.output).not.toContain(nonce);
       }
       // The box network is internal: the agent's container reaches nothing outside.
       const out = await engine.exec(created.value.agentId, ["node", "-e", "require('node:net').connect(443,'1.1.1.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1)); setTimeout(()=>process.exit(1),3000)"], "1000:1000");
@@ -143,7 +162,9 @@ describe.skipIf(!ready)(`a box's size and registry image on Docker, live (skippe
     const tagged = await engine.call("POST", `/images/${encodeURIComponent(images.base ?? "")}/tag?repo=${encodeURIComponent(repository)}&tag=live`, z.unknown());
     expect(tagged.ok).toBe(true);
     const credential = { username: process.env["OSTRA_TEST_REGISTRY_USER"] ?? "ostra", token: process.env["OSTRA_TEST_REGISTRY_TOKEN"] ?? "ostra-live-registry" };
-    const pushed = await engine.push(repository, "live", credential);
+    // The runner's own Engine client waits 60 s for a quiet stream (`run-runner.ts`); this suite's
+    // 10 s one cut the base image's push while a layer was prepared.
+    const pushed = await createEngine(engineAddressFrom(process.env["DOCKER_HOST"]), 60_000).push(repository, "live", credential);
     if (!pushed.ok) throw new Error(pushed.error.message);
     const second = createEngine(engineAddressFrom(secondHost), 60_000);
     const box = createDockerBoxes(second, { images: { base: images.base ?? "", runner: images.runner ?? "" } });
@@ -178,6 +199,19 @@ describe.skipIf(!ready)(`a box's size and registry image on Docker, live (skippe
 
 const egressApplied = process.env["OSTRA_TEST_EGRESS_APPLIED"] === "1";
 
+// A port open on a box's sidecar, as its proxies' are while a task runs. The bridge's port (7101)
+// closes the moment the init connects (`bridge-server.ts`: nothing may connect after it), and a box
+// with no task has no proxy, so each sidecar gets a listener for the probes, as the sidecar's user.
+const OPEN_PORT = 7102;
+const LISTENER = "require('node:net').createServer((socket) => socket.end()).listen(Number(process.argv[1]), '0.0.0.0')";
+
+const listenInSidecar = async (sidecarId: string): Promise<void> => {
+  const exec = await engine.call("POST", `/containers/${sidecarId}/exec`, z.looseObject({ Id: z.string() }), { Cmd: ["node", "-e", LISTENER, String(OPEN_PORT)], User: "1000:1000" });
+  if (!exec.ok) throw new Error(`the sidecar's listener wasn't made: ${exec.error.message}`);
+  const started = await engine.call("POST", `/exec/${exec.value.Id}/start`, z.unknown(), { Detach: true, Tty: false });
+  if (!started.ok) throw new Error(`the sidecar's listener didn't start: ${started.error.message}`);
+};
+
 describe.skipIf(!ready || !egressApplied)(`the egress baseline on Docker, live (skipped: ${!ready ? reason : egressApplied ? "no" : "the baseline isn't applied (OSTRA_TEST_EGRESS_APPLIED)"})`, () => {
   it("F-116: from a shell in the agent's container, every blocked range, the metadata address, the gateway and another box's sidecar ports are blocked, each after its control connected", async () => {
     const box = await liveBox("egress");
@@ -189,11 +223,19 @@ describe.skipIf(!ready || !egressApplied)(`the egress baseline on Docker, live (
       if (!inspectOther.ok || !inspectOwn.ok) throw new Error("inspect failed");
       const otherAddress = Object.values(inspectOther.value.NetworkSettings.Networks).find((network) => network.IPAddress !== "")?.IPAddress ?? "";
       const gateway = Object.values(inspectOwn.value.NetworkSettings.Networks)[0]?.Gateway ?? "";
-      const plan = egressProbePlan({ executor: "docker", control: { host: "sidecar", port: 7101 }, gateway: gateway === "" ? "172.17.0.1" : gateway, otherBox: { host: otherAddress, ports: [7101] } });
-      const results = await runEgressProbes(plan, async (address) => {
+      const connect = async (address: ProbeAddress): Promise<ConnectOutcome> => {
         const ran = await engine.exec(box.created.agentId, probeCommand(address), "1000:1000");
         return ran.ok ? parseProbeOutput(ran.value.output) : { kind: "error", code: "exec-failed" };
-      });
+      };
+      await listenInSidecar(box.created.sidecarId);
+      await listenInSidecar(other.created.sidecarId);
+      const control = { host: "sidecar", port: OPEN_PORT };
+      // Up once the agent reaches its own sidecar's listener.
+      for (let tries = 0; tries < 20 && (await connect(control)).kind !== "connected"; tries += 1) {
+        await sleep(500);
+      }
+      const plan = egressProbePlan({ executor: "docker", control, gateway: gateway === "" ? "172.17.0.1" : gateway, otherBox: { host: otherAddress, ports: [OPEN_PORT] } });
+      const results = await runEgressProbes(plan, connect);
       expect(results.filter((result) => result.verdict !== "blocked").map((result) => `${result.id}: ${result.verdict} (${result.detail})`)).toEqual([]);
       expect(baselineHeld(results)).toBe(true);
     } finally {
