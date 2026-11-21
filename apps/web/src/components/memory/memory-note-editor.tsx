@@ -1,7 +1,7 @@
 "use client";
 
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleAlertIcon, ShieldCheckIcon } from "lucide-react";
+import { ArchiveIcon, Building2Icon, CircleAlertIcon, ShieldCheckIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -9,18 +9,21 @@ import { useEffect, useState } from "react";
 import type { MemoryKind, NoteId, ProjectId } from "@ostra/protocol";
 
 import { PageFrame, PageHeading, PropRow } from "@/components/shell/page-frame";
+import { projectColour } from "@/components/shell/project-colour";
 import { AlertDialog, AlertDialogContent, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Status } from "@/components/ui/status";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { formatAge } from "@/lib/format";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
+import type { RouterOutputs } from "@/lib/trpc";
 
 import { KindIcon } from "./memory-parts";
 import { MEMORY_KINDS, NOTE_BODY_MAX_BYTES, bodySize, conflictOf, kindWord, memoryBase, secretFoundOf, sourceFilterOf, sourceWord } from "./memory-words";
@@ -31,6 +34,20 @@ import type { MemoryScopeRef } from "./memory-words";
 // save from a stale version says who saved first and keeps the member's text in the editor.
 
 type Draft = { readonly title: string; readonly body: string; readonly kind: MemoryKind; readonly always: boolean };
+type Version = RouterOutputs["memory"]["note"]["versions"][number];
+
+/** `1.4` KiB, or `0.2`: the always notes' share of the block's 8 KiB, one decimal. */
+const kibText = (bytes: number): string => (Math.round((bytes / 1024) * 10) / 10).toString();
+
+/** A version's What column (memory-note.md, Versions): how it came to be. */
+const versionWhat = (version: Version): string =>
+  version.proposalId !== null
+    ? version.version === 1
+      ? t("memory.note.whatApproved")
+      : t("memory.note.whatMerged")
+    : version.version === 1
+      ? t("memory.note.whatWritten")
+      : t("memory.note.whatEdited");
 
 const sameDraft = (x: Draft, y: Draft): boolean => x.title === y.title && x.body === y.body && x.kind === y.kind && x.always === y.always;
 
@@ -91,6 +108,10 @@ export const MemoryNoteEditor = ({ memoryRef, noteId, projectName, organizationN
   const loaded: Draft | null = note.data === undefined ? null : { title: note.data.title, body: note.data.body, kind: note.data.kind, always: note.data.always };
   const empty: Draft = { title: "", body: "", kind: "convention", always: false };
   const [draft, setDraft] = useState<Draft | null>(noteId === null ? empty : null);
+  // The scope's "always" notes in the block, counted by the domain's index builder (memory-note.md, Always).
+  const index = useQuery(trpc.memory.index.queryOptions(memoryRef.scope === "project" ? { scope: "project", projectId: memoryRef.projectId } : { scope: "organization" }));
+  /** The version whose text is open under its row (one at a time). */
+  const [opened, setOpened] = useState<number | null>(null);
   const [scope, setScope] = useState<"organization" | "project">(startScope ?? memoryRef.scope);
   // The version the member opened: a later save names it, so a save after someone else's is refused.
   const [openedVersion, setOpenedVersion] = useState<number | null>(null);
@@ -158,7 +179,13 @@ export const MemoryNoteEditor = ({ memoryRef, noteId, projectName, organizationN
       <div data-testid="note-editor-panel">
         <h3 className="mb-1 text-xs font-medium text-faint">{t("memory.note.noteGroup")}</h3>
         <PropRow label={t("memory.note.status")} labelWidth={116}>
-          {note.data === undefined ? <span className="text-muted">{t("memory.note.notSaved")}</span> : archived ? t("memory.note.archived") : t("memory.note.active")}
+          {note.data === undefined ? (
+            <Status tone="grey" className="text-muted">{t("memory.note.notSaved")}</Status>
+          ) : archived ? (
+            <Status tone="grey">{t("memory.note.archived")}</Status>
+          ) : (
+            <Status tone="green">{t("memory.note.active")}</Status>
+          )}
         </PropRow>
         {note.data === undefined ? null : (
           <>
@@ -175,13 +202,16 @@ export const MemoryNoteEditor = ({ memoryRef, noteId, projectName, organizationN
             <span id="note-always-label" className="text-ui text-text">{t("memory.note.alwaysWhole")}</span>
             <Switch aria-labelledby="note-always-label" checked={current.always} disabled={archived} onCheckedChange={(always) => { setDraft({ ...current, always }); }} data-testid="note-editor-always" />
           </div>
-          <p className="mt-1 text-sm text-faint">{t("memory.note.alwaysHelp")}</p>
+          <p className="mt-1 text-sm text-faint">
+            {t("memory.note.alwaysHelp")}
+            {index.data === undefined ? null : ` ${t("memory.note.alwaysUse", { scope: noteScope === "project" ? scopeName : organizationName, used: kibText(index.data.alwaysBytes) })}`}
+          </p>
         </div>
         {note.data === undefined ? null : (
           <div className="mt-3 border-t border-line pt-3" data-testid="note-source">
             <h3 className="mb-1 text-xs font-medium text-faint">{t("memory.panel.source")}</h3>
             <PropRow label={t("memory.note.from")} labelWidth={116}>
-              {note.data.source.kind === "member" ? (note.data.author?.name ?? "") : sourceWord(sourceFilterOf(note.data.source.kind))}
+              {note.data.source.kind === "member" ? t("memory.note.writtenBy", { name: note.data.author?.name ?? t("memory.someone") }) : sourceWord(sourceFilterOf(note.data.source.kind))}
             </PropRow>
             {note.data.source.taskId === null ? null : (
               <PropRow label={t("memory.note.task")} labelWidth={116}>
@@ -195,7 +225,10 @@ export const MemoryNoteEditor = ({ memoryRef, noteId, projectName, organizationN
             <h3 className="mb-1 text-xs font-medium text-faint">{t("memory.note.archiveGroup")}</h3>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="ghost" className="-ml-2 h-8">{t("memory.archive")}</Button>
+                <Button variant="ghost" className="-ml-2 h-[30px] text-muted hover:text-red">
+                  <ArchiveIcon aria-hidden className="stroke-[1.75]" />
+                  {t("memory.archive")}
+                </Button>
               </AlertDialogTrigger>
               <AlertDialogContent
                 title={t("memory.archiveTitle", { title: note.data.title })}
@@ -264,13 +297,25 @@ export const MemoryNoteEditor = ({ memoryRef, noteId, projectName, organizationN
                 </Select>
               </Field>
               <Field id="note-scope" label={t("memory.note.scopeLabel")}>
-                <Select value={noteScope} disabled={noteId !== null || memoryRef.scope === "organization"} onValueChange={(value) => { setScope(value === "organization" ? "organization" : "project"); }}>
+                {noteId !== null || memoryRef.scope === "organization" ? (
+                  // A note keeps its scope: the same box, read-only, with no chevron (memory-note.md).
+                  <span id="note-scope" className="flex h-[34px] items-center gap-2 rounded-[7px] border border-line-2 bg-surface px-3 text-ui text-text">
+                    {noteScope === "project" && projectId !== null ? (
+                      <span aria-hidden className="size-2 shrink-0 rounded-[2px]" style={{ background: projectColour(projectId) }} />
+                    ) : (
+                      <Building2Icon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-faint" />
+                    )}
+                    <span className="truncate">{noteScope === "project" ? (projectName ?? "") : t("memory.tabs.organization")}</span>
+                  </span>
+                ) : (
+                <Select value={noteScope} onValueChange={(value) => { setScope(value === "organization" ? "organization" : "project"); }}>
                   <SelectTrigger id="note-scope" className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {memoryRef.scope === "project" ? <SelectItem value="project">{projectName ?? ""}</SelectItem> : null}
+                    <SelectItem value="project">{projectName ?? ""}</SelectItem>
                     <SelectItem value="organization">{organizationName}</SelectItem>
                   </SelectContent>
                 </Select>
+                )}
               </Field>
             </div>
             <h2 className="mb-2 mt-5 text-body font-semibold text-text">
@@ -294,18 +339,33 @@ export const MemoryNoteEditor = ({ memoryRef, noteId, projectName, organizationN
               {t("memory.panel.versions")} <span className="font-mono text-sm font-normal text-faint">{note.data.versions.length}</span>
               <span className="text-sm font-normal text-muted">{t("memory.note.versionsHelp")}</span>
             </h2>
-            <ul className="mt-2">
+            <ul className="mt-2.5 border-t border-line">
               {note.data.versions.map((version) => (
-                <li key={version.version} className="grid h-9 grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 border-b border-line text-ui">
-                  <span className="font-mono text-faint">v{version.version}</span>
-                  <span className="truncate text-muted">
-                    {version.proposalId !== null
-                      ? t("memory.versionMerged", { name: version.editedBy?.name ?? t("memory.someone") })
-                      : version.version === 1
-                        ? t("memory.versionWrote", { name: version.editedBy?.name ?? t("memory.someone") })
-                        : t("memory.versionEdited", { name: version.editedBy?.name ?? t("memory.someone") })}
-                  </span>
-                  <span className="font-mono text-sm text-faint" suppressHydrationWarning>{formatAge(version.at, now)}</span>
+                <li key={version.version} className="border-b border-line">
+                  <div className="grid min-h-10 grid-cols-[48px_minmax(0,1fr)_64px_40px] items-center gap-x-3 text-ui sm:grid-cols-[48px_180px_minmax(0,1fr)_64px_40px]">
+                    <span className="font-mono text-[13px] text-faint">v{version.version}</span>
+                    <span className="truncate text-text">{versionWhat(version)}</span>
+                    <span className="hidden truncate text-muted sm:inline">{version.editedBy?.name ?? t("memory.someone")}</span>
+                    <span className="text-right font-mono text-xs text-faint" suppressHydrationWarning>{formatAge(version.at, now)}</span>
+                    <button type="button" aria-expanded={opened === version.version} className="text-right text-teal hover:underline" onClick={() => { setOpened(opened === version.version ? null : version.version); }}>
+                      {opened === version.version ? t("memory.note.hide") : t("memory.note.view")}
+                    </button>
+                  </div>
+                  {opened === version.version ? (
+                    <div className="mb-3 border-l-2 border-line-2 pl-3" data-testid="note-version-text">
+                      <p className="text-ui text-text">{version.title}</p>
+                      <p className="mt-1 flex gap-1.5">
+                        <span className="rounded-md border border-line-2 px-1.5 text-xs text-muted">{kindWord(version.kind)}</span>
+                        {version.always ? <span className="rounded-md border border-line-2 px-1.5 text-xs text-muted">{t("memory.note.alwaysChip")}</span> : null}
+                      </p>
+                      <p className="mt-1.5 whitespace-pre-wrap font-mono text-[13px] text-muted">{version.body}</p>
+                      {archived ? null : (
+                        <button type="button" className="mt-1.5 text-sm text-teal hover:underline" onClick={() => { setDraft({ title: version.title, body: version.body, kind: version.kind, always: version.always }); }}>
+                          {t("memory.note.useText")}
+                        </button>
+                      )}
+                    </div>
+                  ) : null}
                 </li>
               ))}
             </ul>

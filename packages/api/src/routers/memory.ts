@@ -1,7 +1,9 @@
 import {
   archiveNote,
+  buildMemoryIndex,
   canArchiveNote,
   decideProposal,
+  loadBlockNotes,
   proposeRememberThis,
   queryWords,
   readNoteForMember,
@@ -226,6 +228,26 @@ export const memoryRouter = router({
    * A scope's notes, newest first, or the best matches for `query` (full text, `ts_rank`, by bound
    * parameter), with the count of the scope's open proposals.
    */
+  /**
+   * What a new task gets from the scope's memory (memory.md, the index line), counted by the
+   * domain's own index builder: the "always" notes in full, then the index, within ADR 0044's limits.
+   */
+  index: memberProcedure
+    .input(scopeInputSchema)
+    .output(z.object({ always: z.number().int(), indexed: z.number().int(), others: z.number().int(), alwaysOver: z.number().int(), alwaysBytes: z.number().int() }))
+    .query(async ({ ctx, input }) => {
+      const projectId = await scopeProject(ctx, input);
+      const notes = await loadBlockNotes(ctx.deps.db, ctx.scope.organizationId, projectId);
+      const built = buildMemoryIndex(notes);
+      return {
+        always: built.always.length,
+        indexed: built.index.length,
+        others: built.index.length + built.omitted,
+        alwaysOver: notes.filter((note) => note.always).length - built.always.length,
+        alwaysBytes: built.alwaysBytes,
+      };
+    }),
+
   notes: memberProcedure
     .input(
       scopeInputSchema.extend({

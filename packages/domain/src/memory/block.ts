@@ -102,6 +102,8 @@ export type BuiltIndex = {
   readonly index: readonly BlockNote[];
   /** Notes left out by the limits: the "N more notes" line. */
   readonly omitted: number;
+  /** The "always" notes' size in the block, against `alwaysMaxBytes` (the note page's `uses 1.4 of 8 KiB`). */
+  readonly alwaysBytes: number;
 };
 
 /**
@@ -133,7 +135,7 @@ export const buildMemoryIndex = (notes: readonly BlockNote[], limits: MemoryLimi
     index.push(note);
     indexBytes += size;
   }
-  return { always, index, omitted: rest.length - index.length };
+  return { always, index, omitted: rest.length - index.length, alwaysBytes };
 };
 
 /**

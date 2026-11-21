@@ -1,7 +1,7 @@
 "use client";
 
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArchiveIcon, CircleAlertIcon, LightbulbIcon, PinIcon, PlusIcon, SearchIcon } from "lucide-react";
+import { CircleAlertIcon, InfoIcon, LightbulbIcon, PinIcon, PlusIcon, SearchIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -22,7 +22,7 @@ import { UnderlineTabs } from "@/components/ui/underline-tabs";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { formatAge } from "@/lib/format";
-import { t } from "@/lib/messages";
+import { plural, t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
@@ -86,6 +86,34 @@ const SourceCell = ({ note }: { readonly note: Note }) => {
     <Link href={`/tasks/${note.source.taskId}`} onClick={(event) => { event.stopPropagation(); }} className="font-mono text-sm text-muted hover:text-text" title={sourceWord(sourceFilterOf(note.source.kind))}>
       {key}
     </Link>
+  );
+};
+
+type MemoryIndex = RouterOutputs["memory"]["index"];
+
+/**
+ * The index line under the list (memory.md, item 6): what a new task gets, the "always" notes in
+ * full and the rest as an index, and what ADR 0044's limits leave out.
+ */
+const IndexLine = ({ index }: { readonly index: MemoryIndex }) => {
+  const always = plural(index.always, "memory.indexAlwaysOne", "memory.indexAlwaysOther");
+  const others = plural(index.others, "memory.indexOthersOne", "memory.indexOthersOther");
+  const line =
+    index.indexed < index.others
+      ? t("memory.indexCut", { always, indexed: index.indexed, others: plural(index.others, "memory.indexOthersOne", "memory.indexOthersOther") })
+      : index.always === 0
+        ? t("memory.indexOnly", { others: plural(index.others, "memory.indexOnlyOne", "memory.indexOnlyOther") })
+        : t("memory.indexLine", { always, others });
+  return (
+    <div className="mt-3.5 space-y-1 text-sm" data-testid="memory-index-line">
+      {index.always === 0 && index.others === 0 ? null : <p className="text-faint">{line}</p>}
+      {index.alwaysOver === 0 ? null : (
+        <p className="flex items-center gap-1.5 text-muted">
+          <InfoIcon aria-hidden className="size-[13px] shrink-0 stroke-[1.75]" />
+          {t("memory.alwaysOver", { n: index.alwaysOver })}
+        </p>
+      )}
+    </div>
   );
 };
 
@@ -232,8 +260,7 @@ const NotePanel = ({ note, base, projectName, archived }: { readonly note: Note;
         <div className="mt-3 border-t border-line pt-3">
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <button type="button" className="flex items-center gap-1.5 text-ui text-teal hover:underline" data-testid="archive-note">
-                <ArchiveIcon aria-hidden className="size-[14px]" />
+              <button type="button" className="text-ui text-teal hover:underline" data-testid="archive-note">
                 {t("memory.archive")}
               </button>
             </AlertDialogTrigger>
@@ -294,6 +321,8 @@ export const MemoryView = ({ memoryRef, projectName, organizationName }: { reado
   const base = memoryBase(memoryRef);
   const proposals = counts.own.data?.openProposals ?? 0;
   const filtering = query.trim() !== "" || kind !== null || source !== null || alwaysOnly;
+  // What a new task here gets (memory.md, the index line), counted by the domain's index builder.
+  const index = useQuery(trpc.memory.index.queryOptions(isProject ? { scope: "project", projectId: memoryRef.projectId } : { scope: "organization" }));
 
   const go = (change: Readonly<Record<string, string | null>>): void => {
     const next = new URLSearchParams(params.toString());
@@ -354,7 +383,7 @@ export const MemoryView = ({ memoryRef, projectName, organizationName }: { reado
       ) : (
         <>
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <label className="relative w-full sm:w-[260px]">
+            <label className="relative w-full sm:w-[244px]">
               <span className="sr-only">{t("memory.search")}</span>
               <SearchIcon aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 size-[15px] -translate-y-1/2 text-faint" />
               <Input value={q} onChange={(event) => { setQ(event.target.value); }} placeholder={t("memory.search")} className="h-[30px] pl-8" data-testid="memory-search" />
@@ -383,7 +412,7 @@ export const MemoryView = ({ memoryRef, projectName, organizationName }: { reado
               <PinIcon aria-hidden />
               {t("memory.alwaysOnly")}
             </Button>
-            <span className="ml-auto font-mono text-[13px] text-faint" data-testid="memory-count">{notes.data === undefined ? "" : t("memory.count", { n: shown.length })}</span>
+            <span className="ml-auto font-mono text-[13px] text-faint" data-testid="memory-count">{notes.data === undefined ? "" : plural(shown.length, "memory.countOne", "memory.count")}</span>
           </div>
           {notes.error === null ? null : <p role="alert" className="mt-6 text-red">{errorText(notes.error)}</p>}
           {notes.data === undefined ? (
@@ -400,6 +429,7 @@ export const MemoryView = ({ memoryRef, projectName, organizationName }: { reado
               ))}
             </ul>
           )}
+          {tab === "archived" || filtering || index.data === undefined || shown.length === 0 ? null : <IndexLine index={index.data} />}
         </>
       )}
       {wide ? null : (

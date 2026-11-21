@@ -54,8 +54,11 @@ const sourceOf = (
   }
 };
 
-/** The active notes of a project and its organization, as the index builder reads them. */
-export const loadBlockNotes = async (db: DbOrTx, organizationId: OrganizationId, projectId: ProjectId): Promise<readonly BlockNote[]> => {
+/**
+ * The active notes of a project and its organization, as the index builder reads them; with no
+ * project, the organization's own notes (its Memory page's index line).
+ */
+export const loadBlockNotes = async (db: DbOrTx, organizationId: OrganizationId, projectId: ProjectId | null): Promise<readonly BlockNote[]> => {
   const rows = await db.memoryNote.findMany({
     where: visibleNotes(organizationId, projectId),
     select: {
