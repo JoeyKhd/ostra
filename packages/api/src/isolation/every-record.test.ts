@@ -13,7 +13,7 @@ import { z } from "zod";
 
 import { appRouter } from "../routers/app-router.ts";
 import { openStream } from "../stream/subscribe.ts";
-import { createApiHarness, seedConnectionAndModel } from "../testing/index.ts";
+import { createApiHarness, seedConnectionAndModel, seedPreviewableTask } from "../testing/index.ts";
 import type { ApiHarness, AppCaller } from "../testing/index.ts";
 
 // Milestone 4, ticket 09 (F-049, F-087, F-003; ADR 0053, ADR 0026): isolation for every kind of
@@ -202,6 +202,8 @@ const procedures: Readonly<Record<string, { readonly input: InputOf; readonly ab
   "projects.getTicketTemplate": { input: project, about: "project" },
   "projects.runners": { input: project, about: "project" },
   "projects.list": { input: none, about: "organization" },
+  // Milestone 8 (ticket 20): the pane's list of a task's previews, with their sharing.
+  "previews.list": { input: task, about: "project" },
   "projects.previewProviders": { input: (target) => ({ projectId: target.projectId, mode: { kind: "default" } }), about: "project" },
   "projects.providers": { input: project, about: "project" },
   "projects.repos": { input: project, about: "project" },
@@ -241,7 +243,7 @@ const procedures: Readonly<Record<string, { readonly input: InputOf; readonly ab
 const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   Member: ["organization.members", "me.get", "members.list"],
   Invitation: ["organization.members", "members.invitations", "invitations.preview"],
-  OrganizationSetting: ["setup.status"],
+  OrganizationSetting: ["setup.status", "organization.get"],
   AuditEntry: ["environments.snapshot.get", "email.settings.get", "audit.list", "registryUse.get"],
   ChangeNotice: ["stream.subscribe"],
   Connection: ["github.connection", "linear.status", "setup.status"],
@@ -331,14 +333,16 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   Finding: ["review.screen", "tasks.rounds"],
   TaskReviewer: ["review.screen"],
   EnvironmentProposal: ["environments.proposal"],
-  // Milestone 8 (its ticket 04): no procedure reads them yet; tickets 16, 20 and 30 add theirs.
-  AppProcess: [],
-  TaskAttachment: [],
-  TaskPreview: [],
-  PreviewAccess: [],
-  PreviewAccessMember: [],
-  PreviewLink: [],
-  PreviewView: [],
+  // Milestone 8 (its ticket 04). Ticket 20's pane list reads the previews (the app processes, the
+  // announced ports, the latest screenshot) and their sharing: levels, named people, links and the
+  // open views. Tickets 16 and 30 add theirs; a code is ticket 23's and 25's (no read lists one).
+  AppProcess: ["previews.list"],
+  TaskAttachment: ["previews.list"],
+  TaskPreview: ["previews.list"],
+  PreviewAccess: ["previews.list"],
+  PreviewAccessMember: ["previews.list"],
+  PreviewLink: ["previews.list"],
+  PreviewView: ["previews.list"],
   PreviewCode: [],
   LibraryItem: [],
   LibraryItemVersion: [],
@@ -660,6 +664,7 @@ const matrix: Readonly<Record<string, readonly [Outcome, Outcome, Outcome, Outco
   "tasks.memory": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "tasks.rounds": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "review.screen": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "previews.list": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "tasks.startCheck": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "tasks.runnerChoices": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
 };
@@ -683,5 +688,52 @@ describe("the matrix of procedures and roles (F-003, F-087)", () => {
     expect(admins).toContain("projects.getTicketTemplate");
     const organizationOnly = Object.entries(matrix).filter(([, row]) => row[0] === "ok" && row[2] === "FORBIDDEN").map(([path]) => path);
     expect(organizationOnly).toEqual(expect.arrayContaining(["providers.list", "runners.list", "pools.list"]));
+  });
+});
+
+// ---------- a named person (milestone 8, F-142) ----------
+
+describe("a person a preview names sees that preview and nothing else of the task (F-142)", () => {
+  it("F-142/c3: an organization member the restricted project doesn't list, named on a task's preview, opens it watch-only, and every query procedure gives them what it gives anyone the project doesn't list", async () => {
+    const { a } = harness.fixture;
+    // A task in the restricted project whose box can show its preview, and the project's member names the outsider on it.
+    const named = await seedPreviewableTask(harness, {
+      organizationId: organizationIdSchema.parse(a.organization.id),
+      projectId: projectIdSchema.parse(a.restrictedProject.id),
+      ownerMemberId: a.admin.id,
+      driverMemberId: a.insider.id,
+    });
+    const insider = await harness.as(a.insider);
+    expect(await insider.previews.setLevel({ taskId: named.taskId, key: named.key, level: "named", memberIds: [a.member.id] })).toMatchObject({ ok: true, level: "named" });
+    const person = await harness.as(a.member);
+    try {
+      // The preview: theirs to watch.
+      expect(await person.previews.open({ taskId: named.taskId, key: named.key })).toMatchObject({ ok: true, input: false });
+      // Everything else, called on that very task and the restricted project's rows, is what the
+      // matrix gives an organization member the project doesn't list, and holds nothing of it.
+      const target: Target = { rows: new Map([...restricted, ["Task", named.taskId]]), projectId: a.restrictedProject.id };
+      const hiddenIds = [...idsOfRestricted, named.taskId, named.sessionId, named.boxId];
+      const actual: Record<string, Outcome> = {};
+      const expected: Record<string, Outcome> = {};
+      const hidden: string[] = [];
+      for (const [path, procedure] of Object.entries(procedures)) {
+        const result = await call(person, path, procedure.input(target));
+        actual[path] = outcomeSchema.parse(result.ok ? "ok" : result.code);
+        const row = matrix[path];
+        if (row === undefined) {
+          throw new Error(`no matrix row for ${path}`);
+        }
+        expected[path] = row[4];
+        if (result.ok) {
+          hidden.push(...leaked(result.output, hiddenIds).map((id) => `${path}: ${id}`));
+        }
+      }
+      expect(actual).toEqual(expected);
+      expect(actual["tasks.get"]).toBe("NOT_FOUND");
+      expect(actual["previews.list"]).toBe("NOT_FOUND");
+      expect(hidden).toEqual([]);
+    } finally {
+      await insider.previews.setLevel({ taskId: named.taskId, key: named.key, level: "members", memberIds: [] });
+    }
   });
 });

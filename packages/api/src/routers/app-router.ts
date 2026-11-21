@@ -15,6 +15,7 @@ import { notificationsRouter } from "./notifications.ts";
 import { meRouter, organizationRouter } from "./organization.ts";
 import { projectsRouter } from "./projects.ts";
 import { plansRouter, questionsRouter } from "./questions-plans.ts";
+import { previewsRouter } from "./previews.ts";
 import { joinTokensRouter, poolsRouter } from "./pools.ts";
 import { boxSizesRouter } from "./box-sizes.ts";
 import { registryRouter } from "./registry.ts";
@@ -81,6 +82,8 @@ export const appRouter = router({
   memory: memoryRouter,
   drafts: draftsRouter,
   review: reviewRouter,
+  // Milestone 8 (ticket 20): previews, their views and sharing.
+  previews: previewsRouter,
 });
 
 export type AppRouter = typeof appRouter;

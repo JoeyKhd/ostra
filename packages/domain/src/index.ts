@@ -243,3 +243,5 @@ export * from "./library/profile-library.ts";
 export * from "./library/attach.ts";
 export * from "./library/updates.ts";
 export * from "./library/suggestions.ts";
+// Milestone 8 (ticket 20, ADR 0068): sharing a preview, its links, and the pane's list.
+export * from "./previews/sharing.ts";

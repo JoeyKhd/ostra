@@ -107,9 +107,33 @@ export type TakeMemberScreenshot = (
   deps: PreviewDeps,
   scope: MemberScope,
   input: { readonly taskId: TaskId; readonly key: PreviewKey; readonly path: string; readonly width: ViewportPreset },
-) => Promise<UseCaseResult<{ readonly requestId: ScreenshotRequestId }, "forbidden" | "not-found" | "no-box" | PreviewRefusalReason>>;
+) => Promise<UseCaseResult<{ readonly requestId: ScreenshotRequestId }, "forbidden" | "not-found" | "no-box" | "port-not-allowed" | PreviewRefusalReason>>;
 
 // ---------- previews and views (F-141; tickets 19, 20) ----------
+
+/** A link as the share menu lists it: its state and its uses, never its token. */
+export type PreviewLinkView = {
+  readonly linkId: PreviewLinkId;
+  readonly kind: "expiring" | "public";
+  readonly allowInput: boolean;
+  readonly state: "active" | "expired" | "revoked";
+  /** Epoch ms; `null` for a public link. */
+  readonly expiresAt: number | null;
+  readonly createdByMemberId: MemberId;
+  readonly createdAt: number;
+  readonly firstUsedAt: number | null;
+  readonly lastUsedAt: number | null;
+  readonly revokedAt: number | null;
+  /** How many views it opened. */
+  readonly opens: number;
+};
+
+/** Who may open one preview (F-142): its level below its links, the people it names, and its links, newest first. */
+export type PreviewSharing = {
+  readonly level: "members" | "named";
+  readonly memberIds: readonly MemberId[];
+  readonly links: readonly PreviewLinkView[];
+};
 
 /** What the pane shows for a task: its previews, primary first, and whether a view can open, or why not. */
 export type ListPreviews = (
@@ -119,12 +143,17 @@ export type ListPreviews = (
 ) => Promise<
   UseCaseResult<
     {
-      readonly previews: readonly PreviewListItem[];
+      /** Each with who may open it and how many watch it now (its open views). */
+      readonly previews: readonly (PreviewListItem & { readonly sharing: PreviewSharing; readonly watchers: number })[];
       readonly box: "running" | "starting" | "stopped" | "none";
       readonly can: { readonly stream: boolean; readonly tunnel: boolean; readonly native: boolean } | { readonly refused: PreviewRefusalReason };
       readonly carrier: PreviewCarrier | null;
       /** The latest screenshot, for the stopped pane. */
       readonly lastScreenshot: { readonly attachmentId: AttachmentId; readonly blobId: BlobId } | null;
+      /** Whether the organization allows public links: the share menu greys `Public` out without it. */
+      readonly publicLinks: boolean;
+      /** `OSTRA_PREVIEW_LINK_MAX_DAYS`: the longest an expiring link may last. */
+      readonly linkMaxDays: number;
     },
     "forbidden" | "not-found"
   >
@@ -165,35 +194,66 @@ export type StartApp = (
 
 // ---------- sharing (F-142; tickets 19, 20) ----------
 
+/**
+ * A preview's level below its links (F-142): the project's members, or named people. Choosing one
+ * narrows the preview away from links, so its active links end, and every view of someone who no
+ * longer qualifies closes ("Narrowing it ends every viewer who no longer qualifies").
+ */
 export type SetPreviewLevel = (
   deps: PreviewDeps,
   scope: MemberScope,
   input: { readonly taskId: TaskId; readonly key: PreviewKey; readonly level: "members" | "named"; readonly memberIds: readonly MemberId[] },
-) => Promise<UseCaseResult<{ readonly level: "members" | "named" }, "forbidden" | "not-found" | "not-a-member">>;
+) => Promise<
+  UseCaseResult<{ readonly level: "members" | "named"; readonly linksEnded: number; readonly viewsClosed: number }, "forbidden" | "not-found" | "not-a-member">
+>;
 
 /** A new link, with its audit entry. Its token is in the answer once, and never stored or logged. */
 export type CreatePreviewLink = (
   deps: PreviewDeps,
   scope: MemberScope,
+  /** `expiresInHours`: an expiring link's life, 24 hours when `null`; a public link takes `null`. */
   input: { readonly taskId: TaskId; readonly key: PreviewKey; readonly kind: "expiring" | "public"; readonly allowInput: boolean; readonly expiresInHours: number | null },
 ) => Promise<UseCaseResult<{ readonly linkId: PreviewLinkId; readonly token: string; readonly expiresAt: number | null }, "forbidden" | "not-found" | "public-links-off" | "too-long">>;
 
+/** Ends a link, with its audit entry; its open views close at once. */
 export type RevokePreviewLink = (
   deps: PreviewDeps,
   scope: MemberScope,
   input: { readonly linkId: PreviewLinkId },
-) => Promise<UseCaseResult<{ readonly revoked: boolean }, "forbidden" | "not-found">>;
+) => Promise<UseCaseResult<{ readonly revoked: boolean; readonly viewsClosed: number }, "forbidden" | "not-found">>;
+
+/**
+ * What a link's token opens, as the viewer page may show it (ADR 0068): only the preview's label and
+ * port, the organization's name, the expiry and whether input is allowed, never anything else of the
+ * task. An unknown token says nothing of whether it existed; an expired or revoked one says which,
+ * since its holder knows it did.
+ */
+export type PreviewLinkResolution =
+  | {
+      readonly state: "active";
+      readonly linkId: PreviewLinkId;
+      readonly taskId: TaskId;
+      readonly key: PreviewKey;
+      readonly label: string;
+      readonly port: number | null;
+      readonly organizationName: string;
+      readonly input: boolean;
+      readonly expiresAt: number | null;
+    }
+  | { readonly state: "expired" | "revoked"; readonly label: string; readonly port: number | null; readonly organizationName: string; readonly at: number }
+  /** A public link where the organization no longer allows them. */
+  | { readonly state: "not-allowed"; readonly organizationName: string }
+  | { readonly state: "unknown" };
 
 /** A link's use from the viewer page: the check, its first use's audit entry once, and `lastUsedAt`. */
-export type UsePreviewLink = (
+export type UsePreviewLink = (deps: PreviewDeps, input: { readonly token: string }) => Promise<PreviewLinkResolution>;
+
+/** An organization admin allows public preview links, or stops them: a public link's open views close at once. */
+export type SetPublicPreviewLinks = (
   deps: PreviewDeps,
-  input: { readonly token: string },
-) => Promise<
-  UseCaseResult<
-    { readonly linkId: PreviewLinkId; readonly taskId: TaskId; readonly key: PreviewKey; readonly label: string; readonly input: boolean; readonly expiresAt: number | null },
-    PreviewAccessRefusal
-  >
->;
+  scope: MemberScope,
+  input: { readonly enabled: boolean },
+) => Promise<UseCaseResult<{ readonly enabled: boolean; readonly viewsClosed: number }, "forbidden">>;
 
 // ---------- the native preview and the tunnel (F-143, F-144; tickets 23, 25, 26) ----------
 

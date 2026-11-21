@@ -1,6 +1,8 @@
 import type { Logger, TrackerAdapter } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
-import { postgresAuditLog, postgresChangeNotices, systemClock, warnIgnoredSettings } from "@ostra/domain";
+import { randomBytes } from "node:crypto";
+
+import { createPanelPreviewTokens, postgresAuditLog, postgresChangeNotices, systemClock, warnIgnoredSettings } from "@ostra/domain";
 import type { CommandOutbox, JobQueue, ServerAdapters, ServerSettings } from "@ostra/domain";
 import { hashPassword } from "better-auth/crypto";
 
@@ -46,6 +48,14 @@ export type ApiRuntimeInput = {
   readonly email?: EmailDirectory;
   /** F-137: each agent's reasoning levels. Unset, read off the model's controls for the agents that take one. */
   readonly agentEffort?: AgentEffort;
+  /**
+   * Milestone 8 (F-141): the secrets key's text, which the panel signs a view's token to core under
+   * (core holds the same key). Unset, a key of this process alone: core refuses every relayed
+   * stream and input, so previews fail closed.
+   */
+  readonly previewSecret?: string;
+  /** Whether an agent adapter imports a session archive, for "Start the app"'s dispatch (`ApiDeps.agentArchives`). */
+  readonly agentArchives?: (adapter: string) => boolean;
   readonly logger: Logger;
 };
 
@@ -100,6 +110,11 @@ export const createApiRuntime = async (input: ApiRuntimeInput): Promise<ApiRunti
     email: input.email ?? noEmailDirectory,
     emailOn,
     stream: hub,
+    previews: {
+      coreUrl: settings.coreInternalUrl,
+      panelTokens: createPanelPreviewTokens(input.previewSecret ?? randomBytes(32).toString("hex")),
+    },
+    ...(input.agentArchives === undefined ? {} : { agentArchives: input.agentArchives }),
   };
 
   return {

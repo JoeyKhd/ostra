@@ -1,6 +1,6 @@
 import type { Db } from "@ostra/db";
 import type { Logger } from "@ostra/adapter-sdk";
-import type { LinearAppKit, MemberScope, Ports, ServerSettings } from "@ostra/domain";
+import type { LinearAppKit, MemberScope, PanelPreviewTokens, Ports, ServerSettings } from "@ostra/domain";
 
 import type { OstraAuth } from "../auth/create-auth.ts";
 import { loadMemberContext, resolveSession } from "../auth/scope.ts";
@@ -51,7 +51,24 @@ export type ApiSettings = Pick<
   // (tickets 24 and 25), with the rest of milestone 6's working values: the refine draft's image limit (ticket 27) and
   // the review settings' round limits (ticket 28).
   | "team"
+  // Milestone 8 (F-141, F-142, ticket 20): the previews' warm cap, a link's longest life and the
+  // preview domain; and a personal runner's slots, which "Start the app" admits a box against.
+  | "previews"
+  | "personalRunnerCapacity"
 >;
+
+/**
+ * Milestone 8 (F-141, ADR 0068): how the panel reaches core's stream and input of one view. The
+ * web app relays them (`/api/previews/:viewId/stream` and `/input`), each request with a token the
+ * panel makes for that view and its viewer, a minute long, under the secrets key core holds too.
+ */
+export type PreviewRelay = {
+  /** Core as the panel reaches it (`OSTRA_CORE_INTERNAL_URL`), without a trailing slash. */
+  readonly coreUrl: string;
+  readonly panelTokens: PanelPreviewTokens;
+  /** The fetch the relay calls core with: the platform's by default. */
+  readonly fetch?: typeof fetch;
+};
 
 /** Everything the routers need, built once per server process (ADR 0016: the panel owns these). */
 export type ApiDeps = {
@@ -81,6 +98,15 @@ export type ApiDeps = {
   readonly emailOn: () => Promise<boolean>;
   /** The live stream's tailer: one per web process (ADR 0035). */
   readonly stream: StreamHub;
+  /** Milestone 8 (F-141): the previews' relay to core. */
+  readonly previews: PreviewRelay;
+  /**
+   * Whether an agent adapter, by its name, imports a session archive (its `sessionArchive`
+   * capability), for the dispatch "Start the app" makes (Q300): a message on that box later
+   * restores the agent's session from the archive. Unset, the dispatch restores none and a turn
+   * there starts from the rebuild template.
+   */
+  readonly agentArchives?: (adapter: string) => boolean;
   /** How often an open stream looks at its member's session and access again. Default 30 s. */
   readonly streamRecheckMs?: number;
 };

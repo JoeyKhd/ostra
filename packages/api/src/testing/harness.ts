@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { createLogger, silentLogger } from "@ostra/adapter-sdk";
 import type { CatalogEntry, LogRecord, ModelProviderAdapter, TrackerAdapter } from "@ostra/adapter-sdk";
 import { createJiraSite, JiraFakeAdapter } from "@ostra/adapter-sdk/testing";
-import { DRAFT_IMAGE_MAX_BYTES, parseServerSettings, postgresAuditLog, postgresChangeNotices, profileLimits, systemClock } from "@ostra/domain";
+import { createPanelPreviewTokens, DRAFT_IMAGE_MAX_BYTES, parseServerSettings, postgresAuditLog, postgresChangeNotices, profileLimits, systemClock } from "@ostra/domain";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, SeededMember, TestDatabase } from "@ostra/db/testing";
 import { hashPassword } from "better-auth/crypto";
@@ -36,6 +36,9 @@ import type { MemoryJobQueue, MemoryOutbox } from "./memory-ports.ts";
 // panel does, through the same procedures, middleware and access checks.
 
 const callerFactory = createCallerFactory(appRouter);
+
+/** The secrets key's text the harness's panel signs a view's token under: a relay test's fake core verifies with it. */
+export const PREVIEW_SECRET = randomBytes(32).toString("hex");
 
 
 /** A router caller: what a test calls procedures on. */
@@ -172,6 +175,9 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       docsUrl: "https://docs.example.com/ostra/",
       // Milestone 6's working values, as a fresh install has them.
       team: { ...installDefaults.team, ...(options.scheduleMinIntervalMinutes === undefined ? {} : { scheduleMinIntervalMinutes: options.scheduleMinIntervalMinutes }) },
+      // Milestone 8's previews and a personal runner's slots, as a fresh install has them.
+      previews: installDefaults.previews,
+      personalRunnerCapacity: installDefaults.personalRunnerCapacity,
     },
     blobStore: {
       name: "postgres",
@@ -228,6 +234,8 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
     agentEffort: options.agentEffort ?? shippedAgentEffort,
     emailOn,
     stream: hub,
+    // Core stands behind this in a real install; a relay test points `coreUrl` at its fake core.
+    previews: { coreUrl: "http://127.0.0.1:9", panelTokens: createPanelPreviewTokens(PREVIEW_SECRET) },
   };
 
   const contextOf = async (member: SeededMember, sessionId = `session-of-${member.id}`): Promise<Context> => {

@@ -46,3 +46,42 @@ export const clientAddressOf = (headers: Headers): string => {
   }
   return headers.get("x-real-ip")?.trim() ?? "unknown";
 };
+
+/** A limiter that counts only failures: a key that failed `limit` times in its window is blocked until it ends. */
+export type FailureLimiter = {
+  /** Whether `key` spent its failures in the current window: check it before trying. */
+  readonly blocked: (key: string, now: number) => boolean;
+  /** Counts one failure for `key` at `now`. */
+  readonly fail: (key: string, now: number) => void;
+};
+
+export const failureWindowLimiter = (input: { readonly limit: number; readonly windowMs: number; readonly maxKeys?: number }): FailureLimiter => {
+  const windows = new Map<string, { start: number; count: number }>();
+  const maxKeys = input.maxKeys ?? 10_000;
+  const current = (key: string, now: number): { start: number; count: number } | undefined => {
+    const window = windows.get(key);
+    if (window !== undefined && now - window.start >= input.windowMs) {
+      windows.delete(key);
+      return undefined;
+    }
+    return window;
+  };
+  return {
+    blocked: (key, now) => (current(key, now)?.count ?? 0) >= input.limit,
+    fail: (key, now) => {
+      const window = current(key, now);
+      if (window !== undefined) {
+        window.count += 1;
+        return;
+      }
+      if (windows.size >= maxKeys) {
+        // Forget the oldest windows first: a flood of new keys can't grow the map without bound.
+        for (const [stale] of windows) {
+          windows.delete(stale);
+          if (windows.size < maxKeys) break;
+        }
+      }
+      windows.set(key, { start: now, count: 1 });
+    },
+  };
+};

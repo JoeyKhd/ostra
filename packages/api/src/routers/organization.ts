@@ -1,4 +1,4 @@
-import { retentionInEffect, setMemberRole } from "@ostra/domain";
+import { retentionInEffect, setMemberRole, setPublicPreviewLinks } from "@ostra/domain";
 import { memberIdSchema, organizationIdSchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -18,6 +18,8 @@ const organizationViewSchema = z.object({
   slug: z.string(),
   /** The caller's role in it. */
   role: roleSchema,
+  /** Milestone 8 (F-142): whether an admin allows public preview links (off by default). */
+  publicPreviewLinks: z.boolean(),
 });
 
 
@@ -137,7 +139,8 @@ export const organizationRouter = router({
     if (row === null) {
       throw new TRPCError({ code: "NOT_FOUND", message: "No such organization" });
     }
-    return { id: ctx.scope.organizationId, name: row.name, slug: row.slug, role: ctx.scope.role };
+    const setting = await ctx.deps.db.organizationSetting.findUnique({ where: { organizationId: ctx.scope.organizationId }, select: { publicPreviewLinks: true } });
+    return { id: ctx.scope.organizationId, name: row.name, slug: row.slug, role: ctx.scope.role, publicPreviewLinks: setting?.publicPreviewLinks ?? false };
   }),
 
   rename: adminProcedure
@@ -179,6 +182,20 @@ export const organizationRouter = router({
         state: member.state,
       })),
     ),
+
+  /**
+   * Milestone 8 (F-142, ADR 0068): an organization admin allows public preview links, or stops
+   * them, audited (`organization.public_preview_links_changed`). Off, every public link opens
+   * nothing and its open views close at once; the preview's share menu greys `Public` out.
+   */
+  setPublicPreviewLinks: adminProcedure
+    .input(z.strictObject({ enabled: z.boolean() }))
+    .output(z.strictObject({ enabled: z.boolean(), viewsClosed: z.number().int() }))
+    .mutation(async ({ ctx, input }) => {
+      const { db, ports, settings, logger } = ctx.deps;
+      const result = unwrap(await setPublicPreviewLinks({ db, ...ports, settings: settings.previews, logger }, ctx.scope, input), { forbidden: "FORBIDDEN" });
+      return { enabled: result.enabled, viewsClosed: result.viewsClosed };
+    }),
 
   /** Changes a member's role: `members.setRole`'s use case. The last active admin can't be demoted. */
   setMemberRole: adminProcedure

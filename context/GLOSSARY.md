@@ -363,6 +363,10 @@ _Avoid_: wildcard URL, app domain
 A link that lets someone open one preview without being in its project: expiring, or public where an organization admin allows it. It opens a viewer page that shows only that preview, watch-only unless the link allows input. Its token is a bearer secret.
 _Avoid_: share URL, public URL, invite (an invitation adds a member)
 
+**Named person**:
+A member of the organization whom a preview's level names. They open that one preview, watch-only, even in a restricted project they aren't on, and nothing else of its task.
+_Avoid_: guest, collaborator, viewer (that's anyone watching)
+
 **Preview connection**:
 A box's second connection to core, opened only while someone watches, that carries a preview's bytes off the session: pictures for the browser view, or an HTTP/2 tunnel for `ostra preview` and the native preview.
 _Avoid_: tunnel (alone), session (that's the box's main connection)

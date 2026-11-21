@@ -446,7 +446,7 @@ An organization's library holds items, each a skill or an MCP server, pinned to 
 
 | State | Means | Leaves when |
 |---|---|---|
-| **active** | It opens its preview's viewer page | Its time passes (→ expired; a public link has none), or a member revokes it (→ revoked) |
+| **active** | It opens its preview's viewer page | Its time passes (→ expired; a public link has none), a member revokes it, or a member sets the preview's level to its members or named people (→ revoked) |
 | **expired** | Its page says it expired | Never |
 | **revoked** | Its page says it was revoked | Never |
 
@@ -456,7 +456,7 @@ An organization's library holds items, each a skill or an MCP server, pinned to 
  app ── a member's message ──▶ turn      (the agent starts in the same box and session; the task moves as a reopen does)
 ```
 
-**Who may open a preview** is its level: the project's members (the default, with no row), or named people, who see that preview and nothing else of the task, watch-only; and its links. It fails closed: a level, a link or a runner it can't read gives no view, and the page says why (`previewAccess`).
+**Who may open a preview** is its level: the project's members (the default, with no row), or named people, who see that preview and nothing else of the task, watch-only; and its links. It fails closed: a level, a link or a runner it can't read gives no view, and the page says why (`previewAccess`). Any member who can open the task sets it. Narrowing it ends every viewer who no longer qualifies, at once: setting the level to the members or named people revokes the preview's active links, and closes the views of those links and of members it no longer names; revoking a link closes its views; an organization admin turning public links off closes every public link's view. A viewer's access is read again at each heartbeat and each batch of input.
 
 ## Events and their two numbers
 

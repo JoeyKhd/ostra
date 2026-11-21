@@ -135,6 +135,13 @@ It never reaches the sidecar's ports (the key proxy, the git proxy, the MCP prox
 
 **A link is a bearer token,** 32 random bytes kept as a hash. It never goes in a log line.
 
+**As built (ticket 20, 2026-11-21):**
+- **One level at a time.** The share menu's four levels are the row's `members` or `named`, plus the preview's links. Setting the level to the members or named people narrows the preview away from its links, so their active links are revoked, each audited, and every view of someone who no longer qualifies closes in the same transaction. Revoking a link closes its views at once, and turning public links off closes every public link's view; turned on again, a public link not revoked works again.
+- **Who may share:** any member who can open the task, as above. (`task-preview.md`'s open point 4 recommends the driver and the project's admins; the targets' approval can still narrow it.)
+- **A named person** gets `previews.open` for that preview, watch-only, and the heartbeat and close of their own view. Every other procedure of the task answers them as it answers anyone the project doesn't list: NOT_FOUND.
+- **The viewer page** reaches only `previews.link.*` (open, heartbeat, close), each with the link's token, and the stream and input routes with the token in `x-ostra-preview-link`. A token that opens nothing counts against its address: 20 a minute, then the address waits out the minute; the page's opens count apart, 30 a minute *(working values)*. An unknown token says nothing of whether it existed; an expired or revoked one says which.
+- **The routes** check the member's session or the link's token, that the view is the one they opened, and their access again on every request, then ask core with a panel token for that one view and viewer. A watch-only viewer's input stops at the panel, before core, which drops it again. Input is JSON from the panel's own origin only.
+
 ## Warm while watched, and starting the app
 
 **A watched box stays warm, up to 60 minutes** (Q299, ADR 0039 amended). While a pane or a viewer page is open and visible, the panel sends a heartbeat every 30 s *(working value)*. The box's 15-minute idle timer doesn't end it while a heartbeat came in the last 2 minutes, for at most 60 minutes after its last turn ended or its app started (`OSTRA_PREVIEW_WARM_MINUTES`). The app's own HMR socket never counts as watching: CodeSandbox and Cloudflare both learned that it keeps a sandbox awake for nobody (§1.5). Past the cap, the box idles out as ADR 0039 says, and the pane shows the last frame and "Start the app". The compute isn't counted: budgets count model spend only (ADR 0042).

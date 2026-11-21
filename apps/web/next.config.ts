@@ -20,7 +20,8 @@ const config: NextConfig = {
   // link its token, and the panel's reads of them carry the same in their input: bearer secrets,
   // which stay out of every log line (spec m4 section 3, "Nothing leaked").
   logging: {
-    incomingRequests: { ignore: [/\/invite\//, /\/reset(\/|\?|$)/, /[?&](token|verify)=/, /invitation/i, /resetPreview/, /\/api\/auth\//] },
+    // A preview link's viewer page (`/p/<token>`) holds its token too (milestone 8, F-142).
+    incomingRequests: { ignore: [/\/invite\//, /\/reset(\/|\?|$)/, /[?&](token|verify)=/, /invitation/i, /resetPreview/, /\/api\/auth\//, /\/p\//] },
   },
   // `pnpm typecheck` (tsc on tsconfig.json) is the type gate. Next's own check would see the
   // workspace's server code under Next's global types, which make NODE_ENV a required variable of
@@ -39,6 +40,15 @@ const config: NextConfig = {
           { key: "Referrer-Policy", value: "same-origin" },
           { key: "X-Frame-Options", value: "DENY" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+        ],
+      },
+      {
+        // A preview link's viewer page (milestone 8, F-142, ADR 0068): its URL is a bearer token, so
+        // it never leaves in a `Referer`, and no search engine keeps it.
+        source: "/p/:path*",
+        headers: [
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
         ],
       },
     ]),

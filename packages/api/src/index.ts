@@ -22,6 +22,13 @@ export { corePanelUploader } from "./services/panel-blobs.ts";
 export type { PanelUploaderOptions } from "./services/panel-blobs.ts";
 export { serveSkillFileUpload } from "./services/skill-file-upload.ts";
 export { serveAuditExport } from "./services/audit-log.ts";
+// Milestone 8 (ticket 20): a view's stream and input, relayed to core, and the viewer page's data.
+export { previewRouteErrorCodeSchema, servePreviewInput, servePreviewStream } from "./services/preview-relay.ts";
+export type { PreviewRouteErrorCode } from "./services/preview-relay.ts";
+export { PREVIEW_LINK_HEADER } from "./services/preview-link-tries.ts";
+export { previewViewerPageSchema } from "./routers/previews.ts";
+export type { PreviewViewerPage } from "./routers/previews.ts";
+export type { PreviewRelay } from "./trpc/context.ts";
 export type { GitHubLinkOutcome, GitHubLinkResult, GitHubLinkStart } from "./services/github-link.ts";
 export type { LinearTrackerAuth, TrackerDirectory, TrackerLookup } from "./services/trackers.ts";
 export { createLinearAppKit, linearEndpoints, linearScopes, linearWebhookEvents } from "./services/linear-app.ts";

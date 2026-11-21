@@ -194,6 +194,8 @@ const build = async (): Promise<ApiRuntime> => {
       // A member's file (a skill's) goes to core's blob service, whichever store the install keeps blobs in.
       upload: corePanelUploader({ coreUrl: settings.coreInternalUrl, secret: secretsKeyText, logger }),
     },
+    // Milestone 8 (F-141): a view's stream and input go to core with a token signed under the same key.
+    previewSecret: secretsKeyText,
     logger,
   });
   logger.info("web.started", { mode: settings.mode, publicUrl: settings.publicUrl });

@@ -20,6 +20,7 @@ import {
   seedLease,
   seedLinearConnection,
   seedPersonalRunner,
+  seedPreviewableTask,
   seedProject,
   trpcFailure,
 } from "../testing/index.ts";
@@ -546,5 +547,131 @@ describe("members work tasks, and no task is private (F-003, F-087)", () => {
         }),
       ),
     ).toMatchObject({ code: "BAD_REQUEST" });
+  });
+});
+
+// ---------- previews (milestone 8, F-142) ----------
+
+describe("a preview's writes, by each kind of viewer (F-142)", () => {
+  /** Who calls: the organization's admin, the project's member, a person the preview names, an organization member the project doesn't list, another organization's admin, and a link's holder (signed out). */
+  type Viewer = "organization admin" | "project member" | "named person" | "outsider" | "another organization" | "link";
+  const viewers: readonly Viewer[] = ["organization admin", "project member", "named person", "outsider", "another organization", "link"];
+
+  it("F-142/c3: every write of a task's previews gives each viewer what the table says: a named person opens the preview and keeps their own view, and every other write of the task refuses them", async () => {
+    const { projectId, driver } = await restrictedProject("preview-writes");
+    const organizationId = harness.fixture.a.organization.id;
+    const named = await seedMember();
+    const outsider = await seedMember();
+    const callerOf = async (viewer: Viewer): Promise<AppCaller> => {
+      switch (viewer) {
+        case "organization admin":
+          return harness.as(harness.fixture.a.admin);
+        case "project member":
+          return harness.as(driver);
+        case "named person":
+          return harness.as(named);
+        case "outsider":
+          return harness.as(outsider);
+        case "another organization":
+          return harness.as(harness.fixture.b.admin);
+        case "link":
+          return harness.anonymous();
+        default:
+          return viewer satisfies never;
+      }
+    };
+    /** A fresh task for each call, whose preview names the named person, with a view and a link of the project member's. */
+    const fresh = async () => {
+      const task = await seedPreviewableTask(harness, { organizationId, projectId, ownerMemberId: harness.fixture.a.admin.id, driverMemberId: driver.id });
+      const asDriver = await harness.as(driver);
+      await asDriver.previews.setLevel({ taskId: task.taskId, key: task.key, level: "named", memberIds: [named.id] });
+      const view = await asDriver.previews.open({ taskId: task.taskId, key: task.key });
+      const link = await asDriver.previews.createLink({ taskId: task.taskId, key: task.key, kind: "expiring", allowInput: false, expiresInHours: null });
+      if (!view.ok || !link.ok) {
+        throw new Error("the task's view or link didn't open");
+      }
+      return { task, viewId: view.viewId, linkId: link.linkId };
+    };
+    type Fresh = Awaited<ReturnType<typeof fresh>>;
+    const writes: Readonly<Record<string, (caller: AppCaller, at: Fresh) => Promise<unknown>>> = {
+      "previews.open": (caller, at) => caller.previews.open({ taskId: at.task.taskId, key: at.task.key }),
+      // On the project member's own view: nobody else's to beat or close.
+      "previews.heartbeat": (caller, at) => caller.previews.heartbeat({ viewId: at.viewId }),
+      "previews.close": (caller, at) => caller.previews.close({ viewId: at.viewId }),
+      "previews.startApp": (caller, at) => caller.previews.startApp({ taskId: at.task.taskId }),
+      "previews.takeScreenshot": (caller, at) => caller.previews.takeScreenshot({ taskId: at.task.taskId, key: at.task.key, path: "/", width: "desktop" }),
+      "previews.setLevel": (caller, at) => caller.previews.setLevel({ taskId: at.task.taskId, key: at.task.key, level: "members", memberIds: [] }),
+      "previews.createLink": (caller, at) => caller.previews.createLink({ taskId: at.task.taskId, key: at.task.key, kind: "expiring", allowInput: true, expiresInHours: 1 }),
+      "previews.revokeLink": (caller, at) => caller.previews.revokeLink({ linkId: at.linkId }),
+      // Each organization admin, for their own organization only.
+      "organization.setPublicPreviewLinks": (caller) => caller.organization.setPublicPreviewLinks({ enabled: false }),
+      // The task's own writes: the named person is no member of the project.
+      "tasks.send": (caller, at) => caller.tasks.send({ taskId: at.task.taskId, clientMessageId: clientMessageIdSchema.parse(randomUUID()), text: "Also add a footer" }),
+      "tasks.stop": (caller, at) => caller.tasks.stop({ taskId: at.task.taskId }),
+      "tasks.takeOver": (caller, at) => caller.tasks.takeOver({ taskId: at.task.taskId }),
+      "tasks.interrupt": (caller, at) => caller.tasks.interrupt({ taskId: at.task.taskId }),
+    };
+    const outsiders = { outsider: "NOT_FOUND", "another organization": "NOT_FOUND", link: "UNAUTHORIZED" } as const;
+    const members = { "organization admin": "ok", "project member": "ok", "named person": "NOT_FOUND", ...outsiders } as const;
+    const table: Readonly<Record<string, Readonly<Record<Viewer, string>>>> = {
+      "previews.open": { ...members, "named person": "ok" },
+      "previews.heartbeat": { ...members, "organization admin": "NOT_FOUND" },
+      "previews.close": { ...members, "organization admin": "NOT_FOUND" },
+      "previews.startApp": members,
+      "previews.takeScreenshot": members,
+      "previews.setLevel": members,
+      "previews.createLink": members,
+      "previews.revokeLink": members,
+      "organization.setPublicPreviewLinks": { "organization admin": "ok", "project member": "FORBIDDEN", "named person": "FORBIDDEN", outsider: "FORBIDDEN", "another organization": "ok", link: "UNAUTHORIZED" },
+      // Only the task's driver steers it or interrupts it; anyone who can open it may stop it or take it over.
+      "tasks.send": { ...members, "organization admin": "FORBIDDEN" },
+      "tasks.stop": members,
+      "tasks.takeOver": members,
+      "tasks.interrupt": { ...members, "organization admin": "FORBIDDEN" },
+    };
+    // The guard: every member write of the previews router has a row.
+    expect(mutationPaths().filter((path) => path.startsWith("previews.") && !path.startsWith("previews.link.") && !Object.hasOwn(writes, path))).toEqual([]);
+    const seen: Record<string, Record<string, string>> = {};
+    for (const [path, write] of Object.entries(writes)) {
+      const row: Record<string, string> = {};
+      for (const viewer of viewers) {
+        const at = await fresh();
+        const caller = await callerOf(viewer);
+        row[viewer] = await outcomeOf(() => write(caller, at));
+      }
+      seen[path] = row;
+    }
+    expect(seen).toEqual(table);
+    // A refused write changed nothing: no link is the named person's or the outsider's.
+    const links = await harness.test.db.previewLink.findMany({ where: { projectId }, select: { createdByMemberId: true } });
+    expect(links.filter((link) => link.createdByMemberId === named.id || link.createdByMemberId === outsider.id)).toEqual([]);
+    // Another organization's admin changed their own organization's switch, never this one's.
+    expect((await harness.test.db.organizationSetting.findUnique({ where: { organizationId } }))?.publicPreviewLinks ?? false).toBe(false);
+  });
+
+  it("F-142/c3: a link's holder reaches only the viewer page's procedures, and only with the link's own token", async () => {
+    const { projectId, driver } = await restrictedProject("preview-link");
+    const task = await seedPreviewableTask(harness, { organizationId: harness.fixture.a.organization.id, projectId, ownerMemberId: harness.fixture.a.admin.id, driverMemberId: driver.id });
+    const asDriver = await harness.as(driver);
+    const mine = await asDriver.previews.createLink({ taskId: task.taskId, key: task.key, kind: "expiring", allowInput: false, expiresInHours: null });
+    const other = await asDriver.previews.createLink({ taskId: task.taskId, key: task.key, kind: "expiring", allowInput: false, expiresInHours: null });
+    if (!mine.ok || !other.ok) {
+      throw new Error("no links");
+    }
+    const token = (url: string): string => url.split("/p/")[1] ?? "";
+    const visitor = harness.callerFor({ deps: harness.deps, headers: new Headers({ "x-forwarded-for": "198.51.100.7" }), resHeaders: new Headers(), user: null, member: null, revalidate: () => Promise.resolve(null) });
+    const page = await visitor.previews.link.open({ token: token(mine.url) });
+    if (page.state !== "live") {
+      throw new Error(`the link opened ${page.state}`);
+    }
+    // Its own view: beaten and closed with its own token, never with another link's.
+    expect(await visitor.previews.link.heartbeat({ token: token(other.url), viewId: page.viewId })).toEqual({ state: "unknown" });
+    expect(await visitor.previews.link.close({ token: token(other.url), viewId: page.viewId })).toEqual({ state: "unknown" });
+    expect(await visitor.previews.link.heartbeat({ token: token(mine.url), viewId: page.viewId })).toEqual({ state: "opening" });
+    expect(await visitor.previews.link.close({ token: token(mine.url), viewId: page.viewId })).toEqual({ state: "closed" });
+    // Signed out, every other procedure of the task refuses it.
+    for (const call of [() => visitor.previews.list({ taskId: task.taskId }), () => visitor.tasks.get({ taskId: task.taskId }), () => visitor.previews.open({ taskId: task.taskId, key: task.key })]) {
+      expect(await trpcFailure(call())).toMatchObject({ code: "UNAUTHORIZED" });
+    }
   });
 });
