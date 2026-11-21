@@ -15,14 +15,16 @@ import { readFile } from "node:fs/promises";
 import { hashPassword } from "better-auth/crypto";
 
 import { createDb, notifyChannels } from "@ostra/db";
-import { KEPT_COMMAND_PLACEHOLDER, postgresChangeNotices, saveDraft, seedMember, systemClock } from "@ostra/domain";
+import { KEPT_COMMAND_PLACEHOLDER, postgresChangeNotices, recordAudit, saveDraft, seedMember, systemClock } from "@ostra/domain";
 import {
   APP_LOG_CONTENT_TYPE,
   APP_RECORDING_CONTENT_TYPE,
   APP_SCREENSHOT_CONTENT_TYPE,
   encodeFrameReel,
+  environmentIdSchema,
   environmentProposalSchema,
   organizationIdSchema,
+  projectIdSchema,
   taskEventSchema,
   taskIdSchema,
 } from "@ostra/protocol";
@@ -312,7 +314,7 @@ const body = environmentProposalSchema.parse({
 });
 const kept = await db.environmentProposal.create({ data: { ...place, environmentId: environment.id, taskId: storybook.taskId, body, notes: body.notes, state: "proposed", source: "kept", createdAt: new Date(Date.now() - 20 * 60_000) } });
 await db.taskPreview.update({ where: { id: taskPreview.id }, data: { keptProposalId: kept.id } });
-await db.auditEntry.create({ data: { ...place, actorKind: "member", actorId: keeper.seeded.memberId, actorName: "Sam Rivera", action: "environment.app-process-kept", entity: "environment", entityId: environment.id, data: { proposalId: kept.id, taskId: storybook.taskId, port: 6006, name: "storybook" } } });
+await db.$transaction((tx) => recordAudit(tx, { organizationId: organizationIdSchema.parse(organizationId), projectId: projectIdSchema.parse(project.id), actor: { kind: "member", id: keeper.seeded.memberId }, actorName: "Sam Rivera", action: "environment.app-process-kept", entity: "environment", entityId: environmentIdSchema.parse(environment.id), data: { proposalId: kept.id, taskId: storybook.taskId, port: 6006, name: "storybook" } }));
 
 // 3. A refine task with a draft, and a screenshot of its own box.
 const refine = await makeTask("Refine: show the app's version", "refine", "needs_you", "draft_ready");
