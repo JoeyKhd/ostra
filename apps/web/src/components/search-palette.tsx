@@ -1,7 +1,7 @@
 "use client";
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppWindowIcon, ArrowRightIcon, BoxIcon, Building2Icon, CheckIcon, ChevronRightIcon, CircleStopIcon, CornerDownLeftIcon, CpuIcon, FolderIcon, FolderPlusIcon, GitPullRequestIcon, HandIcon, HouseIcon, KeyboardIcon, LinkIcon, ListChecksIcon, Maximize2Icon, MessageSquareIcon, MessageSquareReplyIcon, MoonIcon, PanelLeftIcon, PlusIcon, RotateCcwIcon, SearchIcon, ServerIcon, SlidersHorizontalIcon, SquarePenIcon, StoreIcon, SunIcon, XIcon } from "lucide-react";
+import { AppWindowIcon, ArrowRightIcon, BoxIcon, Building2Icon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, CircleStopIcon, CornerDownLeftIcon, CpuIcon, FolderIcon, FolderPlusIcon, GitPullRequestIcon, HandIcon, HouseIcon, KeyboardIcon, LinkIcon, ListChecksIcon, Maximize2Icon, MessageSquareIcon, MessageSquareReplyIcon, MoonIcon, PanelLeftIcon, PlusIcon, RotateCcwIcon, SearchIcon, ServerIcon, SlidersHorizontalIcon, SquarePenIcon, StoreIcon, SunIcon, XIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Dialog } from "radix-ui";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
@@ -9,7 +9,7 @@ import type { KeyboardEvent, ReactNode } from "react";
 
 import { clientMessageIdSchema } from "@ostra/protocol";
 
-import { KbdSequence, isMac } from "@/components/shell/actions/kbd-sequence";
+import { KbdSequence, KeyCap, isMac } from "@/components/shell/actions/kbd-sequence";
 import { paletteRows } from "@/components/shell/actions/palette-actions";
 import type { ActionRow } from "@/components/shell/actions/palette-actions";
 import { StepRow, stepChip, stepEmpty, stepPlaceholder, stepRun, waitingOf } from "@/components/shell/actions/palette-step";
@@ -19,6 +19,7 @@ import type { ActionScope } from "@/components/shell/actions/use-scope";
 import { destinations, matchDestinations } from "@/components/shell/destinations";
 import type { Destination, DestinationIcon } from "@/components/shell/destinations";
 import { projectColour } from "@/components/shell/project-colour";
+import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
@@ -148,7 +149,8 @@ export type PaletteActions = {
 export type PaletteStart = { readonly step: PaletteStep | null };
 
 const groupLabel = "flex h-7 items-center px-4 text-xs font-medium text-faint";
-const rowClass = "relative mx-1.5 grid h-9 cursor-default grid-cols-[28px_minmax(0,1fr)_auto_20px] items-center rounded-lg px-2.5 text-ui text-text [&_svg]:size-[15px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75] [&_svg]:text-muted";
+/** Rows 36px; on a phone 48px with 15px labels and no keys (command-palette.md, "Phone width"). */
+const rowClass = "relative mx-1.5 grid h-9 cursor-default grid-cols-[28px_minmax(0,1fr)_auto_20px] items-center rounded-lg px-2.5 text-ui text-text [&_svg]:size-[15px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75] [&_svg]:text-muted max-sm:h-12 max-sm:grid-cols-[34px_minmax(0,1fr)_20px] max-sm:text-[15px] max-sm:[&_svg]:size-[18px]";
 /** The selected row: `--sel` and a 2px `--text` bar inside its left edge (the fill alone is 1.1:1). */
 const selectedClass = "bg-sel before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-text";
 
@@ -569,7 +571,7 @@ export const SearchPalette = ({
       <span aria-hidden className="flex">{actionIcon(row.id, actions.shownTheme)}</span>
       <span className="flex min-w-0 items-baseline gap-3">
         <span className="truncate">{row.label}</span>
-        {row.hint === null ? null : <span className="shrink-0 text-[13px] text-faint">{row.hint}</span>}
+        {row.hint === null ? null : <span className="shrink-0 text-[13px] text-faint max-sm:ml-auto max-sm:text-sm">{row.hint}</span>}
       </span>
       <span className="hidden justify-end sm:flex">{row.shortcut === null ? null : <KbdSequence keys={row.shortcut} />}</span>
       <span className="flex justify-end">{row.step ? <ChevronRightIcon aria-hidden className="!size-3.5 !text-faint" /> : null}</span>
@@ -615,11 +617,23 @@ export const SearchPalette = ({
               event.preventDefault();
             }
           }}
-          className="fixed left-1/2 top-[14vh] z-50 flex max-h-[min(560px,70vh)] w-[min(680px,calc(100vw-32px))] -translate-x-1/2 flex-col overflow-hidden rounded-xl border border-line-2 bg-raise shadow-(--shadow-palette) focus:outline-none max-sm:top-[58px]"
+          className="fixed left-1/2 top-[14vh] z-50 flex max-h-[min(560px,70vh)] w-[min(680px,calc(100vw-32px))] -translate-x-1/2 flex-col overflow-hidden rounded-xl border border-line-2 bg-raise shadow-(--shadow-palette) focus:outline-none max-sm:inset-x-0 max-sm:bottom-0 max-sm:top-[118px] max-sm:max-h-none max-sm:w-full max-sm:translate-x-0 max-sm:rounded-b-none max-sm:rounded-t-[14px] max-sm:border-x-0 max-sm:border-b-0"
         >
+          {/* On a phone the palette is a bottom sheet, from 64px under the top bar, with its grabber. */}
+          <div aria-hidden className="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-line-2 sm:hidden" />
           <Dialog.Title className="sr-only">{t("palette.title")}</Dialog.Title>
           <div className="relative flex min-h-[52px] shrink-0 flex-wrap items-center gap-2 border-b border-control-line px-4 py-2">
-            <SearchIcon aria-hidden className="mr-1 size-4 shrink-0 stroke-[1.75] text-muted" />
+            {step === null ? (
+              <SearchIcon aria-hidden className="mr-1 size-4 shrink-0 stroke-[1.75] text-muted" />
+            ) : (
+              <>
+                <SearchIcon aria-hidden className="mr-1 size-4 shrink-0 stroke-[1.75] text-muted max-sm:hidden" />
+                {/* On a phone the step goes back from a 44px chevron before its chip. */}
+                <button type="button" onClick={back} aria-label={t("palette.footer.back")} className="-ml-3 grid size-11 shrink-0 place-items-center rounded-md text-muted hover:text-text sm:hidden">
+                  <ChevronLeftIcon aria-hidden className="size-[15px] stroke-[1.75]" />
+                </button>
+              </>
+            )}
             {step === null ? null : (
               <span data-testid="palette-step-chip" className="inline-flex h-6 shrink-0 items-center rounded-[5px] border border-line-2 bg-bg px-2 text-[12.5px] text-text">{stepChip(step)}</span>
             )}
@@ -642,9 +656,10 @@ export const SearchPalette = ({
               aria-expanded
               aria-controls={listId}
               aria-activedescendant={activeId}
-              className="min-w-[120px] flex-1 bg-transparent text-[15px] text-text placeholder:text-faint focus-visible:outline-offset-2"
+              className="min-w-[120px] flex-1 bg-transparent text-[15px] text-text placeholder:text-faint focus-visible:outline-offset-2 max-sm:text-base"
             />
-            <Kbd className="ml-auto shrink-0">esc</Kbd>
+            <KeyCap className="ml-auto shrink-0 max-sm:hidden">esc</KeyCap>
+            <Dialog.Close className="ml-auto h-11 shrink-0 px-1 text-[15px] text-teal hover:underline sm:hidden">{t("palette.footer.cancel")}</Dialog.Close>
             {loadingSearch ? <span aria-hidden className="absolute bottom-0 left-0 h-0.5 w-1/3 animate-pulse bg-line-2" /> : null}
           </div>
           {stepError === null ? null : <p role="alert" className="border-b border-line px-4 py-2 text-[13px] text-red">{stepError}</p>}
@@ -668,9 +683,16 @@ export const SearchPalette = ({
                       sendReopen(step.task);
                     }
                   }}
-                  className="mt-1 block max-h-48 min-h-[76px] w-full resize-y rounded-lg border border-control-line bg-bg px-3 py-2 text-ui text-text placeholder:text-faint"
+                  className="mt-1 block max-h-48 min-h-[76px] w-full resize-y rounded-lg border border-control-line bg-bg px-3 py-2 text-ui text-text placeholder:text-faint max-sm:text-base"
                 />
                 <p className="mt-2 text-[12.5px] text-faint">{t("palette.step.resumes")}</p>
+                {/* On a phone, with no footer: a full-width primary and an outline Back (command-palette.md, "Phone width"). */}
+                <div className="mt-4 flex flex-col gap-2 sm:hidden">
+                  <Button variant="primary" className="h-11 w-full text-[15px]" disabled={busy || reopenText.trim() === ""} onClick={() => { sendReopen(step.task); }}>
+                    <CornerDownLeftIcon aria-hidden className="size-4" /> {t("palette.step.runReopen")}
+                  </Button>
+                  <Button variant="outline" className="h-11 w-full text-[15px]" onClick={back}>{t("palette.footer.back")}</Button>
+                </div>
               </div>
             ) : step.kind === "deny-reason" || step.kind === "answer-text" ? (
               <p className="px-4 py-3 text-[13px] text-muted">{step.kind === "deny-reason" ? t("palette.step.denyHint", { key: step.approval.key }) : step.question.message}</p>
@@ -827,32 +849,33 @@ export const SearchPalette = ({
             ) : null}
           </div>
 
-          <div className="flex h-9 shrink-0 items-center gap-3.5 whitespace-nowrap border-t border-line px-4 text-xs text-faint">
-            <span className="hidden shrink-0 items-center gap-1.5 sm:flex"><Kbd>↑</Kbd><Kbd>↓</Kbd>{t("search.palette.move")}</span>
+          <div className="flex h-9 shrink-0 items-center gap-3.5 whitespace-nowrap border-t border-line px-4 text-xs text-faint max-sm:hidden">
+            <span className="hidden shrink-0 items-center gap-1.5 sm:flex"><KeyCap>↑</KeyCap><KeyCap>↓</KeyCap>{t("search.palette.move")}</span>
             {step === null ? (
               <>
-                <span className="hidden shrink-0 items-center gap-1.5 sm:flex"><Kbd>↵</Kbd>{t("palette.footer.run")}</span>
+                <span className="hidden shrink-0 items-center gap-1.5 sm:flex"><KeyCap>↵</KeyCap>{t("palette.footer.run")}</span>
                 {tokens.length === 0 ? (
                   <>
-                    <span className="hidden shrink-0 items-center gap-1.5 md:flex"><Kbd>→</Kbd>{t("palette.footer.next")}</span>
-                    <span className="hidden shrink-0 items-center gap-1.5 md:flex"><Kbd>?</Kbd>{t("palette.footer.shortcuts")}</span>
+                    <span className="hidden shrink-0 items-center gap-1.5 md:flex"><KeyCap>→</KeyCap>{t("palette.footer.next")}</span>
+                    <span className="hidden shrink-0 items-center gap-1.5 md:flex"><KeyCap>?</KeyCap>{t("palette.footer.shortcuts")}</span>
                   </>
                 ) : (
-                  <span className="hidden shrink-0 items-center gap-1.5 md:flex"><Kbd>{mac ? "⌘" : "Ctrl"}</Kbd><Kbd>↵</Kbd>{t("search.palette.seeAll")}</span>
+                  <span className="hidden shrink-0 items-center gap-1.5 md:flex"><KeyCap>{mac ? "⌘" : "Ctrl"}</KeyCap><KeyCap>↵</KeyCap>{t("search.palette.seeAll")}</span>
                 )}
-                <span className="hidden shrink-0 items-center gap-1.5 sm:flex"><Kbd>esc</Kbd>{t("search.palette.close")}</span>
+                <span className="hidden shrink-0 items-center gap-1.5 sm:flex"><KeyCap>esc</KeyCap>{t("search.palette.close")}</span>
               </>
             ) : (
               <>
                 <span className="hidden shrink-0 items-center gap-1.5 sm:flex">
-                  {step.kind === "reopen-message" ? <><Kbd>{mac ? "⌘" : "Ctrl"}</Kbd><Kbd>↵</Kbd></> : <Kbd>↵</Kbd>}
+                  {step.kind === "reopen-message" ? <><KeyCap>{mac ? "⌘" : "Ctrl"}</KeyCap><KeyCap>↵</KeyCap></> : <KeyCap>↵</KeyCap>}
                   {t(stepRun(step))}
                 </span>
-                <span className="hidden shrink-0 items-center gap-1.5 sm:flex"><Kbd>esc</Kbd>{t("palette.footer.back")}</span>
+                <span className="hidden shrink-0 items-center gap-1.5 sm:flex"><KeyCap>esc</KeyCap>{t("palette.footer.back")}</span>
               </>
             )}
             {step === null ? (
-              <span className="ml-auto flex min-w-0 items-center gap-1 overflow-hidden">
+              // The filters show while the query holds filter tokens: milestone 4's footer (command-palette.md, "Footer").
+              tokens.length === 0 ? null : <span className="ml-auto flex min-w-0 items-center gap-1 overflow-hidden">
                 {t("search.palette.filters")}
                 {tokenKeys.map((key) => (
                   <button

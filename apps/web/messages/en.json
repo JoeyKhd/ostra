@@ -6227,7 +6227,8 @@
       "run": "Run",
       "next": "Next step",
       "shortcuts": "All shortcuts",
-      "back": "Back"
+      "back": "Back",
+      "cancel": "Cancel"
     },
     "toast": {
       "approved": "Approved {key}'s request.",
