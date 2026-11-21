@@ -93,8 +93,11 @@ const commentsRouter = router({
         body: view.body,
         state: view.state,
         outdated: view.outdated,
-        /** The line as it was when the comment was written: for an outdated comment's quote. */
-        quoted: view.outdated ? await lineOf(view) : null,
+        /**
+         * The line as it was when the comment was written: an outdated comment's quote, and a sent
+         * one's in the thread, under the message that carried it (`sentInSeq`). `null` for a draft.
+         */
+        quoted: view.outdated || view.state === "sent" ? await lineOf(view) : null,
         sentInSeq: view.sentInSeq,
         mine: view.memberId === ctx.scope.memberId,
         author: { memberId: memberIdSchema.parse(view.memberId), name: authors.find((author) => author.id === view.memberId)?.user.name ?? "" },

@@ -82,6 +82,16 @@ test("F-072/c1,c2: comments on two lines go to the agent as one message, and a n
   await expect(page.locator("[data-comment][data-state='sent']")).toHaveCount(2);
   expect(await intents(task.taskId)).toEqual(["message", "diff-comments"]);
 
+  // The thread draws that message from the comments it carried, never the fenced prompt the agent reads.
+  await page.getByRole("button", { name: "See it in Activity" }).click();
+  const sent = page.locator("[data-role='user']", { has: page.locator("[data-intent='diff-comments']") });
+  await expect(sent).toContainText("2 comments on the diff", { timeout: 10_000 });
+  await expect(sent.locator("[data-diff-comment]")).toHaveCount(2);
+  await expect(sent).toContainText("Keep the old name exported for a release.");
+  await expect(sent).toContainText("README.md:3");
+  await expect(sent).not.toContainText("ostra-data");
+  await page.goto(`/tasks/${task.taskId}?tab=changes`);
+
   // The agent pushes a new head that rewrites the README's last line. Core's `diff.fetch` reads it and
   // its notice reaches the open tab: that comment is outdated, still readable; the other still holds.
   await seeder({ action: "new-head", taskId: task.taskId });

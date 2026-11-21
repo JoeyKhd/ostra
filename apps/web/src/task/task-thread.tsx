@@ -9,7 +9,7 @@ import {
   useAuiState,
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { ArrowUpIcon, InfoIcon, PauseIcon, RotateCcwIcon, SquareTerminalIcon, UserIcon } from "lucide-react";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -29,10 +29,11 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { formatClock } from "@/lib/format";
-import { t } from "@/lib/messages";
+import { plural, t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 
 import { toThreadMessageLike } from "./convert";
+import { MessageIntentMark, SentDiffCommentsContext, sentBySeq, UserMessageText } from "./diff-comments-message";
 import { TurnUsage } from "./effort-marks";
 import { AssistantText, DataRow, Reasoning, SafeLink, ToolRow } from "./renderers";
 import type { TaskStreamState } from "./stream-state";
@@ -61,10 +62,17 @@ const MessageHeader = ({ message }: { readonly message: TaskUIMessage }) => {
   const time = meta?.at === undefined ? null : formatClock(meta.at);
   if (message.role === "user") {
     const delivery = meta?.author?.delivery;
+    const intent = meta?.author?.intent;
     return (
-      <div className="flex items-baseline gap-2">
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
         <span className="font-semibold">{meta?.author === undefined ? "" : memberName(meta.author.memberId)}</span>
-        {time === null ? null : <Meta dot={false}>{time}</Meta>}
+        {/* F-072: diff comments say how many after the time (task-changes.md, "In the Activity tab"). */}
+        {time === null && intent !== "diff-comments" ? null : (
+          <span className="min-w-0">
+            {time === null ? null : <Meta dot={false}>{time}</Meta>}
+            {intent === "diff-comments" ? <MessageIntentMark intent={intent} seq={meta?.firstSeq} /> : null}
+          </span>
+        )}
         {meta?.author?.held === true ? (
           <span className="text-sm text-red" data-testid="message-held">
             {t("task.held")}
@@ -75,7 +83,7 @@ const MessageHeader = ({ message }: { readonly message: TaskUIMessage }) => {
         {delivery === "after-interrupt" ? <span className="text-sm text-faint">{t("task.afterInterrupt")}</span> : null}
         {meta?.author?.reopen === true ? <span className="rounded-sm border border-line-2 px-1.5 text-xs text-muted" data-tag="reopen">{t("task.reopenTag")}</span> : null}
         {meta?.author?.replayed === true ? <span className="rounded-sm border border-line-2 px-1.5 text-xs text-muted" data-tag="replayed">{t("task.replayedTag")}</span> : null}
-        {meta?.author?.intent === undefined ? null : <span className="rounded-sm border border-line-2 px-1.5 text-xs text-muted" data-tag="intent" data-intent={meta.author.intent}>{t(`taskAnswers.intent.${meta.author.intent}`)}</span>}
+        {intent === undefined || intent === "message" || intent === "diff-comments" ? null : <MessageIntentMark intent={intent} seq={meta?.firstSeq} />}
         {meta?.optimistic === true ? <span className="text-sm text-faint">{t("task.sending")}</span> : null}
       </div>
     );
@@ -129,7 +137,7 @@ const MessageView = memo(({ id, fallbackRole }: { readonly id: string; readonly 
             switch (part.type) {
               case "text":
                 return role === "user" ? (
-                  <p data-part="user-text" className="whitespace-pre-wrap break-words">{part.text}</p>
+                  <UserMessageText text={part.text} intent={meta?.author?.intent} seq={meta?.firstSeq} />
                 ) : (
                   <AssistantText streaming={part.status.type === "running"} />
                 );
@@ -284,6 +292,25 @@ export const TaskThread = ({ taskId, projectName, log, memberId, memberName, can
     return next;
   }, [log.events, log.live, optimistic, onFold]);
 
+  // F-072: a diff-comments message is drawn from the comments it carried (`diff.comments.list`), read
+  // only once the thread has one. A task's notice refreshes them (`change-scopes.ts`); a message whose
+  // comments aren't in the list yet asks once more, in case its notice came before the list was read.
+  const diffCommentSeqs = useMemo(
+    () => log.events.flatMap(({ seq, event }) => (event.kind === "user.message" && event.intent === "diff-comments" ? [seq] : [])),
+    [log.events],
+  );
+  const sentList = useQuery(trpc.diff.comments.list.queryOptions({ taskId }, { enabled: diffCommentSeqs.length > 0 }));
+  const sentDiffComments = useMemo(() => (sentList.data === undefined ? null : sentBySeq(sentList.data.comments)), [sentList.data]);
+  const { refetch: refetchSent, isFetching: fetchingSent } = sentList;
+  const askedAgain = useRef(new Set<number>());
+  useEffect(() => {
+    if (sentDiffComments === null || fetchingSent) return;
+    const missing = diffCommentSeqs.filter((seq) => !sentDiffComments.has(seq) && !askedAgain.current.has(seq));
+    if (missing.length === 0) return;
+    for (const seq of missing) askedAgain.current.add(seq);
+    void refetchSent();
+  }, [diffCommentSeqs, sentDiffComments, fetchingSent, refetchSent]);
+
   // Forget an optimistic send once its committed message is in the log.
   useEffect(() => {
     const committed = new Set<string>();
@@ -367,8 +394,14 @@ export const TaskThread = ({ taskId, projectName, log, memberId, memberName, can
     for (let i = at - 1; i >= 0; i -= 1) {
       const message = messages[i];
       if (message?.role === "user") {
+        const name = message.metadata?.author === undefined ? "" : memberName(message.metadata.author.memberId);
+        if (message.metadata?.author?.intent === "diff-comments") {
+          // F-072: the fenced prompt is the agent's to read; the window says what the member sent.
+          const sent = sentDiffComments?.get(message.metadata.firstSeq);
+          return { name, text: sent === undefined || sent.length === 0 ? t("taskAnswers.intent.diff-comments") : plural(sent.length, "task.diffComments.one", "task.diffComments.other") };
+        }
         const text = message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n");
-        return { name: message.metadata?.author === undefined ? "" : memberName(message.metadata.author.memberId), text };
+        return { name, text };
       }
     }
     return null;
@@ -402,37 +435,39 @@ export const TaskThread = ({ taskId, projectName, log, memberId, memberName, can
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <TaskContext.Provider value={context}>
-        <ThreadPrimitive.Root data-part="thread" className="flex min-h-0 flex-1 flex-col">
-          <ThreadPrimitive.Viewport autoScroll={focusSeq === null} className="min-h-0 flex-1 overflow-y-auto">
-            {hasEarlier ? (
-              <div className="py-2">
-                <Button size="sm" variant="ghost" data-action="load-earlier" onClick={() => void loadEarlier()}>
-                  {t("task.loadEarlier")}
-                </Button>
+        <SentDiffCommentsContext.Provider value={sentDiffComments}>
+          <ThreadPrimitive.Root data-part="thread" className="flex min-h-0 flex-1 flex-col">
+            <ThreadPrimitive.Viewport autoScroll={focusSeq === null} className="min-h-0 flex-1 overflow-y-auto">
+              {hasEarlier ? (
+                <div className="py-2">
+                  <Button size="sm" variant="ghost" data-action="load-earlier" onClick={() => void loadEarlier()}>
+                    {t("task.loadEarlier")}
+                  </Button>
+                </div>
+              ) : null}
+              <ThreadPrimitive.Messages>{({ message }) => <MessageView id={message.id} fallbackRole={message.role} />}</ThreadPrimitive.Messages>
+              {tail}
+            </ThreadPrimitive.Viewport>
+            {canSend || canReopen ? (
+              <div className="shrink-0 pt-3">
+                <Composer interrupt={canSend && running && canInterrupt} onSend={sendText} reopen={!canSend} hint={composerHint} />
               </div>
-            ) : null}
-            <ThreadPrimitive.Messages>{({ message }) => <MessageView id={message.id} fallbackRole={message.role} />}</ThreadPrimitive.Messages>
-            {tail}
-          </ThreadPrimitive.Viewport>
-          {canSend || canReopen ? (
-            <div className="shrink-0 pt-3">
-              <Composer interrupt={canSend && running && canInterrupt} onSend={sendText} reopen={!canSend} hint={composerHint} />
-            </div>
-          ) : instead !== undefined ? (
-            instead
-          ) : notDriver === undefined ? null : (
-            <div className="shrink-0 pt-3 text-sm" data-part="not-driver">{notDriver}</div>
+            ) : instead !== undefined ? (
+              instead
+            ) : notDriver === undefined ? null : (
+              <div className="shrink-0 pt-3 text-sm" data-part="not-driver">{notDriver}</div>
+            )}
+          </ThreadPrimitive.Root>
+          {subagentsAt === null ? null : (
+            <SubagentsWindow
+              key={`${subagentsAt.messageId}:${subagentsAt.subagentId ?? ""}`}
+              at={subagentsAt}
+              opener={subagentsAt.opener}
+              asked={askedOf(subagentsAt.messageId)}
+              onClose={() => { setSubagentsAt(null); }}
+            />
           )}
-        </ThreadPrimitive.Root>
-        {subagentsAt === null ? null : (
-          <SubagentsWindow
-            key={`${subagentsAt.messageId}:${subagentsAt.subagentId ?? ""}`}
-            at={subagentsAt}
-            opener={subagentsAt.opener}
-            asked={askedOf(subagentsAt.messageId)}
-            onClose={() => { setSubagentsAt(null); }}
-          />
-        )}
+        </SentDiffCommentsContext.Provider>
       </TaskContext.Provider>
     </AssistantRuntimeProvider>
   );

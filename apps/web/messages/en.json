@@ -1816,6 +1816,10 @@
     "heldOrganization": "Held: the organization’s budget for {month} is reached",
     "released": "Released: the budget has room again, so the held work goes on",
     "memoryProposed": "Proposed a note for memory: {title}. A member decides in Memory, Proposals.",
+    "diffComments": {
+      "one": "{n} comment on the diff",
+      "other": "{n} comments on the diff"
+    },
     "prComment": "{login} asked through an @ostra comment on the pull request",
     "prCommentOpen": "Open the comment",
     "prCommentTitle": "Title",

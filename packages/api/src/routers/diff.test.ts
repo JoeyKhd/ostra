@@ -258,6 +258,12 @@ describe("diff.comments", () => {
     // The message carries the comments as data in a marked block, with the file and the quoted line.
     expect(messages[0]?.text).toContain("README.md");
     expect(messages[0]?.text).toContain("First.");
+    // The thread draws that message from the comments it carried, by its sequence, each with its line.
+    const listed = await driver.diff.comments.list({ taskId: task.taskId });
+    expect(listed.comments.map((comment) => [comment.body, comment.sentInSeq, comment.quoted])).toEqual([
+      ["First.", messages[0]?.seq, { kind: "add", text: "new five" }],
+      ["Second.", messages[0]?.seq, { kind: "context", text: "" }],
+    ]);
   });
 
   it("F-072/c2: a member who isn't the driver is told to take over while a session is going; a task with no session reopens", async () => {
