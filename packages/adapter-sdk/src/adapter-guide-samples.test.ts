@@ -63,6 +63,17 @@ describe("the docs site's adapter guide", () => {
     expect(compile(samples)).toEqual([]);
   });
 
+  it("F-149/c6: the guide's tracker sample declares ticketFiles, and a tracker without it doesn't compile", async () => {
+    const samples = samplesOf(await readFile(guide, "utf8"));
+    const tracker = samples.find((sample) => sample.fileName === "tracker-capabilities.ts");
+    expect(tracker?.code).toContain('ticketFiles: "images"');
+    if (tracker === undefined) return;
+    expect(compile([tracker])).toEqual([]);
+    const without = { ...tracker, code: tracker.code.replace(/^\s*ticketFiles: "images",\r?\n/m, "") };
+    expect(without.code).not.toContain("ticketFiles");
+    expect(compile([without]).join("\n")).toMatch(/ticketFiles/);
+  });
+
   it("F-058/c1: a sample that misuses the SDK fails to compile, so the check is real", () => {
     const broken = samplesOf(
       [

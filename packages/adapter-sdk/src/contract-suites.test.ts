@@ -20,7 +20,13 @@ import { defineBlobStoreFirstCases } from "./testing/blob-store-suite.ts";
 import { defineNotificationContractSuite, suiteRecipient } from "./testing/notification-suite.ts";
 import { createJiraFakeSuiteSubject } from "./testing/jira-fake.ts";
 import { FakeCiHost } from "./testing/fake-ci-host.ts";
-import { defineTrackerContractSuite, defineTrackerFirstCases, defineTrackerMentionSuite, defineTrackerMilestone6Suite } from "./testing/tracker-suite.ts";
+import {
+  defineTrackerContractSuite,
+  defineTrackerFilesSuite,
+  defineTrackerFirstCases,
+  defineTrackerMentionSuite,
+  defineTrackerMilestone6Suite,
+} from "./testing/tracker-suite.ts";
 import { defineModelProviderContractSuite } from "./testing/model-provider-suite.ts";
 import { defineSecretStoreContractSuite } from "./testing/secret-store-suite.ts";
 import {
@@ -84,6 +90,47 @@ defineTrackerMentionSuite({
           const userId = `tiny-user-${String(adapter.users.length + 1)}`;
           adapter.users.push({ email, userId });
           return Promise.resolve({ userId });
+        },
+      },
+    });
+  },
+});
+defineTrackerFilesSuite({
+  name: "tiny tracker, ticketFiles none",
+  create: () => {
+    const adapter = new TinyTracker();
+    const board = { externalId: "tiny-board" };
+    const host = "https://tiny-tracker.invalid/files";
+    return Promise.resolve({
+      adapter,
+      fixture: {
+        board,
+        ownUserId: null,
+        files: {
+          // The ticket's text links files the tracker might hold: a `none` adapter lists none of them.
+          seedTicketWithFiles: () => {
+            const seeded = adapter.seedTicket({
+              title: "With files",
+              description: `![mock.png](${host}/1/mock.png)\n\n[spec.docx](${host}/2/spec.docx)`,
+            });
+            return Promise.resolve({
+              ...seeded,
+              descriptionImage: `${host}/1/mock.png`,
+              descriptionFile: `${host}/2/spec.docx`,
+              commentId: "no-comment",
+              commentImage: `${host}/3/broken.png`,
+              attachedFile: `${host}/4/design.pdf`,
+              linkAttachment: "https://www.figma.com/file/0196f1a0/History",
+              spareImage: `${host}/5/progress.png`,
+            });
+          },
+          followUpText: () =>
+            Promise.resolve({
+              text: `Also these: ![follow-up.png](${host}/6/follow-up.png) [numbers.xlsx](${host}/7/numbers.xlsx) [elsewhere](https://files.example.test/8/numbers.xlsx)`,
+              image: `${host}/6/follow-up.png`,
+              file: `${host}/7/numbers.xlsx`,
+              offHost: "https://files.example.test/8/numbers.xlsx",
+            }),
         },
       },
     });

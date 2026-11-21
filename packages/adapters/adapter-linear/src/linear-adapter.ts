@@ -1,4 +1,16 @@
-import { adapterError, isOpenCategory, mappedStatusId, ok, parseVendor, sha256Hex, TrackerAdapter } from "@ostra/adapter-sdk";
+import {
+  adapterError,
+  filesForCapability,
+  isOpenCategory,
+  isOwnAttachment,
+  isOwnComment,
+  mappedStatusId,
+  ok,
+  parseVendor,
+  sha256Hex,
+  ticketFileList,
+  TrackerAdapter,
+} from "@ostra/adapter-sdk";
 import type {
   AdapterContext,
   AdapterError,
@@ -22,7 +34,10 @@ import type {
   TicketAttachment,
   TicketComment,
   TicketContext,
+  TicketContextFile,
+  TicketContextOptions,
   TicketFile,
+  TicketFileWhere,
   TicketImage,
   TicketLinkKind,
   TicketPage,
@@ -231,6 +246,9 @@ export const linearMention = (user: { readonly displayName: string; readonly url
 
 const present = <T,>(values: readonly (T | null)[]): T[] => values.flatMap((value) => (value === null ? [] : [value]));
 
+/** Milestone 9: a file the ticket shows on Linear's file host, and whether Linear shows it as an image. */
+type ShownFile = Pick<TicketContextFile, "url" | "name" | "contentType" | "size"> & { readonly image: boolean };
+
 /**
  * What Linear's adapter declares (ADR 0025). Exported so code that holds no connection's token, such
  * as the panel's agent-mode switch, reads the same declaration the adapter answers with.
@@ -256,6 +274,8 @@ export const LINEAR_CAPABILITIES: TrackerCapabilities = {
   agentSessionLink: true,
   // Linear has no field of its own for acceptance criteria: they go into the description.
   ticketFields: { acceptanceCriteria: false },
+  // Milestone 9 (F-149): the images a ticket shows, inline or attached, on Linear's file host.
+  ticketFiles: "images",
 };
 
 export class LinearAdapter extends TrackerAdapter {
@@ -354,7 +374,7 @@ export class LinearAdapter extends TrackerAdapter {
     return ok(ordered.map((state, index) => ({ ...toStatus(state), vendorType: state.type, position: index })));
   }
 
-  async getTicketContext(board: BoardRef, ref: TicketRef): Promise<AdapterResult<TicketContext>> {
+  async getTicketContext(board: BoardRef, ref: TicketRef, options?: TicketContextOptions): Promise<AdapterResult<TicketContext>> {
     const found = await this.#query("issueContext", { id: this.#idOf(ref) }, answers.issueContext);
     if (!found.ok) {
       return found;
@@ -409,6 +429,7 @@ export class LinearAdapter extends TrackerAdapter {
       comments,
       attachments,
       images: this.#imagesOf(ticket.value.description, comments, attachments),
+      files: this.#filesOf(ticket.value.description, comments, attachments, options),
       parent: toSummary(issue.parent),
       children: present(issue.children.nodes.map(toSummary)).map((child) => ({ ...child, open: isOpenCategory(child.status.category) })),
       linked,
@@ -962,6 +983,77 @@ export class LinearAdapter extends TrackerAdapter {
       }
     }
     return images;
+  }
+
+  /**
+   * Milestone 9 (F-149): the files a piece of markdown shows on Linear's file host, in order, as
+   * `ticketFiles` lets through: each with the name its text or URL gives.
+   */
+  #filesInMarkdown(markdown: string): readonly ShownFile[] {
+    return markdownImages(markdown).flatMap((image) => {
+      const url = this.#onFileHost(image.url);
+      return url === null ? [] : [{ url: url.href, name: imageName(url, image.alt), contentType: null, size: null, image: true }];
+    });
+  }
+
+  /** The URL, when it's a file Linear holds: the only ones `downloadFile` sends the token to. */
+  #onFileHost(raw: string): URL | null {
+    if (!URL.canParse(raw)) return null;
+    const url = new URL(raw);
+    return this.#fileOrigins.has(url.origin) ? url : null;
+  }
+
+  /**
+   * Milestone 9 (F-149): the description's files, then each comment's (oldest first), then the
+   * attachments on Linear's file host, each URL once. A file in ostra's own comment, or an
+   * attachment ostra made, is `byOstra`.
+   */
+  #filesOf(
+    description: string | null,
+    comments: readonly TicketComment[],
+    attachments: readonly TicketAttachment[],
+    options: TicketContextOptions | undefined,
+  ): readonly TicketContextFile[] {
+    const files = ticketFileList();
+    const images = new Set<string>();
+    const add = ({ image, ...file }: ShownFile, where: TicketFileWhere, commentId: string | null, byOstra: boolean): void => {
+      if (image) images.add(file.url);
+      files.add({ ...file, where, commentId, byOstra });
+    };
+    for (const file of this.#filesInMarkdown(description ?? "")) {
+      add(file, "description", null, false);
+    }
+    for (const comment of comments) {
+      const byOstra = isOwnComment(options?.own, comment);
+      for (const file of this.#filesInMarkdown(comment.body)) {
+        add(file, "comment", comment.id, byOstra);
+      }
+    }
+    for (const attachment of attachments) {
+      const url = this.#onFileHost(attachment.url);
+      if (url !== null) {
+        const file = { url: url.href, name: imageName(url, attachment.title), contentType: null, size: null, image: looksLikeImage(url) };
+        add(file, "attachment", null, isOwnAttachment(options?.own, attachment));
+      }
+    }
+    return this.#asDeclared(files.files(), images);
+  }
+
+  /** Milestone 9 (F-149): a follow-up's files, read from its markdown as a comment's are. */
+  override filesInText(markdown: string): readonly TicketContextFile[] {
+    const files = ticketFileList();
+    const images = new Set<string>();
+    for (const { image, ...file } of this.#filesInMarkdown(markdown)) {
+      if (image) images.add(file.url);
+      files.add({ ...file, where: "comment", commentId: null, byOstra: false });
+    }
+    return this.#asDeclared(files.files(), images);
+  }
+
+  /** The files `ticketFiles` lets through: an image is one Linear shows as an image, or named like one. */
+  #asDeclared(files: readonly TicketContextFile[], images: ReadonlySet<string>): readonly TicketContextFile[] {
+    const { ticketFiles } = this.capabilities;
+    return ticketFiles === "images" ? files.filter((file) => images.has(file.url) || filesForCapability([file], "images").length > 0) : filesForCapability(files, ticketFiles);
   }
 
   async #query<S extends z.ZodType>(

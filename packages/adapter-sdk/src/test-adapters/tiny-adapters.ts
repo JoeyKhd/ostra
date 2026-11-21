@@ -4,9 +4,9 @@ import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { gitShaSchema, repoFullNameSchema, segmentIdSchema } from "@ostra/protocol";
+import { externalTicketIdSchema, gitShaSchema, repoFullNameSchema, segmentIdSchema, ticketKeySchema } from "@ostra/protocol";
 import { z } from "zod";
-import type { BoxState, EffortLevel, GitPerson, GitSha, OrganizationId, RepoFullName, StopReason, TaskEvent } from "@ostra/protocol";
+import type { BoxState, EffortLevel, ExternalTicketId, GitPerson, GitSha, OrganizationId, RepoFullName, StopReason, TaskEvent, TicketKey } from "@ostra/protocol";
 
 import { AgentAdapter } from "../agent/base.ts";
 import type {
@@ -112,6 +112,7 @@ import type {
   Ticket,
   TicketContext,
   TicketPage,
+  TicketRef,
   TrackerBoard,
   TrackerStatus,
   TrackerPerson,
@@ -128,12 +129,13 @@ const unsupported = (what: string) => Promise.resolve(adapterError("unsupported"
 // ---------- tracker, notification, blob store: the first cases only ----------
 
 // The tracker's full suite runs against the Jira fake (`testing/jira-fake.ts`), a full in-memory
-// tracker; this one answers `unsupported` and runs the first cases.
+// tracker; this one answers `unsupported` and runs the first cases, and from milestone 9 reads a
+// seeded ticket's text with no files.
 export class TinyTracker extends TrackerAdapter {
   readonly name: string = "tiny-tracker";
   readonly capabilities = {
     agentSessions: false,
-    // Its `createTicket` and `getTicketContext` answer `unsupported`: no sub-issues either.
+    // Its `createTicket` answers `unsupported`, and a ticket's context has no children: no sub-issues either.
     subIssues: false,
     statusGraph: true,
     webhooks: false,
@@ -146,9 +148,33 @@ export class TinyTracker extends TrackerAdapter {
     agentScopes: [],
     agentSessionLink: false,
     ticketFields: { acceptanceCriteria: false },
+    // Milestone 9 (F-149): no files: a task starts from the ticket's text, and says so.
+    ticketFiles: "none" as const,
   };
   /** Milestone 3: the board's users, by email, for `findUsersByEmail`; milestone 6 names them for `getUser`. */
   readonly users: { readonly email: string; readonly userId: string; readonly name?: string }[] = [];
+  /** Milestone 9: tickets a test made on `tiny-board`, so `getTicketContext` has something to read. */
+  readonly tickets: Ticket[] = [];
+
+  /** A person makes a ticket on `tiny-board`. */
+  seedTicket(input: { readonly title: string; readonly description: string | null }): { readonly externalId: ExternalTicketId; readonly key: TicketKey } {
+    const number = this.tickets.length + 1;
+    const ticket: Ticket = {
+      externalId: externalTicketIdSchema.parse(`tiny-${String(number)}`),
+      key: ticketKeySchema.parse(`TINY-${String(number)}`),
+      title: input.title,
+      description: input.description,
+      status: { id: "open", name: "Open", category: "open" },
+      url: `https://tiny-tracker.invalid/TINY-${String(number)}`,
+      priority: null,
+      parentKey: null,
+      parentExternalId: null,
+      labels: [],
+      updatedAt: 0,
+    };
+    this.tickets.push(ticket);
+    return { externalId: ticket.externalId, key: ticket.key };
+  }
 
   override getUser(userId: string): Promise<AdapterResult<TrackerPerson>> {
     const user = this.users.find((candidate) => candidate.userId === userId);
@@ -187,8 +213,14 @@ export class TinyTracker extends TrackerAdapter {
   listStatuses(): Promise<AdapterResult<readonly TrackerStatus[]>> {
     return unsupported("listStatuses");
   }
-  getTicketContext(): Promise<AdapterResult<TicketContext>> {
-    return unsupported("getTicketContext");
+  /** Milestone 9: a seeded ticket's text, and never a file (`ticketFiles: "none"`). */
+  getTicketContext(board: BoardRef, ref: TicketRef): Promise<AdapterResult<TicketContext>> {
+    const ticket = board.externalId === "tiny-board" ? this.tickets.find((one) => ("externalId" in ref ? one.externalId === ref.externalId : one.key === ref.key)) : undefined;
+    return Promise.resolve(
+      ticket === undefined
+        ? adapterError("not-found", "no such ticket")
+        : ok({ ticket, comments: [], attachments: [], images: [], files: [], parent: null, children: [], linked: [] }),
+    );
   }
   moveTicket(): Promise<AdapterResult<MoveResult>> {
     return unsupported("moveTicket");

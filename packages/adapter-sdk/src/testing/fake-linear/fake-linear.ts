@@ -11,7 +11,7 @@ import { hmacSha256Hex } from "../../plumbing/signature.ts";
 import { manualClock } from "../memory.ts";
 import type { ManualClock } from "../memory.ts";
 import type { TrackerAdapter } from "../../tracker/base.ts";
-import type { SeededTicket, SessionDelivery, TrackerMilestone6Hooks, TrackerSessionFixture, TrackerSuiteFixture } from "../tracker-suite.ts";
+import type { SeededTicket, SessionDelivery, TrackerFilesHooks, TrackerMilestone6Hooks, TrackerSessionFixture, TrackerSuiteFixture } from "../tracker-suite.ts";
 import { readOperation } from "./graphql-lite.ts";
 import type { GraphqlValue, TopLevelField } from "./graphql-lite.ts";
 
@@ -292,8 +292,18 @@ export type FakeLinear = {
   readonly editIssue: (id: ExternalTicketId, change: { readonly title?: string; readonly description?: string }) => Promise<void>;
   /** A person moves the issue to another team: its identifier changes. */
   readonly moveIssue: (id: ExternalTicketId, teamId: string) => Promise<TicketKey>;
-  /** A person comments. */
-  readonly addComment: (issueId: ExternalTicketId, body: string) => Promise<string>;
+  /** A person comments (the admin, unless `byUserId` names another). */
+  readonly addComment: (issueId: ExternalTicketId, body: string, byUserId?: string) => Promise<string>;
+  /**
+   * Milestone 9 (F-149): a person uploads a file, as dropping it into Linear's editor does: its URL
+   * on the fake's file host, which a token fetches. A ticket shows it once its text links it, or
+   * once it's attached.
+   */
+  readonly upload: (file: { readonly name: string; readonly contentType: string; readonly bytes: Uint8Array }) => string;
+  /** Milestone 9: an upload whose body never ends and declares no length. */
+  readonly uploadEndless: () => string;
+  /** Milestone 9: a person attaches a URL to the issue: an upload's (a file), or anything else (a link). */
+  readonly attachToIssue: (issueId: ExternalTicketId, input: { readonly url: string; readonly title: string; readonly subtitle?: string | null }) => Promise<string>;
   /** Milestone 3: adds a person to the workspace, active unless `active` is false. */
   readonly addUser: (input: { readonly name: string; readonly email: string; readonly displayName?: string; readonly active?: boolean }) => FakeLinearUser;
   /** Deactivates (or reactivates) a person, as an admin suspending them does. */
@@ -473,8 +483,11 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
   let githubIntegration = false;
   let webhooksPaused = false;
   let base = "";
-  /** Milestone 6: files put through `fileUpload`'s signed URL, by their asset path. */
-  const uploads = new Map<string, { readonly contentType: string; readonly size: number; bytes: Uint8Array | null }>();
+  /**
+   * Milestone 6: files put through `fileUpload`'s signed URL, by their asset path; milestone 9: a
+   * person's uploads, and one whose body never ends.
+   */
+  const uploads = new Map<string, { readonly contentType: string; readonly size: number; bytes: Uint8Array | null; readonly endless?: boolean }>();
 
   const countCall = (name: string): void => {
     calls.set(name, (calls.get(name) ?? 0) + 1);
@@ -1493,6 +1506,21 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
       return;
     }
     const uploaded = uploads.get(new URL(request.url ?? "/", "http://fake-linear.invalid").pathname);
+    if (uploaded?.endless === true) {
+      // Chunked, with no length, until the client goes: only a reader that stops at its cap returns.
+      response.writeHead(200, { "content-type": uploaded.contentType });
+      const chunk = Buffer.alloc(64 * 1024, 7);
+      const pump = (): void => {
+        while (!response.destroyed && response.write(chunk)) {
+          // The socket takes more: write on until it's full.
+        }
+        if (!response.destroyed) {
+          response.once("drain", pump);
+        }
+      };
+      pump();
+      return;
+    }
     if (uploaded?.bytes !== null && uploaded?.bytes !== undefined) {
       response.writeHead(200, { "content-type": uploaded.contentType, "content-length": String(uploaded.bytes.length) });
       response.end(Buffer.from(uploaded.bytes));
@@ -1695,14 +1723,32 @@ export const createFakeLinear = async (options: FakeLinearOptions = {}): Promise
       await settle();
       return issue.identifier;
     },
-    addComment: async (issueId, body) => {
+    addComment: async (issueId, body, byUserId) => {
       const issue = issueOf(issueId);
-      const comment = { id: `comment-${randomUUID()}`, issueId: issue.id, body, userId: admin.id, parentId: null, createdAt: clock.now(), updatedAt: clock.now() };
+      const userId = byUserId ?? admin.id;
+      const comment = { id: `comment-${randomUUID()}`, issueId: issue.id, body, userId, parentId: null, createdAt: clock.now(), updatedAt: clock.now() };
       comments.push(comment);
       touch(issue);
-      send(issue, "Comment", "create", admin.id, comment);
+      send(issue, "Comment", "create", userId, comment);
       await settle();
       return comment.id;
+    },
+    upload: (file) => {
+      const assetPath = `/uploads/${randomUUID()}/${encodeURIComponent(file.name)}`;
+      uploads.set(assetPath, { contentType: file.contentType, size: file.bytes.length, bytes: new Uint8Array(file.bytes) });
+      return `${base}${assetPath}`;
+    },
+    uploadEndless: () => {
+      const assetPath = `/uploads/${randomUUID()}/endless.bin`;
+      uploads.set(assetPath, { contentType: "application/octet-stream", size: 0, bytes: null, endless: true });
+      return `${base}${assetPath}`;
+    },
+    attachToIssue: async (issueId, input) => {
+      const issue = issueOf(issueId);
+      const attachment = linkAttachment(issue.id, input.url, input.title, input.subtitle ?? null);
+      send(issue, "Issue", "update", admin.id);
+      await settle();
+      return attachment.id;
     },
     addUser: (input) => {
       const person: FakeLinearPerson = { id: `user-${randomUUID()}`, name: input.name, email: input.email };
@@ -1825,8 +1871,64 @@ export const fakeLinearSuiteFixture = (input: {
       return Promise.resolve({ userId: user.id, mentionHolds: user.url });
     },
     ...(input.milestone6 === true ? { milestone6: milestone6Hooks(fake) } : {}),
+    files: linearFilesHooks(fake),
   };
 };
+
+// ---------- milestone 9: a ticket's files, as people put them in Linear (F-149) ----------
+
+const DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+/** A zip's first bytes: an Office file as far as the fake cares. */
+const ZIP_BYTES = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0, 0, 0, 8, 0]);
+const PDF_BYTES = new TextEncoder().encode("%PDF-1.7\n%fake\n");
+
+/**
+ * The files cases' hooks on a fake Linear, as Linear's editor makes them: an upload dropped into a
+ * description or a comment is markdown on the file host (`![name](url)` for an image, `[name](url)`
+ * for anything else), and a file dropped on the issue is an attachment whose URL is the upload's.
+ */
+export const linearFilesHooks = (fake: FakeLinear): TrackerFilesHooks => ({
+  seedTicketWithFiles: async () => {
+    const mock = fake.upload({ name: "mock.png", contentType: "image/png", bytes: PNG_BYTES });
+    const spec = fake.upload({ name: "spec.docx", contentType: DOCX_TYPE, bytes: ZIP_BYTES });
+    const shot = fake.upload({ name: "broken.png", contentType: "image/png", bytes: PNG_BYTES });
+    const design = fake.upload({ name: "design.pdf", contentType: "application/pdf", bytes: PDF_BYTES });
+    const spareImage = fake.upload({ name: "progress.png", contentType: "image/png", bytes: PNG_BYTES });
+    const created = await fake.createIssue({
+      title: "With files",
+      description: `Match the mock; the spec is attached. $(whoami)\n\n![mock.png](${mock})\n\n[spec.docx](${spec})`,
+    });
+    const commentId = await fake.addComment(created.id, `Here it breaks:\n\n![broken.png](${shot})`);
+    await fake.attachToIssue(created.id, { url: design, title: "design.pdf" });
+    const figma = "https://www.figma.com/file/0196f1a0/History?node-id=1-2";
+    await fake.attachToIssue(created.id, { url: figma, title: "History panel (Figma)" });
+    return {
+      externalId: created.id,
+      key: created.identifier,
+      descriptionImage: mock,
+      descriptionFile: spec,
+      commentId,
+      commentImage: shot,
+      attachedFile: design,
+      linkAttachment: figma,
+      spareImage,
+    };
+  },
+  followUpText: () => {
+    const image = fake.upload({ name: "follow-up.png", contentType: "image/png", bytes: PNG_BYTES });
+    const file = fake.upload({ name: "numbers.xlsx", contentType: XLSX_TYPE, bytes: ZIP_BYTES });
+    const offHost = "https://files.example.test/uploads/0196f1a0/numbers.xlsx";
+    return Promise.resolve({
+      text: `Also look at these:\n\n![follow-up.png](${image})\n\n[numbers.xlsx](${file}) and [the old one](${offHost})`,
+      image,
+      file,
+      offHost,
+    });
+  },
+  seedFile: (size) => Promise.resolve(fake.upload({ name: "sized.bin", contentType: "application/octet-stream", bytes: new Uint8Array(size).fill(7) })),
+  seedEndlessFile: () => Promise.resolve(fake.uploadEndless()),
+});
 
 const lastEvent = (fake: FakeLinear, sessionId: string): SessionDelivery => {
   const event = fake.sessionEvents().filter((one) => one.sessionId === sessionId).at(-1);

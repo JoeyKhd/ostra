@@ -1,10 +1,15 @@
+import { createServer } from "node:http";
+import type { Server } from "node:http";
+
 import { externalTicketIdSchema, ticketKeySchema } from "@ostra/protocol";
 import type { ExternalTicketId, TicketKey } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
 import type { AdapterResult } from "../common/result.ts";
 import { agentActivityKinds, ticketStatusCategories } from "../tracker/base.ts";
-import type { AgentActivityKind, BoardRef, StatusMapping, Ticket, TrackerAdapter } from "../tracker/base.ts";
+import type { AgentActivityKind, BoardRef, OwnWrites, StatusMapping, Ticket, TicketFileWhere, TrackerAdapter } from "../tracker/base.ts";
+import { ticketFilesCapabilities } from "../tracker/capabilities.ts";
+import type { TicketFilesCapability } from "../tracker/capabilities.ts";
 import { defineCommonCases, useSubject } from "./common-cases.ts";
 import type { ContractSuiteOptions } from "./common-cases.ts";
 
@@ -69,6 +74,57 @@ export type TrackerSuiteFixture = {
    * operations aren't built yet, such as Linear's before ticket 07).
    */
   readonly milestone6?: TrackerMilestone6Hooks;
+  /**
+   * Milestone 9 (F-149): what the files cases need. Absent: only an adapter that declares
+   * `ticketFiles: "none"` may leave it out.
+   */
+  readonly files?: TrackerFilesHooks;
+};
+
+/**
+ * Milestone 9 (F-149): a ticket a person made with files in it, as the tracker shows them, and
+ * the URL of each (as `getTicketContext` lists it).
+ */
+export type SeededTicketWithFiles = SeededTicket & {
+  /** Inline in the description, in this order: an image, then a document linked. */
+  readonly descriptionImage: string;
+  readonly descriptionFile: string;
+  /** A person's comment showing an image, and its ID. */
+  readonly commentId: string;
+  readonly commentImage: string;
+  /** A document a person attached to the ticket, shown nowhere in its text. */
+  readonly attachedFile: string;
+  /** A link attachment (a Figma frame): a link, never a file. */
+  readonly linkAttachment: string;
+  /** An image on the tracker's file host the ticket doesn't show: the suite's ostra comment shows it. */
+  readonly spareImage: string;
+};
+
+/** Milestone 9 (F-149): the tracker's files, as a person puts them there. */
+export type TrackerFilesHooks = {
+  readonly seedTicketWithFiles: () => Promise<SeededTicketWithFiles>;
+  /**
+   * A follow-up's text as the tracker gives it (markdown): an image and then a document on the
+   * tracker's file host, then a link to the same kind of file off it.
+   */
+  readonly followUpText: () => Promise<{ readonly text: string; readonly image: string; readonly file: string; readonly offHost: string }>;
+  /** A file of `size` bytes on the tracker's file host. Absent on an adapter that downloads nothing. */
+  readonly seedFile?: (size: number) => Promise<string>;
+  /**
+   * A file on the file host whose body never ends and declares no length: a download that doesn't
+   * stop at its cap never returns. Absent where nothing streams (an in-memory fake).
+   */
+  readonly seedEndlessFile?: () => Promise<string>;
+};
+
+/** Milestone 9: what the files cases run on, for an adapter the full suite doesn't run (the tiny tracker). */
+export type TrackerFilesFixture = {
+  readonly board: BoardRef;
+  /** The adapter's own user, as `OwnWrites` names it; `null` when it has none. */
+  readonly ownUserId: string | null;
+  readonly files?: TrackerFilesHooks;
+  /** An adapter on another organization's workspace, which must read none of this one's files. */
+  readonly other?: TrackerAdapter;
 };
 
 /** What a session's fixture hands back: the event's body, as `verifyWebhook` gives it on. */
@@ -154,6 +210,7 @@ const trackerCapabilityTypes = {
   agentScopes: "array",
   agentSessionLink: "boolean",
   ticketFields: "object",
+  ticketFiles: "string",
 } as const;
 
 /** The tracker's first cases only: for an adapter whose milestone 2 operations aren't built yet. */
@@ -405,10 +462,229 @@ export const defineTrackerMilestone6Suite = (options: ContractSuiteOptions<Track
   });
 };
 
+// ---------- milestone 9: a ticket's files (F-149, spec section 5.2) ----------
+
+/** The markers the suite's own ostra writes carry: core passes its own the same way (`OwnWrites`). */
+const SUITE_COMMENT_MARKER = "<sub>ostra edits this comment as the task moves:";
+const SUITE_ATTACHMENT_MARKER = "Attached by ostra from a draft";
+
+const ownWritesOf = (userId: string | null): OwnWrites => ({
+  userId,
+  commentMarkers: [SUITE_COMMENT_MARKER],
+  attachmentMarkers: [SUITE_ATTACHMENT_MARKER],
+});
+
+/** The files a person's ticket shows, for each capability, as `{ url, where, commentId }` in order. */
+const expectedPeoplesFiles = (
+  seeded: SeededTicketWithFiles,
+  capability: TicketFilesCapability,
+): readonly { readonly url: string; readonly where: TicketFileWhere; readonly commentId: string | null }[] => {
+  const image = { url: seeded.descriptionImage, where: "description" as const, commentId: null };
+  const comment = { url: seeded.commentImage, where: "comment" as const, commentId: seeded.commentId };
+  switch (capability) {
+    case "all":
+      return [
+        image,
+        { url: seeded.descriptionFile, where: "description", commentId: null },
+        comment,
+        { url: seeded.attachedFile, where: "attachment", commentId: null },
+      ];
+    case "images":
+      return [image, comment];
+    case "none":
+      return [];
+    default:
+      return capability satisfies never;
+  }
+};
+
+type RecordedRequest = { readonly path: string; readonly credentials: readonly string[] };
+
+/** A host that isn't the tracker's: it records every request it gets, and the credentials each carried. */
+const startOffHost = async (): Promise<{ readonly origin: string; readonly requests: readonly RecordedRequest[]; readonly close: () => Promise<void> }> => {
+  const requests: RecordedRequest[] = [];
+  const server: Server = createServer((request, response) => {
+    const credentials = ["authorization", "cookie", "proxy-authorization", "x-api-key"].filter((name) => request.headers[name] !== undefined);
+    requests.push({ path: request.url ?? "/", credentials });
+    response.writeHead(200, { "content-type": "image/png", "content-length": String(PNG.length) });
+    response.end(Buffer.from(PNG));
+  });
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("the off-host server has no TCP address");
+  return {
+    origin: `http://127.0.0.1:${String(address.port)}`,
+    requests,
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.close(() => {
+          resolve();
+        });
+        server.closeAllConnections();
+      }),
+  };
+};
+
+/** Milestone 9 (spec section 5.2): `ticketFiles`, `TicketContext.files`, `filesInText` and `downloadFile`'s limits. */
+const defineFilesCases = (subject: () => { readonly adapter: TrackerAdapter; readonly fixture: TrackerFilesFixture }): void => {
+  it("F-149/c6: declares ticketFiles as all, images or none, and gives the suite its files unless none", () => {
+    const { adapter, fixture } = subject();
+    expect(ticketFilesCapabilities).toContain(adapter.capabilities.ticketFiles);
+    if (adapter.capabilities.ticketFiles !== "none") {
+      expect(fixture.files, "an adapter that declares ticketFiles gives the suite its files hooks").toBeDefined();
+    }
+  });
+
+  it("F-149/c6: lists a ticket's files once each, in order, as ticketFiles says: the description's image and document, a comment's image, an attached document", async (context) => {
+    const { adapter, fixture } = subject();
+    const hooks = fixture.files;
+    if (hooks === undefined) {
+      context.skip();
+      return;
+    }
+    const seeded = await hooks.seedTicketWithFiles();
+    const read = must(await adapter.getTicketContext(fixture.board, { externalId: seeded.externalId }, { own: ownWritesOf(fixture.ownUserId) }), "getTicketContext");
+    const { ticketFiles } = adapter.capabilities;
+    const peoples = read.files.filter((file) => !file.byOstra);
+    expect(peoples.map((file) => ({ url: file.url, where: file.where, commentId: file.commentId }))).toEqual(expectedPeoplesFiles(seeded, ticketFiles));
+    expect(new Set(read.files.map((file) => file.url)).size, "each URL once").toBe(read.files.length);
+    for (const file of read.files) {
+      expect(file.name.length, "every file has a name").toBeGreaterThan(0);
+      expect(file.size === null || (Number.isInteger(file.size) && file.size >= 0)).toBe(true);
+    }
+    // `none`: nothing, and the ticket's text is all a task starts from.
+    if (ticketFiles === "none") {
+      expect(read.files).toEqual([]);
+      return;
+    }
+    // Only files the tracker holds: each one downloads with the adapter's credential.
+    for (const file of peoples) {
+      expect(must(await adapter.downloadFile(file.url, 10 * 1024 * 1024), `downloadFile ${file.where}`).bytes.length).toBeGreaterThan(0);
+    }
+    // Another organization's connection reads none of it.
+    expect((await fixture.other?.getTicketContext(fixture.board, { externalId: seeded.externalId }))?.ok ?? false).toBe(false);
+  });
+
+  it("F-149/c6: marks a file in ostra's own comment, or an attachment ostra made, byOstra, and none without OwnWrites", async (context) => {
+    const { adapter, fixture } = subject();
+    const hooks = fixture.files;
+    if (hooks === undefined) {
+      context.skip();
+      return;
+    }
+    const seeded = await hooks.seedTicketWithFiles();
+    const ref = { externalId: seeded.externalId };
+    if (adapter.capabilities.ticketFiles === "none") {
+      expect(must(await adapter.getTicketContext(fixture.board, ref, { own: ownWritesOf(fixture.ownUserId) }), "getTicketContext").files).toEqual([]);
+      return;
+    }
+    // ostra's progress comment, written as core writes it: through the adapter, with its marker.
+    must(await adapter.comment(fixture.board, seeded.key, `**ostra is working on this.**\n\n![progress.png](${seeded.spareImage})\n\n${SUITE_COMMENT_MARKER} https://ostra.example.test/tasks/1</sub>`), "comment");
+    let ownAttachment: string | null = null;
+    if (adapter.capabilities.attachments) {
+      ownAttachment = must(
+        await adapter.attachFile(fixture.board, ref, { name: "draft.png", contentType: "image/png", bytes: PNG, marker: `${SUITE_ATTACHMENT_MARKER} (image 1)` }),
+        "attachFile",
+      ).url;
+    }
+    const read = must(await adapter.getTicketContext(fixture.board, ref, { own: ownWritesOf(fixture.ownUserId) }), "getTicketContext");
+    const ostras = [seeded.spareImage, ...(ownAttachment === null ? [] : [ownAttachment])];
+    // People's files are exactly the earlier case's: ostra's own never count among them.
+    expect(read.files.filter((file) => !file.byOstra).map((file) => file.url)).toEqual(expectedPeoplesFiles(seeded, adapter.capabilities.ticketFiles).map((file) => file.url));
+    // Both are images, so `all` and `images` list them, marked.
+    expect(read.files.filter((file) => file.byOstra).map((file) => file.url)).toEqual(ostras);
+    // Told nothing of ostra's writes, the adapter marks nothing.
+    const untold = must(await adapter.getTicketContext(fixture.board, ref), "getTicketContext without OwnWrites");
+    expect(untold.files.filter((file) => file.byOstra)).toEqual([]);
+    expect(untold.files.map((file) => file.url)).toEqual(expect.arrayContaining(ostras));
+    // ostra's own user is enough without a marker, where the connection has one.
+    if (fixture.ownUserId !== null) {
+      const byAuthor = must(
+        await adapter.getTicketContext(fixture.board, ref, { own: { userId: fixture.ownUserId, commentMarkers: [], attachmentMarkers: [] } }),
+        "getTicketContext by author",
+      );
+      expect(byAuthor.files.find((file) => file.url === seeded.spareImage)?.byOstra).toBe(true);
+    }
+  });
+
+  it("F-149/c1: never lists a link attachment as a file: it stays a link, and nothing behind it is fetched", async (context) => {
+    const { adapter, fixture } = subject();
+    const hooks = fixture.files;
+    if (hooks === undefined) {
+      context.skip();
+      return;
+    }
+    const seeded = await hooks.seedTicketWithFiles();
+    const read = must(await adapter.getTicketContext(fixture.board, { externalId: seeded.externalId }, { own: ownWritesOf(fixture.ownUserId) }), "getTicketContext");
+    if (adapter.capabilities.ticketFiles !== "none") {
+      expect(read.attachments.map((attachment) => attachment.url)).toContain(seeded.linkAttachment);
+    }
+    expect(read.files.map((file) => file.url)).not.toContain(seeded.linkAttachment);
+    expect(read.images.map((image) => image.url)).not.toContain(seeded.linkAttachment);
+  });
+
+  it("F-149/c9: reads a follow-up's text for the files on the tracker's file host, as ticketFiles says, and ignores a link off it", async (context) => {
+    const { adapter, fixture } = subject();
+    const hooks = fixture.files;
+    if (hooks === undefined) {
+      expect(adapter.filesInText("![shot.png](https://files.example.test/shot.png)")).toEqual([]);
+      context.skip();
+      return;
+    }
+    const sample = await hooks.followUpText();
+    const found = adapter.filesInText(sample.text);
+    const expected = { all: [sample.image, sample.file], images: [sample.image], none: [] }[adapter.capabilities.ticketFiles];
+    expect(found.map((file) => file.url)).toEqual(expected);
+    for (const file of found) {
+      expect(file).toMatchObject({ where: "comment", commentId: null, byOstra: false });
+      expect(file.name.length).toBeGreaterThan(0);
+    }
+    expect(found.map((file) => file.url)).not.toContain(sample.offHost);
+    expect(adapter.filesInText("")).toEqual([]);
+  });
+
+  it("F-149/c1: downloads a file within maxBytes; refuses one over it, having read no more; refuses a URL off the file host with no credential sent", async () => {
+    const { adapter, fixture } = subject();
+    const offHost = await startOffHost();
+    try {
+      const refused = await adapter.downloadFile(`${offHost.origin}/uploads/stolen.png`, 1024 * 1024);
+      expect(refused.ok, "a file off the tracker's host").toBe(false);
+      expect(offHost.requests.flatMap((request) => request.credentials), "no credential leaves for another host").toEqual([]);
+    } finally {
+      await offHost.close();
+    }
+    const hooks = fixture.files;
+    if (hooks?.seedFile !== undefined) {
+      const size = 64 * 1024;
+      const url = await hooks.seedFile(size);
+      expect(must(await adapter.downloadFile(url, size), "downloadFile within maxBytes").bytes.length).toBe(size);
+      expect(await adapter.downloadFile(url, size - 1)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+    }
+    if (hooks?.seedEndlessFile !== undefined) {
+      // A body that never ends: only a reader that stops past maxBytes returns at all.
+      const endless = await hooks.seedEndlessFile();
+      expect(await adapter.downloadFile(endless, 256 * 1024)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+    }
+  });
+};
+
+/** Milestone 9's files cases alone, for an adapter the full suite doesn't run (the tiny tracker). */
+export const defineTrackerFilesSuite = (options: ContractSuiteOptions<TrackerAdapter, TrackerFilesFixture>): void => {
+  describe(`tracker contract (files): ${options.name}`, () => {
+    defineFilesCases(useSubject(options));
+  });
+};
+
 export const defineTrackerContractSuite = (options: ContractSuiteOptions<TrackerAdapter, TrackerSuiteFixture>): void => {
   describe(`tracker contract: ${options.name}`, () => {
     const subject = useSubject(options);
     defineMentionCases(subject);
+    defineFilesCases(() => {
+      const { adapter, fixture } = subject();
+      return { adapter, fixture: { board: fixture.board, ownUserId: fixture.ownUserId, other: fixture.other, ...(fixture.files === undefined ? {} : { files: fixture.files }) } };
+    });
     defineMilestone6Cases(() => {
       const { adapter, fixture } = subject();
       const hooks = fixture.milestone6;

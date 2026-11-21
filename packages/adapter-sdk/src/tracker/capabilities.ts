@@ -1,3 +1,12 @@
+/**
+ * Milestone 9 (F-149, ADR 0070): which of a ticket's files `getTicketContext` lists in `files`.
+ * `all`: every file the tracker holds, inline or attached, of any type. `images`: images only.
+ * `none`: no file, and tasks start from the ticket's text.
+ */
+export type TicketFilesCapability = "all" | "images" | "none";
+
+export const ticketFilesCapabilities: readonly TicketFilesCapability[] = ["all", "images", "none"];
+
 /** What a tracker adapter can do (ADR 0025). Optional abilities are declared, never assumed. */
 export type TrackerCapabilities = {
   /** The tracker shows an agent's session natively (Linear's agent sessions, milestone 6). */
@@ -32,4 +41,9 @@ export type TrackerCapabilities = {
    * the tracker can't take goes into the description instead (Linear has none).
    */
   readonly ticketFields: { readonly acceptanceCriteria: boolean };
+  /**
+   * Milestone 9 (F-149): the files a ticket's context lists (`TicketContext.files`) and a piece of
+   * its text names (`filesInText`), each fetched with `downloadFile`.
+   */
+  readonly ticketFiles: TicketFilesCapability;
 };

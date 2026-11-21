@@ -183,6 +183,7 @@ const cachedContextOf = (row: {
     comments: [],
     attachments: [],
     images: [],
+    files: [],
     parent: null,
     children: [],
     linked: [],

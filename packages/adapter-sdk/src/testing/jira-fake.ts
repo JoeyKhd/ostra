@@ -8,7 +8,7 @@ import type { AdapterContext } from "../common/context.ts";
 import { adapterError, ok } from "../common/result.ts";
 import type { AdapterResult, HealthReport } from "../common/result.ts";
 import { hmacSha256Hex, sha256Hex, verifyHmacSha256Hex } from "../plumbing/signature.ts";
-import { isOpenCategory, TrackerAdapter, mappedStatusId } from "../tracker/base.ts";
+import { filesForCapability, isOpenCategory, isOwnAttachment, isOwnComment, mappedStatusId, ticketFileList, TrackerAdapter } from "../tracker/base.ts";
 import type {
   AttachedFile,
   BoardRef,
@@ -23,6 +23,9 @@ import type {
   Ticket,
   TicketAttachment,
   TicketContext,
+  TicketContextFile,
+  TicketContextOptions,
+  TicketFileWhere,
   TicketPage,
   TicketQuery,
   TicketRef,
@@ -40,7 +43,7 @@ import type {
 } from "../tracker/base.ts";
 import type { TrackerCapabilities } from "../tracker/capabilities.ts";
 import { manualClock } from "./memory.ts";
-import type { TrackerSuiteFixture } from "./tracker-suite.ts";
+import type { TrackerFilesHooks, TrackerSuiteFixture } from "./tracker-suite.ts";
 import type { ManualClock } from "./memory.ts";
 
 // The Jira fake (ADR 0047, Q104): a test-only `TrackerAdapter` over an in-memory Jira site. It
@@ -114,7 +117,10 @@ const inline = (nodes: readonly AdfNode[] | undefined): string =>
     })
     .join("");
 
-const block = (node: AdfNode, depth: number): string => {
+/** Milestone 9: how a `media` node of type `file` finds its attachment (Jira names it by its media ID). */
+export type AdfMediaResolver = (id: string) => { readonly url: string; readonly name: string; readonly image: boolean } | null;
+
+const block = (node: AdfNode, depth: number, media: AdfMediaResolver): string => {
   switch (node.type) {
     case "paragraph":
       return inline(node.content);
@@ -127,36 +133,48 @@ const block = (node: AdfNode, depth: number): string => {
       return (node.content ?? [])
         .map((item, index) => {
           const marker = node.type === "bulletList" ? "-" : `${String(index + 1)}.`;
-          const body = (item.content ?? []).map((child) => block(child, depth + 1)).join("\n");
+          const body = (item.content ?? []).map((child) => block(child, depth + 1, media)).join("\n");
           return `${"  ".repeat(depth)}${marker} ${body.trimStart()}`;
         })
         .join("\n");
     case "codeBlock":
       return `\`\`\`${attrString(node, "language") ?? ""}\n${inline(node.content)}\n\`\`\``;
     case "blockquote":
-      return (node.content ?? []).map((child) => `> ${block(child, depth)}`).join("\n");
+      return (node.content ?? []).map((child) => `> ${block(child, depth, media)}`).join("\n");
     case "rule":
       return "---";
     case "mediaSingle":
     case "mediaGroup":
-      return (node.content ?? []).map((child) => block(child, depth)).join("\n");
+      return (node.content ?? []).map((child) => block(child, depth, media)).join("\n");
     case "media": {
+      // Milestone 9: an attachment's media, by its ID, as Jira's editor writes an upload: an image
+      // as an image, any other file as a link to it.
+      const id = attrString(node, "type") === "file" ? attrString(node, "id") : null;
+      const file = id === null ? null : media(id);
+      if (file !== null) {
+        return file.image ? `![${file.name}](${file.url})` : `[${file.name}](${file.url})`;
+      }
       const url = attrString(node, "url");
       const alt = attrString(node, "alt") ?? "image";
       return url === null ? "" : `![${alt}](${url})`;
     }
     default:
-      return node.content === undefined ? inline([node]) : (node.content.map((child) => block(child, depth)).join("\n"));
+      return node.content === undefined ? inline([node]) : (node.content.map((child) => block(child, depth, media)).join("\n"));
   }
 };
 
-/** ADF to markdown, as the Jira adapter will convert it (spec section 5.2). Unknown nodes keep their text. */
-export const adfToMarkdown = (doc: unknown): string => {
+const noMedia: AdfMediaResolver = () => null;
+
+/**
+ * ADF to markdown, as the Jira adapter will convert it (spec section 5.2). Unknown nodes keep their
+ * text. `media` finds the file an attachment's media node shows; without it, only external media show.
+ */
+export const adfToMarkdown = (doc: unknown, media: AdfMediaResolver = noMedia): string => {
   const parsed = adfNodeSchema.safeParse(doc);
   if (!parsed.success) {
     return "";
   }
-  return (parsed.data.content ?? []).map((node) => block(node, 0)).filter((text) => text !== "").join("\n\n");
+  return (parsed.data.content ?? []).map((node) => block(node, 0, media)).filter((text) => text !== "").join("\n\n");
 };
 
 /** Plain text as one ADF paragraph per line, as a Jira client writes it. */
@@ -170,6 +188,32 @@ const imagesInMarkdown = (markdown: string): { readonly url: string; readonly na
   [...markdown.matchAll(/!\[([^\]]*)\]\(([^)\s]+)\)/g)].map((match) => {
     const url = match[2] ?? "";
     return { url, name: url.split("/").pop() ?? (match[1] ?? "image") };
+  });
+
+/** Where the site serves its attachments: the only URLs `downloadFile` fetches (milestone 9). */
+export const JIRA_FAKE_FILE_HOST = "https://jira-fake.invalid/secure/attachment/";
+
+/**
+ * Milestone 9: the images and file links in a piece of markdown, in order (`![alt](url)` and
+ * `[text](url)`), on the site's file host only. The text is untrusted: the pattern is linear in it,
+ * and nothing it finds is run.
+ */
+const hostedLinksInMarkdown = (markdown: string): { readonly url: string; readonly name: string }[] =>
+  [...markdown.matchAll(/!?\[([^\]\n]{0,500})\]\(([^)\s]{1,2048})\)/g)].flatMap((match) => {
+    const url = match[2] ?? "";
+    if (!url.startsWith(JIRA_FAKE_FILE_HOST)) {
+      return [];
+    }
+    const text = (match[1] ?? "").trim();
+    if (/^[\w .()-]{1,200}\.[A-Za-z0-9]{1,10}$/.test(text)) {
+      return [{ url, name: text }];
+    }
+    const last = url.split("/").filter((segment) => segment !== "").at(-1) ?? "file";
+    try {
+      return [{ url, name: decodeURIComponent(last) }];
+    } catch {
+      return [{ url, name: last }];
+    }
   });
 
 // ---------- the site ----------
@@ -189,6 +233,8 @@ export type JiraTransition = {
 
 type JiraComment = { readonly id: string; body: AdfNode; readonly authorId: string; readonly created: number; updated: number };
 type JiraLink = { readonly id: string; readonly url: string; readonly title: string; readonly subtitle: string | null };
+/** Milestone 9: a file on the issue, as Jira's attachment holds it: its type, size and who added it. */
+type JiraAttachment = JiraLink & { readonly mimeType: string; readonly size: number; readonly authorId: string };
 type JiraIssue = {
   readonly id: ExternalTicketId;
   key: TicketKey;
@@ -204,8 +250,8 @@ type JiraIssue = {
   readonly links: { readonly kind: "blocks" | "relates"; readonly to: ExternalTicketId }[];
   readonly comments: JiraComment[];
   readonly remoteLinks: JiraLink[];
-  /** Milestone 6: files attached to the issue (`attachFile`), served from `files`. */
-  readonly attachments: JiraLink[];
+  /** Milestone 6: files attached to the issue (`attachFile`), served from `files`; milestone 9: a person's too. */
+  readonly attachments: JiraAttachment[];
   readonly created: number;
   updated: number;
   readonly writes: number[];
@@ -263,6 +309,22 @@ export type JiraSite = {
   readonly addUser: (email: string, name?: string) => string;
   readonly nextId: () => string;
   readonly nextKey: (projectId: string) => TicketKey;
+  /**
+   * Milestone 9: a file attached to the issue, as Jira's editor attaches anything dropped into a
+   * description or a comment: served from `files`. Its media ID is its attachment's ID.
+   */
+  readonly attachToIssue: (
+    id: ExternalTicketId,
+    file: { readonly name: string; readonly contentType: string; readonly bytes: Uint8Array; readonly byAccountId: string; readonly subtitle?: string | null },
+  ) => { readonly id: string; readonly url: string };
+  /** Milestone 9: a person adds a web link to the issue (a remote link). */
+  readonly addRemoteLink: (id: ExternalTicketId, link: { readonly url: string; readonly title: string }) => void;
+  /** Milestone 9: a person sets the description, in ADF. */
+  readonly setDescription: (id: ExternalTicketId, description: AdfNode) => void;
+  /** Milestone 9: someone comments, in ADF; the comment's ID. */
+  readonly addComment: (id: ExternalTicketId, body: AdfNode, byAccountId: string) => string;
+  /** Milestone 9: the file an attachment's media node shows, by its media ID. */
+  readonly mediaOf: AdfMediaResolver;
 };
 
 const defaultStatuses: readonly JiraStatus[] = [
@@ -419,6 +481,50 @@ export const createJiraSite = (options: { readonly clock?: ManualClock; readonly
     takeFault: () => faults.shift(),
     nextId,
     nextKey,
+    attachToIssue: (id, file) => {
+      const issue = issueOf(id);
+      const attachmentId = nextId();
+      const url = `${JIRA_FAKE_FILE_HOST}${attachmentId}/${encodeURIComponent(file.name)}`;
+      site.files.set(url, { bytes: new Uint8Array(file.bytes), contentType: file.contentType });
+      issue.attachments.push({
+        id: attachmentId,
+        url,
+        title: file.name,
+        subtitle: file.subtitle ?? null,
+        mimeType: file.contentType,
+        size: file.bytes.length,
+        authorId: file.byAccountId,
+      });
+      issue.updated = clock.now();
+      return { id: attachmentId, url };
+    },
+    addRemoteLink: (id, link) => {
+      const issue = issueOf(id);
+      issue.remoteLinks.push({ id: nextId(), url: link.url, title: link.title, subtitle: null });
+      issue.updated = clock.now();
+    },
+    setDescription: (id, description) => {
+      const issue = issueOf(id);
+      issue.description = description;
+      issue.updated = clock.now();
+    },
+    addComment: (id, body, byAccountId) => {
+      const issue = issueOf(id);
+      const now = clock.now();
+      const commentId = nextId();
+      issue.comments.push({ id: commentId, body, authorId: byAccountId, created: now, updated: now });
+      issue.updated = now;
+      return commentId;
+    },
+    mediaOf: (mediaId) => {
+      for (const issue of issues.values()) {
+        const attachment = issue.attachments.find((candidate) => candidate.id === mediaId);
+        if (attachment !== undefined) {
+          return { url: attachment.url, name: attachment.title, image: attachment.mimeType.startsWith("image/") };
+        }
+      }
+      return null;
+    },
   };
   site.addProject(options.projectKey ?? "JIRA", "Jira fake");
   return site;
@@ -478,6 +584,8 @@ export class JiraFakeAdapter extends TrackerAdapter {
     mentions: true,
     // Jira takes the criteria as a field of its own (a custom field on a real site).
     ticketFields: { acceptanceCriteria: true },
+    // Milestone 9 (F-149): every file, inline in ADF or attached; web links stay links.
+    ticketFiles: "all",
   };
 
   readonly #site: JiraSite;
@@ -572,7 +680,7 @@ export class JiraFakeAdapter extends TrackerAdapter {
     });
   }
 
-  getTicketContext(board: BoardRef, ref: TicketRef): Promise<AdapterResult<TicketContext>> {
+  getTicketContext(board: BoardRef, ref: TicketRef, options?: TicketContextOptions): Promise<AdapterResult<TicketContext>> {
     return this.#read(() => {
       const found = this.#find(board, ref);
       if (!found.ok) {
@@ -588,7 +696,7 @@ export class JiraFakeAdapter extends TrackerAdapter {
       };
       const comments = issue.comments.map((comment) => ({
         id: comment.id,
-        body: adfToMarkdown(comment.body),
+        body: adfToMarkdown(comment.body, this.#site.mediaOf),
         author: { id: comment.authorId, name: comment.authorId === this.#site.appAccountId ? "ostra" : "A person" },
         parentId: null,
         createdAt: comment.created,
@@ -607,11 +715,35 @@ export class JiraFakeAdapter extends TrackerAdapter {
         const other = summary(link.to);
         return other === null ? [] : [{ kind: link.kind === "blocks" ? ("blocks" as const) : ("related" as const), ticket: other }];
       });
+      // Milestone 9 (F-149): the description's files, each comment's, then the attachments; web
+      // links (`remoteLinks`) are never files.
+      const files = ticketFileList();
+      const fromText = (markdown: string, where: TicketFileWhere, commentId: string | null, byOstra: boolean): void => {
+        for (const file of this.#hostedFilesIn(markdown)) {
+          files.add({ ...file, where, commentId, byOstra });
+        }
+      };
+      fromText(ticket.description ?? "", "description", null, false);
+      for (const comment of comments) {
+        fromText(comment.body, "comment", comment.id, isOwnComment(options?.own, comment));
+      }
+      for (const attachment of issue.attachments) {
+        files.add({
+          url: attachment.url,
+          name: attachment.title,
+          contentType: attachment.mimeType,
+          size: attachment.size,
+          where: "attachment",
+          commentId: null,
+          byOstra: isOwnAttachment(options?.own, attachment),
+        });
+      }
       return ok({
         ticket,
         comments,
         attachments: [...issue.remoteLinks, ...issue.attachments].map((link) => ({ id: link.id, url: link.url, title: link.title, subtitle: link.subtitle })),
         images,
+        files: filesForCapability(files.files(), this.capabilities.ticketFiles),
         parent: issue.parentId === null ? null : summary(issue.parentId),
         children,
         linked,
@@ -691,12 +823,24 @@ export class JiraFakeAdapter extends TrackerAdapter {
   /** Milestone 6 (F-099): an attachment on the issue, which `downloadFile` serves back. */
   override attachFile(board: BoardRef, ref: TicketRef, file: TicketFile): Promise<AdapterResult<AttachedFile>> {
     return this.#write(ref, board, (issue) => {
-      const id = this.#site.nextId();
-      const url = `https://jira-fake.invalid/secure/attachment/${id}/${encodeURIComponent(file.name)}`;
-      this.#site.files.set(url, { bytes: new Uint8Array(file.bytes), contentType: file.contentType });
-      issue.attachments.push({ id, url, title: file.name, subtitle: file.marker ?? null });
-      return ok({ attachmentId: id, url });
+      const attached = this.#site.attachToIssue(issue.id, {
+        name: file.name,
+        contentType: file.contentType,
+        bytes: file.bytes,
+        byAccountId: this.#accountId,
+        subtitle: file.marker ?? null,
+      });
+      return ok({ attachmentId: attached.id, url: attached.url });
     });
+  }
+
+  /** Milestone 9 (F-149): a follow-up's files, read from its markdown as a comment's are. */
+  override filesInText(markdown: string): readonly TicketContextFile[] {
+    const files = ticketFileList();
+    for (const file of this.#hostedFilesIn(markdown)) {
+      files.add({ ...file, where: "comment", commentId: null, byOstra: false });
+    }
+    return filesForCapability(files.files(), this.capabilities.ticketFiles);
   }
 
   /** Milestone 6 (F-099): the issue's attachments, files and links, each with its subtitle. */
@@ -730,6 +874,10 @@ export class JiraFakeAdapter extends TrackerAdapter {
 
   downloadFile(url: string, maxBytes: number): Promise<AdapterResult<DownloadedFile>> {
     return this.#read(() => {
+      // Milestone 9: only the site's own content URLs; nothing is asked of any other host.
+      if (!url.startsWith(JIRA_FAKE_FILE_HOST)) {
+        return adapterError("invalid-input", "not a file the site holds");
+      }
       const file = this.#site.files.get(url);
       if (file === undefined) {
         return adapterError("not-found", "no such file on the site");
@@ -815,6 +963,14 @@ export class JiraFakeAdapter extends TrackerAdapter {
 
   // ---------- internals ----------
 
+  /** Milestone 9: the files a piece of markdown shows on the site's host, with what the site knows of each. */
+  #hostedFilesIn(markdown: string): readonly Pick<TicketContextFile, "url" | "name" | "contentType" | "size">[] {
+    return hostedLinksInMarkdown(markdown).map((link) => {
+      const stored = this.#site.files.get(link.url);
+      return { url: link.url, name: link.name, contentType: stored?.contentType ?? null, size: stored?.bytes.length ?? null };
+    });
+  }
+
   /** A read: a 429 fault applies; nothing is written. */
   #read<T>(work: () => AdapterResult<T>): Promise<AdapterResult<T>> {
     const fault = this.#site.takeFault();
@@ -891,7 +1047,7 @@ export class JiraFakeAdapter extends TrackerAdapter {
       externalId: issue.id,
       key: issue.key,
       title: issue.summary,
-      description: issue.description === null ? null : adfToMarkdown(issue.description),
+      description: issue.description === null ? null : adfToMarkdown(issue.description, this.#site.mediaOf),
       status: this.#status(issue),
       url: this.#url(issue),
       priority: issue.priority,
@@ -1010,6 +1166,82 @@ export const createJiraFakeSuiteSubject = (
         site.injectFault({ kind: "rate-limited", retryAfterSeconds });
         return Promise.resolve();
       },
+      files: jiraFilesHooks(site, board),
+    },
+  };
+};
+
+// ---------- milestone 9: a ticket's files, as people put them on a Jira site (F-149) ----------
+
+const DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+/** A zip's first bytes: an Office file as far as the fake cares. */
+const ZIP_BYTES = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0, 0, 0, 8, 0]);
+const PDF_BYTES = new TextEncoder().encode("%PDF-1.7\n%fake\n");
+
+const paragraph = (text: string): AdfNode => ({ type: "paragraph", content: [{ type: "text", text }] });
+const mediaOfFile = (container: "mediaSingle" | "mediaGroup", id: string): AdfNode => ({
+  type: container,
+  content: [{ type: "media", attrs: { type: "file", id, collection: "jira-fake" } }],
+});
+
+/**
+ * The files cases' hooks on a Jira site, as Jira's editor makes them: whatever is dropped into a
+ * description or a comment is attached to the issue and shown by a `media` node naming it.
+ */
+export const jiraFilesHooks = (site: JiraSite, board: BoardRef): TrackerFilesHooks => {
+  const person = site.personAccountId;
+  return {
+    seedTicketWithFiles: () => {
+      const created = site.createIssue(board.externalId, { summary: "With files" });
+      const id = created.externalId;
+      const image = site.attachToIssue(id, { name: "mock.png", contentType: "image/png", bytes: PNG_BYTES, byAccountId: person });
+      const spec = site.attachToIssue(id, { name: "spec.docx", contentType: DOCX_TYPE, bytes: ZIP_BYTES, byAccountId: person });
+      const shot = site.attachToIssue(id, { name: "broken.png", contentType: "image/png", bytes: PNG_BYTES, byAccountId: person });
+      const design = site.attachToIssue(id, { name: "design.pdf", contentType: "application/pdf", bytes: PDF_BYTES, byAccountId: person });
+      site.setDescription(id, {
+        type: "doc",
+        content: [paragraph("Match the mock; the spec is attached. $(whoami)"), mediaOfFile("mediaSingle", image.id), mediaOfFile("mediaGroup", spec.id)],
+      });
+      const commentId = site.addComment(id, { type: "doc", content: [paragraph("Here it breaks:"), mediaOfFile("mediaSingle", shot.id)] }, person);
+      const figma = "https://www.figma.com/file/0196f1a0/History?node-id=1-2";
+      site.addRemoteLink(id, { url: figma, title: "History panel (Figma)" });
+      const spareImage = `${JIRA_FAKE_FILE_HOST}${site.nextId()}/progress.png`;
+      site.files.set(spareImage, { bytes: PNG_BYTES, contentType: "image/png" });
+      return Promise.resolve({
+        ...created,
+        descriptionImage: image.url,
+        descriptionFile: spec.url,
+        commentId,
+        commentImage: shot.url,
+        attachedFile: design.url,
+        linkAttachment: figma,
+        spareImage,
+      });
+    },
+    followUpText: () => {
+      const holder = site.createIssue(board.externalId, { summary: "A follow-up's files" });
+      const image = site.attachToIssue(holder.externalId, { name: "follow-up.png", contentType: "image/png", bytes: PNG_BYTES, byAccountId: person });
+      const file = site.attachToIssue(holder.externalId, { name: "numbers.xlsx", contentType: XLSX_TYPE, bytes: ZIP_BYTES, byAccountId: person });
+      const offHost = "https://files.example.test/secure/attachment/1/numbers.xlsx";
+      const text = adfToMarkdown(
+        {
+          type: "doc",
+          content: [
+            paragraph("Also look at these:"),
+            mediaOfFile("mediaSingle", image.id),
+            mediaOfFile("mediaGroup", file.id),
+            { type: "paragraph", content: [{ type: "text", text: "numbers.xlsx", marks: [{ type: "link", attrs: { href: offHost } }] }] },
+          ],
+        },
+        site.mediaOf,
+      );
+      return Promise.resolve({ text, image: image.url, file: file.url, offHost });
+    },
+    seedFile: (size) => {
+      const url = `${JIRA_FAKE_FILE_HOST}${site.nextId()}/sized.bin`;
+      site.files.set(url, { bytes: new Uint8Array(size).fill(7), contentType: "application/octet-stream" });
+      return Promise.resolve(url);
     },
   };
 };

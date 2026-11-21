@@ -4,7 +4,7 @@ import { createPlumbing, defaultAdapterContext } from "../common/context.ts";
 import type { AdapterContext, Plumbing } from "../common/context.ts";
 import { adapterError } from "../common/result.ts";
 import type { AdapterResult, HealthReport } from "../common/result.ts";
-import type { TrackerCapabilities } from "./capabilities.ts";
+import type { TicketFilesCapability, TrackerCapabilities } from "./capabilities.ts";
 
 // The tracker kind (ADR 0013, ADR 0025, ADR 0047): Linear first, then Jira, GitHub Issues, GitLab.
 // ostra keeps references and a cached copy of tickets, never the source of truth. Milestone 2 adds
@@ -132,6 +132,119 @@ export type TicketImage = {
   readonly contentType: string | null;
 };
 
+/** Milestone 9 (F-149): where a ticket shows a file. */
+export type TicketFileWhere = "description" | "comment" | "attachment";
+
+/**
+ * Milestone 9 (F-149, ADR 0070): a file the tracker holds, inline in the ticket's description or a
+ * comment, or attached to it. A link attachment (a pull request, a Figma frame) is never one: it
+ * stays in `attachments`, and nothing behind it is fetched (Q337).
+ */
+export type TicketContextFile = {
+  /** Fetched with `downloadFile`, which adds the credential: never handed to the runner. */
+  readonly url: string;
+  /** A name for the file, from the tracker, the link's text or the URL. Untrusted: core makes it safe. */
+  readonly name: string;
+  /** The type the tracker says, when it says. Core tells the kind by the bytes, never by this. */
+  readonly contentType: string | null;
+  /** The size the tracker says, in bytes, when it says. */
+  readonly size: number | null;
+  readonly where: TicketFileWhere;
+  /** The comment that shows it, for `where: "comment"`; `null` otherwise. */
+  readonly commentId: string | null;
+  /**
+   * The file is in ostra's own comment, or an attachment ostra made (`OwnWrites`): core leaves it
+   * out, as it leaves out ostra's own comments.
+   */
+  readonly byOstra: boolean;
+};
+
+/**
+ * Milestone 9 (F-149): how `getTicketContext` tells ostra's own writes from people's, so a file in
+ * one is `byOstra`. Core knows its own user and the markers its writes carry; an adapter compares.
+ * Every string here is ostra's own, never a ticket's.
+ */
+export type OwnWrites = {
+  /** The connection's own user (an app's), whose every comment is ostra's; `null` when it has none (an API key). */
+  readonly userId: string | null;
+  /** Text only ostra's own comments hold, such as the progress comment's marker line. */
+  readonly commentMarkers: readonly string[];
+  /** Text only the subtitle of an attachment ostra made holds (`attachFile`'s marker, F-099). */
+  readonly attachmentMarkers: readonly string[];
+};
+
+/** Milestone 9: what `getTicketContext` is told beside the ticket. */
+export type TicketContextOptions = {
+  /** Without it, no file is `byOstra`. */
+  readonly own?: OwnWrites;
+};
+
+/** Whether a comment is ostra's own: by ostra's user, or holding one of its markers. */
+export const isOwnComment = (
+  own: OwnWrites | undefined,
+  comment: { readonly body: string; readonly author: { readonly id: string } | null },
+): boolean => {
+  if (own === undefined) {
+    return false;
+  }
+  if (own.userId !== null && comment.author?.id === own.userId) {
+    return true;
+  }
+  return own.commentMarkers.some((marker) => marker !== "" && comment.body.includes(marker));
+};
+
+/** Whether an attachment is one ostra made: its subtitle holds one of ostra's markers. */
+export const isOwnAttachment = (own: OwnWrites | undefined, attachment: { readonly subtitle: string | null }): boolean => {
+  const { subtitle } = attachment;
+  return own !== undefined && subtitle !== null && own.attachmentMarkers.some((marker) => marker !== "" && subtitle.includes(marker));
+};
+
+const IMAGE_FILE_NAME = /\.(png|jpe?g|gif|webp|bmp|svg|avif|heic)$/i;
+
+/** Whether a ticket's file is an image, by the type the tracker says, else by its name or URL. */
+export const isImageFile = (file: { readonly url: string; readonly name: string; readonly contentType: string | null }): boolean => {
+  if (file.contentType !== null && file.contentType !== "") {
+    return file.contentType.toLowerCase().startsWith("image/");
+  }
+  if (IMAGE_FILE_NAME.test(file.name)) {
+    return true;
+  }
+  return URL.canParse(file.url) && IMAGE_FILE_NAME.test(new URL(file.url).pathname);
+};
+
+/**
+ * The files a capability lets through, in their order: every one for `all`, the images for
+ * `images`, none for `none`. An adapter reads its tracker once and hands the list here.
+ */
+export const filesForCapability = (files: readonly TicketContextFile[], capability: TicketFilesCapability): readonly TicketContextFile[] => {
+  switch (capability) {
+    case "all":
+      return files;
+    case "images":
+      return files.filter(isImageFile);
+    case "none":
+      return [];
+    default:
+      return capability satisfies never;
+  }
+};
+
+/** A list of a ticket's files that takes each URL once, the first place it's shown winning. */
+export const ticketFileList = (): { readonly add: (file: TicketContextFile) => void; readonly files: () => readonly TicketContextFile[] } => {
+  const files: TicketContextFile[] = [];
+  const seen = new Set<string>();
+  return {
+    add: (file) => {
+      if (seen.has(file.url)) {
+        return;
+      }
+      seen.add(file.url);
+      files.push(file);
+    },
+    files: () => [...files],
+  };
+};
+
 export type TicketLinkKind = "blocks" | "blocked-by" | "related" | "duplicate" | "duplicated-by";
 
 export type LinkedTicket = { readonly kind: TicketLinkKind; readonly ticket: TicketSummary };
@@ -164,6 +277,12 @@ export type TicketContext = {
   readonly attachments: readonly TicketAttachment[];
   /** Inline images in the description and comments, then image attachments, each once. */
   readonly images: readonly TicketImage[];
+  /**
+   * Milestone 9 (F-149): the files the tracker holds, as the capability `ticketFiles` lets
+   * through: the description's, then each comment's (oldest first), then the attachments', each
+   * URL once. Empty with `ticketFiles: "none"`. `images` stays beside it, for what reads it.
+   */
+  readonly files: readonly TicketContextFile[];
   readonly parent: TicketSummary | null;
   readonly children: readonly ChildTicket[];
   readonly linked: readonly LinkedTicket[];
@@ -445,8 +564,12 @@ export abstract class TrackerAdapter {
   /** A board's statuses, each with its category, in the tracker's order. */
   abstract listStatuses(board: BoardRef): Promise<AdapterResult<readonly TrackerStatus[]>>;
 
-  /** The ticket with its comments, attachments, images, parent, children and linked tickets (F-064). */
-  abstract getTicketContext(board: BoardRef, ref: TicketRef): Promise<AdapterResult<TicketContext>>;
+  /**
+   * The ticket with its comments, attachments, images, parent, children and linked tickets
+   * (F-064), and milestone 9's files (F-149): `options.own` says which writes are ostra's, so a
+   * file in one is `byOstra`.
+   */
+  abstract getTicketContext(board: BoardRef, ref: TicketRef, options?: TicketContextOptions): Promise<AdapterResult<TicketContext>>;
 
   /**
    * Moves a ticket to the mapping's status for `target`. Linear sets the status; Jira walks its
@@ -472,10 +595,23 @@ export abstract class TrackerAdapter {
   abstract detectCodeHostIntegration(board: BoardRef): Promise<AdapterResult<CodeHostIntegration>>;
 
   /**
-   * Fetches a ticket's file (an image of `getTicketContext`) with the adapter's credential, which
-   * never leaves the server. Over `maxBytes` is `invalid-input`, and nothing more is read.
+   * Fetches a ticket's file (one of `getTicketContext`'s `images` or `files`, or of `filesInText`)
+   * with the adapter's credential, which never leaves the server: it goes only to the tracker's
+   * own file host, and no redirect is followed. Over `maxBytes` is `invalid-input`, and nothing
+   * more is read.
    */
   abstract downloadFile(url: string, maxBytes: number): Promise<AdapterResult<DownloadedFile>>;
+
+  /**
+   * Milestone 9 (F-149, ADR 0057 amended): the files a piece of the tracker's text names, such as
+   * a follow-up's comment, read the way `getTicketContext` reads a comment, in order, each URL
+   * once: `where: "comment"`, no comment ID, never `byOstra`. Pure: nothing is fetched. `[]` with
+   * `ticketFiles: "none"`, and on an adapter that doesn't override it. The text is never logged.
+   */
+  filesInText(markdown: string): readonly TicketContextFile[] {
+    this.plumbing.logger.debug("filesInText is not supported", { length: markdown.length });
+    return [];
+  }
 
   /**
    * Checks a delivery's signature and freshness, and reads its delivery ID. Pure: no call is made,

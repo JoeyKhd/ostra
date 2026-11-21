@@ -272,6 +272,8 @@ describe("the Linear adapter", () => {
       agentScopes: ["app:assignable", "app:mentionable"],
       agentSessionLink: true,
       ticketFields: { acceptanceCriteria: false },
+      // Milestone 9 (F-149): images until ticket 08 reads every file.
+      ticketFiles: "images",
     });
   });
 });

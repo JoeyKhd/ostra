@@ -67,6 +67,37 @@ export const capabilities = {
 
 ostra then queues a member's message until the turn ends, reopens through the rebuild template, appends skills to the agent's instructions, hides the repo's own agent config from it, has the runner check every permission request, gives it memory's index without the memory tools, runs every task at the agent's default reasoning level, with no effort control in the panel, and ends a turn with its prompt's answer, since no subagent of its runs on past it; whatever subagents it has show their calls in the thread as its own, with no subagents window. Plan first can't run on it, and the panel says so. `modelBaseUrlAndPlaceholderKey` is the one an agent can't do without: every model call must go through the key proxy.
 
+## The tracker kind: a ticket's files
+
+A task started from a ticket gets the whole ticket, its files included. A tracker adapter declares which files it reads, in `ticketFiles`:
+
+- **`all`:** `getTicketContext` lists in `files` every file the tracker holds that the ticket shows: inline in its description, then in each comment, oldest first, then attached to it, each URL once. A link attachment, such as a pull request or a Figma frame, stays in `attachments` and is never a file: nothing behind a link is fetched.
+- **`images`:** the same, images only.
+- **`none`:** `files` is empty, and ostra starts the task from the ticket's text and says the files weren't fetched.
+
+Each file carries where the ticket shows it, and `byOstra` when it's in ostra's own comment or an attachment ostra made: `getTicketContext`'s `options.own` names ostra's user and the markers its writes carry, and ostra leaves those files out. `filesInText` reads a piece of the tracker's text, such as a follow-up's comment, the same way. Every file downloads through `downloadFile`, which sends the credential to the tracker's own file host only, follows no redirect, and refuses a file over its `maxBytes` without reading more of it.
+
+```ts title="tracker-capabilities.ts"
+import type { TrackerCapabilities } from "@ostra/adapter-sdk";
+
+export const trackerCapabilities = {
+  agentSessions: false,
+  subIssues: false,
+  statusGraph: true,
+  webhooks: true,
+  commentEdit: true,
+  attachments: false,
+  transitions: true,
+  mentions: false,
+  agentScopes: [],
+  agentSessionLink: false,
+  ticketFields: { acceptanceCriteria: false },
+  ticketFiles: "images",
+} as const satisfies TrackerCapabilities;
+```
+
+The tracker suite's files cases take `files` hooks in their fixture, which seed a ticket with an image and a document in its description, an image in a comment, an attached document and a link attachment, as a person makes them in the tracker. An adapter that declares `none` may leave them out.
+
 ## The agent kind
 
 An agent adapter writes only what is particular to its agent. ostra drives agents over the Agent Client Protocol (ACP) with one driver, `createAcpDriver`, which the base class uses. An agent adapter provides:
