@@ -1,4 +1,8 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+
 import { expect, test } from "@playwright/test";
+import { z } from "zod";
 
 import { expectNoHorizontalScroll, signIn } from "./helpers.ts";
 import { signedInPage } from "./m4.ts";
@@ -10,6 +14,10 @@ import { seedFleet, seedJoiner, seedPersonal, shootM5 } from "./m5.ts";
 
 const MEMBER = "e2e-fleet-member";
 const MEMBER_RUNNER = "e2e-laptop";
+
+/** The panel's own version, its package.json's, which a runner's fix names (the release stamps it). */
+const serverVersion = async (): Promise<string> =>
+  z.object({ version: z.string() }).parse(JSON.parse(await readFile(path.join(import.meta.dirname, "..", "package.json"), "utf8"))).version;
 
 test.beforeAll(async () => {
   await seedFleet();
@@ -95,7 +103,7 @@ test("F-092/c2, F-061/c3: a runner's page shows its carrier, its version against
   await page.getByRole("link", { name: "e2e-fleet-old" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("e2e-fleet-old");
   await expect(page.getByTestId("row-version")).toContainText("outdated");
-  await expect(page.getByTestId("version-fix")).toContainText("run the v0.0.0 image and restart it");
+  await expect(page.getByTestId("version-fix")).toContainText(`run the v${await serverVersion()} image and restart it`);
   await page.goto("/organization/runners");
   await page.getByRole("link", { name: "e2e-fleet-01" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("e2e-fleet-01");

@@ -108,7 +108,7 @@ export const step2 = async (d: Demo): Promise<void> => {
   const panel = d.demo.getByTestId("runner-approval");
   await panel.getByText("tier:fast").waitFor();
   const facts = await panel.innerText();
-  d.check(2, "the review shows its host, system, executor, labels, version and token", ["Host", "System", "Executor", "host", "tier:fast", "v0.0.0", "Join token"].every((word) => facts.includes(word)), facts.replaceAll(/\s+/g, " ").slice(0, 240));
+  d.check(2, "the review shows its host, system, executor, labels, version and token", ["Host", "System", "Executor", "host", "tier:fast", `v${d.cli.version}`, "Join token"].every((word) => facts.includes(word)), facts.replaceAll(/\s+/g, " ").slice(0, 240));
   await d.shot(d.demo, "02-runner-approval");
   // A task in test1 isn't offered to a runner that waits for approval.
   const taskId = await promptTask(d, { projectId: d.test1.id, title: "Waits for an approved runner", steps: 1, ms: 500 });
