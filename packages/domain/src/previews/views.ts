@@ -517,7 +517,8 @@ export const closedViewIds = async (db: Db, viewIds: readonly PreviewViewId[]): 
 /**
  * The box's preview connection reached a replica (ADR 0068): the view is `open`, and its presence
  * names the replica's internal address, so a replica that gets a viewer's request for it forwards
- * there. `null` when the view is closed or gone.
+ * there. `null` when the view is closed or gone, including a close that commits between the read
+ * and the write: the write holds only while the row isn't closed, so it never reopens one.
  */
 export const markViewConnected = async (db: Db, viewId: PreviewViewId, replicaUrl: string, now: number): Promise<PreviewViewRow | null> =>
   db.$transaction(async (tx) => {
@@ -526,10 +527,13 @@ export const markViewConnected = async (db: Db, viewId: PreviewViewId, replicaUr
       return null;
     }
     const moved = transitionPreviewView(view.lifecycle, { type: "connected", at: now });
-    await tx.previewView.update({
-      where: { id: viewId },
+    const written = await tx.previewView.updateMany({
+      where: { id: viewId, state: { not: "closed" } },
       data: { replicaUrl, ...(moved.ok ? { state: "open", lastHeartbeatAt: new Date(now) } : {}) },
     });
+    if (written.count === 0) {
+      return null;
+    }
     return previewViewInTx(tx, viewId);
   });
 
@@ -696,8 +700,10 @@ export const heartbeatView = async (deps: ViewPorts, input: Parameters<Heartbeat
       default:
         return view.lifecycle satisfies never;
     }
-    if (moved.ok) {
-      await tx.previewView.updateMany({ where: { id: view.id, state: "open" }, data: { lastHeartbeatAt: new Date(now) } });
+    // Only while the row is still open: a close that committed since the read holds no box warm.
+    const written = moved.ok ? await tx.previewView.updateMany({ where: { id: view.id, state: "open" }, data: { lastHeartbeatAt: new Date(now) } }) : { count: 0 };
+    if (written.count === 0) {
+      return { ok: false, error: "closed", message: "This view is closed" };
     }
     if (view.leaseId !== null) {
       const lease = await tx.lease.findFirst({ where: { id: view.leaseId, state: "active" }, select: { boxId: true } });

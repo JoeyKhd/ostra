@@ -327,7 +327,10 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
       });
       markViewConnected(deps.db, viewId, me, now())
         .then((row) => {
+          // Closed or gone, even by a close that committed while the connection landed: the row
+          // stays closed, and the box's socket is detached and closed with the view's reason.
           if (row === null) {
+            logger.info("preview.view-ended", { viewId, reason: "closed" });
             if (tunnel) {
               tunnels.close(viewId, "view-closed");
             } else {
@@ -679,7 +682,12 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
     }
     if (!hub.holds(viewId)) {
       hub.holdHttp(viewId);
-      await markViewConnected(deps.db, viewId, me, now());
+      // A close that committed since the read above: the view stays closed, and this replica holds nothing of it.
+      if ((await markViewConnected(deps.db, viewId, me, now())) === null) {
+        hub.close(viewId, "closed");
+        framesAnswer(response, 410, { code: "view-closed" });
+        return;
+      }
     }
     for (const frame of frames) {
       await hub.relayHttpFrame(viewId, frame.header, frame.jpeg);

@@ -7,6 +7,7 @@ import type { IsolationFixture, SeededMember, TestDatabase } from "@ostra/db/tes
 import {
   acceptOffer,
   closeView,
+  closeViewInTx,
   createPanelPreviewTokens,
   dispatchTask,
   heartbeatView,
@@ -139,6 +140,47 @@ const stream = async (viewId: PreviewViewId, panelToken: string): Promise<PanelS
   const panel = await openPanelStream(replica.url, viewId, { authorization: `Bearer ${panelToken}` });
   opened.push({ close: panel.abort });
   return panel;
+};
+
+/** The writes to a view's row that wait on another transaction's lock on it. */
+const viewWritesWaiting = async (): Promise<number> => {
+  const rows = await test.db.$queryRaw<readonly { readonly waiting: number }[]>`
+    SELECT count(*)::int AS "waiting" FROM pg_stat_activity
+    WHERE datname = current_database() AND wait_event_type = 'Lock' AND query ILIKE '%preview_view%' AND pid <> pg_backend_pid()`;
+  return rows[0]?.waiting ?? 0;
+};
+
+/**
+ * A close that commits between a write's read of the view and its write, made certain: the close
+ * holds the view's row, uncommitted, so `write` reads the view as it was and queues on the row;
+ * then the close commits and `write` goes on.
+ */
+const closeInTheWindow = async <T,>(viewId: PreviewViewId, write: () => Promise<T>): Promise<T> => {
+  const held = Promise.withResolvers<undefined>();
+  const release = Promise.withResolvers<undefined>();
+  const closing = test.db.$transaction(
+    async (tx) => {
+      const closed = await closeViewInTx(viewDeps(), tx, { viewId, reason: "closed" });
+      held.resolve(undefined);
+      await release.promise;
+      return closed;
+    },
+    { timeout: 60_000 },
+  );
+  try {
+    await Promise.race([held.promise, closing]);
+    const writing = write();
+    for (let attempt = 0; attempt < 200 && (await viewWritesWaiting()) < 1; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    expect(await viewWritesWaiting()).toBe(1);
+    release.resolve(undefined);
+    expect(await closing).toEqual({ ok: true, closed: true });
+    return await writing;
+  } finally {
+    release.resolve(undefined);
+    await closing.catch(() => undefined);
+  }
 };
 
 const click: PreviewInputEvent = { kind: "mouse", action: "down", x: 120, y: 48, button: "left", clickCount: 1, modifiers: 0 };
@@ -343,6 +385,35 @@ describe("a preview's views on core", () => {
     expect(records.some((record) => record.message === "ingest.preview-dropped" && record.fields["viewId"] === view.viewId && record.fields["refusal"] === "no-browser" && record.fields["closed"] === true)).toBe(true);
     expect(records.some((record) => record.message === "ingest.preview-dropped" && record.fields["viewId"] === theirs.viewId && record.fields["closed"] === false)).toBe(true);
     expect(JSON.stringify(records)).not.toContain(view.panelToken);
+  }, 60_000);
+
+  it("F-141/c1: a view closed while its box's connection lands stays closed, and the box's socket is closed", async () => {
+    const task = await boxedTask();
+    const view = await openStreamView(task);
+    // Core reads the view as `opening`, takes the box's socket, and its write of the view's
+    // presence queues behind the close; the close commits first.
+    const connected = await closeInTheWindow(view.viewId, async () => {
+      const made = await connectFakeBox(replica.url, view.viewId, 1, runnerToken());
+      opened.push(made);
+      return made;
+    });
+    // The socket is detached and closed with the view's reason...
+    expect((await connected.next("close", 10_000)).close.reason).toBe("closed");
+    expect(await connected.closed).toBe(1000);
+    expect(replica.previews.hub.holds(view.viewId)).toBe(false);
+    // ...and the row stays closed, with no replica's presence: the sweep has nothing to close again.
+    expect(await test.db.previewView.findUniqueOrThrow({ where: { id: view.viewId } })).toMatchObject({ state: "closed", replicaUrl: null });
+    expect(records.some((record) => record.message === "preview.connected" && record.fields["viewId"] === view.viewId)).toBe(false);
+  }, 60_000);
+
+  it("F-141/c4: a heartbeat whose view closes as it lands holds no box warm", async () => {
+    const task = await boxedTask();
+    const view = await openStreamView(task);
+    expect(await markViewConnected(test.db, view.viewId, replica.url, Date.now())).toMatchObject({ lifecycle: { state: "open" } });
+    // The heartbeat reads the view as `open`, and its write queues behind the close; the close commits first.
+    expect(await closeInTheWindow(view.viewId, () => heartbeatView(viewDeps(), { viewId: view.viewId }))).toMatchObject({ ok: false, error: "closed" });
+    expect((await test.db.box.findUniqueOrThrow({ where: { id: task.boxId } })).previewWatchedAt).toBeNull();
+    expect(await test.db.previewView.findUniqueOrThrow({ where: { id: view.viewId } })).toMatchObject({ state: "closed" });
   }, 60_000);
 
   it("F-141/c2: a preview connection with a stale lease epoch is refused, as an event is", async () => {
