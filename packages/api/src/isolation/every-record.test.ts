@@ -184,6 +184,8 @@ const procedures: Readonly<Record<string, { readonly input: InputOf; readonly ab
   "library.file": { input: (target) => ({ versionId: row(target, "LibraryItemVersion"), path: "SKILL.md" }), about: "organization" },
   "library.sources.list": { input: none, about: "organization" },
   "library.suggestions.list": { input: none, about: "organization" },
+  // Ticket 31: a member's own suggestions.
+  "library.suggestions.mine": { input: none, about: "organization" },
   "library.searchState": { input: none, about: "organization" },
   "linear.status": { input: none, about: "organization" },
   "me.get": { input: none, about: "organization" },
@@ -363,7 +365,7 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   LibraryItemVersion: ["library.list", "library.get", "library.file", "agentProfiles.get"],
   AgentProfileLibraryItem: ["library.list", "library.get", "agentProfiles.get"],
   LibrarySource: ["library.sources.list", "library.list", "library.searchState"],
-  LibrarySuggestion: ["library.suggestions.list", "library.counts"],
+  LibrarySuggestion: ["library.suggestions.list", "library.suggestions.mine", "library.counts"],
 };
 
 /** Calls a procedure by its dotted path, as the panel does. */
@@ -631,6 +633,7 @@ const matrix: Readonly<Record<string, readonly [Outcome, Outcome, Outcome, Outco
   "library.file": ["NOT_FOUND", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "library.sources.list": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "library.suggestions.list": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  "library.suggestions.mine": ["ok", "ok", "ok", "ok", "ok"],
   "library.searchState": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "linear.status": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "me.get": ["ok", "ok", "ok", "ok", "ok"],

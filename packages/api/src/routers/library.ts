@@ -59,7 +59,8 @@ import { fileTextOf, libraryItemSelect, libraryItemViews } from "./library-views
 // F-145, F-146 (milestone 8, ticket 30; ADR 0069, Q315 to Q324): the skills and MCP library, and
 // its marketplace search. The bodies are the domain's (`packages/domain/src/library/`), which
 // core's jobs run too; these procedures wire them to the panel.
-// - Any member reads the library (`list`, `get`) and suggests an item (`suggest`).
+// - Any member reads the library (`list`, `get`), suggests an item (`suggest`) and reads their own
+//   suggestions with each answer (`suggestions.mine`, ticket 31).
 // - An organization admin looks at a reference and installs it, tests a server, attaches, detaches
 //   and puts an item on every profile, asks for an update check and decides an update, removes an
 //   item, edits the list of sources, decides suggestions, and searches the marketplace behind its
@@ -249,6 +250,44 @@ const suggestionsRouter = router({
       });
     }
     return [...views.filter((view) => view.state === "open"), ...views.filter((view) => view.state !== "open")];
+  }),
+
+  /**
+   * Ticket 31: the member's own suggestions, newest first, each with its answer (who decided it and
+   * when, the item an install made) and whether its source is on the list now. Any member's, and
+   * only their own: nobody else's suggestion or note is in it.
+   */
+  mine: memberProcedure.query(async ({ ctx }) => {
+    const { db } = ctx.deps;
+    const organizationId = ctx.scope.organizationId;
+    const rows = await db.librarySuggestion.findMany({
+      where: { organizationId, memberId: ctx.scope.memberId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 50,
+      select: { id: true, reference: true, note: true, state: true, decidedByMemberId: true, decidedAt: true, itemId: true, createdAt: true },
+    });
+    const deciders = [...new Set(rows.flatMap((row) => (row.decidedByMemberId === null ? [] : [row.decidedByMemberId])))];
+    const [members, sources] = await Promise.all([
+      db.member.findMany({ where: { organizationId, id: { in: deciders } }, select: { id: true, user: { select: { name: true } } } }),
+      allowlistOf(db, organizationId),
+    ]);
+    const names = new Map(members.map((member) => [member.id, member.user.name] as const));
+    const views = [];
+    for (const row of rows) {
+      const parsed = parseLibraryReference(row.reference);
+      views.push({
+        suggestionId: librarySuggestionIdSchema.parse(row.id),
+        reference: row.reference,
+        note: row.note,
+        state: row.state,
+        sourceAllowed: parsed.ok && (await referenceAllowed(db, organizationId, parsed.value, sources)),
+        createdAt: row.createdAt.getTime(),
+        decidedBy: row.decidedByMemberId === null ? null : { memberId: memberIdSchema.parse(row.decidedByMemberId), name: names.get(row.decidedByMemberId) ?? null },
+        decidedAt: row.decidedAt?.getTime() ?? null,
+        itemId: row.itemId === null ? null : libraryItemIdSchema.parse(row.itemId),
+      });
+    }
+    return views;
   }),
 
   /** Installed (the item an install of it made) or dismissed, with its audit entry. */

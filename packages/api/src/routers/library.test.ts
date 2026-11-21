@@ -123,7 +123,7 @@ const outcomeOf = async (caller: AppCaller, path: string, input: unknown): Promi
 };
 
 /** The library's procedures any member may call; every other one is an organization admin's. */
-const MEMBER_PROCEDURES = ["library.get", "library.list", "library.suggest"];
+const MEMBER_PROCEDURES = ["library.get", "library.list", "library.suggest", "library.suggestions.mine"];
 const libraryPaths = (): readonly string[] =>
   Object.keys(appRouter._def.procedures)
     .filter((path) => path.startsWith("library."))
@@ -536,6 +536,25 @@ describe("profiles, updates, sources and suggestions (F-145)", () => {
     const entries = await harness.test.db.auditEntry.findMany({ where: { organizationId: orgA() }, select: { data: true } });
     expect(JSON.stringify(entries)).not.toContain("rm -rf");
     expect(JSON.stringify(harness.logs)).not.toContain("rm -rf");
+  });
+  it("F-145/c9: a member lists their own suggestions with each answer, and never another member's", async () => {
+    const admin = await asAdmin();
+    const member = await asMember();
+    const insider = await harness.as(harness.fixture.a.insider);
+    const mine = await member.library.suggest({ reference: SITE_URL, note: "Release notes every week" });
+    const dismissed = await member.library.suggest({ reference: "acme/skills@changelog", note: "Also this" });
+    const theirs = await insider.library.suggest({ reference: "acme/skills@pdf", note: "Not the member's" });
+    await admin.library.suggestions.decide({ suggestionId: dismissed.suggestionId, decision: { kind: "dismissed" } });
+
+    const listed = await member.library.suggestions.mine();
+    expect(listed.map((entry) => entry.suggestionId).sort()).toEqual([mine.suggestionId, dismissed.suggestionId].sort());
+    expect(listed.find((entry) => entry.suggestionId === mine.suggestionId)).toMatchObject({ reference: SITE_URL, note: "Release notes every week", state: "open", decidedBy: null });
+    expect(listed.find((entry) => entry.suggestionId === dismissed.suggestionId)).toMatchObject({ state: "dismissed", sourceAllowed: false, decidedBy: { memberId: harness.fixture.a.admin.id } });
+    expect(JSON.stringify(listed)).not.toContain("Not the member's");
+    expect((await insider.library.suggestions.mine()).map((entry) => entry.suggestionId)).toEqual([theirs.suggestionId]);
+    // Another organization's member sees none of A's.
+    expect(await (await harness.as(harness.fixture.b.admin)).library.suggestions.mine()).toEqual([]);
+    await expect(harness.anonymous().library.suggestions.mine()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 });
 
