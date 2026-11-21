@@ -1,0 +1,169 @@
+<!doctype html>
+<!-- Target: attachments at phone width, 390×844 screens on one board (composer-attachments.md, "Phone";
+     message-attachments.md, "Phone"; new-task-attachments.md, "Phone"). The phone shell is milestone 8's
+     (app-shell.md, "Phone"; shell-phone.html): no tab bar, the menu button, Chat and Preview one at a time.
+       1  the box docked under the chat, with two images and two files, and the model's note;
+       2  the sent message in the thread: thumbnails, files, and what the agent got;
+       3  a new task with files, and one that was too big.
+     Not a device mockup: the screens only, straight on. Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m9 · attachments on a phone</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="m9.css">
+<style>
+  body { background: var(--side); }
+  .board { position: relative; width: 1440px; height: 956px; background: var(--side); }
+  .board > .lbl { position: absolute; top: 30px; }
+  .ph { position: absolute; top: 60px; width: 390px; height: 844px; background: var(--bg); color: var(--text); border: 1px solid var(--line-2); border-radius: 22px; overflow: hidden; display: flex; flex-direction: column; }
+  .ph .top { height: 54px; flex: none; display: flex; align-items: center; gap: 2px; padding: 0 6px; border-bottom: 1px solid var(--line); }
+  .ph .top .ib { width: 44px; height: 44px; color: var(--muted); position: relative; }
+  .ph .top .ib svg.lucide { width: 20px; height: 20px; }
+  .ph .top .menu-dot { position: absolute; top: 10px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 2px var(--bg); }
+  .ph .top .crumb { display: flex; align-items: center; gap: 6px; min-width: 0; font: 500 16px var(--sans); color: var(--muted); white-space: nowrap; }
+  .ph .top .crumb .chev { width: 15px; height: 15px; color: var(--faint); }
+  .ph .top .crumb b { color: var(--text); font-weight: 600; }
+  .ph .top .t2 { display: flex; flex-direction: column; min-width: 0; }
+  .ph .top .t2 .a { font: 600 15px/20px var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ph .top .t2 .b { font: 400 12px/16px var(--mono); color: var(--faint); white-space: nowrap; }
+  .ph .top .r { margin-left: auto; display: flex; }
+  .segw { padding: 8px 12px; border-bottom: 1px solid var(--line); flex: none; }
+  .segw .seg { display: flex; width: 100%; }
+  .segw .seg > span { flex: 1; justify-content: center; height: 36px; font-size: 14px; }
+  .ph .scroll { flex: 1; min-height: 0; overflow: hidden; padding: 6px 16px 10px; }
+  .ph .msg { gap: 10px; }
+  .ph .msg p { font-size: 15px; }
+  .ph .ny { margin-left: 38px; }
+  .ph .line .verb { width: 64px; }
+  .ph .line .what { font-size: 13.5px; }
+  /* The dock: the box under the chat. Attachments sit above the field and scroll sideways. */
+  .dock { flex: none; padding: 10px 10px 14px; border-top: 1px solid var(--line); background: var(--bg); }
+  .dock .tray { flex-wrap: nowrap; overflow: hidden; margin: 6px -10px 10px 0; padding: 0 0 0 2px; }
+  .dock .att { height: 56px; }
+  .dock .att.file { max-width: 220px; }
+  .dock .tnote { margin: -2px 0 10px 2px; font-size: 13px; }
+  .dock .bar2 { display: flex; align-items: flex-end; gap: 8px; }
+  .dock .clipb { width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; color: var(--muted); border: 1px solid var(--line-2); background: var(--surface); flex: none; }
+  .dock .clipb svg.lucide { width: 19px; height: 19px; }
+  .dock .in { flex: 1; min-height: 44px; display: flex; align-items: center; padding: 10px 12px; border: 1px solid var(--control-line); border-radius: 10px; background: var(--surface); color: var(--text); font-size: 15px; line-height: 21px; }
+  .dock .in.ph0 { color: var(--faint); }
+  .dock .send { width: 44px; height: 44px; border-radius: 10px; background: var(--primary); color: var(--on-primary); display: grid; place-items: center; flex: none; }
+  .dock .send svg.lucide { width: 19px; height: 19px; }
+  .ph .strip { overflow: hidden; }
+  .ph .files { flex-direction: column; flex-wrap: nowrap; }
+  .ph .fchip { max-width: none; }
+  /* The new-task page at phone width (new-task-view.tsx): the box, then its toolbar in wrapped rows. */
+  .nt { padding: 14px 16px; flex: 1; min-height: 0; overflow: hidden; }
+  .nt .key { font-size: 13px; }
+  .nt h1 { font-size: 24px; margin: 2px 0 4px; }
+  .nt .lede { font-size: 14.5px; }
+  .ntbox { margin-top: 14px; border: 1px solid var(--control-line); border-radius: 10px; background: var(--surface); padding: 12px 12px 12px; }
+  .ntbox .text { font-size: 15.5px; line-height: 1.55; min-height: 96px; color: var(--text); }
+  .ntbox .tray { flex-wrap: nowrap; overflow: hidden; margin: 10px -12px 10px 0; }
+  .ntbox .att { height: 56px; }
+  .ntool { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .trig { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 8px; border-radius: 6px; font: 500 14.5px var(--sans); color: var(--text); white-space: nowrap; }
+  .trig svg.lucide { width: 15px; height: 15px; color: var(--muted); }
+  .trig .chev { width: 13px; height: 13px; color: var(--faint); }
+  .trig .faint { font-weight: 400; }
+  .tog { display: inline-flex; border: 1px solid var(--line-2); border-radius: 6px; overflow: hidden; height: 36px; }
+  .tog span { display: grid; place-items: center; padding: 0 14px; font: 500 14px var(--sans); color: var(--muted); }
+  .tog span.on { background: var(--sel); color: var(--text); }
+  .ntbox .go { display: flex; justify-content: flex-end; margin-top: 8px; }
+  .ntbox .go .btn { height: 40px; font-size: 15px; padding: 0 16px; }
+  .nt .help { margin-top: 10px; display: flex; gap: 7px; font-size: 13px; color: var(--faint); }
+  .nt .help svg.lucide { width: 14px; height: 14px; margin-top: 2px; }
+</style>
+</head>
+<body>
+<div class="board" id="board"></div>
+<script src="../../m8/html/app-fixture.js"></script>
+<script src="m9.js"></script>
+<script>
+(() => {
+  const { ic, trayImg, trayFile, thumb, fchip, replyCard } = m9;
+  const menu = '<span class="ib" title="Open navigation, 5 need you"><i data-lucide="menu"></i><span class="menu-dot"></span></span>';
+  const top = (status) => `<div class="top">${menu}<span class="t2"><span class="a">Fix rounding in percent mode</span><span class="b">CALC-170 · ${status}</span></span><span class="r"><span class="ib" title="More">${ic("ellipsis")}</span></span></div>
+    <div class="segw"><span class="seg"><span class="on">${ic("messages-square")} Chat</span><span>${ic("app-window")} Preview</span></span></div>`;
+  const agentAsked = `
+    <div class="msg">
+      <span class="ava">${ic("square-terminal")}</span>
+      <div class="body">
+        <div class="who"><b>OpenCode</b><span class="meta">09:12</span></div>
+        <div class="line"><span class="ic">${ic("terminal")}</span><span class="verb">Ran</span><span class="what">pnpm test percent</span><span class="end"><span class="ok">${ic("check")}0</span></span></div>
+        <p style="margin-top:4px">I can't reproduce it: 12.5% of 845 gives 105.63 in the tests. Which screen shows 105.62? A screenshot would help.</p>
+        <div class="stat">Medium · 9.4k in · 1.2k out</div>
+      </div>
+    </div>`;
+
+  const phone1 = `
+    ${top('<span style="color:var(--amber)">●</span> Needs you')}
+    <div class="scroll">
+      <div class="msg"><span class="ava" style="font:600 10px var(--sans);color:var(--text)">PS</span><div class="body"><div class="who"><b>Priya Shah</b><span class="meta">09:04</span></div><p>Percent mode rounds half-cents down. Make it round half up, to the cent.</p></div></div>
+      ${agentAsked}
+      ${replyCard("OpenCode asked you something in its message above. Reply below.")}
+    </div>
+    <div class="dock">
+      <div class="tray">${trayImg("wrong", { size: 56 })}${trayImg("phone", { size: 56 })}${trayFile("rounding-rules.docx", "DOCX · 212 KB")}${trayFile("percent-cases.csv", "Uploading · 30%", { up: 30 })}</div>
+      <div class="tnote">${ic("image-off")}<span>DeepSeek V4.1 Flash can't see images; the agent gets them as files.</span></div>
+      <div class="bar2"><span class="clipb" title="Attach files">${ic("paperclip")}</span><span class="in">The phone build too. Finance's rules are in the docx.</span><span class="send">${ic("arrow-up")}</span></div>
+    </div>`;
+
+  const phone2 = `
+    ${top('<span style="color:var(--green)">●</span> Running')}
+    <div class="scroll">
+      ${agentAsked}
+      <div class="msg"><span class="ava" style="font:600 10px var(--sans);color:var(--text)">PS</span><div class="body">
+        <div class="who"><b>Priya Shah</b><span class="meta">09:15</span></div>
+        <p>The phone build too. Finance's rules are in the docx.</p>
+        <div class="strip">${thumb("wrong", 110)}${thumb("phone", 110)}</div>
+        <div class="files">${fchip("rounding-rules.docx", "DOCX · 212 KB", { xt: true })}${fchip("percent-cases.csv", "CSV · 6 KB")}</div>
+        <div class="where" style="align-items:flex-start;font-size:13px"><span style="margin-top:2px">${ic("image-off")}</span><span>DeepSeek V4.1 Flash can't see images: OpenCode got them as files.</span></div>
+      </div></div>
+      <div class="msg"><span class="ava">${ic("square-terminal")}</span><div class="body">
+        <div class="who"><b>OpenCode</b><span class="meta">09:15</span><span class="meta" style="color:var(--teal)">working</span></div>
+        <div class="line"><span class="ic">${ic("file-text")}</span><span class="verb">Read</span><span class="what">rounding-rules.docx.md</span></div>
+      </div></div>
+    </div>
+    <div class="dock">
+      <div class="bar2"><span class="clipb">${ic("paperclip")}</span><span class="in ph0">Message the agent…</span><span class="send" style="opacity:.4">${ic("arrow-up")}</span></div>
+    </div>`;
+
+  const phone3 = `
+    <div class="top">${menu}<span class="crumb"><span>calculator</span><i data-lucide="chevron-right" class="chev"></i><b>New task</b></span></div>
+    <div class="nt">
+      <div class="key">calculator · prompt task</div>
+      <h1>New task</h1>
+      <p class="lede">Type what the agent should do. It works on its own branch and opens a pull request.</p>
+      <div class="ntbox">
+        <div class="text">Percent mode rounds half-cents down: 12.5% of 845 shows 105.62. Round half up, to the cent, as finance's rules say.</div>
+        <div class="tray">${trayImg("wrong", { size: 56 })}${trayImg("phone", { size: 56 })}${trayFile("rounding-rules.docx", "DOCX · 212 KB")}</div>
+        <div class="tnote red">${ic("circle-alert")}<span>screen-recording.mov wasn't added: it's 38 MB, and a file can be up to 10 MB.</span><span class="end">${ic("x")}</span></div>
+        <div class="ntool">
+          <span class="clip" style="width:36px;height:36px">${ic("paperclip")}</span>
+          <span class="tog"><span class="on">Code</span><span>Refine</span></span>
+          <span class="trig"><span class="pdot" style="background:#6FB8AA"></span>calculator${ic("chevron-down", "")}</span>
+          <span class="trig">${ic("sliders-horizontal")}Default${ic("chevron-down")}</span>
+          <span class="trig">${ic("server")}build-fleet <span class="faint">· pool</span>${ic("chevron-down")}</span>
+        </div>
+        <div class="go"><span class="btn primary">${ic("arrow-up")} Start task</span></div>
+      </div>
+      <p class="help">${ic("info")}<span>The 3 files go into the box under <span class="mono" style="font-size:12.5px;color:var(--text)">.ostra/attachments/1/</span>.</span></p>
+    </div>`;
+
+  const x = [75, 525, 975];
+  document.getElementById("board").innerHTML = `
+    <span class="lbl" style="left:${x[0]}px"><b>1</b>The box under the chat: files above the field</span>
+    <div class="ph" style="left:${x[0]}px">${phone1}</div>
+    <span class="lbl" style="left:${x[1]}px"><b>2</b>Sent: thumbnails, files, and what the agent got</span>
+    <div class="ph" style="left:${x[1]}px">${phone2}</div>
+    <span class="lbl" style="left:${x[2]}px"><b>3</b>A new task with files, and one too big</span>
+    <div class="ph" style="left:${x[2]}px">${phone3}</div>`;
+
+  window.addEventListener("load", () => { lucide.createIcons(); document.body.dataset.ready = "1"; });
+})();
+</script>
+</body>
+</html>

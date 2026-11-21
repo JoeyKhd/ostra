@@ -1,0 +1,175 @@
+<!doctype html>
+<!-- Target: the task page's message box carrying attachments (composer-attachments.md).
+       (default)    composer-attachments: two images and two files in the box, one still uploading, a reply to the agent's question.
+       ?theme=light composer-attachments-light.
+       ?view=drop   composer-drop: files dragged over the page with the preview pane open; the chat column is the drop zone.
+     The page is the live task page as of 2026-11-21 (the needs-you block at the end of the thread, 18d0e104). Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m9 · the message box with attachments</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="m9.css">
+<style>
+  /* The chat beside the preview pane (m8 task-preview.md): the chat column is 500 wide. */
+  .content.split { grid-template-columns: 500px minmax(0, 1fr); }
+  .chat { padding: 22px 28px 16px; min-width: 0; overflow: hidden; display: flex; flex-direction: column; position: relative; }
+  .chat h1 { font-size: 24px; }
+  .chat .tabs { margin-top: 12px; gap: 18px; }
+  .pv { border-left: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; position: relative; background: var(--bg); }
+  .pv .tb { height: 46px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-bottom: 1px solid var(--line); }
+  .svc { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 8px 0 10px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--surface); font: 400 13.5px var(--mono); color: var(--text); flex: none; }
+  .svc .p { color: var(--faint); }
+  .svc svg.lucide { width: 14px; height: 14px; color: var(--faint); }
+  .path { flex: 1; min-width: 60px; display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--surface); font: 400 13.5px var(--mono); color: var(--text); }
+  .pv .tb .ib { color: var(--muted); }
+  .wp { display: inline-flex; align-items: center; gap: 2px; height: 30px; padding: 0 6px; border-radius: 6px; color: var(--muted); font: 500 13px var(--sans); flex: none; }
+  .wp svg.lucide { width: 15px; height: 15px; }
+  .wp .chev { width: 12px; height: 12px; color: var(--faint); }
+  .pv .vp { flex: 1; min-height: 0; padding: 10px; background: var(--surface); position: relative; }
+  .pv .frame { width: 100%; height: 100%; border: 1px solid var(--line-2); border-radius: 8px; overflow: hidden; position: relative; background: #fff; }
+  .pv .foot { height: 32px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .pv .foot .mono { font-size: 12.5px; color: var(--faint); }
+  .pv .foot .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+</style>
+</head>
+<body data-space="projects" data-panel="project" data-active="tasks" data-live="calc-192">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>calculator</span><i data-lucide="chevron-right" class="chev"></i><span>Tasks</span><i data-lucide="chevron-right" class="chev"></i><b>CALC-192</b>
+      <div class="right">
+        <span class="seg" id="seg"><span><i data-lucide="app-window"></i> Preview</span><span class="on"><i data-lucide="panel-right"></i> Properties</span></span>
+        <span class="ib"><i data-lucide="link"></i></span>
+        <span class="btn sm"><i data-lucide="square-terminal"></i> Take it local</span>
+        <span class="btn sm"><i data-lucide="square"></i> Stop</span>
+      </div>
+    </div>
+    <div class="content" id="content"></div>
+  </section>
+</div>
+<script src="../../m8/html/app-fixture.js"></script>
+<script src="m9.js"></script>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  const drop = q.get("view") === "drop";
+  const { ic, trayImg, trayFile, replyCard } = m9;
+
+  const header = (small) => `
+    <div class="key">CALC-192 · from a prompt</div>
+    <h1>Add a history panel</h1>
+    <p class="doing"><span class="st"><span class="dot amber"></span>Needs you</span><span class="sep">·</span><span class="muted">${small ? "Idle · stops in 12 min" : 'Idle, the box stops in 12 min <span class="sep">·</span> Started 24 min ago on <span class="mono">build-fleet-03</span>'}</span></p>
+    <div class="tabs" style="margin-top:${small ? 12 : 14}px"><span class="tab on">Activity</span><span class="tab">Changes <span class="n">2</span></span><span class="tab">Checks</span><span class="tab">Event log</span></div>`;
+
+  const thread = (small) => `
+    <div class="thread" style="padding-top:${small ? 4 : 8}px">
+      <div class="msg">
+        <span class="ava" style="font:600 10px var(--sans);color:var(--text)">SR</span>
+        <div class="body">
+          <div class="who"><b>Sam Rivera</b><span class="meta">14:18</span></div>
+          <p>Add a history panel beside the calculator: the last 50 results, newest first. Clicking one puts it back in the display.</p>
+        </div>
+      </div>
+      <div class="msg">
+        <span class="ava">${ic("square-terminal")}</span>
+        <div class="body">
+          <div class="who"><b>OpenCode</b><span class="meta">14:19 · Claude Sonnet 5.5</span></div>
+          <div class="line"><span class="ic">${ic("pencil")}</span><span class="verb">Edited</span><span class="what">src/history/store.ts</span><span class="add">+64</span></div>
+          <div class="line"><span class="ic">${ic("pencil")}</span><span class="verb">Edited</span><span class="what">src/history/panel.tsx</span><span class="add">+118</span></div>
+          <div class="line"><span class="ic">${ic("terminal")}</span><span class="verb">Ran</span><span class="what">pnpm test</span><span class="end"><span class="ok">${ic("check")}exit 0</span></span></div>
+          <div class="line"><span class="ic">${ic("image")}</span><span class="verb">Captured</span><span class="what"><span style="font-family:var(--sans)">1 screenshot of</span> /history</span><span class="end">web :5173</span></div>
+          <div class="strip" style="margin:4px 0 0 32px">${m9.thumb("app", 110, { cap: "1280 · /history" })}</div>
+          <div class="where" style="margin-left:32px">${ic("paperclip")}<span>Kept with the task. It goes into the PR's description when it opens.</span></div>
+          <p style="margin-top:8px">The store keeps the last 50 results, newest first, and the panel reads from it. Before I style the panel: is there a design for it? I can match a mock, or follow the keypad's spacing.</p>
+          <div class="stat">High · 18.2k in · 3.1k out</div>
+        </div>
+      </div>
+      ${replyCard("OpenCode asked you something in its message above. Reply below.")}
+    </div>`;
+
+  const composer = () => `
+    <div class="composer focus" style="margin-top:10px">
+      <div class="text">Here's Dana's mock and the spec. Keep "Use" on the right of each row, and use the sample for the tests.<span class="caret"></span></div>
+      <div class="tray">
+        ${trayImg("pasted")}
+        ${trayImg("mock")}
+        ${trayFile("history-panel-spec.docx", "DOCX · 48 KB")}
+        ${trayFile("results-sample.csv", "Uploading · 62%", { up: 62 })}
+      </div>
+      <div class="row">
+        <span class="clip" title="Attach files. You can paste or drop them too.">${ic("paperclip")}</span>
+        <span class="hint">${ic("info")} OpenCode is waiting for your reply.</span>
+        <span class="btn sm primary"><i data-lucide="arrow-up"></i> Send</span>
+      </div>
+    </div>`;
+
+  const props = `
+    <aside class="props">
+      <div class="group">
+        <h5>Properties</h5>
+        <div class="prop"><span class="k">Status</span><span class="v"><span class="dot amber"></span>Needs you</span></div>
+        <div class="prop"><span class="k">Driver</span><span class="v"><span class="av">SR</span>Sam Rivera</span></div>
+        <div class="prop"><span class="k">Profile</span><span class="v">Default</span></div>
+        <div class="prop"><span class="k">Agent</span><span class="v">OpenCode</span></div>
+        <div class="prop"><span class="k">Model</span><span class="v">Claude Sonnet 5.5</span></div>
+        <div class="prop"><span class="k">Runner</span><span class="v mono">build-fleet-03</span></div>
+        <div class="prop"><span class="k">Box</span><span class="v">Idle · stops in 12 min</span></div>
+        <div class="prop"><span class="k">Tokens</span><span class="v mono">18.2k in · 3.1k out</span></div>
+        <div class="prop"><span class="k">Spend</span><span class="v"><span class="mono">$1.12</span><span class="muted mono" style="margin-left:-2px">of $25.00</span></span></div>
+        <div class="prop"><span class="k">Time</span><span class="v mono">24 min</span></div>
+      </div>
+      <div class="group">
+        <h5>Code</h5>
+        <div class="prop"><span class="k">Repo</span><span class="v mono">acme/calculator-web</span></div>
+        <div class="prop"><span class="k">Branch</span><span class="v mono">ostra/calc-192-history-panel</span></div>
+        <div class="prop"><span class="k">PR</span><span class="v faint">None yet</span></div>
+      </div>
+    </aside>`;
+
+  const content = document.getElementById("content");
+  if (drop) {
+    // The preview pane open: the chat is 500 wide, and the drop zone covers it and only it.
+    document.querySelector("#seg").innerHTML = '<span class="on"><i data-lucide="app-window"></i> Preview</span><span><i data-lucide="panel-right"></i> Properties</span>';
+    content.classList.add("split");
+    content.innerHTML = `
+      <div class="chat">
+        ${header(true)}
+        ${thread(true)}
+        <div class="composer" style="margin-top:10px"><div class="ph">Reply to OpenCode…</div><div class="row"><span class="clip">${ic("paperclip")}</span><span class="hint">${ic("info")} OpenCode is waiting for your reply.</span><span class="btn sm primary dis"><i data-lucide="arrow-up"></i> Send</span></div></div>
+        <div class="drop" style="inset:10px 10px 10px 10px">
+          <div class="in">
+            <span class="ico">${ic("paperclip")}</span>
+            <h4>Drop to attach</h4>
+            <p>They go in your reply to OpenCode.</p>
+            <div class="lim">Up to 10 files · 10 MB each · 25 MB in all</div>
+          </div>
+        </div>
+      </div>
+      <div class="pv">
+        <div class="tb"><span class="svc"><span class="dot green"></span>web <span class="p">:5173</span>${ic("chevron-down")}</span><span class="ib">${ic("rotate-cw")}</span><span class="path">/history</span><span class="wp">${ic("monitor")}Fit${ic("chevron-down", "")}</span><span class="ib">${ic("camera")}</span><span class="ib">${ic("external-link")}</span><span class="ib">${ic("maximize-2")}</span></div>
+        <div class="vp"><div class="frame">${tallyApp()}</div></div>
+        <div class="foot"><span class="dot green"></span>Live <span class="faint">· the box's browser, streamed</span><span class="right"><span class="mono">614 × 772</span><span class="faint">·</span><span class="mono">build-fleet-03</span></span></div>
+      </div>
+      <div class="ghost" style="left:352px;top:686px">${ic("files")}<span>Copy</span><span class="n">2</span></div>
+      <svg class="cursor" style="left:338px;top:670px" viewBox="0 0 18 22"><path d="M1 1 L1 17 L5.2 13.2 L8 20 L10.6 18.9 L7.9 12.3 L13.5 12.3 Z" fill="#fff" stroke="#000" stroke-width="1.2" stroke-linejoin="round"/></svg>`;
+    content.style.position = "relative";
+  } else {
+    content.innerHTML = `<div class="page">${header(false)}${thread(false)}${composer()}</div>${props}`;
+  }
+
+  window.addEventListener("load", () => {
+    const row = document.querySelector(".live.on");
+    if (row) {
+      row.querySelector(".st").innerHTML = '<span class="dot amber"></span>';
+      row.querySelector(".d").innerHTML = 'CALC-192 · <span class="amber-t">Needs you</span>';
+    }
+  });
+})();
+</script>
+<script src="../../m8/html/shell.js"></script>
+</body>
+</html>

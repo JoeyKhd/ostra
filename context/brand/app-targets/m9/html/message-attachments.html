@@ -1,0 +1,178 @@
+<!doctype html>
+<!-- Target: a member's message with attachments in the thread (message-attachments.md).
+       (default)    message-attachments: Sam's reply with two images and three files, two of them with their text
+                    extracted, the pointer on a file; then the agent's turn reading them.
+       ?theme=light message-attachments-light.
+       ?viewer=1    message-attachments-viewer: an image opened in milestone 8's attachment viewer.
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m9 · a message with attachments</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="m9.css">
+<style>
+  /* Milestone 8's viewer (task-attachments.md, "The viewer"), as built. */
+  .viewer { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 1240px; height: 860px; background: var(--raise); border: 1px solid var(--line-2); border-radius: 12px; box-shadow: var(--shadow-palette); z-index: 9; display: flex; flex-direction: column; overflow: hidden; }
+  .viewer .vh { height: 52px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 16px 0 20px; border-bottom: 1px solid var(--line); }
+  .viewer .vh b { font-size: 15px; }
+  .viewer .vh .faint { font-size: 13px; }
+  .viewer .vh .r { margin-left: auto; display: flex; align-items: center; gap: 6px; color: var(--faint); font-size: 12.5px; }
+  .viewer .vb { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 300px; }
+  .stage { display: flex; flex-direction: column; min-width: 0; background: var(--surface); border-right: 1px solid var(--line); }
+  .stage .img { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; position: relative; padding: 18px 56px; }
+  .stage .frame { position: relative; width: 816px; height: 510px; border: 1px solid var(--line-2); border-radius: 6px; overflow: hidden; background: #fff; }
+  .stage .frame .sc { position: absolute; top: 0; left: 0; transform-origin: 0 0; transform: scale(0.5667); width: 1440px; height: 900px; }
+  .stage .arrow { position: absolute; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--raise); display: grid; place-items: center; color: var(--muted); }
+  .stage .arrow.l { left: 12px; opacity: 0.4; } .stage .arrow.r { right: 12px; }
+  .stage .film { height: 120px; flex: none; display: flex; align-items: center; justify-content: center; gap: 14px; border-top: 1px solid var(--line); background: var(--raise); }
+  .info { padding: 18px 18px; overflow: hidden; }
+  .info .route { font: 400 15px var(--mono); color: var(--text); word-break: break-all; }
+  .info .prop { grid-template-columns: 92px 1fr; }
+  .info .acts { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+  .info .acts .btn { justify-content: flex-start; }
+  .info .note { margin-top: 14px; font-size: 12.5px; color: var(--faint); display: flex; gap: 8px; }
+  .info .note svg.lucide { width: 14px; height: 14px; margin-top: 2px; flex: none; }
+  .now { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; margin: 4px 0 0 6px; }
+  .now .mono { font-size: 13.5px; color: var(--text); }
+</style>
+</head>
+<body data-space="projects" data-panel="project" data-active="tasks" data-live="calc-192">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>calculator</span><i data-lucide="chevron-right" class="chev"></i><span>Tasks</span><i data-lucide="chevron-right" class="chev"></i><b>CALC-192</b>
+      <div class="right">
+        <span class="seg"><span><i data-lucide="app-window"></i> Preview</span><span class="on"><i data-lucide="panel-right"></i> Properties</span></span>
+        <span class="ib"><i data-lucide="link"></i></span>
+        <span class="btn sm"><i data-lucide="square-terminal"></i> Take it local</span>
+        <span class="btn sm"><i data-lucide="square"></i> Stop</span>
+      </div>
+    </div>
+    <div class="content" id="content"></div>
+  </section>
+</div>
+<script src="../../m8/html/app-fixture.js"></script>
+<script src="m9.js"></script>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  const { ic, thumb, fchip } = m9;
+  const viewer = q.get("viewer") === "1";
+
+  document.getElementById("content").innerHTML = `
+    <div class="page">
+      <div class="key">CALC-192 · from a prompt</div>
+      <h1>Add a history panel</h1>
+      <p class="doing"><span class="st"><span class="dot green"></span>Running</span><span class="sep">·</span><span class="muted">31 min on <span class="mono">build-fleet-03</span></span></p>
+      <div class="tabs" style="margin-top:14px"><span class="tab on">Activity</span><span class="tab">Changes <span class="n">3</span></span><span class="tab">Checks</span><span class="tab">Event log</span></div>
+      <div class="thread" style="padding-top:2px">
+        <div class="msg" style="padding-top:4px">
+          <span class="ava">${ic("square-terminal")}</span>
+          <div class="body">
+            <div class="who"><b>OpenCode</b><span class="meta">14:19 · Claude Sonnet 5.5</span></div>
+            <p>The store keeps the last 50 results, newest first, and the panel reads from it. Before I style the panel: is there a design for it? I can match a mock, or follow the keypad's spacing.</p>
+            <div class="stat">High · 18.2k in · 3.1k out</div>
+          </div>
+        </div>
+        <div class="msg">
+          <span class="ava" style="font:600 10px var(--sans);color:var(--text)">SR</span>
+          <div class="body" style="position:relative">
+            <div class="who"><b>Sam Rivera</b><span class="meta">14:52</span></div>
+            <p>Here's Dana's mock and the spec. Keep "Use" on the right of each row, and use the sample for the tests.</p>
+            <div class="strip">${thumb("mock", 110, { label: "history-panel-mock.png, open" })}${thumb("pasted", 110, { label: "Pasted image at 14:51, open" })}</div>
+            <div class="files">
+              ${fchip("history-panel-spec.docx", "DOCX · 48 KB", { xt: true })}
+              ${fchip("brand-guide.pdf", "PDF · 1.2 MB", { xt: true, dl: true, hover: true })}
+              ${fchip("results-sample.csv", "CSV · 2 KB")}
+            </div>
+            <div class="tip light" style="left:404px;top:226px">ostra took the text out of this file, 6,210 words, so the agent can read it. OpenCode got the PDF and its text.</div>
+          </div>
+        </div>
+        <div class="msg">
+          <span class="ava">${ic("square-terminal")}</span>
+          <div class="body">
+            <div class="who"><b>OpenCode</b><span class="meta">14:52 · Claude Sonnet 5.5</span><span class="meta" style="color:var(--teal)">working</span></div>
+            <div class="line"><span class="ic">${ic("file-text")}</span><span class="verb">Read</span><span class="what">.ostra/attachments/4/history-panel-spec.docx.md</span></div>
+            <div class="line"><span class="ic">${ic("file-text")}</span><span class="verb">Read</span><span class="what">.ostra/attachments/4/results-sample.csv</span></div>
+            <p style="margin-top:4px">Matching Dana's mock: "Use" on the right, the expression over the value, and the spec's empty state.</p>
+            <div class="line"><span class="ic">${ic("pencil")}</span><span class="verb">Edited</span><span class="what">src/history/panel.tsx</span><span class="add">+31</span><span class="del">−12</span></div>
+            <div class="now"><span class="spin"></span>Editing <span class="mono">src/history/panel.css</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="composer" style="margin-top:10px">
+        <div class="ph" style="height:30px">Message the agent…</div>
+        <div class="row"><span class="clip">${ic("paperclip")}</span><span class="hint">${ic("info")} Send queues. Interrupt and send stops the current turn.</span><span class="btn sm dis"><i data-lucide="pause"></i> Interrupt and send</span><span class="btn sm primary dis"><i data-lucide="arrow-up"></i> Send</span></div>
+      </div>
+    </div>
+    <aside class="props">
+      <div class="group">
+        <h5>Properties</h5>
+        <div class="prop"><span class="k">Status</span><span class="v"><span class="dot green"></span>Running</span></div>
+        <div class="prop"><span class="k">Driver</span><span class="v"><span class="av">SR</span>Sam Rivera</span></div>
+        <div class="prop"><span class="k">Agent</span><span class="v">OpenCode</span></div>
+        <div class="prop"><span class="k">Model</span><span class="v">Claude Sonnet 5.5</span></div>
+        <div class="prop"><span class="k">Runner</span><span class="v mono">build-fleet-03</span></div>
+        <div class="prop"><span class="k">Spend</span><span class="v"><span class="mono">$1.48</span><span class="muted mono" style="margin-left:-2px">of $25.00</span></span></div>
+        <div class="prop"><span class="k">Time</span><span class="v mono">31 min</span></div>
+      </div>
+      <div class="group">
+        <h5>Attachments</h5>
+        <div class="prop"><span class="k">From people</span><span class="v">2 images · 3 files</span></div>
+        <div class="prop"><span class="k">Captured</span><span class="v">1 screenshot</span></div>
+        <div class="prop"><span class="k">Size</span><span class="v mono">1.9 MB</span></div>
+        <div class="prop"><span class="k">Where</span><span class="v">The blob store, with the task</span></div>
+        <div class="prop"><span class="k">In the box</span><span class="v mono">.ostra/attachments/</span></div>
+      </div>
+      <div class="group">
+        <h5>Code</h5>
+        <div class="prop"><span class="k">Repo</span><span class="v mono">acme/calculator-web</span></div>
+        <div class="prop"><span class="k">Branch</span><span class="v mono">ostra/calc-192-history-panel</span></div>
+        <div class="prop"><span class="k">PR</span><span class="v faint">None yet</span></div>
+      </div>
+    </aside>`;
+
+  if (viewer) {
+    const film = thumb("mock", 75, { cap: "history-panel-mock.png", sel: true }) + thumb("pasted", 75, { cap: "Pasted image 14.51.png" });
+    document.querySelector(".app").insertAdjacentHTML("beforeend", `<div class="scrim"></div>
+    <div class="viewer" role="dialog" aria-label="Attachments">
+      <div class="vh"><b>Attachments</b><span class="faint">CALC-192 · Sam Rivera's message at 14:52 · 1 of 2</span><span class="r"><span class="kbd">←</span><span class="kbd">→</span><span style="margin-right:10px">to move</span><span class="kbd">esc</span>Close</span></div>
+      <div class="vb">
+        <div class="stage">
+          <div class="img"><span class="arrow l">${ic("chevron-left")}</span><div class="frame"><div class="sc">${m9.pictures.mock()}</div></div><span class="arrow r">${ic("chevron-right")}</span></div>
+          <div class="film">${film}</div>
+        </div>
+        <div class="info">
+          <div class="faint" style="font-size:12px;font-weight:500">Image</div>
+          <div class="route" style="margin-top:4px">history-panel-mock.png</div>
+          <div style="margin-top:12px">
+            <div class="prop"><span class="k">Size</span><span class="v mono">1440 × 900</span></div>
+            <div class="prop"><span class="k">File</span><span class="v mono">PNG · 412 KB</span></div>
+            <div class="prop"><span class="k">From</span><span class="v"><span class="av">SR</span>Sam Rivera</span></div>
+            <div class="prop"><span class="k">Message</span><span class="v teal">Sam Rivera · 14:52</span></div>
+            <div class="prop"><span class="k">Agent got</span><span class="v">the image</span></div>
+            <div class="prop"><span class="k">In the box</span><span class="v mono" style="font-size:12.5px">.ostra/attachments/4/</span></div>
+          </div>
+          <div class="acts">
+            <span class="btn sm">${ic("download")} Download</span>
+            <span class="btn sm">${ic("link")} Copy link</span>
+          </div>
+          <div class="note">${ic("lock")}<span>Kept in the blob store with the task. A link opens only for someone who can open calculator.</span></div>
+        </div>
+      </div>
+    </div>`);
+  }
+
+  window.addEventListener("load", () => {
+    const row = document.querySelector(".live.on");
+    if (row) row.querySelector(".d").textContent = "CALC-192 · Editing panel.css";
+  });
+})();
+</script>
+<script src="../../m8/html/shell.js"></script>
+</body>
+</html>

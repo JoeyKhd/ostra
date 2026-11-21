@@ -1,0 +1,106 @@
+<!doctype html>
+<!-- Target: every state of the message box's attachments, at the task page's real sizes, on one board
+     (composer-attachments.md, "Every state"). Each box is 660 wide: the thread column at 1366 or so.
+     Not a page: the boxes only, straight on, each with its number and what it shows. Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m9 · the message box, every state</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="m9.css">
+<style>
+  .board { position: relative; width: 1440px; height: 956px; background: var(--bg); }
+  .slot { position: absolute; width: 660px; }
+  .slot .lbl { display: block; margin-bottom: 10px; }
+  .slot .composer .text { min-height: 22px; }
+  .slot .composer .ph { height: 22px; }
+  .dz { border: 1.5px dashed var(--teal); background: var(--surface); }
+  .dz .in { height: 104px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .dz .in b { font-size: 15px; }
+  .dz .in .lim { margin-top: 4px; font: 400 12.5px var(--mono); color: var(--faint); }
+  .dz .in .ico { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line-2); display: grid; place-items: center; color: var(--teal); margin-bottom: 8px; }
+  .dz .in .ico svg.lucide { width: 16px; height: 16px; }
+  .tipx { position: absolute; z-index: 3; }
+</style>
+</head>
+<body>
+<div class="board" id="board"></div>
+<script src="../../m8/html/app-fixture.js"></script>
+<script src="m9.js"></script>
+<script>
+(() => {
+  const { ic, trayImg, trayFile } = m9;
+  const row = (hint, send, { clip = "" } = {}) => `<div class="row"><span class="clip${clip}">${ic("paperclip")}</span><span class="hint">${hint}</span>${send}</div>`;
+  const sendBtn = '<span class="btn sm primary"><i data-lucide="arrow-up"></i> Send</span>';
+  const sendOff = '<span class="btn sm primary dis"><i data-lucide="arrow-up"></i> Send</span>';
+  const info = (t) => `${ic("info")} ${t}`;
+  const slot = (x, y, n, label, body) => `<div class="slot" style="left:${x}px;top:${y}px"><span class="lbl"><b>${n}</b>${label}</span>${body}</div>`;
+  const L = 40, R = 740;
+
+  document.getElementById("board").innerHTML = [
+    slot(L, 34, 1, "Dragging files over the new-task page: the box is the drop zone", `
+      <div class="composer dz"><div class="in"><span class="ico">${ic("paperclip")}</span><b>Drop to attach</b><span class="lim">Up to 10 files · 10 MB each · 25 MB in all</span></div></div>`),
+    slot(R, 34, 2, "A pasted screenshot still uploading; Send waits for it", `
+      <div class="composer">
+        <div class="text">The "Use" buttons wrap at 768. See the screenshot.</div>
+        <div class="tray">${trayImg("pasted", { up: 40 })}${trayFile("history-panel-spec.docx", "DOCX · 48 KB")}</div>
+
+        ${row(info("OpenCode is waiting for your reply."), '<span class="btn sm primary busy"><span class="sp"></span> Uploading 1 of 2…</span>')}
+      </div>`),
+
+    slot(L, 252, 3, "A file over 10 MB isn't added, and the box says why", `
+      <div class="composer">
+        <div class="text">Rounding is still off in percent mode. The cases are in the csv.</div>
+        <div class="tray">${trayImg("wrong")}${trayFile("percent-cases.csv", "CSV · 6 KB")}</div>
+        <div class="tnote red">${ic("circle-alert")}<span>design-review.mov wasn't added: it's 48 MB, and a file can be up to 10 MB.</span><span class="end">${ic("x")}</span></div>
+
+        ${row(info("Send queues. Interrupt and send stops the current turn."), '<span class="btn sm"><i data-lucide="pause"></i> Interrupt and send</span>' + sendBtn)}
+      </div>`),
+    slot(R, 252, 4, "Ten files is the most: the paperclip turns off, and the rest aren't added", `
+      <div class="composer">
+        <div class="tray">${["wrong", "right", "phone", "pasted", "mock", "app", "wrong", "phone", "right", "pasted"].map((p) => trayImg(p)).join("")}</div>
+        <div class="tnote red">${ic("circle-alert")}<span>3 more weren't added: a message holds up to 10 files.</span><span class="end">${ic("x")}</span></div>
+
+        ${row(info("10 of 10 files"), sendBtn, { clip: " off" })}
+        <div class="tip tipx" style="left:-6px;bottom:-30px">A message holds up to 10 files</div>
+      </div>`),
+
+    slot(L, 500, 5, "Past 25 MB in all: the last file isn't added; the hint counts once past 20 MB", `
+      <div class="composer">
+        <div class="text">Here are the two months that disagree.</div>
+        <div class="tray">${trayFile("staging-orders.sql", "SQL · 9.8 MB")}${trayFile("orders-2026-10.csv", "CSV · 9.1 MB")}</div>
+        <div class="tnote red">${ic("circle-alert")}<span>orders-2026-11.csv wasn't added: the message would hold 27.4 MB, over 25 MB.</span><span class="end">${ic("x")}</span></div>
+
+        ${row(`${ic("hard-drive")} <span class="mono" style="font-size:12.5px">18.9 MB of 25 MB</span>`, sendBtn)}
+      </div>`),
+    slot(R, 500, 6, "An upload failed: Retry, or remove it; Send waits until then", `
+      <div class="composer">
+        <div class="text">Here's Dana's mock and the spec.</div>
+        <div class="tray">${trayImg("mock")}${trayFile("history-panel-spec.docx", "Didn't upload <span class=\"teal\">Retry</span>", { bad: true })}</div>
+
+        ${row(`${ic("circle-alert", "color:var(--red)")} <span>Retry or remove history-panel-spec.docx to send.</span>`, sendOff)}
+      </div>`),
+
+    slot(L, 728, 7, "The profile's model can't take images: they go to the agent as files", `
+      <div class="composer">
+        <div class="text">Both screens round 12.5% of 845 down.</div>
+        <div class="tray">${trayImg("wrong")}${trayImg("phone")}</div>
+        <div class="tnote">${ic("image-off")}<span>DeepSeek V4.1 Flash can't see images; the agent gets them as files.</span></div>
+
+        ${row(info("Send queues. Interrupt and send stops the current turn."), '<span class="btn sm"><i data-lucide="pause"></i> Interrupt and send</span>' + sendBtn)}
+      </div>`),
+    slot(R, 728, 8, "Files and no words: Send works. Focus on a file: Delete or Backspace removes it", `
+      <div class="composer focus">
+        <div class="ph">Reply to OpenCode…</div>
+        <div class="tray">${trayImg("wrong")}${trayFile("rounding-rules.docx", "DOCX · 212 KB", { focus: true })}</div>
+
+        ${row(info("OpenCode is waiting for your reply."), sendBtn)}
+      </div>`),
+  ].join("");
+
+  window.addEventListener("load", () => { lucide.createIcons(); document.body.dataset.ready = "1"; });
+})();
+</script>
+</body>
+</html>

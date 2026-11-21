@@ -1,0 +1,185 @@
+<!doctype html>
+<!-- Target: the ticket's context on a task started from Linear (ticket-context.md). The thread's first message is
+     what the agent got: the ticket's description, its attachments (screenshots, documents, links) and its comments.
+       (default)        ticket-context: everything fetched.
+       ?theme=light     ticket-context-light.
+       ?state=skipped   ticket-context-skipped: 23 attachments; 20 given, 3 left out (too big, too many), with the note.
+       ?state=failed    ticket-context-failed: two attachments didn't load from Linear, with Retry.
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m9 · the ticket's context</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="m9.css">
+<style>
+  .sync { display: flex; align-items: center; justify-content: space-between; min-height: 26px; font-size: 14px; }
+  .sync .s { font-size: 13px; }
+  .got .ava { color: var(--muted); }
+  .now { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; margin: 2px 0 0 6px; }
+  .now .mono { font-size: 13.5px; color: var(--text); }
+</style>
+</head>
+<body data-space="projects" data-panel="project" data-active="tasks" data-live="calc-170">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>calculator</span><i data-lucide="chevron-right" class="chev"></i><span>Tasks</span><i data-lucide="chevron-right" class="chev"></i><b>CALC-170</b>
+      <div class="right">
+        <span class="seg"><span><i data-lucide="app-window"></i> Preview</span><span class="on"><i data-lucide="panel-right"></i> Properties</span></span>
+        <span class="ib"><i data-lucide="link"></i></span>
+        <span class="btn sm"><i data-lucide="square-terminal"></i> Take it local</span>
+        <span class="btn sm"><i data-lucide="square"></i> Stop</span>
+      </div>
+    </div>
+    <div class="content" id="content"></div>
+  </section>
+</div>
+<script src="../../m8/html/app-fixture.js"></script>
+<script src="m9.js"></script>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  const state = q.get("state") ?? "all";
+  const { ic, thumb, fchip } = m9;
+
+  const header = `
+    <div class="key">CALC-170 · from Linear</div>
+    <h1>Fix rounding in percent mode</h1>
+    <p class="doing"><span class="st"><span class="dot green"></span>Running</span><span class="sep">·</span><span class="muted">1 min on <span class="mono">build-fleet-03</span></span></p>
+    <div class="tstrip">
+      <span class="chip">${ic("contrast")}In Progress</span><span class="chip">bug</span><span class="chip">billing</span>
+      <span class="muted" style="font-size:14px"><span class="faint">· </span>High priority</span>
+      <span class="link" style="font-size:14px">Open in Linear ${ic("arrow-up-right")}</span>
+    </div>
+    <div class="tabs" style="margin-top:14px"><span class="tab on">Activity</span><span class="tab">Changes</span><span class="tab">Checks</span><span class="tab">Event log</span></div>`;
+
+  const desc = `
+    <div class="sec2">Description</div>
+    <p class="desc clamp">Percent mode rounds half-cents down. 12.5% of 845 shows <span class="mono" style="font-size:13.5px">105.62</span>; finance expects <span class="mono" style="font-size:13.5px">105.63</span>: half up, to the cent, on the final value only. The tax line in Billing has the same bug, but that's BIL-91. Steps: open Tally, switch to percent mode, enter 845, then 12.5, then =.</p>
+    <span class="tlink">Show all ${ic("chevron-down")}</span>`;
+
+  const comments = `
+    <div class="sec2">Comments <span class="n">3</span></div>
+    <div class="cmt"><span class="av">ML</span><span class="who2">Marcus Lee<span class="meta">1 d</span></span><span class="c">Finance confirmed: half up, to the cent. Their rules are in the docx.</span></div>
+    <div class="cmt"><span class="av">PS</span><span class="who2">Priya Shah<span class="meta">20 h</span></span><span class="c">Repro on 2.14 and on main. Screenshots attached, the phone build too.</span></div>
+    <span class="tlink">Show 1 more ${ic("chevron-down")}</span>`;
+
+  const sentry = fchip("Sentry · ACME-WEB-4F2", "Link · not fetched", { link: true, icon: "link-2" });
+
+  let attachments, context, foot;
+  if (state === "skipped") {
+    attachments = `
+      <div class="sec2">Attachments <span class="n">20 of 23</span></div>
+      <div class="strip">${thumb("wrong", 110)}${thumb("right", 110)}${thumb("phone", 110)}${thumb("pasted", 110)}<div class="more" title="11 more images, open the viewer">+11</div></div>
+      <div class="files">${fchip("rounding-rules.docx", "DOCX · 212 KB", { xt: true })}${fchip("IEEE-754-note.pdf", "PDF · 1.4 MB", { xt: true })}${fchip("percent-cases.csv", "CSV · 6 KB")}${fchip("finance-thread.eml", "EML · 88 KB", { xt: true, icon: "mail" })}</div>
+      <div class="skip">
+        <div class="h">${ic("circle-minus")}<span>3 left out, and the agent was told which</span></div>
+        <ul>
+          <li><span class="mono">support-call.mp4</span><span>84 MB, over the 10 MB a file can be</span></li>
+          <li><span class="mono">logs-november.zip</span><span>31 MB, over the 10 MB a file can be</span></li>
+          <li><span class="mono">checkout-flow-7.png</span><span>past the 20 attachments a ticket can give</span></li>
+        </ul>
+      </div>`;
+    context = '<span class="v">20 of 23 attachments</span>';
+  } else if (state === "failed") {
+    attachments = `
+      <div class="sec2">Attachments <span class="n">5 of 7</span></div>
+      <div class="strip"><div class="ph-tile">${ic("image-off")}wrong-total.png<br>didn't load</div>${thumb("right", 110)}${thumb("phone", 110)}</div>
+      <div class="files">${fchip("rounding-rules.docx", "DOCX · 212 KB", { xt: true })}${fchip("IEEE-754-note.pdf", "didn't load", { icon: "file-x", gone: true })}${fchip("percent-cases.csv", "CSV · 6 KB")}${sentry}</div>
+      <div class="fail">
+        <div class="h">${ic("circle-alert")}2 attachments didn't load from Linear</div>
+        <p><span class="mono">wrong-total.png</span> and <span class="mono">IEEE-754-note.pdf</span>: Linear answered 503 three times, the last at 14:02.</p>
+        <div class="acts"><span class="btn sm">${ic("rotate-ccw")} Retry</span><span>The agent started without them. Once they load, it gets them with its next turn.</span></div>
+      </div>`;
+    context = '<span class="v red">2 attachments didn\'t load</span>';
+  } else {
+    attachments = `
+      <div class="sec2">Attachments <span class="n">7</span></div>
+      <div class="strip">${thumb("wrong", 110, { label: "wrong-total.png, open" })}${thumb("right", 110)}${thumb("phone", 110)}</div>
+      <div class="files">${fchip("rounding-rules.docx", "DOCX · 212 KB", { xt: true })}${fchip("IEEE-754-note.pdf", "PDF · 1.4 MB", { xt: true })}${fchip("percent-cases.csv", "CSV · 6 KB")}${sentry}</div>`;
+    context = '<span class="v">7 attachments · 3 comments</span>';
+  }
+  foot = `<div class="gotfoot">${ic("paperclip")}<span>In the box under <span class="mono">.ostra/ticket/</span>, with the title, the labels and the profile's instructions</span><span class="faint">·</span><span class="teal">Show the prompt ${ic("chevron-down")}</span></div>`;
+
+  const agentTurn = state === "failed" ? `
+        <div class="msg">
+          <span class="ava">${ic("square-terminal")}</span>
+          <div class="body">
+            <div class="who"><b>OpenCode</b><span class="meta">14:03 · Claude Sonnet 5.5</span><span class="meta" style="color:var(--teal)">working</span></div>
+            <div class="now"><span class="spin"></span>Reading <span class="mono">.ostra/ticket/rounding-rules.docx.md</span></div>
+          </div>
+        </div>` : `
+        <div class="msg">
+          <span class="ava">${ic("square-terminal")}</span>
+          <div class="body">
+            <div class="who"><b>OpenCode</b><span class="meta">14:03 · Claude Sonnet 5.5</span><span class="meta" style="color:var(--teal)">working</span></div>
+            <div class="line"><span class="ic">${ic("file-text")}</span><span class="verb">Read</span><span class="what">.ostra/ticket/rounding-rules.docx.md</span></div>
+            <div class="now"><span class="spin"></span>Reading <span class="mono">src/calc/percent.ts</span></div>
+          </div>
+        </div>`;
+
+  document.getElementById("content").innerHTML = `
+    <div class="page">
+      ${header}
+      <div class="thread" style="padding-top:4px">
+        <div class="msg got">
+          <span class="ava">${ic("ticket")}</span>
+          <div class="body">
+            <div class="who"><b>What the agent got</b><span class="meta">14:02 · CALC-170 from Linear</span></div>
+            ${desc}
+            ${attachments}
+            ${comments}
+            ${foot}
+          </div>
+        </div>
+        ${agentTurn}
+      </div>
+      <div class="composer" style="margin-top:8px">
+        <div class="ph" style="height:26px">Message the agent…</div>
+        <div class="row" style="margin-top:4px"><span class="clip">${ic("paperclip")}</span><span class="hint">${ic("info")} Send queues. Interrupt and send stops the current turn.</span><span class="btn sm dis"><i data-lucide="pause"></i> Interrupt and send</span><span class="btn sm primary dis"><i data-lucide="arrow-up"></i> Send</span></div>
+      </div>
+    </div>
+    <aside class="props">
+      <div class="group">
+        <h5>Properties</h5>
+        <div class="prop"><span class="k">Status</span><span class="v"><span class="dot green"></span>Running</span></div>
+        <div class="prop"><span class="k">Driver</span><span class="v"><span class="av">PS</span>Priya Shah</span></div>
+        <div class="prop"><span class="k">Agent</span><span class="v">OpenCode</span></div>
+        <div class="prop"><span class="k">Model</span><span class="v">Claude Sonnet 5.5</span></div>
+        <div class="prop"><span class="k">Runner</span><span class="v mono">build-fleet-03</span></div>
+        <div class="prop"><span class="k">Spend</span><span class="v"><span class="mono">$0.21</span><span class="muted mono" style="margin-left:-2px">of $25.00</span></span></div>
+      </div>
+      <div class="group">
+        <h5>Ticket</h5>
+        <div class="prop"><span class="k">Key</span><span class="v mono teal">CALC-170</span></div>
+        <div class="prop"><span class="k">Status</span><span class="v">In Progress</span></div>
+        <div class="prop"><span class="k">Board</span><span class="v">Calculator</span></div>
+        <div class="prop"><span class="k">Synced</span><span class="v mono">40 s ago</span></div>
+        <div class="prop"><span class="k">Context</span>${context}</div>
+      </div>
+      <div class="group">
+        <h5>On Linear</h5>
+        <div class="sync"><span>Moved to In Progress</span><span class="s green">done</span></div>
+        <div class="sync"><span>Progress comment</span><span class="s muted">posted</span></div>
+        <div class="sync"><span>Linked the task</span><span class="s green">done</span></div>
+      </div>
+      <div class="group">
+        <h5>Code</h5>
+        <div class="prop"><span class="k">Repo</span><span class="v mono">acme/calculator-web</span></div>
+        <div class="prop"><span class="k">Branch</span><span class="v mono">ostra/calc-170-percent-rounding</span></div>
+      </div>
+    </aside>`;
+
+  window.addEventListener("load", () => {
+    const row = document.querySelector(".live.on");
+    if (row) row.querySelector(".d").textContent = "CALC-170 · Reading percent.ts";
+  });
+})();
+</script>
+<script src="../../m8/html/shell.js"></script>
+</body>
+</html>
