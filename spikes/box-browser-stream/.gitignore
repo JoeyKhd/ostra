@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.profiles/
+*.tmp
+# The measured run's logs are the finding's evidence: keep them, though the repo ignores *.log.
+!results/*/*.log

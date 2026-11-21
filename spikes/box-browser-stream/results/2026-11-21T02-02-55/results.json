@@ -1,0 +1,4157 @@
+{
+  "stamp": "2026-11-21T02-02-55",
+  "quick": false,
+  "seconds": 6,
+  "machine": {
+    "cpu": "13th Gen Intel(R) Core(TM) i9-13900K",
+    "logicalProcessors": 32,
+    "memoryGB": 32,
+    "os": "Windows 10.0.26200",
+    "node": "v24.14.0",
+    "boxBrowser": {
+      "product": "Edg/157.0.4341.60",
+      "executable": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36 Edg/157.0.0.0"
+    },
+    "memberBrowser": {
+      "product": "Edg/157.0.4341.60"
+    }
+  },
+  "grid": [
+    {
+      "name": "1440x900 q50 idle",
+      "scenario": "idle",
+      "config": {
+        "width": 1440,
+        "height": 900,
+        "mobile": false,
+        "quality": 50,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 0,
+      "memberDrawnFps": 0,
+      "memberKBps": 0,
+      "avgFrameKB": 0,
+      "decodeMsAvg": 0,
+      "browserFps": 0,
+      "forwardedFps": 0,
+      "droppedBySidecar": 0,
+      "coreKBps": 0,
+      "use": {
+        "browser": {
+          "vcpu": 0.046,
+          "privMaxMB": 416,
+          "wsMaxMB": 896,
+          "procsMax": 18
+        },
+        "vite": {
+          "vcpu": 0.002,
+          "privMaxMB": 201,
+          "wsMaxMB": 146,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 42,
+          "wsMaxMB": 84,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.011,
+          "privMaxMB": 94,
+          "wsMaxMB": 92,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.015,
+          "privMaxMB": 62,
+          "wsMaxMB": 97,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.002,
+          "privMaxMB": 77,
+          "wsMaxMB": 86,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.05,
+          "privMaxMB": 340,
+          "wsMaxMB": 803,
+          "procsMax": 18
+        }
+      }
+    },
+    {
+      "name": "1440x900 q50 typing",
+      "scenario": "typing",
+      "config": {
+        "width": 1440,
+        "height": 900,
+        "mobile": false,
+        "quality": 50,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 15,
+      "memberDrawnFps": 15,
+      "memberKBps": 1001,
+      "avgFrameKB": 66.7,
+      "decodeMsAvg": 4.6,
+      "browserFps": 15,
+      "forwardedFps": 15,
+      "droppedBySidecar": 0,
+      "coreKBps": 1001,
+      "use": {
+        "browser": {
+          "vcpu": 0.601,
+          "privMaxMB": 456,
+          "wsMaxMB": 943,
+          "procsMax": 18
+        },
+        "vite": {
+          "vcpu": 0.002,
+          "privMaxMB": 153,
+          "wsMaxMB": 121,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.04,
+          "privMaxMB": 83,
+          "wsMaxMB": 89,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.019,
+          "privMaxMB": 52,
+          "wsMaxMB": 95,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.05,
+          "privMaxMB": 86,
+          "wsMaxMB": 95,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.231,
+          "privMaxMB": 345,
+          "wsMaxMB": 816,
+          "procsMax": 18
+        }
+      }
+    },
+    {
+      "name": "1440x900 q50 scrolling",
+      "scenario": "scrolling",
+      "config": {
+        "width": 1440,
+        "height": 900,
+        "mobile": false,
+        "quality": 50,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6.02,
+      "memberFps": 32.1,
+      "memberDrawnFps": 32.1,
+      "memberKBps": 2299,
+      "avgFrameKB": 71.7,
+      "decodeMsAvg": 3,
+      "browserFps": 32.1,
+      "forwardedFps": 32.1,
+      "droppedBySidecar": 0,
+      "coreKBps": 2299,
+      "use": {
+        "browser": {
+          "vcpu": 0.425,
+          "privMaxMB": 371,
+          "wsMaxMB": 789,
+          "procsMax": 13
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 150,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.032,
+          "privMaxMB": 91,
+          "wsMaxMB": 96,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.018,
+          "privMaxMB": 53,
+          "wsMaxMB": 97,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.032,
+          "privMaxMB": 100,
+          "wsMaxMB": 103,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.25,
+          "privMaxMB": 282,
+          "wsMaxMB": 633,
+          "procsMax": 13
+        }
+      }
+    },
+    {
+      "name": "1440x900 q60 idle",
+      "scenario": "idle",
+      "config": {
+        "width": 1440,
+        "height": 900,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 0,
+      "memberDrawnFps": 0,
+      "memberKBps": 0,
+      "avgFrameKB": 0,
+      "decodeMsAvg": 0,
+      "browserFps": 0,
+      "forwardedFps": 0,
+      "droppedBySidecar": 0,
+      "coreKBps": 0,
+      "use": {
+        "browser": {
+          "vcpu": 0.019,
+          "privMaxMB": 367,
+          "wsMaxMB": 785,
+          "procsMax": 13
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 150,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0,
+          "privMaxMB": 87,
+          "wsMaxMB": 93,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.002,
+          "privMaxMB": 53,
+          "wsMaxMB": 97,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0,
+          "privMaxMB": 95,
+          "wsMaxMB": 99,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.008,
+          "privMaxMB": 283,
+          "wsMaxMB": 644,
+          "procsMax": 13
+        }
+      }
+    },
+    {
+      "name": "1440x900 q60 typing",
+      "scenario": "typing",
+      "config": {
+        "width": 1440,
+        "height": 900,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 15,
+      "memberDrawnFps": 15,
+      "memberKBps": 1106,
+      "avgFrameKB": 73.7,
+      "decodeMsAvg": 4.7,
+      "browserFps": 15,
+      "forwardedFps": 15,
+      "droppedBySidecar": 0,
+      "coreKBps": 1106,
+      "use": {
+        "browser": {
+          "vcpu": 0.6,
+          "privMaxMB": 285,
+          "wsMaxMB": 586,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 150,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.018,
+          "privMaxMB": 87,
+          "wsMaxMB": 93,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.011,
+          "privMaxMB": 53,
+          "wsMaxMB": 97,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.046,
+          "privMaxMB": 97,
+          "wsMaxMB": 101,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.245,
+          "privMaxMB": 176,
+          "wsMaxMB": 472,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "1440x900 q60 scrolling",
+      "scenario": "scrolling",
+      "config": {
+        "width": 1440,
+        "height": 900,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6.02,
+      "memberFps": 32.1,
+      "memberDrawnFps": 31.9,
+      "memberKBps": 2567,
+      "avgFrameKB": 80,
+      "decodeMsAvg": 4.8,
+      "browserFps": 32.1,
+      "forwardedFps": 32.1,
+      "droppedBySidecar": 0,
+      "coreKBps": 2567,
+      "use": {
+        "browser": {
+          "vcpu": 0.675,
+          "privMaxMB": 291,
+          "wsMaxMB": 634,
+          "procsMax": 8
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 150,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.038,
+          "privMaxMB": 91,
+          "wsMaxMB": 96,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.02,
+          "privMaxMB": 55,
+          "wsMaxMB": 98,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.038,
+          "privMaxMB": 98,
+          "wsMaxMB": 106,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.437,
+          "privMaxMB": 217,
+          "wsMaxMB": 500,
+          "procsMax": 8
+        }
+      }
+    },
+    {
+      "name": "1440x900 q60 animating",
+      "scenario": "animating",
+      "config": {
+        "width": 1440,
+        "height": 900,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 60,
+      "memberDrawnFps": 60,
+      "memberKBps": 4396,
+      "avgFrameKB": 73.3,
+      "decodeMsAvg": 4.7,
+      "browserFps": 60,
+      "forwardedFps": 60,
+      "droppedBySidecar": 0,
+      "coreKBps": 4408,
+      "use": {
+        "browser": {
+          "vcpu": 1.076,
+          "privMaxMB": 286,
+          "wsMaxMB": 634,
+          "procsMax": 8
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 150,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.036,
+          "privMaxMB": 91,
+          "wsMaxMB": 97,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.039,
+          "privMaxMB": 57,
+          "wsMaxMB": 101,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.032,
+          "privMaxMB": 104,
+          "wsMaxMB": 112,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.636,
+          "privMaxMB": 228,
+          "wsMaxMB": 511,
+          "procsMax": 8
+        }
+      }
+    },
+    {
+      "name": "1440x900 q70 idle",
+      "scenario": "idle",
+      "config": {
+        "width": 1440,
+        "height": 900,
+        "mobile": false,
+        "quality": 70,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 0,
+      "memberDrawnFps": 0,
+      "memberKBps": 0,
+      "avgFrameKB": 0,
+      "decodeMsAvg": 0,
+      "browserFps": 0,
+      "forwardedFps": 0,
+      "droppedBySidecar": 0,
+      "coreKBps": 0,
+      "use": {
+        "browser": {
+          "vcpu": 0.053,
+          "privMaxMB": 219,
+          "wsMaxMB": 524,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0,
+          "privMaxMB": 91,
+          "wsMaxMB": 97,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0,
+          "privMaxMB": 49,
+          "wsMaxMB": 93,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0,
+          "privMaxMB": 99,
+          "wsMaxMB": 107,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.016,
+          "privMaxMB": 192,
+          "wsMaxMB": 476,
+          "procsMax": 8
+        }
+      }
+    },
+    {
+      "name": "1440x900 q70 typing",
+      "scenario": "typing",
+      "config": {
+        "width": 1440,
+        "height": 900,
+        "mobile": false,
+        "quality": 70,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 15,
+      "memberDrawnFps": 15,
+      "memberKBps": 1264,
+      "avgFrameKB": 84.3,
+      "decodeMsAvg": 4.8,
+      "browserFps": 15,
+      "forwardedFps": 15,
+      "droppedBySidecar": 0,
+      "coreKBps": 1264,
+      "use": {
+        "browser": {
+          "vcpu": 0.566,
+          "privMaxMB": 280,
+          "wsMaxMB": 594,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.025,
+          "privMaxMB": 89,
+          "wsMaxMB": 95,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.011,
+          "privMaxMB": 49,
+          "wsMaxMB": 93,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.025,
+          "privMaxMB": 94,
+          "wsMaxMB": 102,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.251,
+          "privMaxMB": 180,
+          "wsMaxMB": 481,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "1440x900 q70 scrolling",
+      "scenario": "scrolling",
+      "config": {
+        "width": 1440,
+        "height": 900,
+        "mobile": false,
+        "quality": 70,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 32,
+      "memberDrawnFps": 32,
+      "memberKBps": 2967,
+      "avgFrameKB": 92.8,
+      "decodeMsAvg": 4.9,
+      "browserFps": 32.1,
+      "forwardedFps": 32.1,
+      "droppedBySidecar": 0,
+      "coreKBps": 2983,
+      "use": {
+        "browser": {
+          "vcpu": 0.699,
+          "privMaxMB": 287,
+          "wsMaxMB": 652,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.04,
+          "privMaxMB": 90,
+          "wsMaxMB": 96,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.018,
+          "privMaxMB": 53,
+          "wsMaxMB": 97,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.045,
+          "privMaxMB": 100,
+          "wsMaxMB": 110,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.435,
+          "privMaxMB": 215,
+          "wsMaxMB": 518,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "1280x800 q50 idle",
+      "scenario": "idle",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 50,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 0,
+      "memberDrawnFps": 0,
+      "memberKBps": 0,
+      "avgFrameKB": 0,
+      "decodeMsAvg": 0,
+      "browserFps": 0,
+      "forwardedFps": 0,
+      "droppedBySidecar": 0,
+      "coreKBps": 0,
+      "use": {
+        "browser": {
+          "vcpu": 0.02,
+          "privMaxMB": 279,
+          "wsMaxMB": 642,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.002,
+          "privMaxMB": 91,
+          "wsMaxMB": 97,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.002,
+          "privMaxMB": 52,
+          "wsMaxMB": 94,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.002,
+          "privMaxMB": 92,
+          "wsMaxMB": 104,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.011,
+          "privMaxMB": 217,
+          "wsMaxMB": 518,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "1280x800 q50 typing",
+      "scenario": "typing",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 50,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 15,
+      "memberDrawnFps": 15,
+      "memberKBps": 840,
+      "avgFrameKB": 56,
+      "decodeMsAvg": 4,
+      "browserFps": 15,
+      "forwardedFps": 15,
+      "droppedBySidecar": 0,
+      "coreKBps": 840,
+      "use": {
+        "browser": {
+          "vcpu": 0.578,
+          "privMaxMB": 290,
+          "wsMaxMB": 591,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.021,
+          "privMaxMB": 91,
+          "wsMaxMB": 97,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.015,
+          "privMaxMB": 52,
+          "wsMaxMB": 94,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.041,
+          "privMaxMB": 97,
+          "wsMaxMB": 108,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.229,
+          "privMaxMB": 177,
+          "wsMaxMB": 466,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "1280x800 q50 scrolling",
+      "scenario": "scrolling",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 50,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6.02,
+      "memberFps": 32.1,
+      "memberDrawnFps": 31.9,
+      "memberKBps": 1977,
+      "avgFrameKB": 61.7,
+      "decodeMsAvg": 4.2,
+      "browserFps": 32.1,
+      "forwardedFps": 32.1,
+      "droppedBySidecar": 0,
+      "coreKBps": 1977,
+      "use": {
+        "browser": {
+          "vcpu": 0.569,
+          "privMaxMB": 292,
+          "wsMaxMB": 631,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.039,
+          "privMaxMB": 88,
+          "wsMaxMB": 94,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.028,
+          "privMaxMB": 50,
+          "wsMaxMB": 94,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.037,
+          "privMaxMB": 99,
+          "wsMaxMB": 109,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.404,
+          "privMaxMB": 213,
+          "wsMaxMB": 508,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "1280x800 q60 idle",
+      "scenario": "idle",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 0,
+      "memberDrawnFps": 0,
+      "memberKBps": 0,
+      "avgFrameKB": 0,
+      "decodeMsAvg": 0,
+      "browserFps": 0,
+      "forwardedFps": 0,
+      "droppedBySidecar": 0,
+      "coreKBps": 0,
+      "use": {
+        "browser": {
+          "vcpu": 0.009,
+          "privMaxMB": 282,
+          "wsMaxMB": 631,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0,
+          "privMaxMB": 87,
+          "wsMaxMB": 93,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0,
+          "privMaxMB": 50,
+          "wsMaxMB": 94,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0,
+          "privMaxMB": 99,
+          "wsMaxMB": 109,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.009,
+          "privMaxMB": 180,
+          "wsMaxMB": 475,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "1280x800 q60 typing",
+      "scenario": "typing",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 15,
+      "memberDrawnFps": 15,
+      "memberKBps": 931,
+      "avgFrameKB": 62.1,
+      "decodeMsAvg": 4,
+      "browserFps": 15,
+      "forwardedFps": 15,
+      "droppedBySidecar": 0,
+      "coreKBps": 931,
+      "use": {
+        "browser": {
+          "vcpu": 0.568,
+          "privMaxMB": 293,
+          "wsMaxMB": 597,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.028,
+          "privMaxMB": 89,
+          "wsMaxMB": 95,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.015,
+          "privMaxMB": 50,
+          "wsMaxMB": 94,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.042,
+          "privMaxMB": 100,
+          "wsMaxMB": 111,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.179,
+          "privMaxMB": 180,
+          "wsMaxMB": 475,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "1280x800 q60 scrolling",
+      "scenario": "scrolling",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6.01,
+      "memberFps": 32.1,
+      "memberDrawnFps": 31.9,
+      "memberKBps": 2205,
+      "avgFrameKB": 68.7,
+      "decodeMsAvg": 4.3,
+      "browserFps": 32.1,
+      "forwardedFps": 32.1,
+      "droppedBySidecar": 0,
+      "coreKBps": 2205,
+      "use": {
+        "browser": {
+          "vcpu": 0.6,
+          "privMaxMB": 293,
+          "wsMaxMB": 633,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.028,
+          "privMaxMB": 90,
+          "wsMaxMB": 95,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.03,
+          "privMaxMB": 52,
+          "wsMaxMB": 95,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.054,
+          "privMaxMB": 96,
+          "wsMaxMB": 107,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.378,
+          "privMaxMB": 204,
+          "wsMaxMB": 498,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "1280x800 q60 animating",
+      "scenario": "animating",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 60.2,
+      "memberDrawnFps": 60,
+      "memberKBps": 3693,
+      "avgFrameKB": 61.4,
+      "decodeMsAvg": 3.9,
+      "browserFps": 60,
+      "forwardedFps": 60,
+      "droppedBySidecar": 0,
+      "coreKBps": 3682,
+      "use": {
+        "browser": {
+          "vcpu": 0.851,
+          "privMaxMB": 288,
+          "wsMaxMB": 638,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.044,
+          "privMaxMB": 89,
+          "wsMaxMB": 94,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.049,
+          "privMaxMB": 52,
+          "wsMaxMB": 96,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.018,
+          "privMaxMB": 123,
+          "wsMaxMB": 134,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.542,
+          "privMaxMB": 216,
+          "wsMaxMB": 512,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "1280x800 q70 idle",
+      "scenario": "idle",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 70,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 0,
+      "memberDrawnFps": 0,
+      "memberKBps": 0,
+      "avgFrameKB": 0,
+      "decodeMsAvg": 0,
+      "browserFps": 0,
+      "forwardedFps": 0,
+      "droppedBySidecar": 0,
+      "coreKBps": 0,
+      "use": {
+        "browser": {
+          "vcpu": 0.024,
+          "privMaxMB": 278,
+          "wsMaxMB": 587,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0,
+          "privMaxMB": 88,
+          "wsMaxMB": 94,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0,
+          "privMaxMB": 50,
+          "wsMaxMB": 94,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0,
+          "privMaxMB": 123,
+          "wsMaxMB": 135,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.015,
+          "privMaxMB": 218,
+          "wsMaxMB": 514,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "1280x800 q70 typing",
+      "scenario": "typing",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 70,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 15,
+      "memberDrawnFps": 15,
+      "memberKBps": 1061,
+      "avgFrameKB": 70.7,
+      "decodeMsAvg": 4,
+      "browserFps": 15,
+      "forwardedFps": 15,
+      "droppedBySidecar": 0,
+      "coreKBps": 1061,
+      "use": {
+        "browser": {
+          "vcpu": 0.499,
+          "privMaxMB": 284,
+          "wsMaxMB": 591,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.02,
+          "privMaxMB": 89,
+          "wsMaxMB": 95,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.009,
+          "privMaxMB": 50,
+          "wsMaxMB": 94,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.031,
+          "privMaxMB": 123,
+          "wsMaxMB": 135,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.235,
+          "privMaxMB": 182,
+          "wsMaxMB": 477,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "1280x800 q70 scrolling",
+      "scenario": "scrolling",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 70,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6.01,
+      "memberFps": 32.1,
+      "memberDrawnFps": 31.9,
+      "memberKBps": 2559,
+      "avgFrameKB": 79.7,
+      "decodeMsAvg": 4.4,
+      "browserFps": 32.1,
+      "forwardedFps": 32.1,
+      "droppedBySidecar": 0,
+      "coreKBps": 2559,
+      "use": {
+        "browser": {
+          "vcpu": 0.564,
+          "privMaxMB": 286,
+          "wsMaxMB": 632,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.047,
+          "privMaxMB": 89,
+          "wsMaxMB": 95,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.034,
+          "privMaxMB": 52,
+          "wsMaxMB": 96,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.025,
+          "privMaxMB": 101,
+          "wsMaxMB": 114,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.338,
+          "privMaxMB": 210,
+          "wsMaxMB": 504,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "390x844 q50 idle",
+      "scenario": "idle",
+      "config": {
+        "width": 390,
+        "height": 844,
+        "mobile": true,
+        "quality": 50,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 0,
+      "memberDrawnFps": 0,
+      "memberKBps": 0,
+      "avgFrameKB": 0,
+      "decodeMsAvg": 0,
+      "browserFps": 0,
+      "forwardedFps": 0,
+      "droppedBySidecar": 0,
+      "coreKBps": 0,
+      "use": {
+        "browser": {
+          "vcpu": 0.037,
+          "privMaxMB": 287,
+          "wsMaxMB": 632,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0,
+          "privMaxMB": 89,
+          "wsMaxMB": 95,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.002,
+          "privMaxMB": 52,
+          "wsMaxMB": 96,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0,
+          "privMaxMB": 103,
+          "wsMaxMB": 115,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.018,
+          "privMaxMB": 210,
+          "wsMaxMB": 504,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "390x844 q50 typing",
+      "scenario": "typing",
+      "config": {
+        "width": 390,
+        "height": 844,
+        "mobile": true,
+        "quality": 50,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 15,
+      "memberDrawnFps": 15,
+      "memberKBps": 460,
+      "avgFrameKB": 30.7,
+      "decodeMsAvg": 1.1,
+      "browserFps": 15,
+      "forwardedFps": 15,
+      "droppedBySidecar": 0,
+      "coreKBps": 460,
+      "use": {
+        "browser": {
+          "vcpu": 0.227,
+          "privMaxMB": 283,
+          "wsMaxMB": 577,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.008,
+          "privMaxMB": 88,
+          "wsMaxMB": 94,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.004,
+          "privMaxMB": 52,
+          "wsMaxMB": 96,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.027,
+          "privMaxMB": 103,
+          "wsMaxMB": 115,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.08,
+          "privMaxMB": 178,
+          "wsMaxMB": 456,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "390x844 q50 scrolling",
+      "scenario": "scrolling",
+      "config": {
+        "width": 390,
+        "height": 844,
+        "mobile": true,
+        "quality": 50,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6.01,
+      "memberFps": 32.1,
+      "memberDrawnFps": 32.1,
+      "memberKBps": 1084,
+      "avgFrameKB": 33.7,
+      "decodeMsAvg": 1.3,
+      "browserFps": 32.1,
+      "forwardedFps": 32.1,
+      "droppedBySidecar": 0,
+      "coreKBps": 1084,
+      "use": {
+        "browser": {
+          "vcpu": 0.199,
+          "privMaxMB": 283,
+          "wsMaxMB": 593,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.032,
+          "privMaxMB": 85,
+          "wsMaxMB": 91,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.014,
+          "privMaxMB": 50,
+          "wsMaxMB": 93,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.022,
+          "privMaxMB": 97,
+          "wsMaxMB": 108,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.166,
+          "privMaxMB": 202,
+          "wsMaxMB": 480,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "390x844 q60 idle",
+      "scenario": "idle",
+      "config": {
+        "width": 390,
+        "height": 844,
+        "mobile": true,
+        "quality": 60,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 0,
+      "memberDrawnFps": 0,
+      "memberKBps": 0,
+      "avgFrameKB": 0,
+      "decodeMsAvg": 0,
+      "browserFps": 0,
+      "forwardedFps": 0,
+      "droppedBySidecar": 0,
+      "coreKBps": 0,
+      "use": {
+        "browser": {
+          "vcpu": 0.006,
+          "privMaxMB": 280,
+          "wsMaxMB": 592,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0,
+          "privMaxMB": 85,
+          "wsMaxMB": 92,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0,
+          "privMaxMB": 50,
+          "wsMaxMB": 93,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0,
+          "privMaxMB": 97,
+          "wsMaxMB": 108,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0,
+          "privMaxMB": 180,
+          "wsMaxMB": 459,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "390x844 q60 typing",
+      "scenario": "typing",
+      "config": {
+        "width": 390,
+        "height": 844,
+        "mobile": true,
+        "quality": 60,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 15.2,
+      "memberDrawnFps": 15.2,
+      "memberKBps": 520,
+      "avgFrameKB": 34.3,
+      "decodeMsAvg": 1.8,
+      "browserFps": 15.2,
+      "forwardedFps": 15.2,
+      "droppedBySidecar": 0,
+      "coreKBps": 520,
+      "use": {
+        "browser": {
+          "vcpu": 0.416,
+          "privMaxMB": 284,
+          "wsMaxMB": 578,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.016,
+          "privMaxMB": 85,
+          "wsMaxMB": 92,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.014,
+          "privMaxMB": 50,
+          "wsMaxMB": 93,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.021,
+          "privMaxMB": 98,
+          "wsMaxMB": 109,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.12,
+          "privMaxMB": 360,
+          "wsMaxMB": 610,
+          "procsMax": 10
+        }
+      }
+    },
+    {
+      "name": "390x844 q60 scrolling",
+      "scenario": "scrolling",
+      "config": {
+        "width": 390,
+        "height": 844,
+        "mobile": true,
+        "quality": 60,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6.01,
+      "memberFps": 32.1,
+      "memberDrawnFps": 32.1,
+      "memberKBps": 1222,
+      "avgFrameKB": 38,
+      "decodeMsAvg": 1.8,
+      "browserFps": 32.1,
+      "forwardedFps": 32.1,
+      "droppedBySidecar": 0,
+      "coreKBps": 1222,
+      "use": {
+        "browser": {
+          "vcpu": 0.32,
+          "privMaxMB": 290,
+          "wsMaxMB": 595,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.023,
+          "privMaxMB": 86,
+          "wsMaxMB": 92,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.021,
+          "privMaxMB": 49,
+          "wsMaxMB": 93,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.021,
+          "privMaxMB": 112,
+          "wsMaxMB": 109,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.283,
+          "privMaxMB": 187,
+          "wsMaxMB": 467,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "390x844 q60 animating",
+      "scenario": "animating",
+      "config": {
+        "width": 390,
+        "height": 844,
+        "mobile": true,
+        "quality": 60,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 60,
+      "memberDrawnFps": 60,
+      "memberKBps": 2048,
+      "avgFrameKB": 34.1,
+      "decodeMsAvg": 1.9,
+      "browserFps": 60,
+      "forwardedFps": 60,
+      "droppedBySidecar": 0,
+      "coreKBps": 2048,
+      "use": {
+        "browser": {
+          "vcpu": 0.414,
+          "privMaxMB": 284,
+          "wsMaxMB": 596,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.032,
+          "privMaxMB": 86,
+          "wsMaxMB": 93,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.011,
+          "privMaxMB": 53,
+          "wsMaxMB": 96,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.009,
+          "privMaxMB": 126,
+          "wsMaxMB": 120,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.243,
+          "privMaxMB": 197,
+          "wsMaxMB": 476,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "390x844 q70 idle",
+      "scenario": "idle",
+      "config": {
+        "width": 390,
+        "height": 844,
+        "mobile": true,
+        "quality": 70,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 0,
+      "memberDrawnFps": 0,
+      "memberKBps": 0,
+      "avgFrameKB": 0,
+      "decodeMsAvg": 0,
+      "browserFps": 0,
+      "forwardedFps": 0,
+      "droppedBySidecar": 0,
+      "coreKBps": 0,
+      "use": {
+        "browser": {
+          "vcpu": 0.004,
+          "privMaxMB": 278,
+          "wsMaxMB": 573,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0,
+          "privMaxMB": 86,
+          "wsMaxMB": 93,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0,
+          "privMaxMB": 52,
+          "wsMaxMB": 95,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0,
+          "privMaxMB": 126,
+          "wsMaxMB": 120,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.002,
+          "privMaxMB": 188,
+          "wsMaxMB": 468,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "390x844 q70 typing",
+      "scenario": "typing",
+      "config": {
+        "width": 390,
+        "height": 844,
+        "mobile": true,
+        "quality": 70,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 15.2,
+      "memberDrawnFps": 15.2,
+      "memberKBps": 603,
+      "avgFrameKB": 39.7,
+      "decodeMsAvg": 2,
+      "browserFps": 15.2,
+      "forwardedFps": 15.2,
+      "droppedBySidecar": 0,
+      "coreKBps": 603,
+      "use": {
+        "browser": {
+          "vcpu": 0.424,
+          "privMaxMB": 287,
+          "wsMaxMB": 582,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.019,
+          "privMaxMB": 86,
+          "wsMaxMB": 93,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.017,
+          "privMaxMB": 52,
+          "wsMaxMB": 95,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.013,
+          "privMaxMB": 126,
+          "wsMaxMB": 120,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.145,
+          "privMaxMB": 180,
+          "wsMaxMB": 460,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "390x844 q70 scrolling",
+      "scenario": "scrolling",
+      "config": {
+        "width": 390,
+        "height": 844,
+        "mobile": true,
+        "quality": 70,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6.01,
+      "memberFps": 32.1,
+      "memberDrawnFps": 32.1,
+      "memberKBps": 1428,
+      "avgFrameKB": 44.5,
+      "decodeMsAvg": 2.1,
+      "browserFps": 32.1,
+      "forwardedFps": 32.1,
+      "droppedBySidecar": 0,
+      "coreKBps": 1428,
+      "use": {
+        "browser": {
+          "vcpu": 0.321,
+          "privMaxMB": 292,
+          "wsMaxMB": 597,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.041,
+          "privMaxMB": 86,
+          "wsMaxMB": 92,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.022,
+          "privMaxMB": 51,
+          "wsMaxMB": 94,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.033,
+          "privMaxMB": 110,
+          "wsMaxMB": 111,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.26,
+          "privMaxMB": 209,
+          "wsMaxMB": 488,
+          "procsMax": 9
+        }
+      }
+    }
+  ],
+  "capped": [
+    {
+      "name": "defaults 1440x900 q60 cap15 (ack) typing",
+      "scenario": "typing",
+      "config": {
+        "width": 1440,
+        "height": 900,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 15,
+        "capMode": "ack",
+        "inflight": 1,
+        "sendLastFrame": true
+      },
+      "seconds": 6,
+      "memberFps": 15,
+      "memberDrawnFps": 15,
+      "memberKBps": 1106,
+      "avgFrameKB": 73.7,
+      "decodeMsAvg": 5.1,
+      "browserFps": 15,
+      "forwardedFps": 15,
+      "droppedBySidecar": 0,
+      "coreKBps": 1106,
+      "use": {
+        "browser": {
+          "vcpu": 0.658,
+          "privMaxMB": 293,
+          "wsMaxMB": 623,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.031,
+          "privMaxMB": 88,
+          "wsMaxMB": 94,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.025,
+          "privMaxMB": 51,
+          "wsMaxMB": 95,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.027,
+          "privMaxMB": 114,
+          "wsMaxMB": 118,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.21,
+          "privMaxMB": 200,
+          "wsMaxMB": 494,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "defaults 1440x900 q60 cap15 (ack) scrolling",
+      "scenario": "scrolling",
+      "config": {
+        "width": 1440,
+        "height": 900,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 15,
+        "capMode": "ack",
+        "inflight": 1,
+        "sendLastFrame": true
+      },
+      "seconds": 6.01,
+      "memberFps": 15.1,
+      "memberDrawnFps": 15.1,
+      "memberKBps": 1211,
+      "avgFrameKB": 80,
+      "decodeMsAvg": 5.2,
+      "browserFps": 15.1,
+      "forwardedFps": 15.1,
+      "droppedBySidecar": 0,
+      "coreKBps": 1211,
+      "use": {
+        "browser": {
+          "vcpu": 0.619,
+          "privMaxMB": 297,
+          "wsMaxMB": 660,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.024,
+          "privMaxMB": 89,
+          "wsMaxMB": 95,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.015,
+          "privMaxMB": 51,
+          "wsMaxMB": 95,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.03,
+          "privMaxMB": 115,
+          "wsMaxMB": 115,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.281,
+          "privMaxMB": 207,
+          "wsMaxMB": 508,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "defaults 1440x900 q60 cap15 (ack) animating",
+      "scenario": "animating",
+      "config": {
+        "width": 1440,
+        "height": 900,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 15,
+        "capMode": "ack",
+        "inflight": 1,
+        "sendLastFrame": true
+      },
+      "seconds": 6,
+      "memberFps": 15,
+      "memberDrawnFps": 15.2,
+      "memberKBps": 1099,
+      "avgFrameKB": 73.3,
+      "decodeMsAvg": 5,
+      "browserFps": 15,
+      "forwardedFps": 15,
+      "droppedBySidecar": 0,
+      "coreKBps": 1099,
+      "use": {
+        "browser": {
+          "vcpu": 0.779,
+          "privMaxMB": 291,
+          "wsMaxMB": 658,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.017,
+          "privMaxMB": 89,
+          "wsMaxMB": 96,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.013,
+          "privMaxMB": 60,
+          "wsMaxMB": 104,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.004,
+          "privMaxMB": 119,
+          "wsMaxMB": 120,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.177,
+          "privMaxMB": 186,
+          "wsMaxMB": 489,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "1440x900 q60 cap15 (drop) typing",
+      "scenario": "typing",
+      "config": {
+        "width": 1440,
+        "height": 900,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 15,
+        "capMode": "drop",
+        "inflight": 3,
+        "sendLastFrame": true
+      },
+      "seconds": 6,
+      "memberFps": 14.2,
+      "memberDrawnFps": 14.2,
+      "memberKBps": 1045,
+      "avgFrameKB": 73.7,
+      "decodeMsAvg": 4.8,
+      "browserFps": 15,
+      "forwardedFps": 14.2,
+      "droppedBySidecar": 4,
+      "coreKBps": 1045,
+      "use": {
+        "browser": {
+          "vcpu": 0.667,
+          "privMaxMB": 291,
+          "wsMaxMB": 612,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.022,
+          "privMaxMB": 89,
+          "wsMaxMB": 96,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.011,
+          "privMaxMB": 52,
+          "wsMaxMB": 95,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.03,
+          "privMaxMB": 119,
+          "wsMaxMB": 120,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.25,
+          "privMaxMB": 189,
+          "wsMaxMB": 491,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "1440x900 q60 cap15 (drop) scrolling",
+      "scenario": "scrolling",
+      "config": {
+        "width": 1440,
+        "height": 900,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 15,
+        "capMode": "drop",
+        "inflight": 3,
+        "sendLastFrame": true
+      },
+      "seconds": 6.01,
+      "memberFps": 14.8,
+      "memberDrawnFps": 14.8,
+      "memberKBps": 1183,
+      "avgFrameKB": 79.9,
+      "decodeMsAvg": 5.1,
+      "browserFps": 32.1,
+      "forwardedFps": 14.8,
+      "droppedBySidecar": 103,
+      "coreKBps": 1183,
+      "use": {
+        "browser": {
+          "vcpu": 0.663,
+          "privMaxMB": 301,
+          "wsMaxMB": 657,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.033,
+          "privMaxMB": 89,
+          "wsMaxMB": 96,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.017,
+          "privMaxMB": 51,
+          "wsMaxMB": 95,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.031,
+          "privMaxMB": 118,
+          "wsMaxMB": 121,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.329,
+          "privMaxMB": 203,
+          "wsMaxMB": 504,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "1440x900 q60 cap15 (drop) animating",
+      "scenario": "animating",
+      "config": {
+        "width": 1440,
+        "height": 900,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 15,
+        "capMode": "drop",
+        "inflight": 3,
+        "sendLastFrame": true
+      },
+      "seconds": 6,
+      "memberFps": 14.8,
+      "memberDrawnFps": 14.8,
+      "memberKBps": 1087,
+      "avgFrameKB": 73.3,
+      "decodeMsAvg": 4.8,
+      "browserFps": 60,
+      "forwardedFps": 14.8,
+      "droppedBySidecar": 270,
+      "coreKBps": 1087,
+      "use": {
+        "browser": {
+          "vcpu": 1.08,
+          "privMaxMB": 291,
+          "wsMaxMB": 658,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.041,
+          "privMaxMB": 89,
+          "wsMaxMB": 95,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.011,
+          "privMaxMB": 61,
+          "wsMaxMB": 105,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.011,
+          "privMaxMB": 119,
+          "wsMaxMB": 123,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.15,
+          "privMaxMB": 189,
+          "wsMaxMB": 491,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "1280x800 q60 cap15 (ack) typing",
+      "scenario": "typing",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 15,
+        "capMode": "ack",
+        "inflight": 1,
+        "sendLastFrame": true
+      },
+      "seconds": 6,
+      "memberFps": 15,
+      "memberDrawnFps": 15,
+      "memberKBps": 931,
+      "avgFrameKB": 62.1,
+      "decodeMsAvg": 3.9,
+      "browserFps": 15,
+      "forwardedFps": 15,
+      "droppedBySidecar": 0,
+      "coreKBps": 931,
+      "use": {
+        "browser": {
+          "vcpu": 0.477,
+          "privMaxMB": 290,
+          "wsMaxMB": 605,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.022,
+          "privMaxMB": 102,
+          "wsMaxMB": 104,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.015,
+          "privMaxMB": 51,
+          "wsMaxMB": 95,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.02,
+          "privMaxMB": 119,
+          "wsMaxMB": 123,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.139,
+          "privMaxMB": 195,
+          "wsMaxMB": 485,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "1280x800 q60 cap15 (ack) scrolling",
+      "scenario": "scrolling",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 15,
+        "capMode": "ack",
+        "inflight": 1,
+        "sendLastFrame": true
+      },
+      "seconds": 6.01,
+      "memberFps": 15.3,
+      "memberDrawnFps": 15.3,
+      "memberKBps": 1052,
+      "avgFrameKB": 68.7,
+      "decodeMsAvg": 4.2,
+      "browserFps": 15.3,
+      "forwardedFps": 15.3,
+      "droppedBySidecar": 0,
+      "coreKBps": 1052,
+      "use": {
+        "browser": {
+          "vcpu": 0.527,
+          "privMaxMB": 290,
+          "wsMaxMB": 639,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.031,
+          "privMaxMB": 100,
+          "wsMaxMB": 105,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.018,
+          "privMaxMB": 51,
+          "wsMaxMB": 94,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.035,
+          "privMaxMB": 112,
+          "wsMaxMB": 118,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.237,
+          "privMaxMB": 198,
+          "wsMaxMB": 493,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "1280x800 q60 cap15 (ack) animating",
+      "scenario": "animating",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 15,
+        "capMode": "ack",
+        "inflight": 1,
+        "sendLastFrame": true
+      },
+      "seconds": 6,
+      "memberFps": 15,
+      "memberDrawnFps": 15,
+      "memberKBps": 921,
+      "avgFrameKB": 61.4,
+      "decodeMsAvg": 4.1,
+      "browserFps": 15,
+      "forwardedFps": 15,
+      "droppedBySidecar": 0,
+      "coreKBps": 921,
+      "use": {
+        "browser": {
+          "vcpu": 0.636,
+          "privMaxMB": 292,
+          "wsMaxMB": 639,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.028,
+          "privMaxMB": 101,
+          "wsMaxMB": 107,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0,
+          "privMaxMB": 54,
+          "wsMaxMB": 99,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0,
+          "privMaxMB": 125,
+          "wsMaxMB": 131,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.133,
+          "privMaxMB": 183,
+          "wsMaxMB": 480,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "fallback 1280x800 q50 cap8 (ack) typing",
+      "scenario": "typing",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 50,
+        "fpsCap": 8,
+        "capMode": "ack",
+        "inflight": 1,
+        "sendLastFrame": true
+      },
+      "seconds": 6,
+      "memberFps": 8.2,
+      "memberDrawnFps": 8.2,
+      "memberKBps": 457,
+      "avgFrameKB": 56,
+      "decodeMsAvg": 4,
+      "browserFps": 8.2,
+      "forwardedFps": 8.2,
+      "droppedBySidecar": 0,
+      "coreKBps": 457,
+      "use": {
+        "browser": {
+          "vcpu": 0.518,
+          "privMaxMB": 289,
+          "wsMaxMB": 598,
+          "procsMax": 9
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 117,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 82,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.013,
+          "privMaxMB": 101,
+          "wsMaxMB": 107,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.013,
+          "privMaxMB": 54,
+          "wsMaxMB": 99,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.037,
+          "privMaxMB": 125,
+          "wsMaxMB": 131,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.122,
+          "privMaxMB": 187,
+          "wsMaxMB": 484,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "fallback 1280x800 q50 cap8 (ack) scrolling",
+      "scenario": "scrolling",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 50,
+        "fpsCap": 8,
+        "capMode": "ack",
+        "inflight": 1,
+        "sendLastFrame": true
+      },
+      "seconds": 6.02,
+      "memberFps": 8.1,
+      "memberDrawnFps": 8.1,
+      "memberKBps": 501,
+      "avgFrameKB": 61.5,
+      "decodeMsAvg": 4.3,
+      "browserFps": 8.1,
+      "forwardedFps": 8.1,
+      "droppedBySidecar": 0,
+      "coreKBps": 501,
+      "use": {
+        "browser": {
+          "vcpu": 0.474,
+          "privMaxMB": 297,
+          "wsMaxMB": 665,
+          "procsMax": 10
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 118,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 83,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.013,
+          "privMaxMB": 100,
+          "wsMaxMB": 106,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.006,
+          "privMaxMB": 48,
+          "wsMaxMB": 92,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.03,
+          "privMaxMB": 118,
+          "wsMaxMB": 124,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.272,
+          "privMaxMB": 189,
+          "wsMaxMB": 485,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "fallback 1280x800 q50 cap8 (ack) animating",
+      "scenario": "animating",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 50,
+        "fpsCap": 8,
+        "capMode": "ack",
+        "inflight": 1,
+        "sendLastFrame": true
+      },
+      "seconds": 6,
+      "memberFps": 8,
+      "memberDrawnFps": 8,
+      "memberKBps": 440,
+      "avgFrameKB": 55,
+      "decodeMsAvg": 4,
+      "browserFps": 8,
+      "forwardedFps": 8,
+      "droppedBySidecar": 0,
+      "coreKBps": 440,
+      "use": {
+        "browser": {
+          "vcpu": 0.596,
+          "privMaxMB": 305,
+          "wsMaxMB": 665,
+          "procsMax": 10
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 118,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 83,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.009,
+          "privMaxMB": 103,
+          "wsMaxMB": 110,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0,
+          "privMaxMB": 53,
+          "wsMaxMB": 97,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.007,
+          "privMaxMB": 117,
+          "wsMaxMB": 122,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.076,
+          "privMaxMB": 184,
+          "wsMaxMB": 484,
+          "procsMax": 9
+        }
+      }
+    }
+  ],
+  "typingPace": [
+    {
+      "name": "1280x800 q60 cap15 typing at 8 keys/s",
+      "scenario": "typing",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 15,
+        "capMode": "ack",
+        "inflight": 1,
+        "sendLastFrame": true
+      },
+      "seconds": 6,
+      "memberFps": 8,
+      "memberDrawnFps": 8,
+      "memberKBps": 487,
+      "avgFrameKB": 60.9,
+      "decodeMsAvg": 3.9,
+      "browserFps": 8,
+      "forwardedFps": 8,
+      "droppedBySidecar": 0,
+      "coreKBps": 487,
+      "use": {
+        "browser": {
+          "vcpu": 0.34,
+          "privMaxMB": 295,
+          "wsMaxMB": 621,
+          "procsMax": 10
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 118,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 83,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.007,
+          "privMaxMB": 103,
+          "wsMaxMB": 110,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.004,
+          "privMaxMB": 53,
+          "wsMaxMB": 97,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0,
+          "privMaxMB": 118,
+          "wsMaxMB": 122,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.02,
+          "privMaxMB": 185,
+          "wsMaxMB": 485,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "1280x800 q60 cap15 typing at 25 keys/s",
+      "scenario": "typing",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 15,
+        "capMode": "ack",
+        "inflight": 1,
+        "sendLastFrame": true
+      },
+      "seconds": 6,
+      "memberFps": 15,
+      "memberDrawnFps": 15,
+      "memberKBps": 954,
+      "avgFrameKB": 63.6,
+      "decodeMsAvg": 3.8,
+      "browserFps": 15.2,
+      "forwardedFps": 15.2,
+      "droppedBySidecar": 0,
+      "coreKBps": 965,
+      "use": {
+        "browser": {
+          "vcpu": 0.761,
+          "privMaxMB": 306,
+          "wsMaxMB": 632,
+          "procsMax": 10
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 118,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 83,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.031,
+          "privMaxMB": 102,
+          "wsMaxMB": 109,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.016,
+          "privMaxMB": 53,
+          "wsMaxMB": 96,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.025,
+          "privMaxMB": 118,
+          "wsMaxMB": 124,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.232,
+          "privMaxMB": 192,
+          "wsMaxMB": 491,
+          "procsMax": 9
+        }
+      }
+    }
+  ],
+  "latency": [
+    {
+      "name": "1280x800 q60 uncapped (2 hops)",
+      "kind": "click",
+      "sent": 40,
+      "spacingMs": 450,
+      "n": 40,
+      "p50": 52,
+      "p95": 55,
+      "max": 55,
+      "unmatched": 0,
+      "postMsP50": 2
+    },
+    {
+      "name": "1280x800 q60 uncapped (2 hops)",
+      "kind": "key",
+      "sent": 40,
+      "spacingMs": 300,
+      "n": 40,
+      "p50": 35,
+      "p95": 89,
+      "max": 91,
+      "unmatched": 0,
+      "postMsP50": 2
+    },
+    {
+      "name": "1280x800 q60 uncapped (2 hops)",
+      "kind": "key-while-typing",
+      "keysPerSecond": 8,
+      "sent": 48,
+      "n": 48,
+      "p50": 35,
+      "p95": 91,
+      "max": 96,
+      "unmatched": 0,
+      "memberFps": 8.5,
+      "boxBrowserVcpu": 0.369
+    },
+    {
+      "name": "1280x800 q60 uncapped (2 hops)",
+      "kind": "key-while-typing",
+      "keysPerSecond": 15,
+      "sent": 90,
+      "n": 90,
+      "p50": 35,
+      "p95": 93,
+      "max": 95,
+      "unmatched": 0,
+      "memberFps": 15.3,
+      "boxBrowserVcpu": 0.554
+    },
+    {
+      "name": "1280x800 q60 cap15 (2 hops)",
+      "kind": "click",
+      "sent": 40,
+      "spacingMs": 450,
+      "n": 40,
+      "p50": 33,
+      "p95": 56,
+      "max": 59,
+      "unmatched": 0,
+      "postMsP50": 2
+    },
+    {
+      "name": "1280x800 q60 cap15 (2 hops)",
+      "kind": "key",
+      "sent": 40,
+      "spacingMs": 300,
+      "n": 40,
+      "p50": 23,
+      "p95": 53,
+      "max": 57,
+      "unmatched": 0,
+      "postMsP50": 1
+    },
+    {
+      "name": "1280x800 q60 cap15 (2 hops)",
+      "kind": "key-while-typing",
+      "keysPerSecond": 8,
+      "sent": 48,
+      "n": 48,
+      "p50": 20,
+      "p95": 52,
+      "max": 54,
+      "unmatched": 0,
+      "memberFps": 8.5,
+      "boxBrowserVcpu": 0.222
+    },
+    {
+      "name": "1280x800 q60 cap15 (2 hops)",
+      "kind": "key-while-typing",
+      "keysPerSecond": 15,
+      "sent": 90,
+      "n": 90,
+      "p50": 22,
+      "p95": 53,
+      "max": 92,
+      "unmatched": 0,
+      "memberFps": 15.3,
+      "boxBrowserVcpu": 0.354
+    },
+    {
+      "name": "defaults 1440x900 q60 cap15 (2 hops)",
+      "kind": "click",
+      "sent": 40,
+      "spacingMs": 450,
+      "n": 40,
+      "p50": 32,
+      "p95": 60,
+      "max": 61,
+      "unmatched": 0,
+      "postMsP50": 2
+    },
+    {
+      "name": "defaults 1440x900 q60 cap15 (2 hops)",
+      "kind": "key",
+      "sent": 40,
+      "spacingMs": 300,
+      "n": 40,
+      "p50": 27,
+      "p95": 53,
+      "max": 59,
+      "unmatched": 0,
+      "postMsP50": 1
+    },
+    {
+      "name": "defaults 1440x900 q60 cap15 (2 hops)",
+      "kind": "key-while-typing",
+      "keysPerSecond": 8,
+      "sent": 48,
+      "n": 48,
+      "p50": 35,
+      "p95": 94,
+      "max": 100,
+      "unmatched": 0,
+      "memberFps": 8.5,
+      "boxBrowserVcpu": 0.409
+    },
+    {
+      "name": "defaults 1440x900 q60 cap15 (2 hops)",
+      "kind": "key-while-typing",
+      "keysPerSecond": 15,
+      "sent": 90,
+      "n": 90,
+      "p50": 40,
+      "p95": 94,
+      "max": 101,
+      "unmatched": 0,
+      "memberFps": 15.3,
+      "boxBrowserVcpu": 0.594
+    },
+    {
+      "name": "fallback 1280x800 q50 cap8 (2 hops)",
+      "kind": "click",
+      "sent": 40,
+      "spacingMs": 450,
+      "n": 40,
+      "p50": 54,
+      "p95": 57,
+      "max": 58,
+      "unmatched": 0,
+      "postMsP50": 2
+    },
+    {
+      "name": "fallback 1280x800 q50 cap8 (2 hops)",
+      "kind": "key",
+      "sent": 40,
+      "spacingMs": 300,
+      "n": 40,
+      "p50": 60,
+      "p95": 96,
+      "max": 107,
+      "unmatched": 0,
+      "postMsP50": 2
+    },
+    {
+      "name": "fallback 1280x800 q50 cap8 (2 hops)",
+      "kind": "key-while-typing",
+      "keysPerSecond": 8,
+      "sent": 48,
+      "n": 48,
+      "p50": 36,
+      "p95": 97,
+      "max": 98,
+      "unmatched": 0,
+      "memberFps": 8.5,
+      "boxBrowserVcpu": 0.306
+    },
+    {
+      "name": "fallback 1280x800 q50 cap8 (2 hops)",
+      "kind": "key-while-typing",
+      "keysPerSecond": 15,
+      "sent": 90,
+      "n": 90,
+      "p50": 99,
+      "p95": 157,
+      "max": 213,
+      "unmatched": 0,
+      "memberFps": 8.5,
+      "boxBrowserVcpu": 0.495
+    },
+    {
+      "name": "1280x800 q60 cap15 (core only, 1 hop)",
+      "kind": "click",
+      "sent": 40,
+      "spacingMs": 450,
+      "n": 40,
+      "p50": 54,
+      "p95": 62,
+      "max": 78,
+      "unmatched": 0,
+      "postMsP50": 2
+    }
+  ],
+  "functional": {
+    "counter": {
+      "clicks": 5,
+      "shown": "5",
+      "pass": true
+    },
+    "typing": {
+      "typed": "hello ostra",
+      "value": "hello ostra",
+      "pass": true
+    },
+    "paste": {
+      "pasted": " pasted: été ✓ 2026",
+      "value": "hello ostra pasted: été ✓ 2026",
+      "pass": true
+    },
+    "api": {
+      "text": "api: ok, hello from the API on 3001",
+      "pass": true
+    },
+    "memberView": "member-view-1280x800.png"
+  },
+  "noView": {
+    "use": {
+      "browser": {
+        "vcpu": 0.002,
+        "privMaxMB": 289,
+        "wsMaxMB": 617,
+        "procsMax": 10
+      },
+      "vite": {
+        "vcpu": 0,
+        "privMaxMB": 151,
+        "wsMaxMB": 118,
+        "procsMax": 2
+      },
+      "api": {
+        "vcpu": 0,
+        "privMaxMB": 39,
+        "wsMaxMB": 83,
+        "procsMax": 2
+      },
+      "sidecar": {
+        "vcpu": 0,
+        "privMaxMB": 95,
+        "wsMaxMB": 101,
+        "procsMax": 1
+      },
+      "core": {
+        "vcpu": 0,
+        "privMaxMB": 80,
+        "wsMaxMB": 92,
+        "procsMax": 2
+      },
+      "web": {
+        "vcpu": 0,
+        "privMaxMB": 114,
+        "wsMaxMB": 121,
+        "procsMax": 2
+      },
+      "viewer": {
+        "vcpu": 0.004,
+        "privMaxMB": 183,
+        "wsMaxMB": 475,
+        "procsMax": 9
+      }
+    },
+    "framesIn": 0
+  },
+  "pinned": [
+    {
+      "name": "pinned 1280x800 q60 uncapped typing",
+      "scenario": "typing",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6,
+      "memberFps": 15,
+      "memberDrawnFps": 15,
+      "memberKBps": 933,
+      "avgFrameKB": 62.2,
+      "decodeMsAvg": 4.1,
+      "browserFps": 15,
+      "forwardedFps": 15,
+      "droppedBySidecar": 0,
+      "coreKBps": 933,
+      "use": {
+        "browser": {
+          "vcpu": 0.44,
+          "privMaxMB": 303,
+          "wsMaxMB": 646,
+          "procsMax": 10
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 118,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 83,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.046,
+          "privMaxMB": 95,
+          "wsMaxMB": 102,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.018,
+          "privMaxMB": 83,
+          "wsMaxMB": 95,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.044,
+          "privMaxMB": 114,
+          "wsMaxMB": 121,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.248,
+          "privMaxMB": 190,
+          "wsMaxMB": 493,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "pinned 1280x800 q60 uncapped scrolling",
+      "scenario": "scrolling",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 0,
+        "capMode": "ack",
+        "inflight": 3,
+        "sendLastFrame": false
+      },
+      "seconds": 6.01,
+      "memberFps": 32.1,
+      "memberDrawnFps": 32.1,
+      "memberKBps": 2194,
+      "avgFrameKB": 68.4,
+      "decodeMsAvg": 4.2,
+      "browserFps": 32.1,
+      "forwardedFps": 32.1,
+      "droppedBySidecar": 0,
+      "coreKBps": 2194,
+      "use": {
+        "browser": {
+          "vcpu": 0.341,
+          "privMaxMB": 304,
+          "wsMaxMB": 675,
+          "procsMax": 10
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 118,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 83,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.023,
+          "privMaxMB": 96,
+          "wsMaxMB": 102,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.015,
+          "privMaxMB": 86,
+          "wsMaxMB": 98,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.03,
+          "privMaxMB": 120,
+          "wsMaxMB": 127,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.368,
+          "privMaxMB": 228,
+          "wsMaxMB": 524,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "pinned 1280x800 q60 cap15 typing",
+      "scenario": "typing",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 15,
+        "capMode": "ack",
+        "inflight": 1,
+        "sendLastFrame": true
+      },
+      "seconds": 6,
+      "memberFps": 15,
+      "memberDrawnFps": 15,
+      "memberKBps": 933,
+      "avgFrameKB": 62.2,
+      "decodeMsAvg": 3.9,
+      "browserFps": 15,
+      "forwardedFps": 15,
+      "droppedBySidecar": 0,
+      "coreKBps": 933,
+      "use": {
+        "browser": {
+          "vcpu": 0.344,
+          "privMaxMB": 303,
+          "wsMaxMB": 677,
+          "procsMax": 10
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 118,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 83,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.011,
+          "privMaxMB": 96,
+          "wsMaxMB": 102,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.011,
+          "privMaxMB": 86,
+          "wsMaxMB": 98,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.017,
+          "privMaxMB": 120,
+          "wsMaxMB": 128,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.199,
+          "privMaxMB": 202,
+          "wsMaxMB": 501,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "pinned 1280x800 q60 cap15 scrolling",
+      "scenario": "scrolling",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 15,
+        "capMode": "ack",
+        "inflight": 1,
+        "sendLastFrame": true
+      },
+      "seconds": 6.02,
+      "memberFps": 15.3,
+      "memberDrawnFps": 15.3,
+      "memberKBps": 1043,
+      "avgFrameKB": 68.2,
+      "decodeMsAvg": 4.1,
+      "browserFps": 15.3,
+      "forwardedFps": 15.3,
+      "droppedBySidecar": 0,
+      "coreKBps": 1043,
+      "use": {
+        "browser": {
+          "vcpu": 0.332,
+          "privMaxMB": 302,
+          "wsMaxMB": 674,
+          "procsMax": 10
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 118,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 83,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.013,
+          "privMaxMB": 99,
+          "wsMaxMB": 104,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.015,
+          "privMaxMB": 85,
+          "wsMaxMB": 97,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.032,
+          "privMaxMB": 120,
+          "wsMaxMB": 128,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.249,
+          "privMaxMB": 206,
+          "wsMaxMB": 503,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "pinned 1280x800 q60 cap15",
+      "kind": "click",
+      "sent": 40,
+      "spacingMs": 450,
+      "n": 40,
+      "p50": 40,
+      "p95": 47,
+      "max": 52,
+      "unmatched": 0,
+      "postMsP50": 2
+    },
+    {
+      "name": "pinned 1280x800 q60 cap15",
+      "kind": "key",
+      "sent": 40,
+      "spacingMs": 300,
+      "n": 40,
+      "p50": 33,
+      "p95": 70,
+      "max": 77,
+      "unmatched": 0,
+      "postMsP50": 2
+    },
+    {
+      "name": "pinned 1280x800 q60 cap15",
+      "kind": "key-while-typing",
+      "keysPerSecond": 15,
+      "sent": 90,
+      "n": 90,
+      "p50": 26,
+      "p95": 59,
+      "max": 71,
+      "unmatched": 0,
+      "memberFps": 15.3,
+      "boxBrowserVcpu": 0.309
+    },
+    {
+      "name": "pinned fallback 1280x800 q50 cap8 typing",
+      "scenario": "typing",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 50,
+        "fpsCap": 8,
+        "capMode": "ack",
+        "inflight": 1,
+        "sendLastFrame": true
+      },
+      "seconds": 6,
+      "memberFps": 8.2,
+      "memberDrawnFps": 8.2,
+      "memberKBps": 458,
+      "avgFrameKB": 56.1,
+      "decodeMsAvg": 3.9,
+      "browserFps": 8.2,
+      "forwardedFps": 8.2,
+      "droppedBySidecar": 0,
+      "coreKBps": 458,
+      "use": {
+        "browser": {
+          "vcpu": 0.31,
+          "privMaxMB": 304,
+          "wsMaxMB": 645,
+          "procsMax": 10
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 119,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 83,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.024,
+          "privMaxMB": 95,
+          "wsMaxMB": 101,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.013,
+          "privMaxMB": 84,
+          "wsMaxMB": 96,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.024,
+          "privMaxMB": 112,
+          "wsMaxMB": 120,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.175,
+          "privMaxMB": 189,
+          "wsMaxMB": 489,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "pinned fallback 1280x800 q50 cap8",
+      "kind": "key-while-typing",
+      "keysPerSecond": 15,
+      "sent": 90,
+      "n": 90,
+      "p50": 94,
+      "p95": 157,
+      "max": 171,
+      "unmatched": 0,
+      "memberFps": 8.5,
+      "boxBrowserVcpu": 0.332
+    },
+    {
+      "name": "pinned defaults 1440x900 q60 cap15 typing",
+      "scenario": "typing",
+      "config": {
+        "width": 1440,
+        "height": 900,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 15,
+        "capMode": "ack",
+        "inflight": 1,
+        "sendLastFrame": true
+      },
+      "seconds": 6,
+      "memberFps": 15,
+      "memberDrawnFps": 15,
+      "memberKBps": 1108,
+      "avgFrameKB": 73.9,
+      "decodeMsAvg": 4.8,
+      "browserFps": 15,
+      "forwardedFps": 15,
+      "droppedBySidecar": 0,
+      "coreKBps": 1108,
+      "use": {
+        "browser": {
+          "vcpu": 0.37,
+          "privMaxMB": 317,
+          "wsMaxMB": 671,
+          "procsMax": 10
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 119,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 83,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.017,
+          "privMaxMB": 95,
+          "wsMaxMB": 101,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.013,
+          "privMaxMB": 86,
+          "wsMaxMB": 97,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.045,
+          "privMaxMB": 120,
+          "wsMaxMB": 128,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.222,
+          "privMaxMB": 193,
+          "wsMaxMB": 492,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "pinned defaults 1440x900 q60 cap15 scrolling",
+      "scenario": "scrolling",
+      "config": {
+        "width": 1440,
+        "height": 900,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 15,
+        "capMode": "ack",
+        "inflight": 1,
+        "sendLastFrame": true
+      },
+      "seconds": 6.02,
+      "memberFps": 15.1,
+      "memberDrawnFps": 15.1,
+      "memberKBps": 1204,
+      "avgFrameKB": 79.6,
+      "decodeMsAvg": 5.1,
+      "browserFps": 15.1,
+      "forwardedFps": 15.1,
+      "droppedBySidecar": 0,
+      "coreKBps": 1204,
+      "use": {
+        "browser": {
+          "vcpu": 0.367,
+          "privMaxMB": 308,
+          "wsMaxMB": 693,
+          "procsMax": 10
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 119,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 83,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.017,
+          "privMaxMB": 98,
+          "wsMaxMB": 104,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.015,
+          "privMaxMB": 85,
+          "wsMaxMB": 97,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.024,
+          "privMaxMB": 120,
+          "wsMaxMB": 128,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.306,
+          "privMaxMB": 209,
+          "wsMaxMB": 518,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "pinned defaults 1440x900 q60 cap15 animating",
+      "scenario": "animating",
+      "config": {
+        "width": 1440,
+        "height": 900,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 15,
+        "capMode": "ack",
+        "inflight": 1,
+        "sendLastFrame": true
+      },
+      "seconds": 6,
+      "memberFps": 15,
+      "memberDrawnFps": 15,
+      "memberKBps": 1103,
+      "avgFrameKB": 73.5,
+      "decodeMsAvg": 4.9,
+      "browserFps": 15,
+      "forwardedFps": 15,
+      "droppedBySidecar": 0,
+      "coreKBps": 1103,
+      "use": {
+        "browser": {
+          "vcpu": 0.535,
+          "privMaxMB": 236,
+          "wsMaxMB": 622,
+          "procsMax": 10
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 151,
+          "wsMaxMB": 119,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 83,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.021,
+          "privMaxMB": 99,
+          "wsMaxMB": 104,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.011,
+          "privMaxMB": 92,
+          "wsMaxMB": 105,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.017,
+          "privMaxMB": 120,
+          "wsMaxMB": 128,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.179,
+          "privMaxMB": 189,
+          "wsMaxMB": 498,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "pinned defaults 1440x900 q60 cap15",
+      "kind": "key-while-typing",
+      "keysPerSecond": 15,
+      "sent": 90,
+      "n": 90,
+      "p50": 31,
+      "p95": 65,
+      "max": 93,
+      "unmatched": 0,
+      "memberFps": 15.3,
+      "boxBrowserVcpu": 0.39
+    }
+  ],
+  "weights": {
+    "screenshotDesktop": {
+      "bytes": 153197,
+      "captureMs": 80,
+      "totalMs": 678
+    },
+    "screenshotPhone": {
+      "bytes": 63254,
+      "captureMs": 52,
+      "totalMs": 603
+    },
+    "reelJpeg60Interact": {
+      "frames": 41,
+      "frameBytes": 3027334,
+      "indexBytes": 1053,
+      "reelBytes": 3028387,
+      "produced": 41,
+      "dropped": 0,
+      "clicks": 3,
+      "typed": 23
+    },
+    "reelJpeg50Interact": {
+      "frames": 39,
+      "frameBytes": 2603684,
+      "indexBytes": 1003,
+      "reelBytes": 2604687,
+      "produced": 39,
+      "dropped": 0,
+      "clicks": 3,
+      "typed": 22
+    },
+    "reelJpeg60Scroll": {
+      "frames": 102,
+      "frameBytes": 8371466,
+      "indexBytes": 2567,
+      "reelBytes": 8374033,
+      "produced": 102,
+      "dropped": 0,
+      "clicks": 0,
+      "typed": 0
+    },
+    "reelPngInteract": {
+      "frames": 39,
+      "frameBytes": 10979305,
+      "indexBytes": 1042,
+      "reelBytes": 10980347,
+      "produced": 39,
+      "dropped": 0,
+      "clicks": 3,
+      "typed": 22
+    },
+    "reelPngScroll": {
+      "frames": 102,
+      "frameBytes": 12706148,
+      "indexBytes": 2669,
+      "reelBytes": 12708817,
+      "produced": 102,
+      "dropped": 0,
+      "clicks": 0,
+      "typed": 0
+    }
+  },
+  "samplerTickMs": 1414,
+  "http": [
+    {
+      "name": "http 1280x800 q60 cap2 typing",
+      "scenario": "typing",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 2,
+        "capMode": "ack",
+        "inflight": 1,
+        "sendLastFrame": true
+      },
+      "seconds": 6,
+      "memberFps": 2,
+      "memberDrawnFps": 2,
+      "memberKBps": 124,
+      "avgFrameKB": 61.9,
+      "decodeMsAvg": 3.9,
+      "browserFps": 2,
+      "forwardedFps": 2,
+      "droppedBySidecar": 0,
+      "coreKBps": 124,
+      "use": {
+        "browser": {
+          "vcpu": 0.498,
+          "privMaxMB": 472,
+          "wsMaxMB": 956,
+          "procsMax": 18
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 175,
+          "wsMaxMB": 129,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 83,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.031,
+          "privMaxMB": 102,
+          "wsMaxMB": 103,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.024,
+          "privMaxMB": 85,
+          "wsMaxMB": 98,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.018,
+          "privMaxMB": 114,
+          "wsMaxMB": 121,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.056,
+          "privMaxMB": 181,
+          "wsMaxMB": 492,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "http 1280x800 q60 cap2 scrolling",
+      "scenario": "scrolling",
+      "config": {
+        "width": 1280,
+        "height": 800,
+        "mobile": false,
+        "quality": 60,
+        "fpsCap": 2,
+        "capMode": "ack",
+        "inflight": 1,
+        "sendLastFrame": true
+      },
+      "seconds": 6.03,
+      "memberFps": 2,
+      "memberDrawnFps": 2,
+      "memberKBps": 137,
+      "avgFrameKB": 68.7,
+      "decodeMsAvg": 4,
+      "browserFps": 2,
+      "forwardedFps": 2,
+      "droppedBySidecar": 0,
+      "coreKBps": 137,
+      "use": {
+        "browser": {
+          "vcpu": 0.405,
+          "privMaxMB": 472,
+          "wsMaxMB": 961,
+          "procsMax": 18
+        },
+        "vite": {
+          "vcpu": 0,
+          "privMaxMB": 175,
+          "wsMaxMB": 129,
+          "procsMax": 2
+        },
+        "api": {
+          "vcpu": 0,
+          "privMaxMB": 39,
+          "wsMaxMB": 83,
+          "procsMax": 2
+        },
+        "sidecar": {
+          "vcpu": 0.026,
+          "privMaxMB": 102,
+          "wsMaxMB": 103,
+          "procsMax": 1
+        },
+        "core": {
+          "vcpu": 0.013,
+          "privMaxMB": 86,
+          "wsMaxMB": 97,
+          "procsMax": 2
+        },
+        "web": {
+          "vcpu": 0.017,
+          "privMaxMB": 114,
+          "wsMaxMB": 121,
+          "procsMax": 2
+        },
+        "viewer": {
+          "vcpu": 0.115,
+          "privMaxMB": 182,
+          "wsMaxMB": 487,
+          "procsMax": 9
+        }
+      }
+    },
+    {
+      "name": "http 1280x800 q60 cap2",
+      "kind": "click",
+      "sent": 20,
+      "spacingMs": 1300,
+      "n": 20,
+      "p50": 68,
+      "p95": 70,
+      "max": 522,
+      "unmatched": 0,
+      "postMsP50": 2
+    },
+    {
+      "name": "http 1280x800 q60 cap2",
+      "kind": "key",
+      "sent": 20,
+      "spacingMs": 900,
+      "n": 20,
+      "p50": 245,
+      "p95": 543,
+      "max": 547,
+      "unmatched": 0,
+      "postMsP50": 2
+    },
+    {
+      "name": "http 1280x800 q60 cap2",
+      "kind": "key-while-typing",
+      "keysPerSecond": 8,
+      "sent": 48,
+      "n": 48,
+      "p50": 310,
+      "p95": 560,
+      "max": 560,
+      "unmatched": 0,
+      "memberFps": 2.5,
+      "boxBrowserVcpu": 0.391
+    },
+    {
+      "name": "http counter",
+      "clicks": 3,
+      "before": 20,
+      "after": 23,
+      "pass": true
+    }
+  ],
+  "samples": 52,
+  "samplerTickMsHttp": 1394
+}

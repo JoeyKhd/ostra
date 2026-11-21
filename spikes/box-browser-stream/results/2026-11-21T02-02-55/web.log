@@ -1,0 +1,4 @@
+web listening on 8791
+(node:25532) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+[web exited 1]

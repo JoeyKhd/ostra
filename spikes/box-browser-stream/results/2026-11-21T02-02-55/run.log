@@ -1,0 +1,109 @@
+machine {"cpu":"13th Gen Intel(R) Core(TM) i9-13900K","logicalProcessors":32,"memoryGB":32,"os":"Windows 10.0.26200","node":"v24.14.0","boxBrowser":{"product":"Edg/157.0.4341.60","executable":"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36 Edg/157.0.0.0"},"memberBrowser":{"product":"Edg/157.0.4341.60"}}
+
+== 1. frame rate and bytes, uncapped (back-pressure by acks only, maxFramesInFlight 3) ==
+1440x900 q50 idle                            member     0 fps     0 KB/s (0 KB/frame)  browser 0 fps  box-browser 0.046 vCPU 416 MB priv  sidecar 0.011 vCPU
+1440x900 q50 typing                          member    15 fps  1001 KB/s (66.7 KB/frame)  browser 15 fps  box-browser 0.601 vCPU 456 MB priv  sidecar 0.04 vCPU
+1440x900 q50 scrolling                       member  32.1 fps  2299 KB/s (71.7 KB/frame)  browser 32.1 fps  box-browser 0.425 vCPU 371 MB priv  sidecar 0.032 vCPU
+1440x900 q60 idle                            member     0 fps     0 KB/s (0 KB/frame)  browser 0 fps  box-browser 0.019 vCPU 367 MB priv  sidecar 0 vCPU
+1440x900 q60 typing                          member    15 fps  1106 KB/s (73.7 KB/frame)  browser 15 fps  box-browser 0.6 vCPU 285 MB priv  sidecar 0.018 vCPU
+1440x900 q60 scrolling                       member  32.1 fps  2567 KB/s (80 KB/frame)  browser 32.1 fps  box-browser 0.675 vCPU 291 MB priv  sidecar 0.038 vCPU
+1440x900 q60 animating                       member    60 fps  4396 KB/s (73.3 KB/frame)  browser 60 fps  box-browser 1.076 vCPU 286 MB priv  sidecar 0.036 vCPU
+1440x900 q70 idle                            member     0 fps     0 KB/s (0 KB/frame)  browser 0 fps  box-browser 0.053 vCPU 219 MB priv  sidecar 0 vCPU
+1440x900 q70 typing                          member    15 fps  1264 KB/s (84.3 KB/frame)  browser 15 fps  box-browser 0.566 vCPU 280 MB priv  sidecar 0.025 vCPU
+1440x900 q70 scrolling                       member    32 fps  2967 KB/s (92.8 KB/frame)  browser 32.1 fps  box-browser 0.699 vCPU 287 MB priv  sidecar 0.04 vCPU
+1280x800 q50 idle                            member     0 fps     0 KB/s (0 KB/frame)  browser 0 fps  box-browser 0.02 vCPU 279 MB priv  sidecar 0.002 vCPU
+1280x800 q50 typing                          member    15 fps   840 KB/s (56 KB/frame)  browser 15 fps  box-browser 0.578 vCPU 290 MB priv  sidecar 0.021 vCPU
+1280x800 q50 scrolling                       member  32.1 fps  1977 KB/s (61.7 KB/frame)  browser 32.1 fps  box-browser 0.569 vCPU 292 MB priv  sidecar 0.039 vCPU
+1280x800 q60 idle                            member     0 fps     0 KB/s (0 KB/frame)  browser 0 fps  box-browser 0.009 vCPU 282 MB priv  sidecar 0 vCPU
+1280x800 q60 typing                          member    15 fps   931 KB/s (62.1 KB/frame)  browser 15 fps  box-browser 0.568 vCPU 293 MB priv  sidecar 0.028 vCPU
+1280x800 q60 scrolling                       member  32.1 fps  2205 KB/s (68.7 KB/frame)  browser 32.1 fps  box-browser 0.6 vCPU 293 MB priv  sidecar 0.028 vCPU
+1280x800 q60 animating                       member  60.2 fps  3693 KB/s (61.4 KB/frame)  browser 60 fps  box-browser 0.851 vCPU 288 MB priv  sidecar 0.044 vCPU
+1280x800 q70 idle                            member     0 fps     0 KB/s (0 KB/frame)  browser 0 fps  box-browser 0.024 vCPU 278 MB priv  sidecar 0 vCPU
+1280x800 q70 typing                          member    15 fps  1061 KB/s (70.7 KB/frame)  browser 15 fps  box-browser 0.499 vCPU 284 MB priv  sidecar 0.02 vCPU
+1280x800 q70 scrolling                       member  32.1 fps  2559 KB/s (79.7 KB/frame)  browser 32.1 fps  box-browser 0.564 vCPU 286 MB priv  sidecar 0.047 vCPU
+390x844 q50 idle                             member     0 fps     0 KB/s (0 KB/frame)  browser 0 fps  box-browser 0.037 vCPU 287 MB priv  sidecar 0 vCPU
+390x844 q50 typing                           member    15 fps   460 KB/s (30.7 KB/frame)  browser 15 fps  box-browser 0.227 vCPU 283 MB priv  sidecar 0.008 vCPU
+390x844 q50 scrolling                        member  32.1 fps  1084 KB/s (33.7 KB/frame)  browser 32.1 fps  box-browser 0.199 vCPU 283 MB priv  sidecar 0.032 vCPU
+390x844 q60 idle                             member     0 fps     0 KB/s (0 KB/frame)  browser 0 fps  box-browser 0.006 vCPU 280 MB priv  sidecar 0 vCPU
+390x844 q60 typing                           member  15.2 fps   520 KB/s (34.3 KB/frame)  browser 15.2 fps  box-browser 0.416 vCPU 284 MB priv  sidecar 0.016 vCPU
+390x844 q60 scrolling                        member  32.1 fps  1222 KB/s (38 KB/frame)  browser 32.1 fps  box-browser 0.32 vCPU 290 MB priv  sidecar 0.023 vCPU
+390x844 q60 animating                        member    60 fps  2048 KB/s (34.1 KB/frame)  browser 60 fps  box-browser 0.414 vCPU 284 MB priv  sidecar 0.032 vCPU
+390x844 q70 idle                             member     0 fps     0 KB/s (0 KB/frame)  browser 0 fps  box-browser 0.004 vCPU 278 MB priv  sidecar 0 vCPU
+390x844 q70 typing                           member  15.2 fps   603 KB/s (39.7 KB/frame)  browser 15.2 fps  box-browser 0.424 vCPU 287 MB priv  sidecar 0.019 vCPU
+390x844 q70 scrolling                        member  32.1 fps  1428 KB/s (44.5 KB/frame)  browser 32.1 fps  box-browser 0.321 vCPU 292 MB priv  sidecar 0.041 vCPU
+
+== capped: ADR 0068's working defaults and its fallback ==
+defaults 1440x900 q60 cap15 (ack) typing     member    15 fps  1106 KB/s (73.7 KB/frame)  browser 15 fps  box-browser 0.658 vCPU 293 MB priv  sidecar 0.031 vCPU
+defaults 1440x900 q60 cap15 (ack) scrolling  member  15.1 fps  1211 KB/s (80 KB/frame)  browser 15.1 fps  box-browser 0.619 vCPU 297 MB priv  sidecar 0.024 vCPU
+defaults 1440x900 q60 cap15 (ack) animating  member    15 fps  1099 KB/s (73.3 KB/frame)  browser 15 fps  box-browser 0.779 vCPU 291 MB priv  sidecar 0.017 vCPU
+1440x900 q60 cap15 (drop) typing             member  14.2 fps  1045 KB/s (73.7 KB/frame)  browser 15 fps  box-browser 0.667 vCPU 291 MB priv  sidecar 0.022 vCPU
+1440x900 q60 cap15 (drop) scrolling          member  14.8 fps  1183 KB/s (79.9 KB/frame)  browser 32.1 fps  box-browser 0.663 vCPU 301 MB priv  sidecar 0.033 vCPU
+1440x900 q60 cap15 (drop) animating          member  14.8 fps  1087 KB/s (73.3 KB/frame)  browser 60 fps  box-browser 1.08 vCPU 291 MB priv  sidecar 0.041 vCPU
+1280x800 q60 cap15 (ack) typing              member    15 fps   931 KB/s (62.1 KB/frame)  browser 15 fps  box-browser 0.477 vCPU 290 MB priv  sidecar 0.022 vCPU
+1280x800 q60 cap15 (ack) scrolling           member  15.3 fps  1052 KB/s (68.7 KB/frame)  browser 15.3 fps  box-browser 0.527 vCPU 290 MB priv  sidecar 0.031 vCPU
+1280x800 q60 cap15 (ack) animating           member    15 fps   921 KB/s (61.4 KB/frame)  browser 15 fps  box-browser 0.636 vCPU 292 MB priv  sidecar 0.028 vCPU
+fallback 1280x800 q50 cap8 (ack) typing      member   8.2 fps   457 KB/s (56 KB/frame)  browser 8.2 fps  box-browser 0.518 vCPU 289 MB priv  sidecar 0.013 vCPU
+fallback 1280x800 q50 cap8 (ack) scrolling   member   8.1 fps   501 KB/s (61.5 KB/frame)  browser 8.1 fps  box-browser 0.474 vCPU 297 MB priv  sidecar 0.013 vCPU
+fallback 1280x800 q50 cap8 (ack) animating   member     8 fps   440 KB/s (55 KB/frame)  browser 8 fps  box-browser 0.596 vCPU 305 MB priv  sidecar 0.009 vCPU
+1280x800 q60 cap15 typing at 8 keys/s        member     8 fps   487 KB/s (60.9 KB/frame)  browser 8 fps  box-browser 0.34 vCPU 295 MB priv  sidecar 0.007 vCPU
+1280x800 q60 cap15 typing at 25 keys/s       member    15 fps   954 KB/s (63.6 KB/frame)  browser 15.2 fps  box-browser 0.761 vCPU 306 MB priv  sidecar 0.031 vCPU
+
+== 3. input latency: a click or a key in the member's page to the frame that shows it ==
+1280x800 q60 uncapped (2 hops)               click latency n=40/40 p50 52 ms p95 55 ms max 55 ms
+1280x800 q60 uncapped (2 hops)               key latency n=40/40 p50 35 ms p95 89 ms max 91 ms
+1280x800 q60 uncapped (2 hops)               typing 8 keys/s: latency n=48/48 p50 35 ms p95 91 ms max 96 ms, 8.5 fps
+1280x800 q60 uncapped (2 hops)               typing 15 keys/s: latency n=90/90 p50 35 ms p95 93 ms max 95 ms, 15.3 fps
+1280x800 q60 cap15 (2 hops)                  click latency n=40/40 p50 33 ms p95 56 ms max 59 ms
+1280x800 q60 cap15 (2 hops)                  key latency n=40/40 p50 23 ms p95 53 ms max 57 ms
+1280x800 q60 cap15 (2 hops)                  typing 8 keys/s: latency n=48/48 p50 20 ms p95 52 ms max 54 ms, 8.5 fps
+1280x800 q60 cap15 (2 hops)                  typing 15 keys/s: latency n=90/90 p50 22 ms p95 53 ms max 92 ms, 15.3 fps
+defaults 1440x900 q60 cap15 (2 hops)         click latency n=40/40 p50 32 ms p95 60 ms max 61 ms
+defaults 1440x900 q60 cap15 (2 hops)         key latency n=40/40 p50 27 ms p95 53 ms max 59 ms
+defaults 1440x900 q60 cap15 (2 hops)         typing 8 keys/s: latency n=48/48 p50 35 ms p95 94 ms max 100 ms, 8.5 fps
+defaults 1440x900 q60 cap15 (2 hops)         typing 15 keys/s: latency n=90/90 p50 40 ms p95 94 ms max 101 ms, 15.3 fps
+fallback 1280x800 q50 cap8 (2 hops)          click latency n=40/40 p50 54 ms p95 57 ms max 58 ms
+fallback 1280x800 q50 cap8 (2 hops)          key latency n=40/40 p50 60 ms p95 96 ms max 107 ms
+fallback 1280x800 q50 cap8 (2 hops)          typing 8 keys/s: latency n=48/48 p50 36 ms p95 97 ms max 98 ms, 8.5 fps
+fallback 1280x800 q50 cap8 (2 hops)          typing 15 keys/s: latency n=90/90 p50 99 ms p95 157 ms max 213 ms, 8.5 fps
+1280x800 q60 cap15 (core only, 1 hop)        click latency n=40/40 p50 54 ms p95 62 ms max 78 ms
+
+== 4, 5. the counter, the field, a paste and /api, through the stream ==
+functional {"counter":{"clicks":5,"shown":"5","pass":true},"typing":{"typed":"hello ostra","value":"hello ostra","pass":true},"paste":{"pasted":" pasted: été ✓ 2026","value":"hello ostra pasted: été ✓ 2026","pass":true},"api":{"text":"api: ok, hello from the API on 3001","pass":true},"memberView":"member-view-1280x800.png"}
+
+== the box's browser with no view open ==
+no view: box-browser 0.002 vCPU 289 MB priv, vite 151 MB, api 39 MB
+
+== 2. pinned to 2 logical processors (affinity 0xC): a CPU cap only, not a container ==
+affinity 12 set on 14 processes
+pinned 1280x800 q60 uncapped typing          member    15 fps   933 KB/s (62.2 KB/frame)  browser 15 fps  box-browser 0.44 vCPU 303 MB priv  sidecar 0.046 vCPU
+pinned 1280x800 q60 uncapped scrolling       member  32.1 fps  2194 KB/s (68.4 KB/frame)  browser 32.1 fps  box-browser 0.341 vCPU 304 MB priv  sidecar 0.023 vCPU
+pinned 1280x800 q60 cap15 typing             member    15 fps   933 KB/s (62.2 KB/frame)  browser 15 fps  box-browser 0.344 vCPU 303 MB priv  sidecar 0.011 vCPU
+pinned 1280x800 q60 cap15 scrolling          member  15.3 fps  1043 KB/s (68.2 KB/frame)  browser 15.3 fps  box-browser 0.332 vCPU 302 MB priv  sidecar 0.013 vCPU
+pinned 1280x800 q60 cap15                    click latency n=40/40 p50 40 ms p95 47 ms max 52 ms
+pinned 1280x800 q60 cap15                    key latency n=40/40 p50 33 ms p95 70 ms max 77 ms
+pinned 1280x800 q60 cap15                    typing 15 keys/s: latency n=90/90 p50 26 ms p95 59 ms max 71 ms, 15.3 fps
+pinned fallback 1280x800 q50 cap8 typing     member   8.2 fps   458 KB/s (56.1 KB/frame)  browser 8.2 fps  box-browser 0.31 vCPU 304 MB priv  sidecar 0.024 vCPU
+pinned fallback 1280x800 q50 cap8            typing 15 keys/s: latency n=90/90 p50 94 ms p95 157 ms max 171 ms, 8.5 fps
+pinned defaults 1440x900 q60 cap15 typing    member    15 fps  1108 KB/s (73.9 KB/frame)  browser 15 fps  box-browser 0.37 vCPU 317 MB priv  sidecar 0.017 vCPU
+pinned defaults 1440x900 q60 cap15 scrolling member  15.1 fps  1204 KB/s (79.6 KB/frame)  browser 15.1 fps  box-browser 0.367 vCPU 308 MB priv  sidecar 0.017 vCPU
+pinned defaults 1440x900 q60 cap15 animating member    15 fps  1103 KB/s (73.5 KB/frame)  browser 15 fps  box-browser 0.535 vCPU 236 MB priv  sidecar 0.021 vCPU
+pinned defaults 1440x900 q60 cap15           typing 15 keys/s: latency n=90/90 p50 31 ms p95 65 ms max 93 ms, 15.3 fps
+affinity 4294967295 set on 14 processes
+
+== 7. a screenshot and a 10 s recording at 10 fps, each in a page of its own ==
+reelJpeg60Interact: {"frames":41,"frameBytes":3027334,"indexBytes":1053,"reelBytes":3028387,"produced":41,"dropped":0,"clicks":3,"typed":23}
+reelJpeg50Interact: {"frames":39,"frameBytes":2603684,"indexBytes":1003,"reelBytes":2604687,"produced":39,"dropped":0,"clicks":3,"typed":22}
+reelJpeg60Scroll: {"frames":102,"frameBytes":8371466,"indexBytes":2567,"reelBytes":8374033,"produced":102,"dropped":0,"clicks":0,"typed":0}
+reelPngInteract: {"frames":39,"frameBytes":10979305,"indexBytes":1042,"reelBytes":10980347,"produced":39,"dropped":0,"clicks":3,"typed":22}
+reelPngScroll: {"frames":102,"frameBytes":12706148,"indexBytes":2669,"reelBytes":12708817,"produced":102,"dropped":0,"clicks":0,"typed":0}
+screenshots: desktop {"bytes":153197,"captureMs":80,"totalMs":678}, phone {"bytes":63254,"captureMs":52,"totalMs":603}
+
+== 6. the HTTP carrier ==
+http 1280x800 q60 cap2 typing                member     2 fps   124 KB/s (61.9 KB/frame)  browser 2 fps  box-browser 0.498 vCPU 472 MB priv  sidecar 0.031 vCPU
+http 1280x800 q60 cap2 scrolling             member     2 fps   137 KB/s (68.7 KB/frame)  browser 2 fps  box-browser 0.405 vCPU 472 MB priv  sidecar 0.026 vCPU
+http 1280x800 q60 cap2                       click latency n=20/20 p50 68 ms p95 70 ms max 522 ms
+http 1280x800 q60 cap2                       key latency n=20/20 p50 245 ms p95 543 ms max 547 ms
+http 1280x800 q60 cap2                       typing 8 keys/s: latency n=48/48 p50 310 ms p95 560 ms max 560 ms, 2.5 fps
+http counter: 20 -> 23
+
+results in C:\Users\santi\ow\m8-spikes\spikes\box-browser-stream\results\2026-11-21T02-02-55

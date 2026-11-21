@@ -1,0 +1,4 @@
+packages:
+  - "."
+# spikes/ is outside the repo's workspace (docs/development.md): this spike installs on its own, and allows no
+# install script.
