@@ -19,6 +19,11 @@ COPY . .
 RUN pnpm dlx turbo@2.11.13 prune @ostra/core @ostra/web --docker
 
 FROM base AS build
+# OpenSSL before the install: Prisma's install picks its schema engine by the OpenSSL it finds, and
+# on the slim image, which has none, it takes the OpenSSL 1.1 build, which bookworm can't load.
+RUN apt-get update \
+  && apt-get install --yes --no-install-recommends openssl \
+  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=prune /src/out/json/ ./
 RUN pnpm install --frozen-lockfile
@@ -37,6 +42,10 @@ RUN pnpm licenses list --json --recursive > /tmp/licenses.json   && node /opt/no
 
 # The runtime starts node directly, so it needs no pnpm and downloads nothing when it starts.
 FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS runtime
+# Prisma's schema engine, which runs the migrations when `core` or `all` starts, links OpenSSL.
+RUN apt-get update \
+  && apt-get install --yes --no-install-recommends openssl \
+  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV NODE_ENV=production OSTRA_DATA_DIR=/var/lib/ostra
 COPY --from=build --chown=node:node /app /app

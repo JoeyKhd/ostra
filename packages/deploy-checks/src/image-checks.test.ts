@@ -166,6 +166,20 @@ describe("each image's own rules", () => {
     expect(rulesOf({ dockerfiles: { ...files.dockerfiles, server: inPrune } })).toContain("pruned-root");
   });
 
+  it("F-039/c1: the server installs OpenSSL for Prisma's schema engine, in the build before pnpm install and in the final stage", () => {
+    const install = "RUN apt-get update \\\n  && apt-get install --yes --no-install-recommends openssl \\\n  && rm -rf /var/lib/apt/lists/*\n";
+    expect(files.dockerfiles.server.split(install).length).toBe(3);
+    expect(rulesOf({})).not.toContain("openssl");
+    const withoutFirst = files.dockerfiles.server.replace(install, "");
+    const withoutLast = `${files.dockerfiles.server.slice(0, files.dockerfiles.server.lastIndexOf(install))}${files.dockerfiles.server.slice(files.dockerfiles.server.lastIndexOf(install) + install.length)}`;
+    // Installed after pnpm install, Prisma's postinstall has already picked the OpenSSL 1.1 engine.
+    const late = withoutFirst.replace("RUN pnpm install --frozen-lockfile\n", `RUN pnpm install --frozen-lockfile\n${install}`);
+    for (const server of [withoutFirst, withoutLast, late]) {
+      expect(server).not.toBe(files.dockerfiles.server);
+      expect(rulesOf({ dockerfiles: { ...files.dockerfiles, server } })).toContain("openssl");
+    }
+  });
+
   it("F-039/c1: the runner is the ostra CLI, as a non-root user", () => {
     expect(rulesOf(withDockerfile("runner", "USER node\n", "USER 0\n"))).toContain("non-root");
     expect(rulesOf(withDockerfile("runner", 'ENTRYPOINT ["ostra"]', 'ENTRYPOINT ["node", "/app/apps/runner/src/main.ts"]'))).toContain("entrypoint");

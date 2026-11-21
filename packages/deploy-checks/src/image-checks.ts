@@ -26,7 +26,8 @@ export type ImageRule =
   | "release-version"
   | "notices"
   | "no-agent"
-  | "pruned-root";
+  | "pruned-root"
+  | "openssl";
 
 export type Problem = { readonly file: string; readonly line: number | null; readonly rule: ImageRule; readonly message: string };
 
@@ -213,6 +214,28 @@ const prunedRoot = (file: string, stages: readonly Stage[]): Problem[] => {
     : [{ file, line: null, rule: "pruned-root", message: "the stage that runs @ostra/db generate and next build must COPY tsconfig.base.json, which turbo prune leaves out" }];
 };
 
+/** The index of the first instruction in `stage` that `test` matches, or -1. */
+const indexOf = (stage: Stage | undefined, test: (instruction: Instruction) => boolean): number => stage?.instructions.findIndex(test) ?? -1;
+
+const installsOpenssl = (instruction: Instruction): boolean => instruction.keyword === "RUN" && /apt-get install\b[^;&|]*\sopenssl(?:\s|$)/.test(instruction.args);
+
+/**
+ * Prisma's schema engine, which runs the migrations when the server's `core` or `all` starts, links
+ * OpenSSL, which the slim image lacks. The build installs it before `pnpm install`, whose Prisma
+ * postinstall picks the engine by the OpenSSL it finds (with none it takes the OpenSSL 1.1 build,
+ * which bookworm can't load), and the final stage installs it to run that engine.
+ */
+const prismaOpenssl = (file: string, stages: readonly Stage[], final: Stage | undefined): Problem[] => {
+  const problem = (message: string): Problem => ({ file, line: null, rule: "openssl", message });
+  const build = stageRunning(stages, "pnpm install --frozen-lockfile");
+  const openssl = indexOf(build, installsOpenssl);
+  const install = indexOf(build, (instruction) => instruction.keyword === "RUN" && instruction.args.includes("pnpm install --frozen-lockfile"));
+  return [
+    ...(openssl >= 0 && openssl < install ? [] : [problem("the build stage must apt-get install openssl before pnpm install, so Prisma fetches the engine for it")]),
+    ...(indexOf(final, installsOpenssl) >= 0 ? [] : [problem("the final stage must apt-get install openssl, which Prisma's schema engine links")]),
+  ];
+};
+
 /** A RUN option's value: `--out /x` gives `/x`. */
 const optionOf = (args: string, option: string): string | null => new RegExp(String.raw`(?:^|\s)${option}\s+(\S+)`).exec(args)?.[1] ?? null;
 
@@ -282,7 +305,7 @@ export const checkDockerfile = (name: ImageName, text: string, entrypoint: strin
   const own = ((): Problem[] => {
     switch (name) {
       case "server":
-        return [...serverImage(file, final, entrypoint), ...prunedRoot(file, stages)];
+        return [...serverImage(file, final, entrypoint), ...prunedRoot(file, stages), ...prismaOpenssl(file, stages, final)];
       case "runner":
         return [...nonRoot(file, final), ...entrypointIs(file, final, ["ostra"]), ...noAgent(file, instructions)];
       case "base":
