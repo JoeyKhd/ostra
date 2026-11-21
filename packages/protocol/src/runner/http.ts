@@ -110,8 +110,8 @@ export const runnerHeaders = {
    */
   minor: "x-ostra-minor",
   /**
-   * The connection epoch from `welcome`, on every HTTP carrier request after `POST /hello`; a
-   * newer connection of the runner answers `409 { code: "superseded" }` (ADR 0034).
+   * The connection epoch from `welcome`, on every HTTP carrier request after `POST /hello`; one
+   * that isn't the runner's open connection is answered `409` (`httpEpochRefusal`, ADR 0034).
    */
   connectionEpoch: "x-ostra-epoch",
   /**
@@ -513,14 +513,36 @@ export const httpCarrierStatus = {
   ok: 200,
   /** The long poll held its time and has nothing: poll again. */
   idle: 204,
-  /** A newer connection of this runner holds it: send `POST /hello` again. */
+  /** The request's connection isn't the runner's open one (`httpEpochRefusal`). */
   superseded: 409,
 } as const;
 export type HttpCarrierStatus = (typeof httpCarrierStatus)[keyof typeof httpCarrierStatus];
 
-/** The `409` body when a request's `x-ostra-epoch` isn't the runner's newest connection. */
+/**
+ * The `409` body when a request's `x-ostra-epoch` isn't the runner's open connection, and core
+ * closed it: quiet past the dead time. The runner sends `POST /hello` again. Below minor 8 it's also
+ * the answer when a newer connection replaced it.
+ */
 export const httpSupersededSchema = z.strictObject({ code: z.literal("superseded") });
 export type HttpSuperseded = z.infer<typeof httpSupersededSchema>;
+
+/**
+ * Minor 8 (ADR 0034, amended 2026-11-21): from this minor, a request whose connection a newer one of
+ * the runner replaced, on either carrier, is answered `409` with the error `replaced`
+ * (`runnerHttpErrorSchema`), the WebSocket's `evict` and 4409, so a runner on HTTP can tell it from
+ * a connection core closed (`superseded`) and stops as it does on the WebSocket. A runner below it
+ * is answered `superseded` for both, as before, and says hello again.
+ */
+export const HTTP_REPLACED_MINOR = 8;
+
+/** Why a request's connection epoch was refused: a newer connection replaced it, or core closed it. */
+export type HttpEpochRefusal = "replaced" | "closed";
+
+/** The `409` body for a refused connection epoch, at the minor the request speaks (`x-ostra-minor`). */
+export const httpEpochRefusal = (why: HttpEpochRefusal, minor: number): HttpSuperseded | RunnerHttpError =>
+  why === "replaced" && minor >= HTTP_REPLACED_MINOR
+    ? { error: { code: "replaced", message: "a newer connection of this runner took over" } }
+    : { code: "superseded" };
 
 /** A refused `POST /hello`: one `error` frame, at the server's minor. */
 export const httpHelloRefusalSchema = z.strictObject({ frames: z.tuple([errorFrameSchema]) });

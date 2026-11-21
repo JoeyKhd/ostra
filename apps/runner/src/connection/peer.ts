@@ -282,7 +282,7 @@ type End =
   | { readonly kind: "upgrade-refused"; readonly status: number }
   /** Upgraded, but no `welcome` within the handshake timeout. */
   | { readonly kind: "no-welcome" }
-  /** HTTP: a newer connection of this runner holds it (`409`). */
+  /** HTTP: the server closed this connection (`409 superseded`); below minor 8, also a newer one holding it. */
   | { readonly kind: "superseded" }
   /** HTTP: time to try the WebSocket again. */
   | { readonly kind: "ws-retry" }
@@ -1027,6 +1027,11 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
       case "superseded":
         return { kind: "superseded" };
       case "error":
+        if (answer.status === 409 && read.error.code === "replaced") {
+          // Minor 8 (ADR 0034, amended 2026-11-21): a newer connection of this runner took over, as
+          // the WebSocket's `evict` says; core answers `superseded` for a connection it closed.
+          return { kind: "replaced" };
+        }
         if (answer.status === 401) {
           return { kind: "token-expired" };
         }
@@ -1391,9 +1396,9 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
           }
           break;
         case "superseded":
-          // A newer connection of this runner holds it (another replica saw a newer hello): this
-          // one ends, and the runner says hello again from scratch.
-          log.info("another connection of this runner holds it: saying hello again");
+          // The server closed this connection (quiet past its dead time), or, from a server below
+          // minor 8, a newer one holds it: this one ends, and the runner says hello again from scratch.
+          log.info("the server closed this connection, or another one of this runner holds it: saying hello again");
           break;
         case "ws-retry":
           log.info("trying the WebSocket again", { fallback });

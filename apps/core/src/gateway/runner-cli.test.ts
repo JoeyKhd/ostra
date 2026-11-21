@@ -250,10 +250,10 @@ const approve = async (userCode: string): Promise<void> => {
   await auth.api.deviceApprove({ body: { userCode: code }, headers: browser });
 };
 
-/** A personal runner, signed in through the device flow and connected. */
-const signInPersonal = async (name: string): Promise<{ readonly runner: CliRunner; readonly runnerId: string; readonly deviceToken: string }> => {
+/** A personal runner, signed in through the device flow and connected; `extra` are more of its flags. */
+const signInPersonal = async (name: string, extra: readonly string[] = []): Promise<{ readonly runner: CliRunner; readonly runnerId: string; readonly deviceToken: string }> => {
   const issuedBefore = deviceTokens.length;
-  const runner = await startCliRunner("host", "--name", name, "--capacity", "2", "--labels", "gpu,fast");
+  const runner = await startCliRunner("host", "--name", name, "--capacity", "2", "--labels", "gpu,fast", ...extra);
   const [, userCode = ""] = await runner.line(/^\s+Code\s+(\S+)\s*$/);
   await approve(userCode);
   const [, runnerId = ""] = await runner.line(/Runner (\S+) \(personal, .*\) is connecting to/);
@@ -497,15 +497,18 @@ describe("one process per runner", () => {
     expect(third.child.exitCode).toBeNull();
   });
 
-  it("F-013: a runner whose connection another process took stops with exit code 4 and says why, and doesn't take it back", async () => {
-    const { runner: first, runnerId } = await signInPersonal("copied");
+  /** Two runners with one identity on `carrier`: the first stops, the other keeps the connection, and core logs one eviction. */
+  const anotherProcessTakesIt = async (name: string, carrier: "websocket" | "http"): Promise<void> => {
+    const transport = carrier === "http" ? ["--transport", "http"] : [];
+    const { runner: first, runnerId } = await signInPersonal(name, transport);
     await waitFor("the runner online", async () => (await runnerRow(runnerId)).state === "online");
     const before = await presenceOf(runnerId);
+    expect(before.carrier).toBe(carrier);
 
     // Another machine with a copy of its identity: its own data folder, so its own lock.
     const copy = await mkdtemp(path.join(tmpdir(), "ostra-f013-copy-"));
     await cp(path.join(first.dataDir, "identity"), path.join(copy, "identity"), { recursive: true });
-    const other = spawnCliRunner(copy, "host", ["--name", "copied"]);
+    const other = spawnCliRunner(copy, "host", ["--name", name, ...transport]);
 
     expect(await first.exited).toBe(exitCodes.duplicate);
     expect(first.lines.join("\n")).toContain("Another process connected as this runner, and the server closed this one's connection for it");
@@ -520,7 +523,17 @@ describe("one process per runner", () => {
     });
     const held = await presenceOf(runnerId);
     await sleep(3_000);
-    expect(await presenceOf(runnerId)).toMatchObject({ connectionEpoch: held.connectionEpoch, disconnectedAt: null });
+    expect(await presenceOf(runnerId)).toMatchObject({ connectionEpoch: held.connectionEpoch, carrier, disconnectedAt: null });
     expect(other.child.exitCode).toBeNull();
+    // Both connections were on this one core process: the eviction is logged all the same, once.
+    expect(evictions(runnerId).map((record) => record.fields["reason"])).toEqual(["replaced"]);
+  };
+
+  it("F-013: a runner whose connection another process took stops with exit code 4 and says why, and doesn't take it back", async () => {
+    await anotherProcessTakesIt("copied", "websocket");
+  });
+
+  it("F-013/c4: on the HTTP carrier too, a runner whose connection another process took stops with exit code 4 instead of taking turns with it", async () => {
+    await anotherProcessTakesIt("copied-http", "http");
   });
 });

@@ -6,6 +6,7 @@ import {
   downFrameCodec,
   httpCarrierStatus,
   httpDownQuerySchema,
+  httpEpochRefusal,
   minorFromHeader,
   parseHttpUpBody,
   runnerHeaders,
@@ -123,6 +124,29 @@ export const createHttpCarrier = (context: GatewayContext, session: CarrierSessi
   };
 
   /**
+   * A newer connection of the runner was accepted, on either carrier: an older HTTP connection this
+   * replica serves ends, replaced, as `evict` ends a WebSocket. Its next request is answered `409`.
+   */
+  const endOlder = (runnerId: RunnerId, connectionEpoch: number): void => {
+    const held = sessions.get(runnerId);
+    if (held !== undefined && held.connectionEpoch < connectionEpoch) {
+      sessions.delete(runnerId);
+      logger.info("gateway.evicted", { runnerId, reason: "replaced", carrier: "http", connectionEpoch: held.connectionEpoch });
+    }
+  };
+
+  /**
+   * A request of a connection that isn't the runner's open one: `409`, at the request's minor. From
+   * minor 8, `replaced` when a newer connection took over (ADR 0034, amended 2026-11-21), so the
+   * runner stops as on the WebSocket's `evict`; `superseded` when core closed it (quiet past the dead
+   * time, or presence gone), and the runner says hello again.
+   */
+  const refuseEpoch = (response: ServerResponse, presence: { readonly connectionEpoch: number } | null, epoch: number, minor: number): void => {
+    const why = presence !== null && presence.connectionEpoch > epoch ? "replaced" : "closed";
+    sendJson(response, httpCarrierStatus.superseded, httpEpochRefusal(why, minor));
+  };
+
+  /**
    * The request's connection, when its `x-ostra-epoch` is the runner's open connection and its
    * `x-ostra-minor` that connection's; `null` after the refusal was sent.
    */
@@ -139,7 +163,7 @@ export const createHttpCarrier = (context: GatewayContext, session: CarrierSessi
       select: { connectionEpoch: true, disconnectedAt: true, minor: true },
     });
     if (presence?.connectionEpoch !== epoch || presence.disconnectedAt !== null) {
-      sendJson(response, httpCarrierStatus.superseded, { code: "superseded" });
+      refuseEpoch(response, presence, epoch, minorFromHeader(minorHeader));
       return null;
     }
     if (minorFromHeader(minorHeader) !== presence.minor) {
@@ -175,6 +199,7 @@ export const createHttpCarrier = (context: GatewayContext, session: CarrierSessi
       sendJson(response, status, { frames: encode([outcome.error], context.serverMinor) });
       return;
     }
+    endOlder(runner.runnerId, outcome.connectionEpoch);
     sessions.set(runner.runnerId, { runner, connectionEpoch: outcome.connectionEpoch, lastSeenAt: now(), openPolls: 0 });
     session.connectedHere(runner.runnerId, outcome.connectionEpoch);
     // Polls of the older connection, held here, answer now (and are refused).
@@ -309,7 +334,7 @@ export const createHttpCarrier = (context: GatewayContext, session: CarrierSessi
       }
       const presence = await db.runnerPresence.findFirst({ where: { runnerId: runner.runnerId }, select: { connectionEpoch: true, disconnectedAt: true } });
       if (presence?.connectionEpoch !== connection.connectionEpoch || presence.disconnectedAt !== null) {
-        sendJson(response, httpCarrierStatus.superseded, { code: "superseded" });
+        refuseEpoch(response, presence, connection.connectionEpoch, connection.minor);
         return;
       }
       frames = await commandsAfter(runner, after);
@@ -361,10 +386,7 @@ export const createHttpCarrier = (context: GatewayContext, session: CarrierSessi
     },
     wake: wakeAll,
     connected: (runnerId, connectionEpoch) => {
-      const held = sessions.get(runnerId);
-      if (held !== undefined && held.connectionEpoch < connectionEpoch) {
-        sessions.delete(runnerId);
-      }
+      endOlder(runnerId, connectionEpoch);
       wakeAll(runnerId);
     },
     revoked: (runnerId) => {

@@ -627,8 +627,8 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
         http.connected(runner.runnerId, outcome.connectionEpoch);
         const old = peers.get(runner.runnerId);
         if (old !== undefined) {
-          send(old, { type: "evict", reason: "replaced" });
-          closePeer(old, closeCodes.replaced, "replaced by a newer connection");
+          // Both on this process: evicted here, and logged as another replica's LISTEN would.
+          evict(old, "replaced");
         }
         peers.set(runner.runnerId, opened);
         peer = opened;

@@ -32,7 +32,9 @@ import type { Command } from "./commands.ts";
 import {
   connectionEpochFromHeader,
   encodeInfoForMinor,
+  HTTP_REPLACED_MINOR,
   httpCarrierStatus,
+  httpEpochRefusal,
   httpHelloRefusalSchema,
   httpHelloRequestSchema,
   httpSupersededSchema,
@@ -47,6 +49,7 @@ import {
   registryCredentialRefusalSchema,
   registryCredentialSchema,
   runnerHeaders,
+  runnerHttpErrorSchema,
   runnerPaths,
 } from "./http.ts";
 import {
@@ -347,6 +350,17 @@ describe("the HTTP carrier", () => {
     for (const bad of [undefined, null, "", "0", "-1", "1.5", "x", "01"]) {
       expect(connectionEpochFromHeader(bad)).toBeNull();
     }
+  });
+
+  it("F-013/c4: from minor 8 a replaced connection's 409 is the error replaced, apart from superseded for one core closed; below it both are superseded", () => {
+    expect(HTTP_REPLACED_MINOR).toBe(8);
+    const replaced = httpEpochRefusal("replaced", HTTP_REPLACED_MINOR);
+    expect(runnerHttpErrorSchema.parse(replaced)).toMatchObject({ error: { code: "replaced" } });
+    expect(httpSupersededSchema.safeParse(replaced).success).toBe(false);
+    expect(httpEpochRefusal("closed", HTTP_REPLACED_MINOR)).toEqual({ code: "superseded" });
+    // A minor-7 runner reads only `superseded`, and says hello again on it as before.
+    expect(httpSupersededSchema.parse(httpEpochRefusal("replaced", HTTP_REPLACED_MINOR - 1))).toEqual({ code: "superseded" });
+    expect(httpEpochRefusal("closed", HTTP_REPLACED_MINOR - 1)).toEqual({ code: "superseded" });
   });
 
   it("F-013: hello's answer, an up batch and a down batch parse at minor 4, and minor 3 still reads its own", () => {

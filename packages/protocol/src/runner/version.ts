@@ -63,7 +63,10 @@ export const PROTOCOL_MAJOR = 1;
  * the window: it's never offered a task with files (`isTaskOfferable`'s `message-files`), never sent
  * a steer with files (`canSendFiles`; its codec refuses to encode one), and never sent any new
  * field; `ticket-update` reads as `message`, and a minor-8 runner sends it no `files.written`. A
- * minor-6 peer is outside the window.
+ * minor-6 peer is outside the window. Minor 8 also tells a replaced HTTP connection apart (ADR 0034,
+ * amended 2026-11-21): its requests are answered `409` with the error `replaced`, and `superseded`
+ * means only a connection core closed (`HTTP_REPLACED_MINOR`). A minor-7 runner is answered
+ * `superseded` for both, as before.
  */
 export const PROTOCOL_MINOR = 8;
 

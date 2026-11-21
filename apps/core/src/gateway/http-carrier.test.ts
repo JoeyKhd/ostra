@@ -6,7 +6,7 @@ import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
 import { postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, revokeRunner, systemClock } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
-import { clientMessageIdSchema, memberIdSchema, PROTOCOL_MINOR, projectIdSchema, segmentIdSchema, turnIdSchema } from "@ostra/protocol";
+import { clientMessageIdSchema, HTTP_REPLACED_MINOR, memberIdSchema, PROTOCOL_MINOR, projectIdSchema, segmentIdSchema, turnIdSchema } from "@ostra/protocol";
 import type { DownFrame, EventsFrame, TaskEvent } from "@ostra/protocol";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
@@ -181,21 +181,34 @@ describe("the HTTP carrier", () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
     const second = await httpPeer(a.url, token, runner.runnerId);
     expect(second.connectionEpoch).toBeGreaterThan(first.connectionEpoch);
+    // Minor 8 (ADR 0034, amended 2026-11-21): replaced, said apart from a connection core closed.
+    const replaced = { error: { code: "replaced", message: "a newer connection of this runner took over" } };
     const ended = await held;
     expect(ended.status).toBe(409);
-    expect(ended.body).toEqual({ code: "superseded" });
-    expect((await first.up([batch(task, 1, 1)])).status).toBe(409);
-    expect((await first.down(0)).status).toBe(409);
+    expect(ended.body).toEqual(replaced);
+    expect(await first.up([batch(task, 1, 1)])).toMatchObject({ status: 409, body: replaced });
+    expect(await first.down(0)).toMatchObject({ status: 409, body: replaced });
     expect(await stored(task)).toBe(0);
 
     // A WebSocket connection supersedes the HTTP one, and an HTTP hello the WebSocket's.
     const socket = await connectPeer(a.url, token, runner.runnerId);
     sockets.push(socket);
     await socket.next("welcome");
-    expect((await second.up([batch(task, 1, 1)])).status).toBe(409);
+    expect(await second.up([batch(task, 1, 1)])).toMatchObject({ status: 409, body: replaced });
     const third = await httpPeer(b.url, token, runner.runnerId);
     expect(await socket.next("evict")).toEqual({ type: "evict", reason: "replaced" });
     expect((await third.up([batch(task, 1, 1)])).status).toBe(200);
+  });
+
+  it("F-013/c4: a minor-7 runner's replaced connection is still answered superseded, which it says hello again on, as before minor 8", async () => {
+    const { runner, token } = await world();
+    const older = await httpPeer(a.url, token, runner.runnerId, { minor: HTTP_REPLACED_MINOR - 1 });
+    expect(older.minor).toBe(HTTP_REPLACED_MINOR - 1);
+    const held = older.down(0, { baseUrl: b.url });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await httpPeer(b.url, token, runner.runnerId, { minor: HTTP_REPLACED_MINOR - 1 });
+    expect(await held).toMatchObject({ status: 409, body: { code: "superseded" } });
+    expect(await older.up([])).toMatchObject({ status: 409, body: { code: "superseded" } });
   });
 
   it("F-013/c4: a revoked runner's still-valid access token is refused on every HTTP call, and its held poll ends", async () => {
@@ -244,7 +257,8 @@ describe("the HTTP carrier", () => {
       }
       expect((await presence()).disconnectedAt).not.toBeNull();
       expect(await test.db.runner.findUniqueOrThrow({ where: { id: runner.runnerId } })).toMatchObject({ state: "offline" });
-      expect((await peer.down(0, { baseUrl: quick.url })).status).toBe(409);
+      // Closed by core, not replaced: the runner says hello again.
+      expect(await peer.down(0, { baseUrl: quick.url })).toMatchObject({ status: 409, body: { code: "superseded" } });
     } finally {
       await quick.stop();
     }
