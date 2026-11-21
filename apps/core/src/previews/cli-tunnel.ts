@@ -319,7 +319,12 @@ export const createCliTunnels = (deps: CliTunnelsDeps): CliTunnels => {
     }
   };
 
-  /** Opens the signed WebSocket to the replica that holds the box's connection. */
+  /**
+   * Opens the signed WebSocket to the replica that holds the box's connection. It comes paused:
+   * the holder speaks first (its HTTP/2 SETTINGS right after its `101`, often in the same TCP read),
+   * and `ws` hands out what came with the `101` on the next tick, before the relay listens. The
+   * caller resumes it once the relay is attached, so no byte is lost.
+   */
   const dialHolder = async (target: string, view: CliTunnelView): Promise<WebSocket | null> => {
     const path = `${CORE_CLI_TUNNEL_PATH}?view=${encodeURIComponent(view.viewId)}&port=${String(view.port)}`;
     const signature = signReplicaRequest(await deps.secret(), { method: "GET", path, viewId: view.viewId, at: now() });
@@ -333,6 +338,7 @@ export const createCliTunnels = (deps: CliTunnelsDeps): CliTunnels => {
       };
       ws.once("open", () => {
         opened = true;
+        ws.pause();
         resolve(ws);
       });
       ws.once("unexpected-response", (_request, response) => {
@@ -406,6 +412,8 @@ export const createCliTunnels = (deps: CliTunnelsDeps): CliTunnels => {
           holder.on("close", (code, reason) => {
             shut(cli, code >= 4000 && code <= 4999 ? code : code === 1001 ? 1001 : cliTunnelCloseCode("box-gone"), reason.subarray(0, 120).toString("utf8"));
           });
+          // The relay listens now: the holder's first bytes, held since its open, go to the CLI.
+          holder.resume();
         });
         return;
       }
