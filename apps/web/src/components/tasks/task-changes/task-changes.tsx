@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpIcon, ArrowUpRightIcon, GitMergeIcon, MessageSquareIcon } from "lucide-react";
+import { ArrowUpIcon, ArrowUpRightIcon, ChevronDownIcon, ChevronRightIcon, GitMergeIcon, MessageSquareIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
@@ -99,21 +99,116 @@ export const BehindLine = ({ repos, lastPushAt, update }: { readonly repos: read
 
 // ---------- the files column ----------
 
+/**
+ * The review screen's files as a tree (review-screen.md, "The files column is a tree"): each folder
+ * once, as the shortest path that holds files, its files under it by name; the root's files last.
+ */
+export const folderGroups = (paths: readonly string[]): readonly { readonly folder: string; readonly paths: readonly string[] }[] => {
+  const groups = new Map<string, string[]>();
+  for (const path of paths) {
+    const at = path.lastIndexOf("/");
+    const folder = at === -1 ? "" : path.slice(0, at);
+    groups.set(folder, [...(groups.get(folder) ?? []), path]);
+  }
+  return [...groups.entries()].map(([folder, list]) => ({ folder, paths: list })).sort((a, b) => Number(a.folder === "") - Number(b.folder === ""));
+};
+
 export const FilesColumn = ({
   repos,
   comments,
   selected,
   onSelect,
+  tree = false,
 }: {
   readonly repos: readonly DiffRepoView[];
   readonly comments: readonly DiffCommentView[];
   readonly selected: string | null;
   readonly onSelect: (key: string) => void;
-}) => (
+  /** The review screen: folders and their files, with no repo head (its PR tab names the repo). */
+  readonly tree?: boolean;
+}) => {
+  const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (id: string) => {
+    setClosed((now) => {
+      const next = new Set(now);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  return (
   <nav aria-label={t("changes.files")} className="h-full min-h-0 overflow-y-auto pr-2">
     {repos.map((repo, index) => {
       const files = repo.state.kind === "ready" ? repo.state.files : [];
       const names = shortNames(files.map((file) => file.path));
+      const byPath = new Map(files.map((file) => [file.path, file]));
+      const fileRow = (file: (typeof files)[number], indent: boolean) => {
+        const key = fileKey(repo.taskRepoId, file.path);
+        const count = commentCount(comments, repo.taskRepoId, file.path);
+        return (
+          <li key={key}>
+            <button
+              type="button"
+              aria-current={selected === key ? "true" : undefined}
+              title={file.path}
+              data-file-row={file.path}
+              onClick={() => { onSelect(key); }}
+              className={cn("flex h-[28px] w-full items-center gap-1 rounded-sm px-1.5 text-left font-mono text-[12.5px] text-text-2 hover:bg-sel", indent && "pl-5", selected === key && "bg-sel text-text")}
+            >
+              <span className="w-4 shrink-0 text-muted">{glyphOf(file.status)}</span>
+              <span className="min-w-0 flex-1 truncate">{tree ? (file.path.split("/").at(-1) ?? file.path) : (names.get(file.path) ?? file.path)}</span>
+              {file.body.kind === "binary" ? (
+                <span className="shrink-0 text-faint">{t("changes.binary")}</span>
+              ) : file.body.kind === "too-large" ? (
+                <span className="shrink-0 text-faint">{t("changes.tooLarge")}</span>
+              ) : (
+                <span className="shrink-0">
+                  <span className="text-green">+{file.additions}</span> <span className="text-red">{"−"}{file.deletions}</span>
+                </span>
+              )}
+              {count === 0 ? null : (
+                <span className="ml-1 flex shrink-0 items-center gap-0.5 text-faint" aria-label={plural(count, "changes.commentsOnFile.one", "changes.commentsOnFile.other")}>
+                  <MessageSquareIcon aria-hidden className="size-[13px] stroke-[1.75]" />
+                  {count}
+                </span>
+              )}
+            </button>
+          </li>
+        );
+      };
+      if (tree) {
+        return (
+          <section key={repo.taskRepoId} className={cn("pt-1", index > 0 && "mt-4 border-t border-line pt-4")} data-repo={repo.name}>
+            <ul>
+              {folderGroups(files.map((file) => file.path)).map((group) => {
+                const id = `${repo.taskRepoId}:${group.folder}`;
+                const shut = closed.has(id);
+                const rows = group.paths.flatMap((path) => {
+                  const file = byPath.get(path);
+                  return file === undefined ? [] : [file];
+                });
+                return group.folder === "" ? (
+                  rows.map((file) => fileRow(file, false))
+                ) : (
+                  <li key={id}>
+                    <button
+                      type="button"
+                      aria-expanded={!shut}
+                      data-folder-row={group.folder}
+                      onClick={() => { toggle(id); }}
+                      className="flex h-[26px] w-full items-center gap-1 rounded-sm px-1 text-left font-mono text-xs text-faint hover:bg-sel"
+                    >
+                      {shut ? <ChevronRightIcon aria-hidden className="size-[13px] shrink-0 stroke-[1.75]" /> : <ChevronDownIcon aria-hidden className="size-[13px] shrink-0 stroke-[1.75]" />}
+                      <span className="min-w-0 truncate" title={group.folder}>{group.folder}</span>
+                    </button>
+                    {shut ? null : <ul>{rows.map((file) => fileRow(file, true))}</ul>}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        );
+      }
       return (
         <section key={repo.taskRepoId} className={cn("pt-2", index > 0 && "mt-4 border-t border-line pt-4")} data-repo={repo.name}>
           <h3 className="font-mono text-[13.5px] font-medium text-text">{repo.name}</h3>
@@ -132,47 +227,13 @@ export const FilesColumn = ({
               </a>
             </p>
           ) : null}
-          <ul className="mt-2">
-            {files.map((file) => {
-              const key = fileKey(repo.taskRepoId, file.path);
-              const count = commentCount(comments, repo.taskRepoId, file.path);
-              return (
-                <li key={key}>
-                  <button
-                    type="button"
-                    aria-current={selected === key ? "true" : undefined}
-                    title={file.path}
-                    data-file-row={file.path}
-                    onClick={() => { onSelect(key); }}
-                    className={cn("flex h-[28px] w-full items-center gap-1 rounded-sm px-1.5 text-left font-mono text-[12.5px] text-text-2 hover:bg-sel", selected === key && "bg-sel text-text")}
-                  >
-                    <span className="w-4 shrink-0 text-muted">{glyphOf(file.status)}</span>
-                    <span className="min-w-0 flex-1 truncate">{names.get(file.path) ?? file.path}</span>
-                    {file.body.kind === "binary" ? (
-                      <span className="shrink-0 text-faint">{t("changes.binary")}</span>
-                    ) : file.body.kind === "too-large" ? (
-                      <span className="shrink-0 text-faint">{t("changes.tooLarge")}</span>
-                    ) : (
-                      <span className="shrink-0">
-                        <span className="text-green">+{file.additions}</span> <span className="text-red">{"−"}{file.deletions}</span>
-                      </span>
-                    )}
-                    {count === 0 ? null : (
-                      <span className="ml-1 flex shrink-0 items-center gap-0.5 text-faint" aria-label={plural(count, "changes.commentsOnFile.one", "changes.commentsOnFile.other")}>
-                        <MessageSquareIcon aria-hidden className="size-[13px] stroke-[1.75]" />
-                        {count}
-                      </span>
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <ul className="mt-2">{files.map((file) => fileRow(file, false))}</ul>
         </section>
       );
     })}
   </nav>
-);
+  );
+};
 
 /** `ostra/calc-174-9f3c…`: the branch's start and end, with the middle cut. */
 export const middleTruncate = (text: string, max: number): string => {
@@ -348,6 +409,7 @@ export const ChangesBody = ({ load, comments, canComment, update, review, onSave
       <div className="mt-3 flex min-h-[320px] flex-1 flex-col gap-3 md:flex-row md:gap-0">
         <div className="max-h-[220px] shrink-0 md:max-h-none md:w-[220px]">
           <FilesColumn
+            tree={hideBehind}
             repos={repos}
             comments={comments}
             selected={selected}
