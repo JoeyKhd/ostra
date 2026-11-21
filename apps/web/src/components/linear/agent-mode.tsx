@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
-import { PropGroup, PropRow, Section } from "@/components/shell/page-frame";
+import { PropRow, Section } from "@/components/shell/page-frame";
 import { Button } from "@/components/ui/button";
 import { Chip, Status } from "@/components/ui/status";
 import { Switch } from "@/components/ui/switch";
@@ -15,6 +15,8 @@ import { errorText } from "@/lib/errors";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
+
+import { PanelLabel } from "./linear-panel";
 
 // "Connect Linear", grown (linear-agent-mode.md, F-012): agent mode's state and what it needs, each
 // board's "Start from Linear", and the last session events. Organization admins only, as the page.
@@ -240,12 +242,16 @@ export const AgentModeSections = ({ status, now, justTurnedOn }: { readonly stat
   );
 };
 
-/** The properties panel's "Agent sessions" group, while agent mode is on. */
+/**
+ * The properties panel's "Agent sessions" group, while agent mode is on: between the scopes and the
+ * webhook events, labelled as the panel's other groups. Its key column fits `Awaiting approval`.
+ */
 export const AgentSessionsGroup = ({ agent }: { readonly agent: AgentMode | null }) =>
   agent?.on !== true ? null : (
-    <PropGroup title={t("agentMode.panel.sessions")}>
-      <PropRow label={t("agentMode.panel.open")}><span className="font-mono">{agent.sessions.open}</span></PropRow>
-      <PropRow label={t("agentMode.panel.awaiting")}><span className="font-mono">{agent.sessions.awaitingApproval}</span></PropRow>
-      <PropRow label={t("agentMode.panel.posted")}><span className="font-mono">{agent.sessions.postedToday}</span></PropRow>
-    </PropGroup>
+    <div data-testid="agent-sessions">
+      <PanelLabel>{t("agentMode.panel.sessions")}</PanelLabel>
+      <PropRow label={t("agentMode.panel.open")} labelWidth={132}><span className="font-mono">{agent.sessions.open}</span></PropRow>
+      <PropRow label={t("agentMode.panel.awaiting")} labelWidth={132}><span className="font-mono">{agent.sessions.awaitingApproval}</span></PropRow>
+      <PropRow label={t("agentMode.panel.posted")} labelWidth={132}><span className="font-mono">{agent.sessions.postedToday}</span></PropRow>
+    </div>
   );

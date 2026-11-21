@@ -473,7 +473,7 @@ export const LinearBody = ({ status, actions, now, justConnected, agentMode }: L
   return <ConnectSection status={status} actions={actions} now={now} />;
 };
 
-const PanelLabel = ({ children, count }: { readonly children: ReactNode; readonly count?: number }) => (
+export const PanelLabel = ({ children, count }: { readonly children: ReactNode; readonly count?: number }) => (
   <h3 className="mb-1.5 flex items-center text-xs font-medium text-faint">
     {children}
     {count === undefined ? null : <span className="ml-auto font-mono text-xs">{count}</span>}
@@ -490,10 +490,13 @@ const MonoList = ({ items }: { readonly items: readonly string[] }) => (
   </ul>
 );
 
-const Sep = () => <div className="my-3.5 h-px bg-line" />;
+export const Sep = () => <div className="my-3.5 h-px bg-line" />;
 
-/** The properties panel: the app (connected) or what it will ask for (not yet), its scopes and events. */
-export const LinearProperties = ({ status }: { readonly status: LinearStatus | undefined }) => {
+/**
+ * The properties panel: the app (connected) or what it will ask for (not yet), its scopes, agent
+ * mode's sessions while it's on (`sessions`, linear-agent-mode.md's order), and its events.
+ */
+export const LinearProperties = ({ status, sessions = null }: { readonly status: LinearStatus | undefined; readonly sessions?: ReactNode }) => {
   if (status === undefined)
     return (
       <div>
@@ -550,6 +553,12 @@ export const LinearProperties = ({ status }: { readonly status: LinearStatus | u
         </>
       )}
       <MonoList items={status.scopes} />
+      {sessions === null ? null : (
+        <>
+          <Sep />
+          {sessions}
+        </>
+      )}
       <Sep />
       {events}
     </div>

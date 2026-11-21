@@ -95,10 +95,7 @@ export const LinearView = () => {
         ) : undefined
       }
       properties={
-        <>
-          <LinearProperties status={data} />
-          <AgentSessionsGroup agent={data !== undefined && data.state !== "none" ? data.agentMode : null} />
-        </>
+        <LinearProperties status={data} sessions={data !== undefined && data.state !== "none" && data.agentMode?.on === true ? <AgentSessionsGroup agent={data.agentMode} /> : null} />
       }
     >
       <PageHeading title={t("linear.title")} lede={t("linear.lede")} />
