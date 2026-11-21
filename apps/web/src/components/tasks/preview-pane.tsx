@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppWindowIcon, CameraIcon, ChevronDownIcon, EllipsisIcon, ExternalLinkIcon, EyeIcon, Maximize2Icon, Minimize2Icon, MonitorIcon, RotateCwIcon } from "lucide-react";
+import { AppWindowIcon, CameraIcon, ChevronDownIcon, EllipsisIcon, ExternalLinkIcon, EyeIcon, Maximize2Icon, Minimize2Icon, MonitorIcon, RotateCwIcon, UsersIcon } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
@@ -743,7 +743,14 @@ export const PreviewPane = ({ task, events, previewKey, path: addressPath, onAdd
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-        {selected === null || data === undefined ? null : (
+        {selected === null ? (
+          // Nothing to preview: the share button stays, at 45% and inert, as the toolbar's others (task-preview.md, "Nothing to preview").
+          <Button size="sm" disabled aria-label={t("task.preview.share.button", { level: t("task.preview.share.short.members") })} className={cn("h-[26px] shrink-0 gap-1.5 px-2 disabled:opacity-45 max-lg:h-11 max-lg:px-3", phone && "order-4")}>
+            <UsersIcon aria-hidden />
+            <span className="max-sm:hidden">{t("task.preview.share.short.members")}</span>
+            <ChevronDownIcon aria-hidden className="size-3! text-faint" />
+          </Button>
+        ) : data === undefined ? null : (
           <div className={cn(phone && "order-4")}>
             <PreviewShareMenu
               taskId={task.id}
