@@ -24,7 +24,6 @@ NGINX_IMAGE="nginx:1.29.3@sha256:2f4e10193b0c4f61472245e9d26cea78e7df7af266c7e7c
 # The live registry's test credential: made up for this run, valid only on this machine's registry.
 REGISTRY_USER="ostra"
 REGISTRY_TOKEN="ostra-live-registry"
-AGENT_USER="ostra-agent"
 
 say "live-docker on $(uname -srm), $(nproc) CPUs, $(free -g | awk '/Mem:/ {print $2}') GB, Docker $(docker version --format '{{.Server.Version}}'), images $VERSION"
 
@@ -116,22 +115,12 @@ docker_live() {
 step docker-executor-live docker_live
 step docker-executor-contract pnpm --filter @ostra/adapter-executor-docker exec vitest run --reporter verbose src/docker-executor.contract.test.ts
 
-# ---- F-014 and F-015: a `host` pool's separate OS user, and the delegated cgroup ----
-agent_user() {
-  sudo useradd --create-home --shell /bin/bash "$AGENT_USER" || return 1
-  sudo usermod -aG "$AGENT_USER" "$(id -un)" || return 1
-  printf '%s ALL=(%s) NOPASSWD:SETENV: ALL\nDefaults>%s umask=0007, umask_override\n' "$(id -un)" "$AGENT_USER" "$AGENT_USER" | sudo tee /etc/sudoers.d/ostra-agent >/dev/null
-  sudo chmod 0440 /etc/sudoers.d/ostra-agent && sudo visudo -cf /etc/sudoers.d/ostra-agent
-}
-step host-pool-agent-user agent_user
-# The runner's cgroup is delegated to it (a systemd scope with Delegate=yes), as a unit file's
-# `Delegate=yes` does on a real pool host, so the task's processes get a cgroup of their own.
-host_live() {
-  sudo --preserve-env=PATH systemd-run --quiet --collect --scope -p Delegate=yes --uid="$(id -u)" --gid="$(id -g)" \
-    env HOME="$HOME" PATH="$PATH" OSTRA_TEST_HOST_POOL_AGENT_USER="$AGENT_USER" \
-    sg "$AGENT_USER" -c "pnpm --filter @ostra/adapter-executor-host exec vitest run --reporter verbose src/host-executor.live.test.ts"
-}
-step host-pool-live host_live
+# ---- F-014 and F-015: a `host` pool as the docs make it: the runner's user and the agent's, the
+# sudoers rule for the agent's user alone, and the runner as a systemd service with Delegate=yes,
+# so each task gets a cgroup of its own (scripts/live/host-pool.sh) ----
+. scripts/live/host-pool.sh
+step host-pool-agent-user host_pool_users
+step host-pool-live host_pool_live
 
 # ---- F-013: real nginx's defaults in front of core ----
 not_run nginx-fallback "no test drives the runner's HTTP fallback through a real nginx yet: the fallback is proved against ticket 06's nginx emulation (spike 6's), and $NGINX_IMAGE is pinned here for the test that will"
