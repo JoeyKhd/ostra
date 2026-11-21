@@ -1,5 +1,6 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac } from "node:crypto";
 
+import { base64urlMacEqual } from "@ostra/adapter-sdk";
 import { memberIdSchema, organizationIdSchema, parseJson, taskIdSchema } from "@ostra/protocol";
 import type { MemberId, OrganizationId, TaskId } from "@ostra/protocol";
 import { z } from "zod";
@@ -63,12 +64,7 @@ export const createPanelStartAppTokens = (secret: string): PanelStartAppTokens =
         return null;
       }
       const [body, mac, ...rest] = token.slice(PANEL_START_APP_TOKEN_PREFIX.length).split(".");
-      if (body === undefined || mac === undefined || rest.length > 0) {
-        return null;
-      }
-      const given = Buffer.from(mac, "base64url");
-      const wanted = sign(body);
-      if (given.length !== wanted.length || !timingSafeEqual(given, wanted)) {
+      if (body === undefined || mac === undefined || rest.length > 0 || !base64urlMacEqual(sign(body), mac)) {
         return null;
       }
       const json = parseJson(Buffer.from(body, "base64url").toString("utf8"));

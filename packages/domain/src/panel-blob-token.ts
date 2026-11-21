@@ -1,5 +1,6 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac } from "node:crypto";
 
+import { base64urlMacEqual } from "@ostra/adapter-sdk";
 import { blobIdSchema, organizationIdSchema, parseJson, sha256HexSchema, taskIdSchema } from "@ostra/protocol";
 import type { BlobId, OrganizationId, Sha256Hex, TaskId } from "@ostra/protocol";
 import { z } from "zod";
@@ -66,12 +67,7 @@ export const createPanelBlobTokens = (secret: string): PanelBlobTokens => {
         return null;
       }
       const [body, mac, ...rest] = token.slice(PANEL_BLOB_TOKEN_PREFIX.length).split(".");
-      if (body === undefined || mac === undefined || rest.length > 0) {
-        return null;
-      }
-      const given = Buffer.from(mac, "base64url");
-      const wanted = sign(body);
-      if (given.length !== wanted.length || !timingSafeEqual(given, wanted)) {
+      if (body === undefined || mac === undefined || rest.length > 0 || !base64urlMacEqual(sign(body), mac)) {
         return null;
       }
       const json = parseJson(Buffer.from(body, "base64url").toString("utf8"));
@@ -140,12 +136,7 @@ export const createPanelBlobReadTokens = (secret: string): PanelBlobReadTokens =
         return null;
       }
       const [body, mac, ...rest] = token.slice(PANEL_BLOB_READ_TOKEN_PREFIX.length).split(".");
-      if (body === undefined || mac === undefined || rest.length > 0) {
-        return null;
-      }
-      const given = Buffer.from(mac, "base64url");
-      const wanted = sign(body);
-      if (given.length !== wanted.length || !timingSafeEqual(given, wanted)) {
+      if (body === undefined || mac === undefined || rest.length > 0 || !base64urlMacEqual(sign(body), mac)) {
         return null;
       }
       const json = parseJson(Buffer.from(body, "base64url").toString("utf8"));

@@ -1,5 +1,6 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
+import { base64urlMacEqual } from "@ostra/adapter-sdk";
 import {
   cliTunnelTicketSchema,
   loginSessionIdSchema,
@@ -238,12 +239,7 @@ export const createPanelPreviewTokens = (secret: string): PanelPreviewTokens => 
         return null;
       }
       const [body, mac, ...rest] = token.slice(PANEL_PREVIEW_TOKEN_PREFIX.length).split(".");
-      if (body === undefined || mac === undefined || rest.length > 0) {
-        return null;
-      }
-      const given = Buffer.from(mac, "base64url");
-      const wanted = sign(body);
-      if (given.length !== wanted.length || !timingSafeEqual(given, wanted)) {
+      if (body === undefined || mac === undefined || rest.length > 0 || !base64urlMacEqual(sign(body), mac)) {
         return null;
       }
       const json = parseJson(Buffer.from(body, "base64url").toString("utf8"));
@@ -336,12 +332,7 @@ export const createPreviewCookies = (secret: string, random: RandomBytes = rando
         return null;
       }
       const [body, mac, ...rest] = value.slice(PREVIEW_COOKIE_TOKEN_PREFIX.length).split(".");
-      if (body === undefined || mac === undefined || rest.length > 0) {
-        return null;
-      }
-      const given = Buffer.from(mac, "base64url");
-      const wanted = sign(body);
-      if (given.length !== wanted.length || !timingSafeEqual(given, wanted)) {
+      if (body === undefined || mac === undefined || rest.length > 0 || !base64urlMacEqual(sign(body), mac)) {
         return null;
       }
       const json = parseJson(Buffer.from(body, "base64url").toString("utf8"));
@@ -400,7 +391,5 @@ export const verifyReplicaRequest = (
   if (Math.abs(now - at) > REPLICA_SIGNATURE_MAX_AGE_MS) {
     return false;
   }
-  const given = Buffer.from(found[2] ?? "", "base64url");
-  const wanted = replicaMac(secret, { ...request, at });
-  return given.length === wanted.length && timingSafeEqual(given, wanted);
+  return base64urlMacEqual(replicaMac(secret, { ...request, at }), found[2] ?? "");
 };

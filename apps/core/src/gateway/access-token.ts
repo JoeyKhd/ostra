@@ -1,5 +1,6 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac } from "node:crypto";
 
+import { base64urlMacEqual } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
 import { organizationIdSchema, parseJson, runnerIdSchema, runnerLimits } from "@ostra/protocol";
 import type { OrganizationId, RunnerId } from "@ostra/protocol";
@@ -44,12 +45,7 @@ export const createAccessTokens = (key: Buffer, ttlMs: number = runnerLimits.acc
         return null;
       }
       const [body, mac, ...rest] = token.slice(PREFIX.length).split(".");
-      if (body === undefined || mac === undefined || rest.length > 0) {
-        return null;
-      }
-      const given = Buffer.from(mac, "base64url");
-      const wanted = sign(body);
-      if (given.length !== wanted.length || !timingSafeEqual(given, wanted)) {
+      if (body === undefined || mac === undefined || rest.length > 0 || !base64urlMacEqual(sign(body), mac)) {
         return null;
       }
       const json = parseJson(Buffer.from(body, "base64url").toString("utf8"));
