@@ -54,7 +54,7 @@ export const NavLink = ({ href, icon, children, end, exact = false, current, tit
       )}
     >
       {icon}
-      <span className="min-w-0 flex-1 truncate">{children}</span>
+      <span className="min-w-0 flex-1 truncate" data-row-label="">{children}</span>
       {end === undefined ? null : <span className="ml-auto flex shrink-0 items-center gap-1.5">{end}</span>}
     </Link>
   );

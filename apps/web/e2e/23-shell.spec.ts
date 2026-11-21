@@ -59,7 +59,8 @@ test.describe("at 1440px", { tag: "@desktop-only" }, () => {
     await railSpace(page, "Organization").click();
     await page.waitForURL(/\/organization\/insights$/);
     const adminRows = ["Insights", "Spend", "Memory", "Runners", "Box sizes", "Registry", "Agent profiles", "Skills and MCP", "Models", "GitHub", "Linear", "Members", "Audit log", "Accounts", "Storage", "Email"];
-    for (const row of adminRows) await expect(contextPanel(page).getByRole("link", { name: row, exact: true })).toBeVisible();
+    // A row may end in its count (Runners, Members…), read out after its name.
+    for (const row of adminRows) await expect(contextPanel(page).getByRole("link", { name: new RegExp(`^${row}(\\s|$)`) })).toBeVisible();
     // Two rows named Previews for an admin who is also the instance admin: the organization's public
     // links under People, and the install's preview domain under Instance.
     for (const href of ["/organization/previews", "/instance/previews"]) await expect(contextPanel(page).locator(`a[href='${href}']`)).toHaveText("Previews");
@@ -70,7 +71,7 @@ test.describe("at 1440px", { tag: "@desktop-only" }, () => {
     await signIn(member, world.memberUsername);
     await railSpace(member, "Organization").click();
     await member.waitForURL(/\/organization\/insights$/);
-    const shown = await contextPanel(member).getByRole("link").evaluateAll((links) => links.map((link) => link.textContent.trim()));
+    const shown = await contextPanel(member).getByRole("link").evaluateAll((links) => links.map((link) => (link.querySelector("[data-row-label]") ?? link).textContent.trim()));
     // Ticket 31 (F-145): the library's `Skills and MCP` row is every member's to read (app-shell.md, "A member, not an admin").
     expect(shown).toEqual(["Insights", "Memory", "Runners", "Box sizes", "Agent profiles", "Skills and MCP", "Members"]);
     await expect(contextPanel(member).getByText("Connections", { exact: true })).toHaveCount(0);
@@ -131,7 +132,7 @@ test.describe("at 1440px", { tag: "@desktop-only" }, () => {
     await railSpace(page, "Organization").hover();
     const peek = page.locator("[data-shell-peek='organization']");
     await expect(peek).toBeVisible();
-    await expect(peek.getByRole("link", { name: "Members", exact: true })).toBeVisible();
+    await expect(peek.getByRole("link", { name: /^Members(\s|$)/ })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(peek).toHaveCount(0);
     await railSpace(page, "Home").hover();

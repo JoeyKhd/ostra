@@ -7,9 +7,10 @@ import { useTRPC } from "@/lib/trpc";
 
 import type { PanelMode } from "../context-panel";
 import { PanelFrame, PanelTitle } from "../context-panel";
-import { NavLink, SectionLabel } from "../nav-link";
+import { NavLink, RowCount, SectionLabel } from "../nav-link";
 import { organizationGroups, visibleGroups } from "../places";
 import type { OrganizationRow } from "../places";
+import type { MessageKey } from "@/lib/messages";
 import { ShellIconView } from "../shell-icons";
 import { useShellState } from "../shell-state";
 
@@ -39,6 +40,15 @@ const useRowCounts = (admin: boolean): Partial<Readonly<Record<OrganizationRow, 
   };
 };
 
+/** How each count is read out: the number alone means nothing to a screen reader. */
+const countLabel: Partial<Readonly<Record<OrganizationRow, MessageKey>>> = {
+  memory: "shell.proposalsCount",
+  runners: "shell.runnersCount",
+  "agent-profiles": "shell.profilesCount",
+  skills: "shell.libraryCount",
+  members: "shell.membersCount",
+};
+
 /**
  * The organization's panel (app-shell.md, "Organization"): its pages in groups, each row for the
  * roles that saw it in the single sidebar; a group with no row left for the member is hidden.
@@ -57,6 +67,7 @@ export const OrganizationPanel = ({ mode, onNavigate }: { readonly mode: PanelMo
           {group.label === null ? null : <SectionLabel>{t(group.label)}</SectionLabel>}
           {group.rows.map((entry) => {
             const count = counts[entry.id];
+            const label = countLabel[entry.id];
             return (
               <NavLink
                 key={entry.id}
@@ -64,7 +75,7 @@ export const OrganizationPanel = ({ mode, onNavigate }: { readonly mode: PanelMo
                 icon={<ShellIconView name={entry.icon} />}
                 current={row === entry.id}
                 onNavigate={onNavigate}
-                {...(count === undefined ? {} : { end: <span className="font-mono text-xs font-medium text-faint" data-count={entry.id}>{count}</span> })}
+                {...(count === undefined || label === undefined ? {} : { end: <RowCount n={count} label={t(label, { n: count })} /> })}
               >
                 {t(entry.label)}
               </NavLink>
