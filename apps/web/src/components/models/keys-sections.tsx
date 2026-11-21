@@ -150,11 +150,12 @@ const KeyBlock = ({ provider, selected, onSelect }: { readonly provider: Provide
       >
         <span className="flex min-h-7 items-center gap-3">
           <KeyLogo host={provider.host} />
-          <span className="w-[120px] shrink-0 truncate font-mono text-[14px] text-text sm:w-[180px]">{provider.name}</span>
-          <span className="hidden truncate font-mono text-[12.5px] text-faint md:inline">{provider.host}</span>
-          <span className="hidden text-sm text-muted lg:inline">{formatLabel(provider.apiFormat)}</span>
-          <span className="hidden text-sm text-muted sm:inline">{plural(provider.modelCount, "models.countOne", "models.countMany")}</span>
-          <span className="ml-auto flex shrink-0 items-center gap-3 text-sm">
+          {/* One line at the double sidebar's 744px column (models-keys.webp): the host gives way first, nothing wraps. */}
+          <span className="max-w-[120px] shrink-0 truncate font-mono text-[14px] text-text sm:max-w-[180px]">{provider.name}</span>
+          <span className="hidden min-w-0 truncate font-mono text-[12.5px] text-faint md:inline">{provider.host}</span>
+          <span className="hidden shrink-0 whitespace-nowrap text-sm text-muted lg:inline">{formatLabel(provider.apiFormat)}</span>
+          <span className="hidden shrink-0 whitespace-nowrap text-sm text-muted sm:inline">{plural(provider.modelCount, "models.countOne", "models.countMany")}</span>
+          <span className="ml-auto flex shrink-0 items-center gap-3 whitespace-nowrap text-sm">
             <span>
               <span className="font-mono text-text">{formatSpend(provider.monthSpentMicroUsd / 1_000_000)}</span> <span className="text-faint">{t("models.keys.thisMonth")}</span>
             </span>

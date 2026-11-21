@@ -16,7 +16,6 @@ import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
 import { PersonalRunnersSwitch, formatLabel } from "./add-provider-form";
-import { KeyLogo } from "./keys-sections";
 import { formatSpend } from "./keys-words";
 
 type Provider = RouterOutputs["providers"]["list"][number];
@@ -76,15 +75,12 @@ export const ProviderSettings = ({ provider }: { readonly provider: Provider }) 
   return (
     <div data-testid="provider-settings">
       <h2 className="mb-1 text-xs font-medium text-faint">{t("models.keys.key")}</h2>
-      <div className="mb-3 flex items-center gap-2">
-        <KeyLogo host={provider.host} />
-        <span className="truncate font-mono text-[15px] font-semibold">{provider.name}</span>
-      </div>
+      <p className="mb-3 truncate font-mono text-[15px] font-semibold">{provider.name}</p>
       <div className="mb-3.5 border-b border-line pb-3.5">
-        <PropRow label={t("models.baseUrl")} labelWidth={112}>
+        <PropRow label={t("models.keys.panelBaseUrl")} labelWidth={112}>
           <span className="truncate font-mono text-[12.5px]" title={provider.baseUrl}>{provider.baseUrl}</span>
         </PropRow>
-        <PropRow label={t("models.format")} labelWidth={112}>{formatLabel(provider.apiFormat)}</PropRow>
+        <PropRow label={t("models.keys.panelFormat")} labelWidth={112}>{formatLabel(provider.apiFormat)}</PropRow>
         <PropRow label={t("models.token")} labelWidth={112}>
           <LockIcon aria-hidden className="stroke-[1.75]" />
           {t("models.tokenStored")}

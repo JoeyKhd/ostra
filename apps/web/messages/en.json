@@ -1013,6 +1013,8 @@
       "onlyAdmins": "Only an organization admin changes which projects use a key.",
       "modelsItLists": "Models it lists",
       "thisMonthLabel": "This month",
+      "panelBaseUrl": "Base URL",
+      "panelFormat": "Format",
       "spent": "Spent",
       "tasks": "Tasks",
       "editProvider": "Edit provider",

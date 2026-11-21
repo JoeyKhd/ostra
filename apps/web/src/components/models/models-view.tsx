@@ -184,10 +184,12 @@ export const ModelsView = () => {
       ) : rows.length === 0 ? null : (
         <Section title={t("models.enabled")} count={rows.length}>
           {setDefault.error === null ? null : <p role="alert" className="mb-2 text-sm text-red">{errorText(setDefault.error)}</p>}
+          {/* No minimum width: beside the double sidebar the column is about 690px at 1440, and the
+              provider and the model's name give way before the reasoning clips. */}
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] border-collapse text-body">
+            <table className="w-full border-collapse text-body">
               <thead>
-                <tr className="h-[30px] border-b border-line text-left text-[12.5px] font-medium text-faint">
+                <tr className="h-[30px] whitespace-nowrap border-b border-line text-left text-[12.5px] font-medium text-faint">
                   <th className="pr-3 font-medium">{t("models.model")}</th>
                   <th className="pr-3 font-medium">{t("models.provider")}</th>
                   <th className="pr-3 text-right font-medium">{t("models.context")}</th>
@@ -223,10 +225,10 @@ export const ModelsView = () => {
                           {model.custom ? <Chip>{t("models.custom")}</Chip> : null}
                         </span>
                       </td>
-                      <td className="pr-3 font-mono text-ui text-muted">{provider.name}</td>
-                      <td className="pr-3 text-right font-mono text-ui">{formatTokens(model.contextWindow)}</td>
-                      <td className="pr-3 text-right font-mono text-ui">{formatPrice(model.inputPricePerMTok)}</td>
-                      <td className="pr-3 text-right font-mono text-ui">{formatPrice(model.outputPricePerMTok)}</td>
+                      <td className="max-w-[120px] truncate pr-3 font-mono text-ui text-muted" title={provider.name}>{provider.name}</td>
+                      <td className="whitespace-nowrap pr-3 text-right font-mono text-ui">{formatTokens(model.contextWindow)}</td>
+                      <td className="whitespace-nowrap pr-3 text-right font-mono text-ui">{formatPrice(model.inputPricePerMTok)}</td>
+                      <td className="whitespace-nowrap pr-3 text-right font-mono text-ui">{formatPrice(model.outputPricePerMTok)}</td>
                       <ReasoningCell
                         reasoning={modelReasoningOf(model)}
                         onUseCatalog={admin ? () => { setConfirmCatalog(model.id); setSelection({ kind: "model", providerId: provider.id, modelId: model.id }); } : null}
