@@ -434,7 +434,7 @@ An organization's library holds items, each a skill or an MCP server, pinned to 
 | State | Means | Leaves when |
 |---|---|---|
 | **opening** | Its row and its `preview.opened` event are written, and `preview.open` went to the box's runner | The box's preview connection reaches a replica, which writes its presence (→ open), or it's refused, or 2 minutes pass without it (→ closed) |
-| **open** | Its stream or tunnel runs; the pane's heartbeat comes every 30 s and keeps a watched box warm, up to `OSTRA_PREVIEW_WARM_MINUTES`. While it's open the runner's idle timer doesn't end the box | Its viewer closes it, 2 minutes pass with no heartbeat (`preview.views-sweep`), its link ends, its box goes, or its box passes the warm cap (→ closed, and the box idles out) |
+| **open** | Its stream or tunnel runs; the pane's heartbeat comes every 30 s and keeps a watched box warm, up to `OSTRA_PREVIEW_WARM_MINUTES`. For `ostra preview` the core replica that has the CLI's socket writes that heartbeat while the tunnel is open, and checks the CLI session every 5 minutes. While it's open the runner's idle timer doesn't end the box | Its viewer closes it (for `ostra preview`, the CLI's socket closes), 2 minutes pass with no heartbeat (`preview.views-sweep`), its link ends, its CLI session ends, its box goes, or its box passes the warm cap (→ closed, and the box idles out) |
 | **closed** | Over; the page shows the last frame | Never |
 
 **A preview link** opens one preview for whoever holds it: an expiring one (24 hours by default, `OSTRA_PREVIEW_LINK_MAX_DAYS` at most), or a public one where the organization allows them. Watch-only unless it allows input. Its token is kept as a hash.

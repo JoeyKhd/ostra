@@ -308,8 +308,10 @@ export const decodePreviewMessage = (bytes: Uint8Array): PreviewMessageParse => 
  * The `tunnel` mode (F-143, F-144, ADR 0068): every binary message is the next bytes of one
  * HTTP/2 connection (RFC 9113) over the WebSocket's duplex stream, from Node's own `http2`. Core
  * is the client and the box (the sidecar, or the runner on `host`) is the server, which dials
- * `127.0.0.1:<port>` (on `docker`, through the init's forwarder) only for a port `mayReach` allows.
- * HTTP/2's per-stream windows and the WebSocket's `bufferedAmount` are the back-pressure.
+ * `localhost:<port>` over IPv6 and IPv4 (on `docker`, through the init's forwarder; spike 08 found
+ * Vite on `::1` only) only for a port `mayReach` allows. HTTP/2's per-stream windows and the
+ * WebSocket's `bufferedAmount` are the back-pressure. Core opens the box's HTTP/2 session once
+ * the box's SETTINGS arrive, keeps it while the view lives, and closes it with the view.
  *
  * - A native preview's request is an HTTP/2 request whose `:authority` is `localhost:<port>`.
  * - A browser's WebSocket is an extended CONNECT (RFC 8441) with `:protocol` `websocket`.
@@ -323,6 +325,11 @@ export const previewTunnel = {
   server: "box",
   /** The `:authority` a request or a `CONNECT` names: the app's port on the box's loopback. */
   authority: (port: number): string => `localhost:${String(port)}`,
+  /**
+   * The largest WebSocket message either side of a tunnel accepts: one write of HTTP/2 frames,
+   * which Node keeps far below this *(working value)*. The CLI's tunnel to core takes the same.
+   */
+  messageMaxBytes: 16 * 1024 * 1024,
 } as const;
 
 // ---------- the HTTP carrier's frames (Q306) ----------

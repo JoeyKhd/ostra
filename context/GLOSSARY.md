@@ -375,6 +375,10 @@ _Avoid_: tunnel (alone), session (that's the box's main connection)
 One opening of a preview by a member or a link: the browser view, a tunnel, the native preview or `ostra preview`. It's open while its heartbeats come, and its presence names the core replica that holds the box's preview connection, which the other replicas forward the viewer's stream and input to.
 _Avoid_: session (that's the agent's), watcher (that's the count the pane shows)
 
+**Tunnel ticket**:
+The one-time secret `ostra preview` gets from the web app to open one of a task's previews through core: single use, good for 60 seconds, bound to the member, their CLI session, the task, the port and the box's lease. Core takes it once, when the CLI opens its tunnel, and checks the CLI session again while the tunnel lasts.
+_Avoid_: ticket (alone: that's a tracker's), token (the CLI session's is the token), code (that's the native preview's handshake)
+
 **App-only start**:
 "Start the app" on a stopped task: a box started from the task's branches and hidden ref to run its app processes, with no agent and no model call. A member's message then starts a turn in that box.
 _Avoid_: preview box, wake, reopen (a reopen is a turn)

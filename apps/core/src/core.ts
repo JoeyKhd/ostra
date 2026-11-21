@@ -731,6 +731,7 @@ export const startCore = async (
     taskTokens: gateway.context.taskTokens,
     secret: () => loadSecretsKey(settings),
     replicaUrl: () => replicaUrl,
+    settings: settings.previews,
   });
   const previewSweepDeps = { db, outbox: postgresCommandOutbox, notices, clock: systemClock, logger, settings: settings.previews };
   await jobs.work("preview.views-sweep", viewsSweepHandler(previewSweepDeps), { localConcurrency: 1 });

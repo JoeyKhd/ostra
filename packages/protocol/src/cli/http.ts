@@ -175,9 +175,9 @@ export const cliPreviewTunnelGrantSchema = z.strictObject({
 export type CliPreviewTunnelGrant = z.infer<typeof cliPreviewTunnelGrantSchema>;
 
 /**
- * Why no ticket was given: the task isn't there or isn't the member's to open (`not-found`), the
- * port isn't one of its previews (`port-not-allowed`), its runner can't tunnel (below minor 7, or
- * on the HTTP carrier), or no box runs it (`no-box`: start the app first).
+ * Why no ticket was given: the task isn't there or isn't the member's to open (`not-found`, 404),
+ * the port isn't one of its previews (`port-not-allowed`, 403), its runner can't tunnel (below
+ * minor 7, or on the HTTP carrier: 409), or no box runs it (`no-box`, 409: start the app first).
  */
 export const cliPreviewTunnelRefusalSchema = z.strictObject({
   code: z.enum(["not-found", "port-not-allowed", "runner-cannot-tunnel", "no-box"]),
@@ -247,3 +247,83 @@ export type CliTunnelQuery = z.infer<typeof cliTunnelQuerySchema>;
 
 /** The WebSocket subprotocol the CLI asks core's tunnel for. */
 export const CLI_TUNNEL_SUBPROTOCOL = "ostra-cli-tunnel.v1";
+
+/**
+ * Why core refused the CLI's tunnel before it upgraded, with the status (ticket 23):
+ * - `bad-request` (400): no ticket, not the tunnel's subprotocol, or a browser's `Origin` (a page
+ *   never opens it);
+ * - `ticket-refused` (403): unknown, used, older than 60 s, or issued under an older lease;
+ * - `not-found` (404): the task is gone, or the member can no longer open it;
+ * - `port-not-allowed` (403): the port is no longer one of the task's previews;
+ * - `runner-cannot-tunnel` (409), `no-box` (409): as the ticket's refusals;
+ * - `not-connected` (409): the box's preview connection didn't reach the server in time;
+ * - `forwarding-failed` (502): the server replica that holds the box's connection didn't answer.
+ *
+ * A ticket is used once the server reads it, so every retry asks for a new one.
+ */
+export const cliTunnelErrorSchema = z.strictObject({
+  error: z.strictObject({
+    code: z.enum(["bad-request", "ticket-refused", "not-found", "port-not-allowed", "runner-cannot-tunnel", "no-box", "not-connected", "forwarding-failed"]),
+    /** Words for the person at the terminal (`cliTunnelErrorWords`). Never holds the ticket. */
+    message: z.string().min(1).max(2000),
+  }),
+});
+export type CliTunnelError = z.infer<typeof cliTunnelErrorSchema>;
+export type CliTunnelErrorCode = CliTunnelError["error"]["code"];
+
+/** The words for each of core's refusals of the tunnel, which core sends as the error's `message`. */
+export const cliTunnelErrorWords = (code: CliTunnelErrorCode): string => {
+  switch (code) {
+    case "bad-request":
+      return "The server refused this tunnel request: update the CLI.";
+    case "ticket-refused":
+      return "The preview's ticket was used, expired or is for an older box: run `ostra preview` again.";
+    case "not-found":
+      return "No task by that name that you can open.";
+    case "port-not-allowed":
+      return "That port is no longer one of this task's previews.";
+    case "runner-cannot-tunnel":
+      return cliPreviewTunnelRefusalWords({ code: "runner-cannot-tunnel" }, null);
+    case "no-box":
+      return "This task's box isn't running, or is idling out. Start its app, then run this again.";
+    case "not-connected":
+      return "The task's box didn't connect to the server in time. Trying again may work.";
+    case "forwarding-failed":
+      return "The server that holds the task's box didn't answer. Trying again may work.";
+    default:
+      return code satisfies never;
+  }
+};
+
+/**
+ * The WebSocket close codes core ends an open tunnel with (ticket 23), so the CLI says why and knows
+ * whether a new ticket could help. A server that stops closes with 1001.
+ */
+export const cliTunnelCloseCodes = {
+  /** The CLI session was revoked or expired, or the member can no longer open the task: no new ticket. */
+  "session-ended": 4401,
+  /** The view closed: its box idled out past the warm cap, or stopped. Start the app, then a new ticket. */
+  "view-closed": 4410,
+  /** The box's preview connection dropped, or a newer lease took the task: a new ticket may reach it. */
+  "box-gone": 4404,
+} as const satisfies Readonly<Record<string, number>>;
+export type CliTunnelCloseReason = keyof typeof cliTunnelCloseCodes;
+
+const cliTunnelCloseReasons = Object.keys(cliTunnelCloseCodes).filter((reason): reason is CliTunnelCloseReason => reason in cliTunnelCloseCodes);
+
+/** The reason a close code stands for, or `null` for any other code. */
+export const cliTunnelCloseReasonOf = (code: number): CliTunnelCloseReason | null => cliTunnelCloseReasons.find((reason) => cliTunnelCloseCodes[reason] === code) ?? null;
+
+/** The words the CLI prints when the tunnel ends for `reason`. */
+export const cliTunnelCloseWords = (reason: CliTunnelCloseReason): string => {
+  switch (reason) {
+    case "session-ended":
+      return "This CLI session ended, or you can no longer open this task. Run `ostra login` again.";
+    case "view-closed":
+      return "The task's box stopped or idled out. Start its app, then run `ostra preview` again.";
+    case "box-gone":
+      return "The task's box dropped its connection to the server.";
+    default:
+      return reason satisfies never;
+  }
+};

@@ -39,6 +39,9 @@ export const startPreviewReplica = async (
     readonly clock?: Clock;
     readonly logger?: Logger;
     readonly gateway?: Partial<GatewayOptions>;
+    readonly warmMinutes?: number;
+    /** How often a CLI's tunnel checks its session again (5 minutes in production). */
+    readonly cliRecheckMs?: number;
   },
 ): Promise<PreviewReplica> => {
   const clock = options.clock ?? systemClock;
@@ -68,6 +71,8 @@ export const startPreviewReplica = async (
     replicaUrl: () => url,
     presenceWaitMs: 3_000,
     checkMs: 100,
+    settings: { warmMinutes: options.warmMinutes ?? 60 },
+    ...(options.cliRecheckMs === undefined ? {} : { cliRecheckMs: options.cliRecheckMs }),
   });
   const server = createCoreServer({
     routes: [previews.handleRequest, gateway.handleRequest],

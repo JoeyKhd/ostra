@@ -239,6 +239,7 @@ export * from "./library/search.ts";
 // Milestone 8 (ticket 19, ADR 0068): views, warm boxes and "Start the app".
 export * from "./previews/views.ts";
 export * from "./previews/start-app.ts";
+export * from "./previews/cli-tunnel.ts";
 export * from "./previews/app-lease.ts";
 // Milestone 8 (ticket 28, ADR 0069): attaching, every profile, delivery, updates and suggestions.
 export * from "./library/server-request.ts";

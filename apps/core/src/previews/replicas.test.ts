@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdtemp } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { Server } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -9,6 +11,7 @@ import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
 import {
   createPanelPreviewTokens,
   dispatchTask,
+  issueCliTicket,
   openView,
   panelPreviewPaths,
   postgresChangeNotices,
@@ -20,9 +23,10 @@ import {
 import type { MemberScope } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
-import { previewKeySchema, runnerPaths, tokenResponseSchema } from "@ostra/protocol";
-import type { PreviewInputEvent } from "@ostra/protocol";
+import { cliSessionIdSchema, previewKeySchema, previewViewIdSchema, runnerPaths, tokenResponseSchema } from "@ostra/protocol";
+import type { DownFrame, PreviewInputEvent } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import { FakeCodeHost, FakeSecretStore } from "../testing/fake-adapters.ts";
 import { connectPeer, signAssertion } from "../testing/fake-peer.ts";
@@ -32,6 +36,7 @@ import { connectFakeBox, openPanelStream } from "../testing/previews.ts";
 import type { FakeBox, PanelStream } from "../testing/previews.ts";
 import { freePort, registerRunnerAt, spawnCore, waitFor } from "../testing/restart.ts";
 import type { CoreProcess, RegisteredAt } from "../testing/restart.ts";
+import { connectFakeTunnelBox, openFakeCli } from "../testing/tunnels.ts";
 import { dispatchPayload, seedQueuedTask, seedWorld } from "../testing/world.ts";
 import type { World } from "../testing/world.ts";
 
@@ -39,7 +44,8 @@ import type { World } from "../testing/world.ts";
 // its own `OSTRA_CORE_REPLICA_URL`, sharing the secrets key and the runner token key as replicas
 // do. The box's preview connection lands on one; the panel's stream and input reach the other,
 // which forwards them, signed, to the one in the view's presence. A forwarded request that doesn't
-// verify is refused.
+// verify is refused. Ticket 23 (F-143): `ostra preview`'s tunnel reaches the other replica too,
+// which forwards the CLI's connection to the one that holds the box's.
 
 let test: TestDatabase;
 let fixture: IsolationFixture;
@@ -49,6 +55,11 @@ let b: CoreProcess | null = null;
 let runner: RegisteredAt;
 let world: World;
 let peer: FakePeer | null = null;
+/** The app behind the tunnel: a small HTTP server on `localhost`, and the port it answers on. */
+let app: Server | null = null;
+let appPort = 0;
+/** Two MiB and a little more: big enough to fill the relay and the HTTP/2 windows. */
+const big = Buffer.alloc(2 * 1024 * 1024 + 333, 0x61);
 const secretsKey = generateSecretsKey();
 const panelTokens = createPanelPreviewTokens(secretsKey);
 const web = previewKeySchema.parse("app-web");
@@ -77,6 +88,23 @@ beforeAll(async () => {
   await test.db.appProcess.create({
     data: { organizationId: world.organizationId, projectId: world.projectId, environmentId: environment.id, repoId: world.repoId, name: "web", command: "pnpm dev", port: 5173, readyKind: "http", readyValue: "/", label: "Web", primary: true },
   });
+  // The tunnel's app: a second process of the environment, on a free port of this machine.
+  appPort = await freePort();
+  app = createServer((request, response) => {
+    if (request.url === "/big") {
+      response.writeHead(200, { "content-type": "application/octet-stream", "content-length": String(big.length) });
+      response.end(big);
+      return;
+    }
+    response.writeHead(200, { "content-type": "text/plain" });
+    response.end(`the app on ${String(appPort)}`);
+  });
+  await new Promise<void>((resolve) => {
+    app?.listen(appPort, "localhost", resolve);
+  });
+  await test.db.appProcess.create({
+    data: { organizationId: world.organizationId, projectId: world.projectId, environmentId: environment.id, repoId: world.repoId, name: "api", command: "pnpm api", port: appPort, readyKind: "port", readyValue: null, label: "API", primary: false, position: 1 },
+  });
   const env: NodeJS.ProcessEnv = {
     ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("OSTRA_") && name !== "DATABASE_URL")),
     NODE_ENV: "test",
@@ -104,6 +132,16 @@ beforeAll(async () => {
 
 afterAll(async () => {
   peer?.close();
+  await new Promise<void>((resolve) => {
+    if (app === null) {
+      resolve();
+      return;
+    }
+    app.closeAllConnections();
+    app.close(() => {
+      resolve();
+    });
+  });
   await Promise.all([a?.kill(), b?.kill()]);
   await jobs.stop({ graceful: false, timeoutMs: 2_000 });
   await test.dispose();
@@ -172,6 +210,60 @@ describe("two core replicas", () => {
     signed.abort();
     panel.abort();
     box.close();
+    await box.closed;
+  }, 120_000);
+
+  it("F-143/c2: ostra preview's tunnel on one replica reaches the box whose connection is on the other", async () => {
+    const replicaA = started(a);
+    const replicaB = started(b);
+    const fakePeer = peer;
+    if (fakePeer === null) {
+      throw new Error("no runner");
+    }
+    const task = await seedQueuedTask(test.db, world, fixture.a.member, runner.runnerId);
+    const dispatched = await test.db.$transaction((tx) =>
+      dispatchTask({ tx, jobs, outbox: postgresCommandOutbox, notices: postgresChangeNotices, clock: systemClock, personalSlots: 50 }, dispatchPayload(task, 1)),
+    );
+    expect(dispatched).toMatchObject({ ok: true, runnerId: runner.runnerId });
+    await test.db.lease.updateMany({ where: { taskId: task.taskId }, data: { acceptedAt: new Date() } });
+    const member = fixture.a.member;
+    const session = await test.db.cliSession.create({
+      data: { organizationId: member.organizationId, memberId: member.id, userId: member.userId, tokenHash: randomBytes(32).toString("hex"), name: "alex-laptop", expiresAt: new Date(Date.now() + 86_400_000) },
+      select: { id: true },
+    });
+    const issued = await issueCliTicket({ db: test.db, clock: systemClock, coreUrl: replicaB.url }, scope(), { taskId: task.taskId, port: appPort, cliSessionId: cliSessionIdSchema.parse(session.id) });
+    if (!issued.ok) {
+      throw new Error(issued.error);
+    }
+
+    // The CLI opens its tunnel on replica B; the runner, connected to A, gets `preview.open` in
+    // tunnel mode, and the box's preview connection lands on A.
+    const pending = openFakeCli(replicaB.url, issued.ticket);
+    let open: Extract<DownFrame, { type: "command" }> | undefined;
+    await waitFor("preview.open in tunnel mode", () => {
+      open = fakePeer.frames.find((frame): frame is Extract<DownFrame, { type: "command" }> => frame.type === "command" && frame.kind === "preview.open" && frame.body.mode === "tunnel");
+      return open !== undefined;
+    }, 15_000);
+    const viewId = z.looseObject({ viewId: previewViewIdSchema }).parse(open?.body).viewId;
+    const box = await connectFakeTunnelBox(replicaA.url, viewId, 1, await tokenAt(replicaA.url), [appPort]);
+    const cli = await pending;
+    if (!cli.ok) {
+      throw new Error(`the tunnel was refused: ${JSON.stringify(cli.body)}`);
+    }
+    expect(await test.db.previewView.findUniqueOrThrow({ where: { id: viewId } })).toMatchObject({ mode: "cli", state: "open", replicaUrl: replicaA.url });
+
+    // B relays the CLI's HTTP/2 to A, which bridges each CONNECT to the box: a page, and 2 MiB whole.
+    const local = await cli.listen(appPort);
+    expect(await (await fetch(`http://127.0.0.1:${String(local)}/`)).text()).toBe(`the app on ${String(appPort)}`);
+    const bytes = Buffer.from(await (await fetch(`http://127.0.0.1:${String(local)}/big`)).arrayBuffer());
+    expect(bytes.equals(big)).toBe(true);
+    expect(box.counts.connects).toBe(2);
+    // A port the ticket isn't for is refused on A, past B's relay.
+    expect((await cli.connect(5173)).status).toBe(403);
+
+    // The CLI goes: B closes the view, and A ends the box's connection.
+    cli.close();
+    await waitFor("the cli view closed", async () => (await test.db.previewView.findUniqueOrThrow({ where: { id: viewId } })).state === "closed", 10_000);
     await box.closed;
   }, 120_000);
 });

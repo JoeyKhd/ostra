@@ -5,6 +5,7 @@ import type {
   AttachmentSource,
   BlobId,
   BoxBrowser,
+  CliSessionId,
   DraftId,
   DraftImageId,
   EnvironmentProposalId,
@@ -26,7 +27,7 @@ import type {
 } from "@ostra/protocol";
 
 import type { MemberScope } from "../access.ts";
-import type { Ports } from "../ports.ts";
+import type { Clock, Ports } from "../ports.ts";
 import type { PreviewAccessRefusal } from "../previews/access.ts";
 import type { AppProcessForm, AppProcessListIssue, ScreenshotSettings } from "../previews/app-processes.ts";
 import type { PanelPreviewTokens, PreviewCodeCheck } from "../previews/tokens.ts";
@@ -273,15 +274,20 @@ export type EnterNativePreview = (
   >
 >;
 
-/** `ostra preview`'s ticket (F-143): a member's CLI session, a task they can open, one of its previews' ports. */
+/**
+ * `ostra preview`'s ticket (F-143): a member's CLI session, a task they can open, one of its
+ * previews' ports (the primary's when none is given). The ticket is bound to the CLI session too,
+ * so core checks that session again while the tunnel lasts (ticket 23). `coreUrl` is core's public
+ * address (`OSTRA_CORE_PUBLIC_URL`), which the CLI opens the tunnel on.
+ */
 export type IssueCliTicket = (
-  deps: PreviewDeps,
+  deps: { readonly db: Db; readonly clock: Clock; readonly coreUrl: string },
   scope: MemberScope,
-  input: { readonly taskId: TaskId; readonly port: number | null },
+  input: { readonly taskId: TaskId; readonly port: number | null; readonly cliSessionId: CliSessionId },
 ) => Promise<UseCaseResult<{ readonly ticket: string; readonly port: number; readonly coreUrl: string }, "not-found" | "port-not-allowed" | "runner-cannot-tunnel" | "no-box">>;
 
 /** A code's or a ticket's one use: the check (`checkPreviewCode`) and `usedAt`, in one statement. */
 export type RedeemCode = (
-  deps: PreviewDeps,
+  deps: { readonly db: Db; readonly clock: Clock },
   input: { readonly code: string; readonly kind: "enter" | "cli_ticket"; readonly taskId?: TaskId; readonly port?: number },
 ) => Promise<PreviewCodeCheck>;

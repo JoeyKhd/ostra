@@ -249,7 +249,7 @@ export const taskPreviewTargetsInTx = async (
 };
 
 /** Core doesn't know a box's own ports, which it picks when it starts: the box checks them (ticket 18). */
-const UNKNOWN_RESERVED: ReservedPorts = { "key-proxy": null, "git-proxy": null, "mcp-proxy": null, "sidecar-control": null, "agent-loopback": null, browser: null };
+export const UNKNOWN_RESERVED: ReservedPorts = { "key-proxy": null, "git-proxy": null, "mcp-proxy": null, "sidecar-control": null, "agent-loopback": null, browser: null };
 
 // ---------- who's asking ----------
 
@@ -284,7 +284,8 @@ const levelInTx = async (tx: Tx, taskId: TaskId, key: PreviewKey): Promise<Previ
 const publicLinksInTx = async (tx: Tx, organizationId: OrganizationId): Promise<boolean> =>
   (await tx.organizationSetting.findUnique({ where: { organizationId }, select: { publicPreviewLinks: true } }))?.publicPreviewLinks ?? false;
 
-const canOpenTaskInTx = async (tx: Tx, organizationId: OrganizationId, memberId: MemberId, projectId: ProjectId): Promise<boolean> => {
+/** Whether the member can open the project's tasks now: an active membership, and the project's access rule (ADR 0026). */
+export const canOpenTaskInTx = async (tx: Tx, organizationId: OrganizationId, memberId: MemberId, projectId: ProjectId): Promise<boolean> => {
   const scope = await loadMemberScopeInTx(tx, organizationId, memberId);
   const project = await tx.project.findFirst({ where: { id: projectId, organizationId }, select: { access: true } });
   return scope !== null && project !== null && requireProjectAccess(scope, { id: projectId, organizationId, access: project.access }, "read").ok;

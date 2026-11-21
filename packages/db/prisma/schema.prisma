@@ -2735,6 +2735,8 @@ model CliSession {
   lastUsedAt     DateTime?
   expiresAt      DateTime
   revokedAt      DateTime?
+  /// The tunnels' tickets `ostra preview` got with this session (milestone 8, F-143).
+  previewCodes   PreviewCode[]
 
   @@index([memberId])
   @@index([userId])
@@ -4269,8 +4271,13 @@ model PreviewCode {
   expiresAt      DateTime
   usedAt         DateTime?
   createdAt      DateTime        @default(now())
+  /// A CLI ticket's CLI session (ticket 23): core checks it again while the tunnel lasts, and ends
+  /// the tunnel once it's revoked. `null` for a native preview's code.
+  cliSessionId   String?
+  cliSession     CliSession?     @relation(fields: [cliSessionId], references: [id], onDelete: Cascade)
 
   @@index([expiresAt])
+  @@index([cliSessionId])
   @@map("preview_code")
 }
 

@@ -28,6 +28,7 @@ import {
   previewMessageMaxBytes,
   previewPaths,
   previewSubprotocols,
+  previewTunnel,
   previewViewIdSchema,
   runnerLimits,
 } from "@ostra/protocol";
@@ -40,9 +41,13 @@ import { checkTaskLease, isTaskToken } from "../gateway/task-token.ts";
 import type { TaskTokenClaims, TaskTokens } from "../gateway/task-token.ts";
 import { readBody, sendJson } from "../http.ts";
 import type { RouteHandler } from "../server.ts";
+import { createCliTunnels } from "./cli-tunnel.ts";
+import type { CliTunnels } from "./cli-tunnel.ts";
 import { createPreviewHub } from "./hub.ts";
 import { parseMultipart } from "./multipart.ts";
 import type { PreviewHub } from "./hub.ts";
+import { createTunnelHub } from "./tunnels.ts";
+import type { TunnelHub } from "./tunnels.ts";
 
 // Previews on core (milestone 8, ticket 19, F-141, F-142, ADR 0068 "The preview connection"):
 //
@@ -55,6 +60,10 @@ import type { PreviewHub } from "./hub.ts";
 //   panel's token for that view (the web app relays them, ADR 0035). A replica that gets one for a
 //   view another replica holds forwards it there, signed under the secrets key every replica
 //   shares, and a replica refuses a forwarded request it can't verify. One replica never forwards.
+//
+// - a view in a tunnel mode (`cli`, `native`; ticket 23): the box's connection carries one HTTP/2
+//   connection with core as the client (`tunnels.ts`), and `ostra preview`'s endpoint,
+//   `GET /cli/v1/tunnel?ticket=…`, serves the CLI's (`cli-tunnel.ts`).
 //
 // Never logged: a token, a signature, a frame, typed text or a path. Logged: IDs and reasons.
 
@@ -75,6 +84,12 @@ export type PreviewsDeps = {
   readonly presenceWaitMs?: number;
   /** How often the views held here are checked against their rows. */
   readonly checkMs?: number;
+  /** The warm cap a new tunnel view is refused past (`OSTRA_PREVIEW_WARM_MINUTES`). */
+  readonly settings: { readonly warmMinutes: number };
+  /** How often a CLI's tunnel checks its CLI session again (5 minutes; tests shorten it). */
+  readonly cliRecheckMs?: number;
+  /** How often a CLI's tunnel heartbeats its view (30 s; tests shorten it). */
+  readonly cliHeartbeatMs?: number;
 };
 
 export type Previews = {
@@ -82,6 +97,9 @@ export type Previews = {
   /** Takes an upgrade of the preview connection's path; `false` for any other path. */
   readonly handleUpgrade: (request: IncomingMessage, socket: Duplex, head: Buffer) => boolean;
   readonly hub: PreviewHub;
+  /** The tunnel views' HTTP/2 sessions to their boxes: the native preview's proxy (ticket 25) sends on `tunnels.session(viewId)`. */
+  readonly tunnels: TunnelHub;
+  readonly cliTunnels: CliTunnels;
   readonly start: () => void;
   readonly stop: () => Promise<void>;
 };
@@ -126,6 +144,27 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
     perMessageDeflate: false,
     maxPayload: previewMessageMaxBytes,
     handleProtocols: (protocols) => (protocols.has(previewSubprotocols.stream) ? previewSubprotocols.stream : false),
+  });
+  const tunnelWss = new WebSocketServer({
+    noServer: true,
+    perMessageDeflate: false,
+    maxPayload: previewTunnel.messageMaxBytes,
+    handleProtocols: (protocols) => (protocols.has(previewSubprotocols.tunnel) ? previewSubprotocols.tunnel : false),
+  });
+  const tunnels = createTunnelHub(logger);
+  const cliTunnels = createCliTunnels({
+    db: deps.db,
+    outbox: deps.outbox,
+    notices: deps.notices,
+    clock: deps.clock,
+    logger,
+    settings: deps.settings,
+    tunnels,
+    secret: deps.secret,
+    replicaUrl: deps.replicaUrl,
+    presenceWaitMs,
+    ...(deps.cliRecheckMs === undefined ? {} : { recheckMs: deps.cliRecheckMs }),
+    ...(deps.cliHeartbeatMs === undefined ? {} : { heartbeatMs: deps.cliHeartbeatMs }),
   });
   let panelTokens: Promise<PanelPreviewTokens> | undefined;
   const tokensOnce = (): Promise<PanelPreviewTokens> => (panelTokens ??= deps.secret().then(createPanelPreviewTokens));
@@ -220,19 +259,18 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
       }
       return;
     }
-    if (view.mode !== "stream") {
-      // The tunnel mode (`ostra preview`, the native preview) is ticket 23's.
-      rejectUpgrade(socket, 404, "not-found", "this core serves the stream mode only");
-      return;
-    }
     const offered = (request.headers["sec-websocket-protocol"] ?? "").split(",").map((part) => part.trim());
-    if (!offered.includes(previewSubprotocols.stream)) {
-      rejectUpgrade(socket, 400, "bad-request", `the stream mode's subprotocol is ${previewSubprotocols.stream}`);
+    // `stream` for the browser view; every other mode (`cli`, `native`) is a tunnel (ADR 0068).
+    const tunnel = view.mode !== "stream";
+    const protocol = tunnel ? previewSubprotocols.tunnel : previewSubprotocols.stream;
+    if (!offered.includes(protocol)) {
+      rejectUpgrade(socket, 400, "bad-request", `this view's subprotocol is ${protocol}`);
       return;
     }
-    wss.handleUpgrade(request, socket, head, (ws) => {
+    (tunnel ? tunnelWss : wss).handleUpgrade(request, socket, head, (ws) => {
       const me = deps.replicaUrl();
-      hub.attachSocket(viewId, ws, () => {
+      const attach = tunnel ? tunnels.attachBox : hub.attachSocket;
+      attach(viewId, ws, () => {
         markViewDisconnected(deps.db, viewId, me).catch((error: unknown) => {
           logger.warn("preview.presence-clear-failed", { viewId, error: error instanceof Error ? error.name : "unknown" });
         });
@@ -240,19 +278,30 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
       markViewConnected(deps.db, viewId, me, now())
         .then((row) => {
           if (row === null) {
-            hub.close(viewId, "closed");
+            if (tunnel) {
+              tunnels.close(viewId, "view-closed");
+            } else {
+              hub.close(viewId, "closed");
+            }
             return;
           }
-          logger.info("preview.connected", { viewId, taskId: view.taskId, leaseEpoch: query.data.leaseEpoch });
+          logger.info("preview.connected", { viewId, taskId: view.taskId, leaseEpoch: query.data.leaseEpoch, mode: view.mode });
         })
         .catch((error: unknown) => {
           logger.warn("preview.presence-failed", { viewId, error: error instanceof Error ? error.name : "unknown" });
-          hub.close(viewId, "box-stopping");
+          if (tunnel) {
+            tunnels.close(viewId, "box-gone");
+          } else {
+            hub.close(viewId, "box-stopping");
+          }
         });
     });
   };
 
   const handleUpgrade = (request: IncomingMessage, socket: Duplex, head: Buffer): boolean => {
+    if (cliTunnels.handleUpgrade(request, socket, head)) {
+      return true;
+    }
     const url = new URL(request.url ?? "/", "http://ostra.invalid");
     if (url.pathname !== previewPaths.connection) {
       return false;
@@ -572,21 +621,29 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
 
   // ---------- the views held here, against their rows ----------
 
-  /** Ends the views held here that closed, or whose lease moved on. */
+  /** Ends the views held here that closed, or whose lease moved on, and the CLIs here whose view closed. */
   const checkHeld = async (): Promise<void> => {
-    const held = hub.held();
+    await cliTunnels.check();
+    const streamed = new Set(hub.held());
+    const held = [...streamed, ...tunnels.held()];
     if (held.length === 0) {
       return;
     }
+    const end = (viewId: PreviewViewId, reason: "closed" | "stale-lease"): void => {
+      logger.info("preview.view-ended", { viewId, reason });
+      if (streamed.has(viewId)) {
+        hub.close(viewId, reason);
+      } else {
+        tunnels.close(viewId, reason === "closed" ? "view-closed" : "box-gone");
+      }
+    };
     for (const viewId of await closedViewIds(deps.db, held)) {
-      logger.info("preview.view-ended", { viewId, reason: "closed" });
-      hub.close(viewId, "closed");
+      end(viewId, "closed");
     }
-    const rows = await deps.db.previewView.findMany({ where: { id: { in: [...held] }, state: { not: "closed" } }, select: { id: true, leaseEpoch: true, task: { select: { leaseEpoch: true } } } });
+    const rows = await deps.db.previewView.findMany({ where: { id: { in: held }, state: { not: "closed" } }, select: { id: true, leaseEpoch: true, task: { select: { leaseEpoch: true } } } });
     for (const row of rows) {
       if (row.task.leaseEpoch !== row.leaseEpoch) {
-        logger.info("preview.view-ended", { viewId: row.id, reason: "stale-lease" });
-        hub.close(previewViewIdSchema.parse(row.id), "stale-lease");
+        end(previewViewIdSchema.parse(row.id), "stale-lease");
       }
     }
   };
@@ -620,6 +677,8 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
     handleRequest,
     handleUpgrade,
     hub,
+    tunnels,
+    cliTunnels,
     start: () => {
       checkTimer = setInterval(() => {
         checkHeld().catch((error: unknown) => {
@@ -631,11 +690,18 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
     stop: async () => {
       clearInterval(checkTimer);
       hub.stop();
-      await new Promise<void>((resolve) => {
-        wss.close(() => {
-          resolve();
-        });
-      });
+      cliTunnels.stop();
+      tunnels.stop();
+      await Promise.all(
+        [wss, tunnelWss].map(
+          (server) =>
+            new Promise<void>((resolve) => {
+              server.close(() => {
+                resolve();
+              });
+            }),
+        ),
+      );
     },
   };
 };

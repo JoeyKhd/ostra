@@ -1,15 +1,18 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
-import { installationStateSelect, installationUsable, requireProjectAccess, resolveCliSession, startCliSession } from "@ostra/domain";
+import { installationStateSelect, installationUsable, issueCliTicket, requireProjectAccess, resolveCliSession, startApp, startCliSession } from "@ostra/domain";
 import type { CliSessionCaller } from "@ostra/domain";
 import {
   CLI_PATH_PREFIX,
   cliDeviceRequestSchema,
   cliDeviceTokenRequestSchema,
+  cliPreviewTunnelRequestSchema,
+  cliStartAppRequestSchema,
   cliTaskBranchesResponseSchema,
   memberIdSchema,
   organizationIdSchema,
   projectIdSchema,
+  taskIdSchema,
   userIdSchema,
 } from "@ostra/protocol";
 import type {
@@ -18,7 +21,11 @@ import type {
   CliDeviceTokenResponse,
   CliHttpError,
   CliHttpErrorCode,
+  CliPreviewTunnelGrant,
+  CliPreviewTunnelRefusal,
   CliSessionDeleteResponse,
+  CliStartAppRefusal,
+  CliStartAppResponse,
 } from "@ostra/protocol";
 import { secretRefSchema } from "@ostra/adapter-sdk";
 
@@ -188,18 +195,18 @@ const refOf = (raw: string): { readonly kind: "task"; readonly id: string } | { 
   return /^[A-Za-z][A-Za-z0-9]*-\d+$/.test(candidate) ? { kind: "key", key: candidate } : null;
 };
 
-const branches = async (deps: ApiDeps, caller: CliSessionCaller, rawRef: string): Promise<Response> => {
-  const { db, ports } = deps;
+/** The task a ref names, among those the session's member can open, and the member's scope; `null` when there's none. */
+const taskOf = async (deps: ApiDeps, caller: CliSessionCaller, rawRef: string) => {
+  const { db } = deps;
   const ref = refOf(rawRef);
-  const notFound = () => fail(404, "not-found", "No task by that key, ID or URL is open to you");
   if (ref === null) {
-    return notFound();
+    return null;
   }
   // A session belongs to one member of one organization (ADR 0051): it reads the tasks of the projects that member can open, never another organization's the same account is in.
   // An active membership only: a removed or pending one makes no scope (ADR 0053).
   const member = await db.member.findFirst({ where: { id: caller.memberId, organizationId: caller.organizationId, userId: caller.userId, state: "active" } });
   if (member === null) {
-    return notFound();
+    return null;
   }
   const context = await memberContextOf(db, caller.userId, member);
   const candidates = await db.task.findMany({
@@ -212,9 +219,16 @@ const branches = async (deps: ApiDeps, caller: CliSessionCaller, rawRef: string)
     select: { id: true, organizationId: true, projectId: true, ticket: { select: { key: true } }, project: { select: { access: true } } },
   });
   const found = candidates.find((task) => requireProjectAccess(context.scope, { id: projectIdSchema.parse(task.projectId), organizationId: context.scope.organizationId, access: task.project.access }, "read").ok);
-  if (found === undefined) {
-    return notFound();
+  return found === undefined ? null : { found, scope: context.scope };
+};
+
+const branches = async (deps: ApiDeps, caller: CliSessionCaller, rawRef: string): Promise<Response> => {
+  const { db, ports } = deps;
+  const task = await taskOf(deps, caller, rawRef);
+  if (task === null) {
+    return fail(404, "not-found", "No task by that key, ID or URL is open to you");
   }
+  const { found } = task;
   const rows = await db.taskRepo.findMany({
     where: { taskId: found.id, organizationId: found.organizationId },
     orderBy: { createdAt: "asc" },
@@ -249,6 +263,78 @@ const branches = async (deps: ApiDeps, caller: CliSessionCaller, rawRef: string)
   return response.success ? json(response.data) : fail(502, "bad-request", "The code host answered an address the CLI cannot use");
 };
 
+// ---------- `ostra preview` (milestone 8, F-143, ticket 23) ----------
+
+/** A tunnel refusal's status: the body is the protocol's `{ code }` whatever it is. */
+const tunnelRefusalStatus = { "not-found": 404, "port-not-allowed": 403, "runner-cannot-tunnel": 409, "no-box": 409 } as const satisfies Readonly<Record<CliPreviewTunnelRefusal["code"], number>>;
+
+const tunnelRefused = (code: CliPreviewTunnelRefusal["code"]): Response => json({ code } satisfies CliPreviewTunnelRefusal, tunnelRefusalStatus[code]);
+
+/**
+ * `POST /tasks/:ref/previews/tunnel`: a one-time ticket for `ostra preview`'s tunnel to one of the
+ * task's previews (the primary's when the body's port is `null`), and core's public address to
+ * open it on. The ticket is shown this once and bound to this CLI session (ADR 0068).
+ */
+const previewTunnel = async (deps: ApiDeps, caller: CliSessionCaller, rawRef: string, request: Request): Promise<Response> => {
+  const body = cliPreviewTunnelRequestSchema.safeParse(await readJson(request));
+  if (!body.success) {
+    return fail(400, "bad-request", "That isn't a tunnel request: it names a port of the task's previews, or null for the primary's");
+  }
+  const task = await taskOf(deps, caller, rawRef);
+  if (task === null) {
+    return tunnelRefused("not-found");
+  }
+  const issued = await issueCliTicket(
+    { db: deps.db, clock: deps.ports.clock, coreUrl: deps.settings.corePublicUrl },
+    task.scope,
+    { taskId: taskIdSchema.parse(task.found.id), port: body.data.port, cliSessionId: caller.sessionId },
+  );
+  if (!issued.ok) {
+    deps.logger.info("cli.preview-ticket-refused", { taskId: task.found.id, code: issued.error });
+    return tunnelRefused(issued.error);
+  }
+  deps.logger.info("cli.preview-ticket", { taskId: task.found.id, port: issued.port, sessionId: caller.sessionId });
+  return json({ coreUrl: issued.coreUrl, ticket: issued.ticket, port: issued.port } satisfies CliPreviewTunnelGrant);
+};
+
+/** The protocol's code for a refused start. */
+const startRefusalOf = (error: Extract<Awaited<ReturnType<typeof startApp>>, { readonly ok: false }>["error"]): CliStartAppRefusal["code"] => {
+  switch (error) {
+    case "forbidden":
+    case "not-found":
+      return "not-found";
+    case "no-app-processes":
+    case "no-runner":
+    case "runner-needs-upgrade":
+      return error;
+    case "runner-cannot-preview":
+      return "runner-needs-upgrade";
+    default:
+      return error satisfies never;
+  }
+};
+
+/**
+ * `POST /tasks/:ref/app/start`: "Start the app" for `ostra preview` when no box runs (ADR 0068,
+ * Q300), as the panel's button: `startApp` for the session's member, with no agent turn.
+ */
+const startTaskApp = async (deps: ApiDeps, caller: CliSessionCaller, rawRef: string, request: Request): Promise<Response> => {
+  const raw = await readJson(request);
+  if (!cliStartAppRequestSchema.safeParse(raw ?? {}).success) {
+    return fail(400, "bad-request", "That isn't a start request: it takes no fields");
+  }
+  const task = await taskOf(deps, caller, rawRef);
+  if (task === null) {
+    return json({ code: "not-found" } satisfies CliStartAppRefusal, 404);
+  }
+  const started = await startApp({ db: deps.db, ...deps.ports, logger: deps.logger }, task.scope, { taskId: taskIdSchema.parse(task.found.id) });
+  if (!started.ok) {
+    const code = startRefusalOf(started.error);
+    return json({ code } satisfies CliStartAppRefusal, code === "not-found" ? 404 : 409);
+  }
+  return json({ state: started.state } satisfies CliStartAppResponse);
+};
+
 // ---------- the dispatcher ----------
 
 /**
@@ -268,9 +354,13 @@ export const handleCliRequest = async (deps: ApiDeps, request: Request): Promise
     return pollDevice(deps, request);
   }
   const branchesOf = /^\/tasks\/(.+)\/branches$/.exec(path);
+  const tunnelOf = /^\/tasks\/(.+)\/previews\/tunnel$/.exec(path);
+  const startOf = /^\/tasks\/(.+)\/app\/start$/.exec(path);
   const session = path === "/session" && request.method === "DELETE";
   const ref = request.method === "GET" ? branchesOf?.[1] : undefined;
-  if (!session && ref === undefined) {
+  const tunnelRef = request.method === "POST" ? tunnelOf?.[1] : undefined;
+  const startRef = request.method === "POST" ? startOf?.[1] : undefined;
+  if (!session && ref === undefined && tunnelRef === undefined && startRef === undefined) {
     return fail(404, "not-found", "No such address");
   }
   const resolved = await resolveCliSession({ db: deps.db, clock: deps.ports.clock }, request.headers.get("authorization"));
@@ -280,6 +370,12 @@ export const handleCliRequest = async (deps: ApiDeps, request: Request): Promise
   if (session) {
     await deps.db.cliSession.updateMany({ where: { id: resolved.caller.sessionId, revokedAt: null }, data: { revokedAt: new Date(deps.ports.clock.now()) } });
     return json({ revoked: true } satisfies CliSessionDeleteResponse);
+  }
+  if (tunnelRef !== undefined) {
+    return previewTunnel(deps, resolved.caller, safeDecode(tunnelRef), request);
+  }
+  if (startRef !== undefined) {
+    return startTaskApp(deps, resolved.caller, safeDecode(startRef), request);
   }
   return ref === undefined ? fail(404, "not-found", "No such address") : branches(deps, resolved.caller, safeDecode(ref));
 };

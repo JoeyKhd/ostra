@@ -11,6 +11,11 @@ import {
   cliSessionDeleteResponseSchema,
   cliSessionMessages,
   cliTaskBranchesResponseSchema,
+  cliTunnelCloseCodes,
+  cliTunnelCloseReasonOf,
+  cliTunnelCloseWords,
+  cliTunnelErrorSchema,
+  cliTunnelErrorWords,
 } from "./http.ts";
 
 // The CLI's HTTP (F-103, ADR 0051): `ostra login`, `ostra checkout` and `ostra logout`.
@@ -100,5 +105,25 @@ describe("a refused session", () => {
       expect(message).toContain("ostra login");
     }
     expect(cliHttpErrorSchema.safeParse({ error: { code: "teapot", message: "x" } }).success).toBe(false);
+  });
+});
+
+describe("core's tunnel for ostra preview", () => {
+  it("F-143: each refusal before the upgrade, and each close code after it, has the CLI's words", () => {
+    for (const code of cliTunnelErrorSchema.shape.error.shape.code.options) {
+      const body = { error: { code, message: cliTunnelErrorWords(code) } };
+      expect(cliTunnelErrorSchema.parse(body)).toEqual(body);
+      expect(body.error.message).not.toContain("ostra_pt_");
+    }
+    expect(cliTunnelErrorSchema.safeParse({ error: { code: "ticket-refused", message: "x", ticket: "ostra_pt_x" } }).success).toBe(false);
+    const codes = Object.values(cliTunnelCloseCodes);
+    expect(new Set(codes).size).toBe(codes.length);
+    for (const [reason, code] of Object.entries(cliTunnelCloseCodes)) {
+      expect(code >= 4000 && code <= 4999).toBe(true);
+      expect(cliTunnelCloseReasonOf(code)).toBe(reason);
+    }
+    expect(cliTunnelCloseReasonOf(1000)).toBeNull();
+    expect(cliTunnelCloseReasonOf(1001)).toBeNull();
+    expect(cliTunnelCloseWords("session-ended")).toContain("ostra login");
   });
 });
