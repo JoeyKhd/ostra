@@ -80,6 +80,8 @@ export const attachmentViewSchema = z.object({
   takenBy: z.object({ memberId: memberIdSchema, name: z.string() }).nullable(),
   /** Whether "Add to draft" put it among a draft's images. */
   inDraft: z.boolean(),
+  /** Ticket 17: the draft image "Add to draft" made of it, so the draft shows the picture among its images. */
+  draftImageId: draftImageIdSchema.nullable(),
   /** Epoch ms. */
   createdAt: z.number().int(),
   /** The web app's route that downloads it. */
@@ -170,6 +172,7 @@ export const attachmentViewsOf = async (
         turn: turn === undefined ? null : { turnId: turnIdSchema.parse(turn.id), ordinal: turn.ordinal, startSeq: turn.startSeq },
         takenBy: row.memberId === null ? null : { memberId: memberIdSchema.parse(row.memberId), name: members.find((one) => one.id === row.memberId)?.user.name ?? "A former member" },
         inDraft: row.draftImageId !== null,
+        draftImageId: row.draftImageId === null ? null : draftImageIdSchema.parse(row.draftImageId),
         createdAt: row.createdAt.getTime(),
         downloadPath: attachmentDownloadPath(row.taskId, row.attachmentId),
       },

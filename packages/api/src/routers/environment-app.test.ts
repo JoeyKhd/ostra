@@ -296,4 +296,22 @@ describe('"Keep it" (F-140)', () => {
     ]);
     expect(after.kept).toEqual([]);
   });
+
+  it("F-140/c9: the App tab's Review accepts a kept process as the admin leaves it, its command named, and a member is refused", async () => {
+    const asAdmin = await as(projectAdmin);
+    const asMember = await as(projectMember);
+    const task = await seedTask(harness, { organizationId, projectId, title: "Add the docs", state: "running", driverMemberId: projectMember.id });
+    const key = await seedAnnouncedPreview(harness, { taskId: task.taskId, organizationId, projectId }, { port: 4000, label: "Docs" });
+    const kept = await asMember.tasks.keepPreview({ taskId: task.taskId, key });
+    const reviewed = { name: "docs", repoId, folder: "docs", command: "pnpm docs:dev", port: 4000, ready: { kind: "http" as const, path: "/" }, label: "Docs", primary: false, hostRewrite: true };
+
+    expect(await outcomeOf(() => asMember.environments.appProcesses.acceptKept({ projectId, proposalId: kept.proposalId, process: reviewed }))).toBe("FORBIDDEN");
+    expect(await outcomeOf(() => as(outsider).then((caller) => caller.environments.appProcesses.acceptKept({ projectId, proposalId: kept.proposalId, process: reviewed })))).toBe("NOT_FOUND");
+    await asAdmin.environments.appProcesses.acceptKept({ projectId, proposalId: kept.proposalId, process: reviewed });
+    const after = await asMember.environments.appProcesses.list({ projectId });
+    expect(after.processes.find((process) => process.name === "docs")).toMatchObject({ folder: "docs", command: "pnpm docs:dev", port: 4000, ready: { kind: "http", path: "/" } });
+    expect(after.kept.find((one) => one.proposalId === kept.proposalId)).toBeUndefined();
+    // Decided once: a second Accept finds nothing open.
+    expect(await outcomeOf(() => asAdmin.environments.appProcesses.acceptKept({ projectId, proposalId: kept.proposalId, process: reviewed }))).toBe("NOT_FOUND");
+  });
 });

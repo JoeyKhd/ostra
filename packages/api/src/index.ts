@@ -22,6 +22,7 @@ export { handleCliRequest, CLI_CLIENT_ID } from "./services/cli-http.ts";
 export { startGitHubLink, completeGitHubLink } from "./services/github-link.ts";
 export { serveCheckOutput } from "./services/check-output.ts";
 export { serveTaskAttachment } from "./services/attachment-download.ts";
+export { appLogDownloadPath, serveTaskAppLog } from "./services/app-log-download.ts";
 export { corePanelUploader } from "./services/panel-blobs.ts";
 export type { PanelUploaderOptions } from "./services/panel-blobs.ts";
 export { serveSkillFileUpload } from "./services/skill-file-upload.ts";

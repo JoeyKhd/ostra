@@ -2,6 +2,7 @@ import type { Db } from "@ostra/db";
 import {
   appProcessesInTx,
   appProcessListWords,
+  decideEnvironmentProposal,
   appProcessSchema,
   detectRepoEnvironment,
   environmentAppProcessList,
@@ -17,6 +18,7 @@ import {
   appProcessStateSchema,
   appProcessReasonSchema,
   appReadyCheckSchema,
+  blobIdSchema,
   connectionIdSchema,
   environmentIdSchema,
   environmentProposalIdSchema,
@@ -37,7 +39,7 @@ import { z } from "zod";
 
 import { loadGitHubConnection } from "../services/github-connection.ts";
 import type { ApiDeps } from "../trpc/context.ts";
-import { projectProcedure, router } from "../trpc/init.ts";
+import { projectProcedure, router, unwrap } from "../trpc/init.ts";
 
 // Milestone 8, ticket 16 (F-140, F-121, ADR 0068): the environment's App tab.
 //
@@ -100,6 +102,8 @@ const lastBoxSchema = z.object({
   readyAfterMs: z.number().int().nullable(),
   /** The task whose box it was. */
   taskId: taskIdSchema,
+  /** Ticket 17: a process that exited or failed names its log's tail, a blob of that task ("Show the log"). */
+  logBlobId: blobIdSchema.nullable(),
 });
 
 const appProcessEventSchema = z.looseObject({
@@ -108,11 +112,13 @@ const appProcessEventSchema = z.looseObject({
   state: appProcessStateSchema,
   exitCode: z.number().int().nullable().catch(null),
   reason: appProcessReasonSchema.nullable().catch(null),
+  logBlobId: blobIdSchema.nullable().catch(null),
 });
 
 const lastBoxOf = async (db: Db, organizationId: OrganizationId, projectId: ProjectId, name: string): Promise<z.infer<typeof lastBoxSchema> | null> => {
+  // Ticket 17: a process stopped with its box says nothing of how it did, so the newest other state counts.
   const event = await db.event.findFirst({
-    where: { organizationId, projectId, kind: "app.process", payload: { path: ["name"], equals: name } },
+    where: { organizationId, projectId, kind: "app.process", AND: [{ payload: { path: ["name"], equals: name } }, { NOT: { payload: { path: ["state"], equals: "stopped" } } }] },
     orderBy: [{ occurredAt: "desc" }, { seq: "desc" }],
     select: { taskId: true, sessionId: true, seq: true, payload: true, occurredAt: true, session: { select: { box: { select: { runner: { select: { name: true } } } } } } },
   });
@@ -137,7 +143,22 @@ const lastBoxOf = async (db: Db, organizationId: OrganizationId, projectId: Proj
     reason: parsed.data.reason,
     readyAfterMs,
     taskId: taskIdSchema.parse(event.taskId),
+    logBlobId: parsed.data.logBlobId,
   };
+};
+
+/**
+ * Ticket 17: the runner of the project's newest box, when it speaks a protocol below minor 7: it
+ * starts no app process, takes no picture and opens no preview (ADR 0068), so the App tab says so.
+ */
+const olderRunnerOf = async (db: Db, organizationId: OrganizationId, projectId: ProjectId): Promise<{ readonly name: string } | null> => {
+  const lease = await db.lease.findFirst({
+    where: { organizationId, projectId },
+    orderBy: { grantedAt: "desc" },
+    select: { runner: { select: { name: true, presence: { select: { minor: true } } } } },
+  });
+  const minor = lease?.runner.presence?.minor ?? null;
+  return lease === null || minor === null || minor >= 7 ? null : { name: lease.runner.name };
 };
 
 /** The box's browser, from the project's newest `app.browser`: its name and version, or why there was none. */
@@ -258,7 +279,35 @@ const issueView = (issue: AppProcessListIssue): z.infer<typeof issueSchema> => (
 
 // ---------- app processes ----------
 
+/**
+ * Ticket 17: "Accept" on a process kept from a task, after a project admin reviewed it in the App
+ * tab's sheet: the kept proposal is accepted with its one process as the admin left it (the command
+ * that starts it named, which "Keep it" couldn't know), through the domain's `decideEnvironmentProposal`
+ * as "Edit and accept" is, so its rules, its scan and its audit entry hold.
+ */
+const acceptKeptProcedure = projectProcedure("admin", z.strictObject({ projectId: projectIdSchema, proposalId: environmentProposalIdSchema, process: appProcessSchema }))
+  .output(z.object({ resultVersion: z.number().int().nullable() }))
+  .mutation(async ({ ctx, input }) => {
+    const { db, ports } = ctx.deps;
+    const row = await db.environmentProposal.findFirst({
+      where: { id: input.proposalId, organizationId: ctx.scope.organizationId, projectId: input.projectId, source: "kept", state: "proposed" },
+      select: { body: true },
+    });
+    const body = environmentProposalSchema.safeParse(row?.body);
+    if (row === null || !body.success) {
+      throw notFound("kept process");
+    }
+    const decided = await decideEnvironmentProposal({ db, ...ports }, ctx.scope, { proposalId: input.proposalId, decision: { kind: "accept", edited: { ...body.data, appProcesses: [input.process] } } });
+    if (!decided.ok && decided.error === "secret-found") {
+      throw new TRPCError({ code: "BAD_REQUEST", message: decided.message });
+    }
+    const result = unwrap(decided, { forbidden: "FORBIDDEN", "not-found": "NOT_FOUND", "already-decided": "CONFLICT", "invalid-input": "BAD_REQUEST" });
+    return { resultVersion: result.resultVersion };
+  });
+
+
 export const appProcessesRouter = router({
+  acceptKept: acceptKeptProcedure,
   /** The saved processes in their start order, each with its last box; the box's browser; what was kept from a task. */
   list: projectProcedure("read", projectInput)
     .output(
@@ -267,6 +316,8 @@ export const appProcessesRouter = router({
         processes: z.array(appProcessFieldsSchema.extend({ lastBox: lastBoxSchema.nullable() })),
         browser: boxBrowserViewSchema.nullable(),
         kept: z.array(keptViewSchema),
+        /** Ticket 17: the runner of the newest box, when it's below protocol minor 7 and runs no app process. */
+        olderRunner: z.object({ name: z.string() }).nullable(),
         /** A project admin edits the list; a member reads it. */
         canEdit: z.boolean(),
       }),
@@ -284,6 +335,7 @@ export const appProcessesRouter = router({
         processes,
         browser: await boxBrowserOf(db, organizationId, input.projectId),
         kept: await keptOf(db, organizationId, input.projectId),
+        olderRunner: await olderRunnerOf(db, organizationId, input.projectId),
         canEdit: ctx.project.role === "admin",
       };
     }),

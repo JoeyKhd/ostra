@@ -125,6 +125,7 @@ describe("a task's screenshots and recordings (F-121)", () => {
       turn: { turnId: turn, ordinal: 2, startSeq: 20 },
       takenBy: null,
       inDraft: false,
+      draftImageId: null,
       createdAt: 0,
       downloadPath: `/api/tasks/${task.taskId}/attachments/${shot.attachmentId}`,
     });
@@ -215,7 +216,10 @@ describe('"Add to draft" and a finding\'s screenshots (F-121)', () => {
     const added = await asMember.tasks.attachmentToDraft(input);
     expect(await asMember.tasks.attachmentToDraft(input)).toEqual(added);
     expect((await asMember.drafts.get({ taskId: refine.taskId, version: null })).draft?.images).toEqual([expect.objectContaining({ imageId: added.draftImageId, contentType: "image/png", size: 64 })]);
-    expect((await asMember.tasks.attachments({ taskId: refine.taskId })).attachments.find((one) => one.attachmentId === shot.attachmentId)?.inDraft).toBe(true);
+    const inDraft = (await asMember.tasks.attachments({ taskId: refine.taskId })).attachments.find((one) => one.attachmentId === shot.attachmentId);
+    expect(inDraft?.inDraft).toBe(true);
+    // Ticket 17: the draft image it became, so the draft shows the picture among its images.
+    expect(inDraft?.draftImageId).not.toBeNull();
     // The draft's owner adds the next one.
     const second = await seedAttachment(harness, { ...place(), taskId: refine.taskId });
     await (await as(harness.fixture.a.admin)).tasks.attachmentToDraft({ ...input, attachmentId: second.attachmentId });

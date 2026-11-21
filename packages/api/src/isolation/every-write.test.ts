@@ -743,6 +743,7 @@ describe("the App tab's and the thread's writes, by each role (F-140, F-121)", (
     const environmentId = (await harness.test.db.environment.findUniqueOrThrow({ where: { projectId }, select: { id: true } })).id;
     // A service with a web UI to mark; a kept process's proposal carries the environment's services as they are.
     const service = await harness.test.db.service.create({ data: { ...place, environmentId, name: "mailpit", image: "axllent/mailpit:v1.20", port: 8025, variables: [] }, select: { id: true } });
+    let keptPort = 6100;
     /** What each call needs, fresh: a refine task's draft with a screenshot, and a task with an announced port. */
     const fresh = async () => {
       const refine = await harness.test.db.task.create({
@@ -755,12 +756,19 @@ describe("the App tab's and the thread's writes, by each role (F-140, F-121)", (
       const shot = await seedAttachment(harness, { ...place, taskId: refineId });
       const task = await seedTask(harness, { ...place, state: "running", driverMemberId: driver.id });
       const key = await seedAnnouncedPreview(harness, { ...place, taskId: task.taskId }, { port: 6006, label: "Storybook" });
-      return { serviceId: serviceIdSchema.parse(service.id), refineId, draftId: draftIdSchema.parse(draft.id), attachmentId: shot.attachmentId, taskId: task.taskId, key };
+      // Ticket 17: a second port, kept, for the App tab's Review to accept: a port of its own each time,
+      // since the one an admin accepted joins the environment.
+      keptPort += 1;
+      const keptKey = await seedAnnouncedPreview(harness, { ...place, taskId: task.taskId }, { port: keptPort, label: "Docs" });
+      const kept = await (await harness.as(driver)).tasks.keepPreview({ taskId: task.taskId, key: keptKey });
+      return { serviceId: serviceIdSchema.parse(service.id), refineId, draftId: draftIdSchema.parse(draft.id), attachmentId: shot.attachmentId, taskId: task.taskId, key, proposalId: kept.proposalId, keptPort };
     };
     type Fresh = Awaited<ReturnType<typeof fresh>>;
     const web = { name: "web", repoId, command: "pnpm dev", port: 5173, ready: { kind: "http" as const, path: "/" }, label: "Web", primary: true };
     const writes: Readonly<Record<string, (caller: AppCaller, at: Fresh) => Promise<unknown>>> = {
       "environments.appProcesses.save": (caller) => caller.environments.appProcesses.save({ projectId, processes: [web] }),
+      "environments.appProcesses.acceptKept": (caller, at) =>
+        caller.environments.appProcesses.acceptKept({ projectId, proposalId: at.proposalId, process: { name: `docs-${String(at.keptPort)}`, repoId, command: "pnpm docs:dev", port: at.keptPort, ready: { kind: "port" }, label: "Docs" } }),
       "environments.screenshots.save": (caller) => caller.environments.screenshots.save({ projectId, afterTurn: true, routes: ["/"], widths: ["desktop"] }),
       "environments.services.setPreview": (caller, at) => caller.environments.services.setPreview({ projectId, serviceId: at.serviceId, label: "Mail" }),
       "tasks.attachmentToDraft": (caller, at) => caller.tasks.attachmentToDraft({ taskId: at.refineId, attachmentId: at.attachmentId, draftId: at.draftId }),
@@ -771,6 +779,7 @@ describe("the App tab's and the thread's writes, by each role (F-140, F-121)", (
     const members = { "organization admin": "ok", "project admin": "ok", "project member": "ok", ...outside } as const;
     const table: Readonly<Record<string, Readonly<Record<Role, string>>>> = {
       "environments.appProcesses.save": admins,
+      "environments.appProcesses.acceptKept": admins,
       "environments.screenshots.save": admins,
       "environments.services.setPreview": admins,
       "tasks.attachmentToDraft": members,

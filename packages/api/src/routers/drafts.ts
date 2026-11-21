@@ -16,6 +16,7 @@ import type { M6Deps } from "@ostra/domain";
 import {
   boardIdSchema,
   connectionIdSchema,
+  draftIdSchema,
   memberIdSchema,
   refineDraftSchema,
   taskIdSchema,
@@ -156,6 +157,8 @@ export const draftsRouter = router({
         chosen === null || fields === null
           ? null
           : {
+              /** Ticket 17: the version's ID, for "Add to draft" on the latest one. */
+              draftId: draftIdSchema.parse(chosen.id),
               version: chosen.version,
               source: chosen.source,
               fields,
