@@ -1,7 +1,21 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { GitBranchIcon, GripVerticalIcon, InfoIcon, LockIcon, PlusIcon, RefreshCwIcon, Trash2Icon, TriangleAlertIcon } from "lucide-react";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  ArrowUpRightIcon,
+  EllipsisIcon,
+  GitBranchIcon,
+  GripVerticalIcon,
+  InfoIcon,
+  LockIcon,
+  PlusIcon,
+  RefreshCwIcon,
+  ShieldCheckIcon,
+  Trash2Icon,
+  TriangleAlertIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
@@ -10,10 +24,13 @@ import type { DragEvent, KeyboardEvent } from "react";
 import type { ProjectId, RepoId } from "@ostra/protocol";
 
 import { PageFrame, PageHeading, PropRow } from "@/components/shell/page-frame";
+import { AlertDialog, AlertDialogContent } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
+import { taskStateText } from "@/components/tasks/task-words";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
@@ -24,8 +41,10 @@ import type { RouterOutputs } from "@/lib/trpc";
 import { RepoCheckLine } from "./repo-check-line";
 import { BlockedNotice, RepoBlocksLoading, RepoProperties, ReposLede } from "./repo-checks";
 import { checkLines, repoVerdict } from "./repo-checks-words";
-import type { RepoDetail } from "./repo-checks-words";
+import type { CheckLine, RepoDetail, RepoVerdict } from "./repo-checks-words";
+import { Mark } from "./project-view";
 import { ProjectSettingsTabs } from "./settings-tabs";
+import { taskMark } from "./task-row-words";
 
 // A project's repos (F-098; app-targets/m4/project-repos.md), under Settings: the repos in the order
 // every session checks them out side by side, reordered by dragging a handle or with ↑ and ↓ on it,
@@ -33,6 +52,34 @@ import { ProjectSettingsTabs } from "./settings-tabs";
 // tasks have a branch in the repo, naming them. Each repo's branch-rule checks are milestone 2's.
 
 type RepoUse = RouterOutputs["projects"]["repos"][number];
+
+/**
+ * A block's one check line (project-repos.md): `pass` when both checks pass, folded into one line;
+ * otherwise only the problems, the signed-commit one first.
+ */
+const blockLines = (repo: RepoDetail): "pass" | readonly CheckLine[] => {
+  const lines = checkLines(repo);
+  const problems = lines.filter((line) => line.kind !== "protected" && line.kind !== "signedNotRequired");
+  if (problems.length === 0) return "pass";
+  return [...problems].sort((a, b) => Number(b.kind === "signedRequired") - Number(a.kind === "signedRequired"));
+};
+
+/** A block's verdict colour (project-repos.md): `Ready` muted, a warning `--text` 500, a refusal `--red` 500, `Couldn't check` faint. */
+const verdictTone = (verdict: RepoVerdict): string => {
+  switch (verdict) {
+    case "ready":
+      return "text-muted";
+    case "warning":
+      return "font-medium text-text";
+    case "unsupported":
+    case "notLinked":
+      return "font-medium text-red";
+    case "unknown":
+      return "text-faint";
+    default:
+      return verdict satisfies never;
+  }
+};
 
 /** Moves `id` one place up or down: the order the save sends. */
 export const moveRepo = <T,>(order: readonly T[], id: T, step: -1 | 1): readonly T[] => {
@@ -111,7 +158,20 @@ const AddRepo = ({ projectId, taken, full }: { readonly projectId: ProjectId; re
   );
 };
 
-const RepoPanel = ({ projectId, repo, use, count, admin, now }: { readonly projectId: ProjectId; readonly repo: RepoDetail; readonly use: RepoUse | undefined; readonly count: number; readonly admin: boolean; readonly now: number }) => {
+type RepoPanelProps = {
+  readonly projectId: ProjectId;
+  readonly projectName: string;
+  readonly repo: RepoDetail;
+  readonly use: RepoUse | undefined;
+  readonly count: number;
+  readonly admin: boolean;
+  readonly now: number;
+  /** The removal's confirmation is open (the panel's button, or the row menu's `Remove from project…`). */
+  readonly asked: boolean;
+  readonly onAsk: (open: boolean) => void;
+};
+
+const RepoPanel = ({ projectId, projectName, repo, use, count, admin, now, asked, onAsk }: RepoPanelProps) => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -132,22 +192,41 @@ const RepoPanel = ({ projectId, repo, use, count, admin, now }: { readonly proje
   const tasks = use?.tasks ?? [];
   return (
     <div data-testid="project-repo-panel">
-      <RepoProperties repo={repo} now={now} />
+      <AlertDialog open={asked} onOpenChange={onAsk}>
+        <AlertDialogContent
+          title={t("projectRepos.removeTitle", { repo: repo.fullName, project: projectName })}
+          body={t("projectRepos.removeBody", { project: projectName })}
+          cancel={t("common.cancel")}
+          action={t("projectRepos.removeAction")}
+          onAction={() => { remove.mutate({ projectId, repoId: repo.repoId }); }}
+        />
+      </AlertDialog>
+      {/* Position and folder first, under the repo's name (project-repos.md, the panel's first group). */}
+      <RepoProperties
+        repo={repo}
+        now={now}
+        lead={
+          <>
+            <PropRow label={t("projectRepos.position")} labelWidth={112}>
+              <span className="font-mono">{t("projectRepos.positionOf", { n: (use?.position ?? 0) + 1, of: count })}</span>
+            </PropRow>
+            <PropRow label={t("projectRepos.folder")} labelWidth={112}>
+              <span className="font-mono">{use === undefined ? "–" : `${use.checkoutDir}/`}</span>
+            </PropRow>
+          </>
+        }
+      />
       <div className="mt-3.5 border-t border-line pt-3.5">
-        <PropRow label={t("projectRepos.position")} labelWidth={112}>
-          <span className="font-mono">{t("projectRepos.positionOf", { n: (use?.position ?? 0) + 1, of: count })}</span>
-        </PropRow>
-        <PropRow label={t("projectRepos.folder")} labelWidth={112}>
-          <span className="font-mono">{use === undefined ? "–" : `${use.checkoutDir}/`}</span>
-        </PropRow>
-      </div>
-      <div className="mt-3.5 border-t border-line pt-3.5">
-        <h3 className="mb-1.5 text-body font-semibold text-text">{tasks.length === 0 ? t("projectRepos.noOpenTasks") : plural(tasks.length, "projectRepos.inUse.one", "projectRepos.inUse.other")}</h3>
+        <h3 className="mb-1.5 text-body font-semibold text-text">{tasks.length === 0 ? t("projectRepos.notInUse") : plural(tasks.length, "projectRepos.inUse.one", "projectRepos.inUse.other")}</h3>
         <ul data-testid="repo-tasks">
           {tasks.map((task) => (
-            <li key={task.taskId} className="flex h-8 items-center gap-3 text-ui">
-              <span className="w-[76px] shrink-0 font-mono text-sm text-muted">{task.ticketKey ?? task.taskId.slice(-7)}</span>
-              <Link href={`/tasks/${task.taskId}`} className="min-w-0 truncate text-text hover:underline">{task.title}</Link>
+            <li key={task.taskId}>
+              <Link href={`/tasks/${task.taskId}`} title={task.title} className="flex h-[34px] items-center gap-2.5 text-ui hover:[&>span:nth-child(3)]:underline">
+                <span className="grid w-4 shrink-0 place-items-center"><Mark mark={taskMark(task.state)} /></span>
+                {task.ticketKey === null ? null : <span className="shrink-0 font-mono text-sm text-muted">{task.ticketKey}</span>}
+                <span className="min-w-0 flex-1 truncate text-text">{task.title}</span>
+                <span className="shrink-0 text-muted">{taskStateText(task.state)}</span>
+              </Link>
             </li>
           ))}
         </ul>
@@ -158,7 +237,7 @@ const RepoPanel = ({ projectId, repo, use, count, admin, now }: { readonly proje
             className="mt-3 w-full"
             disabled={remove.isPending || count <= 1}
             data-testid="remove-repo"
-            onClick={() => { remove.mutate({ projectId, repoId: repo.repoId }); }}
+            onClick={() => { onAsk(true); }}
           >
             <Trash2Icon aria-hidden />
             {t("projectRepos.remove")}
@@ -193,6 +272,7 @@ export const ProjectReposView = ({ projectId, maxRepos }: { readonly projectId: 
   const uses = useQuery(trpc.projects.repos.queryOptions({ projectId }));
   const [mounted] = useState(() => Date.now());
   const [dragging, setDragging] = useState<RepoId | null>(null);
+  const [removing, setRemoving] = useState<RepoId | null>(null);
   const refresh = async (): Promise<void> => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: trpc.projects.repos.queryKey({ projectId }) }),
@@ -239,7 +319,21 @@ export const ProjectReposView = ({ projectId, maxRepos }: { readonly projectId: 
           </span>
         ) : undefined
       }
-      properties={selected === undefined ? undefined : <RepoPanel projectId={projectId} repo={selected.repo} use={selected.use} count={rows.length} admin={admin} now={now} />}
+      properties={
+        selected === undefined ? undefined : (
+          <RepoPanel
+            projectId={projectId}
+            projectName={project.data?.name ?? ""}
+            repo={selected.repo}
+            use={selected.use}
+            count={rows.length}
+            admin={admin}
+            now={now}
+            asked={removing === selected.repo.repoId}
+            onAsk={(open) => { setRemoving(open ? selected.repo.repoId : null); }}
+          />
+        )
+      }
     >
       <ProjectSettingsTabs projectId={projectId} admin={admin} />
       <PageHeading
@@ -269,6 +363,7 @@ export const ProjectReposView = ({ projectId, maxRepos }: { readonly projectId: 
           <ol className="mt-[18px]" data-testid="project-repos">
             {rows.map(({ repo, use }, index) => {
               const verdict = repoVerdict(repo);
+              const lines = blockLines(repo);
               const tasks = use?.tasks.length ?? 0;
               return (
                 <li
@@ -305,13 +400,55 @@ export const ProjectReposView = ({ projectId, maxRepos }: { readonly projectId: 
                         <span className="min-w-0 truncate font-mono text-body text-text">{repo.fullName}</span>
                         {repo.private === true ? <LockIcon aria-label={t("repos.private")} className="size-[14px] shrink-0 stroke-[1.75] text-faint" /> : null}
                         <span className="hidden font-mono text-ui text-faint sm:inline">{repo.defaultBranch}</span>
-                        <span className="ml-auto hidden shrink-0 text-ui text-muted md:inline" data-testid="repo-use">{tasks === 0 ? t("projectRepos.noOpenTasks") : plural(tasks, "projectRepos.inUse.one", "projectRepos.inUse.other")}</span>
-                        <span className={cn("w-[88px] shrink-0 text-right text-ui", verdict === "ready" ? "text-muted" : verdict === "warning" ? "text-text" : "text-red")}>{t(`repos.verdict.${verdict}`)}</span>
+                        <span className={cn("ml-auto hidden shrink-0 text-ui md:inline", tasks === 0 ? "text-faint" : "text-text")} data-testid="repo-use">{tasks === 0 ? t("projectRepos.noOpenTasks") : plural(tasks, "projectRepos.inUse.one", "projectRepos.inUse.other")}</span>
+                        <span className={cn("min-w-[88px] shrink-0 whitespace-nowrap text-right text-ui", verdictTone(verdict))}>{t(`repos.verdict.${verdict}`)}</span>
                       </span>
                       <ul className="pl-[27px]">
-                        {checkLines(repo).map((line) => <RepoCheckLine key={line.kind} line={line} />)}
+                        {lines === "pass" ? (
+                          <li className="flex items-start gap-3 py-[3px] text-ui text-text">
+                            <ShieldCheckIcon aria-hidden className="mt-[3px] size-[15px] shrink-0 stroke-[1.75] text-green" />
+                            {t("projectRepos.bothPass")}
+                          </li>
+                        ) : (
+                          lines.map((line) => <RepoCheckLine key={line.kind} line={line} inline />)
+                        )}
                       </ul>
                     </button>
+                    {admin ? (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          aria-label={t("projectRepos.moreFor", { repo: repo.fullName })}
+                          className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-md text-faint hover:bg-surface hover:text-text data-[state=open]:bg-surface"
+                        >
+                          <EllipsisIcon aria-hidden className="size-[15px] stroke-[1.75]" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-[220px]">
+                          <DropdownMenuItem disabled={index === 0} onSelect={() => { save(moveRepo(order, repo.repoId, -1)); }}>
+                            <ArrowUpIcon aria-hidden /> {t("projectRepos.moveUp")}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem disabled={index === rows.length - 1} onSelect={() => { save(moveRepo(order, repo.repoId, 1)); }}>
+                            <ArrowDownIcon aria-hidden /> {t("projectRepos.moveDown")}
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem asChild>
+                            <a href={`https://github.com/${repo.fullName}`} target="_blank" rel="noreferrer">
+                              <ArrowUpRightIcon aria-hidden /> {t("projectRepos.openOnGitHub")}
+                            </a>
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            disabled={rows.length <= 1}
+                            className="text-red [&_svg]:text-red"
+                            onSelect={() => {
+                              select(repo.repoId);
+                              setRemoving(repo.repoId);
+                            }}
+                          >
+                            <Trash2Icon aria-hidden /> {t("projectRepos.removeItem")}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    ) : null}
                   </div>
                 </li>
               );

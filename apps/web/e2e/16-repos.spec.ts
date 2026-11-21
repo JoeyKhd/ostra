@@ -77,6 +77,8 @@ test("F-098/c3, F-104/c7: a removal of a repo in use is refused with the task na
   const panel = page.getByTestId("project-repo-panel");
   await expect(panel.getByTestId("repo-tasks")).toContainText("Parse negative exponents");
   await panel.getByTestId("remove-repo").click();
+  // It asks first (project-repos.md, "Remove: the confirmation").
+  await page.getByRole("button", { name: "Remove repo" }).click();
   const refused = panel.getByTestId("remove-refused");
   await expect(refused).toContainText("Not removed");
   await expect(refused).toContainText("Parse negative exponents");

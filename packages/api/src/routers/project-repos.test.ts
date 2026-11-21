@@ -136,7 +136,7 @@ describe("F-098: a project's repos", () => {
         data: { organizationId: a.organization.id, projectId, taskId: task.taskId, repoId: second.repoId, branchName: `ostra/${task.taskId.slice(-8)}`, baseBranch: "main", state: "branch_pushed" },
       });
     }
-    expect((await caller.projects.repos({ projectId }))[1]?.tasks).toEqual([{ taskId: running.taskId, title: "Rename the API", ticketKey: null }]);
+    expect((await caller.projects.repos({ projectId }))[1]?.tasks).toEqual([{ taskId: running.taskId, title: "Rename the API", ticketKey: null, state: "running" }]);
     const refused = await caller.projects.removeRepo({ projectId, repoId: second.repoId });
     expect(refused).toEqual({ removed: false, message: "Unfinished tasks have a branch in this repo: Rename the API", tasks: [{ taskId: running.taskId, title: "Rename the API", ticketKey: null }] });
     expect(await harness.test.db.repo.count({ where: { id: second.repoId } })).toBe(1);

@@ -9,28 +9,41 @@ import type { CheckLine, RepoDetail } from "./repo-checks-words";
 
 const icon = "mt-[3px] size-[15px] shrink-0 stroke-[1.75]";
 
-const Line = ({ glyph, text, why }: { readonly glyph: ReactNode; readonly text: ReactNode; readonly why?: string | null }) => (
+type LineProps = { readonly glyph: ReactNode; readonly text: ReactNode; readonly why?: string | null };
+
+/** `inline`: why follows the text after a `·` on the same line (a project's Repos tab, project-repos.md). */
+const LineOf = ({ glyph, text, why, inline }: LineProps & { readonly inline: boolean }) => (
   <li className="flex items-start gap-3 py-[3px]">
     {glyph}
     <div className="min-w-0">
-      <div className="text-ui text-text">{text}</div>
-      {why === undefined || why === null ? null : <div className="text-xs text-faint">{why}</div>}
+      {inline ? (
+        <div className="text-ui text-text">
+          {text}
+          {why === undefined || why === null ? null : <span className="text-faint">{` · ${why}`}</span>}
+        </div>
+      ) : (
+        <>
+          <div className="text-ui text-text">{text}</div>
+          {why === undefined || why === null ? null : <div className="text-xs text-faint">{why}</div>}
+        </>
+      )}
     </div>
   </li>
 );
 
-/** One check under a repo (repo-checks.md, the check table): an icon, the text, and why on its own line. */
-export const RepoCheckLine = ({ line }: { readonly line: CheckLine }) => {
+/** One check under a repo (repo-checks.md, the check table): an icon, the text, and why on its own line or after it. */
+export const RepoCheckLine = ({ line, inline = false }: { readonly line: CheckLine; readonly inline?: boolean }) => {
   switch (line.kind) {
     case "protected":
-      return <Line glyph={<ShieldCheckIcon aria-hidden className={`${icon} text-green`} />} text={t("repos.check.protected")} />;
+      return <LineOf inline={inline} glyph={<ShieldCheckIcon aria-hidden className={`${icon} text-green`} />} text={t("repos.check.protected")} />;
     case "notProtected":
-      return <Line glyph={<TriangleAlertIcon aria-hidden className={`${icon} text-text`} />} text={t("repos.check.notProtected")} why={t("repos.check.notProtectedWhy")} />;
+      return <LineOf inline={inline} glyph={<TriangleAlertIcon aria-hidden className={`${icon} text-text`} />} text={t("repos.check.notProtected")} why={t("repos.check.notProtectedWhy")} />;
     case "signedNotRequired":
-      return <Line glyph={<ShieldCheckIcon aria-hidden className={`${icon} text-green`} />} text={t("repos.check.signedNotRequired")} />;
+      return <LineOf inline={inline} glyph={<ShieldCheckIcon aria-hidden className={`${icon} text-green`} />} text={t("repos.check.signedNotRequired")} />;
     case "signedRequired":
       return (
-        <Line
+        <LineOf
+          inline={inline}
           glyph={<BanIcon aria-hidden className={`${icon} text-red`} />}
           text={
             <>
@@ -43,7 +56,8 @@ export const RepoCheckLine = ({ line }: { readonly line: CheckLine }) => {
       );
     case "notLinked":
       return (
-        <Line
+        <LineOf
+          inline={inline}
           glyph={<BanIcon aria-hidden className={`${icon} text-red`} />}
           text={
             <>
@@ -58,7 +72,8 @@ export const RepoCheckLine = ({ line }: { readonly line: CheckLine }) => {
     case "signedUnknown":
     case "unknown":
       return (
-        <Line
+        <LineOf
+          inline={inline}
           glyph={<CircleHelpIcon aria-hidden className={`${icon} text-faint`} />}
           text={t(line.kind === "unknown" ? "repos.check.unknown" : line.kind === "protectedUnknown" ? "repos.check.protectedUnknown" : "repos.check.signedUnknown")}
           why={line.reason ?? t("repos.check.noReason")}

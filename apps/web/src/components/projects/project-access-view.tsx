@@ -18,14 +18,41 @@ import { plural, t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 import type { ProjectId } from "@ostra/protocol";
+import { z } from "zod";
 
-import { shortDate } from "@/components/members/member-words";
+import { lastActiveText, shortDate } from "@/components/members/member-words";
 
 import { ProjectSettingsTabs } from "./settings-tabs";
 
 type Access = RouterOutputs["projects"]["access"];
 type Listed = Access["members"][number];
 type Role = Listed["role"];
+type AuditEntry = RouterOutputs["audit"]["list"]["entries"][number];
+
+/** The audit actions that change who can open a project, the panel's `Last change`. */
+const accessActions: ReadonlySet<string> = new Set(["project.access-changed", "project.member-set", "project.member-removed"]);
+const accessData = z.object({ access: z.enum(["open", "restricted"]) });
+const memberData = z.object({ memberId: z.string(), role: z.enum(["admin", "member"]).optional() });
+
+/**
+ * The panel's `Last change` as a sentence (project-access.md): `Alex Kim restricted vault`,
+ * `Alex Kim made Sam Rivera an admin`, `Priya Nair removed Jun Ota`. `null` when the entry can't
+ * be told that way (an actor or a member whose name isn't known).
+ */
+export const accessChangeText = (entry: AuditEntry, project: string, nameOf: (memberId: string) => string | undefined): string | null => {
+  const actor = entry.actor.name;
+  if (actor === null) return null;
+  if (entry.action === "project.access-changed") {
+    const parsed = accessData.safeParse(entry.data);
+    if (!parsed.success) return null;
+    return parsed.data.access === "restricted" ? t("access.changeRestricted", { actor, project }) : t("access.changeOpened", { actor, project });
+  }
+  const parsed = memberData.safeParse(entry.data);
+  const name = parsed.success ? nameOf(parsed.data.memberId) : undefined;
+  if (!parsed.success || name === undefined) return null;
+  if (entry.action === "project.member-removed") return t("access.changeRemoved", { actor, name });
+  return parsed.data.role === "admin" ? t("access.changeMadeAdmin", { actor, name }) : t("access.changeMadeMember", { actor, name });
+};
 
 /** `Alex Kim`, `Alex Kim and Priya Nair`, `Alex Kim, Priya Nair and Dana Ortiz`. */
 export const joinNames = (names: readonly string[]): string => {
@@ -39,7 +66,7 @@ const Initials = ({ name, size = 24 }: { readonly name: string; readonly size?: 
   </span>
 );
 
-const grid = "grid items-center gap-x-3 grid-cols-[minmax(0,1fr)_128px] sm:grid-cols-[minmax(0,1fr)_140px_80px]";
+const grid = "grid items-center gap-x-3 grid-cols-[minmax(0,1fr)_128px] sm:grid-cols-[minmax(0,1fr)_140px_150px_80px]";
 
 type Confirm =
   | { readonly kind: "access"; readonly to: "open" | "restricted" }
@@ -58,8 +85,13 @@ export const ProjectAccessView = ({ projectId }: { readonly projectId: ProjectId
   const members = useQuery(trpc.members.list.queryOptions());
   const orgAdmin = me.data?.organization?.role === "admin";
   const pendingInvitations = useQuery({ ...trpc.members.invitations.queryOptions(), enabled: orgAdmin });
+  // The newest access change among the project's latest entries (repos and the rest share `project.`).
   const lastChange = useQuery({
-    ...trpc.audit.list.queryOptions({ projectId, action: "project.", limit: 1 }),
+    ...trpc.audit.list.queryOptions({ projectId, action: "project.", limit: 50 }),
+    enabled: access.data?.role === "admin",
+  });
+  const created = useQuery({
+    ...trpc.audit.list.queryOptions({ projectId, action: "project.created", limit: 1 }),
     enabled: access.data?.role === "admin",
   });
   const [confirm, setConfirm] = useState<Confirm | null>(null);
@@ -95,10 +127,13 @@ export const ProjectAccessView = ({ projectId }: { readonly projectId: ProjectId
   const listedIds = new Set(listed.map((member) => member.memberId));
   const candidates = active.filter((member) => member.role !== "admin" && !listedIds.has(member.memberId));
   const roleForAdd: Role = addRole ?? (mode === "open" ? "admin" : "member");
-  const adminNames = active.filter((member) => member.role === "admin").map((member) => member.name);
+  const adminNames = active.filter((member) => member.role === "admin").map((member) => member.name).sort((a, b) => a.localeCompare(b));
   const error = setAccess.error ?? setMember.error ?? removeMember.error;
   const unlisted = Math.max(0, active.length - adminNames.length - listed.length);
   const canOpen = mode === "open" ? null : new Set([...listed.map((member) => member.name), ...adminNames]).size;
+  const change = lastChange.data?.entries.find((entry) => accessActions.has(entry.action));
+  const memberNames = new Map<string, string>((members.data ?? []).map((member) => [member.memberId, member.name] as const));
+  const creator = created.data?.entries[0]?.actor.name ?? null;
 
   const confirmDialog = (() => {
     if (confirm === null) return null;
@@ -160,6 +195,7 @@ export const ProjectAccessView = ({ projectId }: { readonly projectId: ProjectId
           </PropRow>
           <PropRow label={t("access.panelCreated")} labelWidth={104}>
             <span className="font-mono">{shortDate(project.data.createdAt)}</span>
+            {creator === null ? null : <span className="truncate">{t("access.panelCreatedBy", { name: creator })}</span>}
           </PropRow>
         </PropGroup>
         <div className="mb-3.5 border-b border-line pb-3.5">
@@ -171,12 +207,16 @@ export const ProjectAccessView = ({ projectId }: { readonly projectId: ProjectId
           </ul>
           <p className="mt-1.5 text-xs text-faint">{t("access.panelOrgAdminsNote")}</p>
         </div>
-        {canEdit && lastChange.data?.entries[0] !== undefined ? (
+        {canEdit && change !== undefined ? (
           <div>
             <h3 className="mb-2 text-xs font-medium text-faint">{t("audit.lastChange")}</h3>
-            <p className="flex items-baseline gap-2 text-sm text-muted">
-              <span className="min-w-0 flex-1">{lastChange.data.entries[0].actor.name} · <span className="font-mono">{lastChange.data.entries[0].action}</span></span>
-              <span className="shrink-0 font-mono text-faint">{shortDate(lastChange.data.entries[0].at)}</span>
+            <p className="flex items-baseline gap-2 text-[12.5px] text-muted">
+              <span className="min-w-0 flex-1">
+                {accessChangeText(change, name, (memberId) => memberNames.get(memberId)) ?? (
+                  <>{change.actor.name} · <span className="font-mono">{change.action}</span></>
+                )}
+              </span>
+              <span className="shrink-0 font-mono text-faint">{lastActiveText(change.at, Date.now())}</span>
             </p>
             <Link href={`/projects/${projectId}/settings/audit?action=project.`} className="mt-1.5 inline-flex items-center gap-1 text-sm text-teal hover:underline">
               {t("audit.title")} <ArrowRightIcon aria-hidden className="size-[13px] stroke-[1.75]" />
@@ -265,6 +305,7 @@ export const ProjectAccessView = ({ projectId }: { readonly projectId: ProjectId
             <div className={cn(grid, "h-[30px] border-b border-line text-[11.5px] font-medium text-faint")}>
               <span>{t("access.colMember")}</span>
               <span>{t("access.colRole")}</span>
+              <span className="hidden sm:block">{t("access.colAdded")}</span>
               <span className="hidden sm:block" />
             </div>
             {access.data === undefined ? (
@@ -281,6 +322,7 @@ export const ProjectAccessView = ({ projectId }: { readonly projectId: ProjectId
                       {orgAdmin ? <span className="hidden min-w-0 truncate font-mono text-[12.5px] text-faint md:inline">{emails.get(member.memberId) ?? ""}</span> : null}
                     </span>
                     <span>{roleCell(member)}</span>
+                    <span className="hidden font-mono text-[12.5px] text-faint sm:block">{shortDate(member.addedAt)}</span>
                     <span className="col-span-full flex justify-end sm:col-span-1">
                       {canEdit ? <Button variant="ghost" size="sm" onClick={() => { setConfirm({ kind: "remove", member }); }}>{t("access.remove")}</Button> : null}
                     </span>
@@ -294,7 +336,7 @@ export const ProjectAccessView = ({ projectId }: { readonly projectId: ProjectId
                       <span className="inline-flex h-5 shrink-0 items-center rounded-md border border-line-2 px-1.5 font-mono text-[11px] text-faint">{t("access.invited")}</span>
                     </span>
                     <span className="text-muted">{invitation.role === "admin" ? t("access.admin") : t("access.member")}</span>
-                    <span className="col-span-full pl-[34px] text-[12.5px] text-faint sm:col-span-1 sm:pl-0">{t("access.joinsOnAccepting")}</span>
+                    <span className="col-span-full pl-[34px] text-[12.5px] text-faint sm:col-span-2 sm:pl-0">{t("access.joinsOnAccepting")}</span>
                   </li>
                 ))}
               </ul>

@@ -5297,7 +5297,14 @@
     "panelProjectAdmins": "Project admins",
     "panelCreated": "Created",
     "panelOrgAdmins": "Organization admins",
-    "panelOrgAdminsNote": "They see every project. They aren't listed here."
+    "panelOrgAdminsNote": "They see every project. They aren't listed here.",
+    "colAdded": "Added",
+    "panelCreatedBy": "by {name}",
+    "changeRestricted": "{actor} restricted {project}",
+    "changeOpened": "{actor} opened {project} to everyone",
+    "changeMadeAdmin": "{actor} made {name} an admin",
+    "changeMadeMember": "{actor} made {name} a member",
+    "changeRemoved": "{actor} removed {name}"
   },
   "instance": {
     "accounts": {
@@ -6100,6 +6107,16 @@
     "positionOf": "{n} of {of}",
     "folder": "Folder",
     "noOpenTasks": "No open tasks",
+    "notInUse": "Not in use",
+    "bothPass": "Default branch protected · signed commits not required",
+    "moreFor": "More for {repo}",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "openOnGitHub": "Open on GitHub",
+    "removeItem": "Remove from project…",
+    "removeTitle": "Remove {repo} from {project}?",
+    "removeBody": "Tasks in {project} won't check it out any more. Its environment variables and secrets for this project are deleted. The repo, its branches and its PRs on GitHub stay as they are.",
+    "removeAction": "Remove repo",
     "inUse": {
       "one": "In use by 1 task",
       "other": "In use by {n} tasks"

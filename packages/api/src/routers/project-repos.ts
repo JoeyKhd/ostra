@@ -16,6 +16,10 @@ import { projectProcedure } from "../trpc/init.ts";
 const finishedStates = ["stopped", "merged", "done"] as const;
 
 const repoTaskSchema = z.object({ taskId: taskIdSchema, title: z.string(), ticketKey: z.string().nullable() });
+/** A task using a repo, with its state for the panel's In use rows (project-repos.md: the mark and the state word). */
+const repoUseTaskSchema = repoTaskSchema.extend({
+  state: z.enum(["awaiting_approval", "queued", "preparing", "running", "needs_you", "in_review", "stopped", "merged", "done"]),
+});
 
 export const projectRepoViewSchema = z.object({
   repoId: repoIdSchema,
@@ -31,7 +35,7 @@ export const projectRepoViewSchema = z.object({
   defaultBranchProtected: branchRuleCheckSchema,
   signedCommitsRequired: branchRuleCheckSchema,
   /** The unfinished tasks with a branch in it: while there are any, it can't be removed. */
-  tasks: z.array(repoTaskSchema),
+  tasks: z.array(repoUseTaskSchema),
 });
 export type ProjectRepoView = z.infer<typeof projectRepoViewSchema>;
 
@@ -63,7 +67,7 @@ export const projectReposProcedures = {
           taskRepos: {
             where: { state: { not: "no_branch" }, task: { state: { notIn: [...finishedStates] } } },
             orderBy: { createdAt: "asc" },
-            select: { task: { select: { id: true, title: true, ticketKey: true } } },
+            select: { task: { select: { id: true, title: true, ticketKey: true, state: true } } },
           },
         },
       });
@@ -79,7 +83,7 @@ export const projectReposProcedures = {
             return [];
           }
           seen.add(task.id);
-          return [{ taskId: taskIdSchema.parse(task.id), title: task.title, ticketKey: task.ticketKey }];
+          return [{ taskId: taskIdSchema.parse(task.id), title: task.title, ticketKey: task.ticketKey, state: task.state }];
         });
         return [
           {

@@ -130,7 +130,8 @@ const RulesLink = ({ repo }: { readonly repo: RepoDetail }) => (
 );
 
 /** The properties panel: the selected repo's rows, why its result is allowed or blocked, and how to fix it. */
-export const RepoProperties = ({ repo, now }: { readonly repo: RepoDetail | undefined; readonly now: number }) => {
+/** `lead`: rows of the page's own drawn first under the repo's name (a project's Repos tab: its position and folder). */
+export const RepoProperties = ({ repo, now, lead }: { readonly repo: RepoDetail | undefined; readonly now: number; readonly lead?: ReactNode }) => {
   if (repo === undefined)
     return (
       <div className="space-y-4" aria-busy>
@@ -145,6 +146,7 @@ export const RepoProperties = ({ repo, now }: { readonly repo: RepoDetail | unde
   return (
     <div data-testid="repo-properties">
       <PanelLabel mono>{repo.fullName}</PanelLabel>
+      {lead}
       <PropRow label={t("repos.panel.defaultBranch")} labelWidth={112}>
         <span className="font-mono">{repo.defaultBranch}</span>
       </PropRow>

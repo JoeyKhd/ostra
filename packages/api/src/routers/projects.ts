@@ -164,7 +164,8 @@ const projectAccessViewSchema = z.object({
   access: z.enum(["open", "restricted"]),
   /** The caller's role on it. */
   role: z.enum(["admin", "member"]),
-  members: z.array(z.object({ memberId: memberIdSchema, name: z.string(), username: z.string().nullable(), role: z.enum(["admin", "member"]) })),
+  /** `addedAt`: when they were listed (epoch ms), for the Access tab's Added column (project-access.md). */
+  members: z.array(z.object({ memberId: memberIdSchema, name: z.string(), username: z.string().nullable(), role: z.enum(["admin", "member"]), addedAt: z.number().int() })),
 });
 
 export const projectsRouter = router({
@@ -418,13 +419,19 @@ export const projectsRouter = router({
         db.projectMember.findMany({
           where: { organizationId, projectId: input.projectId, member: { state: "active" } },
           orderBy: { createdAt: "asc" },
-          select: { memberId: true, role: true, member: { select: { user: { select: { name: true, username: true } } } } },
+          select: { memberId: true, role: true, createdAt: true, member: { select: { user: { select: { name: true, username: true } } } } },
         }),
       ]);
       return {
         access: project.access,
         role: ctx.project.role,
-        members: listed.map((row) => ({ memberId: memberIdSchema.parse(row.memberId), name: row.member.user.name, username: row.member.user.username, role: row.role })),
+        members: listed.map((row) => ({
+          memberId: memberIdSchema.parse(row.memberId),
+          name: row.member.user.name,
+          username: row.member.user.username,
+          role: row.role,
+          addedAt: row.createdAt.getTime(),
+        })),
       };
     }),
 
