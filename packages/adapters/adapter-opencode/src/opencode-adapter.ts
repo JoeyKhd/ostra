@@ -8,6 +8,7 @@ import type {
   AgentCapabilities,
   AgentCommand,
   AgentLaunch,
+  AgentSession,
   DriverPort,
   EffortModel,
   ExportSessionInput,
@@ -17,6 +18,7 @@ import type {
   MappedUpdate,
   PermissionRequest,
   PrepareLaunchInput,
+  StartSessionInput,
 } from "@ostra/adapter-sdk";
 import { checkoutDirSchema, mcpSubjectValue } from "@ostra/protocol";
 import type { ApprovalRequestSubject, EffortLevel } from "@ostra/protocol";
@@ -177,6 +179,17 @@ export class OpenCodeAdapter extends AgentAdapter {
       cwd: input.workspaceDir,
       files: launchFiles(input, dirs),
     });
+  }
+
+  /**
+   * ostra's own MCP server is in OpenCode's config already (`launchFiles`), with `codemode: false`,
+   * so each of its tools is offered to the model by its name (`ostra_take_screenshot`). Named again
+   * in ACP's `session/new` or `session/load`, OpenCode 2.3.2 connects it a second time with Code
+   * Mode on, its default, and that copy wins: the tools then sit behind Code Mode's `execute`
+   * (found by milestone 8's ticket 13). So the session names every server but ostra's.
+   */
+  override async startSession(input: StartSessionInput): Promise<AdapterResult<AgentSession>> {
+    return super.startSession({ ...input, mcpServers: input.mcpServers.filter((server) => server.name !== OSTRA_MCP_SERVER) });
   }
 
   // The archive commands run beside the live agent, in its box, with the task's own folders and no
