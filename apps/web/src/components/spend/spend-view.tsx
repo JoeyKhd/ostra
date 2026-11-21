@@ -299,12 +299,13 @@ const ModelsTable = ({ lines, selected, onSelect }: { readonly lines: readonly M
     <Table data-testid="spend-models">
       <colgroup>
         <col />
-        <col className="hidden w-[96px] min-[1100px]:table-column" />
-        <col className="hidden w-[96px] min-[1100px]:table-column" />
-        <col className="hidden w-[96px] min-[1100px]:table-column" />
-        <col className="hidden w-[96px] min-[1100px]:table-column" />
+        {/* 80px number columns (spend-budgets.webp), so a custom model's ID and its chip keep their room beside the panel. */}
+        <col className="hidden w-[80px] min-[1100px]:table-column" />
+        <col className="hidden w-[80px] min-[1100px]:table-column" />
+        <col className="hidden w-[80px] min-[1100px]:table-column" />
+        <col className="hidden w-[80px] min-[1100px]:table-column" />
         <col className="w-[96px] min-[1100px]:hidden" />
-        <col className="w-[96px]" />
+        <col className="w-[88px]" />
       </colgroup>
       <TableHeader>
         <TableRow>
