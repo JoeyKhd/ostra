@@ -54,7 +54,7 @@ const KEY = 160;
 
 /** A status row: key, value, and a secondary half 12px after it. */
 const StatusRow = ({ label, children, note, testId }: { readonly label: string; readonly children: ReactNode; readonly note?: ReactNode; readonly testId?: string }) => (
-  <div className="flex min-h-10 flex-wrap items-center gap-x-3 border-b border-line py-2 text-ui sm:flex-nowrap" data-testid={testId}>
+  <div className="flex min-h-[34px] flex-wrap items-center gap-x-3 border-b border-line py-1.5 text-ui sm:flex-nowrap" data-testid={testId}>
     <span className="shrink-0 text-muted" style={{ width: KEY }}>{label}</span>
     <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-text">
       {children}
@@ -72,7 +72,7 @@ const Bar = ({ value, max, label }: { readonly value: number; readonly max: numb
 
 /** A Capacity row: key, the bar, and `{used} of {offered}` in mono. */
 const CapacityRow = ({ label, used, offered, text, testId }: { readonly label: string; readonly used: number; readonly offered: number; readonly text: string; readonly testId: string }) => (
-  <div className="flex min-h-[34px] items-center gap-3 text-ui" data-testid={testId}>
+  <div className="flex min-h-[30px] items-center gap-3 text-ui" data-testid={testId}>
     <span className="shrink-0 text-muted" style={{ width: KEY }}>{label}</span>
     <Bar value={used} max={offered} label={label} />
     <span className="font-mono text-text">{text}</span>
@@ -124,9 +124,9 @@ export const Boxes = ({ page, now }: { readonly page: Pick<Page, "boxes" | "exec
         <thead>
           <tr className="border-b border-line">
             <th className="h-[30px] pr-3 text-left text-xs font-medium text-faint">{t("runner.page.colTask")}</th>
-            <th className="h-[30px] w-[180px] pr-3 text-left text-xs font-medium text-faint">{t("runners.pool.col.project")}</th>
+            <th className="h-[30px] w-[160px] pr-3 text-left text-xs font-medium text-faint">{t("runners.pool.col.project")}</th>
             <th className="h-[30px] w-[200px] pr-3 text-left text-xs font-medium text-faint">{t("runner.page.colSize")}</th>
-            <th className="h-[30px] w-[120px] text-right text-xs font-medium text-faint">{t("runner.page.colRunning")}</th>
+            <th className="h-[30px] w-[72px] text-right text-xs font-medium text-faint">{t("runner.page.colRunning")}</th>
           </tr>
         </thead>
         <tbody>
@@ -149,7 +149,7 @@ export const Boxes = ({ page, now }: { readonly page: Pick<Page, "boxes" | "exec
                   <span className="truncate">{box.task.project.name}</span>
                 </span>
               </td>
-              <td className="pr-3 font-mono text-text">
+              <td className="whitespace-nowrap pr-3 font-mono text-text">
                 {boxSizeText(box, page.executor)}
                 {page.resources === null && page.executor !== "host" ? <span className="text-faint">{t("runner.page.notEnforced")}</span> : null}
               </td>
@@ -311,7 +311,7 @@ export const RunnerView = ({ runnerId, admin, serverVersion }: { readonly runner
         <StatusRow label={t("runner.page.carrier")} note={carrier?.note} testId="row-carrier">
           {carrier === null ? sk : <span className={cn("font-mono", carrier.faint && "text-faint")}>{carrier.carrier}</span>}
         </StatusRow>
-        <div className="border-b border-line py-2 text-ui" data-testid="row-version">
+        <div className="border-b border-line py-1.5 text-ui" data-testid="row-version">
           <div className="flex min-h-6 flex-wrap items-center gap-x-3">
             <span className="shrink-0 text-muted" style={{ width: KEY }}>{t("runners.col.version")}</span>
             {page === undefined ? sk : (
