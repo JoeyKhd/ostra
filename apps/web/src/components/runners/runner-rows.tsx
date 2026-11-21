@@ -1,5 +1,6 @@
 "use client";
 
+import { TriangleAlertIcon } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -63,7 +64,7 @@ const Row = ({ runner, where, carrier, chip, menu, now }: {
   <li data-runner={runner.name} className={cn(runnerGrid, "group h-[38px] px-2 hover:bg-sel")}>
     <RunnerStatus state={runner.state} />
     <Link href={`/organization/runners/${runner.id}`} className="truncate pr-3 font-mono text-ui text-text hover:underline" title={runner.name}>{runner.name}</Link>
-    <span className="flex min-w-0 items-center gap-2 overflow-hidden pr-3 text-muted">{where}</span>
+    <span className="@container flex min-w-0 items-center gap-2 overflow-hidden pr-3 text-muted">{where}</span>
     <span className="font-mono text-ui text-text">{runner.executor}</span>
     <span className="text-ui text-muted">{carrier}</span>
     <span className="font-mono text-ui text-muted">{busyText(runner)}</span>
@@ -76,7 +77,18 @@ const Row = ({ runner, where, carrier, chip, menu, now }: {
   </li>
 );
 
-const NotIsolated = ({ isolated }: { readonly isolated: boolean }) => (isolated ? null : <Chip className="shrink-0">{t("runners.notIsolated")}</Chip>);
+/**
+ * A personal runner's `not isolated` chip. Its words show while the cell holds them beside
+ * `personal` (152px); in a narrower cell (the page column at 1440, beside the properties panel) it's
+ * the chip's warning mark alone, named and titled, so `personal` never gives way to it.
+ */
+const NotIsolated = ({ isolated }: { readonly isolated: boolean }) =>
+  isolated ? null : (
+    <Chip className="shrink-0 px-[5px] @[152px]:px-2" title={t("runners.notIsolated")}>
+      <TriangleAlertIcon aria-hidden className="stroke-[1.75] @[152px]:hidden" />
+      <span className="sr-only @[152px]:not-sr-only">{t("runners.notIsolated")}</span>
+    </Chip>
+  );
 
 /** Pool runners and other members' personal runners, each with its row menu (ticket 31). */
 export const RunnerRows = ({ runners, now }: { readonly runners: readonly Listed[]; readonly now: number }) => (
