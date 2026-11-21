@@ -426,7 +426,7 @@ describe("the runner on the HTTP carrier", () => {
 
   /**
    * Removes a stopped runner's data folder. The runner saves `state.json` (a temporary file, then a
-   * rename) before it sends a command's result, so each case waits for its last command's ack
+   * rename) before it sends a command's result, so each case waits for its last command's result
    * first; Windows can still hold a just-renamed file for a moment, so `rm` retries.
    */
   const removeDataDir = (dataDir: string): Promise<void> => rm(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
@@ -455,9 +455,11 @@ describe("the runner on the HTTP carrier", () => {
       await waitFor("its report", async () => (await reportedPreview(ref.runnerId)) !== null, 10_000);
       expect(await reportedPreview(ref.runnerId)).toEqual({ stream: false, tunnel: false });
       const viewId = `view-http-${randomBytes(3).toString("hex")}`;
-      await sendOpen(ref.runnerId, viewId);
-      await waitFor("the open's ack", async () => (await test.db.command.findFirst({ where: { runnerId: ref.runnerId, kind: "preview_open", ackedAt: { not: null } } })) !== null, 30_000);
-      expect(await test.db.command.findFirstOrThrow({ where: { runnerId: ref.runnerId, kind: "preview_open" }, select: { result: true, reason: true } })).toEqual({ result: "rejected", reason: TUNNEL_NEEDS_WEBSOCKET });
+      const refused = await sendOpen(ref.runnerId, viewId);
+      // Its result, not its ack: on HTTP the runner's next down poll (`after`) acks the open with no
+      // result, and the result comes on its own up batch, which may land after it.
+      await waitFor("the open's result", async () => (await test.db.command.findFirst({ where: { id: refused.commandId, result: { not: null } } })) !== null, 30_000);
+      expect(await test.db.command.findUniqueOrThrow({ where: { id: refused.commandId }, select: { result: true, reason: true } })).toEqual({ result: "rejected", reason: TUNNEL_NEEDS_WEBSOCKET });
       expect(handed).toEqual([]);
     } finally {
       await http.connection.stop();
@@ -471,8 +473,8 @@ describe("the runner on the HTTP carrier", () => {
       const open = await sendOpen(ref.runnerId, `view-ws-${randomBytes(3).toString("hex")}`);
       await waitFor("the open handed to the runner", () => handed.length === 1, 30_000);
       expect(handed[0]?.body.mode).toBe("tunnel");
-      // Its ack: the runner has saved its state for the open, and writes nothing more to its folder.
-      await waitFor("the open's ack", async () => (await test.db.command.findFirst({ where: { id: open.commandId, ackedAt: { not: null } } })) !== null, 30_000);
+      // Its result: the runner has saved its state for the open, and writes nothing more to its folder.
+      await waitFor("the open's result", async () => (await test.db.command.findFirst({ where: { id: open.commandId, result: { not: null } } })) !== null, 30_000);
       expect(await test.db.command.findUniqueOrThrow({ where: { id: open.commandId }, select: { result: true } })).toEqual({ result: "accepted" });
     } finally {
       await ws.connection.stop();
