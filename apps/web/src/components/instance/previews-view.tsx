@@ -133,10 +133,11 @@ const Properties = ({ data }: { readonly data: InstancePreviews }) => {
         <PropGroup title={t("instance.previews.props.signing")}>
           <PropRow label={t("instance.previews.props.cookie")} labelWidth={120}><Mono className="truncate text-[12.5px]">__Host-ostra-preview</Mono></PropRow>
           <PropRow label={t("instance.previews.props.scope")} labelWidth={120}>{t("instance.previews.props.scopeValue")}</PropRow>
-          <PropRow label={t("instance.previews.props.sameSite")} labelWidth={120}>
-            <span data-testid="preview-samesite">
-              {data.sameSite === "lax" ? t("instance.previews.props.lax") : t("instance.previews.props.none")}{" "}
-              <span className="text-sm text-faint">{data.sameSite === "lax" ? t("instance.previews.props.laxNote") : t("instance.previews.props.noneNote")}</span>
+          {/* The value, then why under it: `None, partitioned · another site` is wider than the 320px panel's value column, and wrapped mid-phrase. */}
+          <PropRow label={t("instance.previews.props.sameSite")} labelWidth={120} labelClassName="self-start py-1">
+            <span data-testid="preview-samesite" className="flex min-w-0 flex-col py-1">
+              <span>{data.sameSite === "lax" ? t("instance.previews.props.lax") : t("instance.previews.props.none")}</span>
+              <span className="text-[12.5px] leading-[18px] text-faint">{data.sameSite === "lax" ? t("instance.previews.props.laxNote") : t("instance.previews.props.noneNote")}</span>
             </span>
           </PropRow>
           <PropRow label={t("instance.previews.props.lasts")} labelWidth={120}>{t("instance.previews.props.lastsValue")}</PropRow>
