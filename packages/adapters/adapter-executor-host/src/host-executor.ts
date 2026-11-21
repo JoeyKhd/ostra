@@ -495,8 +495,11 @@ export class HostExecutor extends ExecutorAdapter {
       case "same-user-development":
         return { status: "degraded", reason: SAME_USER_DEVELOPMENT };
       case "separate": {
+        const tasks = path.join(this.#dataDir, "tasks");
+        await mkdir(tasks, { recursive: true });
         const checked = await checkAgentUser(agentUser.user, this.#agentUser.secrets ?? [], {
           cwd: this.#dataDir,
+          reach: tasks,
           ...(this.#agentUser.sudo === undefined ? {} : { sudo: this.#agentUser.sudo }),
         });
         return checked.ok ? { status: "ok" } : { status: "down", reason: checked.reason };

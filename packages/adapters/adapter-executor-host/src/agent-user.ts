@@ -22,7 +22,8 @@ import type { TaskProcesses } from "./task-processes.ts";
 // primary group, which the admin adds the runner's user to; its directories are setgid, so what the
 // agent makes inside stays in that group. The runner's own data folder is traversable only, and its
 // key and temp folder are its user's alone, so the agent can't read them. `health()` checks that
-// `sudo -n -u` works for the agent's user, for no other, and that the user can't read the key.
+// `sudo -n -u` works for the agent's user, for no other, that the user can get through to the
+// runner's tasks folder, and that it can't read the key.
 //
 // On Windows a `host` pool runner refuses to start in v1: running a process as another Windows user
 // needs that user's password or a service's privileges. `OSTRA_DEV_HOST_POOL_SAME_USER=true` runs a
@@ -238,13 +239,20 @@ export const handOverToGroup =
 export type AgentUserCheck = { readonly ok: true } | { readonly ok: false; readonly reason: string };
 
 /**
- * `sudo -n -u` works for the agent's user (a `true` as that user), not for another (`root`), and
- * the agent's user can't read the runner's secret paths (its key, its temp folder).
+ * `sudo -n -u` works for the agent's user (a `true` as that user), not for another (`root`), the
+ * agent's user can get through to the runner's tasks folder (every folder above it lets it pass), and
+ * it can't read the runner's secret paths (its key, its temp folder).
  */
 export const checkAgentUser = async (
   user: string,
   secrets: readonly string[],
-  options: { readonly sudo?: SudoProgram; readonly run?: RunCommand; readonly cwd: string },
+  options: {
+    readonly sudo?: SudoProgram;
+    readonly run?: RunCommand;
+    readonly cwd: string;
+    /** The folder the agent's user must get through to: the runner's `tasks`, which holds each task's folder. */
+    readonly reach?: string;
+  },
 ): Promise<AgentUserCheck> => {
   const sudo = options.sudo ?? DEFAULT_SUDO;
   const run = options.run ?? runProgram;
@@ -258,6 +266,14 @@ export const checkAgentUser = async (
   }
   if ((await as("root", "true", [])).code === 0) {
     return { ok: false, reason: "sudo lets this runner's user act as root: its sudoers rule must name the agent's user alone" };
+  }
+  // A data folder under a home only its owner may enter (`~/.ostra/runner` on most systems) would
+  // fail every clone with git's exit 128: said here, before a task, with the fix.
+  if (options.reach !== undefined && (await as(user, "test", ["-x", options.reach])).code !== 0) {
+    return {
+      ok: false,
+      reason: `the agent's user ${user} can't get through to ${options.reach}: let other users through every folder above it (chmod o+x), or set OSTRA_RUNNER_DATA_DIR to a folder such as /var/lib/ostra-runner`,
+    };
   }
   for (const secret of secrets) {
     if ((await as(user, "test", ["-r", secret])).code === 0) {

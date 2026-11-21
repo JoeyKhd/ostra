@@ -138,22 +138,27 @@ describe("a host pool's agent user (F-015)", () => {
     expect(sudoInvocation(AGENT, "true", [], {})).toEqual({ command: "/usr/bin/sudo", args: ["-n", "-u", AGENT, "--", "true"] });
   });
 
-  it("F-015/c5: health() checks sudo works for the agent's user and no other, and that the user can't read the runner's key", async () => {
+  it("F-015/c5: health() checks sudo works for the agent's user and no other, that the user gets through to the runner's tasks folder, and that it can't read the runner's key", async () => {
     const answers = (codes: (command: string, user: string, args: readonly string[]) => number): RunCommand => (command, args) => {
       const user = args[2] ?? "";
       const at = args.indexOf("--");
       return Promise.resolve({ code: codes(args[at + 1] ?? command, user, args.slice(at + 2)), stdout: "", stderr: "" });
     };
     const key = "/var/lib/ostra-runner/identity/runner.key";
-    const good = answers((command, user) => (command === "true" && user === AGENT ? 0 : 1));
-    expect(await checkAgentUser(AGENT, [key], { run: good, cwd: "/" })).toEqual({ ok: true });
+    const reach = "/var/lib/ostra-runner/tasks";
+    const passes = (command: string, args: readonly string[]): boolean => command === "true" || (command === "test" && args[0] === "-x" && args[1] === reach);
+    const good = answers((command, user, args) => (user === AGENT && passes(command, args) ? 0 : 1));
+    expect(await checkAgentUser(AGENT, [key], { run: good, cwd: "/", reach })).toEqual({ ok: true });
     const noRule = answers(() => 1);
     const reasonOf = (checked: Awaited<ReturnType<typeof checkAgentUser>>): string => (checked.ok ? "" : checked.reason);
-    expect(reasonOf(await checkAgentUser(AGENT, [key], { run: noRule, cwd: "/" }))).toContain("sudoers rule");
+    expect(reasonOf(await checkAgentUser(AGENT, [key], { run: noRule, cwd: "/", reach }))).toContain("sudoers rule");
     const anyone = answers((command) => (command === "true" ? 0 : 1));
-    expect(reasonOf(await checkAgentUser(AGENT, [key], { run: anyone, cwd: "/" }))).toContain("root");
+    expect(reasonOf(await checkAgentUser(AGENT, [key], { run: anyone, cwd: "/", reach }))).toContain("root");
+    // A data folder under a home only its owner enters: every clone would fail, so health() says so.
+    const shutOut = answers((command, user) => (command === "true" && user === AGENT ? 0 : 1));
+    expect(reasonOf(await checkAgentUser(AGENT, [key], { run: shutOut, cwd: "/", reach }))).toContain(`can't get through to ${reach}`);
     const readsKey = answers((command, user) => (user === AGENT ? 0 : 1));
-    expect(reasonOf(await checkAgentUser(AGENT, [key], { run: readsKey, cwd: "/" }))).toContain("runner.key");
+    expect(reasonOf(await checkAgentUser(AGENT, [key], { run: readsKey, cwd: "/", reach }))).toContain("runner.key");
   });
 });
 
