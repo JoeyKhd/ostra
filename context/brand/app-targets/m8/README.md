@@ -7,7 +7,7 @@ The design targets for milestone 8 (`context/specs/m8-previews-and-library/`, se
 - **the skills and MCP library** (F-145, F-146);
 - **the environment's app processes** (F-140), **the viewer page for a preview link** (F-142), and **the native preview with the preview domain's settings** (F-144), in the second batch below.
 
-**Status:** the first batch was **approved 2026-11-21** (the maintainer: "yes to all"). The choices the approval settled are under "Approval" below. Build from those targets. **The second batch,** section 13's other seven targets, drawn the same day, is **waiting for the maintainer's approval**, and nothing in it is built until then.
+**Status:** the first batch was **approved 2026-11-21** (the maintainer: "yes to all"). The choices the approval settled are under "Approval" below. Build from those targets. **The second batch,** section 13's other seven targets, drawn the same day, was **approved 2026-11-21** too (the maintainer: "Yes to all"). Build from both batches.
 
 **Why these screens:**
 - **The shell:** the maintainer, 2026-11-21: "i like the ux of multica a lot, their double sidebar is nice". How Multica's works is in `context/research/multica-ui.md`. These targets take its structure and keep ostra's own look (`../../brief.md`, `../../app-design.md`).
@@ -50,9 +50,17 @@ They're real HTML, not image-model pictures (`app-design.md`, rule 5). Each page
 
 The names follow the milestone 8 spec's section 13 where it names the screen.
 
-### The second batch: waiting for the maintainer's approval
+### The second batch: approved 2026-11-21
 
-Ticket 09 drew section 13's other seven targets on 2026-11-21, in the approved shell and the same way. **Each is waiting for the maintainer's approval.** When it's given, record it under "Approval" and in ticket 09's `## Comments`, with the date.
+Ticket 09 drew section 13's other seven targets on 2026-11-21, in the approved shell and the same way. **The maintainer approved them the same day** ("Yes to all"), so every open point in their build specs is settled the way that spec recommends. In particular:
+- the environment tab is named `App`;
+- visitors on a preview link can't change the shared page's width, and an unknown link never says whether it existed;
+- with a preview domain set, the pane opens "in your browser" by default, and screenshots still come from the box's browser;
+- the install sheet is 560 wide;
+- an MCP server that needs OAuth is installed with a mark and can't be attached;
+- a profile's library items apply on Save, and every-profile items can't be removed from one profile.
+
+Two corrections to the first batch, from later decisions: `library-browse` and `library-update` show **no** skills.sh audit verdicts (ADR 0069, Q319), and `task-preview-none` shows **no** detected port (detecting listening ports comes later, Q313). Build those two screens without them.
 
 | Screen | Targets | Build spec | m8 spec, section 13 |
 |---|---|---|---|

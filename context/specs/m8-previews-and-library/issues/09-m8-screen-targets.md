@@ -1,6 +1,6 @@
 # 09: Milestone 8 screen targets
 
-Status: ready-for-agent
+Status: done
 Builder: web
 Blocked by: the double sidebar's targets approved (ticket 10's first condition), since every new screen is drawn in the new shell. *Approved 2026-11-21 (the maintainer: "yes to all").*
 Features: F-121, F-140, F-141, F-142, F-144, F-145, F-146 (their screens)
@@ -40,3 +40,4 @@ Notes for some targets:
 ## Comments
 
 - **2026-11-21, the second batch.** Targets 5, 7, 8, 9, 11, 13 and 15 are drawn in the approved shell: 19 pictures with their build specs, listed in the README's "The second batch", **waiting for the maintainer's approval**. As in the first batch, each is real HTML rendered with Playwright, so no Higgsfield credits were used. Targets 1, 2, 3, 4, 6, 10, 12 and 14 were approved the same day ("yes to all", the README's "Approval").
+- 2026-11-21, lead: the maintainer approved the second batch ("Yes to all"); every open point is settled as its spec recommends, recorded in `context/brand/app-targets/m8/README.md`. Both batches are approved, so the screen tickets (17, 21, 26, 31) can build.
