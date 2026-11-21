@@ -183,3 +183,64 @@ describe("milestone 2's migrations", () => {
     expect(indexes.rows).toEqual([]);
   });
 });
+
+describe("the setup-completed migration (F-076, 2026-11-21)", () => {
+  /** An organization as an install upgrading to this release has it: `steps` says which of setup's rows exist. */
+  const seedOrganization = async (database: string, steps: { readonly runnerSeen: boolean }): Promise<string> =>
+    withClient(database, async (client) => {
+      const id = (): string => randomBytes(16).toString("hex").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+      const organizationId = id();
+      const projectId = id();
+      const poolId = id();
+      const slug = `setup-${organizationId.slice(0, 8)}`;
+      await client.query(`INSERT INTO "organization" ("id", "name", "slug", "createdAt") VALUES ($1, 'Setup', $2, now())`, [organizationId, slug]);
+      await client.query(
+        `INSERT INTO "model_provider" ("id", "organizationId", "name", "baseUrl", "apiFormat", "authScheme", "tokenSecretRef", "updatedAt")
+         VALUES ($1, $2, 'models', 'https://models.example.com/v1', 'anthropic_messages', 'x_api_key', 'builtin:token', now())`,
+        [id(), organizationId],
+      );
+      await client.query(`INSERT INTO "connection" ("id", "organizationId", "kind", "appId", "updatedAt") VALUES ($1, $2, 'github', '5821041', now())`, [id(), organizationId]);
+      await client.query(`INSERT INTO "project" ("id", "organizationId", "name", "slug", "updatedAt") VALUES ($1, $2, 'Demo', 'demo', now())`, [projectId, organizationId]);
+      await client.query(`INSERT INTO "runner_pool" ("id", "organizationId", "name", "updatedAt") VALUES ($1, $2, 'fleet', now())`, [poolId, organizationId]);
+      await client.query(
+        `INSERT INTO "runner" ("id", "organizationId", "kind", "poolId", "name", "publicKey", "executor", "capacity", "version", "state", "lastSeenAt", "updatedAt")
+         VALUES ($1, $2, 'pool', $3, 'build-1', $4, 'docker', 1, '0.0.0', 'offline', $5, now())`,
+        [id(), organizationId, poolId, `k${organizationId.replaceAll("-", "")}`, steps.runnerSeen ? new Date() : null],
+      );
+      await client.query(
+        `INSERT INTO "task" ("id", "organizationId", "projectId", "kind", "source", "title", "prompt", "branchName", "state", "updatedAt")
+         VALUES ($1, $2, $3, 'code', 'prompt', 'First task', 'a prompt', 'ostra/first-task', 'queued', now())`,
+        [id(), organizationId, projectId],
+      );
+      return organizationId;
+    });
+
+  it("F-076/c1: keeps an organization that did every step done across the upgrade, its runner offline, and leaves one whose runner was never seen open", async () => {
+    const names = await migrationNames();
+    const migration = names.findIndex((name) => name.endsWith("_setup_completed"));
+    expect(migration).toBeGreaterThan(0);
+    const database = await emptyDatabase();
+    await apply(database, names.slice(0, migration));
+    const finished = await seedOrganization(database, { runnerSeen: true });
+    const unfinished = await seedOrganization(database, { runnerSeen: false });
+    // One that set Linear aside has its settings row already: it gains the time, and keeps the skip.
+    const skipped = await seedOrganization(database, { runnerSeen: true });
+    await withClient(database, (client) =>
+      client.query(`INSERT INTO "organization_setting" ("organizationId", "linearSkippedAt", "updatedAt") VALUES ($1, now(), now())`, [skipped]),
+    );
+    await apply(database, names.slice(migration));
+
+    const kept = await withClient(database, (client) =>
+      client.query<{ organizationId: string; done: boolean; skipped: boolean }>(
+        `SELECT "organizationId", "setupCompletedAt" IS NOT NULL AS done, "linearSkippedAt" IS NOT NULL AS skipped FROM "organization_setting" ORDER BY "organizationId"`,
+      ),
+    );
+    expect(kept.rows).toEqual(
+      [
+        { organizationId: finished, done: true, skipped: false },
+        { organizationId: skipped, done: true, skipped: true },
+      ].sort((x, y) => (x.organizationId < y.organizationId ? -1 : 1)),
+    );
+    expect(kept.rows.some((row) => row.organizationId === unfinished)).toBe(false);
+  });
+});

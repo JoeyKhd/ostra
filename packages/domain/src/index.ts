@@ -39,6 +39,7 @@ export * from "./use-cases/moves.ts";
 export * from "./use-cases/accept-offer.ts";
 export * from "./use-cases/add-model-provider.ts";
 export * from "./use-cases/connect-github-app.ts";
+export * from "./setup/complete.ts";
 export * from "./use-cases/seed-first-admin.ts";
 export * from "./use-cases/seed-member.ts";
 export * from "./use-cases/check-secrets-key.ts";

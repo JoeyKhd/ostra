@@ -338,6 +338,9 @@ model OrganizationSetting {
   /// Home's checklist: the Linear step was skipped for now (ticket 27), and by whom.
   linearSkippedAt         DateTime?
   linearSkippedByMemberId String?
+  /// When every required step of Home's checklist was first done (F-076, 2026-11-21). From then on
+  /// Home never shows the checklist again, even while no runner is online: it says so in a notice.
+  setupCompletedAt        DateTime?
   createdAt               DateTime     @default(now())
   updatedAt               DateTime     @updatedAt
 

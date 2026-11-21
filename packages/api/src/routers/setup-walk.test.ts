@@ -34,7 +34,7 @@ const signedIn = async () => {
 };
 
 describe("the first-run checklist, walked (F-076)", () => {
-  it("F-076/c1: a new organization's checklist runs admin, model provider, GitHub App, project, runner, first task, and each step ticks only once done", async () => {
+  it("F-076/c1: a new organization's checklist runs admin, model provider, GitHub App, project, runner, first task, and each step ticks only once done; once all are, setup stays done with every runner offline", async () => {
     const seeded = await ensureFirstAdmin({
       db: harness.test.db,
       settings: { firstAdmin: { email: "walker@example.com", username: "walker", password: TEST_PASSWORD, organizationName: "Walk Co" } },
@@ -126,5 +126,20 @@ describe("the first-run checklist, walked (F-076)", () => {
     // The first task, from a prompt: the checklist is done.
     await admin.tasks.create({ projectId: project.projectId, prompt: "Add a short CONTRIBUTING.md", runnerId: runnerIdSchema.parse(runner.id) });
     expect(await status()).toEqual({ order, done: order.filter((id) => id !== "linear"), next: null });
+
+    // Setup is done for good (2026-11-21): when every runner goes offline later, the runner step
+    // opens again, and setup stays complete, from the time it was first done. Home says no runner is
+    // online instead of bringing the checklist back; a member reads the same.
+    const done = await admin.setup.status();
+    expect(done).toMatchObject({ complete: true, runnerOnline: true });
+    expect(done.completedAt).not.toBeNull();
+    expect((await harness.test.db.organizationSetting.findUniqueOrThrow({ where: { organizationId: seeded.organizationId } })).setupCompletedAt?.getTime()).toBe(done.completedAt);
+    await harness.test.db.runner.update({ where: { id: runner.id }, data: { state: "offline" } });
+    const offline = await admin.setup.status();
+    expect(offline).toMatchObject({ complete: true, completedAt: done.completedAt, runnerOnline: false, next: "runner" });
+    expect(offline.steps.find((step) => step.id === "runner")?.state).toBe("open");
+    // And when it comes back, nothing about the time it was done changes.
+    await harness.test.db.runner.update({ where: { id: runner.id }, data: { state: "online" } });
+    expect(await admin.setup.status()).toMatchObject({ complete: true, completedAt: done.completedAt, runnerOnline: true });
   });
 });

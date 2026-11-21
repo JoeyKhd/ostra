@@ -1,4 +1,4 @@
-import { setupStepMarks, setupTimeline, skipSetupStep, skipSetupStepInputSchema } from "@ostra/domain";
+import { recordSetupComplete, setupStepMarks, setupTimeline, skipSetupStep, skipSetupStepInputSchema } from "@ostra/domain";
 import type { AuditAction } from "@ostra/domain";
 import { organizationIdSchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
@@ -11,7 +11,10 @@ import { setupTimelineInputSchema, setupTimelineOutputSchema } from "./setup-tim
 // server seeds it at start (F-001, `auth/first-admin.ts`), so the checklist's first step is always
 // done. The Linear step can be set aside (`skip`), and shows its connection's state. Milestone 7
 // (ticket 24): each step links to its page in the docs, setup is `complete` without Linear, and
-// `timeline` says when each step was done, for the 30-minute measure.
+// `timeline` says when each step was done, for the 30-minute measure. 2026-11-21 (the maintainer's
+// "all yes"): once every required step was done, setup stays `complete` for good, kept as
+// `setupCompletedAt`, so the checklist never comes back when every runner goes offline later;
+// `runnerOnline` lets Home say so instead.
 
 /** The setup checklist's steps, in the order the panel shows them (spec section 3). */
 export const setupStepIds = ["admin", "model-provider", "github", "linear", "project", "runner", "first-task"] as const;
@@ -45,8 +48,15 @@ const setupStatusSchema = z.object({
   steps: z.array(z.object({ id: z.enum(setupStepIds), state: z.enum(setupStepStates), docs: z.url() })),
   /** The first step that is `open`, or `null` when none is. */
   next: z.enum(setupStepIds).nullable(),
-  /** Every step but the optional Linear one is done: Home drops the checklist. */
+  /**
+   * Every step but the optional Linear one is done, or was once (`completedAt`): Home drops the
+   * checklist, and it never comes back.
+   */
   complete: z.boolean(),
+  /** When every required step was first done, as epoch milliseconds; `null` until then. */
+  completedAt: z.number().int().nullable(),
+  /** Whether any of the organization's runners is online: once setup is done, Home says when none is. */
+  runnerOnline: z.boolean(),
 });
 
 /** Every audit action that marks a setup step, for the timeline's one query. */
@@ -55,13 +65,13 @@ const setupMarkActions: readonly AuditAction[] = Object.values(setupStepMarks).f
 export const setupRouter = router({
   /** The checklist, derived from the tables: where each step stands (F-076). */
   status: memberProcedure.output(setupStatusSchema).query(async ({ ctx }) => {
-    const { db, settings } = ctx.deps;
+    const { db, settings, ports } = ctx.deps;
     const organizationId = ctx.scope.organizationId;
     const [providers, github, linear, setting, projects, runners, tasks] = await Promise.all([
       db.modelProvider.count({ where: { organizationId } }),
       db.connection.count({ where: { organizationId, kind: "github" } }),
       db.connection.findFirst({ where: { organizationId, kind: "linear", state: { not: "revoked" } }, select: { state: true } }),
-      db.organizationSetting.findUnique({ where: { organizationId }, select: { linearSkippedAt: true } }),
+      db.organizationSetting.findUnique({ where: { organizationId }, select: { linearSkippedAt: true, setupCompletedAt: true } }),
       db.project.count({ where: { organizationId } }),
       db.runner.count({ where: { organizationId, state: "online" } }),
       db.task.count({ where: { organizationId } }),
@@ -86,10 +96,15 @@ export const setupRouter = router({
       "first-task": settled(tasks > 0),
     };
     const steps = setupStepIds.map((id) => ({ id, state: states[id], docs: `${settings.docsUrl}${setupStepDocs[id]}` }));
+    const allDone = steps.every((step) => step.state === "done" || optionalSetupSteps.has(step.id));
+    // Kept the first time every step is done; a step that reopens later (a runner offline) doesn't undo it.
+    const completedAt = setting?.setupCompletedAt?.getTime() ?? (allDone ? await recordSetupComplete(db, organizationId, ports.clock.now()) : null);
     return {
       steps,
       next: steps.find((step) => step.state === "open")?.id ?? null,
-      complete: steps.every((step) => step.state === "done" || optionalSetupSteps.has(step.id)),
+      complete: completedAt !== null,
+      completedAt,
+      runnerOnline: runners > 0,
     };
   }),
 

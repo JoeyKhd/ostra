@@ -21,6 +21,7 @@ import { HomePanel } from "./home-panel";
 import { ActivitySection, NeedsYouSection, ProjectsSection } from "./home-sections";
 import type { Load } from "./home-sections";
 import { summaryText } from "./home-words";
+import { homeSetupView, NoRunnerNotice } from "./no-runner-notice";
 import { SetupChecklist } from "./setup-checklist";
 
 type Overview = RouterOutputs["home"]["overview"];
@@ -34,6 +35,8 @@ const REFRESH_MS = 30_000;
  * The organization's Home (home.md, F-062): Needs you, Projects and Recent activity, with PRs,
  * spend and runners in the right panel. While setup isn't done (F-076), the checklist takes Needs
  * you's place and the right panel stays (the maintainer, 2026-11-20: the first-run picture is gone).
+ * Once setup was done it stays done: with no runner online later, a notice says so at the top
+ * instead of the checklist (2026-11-21).
  */
 export const HomeView = () => {
   const trpc = useTRPC();
@@ -50,9 +53,10 @@ export const HomeView = () => {
   const projects = (overview.data?.projects.rows ?? []).map((row) => ({ id: row.id, name: row.name }));
   const organization = me.data?.organization;
   const admin = organization?.role === "admin";
-  // Linear is optional: setup is done once every other step is (F-076).
-  const setupDone = setup.data?.complete === true;
-  const firstRun = setup.data !== undefined && !setup.data.complete;
+  // Linear is optional: setup is done once every other step is, and stays done after (F-076).
+  const setupView = homeSetupView(setup.data);
+  const setupDone = setupView === "done" || setupView === "no-runner";
+  const firstRun = setupView === "checklist";
 
   const load = <T,>(pick: (data: Overview) => T): Load<T> =>
     overview.data !== undefined
@@ -75,6 +79,7 @@ export const HomeView = () => {
       {...(setup.data === undefined ? {} : { properties: <HomePanel overview={overview.data} now={now} /> })}
     >
       <PageHeading eyebrow={<span suppressHydrationWarning>{today(now)}</span>} title={organization?.name ?? t("home.title")} lede={lede} />
+      {setupView === "no-runner" ? <NoRunnerNotice admin={admin} /> : null}
       {firstRun ? null : (
         <HomeToolbar
           view={view}

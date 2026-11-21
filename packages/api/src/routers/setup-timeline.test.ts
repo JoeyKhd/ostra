@@ -56,9 +56,10 @@ describe("the checklist without Linear (F-076)", () => {
     expect(await admin.setup.status()).toMatchObject({ next: null, complete: true });
     expect((await admin.setup.status()).steps.every((step) => step.state === "done")).toBe(true);
 
-    // A required step undone holds it back again: the runner offline.
+    // A required step undone later reopens it, and setup stays done (2026-11-21): the runner offline
+    // brings no checklist back, and Home says no runner is online instead.
     await harness.test.db.runner.update({ where: { id: runnerId }, data: { state: "offline" } });
-    expect(await admin.setup.status()).toMatchObject({ next: "runner", complete: false });
+    expect(await admin.setup.status()).toMatchObject({ next: "runner", complete: true, runnerOnline: false });
   });
 
   it("F-076/c1: each step links to its page in the docs, under OSTRA_DOCS_URL, and the page and heading exist", async () => {

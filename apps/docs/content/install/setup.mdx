@@ -4,7 +4,7 @@ description: "Add a model provider and the GitHub App, in the checklist's order.
 summary: "Sign in as demo, choose a password, then add a model provider and the GitHub App, in the checklist's order."
 ---
 
-After `docker compose up`, everything else happens in the panel. Home shows **Set up ostra**, a checklist with one row per step and how many are done. Each row's button opens the screen it needs, and the next open step's button is the highlighted one. Each row also links to its part of these docs (**Docs**), which follow the docs address the server is set to (`OSTRA_DOCS_URL`). Members who aren't admins see the checklist too, and can start the first task once an admin has done the rest.
+After `docker compose up`, everything else happens in the panel. Home shows **Set up ostra**, a checklist with one row per step and how many are done. Each row's button opens the screen it needs, and the next open step's button is the highlighted one. Each row also links to its part of these docs (**Docs**), which follow the docs address the server is set to (`OSTRA_DOCS_URL`). Members who aren't admins see the checklist too, and can start the first task once an admin has done the rest. Once every step but Linear is done, the checklist is gone for good. If no runner is online later, Home says so at the top instead: new tasks wait in the queue until one connects.
 
 ## 1. Create the first admin
 

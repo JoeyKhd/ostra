@@ -583,6 +583,10 @@
     }
   },
   "home": {
+    "noRunner": {
+      "text": "No runner is online. New tasks wait in the queue until one connects.",
+      "action": "Open Runners"
+    },
     "title": "Home",
     "lede": "Your organization's projects and what waits on you.",
     "summary": "{running} across {projects}, {queued} queued. {prs}",

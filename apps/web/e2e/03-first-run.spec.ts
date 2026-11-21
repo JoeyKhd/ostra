@@ -125,3 +125,23 @@ test("F-076/c1: with the runner online, the checklist's last step starts the fir
   await expect(page.getByTestId("setup-checklist")).toHaveCount(0);
   await expect(page.locator("[data-step]")).toHaveCount(0);
 });
+
+test("F-076/c1: once setup is done, the checklist stays gone with every runner offline, and Home says no runner is online", async ({ page }) => {
+  test.setTimeout(90_000);
+  await signIn(page);
+  // The only runner stops: its connection closes, and core marks it offline.
+  await runner?.stop();
+  runner = undefined;
+  const notice = page.getByTestId("no-runner-notice");
+  await expect(async () => {
+    await page.goto("/");
+    await expect(notice).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 45_000 });
+  await expect(notice).toHaveText("No runner is online. New tasks wait in the queue until one connects.Open Runners");
+  await expect(notice.getByRole("link", { name: "Open Runners" })).toHaveAttribute("href", "/organization/runners");
+  // Setup was done once: the checklist doesn't come back, and Home is the organization's.
+  await expect(page.getByTestId("home-panel").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Needs you", level: 2 })).toBeVisible();
+  await expect(page.getByTestId("setup-checklist")).toHaveCount(0);
+  await expect(page.locator("[data-step]")).toHaveCount(0);
+});

@@ -14,7 +14,7 @@ afterAll(async () => {
 });
 
 describe("setup.status", () => {
-  it("derives the checklist from the tables, in order", async () => {
+  it("F-076/c1: derives the checklist from the tables, in order, and a first run keeps nothing as done", async () => {
     const { a, b } = harness.fixture;
     const caller = await harness.as(a.admin);
     const status = await caller.setup.status();
@@ -31,6 +31,9 @@ describe("setup.status", () => {
       next: "model-provider",
       complete: false,
     });
+    // A first run: nothing is kept as done, and the checklist shows (F-076).
+    expect(status).toMatchObject({ completedAt: null, runnerOnline: false });
+    expect(await harness.test.db.organizationSetting.count({ where: { organizationId: a.organization.id, setupCompletedAt: { not: null } } })).toBe(0);
     // Organization B has a project too, and nothing of A's counts for it.
     expect((await (await harness.as(b.admin)).setup.status()).steps.find((step) => step.id === "project")?.state).toBe("done");
   });
