@@ -79,15 +79,19 @@ describe.skipIf(!ready)(`snapshots and services on Docker, live (skipped: ${read
     const tokenDir = path.join(root, "token");
     const boxes = createDockerBoxes(engine, { images: { base, runner } });
     try {
+      // The build's own output, its setup secret already redacted (`snapshots.ts`), for a failure's message.
+      let output = "";
       const built = await snapshots.buildSnapshot({
         snapshotId: clean,
         projectId,
         // The secret is read during the setup, and only its length lands in a file.
         environment: environmentOf(upstream.origin, 'printf "%s" "${#API_TOKEN}" > installed\n'),
         credentials: credentialsOf(clean),
-        onOutput: () => undefined,
+        onOutput: (_stream, text) => {
+          output = (output + text).slice(-6000);
+        },
       });
-      expect(built.ok && built.value.outcome, JSON.stringify(built)).toBe("built");
+      expect(built.ok && built.value.outcome, `${JSON.stringify(built)}\n${output}`).toBe("built");
       if (!built.ok || built.value.outcome !== "built") {
         return;
       }
