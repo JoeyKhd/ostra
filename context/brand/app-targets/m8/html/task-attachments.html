@@ -1,0 +1,174 @@
+<!doctype html>
+<!-- Target: screenshots and a recording in the task timeline (F-121), and their viewer (task-attachments.md).
+     ?viewer=1 opens the viewer on the first screenshot. Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m8 · screenshots in the timeline</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="m8.css">
+<style>
+  .page h1 { font-size: 26px; }
+  .doing { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .thread { flex: 1; min-height: 0; overflow: hidden; padding-top: 6px; }
+  .shots { display: flex; align-items: flex-end; gap: 12px; margin: 6px 0 4px 32px; }
+  .shot { display: flex; flex-direction: column; gap: 5px; }
+  .shot .th { position: relative; border: 1px solid var(--line-2); border-radius: 6px; overflow: hidden; background: #fff; }
+  .shot .th .sc { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+  .shot .cap { font: 400 12px var(--mono); color: var(--faint); white-space: nowrap; }
+  .shot .cap b { color: var(--muted); font-weight: 400; }
+  .shot.sel .th { outline: 2px solid var(--teal); outline-offset: 1px; }
+  .play { position: absolute; inset: 0; display: grid; place-items: center; }
+  .play span { width: 34px; height: 34px; border-radius: 50%; background: rgba(13, 14, 16, 0.78); display: grid; place-items: center; color: #f2f3f4; }
+  .play span svg.lucide { width: 15px; height: 15px; margin-left: 2px; fill: currentColor; }
+  .dur { position: absolute; right: 6px; bottom: 6px; padding: 0 5px; height: 18px; border-radius: 4px; background: rgba(13, 14, 16, 0.78); color: #f2f3f4; font: 500 11.5px/18px var(--mono); }
+  .attached { display: flex; align-items: center; gap: 8px; margin: 6px 0 2px 32px; font-size: 13.5px; color: var(--muted); }
+  .attached svg.lucide { width: 14px; height: 14px; color: var(--faint); }
+  .attached .mono { color: var(--text); font-size: 13px; }
+
+  /* The viewer */
+  .viewer { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 1240px; height: 860px; background: var(--raise); border: 1px solid var(--line-2); border-radius: 12px; box-shadow: var(--shadow-palette); z-index: 9; display: flex; flex-direction: column; overflow: hidden; }
+  .viewer .vh { height: 52px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 16px 0 20px; border-bottom: 1px solid var(--line); }
+  .viewer .vh b { font-size: 15px; }
+  .viewer .vh .faint { font-size: 13px; }
+  .viewer .vh .r { margin-left: auto; display: flex; align-items: center; gap: 6px; color: var(--faint); font-size: 12.5px; }
+  .viewer .vb { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 300px; }
+  .stage { display: flex; flex-direction: column; min-width: 0; background: var(--surface); border-right: 1px solid var(--line); }
+  .stage .img { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; position: relative; padding: 18px 56px; }
+  .stage .frame { position: relative; width: 832px; height: 520px; border: 1px solid var(--line-2); border-radius: 6px; overflow: hidden; background: #fff; }
+  .stage .frame .sc { position: absolute; top: 0; left: 0; transform-origin: 0 0; transform: scale(0.65); width: 1280px; height: 800px; }
+  .stage .arrow { position: absolute; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--raise); display: grid; place-items: center; color: var(--muted); }
+  .stage .arrow.l { left: 12px; } .stage .arrow.r { right: 12px; }
+  .stage .film { height: 120px; flex: none; display: flex; align-items: center; justify-content: center; gap: 14px; border-top: 1px solid var(--line); background: var(--raise); }
+  .info { padding: 18px 18px; overflow: hidden; }
+  .info .route { font: 400 16px var(--mono); color: var(--text); }
+  .info .prop { grid-template-columns: 92px 1fr; }
+  .info .acts { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+  .info .acts .btn { justify-content: flex-start; }
+  .info .note { margin-top: 14px; font-size: 12.5px; color: var(--faint); display: flex; gap: 8px; }
+  .info .note svg.lucide { width: 14px; height: 14px; margin-top: 2px; }
+</style>
+</head>
+<body data-space="projects" data-panel="project" data-active="tasks" data-live="calc-192">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>calculator</span><i data-lucide="chevron-right" class="chev"></i><span>Tasks</span><i data-lucide="chevron-right" class="chev"></i><b>CALC-192</b>
+      <div class="right">
+        <span class="seg"><span><i data-lucide="app-window"></i> Preview</span><span class="on"><i data-lucide="panel-right"></i> Properties</span></span>
+        <span class="ib"><i data-lucide="link"></i></span>
+        <span class="btn sm"><i data-lucide="git-pull-request"></i> PR #486</span>
+      </div>
+    </div>
+    <div class="content">
+      <div class="page">
+        <div class="key">CALC-192 · from a prompt</div>
+        <h1>Add a history panel</h1>
+        <p class="doing"><span class="st"><i data-lucide="git-pull-request" style="width:14px;height:14px;color:var(--muted)"></i>In review</span><span class="sep">·</span><span class="muted">draft PR <span class="mono" style="color:var(--text);font-size:13.5px">#486</span> · 21 min of agent time</span></p>
+        <div class="tabs" style="margin-top:12px"><span class="tab on">Activity</span><span class="tab">Changes <span class="n">4</span></span><span class="tab">Checks</span><span class="tab">Event log</span></div>
+        <div class="thread">
+          <div class="msg">
+            <span class="ava"><i data-lucide="square-terminal"></i></span>
+            <div style="min-width:0;flex:1">
+              <div class="who"><b>OpenCode</b><span class="meta">14:31 · Claude Sonnet 5.5</span></div>
+              <p>The panel works. I checked it at the three widths calculator's environment names, and recorded the round trip: add, reload, reuse a result.</p>
+              <div class="line"><span class="ic"><i data-lucide="pencil"></i></span><span class="verb">Edited</span><span class="what">src/history/panel.css</span><span class="add">+22</span><span class="del">−4</span></div>
+              <div class="line"><span class="ic"><i data-lucide="image"></i></span><span class="verb">Captured</span><span class="what"><span style="font-family:var(--sans)">3 screenshots of</span> /history</span><span class="end">web :5173</span></div>
+              <div class="shots" id="shots"></div>
+              <div class="line" style="margin-top:6px"><span class="ic"><i data-lucide="clapperboard"></i></span><span class="verb">Recorded</span><span class="what" style="font-family:var(--sans)">Add, reload, reuse a result</span><span class="end">0:42 · 4 steps</span></div>
+              <div class="shots" id="rec"></div>
+              <div class="attached"><i data-lucide="paperclip"></i><span>In the description of draft PR <span class="mono">#486</span>, and kept with the task <span class="faint">· links need a sign-in</span></span></div>
+            </div>
+          </div>
+          <div class="msg">
+            <span class="ava" style="font:600 10px var(--sans);color:var(--text)">SR</span>
+            <div style="min-width:0;flex:1">
+              <div class="who"><b>Sam Rivera</b><span class="meta">14:36</span></div>
+              <p>Looks right. Make "Use" copy the value too.</p>
+            </div>
+          </div>
+        </div>
+        <div class="composer">
+          <div class="ph">Message the agent…</div>
+          <div class="row"><span class="hint"><i data-lucide="info"></i> The agent's turn ended. Send starts a new one.</span><span class="btn sm primary"><i data-lucide="arrow-up"></i> Send</span></div>
+        </div>
+      </div>
+      <aside class="props">
+        <div class="group">
+          <h5>Properties</h5>
+          <div class="prop"><span class="k">Status</span><span class="v"><i data-lucide="git-pull-request" style="width:14px;height:14px;color:var(--muted)"></i>In review</span></div>
+          <div class="prop"><span class="k">Driver</span><span class="v"><span class="av">SR</span>Sam Rivera</span></div>
+          <div class="prop"><span class="k">Agent</span><span class="v">OpenCode</span></div>
+          <div class="prop"><span class="k">Runner</span><span class="v mono">build-fleet-03</span></div>
+          <div class="prop"><span class="k">Spend</span><span class="v mono">$2.41</span></div>
+        </div>
+        <div class="group">
+          <h5>Screenshots and recordings</h5>
+          <div class="prop"><span class="k">Captured</span><span class="v">3 screenshots · 1 recording</span></div>
+          <div class="prop"><span class="k">Size</span><span class="v mono">4.8 MB</span></div>
+          <div class="prop"><span class="k">Where</span><span class="v">The blob store, with the task</span></div>
+          <div class="prop"><span class="k">In the PR</span><span class="v"><span class="teal">#486</span><span class="faint">· description</span></span></div>
+          <div class="prop"><span class="k">Widths</span><span class="v mono">1280 · 768 · 390</span></div>
+        </div>
+        <div class="group">
+          <h5>Code</h5>
+          <div class="prop"><span class="k">Repo</span><span class="v mono">acme/calculator-web</span></div>
+          <div class="prop"><span class="k">Branch</span><span class="v mono">calc-192-history-panel</span></div>
+          <div class="prop"><span class="k">PR</span><span class="v"><span class="teal mono">#486</span><span class="faint">· draft</span></span></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+</div>
+<script src="app-fixture.js"></script>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  const shot = (w, h, vw, vh, label, phone, sel) => {
+    const s = h / vh;
+    return `<div class="shot${sel ? " sel" : ""}"><div class="th" style="width:${w}px;height:${h}px"><div class="sc" style="width:${vw}px;height:${vh}px;transform:scale(${s})">${tallyApp({ phone })}</div></div><span class="cap"><b>${label}</b></span></div>`;
+  };
+  document.getElementById("shots").innerHTML =
+    shot(176, 110, 1280, 800, "1280 · /history", false) + shot(82, 110, 768, 1024, "768", false) + shot(51, 110, 390, 844, "390", true);
+  document.getElementById("rec").innerHTML = `<div class="shot"><div class="th" style="width:176px;height:110px"><div class="sc" style="width:1280px;height:800px;transform:scale(${110 / 800})">${tallyApp()}</div><div class="play"><span><i data-lucide="play"></i></span></div><span class="dur">0:42</span></div><span class="cap"><b>1280 · recording</b></span></div>`;
+
+  window.addEventListener("load", () => { const row = document.querySelector(".live.on"); if (row) { row.querySelector(".st").innerHTML = '<i data-lucide="git-pull-request" style="width:13px;height:13px;color:var(--muted);margin:-3px 0 0 -2px"></i>'; row.querySelector(".d").textContent = "CALC-192 · In review · PR #486"; } });
+  if (q.get("viewer")) {
+    const film = shot(120, 75, 1280, 800, "1280", false, true) + shot(56, 75, 768, 1024, "768", false) + shot(35, 75, 390, 844, "390", true) +
+      `<div class="shot"><div class="th" style="width:120px;height:75px"><div class="sc" style="width:1280px;height:800px;transform:scale(${75 / 800})">${tallyApp()}</div><div class="play"><span style="width:26px;height:26px"><i data-lucide="play" style="width:12px;height:12px"></i></span></div></div><span class="cap"><b>0:42</b></span></div>`;
+    document.querySelector(".app").insertAdjacentHTML("beforeend", `<div class="scrim"></div>
+    <div class="viewer" role="dialog" aria-label="Screenshots and recordings">
+      <div class="vh"><b>Screenshots and recordings</b><span class="faint">CALC-192 · OpenCode's turn at 14:31 · 1 of 4</span><span class="r"><span class="kbd">←</span><span class="kbd">→</span><span style="margin-right:10px">to move</span><span class="kbd">esc</span>Close</span></div>
+      <div class="vb">
+        <div class="stage">
+          <div class="img"><span class="arrow l"><i data-lucide="chevron-left"></i></span><div class="frame"><div class="sc">${tallyApp()}</div></div><span class="arrow r"><i data-lucide="chevron-right"></i></span></div>
+          <div class="film">${film}</div>
+        </div>
+        <div class="info">
+          <div class="faint" style="font-size:12px;font-weight:500">Screenshot</div>
+          <div class="route" style="margin-top:4px">/history</div>
+          <div style="margin-top:12px">
+            <div class="prop"><span class="k">Width</span><span class="v mono">1280 × 800</span></div>
+            <div class="prop"><span class="k">Preview</span><span class="v mono">web :5173</span></div>
+            <div class="prop"><span class="k">Taken</span><span class="v"><span class="mono">14:31:08</span><span class="faint">by OpenCode</span></span></div>
+            <div class="prop"><span class="k">Turn</span><span class="v teal">OpenCode · 14:31</span></div>
+            <div class="prop"><span class="k">File</span><span class="v mono">PNG · 212 KB</span></div>
+            <div class="prop"><span class="k">In</span><span class="v">PR <span class="teal mono">#486</span><span class="faint">description</span></span></div>
+          </div>
+          <div class="acts">
+            <span class="btn sm"><i data-lucide="columns-2"></i> Compare with 14:12</span>
+            <span class="btn sm"><i data-lucide="download"></i> Download</span>
+            <span class="btn sm"><i data-lucide="link"></i> Copy link</span>
+          </div>
+          <div class="note"><i data-lucide="lock"></i><span>Kept in the blob store with the task. A link opens only for someone who can open calculator.</span></div>
+        </div>
+      </div>
+    </div>`);
+  }
+})();
+</script>
+<script src="shell.js"></script>
+</body>
+</html>

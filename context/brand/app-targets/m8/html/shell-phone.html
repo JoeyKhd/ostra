@@ -1,0 +1,151 @@
+<!doctype html>
+<!-- Target: the double-sidebar shell at phone width (app-shell.md, "Phone"): three 390×844 screens on one
+     board. 1: a space's page with the bottom tab bar. 2: the contextual panel as a sheet. 3: a task with its
+     preview (task-preview.md, "Phone"). Not a device mockup: the screens only, straight on. Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m8 · shell · phone</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="m8.css">
+<style>
+  body { background: var(--side); }
+  .board { position: relative; width: 1440px; height: 956px; }
+  .lbl { position: absolute; top: 30px; font: 500 13px var(--sans); color: var(--faint); }
+  .lbl b { color: var(--muted); font-weight: 600; margin-right: 6px; }
+  .ph { position: absolute; top: 60px; width: 390px; height: 844px; background: var(--bg); border: 1px solid var(--line-2); border-radius: 22px; overflow: hidden; display: flex; flex-direction: column; }
+  .ph .top { height: 54px; flex: none; display: flex; align-items: center; gap: 4px; padding: 0 6px; border-bottom: 1px solid var(--line); }
+  .ph .top .ib { width: 44px; height: 44px; color: var(--muted); }
+  .ph .top .ib svg.lucide { width: 20px; height: 20px; }
+  .ph .top .t { display: flex; align-items: center; gap: 7px; font: 600 16px var(--sans); min-width: 0; }
+  .ph .top .t svg.lucide { width: 15px; height: 15px; color: var(--faint); }
+  .ph .top .r { margin-left: auto; display: flex; }
+  .ph .scroll { flex: 1; min-height: 0; overflow: hidden; padding: 14px 16px; }
+  .ph h1 { font-size: 23px; margin: 0 0 2px; }
+  .ph .lede { font-size: 14px; }
+  .ph .band { margin-top: 14px; height: 36px; }
+  .prow { display: grid; grid-template-columns: 16px 1fr auto; column-gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--line); }
+  .prow .m { margin-top: 7px; }
+  .prow .ti { font: 500 15px/21px var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prow .dd { grid-column: 2 / 4; font: 400 12.5px/18px var(--mono); color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prow .dd .s { font-family: var(--sans); font-size: 13px; color: var(--muted); }
+  .prow .dd .amber-t { font-family: var(--sans); font-weight: 500; font-size: 13px; }
+  .prow .ag { font: 400 12.5px/21px var(--mono); color: var(--faint); }
+  .tabbar { height: 66px; flex: none; display: flex; border-top: 1px solid var(--line); background: var(--side); padding-bottom: 8px; }
+  .tabbar .tb { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--faint); font: 500 11px var(--sans); position: relative; }
+  .tabbar .tb svg.lucide { width: 21px; height: 21px; }
+  .tabbar .tb.on { color: var(--text); }
+  .tabbar .tb .count { position: absolute; top: 5px; left: calc(50% + 4px); min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--amber); color: var(--on-amber); font: 600 10.5px/17px var(--mono); text-align: center; box-shadow: 0 0 0 2px var(--side); }
+  /* The sheet */
+  .shade { position: absolute; inset: 0; background: var(--scrim); }
+  .sheet { position: absolute; top: 0; bottom: 0; left: 0; width: 318px; background: var(--bg); border-right: 1px solid var(--line-2); display: flex; flex-direction: column; box-shadow: var(--shadow-pop); }
+  .sheet .sh { height: 54px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 16px; }
+  .sheet .sh .t { display: flex; align-items: center; gap: 8px; font: 600 16px var(--sans); }
+  .sheet .sh .t svg.lucide { width: 15px; height: 15px; color: var(--faint); }
+  .sheet .sh .r { margin-left: auto; display: flex; }
+  .sheet .sh .ib { width: 44px; height: 44px; }
+  .sheet .sh .ib svg.lucide { width: 19px; height: 19px; }
+  .sheet .bd { padding: 0 8px; overflow: hidden; }
+  .sheet .nav { height: 44px; font-size: 15px; gap: 12px; padding: 0 10px; }
+  .sheet .nav svg.lucide { width: 18px; height: 18px; }
+  .sheet .live { padding: 7px 10px; }
+  .sheet .live .t { font-size: 15px; }
+  /* The task */
+  .segw { padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  .segw .seg { display: flex; width: 100%; }
+  .segw .seg > span { flex: 1; justify-content: center; height: 36px; font-size: 14px; }
+  .ptb { height: 50px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 8px; border-bottom: 1px solid var(--line); }
+  .ptb .svc { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--surface); font: 400 13.5px var(--mono); }
+  .ptb .svc svg.lucide { width: 14px; height: 14px; color: var(--faint); }
+  .ptb .path { flex: 1; min-width: 0; height: 36px; display: flex; align-items: center; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--surface); font: 400 13.5px var(--mono); }
+  .ptb .ib { width: 40px; height: 40px; color: var(--muted); }
+  .ptb .ib svg.lucide { width: 18px; height: 18px; }
+  .pview { flex: 1; min-height: 0; background: var(--surface); padding: 8px; }
+  .pview .frame { width: 100%; height: 100%; border: 1px solid var(--line-2); border-radius: 8px; overflow: hidden; }
+  .pfoot { height: 30px; flex: none; display: flex; align-items: center; gap: 7px; padding: 0 12px; font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--line); }
+  .pfoot .mono { font-size: 12px; color: var(--faint); margin-left: auto; }
+  .dock { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 10px 14px; border-top: 1px solid var(--line); background: var(--bg); }
+  .dock .in { flex: 1; height: 44px; display: flex; align-items: center; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface); color: var(--faint); font-size: 15px; }
+  .dock .send { width: 44px; height: 44px; border-radius: 10px; background: var(--primary); color: var(--on-primary); display: grid; place-items: center; }
+</style>
+</head>
+<body>
+<div class="board">
+  <div class="lbl" style="left:75px"><b>1</b>A project's tasks: the spaces in a tab bar</div>
+  <div class="lbl" style="left:525px"><b>2</b>The menu button opens the project's panel as a sheet</div>
+  <div class="lbl" style="left:975px"><b>3</b>A task: Chat and Preview, one at a time</div>
+
+  <!-- 1 -->
+  <div class="ph" style="left:75px">
+    <div class="top"><span class="ib"><i data-lucide="panel-left"></i></span><span class="t"><span class="pdot" style="background:#6FB8AA"></span>calculator<i data-lucide="chevron-down"></i></span><span class="r"><span class="ib"><i data-lucide="plus"></i></span></span></div>
+    <div class="scroll">
+      <h1>calculator</h1>
+      <p class="lede"><span class="mono" style="font-size:13px;color:var(--text)">acme/calculator-web</span> · 2 waiting on you</p>
+      <div class="band"><span class="dot amber"></span>Needs you <span class="n">2</span></div>
+      <div class="prow"><span class="m"><span class="dot amber"></span></span><span class="ti">Keep the last 50 results</span><span class="ag">14m</span><span class="dd">CALC-161 · <span class="amber-t">Approval: pnpm db:migrate</span></span></div>
+      <div class="prow"><span class="m"><span class="dot amber"></span></span><span class="ti">Retry webhook delivery on 5xx</span><span class="ag">32m</span><span class="dd">CALC-142 · <span class="amber-t">Question</span></span></div>
+      <div class="band"><span class="dot green"></span>Running <span class="n">3</span></div>
+      <div class="prow"><span class="m"><span class="dot green"></span></span><span class="ti">Add a history panel</span><span class="ag">12m</span><span class="dd">CALC-192 · <span class="s">Editing</span> panel.tsx</span></div>
+      <div class="prow"><span class="m"><span class="dot green"></span></span><span class="ti">Fix rounding in percent mode</span><span class="ag">6m</span><span class="dd">CALC-170 · <span class="s">Running</span> pnpm test</span></div>
+      <div class="prow"><span class="m"><span class="spin"></span></span><span class="ti">Add a short CONTRIBUTING.md</span><span class="ag">1m</span><span class="dd">CALC-177 · <span class="s">Preparing the box</span></span></div>
+      <div class="band"><i data-lucide="git-pull-request" style="width:14px;height:14px;color:var(--muted)"></i>In review <span class="n">2</span></div>
+      <div class="prow"><span class="m"><i data-lucide="git-pull-request" style="width:13px;height:13px;color:var(--muted);margin-top:-3px"></i></span><span class="ti">Upgrade Prisma to 7.2</span><span class="ag">2h</span><span class="dd">CALC-158 · <span class="s">PR</span> #481</span></div>
+    </div>
+    <div class="tabbar">
+      <span class="tb"><i data-lucide="house"></i>Home</span>
+      <span class="tb"><i data-lucide="bell"></i>Needs you<span class="count">5</span></span>
+      <span class="tb on"><i data-lucide="folder"></i>Projects</span>
+      <span class="tb"><i data-lucide="building-2"></i>Org</span>
+      <span class="tb"><i data-lucide="search"></i>Search</span>
+    </div>
+  </div>
+
+  <!-- 2 -->
+  <div class="ph" style="left:525px">
+    <div class="top"><span class="ib"><i data-lucide="panel-left"></i></span><span class="t"><span class="pdot" style="background:#6FB8AA"></span>calculator<i data-lucide="chevron-down"></i></span><span class="r"><span class="ib"><i data-lucide="plus"></i></span></span></div>
+    <div class="scroll">
+      <h1>calculator</h1>
+      <p class="lede"><span class="mono" style="font-size:13px;color:var(--text)">acme/calculator-web</span> · 2 waiting on you</p>
+      <div class="band"><span class="dot amber"></span>Needs you <span class="n">2</span></div>
+      <div class="prow"><span class="m"><span class="dot amber"></span></span><span class="ti">Keep the last 50 results</span><span class="ag">14m</span><span class="dd">CALC-161</span></div>
+    </div>
+    <div class="tabbar">
+      <span class="tb"><i data-lucide="house"></i>Home</span><span class="tb"><i data-lucide="bell"></i>Needs you<span class="count">5</span></span><span class="tb on"><i data-lucide="folder"></i>Projects</span><span class="tb"><i data-lucide="building-2"></i>Org</span><span class="tb"><i data-lucide="search"></i>Search</span>
+    </div>
+    <div class="shade"></div>
+    <div class="sheet">
+      <div class="sh"><span class="t"><span class="pdot" style="background:#6FB8AA"></span>calculator<i data-lucide="chevrons-up-down"></i></span><span class="r"><span class="ib"><i data-lucide="x"></i></span></span></div>
+      <div class="bd">
+        <div class="nav on"><i data-lucide="list-checks"></i><span>Tasks</span><span class="end"><span class="n">12</span></span></div>
+        <div class="nav"><i data-lucide="shield-question"></i><span>Needs approval</span><span class="end"><span class="count">2</span></span></div>
+        <div class="nav"><i data-lucide="inbox"></i><span>Inbox</span><span class="end"><span class="n">4</span></span></div>
+        <div class="nav"><i data-lucide="square-kanban"></i><span>Boards</span></div>
+        <div class="nav"><i data-lucide="box"></i><span>Environment</span></div>
+        <div class="nav"><i data-lucide="zap"></i><span>Automations</span></div>
+        <div class="nav"><i data-lucide="book-open"></i><span>Memory</span><span class="end"><span class="n">2</span></span></div>
+        <div class="nav"><i data-lucide="chart-no-axes-column"></i><span>Insights</span></div>
+        <div class="nav"><i data-lucide="settings"></i><span>Settings</span></div>
+        <div class="sec" style="padding-left:10px">Live <span class="n">5</span></div>
+        <div class="live"><span class="st"><span class="dot green"></span></span><span class="t">Add a history panel</span><span class="d">CALC-192 · Editing panel.tsx</span></div>
+        <div class="live"><span class="st"><span class="dot amber"></span></span><span class="t">Keep the last 50 results</span><span class="d">CALC-161 · <span class="amber-t">Needs you · approval</span></span></div>
+        <div class="live"><span class="st"><span class="dot amber"></span></span><span class="t">Retry webhook delivery</span><span class="d">CALC-142 · <span class="amber-t">Question</span></span></div>
+        <div class="nav" style="color:var(--muted)"><i data-lucide="ellipsis"></i><span>2 more</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3 -->
+  <div class="ph" style="left:975px">
+    <div class="top"><span class="ib"><i data-lucide="chevron-left"></i></span><span class="t" style="flex-direction:column;align-items:flex-start;gap:0"><span style="font-size:15px">Add a history panel</span><span class="mono" style="font-size:12px;font-weight:400;color:var(--faint)">CALC-192 · <span style="color:var(--green)">●</span> Running</span></span><span class="r"><span class="ib"><i data-lucide="ellipsis"></i></span></span></div>
+    <div class="segw"><span class="seg"><span><i data-lucide="messages-square"></i> Chat</span><span class="on"><i data-lucide="app-window"></i> Preview</span></span></div>
+    <div class="ptb"><span class="svc"><span class="dot green"></span>web<i data-lucide="chevron-down"></i></span><span class="path">/history</span><span class="ib"><i data-lucide="rotate-cw"></i></span><span class="ib"><i data-lucide="users"></i></span></div>
+    <div class="pview"><div class="frame" id="pf"></div></div>
+    <div class="pfoot"><span class="dot green"></span>Live <span class="faint">· the box's browser</span><span class="mono">372 × 534</span></div>
+    <div class="dock"><span class="in">Message the agent…</span><span class="send"><i data-lucide="arrow-up"></i></span></div>
+  </div>
+</div>
+<script src="app-fixture.js"></script>
+<script>document.getElementById("pf").innerHTML = tallyApp({ phone: true });</script>
+<script src="shell.js"></script>
+</body>
+</html>

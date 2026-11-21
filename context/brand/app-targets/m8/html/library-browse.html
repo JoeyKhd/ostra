@@ -1,0 +1,137 @@
+<!doctype html>
+<!-- Target: the admin's marketplace browser (library-browse.md): search skills.sh or an MCP registry
+     through the ostra server, install into the library, pinned. Demo data: the owners, counts and dates
+     of the results are invented, except anthropics/skills, which is the library's own row. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m8 · marketplace</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="m8.css">
+<style>
+  .content.mk { grid-template-columns: minmax(0, 1fr) 380px; }
+  .notice { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; padding: 10px 0 10px 12px; border-left: 2px solid var(--line-3); font-size: 13.5px; color: var(--muted); }
+  .notice svg.lucide { width: 15px; height: 15px; color: var(--faint); margin-top: 2px; }
+  .notice .teal { white-space: nowrap; }
+  .tools { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+  .tools .field { flex: 1; color: var(--text); border-color: var(--control-line); }
+  .tools .field .x { margin-left: auto; color: var(--faint); }
+  .rcount { font-size: 13px; color: var(--faint); margin: 14px 0 4px; display: flex; gap: 6px; }
+  .res { border-top: 1px solid var(--line); }
+  .res .r { display: grid; grid-template-columns: minmax(0, 1fr) 84px 84px 118px; column-gap: 12px; align-items: center; padding: 10px 10px; border-bottom: 1px solid var(--line); }
+  .res .r.on { background: var(--sel); border-radius: 6px; border-bottom-color: transparent; }
+  .res .nm { min-width: 0; }
+  .res .nm .t { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; overflow: hidden; }
+  .res .nm b { font: 500 14px var(--mono); color: var(--text); }
+  .res .nm .o { font: 400 12.5px var(--mono); color: var(--faint); overflow: hidden; text-overflow: ellipsis; }
+  .res .nm .d { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+  .res .nm .au { display: flex; gap: 5px; margin-top: 6px; }
+  .au .chip { height: 20px; font-size: 11.5px; padding: 0 6px; }
+  .au .chip svg.lucide { width: 11px; height: 11px; color: var(--green); }
+  .res .num { font: 400 13px var(--mono); color: var(--muted); text-align: right; }
+  .res .num small { display: block; font: 400 11.5px var(--sans); color: var(--faint); }
+  .res .st { justify-content: flex-end; display: flex; font-weight: 400; }
+  .res .inst { color: var(--faint); font-size: 13px; display: inline-flex; align-items: center; gap: 5px; }
+  .res .inst svg.lucide { width: 14px; height: 14px; color: var(--green); }
+  .res .blocked { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+  .res .blocked .btn { opacity: 0.45; }
+  .res .blocked span.w { font-size: 11.5px; color: var(--faint); display: inline-flex; gap: 4px; align-items: center; white-space: nowrap; }
+  .res .blocked span.w svg.lucide { width: 11px; height: 11px; }
+  .det { border-left: 1px solid var(--line); padding: 20px 20px; overflow: hidden; display: flex; flex-direction: column; }
+  .det h2 { font: 600 17px var(--mono); }
+  .det .o { font: 400 13px var(--mono); color: var(--muted); margin-top: 2px; }
+  .det .dsc { font-size: 14px; color: var(--text-2); margin-top: 10px; }
+  .det .facts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .det .lb { font: 500 12px var(--sans); color: var(--faint); margin: 16px 0 6px; }
+  .det .md { font: 400 12.5px/1.65 var(--mono); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; color: var(--text-2); white-space: pre-wrap; }
+  .det .md .c { color: var(--faint); }
+  .det .fl { display: flex; align-items: center; gap: 8px; height: 26px; font: 400 13px var(--mono); color: var(--text-2); }
+  .det .fl svg.lucide { width: 14px; height: 14px; color: var(--faint); }
+  .det .fl .s { margin-left: auto; color: var(--faint); font-size: 12px; }
+  .det .foot { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--line); }
+  .det .foot p { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+  .det .foot p .mono { color: var(--text); font-size: 12.5px; }
+  .det .foot .row { display: flex; gap: 8px; align-items: center; }
+  .det .foot .row .btn.primary { flex: 1; }
+</style>
+</head>
+<body data-space="org" data-panel="org" data-active="skills">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>Organization</span><i data-lucide="chevron-right" class="chev"></i><span>Skills and MCP</span><i data-lucide="chevron-right" class="chev"></i><b>Marketplace</b>
+      <div class="right">
+        <span class="btn sm"><i data-lucide="link"></i> Add from a source</span>
+      </div>
+    </div>
+    <div class="content mk">
+      <div class="page">
+        <h1 style="margin-top:0">Marketplace</h1>
+        <p class="lede">Find a skill or an MCP server and install it into the library, pinned. No agent gets it until a profile attaches it.</p>
+        <div class="notice"><i data-lucide="info"></i><span>Searches and installs go through the ostra server, never your browser. Search is an organization setting, off by default. Alex Kim turned it on, 12 Nov. <span class="teal">Policy</span></span></div>
+        <div class="tools">
+          <span class="seg"><span class="on"><i data-lucide="book-open"></i> Skills <span class="faint" style="font-weight:400">· skills.sh</span></span><span><i data-lucide="plug"></i> MCP servers <span class="faint" style="font-weight:400">· GitHub registry</span></span></span>
+          <span class="field"><i data-lucide="search"></i>playwright<i data-lucide="x" class="x"></i></span>
+        </div>
+        <div class="rcount"><span>24 results</span><span>·</span><span>most installed first</span></div>
+        <div class="res">
+          <div class="r">
+            <div class="nm"><div class="t"><b>webapp-testing</b><span class="o">anthropics/skills</span></div><div class="d">Test local web apps with Playwright: start, inspect, screenshot</div><div class="au"><span class="chip"><i data-lucide="check"></i>Gen</span><span class="chip"><i data-lucide="check"></i>Socket</span><span class="chip"><i data-lucide="check"></i>Snyk</span></div></div>
+            <div class="num">41.2k<small>installs</small></div><div class="num">Mar 2026<small>first seen</small></div>
+            <div class="st"><span class="inst"><i data-lucide="check"></i>In the library</span></div>
+          </div>
+          <div class="r on">
+            <div class="nm"><div class="t"><b>e2e-writer</b><span class="o">qa-tools/playwright-skills</span></div><div class="d">Write Playwright end-to-end tests from a user flow, with stable locators</div><div class="au"><span class="chip"><i data-lucide="check"></i>Gen</span><span class="chip"><i data-lucide="check"></i>Socket</span><span class="chip"><i data-lucide="check"></i>Snyk</span></div></div>
+            <div class="num">18.9k<small>installs</small></div><div class="num">Jun 2026<small>first seen</small></div>
+            <div class="st"><span class="btn xs">Install</span></div>
+          </div>
+          <div class="r">
+            <div class="nm"><div class="t"><b>playwright-flows</b><span class="o">acme/agent-skills</span></div><div class="d">Acme's own flows: sign in with the test account, seed, then check</div><div class="au"><span class="chip">Not audited yet</span></div></div>
+            <div class="num">212<small>installs</small></div><div class="num">Oct 2026<small>first seen</small></div>
+            <div class="st"><span class="btn xs">Install</span></div>
+          </div>
+          <div class="r">
+            <div class="nm"><div class="t"><b>visual-diff</b><span class="o">testcraft/skills</span></div><div class="d">Compare screenshots across commits and flag changed regions</div><div class="au"><span class="chip"><i data-lucide="check"></i>Gen</span><span class="chip"><i data-lucide="check"></i>Socket</span></div></div>
+            <div class="num">6.4k<small>installs</small></div><div class="num">Aug 2026<small>first seen</small></div>
+            <div class="st"><div class="blocked"><span class="btn xs">Install</span><span class="w"><i data-lucide="lock"></i>Source not allowed</span></div></div>
+          </div>
+          <div class="r">
+            <div class="nm"><div class="t"><b>browser-pilot</b><span class="o">nightjar/skills</span></div><div class="d">Drive a browser for any task: forms, scraping, downloads</div><div class="au"><span class="chip"><i data-lucide="check"></i>Gen</span></div></div>
+            <div class="num">3.1k<small>installs</small></div><div class="num">Nov 2026<small>first seen</small></div>
+            <div class="st"><div class="blocked"><span class="btn xs">Install</span><span class="w"><i data-lucide="lock"></i>Source not allowed</span></div></div>
+          </div>
+        </div>
+      </div>
+      <aside class="det">
+        <h2>e2e-writer</h2>
+        <div class="o">qa-tools/playwright-skills</div><div class="o" style="color:var(--faint);margin-top:0">skills/e2e-writer</div>
+        <p class="dsc">Write Playwright end-to-end tests from a user flow, with stable locators and one assertion per step.</p>
+        <div class="facts"><span class="chip">18.9k installs</span><span class="chip">first seen Jun 2026</span><span class="chip">MIT</span></div>
+        <div class="lb">Audits on skills.sh</div>
+        <div class="au" style="display:flex;gap:5px"><span class="chip"><i data-lucide="check"></i>Gen · pass</span><span class="chip"><i data-lucide="check"></i>Socket · pass</span><span class="chip"><i data-lucide="check"></i>Snyk · pass</span></div>
+        <div class="lb">SKILL.md</div>
+        <div class="md"><span class="c">---</span>
+name: e2e-writer
+description: Write Playwright end-to-end
+  tests from a user flow.
+<span class="c">---</span>
+Read the flow, find the routes it
+touches, then write one test per path…</div>
+        <div class="lb">Files · 4</div>
+        <div class="fl"><i data-lucide="file-text"></i>SKILL.md<span class="s">3.8 KB</span></div>
+        <div class="fl"><i data-lucide="file-text"></i>reference/locators.md<span class="s">5.1 KB</span></div>
+        <div class="fl"><i data-lucide="file-code"></i>scripts/run.sh<span class="s">0.6 KB</span></div>
+        <div class="fl"><i data-lucide="file-text"></i>LICENSE.txt<span class="s">1.1 KB</span></div>
+        <div class="foot">
+          <p>Install pins the commit at HEAD, <span class="mono">4e1a9b2</span>, and hashes its files. It lands in the library attached to no profile.</p>
+          <div class="row"><span class="btn ghost" style="padding:0 6px"><i data-lucide="external-link"></i> Source</span><span class="btn primary"><i data-lucide="download"></i> Install</span></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+</div>
+<script src="shell.js"></script>
+</body>
+</html>

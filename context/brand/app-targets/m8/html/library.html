@@ -1,0 +1,147 @@
+<!doctype html>
+<!-- Target: the organization's library of skills and MCP servers (library.md). Installed once, pinned,
+     attached to agent profiles. Facts from context/research/skills-and-mcp-marketplaces.md, section 7. Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m8 · skills and MCP library</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="m8.css">
+<style>
+  .tools { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  .tools .field { width: 280px; }
+  .lib { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; table-layout: fixed; }
+  .lib th { text-align: left; font: 500 12.5px var(--sans); color: var(--faint); height: 32px; border-bottom: 1px solid var(--line); padding: 0 12px 0 0; white-space: nowrap; }
+  .lib td { height: 52px; border-bottom: 1px solid var(--line); padding: 0 12px 0 0; vertical-align: middle; white-space: nowrap; overflow: hidden; }
+  .lib .grp td { height: 36px; padding: 0; border-bottom: 0; }
+  .lib .grp .band { margin: 10px 0 2px; height: 30px; font-size: 13.5px; }
+  .lib .nm { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+  .lib .nm .k { width: 26px; height: 26px; flex: none; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: 6px; color: var(--muted); margin-top: 1px; }
+  .lib .nm .k svg.lucide { width: 14px; height: 14px; }
+  .lib .nm .tx { min-width: 0; }
+  .lib .nm b { display: block; font: 500 14px var(--mono); color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+  .lib .nm .d { display: block; font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; line-height: 1.35; }
+  .lib .src { font: 400 13px var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+  .lib .pin { font: 400 13px var(--mono); color: var(--text); }
+  .lib .used { color: var(--muted); font-size: 13.5px; }
+  .lib .used .chip { color: var(--text-2); }
+  .lib .utd { color: var(--faint); font-size: 13px; text-align: right; }
+  .lib td:last-child { padding-right: 0; text-align: right; }
+  .lib .upd { color: var(--text-2); }
+  .lib .upd svg.lucide { color: var(--teal); }
+  .lib .sugg td { background: transparent; }
+  .lib .sugg .who { font-size: 13px; color: var(--muted); }
+  .lib .acts { display: flex; gap: 6px; justify-content: flex-end; }
+  .more { display: flex; align-items: center; gap: 6px; height: 34px; color: var(--muted); font-size: 13.5px; }
+  .more svg.lucide { width: 14px; height: 14px; }
+  .srcs { display: flex; flex-direction: column; gap: 2px; padding: 2px 0 6px; }
+  .srcs span { font: 400 12.5px var(--mono); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prop.top { align-items: flex-start; padding-top: 4px; }
+  .prop.top .v { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .props .note { font-size: 12.5px; color: var(--faint); margin-top: 8px; }
+</style>
+</head>
+<body data-space="org" data-panel="org" data-active="skills">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>Organization</span><i data-lucide="chevron-right" class="chev"></i><b>Skills and MCP</b>
+      <div class="right">
+        <span class="btn"><i data-lucide="store"></i> Browse marketplace</span>
+        <span class="btn primary"><i data-lucide="plus"></i> Add from a source</span>
+      </div>
+    </div>
+    <div class="content">
+      <div class="page">
+        <h1 style="margin-top:0">Skills and MCP servers</h1>
+        <p class="lede">Installed once for Acme Corp, pinned, and attached to agent profiles. Agents get them at their next session.</p>
+        <div class="tabs" style="margin-top:16px">
+          <span class="tab on">All <span class="n">14</span></span>
+          <span class="tab">Skills <span class="n">9</span></span>
+          <span class="tab">MCP servers <span class="n">5</span></span>
+          <span class="tab">Updates <span class="n">2</span></span>
+        </div>
+        <div class="tools">
+          <span class="field"><i data-lucide="search"></i>Filter by name or source</span>
+          <span class="btn ghost" style="padding:0 8px"><i data-lucide="sliders-horizontal"></i> Profile: any</span>
+        </div>
+        <table class="lib">
+          <colgroup><col style="width:232px"><col style="width:178px"><col style="width:74px"><col style="width:102px"><col></colgroup>
+          <tr><th>Name</th><th>Source</th><th>Pinned</th><th>Used by</th><th></th></tr>
+          <tr class="grp"><td colspan="5"><div class="band"><i data-lucide="message-square-plus" style="width:14px;height:14px;color:var(--muted)"></i>Suggested <span class="n">1</span></div></td></tr>
+          <tr class="sugg">
+            <td><div class="nm"><span class="k"><i data-lucide="book-open"></i></span><span class="tx"><b>pdf</b><span class="d who">Sam Rivera suggested it · 2 h ago</span></span></div></td>
+            <td class="src">anthropics/skills@pdf</td><td class="pin faint">—</td><td class="used faint">—</td>
+            <td><div class="acts"><span class="btn xs ghost">Dismiss</span><span class="btn xs">Install</span></div></td>
+          </tr>
+          <tr class="grp"><td colspan="5"><div class="band"><i data-lucide="book-open" style="width:14px;height:14px;color:var(--muted)"></i>Skills <span class="n">9</span></div></td></tr>
+          <tr>
+            <td><div class="nm"><span class="k"><i data-lucide="book-open"></i></span><span class="tx"><b>webapp-testing</b><span class="d">Start a local web app, click through it, take screenshots</span></span></div></td>
+            <td class="src">anthropics/skills@webapp-testing</td><td class="pin">a3f9c1e</td><td class="used">3 profiles</td>
+            <td><span class="chip upd"><i data-lucide="circle-arrow-up"></i>Update · 3 files</span></td>
+          </tr>
+          <tr>
+            <td><div class="nm"><span class="k"><i data-lucide="book-open"></i></span><span class="tx"><b>frontend-design</b><span class="d">Production-grade frontend work, in the repo's own style</span></span></div></td>
+            <td class="src">anthropics/skills@frontend-design</td><td class="pin">7b20d4a</td><td class="used"><span class="chip"><i data-lucide="layers"></i>Every profile</span></td>
+            <td class="utd">Up to date</td>
+          </tr>
+          <tr>
+            <td><div class="nm"><span class="k"><i data-lucide="book-open"></i></span><span class="tx"><b>prisma-migrations</b><span class="d">Plan, write and check a Prisma migration</span></span></div></td>
+            <td class="src">acme/agent-skills@prisma-migrations</td><td class="pin">e41c0f2</td><td class="used">4 profiles</td>
+            <td class="utd">Up to date</td>
+          </tr>
+          <tr>
+            <td><div class="nm"><span class="k"><i data-lucide="book-open"></i></span><span class="tx"><b>release-notes</b><span class="d">Release notes the way Acme writes them</span></span></div></td>
+            <td class="src">git.acme.dev/platform/skills.git#v3</td><td class="pin">58d2b97</td><td class="used">2 profiles</td>
+            <td class="utd">Up to date</td>
+          </tr>
+          <tr class="grp"><td colspan="5"><div class="band"><i data-lucide="plug" style="width:14px;height:14px;color:var(--muted)"></i>MCP servers <span class="n">5</span></div></td></tr>
+          <tr>
+            <td><div class="nm"><span class="k"><i data-lucide="plug"></i></span><span class="tx"><b>sentry</b><span class="d">Issues and traces · remote · 1 secret</span></span></div></td>
+            <td class="src">io.sentry/sentry-mcp</td><td class="pin">v0.21.0</td><td class="used">3 profiles</td>
+            <td><span class="chip upd"><i data-lucide="circle-arrow-up"></i>v0.22.0</span></td>
+          </tr>
+          <tr>
+            <td><div class="nm"><span class="k"><i data-lucide="plug"></i></span><span class="tx"><b>linear</b><span class="d">Issues, comments and projects · remote · 1 secret</span></span></div></td>
+            <td class="src">app.linear/linear</td><td class="pin">v1.4.2</td><td class="used">2 profiles</td>
+            <td class="utd">Up to date</td>
+          </tr>
+          <tr>
+            <td><div class="nm"><span class="k"><i data-lucide="plug"></i></span><span class="tx"><b>context7</b><span class="d">Library docs by version · remote</span></span></div></td>
+            <td class="src">io.github.upstash/context7</td><td class="pin">v2.1.0</td><td class="used"><span class="chip"><i data-lucide="layers"></i>Every profile</span></td>
+            <td class="utd">Up to date</td>
+          </tr>
+        </table>
+        <div class="more"><i data-lucide="chevron-down"></i>Show 7 more</div>
+      </div>
+      <aside class="props">
+        <div class="group">
+          <h5>Library</h5>
+          <div class="prop"><span class="k">Skills</span><span class="v mono">9</span></div>
+          <div class="prop"><span class="k">MCP servers</span><span class="v mono">5</span></div>
+          <div class="prop"><span class="k">Updates</span><span class="v"><span class="mono">2</span><span class="faint">waiting for an admin</span></span></div>
+          <div class="prop"><span class="k">Suggested</span><span class="v mono">1</span></div>
+        </div>
+        <div class="group">
+          <h5>Policy <span class="teal" style="font-size:12.5px">Edit</span></h5>
+          <div class="prop"><span class="k">Installs</span><span class="v">Org admins</span></div>
+          <div class="prop"><span class="k">Members</span><span class="v">Suggest</span></div>
+          <div class="prop top"><span class="k">Sources</span><span class="v"><span class="srcs"><span>github.com/anthropics/*</span><span>github.com/acme/*</span><span>git.acme.dev/platform/*</span><span>registry io.sentry/*</span><span class="faint" style="font-family:var(--sans)">and 3 more</span></span></span></div>
+          <div class="prop"><span class="k">Marketplace</span><span class="v"><span class="sw on"></span>Search on</span></div>
+          <div class="prop top"><span class="k">Calls out to</span><span class="v"><span class="srcs"><span>skills.sh</span><span>api.mcp.github.com</span><span>github.com</span></span></span></div>
+        </div>
+        <div class="group">
+          <h5>Repo skills</h5>
+          <div class="prop top"><span class="k">Read from</span><span class="v"><span class="srcs"><span>.agents/skills</span><span>.claude/skills</span><span>.opencode/skills</span></span></span></div>
+          <div class="prop"><span class="k">Same name</span><span class="v">The profile's wins</span></div>
+          <p class="note">When a repo skill has a library skill's name, the task page names the one left out.</p>
+        </div>
+      </aside>
+    </div>
+  </section>
+</div>
+<script src="shell.js"></script>
+</body>
+</html>

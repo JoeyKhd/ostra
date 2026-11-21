@@ -1,0 +1,117 @@
+<!doctype html>
+<!-- Target: Home in the double-sidebar shell (app-shell.md). Home's page is m1/home with m3's Overview/Board
+     toggle (m7/light-home in light); only the frame changes. Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m8 · shell · home</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="m8.css">
+<style>
+  .date { font: 400 13px var(--mono); color: var(--faint); }
+  .ny td { height: 40px; }
+  .ny .k { font: 400 13px var(--mono); color: var(--faint); width: 82px; }
+  .ny .ti { max-width: 210px; overflow: hidden; text-overflow: ellipsis; }
+  .ny .pj { color: var(--muted); width: 136px; }
+  .ny .pj span { display: inline-flex; align-items: center; gap: 7px; }
+  .ny .why { color: var(--muted); max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
+  .ny .why .mono { color: var(--text); font-size: 13px; }
+  .ny .age { font: 400 13px var(--mono); color: var(--faint); text-align: right; width: 36px; }
+  .ny .act { width: 104px; text-align: right; padding-right: 0; }
+  .ny .act .btn { width: 100px; }
+  .pt td:first-child span { display: inline-flex; align-items: center; gap: 8px; }
+  .pt .repo { font: 400 13.5px var(--mono); color: var(--muted); }
+  .pt .needs { color: var(--amber-text); font-weight: 600; }
+  .act-rows .r svg.lucide { color: var(--muted); width: 16px; height: 16px; }
+  .act-rows .r .where { color: var(--muted); width: 120px; text-align: right; }
+  .act-rows .r .age { font: 400 13px var(--mono); color: var(--faint); width: 36px; text-align: right; }
+  .chart { display: flex; align-items: flex-end; gap: 10px; height: 96px; margin-top: 18px; }
+  .chart i { flex: 1; background: var(--muted); opacity: 0.55; border-radius: 3px 3px 0 0; }
+  [data-theme="light"] .chart i { background: #7f8288; opacity: 1; }
+  .chart i.now { opacity: 0.25; }
+  .days { display: flex; gap: 10px; font: 400 12px var(--mono); color: var(--faint); margin-top: 6px; }
+  .days span { flex: 1; text-align: center; }
+  .big { font: 700 30px/1.1 var(--title); margin-top: 6px; }
+  .pool { margin-top: 12px; }
+  .pool .top { display: flex; align-items: baseline; justify-content: space-between; }
+  .pool .top b { font: 400 14px var(--mono); color: var(--text); }
+  .pool .top span { font: 400 13px var(--mono); color: var(--muted); }
+  .pool .meter { margin-top: 7px; }
+</style>
+</head>
+<body data-space="home" data-panel="home" data-active="overview">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <b>Home</b>
+      <div class="right">
+        <span class="btn primary"><i data-lucide="plus"></i> New task</span>
+      </div>
+    </div>
+    <div class="content">
+      <div class="page">
+        <div class="date">Saturday 21 November</div>
+        <h1>Acme Corp</h1>
+        <p class="lede">238 tasks running across 18 projects, 41 queued. 37 pull requests merged today.</p>
+        <div style="margin-top:16px"><span class="seg"><span class="on"><i data-lucide="list"></i> Overview</span><span><i data-lucide="square-kanban"></i> Board</span></span></div>
+
+        <div class="section" style="margin-top:22px">
+          <div class="shead"><span class="dot amber"></span><h3>Needs you</h3><span class="n">5</span><span class="more">Open all <i data-lucide="arrow-right"></i></span></div>
+          <table class="t ny">
+            <tr><td class="k">CALC-161</td><td class="ti">Keep the last 50 results</td><td class="pj"><span><span class="pdot" style="background:#6FB8AA"></span>calculator</span></td><td class="why">Approval: <span class="mono">pnpm db:migrate</span></td><td class="age">4m</td><td class="act"><span class="btn sm amber">Approve</span></td></tr>
+            <tr><td class="k">BIL-88</td><td class="ti">Prorate seat changes</td><td class="pj"><span><span class="pdot" style="background:#8C7CF0"></span>billing-platform</span></td><td class="why">Plan ready for review</td><td class="age">11m</td><td class="act"><span class="btn sm">Review plan</span></td></tr>
+            <tr><td class="k">WEB-311</td><td class="ti">Fix cart badge count</td><td class="pj"><span><span class="pdot" style="background:#D9826B"></span>web-storefront</span></td><td class="why">Draft PR <span class="mono">#2213</span> ready</td><td class="age">18m</td><td class="act"><span class="btn sm">Review PR</span></td></tr>
+            <tr><td class="k">MOB-57</td><td class="ti">Crash in the Android share sheet</td><td class="pj"><span><span class="pdot" style="background:#5FA8E8"></span>mobile-app</span></td><td class="why">Question: keep the old API?</td><td class="age">26m</td><td class="act"><span class="btn sm">Answer</span></td></tr>
+            <tr><td class="k">CALC-142</td><td class="ti">Retry webhook delivery on 5xx</td><td class="pj"><span><span class="pdot" style="background:#6FB8AA"></span>calculator</span></td><td class="why">Setup failed: <span class="mono">pnpm i</span> exit 1</td><td class="age">41m</td><td class="act"><span class="btn sm">Open task</span></td></tr>
+          </table>
+        </div>
+
+        <div class="section">
+          <div class="shead"><h3>Projects</h3><span class="n">18</span><span class="more">All projects <i data-lucide="arrow-right"></i></span></div>
+          <table class="t pt">
+            <tr><th>Project</th><th>Repo</th><th class="num">Running</th><th class="num">Queued</th><th class="num">Needs you</th><th class="num">PRs this week</th><th class="num" style="padding-right:0">Spend, Nov</th></tr>
+            <tr><td><span><span class="pdot" style="background:#6FB8AA"></span>calculator</span></td><td class="repo">acme/calculator-web</td><td class="num">11</td><td class="num">3</td><td class="num needs">2</td><td class="num">41</td><td class="num" style="padding-right:0">$612</td></tr>
+            <tr><td><span><span class="pdot" style="background:#8C7CF0"></span>billing-platform</span></td><td class="repo">acme/billing</td><td class="num">31</td><td class="num">9</td><td class="num needs">1</td><td class="num">118</td><td class="num" style="padding-right:0">$1,104</td></tr>
+            <tr><td><span><span class="pdot" style="background:#D9826B"></span>web-storefront</span></td><td class="repo">acme/storefront</td><td class="num">44</td><td class="num">12</td><td class="num needs">1</td><td class="num">176</td><td class="num" style="padding-right:0">$1,380</td></tr>
+            <tr><td><span><span class="pdot" style="background:#5FA8E8"></span>mobile-app</span></td><td class="repo">acme/mobile</td><td class="num">19</td><td class="num">6</td><td class="num needs">1</td><td class="num">64</td><td class="num" style="padding-right:0">$498</td></tr>
+          </table>
+        </div>
+
+        <div class="section">
+          <div class="shead"><h3>Recent activity</h3><span class="more">Audit log <i data-lucide="arrow-right"></i></span></div>
+          <div class="rows act-rows">
+            <div class="r"><i data-lucide="git-merge"></i><span class="grow">PR <span class="mono">#2207</span> Add gift card balance check merged into <span class="mono">main</span></span><span class="where">web-storefront</span><span class="age">3m</span></div>
+            <div class="r"><i data-lucide="box"></i><span class="grow">Snapshot rebuilt from <span class="mono">main@9c41e2a</span> · 1.9 GB · 2m 41s</span><span class="where">calculator</span><span class="age">12m</span></div>
+            <div class="r"><i data-lucide="server"></i><span class="grow">Runner <span class="mono">build-17</span> joined <span class="mono">build-fleet</span></span><span class="where">Organization</span><span class="age">20m</span></div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="props">
+        <div class="group">
+          <h5>Pull requests merged, last 7 days</h5>
+          <div class="big">849</div>
+          <div class="faint" style="font-size:13.5px;margin-top:4px">1,042 opened · 23 min median to first PR</div>
+          <div class="chart"><i style="height:52%"></i><i style="height:58%"></i><i style="height:14%"></i><i style="height:12%"></i><i style="height:78%"></i><i style="height:84%"></i><i class="now" style="height:16%"></i></div>
+          <div class="days"><span>T</span><span>F</span><span>S</span><span>S</span><span>M</span><span>T</span><span>now</span></div>
+        </div>
+        <div class="group">
+          <h5>Spend, November <span class="mono" style="font-size:13px;color:var(--text)">$4,212 <span class="faint">of $6,000</span></span></h5>
+          <div class="meter" style="margin-top:8px"><i style="width:70%"></i></div>
+        </div>
+        <div class="group">
+          <h5>Runner pools <span class="mono" style="font-size:12.5px">238 busy · 41 queued</span></h5>
+          <div class="pool"><div class="top"><b>build-fleet</b><span>142 / 200</span></div><div class="meter"><i style="width:71%"></i></div></div>
+          <div class="pool"><div class="top"><b>k8s-autoscale</b><span>58 · max 400</span></div><div class="meter"><i style="width:15%"></i></div></div>
+          <div class="pool"><div class="top"><b>mac-minis</b><span>31 / 40</span></div><div class="meter"><i style="width:78%"></i></div></div>
+          <div class="pool"><div class="top"><b>laptops</b><span>7 / 12 online</span></div><div class="meter"><i style="width:58%"></i></div></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+</div>
+<script src="shell.js"></script>
+</body>
+</html>

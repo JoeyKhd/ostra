@@ -1,0 +1,138 @@
+<!doctype html>
+<!-- Target: one library item, a skill with an update waiting (library-update.md): its source, the pinned
+     commit and hash, the profiles that use it, and the update's diff. Demo data; the diff text is invented. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m8 · library item</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="m8.css">
+<style>
+  .meta-line { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 14px; color: var(--muted); white-space: nowrap; }
+  .meta-line .mono { font-size: 13px; color: var(--text); }
+  .meta-line svg.lucide { width: 14px; height: 14px; }
+  .upd { margin-top: 18px; padding: 12px 0 12px 14px; border-left: 2px solid var(--line-3); }
+  .upd .t { display: flex; align-items: center; gap: 10px; }
+  .upd .t svg.lucide { width: 16px; height: 16px; color: var(--teal); }
+  .upd .t b { font-weight: 600; }
+  .upd .t .mono { font-size: 13px; }
+  .upd .t .acts { margin-left: auto; display: flex; gap: 8px; }
+  .upd .n2 { margin-top: 4px; font-size: 13px; color: var(--faint); max-width: 560px; }
+  .diffwrap { display: grid; grid-template-columns: 226px minmax(0, 1fr); gap: 0; margin-top: 14px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .files { border-right: 1px solid var(--line); padding: 6px; }
+  .files .f { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px; border-radius: 6px; font: 400 12.5px var(--mono); color: var(--text-2); white-space: nowrap; overflow: hidden; }
+  .files .f span.p { overflow: hidden; text-overflow: ellipsis; }
+  .files .f.on { background: var(--sel); color: var(--text); }
+  .files .f .c { margin-left: auto; display: flex; gap: 5px; font-size: 12px; flex: none; }
+  .files .lbl { font: 500 12px var(--sans); color: var(--faint); padding: 6px 8px 4px; }
+  .diff { font: 400 12.5px/20px var(--mono); overflow: hidden; }
+  .diff .dh { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-bottom: 1px solid var(--line); font-size: 12.5px; color: var(--muted); background: var(--surface); }
+  .diff .dh b { color: var(--text); font-weight: 400; }
+  .diff .ln { display: grid; grid-template-columns: 34px 34px 16px minmax(0, 1fr); white-space: pre; color: var(--text-2); }
+  .diff .ln > span:nth-child(-n+2) { color: var(--faint); text-align: right; padding-right: 8px; font-size: 11.5px; }
+  .diff .ln > span:nth-child(3) { color: var(--faint); }
+  .diff .ln > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+  .diff .ln.a { background: var(--diff-add); }
+  .diff .ln.a > span:nth-child(3) { color: var(--green); }
+  .diff .ln.d { background: var(--diff-del); }
+  .diff .ln.d > span:nth-child(3) { color: var(--red); }
+  .diff .hunk { color: var(--faint); background: var(--surface); padding-left: 84px; height: 24px; line-height: 24px; font-size: 12px; }
+  .warn { display: flex; gap: 8px; align-items: flex-start; margin-top: 10px; font-size: 12.5px; color: var(--faint); }
+  .warn svg.lucide { width: 14px; height: 14px; margin-top: 2px; }
+  .prof { display: flex; align-items: center; gap: 9px; height: 32px; font-size: 14px; }
+  .prof svg.lucide { width: 15px; height: 15px; color: var(--faint); }
+  .prof .x { margin-left: auto; color: var(--faint); font-size: 13px; }
+  .prop .v .h { font-size: 13px; }
+</style>
+</head>
+<body data-space="org" data-panel="org" data-active="skills">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>Organization</span><i data-lucide="chevron-right" class="chev"></i><span>Skills and MCP</span><i data-lucide="chevron-right" class="chev"></i><b>webapp-testing</b>
+      <div class="right">
+        <span class="btn sm"><i data-lucide="refresh-cw"></i> Check for updates</span>
+        <span class="ib" title="More"><i data-lucide="ellipsis"></i></span>
+      </div>
+    </div>
+    <div class="content">
+      <div class="page">
+        <div class="key">Skill · installed 4 Nov 2026</div>
+        <h1>webapp-testing</h1>
+        <p class="lede">Start a local web app, click through it with Playwright, and take screenshots of what it shows.</p>
+        <div class="meta-line"><i data-lucide="folder-git-2"></i><span class="link">anthropics/skills</span><span class="mono">skills/webapp-testing</span><span class="sep">·</span>pinned at <span class="mono">a3f9c1e</span><span class="sep">·</span><span class="mono faint">sha256 7c1e…4b09</span></div>
+
+        <div class="tabs" style="margin-top:18px">
+          <span class="tab">SKILL.md</span>
+          <span class="tab">Files <span class="n">4</span></span>
+          <span class="tab">Used by <span class="n">3</span></span>
+          <span class="tab on">Update <span class="n">1</span></span>
+        </div>
+
+        <div class="upd">
+          <div class="t"><i data-lucide="circle-arrow-up"></i><span class="mono" style="color:var(--text)">main</span>moved to <span class="mono">9b2d4f0</span><span class="faint">· 2 days ago · 3 files, </span><span class="add" style="margin:0">+41</span><span class="del" style="margin:0">−12</span>
+            <span class="acts"><span class="btn sm">Keep a3f9c1e</span><span class="btn sm primary"><i data-lucide="check"></i> Accept update</span></span>
+          </div>
+          <p class="n2">Accepting moves the 3 profiles that use it to <span class="mono">9b2d4f0</span>. Running tasks get it at their next session, never mid-turn.</p>
+        </div>
+
+        <div class="diffwrap">
+          <div class="files">
+            <div class="lbl">3 files changed</div>
+            <div class="f on"><span class="p">SKILL.md</span><span class="c"><span class="green">+18</span><span class="red">−6</span></span></div>
+            <div class="f"><span class="p">scripts/with_server.py</span><span class="c"><span class="green">+21</span><span class="red">−6</span></span></div>
+            <div class="f"><span class="p">examples/console.py</span><span class="c"><span class="green">+2</span></span></div>
+          </div>
+          <div class="diff">
+            <div class="dh"><b>SKILL.md</b><span class="faint">a3f9c1e → 9b2d4f0</span><span style="margin-left:auto" class="faint">Unified</span></div>
+            <div class="hunk">@@ -1,9 +1,10 @@</div>
+            <div class="ln"><span>1</span><span>1</span><span> </span><span>---</span></div>
+            <div class="ln"><span>2</span><span>2</span><span> </span><span>name: webapp-testing</span></div>
+            <div class="ln d"><span>3</span><span></span><span>−</span><span>description: Test local web apps with Playwright.</span></div>
+            <div class="ln a"><span></span><span>3</span><span>+</span><span>description: Start a local web app with Playwright,</span></div>
+            <div class="ln a"><span></span><span>4</span><span>+</span><span>  wait for its port, then click and screenshot.</span></div>
+            <div class="ln"><span>4</span><span>5</span><span> </span><span>---</span></div>
+            <div class="ln"><span>5</span><span>6</span><span> </span><span></span></div>
+            <div class="ln"><span>6</span><span>7</span><span> </span><span>## Starting the app</span></div>
+            <div class="ln d"><span>7</span><span></span><span>−</span><span>Run the dev server yourself, then open it.</span></div>
+            <div class="ln a"><span></span><span>8</span><span>+</span><span>Use scripts/with_server.py: it starts each server and waits</span></div>
+            <div class="ln a"><span></span><span>9</span><span>+</span><span>until its port answers before the test begins.</span></div>
+            <div class="hunk">@@ -31,6 +33,14 @@</div>
+            <div class="ln"><span>31</span><span>33</span><span> </span><span>## Screenshots</span></div>
+            <div class="ln a"><span></span><span>34</span><span>+</span><span>Take one per viewport you check: 1280, 768 and 390 wide.</span></div>
+            <div class="ln a"><span></span><span>35</span><span>+</span><span>Name each after the route and the width.</span></div>
+            <div class="ln"><span>32</span><span>36</span><span> </span><span>Wait for the network to be idle before each one.</span></div>
+          </div>
+        </div>
+        <div class="warn"><i data-lucide="info"></i><span>This is text the source changed. Read it before you accept: a skill is part of every prompt that loads it.</span></div>
+      </div>
+
+      <aside class="props">
+        <div class="group">
+          <h5>Source</h5>
+          <div class="prop"><span class="k">Repo</span><span class="v mono">anthropics/skills</span></div>
+          <div class="prop"><span class="k">Path</span><span class="v mono">skills/webapp-testing</span></div>
+          <div class="prop"><span class="k">Ref</span><span class="v mono">main</span></div>
+          <div class="prop"><span class="k">Commit</span><span class="v mono">a3f9c1e</span></div>
+          <div class="prop"><span class="k">Hash</span><span class="v"><span class="mono h">sha256 7c1e…4b09</span></span></div>
+          <div class="prop"><span class="k">Fetched</span><span class="v">from GitHub, public</span></div>
+          <div class="prop"><span class="k">Installed</span><span class="v"><span class="av">AK</span>Alex Kim <span class="faint">· 4 Nov</span></span></div>
+          <div class="prop"><span class="k">Audits</span><span class="v faint">Off · skills.sh audits</span></div>
+        </div>
+        <div class="group">
+          <h5>Used by</h5>
+          <div class="prop"><span class="k">Every profile</span><span class="v"><span class="sw"></span><span class="faint">Off</span></span></div>
+          <div class="prof"><i data-lucide="sliders-horizontal"></i>Careful<span class="x">4 projects</span></div>
+          <div class="prof"><i data-lucide="sliders-horizontal"></i>Frontend<span class="x">2 projects</span></div>
+          <div class="prof"><i data-lucide="sliders-horizontal"></i>Quick fix<span class="x">1 project</span></div>
+          <div class="prof teal" style="color:var(--teal)"><i data-lucide="plus" style="color:var(--teal)"></i>Attach to a profile</div>
+        </div>
+      </aside>
+    </div>
+  </section>
+</div>
+<script src="shell.js"></script>
+</body>
+</html>
