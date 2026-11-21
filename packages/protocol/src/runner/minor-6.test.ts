@@ -53,17 +53,19 @@ const eventOf = (frame: unknown): unknown => {
 };
 
 describe("the version", () => {
-  it("F-061, F-138: is minor 6; a minor-5 peer is inside the window and a minor-4 peer is outside it", () => {
-    expect(PROTOCOL_MINOR).toBe(6);
-    expect(minorWindow(PROTOCOL_MINOR)).toEqual({ min: 5, max: 7 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 5)).toEqual({ ok: true, minor: 5 });
+  it("F-061, F-138: a minor-6 server took minors 5 to 7, and minor 6 stays in the codecs after minor 7", () => {
+    // Milestone 8 moved the build to minor 7 (`minor-7.test.ts`); a minor-6 build's window is as it was.
+    expect(PROTOCOL_MINOR).toBe(7);
+    expect(minorWindow(6)).toEqual({ min: 5, max: 7 });
+    expect(negotiate(6, PROTOCOL_MAJOR, 5)).toEqual({ ok: true, minor: 5 });
+    expect(negotiate(6, PROTOCOL_MAJOR, 6)).toEqual({ ok: true, minor: 6 });
+    expect(negotiate(6, PROTOCOL_MAJOR, 7)).toEqual({ ok: true, minor: 6 });
+    expect(negotiate(6, PROTOCOL_MAJOR, 4)).toEqual({ ok: false, reason: "minor", window: { min: 5, max: 7 } });
+    // A minor-6 runner against a minor-5 server speaks minor 5, and against today's server minor 6.
+    expect(negotiate(5, PROTOCOL_MAJOR, 6)).toEqual({ ok: true, minor: 5 });
     expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 6)).toEqual({ ok: true, minor: 6 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 7)).toEqual({ ok: true, minor: 6 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 4)).toEqual({ ok: false, reason: "minor", window: { min: 5, max: 7 } });
-    // A minor-6 runner against a minor-5 server speaks minor 5.
-    expect(negotiate(5, PROTOCOL_MAJOR, PROTOCOL_MINOR)).toEqual({ ok: true, minor: 5 });
-    expect(upFrameCodec.minors).toEqual([0, 1, 2, 3, 4, 5, 6]);
-    expect(downFrameCodec.minors).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(upFrameCodec.minors).toContain(6);
+    expect(downFrameCodec.minors).toContain(6);
   });
 });
 
@@ -155,7 +157,8 @@ describe("minor 6's spec field (F-021, 2026-11-21)", () => {
     const down = encodeTaskSpecForMinor(off, 5);
     expect("repoSkills" in down.agent).toBe(false);
     expect(taskSpecResponseSchemaFor(5).parse(roundTrip(down))).toEqual({ ...off, agent: taskSpecFixture.agent });
-    expect(encodeTaskSpecForMinor(off, 6)).toBe(off);
+    expect(encodeTaskSpecForMinor(off, 6)).toEqual(off);
+    expect(encodeTaskSpecForMinor(off, 7)).toBe(off);
     expect("repoSkills" in encodeTaskSpecForMinor(on, 4).agent).toBe(false);
     // Off needs minor 6, with its own words; on, or missing, needs nothing new.
     expect(taskSpecMinMinor(off)).toBe(6);

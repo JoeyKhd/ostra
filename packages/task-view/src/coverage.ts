@@ -93,4 +93,15 @@ export const foldCoverage = {
   // Protocol minor 6 (F-138): the turn's subagents, drawn as its badge and window.
   "subagent.started": "the turn's subagent tree",
   "subagent.status": "the turn's subagent tree",
+  // Protocol minor 7 (milestone 8, ADR 0068): no row until ticket 17 and 21 draw them.
+  "app.process": "no row (milestone 8)",
+  "app.browser": "no row (milestone 8)",
+  "attachment.added": "no row (milestone 8)",
+  "preview.list": "no row (milestone 8)",
+  "preview.opened": "no row (milestone 8)",
+  "preview.closed": "no row (milestone 8)",
+  "preview.level_changed": "no row (milestone 8)",
+  "preview.link_created": "no row (milestone 8)",
+  "preview.link_revoked": "no row (milestone 8)",
+  "app.started_by": "no row (milestone 8)",
 } as const satisfies Record<TaskEventKind, string>;

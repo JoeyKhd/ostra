@@ -29,7 +29,8 @@ import {
 import { environmentProposalSchema, findingSchema, refineDraftSchema, reviewSummarySchema } from "../mcp/tools.ts";
 import { snapshotCredentialsSchema, taskCredentialsSchema } from "../task/credentials.ts";
 import { taskSpecSchema } from "../task/spec.ts";
-import { downFrameCodec, errorFrameSchema, helloSchema, protocolErrorCodeSchema, upFrameCodec } from "./messages.ts";
+import { errorFrameSchema, helloSchema, httpDownFrameCodec, protocolErrorCodeSchema, upFrameCodec } from "./messages.ts";
+import { previewPaths } from "./preview.ts";
 import type { DownFrame, UpFrame } from "./messages.ts";
 import { runnerLimits } from "./limits.ts";
 import { RUNNER_PATH_PREFIX } from "./version.ts";
@@ -92,6 +93,11 @@ export const runnerPaths = {
   /** `POST`: an onboarding task's environment proposal (F-113). */
   taskEnvironmentProposal: (taskId: string): string =>
     `${RUNNER_PATH_PREFIX}/tasks/${encodeURIComponent(taskId)}/environment-proposal`,
+  // Minor 7 (milestone 8, ADR 0068): the preview connection and the HTTP carrier's frames (`preview.ts`).
+  /** `GET`, upgraded to a binary WebSocket: one view's connection, `?view=&leaseEpoch=`. */
+  preview: previewPaths.connection,
+  /** `POST`: a view's frames over the HTTP carrier, as a multipart body. */
+  previewFrames: previewPaths.frames,
 } as const;
 
 /** Headers the HTTP carrier uses (ADR 0034). */
@@ -480,7 +486,7 @@ export const parseHttpDownBody = (
   value: unknown,
   minor: number,
 ): { readonly ok: true; readonly frames: readonly DownFrame[] } | { readonly ok: false; readonly detail: string } =>
-  parseFrameArray(value, (item) => downFrameCodec.parseValue(item, minor));
+  parseFrameArray(value, (item) => httpDownFrameCodec.parseValue(item, minor));
 
 export const httpDownQuerySchema = z.strictObject({
   after: z.coerce.number().pipe(z.number().int().nonnegative()),

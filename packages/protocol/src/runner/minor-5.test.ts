@@ -124,7 +124,7 @@ const decoded = (text: string): Record<string, unknown> => {
 describe("the version", () => {
   it("F-061: a minor-5 server took minors 4 to 6, and minor 5 stays in the codecs after minor 6", () => {
     // Milestone 7 moved the build to minor 6 (`minor-6.test.ts`); a minor-5 build's window is as it was.
-    expect(PROTOCOL_MINOR).toBe(6);
+    expect(PROTOCOL_MINOR).toBe(7);
     expect(minorWindow(5)).toEqual({ min: 4, max: 6 });
     expect(negotiate(5, PROTOCOL_MAJOR, 4)).toEqual({ ok: true, minor: 4 });
     expect(negotiate(5, PROTOCOL_MAJOR, 5)).toEqual({ ok: true, minor: 5 });
@@ -132,7 +132,7 @@ describe("the version", () => {
     expect(negotiate(5, PROTOCOL_MAJOR, 3)).toEqual({ ok: false, reason: "minor", window: { min: 4, max: 6 } });
     // A minor-5 runner against a minor-4 server speaks minor 4, and against today's server minor 5.
     expect(negotiate(4, PROTOCOL_MAJOR, 5)).toEqual({ ok: true, minor: 4 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 5)).toEqual({ ok: true, minor: 5 });
+    expect(negotiate(6, PROTOCOL_MAJOR, 5)).toEqual({ ok: true, minor: 5 });
     expect(upFrameCodec.minors).toContain(5);
     expect(downFrameCodec.minors).toContain(5);
   });
@@ -291,7 +291,8 @@ describe("the task spec at minor 5", () => {
     expect(encodeTaskSpecForMinor(taskSpecMinor3Fixture, 4)).toEqual(taskSpecMinor3Fixture);
     // Minor 5 reads minor 6's spec but `agent.repoSkills`, which the fixture doesn't set.
     expect(encodeTaskSpecForMinor(taskSpecReviewFixture, 5)).toEqual(taskSpecReviewFixture);
-    expect(encodeTaskSpecForMinor(taskSpecReviewFixture, 6)).toBe(taskSpecReviewFixture);
+    expect(encodeTaskSpecForMinor(taskSpecReviewFixture, 6)).toEqual(taskSpecReviewFixture);
+    expect(encodeTaskSpecForMinor(taskSpecReviewFixture, 7)).toBe(taskSpecReviewFixture);
   });
 
   it("F-099: isTaskOfferable refuses each new kind and an automatic round to a minor-4 runner, and allows them at minor 5", () => {

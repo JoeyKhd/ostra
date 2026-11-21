@@ -192,6 +192,100 @@ export const runnerLimits = {
   subagentPromptMaxChars: 32_768,
   /** F-138 (minor 6): a subagent's description, OpenCode's 3-to-5-word label, in characters. */
   subagentDescriptionMaxChars: 500,
+
+  // ---- milestone 8, protocol minor 7 (working values, spec section 5.1, ADR 0068) ----
+  /** F-140: the most app processes one environment declares. */
+  appProcessesMax: 10,
+  /** F-140: the lowest port an app process, an announced preview or a view may use. Below it is refused. */
+  appPortMin: 1024,
+  /** F-140: the longest a process's ready check is tried, in seconds. */
+  appReadyTimeoutSeconds: 120,
+  /** F-140: how often a ready check is tried, in ms. */
+  appReadyIntervalMs: 2 * SECOND,
+  /** F-140: the end of a process's log that `app.process` names when it fails, as a blob. */
+  appLogTailMaxBytes: 64 * KiB,
+  /** F-121: the most routes the after-turn screenshots take. */
+  screenshotRoutesMax: 5,
+  /** F-121: the most widths the after-turn screenshots take. */
+  screenshotWidthsMax: 2,
+  /** F-121: a screenshot's PNG, in bytes. */
+  screenshotMaxBytes: 8 * MiB,
+  /** F-121: a screenshot's height, in pixels, full page included. */
+  screenshotMaxHeightPx: 10_000,
+  /** F-121: a screenshot's width when the agent gives a size, in pixels. */
+  screenshotMaxWidthPx: 3840,
+  /** F-121: the longest a page may take to go quiet before a screenshot, in ms. */
+  screenshotSettleMaxMs: 15 * SECOND,
+  /** F-121: a recording's length, in seconds. */
+  recordingMaxSeconds: 30,
+  /** F-121: a recording's frames a second. */
+  recordingFramesPerSecond: 10,
+  /** F-121: a recording's frame reel, in bytes. */
+  recordingMaxBytes: 32 * MiB,
+  /** F-121: the most steps one recording runs. */
+  recordingStepsMax: 20,
+  /** F-121: the most attachments one turn adds; past it the tools say so. */
+  attachmentsPerTurnMax: 20,
+  /** F-121: a caption, in UTF-8 bytes. */
+  captionMaxBytes: 1 * KiB,
+  /** F-121: the most attachments one finding names. */
+  findingAttachmentsMax: 5,
+  /** F-141: the most ports the agent announces in one task. */
+  announcedPreviewsMax: 10,
+  /** F-141: the most pages one box's browser holds open: the shared ones and the tools'. */
+  boxPagesMax: 4,
+  /** F-141: the browser view's frames a second on the WebSocket. */
+  browserViewFramesPerSecond: 15,
+  /** F-141: the browser view's largest width, in pixels. */
+  browserViewMaxWidth: 1440,
+  /** F-141: the browser view's largest height, in pixels. */
+  browserViewMaxHeight: 900,
+  /** F-141: the browser view's JPEG quality. */
+  browserViewQuality: 60,
+  /** F-141, Q306: the browser view's frames a second on the HTTP carrier. */
+  httpCarrierFramesPerSecond: 2,
+  /** F-141: the most frames the screencast has in flight before core acks one. */
+  browserViewFramesInFlight: 2,
+  /** F-141: one frame's JPEG on the preview connection or the HTTP carrier, in bytes. */
+  previewFrameMaxBytes: 2 * MiB,
+  /** F-141: one JSON part of a preview message (a frame's header, a control), in UTF-8 bytes. */
+  previewJsonMaxBytes: 64 * KiB,
+  /** F-141: the most input events one batch carries. */
+  previewInputEventsMax: 100,
+  /** F-141: one `text` input event, in characters. */
+  previewInputTextMaxChars: 4096,
+  /** F-141: a path a preview opens or a screenshot takes, in characters. */
+  appPathMaxChars: 2048,
 } as const;
 
 export type RunnerLimits = typeof runnerLimits;
+
+/**
+ * The ports in a box that are never a preview (ADR 0068, "What a preview may reach"): the
+ * sidecar's key proxy, git proxy, MCP proxy and control API, the agent's own loopback port and the
+ * box's browser's. The sidecar and the runner pick most of them when the box starts, so they are
+ * named here and given numbers at run time (`ReservedPorts`).
+ */
+export const reservedPortNames = ["key-proxy", "git-proxy", "mcp-proxy", "sidecar-control", "agent-loopback", "browser"] as const;
+export type ReservedPortName = (typeof reservedPortNames)[number];
+
+/** The reserved ports of one box, by name: `null` for one this box doesn't run. */
+export type ReservedPorts = Readonly<Record<ReservedPortName, number | null>>;
+
+/** Why a port may not be a preview or a tool's target: below `appPortMin`, or one of the box's reserved ports. */
+export type PortRefusal =
+  | { readonly reason: "below-min" }
+  | { readonly reason: "reserved"; readonly name: ReservedPortName };
+
+/** Whether a port may be a preview or an app tool's target (ADR 0068). `null`: it may. */
+export const portRefusal = (port: number, reserved: ReservedPorts): PortRefusal | null => {
+  if (!Number.isInteger(port) || port < runnerLimits.appPortMin || port > 65_535) {
+    return { reason: "below-min" };
+  }
+  for (const name of reservedPortNames) {
+    if (reserved[name] === port) {
+      return { reason: "reserved", name };
+    }
+  }
+  return null;
+};

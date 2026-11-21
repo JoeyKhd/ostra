@@ -332,3 +332,49 @@ export type TaskReviewerId = z.infer<typeof taskReviewerIdSchema>;
 /** The ID of an environment an onboarding task proposed (F-113, ADR 0038). */
 export const environmentProposalIdSchema = idBase.brand<"EnvironmentProposalId">();
 export type EnvironmentProposalId = z.infer<typeof environmentProposalIdSchema>;
+
+// ---------- milestone 8 (protocol minor 7, ADR 0068) ----------
+
+/** An app process of an environment (F-140): an `AppProcess` row. */
+export const appProcessIdSchema = idBase.brand<"AppProcessId">();
+export type AppProcessId = z.infer<typeof appProcessIdSchema>;
+
+/**
+ * A screenshot's or a recording's ID (F-121), which the runner picks and `attachment.added`
+ * carries: unique within its task, so a resent event stores it once.
+ */
+export const attachmentIdSchema = idBase.max(64).brand<"AttachmentId">();
+export type AttachmentId = z.infer<typeof attachmentIdSchema>;
+
+/** A member's screenshot request from the pane (`screenshot.take`), echoed by its `attachment.added`. */
+export const screenshotRequestIdSchema = idBase.max(64).brand<"ScreenshotRequestId">();
+export type ScreenshotRequestId = z.infer<typeof screenshotRequestIdSchema>;
+
+/** One opening of a preview (F-141): a `PreviewView` row, in the stream, tunnel, native or CLI mode. */
+export const previewViewIdSchema = idBase.max(64).brand<"PreviewViewId">();
+export type PreviewViewId = z.infer<typeof previewViewIdSchema>;
+
+/** An announced preview of a task (F-140): a `TaskPreview` row. */
+export const taskPreviewIdSchema = idBase.brand<"TaskPreviewId">();
+export type TaskPreviewId = z.infer<typeof taskPreviewIdSchema>;
+
+/** A preview's access level row (F-142): a `PreviewAccess` row. */
+export const previewAccessIdSchema = idBase.brand<"PreviewAccessId">();
+export type PreviewAccessId = z.infer<typeof previewAccessIdSchema>;
+
+/** A link to a preview (F-142): a `PreviewLink` row. Not the link's token, which is a secret. */
+export const previewLinkIdSchema = idBase.brand<"PreviewLinkId">();
+export type PreviewLinkId = z.infer<typeof previewLinkIdSchema>;
+
+/** A one-time code or a CLI ticket's row (F-143, F-144): a `PreviewCode` row. Not the code itself. */
+export const previewCodeIdSchema = idBase.brand<"PreviewCodeId">();
+export type PreviewCodeId = z.infer<typeof previewCodeIdSchema>;
+
+/**
+ * A task's preview ID (F-144, ADR 0068): 128 random bits in lower-case base32, 26 characters,
+ * the second half of a preview host's one label (`<port>-<previewId>.<domain>`). It belongs to the
+ * task, not the box, so the host survives a reopen. It isn't a secret: a host never decides
+ * access, a row and a cookie do.
+ */
+export const previewIdSchema = z.string().regex(/^[a-z2-7]{26}$/, "26 lower-case base32 characters").brand<"PreviewId">();
+export type PreviewId = z.infer<typeof previewIdSchema>;

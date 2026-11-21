@@ -17,4 +17,10 @@ export const rejectAllHandlers: CommandHandlers = {
   "snapshot-build": reject,
   "set-effort": reject,
   resume: reject,
+  "app.start": reject,
+  "app.stop": reject,
+  "screenshot.take": reject,
+  "preview.open": reject,
+  "preview.close": reject,
+  "preview.input": reject,
 };

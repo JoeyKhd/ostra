@@ -187,6 +187,11 @@ export type ConnectionOptions = {
   readonly transport?: Transport;
   /** The proxy settings (the environment's by default) and, for tests, the CAs to trust. */
   readonly network?: NetworkOptions;
+  /**
+   * For tests: the protocol minor this peer speaks, by default this build's (`PROTOCOL_MINOR`), so a
+   * test drives an older runner against an older server inside the window (ADR 0034).
+   */
+  readonly protocolMinor?: number;
 };
 
 export type SessionRef = { readonly taskId: TaskId; readonly sessionId: SessionId; readonly leaseEpoch: LeaseEpoch };
@@ -363,7 +368,8 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
   let link: Link | undefined;
   let ready = false;
   let fallback: FallbackReason | null = null;
-  let minor = PROTOCOL_MINOR;
+  const ownMinor = options.protocolMinor ?? PROTOCOL_MINOR;
+  let minor = ownMinor;
   let serverOffset = 0;
   let windowFrames: number = runnerLimits.creditFrames;
   let windowBytes: number = runnerLimits.creditBytes;
@@ -694,6 +700,18 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
         return handlers["set-effort"](command);
       case "resume":
         return handlers.resume(command);
+      case "app.start":
+        return handlers["app.start"](command);
+      case "app.stop":
+        return handlers["app.stop"](command);
+      case "screenshot.take":
+        return handlers["screenshot.take"](command);
+      case "preview.open":
+        return handlers["preview.open"](command);
+      case "preview.close":
+        return handlers["preview.close"](command);
+      case "preview.input":
+        return handlers["preview.input"](command);
       default:
         return command satisfies never;
     }
@@ -777,7 +795,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
   const helloFrame = (carrier: Carrier): Hello => ({
     type: "hello",
     protocolMajor: PROTOCOL_MAJOR,
-    protocolMinor: PROTOCOL_MINOR,
+    protocolMinor: ownMinor,
     runnerVersion: RUNNER_VERSION,
     peer: options.peer,
     carrier,
@@ -906,7 +924,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
         openedAt = now();
         lastFrame = openedAt;
         lastContact = lastFrame;
-        ws.send(encodeUpFrame(helloFrame("websocket"), PROTOCOL_MINOR));
+        ws.send(encodeUpFrame(helloFrame("websocket"), ownMinor));
         helloSent = true;
         // Upgraded, but no `welcome` within the handshake timeout: something holds the frames.
         welcomeTimer = setTimeout(() => {
@@ -1063,7 +1081,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
           headers: {
             authorization: `Bearer ${token.token}`,
             "user-agent": userAgent(),
-            [runnerHeaders.minor]: String(conn.welcomed ? minor : PROTOCOL_MINOR),
+            [runnerHeaders.minor]: String(conn.welcomed ? minor : ownMinor),
             ...(conn.welcomed ? { [runnerHeaders.connectionEpoch]: String(conn.epoch) } : {}),
           },
           ...(body === undefined ? {} : { body }),
@@ -1079,7 +1097,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
     /** The answer's frames, each handled in turn; `false` once the connection ended. */
     const take = async (answer: HttpAnswer, what: string): Promise<boolean> => {
       lastContact = now();
-      const read = readAnswer(answer, conn.welcomed ? minor : PROTOCOL_MINOR);
+      const read = readAnswer(answer, conn.welcomed ? minor : ownMinor);
       if (answer.status === 204 && read.kind === "empty") {
         return true;
       }
@@ -1105,7 +1123,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
     try {
       // ---- hello ----
       link = httpLink;
-      const hello = await call("POST", runnerPaths.httpHello, encodeUpFrame(helloFrame("http"), PROTOCOL_MINOR), timers.handshakeTimeoutMs);
+      const hello = await call("POST", runnerPaths.httpHello, encodeUpFrame(helloFrame("http"), ownMinor), timers.handshakeTimeoutMs);
       if (isEnd(hello)) {
         // No answer: the server may still take this hello, after the next connection's.
         unansweredHellos.push(now());
@@ -1113,7 +1131,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
         return conn.ended ?? hello;
       }
       lastContact = now();
-      const helloRead = readAnswer(hello, PROTOCOL_MINOR);
+      const helloRead = readAnswer(hello, ownMinor);
       if (helloRead.kind === "frames") {
         const refusal = helloRead.frames.find((frame) => frame.type === "error");
         if (hello.status !== 200 && refusal?.type === "error") {

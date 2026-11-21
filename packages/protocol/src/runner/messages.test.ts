@@ -6,9 +6,11 @@ import {
   closeCodes,
   encodeDownFrame,
   encodeUpFrame,
+  httpDownFrameCodec,
   parseDownFrame,
   parseUpFrame,
 } from "./messages.ts";
+import { PROTOCOL_MINOR } from "./version.ts";
 import type { DownFrame, DownFrameType, UpFrame, UpFrameType } from "./messages.ts";
 import { runnerLimits } from "./limits.ts";
 
@@ -164,7 +166,14 @@ describe("down frames", () => {
   it.each(allDown.map((frame) => [frame.type === "command" ? `command ${frame.kind}` : frame.type, frame] as const))(
     "%s round-trips",
     (_name, frame) => {
+      if (frame.type === "command" && frame.kind === "preview.input") {
+        // The HTTP carrier's command only (Q306): the WebSocket refuses it.
+        expect(httpDownFrameCodec.parse(encodeDownFrame(frame), PROTOCOL_MINOR)).toEqual({ ok: true, frame });
+        expect(parseDownFrame(encodeDownFrame(frame)).ok).toBe(false);
+        return;
+      }
       expect(parseDownFrame(encodeDownFrame(frame))).toEqual({ ok: true, frame });
+      expect(httpDownFrameCodec.parse(encodeDownFrame(frame), PROTOCOL_MINOR)).toEqual({ ok: true, frame });
     },
   );
 
@@ -172,6 +181,7 @@ describe("down frames", () => {
     "%s refuses an unknown field",
     (_name, frame) => {
       expect(parseDownFrame(JSON.stringify({ ...frame, surprise: true })).ok).toBe(false);
+      expect(httpDownFrameCodec.parse(JSON.stringify({ ...frame, surprise: true }), PROTOCOL_MINOR).ok).toBe(false);
     },
   );
 

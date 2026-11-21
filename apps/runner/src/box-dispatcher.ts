@@ -454,6 +454,13 @@ export const createBoxDispatcher = (options: BoxDispatcherOptions): BoxDispatche
     "question-answer": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
     "plan-answer": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
     "set-effort": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
+    // Protocol minor 7 (milestone 8): a box's app and views are its sidecar's, as above.
+    "app.start": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
+    "app.stop": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
+    "screenshot.take": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
+    "preview.open": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
+    "preview.close": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
+    "preview.input": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
     // Ticket 14 (F-051): accepted at once, built in turn behind the others, its result a runner event.
     "snapshot-build": (command) => {
       const snapshots = options.snapshots;

@@ -3045,6 +3045,15 @@ enum CommandKind {
   set_effort
   /// Protocol minor 4: take tasks again after a drain (milestone 5).
   resume
+  /// Protocol minor 7: start or stop the app's processes (milestone 8, F-140).
+  app_start
+  app_stop
+  /// Protocol minor 7: a member's screenshot from the preview pane (milestone 8, F-121).
+  screenshot_take
+  /// Protocol minor 7: open and close a view of a preview, and its input on the HTTP carrier (milestone 8, F-141).
+  preview_open
+  preview_close
+  preview_input
 }
 
 /// A reasoning level (F-137, ADR 0066): `@ostra/protocol`'s `effortLevelSchema`. `default`

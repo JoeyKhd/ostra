@@ -619,6 +619,19 @@ const applyEffects = async (
       // task page's tree; the turn's wait for them is the runner's (ADR 0067), so nothing moves here.
       case "subagent.started":
       case "subagent.status":
+      // Protocol minor 7 (milestone 8, ADR 0068): stored for the task page. Each one's own effect
+      // (an attachment's row, a process's state, the previews' list, a view's presence) is the
+      // milestone 8 core tickets' (15, 19), which apply it from here.
+      case "app.process":
+      case "app.browser":
+      case "attachment.added":
+      case "preview.list":
+      case "preview.opened":
+      case "preview.closed":
+      case "preview.level_changed":
+      case "preview.link_created":
+      case "preview.link_revoked":
+      case "app.started_by":
         // Stored for the task page; nothing else moves.
         break;
       default:

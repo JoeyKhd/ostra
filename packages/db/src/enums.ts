@@ -78,6 +78,12 @@ export const commandKindToDb = {
   "snapshot-build": "snapshot_build",
   "set-effort": "set_effort",
   resume: "resume",
+  "app.start": "app_start",
+  "app.stop": "app_stop",
+  "screenshot.take": "screenshot_take",
+  "preview.open": "preview_open",
+  "preview.close": "preview_close",
+  "preview.input": "preview_input",
 } as const satisfies Record<CommandKind, DbCommandKind>;
 export const commandKindFromDb = {
   dispatch: "dispatch",
@@ -93,6 +99,12 @@ export const commandKindFromDb = {
   snapshot_build: "snapshot-build",
   set_effort: "set-effort",
   resume: "resume",
+  app_start: "app.start",
+  app_stop: "app.stop",
+  screenshot_take: "screenshot.take",
+  preview_open: "preview.open",
+  preview_close: "preview.close",
+  preview_input: "preview.input",
 } as const satisfies Record<DbCommandKind, CommandKind>;
 
 export const commandResultToDb = {

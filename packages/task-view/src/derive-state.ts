@@ -273,6 +273,16 @@ export const deriveTaskState = (
       case "environment.proposed":
       case "subagent.started":
       case "subagent.status":
+      case "app.process":
+      case "app.browser":
+      case "attachment.added":
+      case "preview.list":
+      case "preview.opened":
+      case "preview.closed":
+      case "preview.level_changed":
+      case "preview.link_created":
+      case "preview.link_revoked":
+      case "app.started_by":
       case "user.message":
       case "tool.progress":
       case "plan.updated":

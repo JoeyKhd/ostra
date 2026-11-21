@@ -1,0 +1,17 @@
+{
+  "build": "a synthetic minor two ahead of minor 7",
+  "minor": 9,
+  "hello": {
+    "type": "hello",
+    "protocolMajor": 1,
+    "protocolMinor": 9,
+    "runnerVersion": "0.10.0",
+    "peer": {
+      "kind": "runner",
+      "runnerId": "0196f1a0-0000-7000-8000-000000000009"
+    },
+    "carrier": "websocket",
+    "lastCommandSeq": 0,
+    "sessions": []
+  }
+}

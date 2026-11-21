@@ -46,9 +46,16 @@ export const PROTOCOL_MAJOR = 1;
  * inside the window: a minor-6 runner sends it neither event and no subagent field, so its
  * subagents' calls show flat, and a minor-5 runner sends none; it's never sent `agent.repoSkills`,
  * nor offered a task whose project keeps the repos' own skills off (`isTaskOfferable`). A minor-4
- * peer is outside the window.
+ * peer is outside the window. Milestone 8 ships minor 7 (ADR 0068): the environment's app
+ * processes, the after-turn screenshots, a service's preview and the `app` tools in the spec; the
+ * dispatch's purpose, `app.start`, `app.stop`, `screenshot.take` and the `preview.*` commands;
+ * `app.process`, `app.browser`, `attachment.added` and `preview.list`; the preview connection
+ * (`preview.ts`); and what a runner can preview in `hello` and `status`. A minor-6 peer still works
+ * inside the window: it's never sent any of them, never offered a task with app processes or the
+ * app tools (`isTaskOfferable`), and no view of its tasks opens (`isPreviewable`), so the pane says
+ * the runner needs upgrading. A minor-5 peer is outside the window.
  */
-export const PROTOCOL_MINOR = 6;
+export const PROTOCOL_MINOR = 7;
 
 /** The URL prefix of every runner endpoint. */
 export const RUNNER_PATH_PREFIX = `/runner/v${String(PROTOCOL_MAJOR)}`;

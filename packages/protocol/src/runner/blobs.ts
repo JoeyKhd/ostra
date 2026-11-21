@@ -27,10 +27,37 @@ export type BlobRef = z.infer<typeof blobRefSchema>;
 
 /**
  * What a runner uploads. Ticket files go the other way: core stores them, the runner downloads
- * them. Minor 2: a check's full output (F-054), sent only to a minor-2 server.
+ * them. Minor 2: a check's full output (F-054), sent only to a minor-2 server. Minor 7 (ADR 0068):
+ * a screenshot, a recording's frame reel and an app process's log tail, sent only to a minor-7
+ * server. None of them is ever logged.
  */
-export const blobUploadPurposeSchema = z.enum(["session-archive", "check-output"]);
+export const blobUploadPurposeSchema = z.enum(["session-archive", "check-output", "app-screenshot", "app-recording", "app-log"]);
 export type BlobUploadPurpose = z.infer<typeof blobUploadPurposeSchema>;
+
+/** The lowest minor a server reads an upload's purpose at. */
+export const blobUploadPurposeMinMinor = (purpose: BlobUploadPurpose): number => {
+  switch (purpose) {
+    case "session-archive":
+      return 1;
+    case "check-output":
+      return 2;
+    case "app-screenshot":
+    case "app-recording":
+    case "app-log":
+      return 7;
+    default:
+      return purpose satisfies never;
+  }
+};
+
+/** A screenshot's content type (minor 7, F-121). */
+export const APP_SCREENSHOT_CONTENT_TYPE = "image/png";
+
+/** A recording's content type: a frame reel (minor 7, F-121, `task/frame-reel.ts`). */
+export const APP_RECORDING_CONTENT_TYPE = "application/vnd.ostra.frame-reel";
+
+/** An app process's log tail's content type (minor 7, F-140). Never logged. */
+export const APP_LOG_CONTENT_TYPE = "text/plain";
 
 /** A content type as a `Content-Type` header carries it, without parameters. */
 export const contentTypeSchema = z

@@ -193,6 +193,12 @@ const handlersRecording = (steers: CommandOf<"steer">[]): CommandHandlers => ({
   "snapshot-build": () => Promise.resolve({ result: "rejected", reason: "not-supported" }),
   "set-effort": done,
   resume: done,
+  "app.start": done,
+  "app.stop": done,
+  "screenshot.take": done,
+  "preview.open": done,
+  "preview.close": done,
+  "preview.input": done,
 });
 
 const startRunner = async (input: {

@@ -1141,6 +1141,19 @@ export const foldTaskEvents = (
       case "environment.proposed":
         // Protocol minor 5. No row until the milestone 6 task page draws them (tickets 30 to 36).
         break;
+      case "app.process":
+      case "app.browser":
+      case "attachment.added":
+      case "preview.list":
+      case "preview.opened":
+      case "preview.closed":
+      case "preview.level_changed":
+      case "preview.link_created":
+      case "preview.link_revoked":
+      case "app.started_by":
+        // Protocol minor 7 (milestone 8, ADR 0068). No row until the milestone 8 task page draws
+        // them: the pictures in the thread (ticket 17) and the preview pane (ticket 21).
+        break;
       case "subagent.started": {
         // F-138: placed in the tree of its parent's turn, or of the turn of the call that started it.
         const parent = event.parentSubagentId === undefined ? undefined : subagents.get(event.parentSubagentId);

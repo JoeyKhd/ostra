@@ -34,6 +34,7 @@ import { ticketFileNameSchema, turnModeSchema } from "../events/agent-events.ts"
 import { blobRefSchema, contentTypeSchema } from "../runner/blobs.ts";
 import { utf8ByteLength } from "../json.ts";
 import { runnerLimits } from "../runner/limits.ts";
+import { appLabelSchema, appPathSchema, appPortSchema, appProcessNameSchema, screenshotWidthSchema } from "./app.ts";
 
 // The task spec: what a dispatch hands the runner, fetched from
 // `GET /runner/v1/tasks/:taskId/spec` once the runner has accepted the offer (ADR 0034). It holds
@@ -253,7 +254,8 @@ export const taskSpecFileSchema = z.strictObject({
   content: z.string().max(1_048_576),
 });
 
-export const taskSpecEnvironmentSchema = z.strictObject({
+/** The environment section at minors 0 to 6. */
+export const taskSpecEnvironmentSchemaV6 = z.strictObject({
   /** The project's setup script, run with `bash` in the workspace, or `null` for none (F-050). */
   setupScript: z.string().max(262_144).nullable(),
   /** The `docker` executor's base image; the `host` executor ignores it (ADR 0038). */
@@ -268,6 +270,131 @@ export const taskSpecEnvironmentSchema = z.strictObject({
       envFile: repoRelativePathSchema,
     }),
   ),
+});
+
+// ---------- minor 7's app processes (milestone 8, F-140, ADR 0068) ----------
+
+/**
+ * How the runner knows a process is ready (ADR 0068): an HTTP path that answers below 500, a
+ * command that exits 0 (run in the process's folder, never logged), or the port accepting a
+ * connection. Tried every `appReadyIntervalMs` for at most `appReadyTimeoutSeconds`.
+ */
+export const appReadyCheckSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("http"), path: appPathSchema }),
+  z.strictObject({ kind: z.literal("command"), command: z.string().min(1).max(2048) }),
+  z.strictObject({ kind: z.literal("port") }),
+]);
+export type AppReadyCheck = z.infer<typeof appReadyCheckSchema>;
+
+/**
+ * An app process (F-140, ADR 0068): the project's own program, run from one of its repos in the
+ * box. The runner starts it with the repo's variables and secrets and the others' in-box
+ * addresses, keeps its output in its log, and stops it with the box. Its command is run through
+ * the init's argument array as `bash -lc <command>`, never a shell string ostra builds, and is
+ * never logged.
+ */
+export const taskSpecAppProcessSchema = z
+  .strictObject({
+    name: appProcessNameSchema,
+    repoId: repoIdSchema,
+    /** Its folder in the repo's checkout, `.` for the root. */
+    folder: repoRelativePathSchema,
+    /** The command that starts it and keeps running. Never logged. */
+    command: z.string().min(1).max(8192),
+    port: appPortSchema,
+    ready: appReadyCheckSchema,
+    label: appLabelSchema,
+    /** The primary preview: the one the pane and the after-turn screenshots open first. At most one. */
+    primary: z.boolean(),
+    /**
+     * The native preview rewrites `Host` and `Origin` to `localhost:<port>` (ADR 0068, Q304). Off
+     * for an app that builds URLs from its host: it gets the real host and `X-Forwarded-Host`.
+     */
+    hostRewrite: z.boolean(),
+  })
+  .describe("An app process. Its command is never logged.");
+export type TaskSpecAppProcess = z.infer<typeof taskSpecAppProcessSchema>;
+
+/** A rule an environment's app processes break: two primaries, a name twice, a port twice. */
+export type AppProcessRuleIssue =
+  | { readonly rule: "one-primary" }
+  | { readonly rule: "unique-name"; readonly name: string }
+  | { readonly rule: "unique-port"; readonly port: number };
+
+/**
+ * The rules over an environment's list of app processes (ADR 0068): at most one primary, and names
+ * and ports unique. A port below `appPortMin` is the port's own schema's refusal.
+ */
+export const appProcessRuleIssues = (
+  processes: readonly { readonly name: string; readonly port: number; readonly primary: boolean }[],
+): readonly AppProcessRuleIssue[] => {
+  const issues: AppProcessRuleIssue[] = [];
+  if (processes.filter((process) => process.primary).length > 1) {
+    issues.push({ rule: "one-primary" });
+  }
+  const names = new Set<string>();
+  const ports = new Set<number>();
+  for (const process of processes) {
+    if (names.has(process.name)) {
+      issues.push({ rule: "unique-name", name: process.name });
+    }
+    if (ports.has(process.port)) {
+      issues.push({ rule: "unique-port", port: process.port });
+    }
+    names.add(process.name);
+    ports.add(process.port);
+  }
+  return issues;
+};
+
+/** The words of a rule's refusal, for a form's error and a schema's issue. Names and ports only. */
+export const appProcessRuleWords = (issue: AppProcessRuleIssue): string => {
+  switch (issue.rule) {
+    case "one-primary":
+      return "At most one app process is the primary preview.";
+    case "unique-name":
+      return `Two app processes are named ${issue.name}: each name is used once.`;
+    case "unique-port":
+      return `Two app processes listen on port ${String(issue.port)}: each port is used once.`;
+    default:
+      return issue satisfies never;
+  }
+};
+
+/** An environment's app processes, at most `appProcessesMax`, with the rules as refinements. */
+export const appProcessesSchema = z
+  .array(taskSpecAppProcessSchema)
+  .max(runnerLimits.appProcessesMax)
+  .superRefine((processes, context) => {
+    for (const issue of appProcessRuleIssues(processes)) {
+      context.addIssue({ code: "custom", message: appProcessRuleWords(issue) });
+    }
+  });
+
+/** Whether each item of a list is there once. */
+const eachOnce = (items: readonly unknown[]): boolean => new Set(items).size === items.length;
+
+/**
+ * The environment's "Screenshots after each turn" (F-121): on by default once it declares a
+ * primary, each route (at most `screenshotRoutesMax`) at each width (at most two).
+ */
+export const taskSpecScreenshotsSchema = z.strictObject({
+  afterTurn: z.boolean(),
+  routes: z.array(appPathSchema).min(1).max(runnerLimits.screenshotRoutesMax).refine(eachOnce, "each route once"),
+  widths: z.array(screenshotWidthSchema).min(1).max(runnerLimits.screenshotWidthsMax).refine(eachOnce, "each width once"),
+});
+export type TaskSpecScreenshots = z.infer<typeof taskSpecScreenshotsSchema>;
+
+/**
+ * The environment section at the current minor (7): minor 0's, with the app's processes and the
+ * after-turn screenshots. A minor-6 runner is never sent either (`encodeTaskSpecForMinor`), and is
+ * never offered a task that has app processes (`isTaskOfferable`).
+ */
+export const taskSpecEnvironmentSchema = taskSpecEnvironmentSchemaV6.extend({
+  /** Minor 7: the app's processes, in the order the runner starts them. Missing means none. */
+  appProcesses: appProcessesSchema.optional(),
+  /** Minor 7: the after-turn screenshots. Missing means off. */
+  screenshots: taskSpecScreenshotsSchema.optional(),
 });
 export type TaskSpecEnvironment = z.infer<typeof taskSpecEnvironmentSchema>;
 
@@ -399,7 +526,7 @@ const taskSpecShapeV0 = {
   leaseEpoch: leaseEpochSchema,
   repos: z.array(taskSpecRepoSchemaV0).min(1),
   agent: taskSpecAgentSchemaV1,
-  environment: taskSpecEnvironmentSchema,
+  environment: taskSpecEnvironmentSchemaV6,
   /** The App's bot identity, which authors every commit (F-078, ADR 0040). */
   gitIdentity: gitPersonSchema,
   /** Who gets a `Co-authored-by` trailer: the member who prompted, in milestone 1. */
@@ -445,8 +572,8 @@ export const taskSpecCheckSchema = z.strictObject({
 });
 export type TaskSpecCheck = z.infer<typeof taskSpecCheckSchema>;
 
-/** A service the `docker` executor starts on the box's network before the agent (F-094). */
-export const taskSpecServiceSchema = z.strictObject({
+/** A service the `docker` executor starts on the box's network before the agent (F-094), at minors 2 to 6. */
+export const taskSpecServiceSchemaV6 = z.strictObject({
   /** Also its host name on the box's network. */
   name: serviceNameSchema,
   image: z.string().min(1).max(512),
@@ -455,6 +582,16 @@ export const taskSpecServiceSchema = z.strictObject({
   variables: z.array(z.strictObject({ name: envNameSchema, value: z.string().max(65_536) })).max(200),
   /** A command run in the service's container until it exits 0, or `null` to wait for the port. */
   healthCheck: z.string().min(1).max(2048).nullable(),
+});
+
+/** A service with a web UI, such as Mailpit's or Adminer's, shown as a preview under this label (F-140). */
+export const servicePreviewSchema = z.strictObject({ label: appLabelSchema });
+export type ServicePreview = z.infer<typeof servicePreviewSchema>;
+
+/** A service at the current minor (7): minor 2's, with its preview. A minor-6 runner is never sent it. */
+export const taskSpecServiceSchema = taskSpecServiceSchemaV6.extend({
+  /** Minor 7: the service as a preview, or `null` (or missing) for none. */
+  preview: servicePreviewSchema.nullable().optional(),
 });
 export type TaskSpecService = z.infer<typeof taskSpecServiceSchema>;
 
@@ -492,7 +629,7 @@ const taskSpecShapeV2 = {
      */
     checksTotalMinutes: z.number().int().positive().max(24 * 60).optional(),
     /** Minor 2: the environment's services; a `host` runner is never offered a task that has any. */
-    services: z.array(taskSpecServiceSchema).max(runnerLimits.servicesMax).optional(),
+    services: z.array(taskSpecServiceSchemaV6).max(runnerLimits.servicesMax).optional(),
     /** Minor 2: what the box starts from. */
     snapshot: taskSpecSnapshotSchema.optional(),
 };
@@ -566,12 +703,16 @@ export const taskSpecReviewSchema = z.strictObject({
 });
 export type TaskSpecReview = z.infer<typeof taskSpecReviewSchema>;
 
+/** ostra's MCP tool sets at minors 5 and 6. */
+export const ostraToolSetSchemaV6 = z.enum(["pr-text", "memory", "draft", "review", "environment"]);
+
 /**
- * ostra's MCP tools the sidecar serves one task (ADR 0028, ADR 0038, ADR 0044): the PR's text
- * (`set_pull_request_text`), the memory tools, a refine draft (`submit_draft`), a review
- * (`submit_review`) and an environment proposal (`propose_environment`).
+ * ostra's MCP tools the sidecar serves one task (ADR 0028, ADR 0038, ADR 0044, ADR 0068): the PR's
+ * text (`set_pull_request_text`), the memory tools, a refine draft (`submit_draft`), a review
+ * (`submit_review`), an environment proposal (`propose_environment`) and, from minor 7, the app
+ * tools (`start_app`, `show_preview`, `take_screenshot` and `record_app`).
  */
-export const ostraToolSetSchema = z.enum(["pr-text", "memory", "draft", "review", "environment"]);
+export const ostraToolSetSchema = z.enum([...ostraToolSetSchemaV6.options, "app"]);
 export type OstraToolSet = z.infer<typeof ostraToolSetSchema>;
 
 /** The tool sets a spec without `tools` gets: milestone 4's. */
@@ -594,8 +735,8 @@ const taskSpecShapeV5 = {
   review: taskSpecReviewSchema.nullable().optional(),
   /** Minor 5: which of ostra's MCP tools the sidecar serves. Missing means `defaultOstraToolSets`. */
   tools: z
-    .array(ostraToolSetSchema)
-    .max(ostraToolSetSchema.options.length)
+    .array(ostraToolSetSchemaV6)
+    .max(ostraToolSetSchemaV6.options.length)
     .refine((tools) => new Set(tools).size === tools.length, "each tool set once")
     .optional(),
   /**
@@ -613,17 +754,36 @@ export const taskSpecSchemaV5 = z
   .strictObject(taskSpecShapeV5)
   .describe("The task spec a dispatch hands a minor-5 runner. It holds no secret.");
 
+const taskSpecShapeV6 = {
+  ...taskSpecShapeV5,
+  /** Minor 6: the agent section with `repoSkills`. */
+  agent: taskSpecAgentSchema,
+};
+
+/** Minor 6's task spec: the spec endpoint's answer to a minor-6 runner. */
+export const taskSpecSchemaV6 = z
+  .strictObject(taskSpecShapeV6)
+  .describe("The task spec a dispatch hands a minor-6 runner. It holds no secret.");
+
 /**
- * The task spec at the current minor (6). Every field added since minor 0 is optional, so a
- * minor-5, minor-4, minor-3, minor-2, minor-1 or minor-0 spec parses. A minor-5 runner is sent
- * minor 5's shape and a minor-4 runner minor 3's (`encodeTaskSpecForMinor`), and core never offers
- * a runner a task that needs a later minor than its own (`isTaskOfferable`).
+ * The task spec at the current minor (7). Every field added since minor 0 is optional, so a spec
+ * of any earlier minor parses. A minor-6 runner is sent minor 6's shape, a minor-5 runner minor
+ * 5's and a minor-4 runner minor 3's (`encodeTaskSpecForMinor`), and core never offers a runner a
+ * task that needs a later minor than its own (`isTaskOfferable`).
  */
 export const taskSpecSchema = z
   .strictObject({
-    ...taskSpecShapeV5,
-    /** Minor 6: the agent section with `repoSkills`. */
-    agent: taskSpecAgentSchema,
+    ...taskSpecShapeV6,
+    /** Minor 7 grows it: the app's processes and the after-turn screenshots. */
+    environment: taskSpecEnvironmentSchema,
+    /** Minor 2; minor 7 adds each service's preview. */
+    services: z.array(taskSpecServiceSchema).max(runnerLimits.servicesMax).optional(),
+    /** Minor 5; minor 7 adds the `app` tools. Missing means `defaultOstraToolSets`. */
+    tools: z
+      .array(ostraToolSetSchema)
+      .max(ostraToolSetSchema.options.length)
+      .refine((tools) => new Set(tools).size === tools.length, "each tool set once")
+      .optional(),
   })
   .describe("The task spec a dispatch hands the runner. It holds no secret.");
 export type TaskSpec = z.infer<typeof taskSpecSchema>;
@@ -653,7 +813,9 @@ const agentForMinor1 = (agent: TaskSpecAgent): TaskSpecAgent => ({
 });
 
 /**
- * The spec in the shape a runner at `minor` reads: below minor 6, `agent.repoSkills` is dropped;
+ * The spec in the shape a runner at `minor` reads: below minor 7, minor 7's fields are dropped
+ * (the app's processes, the after-turn screenshots, the `app` tools and each service's preview);
+ * below minor 6, `agent.repoSkills` is dropped;
  * below minor 5, minor 5's fields are dropped
  * (the review checkout, the tool sets, the commit paths, `automatic` and the CI round's context
  * files); below minor 3, minor 3's fields are dropped
@@ -664,10 +826,14 @@ const agentForMinor1 = (agent: TaskSpecAgent): TaskSpecAgent => ({
  * (`taskSpecNeedsMinor2`, `taskSpecNeedsMinor3`, `isTaskOfferable`), so nothing it needs is lost.
  */
 export const encodeTaskSpecForMinor = (current: TaskSpec, minor: number): TaskSpec => {
-  if (minor >= 6) {
+  if (minor >= 7) {
     return current;
   }
-  const v5 = specForMinor5(current);
+  const v6 = specForMinor6(current);
+  if (minor >= 6) {
+    return v6;
+  }
+  const v5 = specForMinor5(v6);
   if (minor >= 5) {
     return v5;
   }
@@ -701,6 +867,25 @@ export const encodeTaskSpecForMinor = (current: TaskSpec, minor: number): TaskSp
     limits: { turnMaxMinutes: spec.limits.turnMaxMinutes },
   };
 };
+
+/**
+ * The spec without minor 7's fields: the environment without its app processes and screenshots,
+ * the tool sets without `app`, and each service without its preview.
+ */
+const specForMinor6 = (current: TaskSpec): TaskSpec => {
+  const spec: Record<string, unknown> = { ...current, environment: environmentStripV6.parse(current.environment) };
+  if (current.tools !== undefined) {
+    spec["tools"] = current.tools.filter((tool) => tool !== "app");
+  }
+  if (current.services !== undefined) {
+    spec["services"] = current.services.map((service) => serviceStripV6.parse(service));
+  }
+  return taskSpecSchemaV6.parse(spec);
+};
+
+/** Minor 6's environment and service as stripping objects: parsing a current one drops minor 7's fields. */
+const environmentStripV6 = z.object(taskSpecEnvironmentSchemaV6.shape);
+const serviceStripV6 = z.object(taskSpecServiceSchemaV6.shape);
 
 /** The spec without minor 6's field: the agent section without `repoSkills`. */
 const specForMinor5 = (current: TaskSpec): TaskSpec => {
@@ -768,6 +953,10 @@ export const taskSpecNeedsMinor6 = (spec: TaskSpec): boolean => spec.agent.repoS
  * in the dispatch note's words (`taskNotOfferableWords`).
  */
 export const taskNotOfferableReasonSchema = z.enum([
+  /** The environment's app processes (minor 7, F-140): a minor-6 runner would never start them. */
+  "app-processes",
+  /** The app tools, `start_app`, `show_preview`, `take_screenshot` and `record_app` (minor 7, F-121). */
+  "app-tools",
   /** A project that keeps the repos' own skills from the agent (minor 6). */
   "repo-skills-off",
   /** A refine task: read-only, with `submit_draft` (minor 5). */
@@ -825,8 +1014,26 @@ const taskNeedsMinor5Reason = (spec: TaskSpec): TaskNotOfferableReason | null =>
   return null;
 };
 
+/**
+ * The first reason a spec needs minor 7 (milestone 8, ADR 0068), or `null`: app processes a
+ * minor-6 runner would never start, or the app tools it doesn't serve. The screenshots' settings
+ * and a service's preview act only with them, so they need nothing of their own.
+ */
+const taskNeedsMinor7Reason = (spec: TaskSpec): TaskNotOfferableReason | null => {
+  if ((spec.environment.appProcesses?.length ?? 0) > 0) {
+    return "app-processes";
+  }
+  return (spec.tools ?? []).includes("app") ? "app-tools" : null;
+};
+
+/** Whether a spec uses anything a runner below minor 7 can't do (milestone 8). */
+export const taskSpecNeedsMinor7 = (spec: TaskSpec): boolean => taskNeedsMinor7Reason(spec) !== null;
+
 /** The lowest runner minor a spec needs (ADR 0034). */
 export const taskSpecMinMinor = (spec: TaskSpec): number => {
+  if (taskSpecNeedsMinor7(spec)) {
+    return 7;
+  }
   if (taskSpecNeedsMinor6(spec)) {
     return 6;
   }
@@ -845,14 +1052,17 @@ export type TaskOffer =
 
 /**
  * Whether core may offer a task with this spec to a runner at `peerMinor` (ADR 0034's one-minor
- * window, milestone 6): a minor-5 runner gets no task whose project keeps the repos' own skills
- * off, a minor-4 runner no refine, review or onboarding task and no automatic round, and the
+ * window): a minor-6 runner gets no task with app processes or the app tools (milestone 8), a
+ * minor-5 runner no task whose project keeps the repos' own skills off, a minor-4 runner no refine, review or onboarding task and no automatic round, and the
  * dispatch note says why (`taskNotOfferableWords`).
  */
 export const isTaskOfferable = (spec: TaskSpec, peerMinor: number): TaskOffer => {
   const minMinor = taskSpecMinMinor(spec);
   if (peerMinor >= minMinor) {
     return { offerable: true };
+  }
+  if (minMinor === 7) {
+    return { offerable: false, reason: taskNeedsMinor7Reason(spec) ?? "app-processes", minMinor };
   }
   if (minMinor === 6) {
     return { offerable: false, reason: "repo-skills-off", minMinor };
@@ -867,6 +1077,10 @@ export const isTaskOfferable = (spec: TaskSpec, peerMinor: number): TaskOffer =>
 export const taskNotOfferableWords = (reason: TaskNotOfferableReason, minMinor: number): string => {
   const needs = `a runner at protocol 1.${String(minMinor)} or later: update the runner`;
   switch (reason) {
+    case "app-processes":
+      return `The environment's app processes need ${needs}.`;
+    case "app-tools":
+      return `The app tools need ${needs}.`;
     case "repo-skills-off":
       return `A project with the repos' own skills off needs ${needs}.`;
     case "refine-task":
@@ -892,13 +1106,17 @@ export const taskSpecResponseSchemaFor = (
   minor: number,
 ):
   | typeof taskSpecSchema
+  | typeof taskSpecSchemaV6
   | typeof taskSpecSchemaV5
   | typeof taskSpecSchemaV3
   | typeof taskSpecSchemaV2
   | typeof taskSpecSchemaV1
   | typeof taskSpecSchemaV0 => {
-  if (minor >= 6) {
+  if (minor >= 7) {
     return taskSpecSchema;
+  }
+  if (minor >= 6) {
+    return taskSpecSchemaV6;
   }
   if (minor >= 5) {
     return taskSpecSchemaV5;

@@ -16,6 +16,10 @@ const idSchemas = Object.entries(protocol).flatMap(([name, value]) =>
   name.endsWith("IdSchema") && value instanceof z.ZodType ? [[name, value] as const] : [],
 );
 
+/** The IDs with a fixed format of their own, which a plain ID doesn't fit. */
+const formattedIds: ReadonlySet<string> = new Set(["previewIdSchema"]);
+const plainIdSchemas = idSchemas.filter(([name]) => !formattedIds.has(name));
+
 describe("branded IDs", () => {
   it("covers every ID the domain model names", () => {
     const names = idSchemas.map(([name]) => name);
@@ -36,13 +40,21 @@ describe("branded IDs", () => {
     }
   });
 
-  it.each(idSchemas)("%s accepts a plain ID and keeps its value", (_name, schema) => {
+  it.each(plainIdSchemas)("%s accepts a plain ID and keeps its value", (_name, schema) => {
     expect(schema.parse("abc-123")).toBe("abc-123");
   });
 
   it.each(idSchemas)("%s rejects an empty string, whitespace and non-strings", (_name, schema) => {
     for (const bad of ["", " ", "has space", "tab\t", 42, null, undefined, {}]) {
       expect(schema.safeParse(bad).success).toBe(false);
+    }
+  });
+
+  it("F-144: a task's preview ID is 26 lower-case base32 characters, and nothing else", () => {
+    expect(protocol.previewIdSchema.parse("abcdefghijklmnopqrstuvwxyz")).toBe("abcdefghijklmnopqrstuvwxyz");
+    expect(protocol.previewIdSchema.parse("a2345672345672345672345672")).toBe("a2345672345672345672345672");
+    for (const bad of ["abc-123", "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxy", "abcdefghijklmnopqrstuvwxyz0", "abcdefghijklmnopqrstuvwxy1"]) {
+      expect(protocol.previewIdSchema.safeParse(bad).success, bad).toBe(false);
     }
   });
 

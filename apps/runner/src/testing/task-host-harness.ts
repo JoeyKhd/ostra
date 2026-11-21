@@ -80,6 +80,8 @@ export const startShared = async (name: string, options: SharedOptions = {}): Pr
 export type HarnessOptions = {
   /** The server's protocol minor (default this build's): an older server, inside the window (ADR 0034). */
   readonly serverMinor?: number;
+  /** The runner's protocol minor (default this build's): an older runner, for a server it's in the window of. */
+  readonly runnerMinor?: number;
   /** Overrides of the task host's options (the idle timer's clock, the temp folder). */
   readonly host?: Partial<Omit<TaskHostOptions, "link" | "executor" | "agents" | "logger">>;
   /** The runner's data folder; a new one by default. Two harnesses with two folders are two runners. */
@@ -195,6 +197,7 @@ export const startHarness = async (shared: Shared, options: HarnessOptions = {})
         host.abandon(sessionId);
       },
     },
+    ...(options.runnerMinor === undefined ? {} : { protocolMinor: options.runnerMinor }),
   });
   const connection = holder.connection;
   await gateway.waitFor(() => gateway.connected());

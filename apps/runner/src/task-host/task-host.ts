@@ -188,6 +188,15 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
       const run = runs.get(command.body.sessionId);
       return run === undefined ? done({ result: "rejected", reason: "unknown-session" }) : run.setEffort(command.body);
     },
+    // Protocol minor 7 (milestone 8, ADR 0068): the app's processes, a member's screenshot and the
+    // views. Refused until the runner's milestone 8 tickets (12, 13, 18) serve them; until then
+    // this runner reports no `preview` in `hello`, so no view of its tasks opens (`isPreviewable`).
+    "app.start": () => done({ result: "rejected", reason: "not-supported" }),
+    "app.stop": () => done({ result: "rejected", reason: "not-supported" }),
+    "screenshot.take": () => done({ result: "rejected", reason: "not-supported" }),
+    "preview.open": () => done({ result: "rejected", reason: "not-supported" }),
+    "preview.close": () => done({ result: "rejected", reason: "not-supported" }),
+    "preview.input": () => done({ result: "rejected", reason: "not-supported" }),
     // The `host` executor builds no snapshot image (ADR 0038), so it refuses a build.
     "snapshot-build": () => done({ result: "rejected", reason: "not-supported" }),
   };

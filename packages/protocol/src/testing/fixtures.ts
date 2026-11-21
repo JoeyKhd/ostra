@@ -2,6 +2,7 @@ import {
   agentProfileIdSchema,
   approvalIdSchema,
   approvalRuleIdSchema,
+  attachmentIdSchema,
   automationIdSchema,
   blobIdSchema,
   boxIdSchema,
@@ -18,6 +19,8 @@ import {
   noteIdSchema,
   optionIdSchema,
   organizationIdSchema,
+  previewLinkIdSchema,
+  previewViewIdSchema,
   projectIdSchema,
   proposalIdSchema,
   providerIdSchema,
@@ -26,6 +29,7 @@ import {
   repoIdSchema,
   reviewRunIdSchema,
   runnerIdSchema,
+  screenshotRequestIdSchema,
   segmentIdSchema,
   sessionIdSchema,
   snapshotIdSchema,
@@ -62,10 +66,31 @@ import type {
   ReviewRequestBody,
   ReviewResponse,
 } from "../runner/http.ts";
-import type { EnvironmentProposal, ProposeEnvironmentInput, RefineDraft, SubmitReviewInput } from "../mcp/tools.ts";
+import type {
+  EnvironmentProposal,
+  ProposeEnvironmentInput,
+  RecordAppInput,
+  RecordStep,
+  RefineDraft,
+  ShowPreviewInput,
+  StartAppInput,
+  SubmitReviewInput,
+  TakeScreenshotInput,
+} from "../mcp/tools.ts";
+import type { PreviewFramesBody, PreviewFramesResponse, PreviewMessage } from "../runner/preview.ts";
+import type { ReservedPorts } from "../runner/limits.ts";
+import type {
+  CliPreviewTunnelRequest,
+  CliPreviewTunnelResponse,
+  CliStartAppRequest,
+  CliStartAppResponse,
+  CliTunnelQuery,
+} from "../cli/http.ts";
+import type { FrameReelInput } from "../task/frame-reel.ts";
 import { snapshotCredentialsSchema, taskCredentialsSchema } from "../task/credentials.ts";
 import type { SnapshotCredentials, TaskCredentials } from "../task/credentials.ts";
-import type { TaskSpec } from "../task/spec.ts";
+import type { TaskSpec, TaskSpecAppProcess } from "../task/spec.ts";
+import { previewKeySchema } from "../task/app.ts";
 
 // Fixed test data: one valid example of every event kind, a task spec and its credentials. The
 // fold's tests (ticket 36) and the contract suites read these, so every consumer agrees on what a
@@ -130,6 +155,15 @@ export const fixtureIds = {
   subagent: subagentIdSchema.parse("ses_e06a5ccaaffewIEvTihOUGOwza"),
   nestedSubagent: subagentIdSchema.parse("ses_e06a478e5ffeiVkpjji6lHIYdh"),
   subagentCall: toolCallIdSchema.parse("toolu_922a8e28_0"),
+  // Minor 7 (milestone 8, ADR 0068).
+  attachment: attachmentIdSchema.parse("att-1"),
+  recordingAttachment: attachmentIdSchema.parse("att-2"),
+  screenshotRequest: screenshotRequestIdSchema.parse("shot-1"),
+  previewView: previewViewIdSchema.parse("0196f1a0-0000-7000-8000-000000000028"),
+  previewLink: previewLinkIdSchema.parse("0196f1a0-0000-7000-8000-000000000029"),
+  screenshotBlob: blobIdSchema.parse("0196f1a0-0000-7000-8000-00000000002a"),
+  recordingBlob: blobIdSchema.parse("0196f1a0-0000-7000-8000-00000000002b"),
+  appLogBlob: blobIdSchema.parse("0196f1a0-0000-7000-8000-00000000002c"),
 } as const;
 
 const ids = fixtureIds;
@@ -442,6 +476,77 @@ export const eventFixtures: { readonly [K in TaskEventKind]: TaskEventOf<K> } = 
     prompt: "Look at README.md and say what it says.",
   },
   "subagent.status": { kind: "subagent.status", subagentId: ids.subagent, status: "failed", error: "the model endpoint returned 500" },
+  // Minor 7 (milestone 8, ADR 0068).
+  "app.process": {
+    kind: "app.process",
+    name: "api",
+    state: "failed",
+    port: 3001,
+    exitCode: 1,
+    reason: "exited",
+    logBlobId: ids.appLogBlob,
+  },
+  "app.browser": { kind: "app.browser", browser: { available: true, name: "Chromium", version: "131.0.6778.85" } },
+  "attachment.added": {
+    kind: "attachment.added",
+    attachmentId: ids.attachment,
+    attachmentKind: "screenshot",
+    blobId: ids.screenshotBlob,
+    source: "agent",
+    target: { process: "web" },
+    path: "/",
+    width: 1440,
+    height: 900,
+    durationMs: null,
+    frameCount: null,
+    caption: "The footer shows the API's version.",
+    browser: { name: "Chromium", version: "131.0.6778.85" },
+    memberId: null,
+    requestId: null,
+  },
+  "preview.list": {
+    kind: "preview.list",
+    previews: [
+      {
+        key: previewKeySchema.parse("app-web"),
+        target: { process: "web" },
+        port: 5173,
+        label: "Web",
+        primary: true,
+        path: "/",
+        source: "declared",
+      },
+      {
+        key: previewKeySchema.parse("port-4100"),
+        target: { port: 4100 },
+        port: 4100,
+        label: "Docs",
+        primary: false,
+        path: "/",
+        source: "announced",
+      },
+    ],
+  },
+  "preview.opened": {
+    kind: "preview.opened",
+    viewId: ids.previewView,
+    key: previewKeySchema.parse("app-web"),
+    mode: "stream",
+    by: { kind: "member", memberId: ids.member },
+  },
+  "preview.closed": { kind: "preview.closed", viewId: ids.previewView },
+  "preview.level_changed": { kind: "preview.level_changed", key: previewKeySchema.parse("app-web"), level: "named", memberId: ids.member },
+  "preview.link_created": {
+    kind: "preview.link_created",
+    linkId: ids.previewLink,
+    key: previewKeySchema.parse("app-web"),
+    linkKind: "expiring",
+    allowInput: false,
+    expiresAt: 1_900_003_600_000,
+    memberId: ids.member,
+  },
+  "preview.link_revoked": { kind: "preview.link_revoked", linkId: ids.previewLink, memberId: ids.member },
+  "app.started_by": { kind: "app.started_by", memberId: ids.member },
 };
 
 /**
@@ -641,6 +746,49 @@ export const commandFixtures: { readonly [K in CommandKind]: Extract<Command, { 
   },
   // Minor 4 (milestone 5).
   resume: { ...commandEnvelope, seq: 20, kind: "resume", body: {} },
+  // Minor 7 (milestone 8, ADR 0068).
+  "app.start": { ...commandEnvelope, seq: 30, kind: "app.start", body: { sessionId: ids.session, names: null } },
+  "app.stop": { ...commandEnvelope, seq: 31, kind: "app.stop", body: { sessionId: ids.session, names: ["api"] } },
+  "screenshot.take": {
+    ...commandEnvelope,
+    seq: 32,
+    kind: "screenshot.take",
+    body: {
+      sessionId: ids.session,
+      requestId: ids.screenshotRequest,
+      key: previewKeySchema.parse("app-web"),
+      path: "/settings",
+      width: "phone",
+      memberId: ids.member,
+    },
+  },
+  "preview.open": {
+    ...commandEnvelope,
+    seq: 33,
+    kind: "preview.open",
+    body: {
+      sessionId: ids.session,
+      viewId: ids.previewView,
+      key: previewKeySchema.parse("app-web"),
+      mode: "stream",
+      viewport: { width: 1440, height: 900 },
+    },
+  },
+  "preview.close": { ...commandEnvelope, seq: 34, kind: "preview.close", body: { sessionId: ids.session, viewId: ids.previewView } },
+  "preview.input": {
+    ...commandEnvelope,
+    seq: 35,
+    kind: "preview.input",
+    body: {
+      sessionId: ids.session,
+      viewId: ids.previewView,
+      events: [
+        { kind: "mouse", action: "down", x: 120, y: 48, button: "left", clickCount: 1, modifiers: 0 },
+        { kind: "mouse", action: "up", x: 120, y: 48, button: "left", clickCount: 1, modifiers: 0 },
+        { kind: "text", text: "hello" },
+      ],
+    },
+  },
 };
 
 /** Minor 2's optional command fields, present. */
@@ -1261,4 +1409,271 @@ export const nestedSubagentStartFixture: TaskEventOf<"subagent.started"> = {
   type: "explore",
   description: "leaf agent",
   prompt: "Find the version.",
+};
+
+// ---------- minor 7 (milestone 8, ADR 0068) ----------
+
+/** The environment's app processes of `test-web`: a Vite frontend (the primary) with `/api` behind its proxy, the API, and a docs page. */
+export const appProcessesFixture = [
+  {
+    name: "web",
+    repoId: ids.repo,
+    folder: ".",
+    command: "pnpm dev --port 5173 --strictPort",
+    port: 5173,
+    ready: { kind: "http", path: "/" },
+    label: "Web",
+    primary: true,
+    hostRewrite: true,
+  },
+  {
+    name: "api",
+    repoId: ids.repo,
+    folder: "api",
+    command: "node server.js",
+    port: 3001,
+    ready: { kind: "http", path: "/api/version" },
+    label: "API",
+    primary: false,
+    hostRewrite: true,
+  },
+  {
+    name: "docs",
+    repoId: ids.repo,
+    folder: "docs",
+    command: "npx serve -l 4000",
+    port: 4000,
+    ready: { kind: "port" },
+    label: "Docs",
+    primary: false,
+    hostRewrite: false,
+  },
+] as const satisfies readonly TaskSpecAppProcess[];
+
+/** A task spec of minor 7: app processes, the after-turn screenshots, a service with a web UI, and the app tools. */
+export const taskSpecAppFixture: TaskSpec = {
+  ...taskSpecMinor3Fixture,
+  environment: {
+    ...taskSpecMinor3Fixture.environment,
+    appProcesses: [...appProcessesFixture],
+    screenshots: { afterTurn: true, routes: ["/", "/settings"], widths: ["desktop", "phone"] },
+  },
+  services: [
+    { name: "mailpit", image: "axllent/mailpit:v1.21", port: 8025, variables: [], healthCheck: null, preview: { label: "Mail" } },
+  ],
+  tools: ["pr-text", "memory", "app"],
+};
+
+/** A JPEG's shape, valid by its markers only: no frame here is a real picture. */
+export const jpegFixture = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0xff, 0xd9]);
+
+/** Minor 7's command fields, present: a dispatch to start the app, and a tunnel view. */
+export const minor7CommandFixtures = {
+  "dispatch, start the app": {
+    ...commandEnvelope,
+    seq: 36,
+    kind: "dispatch",
+    body: { taskId: ids.task, sessionId: ids.session, boxId: ids.box, leaseEpoch: 3, box: { size: null, image: null }, purpose: "app" },
+  },
+  "preview.open, a tunnel": {
+    ...commandEnvelope,
+    seq: 37,
+    kind: "preview.open",
+    body: { sessionId: ids.session, viewId: ids.previewView, key: previewKeySchema.parse("app-web"), mode: "tunnel", viewport: null },
+  },
+} as const satisfies Readonly<Record<string, Command>>;
+
+/** Minor 7's events with their other shapes: a recording, a member's screenshot, a box with no browser. */
+export const minor7EventFixtures = {
+  recording: {
+    ...eventFixtures["attachment.added"],
+    attachmentId: ids.recordingAttachment,
+    attachmentKind: "recording",
+    blobId: ids.recordingBlob,
+    durationMs: 4100,
+    frameCount: 41,
+    caption: "Clicking the counter three times.",
+  },
+  memberScreenshot: {
+    ...eventFixtures["attachment.added"],
+    source: "member",
+    target: { port: 4100 },
+    width: 390,
+    height: 844,
+    caption: null,
+    memberId: ids.member,
+    requestId: ids.screenshotRequest,
+  },
+  afterTurn: { ...eventFixtures["attachment.added"], source: "after-turn", caption: null },
+  noBrowser: { kind: "app.browser", browser: { available: false, reason: "not-in-image" } },
+  ready: { kind: "app.process", name: "web", state: "ready", port: 5173, exitCode: null, reason: null, logBlobId: null },
+  viewByLink: { ...eventFixtures["preview.opened"], mode: "native", by: { kind: "link", linkId: ids.previewLink } },
+  publicLink: { ...eventFixtures["preview.link_created"], linkKind: "public", allowInput: true, expiresAt: null },
+} as const satisfies Readonly<Record<string, TaskEvent>>;
+
+/** A `host` runner's status at minor 7: it can stream and tunnel, and found Edge. */
+export const minor7HostStatusFixture: Status = {
+  ...minor4HostStatusFixture,
+  version: "0.9.0",
+  preview: { stream: true, tunnel: true },
+  browser: { name: "Microsoft Edge", version: "131.0.2903.70" },
+};
+
+/** A `host` runner's `hello` at minor 7 on the HTTP carrier: it streams, and can't tunnel. */
+export const minor7HelloFixture: Hello = {
+  type: "hello",
+  protocolMajor: 1,
+  protocolMinor: 7,
+  runnerVersion: "0.9.0",
+  peer: { kind: "runner", runnerId: ids.runner },
+  carrier: "http",
+  lastCommandSeq: 0,
+  sessions: [],
+  executor: "host",
+  resources: null,
+  capabilities: minor4HostStatusFixture.capabilities ?? kubernetesCapabilitiesFixture,
+  install: "npm",
+  preview: { stream: true, tunnel: false },
+  browser: null,
+};
+
+/** One of each message of the preview connection's `stream` mode. */
+export const previewMessageFixtures = {
+  frame: { type: "frame", header: { seq: 1, at: 1_900_000_000_000, width: 1440, height: 900 }, jpeg: jpegFixture },
+  viewport: { type: "control", control: { kind: "viewport", seq: 1, viewport: { width: 390, height: 844 } } },
+  navigate: { type: "control", control: { kind: "navigate", seq: 2, path: "/settings?tab=2" } },
+  reload: { type: "control", control: { kind: "reload", seq: 3 } },
+  input: {
+    type: "control",
+    control: {
+      kind: "input",
+      seq: 4,
+      events: [
+        { kind: "wheel", x: 10, y: 10, deltaX: 0, deltaY: 240, modifiers: 0 },
+        { kind: "key", action: "down", key: "Enter", code: "Enter", modifiers: 0 },
+      ],
+    },
+  },
+  ack: { type: "ack", ack: { seq: 1 } },
+  close: { type: "close", close: { reason: "closed" } },
+} as const satisfies Readonly<Record<string, PreviewMessage>>;
+
+/** The HTTP carrier's frames' body and answers. */
+export const previewFramesFixtures = {
+  body: {
+    viewId: ids.previewView,
+    leaseEpoch: 1,
+    frames: [
+      { seq: 1, at: 1_900_000_000_000, width: 1440, height: 900, part: "frame-0" },
+      { seq: 2, at: 1_900_000_000_500, width: 1440, height: 900, part: "frame-1" },
+    ],
+  },
+  acked: { ackedUpTo: 2 },
+  refusals: [{ code: "view-closed" }, { code: "stale-lease" }, { code: "too-fast" }, { code: "invalid" }],
+} as const satisfies {
+  readonly body: PreviewFramesBody;
+  readonly acked: PreviewFramesResponse;
+  readonly refusals: readonly PreviewFramesResponse[];
+};
+
+/** One step of each action `record_app` takes. */
+export const recordStepFixtures = [
+  { action: "goto", path: "/" },
+  { action: "click", target: { selector: "button#count" } },
+  { action: "click", target: { text: "Count" } },
+  { action: "fill", selector: "input[name=email]", value: "sam@example.com" },
+  { action: "press", key: "Enter" },
+  { action: "scroll", deltaX: 0, deltaY: 600 },
+  { action: "wait", until: { selector: ".toast" } },
+  { action: "wait", until: { ms: 500 } },
+] as const satisfies readonly RecordStep[];
+
+/** Each app tool's input, as the agent sends it. */
+export const appToolInputFixtures = {
+  startApp: { names: ["web", "api"] },
+  showPreview: { port: 4100, label: "Docs", path: "/", primary: false },
+  takeScreenshot: { target: { process: "web" }, path: "/", width: "desktop", fullPage: true, caption: "The footer shows the API's version." },
+  recordApp: { target: { process: "web" }, steps: [...recordStepFixtures.slice(0, 2)], seconds: 10, caption: "Clicking the counter." },
+} as const satisfies {
+  readonly startApp: StartAppInput;
+  readonly showPreview: ShowPreviewInput;
+  readonly takeScreenshot: TakeScreenshotInput;
+  readonly recordApp: RecordAppInput;
+};
+
+/** The ports a box reserves, for the tools' and the reach rule's tests. */
+export const reservedPortsFixture: ReservedPorts = {
+  "key-proxy": 41_001,
+  "git-proxy": 41_002,
+  "mcp-proxy": 41_003,
+  "sidecar-control": 7101,
+  "agent-loopback": 4096,
+  browser: 9222,
+};
+
+/** An onboarding proposal with minor 7's fields: the app's processes and a service with a web UI. */
+export const minor7ProposalFixtures = {
+  input: {
+    ...proposeEnvironmentInputFixture,
+    services: [{ name: "mailpit", image: "axllent/mailpit:v1.21", port: 8025, healthCheck: null, variableNames: [], preview: { label: "Mail" } }],
+    appProcesses: appProcessesFixture.map((process) => ({
+      name: process.name,
+      repo: "ostra-test/test1",
+      folder: process.folder,
+      command: process.command,
+      port: process.port,
+      ready: process.ready,
+      label: process.label,
+      primary: process.primary,
+      hostRewrite: process.hostRewrite,
+    })),
+  },
+  request: {
+    ...minor5HttpFixtures.environmentProposalRequest,
+    services: [{ name: "mailpit", image: "axllent/mailpit:v1.21", port: 8025, healthCheck: null, variableNames: [], preview: { label: "Mail" } }],
+    appProcesses: [...appProcessesFixture],
+  },
+} as const satisfies { readonly input: ProposeEnvironmentInput; readonly request: EnvironmentProposal };
+
+/** A review whose blocking finding names a screenshot (minor 7). */
+export const minor7ReviewRequestFixture: ReviewRequestBody = {
+  ...minor5HttpFixtures.reviewRequest,
+  findings: minor5HttpFixtures.reviewRequest.findings.map((finding, index) =>
+    index === 0 ? { ...finding, attachmentIds: [ids.attachment] } : finding,
+  ),
+};
+
+/** `ostra preview`'s endpoints, a request and an answer each, and every refusal. */
+export const cliPreviewFixtures = {
+  tunnelRequest: { port: null },
+  tunnelGrant: { coreUrl: "https://ostra.example.com", ticket: `ostra_pt_${"a".repeat(43)}`, port: 5173 },
+  tunnelRefusals: [{ code: "not-found" }, { code: "port-not-allowed" }, { code: "runner-cannot-tunnel" }, { code: "no-box" }],
+  startAppRequest: {},
+  startAppStarted: { state: "starting" },
+  startAppRefusals: [{ code: "not-found" }, { code: "no-app-processes" }, { code: "no-runner" }, { code: "runner-needs-upgrade" }],
+  tunnelQuery: { ticket: `ostra_pt_${"a".repeat(43)}` },
+} as const satisfies {
+  readonly tunnelRequest: CliPreviewTunnelRequest;
+  readonly tunnelGrant: CliPreviewTunnelResponse;
+  readonly tunnelRefusals: readonly CliPreviewTunnelResponse[];
+  readonly startAppRequest: CliStartAppRequest;
+  readonly startAppStarted: CliStartAppResponse;
+  readonly startAppRefusals: readonly CliStartAppResponse[];
+  readonly tunnelQuery: CliTunnelQuery;
+};
+
+/** A short recording's frame reel: three frames over 200 ms, after its two steps. */
+export const frameReelFixture: FrameReelInput = {
+  width: 1440,
+  height: 900,
+  durationMs: 200,
+  steps: [
+    { step: { action: "goto", path: "/" }, atMs: 0 },
+    { step: { action: "click", target: { selector: "button#count" } }, atMs: 100 },
+  ],
+  frames: [
+    { atMs: 0, jpeg: jpegFixture },
+    { atMs: 100, jpeg: jpegFixture },
+    { atMs: 200, jpeg: jpegFixture },
+  ],
 };

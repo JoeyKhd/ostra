@@ -71,7 +71,8 @@ describe("subagents on the wire (F-138)", () => {
   }, 120_000);
 
   it("F-138/c7: a minor-5 server gets no subagent's start or state and no subagent field: the calls arrive flat, and the session's numbers have no gap", async () => {
-    const h = await start({ serverMinor: 5 });
+    // A minor-6 runner, as the window has moved on (milestone 8's minor 7 is outside a minor-5 server's).
+    const h = await start({ serverMinor: 5, runnerMinor: 6 });
     const { spec } = taskOn(h, fakeMarker("subagent-tree"));
     h.dispatch(spec);
     await h.waitForKind(spec, "session.saved");

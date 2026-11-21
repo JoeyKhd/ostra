@@ -186,6 +186,86 @@ export const roundPrompt = (
     ...input.quotes.map((quote) => markedBlock(quote.label, quote.text)),
   ].join("\n\n");
 
+// ---------- the running app (milestone 8, protocol minor 7, F-140, ADR 0068) ----------
+
+/**
+ * The one-origin convention (ADR 0068, Q310): the only pattern that works in screenshots, the
+ * browser view, `ostra preview` and the native preview alike. In the app's block of the agent's
+ * instructions and in the app tools' descriptions.
+ */
+export const ONE_ORIGIN_RULE =
+  "Keep the browser on the primary's origin: put the API behind the frontend's dev-server proxy " +
+  "(Vite's server.proxy, Next.js rewrites), and have the frontend call it by a path such as /api, never by another port.";
+
+/**
+ * The variable that holds an app process's or a service's in-box address (ADR 0068):
+ * `OSTRA_APP_<NAME>_URL` or `OSTRA_SERVICE_<NAME>_URL`, the name upper-cased with dashes as
+ * underscores. Right for server-side calls and the box's own browser; no browser-facing URL is
+ * injected.
+ */
+export const appAddressName = (name: string, kind: "app" | "service" = "app"): string =>
+  `OSTRA_${kind === "app" ? "APP" : "SERVICE"}_${name.toUpperCase().replaceAll("-", "_")}_URL`;
+
+/** An app process as the app's block names it. */
+export type AppBlockProcess = {
+  readonly name: string;
+  readonly label: string;
+  readonly port: number;
+  readonly primary: boolean;
+};
+
+/** A service as the app's block names it: its address on this executor (`http://mailpit:8025` on `docker`). */
+export type AppBlockService = { readonly name: string; readonly label: string | null; readonly address: string };
+
+/**
+ * The app's block in the agent's instructions, beside `AGENTS.md` (F-140): each process with its
+ * label, its in-box address and its variable, the services with a port, the one-origin convention,
+ * and, for an agent with ostra's MCP tools, which tools see the app. Labels are the environment's,
+ * quoted as names. Empty when the environment declares no app process.
+ */
+export const appInstructionsBlock = (input: {
+  readonly processes: readonly AppBlockProcess[];
+  readonly services: readonly AppBlockService[];
+  /** Whether the agent has the app tools (`start_app`, `show_preview`, `take_screenshot`, `record_app`). */
+  readonly tools: boolean;
+}): string => {
+  if (input.processes.length === 0) {
+    return "";
+  }
+  const lines = [
+    "## The app",
+    "",
+    input.tools
+      ? "This project's app runs in this box as the processes below. Start them with the start_app tool; they also start when a member opens a preview. Each one's output is in .ostra/app/<name>.log."
+      : "This project's app runs in this box as the processes below. They start when a member opens a preview, and after a turn for its screenshots. Each one's output is in .ostra/app/<name>.log.",
+    "",
+    ...input.processes.map(
+      (process) =>
+        `- ${JSON.stringify(process.label)} (${process.name}${process.primary ? ", the primary preview" : ""}): ` +
+        `http://localhost:${String(process.port)}, also in ${appAddressName(process.name)}`,
+    ),
+  ];
+  if (input.services.length > 0) {
+    lines.push(
+      "",
+      "Services:",
+      ...input.services.map(
+        (service) =>
+          `- ${service.label === null ? service.name : `${JSON.stringify(service.label)} (${service.name})`}: ${service.address}, also in ${appAddressName(service.name, "service")}`,
+      ),
+    );
+  }
+  lines.push("", ONE_ORIGIN_RULE);
+  if (input.tools) {
+    lines.push(
+      "",
+      "Take screenshots with take_screenshot and short recordings with record_app when they show your change; members see them in the task's thread. " +
+        "Show a port you started yourself with show_preview. After each turn that changes a repo, ostra also takes screenshots of the primary by itself.",
+    );
+  }
+  return lines.join("\n");
+};
+
 // ---------- helpers ----------
 
 /** Text cut to at most `maxBytes` of UTF-8, never inside a character. */

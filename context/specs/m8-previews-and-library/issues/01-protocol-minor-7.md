@@ -1,6 +1,6 @@
 # 01: Protocol: minor 7
 
-Status: ready-for-agent
+Status: done
 Builder: core (contracts, first)
 Blocked by: none
 Features: F-121, F-140, F-141, F-142, F-143, F-144 (their wire shapes)
@@ -39,7 +39,7 @@ Every change is additive. Each schema is written once, Zod first, and its type i
 
 ## Done when
 
-- [ ] Tests:
+- [x] Tests:
   - every new shape round-trips, and minor 6's specs still parse;
   - a minor-6 peer's codec drops the new fields;
   - `isTaskOfferable` refuses a spec with app processes or the `app` tools for a minor-6 peer and allows it at minor 7;
@@ -49,8 +49,20 @@ Every change is additive. Each schema is written once, Zod first, and its type i
   - the stream framing's decoder refuses a truncated or oversized message;
   - each tool refuses a reserved port, a port below 1024, a 21st step and a second primary;
   - `src/testing/` has fixtures for each new kind, command, field and endpoint.
-- [ ] Every caller in the repo still compiles, and no existing schema changed shape.
-- [ ] The whole-repo checks pass (spec section 10).
-- [ ] Committed as `✨ add protocol minor 7`.
+- [x] Every caller in the repo still compiles, and no existing schema changed shape.
+- [x] The whole-repo checks pass (spec section 10).
+- [x] Committed as `✨ add protocol minor 7`.
 
 ## Comments
+
+- 2026-11-21, core: built as `✨ add protocol minor 7`. No other minor had landed: `main` was at minor 6, with the repo-skills work's `agent.repoSkills` in it, so this is minor 7 (window 6 to 8), and a synthetic minor 9 recording is two ahead. Readings and differences:
+  - **Where the code differs from the spec:** services are the spec's top-level `services[]`, not `environment.services`, so a service's `preview: { label } | null` sits there; `environment.appProcesses` and `environment.screenshots` are in `environment` as written. `kind` names the event in the union, so `attachment.added`'s is `attachmentKind` and `preview.link_created`'s is `linkKind`. `app.browser` carries `browser: { available: true, name, version } | { available: false, reason }`, since the event union is keyed on `kind`.
+  - **Added beyond the spec, all optional or on new shapes:** `screenshot.take` carries the `memberId` it's for, and `attachment.added` carries `requestId`, so the pane matches its own screenshot; `preview.level_changed` and the link events carry the `memberId` who acted. A preview's `key` is its target's (`app-<name>`, `port-<port>`, `service-<name>`), the same on every box. Every command carries the `sessionId` it's routed by, as `interrupt` does.
+  - **The DB:** the six command kinds need `CommandKind` values for the outbox, so this commit adds them in a small migration (`20261201100000_command_minor_7`) and `commandKindToDb`, as minor 4 did for `resume`. The rest of milestone 8's schema is ticket 04's.
+  - **`preview.input`** is in the `Command` type; the WebSocket's `downFrameCodec` refuses it and `httpDownFrameCodec` (the long poll's) reads it. `commandKindSupportedOn(kind, minor, carrier)` is the outbox's check.
+  - **`isPreviewable(peerMinor, carrier, reported)`** fails closed: below minor 7, or a runner that reported no `preview` in `hello` or `status`, gives no view, with the pane's words (`previewRefusalWords`). The runner reports none until its tickets (12, 13, 18) land, and refuses the new commands until then.
+  - **The reserved ports** are named (`reservedPortNames`) and numbered at run time (`ReservedPorts`), since the sidecar picks them; `portRefusal` and `appToolRefusal` apply them with the 1024 floor. `appToolRefusal` also refuses a second primary, a process the environment lacks, no browser and the turn's 21st picture; a 21st recording step is the schema's.
+  - **New files:** `src/task/app.ts` (the running app's words, a leaf that the spec, the events, the commands and the tools all import, so none import each other through it), `src/runner/preview.ts` and `src/task/frame-reel.ts` (magic `OSRL`, a JSON header, then each frame's time and JPEG). The one-origin words are `ONE_ORIGIN_RULE` in `src/agent/prompts.ts`, beside `appAddressName` and `appInstructionsBlock`.
+  - **A sidecar talking to a minor-6 core** sends no app process, service preview or finding attachment: `encodeEnvironmentProposalForMinor` and `encodeReviewRequestForMinor`.
+  - **Callers:** the fold, the task state and the ingest store the ten new kinds with no row yet; the runner's handlers refuse the six commands (a `docker` or `kubernetes` runner says the box's sidecar takes them); the pinned minors in core's and the runner's tests move up one.
+  - **Checks:** the whole repo's typecheck; lint and tests of the touched packages (protocol, db, task-view, domain, runner, core, e2e-load), on the lead's rules of 2026-11-20.

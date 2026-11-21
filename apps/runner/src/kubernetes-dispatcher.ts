@@ -363,6 +363,13 @@ export const createKubernetesDispatcher = (options: KubernetesDispatcherOptions)
     "question-answer": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
     "plan-answer": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
     "set-effort": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
+    // Protocol minor 7 (milestone 8): a box's app and views are its sidecar's, as above.
+    "app.start": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
+    "app.stop": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
+    "screenshot.take": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
+    "preview.open": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
+    "preview.close": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
+    "preview.input": () => done({ result: "rejected", reason: "the box's sidecar takes it" }),
     // Ticket 21 (F-120): accepted at once, built in turn with BuildKit, and pushed to the registry.
     "snapshot-build": (command) => {
       const push = command.body.push ?? null;

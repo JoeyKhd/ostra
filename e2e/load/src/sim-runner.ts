@@ -121,6 +121,12 @@ export const startSimRunner = async (input: {
     "plan-answer": done,
     "snapshot-build": () => Promise.resolve({ result: "rejected", reason: "not-supported" }),
     "set-effort": done,
+    "app.start": done,
+    "app.stop": done,
+    "screenshot.take": done,
+    "preview.open": done,
+    "preview.close": done,
+    "preview.input": done,
   };
 
   const tokens = createAccessTokens({ serverUrl: input.serverUrl, runnerId: input.runner.runnerId, keyPair: input.runner.keyPair });

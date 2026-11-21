@@ -24,6 +24,10 @@ export const cliPaths = {
   taskBranches: (ref: string): string => `${CLI_PATH_PREFIX}/tasks/${encodeURIComponent(ref)}/branches`,
   /** `DELETE`: revoke the session the request is made with. */
   session: `${CLI_PATH_PREFIX}/session`,
+  /** `POST` (milestone 8, F-143): a one-time ticket for `ostra preview`'s tunnel to one of the task's previews. */
+  previewTunnel: (ref: string): string => `${CLI_PATH_PREFIX}/tasks/${encodeURIComponent(ref)}/previews/tunnel`,
+  /** `POST` (milestone 8, F-141): start a stopped task's app, with no agent turn, for `ostra preview`. */
+  startApp: (ref: string): string => `${CLI_PATH_PREFIX}/tasks/${encodeURIComponent(ref)}/app/start`,
 } as const;
 
 /** The panel page where a member approves the code, as for a runner (milestone 1's `/device`). */
@@ -140,3 +144,106 @@ export const cliSessionMessages = {
   "session-expired": "This CLI session expired. Run `ostra login` again.",
   "session-revoked": "This CLI session was revoked. Run `ostra login` again.",
 } as const satisfies Readonly<Record<Extract<CliHttpErrorCode, `session-${string}`>, string>>;
+
+// ---------- `ostra preview` (milestone 8, protocol minor 7, F-143, ADR 0068) ----------
+//
+// `ostra preview <task> [port]` asks the web app for a one-time ticket, then opens core's
+// `/cli/v1/tunnel?ticket=…`, whose WebSocket's messages are one HTTP/2 connection with the CLI as
+// the client: each local TCP connection is one `CONNECT` stream through core to the box. Core is
+// where runners already connect, so the member's machine reaches it the same way. A ticket is a
+// bearer secret for 60 s and one use: never printed, logged or put in a process's arguments.
+
+/** A CLI tunnel's ticket: single use, 60 s, bound to the member, the task, the port and the lease epoch. Never logged. */
+export const cliTunnelTicketSchema = z
+  .string()
+  .regex(/^ostra_pt_[A-Za-z0-9_-]{32,128}$/, "an ostra preview ticket")
+  .describe("A CLI tunnel's ticket. Never logged; stored only as a hash.");
+
+/** `POST /api/cli/v1/tasks/:ref/previews/tunnel`: a port of the task's previews, or `null` for the primary's. */
+export const cliPreviewTunnelRequestSchema = z.strictObject({
+  port: z.number().int().min(1).max(65_535).nullable(),
+});
+export type CliPreviewTunnelRequest = z.infer<typeof cliPreviewTunnelRequestSchema>;
+
+/** The ticket, where core is, and the port it opens, which the CLI serves on the same local port when it's free. */
+export const cliPreviewTunnelGrantSchema = z.strictObject({
+  /** Core's public address, which the CLI opens `/cli/v1/tunnel` on. */
+  coreUrl: httpUrlSchema,
+  ticket: cliTunnelTicketSchema,
+  port: z.number().int().min(1).max(65_535),
+});
+export type CliPreviewTunnelGrant = z.infer<typeof cliPreviewTunnelGrantSchema>;
+
+/**
+ * Why no ticket was given: the task isn't there or isn't the member's to open (`not-found`), the
+ * port isn't one of its previews (`port-not-allowed`), its runner can't tunnel (below minor 7, or
+ * on the HTTP carrier), or no box runs it (`no-box`: start the app first).
+ */
+export const cliPreviewTunnelRefusalSchema = z.strictObject({
+  code: z.enum(["not-found", "port-not-allowed", "runner-cannot-tunnel", "no-box"]),
+});
+export type CliPreviewTunnelRefusal = z.infer<typeof cliPreviewTunnelRefusalSchema>;
+
+export const cliPreviewTunnelResponseSchema = z.union([cliPreviewTunnelGrantSchema, cliPreviewTunnelRefusalSchema]);
+export type CliPreviewTunnelResponse = z.infer<typeof cliPreviewTunnelResponseSchema>;
+
+/** The words the CLI prints for each refusal. `port` is the one the member asked for. */
+export const cliPreviewTunnelRefusalWords = (refusal: CliPreviewTunnelRefusal, port: number | null): string => {
+  switch (refusal.code) {
+    case "not-found":
+      return "No task by that name that you can open.";
+    case "port-not-allowed":
+      return port === null ? "This task has no preview to open." : `port ${String(port)} isn't one of this task's previews`;
+    case "runner-cannot-tunnel":
+      return "This task's runner can't open a tunnel: it needs protocol 1.7 or later, over a WebSocket. Use the preview pane in the panel.";
+    case "no-box":
+      return "Nothing runs for this task now. Start its app, then run this again.";
+    default:
+      return refusal.code satisfies never;
+  }
+};
+
+/** `POST /api/cli/v1/tasks/:ref/app/start`: no body fields; the task's app starts with no agent turn. */
+export const cliStartAppRequestSchema = z.strictObject({});
+export type CliStartAppRequest = z.infer<typeof cliStartAppRequestSchema>;
+
+/** The app's start: `starting` (a box is on its way, or its processes are starting) or `running` (it already was). */
+export const cliStartAppStartedSchema = z.strictObject({ state: z.enum(["starting", "running"]) });
+
+/**
+ * Why the app didn't start: the task isn't there or the member's (`not-found`), it declares no app
+ * process, no runner can take it now, or its runner is below minor 7.
+ */
+export const cliStartAppRefusalSchema = z.strictObject({
+  code: z.enum(["not-found", "no-app-processes", "no-runner", "runner-needs-upgrade"]),
+});
+export type CliStartAppRefusal = z.infer<typeof cliStartAppRefusalSchema>;
+
+export const cliStartAppResponseSchema = z.union([cliStartAppStartedSchema, cliStartAppRefusalSchema]);
+export type CliStartAppResponse = z.infer<typeof cliStartAppResponseSchema>;
+
+/** The words the CLI prints for each refusal. */
+export const cliStartAppRefusalWords = (refusal: CliStartAppRefusal): string => {
+  switch (refusal.code) {
+    case "not-found":
+      return "No task by that name that you can open.";
+    case "no-app-processes":
+      return "This task's environment declares no app process to start.";
+    case "no-runner":
+      return "No runner can take this task now. Try again when one is online.";
+    case "runner-needs-upgrade":
+      return "This task's runner needs protocol 1.7 or later to start its app: update the runner.";
+    default:
+      return refusal.code satisfies never;
+  }
+};
+
+/** Core's tunnel path for the CLI (not the web app's): `GET`, upgraded to a binary WebSocket. */
+export const CORE_CLI_TUNNEL_PATH = "/cli/v1/tunnel";
+
+/** The tunnel's query: the ticket alone. Never logged, even in an access log. */
+export const cliTunnelQuerySchema = z.strictObject({ ticket: cliTunnelTicketSchema });
+export type CliTunnelQuery = z.infer<typeof cliTunnelQuerySchema>;
+
+/** The WebSocket subprotocol the CLI asks core's tunnel for. */
+export const CLI_TUNNEL_SUBPROTOCOL = "ostra-cli-tunnel.v1";

@@ -6,13 +6,18 @@ import {
   clientMessageIdSchema,
   commandIdSchema,
   effortChangeIdSchema,
+  memberIdSchema,
+  previewViewIdSchema,
   projectIdSchema,
   questionIdSchema,
   repoIdSchema,
+  screenshotRequestIdSchema,
   sessionIdSchema,
   snapshotIdSchema,
   taskIdSchema,
 } from "../ids.ts";
+import { appPathSchema, appProcessNameSchema, previewKeySchema, previewViewportSchema, viewportPresetSchema } from "../task/app.ts";
+import { previewInputEventsSchema, previewModeSchema } from "./preview.ts";
 import {
   boxSizeNameSchema,
   branchNameSchema,
@@ -97,13 +102,87 @@ export const dispatchBodySchemaV4 = dispatchBodySchemaV3.extend({
 });
 
 /**
- * `dispatch` at the current minor (5): an offer of a task. The peer answers `accepted` or
- * `rejected` within the offer timeout. Minor 5: whether the session's first turn is an automatic
- * round (F-101, ADR 0041), so the runner answers its questions with the neutral reply. Missing
- * means `false`. A minor-4 peer never sees it: core starts an automatic round on a minor-5 runner.
+ * `dispatch` at minors 5 and 6: an offer of a task. The peer answers `accepted` or `rejected`
+ * within the offer timeout. Minor 5: whether the session's first turn is an automatic round
+ * (F-101, ADR 0041), so the runner answers its questions with the neutral reply. Missing means
+ * `false`. A minor-4 peer never sees it: core starts an automatic round on a minor-5 runner.
  */
-export const dispatchBodySchema = dispatchBodySchemaV4.extend({
+export const dispatchBodySchemaV5 = dispatchBodySchemaV4.extend({
   automatic: z.boolean().optional(),
+});
+
+/**
+ * Why a dispatch starts a box (F-141, Q300): a `turn` of the agent, or `app` ("Start the app"):
+ * the box starts as for a reopen, runs the setup, restores the hidden ref and starts the app's
+ * processes, and launches no agent and makes no model call. A member's message on the task then
+ * becomes a turn in that box.
+ */
+export const dispatchPurposeSchema = z.enum(["turn", "app"]);
+export type DispatchPurpose = z.infer<typeof dispatchPurposeSchema>;
+
+/**
+ * `dispatch` at the current minor (7): minor 5's, with its purpose. Missing means `turn`. A
+ * minor-6 peer never sees it, and is never sent a dispatch whose purpose is `app`: core checks
+ * `isPreviewable` before it starts the app.
+ */
+export const dispatchBodySchema = dispatchBodySchemaV5.extend({
+  purpose: dispatchPurposeSchema.optional(),
+});
+
+// ---------- minor 7's commands (milestone 8, ADR 0068) ----------
+
+/** The app processes a command names, or `null` for all of them, in the environment's order. */
+const appProcessNamesSchema = z.array(appProcessNameSchema).min(1).max(runnerLimits.appProcessesMax).nullable();
+
+/**
+ * `app.start` (minor 7): start these app processes, or all, in the environment's order, each after
+ * the one before it is ready. Those already running are left as they are. Each state goes up as
+ * `app.process`.
+ */
+export const appStartBodySchema = z.strictObject({ sessionId: sessionIdSchema, names: appProcessNamesSchema });
+
+/** `app.stop` (minor 7): stop these app processes, or all. The box keeps running. */
+export const appStopBodySchema = z.strictObject({ sessionId: sessionIdSchema, names: appProcessNamesSchema });
+
+/**
+ * `screenshot.take` (minor 7): a member's screenshot from the pane (F-121). The runner takes the
+ * preview `key` at `path` and `width` in a page of its own, and its `attachment.added` carries the
+ * request's ID, the source `member` and the member.
+ */
+export const screenshotTakeBodySchema = z.strictObject({
+  sessionId: sessionIdSchema,
+  requestId: screenshotRequestIdSchema,
+  key: previewKeySchema,
+  path: appPathSchema,
+  width: viewportPresetSchema,
+  memberId: memberIdSchema,
+});
+
+/**
+ * `preview.open` (minor 7): someone opened a view of a preview (F-141, F-143). The sidecar, or the
+ * runner on `host`, opens the preview connection for it (`runnerPaths.preview`) in its mode, and
+ * starts what isn't running. `viewport` is the browser view's; `null` in the `tunnel` mode.
+ */
+export const previewOpenBodySchema = z.strictObject({
+  sessionId: sessionIdSchema,
+  viewId: previewViewIdSchema,
+  key: previewKeySchema,
+  mode: previewModeSchema,
+  viewport: previewViewportSchema.nullable(),
+});
+
+/** `preview.close` (minor 7): the view closed. The connection ends; the page stays while another view watches it. */
+export const previewCloseBodySchema = z.strictObject({ sessionId: sessionIdSchema, viewId: previewViewIdSchema });
+
+/**
+ * `preview.input` (minor 7, the HTTP carrier only, Q306): a batch of a member's input for the
+ * view's page, which on the WebSocket goes on the preview connection as a `control` instead. The
+ * down codec of the WebSocket refuses it (`downFrameCodec`). Typed text is never logged.
+ */
+export const previewInputBodySchema = z.strictObject({
+  sessionId: sessionIdSchema,
+  viewId: previewViewIdSchema,
+  events: previewInputEventsSchema,
 });
 
 /**
@@ -316,6 +395,12 @@ export const commandBodySchemas = {
   "snapshot-build": snapshotBuildBodySchema,
   "set-effort": setEffortBodySchema,
   resume: resumeBodySchema,
+  "app.start": appStartBodySchema,
+  "app.stop": appStopBodySchema,
+  "screenshot.take": screenshotTakeBodySchema,
+  "preview.open": previewOpenBodySchema,
+  "preview.close": previewCloseBodySchema,
+  "preview.input": previewInputBodySchema,
 } as const;
 
 export const commandKindSchema = z.enum([
@@ -332,13 +417,47 @@ export const commandKindSchema = z.enum([
   "snapshot-build",
   "set-effort",
   "resume",
+  // Minor 7 (milestone 8, ADR 0068): the app's processes, a member's screenshot and the views.
+  "app.start",
+  "app.stop",
+  "screenshot.take",
+  "preview.open",
+  "preview.close",
+  "preview.input",
 ]);
 export type CommandKind = z.infer<typeof commandKindSchema>;
 export type CommandBody<K extends CommandKind> = z.infer<(typeof commandBodySchemas)[K]>;
 
+/** The kinds minor 7 added (milestone 8). The outbox never sends one to a peer below minor 7. */
+export const minor7CommandKinds: ReadonlySet<CommandKind> = new Set<CommandKind>([
+  "app.start",
+  "app.stop",
+  "screenshot.take",
+  "preview.open",
+  "preview.close",
+  "preview.input",
+]);
+
+/** Which carriers take a command kind: every one, or only the HTTP fallback (`preview.input`, Q306). */
+export type CommandCarriers = "any" | "http";
+
+/** Which carriers take a command kind (ADR 0068). On the WebSocket, a view's input rides the preview connection. */
+export const commandKindCarriers = (kind: CommandKind): CommandCarriers => (kind === "preview.input" ? "http" : "any");
+
+/** Whether a peer at `minor` on `carrier` can take a command of `kind`: the outbox checks it before it writes one. */
+export const commandKindSupportedOn = (kind: CommandKind, minor: number, carrier: "websocket" | "http"): boolean =>
+  commandKindSupportedAt(kind, minor) && (commandKindCarriers(kind) === "any" || carrier === "http");
+
 /** The lowest minor that carries a command kind. The outbox never sends one to a lower peer. */
 export const commandKindMinMinor = (kind: CommandKind): number => {
   switch (kind) {
+    case "app.start":
+    case "app.stop":
+    case "screenshot.take":
+    case "preview.open":
+    case "preview.close":
+    case "preview.input":
+      return 7;
     case "resume":
       return 4;
     case "set-effort":
@@ -408,11 +527,60 @@ const minor2CommandOptions = [
 const snapshotBuild = z.strictObject({ ...envelope, kind: z.literal("snapshot-build"), body: snapshotBuildBodySchema });
 const resume = z.strictObject({ ...envelope, kind: z.literal("resume"), body: resumeBodySchema });
 
-/** Commands at the current minor (5): minor 4's, with the dispatch's and the steer's `automatic` and the steer's new intents. */
+const steer = z.strictObject({ ...envelope, kind: z.literal("steer"), body: steerBodySchema });
+
+/** Minor 7's new commands, with every carrier's: `preview.input` is the HTTP carrier's only. */
+const minor7CommandOptions = [
+  z.strictObject({ ...envelope, kind: z.literal("app.start"), body: appStartBodySchema }),
+  z.strictObject({ ...envelope, kind: z.literal("app.stop"), body: appStopBodySchema }),
+  z.strictObject({ ...envelope, kind: z.literal("screenshot.take"), body: screenshotTakeBodySchema }),
+  z.strictObject({ ...envelope, kind: z.literal("preview.open"), body: previewOpenBodySchema }),
+  z.strictObject({ ...envelope, kind: z.literal("preview.close"), body: previewCloseBodySchema }),
+] as const;
+const previewInput = z.strictObject({ ...envelope, kind: z.literal("preview.input"), body: previewInputBodySchema });
+
+/**
+ * Commands at the current minor (7): minor 5's, with the dispatch's purpose, the app's processes,
+ * a member's screenshot and the views. `preview.input` is in the type, and only the HTTP
+ * carrier's codec reads it (`httpDownFrameCodec`).
+ */
 export const commandSchema = z.discriminatedUnion("kind", [
   ...sharedCommandOptions,
   z.strictObject({ ...envelope, kind: z.literal("dispatch"), body: dispatchBodySchema }),
-  z.strictObject({ ...envelope, kind: z.literal("steer"), body: steerBodySchema }),
+  steer,
+  approvalAnswer,
+  release,
+  questionAnswer,
+  planAnswer,
+  snapshotBuild,
+  setEffort,
+  resume,
+  ...minor7CommandOptions,
+  previewInput,
+]);
+export type Command = z.infer<typeof commandSchema>;
+export type CommandOf<K extends CommandKind> = Extract<Command, { kind: K }>;
+
+/** Minor 7's commands on the WebSocket: every kind but `preview.input`, which rides the preview connection there. */
+export const commandSchemaV7WebSocket = z.discriminatedUnion("kind", [
+  ...sharedCommandOptions,
+  z.strictObject({ ...envelope, kind: z.literal("dispatch"), body: dispatchBodySchema }),
+  steer,
+  approvalAnswer,
+  release,
+  questionAnswer,
+  planAnswer,
+  snapshotBuild,
+  setEffort,
+  resume,
+  ...minor7CommandOptions,
+]);
+
+/** Minor 5's commands, which minor 6 kept, for the down codec: no dispatch purpose and no minor-7 kind. */
+export const commandSchemaV5 = z.discriminatedUnion("kind", [
+  ...sharedCommandOptions,
+  z.strictObject({ ...envelope, kind: z.literal("dispatch"), body: dispatchBodySchemaV5 }),
+  steer,
   approvalAnswer,
   release,
   questionAnswer,
@@ -421,8 +589,6 @@ export const commandSchema = z.discriminatedUnion("kind", [
   setEffort,
   resume,
 ]);
-export type Command = z.infer<typeof commandSchema>;
-export type CommandOf<K extends CommandKind> = Extract<Command, { kind: K }>;
 
 /** Minor 4's commands, kept for the down codec: minor 3's, with `resume`, the dispatch's `box` and the build's `push` and `builder`. */
 export const commandSchemaV4 = z.discriminatedUnion("kind", [
@@ -451,7 +617,8 @@ export const commandSchemaV1 = z.discriminatedUnion("kind", [...sharedCommandOpt
 export const commandSchemaV0 = z.discriminatedUnion("kind", [...sharedCommandOptions, dispatchV3, steerV1, approvalAnswerV1]);
 
 /**
- * A command as a peer at `minor` reads it: below minor 5, `dispatch` and `steer` lose
+ * A command as a peer at `minor` reads it: below minor 7, `dispatch` loses its purpose; below
+ * minor 5, `dispatch` and `steer` lose
  * `automatic`, and a steer's intent of milestone 6's is dropped (it reads as `message`); below
  * minor 4, `dispatch` loses `box` and
  * `snapshot-build` loses `push` and `builder`; below minor 2, `steer` loses `intent` and
@@ -460,6 +627,12 @@ export const commandSchemaV0 = z.discriminatedUnion("kind", [...sharedCommandOpt
  * and that peer refuses it: the outbox checks `commandKindSupportedAt` first.
  */
 export const encodeCommandForMinor = (command: Command, minor: number): Command => {
+  if (minor >= 7) {
+    return command;
+  }
+  if (command.kind === "dispatch" && minor >= 5) {
+    return { ...command, body: dispatchBodyStripV5.parse(command.body) };
+  }
   if (minor >= 5) {
     return command;
   }
@@ -492,6 +665,9 @@ export const encodeCommandForMinor = (command: Command, minor: number): Command 
   }
   return command;
 };
+
+// Minor 5's dispatch as a stripping object: parsing a current body keeps minor 5's fields only.
+const dispatchBodyStripV5 = z.object(dispatchBodySchemaV5.shape);
 
 // Minor 4's dispatch as a stripping object: parsing a current body keeps minor 4's fields only.
 const dispatchBodyStripV4 = z.object(dispatchBodySchemaV4.shape);

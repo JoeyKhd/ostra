@@ -518,6 +518,67 @@ const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
       expect(lastTurnMeta(m)?.subagents?.nodes.map((node) => [node.id, node.state, node.error])).toEqual([[fixtureIds.subagent, "failed", "the model endpoint returned 500"]]);
     },
   },
+  // Protocol minor 7 (milestone 8): no row until tickets 17 and 21 draw them.
+  "app.process": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "app.browser": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "attachment.added": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "preview.list": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "preview.opened": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "preview.closed": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "preview.level_changed": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "preview.link_created": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "preview.link_revoked": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
+  "app.started_by": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
   "pr.opened": {
     prefix: [f["pr.text_set"]],
     check: (m) => {

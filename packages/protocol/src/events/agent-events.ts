@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   approvalIdSchema,
   approvalRuleIdSchema,
+  attachmentIdSchema,
   automationIdSchema,
   blobIdSchema,
   boxIdSchema,
@@ -16,12 +17,15 @@ import {
   modelIdSchema,
   noteIdSchema,
   optionIdSchema,
+  previewLinkIdSchema,
+  previewViewIdSchema,
   proposalIdSchema,
   providerIdSchema,
   questionIdSchema,
   repoIdSchema,
   reviewRunIdSchema,
   runnerIdSchema,
+  screenshotRequestIdSchema,
   segmentIdSchema,
   sessionIdSchema,
   snapshotIdSchema,
@@ -47,6 +51,22 @@ import { effortLevelSchema } from "../agent/effort.ts";
 import { approvalSubjectSchema, taskRuleSchema } from "../agent/rules.ts";
 import { memoryNoteTitleSchema, memoryUseViaSchema } from "../memory/notes.ts";
 import { blobRefSchema } from "../runner/blobs.ts";
+import {
+  appLabelSchema,
+  appPathSchema,
+  appPortSchema,
+  appProcessNameSchema,
+  appProcessReasonSchema,
+  appProcessStateSchema,
+  attachmentKindSchema,
+  attachmentSourceSchema,
+  boxBrowserSchema,
+  captionSchema,
+  noBrowserReasonSchema,
+  previewKeySchema,
+  previewSourceSchema,
+  previewTargetSchema,
+} from "../task/app.ts";
 import { runnerLimits } from "../runner/limits.ts";
 import { toolKindSchema } from "./tools.ts";
 
@@ -950,6 +970,135 @@ const minor6NewEventOptions = [
   }),
 ] as const;
 
+// ---------- protocol minor 7's vocabularies (milestone 8, ADR 0068) ----------
+
+/**
+ * How a view was opened (F-141, F-143, F-144): the browser view (`stream`), the native preview
+ * through core's proxy (`native`), `ostra preview` (`cli`), or a tunnel core opened for itself.
+ */
+export const previewViewModeSchema = z.enum(["stream", "tunnel", "native", "cli"]);
+export type PreviewViewMode = z.infer<typeof previewViewModeSchema>;
+
+/** A preview's level below its links (F-142): the project's members (the default), or named people. */
+export const previewLevelSchema = z.enum(["members", "named"]);
+export type PreviewLevel = z.infer<typeof previewLevelSchema>;
+
+/** A link's kind (F-142): one that expires, or a public one where an organization admin allows it. */
+export const previewLinkKindSchema = z.enum(["expiring", "public"]);
+export type PreviewLinkKind = z.infer<typeof previewLinkKindSchema>;
+
+/** Who opened a view: a member, or someone with a link. */
+export const previewViewerSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("member"), memberId: memberIdSchema }),
+  z.strictObject({ kind: z.literal("link"), linkId: previewLinkIdSchema }),
+]);
+export type PreviewViewer = z.infer<typeof previewViewerSchema>;
+
+/** One preview of a task, as `preview.list` lists it, primary first. */
+export const previewListItemSchema = z.strictObject({
+  key: previewKeySchema,
+  target: previewTargetSchema,
+  port: appPortSchema,
+  label: appLabelSchema,
+  primary: z.boolean(),
+  /** The path it opens on. */
+  path: appPathSchema,
+  source: previewSourceSchema,
+});
+export type PreviewListItem = z.infer<typeof previewListItemSchema>;
+
+// ---------- the events new in minor 7 ----------
+
+const minor7NewEventOptions = [
+  // ---- the app's processes (F-140) ----
+  /**
+   * An app process's state changed in the box: `starting`, `ready`, then `exited`, `failed` or
+   * `stopped`. A process that exits or fails names its log's tail as a blob of the task. The log
+   * and the command are never in the event and never logged.
+   */
+  z.strictObject({
+    kind: z.literal("app.process"),
+    name: appProcessNameSchema,
+    state: appProcessStateSchema,
+    port: appPortSchema,
+    exitCode: z.number().int().nullable(),
+    reason: appProcessReasonSchema.nullable(),
+    logBlobId: blobIdSchema.nullable(),
+  }),
+  /** The box's browser, once per box: its name and version, or why there's none. */
+  z.strictObject({
+    kind: z.literal("app.browser"),
+    browser: z.discriminatedUnion("available", [
+      z.strictObject({ available: z.literal(true), name: boxBrowserSchema.shape.name, version: boxBrowserSchema.shape.version }),
+      z.strictObject({ available: z.literal(false), reason: noBrowserReasonSchema }),
+    ]),
+  }),
+  // ---- screenshots and recordings (F-121) ----
+  /**
+   * A screenshot or a recording, uploaded as a blob of the task on the bulk path: what it shows,
+   * at which path and size, the browser that took it, and who asked (`memberId` and `requestId`
+   * for a member's, from `screenshot.take`). `attachmentKind` is the spec's `kind`, renamed:
+   * `kind` names the event. The caption is the agent's words: never logged.
+   */
+  z.strictObject({
+    kind: z.literal("attachment.added"),
+    attachmentId: attachmentIdSchema,
+    attachmentKind: attachmentKindSchema,
+    blobId: blobIdSchema,
+    source: attachmentSourceSchema,
+    target: previewTargetSchema,
+    path: appPathSchema,
+    width: z.number().int().positive().max(runnerLimits.screenshotMaxWidthPx),
+    height: z.number().int().positive().max(runnerLimits.screenshotMaxHeightPx),
+    /** A recording's length; `null` for a screenshot. */
+    durationMs: z.number().int().nonnegative().max(runnerLimits.recordingMaxSeconds * 1000).nullable(),
+    /** A recording's frames; `null` for a screenshot. */
+    frameCount: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(runnerLimits.recordingMaxSeconds * runnerLimits.recordingFramesPerSecond)
+      .nullable(),
+    caption: captionSchema.nullable(),
+    browser: boxBrowserSchema,
+    memberId: memberIdSchema.nullable(),
+    requestId: screenshotRequestIdSchema.nullable(),
+  }),
+  // ---- previews (F-141) ----
+  /** The task's previews, primary first: sent when the box starts and whenever the list changes. */
+  z.strictObject({
+    kind: z.literal("preview.list"),
+    previews: z
+      .array(previewListItemSchema)
+      .max(runnerLimits.appProcessesMax + runnerLimits.servicesMax + runnerLimits.announcedPreviewsMax),
+  }),
+  // ---- server-only (milestone 8) ----
+  /** A view of a preview opened (F-141): its mode, and the member or the link that opened it. */
+  z.strictObject({
+    kind: z.literal("preview.opened"),
+    viewId: previewViewIdSchema,
+    key: previewKeySchema,
+    mode: previewViewModeSchema,
+    by: previewViewerSchema,
+  }),
+  z.strictObject({ kind: z.literal("preview.closed"), viewId: previewViewIdSchema }),
+  /** A member set a preview's level (F-142). */
+  z.strictObject({ kind: z.literal("preview.level_changed"), key: previewKeySchema, level: previewLevelSchema, memberId: memberIdSchema }),
+  /** A member made a link to a preview (F-142). `linkKind` is the spec's `kind`, renamed. Never its token. */
+  z.strictObject({
+    kind: z.literal("preview.link_created"),
+    linkId: previewLinkIdSchema,
+    key: previewKeySchema,
+    linkKind: previewLinkKindSchema,
+    allowInput: z.boolean(),
+    expiresAt: epochMsSchema.nullable(),
+    memberId: memberIdSchema,
+  }),
+  z.strictObject({ kind: z.literal("preview.link_revoked"), linkId: previewLinkIdSchema, memberId: memberIdSchema }),
+  /** A member pressed "Start the app" (F-141, Q300): a lease with the purpose `app`, and no agent turn. */
+  z.strictObject({ kind: z.literal("app.started_by"), memberId: memberIdSchema }),
+] as const;
+
 // ---------- the events every minor shares ----------
 
 const sharedEventOptions = [
@@ -1070,8 +1219,35 @@ const sharedEventOptions = [
   }),
 ] as const;
 
-/** The event union at the current minor (6). */
+/** The event union at the current minor (7). */
 export const taskEventSchema = z.discriminatedUnion("kind", [
+  userMessageV5,
+  sessionRestoredV2,
+  sessionCrashed,
+  sessionSavedV2,
+  sessionLimitReached,
+  ticketFilesReadyV2,
+  workspaceFilesOutsideRepos,
+  turnStarted,
+  usageRecorded,
+  approvalRequested,
+  approvalAnswered,
+  setupFinished,
+  ...minor2NewEventOptions,
+  ...minor3NewEventOptions,
+  ...minor4NewEventOptions,
+  ...minor5NewEventOptions,
+  ...minor6NewEventOptions,
+  ...minor7NewEventOptions,
+  ...agentOutputOptions,
+  ...sharedEventOptions,
+]);
+
+/**
+ * Minor 6's event union, kept for the codecs (ADR 0034): a minor-6 peer's events parse with it,
+ * and it refuses minor 7's kinds.
+ */
+export const taskEventSchemaV6 = z.discriminatedUnion("kind", [
   userMessageV5,
   sessionRestoredV2,
   sessionCrashed,
@@ -1290,8 +1466,21 @@ export const minor6EventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKin
   minor6NewEventOptions.map((option) => option.shape.kind.value),
 );
 
+/**
+ * The kinds minor 7 added (milestone 8, ADR 0068): an app process's state, the box's browser, a
+ * picture, the previews' list, and the server's view, sharing and "Start the app" events. A
+ * minor-7 runner talking to a minor-6 server sends none: that server gives it no app process, no
+ * app tools and no view.
+ */
+export const minor7EventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind>(
+  minor7NewEventOptions.map((option) => option.shape.kind.value),
+);
+
 /** The lowest minor that carries an event kind. */
 export const eventKindMinMinor = (kind: TaskEventKind): number => {
+  if (minor7EventKinds.has(kind)) {
+    return 7;
+  }
   if (minor6EventKinds.has(kind)) {
     return 6;
   }
@@ -1405,6 +1594,8 @@ const dropMinor2Fields = (event: TaskEvent): TaskEvent => {
  * that peer refuses it: senders check `eventKindSupportedAt` first.
  */
 export const encodeEventForMinor = (event: TaskEvent, minor: number): TaskEvent => {
+  // Minor 7 added kinds only, no field to an existing kind: a minor-6 reader reads every event it
+  // has a kind for as it is.
   if (minor >= 6) {
     return event;
   }
@@ -1495,6 +1686,13 @@ export const serverOnlyKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind
   "review.posted",
   "reviewers.updated",
   "environment.proposed",
+  // Minor 7 (milestone 8):
+  "preview.opened",
+  "preview.closed",
+  "preview.level_changed",
+  "preview.link_created",
+  "preview.link_revoked",
+  "app.started_by",
 ]);
 
 // ---------- the read side ----------
@@ -1550,6 +1748,13 @@ export const runnerEventSchema = z.strictObject({
   }),
 });
 export type RunnerEvent = z.infer<typeof runnerEventSchema>;
+
+/** Minor 6's `runnerEventSchema`, for the up codec of a minor-6 peer. */
+export const runnerEventSchemaV6 = runnerEventSchema.extend({
+  event: taskEventSchemaV6.refine((event) => !serverOnlyKinds.has(event.kind), {
+    message: "only the server writes this kind",
+  }),
+});
 
 /** Minor 5's `runnerEventSchema`, for the up codec of a minor-5 peer. */
 export const runnerEventSchemaV5 = runnerEventSchema.extend({
