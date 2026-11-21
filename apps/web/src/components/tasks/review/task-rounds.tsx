@@ -42,10 +42,11 @@ export const StageLine = ({ subState, aiReview, counts, needsYou, held }: {
   const stages = stagesOf({ subState, aiReview, ci: counts.ci, review: counts.review });
   return (
     <div className="mt-2.5 flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1 text-sm" data-testid="stage-line" data-sub-state={subState ?? ""}>
-      <ol className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      {/* Tight enough that the five stages and the turns fit one row beside the panel at 1440 (task-rounds.webp). */}
+      <ol className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
         {stages.map((stage, index) => (
-          <li key={stage.id} className="flex items-center gap-2" data-stage={stage.id} data-state={stage.state}>
-            {index > 0 ? <span aria-hidden className="h-px w-4 bg-line-2" /> : null}
+          <li key={stage.id} className="flex items-center gap-1.5 whitespace-nowrap" data-stage={stage.id} data-state={stage.state}>
+            {index > 0 ? <span aria-hidden className="h-px w-3 bg-line-2" /> : null}
             <StageGlyph stage={stage} needsYou={needsYou} held={held} />
             <span className={cn(stage.state === "current" ? "font-medium text-text" : stage.state === "done" ? "text-muted" : "text-faint")}>{stage.words}</span>
           </li>
@@ -53,7 +54,7 @@ export const StageLine = ({ subState, aiReview, counts, needsYou, held }: {
       </ol>
       {counts.automaticTurns.used === 0 ? null : (
         <Tooltip content={t("review.turnsHelp", { limit: counts.automaticTurns.limit })}>
-          <span className="ml-auto text-xs text-faint" data-testid="automatic-turns">
+          <span className="ml-auto whitespace-nowrap text-xs text-faint" data-testid="automatic-turns">
             {t("review.line.turns")} <span className="font-mono text-[13px] text-text">{t("review.line.turnsCount", { used: counts.automaticTurns.used, limit: counts.automaticTurns.limit })}</span>
           </span>
         </Tooltip>

@@ -26,7 +26,9 @@ import type { WaitingTask } from "./approval-block";
 // "Outside tasks need approval" switch (read-only to everyone else).
 
 const LIVE_MS = 10_000;
-const grid = "grid grid-cols-[84px_minmax(0,1fr)_auto] items-center gap-x-3 md:grid-cols-[84px_minmax(0,1fr)_230px_170px_44px_140px]";
+// The picture's proportions (needs-approval.webp): beside the panel, the title keeps about 180px at
+// 1440. The build spec's `230px 170px 44px 140px` left it under 100px there.
+const grid = "grid grid-cols-[84px_minmax(0,1fr)_auto] items-center gap-x-3 md:grid-cols-[84px_minmax(0,1fr)_180px_140px_40px_132px]";
 
 export const NeedsApprovalView = ({ projectId, organizationAdmin }: { readonly projectId: ProjectId; readonly organizationAdmin: boolean }) => {
   const trpc = useTRPC();
@@ -69,7 +71,7 @@ export const NeedsApprovalView = ({ projectId, organizationAdmin }: { readonly p
       properties={
         <div data-testid="approvals-panel">
           <PropGroup title={t("approvals.panel.outside")}>
-            <PropRow label={t("approvals.panel.needApproval")} labelWidth={104}>
+            <PropRow label={t("approvals.panel.needApproval")} labelWidth={124}>
               {approval === null ? (
                 <Skeleton className="h-[18px] w-8" />
               ) : (
@@ -84,16 +86,16 @@ export const NeedsApprovalView = ({ projectId, organizationAdmin }: { readonly p
             </PropRow>
             <p className="mt-1 text-xs text-muted">{t("approvals.panel.switchNote")}</p>
             {organizationAdmin ? null : <p className="mt-1 text-xs text-faint">{t("approvals.panel.adminsOnly")}</p>}
-            <PropRow label={t("approvals.panel.changed")} labelWidth={104}>
+            <PropRow label={t("approvals.panel.changed")} labelWidth={124}>
               {approval?.changedByName === null || approval === null ? <span className="text-faint">{t("approvals.panel.neverChanged")}</span> : approval.changedByName}
             </PropRow>
             {setSwitch.isError ? <p role="alert" className="mt-1 text-[12.5px] text-red">{errorText(setSwitch.error)}</p> : null}
           </PropGroup>
           <PropGroup title={t("approvals.panel.runsOn")}>
-            <PropRow label={t("approvals.panel.pools")} labelWidth={104}>
+            <PropRow label={t("approvals.panel.pools")} labelWidth={124}>
               <span className="truncate font-mono">{pools.length === 0 ? t("approvals.panel.noPools") : pools.join(", ")}</span>
             </PropRow>
-            <PropRow label={t("approvals.panel.personal")} labelWidth={104}>{t("approvals.panel.never")}</PropRow>
+            <PropRow label={t("approvals.panel.personal")} labelWidth={124}>{t("approvals.panel.never")}</PropRow>
           </PropGroup>
         </div>
       }

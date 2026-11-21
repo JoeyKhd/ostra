@@ -56,12 +56,13 @@ const rowGrid = (several: boolean, tasks: boolean) =>
   cn(
     "grid min-h-10 w-full items-center gap-x-2.5 text-left",
     "grid-cols-[16px_72px_minmax(0,1fr)_36px] md:grid-cols-[16px_76px_minmax(0,1fr)_112px_110px_36px]",
+    // With the Task column, the labels, status and task columns are narrower, so the title keeps room beside the panel.
     several && tasks
-      ? "xl:grid-cols-[16px_76px_minmax(0,1fr)_112px_100px_110px_150px_36px]"
+      ? "xl:grid-cols-[16px_76px_minmax(0,1fr)_88px_100px_100px_136px_36px]"
       : several
         ? "xl:grid-cols-[16px_76px_minmax(0,1fr)_112px_100px_110px_36px]"
         : tasks
-          ? "xl:grid-cols-[16px_76px_minmax(0,1fr)_112px_110px_150px_36px]"
+          ? "xl:grid-cols-[16px_76px_minmax(0,1fr)_88px_100px_136px_36px]"
           : "xl:grid-cols-[16px_76px_minmax(0,1fr)_112px_110px_36px]",
   );
 
@@ -124,7 +125,7 @@ export const TicketRow = ({ ticket, several, tasks = true, selected, onSelect, n
           )
         ) : null}
       </span>
-      <span className="hidden min-w-0 items-center gap-1.5 md:flex">
+      <span className="hidden min-w-0 items-center gap-1.5 overflow-hidden md:flex">
         {ticket.labels.slice(0, 2).map((label) => (
           <Chip key={label} className="max-w-[100px] truncate">{label}</Chip>
         ))}

@@ -209,7 +209,8 @@ const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, t
       <PropGroup title={t("taskPage.properties")}>
         <PropRow label={t("taskPage.status")}>
           <Status tone={stateTone(task.state)} className="min-w-0">
-            <span className="truncate" data-testid="task-status">{noKey ? t("noKey.queued") : statusWithSubState(task)}</span>
+            {/* A sub-state makes it long (`In review · waiting for a reviewer`): it wraps rather than cut a word. */}
+            <span className="min-w-0 break-words" data-testid="task-status">{noKey ? t("noKey.queued") : statusWithSubState(task)}</span>
           </Status>
         </PropRow>
         <PropRow label={t("taskPage.driver")}>

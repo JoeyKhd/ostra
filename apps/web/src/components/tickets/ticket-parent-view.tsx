@@ -29,7 +29,9 @@ import type { Child } from "./parent-progress";
 
 const LIVE_MS = 5_000;
 
-const grid = "grid grid-cols-[84px_minmax(0,1fr)_120px] items-center gap-x-3 md:grid-cols-[84px_minmax(0,1fr)_130px_minmax(0,220px)_90px_50px_100px]";
+// The picture's proportions (ticket-parent.webp): beside the panel, the title keeps about 180px at
+// 1440. The build spec's `130px 260px 90px 50px 100px` left it 40px there.
+const grid = "grid grid-cols-[84px_minmax(0,1fr)_120px] items-center gap-x-3 md:grid-cols-[84px_minmax(0,1fr)_104px_minmax(0,200px)_56px_44px_76px]";
 
 const TaskCell = ({ child }: { readonly child: Child }) =>
   child.task === null ? (
