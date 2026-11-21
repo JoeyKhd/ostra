@@ -334,7 +334,8 @@ const EditorForm = ({
         {/* 1. Name and trigger */}
         <section className="mt-[26px]">
           <SectionTitle title={t("automations.editor.sectionTrigger")} />
-          <div className="grid gap-3 sm:grid-cols-2">
+          {/* The Starts choice takes the width its three labels need, on one line each (automation-edit.md). */}
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
             <div>
               <Label htmlFor="automation-name">{t("automations.editor.name")}</Label>
               <Input id="automation-name" value={draft.name} maxLength={80} disabled={disabled} required onChange={(event) => { update({ name: event.target.value }); }} />
@@ -347,7 +348,7 @@ const EditorForm = ({
                 value={draft.starts}
                 disabled={disabled}
                 onValueChange={(value) => { if (value === "match" || value === "schedule" || value === "webhook") update({ starts: value }); }}
-                className="grid h-[34px] w-full grid-cols-3"
+                className="grid h-[34px] w-full grid-cols-3 [&>*]:whitespace-nowrap [&>*]:px-3"
               >
                 {hasBoard ? (
                   <ToggleGroupItem value="match" disabled={!isNew && draft.starts !== "match"} className="flex items-center justify-center gap-2">
