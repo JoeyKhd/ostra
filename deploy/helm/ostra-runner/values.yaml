@@ -11,6 +11,8 @@
 # NetworkPolicy: without one, the baseline below is written and nothing enforces it.
 
 image:
+  # The release stamps its image namespace here and on boxImage (ostra in a clone): the images
+  # release.yml pushes.
   repository: ostra/runner
   # Empty: the chart's appVersion.
   tag: ""

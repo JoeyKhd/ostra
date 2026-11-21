@@ -1,15 +1,16 @@
 // The charts' checks that need no Helm, so they run everywhere, CI included (ADR 0060, F-118): the
 // committed `values.schema.json` is the generated one, `values.yaml` has a default for every value
 // but the required ones, every example parses, every value has its line in the configuration
-// reference, and each chart is versioned with the release and needs Kubernetes 1.29.
+// reference, each chart is versioned with the release and needs Kubernetes 1.29, and its images
+// default to the release's own.
 
-import { readRepoFile, releaseVersion, repoRoot } from "../repo.ts";
+import { imageNamespace, readRepoFile, releaseVersion, repoRoot } from "../repo.ts";
 import { generatedSchema, mergeValues, readChartYaml, readDefaults, readExamples, schemaFile } from "./charts.ts";
 import { referencedValues } from "./reference.ts";
 import { chartNames, requiredPaths, valuePaths, valuesSchemaOf } from "./values.ts";
 import type { ChartName } from "./values.ts";
 
-export type SchemaRule = "schema-drift" | "defaults" | "example" | "reference" | "chart-version";
+export type SchemaRule = "schema-drift" | "defaults" | "example" | "reference" | "chart-version" | "chart-images";
 
 export type SchemaProblem = { readonly chart: ChartName; readonly rule: SchemaRule; readonly message: string };
 
@@ -107,12 +108,53 @@ export const checkChartYaml = async (chart: ChartName, root: string = repoRoot):
   return problems;
 };
 
+/** The images a chart's values.yaml names, by key, and the image each is: `image` and the runner's `boxImage`. */
+const chartImages = (chart: ChartName): readonly (readonly [key: string, image: string])[] => {
+  switch (chart) {
+    case "ostra-server":
+      return [["image", "server"]];
+    case "ostra-runner":
+      return [
+        ["image", "runner"],
+        ["boxImage", "base"],
+      ];
+    default:
+      return chart satisfies never;
+  }
+};
+
+/**
+ * The chart's images default to the release's own, the ones `release.yml` pushes: each repository
+ * `<namespace>/<image>` (the root package.json's `imageNamespace`, which the stamp sets), and each
+ * tag empty, so it's the chart's appVersion. In this repo or another checkout (`root`), in a test.
+ */
+export const checkChartImages = async (chart: ChartName, root: string = repoRoot): Promise<readonly SchemaProblem[]> => {
+  const namespace = await imageNamespace(root);
+  const values = (await readDefaults(chart, root)).values;
+  const problems: SchemaProblem[] = [];
+  for (const [key, image] of chartImages(chart)) {
+    const section: unknown = Reflect.get(Object(values), key);
+    const repository: unknown = Reflect.get(Object(section), "repository");
+    const tag: unknown = Reflect.get(Object(section), "tag");
+    if (repository !== `${namespace}/${image}` || tag !== "") {
+      problems.push({ chart, rule: "chart-images", message: `values.yaml's ${key} is the release's ${image} image: repository ${namespace}/${image} and an empty tag (the chart's appVersion)` });
+    }
+  }
+  return problems;
+};
+
 /** Every check that needs no Helm, over both charts. */
 export const checkChartsWithoutHelm = async (): Promise<readonly SchemaProblem[]> => {
   const markdown = await readRepoFile("docs/configuration.md");
   const out: SchemaProblem[] = [];
   for (const chart of chartNames) {
-    out.push(...(await checkSchemaFile(chart)), ...(await checkValues(chart)), ...checkReference(chart, markdown, (await readDefaults(chart)).values), ...(await checkChartYaml(chart)));
+    out.push(
+      ...(await checkSchemaFile(chart)),
+      ...(await checkValues(chart)),
+      ...checkReference(chart, markdown, (await readDefaults(chart)).values),
+      ...(await checkChartYaml(chart)),
+      ...(await checkChartImages(chart)),
+    );
   }
   return out;
 };

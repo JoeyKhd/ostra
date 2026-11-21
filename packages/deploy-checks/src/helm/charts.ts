@@ -19,10 +19,10 @@ export const readYaml = (text: string): unknown => loadYaml<unknown>(text) ?? {}
 
 export type ValuesFile = { readonly file: string; readonly values: unknown };
 
-/** The chart's `values.yaml`. */
-export const readDefaults = async (chart: ChartName): Promise<ValuesFile> => {
+/** The chart's `values.yaml`, from this repo or another checkout (`root`), in a test. */
+export const readDefaults = async (chart: ChartName, root: string = repoRoot): Promise<ValuesFile> => {
   const file = `${chartDir(chart)}/values.yaml`;
-  return { file, values: readYaml(await readRepoFile(file)) };
+  return { file, values: readYaml(await readRepoFile(file, root)) };
 };
 
 /** Every file in the chart's `examples/`, by name. */

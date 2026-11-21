@@ -1,7 +1,8 @@
 // `pnpm images:build`: builds the three images from source (ADR 0046's milestone 5 section), tagged
-// with the release version, and prints each one's size. Linux with Docker only: it runs in
-// milestone 5's Linux proof job (ticket 35) and on the maintainer's machine. Nothing is pushed
-// anywhere; publishing is milestone 7. `--plan` prints the builds without running them, anywhere.
+// `<namespace>/<name>:<version>` from the root package.json (`ostra/<name>:0.0.0` in a clone, the
+// registry's at a release), and prints each one's size. Linux with Docker only: it runs in
+// milestone 5's Linux proof job (ticket 35), on the maintainer's machine and in release.yml, which
+// pushes what it tags. Nothing is pushed from here. `--plan` prints the builds without running them, anywhere.
 //
 // Every docker call takes its arguments as an array; nothing is put through a shell.
 
@@ -10,7 +11,7 @@ import { promisify } from "node:util";
 
 import { buildPlan } from "./images.ts";
 import type { ImageBuild } from "./images.ts";
-import { releaseVersion, repoRoot } from "./repo.ts";
+import { imageNamespace, releaseVersion, repoRoot } from "./repo.ts";
 
 const run = promisify(execFile);
 
@@ -30,7 +31,7 @@ const build = (image: ImageBuild): Promise<void> =>
 const megabytes = (bytes: number): string => `${(bytes / 1_000_000).toFixed(1)} MB`;
 
 const main = async (): Promise<number> => {
-  const plan = buildPlan(await releaseVersion());
+  const plan = buildPlan(await releaseVersion(), await imageNamespace());
   if (process.argv.includes("--plan")) {
     for (const image of plan) {
       process.stdout.write(`${image.tag}: docker ${image.args.join(" ")}\n`);

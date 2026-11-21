@@ -1,24 +1,33 @@
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 
+import { makeReleaseAssets } from "./release-assets.ts";
+import type { PackageChart } from "./release-assets.ts";
 import { releaseNotes } from "./release-notes.ts";
-import { builtExports, isPublishedDir, LICENSOR, readWorkspace, releaseProblems, releaseWorkflowProblems, runtimeImports, setVersion, versionedFiles, versionStamps } from "./release.ts";
+import { builtExports, isPublishedDir, LICENSOR, linkedAssets, readWorkspace, releaseAssets, releaseProblems, releaseStamps, releaseWorkflowProblems, runtimeImports, stampRelease, versionedFiles } from "./release.ts";
 
 // Milestone 7's ticket 30 (F-039's publishing, ADR 0045, ADR 0064): what a release publishes and
 // the checks `release.yml` runs before it does. The repo's own files pass; a copy of them broken in
-// one place, in a temp folder, fails with that place named.
+// one place, in a temp folder, fails with that place named. `release.yml` runs these on its tree
+// after its stamp, so they read the tree's version and namespace rather than assume a clone's.
 
 const root = path.resolve(import.meta.dirname, "..");
 const temp = await mkdtemp(path.join(tmpdir(), "ostra-release-"));
 afterAll(() => rm(temp, { recursive: true, force: true }));
 
-/** A copy of the checkout's release files: the manifests, the LICENSE and NOTICE files, the published packages' sources, the workflows and the deploy files the version is stamped on. */
+/** The tree's own release: `0.0.0` and `ostra` in a clone, the release's after `release.yml`'s stamp. */
+const tree = z.looseObject({ version: z.string(), imageNamespace: z.string() }).parse(JSON.parse(await readFile(path.join(root, "package.json"), "utf8")));
+
+const escaped = (text: string): string => text.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** A copy of the checkout's release files: the manifests, the LICENSE and NOTICE files, the published packages' sources, the workflows and the deploy files the release is stamped on. */
 const copyCheckout = async (name: string): Promise<string> => {
   const target = path.join(temp, name);
-  for (const file of ["package.json", "pnpm-workspace.yaml", "LICENSE", "NOTICE", ".github/workflows/release.yml", ".github/workflows/ci.yml", ...versionStamps.map((stamp) => stamp.file)]) {
+  for (const file of ["package.json", "pnpm-workspace.yaml", "LICENSE", "NOTICE", ".github/workflows/release.yml", ".github/workflows/ci.yml", ...releaseStamps.map((stamp) => stamp.file)]) {
     await mkdir(path.dirname(path.join(target, file)), { recursive: true });
     await cp(path.join(root, file), path.join(target, file));
   }
@@ -87,49 +96,139 @@ describe("the published packages", () => {
   });
 });
 
+/** A release unlike the tree's own (read above, so it differs on a stamped tree too), so a file the stamp left alone shows. */
+const SAMPLE = {
+  version: tree.version === "1.2.3-rc.1" ? "1.2.4-rc.1" : "1.2.3-rc.1",
+  imageNamespace: tree.imageNamespace === "registry.example:5000/team" ? "registry.example:5000/other" : "registry.example:5000/team",
+};
+
 describe("one version", () => {
-  it("F-039/c2: the version script sets one version on every package.json, the root's (the images' tags) and the CLI's included, on the compose file's images and on each chart, and refuses one that isn't a version", async () => {
+  it("F-039/c2: the stamp sets the release's version on every package.json, the root's (the images' tags) and the CLI's included, its image namespace on the root's, and both on the compose file's images and on each chart, and refuses a version or a namespace that isn't one", async () => {
     const checkout = await copyCheckout("version");
     const read = (file: string): Promise<string> => readFile(path.join(checkout, file), "utf8");
     const before = await read("packages/protocol/package.json");
+    const rootBefore = await read("package.json");
     const compose = await read("deploy/compose.yaml");
     const charts = await Promise.all(["ostra-server", "ostra-runner"].map((chart) => read(`deploy/helm/${chart}/Chart.yaml`)));
-    const files = await setVersion(checkout, "1.2.3-rc.1");
-    expect(files).toEqual([...(await versionedFiles(checkout)), "deploy/compose.yaml", "deploy/helm/ostra-server/Chart.yaml", "deploy/helm/ostra-runner/Chart.yaml"]);
+    const values = await Promise.all(["ostra-server", "ostra-runner"].map((chart) => read(`deploy/helm/${chart}/values.yaml`)));
+    const files = await stampRelease(checkout, SAMPLE);
+    expect(files).toEqual([
+      ...(await versionedFiles(checkout)),
+      "deploy/compose.yaml",
+      "deploy/helm/ostra-server/Chart.yaml",
+      "deploy/helm/ostra-runner/Chart.yaml",
+      "deploy/helm/ostra-server/values.yaml",
+      "deploy/helm/ostra-runner/values.yaml",
+    ]);
     expect(files).toEqual(expect.arrayContaining(["package.json", "apps/runner/package.json", "apps/core/package.json", "packages/protocol/package.json"]));
     for (const file of await versionedFiles(checkout)) {
       const manifest: unknown = JSON.parse(await read(file));
-      expect(Reflect.get(Object(manifest), "version"), file).toBe("1.2.3-rc.1");
+      expect(Reflect.get(Object(manifest), "version"), file).toBe(SAMPLE.version);
     }
-    // Only the version changed: a package.json's version line, the compose file's three images and
-    // two box images, each chart's version and appVersion. One version line holds after it.
-    expect(await read("packages/protocol/package.json")).toBe(before.replace('"version": "0.0.0"', '"version": "1.2.3-rc.1"'));
-    expect(compose.match(/ostra\/(?:server|runner|base):0\.0\.0$/gm)).toHaveLength(5);
-    expect(await read("deploy/compose.yaml")).toBe(compose.replaceAll(/(ostra\/(?:server|runner|base)):0\.0\.0$/gm, "$1:1.2.3-rc.1"));
+    // Only the release changed: a package.json's version line, the root's imageNamespace, the
+    // compose file's three images and two box images, each chart's version and appVersion, and its
+    // images' repositories. One version line holds after it.
+    const version = `"version": "${tree.version}"`;
+    expect(await read("packages/protocol/package.json")).toBe(before.replace(version, `"version": "${SAMPLE.version}"`));
+    expect(await read("package.json")).toBe(rootBefore.replace(version, `"version": "${SAMPLE.version}"`).replace(`"imageNamespace": "${tree.imageNamespace}"`, `"imageNamespace": "${SAMPLE.imageNamespace}"`));
+    const image = new RegExp(`(: )${escaped(tree.imageNamespace)}/(server|runner|base):${escaped(tree.version)}$`, "gm");
+    expect(compose.match(image)).toHaveLength(5);
+    expect(await read("deploy/compose.yaml")).toBe(compose.replaceAll(image, `$1${SAMPLE.imageNamespace}/$2:${SAMPLE.version}`));
     for (const [index, chart] of ["ostra-server", "ostra-runner"].entries()) {
-      expect(await read(`deploy/helm/${chart}/Chart.yaml`), chart).toBe((charts[index] ?? "").replace("\nversion: 0.0.0\n", "\nversion: 1.2.3-rc.1\n").replace('\nappVersion: "0.0.0"\n', '\nappVersion: "1.2.3-rc.1"\n'));
+      expect(await read(`deploy/helm/${chart}/Chart.yaml`), chart).toBe((charts[index] ?? "").replace(`\nversion: ${tree.version}\n`, `\nversion: ${SAMPLE.version}\n`).replace(`\nappVersion: "${tree.version}"\n`, `\nappVersion: "${SAMPLE.version}"\n`));
+    }
+    const repository = new RegExp(`^( {2}repository: )${escaped(tree.imageNamespace)}/(server|runner|base)$`, "gm");
+    expect(values.map((text) => text.match(repository)?.length)).toEqual([1, 2]);
+    for (const [index, chart] of ["ostra-server", "ostra-runner"].entries()) {
+      expect(await read(`deploy/helm/${chart}/values.yaml`), chart).toBe((values[index] ?? "").replaceAll(repository, `$1${SAMPLE.imageNamespace}/$2`));
     }
     expect(await messages(checkout)).toEqual([]);
     for (const bad of ["v1.0.0", "1.0", "", "1.0.0 ; rm -rf /"]) {
-      await expect(setVersion(checkout, bad), bad).rejects.toThrow(/isn't a release version/);
+      await expect(stampRelease(checkout, { ...SAMPLE, version: bad }), bad).rejects.toThrow(/isn't a release version/);
     }
+    // Docker refuses an uppercase or trailing-slash name; a `$` would be read by the replacement.
+    for (const bad of ["ghcr.io/JoeyKhd", "ghcr.io/joeykhd/", "", "ghcr.io/x; rm -rf /", "$1/x", "ghcr.io/x\nimage: evil", "https://ghcr.io/x"]) {
+      await expect(stampRelease(checkout, { ...SAMPLE, imageNamespace: bad }), bad).rejects.toThrow(/isn't an image namespace/);
+    }
+    // Stamped twice, the second release wins: each spot matches any namespace and version.
+    await stampRelease(checkout, { version: "2.0.0", imageNamespace: "ghcr.io/joeykhd" });
+    expect(await read("deploy/compose.yaml")).toContain("    image: ghcr.io/joeykhd/server:2.0.0\n");
+    expect(await read("deploy/helm/ostra-runner/values.yaml")).toContain("  repository: ghcr.io/joeykhd/base\n");
   });
 
   it("F-039/c2: a version line the stamp doesn't find where it expects fails the stamp, which then writes nothing", async () => {
     const checkout = await copyCheckout("version-moved");
-    await edit(checkout, "deploy/compose.yaml", "      OSTRA_BOX_BASE_IMAGE: ostra/base:", "      OSTRA_BOX_IMAGE: ostra/base:");
+    await edit(checkout, "deploy/compose.yaml", "      OSTRA_BOX_BASE_IMAGE: ", "      OSTRA_BOX_IMAGE: ");
     const root = await readFile(path.join(checkout, "package.json"), "utf8");
-    await expect(setVersion(checkout, "1.2.3")).rejects.toThrow(/^deploy\/compose\.yaml: the version stamp expects 5 line\(s\) .* and found 4$/);
+    await expect(stampRelease(checkout, SAMPLE)).rejects.toThrow(/^deploy\/compose\.yaml: the release stamp expects 5 line\(s\) .* and found 4$/);
     expect(await readFile(path.join(checkout, "package.json"), "utf8")).toBe(root);
-    await edit(checkout, "deploy/compose.yaml", "      OSTRA_BOX_IMAGE: ostra/base:", "      OSTRA_BOX_BASE_IMAGE: ostra/base:");
+    await edit(checkout, "deploy/compose.yaml", "      OSTRA_BOX_IMAGE: ", "      OSTRA_BOX_BASE_IMAGE: ");
     await edit(checkout, "deploy/helm/ostra-runner/Chart.yaml", /^appVersion: .*$/m, "appVersion: 0.0.0");
-    await expect(setVersion(checkout, "1.2.3")).rejects.toThrow(/^deploy\/helm\/ostra-runner\/Chart\.yaml: the version stamp expects 1 line\(s\) .* and found 0$/);
+    await expect(stampRelease(checkout, SAMPLE)).rejects.toThrow(/^deploy\/helm\/ostra-runner\/Chart\.yaml: the release stamp expects 1 line\(s\) .* and found 0$/);
+    await edit(checkout, "deploy/helm/ostra-runner/Chart.yaml", /^appVersion: .*$/m, `appVersion: "${tree.version}"`);
+    await edit(checkout, "deploy/helm/ostra-runner/values.yaml", /^ {2}repository: (\S+)\/base$/m, "  repository: base");
+    await expect(stampRelease(checkout, SAMPLE)).rejects.toThrow(/^deploy\/helm\/ostra-runner\/values\.yaml: the release stamp expects 2 line\(s\) .* and found 1$/);
+    await edit(checkout, "package.json", /\n\s*"imageNamespace": "[^"]*",/, "");
+    await expect(stampRelease(checkout, SAMPLE)).rejects.toThrow(/^package\.json: the release stamp expects 1 line\(s\) .*imageNamespace.* and found 0$/);
+    expect(await messages(checkout)).toEqual(["package.json: its imageNamespace is missing, not an image namespace: where the images are published, which node scripts/version.ts sets (\"ostra\" in a clone)"]);
   });
 
   it("F-039/c2: every package.json carries the root's version: one bumped by hand fails check:release", async () => {
     const checkout = await copyCheckout("version-line");
-    await edit(checkout, "apps/core/package.json", '"version": "0.0.0"', '"version": "0.9.0"');
-    expect(await messages(checkout)).toEqual(["apps/core/package.json: its version is 0.9.0, not the root's 0.0.0: one version line, which node scripts/version.ts sets"]);
+    await edit(checkout, "apps/core/package.json", `"version": "${tree.version}"`, '"version": "0.9.0"');
+    expect(await messages(checkout)).toEqual([`apps/core/package.json: its version is 0.9.0, not the root's ${tree.version}: one version line, which node scripts/version.ts sets`]);
+  });
+});
+
+/** Helm's `helm package` as far as the release's files need it: `<chart>-<Chart.yaml's version>.tgz`, holding the chart's values. */
+const fakePackage: PackageChart = async (chartDir, destination) => {
+  const version = /^version: (\S+)$/m.exec(await readFile(path.join(chartDir, "Chart.yaml"), "utf8"))?.[1] ?? "";
+  await writeFile(path.join(destination, `${path.basename(chartDir)}-${version}.tgz`), await readFile(path.join(chartDir, "values.yaml")));
+};
+
+/** Every page the docs site renders, and the repo's own docs it reads: their text by path. */
+const docsPages = async (): Promise<readonly { readonly file: string; readonly text: string }[]> => {
+  const pages: { file: string; text: string }[] = [];
+  for (const dir of ["apps/docs/content", "docs"]) {
+    for (const entry of await readdir(path.join(root, dir), { recursive: true, withFileTypes: true })) {
+      if (entry.isFile() && /\.mdx?$/.test(entry.name)) {
+        const file = path.join(entry.parentPath, entry.name);
+        pages.push({ file: path.relative(root, file).replaceAll("\\", "/"), text: await readFile(file, "utf8") });
+      }
+    }
+  }
+  return pages;
+};
+
+describe("the release's files", () => {
+  it("F-039/c2: every file the docs download from a release is one the release attaches: the compose file and both charts", async () => {
+    const linked = (await docsPages()).flatMap((page) => linkedAssets(page.text).map((name) => ({ page: page.file, name })));
+    const names = releaseAssets.map((asset) => asset.name);
+    expect(linked.map((link) => link.page)).toEqual(expect.arrayContaining(["apps/docs/content/install/docker-compose.mdx", "apps/docs/content/install/helm.mdx", "apps/docs/content/install/upgrading.mdx"]));
+    expect(linked.filter((link) => !names.includes(link.name))).toEqual([]);
+    expect(names).toEqual(["compose.yaml", "ostra-server.tgz", "ostra-runner.tgz"]);
+    expect([...new Set(linked.map((link) => link.name))].sort()).toEqual([...names].sort());
+    // The link reads the download's name, a release's or the newest one's, and nothing after it.
+    expect(linkedAssets("curl -fsSLO https://github.com/JoeyKhd/ostra/releases/download/v1.0.0/compose.yaml\nsee `https://github.com/JoeyKhd/ostra/releases/latest/download/ostra-runner.tgz`.")).toEqual(["compose.yaml", "ostra-runner.tgz"]);
+    expect(linkedAssets("https://github.com/someone/else/releases/latest/download/x.yaml")).toEqual([]);
+  });
+
+  it("F-039/c2: the release's files are the stamped compose file and both charts at the release's version; a chart left at another version fails", async () => {
+    const checkout = await copyCheckout("assets");
+    await stampRelease(checkout, SAMPLE);
+    const out = path.join(temp, "assets-out");
+    const made = await makeReleaseAssets(checkout, out, fakePackage);
+    expect(made.map((asset) => asset.name)).toEqual(releaseAssets.map((asset) => asset.name));
+    expect(made.every((asset) => asset.bytes > 0 && /^[0-9a-f]{64}$/.test(asset.sha256))).toBe(true);
+    const compose = await readFile(path.join(out, "compose.yaml"), "utf8");
+    expect(compose).toBe(await readFile(path.join(checkout, "deploy", "compose.yaml"), "utf8"));
+    expect(compose).toContain(`    image: ${SAMPLE.imageNamespace}/server:${SAMPLE.version}\n`);
+    expect(compose).not.toMatch(new RegExp(`: ${escaped(tree.imageNamespace)}/(server|runner|base):`));
+    expect(await readFile(path.join(out, "ostra-runner.tgz"), "utf8")).toContain(`  repository: ${SAMPLE.imageNamespace}/runner\n`);
+    // Into a folder that holds anything already, or from a chart the stamp missed, nothing ships.
+    await expect(makeReleaseAssets(checkout, out, fakePackage)).rejects.toThrow(/already holds/);
+    await edit(checkout, "deploy/helm/ostra-server/Chart.yaml", /^version: .*$/m, "version: 0.0.0");
+    await expect(makeReleaseAssets(checkout, path.join(temp, "assets-stale"), fakePackage)).rejects.toThrow(new RegExp(`^helm package made ostra-server-0\\.0\\.0\\.tgz of ostra-server, not ostra-server-${escaped(SAMPLE.version)}\\.tgz`));
   });
 });
 
@@ -186,7 +285,7 @@ describe("the contributor agreement's box", () => {
 });
 
 describe("the release workflow", () => {
-  it("F-039/c2: release.yml runs by hand only, pins every action by SHA, holds three permissions and no npm token, and its dry run publishes nothing", async () => {
+  it("F-039/c2: release.yml runs by hand only, pins every action by SHA, holds three permissions and no npm token, stamps the namespace, attaches its files to the real release only, and its dry run publishes nothing", async () => {
     const workflow = await readFile(path.join(root, ".github", "workflows", "release.yml"), "utf8");
     const ci = await readFile(path.join(root, ".github", "workflows", "ci.yml"), "utf8");
     expect(releaseWorkflowProblems(workflow, ci)).toEqual([]);
@@ -201,6 +300,12 @@ describe("the release workflow", () => {
     expect(broken("      VERSION: ${{ inputs.version }}", "      VERSION: ${{ inputs.version }}\n      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}")).toEqual(["holds no npm token: npm's trusted publishing trusts the workflow itself"]);
     expect(broken('npm publish "$tarball" --tag "$tag" --dry-run', 'npm publish "$tarball" --tag "$tag"')).toEqual(["publishes each tarball with --provenance, or with --dry-run in the dry run"]);
     expect(broken(/(dry-run:\n(?: {8}.*\n)*? {8}default:) true/, "$1 false")).toEqual(["its dry run is the default"]);
+    // The stamp names the namespace the images are pushed to, and the release attaches its files.
+    expect(broken('node scripts/version.ts "$VERSION" "$IMAGE_NAMESPACE"', 'node scripts/version.ts "$VERSION"')).toEqual([expect.stringMatching(/^stamps its tree with the version and the image namespace/)]);
+    const assets = /^makes the release's files in every run/;
+    expect(broken(' $prerelease "$OUT"/assets/*', " $prerelease")).toEqual([expect.stringMatching(assets)]);
+    expect(broken("      - name: Make the release's files\n", "      - if: ${{ !inputs.dry-run }}\n        name: Make the release's files\n")).toEqual([expect.stringMatching(assets)]);
+    expect(broken("      - if: ${{ !inputs.dry-run }}\n        name: Create the GitHub release\n", "      - name: Create the GitHub release\n")).toEqual([expect.stringMatching(assets)]);
     expect(releaseWorkflowProblems(workflow, `${ci}\n      - run: pnpm images:build\n`).map((problem) => problem.message)).toEqual(["ci.yml never runs the release, a publish or an image build (the maintainer's CI scope)"]);
   });
 

@@ -7,6 +7,7 @@
 #   database.existingSecret: <a secret with the URL under database.existingSecretKey>
 
 image:
+  # The release stamps its image namespace here (ostra in a clone): the image release.yml pushes.
   repository: ostra/server
   # Empty: the chart's appVersion.
   tag: ""

@@ -3,17 +3,27 @@ title: "Kubernetes with Helm"
 description: "Install ostra on a Kubernetes cluster with its Helm charts."
 ---
 
-> [!NOTE]
-> The Helm charts are being built (milestone 5). Until a release ships them, install with [Docker Compose](/docs/install/docker-compose). This page describes them as v1 has them.
-
 ## The charts
 
-Two charts, in `deploy/helm/`, versioned with each release. They are separate because the server and its runners are often in different clusters, and a runner's chart must be installable by someone who can't touch the server.
+Two charts, attached to each release and versioned with it, so each one's images default to that release's own. Their source is `deploy/helm/`. They are separate because the server and its runners are often in different clusters, and a runner's chart must be installable by someone who can't touch the server.
 
 - **`ostra-server`** runs the server image as `web` and `core` deployments, each with its replicas, against a Postgres you provide.
 - **`ostra-runner`** installs a pool runner on the `kubernetes` executor: the namespaces its boxes run in, a service account with a role in those namespaces only, the runner's deployment, its join token from a Kubernetes secret, and the egress policies.
 
 Both need Kubernetes 1.29 or later, because a box's services run as native sidecar containers.
+
+## Install
+
+Install the server's chart first, with your values file (the [values](#values) below), then the runner's where its pool runs:
+
+```sh
+helm install ostra https://github.com/JoeyKhd/ostra/releases/latest/download/ostra-server.tgz \
+  --namespace ostra --create-namespace -f server-values.yaml
+helm install ostra-runner https://github.com/JoeyKhd/ostra/releases/latest/download/ostra-runner.tgz \
+  --namespace ostra -f runner-values.yaml
+```
+
+`latest/download` is the newest release. For one release, use `download/v<version>` in its place, such as `https://github.com/JoeyKhd/ostra/releases/download/v1.0.0/ostra-server.tgz`. `helm show values` with a chart's address prints its values and their defaults.
 
 ## Values
 

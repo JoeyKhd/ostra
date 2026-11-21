@@ -1,6 +1,6 @@
 import type { DeployFiles } from "./image-checks.ts";
 import { dockerfileOf } from "./images.ts";
-import { readRepoFile, releaseVersion, repoRoot } from "./repo.ts";
+import { imageNamespace, readRepoFile, releaseVersion, repoRoot } from "./repo.ts";
 
 /** The deploy files as the repo has them, or as another checkout (`root`) has them, in a test. */
 export const readDeployFiles = async (root: string = repoRoot): Promise<DeployFiles> => {
@@ -15,6 +15,7 @@ export const readDeployFiles = async (root: string = repoRoot): Promise<DeployFi
     compose: await readRepoFile("deploy/compose.yaml", root),
     entrypoint: await readRepoFile("deploy/server-entrypoint.sh", root),
     releaseVersion: await releaseVersion(root),
+    imageNamespace: await imageNamespace(root),
     runnerVersion: typeof runnerVersion === "string" ? runnerVersion : "",
   };
 };

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { readRepoFile } from "../repo.ts";
 import { readExamples } from "./charts.ts";
-import { checkRender, keptRenderFile } from "./renders.ts";
+import { atKeptRelease, checkRender, KEPT_RELEASE, keptRenderFile } from "./renders.ts";
 import { chartNames } from "./values.ts";
 import type { ChartName } from "./values.ts";
 
@@ -46,6 +46,29 @@ describe("the kept renders", () => {
         expect(await checkRender(chart, await kept(chart, name), example.values), `${chart} ${name}`).toEqual([]);
       }
     }
+  });
+
+  it("F-118/c1: a stamped release's render compares with the kept one: only its version labels and images are put back", async () => {
+    const release = { version: "1.0.0-rc.0", namespace: "localhost:5000/ostra" };
+    for (const chart of chartNames) {
+      for (const example of await readExamples(chart)) {
+        const name = example.file.split("/").at(-1) ?? "";
+        const text = await kept(chart, name);
+        // The render a tree stamped with `release` gives: what the stamp reaches, and nothing else.
+        const stamped = text
+          .replaceAll(/^(\s+app\.kubernetes\.io\/version: )"0\.0\.0"$/gm, `$1"${release.version}"`)
+          .replaceAll(/^(\s+helm\.sh\/chart: ostra-(?:server|runner)-)0\.0\.0$/gm, `$1${release.version}`)
+          .replaceAll(/(?<![\w./:-])ostra\/(server|runner|base):0\.0\.0/g, `${release.namespace}/$1:${release.version}`);
+        expect(stamped, `${chart} ${name}`).not.toBe(text);
+        expect(stamped, `${chart} ${name}`).not.toMatch(/ostra\/(?:server|runner|base):0\.0\.0|ostra-(?:server|runner)-0\.0\.0/);
+        expect(atKeptRelease(stamped, release), `${chart} ${name}`).toBe(text);
+        expect(atKeptRelease(text, KEPT_RELEASE), `${chart} ${name}`).toBe(text);
+      }
+    }
+    // Anything else the render changes still differs from the kept one, and another release's images too.
+    const text = await kept("ostra-runner", "required-values.yaml");
+    expect(atKeptRelease(changed(text, "cidr: 0.0.0.0/0", "cidr: 10.0.0.0/0"), release)).not.toBe(text);
+    expect(atKeptRelease(changed(text, /ostra\/base:0\.0\.0/, "ghcr.io/other/base:1.0.0-rc.0"), release)).not.toBe(text);
   });
 });
 

@@ -38,6 +38,8 @@ export type DeployFiles = {
   /** deploy/server-entrypoint.sh, the server image's `ostra-server`. */
   readonly entrypoint: string;
   readonly releaseVersion: string;
+  /** The root package.json's `imageNamespace`: where the release's images are published (`ostra` in a clone). */
+  readonly imageNamespace: string;
   /** apps/runner/package.json's version, which `ostra --version` prints. */
   readonly runnerVersion: string;
 };
@@ -319,8 +321,11 @@ export const checkDockerfile = (name: ImageName, text: string, entrypoint: strin
 
 const COMPOSE = "deploy/compose.yaml";
 
-/** The compose file runs exactly the images the build tags, and pins every other image by digest. */
-export const checkCompose = (text: string, version: string): readonly Problem[] => {
+/**
+ * The compose file runs exactly the images the build tags, `<namespace>/<name>:<version>`, the ones a
+ * release pushes, and pins every other image by digest.
+ */
+export const checkCompose = (text: string, version: string, namespace: string): readonly Problem[] => {
   const problem = (rule: ImageRule, message: string): Problem => ({ file: COMPOSE, line: null, rule, message });
   let compose: Yaml;
   try {
@@ -333,7 +338,7 @@ export const checkCompose = (text: string, version: string): readonly Problem[] 
     return [problem("compose-images", "has no services")];
   }
   const problems: Problem[] = [];
-  const builds = new Map(buildPlan(version).map((build) => [build.name, build]));
+  const builds = new Map(buildPlan(version, namespace).map((build) => [build.name, build]));
   for (const [service, definition] of Object.entries(services)) {
     const image = yamlAt(definition, "image");
     const built = imageNames.find((name) => name === service);
@@ -381,7 +386,7 @@ export const checkCompose = (text: string, version: string): readonly Problem[] 
 /** Every check over the deploy files. Empty when they pass. */
 export const checkImages = (files: DeployFiles): readonly Problem[] => [
   ...imageNames.flatMap((name) => checkDockerfile(name, files.dockerfiles[name], files.entrypoint)),
-  ...checkCompose(files.compose, files.releaseVersion),
+  ...checkCompose(files.compose, files.releaseVersion, files.imageNamespace),
   ...(files.runnerVersion === files.releaseVersion
     ? []
     : [

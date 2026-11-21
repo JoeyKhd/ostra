@@ -25,7 +25,14 @@ Migrations only add in a release: a column or table that goes away is dropped in
 
 ## Upgrade with Helm
 
-`helm upgrade` each chart to the new release's version, the server's first. The server chart keeps its shared secret across upgrades.
+`helm upgrade` each chart to the new release's, the server's first, with the values you installed it with. The server chart keeps its shared secret across upgrades.
+
+```sh
+helm upgrade ostra https://github.com/JoeyKhd/ostra/releases/latest/download/ostra-server.tgz \
+  --namespace ostra -f server-values.yaml
+helm upgrade ostra-runner https://github.com/JoeyKhd/ostra/releases/latest/download/ostra-runner.tgz \
+  --namespace ostra -f runner-values.yaml
+```
 
 ## Settings that were removed
 

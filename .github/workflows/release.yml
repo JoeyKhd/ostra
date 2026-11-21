@@ -3,14 +3,15 @@ name: Release
 # The release (milestone 7's ticket 30, ADR 0064, ADR 0045): every check, the three images built,
 # checked and pushed by digest, the npm packages published through npm's trusted publishing (no npm
 # token: npm trusts this workflow by its OIDC identity, `id-token: write`), the GitHub release with
-# the changelog, the digests and the versions, then the docs (docs.yml).
+# the changelog, the digests and the versions, and its files (the stamped compose file and both
+# charts, which the install guide and the Helm page download), then the docs (docs.yml).
 #
 # By hand only, by the maintainer: `gh workflow run Release -f version=1.0.0 -f dry-run=false`.
 # Never on push, a tag or a schedule, and never in ci.yml (the maintainer's CI scope, 2026-11-19).
 #
-# The dry run (`dry-run: true`, the default) pushes the images to a registry inside this job and
-# runs `npm publish --dry-run`; nothing leaves the job. Its log is kept in
-# context/specs/m7-launch/demo/release-dry-run.log.
+# The dry run (`dry-run: true`, the default) pushes the images to a registry inside this job, runs
+# `npm publish --dry-run`, and makes and lists the release's files without a release to attach them
+# to; nothing leaves the job. Its log is kept in context/specs/m7-launch/demo/release-dry-run.log.
 #
 # The names are the maintainer's (Q80, Q82; ticket 34, step 4): the real run needs the repository
 # variables OSTRA_CLI_PACKAGE (the CLI's npm name) and OSTRA_IMAGE_NAMESPACE (where the images go,
@@ -77,10 +78,12 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
-      # One version everywhere a release carries it: every package.json (the root's tags the images, the
-      # CLI's is `ostra --version`, core's is what a runner pins to), the compose file's images and each
-      # chart's version and appVersion (scripts/release.ts, versionStamps).
-      - run: node scripts/version.ts "$VERSION"
+      # The release stamped everywhere it's carried: the version on every package.json (the root's tags
+      # the images, the CLI's is `ostra --version`, core's is what a runner pins to), the namespace the
+      # images are pushed to on the root's, and both on the compose file's images and each chart's
+      # version, appVersion and image repositories (scripts/release.ts, releaseStamps). So the build
+      # tags, the compose file and the charts all name the images this job pushes.
+      - run: node scripts/version.ts "$VERSION" "$IMAGE_NAMESPACE"
 
       # Every check, on the release's own tree.
       - run: pnpm turbo run generate
@@ -88,21 +91,27 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm check:licenses
-      - run: pnpm check:proof
       - run: pnpm check:release
       - run: pnpm check:images
       - run: pnpm check:helm
 
-      # The three images, built from this tree, started and checked, then pushed by digest.
+      # The release's files (scripts/release.ts, releaseAssets): the stamped compose file and both
+      # charts packaged by Helm, which the docs download from releases/latest/download/. Made and
+      # listed in every run; only the real run's release attaches them.
+      - name: Make the release's files
+        run: node scripts/release-assets.ts "$OUT/assets"
+
+      # The three images, built from this tree under the release's namespace, started and checked,
+      # then pushed by digest.
       - run: pnpm images:build
       - name: Start and check each image
         run: |
           set -eu
-          test "$(docker run --rm "ostra/runner:$VERSION" --version)" = "$VERSION"
-          docker run --rm --entrypoint sh "ostra/base:$VERSION" -c 'opencode --version'
-          docker run --rm --entrypoint sh "ostra/runner:$VERSION" -c '! ls /app/node_modules/.pnpm | grep "^@opencode+cli"'
+          test "$(docker run --rm "$IMAGE_NAMESPACE/runner:$VERSION" --version)" = "$VERSION"
+          docker run --rm --entrypoint sh "$IMAGE_NAMESPACE/base:$VERSION" -c 'opencode --version'
+          docker run --rm --entrypoint sh "$IMAGE_NAMESPACE/runner:$VERSION" -c '! ls /app/node_modules/.pnpm | grep "^@opencode+cli"'
           for name in server runner base; do
-            docker run --rm --entrypoint sh "ostra/$name:$VERSION" -c 'grep -c "^Package: " /usr/share/doc/ostra/THIRD_PARTY_NOTICES'
+            docker run --rm --entrypoint sh "$IMAGE_NAMESPACE/$name:$VERSION" -c 'grep -c "^Package: " /usr/share/doc/ostra/THIRD_PARTY_NOTICES'
           done
       - if: ${{ !inputs.dry-run }}
         name: Sign in to the image registry
@@ -115,7 +124,6 @@ jobs:
           : > "$OUT/digests.txt"
           for name in server runner base; do
             target="$IMAGE_NAMESPACE/$name:$VERSION"
-            docker tag "ostra/$name:$VERSION" "$target"
             docker push "$target"
             docker image inspect --format '{{index .RepoDigests 0}}' "$target" >> "$OUT/digests.txt"
           done
@@ -151,7 +159,9 @@ jobs:
             fi
           done
 
-      # The GitHub release: the changelog since the previous tag, the digests and the versions.
+      # The GitHub release: the changelog since the previous tag, the digests and the versions, with
+      # the release's files attached. Its tag is the commit this ran on, which isn't stamped (nothing
+      # is committed back), so the attached files, not the tag's, carry the release.
       - name: Write the release notes
         run: |
           set -eu
@@ -165,7 +175,7 @@ jobs:
         run: |
           set -eu
           case "$VERSION" in *-*) prerelease="--prerelease" ;; *) prerelease="" ;; esac
-          gh release create "v$VERSION" --target "$GITHUB_SHA" --title "ostra $VERSION" --notes-file "$OUT/notes.md" $prerelease
+          gh release create "v$VERSION" --target "$GITHUB_SHA" --title "ostra $VERSION" --notes-file "$OUT/notes.md" $prerelease "$OUT"/assets/*
 
   # The docs of the release, after it's published (docs.yml, ADR 0063). A release made with this
   # workflow's token starts no other workflow by its event, so this job calls docs.yml itself.

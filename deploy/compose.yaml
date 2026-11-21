@@ -4,8 +4,11 @@
 # required settings, each with a working default (docs/configuration.md). The first account needs
 # the setup token the server prints in its log at first start (Q117).
 #
-# The server, runner and base images are the ones `pnpm images:build` tags with the release
-# version (`pnpm check:images` keeps them equal); every other image is pinned by digest. Run on
+# The server, runner and base images are the ones `pnpm images:build` tags,
+# `<namespace>/<name>:<version>` (`pnpm check:images` keeps them equal): `ostra/` and 0.0.0 in a
+# clone, and in a release's copy of this file (attached to the GitHub release, which the install
+# guide downloads) the namespace and version the release pushed, both stamped by
+# `node scripts/version.ts`. Every other image is pinned by digest. Run on
 # Linux only: until `docker compose up` runs in milestone 5's Linux proof job (ticket 35), F-001
 # stays `building`.
 

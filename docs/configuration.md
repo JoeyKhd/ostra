@@ -214,7 +214,7 @@ Two charts in `deploy/helm/`, versioned with the release (ADR 0060): `ostra-serv
 
 | Value | Default | What it does |
 |---|---|---|
-| `image.repository` | `ostra/server` | The server image (ADR 0046). |
+| `image.repository` | `<namespace>/server` | The server image (ADR 0046). A release's chart names the namespace that release's images are published under; a clone's says `ostra`. |
 | `image.tag` | the chart's `appVersion` | The image's tag. |
 | `image.pullPolicy` | `IfNotPresent` | Kubernetes' pull policy for it. |
 | `imagePullSecrets` | `[]` | The names of secrets to pull the image with. |
@@ -244,11 +244,11 @@ Two charts in `deploy/helm/`, versioned with the release (ADR 0060): `ostra-serv
 
 | Value | Default | What it does |
 |---|---|---|
-| `image.repository` | `ostra/runner` | The runner image: the runner, and each box's sidecar (ADR 0046). |
+| `image.repository` | `<namespace>/runner` | The runner image: the runner, and each box's sidecar (ADR 0046). Under the release's image namespace, as the server chart's is. |
 | `image.tag` | the chart's `appVersion` | The image's tag, which is the runner's pin (ADR 0034). |
 | `image.pullPolicy` | `IfNotPresent` | Kubernetes' pull policy for it. |
 | `imagePullSecrets` | `[]` | The names of secrets to pull the runner image with. |
-| `boxImage.repository` | `ostra/base` | The base image a box's agent runs in, for an environment that names none (`OSTRA_BOX_BASE_IMAGE`). |
+| `boxImage.repository` | `<namespace>/base` | The base image a box's agent runs in, for an environment that names none (`OSTRA_BOX_BASE_IMAGE`). Under the release's image namespace. |
 | `boxImage.tag` | the chart's `appVersion` | Its tag. |
 | `server.url` | (required) | Core's address as the runner reaches it (`OSTRA_SERVER_URL`). |
 | `server.boxUrl` | (empty: `server.url`) | Core's address as a box's sidecar reaches it (`OSTRA_BOX_SERVER_URL`). |

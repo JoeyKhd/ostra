@@ -6,6 +6,8 @@
 // - **Published:** `@ostra/protocol`, `@ostra/adapter-sdk` and every adapter, each from its build
 //   (`dist`, made by `tsconfig.build.json`) with its LICENSE, public, with npm's provenance, and the
 //   CLI, which `apps/runner`'s `pack:cli` bundles into a package of its own (`pack-cli.ts`).
+// - **Attached to the GitHub release:** the compose file and both Helm charts, stamped with the
+//   release's version and image namespace (`releaseAssets`, made by `release-assets.ts`).
 // - **Not published:** every other workspace package, the server's above all, is `private: true`.
 // - **The licensor line** (ADR 0048) is `LICENSOR`, in `licensor.ts` and nowhere else in code: the root
 //   LICENSE, NOTICE and every published package's `author` must say it, and any LICENSE that names a
@@ -25,10 +27,22 @@ export const isPublishedDir = (dir: string): boolean => dir === "packages/protoc
 
 const RELEASE_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
+/** One part of an image reference's path: Docker's grammar, lowercase only. */
+const PATH_PART = "[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*";
+
+/**
+ * Where a release's images are published: a registry host, with a port if it needs one, and a
+ * path, lowercase, such as `ghcr.io/joeykhd` or the dry run's `localhost:5000/ostra` (Q82). A
+ * clone's is `ostra`, which `pnpm images:build` tags local builds with.
+ */
+const IMAGE_NAMESPACE = new RegExp(`^${PATH_PART}(?::\\d+)?(?:/${PATH_PART})*$`);
+
 // package.json is npm's format, so unknown fields are tolerated.
 const manifestSchema = z.looseObject({
   name: z.string().min(1),
   version: z.string().optional(),
+  /** The root's only: the namespace the release's images are published under (`stampRelease`). */
+  imageNamespace: z.string().optional(),
   private: z.boolean().optional(),
   license: z.string().optional(),
   author: z.unknown().optional(),
@@ -241,7 +255,12 @@ export const releaseProblems = async (root: string): Promise<readonly ReleasePro
   const problems: ReleaseProblem[] = [];
   // One version line (ADR 0045): the CLI prints its package.json's, core tells runners its own and
   // the panel shows its own, so each must be the root's, which tags the images.
-  const release = manifestSchema.parse(JSON.parse(await readFile(path.join(root, "package.json"), "utf8"))).version ?? "";
+  const rootManifest = manifestSchema.parse(JSON.parse(await readFile(path.join(root, "package.json"), "utf8")));
+  const release = rootManifest.version ?? "";
+  // The images' namespace, which the build tags them with and the compose file and charts name.
+  if (!IMAGE_NAMESPACE.test(rootManifest.imageNamespace ?? "")) {
+    problems.push({ file: "package.json", message: `its imageNamespace is ${rootManifest.imageNamespace ?? "missing"}, not an image namespace: where the images are published, which node scripts/version.ts sets ("ostra" in a clone)` });
+  }
   for (const { dir, manifest } of workspace) {
     if (manifest.version !== release) {
       problems.push({ file: `${dir}/package.json`, message: `its version is ${manifest.version ?? "missing"}, not the root's ${release}: one version line, which node scripts/version.ts sets` });
@@ -286,7 +305,9 @@ const topBlock = (text: string, key: string): string | null => {
  * `release.yml` (ADR 0064): started by hand only, with `version` and `dry-run`; every action pinned
  * by its commit's SHA; `contents`, `packages` and `id-token` write and nothing else at the top; no
  * npm token, since npm's trusted publishing needs none; the dry run pushing to the job's own
- * registry and publishing nothing; and ci.yml never running it (the maintainer's CI scope).
+ * registry and publishing nothing; its tree stamped with the version and the image namespace; the
+ * release's files made in every run and attached to the real run's release only; and ci.yml
+ * never running it (the maintainer's CI scope).
  */
 export const releaseWorkflowProblems = (workflow: string, ci: string): readonly ReleaseProblem[] => {
   const problems: string[] = [];
@@ -321,6 +342,15 @@ export const releaseWorkflowProblems = (workflow: string, ci: string): readonly 
   if (!/^ {6}registry:\n {8}image: registry:[^\s@]+@sha256:[0-9a-f]{64}$/m.test(workflow) || !workflow.includes("inputs.dry-run && 'localhost:5000/ostra'")) {
     problems.push("its dry run pushes the images to a registry service inside the job, pinned by digest");
   }
+  if (!/^ {6}- run: node scripts\/version\.ts "\$VERSION" "\$IMAGE_NAMESPACE"$/m.test(workflow)) {
+    problems.push('stamps its tree with the version and the image namespace the images are pushed to: node scripts/version.ts "$VERSION" "$IMAGE_NAMESPACE"');
+  }
+  // The release's files are made in both runs, so the dry run lists them, and attached only by the
+  // real run's release.
+  const createRelease = /^ {6}- if: \$\{\{ !inputs\.dry-run \}\}\n {8}name: Create the GitHub release\n(?: {8,}.*\n)*/m.exec(workflow)?.[0] ?? "";
+  if (!/^ {6}- name: Make the release's files\n {8}run: node scripts\/release-assets\.ts "\$OUT\/assets"$/m.test(workflow) || !/^\s+gh release create "v\$VERSION" .*"\$OUT"\/assets\/\*$/m.test(createRelease)) {
+    problems.push(`makes the release's files in every run (node scripts/release-assets.ts "$OUT/assets") and attaches them to the real run's release only (gh release create ... "$OUT"/assets/*)`);
+  }
   if (/release\.yml|npm publish|images:build/.test(ci)) {
     problems.push("ci.yml never runs the release, a publish or an image build (the maintainer's CI scope)");
   }
@@ -330,72 +360,121 @@ export const releaseWorkflowProblems = (workflow: string, ci: string): readonly 
 /** The package.json files a version is set in: the root (the images' tags) and every workspace package. */
 export const versionedFiles = async (root: string): Promise<readonly string[]> => ["package.json", ...(await readWorkspace(root)).map((item) => `${item.dir}/package.json`)];
 
-/**
- * A place in a file the stamp writes the version into: each match of `pattern` (global, by line)
- * becomes its first group, the version and its second group. It must match `count` times, so a
- * moved or added line fails the stamp instead of shipping the old version.
- */
-export type VersionSpot = { readonly pattern: RegExp; readonly count: number };
-
-/** A file beside the package.json files that carries the release's version, and where. */
-export type VersionStamp = { readonly file: string; readonly spots: readonly VersionSpot[] };
+/** What a release stamps on its tree: its version, and the namespace its images are published under. */
+export type Release = { readonly version: string; readonly imageNamespace: string };
 
 /**
- * The files that carry the release's version as text, beside the package.json files, because
- * Docker Compose and Helm read them as they are. The CLI, core and the panel read their version
- * from their own package.json, so they can't drift from it. Each is checked where its rule lives:
- * the compose file by `pnpm check:images` (`compose-images`), each chart by `pnpm check:helm`
- * (`chart-version`). Pinned to the release's tag, never `latest` (ADR 0046, ADR 0060).
+ * A place in a file the stamp writes the release into: each match of `pattern` (global, by line)
+ * becomes `to`, in which `{version}` and `{namespace}` are the release's and `$1`, `$2` the
+ * pattern's groups. It must match `count` times, so a moved or added line fails the stamp instead
+ * of shipping the old value.
  */
-export const versionStamps: readonly VersionStamp[] = [
-  // The server, runner and base images' tags, and the runner's two box images.
-  { file: "deploy/compose.yaml", spots: [{ pattern: /^(\s+(?:image|OSTRA_BOX_BASE_IMAGE|OSTRA_BOX_RUNNER_IMAGE): ostra\/(?:server|runner|base):)\S+()$/gm, count: 5 }] },
+export type StampSpot = { readonly pattern: RegExp; readonly count: number; readonly to: string };
+
+/** A file beside the package.json files that carries the release's version or namespace, and where. */
+export type ReleaseStamp = { readonly file: string; readonly spots: readonly StampSpot[] };
+
+/**
+ * The files that carry the release as text, beside the package.json files, because Docker Compose
+ * and Helm read them as they are: each names the release's images, `<namespace>/<name>:<version>`,
+ * the images `release.yml` pushes. The CLI, core and the panel read their version from their own
+ * package.json, so they can't drift from it. Each is checked where its rule lives: the compose
+ * file by `pnpm check:images` (`compose-images`), each chart by `pnpm check:helm` (`chart-version`,
+ * `chart-images`). Pinned to the release's tag, never `latest` (ADR 0046, ADR 0060).
+ */
+export const releaseStamps: readonly ReleaseStamp[] = [
+  // The server, runner and base images, and the runner's two box images.
+  {
+    file: "deploy/compose.yaml",
+    spots: [{ pattern: /^(\s+(?:image|OSTRA_BOX_BASE_IMAGE|OSTRA_BOX_RUNNER_IMAGE): )\S+\/(server|runner|base):\S+$/gm, count: 5, to: "$1{namespace}/$2:{version}" }],
+  },
   // Each chart's version and its appVersion, the default tag of its images (values.yaml's empty `tag`).
   ...["ostra-server", "ostra-runner"].map((chart) => ({
     file: `deploy/helm/${chart}/Chart.yaml`,
     spots: [
-      { pattern: /^(version: )\S+()$/gm, count: 1 },
-      { pattern: /^(appVersion: ")[^"\r\n]*(")$/gm, count: 1 },
+      { pattern: /^(version: )\S+$/gm, count: 1, to: "$1{version}" },
+      { pattern: /^(appVersion: ")[^"\r\n]*(")$/gm, count: 1, to: "$1{version}$2" },
     ],
   })),
+  // Each chart's images' default repository, under the namespace: the server image, and the runner
+  // image with the base image a box's agent runs in.
+  { file: "deploy/helm/ostra-server/values.yaml", spots: [{ pattern: /^( {2}repository: )\S+\/(server)$/gm, count: 1, to: "$1{namespace}/$2" }] },
+  { file: "deploy/helm/ostra-runner/values.yaml", spots: [{ pattern: /^( {2}repository: )\S+\/(runner|base)$/gm, count: 2, to: "$1{namespace}/$2" }] },
 ];
 
-/** A stamped file's text, or an error naming the spot that didn't match as many times as it should. */
-const stampText = (stamp: VersionStamp, text: string, version: string): string =>
-  stamp.spots.reduce((current, spot) => {
+/** A stamped text, or an error naming the spot that didn't match as many times as it should. */
+const stampText = (file: string, spots: readonly StampSpot[], text: string, release: Release): string =>
+  spots.reduce((current, spot) => {
     const found = [...current.matchAll(spot.pattern)].length;
     if (found !== spot.count) {
-      throw new Error(`${stamp.file}: the version stamp expects ${String(spot.count)} line(s) like ${String(spot.pattern)} and found ${String(found)}`);
+      throw new Error(`${file}: the release stamp expects ${String(spot.count)} line(s) like ${String(spot.pattern)} and found ${String(found)}`);
     }
-    return current.replaceAll(spot.pattern, `$1${version}$2`);
+    // Neither value can hold a `$`, which a replacement would read: both are checked first.
+    return current.replaceAll(spot.pattern, spot.to.replaceAll("{version}", release.version).replaceAll("{namespace}", release.imageNamespace));
   }, text);
 
+/** Every package.json's version line, and the root's `imageNamespace`, which the image checks and the build read. */
+const manifestSpots = (file: string): readonly StampSpot[] => [
+  { pattern: /^(\s*"version":\s*")[^"]*(")/gm, count: 1, to: "$1{version}$2" },
+  ...(file === "package.json" ? [{ pattern: /^(\s*"imageNamespace":\s*")[^"]*(")/gm, count: 1, to: "$1{namespace}$2" }] : []),
+];
+
 /**
- * Sets one version everywhere a release carries it (ADR 0045's one version line): every
- * package.json, the root's (`releaseVersion`, the images' tags), the CLI's (`ostra --version`) and
- * core's (the version a runner pins to) among them, and each file of `stamps`. Only the version
- * changes; the rest of each file is kept as it's written. Nothing is written unless every file can
- * be stamped. `stamps` is `versionStamps` but in a test.
+ * Stamps the release everywhere it's carried (ADR 0045's one version line, ADR 0064): its version
+ * on every package.json, the root's (`releaseVersion`, the images' tags), the CLI's (`ostra
+ * --version`) and core's (the version a runner pins to) among them; its image namespace on the
+ * root's `imageNamespace`; and both on each file of `stamps`. Only those values change; the rest of
+ * each file is kept as it's written. Nothing is written unless every file can be stamped. `stamps`
+ * is `releaseStamps` but in a test.
  */
-export const setVersion = async (root: string, version: string, stamps: readonly VersionStamp[] = versionStamps): Promise<readonly string[]> => {
-  if (!RELEASE_VERSION.test(version)) {
-    throw new Error(`"${version}" isn't a release version (1.0.0, or 1.0.0-rc.1)`);
+export const stampRelease = async (root: string, release: Release, stamps: readonly ReleaseStamp[] = releaseStamps): Promise<readonly string[]> => {
+  if (!RELEASE_VERSION.test(release.version)) {
+    throw new Error(`"${release.version}" isn't a release version (1.0.0, or 1.0.0-rc.1)`);
   }
+  if (!IMAGE_NAMESPACE.test(release.imageNamespace)) {
+    throw new Error(`"${release.imageNamespace}" isn't an image namespace (a registry and a path, lowercase, such as ghcr.io/owner)`);
+  }
+  const read = (file: string): Promise<string> => readFile(path.join(root, ...file.split("/")), "utf8");
   const stamped: { readonly file: string; readonly text: string }[] = [];
   for (const file of await versionedFiles(root)) {
-    const text = await readFile(path.join(root, ...file.split("/")), "utf8");
-    if (!/^\s*"version":/m.test(text)) {
-      throw new Error(`${file} has no "version" line`);
-    }
-    stamped.push({ file, text: text.replace(/^(\s*"version":\s*)"[^"]*"/m, `$1"${version}"`) });
+    stamped.push({ file, text: stampText(file, manifestSpots(file), await read(file), release) });
   }
   for (const stamp of stamps) {
-    stamped.push({ file: stamp.file, text: stampText(stamp, await readFile(path.join(root, ...stamp.file.split("/")), "utf8"), version) });
+    stamped.push({ file: stamp.file, text: stampText(stamp.file, stamp.spots, await read(stamp.file), release) });
   }
   for (const { file, text } of stamped) {
     await writeFile(path.join(root, ...file.split("/")), text, "utf8");
   }
   return stamped.map((item) => item.file);
+};
+
+/** Where a release's file comes from: a file of the stamped tree, or a chart Helm packages from it. */
+export type AssetSource = { readonly kind: "file"; readonly path: string } | { readonly kind: "chart"; readonly chart: string };
+
+/** A file the GitHub release carries, by the name it's downloaded as. */
+export type ReleaseAsset = { readonly name: string; readonly from: AssetSource };
+
+/**
+ * The files the GitHub release carries beside its notes (ADR 0064, amended 2026-11-21), each as the
+ * stamp leaves it, so each names the release's own images: the compose file the install guide
+ * downloads, and both charts, which the Helm page installs. Each is reached at
+ * `releases/latest/download/<name>`, or `releases/download/v<version>/<name>` for one release, so
+ * no page types a version. `scripts/release-assets.ts` makes them, and `release.yml` attaches them.
+ */
+export const releaseAssets: readonly ReleaseAsset[] = [
+  { name: "compose.yaml", from: { kind: "file", path: "deploy/compose.yaml" } },
+  { name: "ostra-server.tgz", from: { kind: "chart", chart: "ostra-server" } },
+  { name: "ostra-runner.tgz", from: { kind: "chart", chart: "ostra-runner" } },
+];
+
+/** The repository's own pages on GitHub (`https://github.com/<owner>/<repo>`), from REPOSITORY_URL. */
+const repositoryPages = REPOSITORY_URL.replace(/^git\+/, "").replace(/\.git$/, "");
+
+/** The release files a text names by their download link: `releases/latest/download/<name>`, or one release's. */
+export const linkedAssets = (text: string): readonly string[] => {
+  const base = repositoryPages.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const link = new RegExp(`${base}/releases/(?:latest/download|download/[^/\\s]+)/([^\\s)"'\`<>\\\\]+)`, "g");
+  return [...text.matchAll(link)].map((match) => (match[1] ?? "").replace(/[.,;:]+$/, ""));
 };
 
 /** Writes LICENSOR into every published package's `author` (the LICENSE and NOTICE lines are edited by hand, with it). */

@@ -23,6 +23,25 @@ export const keptRenderFile = (chart: ChartName, example: string): string => `co
 export const normalizeRender = (text: string): string =>
   text.replace(/\r\n/g, "\n").replace(/^(\s+)(OSTRA_SECRETS_KEY|BETTER_AUTH_SECRET|OSTRA_RUNNER_TOKEN_KEY): "[^"\n]+"$/gm, '$1$2: "PGdlbmVyYXRlZCBhdCBpbnN0YWxsPg=="');
 
+/** The release the kept renders are made at: a clone's, version 0.0.0 with its images under `ostra`. */
+export const KEPT_RELEASE = { version: "0.0.0", namespace: "ostra" } as const;
+
+const literally = (text: string): string => text.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * A render of a stamped tree (release.yml's, after `node scripts/version.ts`) as it reads at the
+ * kept renders' release: the chart's version labels and the images' references, the only places
+ * the stamp reaches, are put back to `KEPT_RELEASE`, so the comparison still catches any other
+ * change. A clone's render is unchanged.
+ */
+export const atKeptRelease = (render: string, release: { readonly version: string; readonly namespace: string }): string => {
+  const version = `${literally(release.version)}(?![0-9A-Za-z.-])`;
+  return render
+    .replaceAll(new RegExp(`^(\\s+app\\.kubernetes\\.io/version: )"${version}"$`, "gm"), `$1"${KEPT_RELEASE.version}"`)
+    .replaceAll(new RegExp(`^(\\s+helm\\.sh/chart: ostra-(?:server|runner)-)${version}$`, "gm"), `$1${KEPT_RELEASE.version}`)
+    .replaceAll(new RegExp(`(?<![\\w./:-])${literally(release.namespace)}/(server|runner|base):${version}`, "g"), `${KEPT_RELEASE.namespace}/$1:${KEPT_RELEASE.version}`);
+};
+
 export type HelmResult = { readonly ok: boolean; readonly output: string };
 
 const helm = async (args: readonly string[]): Promise<HelmResult> => {

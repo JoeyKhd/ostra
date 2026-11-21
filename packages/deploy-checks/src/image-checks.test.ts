@@ -99,34 +99,41 @@ describe("secrets", () => {
 });
 
 describe("the compose file and the build", () => {
-  it("F-039/c2: the compose file runs the images the build tags", () => {
+  it("F-039/c2: the compose file runs the images the build tags, under the release's namespace", () => {
     const compose = parseYaml(files.compose);
-    for (const build of buildPlan(files.releaseVersion)) {
+    const namespace = files.imageNamespace;
+    for (const build of buildPlan(files.releaseVersion, namespace)) {
       expect(yamlAt(compose, "services", build.name, "image")).toBe(build.tag);
+      expect(build.tag).toBe(`${namespace}/${build.name}:${files.releaseVersion}`);
       expect(yamlAt(compose, "services", build.name, "build", "dockerfile")).toBe(build.dockerfile);
     }
-    expect(yamlAt(compose, "services", "runner", "environment", "OSTRA_BOX_BASE_IMAGE")).toBe(`ostra/base:${files.releaseVersion}`);
-    expect(yamlAt(compose, "services", "runner", "environment", "OSTRA_BOX_RUNNER_IMAGE")).toBe(`ostra/runner:${files.releaseVersion}`);
-    // Another release's tag, a box image the build doesn't make, or a built service gone: each fails.
-    expect(checkCompose(files.compose, "9.9.9").map((problem) => problem.rule)).toContain("compose-images");
+    expect(yamlAt(compose, "services", "runner", "environment", "OSTRA_BOX_BASE_IMAGE")).toBe(`${namespace}/base:${files.releaseVersion}`);
+    expect(yamlAt(compose, "services", "runner", "environment", "OSTRA_BOX_RUNNER_IMAGE")).toBe(`${namespace}/runner:${files.releaseVersion}`);
+    // Another release's tag or namespace, a box image the build doesn't make, or a built service gone: each fails.
+    expect(checkCompose(files.compose, "9.9.9", namespace).map((problem) => problem.rule)).toContain("compose-images");
+    expect(checkCompose(files.compose, files.releaseVersion, "ghcr.io/elsewhere").map((problem) => problem.rule)).toContain("compose-images");
     for (const name of ["server", "runner", "base"]) {
-      const other = files.compose.replace(`image: ostra/${name}:${files.releaseVersion}`, `image: ostra/${name}:latest`);
+      const other = files.compose.replace(`image: ${namespace}/${name}:${files.releaseVersion}`, `image: ${namespace}/${name}:latest`);
       expect(other).not.toBe(files.compose);
-      expect(checkCompose(other, files.releaseVersion).map((problem) => problem.message), name).toContain(
-        `${name} must run ostra/${name}:${files.releaseVersion}, the tag pnpm images:build gives it`,
+      expect(checkCompose(other, files.releaseVersion, namespace).map((problem) => problem.message), name).toContain(
+        `${name} must run ${namespace}/${name}:${files.releaseVersion}, the tag pnpm images:build gives it`,
       );
     }
-    expect(rulesOf({ compose: files.compose.replace(`OSTRA_BOX_BASE_IMAGE: ostra/base:${files.releaseVersion}`, "OSTRA_BOX_BASE_IMAGE: ostra/base:latest") })).toContain("compose-images");
+    expect(rulesOf({ compose: files.compose.replace(`OSTRA_BOX_BASE_IMAGE: ${namespace}/base:${files.releaseVersion}`, `OSTRA_BOX_BASE_IMAGE: ${namespace}/base:latest`) })).toContain("compose-images");
     expect(rulesOf({ compose: files.compose.replace("  base:\n", "  basic:\n") })).toContain("compose-images");
   });
 
-  it("F-039/c2: the build plan tags each image with the release version, as docker's arguments, and refuses a version that isn't one", () => {
-    expect(buildPlan("1.2.3").map((build) => build.args)).toEqual([
-      ["build", "--file", "deploy/Dockerfile.server", "--tag", "ostra/server:1.2.3", "--label", "org.opencontainers.image.version=1.2.3", "."],
-      ["build", "--file", "deploy/Dockerfile.runner", "--tag", "ostra/runner:1.2.3", "--label", "org.opencontainers.image.version=1.2.3", "."],
-      ["build", "--file", "deploy/Dockerfile.base", "--tag", "ostra/base:1.2.3", "--label", "org.opencontainers.image.version=1.2.3", "."],
+  it("F-039/c2: the build plan tags each image with the release's namespace and version, as docker's arguments, and refuses a version or namespace that isn't one", () => {
+    expect(buildPlan("1.2.3", "localhost:5000/ostra").map((build) => build.args)).toEqual([
+      ["build", "--file", "deploy/Dockerfile.server", "--tag", "localhost:5000/ostra/server:1.2.3", "--label", "org.opencontainers.image.version=1.2.3", "."],
+      ["build", "--file", "deploy/Dockerfile.runner", "--tag", "localhost:5000/ostra/runner:1.2.3", "--label", "org.opencontainers.image.version=1.2.3", "."],
+      ["build", "--file", "deploy/Dockerfile.base", "--tag", "localhost:5000/ostra/base:1.2.3", "--label", "org.opencontainers.image.version=1.2.3", "."],
     ]);
-    expect(() => buildPlan("1.2.3; rm -rf /")).toThrow();
+    expect(buildPlan("1.2.3", "ostra").map((build) => build.tag)).toEqual(["ostra/server:1.2.3", "ostra/runner:1.2.3", "ostra/base:1.2.3"]);
+    expect(() => buildPlan("1.2.3; rm -rf /", "ostra")).toThrow();
+    for (const bad of ["", "ghcr.io/JoeyKhd", "ghcr.io/x/", "ghcr.io/x --push"]) {
+      expect(() => buildPlan("1.2.3", bad), bad).toThrow(/namespace/);
+    }
     expect(rulesOf({ runnerVersion: "9.9.9" })).toContain("release-version");
   });
 
