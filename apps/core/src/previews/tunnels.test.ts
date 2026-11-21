@@ -256,6 +256,9 @@ describe("core's tunnel for ostra preview", () => {
     const task = await boxedTask();
     const { cli, box, viewId } = await tunnelUp(task.taskId, await ticketFor(task.taskId, await cliSession()));
     // The view is open on this replica, and its box's HTTP/2 session is the one ticket 25's proxy sends on.
+    // The tunnel carries bytes from the box's SETTINGS on, while the row's `open` and presence
+    // (`markViewConnected`) are written beside it, and may land just after the CLI's upgrade.
+    await waitFor("the view's presence", async () => (await test.db.previewView.findUniqueOrThrow({ where: { id: viewId } })).replicaUrl === replica.url, 10_000);
     expect(await test.db.previewView.findUniqueOrThrow({ where: { id: viewId } })).toMatchObject({ state: "open", replicaUrl: replica.url });
     expect(await test.db.event.count({ where: { taskId: task.taskId, kind: "preview.opened" } })).toBe(1);
     expect(replica.previews.cliTunnels.open(viewId)).toBe(1);
