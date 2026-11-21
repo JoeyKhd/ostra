@@ -12,6 +12,8 @@ A note is one fact: a title, a short body, and a kind: convention, command, gotc
 
 At the start of each session the agent gets a short index: each note's title and one line, within a size limit, and the notes marked **always** in full. It searches and reads the rest through ostra's memory tools, an MCP server in the box's sidecar with a token for that one task. The task page lists the notes a session read. Nothing is written into the repo.
 
+The agent's search takes a question as it would ask it. Common words such as "how", "do" and "the" don't count, other words match their other forms ("tests" finds "test"), and the notes holding more of the question's words, closer together and in their title, come first. A path, a flag or an identifier, such as `packages/db/prisma/schema.prisma`, `--frozen-lockfile` or `OSTRA_CORE_URL`, matches as it's written.
+
 The agent's own memory feature is turned off, so nothing an agent keeps for itself outlives the task.
 
 ## Editing it

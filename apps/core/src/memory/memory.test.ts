@@ -283,14 +283,14 @@ describe("F-110: memory in the task spec", () => {
     const task = await leasedTask();
     const strong = await note({ title: `${QUERY_WORD} setup`, body: `First line.\nRun ${QUERY_WORD} before the tests.\nLast line.` });
     const weak = await note({ title: "Something else", body: `Mentions ${QUERY_WORD} once.` });
-    const orgWide = await note({ projectId: null, title: "Organization note", body: `Org ${QUERY_WORD} rule.` });
+    const orgWide = await note({ projectId: null, title: "Organization rule", body: `Org ${QUERY_WORD} rule.` });
     records.length = 0;
     const found = memorySearchResponseSchema.parse((await search(task, QUERY_WORD.slice(0, -2))).body).results;
     expect(found.map((result) => result.noteId)).toEqual(expect.arrayContaining([strong, weak, orgWide]));
     expect(found[0]?.noteId).toBe(strong);
     expect(found.find((result) => result.noteId === strong)?.line).toBe(`Run ${QUERY_WORD} before the tests.`);
     expect(found.find((result) => result.noteId === orgWide)?.scope).toBe("organization");
-    // A query with no words matches nothing, and a query is bound, never SQL.
+    // A query whose words no note holds matches nothing, and a query is bound, never SQL.
     expect(memorySearchResponseSchema.parse((await search(task, "'; DROP TABLE memory_note; --")).body).results).toEqual([]);
     expect(await test.db.memoryNote.count()).toBe(3);
     const logged = JSON.stringify(records);

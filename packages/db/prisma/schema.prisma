@@ -3636,6 +3636,9 @@ model MemoryNote {
   useCount       Int              @default(0)
   /// `to_tsvector('simple', title || ' ' || body)`, generated (raw SQL), GIN-indexed.
   vector         Unsupported("tsvector")? @default(dbgenerated("to_tsvector('simple'::regconfig, ((title || ' '::text) || body))"))
+  /// `memory_search`'s ranking (ADR 0044, 2026-11-21): the title under `english` weighted A, the
+  /// body B. Generated (raw SQL), GIN-indexed.
+  searchVector   Unsupported("tsvector")? @default(dbgenerated("(setweight(to_tsvector('english'::regconfig, title), 'A'::\"char\") || setweight(to_tsvector('english'::regconfig, body), 'B'::\"char\"))"))
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
@@ -3645,6 +3648,7 @@ model MemoryNote {
   @@unique([id, organizationId])
   @@index([organizationId, projectId, status])
   @@index([vector], type: Gin, map: "memory_note_vector_idx")
+  @@index([searchVector], type: Gin, map: "memory_note_search_vector_idx")
   @@map("memory_note")
 }
 

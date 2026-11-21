@@ -115,6 +115,35 @@ export const buildMemoryBlock = (async (db: Db, input, limits: MemoryLimits = de
 export const queryWords = (query: string): readonly string[] =>
   [...new Set(query.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? [])].filter((word) => word.length > 0).slice(0, 32);
 
+/** A character a word doesn't hold: a term with one inside or in front is code-ish (`OSTRA_CORE_URL`, `--frozen-lockfile`, `a/b.ts`). */
+const CODE_CHARACTER = /[_\-/.:@$=\\#~+]/u;
+/** The sentence's punctuation around a term, which isn't part of it: quotes and brackets, and a trailing stop or colon. */
+const AROUND_TERM = /^["'`“”‘’()[\]{}<>,;!?]+|["'`“”‘’()[\]{}<>,;!?.:]+$/gu;
+/** The most code-ish terms one search matches as written. */
+const CODE_TERMS_MAX = 8;
+
+/**
+ * A query's terms for `memory_search` (F-110/c9): its words (letters and digits, the parts of a
+ * code-ish term among them), which Postgres stems and drops the stop words of, and its code-ish
+ * terms, lower-cased, which match a note's text as written: the `english` configuration would cut
+ * `--frozen-lockfile` to `frozen-lockfil` and drop the `all` of `--all`, and no configuration
+ * keeps `OSTRA_CORE_URL` or a partial path as one token.
+ */
+export const queryTerms = (query: string): { readonly words: readonly string[]; readonly codes: readonly string[] } => {
+  const codes = new Set<string>();
+  for (const raw of query.toLowerCase().split(/\s+/u)) {
+    const term = raw.replaceAll(AROUND_TERM, "");
+    if (codes.size < CODE_TERMS_MAX && CODE_CHARACTER.test(term) && /[\p{L}\p{N}]/u.test(term)) {
+      codes.add(term);
+    }
+  }
+  const words = [...new Set(query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [])].slice(0, 32);
+  return { words, codes: [...codes] };
+};
+
+/** A word this long or longer matches as a prefix ("migr" finds "migration", `api` finds "APIs"); a shorter one, whole. */
+const PREFIX_MIN_CHARS = 3;
+
 /** The note's line that holds most of the query's words: what a result shows instead of the body. */
 const bestLine = (title: string, body: string, words: readonly string[]): string => {
   let best = title;
@@ -136,29 +165,59 @@ const bestLine = (title: string, body: string, words: readonly string[]): string
 
 /**
  * Full-text search over the active notes of the organization and, when given, the project
- * (`memory_search`). Each word matches as a prefix and any word may match; results are ranked
- * with `ts_rank`. The query is a bound parameter, and at most 20 results come back.
+ * (`memory_search`, F-110/c9; ADR 0044's 2026-11-21 note, borrowed from claude-mem). A question
+ * ranks by the words that carry it: Postgres's `english` configuration drops its stop words ("how
+ * do we", "the") and stems the rest, a word of three letters or more matching as a prefix, and the
+ * `simple` vector backs a word the stemmer cuts differently in a note. A code-ish term (a path, a
+ * flag, an identifier) matches the note's text as written. A note ranks by the code-ish terms it
+ * holds, then by how many of the query's words it holds, a word or a term in its title counting
+ * half again, then by how close together they are (`ts_rank_cd`, normalised to below 1). A note
+ * that holds only the query's stop words isn't a result. Every term is a bound parameter, and at
+ * most 20 results come back.
  */
 export const searchNotes = (async (db, input): Promise<readonly MemorySearchResult[]> => {
-  const words = queryWords(input.query);
-  if (words.length === 0) {
+  const { words, codes } = queryTerms(input.query);
+  if (words.length === 0 && codes.length === 0) {
     return [];
   }
-  const tsquery = words.map((word) => `${word}:*`).join(" | ");
   const limit = Math.max(1, Math.min(input.limit, runnerLimits.memorySearchResultsMax));
-  const rows = await db.$queryRaw<readonly { id: string; title: string; body: string; kind: MemoryKind; scope: MemoryScope }[]>`
-    SELECT "id", "title", "body", "kind"::text AS "kind", "scope"::text AS "scope"
-    FROM "memory_note"
-    WHERE "organizationId" = ${input.organizationId}
-      AND "status" = 'active'
-      AND ("projectId" IS NULL OR "projectId" = ${input.projectId})
-      AND "vector" @@ to_tsquery('simple', ${tsquery})
-    ORDER BY ts_rank("vector", to_tsquery('simple', ${tsquery})) DESC, "updatedAt" DESC, "id"
+  const rows = await db.$queryRaw<
+    readonly { id: string; title: string; body: string; kind: MemoryKind; scope: MemoryScope; terms: readonly string[] | null }[]
+  >`
+    WITH "terms" AS (
+      SELECT DISTINCT ON (l."lexeme") l."lexeme", w."word",
+        (quote_literal(l."lexeme") || CASE WHEN length(w."word") >= ${PREFIX_MIN_CHARS} THEN ':*' ELSE '' END)::tsquery AS "anyQuery",
+        (quote_literal(l."lexeme") || CASE WHEN length(w."word") >= ${PREFIX_MIN_CHARS} THEN ':*A' ELSE ':A' END)::tsquery AS "titleQuery",
+        (quote_literal(w."word") || CASE WHEN length(w."word") >= ${PREFIX_MIN_CHARS} THEN ':*' ELSE '' END)::tsquery AS "simpleQuery"
+      FROM unnest(${words}::text[]) AS w("word")
+      CROSS JOIN LATERAL unnest(tsvector_to_array(to_tsvector('english', w."word"))) AS l("lexeme")
+      ORDER BY l."lexeme", length(w."word")
+    ),
+    "codes" AS (SELECT c."code" FROM unnest(${codes}::text[]) AS c("code"))
+    SELECT n."id", n."title", n."body", n."kind"::text AS "kind", n."scope"::text AS "scope",
+      ARRAY(SELECT t."lexeme" FROM "terms" t) || ARRAY(SELECT t."word" FROM "terms" t) AS "terms"
+    FROM "memory_note" n
+    CROSS JOIN LATERAL (
+      SELECT
+        (SELECT count(*) FROM "codes" c WHERE strpos(lower(n."title" || ' ' || n."body"), c."code") > 0) AS "codeHits",
+        (SELECT count(*) FROM "codes" c WHERE strpos(lower(n."title"), c."code") > 0) AS "codeTitleHits",
+        (SELECT count(*) FROM "terms" t WHERE n."searchVector" @@ t."anyQuery" OR n."vector" @@ t."simpleQuery") AS "wordHits",
+        (SELECT count(*) FROM "terms" t WHERE n."searchVector" @@ t."titleQuery") AS "titleHits",
+        COALESCE(
+          ts_rank_cd(n."searchVector", (SELECT string_agg(t."anyQuery"::text, ' & ') FROM "terms" t WHERE n."searchVector" @@ t."anyQuery")::tsquery, 1 | 32),
+          0
+        ) AS "closeness"
+    ) s
+    WHERE n."organizationId" = ${input.organizationId}
+      AND n."status" = 'active'
+      AND (n."projectId" IS NULL OR n."projectId" = ${input.projectId})
+      AND (s."codeHits" > 0 OR s."wordHits" > 0)
+    ORDER BY s."codeHits" DESC, (s."wordHits" + 0.5 * (s."titleHits" + s."codeTitleHits") + s."closeness") DESC, n."updatedAt" DESC, n."id"
     LIMIT ${limit}`;
   return rows.map((row) => ({
     noteId: noteIdSchema.parse(row.id),
     title: row.title,
-    line: bestLine(row.title, row.body, words),
+    line: bestLine(row.title, row.body, [...(row.terms ?? []), ...codes]),
     kind: row.kind,
     scope: row.scope,
   }));
