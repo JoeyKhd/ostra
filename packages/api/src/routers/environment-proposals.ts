@@ -177,6 +177,8 @@ export const onboardingProcedures = {
       "no-agent-profile": "PRECONDITION_FAILED",
       "no-repo": "PRECONDITION_FAILED",
       "repo-unsupported": "PRECONDITION_FAILED",
+      "prompt-required": "BAD_REQUEST",
+      "file-not-found": "BAD_REQUEST",
     });
     return { taskId: made.taskId };
   }),

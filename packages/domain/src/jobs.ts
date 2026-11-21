@@ -116,6 +116,8 @@ export const jobNames = [
   // ---- milestone 8 (spec section 5.4, ADR 0068): previews ----
   "preview.views-sweep",
   "preview.codes-sweep",
+  // ---- milestone 9 (spec section 5.4, ADR 0070) ----
+  "files.sweep-unsent",
 ] as const;
 
 export type JobName = (typeof jobNames)[number];
@@ -321,6 +323,9 @@ export const jobPayloadSchemas = {
   "preview.views-sweep": z.strictObject({}),
   /** Removes the used and expired one-time codes and CLI tickets (F-143, F-144), once a day. */
   "preview.codes-sweep": z.strictObject({}),
+  // ---- milestone 9 (spec section 5.4, ADR 0070) ----
+  /** Deletes the uploads no message took within a day, their blobs and text with them (F-148/c7), once an hour. */
+  "files.sweep-unsent": z.strictObject({}),
 } as const satisfies Record<JobName, z.ZodType>;
 
 export type JobPayload<N extends JobName> = z.infer<(typeof jobPayloadSchemas)[N]>;
@@ -393,6 +398,7 @@ const jobKeys: { readonly [N in JobName]: (payload: JobPayload<N>) => string } =
   "library.cleanup": () => "library:cleanup",
   "preview.views-sweep": () => "previews:views-sweep",
   "preview.codes-sweep": () => "previews:codes-sweep",
+  "files.sweep-unsent": () => "files:sweep-unsent",
 };
 
 /** How a job is sent (ADR 0037, as amended after spike 8). */
@@ -480,7 +486,15 @@ export const jobSending: Readonly<Record<JobName, JobSending>> = {
   // A pg-boss schedule every minute (`EVERY_MINUTE_CRON`), and one a day: idempotent passes.
   "preview.views-sweep": { kind: "schedule" },
   "preview.codes-sweep": { kind: "schedule" },
+  // A pg-boss schedule every hour (`FILES_SWEEP_CRON`): an idempotent pass.
+  "files.sweep-unsent": { kind: "schedule" },
 };
+
+/** `files.sweep-unsent`'s pg-boss schedule: at the top of every hour. */
+export const FILES_SWEEP_CRON = "0 * * * *";
+
+/** How long an upload waits for a message before the sweep deletes it (ADR 0070, Q338). */
+export const UNSENT_UPLOAD_TTL_MS = 24 * 3_600_000;
 
 /** The window of `OSTRA_LIBRARY_UPDATE_HOURS` a time falls in: its first ms, which keys an organization's check. */
 export const libraryUpdateWindowStart = (now: number, updateHours: number): number => {

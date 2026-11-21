@@ -168,6 +168,8 @@ const commentsRouter = router({
       "text-required": "BAD_REQUEST",
       "spend-cap-reached": "PRECONDITION_FAILED",
       "profile-not-allowed": "FORBIDDEN",
+      "file-not-found": "BAD_REQUEST",
+      "runner-needs-upgrade": "PRECONDITION_FAILED",
     });
     return { sent: sent.sent, delivery: sent.delivery, seq: sent.seq };
   }),

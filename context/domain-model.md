@@ -458,6 +458,51 @@ An organization's library holds items, each a skill or an MCP server, pinned to 
 
 **Who may open a preview** is its level: the project's members (the default, with no row), or named people, who see that preview and nothing else of the task, watch-only; and its links. It fails closed: a level, a link or a runner it can't read gives no view, and the page says why (`previewAccess`). Any member who can open the task sets it. Narrowing it ends every viewer who no longer qualifies, at once: setting the level to the members or named people revokes the preview's active links, and closes the views of those links and of members it no longer names; revoking a link closes its views; an organization admin turning public links off closes every public link's view. A viewer's access is read again at each heartbeat and each batch of input. A person newly named is told (a `preview_shared` notification, in the panel and by mail), and watches at the preview's own page, `/previews/<the level's ID>`, signed in; taking a name off tells no one.
 
+## Files for the agent
+
+*Added 2026-11-21 for milestone 9 (ADR 0070, F-148, F-149, F-150). The code: `packages/domain/src/lifecycles/m9-files.ts`; the rules beside it in `packages/domain/src/files/`.*
+
+A **message file** is a file the agent gets with a message: a member's, attached in a message box, or a ticket's, fetched by core. Its bytes and its document's text are blobs; once sent they're the task's, so they follow its retention (F-079). Its name is made safe (letters, digits, spaces and `._-()`, at most 120 characters, its extension kept), and its kind is told from its bytes, never its name. Every sent file of a task is written under the workspace root's `.ostra/`, outside every repo: a message's in `attachments/<n>/`, `<n>` the message's number in the task's log, the ticket's in `ticket/`, each document's text beside it as `<name>.md`, again on every fresh box.
+
+**A member's file** is an upload until a message takes it.
+
+```
+ uploaded ──┬──▶ sent      (bound to the message that took it)
+            └──▶ expired   (no message took it within a day: swept, with its blobs)
+ (the member's "remove" before sending deletes it)
+```
+
+| State | Means | Leaves when |
+|---|---|---|
+| **uploaded** | The member's, in a project, no task's. Only that member can send or discard it | A message of that member in that project takes it, within the limits again (→ sent); left out at send, it stays an upload. A day passes unsent (→ expired, deleted by `files.sweep-unsent`) |
+| **sent** | Its message's: its task, its place in the message and in the box, and whether it went to the model as an image too | Never |
+| **expired** | Deleted with its blobs | Never |
+
+**A ticket's file** is what one read of the ticket made of a file it holds.
+
+```
+ sent | left_out | failed ── Retry, once ──▶ a new file (retryOfId)
+```
+
+| State | Means | Leaves when |
+|---|---|---|
+| **sent** | Fetched within the ticket's limits, in the box under `ticket/` | Never |
+| **left_out** | Over a limit, or not fetched (a tracker whose `ticketFiles` leaves it out): named in the prompt and the thread with why | Never |
+| **failed** | Its download failed: named with why, and the task starts anyway | A member's Retry fetches it again as a new file, once; this one keeps its record |
+
+**A file's text** is set once, when the file comes in.
+
+| State | Means |
+|---|---|
+| **none** | Not a document: an image, a text file or any other file has no text to read |
+| **ready** | Core read a `.docx`, `.xlsx`, `.pptx` or `.pdf`, and its text sits beside the file |
+| **failed** | Core couldn't read the document (encrypted, damaged, too big, no text layer): still attached, marked "no text" with the reason |
+| **off** | The install reads no text (`OSTRA_FILE_TEXT_EXTRACTION=false`): the document goes as a file alone |
+
+An image (PNG, JPEG, GIF or WebP) also goes to the model as an image when the session's agent takes images in its prompt and its model sees them (an admin's "Reads images", then the catalog's inputs; unknown counts as no), at most 10 of 10 MiB *(working values)*. Otherwise it's a file only, and the message says why (`imagesNotSent`: the model, or the agent).
+
+One **read of a ticket** for its task is a round: 1 at the start, one more for each reopen, "Send ticket updates" or Retry. It records digests and IDs (the description's SHA-256, each comment's ID and edit time, each file's source key), never the ticket's text, so the next read passes on only what changed.
+
 ## Events and their two numbers
 
 Every event carries two numbers (ADR 0011, ADR 0035):

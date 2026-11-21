@@ -28,6 +28,7 @@ import type { M6Deps, StartTask, StartTaskError, StartTaskInput, StartTaskResult
 import { createNeedsYouItemInTx } from "../use-cases/needs-you-items.ts";
 import { signedCommitRefusal, unsupportedRepos } from "../use-cases/repo-checks.ts";
 import { appendServerEvent } from "../use-cases/server-events.ts";
+import { appendMemberMessageInTx, defaultMessageFilesDeps, filesToBindInTx } from "../files/message-files.ts";
 import { resolveStartProfileInTx } from "../use-cases/task-profile.ts";
 import type { ResolveProfileResult, StartProfile } from "../use-cases/task-profile.ts";
 import { noProviderStartFor, oneActiveTaskError, oneActiveTaskWords, startingMemberOf, startRuleFor, taskOriginOf } from "./start-task.ts";
@@ -250,7 +251,7 @@ export const startTask: StartTask = async (deps, input: StartTaskInput) => {
       }
     }
     ticket = { id: row.id, key: row.key, title: row.title, boardId: board.id, connectionId: board.connectionId };
-  } else if (input.prompt === null || input.prompt.trim() === "") {
+  } else if ((input.prompt === null || input.prompt.trim() === "") && (input.fileIds ?? []).length === 0) {
     return refuse("invalid-input", "A task starts from a ticket or a prompt");
   }
 
@@ -372,16 +373,16 @@ export const startTask: StartTask = async (deps, input: StartTaskInput) => {
   });
   const sessionId = sessionIdSchema.parse(session.id);
   const now = deps.clock.now();
-  // A prompt task's first message is its prompt; a ticket task's is written by `ticket.fetch-context`.
+  // A prompt task's first message is its prompt, with its files (milestone 9); a ticket task's is
+  // written by `ticket.fetch-context`.
   if (prompt !== null && member !== null) {
-    await appendServerEvent(tx, {
-      organizationId,
-      projectId,
-      taskId,
-      sessionId,
-      at: now,
-      event: { kind: "user.message", memberId: member, clientMessageId: clientMessageIdSchema.parse(randomUUID()), text: prompt, delivery: "immediate" },
-    });
+    const files = await filesToBindInTx(tx, organizationId, deps.files ?? defaultMessageFilesDeps, { fileIds: input.fileIds ?? [], modelId: row?.modelId ?? null, agentProfileId: profile.id });
+    await appendMemberMessageInTx(
+      tx,
+      { organizationId, projectId, taskId, sessionId, at: now },
+      { kind: "user.message", memberId: member, clientMessageId: clientMessageIdSchema.parse(randomUUID()), text: prompt, delivery: "immediate" },
+      files,
+    );
   }
   const automation = automationOf(input.origin);
   if (automation !== null) {

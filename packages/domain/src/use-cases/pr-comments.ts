@@ -120,7 +120,9 @@ export const acceptPrCommentWith = async (deps: M3Deps, extras: AcceptPrCommentE
         sender: "anyone",
       });
       if (!sent.ok) {
-        return { ok: false, error: sent.error === "take-over-to-send" || sent.error === "not-found" ? "no-task" : sent.error, message: sent.message };
+        // A comment carries no file, so it never meets a runner too old for one.
+        const dropped = sent.error === "take-over-to-send" || sent.error === "not-found" || sent.error === "runner-needs-upgrade";
+        return { ok: false, error: dropped ? "no-task" : sent.error, message: sent.message };
       }
       if (sent.duplicate) {
         return { ok: true, taskId, delivery: sent.delivery === "reopen" ? "reopen" : "queued" };

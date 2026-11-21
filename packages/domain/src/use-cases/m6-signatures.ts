@@ -28,10 +28,12 @@ import type {
   TicketId,
   TicketKey,
   TicketWriteId,
+  MessageFileId,
 } from "@ostra/protocol";
 
 import type { MemberScope } from "../access.ts";
 import type { IntakeFilter } from "../automations/intake-filter.ts";
+import type { MessageFilesDeps } from "../files/message-files.ts";
 import type { PayloadFilter, WebhookAuth } from "../automations/webhook-template.ts";
 import type { AgentSessionMoment } from "../linear/agent-session-copy.ts";
 import type { AutomationSkipReason, RoundVerdict } from "../lifecycles/m6.ts";
@@ -193,6 +195,11 @@ export type StartTaskInput = {
   readonly poolLabels: readonly string[];
   /** Ticket 11: the member's own personal runner, or unset to pick from the project's pools. Refused for a pool-only task. */
   readonly runnerId?: RunnerId | null;
+  /**
+   * Milestone 9 (F-148): the member's uploads sent with a prompt start, bound to its first message.
+   * The caller checked they're the member's unsent uploads of the project (`uploadsOfInTx`).
+   */
+  readonly fileIds?: readonly MessageFileId[];
 };
 
 export type StartTaskError =
@@ -219,6 +226,8 @@ export type StartTaskOptions = {
   readonly publicUrl?: string;
   /** A prompt task's branch naming; a test fakes it to force two tasks onto one name. */
   readonly branchNameFor?: (taskId: TaskId, title: string, digits: number) => string;
+  /** Milestone 9 (F-148): the message files' limits and which agents take images; the defaults when left out. */
+  readonly files?: MessageFilesDeps;
 };
 
 export type StartTaskResult =

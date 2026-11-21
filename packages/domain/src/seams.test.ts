@@ -120,6 +120,8 @@ describe("the job catalogue (ADR 0037)", () => {
         "library.cleanup",
         "preview.views-sweep",
         "preview.codes-sweep",
+        // Milestone 9.
+        "files.sweep-unsent",
       ].sort(),
     );
   });

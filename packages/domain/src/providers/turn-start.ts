@@ -7,6 +7,8 @@ import { moveSessionInTx, moveTaskInTx } from "../use-cases/moves.ts";
 import { answerNextTurnItemsInTx } from "../use-cases/needs-you-items.ts";
 import { unansweredMessagesInTx } from "../use-cases/reopen.ts";
 import { appendServerEvent } from "../use-cases/server-events.ts";
+import { appendMemberMessageInTx } from "../files/message-files.ts";
+import type { MessageFilesToBind } from "../files/message-files.ts";
 import { endSessionTimersInTx } from "../use-cases/sessions-m2.ts";
 import type { SessionTimers } from "../use-cases/sessions-m2.ts";
 import type { ProviderGate } from "./resolve.ts";
@@ -33,6 +35,8 @@ export type ProviderRestartMessage = {
   readonly clientMessageId: ClientMessageId;
   readonly text: string;
   readonly intent?: MessageIntent | undefined;
+  /** Milestone 9 (F-148): the message's files, bound to it here. */
+  readonly files?: MessageFilesToBind | null | undefined;
 };
 
 /** Ends the going session, and starts a fresh one on what the gate says; the message is its first prompt. */
@@ -75,16 +79,21 @@ export const restartOnProviderChangeInTx = async (
       taskId: task.id,
       sessionId,
       at: now,
-      event: { kind: "user.message", memberId: owing.memberId, clientMessageId: owing.clientMessageId, text: owing.text, delivery: "queued", replayed: true },
+      event: {
+        kind: "user.message",
+        memberId: owing.memberId,
+        clientMessageId: owing.clientMessageId,
+        text: owing.text,
+        delivery: "queued",
+        replayed: true,
+        ...(owing.eventFiles === undefined ? {} : { files: [...owing.eventFiles] }),
+      },
     });
   }
-  const seq = await appendServerEvent(tx, {
-    organizationId,
-    projectId,
-    taskId: task.id,
-    sessionId,
-    at: now,
-    event: {
+  const { seq } = await appendMemberMessageInTx(
+    tx,
+    { organizationId, projectId, taskId: task.id, sessionId, at: now },
+    {
       kind: "user.message",
       memberId: message.memberId,
       clientMessageId: message.clientMessageId,
@@ -92,7 +101,8 @@ export const restartOnProviderChangeInTx = async (
       delivery: "queued",
       ...(message.intent === undefined ? {} : { intent: message.intent }),
     },
-  });
+    message.files ?? null,
+  );
   if (task.state === "needs_you") {
     // The message answers what the task waited on, as any send does: its next turn's items close.
     await answerNextTurnItemsInTx(deps, tx, task.id, { at: new Date(now), byMemberId: message.memberId });

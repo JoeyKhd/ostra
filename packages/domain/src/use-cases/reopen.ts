@@ -3,6 +3,7 @@ import type { Tx } from "@ostra/db";
 import {
   clientMessageIdSchema,
   leaseEpochSchema,
+  messageFileIdSchema,
   messageIntentSchema,
   needsYouItemIdSchema,
   organizationIdSchema,
@@ -13,10 +14,12 @@ import {
   taskEventSchema,
   taskIdSchema,
 } from "@ostra/protocol";
-import type { BlobRef, BoxId, ClientMessageId, MemberId, NeedsYouItemId, PendingMessage, SessionId, TaskId, TaskSeq, TurnOrigin } from "@ostra/protocol";
+import type { BlobRef, BoxId, MemberId, NeedsYouItemId, PendingMessage, SessionId, TaskId, TaskSeq, TurnOrigin, UserMessageFile } from "@ostra/protocol";
 import { z } from "zod";
 
 import { addNewProjectReposInTx } from "../repos/project-repos.ts";
+import { appendMemberMessageInTx, defaultMessageFilesDeps, filesToBindInTx, promptFilesOfMessage, uploadsOfInTx } from "../files/message-files.ts";
+import type { MessageFilesDeps } from "../files/message-files.ts";
 import { requireProjectAccess } from "../access.ts";
 import type { MemberScope } from "../access.ts";
 import { taskFromColumns } from "../lifecycles/mapping.ts";
@@ -56,11 +59,15 @@ const PENDING_MAX = 100;
  * lost box's last message, one the idle timer's cancel left, and a reopen's own message are all
  * here, and a reopen's spec carries them as `pendingMessages`. A message too long to replay as a
  * turn (the first rendered ticket, whose text the spec's prompt already holds) is left out.
+ * Milestone 9: a message with files carries them (`files`, and the event's `eventFiles` for its
+ * replay), and one with files and no words is still owed.
  */
 export const unansweredMessagesInTx = async (
   tx: Pick<Tx, "event" | "turn">,
   taskId: TaskId,
-): Promise<readonly (PendingMessage & { readonly seq: number; readonly memberId: MemberId; readonly replayed: boolean })[]> => {
+): Promise<
+  readonly (PendingMessage & { readonly seq: number; readonly memberId: MemberId; readonly replayed: boolean; readonly eventFiles?: readonly UserMessageFile[] })[]
+> => {
   const turns = await tx.turn.findMany({ where: { taskId, endedAt: { not: null } }, select: { startSeq: true, stopReason: true } });
   const answeredBefore = turns
     .filter((turn) => turn.stopReason === null || !UNANSWERED_STOPS.has(turn.stopReason))
@@ -71,18 +78,26 @@ export const unansweredMessagesInTx = async (
     select: { seq: true, payload: true },
   });
   const seen = new Set<string>();
-  const pending: { readonly seq: number; readonly clientMessageId: ClientMessageId; readonly text: string; readonly memberId: MemberId; readonly replayed: boolean }[] = [];
+  const pending: (PendingMessage & { readonly seq: number; readonly memberId: MemberId; readonly replayed: boolean; readonly eventFiles?: readonly UserMessageFile[] })[] = [];
   for (const row of rows) {
     const parsed = taskEventSchema.safeParse(row.payload);
     if (!parsed.success || parsed.data.kind !== "user.message") {
       continue;
     }
     const message = parsed.data;
-    if (seen.has(message.clientMessageId) || message.text.trim() === "" || message.text.length > runnerLimits.steerTextMaxChars) {
+    const files = promptFilesOfMessage(message.files);
+    if (seen.has(message.clientMessageId) || (message.text.trim() === "" && files === undefined) || message.text.length > runnerLimits.steerTextMaxChars) {
       continue;
     }
     seen.add(message.clientMessageId);
-    pending.push({ seq: row.seq, clientMessageId: message.clientMessageId, text: message.text, memberId: message.memberId, replayed: message.replayed === true });
+    pending.push({
+      seq: row.seq,
+      clientMessageId: message.clientMessageId,
+      text: message.text,
+      memberId: message.memberId,
+      replayed: message.replayed === true,
+      ...(files === undefined || message.files === undefined ? {} : { files, eventFiles: message.files }),
+    });
   }
   return pending.slice(-PENDING_MAX);
 };
@@ -103,6 +118,8 @@ export const reopenTaskInputSchema = z.strictObject({
    * comment (diff comments, "Update branch", `@ostra`, ...). Missing means the member typed it.
    */
   intent: messageIntentSchema.optional(),
+  /** Milestone 9 (F-148): the member's uploads sent with the reopen; with files, the words may be left out. */
+  fileIds: z.array(messageFileIdSchema).max(runnerLimits.messageFilesMax).optional(),
 });
 export type ReopenTaskInput = z.infer<typeof reopenTaskInputSchema>;
 
@@ -134,6 +151,8 @@ export type ReopenTaskResult = UseCaseResult<
   | "spend-cap-reached"
   /** Milestone 3 (F-021): the member may not use the task's agent profile. */
   | "profile-not-allowed"
+  /** Milestone 9: a file that isn't one of the member's unsent uploads in the task's project. */
+  | "file-not-found"
 >;
 
 export type ReopenTaskDeps = Pick<Ports, "jobs" | "notices" | "audit" | "clock"> & {
@@ -147,6 +166,8 @@ export type ReopenTaskDeps = Pick<Ports, "jobs" | "notices" | "audit" | "clock">
   readonly origin?: TurnOrigin | undefined;
   /** Milestone 6 (F-105): the task keeps its driver; a reviewer's "changes requested" doesn't take it over. */
   readonly keepDriver?: true | undefined;
+  /** Milestone 9 (F-148): the message files' limits and which agents take images; the defaults when left out. */
+  readonly files?: MessageFilesDeps | undefined;
 };
 
 /**
@@ -205,8 +226,14 @@ export const reopenTask: ReopenTask = async (deps, input) => {
   if (!transitionTask(current.value, reopenInput).ok) {
     return refused("not-reopenable", "The task is still working: there's nothing to reopen");
   }
-  if (input.text === undefined && !oneClick(task)) {
+  const fileIds = input.fileIds ?? [];
+  if (input.text === undefined && fileIds.length === 0 && !oneClick(task)) {
     return refused("text-required", "Say what the agent should do next");
+  }
+  // Milestone 9 (F-148): the files are the member's own unsent uploads of the project, checked
+  // before anything is written.
+  if ((await uploadsOfInTx(tx, scope, projectIdSchema.parse(task.projectId), fileIds)) === null) {
+    return refused("file-not-found", "One of the files isn't one of your unsent uploads in this project");
   }
   // One active code task per ticket per project (spec section 11, item 12).
   if (task.kind === "code" && task.ticketId !== null) {
@@ -284,20 +311,32 @@ export const reopenTask: ReopenTask = async (deps, input) => {
       taskId: task.id,
       sessionId,
       at: now,
-      event: { kind: "user.message", memberId: message.memberId, clientMessageId: message.clientMessageId, text: message.text, delivery: "queued", replayed: true },
+      // Milestone 9: a replayed message keeps its files, already in the box at their places.
+      event: {
+        kind: "user.message",
+        memberId: message.memberId,
+        clientMessageId: message.clientMessageId,
+        text: message.text,
+        delivery: "queued",
+        replayed: true,
+        ...(message.eventFiles === undefined ? {} : { files: [...message.eventFiles] }),
+      },
     });
   }
-  // The member's message, or the one-click reopen's words, unless a replayed message already says it.
-  const text = input.text ?? (owed.length > 0 ? null : reopenCarryOnText);
+  // The member's message, or the one-click reopen's words, unless a replayed message already says
+  // it. Milestone 9: files alone make a message, with no words.
+  const text = input.text ?? (fileIds.length > 0 ? "" : owed.length > 0 ? null : reopenCarryOnText);
   let messageSeq: TaskSeq | null = null;
   if (text !== null) {
-    messageSeq = await appendServerEvent(tx, {
-      organizationId: organization,
-      projectId,
-      taskId: task.id,
-      sessionId,
-      at: now,
-      event: {
+    const files = await filesToBindInTx(tx, organization, deps.files ?? defaultMessageFilesDeps, {
+      fileIds,
+      modelId: await sessionModelIdInTx(tx, organizationId, { agentProfileId: profileId }),
+      agentProfileId: profileId,
+    });
+    ({ seq: messageSeq } = await appendMemberMessageInTx(
+      tx,
+      { organizationId: organization, projectId, taskId: task.id, sessionId, at: now },
+      {
         kind: "user.message",
         memberId: scope.memberId,
         clientMessageId: input.clientMessageId,
@@ -306,7 +345,8 @@ export const reopenTask: ReopenTask = async (deps, input) => {
         reopen: true,
         ...(input.intent === undefined ? {} : { intent: input.intent }),
       },
-    });
+      files,
+    ));
   }
 
   // Milestone 5 (F-067): a reopen is a new place in the queue, taken when it's queued (`queueTask`).

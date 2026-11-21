@@ -2,7 +2,7 @@ import path from "node:path";
 
 import type { Logger } from "@ostra/adapter-sdk";
 import { devDatabaseUrl, devDataDir, devPgPort, DEV_PG_PORT_DEFAULT } from "@ostra/db/dev";
-import { describeIssues, runnerEnvNames } from "@ostra/protocol";
+import { describeIssues, runnerEnvNames, runnerLimits } from "@ostra/protocol";
 import { z } from "zod";
 
 import { defaultFirstAdmin, organizationNameSchema, passwordSchema, usernameSchema } from "./accounts.ts";
@@ -14,6 +14,11 @@ import { PREVIEW_DOMAIN_OFF, resolvePreviewDomain } from "./previews/host.ts";
 // its line there.
 
 const DEV_ONLY = "development only";
+
+const MiB = 1024 * 1024;
+
+/** OSTRA_TICKET_FILES_TOTAL_MIB's ceiling (ADR 0070): a ticket's files together, a read at a time. */
+const TICKET_FILES_TOTAL_MIB_MAX = 200;
 
 /** GitHub.com's LFS storage hosts (Q119, spike 4): the default of OSTRA_GITHUB_LFS_HOSTS. */
 export const GITHUB_COM_LFS_HOSTS = ["github-cloud.githubusercontent.com", "github-cloud.s3.amazonaws.com", "lfs.github.com"] as const;
@@ -136,6 +141,14 @@ export const settingNames = [
   "OSTRA_PREVIEW_WARM_MINUTES",
   "OSTRA_PREVIEW_LINK_MAX_DAYS",
   "OSTRA_CORE_REPLICA_URL",
+  // Milestone 9 (spec section 5.6, ADR 0070): files for the agent.
+  "OSTRA_MESSAGE_FILES_MAX",
+  "OSTRA_MESSAGE_FILE_MAX_MIB",
+  "OSTRA_MESSAGE_FILES_TOTAL_MIB",
+  "OSTRA_TICKET_FILES_MAX",
+  "OSTRA_TICKET_FILE_MAX_MIB",
+  "OSTRA_TICKET_FILES_TOTAL_MIB",
+  "OSTRA_FILE_TEXT_EXTRACTION",
 ] as const;
 
 export type SettingName = (typeof settingNames)[number];
@@ -528,6 +541,37 @@ export const settingFields = {
     description:
       "How long, in minutes after its last turn ended or its app started, a box stays running while someone watches one of its previews (F-141). Past it, the box idles out as OSTRA_BOX_IDLE_MINUTES says, watched or not. The app's own sockets never count as watching.",
   },
+  OSTRA_MESSAGE_FILES_MAX: {
+    default: "10",
+    description:
+      "The most files one message carries, in the new-task box and every message after it (F-148), at most 20. The box refuses one more as it arrives; the server leaves out what's over at send, with a note in the thread.",
+  },
+  OSTRA_MESSAGE_FILE_MAX_MIB: {
+    default: "10",
+    description: "The largest file a message carries, in MiB (F-148), at most 25, and never more than OSTRA_BLOB_MAX_MIB. A bigger one is refused in the box and left out at send, with a note.",
+  },
+  OSTRA_MESSAGE_FILES_TOTAL_MIB: {
+    default: "25",
+    description: "The most MiB one message's files carry together (F-148), at most 64. A file past it is left out with a note.",
+  },
+  OSTRA_TICKET_FILES_MAX: {
+    default: "20",
+    description:
+      "The most files ostra fetches from a ticket for one read of it, its start's or a later one's (F-149), at most 50. The rest are named in the prompt and the thread as left out; 0 fetches none.",
+  },
+  OSTRA_TICKET_FILE_MAX_MIB: {
+    default: "10",
+    description: "The largest file ostra fetches from a ticket, in MiB (F-149), at most 25, and never more than OSTRA_BLOB_MAX_MIB. A bigger one is left out with a note.",
+  },
+  OSTRA_TICKET_FILES_TOTAL_MIB: {
+    default: "50",
+    description: "The most MiB of a ticket's files one read of it fetches together (F-149), at most 200. A file past it is left out with a note.",
+  },
+  OSTRA_FILE_TEXT_EXTRACTION: {
+    default: "true",
+    description:
+      "Whether core reads the text out of a .docx, .xlsx, .pptx or .pdf a member attaches or a ticket holds, and writes it beside the file for the agent (F-150). false reads none: each document goes as a file alone, marked so.",
+  },
   OSTRA_PREVIEW_LINK_MAX_DAYS: {
     default: "7",
     description: "The longest an expiring preview link may last, in days (F-142). A new link lasts 24 hours unless its member picks less or more, up to this.",
@@ -750,6 +794,14 @@ const rawSettingsSchema = z.strictObject({
   OSTRA_PREVIEW_WARM_MINUTES: whole(1, 24 * 60).default(60).describe(describe("OSTRA_PREVIEW_WARM_MINUTES")),
   OSTRA_PREVIEW_LINK_MAX_DAYS: whole(1, 365).default(7).describe(describe("OSTRA_PREVIEW_LINK_MAX_DAYS")),
   OSTRA_CORE_REPLICA_URL: url.optional().describe(describe("OSTRA_CORE_REPLICA_URL")),
+  // Milestone 9: each at most the protocol's ceiling (`runnerLimits`), which fits one blob.
+  OSTRA_MESSAGE_FILES_MAX: whole(1, runnerLimits.messageFilesMax).default(10).describe(describe("OSTRA_MESSAGE_FILES_MAX")),
+  OSTRA_MESSAGE_FILE_MAX_MIB: whole(1, runnerLimits.messageFileMaxBytes / MiB).default(10).describe(describe("OSTRA_MESSAGE_FILE_MAX_MIB")),
+  OSTRA_MESSAGE_FILES_TOTAL_MIB: whole(1, runnerLimits.messageFilesTotalBytes / MiB).default(25).describe(describe("OSTRA_MESSAGE_FILES_TOTAL_MIB")),
+  OSTRA_TICKET_FILES_MAX: whole(0, runnerLimits.ticketContextFilesMax).default(20).describe(describe("OSTRA_TICKET_FILES_MAX")),
+  OSTRA_TICKET_FILE_MAX_MIB: whole(1, runnerLimits.messageFileMaxBytes / MiB).default(10).describe(describe("OSTRA_TICKET_FILE_MAX_MIB")),
+  OSTRA_TICKET_FILES_TOTAL_MIB: whole(1, TICKET_FILES_TOTAL_MIB_MAX).default(50).describe(describe("OSTRA_TICKET_FILES_TOTAL_MIB")),
+  OSTRA_FILE_TEXT_EXTRACTION: flag.default(true).describe(describe("OSTRA_FILE_TEXT_EXTRACTION")),
 });
 
 /** The server's settings, resolved: every default filled in. Holds secrets: never logged whole. */
@@ -866,6 +918,8 @@ export type ServerSettings = {
   readonly library: LibrarySettings;
   /** Milestone 8's previews (spec section 5.4, ADR 0068). */
   readonly previews: PreviewSettings;
+  /** Milestone 9's files for the agent (spec section 5.6, ADR 0070). */
+  readonly files: FileSettings;
 };
 
 /** The previews' settings, resolved (F-141, F-142, F-144). */
@@ -884,6 +938,28 @@ export type PreviewSettings = {
   readonly linkMaxDays: number;
   /** OSTRA_CORE_REPLICA_URL, or `null`: core takes its first non-loopback address and its port. */
   readonly replicaUrl: string | null;
+};
+
+/**
+ * Files for the agent, resolved (F-148, F-149, F-150, ADR 0070): a message's limits and a ticket's,
+ * in bytes, each file's never past the blob cap (`OSTRA_BLOB_MAX_MIB`), and whether core reads a
+ * document's text.
+ */
+export type FileSettings = {
+  /** OSTRA_MESSAGE_FILES_MAX. */
+  readonly messageFilesMax: number;
+  /** OSTRA_MESSAGE_FILE_MAX_MIB, in bytes, at most the blob cap. */
+  readonly messageFileMaxBytes: number;
+  /** OSTRA_MESSAGE_FILES_TOTAL_MIB, in bytes. */
+  readonly messageFilesTotalBytes: number;
+  /** OSTRA_TICKET_FILES_MAX. */
+  readonly ticketFilesMax: number;
+  /** OSTRA_TICKET_FILE_MAX_MIB, in bytes, at most the blob cap. */
+  readonly ticketFileMaxBytes: number;
+  /** OSTRA_TICKET_FILES_TOTAL_MIB, in bytes. */
+  readonly ticketFilesTotalBytes: number;
+  /** OSTRA_FILE_TEXT_EXTRACTION. */
+  readonly textExtraction: boolean;
 };
 
 /** The library's settings, resolved (F-145, F-146). */
@@ -1169,6 +1245,15 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
         updateHours: value.OSTRA_LIBRARY_UPDATE_HOURS,
         marketplaceSearch: value.OSTRA_MARKETPLACE_SEARCH,
         skillsSearchUrl: value.OSTRA_SKILLS_SEARCH_URL,
+      },
+      files: {
+        messageFilesMax: value.OSTRA_MESSAGE_FILES_MAX,
+        messageFileMaxBytes: Math.min(value.OSTRA_MESSAGE_FILE_MAX_MIB, value.OSTRA_BLOB_MAX_MIB) * MiB,
+        messageFilesTotalBytes: value.OSTRA_MESSAGE_FILES_TOTAL_MIB * MiB,
+        ticketFilesMax: value.OSTRA_TICKET_FILES_MAX,
+        ticketFileMaxBytes: Math.min(value.OSTRA_TICKET_FILE_MAX_MIB, value.OSTRA_BLOB_MAX_MIB) * MiB,
+        ticketFilesTotalBytes: value.OSTRA_TICKET_FILES_TOTAL_MIB * MiB,
+        textExtraction: value.OSTRA_FILE_TEXT_EXTRACTION,
       },
       previews: {
         domain: previewDomain,

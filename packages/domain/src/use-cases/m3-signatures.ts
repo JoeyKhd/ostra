@@ -57,6 +57,12 @@ export type M3Deps = { readonly db: Db } & Ports;
  */
 export type ReopenRefusal = Exclude<ReopenTaskResult, { readonly ok: true }>["error"];
 
+/**
+ * Milestone 9 (Q340): a message steered with files to a runner below protocol minor 8. A send
+ * without files never gets it; the type names it so every send's answer is one list.
+ */
+export type SendFilesRefusal = "runner-needs-upgrade";
+
 // ---------- agent profiles (F-021, ADR 0049; tickets 16, 34) ----------
 
 /** An MCP server as a profile stores it: secret headers by reference, never by value. */
@@ -287,7 +293,7 @@ export type SendDiffComments = (
   deps: M3Deps,
   scope: MemberScope,
   input: { readonly taskId: TaskId },
-) => Promise<UseCaseResult<{ readonly sent: number; readonly delivery: "steer" | "reopen"; readonly seq: number | null }, "not-found" | "no-drafts" | "take-over-to-send" | "too-many" | ReopenRefusal>>;
+) => Promise<UseCaseResult<{ readonly sent: number; readonly delivery: "steer" | "reopen"; readonly seq: number | null }, "not-found" | "no-drafts" | "take-over-to-send" | "too-many" | ReopenRefusal | SendFilesRefusal>>;
 
 // ---------- checks, behind, update branch, @ostra (F-054, F-070, F-053; tickets 23 to 25) ----------
 
@@ -308,7 +314,7 @@ export type RequestUpdateBranch = (
   deps: M3Deps,
   scope: MemberScope,
   input: { readonly taskId: TaskId },
-) => Promise<UseCaseResult<{ readonly repos: number; readonly delivery: "steer" | "reopen" }, "not-found" | "nothing-behind" | "take-over-to-send" | ReopenRefusal>>;
+) => Promise<UseCaseResult<{ readonly repos: number; readonly delivery: "steer" | "reopen" }, "not-found" | "nothing-behind" | "take-over-to-send" | ReopenRefusal | SendFilesRefusal>>;
 
 /** A repo's `behind` recomputed from the compare (the reconcile and `push` webhooks). */
 export type RecordBehind = (

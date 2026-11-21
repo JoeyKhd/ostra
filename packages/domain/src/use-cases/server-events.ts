@@ -51,14 +51,45 @@ export const appendCoreEvent = async (tx: Tx, input: AppendServerEventInput): Pr
   return append(tx, input);
 };
 
-const append = async (tx: Tx, input: AppendServerEventInput): Promise<TaskSeq> => {
-  const event = taskEventSchema.parse(input.event);
+/**
+ * Appends one server-written event whose content needs its own number (milestone 9: a message's
+ * files go to `attachments/<n>/`, `<n>` its number): takes the number first, under the task row's
+ * lock, then builds the event in the same transaction. A builder that throws rolls the number back
+ * with the transaction.
+ */
+export const appendServerEventNumbered = async (
+  tx: Tx,
+  input: Omit<AppendServerEventInput, "event">,
+  build: (seq: TaskSeq) => Promise<TaskEvent>,
+): Promise<{ readonly seq: TaskSeq; readonly event: TaskEvent }> => {
+  const seq = await takeSeq(tx, input.taskId);
+  const event = taskEventSchema.parse(await build(seq));
+  if (!serverOnlyKinds.has(event.kind)) {
+    throw new Error(`appendServerEventNumbered: ${event.kind} is written by a runner, not by the server`);
+  }
+  await insert(tx, { ...input, event }, seq);
+  return { seq, event };
+};
+
+/** The task's next event number: an update of the task row, which locks it. */
+const takeSeq = async (tx: Tx, taskId: TaskId): Promise<TaskSeq> => {
   const counter = await tx.task.update({
-    where: { id: input.taskId },
+    where: { id: taskId },
     data: { eventSeq: { increment: 1 } },
     select: { eventSeq: true },
   });
-  const seq = taskSeqSchema.parse(counter.eventSeq);
+  return taskSeqSchema.parse(counter.eventSeq);
+};
+
+const append = async (tx: Tx, input: AppendServerEventInput): Promise<TaskSeq> => {
+  const event = taskEventSchema.parse(input.event);
+  const seq = await takeSeq(tx, input.taskId);
+  await insert(tx, { ...input, event }, seq);
+  return seq;
+};
+
+const insert = async (tx: Tx, input: AppendServerEventInput, seq: TaskSeq): Promise<void> => {
+  const { event } = input;
   await tx.event.create({
     data: {
       organizationId: input.organizationId,
@@ -77,5 +108,4 @@ const append = async (tx: Tx, input: AppendServerEventInput): Promise<TaskSeq> =
   await writeEventSearchEntries(tx, { organizationId: input.organizationId, projectId: input.projectId, taskId: input.taskId }, [{ seq, event }]);
   const payload = JSON.stringify({ taskId: input.taskId, seq });
   await tx.$executeRaw`SELECT pg_notify(${notifyChannels.taskEvents}, ${payload})`;
-  return seq;
 };

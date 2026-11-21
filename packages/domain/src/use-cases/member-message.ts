@@ -1,7 +1,7 @@
 import type { Tx } from "@ostra/db";
 import { mapTask } from "@ostra/db";
-import { memberIdSchema, organizationIdSchema, projectIdSchema, runnerIdSchema, runnerLimits, sessionIdSchema } from "@ostra/protocol";
-import type { ClientMessageId, MessageIntent, RunnerId, SessionId, TaskId, TaskSeq } from "@ostra/protocol";
+import { canSendFiles, memberIdSchema, organizationIdSchema, projectIdSchema, runnerIdSchema, runnerLimits, sessionIdSchema } from "@ostra/protocol";
+import type { ClientMessageId, MessageFileId, MessageIntent, RunnerId, SessionId, TaskId, TaskSeq } from "@ostra/protocol";
 
 import { transitionLeasePurpose } from "../lifecycles/m8-previews.ts";
 import { taskFromColumns } from "../lifecycles/mapping.ts";
@@ -9,6 +9,8 @@ import { transitionTask } from "../lifecycles/task.ts";
 import { resolveNeedsYouItemsInTx } from "./needs-you-items.ts";
 
 import { requireProjectAccess } from "../access.ts";
+import { appendMemberMessageInTx, defaultMessageFilesDeps, filesToBindInTx, steerFileFields, uploadsOfInTx } from "../files/message-files.ts";
+import type { MessageFilesDeps, MessageFilesToBind } from "../files/message-files.ts";
 import type { MemberScope } from "../access.ts";
 import type { Ports } from "../ports.ts";
 import { checkBudget, holdTurnInTx, sessionModelIdInTx, turnOriginOfIntent } from "./budgets.ts";
@@ -17,7 +19,6 @@ import { moveTaskInTx } from "./moves.ts";
 import { answerNextTurnItemsInTx } from "./needs-you-items.ts";
 import { reopenTask } from "./reopen.ts";
 import type { ReopenTaskResult } from "./reopen.ts";
-import { appendServerEvent } from "./server-events.ts";
 import { recordPersonActionInTx } from "../review-loop/rounds.ts";
 import { sessionProviderGateInTx } from "../providers/session-model.ts";
 import { restartOnProviderChangeInTx } from "../providers/turn-start.ts";
@@ -37,13 +38,15 @@ import type { SpendCapSettings } from "./spend.ts";
 export type SendMemberMessageDeps = Pick<Ports, "jobs" | "outbox" | "notices" | "audit" | "clock"> & {
   readonly spendCap?: SpendCapSettings | undefined;
   readonly timers?: SessionTimers | undefined;
+  /** Milestone 9 (F-148): the message files' limits and which agents take images; the defaults when left out. */
+  readonly files?: MessageFilesDeps | undefined;
 };
 
 export type SendMemberMessageInput = {
   readonly taskId: TaskId;
   /** Fixed by what the message is for, so the same action sent twice is applied once. */
   readonly clientMessageId: ClientMessageId;
-  /** Rendered by the domain's prompts: never logged. */
+  /** Rendered by the domain's prompts: never logged. Milestone 9: may be empty when files come. */
   readonly text: string;
   readonly intent: MessageIntent;
   /** `driver`: the panel's actions; `anyone`: a PR comment, queued whoever drives. */
@@ -53,6 +56,8 @@ export type SendMemberMessageInput = {
    * review, so it doesn't make the reviewer the task's driver. Missing: a reopen makes the sender the driver.
    */
   readonly keepDriver?: true;
+  /** Milestone 9 (F-148): the sender's uploads that go with the message, in their order. */
+  readonly fileIds?: readonly MessageFileId[];
 };
 
 export type MemberMessageDelivery = "steer" | "reopen";
@@ -66,8 +71,19 @@ export type SendMemberMessageResult = UseCaseResult<
     /** Milestone 4 (F-037): the budget gate held the turn; the message is saved and waits for the release. */
     readonly held?: true;
   },
-  "not-found" | "take-over-to-send" | Exclude<ReopenTaskResult, { readonly ok: true }>["error"]
+  | "not-found"
+  | "take-over-to-send"
+  /** Milestone 9 (Q340): a message with files to a session whose runner speaks below protocol minor 8. */
+  | "runner-needs-upgrade"
+  | Exclude<ReopenTaskResult, { readonly ok: true }>["error"]
 >;
+
+/** Whether a runner may be sent a message with files (ADR 0070, Q340): its connection's minor, else its last. */
+const runnerTakesFilesInTx = async (tx: Pick<Tx, "runnerPresence" | "runner">, runnerId: string): Promise<boolean> => {
+  const presence = await tx.runnerPresence.findUnique({ where: { runnerId }, select: { minor: true } });
+  const minor = presence?.minor ?? (await tx.runner.findUnique({ where: { id: runnerId }, select: { minor: true } }))?.minor ?? 0;
+  return canSendFiles(minor);
+};
 
 /** The session states a message is steered into, rather than reopening the task. */
 const GOING_SESSION_STATES = ["starting", "running", "waiting", "idle"] as const;
@@ -92,6 +108,7 @@ const turnOnAppLeaseInTx = async (
   session: { readonly id: string; readonly agentProfileId: string | null; readonly modelId: string | null },
   input: SendMemberMessageInput,
   text: string,
+  files: MessageFilesToBind | null,
 ): Promise<SendMemberMessageResult | null> => {
   const current = taskFromColumns(task);
   if (!current.ok || !transitionTask(current.value, { type: "reopen" }).ok) {
@@ -110,7 +127,7 @@ const turnOnAppLeaseInTx = async (
     now,
   });
   if (gate.kind === "held") {
-    const heldSeq = await appendServerEvent(tx, { organizationId, projectId, taskId: task.id, sessionId, at: now, event: message });
+    const { seq: heldSeq } = await appendMemberMessageInTx(tx, { organizationId, projectId, taskId: task.id, sessionId, at: now }, message, files);
     await holdTurnInTx(deps, tx, { organizationId, projectId, taskId: task.id, sessionId, held: gate, pendingMessageSeq: heldSeq, now, queued: false });
     return { ok: true, delivery: "steer", sessionId, seq: heldSeq, duplicate: false, held: true };
   }
@@ -137,10 +154,10 @@ const turnOnAppLeaseInTx = async (
     { taskId: task.id, reasonNotIn: ["restore_conflict", "files_outside_repos"] },
     { state: "answered", at: new Date(now), byMemberId: scope.memberId },
   );
-  const seq = await appendServerEvent(tx, { organizationId, projectId, taskId: task.id, sessionId, at: now, event: message });
+  const { seq, bound } = await appendMemberMessageInTx(tx, { organizationId, projectId, taskId: task.id, sessionId, at: now }, message, files);
   await deps.outbox.enqueueInTx(tx, organizationId, lease.runnerId, {
     kind: "steer",
-    body: { sessionId, clientMessageId: input.clientMessageId, text, delivery: "queue", intent: input.intent },
+    body: { sessionId, clientMessageId: input.clientMessageId, text, delivery: "queue", intent: input.intent, ...steerFileFields(bound) },
     notAfter: now + runnerLimits.offerTimeoutMs,
     task: { taskId: task.id, projectId },
   });
@@ -193,6 +210,12 @@ export const sendMemberMessageInTx = async (
     return { ok: true, delivery: reopen ? "reopen" : "steer", sessionId: sessionIdSchema.parse(sent.sessionId), seq: null, duplicate: true };
   }
   const text = fitText(input.text);
+  // Milestone 9 (F-148): the files are the sender's own unsent uploads of the project, checked
+  // before anything is written; files alone make a message.
+  const fileIds = input.fileIds ?? [];
+  if ((await uploadsOfInTx(tx, scope, projectIdSchema.parse(task.projectId), fileIds)) === null) {
+    return { ok: false, error: "file-not-found", message: "One of the files isn't one of your unsent uploads in this project" };
+  }
   // Milestone 6 (ADR 0041, F-101): a person acted, so the automatic turns count from nothing again.
   await recordPersonActionInTx(tx, task.id, new Date(deps.clock.now()));
   const [lease, session] = await Promise.all([
@@ -203,14 +226,21 @@ export const sendMemberMessageInTx = async (
       select: { id: true, state: true, agentProfileId: true, providerId: true, modelId: true, boxId: true },
     }),
   ]);
+  // Milestone 9 (Q340): a message with files steered into a box needs its runner at minor 8.
+  const going = (task.state === "running" || task.state === "needs_you") && lease !== null && session !== null;
+  const steered = going || (lease?.purpose === "app" && session?.boxId === lease.boxId) ? lease : null;
+  if (fileIds.length > 0 && steered !== null && !(await runnerTakesFilesInTx(tx, steered.runnerId))) {
+    return { ok: false, error: "runner-needs-upgrade", message: "This task's runner needs upgrading to take files: update it, or reopen the task on another runner" };
+  }
+  const files =
+    session === null ? null : await filesToBindInTx(tx, organizationIdSchema.parse(organizationId), deps.files ?? defaultMessageFilesDeps, { fileIds, modelId: session.modelId, agentProfileId: session.agentProfileId });
   // Milestone 8 (Q300, ticket 19): a message while "Start the app"'s lease holds starts a turn in its box.
   if (lease?.purpose === "app" && session?.boxId === lease.boxId) {
-    const turned = await turnOnAppLeaseInTx(deps, tx, scope, task, { ...lease, runnerId: runnerIdSchema.parse(lease.runnerId) }, session, input, text);
+    const turned = await turnOnAppLeaseInTx(deps, tx, scope, task, { ...lease, runnerId: runnerIdSchema.parse(lease.runnerId) }, session, input, text, files);
     if (turned !== null) {
       return turned;
     }
   }
-  const going = (task.state === "running" || task.state === "needs_you") && lease !== null && session !== null;
   const origin = turnOriginOfIntent(input.intent);
   if (!going) {
     const reopened = await reopenTask(
@@ -225,8 +255,9 @@ export const sendMemberMessageInTx = async (
         timers: deps.timers,
         origin: origin === "message" ? "reopen" : origin,
         ...(input.keepDriver === true ? { keepDriver: true as const } : {}),
+        ...(deps.files === undefined ? {} : { files: deps.files }),
       },
-      { taskId: task.id, clientMessageId: input.clientMessageId, text, intent: input.intent },
+      { taskId: task.id, clientMessageId: input.clientMessageId, text, intent: input.intent, ...(fileIds.length === 0 ? {} : { fileIds: [...fileIds] }) },
     );
     if (!reopened.ok) {
       return reopened;
@@ -247,7 +278,7 @@ export const sendMemberMessageInTx = async (
     // holds the old key; a turn going finishes on its own.
     const providers = await sessionProviderGateInTx(tx, { organizationId: organizationIdSchema.parse(organizationId), projectId, providerId: session.providerId, modelId: session.modelId, agentProfileId: session.agentProfileId });
     if (providers !== null && providers.kind !== "open") {
-      const restarted = await restartOnProviderChangeInTx(deps, tx, task, providers, { memberId: scope.memberId, clientMessageId: input.clientMessageId, text, intent: input.intent });
+      const restarted = await restartOnProviderChangeInTx(deps, tx, task, providers, { memberId: scope.memberId, clientMessageId: input.clientMessageId, text, intent: input.intent, files });
       return { ok: true, delivery: "reopen", sessionId: restarted.sessionId, seq: restarted.seq, duplicate: false };
     }
     const gate = await checkBudget(tx, {
@@ -258,14 +289,12 @@ export const sendMemberMessageInTx = async (
       now,
     });
     if (gate.kind === "held") {
-      const heldSeq = await appendServerEvent(tx, {
-        organizationId: organizationIdSchema.parse(organizationId),
-        projectId,
-        taskId: task.id,
-        sessionId,
-        at: now,
-        event: { kind: "user.message", memberId: scope.memberId, clientMessageId: input.clientMessageId, text, delivery: "queued", intent: input.intent },
-      });
+      const { seq: heldSeq } = await appendMemberMessageInTx(
+        tx,
+        { organizationId: organizationIdSchema.parse(organizationId), projectId, taskId: task.id, sessionId, at: now },
+        { kind: "user.message", memberId: scope.memberId, clientMessageId: input.clientMessageId, text, delivery: "queued", intent: input.intent },
+        files,
+      );
       await holdTurnInTx(deps, tx, { organizationId: organizationIdSchema.parse(organizationId), projectId, taskId: task.id, sessionId, held: gate, pendingMessageSeq: heldSeq, now, queued: false });
       return { ok: true, delivery: "steer", sessionId, seq: heldSeq, duplicate: false, held: true };
     }
@@ -275,17 +304,15 @@ export const sendMemberMessageInTx = async (
     await moveTaskInTx({ tx, notices: deps.notices, jobs: deps.jobs }, task, { type: "member_acted", boxWarm: true });
     await answerNextTurnItemsInTx(deps, tx, task.id, { at: new Date(now), byMemberId: scope.memberId });
   }
-  const seq = await appendServerEvent(tx, {
-    organizationId: organizationIdSchema.parse(organizationId),
-    projectId,
-    taskId: task.id,
-    sessionId,
-    at: now,
-    event: { kind: "user.message", memberId: scope.memberId, clientMessageId: input.clientMessageId, text, delivery: "queued", intent: input.intent },
-  });
+  const { seq, bound } = await appendMemberMessageInTx(
+    tx,
+    { organizationId: organizationIdSchema.parse(organizationId), projectId, taskId: task.id, sessionId, at: now },
+    { kind: "user.message", memberId: scope.memberId, clientMessageId: input.clientMessageId, text, delivery: "queued", intent: input.intent },
+    files,
+  );
   await deps.outbox.enqueueInTx(tx, organizationIdSchema.parse(organizationId), runnerIdSchema.parse(lease.runnerId), {
     kind: "steer",
-    body: { sessionId, clientMessageId: input.clientMessageId, text, delivery: "queue", intent: input.intent },
+    body: { sessionId, clientMessageId: input.clientMessageId, text, delivery: "queue", intent: input.intent, ...steerFileFields(bound) },
     notAfter: now + runnerLimits.offerTimeoutMs,
     task: { taskId: task.id, projectId },
   });

@@ -110,6 +110,8 @@ export const queueSettings: Readonly<Record<JobName, QueueSettings>> = {
   // Milestone 8 (ADR 0068): sweeps that run again on their next tick.
   "preview.views-sweep": { ...base, retryLimit: 1, expireInSeconds: 50 },
   "preview.codes-sweep": { ...base, retryLimit: 2, expireInSeconds: 600 },
+  // Milestone 9: an hourly pass; a missed tick is the next hour's.
+  "files.sweep-unsent": { ...base, retryLimit: 2, expireInSeconds: 1800 },
 };
 
 /**

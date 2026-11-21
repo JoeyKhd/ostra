@@ -257,3 +257,12 @@ export * from "./previews/sharing.ts";
 // F-142: the people a preview names, told where to watch it, and the preview's own page for them.
 export * from "./previews/named-people.ts";
 export * from "./previews/shared-with-me.ts";
+// Milestone 9 (ticket 05, ADR 0070): files for the agent: what a file is, where it goes, the
+// limits, the image decision, the upload token, the lifecycles, and binding at send.
+export * from "./lifecycles/m9-files.ts";
+export * from "./files/detect.ts";
+export * from "./files/places.ts";
+export * from "./files/limits.ts";
+export * from "./files/images.ts";
+export * from "./files/panel-file-token.ts";
+export * from "./files/message-files.ts";

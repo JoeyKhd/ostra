@@ -1,11 +1,13 @@
 import type { Tx } from "@ostra/db";
-import { agentProfileIdSchema, projectIdSchema, runnerIdSchema } from "@ostra/protocol";
+import { agentProfileIdSchema, messageFileIdSchema, projectIdSchema, runnerIdSchema, runnerLimits } from "@ostra/protocol";
 import type { SessionId, TaskId } from "@ostra/protocol";
 import { z } from "zod";
 
 import { requireProjectAccess } from "../access.ts";
 import { titleFromPrompt } from "../branch-name.ts";
 import type { MemberScope } from "../access.ts";
+import { uploadsOfInTx } from "../files/message-files.ts";
+import type { MessageFilesDeps } from "../files/message-files.ts";
 import type { Ports } from "../ports.ts";
 import { startTask } from "../starts/start-task-body.ts";
 import type { UseCaseResult } from "./common.ts";
@@ -21,8 +23,8 @@ export { BRANCH_ID_DIGITS, BRANCH_INDEX, branchNameFor, claimBranchNameInTx } fr
 
 export const createPromptTaskInputSchema = z.strictObject({
   projectId: projectIdSchema,
-  /** The prompt: untrusted text, passed as data. Never logged. */
-  prompt: z.string().trim().min(1).max(262_144),
+  /** The prompt: untrusted text, passed as data. Never logged. Milestone 9: may be empty when files come. */
+  prompt: z.string().trim().max(262_144),
   /** Defaults to the prompt's first line. */
   title: z.string().trim().min(1).max(512).optional(),
   /** The member's own personal runner, or unset to pick from the project's pools. */
@@ -31,6 +33,8 @@ export const createPromptTaskInputSchema = z.strictObject({
   agentProfileId: agentProfileIdSchema.optional(),
   /** Defaults to `code`. Milestone 6 (F-099, ticket 34): `refine`, a draft of a new ticket ("Create ticket" applies it). */
   kind: z.enum(["code", "refine"]).optional(),
+  /** Milestone 9 (F-148): the member's uploads sent with the prompt, in their order. */
+  fileIds: z.array(messageFileIdSchema).max(runnerLimits.messageFilesMax).optional(),
 });
 export type CreatePromptTaskInput = z.infer<typeof createPromptTaskInputSchema>;
 
@@ -46,6 +50,10 @@ export type CreatePromptTaskResult = UseCaseResult<
   | "no-repo"
   /** A repo's default branch requires signed commits (F-055, ticket 31). */
   | "repo-unsupported"
+  /** Milestone 9: neither words nor files. */
+  | "prompt-required"
+  /** Milestone 9: a file that isn't one of the member's unsent uploads in the project. */
+  | "file-not-found"
 >;
 
 export type CreatePromptTaskDeps = Pick<Ports, "jobs" | "notices" | "audit" | "clock"> & {
@@ -53,6 +61,8 @@ export type CreatePromptTaskDeps = Pick<Ports, "jobs" | "notices" | "audit" | "c
   readonly scope: MemberScope;
   /** The branch naming; a test fakes it to force two tasks onto one name. */
   readonly branchNameFor?: (taskId: TaskId, title: string, digits: number) => string;
+  /** Milestone 9 (F-148): the message files' limits and which agents take images. */
+  readonly files?: MessageFilesDeps;
 };
 
 export type CreatePromptTask = (deps: CreatePromptTaskDeps, input: CreatePromptTaskInput) => Promise<CreatePromptTaskResult>;
@@ -75,9 +85,29 @@ export const createPromptTask: CreatePromptTask = async (deps, input) => {
   if (!access.ok) {
     return access.code === "not-found" ? refuse("not-found", "No such project") : refuse("forbidden", "You may not start a task in this project");
   }
+  // Milestone 9 (F-148/c1): files alone make a message; neither words nor files don't.
+  const fileIds = input.fileIds ?? [];
+  if (input.prompt === "" && fileIds.length === 0) {
+    return refuse("prompt-required", "Say what the agent should do, or attach a file");
+  }
+  // The files are the member's own unsent uploads of the project, checked before anything is made.
+  const uploads = await uploadsOfInTx(tx, scope, projectIdSchema.parse(project.id), fileIds);
+  if (uploads === null) {
+    return refuse("file-not-found", "One of the files isn't one of your unsent uploads in this project");
+  }
+  const title = input.title ?? (input.prompt === "" ? (uploads[0]?.name ?? "Files") : titleFromPrompt(input.prompt));
   // Milestone 6 (ticket 11): the one start every origin goes through.
   const started = await startTask(
-    { tx, jobs: deps.jobs, notices: deps.notices, audit: deps.audit, clock: deps.clock, scope, ...(deps.branchNameFor === undefined ? {} : { branchNameFor: deps.branchNameFor }) },
+    {
+      tx,
+      jobs: deps.jobs,
+      notices: deps.notices,
+      audit: deps.audit,
+      clock: deps.clock,
+      scope,
+      ...(deps.branchNameFor === undefined ? {} : { branchNameFor: deps.branchNameFor }),
+      ...(deps.files === undefined ? {} : { files: deps.files }),
+    },
     {
       organizationId,
       projectId: projectIdSchema.parse(project.id),
@@ -85,10 +115,11 @@ export const createPromptTask: CreatePromptTask = async (deps, input) => {
       kind: input.kind ?? "code",
       ticketId: null,
       prompt: input.prompt,
-      title: input.title ?? titleFromPrompt(input.prompt),
+      title,
       agentProfileId: input.agentProfileId ?? null,
       poolLabels: [],
       runnerId: input.runnerId ?? null,
+      fileIds,
     },
   );
   if (started.ok) {

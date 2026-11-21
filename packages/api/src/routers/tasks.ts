@@ -238,6 +238,8 @@ export const tasksRouter = router({
       "no-agent-profile": "PRECONDITION_FAILED",
       "no-repo": "PRECONDITION_FAILED",
       "repo-unsupported": "PRECONDITION_FAILED",
+      "prompt-required": "BAD_REQUEST",
+      "file-not-found": "BAD_REQUEST",
     });
     return { taskId: created.taskId, sessionId: created.sessionId, branchName: created.branchName };
   }),
@@ -675,6 +677,7 @@ export const tasksRouter = router({
       "text-required": "BAD_REQUEST",
       "spend-cap-reached": "PRECONDITION_FAILED",
       "profile-not-allowed": "FORBIDDEN",
+      "file-not-found": "BAD_REQUEST",
     });
     return { sessionId: reopened.sessionId };
   }),
@@ -711,6 +714,8 @@ export const tasksRouter = router({
       "text-required": "BAD_REQUEST",
       "spend-cap-reached": "PRECONDITION_FAILED",
       "profile-not-allowed": "FORBIDDEN",
+      "file-not-found": "BAD_REQUEST",
+      "runner-needs-upgrade": "PRECONDITION_FAILED",
     });
     return { checks: asked.checks, delivery: asked.delivery };
   }),
@@ -733,6 +738,8 @@ export const tasksRouter = router({
       "text-required": "BAD_REQUEST",
       "spend-cap-reached": "PRECONDITION_FAILED",
       "profile-not-allowed": "FORBIDDEN",
+      "file-not-found": "BAD_REQUEST",
+      "runner-needs-upgrade": "PRECONDITION_FAILED",
     });
     return { repos: asked.repos, delivery: asked.delivery };
   }),
@@ -756,6 +763,8 @@ export const tasksRouter = router({
       "text-required": "BAD_REQUEST",
       "spend-cap-reached": "PRECONDITION_FAILED",
       "profile-not-allowed": "FORBIDDEN",
+      "file-not-found": "BAD_REQUEST",
+      "runner-needs-upgrade": "PRECONDITION_FAILED",
     });
     return { delivery: kept.delivery };
   }),
