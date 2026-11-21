@@ -75,6 +75,25 @@ const aliveAsAgent = async (pid: number): Promise<boolean> => {
   return (await runProgram(invoked.command, invoked.args, { cwd: "/", env: { PATH: "/usr/bin:/bin" } })).code === 0;
 };
 
+/** Whether a PID is still alive after a few seconds: a killed process is gone once its parent reaps it. */
+const aliveAfterAWhile = async (pid: number): Promise<boolean> => {
+  for (let round = 0; round < 30; round += 1) {
+    if (!(await aliveAsAgent(pid))) {
+      return false;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return true;
+};
+
+/** Where a Linux process is and what state it's in, as `/proc` shows anyone: a failure's message. */
+const whereIs = async (pid: number): Promise<string> => {
+  const cgroup = (await readFile(`/proc/${String(pid)}/cgroup`, "utf8").catch(() => "gone")).trim();
+  const status = await readFile(`/proc/${String(pid)}/status`, "utf8").catch(() => "");
+  const state = status.split("\n").find((line) => line.startsWith("State:")) ?? "State: gone";
+  return `${cgroup}, ${state.trim()}`;
+};
+
 describe.skipIf(!ready)(`a host pool's agent user, live (skipped: ${ready ? "no" : reason})`, () => {
   it("F-015: health() passes; a shell in the agent's process is the agent's user and can't read the runner's key or a worktree the runner kept", async () => {
     const live = await pool("reach");
@@ -114,8 +133,16 @@ describe.skipIf(!ready)(`a host pool's agent user, live (skipped: ${ready ? "no"
       if (!prepared.ok) throw new Error(prepared.error.message);
       const pid = Number((await readFile(path.join(created.value.workspaceDir, "test1", "helper.pid"), "utf8")).trim());
       expect(await aliveAsAgent(pid)).toBe(true);
+      const before = await whereIs(pid);
+      const runner = (await readFile("/proc/self/cgroup", "utf8")).trim();
       await live.executor.release(box, "requested");
-      expect(await aliveAsAgent(pid)).toBe(false);
+      const alive = await aliveAfterAWhile(pid);
+      const after = await whereIs(pid);
+      if (alive) {
+        const ended = sudoInvocation(agentUser ?? "", "kill", ["-KILL", String(pid)], {});
+        await runProgram(ended.command, ended.args, { cwd: "/", env: { PATH: "/usr/bin:/bin" } });
+      }
+      expect(alive, `the runner in ${runner}; the helper before the release in ${before}, after it in ${after}`).toBe(false);
     } finally {
       await live.dispose();
     }
@@ -138,6 +165,7 @@ describe.skipIf(!ready)(`a host pool's agent user, live (skipped: ${ready ? "no"
       expect(await aliveAsAgent(kept)).toBe(false);
       // The known gap (ADR 0029): a process that dropped the marker and left the tree isn't found.
       const gap = await aliveAsAgent(cleared);
+      console.info(`live macOS sweep: the helper that kept the marker ended with its task; the one that cleared its environment ${gap ? "outlived it" : "ended with it too"}`);
       if (gap) {
         const ended = sudoInvocation(agentUser ?? "", "kill", ["-KILL", String(cleared)], {});
         await runProgram(ended.command, ended.args, { cwd: "/", env: { PATH: "/usr/bin:/bin" } });
