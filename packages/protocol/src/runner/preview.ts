@@ -167,7 +167,43 @@ export const previewCloseReasonSchema = z.enum([
 ]);
 export type PreviewCloseReason = z.infer<typeof previewCloseReasonSchema>;
 
-export const previewCloseSchema = z.strictObject({ reason: previewCloseReasonSchema });
+/**
+ * Why a box refused a view's `preview.open` (minor 7): the ack's reason, which core keeps on the
+ * closed view and ends the pane's stream with, so the pane can say why (added 2026-11-21, before
+ * minor 7's release). A reason this list doesn't name is `other`.
+ */
+export const previewOpenRefusalSchema = z.enum([
+  /** Not one of the task's previews: the reach rule (ADR 0068). */
+  "not-a-preview",
+  /** The box's browser holds as many shared pages as it may (one per preview, `boxPagesMax` less the tools' own). */
+  "too-many-pages",
+  /** The box's session is ending. */
+  "session-ending",
+  /** The box runs no such session. */
+  "unknown-session",
+  /** A tunnel on the HTTP carrier, which has none (Q306). */
+  "tunnel-needs-websocket",
+  /** It reached the box after its `notAfter`. */
+  "past-not-after",
+  /** Any other reason, or none. */
+  "other",
+]);
+export type PreviewOpenRefusal = z.infer<typeof previewOpenRefusalSchema>;
+
+/** The refusal an ack's reason names: `other` for one the list doesn't. */
+export const previewOpenRefusalOf = (reason: string | null): PreviewOpenRefusal => {
+  const known = previewOpenRefusalSchema.safeParse(reason);
+  return known.success ? known.data : "other";
+};
+
+/**
+ * A `close`: why the view's connection, or the pane's stream, ends. `refused` is core's to the pane
+ * only, for a view whose box refused its `preview.open`, with the box's reason.
+ */
+export const previewCloseSchema = z.union([
+  z.strictObject({ reason: previewCloseReasonSchema }),
+  z.strictObject({ reason: z.literal("refused"), refusal: previewOpenRefusalSchema }),
+]);
 export type PreviewClose = z.infer<typeof previewCloseSchema>;
 
 /** One message of the `stream` mode. */

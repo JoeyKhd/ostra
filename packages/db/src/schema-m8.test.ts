@@ -263,6 +263,10 @@ describe("the milestone 8 rules the database keeps", () => {
     const viewBase = { organizationId: view.organizationId, projectId: view.projectId, taskId: view.taskId, key: "app-web", mode: "stream" as const, leaseEpoch: 1 };
     await expect(test.db.previewView.create({ data: viewBase })).rejects.toThrow(/preview_view_member_or_link/);
     await expect(test.db.previewView.create({ data: { ...viewBase, openedByMemberId: view.openedByMemberId, state: "closed" } })).rejects.toThrow(/preview_view_closed_has_time/);
+    // A box's refusal is a closed view's only.
+    await expect(test.db.previewView.create({ data: { ...viewBase, openedByMemberId: view.openedByMemberId, refusal: "too-many-pages" } })).rejects.toThrow(/preview_view_refusal_when_closed/);
+    const refused = await test.db.previewView.create({ data: { ...viewBase, openedByMemberId: view.openedByMemberId, state: "closed", closedAt: new Date(), refusal: "too-many-pages" } });
+    expect(refused.refusal).toBe("too-many-pages");
     const code = await test.db.previewCode.findUniqueOrThrow({ where: { id: rowId("PreviewCode") } });
     const codeBase = { organizationId: code.organizationId, projectId: code.projectId, taskId: code.taskId, key: "app-web", port: 5173, leaseEpoch: 1, expiresAt: new Date(Date.now() + 60_000) };
     await expect(test.db.previewCode.create({ data: { ...codeBase, kind: "cli_ticket", codeHash: randomBytes(32).toString("hex"), linkId: rowId("PreviewLink") } })).rejects.toThrow(

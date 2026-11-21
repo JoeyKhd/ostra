@@ -20,6 +20,7 @@ import {
 } from "@ostra/domain";
 import type { ChangeNotices, Clock, CommandOutbox, PanelPreviewClaims, PanelPreviewTokens, PreviewViewRow } from "@ostra/domain";
 import {
+  encodePanelStreamRecord,
   PREVIEW_FRAMES_BODY_PART,
   panelPreviewInputBodySchema,
   parseJson,
@@ -32,7 +33,7 @@ import {
   previewViewIdSchema,
   runnerLimits,
 } from "@ostra/protocol";
-import type { LeaseEpoch, PreviewFramesResponse, PreviewViewId } from "@ostra/protocol";
+import type { LeaseEpoch, PreviewFramesResponse, PreviewOpenRefusal, PreviewViewId } from "@ostra/protocol";
 import { WebSocketServer } from "ws";
 
 import { bearerToken } from "../gateway/access-token.ts";
@@ -124,6 +125,15 @@ type PanelErrorCode = "unauthorized" | "forbidden" | "not-found" | "view-closed"
 
 const panelError = (response: ServerResponse, status: number, code: PanelErrorCode, message: string): void => {
   sendJson(response, status, { error: { code, message } });
+};
+
+/**
+ * The pane's stream of a view its box refused: one `close` record, `refused` with the box's reason,
+ * so the pane can say why (ADR 0068's note of 2026-11-21). A view closed for any other reason is 410.
+ */
+const refusedStream = (response: ServerResponse, refusal: PreviewOpenRefusal): void => {
+  response.writeHead(200, { "content-type": "application/octet-stream", "cache-control": "no-store", "x-accel-buffering": "no" });
+  response.end(encodePanelStreamRecord({ type: "close", close: { reason: "refused", refusal } }));
 };
 
 const rejectUpgrade = (socket: Duplex, status: 400 | 401 | 404 | 409 | 500, code: string, message: string, currentEpoch?: number): void => {
@@ -453,8 +463,17 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
     return { forwarded: false, claims };
   };
 
+  /** A closed view's answer: its stream says why its box refused it, else 410. */
+  const closedView = (response: ServerResponse, view: PreviewViewRow, route: "stream" | "input"): void => {
+    if (route === "stream" && view.refusal !== null) {
+      refusedStream(response, view.refusal);
+      return;
+    }
+    panelError(response, 410, "view-closed", "this view is closed");
+  };
+
   /** The view, open, for this caller; or the refusal sent. */
-  const openViewFor = async (response: ServerResponse, caller: PanelCaller, viewId: PreviewViewId): Promise<PreviewViewRow | null> => {
+  const openViewFor = async (response: ServerResponse, caller: PanelCaller, viewId: PreviewViewId, route: "stream" | "input"): Promise<PreviewViewRow | null> => {
     const view = await previewViewInTx(deps.db, viewId);
     if (view === null) {
       panelError(response, 404, "not-found", "no such view");
@@ -465,7 +484,7 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
       return null;
     }
     if (view.lifecycle.state === "closed") {
-      panelError(response, 410, "view-closed", "this view is closed");
+      closedView(response, view, route);
       return null;
     }
     return view;
@@ -473,7 +492,7 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
 
   const handleStream = async (request: IncomingMessage, response: ServerResponse, url: URL, viewId: PreviewViewId): Promise<void> => {
     const caller = await panelCaller(request, response, url, viewId, "GET");
-    if (caller === null || (await openViewFor(response, caller, viewId)) === null) {
+    if (caller === null || (await openViewFor(response, caller, viewId, "stream")) === null) {
       return;
     }
     // Where the box's connection is: here, another replica (forward), or not yet anywhere (wait).
@@ -487,8 +506,13 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
         return;
       }
       const view = await previewViewInTx(deps.db, viewId);
-      if (view === null || view.lifecycle.state === "closed") {
+      if (view === null) {
         panelError(response, 410, "view-closed", "this view is closed");
+        return;
+      }
+      if (view.lifecycle.state === "closed") {
+        // Its box refused it while the pane waited: the stream says why.
+        closedView(response, view, "stream");
         return;
       }
       const me = deps.replicaUrl();
@@ -521,7 +545,7 @@ export const createPreviews = (deps: PreviewsDeps): Previews => {
       panelError(response, 400, "bad-request", "the body is a batch of input events, or one of the page's controls");
       return;
     }
-    if ((await openViewFor(response, caller, viewId)) === null) {
+    if ((await openViewFor(response, caller, viewId, "input")) === null) {
       return;
     }
     // What the log says of it: how many events, or which control. Never a typed text or a path.

@@ -109,6 +109,7 @@ import {
   previewFramesResponseSchema,
   previewMessageMaxBytes,
   previewMessageTypeBytes,
+  previewOpenRefusalOf,
   previewPaths,
   previewRefusalReasonSchema,
   previewRefusalWords,
@@ -489,6 +490,18 @@ describe("the preview connection", () => {
     expect(decodePreviewMessage(withField(previewMessageTypeBytes.ack, { seq: 1, surprise: 1 }))).toEqual({ ok: false, reason: "invalid" });
     expect(decodePreviewMessage(withField(previewMessageTypeBytes.control, { kind: "reload", seq: 1, surprise: 1 }))).toEqual({ ok: false, reason: "invalid" });
     expect(decodePreviewMessage(withField(previewMessageTypeBytes.close, { reason: "bored" }))).toEqual({ ok: false, reason: "invalid" });
+    // A refusal is core's `refused` close only, and always says why.
+    expect(decodePreviewMessage(withField(previewMessageTypeBytes.close, { reason: "refused" }))).toEqual({ ok: false, reason: "invalid" });
+    expect(decodePreviewMessage(withField(previewMessageTypeBytes.close, { reason: "closed", refusal: "too-many-pages" }))).toEqual({ ok: false, reason: "invalid" });
+    expect(decodePreviewMessage(withField(previewMessageTypeBytes.close, { reason: "refused", refusal: "bored" }))).toEqual({ ok: false, reason: "invalid" });
+  });
+
+  it("F-141: a box's reason for refusing a view's open is one the pane can word, and any other is `other`", () => {
+    for (const reason of ["not-a-preview", "too-many-pages", "session-ending", "unknown-session", "tunnel-needs-websocket", "past-not-after"] as const) {
+      expect(previewOpenRefusalOf(reason)).toBe(reason);
+    }
+    expect(previewOpenRefusalOf("the box's sidecar takes it")).toBe("other");
+    expect(previewOpenRefusalOf(null)).toBe("other");
   });
 
   it("F-141: the JSON parts are strict, and input stays within its limits", () => {

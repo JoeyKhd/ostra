@@ -279,7 +279,7 @@ One new migration, after milestone 7's, additive only. Every row carries `organi
 | New `PreviewAccess` | `taskId`, `key`, `level` (`members`, `named`), `setByMemberId`, `updatedAt`; unique `(taskId, key)`. With no row, the level is `members` |
 | New `PreviewAccessMember` | `previewAccessId`, `memberId`; unique per pair |
 | New `PreviewLink` | `taskId`, `key`, `kind` (`expiring`, `public`), `tokenHash` (unique), `allowInput`, `expiresAt` (null for `public`), `createdByMemberId`, `revokedAt`, `revokedByMemberId`, `firstUsedAt`, `lastUsedAt` |
-| New `PreviewView` | `taskId`, `key`, `mode` (`stream`, `tunnel`, `native`, `cli`), `openedByMemberId`, `linkId`, `leaseId`, `leaseEpoch`, `replicaUrl` (its presence, set by the replica holding the box's connection), `state` (`opening`, `open`, `closed`), `openedAt`, `lastHeartbeatAt`, `closedAt`. Index `(state, lastHeartbeatAt)` |
+| New `PreviewView` | `taskId`, `key`, `mode` (`stream`, `tunnel`, `native`, `cli`), `openedByMemberId`, `linkId`, `leaseId`, `leaseEpoch`, `replicaUrl` (its presence, set by the replica holding the box's connection), `state` (`opening`, `open`, `closed`), `openedAt`, `lastHeartbeatAt`, `closedAt`, `refusal` (why its box refused its `preview.open`, a closed view's only; added 2026-11-21). Index `(state, lastHeartbeatAt)` |
 | New `PreviewCode` | the one-time codes and the CLI's tickets: `kind` (`enter`, `cli_ticket`), `codeHash` (unique), `taskId`, `key`, `port`, `memberId`, `linkId`, `leaseEpoch`, `expiresAt`, `usedAt` |
 | `Box` | + `previewWatchedAt` |
 | `Lease` | + `purpose` (`LeasePurpose`: `turn`, `app`; default `turn`), `appStartedByMemberId` |

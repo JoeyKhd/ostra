@@ -249,6 +249,50 @@ describe("a preview's views on core", () => {
     expect(JSON.stringify(records)).not.toContain(view.panelToken);
   }, 60_000);
 
+  it("F-141/c1: a view whose box refuses its preview.open closes at once, and the pane's stream ends with the box's reason", async () => {
+    const task = await boxedTask();
+    const view = await openStreamView(task);
+    // The pane asks for its stream while the view waits for the box's connection.
+    const waiting = stream(view.viewId, view.panelToken);
+    const refuse = async (viewId: PreviewViewId, result: "rejected" | "accepted", reason?: string): Promise<void> => {
+      const open = await commandOf(peer, "preview.open", (body) => body["viewId"] === viewId);
+      peer.send({ type: "command-ack", upTo: open.seq, results: [{ id: commandIdSchema.parse(open.id), seq: commandSeqSchema.parse(open.seq), result, ...(reason === undefined ? {} : { reason }) }] });
+    };
+    // The box's browser holds as many pages as it may: it refuses the open, with the reason.
+    await refuse(view.viewId, "rejected", "too-many-pages");
+    const panel = await waiting;
+    expect(panel.status).toBe(200);
+    expect((await panel.next("close", 10_000)).close).toEqual({ reason: "refused", refusal: "too-many-pages" });
+    expect(panel.messages.map((message) => message.type)).toEqual(["close"]);
+    // The view is closed at once with the box's reason, not 2 minutes on by the sweep, and its event is written.
+    expect(await test.db.previewView.findUniqueOrThrow({ where: { id: view.viewId } })).toMatchObject({ state: "closed", refusal: "too-many-pages" });
+    expect(await test.db.event.count({ where: { taskId: task.taskId, kind: "preview.closed" } })).toBe(1);
+    // A stream asked for after says the same; the heartbeat and input say it's closed.
+    const late = await stream(view.viewId, view.panelToken);
+    expect(late.status).toBe(200);
+    expect((await late.next("close")).close).toEqual({ reason: "refused", refusal: "too-many-pages" });
+    expect(await heartbeatView(viewDeps(), { viewId: view.viewId })).toMatchObject({ ok: false, error: "closed" });
+    expect((await postInput(view.viewId, view.panelToken)).status).toBe(410);
+    // The box never held it: no `preview.close` goes to it.
+    await new Promise((wait) => setTimeout(wait, 300));
+    expect(peer.frames.some((frame) => frame.type === "command" && frame.kind === "preview.close" && frame.body.viewId === view.viewId)).toBe(false);
+    // A reason the pane can't word is `other`; an open the box took closes nothing.
+    const other = await openStreamView(task);
+    await refuse(other.viewId, "rejected", "the box's sidecar takes it");
+    await waitFor("the other view closed", async () => (await test.db.previewView.findUniqueOrThrow({ where: { id: other.viewId } })).state === "closed", 10_000);
+    expect(await test.db.previewView.findUniqueOrThrow({ where: { id: other.viewId } })).toMatchObject({ refusal: "other" });
+    const taken = await openStreamView(task);
+    await refuse(taken.viewId, "accepted");
+    await waitFor("the ack recorded", async () => (await test.db.command.count({ where: { runnerId: runner.runnerId, kind: "preview_open", result: "accepted" } })) >= 1, 10_000);
+    expect(await test.db.previewView.findUniqueOrThrow({ where: { id: taken.viewId } })).toMatchObject({ state: "opening", refusal: null });
+    // A view closed for any other reason has no refusal, and its stream is 410.
+    expect(await closeView(viewDeps(), { viewId: taken.viewId, reason: "closed" })).toEqual({ ok: true, closed: true });
+    expect((await openPanelStream(replica.url, taken.viewId, { authorization: `Bearer ${taken.panelToken}` })).status).toBe(410);
+    // IDs and the reason in the log, never a token.
+    expect(records.some((record) => record.message === "preview.view-refused" && record.fields["viewId"] === view.viewId && record.fields["refusal"] === "too-many-pages")).toBe(true);
+    expect(JSON.stringify(records)).not.toContain(view.panelToken);
+  }, 60_000);
+
   it("F-141/c2: a preview connection with a stale lease epoch is refused, as an event is", async () => {
     const task = await boxedTask();
     const view = await openStreamView(task);

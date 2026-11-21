@@ -105,6 +105,7 @@ import {
 } from "./snapshots/snapshots.ts";
 import type { SnapshotDeps } from "./snapshots/snapshots.ts";
 import { createAutomationWebhooks } from "./webhooks/automation-webhooks.ts";
+import { applyPreviewOpenResultsInTx } from "./previews/open-results.ts";
 import { createPreviews } from "./previews/previews.ts";
 import { replicaUrlFor } from "./previews/replica-url.ts";
 import { handlePanelStartApp } from "./previews/start-app-endpoint.ts";
@@ -289,6 +290,8 @@ export const startCore = async (
         await applyStopResultsInTx(reactionDeps, tx, runner, results);
         await applyReleaseResultsInTx({ clock: systemClock, logger }, tx, runner, results);
         await applySnapshotCommandResultsInTx(snapshotDeps, tx, runner, results);
+        // A view whose box refused its `preview.open` closes now, with the box's reason (ADR 0068).
+        await applyPreviewOpenResultsInTx({ outbox: postgresCommandOutbox, notices, clock: systemClock, logger }, tx, runner, results);
       },
       // A box's wait (milestone 5, ticket 20), else a snapshot's result.
       runnerEvent: async (runner, frame) => {

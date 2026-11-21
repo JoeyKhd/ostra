@@ -1,7 +1,7 @@
 import { checkViewInput, PANEL_PREVIEW_TOKEN_TTL_MS, panelPreviewPaths, previewLinkTokenHash, previewLinkTokenMatches, previewViewInTx } from "@ostra/domain";
 import type { PreviewViewRow } from "@ostra/domain";
-import { panelPreviewInputBodySchema, parseJson, previewViewIdSchema, runnerLimits } from "@ostra/protocol";
-import type { PreviewViewId } from "@ostra/protocol";
+import { encodePanelStreamRecord, panelPreviewInputBodySchema, parseJson, previewViewIdSchema, runnerLimits } from "@ostra/protocol";
+import type { PreviewOpenRefusal, PreviewViewId } from "@ostra/protocol";
 import { z } from "zod";
 
 import type { Context } from "../trpc/context.ts";
@@ -52,6 +52,16 @@ const noStore = { "cache-control": "no-store", "x-content-type-options": "nosnif
 
 const refuse = (status: number, code: PreviewRouteErrorCode): Response => Response.json({ error: { code } }, { status, headers: noStore });
 
+/**
+ * The stream of a view its box refused (`not-a-preview`, `too-many-pages`, ...): one `close`
+ * record, `refused` with the box's reason, as core's own stream ends, so the pane can say why.
+ */
+const refusedStream = (refusal: PreviewOpenRefusal): Response =>
+  new Response(new Uint8Array(encodePanelStreamRecord({ type: "close", close: { reason: "refused", refusal } })), {
+    status: 200,
+    headers: { ...noStore, "content-type": "application/octet-stream" },
+  });
+
 /** Core's refusal body: a code the panel relays when it knows it. */
 const coreErrorSchema = z.looseObject({ error: z.looseObject({ code: z.string() }) });
 
@@ -91,8 +101,11 @@ const viewerOf = async (ctx: Context, request: Request): Promise<Viewer | Respon
   return { kind: "member", organizationId: ctx.member.scope.organizationId, memberId: ctx.member.scope.memberId };
 };
 
-/** The view, when it's the one this viewer opened: anyone else's is `not-found`, as one that isn't. */
-const viewFor = async (ctx: Context, viewer: Viewer, raw: string): Promise<PreviewViewRow | Response> => {
+/**
+ * The view, when it's the one this viewer opened: anyone else's is `not-found`, as one that isn't.
+ * A closed one is `view-closed`, but the stream of one its box refused says why.
+ */
+const viewFor = async (ctx: Context, viewer: Viewer, raw: string, wants: "watch" | "input"): Promise<PreviewViewRow | Response> => {
   const viewId = previewViewIdSchema.safeParse(raw);
   const view = viewId.success ? await previewViewInTx(ctx.deps.db, viewId.data) : null;
   const mine =
@@ -104,7 +117,7 @@ const viewFor = async (ctx: Context, viewer: Viewer, raw: string): Promise<Previ
     return refuse(404, "not-found");
   }
   if (view.lifecycle.state === "closed") {
-    return refuse(410, "view-closed");
+    return wants === "watch" && view.refusal !== null ? refusedStream(view.refusal) : refuse(410, "view-closed");
   }
   return view;
 };
@@ -156,7 +169,7 @@ const prepare = async (ctx: Context, request: Request, raw: string, wants: "watc
   if (viewer instanceof Response) {
     return viewer;
   }
-  const view = await viewFor(ctx, viewer, raw);
+  const view = await viewFor(ctx, viewer, raw, wants);
   if (view instanceof Response) {
     return view;
   }

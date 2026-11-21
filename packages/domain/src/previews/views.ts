@@ -6,6 +6,8 @@ import {
   leaseEpochSchema,
   memberIdSchema,
   organizationIdSchema,
+  previewOpenBodySchema,
+  previewOpenRefusalOf,
   previewKeySchema,
   previewLinkIdSchema,
   previewRefusalWords,
@@ -20,6 +22,8 @@ import {
 } from "@ostra/protocol";
 import type {
   BoxId,
+  CommandKind,
+  CommandResult,
   ExecutorKind,
   LeaseEpoch,
   MemberId,
@@ -29,6 +33,7 @@ import type {
   PreviewKey,
   PreviewLinkId,
   PreviewListItem,
+  PreviewOpenRefusal,
   PreviewSupport,
   PreviewViewer,
   PreviewViewId,
@@ -429,6 +434,7 @@ const viewSelect = {
   openedAt: true,
   lastHeartbeatAt: true,
   closedAt: true,
+  refusal: true,
 } as const;
 
 /** A view's row, as core and the sweep read it. */
@@ -444,6 +450,8 @@ export type PreviewViewRow = {
   readonly leaseEpoch: number;
   readonly replicaUrl: string | null;
   readonly lifecycle: PreviewViewLifecycle;
+  /** Why its box refused its `preview.open`, when it did: the pane's stream ends with it. Only a closed view has one. */
+  readonly refusal: PreviewOpenRefusal | null;
 };
 
 const toViewRow = (row: {
@@ -462,14 +470,16 @@ const toViewRow = (row: {
   readonly openedAt: Date;
   readonly lastHeartbeatAt: Date;
   readonly closedAt: Date | null;
+  readonly refusal: string | null;
 }): PreviewViewRow => {
+  const refusal = row.refusal === null ? null : previewOpenRefusalOf(row.refusal);
   const lifecycle: PreviewViewLifecycle =
     row.state === "opening"
       ? { state: "opening", since: row.openedAt.getTime() }
       : row.state === "open"
         ? { state: "open", since: row.openedAt.getTime(), lastHeartbeatAt: row.lastHeartbeatAt.getTime() }
-        : // The reason isn't a column: the event and the sweep's log carry it.
-          { state: "closed", at: (row.closedAt ?? row.lastHeartbeatAt).getTime(), reason: "closed" };
+        : // The reason isn't a column, but a box's refusal: the event and the sweep's log carry it.
+          { state: "closed", at: (row.closedAt ?? row.lastHeartbeatAt).getTime(), reason: refusal === null ? "closed" : "box-refused" };
   return {
     id: previewViewIdSchema.parse(row.id),
     organizationId: organizationIdSchema.parse(row.organizationId),
@@ -483,6 +493,7 @@ const toViewRow = (row: {
     leaseEpoch: row.leaseEpoch,
     replicaUrl: row.replicaUrl,
     lifecycle,
+    refusal,
   };
 };
 
@@ -529,11 +540,19 @@ export const markViewDisconnected = async (db: Db, viewId: PreviewViewId, replic
 
 // ---------- closing a view ----------
 
-/** Closes a view in the caller's transaction: its row, its `preview.closed` event, and `preview.close` to the box. */
+/** Why core closes a view: a box's refusal carries the box's reason, which the view keeps. */
+export type ViewClosing =
+  | { readonly viewId: PreviewViewId; readonly reason: Exclude<PreviewViewCloseReason, "box-refused"> }
+  | { readonly viewId: PreviewViewId; readonly reason: "box-refused"; readonly refusal: PreviewOpenRefusal };
+
+/**
+ * Closes a view in the caller's transaction: its row, its `preview.closed` event, and
+ * `preview.close` to the box, except for a view its box refused, which the box never held.
+ */
 export const closeViewInTx = async (
   deps: Pick<ViewPorts, "outbox" | "notices" | "clock">,
   tx: Tx,
-  input: { readonly viewId: PreviewViewId; readonly reason: PreviewViewCloseReason },
+  input: ViewClosing,
 ): Promise<UseCaseResult<{ readonly closed: boolean }, "not-found">> => {
   const now = deps.clock.now();
   const view = await previewViewInTx(tx, input.viewId);
@@ -544,11 +563,13 @@ export const closeViewInTx = async (
   if (!moved.ok) {
     return { ok: true, closed: false };
   }
-  const closed = await tx.previewView.updateMany({ where: { id: view.id, state: { not: "closed" } }, data: { state: "closed", closedAt: new Date(now) } });
+  const refusal = input.reason === "box-refused" ? input.refusal : null;
+  const closed = await tx.previewView.updateMany({ where: { id: view.id, state: { not: "closed" } }, data: { state: "closed", closedAt: new Date(now), refusal } });
   if (closed.count === 0) {
     return { ok: true, closed: false };
   }
-  const lease = view.leaseId === null ? null : await tx.lease.findFirst({ where: { id: view.leaseId, state: "active" }, select: { runnerId: true, boxId: true } });
+  // A box that refused the view holds nothing of it: no `preview.close` for it.
+  const lease = view.leaseId === null || refusal !== null ? null : await tx.lease.findFirst({ where: { id: view.leaseId, state: "active" }, select: { runnerId: true, boxId: true } });
   const session = await tx.session.findFirst({
     where: { taskId: view.taskId, ...(lease === null ? {} : { boxId: lease.boxId }) },
     orderBy: [{ startedAt: "desc" }, { id: "desc" }],
@@ -568,6 +589,38 @@ export const closeViewInTx = async (
   }
   await deps.notices.emitInTx(tx, { organizationId: view.organizationId, projectId: view.projectId, entity: "task", entityId: view.taskId });
   return { ok: true, closed: true };
+};
+
+/** One command's result, as the gateway read it back for the runner that answered it. */
+export type ViewOpenResult = { readonly kind: CommandKind; readonly body: unknown; readonly result: CommandResult; readonly reason: string | null };
+
+/**
+ * The views whose `preview.open` their box refused (ADR 0068's note of 2026-11-21): each is closed
+ * in the transaction that records the runner's results, with the box's reason, so it doesn't wait
+ * for the sweep and the pane's stream says why. Only the answering runner's organization's views.
+ */
+export const closeRefusedViewsInTx = async (
+  deps: Pick<ViewPorts, "outbox" | "notices" | "clock">,
+  tx: Tx,
+  organizationId: OrganizationId,
+  results: readonly ViewOpenResult[],
+): Promise<readonly { readonly viewId: PreviewViewId; readonly refusal: PreviewOpenRefusal }[]> => {
+  const closed: { readonly viewId: PreviewViewId; readonly refusal: PreviewOpenRefusal }[] = [];
+  for (const result of results) {
+    if (result.kind !== "preview.open" || result.result !== "rejected") {
+      continue;
+    }
+    const body = previewOpenBodySchema.safeParse(result.body);
+    if (!body.success || (await tx.previewView.count({ where: { id: body.data.viewId, organizationId } })) === 0) {
+      continue;
+    }
+    const refusal = previewOpenRefusalOf(result.reason);
+    const done = await closeViewInTx(deps, tx, { viewId: body.data.viewId, reason: "box-refused", refusal });
+    if (done.ok && done.closed) {
+      closed.push({ viewId: body.data.viewId, refusal });
+    }
+  }
+  return closed;
 };
 
 /** Closes a view: its viewer closed it, or the sweep did. Whoever may close it is the caller's check. */
@@ -713,7 +766,7 @@ const SWEEP_BATCH = 200;
 export const sweepPreviewViews = async (deps: ViewSweepDeps): Promise<ViewSweepResult> => {
   const now = deps.clock.now();
   const result: Partial<Record<PreviewViewCloseReason, number>> = {};
-  const close = async (viewId: PreviewViewId, reason: PreviewViewCloseReason): Promise<void> => {
+  const close = async (viewId: PreviewViewId, reason: Exclude<PreviewViewCloseReason, "box-refused">): Promise<void> => {
     const closed = await deps.db.$transaction((tx) => closeViewInTx(deps, tx, { viewId, reason }));
     if (closed.ok && closed.closed) {
       result[reason] = (result[reason] ?? 0) + 1;

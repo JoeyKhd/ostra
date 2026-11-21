@@ -1557,6 +1557,8 @@ export const previewMessageFixtures = {
   },
   ack: { type: "ack", ack: { seq: 1 } },
   close: { type: "close", close: { reason: "closed" } },
+  /** Core's last record on the pane's stream of a view its box refused. */
+  refused: { type: "close", close: { reason: "refused", refusal: "too-many-pages" } },
 } as const satisfies Readonly<Record<string, PreviewMessage>>;
 
 /** The HTTP carrier's frames' body and answers. */

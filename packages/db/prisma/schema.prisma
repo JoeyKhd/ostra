@@ -4243,6 +4243,9 @@ model PreviewView {
   openedAt         DateTime         @default(now())
   lastHeartbeatAt  DateTime         @default(now())
   closedAt         DateTime?
+  /// Why its box refused its `preview.open` (`previewOpenRefusalSchema`): the pane's stream ends
+  /// with it. `null` for a view its box didn't refuse. Only a closed view has one (`ostra:` check).
+  refusal          String?
 
   @@index([state, lastHeartbeatAt])
   @@index([taskId, key])

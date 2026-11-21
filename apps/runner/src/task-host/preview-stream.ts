@@ -1,6 +1,6 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import { decodePreviewMessage, encodePreviewMessage, runnerLimits } from "@ostra/protocol";
-import type { PreviewCloseReason, PreviewControl, PreviewMessage, PreviewViewId } from "@ostra/protocol";
+import type { PreviewClose, PreviewCloseReason, PreviewControl, PreviewMessage, PreviewViewId } from "@ostra/protocol";
 import type { RawData, WebSocket } from "ws";
 import type { PreviewFrame, PreviewFramesPost } from "../connection/preview-frames.ts";
 import type { FrameSink } from "./shared-pages.ts";
@@ -49,7 +49,7 @@ export type SocketStreamInput = {
   /** Applies core's control to the view's page; the box acks it once this resolves. */
   readonly onControl: (control: PreviewControl) => Promise<void>;
   /** Core closed the view, or the connection went. */
-  readonly onEnd: (reason: PreviewCloseReason | null) => void;
+  readonly onEnd: (reason: PreviewClose["reason"] | null) => void;
   readonly logger: Logger;
 };
 
@@ -67,7 +67,7 @@ export const socketStreamLink = (input: SocketStreamInput): StreamLink => {
     }
   };
 
-  const finish = (reason: PreviewCloseReason | null): void => {
+  const finish = (reason: PreviewClose["reason"] | null): void => {
     if (ended) {
       return;
     }

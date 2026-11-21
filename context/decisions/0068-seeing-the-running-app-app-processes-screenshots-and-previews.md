@@ -128,6 +128,11 @@ They run in a page of their own, never the shared page a member watches.
 - **A path** stays on the preview's own origin (`appPathSchema`) and reaches no log line; core logs a control's kind only.
 - **Open (Q326):** the tablet's preset, 834×1112, is taller than a browser view's page may be (`previewViewportSchema`, at most 1440×900, the screencast's bounds), so neither `previews.open` nor the control takes it as it is. Until the maintainer decides between sending the tablet at 834×900 and raising the page's height cap, the pane sends 834×900.
 
+**As built (2026-11-21), a refused open** (the other gap ticket 18 left: core didn't react to a rejected `preview.open`, so the view waited 2 minutes for the sweep):
+- **Core closes the view at once,** in the transaction that records the runner's results (the gateway's `onCommandResultsInTx`, for a runner's connection and a box's sidecar alike; `closeRefusedViewsInTx`). No `preview.close` goes to a box that never held the view; its `preview.closed` event is written as for any close.
+- **The view keeps the box's reason** in `PreviewView.refusal` (an additive, nullable column; a check keeps it to closed views), as one of `previewOpenRefusalSchema`'s: `not-a-preview`, `too-many-pages`, `session-ending`, `unknown-session`, `tunnel-needs-websocket`, `past-not-after`, or `other` for a reason the list doesn't name. The runner's own reasons are typed against it.
+- **The pane's stream says why.** Its stream of a refused view, whether the pane asked before the refusal came or after, is one `close` record, `{ reason: "refused", refusal }` (the `close` message's second shape, core's to the pane only; added to minor 7 before its release), answered 200, by core's route and by the web app's, which doesn't ask core for a closed view. A view closed for any other reason is 410 `view-closed`, as before.
+
 ## What a preview may reach
 
 A preview reaches only ports that belong to the task:

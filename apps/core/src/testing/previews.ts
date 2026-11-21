@@ -15,6 +15,7 @@ import { agentImportsArchives } from "../agents/session-archives.ts";
 import { postgresDeviceSessions } from "../gateway/device-sessions.ts";
 import { createGateway } from "../gateway/gateway.ts";
 import type { Gateway, GatewayOptions } from "../gateway/gateway.ts";
+import { applyPreviewOpenResultsInTx } from "../previews/open-results.ts";
 import { createPreviews } from "../previews/previews.ts";
 import type { Previews } from "../previews/previews.ts";
 import { handlePanelStartApp } from "../previews/start-app-endpoint.ts";
@@ -64,6 +65,7 @@ export const startPreviewReplica = async (
   const clock = options.clock ?? systemClock;
   const logger = options.logger ?? silentLogger;
   let url = "";
+  const { hooks, ...gatewayOptions } = options.gateway ?? {};
   const gateway = createGateway({
     db,
     databaseUrl,
@@ -74,7 +76,9 @@ export const startPreviewReplica = async (
     deviceSessions: postgresDeviceSessions(db),
     ports: { notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock, jobs: options.jobs },
     logger,
-    ...options.gateway,
+    ...gatewayOptions,
+    // As core's own (`core.ts`): a view whose box refused its `preview.open` closes with the reason.
+    hooks: { onCommandResultsInTx: (tx, runner, results) => applyPreviewOpenResultsInTx({ outbox: postgresCommandOutbox, notices: postgresChangeNotices, clock, logger }, tx, runner, results), ...hooks },
   });
   const previews = createPreviews({
     db,

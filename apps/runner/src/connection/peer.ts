@@ -26,6 +26,7 @@ import type {
   ProcessContainment,
   LeaseEpoch,
   Peer,
+  PreviewOpenRefusal,
   PreviewSupport,
   RunnerCapabilities,
   RunnerEvent,
@@ -353,7 +354,7 @@ const rawText = (data: RawData): string => {
  * Why a `preview.open` in `tunnel` mode is refused on the HTTP carrier (Q306): `ostra preview` and
  * the native preview need the WebSocket the network blocks.
  */
-export const TUNNEL_NEEDS_WEBSOCKET = "tunnel-needs-websocket";
+export const TUNNEL_NEEDS_WEBSOCKET = "tunnel-needs-websocket" satisfies PreviewOpenRefusal;
 
 export const connectionUrl = (serverUrl: string): string =>
   `${serverUrl.replace(/\/+$/, "").replace(/^http/, "ws")}${runnerPaths.connect}`;

@@ -2,7 +2,7 @@ import type { ServerResponse } from "node:http";
 
 import type { Logger } from "@ostra/adapter-sdk";
 import { decodePreviewMessage, encodePanelStreamRecord, encodePreviewMessage } from "@ostra/protocol";
-import type { PanelPreviewInputBody, PreviewCloseReason, PreviewControl, PreviewFrameHeader, PreviewMessage, PreviewViewId } from "@ostra/protocol";
+import type { PanelPreviewInputBody, PreviewClose, PreviewCloseReason, PreviewControl, PreviewFrameHeader, PreviewMessage, PreviewViewId } from "@ostra/protocol";
 import type { RawData, WebSocket } from "ws";
 
 // One replica's views whose box connection it holds (ADR 0068, "The preview connection"): the box's
@@ -99,8 +99,8 @@ export const createPreviewHub = (logger: Logger): PreviewHub => {
     }
   };
 
-  const endStreams = (held: Held, reason: PreviewCloseReason): void => {
-    const record = encodePanelStreamRecord({ type: "close", close: { reason } });
+  const endStreams = (held: Held, close: PreviewClose): void => {
+    const record = encodePanelStreamRecord({ type: "close", close });
     for (const stream of held.streams) {
       if (!stream.writableEnded) {
         stream.end(record);
@@ -170,7 +170,7 @@ export const createPreviewHub = (logger: Logger): PreviewHub => {
             return;
           case "close":
             logger.info("preview.box-closed", { viewId, reason: message.close.reason });
-            endStreams(held, message.close.reason);
+            endStreams(held, message.close);
             ws.close(1000, message.close.reason);
             return;
           case "control":
@@ -190,7 +190,7 @@ export const createPreviewHub = (logger: Logger): PreviewHub => {
         held.newest = null;
         held.unacked = null;
         // The panel's streams end: a box that reconnects, here or on another replica, gets new ones.
-        endStreams(held, "box-stopping");
+        endStreams(held, { reason: "box-stopping" });
         forget(held);
         onGone();
       });
@@ -243,7 +243,7 @@ export const createPreviewHub = (logger: Logger): PreviewHub => {
       sendToBox(held, { type: "close", close: { reason } });
       held.socket?.close(1000, reason);
       held.socket = null;
-      endStreams(held, reason);
+      endStreams(held, { reason });
       views.delete(viewId);
     },
     held: () => [...views.keys()],
@@ -252,7 +252,7 @@ export const createPreviewHub = (logger: Logger): PreviewHub => {
       for (const held of views.values()) {
         sendToBox(held, { type: "close", close: { reason: "box-stopping" } });
         held.socket?.close(1001, "the server is stopping");
-        endStreams(held, "box-stopping");
+        endStreams(held, { reason: "box-stopping" });
       }
       views.clear();
     },

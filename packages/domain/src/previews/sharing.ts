@@ -156,7 +156,7 @@ const revokeLinkInTx = async (
   return { revoked: true, viewsClosed };
 };
 
-const closeOne = async (deps: Pick<SharingDeps, "outbox" | "notices" | "clock">, tx: Tx, viewId: PreviewViewId, reason: PreviewViewCloseReason): Promise<number> => {
+const closeOne = async (deps: Pick<SharingDeps, "outbox" | "notices" | "clock">, tx: Tx, viewId: PreviewViewId, reason: Exclude<PreviewViewCloseReason, "box-refused">): Promise<number> => {
   const closed = await closeViewInTx(deps, tx, { viewId, reason });
   return closed.ok && closed.closed ? 1 : 0;
 };

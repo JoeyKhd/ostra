@@ -5,7 +5,16 @@ import type { Server } from "node:http";
 import { mapMember } from "@ostra/db";
 import type { SeededMember } from "@ostra/db/testing";
 import { silentLogger } from "@ostra/adapter-sdk";
-import { createPanelPreviewTokens, createPanelStartAppTokens, markViewConnected, PANEL_START_APP_PATH, parsePanelPreviewPath } from "@ostra/domain";
+import {
+  closeRefusedViewsInTx,
+  createPanelPreviewTokens,
+  createPanelStartAppTokens,
+  markViewConnected,
+  PANEL_START_APP_PATH,
+  parsePanelPreviewPath,
+  postgresChangeNotices,
+  systemClock,
+} from "@ostra/domain";
 import type { PanelPreviewClaims, PanelStartAppClaims } from "@ostra/domain";
 import { createPanelStreamReader, encodePanelStreamRecord, panelPreviewInputBodySchema, previewKeySchema, previewViewIdSchema } from "@ostra/protocol";
 import type { OrganizationId, PanelPreviewInputBody, PreviewInputEvent, PreviewViewId, ProjectId } from "@ostra/protocol";
@@ -651,6 +660,36 @@ describe("the stream and input routes (F-141)", () => {
       expect([dropped.status, await errorCode(dropped)]).toEqual([403, "watch-only"]);
     }
     expect(fakeCore.calls.filter((call) => call.viewId === page.viewId && call.route === "input")).toEqual([]);
+  });
+
+  it("F-141/c7: the stream of a view its box refused is one close record with the box's reason, and core isn't asked", async () => {
+    const target = await task();
+    const opened = await (await harness.as(driver)).previews.open({ taskId: target.taskId, key: target.key });
+    if (!opened.ok) {
+      throw new Error("not opened");
+    }
+    // The box refused the view's `preview.open`: core closes it with the reason, as its gateway's hook does.
+    const sent = harness.fakes.outbox.commands.find((command) => command.kind === "preview.open" && Reflect.get(command.body, "viewId") === opened.viewId);
+    if (sent === undefined) {
+      throw new Error("no preview.open");
+    }
+    const closed = await harness.test.db.$transaction((tx) =>
+      closeRefusedViewsInTx({ outbox: harness.fakes.outbox, notices: postgresChangeNotices, clock: systemClock }, tx, organizationId, [{ kind: "preview.open", body: sent.body, result: "rejected", reason: "not-a-preview" }]),
+    );
+    // No `preview.close` for a box that never held the view.
+    expect(harness.fakes.outbox.commands.filter((command) => command.kind === "preview.close" && Reflect.get(command.body, "viewId") === opened.viewId)).toEqual([]);
+    expect(closed).toEqual([{ viewId: opened.viewId, refusal: "not-a-preview" }]);
+    const before = fakeCore.calls.length;
+    const stream = await servePreviewStream(await memberContext(driver), streamRequest(opened.viewId), opened.viewId);
+    expect([stream.status, stream.headers.get("content-type"), stream.headers.get("cache-control")]).toEqual([200, "application/octet-stream", "no-store"]);
+    const records = createPanelStreamReader().push(new Uint8Array(await stream.arrayBuffer()));
+    expect(records).toEqual([{ ok: true, message: { type: "close", close: { reason: "refused", refusal: "not-a-preview" } } }]);
+    // Its input is a closed view's; nobody else's view says anything; core was never asked.
+    const input = await servePreviewInput(await memberContext(driver), inputRequest(opened.viewId), opened.viewId);
+    expect([input.status, await errorCode(input)]).toEqual([410, "view-closed"]);
+    const admins = await servePreviewStream(await memberContext(harness.fixture.a.admin), streamRequest(opened.viewId), opened.viewId);
+    expect([admins.status, await errorCode(admins)]).toEqual([404, "not-found"]);
+    expect(fakeCore.calls.length).toBe(before);
   });
 
   it("F-141/c7: the viewer page's link token opens its own view's stream and input, watch-only unless the link allows input, and a wrong token is refused and limited", async () => {

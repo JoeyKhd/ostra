@@ -18,7 +18,7 @@ import {
   previewTunnel,
   runnerLimits,
 } from "@ostra/protocol";
-import type { LeaseEpoch, PreviewCloseReason, PreviewControl, PreviewFrameHeader, PreviewMode, PreviewViewId } from "@ostra/protocol";
+import type { LeaseEpoch, PreviewClose, PreviewCloseReason, PreviewControl, PreviewFrameHeader, PreviewMode, PreviewViewId } from "@ostra/protocol";
 import { WebSocketServer, createWebSocketStream } from "ws";
 import type { RawData, WebSocket } from "ws";
 import type { FakeServer } from "./fake-server.ts";
@@ -50,7 +50,7 @@ export type FakeStreamView = {
   /** The controls the box acked, by number. */
   readonly controlAcks: number[];
   /** The box's own `close`, when it sent one. */
-  closeReason: PreviewCloseReason | null;
+  closeReason: PreviewClose["reason"] | null;
   /** The connection's subprotocol and bearer, on the WebSocket. */
   readonly protocol: string | null;
   readonly bearer: string | undefined;

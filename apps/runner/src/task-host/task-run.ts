@@ -69,6 +69,7 @@ import type {
   TurnMode,
   HiddenRefOutcome,
   PreviewKey,
+  PreviewOpenRefusal,
   PreviewTarget,
   ReservedPorts,
   RestoreOrigin,
@@ -2811,18 +2812,18 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         return Promise.resolve({ result: "done" });
       }
       if (ending !== undefined) {
-        return Promise.resolve({ result: "rejected", reason: "session-ending" });
+        return Promise.resolve({ result: "rejected", reason: "session-ending" satisfies PreviewOpenRefusal });
       }
       const isPreview = (opened: AppProcesses): boolean => opened.previews().some((item) => item.key === body.key);
       // The reach rule (ADR 0068): a view opens only on one of the task's previews.
       if (app !== undefined && !isPreview(app)) {
         log.info("a view refused: not one of the task's previews", { viewId: body.viewId, key: body.key });
-        return Promise.resolve({ result: "rejected", reason: "not-a-preview" });
+        return Promise.resolve({ result: "rejected", reason: "not-a-preview" satisfies PreviewOpenRefusal });
       }
       // One shared page per preview, and at most `boxPagesMax` in the box's browser, one kept for the tools' pictures.
       if (body.mode === "stream" && !views.mayStream(body.key)) {
         log.info("a view refused: the box's browser holds as many pages as it may", { viewId: body.viewId, key: body.key });
-        return Promise.resolve({ result: "rejected", reason: "too-many-pages" });
+        return Promise.resolve({ result: "rejected", reason: "too-many-pages" satisfies PreviewOpenRefusal });
       }
       views.open({
         viewId: body.viewId,
