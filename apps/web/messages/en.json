@@ -1854,6 +1854,10 @@
   "task": {
     "preview": {
       "pane": "Preview",
+      "row": {
+        "verb": "Preview",
+        "show": "Show"
+      },
       "toolbar": "Preview",
       "side": "Side pane",
       "sidePreview": "Preview",

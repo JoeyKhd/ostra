@@ -3,6 +3,7 @@
 import { TextMessagePartProvider } from "@assistant-ui/react";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import {
+  AppWindowIcon,
   ArchiveIcon,
   BookmarkPlusIcon,
   MessageSquareIcon,
@@ -27,8 +28,12 @@ import {
   TriangleAlertIcon,
   WrenchIcon,
 } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import type { ReactNode } from "react";
+
+import { SHOW_PREVIEW_TOOL, showPreviewInputSchema } from "@ostra/protocol";
+import type { ShowPreviewInput } from "@ostra/protocol";
 
 import { approvalMetadataSchema } from "@ostra/task-view";
 import type { SubagentNode, TaskDataPart } from "@ostra/task-view";
@@ -307,6 +312,29 @@ export const ApprovalNote = ({ part, asker, className }: { readonly part: ToolLi
   return <><div data-part="approval" data-state={receipt.state} className={cn("ml-[104px] text-sm text-muted", className)}>{named(text)}</div>{lost}</>;
 };
 
+/** `show_preview`, whatever prefix its agent names it with (`ostra_show_preview`). */
+const isShowPreview = (name: string): boolean => name === SHOW_PREVIEW_TOOL || [`_${SHOW_PREVIEW_TOOL}`, `.${SHOW_PREVIEW_TOOL}`, `/${SHOW_PREVIEW_TOOL}`].some((end) => name.endsWith(end));
+
+/**
+ * The agent's `show_preview` as milestone 1's tool row (task-preview.md, "The thread's Preview row"):
+ * `app-window`, `Preview`, the label and port in mono, the path in `--faint`, and a teal `Show` that
+ * opens the pane on it. A port the agent opened is the preview `port-<port>`; the pane falls back to
+ * the primary when the task has no such preview.
+ */
+const PreviewShownRow = ({ input }: { readonly input: ShowPreviewInput }) => {
+  const query = new URLSearchParams({ pane: "preview", preview: `port-${String(input.port)}`, ...(input.path === undefined ? {} : { path: input.path }) });
+  return (
+    <Line
+      icon={<AppWindowIcon />}
+      verb={t("task.preview.row.verb")}
+      end={<Link href={`?${query.toString()}`} className="font-sans text-teal hover:underline" data-action="show-preview">{t("task.preview.row.show")}</Link>}
+    >
+      <span className="font-mono">{input.label} <span className="text-faint">:{input.port}</span></span>
+      {input.path === undefined ? null : <span className="font-mono text-faint">{input.path}</span>}
+    </Line>
+  );
+};
+
 export const ToolBody = ({ part }: { readonly part: ToolLikePart }) => {
   const [open, setOpen] = useState(false);
   switch (part.type) {
@@ -378,13 +406,17 @@ export const ToolBody = ({ part }: { readonly part: ToolLikePart }) => {
         </div>
       );
     }
-    case "dynamic-tool":
+    case "dynamic-tool": {
+      // The agent opened a port for the pane (`show_preview`): the thread's Preview row (task-preview.md).
+      const shown = isShowPreview(part.toolName) ? showPreviewInputSchema.safeParse(part.input) : null;
+      if (shown?.success === true) return <PreviewShownRow input={shown.data} />;
       return (
         <Line icon={part.toolName === "execute" ? <SquareTerminalIcon /> : <WrenchIcon />} verb={<span className="block truncate pr-2">{part.toolName}</span>} end={<ToolStatus part={part} />} tone={part.state === "output-error" ? "red" : undefined}>
           <span className="min-w-0 truncate">{part.title ?? ""}</span>
           {part.state === "output-error" ? <span className="text-sm text-red">{part.errorText}</span> : null}
         </Line>
       );
+    }
     default:
       return part satisfies never;
   }
