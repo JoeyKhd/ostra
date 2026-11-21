@@ -184,7 +184,7 @@ describe("a message ostra wrote for the agent, in the thread", () => {
     expect(own.read).toBeNull();
     expect(own.body).toContain('data-part="user-text"');
     expect(own.body).toContain("Use &lt;ostra-data&gt; here &amp; &lt;i&gt;now&lt;/i&gt;");
-    // An intent set by hand on plain words (`tasks.send` takes one) is still the member's words.
+    // An intent set by hand on plain words (an older log's: `tasks.send` takes only plain words now) is still the member's words.
     const handSet = drawn("Merge main into the branch", "update-branch");
     expect(handSet.read).toBeNull();
     expect(handSet.body).toContain("Merge main into the branch");

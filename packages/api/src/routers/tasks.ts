@@ -43,7 +43,6 @@ import {
   approvalDecisionSchema,
   approvalIdSchema,
   approvalOptionSchema,
-  messageIntentSchema,
   clientMessageIdSchema,
   effortChangeIdSchema,
   effortLevelSchema,
@@ -82,6 +81,14 @@ import { loadProjectAccess, memberProcedure, projectProcedure, router, taskProce
 // (ADR 0036): the server enforces it, under the task's lock, and the UI only hides the controls.
 
 const taskInput = z.strictObject({ taskId: taskIdSchema });
+
+/**
+ * A member's message, sent or as a reopen, is their own words (the maintainer, 2026-11-21): ostra's
+ * server code alone sets another intent, for the panel's actions and the rounds
+ * (`sendMemberMessageInTx`), so the thread draws each from what ostra sent and never hides a
+ * member's words behind one. `message`, the plain intent, is taken and changes nothing.
+ */
+const memberIntentSchema = z.literal("message", { error: "A member's message is plain words: only ostra sets another intent" }).optional();
 
 // ---------- the list ----------
 
@@ -629,7 +636,7 @@ export const tasksRouter = router({
    * or needing a reopen. The same `clientMessageId` twice is applied once. `text` may be left out only
    * for the one-click reopen from a limit or a crash; a merged task is refused until F-066.
    */
-  reopen: taskProcedure("read", reopenTaskInputSchema).mutation(async ({ ctx, input }) => {
+  reopen: taskProcedure("read", reopenTaskInputSchema.extend({ intent: memberIntentSchema })).mutation(async ({ ctx, input }) => {
     const { db, ports, settings } = ctx.deps;
     // A task at its spend cap stays stopped until the cap is raised (F-068, ticket 19).
     const spendCap = { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap };
@@ -768,7 +775,8 @@ export const tasksRouter = router({
   /**
    * The driver's message to the running agent (F-024, ADR 0036). Only the driver may send: the check
    * runs under the task's lock, so a take-over and a send at the same moment either commit in that
-   * order or the send is refused. Sending the same `clientMessageId` again is applied once.
+   * order or the send is refused. Sending the same `clientMessageId` again is applied once. The
+   * message is the member's own words (`memberIntentSchema`).
    */
   send: taskProcedure(
     "read",
@@ -777,8 +785,7 @@ export const tasksRouter = router({
       clientMessageId: clientMessageIdSchema,
       text: z.string().trim().min(1).max(runnerLimits.steerTextMaxChars),
       delivery: z.enum(["queue", "interrupt"]).default("queue"),
-      /** Milestone 3 (ticket 19): why the panel wrote the message (update branch, diff comments, keep working, fix checks). */
-      intent: messageIntentSchema.optional(),
+      intent: memberIntentSchema,
     }),
   ).mutation(async ({ ctx, input }) => {
     const { db, ports } = ctx.deps;

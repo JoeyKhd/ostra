@@ -1,5 +1,5 @@
 import { clientMessageIdSchema, messageDeliveries, taskEventSchema, turnIdSchema } from "@ostra/protocol";
-import type { ClientMessageId, ProjectId, RunnerId } from "@ostra/protocol";
+import type { ClientMessageId, ProjectId, RepoId, RunnerId } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { appendEvent, createApiHarness, seedConnectionAndModel, seedLease, seedPersonalRunner, seedProject, seedTask } from "../testing/index.ts";
@@ -12,6 +12,7 @@ import type { ApiHarness, SeededTask } from "../testing/index.ts";
 
 let harness: ApiHarness;
 let projectId: ProjectId;
+let repoId: RepoId;
 let runnerId: RunnerId;
 
 const ROUNDS = 50;
@@ -21,7 +22,7 @@ const newMessageId = (): ClientMessageId => clientMessageIdSchema.parse(`client-
 beforeAll(async () => {
   harness = await createApiHarness();
   const world = await seedConnectionAndModel(harness);
-  projectId = (await seedProject(harness, world, "steering")).projectId;
+  ({ projectId, repoId } = await seedProject(harness, world, "steering"));
   runnerId = await seedPersonalRunner(harness, harness.fixture.a.admin.id, "steering-runner");
 });
 
@@ -48,6 +49,13 @@ const logOf = async (task: SeededTask) =>
     sessionId: row.sessionId,
     payload: row.payload,
   }));
+
+/** The task's member messages, as the log holds them. */
+const messagesOf = async (task: SeededTask) =>
+  (await logOf(task)).flatMap((row) => {
+    const event = taskEventSchema.parse(row.payload);
+    return event.kind === "user.message" ? [event] : [];
+  });
 
 /** Each message's delivery as every viewer folds it from the committed log. */
 const deliveriesOf = async (task: SeededTask) => messageDeliveries((await logOf(task)).map((row) => ({ sessionId: row.sessionId, event: taskEventSchema.parse(row.payload) })));
@@ -185,19 +193,52 @@ describe("queued messages and intents", () => {
     expect((await deliveriesOf(idle)).get(nextId)).toBe("queued");
   });
 
-  it("F-024/c1: an intent reaches the steer command and the message, and an unknown intent is refused", async () => {
+  it("F-024/c1: an intent ostra sets reaches the steer command and the message: \"Update branch\" sends one", async () => {
+    const task = await runningTask();
+    // A repo of the task that is behind its base, so the server's own "Update branch" has something to send.
+    await harness.test.db.taskRepo.create({
+      data: { organizationId: orgA(), projectId, taskId: task.taskId, repoId, branchName: `ostra/steer-${task.taskId}`, baseBranch: "main", state: "pr_open", behindBy: 2, behindCheckedAt: new Date() },
+    });
+    harness.fakes.outbox.clear();
+    await expect((await harness.as(harness.fixture.a.member)).tasks.updateBranch({ taskId: task.taskId })).resolves.toEqual({ repos: 1, delivery: "steer" });
+    const [message] = await messagesOf(task);
+    expect(message).toMatchObject({ intent: "update-branch" });
+    expect(harness.fakes.outbox.commands.filter((command) => command.kind === "steer")).toMatchObject([{ body: { clientMessageId: message?.clientMessageId, intent: "update-branch" } }]);
+  });
+
+  it("F-024/c1: a member's send and reopen are plain words: another intent is refused and writes nothing, and the plain one goes through", async () => {
     const task = await runningTask();
     const member = await harness.as(harness.fixture.a.member);
-    const messageId = newMessageId();
-    await member.tasks.send({ taskId: task.taskId, clientMessageId: messageId, text: "Merge main into the branch", intent: "update-branch" });
-    expect(steersFor(messageId)).toMatchObject([{ body: { intent: "update-branch" } }]);
-    const [message] = (await logOf(task)).filter((event) => event.kind === "user.message");
-    expect(message?.payload).toMatchObject({ intent: "update-branch" });
-    const unknownId = newMessageId();
+    const before = (await logOf(task)).length;
+    const commands = harness.fakes.outbox.commands.length;
+    for (const intent of ["update-branch", "diff-comments", "fix-findings", "fix-ci"] as const) {
+      // @ts-expect-error -- an intent only ostra sets, as a hand-made request could send it
+      const refused = member.tasks.send({ taskId: task.taskId, clientMessageId: newMessageId(), text: "Merge main into the branch", intent });
+      await expect(refused).rejects.toMatchObject({ code: "BAD_REQUEST" });
+      await expect(refused).rejects.toThrow("only ostra sets another intent");
+    }
     await expect(
-      // @ts-expect-error -- an intent outside the protocol's set, as a hand-made request could send it
-      member.tasks.send({ taskId: task.taskId, clientMessageId: unknownId, text: "x", intent: "take-over-the-world" }),
+      // @ts-expect-error -- an intent outside the protocol's set
+      member.tasks.send({ taskId: task.taskId, clientMessageId: newMessageId(), text: "x", intent: "take-over-the-world" }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    expect(steersFor(unknownId)).toEqual([]);
+    expect((await logOf(task)).length).toBe(before);
+    expect(harness.fakes.outbox.commands.length).toBe(commands);
+    // The plain intent, said or left out, is a member's message as typed.
+    const said = newMessageId();
+    const left = newMessageId();
+    await member.tasks.send({ taskId: task.taskId, clientMessageId: said, text: "Use the date format YYYY-MM-DD", intent: "message" });
+    await member.tasks.send({ taskId: task.taskId, clientMessageId: left, text: "And say why" });
+    const messages = await messagesOf(task);
+    expect(messages).toMatchObject([{ clientMessageId: said, text: "Use the date format YYYY-MM-DD" }, { clientMessageId: left, text: "And say why" }]);
+    expect(messages.map((message) => message.intent ?? "message")).toEqual(["message", "message"]);
+    expect(steersFor(said)).toHaveLength(1);
+    // A reopen is a member's message too.
+    const stopped = await seedTask(harness, { organizationId: orgA(), projectId, state: "stopped", driverMemberId: harness.fixture.a.member.id, sessionState: "ended" });
+    await expect(
+      // @ts-expect-error -- an intent only ostra sets
+      member.tasks.reopen({ taskId: stopped.taskId, clientMessageId: newMessageId(), text: "Fix the failing checks", intent: "fix-checks" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect((await harness.test.db.task.findUniqueOrThrow({ where: { id: stopped.taskId } })).state).toBe("stopped");
+    await expect(member.tasks.reopen({ taskId: stopped.taskId, clientMessageId: newMessageId(), text: "Carry on", intent: "message" })).resolves.toBeDefined();
   });
 });

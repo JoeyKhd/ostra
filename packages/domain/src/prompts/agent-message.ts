@@ -19,7 +19,9 @@ import {
 // A message is read by its intent; the reopens that carry none (an approved plan, a late answer to a
 // question or an approval) and the closing turn by their fixed opening. `null` is a member's own
 // text, shown as typed: a message with no intent, a Linear follow-up (the member's own words), and
-// a message whose intent was set by hand (`tasks.send` takes one) that holds no block. A known
+// a message whose intent was set by hand that holds no block (an older log's: a member's
+// `tasks.send` and `tasks.reopen` take only plain words since 2026-11-21, and only ostra's server
+// code sets another intent). A known
 // intent whose blocks don't read as its prompt's (an older ostra's wording) is `quoted`: its blocks
 // alone, so the fence still never shows. Diff comments are drawn from the comments they carried
 // (`diff.comments.list`), never from here.
