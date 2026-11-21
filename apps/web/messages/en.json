@@ -7192,6 +7192,7 @@
       "wholeOwner": "the whole owner instead",
       "wholeRegistry": "the whole registry instead",
       "skillsFound": "Skills in the source",
+      "skillsInRepo": "Skills in the repo",
       "skillsFoundNote": "at {commit} · up to four folders deep",
       "noSkill": "No SKILL.md in its first four folder levels {at}.",
       "rootSkill": "the repo's root",

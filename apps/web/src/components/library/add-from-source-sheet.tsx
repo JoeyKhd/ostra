@@ -553,6 +553,8 @@ const SkillLookView = ({ look, refName, rows, allowed, picked, shown, onPick, on
 }) => {
   const open = rows.find((row) => row.folder === shown) ?? rows[0];
   const scripts = open?.skill.scripts ?? [];
+  // A repo's look has a commit; a site's well-known index has none (library-install.md, part 4).
+  const skillsTitle = look.commit === null ? t("library.install.skillsFound") : t("library.install.skillsInRepo");
   return (
     <div data-testid="skill-look">
       <p className="mt-2 flex flex-wrap items-center gap-x-1.5 text-sm text-muted" data-testid="look-resolved">
@@ -571,8 +573,8 @@ const SkillLookView = ({ look, refName, rows, allowed, picked, shown, onPick, on
       {rows.length === 0 ? (
         <p className="mt-3 text-sm text-muted">{t("library.install.noSkill", { at: look.commit?.slice(0, 7) ?? "" })}</p>
       ) : (
-        <SheetSection title={t("library.install.skillsFound")} count={rows.length} note={look.commit === null ? undefined : t("library.install.skillsFoundNote", { commit: look.commit.slice(0, 7) })}>
-          <ul role="group" aria-label={t("library.install.skillsFound")}>
+        <SheetSection title={skillsTitle} count={rows.length} note={look.commit === null ? undefined : t("library.install.skillsFoundNote", { commit: look.commit.slice(0, 7) })}>
+          <ul role="group" aria-label={skillsTitle}>
             {rows.map((row) => {
               const disabled = row.problem !== null || row.inLibrary !== null;
               const checked = picked.includes(row.folder);

@@ -97,6 +97,9 @@ export const SuggestionsPage = () => {
   const admin = me.data?.organization?.role === "admin";
   const organization = me.data?.organization?.name ?? "";
   const list = useQuery(trpc.library.suggestions.list.queryOptions(undefined, { enabled: admin }));
+  // Who decides: the organization's active admins, by name (library-suggestions.md, "Properties").
+  const members = useQuery(trpc.members.list.queryOptions({ includeRemoved: false }, { enabled: admin }));
+  const deciders = (members.data ?? []).filter((member) => member.role === "admin" && member.state === "active");
   const decide = useMutation(trpc.library.suggestions.decide.mutationOptions({ onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: trpc.library.pathKey() }); } }));
   const [dismissOpen, setDismissOpen] = useState(false);
   const tab: SuggestionTab = params.get("tab") === "decided" ? "decided" : "open";
@@ -152,7 +155,16 @@ export const SuggestionsPage = () => {
               </PropRow>
             </PropGroup>
             <PropGroup title={t("library.suggestions.whoDecides")}>
-              <PropRow label={t("library.props.orgAdmins")}>{t("library.suggestions.anyAdmin")}</PropRow>
+              <PropRow label={t("library.props.orgAdmins")}>
+                {deciders.length === 0 ? (
+                  t("library.suggestions.anyAdmin")
+                ) : (
+                  <>
+                    <span className="flex shrink-0 -space-x-1">{deciders.slice(0, 3).map((member) => <Avatar key={member.memberId} name={member.name} className="size-5 text-[10px] ring-2 ring-bg" />)}</span>
+                    <span className="truncate" title={deciders.map((member) => member.name).join(", ")}>{deciders.map((member) => member.name).join(", ")}</span>
+                  </>
+                )}
+              </PropRow>
               <p className="mt-1 text-[12.5px] text-faint">{t("library.suggestions.whoDecidesNote")}</p>
             </PropGroup>
             <PropGroup title={t("library.suggestions.thisMonth")}>
