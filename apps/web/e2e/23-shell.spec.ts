@@ -58,7 +58,7 @@ test.describe("at 1440px", { tag: "@desktop-only" }, () => {
 
     await railSpace(page, "Organization").click();
     await page.waitForURL(/\/organization\/insights$/);
-    const adminRows = ["Insights", "Spend", "Memory", "Runners", "Box sizes", "Registry", "Agent profiles", "Models", "GitHub", "Linear", "Members", "Audit log", "Accounts", "Storage", "Email"];
+    const adminRows = ["Insights", "Spend", "Memory", "Runners", "Box sizes", "Registry", "Agent profiles", "Skills and MCP", "Models", "GitHub", "Linear", "Members", "Audit log", "Accounts", "Storage", "Email"];
     for (const row of adminRows) await expect(contextPanel(page).getByRole("link", { name: row, exact: true })).toBeVisible();
 
     // A member who isn't an admin: only their rows, and the groups left empty are hidden.
@@ -68,7 +68,8 @@ test.describe("at 1440px", { tag: "@desktop-only" }, () => {
     await railSpace(member, "Organization").click();
     await member.waitForURL(/\/organization\/insights$/);
     const shown = await contextPanel(member).getByRole("link").evaluateAll((links) => links.map((link) => link.textContent.trim()));
-    expect(shown).toEqual(["Insights", "Memory", "Runners", "Box sizes", "Agent profiles", "Members"]);
+    // Ticket 31 (F-145): the library's `Skills and MCP` row is every member's to read (app-shell.md, "A member, not an admin").
+    expect(shown).toEqual(["Insights", "Memory", "Runners", "Box sizes", "Agent profiles", "Skills and MCP", "Members"]);
     await expect(contextPanel(member).getByText("Connections", { exact: true })).toHaveCount(0);
     await context.close();
   });
