@@ -73,6 +73,9 @@ const signingKey = randomBytes(32);
 const panelTokens = createPanelPreviewTokens(secret);
 const web = previewKeySchema.parse("app-web");
 const opened: { close: () => void }[] = [];
+/** The replica's clock: the machine's, unless a test holds it at an instant (the HTTP carrier's cap). */
+let heldAt: number | null = null;
+const replicaClock: Clock = { now: () => heldAt ?? Date.now() };
 
 const scopeOf = (member: SeededMember): MemberScope => ({ organizationId: member.organizationId, memberId: member.id, role: member.role === "admin" ? "admin" : "member", projectRoles: new Map() });
 const viewDeps = (clock: Clock = systemClock) => ({ db: test.db, outbox: postgresCommandOutbox, notices: postgresChangeNotices, clock, settings: { warmMinutes: 60 }, panelTokens });
@@ -154,7 +157,7 @@ beforeAll(async () => {
   await test.db.appProcess.create({
     data: { organizationId: world.organizationId, projectId: world.projectId, environmentId: environment.id, repoId: world.repoId, name: "web", command: "pnpm dev", port: 5173, readyKind: "http", readyValue: "/", label: "Web", primary: true },
   });
-  replica = await startPreviewReplica(test.db, test.url, { signingKey, secret, jobs, logger });
+  replica = await startPreviewReplica(test.db, test.url, { signingKey, secret, jobs, logger, clock: replicaClock });
   // The member's personal runner on `host`, at minor 7, which says it can show a preview.
   runner = await registerRunnerAt(replica.url, test.db, fixture.a.member);
   peer = await connectPeer(replica.url, await tokenOf(replica.url, runner), runner.runnerId, { preview: { stream: true, tunnel: true } });
@@ -162,6 +165,7 @@ beforeAll(async () => {
 }, 120_000);
 
 afterEach(() => {
+  heldAt = null;
   for (const connection of opened.splice(0)) {
     connection.close();
   }
@@ -377,18 +381,27 @@ describe("a preview's views on core", () => {
       });
       return fetch(`${replica.url}${previewPaths.frames}`, { method: "POST", headers: { authorization: `Bearer ${runnerToken()}` }, body: form });
     };
-    const panel = stream(view.viewId, view.panelToken);
+    // Core's clock holds still: the cap's second is the clock's, however slow the machine is.
+    const t0 = Date.now();
+    heldAt = t0;
     const first = await post([1, 2]);
     expect([first.status, await first.json()]).toEqual([200, { ackedUpTo: 2 }]);
-    const reading = await panel;
+    // A stream that joins once the frames are in gets the newest first. (It opens after the post is
+    // answered: one opened before can join while the post marks the view connected, before its
+    // first frame, and then rightly gets both.)
+    const reading = await stream(view.viewId, view.panelToken);
     expect(reading.status).toBe(200);
-    // The newest frame first, for a stream that joins.
     expect((await reading.next("frame")).header.seq).toBe(2);
+    // A third frame within that second is refused, to its last millisecond.
     const third = await post([3]);
     expect([third.status, await third.json()]).toEqual([429, { code: "too-fast" }]);
-    await new Promise((wait) => setTimeout(wait, 1_100));
-    expect((await post([4])).status).toBe(200);
-    expect((await reading.next("frame")).header.seq).toBe(4);
+    heldAt = t0 + 999;
+    expect((await post([4])).status).toBe(429);
+    // A second on, the view takes frames again, and the open stream gets them; the refused ones never reached it.
+    heldAt = t0 + 1_000;
+    expect((await post([5])).status).toBe(200);
+    expect((await reading.next("frame")).header.seq).toBe(5);
+    expect(reading.messages.flatMap((message) => (message.type === "frame" ? [message.header.seq] : []))).toEqual([2, 5]);
   }, 60_000);
 });
 
