@@ -8,6 +8,7 @@ import { approvalRulesSchema, firstMatchingRule, mcpSubjectValue, readMarkedBloc
 import type { ApprovalRequestSubject, ApprovalRule } from "@ostra/protocol";
 import { z } from "zod";
 
+import { pushRefusalReason } from "../../executor/work-in-progress.ts";
 import { loadFakeSession, saveFakeSession } from "./archive.ts";
 
 // A scripted fake ACP agent (ADR 0032, ticket 10): a program that speaks ACP over stdio and plays
@@ -208,6 +209,8 @@ export const fakeScripts = [
    * Writes the files given (session-relative) and commits them itself in the repo the session opened
    * on, as `git add` and `git commit` would, naming itself with `git -c user.name`. At a workspace's
    * root, which holds several repos, each file goes in the repo of its first folder, one commit each.
+   * With `--push=<branch or ref>`, it pushes the first repo's commit there, and says `pushed` or
+   * `push refused: <git's reason>` (F-113).
    */
   "commit",
   // Subagents (2026-11-20).
@@ -1452,8 +1455,11 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
       case "commit": {
         // `[[fake:commit <path> ...]]`: the agent's own commit of the files given, in the repo its
         // session opened on, so a runner test sees a branch the agent changed itself (ticket 23).
+        // With `--push=<branch or ref>` it pushes the commit there too, and says git's refusal (F-113).
         const root = session.cwd;
-        const relatives = args.split(/\s+/).filter((each) => each !== "");
+        const words = args.split(/\s+/).filter((each) => each !== "");
+        const pushTo = words.find((word) => word.startsWith("--push="))?.slice("--push=".length);
+        const relatives = words.filter((word) => !word.startsWith("--push="));
         if (root === null || relatives.length === 0) {
           await say("Nothing to commit.");
           return "end_turn";
@@ -1500,6 +1506,26 @@ export const createFakeAgent = (options: FakeAgentOptions): acp.AgentApp => {
         }
         await update({ sessionUpdate: "tool_call_update", toolCallId, status: committed === 0 ? "completed" : "failed" });
         await say(committed === 0 ? `Committed ${relatives.join(", ")}.` : "The commit failed.");
+        const [pushFrom] = byRepo.keys();
+        if (committed !== 0 || pushTo === undefined || pushFrom === undefined) {
+          return "end_turn";
+        }
+        const target = pushTo.startsWith("refs/") ? pushTo : `refs/heads/${pushTo}`;
+        const pushed = await new Promise<{ readonly code: number | null; readonly stderr: string }>((resolve) => {
+          const child = spawn("git", ["push", "origin", `HEAD:${target}`], { cwd: pushFrom, stdio: ["ignore", "ignore", "pipe"], windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } });
+          let stderr = "";
+          child.stderr.on("data", (chunk: Buffer) => {
+            stderr += chunk.toString("utf8");
+          });
+          child.on("error", () => {
+            resolve({ code: null, stderr });
+          });
+          child.on("close", (code) => {
+            resolve({ code, stderr });
+          });
+        });
+        // What the agent reads of a refusal: git's reason only, never the proxy's address.
+        await say(pushed.code === 0 ? "pushed" : `push refused: ${pushRefusalReason(pushed.stderr) ?? "no reason given"}`);
         return "end_turn";
       }
 

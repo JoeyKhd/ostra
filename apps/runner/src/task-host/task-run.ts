@@ -1580,6 +1580,9 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       branch: taskSpec.branchName,
       // Milestone 1's read-only mode for a refine or review task (F-099, F-100): every push refused.
       mode: pushesWork(taskSpec) ? "read-write" : "read-only",
+      // F-113 (ADR 0038 as amended 2026-11-21): an onboarding task's every push, the agent's and the
+      // runner's alike, changes only its `commitPaths`, on every executor.
+      commitPaths: taskSpec.commitPaths ?? null,
       repos: taskSpec.repos.map((repo) => ({
         repoId: repo.repoId,
         fullName: repo.fullName,
@@ -1587,6 +1590,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         lfsActionHosts: repo.lfsActionHosts,
         // F-066: a repo on a branch of its own can be pushed to that one.
         ...(repo.branchName === undefined ? {} : { branch: repo.branchName }),
+        // Where a checked push's thin bases and parents are, as this process sees the checkout.
+        objectsDir: () => (dirsCache === undefined ? null : path.join(dirsCache.workspaceDir, repo.checkoutDir, ".git", "objects")),
         token: async () => {
           const current = tokens.get(repo.repoId);
           // Refreshed through the server a few minutes before it expires (ADR 0030).

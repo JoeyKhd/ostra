@@ -172,6 +172,34 @@ export const teamTurnsCases = (mode: TeamTurnsMode) => {
       expect(await git(checkoutOf(h), "status", "--porcelain")).toBe("?? pnpm-lock.yaml");
       const [saved] = h.ofKind(spec, "session.saved");
       expect(saved?.repos[0]).toMatchObject({ ahead: true });
+      // ADR 0038 as amended 2026-11-21: the hidden ref carries only AGENTS.md too, so the proxy took it.
+      expect(saved?.repos[0]?.hiddenRefSha).not.toBeNull();
+      expect(await shared().upstream.treeFiles("ostra-test/test1", `refs/ostra/wip/${spec.taskId}`)).toEqual(["AGENTS.md", "README.md", "notes.txt"]);
+    },
+
+    /**
+     * F-113 (ADR 0038 as amended 2026-11-21): the onboarding agent's own push of a commit with
+     * another path is refused by the git proxy in words the agent reads, nothing of it reaches the
+     * code host, and the turn still delivers only `AGENTS.md`, on the branch and the hidden ref.
+     */
+    agentPushRefused: async (): Promise<void> => {
+      const h = await start();
+      const branchName = `ostra/onboarding-agent-push-${mode.name}`;
+      const receivePacks = (): number => shared().upstream.requests.filter((request) => request.repo === "ostra-test/test1" && request.endpoint === "git-receive-pack").length;
+      const before = receivePacks();
+      const { spec } = h.taskFor(fakeMarker("commit", `--push=${branchName} AGENTS.md package.json`), { ...onboarding, branchName, title: "Onboard the repo" });
+      h.dispatch(spec);
+      await h.waitForKind(spec, "session.saved", 1);
+      expect(said(h, spec)).toContain("push refused: ostra: this task may commit only AGENTS.md; a commit in this push changes another path");
+      expect(h.logs.some((record) => record.message === "git proxy refused a push" && JSON.stringify(record.fields["codes"]) === '["path-not-allowed"]')).toBe(true);
+      // The runner's own two pushes reached the code host after the turn: the branch and the hidden ref.
+      expect(receivePacks() - before).toBe(2);
+      const branch = `refs/heads/${branchName}`;
+      expect(await shared().upstream.treeFiles("ostra-test/test1", branch)).toEqual(["AGENTS.md", "README.md", "notes.txt"]);
+      expect(await shared().upstream.commitMessage("ostra-test/test1", branch)).not.toContain("The fake agent's own commit");
+      expect(await shared().upstream.treeFiles("ostra-test/test1", `refs/ostra/wip/${spec.taskId}`)).toEqual(["AGENTS.md", "README.md", "notes.txt"]);
+      // What the agent changed elsewhere stays in its workspace, uncommitted.
+      expect(await git(checkoutOf(h), "status", "--porcelain")).toBe("?? package.json");
     },
 
     /** F-113: an agent's own commit touching other paths is rebuilt as one commit on the base with only the allowed ones. */

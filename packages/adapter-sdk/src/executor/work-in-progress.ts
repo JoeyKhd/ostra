@@ -7,6 +7,7 @@ import type { GitPerson, GitSha, TaskId } from "@ostra/protocol";
 
 import { adapterError, ok } from "../common/result.ts";
 import type { AdapterResult } from "../common/result.ts";
+import { porcelainChangedPaths, splitByCommitPaths } from "./commit-paths.ts";
 
 // The hidden ref (ADR 0039, Q150; spec section 4, "After every turn"). Ported from
 // spikes/can-a-session-move-to-a-fresh-box/src/lib/hidden-ref.ts, with ADR 0039's rule for a
@@ -99,6 +100,12 @@ export type SaveWipInput = {
   readonly turnOrdinal: number;
   /** The remote to force-push to: the git proxy's `origin`. */
   readonly remote: string;
+  /**
+   * F-113 (ADR 0038, amended 2026-11-21): the spec's `commitPaths`. With them, the saved work keeps
+   * only those paths' changes and nothing staged, so the hidden ref carries only what the task may
+   * push, and the git proxy takes it. `null` or absent: the whole working tree, as for every other task.
+   */
+  readonly commitPaths?: readonly string[] | null;
 };
 
 export type SavedWip = {
@@ -126,17 +133,33 @@ export const saveWorkInProgressIn = async (deps: WipDeps, input: SaveWipInput): 
     }
     const head = shaOf(headResult.stdout.trim());
     const status = await git(["status", "--porcelain=v1", "--untracked-files=all"]);
-    const indexTree = await git(["write-tree"]);
+    const commitPaths = input.commitPaths ?? null;
+    // With `commitPaths`, the index commit is HEAD's tree: nothing staged is saved.
+    const indexTree = commitPaths === null ? await git(["write-tree"]) : await git(["rev-parse", `${head}^{tree}`]);
     const indexCommit = await git(["commit-tree", indexTree, "-p", head, "-m", `ostra: the index of ${input.taskId} after turn ${String(input.turnOrdinal)}`], env);
     const gitDir = await git(["rev-parse", "--absolute-git-dir"]);
     const realIndex = path.join(gitDir, "index");
     tempIndex = `${realIndex}.ostra-wip`;
     const temp = { GIT_INDEX_FILE: tempIndex };
-    // From the real index, so `add -A` sees what was staged; a repo without one starts from HEAD.
-    if (!(await deps.files.copy(realIndex, tempIndex))) {
+    if (commitPaths === null) {
+      // From the real index, so `add -A` sees what was staged; a repo without one starts from HEAD.
+      if (!(await deps.files.copy(realIndex, tempIndex))) {
+        await git(["read-tree", head], temp);
+      }
+      await git(["add", "-A"], temp);
+    } else {
+      // F-113: HEAD's tree, and only the allowed paths' changes from the working tree.
       await git(["read-tree", head], temp);
+      const changed = await deps.git(["-c", "core.quotepath=false", "status", "--porcelain=v1", "-z", "--untracked-files=all"]);
+      if (changed.code !== 0) {
+        throw new WipFailure(`git status failed (exit ${String(changed.code)})`);
+      }
+      const kept = splitByCommitPaths(porcelainChangedPaths(changed.stdout), commitPaths).kept;
+      for (let start = 0; start < kept.length; start += 200) {
+        // A pathspec of its own per path, read literally, so a path's own `*` isn't a glob to git.
+        await git(["add", "-A", "--", ...kept.slice(start, start + 200).map((file) => `:(literal)${file}`)], temp);
+      }
     }
-    await git(["add", "-A"], temp);
     const tree = await git(["write-tree"], temp);
     const commit = shaOf(
       await git(["commit-tree", tree, "-p", head, "-p", indexCommit, "-m", `ostra: work in progress of ${input.taskId} after turn ${String(input.turnOrdinal)}`], env),

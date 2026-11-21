@@ -1,9 +1,13 @@
 import { randomBytes } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { mkdtemp, open, rm, stat } from "node:fs/promises";
 import http from "node:http";
 import type { IncomingMessage, OutgoingHttpHeaders, ServerResponse } from "node:http";
 import https from "node:https";
 import type { AddressInfo } from "node:net";
-import { Readable } from "node:stream";
+import os from "node:os";
+import path from "node:path";
+import { PassThrough, Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip } from "node:zlib";
 import type { Logger } from "@ostra/adapter-sdk";
@@ -17,7 +21,9 @@ import {
   lfsBatchResponseSchema,
 } from "./lfs.ts";
 import type { HeldLfsAction } from "./lfs.ts";
-import { emptyReceivePackAdvertisement, encodeRefusal, parseReceivePackHead } from "./pkt-line.ts";
+import { checkPushPaths } from "./path-check.ts";
+import type { PathCheckLimits } from "./path-check.ts";
+import { emptyReceivePackAdvertisement, encodeRefusal, MAX_COMMAND_HEAD_BYTES, parseReceivePackHead, readPkt } from "./pkt-line.ts";
 import type { ReceivePackHead, RefUpdateCommand } from "./pkt-line.ts";
 import { decidePush, describeRefusal, sameRepo } from "./policy.ts";
 import type { ProxyMode, RefusalCode, TaskGitPolicy } from "./policy.ts";
@@ -32,6 +38,8 @@ import type { ProxyMode, RefusalCode, TaskGitPolicy } from "./policy.ts";
 //   the task's branch and its hidden ref, and any delete, in git's own words
 // - answers a push to another repo itself, so nothing for that repo ever reaches the code host
 // - in read-only mode (refine and review tasks) refuses every push, LFS upload and lock check
+// - with `commitPaths` (an onboarding task, F-113, ADR 0038 as amended 2026-11-21) holds each push
+//   on disk and refuses it when one of its commits changes another path (`path-check.ts`)
 // - rewrites LFS batch answers so signed URLs and their headers stay in the proxy
 // - sends a User-Agent on every upstream request (GitHub refuses one without)
 //
@@ -49,6 +57,11 @@ export type GitProxyRepo = {
   readonly branch?: string;
   /** The repo's current token. Never logged. */
   readonly token: () => Promise<string>;
+  /**
+   * F-113: the task's checkout's object folder, once it's made, where a checked push's thin bases
+   * and parents are read (each object hashed again as it's read). `null`: not made yet.
+   */
+  readonly objectsDir?: () => string | null;
 };
 
 export type GitProxyOptions = {
@@ -66,6 +79,18 @@ export type GitProxyOptions = {
   readonly now?: () => number;
   /** The most of a refused push's body read before the connection is cut. Default `MAX_DISCARD_BYTES`; tests lower it. */
   readonly maxDiscardBytes?: number;
+  /**
+   * F-113 (ADR 0038 as amended 2026-11-21): the task's `commitPaths`, an onboarding task's
+   * `["AGENTS.md"]`. With them, every push is held on disk and refused when a commit it carries
+   * changes another path. `null` or absent: pushes stream through unchecked.
+   */
+  readonly commitPaths?: readonly string[] | null;
+  /** Where a checked push is held while it's checked: a folder of the proxy's own. Default: the system's temporary folder. */
+  readonly scratchDir?: string;
+  /** The largest push a check holds. Default `MAX_CHECKED_PUSH_BYTES`; tests lower it. */
+  readonly maxCheckedPushBytes?: number;
+  /** The check's limits. Default `PATH_CHECK_LIMITS`; tests lower them. */
+  readonly pathCheckLimits?: PathCheckLimits;
 };
 
 type Endpoint = "info-refs" | "upload-pack" | "receive-pack" | "lfs-batch" | "lfs-locks" | "lfs-action";
@@ -98,6 +123,8 @@ export type GitProxy = {
 
 /** The most of a refused push's body the proxy reads and drops before it closes (Q123). */
 export const MAX_DISCARD_BYTES = 1024 * 1024 * 1024;
+/** The largest push the proxy holds to check its paths (F-113): an onboarding push is one small commit. */
+export const MAX_CHECKED_PUSH_BYTES = 32 * 1024 * 1024;
 const MAX_JSON_BYTES = 4 * 1024 * 1024;
 
 const PROXY_USER_AGENT = `ostra-git-proxy/${RUNNER_VERSION}`;
@@ -217,6 +244,8 @@ export const describeUpstreamRefusal = (status: number, source: UpstreamSource):
 export const startGitProxy = async (options: GitProxyOptions): Promise<GitProxy> => {
   const now = options.now ?? Date.now;
   const maxDiscardBytes = options.maxDiscardBytes ?? MAX_DISCARD_BYTES;
+  const commitPaths = options.commitPaths ?? null;
+  const describe = (code: RefusalCode): string => describeRefusal(code, commitPaths ?? []);
   const log = options.logger.child({ taskId: options.taskId, component: "git-proxy" });
   const policy: TaskGitPolicy = { taskId: options.taskId, branch: options.branch, mode: options.mode };
   const secret = randomBytes(24).toString("base64url");
@@ -334,13 +363,129 @@ export const startGitProxy = async (options: GitProxyOptions): Promise<GitProxy>
       }
     }
     const firstCode = codes[0] ?? "ref-not-allowed";
-    const payload = encodeRefusal(head, (command) => describeRefusal(codeFor(command)), describeRefusal(firstCode));
+    const payload = encodeRefusal(head, (command) => describe(codeFor(command)), describe(firstCode));
     if (payload === null) {
-      deny(response, 403, firstCode, describeRefusal(firstCode));
+      deny(response, 403, firstCode, describe(firstCode));
       return;
     }
     response.writeHead(200, { "content-type": "application/x-git-receive-pack-result", "cache-control": "no-cache" });
     response.end(payload);
+  };
+
+  /** The rest of a push's body, after its command list, into `file`: `false` once it passes the cap, and the rest stays unread. */
+  const holdPushBody = async (file: string, first: Buffer, iterator: AsyncIterator<unknown>): Promise<boolean> => {
+    const limit = options.maxCheckedPushBytes ?? MAX_CHECKED_PUSH_BYTES;
+    const handle = await open(file, "w");
+    try {
+      let held = first.length;
+      if (held > limit) {
+        return false;
+      }
+      await handle.write(first);
+      for (;;) {
+        const next = await iterator.next();
+        if (next.done === true) {
+          return true;
+        }
+        const value: unknown = next.value;
+        if (!Buffer.isBuffer(value)) {
+          continue;
+        }
+        held += value.length;
+        if (held > limit) {
+          return false;
+        }
+        await handle.write(value);
+      }
+    } finally {
+      await handle.close();
+    }
+  };
+
+  /** Where the pack starts in a held body: after the push options when the client sent them, else at once. `null`: unreadable. */
+  const packStartOf = async (file: string, pushOptions: boolean): Promise<number | null> => {
+    if (!pushOptions) {
+      return 0;
+    }
+    const handle = await open(file, "r");
+    try {
+      const head = Buffer.alloc(MAX_COMMAND_HEAD_BYTES);
+      const { bytesRead } = await handle.read(head, 0, head.length, 0);
+      const read = head.subarray(0, bytesRead);
+      let offset = 0;
+      for (;;) {
+        const packet = readPkt(read, offset);
+        if (packet.kind !== "packet") {
+          return null;
+        }
+        offset = packet.next;
+        if (packet.packet.kind === "flush") {
+          return offset;
+        }
+      }
+    } finally {
+      await handle.close();
+    }
+  };
+
+  /**
+   * F-113 (ADR 0038 as amended 2026-11-21): a push of a task with `commitPaths`, held on disk and
+   * checked before a byte goes upstream. A commit changing another path, or a push the check can't
+   * read, is refused in git's own words; the rest goes upstream as the client sent it.
+   */
+  const forwardCheckedPush = async (
+    repo: GitProxyRepo,
+    request: IncomingMessage,
+    response: ServerResponse,
+    iterator: AsyncIterator<unknown>,
+    head: ReceivePackHead,
+    buffered: Buffer,
+    plain: boolean,
+    allowedPaths: readonly string[],
+  ): Promise<void> => {
+    const scratch = await mkdtemp(path.join(options.scratchDir ?? os.tmpdir(), "ostra-push-check-"));
+    try {
+      const bodyFile = path.join(scratch, "push.body");
+      if (!(await holdPushBody(bodyFile, buffered.subarray(head.headLength), iterator))) {
+        log.info("git proxy checked a push's paths", { repoId: repo.repoId, verdict: "unchecked", reason: "too-large" });
+        await refusePush(request, response, iterator, head, ["paths-unchecked"], () => "paths-unchecked");
+        return;
+      }
+      const start = await packStartOf(bodyFile, head.capabilities.includes("push-options"));
+      const { size } = await stat(bodyFile);
+      const verdict =
+        start === null
+          ? ({ kind: "unchecked", reason: "bad-pack" } as const)
+          : await checkPushPaths({
+              pack: size > start ? { file: bodyFile, start } : null,
+              // A ref left where it was moves nothing; a delete was refused already.
+              tips: head.commands.filter((command) => command.kind !== "delete" && command.oldId !== command.newId).map((command) => command.newId),
+              commitPaths: allowedPaths,
+              objectsDir: repo.objectsDir?.() ?? null,
+              scratchDir: scratch,
+              ...(options.pathCheckLimits === undefined ? {} : { limits: options.pathCheckLimits }),
+            });
+      log.info("git proxy checked a push's paths", {
+        repoId: repo.repoId,
+        verdict: verdict.kind,
+        ...(verdict.kind === "unchecked" ? { reason: verdict.reason } : { commits: verdict.commits }),
+      });
+      if (verdict.kind !== "allowed") {
+        const code: RefusalCode = verdict.kind === "refused" ? "path-not-allowed" : "paths-unchecked";
+        await refusePush(request, response, iterator, head, [code], () => code);
+        return;
+      }
+      log.info("git proxy forwarded a push", { repoId: repo.repoId, refCount: head.commands.length });
+      // The command list as read, then the held rest: the same bytes the client sent.
+      const body = new PassThrough();
+      body.write(buffered.subarray(0, head.headLength));
+      createReadStream(bodyFile).pipe(body);
+      const headers = await withToken(repo, pickClientHeaders(request, plain, false));
+      const upstream = await sendUpstream("receive-pack", upstreamUrl(repo, "git-receive-pack", ""), "POST", headers, body);
+      await relay(upstream, response, "receive-pack", "code-host");
+    } finally {
+      await rm(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    }
   };
 
   const handleInfoRefs = async (repo: GitProxyRepo | undefined, request: IncomingMessage, response: ServerResponse, search: URLSearchParams): Promise<void> => {
@@ -423,6 +568,10 @@ export const startGitProxy = async (options: GitProxyOptions): Promise<GitProxy>
     if (!verdict.allowed) {
       const byRef = new Map(verdict.verdicts.map((item) => [item.ref, item.allowed ? "other-ref-refused" : item.code] as const));
       await refusePush(request, response, iterator, head, verdict.codes, (command) => byRef.get(command.ref) ?? "ref-not-allowed");
+      return;
+    }
+    if (commitPaths !== null) {
+      await forwardCheckedPush(repo, request, response, iterator, head, buffered, encoding === undefined || encoding === "identity", commitPaths);
       return;
     }
     log.info("git proxy forwarded a push", { repoId: repo.repoId, refCount: head.commands.length });

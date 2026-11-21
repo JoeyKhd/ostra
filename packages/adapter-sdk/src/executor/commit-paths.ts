@@ -30,14 +30,9 @@ export const splitByCommitPaths = (paths: readonly string[], commitPaths: readon
 /** What staging kept, as `commit.filtered` carries it: the dropped paths cut to the protocol's limit, with their count. */
 export type StagedCommitPaths = { readonly kept: readonly string[]; readonly dropped: readonly string[]; readonly droppedCount: number };
 
-/** The repo's changed paths, tracked and untracked, from `git status`: a rename counts as its new path. */
-export const changedPaths = async (repoDir: string): Promise<readonly string[]> => {
-  const { stdout } = await run("git", ["-c", "core.quotepath=false", "status", "--porcelain=v1", "-z", "--untracked-files=all"], {
-    cwd: repoDir,
-    windowsHide: true,
-    maxBuffer: 16 * 1024 * 1024,
-  });
-  const entries = stdout.split("\0");
+/** The changed paths of `git status --porcelain=v1 -z` output: a rename counts as its new path. */
+export const porcelainChangedPaths = (output: string): readonly string[] => {
+  const entries = output.split("\0");
   const paths: string[] = [];
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index] ?? "";
@@ -48,6 +43,16 @@ export const changedPaths = async (repoDir: string): Promise<readonly string[]> 
     if (status.startsWith("R") || status.startsWith("C")) index += 1;
   }
   return paths;
+};
+
+/** The repo's changed paths, tracked and untracked, from `git status`: a rename counts as its new path. */
+export const changedPaths = async (repoDir: string): Promise<readonly string[]> => {
+  const { stdout } = await run("git", ["-c", "core.quotepath=false", "status", "--porcelain=v1", "-z", "--untracked-files=all"], {
+    cwd: repoDir,
+    windowsHide: true,
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  return porcelainChangedPaths(stdout);
 };
 
 /**

@@ -791,7 +791,8 @@ export class HostExecutor extends ExecutorAdapter {
 
   /**
    * After a turn (ADR 0039): each repo's working tree to the task's hidden ref, by a forced push
-   * through the git proxy. A repo whose save fails answers `null`, and the others still save.
+   * through the git proxy. A repo whose save fails answers `null`, and the others still save. With
+   * the spec's `commitPaths` (F-113, ADR 0038 as amended 2026-11-21), only those paths' changes.
    */
   override async saveWorkInProgress(input: SaveWorkInProgressInput): Promise<AdapterResult<readonly SavedRepoWork[]>> {
     const record = this.#boxes.get(boxKey(input.box));
@@ -799,9 +800,10 @@ export class HostExecutor extends ExecutorAdapter {
       return adapterError("conflict", `nothing to save from a box that is ${record?.state ?? "released"}`);
     }
     const saved: SavedRepoWork[] = [];
+    const commitPaths = record.spec.commitPaths ?? null;
     for (const repo of record.spec.repos) {
       const checkout = path.join(record.workspaceDir, repo.checkoutDir);
-      const result = await saveWorkInProgressIn(this.#wip(record, checkout), { taskId: record.ref.taskId, turnOrdinal: input.turnOrdinal, remote: "origin" });
+      const result = await saveWorkInProgressIn(this.#wip(record, checkout), { taskId: record.ref.taskId, turnOrdinal: input.turnOrdinal, remote: "origin", commitPaths });
       if (!result.ok) {
         this.plumbing.logger.warn("saving the hidden ref failed", { taskId: record.ref.taskId, repoId: repo.repoId, reason: result.error.message });
       }

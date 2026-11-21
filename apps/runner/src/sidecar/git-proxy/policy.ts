@@ -3,7 +3,8 @@ import type { RefUpdateCommand } from "./pkt-line.ts";
 
 // What one task's git proxy lets through (ADR 0030, F-090): the task's own repos only, the task's
 // branch and its hidden ref only, never a delete, and nothing pushed at all on a read-only task
-// (refine and review, ADR 0028). Ported from spikes/github-app-and-git-proxy/src/policy.ts.
+// (refine and review, ADR 0028). An onboarding task's push changes only its `commitPaths` (F-113,
+// ADR 0038 as amended 2026-11-21; `path-check.ts`). Ported from spikes/github-app-and-git-proxy/src/policy.ts.
 
 export type ProxyMode = "read-write" | "read-only";
 
@@ -14,7 +15,7 @@ export type TaskGitPolicy = {
   readonly mode: ProxyMode;
 };
 
-export type RefusalCode = "delete" | "ref-not-allowed" | "read-only" | "other-ref-refused" | "other-repo";
+export type RefusalCode = "delete" | "ref-not-allowed" | "read-only" | "other-ref-refused" | "other-repo" | "path-not-allowed" | "paths-unchecked";
 
 export type RefVerdict =
   | { readonly ref: string; readonly allowed: true }
@@ -62,9 +63,20 @@ export const decidePush = (policy: TaskGitPolicy, commands: readonly RefUpdateCo
   return { allowed: false, verdicts, codes };
 };
 
-/** The reason git prints after `! [remote rejected] <ref>`, word for word. */
-export const describeRefusal = (code: RefusalCode): string => {
+/** The paths a task may commit, as a refusal names them: the first three, and how many more. */
+const commitPathsWords = (commitPaths: readonly string[]): string => {
+  const named = commitPaths.slice(0, 3).map((entry) => entry.replace(/[()\r\n]/g, ""));
+  const more = commitPaths.length - named.length;
+  return named.length === 0 ? "its own paths" : `${named.join(", ")}${more > 0 ? ` and ${String(more)} more` : ""}`;
+};
+
+/** The reason git prints after `! [remote rejected] <ref>`, word for word. `commitPaths`: the task's, for `path-not-allowed`. */
+export const describeRefusal = (code: RefusalCode, commitPaths: readonly string[] = []): string => {
   switch (code) {
+    case "path-not-allowed":
+      return `ostra: this task may commit only ${commitPathsWords(commitPaths)}; a commit in this push changes another path`;
+    case "paths-unchecked":
+      return "ostra: not pushed, the proxy couldn't read which paths this push changes; push from the task's own checkout";
     case "delete":
       return "ostra: deleting a ref is not allowed";
     case "ref-not-allowed":
