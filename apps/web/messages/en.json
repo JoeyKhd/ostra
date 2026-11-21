@@ -3576,7 +3576,7 @@
         "parent": "The parent ticket, if any",
         "children": "Each sub-ticket",
         "linked": "Each linked ticket",
-        "images": "Each image copied into the workspace"
+        "images": "Each image of the ticket, at its path under the workspace's root (.ostra/ticket/…)"
       }
     },
     "preview": {

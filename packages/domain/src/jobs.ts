@@ -15,6 +15,7 @@ import {
   gitShaSchema,
   leaseEpochSchema,
   libraryItemIdSchema,
+  memberIdSchema,
   needsYouItemIdSchema,
   notificationDeliveryIdSchema,
   notificationIdSchema,
@@ -118,6 +119,7 @@ export const jobNames = [
   "preview.codes-sweep",
   // ---- milestone 9 (spec section 5.4, ADR 0070) ----
   "files.sweep-unsent",
+  "ticket.read-changes",
 ] as const;
 
 export type JobName = (typeof jobNames)[number];
@@ -326,6 +328,18 @@ export const jobPayloadSchemas = {
   // ---- milestone 9 (spec section 5.4, ADR 0070) ----
   /** Deletes the uploads no message took within a day, their blobs and text with them (F-148/c7), once an hour. */
   "files.sweep-unsent": z.strictObject({}),
+  /**
+   * Reads a ticket task's ticket again (F-149, ticket 06): on a reopen (it then sends the dispatch),
+   * a member's "Send ticket updates", or a Retry of its failed files. The request's ID keys it, so
+   * a double press reads once.
+   */
+  "ticket.read-changes": z.strictObject({
+    organizationId: organizationIdSchema,
+    taskId: taskIdSchema,
+    reason: z.enum(["reopen", "member", "retry"]),
+    memberId: memberIdSchema,
+    requestId: z.string().min(1).max(200).regex(/^[A-Za-z0-9_:.-]+$/, "an ID"),
+  }),
 } as const satisfies Record<JobName, z.ZodType>;
 
 export type JobPayload<N extends JobName> = z.infer<(typeof jobPayloadSchemas)[N]>;
@@ -399,6 +413,7 @@ const jobKeys: { readonly [N in JobName]: (payload: JobPayload<N>) => string } =
   "preview.views-sweep": () => "previews:views-sweep",
   "preview.codes-sweep": () => "previews:codes-sweep",
   "files.sweep-unsent": () => "files:sweep-unsent",
+  "ticket.read-changes": (payload) => `task:${payload.taskId}:read-changes:${payload.requestId}`,
 };
 
 /** How a job is sent (ADR 0037, as amended after spike 8). */
@@ -488,6 +503,8 @@ export const jobSending: Readonly<Record<JobName, JobSending>> = {
   "preview.codes-sweep": { kind: "schedule" },
   // A pg-boss schedule every hour (`FILES_SWEEP_CRON`): an idempotent pass.
   "files.sweep-unsent": { kind: "schedule" },
+  // Sent by a reopen, a member's press or a Retry, in its transaction.
+  "ticket.read-changes": { kind: "event" },
 };
 
 /** `files.sweep-unsent`'s pg-boss schedule: at the top of every hour. */

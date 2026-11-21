@@ -112,6 +112,8 @@ export const queueSettings: Readonly<Record<JobName, QueueSettings>> = {
   "preview.codes-sweep": { ...base, retryLimit: 2, expireInSeconds: 600 },
   // Milestone 9: an hourly pass; a missed tick is the next hour's.
   "files.sweep-unsent": { ...base, retryLimit: 2, expireInSeconds: 1800 },
+  // Reads the tracker and its files: retried when it doesn't answer, as `ticket.fetch-context`.
+  "ticket.read-changes": { ...base, retryLimit: 5, expireInSeconds: 600 },
 };
 
 /**

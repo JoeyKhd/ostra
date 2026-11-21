@@ -122,6 +122,7 @@ describe("the job catalogue (ADR 0037)", () => {
         "preview.codes-sweep",
         // Milestone 9.
         "files.sweep-unsent",
+        "ticket.read-changes",
       ].sort(),
     );
   });

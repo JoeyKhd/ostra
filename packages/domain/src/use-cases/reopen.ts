@@ -19,7 +19,7 @@ import { z } from "zod";
 
 import { addNewProjectReposInTx } from "../repos/project-repos.ts";
 import { appendMemberMessageInTx, defaultMessageFilesDeps, filesToBindInTx, promptFilesOfMessage, uploadsOfInTx } from "../files/message-files.ts";
-import type { MessageFilesDeps } from "../files/message-files.ts";
+import type { MessageFilesDeps, TicketFilesToBind } from "../files/message-files.ts";
 import { requireProjectAccess } from "../access.ts";
 import type { MemberScope } from "../access.ts";
 import { taskFromColumns } from "../lifecycles/mapping.ts";
@@ -168,6 +168,14 @@ export type ReopenTaskDeps = Pick<Ports, "jobs" | "notices" | "audit" | "clock">
   readonly keepDriver?: true | undefined;
   /** Milestone 9 (F-148): the message files' limits and which agents take images; the defaults when left out. */
   readonly files?: MessageFilesDeps | undefined;
+  /** Milestone 9 (ticket 06): a ticket's files core fetched for the reopen's message (a follow-up's). */
+  readonly ticketFiles?: TicketFilesToBind | undefined;
+  /**
+   * Milestone 9 (F-149, ticket 06): a ticket task's reopen reads the ticket again first: it sends
+   * `ticket.read-changes` (reason `reopen`), whose job passes on what changed and sends the
+   * dispatch, instead of the dispatch itself. Core turns it on where it works that job.
+   */
+  readonly readTicketChanges?: boolean | undefined;
 };
 
 /**
@@ -325,13 +333,14 @@ export const reopenTask: ReopenTask = async (deps, input) => {
   }
   // The member's message, or the one-click reopen's words, unless a replayed message already says
   // it. Milestone 9: files alone make a message, with no words.
-  const text = input.text ?? (fileIds.length > 0 ? "" : owed.length > 0 ? null : reopenCarryOnText);
+  const text = input.text ?? (fileIds.length > 0 || (deps.ticketFiles?.stored.length ?? 0) > 0 ? "" : owed.length > 0 ? null : reopenCarryOnText);
   let messageSeq: TaskSeq | null = null;
   if (text !== null) {
     const files = await filesToBindInTx(tx, organization, deps.files ?? defaultMessageFilesDeps, {
       fileIds,
       modelId: await sessionModelIdInTx(tx, organizationId, { agentProfileId: profileId }),
       agentProfileId: profileId,
+      ticket: deps.ticketFiles,
     });
     ({ seq: messageSeq } = await appendMemberMessageInTx(
       tx,
@@ -364,6 +373,15 @@ export const reopenTask: ReopenTask = async (deps, input) => {
   );
   if (gate.kind === "held") {
     await holdTurnInTx(deps, tx, { organizationId: organization, projectId, taskId: task.id, sessionId, held: gate, pendingMessageSeq: messageSeq, now, queued: true });
+  } else if (deps.readTicketChanges === true && task.kind === "code" && task.ticketId !== null) {
+    // Milestone 9 (F-149): the ticket is read again first; the job sends the dispatch.
+    await deps.jobs.enqueueInTx(tx, "ticket.read-changes", {
+      organizationId: organization,
+      taskId: task.id,
+      reason: "reopen",
+      memberId: scope.memberId,
+      requestId: `reopen-${sessionId}`,
+    });
   } else {
     await deps.jobs.enqueueInTx(tx, "task.dispatch", {
       organizationId: organization,

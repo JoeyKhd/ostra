@@ -10,7 +10,7 @@ import { resolveNeedsYouItemsInTx } from "./needs-you-items.ts";
 
 import { requireProjectAccess } from "../access.ts";
 import { appendMemberMessageInTx, defaultMessageFilesDeps, filesToBindInTx, steerFileFields, uploadsOfInTx } from "../files/message-files.ts";
-import type { MessageFilesDeps, MessageFilesToBind } from "../files/message-files.ts";
+import type { MessageFilesDeps, MessageFilesToBind, TicketFilesToBind } from "../files/message-files.ts";
 import type { MemberScope } from "../access.ts";
 import type { Ports } from "../ports.ts";
 import { checkBudget, holdTurnInTx, sessionModelIdInTx, turnOriginOfIntent } from "./budgets.ts";
@@ -58,6 +58,11 @@ export type SendMemberMessageInput = {
   readonly keepDriver?: true;
   /** Milestone 9 (F-148): the sender's uploads that go with the message, in their order. */
   readonly fileIds?: readonly MessageFileId[];
+  /**
+   * Milestone 9 (F-149, ticket 06): a ticket's files core fetched for the message (a Linear
+   * follow-up's, a ticket update's), bound to it as the ticket's.
+   */
+  readonly ticketFiles?: TicketFilesToBind;
 };
 
 export type MemberMessageDelivery = "steer" | "reopen";
@@ -229,11 +234,12 @@ export const sendMemberMessageInTx = async (
   // Milestone 9 (Q340): a message with files steered into a box needs its runner at minor 8.
   const going = (task.state === "running" || task.state === "needs_you") && lease !== null && session !== null;
   const steered = going || (lease?.purpose === "app" && session?.boxId === lease.boxId) ? lease : null;
-  if (fileIds.length > 0 && steered !== null && !(await runnerTakesFilesInTx(tx, steered.runnerId))) {
+  const hasFiles = fileIds.length > 0 || (input.ticketFiles?.stored.length ?? 0) > 0;
+  if (hasFiles && steered !== null && !(await runnerTakesFilesInTx(tx, steered.runnerId))) {
     return { ok: false, error: "runner-needs-upgrade", message: "This task's runner needs upgrading to take files: update it, or reopen the task on another runner" };
   }
   const files =
-    session === null ? null : await filesToBindInTx(tx, organizationIdSchema.parse(organizationId), deps.files ?? defaultMessageFilesDeps, { fileIds, modelId: session.modelId, agentProfileId: session.agentProfileId });
+    session === null ? null : await filesToBindInTx(tx, organizationIdSchema.parse(organizationId), deps.files ?? defaultMessageFilesDeps, { fileIds, modelId: session.modelId, agentProfileId: session.agentProfileId, ticket: input.ticketFiles });
   // Milestone 8 (Q300, ticket 19): a message while "Start the app"'s lease holds starts a turn in its box.
   if (lease?.purpose === "app" && session?.boxId === lease.boxId) {
     const turned = await turnOnAppLeaseInTx(deps, tx, scope, task, { ...lease, runnerId: runnerIdSchema.parse(lease.runnerId) }, session, input, text, files);

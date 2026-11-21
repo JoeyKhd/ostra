@@ -13,6 +13,7 @@ import type {
   BlobId,
   ClientMessageId,
   FileLeftOut,
+  FileLeftOutReason,
   ImagesNotSent,
   MemberId,
   MessageFileId,
@@ -401,12 +402,14 @@ export const taskSpecFilesOf = async (tx: Pick<Tx, "messageFile">, taskId: TaskI
 
 // ---------- a member's message with its files ----------
 
-/** What a message's files are bound with: the uploads, and the session's model and agent. */
+/** What a message's files are bound with: the uploads (or a ticket's files), and the session's model and agent. */
 export type MessageFilesToBind = {
   readonly fileIds: readonly MessageFileId[];
   readonly model: ImageModel | null;
   readonly agentTakesImages: boolean;
   readonly limits: FileLimits;
+  /** Ticket 06: a ticket's files core fetched (a ticket update's, a follow-up's), instead of uploads. */
+  readonly ticket?: TicketFilesToBind | undefined;
 };
 
 /**
@@ -417,14 +420,15 @@ export const filesToBindInTx = async (
   tx: Pick<Tx, "model" | "agentProfile">,
   organizationId: OrganizationId,
   deps: MessageFilesDeps,
-  input: { readonly fileIds: readonly MessageFileId[]; readonly modelId: string | null; readonly agentProfileId: string | null },
+  input: { readonly fileIds: readonly MessageFileId[]; readonly modelId: string | null; readonly agentProfileId: string | null; readonly ticket?: TicketFilesToBind | undefined },
 ): Promise<MessageFilesToBind | null> => {
-  if (input.fileIds.length === 0) {
+  const ticket = input.ticket === undefined || (input.ticket.stored.length === 0 && input.ticket.notes.length === 0) ? undefined : input.ticket;
+  if (input.fileIds.length === 0 && ticket === undefined) {
     return null;
   }
   const model = input.modelId === null ? null : await tx.model.findFirst({ where: { id: input.modelId, organizationId }, select: { adminImageInput: true, catalogInputModalities: true } });
   const profile = input.agentProfileId === null ? null : await tx.agentProfile.findFirst({ where: { id: input.agentProfileId, organizationId }, select: { adapter: true } });
-  return { fileIds: input.fileIds, model, agentTakesImages: profile !== null && deps.agentTakesImages(profile.adapter), limits: deps.limits };
+  return { fileIds: input.fileIds, model, agentTakesImages: profile !== null && deps.agentTakesImages(profile.adapter), limits: deps.limits, ...(ticket === undefined ? {} : { ticket }) };
 };
 
 /** A member's `user.message` as it's written, before its files. */
@@ -442,10 +446,23 @@ export const appendMemberMessageInTx = async (
   event: MemberMessageEvent,
   files: MessageFilesToBind | null,
 ): Promise<{ readonly seq: TaskSeq; readonly bound: BoundMessageFiles }> => {
-  if (files === null || files.fileIds.length === 0) {
+  if (files === null || (files.fileIds.length === 0 && files.ticket === undefined)) {
     return { seq: await appendServerEvent(tx, { ...where, event }), bound: noBoundFiles };
   }
   let bound: BoundMessageFiles = noBoundFiles;
+  const ticket = files.ticket;
+  if (ticket !== undefined) {
+    const numbered = await appendServerEventNumbered(tx, where, async (eventSeq) => {
+      bound = await bindTicketFilesInTx(
+        tx,
+        { organizationId: where.organizationId, projectId: where.projectId, taskId: where.taskId, sessionId: where.sessionId, clientMessageId: event.clientMessageId, eventSeq, now: where.at },
+        ticket,
+        { model: files.model, agentTakesImages: files.agentTakesImages },
+      );
+      return { ...event, ...userMessageFileFields(bound) };
+    });
+    return { seq: numbered.seq, bound };
+  }
   const { seq } = await appendServerEventNumbered(tx, where, async (eventSeq) => {
     const result = await bindMessageFilesInTx(
       tx,
@@ -470,4 +487,153 @@ export const appendMemberMessageInTx = async (
     return { ...event, ...userMessageFileFields(result) };
   });
   return { seq, bound };
+};
+
+// ---------- a ticket's files, bound to the message that gives them (ticket 06) ----------
+
+/** Where a ticket's file was, and its source key (the SHA-256 of its URL): never the URL. */
+export type TicketFileSource = {
+  readonly where: "description" | "comment" | "attachment";
+  readonly commentId: string | null;
+  readonly sourceKey: string;
+  /** The failed file a Retry fetched again. */
+  readonly retryOfId?: MessageFileId | undefined;
+};
+
+/** A ticket's file core fetched and stored as a blob of the task: what detection made of it, and its text. */
+export type StoredTicketFile = TicketFileSource & {
+  readonly name: SafeFileName;
+  readonly kind: MessageFileKind;
+  readonly contentType: string;
+  readonly size: number;
+  readonly sha256: Sha256Hex;
+  readonly blobId: BlobId;
+  readonly text: UploadText;
+};
+
+/** A ticket's file that didn't come: left out (over a limit, not fetched) or failed (its download). */
+export type TicketFileNote = TicketFileSource & {
+  readonly name: SafeFileName;
+  readonly state: "left_out" | "failed";
+  readonly reason: FileLeftOutReason;
+  /** The size the tracker said, when it said. */
+  readonly size: number | null;
+};
+
+/** A ticket's files for one message: the stored ones, and the notes of those that didn't come. */
+export type TicketFilesToBind = { readonly stored: readonly StoredTicketFile[]; readonly notes: readonly TicketFileNote[] };
+
+/**
+ * Writes a ticket's files as the message's (ADR 0070): each stored one `sent`, at `ticket/<name>`
+ * unique in the task's ticket folder across its reads, its blobs the task's, and marked when it
+ * goes to the model as an image; each note `left_out` or `failed` with its reason, so the thread
+ * and a Retry find it. Origin `ticket`: no member's.
+ */
+export const bindTicketFilesInTx = async (
+  tx: Tx,
+  where: {
+    readonly organizationId: OrganizationId;
+    readonly projectId: ProjectId;
+    readonly taskId: TaskId;
+    readonly sessionId: SessionId;
+    readonly clientMessageId: ClientMessageId;
+    readonly eventSeq: TaskSeq;
+    readonly now: number;
+  },
+  files: TicketFilesToBind,
+  decision: { readonly model: ImageModel | null; readonly agentTakesImages: boolean },
+): Promise<BoundMessageFiles> => {
+  const taken = (await tx.messageFile.findMany({ where: { taskId: where.taskId, boxPath: { startsWith: "ticket/" } }, select: { boxPath: true } })).flatMap((row) =>
+    row.boxPath === null ? [] : [row.boxPath.slice("ticket/".length)],
+  );
+  const places = boxPathFor("ticket", where.eventSeq, files.stored.map((file) => file.name), taken);
+  const rows = await Promise.all(
+    files.stored.map(async (file, position) => {
+      const created = await tx.messageFile.create({
+        data: {
+          organizationId: where.organizationId,
+          projectId: where.projectId,
+          taskId: where.taskId,
+          origin: "ticket",
+          state: "sent",
+          sessionId: where.sessionId,
+          clientMessageId: where.clientMessageId,
+          eventSeq: where.eventSeq,
+          position,
+          name: file.name,
+          kind: file.kind,
+          contentType: file.contentType,
+          size: file.size,
+          sha256: file.sha256,
+          blobId: file.blobId,
+          boxPath: places[position] ?? "",
+          textState: file.text.state,
+          ...(file.text.state === "ready" ? { textBlobId: file.text.blobId, textWords: file.text.words, textTruncated: file.text.truncated } : {}),
+          ...(file.text.state === "failed" ? { textReason: file.text.reason } : {}),
+          ticketWhere: file.where,
+          ticketCommentId: file.commentId,
+          ticketSourceKey: file.sourceKey,
+          retryOfId: file.retryOfId ?? null,
+          sentAt: new Date(where.now),
+        },
+        select: { id: true },
+      });
+      const blobIds = [file.blobId, ...(file.text.state === "ready" ? [file.text.blobId] : [])];
+      await tx.blob.updateMany({ where: { id: { in: blobIds }, organizationId: where.organizationId }, data: { projectId: where.projectId, taskId: where.taskId } });
+      return { id: messageFileIdSchema.parse(created.id), file };
+    }),
+  );
+  for (const [index, note] of files.notes.entries()) {
+    await tx.messageFile.create({
+      data: {
+        organizationId: where.organizationId,
+        projectId: where.projectId,
+        taskId: where.taskId,
+        origin: "ticket",
+        state: note.state,
+        reason: note.reason,
+        sessionId: where.sessionId,
+        clientMessageId: where.clientMessageId,
+        eventSeq: where.eventSeq,
+        position: files.stored.length + index,
+        name: note.name,
+        kind: "file",
+        contentType: "application/octet-stream",
+        size: note.size ?? 0,
+        ticketWhere: note.where,
+        ticketCommentId: note.commentId,
+        ticketSourceKey: note.sourceKey,
+        retryOfId: note.retryOfId ?? null,
+      },
+    });
+  }
+  const decided = promptImagesFor(
+    rows.map((row) => ({ fileId: row.id, kind: row.file.kind, contentType: row.file.contentType, size: row.file.size })),
+    { agentTakesImages: decision.agentTakesImages, modelImageInput: decision.model === null ? "unknown" : modelImageInput(decision.model) },
+  );
+  const asImage = new Set<string>(decided.images);
+  if (decided.images.length > 0) {
+    await tx.messageFile.updateMany({ where: { id: { in: [...decided.images] } }, data: { asImage: true } });
+  }
+  // As the box gets them, read back with their text blobs' sizes and digests, in the message's order.
+  const written = rows.length === 0 ? [] : await tx.messageFile.findMany({ where: { id: { in: rows.map((row) => row.id) } }, orderBy: { position: "asc" }, select: { ...uploadSelect, boxPath: true } });
+  const allBoxFiles = written.flatMap((row) => {
+    const file = row.boxPath === null ? null : boxFileOf(row, row.boxPath);
+    return file === null ? [] : [file];
+  });
+  return {
+    files: rows.map((row) => ({
+      fileId: row.id,
+      name: row.file.name,
+      kind: row.file.kind,
+      contentType: row.file.contentType,
+      size: row.file.size,
+      origin: "ticket",
+      asImage: asImage.has(row.id),
+      text: row.file.text.state,
+    })),
+    filesLeftOut: files.notes.slice(0, runnerLimits.fileNotesMax).map((note) => ({ name: note.name, reason: note.reason })),
+    imagesNotSent: decided.notSent,
+    steer: { files: allBoxFiles, images: decided.images.filter((id) => allBoxFiles.some((file) => file.fileId === id)) },
+  };
 };

@@ -266,3 +266,6 @@ export * from "./files/limits.ts";
 export * from "./files/images.ts";
 export * from "./files/panel-file-token.ts";
 export * from "./files/message-files.ts";
+// Milestone 9 (ticket 06, ADR 0070): a ticket's files and its changes, and reading it again.
+export * from "./tickets/ticket-files.ts";
+export * from "./tickets/read-ticket.ts";
