@@ -85,6 +85,8 @@ Each flag is also an environment variable, and a flag wins over its variable. Va
 | `--service-cpu-millis` | `OSTRA_SERVICE_CPU_MILLIS` | 1000 | The CPU limit, in millicores, of a service that names none, counted in the box's footprint. |
 | `--service-memory-mib` | `OSTRA_SERVICE_MEMORY_MIB` | 1024 | The memory limit, in MiB, of a service that names none, counted in the box's footprint. |
 | `--subagent-wait-minutes` | `OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES` | 30 | How long a turn waits, once its agent's prompt is answered, for the subagents it started and the turns their reports wake (OpenCode runs subagents in the background). Past it, ostra stops them, fails each one on the call that started it, and ends the turn. |
+| `--browser` | `OSTRA_RUNNER_BROWSER` | (none: the runner finds Chrome, Chromium or Edge, else downloads its pinned headless shell) | The Chromium-family browser a host runner takes screenshots, recordings and the browser view with (F-121, F-141): its executable's path. Unset, the runner finds Chrome, Chromium or Edge, else downloads Chrome for Testing's headless shell at the version pinned in its release, checks its SHA-256 and keeps it in its folder. docker and kubernetes boxes use the image's. |
+| `--browser-download` | `OSTRA_RUNNER_BROWSER_DOWNLOAD` | true | Whether a host runner with no browser of the machine's may download the pinned headless shell (F-121). false never downloads: the runner then reports no browser, and the panel says how to fix it. |
 
 A runner's box images default to its own release's: the release's image namespace is the registry and path that release published its images under, the one its compose file and charts name too.
 
