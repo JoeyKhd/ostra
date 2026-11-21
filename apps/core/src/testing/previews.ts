@@ -6,15 +6,18 @@ import type { Db } from "@ostra/db";
 import { panelPreviewPaths, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, systemClock } from "@ostra/domain";
 import type { Clock } from "@ostra/domain";
 import type { Jobs } from "@ostra/jobs";
-import { createPanelStreamReader, decodePreviewMessage, encodePreviewMessage, previewPaths, previewSubprotocols, replicaIdSchema } from "@ostra/protocol";
+import { createPanelStreamReader, decodePreviewMessage, encodePreviewMessage, previewPaths, previewSubprotocols, replicaIdSchema, runnerLimits } from "@ostra/protocol";
 import type { PreviewMessage, PreviewViewId } from "@ostra/protocol";
 import WebSocket from "ws";
 
+import { agentEffortLevels } from "../agents/effort-levels.ts";
+import { agentImportsArchives } from "../agents/session-archives.ts";
 import { postgresDeviceSessions } from "../gateway/device-sessions.ts";
 import { createGateway } from "../gateway/gateway.ts";
 import type { Gateway, GatewayOptions } from "../gateway/gateway.ts";
 import { createPreviews } from "../previews/previews.ts";
 import type { Previews } from "../previews/previews.ts";
+import { handlePanelStartApp } from "../previews/start-app-endpoint.ts";
 import { createCoreServer } from "../server.ts";
 
 // The previews' test seams (milestone 8, ticket 19): one core replica in this process (its gateway
@@ -42,6 +45,8 @@ export const startPreviewReplica = async (
     readonly warmMinutes?: number;
     /** How often a CLI's tunnel checks its session again (5 minutes in production). */
     readonly cliRecheckMs?: number;
+    /** "Start the app"'s personal runner slots: 2 by default, as an install's. */
+    readonly personalSlots?: number;
   },
 ): Promise<PreviewReplica> => {
   const clock = options.clock ?? systemClock;
@@ -74,8 +79,23 @@ export const startPreviewReplica = async (
     settings: { warmMinutes: options.warmMinutes ?? 60 },
     ...(options.cliRecheckMs === undefined ? {} : { cliRecheckMs: options.cliRecheckMs }),
   });
+  // "Start the app" from the panel, with the dispatch settings core's own reads (`core.ts`).
+  const startApp = handlePanelStartApp({
+    start: {
+      db,
+      jobs: options.jobs,
+      outbox: postgresCommandOutbox,
+      notices: postgresChangeNotices,
+      audit: postgresAuditLog,
+      clock,
+      logger,
+      dispatch: { reopen: { agentImportsArchives, archiveMaxBytes: runnerLimits.archiveMaxBytes }, effortLevels: agentEffortLevels, personalSlots: options.personalSlots ?? 2 },
+    },
+    secret: () => Promise.resolve(options.secret),
+    logger,
+  });
   const server = createCoreServer({
-    routes: [previews.handleRequest, gateway.handleRequest],
+    routes: [previews.handleRequest, startApp, gateway.handleRequest],
     upgrade: (request, socket, head) => {
       if (!previews.handleUpgrade(request, socket, head)) {
         gateway.handleUpgrade(request, socket, head);

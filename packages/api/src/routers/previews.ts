@@ -12,7 +12,6 @@ import {
   resolvePreviewLinkInTx,
   revokePreviewLink,
   setPreviewLevel,
-  startApp,
   takeMemberScreenshot,
   usePreviewLink,
 } from "@ostra/domain";
@@ -57,8 +56,8 @@ import { memberProcedure, publicProcedure, router, taskProcedure } from "../trpc
 /** Why a view didn't open, for a member: the pane's words come from it. */
 const openRefusalSchema = z.enum(["no-box", "port-not-allowed", "runner-needs-upgrade", "runner-cannot-preview", "level-unknown"]);
 
-/** Why "Start the app" didn't. */
-const startRefusalSchema = z.enum(["no-app-processes", "no-runner", "runner-needs-upgrade", "runner-cannot-preview", "forbidden"]);
+/** Why "Start the app" didn't. `core-unreachable`: the panel couldn't ask core, and nothing started. */
+const startRefusalSchema = z.enum(["no-app-processes", "no-runner", "runner-needs-upgrade", "runner-cannot-preview", "forbidden", "core-unreachable"]);
 
 /** Why a member's screenshot wasn't asked for. */
 const screenshotRefusalSchema = z.enum(["no-box", "port-not-allowed", "runner-needs-upgrade", "runner-cannot-preview"]);
@@ -386,37 +385,20 @@ export const previewsRouter = router({
 
   /**
    * "Start the app" (Q300): a box for the app alone, with no agent turn, for any member who can open
-   * the task; or `app.start` in the box that still runs. Admitted now or not at all.
+   * the task; or `app.start` in the box that still runs. Admitted now or not at all. Core runs it
+   * (`ApiDeps.appStart`), with every dispatch's settings, so the box restores the agent's session.
    */
   startApp: taskProcedure("read", taskInput)
     .output(
       z.discriminatedUnion("ok", [z.strictObject({ ok: z.literal(true), state: z.enum(["starting", "running"]) }), z.strictObject({ ok: z.literal(false), reason: startRefusalSchema })]),
     )
     .mutation(async ({ ctx, input }) => {
-      const { deps } = ctx;
-      const archives = deps.agentArchives ?? (() => false);
-      const started = await startApp(
-        {
-          db: deps.db,
-          jobs: deps.ports.jobs,
-          outbox: deps.ports.outbox,
-          notices: deps.ports.notices,
-          audit: deps.ports.audit,
-          clock: deps.ports.clock,
-          logger: deps.logger,
-          dispatch: {
-            reopen: { agentImportsArchives: archives, archiveMaxBytes: deps.settings.blobStore.maxBytes },
-            effortLevels: (adapter, levels) => deps.agentEffort.levelsFor(adapter, levels),
-            personalSlots: deps.settings.personalRunnerCapacity,
-          },
-        },
-        ctx.scope,
-        input,
-      );
+      const started = await ctx.deps.appStart({ organizationId: ctx.scope.organizationId, memberId: ctx.scope.memberId, taskId: input.taskId });
       if (started.ok) {
         return { ok: true as const, state: started.state };
       }
-      switch (started.error) {
+      const { error } = started;
+      switch (error) {
         case "not-found":
           throw notFound("task");
         case "forbidden":
@@ -424,9 +406,10 @@ export const previewsRouter = router({
         case "no-runner":
         case "runner-needs-upgrade":
         case "runner-cannot-preview":
-          return { ok: false as const, reason: started.error };
+        case "core-unreachable":
+          return { ok: false as const, reason: error };
         default:
-          return started.error satisfies never;
+          return error satisfies never;
       }
     }),
 

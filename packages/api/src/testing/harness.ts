@@ -3,7 +3,16 @@ import { createHash, randomBytes } from "node:crypto";
 import { createLogger, silentLogger } from "@ostra/adapter-sdk";
 import type { CatalogEntry, LogRecord, ModelProviderAdapter, TrackerAdapter } from "@ostra/adapter-sdk";
 import { createJiraSite, JiraFakeAdapter } from "@ostra/adapter-sdk/testing";
-import { createPanelPreviewTokens, DRAFT_IMAGE_MAX_BYTES, parseServerSettings, postgresAuditLog, postgresChangeNotices, profileLimits, systemClock } from "@ostra/domain";
+import {
+  createPanelPreviewTokens,
+  DRAFT_IMAGE_MAX_BYTES,
+  parseServerSettings,
+  postgresAuditLog,
+  postgresChangeNotices,
+  profileLimits,
+  startAppForMember,
+  systemClock,
+} from "@ostra/domain";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, SeededMember, TestDatabase } from "@ostra/db/testing";
 import { hashPassword } from "better-auth/crypto";
@@ -245,6 +254,22 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
     stream: hub,
     // Core stands behind this in a real install; a relay test points `coreUrl` at its fake core.
     previews: { coreUrl: "http://127.0.0.1:9", panelTokens: createPanelPreviewTokens(PREVIEW_SECRET) },
+    // Core runs "Start the app" in a real install (`coreAppStarter`): here its body runs in this
+    // process, on the harness's ports. A test of the request itself points a starter at its fake core.
+    appStart: (request) =>
+      startAppForMember(
+        {
+          db: test.db,
+          jobs,
+          outbox,
+          notices: postgresChangeNotices,
+          audit: postgresAuditLog,
+          clock: systemClock,
+          logger,
+          dispatch: { personalSlots: installDefaults.personalRunnerCapacity },
+        },
+        request,
+      ),
     library: { fetch: library.fetch, serverVersion: "9.9.9-test" },
   };
 

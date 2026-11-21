@@ -4,17 +4,19 @@ import type { Server } from "node:http";
 
 import { mapMember } from "@ostra/db";
 import type { SeededMember } from "@ostra/db/testing";
-import { createPanelPreviewTokens, markViewConnected, parsePanelPreviewPath } from "@ostra/domain";
-import type { PanelPreviewClaims } from "@ostra/domain";
+import { silentLogger } from "@ostra/adapter-sdk";
+import { createPanelPreviewTokens, createPanelStartAppTokens, markViewConnected, PANEL_START_APP_PATH, parsePanelPreviewPath } from "@ostra/domain";
+import type { PanelPreviewClaims, PanelStartAppClaims } from "@ostra/domain";
 import { createPanelStreamReader, encodePanelStreamRecord, panelPreviewInputBodySchema, previewKeySchema, previewViewIdSchema } from "@ostra/protocol";
 import type { OrganizationId, PreviewInputEvent, PreviewViewId, ProjectId } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 
+import { coreAppStarter } from "../services/core-app-start.ts";
 import { PREVIEW_LINK_HEADER, PREVIEW_LINK_MISSES_PER_MINUTE } from "../services/preview-link-tries.ts";
 import { servePreviewInput, servePreviewStream } from "../services/preview-relay.ts";
-import { createApiHarness, PREVIEW_SECRET, seedConnectionAndModel, seedPreviewableTask, seedProject, trpcFailure } from "../testing/index.ts";
+import { createApiHarness, PREVIEW_SECRET, seedConnectionAndModel, seedPreviewableTask, seedProject, seedTask, trpcFailure } from "../testing/index.ts";
 import type { ApiHarness, AppCaller, PreviewableTask } from "../testing/index.ts";
 import type { ApiDeps, Context } from "../trpc/context.ts";
 
@@ -105,7 +107,7 @@ const setLinksAllowed = async (enabled: boolean): Promise<void> => {
 // ---------- the fake core ----------
 
 type CoreCall = { readonly route: "stream" | "input"; readonly viewId: PreviewViewId; readonly claims: PanelPreviewClaims; readonly events?: readonly PreviewInputEvent[] };
-type FakeCore = { readonly url: string; readonly calls: CoreCall[]; readonly refused: string[]; readonly close: () => Promise<void> };
+type FakeCore = { readonly url: string; readonly calls: CoreCall[]; readonly starts: PanelStartAppClaims[]; readonly refused: string[]; readonly close: () => Promise<void> };
 
 const jpeg = (fill: number): Uint8Array => {
   const bytes = new Uint8Array(32).fill(fill);
@@ -114,15 +116,36 @@ const jpeg = (fill: number): Uint8Array => {
   return bytes;
 };
 
-/** Core's two panel routes, as `apps/core/src/previews/previews.ts` answers them: the panel's token for the view, or 401. */
+/**
+ * Core's panel routes, as `apps/core/src/previews/` answers them: a view's stream and input with the
+ * panel's token for the view, and "Start the app" with its token for the member and the task, whose
+ * body (`startAppForMember`) the harness runs; else 401.
+ */
 const startFakeCore = async (): Promise<FakeCore> => {
   const tokens = createPanelPreviewTokens(PREVIEW_SECRET);
+  const startTokens = createPanelStartAppTokens(PREVIEW_SECRET);
   const calls: CoreCall[] = [];
+  const starts: PanelStartAppClaims[] = [];
   const refused: string[] = [];
   const server: Server = createServer((request, response) => {
     const url = new URL(request.url ?? "/", "http://core.internal");
     const route = parsePanelPreviewPath(url.pathname);
     const bearer = /^Bearer (\S+)$/.exec(request.headers.authorization ?? "")?.[1] ?? "";
+    if (url.pathname === PANEL_START_APP_PATH && request.method === "POST") {
+      const start = startTokens.verify(bearer, Date.now());
+      if (start === null) {
+        refused.push(url.pathname);
+        response.writeHead(401, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: { code: "unauthorized", message: "a valid panel token is required" } }));
+        return;
+      }
+      starts.push(start);
+      void harness.deps.appStart(start).then((answer) => {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify(answer));
+      });
+      return;
+    }
     const claims = route === null ? null : tokens.verify(bearer, Date.now(), route.viewId);
     if (route === null || claims === null) {
       refused.push(url.pathname);
@@ -158,6 +181,7 @@ const startFakeCore = async (): Promise<FakeCore> => {
   return {
     url: `http://127.0.0.1:${String(bound.port)}`,
     calls,
+    starts,
     refused,
     close: () =>
       new Promise<void>((resolve) => {
@@ -265,6 +289,38 @@ describe("a task's previews in the pane (F-141)", () => {
     const asOutsider = await harness.as(outsider);
     expect(await trpcFailure(asOutsider.previews.startApp({ taskId: target.taskId }))).toMatchObject({ code: "NOT_FOUND" });
     expect(await trpcFailure(asOutsider.previews.takeScreenshot({ taskId: target.taskId, key: target.key, path: "/", width: "desktop" }))).toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("F-141/c5: \"Start the app\" asks core with a token for the member and the task, and keeps core's refusals", async () => {
+    // The panel as an install builds it: core at the fake's address, under the shared key.
+    const toCore = (secret: string = PREVIEW_SECRET, coreUrl: string = fakeCore.url): ApiDeps => ({ ...harness.deps, appStart: coreAppStarter({ coreUrl, secret, logger: silentLogger }) });
+    const as = async (member: SeededMember, deps: ApiDeps = toCore()): Promise<AppCaller> => harness.callerFor({ ...(await harness.contextOf(member)), deps });
+    const asDriver = await as(driver);
+    const target = await task();
+    const before = fakeCore.starts.length;
+    harness.fakes.outbox.clear();
+    expect(await asDriver.previews.startApp({ taskId: target.taskId })).toEqual({ ok: true, state: "running" });
+    expect(fakeCore.starts.slice(before).map((start) => [start.organizationId, start.memberId, start.taskId])).toEqual([[organizationId, driver.id, target.taskId]]);
+    expect(harness.fakes.outbox.commands).toMatchObject([{ runnerId: target.runnerId, kind: "app.start" }]);
+
+    // Core's refusals come back as the pane's codes: a runner below minor 7, and no runner to take a box.
+    const old = await seedPreviewableTask(harness, { organizationId, projectId, ownerMemberId: harness.fixture.a.admin.id, driverMemberId: driver.id, minor: 6 });
+    expect(await asDriver.previews.startApp({ taskId: old.taskId })).toEqual({ ok: false, reason: "runner-needs-upgrade" });
+    const stopped = await seedTask(harness, { organizationId, projectId, title: "A stopped task", state: "stopped", sessionState: "ended", driverMemberId: driver.id });
+    expect(await asDriver.previews.startApp({ taskId: stopped.taskId })).toEqual({ ok: false, reason: "no-runner" });
+    expect(await harness.test.db.lease.count({ where: { taskId: stopped.taskId } })).toBe(0);
+    expect(await harness.test.db.session.count({ where: { taskId: stopped.taskId } })).toBe(1);
+    expect(fakeCore.starts.slice(before).map((start) => start.taskId)).toEqual([target.taskId, old.taskId, stopped.taskId]);
+
+    // Someone who can't open the task never reaches core.
+    expect(await trpcFailure((await as(outsider)).previews.startApp({ taskId: target.taskId }))).toMatchObject({ code: "NOT_FOUND" });
+    expect(fakeCore.starts.length).toBe(before + 3);
+    // A core out of reach, or one that refuses the panel's token (another key): nothing started, and the pane says so.
+    expect(await (await as(driver, toCore(PREVIEW_SECRET, "http://127.0.0.1:9"))).previews.startApp({ taskId: target.taskId })).toEqual({ ok: false, reason: "core-unreachable" });
+    const refusedBefore = fakeCore.refused.length;
+    expect(await (await as(driver, toCore(randomUUID()))).previews.startApp({ taskId: target.taskId })).toEqual({ ok: false, reason: "core-unreachable" });
+    expect(fakeCore.refused.slice(refusedBefore)).toEqual([PANEL_START_APP_PATH]);
+    expect(fakeCore.starts.length).toBe(before + 3);
   });
 });
 

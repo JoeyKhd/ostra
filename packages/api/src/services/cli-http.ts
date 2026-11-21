@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
-import { installationStateSelect, installationUsable, issueCliTicket, requireProjectAccess, resolveCliSession, startApp, startCliSession } from "@ostra/domain";
+import { installationStateSelect, installationUsable, issueCliTicket, requireProjectAccess, resolveCliSession, startCliSession } from "@ostra/domain";
 import type { CliSessionCaller } from "@ostra/domain";
 import {
   CLI_PATH_PREFIX,
@@ -31,6 +31,7 @@ import { secretRefSchema } from "@ostra/adapter-sdk";
 
 import { memberContextOf } from "../auth/scope.ts";
 import type { ApiDeps } from "../trpc/context.ts";
+import type { AppStartAnswer } from "./core-app-start.ts";
 
 // The `ostra` CLI's HTTP on the web app (F-103, ADR 0051; ticket 39), at `/api/cli/v1/`. A plain
 // `Request` in and a `Response` out, so the web app's route is one line and the tests call it
@@ -297,8 +298,11 @@ const previewTunnel = async (deps: ApiDeps, caller: CliSessionCaller, rawRef: st
   return json({ coreUrl: issued.coreUrl, ticket: issued.ticket, port: issued.port } satisfies CliPreviewTunnelGrant);
 };
 
-/** The protocol's code for a refused start. */
-const startRefusalOf = (error: Extract<Awaited<ReturnType<typeof startApp>>, { readonly ok: false }>["error"]): CliStartAppRefusal["code"] => {
+/**
+ * The protocol's code for a refused start. Core out of reach reads as no runner taking it now, with
+ * a `503`: the CLI's protocol has no code of its own for it, and either way the member tries again.
+ */
+const startRefusalOf = (error: Extract<AppStartAnswer, { readonly ok: false }>["error"]): CliStartAppRefusal["code"] => {
   switch (error) {
     case "forbidden":
     case "not-found":
@@ -309,6 +313,8 @@ const startRefusalOf = (error: Extract<Awaited<ReturnType<typeof startApp>>, { r
       return error;
     case "runner-cannot-preview":
       return "runner-needs-upgrade";
+    case "core-unreachable":
+      return "no-runner";
     default:
       return error satisfies never;
   }
@@ -316,7 +322,8 @@ const startRefusalOf = (error: Extract<Awaited<ReturnType<typeof startApp>>, { r
 
 /**
  * `POST /tasks/:ref/app/start`: "Start the app" for `ostra preview` when no box runs (ADR 0068,
- * Q300), as the panel's button: `startApp` for the session's member, with no agent turn.
+ * Q300), as the panel's button: core runs `startApp` for the session's member (`ApiDeps.appStart`),
+ * with no agent turn.
  */
 const startTaskApp = async (deps: ApiDeps, caller: CliSessionCaller, rawRef: string, request: Request): Promise<Response> => {
   const raw = await readJson(request);
@@ -327,10 +334,10 @@ const startTaskApp = async (deps: ApiDeps, caller: CliSessionCaller, rawRef: str
   if (task === null) {
     return json({ code: "not-found" } satisfies CliStartAppRefusal, 404);
   }
-  const started = await startApp({ db: deps.db, ...deps.ports, logger: deps.logger }, task.scope, { taskId: taskIdSchema.parse(task.found.id) });
+  const started = await deps.appStart({ organizationId: task.scope.organizationId, memberId: task.scope.memberId, taskId: taskIdSchema.parse(task.found.id) });
   if (!started.ok) {
     const code = startRefusalOf(started.error);
-    return json({ code } satisfies CliStartAppRefusal, code === "not-found" ? 404 : 409);
+    return json({ code } satisfies CliStartAppRefusal, code === "not-found" ? 404 : started.error === "core-unreachable" ? 503 : 409);
   }
   return json({ state: started.state } satisfies CliStartAppResponse);
 };

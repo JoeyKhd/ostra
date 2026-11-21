@@ -8,6 +8,7 @@ import type { MemberContext, SessionUser } from "../auth/scope.ts";
 import type { CatalogSource } from "../catalog/catalog-source.ts";
 import type { AgentEffort } from "../services/agent-effort.ts";
 import type { BlobStoreView } from "../services/blob-store-view.ts";
+import type { AppStarter } from "../services/core-app-start.ts";
 import type { EmailDirectory } from "../services/email.ts";
 import type { TrackerDirectory } from "../services/trackers.ts";
 import type { StreamHub } from "../stream/hub.ts";
@@ -114,12 +115,11 @@ export type ApiDeps = {
   /** Milestone 8 (F-141): the previews' relay to core. */
   readonly previews: PreviewRelay;
   /**
-   * Whether an agent adapter, by its name, imports a session archive (its `sessionArchive`
-   * capability), for the dispatch "Start the app" makes (Q300): a message on that box later
-   * restores the agent's session from the archive. Unset, the dispatch restores none and a turn
-   * there starts from the rebuild template.
+   * Milestone 8 (F-141, Q300): "Start the app", which core runs with every dispatch's settings, so
+   * the app's box restores the agent's session and a message there resumes it. The panel asks core
+   * (`coreAppStarter`); a test runs core's body in its own process.
    */
-  readonly agentArchives?: (adapter: string) => boolean;
+  readonly appStart: AppStarter;
   /** How often an open stream looks at its member's session and access again. Default 30 s. */
   readonly streamRecheckMs?: number;
   /** Milestone 8 (F-145, F-146, ticket 30): the library's calls out. */

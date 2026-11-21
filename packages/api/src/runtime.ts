@@ -14,6 +14,7 @@ import type { CatalogSource } from "./catalog/catalog-source.ts";
 import { shippedAgentEffort } from "./services/agent-effort.ts";
 import type { AgentEffort } from "./services/agent-effort.ts";
 import type { BlobStoreView } from "./services/blob-store-view.ts";
+import { coreAppStarter } from "./services/core-app-start.ts";
 import { accountMailIsOn, noEmailDirectory } from "./services/email.ts";
 import type { EmailDirectory } from "./services/email.ts";
 import { createLinearAppKit } from "./services/linear-app.ts";
@@ -49,13 +50,11 @@ export type ApiRuntimeInput = {
   /** F-137: each agent's reasoning levels. Unset, read off the model's controls for the agents that take one. */
   readonly agentEffort?: AgentEffort;
   /**
-   * Milestone 8 (F-141): the secrets key's text, which the panel signs a view's token to core under
-   * (core holds the same key). Unset, a key of this process alone: core refuses every relayed
-   * stream and input, so previews fail closed.
+   * Milestone 8 (F-141): the secrets key's text, which the panel signs a view's token and a "Start
+   * the app" request to core under (core holds the same key). Unset, a key of this process alone:
+   * core refuses every relayed stream and input and every start, so previews fail closed.
    */
   readonly previewSecret?: string;
-  /** Whether an agent adapter imports a session archive, for "Start the app"'s dispatch (`ApiDeps.agentArchives`). */
-  readonly agentArchives?: (adapter: string) => boolean;
   /**
    * Milestone 8 (ticket 30): the release's version, for the library's `User-Agent: ostra/<version>`
    * (the panel and core ship as one release, ADR 0046). Unset, `0.0.0`.
@@ -96,6 +95,7 @@ export const createApiRuntime = async (input: ApiRuntimeInput): Promise<ApiRunti
 
   const hub = createStreamHub({ db, databaseUrl: settings.databaseUrl, logger: input.logger });
   await hub.start();
+  const previewSecret = input.previewSecret ?? randomBytes(32).toString("hex");
 
   const deps: ApiDeps = {
     db,
@@ -119,9 +119,9 @@ export const createApiRuntime = async (input: ApiRuntimeInput): Promise<ApiRunti
     stream: hub,
     previews: {
       coreUrl: settings.coreInternalUrl,
-      panelTokens: createPanelPreviewTokens(input.previewSecret ?? randomBytes(32).toString("hex")),
+      panelTokens: createPanelPreviewTokens(previewSecret),
     },
-    ...(input.agentArchives === undefined ? {} : { agentArchives: input.agentArchives }),
+    appStart: coreAppStarter({ coreUrl: settings.coreInternalUrl, secret: previewSecret, logger: input.logger }),
     library: { fetch: input.libraryFetch ?? globalThis.fetch, serverVersion: input.serverVersion ?? "0.0.0" },
   };
 

@@ -31,6 +31,7 @@ import { startAutomationWorkers } from "./automations/automations.ts";
 import { createBlobService } from "./blobs/blob-service.ts";
 import type { BlobService } from "./blobs/blob-service.ts";
 import { agentEffortLevels } from "./agents/effort-levels.ts";
+import { agentImportsArchives } from "./agents/session-archives.ts";
 import { handleBlobEndpoint } from "./blobs/endpoints.ts";
 import { handlePanelBlobEndpoint } from "./blobs/panel-endpoints.ts";
 import { blobGcHandler, ensureBlobGcSchedule } from "./blobs/gc.ts";
@@ -105,6 +106,7 @@ import type { SnapshotDeps } from "./snapshots/snapshots.ts";
 import { createAutomationWebhooks } from "./webhooks/automation-webhooks.ts";
 import { createPreviews } from "./previews/previews.ts";
 import { replicaUrlFor } from "./previews/replica-url.ts";
+import { handlePanelStartApp } from "./previews/start-app-endpoint.ts";
 import { codesSweepHandler, ensurePreviewSweepSchedules, viewsSweepHandler } from "./previews/sweeps.ts";
 import { createWebhookInbox, parseBlockedWebhooks } from "./webhooks/inbox.ts";
 import { webhookProcessHandler } from "./webhooks/process.ts";
@@ -215,10 +217,17 @@ export const startCore = async (
     logger,
     timers,
   };
-  // A reopen restores an archive only for an agent whose adapter can import one (ADR 0039, ticket 18).
-  const archiveAgents = new Map([["opencode", new OpenCodeAdapter().capabilities.sessionArchive]]);
   // How each agent takes project memory (F-110, ticket 15): the tools, or the block only.
   const memoryAgents = new Map([["opencode", new OpenCodeAdapter().capabilities.memory]]);
+  // What every dispatch reads beyond the rows, a reopen's, a queued task's and "Start the app"'s alike.
+  const dispatchSettings = {
+    // A reopen restores an archive only for an agent whose adapter can import one (ADR 0039, ticket 18).
+    reopen: { agentImportsArchives, archiveMaxBytes: settings.blobStore.maxBytes },
+    // Milestone 4 (F-137): a task at a level goes only to a minor-3 runner.
+    effortLevels: agentEffortLevels,
+    // Milestone 5 (F-067): a personal runner's slots, unless its member set another number.
+    personalSlots: settings.personalRunnerCapacity,
+  };
   const dispatcherDeps: DispatcherDeps = {
     db,
     jobs,
@@ -226,11 +235,7 @@ export const startCore = async (
     notices,
     clock: systemClock,
     logger,
-    reopen: { agentImportsArchives: (adapter) => archiveAgents.get(adapter) === true, archiveMaxBytes: settings.blobStore.maxBytes },
-    // Milestone 4 (F-137): a task at a level goes only to a minor-3 runner.
-    effortLevels: agentEffortLevels,
-    // Milestone 5 (F-067): a personal runner's slots, unless its member set another number.
-    personalSlots: settings.personalRunnerCapacity,
+    ...dispatchSettings,
   };
   const reactionDeps: ReactionDeps = {
     db,
@@ -736,8 +741,14 @@ export const startCore = async (
   const previewSweepDeps = { db, outbox: postgresCommandOutbox, notices, clock: systemClock, logger, settings: settings.previews };
   await jobs.work("preview.views-sweep", viewsSweepHandler(previewSweepDeps), { localConcurrency: 1 });
   await jobs.work("preview.codes-sweep", codesSweepHandler(previewSweepDeps), { localConcurrency: 1 });
+  // "Start the app" (F-141, Q300): the panel asks, core dispatches it with every dispatch's settings.
+  const panelStartApp = handlePanelStartApp({
+    start: { db, jobs, outbox: postgresCommandOutbox, notices, audit: postgresAuditLog, clock: systemClock, logger, timers, dispatch: dispatchSettings },
+    secret: () => loadSecretsKey(settings),
+    logger,
+  });
   const server = createCoreServer({
-    routes: [previews.handleRequest, gateway.handleRequest, taskEndpoints, memoryEndpoints, reviewEndpoints, environmentProposalEndpoints, draftEndpoints, snapshotEndpoints, registryEndpoints, blobEndpoints, panelBlobEndpoints, inbox.handle, automationWebhooks.handle],
+    routes: [previews.handleRequest, panelStartApp, gateway.handleRequest, taskEndpoints, memoryEndpoints, reviewEndpoints, environmentProposalEndpoints, draftEndpoints, snapshotEndpoints, registryEndpoints, blobEndpoints, panelBlobEndpoints, inbox.handle, automationWebhooks.handle],
     upgrade: (request, socket, head) => {
       if (!previews.handleUpgrade(request, socket, head)) {
         gateway.handleUpgrade(request, socket, head);
