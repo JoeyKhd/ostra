@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -346,5 +346,25 @@ describe("this repo", () => {
     const packages = await loadWorkspacePackages(path.resolve(import.meta.dirname, ".."));
     expect(packages.length).toBeGreaterThan(0);
     expect(findViolations(packages)).toEqual([]);
+  });
+});
+
+// Milestone 9's ticket 07 (ADR 0070): core's three readers of documents, and the license line.
+describe("the repo itself", () => {
+  const repoRoot = path.resolve(import.meta.dirname, "..");
+
+  it("F-150/c5: passes the license check with unpdf, fflate and @xmldom/xmldom pinned exactly in core, and in no other package", async () => {
+    const packages = await loadWorkspacePackages(repoRoot);
+    expect(findViolations(packages).map(describeViolation)).toEqual([]);
+    const readers = ["unpdf", "fflate", "@xmldom/xmldom"];
+    for (const item of packages) {
+      const named = readers.filter((reader) => item.dependencies.includes(reader));
+      expect(named, item.name).toEqual(item.name === "@ostra/core" ? readers : []);
+    }
+    const core: unknown = JSON.parse(await readFile(path.join(repoRoot, "apps", "core", "package.json"), "utf8"));
+    const dependencies: unknown = Reflect.get(Object(core), "dependencies");
+    for (const reader of readers) {
+      expect(Reflect.get(Object(dependencies), reader), reader).toMatch(/^\d+\.\d+\.\d+$/);
+    }
   });
 });

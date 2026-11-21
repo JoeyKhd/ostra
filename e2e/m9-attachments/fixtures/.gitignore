@@ -1,0 +1,3 @@
+# The fixtures make-fixtures.ts writes that the repo doesn't keep: generated, so no large binary is committed.
+many-parts.docx
+big.xlsx

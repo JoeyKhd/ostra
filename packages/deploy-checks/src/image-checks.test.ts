@@ -7,6 +7,7 @@ import type { DeployFiles, ImageRule } from "./image-checks.ts";
 import { CHROMIUM_PIN } from "./chromium.ts";
 import { buildPlan } from "./images.ts";
 import { NOTICES_PATH } from "./notices.ts";
+import { PDFJS_IN_UNPDF, PDFJS_NOTICE_EXTRA } from "./pdfjs.ts";
 import { parseYaml, yamlAt } from "./yaml.ts";
 
 // Milestone 5's ticket 22 (F-039): the three images and the compose file, checked without Docker.
@@ -246,5 +247,18 @@ describe("the base image's Chromium", () => {
     // THIRD_PARTY_NOTICES lists Chromium, at the pinned version.
     expect(rulesOf(withDockerfile("base", " --extra /opt/notices/extra/chromium.json", ""))).toContain("chromium-pin");
     expect(rulesOf({ chromiumNotice: files.chromiumNotice.replace(CHROMIUM_PIN.version, "155.0.0.0-1~deb12u1") })).toContain("chromium-pin");
+  });
+});
+
+// Milestone 9's ticket 07 (ADR 0070): core reads PDFs with unpdf, which bundles pdf.js.
+describe("the server image's pdf.js", () => {
+  it("F-150/c5: the server's notices name the pdf.js unpdf bundles, from deploy/notices, at the pinned version", () => {
+    expect(files.dockerfiles.server).toContain(PDFJS_NOTICE_EXTRA);
+    expect(rulesOf({})).not.toContain("pdfjs-notice");
+    // Left out of the generator's flags, or of the build, or named at another version, it fails.
+    expect(rulesOf(withDockerfile("server", ` ${PDFJS_NOTICE_EXTRA}`, ""))).toContain("pdfjs-notice");
+    expect(rulesOf(withDockerfile("server", "COPY deploy/notices/ /opt/notices/extra/\n", ""))).toContain("pdfjs-notice");
+    expect(rulesOf({ pdfjsNotice: files.pdfjsNotice.replace(PDFJS_IN_UNPDF.pdfjs, "6.4.0") })).toContain("pdfjs-notice");
+    expect(rulesOf({ pdfjsNotice: files.pdfjsNotice.replace(PDFJS_IN_UNPDF.license, "Apache-2.0") })).toContain("pdfjs-notice");
   });
 });

@@ -1,0 +1,7 @@
+{
+  "name": "pdf.js",
+  "version": "6.5.438",
+  "license": "Apache-2.0 AND BSD-2-Clause AND BSD-3-Clause",
+  "homepage": "https://github.com/mozilla/pdf.js",
+  "licenseFile": "pdfjs.LICENSE"
+}

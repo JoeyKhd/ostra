@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -10,6 +10,7 @@ import { CHROMIUM_PIN } from "./chromium.ts";
 import { imageNames } from "./images.ts";
 import { runNotices } from "./notices-main.ts";
 import { installedInPnpmStore, isAgentPackage, listedInNotices, packagesFromNodeModules, readExtraNotice, refOf, renderNotices } from "./notices.ts";
+import { PDFJS_IN_UNPDF } from "./pdfjs.ts";
 import { repoRoot } from "./repo.ts";
 
 // Milestone 7's ticket 29 (F-039): each image's THIRD_PARTY_NOTICES. The first block makes the
@@ -45,6 +46,54 @@ describe("each image's notices, from this checkout's install", () => {
     expect(server?.bundled.some(isAgentPackage)).toBe(true);
     expect(runner?.bundled.some(isAgentPackage)).toBe(false);
     expect(runner?.packages.some(isAgentPackage)).toBe(false);
+  });
+
+  it("F-150/c5: the server image's notices list unpdf, fflate and @xmldom/xmldom at their pins, MIT with their license files; the runner's and the base image's bundle none", async () => {
+    const [server, runner, base] = await all;
+    const pins = [
+      ["unpdf", PDFJS_IN_UNPDF.unpdf],
+      ["fflate", "0.8.3"],
+      ["@xmldom/xmldom", "0.9.12"],
+    ] as const;
+    for (const [name, version] of pins) {
+      const item = server?.packages.find((candidate) => candidate.name === name);
+      expect(item, name).toMatchObject({ version, license: "MIT" });
+      expect(item?.texts.map((text) => text.file), name).toContain("LICENSE");
+      expect(server?.notices).toContain(`Package: ${name}@${version}\nLicense: MIT\n`);
+      expect(server?.bundled.map(refOf)).toContain(`${name}@${version}`);
+      // The runner's install, which its image is, and the base image's hold none of them.
+      expect(runner?.bundled.some((candidate) => candidate.name === name), `runner: ${name}`).toBe(false);
+      expect(base?.bundled.some((candidate) => candidate.name === name), `base: ${name}`).toBe(false);
+    }
+    // Core pins them exactly; the runner's own package names none of them.
+    const core: unknown = JSON.parse(await readFile(path.join(repoRoot, "apps", "core", "package.json"), "utf8"));
+    const dependencies: unknown = Reflect.get(Object(core), "dependencies");
+    for (const [name, version] of pins) {
+      expect(Reflect.get(Object(dependencies), name), name).toBe(version);
+    }
+    const runnerManifest = await readFile(path.join(repoRoot, "apps", "runner", "package.json"), "utf8");
+    for (const [name] of pins) {
+      expect(runnerManifest).not.toContain(`"${name}"`);
+    }
+  });
+
+  it("F-150/c5: pdf.js's notice names the pdf.js the installed unpdf bundles, with every license unpdf ships for it, each known to the check", async () => {
+    const notice = await readExtraNotice(path.join(repoRoot, "deploy", "notices", "pdfjs.json"));
+    expect(notice).toMatchObject({ name: "pdf.js", version: PDFJS_IN_UNPDF.pdfjs, license: PDFJS_IN_UNPDF.license });
+    expect(isKnownBundledLicense(notice.license)).toBe(true);
+    const unpdf = path.join(repoRoot, "apps", "core", "node_modules", "unpdf");
+    const manifest: unknown = JSON.parse(await readFile(path.join(unpdf, "package.json"), "utf8"));
+    expect(Reflect.get(Object(manifest), "version")).toBe(PDFJS_IN_UNPDF.unpdf);
+    const bundle = await readFile(path.join(unpdf, "dist", "pdfjs.mjs"), "utf8");
+    expect(/apiVersion:`(\d+\.\d+\.\d+)`/.exec(bundle)?.[1]).toBe(PDFJS_IN_UNPDF.pdfjs);
+    const trimmed = (text: string): string => text.replace(/[ \t]+$/gm, "").trim();
+    const ours = trimmed(notice.texts.map((text) => text.text).join("\n"));
+    const shipped = await readdir(path.join(unpdf, "dist", "licenses"));
+    expect(shipped.length).toBeGreaterThan(0);
+    for (const file of shipped) {
+      expect(ours, file).toContain(trimmed(await readFile(path.join(unpdf, "dist", "licenses", file), "utf8")));
+    }
+    expect(listedInNotices(renderNotices("server", [notice])).map(refOf)).toEqual([`pdf.js@${PDFJS_IN_UNPDF.pdfjs}`]);
   });
 
   it("F-039/c1: a bundled package left out of the notices fails, naming it", async () => {

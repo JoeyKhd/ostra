@@ -18,5 +18,6 @@ export const readDeployFiles = async (root: string = repoRoot): Promise<DeployFi
     imageNamespace: await imageNamespace(root),
     runnerVersion: typeof runnerVersion === "string" ? runnerVersion : "",
     chromiumNotice: await readRepoFile("deploy/notices/chromium.json", root),
+    pdfjsNotice: await readRepoFile("deploy/notices/pdfjs.json", root),
   };
 };

@@ -12,6 +12,7 @@ import type { Instruction, Stage } from "./dockerfile.ts";
 import { buildPlan, dockerfileOf, imageBundles, imageNames } from "./images.ts";
 import type { ImageName } from "./images.ts";
 import { NOTICES_PATH } from "./notices.ts";
+import { PDFJS_IN_UNPDF, PDFJS_NOTICE_EXTRA } from "./pdfjs.ts";
 import { isYamlList, parseYaml, yamlAt, yamlPairs, yamlScalars } from "./yaml.ts";
 import type { Yaml } from "./yaml.ts";
 
@@ -29,7 +30,8 @@ export type ImageRule =
   | "no-agent"
   | "pruned-root"
   | "openssl"
-  | "chromium-pin";
+  | "chromium-pin"
+  | "pdfjs-notice";
 
 export type Problem = { readonly file: string; readonly line: number | null; readonly rule: ImageRule; readonly message: string };
 
@@ -46,6 +48,8 @@ export type DeployFiles = {
   readonly runnerVersion: string;
   /** Milestone 8: deploy/notices/chromium.json, the base image's Chromium notice. */
   readonly chromiumNotice: string;
+  /** Milestone 9: deploy/notices/pdfjs.json, the server image's notice of the pdf.js unpdf bundles. */
+  readonly pdfjsNotice: string;
 };
 
 /** An image reference pinned by tag and digest: `name:tag@sha256:<64 hex>`. */
@@ -356,6 +360,33 @@ const chromiumPin = (file: string, text: string, notice: string): Problem[] => {
   return problems;
 };
 
+/**
+ * Milestone 9 (ticket 07, F-150/c5): the server image's notices add the pdf.js unpdf bundles, from
+ * `deploy/notices/` copied into the build, by `deploy/notices/pdfjs.json` at `PDFJS_IN_UNPDF`'s version.
+ */
+const pdfjsNotice = (file: string, text: string, notice: string): Problem[] => {
+  const problem = (message: string, where = file): Problem => ({ file: where, line: null, rule: "pdfjs-notice", message });
+  const instructions = parseDockerfile(text);
+  const problems: Problem[] = [];
+  if (!instructions.some((instruction) => instruction.keyword === "RUN" && instruction.args.includes("notices-main.ts") && instruction.args.split(/\s+/).join(" ").includes(PDFJS_NOTICE_EXTRA))) {
+    problems.push(problem(`THIRD_PARTY_NOTICES must name the pdf.js unpdf bundles: notices-main.ts ${PDFJS_NOTICE_EXTRA}`));
+  }
+  if (!instructions.some((instruction) => instruction.keyword === "COPY" && /^deploy\/notices\/?\s+\/opt\/notices\/extra\/?$/.test(instruction.args.trim()))) {
+    problems.push(problem("the build must COPY deploy/notices/ /opt/notices/extra/, where notices-main.ts reads pdf.js's notice"));
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(notice);
+  } catch {
+    parsed = null;
+  }
+  const field = (key: string): unknown => (typeof parsed === "object" && parsed !== null ? Reflect.get(parsed, key) : undefined);
+  if (field("name") !== "pdf.js" || field("version") !== PDFJS_IN_UNPDF.pdfjs || field("license") !== PDFJS_IN_UNPDF.license || field("licenseFile") !== "pdfjs.LICENSE") {
+    problems.push(problem(`pdf.js's notice must name pdf.js at ${PDFJS_IN_UNPDF.pdfjs}, ${PDFJS_IN_UNPDF.license}, with pdfjs.LICENSE`, "deploy/notices/pdfjs.json"));
+  }
+  return problems;
+};
+
 /** The runner image installs no agent: in a box, the agent runs in the base image. */
 const noAgent = (file: string, instructions: readonly Instruction[]): Problem[] =>
   instructions
@@ -451,6 +482,7 @@ export const checkCompose = (text: string, version: string, namespace: string): 
 export const checkImages = (files: DeployFiles): readonly Problem[] => [
   ...imageNames.flatMap((name) => checkDockerfile(name, files.dockerfiles[name], files.entrypoint)),
   ...chromiumPin(dockerfileOf("base"), files.dockerfiles.base, files.chromiumNotice),
+  ...pdfjsNotice(dockerfileOf("server"), files.dockerfiles.server, files.pdfjsNotice),
   ...checkCompose(files.compose, files.releaseVersion, files.imageNamespace),
   ...(files.runnerVersion === files.releaseVersion
     ? []

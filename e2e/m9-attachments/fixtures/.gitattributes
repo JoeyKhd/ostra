@@ -1,0 +1,5 @@
+# Documents are bytes: never normalized.
+*.docx binary
+*.xlsx binary
+*.pptx binary
+*.pdf binary

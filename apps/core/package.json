@@ -6,7 +6,8 @@
   "license": "LicenseRef-Sustainable-Use-1.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing/document-fixtures": "./src/testing/document-fixtures.ts"
   },
   "scripts": {
     "dev": "node --watch src/main.ts",
@@ -32,7 +33,10 @@
     "@ostra/domain": "workspace:*",
     "@ostra/jobs": "workspace:*",
     "@ostra/protocol": "workspace:*",
+    "@xmldom/xmldom": "0.9.12",
+    "fflate": "0.8.3",
     "pg": "8.23.1",
+    "unpdf": "2.2.1",
     "ws": "8.23.0",
     "zod": "4.6.7"
   },

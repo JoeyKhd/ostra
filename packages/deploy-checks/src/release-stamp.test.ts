@@ -43,6 +43,7 @@ const copyCheckout = async (name: string): Promise<string> => {
     "deploy/server-entrypoint.sh",
     "deploy/compose.yaml",
     "deploy/notices/chromium.json",
+    "deploy/notices/pdfjs.json",
     ...chartNames.flatMap((chart) => [`deploy/helm/${chart}/Chart.yaml`, `deploy/helm/${chart}/values.yaml`]),
   ];
   for (const file of files) {

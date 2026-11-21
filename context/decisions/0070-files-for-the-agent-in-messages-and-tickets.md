@@ -35,14 +35,14 @@ A member steering an agent can't hand it a screenshot, a mock or a spec today: t
 ## Text out of documents (decided by the lead, Q334)
 
 - **Core reads the text, when the file comes in:** a member's upload, before the upload answers, and a ticket's file in the job that fetches it. The runner's image doesn't grow, and the box runs no parser of untrusted documents.
-- **What it reads:** `.docx` (paragraphs, headings as `#`, lists, tables as rows), `.xlsx` (each sheet under its name, its rows as tab-separated cells, the shared strings and the cells' values, never a formula's result recomputed), `.pptx` (each slide's text, in order) and `.pdf` (each page's text layer). The output is Markdown, headed by one line saying ostra extracted it and that it may miss layout, images and anything a scan holds.
+- **What it reads:** `.docx` (paragraphs, headings as `#`, lists, tables as rows), `.xlsx` (each sheet under its name, its rows as a Markdown table, the shared strings and the cells' values, never a formula's result recomputed), `.pptx` (each slide's text, in order) and `.pdf` (each page's text layer). The output is Markdown, headed by one line saying ostra extracted it and that it may miss layout, images and anything a scan holds.
 - **Nothing else:** no OCR (a scanned PDF has no text, and a model that takes PDFs reads the file), no `.doc`, `.xls`, `.ppt` or OpenDocument, and no text file (the agent reads those directly).
 - **With:** `unpdf` 2.2.1 (MIT) for PDFs, and ostra's own small Office reader over `fflate` 0.8.3 (MIT) to unzip and `@xmldom/xmldom` 0.9.12 (MIT) to parse. All three are pure JS with no dependencies of their own (research §5). `mammoth` was set aside because `jszip`'s `(MIT OR GPL-3.0-or-later)` fails the images' notices check, and `officeparser` because it pulls an OCR engine that fetches its data at run time.
 - **Safely:**
   - in a worker thread with a memory limit and 30 s *(working value)*, two at a time in each core process *(working value)*;
   - a zip read only for the parts named above, each entry's declared size checked before it's inflated, at most 2,000 entries and 100 MiB inflated *(working values)*;
   - XML with a `<!DOCTYPE` refused;
-  - pdf.js with `isEvalSupported: false` and no font loading, fetching or worker of its own;
+  - pdf.js with no `eval` (6.5 has none left), no WebAssembly from a document, and no font loading, fetching or worker of its own;
   - at most 1 MiB of text, cut with a note;
   - nothing in a document is run, fetched or followed.
 

@@ -1,0 +1,21 @@
+{
+  "name": "@ostra/e2e-m9-attachments",
+  "version": "0.0.0",
+  "description": "Milestone 9's documents for files in messages and tickets: the fixtures core's text reader is tested on and the demo attaches (tickets 07 and 18)",
+  "private": true,
+  "license": "LicenseRef-Sustainable-Use-1.0",
+  "type": "module",
+  "scripts": {
+    "fixtures": "node fixtures/make-fixtures.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run --maxWorkers=2"
+  },
+  "dependencies": {
+    "@ostra/core": "workspace:*"
+  },
+  "devDependencies": {
+    "eslint": "10.15.0",
+    "vitest": "5.1.1"
+  }
+}
