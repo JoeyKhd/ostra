@@ -64,6 +64,14 @@ const keyedOverlays: Readonly<Record<string, readonly KeyedOverlay[]>> = {
   "/tasks/[task-id]": [palette],
 };
 
+/**
+ * OSTRA_A11Y_ROUTES narrows a local run to the routes whose pattern starts with one of its
+ * comma-separated prefixes (`/organization/skills`), for checking a ticket's new pages without the
+ * whole walk. Unset, every route is checked, as the Proof workflow runs it.
+ */
+const onlyRoutes = (process.env["OSTRA_A11Y_ROUTES"] ?? "").split(",").map((prefix) => prefix.trim()).filter((prefix) => prefix !== "");
+const wanted = (visit: Visit): boolean => onlyRoutes.length === 0 || onlyRoutes.some((prefix) => visit.pattern.startsWith(prefix));
+
 /** Every route, and the task page in each "needs you" state: an approval card, a question's form, a spend cap. */
 const visits = (world: RoutesWorld): { readonly member: readonly Visit[]; readonly visitor: readonly Visit[] } => {
   const visit = (route: PanelRoute, label = route.pattern): Visit => ({ ...route, label, keyed: label === route.pattern ? (keyedOverlays[route.pattern] ?? []) : [] });
@@ -184,7 +192,9 @@ test("F-081/c2: the walk and the contrast check name every route of the panel", 
 /** Every route and every overlay it opens, in one theme: the walk's and the contrast check's failures, each failing the test. */
 const checkEverything = async (page: Page, theme: Theme, testInfo: TestInfo): Promise<void> => {
   const report: Report = { walk: [], contrast: [], disabled: [] };
-  const { member, visitor } = visits(world);
+  const all = visits(world);
+  const member = all.member.filter(wanted);
+  const visitor = all.visitor.filter(wanted);
   await signIn(page, world.username);
   await chooseTheme(page, theme);
   for (const visit of member) await checkVisit(page, visit, theme, report);

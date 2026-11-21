@@ -85,6 +85,14 @@ export const e2eRunnerName = "e2e-runner";
 export const e2eOpenAiStubPort = basePort + 3;
 export const e2eOpenAiStubBaseUrl = `http://127.0.0.1:${String(e2eOpenAiStubPort)}/v1`;
 export const e2eModelToken = "e2e-model-token-not-a-real-key";
+/**
+ * Milestone 8 (F-145, ticket 31): the fakes' own control address, on loopback, for a spec that
+ * changes what a fake serves while the stack runs (a push to the fake GitHub's skills repo).
+ */
+export const e2eFakeControlPort = basePort + 5;
+export const e2eFakeControlUrl = `http://127.0.0.1:${String(e2eFakeControlPort)}`;
+/** The fake GitHub's public repo of skills (`createFakeRepoTrees`), read anonymously: no installation covers its owner. */
+export const e2eSkillsRepo = { owner: "skills-org", name: "skills" } as const;
 /** One model the bundled catalog knows, and one it doesn't (a custom model). */
 export const e2eStubModels = ["claude-sonnet-4-5", "local-coder-7b"] as const;
 

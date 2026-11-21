@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 /** A section of the profile editor: a title, an optional count and inline note, then its body 10px down. */
 export const EditorSection = ({ title, count, note, children }: {
   readonly title: string;
-  readonly count?: number;
+  readonly count?: number | ReactNode;
   readonly note?: string;
   readonly children: ReactNode;
 }) => (

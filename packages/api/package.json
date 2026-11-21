@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./auth": "./src/auth/index.ts",
     "./testing": "./src/testing/index.ts",
+    "./testing/library-fakes": "./src/testing/library-fakes.ts",
     "./setup-timeline": "./src/routers/setup-timeline-schema.ts"
   },
   "scripts": {

@@ -98,13 +98,13 @@ describe("the rail and the context panel (F-147)", () => {
     expect(ids(member)).toEqual([
       [null, ["insights", "memory"]],
       ["shell.panel.fleet", ["runners", "box-sizes"]],
-      ["shell.panel.agents", ["agent-profiles"]],
+      ["shell.panel.agents", ["agent-profiles", "skills"]],
       ["shell.panel.people", ["members"]],
     ]);
     expect(ids({ admin: true, instanceAdmin: false })).toEqual([
       [null, ["insights", "spend", "memory"]],
       ["shell.panel.fleet", ["runners", "box-sizes", "registry"]],
-      ["shell.panel.agents", ["agent-profiles", "models"]],
+      ["shell.panel.agents", ["agent-profiles", "skills", "models"]],
       ["shell.panel.connections", ["github", "linear"]],
       ["shell.panel.people", ["members", "audit"]],
     ]);

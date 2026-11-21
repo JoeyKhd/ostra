@@ -8,6 +8,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { devDataDir, embeddedInitdbFlags, longPathHint, migrateDeploy } from "@ostra/db/dev";
 import { createJobs } from "@ostra/jobs";
@@ -24,6 +25,11 @@ const allowDefaultPassword = process.env["OSTRA_ALLOW_DEFAULT_PASSWORD"] === "tr
 const pseudoLocale = process.env["OSTRA_PSEUDO_LOCALE"] === "1";
 /** F-115 (ticket 45): OSTRA_E2E_EMAIL_LOCKED=1 sets the install's email by its settings (`e2eLockedEmail`). */
 const emailSettings = process.env["OSTRA_E2E_EMAIL_LOCKED"] === "1" ? e2eLockedEmail : {};
+/**
+ * Milestone 8 (ticket 31): OSTRA_E2E_DEV=1 serves the panel with `next dev` instead of the
+ * production build, for working on a screen against the stack. The specs always run on the build.
+ */
+const devPanel = process.env["OSTRA_E2E_DEV"] === "1";
 const webDir = path.resolve(import.meta.dirname, "..");
 const repoRoot = path.resolve(webDir, "..", "..");
 
@@ -113,13 +119,16 @@ const main = async (): Promise<void> => {
   const panelUrl = `http://localhost:${String(e2ePort)}`;
   const coreUrl = `http://127.0.0.1:${String(e2eCorePort)}`;
   const nextBin = path.join(webDir, "node_modules", "next", "dist", "bin", "next");
-  const panel = spawn(process.execPath, [nextBin, "start", "--port", String(e2ePort)], {
+  const panel = spawn(process.execPath, [nextBin, devPanel ? "dev" : "start", "--port", String(e2ePort)], {
     cwd: webDir,
     stdio: "inherit",
     env: {
       PATH: process.env["PATH"] ?? "",
       SYSTEMROOT: process.env["SYSTEMROOT"] ?? "",
-      NODE_ENV: "production",
+      NODE_ENV: devPanel ? "development" : "production",
+      // F-145 (ticket 31): the library's calls out (a registry, an MCP server's test call, a site's
+      // index, the skills search) reach the API's in-memory fakes, never a real host (`library-fetch.ts`).
+      NODE_OPTIONS: `--import ${pathToFileURL(path.join(webDir, "e2e", "library-fetch.ts")).href}`,
       DATABASE_URL: databaseUrl,
       OSTRA_DATA_DIR: dataDir,
       OSTRA_PUBLIC_URL: panelUrl,

@@ -105,9 +105,11 @@ export type EditorPanelProps = {
   readonly onArchive: (() => void) | null;
   /** The `{model} in each project` group, after `Profile` (F-135). */
   readonly modelGroup?: ReactNode;
+  /** Milestone 8 (F-145): the `Skills and MCP` group, right after `Profile`. */
+  readonly libraryGroup?: ReactNode;
 };
 
-export const EditorPanel = ({ detail, loading, draft, readOnly, builtIn, members, onChange, onArchive, modelGroup }: EditorPanelProps) => {
+export const EditorPanel = ({ detail, loading, draft, readOnly, builtIn, members, onChange, onArchive, modelGroup, libraryGroup }: EditorPanelProps) => {
   const id = useId();
   const nameOf = (memberId: MemberId): string =>
     members.find((member) => member.memberId === memberId)?.name ??
@@ -154,6 +156,7 @@ export const EditorPanel = ({ detail, loading, draft, readOnly, builtIn, members
           </>
         )}
       </Group>
+      {libraryGroup}
       {modelGroup}
 
       <Group

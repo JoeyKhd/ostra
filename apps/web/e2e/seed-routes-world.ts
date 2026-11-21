@@ -16,6 +16,8 @@ import type { TaskEvent } from "@ostra/protocol";
 import { taskEventSchema } from "@ostra/protocol";
 import { z } from "zod";
 
+import { libraryWords, seedLibrary } from "./seed-library.ts";
+
 const args = z.strictObject({ databaseUrl: z.string(), password: z.string(), tag: z.string().regex(/^[a-z0-9-]{1,24}$/) }).parse(JSON.parse(process.argv[2] ?? "{}"));
 const db = createDb(args.databaseUrl);
 
@@ -300,6 +302,10 @@ const cachedTicket = async (key: string, title: string, parentExternalId: string
 const parentTicket = await cachedTicket("RTE-1", "Show the app's version", null);
 await cachedTicket("RTE-2", "Add a version endpoint", parentTicket.externalId);
 
+// Milestone 8 (F-145, ticket 31): the library in its fullest state, for its four pages.
+const library = await seedLibrary(db, { organizationId, adminMemberId: admin.id, memberId: plain.seeded.memberId, profileId: profile.id });
+for (const word of libraryWords()) data(word);
+
 // A pending invitation, for the invitation page a new member opens.
 const invitation = await db.invitation.create({
   data: { id: randomUUID(), organizationId, email: data(`routes-${args.tag}@example.com`), role: "member", expiresAt: new Date(Date.now() + 7 * 86_400_000), inviterId: admin.userId },
@@ -317,6 +323,7 @@ process.stdout.write(
     poolId: pool.id,
     runnerId: runner.id,
     profileId: profile.id,
+    libraryItemId: library.itemId,
     invitationId: invitation.id,
     automationId: automation.id,
     parentTicketId: parentTicket.id,

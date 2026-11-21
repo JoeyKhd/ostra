@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
-import { modelIdSchema } from "@ostra/protocol";
+import { libraryItemIdSchema, modelIdSchema } from "@ostra/protocol";
 import type { AgentProfileId, ApprovalRulePreset } from "@ostra/protocol";
 
 import { PageFrame } from "@/components/shell/page-frame";
@@ -37,6 +37,10 @@ import { RulesSection } from "./rules-section";
 import { RunnerLabelsSection } from "./runner-labels-section";
 import type { Coverage } from "./rules-section";
 import { SkillsSection } from "./skills-section";
+import type { SectionLibrary } from "./skills-section";
+import { libraryChanges, limitRefusal, PROFILE_LIMITS, profileCounts } from "@/components/library/library-model";
+import type { ItemKind, LibraryItem, Pickability, ProfileCounts, ProfileLibrary } from "@/components/library/library-model";
+import { AttachPicker, CountOfLimit, LibraryCountsGroup, LibraryGroups, LimitRefusal } from "./profile-library";
 
 // One agent profile's editor (F-021, F-026, F-063; agent-profile.md): the main column holds the
 // agent and model, instructions, skills, MCP servers and approval rules; the panel holds plan
@@ -309,6 +313,72 @@ const eyebrowOf = (detail: ProfileDetail | null, savedAt: number | null): string
   return t("agentProfiles.editor.eyebrow", { age: age === "now" ? t("agentProfiles.editor.justNow") : t("agentProfiles.editor.eyebrowAgo", { age }) });
 };
 
+const NO_LIBRARY: ProfileLibrary = { attached: [], inherited: [] };
+
+/**
+ * Milestone 8 (F-145; agent-profile-library.md): a profile's library items in its editor. The
+ * draft's attached IDs start from what's saved; a pick or a detach changes only the draft, and
+ * "Save profile" applies it. The section's count, the picker and the refusal at a limit.
+ */
+const useProfileLibrary = (input: {
+  readonly saved: ProfileLibrary;
+  readonly loaded: boolean;
+  readonly items: readonly LibraryItem[];
+  readonly own: { readonly skills: readonly { readonly name: string }[]; readonly servers: readonly { readonly name: string }[] };
+  readonly profileName: string;
+  readonly readOnly: boolean;
+  readonly admin: boolean;
+}) => {
+  const savedIds = useMemo(() => input.saved.attached.map((entry): string => entry.itemId), [input.saved]);
+  const [draft, setDraft] = useState<readonly string[] | null>(null);
+  const [refusal, setRefusal] = useState<{ readonly kind: ItemKind; readonly text: string; readonly at: number } | null>(null);
+  useEffect(() => {
+    if (input.loaded && draft === null) setDraft(savedIds);
+  }, [input.loaded, draft, savedIds]);
+  const current = draft ?? savedIds;
+  const byId = useMemo(() => new Map<string, LibraryItem>(input.items.map((item) => [item.itemId, item])), [input.items]);
+  const kindOf = (id: string): ItemKind | null => byId.get(id)?.kind ?? input.saved.attached.find((entry) => entry.itemId === id)?.kind ?? input.saved.inherited.find((entry) => entry.itemId === id)?.kind ?? null;
+  const inherited = input.saved.inherited.map((entry): string => entry.itemId);
+  const counts: ProfileCounts = profileCounts({ skills: input.own.skills.length, servers: input.own.servers.length }, { attached: current, inherited }, kindOf);
+  const changes = libraryChanges(savedIds, current);
+  const dirty = changes.attach.length > 0 || changes.detach.length > 0;
+  // The refusal stays until the section's count changes.
+  const total = (kind: ItemKind): number => (kind === "skill" ? counts.skills.total : counts.servers.total);
+  const shownRefusal = refusal !== null && total(refusal.kind) === refusal.at ? refusal : null;
+  const profile = { ownSkillNames: input.own.skills.map((skill) => skill.name), ownServerNames: input.own.servers.map((server) => server.name), draft: { attached: current, inherited }, counts };
+  const onPick = (item: LibraryItem, pickability: Pickability): void => {
+    switch (pickability.kind) {
+      case "attachable":
+        setDraft([...current, item.itemId]);
+        return;
+      case "attached":
+        setDraft(current.filter((id) => id !== item.itemId));
+        return;
+      case "at-limit":
+        setRefusal({ kind: item.kind, text: limitRefusal(item.kind, item.name, input.profileName, counts), at: total(item.kind) });
+        return;
+      case "every-profile":
+      case "name-taken":
+      case "needs-sign-in":
+      case "source-not-allowed":
+        return;
+      default:
+        pickability satisfies never;
+    }
+  };
+  const section = (kind: ItemKind): SectionLibrary => {
+    const hasRows = current.some((id) => kindOf(id) === kind) || savedIds.some((id) => kindOf(id) === kind) || input.saved.inherited.some((entry) => entry.kind === kind);
+    return {
+      count: <CountOfLimit n={kind === "skill" ? counts.skills.total : counts.servers.total} limit={kind === "skill" ? PROFILE_LIMITS.skills : PROFILE_LIMITS.servers} />,
+      hasRows,
+      groups: <LibraryGroups kind={kind} saved={input.saved} draft={current} items={byId} readOnly={input.readOnly} onChange={setDraft} />,
+      picker: input.readOnly ? null : <AttachPicker first={kind} items={input.items} profileName={input.profileName} profile={profile} admin={input.admin} onPick={onPick} />,
+      refusal: shownRefusal?.kind === kind ? <LimitRefusal text={shownRefusal.text} /> : null,
+    };
+  };
+  return { counts, changes, dirty, section, reset: () => { setDraft(null); setRefusal(null); } };
+};
+
 /** Organization › Agent profiles › one profile, or `new` (F-021). */
 export const AgentProfileEditor = ({ profileId }: { readonly profileId: AgentProfileId | null }) => {
   const trpc = useTRPC();
@@ -349,15 +419,47 @@ export const AgentProfileEditor = ({ profileId }: { readonly profileId: AgentPro
   const data = detail.data ?? null;
   const builtIn = data?.builtIn ?? false;
   const readOnly = !admin || (data !== null && !data.canEdit);
-  const dirty = draft !== null && saved !== null && isDirty(draft, saved);
+  // Milestone 8 (F-145): the profile's library items, and the library to attach from.
+  const libraryItems = useQuery(trpc.library.list.queryOptions());
+  const library = useProfileLibrary({
+    saved: data?.library ?? NO_LIBRARY,
+    loaded: profileId === null ? loaded !== null : data !== null,
+    items: libraryItems.data ?? [],
+    own: { skills: draft?.skills ?? [], servers: draft?.servers ?? [] },
+    profileName: nameOr(draft?.name, data?.name ?? t("agentProfiles.editor.newTitle")),
+    readOnly,
+    admin,
+  });
+  const attach = useMutation(trpc.library.attach.mutationOptions());
+  const detach = useMutation(trpc.library.detach.mutationOptions());
+  const [libraryError, setLibraryError] = useState<string | null>(null);
+  const ownDirty = draft !== null && saved !== null && isDirty(draft, saved);
+  const dirty = ownDirty || library.dirty;
   const problem = draft === null ? null : draftProblem(draft);
   useLeaveGuard(dirty && !readOnly, setLeaving);
 
   const coverage = useCoverage(draft ?? newDraft("opencode", null), openKey);
 
+  /** The library items the draft attaches and detaches, applied once the profile is saved: detaches first, to make room. */
+  const applyLibrary = async (target: AgentProfileId): Promise<boolean> => {
+    setLibraryError(null);
+    try {
+      for (const itemId of library.changes.detach) await detach.mutateAsync({ profileId: target, itemId: libraryItemIdSchema.parse(itemId) });
+      for (const itemId of library.changes.attach) await attach.mutateAsync({ profileId: target, itemId: libraryItemIdSchema.parse(itemId) });
+      return true;
+    } catch (error) {
+      setLibraryError(error instanceof Error ? error.message : t("errors.unknown"));
+      return false;
+    } finally {
+      // The draft starts again from what's saved, once the profile's own answer has it.
+      await Promise.all([queryClient.invalidateQueries({ queryKey: trpc.library.pathKey() }), queryClient.invalidateQueries({ queryKey: trpc.agentProfiles.get.queryKey({ profileId: target }) })]);
+      library.reset();
+    }
+  };
   const save = useMutation(
     trpc.agentProfiles.save.mutationOptions({
       onSuccess: async (result) => {
+        await applyLibrary(result.profileId);
         setSavedAt(Date.now());
         await queryClient.invalidateQueries({ queryKey: trpc.agentProfiles.list.queryKey() });
         if (profileId === null) {
@@ -431,8 +533,17 @@ export const AgentProfileEditor = ({ profileId }: { readonly profileId: AgentPro
     setOpenKey(rule.key);
   };
   const submit = (): void => {
+    // Only library items changed: the profile itself needn't be saved again.
+    if (profileId !== null && !ownDirty) {
+      void applyLibrary(profileId).then(async (applied) => {
+        await queryClient.invalidateQueries({ queryKey: trpc.agentProfiles.get.queryKey({ profileId }) });
+        if (applied) setSavedAt(Date.now());
+      });
+      return;
+    }
     save.mutate(saveInputOf(current, profileId, newId, saved?.effort ?? "default"));
   };
+  const saving = save.isPending || attach.isPending || detach.isPending;
   const newSkill = (): SkillDraft => ({ key: nextKey("skill"), name: "", body: "", files: [] });
   const title = current.name.trim() === "" ? (profileId === null ? t("agentProfiles.editor.newTitle") : (data?.name ?? "")) : current.name;
   // A removed member can be granted nothing (ADR 0053): the list keeps them for history only.
@@ -444,8 +555,8 @@ export const AgentProfileEditor = ({ profileId }: { readonly profileId: AgentPro
       wideProperties
       actions={
         readOnly ? undefined : (
-          <Button variant="primary" onClick={submit} disabled={!dirty || problem !== null || save.isPending} data-action="save-profile">
-            {save.isPending ? t("agentProfiles.editor.saving") : t("agentProfiles.editor.save")}
+          <Button variant="primary" onClick={submit} disabled={!dirty || (ownDirty && problem !== null) || saving} data-action="save-profile">
+            {saving ? t("agentProfiles.editor.saving") : t("agentProfiles.editor.save")}
           </Button>
         )
       }
@@ -459,6 +570,7 @@ export const AgentProfileEditor = ({ profileId }: { readonly profileId: AgentPro
           members={memberList}
           onChange={update}
           onArchive={readOnly || builtIn ? null : () => { setConfirmArchive(true); }}
+          libraryGroup={loading ? undefined : <LibraryCountsGroup counts={library.counts} />}
           modelGroup={
             current.providerId === null ? (
               <ModelInProjects option={highlighted ?? modelOptions.data?.find((option) => sameModel(option.name, current.model))} organizationAdmin={admin} />
@@ -481,6 +593,7 @@ export const AgentProfileEditor = ({ profileId }: { readonly profileId: AgentPro
                 : t("agentProfiles.editor.modelPicker.savedNoKey", { projects: savedNoKey.join(", ") })}</p>
         ) : null}
         {save.error === null ? null : <p role="alert" className="mt-2 text-ui text-red">{errorText(save.error)}</p>}
+        {libraryError === null ? null : <p role="alert" className="mt-2 text-ui text-red" data-testid="library-save-error">{libraryError}</p>}
         {archive.error === null ? null : <p role="alert" className="mt-2 text-ui text-red">{errorText(archive.error)}</p>}
 
         {loading ? (
@@ -502,8 +615,8 @@ export const AgentProfileEditor = ({ profileId }: { readonly profileId: AgentPro
                 <Instructions value={current.instructions} readOnly={readOnly} onChange={(instructions) => { update({ ...current, instructions }); }} />
               )}
             </EditorSection>
-            <SkillsSection skills={current.skills} readOnly={readOnly} newSkill={newSkill} onChange={(skills) => { update({ ...current, skills }); }} />
-            <McpSection servers={current.servers} readOnly={readOnly} onChange={(servers) => { update({ ...current, servers }); }} />
+            <SkillsSection skills={current.skills} readOnly={readOnly} newSkill={newSkill} onChange={(skills) => { update({ ...current, skills }); }} library={library.section("skill")} />
+            <McpSection servers={current.servers} readOnly={readOnly} onChange={(servers) => { update({ ...current, servers }); }} library={library.section("mcp_server")} />
             <RunnerLabelsSection profileId={profileId} labels={data?.runnerLabels ?? []} readOnly={readOnly} />
             <RulesSection
               rules={current.rules}

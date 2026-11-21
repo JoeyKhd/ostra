@@ -1,5 +1,6 @@
 import {
   BellIcon,
+  BlocksIcon,
   BookOpenIcon,
   BoxIcon,
   Building2Icon,
@@ -62,6 +63,7 @@ const icons: Readonly<Record<ShellIcon, LucideIcon>> = {
   mail: MailIcon,
   user: UserIcon,
   "monitor-smartphone": MonitorSmartphoneIcon,
+  blocks: BlocksIcon,
 };
 
 export const ShellIconView = ({ name, className }: { readonly name: ShellIcon; readonly className?: string }) => {

@@ -14,7 +14,9 @@ import { t } from "@/lib/messages";
 import { EditorSection } from "./editor-section";
 import { commandLine, nextKey, serverProblem } from "./editor-draft";
 import type { ServerDraft } from "./editor-draft";
+import { GroupLabel } from "./profile-library";
 import { AddButton, RemoveButton } from "./rules-section";
+import type { SectionLibrary } from "./skills-section";
 
 // The editor's MCP servers section and its Sheet (agent-profile.md, "MCP servers"). An HTTP
 // server's header values are write-only: they go to the secret store with the save, and come back
@@ -139,15 +141,17 @@ const ServerSheet = ({ server, others, onDone, onClose }: {
   );
 };
 
-export const McpSection = ({ servers, readOnly, onChange }: {
+export const McpSection = ({ servers, readOnly, onChange, library }: {
   readonly servers: readonly ServerDraft[];
   readonly readOnly: boolean;
   readonly onChange: (servers: readonly ServerDraft[]) => void;
+  readonly library?: SectionLibrary;
 }) => {
   const [editing, setEditing] = useState<ServerDraft | null>(null);
   return (
-    <EditorSection title={t("agentProfiles.editor.mcp")} count={servers.length} note={t("agentProfiles.editor.mcpNote")}>
-      {servers.length === 0 ? (
+    <EditorSection title={t("agentProfiles.editor.mcp")} count={library?.count ?? servers.length} note={t("agentProfiles.editor.mcpNote")}>
+      {library?.hasRows === true && servers.length > 0 ? <GroupLabel label={t("agentProfiles.library.itsOwn")} count={servers.length} /> : null}
+      {servers.length === 0 && library?.hasRows === true ? null : servers.length === 0 ? (
         <p className="flex h-10 items-center border-y border-line text-ui text-faint">{t("agentProfiles.editor.noMcp")}</p>
       ) : (
         <ul className="border-t border-line" data-testid="mcp-servers">
@@ -172,12 +176,15 @@ export const McpSection = ({ servers, readOnly, onChange }: {
           })}
         </ul>
       )}
+      {library?.groups}
       {readOnly ? null : (
         <div className="mt-2 flex flex-wrap gap-3">
           <AddButton onClick={() => { setEditing({ key: nextKey("s"), transport: "http", name: "", url: "", headers: [], readOnly: false }); }}>{t("agentProfiles.editor.addHttp")}</AddButton>
           <AddButton onClick={() => { setEditing({ key: nextKey("s"), transport: "stdio", name: "", command: "", args: "", env: [], readOnly: false }); }}>{t("agentProfiles.editor.addStdio")}</AddButton>
+          {library?.picker}
         </div>
       )}
+      {library?.refusal}
       {editing === null ? null : (
         <ServerSheet
           server={editing}

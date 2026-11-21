@@ -37,7 +37,8 @@ export type ShellIcon =
   | "hard-drive"
   | "mail"
   | "user"
-  | "monitor-smartphone";
+  | "monitor-smartphone"
+  | "blocks";
 
 export type HomeRow = "overview" | "board" | "all-tasks";
 export type ProjectRow = "tasks" | "needs-approval" | "inbox" | "boards" | "environment" | "automations" | "memory" | "insights" | "settings";
@@ -49,6 +50,7 @@ export type OrganizationRow =
   | "box-sizes"
   | "registry"
   | "agent-profiles"
+  | "skills"
   | "models"
   | "github"
   | "linear"
@@ -150,6 +152,8 @@ export const organizationGroups: readonly RowGroup<OrganizationRow>[] = [
     label: "shell.panel.agents",
     rows: [
       { id: "agent-profiles", href: "/organization/agent-profiles", label: "shell.agentProfiles", icon: "sliders-horizontal", gate: "member" },
+      // Milestone 8 (F-145, ticket 31; library.md): the skills and MCP library, every member's to read.
+      { id: "skills", href: "/organization/skills", label: "shell.skills", icon: "blocks", gate: "member" },
       { id: "models", href: "/organization/models", label: "shell.models", icon: "cpu", gate: "admin" },
     ],
   },
@@ -255,6 +259,10 @@ export const pagePlaces: readonly { readonly pattern: string; readonly place: Pl
   { pattern: "/organization/agent-profiles", place: organization("agent-profiles") },
   { pattern: "/organization/agent-profiles/new", place: organization("agent-profiles") },
   { pattern: "/organization/agent-profiles/[profile-id]", place: organization("agent-profiles") },
+  { pattern: "/organization/skills", place: organization("skills") },
+  { pattern: "/organization/skills/marketplace", place: organization("skills") },
+  { pattern: "/organization/skills/suggestions", place: organization("skills") },
+  { pattern: "/organization/skills/[item-id]", place: organization("skills") },
   { pattern: "/organization/models", place: organization("models") },
   { pattern: "/organization/github", place: organization("github") },
   { pattern: "/organization/linear", place: organization("linear") },

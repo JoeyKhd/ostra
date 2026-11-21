@@ -5,14 +5,17 @@
 // address for the server's OSTRA_GITHUB_API_URL. Both stop on SIGTERM or SIGINT.
 
 import { writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { Server } from "node:http";
 import path from "node:path";
 
 import { createFakeGitHub } from "@ostra/adapter-github/testing";
 import type { FakeGitHub } from "@ostra/adapter-github/testing";
-import { createFakeLinear, createScenarioBrain, startAnthropicStub, startFakeResendApi, startOpenAiStub } from "@ostra/adapter-sdk/testing";
+import { createFakeLinear, createFakeRepoTrees, createScenarioBrain, movedSkillTree, startAnthropicStub, startFakeResendApi, startOpenAiStub } from "@ostra/adapter-sdk/testing";
+import { repoFullNameSchema } from "@ostra/protocol";
 import type { FakeLinear, FakeResendApi } from "@ostra/adapter-sdk/testing";
 
-import { e2eChangesHeads, e2eGitHubMember, e2eGitHubOrgB, e2eModelToken, e2eOpenAiStubPort, e2eRepo, e2eStubModels, e2eStubPort } from "./settings.ts";
+import { e2eChangesHeads, e2eFakeControlPort, e2eGitHubMember, e2eGitHubOrgB, e2eModelToken, e2eOpenAiStubPort, e2eRepo, e2eSkillsRepo, e2eStubModels, e2eStubPort } from "./settings.ts";
 
 export type E2eFakes = {
   readonly github: FakeGitHub;
@@ -42,9 +45,14 @@ export const startFakes = async (): Promise<E2eFakes> => {
     port: e2eOpenAiStubPort,
   });
 
+  // Milestone 8 (F-145, ticket 31): a public repo of skills on an account no installation covers,
+  // read at a commit anonymously, as an admin installs `skills-org/skills@pdf` by reference.
+  const trees = createFakeRepoTrees(e2eSkillsRepo.owner);
+
   // A fake GitHub the panel and core talk to through OSTRA_GITHUB_API_URL (ticket 37): one org with
   // one repo, and an App whose key and webhook secret the setup spec types into the panel.
   const github = await createFakeGitHub({
+    trees,
     // F-136: a second account with the App installed, waiting to be linked, and a second App another account owns.
     otherAccounts: [{ login: e2eGitHubOrgB.login, id: e2eGitHubOrgB.id, type: "Organization", installationId: e2eGitHubOrgB.installationId }],
     secondApp: { slug: "client-c-ostra", owner: { login: "client-c", id: 6_003, type: "Organization", installationId: 9 } },
@@ -85,6 +93,9 @@ export const startFakes = async (): Promise<E2eFakes> => {
       },
       // F-098 (ticket 39): a second repo of the same installation, for a project with several repos.
       { id: 4_003, owner: e2eRepo.owner, name: "test2", defaultBranch: "main", branches: ["main"], files: { "README.md": "# test2\n" } },
+      // F-145 (ticket 31): the skills repos the trees above hold, public and private.
+      { id: 4_010, owner: e2eSkillsRepo.owner, name: e2eSkillsRepo.name, defaultBranch: "main", branches: ["main"], files: {}, private: false },
+      { id: 4_011, owner: e2eSkillsRepo.owner, name: "private-skills", defaultBranch: "main", branches: ["main"], files: {} },
     ],
   });
 
@@ -96,7 +107,24 @@ export const startFakes = async (): Promise<E2eFakes> => {
   // Milestone 3 (ticket 45): a fake Resend API, whose key the email settings spec types into the panel.
   const resend = await startFakeResendApi();
 
+  // F-145 (ticket 31): the fakes' control, on loopback: `POST /skills/push` moves the skills repo's
+  // `main` on (`movedSkillTree`: the PDF skill changed and a file added), as a push upstream would,
+  // so core's update check finds it.
+  const control: Server = createServer((request, response) => {
+    if (request.method === "POST" && request.url === "/skills/push") {
+      const sha = trees.commit(repoFullNameSchema.parse(`${e2eSkillsRepo.owner}/${e2eSkillsRepo.name}`), "main", movedSkillTree);
+      response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ sha }));
+      return;
+    }
+    response.writeHead(404).end();
+  });
+  await new Promise<void>((resolve, reject) => {
+    control.once("error", reject);
+    control.listen(e2eFakeControlPort, "127.0.0.1", resolve);
+  });
+
   const close = async (): Promise<void> => {
+    await new Promise<void>((resolve) => { control.close(() => { resolve(); }); });
     await resend.close().catch(() => undefined);
     await linear.close().catch(() => undefined);
     await github.close().catch(() => undefined);

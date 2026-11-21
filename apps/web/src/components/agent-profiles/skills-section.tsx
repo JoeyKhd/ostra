@@ -2,6 +2,7 @@
 
 import { BookOpenIcon, FileIcon } from "lucide-react";
 import { useId, useRef, useState } from "react";
+import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
@@ -12,6 +13,7 @@ import { plural, t } from "@/lib/messages";
 import { EditorSection } from "./editor-section";
 import { pickedFileProblem, skillDescription, skillProblem, withFile } from "./editor-draft";
 import type { SkillDraft, SkillFileDraft, SkillProblem } from "./editor-draft";
+import { GroupLabel } from "./profile-library";
 import { AddButton, RemoveButton } from "./rules-section";
 import { uploadSkillFile } from "./skill-file-upload";
 
@@ -124,16 +126,28 @@ const SkillSheet = ({ skill, others, onDone, onClose }: {
   );
 };
 
-export const SkillsSection = ({ skills, readOnly, onChange, newSkill }: {
+/** Milestone 8 (F-145; agent-profile-library.md): the section's library groups, its count against the limit, the picker and the refusal. */
+export type SectionLibrary = {
+  readonly count: ReactNode;
+  /** Whether any library row shows: then the own rows get their `Its own` label. */
+  readonly hasRows: boolean;
+  readonly groups: ReactNode;
+  readonly picker: ReactNode;
+  readonly refusal: ReactNode;
+};
+
+export const SkillsSection = ({ skills, readOnly, onChange, newSkill, library }: {
   readonly skills: readonly SkillDraft[];
   readonly readOnly: boolean;
   readonly onChange: (skills: readonly SkillDraft[]) => void;
   readonly newSkill: () => SkillDraft;
+  readonly library?: SectionLibrary;
 }) => {
   const [editing, setEditing] = useState<SkillDraft | null>(null);
   return (
-    <EditorSection title={t("agentProfiles.editor.skills")} count={skills.length} note={t("agentProfiles.editor.skillsNote")}>
-      {skills.length === 0 ? (
+    <EditorSection title={t("agentProfiles.editor.skills")} count={library?.count ?? skills.length} note={t("agentProfiles.editor.skillsNote")}>
+      {library?.hasRows === true && skills.length > 0 ? <GroupLabel label={t("agentProfiles.library.itsOwn")} count={skills.length} /> : null}
+      {skills.length === 0 && library?.hasRows === true ? null : skills.length === 0 ? (
         <p className="flex min-h-10 items-center border-y border-line py-2 text-ui text-faint">{t("agentProfiles.editor.noSkills")}</p>
       ) : (
         <ul className="border-t border-line" data-testid="skills">
@@ -153,7 +167,9 @@ export const SkillsSection = ({ skills, readOnly, onChange, newSkill }: {
           ))}
         </ul>
       )}
-      {readOnly ? null : <div className="mt-2"><AddButton onClick={() => { setEditing(newSkill()); }}>{t("agentProfiles.editor.addSkill")}</AddButton></div>}
+      {library?.groups}
+      {readOnly ? null : <div className="mt-2 flex flex-wrap gap-3"><AddButton onClick={() => { setEditing(newSkill()); }}>{t("agentProfiles.editor.addSkill")}</AddButton>{library?.picker}</div>}
+      {library?.refusal}
       {editing === null ? null : (
         <SkillSheet
           skill={editing}

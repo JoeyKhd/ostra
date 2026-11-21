@@ -136,7 +136,7 @@ Head: `Organization`. Rows in groups, each gated as today:
 - **`Agents`:** `Agent profiles` (count), **`Skills and MCP`** (new in milestone 8, F-145, `blocks`; `library.md`), and `Models` (admins).
 - **`Connections`** (admins): `GitHub`, `Linear`.
 - **`People`:** `Members` (count), `Audit log` (admins).
-- **`Instance`** (the instance admin): `Accounts`, `Storage`, `Email`.
+- **`Instance`** (the instance admin): `Accounts`, `Storage`, `Email`, and **`Previews`** (new in milestone 8's second batch, approved 2026-11-21: `app-window`, `/instance/previews`, `instance-preview-domain.md`). Its row lands with its page (ticket 26), so the panel never links to a page that isn't there.
 
 A group whose rows are all hidden from the member is hidden too.
 
