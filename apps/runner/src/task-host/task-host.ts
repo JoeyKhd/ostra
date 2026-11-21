@@ -189,9 +189,8 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
       return run === undefined ? done({ result: "rejected", reason: "unknown-session" }) : run.setEffort(command.body);
     },
     // Protocol minor 7 (milestone 8, ADR 0068): the app's processes (ticket 12), a member's
-    // screenshot (ticket 13) and the views (ticket 22's tunnel), by the session's box. The browser
-    // view is refused until ticket 18 serves it: the runner reports `stream: false` until then, so
-    // core sends no `screenshot.take` either.
+    // screenshot (ticket 13) and the views (ticket 22's tunnel, ticket 18's browser view), by the
+    // session's box.
     "app.start": (command) => {
       const run = runs.get(command.body.sessionId);
       return run === undefined ? done({ result: "rejected", reason: "unknown-session" }) : run.appStart(command.body);
@@ -214,8 +213,11 @@ export const createTaskHost = (options: TaskHostOptions): TaskHost => {
       // No session here: none of its views is open either.
       return run === undefined ? done({ result: "done", reason: "unknown-session" }) : run.previewClose(command.body);
     },
-    // The browser view's input on the HTTP carrier: ticket 18's.
-    "preview.input": () => done({ result: "rejected", reason: "not-supported" }),
+    // The browser view's input on the HTTP carrier (Q306): the batch names one of the box's open views.
+    "preview.input": (command) => {
+      const run = runs.get(command.body.sessionId);
+      return run === undefined ? done({ result: "rejected", reason: "unknown-session" }) : run.previewInput(command.body);
+    },
     // The `host` executor builds no snapshot image (ADR 0038), so it refuses a build.
     "snapshot-build": () => done({ result: "rejected", reason: "not-supported" }),
   };

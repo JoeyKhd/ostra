@@ -8,7 +8,9 @@ import type { DevToolsClient, DevToolsEvent } from "./devtools-client.ts";
 // view) build on it. Every call has the client's deadline; every reply is checked. A page's
 // content (its HTML, its text, a frame) is returned to the caller and never logged here.
 //
-// Ported from spikes/box-browser-stream/src/cdp/page.ts and src/sidecar/screencast.ts.
+// Ported from spikes/box-browser-stream/src/cdp/page.ts and src/sidecar/screencast.ts. Ticket 18
+// adds what the shared page of the browser view needs: a navigation that doesn't wait for the load
+// (the frames show it), a reload, and the reach rule on every document the page loads.
 
 const createTargetSchema = z.looseObject({ targetId: z.string().min(1) });
 const attachSchema = z.looseObject({ sessionId: z.string().min(1) });
@@ -19,6 +21,8 @@ const evaluateSchema = z.looseObject({
   exceptionDetails: z.looseObject({ text: z.string() }).optional(),
 });
 const layoutSchema = z.looseObject({ cssContentSize: z.looseObject({ width: z.number(), height: z.number() }) });
+/** A document request DevTools' Fetch domain paused, by its ID and its address. */
+const pausedSchema = z.looseObject({ requestId: z.string().min(1), request: z.looseObject({ url: z.string() }) });
 const anything = z.looseObject({});
 
 /** A screencast frame as `Page.screencastFrame` gives it: its picture, its number for the ack, and the page's size. */
@@ -67,6 +71,8 @@ export type MouseInput = {
   readonly x: number;
   readonly y: number;
   readonly button?: "none" | "left" | "middle" | "right";
+  /** The buttons held down, as a mask (left 1, right 2, middle 4): a drag's moves name them. */
+  readonly buttons?: number;
   readonly clickCount?: number;
   readonly deltaX?: number;
   readonly deltaY?: number;
@@ -89,6 +95,16 @@ export type Page = {
   readonly setViewport: (viewport: Viewport) => Promise<void>;
   /** Goes to `url` and waits for the page's load event, within `deadlineMs`. A navigation error fails with its `errorText` as the detail. */
   readonly navigate: (url: string, deadlineMs?: number) => Promise<void>;
+  /** Ticket 18: goes to `url` without waiting for it to load, as a click on a link does; the frames show it. */
+  readonly go: (url: string) => Promise<void>;
+  /** Ticket 18: loads the page again, as the browser's reload does. */
+  readonly reload: () => Promise<void>;
+  /**
+   * Ticket 18: every document the page would load (itself, a frame in it) is first asked of
+   * `allow`, by its address, and one it refuses never leaves the browser (DevTools' Fetch domain,
+   * for documents only, so the page's own requests aren't held). A refusal's address isn't logged.
+   */
+  readonly guardDocuments: (allow: (url: string) => boolean) => Promise<void>;
   /** A value the page computes (`returnByValue`), checked against `schema`. */
   readonly evaluate: <T>(expression: string, schema: z.ZodType<T>) => Promise<T>;
   readonly screenshot: (options: ScreenshotOptions) => Promise<Buffer>;
@@ -150,6 +166,31 @@ export const openPage = async (client: DevToolsClient, viewport: Viewport): Prom
       clearTimeout(timer);
       off();
     }
+  };
+
+  const go = async (url: string): Promise<void> => {
+    const answer = await client.call("Page.navigate", { url }, navigateSchema, on);
+    if (answer.errorText !== undefined) throw devToolsError("protocol", "Page.navigate", answer.errorText.slice(0, 200));
+  };
+
+  const guardDocuments = async (allow: (url: string) => boolean): Promise<void> => {
+    onEvent("Fetch.requestPaused", (params) => {
+      const paused = pausedSchema.safeParse(params);
+      if (!paused.success) return;
+      const { requestId, request } = paused.data;
+      let allowed = false;
+      try {
+        allowed = allow(request.url);
+      } catch {
+        allowed = false;
+      }
+      // Answered either way, or the page waits on it: a refused one fails as an extension's block would.
+      void (allowed
+        ? client.command("Fetch.continueRequest", { requestId }, on)
+        : client.command("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" }, on)
+      ).catch(() => undefined);
+    });
+    await client.command("Fetch.enable", { patterns: [{ urlPattern: "*", resourceType: "Document", requestStage: "Request" }] }, on);
   };
 
   const evaluate = async <T>(expression: string, schema: z.ZodType<T>): Promise<T> => {
@@ -217,6 +258,9 @@ export const openPage = async (client: DevToolsClient, viewport: Viewport): Prom
     sessionId,
     setViewport,
     navigate,
+    go,
+    reload: () => client.command("Page.reload", {}, on),
+    guardDocuments,
     evaluate,
     screenshot,
     startScreencast,

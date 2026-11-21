@@ -37,6 +37,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@ostra/adapter-executor-host": "workspace:*",
     "@ostra/api": "workspace:*",
     "@ostra/runner": "workspace:*",
     "@types/pg": "8.23.1",

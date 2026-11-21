@@ -33,3 +33,17 @@ export type { PreviewViews, PreviewViewsDeps } from "./task-host/preview-views.t
 // the web app's route, core's tunnel and the runner's side (`apps/core/src/previews/cli-preview.test.ts`).
 export { cliSessionPath, saveCliSession } from "./cli/cli-session.ts";
 export type { CliSessionFile } from "./cli/cli-session.ts";
+// Milestone 8 (ticket 18): the box's side of a browser view, for core's test of its own preview code
+// against the runner's (`apps/core/src/previews/runner-stream.test.ts`): the runner's own link to
+// core, the box's browser, its shared pages, its app processes and its pictures.
+export { runnerServerLink } from "./task-host/server-link.ts";
+export type { ServerLink } from "./task-host/server-link.ts";
+export { boxBrowser } from "./browser/box-browser.ts";
+export type { BoxBrowserHolder, BoxBrowserReport } from "./browser/box-browser.ts";
+export { createSharedPages } from "./task-host/shared-pages.ts";
+export type { SharedPages } from "./task-host/shared-pages.ts";
+export { createAppProcesses } from "./task-host/app-processes.ts";
+export type { AppProcesses } from "./task-host/app-processes.ts";
+export { createAppPictures } from "./task-host/app-pictures.ts";
+export type { AppPictures } from "./task-host/app-pictures.ts";
+export type { StreamAim } from "./task-host/preview-views.ts";

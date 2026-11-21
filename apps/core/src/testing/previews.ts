@@ -19,6 +19,7 @@ import { createPreviews } from "../previews/previews.ts";
 import type { Previews } from "../previews/previews.ts";
 import { handlePanelStartApp } from "../previews/start-app-endpoint.ts";
 import { createCoreServer } from "../server.ts";
+import type { RouteHandler } from "../server.ts";
 
 // The previews' test seams (milestone 8, ticket 19): one core replica in this process (its gateway
 // and its previews, on a free loopback port, with the address the other replicas reach it at), a
@@ -56,6 +57,8 @@ export const startPreviewReplica = async (
     /** The native preview's heartbeat and check intervals (30 s and 5 minutes in production). */
     readonly nativeHeartbeatMs?: number;
     readonly nativeRecheckMs?: number;
+    /** Ticket 18: more of core's routes beside the previews' and the gateway's (the bulk path, for a box's pictures). */
+    readonly routes?: (gateway: Gateway) => readonly RouteHandler[];
   },
 ): Promise<PreviewReplica> => {
   const clock = options.clock ?? systemClock;
@@ -109,7 +112,7 @@ export const startPreviewReplica = async (
     logger,
   });
   const server = createCoreServer({
-    routes: [previews.handleRequest, startApp, gateway.handleRequest],
+    routes: [previews.handleRequest, startApp, ...(options.routes?.(gateway) ?? []), gateway.handleRequest],
     upgrade: (request, socket, head) => {
       if (!previews.handleUpgrade(request, socket, head)) {
         gateway.handleUpgrade(request, socket, head);

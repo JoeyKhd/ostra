@@ -64,6 +64,7 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
       statusChanged: () => {
         holder.connection?.statusChanged();
       },
+      carrier: () => holder.connection?.report().carrier ?? null,
     },
   });
 

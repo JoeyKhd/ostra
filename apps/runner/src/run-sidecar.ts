@@ -136,6 +136,7 @@ export const runSidecarCommand: RunSidecar = async ({ env, terminal, signal }) =
         statusChanged: () => {
           holder.connection?.statusChanged();
         },
+        carrier: () => holder.connection?.report().carrier ?? null,
       },
     }),
     executor: new DockerExecutor({

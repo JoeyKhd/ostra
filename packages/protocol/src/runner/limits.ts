@@ -244,8 +244,11 @@ export const runnerLimits = {
   browserViewQuality: 60,
   /** F-141, Q306: the browser view's frames a second on the HTTP carrier. */
   httpCarrierFramesPerSecond: 2,
-  /** F-141: the most frames the screencast has in flight before core acks one. */
-  browserViewFramesInFlight: 2,
+  /**
+   * F-141: the most frames the screencast has in flight before the box acks one. Spike 07: one,
+   * with each ack held to the rate's cap and `sendLastFrame` on, so the last change still arrives.
+   */
+  browserViewFramesInFlight: 1,
   /** F-141: one frame's JPEG on the preview connection or the HTTP carrier, in bytes. */
   previewFrameMaxBytes: 2 * MiB,
   /** F-141: one JSON part of a preview message (a frame's header, a control), in UTF-8 bytes. */

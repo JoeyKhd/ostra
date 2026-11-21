@@ -11,6 +11,7 @@ import { boxIdSchema, clientMessageIdSchema, runnerIdSchema, sessionIdSchema, ta
 import type { BoxId, Command, Peer, RunnerEvent, TaskCredentials, TaskEvent, TaskEventOf, TaskSpec } from "@ostra/protocol";
 import { taskSpecFixture } from "@ostra/protocol/testing";
 import { startConnection } from "../connection/peer.ts";
+import type { Carrier } from "../connection/http-carrier.ts";
 import type { RunnerConnection } from "../connection/peer.ts";
 import { createAgentRegistry } from "../task-host/agents.ts";
 import type { AgentFactory, AgentRegistry } from "../task-host/agents.ts";
@@ -96,6 +97,12 @@ export type HarnessOptions = {
   /** Overrides of the host executor's options (milestone 3: a docker box's services, as its sidecar runs them). */
   readonly executor?: Partial<Omit<HostExecutorOptions, "dataDir">>;
   /**
+   * Milestone 8 (ticket 18): the carrier the box's link says it's on, for its browser views: `http`
+   * posts their frames as a runner on the HTTP carrier does, while the fake gateway stays on the
+   * WebSocket. Default: the connection's own.
+   */
+  readonly previewCarrier?: Carrier;
+  /**
    * Ticket 21 (F-098): another executor in place of the host executor, as a box's sidecar runs the
    * task host (`DockerExecutor` through its bridge), with its kind. Disposed of on close.
    */
@@ -170,6 +177,7 @@ export const startHarness = async (shared: Shared, options: HarnessOptions = {})
         statusChanged: () => {
           holder.connection?.statusChanged();
         },
+        carrier: () => options.previewCarrier ?? holder.connection?.report().carrier ?? null,
       },
     }),
     executor,

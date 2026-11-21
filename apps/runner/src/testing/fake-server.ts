@@ -180,6 +180,11 @@ export type FakeServer = {
   readonly putBlob: (taskId: string, bytes: Buffer, contentType: string, blobId?: string) => string;
   /** The HTTP server, so the fake gateway can take its WebSocket upgrades. */
   readonly httpServer: Server;
+  /**
+   * Milestone 8 (ticket 18): a route a test's fake adds (the preview connection's HTTP carrier
+   * frames), asked before the server's own; it answers `true` once it took the request.
+   */
+  readonly addRoute: (route: FakeRoute) => () => void;
   readonly setInfo: (info: Partial<InfoResponse>) => void;
   /** Milestone 5 (ticket 20): tasks whose spec request waits while they're here, so their run stays at its start. */
   readonly holdSpecs: Set<string>;
@@ -195,6 +200,9 @@ export type FakeServer = {
   };
   readonly close: () => Promise<void>;
 };
+
+/** A route a test adds to the fake server: `true` once it answered the request. */
+export type FakeRoute = (request: IncomingMessage, response: ServerResponse, path: string) => Promise<boolean>;
 
 const readBytes = async (request: IncomingMessage): Promise<Buffer> => {
   const chunks: Buffer[] = [];
@@ -250,6 +258,7 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
   const memory: FakeMemory = { notes: [], proposals: [], calls: [], refusals: [], down: false };
   const team: FakeTeam = { drafts: [], reviews: [], proposals: [], refusals: { draft: null, review: null, environment: null }, calls: [], down: false };
   const seenNonces = new Set<string>();
+  const routes: FakeRoute[] = [];
   let counter = 0;
   let url = "";
   let infoOverride: Partial<InfoResponse> = options.info ?? {};
@@ -525,6 +534,11 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
       send(response, 200, info());
       return;
     }
+    for (const route of routes) {
+      if (await route(request, response, path)) {
+        return;
+      }
+    }
     if (request.method === "POST" && path === "/api/auth/device/code") {
       const body = await readBody(request);
       if (typeof body !== "object" || body === null || Reflect.get(body, "client_id") !== info().deviceClientId) {
@@ -780,6 +794,13 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
       return blobId;
     },
     httpServer: server,
+    addRoute: (route) => {
+      routes.push(route);
+      return () => {
+        const at = routes.indexOf(route);
+        if (at !== -1) routes.splice(at, 1);
+      };
+    },
     setInfo: (next) => {
       infoOverride = next;
     },

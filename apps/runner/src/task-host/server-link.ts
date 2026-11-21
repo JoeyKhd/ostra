@@ -38,13 +38,16 @@ import type {
   TaskCredentials,
   TaskId,
   TaskSpec,
+  PreviewMode,
   PreviewViewId,
 } from "@ostra/protocol";
 import { makeAgents } from "../connection/http-carrier.ts";
-import type { Agents } from "../connection/http-carrier.ts";
+import type { Agents, Carrier } from "../connection/http-carrier.ts";
 import type { RunnerConnection, SessionChannel, SessionRef } from "../connection/peer.ts";
 import { openPreviewConnection } from "../connection/preview-connection.ts";
 import type { PreviewConnectionResult } from "../connection/preview-connection.ts";
+import { postPreviewFrames } from "../connection/preview-frames.ts";
+import type { PreviewFrame, PreviewFramesPost } from "../connection/preview-frames.ts";
 import { createBulkClient } from "../server/bulk.ts";
 import type { BulkResult, DownloadInput, Downloaded, UploadInput } from "../server/bulk.ts";
 import { callJson, describeFailure, joinUrl } from "../server/http.ts";
@@ -111,10 +114,14 @@ export type ServerLink = {
   /** Minor 5 (milestone 6): `submit_draft`, `submit_review` and `propose_environment`'s calls, on behalf of the task. */
   readonly team: TeamLink;
   /**
-   * Minor 7 (ticket 22, ADR 0068): a view's preview connection to core in `tunnel` mode, with the
-   * link's own token (the runner's on `host`, the box's task token in a sidecar) and the lease epoch.
+   * Minor 7 (tickets 22 and 18, ADR 0068): a view's preview connection to core in its mode, with
+   * the link's own token (the runner's on `host`, the box's task token in a sidecar) and the lease epoch.
    */
-  readonly openPreview: (viewId: PreviewViewId, leaseEpoch: LeaseEpoch) => Promise<PreviewConnectionResult>;
+  readonly openPreview: (viewId: PreviewViewId, leaseEpoch: LeaseEpoch, mode: PreviewMode) => Promise<PreviewConnectionResult>;
+  /** Minor 7 (ticket 18, Q306): a browser view's frames over the HTTP carrier, with the link's token and the lease epoch. */
+  readonly postPreviewFrames: (viewId: PreviewViewId, leaseEpoch: LeaseEpoch, frames: readonly PreviewFrame[]) => Promise<PreviewFramesPost>;
+  /** The carrier the link's connection reaches core on now: a browser view's frames are posted on HTTP. */
+  readonly previewCarrier: () => Carrier;
 };
 
 /** How long a memory call may take before the tool says memory is unavailable. */
@@ -265,7 +272,10 @@ export const fetchSnapshotCredentials =
 export const runnerServerLink = (input: {
   readonly serverUrl: string;
   readonly tokens: TokenSource;
-  readonly connection: Pick<RunnerConnection, "openSession" | "statusChanged">;
+  readonly connection: Pick<RunnerConnection, "openSession" | "statusChanged"> & {
+    /** The connection's carrier now (`report().carrier`); the WebSocket while it says none. */
+    readonly carrier?: () => Carrier | null;
+  };
 }): ServerLink => {
   const bearer = async (): Promise<{ readonly ok: true; readonly token: string } | { readonly ok: false; readonly failure: LinkFailure }> => {
     const token = await input.tokens.get();
@@ -324,14 +334,23 @@ export const runnerServerLink = (input: {
     statusChanged: () => {
       input.connection.statusChanged();
     },
-    openPreview: async (viewId, leaseEpoch) => {
+    openPreview: async (viewId, leaseEpoch, mode) => {
       const token = await input.tokens.get();
       if (!token.ok) {
         return { ok: false, failure: { kind: "unreachable", detail: `no token (${token.reason})` } };
       }
       previewAgents ??= makeAgents(input.serverUrl);
-      return openPreviewConnection({ serverUrl: input.serverUrl, token: token.token, viewId, leaseEpoch, mode: "tunnel", agent: previewAgents.websocket });
+      return openPreviewConnection({ serverUrl: input.serverUrl, token: token.token, viewId, leaseEpoch, mode, agent: previewAgents.websocket });
     },
+    postPreviewFrames: async (viewId, leaseEpoch, frames) => {
+      const token = await input.tokens.get();
+      if (!token.ok) {
+        return { kind: "unreachable", detail: `no token (${token.reason})` };
+      }
+      previewAgents ??= makeAgents(input.serverUrl);
+      return postPreviewFrames({ serverUrl: input.serverUrl, token: token.token, viewId, leaseEpoch, frames, agent: previewAgents.http });
+    },
+    previewCarrier: () => input.connection.carrier?.() ?? "websocket",
   };
 };
 

@@ -32,6 +32,8 @@ export type TestCdp = {
   readonly send: (method: string, params?: Readonly<Record<string, unknown>>, sessionId?: string, timeoutMs?: number) => Promise<Record<string, unknown>>;
   /** The first event of this method (on this session) from now, within `timeoutMs`. */
   readonly waitFor: (method: string, sessionId: string | undefined, timeoutMs: number) => Promise<TestCdpEvent>;
+  /** Hears every event of this method (on this session) from now. Returns the unsubscribe. */
+  readonly on: (method: string, sessionId: string | undefined, listener: (event: TestCdpEvent) => void) => () => void;
 };
 
 const asRecord = (value: unknown): Record<string, unknown> =>
@@ -84,6 +86,15 @@ export const testCdp = (channel: BrowserChannel): TestCdp => {
         });
         channel.send(JSON.stringify(sessionId === undefined ? { id, method, params } : { id, method, params, sessionId }));
       }),
+    on: (method, sessionId, listener) => {
+      const each = (event: TestCdpEvent): void => {
+        if (event.method === method && (sessionId === undefined || event.sessionId === sessionId)) listener(event);
+      };
+      listeners.add(each);
+      return () => {
+        listeners.delete(each);
+      };
+    },
     waitFor: (method, sessionId, timeoutMs) =>
       new Promise((resolve, reject) => {
         const timer = setTimeout(() => {

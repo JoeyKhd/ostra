@@ -34,6 +34,8 @@ import {
   denyPrompt,
   executorKindSchema,
   firstMatchingTaskRule,
+  inBoxAppAddress,
+  inBoxServiceAddress,
   NEUTRAL_REPLY,
   noReasoning,
   PLAN_MODE_REFUSED_LINE,
@@ -66,6 +68,7 @@ import type {
   TaskRule,
   TurnMode,
   HiddenRefOutcome,
+  PreviewKey,
   PreviewTarget,
   ReservedPorts,
   RestoreOrigin,
@@ -100,7 +103,9 @@ import { createAppProcesses } from "./app-processes.ts";
 import type { AppEvent, AppProcesses, AppTiming } from "./app-processes.ts";
 import { checkLaunchEnvironment, checkLaunchFiles } from "./environment-check.ts";
 import { createPreviewViews } from "./preview-views.ts";
-import type { PreviewViews } from "./preview-views.ts";
+import type { PreviewViews, StreamAim } from "./preview-views.ts";
+import { createSharedPages } from "./shared-pages.ts";
+import type { SharedPages } from "./shared-pages.ts";
 import { checkRepoFolders } from "./repo-folders.ts";
 import type { ServerLink } from "./server-link.ts";
 import { allowOnce, decidePermission, rejectOnce, TASK_RULE_NAME } from "./permission-decision.ts";
@@ -275,15 +280,20 @@ export type TaskRun = {
   /** Milestone 8: the box's app, once the box is ready; `undefined` before, or when it never got ready. */
   readonly app: () => AppProcesses | undefined;
   /**
-   * Minor 7 (ticket 22): a view of one of the task's previews. In `tunnel` mode the box opens its
-   * preview connection and serves HTTP/2 on it; the view holds the box past its idle timer until it
-   * closes (ADR 0068). The `stream` mode is ticket 18's.
+   * Minor 7 (tickets 22 and 18): a view of one of the task's previews. In `tunnel` mode the box
+   * opens its preview connection and serves HTTP/2 on it; in `stream` mode (the browser view) the
+   * view joins its preview's shared page in the box's browser and streams its frames. The view
+   * holds the box past its idle timer until it closes (ADR 0068).
    */
   readonly previewOpen: (body: CommandBody<"preview.open">) => Promise<CommandOutcome>;
-  /** Minor 7 (ticket 22): the view closed: its connection ends. */
+  /** Minor 7 (ticket 22): the view closed: its connection ends, and a browser view's page with its last view. */
   readonly previewClose: (body: CommandBody<"preview.close">) => Promise<CommandOutcome>;
+  /** Minor 7 (ticket 18, the HTTP carrier only): a member's input for an open browser view. */
+  readonly previewInput: (body: CommandBody<"preview.input">) => Promise<CommandOutcome>;
   /** Milestone 8: the box's open views. */
   readonly views: () => PreviewViews;
+  /** Milestone 8 (ticket 18): the browser view's shared pages in the box's browser. */
+  readonly pages: () => SharedPages;
   /**
    * Minor 7 (ticket 13): a member's screenshot of one of the task's previews, from the pane:
    * `accepted` at once, the picture going up as `attachment.added` with the request's ID, or as
@@ -525,12 +535,62 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     }
     return deps.executor.reachAppPort({ box, port, reserved: boxReserved });
   };
+  /** The hosts that are the box's own, by the proxies' addresses: a page reaches a port of theirs only by the reach rule. */
+  const boxHosts = new Set<string>(["localhost", "127.0.0.1", "::1", "0.0.0.0", "::"]);
+  /**
+   * The reach rule on every document the shared page loads (ADR 0068, "What a preview may reach"):
+   * at the box's own hosts, only a port a preview may reach, so a click never takes the page to the
+   * key proxy, OpenCode's port or one below 1024. Elsewhere, what the box can reach. Only `http`,
+   * `https` and the browser's own pages (`about:`, `data:`, `blob:`) load.
+   */
+  const mayLoadDocument = (address: string): boolean => {
+    let url: URL;
+    try {
+      url = new URL(address);
+    } catch {
+      return false;
+    }
+    if (url.protocol === "about:" || url.protocol === "data:" || url.protocol === "blob:") {
+      return true;
+    }
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return false;
+    }
+    const host = url.hostname.replace(/^\[(.*)\]$/, "$1").toLowerCase();
+    if (!boxHosts.has(host) && !host.endsWith(".localhost") && !host.startsWith("127.")) {
+      return true;
+    }
+    const port = url.port === "" ? (url.protocol === "https:" ? 443 : 80) : Number(url.port);
+    return app?.reach(port).ok ?? false;
+  };
+  /** Where the box's browser opens a preview: at the box's `localhost`, a service by its address in the box. */
+  const aimOf = (key: PreviewKey): StreamAim | null => {
+    const item = app?.previews().find((each) => each.key === key);
+    if (item === undefined || app?.reach(item.port).ok !== true) {
+      return null;
+    }
+    const target = item.target;
+    const origin = "service" in target ? inBoxServiceAddress({ name: target.service, port: item.port }, executorKind) : inBoxAppAddress(item.port);
+    return origin === null ? null : { origin, path: item.path, target };
+  };
+  const browserViewFramesPerSecond = (): number =>
+    deps.link.previewCarrier() === "http" ? runnerLimits.httpCarrierFramesPerSecond : runnerLimits.browserViewFramesPerSecond;
+  /** The box's browser, once the box's app is open (minor 7); none before. */
+  const openBrowser = () => browser?.open() ?? Promise.resolve({ available: false, reason: "failed-to-start" } as const);
+  const pages = createSharedPages({ browser: openBrowser, framesPerSecond: browserViewFramesPerSecond, mayLoad: mayLoadDocument, logger: log });
   const views = createPreviewViews({
-    connect: (viewId) => deps.link.openPreview(viewId, dispatch.leaseEpoch),
+    connect: (viewId, mode) => deps.link.openPreview(viewId, dispatch.leaseEpoch, mode),
     mayReach: (port) => app?.reach(port) ?? { ok: false, refusal: { reason: "not-a-preview" } },
     reachPort: reachPreviewPort,
     settled: (target) => ("process" in target && app !== undefined ? app.settled(target.process, runnerLimits.appReadyTimeoutSeconds * 1000) : Promise.resolve()),
     logger: log,
+    stream: {
+      pages,
+      browser: openBrowser,
+      carrier: () => deps.link.previewCarrier(),
+      postFrames: (viewId, frames) => deps.link.postPreviewFrames(viewId, dispatch.leaseEpoch, frames),
+      aim: aimOf,
+    },
   });
   /** Idle timers that came due while a view was open: each fires once the last view closes (ADR 0068). */
   const heldIdle = new Set<() => void>();
@@ -1643,6 +1703,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       // Milestone 8: the box's views end first (ticket 22), then the app's processes stop with the
       // box, each reported `stopped` (`box-stopped`), and its browser ends with its profile (ticket 13).
       views.closeAll("box-stopping");
+      await pages.closeAll();
       await app?.stopAll();
       await browser?.close();
       await deps.executor.stop({ box, graceMs: deps.stopGraceMs });
@@ -2413,6 +2474,10 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     };
     const ownPorts = [...Object.values(reservedPorts), mcpProxy === undefined ? null : portOfUrl(mcpProxy.urlFor("/"))].filter((port): port is number => port !== null);
     boxReserved = reservedPorts;
+    // The proxies' hosts are the box's own: on `docker` the sidecar's name, elsewhere a loopback address.
+    for (const address of [keyProxy.baseUrl, gitProxy.baseUrl, mcp.url]) {
+      boxHosts.add(new URL(address).hostname.replace(/^\[(.*)\]$/, "$1").toLowerCase());
+    }
     app = createAppProcesses({
       executor: deps.executor,
       box,
@@ -2742,10 +2807,6 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     },
     app: () => app,
     previewOpen: (body) => {
-      if (body.mode !== "tunnel") {
-        // The browser view is ticket 18's: until then the runner reports `stream: false`, and core sends none.
-        return Promise.resolve({ result: "rejected", reason: "stream-not-supported" });
-      }
       if (views.has(body.viewId)) {
         return Promise.resolve({ result: "done" });
       }
@@ -2758,9 +2819,16 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         log.info("a view refused: not one of the task's previews", { viewId: body.viewId, key: body.key });
         return Promise.resolve({ result: "rejected", reason: "not-a-preview" });
       }
+      // One shared page per preview, and at most `boxPagesMax` in the box's browser, one kept for the tools' pictures.
+      if (body.mode === "stream" && !views.mayStream(body.key)) {
+        log.info("a view refused: the box's browser holds as many pages as it may", { viewId: body.viewId, key: body.key });
+        return Promise.resolve({ result: "rejected", reason: "too-many-pages" });
+      }
       views.open({
         viewId: body.viewId,
         key: body.key,
+        mode: body.mode,
+        viewport: body.viewport,
         // Before the box is ready the view waits for it; an opened view starts what isn't running.
         ready: appOpened.promise.then((opened) => {
           if (opened === undefined || ending !== undefined || !isPreview(opened)) {
@@ -2777,7 +2845,10 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       return Promise.resolve({ result: "accepted" });
     },
     previewClose: (body) => Promise.resolve(views.close(body.viewId, "closed") ? { result: "done" } : { result: "done", reason: "unknown-view" }),
+    // The batch must name an open browser view of this box: its input goes onto that view's page, in order.
+    previewInput: (body) => Promise.resolve(views.input(body.viewId, body.events) ? { result: "accepted" } : { result: "rejected", reason: "unknown-view" }),
     views: () => views,
+    pages: () => pages,
     screenshotTake: (body) => {
       if (ending !== undefined) {
         return Promise.resolve({ result: "rejected", reason: "session-ending" });

@@ -1,6 +1,6 @@
 # 18: Runner: the browser view on both carriers
 
-Status: ready-for-agent
+Status: done
 Builder: runner
 Blocked by: 07, 13
 Features: F-141
@@ -23,7 +23,7 @@ Spec: `../spec.md`, sections 4 ("Opening a view", "The browser view") and 5.1; A
 
 ## Done when
 
-- [ ] Tests named for `F-141`, on `host` live with the fixture app, and against the fake browser for the carriers:
+- [x] Tests named for `F-141`, on `host` live with the fixture app, and against the fake browser for the carriers:
   - a view streams frames and stops when it closes;
   - two views share one page;
   - a click counts the counter and typing lands;
@@ -31,9 +31,11 @@ Spec: `../spec.md`, sections 4 ("Opening a view", "The browser view") and 5.1; A
   - a view for a port that isn't a preview is refused (break-it: skip the check, and the case fails);
   - frames on the HTTP carrier stay at 2 a second at most;
   - a stale epoch's connection is refused by core's fake.
-- [ ] The executor suite's browser case on `docker` and `kubernetes` fakes covers the screencast's acks.
-- [ ] The whole-repo checks pass (spec section 10).
-- [ ] Committed as `✨ stream the box's browser to a preview`.
+
+  *No break-it pass ran, under the maintainer's 2026-11-21 change.*
+- [x] The executor suite's browser case on `docker` and `kubernetes` fakes covers the screencast's acks. *On `host` too, live in this machine's Edge.*
+- [x] The whole-repo checks pass (spec section 10). *On the lead's rules of 2026-11-20: typecheck, lint and tests of the touched packages; GitHub CI runs the rest.*
+- [x] Committed as `✨ stream the box's browser to a preview`.
 
 ## Comments
 
@@ -47,3 +49,19 @@ Spec: `../spec.md`, sections 4 ("Opening a view", "The browser view") and 5.1; A
   - **The idle hold is done** for every view, whatever its mode: the task run's three idle timers go through `idleAfter`, which, coming due with a view open, fires once the last one closes (`views.onUnwatched`). A view counts from its `preview.open` until its `preview.close`, the box's stop, or its connection closing.
   - **The report:** every executor's runner reports `RUNNER_PREVIEW_SUPPORT` (`{ stream: false, tunnel: true }`) in `hello` and `status`, and the connection says `tunnel: false` on the HTTP carrier. This ticket turns `stream` on (from the box's browser, ticket 11's `app.browser`).
   - **The connection:** `link.openPreview` opens `tunnel` mode only; `openPreviewConnection` (`connection/preview-connection.ts`) takes any mode and hands the socket back paused, so a reader attached a few promise turns later loses nothing.
+- 2026-11-21, runner (ticket 18): built as `✨ stream the box's browser to a preview`, on tickets 11, 13, 19 and 22. What it holds:
+  - **Where things live:** the shared pages in `apps/runner/src/task-host/shared-pages.ts` (one per preview in the box's browser, the screencast with its held acks, control and input in order); a view's way to core on either carrier in `task-host/preview-stream.ts` (`socketStreamLink`, `httpStreamLink`); the HTTP carrier's posts in `connection/preview-frames.ts`; the input mapping in `browser/view-input.ts`; `page.ts` gains `go`, `reload` and `guardDocuments`. `preview-views.ts` takes `stream` views beside the tunnel ones, and `TaskRun` wires them (`previewInput`, `pages()`); the link gains `postPreviewFrames` and `previewCarrier`, and `openPreview` takes the mode. Every executor reports `RUNNER_PREVIEW_SUPPORT = { stream: true, tunnel: true }`.
+  - **Decisions:**
+    - **Spike 07's defaults:** JPEG q60, at most 1440×900, `maxFramesInFlight` 1 with `sendLastFrame`, the rate capped by holding the browser's ack (15 a second on the WebSocket, 2 on HTTP), never by dropping. The protocol's working value `browserViewFramesInFlight` goes from 2 to the spike's 1 (only the runner reads it).
+    - **One frame with each view's core at a time:** the browser's ack goes once *a* view took the newest frame; a view that's behind gets the newest once it took its own, and a joining view gets the newest at once (a still page sends no new frame). So a slow member slows only their own view, the browser runs at the fastest view's pace within the cap, and core queues nothing.
+    - **The width is the last one chosen** (Q314): a view opened at another preset, or core's `viewport` control, moves the shared page for every view, and restarts the screencast at the new size: in Edge the resized page's frame sometimes never came while one was in flight, until the page changed again. A width up to a tablet's is a touch device (`mobile`), as the presets are.
+    - **The reach rule on the page's own documents** (not in the ticket): with DevTools' Fetch domain on documents only, a document at the box's own hosts (loopback names and the proxies' hosts) at a port `mayReach` refuses fails as blocked, so a link viewer with input can't click the page over to the key proxy. The app's own requests aren't held.
+    - **A box holds at most three shared pages** (`boxPagesMax` 4, one kept for the tools' pictures): a view of a fourth preview is rejected `too-many-pages`.
+    - **The HTTP carrier's spacing:** each post at least 500 ms after core answered the last, so core's one-second window never counts three however the network bunches them (`too-fast` waits again; `view-closed`, `stale-lease` and a refusal end the view; an unreachable core is retried every second). `preview.input` must name an open browser view (`unknown-view` otherwise).
+    - **No browser in the box:** the view never connects; `app.browser` already told core, which takes the browser view away.
+  - **Tests:**
+    - `apps/runner/src/task-host/preview-stream.{host,docker,kubernetes}.test.ts` run one case list (`testing/preview-stream-cases.ts`) through the whole task host against the fake core (`fake-preview-core.ts` now takes `stream` views, holds acks on demand, sends controls and its close, and reads the HTTP carrier's posts as core does): `F-141/c2, c9` (JPEG frames on the view's own connection with the stream's subprotocol, the token and the epoch; at most 15 a second on a page that changes every frame; no frame while core holds the ack, the newest at once when it comes; `preview.close` ends the connection with 1000 and the page), `F-141/c3, c1` (two views share one page, the phone preset moves both, core's `viewport` moves them back, the page goes with the last view), `F-141/c2` (a click counts the counter, typed keys and a paste land in the field, typed text in no log line), `F-141/c4, c9` (a view of an unlisted port refused with nothing connected; the page's own navigation to an unlisted port and to the key proxy's never sends a request; a stale epoch's connection refused by the fake core, holding nothing), `F-141/c8` (posted frames at most 2 in any second, no `too-fast`, `preview.input` to an open view and `unknown-view` for another, a view core closed ends at its next post). On `host` live in this machine's Edge; on `docker` and `kubernetes` `DockerExecutor` through the real bridge to a local init with the fake browser, whose frames count the input its page got.
+    - `apps/core/src/previews/runner-stream.test.ts` is core's real preview code (the box's connection, the HTTP carrier's frames, the panel's stream and input routes, `openView`, `closeView`, `takeMemberScreenshot`, the real ingest and the bulk path) against the runner's real side (`@ostra/runner`: `startConnection` on each carrier, `runnerServerLink`, the view registry, the shared pages, `createAppProcesses` and `createAppPictures`) in a real `HostExecutor` box running the fixture, in this machine's Edge: `F-141/c2, c9` (no panel stream, so core holds the first ack and the browser sends one frame however the page changes; the pane's stream opens and frames come at most 15 a second; `closeView` ends the box's view and its page), `F-141/c2, c3, F-142/c1` (a member's click through core's input route counts the counter and typing lands; a watch-only link on the same page is refused 403 and its click never reaches the page), `F-141/c8` (a runner on the HTTP carrier reports `{ stream: true, tunnel: false }`, its posted frames reach the pane at most 2 a second, and a member's click comes down the long poll as `preview.input` and counts), `F-121/c7` (a member's screenshot through core to the runner that now reports the browser view, back as the task's `TaskAttachment`, its blob and its `attachment.added` with the request's ID: ticket 13's member screenshot, proved for real). Core gains `@ostra/adapter-executor-host` as a dev dependency (a workspace package) for that box.
+    - The executor suite's browser case (`F-121/c2,c8, F-141/c2`) now starts a screencast with one frame in flight and `sendLastFrame`, changes the page, sees no frame while the first isn't acked, and the next once it is: on `docker` and `kubernetes` against their fakes, and on `host` live in Edge.
+  - **Checks**, on the lead's rules of 2026-11-20: typecheck and lint of protocol, adapter-sdk, runner and core; the protocol's tests, the runner's preview, browser, peer and task-host tests, the three executors' browser case, and core's new test. No break-it pass ran (the maintainer, 2026-11-21).
+  - **Left open:** no one sends `viewport`, `navigate` or `reload` yet: the pane's width preset, path field and reload (ticket 21) need a route on core that sends them as controls on the view's connection (`hub.sendInput` sends only input), and on the HTTP carrier a command, which the protocol doesn't have (only `preview.input`); the box applies all three today. The `live-docker` and `live-kind` runs of the image's Chromium streaming wait for the launch-gate proof run. F-141 stays `planned` for tickets 21 and 33.

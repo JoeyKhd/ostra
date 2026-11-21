@@ -1011,7 +1011,7 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
       }
     }, CASE_TIMEOUT_MS);
 
-    it("F-121/c2,c8: the box's browser starts beside the app with a fresh profile, loads a page at the app's localhost, takes a screenshot, and names itself", async (context) => {
+    it("F-121/c2,c8, F-141/c2: the box's browser starts beside the app with a fresh profile, loads a page at the app's localhost, takes a screenshot, names itself, and holds its screencast to its acks", async (context) => {
       const app = appFixture(context);
       if (app === undefined) return;
       const { adapter, fixture } = subject();
@@ -1043,6 +1043,24 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
         const png = Buffer.from(String(shot["data"]), "base64");
         expect(png.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
         expect(png.readUInt32BE(16)).toBeGreaterThan(0);
+        // Milestone 8 (ticket 18, spike 07): the browser view's screencast over the same pipe. With
+        // one frame in flight, a change to the page waits behind the frame's ack, and the ack lets
+        // the next frame go (`sendLastFrame`: the change isn't lost).
+        const firstFrame = cdp.waitFor("Page.screencastFrame", sessionId, 30_000);
+        await cdp.send("Page.startScreencast", { format: "jpeg", quality: 60, maxWidth: 1440, maxHeight: 900, maxFramesInFlight: 1, sendLastFrame: true, everyNthFrame: 1 }, sessionId);
+        const frame: unknown = (await firstFrame).params;
+        const jpeg = Buffer.from(String(Reflect.get(Object(frame), "data")), "base64");
+        expect([jpeg[0], jpeg[1]], "the frame is a JPEG").toEqual([0xff, 0xd8]);
+        const held: unknown[] = [];
+        const stopHearing = cdp.on("Page.screencastFrame", sessionId, (event) => held.push(event.params));
+        await cdp.send("Runtime.evaluate", { expression: "document.body.style.background = 'rgb(1, 2, 3)'; document.title", returnByValue: true }, sessionId);
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+        expect(held, "no frame while the one in flight isn't acked").toEqual([]);
+        const nextFrame = cdp.waitFor("Page.screencastFrame", sessionId, 15_000);
+        await cdp.send("Page.screencastFrameAck", { sessionId: Reflect.get(Object(frame), "sessionId") }, sessionId);
+        expect(Reflect.get(Object((await nextFrame).params), "data"), "the ack lets the next frame go").toEqual(expect.any(String));
+        stopHearing();
+        await cdp.send("Page.stopScreencast", {}, sessionId);
         await cdp.send("Target.closeTarget", { targetId });
         await browser.channel.close();
         expect(await waitFor(async () => !(await exists(app, browser.profileDir)), 20_000), "the profile went with the browser").toBe(true);

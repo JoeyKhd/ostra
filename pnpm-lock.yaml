@@ -99,6 +99,9 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
     devDependencies:
+      '@ostra/adapter-executor-host':
+        specifier: workspace:*
+        version: link:../../packages/adapters/adapter-executor-host
       '@ostra/api':
         specifier: workspace:*
         version: link:../../packages/api
