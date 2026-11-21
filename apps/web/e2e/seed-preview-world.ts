@@ -13,6 +13,8 @@
 // `read` names each view's mode and counts the task's native one-time codes; and
 // `{ "databaseUrl", "mode": "clear-check" }` forgets the preview domain's last check, so the specs
 // after the native preview's see the browser view again.
+// F-142: `"restricted": true` on `seed` makes the project restricted, so a member it doesn't list
+// opens the task's preview only when it names them (`24-preview-shared.spec.ts`).
 
 import { randomUUID } from "node:crypto";
 
@@ -22,7 +24,7 @@ import { organizationIdSchema, projectIdSchema, taskIdSchema } from "@ostra/prot
 import { z } from "zod";
 
 const argsSchema = z.discriminatedUnion("mode", [
-  z.strictObject({ databaseUrl: z.string(), mode: z.literal("seed"), tag: z.string().regex(/^[a-z0-9-]{1,24}$/), tunnel: z.boolean().optional() }),
+  z.strictObject({ databaseUrl: z.string(), mode: z.literal("seed"), tag: z.string().regex(/^[a-z0-9-]{1,24}$/), tunnel: z.boolean().optional(), restricted: z.boolean().optional() }),
   z.strictObject({ databaseUrl: z.string(), mode: z.literal("accept"), taskId: z.string() }),
   z.strictObject({ databaseUrl: z.string(), mode: z.literal("read"), taskId: z.string() }),
   z.strictObject({ databaseUrl: z.string(), mode: z.literal("expire"), taskId: z.string() }),
@@ -41,7 +43,7 @@ const notifyTask = async (organizationId: string, projectId: string, taskId: str
   await db.$transaction((tx) => postgresChangeNotices.emitInTx(tx, { organizationId: organizationIdSchema.parse(organizationId), projectId: projectIdSchema.parse(projectId), entity: "task", entityId: taskIdSchema.parse(taskId) }));
 };
 
-const seed = async (tag: string, tunnel: boolean): Promise<Record<string, string>> => {
+const seed = async (tag: string, tunnel: boolean, restricted: boolean): Promise<Record<string, string>> => {
   const admin = await db.member.findFirstOrThrow({ where: { role: "admin" }, orderBy: { createdAt: "asc" }, include: { organization: true } });
   const organizationId = admin.organizationId;
 
@@ -60,7 +62,7 @@ const seed = async (tag: string, tunnel: boolean): Promise<Record<string, string
     (await db.agentProfile.create({ data: { organizationId, name: "Previewer", adapter: "opencode", modelId: model.id, modelCatalogId: "anthropic/claude-sonnet-4-5" } }));
 
   const slug = `preview-${tag}`;
-  const project = await db.project.create({ data: { organizationId, name: slug, slug, access: "open", ownProviders: true, defaultCodeProfileId: profile.id } });
+  const project = await db.project.create({ data: { organizationId, name: slug, slug, access: restricted ? "restricted" : "open", ownProviders: true, defaultCodeProfileId: profile.id } });
   await db.providerListEntry.create({ data: { organizationId, projectId: project.id, providerId: provider.id } });
   const connection = await db.connection.findFirstOrThrow({ where: { organizationId, kind: "github" }, orderBy: { createdAt: "asc" } });
   const installation = await db.codeHostInstallation.findFirstOrThrow({ where: { organizationId, connectionId: connection.id }, orderBy: { createdAt: "asc" } });
@@ -189,7 +191,7 @@ const clearCheck = async (): Promise<Record<string, number>> => {
 const run = (): Promise<Record<string, unknown>> => {
   switch (args.mode) {
     case "seed":
-      return seed(args.tag, args.tunnel ?? false);
+      return seed(args.tag, args.tunnel ?? false, args.restricted ?? false);
     case "accept":
       return accept(args.taskId);
     case "expire":

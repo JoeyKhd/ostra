@@ -2686,7 +2686,20 @@
     "fine": "Nothing of the app is shown after a link ends.",
     "inYourBrowser": "in your browser",
     "signingIn": "Signing you in on {host}",
-    "nativeFailed": "Couldn't open it in your browser. Try again."
+    "nativeFailed": "Couldn't open it in your browser. Try again.",
+    "sharedTitle": "A shared preview",
+    "notShared": {
+      "title": "This preview isn't shared with you",
+      "body": "Ask whoever shared it to name you on it again.",
+      "fine": "Nothing of the app is shown unless it's shared with you."
+    }
+  },
+  "previewShares": {
+    "title": "Shared with you",
+    "line": "{who} shared {preview} with you",
+    "someone": "A member",
+    "watch": "Watch",
+    "watchLabel": "Watch {preview}"
   },
   "previewWords": {
     "boxRefusal": {

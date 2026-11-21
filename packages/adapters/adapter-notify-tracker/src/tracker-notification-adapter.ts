@@ -1,4 +1,4 @@
-import { adapterError, idempotencyKey, isRunnerNotice, NotificationAdapter, ok, refuseAccountMail, refuseRunnerNotice } from "@ostra/adapter-sdk";
+import { adapterError, idempotencyKey, isPreviewNotice, isRunnerNotice, NotificationAdapter, ok, refuseAccountMail, refusePreviewNotice, refuseRunnerNotice } from "@ostra/adapter-sdk";
 import type {
   AdapterContext,
   AdapterError,
@@ -80,6 +80,10 @@ export class TrackerNotificationAdapter extends NotificationAdapter {
     if (isRunnerNotice(notification.kind)) {
       return refuseRunnerNotice("tracker");
     }
+    // Milestone 8 (F-142): a preview notice is for a person who may not see the task, never on its ticket.
+    if (isPreviewNotice(notification.kind)) {
+      return refusePreviewNotice("tracker");
+    }
     const ticket = notification.ticket;
     if (ticket === undefined || ticket === null) {
       return adapterError("invalid-input", "a ticket notification needs the task's ticket");
@@ -130,6 +134,10 @@ export class TrackerNotificationAdapter extends NotificationAdapter {
     // Milestone 5 (F-091): a runner notice is for the organization's admins, never on a ticket.
     if (isRunnerNotice(notification.kind)) {
       return refuseRunnerNotice("tracker");
+    }
+    // Milestone 8 (F-142): a preview notice is for a person who may not see the task, never on its ticket.
+    if (isPreviewNotice(notification.kind)) {
+      return refusePreviewNotice("tracker");
     }
     if (!this.capabilities.edits) {
       return super.update(notification, providerMessageId);

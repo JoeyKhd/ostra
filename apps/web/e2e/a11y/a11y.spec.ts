@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Page, TestInfo } from "@playwright/test";
 
 import { readStack, signIn } from "../helpers.ts";
-import { appRoutePatterns, memberRoutes, seedRoutesWorld, settleRoute, visitorRoutes } from "../routes.ts";
+import { appRoutePatterns, memberRoutes, seedRoutesWorld, settleRoute, sharedRoutes, visitorRoutes } from "../routes.ts";
 import type { PanelRoute, RoutesWorld } from "../routes.ts";
 import { e2eBaseUrl } from "../settings.ts";
 import { checkContrast, drawnScheme, overlayClosed, overlayTriggers, prepareA11y, tagOpenOverlay, walkByArrows, walkByTab } from "./checks.ts";
@@ -79,6 +79,8 @@ const visits = (world: RoutesWorld): { readonly member: readonly Visit[]; readon
   return {
     member: [
       ...memberRoutes(world).map((route) => visit(route)),
+      // F-142: a preview's own page, signed in, outside the shell.
+      ...sharedRoutes(world).map((route) => visit(route)),
       visit({ pattern: task, path: `/tasks/${world.approval.taskId}` }, `${task} (an approval)`),
       visit({ pattern: task, path: `/tasks/${world.question.taskId}` }, `${task} (a question)`),
       visit({ pattern: task, path: `/tasks/${world.capped.taskId}` }, `${task} (a spend cap)`),

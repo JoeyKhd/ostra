@@ -9,6 +9,7 @@ import {
   closeRefusedViewsInTx,
   createPanelPreviewTokens,
   createPanelStartAppTokens,
+  loadPreviewShareNotice,
   markViewConnected,
   PANEL_START_APP_PATH,
   parsePanelPreviewPath,
@@ -16,7 +17,7 @@ import {
   systemClock,
 } from "@ostra/domain";
 import type { PanelPreviewClaims, PanelStartAppClaims } from "@ostra/domain";
-import { createPanelStreamReader, encodePanelStreamRecord, panelPreviewInputBodySchema, previewKeySchema, previewViewIdSchema } from "@ostra/protocol";
+import { createPanelStreamReader, encodePanelStreamRecord, panelPreviewInputBodySchema, previewAccessIdSchema, previewKeySchema, previewViewIdSchema } from "@ostra/protocol";
 import type { OrganizationId, PanelPreviewInputBody, PreviewInputEvent, PreviewViewId, ProjectId } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -445,6 +446,117 @@ describe("who can open a preview (F-142)", () => {
     const response = await servePreviewInput(await memberContext(named), inputRequest(opened.viewId), opened.viewId);
     expect([response.status, await errorCode(response)]).toEqual([403, "watch-only"]);
     expect(fakeCore.calls.filter((call) => call.viewId === opened.viewId)).toEqual([]);
+  });
+
+  it("F-142/c3: a person newly named is told, in the panel and by mail, with the preview's own page; a name taken off tells no one", async () => {
+    const target = await task();
+    const asDriver = await harness.as(driver);
+    const person = await seedMember();
+    const named2 = await seedMember();
+    const noticesOf = (member: SeededMember) =>
+      harness.test.db.notification.findMany({
+        where: { memberId: member.id, kind: "preview_shared", taskId: target.taskId },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, createdAt: true, deliveries: { orderBy: { channel: "asc" }, select: { id: true, channel: true, idempotencyKey: true, dueAt: true } } },
+      });
+    const level = (memberIds: readonly SeededMember[], to: "named" | "members" = "named") =>
+      asDriver.previews.setLevel({ taskId: target.taskId, key: target.key, level: to, memberIds: memberIds.map((member) => member.id) });
+    const sharer = await harness.test.db.member.findUniqueOrThrow({ where: { id: driver.id }, select: { user: { select: { name: true } } } });
+
+    // Named: one notice each, on the panel at once and by mail after the delay; the member who named
+    // themselves is told nothing.
+    harness.fakes.jobs.clear();
+    const before = Date.now();
+    await level([person, driver]);
+    const told = await noticesOf(person);
+    expect(told).toHaveLength(1);
+    expect(told[0]?.deliveries.map((delivery) => delivery.channel).sort()).toEqual(["email", "panel"]);
+    const panel = told[0]?.deliveries.find((delivery) => delivery.channel === "panel");
+    const mail = told[0]?.deliveries.find((delivery) => delivery.channel === "email");
+    expect(panel?.dueAt.getTime() ?? Number.POSITIVE_INFINITY).toBeLessThan(before + 60_000);
+    expect(mail?.dueAt.getTime() ?? 0).toBeGreaterThanOrEqual(before + 60_000);
+    expect(await noticesOf(driver)).toEqual([]);
+    expect(harness.fakes.jobs.jobs.filter((job) => job.job === "notify.deliver").map((job) => JSON.stringify(job.payload)).sort()).toEqual(
+      [panel?.id, mail?.id].map((deliveryId) => JSON.stringify({ organizationId, deliveryId })).sort(),
+    );
+
+    // The notice opens the preview's own page, and says what it is and who shared it: nothing of the task.
+    const access = await harness.test.db.previewAccess.findUniqueOrThrow({ where: { taskId_key: { taskId: target.taskId, key: target.key } }, select: { id: true } });
+    const notice = await loadPreviewShareNotice(harness.test.db, { organizationId, memberId: person.id, key: panel?.idempotencyKey ?? "", publicUrl: "https://ostra.example/" });
+    expect(notice).toEqual({ label: "Web", port: 5173, sharedBy: sharer.user.name, organizationName: harness.fixture.a.organization.name, url: `https://ostra.example/previews/${access.id}` });
+    const shares = await (await harness.as(person)).notifications.previewShares();
+    expect(shares).toEqual([{ notificationId: told[0]?.id, previewId: access.id, label: "Web", port: 5173, sharedBy: sharer.user.name, read: false, createdAt: told[0]?.createdAt.getTime() }]);
+
+    // The same people named again tell no one twice; a person added is told alone.
+    harness.fakes.jobs.clear();
+    await level([person, named2]);
+    expect(await noticesOf(person)).toHaveLength(1);
+    expect(await noticesOf(named2)).toHaveLength(1);
+    expect(harness.fakes.jobs.jobs.filter((job) => job.job === "notify.deliver")).toHaveLength(2);
+
+    // A name taken off tells no one; its notice says nothing once it's due, nor on Needs you.
+    harness.fakes.jobs.clear();
+    const all = () => harness.test.db.notification.count({ where: { kind: "preview_shared", taskId: target.taskId } });
+    const madeSoFar = await all();
+    await level([named2]);
+    expect(await all()).toBe(madeSoFar);
+    expect(harness.fakes.jobs.jobs.filter((job) => job.job === "notify.deliver")).toEqual([]);
+    expect(await loadPreviewShareNotice(harness.test.db, { organizationId, memberId: person.id, key: mail?.idempotencyKey ?? "", publicUrl: "https://ostra.example/" })).toBeNull();
+    expect(await (await harness.as(person)).notifications.previewShares()).toEqual([]);
+    // Back to the project's members: the last person named is told nothing either, and their row goes.
+    await level([], "members");
+    expect(await all()).toBe(madeSoFar);
+    expect(await (await harness.as(named2)).notifications.previewShares()).toEqual([]);
+
+    // Named again later: a new naming, told anew.
+    await level([person]);
+    expect(await noticesOf(person)).toHaveLength(2);
+    expect(await (await harness.as(person)).notifications.previewShares()).toMatchObject([{ previewId: access.id, read: false }]);
+  });
+
+  it("F-142/c3: the preview's own page opens for a person it names, watch-only, and for a member who can open the task; a stranger, a name taken off and a narrowed level each get the same not-shared", async () => {
+    const target = await task();
+    const asDriver = await harness.as(driver);
+    await asDriver.previews.setLevel({ taskId: target.taskId, key: target.key, level: "named", memberIds: [named.id] });
+    const previewId = previewAccessIdSchema.parse((await harness.test.db.previewAccess.findUniqueOrThrow({ where: { taskId_key: { taskId: target.taskId, key: target.key } }, select: { id: true } })).id);
+    const pageAs = async (member: SeededMember, id = previewId): Promise<string> => {
+      const page = await (await harness.as(member)).previews.shared.open({ previewId: id });
+      return page.state === "live" ? (page.input ? "live, input" : "live, watch-only") : page.state;
+    };
+
+    expect(await pageAs(named)).toBe("live, watch-only");
+    expect(await pageAs(driver)).toBe("live, input");
+    expect(await pageAs(outsider)).toBe("not-shared");
+    expect(await pageAs(harness.fixture.b.admin)).toBe("not-shared");
+    expect(await pageAs(named, previewAccessIdSchema.parse(randomUUID()))).toBe("not-shared");
+    // Signed out, there's no page at all.
+    expect(await trpcFailure(visitor(address()).previews.shared.open({ previewId }))).toMatchObject({ code: "UNAUTHORIZED" });
+
+    // The page holds the preview's label and port and the organization's name, and nothing else of the task.
+    const asNamed = await harness.as(named);
+    const page = await asNamed.previews.shared.open({ previewId });
+    if (page.state !== "live") {
+      throw new Error(`not live: ${page.state}`);
+    }
+    expect(Object.keys(page).sort()).toEqual(["expiresAt", "input", "label", "organizationName", "port", "state", "viewId"]);
+    expect(page).toMatchObject({ label: "Web", port: 5173, organizationName: harness.fixture.a.organization.name, expiresAt: null, input: false });
+    // Its view is the person's own, kept by the pane's heartbeat, and its input stops at the panel.
+    expect(await asNamed.previews.heartbeat({ viewId: page.viewId })).toEqual({ state: "opening" });
+    const input = await servePreviewInput(await memberContext(named), inputRequest(page.viewId), page.viewId);
+    expect([input.status, await errorCode(input)]).toEqual([403, "watch-only"]);
+
+    // Their name taken off: the open view ends, its heartbeat and the stream say so, and the page is not-shared.
+    await asDriver.previews.setLevel({ taskId: target.taskId, key: target.key, level: "named", memberIds: [outsider.id] });
+    expect(await asNamed.previews.heartbeat({ viewId: page.viewId })).toEqual({ state: "closed" });
+    const stream = await servePreviewStream(await memberContext(named), streamRequest(page.viewId), page.viewId);
+    expect([stream.status, await errorCode(stream)]).toEqual([410, "view-closed"]);
+    expect(await pageAs(named)).toBe("not-shared");
+    expect(await pageAs(outsider)).toBe("live, watch-only");
+
+    // The level narrowed to the project's members: the page shuts for the person it named, not for the project.
+    await asDriver.previews.setLevel({ taskId: target.taskId, key: target.key, level: "members", memberIds: [] });
+    expect(await pageAs(outsider)).toBe("not-shared");
+    expect(await pageAs(driver)).toBe("live, input");
   });
 
   it("F-142/c4: an expired, a revoked and a forbidden public link each give no view, with the reason", async () => {

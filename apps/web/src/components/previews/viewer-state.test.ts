@@ -32,6 +32,15 @@ describe("the viewer page", () => {
     expect(learnedEnd("unknown", shown, 77)).toEqual({ kind: "unknown" });
   });
 
+  it("F-142/c3: a preview's own page shows a person it names the stream watch-only, with no expiry, and anyone it doesn't name the same not-shared, with no picture", () => {
+    const named = { label: "web", port: 5173, organizationName: "Acme Corp", expiresAt: null, input: false };
+    expect(viewerOf({ state: "live", viewId, ...named })).toEqual({ kind: "live", viewId, shown: named });
+    expect(viewerOf({ state: "not-running", ...named })).toEqual({ kind: "not-running", shown: named });
+    expect(viewerOf({ state: "not-shared" })).toEqual({ kind: "ended", end: { kind: "not-shared" }, shown: null });
+    // A name taken off while the page is open: the block, and what it last showed kept only for its title.
+    expect(viewerOf({ state: "not-shared" }, named)).toEqual({ kind: "ended", end: { kind: "not-shared" }, shown: named });
+  });
+
   it("F-142/c3: says the link's time left as the page shows it: minutes under an hour, hours under two days, then days", () => {
     const now = 1_000_000;
     expect(expiryWords(now + 52 * 60_000, now)).toBe("Expires in 52 min");

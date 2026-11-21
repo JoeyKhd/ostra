@@ -45,7 +45,7 @@ export const generateMetadata = async ({ params }: Props): Promise<Metadata> => 
 
 const PreviewViewerRoute = async ({ params }: Props) => {
   const { token } = await params;
-  return <ViewerPage token={token} initial={await load(token)} />;
+  return <ViewerPage source={{ kind: "link", token }} initial={await load(token)} />;
 };
 
 export default PreviewViewerRoute;

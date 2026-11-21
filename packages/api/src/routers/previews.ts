@@ -16,6 +16,7 @@ import {
   resolvePreviewLinkInTx,
   revokePreviewLink,
   setPreviewLevel,
+  sharedPreviewForMember,
   takeMemberScreenshot,
   usePreviewLink,
 } from "@ostra/domain";
@@ -23,6 +24,7 @@ import type { MemberScope, NativePreviewOpener, PreviewDomainStatus, PreviewLink
 import {
   appPathSchema,
   memberIdSchema,
+  previewAccessIdSchema,
   previewKeySchema,
   previewLinkIdSchema,
   previewViewIdSchema,
@@ -49,7 +51,8 @@ import { memberProcedure, publicProcedure, router, taskProcedure } from "../trpc
 //   a restricted project they can't open, are NOT_FOUND.
 // - A named person (a member the preview's level names, who can't open the project) gets
 //   `previews.open` for that preview alone, and the heartbeat and close of their own view. Every
-//   other procedure of the task refuses them as it refuses anyone outside the project.
+//   other procedure of the task refuses them as it refuses anyone outside the project. F-142: they
+//   open it from the preview's own page, `/previews/<the level's ID>`, through `previews.shared.open`.
 // - Someone with a link reaches only `previews.link.*`, with the link's token: the viewer page's
 //   open, heartbeat and close. Tries are limited by address. An unknown token never says whether it
 //   existed.
@@ -134,6 +137,20 @@ export const previewViewerPageSchema = z.discriminatedUnion("state", [
 ]);
 export type PreviewViewerPage = z.infer<typeof previewViewerPageSchema>;
 
+/**
+ * F-142 (`preview-viewer.md`, open point 2): a person's own page of a preview shared with them by
+ * name, `/previews/<the level's ID>`: the link's viewer, signed in. The preview's label and port and
+ * the organization's name, and nothing else of the task. `not-shared` for anyone the preview doesn't
+ * name now, a stranger as much as a person whose name was taken off: it never says which.
+ */
+export const sharedPreviewPageSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("live"), viewId: previewViewIdSchema, ...shownSchema, expiresAt: z.null(), input: z.boolean() }),
+  z.strictObject({ state: z.literal("not-running"), ...shownSchema, expiresAt: z.null(), input: z.boolean() }),
+  z.strictObject({ state: z.literal("runner-too-old"), organizationName: z.string() }),
+  z.strictObject({ state: z.literal("not-shared") }),
+]);
+export type SharedPreviewPage = z.infer<typeof sharedPreviewPageSchema>;
+
 /** What the viewer page's heartbeat and close see: the view's state, or why the link opens nothing now. */
 const linkViewStateSchema = z.strictObject({ state: z.enum(["opening", "open", "closed", "expired", "revoked", "not-allowed", "unknown"]) });
 
@@ -156,6 +173,9 @@ const sharingDeps = (deps: ApiDeps) => ({
   clock: deps.ports.clock,
   settings: deps.settings.previews,
   logger: deps.logger,
+  // F-142: a person newly named is told, in the panel and by mail after its delay.
+  jobs: deps.ports.jobs,
+  emailDelaySeconds: deps.settings.emailDelaySeconds,
 });
 
 const notFound = (what: string): TRPCError => new TRPCError({ code: "NOT_FOUND", message: `No such ${what}` });
@@ -461,6 +481,50 @@ const linkRouter = router({
     }),
 });
 
+// ---------- a preview shared by name (F-142) ----------
+
+const sharedRouter = router({
+  /**
+   * The page's open (`/previews/<id>`): the preview its level names, read again through
+   * `previewAccess`, then a view of it as `previews.open` makes, watch-only for a person it names.
+   * Its heartbeat and close are the pane's own (`previews.heartbeat`, `.close`), which read the
+   * access again and close the view of someone no longer named. Nothing else of the task.
+   */
+  open: memberProcedure
+    .input(z.strictObject({ previewId: previewAccessIdSchema, viewport: previewViewportSchema.nullable().optional() }))
+    .output(sharedPreviewPageSchema)
+    .mutation(async ({ ctx, input }): Promise<SharedPreviewPage> => {
+      const shared = await sharedPreviewForMember(ctx.deps.db, ctx.scope, input.previewId, ctx.deps.ports.clock.now());
+      if (shared === null) {
+        return { state: "not-shared" };
+      }
+      const shown = { label: shared.label, port: shared.port, organizationName: shared.organizationName, expiresAt: null, input: shared.input };
+      const opened = await openView(viewDeps(ctx.deps), { kind: "member", scope: ctx.scope }, { taskId: shared.taskId, key: shared.key, mode: "stream", viewport: input.viewport ?? null });
+      if (opened.ok) {
+        return { state: "live", viewId: opened.viewId, ...shown, input: opened.input };
+      }
+      switch (opened.error) {
+        case "no-box":
+        case "port-not-allowed":
+          return { state: "not-running", ...shown };
+        case "runner-needs-upgrade":
+        case "runner-cannot-preview":
+          return { state: "runner-too-old", organizationName: shared.organizationName };
+        // The name taken off between the two reads, or a level this build can't read.
+        case "not-found":
+        case "not-allowed":
+        case "level-unknown":
+        case "link-expired":
+        case "link-revoked":
+        case "public-links-off":
+        case "link-unknown":
+          return { state: "not-shared" };
+        default:
+          return opened.error satisfies never;
+      }
+    }),
+});
+
 // ---------- the router ----------
 
 const taskInput = z.strictObject({ taskId: taskIdSchema });
@@ -730,4 +794,7 @@ export const previewsRouter = router({
 
   /** Someone with a link: the viewer page's own procedures, and no other. */
   link: linkRouter,
+
+  /** A person a preview names: its own page's open (F-142). */
+  shared: sharedRouter,
 });

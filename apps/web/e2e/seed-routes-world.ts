@@ -345,7 +345,11 @@ const preview = await (async () => {
   await db.previewLink.create({
     data: { organizationId, projectId: project.id, taskId: made.taskId, key: "app-web", kind: "expiring", tokenHash, allowInput: false, expiresAt: new Date(Date.now() + 23 * 3_600_000), createdByMemberId: admin.id },
   });
-  return { taskId: made.taskId, token };
+  // F-142: the preview's level, naming the plain member, for the preview's own page (`/previews/<id>`).
+  // The share menu still shows the link, the widest of the two.
+  const access = await db.previewAccess.create({ data: { organizationId, projectId: project.id, taskId: made.taskId, key: "app-web", level: "named", setByMemberId: admin.id } });
+  await db.previewAccessMember.create({ data: { organizationId, projectId: project.id, previewAccessId: access.id, memberId: plain.seeded.memberId } });
+  return { taskId: made.taskId, token, previewId: access.id };
 })();
 
 // A pending invitation, for the invitation page a new member opens.

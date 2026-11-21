@@ -1,13 +1,18 @@
+import type { SharedPreviewPage } from "@ostra/api";
 import type { PreviewViewId } from "@ostra/protocol";
 
-import type { PreviewViewerData } from "@/app/p/[token]/viewer-data";
+import type { PreviewViewerData as LinkViewerData } from "@/app/p/[token]/viewer-data";
 import { t } from "@/lib/messages";
 
 // The viewer page's state (milestone 8, F-142; preview-viewer.md, "Every state"): the server's
 // answer for a link, and what the page learns while it's open, as one union with an exhaustive
 // switch. Pure, so each rule is tested alone.
 
-export type { PreviewViewerData };
+/**
+ * What the page renders: a link's answer, or (F-142) the answer of a preview shared by name, on its
+ * own page (`/previews/<id>`), which a person not named on it gets as `not-shared`.
+ */
+export type PreviewViewerData = LinkViewerData | SharedPreviewPage;
 
 /** Why the page shows no app. */
 export type ViewerEnd =
@@ -16,7 +21,9 @@ export type ViewerEnd =
   | { readonly kind: "not-allowed"; readonly organizationName: string }
   | { readonly kind: "runner-too-old" }
   | { readonly kind: "unknown" }
-  | { readonly kind: "too-many-tries" };
+  | { readonly kind: "too-many-tries" }
+  /** F-142: a preview's own page, for a person it doesn't name now: never says whether it once did. */
+  | { readonly kind: "not-shared" };
 
 /** What the page shows of the preview: its label and port, the organization, the expiry and the mode. */
 export type Shown = { readonly label: string; readonly port: number | null; readonly organizationName: string; readonly expiresAt: number | null; readonly input: boolean };
@@ -53,6 +60,8 @@ export const viewerOf = (data: PreviewViewerData, before: Shown | null = null): 
       return { kind: "ended", end: { kind: "unknown" }, shown: before };
     case "too-many-tries":
       return { kind: "ended", end: { kind: "too-many-tries" }, shown: before };
+    case "not-shared":
+      return { kind: "ended", end: { kind: "not-shared" }, shown: before };
     default:
       return data satisfies never;
   }

@@ -1,5 +1,5 @@
-import { isRunnerNotice } from "@ostra/adapter-sdk";
-import type { AdapterError, BoardRef, Logger, MomentNotification, NotificationAdapter, RunnerNotificationKind, TrackerAdapter } from "@ostra/adapter-sdk";
+import { isPreviewNotice, isRunnerNotice } from "@ostra/adapter-sdk";
+import type { AdapterError, BoardRef, Logger, MomentNotification, NotificationAdapter, PreviewNotificationKind, RunnerNotificationKind, TrackerAdapter } from "@ostra/adapter-sdk";
 import type { Db, Prisma } from "@ostra/db";
 import {
   budgetNoticeIdOfKey,
@@ -8,7 +8,9 @@ import {
   fanOutNotification,
   isBudgetNoticeKind,
   loadBudgetNoticeView,
+  loadPreviewShareNotice,
   loadRunnerNoticeView,
+  renderPreviewNotice,
   renderRunnerNotice,
   runnerIdOfNoticeKey,
   runnerNoticeSubject,
@@ -261,12 +263,51 @@ const runnerPanelOutcome = async (deps: NotifyDeps, row: DeliveryRow, kind: Runn
   return sent.ok ? { outcome: "sent", providerMessageId: sent.value.providerMessageId } : { outcome: "failed", error: words(sent.error), retryable: retryable(sent.error) };
 };
 
+/**
+ * Milestone 8 (F-142): a preview notice, its words read from the naming when it's due. A person
+ * whose name was taken off meanwhile has nothing to be told.
+ */
+export const loadPreviewNotice = async (deps: Pick<NotifyDeps, "db" | "publicUrl">, row: DeliveryRow) => {
+  const organizationId = organizationIdSchema.parse(row.organizationId);
+  const preview = await loadPreviewShareNotice(deps.db, { organizationId, memberId: memberIdSchema.parse(row.notification.memberId), key: row.idempotencyKey, publicUrl: deps.publicUrl });
+  return preview === null ? null : { organizationId, preview, rendered: renderPreviewNotice({ preview, publicUrl: deps.publicUrl }) };
+};
+
+const previewPanelOutcome = async (deps: NotifyDeps, row: DeliveryRow, kind: PreviewNotificationKind): Promise<ChannelOutcome> => {
+  const notice = await loadPreviewNotice(deps, row);
+  if (notice === null) {
+    return { outcome: "skipped", why: "closed" };
+  }
+  const memberId = memberIdSchema.parse(row.notification.memberId);
+  const sent = await deps.channels.panel(notice.organizationId).send({
+    organizationId: notice.organizationId,
+    memberIds: [memberId],
+    title: notice.rendered.panel.title,
+    body: notice.rendered.panel.line,
+    url: notice.rendered.panel.url,
+    idempotencyKey: row.idempotencyKey,
+    kind,
+    recipients: [{ memberId, email: null, trackerMention: null }],
+    subject: notice.preview.label,
+    rendered: null,
+    notificationId: notificationIdSchema.parse(row.notification.id),
+    // Nothing of the task: the person may not see it.
+    taskId: null,
+    ticket: null,
+    preview: notice.preview,
+  });
+  return sent.ok ? { outcome: "sent", providerMessageId: sent.value.providerMessageId } : { outcome: "failed", error: words(sent.error), retryable: retryable(sent.error) };
+};
+
 const panelOutcome = async (deps: NotifyDeps, row: DeliveryRow, change: "created" | "answered" | "dismissed"): Promise<ChannelOutcome> => {
   if (isBudgetNoticeKind(row.notification.kind)) {
     return budgetPanelOutcome(deps, row, row.notification.kind);
   }
   if (isRunnerNotice(row.notification.kind)) {
     return runnerPanelOutcome(deps, row, row.notification.kind);
+  }
+  if (isPreviewNotice(row.notification.kind)) {
+    return previewPanelOutcome(deps, row, row.notification.kind);
   }
   const memberId = memberIdSchema.parse(row.notification.memberId);
   const notification = await baseNotification(deps, row, change, [{ memberId, email: null, trackerMention: null }]);

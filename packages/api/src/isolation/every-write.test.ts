@@ -8,6 +8,7 @@ import {
   agentProfileIdSchema,
   clientMessageIdSchema,
   draftIdSchema,
+  previewAccessIdSchema,
   repoFullNameSchema,
   repoIdSchema,
   serviceIdSchema,
@@ -626,11 +627,19 @@ describe("a preview's writes, by each kind of viewer (F-142)", () => {
       if (!view.ok || !link.ok) {
         throw new Error("the task's view or link didn't open");
       }
-      return { task, viewId: view.viewId, linkId: link.linkId };
+      const access = await harness.test.db.previewAccess.findUniqueOrThrow({ where: { taskId_key: { taskId: task.taskId, key: task.key } }, select: { id: true } });
+      return { task, viewId: view.viewId, linkId: link.linkId, previewId: previewAccessIdSchema.parse(access.id) };
     };
     type Fresh = Awaited<ReturnType<typeof fresh>>;
     const writes: Readonly<Record<string, (caller: AppCaller, at: Fresh) => Promise<unknown>>> = {
       "previews.open": (caller, at) => caller.previews.open({ taskId: at.task.taskId, key: at.task.key }),
+      // The preview's own page (F-142): its view, or the same not-shared for anyone it doesn't name, read here as NOT_FOUND.
+      "previews.shared.open": async (caller, at) => {
+        const page = await caller.previews.shared.open({ previewId: at.previewId });
+        if (page.state === "not-shared") {
+          throw new TRPCError({ code: "NOT_FOUND", message: "not shared" });
+        }
+      },
       // Ticket 26: the native preview's code. With no preview domain here, a viewer who may open it hears so.
       "previews.enter": (caller, at) => caller.previews.enter({ taskId: at.task.taskId, key: at.task.key }),
       // On the project member's own view: nobody else's to beat or close.
@@ -653,6 +662,7 @@ describe("a preview's writes, by each kind of viewer (F-142)", () => {
     const members = { "organization admin": "ok", "project member": "ok", "named person": "NOT_FOUND", ...outsiders } as const;
     const table: Readonly<Record<string, Readonly<Record<Viewer, string>>>> = {
       "previews.open": { ...members, "named person": "ok" },
+      "previews.shared.open": { ...members, "named person": "ok" },
       // The named person gets `watch-only` and no code; nobody outside the task learns of it.
       "previews.enter": { ...members, "named person": "ok" },
       "previews.heartbeat": { ...members, "organization admin": "NOT_FOUND" },

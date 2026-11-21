@@ -3,8 +3,16 @@ import { randomUUID } from "node:crypto";
 import { memberIdSchema, organizationIdSchema, runnerIdSchema } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
-import { runnerNotificationKinds, teamNotificationKinds } from "../notification/base.ts";
-import type { AccountNotification, MomentNotification, NotificationAdapter, NotificationRecipient, RunnerNotificationKind, TeamNotificationKind } from "../notification/base.ts";
+import { previewNotificationKinds, runnerNotificationKinds, teamNotificationKinds } from "../notification/base.ts";
+import type {
+  AccountNotification,
+  MomentNotification,
+  NotificationAdapter,
+  NotificationRecipient,
+  PreviewNotificationKind,
+  RunnerNotificationKind,
+  TeamNotificationKind,
+} from "../notification/base.ts";
 import type { LogRecord } from "../plumbing/logger.ts";
 import { defineCommonCases, useSubject } from "./common-cases.ts";
 import type { ContractSuiteOptions } from "./common-cases.ts";
@@ -300,7 +308,80 @@ export const defineNotificationContractSuite = (options: ContractSuiteOptions<No
         expect(logged).not.toContain(notice.line);
       });
     }
+
+    // ---- milestone 8: a preview shared with a named person (F-142) ----
+
+    for (const kind of previewNotificationKinds) {
+      it(`F-142/c3: a ${kind} notice reaches the panel and email channels, a mail with the preview's page in both parts and none of it in a log line; the tracker refuses it`, async () => {
+        const { adapter, fixture } = subject();
+        const notice = samplePreviewNotice(kind, [fixture.reachable]);
+        const notification = (await fixture.prepare?.(notice.notification)) ?? notice.notification;
+        const before = (await fixture.delivered()).length;
+        const sent = await adapter.send(notification);
+        if (adapter.capabilities.channels.includes("tracker")) {
+          // The person may not see the task: a ticket would show it to everyone who can.
+          expect(sent).toMatchObject({ ok: false, error: { code: "unsupported" } });
+          expect((await fixture.delivered()).length).toBe(before);
+          expect(await adapter.update(notification, "comment-1")).toMatchObject({ ok: false, error: { code: "unsupported" } });
+          return;
+        }
+        if (!sent.ok) throw new Error(sent.error.message);
+        expect(sent.value.refused).toEqual([]);
+        const delivered = (await fixture.delivered()).find((candidate) => candidate.providerMessageId === sent.value.providerMessageId);
+        expect(delivered).toBeDefined();
+        if (adapter.capabilities.channels.includes("email")) {
+          for (const part of [delivered?.html ?? "", delivered?.text ?? ""]) {
+            for (const fact of notice.facts) {
+              expect(part, `the mail names ${fact}`).toContain(fact);
+            }
+          }
+        }
+        expect(JSON.stringify(fixture.logs())).not.toContain(notice.label);
+      });
+    }
   });
+};
+
+let previewNotices = 0;
+
+/**
+ * Milestone 8 (F-142): a preview notice for a person named on it, as core builds it: the preview's
+ * label and port, the organization, who shared it and the preview's own page. Nothing of the task.
+ */
+export const samplePreviewNotice = (
+  kind: PreviewNotificationKind,
+  recipients: readonly NotificationRecipient[],
+): { readonly notification: MomentNotification; readonly label: string; readonly facts: readonly string[] } => {
+  previewNotices += 1;
+  const label = `checkout-web-${String(previewNotices)}`;
+  const url = `https://ostra.example/previews/preview-suite-${String(previewNotices)}`;
+  const heading = "A preview was shared with you";
+  const line = `Ada Lovelace shared ${label} :5173 with you, to watch.`;
+  return {
+    notification: {
+      organizationId,
+      memberIds: recipients.map((recipient) => recipient.memberId),
+      title: heading,
+      body: `${line} ${url}`,
+      url,
+      idempotencyKey: `suite-preview:${kind}:${String(previewNotices)}:${String(Date.now())}`,
+      kind,
+      category: "moment",
+      recipients,
+      subject: label,
+      preview: { label, port: 5173, sharedBy: "Ada Lovelace", organizationName: "Acme", url },
+      rendered: {
+        subject: `${heading} · ${label} :5173`,
+        html: `<table><tr><td><p>${line}</p><p><a href="${url}">Watch the preview</a></p></td></tr></table>`,
+        text: `${line}
+
+Watch the preview: ${url}
+`,
+      },
+    },
+    label,
+    facts: [label, ":5173", "Ada Lovelace", url],
+  };
 };
 
 let teamNotices = 0;

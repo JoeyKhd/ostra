@@ -1,5 +1,6 @@
 "use client";
 
+import type { PreviewAccessId } from "@ostra/protocol";
 import { useMutation } from "@tanstack/react-query";
 import { ClockIcon, EyeIcon, MousePointerClickIcon, RotateCwIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -29,6 +30,18 @@ import type { PreviewViewerData, Shown, Viewer } from "./viewer-state";
 // frames the app on its preview host instead (`state: "native"`), as the pane does. Core keeps that
 // view itself, so the page asks only the link's state every 30 s (`previews.link.state`), and a new
 // one-time code on `Try again` (`previews.link.enter`).
+//
+// F-142 (`preview-viewer.md`, open point 2): the same page, signed in, is a preview's own page for a
+// member it names (`/previews/<id>`): it opens its view with `previews.shared.open`, and keeps and
+// closes it with the pane's own `previews.heartbeat` and `.close`, on the member's session. A person
+// named may only watch, so it never frames the native preview. Once their name is taken off, the
+// heartbeat finds the view closed and the next open says it isn't shared with them.
+
+/**
+ * Who the page is for: a link's holder, by its token, or a member a preview names, by its level's
+ * ID (`null` for an address that names no preview, which opens nothing and never asks again).
+ */
+export type ViewerSource = { readonly kind: "link"; readonly token: string } | { readonly kind: "shared"; readonly previewId: PreviewAccessId | null };
 
 /** The heartbeat (Q299): it keeps the box warm while someone watches, and learns of a link's end. */
 const HEARTBEAT_MS = 30_000;
@@ -59,8 +72,10 @@ const Label = ({ shown }: { readonly shown: Shown }) => (
   </span>
 );
 
-export const ViewerPage = ({ token, initial }: { readonly token: string; readonly initial: PreviewViewerData }) => {
+export const ViewerPage = ({ source, initial }: { readonly source: ViewerSource; readonly initial: PreviewViewerData }) => {
   const trpc = useTRPC();
+  const token = source.kind === "link" ? source.token : null;
+  const previewId = source.kind === "shared" ? source.previewId : null;
   const [viewer, setViewer] = useState<Viewer>(() => viewerOf(initial));
   const [frame, setFrame] = useState<FrameStatus>({ kind: "connecting" });
   const [size, setSize] = useState<FrameSize | null>(null);
@@ -72,6 +87,10 @@ export const ViewerPage = ({ token, initial }: { readonly token: string; readonl
   const close = useMutation(trpc.previews.link.close.mutationOptions());
   const linkState = useMutation(trpc.previews.link.state.mutationOptions());
   const enterAgain = useMutation(trpc.previews.link.enter.mutationOptions());
+  // F-142: a preview shared by name, on the member's session.
+  const { mutateAsync: openShared } = useMutation(trpc.previews.shared.open.mutationOptions());
+  const { mutateAsync: beatShared } = useMutation(trpc.previews.heartbeat.mutationOptions());
+  const { mutate: closeShared } = useMutation(trpc.previews.close.mutationOptions());
   const { mutateAsync: askState } = linkState;
   const { mutateAsync: askCode } = enterAgain;
   /** The native frame's sign-in: loaded once its redirect finished, or failed after 10 s. */
@@ -91,17 +110,31 @@ export const ViewerPage = ({ token, initial }: { readonly token: string; readonl
   const reopen = useCallback(async () => {
     const before = current.current.shown;
     try {
-      const next = await openAgain({ token, viewport: null });
+      const next = token !== null ? await openAgain({ token, viewport: null }) : previewId !== null ? await openShared({ previewId, viewport: null }) : null;
+      if (next === null) return;
       setFrame({ kind: "connecting" });
       setViewer(viewerOf(next, before));
     } catch {
       // The next poll or heartbeat tries again.
     }
-  }, [openAgain, token]);
+  }, [openAgain, openShared, token, previewId]);
 
   /** What the link's view is now: an ended link shows its block; a closed view opens again. */
   const learn = useCallback(async () => {
     const state = current.current;
+    // A preview shared by name: the pane's heartbeat on the member's own view, which reads their
+    // access again; a view closed (their name taken off, the app stopped) opens again or says why.
+    if (source.kind === "shared") {
+      if (state.kind !== "live") return;
+      try {
+        const answer = await beatShared({ viewId: state.viewId });
+        if (answer.state === "closed") await reopen();
+      } catch {
+        // The heartbeat comes again.
+      }
+      return;
+    }
+    if (token === null) return;
     if (state.kind === "native") {
       try {
         const answer = await askState({ token });
@@ -133,7 +166,7 @@ export const ViewerPage = ({ token, initial }: { readonly token: string; readonl
     } catch {
       // The heartbeat comes again.
     }
-  }, [beat, reopen, token, askState]);
+  }, [beat, beatShared, reopen, token, source.kind, askState]);
 
   // The heartbeat while the page is visible.
   const liveViewId = viewer.kind === "live" ? viewer.viewId : null;
@@ -142,14 +175,17 @@ export const ViewerPage = ({ token, initial }: { readonly token: string; readonl
     const tick = () => { if (document.visibilityState === "visible") void learn(); };
     const timer = setInterval(tick, HEARTBEAT_MS);
     document.addEventListener("visibilitychange", tick);
-    const leave = () => { closeView({ token, viewId: liveViewId }); };
+    const leave = () => {
+      if (token !== null) closeView({ token, viewId: liveViewId });
+      else closeShared({ viewId: liveViewId });
+    };
     window.addEventListener("pagehide", leave);
     return () => {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", tick);
       window.removeEventListener("pagehide", leave);
     };
-  }, [liveViewId, learn, closeView, token]);
+  }, [liveViewId, learn, closeView, closeShared, token]);
 
   // The native view's link, asked about every 30 s while the page is visible.
   const nativeShown = viewer.kind === "native";
@@ -176,7 +212,7 @@ export const ViewerPage = ({ token, initial }: { readonly token: string; readonl
   /** `Try again`: a new one-time code for the link, or the link's end. */
   const nativeAgain = useCallback(async () => {
     const state = current.current;
-    if (state.kind !== "native") return;
+    if (state.kind !== "native" || token === null) return;
     try {
       const answer = await askCode({ token });
       if (answer.ok) {
@@ -342,7 +378,7 @@ export const ViewerPage = ({ token, initial }: { readonly token: string; readonl
   };
 
   return (
-    <div className="flex h-dvh flex-col bg-bg" data-testid="preview-viewer" data-state={viewer.kind === "ended" ? viewer.end.kind : viewer.kind}>
+    <div className="flex h-dvh flex-col bg-bg" data-testid="preview-viewer" data-source={source.kind} data-state={viewer.kind === "ended" ? viewer.end.kind : viewer.kind}>
       <header className="flex h-[54px] shrink-0 items-center gap-2.5 whitespace-nowrap border-b border-line pl-4 pr-3 sm:h-14 sm:gap-3.5 sm:pl-[22px] sm:pr-5">
         <span role="img" aria-label="ostra" className="logo-lockup block h-5 w-[95px] shrink-0" />
         {shown === null ? null : (

@@ -83,8 +83,34 @@ export type RunnerNoticeSubject = {
 export const teamNotificationKinds = ["draft_ready", "review_requested", "task_approval", "round_cap", "automation_paused"] as const;
 export type TeamNotificationKind = (typeof teamNotificationKinds)[number];
 
-/** A moment's kinds: milestone 3's, the budget notices, the runner notices and milestone 6's. */
-export type MomentNotificationKind = NotificationKind | BudgetNotificationKind | RunnerNotificationKind | TeamNotificationKind;
+/**
+ * Milestone 8 (F-142, ADR 0068): a member named a person on a preview, who watches it at its own
+ * page in the panel. A moment, in the panel and by mail; the tracker channel refuses it, since the
+ * person may not see the task, and a ticket would show it to everyone who can.
+ */
+export const previewNotificationKinds = ["preview_shared"] as const;
+export type PreviewNotificationKind = (typeof previewNotificationKinds)[number];
+
+/** Whether a kind is a preview notice, which only the panel and email channels deliver. */
+export const isPreviewNotice = (kind: string): kind is PreviewNotificationKind => previewNotificationKinds.some((candidate) => candidate === kind);
+
+/**
+ * What a preview notice is about (F-142): the preview's label and port, the organization, who
+ * shared it and the preview's own page. Never the task: its title, key, project or thread.
+ */
+export type PreviewNoticeSubject = {
+  /** The preview's label. Data, never logged. */
+  readonly label: string;
+  readonly port: number | null;
+  /** The member who named them; `null` when they're gone. Data, never logged. */
+  readonly sharedBy: string | null;
+  readonly organizationName: string;
+  /** The preview's own page in the panel, `/previews/<id>`. */
+  readonly url: string;
+};
+
+/** A moment's kinds: milestone 3's, the budget notices, the runner notices, milestone 6's and milestone 8's. */
+export type MomentNotificationKind = NotificationKind | BudgetNotificationKind | RunnerNotificationKind | TeamNotificationKind | PreviewNotificationKind;
 
 /**
  * Milestone 4: what a notification is. A `moment` is a needs-you moment or a budget notice for
@@ -154,6 +180,8 @@ export type MomentNotification = NotificationFields & {
   readonly state?: NotificationMomentState;
   /** Milestone 5: the runner a runner notice is about. Absent for every other kind. */
   readonly runner?: RunnerNoticeSubject;
+  /** Milestone 8: the preview a preview notice is about. Absent for every other kind. */
+  readonly preview?: PreviewNoticeSubject;
 };
 
 /**
@@ -188,6 +216,10 @@ export const refuseAccountMail = (channel: string): Err<AdapterError> =>
 /** The typed refusal of the tracker channel for a runner notice (F-091): `unsupported`. */
 export const refuseRunnerNotice = (channel: string): Err<AdapterError> =>
   adapterError("unsupported", `the ${channel} channel doesn't send runner notices: they go to the panel and by mail`);
+
+/** The typed refusal of the tracker channel for a preview notice (F-142): `unsupported`. */
+export const refusePreviewNotice = (channel: string): Err<AdapterError> =>
+  adapterError("unsupported", `the ${channel} channel doesn't send preview notices: they go to the panel and by mail`);
 
 /** A recipient the channel refused, without failing the others. `reason` is words, never a vendor's body. */
 export type RefusedRecipient = {

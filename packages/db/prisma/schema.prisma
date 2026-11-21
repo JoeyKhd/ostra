@@ -3362,6 +3362,9 @@ enum NotificationKind {
   task_approval
   round_cap
   automation_paused
+  // Milestone 8 (F-142, ADR 0068): a member named a person on a preview's `named` level, which they
+  // watch at `/previews/<the level's ID>`. In the panel and by mail; never on a ticket.
+  preview_shared
 }
 
 /// What an account mail is for (ticket 19): the job's purposes.

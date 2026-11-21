@@ -9,6 +9,7 @@ import {
   monthSpendInTx,
   notificationChannels,
   notificationKinds,
+  previewSharesOfMember,
   saveNotificationPreferences,
 } from "@ostra/domain";
 import type { Prisma } from "@ostra/db";
@@ -274,6 +275,14 @@ export const notificationsRouter = router({
     }
     return out;
   }),
+
+  /**
+   * F-142: the previews shared with the member by name, for the Needs you page, newest first: each
+   * one's label and port, who shared it and whether they read it, opening the preview's own page
+   * (`/previews/<previewId>`). A notice has no needs-you item, so `list` leaves it out; one whose
+   * name was taken off since shows nothing. Never anything of the task.
+   */
+  previewShares: memberProcedure.query(({ ctx }) => previewSharesOfMember(ctx.deps.db, ctx.scope)),
 
   /**
    * The sidebar's count: everything that waits on the member, by Home's rule (`countOpenNeedsYou`),

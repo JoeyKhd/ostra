@@ -20,8 +20,11 @@ const worldSchema = z.object({
   question: z.object({ taskId: z.string(), questionId: z.string() }),
   reopen: z.object({ taskId: z.string() }),
   capped: z.object({ taskId: z.string() }),
-  /** Milestone 8 (ticket 21): a task with an app to preview, its box asleep, and a watch-only link's token. */
-  preview: z.object({ taskId: z.string(), token: z.string() }),
+  /**
+   * Milestone 8 (ticket 21): a task with an app to preview, its box asleep, and a watch-only link's
+   * token; F-142: its level's ID, which names the plain member, for the preview's own page.
+   */
+  preview: z.object({ taskId: z.string(), token: z.string(), previewId: z.string() }),
   /** A running task, in the project's Live list beside the needs-you ones. */
   running: z.object({ taskId: z.string() }),
   orgNoteId: z.string(),
@@ -122,6 +125,12 @@ export const memberRoutes = (world: RoutesWorld): readonly PanelRoute[] => {
     { pattern: "/tasks/[task-id]/review", path: `/tasks/${world.reopen.taskId}/review` },
   ];
 };
+
+/**
+ * F-142: the routes a signed-in member opens outside the panel's shell, with no place in its rail:
+ * a preview's own page (the app isn't running, so it says so).
+ */
+export const sharedRoutes = (world: RoutesWorld): readonly PanelRoute[] => [{ pattern: "/previews/[preview-id]", path: `/previews/${world.preview.previewId}` }];
 
 /**
  * The routes a visitor opens signed out. `/setup` and `/change-password` send a signed-in

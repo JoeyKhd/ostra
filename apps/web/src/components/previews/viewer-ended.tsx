@@ -1,4 +1,4 @@
-import { ClockIcon, Link2OffIcon, LockIcon, MoonIcon, ServerOffIcon } from "lucide-react";
+import { ClockIcon, EyeOffIcon, Link2OffIcon, LockIcon, MoonIcon, ServerOffIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { formatClock } from "@/lib/format";
@@ -10,6 +10,8 @@ import type { ViewerEnd } from "./viewer-state";
 // a link that expired, was revoked, isn't allowed any more, can't be served, or opens nothing. No
 // picture of the app: nothing of it is shown after a link ends. Each is a `status`, so a screen
 // reader hears the change while the page is open. An unknown link never says whether it existed.
+// F-142: a preview's own page, for a person it doesn't name now, says only that it isn't shared with
+// them, the same to a stranger as to a person whose name was taken off.
 
 const dayFormat = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
 
@@ -18,13 +20,13 @@ export const shortDate = (at: number): string => dayFormat.format(new Date(at));
 
 const sameDay = (a: number, b: number): boolean => new Date(a).toDateString() === new Date(b).toDateString();
 
-const Block = ({ icon, title, children, testId }: { readonly icon: ReactNode; readonly title: string; readonly children: ReactNode; readonly testId: string }) => (
+const Block = ({ icon, title, children, testId, fine = t("previewViewer.fine") }: { readonly icon: ReactNode; readonly title: string; readonly children: ReactNode; readonly testId: string; readonly fine?: string }) => (
   <div className="grid flex-1 place-items-start justify-center bg-bg px-[22px] pb-6 pt-[120px] sm:place-items-center sm:p-6" data-testid="viewer-ended" data-end={testId}>
     <div role="status" className="w-full max-w-[380px]">
       <div aria-hidden className="mb-3.5 grid size-9 place-items-center rounded-[9px] border border-line-2 text-muted [&_svg]:size-[17px] [&_svg]:stroke-[1.75]">{icon}</div>
       <h1 className="mb-1.5 text-[17px] font-semibold leading-[1.35] text-text">{title}</h1>
       <p className="text-[14.5px] text-muted">{children}</p>
-      <p className="mt-3.5 border-t border-line pt-3 text-[13px] text-faint">{t("previewViewer.fine")}</p>
+      <p className="mt-3.5 border-t border-line pt-3 text-[13px] text-faint">{fine}</p>
     </div>
   </div>
 );
@@ -76,6 +78,12 @@ export const ViewerEnded = ({ end, now }: { readonly end: ViewerEnd; readonly no
       return (
         <Block icon={<ClockIcon />} title={t("previewViewer.tooMany.title")} testId="too-many-tries">
           {t("previewViewer.tooMany.body")}
+        </Block>
+      );
+    case "not-shared":
+      return (
+        <Block icon={<EyeOffIcon />} title={t("previewViewer.notShared.title")} testId="not-shared" fine={t("previewViewer.notShared.fine")}>
+          {t("previewViewer.notShared.body")}
         </Block>
       );
     default:

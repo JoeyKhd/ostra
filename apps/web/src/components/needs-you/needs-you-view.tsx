@@ -18,6 +18,7 @@ import type { RouterOutputs } from "@/lib/trpc";
 import { DoneList, ListSkeleton, NeedsYouLede, NeedsYouTabs, OpenEmpty, OpenList, ReachPanel } from "./needs-you-list";
 import type { AnswerResult, Answers, NeedsYouTab } from "./needs-you-list";
 import { READ_AFTER_MS, toMarkRead } from "./needs-you-words";
+import { PreviewShareRows, usePreviewShares } from "./preview-shares";
 import { awaitingRunners, RunnerApprovalsBand } from "./runner-approvals";
 import type { AnsweredBy, InlineAsk, NotificationView, Outcome, ReachView } from "./needs-you-words";
 
@@ -146,6 +147,17 @@ export const NeedsYouView = () => {
     return () => { clearTimeout(timer); };
     // markNotices' identity changes each render; the unread notices decide.
   }, [unreadNotices, tab]);
+  // F-142: the previews shared with the member by name, read once they're on screen, as the notices are.
+  const previewShares = usePreviewShares();
+  const shares = previewShares.data ?? [];
+  const markShares = useMutation(trpc.notifications.markRead.mutationOptions({ onSettled: () => queryClient.invalidateQueries({ queryKey: trpc.notifications.previewShares.queryKey() }) }));
+  const unreadShares = shares.filter((share) => !share.read).map((share) => share.notificationId).join(",");
+  useEffect(() => {
+    if (tab !== "open" || unreadShares === "") return undefined;
+    const timer = setTimeout(() => { markShares.mutate({ ids: unreadShares.split(",").map((id) => notificationIdSchema.parse(id)) }); }, READ_AFTER_MS);
+    return () => { clearTimeout(timer); };
+    // markShares' identity changes each render; the unread shares decide.
+  }, [unreadShares, tab]);
   // Ticket 31 (F-091): an admin's runners waiting for approval, first in the list, answered in the panel.
   const admin = me.data?.organization?.role === "admin";
   const fleet = useQuery({ ...trpc.runners.list.queryOptions(), enabled: admin, refetchInterval: 15_000 });
@@ -243,12 +255,13 @@ export const NeedsYouView = () => {
             <p role="alert" className="text-red">{errorText(open.error)}</p>
           ) : open.data === undefined ? (
             <ListSkeleton />
-          ) : rows.length === 0 && notices.length === 0 && awaiting.length === 0 ? (
+          ) : rows.length === 0 && notices.length === 0 && shares.length === 0 && awaiting.length === 0 ? (
             <OpenEmpty />
           ) : (
             <div className="flex flex-col gap-3">
               {awaiting.length === 0 ? null : <RunnerApprovalsBand runners={awaiting} selected={selectedRunner} onSelect={setSelectedRunner} now={fleet.dataUpdatedAt} />}
               <BudgetNoticeRows notices={notices} organizationAdmin={me.data?.organization?.role === "admin"} />
+              <PreviewShareRows shares={shares} />
               {rows.length === 0 ? null : <OpenList rows={rows} now={open.dataUpdatedAt} answers={answers} unreadAtLoad={unreadAtLoad ?? new Set()} />}
             </div>
           )

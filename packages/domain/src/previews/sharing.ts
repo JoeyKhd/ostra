@@ -41,6 +41,8 @@ import type {
 } from "../use-cases/m8-preview-signatures.ts";
 import { appendServerEvent } from "../use-cases/server-events.ts";
 import { previewAccess } from "./access.ts";
+import { notifyNamedPeopleInTx } from "./named-people.ts";
+import type { NamedPeopleNoticeDeps } from "./named-people.ts";
 import { mayReach } from "./targets.ts";
 import { newPreviewLinkToken, previewLinkTokenHash, previewLinkTokenMatches } from "./tokens.ts";
 import type { RandomBytes } from "./tokens.ts";
@@ -166,7 +168,7 @@ const closeOne = async (deps: Pick<SharingDeps, "outbox" | "notices" | "clock">,
 /** The most people one preview names. */
 export const PREVIEW_NAMED_MAX = 100;
 
-export const setPreviewLevel = async (deps: SharingDeps, scope: MemberScope, input: Parameters<SetPreviewLevel>[2]): ReturnType<SetPreviewLevel> =>
+export const setPreviewLevel = async (deps: SharingDeps & NamedPeopleNoticeDeps, scope: MemberScope, input: Parameters<SetPreviewLevel>[2]): ReturnType<SetPreviewLevel> =>
   deps.db.$transaction(async (tx) => {
     const now = deps.clock.now();
     const task = await taskForMemberInTx(tx, scope, input.taskId);
@@ -192,9 +194,19 @@ export const setPreviewLevel = async (deps: SharingDeps, scope: MemberScope, inp
       select: { id: true },
     });
     await tx.previewAccessMember.deleteMany({ where: { previewAccessId: access.id, memberId: { notIn: named } } });
-    await tx.previewAccessMember.createMany({
+    // The rows made now are the people newly named: those named already keep theirs.
+    const added = await tx.previewAccessMember.createManyAndReturn({
       data: named.map((memberId) => ({ organizationId: task.organizationId, projectId: task.projectId, previewAccessId: access.id, memberId })),
       skipDuplicates: true,
+      select: { id: true, memberId: true },
+    });
+    // Each person newly named is told where to watch it (F-142); taking a name off tells no one.
+    const told = await notifyNamedPeopleInTx(deps, tx, {
+      organizationId: task.organizationId,
+      projectId: task.projectId,
+      taskId: task.id,
+      by: scope.memberId,
+      named: added.map((row) => ({ namingId: row.id, memberId: memberIdSchema.parse(row.memberId) })),
     });
     const sessionId = await latestSessionInTx(tx, task.id);
     // Choosing a level below links narrows the preview away from them: its active links end.
@@ -237,7 +249,7 @@ export const setPreviewLevel = async (deps: SharingDeps, scope: MemberScope, inp
       });
     }
     await deps.notices.emitInTx(tx, { organizationId: task.organizationId, projectId: task.projectId, entity: "task", entityId: task.id });
-    deps.logger?.info("preview.level-changed", { taskId: task.id, key: input.key, level: input.level, named: named.length, linksEnded, viewsClosed });
+    deps.logger?.info("preview.level-changed", { taskId: task.id, key: input.key, level: input.level, named: named.length, told, linksEnded, viewsClosed });
     return { ok: true, level: input.level, linksEnded, viewsClosed };
   });
 setPreviewLevel satisfies SetPreviewLevel;

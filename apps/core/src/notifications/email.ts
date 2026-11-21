@@ -2,15 +2,15 @@ import { ResendEmailAdapter } from "@ostra/adapter-email-resend";
 import type { ResendEmailAdapterOptions } from "@ostra/adapter-email-resend";
 import { SmtpEmailAdapter } from "@ostra/adapter-email-smtp";
 import type { SmtpEmailAdapterOptions } from "@ostra/adapter-email-smtp";
-import { isRunnerNotice, secretRefSchema } from "@ostra/adapter-sdk";
-import type { AccountNotification, AdapterContext, AdapterError, Logger, Notification, NotificationAdapter, Result, RunnerNotificationKind, SecretStoreAdapter, SendResult } from "@ostra/adapter-sdk";
+import { isPreviewNotice, isRunnerNotice, secretRefSchema } from "@ostra/adapter-sdk";
+import type { AccountNotification, AdapterContext, AdapterError, Logger, Notification, NotificationAdapter, PreviewNotificationKind, Result, RunnerNotificationKind, SecretStoreAdapter, SendResult } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
 import { budgetNoticeIdOfKey, emailStillNeeded, isBudgetNoticeKind, loadBudgetNoticeView, anyMomentHeading, momentKindOf, renderBudgetNoticeMail, renderNeedsYouEmail, spendUrlOf } from "@ostra/domain";
 import type { Clock, EmailFromSettings, MomentDetail } from "@ostra/domain";
 import { approvalSubjectSchema, memberIdSchema, notificationIdSchema, organizationIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { ApprovalSubject } from "@ostra/protocol";
 
-import { loadRunnerNotice, retryable, urlOf, words } from "./deliver.ts";
+import { loadPreviewNotice, loadRunnerNotice, retryable, urlOf, words } from "./deliver.ts";
 import type { ChannelOutcome, DeliveryRow, EmailChannel } from "./deliver.ts";
 
 // The email channel (F-115, F-036, ADR 0050, ticket 21). A mail waits its delay; at the due time it
@@ -353,6 +353,56 @@ export const createEmailChannel = (deps: EmailChannelDeps): EmailChannel & { rea
     return { outcome: "sent", providerMessageId: sent.value.providerMessageId };
   };
 
+  /**
+   * Milestone 8 (F-142): a preview notice's mail to the person named, rendered from the naming when
+   * it's due. Skipped once they read it in the panel, or when their name was taken off meanwhile.
+   */
+  const deliverPreviewNotice = async (
+    row: DeliveryRow,
+    kind: PreviewNotificationKind,
+    fingerprint: string,
+    config: Exclude<EmailConfig, { readonly provider: "off" }>,
+  ): Promise<ChannelOutcome> => {
+    const stored = row.notification;
+    if (stored.readAt !== null) {
+      return { outcome: "skipped", why: "read" };
+    }
+    const notice = await loadPreviewNotice(deps, row);
+    if (notice === null) {
+      return { outcome: "skipped", why: "closed" };
+    }
+    const address = stored.member.user.email.trim();
+    if (address === "") {
+      return { outcome: "skipped", why: "no-address" };
+    }
+    const memberId = memberIdSchema.parse(stored.memberId);
+    const sent = await adapterFor(fingerprint, config).send({
+      organizationId: notice.organizationId,
+      memberIds: [memberId],
+      title: notice.rendered.email.subject,
+      body: notice.rendered.email.subject,
+      url: notice.preview.url,
+      idempotencyKey: row.idempotencyKey,
+      kind,
+      recipients: [{ memberId, email: address, trackerMention: null }],
+      subject: notice.preview.label,
+      rendered: notice.rendered.email,
+      notificationId: notificationIdSchema.parse(stored.id),
+      // Nothing of the task: the person may not see it.
+      taskId: null,
+      ticket: null,
+      preview: notice.preview,
+    });
+    if (!sent.ok) {
+      return { outcome: "failed", error: words(sent.error), retryable: retryable(sent.error) };
+    }
+    const refused = sent.value.refused.find((entry) => entry.memberId === memberId);
+    if (refused !== undefined) {
+      return { outcome: "failed", error: `the mail provider refused the address: ${refused.reason}`.slice(0, 500), retryable: false };
+    }
+    return { outcome: "sent", providerMessageId: sent.value.providerMessageId };
+  };
+
   const deliver = async (row: DeliveryRow): Promise<ChannelOutcome> => {
     const configured = await configOf();
     if ("failed" in configured) {
@@ -368,6 +418,9 @@ export const createEmailChannel = (deps: EmailChannelDeps): EmailChannel & { rea
     }
     if (isRunnerNotice(stored.kind)) {
       return deliverRunnerNotice(row, stored.kind, configured.fingerprint, configured.config);
+    }
+    if (isPreviewNotice(stored.kind)) {
+      return deliverPreviewNotice(row, stored.kind, configured.fingerprint, configured.config);
     }
     // Due now: a member who read it in the panel meanwhile, or an item closed meanwhile, needs no mail.
     const kind = momentKindOf(stored.kind);

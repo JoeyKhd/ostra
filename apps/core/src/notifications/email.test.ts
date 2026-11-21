@@ -11,6 +11,7 @@ import {
   createPool,
   createNeedsYouItemInTx,
   markNotificationRead,
+  notifyNamedPeopleInTx,
   postgresAuditLog,
   postgresChangeNotices,
   postgresCommandOutbox,
@@ -24,7 +25,7 @@ import {
 import type { Clock, EmailFromSettings } from "@ostra/domain";
 import { createJobs, jobIdSchema } from "@ostra/jobs";
 import type { JobContext, Jobs } from "@ostra/jobs";
-import { memberIdSchema, notificationDeliveryIdSchema, notificationIdSchema, organizationIdSchema, questionIdSchema, turnIdSchema } from "@ostra/protocol";
+import { memberIdSchema, notificationDeliveryIdSchema, notificationIdSchema, organizationIdSchema, previewKeySchema, questionIdSchema, turnIdSchema } from "@ostra/protocol";
 import type { NeedsYouItemId, ProjectId, RunnerId, TaskEvent, TaskId } from "@ostra/protocol";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
@@ -518,6 +519,53 @@ describe("the runner notices (milestone 5, ticket 12)", () => {
     expect(after.filter((row) => row.notification.kind === "runner_joined").every((row) => row.state === "sent")).toBe(true);
     expect(after.filter((row) => row.notification.kind === "runner_awaiting_approval").map((row) => row.state)).toEqual(Array.from({ length: admins }, () => "skipped"));
     expect(resendMail().filter((mail) => mail.subject.includes("mail-runner-b"))).toHaveLength(admins);
+    deps.close();
+  });
+});
+
+describe("a preview shared by name (F-142)", () => {
+  it("F-142/c3: a person named on a preview gets it on the panel and by mail, each opening the preview's own page with nothing of the task; a name taken off before it's due sends nothing", async () => {
+    const deps = depsFor();
+    expect(await saveEmailSettings(deps, admin(), resendSettings())).toMatchObject({ ok: true, provider: "resend" });
+    const title = `Add a history panel ${randomUUID().slice(0, 6)}`;
+    const { taskId, projectId } = await makeTask({ title });
+    const key = previewKeySchema.parse("port-5173");
+    await test.db.taskPreview.create({ data: { organizationId, projectId, taskId, key, port: 5173, label: "web" } });
+    const sharer = fixture.a.admin;
+    const access = await test.db.previewAccess.create({ data: { organizationId, projectId, taskId, key, level: "named", setByMemberId: sharer.id } });
+    const name = async (member: SeededMember) => {
+      const naming = await test.db.previewAccessMember.create({ data: { organizationId, projectId, previewAccessId: access.id, memberId: member.id } });
+      await test.db.$transaction((tx) =>
+        notifyNamedPeopleInTx({ jobs, notices: postgresChangeNotices, clock, emailDelaySeconds: 120 }, tx, { organizationId, projectId, taskId, by: sharer.id, named: [{ namingId: naming.id, memberId: member.id }] }),
+      );
+      return naming.id;
+    };
+    const deliveriesTo = (member: SeededMember) =>
+      test.db.notificationDelivery.findMany({ where: { notification: { kind: "preview_shared", taskId, memberId: member.id } }, orderBy: { channel: "asc" }, select: { channel: true, state: true } });
+    const page = `${PUBLIC_URL}/previews/${access.id}`;
+
+    await name(fixture.a.member);
+    await deliverQueued(deps);
+    // The channels in the enum's order: the panel, then mail.
+    expect(await deliveriesTo(fixture.a.member)).toEqual([
+      { channel: "panel", state: "sent" },
+      { channel: "email", state: "sent" },
+    ]);
+    const mails = resendMail().filter((mail) => mail.subject === "A preview was shared with you · web :5173");
+    expect(mails).toHaveLength(1);
+    expect(mails[0]?.to).toEqual([await addressOf(fixture.a.member)]);
+    expect(mails[0]?.html ?? "").toContain(`href="${page}"`);
+    expect(JSON.stringify(mails)).not.toContain(title);
+    // The panel's row is the notification itself, delivered to the person named and no one else.
+    expect(await test.db.notification.count({ where: { kind: "preview_shared", taskId } })).toBe(1);
+
+    // A name taken off before its notice is due: the panel and the mail both say nothing.
+    const before = resendMail().length;
+    const naming = await name(fixture.a.insider);
+    await test.db.previewAccessMember.delete({ where: { id: naming } });
+    await deliverQueued(deps);
+    expect((await deliveriesTo(fixture.a.insider)).map((row) => row.state)).toEqual(["skipped", "skipped"]);
+    expect(resendMail()).toHaveLength(before);
     deps.close();
   });
 });

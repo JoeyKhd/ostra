@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
 import { readStack, signIn } from "../helpers.ts";
-import { appRoutePatterns, memberRoutes, seedRoutesWorld, settleRoute, visitorRoutes } from "../routes.ts";
+import { appRoutePatterns, memberRoutes, seedRoutesWorld, settleRoute, sharedRoutes, visitorRoutes } from "../routes.ts";
 import type { PanelRoute, RoutesWorld } from "../routes.ts";
 
 // Ticket 19 (F-075): the phone sweep. Every route milestones 1 to 7 built, on a touch phone at
@@ -66,14 +66,14 @@ const sweep = async (page: Page, routes: readonly PanelRoute[]): Promise<Problem
 };
 
 test("F-075/c1: the sweep names every route of the panel", async () => {
-  const named = new Set([...memberRoutes(world), ...visitorRoutes(world)].map((route) => route.pattern));
+  const named = new Set([...memberRoutes(world), ...sharedRoutes(world), ...visitorRoutes(world)].map((route) => route.pattern));
   expect((await appRoutePatterns()).filter((pattern) => !named.has(pattern))).toEqual([]);
 });
 
 test("F-075/c1: no route scrolls sideways at 390 px, and every control is at least 44 px tall to touch", async ({ page }) => {
   test.setTimeout(240_000);
   await signIn(page, world.username);
-  const member = await sweep(page, memberRoutes(world));
+  const member = await sweep(page, [...memberRoutes(world), ...sharedRoutes(world)]);
   // The pages a visitor opens, signed out.
   await page.context().clearCookies();
   const visitor = await sweep(page, visitorRoutes(world));
