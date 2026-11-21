@@ -2,13 +2,15 @@ import { expect, test } from "@playwright/test";
 
 import { expectNoHorizontalScroll, pageStatus, signIn } from "./helpers.ts";
 import { m4World, seedM4World, shoot, shootPhone, signedInPage } from "./m4.ts";
+import { e2eAdmin } from "./settings.ts";
+import { contextPanel, openSpace } from "./shell.ts";
 
 // F-087, F-003 (ticket 33): a project's access in its settings, and the instance's Accounts page.
 
 test("F-003/c2: the Accounts page and its Instance group render for the instance admin only, and the last instance admin's own row has no Remove", { tag: "@desktop-only" }, async ({ page, browser }) => {
   await seedM4World(m4World);
   await signIn(page);
-  const nav = page.getByRole("navigation", { name: "Navigation" });
+  const nav = contextPanel(page);
   await page.goto("/instance/accounts");
   await expect(nav.getByText("Instance", { exact: true })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Accounts" })).toBeVisible();
@@ -25,7 +27,8 @@ test("F-003/c2: the Accounts page and its Instance group render for the instance
 
   // A member who isn't the instance admin has no Instance group, and the page by URL says why.
   const member = await signedInPage(browser, m4World.by);
-  const memberNav = member.getByRole("navigation", { name: "Navigation" });
+  await openSpace(member, "Organization");
+  const memberNav = contextPanel(member);
   await expect(memberNav.getByRole("link", { name: "Members" })).toBeVisible();
   await expect(memberNav.getByText("Instance", { exact: true })).toHaveCount(0);
   await expect(memberNav.getByRole("link", { name: "Accounts" })).toHaveCount(0);
@@ -38,7 +41,9 @@ test("F-003/c2: the Accounts page and its Instance group render for the instance
 test("F-087/c4: a restricted project disappears from an unlisted member's sidebar at once", { tag: "@desktop-only" }, async ({ page, browser }) => {
   const world = await seedM4World(m4World);
   const member = await signedInPage(browser, m4World.by);
-  const memberNav = member.getByRole("navigation", { name: "Navigation" });
+  // The Projects space with no project open lists every project the member can open (F-147).
+  await member.goto("/projects/new");
+  const memberNav = contextPanel(member);
   await expect(memberNav.getByRole("link", { name: "m4calc" })).toBeVisible();
 
   await signIn(page);
@@ -65,7 +70,8 @@ test("F-087: the project's Access tab and the Accounts page fit a phone", async 
   await expectNoHorizontalScroll(page);
   await shootPhone(page, "project-access");
   await page.goto("/instance/accounts");
-  await expect(page.getByTestId("instance-admin-row")).toHaveCount(1);
+  // The signed-in admin's own row; other specs' worlds may add instance admins of their own.
+  await expect(page.getByTestId("instance-admin-row").filter({ hasText: e2eAdmin.email })).toHaveCount(1);
   await expectNoHorizontalScroll(page);
   await shootPhone(page, "instance-settings-accounts");
 });

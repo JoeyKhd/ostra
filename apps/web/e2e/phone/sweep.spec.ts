@@ -82,14 +82,14 @@ test("F-075/c1: no route scrolls sideways at 390 px, and every control is at lea
   expect.soft(problems.filter((problem) => problem.small.length > 0), "a control is under 44 px").toEqual([]);
 });
 
-test("F-075/c1: the navigation drawer scrolls, so its last row, the account menu, is in reach by tap", async ({ page }) => {
-  // A small phone, 320 × 568: an admin's drawer holds more rows than its screen does.
+test("F-075/c1: the menu sheet keeps the account menu in reach by tap, at the rail's foot", async ({ page }) => {
+  // A small phone, 320 × 568: the rail in the sheet never scrolls, so its foot stays on screen;
+  // the panel beside it scrolls on its own (F-147, app-shell.md "Phone").
   await page.setViewportSize({ width: 320, height: 568 });
   await signIn(page, world.username);
-  await page.getByRole("button", { name: "Open navigation" }).tap();
+  await page.getByRole("button", { name: /^Open navigation/ }).tap();
   const drawer = page.getByRole("dialog", { name: "Navigation" });
-  await expect(drawer.getByTestId("user-menu")).toBeAttached();
-  expect(await drawer.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  await expect(drawer.getByTestId("user-menu")).toBeInViewport();
   await drawer.getByTestId("user-menu").tap();
   await page.getByRole("menuitem", { name: "Sign out" }).tap();
   await page.waitForURL(/\/sign-in$/);

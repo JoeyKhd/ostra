@@ -4,6 +4,7 @@ import type { Page } from "@playwright/test";
 import { expectNoHorizontalScroll, signIn } from "./helpers.ts";
 import { signedInPage } from "./m4.ts";
 import { chooseTheme, seedAutomationsWorld, seedPausedRule, shootM6 } from "./m6.ts";
+import { contextPanel } from "./shell.ts";
 
 // F-011, F-106, F-107 (milestone 6's ticket 31): a project's Automations, the rule and schedule
 // editor with its dry run and "Start all", a schedule's preview and pause, and a rule's history,
@@ -25,7 +26,7 @@ test("F-011/c1,c3, F-107/c1: an admin creates a rule, sees its dry run, starts a
   await signIn(page);
   await page.goto(`/projects/${world.projectId}/automations`);
   await expect(page.getByRole("heading", { level: 1, name: "Automations" })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Navigation" }).getByRole("link", { name: "Automations" })).toBeVisible();
+  await expect(contextPanel(page).getByRole("link", { name: "Automations" })).toBeVisible();
   await expect(page.getByTestId("automations-empty")).toContainText("No automations yet");
   await shootM6(page, "automations-empty");
 

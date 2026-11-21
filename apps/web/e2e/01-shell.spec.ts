@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { expectNoHorizontalScroll, expectSignInRefused, hydrated, signIn, watchOrigins } from "./helpers.ts";
 import { e2eAdmin } from "./settings.ts";
+import { openUserMenu } from "./shell.ts";
 
 // Ticket 35 (the shell) and the first step of ticket 37: the seeded first admin (F-001), its
 // forced password change, sign-in and sign-out, at desktop and phone width, with no request to
@@ -71,11 +72,8 @@ test("F-002/c2: sign in by username and by email reaches Home; sign out returns 
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(e2eAdmin.organizationName);
   await expectNoHorizontalScroll(page);
 
-  if ((page.viewportSize()?.width ?? 0) < 1024) {
-    await page.getByRole("button", { name: "Open navigation" }).click();
-  }
-  // The member's row at the foot of the sidebar opens a menu with Sign out.
-  await page.getByTestId("user-menu").last().click();
+  // The member's menu at the foot of the rail opens a menu with Sign out (in the menu sheet on a phone).
+  await openUserMenu(page);
   await page.getByRole("menuitem", { name: "Sign out" }).click();
   await page.waitForURL(/\/sign-in$/);
   await page.goto("/");

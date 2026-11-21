@@ -4,6 +4,7 @@ import type { Browser, Page } from "@playwright/test";
 import { expectNoHorizontalScroll, signIn } from "./helpers.ts";
 import { seedM4Member, shoot, shootPhone } from "./m4.ts";
 import { e2eAdmin } from "./settings.ts";
+import { rail } from "./shell.ts";
 
 // F-002 (ticket 32): members, invitations, accepting one and resets, through the panel on the e2e stack.
 // The install has no email, so links are shown once to the admin, and an invitee types their address.
@@ -77,7 +78,7 @@ test("F-002/c7,c8, F-115/c3: a reset by link changes the password and signs the 
   await seedM4Member(RESETTER);
   const elsewhere = await freshPage(browser);
   await signIn(elsewhere, RESETTER);
-  await expect(elsewhere.getByRole("navigation", { name: "Navigation" }).first()).toBeVisible();
+  await expect(rail(elsewhere)).toBeVisible();
 
   // The instance admin makes a reset link for them (the install has no email).
   await signIn(page);

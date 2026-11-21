@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { expectNoHorizontalScroll, signIn } from "./helpers.ts";
 import { seedM4Member, signedInPage } from "./m4.ts";
 import { seedSizesWorld, shoot } from "./m5-settings.ts";
+import { contextPanel } from "./shell.ts";
 
 // F-095, F-086, F-069 (milestone 5's ticket 32): Box sizes, a project's Runners tab, and a
 // profile's runner labels, through the panel, its API and the database.
@@ -12,7 +13,7 @@ test("F-095/c1: an admin edits a size, sees where no runner offers it, saves it,
   await signIn(page);
   await page.goto("/organization/box-sizes");
   await expect(page.getByRole("heading", { level: 1, name: "Box sizes" })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Navigation" }).getByRole("link", { name: "Box sizes" })).toBeVisible();
+  await expect(contextPanel(page).getByRole("link", { name: "Box sizes" })).toBeVisible();
   await expect(page.getByTestId("box-sizes-host-note")).toContainText("host runners count slots only.");
   const save = page.getByRole("button", { name: "Save sizes" });
   await expect(save).toBeDisabled();

@@ -6,6 +6,7 @@ import type { PaletteActionId } from "@ostra/domain/palette";
 
 import { signIn } from "./helpers.ts";
 import { expectFacts, focusedMark, seedKeysTask, tabTo } from "./keys.ts";
+import { focusRailItem } from "./shell.ts";
 
 // F-081 (milestone 7, tickets 13 and 16): the core actions from the command palette and from their
 // shortcuts, with the keyboard only, end to end on seeded tasks (seed-keys.ts), each checked in the
@@ -114,6 +115,18 @@ test.describe("F-081: the core actions by keyboard", { tag: "@desktop-only" }, (
       "go-needs-you": async (keys) => { await page.goto("/"); await press(keys); await page.waitForURL(/\/needs-you$/); },
       "go-home": async (keys) => { await page.goto("/needs-you"); await press(keys); await page.waitForURL((url) => url.pathname === "/"); },
       "go-tasks": async (keys) => { await page.goto("/"); await press(keys); await page.waitForURL(/\/search$/); },
+      // F-147: the rail's Projects and Organization spaces, and `[` that hides and shows the context panel.
+      "go-projects": async (keys) => { await page.goto("/"); await press(keys); await page.waitForURL(/\/projects\//); },
+      "go-organization": async (keys) => { await page.goto("/"); await press(keys); await page.waitForURL(/\/organization\/insights$/); },
+      "toggle-sidebar": async (keys) => {
+        await page.goto("/");
+        const panel = page.getByTestId("context-panel");
+        await expect(panel).toHaveAttribute("data-collapsed", "false");
+        await press(keys);
+        await expect(panel).toHaveAttribute("data-collapsed", "true");
+        await press(keys);
+        await expect(panel).toHaveAttribute("data-collapsed", "false");
+      },
       search: async (keys) => { await page.goto("/"); await press(keys); await expect(palette(page)).toBeVisible(); await page.keyboard.press("Escape"); },
       "shortcut-sheet": async (keys) => { await page.goto("/"); await press(keys); await expect(sheet).toBeVisible(); await page.keyboard.press("Escape"); await expect(sheet).toHaveCount(0); },
       "new-task": async (keys) => { await page.goto("/"); await press(keys); await page.waitForURL(/\/tasks\/new$/); },
@@ -289,9 +302,9 @@ test.describe("F-081: the core actions by keyboard", { tag: "@desktop-only" }, (
     const seeded = await seedKeysTask("approval", title("focus return"));
     await signIn(page);
 
-    // The palette, from the sidebar's search button.
-    const search = page.locator("[data-action='open-palette']");
-    await tabTo(page, search);
+    // The palette, from the rail's Search: the rail is one tab stop, and its arrows reach Search (F-147).
+    const search = page.locator("[data-action='open-palette']").filter({ visible: true });
+    await focusRailItem(page, search);
     await page.keyboard.press("Enter");
     await expect(palette(page)).toBeVisible();
     await page.keyboard.press("Escape");
@@ -312,9 +325,9 @@ test.describe("F-081: the core actions by keyboard", { tag: "@desktop-only" }, (
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("approval")).toBeFocused();
 
-    // The account menu, with its own trigger.
-    const account = page.getByTestId("user-menu");
-    await tabTo(page, account);
+    // The account menu, with its own trigger at the rail's foot.
+    const account = page.getByTestId("user-menu").filter({ visible: true });
+    await focusRailItem(page, account);
     await page.keyboard.press("Enter");
     await expect(page.getByRole("menu")).toBeVisible();
     await page.keyboard.press("Escape");

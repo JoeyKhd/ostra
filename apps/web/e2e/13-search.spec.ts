@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { expectNoHorizontalScroll, signIn } from "./helpers.ts";
 import { m4World, seedM4World, shoot, shootPhone } from "./m4.ts";
+import { openSearchFromShell } from "./shell.ts";
 
 // F-080 (ticket 35): the search palette and the search page, on the seeded m4calc world (seed-m4.ts):
 // the admin's task on `fake-org/m4calc` whose agent message (seq 7) holds the word `zeppelinoid`.
@@ -99,7 +100,7 @@ test("F-080: the palette and the search page fit a phone", async ({ page }) => {
   await expect(page.getByTestId("search-result").first()).toBeVisible();
   await expectNoHorizontalScroll(page);
   await shootPhone(page, "search");
-  await page.getByTestId("topbar-search").click();
+  await openSearchFromShell(page);
   await page.getByTestId("search-palette").getByRole("combobox").pressSequentially(m4World.word);
   await expect(page.getByTestId("search-palette-result").first()).toBeVisible();
   await expectNoHorizontalScroll(page);

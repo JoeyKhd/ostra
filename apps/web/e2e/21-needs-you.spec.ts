@@ -8,6 +8,7 @@ import { z } from "zod";
 
 import { readStack, signIn } from "./helpers.ts";
 import { e2eAdmin } from "./settings.ts";
+import { railSpace } from "./shell.ts";
 
 // Milestone 3, ticket 44 (F-062, F-036): Sam, a member who isn't an admin, meets an approval the
 // admin's task raised in one project: on Home first, then on Needs you, where Sam answers it inline
@@ -71,7 +72,7 @@ test("F-062/c1,c2, F-036/c2: an approval in one project shows on Sam's Home and 
   expect(reloaded).toBe(false);
 
   // Needs you lists both, each in its project's group; Sam approves the first one inline.
-  await page.getByRole("navigation").getByRole("link", { name: "Needs you" }).click();
+  await railSpace(page, "Needs you").click();
   await page.waitForURL((url) => url.pathname === "/needs-you");
   await expect(needsYouRow(page, second.taskId)).toBeVisible();
   const row = needsYouRow(page, world.approval.taskId);

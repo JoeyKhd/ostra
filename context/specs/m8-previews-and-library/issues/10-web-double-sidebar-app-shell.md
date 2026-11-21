@@ -1,6 +1,6 @@
 # 10: Web: the double-sidebar app shell
 
-Status: ready-for-agent
+Status: done
 Builder: web
 Blocked by: its targets in `context/brand/app-targets/m8/` approved by the maintainer. *Approved 2026-11-21 ("yes to all"): nothing blocks it now.*
 Features: F-147
@@ -41,16 +41,26 @@ The app shell's navigation becomes **a narrow icon rail plus a contextual second
 ## Done when
 
 - [x] The targets are approved, recorded under `## Comments` with the date and the folder's README.
-- [ ] Tests named for `F-147`:
+- [x] Tests named for `F-147`:
   - every route reachable through the rail and the context sidebar (a Playwright walk over `destinations.ts`, which fails for a page with no place);
   - the collapsed state kept after a reload with no flash;
   - the phone sheet at 390 px opening, navigating and closing (Escape, a tap outside, a chosen page), with focus back on the menu button;
   - ⌘K and the existing shortcuts unchanged.
-- [ ] Milestone 7's keyboard walk and contrast check pass on the shell in both themes, at 1440 px and 390 px, with the shell spec file alone (the full browser suite runs at the milestone's end).
+- [x] Milestone 7's keyboard walk and contrast check pass on the shell in both themes, at 1440 px and 390 px, with the shell spec file alone (the full browser suite runs at the milestone's end).
 - *Withdrawn 2026-11-21, with the proof files (the maintainer: "keep tests, drop extras"):* screenshots of both themes at both widths are kept in `context/proof/` for F-147's live evidence.
-- [ ] Checks for `apps/web` pass. *Changed 2026-11-21: `pnpm check:proof` is gone with the proof files.*
-- [ ] Committed as `✨ add the double-sidebar app shell`.
+- [x] Checks for `apps/web` pass. *Changed 2026-11-21: `pnpm check:proof` is gone with the proof files.*
+- [x] Committed as `✨ add the double-sidebar app shell`.
 
 ## Comments
 
 - 2026-11-21, design: the maintainer approved the targets in `context/brand/app-targets/m8/` ("yes to all"), recorded in its README. The same day: "no need for a bottom tab bar btw", so the phone is the menu sheet holding the rail and the panel (`shell-phone`, `shell-phone-menu`). This ticket's text now follows the targets: Projects is one rail space with no pinned projects, Repos stays a tab of the project's Settings, and Background work has no row until it has a route.
+- 2026-11-21, web: built in `apps/web/src/components/shell/` (`rail.tsx`, `context-panel.tsx`, `panels/`, `live-task-row.tsx`, `peek.tsx`, `nav-sheet.tsx`, `places.ts`, `sidebar-state.ts`), with `[`, `g p` and `g o` added to milestone 7's registry (`packages/domain/src/palette/actions.ts`). Tests: `shell.test.tsx` (F-147/c1 to c6) and `e2e/23-shell.spec.ts` (c1 to c7: the walk over every route, the collapse over a reload, the peek, the keyboard, the walk and contrast check at 1440 and 390 in both themes, the phone sheet). The e2e specs that clicked the old sidebar now go through the rail and the panel (`e2e/shell.ts`). Where the build differs from the targets:
+  - **The organization tile's letter chip** shows only for a member of more than one organization, as app-shell.md's "One organization" state says. An account has one organization in v1 (F-049; several are F-134) and `me.get` doesn't list memberships, so the chip doesn't show yet.
+  - **The organization panel's counts** (Runners, Agent profiles, Members, Memory's proposals) and a project's Memory count are left out: no existing query gives them without a new endpoint, and app-shell.md leaves out a count it can't read. A project's Tasks, Needs approval and Inbox counts show.
+  - **`Skills and MCP`** has no row until the Library's page exists (F-145).
+  - **Needs you's panel** has All and By project. The page has no `?kind=` filter yet, so the rows per kind wait for one, and a project row opens that project's task list.
+  - **The project switcher** has no filter field: a field inside a Radix menu fights the menu's keys and the keyboard walk. It lists every project, needs-you ones first, and the menu's type-ahead finds one. The Projects panel with no project open has its filter.
+  - **The top bar's search field** is gone, as the targets draw none: Search is the rail's, and on a phone the menu sheet's.
+  - **The phone's top bar** keeps each page's own actions and crumbs; the 44px page-action icon and the task page's title-over-key header aren't wired per page here.
+  - **The projects filter's edge** is `--control-line` (3:1, F-081), not `--line-2`. **The resize handle** is mouse only: `[` is the keyboard's.
+  - **"My tasks"** isn't a page: Home's panel has All tasks (`/search`), as the target draws it.

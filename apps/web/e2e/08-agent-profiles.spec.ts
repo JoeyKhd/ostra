@@ -9,6 +9,7 @@ import { z } from "zod";
 
 import { pageStatus, readStack, signIn, watchOrigins } from "./helpers.ts";
 import { e2eAdmin } from "./settings.ts";
+import { openProjectFromShell } from "./shell.ts";
 
 // F-021, F-026, F-063 (ticket 42): an admin makes an agent profile with a preset rule, plan first and
 // a member limit; a listed member sees it in New task's picker and starts a task with it, an unlisted
@@ -116,7 +117,7 @@ test("F-021/c1,c2,c3, F-026/c1, F-063/c1,c3: an admin makes a profile with a pre
   await expect(page.getByTestId("panel-rules")).toContainText("preset");
 
   await page.goto("/");
-  await page.getByRole("navigation", { name: "Navigation" }).getByRole("link", { name: projectName, exact: true }).click();
+  await openProjectFromShell(page, projectName);
   const defaults = page.getByTestId("project-defaults");
   // A listed profile is never offered as a default: it isn't open to every member.
   // The select, once the profiles have loaded: until then the row shows the default as plain text.

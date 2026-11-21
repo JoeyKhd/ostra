@@ -8,6 +8,7 @@ import type { Browser, Page, TestInfo } from "@playwright/test";
 
 import { seedTask, signIn } from "./helpers.ts";
 import { seedM4Member } from "./m4.ts";
+import { openUserMenu } from "./shell.ts";
 
 // F-082 (milestone 7, ticket 18): the light theme and each member's choice of dark, light or
 // "match my system", saved on their account and painted before the first frame. Each test seeds
@@ -29,14 +30,6 @@ const member = async (who: string, info: TestInfo): Promise<string> => {
 /** A page in a browser of its own (the project's options, no cookies). */
 const contextFor = async (browser: Browser): Promise<Page> => (await browser.newContext()).newPage();
 
-/** The member menu, at the sidebar's foot: on a phone, inside the navigation drawer (opened unless it is). */
-const openUserMenu = async (page: Page): Promise<void> => {
-  const menu = page.getByTestId("user-menu").filter({ visible: true });
-  if ((page.viewportSize()?.width ?? 0) < 1024 && (await menu.count()) === 0) {
-    await page.getByRole("button", { name: "Open navigation" }).click();
-  }
-  await menu.first().click();
-};
 
 const signOut = async (page: Page): Promise<void> => {
   await openUserMenu(page);
