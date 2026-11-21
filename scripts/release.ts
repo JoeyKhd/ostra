@@ -239,7 +239,13 @@ const readLicenses = async (root: string, workspace: readonly WorkspaceManifest[
 export const releaseProblems = async (root: string): Promise<readonly ReleaseProblem[]> => {
   const workspace = await readWorkspace(root);
   const problems: ReleaseProblem[] = [];
+  // One version line (ADR 0045): the CLI prints its package.json's, core tells runners its own and
+  // the panel shows its own, so each must be the root's, which tags the images.
+  const release = manifestSchema.parse(JSON.parse(await readFile(path.join(root, "package.json"), "utf8"))).version ?? "";
   for (const { dir, manifest } of workspace) {
+    if (manifest.version !== release) {
+      problems.push({ file: `${dir}/package.json`, message: `its version is ${manifest.version ?? "missing"}, not the root's ${release}: one version line, which node scripts/version.ts sets` });
+    }
     if (isPublishedDir(dir)) {
       problems.push(...publishedManifestProblems(dir, manifest), ...(await undeclaredImports(root, dir, manifest)));
       const license = await readFile(path.join(root, dir, "LICENSE"), "utf8").catch(() => "");
@@ -325,24 +331,71 @@ export const releaseWorkflowProblems = (workflow: string, ci: string): readonly 
 export const versionedFiles = async (root: string): Promise<readonly string[]> => ["package.json", ...(await readWorkspace(root)).map((item) => `${item.dir}/package.json`)];
 
 /**
- * Sets one version on every package.json (ADR 0045's one version line): the root, whose version
- * tags the images (`releaseVersion`), the CLI's, which `ostra --version` prints, and every other
- * package's. Only the `"version"` line changes; the rest of each file is kept as it's written.
+ * A place in a file the stamp writes the version into: each match of `pattern` (global, by line)
+ * becomes its first group, the version and its second group. It must match `count` times, so a
+ * moved or added line fails the stamp instead of shipping the old version.
  */
-export const setVersion = async (root: string, version: string): Promise<readonly string[]> => {
+export type VersionSpot = { readonly pattern: RegExp; readonly count: number };
+
+/** A file beside the package.json files that carries the release's version, and where. */
+export type VersionStamp = { readonly file: string; readonly spots: readonly VersionSpot[] };
+
+/**
+ * The files that carry the release's version as text, beside the package.json files, because
+ * Docker Compose and Helm read them as they are. The CLI, core and the panel read their version
+ * from their own package.json, so they can't drift from it. Each is checked where its rule lives:
+ * the compose file by `pnpm check:images` (`compose-images`), each chart by `pnpm check:helm`
+ * (`chart-version`). Pinned to the release's tag, never `latest` (ADR 0046, ADR 0060).
+ */
+export const versionStamps: readonly VersionStamp[] = [
+  // The server, runner and base images' tags, and the runner's two box images.
+  { file: "deploy/compose.yaml", spots: [{ pattern: /^(\s+(?:image|OSTRA_BOX_BASE_IMAGE|OSTRA_BOX_RUNNER_IMAGE): ostra\/(?:server|runner|base):)\S+()$/gm, count: 5 }] },
+  // Each chart's version and its appVersion, the default tag of its images (values.yaml's empty `tag`).
+  ...["ostra-server", "ostra-runner"].map((chart) => ({
+    file: `deploy/helm/${chart}/Chart.yaml`,
+    spots: [
+      { pattern: /^(version: )\S+()$/gm, count: 1 },
+      { pattern: /^(appVersion: ")[^"\r\n]*(")$/gm, count: 1 },
+    ],
+  })),
+];
+
+/** A stamped file's text, or an error naming the spot that didn't match as many times as it should. */
+const stampText = (stamp: VersionStamp, text: string, version: string): string =>
+  stamp.spots.reduce((current, spot) => {
+    const found = [...current.matchAll(spot.pattern)].length;
+    if (found !== spot.count) {
+      throw new Error(`${stamp.file}: the version stamp expects ${String(spot.count)} line(s) like ${String(spot.pattern)} and found ${String(found)}`);
+    }
+    return current.replaceAll(spot.pattern, `$1${version}$2`);
+  }, text);
+
+/**
+ * Sets one version everywhere a release carries it (ADR 0045's one version line): every
+ * package.json, the root's (`releaseVersion`, the images' tags), the CLI's (`ostra --version`) and
+ * core's (the version a runner pins to) among them, and each file of `stamps`. Only the version
+ * changes; the rest of each file is kept as it's written. Nothing is written unless every file can
+ * be stamped. `stamps` is `versionStamps` but in a test.
+ */
+export const setVersion = async (root: string, version: string, stamps: readonly VersionStamp[] = versionStamps): Promise<readonly string[]> => {
   if (!RELEASE_VERSION.test(version)) {
     throw new Error(`"${version}" isn't a release version (1.0.0, or 1.0.0-rc.1)`);
   }
-  const files = await versionedFiles(root);
-  for (const file of files) {
-    const full = path.join(root, ...file.split("/"));
-    const text = await readFile(full, "utf8");
+  const stamped: { readonly file: string; readonly text: string }[] = [];
+  for (const file of await versionedFiles(root)) {
+    const text = await readFile(path.join(root, ...file.split("/")), "utf8");
     if (!/^\s*"version":/m.test(text)) {
       throw new Error(`${file} has no "version" line`);
     }
-    await writeFile(full, text.replace(/^(\s*"version":\s*)"[^"]*"/m, `$1"${version}"`), "utf8");
+    stamped.push({ file, text: text.replace(/^(\s*"version":\s*)"[^"]*"/m, `$1"${version}"`) });
   }
-  return files;
+  for (const stamp of stamps) {
+    stamped.push({ file: stamp.file, text: stampText(stamp, await readFile(path.join(root, ...stamp.file.split("/")), "utf8"), version) });
+  }
+  for (const { file, text } of stamped) {
+    await writeFile(path.join(root, ...file.split("/")), text, "utf8");
+  }
+  return stamped.map((item) => item.file);
 };
 
 /** Writes LICENSOR into every published package's `author` (the LICENSE and NOTICE lines are edited by hand, with it). */

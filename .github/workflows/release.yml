@@ -77,7 +77,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
-      # One version on every package.json: the root's tags the images, the CLI's is `ostra --version`.
+      # One version everywhere a release carries it: every package.json (the root's tags the images, the
+      # CLI's is `ostra --version`, core's is what a runner pins to), the compose file's images and each
+      # chart's version and appVersion (scripts/release.ts, versionStamps).
       - run: node scripts/version.ts "$VERSION"
 
       # Every check, on the release's own tree.

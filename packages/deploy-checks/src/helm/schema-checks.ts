@@ -3,7 +3,7 @@
 // but the required ones, every example parses, every value has its line in the configuration
 // reference, and each chart is versioned with the release and needs Kubernetes 1.29.
 
-import { readRepoFile, releaseVersion } from "../repo.ts";
+import { readRepoFile, releaseVersion, repoRoot } from "../repo.ts";
 import { generatedSchema, mergeValues, readChartYaml, readDefaults, readExamples, schemaFile } from "./charts.ts";
 import { referencedValues } from "./reference.ts";
 import { chartNames, requiredPaths, valuePaths, valuesSchemaOf } from "./values.ts";
@@ -93,9 +93,10 @@ export const checkReference = (chart: ChartName, markdown: string, defaults: unk
   return problems;
 };
 
-export const checkChartYaml = async (chart: ChartName): Promise<readonly SchemaProblem[]> => {
-  const yaml = await readChartYaml(chart);
-  const version = await releaseVersion();
+/** The chart is versioned with the release, in this repo or another checkout (`root`), in a test. */
+export const checkChartYaml = async (chart: ChartName, root: string = repoRoot): Promise<readonly SchemaProblem[]> => {
+  const yaml = await readChartYaml(chart, root);
+  const version = await releaseVersion(root);
   const problems: SchemaProblem[] = [];
   if (yaml.name !== chart || yaml.version !== version || yaml.appVersion !== version) {
     problems.push({ chart, rule: "chart-version", message: `Chart.yaml's version and appVersion are the release's, ${version}` });

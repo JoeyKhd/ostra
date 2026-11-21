@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { releaseNotes } from "./release-notes.ts";
-import { builtExports, isPublishedDir, LICENSOR, readWorkspace, releaseProblems, releaseWorkflowProblems, runtimeImports, setVersion, versionedFiles } from "./release.ts";
+import { builtExports, isPublishedDir, LICENSOR, readWorkspace, releaseProblems, releaseWorkflowProblems, runtimeImports, setVersion, versionedFiles, versionStamps } from "./release.ts";
 
 // Milestone 7's ticket 30 (F-039's publishing, ADR 0045, ADR 0064): what a release publishes and
 // the checks `release.yml` runs before it does. The repo's own files pass; a copy of them broken in
@@ -15,10 +15,10 @@ const root = path.resolve(import.meta.dirname, "..");
 const temp = await mkdtemp(path.join(tmpdir(), "ostra-release-"));
 afterAll(() => rm(temp, { recursive: true, force: true }));
 
-/** A copy of the checkout's release files: the manifests, the LICENSE and NOTICE files, the published packages' sources and the workflows. */
+/** A copy of the checkout's release files: the manifests, the LICENSE and NOTICE files, the published packages' sources, the workflows and the deploy files the version is stamped on. */
 const copyCheckout = async (name: string): Promise<string> => {
   const target = path.join(temp, name);
-  for (const file of ["package.json", "pnpm-workspace.yaml", "LICENSE", "NOTICE", ".github/workflows/release.yml", ".github/workflows/ci.yml"]) {
+  for (const file of ["package.json", "pnpm-workspace.yaml", "LICENSE", "NOTICE", ".github/workflows/release.yml", ".github/workflows/ci.yml", ...versionStamps.map((stamp) => stamp.file)]) {
     await mkdir(path.dirname(path.join(target, file)), { recursive: true });
     await cp(path.join(root, file), path.join(target, file));
   }
@@ -88,21 +88,48 @@ describe("the published packages", () => {
 });
 
 describe("one version", () => {
-  it("F-039/c2: the version script sets one version on every package.json, the root's (the images' tags) and the CLI's included, and refuses one that isn't a version", async () => {
+  it("F-039/c2: the version script sets one version on every package.json, the root's (the images' tags) and the CLI's included, on the compose file's images and on each chart, and refuses one that isn't a version", async () => {
     const checkout = await copyCheckout("version");
-    const before = await readFile(path.join(checkout, "packages/protocol/package.json"), "utf8");
+    const read = (file: string): Promise<string> => readFile(path.join(checkout, file), "utf8");
+    const before = await read("packages/protocol/package.json");
+    const compose = await read("deploy/compose.yaml");
+    const charts = await Promise.all(["ostra-server", "ostra-runner"].map((chart) => read(`deploy/helm/${chart}/Chart.yaml`)));
     const files = await setVersion(checkout, "1.2.3-rc.1");
-    expect(files).toEqual(await versionedFiles(checkout));
+    expect(files).toEqual([...(await versionedFiles(checkout)), "deploy/compose.yaml", "deploy/helm/ostra-server/Chart.yaml", "deploy/helm/ostra-runner/Chart.yaml"]);
     expect(files).toEqual(expect.arrayContaining(["package.json", "apps/runner/package.json", "apps/core/package.json", "packages/protocol/package.json"]));
-    for (const file of files) {
-      const manifest: unknown = JSON.parse(await readFile(path.join(checkout, file), "utf8"));
+    for (const file of await versionedFiles(checkout)) {
+      const manifest: unknown = JSON.parse(await read(file));
       expect(Reflect.get(Object(manifest), "version"), file).toBe("1.2.3-rc.1");
     }
-    // Only the version line changed.
-    expect(await readFile(path.join(checkout, "packages/protocol/package.json"), "utf8")).toBe(before.replace('"version": "0.0.0"', '"version": "1.2.3-rc.1"'));
+    // Only the version changed: a package.json's version line, the compose file's three images and
+    // two box images, each chart's version and appVersion. One version line holds after it.
+    expect(await read("packages/protocol/package.json")).toBe(before.replace('"version": "0.0.0"', '"version": "1.2.3-rc.1"'));
+    expect(compose.match(/ostra\/(?:server|runner|base):0\.0\.0$/gm)).toHaveLength(5);
+    expect(await read("deploy/compose.yaml")).toBe(compose.replaceAll(/(ostra\/(?:server|runner|base)):0\.0\.0$/gm, "$1:1.2.3-rc.1"));
+    for (const [index, chart] of ["ostra-server", "ostra-runner"].entries()) {
+      expect(await read(`deploy/helm/${chart}/Chart.yaml`), chart).toBe((charts[index] ?? "").replace("\nversion: 0.0.0\n", "\nversion: 1.2.3-rc.1\n").replace('\nappVersion: "0.0.0"\n', '\nappVersion: "1.2.3-rc.1"\n'));
+    }
+    expect(await messages(checkout)).toEqual([]);
     for (const bad of ["v1.0.0", "1.0", "", "1.0.0 ; rm -rf /"]) {
       await expect(setVersion(checkout, bad), bad).rejects.toThrow(/isn't a release version/);
     }
+  });
+
+  it("F-039/c2: a version line the stamp doesn't find where it expects fails the stamp, which then writes nothing", async () => {
+    const checkout = await copyCheckout("version-moved");
+    await edit(checkout, "deploy/compose.yaml", "      OSTRA_BOX_BASE_IMAGE: ostra/base:", "      OSTRA_BOX_IMAGE: ostra/base:");
+    const root = await readFile(path.join(checkout, "package.json"), "utf8");
+    await expect(setVersion(checkout, "1.2.3")).rejects.toThrow(/^deploy\/compose\.yaml: the version stamp expects 5 line\(s\) .* and found 4$/);
+    expect(await readFile(path.join(checkout, "package.json"), "utf8")).toBe(root);
+    await edit(checkout, "deploy/compose.yaml", "      OSTRA_BOX_IMAGE: ostra/base:", "      OSTRA_BOX_BASE_IMAGE: ostra/base:");
+    await edit(checkout, "deploy/helm/ostra-runner/Chart.yaml", /^appVersion: .*$/m, "appVersion: 0.0.0");
+    await expect(setVersion(checkout, "1.2.3")).rejects.toThrow(/^deploy\/helm\/ostra-runner\/Chart\.yaml: the version stamp expects 1 line\(s\) .* and found 0$/);
+  });
+
+  it("F-039/c2: every package.json carries the root's version: one bumped by hand fails check:release", async () => {
+    const checkout = await copyCheckout("version-line");
+    await edit(checkout, "apps/core/package.json", '"version": "0.0.0"', '"version": "0.9.0"');
+    expect(await messages(checkout)).toEqual(["apps/core/package.json: its version is 0.9.0, not the root's 0.0.0: one version line, which node scripts/version.ts sets"]);
   });
 });
 

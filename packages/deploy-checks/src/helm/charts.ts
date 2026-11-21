@@ -63,5 +63,6 @@ export const chartYamlSchema = z.looseObject({
   kubeVersion: z.string(),
 });
 
-export const readChartYaml = async (chart: ChartName): Promise<z.infer<typeof chartYamlSchema>> =>
-  chartYamlSchema.parse(readYaml(await readRepoFile(`${chartDir(chart)}/Chart.yaml`)));
+/** The chart's `Chart.yaml`, from this repo or another checkout (`root`), in a test. */
+export const readChartYaml = async (chart: ChartName, root: string = repoRoot): Promise<z.infer<typeof chartYamlSchema>> =>
+  chartYamlSchema.parse(readYaml(await readRepoFile(`${chartDir(chart)}/Chart.yaml`, root)));

@@ -105,11 +105,16 @@ import { createWebhookInbox, parseBlockedWebhooks } from "./webhooks/inbox.ts";
 import { webhookProcessHandler } from "./webhooks/process.ts";
 import type { WebhookHandlers } from "./webhooks/process.ts";
 
+import coreManifest from "../package.json" with { type: "json" };
+
 // Core (ADR 0016): one process that holds runner connections, runs the queue's workers and serves
 // the runner endpoints. `startCore` wires the pieces from the settings; `main.ts` runs it.
 
-/** Core's version: the version `ostra runner` installs to match it (ADR 0046). */
-export const CORE_VERSION = "0.0.0";
+/**
+ * Core's version: the version `ostra runner` installs to match it (ADR 0046). Its package.json's,
+ * which the release sets (`node scripts/version.ts`), so it can't drift from the images' tags.
+ */
+export const CORE_VERSION: string = coreManifest.version;
 
 export { RUNNER_TOKEN_KEY_FILE };
 
