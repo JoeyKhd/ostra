@@ -312,6 +312,7 @@ On the research's recommendations, 2026-11-21, which the maintainer can change:
 - **App processes are a second list** beside services, and a service can be a preview (Q309).
 - **Agents are told to keep one origin;** there's no cross-host CORS in this milestone (Q310).
 - **The browser is Chromium:** Debian's in the images, the machine's or a pinned download on `host` (Q311).
+  - **2026-11-21, the maintainer confirmed it stays in the base image** ("Sure yes"), after being told the cost: about 204 MiB more to download and about 703 MiB unpacked, once per runner machine (ticket 11's estimate). The alternative, a separate opt-in image with the browser, was declined, so previews and screenshots work on every box with no setup.
 - **Recordings are frame reels** (Q312).
 - **Detected ports come later** (Q313).
 - **One shared page per preview** in the browser view, with input from any project member (Q314).

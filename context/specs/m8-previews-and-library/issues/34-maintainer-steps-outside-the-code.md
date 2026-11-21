@@ -27,3 +27,4 @@ Each step needs an account, a machine, an approval or a yes that an agent doesn'
 - [ ] Each step is done or answered, with the date, under `## Comments`.
 
 ## Comments
+- 2026-11-21, lead: decided: Debian's Chromium stays in the base image (the maintainer: "Sure yes"), after the size was explained. The measured before and after sizes still come from the launch-gate Proof run's `image-sizes` step.
