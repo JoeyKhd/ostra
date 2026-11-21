@@ -227,6 +227,8 @@ beforeAll(async () => {
     reachPort: (_target, port) => Promise.resolve({ ok: true, value: { host: "localhost", port, close: () => Promise.resolve() } }),
     settled: () => Promise.resolve(),
     logger: runnerLogger,
+    // A view the box drops is `previews.test.ts`'s (core) and `preview-stream-cases.ts`'s (the runner).
+    dropped: () => undefined,
   });
 }, 120_000);
 

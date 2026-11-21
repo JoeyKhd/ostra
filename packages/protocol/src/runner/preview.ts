@@ -168,9 +168,10 @@ export const previewCloseReasonSchema = z.enum([
 export type PreviewCloseReason = z.infer<typeof previewCloseReasonSchema>;
 
 /**
- * Why a box refused a view's `preview.open` (minor 7): the ack's reason, which core keeps on the
- * closed view and ends the pane's stream with, so the pane can say why (added 2026-11-21, before
- * minor 7's release). A reason this list doesn't name is `other`.
+ * Why a box refused a view's `preview.open` (minor 7): the ack's reason, or, for a view the box
+ * took and then dropped before it connected, `preview.dropped`'s. Core keeps it on the closed view
+ * and ends the pane's stream with it, so the pane can say why (added 2026-11-21, before minor 7's
+ * release). A reason this list doesn't name is `other`.
  */
 export const previewOpenRefusalSchema = z.enum([
   /** Not one of the task's previews: the reach rule (ADR 0068). */
@@ -185,6 +186,14 @@ export const previewOpenRefusalSchema = z.enum([
   "tunnel-needs-websocket",
   /** It reached the box after its `notAfter`. */
   "past-not-after",
+  /** Dropped: the box's app never got ready, so it can't serve the view. */
+  "not-servable",
+  /** Dropped: the box has no browser to show a browser view in (`app.browser` says why). */
+  "no-browser",
+  /** Dropped: the box's browser couldn't open the preview's page. */
+  "browser-failed",
+  /** Dropped: the view's preview connection didn't reach core. */
+  "connect-failed",
   /** Any other reason, or none. */
   "other",
 ]);

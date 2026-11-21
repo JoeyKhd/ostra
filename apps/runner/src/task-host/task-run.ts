@@ -592,6 +592,12 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       postFrames: (viewId, frames) => deps.link.postPreviewFrames(viewId, dispatch.leaseEpoch, frames),
       aim: aimOf,
     },
+    // A view the box took and dropped before it connected: core closes it with why (minor 7, ADR 0068).
+    dropped: (viewId, refusal) => {
+      if (channel?.supports("preview.dropped") === true) {
+        void emit({ kind: "preview.dropped", viewId, refusal });
+      }
+    },
   });
   /** Idle timers that came due while a view was open: each fires once the last view closes (ADR 0068). */
   const heldIdle = new Set<() => void>();
@@ -2831,9 +2837,16 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         mode: body.mode,
         viewport: body.viewport,
         // Before the box is ready the view waits for it; an opened view starts what isn't running.
-        ready: appOpened.promise.then((opened) => {
-          if (opened === undefined || ending !== undefined || !isPreview(opened)) {
-            return false;
+        // A box that can't serve it says why, and core closes the view with it.
+        ready: appOpened.promise.then((opened): true | PreviewOpenRefusal => {
+          if (ending !== undefined) {
+            return "session-ending";
+          }
+          if (opened === undefined) {
+            return "not-servable";
+          }
+          if (!isPreview(opened)) {
+            return "not-a-preview";
           }
           if (opened.any) {
             opened.start(null).catch((error: unknown) => {

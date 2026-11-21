@@ -69,6 +69,7 @@ import {
   previewTargetSchema,
 } from "../task/app.ts";
 import { runnerLimits } from "../runner/limits.ts";
+import { previewOpenRefusalSchema } from "../runner/preview.ts";
 import { toolKindSchema } from "./tools.ts";
 
 // ostra's event union (ADR 0018, ADR 0035, ADR 0036): one thing the agent or ostra did in a
@@ -1089,6 +1090,13 @@ const minor7NewEventOptions = [
       .array(previewListItemSchema)
       .max(runnerLimits.appProcessesMax + runnerLimits.servicesMax + runnerLimits.announcedPreviewsMax),
   }),
+  /**
+   * A view the box took (its `preview.open` accepted) and dropped before it connected (added
+   * 2026-11-21, before minor 7's release): its app never got ready, the box has no browser, its
+   * page didn't open, or its connection didn't reach core. Core closes the view at once with the
+   * reason, as it does a refused open, instead of leaving it to the sweep.
+   */
+  z.strictObject({ kind: z.literal("preview.dropped"), viewId: previewViewIdSchema, refusal: previewOpenRefusalSchema }),
   // ---- server-only (milestone 8) ----
   /** A view of a preview opened (F-141): its mode, and the member or the link that opened it. */
   z.strictObject({

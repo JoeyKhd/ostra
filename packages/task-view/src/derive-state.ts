@@ -278,6 +278,7 @@ export const deriveTaskState = (
       case "attachment.added":
       case "attachment.skipped":
       case "preview.list":
+      case "preview.dropped":
       case "preview.opened":
       case "preview.closed":
       case "preview.level_changed":

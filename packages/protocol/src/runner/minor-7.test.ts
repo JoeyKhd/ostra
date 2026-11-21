@@ -123,7 +123,7 @@ import { minorWindow, negotiate, PROTOCOL_MAJOR, PROTOCOL_MINOR } from "./versio
 
 const roundTrip = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
 
-const runnerKinds = ["app.process", "app.browser", "attachment.added", "attachment.skipped", "preview.list"] as const satisfies readonly TaskEventKind[];
+const runnerKinds = ["app.process", "app.browser", "attachment.added", "attachment.skipped", "preview.list", "preview.dropped"] as const satisfies readonly TaskEventKind[];
 const serverKinds = [
   "preview.opened",
   "preview.closed",
@@ -496,12 +496,18 @@ describe("the preview connection", () => {
     expect(decodePreviewMessage(withField(previewMessageTypeBytes.close, { reason: "refused", refusal: "bored" }))).toEqual({ ok: false, reason: "invalid" });
   });
 
-  it("F-141: a box's reason for refusing a view's open is one the pane can word, and any other is `other`", () => {
-    for (const reason of ["not-a-preview", "too-many-pages", "session-ending", "unknown-session", "tunnel-needs-websocket", "past-not-after"] as const) {
+  it("F-141: a box's reason for refusing a view's open, or dropping one it took, is one the pane can word, and any other is `other`", () => {
+    const dropped = ["not-servable", "no-browser", "browser-failed", "connect-failed"] as const;
+    for (const reason of ["not-a-preview", "too-many-pages", "session-ending", "unknown-session", "tunnel-needs-websocket", "past-not-after", ...dropped] as const) {
       expect(previewOpenRefusalOf(reason)).toBe(reason);
     }
     expect(previewOpenRefusalOf("the box's sidecar takes it")).toBe("other");
     expect(previewOpenRefusalOf(null)).toBe("other");
+    // A dropped view says why with one of them, and only one of them.
+    for (const refusal of dropped) {
+      expect(taskEventSchema.safeParse({ ...eventFixtures["preview.dropped"], refusal }).success, refusal).toBe(true);
+    }
+    expect(taskEventSchema.safeParse({ ...eventFixtures["preview.dropped"], refusal: "bored" }).success).toBe(false);
   });
 
   it("F-141: the JSON parts are strict, and input stays within its limits", () => {

@@ -1,6 +1,6 @@
 import type { AdapterResult, AppPortReach, Logger } from "@ostra/adapter-sdk";
 import { runnerLimits, viewportPresetSizes } from "@ostra/protocol";
-import type { PreviewInputEvent, PreviewKey, PreviewMode, PreviewPageControl, PreviewSupport, PreviewTarget, PreviewViewId, PreviewViewport, Reach } from "@ostra/protocol";
+import type { PreviewInputEvent, PreviewKey, PreviewMode, PreviewOpenRefusal, PreviewPageControl, PreviewSupport, PreviewTarget, PreviewViewId, PreviewViewport, Reach } from "@ostra/protocol";
 import type { WebSocket } from "ws";
 import type { OpenBoxBrowser } from "../browser/box-browser.ts";
 import type { Carrier } from "../connection/http-carrier.ts";
@@ -10,7 +10,7 @@ import { httpStreamLink, socketStreamLink } from "./preview-stream.ts";
 import type { StreamLink } from "./preview-stream.ts";
 import { serveTunnel } from "./preview-tunnel.ts";
 import type { Tunnel, TunnelRoute } from "./preview-tunnel.ts";
-import type { SharedPages } from "./shared-pages.ts";
+import type { AttachRefusal, SharedPages } from "./shared-pages.ts";
 
 // A box's open views (milestone 8, ticket 22, ADR 0068): one entry per `preview.open` until its
 // `preview.close`, the box's stop, or core closing its connection. While any is open the box's idle
@@ -25,6 +25,11 @@ import type { SharedPages } from "./shared-pages.ts";
 // (`shared-pages.ts`), and its frames go to core on its own preview connection, or posted over the
 // HTTP carrier (`preview-stream.ts`). Every view of one preview shares one page; a box holds at
 // most `boxPagesMax` pages, one of them kept for the tools' pictures.
+//
+// A view the box took and then drops before it connects (its app never got ready, no browser, its
+// page didn't open, its connection didn't reach core) is reported to core as `preview.dropped`
+// with why (`dropped`), so core closes it at once and the pane says why (ADR 0068's note of
+// 2026-11-21), instead of leaving it to the 2-minute sweep.
 //
 // IDs, ports and reasons are logged; never a path, a header or a byte of a stream.
 
@@ -76,6 +81,11 @@ export type PreviewViewsDeps = {
   readonly connectRetryMs?: number;
   /** The browser view (ticket 18): without it, a `stream` view is dropped at its open. */
   readonly stream?: PreviewStreamDeps;
+  /**
+   * Tells core a view the box took is dropped before it connected, and why: the task run sends
+   * `preview.dropped` on the session. Never for a view core or the box's stop ended.
+   */
+  readonly dropped: (viewId: PreviewViewId, refusal: PreviewOpenRefusal) => void;
 };
 
 export type PreviewViewOpen = {
@@ -86,10 +96,11 @@ export type PreviewViewOpen = {
   /** The browser view's width preset, which applies to the shared page; desktop when absent. */
   readonly viewport?: PreviewViewport | null;
   /**
-   * Whether the box can serve the view: it resolves once the box's app is open, `false` when the
-   * box never got ready or the key isn't one of its previews. The view holds the box from the open.
+   * Whether the box can serve the view: `true` once the box's app is open, else why not (its app
+   * never got ready, its session is ending, or the key isn't one of its previews), which core
+   * hears as the view's drop. The view holds the box from the open.
    */
-  readonly ready: Promise<boolean>;
+  readonly ready: Promise<true | PreviewOpenRefusal>;
 };
 
 /** Why the box ends a view: `preview.close` (1000), or the box stopping (1001). */
@@ -155,6 +166,9 @@ const sleep = (ms: number): Promise<void> =>
     setTimeout(resolve, ms).unref();
   });
 
+/** What core hears of a view whose page didn't open. */
+const attachRefusals: Readonly<Record<AttachRefusal, PreviewOpenRefusal>> = { "no-browser": "no-browser", "browser-failed": "browser-failed", detached: "other" };
+
 /** A reach's cache key: a service is dialled by its name, anything else at the box's own reach. */
 const reachKey = (target: PreviewTarget, port: number): string => `${"service" in target ? `service:${target.service}` : "app"}:${String(port)}`;
 
@@ -185,8 +199,12 @@ export const createPreviewViews = (deps: PreviewViewsDeps): PreviewViews => {
     view.reaches.clear();
   };
 
-  /** Drops a view that ended: its tunnel and forwarders go, and the box hears when it was the last. */
-  const drop = (view: View, end: PreviewViewEnd | null): void => {
+  /**
+   * Drops a view that ended: its tunnel and forwarders go, and the box hears when it was the last.
+   * A browser view the box drops with a `refusal` says it on its connection's close, so the panes
+   * already on it hear why.
+   */
+  const drop = (view: View, end: PreviewViewEnd | null, refusal: PreviewOpenRefusal | null = null): void => {
     if (view.ended) {
       return;
     }
@@ -195,7 +213,7 @@ export const createPreviewViews = (deps: PreviewViewsDeps): PreviewViews => {
       views.delete(view.viewId);
     }
     view.tunnel?.close(closeCodes[end ?? "closed"], closeWords[end ?? "closed"]);
-    view.stream?.close(closeCodes[end ?? "closed"], end === "box-stopping" ? "box-stopping" : "closed");
+    view.stream?.close(closeCodes[end ?? "closed"], refusal !== null ? { reason: "refused", refusal } : { reason: end === "box-stopping" ? "box-stopping" : "closed" });
     if (view.mode === "stream") {
       void deps.stream?.pages.detach(view.viewId);
     }
@@ -206,6 +224,19 @@ export const createPreviewViews = (deps: PreviewViewsDeps): PreviewViews => {
         listener();
       }
     }
+  };
+
+  /**
+   * Drops a view the box took before it connected, and tells core why, so the view closes with
+   * the reason. A view that already ended (core closed it, or the box is stopping) is left as it is.
+   */
+  const refuse = (view: View, refusal: PreviewOpenRefusal): void => {
+    if (view.ended) {
+      return;
+    }
+    log.info("preview.view-dropped", { viewId: view.viewId, key: view.key, refusal });
+    deps.dropped(view.viewId, refusal);
+    drop(view, null, refusal);
   };
 
   /** A stream's route in the view: the reach rule, the app getting ready, then the box's way to the port. */
@@ -258,7 +289,7 @@ export const createPreviewViews = (deps: PreviewViewsDeps): PreviewViews => {
         await sleep(retryMs);
       }
     }
-    drop(view, null);
+    refuse(view, "connect-failed");
     return null;
   };
 
@@ -283,8 +314,8 @@ export const createPreviewViews = (deps: PreviewViewsDeps): PreviewViews => {
   const connectStream = async (view: View, stream: PreviewStreamDeps | undefined): Promise<void> => {
     const aim = stream?.aim(view.key) ?? null;
     if (stream === undefined || aim === null) {
-      log.info("preview.view-refused", { viewId: view.viewId, key: view.key, reason: stream === undefined ? "stream-not-supported" : "not-a-preview" });
-      drop(view, null);
+      // No browser view here, or the key isn't one of the task's previews (the reach rule).
+      refuse(view, stream === undefined ? "other" : "not-a-preview");
       return;
     }
     await deps.settled(aim.target);
@@ -293,9 +324,8 @@ export const createPreviewViews = (deps: PreviewViewsDeps): PreviewViews => {
       return;
     }
     if (!browser.available) {
-      // `app.browser` told core why: it takes the browser view away.
-      log.info("preview.view-refused", { viewId: view.viewId, key: view.key, reason: "no-browser" });
-      drop(view, null);
+      // `app.browser` told core why there's none, and it takes the browser view away; this view closes now.
+      refuse(view, "no-browser");
       return;
     }
     let link: StreamLink;
@@ -329,13 +359,12 @@ export const createPreviewViews = (deps: PreviewViewsDeps): PreviewViews => {
     }
     view.stream = link;
     if (endedNow(view)) {
-      link.close(closeCodes.closed, "closed");
+      link.close(closeCodes.closed, { reason: "closed" });
       return;
     }
     const attached = await stream.pages.attach({ viewId: view.viewId, key: view.key, origin: aim.origin, path: aim.path, viewport: view.viewport, sink: link.sink });
     if (!attached.ok && !endedNow(view)) {
-      log.info("preview.view-refused", { viewId: view.viewId, key: view.key, reason: attached.reason });
-      drop(view, null);
+      refuse(view, attachRefusals[attached.reason]);
     }
   };
 
@@ -362,15 +391,15 @@ export const createPreviewViews = (deps: PreviewViewsDeps): PreviewViews => {
       log.info("preview.view-opened", { viewId: input.viewId, key: input.key, mode, open: views.size });
       void input.ready
         .then((ready) => {
-          if (!ready) {
-            log.info("preview.view-refused", { viewId: input.viewId, key: input.key, reason: "not-servable" });
-            drop(view, null);
+          if (ready !== true) {
+            refuse(view, ready);
             return undefined;
           }
           return mode === "stream" ? connectStream(view, deps.stream) : connectTunnel(view);
         })
         .catch(() => {
-          drop(view, null);
+          // Something failed on the way: the box gives the view up, and core hears it.
+          refuse(view, "other");
         });
     },
     has: (viewId) => views.has(viewId),

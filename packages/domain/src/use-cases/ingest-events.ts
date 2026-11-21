@@ -21,6 +21,7 @@ import type { TaskMoveDeps } from "./moves.ts";
 import { recordCheckFinishedInTx, recordCheckStartedInTx } from "./checks.ts";
 import { recordMemoryUse } from "../memory/store.ts";
 import { recordAnnouncedPreviewsInTx, recordAttachmentInTx } from "../previews/attachments.ts";
+import { closeDroppedViewInTx } from "../previews/views.ts";
 import { sendClosingTurnInTx } from "../memory/closing-turn.ts";
 import type { ReviewLoopCapabilities } from "../review-loop/loop.ts";
 import { cancelBoxIdleTimerInTx, endSessionTimersInTx, markBoxBusyInTx, recordLimitReached, recordWorkSaved, startSessionTimersInTx } from "./sessions-m2.ts";
@@ -576,6 +577,14 @@ const applyEffects = async (
         // Milestone 8 (F-140, ticket 15): the ports the agent announced, as the task's `TaskPreview` rows.
         const turn = await tx.turn.findFirst({ where: { sessionId: session.id }, orderBy: { ordinal: "desc" }, select: { id: true } });
         await recordAnnouncedPreviewsInTx(deps, tx, taskRow, event.previews, turn?.id ?? null);
+        break;
+      }
+      case "preview.dropped": {
+        // Milestone 8 (F-141, ADR 0068's note of 2026-11-21): a view the box took and dropped
+        // before it connected closes now, with the box's reason, as a refused open does; never
+        // another task's view, nor a newer lease's. IDs and the reason in the log.
+        const closed = await closeDroppedViewInTx(deps, tx, { organizationId, taskId: task.id, leaseEpoch: item.leaseEpoch, viewId: event.viewId, refusal: event.refusal });
+        deps.logger?.info("ingest.preview-dropped", { taskId: task.id, sessionId: session.id, viewId: event.viewId, refusal: event.refusal, closed });
         break;
       }
       case "user.message":

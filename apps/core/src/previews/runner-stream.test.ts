@@ -268,6 +268,8 @@ const boxSide = (link: ServerLink, task: Boxed, ref: RegisteredAt, connection: R
       postFrames: (viewId, frames) => link.postPreviewFrames(viewId, leaseEpoch, frames),
       aim: aimOf,
     },
+    // A view the box drops is `previews.test.ts`'s (core) and `preview-stream-cases.ts`'s (the runner).
+    dropped: () => undefined,
   });
   return { ref, connection, link, views, pages, task };
 };

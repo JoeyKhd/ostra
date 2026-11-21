@@ -1,6 +1,6 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import { decodePreviewMessage, encodePreviewMessage, runnerLimits } from "@ostra/protocol";
-import type { PreviewClose, PreviewCloseReason, PreviewControl, PreviewMessage, PreviewViewId } from "@ostra/protocol";
+import type { PreviewClose, PreviewControl, PreviewMessage, PreviewViewId } from "@ostra/protocol";
 import type { RawData, WebSocket } from "ws";
 import type { PreviewFrame, PreviewFramesPost } from "../connection/preview-frames.ts";
 import type { FrameSink } from "./shared-pages.ts";
@@ -25,8 +25,11 @@ import type { FrameSink } from "./shared-pages.ts";
 /** A view's way to core: its frames' sink, and its end. */
 export type StreamLink = {
   readonly sink: FrameSink;
-  /** Ends the view's side: on the WebSocket, `close` with the reason, then the socket with the code. */
-  readonly close: (code: number, reason: PreviewCloseReason) => void;
+  /**
+   * Ends the view's side: on the WebSocket, `close` with its reason, then the socket with the code.
+   * A view the box drops says `refused` with why (ADR 0068's note of 2026-11-21), which core passes on to the panes.
+   */
+  readonly close: (code: number, close: PreviewClose) => void;
   readonly carrier: "websocket" | "http";
 };
 
@@ -162,13 +165,13 @@ export const socketStreamLink = (input: SocketStreamInput): StreamLink => {
           });
         }),
     },
-    close: (code, reason) => {
+    close: (code, close) => {
       if (ended) {
         return;
       }
-      send({ type: "close", close: { reason } });
-      socket.close(code, reason);
-      finish(reason);
+      send({ type: "close", close });
+      socket.close(code, close.reason);
+      finish(close.reason);
     },
   };
 };

@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, it } from "vitest";
-import { localBoxWithFakeBrowser } from "../testing/docker-box.ts";
+import { localBoxWithFakeBrowser, startLocalPodBox } from "../testing/docker-box.ts";
 import { previewStreamCases } from "../testing/preview-stream-cases.ts";
 
 // Milestone 8's ticket 18 (F-141) on the `kubernetes` executor, as a box's sidecar drives it:
@@ -7,7 +7,7 @@ import { previewStreamCases } from "../testing/preview-stream-cases.ts";
 // over the init's DevTools pipe (this machine has no image). The same cases run on every executor
 // (`preview-stream.{host,docker,kubernetes}.test.ts`).
 
-const cases = previewStreamCases({ name: "kubernetes", makeExecutor: localBoxWithFakeBrowser("kubernetes") });
+const cases = previewStreamCases({ name: "kubernetes", makeExecutor: localBoxWithFakeBrowser("kubernetes"), makeExecutorWithoutBrowser: startLocalPodBox });
 
 beforeAll(cases.setup, 60_000);
 afterAll(cases.teardown, 60_000);
@@ -19,4 +19,5 @@ describe("the browser view on kubernetes", () => {
   it("F-141/c2: on kubernetes, a member's input reaches the page in order, and typed text reaches no log line", cases.input, 300_000);
   it("F-141/c4, c9: on kubernetes, a view of a port that isn't a preview is refused, and a stale lease's connection is refused", cases.refuses, 300_000);
   it("F-141/c8: on kubernetes, on the HTTP carrier a view's frames are posted at most 2 a second, its input and the pane's width preset come as preview.input naming an open view, and a closed view ends", cases.http, 300_000);
+  it("F-141/c1: on kubernetes, a box with no browser takes a browser view's open, then drops the view before it connects and tells core why (preview.dropped, no-browser)", cases.drops, 300_000);
 });

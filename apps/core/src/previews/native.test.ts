@@ -368,6 +368,8 @@ beforeAll(async () => {
     reachPort: (_target, port) => Promise.resolve({ ok: true, value: { host: "localhost", port, close: () => Promise.resolve() } }),
     settled: () => Promise.resolve(),
     logger: silentLogger,
+    // A view the box drops is `previews.test.ts`'s (core) and `preview-stream-cases.ts`'s (the runner).
+    dropped: () => undefined,
   });
   // The runner takes each `preview.open` in tunnel mode and each `preview.close`, as its task host does.
   const handled = new Set<DownFrame>();

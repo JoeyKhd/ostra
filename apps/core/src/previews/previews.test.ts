@@ -42,6 +42,9 @@ import {
 import type { BoxId, DownFrame, LeaseEpoch, PreviewInputEvent, PreviewPageControl, PreviewViewId, RunnerId, SessionId, TaskId } from "@ostra/protocol";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import { createIngest } from "../ingest/ingest.ts";
+import { createLiveTextWriter } from "../ingest/live-text.ts";
+import type { LiveTextWriter } from "../ingest/live-text.ts";
 import { FakeCodeHost, FakeSecretStore } from "../testing/fake-adapters.ts";
 import { connectPeer, signAssertion } from "../testing/fake-peer.ts";
 import type { FakePeer } from "../testing/fake-peer.ts";
@@ -66,6 +69,7 @@ let world: World;
 let replica: PreviewReplica;
 let runner: RegisteredAt;
 let peer: FakePeer;
+let liveText: LiveTextWriter;
 const records: LogRecord[] = [];
 const logger = createLogger((record) => records.push(record));
 const secret = randomBytes(32).toString("hex");
@@ -165,7 +169,10 @@ beforeAll(async () => {
   await test.db.appProcess.create({
     data: { organizationId: world.organizationId, projectId: world.projectId, environmentId: environment.id, repoId: world.repoId, name: "web", command: "pnpm dev", port: 5173, readyKind: "http", readyValue: "/", label: "Web", primary: true },
   });
-  replica = await startPreviewReplica(test.db, test.url, { signingKey, secret, jobs, logger, clock: replicaClock });
+  // Core's real ingest, so the box's events on the task's session (a view it dropped) are stored and acted on.
+  liveText = createLiveTextWriter({ db: test.db, logger, intervalMs: 50 });
+  const ingest = createIngest({ db: test.db, jobs, notices: postgresChangeNotices, clock: systemClock, liveText, logger });
+  replica = await startPreviewReplica(test.db, test.url, { signingKey, secret, jobs, logger, clock: replicaClock, gateway: { hooks: { ingest, liveText: liveText.write } } });
   // The member's personal runner on `host`, at minor 7, which says it can show a preview.
   runner = await registerRunnerAt(replica.url, test.db, fixture.a.member);
   peer = await connectPeer(replica.url, await tokenOf(replica.url, runner), runner.runnerId, { preview: { stream: true, tunnel: true } });
@@ -182,6 +189,7 @@ afterEach(() => {
 afterAll(async () => {
   peer.close();
   await replica.stop();
+  await liveText.stop();
   await jobs.stop({ graceful: false, timeoutMs: 2_000 });
   await test.dispose();
 });
@@ -290,6 +298,50 @@ describe("a preview's views on core", () => {
     expect((await openPanelStream(replica.url, taken.viewId, { authorization: `Bearer ${taken.panelToken}` })).status).toBe(410);
     // IDs and the reason in the log, never a token.
     expect(records.some((record) => record.message === "preview.view-refused" && record.fields["viewId"] === view.viewId && record.fields["refusal"] === "too-many-pages")).toBe(true);
+    expect(JSON.stringify(records)).not.toContain(view.panelToken);
+  }, 60_000);
+
+  it("F-141/c1: a view its box takes and then drops before it connects closes at once with the box's reason, and the pane's stream ends with it", async () => {
+    const task = await boxedTask();
+    const view = await openStreamView(task);
+    // The pane asks for its stream while the view waits for the box's connection.
+    const waiting = stream(view.viewId, view.panelToken);
+    // The box takes the open...
+    const open = await commandOf(peer, "preview.open", (body) => body["viewId"] === view.viewId);
+    peer.send({ type: "command-ack", upTo: open.seq, results: [{ id: commandIdSchema.parse(open.id), seq: commandSeqSchema.parse(open.seq), result: "accepted" }] });
+    await waitFor("the open taken", async () => (await test.db.command.count({ where: { id: open.id, result: "accepted" } })) === 1, 10_000);
+    expect(await test.db.previewView.findUniqueOrThrow({ where: { id: view.viewId } })).toMatchObject({ state: "opening", refusal: null });
+    // ...then drops it, since it has no browser, and says so on the task's session (minor 7's `preview.dropped`).
+    let seq = 0;
+    const drops = (viewId: PreviewViewId, refusal: "no-browser" | "not-servable") => {
+      seq += 1;
+      return { sessionId: task.sessionId, sessionSeq: seq, leaseEpoch: task.leaseEpoch, at: Date.now(), event: { kind: "preview.dropped" as const, viewId, refusal } };
+    };
+    peer.send({ type: "events", events: [drops(view.viewId, "no-browser")] });
+    const panel = await waiting;
+    expect(panel.status).toBe(200);
+    expect((await panel.next("close", 10_000)).close).toEqual({ reason: "refused", refusal: "no-browser" });
+    expect(panel.messages.map((message) => message.type)).toEqual(["close"]);
+    // Closed at once with the box's reason, not 2 minutes on by the sweep; the box's event and the close's are both kept.
+    expect(await test.db.previewView.findUniqueOrThrow({ where: { id: view.viewId } })).toMatchObject({ state: "closed", refusal: "no-browser" });
+    expect(await test.db.event.count({ where: { taskId: task.taskId, kind: "preview.dropped" } })).toBe(1);
+    expect(await test.db.event.count({ where: { taskId: task.taskId, kind: "preview.closed" } })).toBe(1);
+    // A stream asked for after says the same, and the heartbeat says it's closed.
+    const late = await stream(view.viewId, view.panelToken);
+    expect((await late.next("close")).close).toEqual({ reason: "refused", refusal: "no-browser" });
+    expect(await heartbeatView(viewDeps(), { viewId: view.viewId })).toMatchObject({ ok: false, error: "closed" });
+    // The box holds nothing of it: no `preview.close` goes to it.
+    await new Promise((wait) => setTimeout(wait, 300));
+    expect(peer.frames.some((frame) => frame.type === "command" && frame.kind === "preview.close" && frame.body.viewId === view.viewId)).toBe(false);
+    // A box closes no other task's view: a drop on this task's session naming another task's view leaves it opening.
+    const other = await boxedTask();
+    const theirs = await openStreamView(other);
+    peer.send({ type: "events", events: [drops(theirs.viewId, "not-servable")] });
+    await waitFor("the drop stored", async () => (await test.db.event.count({ where: { taskId: task.taskId, kind: "preview.dropped" } })) === 2, 10_000);
+    expect(await test.db.previewView.findUniqueOrThrow({ where: { id: theirs.viewId } })).toMatchObject({ state: "opening", refusal: null });
+    // IDs and the reason in the log, never a token.
+    expect(records.some((record) => record.message === "ingest.preview-dropped" && record.fields["viewId"] === view.viewId && record.fields["refusal"] === "no-browser" && record.fields["closed"] === true)).toBe(true);
+    expect(records.some((record) => record.message === "ingest.preview-dropped" && record.fields["viewId"] === theirs.viewId && record.fields["closed"] === false)).toBe(true);
     expect(JSON.stringify(records)).not.toContain(view.panelToken);
   }, 60_000);
 

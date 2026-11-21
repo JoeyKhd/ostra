@@ -528,6 +528,7 @@ export const eventFixtures: { readonly [K in TaskEventKind]: TaskEventOf<K> } = 
       },
     ],
   },
+  "preview.dropped": { kind: "preview.dropped", viewId: ids.previewView, refusal: "no-browser" },
   "preview.opened": {
     kind: "preview.opened",
     viewId: ids.previewView,

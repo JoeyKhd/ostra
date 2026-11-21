@@ -549,8 +549,24 @@ export type ViewClosing =
  * Closes a view in the caller's transaction: its row, its `preview.closed` event, and
  * `preview.close` to the box, except for a view its box refused, which the box never held.
  */
-export const closeViewInTx = async (
+export const closeViewInTx = (
   deps: Pick<ViewPorts, "outbox" | "notices" | "clock">,
+  tx: Tx,
+  input: ViewClosing,
+): Promise<UseCaseResult<{ readonly closed: boolean }, "not-found">> => closeInTx(deps, input.reason === "box-refused" ? null : deps.outbox, tx, input);
+
+/** Closes a view its box refused or dropped, with the box's reason: the box holds nothing of it, so nothing goes to it. */
+const closeBoxRefusedInTx = (
+  deps: Pick<ViewPorts, "notices" | "clock">,
+  tx: Tx,
+  viewId: PreviewViewId,
+  refusal: PreviewOpenRefusal,
+): Promise<UseCaseResult<{ readonly closed: boolean }, "not-found">> => closeInTx(deps, null, tx, { viewId, reason: "box-refused", refusal });
+
+/** A view's close: `outbox` sends its box `preview.close`; `null` for a box that never held it. */
+const closeInTx = async (
+  deps: Pick<ViewPorts, "notices" | "clock">,
+  outbox: ViewPorts["outbox"] | null,
   tx: Tx,
   input: ViewClosing,
 ): Promise<UseCaseResult<{ readonly closed: boolean }, "not-found">> => {
@@ -568,8 +584,8 @@ export const closeViewInTx = async (
   if (closed.count === 0) {
     return { ok: true, closed: false };
   }
-  // A box that refused the view holds nothing of it: no `preview.close` for it.
-  const lease = view.leaseId === null || refusal !== null ? null : await tx.lease.findFirst({ where: { id: view.leaseId, state: "active" }, select: { runnerId: true, boxId: true } });
+  // A box that refused or dropped the view holds nothing of it: no `preview.close` for it.
+  const lease = view.leaseId === null || outbox === null ? null : await tx.lease.findFirst({ where: { id: view.leaseId, state: "active" }, select: { runnerId: true, boxId: true } });
   const session = await tx.session.findFirst({
     where: { taskId: view.taskId, ...(lease === null ? {} : { boxId: lease.boxId }) },
     orderBy: [{ startedAt: "desc" }, { id: "desc" }],
@@ -578,8 +594,8 @@ export const closeViewInTx = async (
   if (session !== null) {
     const sessionId = sessionIdSchema.parse(session.id);
     await appendServerEvent(tx, { organizationId: view.organizationId, projectId: view.projectId, taskId: view.taskId, sessionId, at: now, event: { kind: "preview.closed", viewId: view.id } });
-    if (lease !== null) {
-      await deps.outbox.enqueueInTx(tx, view.organizationId, runnerIdSchema.parse(lease.runnerId), {
+    if (lease !== null && outbox !== null) {
+      await outbox.enqueueInTx(tx, view.organizationId, runnerIdSchema.parse(lease.runnerId), {
         kind: "preview.close",
         body: { sessionId, viewId: view.id },
         notAfter: now + runnerLimits.offerTimeoutMs,
@@ -615,12 +631,38 @@ export const closeRefusedViewsInTx = async (
       continue;
     }
     const refusal = previewOpenRefusalOf(result.reason);
-    const done = await closeViewInTx(deps, tx, { viewId: body.data.viewId, reason: "box-refused", refusal });
+    const done = await closeBoxRefusedInTx(deps, tx, body.data.viewId, refusal);
     if (done.ok && done.closed) {
       closed.push({ viewId: body.data.viewId, refusal });
     }
   }
   return closed;
+};
+
+/** A box's `preview.dropped`, as the ingest of its session's events reads it. */
+export type ViewDrop = {
+  readonly organizationId: OrganizationId;
+  readonly taskId: TaskId;
+  /** The event's lease epoch: the box's. */
+  readonly leaseEpoch: LeaseEpoch;
+  readonly viewId: PreviewViewId;
+  readonly refusal: PreviewOpenRefusal;
+};
+
+/**
+ * A view its box took and then dropped before it connected (`preview.dropped`, ADR 0068's note
+ * of 2026-11-21): its app never got ready, the box has no browser, its page didn't open, or its
+ * connection didn't reach core. It closes at once with the box's reason, as a refused open does,
+ * in the transaction that stores the box's events. Only a view of the session's own task and
+ * lease epoch: a box closes no other task's view, nor a newer lease's.
+ */
+export const closeDroppedViewInTx = async (deps: Pick<ViewPorts, "notices" | "clock">, tx: Tx, drop: ViewDrop): Promise<boolean> => {
+  const mine = await tx.previewView.count({ where: { id: drop.viewId, organizationId: drop.organizationId, taskId: drop.taskId, leaseEpoch: drop.leaseEpoch } });
+  if (mine === 0) {
+    return false;
+  }
+  const done = await closeBoxRefusedInTx(deps, tx, drop.viewId, drop.refusal);
+  return done.ok && done.closed;
 };
 
 /** Closes a view: its viewer closed it, or the sweep did. Whoever may close it is the caller's check. */

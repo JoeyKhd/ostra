@@ -37,6 +37,8 @@ export type PreviewStreamMode = {
   readonly name: "host" | "docker" | "kubernetes";
   /** The box with a browser: the init's fake one in a box. Absent on `host`: the machine's, or the fake one on Linux CI. */
   readonly makeExecutor?: HarnessOptions["makeExecutor"];
+  /** The box with no browser: the init with none. Absent on `host`, where the executor is given none. */
+  readonly makeExecutorWithoutBrowser?: HarnessOptions["makeExecutor"];
 };
 
 const FIXTURE = path.resolve(fileURLToPath(new URL("../../../../e2e/m8-previews-and-library/fixtures/test-web/", import.meta.url)));
@@ -153,16 +155,18 @@ export const previewStreamCases = (mode: PreviewStreamMode) => {
   const timing: Partial<AppTiming> = { readyIntervalMs: 200, readyTimeoutMs: 90_000, stopGraceMs: 1_000 };
 
   /** A runner on the executor, its box's browser the machine's on `host` (the fake one on Linux CI), and the fake core on its server. */
-  const runner = async (options: { readonly previewCarrier?: "http" } = {}): Promise<{ readonly h: Harness; readonly core: FakePreviewCore }> => {
+  const runner = async (options: { readonly previewCarrier?: "http"; readonly browser?: false } = {}): Promise<{ readonly h: Harness; readonly core: FakePreviewCore }> => {
     const root = sharedNow().root;
     runners += 1;
     // Each runner a data folder of its own, across the file's tests: a spool is never shared.
     const dataDir = path.join(root, `runner-stream-${mode.name}-${String(runners)}`);
-    const browser = live ? machineBrowserSource(() => resolveMachineBrowser({ named: process.env["OSTRA_RUNNER_BROWSER"], download: false, dataDir })) : fakeBrowserProgram();
+    const withBrowser = options.browser ?? true;
+    const browser = !withBrowser ? null : live ? machineBrowserSource(() => resolveMachineBrowser({ named: process.env["OSTRA_RUNNER_BROWSER"], download: false, dataDir })) : fakeBrowserProgram();
+    const makeExecutor = withBrowser ? mode.makeExecutor : mode.makeExecutorWithoutBrowser;
     const h = await startHarness(sharedNow(), {
       dataDir,
       host: { appShell: shell, appTiming: timing },
-      ...(mode.makeExecutor === undefined ? { executor: { browser } } : { makeExecutor: mode.makeExecutor }),
+      ...(makeExecutor === undefined ? { executor: { browser } } : { makeExecutor }),
       ...(options.previewCarrier === undefined ? {} : { previewCarrier: options.previewCarrier }),
     });
     harnesses.push(h);
@@ -524,6 +528,34 @@ export const previewStreamCases = (mode: PreviewStreamMode) => {
       await h.gateway.waitFor(() => !runOf(h).views().has(viewId), 20_000);
       expect(core.frameAnswers(viewId)).toContain(410);
       await h.gateway.waitFor(() => !runOf(h).pages().hasPage(WEB), 10_000);
+    },
+
+    /**
+     * F-141/c1: a view the box takes and then drops before it connects is told to core with why,
+     * so core closes it at once instead of leaving it to the sweep: a box with no browser takes a
+     * browser view's open, then gives the view up with `preview.dropped` and `no-browser` on the
+     * task's session, never opening its connection or a page.
+     */
+    drops: async (): Promise<void> => {
+      const { h, core } = await runner({ browser: false });
+      const { spec } = await webTask(h);
+      h.dispatch(spec);
+      await waitFor(h, spec, "session.saved");
+      const viewId = newViewId();
+      expect(await openStream(h, core, spec, viewId)).toMatchObject({ result: "accepted" });
+      await waitFor(h, spec, "preview.dropped");
+      expect(h.ofKind(spec, "preview.dropped")).toEqual([{ kind: "preview.dropped", viewId, refusal: "no-browser" }]);
+      // `app.browser` said why there's none; the view never connected, and the box holds nothing of it.
+      expect(h.ofKind(spec, "app.browser").map((event) => event.browser.available)).toEqual([false]);
+      expect(core.upgrades.filter((upgrade) => upgrade.viewId === viewId)).toEqual([]);
+      expect(runOf(h).views().has(viewId)).toBe(false);
+      expect(runOf(h).views().watching()).toBe(0);
+      expect(runOf(h).pages().pages()).toBe(0);
+      // Its close is core's now: a `preview.close` for it finds nothing to close.
+      expect(await h.waitForAck(h.command("preview.close", { sessionId: spec.sessionId, viewId }))).toMatchObject({ result: "done", reason: "unknown-view" });
+      // IDs and the reason in the log; never the token or a path.
+      expect(h.logs.some((record) => record.message === "preview.view-dropped" && record.fields["viewId"] === viewId && record.fields["refusal"] === "no-browser")).toBe(true);
+      expect(JSON.stringify(h.logs)).not.toContain(ACCESS_TOKEN);
     },
   };
 };
