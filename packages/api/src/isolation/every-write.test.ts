@@ -140,6 +140,7 @@ const ORGANIZATION_ADMIN_WRITES: Readonly<Record<string, readonly string[]>> = {
     "github.createApp",
     "github.linkInstallation",
     "github.removeInstallation",
+    "github.setClientSecret",
     "github.startManifest",
     "github.unlinkInstallation",
     "linear.authorizeUrl",

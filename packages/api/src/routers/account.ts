@@ -2,7 +2,7 @@ import { revokeCliSession, setTheme, setThemeInputSchema, themeCookie, themePref
 import { cliSessionIdSchema } from "@ostra/protocol";
 import { z } from "zod";
 
-import { githubLinkAvailable } from "../services/github-link.ts";
+import { githubLinking } from "../services/github-link.ts";
 import { memberProcedure, router, unwrap } from "../trpc/init.ts";
 
 // F-103, F-119 (ticket 39): the signed-in member's own account page. Everything here is about the
@@ -45,13 +45,14 @@ const cliSessionsRouter = router({
 
 const githubRouter = router({
   /**
-   * The member's verified GitHub link, and whether linking is possible at all: `connected` is false
-   * when the install has no GitHub App with an OAuth client, and the page then says so.
+   * The member's verified GitHub link, and whether linking is possible at all: `linking` is
+   * `not-connected` when the install has no GitHub App, `needs-client-secret` when its App has no
+   * OAuth client secret yet (Q295: an admin adds it on the GitHub page), and `ready` otherwise.
    */
   get: memberProcedure.query(async ({ ctx }) => {
     const user = await ctx.deps.db.user.findUniqueOrThrow({ where: { id: ctx.user.userId }, select: { githubUserId: true, githubLogin: true, githubLinkedAt: true } });
     return {
-      connected: await githubLinkAvailable(ctx, ctx.scope.organizationId),
+      linking: await githubLinking(ctx, ctx.scope.organizationId),
       link:
         user.githubUserId === null || user.githubLogin === null
           ? null

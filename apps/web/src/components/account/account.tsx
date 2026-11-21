@@ -71,7 +71,11 @@ export type GitHubSectionProps = {
   readonly onUnlinkReset: () => void;
 };
 
-/** GitHub: linked as `@login` with Unlink, or `Link GitHub account`, or not connected to the install. */
+/**
+ * GitHub: linked as `@login` with Unlink, or `Link GitHub account`; or, when members can't link
+ * yet, why: GitHub isn't connected to the install, or its App has no client secret (Q295), which an
+ * organization admin adds on the GitHub page.
+ */
 export const GitHubSection = ({ github, admin, back, unlinked, unlink, onUnlink, onUnlinkReset }: GitHubSectionProps) => {
   const [confirming, setConfirming] = useState(false);
   const link = github?.link ?? null;
@@ -84,13 +88,13 @@ export const GitHubSection = ({ github, admin, back, unlinked, unlink, onUnlink,
             <Skeleton className="w-[120px]" />
             <Skeleton className="w-[80px]" />
           </>
-        ) : !github.connected ? (
+        ) : github.linking !== "ready" && link === null ? (
           <>
             <GithubIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-faint" />
-            <span className="text-ui text-muted">{t("account.github.notConnected")}</span>
+            <span className="text-ui text-muted">{github.linking === "not-connected" ? t("account.github.notConnected") : t("account.github.needsSecret")}</span>
             {admin ? (
-              <Link href="/organization/github" className="ml-auto text-ui text-teal hover:underline">
-                {t("account.github.connect")}
+              <Link href="/organization/github" className="ml-auto text-ui text-teal hover:underline" data-action="github-page">
+                {github.linking === "not-connected" ? t("account.github.connect") : t("account.github.addSecret")}
               </Link>
             ) : null}
           </>
@@ -138,8 +142,14 @@ export const GitHubSection = ({ github, admin, back, unlinked, unlink, onUnlink,
           </>
         )}
       </div>
-      {github === undefined ? null : !github.connected ? (
-        admin ? null : <p className="mt-2.5 text-[12.5px] text-faint">{t("account.github.askAdmin")}</p>
+      {github === undefined ? null : github.linking !== "ready" && link === null ? (
+        github.linking === "not-connected" ? (
+          admin ? null : <p className="mt-2.5 text-[12.5px] text-faint">{t("account.github.askAdmin")}</p>
+        ) : (
+          <p className="mt-2.5 max-w-[720px] text-[12.5px] text-faint" data-testid="github-needs-secret">
+            {admin ? t("account.github.needsSecretAdmin") : t("account.github.needsSecretMember")}
+          </p>
+        )
       ) : link === null ? (
         <p className="mt-2.5 max-w-[720px] text-[12.5px] text-faint">{t("account.github.helpNotLinked")}</p>
       ) : (

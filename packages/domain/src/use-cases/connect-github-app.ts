@@ -7,12 +7,18 @@ import { requireOrganizationAdmin } from "../access.ts";
 import type { MemberScope } from "../access.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
+import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { SecretRef } from "@ostra/adapter-sdk";
 
 // F-006, ADR 0040: the organization's own GitHub App, either created by the manifest flow (the code
 // the host hands back) or an existing App connected by its ID, private key and webhook secret.
 // ostra reads the App, stores its secrets through the secret store, and keeps its slug, bot identity
 // and permissions. Written by ticket 31.
+//
+// Q295 (2026-11-21): an existing App also takes its OAuth client secret, which the verified link
+// (F-119) signs members in with; the manifest flow is handed it by GitHub. Its client ID needs no
+// field: GitHub's `GET /app` answers it. An admin adds or replaces the secret later with
+// `setGitHubClientSecret`; until then members can't link.
 
 export const connectGitHubAppInputSchema = z.discriminatedUnion("via", [
   z.strictObject({
@@ -27,6 +33,8 @@ export const connectGitHubAppInputSchema = z.discriminatedUnion("via", [
     privateKey: z.string().min(1).max(16_384),
     /** Never logged; stored through the secret store. */
     webhookSecret: z.string().min(1).max(512),
+    /** The App's OAuth client secret, for the verified link (F-119). Never logged; stored through the secret store. */
+    clientSecret: z.string().min(1).max(512).optional(),
   }),
 ]);
 export type ConnectGitHubAppInput = z.infer<typeof connectGitHubAppInputSchema>;
@@ -86,6 +94,7 @@ export const connectGitHubApp: ConnectGitHubApp = async (deps, input) => {
   } else {
     credentials = { appId: input.appId, privateKey: input.privateKey };
     webhookSecret = input.webhookSecret;
+    clientSecret = input.clientSecret ?? null;
   }
 
   const app = await host.readApp(credentials);
@@ -146,6 +155,78 @@ export const connectGitHubApp: ConnectGitHubApp = async (deps, input) => {
     return { ok: true, connectionId, slug: app.value.slug, permissions: app.value.permissions };
   } catch (error) {
     await Promise.allSettled(stored.map((ref) => deps.adapters.secretStore.delete(organizationId, ref)));
+    throw error;
+  }
+};
+
+// ---- Q295: the App's OAuth client secret, added or replaced on the GitHub page ----
+
+export const setGitHubClientSecretInputSchema = z.strictObject({
+  /** From the App's settings on GitHub ("Generate a new client secret"). Never logged; stored through the secret store. */
+  clientSecret: z.string().trim().min(1).max(512),
+});
+export type SetGitHubClientSecretInput = z.infer<typeof setGitHubClientSecretInputSchema>;
+
+export type SetGitHubClientSecretResult = UseCaseResult<
+  {
+    readonly connectionId: ConnectionId;
+    /** The secret it replaced, for the caller to delete once the transaction commits; `null` for a first one. */
+    readonly replaced: SecretRef | null;
+  },
+  "forbidden" | "not-connected"
+>;
+
+export type SetGitHubClientSecretDeps = Pick<Ports, "notices" | "audit" | "adapters"> & {
+  readonly tx: Tx;
+  readonly scope: MemberScope;
+};
+
+const refuseSecret = (
+  error: Exclude<SetGitHubClientSecretResult, { readonly ok: true }>["error"],
+  message: string,
+): SetGitHubClientSecretResult => ({ ok: false, error, message });
+
+/**
+ * Keeps the organization's own App's OAuth client secret (the first App it connected, which the
+ * verified link signs members in with), replacing one it had. The new secret is in the secret store
+ * before the row points at it, and is deleted again if the row's write fails. The old one is the
+ * caller's to delete after the commit, so a rolled-back write still has the secret it pointed at.
+ */
+export const setGitHubClientSecret = async (deps: SetGitHubClientSecretDeps, input: SetGitHubClientSecretInput): Promise<SetGitHubClientSecretResult> => {
+  const { tx, scope } = deps;
+  const organizationId = scope.organizationId;
+  if (!requireOrganizationAdmin(scope, organizationId).ok) {
+    return refuseSecret("forbidden", "Only an organization admin sets the GitHub App's client secret");
+  }
+  const own = await tx.connection.findFirst({
+    where: { organizationId, kind: "github" },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { id: true, clientSecretSecretRef: true },
+  });
+  if (own === null) {
+    return refuseSecret("not-connected", "Connect GitHub first");
+  }
+  const put = await deps.adapters.secretStore.put({ organizationId, purpose: "github-app.client-secret" }, input.clientSecret);
+  if (!put.ok) {
+    throw new Error(`the secret store did not keep the GitHub App's client secret: ${put.error.code}`);
+  }
+  try {
+    await tx.connection.update({ where: { id: own.id }, data: { clientSecretSecretRef: put.value } });
+    const connectionId = connectionIdSchema.parse(own.id);
+    const previous = secretRefSchema.safeParse(own.clientSecretSecretRef);
+    await deps.audit.recordInTx(tx, {
+      organizationId,
+      projectId: null,
+      actor: { kind: "member", id: scope.memberId },
+      action: "github.client-secret-set",
+      entity: "connection",
+      entityId: connectionId,
+      data: { replaced: own.clientSecretSecretRef !== null },
+    });
+    await deps.notices.emitInTx(tx, { organizationId, projectId: null, entity: "connection", entityId: connectionId });
+    return { ok: true, connectionId, replaced: previous.success ? previous.data : null };
+  } catch (error) {
+    await deps.adapters.secretStore.delete(organizationId, put.value);
     throw error;
   }
 };

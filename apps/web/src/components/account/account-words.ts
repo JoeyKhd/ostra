@@ -1,18 +1,18 @@
 import { formatAge } from "@/lib/format";
 import { plural, t } from "@/lib/messages";
 import type { MessageKey } from "@/lib/messages";
+import type { RouterOutputs } from "@/lib/trpc";
 
 import { shortDate } from "./notification-words";
 
 // Account's pure parts (account.md, F-119, F-103, ADRs 0051 and 0052): the no-reply address, the
 // link's return in words, and a CLI session's dates.
 
-/** The verified link as ticket 39's `account.github.get` returns it. */
-export type GitHubLinkView = {
-  /** Whether GitHub is connected to this install at all. */
-  readonly connected: boolean;
-  readonly link: { readonly login: string; readonly githubUserId: string; readonly linkedAt: number } | null;
-};
+/**
+ * The verified link as ticket 39's `account.github.get` returns it: `linking` says whether members
+ * can link at all (`ready`), or why not: no GitHub App, or its client secret not added yet (Q295).
+ */
+export type GitHubLinkView = RouterOutputs["account"]["github"]["get"];
 
 /** One CLI session (ticket 39's `account.cliSessions.list`). Revoked and expired ones aren't listed. */
 export type CliSessionView = {

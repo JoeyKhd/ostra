@@ -21,6 +21,7 @@ export const GET = async (request: Request): Promise<Response> => {
       return Response.redirect(signIn, 303);
     }
     case "not-connected":
+    case "needs-client-secret":
     case "unavailable": {
       const back = new URL("/account", url);
       back.searchParams.set("github", "failed");

@@ -61,7 +61,7 @@ describe("take it local", () => {
   });
 });
 
-const linked: GitHubLinkView = { connected: true, link: { login: "alexkim", githubUserId: "5829104", linkedAt: Date.UTC(2026, 10, 12, 10) } };
+const linked: GitHubLinkView = { linking: "ready", link: { login: "alexkim", githubUserId: "5829104", linkedAt: Date.UTC(2026, 10, 12, 10) } };
 const section = (github: GitHubLinkView | undefined, extra: { readonly admin?: boolean; readonly back?: Parameters<typeof GitHubSection>[0]["back"] } = {}) =>
   renderToStaticMarkup(<GitHubSection github={github} admin={extra.admin ?? false} back={extra.back ?? null} unlinked={false} unlink={{ kind: "idle" }} onUnlink={yes} onUnlinkReset={noop} />);
 
@@ -76,14 +76,30 @@ describe("the GitHub link", () => {
   });
 
   it("F-119: not linked offers the link through /api/github/link/start", () => {
-    const html = section({ connected: true, link: null });
+    const html = section({ linking: "ready", link: null });
     expect(html).toContain('href="/api/github/link/start"');
     expect(html).toContain(esc(t("account.github.helpNotLinked")));
   });
 
   it("F-119: GitHub not connected: admins get Connect GitHub, members are told to ask", () => {
-    expect(section({ connected: false, link: null }, { admin: true })).toContain('href="/organization/github"');
-    expect(section({ connected: false, link: null })).toContain(t("account.github.askAdmin"));
+    expect(section({ linking: "not-connected", link: null }, { admin: true })).toContain('href="/organization/github"');
+    expect(section({ linking: "not-connected", link: null })).toContain(t("account.github.askAdmin"));
+  });
+
+  it("F-119/c1: an App without its client secret (Q295): no link to start, and the member is told an organization admin adds it on the GitHub page", () => {
+    const member = section({ linking: "needs-client-secret", link: null });
+    expect(member).not.toContain('href="/api/github/link/start"');
+    expect(member).not.toContain(esc(t("account.github.notConnected")));
+    expect(member).toContain(esc(t("account.github.needsSecret")));
+    expect(member).toContain(esc(t("account.github.needsSecretMember")));
+    expect(member).not.toContain('href="/organization/github"');
+    // An admin gets the way there.
+    const admin = section({ linking: "needs-client-secret", link: null }, { admin: true });
+    expect(admin).toContain('href="/organization/github"');
+    expect(admin).toContain(esc(t("account.github.addSecret")));
+    expect(admin).toContain(esc(t("account.github.needsSecretAdmin")));
+    // A link made before stays, with Unlink.
+    expect(section({ ...linked, linking: "needs-client-secret" })).toContain("@alexkim");
   });
 
   it("F-119: the callback's return reads in words: linked, taken, revoke failed, failed", () => {
@@ -92,8 +108,8 @@ describe("the GitHub link", () => {
     expect(linkReturnOf(null)).toBeNull();
     expect(linkReturnText("linked", "alexkim")).toBe("Linked as @alexkim.");
     expect(section(linked, { back: "linked" })).toContain('role="status"');
-    expect(section({ connected: true, link: null }, { back: "taken" })).toContain(t("account.github.back.taken"));
-    expect(section({ connected: true, link: null }, { back: "revoke-failed" })).toContain('role="alert"');
+    expect(section({ linking: "ready", link: null }, { back: "taken" })).toContain(t("account.github.back.taken"));
+    expect(section({ linking: "ready", link: null }, { back: "revoke-failed" })).toContain('role="alert"');
   });
 });
 
@@ -133,6 +149,6 @@ describe("CLI sessions", () => {
     expect(html).toContain(">2<");
     expect(html).toContain("30 days");
     expect(html).toContain("@alexkim");
-    expect(renderToStaticMarkup(<AccountPanel me={{ name: "Sam", email: null, role: "member", organization: "Acme Corp" }} github={{ connected: true, link: null }} sessions={0} days={1} />)).not.toContain(t("account.panel.githubLink"));
+    expect(renderToStaticMarkup(<AccountPanel me={{ name: "Sam", email: null, role: "member", organization: "Acme Corp" }} github={{ linking: "ready", link: null }} sessions={0} days={1} />)).not.toContain(t("account.panel.githubLink"));
   });
 });

@@ -116,6 +116,8 @@ export const auditActions = {
   "project.default-box-size-set": "project",
   // ---- connections: GitHub, Linear, boards ----
   "github.connected": "connection",
+  // Q295: an admin added or replaced the own App's OAuth client secret, which members link through.
+  "github.client-secret-set": "connection",
   "connection.added": "connection",
   "installation.linked": "connection",
   "installation.unlinked": "connection",

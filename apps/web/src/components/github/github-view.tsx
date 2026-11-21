@@ -37,6 +37,7 @@ import {
   StrangersLine,
   useStatusLine,
 } from "./github-orgs";
+import { appGeneralSettingsUrl } from "./github-orgs-words";
 
 
 /** Posts the App manifest to GitHub as a form, the way GitHub's manifest flow asks (F-006). */
@@ -88,12 +89,14 @@ const ExistingAppForm = () => {
   const [appId, setAppId] = useState("");
   const [privateKey, setPrivateKey] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
   const connect = useMutation(
     trpc.github.connectExisting.mutationOptions({
       onSuccess: async () => {
         // Nothing secret stays in the page once it's saved.
         setPrivateKey("");
         setWebhookSecret("");
+        setClientSecret("");
         await queryClient.invalidateQueries({ queryKey: trpc.github.pathKey() });
         await queryClient.invalidateQueries({ queryKey: trpc.setup.status.queryKey() });
       },
@@ -104,7 +107,9 @@ const ExistingAppForm = () => {
   };
   const submit = (event: SubmitEvent) => {
     event.preventDefault();
-    connect.mutate({ appId: appId.trim(), privateKey, webhookSecret });
+    // Q295: the client secret is optional here, and members can't link until it's added.
+    const client = clientSecret.trim();
+    connect.mutate({ appId: appId.trim(), privateKey, webhookSecret, ...(client === "" ? {} : { clientSecret: client }) });
   };
   const busy = connect.isPending;
   return (
@@ -141,6 +146,9 @@ const ExistingAppForm = () => {
       </div>
       <Field id="webhook-secret" label={t("github.webhookSecret")}>
         <Input id="webhook-secret" type="password" autoComplete="off" className="font-mono" disabled={busy} value={webhookSecret} onChange={(e) => { setWebhookSecret(e.target.value); }} />
+      </Field>
+      <Field id="client-secret" label={t("github.clientSecret")} help={t("github.clientSecretHelp")}>
+        <Input id="client-secret" type="password" autoComplete="off" className="font-mono" disabled={busy} value={clientSecret} onChange={(e) => { setClientSecret(e.target.value); }} />
       </Field>
       {connect.error === null ? null : <ErrorLine className="mb-3">{errorText(connect.error)}</ErrorLine>}
       <Button type="submit" variant="primary" disabled={busy || appId === "" || privateKey === "" || webhookSecret === ""}>
@@ -258,6 +266,61 @@ const RequestProperties = () => {
   );
 };
 
+/**
+ * Q295: the own App's OAuth client secret, added or replaced in the properties panel. Members link
+ * their GitHub accounts through it (F-119); nothing secret stays in the page once it's saved.
+ */
+const ClientSecretForm = ({ replacing, settingsUrl, onDone }: { readonly replacing: boolean; readonly settingsUrl: string | null; readonly onDone: (status: string) => void }) => {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const [secret, setSecret] = useState("");
+  const save = useMutation(
+    trpc.github.setClientSecret.mutationOptions({
+      onSuccess: async (result) => {
+        setSecret("");
+        await queryClient.invalidateQueries({ queryKey: trpc.github.pathKey() });
+        await queryClient.invalidateQueries({ queryKey: trpc.account.github.get.queryKey() });
+        onDone(result.replaced ? t("github.clientSecretReplaced") : t("github.clientSecretSaved"));
+      },
+    }),
+  );
+  const submit = (event: SubmitEvent) => {
+    event.preventDefault();
+    save.mutate({ clientSecret: secret.trim() });
+  };
+  const title = replacing ? t("github.replaceClientSecret") : t("github.addClientSecret");
+  return (
+    <form onSubmit={submit} noValidate aria-label={title} data-testid="client-secret-form">
+      <PanelLabel>{title}</PanelLabel>
+      <p className="mb-3 text-sm text-muted">{t("github.clientSecretFormHelp")}</p>
+      {settingsUrl === null ? null : (
+        <a href={settingsUrl} target="_blank" rel="noreferrer" className="mb-3.5 inline-flex items-center gap-1 text-sm text-teal hover:underline">
+          {t("github.openAppSettings")}
+          <ExternalLinkIcon aria-hidden className="size-[13px] stroke-[1.75]" />
+        </a>
+      )}
+      <Field id="set-client-secret" label={t("github.clientSecret")}>
+        <Input id="set-client-secret" type="password" autoComplete="off" className="font-mono" disabled={save.isPending} value={secret} onChange={(e) => { setSecret(e.target.value); }} />
+      </Field>
+      {save.error === null ? null : <ErrorLine className="mb-3">{errorText(save.error)}</ErrorLine>}
+      <Button type="submit" variant="primary" disabled={save.isPending || secret.trim() === ""}>
+        {save.isPending ? t("github.savingClientSecret") : t("github.saveClientSecret")}
+      </Button>
+    </form>
+  );
+};
+
+/** Q295: while the own App has no client secret, the page says member linking is off, and offers to add it. */
+const LinkingOffLine = ({ onAdd }: { readonly onAdd: () => void }) => (
+  <p className="mt-4 flex max-w-[720px] flex-wrap items-center gap-x-2.5 gap-y-1 text-ui text-muted" data-testid="member-linking-off">
+    <InfoIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75]" />
+    <span className="min-w-0">{t("github.linkingOff")}</span>
+    <button type="button" className="font-medium text-teal hover:underline" onClick={onAdd}>
+      {t("github.addClientSecret")}
+    </button>
+  </p>
+);
+
 type Path = "new" | "existing";
 
 const ConnectForm = () => {
@@ -283,7 +346,8 @@ type Panel =
   | { readonly kind: "app"; readonly connectionId: string }
   | { readonly kind: "installation"; readonly installationId: string }
   | { readonly kind: "add-org" }
-  | { readonly kind: "add-app" };
+  | { readonly kind: "add-app" }
+  | { readonly kind: "client-secret" };
 
 /**
  * Organization › GitHub (F-006, F-136): "Use an existing App" or "Create a new App" (the manifest
@@ -317,14 +381,22 @@ export const GitHubView = () => {
     </>
   );
 
+  const ownApp = apps.find((app) => app.own);
+  const onClientSecret = () => { setPanel({ kind: "client-secret" }); };
   const properties = !connected ? (
     connections.isPending ? undefined : <RequestProperties />
   ) : panel?.kind === "add-app" ? (
     <ConnectAnotherForm onDone={() => { setPanel(null); }} />
+  ) : panel?.kind === "client-secret" ? (
+    <ClientSecretForm
+      replacing={own.data?.clientSecretSet === true}
+      settingsUrl={ownApp === undefined || ownApp.slug === null || ownApp.ownerLogin === null ? null : appGeneralSettingsUrl(ownApp.slug, { login: ownApp.ownerLogin, kind: ownApp.ownerKind ?? "organization" })}
+      onDone={(text) => { setPanel(null); setStatus(text); }}
+    />
   ) : panel?.kind === "add-org" ? (
     orgGroups
   ) : selectedApp !== undefined ? (
-    <AppPanel app={selectedApp} own={ownOf(selectedApp)} />
+    <AppPanel app={selectedApp} own={ownOf(selectedApp)} onClientSecret={onClientSecret} />
   ) : selectedInstallation !== undefined ? (
     <>
       <InstallationPanel app={selectedInstallation.app} installation={selectedInstallation.installation} />
@@ -332,7 +404,7 @@ export const GitHubView = () => {
       {orgGroups}
     </>
   ) : apps.length === 1 && apps[0] !== undefined && apps[0].installations.length <= 1 ? (
-    <AppPanel app={apps[0]} own={ownOf(apps[0])} />
+    <AppPanel app={apps[0]} own={ownOf(apps[0])} onClientSecret={onClientSecret} />
   ) : (
     orgGroups
   );
@@ -358,7 +430,7 @@ export const GitHubView = () => {
           }
         : {})}
       {...(properties === undefined ? {} : { properties })}
-      wideProperties={panel?.kind === "add-app"}
+      wideProperties={panel?.kind === "add-app" || panel?.kind === "client-secret"}
     >
       <PageHeading title={t("github.title")} lede={connected ? t("githubOrgs.lede") : t("github.lede")} />
       {callbackError === null ? null : <ErrorLine className="mt-2 max-w-[720px]">{callbackError.slice(0, 300)}</ErrorLine>}
@@ -383,6 +455,7 @@ export const GitHubView = () => {
             />
           ))}
           {anyPublic ? <StrangersLine /> : null}
+          {own.data === null || own.data === undefined || own.data.clientSecretSet ? null : <LinkingOffLine onAdd={onClientSecret} />}
         </>
       ) : (
         <ConnectForm />

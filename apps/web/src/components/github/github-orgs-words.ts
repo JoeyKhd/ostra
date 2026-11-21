@@ -37,11 +37,12 @@ export const reposText = (installation: Pick<Installation, "repoSelection" | "re
 /** The App's install page, without the scheme, as the panel shows it. */
 export const installUrl = (slug: string): string => `github.com/apps/${slug}/installations/new`;
 
+/** An App's settings on GitHub, a user's own or an organization's: its General page holds its client secrets (Q295). */
+export const appGeneralSettingsUrl = (slug: string, owner: { readonly login: string; readonly kind: "organization" | "user" }): string =>
+  owner.kind === "user" ? `https://github.com/settings/apps/${slug}` : `https://github.com/organizations/${owner.login}/settings/apps/${slug}`;
+
 /** GitHub's "Danger zone" for an App: a user's own, or an organization's. */
-export const appSettingsUrl = (slug: string, owner: { readonly login: string; readonly kind: "organization" | "user" }): string =>
-  owner.kind === "user"
-    ? `https://github.com/settings/apps/${slug}/advanced`
-    : `https://github.com/organizations/${owner.login}/settings/apps/${slug}/advanced`;
+export const appSettingsUrl = (slug: string, owner: { readonly login: string; readonly kind: "organization" | "user" }): string => `${appGeneralSettingsUrl(slug, owner)}/advanced`;
 
 /** `3 Nov`. */
 export const dayMonth = (at: number): string => new Date(at).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });

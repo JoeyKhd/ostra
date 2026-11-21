@@ -12,6 +12,10 @@ import type { Context } from "../trpc/context.ts";
 // revokes the token before `exchangeUserCode` returns, and a revocation that fails links nothing.
 // The `state` binds the round trip to the member's panel session for ten minutes and to one use
 // (`OAuthState`, as the Linear connection's). A code, a state and a token are in no log line.
+//
+// Q295 (2026-11-21): the sign-in is the organization's own App's (the first it connected), and needs
+// the App's OAuth client secret. An App connected as an existing one has none until an admin adds it
+// on the GitHub page; until then Account says so, rather than that GitHub isn't connected.
 
 const STATE_TTL_MS = 10 * 60_000;
 
@@ -21,28 +25,41 @@ export type GitHubLinkOutcome = "linked" | "taken" | "revoke-failed" | "failed";
 export type GitHubLinkStart =
   | { readonly kind: "redirect"; readonly url: string }
   | { readonly kind: "sign-in" }
-  /** GitHub is not connected to the install, or its App was made without an OAuth client. */
+  /** GitHub is not connected to the install. */
   | { readonly kind: "not-connected" }
+  /** The App is connected, and has no OAuth client secret yet (Q295): an admin adds it on the GitHub page. */
+  | { readonly kind: "needs-client-secret" }
   | { readonly kind: "unavailable" };
 
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
 
 export const githubLinkCallbackUrl = (publicUrl: string): string => `${publicUrl.replace(/\/+$/, "")}/api/github/link/callback`;
 
-/** The organization's GitHub App as an OAuth client, or why it is none. */
-const oauthClientOf = async (ctx: Context, organizationId: OrganizationId) => {
-  const { db, ports } = ctx.deps;
-  const connection = await db.connection.findFirst({
+/** Whether members can link GitHub on this install: Account's three states (F-119, Q295). */
+export type GitHubLinking = "ready" | "not-connected" | "needs-client-secret";
+
+/** The organization's own App (the first it connected): members link through it. */
+const ownAppOf = (ctx: Context, organizationId: OrganizationId) =>
+  ctx.deps.db.connection.findFirst({
     where: { organizationId, kind: "github", state: "active" },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     select: { id: true, appId: true, privateKeySecretRef: true, clientSecretSecretRef: true },
   });
-  if (connection === null) {
+
+/** The organization's GitHub App as an OAuth client, or why it is none. */
+const oauthClientOf = async (ctx: Context, organizationId: OrganizationId) => {
+  const { ports } = ctx.deps;
+  const connection = await ownAppOf(ctx, organizationId);
+  if (connection === null || !ports.adapters.codeHost.capabilities.userLink) {
     return { kind: "not-connected" } as const;
+  }
+  if (connection.clientSecretSecretRef === null) {
+    return { kind: "needs-client-secret" } as const;
   }
   const keyRef = secretRefSchema.safeParse(connection.privateKeySecretRef);
   const secretRef = secretRefSchema.safeParse(connection.clientSecretSecretRef);
-  if (!keyRef.success || !secretRef.success || !ports.adapters.codeHost.capabilities.userLink) {
-    return { kind: "not-connected" } as const;
+  if (!keyRef.success || !secretRef.success) {
+    return { kind: "unavailable" } as const;
   }
   const [key, secret] = await Promise.all([ports.adapters.secretStore.get(organizationId, keyRef.data), ports.adapters.secretStore.get(organizationId, secretRef.data)]);
   if (!key.ok || !secret.ok) {
@@ -56,13 +73,16 @@ const oauthClientOf = async (ctx: Context, organizationId: OrganizationId) => {
   return { kind: "ready", connectionId: connection.id, client } as const;
 };
 
-/** Whether GitHub can be linked on this install (a connection with an OAuth client), for the Account page. */
-export const githubLinkAvailable = async (ctx: Context, organizationId: OrganizationId): Promise<boolean> => {
-  const connection = await ctx.deps.db.connection.findFirst({
-    where: { organizationId, kind: "github", state: "active", clientSecretSecretRef: { not: null } },
-    select: { id: true },
-  });
-  return connection !== null && ctx.deps.ports.adapters.codeHost.capabilities.userLink;
+/**
+ * Whether GitHub can be linked on this install, for the Account page: `ready` with the own App's
+ * OAuth client secret, `needs-client-secret` with the App and no secret, `not-connected` without one.
+ */
+export const githubLinking = async (ctx: Context, organizationId: OrganizationId): Promise<GitHubLinking> => {
+  const connection = await ownAppOf(ctx, organizationId);
+  if (connection === null || !ctx.deps.ports.adapters.codeHost.capabilities.userLink) {
+    return "not-connected";
+  }
+  return connection.clientSecretSecretRef === null ? "needs-client-secret" : "ready";
 };
 
 /** `/api/github/link/start`: a `state` bound to the member's session, and GitHub's sign-in URL. */

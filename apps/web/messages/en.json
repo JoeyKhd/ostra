@@ -986,7 +986,21 @@
     "events": "Events",
     "webhook": "Webhook",
     "webhookOn": "On",
-    "webhookOff": "Off until a public address"
+    "webhookOff": "Off until a public address",
+    "clientSecret": "Client secret",
+    "clientSecretHelp": "Lets members link their GitHub accounts. In the App's settings on GitHub, under Client secrets, generate one. You can add it later.",
+    "memberLinking": "Member linking",
+    "linkingOn": "On",
+    "linkingOff": "Member linking is off until the App's client secret is added.",
+    "linkingOffShort": "Off: no client secret",
+    "addClientSecret": "Add client secret",
+    "replaceClientSecret": "Replace client secret",
+    "clientSecretFormHelp": "Members link their GitHub accounts by signing in through the App, which needs its client secret. In the App's settings on GitHub, under Client secrets, choose Generate a new client secret and paste it here. It goes to the secret store and isn't shown again.",
+    "openAppSettings": "Open the App's settings",
+    "saveClientSecret": "Save client secret",
+    "savingClientSecret": "Saving…",
+    "clientSecretSaved": "Client secret saved. Members can link their GitHub accounts on Account.",
+    "clientSecretReplaced": "Client secret replaced. Members link through the new one."
   },
   "projects": {
     "title": "Project",
@@ -3262,6 +3276,10 @@
       "notConnected": "GitHub isn't connected to this install yet.",
       "connect": "Connect GitHub",
       "askAdmin": "Ask an admin to connect GitHub.",
+      "needsSecret": "Linking isn't on yet: the GitHub App has no client secret.",
+      "addSecret": "Add it on the GitHub page",
+      "needsSecretMember": "An organization admin needs to add the GitHub App's client secret on the GitHub page. Then you can link your account here.",
+      "needsSecretAdmin": "Add the App's client secret on the GitHub page, from its settings on GitHub. Then every member can link their account here.",
       "back": {
         "linked": "Linked as @{login}.",
         "taken": "That GitHub account is linked to another ostra account. Unlink it there first.",

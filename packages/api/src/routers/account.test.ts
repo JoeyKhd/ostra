@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { secretRefSchema } from "@ostra/adapter-sdk";
 import { startCliSession } from "@ostra/domain";
 import { memberIdSchema, userIdSchema } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -43,13 +44,18 @@ const sessionFor = async (member: { readonly id: string; readonly userId: string
   return started;
 };
 
-/** Gives the install's GitHub App its OAuth client secret, as the manifest flow stores it. */
-const giveClientSecret = async () => {
-  const stored = await harness.fakes.secretStore.put({ organizationId: harness.fixture.a.organization.id, purpose: "github-app.client-secret" }, "client-secret-value-0123456789");
-  if (!stored.ok) {
-    throw new Error("secret store refused");
-  }
-  await harness.test.db.connection.updateMany({ where: { organizationId: harness.fixture.a.organization.id, kind: "github" }, data: { clientSecretSecretRef: stored.value } });
+const CLIENT_SECRET = "client-secret-value-0123456789";
+
+/** Gives the install's GitHub App its OAuth client secret as an admin does, on the GitHub page (Q295). */
+const giveClientSecret = async (clientSecret = CLIENT_SECRET) => (await harness.as(harness.fixture.a.admin)).github.setClientSecret({ clientSecret });
+
+/** The own App's client secret, as the secret store holds it. */
+const storedClientSecret = async (): Promise<string | null> => {
+  const row = await harness.test.db.connection.findFirstOrThrow({ where: { organizationId: harness.fixture.a.organization.id, kind: "github" }, orderBy: { createdAt: "asc" } });
+  const ref = secretRefSchema.safeParse(row.clientSecretSecretRef);
+  if (!ref.success) return null;
+  const read = await harness.fakes.secretStore.get(harness.fixture.a.organization.id, ref.data);
+  return read.ok ? read.value : null;
 };
 
 describe("the member's CLI sessions", () => {
@@ -107,12 +113,38 @@ describe("the member's CLI sessions", () => {
 });
 
 describe("the verified GitHub link", () => {
-  it("F-119/c1: needs the App's OAuth client: without a client secret the install cannot link, and the page says so", async () => {
+  it("F-119/c1: an install with no GitHub App can't link, Account says GitHub isn't connected, and there is no secret to add", async () => {
+    const outsider = await harness.as(harness.fixture.b.admin);
+    expect(await outsider.account.github.get()).toEqual({ linking: "not-connected", link: null });
+    expect(await startGitHubLink(await harness.contextOf(harness.fixture.b.admin))).toEqual({ kind: "not-connected" });
+    await expect(outsider.github.setClientSecret({ clientSecret: CLIENT_SECRET })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    expect(harness.fakes.secretStore.values()).not.toContain(CLIENT_SECRET);
+  });
+
+  it("F-119/c1: an App without its OAuth client secret can't link, and Account says an admin must add it (Q295); an admin adding it on the GitHub page turns linking on", async () => {
     const alex = await harness.as(harness.fixture.a.member);
-    expect(await alex.account.github.get()).toEqual({ connected: false, link: null });
-    expect(await startGitHubLink(await harness.contextOf(harness.fixture.a.member))).toEqual({ kind: "not-connected" });
-    await giveClientSecret();
-    expect(await alex.account.github.get()).toEqual({ connected: true, link: null });
+    expect(await alex.account.github.get()).toEqual({ linking: "needs-client-secret", link: null });
+    expect(await startGitHubLink(await harness.contextOf(harness.fixture.a.member))).toEqual({ kind: "needs-client-secret" });
+    expect((await (await harness.as(harness.fixture.a.admin)).github.connection())?.clientSecretSet).toBe(false);
+    // Only an organization admin adds it.
+    await expect(alex.github.setClientSecret({ clientSecret: CLIENT_SECRET })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await alex.account.github.get()).toEqual({ linking: "needs-client-secret", link: null });
+
+    expect(await giveClientSecret()).toMatchObject({ replaced: false });
+    expect(await alex.account.github.get()).toEqual({ linking: "ready", link: null });
+    expect((await (await harness.as(harness.fixture.a.admin)).github.connection())?.clientSecretSet).toBe(true);
+    // In the secret store, never in the row, the audit entry or a log line.
+    expect(await storedClientSecret()).toBe(CLIENT_SECRET);
+    const row = await harness.test.db.connection.findFirstOrThrow({ where: { organizationId: harness.fixture.a.organization.id, kind: "github" } });
+    expect(JSON.stringify(row)).not.toContain(CLIENT_SECRET);
+    const audit = await harness.test.db.auditEntry.findFirstOrThrow({ where: { action: "github.client-secret-set", organizationId: harness.fixture.a.organization.id } });
+    expect(audit).toMatchObject({ actorId: harness.fixture.a.admin.id, entityId: row.id });
+    expect(JSON.stringify(audit)).not.toContain(CLIENT_SECRET);
+    expect(JSON.stringify(harness.logs)).not.toContain(CLIENT_SECRET);
+    // The sign-in starts now, with the App's client ID.
+    harness.fakes.codeHost.linkStarts.length = 0;
+    expect((await startGitHubLink(await harness.contextOf(harness.fixture.a.member))).kind).toBe("redirect");
+    expect(harness.fakes.codeHost.linkStarts.at(-1)?.clientId).toBe("Iv1.worldclient");
     // Signed out: sent to sign in.
     expect(await startGitHubLink({ ...(await harness.contextOf(harness.fixture.a.member)), user: null, member: null })).toEqual({ kind: "sign-in" });
   });
@@ -140,7 +172,7 @@ describe("the verified GitHub link", () => {
     expect(user.githubLinkedAt).not.toBeNull();
     const shown = await (await harness.as(alex)).account.github.get();
     expect(shown.link).toMatchObject({ login: "alexkim", githubUserId: "4411" });
-    expect(shown.connected).toBe(true);
+    expect(shown.linking).toBe("ready");
     // The audit entry names the member and the ID, and holds no code or state.
     const audit = await harness.test.db.auditEntry.findFirstOrThrow({ where: { action: "github.linked", entityId: alex.id } });
     expect(JSON.stringify(audit)).not.toContain("code-alex");
@@ -217,5 +249,40 @@ describe("the verified GitHub link", () => {
     await startGitHubLink(sam);
     harness.fakes.codeHost.linkCodes.set("freed-code", { userId: "4411", login: "alexkim" });
     expect(await completeGitHubLink(sam, { code: "freed-code", state: harness.fakes.codeHost.linkStarts.at(-1)?.state ?? "" })).toEqual({ outcome: "linked", login: "alexkim" });
+  });
+
+  it("F-119/c1: an admin replaces the App's client secret (Q295): the new one is used, and the old one leaves the secret store", async () => {
+    const before = harness.fakes.secretStore.values().filter((value) => value === CLIENT_SECRET).length;
+    expect(before).toBe(1);
+    expect(await giveClientSecret("client-secret-value-replaced-9876")).toMatchObject({ replaced: true });
+    expect(await storedClientSecret()).toBe("client-secret-value-replaced-9876");
+    expect(harness.fakes.secretStore.values()).not.toContain(CLIENT_SECRET);
+    expect(await (await harness.as(harness.fixture.a.member)).account.github.get()).toMatchObject({ linking: "ready" });
+  });
+
+  it("F-119/c1: an existing App connected with its client secret (Q295) lets a member link at once, through the App's own OAuth", async () => {
+    const { b } = harness.fixture;
+    const app = harness.fakes.codeHost.apps.get(GITHUB_APP_ID);
+    if (app === undefined) throw new Error("no App");
+    const secret = "existing-client-secret-0123456789";
+    const admin = await harness.as(b.admin);
+    // GitHub's `GET /app` answers the client ID ("Iv1.worldclient"): the admin gives only the secret.
+    const connected = await admin.github.connectExisting({ appId: GITHUB_APP_ID, privateKey: app.privateKey, webhookSecret: "whsec-b-0123456789", clientSecret: secret });
+    expect(JSON.stringify(connected)).not.toContain(secret);
+    expect((await admin.github.connection())?.clientSecretSet).toBe(true);
+    expect(harness.fakes.secretStore.values()).toContain(secret);
+    expect(JSON.stringify(await harness.test.db.connection.findUniqueOrThrow({ where: { id: connected.connectionId } }))).not.toContain(secret);
+    expect(await admin.account.github.get()).toEqual({ linking: "ready", link: null });
+
+    const context = await harness.contextOf(b.admin, "b-browser");
+    harness.fakes.codeHost.linkStarts.length = 0;
+    expect((await startGitHubLink(context)).kind).toBe("redirect");
+    const start = harness.fakes.codeHost.linkStarts.at(-1);
+    expect(start?.clientId).toBe("Iv1.worldclient");
+    harness.fakes.codeHost.linkCodes.set("code-b", { userId: "6601", login: "dana-b" });
+    expect(await completeGitHubLink(context, { code: "code-b", state: start?.state ?? "" })).toEqual({ outcome: "linked", login: "dana-b" });
+    expect((await admin.account.github.get()).link).toMatchObject({ login: "dana-b", githubUserId: "6601" });
+    // A client's App beside the own one takes no client secret: members link through the own App.
+    await expect(admin.github.connectExisting({ appId: "4242", privateKey: app.privateKey, clientSecret: secret })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 });

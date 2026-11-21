@@ -1,7 +1,17 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import { appPermissions, isPublicWebhookUrl } from "@ostra/adapter-github";
-import { appOwnerInTx, connectExistingApp, connectGitHubApp, detectRepoEnvironment, linkOwnInstallationInTx, missingAppPermissions, seenInstallationOf } from "@ostra/domain";
+import {
+  appOwnerInTx,
+  connectExistingApp,
+  connectGitHubApp,
+  detectRepoEnvironment,
+  linkOwnInstallationInTx,
+  missingAppPermissions,
+  seenInstallationOf,
+  setGitHubClientSecret,
+  setGitHubClientSecretInputSchema,
+} from "@ostra/domain";
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import { connectionIdSchema, memberIdSchema, organizationIdSchema, repoFullNameSchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
@@ -30,6 +40,11 @@ const connectionViewSchema = z.object({
   botEmail: z.string().nullable(),
   /** Permission name to level, as GitHub reports them. */
   permissions: z.record(z.string(), z.string()),
+  /**
+   * Whether the App's OAuth client secret is stored (Q295): members link their GitHub accounts
+   * through it (F-119), and until it is, the GitHub page says member linking is off.
+   */
+  clientSecretSet: z.boolean(),
 });
 
 const connectedSchema = z.object({
@@ -151,8 +166,29 @@ export const githubRouter = router({
       botName: row.botName,
       botEmail: row.botEmail,
       permissions: permissions.success ? permissions.data : {},
+      clientSecretSet: row.clientSecretSecretRef !== null,
     };
   }),
+
+  /**
+   * Q295: adds or replaces the organization's own App's OAuth client secret, which the verified link
+   * (F-119) signs members in with. An App connected as an existing one has none until an admin adds
+   * it here. The secret goes to the secret store and no output returns it; the one it replaces is
+   * deleted once the new one is in place.
+   */
+  setClientSecret: adminProcedure
+    .input(setGitHubClientSecretInputSchema)
+    .output(z.object({ connectionId: connectionIdSchema, replaced: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const { db, ports } = ctx.deps;
+      const result = await db.$transaction((tx) => setGitHubClientSecret({ tx, scope: ctx.scope, ...ports }, input));
+      const set = unwrap(result, { forbidden: "FORBIDDEN", "not-connected": "PRECONDITION_FAILED" });
+      if (set.replaced !== null) {
+        // Nothing points at it any more; a failed delete leaves an orphan, never a broken link.
+        await ports.adapters.secretStore.delete(ctx.scope.organizationId, set.replaced);
+      }
+      return { connectionId: set.connectionId, replaced: set.replaced !== null };
+    }),
 
   /**
    * What a new App asks GitHub for, in the manifest's order, and whether it can get events: the
@@ -179,15 +215,14 @@ export const githubRouter = router({
    * "Use an existing App": reads the App with the credentials given, checks its permissions include
    * `checks: write` and `actions: read` (naming the missing ones if not), stores the key and the
    * secret through the secret store, and keeps the slug and the bot identity.
-   */
-  /**
-   * "Use an existing App": reads the App with the credentials given, checks its permissions include
-   * `checks: write` and `actions: read` (naming the missing ones if not), stores the key and the
-   * secret through the secret store, and keeps the slug and the bot identity.
    *
    * Milestone 4 (F-136, ticket 51): it works beside another App, a client's own, with its owner
    * read from GitHub. It answers the connection's own webhook address; without a webhook secret
    * from the admin, ostra generates one and answers it this once, for the App's settings.
+   *
+   * Q295: the organization's own App also takes its OAuth client secret, so members can link their
+   * GitHub accounts (F-119); without one they can't, until an admin adds it (`setClientSecret`). A
+   * client's App beside it takes none: members link through the organization's own.
    */
   connectExisting: adminProcedure
     .input(
@@ -195,6 +230,7 @@ export const githubRouter = router({
         appId: z.string().regex(/^\d+$/, "a numeric App ID"),
         privateKey: z.string().min(1).max(16_384),
         webhookSecret: z.string().min(1).max(512).optional(),
+        clientSecret: z.string().trim().min(1).max(512).optional(),
       }),
     )
     .output(connectedExistingSchema)
@@ -205,7 +241,11 @@ export const githubRouter = router({
       const present = await githubConnectionsOf(ctx.deps, ctx.scope);
       if (present.length === 0) {
         const result = await db.$transaction(
-          (tx) => connectGitHubApp({ tx, scope: ctx.scope, ...ports }, { via: "existing", appId: input.appId, privateKey: input.privateKey, webhookSecret }),
+          (tx) =>
+            connectGitHubApp(
+              { tx, scope: ctx.scope, ...ports },
+              { via: "existing", appId: input.appId, privateKey: input.privateKey, webhookSecret, ...(input.clientSecret === undefined ? {} : { clientSecret: input.clientSecret }) },
+            ),
           { timeout: 30_000, maxWait: 10_000 },
         );
         const connected = unwrap(result, connectErrors);
@@ -213,6 +253,9 @@ export const githubRouter = router({
       }
       if (present.some((row) => row.appId === input.appId)) {
         throw new TRPCError({ code: "CONFLICT", message: "That App is connected already" });
+      }
+      if (input.clientSecret !== undefined) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Members link their GitHub accounts through the organization's own App: a client's App takes no client secret" });
       }
       // Beside the organization's own App: a client's App, read with its own credentials.
       const host = ports.adapters.codeHost;

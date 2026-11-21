@@ -373,7 +373,11 @@ export const InstallationPanel = ({ app, installation }: { readonly app: GitHubA
 };
 
 /** The selected App's panel: milestone 1's App group, its owner, visibility and webhook address. */
-export const AppPanel = ({ app, own }: { readonly app: GitHubApp; readonly own: OwnConnection | null }) => (
+/**
+ * An App's properties. For the organization's own App, its bot, its permissions and whether members
+ * can link through it: Q295's client secret, added or replaced through `onClientSecret`.
+ */
+export const AppPanel = ({ app, own, onClientSecret }: { readonly app: GitHubApp; readonly own: OwnConnection | null; readonly onClientSecret?: () => void }) => (
   <div data-testid="app-panel">
     <PanelLabel>{t("github.app")}</PanelLabel>
     <PropRow label={t("github.slug")}><span className="truncate font-mono">{app.slug ?? "–"}</span></PropRow>
@@ -386,6 +390,18 @@ export const AppPanel = ({ app, own }: { readonly app: GitHubApp; readonly own: 
       <LockIcon aria-hidden className="stroke-[1.75]" />
       <span className="text-muted">{t("github.secretsStored")}</span>
     </PropRow>
+    {own === null ? null : (
+      <PropRow label={t("github.memberLinking")}>
+        <span className={cn("truncate", own.clientSecretSet ? "text-text" : "text-muted")} data-testid="member-linking">
+          {own.clientSecretSet ? t("github.linkingOn") : t("github.linkingOffShort")}
+        </span>
+        {onClientSecret === undefined ? null : (
+          <button type="button" className="ml-auto shrink-0 text-teal hover:underline" onClick={onClientSecret}>
+            {own.clientSecretSet ? t("github.replaceClientSecret") : t("github.addClientSecret")}
+          </button>
+        )}
+      </PropRow>
+    )}
     {own === null ? null : (
       <>
         <Sep />

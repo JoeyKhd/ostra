@@ -27,7 +27,9 @@ A base URL at a private, loopback or link-local address, such as a model server 
 **Connect GitHub** opens Organization › GitHub. A GitHub App opens every pull request, as its own bot, with the member as co-author. ostra mints a token for one repo at a time and never hands it to an agent.
 
 - **Create a new App:** type the **Organization on GitHub** that holds your repos (empty: your own GitHub account), then **Create the App on GitHub**. GitHub asks you to confirm, then sends you back here with the App connected.
-- **Use an existing App:** paste its **App ID**, its **Private key** (the `.pem` file) and its **Webhook secret**, then **Connect the App**.
+- **Use an existing App:** paste its **App ID**, its **Private key** (the `.pem` file), its **Webhook secret** and its **Client secret**, then **Connect the App**. The client secret is under **Client secrets** in the App's settings on GitHub (**Generate a new client secret**); ostra reads the App's client ID from GitHub itself. It's what lets members link their GitHub accounts, and you can leave it out and add it later.
+
+Members link their GitHub accounts in their **Account**, through the App's own sign-in, so commits credit them and `@ostra` on a pull request knows who asked. That sign-in needs the App's client secret. **Create a new App** gets it from GitHub. An App connected without one shows **Member linking is off until the App's client secret is added** on the GitHub page, and members' Account says an organization admin needs to add it. **Add client secret** there, or **Replace client secret** in the App's panel, keeps it in the secret store. It's never shown again.
 
 Then **Install on GitHub**, on the organization that holds your repos, for all repositories or the ones tasks may change. The App asks for checks and actions from the start, so no later release asks you to approve it again.
 

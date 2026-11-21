@@ -5,25 +5,26 @@
 // - `checks`: in a project the spec made through New project on the fake GitHub's `test1`, two
 //   checks in the environment, and a task in review whose turn pushed a branch and ran them: `lint`
 //   passed, `unit-tests` failed with its output's end in the `check.finished` event (F-054, F-028).
-// - `github-link`: the GitHub connection's OAuth client secret, kept in the built-in secret store as
-//   the App's manifest flow keeps it, so the install can link a member's GitHub account (F-119).
+// - `github-link-reset`: the first organization's own App without its OAuth client secret, as an App
+//   connected with "Use an existing App" and no secret is (Q295): its row points at none, and the
+//   secret it had is gone. The spec then adds one through the GitHub page (F-119).
+// - `github-org`: an organization of its own, new on every run, with an admin and a member and no
+//   GitHub App, so the spec connects the fake's App there with "Use an existing App" (Q295, F-119).
 
-import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
+import { randomBytes, randomUUID } from "node:crypto";
 
-import { silentLogger, systemClock as adapterClock } from "@ostra/adapter-sdk";
-import type { SecretRowStore } from "@ostra/adapter-sdk";
-import { BuiltinSecretStore, parseSecretsKey } from "@ostra/adapter-secret-store-builtin";
+import { hashPassword } from "better-auth/crypto";
+
 import { createDb, notifyChannels } from "@ostra/db";
-import { recordChecksRunInTx } from "@ostra/domain";
+import { recordChecksRunInTx, seedMember } from "@ostra/domain";
 import { checkIdSchema, gitShaSchema, organizationIdSchema, sessionIdSchema, taskEventSchema, taskIdSchema } from "@ostra/protocol";
 import type { TaskEvent } from "@ostra/protocol";
 import { z } from "zod";
 
 const argsSchema = z.discriminatedUnion("part", [
   z.strictObject({ part: z.literal("checks"), databaseUrl: z.string(), projectId: z.string() }),
-  z.strictObject({ part: z.literal("github-link"), databaseUrl: z.string(), dataDir: z.string(), clientSecret: z.string() }),
+  z.strictObject({ part: z.literal("github-link-reset"), databaseUrl: z.string() }),
+  z.strictObject({ part: z.literal("github-org"), databaseUrl: z.string(), password: z.string() }),
 ]);
 const args = argsSchema.parse(JSON.parse(process.argv[2] ?? "{}"));
 const db = createDb(args.databaseUrl);
@@ -111,37 +112,37 @@ const seedChecks = async (projectId: string): Promise<void> => {
   process.stdout.write(`${JSON.stringify({ taskId: task.id, failingCheckId: unit.id, failingTail })}\n`);
 };
 
-const seedGitHubLink = async (dataDir: string, clientSecret: string): Promise<void> => {
-  const secretRows: SecretRowStore = {
-    insert: async (row) => {
-      await db.secret.create({
-        data: { id: row.id, organizationId: row.organizationId, purpose: row.purpose, ciphertext: Uint8Array.from(row.ciphertext), nonce: Uint8Array.from(row.nonce), keyVersion: row.keyVersion },
-      });
-    },
-    get: async (id) => {
-      const row = await db.secret.findUnique({ where: { id } });
-      return row === null ? undefined : { id: row.id, organizationId: organizationIdSchema.parse(row.organizationId), purpose: row.purpose, ciphertext: row.ciphertext, nonce: row.nonce, keyVersion: row.keyVersion };
-    },
-    delete: async (id) => (await db.secret.deleteMany({ where: { id } })).count > 0,
-  };
-  const connection = await db.connection.findFirstOrThrow({ where: { kind: "github", state: "active" }, orderBy: { createdAt: "asc" } });
-  if (connection.clientSecretSecretRef === null) {
-    const key = parseSecretsKey((await readFile(path.join(dataDir, "secrets-key"), "utf8")).trim());
-    if (!key.ok) throw new Error("the stack's secrets key didn't parse");
-    const store = new BuiltinSecretStore({ rows: secretRows, key: key.value }, { logger: silentLogger, clock: adapterClock });
-    const kept = await store.put({ organizationId: organizationIdSchema.parse(connection.organizationId), purpose: "github-app.client-secret" }, clientSecret);
-    if (!kept.ok) throw new Error("the secret store refused the client secret");
-    await db.connection.update({ where: { id: connection.id }, data: { clientSecretSecretRef: kept.value } });
-  }
+const resetGitHubLink = async (): Promise<void> => {
+  const connection = await db.connection.findFirstOrThrow({ where: { kind: "github", state: "active" }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+  const secretId = connection.clientSecretSecretRef?.replace(/^builtin:/, "") ?? null;
+  await db.connection.update({ where: { id: connection.id }, data: { clientSecretSecretRef: null } });
+  if (secretId !== null) await db.secret.deleteMany({ where: { id: secretId, organizationId: connection.organizationId } });
   process.stdout.write(`${JSON.stringify({ connectionId: connection.id })}\n`);
+};
+
+const seedGitHubOrg = async (password: string): Promise<void> => {
+  const run = randomBytes(3).toString("hex");
+  const organizationId = organizationIdSchema.parse(randomUUID());
+  await db.organization.create({ data: { id: organizationId, name: `GitHub e2e ${run}`, slug: `github-e2e-${run}`, createdAt: new Date() } });
+  const seed = async (username: string, role: "admin" | "member") => {
+    const seeded = await seedMember({ db, hashPassword, env: { NODE_ENV: "test" } }, { username, email: `${username}@example.com`, password, role, organizationId });
+    if (!seeded.ok) throw new Error(`seeding ${username} failed: ${seeded.error}`);
+    return username;
+  };
+  const admin = await seed(`gh-admin-${run}`, "admin");
+  const member = await seed(`gh-member-${run}`, "member");
+  process.stdout.write(`${JSON.stringify({ organizationId, admin, member })}\n`);
 };
 
 switch (args.part) {
   case "checks":
     await seedChecks(args.projectId);
     break;
-  case "github-link":
-    await seedGitHubLink(args.dataDir, args.clientSecret);
+  case "github-link-reset":
+    await resetGitHubLink();
+    break;
+  case "github-org":
+    await seedGitHubOrg(args.password);
     break;
   default:
     args satisfies never;
