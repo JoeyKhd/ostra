@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 
 import { createLogger } from "@ostra/adapter-sdk";
 import type { LogRecord } from "@ostra/adapter-sdk";
+import { tamperToken } from "@ostra/adapter-sdk/testing";
 import { mapTask } from "@ostra/db";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
@@ -215,8 +216,7 @@ describe("the task token", () => {
     expect((await credentialsOf(task, forged)).status).toBe(404);
     await expect(connectPeer(harness.url, forged, poolRunner, { peer: { kind: "sidecar", taskId: task.taskId, boxId: task.boxId, leaseEpoch: 1 } })).rejects.toThrow("404");
     // And one core didn't sign.
-    const tampered = `${token.slice(0, -4)}AAAA`;
-    expect((await specOf(task, tampered)).status).toBe(401);
+    expect((await specOf(task, tamperToken(token))).status).toBe(401);
   });
 
   it("F-015/c4: a token whose lease ended by a stop is refused everywhere with the stale-lease answer", async () => {

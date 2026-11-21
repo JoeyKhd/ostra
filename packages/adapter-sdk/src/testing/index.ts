@@ -37,3 +37,5 @@ export * from "./egress-probes.ts";
 export * from "./run-agent-suite.ts";
 export * from "./agent-parity-cases.ts";
 export * from "./parity.ts";
+// Changing a signed token so it's always a real change, and its lenient decoder's twins.
+export * from "./tamper-token.ts";

@@ -6,7 +6,7 @@ import type { LookupFunction } from "node:net";
 
 import { createLogger } from "@ostra/adapter-sdk";
 import type { LogRecord } from "@ostra/adapter-sdk";
-import { makeSelfSignedCert } from "@ostra/adapter-sdk/testing";
+import { makeSelfSignedCert, tamperToken } from "@ostra/adapter-sdk/testing";
 import { loginSessionIdSchema, memberIdSchema, organizationIdSchema, previewIdSchema, previewKeySchema, previewLinkIdSchema, taskIdSchema } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -155,7 +155,7 @@ describe("the site layout and the cookie (F-144/c3)", () => {
     const [body = "", mac = ""] = value.slice("ostra-preview-cookie-".length).split(".");
     const tampered = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(body, "base64url").toString("utf8")), p: 3001 })).toString("base64url");
     expect(cookies.verify(`ostra-preview-cookie-${tampered}.${mac}`, at)).toBeNull();
-    expect(cookies.verify(`${value.slice(0, -2)}AA`, at)).toBeNull();
+    expect(cookies.verify(tamperToken(value), at)).toBeNull();
     for (const junk of ["", "ostra-preview-cookie-", "ostra-preview-cookie-a.b.c", `x${value}`]) {
       expect(cookies.verify(junk, at), junk).toBeNull();
     }

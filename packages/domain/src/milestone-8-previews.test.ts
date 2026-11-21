@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { createLogger } from "@ostra/adapter-sdk";
 import type { LogRecord } from "@ostra/adapter-sdk";
+import { tamperToken } from "@ostra/adapter-sdk/testing";
 import {
   memberIdSchema,
   organizationIdSchema,
@@ -625,7 +626,7 @@ describe("the previews' tokens (F-142, F-143, F-144)", () => {
     expect(tokens.verify(token, at + 60_000, viewId)).toBeNull();
     expect(tokens.verify(token, at, previewViewIdSchema.parse(randomUUID()))).toBeNull();
     expect(createPanelPreviewTokens("b".repeat(44)).verify(token, at, viewId)).toBeNull();
-    expect(tokens.verify(`${token.slice(0, -2)}xx`, at, viewId)).toBeNull();
+    expect(tokens.verify(tamperToken(token), at, viewId)).toBeNull();
     // A deadline more than a minute ahead isn't one this build makes.
     expect(tokens.verify(tokens.issue({ ...claims, expiresAt: at + 10 * MINUTE }), at, viewId)).toBeNull();
     const byLink = tokens.issue({ ...claims, viewer: { kind: "link", linkId } });
