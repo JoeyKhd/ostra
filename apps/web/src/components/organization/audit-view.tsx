@@ -33,7 +33,7 @@ const PAGE = 100;
 /** The first page has no cursor (a function, so the type stays the cursor's, not `null`'s). */
 const firstCursor = (): RouterOutputs["audit"]["list"]["next"] => null;
 const ROW = 38;
-const BAND = 28;
+const BAND = 38;
 
 /** The rows the virtual list draws: a day's band, then its entries. */
 type Row = { readonly kind: "band"; readonly key: string; readonly label: string; readonly count: number } | { readonly kind: "entry"; readonly entry: Entry };
@@ -138,7 +138,7 @@ export const EntryPanel = ({ entry, onEntity }: { readonly entry: Entry; readonl
         </PropRow>
       </PropGroup>
       {entry.entity === null || entry.entityId === null ? null : (
-        <Button variant="link" className="-mt-2 mb-3.5 text-sm" onClick={onEntity}>
+        <Button variant="link" className="-mt-2 mb-3.5 h-auto px-0 text-sm" onClick={onEntity}>
           {t("audit.entriesAbout", { entity: entityKindWord(entry.entity) })}
         </Button>
       )}
@@ -147,10 +147,12 @@ export const EntryPanel = ({ entry, onEntity }: { readonly entry: Entry; readonl
         {lines.length === 0 ? (
           <p className="text-sm text-faint">{t("audit.noData")}</p>
         ) : (
-          <div className="rounded-lg border border-line bg-surface px-3 py-2 font-mono text-xs leading-relaxed" data-testid="audit-data">
+          // The keys in one column and the values aligned beside them, as audit-log.webp draws the box.
+          <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 rounded-lg border border-line bg-surface px-3 py-2 font-mono text-xs leading-relaxed" data-testid="audit-data">
             {lines.map(([key, value]) => (
-              <div key={key} className="break-all">
-                <span className="text-muted">{key}</span> <span className="text-text">{value}</span>
+              <div key={key} className="contents">
+                <span className="text-muted">{key}</span>
+                <span className="break-all text-text">{value}</span>
               </div>
             ))}
           </div>
@@ -161,8 +163,8 @@ export const EntryPanel = ({ entry, onEntity }: { readonly entry: Entry; readonl
         <div className="mb-3.5 border-b border-line pb-3.5">
           <h3 className="mb-2 text-xs font-medium text-faint">{t("audit.eventLog")}</h3>
           <p className="text-sm text-muted">{t("audit.eventLogLede")}</p>
-          <Link href={`/tasks/${entry.taskId}?tab=events`} className="mt-1.5 inline-flex items-center gap-1 text-sm text-teal hover:underline" data-testid="audit-open-event-log">
-            {t("audit.openEventLog")} <ArrowUpRightIcon aria-hidden className="size-[13px] stroke-[1.75]" />
+          <Link href={`/tasks/${entry.taskId}?tab=events`} className="mt-2 inline-flex items-center gap-2 text-ui text-teal hover:underline" data-testid="audit-open-event-log">
+            <ArrowUpRightIcon aria-hidden className="size-[15px] stroke-[1.75]" /> {t("audit.openEventLog")}
           </Link>
         </div>
       )}
@@ -328,7 +330,9 @@ export const AuditView = ({ organization, project, canExport, tabs }: AuditViewP
   const countText =
     pages.data === undefined ? null : more ? t("audit.countMore", { n: entries.length }) : plural(entries.length, "audit.countOne", "audit.countOther");
 
-  const grid = project === undefined ? "md:grid-cols-[80px_190px_220px_minmax(0,1fr)_140px]" : "md:grid-cols-[80px_190px_220px_minmax(0,1fr)]";
+  // The picture's proportions (audit-log.webp: Time, Actor and Action narrow, Entity the widest
+  // column), so a task's key or title still shows beside the double sidebar at 1440.
+  const grid = project === undefined ? "md:grid-cols-[64px_150px_200px_minmax(0,1fr)_110px]" : "md:grid-cols-[64px_150px_200px_minmax(0,1fr)]";
 
   return (
     <PageFrame
@@ -425,7 +429,7 @@ export const AuditView = ({ organization, project, canExport, tabs }: AuditViewP
                   }
                   if (row.kind === "band") {
                     return (
-                      <div key={`band-${row.key}`} className="absolute left-0 top-0 flex h-[28px] w-full items-center gap-2 bg-surface px-2 text-[12.5px]" style={style} data-testid="audit-band">
+                      <div key={`band-${row.key}`} className="absolute left-0 top-0 flex h-[38px] w-full items-center gap-2 bg-surface px-2 text-[12.5px]" style={style} data-testid="audit-band">
                         <span className="font-medium text-muted">{row.label}</span>
                         <span className="font-mono text-faint">{row.count}</span>
                       </div>
