@@ -13,6 +13,7 @@ import { specAppParts, specToolSets } from "./app-spec.ts";
 import type { AppSpecRepo } from "./app-spec.ts";
 import { specChecks, specServices, specSnapshot } from "./environment-spec.ts";
 import { profileSpecParts } from "./profile-spec.ts";
+import { specFileParts, specInputModalities } from "./files-spec.ts";
 import { specMilestone2Parts } from "./restore-spec.ts";
 import { specReviewLoopParts } from "./review-loop-spec.ts";
 import { onboardingPromptOf, specOnboardingParts } from "./onboarding-spec.ts";
@@ -244,6 +245,9 @@ export const buildTaskSpec = async (
 
   // Milestone 2 (ticket 18): the ticket, its images, and a reopen's restore section and template.
   const extras = await specMilestone2Parts(db, task, session);
+  // Milestone 9 (ticket 11, F-148, ADR 0070): every file of the task, the first prompt's, and each
+  // pending message's, kept to the files the spec carries.
+  const fileParts = await specFileParts(db, task, session, extras.restore);
   // Milestone 3 (ticket 27): the environment's services, for a runner that can start them.
   // Milestone 8 (F-140): a minor-7 runner also gets each one's preview label.
   const services = await specServices(db, task, input.minor ?? PROTOCOL_MINOR);
@@ -282,7 +286,9 @@ export const buildTaskSpec = async (
     prompt: onboardingPromptOf(extras.prompt ?? task.prompt ?? "", onboarding, app.appTools),
     ticket: extras.ticket,
     contextFiles: [...extras.contextFiles, ...team.ciFiles],
-    ...(extras.restore === undefined ? {} : { restore: extras.restore }),
+    ...(fileParts.restore === undefined ? {} : { restore: fileParts.restore }),
+    ...(fileParts.files.length === 0 ? {} : { files: [...fileParts.files] }),
+    ...(fileParts.promptFiles === undefined ? {} : { promptFiles: fileParts.promptFiles }),
     branchName: task.branchName,
     leaseEpoch: input.leaseEpoch,
     repos,
@@ -314,6 +320,8 @@ export const buildTaskSpec = async (
       reasoning: effort.reasoning,
       limits: effort.limits,
       ...(repoSkillsOff ? { repoSkills: false } : {}),
+      // Milestone 9 (F-148, Q335): the model's inputs, for the agent's config; a minor-7 runner isn't sent them.
+      inputModalities: specInputModalities(model),
     },
     firstTurnMode: parts.firstTurnMode,
     environment: {

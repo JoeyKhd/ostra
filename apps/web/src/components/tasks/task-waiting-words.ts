@@ -74,7 +74,8 @@ export const waitReasonText = (reason: Reason, context: WaitContext): string => 
     case "needs-services-runner":
       return t("waitLine.needsServices", { project: context.project });
     case "needs-protocol":
-      return t("waitLine.needsProtocol", { minor: reason.minor });
+      // Milestone 9 (Q340): a task with files waits for a runner that writes them.
+      return reason.reason === "message-files" ? t("waitLine.needsProtocolFiles", { minor: reason.minor }) : t("waitLine.needsProtocol", { minor: reason.minor });
     case "no-provider-for-model":
       return t("waitLine.noProviderForModel", { model: reason.modelName });
     case "provider-not-allowed":

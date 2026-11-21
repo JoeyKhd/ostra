@@ -33,6 +33,7 @@ import { planAnswerCommandInTx } from "./plans-questions.ts";
 import { appendServerEvent } from "./server-events.ts";
 import type { SpendCapSettings } from "./spend.ts";
 import { releaseHeldRoundInTx } from "../review-loop/start-round.ts";
+import { runnerTakesFilesInTx, steerFilesOfMessageInTx } from "../files/message-files.ts";
 
 // Budget notices and their release (F-037, F-115, ADR 0055, ADR 0050; ticket 13). `budget.check`
 // writes a budget's notice for a month and threshold once and fans it out, as milestone 3's moments
@@ -394,22 +395,31 @@ export const releaseHeldTurnsInTx = async (
           task: { taskId: task.id, projectId },
         });
       } else if (lease !== null && message.success) {
-        await deps.outbox.enqueueInTx(tx, input.organizationId, runnerIdSchema.parse(lease.runnerId), {
-          kind: "steer",
-          body: {
-            sessionId: sessionIdSchema.parse(session.id),
-            clientMessageId: message.data.clientMessageId,
-            text: message.data.text.slice(0, runnerLimits.steerTextMaxChars),
-            delivery: "queue",
-            ...(message.data.intent === undefined ? {} : { intent: message.data.intent }),
-            // Milestone 6: a round's message is an automatic turn, whatever released it.
-            ...(message.data.intent === "fix-ci" || message.data.intent === "fix-findings" ? { automatic: true } : {}),
-          },
-          notAfter: now + runnerLimits.offerTimeoutMs,
-          task: { taskId: task.id, projectId },
-        });
+        // Milestone 9 (F-148, ADR 0070): the message's files go with it, as its send would have
+        // sent them, and only to a runner that writes them (Q340).
+        const files = await steerFilesOfMessageInTx(tx, taskIdSchema.parse(task.id), turn.pendingMessageSeq);
+        const text = message.data.text.slice(0, runnerLimits.steerTextMaxChars);
+        const sendable = (text.length > 0 || files.files.length > 0) && (files.files.length === 0 || (await runnerTakesFilesInTx(tx, lease.runnerId)));
+        if (sendable) {
+          await deps.outbox.enqueueInTx(tx, input.organizationId, runnerIdSchema.parse(lease.runnerId), {
+            kind: "steer",
+            body: {
+              sessionId: sessionIdSchema.parse(session.id),
+              clientMessageId: message.data.clientMessageId,
+              text,
+              delivery: "queue",
+              ...(message.data.intent === undefined ? {} : { intent: message.data.intent }),
+              // Milestone 6: a round's message is an automatic turn, whatever released it.
+              ...(message.data.intent === "fix-ci" || message.data.intent === "fix-findings" ? { automatic: true } : {}),
+              ...(files.files.length === 0 ? {} : { files: [...files.files], images: [...files.images] }),
+            },
+            notAfter: now + runnerLimits.offerTimeoutMs,
+            task: { taskId: task.id, projectId },
+          });
+        }
       }
-      // A session gone meanwhile leaves the message unanswered: the next reopen replays it (F-047).
+      // A session gone meanwhile (or a runner that can't take the message's files) leaves the
+      // message unanswered: the next reopen replays it (F-047).
     }
     await deps.notices.emitInTx(tx, { organizationId: input.organizationId, projectId, entity: "task", entityId: taskIdSchema.parse(task.id) });
   }

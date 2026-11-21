@@ -1,6 +1,7 @@
 import type { Db, Tx } from "@ostra/db";
 import {
   blobIdSchema,
+  canSendFiles,
   fileTextPathOf,
   isPromptImageContentType,
   messageFileIdSchema,
@@ -369,7 +370,48 @@ export const steerFileFields = (bound: BoundMessageFiles): { readonly files?: Ta
 export const promptFilesOfMessage = (files: readonly UserMessageFile[] | undefined): PromptFiles | undefined =>
   files === undefined || files.length === 0 ? undefined : { fileIds: files.map((file) => file.fileId), images: files.filter((file) => file.asImage).map((file) => file.fileId) };
 
+/**
+ * Whether a runner may be sent a message with files (ADR 0070, Q340, `canSendFiles`): its
+ * connection's minor, else the minor it last spoke. Core asks before it writes a steer with files.
+ */
+export const runnerTakesFilesInTx = async (tx: Pick<Tx, "runnerPresence" | "runner">, runnerId: string): Promise<boolean> => {
+  const presence = await tx.runnerPresence.findUnique({ where: { runnerId }, select: { minor: true } });
+  const minor = presence?.minor ?? (await tx.runner.findUnique({ where: { id: runnerId }, select: { minor: true } }))?.minor ?? 0;
+  return canSendFiles(minor);
+};
+
+/** The rows the box gets: the task's sent files, each with a blob and a place (the spec's `files`, a steer's). */
+const specFileWhere = (taskId: TaskId) => ({ taskId, state: "sent" as const, blobId: { not: null }, boxPath: { not: null } });
+
+/**
+ * A sent message's files as its steer carries them, read back from their rows by the message's
+ * number: for a message steered after it was written (a held turn's, released by its budget,
+ * F-037). The images are those its send decided on (`asImage`). A file whose blob is gone is left
+ * out, as the spec leaves it out.
+ */
+export const steerFilesOfMessageInTx = async (tx: Pick<Tx, "messageFile">, taskId: TaskId, eventSeq: number): Promise<BoundMessageFiles["steer"]> => {
+  const rows = await tx.messageFile.findMany({
+    where: { ...specFileWhere(taskId), eventSeq },
+    orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+    select: { ...uploadSelect, boxPath: true, asImage: true },
+  });
+  const files = rows.flatMap((row) => {
+    const file = row.boxPath === null ? null : boxFileOf(row, row.boxPath);
+    return file === null ? [] : [file];
+  });
+  const images = rows.filter((row) => row.asImage && files.some((file) => file.fileId === row.id)).map((row) => messageFileIdSchema.parse(row.id));
+  return { files, images: images.slice(0, runnerLimits.promptImagesMax) };
+};
+
 // ---------- the spec ----------
+
+/**
+ * Whether the spec of the task carries files (`taskSpecFilesOf`): a task with one goes only to a
+ * runner at protocol minor 8 (ADR 0070, Q340), since an older one would never write them into the
+ * box. The dispatch reads it before it picks a runner, from the rows the spec reads.
+ */
+export const taskHasFilesInTx = async (tx: Pick<Tx, "messageFile">, taskId: TaskId): Promise<boolean> =>
+  (await tx.messageFile.findFirst({ where: { ...specFileWhere(taskId), sha256: { not: null } }, select: { id: true } })) !== null;
 
 /**
  * Every sent file of the task, for the spec's `files` (ADR 0070): oldest first (by its message,
@@ -378,7 +420,7 @@ export const promptFilesOfMessage = (files: readonly UserMessageFile[] | undefin
  */
 export const taskSpecFilesOf = async (tx: Pick<Tx, "messageFile">, taskId: TaskId): Promise<readonly TaskSpecMessageFile[]> => {
   const rows = await tx.messageFile.findMany({
-    where: { taskId, state: "sent", blobId: { not: null }, boxPath: { not: null } },
+    where: specFileWhere(taskId),
     orderBy: [{ eventSeq: "asc" }, { position: "asc" }, { createdAt: "asc" }],
     select: { ...uploadSelect, boxPath: true },
     take: runnerLimits.taskFilesMax,

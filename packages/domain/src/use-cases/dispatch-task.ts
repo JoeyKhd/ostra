@@ -30,6 +30,7 @@ import { fleetInTx, lockPoolsInTx, lockRunnerInTx, poolsInTx, projectPoolsInTx, 
 import { followUpRunnersInTx } from "./follow-up-runners.ts";
 import { registryImageForProject } from "./registry.ts";
 import { automaticRoundOfSessionInTx } from "../review-loop/start-round.ts";
+import { taskHasFilesInTx } from "../files/message-files.ts";
 
 // ADR 0034, F-045: the `task.dispatch` job. It picks the runner (the member's personal runner in
 // milestone 1), raises the task's lease epoch under the task row's lock, creates the box and the
@@ -97,6 +98,13 @@ export const TEAM_MINOR = 5;
  * `.opencode/skills` whatever the project says.
  */
 export const REPO_SKILLS_OFF_MINOR = 6;
+
+/**
+ * The runner minor that writes a message's and a ticket's files into the box (protocol minor 8,
+ * ADR 0070, Q340, `canSendFiles`): a task with files needs it, since an older runner would never
+ * write them, and the agent would be told of none.
+ */
+export const FILES_MINOR = 8;
 
 /** How a dispatch starts its session: fresh (the task's first), or by one of ADR 0039's steps. */
 export type DispatchPlan = { readonly step: "new" } | (ReopenStep & { readonly keptRunnerId?: RunnerId });
@@ -447,8 +455,19 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
   // 2026-11-21 (F-021, ADR 0049 amended): a project that keeps the repos' own skills off goes only
   // to a runner at minor 6, the first that reads `agent.repoSkills`.
   const repoSkillsOff = (await tx.project.findFirst({ where: { id: task.projectId, organizationId: task.organizationId }, select: { repoSkills: true } }))?.repoSkills === false;
+  // Milestone 9 (F-148, ADR 0070, Q340): a task with files goes only to a runner at minor 8, the
+  // first that writes them into the box, whatever the dispatch is for: the spec carries them all.
+  const hasFiles = await taskHasFilesInTx(tx, task.id);
   // Milestone 8 (Q300): a dispatch with the purpose `app` goes only to a runner at minor 7.
-  const minMinor = Math.max(runsAtLevel ? Math.max(profileMinor, EFFORT_MINOR) : profileMinor, kindMinor, repoSkillsOff ? REPO_SKILLS_OFF_MINOR : 0, app === undefined ? 0 : APP_MINOR);
+  const minMinor = Math.max(
+    runsAtLevel ? Math.max(profileMinor, EFFORT_MINOR) : profileMinor,
+    kindMinor,
+    repoSkillsOff ? REPO_SKILLS_OFF_MINOR : 0,
+    app === undefined ? 0 : APP_MINOR,
+    hasFiles ? FILES_MINOR : 0,
+  );
+  // When only older runners could take it: the minor, and why when the files are (`isTaskOfferable`'s reason).
+  const protocolWait: DispatchWait = { code: "needs-protocol", minor: minMinor, ...(hasFiles && minMinor === FILES_MINOR ? { reason: "message-files" as const } : {}) };
   /**
    * Milestone 3's words when services are why (F-094): a services runner missing, when only runners
    * that can't start them are online in the same scope. Otherwise the choice's own reason.
@@ -595,7 +614,7 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
             }).kind === "runner",
         );
         if (older) {
-          return noRunner({ code: "needs-protocol", minor: minMinor });
+          return noRunner(protocolWait);
         }
       }
       return noRunner(wait.code === "needs-services" ? await servicesReason({ ids: tries }, { code: "personal-runner-unavailable" }) : wait);
@@ -630,7 +649,7 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
       runner = chosenOf(choice, runners);
       if (runner === null) {
         if (minMinor > 0 && (await chooseIn({ ...fleetOptions, minMinor: 0 })).choice.kind === "runner") {
-          poolWait = { code: "needs-protocol", minor: minMinor };
+          poolWait = protocolWait;
         } else {
           const reason: DispatchWait = choice.kind === "waits" ? choice.reason : { code: "no-runner-online" };
           poolWait = reason.code === "needs-services" ? await servicesReason({ poolIds }, reason) : reason;

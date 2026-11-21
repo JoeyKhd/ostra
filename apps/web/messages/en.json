@@ -3330,6 +3330,7 @@
     "offerTimedOut": "A runner didn't answer in time; looking for another.",
     "needsServices": "The environment has services, and no runner of {project}'s pools can start them.",
     "needsProtocol": "The agent profile needs a runner at protocol 1.{minor} or later: update the runner.",
+    "needsProtocolFiles": "A task with files needs a runner at protocol 1.{minor} or later: update the runner.",
     "noProviderForModel": "No provider on this project's list serves {model}.",
     "providerNotAllowed": "The session's model provider is no longer allowed in {project}.",
     "budgetProject": "{project}'s budget for this month is reached: the task waits until it's raised or the month ends.",

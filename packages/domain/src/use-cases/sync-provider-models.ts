@@ -1,5 +1,5 @@
 import type { Db } from "@ostra/db";
-import { apiFormatFromDb, authSchemeFromDb } from "@ostra/db";
+import { apiFormatFromDb, authSchemeFromDb, Prisma } from "@ostra/db";
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { CatalogEntry } from "@ostra/adapter-sdk";
 import { reasoningControlsSchema } from "@ostra/protocol";
@@ -15,7 +15,8 @@ import type { UseCaseResult } from "./common.ts";
 // 28) and `providers.refresh` (the panel's button) both call this, so they can't disagree.
 //
 // What a refresh never does: overwrite what an admin entered for a custom model (its name, limits
-// and prices) or an admin's reasoning controls for any model (F-137), or delete a model that agent profiles point at: one the endpoint no longer lists
+// and prices), an admin's reasoning controls for any model (F-137) or an admin's "Reads images"
+// (F-148), or delete a model that agent profiles point at: one the endpoint no longer lists
 // is marked unlisted.
 //
 // A batch variant (`x:batch`, the endpoint's asynchronous batch API) is kept unlisted too, so no
@@ -109,6 +110,10 @@ export const syncProviderModels: SyncProviderModels = async (deps, target) => {
           // F-137 (ADR 0066): the catalog's reasoning controls. An admin's (`adminReasoning`) are
           // never written here, so a refresh never undoes them.
           catalogReasoning: reasoningControlsSchema.parse(entry.reasoning),
+          // F-148 (ADR 0070, Q335): the catalog's inputs (models.dev's `modalities.input`), `null`
+          // when it says nothing. An admin's "Reads images" (`adminImageInput`) is never written
+          // here, so a refresh never undoes it.
+          catalogInputModalities: entry.inputModalities === null ? Prisma.DbNull : [...entry.inputModalities],
           listed: offered(model.endpointModelId),
         };
         if (row === undefined) {

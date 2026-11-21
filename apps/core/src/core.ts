@@ -31,6 +31,7 @@ import { startAutomationWorkers } from "./automations/automations.ts";
 import { createBlobService } from "./blobs/blob-service.ts";
 import type { BlobService } from "./blobs/blob-service.ts";
 import { agentEffortLevels } from "./agents/effort-levels.ts";
+import { coreMessageFilesDeps } from "./agents/prompt-images.ts";
 import { agentImportsArchives } from "./agents/session-archives.ts";
 import { handleBlobEndpoint } from "./blobs/endpoints.ts";
 import { handlePanelBlobEndpoint } from "./blobs/panel-endpoints.ts";
@@ -548,6 +549,8 @@ export const startCore = async (
       heartbeatMs,
       spendCap: { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap },
       timers,
+      // Milestone 9 (F-148): a follow-up's files keep to the settings' limits, its images to its agent.
+      files: coreMessageFilesDeps(settings.files),
     }),
     { localConcurrency: 4 },
   );

@@ -31,6 +31,11 @@ describe("the waiting line", () => {
     expect(waitReasonText(reason({ code: "personal-runner-unavailable" }), { ...context, personal: { name: "sam-laptop", busy: 0, slots: 2 } })).toBe("sam-laptop is offline: the task starts when it connects.");
   });
 
+  it("F-148/c9: a task with files waits for a runner at protocol 1.8, and the line says the files are why", () => {
+    expect(waitReasonText(reason({ code: "needs-protocol", minor: 8, reason: "message-files" }), context)).toBe("A task with files needs a runner at protocol 1.8 or later: update the runner.");
+    expect(waitReasonText(reason({ code: "needs-protocol", minor: 2 }), context)).toBe("The agent profile needs a runner at protocol 1.2 or later: update the runner.");
+  });
+
   it("F-067/c2: the place in the pool's queue comes first, and `queued` says nothing the place doesn't", () => {
     expect([1, 2, 3, 4, 11, 22].map(ordinal)).toEqual(["1st", "2nd", "3rd", "4th", "11th", "22nd"]);
     const queue: QueuePlace = { poolId: pool, poolName: "build-fleet", place: 3, length: 6 };

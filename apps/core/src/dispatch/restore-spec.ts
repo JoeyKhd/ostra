@@ -118,7 +118,8 @@ export const specMilestone2Parts = async (
         origin: session.origin,
         archive: session.origin === "restored" ? await newestArchive(tx, task) : null,
         hiddenRefs,
-        pendingMessages: pending.map((message) => ({ clientMessageId: message.clientMessageId, text: message.text })),
+        // Milestone 9 (F-148, ADR 0070): each with its files, which the spec keeps to those it carries (`files-spec.ts`).
+        pendingMessages: pending.map((message) => ({ clientMessageId: message.clientMessageId, text: message.text, ...(message.files === undefined ? {} : { files: message.files }) })),
       },
       prompt: rebuild.prompt,
     };

@@ -674,8 +674,9 @@ const applyEffects = async (
       case "preview.link_revoked":
       case "app.started_by":
       // Protocol minor 8 (milestone 9, ADR 0070): stored for the task page. What the runner wrote
-      // (`files.written`) is milestone 9's core tickets' (11, 13); a read of the ticket is written
-      // by core itself (ticket 12).
+      // (`files.written`) changes no row: the thread shows a skipped file, and images that went as
+      // files because the agent didn't advertise them (`imagesAsFiles`), from the event itself
+      // (ticket 11). A read of the ticket is written by core itself (ticket 12).
       case "files.written":
       case "ticket.context_read":
         // Stored for the task page; nothing else moves.

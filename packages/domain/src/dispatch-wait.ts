@@ -1,5 +1,5 @@
 import { Prisma } from "@ostra/db";
-import { boxSizeNameSchema, executorKindSchema, poolIdSchema, runnerIdSchema, runnerLabelSchema } from "@ostra/protocol";
+import { boxSizeNameSchema, executorKindSchema, poolIdSchema, runnerIdSchema, runnerLabelSchema, taskNotOfferableReasonSchema, taskNotOfferableWords } from "@ostra/protocol";
 import type { RunnerId } from "@ostra/protocol";
 import { z } from "zod";
 
@@ -41,8 +41,11 @@ export const dispatchWaitSchema = z.discriminatedUnion("code", [
   /**
    * Milestone 3 (F-021): the task's profile uses what only a runner at protocol `minor` or later
    * can do (rules, plan first, skills, MCP servers), and only older runners could take it.
+   * Milestone 9 (ADR 0070, Q340): `reason` says why when it isn't the profile, as one of
+   * `isTaskOfferable`'s reasons (`message-files`: the task's files, which a runner below minor 8
+   * would never write). Missing: the profile.
    */
-  z.strictObject({ code: z.literal("needs-protocol"), minor: z.number().int().positive() }),
+  z.strictObject({ code: z.literal("needs-protocol"), minor: z.number().int().positive(), reason: taskNotOfferableReasonSchema.exactOptional() }),
   /**
    * Milestone 4 (F-135, ADR 0065): no provider on the project's list serves the profile's model, or
    * the chosen one stopped listing it. `modelName` is the catalog ID or the endpoint's model ID.
@@ -136,7 +139,9 @@ export const dispatchNoteFor = (wait: DispatchWait): string => {
         ? "Needs a runner that can start services (the docker executor); none is online."
         : `Needs a runner that can start services (the docker executor); only ${[...new Set(wait.online.map((runner) => runner.executor))].join(" and ")} runners are online.`;
     case "needs-protocol":
-      return `The task's agent profile needs a runner at protocol ${String(wait.minor)} or later: update the runner.`;
+      return wait.reason === undefined
+        ? `The task's agent profile needs a runner at protocol ${String(wait.minor)} or later: update the runner.`
+        : taskNotOfferableWords(wait.reason, wait.minor);
     case "no-provider-for-model":
       if (wait.provider !== undefined) {
         return wait.provider.reason === "not-allowed"

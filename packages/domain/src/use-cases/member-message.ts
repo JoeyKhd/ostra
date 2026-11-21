@@ -1,6 +1,6 @@
 import type { Tx } from "@ostra/db";
 import { mapTask } from "@ostra/db";
-import { canSendFiles, memberIdSchema, organizationIdSchema, projectIdSchema, runnerIdSchema, runnerLimits, sessionIdSchema } from "@ostra/protocol";
+import { memberIdSchema, organizationIdSchema, projectIdSchema, runnerIdSchema, runnerLimits, sessionIdSchema } from "@ostra/protocol";
 import type { ClientMessageId, MessageFileId, MessageIntent, RunnerId, SessionId, TaskId, TaskSeq } from "@ostra/protocol";
 
 import { transitionLeasePurpose } from "../lifecycles/m8-previews.ts";
@@ -9,7 +9,7 @@ import { transitionTask } from "../lifecycles/task.ts";
 import { resolveNeedsYouItemsInTx } from "./needs-you-items.ts";
 
 import { requireProjectAccess } from "../access.ts";
-import { appendMemberMessageInTx, defaultMessageFilesDeps, filesToBindInTx, steerFileFields, uploadsOfInTx } from "../files/message-files.ts";
+import { appendMemberMessageInTx, defaultMessageFilesDeps, filesToBindInTx, runnerTakesFilesInTx, steerFileFields, uploadsOfInTx } from "../files/message-files.ts";
 import type { MessageFilesDeps, MessageFilesToBind, TicketFilesToBind } from "../files/message-files.ts";
 import type { MemberScope } from "../access.ts";
 import type { Ports } from "../ports.ts";
@@ -82,13 +82,6 @@ export type SendMemberMessageResult = UseCaseResult<
   | "runner-needs-upgrade"
   | Exclude<ReopenTaskResult, { readonly ok: true }>["error"]
 >;
-
-/** Whether a runner may be sent a message with files (ADR 0070, Q340): its connection's minor, else its last. */
-const runnerTakesFilesInTx = async (tx: Pick<Tx, "runnerPresence" | "runner">, runnerId: string): Promise<boolean> => {
-  const presence = await tx.runnerPresence.findUnique({ where: { runnerId }, select: { minor: true } });
-  const minor = presence?.minor ?? (await tx.runner.findUnique({ where: { id: runnerId }, select: { minor: true } }))?.minor ?? 0;
-  return canSendFiles(minor);
-};
 
 /** The session states a message is steered into, rather than reopening the task. */
 const GOING_SESSION_STATES = ["starting", "running", "waiting", "idle"] as const;
@@ -221,8 +214,6 @@ export const sendMemberMessageInTx = async (
   if ((await uploadsOfInTx(tx, scope, projectIdSchema.parse(task.projectId), fileIds)) === null) {
     return { ok: false, error: "file-not-found", message: "One of the files isn't one of your unsent uploads in this project" };
   }
-  // Milestone 6 (ADR 0041, F-101): a person acted, so the automatic turns count from nothing again.
-  await recordPersonActionInTx(tx, task.id, new Date(deps.clock.now()));
   const [lease, session] = await Promise.all([
     tx.lease.findFirst({ where: { taskId: task.id, state: "active" }, select: { id: true, runnerId: true, purpose: true, acceptedAt: true, appStartedByMemberId: true, boxId: true } }),
     tx.session.findFirst({
@@ -231,13 +222,16 @@ export const sendMemberMessageInTx = async (
       select: { id: true, state: true, agentProfileId: true, providerId: true, modelId: true, boxId: true },
     }),
   ]);
-  // Milestone 9 (Q340): a message with files steered into a box needs its runner at minor 8.
+  // Milestone 9 (Q340): a message with files steered into a box needs its runner at minor 8,
+  // refused before anything is written (the box says the runner needs upgrading).
   const going = (task.state === "running" || task.state === "needs_you") && lease !== null && session !== null;
   const steered = going || (lease?.purpose === "app" && session?.boxId === lease.boxId) ? lease : null;
   const hasFiles = fileIds.length > 0 || (input.ticketFiles?.stored.length ?? 0) > 0;
   if (hasFiles && steered !== null && !(await runnerTakesFilesInTx(tx, steered.runnerId))) {
     return { ok: false, error: "runner-needs-upgrade", message: "This task's runner needs upgrading to take files: update it, or reopen the task on another runner" };
   }
+  // Milestone 6 (ADR 0041, F-101): a person acted, so the automatic turns count from nothing again.
+  await recordPersonActionInTx(tx, task.id, new Date(deps.clock.now()));
   const files =
     session === null ? null : await filesToBindInTx(tx, organizationIdSchema.parse(organizationId), deps.files ?? defaultMessageFilesDeps, { fileIds, modelId: session.modelId, agentProfileId: session.agentProfileId, ticket: input.ticketFiles });
   // Milestone 8 (Q300, ticket 19): a message while "Start the app"'s lease holds starts a turn in its box.

@@ -12,7 +12,7 @@ import {
   upsertTicketCacheInTx,
   writeMomentToSessionInTx,
 } from "@ostra/domain";
-import type { AgentSessionMoment, Ports, SessionTimers, SpendCapSettings } from "@ostra/domain";
+import type { AgentSessionMoment, MessageFilesDeps, Ports, SessionTimers, SpendCapSettings } from "@ostra/domain";
 import type { JobHandler } from "@ostra/jobs";
 import {
   agentActivityIdSchema,
@@ -74,6 +74,8 @@ export type AgentModeDeps = Pick<Ports, "jobs" | "outbox" | "notices" | "audit" 
   readonly heartbeatMs: number;
   readonly spendCap?: SpendCapSettings;
   readonly timers?: SessionTimers;
+  /** Milestone 9 (F-148): a follow-up's files' limits and which agents take images (`coreMessageFilesDeps`); the defaults when left out. */
+  readonly files?: MessageFilesDeps;
 };
 
 export type AgentEventInput = {
@@ -519,6 +521,7 @@ const handleFollowUp = async (
         clock: deps.clock,
         spendCap: deps.spendCap,
         timers: deps.timers,
+        files: deps.files,
       },
       tx,
       scope,
