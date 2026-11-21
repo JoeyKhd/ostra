@@ -67,8 +67,16 @@ One change ostra makes on a ticket (a status move, the progress comment or its e
 _Avoid_: sync job, update
 
 **Automation**:
-A project's rule that starts tasks by itself: an intake rule, which acts on matching tickets, or a schedule, which acts at set times.
+A project's rule that starts tasks by itself: an intake rule, which acts on matching tickets, a schedule, which acts at set times, or a webhook automation, which acts on a request to its own URL.
 _Avoid_: workflow, trigger
+
+**Webhook automation**:
+An automation that a request to its own URL starts, from an alert, a pipeline or any system that can post. A request it takes, signed with its secret or carrying it as a bearer token, starts one prompt task whose prompt quotes the request's body as data.
+_Avoid_: hook, autopilot, trigger
+
+**Webhook request**:
+One request a webhook automation took, a row of its history as an occurrence is a schedule's: it started a task, or it was skipped with its reason (filtered, a duplicate of its idempotency key, paused, the last task still open, the hourly limit). A refused request (its signature, its size, its rate) is logged and isn't one.
+_Avoid_: delivery (one channel's sending of a notification), call
 
 **Occurrence**:
 One due time of an automation's schedule. Each occurrence is a row with a unique key on the automation and the time, saved in the same transaction as the job that starts its tasks, so it starts them once. One job a minute, the scheduler tick, finds the occurrences that are due.
