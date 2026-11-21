@@ -671,10 +671,13 @@
       "other": "{n} projects"
     },
     "summaryPrs": {
-      "one": "{n} pull request opened today.",
-      "other": "{n} pull requests opened today."
+      "one": "{n} pull request merged today.",
+      "other": "{n} pull requests merged today."
     },
     "projects": "Projects",
+    "openAll": "Open all",
+    "allProjects": "All projects",
+    "auditLog": "Audit log",
     "noProjects": "No projects yet. An admin creates the first one.",
     "noProjectsAdmin": "No projects yet. Create one from the checklist.",
     "loadFailed": "Couldn't load this.",
@@ -760,19 +763,17 @@
       "commentAccepted": "{key}: a PR comment sent to the agent"
     },
     "panel": {
-      "prsOpened": "Pull requests opened, last 7 days",
-      "prsToday": {
-        "one": "{n} opened today",
-        "other": "{n} opened today"
-      },
+      "prsMerged": "Pull requests merged, last 7 days",
+      "prsOpened": "{n} opened",
+      "firstPr": "{opened} · {median} median to first PR",
       "today": "today",
-      "chart": "Pull requests opened per day, the last 7 days: {counts}",
+      "chart": "Pull requests merged per day, the last 7 days: {counts}",
       "spend": "Spend, {month}",
-      "runners": "Runners",
-      "runnersFigure": "{busy} busy · {queued} queued",
-      "noRunners": "No runner yet.",
-      "online": "online",
-      "offline": "offline"
+      "spendOf": "{spent} of {cap}",
+      "pools": "Runner pools",
+      "poolsFigure": "{busy} busy · {queued} queued",
+      "poolFigure": "{busy} / {slots}",
+      "noRunners": "No runner yet."
     },
     "board": {
       "viewLabel": "Home view",

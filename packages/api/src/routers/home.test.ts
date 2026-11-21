@@ -1,3 +1,4 @@
+import { seedInstallation } from "@ostra/db/testing";
 import { questionIdSchema, turnIdSchema } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -57,6 +58,31 @@ describe("home.overview", () => {
     expect(home.projects.rows.map((p) => p.id)).toEqual([a.openProject.id]);
     // A member sees pool runners and their own, not an admin's personal runner.
     expect(home.runners).toEqual([]);
+  });
+
+  it("gives the right panel the PRs merged this week, the organization's budget and its pools (home.md)", async () => {
+    const { a } = harness.fixture;
+    const db = harness.test.db;
+    const task = await seedTask(harness, { organizationId: a.organization.id, projectId: a.openProject.id, title: "Merged one", state: "in_review" });
+    const connection = await db.connection.create({ data: { organizationId: a.organization.id, kind: "github", appId: "home-app" } });
+    await seedInstallation(db, { organizationId: a.organization.id, connectionId: connection.id, installationId: "home-install" });
+    const repo = await db.repo.create({
+      data: { organizationId: a.organization.id, projectId: a.openProject.id, connectionId: connection.id, installationId: "home-install", hostRepoId: "home-1", fullName: "ostra-test/home", defaultBranch: "main", checkoutDir: "home" },
+    });
+    const taskRepo = await db.taskRepo.create({ data: { organizationId: a.organization.id, projectId: a.openProject.id, taskId: task.taskId, repoId: repo.id, branchName: "ostra/merged-one", baseBranch: "main", state: "merged" } });
+    await db.taskPullRequest.create({
+      data: { organizationId: a.organization.id, projectId: a.openProject.id, taskRepoId: taskRepo.id, number: 7, url: "https://example.com/pull/7", branchName: "ostra/merged-one", state: "merged", closedAt: new Date() },
+    });
+    await db.budget.create({ data: { organizationId: a.organization.id, monthlyMicroUsd: 6_000_000_000n } });
+    const pool = await db.runnerPool.create({ data: { organizationId: a.organization.id, name: "build-fleet" } });
+    await db.runner.create({ data: { organizationId: a.organization.id, kind: "pool", poolId: pool.id, name: "build-01", publicKey: "home-pool-runner", executor: "docker", capacity: 4, version: "0.4.2", state: "online" } });
+
+    const home = await (await harness.as(a.admin)).home.overview();
+    expect(home.prsMerged.total).toBe(1);
+    expect(home.prsMerged.days.at(-1)?.count).toBe(1);
+    expect(home.summary.mergedToday).toBe(1);
+    expect(home.spendCap).toBe(6000);
+    expect(home.pools.find((one) => one.name === "build-fleet")).toMatchObject({ busy: 0, slots: 4, online: 1, runners: 1 });
   });
 
   it("words the PR it opened as recent activity, newest first", async () => {

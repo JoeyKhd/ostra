@@ -100,7 +100,7 @@ describe("activityParts", () => {
 
 describe("the heading and figures", () => {
   it("says the counts in one sentence, with plurals", () => {
-    expect(summaryText({ running: 1, projects: 2, queued: 0, prsToday: 3 })).toBe("1 task running across 2 projects, 0 queued. 3 pull requests opened today.");
+    expect(summaryText({ running: 1, projects: 2, queued: 0, prsToday: 5, mergedToday: 3 })).toBe("1 task running across 2 projects, 0 queued. 3 pull requests merged today.");
   });
 
   it("formats spend in whole dollars, cents under $10, and a dash for none", () => {

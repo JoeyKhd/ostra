@@ -1,5 +1,5 @@
-import { visibleProjects } from "@ostra/domain";
-import { projectIdSchema, runnerIdSchema, taskIdSchema } from "@ostra/protocol";
+import { median, visibleProjects } from "@ostra/domain";
+import { poolIdSchema, projectIdSchema, runnerIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { ProjectId } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -85,7 +85,7 @@ export const homeRouter = router({
     const ids: ProjectId[] = visible.map((project) => project.id);
     const nameOf = new Map(visible.map(({ row }) => [row.id, row.name] as const));
 
-    const [counts, prEntries, sessions, auditRows, needsYou] = await Promise.all([
+    const [counts, prEntries, sessions, auditRows, needsYou, mergedRows, firstPrRows, budget] = await Promise.all([
       db.task.groupBy({
         by: ["projectId", "state"],
         where: { organizationId, projectId: { in: ids }, state: { in: ["queued", "preparing", "running", "needs_you"] } },
@@ -106,6 +106,18 @@ export const homeRouter = router({
         select: { id: true, projectId: true, action: true, actorId: true, entityId: true, data: true, createdAt: true },
       }),
       listOpenNeedsYou({ db }, ctx.scope, { projectIds: ids, limit: homeLimits.needsYou, now }),
+      // The right panel's PRs merged this week (home.md): a merged PR's `closedAt` is when it merged.
+      db.taskPullRequest.findMany({
+        where: { organizationId, projectId: { in: ids }, state: "merged", closedAt: { gte: weekAgo } },
+        select: { closedAt: true },
+      }),
+      // The median time from a task's start to its first PR, over the tasks whose first PR came this week.
+      db.taskMetric.findMany({
+        where: { organizationId, projectId: { in: ids }, firstPrAt: { gte: weekAgo } },
+        select: { createdAt: true, firstPrAt: true },
+      }),
+      // The organization's monthly budget, the spend figure's cap (F-037); `null` without one.
+      db.budget.findFirst({ where: { organizationId, projectId: null }, select: { monthlyMicroUsd: true } }),
     ]);
 
     const countOf = (projectId: string | null, states: readonly string[]): number =>
@@ -262,20 +274,39 @@ export const homeRouter = router({
         ...(ctx.scope.role === "admin" ? {} : { OR: [{ kind: "pool" as const }, { ownerMemberId: ctx.scope.memberId }] }),
       },
       orderBy: [{ kind: "asc" }, { createdAt: "asc" }],
-      select: { id: true, name: true, kind: true, state: true, capacity: true, _count: { select: { leases: { where: { state: "active" } } } } },
+      select: { id: true, name: true, kind: true, state: true, capacity: true, pool: { select: { id: true, name: true } }, _count: { select: { leases: { where: { state: "active" } } } } },
     });
+    // The pools (home.md, "Runner pools"): each pool's busy boxes against its online runners' slots.
+    const pools = new Map<string, { id: string; name: string; busy: number; slots: number; online: number; runners: number }>();
+    for (const runner of runnerRows) {
+      if (runner.pool === null) continue;
+      const pool = pools.get(runner.pool.id) ?? { id: runner.pool.id, name: runner.pool.name, busy: 0, slots: 0, online: 0, runners: 0 };
+      pool.busy += runner._count.leases;
+      pool.runners += 1;
+      if (runner.state === "online") {
+        pool.online += 1;
+        pool.slots += runner.capacity;
+      }
+      pools.set(runner.pool.id, pool);
+    }
+    const firstPrMs = firstPrRows.flatMap((row) => (row.firstPrAt === null ? [] : [Math.max(0, row.firstPrAt.getTime() - row.createdAt.getTime())]));
 
     const running = countOf(null, ["running", "preparing"]);
     const queued = countOf(null, ["queued"]);
     const prDays = countByDay(opened.map((entry) => entry.createdAt.getTime()), now, 7);
+    const mergedDays = countByDay(mergedRows.flatMap((row) => (row.closedAt === null ? [] : [row.closedAt.getTime()])), now, 7);
     return {
-      summary: { projects: visible.length, running, queued, prsToday: prDays.at(-1)?.count ?? 0 },
+      summary: { projects: visible.length, running, queued, prsToday: prDays.at(-1)?.count ?? 0, mergedToday: mergedDays.at(-1)?.count ?? 0 },
       /** The open items the member is the audience of or can answer, newest first (ticket 36). */
       needsYou: { total: needsYou.total, rows: needsYou.rows },
       projects: { total: projects.length, rows: projects.slice(0, homeLimits.projects) },
       activity,
       prsOpened: { total: opened.length, days: prDays },
+      prsMerged: { total: mergedDays.reduce((sum, day) => sum + day.count, 0), days: mergedDays, firstPrMedianMs: median(firstPrMs) },
       spendMonth: spendOf(null),
+      /** The organization's monthly budget in US dollars, `null` without one (F-037). */
+      spendCap: budget === null ? null : Number(budget.monthlyMicroUsd) / 1_000_000,
+      pools: [...pools.values()].map((pool) => ({ ...pool, id: poolIdSchema.parse(pool.id) })),
       runners: runnerRows.map((runner) => ({
         id: runnerIdSchema.parse(runner.id),
         name: runner.name,

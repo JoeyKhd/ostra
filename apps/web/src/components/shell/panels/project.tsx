@@ -50,7 +50,7 @@ const writeMine = (mine: boolean): void => {
 };
 
 /** The switcher's menu: the member's projects, needs-you ones first, and New project for an admin. */
-const SwitcherMenu = ({ trigger, projects, admin, onNavigate }: { readonly trigger: ReactNode; readonly projects: readonly Project[]; readonly admin: boolean; readonly onNavigate: () => void }) => (
+export const SwitcherMenu = ({ trigger, projects, admin, onNavigate }: { readonly trigger: ReactNode; readonly projects: readonly Project[]; readonly admin: boolean; readonly onNavigate: () => void }) => (
   <DropdownMenu>
     {trigger}
     <DropdownMenuContent align="start" className="max-h-[min(420px,70vh)] w-[240px] overflow-y-auto">

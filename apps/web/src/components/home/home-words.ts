@@ -223,7 +223,7 @@ export const summaryText = (summary: Overview["summary"]): string =>
     running: plural(summary.running, "home.summaryRunning.one", "home.summaryRunning.other"),
     projects: plural(summary.projects, "home.summaryProjects.one", "home.summaryProjects.other"),
     queued: summary.queued,
-    prs: plural(summary.prsToday, "home.summaryPrs.one", "home.summaryPrs.other"),
+    prs: plural(summary.mergedToday, "home.summaryPrs.one", "home.summaryPrs.other"),
   });
 
 /** US dollars, whole ("$1,104"), with cents under $10 ("$4.50"). */

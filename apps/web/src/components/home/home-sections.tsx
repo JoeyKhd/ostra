@@ -13,21 +13,26 @@ import {
   UserRoundIcon,
 } from "lucide-react";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowRightIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { PausedRuleRows } from "@/components/automations/paused-rules";
 import type { PausedRule } from "@/components/automations/paused-rules";
-import { Section } from "@/components/shell/page-frame";
+import { Section, SectionLink } from "@/components/shell/page-frame";
+import { SwitcherMenu } from "@/components/shell/panels/project";
 import { BudgetNoticeRows } from "@/components/spend/budget-notices";
 import type { BudgetNotice } from "@/components/spend/budget-notices";
 import { projectColour } from "@/components/shell/project-colour";
 import { buttonVariants } from "@/components/ui/button";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { SkeletonRows } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/cn";
 import { formatAge } from "@/lib/format";
 import { t } from "@/lib/messages";
+import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
 import { actionHref, activityIcon, detailActionKey, activityParts, amberRow, formatSpend, monthShort, needsYouRowKey, reasonParts } from "./home-words";
@@ -125,7 +130,12 @@ export const NeedsYouSection = ({ load, now, budget, paused = [] }: {
   const notices = budget?.notices ?? [];
   const empty = load.kind === "ready" && load.data.total === 0 && notices.length === 0 && paused.length === 0;
   return (
-    <Section title={t("home.needsYou.title")} tone={empty ? "grey" : "amber"} {...(load.kind === "ready" ? { count: load.data.total + notices.length + paused.length } : {})}>
+    <Section
+      title={t("home.needsYou.title")}
+      tone={empty ? "grey" : "amber"}
+      {...(load.kind === "ready" ? { count: load.data.total + notices.length + paused.length } : {})}
+      end={<SectionLink href="/needs-you">{t("home.openAll")}</SectionLink>}
+    >
       {load.kind === "loading" ? (
         <SkeletonRows />
       ) : load.kind === "error" ? (
@@ -157,8 +167,25 @@ const Count = ({ n, amber = false }: { readonly n: number; readonly amber?: bool
 /** Projects (home.md): a table, sorted by needs you then running, the whole row a link. */
 export const ProjectsSection = ({ load, admin, now }: { readonly load: Load<Overview["projects"]>; readonly admin: boolean; readonly now: Date }) => {
   const router = useRouter();
+  const trpc = useTRPC();
+  // `All projects →` opens the shell's project switcher (app-shell.md): every project, with a filter.
+  const projects = useQuery(trpc.projects.list.queryOptions());
+  const all =
+    projects.data === undefined || projects.data.length === 0 ? undefined : (
+      <SwitcherMenu
+        projects={projects.data}
+        admin={admin}
+        onNavigate={() => undefined}
+        trigger={
+          <DropdownMenuTrigger className="flex items-center gap-1 text-sm text-muted hover:text-text data-[state=open]:text-text">
+            {t("home.allProjects")}
+            <ArrowRightIcon aria-hidden className="size-[13px] stroke-[1.75]" />
+          </DropdownMenuTrigger>
+        }
+      />
+    );
   return (
-    <Section title={t("home.projects")} {...(load.kind === "ready" ? { count: load.data.total } : {})}>
+    <Section title={t("home.projects")} {...(load.kind === "ready" ? { count: load.data.total } : {})} {...(all === undefined ? {} : { end: all })}>
       {load.kind === "loading" ? (
         <SkeletonRows />
       ) : load.kind === "error" ? (
@@ -169,13 +196,13 @@ export const ProjectsSection = ({ load, admin, now }: { readonly load: Load<Over
         <Table data-testid="home-projects">
           <TableHeader>
             <TableRow className="border-t">
-              <TableHead className="md:w-[160px]">{t("home.table.project")}</TableHead>
+              <TableHead className="md:w-[150px]">{t("home.table.project")}</TableHead>
               <TableHead className="hidden md:table-cell">{t("home.table.repo")}</TableHead>
-              <TableHead num className="w-[72px]">{t("home.table.running")}</TableHead>
-              <TableHead num className="hidden w-[76px] md:table-cell">{t("home.table.queued")}</TableHead>
-              <TableHead num className="w-[92px]">{t("home.table.needsYou")}</TableHead>
-              <TableHead num className="hidden w-[116px] md:table-cell">{t("home.table.prs")}</TableHead>
-              <TableHead num className="hidden w-[104px] md:table-cell" suppressHydrationWarning>
+              <TableHead num className="w-[64px]">{t("home.table.running")}</TableHead>
+              <TableHead num className="hidden w-[64px] md:table-cell">{t("home.table.queued")}</TableHead>
+              <TableHead num className="w-[84px]">{t("home.table.needsYou")}</TableHead>
+              <TableHead num className="hidden w-[104px] md:table-cell">{t("home.table.prs")}</TableHead>
+              <TableHead num className="hidden w-[84px] md:table-cell" suppressHydrationWarning>
                 {t("home.table.spend", { month: monthShort(now) })}
               </TableHead>
             </TableRow>
@@ -248,8 +275,8 @@ const ActivityLine = ({ row, now }: { readonly row: ActivityRow; readonly now: n
 };
 
 /** Recent activity (home.md): at most six events, colour only on the icon and always with the words. */
-export const ActivitySection = ({ load, now }: { readonly load: Load<Overview["activity"]>; readonly now: number }) => (
-  <Section title={t("home.activity.title")}>
+export const ActivitySection = ({ load, now, admin }: { readonly load: Load<Overview["activity"]>; readonly now: number; readonly admin: boolean }) => (
+  <Section title={t("home.activity.title")} {...(admin ? { end: <SectionLink href="/organization/audit">{t("home.auditLog")}</SectionLink> } : {})}>
     {load.kind === "loading" ? (
       <SkeletonRows />
     ) : load.kind === "error" ? (

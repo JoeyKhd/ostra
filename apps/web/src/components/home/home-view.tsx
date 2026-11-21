@@ -97,7 +97,7 @@ export const HomeView = () => {
         <>
           {firstRun ? <SetupChecklist admin={admin} /> : <NeedsYouSection load={load((data) => data.needsYou)} now={at} budget={{ notices: budgetNotices.data ?? [], organizationAdmin: admin }} paused={pausedRules.data ?? []} />}
           <ProjectsSection load={load((data) => data.projects)} admin={admin} now={now} />
-          <ActivitySection load={load((data) => data.activity)} now={at} />
+          <ActivitySection load={load((data) => data.activity)} now={at} admin={admin} />
         </>
       )}
     </PageFrame>
