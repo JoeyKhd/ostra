@@ -44,7 +44,7 @@ describe("the dev mail sink", () => {
     const adapter = new SmtpEmailAdapter({ host: sink.host, port: sink.port, secure: "none", from: "ostra@mail.localhost" }, { logger: silentLogger, clock: { now: () => Date.now() } });
     const link = "http://localhost:3812/invite/inv-0123456789abcdef0123456789abcdef";
     try {
-      const rendered = renderInvitationMail({ organizationName: "Acme", inviterName: "Ada", link, expiresAt: Date.now() + 7 * 86_400_000, publicUrl: "http://localhost:3812" });
+      const rendered = renderInvitationMail({ organizationName: "Acme", inviterName: "Ada", address: "new.member@example.com", link, expiresAt: Date.now() + 7 * 86_400_000, publicUrl: "http://localhost:3812" });
       const sent = await adapter.send({
         category: "account",
         kind: "invitation",
@@ -78,7 +78,7 @@ describe("the dev mail sink", () => {
     try {
       for (const id of ["first-0123456789", "second-0123456789"]) {
         const link = `http://localhost:3812/invite/${id}`;
-        const rendered = renderInvitationMail({ organizationName: "Acme", inviterName: "Ada", link, expiresAt: Date.now() + 86_400_000, publicUrl: "http://localhost:3812" });
+        const rendered = renderInvitationMail({ organizationName: "Acme", inviterName: "Ada", address: "new.member@example.com", link, expiresAt: Date.now() + 86_400_000, publicUrl: "http://localhost:3812" });
         const sent = await adapter.send({
           category: "account",
           kind: "invitation",
