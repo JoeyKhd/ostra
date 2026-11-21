@@ -1,20 +1,153 @@
 ---
 title: "Automations"
-description: "Start tasks on a schedule or from a tracker."
-summary: "Intake rules act on matching tickets; schedules act at set times."
+description: "Start tasks on a schedule, from a tracker, or from a webhook."
+summary: "Intake rules act on matching tickets; schedules act at set times; webhooks act on a request from an alert or a pipeline."
 ---
 
 An automation is a project's rule that starts tasks by itself. A project admin makes them, and a project admin's rule stands behind every task one starts.
 
 ## Make an automation
 
-There are two kinds.
+There are three kinds.
 
 - **An intake rule** turns the tickets that match a condition into tasks: by label, status, assignee, or the tracker's own team or project. It names a task kind, an agent profile, and the runner labels it needs. It starts one task per ticket, once, when the ticket starts to match after the rule exists.
 - **A schedule** acts at set times: it checks a ticket filter, or starts a prompt task, such as "update dependencies every Monday". Each due time starts its tasks once, however many server processes run.
+- **A webhook** acts on a request to its own address: an alert fires or a pipeline fails, it posts to ostra, and a prompt task starts. See [Start from a webhook](#start-from-a-webhook).
 
 An intake rule's **dry run** lists the tickets it matches right now, with what starting each would do. Tickets that matched before the rule existed don't start by themselves: **Start all** in the dry run starts them.
 
 Every task an automation starts passes the same gates as any other: the queue, the project's share of a pool, and the [budget](/docs/using-ostra/budgets). In the Inbox, a member can also select several tickets and start them in one action.
 
 A ticket with sub-issues starts one task per open sub-issue at the bottom of its tree. The parent ticket never runs code; its page follows its children.
+
+## Start from a webhook
+
+A webhook automation has an address of its own. Anything that can send an HTTP request can start a task through it: an alerting tool when an alert fires, a CI pipeline when a build fails, a script. Each request it takes starts one prompt task, with the task kind, agent profile, runner labels and approval the automation names.
+
+### Make one
+
+Automations › **New webhook**, or **On a webhook** in the editor. Give it:
+
+- **How a request proves it's yours.** A **signature** (the default): the request carries `X-Ostra-Signature: sha256=<hex>`, the HMAC-SHA256 of its raw body under the automation's secret, the same form GitHub's webhooks use. Or a **bearer token**, for a sender that can only add a header: `Authorization: Bearer <secret>`. An automation takes only the way it names.
+- **A filter**, optional: conditions on the body's fields, every one of which must hold. Without one, every request starts a task.
+- **An idempotency key's field**, optional, such as `body.alert.id`.
+- **A title and a prompt**, templates that name the request's fields.
+
+**Create webhook** makes its address and its signing secret. The secret is shown once, right then: copy it into the sender's own secrets. ostra keeps it in its secret store and never shows it again. If it's lost, **New secret** makes another, shown once, and the old one stops working at once. The editor's **Try it** column has a sample `curl` for the automation, which reads the secret from `$OSTRA_WEBHOOK_SECRET`.
+
+The address is on core's public address (`OSTRA_CORE_PUBLIC_URL`), like the tracker's and GitHub's webhooks: `https://ostra.example.com/webhooks/automations/<id>`. Its ID is random and nobody can guess it, but it isn't the credential: the secret is. Only the project's admins see the address.
+
+### The body is data
+
+A request's body is JSON, up to 64 KiB. An empty body counts as `{}`. The prompt and the title name its fields by a simple path: dot-separated keys, and a number for an item of an array.
+
+| Placeholder | What it reads |
+|---|---|
+| `{{body.alert.title}}` | the field `title` of the object `alert` |
+| `{{body.alerts.0.labels.severity}}` | a field of the first item of the array `alerts` |
+| `{{body}}` | the whole body |
+
+The body comes from outside ostra, so it's treated as ticket text is: as data, never as instructions or a command. In the prompt, a field on one line is written in backticks, a field over several lines in a block marked `webhook-text`, and an object or an array as JSON in a block marked `webhook-json`. Each fence is longer than any run of backticks inside it, so nothing in the body can close its block. ostra's own first paragraph tells the agent that what's in them came from the request. A number, `true`, `false` or `null` is written as it is, and a missing field as `(none)`. In the title, a field is plain text on one line. A placeholder that isn't a body field is refused when you save.
+
+### The filter
+
+Each condition names a body field and how it compares:
+
+| Condition | Holds when |
+|---|---|
+| **is** | the field, as text, is exactly the value. `3`, `true` and `null` are their text. |
+| **isn't** | the field isn't the value, or it's missing. |
+| **contains** | a string field holds the text, in any case, or an array field has an item equal to it. |
+| **is set** | the field is there and isn't `null`. |
+
+A request the filter doesn't take starts nothing. It shows in the history as skipped, and the sender gets `200`.
+
+### Repeats
+
+A sender may send one event twice: a retry after a timeout, an alert that fires again. Send an `Idempotency-Key` header, or name a body field that holds one. A key is spent by the request that started a task: a repeat within 24 hours starts nothing and answers with that first task's ID. A key whose request started nothing (it was filtered or skipped) can start a task later. ostra stores only the key's hash. The header wins when both are there, and a key is at most 255 characters.
+
+### Limits
+
+Nothing automatic runs without a limit, and a webhook has three, besides the queue, the project's share of a pool and the [budget](/docs/using-ostra/budgets) every task passes.
+
+- **Skip while the last task is open**, on by default: while a task this automation started isn't merged, done or stopped, a request starts nothing. An alert that keeps firing makes one task, not twenty.
+- **At most 20 tasks an hour** (`OSTRA_WEBHOOK_STARTS_PER_HOUR`). The request past it is answered `429`, the automation pauses, and the project's admins are told. A project admin resumes it.
+- **At most 60 requests a minute** (`OSTRA_WEBHOOK_REQUESTS_PER_MINUTE`). More are answered `429` with a `Retry-After`, and leave nothing in the history. A body over 64 KiB (`OSTRA_WEBHOOK_BODY_MAX_KIB`) is answered `413` and stores nothing.
+
+### What the sender gets back
+
+| Status | When | Body |
+|---|---|---|
+| `202` | a task started | `{"status": "started", "taskId": "…", "runId": "…"}` |
+| `200` | a repeat of a key | `{"status": "duplicate", "taskId": "<the first task>", …}` |
+| `200` | the filter, a pause, or the last task still open skipped it | `{"status": "skipped", "reason": "filtered" \| "paused" \| "last-open", …}` |
+| `401` | no signature or token, or a wrong one | `{"error": "missing-signature" \| "bad-signature" \| "missing-token" \| "bad-token"}` |
+| `404` | no such address, or a deleted automation | `{"error": "not-found"}` |
+| `413` | the body is over the limit | `{"error": "payload-too-large", "maxBytes": 65536}` |
+| `422` | the body isn't JSON, the key is too long, or the project can't start a task (no repo, or no profile with a model) | `{"error": "not-json" \| "bad-idempotency-key" \| "not-started", …}` |
+| `429` | over the request rate, or the hourly limit | `{"error": "rate-limited" \| "hourly-limit"}` |
+| `503` | the server is busy; send it again after `Retry-After` | `{"error": "unavailable"}` |
+
+A `200` is final: don't send it again. The automation's **history** lists every request it took, with the task it started or why it skipped. Refused requests (`401`, `413`, `422` other than a project that can't start a task, and the rate's `429`) are in the server's log, by ID, and not in the history. No log line holds a body, a key or a header.
+
+### Example: a failed GitHub Actions run
+
+Make a webhook named "Fix failed builds" with the title `Fix the failed {{body.workflow}} on {{body.ref}}` and a prompt such as:
+
+```text
+The workflow {{body.workflow}} failed on {{body.ref}} at {{body.sha}}.
+Its run: {{body.run}}
+
+Find why it failed, fix it, and keep the tests passing.
+```
+
+Store its address and secret in the repo's Actions secrets as `OSTRA_WEBHOOK_URL` and `OSTRA_WEBHOOK_SECRET`, then add a last step to the job. It runs only when an earlier step failed, and its run's ID and attempt are the idempotency key, so a re-run of the step starts nothing twice:
+
+```yaml
+- name: Ask ostra to fix the build
+  if: failure()
+  env:
+    OSTRA_WEBHOOK_URL: ${{ secrets.OSTRA_WEBHOOK_URL }}
+    OSTRA_WEBHOOK_SECRET: ${{ secrets.OSTRA_WEBHOOK_SECRET }}
+  run: |
+    body=$(jq -cn \
+      --arg workflow "$GITHUB_WORKFLOW" --arg ref "$GITHUB_REF_NAME" --arg sha "$GITHUB_SHA" \
+      --arg run "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+      '{workflow: $workflow, ref: $ref, sha: $sha, run: $run}')
+    sig=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$OSTRA_WEBHOOK_SECRET" | sed 's/^.* //')
+    curl --fail-with-body -sS -X POST "$OSTRA_WEBHOOK_URL" \
+      -H 'content-type: application/json' \
+      -H "x-ostra-signature: sha256=$sig" \
+      -H "idempotency-key: $GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+      --data-binary "$body"
+```
+
+The task's agent works in the project's repos on its own branch, and opens a pull request as any task does.
+
+### Example: an Alertmanager alert
+
+Prometheus's Alertmanager can't sign a request, but it can send a bearer token. Make a webhook verified by a **bearer token**, with the filter **`body.status` is `firing`** and the idempotency key's field `body.groupKey`, so a group that notifies again within the day starts nothing twice. A title and a prompt:
+
+```text
+Title:  Alert {{body.commonLabels.alertname}}: {{body.commonAnnotations.summary}}
+
+Prompt: Alertmanager reports {{body.commonLabels.alertname}} firing on {{body.commonLabels.service}}.
+        Find the cause in the code and fix it. The alerts, as Alertmanager sent them:
+        {{body.alerts}}
+```
+
+Then a receiver for it in `alertmanager.yml`, with the secret in a file only Alertmanager reads:
+
+```yaml
+receivers:
+  - name: ostra
+    webhook_configs:
+      - url: https://ostra.example.com/webhooks/automations/<id>
+        send_resolved: false
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: /etc/alertmanager/ostra-webhook-secret
+```
+
+Route the alerts that need a code change to that receiver. With "skip while the last task is open" on, a storm of alerts makes one task, and the hourly limit holds whatever gets past it.
