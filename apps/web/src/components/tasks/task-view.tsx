@@ -35,6 +35,7 @@ import { useTaskLog } from "@/task/use-task-log";
 
 import { TaskAppSupportLine, TaskAttachmentsGroup } from "./attachments/attachments-group";
 import { monthWord } from "./budget-reason";
+import { PhoneTaskSections } from "./phone-task-sections";
 import { TaskPrs } from "./task-prs";
 import { HeldNoKey, KeyRow, NoKeySentence, WhoPicks } from "./no-key";
 import { adminNames } from "./no-key-words";
@@ -906,7 +907,9 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
             {log.state.connection === "reconnecting" ? <><Sep /><span className="text-muted">{t("taskPage.reconnecting")}</span></> : null}
           </p>
           {inLoop ? <StageLine subState={data.subState} aiReview={aiReview} counts={data.roundCounts} needsYou={cap !== null && isDriver} held={heldNow} /> : null}
-          <TaskPrs repos={data.repos} />
+          <div className="max-sm:hidden">
+            <TaskPrs repos={data.repos} />
+          </div>
           <TaskAppSupportLine taskId={taskId} />
           {data.waiting?.kind === "no-runner" && data.waiting.reason.code === "needs-services-runner" ? (
             <p className="mt-1.5 text-ui text-muted" data-testid="task-dispatch-note">{servicesWaitText(data.waiting.reason.online)}</p>
@@ -945,8 +948,15 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
                   : t("taskPage.waitBudgetOrganization", { month: monthWord(now) })}
             </p>
           ) : null}
-          {data.ticket === null ? null : <TicketLine ticket={data.ticket} />}
-          {data.source === "ticket" && tab !== "draft" ? <AgentGot files={data.contextFiles} /> : null}
+          {/* Under 640px the ticket, its sync and the PRs are sections of their own (m2's `phone-task`). */}
+          <div className="max-sm:hidden">
+            {data.ticket === null ? null : <TicketLine ticket={data.ticket} />}
+            {data.source === "ticket" && tab !== "draft" ? <AgentGot files={data.contextFiles} /> : null}
+          </div>
+          <PhoneTaskSections
+            task={{ ticket: data.ticket, sync: data.sync, repos: data.repos, contextFiles: data.contextFiles, kind: data.kind, canRetry: data.capabilities.retrySync }}
+            retry={{ run: () => { retrySync.mutate({ taskId }); }, pending: retrySync.isPending }}
+          />
           {stop.error === null ? null : <p role="alert" className="mt-2 text-sm text-red">{errorText(stop.error)}</p>}
           <UnderlineTabs
             className="mt-4"

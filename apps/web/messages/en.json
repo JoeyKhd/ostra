@@ -2845,6 +2845,13 @@
       "other": "{n} files"
     },
     "agentGotTemplate": "rendered with the project's template",
+    "phone": {
+      "statusOn": "{status} on {tracker}",
+      "openIn": "Open in {tracker}",
+      "syncOn": "Sync on {tracker}",
+      "pullRequests": "Pull requests",
+      "noPrYet": "None yet"
+    },
     "box": {
       "label": "Box",
       "starting": "Starting",
