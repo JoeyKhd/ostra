@@ -254,6 +254,71 @@ describe("detection's readers (F-112, F-140)", () => {
     ]);
   });
 
+  it("F-140/c7: reads the default a port or proxy target falls back to when an env variable moves it, without evaluating the config", () => {
+    // The forms real configs write: `??`, `||`, inside a template, through a variable, and the
+    // `test-web` fixture's own, a fallback that names another variable with its env fallback.
+    const config = [
+      'const a = process.env.A_URL ?? "http://localhost:3101";',
+      "const b = process.env['B_URL'] || 'http://127.0.0.1:3102';",
+      'const c = `${process.env.C_URL ?? "http://localhost:3103"}`;',
+      'const gPort = process.env["G_PORT"] ?? "3107";',
+      'const g = process.env["G_URL"] ?? `http://localhost:${gPort}`;',
+      // Prettier's wrap of a long one, and a file without semicolons.
+      "const h =",
+      "  process.env.H_URL ??",
+      '  "http://localhost:3108";',
+      'const i = process.env.I_URL ?? "http://localhost:3109"',
+      'const j = process.env.J_URL ?? "http://localhost:3110"',
+      // A loop between two names ends; neither gives a port.
+      "const x = y;",
+      "const y = x;",
+      "export default defineConfig({",
+      "  server: {",
+      "    port: parseInt(process.env.PORT, 10) || 5190, // not the radix",
+      "    proxy: {",
+      "      '/a': { target: a, changeOrigin: true },",
+      "      '/b': { target: b },",
+      "      '/c': { target: c },",
+      '      "/d": { target: process.env.D_URL ?? "http://localhost:3104", ws: true },',
+      "      '/e': process.env.E_URL || 'http://localhost:3105',",
+      '      \'/f\': `${process.env.F_URL ?? "http://localhost:3106"}`,',
+      "      '/g': { target: g, rewrite: (path) => path.replace(/^\\/g/, '') },",
+      "      '/h': { target: h },",
+      "      '/i': { target: i },",
+      "      '/j': { target: j },",
+      "      '/k': { target: `http://localhost:${import.meta.env.K_PORT ?? 3111}/v1` },",
+      "      '/unset': { target: process.env.UNSET_URL },",
+      "      '/loop': { target: x },",
+      "    },",
+      "  },",
+      "});",
+    ].join("\n");
+    expect(readViteConfig(config)).toEqual({
+      port: 5190,
+      proxy: [
+        { path: "/a", targetPort: 3101 },
+        { path: "/b", targetPort: 3102 },
+        { path: "/c", targetPort: 3103 },
+        { path: "/d", targetPort: 3104 },
+        { path: "/e", targetPort: 3105 },
+        { path: "/f", targetPort: 3106 },
+        { path: "/g", targetPort: 3107 },
+        { path: "/h", targetPort: 3108 },
+        { path: "/i", targetPort: 3109 },
+        { path: "/j", targetPort: 3110 },
+        { path: "/k", targetPort: 3111 },
+        { path: "/unset", targetPort: null },
+        { path: "/loop", targetPort: null },
+      ],
+    });
+    // A port an env variable moves, in each form.
+    for (const expression of ['Number(process.env.PORT ?? "5191")', "Number(process.env.PORT) || 5191", '`${process.env.PORT ?? "5191"}`', "webPort"]) {
+      expect(readViteConfig(`const webPort = process.env.WEB_PORT ?? 5191;\nexport default { server: { port: ${expression} } }`).port).toBe(5191);
+    }
+    // A target with no port of its own gives none, whatever number its path holds.
+    expect(readViteConfig("export default { server: { proxy: { '/api': process.env.API_URL ?? 'https://api.example.com/2024' } } }").proxy).toEqual([{ path: "/api", targetPort: null }]);
+  });
+
   it("F-140: proposes the frontend as the primary and its API behind the proxy, and runs nothing it reads", async () => {
     const files = new Map([
       ["package.json", JSON.stringify({ packageManager: "pnpm@10.0.0", scripts: { dev: `${writesMarker} && vite --port 5173`, start: writesMarker } })],

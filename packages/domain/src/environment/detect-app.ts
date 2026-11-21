@@ -243,39 +243,115 @@ const blockOf = (text: string, key: string): string | null => {
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /**
- * The port a file's own declaration of `name` gives, read as text: `const apiPort =
- * process.env.API_PORT ?? "3001"` or `const target = "http://localhost:3001"` gives 3001, the
- * first port-sized number on the line. A config that moves its ports by a variable keeps its
- * default in the text; nothing is evaluated.
+ * The expression that starts at `start`, as text: up to the first `,` or `;` outside brackets and
+ * quotes, a closing bracket it didn't open, or its line's end, unless the line ends with `??` or
+ * `||` or the next starts with one, as a long expression wraps. Comments are left out.
  */
-const declaredPort = (text: string, name: string): number | null => {
-  if (!NAME.test(name)) {
-    return null;
+const expressionAt = (text: string, start: number): string => {
+  let expression = "";
+  let depth = 0;
+  let quote: string | null = null;
+  let index = start;
+  while (index < text.length) {
+    const character = text.charAt(index);
+    // A plain string ends with its line; a template can go on.
+    if (quote !== null && !(character === "\n" && quote !== "`")) {
+      const taken = character === "\\" ? text.slice(index, index + 2) : character;
+      expression += taken;
+      quote = character === quote ? null : quote;
+      index += taken.length;
+      continue;
+    }
+    quote = null;
+    if (text.startsWith("//", index)) {
+      const end = text.indexOf("\n", index);
+      index = end === -1 ? text.length : end;
+      continue;
+    }
+    if (text.startsWith("/*", index)) {
+      const end = text.indexOf("*/", index + 2);
+      index = end === -1 ? text.length : end + 2;
+      continue;
+    }
+    if (character === '"' || character === "'" || character === "`") {
+      quote = character;
+    } else if (character === "(" || character === "[" || character === "{") {
+      depth += 1;
+    } else if (character === ")" || character === "]" || character === "}") {
+      if (depth === 0) {
+        break;
+      }
+      depth -= 1;
+    } else if (depth === 0 && (character === "," || character === ";")) {
+      break;
+    } else if (depth === 0 && character === "\n" && !/(?:\?\?|\|\|)\s*$/.test(expression) && !/^\s*(?:\?\?|\|\|)/.test(text.slice(index + 1))) {
+      break;
+    }
+    expression += character;
+    index += 1;
   }
-  const declaration = new RegExp(`(?:^|[\\s;(])(?:const|let|var)\\s+${name}\\s*=\\s*([^;\\n]*)`).exec(text)?.[1] ?? "";
-  return portOf(/(?:^|[^\w.])(\d{2,5})(?![\w.])/.exec(declaration)?.[1]);
+  return expression.trim();
 };
 
-/** A port from an expression in the file: a number in it, else a name it uses that the file declares. */
-const portOfExpression = (expression: string, text: string): number | null => {
-  const literal = portOf(/(?:^|[^\w.$])(\d{2,5})(?![\w.])/.exec(expression)?.[1]);
-  if (literal !== null) {
-    return literal;
-  }
-  for (const [name] of expression.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)) {
-    const declared = declaredPort(text, name);
-    if (declared !== null) {
-      return declared;
+/** An env read, which holds no default of its own: `process.env.X`, `process.env["X"]`, `import.meta.env.X`. */
+const ENV_READ = /\b(?:process|import\s*\.\s*meta)\s*\.\s*env\b(?:\s*\.\s*[A-Za-z_$][\w$]*|\s*\[\s*(["'`])[^"'`]*\1\s*\])?/g;
+
+/** A port-sized number of its own: `3001`, `"3001"`, `localhost:3001`; not `v2`, `127.0.0.1` or a path's `/2024`. */
+const LITERAL_PORT = /(?:^|[^\w.$/-])(\d{2,5})(?![\w.])/;
+
+/** How many names one read follows through their declarations, at most. */
+const MAX_NAMES = 32;
+
+/**
+ * The port an expression in the file gives, read as text and never evaluated. Its env reads are
+ * dropped, as they hold no default; the fallback after its last `??` or `||` is read first, then
+ * the whole. Each is read for a number of its own, else for a name the file declares, whose
+ * declaration is read the same way: `process.env.API_URL ?? \`http://localhost:${apiPort}\`` with
+ * `const apiPort = process.env.API_PORT ?? "3001"` gives 3001. `followed` holds the names this
+ * read has looked up, each once.
+ */
+const portOfExpression = (expression: string, text: string, followed = new Set<string>()): number | null => {
+  const read = expression.replace(ENV_READ, " ");
+  const operator = [...read.matchAll(/\?\?|\|\|/g)].at(-1);
+  const fallback = operator === undefined ? null : read.slice(operator.index + operator[0].length);
+  for (const part of fallback === null ? [read] : [fallback, read]) {
+    const literal = portOf(LITERAL_PORT.exec(part)?.[1]);
+    if (literal !== null) {
+      return literal;
+    }
+    for (const [name] of part.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)) {
+      if (followed.has(name) || followed.size >= MAX_NAMES) {
+        continue;
+      }
+      followed.add(name);
+      const declared = declaredPort(text, name, followed);
+      if (declared !== null) {
+        return declared;
+      }
     }
   }
   return null;
 };
 
 /**
+ * The port a file's own declaration of `name` gives (`const apiPort = process.env.API_PORT ??
+ * "3001"`, `const target = "http://localhost:3001"`): its expression, read by `portOfExpression`.
+ * A config that moves its ports by a variable keeps its default in the text.
+ */
+const declaredPort = (text: string, name: string, followed: Set<string>): number | null => {
+  if (!NAME.test(name)) {
+    return null;
+  }
+  const declaration = new RegExp(`(?:^|[\\s;(])(?:const|let|var)\\s+${name}\\s*=\\s*`).exec(text);
+  return declaration === null ? null : portOfExpression(expressionAt(text, declaration.index + declaration[0].length), text, followed);
+};
+
+/**
  * A Vite config's `server.port` and `server.proxy` keys (ADR 0068): read from its text, never
  * loaded, since loading a config runs it. A proxy's target names the port of the API behind it. A
  * port a variable holds (`port,`, `target: \`http://localhost:${apiPort}\``) is the number the
- * file declares that variable with.
+ * file declares that variable with, and one an env variable moves (`process.env.API_URL ??
+ * "http://localhost:3001"`, with `||`, or in a template) is its fallback.
  */
 export const readViteConfig = (text: string): DetectedViteConfig => {
   const server = blockOf(text, "server");
@@ -284,19 +360,23 @@ export const readViteConfig = (text: string): DetectedViteConfig => {
   }
   const proxyBlock = blockOf(server, "proxy");
   const outside = proxyBlock === null ? server : server.replace(proxyBlock, "");
-  // `port: 4000`, `port: webPort`, or `port,` (the name `port` itself).
-  const portEntry = /(?:^|[\s,{])port\s*(?::\s*([^,}\n]+))?\s*(?=[,}\n]|$)/.exec(outside);
-  const port = portEntry === null ? null : portOfExpression(portEntry[1] ?? "port", text);
+  // `port: 4000`, `port: webPort`, `port: Number(process.env.PORT) || 4000`, or `port,` (the name `port` itself).
+  const portEntry = /(?:^|[\s,{])port\s*(?:(:)\s*|(?=[,}\n]|$))/.exec(outside);
+  const port = portEntry === null ? null : portOfExpression(portEntry[1] === undefined ? "port" : expressionAt(outside, portEntry.index + portEntry[0].length), text);
   const proxy: { path: string; targetPort: number | null }[] = [];
   if (proxyBlock !== null) {
-    const entry = /(["'`])(\/[^"'`]*)\1\s*:\s*(?:(["'`])([^"'`]*)\3|\{)/g;
+    // `"/api": <target>`, or `"/api": { target: <target>, … }`, whose block is passed over.
+    const entry = /(["'`])(\/[^"'`]*)\1\s*:\s*/g;
     for (let found = entry.exec(proxyBlock); found !== null; found = entry.exec(proxyBlock)) {
       const path = found[2] ?? "";
-      const target = found[4] ?? (blockAt(proxyBlock, found.index + found[0].length - 1) ?? "");
-      const named = portOf(/:(\d{2,5})(?=[/"'`\s,]|$)/.exec(target)?.[1]);
-      // A template's `${name}`, or `target: name`: the port the file declares it with.
-      const variable = /\$\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}/.exec(target)?.[1] ?? /(?:^|[\s,{])target\s*:\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?=[,}\n]|$)/.exec(target)?.[1];
-      proxy.push({ path, targetPort: named ?? (variable === undefined ? null : declaredPort(text, variable)) });
+      const start = found.index + found[0].length;
+      const block = proxyBlock.charAt(start) === "{" ? blockAt(proxyBlock, start) : null;
+      const key = block === null ? null : /(?:^|[\s,{])target\s*:\s*/.exec(block);
+      const target = block === null ? expressionAt(proxyBlock, start) : key === null ? "" : expressionAt(block, key.index + key[0].length);
+      if (block !== null) {
+        entry.lastIndex = start + block.length + 2;
+      }
+      proxy.push({ path, targetPort: portOfExpression(target, text) });
     }
   }
   return { port, proxy };
