@@ -180,6 +180,22 @@ export const auditActions = {
   /** A webhook automation's new signing secret (F-139): the old one stops working at once. Never the secret. */
   "automation.secret-rotated": "automation",
   "bulk-start.created": "bulk-start",
+  // ---- the library (milestone 8, F-145, F-146, ADR 0069): names and sources, never a file or a secret ----
+  "library.installed": "library-item",
+  "library.attached": "library-item",
+  "library.detached": "library-item",
+  /** An item put on every profile, or taken off it. */
+  "library.every_profile_changed": "library-item",
+  "library.update_accepted": "library-item",
+  "library.update_dismissed": "library-item",
+  "library.removed": "library-item",
+  "library.source_added": "library-source",
+  "library.source_removed": "library-source",
+  /** A member's suggestion installed or dismissed. Never its note. */
+  "library.suggestion_decided": "library-suggestion",
+  // An organization admin's switches (F-146, F-142).
+  "organization.marketplace_search_changed": "organization",
+  "organization.public_preview_links_changed": "organization",
 } as const;
 
 export type AuditAction = keyof typeof auditActions;

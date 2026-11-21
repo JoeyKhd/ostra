@@ -378,3 +378,21 @@ export type PreviewCodeId = z.infer<typeof previewCodeIdSchema>;
  */
 export const previewIdSchema = z.string().regex(/^[a-z2-7]{26}$/, "26 lower-case base32 characters").brand<"PreviewId">();
 export type PreviewId = z.infer<typeof previewIdSchema>;
+
+// ---- milestone 8 (F-145, F-146, ADR 0069): the library ----
+
+/** The ID of an item of an organization's library: a skill or an MCP server. */
+export const libraryItemIdSchema = idBase.brand<"LibraryItemId">();
+export type LibraryItemId = z.infer<typeof libraryItemIdSchema>;
+
+/** The ID of one version of a library item: its pin, current, available, superseded or dismissed. */
+export const libraryItemVersionIdSchema = idBase.brand<"LibraryItemVersionId">();
+export type LibraryItemVersionId = z.infer<typeof libraryItemVersionIdSchema>;
+
+/** The ID of an entry of an organization's allowlist of library sources. */
+export const librarySourceIdSchema = idBase.brand<"LibrarySourceId">();
+export type LibrarySourceId = z.infer<typeof librarySourceIdSchema>;
+
+/** The ID of a member's suggestion of a library item. */
+export const librarySuggestionIdSchema = idBase.brand<"LibrarySuggestionId">();
+export type LibrarySuggestionId = z.infer<typeof librarySuggestionIdSchema>;

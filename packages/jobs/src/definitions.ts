@@ -102,6 +102,9 @@ export const queueSettings: Readonly<Record<JobName, QueueSettings>> = {
   "draft.apply": { ...base, retryLimit: 8 },
   "environment.propose": { ...base, retryLimit: 5 },
   "profiles.seed-built-in": { ...base, retryLimit: 5 },
+  // Milestone 8 (ADR 0069): each item's source is read again, so a slow source gets its time.
+  "library.check-updates": { ...base, retryLimit: 3, expireInSeconds: 900 },
+  "library.seed-sources": { ...base, retryLimit: 5 },
 };
 
 /**

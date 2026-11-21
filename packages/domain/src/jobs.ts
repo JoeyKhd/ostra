@@ -14,6 +14,7 @@ import {
   epochMsSchema,
   gitShaSchema,
   leaseEpochSchema,
+  libraryItemIdSchema,
   needsYouItemIdSchema,
   notificationDeliveryIdSchema,
   notificationIdSchema,
@@ -108,6 +109,9 @@ export const jobNames = [
   "draft.apply",
   "environment.propose",
   "profiles.seed-built-in",
+  // ---- milestone 8 (spec section 5.4, ADR 0069) ----
+  "library.check-updates",
+  "library.seed-sources",
 ] as const;
 
 export type JobName = (typeof jobNames)[number];
@@ -292,6 +296,18 @@ export const jobPayloadSchemas = {
   "environment.propose": z.strictObject({ organizationId: organizationIdSchema, proposalId: environmentProposalIdSchema }),
   /** The built-in Refine and Review profiles, once per organization. */
   "profiles.seed-built-in": z.strictObject({ organizationId: organizationIdSchema }),
+  // ---- milestone 8 (spec section 5.4, ADR 0069) ----
+  /**
+   * The library's update check (F-145): each item of an organization, once in each window of
+   * `OSTRA_LIBRARY_UPDATE_HOURS` (`windowStart`, the window's first ms), or one item when an admin
+   * presses "Check for updates" (`itemId`).
+   */
+  "library.check-updates": z.union([
+    z.strictObject({ organizationId: organizationIdSchema, windowStart: epochMsSchema }),
+    z.strictObject({ organizationId: organizationIdSchema, itemId: libraryItemIdSchema }),
+  ]),
+  /** GitHub's MCP registry on the organization's allowlist of sources (Q324): when it's seeded, and once for each existing one. */
+  "library.seed-sources": z.strictObject({ organizationId: organizationIdSchema }),
 } as const satisfies Record<JobName, z.ZodType>;
 
 export type JobPayload<N extends JobName> = z.infer<(typeof jobPayloadSchemas)[N]>;
@@ -358,6 +374,9 @@ const jobKeys: { readonly [N in JobName]: (payload: JobPayload<N>) => string } =
   "draft.apply": (payload) => `draft:${payload.draftId}:apply:${String(payload.version)}`,
   "environment.propose": (payload) => `proposal:${payload.proposalId}:propose`,
   "profiles.seed-built-in": (payload) => `organization:${payload.organizationId}:seed-built-in-profiles`,
+  "library.check-updates": (payload) =>
+    "itemId" in payload ? `library-item:${payload.itemId}:check-updates` : `organization:${payload.organizationId}:library-check-updates:${String(payload.windowStart)}`,
+  "library.seed-sources": (payload) => `organization:${payload.organizationId}:library-seed-sources`,
 };
 
 /** How a job is sent (ADR 0037, as amended after spike 8). */
@@ -437,6 +456,15 @@ export const jobSending: Readonly<Record<JobName, JobSending>> = {
   "draft.apply": { kind: "event" },
   "environment.propose": { kind: "event" },
   "profiles.seed-built-in": { kind: "event" },
+  // Sent per organization by a pass over the windows, and per item by an admin.
+  "library.check-updates": { kind: "event" },
+  "library.seed-sources": { kind: "event" },
+};
+
+/** The window of `OSTRA_LIBRARY_UPDATE_HOURS` a time falls in: its first ms, which keys an organization's check. */
+export const libraryUpdateWindowStart = (now: number, updateHours: number): number => {
+  const window = updateHours * 3_600_000;
+  return Math.floor(now / window) * window;
 };
 
 /** `review.evaluate`'s singleton window (spec section 5.4): one evaluation per PR and head in 10 s. */

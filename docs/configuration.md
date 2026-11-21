@@ -101,6 +101,9 @@ Read by `apps/core` and `apps/web` through `parseServerSettings` (`packages/doma
 | `OSTRA_AUTOMATIC_TURNS` | `4` | The most automatic turns, CI and findings rounds together, a task gets before a person acts (F-101). |
 | `OSTRA_REVIEW_FINDINGS_MAX` | `30` | The most findings one AI review hands in (F-100). |
 | `OSTRA_DRAFT_IMAGES_MAX` | `10` | The most images a refine draft holds, 10 MiB each (F-099). |
+| `OSTRA_LIBRARY_UPDATE_HOURS` | `24` | How often, in hours, ostra checks each library item's source for a newer pin (F-145). An update waits for an organization admin, with its diff. An organization with no items makes no call. |
+| `OSTRA_MARKETPLACE_SEARCH` | `true` | Whether organization admins may turn on the library's search of skills.sh and their MCP registries (F-146), which is off in each organization until an admin turns it on. `false` keeps it off on the whole install; installing by reference still works. |
+| `OSTRA_SKILLS_SEARCH_URL` | `https://skills.sh/api/search` | Where the library's skill search asks, from core, with the admin's words and nothing else (F-146). It's the `skills` CLI's search endpoint, not a documented public API: when it fails, the page says search is unavailable. |
 | `OSTRA_DEV_HOST_POOL_SAME_USER` | `false` | Development and tests only: lets a `host` pool runner run the agent as its own OS user, labelled "not isolated, same user (development only)". The server refuses to start with it `true` unless `NODE_ENV` is `development` or `test`. |
 | `OSTRA_DOCS_URL` | `https://joeykhd.github.io/ostra/` | The docs site's address, which the panel's help links point at (F-058). Set it to a copy you host yourself, such as one for your own version. |
 

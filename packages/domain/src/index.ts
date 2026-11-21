@@ -199,3 +199,14 @@ export * from "./use-cases/outside-tasks.ts";
 export * from "./linear/agent-session-moments.ts";
 export * from "./use-cases/agent-mode.ts";
 export * from "./use-cases/refine-drafts.ts";
+
+// Milestone 8 (ticket 06, ADR 0069): the library.
+export * from "./library/reference.ts";
+export * from "./library/vendor.ts";
+export * from "./library/hash.ts";
+export * from "./library/check-skill.ts";
+export * from "./library/allowed.ts";
+export * from "./library/diffs.ts";
+export * from "./library/profile-items.ts";
+export * from "./lifecycles/m8-library.ts";
+export * from "./use-cases/m8-library-signatures.ts";

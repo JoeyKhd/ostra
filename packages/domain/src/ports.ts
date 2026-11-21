@@ -14,6 +14,9 @@ import type {
   EnvironmentId,
   InvitationId,
   JoinTokenId,
+  LibraryItemId,
+  LibrarySourceId,
+  LibrarySuggestionId,
   MemberId,
   ModelId,
   NoteId,
@@ -108,7 +111,11 @@ export type EntityId =
   | RegistryId
   // Milestone 6 (F-011, F-106, F-107): an automation and a bulk start, in their audit entries.
   | AutomationId
-  | BulkStartId;
+  | BulkStartId
+  // Milestone 8 (F-145, ADR 0069): the library's items, sources and suggestions, in their audit entries.
+  | LibraryItemId
+  | LibrarySourceId
+  | LibrarySuggestionId;
 
 /** A change to tell the panel's live views about: IDs only (ADR 0035). */
 export type ChangeNoticeInput = {

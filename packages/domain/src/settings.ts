@@ -17,6 +17,9 @@ const DEV_ONLY = "development only";
 /** GitHub.com's LFS storage hosts (Q119, spike 4): the default of OSTRA_GITHUB_LFS_HOSTS. */
 export const GITHUB_COM_LFS_HOSTS = ["github-cloud.githubusercontent.com", "github-cloud.s3.amazonaws.com", "lfs.github.com"] as const;
 
+/** skills.sh's search, the `skills` CLI's endpoint (ADR 0069, Q317): the default of OSTRA_SKILLS_SEARCH_URL. */
+export const SKILLS_SEARCH_URL = "https://skills.sh/api/search";
+
 /** The published docs site (ADR 0063, ticket 21's `siteUrl`): the default of OSTRA_DOCS_URL. */
 export const DOCS_SITE_URL = "https://joeykhd.github.io/ostra/";
 
@@ -123,6 +126,10 @@ export const settingNames = [
   "OSTRA_AUTOMATIC_TURNS",
   "OSTRA_REVIEW_FINDINGS_MAX",
   "OSTRA_DRAFT_IMAGES_MAX",
+  // Milestone 8 (spec section 5.4, ADR 0069): the library.
+  "OSTRA_LIBRARY_UPDATE_HOURS",
+  "OSTRA_MARKETPLACE_SEARCH",
+  "OSTRA_SKILLS_SEARCH_URL",
 ] as const;
 
 export type SettingName = (typeof settingNames)[number];
@@ -497,6 +504,18 @@ export const settingFields = {
     default: "10",
     description: "The most images a refine draft holds, 10 MiB each (F-099).",
   },
+  OSTRA_LIBRARY_UPDATE_HOURS: {
+    default: "24",
+    description: "How often, in hours, ostra checks each library item's source for a newer pin (F-145). An update waits for an organization admin, with its diff. An organization with no items makes no call.",
+  },
+  OSTRA_MARKETPLACE_SEARCH: {
+    default: "true",
+    description: "Whether organization admins may turn on the library's search of skills.sh and their MCP registries (F-146), which is off in each organization until an admin turns it on. false keeps it off on the whole install; installing by reference still works.",
+  },
+  OSTRA_SKILLS_SEARCH_URL: {
+    default: "https://skills.sh/api/search",
+    description: "Where the library's skill search asks, from core, with the admin's words and nothing else (F-146). It's the skills CLI's search endpoint, not a documented public API: when it fails, the page says search is unavailable.",
+  },
   OSTRA_DOCS_URL: {
     default: DOCS_SITE_URL,
     description: "The docs site's address, which the panel's help links point at. Set it to a copy you host yourself, such as one for your own version.",
@@ -685,6 +704,9 @@ const rawSettingsSchema = z.strictObject({
   OSTRA_AUTOMATIC_TURNS: whole(0, 20).default(4).describe(describe("OSTRA_AUTOMATIC_TURNS")),
   OSTRA_REVIEW_FINDINGS_MAX: whole(1, 30).default(30).describe(describe("OSTRA_REVIEW_FINDINGS_MAX")),
   OSTRA_DRAFT_IMAGES_MAX: whole(0, 50).default(10).describe(describe("OSTRA_DRAFT_IMAGES_MAX")),
+  OSTRA_LIBRARY_UPDATE_HOURS: whole(1, 24 * 30).default(24).describe(describe("OSTRA_LIBRARY_UPDATE_HOURS")),
+  OSTRA_MARKETPLACE_SEARCH: flag.default(true).describe(describe("OSTRA_MARKETPLACE_SEARCH")),
+  OSTRA_SKILLS_SEARCH_URL: url.default(SKILLS_SEARCH_URL).describe(describe("OSTRA_SKILLS_SEARCH_URL")),
 });
 
 /** The server's settings, resolved: every default filled in. Holds secrets: never logged whole. */
@@ -797,6 +819,18 @@ export type ServerSettings = {
   readonly docsUrl: string;
   /** Milestone 6's working values (spec section 5.4): automations, Linear's agent mode and the review loop. */
   readonly team: TeamSettings;
+  /** Milestone 8's library (spec section 5.4, ADR 0069). */
+  readonly library: LibrarySettings;
+};
+
+/** The library's settings, resolved (F-145, F-146). */
+export type LibrarySettings = {
+  /** OSTRA_LIBRARY_UPDATE_HOURS. */
+  readonly updateHours: number;
+  /** OSTRA_MARKETPLACE_SEARCH: whether an organization admin may turn search on. */
+  readonly marketplaceSearch: boolean;
+  /** OSTRA_SKILLS_SEARCH_URL. */
+  readonly skillsSearchUrl: string;
 };
 
 /** Milestone 6's settings, resolved. The rounds are per install in v1. */
@@ -1044,6 +1078,11 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
         roundLimits: { ciRounds: value.OSTRA_CI_ROUNDS, reviewRounds: value.OSTRA_REVIEW_ROUNDS, automaticTurns: value.OSTRA_AUTOMATIC_TURNS },
         reviewFindingsMax: value.OSTRA_REVIEW_FINDINGS_MAX,
         draftImagesMax: value.OSTRA_DRAFT_IMAGES_MAX,
+      },
+      library: {
+        updateHours: value.OSTRA_LIBRARY_UPDATE_HOURS,
+        marketplaceSearch: value.OSTRA_MARKETPLACE_SEARCH,
+        skillsSearchUrl: value.OSTRA_SKILLS_SEARCH_URL,
       },
     },
   };

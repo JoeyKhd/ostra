@@ -9,7 +9,8 @@ Install ── Organization ─┬─ Member (admin | member)
                          ├─ Connection (GitHub Apps, the Linear app) ── Installation (linked)
                          ├─ Model provider ── Model
                          ├─ Runner pool ── Runner        (a personal runner belongs to one member)
-                         ├─ Agent profile
+                         ├─ Agent profile ── Library item (attached, or on every profile)
+                         ├─ Library item ── Version (its pin); Library source (the allowlist), Library suggestion
                          ├─ Memory note, Budget, Audit entry
                          └─ Project ─┬─ Project member (admin | member), when the project is restricted
                                      ├─ Repo (linked), Board
@@ -361,6 +362,42 @@ A task in `queued` waits in the pool queue of every pool of its project that cou
 | **removed** | Kept for history: their name shows with "(removed)". Their project roles, personal runners, CLI sessions, driving and pending invitations ended with the removal | Never. Invited again, they get a new membership |
 
 An **invitation** is `pending` until it's accepted, revoked or expired (7 days *(working value)*), and works once. Its link is its ID.
+
+## The library's lifecycles
+
+*Added 2026-11-21 for milestone 8 (ADR 0069, F-145). The code: `packages/domain/src/lifecycles/m8-library.ts`.*
+
+An organization's library holds items, each a skill or an MCP server, pinned to one version at a time. Nothing moves by itself: the update check finds a newer version, and an organization admin decides (Q323).
+
+**A version** is one pin of an item: a skill's commit and content hash, or a server's registry version.
+
+```
+ available ──┬──▶ current ──▶ superseded
+             └──▶ dismissed
+ (an install's first version starts current)
+```
+
+| State | Means | Leaves when |
+|---|---|---|
+| **available** | The update check found the pin moved and the content changed, and wrote its diff. A quiet count shows it to admins | An admin accepts it (→ current), or dismisses it (→ dismissed) |
+| **current** | The item's pin. Every attached profile's tasks take it at their next session | A newer version is accepted (→ superseded) |
+| **dismissed** | An admin left the item where it was. A newer one shows again | Never |
+| **superseded** | A newer version took its place | Never |
+
+**A suggestion** is a member's reference and note (the note is never logged).
+
+```
+ open ──┬──▶ installed
+        └──▶ dismissed
+```
+
+| State | Means | Leaves when |
+|---|---|---|
+| **open** | Admins see it in the library's count. One whose source isn't on the allowlist says so | An admin installs it (→ installed) or dismisses it (→ dismissed) |
+| **installed** | It became an item, which it names | Never |
+| **dismissed** | Nothing was installed | Never |
+
+**An item** is `installed` until an admin removes it (→ `removed`), which detaches it from every profile; tasks lose it at their next session. A removed item is kept for history and never comes back: installing it again makes a new item.
 
 ## Events and their two numbers
 
