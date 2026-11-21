@@ -56,6 +56,13 @@ export type ApiRuntimeInput = {
   readonly previewSecret?: string;
   /** Whether an agent adapter imports a session archive, for "Start the app"'s dispatch (`ApiDeps.agentArchives`). */
   readonly agentArchives?: (adapter: string) => boolean;
+  /**
+   * Milestone 8 (ticket 30): the release's version, for the library's `User-Agent: ostra/<version>`
+   * (the panel and core ship as one release, ADR 0046). Unset, `0.0.0`.
+   */
+  readonly serverVersion?: string;
+  /** The fetch the library's calls out go through. Unset, the platform's. */
+  readonly libraryFetch?: typeof fetch;
   readonly logger: Logger;
 };
 
@@ -115,6 +122,7 @@ export const createApiRuntime = async (input: ApiRuntimeInput): Promise<ApiRunti
       panelTokens: createPanelPreviewTokens(input.previewSecret ?? randomBytes(32).toString("hex")),
     },
     ...(input.agentArchives === undefined ? {} : { agentArchives: input.agentArchives }),
+    library: { fetch: input.libraryFetch ?? globalThis.fetch, serverVersion: input.serverVersion ?? "0.0.0" },
   };
 
   return {

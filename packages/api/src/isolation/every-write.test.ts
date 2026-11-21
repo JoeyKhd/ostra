@@ -184,6 +184,27 @@ const ORGANIZATION_ADMIN_WRITES: Readonly<Record<string, readonly string[]>> = {
   budgets: ["budgets.clear", "budgets.set"],
   // Milestone 6 (F-040, ticket 26): whether a project's outside tasks wait for approval is an organization admin's switch.
   projects: ["projects.create", "projects.setOutsideApproval"],
+  // Milestone 8 (F-145, F-146, ticket 30): the library is an organization admin's to fill, attach,
+  // update and search; a member only suggests (below).
+  library: [
+    "library.acceptUpdate",
+    "library.attach",
+    "library.checkUpdates",
+    "library.detach",
+    "library.dismissUpdate",
+    "library.install",
+    "library.lookFile",
+    "library.remove",
+    "library.resolve",
+    "library.search",
+    "library.setEveryProfile",
+    "library.setMarketplaceSearch",
+    "library.setReadOnly",
+    "library.sources.add",
+    "library.sources.remove",
+    "library.suggestions.decide",
+    "library.testServer",
+  ],
 };
 
 /**
@@ -192,12 +213,16 @@ const ORGANIZATION_ADMIN_WRITES: Readonly<Record<string, readonly string[]>> = {
  */
 const PROJECT_ADMIN_WRITES_IN_ADMIN_ROUTERS: readonly string[] = ["linear.setBoardAgentMode"];
 
+/** Writes in the admin routers that any member makes, with their own tests: a library suggestion (F-145, `library.test.ts`). */
+const MEMBER_WRITES_IN_ADMIN_ROUTERS: readonly string[] = ["library.suggest"];
+
 /** The routers whose every write is an organization admin's: a new one fails the guard until it's listed above. */
 const ADMIN_ROUTERS: readonly string[] = [
   "agentProfiles",
   "budgets",
   "github",
   "joinTokens",
+  "library",
   "linear",
   "members",
   "pools",
@@ -212,7 +237,11 @@ describe("an organization admin manages the organization (F-003)", () => {
     expect(listed.filter((path) => !paths.includes(path))).toEqual([]);
     expect(
       paths.filter(
-        (path) => ADMIN_ROUTERS.includes(path.split(".")[0] ?? "") && !listed.includes(path) && !PROJECT_ADMIN_WRITES_IN_ADMIN_ROUTERS.includes(path),
+        (path) =>
+          ADMIN_ROUTERS.includes(path.split(".")[0] ?? "") &&
+          !listed.includes(path) &&
+          !PROJECT_ADMIN_WRITES_IN_ADMIN_ROUTERS.includes(path) &&
+          !MEMBER_WRITES_IN_ADMIN_ROUTERS.includes(path),
       ),
     ).toEqual([]);
 

@@ -54,6 +54,7 @@ import { z } from "zod";
 import { effortLevelViewSchema, levelRefusal, levelsOfModel, loadModelEffort, reasoningOf, reasoningSourceSchema, toLevelViews } from "../services/agent-effort.ts";
 import type { AgentEffort } from "../services/agent-effort.ts";
 import { adminProcedure, loadProjectAccess, memberProcedure, router, unwrap } from "../trpc/init.ts";
+import { loadProfileLibrary, profileLibraryViewSchema, profileSaveLibraryRefusal } from "./library-views.ts";
 
 // F-021, F-026 (the rules), F-063 (the switch), ticket 34: agent profiles. Any member sees the
 // profiles they may use (an organization admin sees all); organization admins create, edit and
@@ -195,6 +196,11 @@ const profileDetailSchema = profileRowSchema.omit({ skills: true, mcpServers: tr
   canEdit: z.boolean(),
   /** F-137: what the Effort control offers on its model (ADR 0066). */
   effortOptions: effortOptionsSchema,
+  /**
+   * Milestone 8 (F-145, ticket 30): its library items, attached and inherited from every profile,
+   * each at its pin, and why its tasks leave one out, if they do.
+   */
+  library: profileLibraryViewSchema,
 });
 
 type ProfileRow = Awaited<ReturnType<typeof loadRows>>[number];
@@ -518,13 +524,14 @@ export const agentProfilesRouter = router({
       if (base === undefined) {
         throw new TRPCError({ code: "NOT_FOUND", message: "No such agent profile" });
       }
-      const [usedBy, trail, blobs] = await Promise.all([
+      const [usedBy, trail, blobs, library] = await Promise.all([
         db.task.count({ where: { organizationId, agentProfileId: row.id } }),
         loadAuditTrail(db, organizationId, [row.id]),
         db.blob.findMany({
           where: { organizationId, id: { in: row.skills.flatMap((skill) => z.array(z.object({ blobId: z.string() })).catch([]).parse(skill.files).map((file) => file.blobId)) } },
           select: { id: true, size: true },
         }),
+        loadProfileLibrary(db, organizationId, input.profileId),
       ]);
       const sizeOf = new Map(blobs.map((blob) => [blob.id, blob.size] as const));
       const created = trail.entries.findLast((entry) => entry.action === "agent-profile.created");
@@ -552,6 +559,7 @@ export const agentProfilesRouter = router({
         archivedBy: archived === undefined ? null : { name: nameOf(archived.actorId), at: archived.createdAt.getTime() },
         canEdit: ctx.scope.role === "admin" && row.archivedAt === null,
         effortOptions: effortOptionsOf(ctx.deps.agentEffort, row.adapter, row.model, effortLevelFromDb[row.effort]),
+        library,
       };
     }),
 
@@ -667,6 +675,16 @@ export const agentProfilesRouter = router({
         if (!levels.includes(input.effort)) {
           throw new TRPCError({ code: "BAD_REQUEST", message: levelRefusal(input.effort, levels) });
         }
+      }
+      // Milestone 8 (F-145, ticket 30): the profile's own items must still hold beside its library
+      // items, or a dispatch would leave a library item out unseen.
+      const libraryRefusal = await profileSaveLibraryRefusal(db, organizationId, input.profileId ?? null, {
+        name: input.name,
+        skills: input.skills,
+        servers: input.mcpServers,
+      });
+      if (libraryRefusal !== null) {
+        throw new TRPCError(libraryRefusal);
       }
       const before = existing === null ? [] : parseServers(existing.mcpServers);
       const written: SecretRef[] = [];

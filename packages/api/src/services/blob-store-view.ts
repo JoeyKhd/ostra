@@ -30,8 +30,12 @@ export type BlobUploadResult =
 export type BlobStoreView = {
   readonly name: "postgres" | "s3";
   readonly health: () => Promise<HealthReport>;
-  /** A blob of one task of one organization; another task's or organization's is `not-found`. */
-  readonly read: (organizationId: string, taskId: string, blobId: string) => Promise<BlobReadResult>;
+  /**
+   * A blob of one task of one organization, or (`taskId: null`) one of the organization's own with
+   * no task, such as a library skill's file (ticket 30); another task's or organization's, or a
+   * task's when `null` is asked, is `not-found`.
+   */
+  readonly read: (organizationId: string, taskId: string | null, blobId: string) => Promise<BlobReadResult>;
   /** Stores a member's file for the organization through core's blob service (never a task's blob). */
   readonly upload: (input: { readonly organizationId: string; readonly purpose: PanelBlobPurpose; readonly bytes: Uint8Array }) => Promise<BlobUploadResult>;
 };

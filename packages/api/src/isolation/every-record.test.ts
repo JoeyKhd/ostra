@@ -173,6 +173,14 @@ const procedures: Readonly<Record<string, { readonly input: InputOf; readonly ab
   "instance.accounts.search": { input: () => ({ query: "" }), about: "organization" },
   "instance.admins": { input: none, about: "organization" },
   "invitations.preview": { input: (target) => ({ invitationId: row(target, "Invitation") }), about: "organization" },
+  // Milestone 8 (F-145, F-146, ticket 30): the library, any member's to read; its sources, suggestions, counts, files and switch an admin's.
+  "library.list": { input: none, about: "organization" },
+  "library.get": { input: (target) => ({ itemId: row(target, "LibraryItem") }), about: "organization" },
+  "library.counts": { input: none, about: "organization" },
+  "library.file": { input: (target) => ({ versionId: row(target, "LibraryItemVersion"), path: "SKILL.md" }), about: "organization" },
+  "library.sources.list": { input: none, about: "organization" },
+  "library.suggestions.list": { input: none, about: "organization" },
+  "library.searchState": { input: none, about: "organization" },
   "linear.status": { input: none, about: "organization" },
   "me.get": { input: none, about: "organization" },
   "members.invitations": { input: none, about: "organization" },
@@ -344,11 +352,12 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   PreviewLink: ["previews.list"],
   PreviewView: ["previews.list"],
   PreviewCode: [],
-  LibraryItem: [],
-  LibraryItemVersion: [],
-  AgentProfileLibraryItem: [],
-  LibrarySource: [],
-  LibrarySuggestion: [],
+  // Ticket 30: the library's readers.
+  LibraryItem: ["library.list", "library.get", "agentProfiles.get"],
+  LibraryItemVersion: ["library.list", "library.get", "library.file", "agentProfiles.get"],
+  AgentProfileLibraryItem: ["library.list", "library.get", "agentProfiles.get"],
+  LibrarySource: ["library.sources.list", "library.list", "library.searchState"],
+  LibrarySuggestion: ["library.suggestions.list", "library.counts"],
 };
 
 /** Calls a procedure by its dotted path, as the panel does. */
@@ -605,6 +614,15 @@ const matrix: Readonly<Record<string, readonly [Outcome, Outcome, Outcome, Outco
   "instance.accounts.search": ["FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "instance.admins": ["FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "invitations.preview": ["ok", "ok", "ok", "ok", "ok"],
+  // Milestone 8 (F-145, ticket 30): any member reads the library; the rest is an organization admin's.
+  // The fixture's version holds no file, so an admin's read of one finds none.
+  "library.list": ["ok", "ok", "ok", "ok", "ok"],
+  "library.get": ["ok", "ok", "ok", "ok", "ok"],
+  "library.counts": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  "library.file": ["NOT_FOUND", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  "library.sources.list": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  "library.suggestions.list": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  "library.searchState": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "linear.status": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
   "me.get": ["ok", "ok", "ok", "ok", "ok"],
   "members.invitations": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],

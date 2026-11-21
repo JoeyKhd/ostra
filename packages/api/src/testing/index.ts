@@ -6,3 +6,4 @@ export * from "./harness.ts";
 export * from "./auth-helpers.ts";
 export * from "./world.ts";
 export * from "./previews.ts";
+export * from "./library-fakes.ts";

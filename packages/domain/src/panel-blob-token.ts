@@ -15,8 +15,12 @@ import { z } from "zod";
 /** Where core takes the panel's blobs. */
 export const PANEL_BLOB_PATH = "/panel/v1/blobs";
 
-/** What the panel may store for a member: a skill's file, or a refine draft's image (ticket 27). A word, never content. */
-export const PANEL_BLOB_PURPOSES = ["skill-file", "draft-image"] as const;
+/**
+ * What the panel may store for a member: a skill's file, a refine draft's image (milestone 6's
+ * ticket 27), or a file of a library skill an organization admin installs (milestone 8's ticket
+ * 30, spec section 5.3). A word, never content.
+ */
+export const PANEL_BLOB_PURPOSES = ["skill-file", "draft-image", "library-file"] as const;
 export type PanelBlobPurpose = (typeof PANEL_BLOB_PURPOSES)[number];
 
 /** How long a token lives: a working value. The panel asks core the moment it has made one. */

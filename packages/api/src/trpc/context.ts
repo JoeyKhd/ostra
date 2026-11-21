@@ -55,6 +55,9 @@ export type ApiSettings = Pick<
   // preview domain; and a personal runner's slots, which "Start the app" admits a box against.
   | "previews"
   | "personalRunnerCapacity"
+  // Milestone 8: the library's update hours, the marketplace search's instance switch and the
+  // skills search's address (ticket 30).
+  | "library"
 >;
 
 /**
@@ -68,6 +71,16 @@ export type PreviewRelay = {
   readonly panelTokens: PanelPreviewTokens;
   /** The fetch the relay calls core with: the platform's by default. */
   readonly fetch?: typeof fetch;
+};
+
+/**
+ * What the library's use cases need beyond the ports (milestone 8, ticket 30): the fetch their
+ * calls out go through (to the source an admin named only, with `User-Agent: ostra/<version>`),
+ * and the server's version for that `User-Agent`. A test hands in a fetch that reaches its fakes.
+ */
+export type ApiLibraryDeps = {
+  readonly fetch: typeof fetch;
+  readonly serverVersion: string;
 };
 
 /** Everything the routers need, built once per server process (ADR 0016: the panel owns these). */
@@ -109,6 +122,8 @@ export type ApiDeps = {
   readonly agentArchives?: (adapter: string) => boolean;
   /** How often an open stream looks at its member's session and access again. Default 30 s. */
   readonly streamRecheckMs?: number;
+  /** Milestone 8 (F-145, F-146, ticket 30): the library's calls out. */
+  readonly library: ApiLibraryDeps;
 };
 
 /** What each request resolves once: the session, and the member it is acting as. */

@@ -32,6 +32,7 @@ import { searchRouter } from "./search.ts";
 import { invitationsRouter } from "./invitations.ts";
 import { membersRouter } from "./members.ts";
 import { agentProfilesRouter } from "./agent-profiles.ts";
+import { libraryRouter } from "./library.ts";
 import { insightsRouter } from "./insights.ts";
 import { budgetsRouter, spendRouter } from "./spend.ts";
 import { memoryRouter } from "./memory.ts";
@@ -55,6 +56,8 @@ export const appRouter = router({
   instance: instanceRouter,
   providers: providersRouter,
   agentProfiles: agentProfilesRouter,
+  // Milestone 8 (F-145, F-146, ticket 30): the skills and MCP library, and its marketplace search.
+  library: libraryRouter,
   github: githubRouter,
   linear: linearRouter,
   projects: projectsRouter,

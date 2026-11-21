@@ -91,6 +91,7 @@ describe("the profile editor's provider", () => {
       archivedBy: null,
       canEdit: true,
       effortOptions: { levels: [], runsAt: "default", adjusted: false, reasoningSource: null, customModel: false, agentTakesEffort: true },
+      library: { attached: [], inherited: [] },
     };
     const loaded = draftFromDetail(detail);
     expect(loaded).toMatchObject({ providerId: null, model: flash });

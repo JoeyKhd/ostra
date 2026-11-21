@@ -77,6 +77,8 @@ Delivery was already right. Core copies a profile's skills into the task's blobs
 
 **A dispatch never refuses a task for the library** (ticket 28). The profile's own skills and servers come first; a library item that no longer fits (an own skill of its name added since, a limit passed) or a server that now asks for a sign-in is left out of that session and logged by its ID.
 
+**The profile editor keeps the same rules** (ticket 30, 2026-11-21). A save that gives the profile an own skill or server named like a library item attached to it or on every profile, or that passes a limit with the library's items counted, is refused, naming the library item. So the editor never makes a profile whose dispatch would leave a library item out.
+
 ## Delivery: unchanged
 
 - **Nothing is fetched in the box.** At each dispatch, core reads each profile's skills (its own, attached and every-profile) at their current pins, and copies their files into the task's blobs with their digests, as today (ADR 0049). The runner checks each digest. The same path runs on every executor, so runner parity holds.
@@ -109,6 +111,8 @@ Delivery was already right. Core copies a profile's skills into the task's blobs
 **A result installs through the same flow,** with the same allowlist, the same checks and the same pin. It shows its source, its install count on skills.sh or its version in the registry, and whether its source is on the list.
 
 **It's off by default** (Q316). An organization admin turns it on, and `OSTRA_MARKETPLACE_SEARCH=false` keeps it off on the whole install. A search sends the admin's words to skills.sh or the registry, so the switch says so.
+
+**Which server makes the calls** (ticket 30, 2026-11-21). The library's bodies are the domain's, and the panel's procedures run them on the panel's server, as core's jobs run them on core. So the look, the install, the test call and the search leave from ostra's server, never from the browser, with the same `User-Agent` and redirect rules, and a skill's files reach core's blob service through its panel blob endpoint (purpose `library-file`). The panel sends a search's words in a request's body, never in a URL, so no access log holds them.
 
 **No third-party audit is shown** (Q319). skills.sh's audit verdicts come from its OIDC API or from the CLI's lookup, which telemetry gates. ostra can't run an LLM audit itself, since it never calls a model. The library shows what it knows: the source, the commit, the hash, the files and who installed it.
 

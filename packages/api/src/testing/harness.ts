@@ -27,6 +27,8 @@ import type { StreamHub } from "../stream/hub.ts";
 import type { ApiDeps, Context } from "../trpc/context.ts";
 import { createCallerFactory } from "../trpc/init.ts";
 import { FakeCodeHost, FakeModelProvider, FakeSecretStore } from "./fake-adapters.ts";
+import { createFakeLibrary } from "./library-fakes.ts";
+import type { FakeLibrary } from "./library-fakes.ts";
 import { memoryJobQueue, memoryOutbox } from "./memory-ports.ts";
 import type { MemoryJobQueue, MemoryOutbox } from "./memory-ports.ts";
 
@@ -64,6 +66,8 @@ export type BareHarness = {
     readonly tracker: { adapter: TrackerAdapter };
     /** The tokens the tracker directory built an adapter with, to search an output for them. */
     readonly trackerTokens: string[];
+    /** Milestone 8 (ticket 30): the library's sources, which the library's calls out reach and nothing else. */
+    readonly library: FakeLibrary;
   };
   /** Whether the install's email counts as set up (F-002): off by default, as on a fresh install. A test flips it. */
   readonly emailSwitch: { on: boolean };
@@ -139,6 +143,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
   const hub = createStreamHub({ db: test.db, databaseUrl: test.url, logger: silentLogger, pollMs: 50 });
   const catalogEntries: CatalogEntry[] = [];
   const uploads: UploadedBlob[] = [];
+  const library = createFakeLibrary();
   const emailDirectory: EmailDirectory = options.email ?? noEmailDirectory;
 
   const parsedDefaults = parseServerSettings({});
@@ -178,6 +183,8 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       // Milestone 8's previews and a personal runner's slots, as a fresh install has them.
       previews: installDefaults.previews,
       personalRunnerCapacity: installDefaults.personalRunnerCapacity,
+      // Milestone 8's library, as a fresh install has it: search may be turned on, at skills.sh's address.
+      library: installDefaults.library,
     },
     blobStore: {
       name: "postgres",
@@ -200,6 +207,8 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
           },
           select: { id: true },
         });
+        // Its bytes as one chunk of the built-in store, so the panel's own reader reads them back.
+        await test.db.blobChunk.create({ data: { organizationId, blobId: row.id, ordinal: 0, offset: 0, bytes: Uint8Array.from(bytes) } });
         uploads.push({ organizationId, purpose, blobId: row.id, size: bytes.length });
         return { kind: "stored", blobId: row.id, size: bytes.length };
       },
@@ -236,6 +245,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
     stream: hub,
     // Core stands behind this in a real install; a relay test points `coreUrl` at its fake core.
     previews: { coreUrl: "http://127.0.0.1:9", panelTokens: createPanelPreviewTokens(PREVIEW_SECRET) },
+    library: { fetch: library.fetch, serverVersion: "9.9.9-test" },
   };
 
   const contextOf = async (member: SeededMember, sessionId = `session-of-${member.id}`): Promise<Context> => {
@@ -267,7 +277,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
     deps,
     auth,
     hub,
-    fakes: { secretStore, modelProvider, codeHost, jobs, outbox, tracker, trackerTokens },
+    fakes: { secretStore, modelProvider, codeHost, jobs, outbox, tracker, trackerTokens, library },
     emailSwitch,
     logs,
     uploads,

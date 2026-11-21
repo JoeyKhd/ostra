@@ -19,6 +19,8 @@ import type { JobQueue, ServerSettings } from "@ostra/domain";
 import { createJobs, createProducer } from "@ostra/jobs";
 import { errnoCode, organizationIdSchema } from "@ostra/protocol";
 
+import webPackage from "../../package.json";
+
 // The panel's composition root (ADR 0016): one per web process. It builds what only the web app
 // makes (the database client, the adapters, the enqueue-only job queue and the outbox) and hands
 // them to `createApiRuntime`, which seeds the first admin when the install has no account (F-001).
@@ -196,6 +198,8 @@ const build = async (): Promise<ApiRuntime> => {
     },
     // Milestone 8 (F-141): a view's stream and input go to core with a token signed under the same key.
     previewSecret: secretsKeyText,
+    // Milestone 8 (ticket 30): the library's calls out carry `User-Agent: ostra/<this release>`.
+    serverVersion: webPackage.version,
     logger,
   });
   logger.info("web.started", { mode: settings.mode, publicUrl: settings.publicUrl });
