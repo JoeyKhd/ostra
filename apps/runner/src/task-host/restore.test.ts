@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { adapterError } from "@ostra/adapter-sdk";
 import { fakeMarker } from "@ostra/adapter-sdk/testing";
 import { clientMessageIdSchema, gitShaSchema, leaseEpochSchema, sessionIdSchema } from "@ostra/protocol";
 import type { BlobRef, BoxId, TaskEventOf, TaskSpec, TaskSpecRestore } from "@ostra/protocol";
@@ -205,6 +206,33 @@ describe("a reopen on a fresh box: restored", () => {
     const checkout = path.join(second.dataDir, "tasks", spec.taskId, "workspace", "test1");
     expect(await exists(path.join(checkout, "pear.txt"))).toBe(true);
     expect(await exists(path.join(checkout, "moved.txt"))).toBe(true);
+  }, 240_000);
+
+  it("F-033/c7: a box lost after a turn's branch push and before its hidden ref's save reopens on the branch's head, with no restore conflict", async () => {
+    const first = await runner();
+    const { spec, saved } = await firstSession(first, "cherry");
+    // The next turn writes a file, and its branch goes up with it; the box is lost before the hidden
+    // ref's own save (F-137's live run: the runner stopped right there). Core keeps the last good save.
+    first.executor.saveWorkInProgress = () => Promise.resolve(adapterError("unavailable", "the box was lost"));
+    first.steer(spec, fakeMarker("write", "after-push.txt"));
+    await first.waitForKind(spec, "session.saved", 3);
+    const lost = first.ofKind(spec, "session.saved")[2];
+    expect(lost?.repos[0]).toMatchObject({ ahead: true, hiddenRefSha: null });
+    expect(await shared.upstream.refSha("ostra-test/test1", `refs/heads/${spec.branchName}`)).toBe(lost?.repos[0]?.headSha);
+
+    const second = await runner();
+    const archive = archiveOf(saved);
+    copyArchive(second, first, spec, archive);
+    const next = reopened(spec, { origin: "restored", archive, hiddenRefs: hiddenRefsOf(saved), pendingMessages: [pendingMessage(fakeMarker("say"))] });
+    serve(second, next, first);
+    second.dispatch(next);
+    await second.waitForKind(next, "session.saved");
+    // Nothing of the lost turn was left unsaved: it's all on the branch, which the fresh box checked
+    // out. The hidden ref is that branch head (the push wrote it), so there's nothing to restore.
+    expect(second.ofKind(next, "session.restored")[0]).toMatchObject({ origin: "restored", hiddenRef: "none" });
+    const checkout = path.join(second.dataDir, "tasks", spec.taskId, "workspace", "test1");
+    expect(await exists(path.join(checkout, "cherry.txt"))).toBe(true);
+    expect(await exists(path.join(checkout, "after-push.txt"))).toBe(true);
   }, 240_000);
 
   it("reports a conflict when the branch no longer holds the saved work, restores nothing, and carries on", async () => {

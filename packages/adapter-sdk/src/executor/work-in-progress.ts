@@ -182,10 +182,16 @@ export type RestoreWipInput = {
 
 export type RestoredWip =
   | { readonly outcome: "applied"; readonly sha: GitSha; readonly baseSha: GitSha; readonly merged: boolean }
-  /** The remote has no hidden ref for the task. */
+  /**
+   * The remote has no hidden ref for the task, or one that holds nothing the branch doesn't: a plain
+   * commit the branch already has, which a box lost before its save left (`restoreWorkInProgressIn`).
+   */
   | { readonly outcome: "none" }
   /** The branch's new commits conflict with the work: nothing restored, the branch's head checked out. */
   | { readonly outcome: "conflict"; readonly sha: GitSha; readonly baseSha: GitSha };
+
+/** A commit's parents, in order. */
+const parentsOf = async (git: Run, sha: GitSha): Promise<GitSha[]> => (await git(["rev-list", "--parents", "-n", "1", sha])).split(" ").slice(1).map(shaOf);
 
 /** Lays the work-in-progress commit's tree over a clean checkout at its first parent, then its index. */
 const applyOnto = async (git: Run, deps: WipDeps, base: GitSha, wip: GitSha, indexCommit: GitSha): Promise<void> => {
@@ -225,11 +231,17 @@ export const restoreWorkInProgressIn = async (deps: WipDeps, input: RestoreWipIn
     }
     await git(["fetch", "--quiet", "--no-tags", input.remote, `+${ref}:${ref}`]);
     const sha = shaOf(await git(["rev-parse", ref]));
-    const [base, indexCommit] = (await git(["rev-list", "--parents", "-n", "1", sha])).split(" ").slice(1).map(shaOf);
-    if (base === undefined || indexCommit === undefined) {
-      return adapterError("invalid-input", "the hidden ref isn't a work-in-progress commit");
-    }
+    const [base, indexCommit, ...more] = await parentsOf(git, sha);
     const head = shaOf(await git(["rev-parse", "HEAD"]));
+    // A work-in-progress commit has two parents: the head it was saved on, and the index commit made on that head.
+    if (base === undefined || indexCommit === undefined || more.length > 0 || (await parentsOf(git, indexCommit)).join(" ") !== base) {
+      // Any other commit is a branch head with nothing unsaved beside it. The after-turn push points the
+      // ref at the branch's head, and the save then writes its work-in-progress commit over it, so a box
+      // lost between the two leaves the head there (as a milestone 1 runner's stop push does). A branch
+      // that holds that commit has nothing to restore; one that doesn't any more has lost it.
+      const held = sha === head || (await deps.git(["merge-base", "--is-ancestor", sha, head])).code === 0;
+      return ok(held ? { outcome: "none" } : { outcome: "conflict", sha, baseSha: sha });
+    }
     if (head === base) {
       await applyOnto(git, deps, base, sha, indexCommit);
       return ok({ outcome: "applied", sha, baseSha: base, merged: false });

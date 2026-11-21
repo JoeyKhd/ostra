@@ -184,6 +184,46 @@ describe("the hidden ref", () => {
     expect(await run(fresh.dir, "status", "--porcelain=v1", "--untracked-files=all")).toBe("");
     expect(await read(fresh.dir, "a.txt")).toBe("a, from review\n");
   }, 60_000);
+
+  it("F-033/c7: reads a hidden ref that's a branch head, as a box lost before its save leaves it, as nothing unsaved: none while the branch holds it, a conflict once it doesn't", async () => {
+    // The after-turn push points the ref at the branch's head (a merge the agent made, here), and the box is lost before its save.
+    const taskId = newTask();
+    const box = await freshBox();
+    await run(box.dir, "checkout", "--quiet", "-b", "side");
+    await writeFile(path.join(box.dir, "side.txt"), "side\n");
+    await run(box.dir, "add", "-A");
+    await run(box.dir, "commit", "--quiet", "-m", "a side commit");
+    await run(box.dir, "checkout", "--quiet", BRANCH);
+    await writeFile(path.join(box.dir, "turn.txt"), "the turn\n");
+    await run(box.dir, "add", "-A");
+    await run(box.dir, "commit", "--quiet", "-m", "the turn");
+    await run(box.dir, "merge", "--quiet", "--no-edit", "--no-ff", "side");
+    const head = await run(box.dir, "rev-parse", "HEAD");
+    await run(box.dir, "push", "--quiet", "origin", `+HEAD:refs/heads/${BRANCH}`, `+HEAD:${hiddenRefFor(taskId)}`);
+
+    const fresh = await freshBox();
+    expect(await restoreWorkInProgressIn(fresh.deps, { taskId, remote: "origin", branch: BRANCH })).toEqual({ ok: true, value: { outcome: "none" } });
+    expect(await run(fresh.dir, "rev-parse", "--abbrev-ref", "HEAD")).toBe(BRANCH);
+    expect(await run(fresh.dir, "rev-parse", "HEAD")).toBe(head);
+    expect(await run(fresh.dir, "status", "--porcelain=v1", "--untracked-files=all")).toBe("");
+
+    // A reviewer's commit on top: still held, still nothing to restore.
+    await writeFile(path.join(fresh.dir, "review.txt"), "review\n");
+    await run(fresh.dir, "add", "-A");
+    await run(fresh.dir, "commit", "--quiet", "-m", "review");
+    await run(fresh.dir, "push", "--quiet", "origin", BRANCH);
+    const onTop = await freshBox();
+    expect(await restoreWorkInProgressIn(onTop.deps, { taskId, remote: "origin", branch: BRANCH })).toEqual({ ok: true, value: { outcome: "none" } });
+    expect(await read(onTop.dir, "turn.txt")).toBe("the turn\n");
+
+    // A branch rewritten without it has lost that work: a conflict, the branch's head left checked out.
+    await run(onTop.dir, "reset", "--quiet", "--hard", `${head}~1`);
+    await run(onTop.dir, "push", "--quiet", "--force", "origin", BRANCH);
+    const rewritten = await freshBox();
+    expect(await restoreWorkInProgressIn(rewritten.deps, { taskId, remote: "origin", branch: BRANCH })).toEqual({ ok: true, value: { outcome: "conflict", sha: head, baseSha: head } });
+    expect(await read(rewritten.dir, "side.txt")).toBeNull();
+    expect(await run(rewritten.dir, "status", "--porcelain=v1", "--untracked-files=all")).toBe("");
+  }, 60_000);
 });
 
 describe("a refused save", () => {

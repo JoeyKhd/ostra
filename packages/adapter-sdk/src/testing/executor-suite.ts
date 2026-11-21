@@ -459,6 +459,38 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
       }, context);
     }, CASE_TIMEOUT_MS);
 
+    it("F-033/c7: a box lost after a turn's branch push and before its hidden ref's save: a fresh box has the branch's head, nothing to restore and no conflict", async (context) => {
+      await wipCase(async () => {
+        const { adapter, fixture } = subject();
+        const wip = fixture.workInProgress;
+        if (wip === undefined) return;
+        // A branch of its own: the fresh box checks it out from the remote.
+        const spec: TaskSpec = { ...fixture.spec, branchName: `${fixture.spec.branchName}-lost-save` };
+        const first = await createAndPrepare(spec);
+        const files = wip.checkout(first.created);
+        const push = { box: first.box, message: "a turn", author: spec.gitIdentity, coAuthors: [], branchName: spec.branchName, hiddenRef: `refs/ostra/wip/${first.box.taskId}` };
+        await files.write("turn.txt", "turn 1");
+        const one = await adapter.commitAndPush(push);
+        const saved = await adapter.saveWorkInProgress({ box: first.box, turnOrdinal: 1 });
+        const repo = saved.ok ? saved.value[0] : undefined;
+        if (!one.ok || repo?.sha === null || repo?.sha === undefined || repo.baseSha === null) throw new Error("the first turn wasn't saved");
+        // The next turn's push, which points the hidden ref at the branch's head, and the box is lost before its save.
+        await files.write("turn.txt", "turn 2");
+        const two = await adapter.commitAndPush(push);
+        if (!two.ok) throw new Error(`commitAndPush: ${two.error.message}`);
+        await adapter.release(first.box, "requested");
+
+        const second = await createAndPrepare(spec, first.box);
+        // What core holds: the last save that reached it.
+        const restored = await adapter.restoreWorkInProgress({ box: second.box, refs: [{ repoId: repo.repoId, sha: repo.sha, baseSha: repo.baseSha }] });
+        expect(restored).toEqual({ ok: true, value: [{ repoId: repo.repoId, outcome: "none" }] });
+        const back = wip.checkout(second.created);
+        expect(await back.read("turn.txt")).toBe("turn 2");
+        expect(await back.status()).toEqual([]);
+        await adapter.release(second.box, "requested");
+      }, context);
+    }, CASE_TIMEOUT_MS);
+
 
     it("F-054: commitWork commits a turn's work without a push and says which repos changed; a push-only push leaves what came after", async (context) => {
       await wipCase(async () => {
