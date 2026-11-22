@@ -90,8 +90,30 @@ describe("adapter parity, the scripted fakes", () => {
     ]);
   });
 
+  it("F-151/c5: the free-text row proves an enum field answered in words on a fake with questionFreeText, and milestone 3's form on one without", async () => {
+    const row = "F-151 An enum question answered in words";
+    for (const fake of fakes) {
+      const proof = parityTable[fake.name]?.[row];
+      if (fake.capabilities.questionFreeText) {
+        expect(proof, fake.name).toEqual({ kind: "cases", cases: [suiteCases.freeText] });
+      } else {
+        expect(proof, fake.name).toEqual({ kind: "fallback", capability: "questionFreeText", cases: [suiteCases.question] });
+      }
+    }
+    // The scripted fakes come with it and without it.
+    expect(fakes.filter((fake) => fake.capabilities.questionFreeText).map((fake) => fake.name)).toEqual(["fake-acp-agent-rich", "fake-acp-agent-rich-effort"]);
+    // A fake that takes words but names only milestone 3's form is refused.
+    const [rich] = fakes;
+    if (rich === undefined) throw new Error("the fakes are listed");
+    const optionsOnly = { ...(parityTable[rich.name] ?? {}), [row]: { kind: "fallback" as const, capability: "questionFreeText" as const, cases: [suiteCases.question] } };
+    expect(await checkParity([rich], { [rich.name]: optionsOnly })).toEqual([
+      `${rich.name}: ${row} names a fallback for questionFreeText, which it declares: it must prove the capability itself`,
+      `${rich.name}: declares questionFreeText on, and no case among its entries runs that way`,
+    ]);
+  });
+
   it("lists every row of spec section 6 once", () => {
     expect(new Set(parityFeatures).size).toBe(parityFeatures.length);
-    expect(parityFeatures).toHaveLength(32);
+    expect(parityFeatures).toHaveLength(33);
   });
 });

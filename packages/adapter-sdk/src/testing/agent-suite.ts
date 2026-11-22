@@ -22,6 +22,8 @@ import type { AgentAppProbes } from "./agent-app-cases.ts";
 import { defineAgentTeamCases } from "./agent-team-cases.ts";
 import { defineAgentFilesCases } from "./agent-files-cases.ts";
 import type { AgentFilesProbes } from "./agent-files-cases.ts";
+import { defineAgentQuestionCases } from "./agent-question-cases.ts";
+import type { AgentQuestionProbes } from "./agent-question-cases.ts";
 import type { AgentTeamProbes } from "./agent-team-cases.ts";
 import type { AgentParityProbes } from "./agent-parity-cases.ts";
 import type { AgentCanaryProbe, AgentMemoryProbes } from "./agent-memory-cases.ts";
@@ -156,6 +158,8 @@ export type AgentFixture = {
   readonly app?: AgentAppProbes;
   /** Milestone 9 (F-148): images in a prompt and a steer, and a file under the root's `.ostra/`. Absent: skipped. */
   readonly files?: AgentFilesProbes;
+  /** Milestone 10 (F-151): a question's enum field answered in a member's own words. Absent: skipped. */
+  readonly questions?: AgentQuestionProbes;
 };
 
 const turn = (n: number) => turnIdSchema.parse(`contract-turn-${String(n)}`);
@@ -192,6 +196,7 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
       reasoningEffort: "string",
       subagents: "string",
       promptImages: "boolean",
+      questionFreeText: "boolean",
     });
 
     const launch = async (): Promise<AgentLaunch> => {
@@ -734,6 +739,8 @@ export const defineAgentContractSuite = (options: ContractSuiteOptions<AgentAdap
     defineAgentAppCases(subject);
     // Milestone 9 (ADR 0070, F-148): images in a prompt and a steer, and a message's files on disk.
     defineAgentFilesCases(subject);
+    // Milestone 10 (F-151): an enum question answered in a member's own words, where the agent takes them.
+    defineAgentQuestionCases(subject);
   });
 };
 

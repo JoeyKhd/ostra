@@ -281,6 +281,8 @@ describe("the OpenCode adapter's capabilities", () => {
       subagents: "background",
       // Milestone 9 (ticket 09): images in its prompt, its config naming the model's inputs.
       promptImages: true,
+      // Milestone 10 (ticket 07, F-151): words for an enum field, on the pinned binary.
+      questionFreeText: true,
     });
     expect(adapter().repoConfigPaths).toEqual(["opencode.json", "opencode.jsonc", ".opencode"]);
   });

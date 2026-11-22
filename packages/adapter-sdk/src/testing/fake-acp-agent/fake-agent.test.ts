@@ -289,6 +289,8 @@ const fixtureFor = async (memory: FakeAgentMemory = "mcp", parity: FakeAgentPari
       steerable: { prompt: fakeMarker("model-steerable"), waitFor: "open to a steer" },
       readFile: (absolutePath) => fakeMarker("read-file", absolutePath),
     },
+    // Milestone 10 (ticket 07, F-151): the form with the `engine` select, its content said back.
+    questions: { choices: fakeMarker("elicit") },
   };
 };
 

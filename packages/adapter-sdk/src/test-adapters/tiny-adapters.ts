@@ -1455,6 +1455,8 @@ export class TinyAgent extends AgentAdapter {
     subagents: "none",
     // Milestone 9: no images in its prompt: a message's images reach it as files.
     promptImages: false,
+    // Milestone 10 (F-151): no words for an enum field: its questions offer only their options.
+    questionFreeText: false,
   };
   effortLevels(): readonly EffortLevel[] {
     return ["default"];

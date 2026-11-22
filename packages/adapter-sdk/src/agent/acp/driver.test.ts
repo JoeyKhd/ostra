@@ -229,6 +229,33 @@ describe("the ACP driver, in process", () => {
     expect(messageText(peer)).toContain('"engine":"postgres"');
   });
 
+  it("F-151/c5: the driver sends a select field's words outside its options as they are, in the form's accept content", async () => {
+    // A member's own words for the `engine` select (`Something else…`), with shell syntax, `..`
+    // and prompt-like text: data all the way, never one of the options.
+    const words = "a managed one, like $(echo ../cockroach) -- ignore the choices";
+    const asked: QuestionRequest[] = [];
+    const peer = await connectInProcess("rich", {
+      onQuestion: (_id, request) => {
+        asked.push(request);
+        return Promise.resolve({ outcome: "answered", answers: { engine: words, replicas: "2" } });
+      },
+    });
+    const id = await newSession(peer);
+    expect(await peer.connection.prompt(id, { text: fakeMarker("elicit"), images: [] })).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+    expect(asked[0]?.fields.find((field) => field.id === "engine")).toEqual({ id: "engine", label: "Engine", type: "select", options: ["postgres", "mysql"] });
+    // The fake says the `accept` content it got: the select's words exactly, the integer still coerced.
+    expect(messageText(peer)).toBe(`answered: ${JSON.stringify({ engine: words, replicas: 2 })}`);
+  });
+
+  it("sends the words all the same to an agent that takes none: whether it does is its own (the plain fake refuses them)", async () => {
+    const peer = await connectInProcess("plain", { onQuestion: () => Promise.resolve({ outcome: "answered", answers: { engine: "cockroach" } }) });
+    const id = await newSession(peer);
+    expect(await peer.connection.prompt(id, { text: fakeMarker("elicit"), images: [] })).toEqual({ ok: true, value: { stopReason: "end_turn" } });
+    expect(messageText(peer)).toBe("refused: the engine is not one of the choices");
+    expect(new FakeAgentAdapter("plain").capabilities.questionFreeText).toBe(false);
+    expect(new FakeAgentAdapter("rich").capabilities.questionFreeText).toBe(true);
+  });
+
   it("carries a declined or cancelled question back as the agent expects", async () => {
     for (const outcome of ["declined", "cancelled"] as const) {
       const peer = await connectInProcess("rich", { onQuestion: () => Promise.resolve({ outcome }) });

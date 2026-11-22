@@ -38,6 +38,10 @@ import { loadFakeSession, saveFakeSession } from "./archive.ts";
 // `promptImages`, `plain` neither. A turn that calls its model (`[[fake:model-turn]]`,
 // `[[fake:model-steerable]]`) sends its prompt's images, and a steer's, on to the model as the
 // format's image part, when its config says the model takes images.
+//
+// Milestone 10 (F-151): `rich` declares `questionFreeText` and takes a member's own words for an
+// enum field of its `[[fake:elicit]]` form; `plain` doesn't, and refuses an answer outside the
+// field's options, saying so, as an agent that checks its enum would.
 
 export type FakeAgentProfile = "rich" | "plain";
 
@@ -56,6 +60,8 @@ export type FakeAgentCapabilities = {
   readonly subagents: "background" | "none";
   // Milestone 9 (F-148).
   readonly promptImages: boolean;
+  // Milestone 10 (F-151).
+  readonly questionFreeText: boolean;
 };
 
 export const fakeAgentCapabilities: Readonly<Record<FakeAgentProfile, FakeAgentCapabilities>> = {
@@ -71,6 +77,7 @@ export const fakeAgentCapabilities: Readonly<Record<FakeAgentProfile, FakeAgentC
     projectConfigOverride: true,
     subagents: "background",
     promptImages: true,
+    questionFreeText: true,
   },
   plain: {
     steerMidTurn: false,
@@ -84,6 +91,7 @@ export const fakeAgentCapabilities: Readonly<Record<FakeAgentProfile, FakeAgentC
     projectConfigOverride: false,
     subagents: "none",
     promptImages: false,
+    questionFreeText: false,
   },
 };
 
@@ -1330,6 +1338,7 @@ export const createFakeAgent = (options: FakeAgentOptions): FakeAgent => {
       }
 
       case "elicit": {
+        const engines: readonly string[] = ["postgres", "mysql"];
         const answer = await io.ctx.client.request(acp.methods.client.elicitation.create, {
           sessionId: session.id,
           mode: "form",
@@ -1338,12 +1347,23 @@ export const createFakeAgent = (options: FakeAgentOptions): FakeAgent => {
             type: "object",
             properties: {
               name: { type: "string", title: "Database name" },
-              engine: { type: "string", title: "Engine", enum: ["postgres", "mysql"] },
+              engine: { type: "string", title: "Engine", enum: [...engines] },
               replicas: { type: "integer", title: "Replicas" },
             },
           },
         });
-        await say(answer.action === "accept" ? `answered: ${JSON.stringify(answer.content ?? {})}` : `no answer: ${answer.action}`);
+        if (answer.action !== "accept") {
+          await say(`no answer: ${answer.action}`);
+          return "end_turn";
+        }
+        // Milestone 10 (F-151): without `questionFreeText`, an engine outside the enum is refused.
+        const content = z.record(z.string(), z.unknown()).safeParse(answer.content ?? {});
+        const engine = content.success ? content.data["engine"] : undefined;
+        if (!capabilities.questionFreeText && typeof engine === "string" && !engines.includes(engine)) {
+          await say("refused: the engine is not one of the choices");
+          return "end_turn";
+        }
+        await say(`answered: ${JSON.stringify(answer.content ?? {})}`);
         return "end_turn";
       }
 

@@ -132,6 +132,12 @@ export class OpenCodeAdapter extends AgentAdapter {
     // they don't, it sends an error line, so the driver sends images only to such a model. The panel
     // reads the same declaration (`@ostra/adapter-opencode/prompt-images`).
     promptImages: OPENCODE_PROMPT_IMAGES,
+    // Milestone 10 (F-151, ticket 07): its question tool takes a member's own words in the enum
+    // field itself. The tool asks each question as a `oneOf` field and a `<key>_custom` text field;
+    // its reply reads the custom field when it holds words, and the enum field's value as it is
+    // otherwise, and the words reach the model in the tool's result (the agent contract suite's
+    // free-text case, on the pinned binary).
+    questionFreeText: true,
   };
 
   /** The repo files OpenCode reads its project config from, hidden without `projectConfigOverride` (Q171). */

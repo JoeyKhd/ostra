@@ -63,10 +63,11 @@ export const capabilities = {
   reasoningEffort: "none",
   subagents: "none",
   promptImages: false,
+  questionFreeText: false,
 } as const satisfies AgentCapabilities;
 ```
 
-ostra then queues a member's message until the turn ends, reopens through the rebuild template, appends skills to the agent's instructions, hides the repo's own agent config from it, has the runner check every permission request, gives it memory's index without the memory tools, runs every task at the agent's default reasoning level, with no effort control in the panel, and ends a turn with its prompt's answer, since no subagent of its runs on past it; whatever subagents it has show their calls in the thread as its own, with no subagents window; and a member's screenshots reach it as files in its workspace, their paths in its prompt, rather than as images the model sees. Plan first can't run on it, and the panel says so. `modelBaseUrlAndPlaceholderKey` is the one an agent can't do without: every model call must go through the key proxy.
+ostra then queues a member's message until the turn ends, reopens through the rebuild template, appends skills to the agent's instructions, hides the repo's own agent config from it, has the runner check every permission request, gives it memory's index without the memory tools, runs every task at the agent's default reasoning level, with no effort control in the panel, and ends a turn with its prompt's answer, since no subagent of its runs on past it; whatever subagents it has show their calls in the thread as its own, with no subagents window; a member's screenshots reach it as files in its workspace, their paths in its prompt, rather than as images the model sees; and its questions offer only their choices, with no `Something else…`, since it takes no words outside a field's options. Plan first can't run on it, and the panel says so. `modelBaseUrlAndPlaceholderKey` is the one an agent can't do without: every model call must go through the key proxy.
 
 ## The tracker kind: a ticket's files
 
@@ -144,6 +145,12 @@ The cases are:
 - a file the runner wrote under the workspace root's `.ostra/` opens with the agent's own read tool.
 
 In the parity table, the row "F-148 Images and files in a prompt" takes the four cases on an agent that declares `promptImages`, and the fallback on one that doesn't: the paths in the text, and the file read from `.ostra/`.
+
+### A question's choices, answered in words
+
+An agent's question reaches ostra as an ACP form, and a field with an `enum` or a `oneOf` becomes a select. A member can answer one in their own words, with `Something else…`, but only on an agent that declares `questionFreeText`. The driver sends an answer to a select field in the form's `accept` content as the string it is, an option or the member's words, never matched to an option; whether the agent takes a value outside its enum is the agent's. Without the capability, the panel offers only the options.
+
+The agent suite's question case runs when the fixture gives `questions` probes: `choices`, a prompt that makes the agent ask one question with a select field and then say the answer it got, and, for an agent whose answers go on to its model, `modelSaw(since)`, the tool results the model was sent. With `questionFreeText`, the case answers every select field with words outside its options and nothing else, and checks the words reach the agent, and its model, as they are, and the turn goes on to `end_turn`. In the parity table, the row "F-151 An enum question answered in words" takes that case on an agent that declares it, and the suite's question case, answered from the options, on one that doesn't.
 
 ## Contract suites
 

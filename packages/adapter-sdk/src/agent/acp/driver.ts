@@ -35,7 +35,9 @@ import { isAlive, watchProcessTree } from "./process-tree.ts";
 //
 // What it promises:
 // - `initialize` advertises `elicitation.form`, so an agent's question reaches ostra instead of
-//   being cancelled.
+//   being cancelled. An answer to a select field goes back in the form's `accept` content as the
+//   string it is, never matched to an option or dropped (F-151): whether the agent takes words
+//   outside the field's enum is its own, and its adapter declares it (`questionFreeText`).
 // - A cancel returns within `cancelGraceMs` (5 s): the turn ends `cancelled` even when the agent
 //   never answers, and the agent's process tree is ended when the driver knows its PID. The reap
 //   of the turn's processes counts against the same budget: a listing can wait for the one in
@@ -410,9 +412,16 @@ const toQuestionFields = (properties: Readonly<Record<string, Property>>): Quest
     } satisfies QuestionField;
   });
 
-/** A member's text answer as the value the form's field asks for: a number, a boolean or text. */
+/**
+ * A member's text answer as the value the form's field asks for. A select's answer is the string it
+ * is, one of its options or the member's own words (F-151, `Something else…`): never matched to an
+ * option, never dropped. A boolean or a number field is coerced; anything else is text.
+ */
 const coerceAnswer = (property: Property | undefined, answer: string): string | number | boolean => {
-  const type = property?.type;
+  if (property === undefined || fieldOptions(property) !== undefined) {
+    return answer;
+  }
+  const type = property.type;
   if (type === "boolean") {
     return /^(?:true|yes|y|1|on)$/i.test(answer.trim());
   }

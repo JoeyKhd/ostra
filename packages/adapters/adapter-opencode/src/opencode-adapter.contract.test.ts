@@ -336,6 +336,12 @@ const fixtureFor = async (format: ApiFormat): Promise<AgentFixture> => {
       readFile: (absolutePath) => `${stubMarker("read-file", absolutePath)} read it`,
       brain: createScenarioBrain(scenarios),
     },
+    // Milestone 10 (ticket 07, F-151): OpenCode's question tool with choices, answered in words in
+    // the enum field itself; the stub model quotes the tool's result, and records what it was sent.
+    questions: {
+      choices: `${stubMarker("ask-choices")} ask which colour`,
+      modelSaw: (since) => stub.calls.filter((call) => call.at >= since).flatMap((call) => call.messages.filter((message) => message.role === "tool").map((message) => message.text)),
+    },
     // Milestone 8 (ticket 14): the app tools and the app's block, played by the stub model on the real binary.
     app: {
       start: startToolsCore,

@@ -288,6 +288,35 @@ export const scenarios: Readonly<Record<string, Scenario>> = {
     return step === 1 ? { text: `carried on with: ${lastToolResults.map((result) => result.text).join(" ").slice(0, 400)}` } : undefined;
   },
 
+  /**
+   * Milestone 10 (F-151): OpenCode's question tool with two choices, then a line that quotes the
+   * tool's result: the answer the model got, one of the choices or a member's own words.
+   */
+  "ask-choices": ({ step, lastToolResults }) => {
+    if (step === 0) {
+      return {
+        toolCalls: [
+          {
+            name: "question",
+            arguments: {
+              questions: [
+                {
+                  question: "Which colour should the banner be?",
+                  header: "Colour",
+                  options: [
+                    { label: "red", description: "A red banner" },
+                    { label: "blue", description: "A blue banner" },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      };
+    }
+    return step === 1 ? { text: `answer seen: ${lastToolResults.map((result) => result.text).join(" ").slice(0, 400)}` } : undefined;
+  },
+
   /** Pushes the marker's repo folder to its `origin`, and says whether the push went through. */
   "git-push": ({ step, args, lastToolResults }) => {
     if (step === 0) {

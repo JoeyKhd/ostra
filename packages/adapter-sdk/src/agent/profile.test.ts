@@ -41,6 +41,7 @@ const capabilities = (planMode: AgentCapabilities["planMode"]): AgentCapabilitie
   reasoningEffort: "none",
   subagents: "none",
   promptImages: false,
+  questionFreeText: false,
 });
 
 const unusedDriver: DriverPort = {

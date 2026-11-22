@@ -147,6 +147,7 @@ describe("a missing operation", () => {
         reasoningEffort: "none" as const,
         subagents: "none" as const,
         promptImages: false,
+        questionFreeText: false,
       };
       health(): Promise<HealthReport> {
         return ok();

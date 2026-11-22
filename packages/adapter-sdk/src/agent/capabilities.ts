@@ -77,4 +77,14 @@ export type AgentCapabilities = {
    * the agent as files on disk, their paths in its prompt.
    */
   readonly promptImages: boolean;
+
+  // ---- milestone 10 (F-151, the targets' choice 5) ----
+  /**
+   * The agent takes a member's own words for an enum field of an ACP form: an answer outside the
+   * field's options reaches it as those words, and its turn goes on. ACP forms carry strings, so
+   * the driver always sends the words as they are; whether the agent takes a value outside its
+   * enum is the agent's. With it, the panel offers `Something else…` on every select field of the
+   * agent's questions; without it, the panel offers only the options, as milestone 3's form did.
+   */
+  readonly questionFreeText: boolean;
 };

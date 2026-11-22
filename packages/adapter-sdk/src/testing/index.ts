@@ -39,6 +39,8 @@ export * from "./agent-parity-cases.ts";
 export * from "./parity.ts";
 // Milestone 9 (ticket 02): images in a prompt, and a message's files on disk.
 export * from "./agent-files-cases.ts";
+// Milestone 10 (ticket 07, F-151): an enum question answered in a member's own words.
+export * from "./agent-question-cases.ts";
 // Changing a signed token so it's always a real change, and its lenient decoder's twins.
 export * from "./tamper-token.ts";
 // Milestone 9 (ticket 12): the tiny tracker, whose `ticketFiles` is `none`, for core's start from a ticket's text.
