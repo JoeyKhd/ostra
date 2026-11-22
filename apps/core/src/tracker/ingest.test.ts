@@ -7,7 +7,7 @@ import type { FakeLinear, FakeLinearApp } from "@ostra/adapter-sdk/testing";
 import { LinearAdapter } from "@ostra/adapter-linear";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
-import { filterTicketOf, intakeFilterSchema, matchesFilter, postgresAuditLog, postgresChangeNotices, systemClock } from "@ostra/domain";
+import { filterTicketOf, intakeFilterSchema, matchesFilter, parseServerSettings, postgresAuditLog, postgresChangeNotices, systemClock } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
 import { connectionIdSchema, externalTicketIdSchema, organizationIdSchema, webhookDeliveryIdSchema } from "@ostra/protocol";
@@ -17,10 +17,11 @@ import { z } from "zod";
 
 import { FakeSecretStore } from "../testing/fake-adapters.ts";
 import { mappingFor, seedBoard } from "../testing/tickets.ts";
+import { jobContext } from "../testing/turns.ts";
 import type { WebhookDeliveryContext } from "../webhooks/process.ts";
 import { createConnectionTrackers } from "./connections.ts";
 import type { TrackerBuildInput } from "./connections.ts";
-import { createPollSchedules, cronEveryMinutes, pollBoard, POLL_OVERLAP_MS, trackerWebhookHandler } from "./ingest.ts";
+import { createPollSchedules, cronEveryMinutes, pollBoard, pollBoardHandler, POLL_OVERLAP_MS, trackerWebhookHandler } from "./ingest.ts";
 import type { TrackerIngestDeps } from "./ingest.ts";
 import { ensureTokenRefreshes, refreshConnectionToken } from "./refresh-token.ts";
 
@@ -312,6 +313,39 @@ describe("polling", () => {
     await test.db.board.update({ where: { id: otherBoardId }, data: { detachedAt: null } });
     // Against pg-boss itself: the schedule is made.
     await createPollSchedules({ db: test.db, jobs, pollSeconds: 60, reconcileMinutes: 5, logger }).ensure();
+  });
+
+  it("F-044/c1: with a webhooks connection's webhooks gone, its drift poll runs every 5 minutes by default and brings a new ticket and an edit", async () => {
+    // A fresh install's settings: the drift check's interval is 5 minutes.
+    const parsed = parseServerSettings({});
+    if (!parsed.ok) throw new Error(parsed.errors.join("; "));
+    expect(parsed.settings.reconcileMinutes).toBe(5);
+    await test.db.connection.update({ where: { id: connectionId }, data: { webhookMode: "webhooks" } });
+    try {
+      // The schedule core makes for the board, read back from pg-boss: one tick every 5 minutes.
+      await createPollSchedules({ db: test.db, jobs, pollSeconds: parsed.settings.trackerPollSeconds, reconcileMinutes: parsed.settings.reconcileMinutes, logger }).ensure();
+      const schedules = z
+        .array(z.object({ cron: z.string(), data: z.unknown() }))
+        .parse(await test.db.$queryRaw`SELECT cron, data FROM pgboss.schedule WHERE name = 'tracker.poll-board' AND key = ${boardId}`);
+      expect(schedules).toEqual([{ cron: "*/5 * * * *", data: { organizationId, boardId } }]);
+
+      // Linear sends nothing: a ticket made and another edited reach the cache on the next tick alone.
+      fake.setWebhooksPaused(true);
+      const deliveries = await test.db.webhookDelivery.count({ where: { connectionId } });
+      const edited = await fake.createIssue({ title: "Edited while webhooks were off" });
+      await pollBoardHandler(deps())(jobContext("tracker.poll-board", { organizationId, boardId }, logger));
+      fake.clock.advance(60_000);
+      const made = await fake.createIssue({ title: "Made while webhooks were off" });
+      await fake.editIssue(edited.id, { title: "Edited while webhooks were off, again", description: "A new description" });
+      await pollBoardHandler(deps())(jobContext("tracker.poll-board", { organizationId, boardId }, logger));
+      expect((await rowsOf(made.id)).map((row) => row.title)).toEqual(["Made while webhooks were off"]);
+      expect((await rowsOf(edited.id)).map((row) => [row.title, row.description])).toEqual([["Edited while webhooks were off, again", "A new description"]]);
+      expect(await test.db.webhookDelivery.count({ where: { connectionId } })).toBe(deliveries);
+      expect((await test.db.connection.findUniqueOrThrow({ where: { id: connectionId } })).webhookMode).toBe("webhooks");
+    } finally {
+      await test.db.connection.update({ where: { id: connectionId }, data: { webhookMode: "polling", webhooksSilentSince: null } });
+      await createPollSchedules({ db: test.db, jobs, pollSeconds: 60, reconcileMinutes: 5, logger }).ensure();
+    }
   });
 });
 

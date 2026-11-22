@@ -6,7 +6,7 @@ import type { LogRecord, RepoAccess } from "@ostra/adapter-sdk";
 import { GitHubAdapter } from "@ostra/adapter-github";
 import { createTestDatabase, seedInstallation, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
-import { jobPayloadSchemas, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, pullRequestsOutcome, systemClock } from "@ostra/domain";
+import { jobPayloadSchemas, parseServerSettings, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, pullRequestsOutcome, systemClock } from "@ostra/domain";
 import type { BoardMapping } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
@@ -22,7 +22,7 @@ import { jobContext } from "../testing/turns.ts";
 import { APP_ID, APP_PRIVATE_KEY, INSTALLATION_ID, seedOnlineRunner, seedWorld } from "../testing/world.ts";
 import type { World } from "../testing/world.ts";
 import type { WebhookDeliveryContext } from "../webhooks/process.ts";
-import { createReconcileSchedules, githubWebhookHandler, reconcilePullRequests } from "./pull-requests.ts";
+import { createReconcileSchedules, ensureBehindSchedule, githubWebhookHandler, reconcileHandler, reconcilePullRequests } from "./pull-requests.ts";
 import type { PullRequestStateDeps } from "./pull-requests.ts";
 
 // Ticket 16's cases, against the fake code host: a merge by webhook and by reconcile give the same
@@ -406,6 +406,44 @@ describe("PR states", () => {
       reconcileMinutes: 5,
     }).ensure();
     expect(scheduled).toEqual(expect.arrayContaining([githubA, githubB]));
+  });
+
+  it("F-044/c1: with no webhook, a merge and a close reach their tasks by the reconcile, which runs every 5 minutes by default", async () => {
+    // A fresh install's settings, and the schedules core makes from them, read back from pg-boss.
+    const parsed = parseServerSettings({});
+    if (!parsed.ok) throw new Error(parsed.errors.join("; "));
+    expect(parsed.settings.reconcileMinutes).toBe(5);
+    await createReconcileSchedules({ db: test.db, jobs, reconcileMinutes: parsed.settings.reconcileMinutes }).ensure();
+    await ensureBehindSchedule({ jobs, reconcileMinutes: parsed.settings.reconcileMinutes });
+    const schedules = z
+      .array(z.object({ name: z.string(), key: z.string(), cron: z.string() }))
+      .parse(await test.db.$queryRaw`SELECT name, key, cron FROM pgboss.schedule WHERE name IN ('github.reconcile-prs', 'task.reconcile-behind') ORDER BY name, key`);
+    expect(schedules).toEqual(
+      expect.arrayContaining([
+        { name: "github.reconcile-prs", key: githubA, cron: "*/5 * * * *" },
+        { name: "github.reconcile-prs", key: githubB, cron: "*/5 * * * *" },
+        { name: "task.reconcile-behind", key: "all", cron: "*/5 * * * *" },
+      ]),
+    );
+
+    // GitHub sends nothing: one task's PR merges, another's closes, and the next tick moves both.
+    const merging = await taskInReview(world, 1);
+    const closing = await taskInReview(world, 1);
+    const [merged] = merging.prs;
+    const [closed] = closing.prs;
+    if (merged === undefined || closed === undefined) throw new Error("no PR");
+    codeHost.changePull(merged.repo, merged.number, "merge");
+    codeHost.changePull(closed.repo, closed.number, "close");
+    const deliveries = await test.db.webhookDelivery.count({ where: { connectionId: githubA } });
+    await reconcileHandler(deps())(jobContext("github.reconcile-prs", { organizationId: world.organizationId, connectionId: githubA }, logger));
+    expect(await stateOf(merging.taskId)).toEqual({ state: "merged", stoppedReason: null, repos: ["merged"] });
+    expect(await stateOf(closing.taskId)).toEqual({ state: "stopped", stoppedReason: "prs_closed", repos: ["closed_unmerged"] });
+    expect(await test.db.auditEntry.count({ where: { entityId: merging.taskId, action: "pr.merged" } })).toBe(1);
+    expect(await test.db.webhookDelivery.count({ where: { connectionId: githubA } })).toBe(deliveries);
+    // The next tick finds nothing more to change.
+    await reconcileHandler(deps())(jobContext("github.reconcile-prs", { organizationId: world.organizationId, connectionId: githubA }, logger));
+    expect(await test.db.auditEntry.count({ where: { entityId: merging.taskId, action: "pr.merged" } })).toBe(1);
+    expect(await doneWrites(merging.taskId)).toBe(1);
   });
 });
 
