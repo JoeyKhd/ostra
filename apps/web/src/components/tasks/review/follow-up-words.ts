@@ -71,14 +71,24 @@ export const reviewedPrText = (pr: ReviewOf["prs"][number]): string => t("review
 /** A review run's result once it has one (`AI review round 2: nothing blocking`); `null` while it runs. */
 export const reviewResultText = (run: ReviewOf["run"]): string | null => (run === null || run.state === "running" ? null : aiReviewWords(true, [run]));
 
-/** The AI review's state on its code task's page: waiting for a runner, running, or its round's result. */
+/**
+ * The AI review's state on its code task's page: waiting for a runner, running, waiting for its
+ * driver, or its round's result. A round posted is the result, whatever its review task does after
+ * (a member's message to it, answered in a turn of its own): the stuck review (2026-11-23) said
+ * "running" for as long as that task ran.
+ */
 export const aiReviewLine = (review: AiReview): { readonly state: "waiting" | "running" | "result"; readonly text: string } | null => {
+  if (review.run?.state === "posted") {
+    return { state: "result", text: aiReviewWords(true, [review.run]) ?? t("review.followUp.lineStopped") };
+  }
   switch (review.state) {
     case "queued":
       return { state: "waiting", text: t("review.followUp.lineWaiting") };
+    case "needs_you":
+      // Crashed, or its session ended without its review: one click on its page carries it on.
+      return { state: "waiting", text: t("review.followUp.lineNeedsYou") };
     case "preparing":
     case "running":
-    case "needs_you":
     case "awaiting_approval":
       return { state: "running", text: t("review.followUp.lineRunning") };
     case "in_review":

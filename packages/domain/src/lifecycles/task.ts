@@ -146,7 +146,14 @@ export type TaskInput =
   | { readonly type: "draft_handed_in" }
   | { readonly type: "draft_accepted" }
   // ---- review ----
-  | { readonly type: "findings_posted" };
+  | { readonly type: "findings_posted" }
+  /**
+   * A review task's turn or session ended with nothing left to hand in: its round's review is
+   * posted (a member's message after it, or a repeat hand-in), or the round is over without it (a
+   * head moved under it, the code task left its AI review). It rests as done (the stuck review,
+   * 2026-11-23).
+   */
+  | { readonly type: "nothing_to_hand_in" };
 
 type Common = CommonTaskState;
 
@@ -224,6 +231,7 @@ const commonTransition = (status: Common, input: TaskInput): Transition<Common> 
     case "draft_handed_in":
     case "draft_accepted":
     case "findings_posted":
+    case "nothing_to_hand_in":
       return undefined;
     default:
       return input satisfies never;
@@ -335,6 +343,7 @@ const transitionCode = (status: CodeTaskState, input: TaskInput): Transition<Cod
     case "draft_handed_in":
     case "draft_accepted":
     case "findings_posted":
+    case "nothing_to_hand_in":
       return refuse(input, from);
     case "approve":
     case "reject":
@@ -378,6 +387,7 @@ const transitionRefine = (status: RefineTaskState, input: TaskInput): Transition
     case "all_prs_closed":
     case "pr_reopened":
     case "findings_posted":
+    case "nothing_to_hand_in":
     case "reopen_after_merge":
       return refuse(input, from);
     case "approve":
@@ -406,6 +416,7 @@ const transitionReview = (status: ReviewTaskState, input: TaskInput): Transition
   const from = status.state;
   switch (input.type) {
     case "findings_posted":
+    case "nothing_to_hand_in":
       return from === "running" ? moveTo({ state: "done" }) : refuse(input, from);
     case "reopen":
       return from === "done" ? moveTo({ state: "queued" }) : isCommon(status) ? (commonTransition(status, input) ?? refuse(input, from)) : refuse(input, from);

@@ -50,4 +50,15 @@ describe("a follow-up's words (F-100/c6)", () => {
     expect(aiReviewLine(review("stopped"))).toEqual({ state: "result", text: "AI review: stopped" });
     expect(aiReviewLine(review("stopped", null))).toBeNull();
   });
+
+  it("F-100/c6: a posted round is the AI review's result while a member talks to its review task, and a review that needs its driver says so, never running", () => {
+    // The stuck review (2026-11-23): a member's message reopened a review whose round had posted,
+    // and its code task said "AI review: running" for as long as that task ran.
+    const posted = { round: 1, state: "posted", blocking: 0, nits: 1 } as const;
+    for (const state of ["queued", "preparing", "running", "needs_you", "done", "stopped"] as const) {
+      expect(aiReviewLine({ taskId: reviewTaskId, state, run: posted })).toEqual({ state: "result", text: "AI review round 1: nothing blocking" });
+    }
+    // Crashed, or its session ended without its review: it waits for its driver's one click.
+    expect(aiReviewLine({ taskId: reviewTaskId, state: "needs_you", run: { round: 1, state: "running", blocking: 0, nits: 0 } })).toEqual({ state: "waiting", text: "AI review: needs you" });
+  });
 });

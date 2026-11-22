@@ -336,6 +336,7 @@
       "waitsPools": "AI review runs on one of {project}'s pools; none is free right now.",
       "lineWaiting": "AI review: waiting for a runner",
       "lineRunning": "AI review: running",
+      "lineNeedsYou": "AI review: needs you",
       "lineStopped": "AI review: stopped"
     }
   },

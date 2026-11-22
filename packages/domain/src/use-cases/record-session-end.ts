@@ -7,6 +7,7 @@ import { boxIdSchema } from "@ostra/protocol";
 
 import type { JobPayload } from "../jobs.ts";
 import { boxOutlivesItsSession } from "../lifecycles/box.ts";
+import { settleReviewTaskInTx } from "../review-loop/review-rests.ts";
 import { taskRepoFromColumns, taskRepoToColumns } from "../lifecycles/mapping.ts";
 import { transitionTaskRepo } from "../lifecycles/task-repo.ts";
 import type { Ports } from "../ports.ts";
@@ -152,6 +153,9 @@ export const recordSessionEnd: RecordSessionEnd = async (deps, input) => {
   await releaseLeaseInTx(tx, task.id, at, "released", deps);
   const sessionRef = { organizationId: input.organizationId, taskId: task.id, sessionId: input.sessionId };
   await endSessionTimersInTx(deps, tx, sessionRef);
+  // A review task still running when its session ends (the stuck review, 2026-11-23) rests as done
+  // with nothing left to hand in, or needs its driver when its round's review never came.
+  await settleReviewTaskInTx(moveDeps, tx, task, "session");
 
   // Minor 1: the turns' work was already saved and acted on. The box stopped: a kept one (`host`)
   // waits for its release, after the idle days unless a PR's merge or close comes first; one that

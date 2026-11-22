@@ -353,8 +353,10 @@ describe("F-151: a read-only kind's session end", () => {
     expect(prJobsOf(reviewTaskId)).toEqual([]);
     expect((await h.db.session.findUniqueOrThrow({ where: { id: session.id } })).archiveBlobId).toMatch(/^blob-archive-/);
     // Its session's end, even one that says a repo is ahead (core never reads a review's box as a branch).
+    // No "ended without changes" item: the one thing that waits is its round's review, which never
+    // came, so its driver hears that the review stalled (the stuck review, 2026-11-23).
     await endSession(review, reposBefore.map((repo) => ({ repoId: repoIdSchema.parse(repo.repoId), ahead: true })));
-    expect(await itemsOf(reviewTaskId)).toEqual([]);
+    expect(await itemsOf(reviewTaskId)).toEqual([{ reason: "stalled", state: "open" }]);
     expect(prJobsOf(reviewTaskId)).toEqual([]);
     expect(await h.db.taskRepo.findMany({ where: { taskId: reviewTaskId } })).toEqual(reposBefore);
     expect(await h.db.session.findUniqueOrThrow({ where: { id: session.id } })).toMatchObject({ state: "ended", outcome: "without_changes" });
@@ -374,7 +376,8 @@ describe("F-151: a read-only kind's session end", () => {
     await review.send({ kind: "turn.started", turnId }, { kind: "turn.ended", turnId, stopReason: "end_turn" });
     const reposBefore = await h.db.taskRepo.findMany({ where: { taskId: reviewTaskId } });
     await endSession(review, reposBefore.map((repo) => ({ repoId: repoIdSchema.parse(repo.repoId), ahead: true })));
-    expect(await itemsOf(reviewTaskId)).toEqual([]);
+    // No "ended without changes" item; the round's review never came, so its driver hears it stalled.
+    expect(await itemsOf(reviewTaskId)).toEqual([{ reason: "stalled", state: "open" }]);
     expect(prJobsOf(reviewTaskId)).toEqual([]);
     expect(await h.db.taskRepo.findMany({ where: { taskId: reviewTaskId } })).toEqual(reposBefore);
 

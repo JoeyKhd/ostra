@@ -20,6 +20,7 @@ import { lastAgentMessageInTx, savesWork } from "./record-session-end.ts";
 import { appendCoreEvent } from "./server-events.ts";
 import { enterReviewLoopInTx, reviewRoundsInTx } from "../review-loop/loop.ts";
 import type { ReviewLoopCapabilities } from "../review-loop/loop.ts";
+import { settleReviewTaskInTx } from "../review-loop/review-rests.ts";
 
 // A session that lives across turns (F-096, F-068; spec section 4, "After every turn" and "The idle
 // timer"). Both run in the ingest transaction of the event that caused them.
@@ -242,7 +243,9 @@ export const recordWorkSaved: RecordWorkSaved = async (deps, input) => {
   }
   if (readOnly) {
     // A review task hands in its review (`submit_review`), never a branch: its save opens no PR and
-    // raises no "ended without changes" item.
+    // raises no "ended without changes" item. A turn with nothing left to hand in (its round's
+    // review posted, or the round over without it) rests it as done (the stuck review, 2026-11-23).
+    await settleReviewTaskInTx(moveDeps, tx, task, "turn");
     await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: task.id });
     return { ok: true, outcome: "unchanged" };
   }

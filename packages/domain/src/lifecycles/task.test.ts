@@ -174,6 +174,14 @@ describe("refine and review", () => {
     expect(done).toEqual(review({ state: "done" }));
     expect(step(done, { type: "reopen" })).toEqual(review({ state: "queued" }));
   });
+
+  it("F-100/c6: review: a turn with nothing left to hand in rests it as done, and a member's next message reopens it", () => {
+    const done = step(review({ state: "running" }), { type: "nothing_to_hand_in" });
+    expect(done).toEqual(review({ state: "done" }));
+    expect(step(done, { type: "reopen" })).toEqual(review({ state: "queued" }));
+    // A round whose session ended without its review stalls, for its driver's one click.
+    expect(step(review({ state: "running" }), { type: "needs_you", reason: "stalled" })).toEqual(review({ state: "needs_you", reason: "stalled" }));
+  });
 });
 
 describe("refused inputs: at least one per state", () => {
@@ -203,6 +211,10 @@ describe("refused inputs: at least one per state", () => {
     ["refine done", refine({ state: "done" }), { type: "box_ready" }],
     ["review: no CI", review({ state: "running" }), { type: "ci_passed", rounds: off }],
     ["review done", review({ state: "done" }), { type: "findings_posted" }],
+    ["review done: nothing more to rest", review({ state: "done" }), { type: "nothing_to_hand_in" }],
+    ["review needs you: its driver acts first", review({ state: "needs_you", reason: "crashed" }), { type: "nothing_to_hand_in" }],
+    ["code: no review to hand in", code({ state: "running" }), { type: "nothing_to_hand_in" }],
+    ["refine: no review to hand in", refine({ state: "running" }), { type: "nothing_to_hand_in" }],
   ] satisfies readonly (readonly [string, TaskLifecycle, TaskInput])[])("%s", (_name, from, input) => {
     const next = transitionTask(from, input);
     expect(next.ok).toBe(false);

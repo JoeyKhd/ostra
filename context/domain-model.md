@@ -185,6 +185,8 @@ In the two fixing sub-states a session runs in a box, and the task stays in revi
 |---|---|---|
 | **done** | Refine: a member accepted the draft, with "Update ticket" or "Mark ready" (Q67). Review: ostra posted the findings to GitHub as a comment-type review with line comments. The review agent never approves and never requests changes (Q71) | Reopening (→ queued). For a review task, the code task's next round of review reopens it on the new head |
 
+A review task never stays running with nothing to hand in (2026-11-23, the stuck review). A turn that ends after its round's review posted, or after the round ended without it (a head moved under it, its code task left the AI review), rests it as done: a member's message to a posted review is answered in a turn of its own, and the review stands as posted. While its round still waits for the review, a turn's end keeps it running on its warm box, so a message still reaches its agent; once its session ends without the review, it needs its driver as stalled, and one click carries it on. A crash under it, such as a runner's restart, needs its driver as crashed, as for any task (F-047).
+
 ### When a task needs you
 
 Each case is a needs-you item:
