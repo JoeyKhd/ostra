@@ -1,4 +1,4 @@
-import { defaultAdapterContext } from "@ostra/adapter-sdk";
+import { defaultAdapterContext, inCidr } from "@ostra/adapter-sdk";
 import type { BoxRef, TaskProxies } from "@ostra/adapter-sdk";
 import { boxIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { TaskSpec } from "@ostra/protocol";
@@ -140,5 +140,37 @@ describe("services and the egress baseline on kubernetes (ticket 08)", () => {
       ports: [{ protocol: "TCP", port: 9000 }],
     });
     expect(inCluster.spec?.egress).toHaveLength(3);
+  });
+
+  it("F-116/c4: the baseline selects the box's pod, which a NetworkPolicy can't split by container, so the agent's container in it keeps direct public egress while every private range stays closed", async () => {
+    const cluster = await start();
+    const executor = executorOn(cluster);
+    const created = await executor.create({ ...box, spec: taskSpecFixture, proxies });
+    expect(created.ok, JSON.stringify(created)).toBe(true);
+    const pod = cluster.fake.get("pods", NS, boxNames(box).pod);
+    const labels = recordOf(recordOf(pod?.["metadata"])["labels"]);
+    const spec = recordOf(pod?.["spec"]);
+    // One pod on the pod network: the agent's container beside the sidecar, sharing its address.
+    expect(arrayOf(spec["containers"]).map((container) => container["name"])).toEqual(["agent"]);
+    expect(arrayOf(spec["initContainers"]).map((container) => container["name"])).toEqual(["sidecar"]);
+    expect(spec["hostNetwork"]).toBe(false);
+    // The policy the namespace holds picks the pod by its labels, which every container of it shares.
+    const policy = recordOf(cluster.fake.get("networkpolicies", NS, "ostra-egress-baseline")?.["spec"]);
+    const selector = recordOf(recordOf(policy["podSelector"])["matchLabels"]);
+    expect(Object.keys(selector).length).toBeGreaterThan(0);
+    for (const [key, value] of Object.entries(selector)) expect(labels[key], key).toBe(value);
+    // What that pod may reach: a public address is inside an allowed block and none of its
+    // exceptions, so the agent's container reaches it itself, not through the sidecar.
+    const blocks = arrayOf(policy["egress"]).flatMap((rule) => arrayOf(rule["to"]).map((peer) => recordOf(peer["ipBlock"])));
+    const allowed = (address: string): boolean =>
+      blocks.some((block) => {
+        const cidr = block["cidr"];
+        const except = Array.isArray(block["except"]) ? block["except"].map(String) : [];
+        return typeof cidr === "string" && inCidr(address, cidr) && !except.some((range) => inCidr(address, range));
+      });
+    for (const publicAddress of ["1.1.1.1", "140.82.112.3", "2606:4700:4700::1111"]) expect(allowed(publicAddress), publicAddress).toBe(true);
+    // The baseline still closes the private ranges, the metadata address and loopback to the same pod.
+    for (const closed of ["10.0.0.1", "172.16.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "127.0.0.1", "fd00::1"]) expect(allowed(closed), closed).toBe(false);
+    await executor.release(box, "requested");
   });
 });

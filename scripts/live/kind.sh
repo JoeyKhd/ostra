@@ -164,13 +164,15 @@ runner_joins() {
 # private range, must be blocked; the server's address (the baseline's one exception) must be
 # reached. The control pod, in a namespace with no policy, reaches the same kubelet, which shows
 # the address answers: on Calico the probe is blocked and the control connects (enforced); on
-# flannel both connect (ignored, told apart). A timeout is inconclusive, never a pass.
+# flannel both connect (ignored, told apart). A timeout is inconclusive, never a pass. A public
+# host must be reached from the box pod either way: the policy is the pod's, so the agent's
+# container keeps direct public egress (F-116/c4, ADR 0029's recorded difference).
 egress_probes() {
-  local ctx="kind-$1" expect="$2" node_ip server_ip probe box control
+  local ctx="kind-$1" expect="$2" node_ip server_ip probe box control public="1.1.1.1:443"
   node_ip="$(kubectl --context "$ctx" get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')"
   server_ip="$(kubectl --context "$ctx" -n ostra get svc ostra-ostra-server-core -o jsonpath='{.spec.clusterIP}')"
   probe='for target in "$@"; do if nc -z -w 5 ${target%:*} ${target#*:}; then echo "$target connected"; else echo "$target blocked"; fi; done'
-  kubectl --context "$ctx" -n ostra-boxes run egress-probe --image "$BUSYBOX_IMAGE" --labels ostra.dev/role=box --restart Never --command -- sh -c "$probe" probe "$node_ip:10250" "$server_ip:8787" || return 1
+  kubectl --context "$ctx" -n ostra-boxes run egress-probe --image "$BUSYBOX_IMAGE" --labels ostra.dev/role=box --restart Never --command -- sh -c "$probe" probe "$node_ip:10250" "$server_ip:8787" "$public" || return 1
   kubectl --context "$ctx" -n default run egress-control --image "$BUSYBOX_IMAGE" --restart Never --command -- sh -c "$probe" probe "$node_ip:10250" || return 1
   kubectl --context "$ctx" -n ostra-boxes wait --for=jsonpath='{.status.phase}'=Succeeded pod/egress-probe --timeout=120s || return 1
   kubectl --context "$ctx" -n default wait --for=jsonpath='{.status.phase}'=Succeeded pod/egress-control --timeout=120s || return 1
@@ -182,6 +184,7 @@ egress_probes() {
   kubectl --context "$ctx" -n default delete pod egress-control --wait=false >/dev/null
   echo "$control" | grep -q "$node_ip:10250 connected" || { echo "the control didn't connect: inconclusive"; return 1; }
   echo "$box" | grep -q "$server_ip:8787 connected" || { echo "the server's exception didn't hold"; return 1; }
+  echo "$box" | grep -q "$public connected" || { echo "the box pod has no direct public egress"; return 1; }
   case "$expect" in
     enforced) echo "$box" | grep -q "$node_ip:10250 blocked" ;;
     ignored) echo "$box" | grep -q "$node_ip:10250 connected" ;;
