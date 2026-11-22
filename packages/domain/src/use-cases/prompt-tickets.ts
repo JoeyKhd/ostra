@@ -24,18 +24,26 @@ export type SetPromptTicketsInput = z.infer<typeof setPromptTicketsInputSchema>;
 
 export type SetPromptTicketsResult = UseCaseResult<{ readonly boardId: BoardId | null }, "not-found" | "forbidden" | "no-such-board">;
 
+/** The board prompt tasks get their tickets on, as New task names it: its team's name and key. */
+export type PromptTicketBoard = { readonly id: BoardId; readonly name: string; readonly key: string | null };
+
 /**
- * The board the project's prompt tasks get their tickets on, or `null` while the setting is off.
- * Also `null` while that board's tracker connection isn't active: tasks then get no ticket, the
- * board keeps `ticketsForPromptTasks`, and the setting is back once the connection is.
+ * The board the project's prompt tasks get their tickets on, with its name and key (as of the last
+ * read), or `null` while the setting is off. Also `null` while that board's tracker connection
+ * isn't active: tasks then get no ticket, the board keeps `ticketsForPromptTasks`, and the setting
+ * is back once the connection is.
  */
-export const promptTicketBoardInTx = async (tx: Pick<Tx, "board">, organizationId: string, projectId: ProjectId): Promise<BoardId | null> => {
+export const promptTicketBoardViewInTx = async (tx: Pick<Tx, "board">, organizationId: string, projectId: ProjectId): Promise<PromptTicketBoard | null> => {
   const board = await tx.board.findFirst({
     where: { organizationId, projectId, ticketsForPromptTasks: true, detachedAt: null, connection: { state: "active" } },
-    select: { id: true },
+    select: { id: true, name: true, key: true },
   });
-  return board === null ? null : boardIdSchema.parse(board.id);
+  return board === null ? null : { id: boardIdSchema.parse(board.id), name: board.name, key: board.key };
 };
+
+/** `promptTicketBoardViewInTx`'s board, by its ID only. */
+export const promptTicketBoardInTx = async (tx: Pick<Tx, "board">, organizationId: string, projectId: ProjectId): Promise<BoardId | null> =>
+  (await promptTicketBoardViewInTx(tx, organizationId, projectId))?.id ?? null;
 
 /** Turns "Make a ticket for every prompt task" on with its board, or off: a project admin's, audited. */
 export const setPromptTickets = (

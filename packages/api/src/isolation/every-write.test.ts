@@ -6,6 +6,7 @@ import type { SeededMember } from "@ostra/db/testing";
 import { saveDraft } from "@ostra/domain";
 import {
   agentProfileIdSchema,
+  boardIdSchema,
   clientMessageIdSchema,
   connectionIdSchema,
   draftIdSchema,
@@ -422,6 +423,14 @@ describe("a project admin manages its project (F-003, F-087)", () => {
     const edits: readonly (readonly [string, (caller: AppCaller) => Promise<unknown>])[] = [
       ["repos", (caller) => caller.projects.reorderRepos({ projectId, repoIds })],
       ["boards", (caller) => caller.boards.attach({ projectId, teamExternalId: team.externalId })],
+      // F-097 (Q31): "Make a ticket for every prompt task", on the board just attached (none yet for the member).
+      [
+        "prompt tickets",
+        async (caller) => {
+          const board = await harness.test.db.board.findFirst({ where: { projectId, detachedAt: null }, select: { id: true } });
+          return caller.projects.setPromptTickets({ projectId, boardId: board === null ? null : boardIdSchema.parse(board.id) });
+        },
+      ],
       ["environment", (caller) => caller.environments.save({ projectId, environment })],
       ["automations", (caller) => caller.automations.create({ projectId, settings: rule })],
       [
@@ -444,6 +453,7 @@ describe("a project admin manages its project (F-003, F-087)", () => {
     expect(asAdminSeen).toEqual(edits.map(([what]) => `${what}: ok`));
     expect(await harness.test.db.automation.count({ where: { projectId } })).toBe(1);
     expect(await harness.test.db.board.count({ where: { projectId, detachedAt: null } })).toBe(1);
+    expect(await harness.test.db.board.count({ where: { projectId, ticketsForPromptTasks: true } })).toBe(1);
     expect(await asMember.environments.get({ projectId })).toMatchObject({
       status: "saved",
       setupScript: "corepack enable\n",

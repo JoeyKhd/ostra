@@ -39,6 +39,7 @@ const board: BoardView = {
   statusesError: null,
   missingStatuses: [],
   startFromLinear: false,
+  ticketsForPromptTasks: false,
 };
 
 const view: BoardsData = { connection: { connectionId: connectionIdSchema.parse("01900000-0000-7000-8000-0000000000c1"), workspaceName: "acme", mode: "webhooks", state: "active", pollSeconds: 60, agentMode: false }, canEdit: true, boards: [board] };

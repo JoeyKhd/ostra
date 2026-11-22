@@ -5,7 +5,7 @@ import {
   createProject,
   createProjectInputSchema,
   parseTicketTemplate,
-  promptTicketBoardInTx,
+  promptTicketBoardViewInTx,
   renderTicketPrompt,
   setProjectAccess,
   setProjectDefaultProfile,
@@ -136,6 +136,11 @@ const projectDetailSchema = projectSummarySchema.extend({
    * and comes back with the connection, so "off" and "on, paused" read the same here.
    */
   promptTicketBoardId: boardIdSchema.nullable(),
+  /**
+   * That board with its team's name and key, for New task's line and `Ticket` row
+   * (prompt-tickets.md, "New task"): `null` exactly when `promptTicketBoardId` is.
+   */
+  promptTicketBoard: z.object({ id: boardIdSchema, name: z.string(), key: z.string().nullable() }).nullable(),
 });
 
 const createdSchema = z.object({
@@ -269,6 +274,7 @@ export const projectsRouter = router({
       // Read at every page load, and reused for 10 minutes (`BRANCH_RULES_CACHE_MS`).
       const checkedRepos = await checkProjectRepos({ db, clock: ctx.deps.ports.clock, adapters: ctx.deps.ports.adapters }, { organizationId, projectId: input.projectId, force: false });
       const installationOf = await installationsOfRepos(db, organizationId, input.projectId);
+      const promptTicketBoard = await promptTicketBoardViewInTx(db, organizationId, input.projectId);
       const [needsYou, running, active] = await Promise.all([
         db.task.count({ where: { organizationId, projectId: project.id, state: "needs_you" } }),
         db.task.count({ where: { organizationId, projectId: project.id, state: { in: ["running", "preparing"] } } }),
@@ -295,7 +301,8 @@ export const projectsRouter = router({
           review: await loadAgentProfileView(db, organizationId, project.defaultReviewProfileId),
         },
         repoSkills: project.repoSkills,
-        promptTicketBoardId: await promptTicketBoardInTx(db, organizationId, input.projectId),
+        promptTicketBoardId: promptTicketBoard?.id ?? null,
+        promptTicketBoard,
       };
     }),
 

@@ -480,3 +480,47 @@ describe("F-097: the project's setting to make a ticket for every prompt task", 
     expect(await writesOf(off.taskId)).toEqual([]);
   });
 });
+
+describe("F-097: what the Boards page and New task read of the setting (prompt-tickets.md)", () => {
+  it("F-097/c2: the Boards page reads which board takes prompt tasks' tickets, kept while Linear's connection isn't active, and New task reads that board's name and key", async () => {
+    const project = (await seedProject(harness, world, "prompt-tickets-page")).projectId;
+    const first = await seedBoard(harness, { projectId: project, connectionId, externalId: "team-pp", key: "PP" });
+    const second = await seedBoard(harness, { projectId: project, connectionId, externalId: "team-pp2", key: "PPB" });
+    const page = async () => (await (await member()).boards.get({ projectId: project })).boards.map((board) => ({ id: board.id, ticketsForPromptTasks: board.ticketsForPromptTasks }));
+    const newTask = async () => {
+      const detail = await (await member()).projects.get({ projectId: project });
+      return { id: detail.promptTicketBoardId, board: detail.promptTicketBoard };
+    };
+
+    // Off: no board takes them, and New task has nothing to say.
+    expect(await page()).toEqual([{ id: first, ticketsForPromptTasks: false }, { id: second, ticketsForPromptTasks: false }]);
+    expect(await newTask()).toEqual({ id: null, board: null });
+
+    // On, on the second board: the page marks it, and New task names it.
+    await (await admin()).projects.setPromptTickets({ projectId: project, boardId: second });
+    expect(await page()).toEqual([{ id: first, ticketsForPromptTasks: false }, { id: second, ticketsForPromptTasks: true }]);
+    expect(await newTask()).toEqual({ id: second, board: { id: second, name: "Engineering", key: "PPB" } });
+
+    try {
+      // Linear's connection isn't active: no ticket is made, and New task says nothing, but the page
+      // still reads the board as the one that takes them (the paused state), with the connection's state.
+      await harness.test.db.connection.update({ where: { id: connectionId }, data: { state: "failed" } });
+      const paused = await (await member()).boards.get({ projectId: project });
+      expect(paused.connection?.state).toBe("failed");
+      expect(await page()).toEqual([{ id: first, ticketsForPromptTasks: false }, { id: second, ticketsForPromptTasks: true }]);
+      expect(await newTask()).toEqual({ id: null, board: null });
+      const task = await (await member()).tasks.create({ projectId: project, prompt: "While Linear is down" });
+      expect(await harness.test.db.ticketWrite.count({ where: { taskId: task.taskId } })).toBe(0);
+      // Turning it on elsewhere is refused while the connection is down; turning it off isn't.
+      await expect((await admin()).projects.setPromptTickets({ projectId: project, boardId: first })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+      expect(await (await admin()).projects.setPromptTickets({ projectId: project, boardId: null })).toEqual({ boardId: null });
+      expect(await page()).toEqual([{ id: first, ticketsForPromptTasks: false }, { id: second, ticketsForPromptTasks: false }]);
+    } finally {
+      await harness.test.db.connection.update({ where: { id: connectionId }, data: { state: "active" } });
+    }
+
+    // Back on once the connection is: the setting holds again.
+    await (await admin()).projects.setPromptTickets({ projectId: project, boardId: first });
+    expect(await newTask()).toEqual({ id: first, board: { id: first, name: "Engineering", key: "PP" } });
+  });
+});

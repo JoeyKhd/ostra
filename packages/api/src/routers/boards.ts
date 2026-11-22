@@ -54,6 +54,12 @@ const boardViewSchema = z.object({
   missingStatuses: z.array(z.string()),
   /** Milestone 6 (F-012): "Start from Linear": a delegation in this board's team starts a task here. */
   startFromLinear: z.boolean(),
+  /**
+   * F-097 (Q31): the project's "Make a ticket for every prompt task" names this board. Read from the
+   * row, so it stays `true` while the connection isn't active (prompt-tickets.md's paused state),
+   * when `projects.get`'s `promptTicketBoardId` is `null`.
+   */
+  ticketsForPromptTasks: z.boolean(),
 });
 
 const boardsViewSchema = z.object({
@@ -224,6 +230,7 @@ export const boardsRouter = router({
             statusesError: found.ok ? (statuses?.ok === false ? `The tracker did not list the team's statuses: ${statuses.error.message}` : null) : found.message,
             missingStatuses: statusList === null || mapping === null ? [] : [...unknownMappedStatuses(mapping, statusList)],
             startFromLinear: row.agentMode,
+            ticketsForPromptTasks: row.ticketsForPromptTasks,
           };
         }),
       );
