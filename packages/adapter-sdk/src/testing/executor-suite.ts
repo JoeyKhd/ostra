@@ -403,7 +403,7 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
       expect(failed, `the known gap is closed (${reason}): remove it from knownGaps`).toBe(true);
     };
 
-    it("saves untracked, staged, unstaged and deleted work to the hidden ref, without ignored files, and a fresh box restores it", async (context) => {
+    it("F-033/c5: saves untracked, staged, unstaged and deleted work to the hidden ref, without ignored files, and a fresh box restores it", async (context) => {
       await wipCase(async () => {
         const { adapter, fixture } = subject();
         const wip = fixture.workInProgress;

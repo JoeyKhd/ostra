@@ -105,7 +105,7 @@ describe("the hidden ref", () => {
     expect(() => hiddenRefFor(taskIdSchema.parse("a..b"))).toThrow();
   });
 
-  it("saves untracked, staged, unstaged and deleted work, never touching the branch, and a fresh box gets it back as it was", async () => {
+  it("F-033/c5: saves untracked, staged, unstaged and deleted work, never touching the branch, and a fresh box gets it back as it was, without the ignored file", async () => {
     const taskId = newTask();
     const { box, saved } = await workAndSave(taskId);
     expect(saved.clean).toBe(false);
@@ -145,7 +145,7 @@ describe("the hidden ref", () => {
     expect(await restoreWorkInProgressIn(fresh.deps, { taskId: newTask(), remote: "origin", branch: BRANCH })).toEqual({ ok: true, value: { outcome: "none" } });
   }, 60_000);
 
-  it("restores onto the saved commit and merges a branch that moved since (Q150)", async () => {
+  it("F-033/c7: restores onto the saved commit and merges a branch that moved since (Q150)", async () => {
     const taskId = newTask();
     const { saved } = await workAndSave(taskId);
     // A reviewer's suggestion lands on the branch, touching another file.
@@ -167,9 +167,9 @@ describe("the hidden ref", () => {
     expect(await read(fresh.dir, "b.txt")).toBeNull();
   }, 60_000);
 
-  it("on a conflict restores nothing and leaves the branch's head checked out", async () => {
+  it("F-033/c7: on a conflict restores nothing, leaves the hidden ref alone and the branch's head checked out", async () => {
     const taskId = newTask();
-    await workAndSave(taskId);
+    const { saved } = await workAndSave(taskId);
     const reviewer = await freshBox();
     await writeFile(path.join(reviewer.dir, "a.txt"), "a, from review\n");
     await run(reviewer.dir, "commit", "--quiet", "-am", "a conflicting change");
@@ -178,11 +178,14 @@ describe("the hidden ref", () => {
 
     const fresh = await freshBox();
     const restored = await restoreWorkInProgressIn(fresh.deps, { taskId, remote: "origin", branch: BRANCH });
-    expect(restored.ok && restored.value.outcome).toBe("conflict");
+    expect(restored).toEqual({ ok: true, value: { outcome: "conflict", sha: saved.sha, baseSha: saved.baseSha } });
     expect(await run(fresh.dir, "rev-parse", "--abbrev-ref", "HEAD")).toBe(BRANCH);
     expect(await run(fresh.dir, "rev-parse", "HEAD")).toBe(head);
     expect(await run(fresh.dir, "status", "--porcelain=v1", "--untracked-files=all")).toBe("");
     expect(await read(fresh.dir, "a.txt")).toBe("a, from review\n");
+    // The saved work stays where it was: the remote's ref is still the save's commit.
+    expect(await run(remote, "rev-parse", hiddenRefFor(taskId))).toBe(saved.sha);
+    expect(await read(fresh.dir, "untracked.txt")).toBeNull();
   }, 60_000);
 
   it("F-033/c7: reads a hidden ref that's a branch head, as a box lost before its save leaves it, as nothing unsaved: none while the branch holds it, a conflict once it doesn't", async () => {
