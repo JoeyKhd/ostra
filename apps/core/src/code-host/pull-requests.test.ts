@@ -6,16 +6,19 @@ import type { LogRecord, RepoAccess } from "@ostra/adapter-sdk";
 import { GitHubAdapter } from "@ostra/adapter-github";
 import { createTestDatabase, seedInstallation, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
-import { postgresAuditLog, postgresChangeNotices, pullRequestsOutcome, systemClock } from "@ostra/domain";
+import { jobPayloadSchemas, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, pullRequestsOutcome, systemClock } from "@ostra/domain";
 import type { BoardMapping } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
-import { connectionIdSchema, externalTicketIdSchema, repoFullNameSchema, taskIdSchema, ticketKeySchema, webhookDeliveryIdSchema } from "@ostra/protocol";
+import { connectionIdSchema, externalTicketIdSchema, releaseBodySchema, repoFullNameSchema, taskIdSchema, ticketKeySchema, webhookDeliveryIdSchema } from "@ostra/protocol";
 import type { BoardId, ConnectionId, OrganizationId, ProjectId, TaskId } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 
+import { boxReleaseHandler } from "../cleanup/cleanup.ts";
 import { FakeCodeHost, FakeSecretStore } from "../testing/fake-adapters.ts";
 import { seedBoard, seedTicketRow, seedTrackerConnection } from "../testing/tickets.ts";
+import { jobContext } from "../testing/turns.ts";
 import { APP_ID, APP_PRIVATE_KEY, INSTALLATION_ID, seedOnlineRunner, seedWorld } from "../testing/world.ts";
 import type { World } from "../testing/world.ts";
 import type { WebhookDeliveryContext } from "../webhooks/process.ts";
@@ -176,6 +179,68 @@ describe("the Q107 rule", () => {
     expect(pullRequestsOutcome([{ state: "merged" }, { state: "closed_unmerged" }])).toBe("merged");
     expect(pullRequestsOutcome([{ state: "closed_unmerged" }, { state: "closed_unmerged" }])).toBe("stopped");
     expect(pullRequestsOutcome([{ state: "branch_pushed" }])).toBe("no-pr");
+  });
+});
+
+describe("the box's release (F-079)", () => {
+  /** The `box.release` jobs the webhooks left for the task, as the queue holds them. */
+  const releaseJobs = async (taskId: TaskId) =>
+    z
+      .array(z.object({ data: z.unknown() }))
+      .parse(await test.db.$queryRaw`SELECT data FROM pgboss.job WHERE name = 'box.release' AND data->>'taskId' = ${taskId}`)
+      .map((row) => jobPayloadSchemas["box.release"].parse(row.data));
+
+  /** Runs those jobs as core's worker does, and returns the `release` commands the task's runner gets. */
+  const runReleases = async (taskId: TaskId) => {
+    const cleanup = { db: test.db, jobs, outbox: postgresCommandOutbox, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock, adapters: { codeHost, secretStore }, logger, retentionDays: null, releaseAfterIdleMs: 14 * 86_400_000 };
+    for (const payload of await releaseJobs(taskId)) {
+      await boxReleaseHandler(cleanup)(jobContext("box.release", payload, logger));
+    }
+    const boxIds = new Set((await test.db.box.findMany({ where: { taskId }, select: { id: true } })).map((box) => box.id));
+    return (await test.db.command.findMany({ where: { kind: "release" }, orderBy: { seq: "asc" } })).map((row) => releaseBodySchema.parse(row.body)).filter((body) => boxIds.has(body.boxId));
+  };
+
+  const boxOf = (taskId: TaskId) => test.db.box.findFirstOrThrow({ where: { taskId } });
+
+  /** A task in review whose box's runner speaks protocol minor 1, which takes `release`. */
+  const inReviewOnMinorOne = async (repoCount: number): Promise<Seeded> => {
+    const seeded = await taskInReview(world, repoCount);
+    const { runnerId } = await boxOf(seeded.taskId);
+    await test.db.runnerPresence.updateMany({ where: { runnerId: runnerId ?? "" }, data: { minor: 1 } });
+    return seeded;
+  };
+
+  it("F-079/c1: a task's box is released when its last PR merges or closes, and not while one is still open", async () => {
+    // Two PRs: the first merge leaves the box, the last one releases it.
+    const merged = await inReviewOnMinorOne(2);
+    const [first, second] = merged.prs;
+    if (first === undefined || second === undefined) throw new Error("no PRs");
+    codeHost.changePull(first.repo, first.number, "merge");
+    await deliver(githubA, world.organizationId, first, "closed");
+    expect(await releaseJobs(merged.taskId)).toEqual([]);
+    expect(await runReleases(merged.taskId)).toEqual([]);
+    expect(await boxOf(merged.taskId)).toMatchObject({ state: "idle" });
+    codeHost.changePull(second.repo, second.number, "merge");
+    await deliver(githubA, world.organizationId, second, "closed");
+    const mergedBox = await boxOf(merged.taskId);
+    expect(await runReleases(merged.taskId)).toEqual([{ taskId: merged.taskId, boxId: mergedBox.id, reason: "prs-closed" }]);
+    expect(await boxOf(merged.taskId)).toMatchObject({ state: "released", releaseReason: "prs_closed" });
+
+    // Every PR closed unmerged: the same release.
+    const closed = await inReviewOnMinorOne(2);
+    for (const pr of closed.prs) {
+      expect(await releaseJobs(closed.taskId)).toEqual([]);
+      codeHost.changePull(pr.repo, pr.number, "close");
+      await deliver(githubA, world.organizationId, pr, "closed");
+    }
+    const closedBox = await boxOf(closed.taskId);
+    expect(await runReleases(closed.taskId)).toEqual([{ taskId: closed.taskId, boxId: closedBox.id, reason: "prs-closed" }]);
+    expect(await boxOf(closed.taskId)).toMatchObject({ state: "released", releaseReason: "prs_closed" });
+    // A replayed close releases nothing twice.
+    const [last] = closed.prs.slice(-1);
+    if (last === undefined) throw new Error("no PR");
+    await deliver(githubA, world.organizationId, last, "closed");
+    expect(await runReleases(closed.taskId)).toHaveLength(1);
   });
 });
 

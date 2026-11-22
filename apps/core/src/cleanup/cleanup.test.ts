@@ -1,16 +1,18 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 
 import { createLogger, hiddenRefFor } from "@ostra/adapter-sdk";
 import type { LogRecord } from "@ostra/adapter-sdk";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
-import { postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, systemClock } from "@ostra/domain";
+import { parseServerSettings, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, systemClock } from "@ostra/domain";
 import type { SessionTimers } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
 import { blobIdSchema, boxIdSchema, commandIdSchema, commandSeqSchema, PROTOCOL_MINOR, releaseBodySchema, repoIdSchema, segmentIdSchema, taskIdSchema, turnIdSchema } from "@ostra/protocol";
 import type { BlobRef, BoxId, OrganizationId, RepoId, TaskId } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import type { RunnerRef } from "../gateway/context.ts";
 import { createIngest } from "../ingest/ingest.ts";
@@ -48,6 +50,11 @@ const secretStore = new FakeSecretStore();
 const records: LogRecord[] = [];
 const logger = createLogger((record) => records.push(record));
 const turnId = turnIdSchema.parse("turn-1");
+const DAY_MS = 24 * 3_600_000;
+
+/** The settings a fresh install starts with: the idle days are core's own default, as `core.ts` reads them. */
+const installDefaults = parseServerSettings({});
+const releaseIdleDays = installDefaults.ok ? installDefaults.settings.boxReleaseIdleDays : 0;
 
 const cleanupDeps = (overrides: Partial<CleanupDeps> = {}): CleanupDeps => ({
   db: test.db,
@@ -59,7 +66,7 @@ const cleanupDeps = (overrides: Partial<CleanupDeps> = {}): CleanupDeps => ({
   adapters: { codeHost, secretStore },
   logger,
   retentionDays: null,
-  releaseAfterIdleMs: 14 * 24 * 3_600_000,
+  releaseAfterIdleMs: releaseIdleDays * DAY_MS,
   ...overrides,
 });
 
@@ -70,7 +77,7 @@ beforeAll(async () => {
   await jobs.start();
   world = await seedWorld(test.db, { codeHost, secretStore }, fixture.a.organization.id, fixture.a.openProject.id);
   otherWorld = await seedWorld(test.db, { codeHost, secretStore }, fixture.b.organization.id, fixture.b.project.id, { fullName: "ostra-test/other" });
-  timers = { sessionMaxMs: 120 * 60_000, boxReleaseIdleMs: 14 * 24 * 3_600_000, cancelInTx: (tx, job, payload) => jobs.cancelInTx(tx, job, payload) };
+  timers = { sessionMaxMs: 120 * 60_000, boxReleaseIdleMs: releaseIdleDays * DAY_MS, cancelInTx: (tx, job, payload) => jobs.cancelInTx(tx, job, payload) };
   liveText = createLiveTextWriter({ db: test.db, logger });
   ingest = createIngest({ db: test.db, jobs, notices: postgresChangeNotices, clock: systemClock, liveText, logger, timers, outbox: postgresCommandOutbox });
   runner = await seedOnlineRunner(test.db, fixture.a.organization.id, { kind: "personal", memberId: fixture.a.member.id }, 20);
@@ -205,6 +212,37 @@ describe("releasing a box (F-079)", () => {
       await harness.stop();
     }
   });
+
+  it("F-079/c4: cleanup deletes the task's refs, never its LFS objects, and the configuration reference says they stay and count against the quota", async () => {
+    const task = await inReview();
+    await merge(task.taskId);
+    // Every call the cleanup makes on the code host, by name.
+    const calls: string[] = [];
+    const watched = new Proxy(codeHost, {
+      get: (target, property, receiver) => {
+        const value: unknown = Reflect.get(target, property, receiver);
+        if (typeof value !== "function" || typeof property !== "string") {
+          return value;
+        }
+        return (...args: readonly unknown[]): unknown => {
+          calls.push(property);
+          return Reflect.apply(value, target, args);
+        };
+      },
+    });
+    const payload = { organizationId: task.organizationId, taskId: task.taskId, boxId: task.boxId, reason: "prs-closed" as const };
+    await boxReleaseHandler(cleanupDeps({ adapters: { codeHost: watched, secretStore } }))(jobContext("box.release", payload, logger));
+    // One call: the hidden ref's delete. Nothing else of the code host's storage is touched.
+    expect(calls).toEqual(["deleteRef"]);
+    expect(codeHost.deletedRefs.filter((done) => done.ref.includes(task.taskId))).toEqual([{ repo: "ostra-test/test1", ref: hiddenRefFor(task.taskId) }]);
+    expect(await test.db.box.findUniqueOrThrow({ where: { id: task.boxId } })).toMatchObject({ state: "released", releaseReason: "prs_closed" });
+    // The configuration reference says what stays, and what it costs.
+    const text = await readFile(new URL("../../../../docs/configuration.md", import.meta.url), "utf8");
+    const line = text.split("\n").find((row) => row.startsWith("LFS objects of a cleaned-up task")) ?? "";
+    expect(line).toContain("stay in the code host's storage");
+    expect(line).toContain("deletes its refs, never the LFS objects it pushed");
+    expect(line).toContain("counts them against the repo's storage quota");
+  });
 });
 
 describe("the idle days (F-079, F-096)", () => {
@@ -222,6 +260,29 @@ describe("the idle days (F-079, F-096)", () => {
     await releaseAfterIdleHandler(cleanupDeps())(jobContext("box.release-after-idle", { organizationId: busy.organizationId, taskId: busy.taskId, boxId: busy.boxId }, logger));
     expect(await test.db.box.findUniqueOrThrow({ where: { id: busy.boxId } })).toMatchObject({ state: "ready" });
     expect(await releaseCommands(busy.boxId)).toHaveLength(0);
+  });
+
+  it("F-079/c1: a box idle 14 days by default is released, by the delayed job set 14 days out when it went idle", async () => {
+    // A fresh install's setting, which core turns into the timer.
+    expect(installDefaults.ok && installDefaults.settings.boxReleaseIdleDays).toBe(14);
+    const idle = await inReview();
+    const ref = { organizationId: idle.organizationId, taskId: idle.taskId, boxId: idle.boxId };
+    const job = (await jobs.find("box.release-after-idle", ref)).at(-1);
+    if (job === undefined) {
+      throw new Error("no idle job");
+    }
+    expect(job.state).toBe("created");
+    const [row] = z
+      .array(z.object({ created_on: z.date(), start_after: z.date() }))
+      .parse(await test.db.$queryRaw`SELECT created_on, start_after FROM pgboss.job WHERE id = ${job.id}::uuid`);
+    if (row === undefined) {
+      throw new Error("no job row");
+    }
+    expect(Math.abs(row.start_after.getTime() - row.created_on.getTime() - 14 * DAY_MS)).toBeLessThan(60_000);
+    // When it wakes, the box is released as idle-expired, with one command to its runner.
+    await releaseAfterIdleHandler(cleanupDeps())(jobContext("box.release-after-idle", ref, logger));
+    expect(await test.db.box.findUniqueOrThrow({ where: { id: idle.boxId } })).toMatchObject({ state: "released", releaseReason: "idle_expired" });
+    expect((await releaseCommands(idle.boxId)).map((command) => releaseBodySchema.parse(command.body))).toEqual([{ taskId: idle.taskId, boxId: idle.boxId, reason: "idle-expired" }]);
   });
 });
 
