@@ -147,8 +147,8 @@ step host-pool-live host_pool_live
 # ---- F-013: real nginx's defaults in front of core ----
 not_run nginx-fallback "no test drives the runner's HTTP fallback through a real nginx yet: the fallback is proved against ticket 06's nginx emulation (spike 6's), and $NGINX_IMAGE is pinned here for the test that will"
 
-# ---- F-093, F-017: the counts and times only a real host shows ----
-not_run fifty-boxes "no live test makes 50 boxes on one host, measures a box ready in under 10 s or reads the sidecar's memory yet"
+# ---- F-093: the sidecar's memory, which only a real host shows (F-017's 50 boxes and its ready time are docker.live.test.ts's, in docker-executor-live) ----
+not_run sidecar-memory "no live test reads the sidecar's memory under 50 boxes yet"
 not_run gvisor "runsc is optional (ticket 35) and not installed on this run"
 
 finish

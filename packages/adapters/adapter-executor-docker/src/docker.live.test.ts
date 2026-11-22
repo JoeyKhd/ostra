@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -8,7 +8,7 @@ import { boxIdSchema, leaseEpochSchema, sessionIdSchema, taskIdSchema } from "@o
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createDockerBoxes } from "./boxes.ts";
-import { createEngine, engineAddressFrom } from "./engine.ts";
+import { createEngine, demultiplex, engineAddressFrom } from "./engine.ts";
 
 // The live suite (ticket 22): a real box on a real Docker Engine. It runs only where Docker answers
 // and the images are built (`OSTRA_TEST_BASE_IMAGE`, `OSTRA_TEST_RUNNER_IMAGE`, from `deploy/`),
@@ -192,11 +192,40 @@ describe.skipIf(!ready)(`a box's size and registry image on Docker, live (skippe
   }, 300_000);
 });
 
-// F-017 (ADR 0029, Q154), live: 50 boxes on one host, each box's network a /24 of the runner's pool,
-// which Docker's default address pools (about 31 networks) couldn't give. A few at a time, as a pool
+// F-017 (ADR 0029, Q154), live: a box ready in under 10 s with its images on the host, timed from
+// the runner's create to the sidecar's "bridge connected" (its init reached it: the box can run the
+// agent's processes); and 50 boxes on one host, each box's network a /24 of the runner's pool, which
+// Docker's default address pools (about 31 networks) couldn't give. A few at a time, as a pool
 // runner makes them, and every one removed after.
 
-describe.skipIf(!ready)(`many boxes on one Docker host, live (skipped: ${ready ? "no" : reason})`, () => {
+/** The sidecar's output so far (`docker logs`), as text. */
+const sidecarLog = async (sidecarId: string, file: string): Promise<string> => {
+  const got = await engine.download(`/containers/${sidecarId}/logs?stdout=true&stderr=true`, file);
+  return got.ok ? demultiplex(await readFile(file)) : "";
+};
+
+describe.skipIf(!ready)(`a box's start and many boxes on one Docker host, live (skipped: ${ready ? "no" : reason})`, () => {
+  it("F-017/c4: a box is ready in under 10 s when its images are on the host: made, started, and its init connected to its sidecar's bridge", async () => {
+    const started = Date.now();
+    const box = await liveBox("ready");
+    const logDir = await mkdtemp(path.join(os.tmpdir(), "ostra-box-log-"));
+    try {
+      let readyMs: number | null = null;
+      while (readyMs === null && Date.now() - started < 60_000) {
+        if ((await sidecarLog(box.created.sidecarId, path.join(logDir, "sidecar.log"))).includes("bridge connected")) {
+          readyMs = Date.now() - started;
+        } else {
+          await sleep(100);
+        }
+      }
+      expect(readyMs, "the box's init never connected to its sidecar's bridge").not.toBeNull();
+      expect(readyMs ?? Number.POSITIVE_INFINITY).toBeLessThan(10_000);
+    } finally {
+      await box.dispose();
+      await rm(logDir, { recursive: true, force: true });
+    }
+  }, 120_000);
+
   it("F-017/c5: 50 boxes run on one host, each on a network of its own carved from the executor's pool, and none overlaps", async () => {
     const boxes = createDockerBoxes(engine, { images: { base: images.base ?? "", runner: images.runner ?? "" } });
     const tokenDir = await mkdtemp(path.join(os.tmpdir(), "ostra-box-token-"));
