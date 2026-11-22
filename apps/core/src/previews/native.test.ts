@@ -713,7 +713,7 @@ describe("the proxy on every request", () => {
 });
 
 describe("the fixtures through it", () => {
-  it("F-144/c5: the fixture's Vite loads through the preview host on host, /api through Vite's proxy, and an edit reaches its HMR socket", async () => {
+  it("F-144/c5, F-140/c11: the fixture's Vite loads through the preview host on host, /api through Vite's proxy, and an edit reaches its HMR socket", async () => {
     const taskId = await boxedTask();
     const entered = await enter(a, taskId, web, await memberOpener());
     const get = (route: string) => hit(a.url, entered.host, route, { headers: { cookie: entered.cookie } });

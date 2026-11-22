@@ -49,7 +49,7 @@ afterAll(async () => {
 });
 
 describe(`the box's browser on host, live (${live ? "the machine's browser" : "the fake browser: a Linux CI machine"})`, () => {
-  it("F-121/c2: the runner finds the machine's browser, a box starts it in the task's unit, it takes a screenshot of the fixture app, and no profile folder is left after the task ends", async (context) => {
+  it("F-121/c2, F-140/c11: the runner finds the machine's browser, a box starts it in the task's unit, it takes a screenshot of the fixture app (its /api answered through Vite's proxy, with the machine's browser), and no profile folder is left after the task ends", async (context) => {
     const dataDir = path.join(root, "runner");
     const found = await resolveMachineBrowser({ named: process.env["OSTRA_RUNNER_BROWSER"], download: false, dataDir });
     if (live) {

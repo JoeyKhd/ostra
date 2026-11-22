@@ -14,7 +14,7 @@ afterAll(cases.teardown, 60_000);
 afterEach(cases.cleanup, 120_000);
 
 describe(`the browser view on host (${liveBrowser ? "the machine's browser" : "the fake browser"})`, () => {
-  it("F-141/c2, c9: on host, a view streams the box's browser as JPEG frames on its own connection, at most 15 a second, waits on core's acks, and stops when it closes", cases.streams, 300_000);
+  it("F-141/c2, c9, F-140/c11: on host, a view streams the box's browser as JPEG frames on its own connection (the frontend's /api answered through Vite's proxy, with the machine's browser), at most 15 a second, waits on core's acks, and stops when it closes", cases.streams, 300_000);
   it("F-141/c10: on host, a page at rest comes as one sharp still frame at the viewer's device pixel ratio, and moving frames at the page's size again once it moves", cases.sharpens, 300_000);
   it("F-141/c3, c1: on host, two views of a preview share one page, the width preset applies to it (the last one chosen), and the page goes with the last view", cases.shares, 300_000);
   it("F-141/c2: on host, a member's click counts the counter, typed keys and pasted text land in the field, and typed text reaches no log line", cases.input, 300_000);

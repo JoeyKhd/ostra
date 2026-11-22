@@ -284,7 +284,7 @@ export const previewStreamCases = (mode: PreviewStreamMode) => {
      */
     streams: async (): Promise<void> => {
       const { h, core } = await runner();
-      const { spec, viewId, view } = await streamingTask(h, core);
+      const { spec, viewId, view, api } = await streamingTask(h, core);
       expect(view).toMatchObject({ protocol: previewSubprotocols.stream, bearer: ACCESS_TOKEN, leaseEpoch: spec.leaseEpoch });
       const [first] = view.frames;
       expect(first?.carrier).toBe("websocket");
@@ -293,6 +293,8 @@ export const previewStreamCases = (mode: PreviewStreamMode) => {
       expect(runOf(h).views().streaming(viewId)).toBe("websocket");
       if (live) {
         await appRendered(h);
+        // F-140/c11: the page the view streams called its `/api`, and Vite's proxy took it to the API's process.
+        await pageSays(h, "document.querySelector('#api')?.textContent ?? ''", `api: ok, hello from the API on ${String(api)}`, 30_000);
         await evaluate(h, ANIMATE, z.boolean());
       }
       // As fast as the page changes, but no faster than the cap: frames numbered in order.

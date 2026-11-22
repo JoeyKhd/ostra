@@ -344,7 +344,7 @@ afterAll(async () => {
 }, 60_000);
 
 describe("ostra preview through core to the runner's tunnel", () => {
-  it("F-143/c2: it serves the fixture's Vite on this machine's localhost through the web app's ticket, core's tunnel and the runner's: the page, /api, the API's WebSocket echo at once, and HMR", async () => {
+  it("F-143/c2, F-140/c11: it serves the fixture's Vite on this machine's localhost through the web app's ticket, core's tunnel and the runner's: the page, /api, the API's WebSocket echo at once, and HMR", async () => {
     const taskId = await boxedTask();
     const run = preview([taskId]);
     const local = await servedPort(run);
