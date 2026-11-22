@@ -2,7 +2,7 @@
 
 **Who answers:** 👤 = the maintainer's call · 🔬 = research informs it, then we decide together · 🔧 = a build task with a known fix: no decision is needed, and the row leaves when the fix is committed.
 
-A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q341). They are two separate ranges: Q-20 and Q20 are different questions.
+A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q342). They are two separate ranges: Q-20 and Q20 are different questions.
 
 ## Settled
 
@@ -533,6 +533,10 @@ Ticket 19 of that spec asks the maintainer to look at the lead's calls; any the 
 | Q341 What of video and audio? | ADR 0070, F-148, the lead's call: files only, within the limits; no frames and no transcripts |
 
 ## Open
+
+### Raised by the F-078 review (2026-11-22)
+
+**Q342 👤 What message does ostra's own commit of an agent's leftover work take?** (F-078/c1, ADR 0040, ADR 0030; found by the review of F-078's fixes, 2026-11-22). After every turn the box commits what the agent left uncommitted, titled with the task's title (`leftoverMessage` in `apps/runner/src/task-host/task-run.ts`; "(stopped: unfinished work)" and the like on a stop or a crash). F-078 says commits follow the repo's style. Since 2026-11-22 the agent is told to commit its own work in each repo's style, from its history (the spec's "Commits" section), so this commit is rarer, but a repo with Conventional Commits or gitmoji still gets one titled like "Add a short CONTRIBUTING.md". *Options:* keep the task's title, and F-078 reads "the agent writes its own commits in the repo's style" (ostra's safety-net commit is ostra's); or guess the style from the repo's last subjects (a `type(scope):` prefix, a leading emoji) and prefix the title with it; or end each turn with a short closing prompt asking the agent to commit what's left, and commit only what it still leaves. *Recommendation:* keep the task's title: a guessed prefix can be wrong (a `feat:` on a fix), a closing prompt costs a model call per turn, and most repos keep the PR's squash title, which the agent writes. Until it's settled, F-078/c1's "the agent writes commits in the repo's style" waits for the launch-gate run, which shows whether a real model follows the instruction.
 
 ### Raised by milestone 5 (2026-11-20)
 
