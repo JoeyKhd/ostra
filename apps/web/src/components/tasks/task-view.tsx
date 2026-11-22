@@ -197,9 +197,9 @@ const PrButtons = ({ prs }: { readonly prs: readonly BarPr[] }) => {
 /**
  * The properties panel (task.md, "Properties panel"): what describes the task and doesn't change turn
  * to turn. Values carry no icons, so they all start at one x; the status dot and the driver's avatar
- * are the only markers. Spend (F-084) and the Changes group (F-027) come later.
+ * are the only markers. Its Tokens, Cache, Spend and Agent time rows are F-084's.
  */
-const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, takingOver, ticket, effort, noKey, projectName, checks }: {
+export const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, takingOver, ticket, effort, noKey, projectName, checks }: {
   readonly task: Task;
   /** The newest turn's checks, for the Code group's `Checks` row (task-checks.md); `null` when none ran. */
   readonly checks: { readonly failing: number; readonly passed: number; readonly running: boolean } | null;
