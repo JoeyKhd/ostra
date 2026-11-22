@@ -12,7 +12,7 @@ import { fromPrisma, PgBoss } from "pg-boss";
 import type { Queue, SendOptions, WorkOptions } from "pg-boss";
 import { z } from "zod";
 
-import { cronPeriodSeconds, DEAD_LETTER_QUEUE, FORWARDING_HEARTBEAT_SECONDS, FORWARDING_QUEUE, queueName, queueSettings } from "./definitions.ts";
+import { CRON_FORWARD_POLL_SECONDS, CRON_PASS_SECONDS, cronPeriodSeconds, DEAD_LETTER_QUEUE, FORWARDING_HEARTBEAT_SECONDS, FORWARDING_QUEUE, queueName, queueSettings } from "./definitions.ts";
 
 /**
  * `enqueue-only`: the panel. It enqueues inside its transactions and never migrates, supervises,
@@ -167,6 +167,9 @@ export const createJobs = (options: CreateJobsOptions): Jobs => {
     // `monitorIntervalSeconds` (default 60), whatever the supervise interval. Kept equal, so a
     // killed replica's job is freed within the supervise interval as documented (ticket 21).
     monitorIntervalSeconds: options.superviseIntervalSeconds ?? 30,
+    // A schedule's tick seconds after its minute, not up to half a minute (F-106, ticket 37).
+    cronMonitorIntervalSeconds: CRON_PASS_SECONDS,
+    cronWorkerIntervalSeconds: CRON_FORWARD_POLL_SECONDS,
   });
   boss.on("error", (error: Error) => {
     logger.error("jobs.error", { name: error.name });

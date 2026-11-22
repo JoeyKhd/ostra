@@ -126,6 +126,17 @@ export const FORWARDING_QUEUE = "__pgboss__send-it";
 export const FORWARDING_HEARTBEAT_SECONDS = 10;
 
 /**
+ * How soon a schedule's tick is sent after its minute (F-106, ADR 0037): pg-boss's cron pass runs
+ * every `cronMonitorIntervalSeconds` and puts each due occurrence on `FORWARDING_QUEUE`, which its
+ * worker polls every `cronWorkerIntervalSeconds`. At pg-boss's defaults (30 and 5) the scheduler's
+ * tick came up to 35 s after its minute, 8 to 21 s at p50 in ticket 37's hunt; at these, a few
+ * seconds. One pass wins each interval however many replicas run, and a pass sends nothing twice:
+ * the forwarding insert is keyed by the occurrence's slot.
+ */
+export const CRON_PASS_SECONDS = 2;
+export const CRON_FORWARD_POLL_SECONDS = 1;
+
+/**
  * The slot a schedule's tick fills (`singletonSeconds`), so a replayed forwarding batch's second
  * send of a tick is dropped: the cron's period, for the forms ostra uses. Other forms get a minute.
  */
