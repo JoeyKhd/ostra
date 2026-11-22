@@ -1867,3 +1867,25 @@ export const minor8EventFixtures = {
   /** Ticket 12: a reopen's read the tracker never answered: the task went on without the ticket's changes. */
   unreadableRead: { ...eventFixtures["ticket.context_read"], round: 3, reason: "reopen", description: null, comments: [], links: [], files: [], leftOut: [], failed: [], unreadable: true },
 } as const satisfies Readonly<Record<string, TaskEvent>>;
+
+/**
+ * Minor 9's optional fields (milestone 10, F-151): a question answered partly in the member's own
+ * words, a repeat review hand-in and a draft with its counts. `eventFixtures` holds the same kinds
+ * without them, as an older server wrote them.
+ */
+export const minor9EventFixtures = {
+  answeredInWords: {
+    kind: "question.answered",
+    questionId: ids.question,
+    answers: { runner: "vitest", reason: "Use the repo's own `pnpm test`; don't add a runner." },
+    memberId: ids.member,
+    other: ["reason"],
+  },
+  repeatReview: { ...eventFixtures["review.submitted"], repeat: true },
+  draftWithCounts: { ...eventFixtures["draft.submitted"], version: 2, acceptanceCriteria: 4, subTickets: 2 },
+} as const satisfies Readonly<Record<string, TaskEvent>>;
+
+/** Minor 9's answer to a repeat `submit_review`: the round's review is already in, and stands. */
+export const minor9HttpFixtures = {
+  reviewAlready: { reviewRunId: ids.reviewRun, already: true } satisfies ReviewResponse,
+} as const;

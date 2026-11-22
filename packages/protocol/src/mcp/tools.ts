@@ -791,10 +791,15 @@ export const draftResultText = (response: DraftResponse): string => {
   }
 };
 
-/** The text `submit_review` returns. */
+/**
+ * The text `submit_review` returns. A repeat hand-in for a round already in (`already`, minor 9,
+ * F-151) is a success: the review stands as it was, and the agent needs to do nothing more.
+ */
 export const reviewResultText = (response: ReviewResponse): string => {
   if ("reviewRunId" in response) {
-    return "The review is saved. ostra posts it on the pull requests as comments, and a member reads every finding.";
+    return response.already === true
+      ? "This round's review is already handed in, and it stands as it was. Nothing more is needed."
+      : "The review is saved. ostra posts it on the pull requests as comments, and a member reads every finding.";
   }
   switch (response.code) {
     case "wrong-kind":
@@ -833,3 +838,54 @@ export const environmentProposalResultText = (response: EnvironmentProposalRespo
 /** The text a tool returns when the agent names a repo the task doesn't have. Names the repo as the agent wrote it. */
 export const unknownRepoText = (repo: string): string =>
   `This task has no repo ${JSON.stringify(repo.slice(0, 201))}. Name each repo as owner/name, exactly as the task lists it.`;
+
+// ---------- ostra's own tools by name (minor 9, F-151) ----------
+
+// The sidecar serves the memory tools (milestone 4, ADR 0044, F-110) with the spec's `memory.tools`.
+export const MEMORY_SEARCH_TOOL = "memory_search";
+export const MEMORY_READ_TOOL = "memory_read";
+export const MEMORY_PROPOSE_TOOL = "memory_propose";
+
+/** The memory tools' names, in the order the agent's list shows them. */
+export const memoryToolNames = [MEMORY_SEARCH_TOOL, MEMORY_READ_TOOL, MEMORY_PROPOSE_TOOL] as const;
+
+/**
+ * ostra's own tools as the thread names them (F-151): each with its own words instead of
+ * `Used {tool}`. The three memory tools are one kind.
+ */
+export const ostraToolKinds = ["submit_review", "submit_draft", "show_preview", "take_screenshot", "record_app", "propose_environment", "memory"] as const;
+export type OstraToolKind = (typeof ostraToolKinds)[number];
+
+/** Each of ostra's own tools by its bare name. */
+const ostraToolKindByName: ReadonlyMap<string, OstraToolKind> = new Map<string, OstraToolKind>([
+  [SUBMIT_REVIEW_TOOL, "submit_review"],
+  [SUBMIT_DRAFT_TOOL, "submit_draft"],
+  [SHOW_PREVIEW_TOOL, "show_preview"],
+  [TAKE_SCREENSHOT_TOOL, "take_screenshot"],
+  [RECORD_APP_TOOL, "record_app"],
+  [PROPOSE_ENVIRONMENT_TOOL, "propose_environment"],
+  ...memoryToolNames.map((name): readonly [string, OstraToolKind] => [name, "memory"]),
+]);
+
+/** The separators an agent puts between an MCP server's name and its tool's (`ostra_`, `ostra.`, `ostra/`). */
+const toolNameSeparators = ["_", ".", "/"] as const;
+
+/**
+ * Which of ostra's own tools a call is, from the title its agent reports, or `null` (F-151). It
+ * replaces the fold's `isPictureTool` and matches as it did: the tool's bare name
+ * (`submit_review`), or the name after any prefix that ends in a separator, as each agent names an
+ * MCP server's tool (OpenCode's `ostra_submit_review`, `ostra.show_preview`, the fakes'
+ * `ostra/submit_draft`). A title that only holds a name (`my_submit_review_helper`) is `null`.
+ */
+export const ostraToolOf = (title: string): OstraToolKind | null => {
+  const bare = ostraToolKindByName.get(title);
+  if (bare !== undefined) {
+    return bare;
+  }
+  for (const [name, kind] of ostraToolKindByName) {
+    if (toolNameSeparators.some((separator) => title.endsWith(`${separator}${name}`))) {
+      return kind;
+    }
+  }
+  return null;
+};

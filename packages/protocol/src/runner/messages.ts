@@ -53,6 +53,10 @@ import type { FrameParse } from "./version.ts";
 // `hello`, the negotiation, which tolerates unknown fields. Ported from
 // spikes/runner-transport/src/protocol/messages.ts.
 //
+// Minor 9 (milestone 10, F-151) adds no frame and no field to one: its frames are minor 8's. Its
+// additions are a review answer's `already` over HTTP (`http.ts`) and three server events' optional
+// fields, which no runner sends or reads.
+//
 // Minor 8 (milestone 9, ADR 0070) adds files for the agent: `files.written`, a `user.message`'s
 // files, `ticket.context_read`, `ticket-update`, and a steer's files and images. Minor 7's codec
 // refuses them, and its encode drops the fields; it refuses to encode a steer that carries files.
@@ -344,7 +348,7 @@ const statusSchemaV3 = statusSchemaV0.extend({
 const statusSchemaV6 = statusSchemaV3.extend(runnerReportFieldsV6);
 
 /**
- * The status at the current minor (8), which minor 7 shaped: minor 4's, with what the runner can
+ * The status at the current minor (9), which minor 7 shaped: minor 4's, with what the runner can
  * preview and a `host` runner's browser.
  */
 export const statusSchema = statusSchemaV6.extend(runnerReportFieldsV7);
@@ -715,7 +719,7 @@ const encodeDownFrameFor =
     return frame;
   };
 
-/** Up frames, one codec per kept minor. */
+/** Up frames, one codec per kept minor. Minor 9 (milestone 10) adds no frame: its frames are minor 8's. */
 export const upFrameCodec = createVersionedCodec<UpFrame>([
   { minor: 0, decode: upFrameV0, encode: encodeUpFrameFor(0) },
   { minor: 1, decode: upFrameV1, encode: encodeUpFrameFor(1) },
@@ -726,6 +730,7 @@ export const upFrameCodec = createVersionedCodec<UpFrame>([
   { minor: 6, decode: upFrameV6, encode: encodeUpFrameFor(6) },
   { minor: 7, decode: upFrameV7, encode: encodeUpFrameFor(7) },
   { minor: 8, decode: upFrameV8, encode: (frame) => frame },
+  { minor: 9, decode: upFrameV8, encode: (frame) => frame },
 ]);
 
 /**
@@ -738,8 +743,9 @@ export const upFrameCodec = createVersionedCodec<UpFrame>([
  * (F-138) adds events only: its down frames are minor 5's. Minor 7 adds the dispatch's purpose,
  * which minor 6's encode drops, and the app's and the views' commands, which its decode refuses.
  * Minor 8 adds the steer's files and `ticket-update`, which minor 7's encode drops (and refuses
- * for a steer that carries files) and its decode refuses. This is the WebSocket's codec: it
- * refuses `preview.input`, the HTTP carrier's only command.
+ * for a steer that carries files) and its decode refuses. Minor 9 (milestone 10) adds no frame:
+ * its down frames are minor 8's. This is the WebSocket's codec: it refuses `preview.input`, the
+ * HTTP carrier's only command.
  */
 export const downFrameCodec = createVersionedCodec<DownFrame>([
   { minor: 0, decode: downFrameV0, encode: encodeDownFrameFor(0) },
@@ -751,6 +757,7 @@ export const downFrameCodec = createVersionedCodec<DownFrame>([
   { minor: 6, decode: downFrameV5, encode: encodeDownFrameFor(6) },
   { minor: 7, decode: downFrameV7, encode: encodeDownFrameFor(7) },
   { minor: 8, decode: downFrameV8, encode: (frame) => frame },
+  { minor: 9, decode: downFrameV8, encode: (frame) => frame },
 ]);
 
 /**
@@ -767,6 +774,7 @@ export const httpDownFrameCodec = createVersionedCodec<DownFrame>([
   { minor: 6, decode: downFrameV5, encode: encodeDownFrameFor(6) },
   { minor: 7, decode: downFrameV7Http, encode: encodeDownFrameFor(7) },
   { minor: 8, decode: downFrameV8Http, encode: (frame) => frame },
+  { minor: 9, decode: downFrameV8Http, encode: (frame) => frame },
 ]);
 
 /** Parse a frame a peer sent at `minor`. Never throws; the error names paths, never values. */

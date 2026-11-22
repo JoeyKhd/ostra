@@ -124,7 +124,7 @@ const decoded = (text: string): Record<string, unknown> => {
 describe("the version", () => {
   it("F-061: a minor-5 server took minors 4 to 6, and minor 5 stays in the codecs after minor 6", () => {
     // Milestone 7 moved the build to minor 6 (`minor-6.test.ts`); a minor-5 build's window is as it was.
-    expect(PROTOCOL_MINOR).toBe(8);
+    expect(PROTOCOL_MINOR).toBe(9);
     expect(minorWindow(5)).toEqual({ min: 4, max: 6 });
     expect(negotiate(5, PROTOCOL_MAJOR, 4)).toEqual({ ok: true, minor: 4 });
     expect(negotiate(5, PROTOCOL_MAJOR, 5)).toEqual({ ok: true, minor: 5 });

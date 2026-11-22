@@ -11,6 +11,9 @@ import {
   environmentProposalRequestFromTool,
   environmentProposalResultText,
   fencedNoteText,
+  MEMORY_PROPOSE_TOOL,
+  MEMORY_READ_TOOL,
+  MEMORY_SEARCH_TOOL,
   memoryKindSchema,
   memoryProposalRequestSchema,
   memoryScopeSchema,
@@ -115,9 +118,8 @@ import { RUNNER_VERSION } from "../version.ts";
 // never reach a log line: the tool's name and counts only.
 
 export const SET_PR_TEXT_TOOL = "set_pull_request_text";
-export const MEMORY_SEARCH_TOOL = "memory_search";
-export const MEMORY_READ_TOOL = "memory_read";
-export const MEMORY_PROPOSE_TOOL = "memory_propose";
+// The memory tools' names are the protocol's, which the thread reads them by (`ostraToolOf`, F-151).
+export { MEMORY_PROPOSE_TOOL, MEMORY_READ_TOOL, MEMORY_SEARCH_TOOL };
 /** What the agent reads when core can't be reached. */
 export const MEMORY_UNAVAILABLE = "Memory is unavailable right now. Carry on without it, and try again later if you need it.";
 /** A search's results when the agent names no limit. */

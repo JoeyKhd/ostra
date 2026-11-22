@@ -154,15 +154,17 @@ const noPorts: AppToolContext = {
 describe("the version", () => {
   it("F-061: a minor-7 server took minors 6 to 8, and minor 7 stays in the codecs after minor 8", () => {
     // Milestone 9 moved the build to minor 8 (`minor-8.test.ts`); a minor-7 build's window is as it was.
-    expect(PROTOCOL_MINOR).toBe(8);
+    expect(PROTOCOL_MINOR).toBe(9);
     expect(minorWindow(7)).toEqual({ min: 6, max: 8 });
     expect(negotiate(7, PROTOCOL_MAJOR, 6)).toEqual({ ok: true, minor: 6 });
     expect(negotiate(7, PROTOCOL_MAJOR, 7)).toEqual({ ok: true, minor: 7 });
     expect(negotiate(7, PROTOCOL_MAJOR, 8)).toEqual({ ok: true, minor: 7 });
     expect(negotiate(7, PROTOCOL_MAJOR, 5)).toEqual({ ok: false, reason: "minor", window: { min: 6, max: 8 } });
-    // A minor-7 runner against a minor-6 server speaks minor 6, and against today's server minor 7.
+    // A minor-7 runner against a minor-6 server speaks minor 6, and against a minor-8 server minor 7;
+    // today's minor-9 server refuses it.
     expect(negotiate(6, PROTOCOL_MAJOR, 7)).toEqual({ ok: true, minor: 6 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 7)).toEqual({ ok: true, minor: 7 });
+    expect(negotiate(8, PROTOCOL_MAJOR, 7)).toEqual({ ok: true, minor: 7 });
+    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 7)).toEqual({ ok: false, reason: "minor", window: { min: 8, max: 10 } });
     expect(upFrameCodec.minors).toContain(7);
     expect(downFrameCodec.minors).toContain(7);
     expect(httpDownFrameCodec.minors).toContain(7);

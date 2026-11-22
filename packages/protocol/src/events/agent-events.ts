@@ -126,9 +126,15 @@ export const planEntrySchema = z.strictObject({
 });
 export type PlanEntry = z.infer<typeof planEntrySchema>;
 
+/** A question field's ID, as its agent names it. */
+const questionFieldIdSchema = z.string().min(1).max(200);
+
+/** The most fields of one answer given in a member's own words (`question.answered`'s `other`, minor 9). */
+export const QUESTION_OTHER_MAX = 100;
+
 /** One field of a question the agent asked (ACP `elicitation.form`). */
 export const questionFieldSchema = z.strictObject({
-  id: z.string().min(1).max(200),
+  id: questionFieldIdSchema,
   label: z.string().max(2000),
   type: z.enum(["text", "select"]),
   options: z.array(z.string().max(500)).max(100).optional(),
@@ -866,7 +872,18 @@ const minor5NewEventOptions = [
     matchedMemberId: memberIdSchema.nullable(),
   }),
   /** A refine task's agent handed in a draft (F-099). Its text is the draft's row, never the event's. */
-  z.strictObject({ kind: z.literal("draft.submitted"), draftId: draftIdSchema, version: z.number().int().positive() }),
+  z.strictObject({
+    kind: z.literal("draft.submitted"),
+    draftId: draftIdSchema,
+    version: z.number().int().positive(),
+    /**
+     * Minor 9 (F-151): how many acceptance criteria and sub-tickets the draft holds, for its result
+     * line (`4 acceptance criteria, 2 sub-tickets`). Counts only. Missing on an older event, whose
+     * line shows the version alone.
+     */
+    acceptanceCriteria: z.number().int().nonnegative().max(runnerLimits.draftAcceptanceCriteriaMax).optional(),
+    subTickets: z.number().int().nonnegative().max(runnerLimits.draftSubTicketsMax).optional(),
+  }),
   /** A member wrote the draft to the ticket (F-099): the ticket and the sub-tickets it created. */
   z.strictObject({
     kind: z.literal("draft.applied"),
@@ -901,6 +918,11 @@ const minor5NewEventOptions = [
     reviewRunId: reviewRunIdSchema,
     blocking: z.number().int().nonnegative(),
     nits: z.number().int().nonnegative(),
+    /**
+     * Minor 9 (F-151): a second hand-in for a round whose review was already in. Nothing changed:
+     * `blocking` and `nits` are the round's as first handed in, and nothing is posted again.
+     */
+    repeat: z.literal(true).optional(),
   }),
   /** ostra posted the review on one PR, as a comment-type review (F-100). */
   z.strictObject({
@@ -1230,12 +1252,27 @@ const sharedEventOptions = [
     message: z.string(),
     fields: z.array(questionFieldSchema),
   }),
-  z.strictObject({
-    kind: z.literal("question.answered"),
-    questionId: questionIdSchema,
-    answers: z.record(z.string(), z.string()),
-    memberId: memberIdSchema,
-  }),
+  z
+    .strictObject({
+      kind: z.literal("question.answered"),
+      questionId: questionIdSchema,
+      /** Each field's answer, by field ID: the member's words, never logged. */
+      answers: z.record(z.string(), z.string()),
+      memberId: memberIdSchema,
+      /**
+       * Minor 9 (F-151): the fields answered in the member's own words (`Something else…`), by ID,
+       * each once. IDs only: the words are the field's answer in `answers`. Missing: none was.
+       */
+      other: z
+        .array(questionFieldIdSchema)
+        .max(QUESTION_OTHER_MAX)
+        .refine((ids) => new Set(ids).size === ids.length, "each field at most once")
+        .optional(),
+    })
+    .refine((event) => (event.other ?? []).every((id) => Object.hasOwn(event.answers, id)), {
+      message: "a field answered in words is one of the answers",
+      path: ["other"],
+    }),
   z.strictObject({
     kind: z.literal("question.closed"),
     questionId: questionIdSchema,
@@ -1316,7 +1353,12 @@ const sharedEventOptions = [
   }),
 ] as const;
 
-/** The event union at the current minor (8). */
+/**
+ * The event union at the current minor (9): minor 8's kinds. Minor 9 added only server events'
+ * optional fields (`question.answered`'s `other`, `review.submitted`'s `repeat`, `draft.submitted`'s
+ * counts), which no runner sends: the older unions take them too, and a runner's frame refuses
+ * every server kind (`runnerEventSchema`).
+ */
 export const taskEventSchema = z.discriminatedUnion("kind", [
   userMessageV8,
   sessionRestoredV2,

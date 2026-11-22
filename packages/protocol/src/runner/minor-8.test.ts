@@ -103,18 +103,20 @@ const hostileNames = [
 ] as const;
 
 describe("the version", () => {
-  it("F-061, F-148: is minor 8; a minor-7 peer is inside the window and a minor-6 peer is outside it", () => {
-    expect(PROTOCOL_MINOR).toBe(8);
-    expect(minorWindow(PROTOCOL_MINOR)).toEqual({ min: 7, max: 9 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 7)).toEqual({ ok: true, minor: 7 });
+  it("F-061, F-148: a minor-8 server took minors 7 to 9, and minor 8 stays in the codecs after minor 9", () => {
+    // Milestone 10 moved the build to minor 9 (`minor-9.test.ts`); a minor-8 build's window is as it was.
+    expect(PROTOCOL_MINOR).toBe(9);
+    expect(minorWindow(8)).toEqual({ min: 7, max: 9 });
+    expect(negotiate(8, PROTOCOL_MAJOR, 7)).toEqual({ ok: true, minor: 7 });
+    expect(negotiate(8, PROTOCOL_MAJOR, 8)).toEqual({ ok: true, minor: 8 });
+    expect(negotiate(8, PROTOCOL_MAJOR, 9)).toEqual({ ok: true, minor: 8 });
+    expect(negotiate(8, PROTOCOL_MAJOR, 6)).toEqual({ ok: false, reason: "minor", window: { min: 7, max: 9 } });
+    // A minor-8 runner against a minor-7 server speaks minor 7, and against today's server minor 8.
+    expect(negotiate(7, PROTOCOL_MAJOR, 8)).toEqual({ ok: true, minor: 7 });
     expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 8)).toEqual({ ok: true, minor: 8 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 9)).toEqual({ ok: true, minor: 8 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 6)).toEqual({ ok: false, reason: "minor", window: { min: 7, max: 9 } });
-    // A minor-8 runner against a minor-7 server speaks minor 7.
-    expect(negotiate(7, PROTOCOL_MAJOR, PROTOCOL_MINOR)).toEqual({ ok: true, minor: 7 });
-    expect(upFrameCodec.minors).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
-    expect(downFrameCodec.minors).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
-    expect(httpDownFrameCodec.minors).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(upFrameCodec.minors).toContain(8);
+    expect(downFrameCodec.minors).toContain(8);
+    expect(httpDownFrameCodec.minors).toContain(8);
   });
 });
 

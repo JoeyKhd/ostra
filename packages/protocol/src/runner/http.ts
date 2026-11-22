@@ -643,9 +643,31 @@ export const reviewRefusalSchema = z.strictObject({
 });
 export type ReviewRefusal = z.infer<typeof reviewRefusalSchema>;
 
-export const reviewSavedSchema = z.strictObject({ reviewRunId: reviewRunIdSchema });
+/** A saved review as minor 8 reads it: its run's ID. Kept for a minor-8 sidecar, whose strict schema refuses more. */
+export const reviewSavedSchemaV8 = z.strictObject({ reviewRunId: reviewRunIdSchema });
+
+/**
+ * A saved review: its run's ID, and from minor 9 (F-151) `already` when the round's review was
+ * handed in before and stands as it was. A repeat `submit_review` changed nothing, and it's a
+ * success, not a refusal.
+ */
+export const reviewSavedSchema = reviewSavedSchemaV8.extend({ already: z.literal(true).optional() });
+export type ReviewSaved = z.infer<typeof reviewSavedSchema>;
 export const reviewResponseSchema = z.union([reviewSavedSchema, reviewRefusalSchema]);
 export type ReviewResponse = z.infer<typeof reviewResponseSchema>;
+/** Minor 8's answer to a review, as a minor-8 sidecar reads it. */
+export const reviewResponseSchemaV8 = z.union([reviewSavedSchemaV8, reviewRefusalSchema]);
+
+/** The lowest minor whose sidecar reads a saved review's `already` (F-151). */
+export const REVIEW_ALREADY_MINOR = 9;
+
+/**
+ * A saved review as core answers it to a runner at `peerMinor`: below minor 9, without `already`,
+ * so a minor-8 sidecar is never sent a field its strict schema refuses, and reads the answer as
+ * saved, as it always did.
+ */
+export const reviewAnswerFor = (peerMinor: number, saved: ReviewSaved): ReviewSaved =>
+  peerMinor >= REVIEW_ALREADY_MINOR || saved.already === undefined ? saved : { reviewRunId: saved.reviewRunId };
 
 /**
  * Why core refused a proposal: a secret's value was found (`found` names each kind, never the

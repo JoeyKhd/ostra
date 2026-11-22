@@ -125,6 +125,8 @@ describe("the version window on both carriers (F-061)", () => {
       [9, "http", "refused"],
       [10, "websocket", "refused"],
       [10, "http", "refused"],
+      [11, "websocket", "refused"],
+      [11, "http", "refused"],
     ]);
   });
 

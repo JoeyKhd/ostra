@@ -107,20 +107,21 @@ const minor3Status: Status = {
 describe("the version", () => {
   it("F-061: a minor-4 server took minors 3 to 5, and minor 4 stays in the codecs after minor 5", () => {
     // Milestone 6 moved the build to minor 5 (`minor-5.test.ts`), milestone 7 to minor 6
-    // (`minor-6.test.ts`), milestone 8 to minor 7 and milestone 9 to minor 8; a minor-4 build's
-    // window is as it was.
-    expect(PROTOCOL_MINOR).toBe(8);
+    // (`minor-6.test.ts`), milestone 8 to minor 7, milestone 9 to minor 8 and milestone 10 to minor
+    // 9; a minor-4 build's window is as it was.
+    expect(PROTOCOL_MINOR).toBe(9);
     expect(minorWindow(4)).toEqual({ min: 3, max: 5 });
     expect(negotiate(4, PROTOCOL_MAJOR, 3)).toEqual({ ok: true, minor: 3 });
     expect(negotiate(4, PROTOCOL_MAJOR, 4)).toEqual({ ok: true, minor: 4 });
     expect(negotiate(4, PROTOCOL_MAJOR, 2)).toEqual({ ok: false, reason: "minor", window: { min: 3, max: 5 } });
     // A minor-4 runner against a minor-3 server speaks minor 3, against a minor-5 server minor 4,
-    // and a minor-6 server, a minor-7 one and today's minor-8 one refuse it.
+    // and a minor-6 server, a minor-7 one, a minor-8 one and today's minor-9 one refuse it.
     expect(negotiate(3, PROTOCOL_MAJOR, 4)).toEqual({ ok: true, minor: 3 });
     expect(negotiate(5, PROTOCOL_MAJOR, 4)).toEqual({ ok: true, minor: 4 });
     expect(negotiate(6, PROTOCOL_MAJOR, 4)).toEqual({ ok: false, reason: "minor", window: { min: 5, max: 7 } });
     expect(negotiate(7, PROTOCOL_MAJOR, 4)).toEqual({ ok: false, reason: "minor", window: { min: 6, max: 8 } });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 4)).toEqual({ ok: false, reason: "minor", window: { min: 7, max: 9 } });
+    expect(negotiate(8, PROTOCOL_MAJOR, 4)).toEqual({ ok: false, reason: "minor", window: { min: 7, max: 9 } });
+    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 4)).toEqual({ ok: false, reason: "minor", window: { min: 8, max: 10 } });
     expect(upFrameCodec.minors).toContain(4);
     expect(downFrameCodec.minors).toContain(4);
   });

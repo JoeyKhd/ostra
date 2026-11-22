@@ -533,10 +533,10 @@ describe("a preview's views on core", () => {
   }, 60_000);
 
   it("F-141/c6: a runner below minor 7 gets no view and no app start, with the reason", async () => {
-    // The admin's only runner speaks minor 6: today's minor-8 server refuses one at hello (milestone
-    // 9), so it connects at minor 7 and its presence says 6, as a minor-7 server's would have.
+    // The admin's only runner speaks minor 6: today's minor-9 server refuses one at hello (milestone
+    // 10), so it connects at minor 8 and its presence says 6, as a minor-7 server's would have.
     const old = await registerRunnerAt(replica.url, test.db, fixture.a.admin);
-    const oldPeer = await connectPeer(replica.url, await tokenOf(replica.url, old), old.runnerId, { minor: 7 });
+    const oldPeer = await connectPeer(replica.url, await tokenOf(replica.url, old), old.runnerId, { minor: 8 });
     opened.push(oldPeer);
     await oldPeer.next("welcome");
     await test.db.runnerPresence.update({ where: { runnerId: old.runnerId }, data: { minor: 6 } });

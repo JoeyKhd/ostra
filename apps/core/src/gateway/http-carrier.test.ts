@@ -201,14 +201,23 @@ describe("the HTTP carrier", () => {
   });
 
   it("F-013/c4: a minor-7 runner's replaced connection is still answered superseded, which it says hello again on, as before minor 8", async () => {
-    const { runner, token } = await world();
-    const older = await httpPeer(a.url, token, runner.runnerId, { minor: HTTP_REPLACED_MINOR - 1 });
-    expect(older.minor).toBe(HTTP_REPLACED_MINOR - 1);
-    const held = older.down(0, { baseUrl: b.url });
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    await httpPeer(b.url, token, runner.runnerId, { minor: HTTP_REPLACED_MINOR - 1 });
-    expect(await held).toMatchObject({ status: 409, body: { code: "superseded" } });
-    expect(await older.up([])).toMatchObject({ status: 409, body: { code: "superseded" } });
+    // Today's minor-9 server refuses a minor-7 runner at hello (milestone 10): two replicas at minor
+    // 8, the last to take one, answer it as they did.
+    const olderA = await startGateway(test.db, test.url, { signingKey, serverMinor: HTTP_REPLACED_MINOR, timers: { longPollMs: 3_000 } });
+    const olderB = await startGateway(test.db, test.url, { signingKey, serverMinor: HTTP_REPLACED_MINOR, timers: { longPollMs: 3_000 } });
+    try {
+      const { runner, token } = await world();
+      const older = await httpPeer(olderA.url, token, runner.runnerId, { minor: HTTP_REPLACED_MINOR - 1 });
+      expect(older.minor).toBe(HTTP_REPLACED_MINOR - 1);
+      const held = older.down(0, { baseUrl: olderB.url });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await httpPeer(olderB.url, token, runner.runnerId, { minor: HTTP_REPLACED_MINOR - 1 });
+      expect(await held).toMatchObject({ status: 409, body: { code: "superseded" } });
+      expect(await older.up([])).toMatchObject({ status: 409, body: { code: "superseded" } });
+    } finally {
+      await olderA.stop();
+      await olderB.stop();
+    }
   });
 
   it("F-013/c4: a revoked runner's still-valid access token is refused on every HTTP call, and its held poll ends", async () => {

@@ -71,8 +71,17 @@ export const PROTOCOL_MAJOR = 1;
  * amended 2026-11-21): its requests are answered `409` with the error `replaced`, and `superseded`
  * means only a connection core closed (`HTTP_REPLACED_MINOR`). A minor-7 runner is answered
  * `superseded` for both, as before.
+ * Milestone 10 ships minor 9 (F-151): the compact thread, in optional fields only, with no frame
+ * of its own (its frames are minor 8's). A `submit_review` answer's `already`: the round's review
+ * was handed in before and stands as it was, which core sends only to a minor-9 runner
+ * (`reviewAnswerFor`). And three server events' optional fields, which no runner sends or reads:
+ * `question.answered`'s `other`, `review.submitted`'s `repeat` and `draft.submitted`'s counts.
+ * Beside them, `ostraToolOf` names ostra's own tools by their title, whatever prefix the agent
+ * gives them. A minor-8 peer still works inside the window: its sidecar, whose strict schema
+ * refuses `already`, is answered `{ reviewRunId }` for a repeat hand-in, which it reads as saved,
+ * and every frame it sends or reads is as it was. A minor-7 peer is outside the window.
  */
-export const PROTOCOL_MINOR = 8;
+export const PROTOCOL_MINOR = 9;
 
 /** The URL prefix of every runner endpoint. */
 export const RUNNER_PATH_PREFIX = `/runner/v${String(PROTOCOL_MAJOR)}`;
