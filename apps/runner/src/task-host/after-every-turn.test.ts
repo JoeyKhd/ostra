@@ -94,6 +94,38 @@ describe("after every turn (F-096)", () => {
     expect(h.everyEventOnce()).toBe(true);
   }, 180_000);
 
+  it("F-096/c2: each turn's hidden ref is a forced push that never fast-forwards the last one, and the git proxy takes it", async () => {
+    const h = await start();
+    const { spec } = h.taskFor(fakeMarker("write", "one.txt"));
+    h.dispatch(spec);
+    await h.waitForKind(spec, "session.saved", 1);
+    h.steer(spec, fakeMarker("write", "two.txt"));
+    await h.waitForKind(spec, "session.saved", 2);
+    h.steer(spec, fakeMarker("say"));
+    await h.waitForKind(spec, "session.saved", 3);
+    const refs = h.ofKind(spec, "session.saved").map((save) => save.repos[0]?.hiddenRefSha ?? null);
+    const checkout = path.join(h.dataDir, "tasks", spec.taskId, "workspace", "test1");
+    const fastForward = (older: string, newer: string): Promise<boolean> =>
+      run("git", ["merge-base", "--is-ancestor", older, newer], { cwd: checkout }).then(
+        () => true,
+        () => false,
+      );
+    // Each save is a new commit on the branch's head, beside the last one: never its descendant.
+    for (const [index, newer] of refs.entries()) {
+      const older = index === 0 ? null : (refs[index - 1] ?? null);
+      expect(newer).toMatch(/^[0-9a-f]{40}$/);
+      if (older !== null && newer !== null) {
+        expect(newer).not.toBe(older);
+        expect(await fastForward(older, newer)).toBe(false);
+      }
+    }
+    // The upstream takes a push only with the token the proxy adds: it holds the last save, and the
+    // proxy forwarded each hidden ref's push on its own and refused none.
+    expect(await shared.upstream.refSha("ostra-test/test1", `refs/ostra/wip/${spec.taskId}`)).toBe(refs.at(-1));
+    expect(h.logs.filter((record) => record.message === "git proxy forwarded a push" && record.fields["refCount"] === 1).length).toBeGreaterThanOrEqual(3);
+    expect(h.logs.some((record) => record.message === "git proxy refused a push")).toBe(false);
+  }, 180_000);
+
   it("resumes an upload that dropped mid-chunk, and seals one blob", async () => {
     const h = await start();
     h.server.bulkFaults.dropChunks = 1;
