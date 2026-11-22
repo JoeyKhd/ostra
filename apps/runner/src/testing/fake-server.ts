@@ -29,6 +29,7 @@ import {
   pushCredentialResponseSchema,
   PROTOCOL_MINOR,
   registerRequestSchema,
+  reviewAnswerFor,
   reviewRequestSchema,
   reviewResponseSchema,
   reviewRunIdSchema,
@@ -140,8 +141,14 @@ export type FakeTeam = {
   readonly proposals: { readonly taskId: string; readonly bearer: string; readonly body: EnvironmentProposal }[];
   /** Each endpoint's answer: `null` saves, a refusal refuses. */
   readonly refusals: { draft: DraftRefusal | null; review: ReviewRefusal | null; environment: EnvironmentProposalRefusal | null };
-  /** Every call, in order: its endpoint and the token it carried. */
-  readonly calls: { readonly endpoint: "draft" | "review" | "environment"; readonly taskId: string; readonly bearer: string }[];
+  /**
+   * Milestone 10 (F-151, minor 9): while true, the round's review is in, and a review that parses
+   * is answered as minor 9's core answers a repeat hand-in: the last run's ID with `already`, by the
+   * caller's `x-ostra-minor` (`reviewAnswerFor`), and nothing is recorded. A refusal still wins.
+   */
+  reviewIn: boolean;
+  /** Every call, in order: its endpoint, the token it carried and its `x-ostra-minor` header. */
+  readonly calls: { readonly endpoint: "draft" | "review" | "environment"; readonly taskId: string; readonly bearer: string; readonly minor: string | undefined }[];
   /** While true, every call fails as a server error: core is down. */
   down: boolean;
 };
@@ -256,7 +263,7 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
   const bulkFaults: BulkFaults = { dropChunks: 0, refuseUploads: false, failDownloads: new Set(), corruptDownloads: new Set() };
   const bulkCalls: string[] = [];
   const memory: FakeMemory = { notes: [], proposals: [], calls: [], refusals: [], down: false };
-  const team: FakeTeam = { drafts: [], reviews: [], proposals: [], refusals: { draft: null, review: null, environment: null }, calls: [], down: false };
+  const team: FakeTeam = { drafts: [], reviews: [], proposals: [], refusals: { draft: null, review: null, environment: null }, reviewIn: false, calls: [], down: false };
   const seenNonces = new Set<string>();
   const routes: FakeRoute[] = [];
   let counter = 0;
@@ -346,7 +353,9 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
       ostraError(response, 404, "not-found", "no such task");
       return;
     }
-    team.calls.push({ endpoint, taskId, bearer });
+    const minorHeader = request.headers[runnerHeaders.minor];
+    const minor = typeof minorHeader === "string" ? minorHeader : undefined;
+    team.calls.push({ endpoint, taskId, bearer, minor });
     if (team.down) {
       ostraError(response, 503, "unavailable", "core is down");
       return;
@@ -374,6 +383,8 @@ export const startFakeServer = async (options: FakeServerOptions = {}): Promise<
           answer = { code: "invalid" };
         } else if (team.refusals.review !== null) {
           answer = team.refusals.review;
+        } else if (team.reviewIn) {
+          answer = reviewAnswerFor(minorFromHeader(minor), { reviewRunId: reviewRunIdSchema.parse(`review-run-${String(Math.max(1, team.reviews.length))}`), already: true });
         } else {
           team.reviews.push({ taskId, bearer, body: parsed.data });
           answer = { reviewRunId: reviewRunIdSchema.parse(`review-run-${String(team.reviews.length)}`) };

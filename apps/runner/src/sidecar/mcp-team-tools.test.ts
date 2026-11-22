@@ -9,8 +9,10 @@ import {
   environmentProposalIdSchema,
   environmentProposalResultText,
   PROPOSE_ENVIRONMENT_TOOL,
+  PROTOCOL_MINOR,
   repoFullNameSchema,
   repoIdSchema,
+  REVIEW_ALREADY_MINOR,
   reviewResultText,
   reviewRunIdSchema,
   runnerIdSchema,
@@ -31,7 +33,8 @@ import type { McpTools } from "./mcp-tools.ts";
 // Tickets 22 and 23 (F-099, F-100, F-113, protocol minor 5): the sidecar's MCP server serves exactly
 // the tool sets the spec names, and `submit_draft`, `submit_review` and `propose_environment` round
 // trip through the fake core's runner HTTP (the protocol's schemas), with the link's token, each
-// refusal coming back in the protocol's words. A real MCP client calls them.
+// refusal coming back in the protocol's words. A real MCP client calls them. Milestone 10 (ticket
+// 06, F-151, minor 9): a repeat `submit_review` that core answers `already` is a success.
 
 const taskId = taskIdSchema.parse("task-team-tools");
 const repoId = repoIdSchema.parse("repo-team-1");
@@ -176,6 +179,43 @@ describe("ostra's tools per task kind (tickets 22 and 23)", () => {
     // A finding's text is never logged.
     expect(JSON.stringify(logs)).not.toContain("whoami");
     expect(logs.some((record) => record.message === "review submitted" && record.fields["blocking"] === 1 && record.fields["findings"] === 2)).toBe(true);
+  });
+
+  it("F-151/c7: a repeat submit_review that core answers already is a success in the already words, logged with already and the run's ID only, and a refusal is still an error", async () => {
+    const { core, client, logs } = await start(toolSetsByKind.review);
+    const first = await client.callTool({ name: SUBMIT_REVIEW_TOOL, arguments: sampleReview(repo) });
+    expect(first.isError).not.toBe(true);
+    // The round's review is in: core answers the same run, `already`, and records nothing.
+    core.team.reviewIn = true;
+    const repeat = await client.callTool({ name: SUBMIT_REVIEW_TOOL, arguments: sampleReview(repo) });
+    expect(repeat.isError).not.toBe(true);
+    expect(textOf(repeat)).toBe(reviewResultText({ reviewRunId: reviewRunIdSchema.parse("review-run-1"), already: true }));
+    expect(textOf(repeat)).toBe("This round's review is already handed in, and it stands as it was. Nothing more is needed.");
+    expect(core.team.reviews).toHaveLength(1);
+    // The sidecar says its minor, 9, so core sends it `already` (a minor-8 one is answered without).
+    expect(PROTOCOL_MINOR).toBeGreaterThanOrEqual(REVIEW_ALREADY_MINOR);
+    expect(core.team.calls.map((call) => [call.endpoint, call.minor])).toEqual([
+      ["review", String(PROTOCOL_MINOR)],
+      ["review", String(PROTOCOL_MINOR)],
+    ]);
+    // Its log line: `review submitted`, the run's ID and `already`, counts only.
+    const submitted = logs.filter((record) => record.message === "review submitted");
+    expect(submitted.map((record) => [record.fields["reviewRunId"], record.fields["already"]])).toEqual([
+      ["review-run-1", undefined],
+      ["review-run-1", true],
+    ]);
+    expect(logs.some((record) => record.message === "review refused")).toBe(false);
+    const logged = JSON.stringify(logs);
+    expect(logged).not.toContain("whoami");
+    expect(logged).not.toContain("One problem must change");
+    // A refusal is still an error, as before.
+    for (const code of ["not-in-review", "limit-reached"] as const) {
+      core.team.refusals.review = { code };
+      const refused = await client.callTool({ name: SUBMIT_REVIEW_TOOL, arguments: sampleReview(repo) });
+      expect(refused.isError).toBe(true);
+      expect(textOf(refused)).toBe(reviewResultText({ code }));
+    }
+    expect(core.team.reviews).toHaveLength(1);
   });
 
   it("F-113/c2: propose_environment reaches the fake core by repo ID, and each refusal reaches the agent", async () => {

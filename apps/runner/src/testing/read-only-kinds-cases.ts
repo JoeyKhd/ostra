@@ -16,9 +16,13 @@ import type { Harness, HarnessOptions, Shared } from "./task-host-harness.ts";
 // with the base fetched; and the agent's `submit_draft` and `submit_review` reach the fake core.
 // The same cases run on `host` (`read-only-kinds.host.test.ts`) and on `docker` as a box's sidecar
 // drives it (`read-only-kinds.docker.test.ts`): the proxy and the tools are the sidecar's there.
+//
+// Milestone 10 (ticket 06, F-151): a refine or review task's `session.saved` lists no repos, since
+// nothing of a repo is ever saved for those kinds, while a code task's lists each repo with its
+// hidden ref. That case runs on `kubernetes` too (`read-only-kinds.kubernetes.test.ts`).
 
 export type ReadOnlyKindsMode = {
-  readonly name: "host" | "docker";
+  readonly name: "host" | "docker" | "kubernetes";
   readonly makeExecutor?: HarnessOptions["makeExecutor"];
 };
 
@@ -117,7 +121,8 @@ export const readOnlyKindsCases = (mode: ReadOnlyKindsMode) => {
       h.steer(spec, fakeMarker("write", "second-prototype.txt"));
       await h.waitForKind(spec, "session.saved", 2);
       for (const saved of h.ofKind(spec, "session.saved")) {
-        expect(saved.repos).toEqual([{ repoId: spec.repos[0]?.repoId, headSha: null, ahead: false, hiddenRefSha: null }]);
+        // Milestone 10 (F-151): no repo is listed, since nothing of one is saved for a refine task.
+        expect(saved.repos).toEqual([]);
         expect(saved.archive).not.toBeNull();
       }
       expect(h.kinds(spec)).not.toContain("git.pushed");
@@ -170,10 +175,47 @@ export const readOnlyKindsCases = (mode: ReadOnlyKindsMode) => {
         await expect(git(checkout, "symbolic-ref", "--quiet", "HEAD")).rejects.toThrow();
       }
       const [saved] = h.ofKind(spec, "session.saved");
-      expect(saved?.repos.every((repo) => !repo.ahead && repo.headSha === null && repo.hiddenRefSha === null)).toBe(true);
+      expect(saved?.repos).toEqual([]);
       expect(h.kinds(spec)).not.toContain("git.pushed");
       for (const name of ["test1", "test2"]) {
         expect(upstreamSince(mark, name).filter((endpoint) => endpoint === "git-receive-pack")).toEqual([]);
+      }
+    },
+    /**
+     * F-151: a review and a refine task's after-turn save lists no repos, though its turns changed
+     * files in each, and its archive still goes up; a code task's lists each repo with its hidden ref
+     */
+    savesNoRepos: async (): Promise<void> => {
+      const h = await start();
+      const base = h.taskFor("unused").spec.repos[0];
+      if (base === undefined) throw new Error("no repo in the fixture");
+      const repos = [repoOf(base, "test1"), repoOf(base, "test2")];
+      // Each turn changes a file in both repos, as an agent prototyping in the box may.
+      const write = fakeMarker("write", "test1/probe.txt test2/probe.txt");
+      for (const kind of ["review", "refine"] as const) {
+        const { spec } = h.taskFor(write, { kind, tools: [...toolSetsByKind[kind]], repos });
+        h.dispatch(spec);
+        await h.waitForKind(spec, "session.saved", 1);
+        h.steer(spec, fakeMarker("write", "test1/second.txt"));
+        await h.waitForKind(spec, "session.saved", 2);
+        const saves = h.ofKind(spec, "session.saved");
+        expect(saves.map((saved) => saved.repos), kind).toEqual([[], []]);
+        expect(saves.map((saved) => saved.archive === null), kind).toEqual([false, false]);
+        expect(h.kinds(spec), kind).not.toContain("git.pushed");
+        expect(await shared().upstream.refSha("ostra-test/test1", `refs/ostra/wip/${spec.taskId}`), kind).toBeNull();
+      }
+      // A code task still lists each repo: ahead, its head and its hidden ref, as the upstream holds them.
+      const { spec } = h.taskFor(write, { repos });
+      h.dispatch(spec);
+      await h.waitForKind(spec, "session.saved", 1);
+      const [saved] = h.ofKind(spec, "session.saved");
+      expect(saved?.repos.map((repo) => repo.repoId)).toEqual(repos.map((repo) => repo.repoId));
+      expect(saved?.archive).not.toBeNull();
+      for (const [name, repo] of [["test1", saved?.repos[0]], ["test2", saved?.repos[1]]] as const) {
+        expect(repo?.ahead, name).toBe(true);
+        expect(repo?.headSha, name).not.toBeNull();
+        expect(repo?.hiddenRefSha, name).not.toBeNull();
+        expect(await shared().upstream.refSha(`ostra-test/${name}`, `refs/ostra/wip/${spec.taskId}`), name).toBe(repo?.hiddenRefSha);
       }
     },
     /** F-099, F-100: the agent's submit_draft and submit_review reach the fake core with the task's token */

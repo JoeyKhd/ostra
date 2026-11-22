@@ -116,6 +116,12 @@ import { RUNNER_VERSION } from "../version.ts";
 // (`task-host/app-pictures.ts`): each in a page of its own in the box's browser, uploaded as a blob
 // of the task, its answer the attachment's ID or why there's none. A caption, a step and a path
 // never reach a log line: the tool's name and counts only.
+//
+// Milestone 10 (ticket 06, F-151, protocol minor 9): a repeat `submit_review`, for a round whose
+// review is already in, is answered by core `{ reviewRunId, already: true }`. That's a success:
+// the agent reads `reviewResultText`'s already words with no error, so it reports the call done and
+// the thread never draws it failed. Its log line says `already` beside the run's ID. A refusal is
+// still an error.
 
 export const SET_PR_TEXT_TOOL = "set_pull_request_text";
 // The memory tools' names are the protocol's, which the thread reads them by (`ostraToolOf`, F-151).
@@ -550,7 +556,13 @@ export const startMcpTools = async (options: McpToolsOptions): Promise<McpTools>
     const response = result.value;
     if ("reviewRunId" in response) {
       const blocking = input.findings.filter((finding) => finding.severity === "blocking").length;
-      log.info("review submitted", { reviewRunId: response.reviewRunId, findings: input.findings.length, blocking });
+      // Minor 9 (F-151): a repeat hand-in, for a round already in, is a success too; it changed nothing.
+      log.info("review submitted", {
+        reviewRunId: response.reviewRunId,
+        findings: input.findings.length,
+        blocking,
+        ...(response.already === true ? { already: true } : {}),
+      });
       return answer(reviewResultText(response));
     }
     log.info("review refused", { code: response.code });

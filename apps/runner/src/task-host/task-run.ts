@@ -1562,17 +1562,21 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     if (!archived.ok) {
       log.warn("the session archive wasn't saved", { turnOrdinal: ordinal, reason: archived.reason.slice(0, 300) });
     }
-    // 4. What left the box.
+    // 4. What left the box. Milestone 10 (ticket 06, F-151): a refine or review task lists no repos,
+    // since nothing of a repo is ever saved for those kinds; a repo with no hidden ref would read as
+    // unfinished work not saved. Its archive is still there, for a reopen.
     const pushedRepos = new Map(pushed.ok ? pushed.repos.map((repo) => [repo.repoId, repo] as const) : []);
     await emit({
       kind: "session.saved",
       turnOrdinal: ordinal,
-      repos: currentSpec.repos.map((repo) => ({
-        repoId: repo.repoId,
-        headSha: pushedRepos.get(repo.repoId)?.headSha ?? null,
-        ahead: pushedRepos.get(repo.repoId)?.ahead ?? false,
-        hiddenRefSha: savedRepos.get(repo.repoId)?.sha ?? null,
-      })),
+      repos: pushes
+        ? currentSpec.repos.map((repo) => ({
+            repoId: repo.repoId,
+            headSha: pushedRepos.get(repo.repoId)?.headSha ?? null,
+            ahead: pushedRepos.get(repo.repoId)?.ahead ?? false,
+            hiddenRefSha: savedRepos.get(repo.repoId)?.sha ?? null,
+          }))
+        : [],
       archive: archived.ok ? archived.archive : null,
       ...(checked.checks === undefined ? {} : { checks: [...checked.checks] }),
     });
