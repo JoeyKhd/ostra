@@ -23,6 +23,7 @@ import {
 import type { NoteId, RunnerId, TaskEvent } from "@ostra/protocol";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { COMMITS_FOR_AGENT } from "../dispatch/agent-instructions.ts";
 import { buildTaskSpec } from "../dispatch/task-spec.ts";
 import type { SpecDeps } from "../dispatch/task-spec.ts";
 import { handleTaskEndpoint } from "../dispatch/endpoints.ts";
@@ -235,7 +236,8 @@ describe("F-110: memory in the task spec", () => {
       expect(response.status).toBe(200);
       const raw: unknown = await response.json();
       const spec = taskSpecSchemaV2.parse(raw);
-      expect(spec.agent.instructions?.startsWith("Be brief.\n\n## Memory")).toBe(true);
+      // ostra's note on commits (F-078) first, then the profile's own words, then the memory block.
+      expect(spec.agent.instructions?.startsWith(`${COMMITS_FOR_AGENT}\n\nBe brief.\n\n## Memory`)).toBe(true);
       expect(spec.agent.instructions).toContain("pnpm lint");
       expect(spec.agent.instructions).not.toContain("memory_search");
       expect(spec.agent.instructions).toContain("These notes are all the memory this agent can reach.");
@@ -246,7 +248,7 @@ describe("F-110: memory in the task spec", () => {
         headers: { authorization: `Bearer ${bearer}`, [runnerHeaders.minor]: "3" },
       });
       const minor3 = taskSpecSchema.parse(await current.json());
-      expect(minor3.agent.instructions).toBe("Be brief.");
+      expect(minor3.agent.instructions).toBe(`${COMMITS_FOR_AGENT}\n\nBe brief.`);
       expect(minor3.memory?.tools).toBe(true);
       expect(minor3.memory?.block).toContain("memory_search");
       expect(encodeTaskSpecForMinor(minor3, 2)).not.toHaveProperty("memory");

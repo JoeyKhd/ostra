@@ -18,6 +18,7 @@ import type { GatewayHarness, RegisteredRunner } from "../testing/harness.ts";
 import { FakeCodeHost, FakeModelProvider, FakeSecretStore } from "../testing/fake-adapters.ts";
 import { dispatchPayload, ENV_SECRET, PROVIDER_TOKEN, seedOnlineRunner, seedQueuedTask, seedWorld } from "../testing/world.ts";
 import type { World } from "../testing/world.ts";
+import { COMMITS_FOR_AGENT } from "./agent-instructions.ts";
 import { applyOfferResultsInTx, offerTimeoutHandler, requeueQueuedTasks } from "./dispatcher.ts";
 import type { DispatcherDeps } from "./dispatcher.ts";
 import { handleTaskEndpoint } from "./endpoints.ts";
@@ -244,7 +245,7 @@ describe("the spec and the credentials", () => {
 
   const specUrl = (epoch: number) => `${harness.url}${runnerPaths.taskSpec(task.taskId)}?leaseEpoch=${String(epoch)}`;
 
-  it("F-078/c1,c2: hands the lease holder the spec: bot, co-author, template, LFS hosts, branch, variables and files, no secret", async () => {
+  it("F-078/c1,c2: hands the lease holder the spec: bot, co-author, template, commit style, LFS hosts, branch, variables and files, no secret", async () => {
     const token = await accessToken(harness, runner);
     const response = await fetch(specUrl(1), { headers: { authorization: `Bearer ${token.accessToken}` } });
     expect(response.status).toBe(200);
@@ -263,6 +264,8 @@ describe("the spec and the credentials", () => {
     ]);
     expect(spec.branchName).toMatch(/^ostra\/[0-9a-f]{8}-add-a-short-contributing-md$/);
     expect(spec.agent).toMatchObject({ adapter: "opencode", endpointModelId: "dev-model-1", apiFormat: "anthropic-messages" });
+    // The code task's agent is told to commit in the repo's own style (the profile adds no words here).
+    expect(spec.agent.instructions).toBe(COMMITS_FOR_AGENT);
     expect(spec.environment.repos[0]).toMatchObject({ variables: [{ name: "NODE_ENV", value: "test", availableDuringSetup: true }], files: [{ path: "config/dev.json", content: "{}" }] });
     expect(text).not.toContain(ENV_SECRET);
     expect(text).not.toContain(PROVIDER_TOKEN);

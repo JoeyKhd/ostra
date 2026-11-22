@@ -314,6 +314,8 @@ export const buildTaskSpec = async (
         })),
         task.branchName,
         folded,
+        // F-078: a code task's agent commits in each repo's own style; a review or refine task commits nothing.
+        { commits: task.kind === "code" },
       ),
       skills: parts.skills,
       mcpServers: parts.mcpServers,

@@ -43,6 +43,7 @@ import { accessToken, postJson, registerPersonal, startGateway } from "../testin
 import type { GatewayHarness, RegisteredRunner } from "../testing/harness.ts";
 import { seedWorld } from "../testing/world.ts";
 import type { World } from "../testing/world.ts";
+import { COMMITS_FOR_AGENT } from "./agent-instructions.ts";
 import { handleTaskEndpoint } from "./endpoints.ts";
 
 // Milestone 3's ticket 16 (F-021, ADR 0049): the profile a task starts with, and the task spec's
@@ -298,7 +299,8 @@ describe("the spec's agent section", () => {
     const first = await fetchSpec(task.taskId, 2);
     expect(first.status).toBe(200);
     const spec = taskSpecSchema.parse(JSON.parse(first.text));
-    expect(spec.agent.instructions).toBe("Add a line to CHANGELOG.md for every change you make");
+    // The profile's own words, after ostra's note on commits (F-078).
+    expect(spec.agent.instructions).toBe(`${COMMITS_FOR_AGENT}\n\nAdd a line to CHANGELOG.md for every change you make`);
     expect(spec.agent.approvalRules).toEqual([rule]);
     expect(spec.agent.taskRules).toEqual([{ ruleId: taskRule.id, tool: "edit", pattern: "config/settings.json" }]);
     expect(spec.agent.planFirst).toBe(true);
