@@ -76,7 +76,7 @@ export type CreatePromptTaskDeps = Pick<Ports, "jobs" | "notices" | "audit" | "c
   readonly ticketBySetting?: boolean;
 };
 
-export type CreatePromptTask =(deps: CreatePromptTaskDeps, input: CreatePromptTaskInput) => Promise<CreatePromptTaskResult>;
+export type CreatePromptTask = (deps: CreatePromptTaskDeps, input: CreatePromptTaskInput) => Promise<CreatePromptTaskResult>;
 
 const refuse = (error: Exclude<CreatePromptTaskResult, { readonly ok: true }>["error"], message: string): CreatePromptTaskResult => ({
   ok: false,
