@@ -183,15 +183,20 @@ describe("what the load test does beyond its steady load (F-117)", () => {
 
     // Tasks through the API, until the runners of both processes hold some, and partial text is on
     // for some and off for others (one task in four has it on, by its ID).
+    // Each waits for its dispatch before the next, so the dispatcher's free-slot counts are current
+    // and the tasks spread over the runners.
     const taskIds: TaskId[] = [];
-    while (taskIds.length < runnerIds.length * slots) {
+    const enough = (): boolean => {
       const on = taskIds.filter(partialTextOn).length;
-      if (taskIds.length >= runnerIds.length && on > 0 && on < taskIds.length) break;
+      return on > 0 && on < taskIds.length && new Set(taskIds.map((taskId) => dispatched.get(taskId)?.generator)).size === generators.length;
+    };
+    while (!enough() && taskIds.length < runnerIds.length * slots) {
       const created = await api.admin.tasks.create({ projectId: world.projectId, prompt: `Load task ${String(taskIds.length + 1)}: read the store and keep the cursor` });
-      taskIds.push(taskIdSchema.parse(created.taskId));
+      const taskId = taskIdSchema.parse(created.taskId);
+      taskIds.push(taskId);
+      await waitFor(`task ${String(taskIds.length)}'s dispatch`, () => (dispatched.has(taskId) ? true : undefined), 60_000);
     }
-    await waitFor("every task's dispatch", () => (taskIds.every((taskId) => dispatched.has(taskId)) ? true : undefined), 120_000);
-    expect(new Set(taskIds.map((taskId) => dispatched.get(taskId)?.generator)).size).toBe(generators.length);
+    expect(enough()).toBe(true);
     // Every process agrees which tasks have partial text, by the task's ID.
     for (const taskId of taskIds) {
       expect(dispatched.get(taskId)?.partialText).toBe(partialTextOn(taskId));
