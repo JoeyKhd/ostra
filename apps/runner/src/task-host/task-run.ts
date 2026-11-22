@@ -62,6 +62,7 @@ import type {
   EffortChangeId,
   EffortLevel,
   ExecutorKind,
+  GitPerson,
   PlanEntry,
   QuestionId,
   RepoId,
@@ -472,10 +473,23 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   let ending: Ending | undefined;
   const endingSignal = new AbortController();
   /**
-   * Messages for the next turn, each with whether it's an automatic round's (minor 5, F-101), and
-   * its files (minor 8, F-148). Never logged.
+   * Messages for the next turn, each with whether it's an automatic round's (minor 5, F-101), its
+   * files (minor 8, F-148), and the task's co-authors once its sender was credited (minor 8, F-078;
+   * `undefined`: unchanged). Never logged.
    */
-  const steers: { readonly text: string; readonly automatic: boolean; readonly files: PromptMessageFiles | null }[] = [];
+  const steers: {
+    readonly text: string;
+    readonly automatic: boolean;
+    readonly files: PromptMessageFiles | null;
+    readonly coAuthors: readonly GitPerson[] | undefined;
+  }[] = [];
+  /**
+   * F-078 (ADR 0040): who gets a `Co-authored-by` trailer on the box's commits, the agent's own and
+   * ostra's: the spec's, then each member's message's list from the moment it reaches the agent.
+   */
+  let coAuthors: readonly GitPerson[] = [];
+  /** The list of the messages `takeQueued` last gave, applied as their turn starts. */
+  let coAuthorsNext: readonly GitPerson[] | undefined;
   /** Whether the running turn is an automatic round (F-101, ADR 0041): its questions get the neutral reply. */
   let turnAutomatic = false;
   /** Whether the text `takeQueued` last gave is an automatic round's only: no person's message is in it. */
@@ -1185,6 +1199,31 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     return built.input;
   };
 
+  /**
+   * F-078 (ADR 0040, minor 8): a member's message brought the task's co-authors with them. ostra's
+   * own commits carry the list from now on, and the box's checkouts too, so the agent's own commits
+   * do. An executor that can't change them leaves the agent's commits with the spec's list. Counts
+   * only in the log.
+   */
+  const applyCoAuthors = async (next: readonly GitPerson[]): Promise<void> => {
+    const same =
+      next.length === coAuthors.length &&
+      next.every((person, index) => {
+        const was = coAuthors[index];
+        return was?.name === person.name && was.email === person.email;
+      });
+    if (same) {
+      return;
+    }
+    coAuthors = next;
+    const set = await deps.executor.setCoAuthors({ box, coAuthors: next });
+    if (set.ok) {
+      log.info("the task's co-authors changed", { coAuthors: next.length });
+    } else {
+      log.warn("the box's checkouts kept their co-authors: ostra's own commits carry the new ones", { code: set.error.code, coAuthors: next.length });
+    }
+  };
+
   const runTurn = async (
     messages: readonly PromptMessage[],
     currentSpec: TaskSpec,
@@ -1192,6 +1231,12 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   ): Promise<{ readonly crashed: string | null; readonly turnId: TurnId; readonly stopReason: StopReason | null }> => {
     if (agent === undefined || session === undefined || agentProcess === undefined) {
       return { crashed: "the agent isn't running", turnId: turnIdSchema.parse(randomUUID()), stopReason: null };
+    }
+    // F-078: the turn's messages credited their senders: every commit from here on carries them.
+    const credited = coAuthorsNext;
+    coAuthorsNext = undefined;
+    if (credited !== undefined) {
+      await applyCoAuthors(credited);
     }
     // The agent adapter's base class writes the turn's own events (`turn.started`, `turn.ended`,
     // `turn.failed`) with the agent's; the task host writes them only when the agent's process died
@@ -1336,7 +1381,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       box,
       message,
       author: currentSpec.gitIdentity,
-      coAuthors: currentSpec.coAuthors,
+      coAuthors,
       branchName: currentSpec.branchName,
       hiddenRef,
       // Committed before the checks (milestone 3): what a check left in the tree stays out of the push.
@@ -1417,7 +1462,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     if ((!checksWanted && !shotsWanted) || !settled || dirsCache === undefined) {
       return { committed: false, checks: undefined, changed: null };
     }
-    const committed = await deps.executor.commitWork({ box, message, author: currentSpec.gitIdentity, coAuthors: currentSpec.coAuthors });
+    const committed = await deps.executor.commitWork({ box, message, author: currentSpec.gitIdentity, coAuthors });
     if (!committed.ok) {
       log.warn("committing the turn before its checks failed: no checks", { turnOrdinal: ordinal, code: committed.error.code });
       return { committed: false, checks: undefined, changed: null };
@@ -1549,6 +1594,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     // F-101: a turn is automatic only when every message in it is an automatic round's; one from a person makes it theirs.
     const taken = steers.splice(0);
     queuedAutomatic = taken.every((steer) => steer.automatic);
+    // F-078: the newest list among them is the task's from that turn on.
+    coAuthorsNext = taken.findLast((steer) => steer.coAuthors !== undefined)?.coAuthors ?? coAuthorsNext;
     return taken.map((steer) => ({ text: steer.text, files: steer.files }));
   };
 
@@ -1801,6 +1848,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       return { ok: false, error: folders.error };
     }
     spec = taskSpec;
+    coAuthors = taskSpec.coAuthors;
     acrossTurns = spansTurns(taskSpec, channel);
     taskRules.push(...(taskSpec.agent.taskRules ?? []));
     const issued = await deps.link.fetchCredentials(dispatch.taskId, dispatch.leaseEpoch);
@@ -2810,7 +2858,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       const files: PromptMessageFiles | null =
         body.files === undefined || body.files.length === 0 ? null : { fileIds: body.files.map((file) => file.fileId), images: body.images ?? [] };
       messageFiles.learn(body.files ?? []);
-      const queued = { text: body.text, automatic: body.automatic === true, files };
+      // Minor 8 (F-078): the task's co-authors with this message's sender, applied as it reaches the agent.
+      const queued = { text: body.text, automatic: body.automatic === true, files, coAuthors: body.coAuthors };
       if (appOnly && session === undefined && ending === undefined) {
         // "Start the app" (Q300): a member's message is the lease's first turn; the agent starts for it.
         log.info("a message for a box of the app alone: the agent starts for it", { delivery: body.delivery, intent: body.intent ?? "message", agentStarted, files: files?.fileIds.length ?? 0 });
@@ -2837,6 +2886,10 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         const steering = agent;
         const into = session;
         const input = files === null || spec === undefined ? textPrompt(body.text) : await promptInputOf([queued], spec, steering, into);
+        // F-078: the message reaches the agent in this turn, so the turn's commits from here on credit its sender.
+        if (body.coAuthors !== undefined) {
+          await applyCoAuthors(body.coAuthors);
+        }
         if (!stillSteerable(into)) {
           // The turn ended while the files were written: the message is the next turn, which names them again.
           steers.push(queued);

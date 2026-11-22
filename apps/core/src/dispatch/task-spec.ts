@@ -2,7 +2,7 @@ import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { CodeHostAdapter, CodeHostAppCredentials, Logger, SecretStoreAdapter } from "@ostra/adapter-sdk";
 import { apiFormatFromDb, effortLevelFromDb, mapModel } from "@ostra/db";
 import type { Db } from "@ostra/db";
-import { buildMemoryBlock, githubNoReplyAddress, INSTALLATION_NOT_LINKED, installationStateSelect, installationUsable, modelEffort, modelTokenPrices, sessionRowAllowedInTx, spendCapFor, taskTokensInTx } from "@ostra/domain";
+import { buildMemoryBlock, INSTALLATION_NOT_LINKED, installationStateSelect, installationUsable, modelEffort, modelTokenPrices, sessionRowAllowedInTx, spendCapFor, taskCoAuthorsInTx, taskTokensInTx } from "@ostra/domain";
 import type { AgentEffortLevels, MemoryLimits, SpendCapSettings, TaskSpecFilesCaps } from "@ostra/domain";
 import { gitPersonSchema, organizationIdSchema, PROTOCOL_MINOR, projectIdSchema, repoFullNameSchema, repoIdSchema, taskIdSchema, taskSpecSchema } from "@ostra/protocol";
 import type { GitPerson, LeaseEpoch, OrganizationId, RunnerId, TaskId, TaskSpec } from "@ostra/protocol";
@@ -215,26 +215,9 @@ export const buildTaskSpec = async (
     return { ok: false, error: "not-found", message: "the task has no repo" };
   }
 
-  // A member with a verified GitHub link (F-119, ADR 0052) is credited by their no-reply address; one
-  // without, by the name and email they had when the task started. Read now, so a link made after the
-  // task began is used from the next commit on. One trailer per member (F-078): a member credited
-  // twice, at the start by their ostra email and by an `@ostra` comment's no-reply address, keeps the first.
-  const coAuthorRows = (await db.taskCoAuthor.findMany({ where: { taskId: task.id }, orderBy: { createdAt: "asc" } })).filter(
-    (row, index, rows) => row.memberId === null || rows.findIndex((other) => other.memberId === row.memberId) === index,
-  );
-  const linked = await db.member.findMany({
-    where: { id: { in: coAuthorRows.flatMap((row) => (row.memberId === null ? [] : [row.memberId])) }, organizationId },
-    select: { id: true, user: { select: { githubUserId: true, githubLogin: true } } },
-  });
-  const coAuthors = coAuthorRows
-    .map((row) => {
-      const user = linked.find((member) => member.id === row.memberId)?.user;
-      return user?.githubUserId !== undefined && user.githubUserId !== null && user.githubLogin !== null
-        ? { name: row.name, email: githubNoReplyAddress(user.githubUserId, user.githubLogin) }
-        : { name: row.name, email: row.email };
-    })
-    .map((person) => gitPersonSchema.safeParse(person))
-    .flatMap((parsed) => (parsed.success ? [parsed.data] : []));
+  // F-078, F-119: one trailer per member, by the link's no-reply address once linked, read now (the
+  // domain's `taskCoAuthorsInTx`, which a steer into a going session carries too).
+  const coAuthors = await taskCoAuthorsInTx(db, { organizationId, taskId: taskIdSchema.parse(task.id) });
 
   // Milestone 3 (ticket 16): the profile's skills, MCP servers and rules, the task's rules, plan first.
   const profileParts = await profileSpecParts({ db, ...(deps.blobs === undefined ? {} : { blobs: deps.blobs }), ...(deps.logger === undefined ? {} : { logger: deps.logger }) }, task, session, profile);

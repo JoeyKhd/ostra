@@ -35,6 +35,7 @@ import type {
   RunChecksInput,
   SavedRepoWork,
   SaveWorkInProgressInput,
+  SetCoAuthorsInput,
   SnapshotBuildResult,
   StopInput,
   TaskTokenOwner,
@@ -259,6 +260,11 @@ export class DockerExecutor extends ExecutorAdapter {
   /** Milestone 3: the turn's work committed before its checks, as the host executor does it, on the task volume. */
   override commitWork(input: CommitWorkInput): Promise<AdapterResult<readonly CommittedRepoWork[]>> {
     return this.#inner.commitWork(input);
+  }
+
+  /** F-078: a mid-session message's co-authors, in each checkout's trailers file on the task volume, as the host executor writes it. */
+  override setCoAuthors(input: SetCoAuthorsInput): Promise<AdapterResult<void>> {
+    return this.#inner.setCoAuthors(input);
   }
 
   stop(input: StopInput): Promise<AdapterResult<void>> {

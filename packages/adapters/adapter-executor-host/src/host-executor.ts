@@ -50,6 +50,7 @@ import type {
   RunOneCheck,
   SavedRepoWork,
   SaveWorkInProgressInput,
+  SetCoAuthorsInput,
   StagedCommitPaths,
   StopInput,
   TaskProxies,
@@ -318,8 +319,16 @@ export const commitMessageWithTrailers = (message: string, coAuthors: readonly G
   return coAuthors.length === 0 ? `${body}\n` : `${body}\n\n${coAuthors.map(coAuthorTrailer).join("\n")}\n`;
 };
 
+/** The file in a checkout's git folder the hook below reads its trailers from, one per line. */
+const TRAILERS_FILE = "ostra-trailers";
+
+/** Writes a checkout's trailers file: the co-authors every commit made in it gets from now on (F-078). */
+const writeTrailers = (gitDir: string, coAuthors: readonly GitPerson[]): Promise<void> =>
+  writeFile(path.join(gitDir, TRAILERS_FILE), coAuthors.map((person) => `${coAuthorTrailer(person)}\n`).join(""));
+
 // Every commit in the task's repos gets the co-authors' trailers, the agent's own commits too
 // (F-078). The trailers come from a file, never from this script's text, so a name can't run code.
+// The file is rewritten when a member's message brings new co-authors mid-session (`setCoAuthors`).
 const PREPARE_COMMIT_MSG_HOOK = `#!/bin/sh
 # Written by ostra: adds the task's Co-authored-by trailers to every commit (F-078).
 trailers="$(git rev-parse --git-dir)/ostra-trailers"
@@ -792,6 +801,31 @@ export class HostExecutor extends ExecutorAdapter {
     return ok(results);
   }
 
+  /**
+   * F-078 (ADR 0040): a member's message brought new co-authors mid-session. Each checkout's
+   * trailers file, which the `prepare-commit-msg` hook reads at every commit, holds them from now
+   * on, and so does the box's spec, which a resumed session's checkouts are written from.
+   */
+  override async setCoAuthors(input: SetCoAuthorsInput): Promise<AdapterResult<void>> {
+    const record = this.#boxes.get(boxKey(input.box));
+    if (record === undefined || record.state === "released" || record.state === "failed") {
+      return adapterError("not-found", "the box isn't here");
+    }
+    if (record.state === "creating" || record.state === "preparing") {
+      return adapterError("conflict", "the box's checkouts aren't ready yet");
+    }
+    record.spec = { ...record.spec, coAuthors: [...input.coAuthors] };
+    try {
+      for (const repo of record.spec.repos) {
+        await writeTrailers(path.join(record.workspaceDir, repo.checkoutDir, ".git"), input.coAuthors);
+      }
+    } catch {
+      return adapterError("unavailable", "writing a checkout's trailers failed");
+    }
+    this.plumbing.logger.info("co-authors set", { taskId: record.ref.taskId, coAuthors: input.coAuthors.length });
+    return ok(undefined);
+  }
+
   async stop(input: StopInput): Promise<AdapterResult<void>> {
     const record = this.#boxes.get(boxKey(input.box));
     if (record === undefined) {
@@ -1104,7 +1138,7 @@ export class HostExecutor extends ExecutorAdapter {
             return adapterError("unavailable", `configuring the checkout failed (${key})`);
           }
         }
-        await writeFile(path.join(checkout, ".git", "ostra-trailers"), record.spec.coAuthors.map((person) => `${coAuthorTrailer(person)}\n`).join(""));
+        await writeTrailers(path.join(checkout, ".git"), record.spec.coAuthors);
         // Milestone 6 (F-100): a review task reopened for its next round moves to the round's heads.
         const reviewed = reviewRepoOf(record.spec, repo.repoId);
         if (reviewed !== null) {
@@ -1823,7 +1857,7 @@ export class HostExecutor extends ExecutorAdapter {
     await mkdir(path.dirname(hook), { recursive: true });
     await writeFile(hook, PREPARE_COMMIT_MSG_HOOK);
     await chmod(hook, 0o755);
-    await writeFile(path.join(gitDir, "ostra-trailers"), record.spec.coAuthors.map((person) => `${coAuthorTrailer(person)}\n`).join(""));
+    await writeTrailers(gitDir, record.spec.coAuthors);
     return ok(undefined);
   }
 

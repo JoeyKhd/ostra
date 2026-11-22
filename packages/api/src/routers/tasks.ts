@@ -13,6 +13,7 @@ import {
   checkProjectRepos,
   creditCoAuthorInTx,
   holdTurnInTx,
+  taskCoAuthorsInTx,
   sessionModelIdInTx,
   turnOriginOfIntent,
   createPromptTask,
@@ -982,6 +983,8 @@ export const tasksRouter = router({
           delivery: input.delivery,
           ...(input.intent === undefined ? {} : { intent: input.intent }),
           ...steerFileFields(bound),
+          // F-078 (minor 8): the task's co-authors, the sender credited above among them, for the box's commits from this message on.
+          coAuthors: await taskCoAuthorsInTx(tx, { organizationId, taskId: input.taskId }),
         },
         notAfter: now + runnerLimits.offerTimeoutMs,
         task: { taskId: input.taskId, projectId },

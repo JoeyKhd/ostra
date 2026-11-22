@@ -28,7 +28,8 @@ import type { TaskInput } from "../lifecycles/task.ts";
 import type { Ports } from "../ports.ts";
 import { reopenCarryOnText } from "../tickets/contracts.ts";
 import { checkBudget, holdTurnInTx, sessionModelIdInTx } from "./budgets.ts";
-import { creditCoAuthorInTx } from "./co-authors.ts";
+import { creditSenderInTx } from "./co-authors.ts";
+import type { CoAuthorCredit } from "./co-authors.ts";
 import type { UseCaseResult } from "./common.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
 import { freshBranchesInTx } from "./fresh-branch.ts";
@@ -169,10 +170,11 @@ export type ReopenTaskDeps = Pick<Ports, "jobs" | "notices" | "audit" | "clock">
   readonly keepDriver?: true | undefined;
   /**
    * F-078 (ADR 0040): the member is credited as a co-author of what follows, a `Co-authored-by`
-   * trailer on the task's next commits. `false`: the caller credits them itself (an `@ostra`
-   * comment) or no one (a reviewer's "changes requested", ADR 0040 amended). On unless `false`.
+   * trailer on the task's next commits: by their ostra email when left out, by the address given
+   * (an `@ostra` comment's commenter, by the link's no-reply one), or not at all with `false` (a
+   * reviewer's "changes requested", ADR 0040 amended). The new session's spec carries the list.
    */
-  readonly credit?: boolean | undefined;
+  readonly credit?: CoAuthorCredit;
   /** Milestone 9 (F-148): the message files' limits and which agents take images; the defaults when left out. */
   readonly files?: MessageFilesDeps | undefined;
   /** Milestone 9 (ticket 06): a ticket's files core fetched for the reopen's message (a follow-up's). */
@@ -368,9 +370,7 @@ export const reopenTask: ReopenTask = async (deps, input) => {
   // Milestone 5 (F-067): a reopen is a new place in the queue, taken when it's queued (`queueTask`).
   await tx.task.update({ where: { id: task.id }, data: { ...(deps.keepDriver === true ? {} : { driverMemberId: scope.memberId }), queuedAt: null } });
   // F-078 (ADR 0040): the member whose message reopened it is a co-author of what follows.
-  if (deps.credit !== false) {
-    await creditCoAuthorInTx(deps.jobs, tx, { organizationId: organization, projectId, taskId: task.id, memberId: scope.memberId });
-  }
+  await creditSenderInTx(deps.jobs, tx, deps.credit, { organizationId: organization, projectId, taskId: task.id, memberId: scope.memberId });
   // Milestone 6 (ADR 0041, F-101): a person reopened it, so the automatic turns count from nothing again.
   await recordPersonActionInTx(tx, task.id, new Date(now));
   await moveTaskInTx(moveDeps, task, reopenInput);

@@ -67,6 +67,12 @@ const credentialsFor = (h: Harness, spec: TaskSpec, tokens: Readonly<Record<stri
 
 const gitIn = async (cwd: string, ...args: readonly string[]): Promise<string> => (await run("git", [...args], { cwd, windowsHide: true })).stdout.trim();
 
+/** A member credited mid-session, by their link's no-reply address (F-119). */
+const JOINED = { name: "Sam Insider", email: "5522+sam-insider@users.noreply.github.com" } as const;
+
+/** A `Co-authored-by` trailer, as GitHub reads it. */
+const trailerOf = (person: { readonly name: string; readonly email: string }): string => `Co-authored-by: ${person.name} <${person.email}>`;
+
 const exists = async (target: string): Promise<boolean> => {
   try {
     await stat(target);
@@ -364,6 +370,64 @@ export const severalReposCases = (mode: SeveralReposMode) => {
           }
         }
       }
+    },
+
+    /**
+     * F-078 (ADR 0040): a member's message mid-session (a take-over's send, "Update branch", a
+     * Linear follow-up) carries the task's co-authors with its sender (the steer's `coAuthors`,
+     * minor 8). From the turn it starts, every commit in each repo carries them, the agent's own and
+     * ostra's, each trailer once; a later message with no list keeps them, and the turn before keeps
+     * the spec's.
+     */
+    coAuthorFromMessage: async (): Promise<void> => {
+      const h = await runner();
+      const spec = taskOn(h, fakeMarker("commit", "test1/before-1.txt test2/before-2.txt"));
+      h.dispatch(spec);
+      await waitFor(h, spec, "session.saved");
+      const credited = [...spec.coAuthors, JOINED];
+      // Turn 2: the member's message; the agent commits its own work.
+      h.command("steer", { sessionId: spec.sessionId, clientMessageId: "message-credited", text: fakeMarker("commit", "test1/after-1.txt test2/after-2.txt"), delivery: "queue", intent: "message", coAuthors: credited });
+      await waitFor(h, spec, "session.saved", 2);
+      // Turn 3: a message with no list (an automatic round's) leaves its work for ostra to commit.
+      h.steer(spec, fakeMarker("write", "test1/left-1.txt test2/left-2.txt"));
+      await waitFor(h, spec, "session.saved", 3);
+      const branch = `refs/heads/${spec.branchName}`;
+      for (const fullName of ["ostra-test/test1", "ostra-test/test2"]) {
+        expect(await upstream().treeFiles(fullName, branch)).toEqual(expect.arrayContaining([expect.stringMatching(/^left-/)]));
+        // The tip is ostra's commit of turn 3; under it the agent's own of turn 2, then of turn 1.
+        expect(await upstream().commitMessage(fullName, `${branch}~1`)).toContain("The fake agent's own commit");
+        expect(await upstream().commitMessage(fullName, `${branch}~2`)).toContain("The fake agent's own commit");
+        for (const ref of [branch, `${branch}~1`]) {
+          const message = (await upstream().commitMessage(fullName, ref)) ?? "";
+          for (const person of credited) {
+            expect(message.split(trailerOf(person)), `${fullName} ${ref}: ${trailerOf(person)}`).toHaveLength(2);
+          }
+        }
+        const before = (await upstream().commitMessage(fullName, `${branch}~2`)) ?? "";
+        for (const person of spec.coAuthors) {
+          expect(before).toContain(trailerOf(person));
+        }
+        expect(before).not.toContain(trailerOf(JOINED));
+      }
+    },
+
+    /** F-078: a message steered into a running turn credits its sender on that turn's commits, ostra's of what the turn left. */
+    coAuthorMidTurn: async (): Promise<void> => {
+      const h = await runner();
+      const spec = taskOn(h, fakeMarker("steerable"), ["test1"]);
+      h.dispatch(spec);
+      await h.gateway.waitFor(() => h.ofKind(spec, "agent.message").some((event) => event.text.includes("open to a steer")), 120_000);
+      // The turn's work so far, which the agent leaves for ostra to commit.
+      await writeFile(path.join(workspaceOf(h, spec), "test1", "steered.txt"), "the turn's work\n");
+      const credited = [...spec.coAuthors, JOINED];
+      const sent = h.command("steer", { sessionId: spec.sessionId, clientMessageId: "message-mid-turn", text: "use the second approach", delivery: "queue", intent: "message", coAuthors: credited });
+      expect(await h.waitForAck(sent)).toMatchObject({ result: "done" });
+      await waitFor(h, spec, "session.saved");
+      const message = (await upstream().commitMessage("ostra-test/test1", `refs/heads/${spec.branchName}`)) ?? "";
+      for (const person of credited) {
+        expect(message.split(trailerOf(person)), trailerOf(person)).toHaveLength(2);
+      }
+      expect(h.ofKind(spec, "turn.started")).toHaveLength(1);
     },
 
     /** Each repo is cloned with its own token: a token the code host refuses for test2 fails test2's clone, by name. */

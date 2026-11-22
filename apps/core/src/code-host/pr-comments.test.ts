@@ -339,6 +339,27 @@ describe("@ostra on the PR (F-053)", () => {
     expect(reactionsOn(made.commentId)).toBe(1);
   });
 
+  it("F-078/c2, F-119/c3: a comment into a running session credits its writer with the steer, by the link's no-reply address, so the box's next commits carry them; a second comment adds no one", async () => {
+    const task = await taskWithPr(world, fixture.a.member, runner, "credit-1");
+    await test.db.task.update({ where: { id: task.taskId }, data: { state: "running", subState: null } });
+    await test.db.session.update({ where: { id: task.sessionId }, data: { state: "running" } });
+    const noReply = (account: { readonly id: number; readonly login: string }): string => `${String(account.id)}+${account.login}@users.noreply.github.com`;
+    const nameOf = async (member: SeededMember): Promise<string> => (await test.db.user.findUniqueOrThrow({ where: { id: member.userId } })).name;
+    const creator = await test.db.taskCoAuthor.findFirstOrThrow({ where: { taskId: task.taskId, memberId: fixture.a.member.id } });
+    // The member who started it, and the insider who comments: each by their link's address.
+    const credited = [
+      { name: creator.name, email: noReply(GITHUB.member) },
+      { name: await nameOf(fixture.a.insider), email: noReply(GITHUB.insider) },
+    ];
+    await deliver({ of: world, number: task.number, body: "@ostra also run the linter", author: GITHUB.insider });
+    const steerOf = async () => (await test.db.command.findMany({ where: { taskId: task.taskId, kind: "steer" }, orderBy: { seq: "asc" } })).at(-1)?.body;
+    expect(await steerOf()).toMatchObject({ intent: "pr-comment", coAuthors: credited });
+    expect(await test.db.taskCoAuthor.count({ where: { taskId: task.taskId, memberId: fixture.a.insider.id } })).toBe(1);
+    await deliver({ of: world, number: task.number, body: "@ostra and the formatter", author: GITHUB.insider });
+    expect(await steerOf()).toMatchObject({ intent: "pr-comment", coAuthors: credited });
+    expect(await test.db.taskCoAuthor.count({ where: { taskId: task.taskId, memberId: fixture.a.insider.id } })).toBe(1);
+  });
+
   it("F-053/c1: a comment while the reopened task waits for its runner is retried, then waits for the turn's end", async () => {
     const task = await taskWithPr(world, fixture.a.member, runner, "waiting-1");
     // The first comment reopens the task: it's queued, its new session not started yet.

@@ -225,6 +225,13 @@ export type CommitAndPushInput = {
 /** Milestone 3 (F-054): what a turn left, committed before its checks run, with no push. */
 export type CommitWorkInput = Pick<CommitAndPushInput, "box" | "message" | "author" | "coAuthors">;
 
+/**
+ * F-078 (ADR 0040): the co-authors a member's message brought mid-session (the steer's
+ * `coAuthors`, minor 8). Every commit made in the box's checkouts from now on carries their
+ * trailers, the agent's own included, until the next list. Names and addresses are never logged.
+ */
+export type SetCoAuthorsInput = Pick<CommitAndPushInput, "box" | "coAuthors">;
+
 /** One repo after `commitWork`. */
 export type CommittedRepoWork = {
   readonly repoId: RepoId;
@@ -400,6 +407,17 @@ export abstract class ExecutorAdapter {
   commitWork(input: CommitWorkInput): Promise<AdapterResult<readonly CommittedRepoWork[]>> {
     this.plumbing.logger.debug("commitWork is not supported", { taskId: input.box.taskId });
     return Promise.resolve(adapterError("unsupported", `${this.name} can't commit without a push yet`));
+  }
+
+  /**
+   * F-078 (ADR 0040): a prepared box's commits carry these co-authors' trailers from now on, the
+   * agent's own commits too, as the spec's did since `prepare`. `not-found` when the box isn't
+   * here. Additive: `unsupported` until an executor has it; the runner's own commits carry the
+   * list either way (`commitWork`, `commitAndPush`).
+   */
+  setCoAuthors(input: SetCoAuthorsInput): Promise<AdapterResult<void>> {
+    this.plumbing.logger.debug("setCoAuthors is not supported", { taskId: input.box.taskId, coAuthors: input.coAuthors.length });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't change a box's co-authors yet`));
   }
 
   /** Ends the agent and every process of the task (`stopped`). The workspace stays. */

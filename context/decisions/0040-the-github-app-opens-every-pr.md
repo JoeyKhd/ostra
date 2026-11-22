@@ -4,7 +4,7 @@
 
 The organization's GitHub App opens every PR and authors every commit.
 
-- **Credit.** Each member whose prompt led to a commit gets a `Co-authored-by` trailer (Q41). The agent may commit, and after every turn the box commits what's left and pushes the task's branches through the git proxy (ADR 0030).
+- **Credit.** Each member whose prompt led to a commit gets a `Co-authored-by` trailer (Q41). The agent may commit, and after every turn the box commits what's left and pushes the task's branches through the git proxy (ADR 0030). *Note 2026-11-22 (F-078): a member credited while a session is going (a take-over's send, a panel action, an `@ostra` comment, a Linear follow-up) is on that box's next commits, not only on the next dispatch's. The steer carries the task's co-authors (protocol minor 8), and the runner rewrites each checkout's trailers as the message reaches the agent, so the agent's own commits carry them as ostra's do.*
 - **One PR per changed repo** (ADR 0027).
 - **A verified GitHub link.** Each member links their GitHub account once, through the App's own OAuth (F-119). It proves the identity and keeps no token. It serves three things: co-author credit, `@ostra` comments (F-053) and reviewers (ADR 0028).
 - **The `ostra/independent-review` check.** ostra publishes it on each PR. It passes when someone who didn't drive the task approves. An organization can make it required in branch protection (F-104).

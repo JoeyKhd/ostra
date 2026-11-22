@@ -57,8 +57,9 @@ export const PROTOCOL_MAJOR = 1;
  * task with app processes or the app tools (`isTaskOfferable`), and no view of its tasks opens
  * (`isPreviewable`), so the pane says the runner needs upgrading. A minor-5 peer is outside the window.
  * Milestone 9 ships minor 8 (ADR 0070): files for the agent. The spec's `files`, `promptFiles`, each
- * pending message's files and `agent.inputModalities`; the steer's `files` and `images`; the
- * runner's `files.written`; a `user.message`'s files, `filesLeftOut` and `imagesNotSent`; the
+ * pending message's files and `agent.inputModalities`; the steer's `files` and `images`, and its
+ * `coAuthors` (F-078, added 2026-11-22 before minor 8's release: a member credited mid-session is on
+ * the box's next commits, not only on the next dispatch's); the runner's `files.written`; a `user.message`'s files, `filesLeftOut` and `imagesNotSent`; the
  * server's `ticket.context_read`; and the intent `ticket-update`. A minor-7 peer still works inside
  * the window: it's never offered a task with files (`isTaskOfferable`'s `message-files`), never sent
  * a steer with files (`canSendFiles`; its codec refuses to encode one), and never sent any new

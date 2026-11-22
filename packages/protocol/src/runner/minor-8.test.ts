@@ -395,6 +395,30 @@ describe("minor 8's commands and spec", () => {
     expect(commandSchema.parse(roundTrip(older))).toEqual(older);
   });
 
+  it("F-078/c2: a steer carries the task's co-authors at minor 8, on both carriers, and refuses a person who could forge a trailer", () => {
+    const credited = minor8CommandFixtures["steer, with co-authors"];
+    expect(parseDownFrame(encodeDownFrame(credited, 8), 8)).toEqual({ ok: true, frame: credited });
+    expect(httpDownFrameCodec.parse(httpDownFrameCodec.encode(credited, 8), 8)).toEqual({ ok: true, frame: credited });
+    const body = credited.body;
+    // A name or address with a line break or angle brackets would write a trailer of its own.
+    expect(steerBodySchema.safeParse({ ...body, coAuthors: [{ name: "Eve\nCo-authored-by: Mallory <m@example.com>", email: "eve@example.com" }] }).success).toBe(false);
+    expect(steerBodySchema.safeParse({ ...body, coAuthors: [{ name: "Eve", email: "eve@example.com> <m@example.com" }] }).success).toBe(false);
+    expect(steerBodySchema.safeParse({ ...body, coAuthors: [{ name: "Eve", email: "eve@example.com", role: "admin" }] }).success).toBe(false);
+    // An empty list is a list: no trailer from here on.
+    expect(steerBodySchema.safeParse({ ...body, coAuthors: [] }).success).toBe(true);
+    // A minor-7 peer's codec would refuse them: they're dropped, and the message goes as it was.
+    const credited7 = encodeCommandForMinor(credited, 7);
+    expect(credited7.kind === "steer" && "coAuthors" in credited7.body).toBe(false);
+    expect(credited7.kind === "steer" && credited7.body.text).toBe(body.text);
+    expect(parseDownFrame(encodeDownFrame(credited, 7), 7).ok).toBe(true);
+    expect(httpDownFrameCodec.parse(httpDownFrameCodec.encode(credited, 7), 7).ok).toBe(true);
+    expect(parseDownFrame(JSON.stringify(credited), 7).ok).toBe(false);
+    for (const minor of [1, 2, 4, 5]) {
+      const older = encodeCommandForMinor(credited, minor);
+      expect(older.kind === "steer" && "coAuthors" in older.body, String(minor)).toBe(false);
+    }
+  });
+
   it("F-148/c6: a spec's files round-trip, every prompt's file is one of them, and they stay within their limits", () => {
     expect(taskSpecSchema.parse(roundTrip(taskSpecFilesFixture))).toEqual(taskSpecFilesFixture);
     // A prompt's or a pending message's file that isn't in `files`.

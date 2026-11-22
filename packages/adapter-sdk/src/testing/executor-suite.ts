@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { boxIdSchema, checkIdSchema, projectIdSchema, reservedPortNames, runnerLimits, snapshotIdSchema, taskIdSchema } from "@ostra/protocol";
-import type { ReservedPorts, TaskSpec, TaskSpecCheck } from "@ostra/protocol";
+import type { GitPerson, ReservedPorts, TaskSpec, TaskSpecCheck } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
 import type { AgentLaunch } from "../agent/base.ts";
@@ -130,6 +130,10 @@ export type WorkspaceFiles = {
   readonly stage: (file: string) => Promise<void>;
   /** `git status --porcelain` lines, `XY path`. */
   readonly status: () => Promise<readonly string[]>;
+  /** `git commit` of what's staged, as the agent's own git would make it: the checkout's hooks run. */
+  readonly commit: (message: string) => Promise<void>;
+  /** The message of the checkout's head commit, trailers included. */
+  readonly headMessage: () => Promise<string>;
 };
 
 /** A checkout on this machine, as the suite's `workInProgress.checkout` reads it (`host`, and a box's task volume in tests). */
@@ -164,6 +168,11 @@ export const localWorkspaceFiles = (checkout: string): WorkspaceFiles => {
       await git(["add", "--", file]);
     },
     status: async () => (await git(["status", "--porcelain=v1", "--untracked-files=all"])).split(/\r?\n/).filter((line) => line !== ""),
+    // The agent's commits skip its checks (`--no-verify`), and `prepare-commit-msg` still runs.
+    commit: async (message) => {
+      await git(["-c", "user.name=Agent", "-c", "user.email=agent@example.com", "commit", "--quiet", "--no-verify", "-m", message]);
+    },
+    headMessage: () => git(["log", "-1", "--format=%B"]),
   };
 };
 
@@ -520,6 +529,48 @@ export const defineExecutorContractSuite = (options: ContractSuiteOptions<Execut
           if (!pushed.ok) throw new Error(`commitAndPush: ${pushed.error.message}`);
           expect(pushed.value[0]).toMatchObject({ ahead: true, headSha: changed.value[0]?.headSha });
           expect(await files.status()).toEqual(["?? check-output.log"]);
+        } finally {
+          await adapter.release(box, "requested");
+        }
+      }, context);
+    }, CASE_TIMEOUT_MS);
+
+    it("F-078/c2: co-authors a message brings mid-session are on every later commit in the box, the agent's own and ostra's, once each; the commits before keep theirs", async (context) => {
+      await wipCase(async () => {
+        const { adapter, fixture } = subject();
+        const wip = fixture.workInProgress;
+        if (wip === undefined) return;
+        const { box, created } = await createAndPrepare(fixture.spec);
+        const files = wip.checkout(created);
+        const trailer = (person: GitPerson): string => `Co-authored-by: ${person.name} <${person.email}>`;
+        const before = fixture.spec.coAuthors;
+        const joined: GitPerson = { name: "Sam Insider", email: "5522+sam-insider@users.noreply.github.com" };
+        const after = [...before, joined];
+        expect(before.length).toBeGreaterThan(0);
+        try {
+          // The agent's own commit before the message: the spec's co-authors only.
+          await files.write("before.txt", "before the message");
+          await files.stage("before.txt");
+          await files.commit("before the message");
+          const first = await files.headMessage();
+          for (const person of before) expect(first).toContain(trailer(person));
+          expect(first).not.toContain(trailer(joined));
+          // A member's message brings a co-author: the agent's next commit carries every one.
+          expect(await adapter.setCoAuthors({ box, coAuthors: after })).toEqual({ ok: true, value: undefined });
+          await files.write("after.txt", "after the message");
+          await files.stage("after.txt");
+          await files.commit("after the message");
+          const second = await files.headMessage();
+          for (const person of after) expect(second).toContain(trailer(person));
+          // ostra's own commit of what the agent left, with the same list: each trailer once.
+          await files.write("left.txt", "left uncommitted");
+          const committed = await adapter.commitWork({ box, message: "what the turn left", author: fixture.spec.gitIdentity, coAuthors: after });
+          if (!committed.ok) throw new Error(`commitWork: ${committed.error.message}`);
+          const third = await files.headMessage();
+          for (const person of after) expect(third.split(trailer(person)), trailer(person)).toHaveLength(2);
+          // A box that's gone takes no list.
+          await adapter.release(box, "requested");
+          expect((await adapter.setCoAuthors({ box, coAuthors: before })).ok).toBe(false);
         } finally {
           await adapter.release(box, "requested");
         }

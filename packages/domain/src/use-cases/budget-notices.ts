@@ -28,6 +28,7 @@ import { EMAIL_DELAY_SECONDS_DEFAULT, emailDueAt } from "../notifications/choice
 import type { NotificationChannel } from "../notifications/choices.ts";
 import type { Ports } from "../ports.ts";
 import { BUDGET_WARN_PERCENT_DEFAULT, budgetsForProjectInTx, checkBudget, monthSpendInTx, sessionModelIdInTx } from "./budgets.ts";
+import { taskCoAuthorsInTx } from "./co-authors.ts";
 import type { M4Deps, SetBudget } from "./m4-signatures.ts";
 import { planAnswerCommandInTx } from "./plans-questions.ts";
 import { appendServerEvent } from "./server-events.ts";
@@ -412,6 +413,8 @@ export const releaseHeldTurnsInTx = async (
               // Milestone 6: a round's message is an automatic turn, whatever released it.
               ...(message.data.intent === "fix-ci" || message.data.intent === "fix-findings" ? { automatic: true } : {}),
               ...(files.files.length === 0 ? {} : { files: [...files.files], images: [...files.images] }),
+              // F-078 (minor 8): the held message's sender was credited when it was sent; the box's commits from it on carry them.
+              coAuthors: await taskCoAuthorsInTx(tx, { organizationId: input.organizationId, taskId: taskIdSchema.parse(task.id) }),
             },
             notAfter: now + runnerLimits.offerTimeoutMs,
             task: { taskId: task.id, projectId },

@@ -5,7 +5,7 @@ import type { OrganizationId, ProjectId } from "@ostra/protocol";
 import { requireProjectAccess } from "../access.ts";
 import type { MemberScope, ProjectRole } from "../access.ts";
 import { prCommentPrompt } from "../prompts/index.ts";
-import { enqueueReviewEvaluationsInTx } from "../review/review-check.ts";
+import { githubNoReplyAddress } from "./github-link.ts";
 import type { M3Deps, AcceptPrComment } from "./m3-signatures.ts";
 import { sendMemberMessageInTx } from "./member-message.ts";
 import type { SendMemberMessageDeps } from "./member-message.ts";
@@ -57,8 +57,8 @@ export type AcceptPrCommentInput = Parameters<AcceptPrComment>[1] & {
 export type AcceptPrCommentExtras = Pick<SendMemberMessageDeps, "spendCap" | "timers"> & { readonly logger?: Logger };
 
 /** The member scope of a linked GitHub user in the task's organization, or `null`. */
-const linkedMemberScope = async (deps: Pick<M3Deps, "db">, organizationId: OrganizationId, githubUserId: string): Promise<{ readonly scope: MemberScope; readonly name: string } | null> => {
-  const user = await deps.db.user.findFirst({ where: { githubUserId }, select: { id: true, name: true } });
+const linkedMemberScope = async (deps: Pick<M3Deps, "db">, organizationId: OrganizationId, githubUserId: string): Promise<{ readonly scope: MemberScope } | null> => {
+  const user = await deps.db.user.findFirst({ where: { githubUserId }, select: { id: true } });
   if (user === null) {
     return null;
   }
@@ -70,7 +70,7 @@ const linkedMemberScope = async (deps: Pick<M3Deps, "db">, organizationId: Organ
   const memberId = memberIdSchema.parse(member.id);
   const listed = await deps.db.projectMember.findMany({ where: { organizationId, memberId }, select: { projectId: true, role: true } });
   const projectRoles = new Map<ProjectId, ProjectRole>(listed.map((row) => [projectIdSchema.parse(row.projectId), row.role] as const));
-  return { scope: { organizationId, memberId, role: member.role === "admin" ? "admin" : "member", projectRoles }, name: user.name };
+  return { scope: { organizationId, memberId, role: member.role === "admin" ? "admin" : "member", projectRoles } };
 };
 
 /** `acceptPrComment`, with the server's spend cap and session timers for a reopen. */
@@ -118,8 +118,10 @@ export const acceptPrCommentWith = async (deps: M3Deps, extras: AcceptPrCommentE
         text: prCommentPrompt({ login: input.commenterLogin, text: input.text, url: input.url, path: input.path, line: input.line }),
         intent: "pr-comment",
         sender: "anyone",
-        // Credited below, by the link's no-reply address (ADR 0052).
-        credit: false,
+        // The member is a co-author of what follows (ADR 0040), by the link's no-reply address (ADR
+        // 0052), credited with the message, so a steer into a going session carries them (F-078). A
+        // new co-author is a new driver, whose approval no longer counts as independent (F-104).
+        credit: { email: githubNoReplyAddress(input.commenterGithubUserId, input.commenterLogin) },
       });
       if (!sent.ok) {
         // A comment carries no file, so it never meets a runner too old for one.
@@ -143,24 +145,6 @@ export const acceptPrCommentWith = async (deps: M3Deps, extras: AcceptPrCommentE
           line: input.line !== null && input.line > 0 ? input.line : null,
         },
       });
-      // The member is a co-author of what follows (ADR 0040), by the link's no-reply address (ADR 0052).
-      const credited = await tx.taskCoAuthor.count({ where: { taskId, memberId: linked.scope.memberId } });
-      await tx.taskCoAuthor.upsert({
-        where: { taskId_email: { taskId, email: `${input.commenterGithubUserId}+${input.commenterLogin}@users.noreply.github.com` } },
-        create: {
-          organizationId,
-          projectId,
-          taskId,
-          memberId: linked.scope.memberId,
-          name: linked.name,
-          email: `${input.commenterGithubUserId}+${input.commenterLogin}@users.noreply.github.com`,
-        },
-        update: {},
-      });
-      if (credited === 0) {
-        // Milestone 4 (F-104): a new driver's approval no longer counts as independent.
-        await enqueueReviewEvaluationsInTx(deps.jobs, tx, { organizationId, taskId });
-      }
       await deps.audit.recordInTx(tx, {
         organizationId,
         projectId,

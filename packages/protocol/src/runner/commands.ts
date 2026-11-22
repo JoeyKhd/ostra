@@ -43,6 +43,7 @@ import {
 import { messageBoxFilesSchema } from "../task/files.ts";
 import {
   checkoutDirSchema,
+  gitPersonSchema,
   repoRelativePathSchema,
   taskSpecFileSchema,
   taskSpecVariableSchema,
@@ -226,6 +227,12 @@ export const steerBodySchemaV7 = steerBodySchemaV1.extend({
  * the message goes to the agent, and the IDs of those that go as images. A message with files may
  * have no text. Missing `files` and `images` mean none. A minor-7 peer is never sent a steer with
  * files (`canSendFiles`): its codec refuses to encode one. Names and text are never logged.
+ *
+ * `coAuthors` (F-078, ADR 0040; added to minor 8 on 2026-11-22, before its release): the task's
+ * co-authors as they are once this message's sender is credited, every one, in the spec's order. The
+ * runner puts them on every commit from the moment the message reaches the agent, the agent's own
+ * and its own, until the next list. Missing means unchanged. A minor-7 peer's codec drops it, so
+ * there a member credited mid-session gets their trailer from the task's next dispatch.
  */
 export const steerBodySchema = steerBodySchemaV1
   .extend({
@@ -239,6 +246,8 @@ export const steerBodySchema = steerBodySchemaV1
     files: messageBoxFilesSchema.optional(),
     /** Minor 8: the IDs of the message's files that go to the agent as images too. */
     images: z.array(messageFileIdSchema).max(runnerLimits.promptImagesMax).optional(),
+    /** Minor 8 (F-078): the task's `Co-authored-by` trailers from this message on, as the spec's `coAuthors`. Never logged. */
+    coAuthors: z.array(gitPersonSchema).optional(),
   })
   .refine((body) => body.text.length > 0 || (body.files?.length ?? 0) > 0, "a message has text or files")
   .refine((body) => new Set(body.images ?? []).size === (body.images ?? []).length, "each image once")
@@ -690,9 +699,10 @@ export const commandSchemaV0 = z.discriminatedUnion("kind", [...sharedCommandOpt
 export const canSendFiles = (peerMinor: number): boolean => peerMinor >= 8;
 
 /**
- * A steer as a minor-7 peer reads it: without `files` and `images`, and a `ticket-update` intent
- * read as `message`. A steer that carries files is refused: core never sends one below minor 8
- * (`canSendFiles`), and dropping them would lose the member's files without a word.
+ * A steer as a minor-7 peer reads it: without `files`, `images` and `coAuthors`, and a
+ * `ticket-update` intent read as `message`. A steer that carries files is refused: core never sends
+ * one below minor 8 (`canSendFiles`), and dropping them would lose the member's files without a
+ * word. The co-authors are dropped: that runner's commits carry the spec's until the next dispatch.
  */
 const steerForMinor7 = (body: CommandOf<"steer">["body"]): CommandOf<"steer">["body"] => {
   if ((body.files?.length ?? 0) > 0) {
@@ -701,6 +711,7 @@ const steerForMinor7 = (body: CommandOf<"steer">["body"]): CommandOf<"steer">["b
   const minor7 = { ...body };
   Reflect.deleteProperty(minor7, "files");
   Reflect.deleteProperty(minor7, "images");
+  Reflect.deleteProperty(minor7, "coAuthors");
   if (minor7.intent !== undefined && !messageIntentSupportedAt(minor7.intent, 7)) {
     Reflect.deleteProperty(minor7, "intent");
   }
@@ -709,7 +720,7 @@ const steerForMinor7 = (body: CommandOf<"steer">["body"]): CommandOf<"steer">["b
 
 /**
  * A command as a peer at `minor` reads it: below minor 8, `steer` loses its files (one that carries
- * any is refused) and `ticket-update`; below minor 7, `dispatch` loses its purpose; below
+ * any is refused), its co-authors and `ticket-update`; below minor 7, `dispatch` loses its purpose; below
  * minor 5, `dispatch` and `steer` lose
  * `automatic`, and a steer's intent of milestone 6's is dropped (it reads as `message`); below
  * minor 4, `dispatch` loses `box` and

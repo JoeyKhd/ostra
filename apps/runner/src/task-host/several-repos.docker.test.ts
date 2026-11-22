@@ -21,6 +21,8 @@ describe("several repos on docker", () => {
   it("F-098/c2: on docker, the git proxy refuses a push to another task's branch in either repo, and takes the task's own", cases.proxyRefusesOtherBranch, 240_000);
   it("F-098/c1: on docker, each repo is cloned with its own git token", cases.ownTokenPerRepo, 240_000);
   it("F-136/c10: on docker, repos of two Apps are each committed by their own bot, the agent's commits and ostra's, with the member's trailer", cases.ownIdentityPerRepo, 240_000);
+  it("F-078/c2: on docker, a member's message mid-session puts their trailer on every later commit in each repo, the agent's own and ostra's, once each", cases.coAuthorFromMessage, 240_000);
+  it("F-078/c2: on docker, a message steered into a running turn credits its sender on that turn's commit", cases.coAuthorMidTurn, 240_000);
   it("F-098/c1: on docker, each task's workspace holds its own repos and nothing of another task's", cases.containment, 240_000);
   it("F-098/c1: on docker, instructions that name other folders than the spec's repos crash the session before anything is cloned", cases.foldersMustMatch, 240_000);
 });

@@ -91,7 +91,7 @@ Settings, each with its default and its line in `docs/configuration.md`:
 ## The protocol: minor 8 (decided by the lead, Q340)
 
 - **The spec** gains `files`: every file of the task's messages, each with its blob, size, SHA-256, kind, place under `.ostra/`, and its text's blob and place. The runner writes them before the agent starts. It also gains `promptFiles`: the first prompt's file IDs, and which go in as images. A pending message (F-047) gains its own.
-- **`steer`** gains the message's files and which go in as images.
+- **`steer`** gains the message's files and which go in as images. *Note 2026-11-22 (F-078, ADR 0040): it also gains `coAuthors`, the task's co-authors once the message's sender is credited, so the running box's next commits credit them; a minor-7 runner's codec drops it, and that runner's commits carry the spec's list until the next dispatch.*
 - **The runner's `files.written`** names what it wrote and what it skipped, and why.
 - **The `user.message` event** gains its files, as the thread shows them, and what was left out. A server-only `ticket.context_read` records what the agent got of the ticket, each time ostra reads it for the task.
 - **The agent section** gains the model's input modalities, for the agent's config.

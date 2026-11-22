@@ -333,6 +333,21 @@ describe("budget.release (F-037)", () => {
     expect((await steersInOrder()).slice(steersBefore.length)).toHaveLength(3);
   });
 
+  it("F-078/c2: a held message credits its sender when it's sent, and the steer its release sends carries them to the running box", async () => {
+    const budgetId = await seedBudget(projectId, 1);
+    const task = await idleTask();
+    // Without the start's row the sender is new to the task, as a member who took over is.
+    await test.db.taskCoAuthor.deleteMany({ where: { taskId: task.taskId } });
+    await seedSpend(2_000_000n);
+    expect(await message(task.taskId, "held for later")).toMatchObject({ ok: true, held: true });
+    expect(await test.db.taskCoAuthor.count({ where: { taskId: task.taskId, memberId: fixture.a.member.id } })).toBe(1);
+    expect(await setBudget(m4Deps(), adminScope, { projectId, monthlyMicroUsd: 5_000_000n })).toMatchObject({ ok: true, budgetId });
+    await release(budgetId);
+    const released = await test.db.command.findFirstOrThrow({ where: { taskId: task.taskId, kind: "steer" }, orderBy: { seq: "desc" } });
+    const user = await test.db.user.findUniqueOrThrow({ where: { id: fixture.a.member.userId }, select: { name: true, email: true } });
+    expect(released.body).toMatchObject({ text: "held for later", coAuthors: [user] });
+  });
+
   it("F-037/c4: a raise that's still below the spend releases nothing", async () => {
     const budgetId = await seedBudget(projectId, 1);
     const task = await idleTask();

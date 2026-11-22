@@ -14,7 +14,8 @@ import type { MessageFilesDeps, MessageFilesToBind, TicketFilesToBind } from "..
 import type { MemberScope } from "../access.ts";
 import type { Ports } from "../ports.ts";
 import { checkBudget, holdTurnInTx, sessionModelIdInTx, turnOriginOfIntent } from "./budgets.ts";
-import { creditCoAuthorInTx } from "./co-authors.ts";
+import { creditSenderInTx, taskCoAuthorsInTx } from "./co-authors.ts";
+import type { CoAuthorCredit } from "./co-authors.ts";
 import type { UseCaseResult } from "./common.ts";
 import { moveTaskInTx } from "./moves.ts";
 import { answerNextTurnItemsInTx } from "./needs-you-items.ts";
@@ -35,7 +36,9 @@ import type { SpendCapSettings } from "./spend.ts";
 // Who may send to a session that's going: the driver, for the panel's actions (anyone else is told
 // "Take over to send", ADR 0036). An `@ostra` comment is queued whoever drives (`anyone`), and the
 // member who wrote it is credited for what follows. So is every message's sender (F-078, ADR 0040):
-// a `Co-authored-by` trailer on the task's next commits, unless the caller says `credit: false`.
+// a `Co-authored-by` trailer on the task's next commits, unless the caller says `credit: false`. A
+// steer carries the task's co-authors with the sender's credit (minor 8), so the box's commits from
+// that message on credit them; a reopen's do through the new session's spec.
 
 export type SendMemberMessageDeps = Pick<Ports, "jobs" | "outbox" | "notices" | "audit" | "clock"> & {
   readonly spendCap?: SpendCapSettings | undefined;
@@ -59,11 +62,12 @@ export type SendMemberMessageInput = {
    */
   readonly keepDriver?: true;
   /**
-   * F-078 (ADR 0040): missing, the sender is a co-author of what follows (`creditCoAuthorInTx`).
-   * `false`: an `@ostra` comment, whose caller credits the commenter by the link's no-reply
-   * address, and a reviewer's "changes requested", which credits no one (ADR 0040, amended).
+   * F-078 (ADR 0040): missing, the sender is a co-author of what follows by their ostra email
+   * (`creditCoAuthorInTx`). `{ email }`: by that address, an `@ostra` comment's commenter by the
+   * link's no-reply one (ADR 0052). `false`: a reviewer's "changes requested", which credits no one
+   * (ADR 0040, amended).
    */
-  readonly credit?: false;
+  readonly credit?: Exclude<CoAuthorCredit, undefined>;
   /** Milestone 9 (F-148): the sender's uploads that go with the message, in their order. */
   readonly fileIds?: readonly MessageFileId[];
   /**
@@ -132,9 +136,7 @@ const turnOnAppLeaseInTx = async (
   const sessionId = sessionIdSchema.parse(session.id);
   const message = { kind: "user.message", memberId: scope.memberId, clientMessageId: input.clientMessageId, text, delivery: "queued", intent: input.intent } as const;
   // F-078 (ADR 0040): the message starts a turn now or at the budget's release: its sender is a co-author.
-  if (input.credit !== false) {
-    await creditCoAuthorInTx(deps.jobs, tx, { organizationId, projectId, taskId: task.id, memberId: scope.memberId });
-  }
+  await creditSenderInTx(deps.jobs, tx, input.credit, { organizationId, projectId, taskId: task.id, memberId: scope.memberId });
   const gate = await checkBudget(tx, {
     organizationId,
     projectId,
@@ -173,7 +175,8 @@ const turnOnAppLeaseInTx = async (
   const { seq, bound } = await appendMemberMessageInTx(tx, { organizationId, projectId, taskId: task.id, sessionId, at: now }, message, files);
   await deps.outbox.enqueueInTx(tx, organizationId, lease.runnerId, {
     kind: "steer",
-    body: { sessionId, clientMessageId: input.clientMessageId, text, delivery: "queue", intent: input.intent, ...steerFileFields(bound) },
+    // F-078 (minor 8): the task's co-authors, the sender among them, for the box's commits from this message on.
+    body: { sessionId, clientMessageId: input.clientMessageId, text, delivery: "queue", intent: input.intent, ...steerFileFields(bound), coAuthors: await taskCoAuthorsInTx(tx, { organizationId, taskId: task.id }) },
     notAfter: now + runnerLimits.offerTimeoutMs,
     task: { taskId: task.id, projectId },
   });
@@ -273,7 +276,7 @@ export const sendMemberMessageInTx = async (
         timers: deps.timers,
         origin: origin === "message" ? "reopen" : origin,
         ...(input.keepDriver === true ? { keepDriver: true as const } : {}),
-        ...(input.credit === false ? { credit: false } : {}),
+        ...(input.credit === undefined ? {} : { credit: input.credit }),
         ...(deps.files === undefined ? {} : { files: deps.files }),
         // Milestone 9 (ticket 12): a follow-up's files go with the message that reopens the task.
         ...(input.ticketFiles === undefined ? {} : { ticketFiles: input.ticketFiles }),
@@ -292,9 +295,7 @@ export const sendMemberMessageInTx = async (
   const projectId = projectIdSchema.parse(task.projectId);
   const sessionId = sessionIdSchema.parse(session.id);
   // F-078 (ADR 0040): the message is sent, steered, held or restarted below: its sender is a co-author.
-  if (input.credit !== false) {
-    await creditCoAuthorInTx(deps.jobs, tx, { organizationId: organizationIdSchema.parse(organizationId), projectId, taskId: task.id, memberId: scope.memberId });
-  }
+  await creditSenderInTx(deps.jobs, tx, input.credit, { organizationId: organizationIdSchema.parse(organizationId), projectId, taskId: task.id, memberId: scope.memberId });
   // Milestone 4 (F-037, ADR 0055): a message to an idle session starts a turn, so it passes the
   // budget gate first. A session with a turn going takes it into that turn, gate or not.
   if (session.state === "idle") {
@@ -337,7 +338,16 @@ export const sendMemberMessageInTx = async (
   );
   await deps.outbox.enqueueInTx(tx, organizationIdSchema.parse(organizationId), runnerIdSchema.parse(lease.runnerId), {
     kind: "steer",
-    body: { sessionId, clientMessageId: input.clientMessageId, text, delivery: "queue", intent: input.intent, ...steerFileFields(bound) },
+    // F-078 (minor 8): the task's co-authors, the sender among them, for the box's commits from this message on.
+    body: {
+      sessionId,
+      clientMessageId: input.clientMessageId,
+      text,
+      delivery: "queue",
+      intent: input.intent,
+      ...steerFileFields(bound),
+      coAuthors: await taskCoAuthorsInTx(tx, { organizationId: organizationIdSchema.parse(organizationId), taskId: task.id }),
+    },
     notAfter: now + runnerLimits.offerTimeoutMs,
     task: { taskId: task.id, projectId },
   });

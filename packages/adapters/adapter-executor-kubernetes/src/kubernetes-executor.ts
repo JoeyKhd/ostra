@@ -37,6 +37,7 @@ import type {
   SavedRepoWork,
   SaveWorkInProgressInput,
   ServiceHealth,
+  SetCoAuthorsInput,
   SnapshotBuildResult,
   StopInput,
 } from "@ostra/adapter-sdk";
@@ -637,6 +638,11 @@ export class KubernetesExecutor extends ExecutorAdapter {
   override async commitWork(input: CommitWorkInput): Promise<AdapterResult<readonly CommittedRepoWork[]>> {
     const inner = this.#inner(input.box);
     return inner.ok ? inner.value.commitWork(input) : inner;
+  }
+
+  override async setCoAuthors(input: SetCoAuthorsInput): Promise<AdapterResult<void>> {
+    const inner = this.#inner(input.box);
+    return inner.ok ? inner.value.setCoAuthors(input) : inner;
   }
 
   override async saveWorkInProgress(input: SaveWorkInProgressInput): Promise<AdapterResult<readonly SavedRepoWork[]>> {

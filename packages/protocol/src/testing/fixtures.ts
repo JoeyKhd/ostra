@@ -1799,6 +1799,23 @@ export const minor8CommandFixtures = {
     kind: "steer",
     body: { sessionId: ids.session, clientMessageId: ids.filesMessage, text: "The ticket OST-12 changed since you last read it.", delivery: "queue", intent: "ticket-update" },
   },
+  /** F-078 (2026-11-22): a member who took over sends; the steer carries the task's co-authors with them. */
+  "steer, with co-authors": {
+    ...commandEnvelope,
+    seq: 41,
+    kind: "steer",
+    body: {
+      sessionId: ids.session,
+      clientMessageId: ids.filesMessage,
+      text: "Also cover the empty case.",
+      delivery: "queue",
+      intent: "message",
+      coAuthors: [
+        { name: "Admin", email: "admin@example.com" },
+        { name: "Sam Insider", email: "5522+sam-insider@users.noreply.github.com" },
+      ],
+    },
+  },
 } as const satisfies Readonly<Record<string, Command>>;
 
 /** Minor 8's `user.message` with files, as the thread shows them, and a ticket update's. */
