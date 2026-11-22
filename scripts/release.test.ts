@@ -1,9 +1,9 @@
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { releaseDownload, releaseFiles, RELEASES_URL } from "@ostra/protocol";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { makeReleaseAssets } from "./release-assets.ts";
@@ -16,6 +16,13 @@ import { builtExports, isPublishedDir, LICENSOR, linkedAssets, readWorkspace, RE
 // one place, in a temp folder, fails with that place named. `release.yml` runs these on its tree
 // after its stamp, so they read the tree's version and namespace rather than assume a clone's.
 
+// Most cases copy the checkout's release files (`copyCheckout`, about 470 files) or run
+// check:release over a copy, which reads them all: about 0.2 s each on Windows when idle, and 0.7 s
+// a check on 4 CPUs beside 3 busy loops and 3 more copies of this file, where the licensor case's
+// six checks took 3.6 to 4.7 s, near Vitest's 5 s, with no copy of their own. That is the checks'
+// real reading, so the cases get 20 s, with room for a whole-repo run's load.
+vi.setConfig({ testTimeout: 20_000, hookTimeout: 20_000 });
+
 const root = path.resolve(import.meta.dirname, "..");
 const temp = await mkdtemp(path.join(tmpdir(), "ostra-release-"));
 afterAll(() => rm(temp, { recursive: true, force: true }));
@@ -25,21 +32,36 @@ const tree = z.looseObject({ version: z.string(), imageNamespace: z.string(), cl
 
 const escaped = (text: string): string => text.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** A copy of the checkout's release files: the manifests, the LICENSE and NOTICE files, the published packages' sources, the workflows and the deploy files the release is stamped on. */
+/**
+ * A copy of the checkout's release files: the manifests, the LICENSE and NOTICE files, the
+ * published packages' sources, the workflows and the deploy files the release is stamped on. Listed
+ * first, then each file copied with `copyFile`: `cp` stats every path twice and walks its parents,
+ * so the same copy took 0.6 s idle on Windows against 0.2 s, and far longer on a starved CPU.
+ */
 const copyCheckout = async (name: string): Promise<string> => {
   const target = path.join(temp, name);
-  for (const file of ["package.json", "pnpm-workspace.yaml", "LICENSE", "NOTICE", ".github/workflows/release.yml", ".github/workflows/ci.yml", ...releaseStamps.map((stamp) => stamp.file)]) {
-    await mkdir(path.dirname(path.join(target, file)), { recursive: true });
-    await cp(path.join(root, file), path.join(target, file));
-  }
+  const files = ["package.json", "pnpm-workspace.yaml", "LICENSE", "NOTICE", ".github/workflows/release.yml", ".github/workflows/ci.yml", ...releaseStamps.map((stamp) => stamp.file)];
+  // A private package may have no LICENSE or tsconfig.build.json.
+  const optional: string[] = [];
   for (const { dir } of await readWorkspace(root)) {
-    await mkdir(path.join(target, dir), { recursive: true });
-    for (const file of ["package.json", "LICENSE", "tsconfig.build.json"]) {
-      await cp(path.join(root, dir, file), path.join(target, dir, file)).catch(() => undefined);
-    }
+    files.push(`${dir}/package.json`);
+    optional.push(`${dir}/LICENSE`, `${dir}/tsconfig.build.json`);
     if (isPublishedDir(dir)) {
-      await cp(path.join(root, dir, "src"), path.join(target, dir, "src"), { recursive: true });
+      for (const entry of await readdir(path.join(root, dir, "src"), { recursive: true, withFileTypes: true })) {
+        if (entry.isFile()) {
+          files.push(path.relative(root, path.join(entry.parentPath, entry.name)));
+        }
+      }
     }
+  }
+  for (const dir of new Set([...files, ...optional].map((file) => path.dirname(path.join(target, file))))) {
+    await mkdir(dir, { recursive: true });
+  }
+  for (const file of files) {
+    await copyFile(path.join(root, file), path.join(target, file));
+  }
+  for (const file of optional) {
+    await copyFile(path.join(root, file), path.join(target, file)).catch(() => undefined);
   }
   return target;
 };
@@ -59,6 +81,22 @@ beforeAll(async () => {
   pristine = await copyCheckout("pristine");
 });
 
+/**
+ * The problems of the pristine copy with one file edited, put back after (the cases run one at a
+ * time), for a case that breaks one file after another: it copies nothing, where a copy per break
+ * took the licensor case's five past Vitest's 5 s under a whole-repo run's load.
+ */
+const messagesWith = async (file: string, from: string | RegExp, to: string): Promise<readonly string[]> => {
+  const full = path.join(pristine, file);
+  const text = await readFile(full, "utf8");
+  await edit(pristine, file, from, to);
+  try {
+    return await messages(pristine);
+  } finally {
+    await writeFile(full, text, "utf8");
+  }
+};
+
 describe("the published packages", () => {
   it("F-039/c2: every published package has its license, only its build and LICENSE as its files, npm's provenance and the repository", async () => {
     expect(await releaseProblems(root)).toEqual([]);
@@ -76,17 +114,11 @@ describe("the published packages", () => {
 
   it("F-039/c2: no server package is publishable: one made public fails, and a published one without provenance or with its source fails", async () => {
     expect(await messages(pristine)).toEqual([]);
-    const core = await copyCheckout("core-public");
-    await edit(core, "apps/core/package.json", /\n\s*"private": true,/, "");
-    expect(await messages(core)).toEqual(['apps/core/package.json: isn\'t published, so it must be "private": true (the server\'s packages never are)']);
-
-    const provenance = await copyCheckout("no-provenance");
-    await edit(provenance, "packages/protocol/package.json", '"provenance": true', '"provenance": false');
-    expect(await messages(provenance)).toEqual(['packages/protocol/package.json: needs "publishConfig": { "access": "public", "provenance": true }']);
-
-    const source = await copyCheckout("with-source");
-    await edit(source, "packages/adapters/adapter-github/package.json", /"files": \[\n\s*"dist",/, '"files": [\n    "src",\n    "dist",');
-    expect(await messages(source)).toEqual(['packages/adapters/adapter-github/package.json: must publish only its build and its LICENSE: "files": ["dist", "LICENSE"]']);
+    expect(await messagesWith("apps/core/package.json", /\n\s*"private": true,/, "")).toEqual(['apps/core/package.json: isn\'t published, so it must be "private": true (the server\'s packages never are)']);
+    expect(await messagesWith("packages/protocol/package.json", '"provenance": true', '"provenance": false')).toEqual(['packages/protocol/package.json: needs "publishConfig": { "access": "public", "provenance": true }']);
+    expect(await messagesWith("packages/adapters/adapter-github/package.json", /"files": \[\n\s*"dist",/, '"files": [\n    "src",\n    "dist",')).toEqual([
+      'packages/adapters/adapter-github/package.json: must publish only its build and its LICENSE: "files": ["dist", "LICENSE"]',
+    ]);
   });
 
   it("F-039/c2: a published package imports at run time only what it declares", async () => {
@@ -280,28 +312,18 @@ describe("the release's names", () => {
 
 describe("the licensor line", () => {
   it("F-039/c2: every licensor line matches and NOTICE is current: a changed LICENSE, NOTICE or published author fails", async () => {
-    const license = await copyCheckout("licensor-license");
-    await edit(license, "LICENSE", `Licensor and copyright holder: ${LICENSOR}`, "Licensor and copyright holder: Someone Else");
-    expect(await messages(license)).toEqual([`LICENSE: must say "Licensor and copyright holder: ${LICENSOR}"`, 'LICENSE: names "Someone Else" as the licensor, not "' + LICENSOR + '"']);
+    expect(await messagesWith("LICENSE", `Licensor and copyright holder: ${LICENSOR}`, "Licensor and copyright holder: Someone Else")).toEqual([
+      `LICENSE: must say "Licensor and copyright holder: ${LICENSOR}"`,
+      'LICENSE: names "Someone Else" as the licensor, not "' + LICENSOR + '"',
+    ]);
+    expect(await messagesWith("NOTICE", `Copyright (c) 2026 ${LICENSOR}`, "Copyright (c) 2026 Ostra Inc.")).toEqual([`NOTICE: must say "Copyright (c) 2026 ${LICENSOR}"`, `NOTICE: names "Ostra Inc." as the licensor, not "${LICENSOR}"`]);
+    expect(await messagesWith("packages/protocol/LICENSE", "   Copyright [yyyy] [name of copyright owner]", "Copyright (c) 2026 Ostra Inc.")).toEqual([`packages/protocol/LICENSE: names "Ostra Inc." as the licensor, not "${LICENSOR}"`]);
 
-    const notice = await copyCheckout("licensor-notice");
-    await edit(notice, "NOTICE", `Copyright (c) 2026 ${LICENSOR}`, "Copyright (c) 2026 Ostra Inc.");
-    expect(await messages(notice)).toEqual([`NOTICE: must say "Copyright (c) 2026 ${LICENSOR}"`, `NOTICE: names "Ostra Inc." as the licensor, not "${LICENSOR}"`]);
+    // NOTICE is current: an Apache-2.0 package it leaves out of its list fails, and so does one it lists under the other license.
+    expect(await messagesWith("NOTICE", "  apps/docs\n", "")).toEqual(["NOTICE: doesn't list apps/docs, which is Apache-2.0, among the Apache-2.0 directories"]);
+    expect(await messagesWith("NOTICE", "  apps/web\n", "  apps/web\n  apps/runner\n")).toContain("NOTICE: lists apps/runner under the Sustainable Use License, but it's Apache-2.0");
 
-    const apache = await copyCheckout("licensor-apache");
-    await edit(apache, "packages/protocol/LICENSE", "   Copyright [yyyy] [name of copyright owner]", "Copyright (c) 2026 Ostra Inc.");
-    expect(await messages(apache)).toEqual([`packages/protocol/LICENSE: names "Ostra Inc." as the licensor, not "${LICENSOR}"`]);
-
-    // NOTICE is current: an Apache-2.0 package it leaves out of its list fails.
-    const notice2 = await copyCheckout("notice-list");
-    await edit(notice2, "NOTICE", "  apps/docs\n", "");
-    expect(await messages(notice2)).toEqual(["NOTICE: doesn't list apps/docs, which is Apache-2.0, among the Apache-2.0 directories"]);
-    await edit(notice2, "NOTICE", "  apps/web\n", "  apps/web\n  apps/runner\n");
-    expect(await messages(notice2)).toContain("NOTICE: lists apps/runner under the Sustainable Use License, but it's Apache-2.0");
-
-    const author = await copyCheckout("licensor-author");
-    await edit(author, "packages/adapter-sdk/package.json", LICENSOR, "JoeyKhd");
-    expect(await messages(author)).toEqual(["packages/adapter-sdk/package.json: its author must be the licensor line (scripts/licensor.ts, LICENSOR)"]);
+    expect(await messagesWith("packages/adapter-sdk/package.json", LICENSOR, "JoeyKhd")).toEqual(["packages/adapter-sdk/package.json: its author must be the licensor line (scripts/licensor.ts, LICENSOR)"]);
   });
 });
 
