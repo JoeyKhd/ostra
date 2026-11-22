@@ -155,6 +155,8 @@ const ORGANIZATION_ADMIN_WRITES: Readonly<Record<string, readonly string[]>> = {
     "github.removeInstallation",
     "github.setClientSecret",
     "github.startManifest",
+    // F-006/c4: finishing the webhook of an App made while the server had no public address.
+    "github.turnOnWebhook",
     "github.unlinkInstallation",
     "linear.authorizeUrl",
     "linear.complete",
@@ -341,7 +343,9 @@ describe("an organization admin manages the organization (F-003)", () => {
     const counts = async () => ({
       invitations: await harness.test.db.invitation.count({ where: { organizationId } }),
       providers: await harness.test.db.modelProvider.count({ where: { organizationId } }),
-      pools: await harness.test.db.runnerPool.count({ where: { organizationId } }),
+      // The pools an admin made: the default pool is made on the organization's first project
+      // (`ensureDefaultPool`), which is this case's own `projects.create` when it runs first.
+      pools: await harness.test.db.runnerPool.count({ where: { organizationId, isDefault: false } }),
       profiles: await harness.test.db.agentProfile.count({ where: { organizationId } }),
       budgets: await harness.test.db.budget.count({ where: { organizationId } }),
       projects: await harness.test.db.project.count({ where: { organizationId } }),
