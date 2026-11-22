@@ -219,7 +219,7 @@ describe("the tracker writer, on the Jira fake", () => {
     expect(writes.map((row) => row.kind)).toEqual(["comment_update"]);
   });
 
-  it("F-046: a comment applied and then answered 500 isn't made again; the control without the lookup makes it twice", async () => {
+  it("F-046/c1,c2: a comment applied and then answered 500 isn't made again; the control without the lookup makes it twice", async () => {
     for (const lookupBeforeRetry of [true, false]) {
       const { taskId, ticketId } = await newTicket();
       await test.db.$transaction((tx) =>
@@ -244,6 +244,34 @@ describe("the tracker writer, on the Jira fake", () => {
       expect(row?.state).toBe("done");
       expect(row?.attempts).toBe(2);
     }
+  });
+
+  it("F-046/c1: a status move applied and then answered 500 is retried, and the ticket's status changes once", async () => {
+    const { taskId, ticketId } = await newTicket();
+    await write(taskId, started(taskId));
+    // The move alone: the comment and the link have their own cases.
+    await test.db.ticketWrite.deleteMany({ where: { taskId, kind: { not: "move" } } });
+    const externalId = externalTicketIdSchema.parse((await test.db.ticket.findUniqueOrThrow({ where: { id: ticketId } })).externalId);
+    const changes: string[] = [];
+    let calls = 0;
+    const move = jira.moveTicket.bind(jira);
+    jira.moveTicket = async (...args) => {
+      calls += 1;
+      const before = site.statusOf(externalId);
+      const result = await move(...args);
+      if (site.statusOf(externalId) !== before) changes.push(site.statusOf(externalId));
+      return result;
+    };
+    try {
+      site.injectFault({ kind: "fail-after-write" });
+      await syncAll(b.deps(), taskId);
+    } finally {
+      jira.moveTicket = move;
+    }
+    // Jira applied the first call and answered 500; the retry found the ticket already there.
+    expect(calls).toBeGreaterThanOrEqual(2);
+    expect(changes).toEqual(["10001"]);
+    expect((await writesOf(taskId)).map((row) => [row.kind, row.state])).toEqual([["move", "done"]]);
   });
 
   it("a replayed state change writes nothing new: a move the lifecycle refuses edits nothing", async () => {
@@ -376,7 +404,7 @@ describe("the tracker writer, on the fake Linear server", () => {
     expect(view.attachments.filter((attachment) => attachment.url === pr.url)).toHaveLength(1);
   });
 
-  it("F-046: a comment applied and answered 500 is found by its marker, and the control makes it twice", async () => {
+  it("F-046/c1,c2: a comment applied and answered 500 is found by its marker, and the control makes it twice", async () => {
     for (const lookupBeforeRetry of [true, false]) {
       const { taskId, issueId } = await newTicket();
       await write(taskId, started(taskId));
@@ -385,5 +413,29 @@ describe("the tracker writer, on the fake Linear server", () => {
       await syncAll(b.deps({ lookupBeforeRetry }), taskId);
       expect(fake.issueView(issueId).comments).toHaveLength(lookupBeforeRetry ? 1 : 2);
     }
+  });
+
+  it("F-046/c1: a status move applied and answered 500 is retried, and Linear's issue is updated once", async () => {
+    const { taskId, issueId } = await newTicket();
+    await write(taskId, started(taskId));
+    await test.db.ticketWrite.deleteMany({ where: { taskId, kind: { not: "move" } } });
+    let calls = 0;
+    const move = linear.moveTicket.bind(linear);
+    linear.moveTicket = (...args) => {
+      calls += 1;
+      return move(...args);
+    };
+    const updates = fake.apiCalls()["issueUpdate"] ?? 0;
+    try {
+      fake.injectFaults([{ kind: "fail-after-write" }]);
+      await syncAll(b.deps(), taskId);
+    } finally {
+      linear.moveTicket = move;
+    }
+    // Linear applied the first update and answered 500; the retry read the issue, already there.
+    expect(calls).toBeGreaterThanOrEqual(2);
+    expect((fake.apiCalls()["issueUpdate"] ?? 0) - updates).toBe(1);
+    expect(fake.issueView(issueId).stateId).toBe(fake.states(fake.team.id).find((state) => state.name === "In Progress")?.id);
+    expect((await writesOf(taskId)).map((row) => [row.kind, row.state])).toEqual([["move", "done"]]);
   });
 });

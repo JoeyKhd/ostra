@@ -269,7 +269,7 @@ describe("a server killed mid-flight (F-043)", () => {
     }
   }, budget(180_000));
 
-  it(`opens one PR when killed after GitHub answered, ${IN_A_ROW}`, async () => {
+  it(`F-046/c1: opens one PR when killed after GitHub answered, and the retried job finds it, ${IN_A_ROW}`, async () => {
     for (let run = 0; run < RUNS; run += 1) {
       await armed("open-pull-requests.answered");
       const task = await dispatchedTask();
@@ -291,6 +291,8 @@ describe("a server killed mid-flight (F-043)", () => {
       await waitFor("the task in review", async () => (await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).state === "in_review", 120_000);
       expect(await test.db.taskRepo.findFirst({ where: { taskId: task.taskId, state: "pr_open" } })).not.toBeNull();
       expect(github.pulls.filter((pull) => pull.head === task.branch)).toHaveLength(1);
+      // GitHub was asked to create it once: the retry after the kill found it by its head branch.
+      expect(github.pullCreates.filter((head) => head === task.branch)).toHaveLength(1);
       expect(await test.db.event.count({ where: { taskId: task.taskId, kind: "pr.opened" } })).toBe(1);
       expect((await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).state).toBe("in_review");
     }

@@ -265,7 +265,7 @@ describe("PR states", () => {
     }
   });
 
-  it("F-046: a replayed delivery changes nothing, and a control handler without the state lookup acts twice", async () => {
+  it("F-046/c1: a replayed delivery changes nothing, and a control handler without the state lookup acts twice", async () => {
     const seeded = await taskInReview(world, 1);
     const [pr] = seeded.prs;
     if (pr === undefined) throw new Error("no PR");
