@@ -571,6 +571,7 @@ export const eventFixtures: { readonly [K in TaskEventKind]: TaskEventOf<K> } = 
     imagesSent: 1,
     imagesAsFiles: null,
   },
+  "box.lost": { kind: "box.lost", boxId: ids.box, exitCode: 137 },
   "ticket.context_read": {
     kind: "ticket.context_read",
     round: 1,

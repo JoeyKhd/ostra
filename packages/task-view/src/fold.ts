@@ -1371,6 +1371,9 @@ export const foldTaskEvents = (
       case "app.started_by":
         // Protocol minor 7 (milestone 8, ADR 0068). No row: the preview pane (ticket 21) reads them.
         break;
+      case "box.lost":
+        // A pool runner's runner event (F-047): core records it as `session.crashed`, never as itself.
+        break;
       case "files.written": {
         // Milestone 9 (ticket 14): what the runner wrote into the box, onto the messages the files
         // are of. A file written clears an earlier skip (a fresh box writes every file again); a

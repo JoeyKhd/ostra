@@ -19,6 +19,9 @@ import type { RunnerRef, SidecarLease } from "../gateway/context.ts";
 // A `docker` or `kubernetes` box's task is its sidecar's (Q129, ticket 41): its grace starts when
 // the sidecar's connection goes, and a reconnect of the sidecar cancels it. The runner's own
 // connection doesn't touch it, so a pool runner that stops or upgrades doesn't interrupt its boxes.
+// A box that went away with its sidecar is its pool runner's to say (`box.lost`, F-047): core
+// records the session crashed and ends the lease then, and the grace, when it comes, finds the
+// lease ended and does nothing.
 //
 // Milestone 2 (ticket 17): a task in review whose idle box's runner went away keeps its state. Its
 // work already left the box after its last turn (the branch, the hidden ref, the archive), so only

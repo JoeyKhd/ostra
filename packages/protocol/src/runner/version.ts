@@ -59,11 +59,14 @@ export const PROTOCOL_MAJOR = 1;
  * Milestone 9 ships minor 8 (ADR 0070): files for the agent. The spec's `files`, `promptFiles`, each
  * pending message's files and `agent.inputModalities`; the steer's `files` and `images`, and its
  * `coAuthors` (F-078, added 2026-11-22 before minor 8's release: a member credited mid-session is on
- * the box's next commits, not only on the next dispatch's); the runner's `files.written`; a `user.message`'s files, `filesLeftOut` and `imagesNotSent`; the
+ * the box's next commits, not only on the next dispatch's); the runner's `files.written`; a pool
+ * runner's `box.lost` (F-047, added 2026-11-22 before minor 8's release: a box that went away with
+ * its sidecar mid-task, which core records as the session's crash); a `user.message`'s files, `filesLeftOut` and `imagesNotSent`; the
  * server's `ticket.context_read`; and the intent `ticket-update`. A minor-7 peer still works inside
  * the window: it's never offered a task with files (`isTaskOfferable`'s `message-files`), never sent
  * a steer with files (`canSendFiles`; its codec refuses to encode one), and never sent any new
- * field; `ticket-update` reads as `message`, and a minor-8 runner sends it no `files.written`. A
+ * field; `ticket-update` reads as `message`, and a minor-8 runner sends it no `files.written` and
+ * no `box.lost`, so that server learns of a lost box from its sidecar's grace, as before. A
  * minor-6 peer is outside the window. Minor 8 also tells a replaced HTTP connection apart (ADR 0034,
  * amended 2026-11-21): its requests are answered `409` with the error `replaced`, and `superseded`
  * means only a connection core closed (`HTTP_REPLACED_MINOR`). A minor-7 runner is answered

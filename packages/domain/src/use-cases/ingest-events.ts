@@ -170,6 +170,45 @@ const agentTimeMs = (startedAt: number, endedAt: number): number => Math.min(Mat
 /** The session's ID, branded: the row was found by it. */
 const item0SessionId = (session: Session): SessionId => sessionIdSchema.parse(session.id);
 
+/** What a session's crash moves: the runner's `session.crashed`, or a pool runner's lost box (F-047). */
+export type SessionCrashDeps = Pick<IngestEventsDeps, "tx" | "notices" | "jobs" | "clock" | "logger" | "timers">;
+
+/**
+ * A session's crash (ticket 27, F-047), for a task whose row the caller holds: the session crashed;
+ * the task needs its driver; the box failed; the branch, the hidden ref and the last archive stay,
+ * and a reopen carries on from them on a fresh box. The lease ends with the session, so the
+ * runner's slot is free for its next task: the runner already freed its own, and a lease left
+ * active keeps the server counting it. The caller checked that the session is the lease's.
+ */
+export const recordSessionCrashInTx = async (deps: SessionCrashDeps, task: LockedTask, session: Session): Promise<void> => {
+  const { tx } = deps;
+  const moveDeps: TaskMoveDeps = { tx, notices: deps.notices, jobs: deps.jobs, ...(deps.logger === undefined ? {} : { logger: deps.logger }) };
+  const organizationId = organizationIdSchema.parse(task.organizationId);
+  await moveSessionInTx(moveDeps, session, { type: "crash" });
+  await endSessionTimersInTx(deps, tx, { organizationId, taskId: task.id, sessionId: item0SessionId(session) });
+  // A reopen's turn that crashed after its save moved the task back to review still owes its
+  // message: the task needs you, and the one-click reopen replays it (F-047).
+  const unanswered = task.state === "in_review" && (await unansweredMessagesInTx(tx, taskIdSchema.parse(task.id))).length > 0;
+  const moved = await moveTaskInTx(moveDeps, task, { type: "crashed", unanswered });
+  if (moved) {
+    await createNeedsYouItemInTx(deps, tx, {
+      organizationId: task.organizationId,
+      projectId: task.projectId,
+      taskId: task.id,
+      reason: "crashed",
+      audience: "driver",
+    });
+  }
+  if (session.boxId !== null) {
+    await tx.box.updateMany({
+      where: { id: session.boxId, state: { in: ["creating", "preparing", "ready", "idle"] } },
+      data: { state: "failed", failedReason: "the session crashed" },
+    });
+  }
+  // After the box failed, so the release keeps its reason.
+  await releaseLeaseInTx(tx, task.id, new Date(deps.clock.now()), "released", deps);
+};
+
 /** What the stored events imply, in the same transaction (ticket 25). */
 const applyEffects = async (
   deps: IngestEventsDeps,
@@ -370,39 +409,14 @@ const applyEffects = async (
           eventSeq: seq,
         });
         break;
-      case "session.crashed": {
-        // Needs you for the driver; the box failed; the branch, the hidden ref and the last archive
-        // stay, and a reopen carries on from them (ticket 27, F-047). The lease ends with the session,
-        // so the runner's slot is free for its next task: the runner already freed its own, and a
-        // lease left active keeps the server counting it.
-        await moveSessionInTx(moveDeps, current, { type: "crash" });
+      case "session.crashed":
+        // Needs you for the driver; the box failed; the lease ends (`recordSessionCrashInTx`). The
+        // fence already checked that this event carries the task's current epoch, so the active
+        // lease is this session's.
+        await recordSessionCrashInTx(deps, taskRow, current);
         await reloadSession();
-        await endSessionTimersInTx(deps, tx, sessionRef);
-        // A reopen's turn that crashed after its save moved the task back to review still owes its
-        // message: the task needs you, and the one-click reopen replays it (F-047).
-        const unanswered = taskRow.state === "in_review" && (await unansweredMessagesInTx(tx, taskIdSchema.parse(task.id))).length > 0;
-        const moved = await moveTaskInTx(moveDeps, taskRow, { type: "crashed", unanswered });
         await reloadTask();
-        if (moved) {
-          await createNeedsYouItemInTx(deps, tx, {
-            organizationId: task.organizationId,
-            projectId: task.projectId,
-            taskId: task.id,
-            reason: "crashed",
-            audience: "driver",
-          });
-        }
-        if (current.boxId !== null) {
-          await tx.box.updateMany({
-            where: { id: current.boxId, state: { in: ["creating", "preparing", "ready", "idle"] } },
-            data: { state: "failed", failedReason: "the session crashed" },
-          });
-        }
-        // After the box failed, so the release keeps its reason. The fence already checked that
-        // this event carries the task's current epoch, so the active lease is this session's.
-        await releaseLeaseInTx(tx, task.id, new Date(deps.clock.now()), "released", deps);
         break;
-      }
       case "service.failed": {
         // Milestone 3 (F-094, ticket 27): a service that didn't start fails the setup, as a failed
         // setup script does: needs you, naming the service and the runner's words for why. A
@@ -676,8 +690,11 @@ const applyEffects = async (
       // Protocol minor 8 (milestone 9, ADR 0070): stored for the task page. What the runner wrote
       // (`files.written`) changes no row: the thread shows a skipped file, and images that went as
       // files because the agent didn't advertise them (`imagesAsFiles`), from the event itself
-      // (ticket 11). A read of the ticket is written by core itself (ticket 12).
+      // (ticket 11). A read of the ticket is written by core itself (ticket 12). A pool runner sends
+      // `box.lost` as a runner event, which core records as the session's crash (`box-lost.ts`); in
+      // a session it moves nothing.
       case "files.written":
+      case "box.lost":
       case "ticket.context_read":
         // Stored for the task page; nothing else moves.
         break;

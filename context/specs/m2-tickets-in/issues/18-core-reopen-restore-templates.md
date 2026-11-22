@@ -24,7 +24,7 @@ The lead, on the maintainer's delegation, settled the open points the milestone 
 - **A restore conflict leaves the task running** (ticket 06): on `session.restored` with `hiddenRef: "conflict"`, raise the `restore_conflict` item for the driver, and don't move the task.
 - **The member who reopens becomes the driver,** as the targets show. F-002's handover rules may refine this in milestone 4.
 - **A reopen with no text** (the one-click Reopen from a limit or a crash) writes `reopenCarryOnText` (ticket 06) as the member's own `user.message`, so the thread shows exactly what the agent got. One exception: when the restore spec already carries a replayed, unanswered message from a lost box, nothing more is added.
-- **The new event fields of ticket 02:** core writes `reopen: true` on a reopen's `user.message`, `previousBox` on `session.restored` (`lost` when the dispatch found the box gone), and `cause: "box_lost"` on the `session.crashed` it records for a lost box.
+- **The new event fields of ticket 02:** core writes `reopen: true` on a reopen's `user.message`, `previousBox` on `session.restored` (`lost` when the dispatch found the box gone), and `cause: "box_lost"` on the `session.crashed` it records for a lost box. *Note 2026-11-22 (F-047): built for a `docker` or `kubernetes` box, which its pool runner reports gone with a `box.lost` runner event (protocol minor 8, ADR 0039's lost box); a `host` runner reports its own sessions' crash.*
 
 ## Done when
 

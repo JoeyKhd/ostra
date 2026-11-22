@@ -286,6 +286,7 @@ export const deriveTaskState = (
       case "preview.link_revoked":
       case "app.started_by":
       case "files.written":
+      case "box.lost":
       case "ticket.context_read":
       case "user.message":
       case "tool.progress":

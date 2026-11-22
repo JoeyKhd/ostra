@@ -56,6 +56,7 @@ import type { FrameParse } from "./version.ts";
 // Minor 8 (milestone 9, ADR 0070) adds files for the agent: `files.written`, a `user.message`'s
 // files, `ticket.context_read`, `ticket-update`, and a steer's files and images. Minor 7's codec
 // refuses them, and its encode drops the fields; it refuses to encode a steer that carries files.
+// It also adds a pool runner's `box.lost` runner event (F-047), which minor 7's codec refuses.
 //
 // Minor 7 (milestone 8, ADR 0068) adds the app's and the previews' events and commands, the
 // dispatch's purpose, and what a runner can preview in `hello` and `status`: minor 6's codec
@@ -263,17 +264,23 @@ const eventsFrameSchemaV0 = eventsFrameSchema.extend({
  * A runner's own event, outside any task (minor 2): a snapshot build's result when no task
  * triggered it (F-051). Core applies it idempotently by `snapshotId`. The runner acks the
  * `snapshot-build` command `done` only after it sent this frame, so a connection lost in between
- * resends the command and the runner reports the result again.
+ * resends the command and the runner reports the result again. Minor 4 adds a box's wait, and
+ * minor 8 a lost box (`box.lost`, F-047), which core applies by the box's ID.
  */
 export const runnerEventFrameSchema = z.strictObject({
   type: z.literal("runner-event"),
   /** When the runner recorded it, in ms since the epoch, by its clock. */
   at: epochMsSchema,
   event: taskEventSchema.refine((event) => runnerScopedEventKinds.has(event.kind), {
-    message: "only a snapshot's result or a box's wait is a runner event",
+    message: "only a snapshot's result, a box's wait or a lost box is a runner event",
   }),
 });
 export type RunnerEventFrame = z.infer<typeof runnerEventFrameSchema>;
+
+/** `runner-event` from minor 4 to minor 7: a snapshot's result or a box's wait; a lost box is new in minor 8. */
+const runnerEventFrameSchemaV7 = runnerEventFrameSchema.refine((frame) => eventKindMinMinor(frame.event.kind) < 8, {
+  message: "a lost box is a runner event from minor 8",
+});
 
 /** `runner-event` below minor 4: a snapshot's result only; a box's wait is new in minor 4. */
 const runnerEventFrameSchemaV3 = runnerEventFrameSchema.refine((frame) => eventKindMinMinor(frame.event.kind) < 4, {
@@ -364,7 +371,7 @@ const upFrameV7 = z.discriminatedUnion("type", [
   commandAckSchema,
   statusSchema,
   liveTextSchema,
-  runnerEventFrameSchema,
+  runnerEventFrameSchemaV7,
 ]);
 const upFrameV6 = z.discriminatedUnion("type", [
   helloSchema,
@@ -372,7 +379,7 @@ const upFrameV6 = z.discriminatedUnion("type", [
   commandAckSchema,
   statusSchemaV6,
   liveTextSchema,
-  runnerEventFrameSchema,
+  runnerEventFrameSchemaV7,
 ]);
 const upFrameV5 = z.discriminatedUnion("type", [
   helloSchema,
@@ -380,7 +387,7 @@ const upFrameV5 = z.discriminatedUnion("type", [
   commandAckSchema,
   statusSchemaV6,
   liveTextSchema,
-  runnerEventFrameSchema,
+  runnerEventFrameSchemaV7,
 ]);
 const upFrameV4 = z.discriminatedUnion("type", [
   helloSchema,
@@ -388,7 +395,7 @@ const upFrameV4 = z.discriminatedUnion("type", [
   commandAckSchema,
   statusSchemaV6,
   liveTextSchema,
-  runnerEventFrameSchema,
+  runnerEventFrameSchemaV7,
 ]);
 const upFrameV3 = z.discriminatedUnion("type", [
   helloSchema,

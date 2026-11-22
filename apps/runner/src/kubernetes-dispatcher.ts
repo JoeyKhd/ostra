@@ -25,6 +25,9 @@ import type { LinkResult, ServerLink } from "./task-host/server-link.ts";
 //   and at start it lists the namespace's box pods by label and adopts the ones it made.
 // - **Release:** when the pod's sidecar ends (the task is over), or on `release`, the executor deletes
 //   the pod and its secrets, and the runner lists what's left by the box's label and logs the count.
+// - **A lost box** (F-047): a pod deleted or failed under its task, or whose sidecar ended with an
+//   error, none of it by a `release`, goes up as a `box.lost` runner event, and core records the
+//   session crashed. So does one found so at the start, after the runner was away.
 
 /** What the runner keeps of a box it made: IDs only. Never the task token or a credential. */
 const boxRecordSchema = z.strictObject({
@@ -91,6 +94,23 @@ const podIsOver = (pod: PodView | null): boolean => {
   return pod.initContainers.some((container) => container.name === "sidecar" && container.state === "terminated");
 };
 
+/**
+ * Whether a pod that's over took its task with it (F-047), and the sidecar's exit code: its
+ * sidecar ended its own task with 0; any other end (an error, a kill), a pod deleted or failed
+ * by someone else (a lost node, an eviction) or gone, is a lost box. Read only for a pod that no
+ * `release` ended.
+ */
+const podLoss = (pod: PodView | null): { readonly lost: boolean; readonly exitCode: number | null } => {
+  const sidecar = pod?.initContainers.find((container) => container.name === "sidecar" && container.state === "terminated");
+  if (sidecar !== undefined) {
+    return { lost: sidecar.exitCode !== 0, exitCode: sidecar.exitCode };
+  }
+  if (pod === null || pod.deleting || pod.phase === "Failed") {
+    return { lost: true, exitCode: null };
+  }
+  return { lost: false, exitCode: null };
+};
+
 export const createKubernetesDispatcher = (options: KubernetesDispatcherOptions): KubernetesDispatcher => {
   const running = new Map<BoxId, Running>();
   let draining = false;
@@ -141,9 +161,22 @@ export const createKubernetesDispatcher = (options: KubernetesDispatcherOptions)
     return false;
   };
 
+  /** A pod that went away under its task, with no `release` asked: core hears it as `box.lost` (F-047). */
+  const reportIfLost = (entry: Running, pod: PodView | null): void => {
+    if (entry.release !== null) {
+      return;
+    }
+    const loss = podLoss(pod);
+    if (loss.lost) {
+      log.warn("the box went away under its task", { taskId: entry.record.taskId, boxId: entry.record.boxId, exitCode: loss.exitCode, phase: pod?.phase ?? "gone" });
+      options.reportRunnerEvent({ kind: "box.lost", boxId: entry.record.boxId, exitCode: loss.exitCode });
+    }
+  };
+
   /** Watches the box's pod until its task is over (or the runner detaches), then releases it. */
   const watch = async (entry: Running): Promise<void> => {
     const names = boxNames(entry.record);
+    let over: { readonly pod: PodView | null } | null = null;
     for (;;) {
       if (isDetached()) {
         return;
@@ -153,12 +186,16 @@ export const createKubernetesDispatcher = (options: KubernetesDispatcherOptions)
       }
       const read = await options.kube.readPod(options.namespace, names.pod);
       if (read.ok && podIsOver(read.value)) {
+        over = { pod: read.value };
         break;
       }
       await sleep(watchMs);
     }
     if (!isDetached() && !entry.released) {
       entry.released = true;
+      if (over !== null) {
+        reportIfLost(entry, over.pod);
+      }
       await releaseBox(entry.record, entry.release ?? "requested");
     }
   };
@@ -438,7 +475,11 @@ export const createKubernetesDispatcher = (options: KubernetesDispatcherOptions)
         }
         const pod = live.get(boxNames(record).pod) ?? null;
         const entry: Running = { record, done: Promise.resolve(), release: null, released: false };
-        // A pod whose task ended while the runner was away is released now; a running one is watched.
+        // A pod whose task ended while the runner was away is released now, and core hears of one
+        // lost meanwhile (F-047); a running one is watched.
+        if (podIsOver(pod)) {
+          reportIfLost(entry, pod);
+        }
         track(entry, podIsOver(pod) ? releaseOnce(entry, "requested").then(() => undefined) : watch(entry));
         if (!podIsOver(pod)) {
           adopted += 1;

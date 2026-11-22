@@ -1177,6 +1177,15 @@ const minor8NewEventOptions = [
     imagesSent: z.number().int().nonnegative().max(runnerLimits.promptImagesMax),
     imagesAsFiles: imagesAsFilesReasonSchema.nullable(),
   }),
+  /**
+   * A pool runner's word on a box it made that went away while its task was still on it (F-047,
+   * added 2026-11-22 before minor 8's release): a `docker` box whose sidecar exited with an error
+   * or vanished, a `kubernetes` pod deleted, failed or whose sidecar ended with an error, none of
+   * it by a `release`. Sent in a `runner-event` frame, since the box's sidecar held the session and
+   * can't say it any more. Core records the session crashed with the cause `box_lost`, and a
+   * reopen restores on a fresh box. `exitCode`: the sidecar's, `null` when the box went without one.
+   */
+  z.strictObject({ kind: z.literal("box.lost"), boxId: boxIdSchema, exitCode: z.number().int().nullable() }),
   // ---- server-only (milestone 9) ----
   /**
    * What one read of the ticket gave the agent (F-149): its round and reason, the description (or
@@ -1571,14 +1580,16 @@ export const minor5EventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKin
 
 /**
  * The kinds a runner may also send outside a task, in a `runner-event` frame: a snapshot build's
- * result when no task triggered the build (F-051), and (minor 4) a box's wait before its sidecar
- * holds the task's session (F-093): `box.waiting` and `box.scheduled`.
+ * result when no task triggered the build (F-051), (minor 4) a box's wait before its sidecar holds
+ * the task's session (F-093): `box.waiting` and `box.scheduled`, and (minor 8) a box that went away
+ * with its sidecar while its task was on it (F-047): `box.lost`.
  */
 export const runnerScopedEventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind>([
   "snapshot.built",
   "snapshot.failed",
   "box.waiting",
   "box.scheduled",
+  "box.lost",
 ]);
 
 /**
@@ -1600,9 +1611,10 @@ export const minor7EventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKin
 );
 
 /**
- * The kinds minor 8 added (milestone 9, ADR 0070): the runner's `files.written` and the server's
- * `ticket.context_read`. A minor-8 runner talking to a minor-7 server sends no `files.written`:
- * that server gives it no file.
+ * The kinds minor 8 added (milestone 9, ADR 0070): the runner's `files.written` and `box.lost`,
+ * and the server's `ticket.context_read`. A minor-8 runner talking to a minor-7 server sends no
+ * `files.written` (that server gives it no file) and no `box.lost` (that server learns of a lost
+ * box from its sidecar's grace, as before).
  */
 export const minor8EventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind>(
   minor8NewEventOptions.map((option) => option.shape.kind.value),

@@ -6,6 +6,7 @@ import { startFakeEngine } from "@ostra/adapter-executor-docker/testing";
 import type { FakeEngine } from "@ostra/adapter-executor-docker/testing";
 import { silentLogger } from "@ostra/adapter-sdk";
 import { boxIdSchema } from "@ostra/protocol";
+import type { TaskEvent } from "@ostra/protocol";
 import { taskSpecFixture } from "@ostra/protocol/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBoxDispatcher, detectTokenAccess } from "./box-dispatcher.ts";
@@ -68,6 +69,8 @@ type DispatcherExtra = {
   readonly chown?: (path: string, uid: number, gid: number) => Promise<void>;
   readonly nextToken?: () => string;
   readonly asked?: { taskId: string; leaseEpoch: number }[];
+  /** The runner's own events, as the connection's `sendRunnerEvent` takes them. */
+  readonly events?: TaskEvent[];
 };
 
 const makeDispatcher = (extra: DispatcherExtra) => {
@@ -86,6 +89,7 @@ const makeDispatcher = (extra: DispatcherExtra) => {
     logger: silentLogger,
     tokenAccess: extra.tokenAccess,
     ...(extra.chown === undefined ? {} : { chown: extra.chown }),
+    ...(extra.events === undefined ? {} : { reportRunnerEvent: (event: TaskEvent) => extra.events?.push(event) }),
   });
 };
 
@@ -127,6 +131,40 @@ describe("the box dispatcher", () => {
     expect(await readdir(path.join(root, "boxes"))).toEqual([]);
     expect(dispatcher.status().freeSlots).toBe(1);
   }, 30_000);
+
+  it("F-047/c1: a box whose sidecar dies under its task, or whose sidecar is gone, is reported lost with its exit code; a sidecar that ends its task reports nothing", async () => {
+    const events: TaskEvent[] = [];
+    const dispatcher = makeDispatcher({ tokenAccess: { kind: "group", gid: 4242 }, events });
+    const sidecarOf = () => [...engine.containers.values()].find((container) => container.name.endsWith("-sidecar"));
+
+    // The sidecar ends its own task: exit 0, and the runner says nothing.
+    expect(await dispatcher.handlers.dispatch(dispatchOf("box-ends"))).toEqual({ result: "accepted" });
+    await waitFor(boxStarted);
+    exitAll();
+    await Promise.all(dispatcher.boxes());
+    expect(events).toEqual([]);
+
+    // The box is killed mid-task (an out-of-memory kill, a `docker kill`): exit 137, reported lost.
+    expect(await dispatcher.handlers.dispatch(dispatchOf("box-killed"))).toEqual({ result: "accepted" });
+    await waitFor(boxStarted);
+    const killed = sidecarOf();
+    if (killed === undefined) throw new Error("no sidecar");
+    killed.exitCode = 137;
+    exitAll();
+    await Promise.all(dispatcher.boxes());
+    expect(events).toEqual([{ kind: "box.lost", boxId: "box-killed", exitCode: 137 }]);
+    expect(engine.containers.size).toBe(0);
+
+    // Its sidecar's container is gone (removed by someone else): no exit code, reported lost.
+    expect(await dispatcher.handlers.dispatch(dispatchOf("box-vanished"))).toEqual({ result: "accepted" });
+    await waitFor(boxStarted);
+    const vanished = sidecarOf();
+    if (vanished === undefined) throw new Error("no sidecar");
+    engine.containers.delete(vanished.id);
+    await Promise.all(dispatcher.boxes());
+    expect(events.slice(1)).toEqual([{ kind: "box.lost", boxId: "box-vanished", exitCode: null }]);
+    expect(dispatcher.status().freeSlots).toBe(1);
+  }, 60_000);
 
   it("F-141/c6: a dispatch to start the app hands its purpose to the box's sidecar, which starts the task itself", async () => {
     const dispatcher = makeDispatcher({ tokenAccess: { kind: "group", gid: 4242 } });

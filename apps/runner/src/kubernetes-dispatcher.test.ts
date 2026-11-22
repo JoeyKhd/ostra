@@ -213,6 +213,54 @@ describe("kubernetes boxes from the runner (ticket 20)", () => {
     expect(dispatcher.status().running).toEqual([]);
   }, 30_000);
 
+  it("F-047/c1: a pod lost under its task, by its sidecar killed or the pod deleted or failed by someone else, is reported lost; a sidecar that ends its task, and a release, report nothing", async () => {
+    const { cluster, events, make } = await setup(false);
+    const dispatcher = make();
+    const lost = (): TaskEvent[] => events.filter((event) => event.kind === "box.lost");
+    /** A box of its own, made and ready: its pod's name. */
+    const readyBox = async (id: string, on: KubernetesDispatcher = dispatcher): Promise<string> => {
+      expect(await on.handlers.dispatch(commandOf("dispatch", 1, { taskId: spec.taskId, sessionId: spec.sessionId, boxId: boxIdSchema.parse(id), leaseEpoch: spec.leaseEpoch }))).toEqual({ result: "accepted" });
+      const pod = boxNames({ taskId: spec.taskId, boxId: boxIdSchema.parse(id) }).pod;
+      await until(async () => {
+        const read = await cluster.kube.readPod(NS, pod);
+        return read.ok && read.value?.ready === true;
+      }, `the ready pod of ${id}`);
+      return pod;
+    };
+
+    // The sidecar ends its own task: exit 0, and the runner says nothing.
+    cluster.fake.exitContainer(NS, await readyBox("box-k8s-ends"), "sidecar", 0);
+    await Promise.all(dispatcher.boxes());
+    expect(lost()).toEqual([]);
+
+    // Its sidecar is killed mid-task: exit 137, reported lost, and the pod released.
+    cluster.fake.exitContainer(NS, await readyBox("box-k8s-killed"), "sidecar", 137);
+    await Promise.all(dispatcher.boxes());
+    expect(lost()).toEqual([{ kind: "box.lost", boxId: "box-k8s-killed", exitCode: 137 }]);
+
+    // The pod is deleted under its task (a node drained, a person's kubectl): no exit code.
+    const deleted = await readyBox("box-k8s-deleted");
+    expect((await cluster.kube.deletePod(NS, deleted, 0)).ok).toBe(true);
+    await Promise.all(dispatcher.boxes());
+    expect(lost().slice(1)).toEqual([{ kind: "box.lost", boxId: "box-k8s-deleted", exitCode: null }]);
+
+    // A release ends a box with nothing lost: core asked for it.
+    await readyBox("box-k8s-released");
+    expect(await dispatcher.handlers.release(commandOf("release", 2, { taskId: spec.taskId, boxId: boxIdSchema.parse("box-k8s-released"), reason: "prs-closed" }))).toEqual({ result: "done" });
+    await Promise.all(dispatcher.boxes());
+    expect(lost()).toHaveLength(2);
+
+    // The runner is away when a pod's sidecar fails: the next start reports it as it adopts its boxes.
+    const away = await readyBox("box-k8s-away");
+    dispatcher.detach();
+    cluster.fake.exitContainer(NS, away, "sidecar", 1);
+    const next = make();
+    expect(await next.adopt()).toBe(0);
+    await Promise.all(next.boxes());
+    expect(lost().slice(2)).toEqual([{ kind: "box.lost", boxId: "box-k8s-away", exitCode: 1 }]);
+    expect(await readdir(path.join(root, "runner", "kubernetes-boxes"))).toEqual([]);
+  }, 60_000);
+
   it("F-015/c3,c4, F-093: the box's sidecar connects on the task token from its mounted file, and stays connected while the runner restarts and adopts its pod", async () => {
     server = await startFakeServer();
     const fakeGateway = startFakeGateway(server);

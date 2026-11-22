@@ -228,7 +228,7 @@ describe("a file's safe name and its place (F-148/c4, c8)", () => {
 
 describe("minor 8's events", () => {
   it("F-148, F-149: adds the runner's files.written and the server's ticket.context_read, each round-tripping, none readable below minor 8", () => {
-    expect([...minor8EventKinds].sort()).toEqual(["files.written", "ticket.context_read"]);
+    expect([...minor8EventKinds].sort()).toEqual(["box.lost", "files.written", "ticket.context_read"]);
     for (const kind of minor8EventKinds) {
       expect(eventKindSupportedAt(kind, 7)).toBe(false);
       expect(eventKindSupportedAt(kind, 8)).toBe(true);
@@ -250,6 +250,23 @@ describe("minor 8's events", () => {
     const written = eventsFrame(eventFixtures["files.written"]);
     expect(parseUpFrame(encodeUpFrame(written, 8), 8)).toEqual({ ok: true, frame: written });
     expect(parseUpFrame(JSON.stringify(written), 7).ok).toBe(false);
+  });
+
+  it("F-047/c1: a pool runner's box.lost travels in a runner-event frame at minor 8, never in a minor-7 one, and names its box", () => {
+    const lost: UpFrame = { type: "runner-event", at: 1_700_000_000_000, event: eventFixtures["box.lost"] };
+    expect(parseUpFrame(encodeUpFrame(lost, 8), 8)).toEqual({ ok: true, frame: lost });
+    expect(parseUpFrame(JSON.stringify(lost), 7).ok).toBe(false);
+    // A box that went without an exit code (its container or pod was gone) says so with null.
+    const vanished: UpFrame = { type: "runner-event", at: 1, event: { kind: "box.lost", boxId: ids.box, exitCode: null } };
+    expect(parseUpFrame(JSON.stringify(vanished), 8)).toEqual({ ok: true, frame: vanished });
+    // Minor 4's box waits still travel at minor 7.
+    const waiting: UpFrame = { type: "runner-event", at: 1, event: eventFixtures["box.waiting"] };
+    expect(parseUpFrame(JSON.stringify(waiting), 7)).toEqual({ ok: true, frame: waiting });
+    // It's the runner's, never the server's, and ostra owns its shape: strict, with a box.
+    expect(serverOnlyKinds.has("box.lost")).toBe(false);
+    expect(taskEventSchema.safeParse({ ...eventFixtures["box.lost"], sessionId: ids.session }).success).toBe(false);
+    expect(taskEventSchema.safeParse({ kind: "box.lost", exitCode: 1 }).success).toBe(false);
+    expect(taskEventSchema.safeParse({ ...eventFixtures["box.lost"], exitCode: 1.5 }).success).toBe(false);
   });
 
   it("F-149: a read of the ticket holds the template's limits and refuses an unknown field", () => {

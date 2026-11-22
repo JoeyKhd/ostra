@@ -23,7 +23,9 @@ import type { LinkResult, ServerLink } from "./task-host/server-link.ts";
 
 // A pool runner on the `docker` executor (ADR 0029): it only creates and removes boxes. On a
 // dispatch it makes the box, whose sidecar then connects to the server itself and runs the task;
-// when the sidecar exits, the runner removes the box. Commands for a task go to its sidecar.
+// when the sidecar exits, the runner removes the box. Commands for a task go to its sidecar. A
+// sidecar that exits with anything but 0, or whose container is gone, lost its box under its task
+// (F-047): the runner says so in a `box.lost` runner event, and core records the session crashed.
 //
 // The sidecar's token is the task token (ADR 0034, Q129, ticket 41): the runner asks core for it
 // once, when it makes the box, and writes it to the box's token file, which the sidecar reads when
@@ -390,6 +392,12 @@ export const createBoxDispatcher = (options: BoxDispatcherOptions): BoxDispatche
       }
       const exitCode = await options.boxes.waitForSidecar(body.boxId);
       boxLog.info("the box's sidecar exited", { exitCode });
+      if (exitCode !== 0) {
+        // F-047: a sidecar ends its own task with 0, once its session is over. Any other end (an
+        // error, a kill, the container gone) took the session with it, and only the runner saw it.
+        boxLog.warn("the box went away under its task", { exitCode });
+        report({ kind: "box.lost", boxId: body.boxId, exitCode });
+      }
     } finally {
       const removed = await options.boxes.removeBox(body.boxId);
       if (!removed.ok) {

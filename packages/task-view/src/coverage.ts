@@ -109,5 +109,7 @@ export const foldCoverage = {
   // Protocol minor 8 (milestone 9, ADR 0070): the runner's writes land on their messages' files
   // (ticket 14); a read of the ticket is `tasks.ticketContext`'s, drawn by ticket 16.
   "files.written": "user message files",
+  // A pool runner's lost box (F-047) is a runner event core turns into `session.crashed`: never stored.
+  "box.lost": "no row (core records the session's crash)",
   "ticket.context_read": "no row (milestone 9: tasks.ticketContext)",
 } as const satisfies Record<TaskEventKind, string>;
