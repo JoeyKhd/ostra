@@ -52,7 +52,7 @@ A renderer reads the typed part from ostra's store, never `args` or `result` fro
 
 ## A turn's fields, its results, and bookkeeping out of the parts (amended 2026-11-22)
 
-Milestone 10's compact thread (F-151; the maintainer, 2026-11-22: "our chatbox is soooo verbose and ugly") draws a turn's numbers in its opened run's footer, its time's tooltip and the panel, never as a line, and keeps bookkeeping out of the reading column. The fold stays the one pure function from events to messages; what changes is where it puts some events. Built by ticket 02's commit, `✨ give a turn its numbers and its results`.
+Milestone 10's compact thread (F-151; the maintainer, 2026-11-22: "our chatbox is soooo verbose and ugly") draws a turn's numbers in its opened run's footer, its time's tooltip and the panel, never as a line, and keeps bookkeeping out of the reading column. The fold stays the one pure function from events to messages; what changes is where it puts some events. Built by ticket 02's commit `db724796`, `✨ give a turn its numbers and its results`.
 
 - **A turn's fields** (`TaskMessageMeta`, each optional, so a message without them reads as before):
   - `ordinal`: the task's turn number, from 1, in `turn.started` order across its sessions, so a reopen's turn continues the count. `tasks.history` pages by turn, so a page that starts after the first turn takes the task's numbers from `FoldOptions.turnOrdinals` (`turnOrdinalsOf(tasks.get's usage.turns)`); a turn missing from it is numbered on from the one before it.
