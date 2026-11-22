@@ -158,8 +158,9 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
         return exitCodes.usage;
       }
       const engine = createEngine(address);
-      // Each box's sidecar runs the task, so it gets the subagent wait too (runner parity).
-      const boxes = createDockerBoxes(engine, { images: imagesOf(config), subagentWaitMinutes: config.subagentWaitMinutes });
+      // Each box's sidecar runs the task, so it gets the subagent wait too (runner parity). Each box's
+      // network is a /24 of the runner's own pool (F-017, Q154).
+      const boxes = createDockerBoxes(engine, { images: imagesOf(config), subagentWaitMinutes: config.subagentWaitMinutes, subnetPool: config.boxSubnetPool });
       if (!(await boxes.ping())) {
         terminal.warn("The docker executor needs a Docker Engine, and none answers here (DOCKER_HOST, or the default socket).");
         return exitCodes.failed;

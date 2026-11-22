@@ -13,6 +13,12 @@ import type { AddressInfo } from "node:net";
 // create a container from a digest it never pulled, tags images, and answers a container's inspect
 // with its `HostConfig` as the Engine keeps it: a `Memory` with no `MemorySwap` gets Docker's own
 // default, swap as large as the memory again, so a missing `MemorySwap` shows.
+//
+// F-017 (ADR 0029, Q154): a network gets a subnet as the Engine gives one. A create that names its
+// subnet (`IPAM.Config[0].Subnet`) gets it unless another network's overlaps it, which is refused
+// as moby refuses it (403, `ErrPoolOverlap`); one that names none gets the next of Docker's default
+// pools, 31 networks at most, and once they are all in use the create is refused as moby refuses
+// it (400, `ErrNoMoreSubnets`). The networks list shows each network's subnet, as the Engine's does.
 
 export type FakeContainer = {
   readonly id: string;
@@ -100,6 +106,41 @@ const labelsOf = (body: Readonly<Record<string, unknown>>): Record<string, strin
 };
 
 const listOf = (value: unknown): readonly string[] => (Array.isArray(value) ? value.map(String) : []);
+
+/**
+ * Docker's default local address pools, as moby's `ipamutils` cuts them: 172.17.0.0/16 to
+ * 172.31.0.0/16, then 192.168.0.0/16 in /20s. 31 networks.
+ */
+export const DOCKER_DEFAULT_SUBNETS: readonly string[] = [
+  ...Array.from({ length: 15 }, (_, index) => `172.${String(17 + index)}.0.0/16`),
+  ...Array.from({ length: 16 }, (_, index) => `192.168.${String(index * 16)}.0/20`),
+];
+
+/** An IPv4 CIDR's first and last address, as numbers; `null` for anything else. Its own arithmetic, not the executor's. */
+const rangeOf = (cidr: string): { readonly low: number; readonly high: number } | null => {
+  const match = /^(\d+)\.(\d+)\.(\d+)\.(\d+)\/(\d+)$/.exec(cidr);
+  if (match === null) {
+    return null;
+  }
+  const value = [match[1], match[2], match[3], match[4]].reduce((sum, octet) => sum * 256 + Number(octet), 0);
+  const span = 2 ** (32 - Number(match[5]));
+  const low = value - (value % span);
+  return { low, high: low + span - 1 };
+};
+
+const overlap = (one: string, other: string): boolean => {
+  const a = rangeOf(one);
+  const b = rangeOf(other);
+  return a !== null && b !== null && a.low <= b.high && b.low <= a.high;
+};
+
+/** The subnet a network's create body names, if any. */
+const namedSubnetOf = (body: Readonly<Record<string, unknown>>): string | undefined => {
+  const config: unknown = Reflect.get(Object(body["IPAM"]), "Config");
+  const first: unknown = Array.isArray(config) ? config[0] : undefined;
+  const subnet: unknown = Reflect.get(Object(first), "Subnet");
+  return typeof subnet === "string" ? subnet : undefined;
+};
 
 /** The credential an `X-Registry-Auth` header carried, decoded as the Engine reads it. */
 const registryAuthOf = (request: IncomingMessage): { readonly username: string | null; readonly password: string | null; readonly serverAddress: string | null } => {
@@ -325,7 +366,16 @@ export const startFakeEngine = async (): Promise<FakeEngine> => {
     if (method === "GET" && path === "/networks") {
       const filter: unknown = JSON.parse(url.searchParams.get("filters") ?? "{}");
       const names = listOf(Reflect.get(Object(filter), "name"));
-      send(response, 200, [...networks.keys()].filter((name) => names.length === 0 || names.includes(name)).map((name) => ({ Id: name, Name: name })));
+      send(
+        response,
+        200,
+        [...networks.entries()]
+          .filter(([name]) => names.length === 0 || names.includes(name))
+          .map(([name, body]) => {
+            const subnet = namedSubnetOf(body);
+            return { Id: name, Name: name, IPAM: { Driver: "default", Config: subnet === undefined ? [] : [{ Subnet: subnet }] } };
+          }),
+      );
       return;
     }
     if (method === "POST" && path === "/networks/create") {
@@ -338,7 +388,18 @@ export const startFakeEngine = async (): Promise<FakeEngine> => {
         send(response, 409, { message: "network exists" });
         return;
       }
-      networks.set(name, body);
+      const held = [...networks.values()].flatMap((network) => namedSubnetOf(network) ?? []);
+      const named = namedSubnetOf(body);
+      if (named !== undefined && held.some((subnet) => overlap(subnet, named))) {
+        send(response, 403, { message: "invalid pool request: Pool overlaps with other one on this address space" });
+        return;
+      }
+      const subnet = named ?? DOCKER_DEFAULT_SUBNETS.find((candidate) => !held.some((each) => overlap(each, candidate)));
+      if (subnet === undefined) {
+        send(response, 400, { message: "all predefined address pools have been fully subnetted" });
+        return;
+      }
+      networks.set(name, { ...body, IPAM: { Driver: "default", Config: [{ Subnet: subnet }] } });
       send(response, 201, { Id: name });
       return;
     }

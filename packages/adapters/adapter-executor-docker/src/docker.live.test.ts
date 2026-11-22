@@ -192,6 +192,53 @@ describe.skipIf(!ready)(`a box's size and registry image on Docker, live (skippe
   }, 300_000);
 });
 
+// F-017 (ADR 0029, Q154), live: 50 boxes on one host, each box's network a /24 of the runner's pool,
+// which Docker's default address pools (about 31 networks) couldn't give. A few at a time, as a pool
+// runner makes them, and every one removed after.
+
+describe.skipIf(!ready)(`many boxes on one Docker host, live (skipped: ${ready ? "no" : reason})`, () => {
+  it("F-017/c5: 50 boxes run on one host, each on a network of its own carved from the executor's pool, and none overlaps", async () => {
+    const boxes = createDockerBoxes(engine, { images: { base: images.base ?? "", runner: images.runner ?? "" } });
+    const tokenDir = await mkdtemp(path.join(os.tmpdir(), "ostra-box-token-"));
+    await writeFile(path.join(tokenDir, "token"), "ostra-runner-live-test-token-not-real");
+    const stamp = String(Date.now());
+    const ids = Array.from({ length: 50 }, (_, index) => boxIdSchema.parse(`live-many-${stamp}-${String(index)}`));
+    const subnets: string[] = [];
+    try {
+      for (let at = 0; at < ids.length; at += 5) {
+        const made = await Promise.all(
+          ids.slice(at, at + 5).map((boxId, offset) =>
+            boxes.createBox({
+              taskId: taskIdSchema.parse(`live-task-many-${String(at + offset)}`),
+              sessionId: sessionIdSchema.parse(`live-session-many-${String(at + offset)}`),
+              boxId,
+              leaseEpoch: leaseEpochSchema.parse(1),
+              serverUrl: "http://ostra-server.invalid:8787",
+              baseImage: null,
+              tokenDir,
+            }),
+          ),
+        );
+        for (const result of made) {
+          if (!result.ok) throw new Error(`box ${String(subnets.length + 1)} of 50: ${result.error.message}`);
+          subnets.push(result.value.subnet);
+        }
+      }
+      expect(subnets).toHaveLength(50);
+      expect(new Set(subnets).size).toBe(50);
+      expect(subnets.every((subnet) => /^10\.89\.\d{1,3}\.0\/24$/.test(subnet))).toBe(true);
+      // Every box is up on the Engine: its sidecar runs.
+      const states = await Promise.all(ids.map((boxId) => boxes.boxState(boxId)));
+      expect(states.filter((state) => state !== "ready")).toEqual([]);
+    } finally {
+      for (const boxId of ids) {
+        await boxes.removeBox(boxId);
+      }
+      await rm(tokenDir, { recursive: true, force: true });
+    }
+  }, 900_000);
+});
+
 // Milestone 5 (ticket 24), live, for ticket 35's Linux job with `deploy/egress-baseline.sh` applied
 // (`OSTRA_TEST_EGRESS_APPLIED=1`): every probe of the plan from a shell in the agent's container,
 // each after its positive control (the box's own sidecar), a timeout counted inconclusive. The

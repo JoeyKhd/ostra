@@ -1,10 +1,12 @@
 import { randomBytes } from "node:crypto";
 import type { BoxImage, BoxSize, ExecutorCapacity, ServiceHealth } from "@ostra/adapter-sdk";
+import { DEFAULT_BOX_SUBNET_POOL } from "@ostra/protocol";
 import type { BoxId, BoxState, DispatchPurpose, LeaseEpoch, SessionId, TaskId } from "@ostra/protocol";
 import { z } from "zod";
 import { BRIDGE_FEATURES } from "./bridge/protocol.ts";
 import { emptySchema } from "./engine.ts";
 import type { Engine, EngineResult } from "./engine.ts";
+import { freeSubnet, parsePool } from "./subnet-pool.ts";
 
 // A box on Docker (ADR 0029): what the pool runner creates for a task, and removes after.
 //
@@ -48,6 +50,12 @@ import type { Engine, EngineResult } from "./engine.ts";
 //   agent's container runs exactly that digest. With no registry, milestone 3's local snapshot.
 // - **Capacity** (ADR 0059): the runner's whole offer, the engine's CPUs and memory less its
 //   reserve, and its slots; core subtracts the boxes it placed, from its own rows.
+//
+// F-017 (ADR 0029, Q154): the box network's subnet is a /24 of the runner's own pool
+// (`OSTRA_BOX_SUBNET_POOL`, `subnet-pool.ts`), never one of Docker's default pools, which hold about
+// 31 networks. The runner makes one box's networks at a time, so two boxes made at once never pick
+// the same /24; a /24 another runner on the Engine takes in between is refused (403) and the next
+// free one tried.
 
 export const BRIDGE_PORT = 7101;
 export const TASK_ROOT = "/task";
@@ -186,6 +194,8 @@ export type BoxOptions = {
   readonly limits?: FixedLimits;
   /** The runner's `OSTRA_RUNNER_SUBAGENT_WAIT_MINUTES`, for the sidecar, which runs the task. Absent: the sidecar's default. */
   readonly subagentWaitMinutes?: number;
+  /** F-017: `OSTRA_BOX_SUBNET_POOL`, the IPv4 network each box's network is a /24 of. Default: `DEFAULT_BOX_SUBNET_POOL`. */
+  readonly subnetPool?: string;
 };
 
 export type ContainerSpec = {
@@ -370,7 +380,20 @@ const PORT_PROBE =
 /** How often the runner looks at a box's sidecar while the task runs. */
 export const WAIT_POLL_MS = 2_000;
 
-export type CreatedDockerBox = { readonly agentId: string; readonly sidecarId: string; readonly resources: BoxResources };
+export type CreatedDockerBox = {
+  readonly agentId: string;
+  readonly sidecarId: string;
+  readonly resources: BoxResources;
+  /** F-017: the box network's subnet, a /24 of the runner's pool. */
+  readonly subnet: string;
+};
+
+/** How many free /24s a box tries when other runners on the Engine keep taking the one it picked. */
+const CARVE_ATTEMPTS = 5;
+/** The networks' subnets, as the Engine lists them: a vendor's format, read loosely. */
+const networkSubnetsSchema = z.array(
+  z.looseObject({ Name: z.string(), IPAM: z.looseObject({ Config: z.array(z.looseObject({ Subnet: z.string().optional() })).nullish() }).nullish() }),
+);
 
 export type DockerBoxes = {
   /** Can the runner use the Engine here (`docker version` answers)? */
@@ -438,7 +461,49 @@ export const createDockerBoxes = (engine: Engine, options: BoxOptions): DockerBo
       Options: { "com.docker.network.bridge.enable_icc": "false" },
       Labels: { "ostra.role": "egress" },
     });
-    return created.ok ? { ok: true, value: undefined } : created;
+    // 409: another runner on this Engine made it since the look.
+    return created.ok || created.error.status === 409 ? { ok: true, value: undefined } : created;
+  };
+
+  /** The box network, on a free /24 of the pool: Docker is told the subnet, and never picks one. */
+  const carveBoxNetwork = async (network: BoxResources["network"]): Promise<EngineResult<string>> => {
+    const poolText = options.subnetPool ?? DEFAULT_BOX_SUBNET_POOL;
+    const pool = parsePool(poolText);
+    if (pool === null) {
+      return { ok: false, error: { status: 400, message: `the box subnet pool ${poolText} isn't an IPv4 network of /8 to /24` } };
+    }
+    for (let attempt = 0; attempt < CARVE_ATTEMPTS; attempt += 1) {
+      // Every network on the host, a box's or anything else's: none of their subnets is taken twice.
+      const listed = await engine.call("GET", "/networks", networkSubnetsSchema);
+      if (!listed.ok) {
+        return listed;
+      }
+      const taken = listed.value.flatMap((each) => (each.IPAM?.Config ?? []).flatMap((config) => (config.Subnet === undefined ? [] : [config.Subnet])));
+      const subnet = freeSubnet(pool, taken);
+      if (subnet === null) {
+        return { ok: false, error: { status: 503, message: `the box subnet pool ${poolText} has no free /24 left` } };
+      }
+      const created = await engine.call("POST", "/networks/create", createdSchema, { ...network, IPAM: { Driver: "default", Config: [{ Subnet: subnet }] } });
+      if (created.ok) {
+        return { ok: true, value: subnet };
+      }
+      // 403 is Docker's "Pool overlaps with other one on this address space": taken since the listing.
+      if (created.error.status !== 403) {
+        return created;
+      }
+    }
+    return { ok: false, error: { status: 409, message: `the box subnet pool's free /24s kept being taken by other networks (${String(CARVE_ATTEMPTS)} tries)` } };
+  };
+
+  /** One box's networks at a time in this runner, so two boxes made at once never pick the same /24. */
+  let networking: Promise<unknown> = Promise.resolve();
+  const makeNetworks = (resources: BoxResources): Promise<EngineResult<string>> => {
+    const made = networking.then(async (): Promise<EngineResult<string>> => {
+      const egress = await ensureEgressNetwork(resources.egressNetwork);
+      return egress.ok ? carveBoxNetwork(resources.network) : egress;
+    });
+    networking = made.catch(() => undefined);
+    return made;
   };
 
   const removeBox = async (boxId: BoxId): Promise<EngineResult<void>> => {
@@ -480,11 +545,8 @@ export const createDockerBoxes = (engine: Engine, options: BoxOptions): DockerBo
           return { ok: false, error: { status: pulled.error.status, message: `pulling the box's image failed: ${pulled.error.message}` } };
         }
       }
-      const egress = await ensureEgressNetwork(resources.egressNetwork);
-      if (!egress.ok) {
-        return fail(egress.error);
-      }
-      const network = await engine.call("POST", "/networks/create", createdSchema, resources.network);
+      // The shared egress network once, then the box's own network on a /24 of the runner's pool.
+      const network = await makeNetworks(resources);
       if (!network.ok) {
         return fail(network.error);
       }
@@ -527,7 +589,7 @@ export const createDockerBoxes = (engine: Engine, options: BoxOptions): DockerBo
           return fail(started.error);
         }
       }
-      return { ok: true, value: { agentId: agent.value.Id, sidecarId: sidecar.value.Id, resources } };
+      return { ok: true, value: { agentId: agent.value.Id, sidecarId: sidecar.value.Id, resources, subnet: network.value } };
     },
     waitForServices: async (boxId, services, waitOptions = {}) => {
       const timeoutMs = waitOptions.timeoutMs ?? SERVICES_HEALTHY_WITHIN_MS;

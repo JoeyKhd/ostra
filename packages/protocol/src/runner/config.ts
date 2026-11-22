@@ -9,6 +9,30 @@ import { NPM_REGISTRY } from "../release.ts";
 // refused. `docs/configuration.md` lists every field, quoting `description`; a test keeps the two
 // in step.
 
+/**
+ * F-017 (ADR 0029, Q154): the pool a `docker` runner carves its boxes' networks from, a /24 each:
+ * spike 3's range, clear of Docker's own default pools (172.17.0.0/16 to 172.31.0.0/16, 192.168.0.0/16).
+ */
+export const DEFAULT_BOX_SUBNET_POOL = "10.89.0.0/16";
+
+/** An IPv4 network of /8 to /24, written as its own address (no host bits set), such as `10.89.0.0/16`. */
+const ipv4PoolSchema = z
+  .string()
+  .regex(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\/\d{1,2}$/, "an IPv4 network such as 10.89.0.0/16")
+  .refine(
+    (pool) => {
+      const [address = "", bits = ""] = pool.split("/");
+      const octets = address.split(".").map(Number);
+      const prefix = Number(bits);
+      if (octets.some((octet) => octet > 255) || prefix < 8 || prefix > 24) {
+        return false;
+      }
+      const value = octets.reduce((sum, octet) => sum * 256 + octet, 0);
+      return value % 2 ** (32 - prefix) === 0;
+    },
+    { message: "a network of /8 to /24, written as its own address (such as 10.89.0.0/16)" },
+  );
+
 /** Every field's key. `runnerConfigFields` must hold exactly these: the compiler refuses a missing or an extra one. */
 export const runnerConfigKeys = [
   "serverUrl",
@@ -24,6 +48,8 @@ export const runnerConfigKeys = [
   "boxBaseImage",
   "boxRunnerImage",
   "boxServerUrl",
+  // F-017 (ADR 0029, Q154): the docker executor's own subnets.
+  "boxSubnetPool",
   // Milestone 5 (spec section 5.4).
   "slots",
   "reserveCpuMillis",
@@ -130,6 +156,12 @@ export const runnerConfigFields = {
     env: "OSTRA_BOX_SERVER_URL",
     default: "the --server address",
     description: "Core's address as a docker box's sidecar reaches it, when that differs from --server.",
+  },
+  boxSubnetPool: {
+    flag: "box-subnet-pool",
+    env: "OSTRA_BOX_SUBNET_POOL",
+    default: DEFAULT_BOX_SUBNET_POOL,
+    description: "The IPv4 network, /8 to /24, the docker executor carves each box's own network out of, a /24 per box, so Docker's default address pools never run out. Keep it clear of your own networks.",
   },
   slots: {
     flag: "slots",
@@ -283,6 +315,7 @@ export const runnerConfigSchema = z.strictObject({
   boxBaseImage: z.string().min(1).max(512).optional().describe(describe("boxBaseImage")),
   boxRunnerImage: z.string().min(1).max(512).optional().describe(describe("boxRunnerImage")),
   boxServerUrl: httpUrlSchema.optional().describe(describe("boxServerUrl")),
+  boxSubnetPool: ipv4PoolSchema.default(DEFAULT_BOX_SUBNET_POOL).describe(describe("boxSubnetPool")),
   // Milestone 5. Unset `slots`: the executor's default (ADR 0059).
   slots: whole(1, 1024).optional().describe(describe("slots")),
   reserveCpuMillis: whole(0, 1_000_000).default(1000).describe(describe("reserveCpuMillis")),

@@ -86,6 +86,7 @@ Each flag is also an environment variable, and a flag wins over its variable. Va
 | `--box-base-image` | `OSTRA_BOX_BASE_IMAGE` | &lt;the release's image namespace&gt;/base:&lt;the runner's version&gt; | The docker executor's base image, for an environment that names none. |
 | `--box-runner-image` | `OSTRA_BOX_RUNNER_IMAGE` | &lt;the release's image namespace&gt;/runner:&lt;the runner's version&gt; | The image each docker box's sidecar runs: the ostra CLI. |
 | `--box-server-url` | `OSTRA_BOX_SERVER_URL` | the --server address | Core's address as a docker box's sidecar reaches it, when that differs from --server. |
+| `--box-subnet-pool` | `OSTRA_BOX_SUBNET_POOL` | 10.89.0.0/16 | The IPv4 network, /8 to /24, the docker executor carves each box's own network out of, a /24 per box, so Docker's default address pools never run out. Keep it clear of your own networks. |
 | `--slots` | `OSTRA_RUNNER_SLOTS` | docker: the host's CPUs / 2; kubernetes: 20; host: 2 | How many tasks or boxes the runner holds at once (ADR 0059). The server may hold a personal runner to fewer (its member's setting, 2 by default). |
 | `--reserve-cpu-millis` | `OSTRA_RUNNER_RESERVE_CPU_MILLIS` | 1000 | The CPU, in millicores, a docker runner keeps for the host and itself: it offers the engine's CPU less this. |
 | `--reserve-memory-mib` | `OSTRA_RUNNER_RESERVE_MEMORY_MIB` | 2048 | The memory, in MiB, a docker runner keeps for the host and itself: it offers the engine's memory less this. |

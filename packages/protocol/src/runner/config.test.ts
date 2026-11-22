@@ -16,6 +16,7 @@ describe("the runner's config", () => {
         executor: "host",
         labels: [],
         shell: "bash",
+        boxSubnetPool: "10.89.0.0/16",
         reserveCpuMillis: 1000,
         reserveMemoryMiB: 2048,
         wsRetryMinutes: 10,
@@ -80,5 +81,16 @@ describe("the runner's config", () => {
       expect(field.description.length).toBeGreaterThan(10);
     }
     expect(runnerEnvNames).toContain("OSTRA_RUNNER_SHELL");
+  });
+
+  it("F-017/c5: the docker executor's subnet pool has a working default clear of Docker's own pools, and takes only an IPv4 network of /8 to /24", () => {
+    const pool = (value: string) => parseRunnerConfig({ flags: { server: "http://x" }, env: { OSTRA_BOX_SUBNET_POOL: value } });
+    expect(parseRunnerConfig({ flags: { server: "http://x" }, env: {} })).toMatchObject({ ok: true, config: { boxSubnetPool: "10.89.0.0/16" } });
+    expect(pool("10.200.0.0/20")).toMatchObject({ ok: true, config: { boxSubnetPool: "10.200.0.0/20" } });
+    expect(parseRunnerConfig({ flags: { server: "http://x", "box-subnet-pool": "10.1.2.0/24" }, env: {} })).toMatchObject({ ok: true, config: { boxSubnetPool: "10.1.2.0/24" } });
+    // Not a network: host bits set, a prefix past /24 (no whole /24 in it) or under /8, a bad octet, IPv6.
+    for (const wrong of ["10.89.0.1/16", "10.89.0.0/25", "10.0.0.0/7", "10.300.0.0/16", "fd00::/64", "10.89.0.0"]) {
+      expect(pool(wrong).ok, wrong).toBe(false);
+    }
   });
 });
