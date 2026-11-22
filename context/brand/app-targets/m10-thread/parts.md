@@ -1,4 +1,4 @@
-# The compact thread's parts (waits for the maintainer's approval)
+# The compact thread's parts (approved 2026-11-22)
 
 Every screen in this folder is built from the parts below. Each screen's own `.md` says which parts it shows and in what state; this file gives their sizes, tokens, copy and data once. Sizes are CSS px, as `html/m10.css` draws them. Where a picture and this file disagree, this file wins.
 

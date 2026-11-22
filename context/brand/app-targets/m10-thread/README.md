@@ -1,8 +1,8 @@
 # Milestone 10's thread targets: the compact thread
 
-The design targets for the task thread, made as calm and compact as Claude Code on the web, in ostra's own look. They restyle the thread every earlier milestone built; they add no feature.
+The design targets for the task thread, made as calm and compact as Claude Code on the web, in ostra's own look. They restyle the thread every earlier milestone built; they add no capability, and the ledger tracks the work as F-151 (`../../../features.md`).
 
-**Status: a proposal, 2026-11-22.** Nothing is built from these until the maintainer approves them. The choices to settle are at the end, each with its recommendation.
+**Status: approved 2026-11-22 by the maintainer** ("yes to all"). Every choice at the end is settled as recommended; see "Approval" below. Build from these targets, with `../../../specs/m10-compact-thread/spec.md` and its tickets.
 
 **Why:** the maintainer, 2026-11-22: "our chatbox is soooo verbose and ugly compared to claude code on claude.ai". Every thought, command (with full raw paths), `Show the output` and tool call was its own row; bookkeeping (`Work saved after turn 3 · archive 193 kB · unfinished work not saved`, `The session ended without changes: no pull request.`) sat in the conversation; a token line (`Max · 13.4k in · 2.6k out · 1.6k reasoning`) followed every turn. The reference: a member's messages as right-aligned bubbles, the agent's prose as the page, activity folded into one quiet line (`Ran 5 commands ›`) that opens on click, and one clean box to write in.
 
@@ -63,11 +63,11 @@ New for milestone 10:
 - **Checks are ostra's, in the box; CI is the code host's, counted in jobs** (`parts.md` part 13).
 - **Never a box inside a box,** as before: the plan's list sits in the amber rule.
 
-## The choices to settle
+## The choices, settled
 
-Each with the recommendation the pictures follow.
+Each with the recommendation the pictures follow. **All fifteen are settled as recommended** (the maintainer, 2026-11-22: "yes to all"); the alternatives are kept for the record.
 
-| # | Choice | Recommended | The alternative |
+| # | Choice | Settled (as recommended) | The alternative, not taken |
 |---|---|---|---|
 | 1 | Where a turn's numbers go (tokens, reasoning, effort, spend, saved work) | The opened run's footer (with `Event log ›`), a tooltip on the turn's time, the panel's Usage and Session, the Event log | A line under every turn (today), or the Event log alone |
 | 2 | The time anchor | On each turn's first line, mono `--faint`; no turn header | The time only in the tooltip, or a header per turn |
@@ -105,3 +105,11 @@ These aren't visual; the screens depend on them.
 14. **A capture's route:** the capture row and caption read the attachment's own `target.path` (`/history`), never `/` by default.
 15. **The status line** gains the box's state when no turn runs (`box idle, stops in 11 min`, from `tasks.get`'s box and idle timer).
 16. **Copy:** new strings under `task.run.*` (a run's words), `task.doing.*` (the live step), `task.result.*` (result lines) and `task.footer.*` in `apps/web/messages/en.json`; milestone 1's `Show the output` / `Show the diff` become `output ›` / `diff ›` (`hide output ›` / `hide diff ›`).
+
+## Approval
+
+**Approved 2026-11-22.** The maintainer, shown every picture and the fifteen choices with their recommendations, answered "yes to all". So:
+
+- **Every choice above is settled as recommended,** and the pictures, `parts.md` and the scenes' build specs are the build's contract on copy, states and sizes.
+- **The content fixes above are the build's contract too:** milestone 10's spec (`../../../specs/m10-compact-thread/spec.md`) turns each into a ticket's "Done when", and the ledger's F-151 into tested conditions.
+- **Choice 5 rests on the agent taking words for an enum field.** The adapter ticket proves it against the pinned OpenCode; an agent that can't declares so, and its questions keep milestone 3's form without `Something else…` (the spec's section 6).

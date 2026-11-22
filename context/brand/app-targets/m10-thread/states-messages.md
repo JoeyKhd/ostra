@@ -1,4 +1,4 @@
-# Target: messages, dividers and results (waits for the maintainer's approval)
+# Target: messages, dividers and results (approved 2026-11-22)
 
 > **Committed image:** `states-messages.png` (2880×1912) with `states-messages.webp` (1440×956), from `html/states.html?sheet=messages`. Six numbered cells at the thread's scale. Sizes are CSS px; the parts are `parts.md`'s (2, 8 and 12).
 

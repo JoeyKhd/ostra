@@ -1,4 +1,4 @@
-# Target: the steps' states (waits for the maintainer's approval)
+# Target: the steps' states (approved 2026-11-22)
 
 > **Committed image:** `states-steps.png` (2880×1912) with `states-steps.webp` (1440×956), from `html/states.html?sheet=steps`. A sheet of six numbered cells, each a piece of the thread at its real scale in a 660px column (the thread's column is 720px). Sizes are CSS px; the parts are `parts.md`'s.
 

@@ -1,4 +1,4 @@
-# Target: what waits on a person (waits for the maintainer's approval)
+# Target: what waits on a person (approved 2026-11-22)
 
 > **Committed image:** `states-asks.png` (2880×1912) with `states-asks.webp` (1440×956), from `html/states.html?sheet=asks`. Six numbered cells at the thread's scale. Sizes are CSS px; the parts are `parts.md`'s (part 11).
 
@@ -16,7 +16,7 @@
 1. **The asking step leaves the fold.** While an approval is open, its step isn't hidden in a closed run: the live step's slot holds it (`Wants to run …`, `Wants to edit …`, `Wants to reach …`, `Wants to call …`), still, with the amber `needs approval`, and the block follows it. Several open at once: one asking step and block each, in order; the header reads `Needs you · 2 approvals`. A subagent's approval names it in the sentence (milestone 7). Deny opens milestone 3's reason field in the block.
 2. **The answered approval** goes back into its run: the run's line says it in its tail, and the row carries the receipt words. Cancelled and expired approvals read milestone 3's receipts on the row (`cancelled`, `expired` `--faint`); `Nobody answered in 15 minutes, so the turn was cancelled.` + teal `Answer anyway` stays visible as a notice line under the run while the item is open.
 3. **The watcher's form** shows the same choices, so everyone sees what was asked. `Take over to answer` calls `tasks.takeOver` and focuses the first choice. The composer's place holds the watcher's bar.
-4. **`Something else…`** is always the last choice of an enum question. It never sends on its own: `Send answer` does, with `⌘↵` too. How its words reach the agent is open point 5 in the README.
+4. **`Something else…`** is always the last choice of an enum question. It never sends on its own: `Send answer` does, with `⌘↵` too. Its words reach the agent as the field's answer (the README's choice 5, settled 2026-11-22).
 5. **The reply block** never repeats the agent's message: it points up at it.
 6. **The round cap** keeps milestone 6's copy and buttons; only its sizes are this milestone's.
 
