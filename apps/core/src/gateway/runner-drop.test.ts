@@ -15,6 +15,7 @@ import type { CommandOf, Peer, TaskEvent } from "@ostra/protocol";
 import { startConnection } from "@ostra/runner";
 import type { CommandHandlers, RunnerConnection } from "@ostra/runner";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import { cancelGraceInTx, cancelSidecarGraceInTx, startGraceInTx, startSidecarGraceInTx } from "../ingest/grace.ts";
 import type { GraceDeps } from "../ingest/grace.ts";
@@ -268,7 +269,8 @@ describe("a runner or a sidecar offline for less than the grace (F-045)", () => 
       front.cut();
       await until("the grace started", async () => (await graceJobs(task)).some((job) => job.state === "created"), 15_000);
       const [grace] = (await graceJobs(task)).filter((job) => job.state === "created");
-      const startAfter = await test.db.$queryRaw<readonly { readonly start_after: Date }[]>`SELECT start_after FROM pgboss.job WHERE id = ${grace?.id ?? ""}::uuid`;
+      // The queue's own row, read as storage: parsed at the boundary.
+      const startAfter = z.array(z.object({ start_after: z.date() })).parse(await test.db.$queryRaw`SELECT start_after FROM pgboss.job WHERE id = ${grace?.id ?? ""}::uuid`);
       expect((startAfter[0]?.start_after.getTime() ?? 0) - cutAt).toBeGreaterThanOrEqual(runnerLimits.graceMs - 5_000);
       // The agent carries on meanwhile: what it emits waits in the spool.
       for (let index = 6; index <= 15; index += 1) await channel.emit(thought(index));
