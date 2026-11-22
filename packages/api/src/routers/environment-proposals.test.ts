@@ -6,7 +6,8 @@ import type { EnvironmentProposal, EnvironmentProposalId, OrganizationId, Projec
 import { TRPCError } from "@trpc/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createApiHarness, seedConnectionAndModel, seedProject } from "../testing/index.ts";
+import { serveTaskAttachment } from "../services/attachment-download.ts";
+import { createApiHarness, pngBytes, seedAttachment, seedConnectionAndModel, seedProject } from "../testing/index.ts";
 import type { ApiHarness } from "../testing/index.ts";
 
 // Milestone 6's ticket 29 (F-113): the onboarding task and its environment proposal through the
@@ -274,5 +275,45 @@ describe("the onboarding task (F-113, ticket 29)", () => {
 
     await admin.environments.decideProposal({ proposalId, decision: "edit-and-accept", edited: proposal({ setupScript: "make edited-by-admin" }), reason: null });
     expect((await harness.test.db.environment.findFirstOrThrow({ where: { projectId } })).setupScript).toContain("make edited-by-admin");
+  });
+});
+
+describe("the onboarding task's app (F-140, milestone 8)", () => {
+  it("F-140/c8: a project admin sees the primary's screenshot the onboarding task took, beside the processes it tested, before accepting the proposal", async () => {
+    await closeOnboarding();
+    await harness.test.db.environmentProposal.updateMany({ where: { projectId, state: "proposed" }, data: { state: "rejected" } });
+    const projectAdmin = await harness.as(harness.fixture.a.insider);
+    const { taskId } = await projectAdmin.environments.startOnboarding({ projectId });
+    const session = await harness.test.db.session.findFirstOrThrow({ where: { taskId }, select: { id: true } });
+    const turn = await harness.test.db.turn.create({ data: { organizationId: orgA, projectId, taskId, sessionId: session.id, ordinal: 1, startSeq: 1 }, select: { id: true } });
+    const at = { organizationId: orgA, projectId, taskId };
+    // Its turn started the processes, took the primary twice (the second once it rendered), and recorded a click after.
+    await seedAttachment(harness, at, { turnId: turn.id, caption: "Web, still loading" });
+    const rendered = pngBytes(200);
+    const shot = await seedAttachment(harness, at, { turnId: turn.id, caption: "Web, ready, its /api answered", bytes: rendered });
+    await seedAttachment(harness, at, { kind: "recording", turnId: turn.id });
+    const web = { name: "web", repoId: repo1, folder: ".", command: "npm run dev", port: 5173, ready: { kind: "http" as const, path: "/" }, label: "Web", primary: true, hostRewrite: true };
+    const api = { name: "api", repoId: repo1, folder: ".", command: "npm run api", port: 3001, ready: { kind: "port" as const }, label: "API", primary: false, hostRewrite: true };
+    const proposalId = await agentProposes(taskId, { ...proposal(), appProcesses: [web, api] });
+
+    const view = await projectAdmin.environments.proposal({ projectId });
+    expect(view).toMatchObject({ proposalId, source: "onboarding", canDecide: true, decision: null });
+    expect(view?.appProcesses.proposed.map((process) => [process.name, process.port, process.primary])).toEqual([
+      ["web", 5173, true],
+      ["api", 3001, false],
+    ]);
+    // The newest screenshot of the primary, not the recording after it, with its own download.
+    expect(view?.screenshot).toMatchObject({ attachmentId: shot.attachmentId, kind: "screenshot", target: { kind: "process", name: "web" }, caption: "Web, ready, its /api answered" });
+    expect(view?.screenshot?.downloadPath).toBe(`/api/tasks/${taskId}/attachments/${shot.attachmentId}`);
+    const download = await serveTaskAttachment(await harness.contextOf(harness.fixture.a.insider), taskId, shot.attachmentId);
+    expect(download.status).toBe(200);
+    expect(new Uint8Array(await download.arrayBuffer())).toEqual(rendered);
+    // Nothing is saved until the admin accepts: then the tested processes are the environment's.
+    expect(await harness.test.db.appProcess.count({ where: { projectId } })).toBe(0);
+    await projectAdmin.environments.decideProposal({ proposalId, decision: "accept", edited: null, reason: null });
+    expect((await harness.test.db.appProcess.findMany({ where: { projectId }, orderBy: { position: "asc" } })).map((row) => [row.name, row.primary])).toEqual([
+      ["web", true],
+      ["api", false],
+    ]);
   });
 });

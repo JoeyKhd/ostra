@@ -129,8 +129,15 @@ export const appPicturesCases = (mode: AppPicturesMode) => {
     return h;
   };
 
-  /** A task on the pictures' repo with the processes given, the screenshot settings, and the `app` tools. */
-  const taskWith = (h: Harness, prompt: string, processes: readonly TaskSpecAppProcess[], ports: Ports, screenshots?: TaskSpecScreenshots): TaskSpec => {
+  /** A task on the pictures' repo with the processes given, the screenshot settings, and the `app` tools (or `overrides`' own). */
+  const taskWith = (
+    h: Harness,
+    prompt: string,
+    processes: readonly TaskSpecAppProcess[],
+    ports: Ports,
+    screenshots?: TaskSpecScreenshots,
+    overrides: Partial<Pick<TaskSpec, "tools" | "commitPaths">> = {},
+  ): TaskSpec => {
     const made = h.taskFor(prompt);
     const [base] = made.spec.repos;
     const [baseEnvironment] = made.spec.environment.repos;
@@ -154,6 +161,7 @@ export const appPicturesCases = (mode: AppPicturesMode) => {
         ...(screenshots === undefined ? {} : { screenshots }),
       },
       tools: ["pr-text", "app"],
+      ...overrides,
     };
     const credentials = taskCredentialsSchema.parse({
       ...made.credentials,
@@ -366,6 +374,66 @@ export const appPicturesCases = (mode: AppPicturesMode) => {
       expect(refused[6]).not.toContain("Screenshot");
       // None of them took a picture.
       expect(added(h, spec).length).toBe(4);
+    },
+
+    /**
+     * F-140/c8: the onboarding task tests the app before a project admin decides. Its agent, with the
+     * onboarding tools and the app's, starts every process (`start_app`, in the list's order, each
+     * once the one before is ready), screenshots the primary, and then proposes the processes it
+     * tested; the screenshot is a blob of the task, of the primary, and the proposal reaches core
+     * after it. Core's side (the proposal shows that screenshot to the admin) is
+     * `packages/api/src/routers/environment-proposals.test.ts`.
+     */
+    onboarding: async (): Promise<void> => {
+      const h = await runner();
+      const p = await ports();
+      const processes = fixtureProcesses(p, "web");
+      const proposed = {
+        repos: [{ repo: APP_REPO, setupScript: null, checks: [], variableNames: [] }],
+        services: [],
+        notes: "The frontend calls /api through Vite's proxy; the docs are their own page.",
+        // As the agent names them: each by its repo's full name, which the sidecar turns into its ID.
+        appProcesses: processes.map((process) => ({
+          name: process.name,
+          repo: APP_REPO,
+          folder: process.folder,
+          command: process.command,
+          port: process.port,
+          ready: process.ready,
+          label: process.label,
+          primary: process.primary,
+          hostRewrite: process.hostRewrite,
+        })),
+      };
+      const calls: readonly FakeAppCall[] = [
+        { tool: "start_app", arguments: {} },
+        { tool: "take_screenshot", arguments: { target: { process: "web" }, caption: "The primary, as onboarding tested it." } },
+        { tool: "propose_environment", arguments: proposed },
+      ];
+      // An onboarding task's spec at minor 7, as core builds it: AGENTS.md only, its tools and the app's.
+      const spec = taskWith(h, fakeMarker("app-calls", fakeAppCalls(calls)), processes, p, undefined, { tools: ["environment", "pr-text", "app"], commitPaths: ["AGENTS.md"] });
+      h.dispatch(spec);
+      await waitFor(h, spec, "session.saved");
+      const answers = said(h, spec);
+      expect(answers.map((answer) => answer.split(":")[0]), answers.join("\n")).toEqual(["start_app", "take_screenshot", "propose_environment"]);
+      // Each process started in the list's order, each once the one before was ready, and all were ready.
+      const states = h.ofKind(spec, "app.process").map((event) => `${event.name}:${event.state}`);
+      expect(states.slice(0, 6)).toEqual(["api:starting", "api:ready", "web:starting", "web:ready", "docs:starting", "docs:ready"]);
+      // The primary's screenshot, a PNG blob of the task.
+      const shots = added(h, spec);
+      expect(shots).toHaveLength(1);
+      expectScreenshot(h, spec, shots[0]);
+      expect(shots[0]).toMatchObject({ source: "agent", target: { process: "web" }, caption: "The primary, as onboarding tested it." });
+      expectBrowserNamed(h, spec);
+      // Then the proposal, with the processes it tested, each by its repo's ID, the primary marked.
+      expect(h.server.team.proposals).toHaveLength(1);
+      const [proposal] = h.server.team.proposals;
+      expect(proposal?.taskId).toBe(spec.taskId);
+      expect(proposal?.body.appProcesses?.map((process) => [process.name, process.repoId, process.port, process.primary])).toEqual([
+        ["api", APP_REPO_ID, p.api, false],
+        ["web", APP_REPO_ID, p.web, true],
+        ["docs", APP_REPO_ID, p.docs, false],
+      ]);
     },
 
     /**

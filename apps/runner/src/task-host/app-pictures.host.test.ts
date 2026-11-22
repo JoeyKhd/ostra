@@ -19,4 +19,5 @@ describe(`the app's pictures on host (${liveBrowser ? "the machine's browser" : 
   it("F-121/c9: on host, the turn's 21st picture is refused, the after-turn screenshots are skipped with a note, a member's doesn't count, and the next turn counts from 0", cases.limit, 300_000);
   it("F-121/c1,c8: on host, a box with no browser says so in each tool's answer and in app.browser, and skips the after-turn screenshots with a note", cases.noBrowser, 240_000);
   it("F-121/c10: on host, a caption and steps holding shell syntax and prompt-like text are in the event and the reel, and in no log line", cases.hostileText, 240_000);
+  it("F-140/c8: on host, an onboarding task's agent starts every app process in order, each ready, screenshots the primary, and then proposes the processes it tested", cases.onboarding, 300_000);
 });
