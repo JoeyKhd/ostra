@@ -34,6 +34,9 @@ export type BridgedForward = { readonly host: string; readonly port: number; rea
 // Ported from spikes/what-is-inside-a-box/src/bridge/bridge-server.ts, with a deadline on every
 // request (the spike's recommendation 9).
 
+/** The line a request the init didn't answer by its deadline leaves, with the request's kind (`reap_all`, `spawn`, ...). */
+export const BRIDGE_DEADLINE_MISSED = "the box's init didn't answer a bridge request by its deadline";
+
 export type BridgeLaunch = {
   readonly command: string;
   readonly args: readonly string[];
@@ -168,6 +171,7 @@ const bridgeOverSocket = (socket: Socket, context: Context): Bridge => {
   const request = (build: (reqId: ReqId) => SidecarFrame): Promise<InitFrame> => {
     const reqId = reqIdSchema.parse(nextReq);
     nextReq += 1;
+    const frame = build(reqId);
     return new Promise<InitFrame>((resolve, reject) => {
       if (isClosed) {
         reject(new Error("the bridge is closed"));
@@ -175,20 +179,23 @@ const bridgeOverSocket = (socket: Socket, context: Context): Bridge => {
       }
       const timer = setTimeout(() => {
         pending.delete(reqId);
+        // A caller may let this pass (a stop's reap does, so the stop goes on): the line stays,
+        // with the request's kind, and the box's and the task's IDs from the sidecar's logger.
+        context.logger.warn(BRIDGE_DEADLINE_MISSED, { request: frame.t, deadlineMs: context.deadlineMs });
         reject(new Error("the box's init didn't answer in time"));
       }, context.deadlineMs);
       timer.unref();
       pending.set(reqId, {
-        resolve: (frame) => {
+        resolve: (answer) => {
           clearTimeout(timer);
-          resolve(frame);
+          resolve(answer);
         },
         reject: (error) => {
           clearTimeout(timer);
           reject(error);
         },
       });
-      send(build(reqId));
+      send(frame);
     });
   };
 

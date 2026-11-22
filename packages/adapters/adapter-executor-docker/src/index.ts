@@ -9,7 +9,7 @@ export { createEngine, engineAddressFrom, ENGINE_API_VERSION, registryAuthHeader
 export type { Engine, EngineAddress, EngineError, EngineResult } from "./engine.ts";
 export { BLOCKED_V4, BLOCKED_V6, egressRules, egressRuleSet, METADATA_ADDRESS } from "./egress.ts";
 export type { EgressInput, EgressRule } from "./egress.ts";
-export { initTooOld, listenForInit } from "./bridge/bridge-server.ts";
+export { BRIDGE_DEADLINE_MISSED, initTooOld, listenForInit } from "./bridge/bridge-server.ts";
 export { BRIDGE_FEATURES, bridgeFeatureSchema } from "./bridge/protocol.ts";
 export type { BridgeFeature } from "./bridge/protocol.ts";
 export type { Bridge, BridgedApp, BridgedBrowser, BridgedForward, BridgeListener, BridgeListenOptions } from "./bridge/bridge-server.ts";

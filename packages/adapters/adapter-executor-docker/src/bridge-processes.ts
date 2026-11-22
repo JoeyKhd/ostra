@@ -26,6 +26,7 @@ export const bridgeProcesses = (bridge: Bridge): TaskProcesses => ({
       killAll: async () => {
         // An init that doesn't answer can't fail a stop (ADR 0029, Q154): the reap ends at its
         // deadline, the stop goes on, and the box's removal, once the sidecar exits, ends the rest.
+        // The bridge logs the missed deadline (`BRIDGE_DEADLINE_MISSED`, `request: "reap_all"`).
         await bridge.reapAll().catch(() => undefined);
       },
       dispose: () => Promise.resolve(),

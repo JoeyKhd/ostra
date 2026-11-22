@@ -7,7 +7,7 @@ import type { AddressInfo, Socket } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { BRIDGE_FEATURES, createDockerBoxes, createEngine, DockerExecutor, listenForInit } from "@ostra/adapter-executor-docker";
+import { BRIDGE_DEADLINE_MISSED, BRIDGE_FEATURES, createDockerBoxes, createEngine, DockerExecutor, listenForInit } from "@ostra/adapter-executor-docker";
 import { startFakeEngine } from "@ostra/adapter-executor-docker/testing";
 import type { FakeEngine } from "@ostra/adapter-executor-docker/testing";
 import { descendantsOf, killTree, listProcesses, silentLogger } from "@ostra/adapter-sdk";
@@ -96,7 +96,8 @@ afterAll(async () => {
 /** The sidecar's side: `DockerExecutor` over the real bridge, with its deadline, to the real init behind the link. */
 const hungBox = async (input: { readonly dataDir: string; readonly logger: Logger }) => {
   const nonce = randomBytes(32).toString("base64url");
-  const listener = await listenForInit({ boxId, nonce, host: "127.0.0.1", port: 0, logger: silentLogger, requestDeadlineMs: DEADLINE_MS });
+  // The bridge's logger carries the box's ID, as `run-sidecar.ts`'s does (with the task's).
+  const listener = await listenForInit({ boxId, nonce, host: "127.0.0.1", port: 0, logger: input.logger.child({ boxId }), requestDeadlineMs: DEADLINE_MS });
   const link = await freezableLink(listener.port);
   held.link = link;
   held.init = spawn(process.execPath, [INIT], {
@@ -176,6 +177,10 @@ describe("a stop when a docker box's init doesn't answer (F-017)", () => {
       // A stop, not a crash: the reap the init never answered didn't fail it.
       expect(h.kinds(spec)).not.toContain("session.crashed");
       expect(h.logs.filter((record) => record.message === "task run failed")).toEqual([]);
+      // The reap the init never answered leaves its line all the same, with the box's ID.
+      expect(h.logs.filter((record) => record.message === BRIDGE_DEADLINE_MISSED).map((record) => record.fields)).toContainEqual(
+        expect.objectContaining({ boxId, request: "reap_all", deadlineMs: DEADLINE_MS }),
+      );
       const sidecar = container("sidecar");
       if (sidecar === undefined) throw new Error("no sidecar container");
       sidecar.status = "exited";
