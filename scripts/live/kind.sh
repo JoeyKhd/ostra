@@ -242,6 +242,26 @@ box_browser() {
   [ "$phase" = "Succeeded" ]
 }
 
+# F-093/c4: a box as a pod with its service, ready in under 60 s on a warm node, measured. The
+# `kubernetes` executor itself makes it, as the chart's pool runner would, in the chart's namespace
+# (its egress baseline in place), from the images this job loaded onto the node and the Postgres the
+# server's database already runs there; it's ready once the sidecar is, the box's init has connected
+# to its bridge and the service is healthy (src/kubernetes-executor.live.test.ts). A run in which
+# the test skipped itself doesn't pass the step. The kubeconfig is kind's own for this cluster, kept
+# out of the logs and removed after.
+box_ready() {
+  local name="$1" kind_version="$2" config="$BIN/kubeconfig-$1" out="$BIN/box-ready-$1.out" code=0
+  (umask 077 && "kind-$kind_version" get kubeconfig --name "$name" >"$config") || return 1
+  OSTRA_TEST_KUBECONFIG="$config" OSTRA_TEST_KUBE_NAMESPACE=ostra-boxes \
+    OSTRA_TEST_BASE_IMAGE="$BASE" OSTRA_TEST_RUNNER_IMAGE="$RUNNER" OSTRA_TEST_SERVICE_IMAGE="$POSTGRES_IMAGE" \
+    pnpm --filter @ostra/adapter-executor-kubernetes exec vitest run --reporter verbose src/kubernetes-executor.live.test.ts >"$out" 2>&1 || code=$?
+  rm -f "$config"
+  cat "$out"
+  grep -Eq 'Tests +1 passed' "$out" || code=1
+  rm -f "$out"
+  return "$code"
+}
+
 released_clean() {
   local ctx="kind-$1" left
   helm --kube-context "$ctx" uninstall ostra-runner -n ostra --wait || return 1
@@ -276,7 +296,7 @@ for cluster in "${CLUSTERS[@]}"; do
   on_cluster "$name" kubelet-pull kubelet_pull
   on_cluster "$name" unschedulable unschedulable
   on_cluster "$name" box-browser box_browser
-  not_run "$name-box-as-a-pod" "a box as a pod with its services, ready in under 60 s, needs a task dispatched end to end on the cluster (a stub model and a git upstream the pod reaches), which this job doesn't set up yet"
+  on_cluster "$name" box-ready box_ready "$kind_version"
   not_run "$name-buildkit" "the rootless BuildKit pod's build, scan and push needs a snapshot build requested through core on the cluster, which this job doesn't drive yet"
   on_cluster "$name" released-clean released_clean
   if passed "$name-cluster"; then
