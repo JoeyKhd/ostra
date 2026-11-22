@@ -311,7 +311,7 @@ const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, t
         )}
         {boxSize === null ? null : <PropRow label={t("waitLine.panelBoxSize")}><Mono><span data-testid="task-box-size">{boxSizeText(boxSize)}</span></Mono></PropRow>}
         <PropRow label={t("taskPage.spend")}>
-          <Mono><span data-reached={task.spend.reached}><SpendValue spend={task.spend} /></span></Mono>
+          <Mono><span data-testid="task-spend" data-reached={task.spend.reached}><SpendValue spend={task.spend} /></span></Mono>
         </PropRow>
         <PropRow label={t("taskAnswers.usage.agentTime")}><Mono><span data-testid="task-agent-time">{formatDuration(usage.agentMs)}</span></Mono></PropRow>
         <PropRow label={t("taskPage.time")}><Mono>{formatElapsed(task.createdAt, now)}</Mono></PropRow>

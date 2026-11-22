@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import { hashPassword } from "better-auth/crypto";
 
 import { createDb, notifyChannels } from "@ostra/db";
-import { seedMember } from "@ostra/domain";
+import { modelTokenPrices, priceTokens, seedMember } from "@ostra/domain";
 import type { TaskEvent } from "@ostra/protocol";
 import { taskEventSchema } from "@ostra/protocol";
 import { z } from "zod";
@@ -172,20 +172,49 @@ await appendEvents(watched, [
 
 // ---- two counted turns (F-084): the second's second call estimated by the key proxy ----
 const counted = await createTask("Count the tokens of two turns", { state: "running" });
+// Its profile's model has prices, so the Spend row reads dollars against the cap (F-068). A provider
+// row only: no endpoint is called, and the token ref names no stored secret.
+const provider = await db.modelProvider.upsert({
+  where: { organizationId_name: { organizationId, name: "e2e-answers" } },
+  create: { organizationId, name: "e2e-answers", baseUrl: "http://127.0.0.1:9/v1", apiFormat: "openai_compatible", authScheme: "bearer", tokenSecretRef: "builtin:e2e-answers" },
+  update: {},
+});
+/** Micro-USD per million tokens ($3, $15, $0.30, $3.75): fresh input, output, cache read, cache write. */
+const PRICES = { input: 3_000_000, output: 15_000_000, read: 300_000, write: 3_750_000 } as const;
+const pricedModel = await db.model.upsert({
+  where: { providerId_endpointModelId: { providerId: provider.id, endpointModelId: "answers-model" } },
+  create: {
+    organizationId,
+    providerId: provider.id,
+    endpointModelId: "answers-model",
+    displayName: "Answers model",
+    inputPricePerMTok: PRICES.input / 1_000_000,
+    outputPricePerMTok: PRICES.output / 1_000_000,
+    cacheReadPricePerMTok: PRICES.read / 1_000_000,
+    cacheWritePricePerMTok: PRICES.write / 1_000_000,
+  },
+  update: {},
+});
+const counter = await db.agentProfile.create({ data: { organizationId, name: `Counter ${randomUUID().slice(0, 6)}`, adapter: "opencode", modelId: pricedModel.id, providerId: provider.id } });
 const call = (inputTokens: number, outputTokens: number, cacheReadTokens: number, cacheWriteTokens: number, estimated: boolean) => ({
   kind: "usage.recorded",
-  providerId: randomUUID(),
-  modelId: randomUUID(),
+  providerId: provider.id,
+  modelId: pricedModel.id,
   inputTokens,
   outputTokens,
   cacheReadTokens,
   cacheWriteTokens,
   estimated,
 });
-const turns = [
-  { turnId: randomUUID(), calls: [call(12_000, 3_100, 40_000, 2_000, false), call(8_000, 900, 41_000, 0, false)], agentMs: 74_000, spentMicroUsd: 61_000 },
-  { turnId: randomUUID(), calls: [call(5_400, 1_200, 52_000, 1_500, false), call(2_600, 400, 0, 0, true)], agentMs: 38_000, spentMicroUsd: 27_000 },
+/** A call's cost as ingest prices it (F-089): each kind at its own price, in micro-USD. */
+const prices = modelTokenPrices(pricedModel);
+if (prices === null) throw new Error("the counted task's model has no price");
+const cost = (c: ReturnType<typeof call>): number => priceTokens(prices, c);
+const countedTurns = [
+  { turnId: randomUUID(), calls: [call(12_000, 3_100, 40_000, 2_000, false), call(8_000, 900, 41_000, 0, false)], agentMs: 74_000 },
+  { turnId: randomUUID(), calls: [call(5_400, 1_200, 52_000, 1_500, false), call(2_600, 400, 0, 0, true)], agentMs: 38_000 },
 ] as const;
+const turns = countedTurns.map((turn) => ({ ...turn, spentMicroUsd: turn.calls.reduce((sum, c) => sum + cost(c), 0) }));
 for (const turn of turns) {
   await appendEvents(counted, [
     { kind: "turn.started", turnId: turn.turnId },
@@ -211,11 +240,21 @@ for (const turn of turns) {
 }
 const all = turns.flatMap((turn) => turn.calls);
 const total = (pick: (c: (typeof all)[number]) => number): number => all.reduce((sum, c) => sum + pick(c), 0);
+const countedSpent = turns.reduce((sum, turn) => sum + turn.spentMicroUsd, 0);
 await db.session.update({
   where: { id: counted.sessionId },
-  data: { inputTokens: total((c) => c.inputTokens), outputTokens: total((c) => c.outputTokens), cacheReadTokens: total((c) => c.cacheReadTokens), cacheWriteTokens: total((c) => c.cacheWriteTokens) },
+  data: {
+    agentProfileId: counter.id,
+    providerId: provider.id,
+    modelId: pricedModel.id,
+    inputTokens: total((c) => c.inputTokens),
+    outputTokens: total((c) => c.outputTokens),
+    cacheReadTokens: total((c) => c.cacheReadTokens),
+    cacheWriteTokens: total((c) => c.cacheWriteTokens),
+    spentMicroUsd: countedSpent,
+  },
 });
-await db.task.update({ where: { id: counted.taskId }, data: { spentMicroUsd: turns.reduce((sum, turn) => sum + turn.spentMicroUsd, 0) } });
+await db.task.update({ where: { id: counted.taskId }, data: { agentProfileId: counter.id, spentMicroUsd: countedSpent } });
 
 process.stdout.write(
   `${JSON.stringify({ race: race.taskId, rule: rule.taskId, deny: deny.taskId, plan: plan.taskId, watched: watched.taskId, counted: counted.taskId })}\n`,

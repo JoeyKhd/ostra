@@ -167,14 +167,15 @@ test("F-024/c5: a watcher has no composer, only who drives and Take over; taking
   await sam.context().close();
 });
 
-/** `tasks.get`'s usage, over HTTP as the signed-in member. */
+/** `tasks.get`'s usage and spend, over HTTP as the signed-in member. */
 const usageSchema = z.object({
   result: z.object({
     data: z.object({
       usage: z.object({
-        totals: z.object({ inputTokens: z.number(), outputTokens: z.number(), cacheReadTokens: z.number(), cacheWriteTokens: z.number(), agentMs: z.number(), estimated: z.boolean() }),
+        totals: z.object({ inputTokens: z.number(), outputTokens: z.number(), cacheReadTokens: z.number(), cacheWriteTokens: z.number(), spentMicroUsd: z.number().nullable(), agentMs: z.number(), estimated: z.boolean() }),
         turns: z.array(z.object({ ordinal: z.number(), inputTokens: z.number(), outputTokens: z.number(), estimated: z.boolean() })),
       }),
+      spend: z.object({ unit: z.literal("usd"), spent: z.number(), cap: z.number(), reached: z.boolean() }),
     }),
   }),
 });
@@ -182,20 +183,29 @@ const usageSchema = z.object({
 /** The panel's short count: 28_000 → "28k", 5_600 → "5.6k". */
 const short = (n: number): string => (n >= 1_000_000 ? `${String(Number((n / 1_000_000).toFixed(2)))}M` : n >= 1_000 ? `${String(Number((n / 1_000).toFixed(1)))}k` : String(n));
 
-test("F-084/c1,c3: the properties panel shows the four kinds of tokens and the agent time, \"≈\" for an estimate, and each turn's figures in its footer, as the API reports them", { tag: "@desktop-only" }, async ({ page }) => {
+/** Micro-USD as the panel's dollars: 221_025 → "$0.22". */
+const dollars = (micro: number): string => `$${(micro / 1_000_000).toFixed(2)}`;
+
+test("F-084/c1,c3: the properties panel shows the four kinds of tokens, the spend and the agent time, \"≈\" for an estimate, and each turn's figures in its footer, as the API reports them", { tag: "@desktop-only" }, async ({ page }) => {
   await signIn(page);
   const tasks = await seed();
   await page.goto(`/tasks/${tasks.counted}`);
   const response = await page.request.get(`/api/trpc/tasks.get?input=${encodeURIComponent(JSON.stringify({ taskId: tasks.counted }))}`);
   expect(response.ok()).toBe(true);
-  const { totals, turns } = usageSchema.parse(await response.json()).result.data.usage;
+  const { usage, spend } = usageSchema.parse(await response.json()).result.data;
+  const { totals, turns } = usage;
   // What the scripted turns counted (seed-answers.ts), as the API sums it.
   expect(totals).toMatchObject({ inputTokens: 28_000, outputTokens: 5_600, cacheReadTokens: 133_000, cacheWriteTokens: 3_500, agentMs: 112_000, estimated: true });
+  // Its spend: each call's four kinds at the model's own prices ($3, $15, $0.30 and $3.75 a million),
+  // worked by hand: 102,000 + 49,800 + 55,425 + 13,800 micro-USD. The Spend row reads the same figure.
+  expect(totals.spentMicroUsd).toBe(221_025);
+  expect(spend).toMatchObject({ unit: "usd", spent: 221_025, reached: false });
 
   const properties = page.getByTestId("task-properties");
   await expect(properties.getByTestId("task-tokens")).toHaveText(`≈ ${short(totals.inputTokens)} in · ${short(totals.outputTokens)} out`);
   await expect(properties.getByTestId("task-tokens-estimated")).toHaveText("estimated");
   await expect(properties.getByTestId("task-cache")).toHaveText(`${short(totals.cacheReadTokens)} read · ${short(totals.cacheWriteTokens)} write`);
+  await expect(properties.getByTestId("task-spend")).toHaveText(`${dollars(spend.spent)} of ${dollars(spend.cap)}`);
   await expect(properties.getByTestId("task-agent-time")).toHaveText(`${String(Math.floor(totals.agentMs / 60_000))}m ${String(Math.round((totals.agentMs % 60_000) / 1000)).padStart(2, "0")}s`);
 
   const footers = page.locator("[data-part='turn-usage']");
