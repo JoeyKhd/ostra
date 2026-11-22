@@ -159,7 +159,7 @@ describe("F-055: a signed-commit repo refuses a task; unknown and unprotected ne
 });
 
 describe("F-064: the ticket template", () => {
-  it("is for project admins, starts as the built-in template, and is validated before it is saved", async () => {
+  it("F-064/c2: is for project admins, starts as the built-in template, and is validated before it is saved", async () => {
     const admin = await harness.as(harness.fixture.a.admin);
     const initial = await admin.projects.getTicketTemplate({ projectId });
     expect(initial).toMatchObject({ saved: null, builtIn: true });
@@ -187,7 +187,7 @@ describe("F-064: the ticket template", () => {
     expect(await admin.projects.saveTicketTemplate({ projectId, template: null })).toMatchObject({ saved: true, template: { saved: null, builtIn: true } });
   });
 
-  it("previews a template on one of the project's cached tickets, and never logs the render", async () => {
+  it("F-064/c2: previews a template on one of the project's cached tickets, and never logs the render", async () => {
     const admin = await harness.as(harness.fixture.a.admin);
     const connectionId = await seedLinearConnection(harness);
     const boardId = await seedBoard(harness, { projectId, connectionId });
