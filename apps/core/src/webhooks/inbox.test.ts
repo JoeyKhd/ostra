@@ -256,6 +256,47 @@ describe("the webhook inbox", () => {
     expect(await test.db.webhookDelivery.count({ where: { deliveryId: deliveryIdOf(delivery) } })).toBe(0);
   });
 
+  it("F-005/c2: each organization's own Linear app signs its deliveries, and each lands on its own connection only, by its address", async () => {
+    const context = { logger: silentLogger, clock: adapterClock };
+    // Linear's own verifier: its headers and its signature, with each connection's signing secret.
+    const url = await startInbox({ vendors: { linear: new LinearAdapter({ auth: { kind: "oauth", token: "verify-only" } }, context), github: new GitHubAdapter({}, context) } });
+    const orgA = fixture.a.organization.id;
+    const orgB = fixture.b.organization.id;
+    // Each organization registered its own app: its own connection, client ID and signing secret.
+    const rowA = await test.db.connection.findUniqueOrThrow({ where: { id: linearA } });
+    const rowB = await test.db.connection.findUniqueOrThrow({ where: { id: linearB } });
+    expect([rowA.organizationId, rowB.organizationId]).toEqual([orgA, orgB]);
+    expect(rowA.appId).not.toBe(rowB.appId);
+    expect(site.webhookSecret).not.toBe(otherSite.webhookSecret);
+    /** A delivery as Linear sends it for an app, signed with that app's secret. */
+    const signedBy = (secret: string) => {
+      const sentAt = Date.now();
+      const rawBody = JSON.stringify({ type: "Issue", action: "update", data: { id: `issue-${randomUUID()}` }, createdAt: new Date(sentAt - 500).toISOString(), webhookTimestamp: sentAt });
+      const deliveryId = randomUUID();
+      const signature = createHmac("sha256", secret).update(rawBody).digest("hex");
+      return { deliveryId, rawBody, headers: { "content-type": "application/json", "linear-delivery": deliveryId, "linear-event": "Issue", "linear-signature": signature } };
+    };
+
+    const fromA = signedBy(site.webhookSecret);
+    const fromB = signedBy(otherSite.webhookSecret);
+    expect(await post(`/webhooks/linear/${linearA}`, fromA, url)).toEqual({ status: 200, body: { status: "accepted" } });
+    expect(await post(`/webhooks/linear/${linearB}`, fromB, url)).toEqual({ status: 200, body: { status: "accepted" } });
+    // Each is stored on its own connection, for its own organization, and processed for it alone.
+    expect((await test.db.webhookDelivery.findMany({ where: { deliveryId: fromA.deliveryId } })).map((row) => [row.organizationId, row.connectionId])).toEqual([[orgA, linearA]]);
+    expect((await test.db.webhookDelivery.findMany({ where: { deliveryId: fromB.deliveryId } })).map((row) => [row.organizationId, row.connectionId])).toEqual([[orgB, linearB]]);
+    expect(await jobsOf(orgA, linearA, fromA.deliveryId)).toHaveLength(1);
+    expect(await jobsOf(orgB, linearB, fromB.deliveryId)).toHaveLength(1);
+    expect(await jobsOf(orgB, linearB, fromA.deliveryId)).toHaveLength(0);
+    expect(await jobsOf(orgA, linearA, fromB.deliveryId)).toHaveLength(0);
+
+    // One organization's app's delivery at the other's address isn't that organization's: refused, stored nowhere.
+    const crossedA = signedBy(site.webhookSecret);
+    const crossedB = signedBy(otherSite.webhookSecret);
+    expect(await post(`/webhooks/linear/${linearB}`, crossedA, url)).toEqual({ status: 400, body: { error: "bad-signature" } });
+    expect(await post(`/webhooks/linear/${linearA}`, crossedB, url)).toEqual({ status: 400, body: { error: "bad-signature" } });
+    expect(await test.db.webhookDelivery.count({ where: { deliveryId: { in: [crossedA.deliveryId, crossedB.deliveryId] } } })).toBe(0);
+  });
+
   it("refuses a body over 1 MiB with 413", async () => {
     const big = customDelivery({ timestamp: Date.now(), webhookEvent: "jira:issue_updated", padding: "x".repeat(WEBHOOK_BODY_MAX_BYTES) });
     expect((await post(`/webhooks/linear/${linearA}`, big)).status).toBe(413);

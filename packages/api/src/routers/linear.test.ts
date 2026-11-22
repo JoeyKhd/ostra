@@ -1,4 +1,5 @@
 import { linearAppEndpoints } from "@ostra/adapter-linear";
+import { secretRefSchema } from "@ostra/adapter-sdk";
 import { createFakeLinear } from "@ostra/adapter-sdk/testing";
 import type { FakeLinear } from "@ostra/adapter-sdk/testing";
 import { connectionIdSchema } from "@ostra/protocol";
@@ -82,7 +83,7 @@ beforeEach(async () => {
 });
 
 describe("F-005: the whole flow, from start to active", () => {
-  it("starts pending, keeps the app's values, authorizes as the app and goes active", async () => {
+  it("F-005/c1, F-012/c3: the setup is Create from the pre-filled link, paste three values, Authorize: it starts pending, keeps the app's values, authorizes as the app and goes active", async () => {
     const admin = await adminOn("session-1");
     const before = await admin.linear.status();
     expect(before).toMatchObject({ state: "none", mode: "webhooks", modeReason: null, lastRevoked: null, scopes: ["read", "write", "issues:create", "comments:create"] });
@@ -195,6 +196,48 @@ describe("F-005: the whole flow, from start to active", () => {
     const { started, app } = await startAndCreateApp(admin);
     await expect(admin.linear.saveApp({ connectionId: started.connectionId, clientId: app.clientId, clientSecret: app.clientSecret })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     expect((await rowOf())?.appId).toBe("pending");
+  });
+});
+
+describe("F-005: an app per organization", () => {
+  it("F-005/c2: each organization registers its own Linear app, on its own connection with its own webhook address, and can't touch the other's", async () => {
+    const adminA = await adminOn("session-a");
+    const contextB = await harness.contextOf(harness.fixture.b.admin, "session-b");
+    const adminB = harness.callerFor({ ...contextB, deps: { ...contextB.deps, settings: { ...contextB.deps.settings, corePublicUrl: PUBLIC_CORE } } });
+    const a = await startAndCreateApp(adminA);
+    const b = await startAndCreateApp(adminB);
+    try {
+      // Two connections, each with the webhook address its own app's manifest carries.
+      expect(b.started.connectionId).not.toBe(a.started.connectionId);
+      for (const { started } of [a, b]) {
+        expect(started.webhookUrl).toBe(`${PUBLIC_CORE}/webhooks/linear/${started.connectionId}`);
+        expect(manifestOf(started.manifestUrl).webhook?.url).toBe(started.webhookUrl);
+      }
+      expect(a.app.clientId).not.toBe(b.app.clientId);
+      // Neither admin can save an app on the other organization's connection.
+      await expect(adminB.linear.saveApp({ connectionId: a.started.connectionId, clientId: b.app.clientId, clientSecret: b.app.clientSecret, webhookSecret: b.app.webhookSecret })).rejects.toMatchObject({
+        code: "NOT_FOUND",
+      });
+      const savedA = await adminA.linear.saveApp({ connectionId: a.started.connectionId, clientId: a.app.clientId, clientSecret: a.app.clientSecret, webhookSecret: a.app.webhookSecret });
+      const savedB = await adminB.linear.saveApp({ connectionId: b.started.connectionId, clientId: b.app.clientId, clientSecret: b.app.clientSecret, webhookSecret: b.app.webhookSecret });
+      // Each connection holds its own organization's app: its client ID, and its secrets in that organization's scope.
+      const secrets = harness.fakes.secretStore;
+      for (const [{ started, app }, organizationIdOf, saved] of [
+        [a, harness.fixture.a.organization.id, savedA],
+        [b, harness.fixture.b.organization.id, savedB],
+      ] as const) {
+        const row = await harness.test.db.connection.findUniqueOrThrow({ where: { id: started.connectionId } });
+        expect(row).toMatchObject({ organizationId: organizationIdOf, kind: "linear", appId: app.clientId });
+        const webhookSecret = await secrets.get(organizationIdOf, secretRefSchema.parse(row.webhookSecretSecretRef));
+        expect(webhookSecret).toEqual({ ok: true, value: app.webhookSecret });
+        const clientSecret = await secrets.get(organizationIdOf, secretRefSchema.parse(row.clientSecretSecretRef));
+        expect(clientSecret).toEqual({ ok: true, value: app.clientSecret });
+        // Its Authorize goes to Linear as its own app.
+        expect(new URL(saved.authorizeUrl).searchParams.get("client_id")).toBe(app.clientId);
+      }
+    } finally {
+      await adminB.linear.disconnect({ connectionId: b.started.connectionId });
+    }
   });
 });
 
