@@ -214,6 +214,27 @@ describe("kubernetes boxes from the runner (ticket 20)", () => {
     expect(dispatcher.status().running).toEqual([]);
   }, 30_000);
 
+  it("F-096/c9: at its idle stop the pod's sidecar ends its one session with 0: the pod and its secrets go, nothing is reported lost, and nothing is kept to resume", async () => {
+    const { cluster, events, make } = await setup(false);
+    const dispatcher = make();
+    expect(await dispatcher.handlers.dispatch(dispatch())).toEqual({ result: "accepted" });
+    await until(async () => {
+      const pod = await cluster.kube.readPod(NS, boxNames(box).pod);
+      return pod.ok && pod.value?.ready === true;
+    }, "the ready pod");
+    expect(await leftOf(cluster)).toBeGreaterThan(0);
+
+    // The sidecar's idle timer ended its session, and the sidecar exits with it.
+    cluster.fake.exitContainer(NS, boxNames(box).pod, "sidecar", 0);
+    await Promise.all(dispatcher.boxes());
+    expect(await leftOf(cluster)).toBe(0);
+    expect(await readdir(path.join(root, "runner", "kubernetes-boxes"))).toEqual([]);
+    expect(events.filter((event) => event.kind === "box.lost")).toEqual([]);
+    expect(dispatcher.status()).toMatchObject({ running: [] });
+    // A later release finds nothing held (core records the box gone itself, and sends none).
+    expect(await dispatcher.handlers.release(release(2))).toEqual({ result: "done", reason: "not-held" });
+  }, 30_000);
+
   describe("a pod lost under its task (F-047)", () => {
     /**
      * A dispatcher whose log says when its box runs, and a box of its own: once the dispatcher saw

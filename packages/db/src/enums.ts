@@ -147,12 +147,14 @@ export const boxReleaseReasonToDb = {
   "idle-expired": "idle_expired",
   "task-deleted": "task_deleted",
   requested: "requested",
+  "session-ended": "session_ended",
 } as const satisfies Record<BoxReleaseReason, DbBoxReleaseReason>;
 export const boxReleaseReasonFromDb = {
   prs_closed: "prs-closed",
   idle_expired: "idle-expired",
   task_deleted: "task-deleted",
   requested: "requested",
+  session_ended: "session-ended",
 } as const satisfies Record<DbBoxReleaseReason, BoxReleaseReason>;
 
 export const processContainmentToDb = {

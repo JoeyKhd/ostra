@@ -241,8 +241,8 @@ Only one session per task is starting, running, waiting or idle at any time. A s
 | Origin | When | From |
 |---|---|---|
 | **new** | the task's first session | the ticket or the prompt |
-| **resumed** | the task's stopped box is still kept, on `docker` | the agent's own session, in place |
-| **restored** | a fresh box: the normal case once boxes stop after 15 idle minutes (F-033) | the session archive and the hidden ref |
+| **resumed** | the task's stopped worktree is still kept, on the `host` runner that ran it (Q343) | the agent's own session, in place |
+| **restored** | a fresh box: the normal case once boxes stop after 15 idle minutes, and every reopen on `docker` and `kubernetes`, whose box goes with its session (F-033, Q343) | the session archive and the hidden ref |
 | **rebuilt** | the archive can't be restored | a fixed template: the ticket, the PRs' text, every member message, every agent message, an interrupted turn's text in a section of its own, and the branches' log (Q128). ostra calls no model to write it |
 
 ## A box's lifecycle
@@ -259,11 +259,11 @@ Only one session per task is starting, running, waiting or idle at any time. A s
 | **preparing** | The box pulls the snapshot, starts its services, checks out the branches and restores the session. The sidecar connects to the server with its task token | It's ready (→ ready), or setup fails (→ failed) |
 | **ready** | A session runs a turn, or one can start at once | The turn ends (→ idle) |
 | **idle** | No turn is running. The hidden ref and the archive were saved when the last turn ended | A new turn starts (→ ready), or 15 minutes pass *(working value)* (→ stopped) (Q42) |
-| **stopped** | The containers are stopped. On `docker` the box is kept until its host needs the space, so the next turn can resume in place | The task's next session resumes it (→ ready), or the host needs the space (→ released). On `kubernetes` the pod is deleted at once (→ released) |
+| **stopped** | The session ended and the agent stopped. Only a `host` worktree waits here, kept for the task's next session on its runner | That session resumes it (→ ready), or it's released (→ released): its task's last PR merged or closed, or 14 idle days *(working value)* passed (F-079). A `docker` box or a `kubernetes` pod goes with its session's sidecar, so it moves on at once (→ released), and is never kept (Q343) |
 | **released** | The box is gone and its lease has ended (F-079) | Never: a box is never reused |
 | **failed** | Creating or preparing failed, or the box was lost with its host | Never. The task reopens on a fresh box (F-045, F-047) |
 
-The `host` executor has no box. Its worktree goes through the same states, so a task behaves the same on every executor. It starts no services and has no box sizes: the two differences ADR 0029 records.
+The `host` executor has no box. Its worktree goes through the same states, so a task behaves the same on every executor. It starts no services and has no box sizes: two of the differences ADR 0029 records. Its stopped worktree stays for the task's next session, where a box goes at its stop: whether that's a difference ADR 0029 allows is Q346 (ADR 0039, amended 2026-11-22).
 
 ## A runner's lifecycle
 

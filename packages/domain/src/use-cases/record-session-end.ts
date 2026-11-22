@@ -6,6 +6,7 @@ import type { SessionId, TaskId } from "@ostra/protocol";
 import { boxIdSchema } from "@ostra/protocol";
 
 import type { JobPayload } from "../jobs.ts";
+import { boxOutlivesItsSession } from "../lifecycles/box.ts";
 import { taskRepoFromColumns, taskRepoToColumns } from "../lifecycles/mapping.ts";
 import { transitionTaskRepo } from "../lifecycles/task-repo.ts";
 import type { Ports } from "../ports.ts";
@@ -13,7 +14,7 @@ import { enqueueRunnerAdmissionInTx } from "./admission.ts";
 import type { UseCaseResult } from "./common.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
 import { createNeedsYouItemInTx } from "./needs-you-items.ts";
-import { endSessionTimersInTx, startBoxIdleTimerInTx } from "./sessions-m2.ts";
+import { cancelBoxIdleTimerInTx, endSessionTimersInTx, startBoxIdleTimerInTx } from "./sessions-m2.ts";
 import type { SessionTimers } from "./sessions-m2.ts";
 
 // F-030, F-065: the `task.session-ended` job, reacting to a stored `session.ended`. The session ends
@@ -27,8 +28,9 @@ import type { SessionTimers } from "./sessions-m2.ts";
 //
 // Protocol minor 1 (milestone 2, ticket 17): a session spans turns, and each turn's work left the box
 // with its `session.saved`, whose reaction opened the PRs or raised needs you. Its `session.ended`
-// only says the idle timer stopped the box: the session ends, the lease ends and the box stops (kept
-// until its release), and nothing else. A session with no `session.saved` (a minor-0 runner's, or
+// only says the idle timer stopped the box: the session ends, the lease ends and the box stops, and
+// nothing else. A `host` worktree is kept until its release; a `docker` or `kubernetes` box goes with
+// its session (Q343). A session with no `session.saved` (a minor-0 runner's, or
 // one that never finished a turn) keeps milestone 1's meaning.
 
 export type RecordSessionEndInput = JobPayload<"task.session-ended">;
@@ -71,14 +73,24 @@ export const lastAgentMessageInTx = async (tx: Tx, taskId: TaskId, sessionId: Se
   return null;
 };
 
-/** Ends the task's active lease and stops its box: the session is over (milestone 1: one turn). */
+/**
+ * Ends the task's active lease and stops its box: the session is over (milestone 1: one turn). A
+ * `docker` or `kubernetes` box goes with its session (its sidecar exits, and its runner removes it),
+ * so it's recorded released at once, with no `release` to send; a `host` worktree stays, stopped,
+ * until its release (ADR 0039, amended 2026-11-22, Q343).
+ */
 export const releaseLeaseInTx = async (tx: Tx, taskId: TaskId, at: Date, reason: "released", ports?: Pick<Ports, "jobs">): Promise<void> => {
   const lease = await tx.lease.findFirst({ where: { taskId, state: "active" } });
   if (lease === null) {
     return;
   }
   await tx.lease.update({ where: { id: lease.id }, data: { state: "ended", endedAt: at, endReason: reason } });
-  await tx.box.updateMany({ where: { id: lease.boxId, state: { in: ["ready", "idle"] } }, data: { state: "stopped", stoppedAt: at, idleSince: null } });
+  const box = await tx.box.findUnique({ where: { id: lease.boxId }, select: { executor: true } });
+  const gone = box !== null && !boxOutlivesItsSession(box.executor);
+  await tx.box.updateMany({
+    where: { id: lease.boxId, state: { in: ["ready", "idle"] } },
+    data: gone ? { state: "released", releaseReason: "session_ended", stoppedAt: at, releasedAt: at, idleSince: null } : { state: "stopped", stoppedAt: at, idleSince: null },
+  });
   await tx.box.updateMany({ where: { id: lease.boxId, state: { in: ["creating", "preparing"] } }, data: { state: "failed", failedReason: "the session ended before the box was ready" } });
   // Milestone 5 (F-067): the box's slot is free, so its runner's pool admits the next task.
   if (ports !== undefined) {
@@ -123,13 +135,19 @@ export const recordSessionEnd: RecordSessionEnd = async (deps, input) => {
   const sessionRef = { organizationId: input.organizationId, taskId: task.id, sessionId: input.sessionId };
   await endSessionTimersInTx(deps, tx, sessionRef);
 
-  // Minor 1: the turns' work was already saved and acted on. The box stopped and is kept.
+  // Minor 1: the turns' work was already saved and acted on. The box stopped: a kept one (`host`)
+  // waits for its release, after the idle days unless a PR's merge or close comes first; one that
+  // went with its session (`docker`, `kubernetes`) has no idle days left to wait for.
   const saved = await tx.event.findFirst({ where: { taskId: task.id, sessionId: input.sessionId, kind: "session.saved" }, select: { seq: true } });
   if (saved !== null) {
-    if (lease !== null) {
-      const box = await tx.box.findUnique({ where: { id: lease.boxId }, select: { state: true } });
-      if (box?.state === "stopped") {
-        await startBoxIdleTimerInTx(deps, tx, { organizationId: input.organizationId, taskId: task.id, boxId: boxIdSchema.parse(lease.boxId) });
+    const boxId = lease?.boxId ?? session.boxId;
+    const box = boxId === null ? null : await tx.box.findUnique({ where: { id: boxId }, select: { id: true, state: true } });
+    if (box !== null) {
+      const boxRef = { organizationId: input.organizationId, taskId: task.id, boxId: boxIdSchema.parse(box.id) };
+      if (box.state === "stopped" && lease !== null) {
+        await startBoxIdleTimerInTx(deps, tx, boxRef);
+      } else if (box.state === "released") {
+        await cancelBoxIdleTimerInTx(deps, tx, boxRef);
       }
     }
     await deps.notices.emitInTx(tx, {

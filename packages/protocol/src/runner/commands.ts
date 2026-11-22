@@ -407,8 +407,17 @@ export const boxReleaseReasonSchema = z.enum([
   "task-deleted",
   /** An admin or a script asked for it. */
   "requested",
+  /**
+   * Its session ended, and the box went with its sidecar (`docker`, `kubernetes`; ADR 0039, amended
+   * 2026-11-22, Q343). Core's own record of it: never a `release`'s reason, since the box is gone.
+   */
+  "session-ended",
 ]);
 export type BoxReleaseReason = z.infer<typeof boxReleaseReasonSchema>;
+
+/** The reasons a `release` carries: minor 1's four, never `session-ended` (that box is already gone). */
+export const releaseCommandReasonSchema = boxReleaseReasonSchema.exclude(["session-ended"]);
+export type ReleaseCommandReason = z.infer<typeof releaseCommandReasonSchema>;
 
 /**
  * `release` (minor 1): remove the box and its workspace. The hidden ref is deleted by core, on the
@@ -417,7 +426,7 @@ export type BoxReleaseReason = z.infer<typeof boxReleaseReasonSchema>;
 export const releaseBodySchema = z.strictObject({
   taskId: taskIdSchema,
   boxId: boxIdSchema,
-  reason: boxReleaseReasonSchema,
+  reason: releaseCommandReasonSchema,
 });
 
 /** Each command kind's body, for the outbox to validate a body by its kind. */

@@ -5,7 +5,6 @@ import {
   automationIdSchema,
   boardIdSchema,
   boxIdSchema,
-  boxReleaseReasonSchema,
   budgetIdSchema,
   bulkStartItemIdSchema,
   connectionIdSchema,
@@ -24,6 +23,7 @@ import {
   poolIdSchema,
   providerIdSchema,
   registryIdSchema,
+  releaseCommandReasonSchema,
   repoIdSchema,
   reviewRunIdSchema,
   roundKindSchema,
@@ -166,7 +166,7 @@ export const jobPayloadSchemas = {
   /** Once a minute: stop the running sessions with no agent event for the stall time (F-068, ticket 19). */
   "session.stall-sweep": z.strictObject({}),
   /** Send a box's runner the `release` command, and delete the task's hidden refs (F-079, ticket 20). */
-  "box.release": z.strictObject({ ...taskScope, boxId: boxIdSchema, reason: boxReleaseReasonSchema }),
+  "box.release": z.strictObject({ ...taskScope, boxId: boxIdSchema, reason: releaseCommandReasonSchema }),
   /** A stopped box released after `OSTRA_BOX_RELEASE_IDLE_DAYS` (F-079, ticket 20): one delayed job per box. */
   "box.release-after-idle": z.strictObject({ ...taskScope, boxId: boxIdSchema }),
   /** Delete what the retention in effect no longer keeps (F-079, ticket 20). */

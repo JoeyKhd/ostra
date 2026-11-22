@@ -3293,6 +3293,8 @@ enum BoxReleaseReason {
   idle_expired
   task_deleted
   requested
+  /// Its session ended, and a `docker` box or a `kubernetes` pod went with its sidecar (ADR 0039, Q343).
+  session_ended
 }
 
 // ---------- milestone 3's enums ----------

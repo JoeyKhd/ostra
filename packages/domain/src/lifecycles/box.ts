@@ -1,5 +1,5 @@
 import type { DbEnum } from "@ostra/db";
-import type { BoxWaitingReason } from "@ostra/protocol";
+import type { BoxWaitingReason, ExecutorKind } from "@ostra/protocol";
 
 import { moveTo, refuse } from "./transition.ts";
 import type { Transition } from "./transition.ts";
@@ -8,8 +8,33 @@ import type { Transition } from "./transition.ts";
 // through the same states, so a task behaves the same on every executor. A box is never reused:
 // `released` and `failed` are final.
 
-/** Why a box was released (F-079). `@ostra/protocol`'s `release` command writes them with a hyphen. */
+/**
+ * Why a box was released (F-079). `@ostra/protocol` writes them with a hyphen. `session_ended` is
+ * core's own record of a box that went with its session; the rest are a `release` command's.
+ */
 export type BoxReleaseReason = DbEnum.BoxReleaseReason;
+
+/** The reasons core asks a runner to release a box for: never `session_ended`, a box already gone. */
+export type ReleaseCommandBoxReason = Exclude<BoxReleaseReason, "session_ended">;
+
+/**
+ * Whether a box outlives its session (ADR 0039, amended 2026-11-22, Q343). A `docker` box's or a
+ * `kubernetes` pod's sidecar runs one session and exits with it, and its runner removes the box
+ * then (`box-dispatcher.ts`, `kubernetes-dispatcher.ts`), on every runner minor: core records it
+ * `released` (`session_ended`), and a reopen starts a fresh box. A `host` worktree stays, stopped,
+ * until its release, and the task's next session on that runner resumes in it.
+ */
+export const boxOutlivesItsSession = (executor: ExecutorKind): boolean => {
+  switch (executor) {
+    case "host":
+      return true;
+    case "docker":
+    case "kubernetes":
+      return false;
+    default:
+      return executor satisfies never;
+  }
+};
 
 /** A wait while `creating` (F-093): why, and since when (epoch ms). */
 export type BoxWaiting = { readonly reason: BoxWaitingReason; readonly since: number };
@@ -60,7 +85,7 @@ export const transitionBox = (box: BoxLifecycle, input: BoxInput): Transition<Bo
     case "turn_ended":
       return from === "ready" ? moveTo({ state: "idle" }) : refuse(input, from);
     case "turn_started":
-      // A stopped box kept on `docker` resumes in place.
+      // A stopped worktree kept on `host` resumes in place (a `docker` or `kubernetes` box is never kept).
       return from === "idle" || from === "stopped" ? moveTo({ state: "ready" }) : refuse(input, from);
     case "stop":
       return from === "ready" || from === "idle" ? moveTo({ state: "stopped" }) : refuse(input, from);

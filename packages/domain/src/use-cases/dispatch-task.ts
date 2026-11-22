@@ -10,6 +10,7 @@ import { dispatchWaitColumns, dispatchWaitFromDb } from "../dispatch-wait.ts";
 import { EFFORT_MINOR, modelEffort } from "../effort/levels.ts";
 import type { AgentEffortLevels } from "../effort/levels.ts";
 import { runnerStartsServices } from "../environment/services.ts";
+import { boxOutlivesItsSession } from "../lifecycles/box.ts";
 import type { DispatchWait } from "../dispatch-wait.ts";
 import { budgetWaitOf, checkBudget } from "./budgets.ts";
 import type { UseCaseResult } from "./common.ts";
@@ -115,7 +116,9 @@ const KEPT_BOX_STATES: ReadonlySet<string> = new Set(["ready", "idle", "stopped"
  * A reopen's step, chosen at dispatch (ADR 0039, ticket 18): the task's last box while its runner,
  * online at minor 1 or above, still holds it; else the newest archive the blob store still has,
  * under the cap and made by the same agent, when the agent imports archives; else the template.
- * A task with no earlier session is new.
+ * A task with no earlier session is new. Only a `host` worktree is ever kept: a `docker` or
+ * `kubernetes` box went with its session, so its task reopens on a fresh box (Q343), even one an
+ * older core recorded `stopped`.
  */
 export const reopenPlanInTx = async (
   tx: Tx,
@@ -135,9 +138,9 @@ export const reopenPlanInTx = async (
   }
   let keptBox: Parameters<typeof chooseReopenStep>[0]["keptBox"] = null;
   let keptRunnerId: RunnerId | undefined;
-  const box = previous.boxId === null ? null : await tx.box.findUnique({ where: { id: previous.boxId }, select: { id: true, state: true, runnerId: true } });
+  const box = previous.boxId === null ? null : await tx.box.findUnique({ where: { id: previous.boxId }, select: { id: true, state: true, runnerId: true, executor: true } });
   const boxRunnerId = box?.runnerId ?? null;
-  if (box !== null && boxRunnerId !== null && KEPT_BOX_STATES.has(box.state)) {
+  if (box !== null && boxRunnerId !== null && KEPT_BOX_STATES.has(box.state) && boxOutlivesItsSession(box.executor)) {
     const runner = await tx.runner.findFirst({
       where: { id: boxRunnerId, organizationId: task.organizationId, state: "online", revokedAt: null },
       select: { presence: { select: { minor: true, disconnectedAt: true, lastSeenAt: true } } },

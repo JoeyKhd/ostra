@@ -4,7 +4,7 @@ import { blobIdSchema, boxIdSchema, organizationIdSchema, projectIdSchema, runne
 import type { BlobId, BoxId, OrganizationId, TaskId } from "@ostra/protocol";
 
 import { transitionBox } from "../lifecycles/box.ts";
-import type { BoxInput, BoxReleaseReason } from "../lifecycles/box.ts";
+import type { BoxInput, BoxReleaseReason, ReleaseCommandBoxReason } from "../lifecycles/box.ts";
 import { boxFromColumns, boxToColumns } from "../lifecycles/mapping.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
@@ -23,7 +23,8 @@ export type ReleaseBoxInput = {
   readonly organizationId: OrganizationId;
   readonly taskId: TaskId;
   readonly boxId: BoxId;
-  readonly reason: BoxReleaseReason;
+  /** A `release` command's reason: a box that went with its session (`session_ended`) is never sent one. */
+  readonly reason: ReleaseCommandBoxReason;
 };
 
 export type ReleaseBoxResult = UseCaseResult<

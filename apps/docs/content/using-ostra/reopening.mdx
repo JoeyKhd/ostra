@@ -22,8 +22,8 @@ The reopening message can carry files, as any message can ([Attaching files](/do
 
 After every turn, the box saves three things. It pushes the task's branches. It pushes its unfinished work (uncommitted and untracked files, not ignored ones) to the task's hidden ref, `refs/ostra/wip/<task>`. And it uploads the agent's session archive. So a task can carry on anywhere, in this order:
 
-1. **The same box,** while it's kept. A box with no turn for 15 minutes stops (`OSTRA_BOX_IDLE_MINUTES`).
-2. **A fresh box,** on any runner, by any member: the hidden ref restores the working tree, and the agent imports its session from the archive. This is the usual path. Every file of the task's messages is written back at its place under `.ostra/` before the agent starts.
+1. **The same worktree,** on the `host` runner that kept it. A box with no turn for 15 minutes stops (`OSTRA_BOX_IDLE_MINUTES`). On `docker` and `kubernetes` the box is removed then, its containers or its pod and everything in them, so nothing of it stays on the runner's machine. On `host` the worktree stays until the task's last pull request merges or closes, or for 14 days (`OSTRA_BOX_RELEASE_IDLE_DAYS`), and a reopen on that runner carries on in it, ignored files included.
+2. **A fresh box,** on any runner, by any member: the hidden ref restores the working tree, and the agent imports its session from the archive. This is the usual path, and the only one on `docker` and `kubernetes`. Every file of the task's messages is written back at its place under `.ostra/` before the agent starts.
 3. **The rebuild template,** when the archive can't be restored: a new session starts from the ticket, the pull requests' text, every member and agent message, and the branch's log. ostra puts it together itself, without a model call.
 
 If commits were pushed to the branch since the last turn, and the saved work can't be merged with them, nothing is restored: the agent carries on from the branch's head, and the driver gets a **Needs you · restore conflict** item. The task doesn't stop for it.

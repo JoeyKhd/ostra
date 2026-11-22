@@ -3085,7 +3085,8 @@
         "prs_closed": "the PRs closed",
         "idle_expired": "idle too long",
         "task_deleted": "the task was deleted",
-        "requested": "asked for"
+        "requested": "asked for",
+        "session_ended": "its session ended"
       }
     },
     "spend": "Spend",

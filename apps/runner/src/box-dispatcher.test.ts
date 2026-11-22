@@ -166,6 +166,28 @@ describe("the box dispatcher", () => {
     expect(dispatcher.status().freeSlots).toBe(1);
   }, 60_000);
 
+  it("F-096/c9: at its idle stop the sidecar ends its one session and exits 0: the whole box goes, nothing is reported lost, and nothing is kept to resume", async () => {
+    const events: TaskEvent[] = [];
+    const dispatcher = makeDispatcher({ tokenAccess: { kind: "group", gid: 4242 }, events });
+    expect(await dispatcher.handlers.dispatch(dispatchOf("box-idles-out"))).toEqual({ result: "accepted" });
+    await waitFor(boxStarted);
+    expect(engine.volumes.size).toBeGreaterThan(0);
+
+    // The sidecar's idle timer ended its session, and the sidecar exits with it (`ostra sidecar`'s end).
+    exitAll();
+    await Promise.all(dispatcher.boxes());
+    // Its containers, its task volume and its token folder: none of it stays on the host.
+    expect(engine.containers.size).toBe(0);
+    expect(engine.volumes.size).toBe(0);
+    expect(await readdir(path.join(root, "boxes"))).toEqual([]);
+    expect(events).toEqual([]);
+    expect(dispatcher.status()).toMatchObject({ freeSlots: 1, running: [] });
+    // A later release finds nothing held (core records the box gone itself, and sends none).
+    const release = makeCommand({ seq: 2, id: "release-2", notAfter: Date.now() + 60_000, kind: "release", body: { taskId: taskSpecFixture.taskId, boxId: boxIdSchema.parse("box-idles-out"), reason: "prs-closed" } });
+    if (release.kind !== "release") throw new Error("not a release");
+    expect(await dispatcher.handlers.release(release)).toEqual({ result: "done", reason: "not-held" });
+  }, 30_000);
+
   it("F-141/c6: a dispatch to start the app hands its purpose to the box's sidecar, which starts the task itself", async () => {
     const dispatcher = makeDispatcher({ tokenAccess: { kind: "group", gid: 4242 } });
     const dispatch = dispatchOf("box-app-only");

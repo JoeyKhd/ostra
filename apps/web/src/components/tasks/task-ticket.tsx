@@ -36,6 +36,7 @@ const releaseReasonKey: Readonly<Record<string, MessageKey>> = {
   idle_expired: "taskPage.box.reason.idle_expired",
   task_deleted: "taskPage.box.reason.task_deleted",
   requested: "taskPage.box.reason.requested",
+  session_ended: "taskPage.box.reason.session_ended",
 };
 
 /** The box's state in words: `Idle · stops in 11 min`, `Released · the PRs closed`. */
