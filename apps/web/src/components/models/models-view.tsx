@@ -120,8 +120,17 @@ export const ModelsView = () => {
   const noProviders = providers.data?.length === 0;
   const linked = params.get("model");
   const linkedRow = linked === null ? undefined : rows.find((row) => row.model.id === linked);
+  // `?provider=` opens that key (Spend's key panel: `The key on Models →`, spend-keys.md).
+  const linkedProvider = providers.data?.find((provider) => provider.id === params.get("provider"));
   const effective: Selection | null =
-    selection ?? (noProviders ? { kind: "add" } : linkedRow === undefined ? null : { kind: "model", providerId: linkedRow.provider.id, modelId: linkedRow.model.id });
+    selection ??
+    (noProviders
+      ? { kind: "add" }
+      : linkedRow !== undefined
+        ? { kind: "model", providerId: linkedRow.provider.id, modelId: linkedRow.model.id }
+        : linkedProvider === undefined
+          ? null
+          : { kind: "provider", providerId: linkedProvider.id });
   const selectedProvider =
     effective?.kind === "provider" ? providers.data?.find((p) => p.id === effective.providerId) : undefined;
   const selectedRow =

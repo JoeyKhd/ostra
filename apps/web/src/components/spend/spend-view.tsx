@@ -6,8 +6,8 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { modelIdSchema } from "@ostra/protocol";
-import type { ModelId, ProjectId } from "@ostra/protocol";
+import { modelIdSchema, providerIdSchema } from "@ostra/protocol";
+import type { ModelId, ProjectId, ProviderId } from "@ostra/protocol";
 
 import { projectColour } from "@/components/shell/project-colour";
 import { PageFrame, PageHeading, Section } from "@/components/shell/page-frame";
@@ -25,12 +25,14 @@ import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
 import { BudgetForm, PriceForm } from "./spend-forms";
+import { KeyPanel, KeysSkeleton, KeysTable, keyRowsOf } from "./spend-keys";
 import { dayMonth, formatShare, formatUsd, monthName, monthSoFar, monthsBack, resetsOn } from "./spend-words";
 
 // Spend (spend-budgets.md, F-037): the month's spend against the organization's budget and each
 // project's, each model's tokens and money, and the forms that set a budget or a model's price. Every
 // figure is `spend.month`'s, which reads the one rollup, `SpendDaily`. The month and the selection
-// live in the URL (`?month=2026-11`, `?project=<id>`, `?project=organization`, `?model=<id>`).
+// live in the URL (`?month=2026-11`, `?project=<id>`, `?project=organization`, `?model=<id>`,
+// `?provider=<id>` for a key: spend-keys.md).
 
 export type SpendMonth = RouterOutputs["spend"]["month"];
 export type Budget = SpendMonth["budgets"][number];
@@ -40,6 +42,7 @@ export type Selection =
   | { readonly kind: "organization" }
   | { readonly kind: "project"; readonly projectId: ProjectId; readonly name: string }
   | { readonly kind: "model"; readonly modelId: ModelId }
+  | { readonly kind: "key"; readonly providerId: ProviderId }
   | null;
 
 /** One row of the Projects table: a project with spend or a budget this month. */
@@ -440,6 +443,7 @@ const Summary = ({ data, organization, warnPercent, now, current, onSet }: {
 const selectionOf = (params: { readonly get: (name: string) => string | null }, rows: readonly ProjectRow[]): Selection => {
   const project = params.get("project");
   const model = params.get("model");
+  const provider = params.get("provider");
   if (project === "organization") return { kind: "organization" };
   if (project !== null) {
     const row = rows.find((candidate) => candidate.projectId === project);
@@ -448,6 +452,10 @@ const selectionOf = (params: { readonly get: (name: string) => string | null }, 
   if (model !== null) {
     const parsed = modelIdSchema.safeParse(model);
     return parsed.success ? { kind: "model", modelId: parsed.data } : null;
+  }
+  if (provider !== null) {
+    const parsed = providerIdSchema.safeParse(provider);
+    return parsed.success ? { kind: "key", providerId: parsed.data } : null;
   }
   return null;
 };
@@ -464,6 +472,8 @@ export const SpendView = ({ organizationName, warnPercent }: { readonly organiza
   const month = params.get("month") ?? current.data;
   const spend = useQuery({ ...trpc.spend.month.queryOptions(month === undefined ? skipToken : { month }), refetchInterval: 15_000 });
   const projects = useQuery(trpc.projects.list.queryOptions());
+  // The keys' hosts, formats and projects (spend-keys.md): Models' own list; the page is an admin's.
+  const providers = useQuery(trpc.providers.list.queryOptions());
   const data = spend.data;
   const isCurrent = month !== undefined && month === current.data;
   const rows = data === undefined ? [] : projectRowsOf(data);
@@ -473,13 +483,17 @@ export const SpendView = ({ organizationName, warnPercent }: { readonly organiza
   const firstReached = rows.find((row) => row.budget?.state === "reached" && row.projectId !== null);
   const reachedId = firstReached?.projectId ?? null;
   const selection: Selection =
-    params.has("project") || params.has("model")
+    params.has("project") || params.has("model") || params.has("provider")
       ? explicit
       : reachedId !== null && firstReached !== undefined && wide
         ? { kind: "project", projectId: reachedId, name: firstReached.name }
         : null;
   const idle = projects.data === undefined || data === undefined ? 0 : projects.data.filter((project) => !rows.some((row) => row.projectId === project.id)).length;
   const neverSpent = data !== undefined && isCurrent && data.byModel.length === 0 && data.budgets.length === 0;
+  const keyRows = data === undefined ? [] : keyRowsOf(data, providers.data);
+  const selectedKey = selection?.kind === "key" ? keyRows.find((row) => row.line.providerId === selection.providerId) : undefined;
+  // Until it spends, every key is at $0.00, in name order (spend-keys.md, "Nothing spent yet this month").
+  const keysIdle = data !== undefined && isCurrent && data.byProvider.every((line) => line.spentMicroUsd === 0 && tokensOf(line) === 0);
 
   const go = (next: { readonly month?: string; readonly selection?: Selection }): void => {
     const query = new URLSearchParams();
@@ -489,6 +503,7 @@ export const SpendView = ({ organizationName, warnPercent }: { readonly organiza
     if (s?.kind === "organization") query.set("project", "organization");
     if (s?.kind === "project") query.set("project", s.projectId);
     if (s?.kind === "model") query.set("model", s.modelId);
+    if (s?.kind === "key") query.set("provider", s.providerId);
     const text = query.toString();
     router.replace(text === "" ? pathname : `${pathname}?${text}`, { scroll: false });
   };
@@ -509,6 +524,14 @@ export const SpendView = ({ organizationName, warnPercent }: { readonly organiza
       </p>
     ) : selection.kind === "model" ? (
       <PriceForm key={selection.modelId} modelId={selection.modelId} month={month} />
+    ) : selection.kind === "key" ? (
+      selectedKey === undefined ? (
+        <p className="text-sm text-muted" data-testid="spend-hint">
+          {t("spend.pick")}
+        </p>
+      ) : (
+        <KeyPanel key={`${month}:${selection.providerId}`} data={data} row={selectedKey} providers={providers.data} onPrice={(modelId) => { select({ kind: "model", modelId }); }} />
+      )
     ) : (
       <BudgetForm
         key={`${month}:${selection.kind === "project" ? selection.projectId : "organization"}`}
@@ -556,6 +579,9 @@ export const SpendView = ({ organizationName, warnPercent }: { readonly organiza
           <Section title={t("spend.projects")}>
             <SkeletonRows rows={5} />
           </Section>
+          <Section title={t("spend.keys.title")} note={t("spend.keys.note")} noteClassName="text-faint">
+            <KeysSkeleton />
+          </Section>
           <Section title={t("spend.models")}>
             <SkeletonRows rows={5} />
           </Section>
@@ -578,6 +604,22 @@ export const SpendView = ({ organizationName, warnPercent }: { readonly organiza
             )}
             {idle === 0 || !isCurrent ? null : <p className="mt-2.5 text-sm text-faint">{idle === 1 ? t("spend.idleOne") : t("spend.idleMany", { n: idle })}</p>}
           </Section>
+          {data.byProvider.length === 0 ? null : (
+            <Section
+              title={t("spend.keys.title")}
+              {...(providers.data === undefined && providers.error === null ? {} : { count: data.byProvider.length })}
+              note={isCurrent ? t("spend.keys.note") : monthName(data.month)}
+              noteClassName="text-faint"
+              className="mt-[22px]"
+            >
+              {providers.data === undefined && providers.error === null ? (
+                <KeysSkeleton />
+              ) : (
+                <KeysTable data={data} rows={keyRows} selected={selection?.kind === "key" ? selection.providerId : null} onSelect={(providerId) => { select({ kind: "key", providerId }); }} />
+              )}
+              {keysIdle ? <p className="mt-2.5 text-sm text-faint" data-testid="spend-keys-idle">{t("spend.keys.nothingYet", { month: monthName(data.month).split(" ")[0] ?? "" })}</p> : null}
+            </Section>
+          )}
           <NoPriceWarning data={data} past={!isCurrent} onPrice={(modelId) => { select({ kind: "model", modelId }); }} />
           <Section title={t("spend.models")} count={data.byModel.length} className="mt-5">
             <div id="spend-models">
