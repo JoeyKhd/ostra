@@ -683,15 +683,40 @@ const treeOf = (turn: Builder, records: readonly SubagentRecord[]): SubagentTree
   };
 };
 
+/** A turn's calls in the thread and its subagents' calls (a subagent's that asked is in both). */
+const callsOf = (turn: Builder): ToolRecord[] => [
+  ...turn.slots.flatMap((slot) => (slot.t === "tool" ? [slot.rec] : [])),
+  ...(turn.subagents ?? []).flatMap((record) => record.rounds.flatMap((round) => round.calls)),
+];
+
+/**
+ * Milestone 10 (F-151): a call's step ends at `at`. The event that ends it may be core's, on
+ * another clock than the runner's `tool.called`, so it never ends before it started.
+ */
+const endCall = (rec: ToolRecord, at: number): void => {
+  rec.endedAt = Math.max(at, rec.startedAt);
+};
+
+/**
+ * Milestone 10 (F-151): the turn is over (it ended or failed, or its session ended or crashed), so
+ * a call it left open runs no more: its step ends there. A cancelled turn's calls are cancelled.
+ */
+const endOpenCalls = (turn: Builder, at: number, cancelled: boolean): void => {
+  for (const rec of callsOf(turn)) {
+    if (rec.outcome !== undefined) continue;
+    if (rec.endedAt === null) endCall(rec, at);
+    if (!cancelled) continue;
+    rec.cancelled = true;
+    if (rec.approval?.status.state === "pending") rec.approval.status = { state: "closed", reason: "cancelled" };
+  }
+};
+
 /**
  * Milestone 10 (F-151): a turn's steps' times, by each call's ID (its subagents' calls too, so
  * their window finds them) and by `thoughtTimeKey` for its reasoning parts; `null` with no step.
  */
-const stepTimesOf = (builder: Builder, records: readonly SubagentRecord[]): Readonly<Record<string, StepTime>> | null => {
-  const calls = [
-    ...builder.slots.flatMap((slot) => (slot.t === "tool" ? [slot.rec] : [])),
-    ...records.flatMap((record) => record.rounds.flatMap((round) => round.calls)),
-  ];
+const stepTimesOf = (builder: Builder): Readonly<Record<string, StepTime>> | null => {
+  const calls = callsOf(builder);
   if (calls.length === 0 && builder.thoughts.length === 0) return null;
   return Object.fromEntries([
     ...calls.map((rec) => [rec.toolCallId, { startedAt: rec.startedAt, endedAt: rec.endedAt }] as const),
@@ -744,6 +769,9 @@ export const foldTaskEvents = (
   let lastOrdinal = 0;
   // Milestone 10 (F-151): each review run's posts, by its ID.
   const reviews = new Map<ReviewRunId, ReviewRecord>();
+  // Milestone 10 (F-151): each repo's latest push to its task branch, and the turn it's in: the PR
+  // core opens for it joins that turn, though the next turn may have started by then.
+  const lastPushByRepo = new Map<RepoId, { readonly turn: Builder; readonly rec: PushedRecord }>();
 
   const push = (init: Omit<Builder, "results" | "thoughts">): Builder => {
     const builder: Builder = { ...init, results: [], thoughts: [] };
@@ -770,8 +798,10 @@ export const foldTaskEvents = (
 
   // When the event being folded was recorded: a message's time is its first event's.
   let at: number | undefined;
-  // Milestone 10 (F-151): the same, only while an event is folded (not for the viewer's partial
-  // text): a turn's latest event time, where its next thought starts.
+  // Milestone 10 (F-151): the same, only while a peer's event is folded (not core's own, nor the
+  // viewer's partial text): a turn's latest event time, where its next thought starts. A thought's
+  // end is its runner's `agent.thought`, so its start is read on the same clock: core's events in
+  // the middle of a turn (an answer, a result) are on core's.
   let eventAt: number | undefined;
 
   const ensureTurn = (turnId: TurnId, sessionId: SessionId, seq: number): Builder => {
@@ -947,7 +977,8 @@ export const foldTaskEvents = (
   for (const stored of events) {
     const { seq, sessionId, event } = stored;
     at = stored.at;
-    eventAt = stored.at;
+    // A peer numbers its events in the session; core's own have no number (`StoredEvent.sessionSeq`).
+    eventAt = stored.sessionSeq === null ? undefined : stored.at;
     switch (event.kind) {
       case "user.message": {
         committedClientIds.add(event.clientMessageId);
@@ -1017,19 +1048,9 @@ export const foldTaskEvents = (
         turn.meta.turnState = "ended";
         turn.meta.stopReason = event.stopReason satisfies StopReason;
         turn.meta.endedAt = stored.at;
-        if (event.stopReason === "cancelled") {
-          // F-138: the turn's subagents' calls stop with it, as its own do.
-          const subagentCalls = (turn.subagents ?? []).flatMap((record) => record.rounds.flatMap((round) => round.calls));
-          for (const rec of [...turn.slots.flatMap((slot) => (slot.t === "tool" ? [slot.rec] : [])), ...subagentCalls]) {
-            if (rec.outcome === undefined) {
-              rec.cancelled = true;
-              rec.endedAt ??= stored.at;
-              if (rec.approval?.status.state === "pending") {
-                rec.approval.status = { state: "closed", reason: "cancelled" };
-              }
-            }
-          }
-        }
+        // A cancelled turn's calls stop with it, its subagents' too (F-138). Milestone 10 (F-151):
+        // however it ended, a call it left open ends there.
+        endOpenCalls(turn, stored.at, event.stopReason === "cancelled");
         break;
       }
       case "turn.failed": {
@@ -1037,6 +1058,7 @@ export const foldTaskEvents = (
         turn.meta.turnState = "failed";
         turn.meta.error = event.error;
         turn.meta.endedAt = stored.at;
+        endOpenCalls(turn, stored.at, false);
         break;
       }
       case "agent.message": {
@@ -1067,7 +1089,8 @@ export const foldTaskEvents = (
           t: "part",
           part: reasoning(event.text, "done"),
         });
-        turn.thoughts.push({ startedAt: before ?? stored.at, endedAt: stored.at });
+        // Both ends are the runner's times (`eventAt`); a clock that stepped back gives 0s, never less.
+        turn.thoughts.push({ startedAt: Math.min(before ?? stored.at, stored.at), endedAt: stored.at });
         break;
       }
       case "agent.content": {
@@ -1183,12 +1206,13 @@ export const foldTaskEvents = (
             by: event.memberId,
           };
           // Milestone 10 (F-151): a denied call never runs: its step ends with the deny.
-          if (event.decision === "deny" && rec.outcome === undefined) rec.endedAt = stored.at;
+          if (event.decision === "deny" && rec.outcome === undefined && rec.endedAt === null) endCall(rec, stored.at);
         } else if (event.kind === "approval.auto_answered") {
           approval.status = { state: "auto", ruleId: event.ruleId };
         } else {
           approval.status = { state: "closed", reason: event.reason };
-          if (rec.outcome === undefined) rec.endedAt = stored.at;
+          // Closed after its turn ended (a cancel's bookkeeping), it keeps the turn's end.
+          if (rec.outcome === undefined && rec.endedAt === null) endCall(rec, stored.at);
         }
         break;
       }
@@ -1270,11 +1294,9 @@ export const foldTaskEvents = (
         // Milestone 10 (F-151): the hidden ref's push is bookkeeping: its commit is the turn's
         // `meta.saved.hiddenRefs`, and the Event log keeps the event.
         if (event.ref.startsWith(hiddenRefPrefix)) break;
-        result(seq, sessionId, {
-          t: "pushed",
-          id: `pushed:${String(seq)}`,
-          rec: { repoId: event.repoId, branch: event.branch, headSha: event.headSha, ref: event.ref, firstPr: null },
-        });
+        const rec: PushedRecord = { repoId: event.repoId, branch: event.branch, headSha: event.headSha, ref: event.ref, firstPr: null };
+        const turn = result(seq, sessionId, { t: "pushed", id: `pushed:${String(seq)}`, rec });
+        if (turn !== undefined) lastPushByRepo.set(event.repoId, { turn, rec });
         break;
       }
       case "pr.text_set": {
@@ -1297,10 +1319,19 @@ export const foldTaskEvents = (
           number: event.number,
           ...(title === undefined ? {} : { title }),
         };
-        const turn = result(seq, sessionId, { t: "part", part: { type: "data-pr", id: `pr:${event.repoId}:${String(event.number)}`, data: pr } });
-        // The push it opened, earlier in the turn: the PR's card goes once, under it.
-        const opened = turn?.results.findLast((slot): slot is Extract<Slot, { t: "pushed" }> => slot.t === "pushed" && slot.rec.repoId === event.repoId);
-        if (opened?.rec.firstPr === null) opened.rec.firstPr = pr;
+        const slot: Slot = { t: "part", part: { type: "data-pr", id: `pr:${event.repoId}:${String(event.number)}`, data: pr } };
+        // Core opens it later, from a job the push's save started (`task.open-pull-requests`): by
+        // then the runner may have started the next turn (a queued message, the closing turn). It
+        // joins the turn of the repo's latest push, which opened it, and its card goes once, under
+        // that push. With no push in the log (a page of history after it), the session's last turn.
+        const pushed = lastPushByRepo.get(event.repoId);
+        if (pushed === undefined) {
+          result(seq, sessionId, slot);
+          break;
+        }
+        touch(pushed.turn, seq);
+        pushed.turn.results.push(slot);
+        pushed.rec.firstPr ??= pr;
         break;
       }
       case "session.ended": {
@@ -1310,6 +1341,7 @@ export const foldTaskEvents = (
         if (turn === undefined) break;
         touch(turn, seq);
         turn.meta.ended = { outcome: event.outcome, repos: event.repos };
+        endOpenCalls(turn, stored.at, false);
         break;
       }
       case "workspace.files_outside_repos": {
@@ -1669,7 +1701,13 @@ export const foldTaskEvents = (
       case "session.restored":
       case "session.crashed":
       case "turn.cancel_requested": {
-        if (event.kind === "session.crashed") stopSubagentsOf(sessionId, stored.at);
+        if (event.kind === "session.crashed") {
+          stopSubagentsOf(sessionId, stored.at);
+          // Milestone 10 (F-151): the box is gone, so its running turn's open calls end with it. A
+          // lost runner may come back (`runner.connected`), so its calls run on.
+          const turn = lastTurnBySession.get(sessionId);
+          if (turn !== undefined) endOpenCalls(turn, stored.at, false);
+        }
         row(seq, sessionId, {
           type: "data-system",
           id: `system:${String(seq)}`,
@@ -1738,7 +1776,7 @@ export const foldTaskEvents = (
   return builders.map((builder): TaskUIMessage => {
     // F-138: the turn's subagents, as a tree, made once every event is in.
     const records = builder.subagents ?? [];
-    const stepTimes = stepTimesOf(builder, records);
+    const stepTimes = stepTimesOf(builder);
     const spend = builder.meta.turnId === undefined ? undefined : options.turnSpend?.get(builder.meta.turnId);
     const message: TaskUIMessage = {
       id: builder.id,

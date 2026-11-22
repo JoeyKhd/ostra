@@ -536,7 +536,9 @@ export type TurnEnded = {
 /**
  * Milestone 10 (F-151): when a step started and ended, in ms since the epoch (each peer's clock, as
  * it stored the events). `endedAt` is `null` while it runs or waits on an approval; a call that was
- * denied, closed or cancelled with its turn ends when that happened.
+ * denied or closed ends when that happened, and one its turn left open ends with the turn (ended,
+ * cancelled or failed, or its session ended or crashed). Never before it started: an end on core's
+ * clock is held at the start. A thought's start and end are both its runner's times.
  */
 export type StepTime = { readonly startedAt: number; readonly endedAt: number | null };
 

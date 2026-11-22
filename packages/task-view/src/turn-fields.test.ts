@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { storedEventSchema } from "@ostra/protocol";
+import { segmentIdSchema, storedEventSchema, turnIdSchema } from "@ostra/protocol";
 import type { StoredEvent, TaskEvent, ToolCallId, TurnId } from "@ostra/protocol";
+import { eventFixtures } from "@ostra/protocol/testing";
 
 import { foldTaskEvents, turnOrdinalsOf, turnSpendOf } from "./fold.ts";
-import { calc192, calc192Spend, review483, review483Spend, s1, s1Working, s2, s3, s5Approved, sceneWorld, stateCells } from "./testing/index.ts";
+import { calc192, calc192Spend, review483, review483Spend, s1, s1Working, s2, s3, s5Approved, sceneId, sceneWorld, stateCells } from "./testing/index.ts";
 import type { Scene } from "./testing/index.ts";
 import { thoughtTimeKey } from "./ui-types.ts";
 import type { TaskUIMessage, TaskUIPart, TurnSpend } from "./ui-types.ts";
@@ -18,6 +19,20 @@ const turnsOf = (messages: readonly TaskUIMessage[]) => messages.filter((message
 const turnOf = (messages: readonly TaskUIMessage[], turnId: string): TaskUIMessage | undefined => messages.find((message) => message.metadata?.turnId === turnId);
 const partsOf = (messages: readonly TaskUIMessage[]): TaskUIPart[] => messages.flatMap((message) => message.parts);
 const typesIn = (message: TaskUIMessage | undefined): string[] => (message?.parts ?? []).map((part) => part.type);
+
+/** An event as the server stores it, beside `like`: a runner's has its session's number, core's none. `renumber` sets the seq. */
+const storedLike = (like: StoredEvent, at: number, by: "runner" | "core", event: TaskEvent): StoredEvent =>
+  storedEventSchema.parse({ taskId: like.taskId, seq: like.seq, sessionId: like.sessionId, sessionSeq: by === "core" ? null : 10_000 + like.seq, at, event });
+
+/** Numbers a spliced log's events in order, as the server would have. */
+const renumber = (events: readonly StoredEvent[]): StoredEvent[] => events.map((stored, i) => storedEventSchema.parse({ ...stored, seq: i + 1 }));
+
+/** The stored event of a log at `index`, which a test expects there. */
+const eventAt = (events: readonly StoredEvent[], index: number): StoredEvent => {
+  const stored = events[index];
+  if (stored === undefined) throw new Error(`no event at ${String(index)}`);
+  return stored;
+};
 
 /** The ID of the call an event list made for a command, the n-th time it ran (from 0). */
 const callOf = (events: readonly StoredEvent[], title: string, n = 0): ToolCallId => {
@@ -169,6 +184,43 @@ describe("a turn's numbers and its steps' times", () => {
     expect(subagentCalls.length).toBeGreaterThan(20);
     expect(subagentCalls.every((call) => tree?.stepTimes?.[call]?.endedAt !== undefined)).toBe(true);
   });
+
+  it("F-151/c3: a call its turn left open ends with the turn, however it ended, and never before it started", () => {
+    // S1-working's rerun of `pnpm test history` is running when the scene stops.
+    const rerun = callOf(s1Working.events, "pnpm test history", 1);
+    const last = eventAt(s1Working.events, s1Working.events.length - 1);
+    const startedAt = s1Working.events.find(({ event }) => event.kind === "tool.called" && event.toolCallId === rerun)?.at;
+    const endOf = (by: "runner" | "core", after: number, event: TaskEvent): number | null | undefined => {
+      const log = renumber([...s1Working.events, storedLike(last, last.at + after, by, event)]);
+      return turnOf(foldTaskEvents(log, []), calc192.turns.t1)?.metadata?.stepTimes?.[rerun]?.endedAt;
+    };
+    const t1 = calc192.turns.t1;
+    expect(endOf("runner", 2_000, { kind: "turn.ended", turnId: t1, stopReason: "end_turn" })).toBe(last.at + 2_000);
+    expect(endOf("runner", 3_000, { kind: "turn.failed", turnId: t1, error: "the model endpoint returned 500" })).toBe(last.at + 3_000);
+    expect(endOf("runner", 4_000, { kind: "session.crashed", error: "the agent exited with code 1" })).toBe(last.at + 4_000);
+    expect(endOf("runner", 5_000, { kind: "session.ended", outcome: "without-changes", repos: [] })).toBe(last.at + 5_000);
+    // Core writes a lost box's crash on its own clock: one behind the runner's still ends the call
+    // at its start, not before.
+    expect(endOf("core", -600_000, { kind: "session.crashed", error: "the box went away", cause: "box_lost" })).toBe(startedAt);
+    // A lost runner may come back, so its call runs on.
+    expect(endOf("core", 6_000, { kind: "runner.lost", runnerId: eventFixtures["runner.lost"].runnerId })).toBeNull();
+  });
+
+  it("F-151/c3: a thought's time is its runner's, whatever core wrote on its own clock in the turn", () => {
+    const first = s1.events.findIndex(({ event }) => event.kind === "agent.thought");
+    const thought = eventAt(s1.events, first);
+    const thoughtTime = (log: readonly StoredEvent[]): number | null => {
+      const time = turnOf(foldTaskEvents(log, []), calc192.turns.t1)?.metadata?.stepTimes?.[thoughtTimeKey(0)];
+      return time === undefined || time.endedAt === null ? null : time.endedAt - time.startedAt;
+    };
+    expect(thoughtTime(s1.events)).toBe(6_000);
+    // A memory proposal core stored just before the thought, its clock a minute ahead or behind the
+    // runner's: the thought is still `Thought for 6s`.
+    for (const skew of [60_000, -60_000]) {
+      const proposed = storedLike(thought, thought.at + skew, "core", eventFixtures["memory.proposed"]);
+      expect(thoughtTime(renumber([...s1.events.slice(0, first), proposed, ...s1.events.slice(first)]))).toBe(6_000);
+    }
+  });
 });
 
 describe("results in their turn", () => {
@@ -231,6 +283,37 @@ describe("results in their turn", () => {
     // A later push to the open PR opens nothing: it has no `firstPr`.
     const later = foldTaskEvents(stateCells.messages[1].events, []);
     expect(later.flatMap((message) => message.parts).find((part) => part.type === "data-pushed")).toMatchObject({ data: { firstPr: null, checks: null } });
+  });
+
+  it("F-151/c7: a PR core opens after the next turn started is a part of the turn that pushed", () => {
+    // Core opens the PR from a job the save started (`task.open-pull-requests`). The runner starts
+    // the next turn right after the save when a message is queued, and core's closing turn follows
+    // a save too, so the next turn's start can be stored before `pr.opened`.
+    const at = s2.events.findIndex(({ event }) => event.kind === "pr.opened");
+    const opened = eventAt(s2.events, at);
+    const t5 = turnIdSchema.parse(sceneId("0192", 0x105));
+    const next = [
+      storedLike(opened, opened.at - 2_000, "runner", { kind: "turn.started", turnId: t5 }),
+      storedLike(opened, opened.at - 1_000, "runner", { kind: "agent.message", turnId: t5, segmentId: segmentIdSchema.parse("calc192-seg-t5"), text: "Reading the review's nit." }),
+    ];
+    const log = renumber([...s2.events.slice(0, at), ...next, opened, ...s2.events.slice(at + 1)]);
+    const messages = foldTaskEvents(log, [], { taskKind: "code" });
+    const pushedIn = turnOf(messages, calc192.turns.t4);
+    const pr = { repoId: sceneWorld.repoId, url: calc192.pr.url, number: calc192.pr.number, title: calc192.pr.title };
+    expect(pushedIn?.parts.find((part) => part.type === "data-pushed")).toMatchObject({ data: { headSha: calc192.pushSha, firstPr: pr } });
+    const types = typesIn(pushedIn);
+    expect(types.slice(types.lastIndexOf("text") + 1)).toEqual(["data-pr-text", "data-pushed", "data-pr"]);
+    // The turn that pushed reads as it does when the PR came first; the next turn has no PR.
+    expect(pushedIn?.parts).toEqual(turnOf(fold(s2), calc192.turns.t4)?.parts);
+    expect(typesIn(turnOf(messages, t5))).toEqual(["step-start", "text"]);
+    expect(partsOf(messages).filter((part) => part.type === "data-pr")).toHaveLength(1);
+    // With no push in the log (a page of history that starts after it), the PR joins the session's last turn.
+    const unpushed = foldTaskEvents(
+      log.filter(({ event }) => event.kind !== "git.pushed"),
+      [],
+      { taskKind: "code" },
+    );
+    expect(typesIn(turnOf(unpushed, t5))).toEqual(["step-start", "text", "data-pr"]);
   });
 
   it("F-151/c7: a refine task's draft and a turn's memory proposal are results of their turn", () => {

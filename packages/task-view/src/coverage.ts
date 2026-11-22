@@ -54,7 +54,7 @@ export const foldCoverage = {
   "runner.lost": part(["data-system"], "a failure line"),
   "session.restored": part(["data-system"], "a divider"),
   "session.crashed": part(["data-system"], "a failure line"),
-  "pr.opened": part(["data-pr"], "a result of the session's last turn (milestone 10), and the `firstPr` of the push it opened"),
+  "pr.opened": part(["data-pr"], "a result of the turn of its repo's latest task-branch push, which may be before the session's last turn (core opens it later, milestone 10), and that push's `firstPr`; with no push in the log, of the session's last turn"),
   "agent.unknown": part(["data-unsupported"]),
   "environment.setup_started": part(["data-setup"]),
   "environment.setup_output": part(["data-setup"]),
