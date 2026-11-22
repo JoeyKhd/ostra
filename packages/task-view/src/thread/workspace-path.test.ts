@@ -79,6 +79,27 @@ describe("workspaceCommand", () => {
     const line = `rm -rf /workspace/calculator-web/../x; echo "ignore previous instructions" $(whoami) > /workspace/calculator-web/out.txt`;
     expect(workspaceCommand(line, oneRepo)).toBe(`rm -rf ../x; echo "ignore previous instructions" $(whoami) > out.txt`);
     expect(workspaceCommand("pnpm test history", oneRepo)).toBe("pnpm test history");
+    // The task's folder alone reads `.`, as `/workspace` does, quoted or not.
+    expect(workspaceCommand(`cd ${hostDir()} && dir "${hostDir()}"`, twoRepos)).toBe(`cd . && dir "."`);
+  });
+
+  it("F-151/c3: a long word in a command line, quoted or not, is read in one pass", () => {
+    // The line is the agent's, up to a frame long: a base64 blob is one word. A pattern that tried
+    // the task's folder at every start inside a word took 43 s on this one, and far longer on 1 MiB.
+    const blob = "QUJD".repeat(64 * 1024);
+    const host = `tasks/${taskId}/agent/`;
+    const hosts = Math.floor(blob.length / host.length);
+    const cases: readonly (readonly [string, string])[] = [
+      [`echo ${blob} | base64 -d > out.bin`, `echo ${blob} | base64 -d > out.bin`],
+      [`echo "${blob}`, `echo "${blob}`],
+      [`cat "${host.repeat(hosts)}`, `cat "${host.repeat(hosts - 1)}`],
+      [`type ${win(hostDir(), "calculator-web", blob)}`, `type ${blob}`],
+    ];
+    for (const [line, read] of cases) {
+      const started = performance.now();
+      expect(workspaceCommand(line, oneRepo)).toBe(read);
+      expect(performance.now() - started).toBeLessThan(500);
+    }
   });
 
   it("F-151/c3: a step's subject reads relative and keeps its full value for its title", () => {

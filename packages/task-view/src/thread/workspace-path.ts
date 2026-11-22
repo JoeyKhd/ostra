@@ -71,19 +71,22 @@ export const workspacePath = (raw: string, context: WorkspaceContext): string =>
  * agent's command, data, never run or parsed further.
  */
 export const workspaceCommand = (line: string, context: WorkspaceContext): string => {
-  const anchor = hostAnchor(context.taskId);
-  // A quoted path may hold spaces (`"C:\Users\Sam Rivera\…\agent\src"`); an unquoted one ends at a boundary.
-  const quoted = new RegExp(String.raw`(["'])([^"']*?${anchor}[^"']*)\1`, "g");
-  const bare = new RegExp(`${PATH_CHAR}*?${anchor}${PATH_CHAR}*`, "g");
+  const anchor = new RegExp(hostAnchor(context.taskId));
   const hostRest = (path: string): string => {
-    const found = new RegExp(anchor).exec(path);
+    const found = anchor.exec(path);
     return found === null ? path : relativeRest(path.slice(found.index + found[0].length), context, false);
   };
+  // The line is the agent's, as long as it likes (a base64 blob in one word), so each pattern here
+  // reads it in one pass: a quoted value or a word is taken whole, then searched for the `host`
+  // folder; no pattern tries the folder at every start inside a word (that took minutes on a 1 MiB word).
+  // A quoted path may hold spaces (`"C:\Users\Sam Rivera\…\agent\src"`); an unquoted one ends at a boundary.
+  const quoted = /(["'])([^"']*)\1/g;
+  const word = new RegExp(`${PATH_CHAR}+`, "g");
   const box = new RegExp(String.raw`(^|[${BOUNDARY}:])/workspace((?:/${PATH_CHAR}*)?)(?=$|[${BOUNDARY}])`, "g");
   const home = new RegExp(String.raw`(^|[${BOUNDARY}:])(${HOME})`, "g");
   return line
     .replace(quoted, (_match, quote: string, path: string) => `${quote}${hostRest(path)}${quote}`)
-    .replace(bare, (path) => hostRest(path))
+    .replace(word, (path) => hostRest(path))
     .replace(box, (_match, before: string, rest: string) => `${before}${relativeRest(rest.replace(/^\//, ""), context, false)}`)
     .replace(home, (_match, before: string) => `${before}~`);
 };
