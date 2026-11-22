@@ -176,6 +176,7 @@ export const onboardingPrompt = (input: { readonly repos: readonly DraftEnvironm
   return [
     "Your task is to set up this project's environment: make each repository's setup script work and its checks pass in this box, then propose the environment.",
     "ostra detected a draft from each repository's files. It's below, as data: change what doesn't work.",
+    "Each repository's setup script runs in that repository's own folder, with OSTRA_REPO set to its owner/name: don't change folders to reach it.",
     DATA_LINE,
     ...input.repos.map((repo) =>
       [

@@ -1,4 +1,10 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import { HostExecutor } from "@ostra/adapter-executor-host";
 import { secretRefSchema, splitByCommitPaths } from "@ostra/adapter-sdk";
+import { startGitUpstream } from "@ostra/adapter-sdk/testing";
 import { decideEnvironmentProposal, ONBOARDING_HOST_LINE, postgresAuditLog, postgresChangeNotices, startOnboarding } from "@ostra/domain";
 import type { MemberScope } from "@ostra/domain";
 import type { SeededMember } from "@ostra/db/testing";
@@ -219,9 +225,8 @@ describe("F-113: the decision", () => {
     const accepted = await decideEnvironmentProposal(decideDeps(), admin(), { proposalId, decision: { kind: "accept", edited: null } });
     expect(accepted.ok).toBe(true);
     const after = await h.db.environment.findUniqueOrThrow({ where: { projectId: h.world.projectId }, include: { entries: { orderBy: { createdAt: "asc" } }, checks: { orderBy: { position: "asc" } }, services: true } });
-    // The proposal's setup, each repo's in its folder, its checks and its service.
-    expect(after.setupScript).toContain("pnpm install --frozen-lockfile");
-    expect(after.setupScript).toContain(`cd "test1"`);
+    // The proposal's setup, each repo's under its name (the second has none), its checks and its service.
+    expect(after.setupScript).toBe(`case "$OSTRA_REPO" in\n  '${REPO}')\ncorepack enable\npnpm install --frozen-lockfile\n    ;;\nesac\n`);
     expect(after.checks.map((check) => [check.name, check.command, check.repoId])).toEqual(
       expect.arrayContaining([
         ["test", "pnpm test", h.world.repoId],
@@ -263,4 +268,48 @@ describe("F-113: the decision", () => {
     const entry = await h.db.auditEntry.findFirstOrThrow({ where: { action: "environment.proposal-rejected" }, orderBy: { createdAt: "desc" } });
     expect(JSON.stringify(entry.data)).not.toContain("make here");
   });
+
+  it("F-113/c2: an accepted proposal for two repos runs each repo's own setup in its own folder, on a host box from the task's spec", async () => {
+    // The saved script runs in every repo's folder, so the prompt shows it with each repo.
+    const taskId = await start();
+    const { prompt } = await h.db.task.findUniqueOrThrow({ where: { id: taskId } });
+    expect(prompt?.split("make bootstrap").length).toBe(3);
+    const { token, boxId } = await lease(taskId);
+    // Each repo's script checks it's in its own checkout; the first ends with a heredoc, as an agent may write one.
+    const firstScript = `grep -q "# test1" README.md || exit 1\necho "test1's setup in $OSTRA_REPO" > setup-ran.txt\ncat >> setup-ran.txt <<'EOF'\na heredoc, as written\nEOF\n`;
+    const secondScript = `grep -q "# test2" README.md || exit 1\necho "test2's setup in $OSTRA_REPO" > setup-ran.txt\n`;
+    const proposalId = await proposed(taskId, token, {
+      repos: [
+        { repoId: repoIdSchema.parse(h.world.repoId), setupScript: firstScript, checks: [], variableNames: [] },
+        { repoId: second, setupScript: secondScript, checks: [], variableNames: [] },
+      ],
+      services: [],
+      notes: "Each repo installs on its own.",
+    });
+    expect(await decideEnvironmentProposal(decideDeps(), admin(), { proposalId, decision: { kind: "accept", edited: null } })).toMatchObject({ ok: true });
+
+    // The spec core sends the runner, and a real host box that checks both repos out and runs the
+    // setup as every executor does. A host takes no services, so the project has none (ADR 0029).
+    await h.db.service.deleteMany({ where: { projectId: h.world.projectId } });
+    const spec =await buildTaskSpec({ db: h.db, codeHost: h.codeHost, secretStore: h.secretStore }, { taskId, runnerId: h.runner.runnerId, leaseEpoch: leaseEpochSchema.parse(1) });
+    if (!spec.ok) throw new Error(spec.message);
+    const root = await mkdtemp(path.join(os.tmpdir(), "ostra-onboarding-setup-"));
+    const upstream = await startGitUpstream(path.join(root, "upstream"), { requireToken: false });
+    const executor = new HostExecutor({ dataDir: path.join(root, "runner") });
+    const box = { taskId, boxId: boxIdSchema.parse(boxId) };
+    try {
+      await upstream.createRepo(REPO, { "README.md": "# test1\n" });
+      await upstream.createRepo(SECOND_REPO, { "README.md": "# test2\n" });
+      const created = await executor.create({ ...box, spec: spec.spec, proxies: { gitBaseUrl: upstream.origin, modelBaseUrl: "http://127.0.0.1:9/v1", mcpUrl: "http://127.0.0.1:9/mcp" } });
+      if (!created.ok) throw new Error(created.error.message);
+      const prepared = await executor.prepare({ box, spec: spec.spec, secrets: [], onSetupOutput: () => undefined });
+      expect(prepared).toMatchObject({ ok: true, value: { setup: { exitCode: 0 } } });
+      expect(await readFile(path.join(created.value.workspaceDir, "test1", "setup-ran.txt"), "utf8")).toBe(`test1's setup in ${REPO}\na heredoc, as written\n`);
+      expect(await readFile(path.join(created.value.workspaceDir, "test2", "setup-ran.txt"), "utf8")).toBe(`test2's setup in ${SECOND_REPO}\n`);
+    } finally {
+      await executor.release(box, "requested");
+      await upstream.close();
+      await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    }
+  }, 60_000);
 });

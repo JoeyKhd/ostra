@@ -12,6 +12,7 @@ import type { Ports, ServerAdapters } from "../ports.ts";
 import { onboardingPrompt } from "../prompts/m6.ts";
 import type { DraftAppProcess, DraftEnvironmentRepo } from "../prompts/m6.ts";
 import type { DetectedAppProcess } from "../environment/detect-app.ts";
+import { setupScriptFromRepos } from "../environment/repo-drafts.ts";
 import type { AppProcess } from "../previews/app-processes.ts";
 import { appProcessesInTx, appProcessListRefusal, detectedAppProcesses, keptProcessWithoutCommand, mergeAppProcesses, writeAppProcessesInTx } from "../previews/environment-app.ts";
 import type { UseCaseResult } from "../use-cases/common.ts";
@@ -38,7 +39,9 @@ import { appendServerEvent } from "../use-cases/server-events.ts";
 // - `decideEnvironmentProposal`, a project admin's: "Accept" (or "Edit and accept") saves the
 //   environment's next version through milestone 1's `saveEnvironment`, keeping its entries and
 //   secrets, in one transaction with the audit entry; "Reject" with a reason. A proposal never holds
-//   a secret's value.
+//   a secret's value. Its scripts, one per repo, become the environment's one setup script, which
+//   every executor runs once in each repo's folder with `OSTRA_REPO` set: each repo's under its
+//   name in a `case` on it (`setupScriptFromRepos`).
 // Milestone 8 (F-140, ticket 15): the prompt names the app's processes (the environment's, else the
 // ones detection finds) and asks the agent to start each with `start_app`, check it's ready,
 // screenshot the primary and hand them in as `appProcesses`, keeping one origin; the proposal
@@ -124,10 +127,12 @@ const draftReposOf = async (
     const fullName = repoFullNameSchema.parse(repo.fullName);
     const repoId = repoIdSchema.parse(repo.id);
     if (saved !== null) {
-      // The environment's one setup script runs in the workspace: it's shown with the first repo.
+      // The environment's one setup script runs once in each repo's folder, with `OSTRA_REPO` set to
+      // the repo's name: it's shown with every repo, as what runs there. A proposal that keeps it
+      // for each repo keeps it as it is (`setupScriptFromRepos`).
       drafts.push({
         fullName,
-        setupScript: index === 0 ? (saved.setupScript ?? "") : "",
+        setupScript: saved.setupScript ?? "",
         checks: checks.filter((check) => check.repoId === repo.id || (check.repoId === null && index === 0)).map((check) => ({ name: check.name, command: check.command })),
         hasAgentsMd,
       });
@@ -331,21 +336,6 @@ export const environmentBaselineInTx = async (tx: Pick<Tx, "environment" | "chec
   };
 };
 
-/**
- * The proposal's scripts as the environment's one setup script: each repo's in its own folder of
- * the workspace, in the project's order. One repo's script runs as it is.
- */
-export const proposedSetupScript = (repos: readonly { readonly checkoutDir: string; readonly setupScript: string | null }[]): string | null => {
-  const scripts = repos.filter((repo) => repo.setupScript !== null && repo.setupScript.trim() !== "");
-  if (scripts.length === 0) {
-    return null;
-  }
-  if (repos.length === 1) {
-    return scripts[0]?.setupScript ?? null;
-  }
-  return scripts.map((repo) => `# ${repo.checkoutDir}\n(\n  cd ${JSON.stringify(repo.checkoutDir)}\n${repo.setupScript ?? ""}\n)`).join("\n\n");
-};
-
 const refuse = (error: Exclude<Exclude<DecideEnvironmentProposalResult, { readonly ok: true }>["error"], "secret-found">, message: string): DecideEnvironmentProposalResult => ({ ok: false, error, message });
 
 export const decideEnvironmentProposal = (deps: DecideEnvironmentProposalDeps, scope: MemberScope, input: { readonly proposalId: EnvironmentProposalId; readonly decision: EnvironmentDecision }): Promise<DecideEnvironmentProposalResult> =>
@@ -403,7 +393,7 @@ export const decideEnvironmentProposal = (deps: DecideEnvironmentProposalDeps, s
           return { ok: false, error: "secret-found", message: `The edit holds ${scan.found.join(", ")}: name the variable instead, and set its value as a secret.`, found: scan.found };
         }
       }
-      const repos = await tx.repo.findMany({ where: { projectId, organizationId }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], select: { id: true, checkoutDir: true } });
+      const repos = await tx.repo.findMany({ where: { projectId, organizationId }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], select: { id: true, fullName: true } });
       if (accepted.repos.some((repo) => !repos.some((one) => one.id === repo.repoId))) {
         return refuse("invalid-input", "The proposal names a repo that isn't in this project");
       }
@@ -436,7 +426,7 @@ export const decideEnvironmentProposal = (deps: DecideEnvironmentProposalDeps, s
           projectId,
           environment: {
             baseImage: environment.baseImage,
-            setupScript: kept ? environment.setupScript : proposedSetupScript(repos.map((repo) => ({ checkoutDir: repo.checkoutDir, setupScript: scriptOf.get(repoIdSchema.parse(repo.id)) ?? null }))),
+            setupScript: kept ? environment.setupScript : setupScriptFromRepos(repos.map((repo) => ({ fullName: repo.fullName, setupScript: scriptOf.get(repoIdSchema.parse(repo.id)) ?? null }))),
             envFiles: repoRows.map((repo) => ({ repoId: repoIdSchema.parse(repo.id), path: repo.envFile })),
             entries: entries.flatMap((entry): EnvironmentEntry[] => {
               const repoId: RepoId = repoIdSchema.parse(entry.repoId);

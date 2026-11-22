@@ -245,8 +245,8 @@ export const onboardingProcedures = {
       body: parsed.success && row.state === "proposed" ? proposal : null,
       repos: proposal.repos.map((repo) => {
         const isFirst = repo.repoId === firstRepoId;
-        // The environment's one setup script runs in the workspace: it's compared with the first repo's.
-        const currentScript = saved && isFirst ? current.setupScript : null;
+        // The environment's one setup script runs once in each repo's folder: each repo's is compared with it.
+        const currentScript = saved ? current.setupScript : null;
         const currentChecks = saved ? current.checks.filter((check) => check.repoId === repo.repoId || (check.repoId === null && isFirst)) : [];
         const currentNames = new Set(current.names.filter((entry) => entry.repoId === repo.repoId).map((entry) => entry.name));
         return {

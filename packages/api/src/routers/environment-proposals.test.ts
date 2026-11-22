@@ -188,7 +188,8 @@ describe("the onboarding task (F-113, ticket 29)", () => {
       {
         repoId: repo2,
         repo: "ostra-test/test2",
-        setupScript: { current: null, proposed: null, changed: false },
+        // The saved script runs in this repo's folder too, and the proposal gives it none.
+        setupScript: { current: "make bootstrap", proposed: null, changed: true },
         checks: { added: [{ name: "docs", command: "pnpm docs:check", timeoutSeconds: 300 }], changed: [], unchanged: [], kept: [] },
         variableNames: { missing: [], present: [] },
       },
