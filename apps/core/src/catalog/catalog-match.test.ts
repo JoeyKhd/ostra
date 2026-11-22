@@ -15,10 +15,10 @@ import { createJobs, jobIdSchema } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
 import { organizationIdSchema, projectIdSchema, providerIdSchema } from "@ostra/protocol";
 import type { OrganizationId, ProviderId } from "@ostra/protocol";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { FakeCodeHost, FakeSecretStore } from "../testing/fake-adapters.ts";
-import { catalogSource, providerRefreshHandler, refreshCatalog } from "./catalog.ts";
+import { catalogSource, enqueueStaleProviderRefreshes, providerRefreshHandler, refreshCatalog } from "./catalog.ts";
 import type { CatalogDeps } from "./catalog.ts";
 
 // 2026-11-22 (ADR 0033, F-148): an install an older release matched to the wrong provider's
@@ -256,5 +256,62 @@ describe("a refresh heals a model matched to another provider's entry", () => {
     expect(await resolveProfileModelInTx(test.db, { organizationId, projectId, profileId: pinned.id })).toMatchObject({ ok: true, providerId: openRouter, modelId: onOpenRouter.id });
     expect(await resolveProfileModelInTx(test.db, { organizationId, projectId, profileId: byName.id })).toMatchObject({ ok: true, modelId: onAmbient.id });
     expect(await test.db.modelChoice.findMany({ where: { organizationId }, select: { modelKey: true, modelId: true } })).toEqual([{ modelKey: catalogKey(`ambient/${DEEPSEEK}`), modelId: onAmbient.id }]);
+  });
+});
+
+describe("core's start: a refresh for a provider an upgrade left stale", () => {
+  const sweep = (queue: Pick<Jobs, "enqueueInTx">) => enqueueStaleProviderRefreshes({ db: test.db, jobs: queue, adapters: { modelProvider }, catalog: catalogSource(deps()), logger: silentLogger });
+
+  it("F-148/c5: an upgraded install's empty inputs fill without a press: one refresh across two replicas, and an admin's word untouched", async () => {
+    const organizationId = organizationIdSchema.parse(fixture.a.organization.id);
+    const upgraded = await seedOpenRouter(organizationId);
+    // As an install upgraded past milestone 9's ticket 11 has them: the right entries, no inputs yet.
+    const plain = await test.db.model.create({ data: { organizationId, providerId: upgraded, endpointModelId: DEEPSEEK, catalogId: `openrouter/${DEEPSEEK}` } });
+    const overridden = await test.db.model.create({ data: { organizationId, providerId: upgraded, endpointModelId: CODER, catalogId: `openrouter/${CODER}`, adminImageInput: false } });
+    // An older release's match to another provider's entry is stale too.
+    const misMatched = await seedOpenRouter(organizationId);
+    await seedWrongMatch(organizationId, misMatched, DEEPSEEK);
+    // Up to date: nothing to do.
+    const current = await seedOpenRouter(organizationId);
+    await test.db.model.create({ data: { organizationId, providerId: current, endpointModelId: DEEPSEEK, catalogId: `openrouter/${DEEPSEEK}`, catalogInputModalities: ["text", "image"] } });
+    expect([modelImageInput(plain), modelImageInput(overridden)]).toEqual(["unknown", "no"]);
+
+    // Two replicas start at once: each queues the refresh, and the provider's key keeps one.
+    const replica = createJobs({ databaseUrl: test.url, role: "enqueue-only" });
+    await replica.start();
+    try {
+      await Promise.all([sweep(jobs), sweep(replica)]);
+    } finally {
+      await replica.stop({ graceful: false, timeoutMs: 2_000 });
+    }
+    const payload = (providerId: ProviderId) => ({ organizationId, providerId });
+    expect((await jobs.find("provider.refresh-models", payload(upgraded))).length).toBe(1);
+    expect((await jobs.find("provider.refresh-models", payload(misMatched))).length).toBe(1);
+    expect(await jobs.find("provider.refresh-models", payload(current))).toEqual([]);
+
+    // The worker runs the real refresh; nobody pressed anything.
+    await jobs.work(
+      "provider.refresh-models",
+      providerRefreshHandler({ db: test.db, jobs, notices: postgresChangeNotices, clock: systemClock, adapters: { ...fakes, modelProvider }, catalog: catalogSource(deps()) }),
+      { localConcurrency: 1 },
+    );
+    await vi.waitFor(
+      async () => {
+        expect((await test.db.model.findUniqueOrThrow({ where: { id: plain.id } })).catalogInputModalities).toEqual(["text", "image"]);
+        expect((await jobs.find("provider.refresh-models", payload(misMatched))).map((job) => job.state)).toEqual(["completed"]);
+      },
+      { timeout: 20_000, interval: 250 },
+    );
+    const filled = await test.db.model.findUniqueOrThrow({ where: { id: plain.id } });
+    const kept = await test.db.model.findUniqueOrThrow({ where: { id: overridden.id } });
+    expect([modelImageInput(filled), kept.catalogInputModalities, kept.adminImageInput, modelImageInput(kept)]).toEqual(["yes", ["text", "image"], false, "no"]);
+    expect((await test.db.model.findFirstOrThrow({ where: { providerId: misMatched, endpointModelId: DEEPSEEK } })).catalogId).toBe(`openrouter/${DEEPSEEK}`);
+    expect((await jobs.find("provider.refresh-models", payload(upgraded))).map((job) => job.state)).toEqual(["completed"]);
+
+    // The next start finds nothing stale on them, and queues nothing again.
+    await sweep(jobs);
+    expect((await jobs.find("provider.refresh-models", payload(upgraded))).length).toBe(1);
+    expect((await jobs.find("provider.refresh-models", payload(misMatched))).length).toBe(1);
+    expect(await jobs.find("provider.refresh-models", payload(current))).toEqual([]);
   });
 });

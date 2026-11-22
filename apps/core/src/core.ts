@@ -40,7 +40,7 @@ import { handlePanelFileEndpoint } from "./blobs/panel-file-endpoint.ts";
 import { ensureUnsentSweepSchedule, sweepUnsentHandler } from "./files/sweep-unsent.ts";
 import { createDocumentTextReader } from "./files/text/index.ts";
 
-import { catalogRefreshHandler, catalogSource, ensureSchedules, providerRefreshHandler } from "./catalog/catalog.ts";
+import { catalogRefreshHandler, catalogSource, enqueueStaleProviderRefreshes, ensureSchedules, providerRefreshHandler } from "./catalog/catalog.ts";
 import { admitHandler, applyOfferResultsInTx, dispatchHandler, offerTimeoutHandler, requeueQueuedTasks } from "./dispatch/dispatcher.ts";
 import type { DispatcherDeps } from "./dispatch/dispatcher.ts";
 import { handleTaskEndpoint } from "./dispatch/endpoints.ts";
@@ -346,6 +346,12 @@ export const startCore = async (
     providerRefreshHandler({ db, jobs, notices, clock: systemClock, adapters, catalog: catalogSource(catalogDeps) }),
     { localConcurrency: 2 },
   );
+  // 2026-11-22: a provider an upgrade left stale (models without their inputs, or matched to
+  // another provider's catalog entry) refreshes now, once across replicas, without an admin's
+  // press; in the background, so a large install starts at once.
+  void enqueueStaleProviderRefreshes({ db, jobs, adapters, catalog: catalogSource(catalogDeps), logger }).catch((error: unknown) => {
+    logger.warn("provider.stale-refresh-failed", { error: error instanceof Error ? error.name : "unknown" });
+  });
   liveText.start();
   // The S3-compatible store, when OSTRA_BLOB_STORE=s3 (ticket 11). Blobs written to the built-in store
   // before the switch stay readable there: each `Blob` row names its store.

@@ -203,3 +203,52 @@ export const ensureSchedules = async (deps: { readonly db: Db; readonly jobs: Jo
   }
   return providers.length;
 };
+
+/**
+ * 2026-11-22: once at core's start, a `provider.refresh-models` for each provider whose stored
+ * models the catalog would now write otherwise, so an upgraded install heals without a press: a
+ * catalog model with no inputs (`catalogInputModalities`) where its match has them (an install
+ * from before milestone 9's ticket 11 has none until a refresh), or one the match now gives
+ * another entry (an older release matched it to another provider's, ADR 0033). The job is keyed
+ * by its provider, so replicas starting together queue it once, and a refresh that ran leaves
+ * nothing for the next start. Answers how many providers it queued.
+ */
+export const enqueueStaleProviderRefreshes = async (deps: {
+  readonly db: Db;
+  readonly jobs: Pick<Jobs, "enqueueInTx">;
+  readonly adapters: Pick<ServerAdapters, "modelProvider">;
+  readonly catalog: () => Promise<readonly CatalogEntry[]>;
+  readonly logger: Logger;
+}): Promise<number> => {
+  const providers = await deps.db.modelProvider.findMany({ select: { id: true, organizationId: true, baseUrl: true }, orderBy: { id: "asc" } });
+  if (providers.length === 0) {
+    return 0;
+  }
+  const catalog = await deps.catalog();
+  let queued = 0;
+  for (const provider of providers) {
+    const rows = await deps.db.model.findMany({
+      where: { providerId: provider.id, listed: true, catalogId: { not: null } },
+      select: { endpointModelId: true, catalogId: true, catalogInputModalities: true },
+    });
+    const matches = deps.adapters.modelProvider.matchCatalog(
+      rows.map((row) => ({ endpointModelId: row.endpointModelId, displayName: null, contextWindow: null })),
+      catalog,
+      { baseUrl: provider.baseUrl },
+    );
+    const byId = new Map(matches.map((match) => [match.endpointModelId, match.match] as const));
+    const stale = rows.some((row) => {
+      const match = byId.get(row.endpointModelId);
+      return match?.kind === "catalog" && (match.entry.catalogId !== row.catalogId || (row.catalogInputModalities === null && match.entry.inputModalities !== null));
+    });
+    if (stale) {
+      const payload = { organizationId: organizationIdSchema.parse(provider.organizationId), providerId: providerIdSchema.parse(provider.id) };
+      await deps.db.$transaction((tx) => deps.jobs.enqueueInTx(tx, "provider.refresh-models", payload));
+      queued += 1;
+    }
+  }
+  if (queued > 0) {
+    deps.logger.info("provider.stale-refreshes-queued", { providers: queued });
+  }
+  return queued;
+};
