@@ -4,6 +4,8 @@ import { promisify } from "node:util";
 
 import { z } from "zod";
 
+import type { StepResult } from "./verdict.ts";
+
 // What the load test reads from the OS about a process and its children (ticket 34, F-117):
 // Postgres's CPU (the postmaster and every backend it forked) and each core replica's memory. On
 // Linux from `/proc`; on Windows from the process's own counters (`Win32_Process`, through
@@ -138,6 +140,41 @@ export const startSampling = (pid: number, intervalMs: number): { readonly stop:
       take();
       await pending;
       return samples;
+    },
+  };
+};
+
+/** What a step reports of Postgres's CPU (`results.json`'s `postgres`). */
+export type PostgresCpu = StepResult["postgres"];
+
+/**
+ * Postgres's CPU over a load step's window, as `run.ts` takes it: the postmaster and the backends
+ * it forked, sampled every `intervalMs` from when it's called; `stop` ends it and answers the
+ * step's report and the samples it's made of. With no PID (Postgres isn't the harness's) nothing
+ * is sampled, and the report says so.
+ */
+export const samplePostgres = (
+  pgPid: number | null,
+  intervalMs: number,
+): { readonly stop: () => Promise<{ readonly report: PostgresCpu; readonly samples: readonly ProcessSample[] }> } => {
+  const sampling = pgPid === null ? null : startSampling(pgPid, intervalMs);
+  return {
+    stop: async () => {
+      const samples = sampling === null ? [] : await sampling.stop();
+      const cores = samples.slice(1).map((sample, index) => {
+        const before = samples[index];
+        return before === undefined ? 0 : cpuCores(before, sample);
+      });
+      const reader = process.platform === "linux" ? "/proc" : process.platform === "win32" ? "Win32_Process counters" : "ps";
+      return {
+        samples,
+        report: {
+          samples: samples.length,
+          meanCores: cores.length === 0 ? null : cores.reduce((sum, value) => sum + value, 0) / cores.length,
+          maxCores: cores.length === 0 ? null : Math.max(...cores),
+          source: pgPid === null ? "not sampled: Postgres isn't the harness's" : `${reader}, the postmaster and its backends, every ${String(intervalMs / 1000)} s`,
+        },
+      };
     },
   };
 };

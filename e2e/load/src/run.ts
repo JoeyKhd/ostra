@@ -38,7 +38,7 @@ import type { GeneratorProcess } from "./generators.ts";
 import { partialTextOn } from "./mix.ts";
 import { startNetCut } from "./net-cut.ts";
 import type { NetCut } from "./net-cut.ts";
-import { cpuCores, sampleProcess, startSampling } from "./process-sampler.ts";
+import { samplePostgres, sampleProcess } from "./process-sampler.ts";
 import { seedLoadWorld } from "./seed.ts";
 import { startStack } from "./stack.ts";
 import type { Stack } from "./stack.ts";
@@ -293,7 +293,7 @@ const runStep = async (tasks: number, options: Options, runDir: string): Promise
       for (const [index, count] of parsedLine.data.buckets.entries()) ingest.buckets[index] = (ingest.buckets[index] ?? 0) + count;
     });
     const pgPid = options["pg-pid"] ?? stack.pgPid;
-    const pgSampling = pgPid === null ? null : startSampling(pgPid, 5_000);
+    const pgSampling = samplePostgres(pgPid, 5_000);
     const windowStart = Date.now();
     const live = taskIds.filter((taskId) => dispatched.has(taskId));
     const steerGap = (options.window * 1000) / Math.max(1, options.steers);
@@ -337,7 +337,7 @@ const runStep = async (tasks: number, options: Options, runDir: string): Promise
         return waiting;
       }),
     );
-    const pgSamples = pgSampling === null ? [] : await pgSampling.stop();
+    const { report: postgres } = await pgSampling.stop();
     // The last `ingest.timing` lines of the window come up to 10 s after it.
     await sleep(10_500);
     collecting = false;
@@ -401,10 +401,6 @@ const runStep = async (tasks: number, options: Options, runDir: string): Promise
     const steer = steers.result();
     const afterStorm = stormSteers.result();
     if (errors.length > 0) say(`step ${String(tasks)}: generator errors: ${errors.slice(0, 5).join(" | ")}`);
-    const pgCores = pgSamples.slice(1).map((sample, index) => {
-      const before = pgSamples[index];
-      return before === undefined ? 0 : cpuCores(before, sample);
-    });
 
     return {
       tasks,
@@ -423,12 +419,7 @@ const runStep = async (tasks: number, options: Options, runDir: string): Promise
         p99: bucketPercentile(ingestBuckets, ingest.buckets, 99),
         max: ingest.frames === 0 ? null : ingest.maxMs,
       },
-      postgres: {
-        samples: pgSamples.length,
-        meanCores: pgCores.length === 0 ? null : pgCores.reduce((sum, value) => sum + value, 0) / pgCores.length,
-        maxCores: pgCores.length === 0 ? null : Math.max(...pgCores),
-        source: pgPid === null ? "not sampled: Postgres isn't the harness's" : `${process.platform === "linux" ? "/proc" : process.platform === "win32" ? "Win32_Process counters" : "ps"}, the postmaster and its backends, every 5 s`,
-      },
+      postgres,
       replicaMemoryMiB: memory,
       storm: { runners: runnerCount, reconnected, seconds: stormSeconds },
       browsers: browserResult,

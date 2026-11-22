@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -22,9 +22,10 @@ import type { GeneratorProcess } from "./generators.ts";
 import { partialTextOn } from "./mix.ts";
 import { startNetCut } from "./net-cut.ts";
 import type { NetCut } from "./net-cut.ts";
-import { cpuCores, sampleProcess } from "./process-sampler.ts";
+import { samplePostgres, sampleProcess } from "./process-sampler.ts";
 import { seedLoadWorld } from "./seed.ts";
 import type { LoadWorld } from "./seed.ts";
+import { postmasterPidOf } from "./stack.ts";
 
 // Ticket 34 (F-117/c4, ADR 0061): what the load test does beyond its steady load, on a small fleet
 // against a real core (`startCore`) and `packages/api` in this process, as `run.ts` runs a step:
@@ -274,16 +275,18 @@ describe("what the load test does beyond its steady load (F-117)", () => {
   }, 300_000);
 
   it("F-117/c4: records Postgres's CPU as the postmaster and the backends it forked: a backend's work shows in the postmaster's sample", async () => {
-    // The test's own Postgres, as the load run samples its stack's: the postmaster's PID is the first line of postmaster.pid.
+    // The test's own Postgres, found and sampled as a load step finds and samples its stack's: its
+    // postmaster by `postmaster.pid` in its data directory (`stack.ts`), and its CPU into the step's
+    // `postgres` report (`run.ts`), every second here where a step samples every 5 s.
     const [setting] = z.array(z.object({ data_directory: z.string() })).parse(await api.db.$queryRaw`SHOW data_directory`);
     if (setting === undefined) throw new Error("no data directory");
-    const postmaster = Number.parseInt((await readFile(path.join(setting.data_directory, "postmaster.pid"), "utf8")).split("\n")[0] ?? "", 10);
-    expect(Number.isInteger(postmaster)).toBe(true);
+    const postmaster = await postmasterPidOf(setting.data_directory);
+    if (postmaster === null) throw new Error("no postmaster.pid in the data directory");
     await api.db.$transaction(
       async (tx) => {
         const [backend] = z.array(z.object({ pid: z.number().int() })).parse(await tx.$queryRaw`SELECT pg_backend_pid() AS pid`);
         if (backend === undefined) throw new Error("no backend");
-        const treeBefore = await sampleProcess(postmaster);
+        const sampling = samplePostgres(postmaster, 1_000);
         const backendBefore = await sampleProcess(backend.pid);
         // Burn on this one backend until the OS counts a second of its CPU, not for a wall-clock time.
         const giveUpAt = Date.now() + 60_000;
@@ -292,15 +295,20 @@ describe("what the load test does beyond its steady load (F-117)", () => {
           await tx.$executeRaw`SELECT count(*) FROM generate_series(1, 3000000) AS g WHERE sqrt(g::float8) > 3`;
           backendAfter = await sampleProcess(backend.pid);
         }
-        const treeAfter = await sampleProcess(postmaster);
+        const { report, samples } = await sampling.stop();
         expect(backendAfter.cpuMs - backendBefore.cpuMs).toBeGreaterThanOrEqual(1_000);
-        expect(cpuCores(backendBefore, backendAfter)).toBeGreaterThan(0);
-        // The postmaster's sample sums it and the backends it forked, this one's whole count among
+        // The step's report: the samples it took, the CPU between them, and the reader it used.
+        const reader = process.platform === "linux" ? "/proc" : process.platform === "win32" ? "Win32_Process counters" : "ps";
+        expect(report).toMatchObject({ samples: samples.length, source: `${reader}, the postmaster and its backends, every 1 s` });
+        expect(report.samples).toBeGreaterThanOrEqual(2);
+        expect(report.meanCores).toBeGreaterThan(0);
+        expect(report.maxCores).toBeGreaterThanOrEqual(report.meanCores ?? Number.POSITIVE_INFINITY);
+        // Each sample sums the postmaster and the backends it forked, this one's whole count among
         // them. (Other backends come and go between two samples, so the sum is compared whole.)
-        expect(treeBefore.processes).toBeGreaterThanOrEqual(2);
-        expect(treeAfter.processes).toBeGreaterThanOrEqual(2);
-        expect(treeAfter.cpuMs).toBeGreaterThanOrEqual(backendAfter.cpuMs);
-        expect(treeAfter.rssBytes).toBeGreaterThan(0);
+        for (const sample of samples) expect(sample.processes).toBeGreaterThanOrEqual(2);
+        const last = samples.at(-1);
+        expect(last?.cpuMs).toBeGreaterThanOrEqual(backendAfter.cpuMs);
+        expect(last?.rssBytes).toBeGreaterThan(0);
       },
       { maxWait: 10_000, timeout: 120_000 },
     );

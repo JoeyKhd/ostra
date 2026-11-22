@@ -117,6 +117,16 @@ const hasProductionBuild = async (webDir: string): Promise<boolean> =>
     () => false,
   );
 
+/**
+ * The postmaster's PID: the first line of `postmaster.pid` in a Postgres data directory, which is
+ * how the load run finds its embedded Postgres to sample it; `null` when there's none to read.
+ */
+export const postmasterPidOf = async (dataDir: string): Promise<number | null> => {
+  const text = await readFile(path.join(dataDir, "postmaster.pid"), "utf8").catch(() => null);
+  const pid = Number.parseInt(text?.split(/\r?\n/)[0] ?? "", 10);
+  return Number.isInteger(pid) && pid > 0 ? pid : null;
+};
+
 export const startStack = async (input: StackInput): Promise<Stack> => {
   await mkdir(input.dir, { recursive: true });
   const children: ChildProcess[] = [];
@@ -154,8 +164,7 @@ export const startStack = async (input: StackInput): Promise<Stack> => {
       await pg.start();
       await pg.createDatabase("ostra");
       databaseUrl = `postgresql://ostra:${password}@127.0.0.1:${String(input.pgPort)}/ostra`;
-      const pidLine = (await readFile(path.join(pgDir, "postmaster.pid"), "utf8")).split(/\r?\n/)[0] ?? "";
-      pgPid = Number.parseInt(pidLine, 10) || null;
+      pgPid = await postmasterPidOf(pgDir);
     }
     input.say("migrating the database");
     const migrated = await migrateDeploy(databaseUrl);
