@@ -6,6 +6,8 @@ import type { MemberScope } from "@ostra/domain";
 import type { TaskId } from "@ostra/protocol";
 import { z } from "zod";
 
+import { ciJobsOf, sumCiJobs } from "./ci-jobs.ts";
+import type { CiJobs } from "./ci-jobs.ts";
 import { loadNeedsYouViews } from "./needs-you-view.ts";
 import type { NeedsYouView } from "./needs-you-view.ts";
 import { loadDoingByTask } from "./task-doing.ts";
@@ -57,7 +59,17 @@ export type CardStatus =
     }
   | { readonly kind: "running"; readonly doing: Doing | null }
   | { readonly kind: "preparing"; readonly doing: Doing | null }
-  | { readonly kind: "in-review"; readonly subState: DbEnum.TaskSubState | null; readonly prNumbers: readonly number[] }
+  | {
+      readonly kind: "in-review";
+      readonly subState: DbEnum.TaskSubState | null;
+      readonly prNumbers: readonly number[];
+      /**
+       * Milestone 10 (F-151/c6, F-062): while its PRs are in CI (`ci_running`), the code host's
+       * jobs on their heads, added up, for the sub-state's words (`CI running · 2 of 4 jobs`);
+       * `null` in any other sub-state.
+       */
+      readonly ciJobs: CiJobs | null;
+    }
   | {
       readonly kind: "finished";
       readonly outcome: "merged" | "done" | "stopped";
@@ -177,8 +189,9 @@ export const loadBoardColumn = async (
   const queuedTasks = ordered.filter((task) => task.state === "queued");
   const stoppedIds = ordered.filter((task) => task.state === "stopped").map((task) => task.id);
   const needsIds = ordered.filter((task) => task.state === "needs_you").map((task) => task.id);
+  const inCiIds = ordered.filter((task) => task.state === "in_review" && task.subState === "ci_running").map((task) => task.id);
 
-  const [members, doing, runners, pools, leases, stops, items] = await Promise.all([
+  const [members, doing, runners, pools, leases, stops, items, ciRepos] = await Promise.all([
     db.member.findMany({ where: { organizationId, id: { in: driverIds } }, select: { id: true, user: { select: { name: true } } } }),
     loadDoingByTask(db, liveIds),
     db.runner.findMany({ where: { organizationId, id: { in: queuedTasks.flatMap((task) => (task.runnerId === null ? [] : [task.runnerId])) } }, select: { id: true, name: true, kind: true } }),
@@ -198,7 +211,20 @@ export const loadBoardColumn = async (
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           include: { task: { select: { id: true, projectId: true, ticketKey: true, title: true, driverMemberId: true, agentProfileId: true, updatedAt: true, repos: { select: { prNumber: true } } } } },
         }),
+    // Milestone 10 (F-151/c6): each PR's head's CI, as `tasks.get` reads it, for a task in CI.
+    inCiIds.length === 0
+      ? []
+      : db.taskRepo.findMany({
+          where: { organizationId, taskId: { in: inCiIds }, prNumber: { not: null } },
+          select: { taskId: true, headSha: true, ciRuns: { orderBy: { firstSeenAt: "desc" }, take: 5, select: { headSha: true, checks: true } } },
+        }),
   ]);
+  const ciJobsOfTask = new Map(
+    inCiIds.map((taskId) => [
+      taskId,
+      sumCiJobs(ciRepos.filter((repo) => repo.taskId === taskId).map((repo) => ciJobsOf(repo.ciRuns.find((run) => run.headSha === repo.headSha)?.checks).jobs)),
+    ] as const),
+  );
   const stopperIds = [...new Set(stops.flatMap((stop) => (stop.actorId === null ? [] : [stop.actorId])))];
   const stoppers = stopperIds.length === 0 ? [] : await db.member.findMany({ where: { organizationId, id: { in: stopperIds } }, select: { id: true, user: { select: { name: true } } } });
   // A follow-up's code task, for the live lists' nesting (2026-11-21).
@@ -243,7 +269,7 @@ export const loadBoardColumn = async (
       case "preparing":
         return { kind: "preparing", doing: doing.get(taskIdSchema.parse(task.id)) ?? null };
       case "in_review":
-        return { kind: "in-review", subState: task.subState, prNumbers };
+        return { kind: "in-review", subState: task.subState, prNumbers, ciJobs: ciJobsOfTask.get(task.id) ?? null };
       case "merged":
         return { kind: "finished", outcome: "merged", prNumbers, stopReason: null, stoppedBy: null };
       case "done":

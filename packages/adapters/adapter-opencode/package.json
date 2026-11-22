@@ -13,7 +13,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./effort": "./src/effort.ts",
-    "./prompt-images": "./src/prompt-images.ts"
+    "./prompt-images": "./src/prompt-images.ts",
+    "./question-free-text": "./src/question-free-text.ts"
   },
   "files": [
     "dist",
@@ -34,6 +35,10 @@
       "./prompt-images": {
         "types": "./dist/prompt-images.d.ts",
         "default": "./dist/prompt-images.js"
+      },
+      "./question-free-text": {
+        "types": "./dist/question-free-text.d.ts",
+        "default": "./dist/question-free-text.js"
       }
     }
   },

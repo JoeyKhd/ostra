@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  CI_FAILING_CONCLUSIONS,
   agentSteersMidTurn,
   answerNextTurnItemsInTx,
   answerApproval,
@@ -80,12 +79,14 @@ import { GOING_SESSION_STATES, waitsForReopen } from "./task-reopen-state.ts";
 import { z } from "zod";
 
 import { loadAgentProfileView } from "./agent-profile-view.ts";
+import { ciOfHead } from "./ci-jobs.ts";
 import { loadDoingByTask } from "./task-doing.ts";
 import { loadChecksView } from "./task-checks.ts";
 import { loadLocalView } from "./task-local.ts";
 import { loadApprovalsAndPlan, previewApproval } from "./task-m3.ts";
 import { loadUsageView } from "./task-usage.ts";
 import { levelRefusal, loadModelEffort, toLevelViews } from "../services/agent-effort.ts";
+import { agentTakesQuestionFreeText } from "../services/agent-questions.ts";
 import type { ApiDeps } from "../trpc/context.ts";
 import { loadTaskExtras, prStateOf } from "./task-extras.ts";
 import { loadFollowUp, shortKeyOf } from "./task-follow-up.ts";
@@ -180,16 +181,6 @@ const reviewCheckOf = (checks: readonly ReviewCheckRow[], reviewers: ReadonlyMap
 /** How many events a page of the event log holds by default, and at most (ticket 25). */
 const EVENT_LOG_PAGE = 200;
 const EVENT_LOG_MAX_PAGE = 1000;
-
-/** A head's CI as the Code group says it: running, passed, failed with its first failing check, or none. */
-const ciOfHead = (run: { readonly state: "pending" | "passed" | "failed" | "none" | "timed_out"; readonly checks: unknown } | null) => {
-  if (run === null || run.state === "none") return { state: "none" as const, failing: null };
-  if (run.state === "pending") return { state: "running" as const, failing: null };
-  if (run.state === "passed") return { state: "passed" as const, failing: null };
-  const checks = z.array(z.looseObject({ name: z.string(), conclusion: z.string().nullable() })).safeParse(run.checks);
-  const failing = checks.success ? (checks.data.find((check) => check.conclusion !== null && CI_FAILING_CONCLUSIONS.has(check.conclusion))?.name ?? null) : null;
-  return { state: "failed" as const, failing };
-};
 
 export const tasksRouter = router({
   /** F-037, F-135 (tickets 27, 50): whether a new task would start now, or the reason it would wait. */
@@ -427,7 +418,10 @@ export const tasksRouter = router({
     ]);
     const pinnedRunner = lease === null && task.runnerId !== null ? await db.runner.findFirst({ where: { id: task.runnerId, organizationId }, select: { id: true, name: true, kind: true, executor: true } }) : null;
     const runner = lease === null ? pinnedRunner : lease.runner;
-    const [extras, followUp] = await Promise.all([loadTaskExtras(ctx.deps, task, agent?.model?.id ?? null, runner?.name ?? null), loadFollowUp(db, organizationId, task)]);
+    const [extras, followUp] = await Promise.all([
+      loadTaskExtras(ctx.deps, task, agent?.model?.id ?? null, runner?.name ?? null),
+      loadFollowUp(db, organizationId, task, ctx.deps.settings.team.roundLimits),
+    ]);
     // F-137: the levels of the model the newest session runs, or the profile's before there's one.
     const effortLevels = await taskEffortLevels(ctx.deps, organizationId, session?.modelId ?? agent?.model?.id ?? null, agent?.adapter ?? null);
     // Milestone 9 (F-148/c5, c9, ticket 14): the same model's image input, and whether the runner takes files.
@@ -484,6 +478,12 @@ export const tasksRouter = router({
       /** For a code task with an AI review: its review task's state and the newest round's; else `null`. */
       aiReview: followUp.aiReview,
       /**
+       * Milestone 10 (F-151/c7, ticket 08): a review task's figures for its status line, its Result
+       * group and its top bar (`round 2 of 3: nothing blocking, 1 nit`, `Open the code task`,
+       * `PR #483`, `Open the review`); `null` on any other kind.
+       */
+      review: followUp.review,
+      /**
        * Milestone 6 (F-035, F-101, ticket 35): the review loop's counters since a person last acted,
        * with the install's limits, for the task page's stage line and its Rounds group.
        */
@@ -517,7 +517,11 @@ export const tasksRouter = router({
         baseBranch: repo.baseBranch,
         state: repo.state,
         headSha: repo.headSha,
-        /** Ticket 41 (task-rounds.md's Code group): the code host's CI on the head, with its first failing check; `null` without a PR. */
+        /**
+         * Ticket 41 (task-rounds.md's Code group): the code host's CI on the head, with its first
+         * failing check; `null` without a PR. Milestone 10 (F-151/c6): counted in jobs, with every
+         * failing job by name.
+         */
         ci: repo.prNumber === null ? null : ciOfHead(repo.ciRuns.find((run) => run.headSha === repo.headSha) ?? null),
         pr: repo.prNumber === null || repo.prUrl === null ? null : { number: repo.prNumber, url: repo.prUrl, state: prStateOf(repo.state) },
         /** Milestone 3 (ticket 39, F-070): how many commits the base is ahead of the branch, as of `behindCheckedAt`; `null` before it is read. */
@@ -585,6 +589,11 @@ export const tasksRouter = router({
         setEffort: isDriver,
         /** Milestone 3 (ticket 19, ADR 0036): whether Send reaches the agent mid-turn, for the composer's hint. */
         steersMidTurn: agent !== null && agentSteersMidTurn(agent.adapter),
+        /**
+         * Milestone 10 (F-151/c5, ticket 07): whether the agent takes a member's own words for a
+         * question's choice, as its adapter declares it, so the question block offers "Something else…".
+         */
+        questionFreeText: agent !== null && agentTakesQuestionFreeText(agent.adapter),
         stop: state !== "stopped" && state !== "merged" && state !== "done" && state !== "in_review" && !endedByLimitOrCrash,
         /** Any member who can read the project may reopen: stopped, in review, done, or needing a reopen. */
         reopen: reopenState && reopenBlocked === null,

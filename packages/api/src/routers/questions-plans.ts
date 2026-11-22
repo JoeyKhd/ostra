@@ -1,5 +1,5 @@
 import { answerPlan, answerQuestion } from "@ostra/domain";
-import { planEntrySchema, questionIdSchema, runnerLimits, taskIdSchema } from "@ostra/protocol";
+import { QUESTION_OTHER_MAX, planEntrySchema, questionIdSchema, runnerLimits, taskIdSchema } from "@ostra/protocol";
 import { z } from "zod";
 
 import { router, taskProcedure, unwrap } from "../trpc/init.ts";
@@ -16,13 +16,22 @@ export const questionsRouter = router({
   /**
    * Answers a question the agent asked, with one answer per field. Every field must be answered, and
    * a choice must be one of the field's options. The driver only; a second answer is `CONFLICT`.
+   *
+   * Milestone 10 (F-151/c5, the targets' choice 5): `other` names the choices answered in the
+   * member's own words (`Something else…`), whose answer is those words; none by default. Field IDs
+   * only: the words are the answers', as data, never logged.
    */
   answer: taskProcedure(
     "read",
-    z.strictObject({ taskId: taskIdSchema, questionId: questionIdSchema, answers: z.record(z.string().max(200), z.string().max(runnerLimits.steerTextMaxChars)) }),
+    z.strictObject({
+      taskId: taskIdSchema,
+      questionId: questionIdSchema,
+      answers: z.record(z.string().max(200), z.string().max(runnerLimits.steerTextMaxChars)),
+      other: z.array(z.string().max(200)).max(QUESTION_OTHER_MAX).default([]),
+    }),
   ).mutation(async ({ ctx, input }) => {
     const { db, ports, settings } = ctx.deps;
-    const result = await answerQuestion({ db, ...ports, spendCap: spendCapOf(settings) }, ctx.scope, { taskId: input.taskId, questionId: input.questionId, answers: input.answers });
+    const result = await answerQuestion({ db, ...ports, spendCap: spendCapOf(settings) }, ctx.scope, { taskId: input.taskId, questionId: input.questionId, answers: input.answers, other: input.other });
     const answered = unwrap(result, { "not-found": "NOT_FOUND", "not-driver": "FORBIDDEN", "already-answered": "CONFLICT", "invalid-input": "BAD_REQUEST" });
     return { questionId: input.questionId, reopened: answered.reopened };
   }),

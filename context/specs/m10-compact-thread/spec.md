@@ -212,8 +212,8 @@ Every string the targets name, in `apps/web/messages/en.json`, with ICU plurals,
 ### 5.5 The API (ticket 08)
 
 - **`questions.answer`** takes `other: string[]` (default `[]`) beside `answers`.
-- **`tasks.get`:** each repo's `ci` gains `jobs: { done, total }` and `failing: string[]` (every failing job's name, not only the first), counted from `CiRun.checks` (a check run with no conclusion is running); a review task's `review: { round, limit, blocking, nits, url | null, codeTask: { id, key }, prNumber }` for the page's status line, its Result group and its top bar (from the review run and `reviewOf`); `capabilities.questionFreeText` (the task's agent's declaration, as `steersMidTurn` is read).
-- **Home's board:** a task in CI carries its jobs' `{ done, total }`.
+- **`tasks.get`:** each repo's `ci` gains `jobs: { done, total }` and `failing: string[]` (every failing job's name, not only the first), counted from `CiRun.checks` (a check run with no conclusion is running); a review task's `review: { round, limit, blocking, nits, url | null, codeTask: { id, key }, prNumber }` for the page's status line, its Result group and its top bar (from the review run and `reviewOf`); `capabilities.questionFreeText` (the task's agent's declaration, as `steersMidTurn` is read). *Amended 2026-11-22 (ticket 08, as built): the list of failing jobs is `failingJobs`, since `failing` stays the first failing name for milestone 6's Code group until ticket 14 moves it; `review` also gives `state` (the run's) and `codeTask.title`, and its `round` and `limit` are the round's as ostra's first message names them; `questionFreeText` reads the adapter's own declaration (`@ostra/adapter-opencode/question-free-text`).*
+- **Home's board:** a task in CI carries its jobs' `{ done, total }` (*as built: the in-review card's `status.ciJobs`, `null` outside `ci_running`*).
 - Nothing else: the turn's spend is `usage.turns`' (the panel passes it to the fold), the box's idle stop is `box`'s, the PR's size is the Changes tab's `diff` query (summed in the panel, no new code-host call).
 
 ---

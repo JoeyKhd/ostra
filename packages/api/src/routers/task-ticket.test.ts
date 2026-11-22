@@ -122,7 +122,9 @@ describe("F-064, F-031: the task's ticket and its sync", () => {
 });
 
 describe("F-032, F-096, F-068: sessions, box and spend", () => {
-  it("returns the sessions with where each came from, the box and when its idle stop is due, the PRs' states and the start", async () => {
+  // Milestone 10 (F-151/c9, ticket 08): the status line names the box when no turn runs
+  // (`box idle, stops in 11 min`, `box released`) from these two tests' fields, kept as they were.
+  it("F-151/c9: returns the sessions with where each came from, the box and when its idle stop is due, the PRs' states and the start", async () => {
     const task = await ticketTask("ENG-10", "in_review");
     const session = await harness.test.db.session.findFirstOrThrow({ where: { taskId: task.taskId } });
     await harness.test.db.session.update({ where: { id: session.id }, data: { state: "ended", outcome: "with_changes", endedAt: new Date() } });
@@ -149,15 +151,16 @@ describe("F-032, F-096, F-068: sessions, box and spend", () => {
     expect(view.runner).toBeNull();
   });
 
-  it("shows a released box with its reason, and a merged or closed PR as such", async () => {
+  it("F-151/c9: shows a released box with when and why, and a merged or closed PR as such", async () => {
     const task = await ticketTask("ENG-11", "in_review");
-    await harness.test.db.box.create({ data: { organizationId, projectId, taskId: task.taskId, executor: "host", state: "released", releasedAt: new Date(), releaseReason: "prs_closed" } });
+    const releasedAt = new Date(Date.now() - 2 * 60_000);
+    await harness.test.db.box.create({ data: { organizationId, projectId, taskId: task.taskId, executor: "host", state: "released", releasedAt, releaseReason: "prs_closed" } });
     const repo = await harness.test.db.repo.findFirstOrThrow({ where: { projectId } });
     await harness.test.db.taskRepo.create({
       data: { organizationId, projectId, taskId: task.taskId, repoId: repo.id, branchName: "ostra/eng-11-yyyyyyyy-b", baseBranch: "main", state: "closed_unmerged", prNumber: 8, prUrl: "https://github.com/ostra-test/test1/pull/8", closedAt: new Date() },
     });
     const view = await (await member()).tasks.get({ taskId: task.taskId });
-    expect(view.box).toMatchObject({ state: "released", releaseReason: "prs_closed", idleStopDueAt: null });
+    expect(view.box).toMatchObject({ state: "released", releaseReason: "prs_closed", idleStopDueAt: null, releasedAt: releasedAt.getTime() });
     expect(view.repos[0]?.pr?.state).toBe("closed");
   });
 

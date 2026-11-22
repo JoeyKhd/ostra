@@ -30,6 +30,7 @@ import { buildAgentEnv, buildCliEnv, launchFiles, ownFolderSpellings, taskDirs }
 import { OPENCODE_ON_VARIANT, OPENCODE_REASONING_EFFORT, openCodeEffortLevels } from "./effort.ts";
 import { OSTRA_MCP_SERVER } from "./permissions.ts";
 import { OPENCODE_PROMPT_IMAGES } from "./prompt-images.ts";
+import { OPENCODE_QUESTION_FREE_TEXT } from "./question-free-text.ts";
 import { createTodoTracker } from "./todo-plan.ts";
 import type { TodoTracker } from "./todo-plan.ts";
 
@@ -136,8 +137,9 @@ export class OpenCodeAdapter extends AgentAdapter {
     // field itself. The tool asks each question as a `oneOf` field and a `<key>_custom` text field;
     // its reply reads the custom field when it holds words, and the enum field's value as it is
     // otherwise, and the words reach the model in the tool's result (the agent contract suite's
-    // free-text case, on the pinned binary).
-    questionFreeText: true,
+    // free-text case, on the pinned binary). The panel reads the same declaration
+    // (`@ostra/adapter-opencode/question-free-text`).
+    questionFreeText: OPENCODE_QUESTION_FREE_TEXT,
   };
 
   /** The repo files OpenCode reads its project config from, hidden without `projectConfigOverride` (Q171). */
