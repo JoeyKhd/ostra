@@ -6,7 +6,7 @@ import { connectionIdSchema } from "@ostra/protocol";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { createApiHarness, seedBoard, seedConnectionAndModel, seedProject, seedTicket } from "../testing/index.ts";
+import { createApiHarness, seedBoard, seedConnectionAndModel, seedProject, seedTicket, trpcFailure } from "../testing/index.ts";
 import type { ApiHarness, AppCaller } from "../testing/index.ts";
 
 // Ticket 27: the Linear connection, from `start` to `active`, against the fake Linear server (the
@@ -189,6 +189,24 @@ describe("F-005: the whole flow, from start to active", () => {
     expect(status).toMatchObject({ state: "active", mode: "polling" });
     expect(status.modeReason).toBe("not-https");
     expect(status.state === "active" ? status.webhookUrl : "x").toBeNull();
+  });
+
+  it("F-042/c1: a connection Linear can't reach polls every 60 s with everything but agent mode, which is refused with the reason", async () => {
+    const admin = await adminOn("session-1", "private");
+    const started = await admin.linear.start();
+    const app = fake.createApp({ name: "ostra", redirectUris: [CALLBACK], webhookUrl: null });
+    const saved = await admin.linear.saveApp({ connectionId: started.connectionId, clientId: app.clientId, clientSecret: app.clientSecret });
+    await admin.linear.complete(await consent(saved.authorizeUrl));
+    const status = await admin.linear.status();
+    expect(status).toMatchObject({ state: "active", mode: "polling", pollSeconds: 60 });
+    // The connection reads the tracker as in webhooks mode: its teams are there to attach as boards.
+    expect((await admin.boards.teams())?.length ?? 0).toBeGreaterThan(0);
+    // Agent mode is the one thing it lacks: it says why, and turning it on is refused.
+    expect(status.state === "active" ? status.agentMode : null).toMatchObject({ on: false, reachable: false, unreachableReason: "polling" });
+    const refused = await trpcFailure(admin.linear.enableAgentMode());
+    expect(refused.code).toBe("PRECONDITION_FAILED");
+    expect(refused.message).toContain("Agent mode needs Linear's webhooks");
+    expect((await rowOf())?.agentModeAt).toBeNull();
   });
 
   it("asks for the webhook signing secret in webhooks mode", async () => {

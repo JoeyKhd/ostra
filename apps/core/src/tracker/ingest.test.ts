@@ -347,6 +347,61 @@ describe("polling", () => {
       await createPollSchedules({ db: test.db, jobs, pollSeconds: 60, reconcileMinutes: 5, logger }).ensure();
     }
   });
+
+  it("F-042/c1: with Linear unable to reach the install, each board is polled every minute by default, and a new ticket, an edit, a close and a move each arrive by the next poll alone", async () => {
+    // A fresh install's settings: a connection in polling mode checks Linear every 60 seconds.
+    const parsed = parseServerSettings({});
+    if (!parsed.ok) throw new Error(parsed.errors.join("; "));
+    expect(parsed.settings.trackerPollSeconds).toBe(60);
+    expect((await test.db.connection.findUniqueOrThrow({ where: { id: connectionId } })).webhookMode).toBe("polling");
+    await createPollSchedules({ db: test.db, jobs, pollSeconds: parsed.settings.trackerPollSeconds, reconcileMinutes: parsed.settings.reconcileMinutes, logger }).ensure();
+    // The schedules core makes, read back from pg-boss: both boards of the connection, every minute.
+    const scheduleOf = async (board: BoardId) =>
+      z.array(z.object({ cron: z.string(), data: z.unknown() })).parse(await test.db.$queryRaw`SELECT cron, data FROM pgboss.schedule WHERE name = 'tracker.poll-board' AND key = ${board}`);
+    expect(await scheduleOf(boardId)).toEqual([{ cron: "* * * * *", data: { organizationId, boardId } }]);
+    expect(await scheduleOf(otherBoardId)).toEqual([{ cron: "* * * * *", data: { organizationId, boardId: otherBoardId } }]);
+    const tick = async () => {
+      for (const board of [boardId, otherBoardId]) {
+        await pollBoardHandler(deps())(jobContext("tracker.poll-board", { organizationId, boardId: board }, logger));
+      }
+    };
+
+    // Linear sends nothing, as it can't reach an install on a private network.
+    fake.setWebhooksPaused(true);
+    const deliveries = await test.db.webhookDelivery.count({ where: { connectionId } });
+    // A person works in Linear between two ticks: each change reaches the cache on the next one.
+    const person = new LinearAdapter({ auth: { kind: "api-key", token: fake.adminApiKey }, apiUrl: fake.apiUrl }, { logger: silentLogger, clock: systemClock });
+    const statuses = await person.listStatuses({ externalId: fake.team.id });
+    if (!statuses.ok) throw new Error(statuses.error.message);
+    const done = statuses.value.find((status) => status.vendorType === "completed");
+    if (done === undefined) throw new Error("the team has no completed status");
+
+    fake.clock.advance(60_000);
+    const made = await fake.createIssue({ title: "Made while Linear can't reach ostra", description: "First words" });
+    const closing = await fake.createIssue({ title: "Closed while Linear can't reach ostra" });
+    const moving = await fake.createIssue({ title: "Moved while Linear can't reach ostra" });
+    await tick();
+    expect((await rowsOf(made.id)).map((row) => [row.boardId, row.title, row.description, row.open])).toEqual([[boardId, "Made while Linear can't reach ostra", "First words", true]]);
+    expect((await rowsOf(closing.id)).map((row) => row.open)).toEqual([true]);
+    expect((await rowsOf(moving.id)).map((row) => [row.boardId, row.key])).toEqual([[boardId, moving.identifier]]);
+
+    fake.clock.advance(60_000);
+    await fake.editIssue(made.id, { title: "Made while Linear can't reach ostra, edited", description: "New words" });
+    const closed = await person.updateStatus({ externalId: fake.team.id }, closing.identifier, done.id);
+    if (!closed.ok) throw new Error(closed.error.message);
+    const movedKey = await fake.moveIssue(moving.id, otherTeamId);
+    await tick();
+    expect((await rowsOf(made.id)).map((row) => [row.title, row.description])).toEqual([["Made while Linear can't reach ostra, edited", "New words"]]);
+    expect((await rowsOf(closing.id)).map((row) => [row.open, row.statusId])).toEqual([[false, done.id]]);
+    // The moved ticket: its copy on the board it left is marked removed, and the board it went to holds it with its new key.
+    const moved = await rowsOf(moving.id);
+    expect(moved.find((row) => row.boardId === boardId)).toMatchObject({ key: movedKey });
+    expect(moved.find((row) => row.boardId === boardId)?.removedAt).not.toBeNull();
+    expect(moved.find((row) => row.boardId === otherBoardId)).toMatchObject({ key: movedKey, removedAt: null, open: true });
+
+    // Polling alone brought all of it: no webhook delivery was stored.
+    expect(await test.db.webhookDelivery.count({ where: { connectionId } })).toBe(deliveries);
+  });
 });
 
 describe("linear.refresh-token", () => {
