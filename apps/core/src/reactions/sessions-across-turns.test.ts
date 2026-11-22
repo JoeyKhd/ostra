@@ -2,14 +2,29 @@ import { createLogger } from "@ostra/adapter-sdk";
 import type { LogRecord } from "@ostra/adapter-sdk";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
-import { moveTaskInTx, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, systemClock } from "@ostra/domain";
-import type { SessionTimers } from "@ostra/domain";
+import { answerApproval, answerQuestion, moveTaskInTx, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, systemClock } from "@ostra/domain";
+import type { MemberScope, SessionTimers } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
-import { blobIdSchema, boxIdSchema, leaseEpochSchema, repoIdSchema, segmentIdSchema, turnIdSchema } from "@ostra/protocol";
+import {
+  approvalIdSchema,
+  approvalRuleIdSchema,
+  blobIdSchema,
+  boxIdSchema,
+  leaseEpochSchema,
+  memberIdSchema,
+  optionIdSchema,
+  PROTOCOL_MINOR,
+  questionIdSchema,
+  repoIdSchema,
+  segmentIdSchema,
+  toolCallIdSchema,
+  turnIdSchema,
+} from "@ostra/protocol";
 import type { RepoId, TaskEvent } from "@ostra/protocol";
 import { mapTask } from "@ostra/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import type { RunnerRef } from "../gateway/context.ts";
 import { createIngest, salvageEventsFrame } from "../ingest/ingest.ts";
@@ -318,6 +333,78 @@ describe("a session across turns (F-096, F-030, F-065)", () => {
     );
     expect(codeHost.pulls.slice(before)).toHaveLength(1);
     expect(await state(task)).toMatchObject({ state: "in_review" });
+    await untouched(other);
+  });
+
+  it("F-096/c8: a turn that waits on a person meets the idle timer: the box stops, the item stays open, and the answer reopens the task with the decision", async () => {
+    const answerDeps = { db: test.db, jobs, outbox: postgresCommandOutbox, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock };
+    const driver: MemberScope = { organizationId: fixture.a.organization.id, memberId: memberIdSchema.parse(fixture.a.member.id), role: "member", projectRoles: new Map() };
+    const other = await otherTask();
+    // A runner at this build's minor, which holds a request for a person (a minor-0 one has it answered).
+    const current = await seedOnlineRunner(test.db, fixture.a.organization.id, { kind: "personal", memberId: fixture.a.member.id }, 8);
+    await test.db.runnerPresence.updateMany({ where: { runnerId: current.runnerId }, data: { minor: PROTOCOL_MINOR } });
+    const waitingOnCurrent = async (): Promise<DrivenTask> => {
+      const task = await acceptedTask(ingestDeps(), world, fixture.a.member, current);
+      await task.send({ kind: "turn.started", turnId });
+      return task;
+    };
+
+    /** What the runner sends when the idle timer fires on a waiting turn (`idle-and-release.test.ts`): the request closed as expired, the turn cancelled and saved, the session ended. */
+    const idleOut = async (task: DrivenTask, closed: TaskEvent): Promise<void> => {
+      await task.send(closed, { kind: "turn.ended", turnId, stopReason: "cancelled" }, saved(1, false, null), {
+        kind: "session.ended",
+        outcome: "without-changes",
+        repos: [{ repoId: repo(), ahead: false }],
+      });
+      await endSession(task);
+      const session = await test.db.session.findUniqueOrThrow({ where: { id: task.sessionId } });
+      expect(session.state).toBe("ended");
+      expect(await test.db.box.findUniqueOrThrow({ where: { id: session.boxId ?? "" } })).toMatchObject({ state: "stopped" });
+      expect(await test.db.lease.count({ where: { taskId: task.taskId, state: "active" } })).toBe(0);
+    };
+    /** The task's next session's opening message: the decision, as the reopen carries it. */
+    const reopenText = async (task: DrivenTask): Promise<string> => {
+      const sessions = await test.db.session.findMany({ where: { taskId: task.taskId }, orderBy: { startedAt: "asc" } });
+      expect(sessions).toHaveLength(2);
+      const message = await test.db.event.findFirstOrThrow({ where: { taskId: task.taskId, kind: "user.message", sessionId: sessions[1]?.id ?? "" } });
+      return z.looseObject({ text: z.string(), reopen: z.literal(true) }).parse(message.payload).text;
+    };
+
+    // A question.
+    const asking = await waitingOnCurrent();
+    const questionId = questionIdSchema.parse(crypto.randomUUID());
+    await asking.send({ kind: "question.asked", turnId, questionId, message: "Which name should the release get?", fields: [{ id: "name", label: "Release name", type: "text" }] });
+    await idleOut(asking, { kind: "question.closed", questionId, reason: "expired" });
+    expect(await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: asking.taskId, reason: "question" } })).toMatchObject({ state: "open", questionId });
+    expect(await state(asking)).toMatchObject({ state: "needs_you", needsYouReason: "question" });
+    expect(await answerQuestion(answerDeps, driver, { taskId: asking.taskId, questionId, answers: { name: "Aurora" } })).toEqual({ ok: true, reopened: true });
+    expect(await state(asking)).toMatchObject({ state: "queued" });
+    expect(await reopenText(asking)).toContain("Aurora");
+    expect(await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: asking.taskId, reason: "question" } })).toMatchObject({ state: "answered" });
+
+    // An approval.
+    const holding = await waitingOnCurrent();
+    const approvalId = approvalIdSchema.parse(crypto.randomUUID());
+    const once = optionIdSchema.parse("o-once");
+    await holding.send({
+      kind: "approval.requested",
+      turnId,
+      approvalId,
+      toolCallId: toolCallIdSchema.parse(`tool-${approvalId}`),
+      options: [
+        { optionId: once, label: "Approve once", kind: "allow-once", decision: "allow_once" },
+        { optionId: optionIdSchema.parse("o-deny"), label: "Deny", kind: "reject-once", decision: "deny" },
+      ],
+      rule: { source: "profile", ruleId: approvalRuleIdSchema.parse("rule-config"), name: "Edit files matching config/**" },
+      subject: { kind: "path", value: "config/settings.json" },
+    });
+    await idleOut(holding, { kind: "approval.closed", approvalId, reason: "expired" });
+    expect(await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: holding.taskId, approvalId } })).toMatchObject({ state: "open" });
+    expect(await state(holding)).toMatchObject({ state: "needs_you", needsYouReason: "approval" });
+    expect(await answerApproval(answerDeps, driver, { approvalId, optionId: once, decision: "allow_once", reason: null })).toMatchObject({ ok: true, reopened: true });
+    expect(await state(holding)).toMatchObject({ state: "queued" });
+    expect(await reopenText(holding)).toContain("config/settings.json");
+    expect(await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: holding.taskId, approvalId } })).toMatchObject({ state: "answered" });
     await untouched(other);
   });
 });
