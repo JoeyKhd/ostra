@@ -97,14 +97,24 @@ const modelLineSchema = figuresSchema.extend({
   logoPath: z.string().nullable(),
 });
 
-const providerLineSchema = figuresSchema.extend({ providerId: providerIdSchema, name: z.string() });
+const providerLineSchema = figuresSchema.extend({
+  providerId: providerIdSchema,
+  name: z.string(),
+  /** The tasks with a session on this key that started in the month (spend-keys.md, the panel's `Tasks`). */
+  taskCount: z.number().int(),
+});
 
 export const spendMonthViewSchema = z.object({
   month: budgetMonthSchema,
   total: figuresSchema,
   byProject: z.array(figuresSchema.extend({ line: projectLineSchema })),
   byModel: z.array(modelLineSchema),
-  /** Spend per model provider, each one client's key (F-135, ADR 0065): the sum of its model rows. */
+  /**
+   * Spend per model provider, each one client's key (F-135, ADR 0065): the sum of its model rows,
+   * highest first and ties by name. The organization's month lists every provider it held by the
+   * month's end, one that spent nothing at zero (spend-keys.md, choice 8); a project's lists those
+   * it spent on.
+   */
   byProvider: z.array(providerLineSchema),
   /** The models whose calls had no price this month, with their tokens. */
   unpriced: z.array(
@@ -186,6 +196,36 @@ const loadRows = async (
       spentMicroUsd: Number(row.spentMicroUsd),
     },
   }));
+};
+
+/**
+ * The tasks with a session on each key that started in the month, for the organization (`projectId`
+ * null) or one project: a task counts once per key, however many sessions it had on it.
+ */
+export const loadMonthTaskCounts = async (
+  db: DbOrTx,
+  organizationId: OrganizationId,
+  projectId: ProjectId | null,
+  month: string,
+): Promise<ReadonlyMap<string, number>> => {
+  const bounds = budgetMonthBounds(month);
+  const sessions = await db.session.findMany({
+    where: {
+      organizationId,
+      ...(projectId === null ? {} : { projectId }),
+      providerId: { not: null },
+      startedAt: { gte: new Date(bounds.start), lt: new Date(bounds.end) },
+    },
+    select: { providerId: true, taskId: true },
+    distinct: ["providerId", "taskId"],
+  });
+  const counts = new Map<string, number>();
+  for (const session of sessions) {
+    if (session.providerId !== null) {
+      counts.set(session.providerId, (counts.get(session.providerId) ?? 0) + 1);
+    }
+  }
+  return counts;
 };
 
 type BudgetExtras = Pick<BudgetView, "warnedAt" | "reachedAt" | "queuedTasks" | "heldTurns" | "setBy">;
@@ -307,9 +347,18 @@ export const loadSpendMonth = async (
     organizationRows.reduce((sum, row) => sum + row.figures.spentMicroUsd, 0),
   );
   const perProject = sumBy(organizationRows, (row) => row.projectId);
-  const [extras, catalog] = await Promise.all([
+  const [extras, catalog, taskCounts, keys] = await Promise.all([
     loadBudgetExtras(db, organizationId, input.month, budgetRows),
     ctx.deps.catalog.entries(),
+    loadMonthTaskCounts(db, organizationId, input.projectId, input.month),
+    // The organization's month lists every key it held then, one that spent nothing at zero
+    // (spend-keys.md): a key added after the month wasn't one of its keys.
+    input.projectId === null
+      ? db.modelProvider.findMany({
+          where: { organizationId, createdAt: { lt: new Date(budgetMonthBounds(input.month).end) } },
+          select: { id: true, name: true },
+        })
+      : Promise.resolve([]),
   ]);
   const logos = new Map(catalog.map((entry) => [entry.catalogId, entry.logoPath] as const));
 
@@ -334,9 +383,17 @@ export const loadSpendMonth = async (
       ...figures,
     };
   });
-  const byProvider = [...sumBy(rows, (row) => row.providerId)].map(([providerId, figures]) => ({
+  const providerFigures = sumBy(rows, (row) => row.providerId);
+  for (const key of keys) {
+    providers.set(key.id, key.name);
+    if (!providerFigures.has(key.id)) {
+      providerFigures.set(key.id, zero);
+    }
+  }
+  const byProvider = [...providerFigures].map(([providerId, figures]) => ({
     providerId: providerIdSchema.parse(providerId),
     name: providers.get(providerId) ?? "",
+    taskCount: taskCounts.get(providerId) ?? 0,
     ...figures,
   }));
   const budgets: BudgetView[] = [];

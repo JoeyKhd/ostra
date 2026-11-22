@@ -20,6 +20,7 @@ import { z } from "zod";
 import type { Context } from "../trpc/context.ts";
 import { adminProcedure, unwrap } from "../trpc/init.ts";
 import { displayNameOf, listVersion, modelDisplayNames, modelLogos, planView, providerPlanViewSchema } from "./project-providers.ts";
+import { loadMonthTaskCounts } from "./spend.ts";
 
 // F-135 (ticket 50; ADR 0065): the organization's default provider list, the upgrade's choices to
 // confirm, and, for `providers.list`, each provider's projects and its month's spend. Organization
@@ -41,26 +42,17 @@ export type ProviderUse = z.infer<typeof providerUseSchema>;
 
 /** Each provider's lists, projects and month's spend, for `providers.list`. */
 export const loadProviderUses = async (db: Db, organizationId: OrganizationId, now: number): Promise<ReadonlyMap<string, ProviderUse>> => {
-  const bounds = budgetMonthBounds(budgetMonthOf(now));
-  const [entries, projects, spend, sessions] = await Promise.all([
+  const month = budgetMonthOf(now);
+  const bounds = budgetMonthBounds(month);
+  const [entries, projects, spend, tasks] = await Promise.all([
     db.providerListEntry.findMany({ where: { organizationId }, select: { providerId: true, projectId: true } }),
     db.project.findMany({ where: { organizationId }, select: { id: true, name: true, ownProviders: true }, orderBy: { name: "asc" } }),
     db.spendDaily.findMany({
       where: { organizationId, day: { gte: new Date(bounds.start), lt: new Date(bounds.end) } },
       select: { spentMicroUsd: true, model: { select: { providerId: true } } },
     }),
-    db.session.findMany({
-      where: { organizationId, providerId: { not: null }, startedAt: { gte: new Date(bounds.start), lt: new Date(bounds.end) } },
-      select: { providerId: true, taskId: true },
-      distinct: ["providerId", "taskId"],
-    }),
+    loadMonthTaskCounts(db, organizationId, null, month),
   ]);
-  const tasks = new Map<string, number>();
-  for (const session of sessions) {
-    if (session.providerId !== null) {
-      tasks.set(session.providerId, (tasks.get(session.providerId) ?? 0) + 1);
-    }
-  }
   const onDefault = new Set(entries.filter((entry) => entry.projectId === null).map((entry) => entry.providerId));
   const ownLists = new Map<string, Set<string>>();
   for (const entry of entries) {
