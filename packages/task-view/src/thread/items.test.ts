@@ -329,6 +329,34 @@ describe("the column holds what a member reads", () => {
     ).filter((message) => message.role === "system");
     expect(rows.map((message) => shapeOf(turnItemsOf(message, contextOf(stateCells.steps[3]))))).toEqual([["failure lost"], ["failure crashed"]]);
   });
+
+  it("F-151/c1: each prose item has its own id, an image or a link between texts too, and keeps it as the turn goes on", () => {
+    let linkAt = 0;
+    const scene = oneTurn("prose", "f11e", (steps, log, turnId) => {
+      log.add({ kind: "agent.content", turnId, block: { type: "image", mediaType: "image/png", url: "data:image/png;base64,aGk=" } });
+      steps.say("The panel as it is.");
+      steps.say("And the store under it.");
+      steps.read("src/history/store.ts", 40);
+      steps.say("It keeps 50 results.");
+      linkAt = log.events().length;
+      log.add({ kind: "agent.content", turnId, block: { type: "resource_link", uri: "https://example.com/history", title: "History" } });
+      steps.say("The limit comes from here.");
+      steps.thought("Check the keypad next.", 900);
+      steps.say("Done.");
+      ended(log, turnId);
+    });
+    const turnId = sceneId("f11e", 0x101);
+    const proseOf = (items: readonly TurnItem[]): (readonly [string, string])[] => items.flatMap((item) => (item.kind === "prose" ? [[item.id, item.part.type] as const] : []));
+    const items = itemsOf(scene, turnId);
+    const prose = proseOf(items);
+    expect(prose.map(([, type]) => type)).toEqual(["file", "text", "text", "text", "source-url", "text", "text"]);
+    const ids = items.map((item) => item.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    // The turn before its link: each piece of its prose has the id it has once the turn ends.
+    const before = proseOf(itemsOf({ ...scene, events: scene.events.slice(0, linkAt) }, turnId));
+    expect(before).toHaveLength(4);
+    expect(prose.slice(0, before.length)).toEqual(before);
+  });
 });
 
 describe("the run the turn is in", () => {

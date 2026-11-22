@@ -508,7 +508,8 @@ export const piecesOf = (message: TaskUIMessage, context: ThreadContext): Piece[
         break;
       case "file":
       case "source-url":
-        pieces.push({ t: "prose", id: `prose:${String(index)}`, part });
+        // By its place among all the parts, with a prefix of its own: a text's number counts texts only.
+        pieces.push({ t: "prose", id: `prose:${part.type}:${String(index)}`, part });
         break;
       case "reasoning": {
         const key = thoughtTimeKey(thoughts);
