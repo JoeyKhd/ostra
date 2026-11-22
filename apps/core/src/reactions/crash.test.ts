@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -5,16 +6,30 @@ import path from "node:path";
 import { silentLogger } from "@ostra/adapter-sdk";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
-import { appendServerEvent, parseServerSettings } from "@ostra/domain";
-import { clientMessageIdSchema, gitShaSchema, memberIdSchema, repoIdSchema, segmentIdSchema, turnIdSchema } from "@ostra/protocol";
-import type { DownFrame, TaskEvent } from "@ostra/protocol";
+import { appendServerEvent, parseServerSettings, postgresAuditLog, postgresChangeNotices, reopenCarryOnText, reopenTask, systemClock } from "@ostra/domain";
+import type { MemberScope } from "@ostra/domain";
+import {
+  blobIdSchema,
+  clientMessageIdSchema,
+  gitShaSchema,
+  memberIdSchema,
+  PROTOCOL_MINOR,
+  repoIdSchema,
+  runnerHeaders,
+  runnerPaths,
+  segmentIdSchema,
+  sessionIdSchema,
+  taskSpecSchema,
+  turnIdSchema,
+} from "@ostra/protocol";
+import type { BlobRef, DownFrame, TaskEvent } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { startCore } from "../core.ts";
 import type { RunningCore } from "../core.ts";
 import { FakeCodeHost, FakeModelProvider, FakeSecretStore } from "../testing/fake-adapters.ts";
 import type { FakePeer } from "../testing/fake-peer.ts";
-import { connect, registerPersonal } from "../testing/harness.ts";
+import { accessToken, connect, registerPersonal } from "../testing/harness.ts";
 import type { GatewayHarness, RegisteredRunner } from "../testing/harness.ts";
 import { runnerEvent } from "../testing/seed.ts";
 import { dispatchPayload, seedQueuedTask, seedWorld } from "../testing/world.ts";
@@ -169,4 +184,115 @@ describe("a task that crashes", () => {
       peer.close();
     }
   }, 60_000);
+
+  it("F-047/c1,c2, F-045/c3: a box lost mid-turn with its runner: the restarted runner's crash keeps the branch and the hidden ref, and one click reopens the task on a fresh box from the last archive, with the lost turn's message", async () => {
+    const runner: RegisteredRunner = await registerPersonal(harness, test.db, fixture.a.member);
+    let peer = await connect(harness, runner);
+    try {
+      await peer.next("welcome");
+      const task = await seedQueuedTask(test.db, world, fixture.a.member, runner.runnerId);
+      await core.db.$transaction((tx) => core.jobs.sendInTx(tx, "task.dispatch", dispatchPayload(task)));
+      const firstOffer = await acceptNextDispatch(peer, task);
+      const firstBox = (await test.db.session.findUniqueOrThrow({ where: { id: task.sessionId } })).boxId;
+
+      // The first turn finishes: its branch is pushed, its hidden ref and its archive saved, its PR opened.
+      const repoId = repoIdSchema.parse(world.repoId);
+      const { branchName } = await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
+      const head = gitShaSchema.parse("a".repeat(40));
+      const hidden = gitShaSchema.parse("b".repeat(40));
+      const blob = await test.db.blob.create({
+        data: {
+          organizationId: task.organizationId,
+          projectId: world.projectId,
+          taskId: task.taskId,
+          store: "postgres",
+          key: `postgres:${randomBytes(8).toString("hex")}`,
+          purpose: "session-archive",
+          contentType: "application/gzip",
+          size: 1234,
+          sha256: randomBytes(32).toString("hex"),
+        },
+      });
+      const archive: BlobRef = { blobId: blobIdSchema.parse(blob.id), size: blob.size, sha256: blob.sha256 };
+      await sendEvents(peer, task, [
+        { kind: "turn.started", turnId },
+        { kind: "agent.message", turnId, segmentId: segmentIdSchema.parse("s-1"), text: "I added CONTRIBUTING.md." },
+        { kind: "git.pushed", repoId, branch: branchName, headSha: head, ref: `refs/heads/${branchName}` },
+        { kind: "turn.ended", turnId, stopReason: "end_turn" },
+        { kind: "session.saved", turnOrdinal: 1, repos: [{ repoId, headSha: head, ahead: true, hiddenRefSha: hidden }], archive },
+      ]);
+      await waitFor("the first PR", async () => (await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).state === "in_review");
+      const pulls = codeHost.pulls.length;
+
+      // A member asks for more, and the next turn starts answering it.
+      const lostMessage = "Now add a section on the linters.";
+      await core.db.$transaction((tx) =>
+        appendServerEvent(tx, {
+          organizationId: task.organizationId,
+          projectId: world.projectId,
+          taskId: task.taskId,
+          sessionId: task.sessionId,
+          at: Date.now(),
+          event: { kind: "user.message", memberId: memberIdSchema.parse(fixture.a.member.id), clientMessageId: clientMessageIdSchema.parse("lost-turn-message-1"), text: lostMessage, delivery: "queued" },
+        }),
+      );
+      const secondTurn = turnIdSchema.parse("turn-2");
+      await sendEvents(
+        peer,
+        task,
+        [
+          { kind: "turn.started", turnId: secondTurn },
+          { kind: "agent.message", turnId: secondTurn, segmentId: segmentIdSchema.parse("s-2"), text: "Adding the linters section." },
+        ],
+        6,
+      );
+
+      // The runner's process dies, and the box with it. Started again, it reports the session it held
+      // crashed, as its task host does for each session its last process left (`reportRestoredSessions`).
+      peer.close();
+      await peer.closed;
+      peer = await connect(harness, runner, { lastCommandSeq: firstOffer.seq });
+      await peer.next("welcome");
+      await sendEvents(peer, task, [{ kind: "session.crashed", error: "the runner restarted while the session was running" }], 8);
+      expect(await test.db.session.findUniqueOrThrow({ where: { id: task.sessionId } })).toMatchObject({ state: "crashed" });
+      expect(await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).toMatchObject({ state: "needs_you", needsYouReason: "crashed" });
+      // The branch, the hidden ref and the PR stay: nothing deletes a ref or closes the PR.
+      expect(await test.db.taskRepo.findFirstOrThrow({ where: { taskId: task.taskId } })).toMatchObject({ state: "pr_open", headSha: head, hiddenRefSha: hidden });
+      expect(codeHost.deletedRefs).toEqual([]);
+      expect(codeHost.pulls.length).toBe(pulls);
+
+      // One click: the reopen with no words of the member's, from the crash.
+      const scope: MemberScope = { organizationId: task.organizationId, memberId: memberIdSchema.parse(fixture.a.member.id), role: "member", projectRoles: new Map() };
+      const reopened = await core.db.$transaction((tx) =>
+        reopenTask(
+          { tx, scope, jobs: core.jobs, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock },
+          { taskId: task.taskId, clientMessageId: clientMessageIdSchema.parse("one-click-reopen-1") },
+        ),
+      );
+      if (!reopened.ok) throw new Error(`the reopen was refused: ${reopened.error}`);
+      const next: QueuedTask = { ...task, sessionId: sessionIdSchema.parse(reopened.sessionId) };
+      await acceptNextDispatch(peer, next);
+      const session = await test.db.session.findUniqueOrThrow({ where: { id: next.sessionId } });
+      // A fresh box, restored from the last finished turn's archive and the hidden ref.
+      expect(session.origin).toBe("restored");
+      expect(session.boxId).not.toBe(firstBox);
+      const { leaseEpoch } = await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
+      const token = await accessToken(harness, runner);
+      const response = await fetch(`${harness.url}${runnerPaths.taskSpec(task.taskId)}?leaseEpoch=${String(leaseEpoch)}`, {
+        headers: { authorization: `Bearer ${token.accessToken}`, [runnerHeaders.minor]: String(PROTOCOL_MINOR) },
+      });
+      expect(response.status).toBe(200);
+      const spec = taskSpecSchema.parse(await response.json());
+      expect(spec.restore).toMatchObject({ origin: "restored", archive, hiddenRefs: [{ repoId, sha: hidden, baseSha: head }] });
+      // The runner replays the message the lost turn was answering, from the event log, once: the
+      // one click adds no words of its own ("Carry on from where you stopped.") when that one is owed.
+      expect(spec.restore?.pendingMessages.map((message) => message.text)).toEqual([lostMessage]);
+      const replayed = await test.db.event.findMany({ where: { sessionId: next.sessionId, kind: "user.message" }, orderBy: { seq: "asc" } });
+      expect(replayed.map((row) => row.payload)).toEqual([expect.objectContaining({ text: lostMessage, replayed: true })]);
+      expect(JSON.stringify(replayed.map((row) => row.payload))).not.toContain(reopenCarryOnText);
+    } finally {
+      peer.close();
+    }
+  }, 90_000);
 });
+
