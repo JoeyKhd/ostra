@@ -28,7 +28,7 @@ Spec: `../spec.md`, sections 4 and 6; the targets' README, choice 5
 
 ## Comments
 
-- 2026-11-22, adapters: committed as `✨ let an agent take words for an enum field` (`43aecdb4`), on `main` after `8ea827e4`. What it holds:
+- 2026-11-22, adapters: committed as `✨ let an agent take words for an enum field` (`845c6a55`), on `main` after ticket 01's `28b8cff4` (it touches no file of 01's; the two adapter packages typecheck and lint on it). What it holds:
   - **The capability:** `questionFreeText: boolean` on `AgentCapabilities` (milestone 10's block in `capabilities.ts`). The rich fakes declare it, the plain fakes, the tiny agent and the guide's sample declare `false`, and OpenCode declares `true` (below). The agent suite's common case checks it's a boolean on every agent.
   - **The driver:** `coerceAnswer` returns a select field's answer (a field with an `enum` or a `oneOf` of strings) as the string it is before any type check, so the member's words go back in `accept`'s content untouched; a boolean or a number field without options is coerced as before. The driver keeps no list of what an agent takes: it sends the words to every agent, and the adapter's declaration is what the panel reads.
   - **The fakes:** `fakeAgentCapabilities` gains the field. `[[fake:elicit]]` on `rich` says the content it got (`answered: {…}`); on `plain`, an `engine` outside its enum is refused (`refused: the engine is not one of the choices`), so its `false` is true to what it does. An answer within the enum reads as before on both, so every runner test that answers `elicit` is unchanged.
