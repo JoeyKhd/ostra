@@ -445,6 +445,54 @@ describe("PR states", () => {
     expect(await test.db.auditEntry.count({ where: { entityId: merging.taskId, action: "pr.merged" } })).toBe(1);
     expect(await doneWrites(merging.taskId)).toBe(1);
   });
+
+  it("F-044/c1: with no webhook, a closed PR reopened on GitHub reaches its task within one tick, a stopped task's and a merged task's sibling alike", async () => {
+    // A host that reads its open PRs for the reconcile (F-044, Q344), as the GitHub adapter does.
+    codeHost.reconcileReads = true;
+    const tick = () => reconcileHandler(deps())(jobContext("github.reconcile-prs", { organizationId: world.organizationId, connectionId: githubA }, logger));
+    const reopenedBy = async (taskId: TaskId) =>
+      (await test.db.auditEntry.findMany({ where: { entityId: taskId, action: "pr.reopened" }, select: { data: true } })).map((row) => z.looseObject({ source: z.string() }).parse(row.data).source);
+    try {
+      // Every PR closed: the task stops as prs_closed, by the reconcile too.
+      const stopped = await taskInReview(world, 1);
+      const [closed] = stopped.prs;
+      // One PR merged and the other closed: the task is merged.
+      const merged = await taskInReview(world, 2);
+      const [mergedPr, sibling] = merged.prs;
+      if (closed === undefined || mergedPr === undefined || sibling === undefined) throw new Error("no PRs");
+      codeHost.changePull(closed.repo, closed.number, "close");
+      codeHost.changePull(mergedPr.repo, mergedPr.number, "merge");
+      codeHost.changePull(sibling.repo, sibling.number, "close");
+      await tick();
+      expect(await stateOf(stopped.taskId)).toEqual({ state: "stopped", stoppedReason: "prs_closed", repos: ["closed_unmerged"] });
+      expect((await stateOf(merged.taskId)).state).toBe("merged");
+
+      // GitHub sends nothing: both closed PRs are reopened, and the next tick moves both tasks back to review.
+      const deliveries = await test.db.webhookDelivery.count({ where: { connectionId: githubA } });
+      const listed = codeHost.openPullReads.length;
+      codeHost.changePull(closed.repo, closed.number, "reopen");
+      codeHost.changePull(sibling.repo, sibling.number, "reopen");
+      await tick();
+      expect(await stateOf(stopped.taskId)).toEqual({ state: "in_review", stoppedReason: null, repos: ["pr_open"] });
+      expect((await test.db.task.findUniqueOrThrow({ where: { id: stopped.taskId } })).subState).toBe("waiting_for_reviewer");
+      expect(await stateOf(merged.taskId)).toMatchObject({ state: "in_review", stoppedReason: null });
+      expect([...(await stateOf(merged.taskId)).repos].sort()).toEqual(["merged", "pr_open"]);
+      expect(await reopenedBy(stopped.taskId)).toEqual(["reconcile"]);
+      expect(await reopenedBy(merged.taskId)).toEqual(["reconcile"]);
+      // One read of each repo's open PRs, not one per closed PR; and the inbox holds nothing new.
+      const reads = codeHost.openPullReads.slice(listed);
+      expect(reads.filter((read) => read.repo === closed.repo)).toHaveLength(1);
+      expect(new Set(reads.map((read) => read.repo)).size).toBe(reads.length);
+      expect(await test.db.webhookDelivery.count({ where: { connectionId: githubA } })).toBe(deliveries);
+
+      // The next tick finds nothing more to change.
+      await tick();
+      expect(await reopenedBy(stopped.taskId)).toEqual(["reconcile"]);
+      expect(await reopenedBy(merged.taskId)).toEqual(["reconcile"]);
+    } finally {
+      codeHost.reconcileReads = false;
+    }
+  });
 });
 
 // ---------- live, gated on github.env and github-test.env ----------

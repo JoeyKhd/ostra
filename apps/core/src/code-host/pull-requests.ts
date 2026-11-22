@@ -4,7 +4,7 @@ import type { Db } from "@ostra/db";
 import { appOwnerInTx, enqueueReviewEvaluationsInTx, installationGoneInTx, linkOwnInstallationInTx, reconcileBehind, recordPullRequestState, recordPush } from "@ostra/domain";
 import type { AuditLog, ChangeNotices, Clock, JobQueue, RecordPullRequestStateResult } from "@ostra/domain";
 import type { JobHandler, Jobs } from "@ostra/jobs";
-import { connectionIdSchema, organizationIdSchema, repoFullNameSchema } from "@ostra/protocol";
+import { connectionIdSchema, organizationIdSchema, repoFullNameSchema, taskRepoIdSchema } from "@ostra/protocol";
 import type { ConnectionId, OrganizationId } from "@ostra/protocol";
 
 import { ciHintEvent, recordTaskPrHead } from "../review-loop/ci.ts";
@@ -13,6 +13,8 @@ import { enqueueReviewersRefresh, reviewersHintEvent } from "../review-loop/revi
 import { changesRequestedHint } from "../review-loop/changes-requested.ts";
 import type { ReviewersHintDeps } from "../review-loop/reviewers.ts";
 import type { WebhookDeliveryContext, WebhookHandler, WebhookOutcome } from "../webhooks/process.ts";
+import { ACTIVITY_OVERLAP_MS, reconcilePrActivity } from "./pr-activity.ts";
+import type { ReconciledCommentContext } from "./pr-comments.ts";
 
 // PR states (F-031, F-044, F-046, F-079, ticket 16). Two ways a PR's state reaches its task, which
 // must agree, so both call the domain's one `recordPullRequestState`:
@@ -21,6 +23,13 @@ import type { WebhookDeliveryContext, WebhookHandler, WebhookOutcome } from "../
 //   task repos with a PR open, each read through `getPullRequest` within the App's rate budget. With
 //   webhooks off, a merge reaches the task within one interval.
 // A PR the App didn't open for a task, or a repo outside every project, is ignored.
+//
+// F-044 (Q344, settled 2026-11-22: "Add them to reconcile"): with webhooks off or missed, the same
+// pass also brings what the other webhooks would have, on a host with `reconcileReads`:
+// - a closed task PR reopened on the host, found among each repo's open PRs updated since its close
+//   (`listOpenPullRequests`, one call per repo), recorded as the `reopened` webhook would be;
+// - each open task PR's new comments, reviews and line comments (`reconcilePrActivity`), handed on
+//   as their webhooks would be, and landing once whichever way they came.
 //
 // Logs carry the connection, the repo, the PR's number and the outcome, never a PR's text.
 
@@ -41,6 +50,11 @@ export type PullRequestStateDeps = {
   }) => Promise<string>;
   /** Milestone 3 (ticket 25): what an `issue_comment` or a `pull_request_review_comment` does. */
   readonly onComment?: (context: WebhookDeliveryContext, event: PrCommentEvent) => Promise<WebhookOutcome>;
+  /**
+   * F-044 (Q344): what a comment the reconcile found on the host does, as its webhook's would:
+   * `reconciledCommentHook`. Without it, the reconcile reads comments past and hears none.
+   */
+  readonly onReconciledComment?: (context: ReconciledCommentContext, event: PrCommentEvent) => Promise<"handled" | "waits">;
 };
 
 /** A PR comment's webhook, as the code host's adapter reads it. */
@@ -200,10 +214,95 @@ const REVIEW_ACTIONS: ReadonlySet<string> = new Set(["opened", "reopened", "sync
 const changedAtOf = (details: PullRequestDetails): number =>
   details.state === "merged" ? (details.mergedAt ?? details.updatedAt) : details.state === "closed" ? (details.closedAt ?? details.updatedAt) : details.updatedAt;
 
-export type ReconcileOutcome = { readonly read: number; readonly changed: number; readonly stoppedEarly: string | null };
+export type ReconcileOutcome = {
+  readonly read: number;
+  readonly changed: number;
+  /** F-044: closed task PRs found open again, and the open PRs' comments and reviews read for the first time. */
+  readonly reopened: number;
+  readonly comments: number;
+  readonly reviews: number;
+  readonly stoppedEarly: string | null;
+};
 
 /** The most PRs one pass reads; the next pass carries on. */
 const MAX_PRS_PER_PASS = 200;
+
+/** F-044: how long after its close a task PR's reopen is looked for, a working value; later, only its webhook brings it. */
+export const REOPEN_WINDOW_MS = 30 * 86_400_000;
+/** F-044: the most closed task PRs, and the most repos they're on, one pass looks for a reopen among. */
+const MAX_CLOSED_PER_PASS = 500;
+const MAX_REOPEN_REPOS_PER_PASS = 50;
+
+type AppKey = { readonly appId: string; readonly privateKey: string };
+
+/**
+ * F-044 (Q344): the closed task PRs of tasks a reopen moves back (stopped as `prs_closed`, or
+ * merged by a sibling PR) that are open again on the host: one `listOpenPullRequests` per repo,
+ * the most recently updated first, back to the repo's oldest close. Each is recorded as the
+ * `reopened` webhook records it, so the pass's open PRs then include it.
+ */
+const reconcileReopens = async (
+  deps: PullRequestStateDeps,
+  input: { readonly organizationId: OrganizationId; readonly connectionId: ConnectionId },
+  app: AppKey,
+): Promise<{ readonly read: number; readonly reopened: number; readonly stoppedEarly: string | null }> => {
+  if (!deps.codeHost.capabilities.reconcileReads) {
+    return { read: 0, reopened: 0, stoppedEarly: null };
+  }
+  const closed = await deps.db.taskRepo.findMany({
+    where: {
+      organizationId: input.organizationId,
+      state: "closed_unmerged",
+      prNumber: { not: null },
+      closedAt: { gte: new Date(deps.clock.now() - REOPEN_WINDOW_MS) },
+      task: { OR: [{ state: "stopped", stoppedReason: "prs_closed" }, { state: "merged" }] },
+      repo: { connectionId: input.connectionId, installation: { state: "linked", removedAt: null } },
+    },
+    orderBy: { closedAt: "desc" },
+    take: MAX_CLOSED_PER_PASS,
+    select: { prNumber: true, closedAt: true, repo: { select: { id: true, fullName: true, installationId: true, hostRepoId: true } } },
+  });
+  const byRepo = new Map<string, { readonly repo: (typeof closed)[number]["repo"]; readonly numbers: Set<number>; oldest: number }>();
+  for (const row of closed) {
+    if (row.prNumber === null || row.closedAt === null) continue;
+    const entry = byRepo.get(row.repo.id) ?? { repo: row.repo, numbers: new Set<number>(), oldest: row.closedAt.getTime() };
+    entry.numbers.add(row.prNumber);
+    entry.oldest = Math.min(entry.oldest, row.closedAt.getTime());
+    byRepo.set(row.repo.id, entry);
+  }
+  let read = 0;
+  let reopened = 0;
+  for (const { repo, numbers, oldest } of [...byRepo.values()].slice(0, MAX_REOPEN_REPOS_PER_PASS)) {
+    const fullName = repoFullNameSchema.safeParse(repo.fullName);
+    if (!fullName.success) continue;
+    const open = await deps.codeHost.listOpenPullRequests({ app, installationId: repo.installationId, repo: fullName.data }, Math.max(0, oldest - ACTIVITY_OVERLAP_MS));
+    read += 1;
+    if (!open.ok) {
+      if (open.error.code === "rate-limited") {
+        return { read, reopened, stoppedEarly: "rate-limited" };
+      }
+      deps.logger.warn("pr.reconcile-read-failed", { connectionId: input.connectionId, read: "open-prs", code: open.error.code });
+      continue;
+    }
+    for (const details of open.value.filter((pr) => numbers.has(pr.number))) {
+      const result = await record(deps, {
+        organizationId: input.organizationId,
+        connectionId: input.connectionId,
+        hostRepoId: repo.hostRepoId,
+        prNumber: details.number,
+        state: "open",
+        headSha: details.headSha,
+        changedAt: details.updatedAt,
+        source: "reconcile",
+      });
+      if (result.ok && result.taskRepoId !== null) {
+        reopened += 1;
+        deps.logger.info("pr.reopened", { connectionId: input.connectionId, prNumber: details.number, taskOutcome: result.taskOutcome });
+      }
+    }
+  }
+  return { read, reopened, stoppedEarly: null };
+};
 
 /** One reconcile pass over a GitHub connection's open PRs. Exported for tests; `github.reconcile-prs` is its job. */
 export const reconcilePullRequests = async (
@@ -215,34 +314,42 @@ export const reconcilePullRequests = async (
     select: { appId: true, privateKeySecretRef: true },
   });
   const ref = secretRefSchema.safeParse(connection?.privateKeySecretRef);
+  const nothing = { read: 0, changed: 0, reopened: 0, comments: 0, reviews: 0 };
   if (connection === null || !ref.success) {
-    return { read: 0, changed: 0, stoppedEarly: "the connection has no App key" };
+    return { ...nothing, stoppedEarly: "the connection has no App key" };
   }
   const key = await deps.secretStore.get(input.organizationId, ref.data);
   if (!key.ok) {
-    return { read: 0, changed: 0, stoppedEarly: "the App's key couldn't be read" };
+    return { ...nothing, stoppedEarly: "the App's key couldn't be read" };
+  }
+  const app: AppKey = { appId: connection.appId, privateKey: key.value };
+  // F-044: a closed task PR reopened on the host is open again before the open PRs are read.
+  const reopens = await reconcileReopens(deps, input, app);
+  if (reopens.stoppedEarly !== null) {
+    return { ...nothing, read: reopens.read, reopened: reopens.reopened, stoppedEarly: reopens.stoppedEarly };
   }
   const open = await deps.db.taskRepo.findMany({
     // Milestone 4 (F-136, ADR 0065): only repos of linked installations; nothing is minted for another.
     where: { organizationId: input.organizationId, state: "pr_open", prNumber: { not: null }, repo: { connectionId: input.connectionId, installation: { state: "linked", removedAt: null } } },
     orderBy: { updatedAt: "asc" },
     take: MAX_PRS_PER_PASS,
-    select: { id: true, prNumber: true, repo: { select: { fullName: true, installationId: true, hostRepoId: true } } },
+    select: { id: true, prNumber: true, prUrl: true, prActivityCursor: true, repo: { select: { fullName: true, installationId: true, hostRepoId: true } } },
   });
-  let read = 0;
-  let changed = 0;
+  let read = reopens.read;
+  let changed = reopens.reopened;
+  let comments = 0;
+  let reviews = 0;
+  const outcome = (stoppedEarly: string | null): ReconcileOutcome => ({ read, changed, reopened: reopens.reopened, comments, reviews, stoppedEarly });
   for (const taskRepo of open) {
     const repo = repoFullNameSchema.safeParse(taskRepo.repo.fullName);
     if (taskRepo.prNumber === null || !repo.success) continue;
-    const details = await deps.codeHost.getPullRequest(
-      { app: { appId: connection.appId, privateKey: key.value }, installationId: taskRepo.repo.installationId, repo: repo.data },
-      taskRepo.prNumber,
-    );
+    const access = { app, installationId: taskRepo.repo.installationId, repo: repo.data };
+    const details = await deps.codeHost.getPullRequest(access, taskRepo.prNumber);
     read += 1;
     if (!details.ok) {
       if (details.error.code === "rate-limited") {
         // The App's budget is spent: the next pass carries on.
-        return { read, changed, stoppedEarly: "rate-limited" };
+        return outcome("rate-limited");
       }
       deps.logger.warn("pr.reconcile-read-failed", { connectionId: input.connectionId, prNumber: taskRepo.prNumber, code: details.error.code });
       continue;
@@ -263,6 +370,27 @@ export const reconcilePullRequests = async (
           headSha,
         }),
       );
+      // F-044 (Q344): its comments, reviews and line comments since its cursor, as their webhooks would bring them.
+      const activity = await reconcilePrActivity(
+        { db: deps.db, jobs: deps.jobs, codeHost: deps.codeHost, logger: deps.logger, ...(deps.onReconciledComment === undefined ? {} : { onComment: deps.onReconciledComment }) },
+        {
+          organizationId: input.organizationId,
+          connectionId: input.connectionId,
+          taskRepoId: taskRepoIdSchema.parse(taskRepo.id),
+          access,
+          repo: repo.data,
+          hostRepoId: taskRepo.repo.hostRepoId,
+          prNumber,
+          headSha,
+          prUrl: taskRepo.prUrl,
+          cursor: taskRepo.prActivityCursor,
+        },
+      );
+      comments += activity.comments;
+      reviews += activity.reviews;
+      if (activity.stoppedEarly !== null) {
+        return outcome(activity.stoppedEarly);
+      }
       continue;
     }
     const result = await record(deps, {
@@ -277,14 +405,21 @@ export const reconcilePullRequests = async (
     });
     if (result.ok && result.taskRepoId !== null) changed += 1;
   }
-  return { read, changed, stoppedEarly: null };
+  return outcome(null);
 };
 
 export const reconcileHandler =
   (deps: PullRequestStateDeps): JobHandler<"github.reconcile-prs"> =>
   async (context) => {
     const outcome = await reconcilePullRequests(deps, context.payload);
-    context.logger.info("pr.reconciled", { read: outcome.read, changed: outcome.changed, stoppedEarly: outcome.stoppedEarly });
+    context.logger.info("pr.reconciled", {
+      read: outcome.read,
+      changed: outcome.changed,
+      reopened: outcome.reopened,
+      comments: outcome.comments,
+      reviews: outcome.reviews,
+      stoppedEarly: outcome.stoppedEarly,
+    });
   };
 
 /** A cron for every N minutes (pg-boss's cron has minutes). */

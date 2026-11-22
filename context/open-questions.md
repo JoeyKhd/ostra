@@ -532,15 +532,17 @@ Ticket 19 of that spec asks the maintainer to look at the lead's calls; any the 
 | Q340 Which protocol minor carries files? | ADR 0070, F-148, the lead's call: minor 8; a task or a message with files goes only to a minor-8 runner, and the box says when the task's runner needs upgrading |
 | Q341 What of video and audio? | ADR 0070, F-148, the lead's call: files only, within the limits; no frames and no transcripts |
 
+#### Settled on the v1 audit's questions (2026-11-22)
+
+| Question | Settled in |
+|---|---|
+| Q344 With webhooks off, which GitHub changes must the reconcile bring? | F-044, ADR 0011 amended, the maintainer's answer ("Add them to reconcile"): all of them. `github.reconcile-prs` also reads each open task PR's comments, reviews and line comments since a cursor kept on its task repo (the code host capability `reconcileReads`), and each repo's open PRs for a task PR closed in the last 30 days that was reopened. What it finds lands as its webhook's would, once, keyed by GitHub's comment or review ID (F-046) |
+
 ## Open
 
 ### Raised by the v1 audit's projects and environments pass (2026-11-22)
 
 **Q345 👤 What does adding a repo do to a saved environment?** (F-112/c1, Q249, ADR 0038; found by the v1 ledger audit, 2026-11-22). F-112 says that "when a project is created or a repo is added to it, ostra drafts the environment". Built and tested (`F-112/c1` in `packages/api/src/routers/environment-draft.test.ts`): creating a project drafts the environment from each repo's files, and adding a repo while the environment is still a draft drafts it again, with each repo's lines under its name in a `case "$OSTRA_REPO"` when the setups differ. Once a project admin has saved the environment, adding a repo leaves it as saved: the saved script runs in the new repo's folder as it stands, so a plain script runs there too and a `case` without the new repo's name runs nothing, until an admin adds the repo's lines or an onboarding task proposes them. *Options:* (a) put the environment back to Draft with the new repo's lines merged in; tasks run the draft until it's saved again (Q249), and the m1 environment target already draws a draft; or (b) keep the saved environment running as it is and hold the new repo's draft for review on the Environment page: a notice naming the repo and what detection found in it, with apply, edit and dismiss. That needs a design target. *Recommendation:* (b), so a setup an admin reviewed never changes without review. Until it's settled, F-112/c1 stays unproved for a saved environment, and the setup docs say what happens today.
-
-### Raised by the v1 audit's guarantees pass (2026-11-22)
-
-**Q344 👤 With webhooks off, which GitHub changes must the reconcile bring?** (F-044/c1, ADR 0011's guarantee 2, ADR 0037; found by the v1 ledger audit, 2026-11-22). F-044 says every change in the tracker and on GitHub reaches ostra within 5 minutes with webhooks off, and ADR 0011 says the checks catch "anything a missed webhook would have changed"; milestone 2's spec narrowed it to ticket changes and PR merges and closes. Built and tested (`F-044/c1` in `apps/core/src/tracker/ingest.test.ts` and `apps/core/src/code-host/pull-requests.test.ts`): a board's drift poll every `OSTRA_RECONCILE_MINUTES` (5) brings its tickets' changes, and `github.reconcile-prs` reads each PR still open for a merge, a close, its head's CI, its reviewers and the review check, beside `task.reconcile-behind` for a base that moved. Two changes never arrive without their webhook: a PR comment or review comment (only the `issue_comment` and `pull_request_review_comment` deliveries reach the review loop), so the agent never hears the reviewer; and a closed PR reopened on GitHub, since the reconcile reads only open PRs, so its task stays stopped (`prs_closed`). *Options:* (a) narrow F-044's sentence to what's built and say PR comments need the App's webhooks; or (b) build both into the reconcile: each open task PR's comments since a cursor (a code host capability, as `getPullRequest` is), and the closed PRs of tasks stopped `prs_closed` within the box retention. *Recommendation:* (b), since a review comment is the review loop's input and an install whose webhooks stopped would lose it without a sign; until then F-044/c1 stays unproved for those two.
 
 ### Raised by the v1 audit's box lifecycle pass (2026-11-22)
 

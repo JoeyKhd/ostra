@@ -17,7 +17,7 @@ Port `3000` serves the panel, the setup checklist and the device-code page runne
 
 ## Core
 
-Port `8787` serves the runner protocol under `/runner/v1/`, the webhooks, and the tunnel `ostra preview` opens. Runners, and each `docker` box's sidecar, reach it at `OSTRA_CORE_PUBLIC_URL` (`http://localhost:8787` by default), or `--box-server-url` when a box reaches it at another address. Webhooks from GitHub and Linear need it reachable from the internet; without that, ostra polls Linear (`OSTRA_TRACKER_POLL_SECONDS`) and checks GitHub on a schedule (`OSTRA_RECONCILE_MINUTES`).
+Port `8787` serves the runner protocol under `/runner/v1/`, the webhooks, and the tunnel `ostra preview` opens. Runners, and each `docker` box's sidecar, reach it at `OSTRA_CORE_PUBLIC_URL` (`http://localhost:8787` by default), or `--box-server-url` when a box reaches it at another address. Webhooks from GitHub and Linear need it reachable from the internet; without that, ostra polls Linear (`OSTRA_TRACKER_POLL_SECONDS`) and checks GitHub on a schedule (`OSTRA_RECONCILE_MINUTES`): pull request states, comments, reviews and reopens.
 
 With `OSTRA_PREVIEW_DOMAIN` set, core also answers every host under the preview domain, on this same port, with its preview proxy and nothing else. The proxy in front of core routes them here ([The preview domain](/docs/install/preview-domain)).
 

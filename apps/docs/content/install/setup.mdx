@@ -33,7 +33,7 @@ Members link their GitHub accounts in their **Account**, through the App's own s
 
 Then **Install on GitHub**, on the organization that holds your repos, for all repositories or the ones tasks may change. The App asks for checks and actions from the start, so no later release asks you to approve it again.
 
-An install without a public address gets an App with no webhook: pull request states are still read every 5 minutes (`OSTRA_RECONCILE_MINUTES`), but `@ostra` comments on a pull request need the webhook. Set `OSTRA_CORE_PUBLIC_URL` to a public https address, then give the App its webhook in its settings on GitHub.
+An install without a public address gets an App with no webhook. ostra then checks GitHub every 5 minutes (`OSTRA_RECONCILE_MINUTES`) for what the webhook would have sent: pull request merges, closes and reopens, new comments, reviews and line comments, so `@ostra` on a pull request and "changes requested" still reach the task, within 5 minutes instead of seconds. One thing needs the webhook: a comment edited after it was posted, since only the webhook says who edited it. For changes in seconds, set `OSTRA_CORE_PUBLIC_URL` to a public https address, then give the App its webhook in its settings on GitHub.
 
 ## 4. Connect Linear, or skip it
 

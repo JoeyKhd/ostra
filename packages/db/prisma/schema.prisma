@@ -1962,6 +1962,11 @@ model TaskRepo {
   behindCheckedAt  DateTime?
   /// 1 for the task repo's first branch; a reopen after a merge raises it (`-2`, `-3`, F-066).
   generation       Int           @default(1)
+  // ---- F-044 (Q344, 2026-11-22) ----
+  /// The reconcile's place in the open PR's comments and reviews: the PR's number, and per stream
+  /// the host's time it has read up to and the IDs it handled near it (`prActivityCursorSchema` in
+  /// core). IDs and times, never content. `null`: none read yet, so the next pass reads them all.
+  prActivityCursor Json?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 

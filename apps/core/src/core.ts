@@ -81,7 +81,7 @@ import { loadSecretsKey, openSecretStore } from "./secrets.ts";
 import { createCoreServer } from "./server.ts";
 import { cleanupSettingsOf, sessionTimersOf } from "./settings-timers.ts";
 import { createReconcileSchedules, ensureBehindSchedule, githubWebhookHandler, reconcileBehindHandler, reconcileHandler } from "./code-host/pull-requests.ts";
-import { githubCommentHandler, prCommentHook } from "./code-host/pr-comments.ts";
+import { githubCommentHandler, prCommentHook, reconciledCommentHook } from "./code-host/pr-comments.ts";
 import { diffFetchHandler } from "./diff/diff-fetch.ts";
 import { createConnectionTrackers } from "./tracker/connections.ts";
 import { createPollSchedules, pollBoardHandler, trackerWebhookHandler } from "./tracker/ingest.ts";
@@ -487,6 +487,18 @@ export const startCore = async (
   // A connection's tracker, with its token and the organization's Postgres stores (tickets 14, 15).
   const trackers = createConnectionTrackers({ db, secretStore: adapters.secretStore, clock: systemClock, logger, linearApiUrl });
   const ingestDeps = { db, trackers, notices, clock: systemClock, logger, jobs, closed: { jobs, outbox: postgresCommandOutbox, audit: postgresAuditLog } };
+  // Milestone 3 (ticket 25): what an `@ostra` comment does, from its webhook's job or (F-044) the reconcile.
+  const commentDeps = {
+    db,
+    jobs,
+    outbox: postgresCommandOutbox,
+    notices,
+    audit: postgresAuditLog,
+    clock: systemClock,
+    adapters,
+    timers,
+    spendCap: { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap },
+  };
   // PR states (ticket 16): the App's webhooks and a reconcile per GitHub connection agree.
   const prDeps = {
     db,
@@ -500,27 +512,15 @@ export const startCore = async (
     onPush: (input: Parameters<typeof snapshotsOnPush>[1]) => snapshotsOnPush(snapshotDeps, input),
     // Milestone 3 (ticket 25): an `@ostra` comment on a task's PR is queued as its `github.comment`.
     onComment: prCommentHook({ db, jobs }),
+    // F-044 (Q344): with webhooks off, a comment the reconcile finds is heard as its webhook's would be.
+    onReconciledComment: reconciledCommentHook(commentDeps),
   };
   await jobs.work("github.reconcile-prs", reconcileHandler(prDeps), { localConcurrency: 2 });
   // Milestone 4 (F-104, ticket 18): the independent-review check, on each task PR's head.
   await jobs.work("review.evaluate", reviewEvaluateHandler({ db, notices, clock: systemClock, adapters, jobs }), { localConcurrency: 2 });
   // Milestone 4 (F-098, ticket 17): a task's PRs list each other in their "Related" sections.
   await jobs.work("pr.link-related", linkRelatedHandler({ db, notices, clock: systemClock, adapters }), { localConcurrency: 2 });
-  await jobs.work(
-    "github.comment",
-    githubCommentHandler({
-      db,
-      jobs,
-      outbox: postgresCommandOutbox,
-      notices,
-      audit: postgresAuditLog,
-      clock: systemClock,
-      adapters,
-      timers,
-      spendCap: { capMicroUsd: settings.taskSpendCapMicroUsd, capTokens: settings.taskTokenCap },
-    }),
-    { localConcurrency: 2 },
-  );
+  await jobs.work("github.comment", githubCommentHandler(commentDeps), { localConcurrency: 2 });
   // Milestone 3 (ticket 24): each live task repo's `behind`, every OSTRA_RECONCILE_MINUTES.
   await jobs.work("task.reconcile-behind", reconcileBehindHandler(prDeps), { localConcurrency: 1 });
   await ensureBehindSchedule({ jobs, reconcileMinutes: settings.reconcileMinutes });

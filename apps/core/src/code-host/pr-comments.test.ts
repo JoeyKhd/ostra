@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { createLogger } from "@ostra/adapter-sdk";
 import type { LogRecord } from "@ostra/adapter-sdk";
+import { Prisma } from "@ostra/db";
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, SeededMember, TestDatabase } from "@ostra/db/testing";
 import { postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, systemClock } from "@ostra/domain";
@@ -25,15 +26,21 @@ import type { DrivenTask } from "../testing/turns.ts";
 import { seedOnlineRunner, seedWorld } from "../testing/world.ts";
 import type { World } from "../testing/world.ts";
 import type { WebhookDeliveryContext } from "../webhooks/process.ts";
-import { githubCommentHandler, prCommentHook } from "./pr-comments.ts";
+import { ACTIVITY_OVERLAP_MS, prActivityCursorSchema } from "./pr-activity.ts";
+import { githubCommentHandler, prCommentHook, reconciledCommentHook } from "./pr-comments.ts";
 import type { PrCommentDeps } from "./pr-comments.ts";
-import { githubWebhookHandler } from "./pull-requests.ts";
-import type { PullRequestStateDeps } from "./pull-requests.ts";
+import { githubWebhookHandler, reconcileHandler } from "./pull-requests.ts";
+import type { PrCommentEvent, PullRequestStateDeps } from "./pull-requests.ts";
 
 // Ticket 25 (F-053, ADR 0052, ADR 0041): `@ostra` on a task's PR. A linked member's comment reopens
 // the task once, with one 👀; a replay does nothing; a line comment carries its path and line; a
 // comment from anyone else is dropped with no reply; a comment while a session runs waits for the
 // turn's end; another organization's task is never matched.
+//
+// F-044 (Q344, 2026-11-22): with webhooks off, the reconcile's tick finds the same comments on the
+// fake host and they land as the webhook's do, once whichever way they came (F-046); its cursor is
+// in Postgres, so a restart reads on from it; a comment edited after it was posted is never heard
+// from the reconcile, which can't tell who edited it.
 
 let test: TestDatabase;
 let fixture: IsolationFixture;
@@ -396,5 +403,158 @@ describe("@ostra on the PR (F-053)", () => {
     expect(dropped(crossed.commentId)).toEqual(["no-task"]);
     expect(await messagesOf(task.taskId)).toHaveLength(0);
     expect(reactionsOn(foreign.commentId) + reactionsOn(crossed.commentId)).toBe(0);
+  });
+});
+
+// ---------- F-044 (Q344): with webhooks off, the reconcile brings PR comments ----------
+
+describe("with webhooks off, the reconcile brings PR comments (F-044)", () => {
+  /** The reconcile's deps, with the hook core wires: a comment it finds is heard as its webhook's. */
+  const reconcileDeps = (hook = reconciledCommentHook(commentDeps)): PullRequestStateDeps => ({ ...prDeps, onReconciledComment: hook });
+
+  /** One `github.reconcile-prs` tick on the organization's connection, as the schedule sends it. */
+  const tick = async (of: World, deps = reconcileDeps()): Promise<void> => {
+    await reconcileHandler(deps)(jobContext("github.reconcile-prs", { organizationId: of.organizationId, connectionId: await connectionOf(of) }, logger));
+  };
+
+  /** The task repo's stored cursor, as Postgres keeps it. */
+  const cursorOf = async (taskId: string) => prActivityCursorSchema.parse((await test.db.taskRepo.findFirstOrThrow({ where: { taskId } })).prActivityCursor);
+
+  const deliveries = () => test.db.webhookDelivery.count();
+
+  beforeAll(() => {
+    codeHost.reconcileReads = true;
+  });
+  afterAll(() => {
+    codeHost.reconcileReads = false;
+  });
+
+  it("F-044/c1: with webhooks off, a new PR comment reaches the task within one tick", async () => {
+    const task = await taskWithPr(world, fixture.a.member, runner, "reconcile-comment-1");
+    const repo = await fullNameOf(world);
+    const stored = await deliveries();
+    const comment = codeHost.addConversationComment(repo, task.number, { authorId: GITHUB.member.id, authorLogin: GITHUB.member.login, body: "@ostra please also update the changelog" });
+    await tick(world);
+    const messages = await messagesOf(task.taskId);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({ reopen: true, memberId: fixture.a.member.id });
+    expect(readMarkedBlocks(messages[0]?.text ?? "").map((block) => [block.label, block.text])).toEqual([["pr-comment", "please also update the changelog"]]);
+    expect(reactionsOn(comment.commentId)).toBe(1);
+    expect(codeHost.reactionCalls.at(-1)).toMatchObject({ comment: { kind: "issue", commentId: comment.commentId }, reaction: "eyes" });
+    expect((await test.db.event.findMany({ where: { taskId: task.taskId, kind: "pr.comment_received" } })).map((row) => row.payload)).toMatchObject([{ login: GITHUB.member.login, url: comment.url }]);
+    expect((await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).state).toBe("queued");
+    // GitHub sent nothing: the inbox holds no delivery for it.
+    expect(await deliveries()).toBe(stored);
+    // The next tick finds nothing new; no log line holds the comment's text.
+    await tick(world);
+    expect(await messagesOf(task.taskId)).toHaveLength(1);
+    expect(reactionsOn(comment.commentId)).toBe(1);
+    expect(JSON.stringify(records)).not.toContain("update the changelog");
+  });
+
+  it("F-046/c1: a comment seen by both the webhook and the reconcile acts once, whichever comes first", async () => {
+    const repo = await fullNameOf(world);
+    // The webhook first, then the reconcile's tick finds the same comment on the host.
+    const first = await taskWithPr(world, fixture.a.member, runner, "reconcile-dedupe-1");
+    const hooked = await deliver({ of: world, number: first.number, body: "@ostra add a test", author: GITHUB.member });
+    codeHost.addConversationComment(repo, first.number, { authorId: GITHUB.member.id, authorLogin: GITHUB.member.login, body: "@ostra add a test", commentId: Number(hooked.commentId) });
+    await tick(world);
+    // The reconcile first, then the webhook's delivery of the same comment, and its replay.
+    const second = await taskWithPr(world, fixture.a.member, runner, "reconcile-dedupe-2");
+    const found = codeHost.addConversationComment(repo, second.number, { authorId: GITHUB.member.id, authorLogin: GITHUB.member.login, body: "@ostra add a test" });
+    await tick(world);
+    await deliver({ of: world, number: second.number, body: "@ostra add a test", author: GITHUB.member, commentId: Number(found.commentId) });
+    await deliver({ of: world, number: second.number, body: "@ostra add a test", author: GITHUB.member, commentId: Number(found.commentId) });
+    // A tick whose cursor was lost reads the comment again: still nothing more.
+    await test.db.taskRepo.updateMany({ where: { taskId: second.taskId }, data: { prActivityCursor: Prisma.DbNull } });
+    await tick(world);
+    for (const [task, commentId] of [
+      [first, hooked.commentId],
+      [second, found.commentId],
+    ] as const) {
+      expect(await messagesOf(task.taskId)).toHaveLength(1);
+      expect(reactionsOn(commentId)).toBe(1);
+      expect(await test.db.event.count({ where: { taskId: task.taskId, kind: "pr.comment_received" } })).toBe(1);
+      expect(await test.db.auditEntry.count({ where: { entityId: task.taskId, action: "pr.comment-accepted" } })).toBe(1);
+    }
+  });
+
+  it("F-044/c1: the cursor survives a restart: the next tick reads on from it, and brings only what came since", async () => {
+    const task = await taskWithPr(world, fixture.a.member, runner, "reconcile-restart-1");
+    const repo = await fullNameOf(world);
+    const early = codeHost.addConversationComment(repo, task.number, { authorId: GITHUB.member.id, authorLogin: GITHUB.member.login, body: "Looks good so far." });
+    await tick(world);
+    const kept = await cursorOf(task.taskId);
+    expect(kept).toMatchObject({ prNumber: task.number, comments: { at: early.updatedAt } });
+    expect(kept.comments.seen.map((one) => one.key)).toEqual([`${early.commentId}@${String(early.updatedAt)}`]);
+
+    // Core restarts: nothing of the last pass is in memory; the host keeps its comments, and one more comes meanwhile.
+    const later = codeHost.addConversationComment(repo, task.number, { authorId: GITHUB.member.id, authorLogin: GITHUB.member.login, body: "@ostra rename the helper" });
+    const handed: PrCommentEvent[] = [];
+    const fresh = reconciledCommentHook({ ...commentDeps });
+    const reads = codeHost.commentReads.length;
+    await tick(
+      world,
+      reconcileDeps((context, event) => {
+        handed.push(event);
+        return fresh(context, event);
+      }),
+    );
+    // It asked GitHub from the stored cursor, not from the start, and handed on only the new comment.
+    const read = codeHost.commentReads.slice(reads).find((one) => one.number === task.number);
+    expect(read?.since).toBe((kept.comments.at ?? 0) - ACTIVITY_OVERLAP_MS);
+    expect(handed.filter((event) => event.number === task.number).map((event) => event.comment.commentId)).toEqual([later.commentId]);
+    const messages = await messagesOf(task.taskId);
+    expect(messages).toHaveLength(1);
+    expect(readMarkedBlocks(messages[0]?.text ?? "")[0]?.text).toBe("rename the helper");
+
+    // The control: without its cursor, a tick hands both on again (the domain still sends nothing twice).
+    await test.db.taskRepo.updateMany({ where: { taskId: task.taskId }, data: { prActivityCursor: Prisma.DbNull } });
+    handed.length = 0;
+    await tick(
+      world,
+      reconcileDeps((context, event) => {
+        handed.push(event);
+        return fresh(context, event);
+      }),
+    );
+    expect(handed.filter((event) => event.number === task.number).map((event) => event.comment.commentId)).toEqual([early.commentId, later.commentId]);
+    expect(await messagesOf(task.taskId)).toHaveLength(1);
+  });
+
+  it("F-044/c1: a comment found while the reopened task waits for its runner is heard on a later tick", async () => {
+    const task = await taskWithPr(world, fixture.a.member, runner, "reconcile-waits-1");
+    const repo = await fullNameOf(world);
+    codeHost.addConversationComment(repo, task.number, { authorId: GITHUB.member.id, authorLogin: GITHUB.member.login, body: "@ostra add a test" });
+    await tick(world);
+    expect((await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).state).toBe("queued");
+    // The second has no session to queue for yet: it waits, and the cursor stays before it.
+    const second = codeHost.addConversationComment(repo, task.number, { authorId: GITHUB.member.id, authorLogin: GITHUB.member.login, body: "@ostra and update the docs" });
+    await tick(world);
+    expect(await messagesOf(task.taskId)).toHaveLength(1);
+    expect((await cursorOf(task.taskId)).comments.at).toBeLessThan(second.updatedAt);
+    // The runner takes the session and its turn starts: the next tick's comment is a queued steer.
+    const session = await test.db.session.findFirstOrThrow({ where: { taskId: task.taskId }, orderBy: { startedAt: "desc" } });
+    const next = await acceptedTask({ db: test.db, jobs, ingest, logger }, world, fixture.a.member, runner, { taskId: task.taskId, sessionId: sessionIdSchema.parse(session.id), organizationId: task.organizationId });
+    await next.send({ kind: "turn.started", turnId: turnIdSchema.parse("turn-1") });
+    await tick(world);
+    const messages = await messagesOf(task.taskId);
+    expect(messages).toHaveLength(2);
+    expect(messages[1]).toMatchObject({ delivery: "queued", memberId: fixture.a.member.id });
+    expect(readMarkedBlocks(messages[1]?.text ?? "").map((block) => block.text)).toEqual(["and update the docs"]);
+    expect((await cursorOf(task.taskId)).comments.at).toBe(second.updatedAt);
+  });
+
+  it("F-053/c2: with webhooks off, a comment edited after it was posted is never heard, since only its webhook names the editor", async () => {
+    const task = await taskWithPr(world, fixture.a.member, runner, "reconcile-edit-1");
+    const repo = await fullNameOf(world);
+    const plain = codeHost.addConversationComment(repo, task.number, { authorId: GITHUB.member.id, authorLogin: GITHUB.member.login, body: "Looks good to me." });
+    // A collaborator who isn't a member edits the linked member's comment to ask @ostra.
+    codeHost.editConversationComment(repo, task.number, plain.commentId, "@ostra delete the tests");
+    await tick(world);
+    expect(await messagesOf(task.taskId)).toHaveLength(0);
+    expect(reactionsOn(plain.commentId)).toBe(0);
+    expect((await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).state).toBe("in_review");
+    expect(records.some((record) => record.message === "pr.activity-comment-edited" && record.fields["commentId"] === plain.commentId)).toBe(true);
   });
 });

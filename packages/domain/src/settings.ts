@@ -267,7 +267,7 @@ export const settingFields = {
   },
   OSTRA_RECONCILE_MINUTES: {
     default: "5",
-    description: "How often core checks the open PRs' states on GitHub, in case a webhook was missed (F-044).",
+    description: "How often core checks GitHub for what a missed webhook would have brought: PR states, comments, reviews and reopens (F-044).",
   },
   OSTRA_WEBHOOK_INSERT_DEADLINE_MS: {
     default: "2000",

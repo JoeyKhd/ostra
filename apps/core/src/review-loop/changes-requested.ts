@@ -24,7 +24,8 @@ export type ChangesRequestedHint =
 /** A `pull_request_review` delivery, as far as "changes requested" goes. */
 export const changesRequestedHint = async (
   deps: { readonly db: Db; readonly jobs: JobQueue; readonly capable: boolean },
-  context: WebhookDeliveryContext,
+  /** The delivery's, or (F-044) the reconcile's that found the review on the host. */
+  context: Pick<WebhookDeliveryContext, "organizationId" | "connectionId" | "logger">,
   event: Extract<CodeHostWebhookEvent, { readonly kind: "pull_request_review" }>,
 ): Promise<ChangesRequestedHint> => {
   if (!deps.capable || event.action !== "submitted" || event.review.state !== "changes_requested") {
