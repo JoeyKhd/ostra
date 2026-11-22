@@ -1,0 +1,70 @@
+<!doctype html>
+<!-- Target 2 (spend-keys.md): Organization › Spend with Keys (F-135/c13, ADR 0055 "Spend per key"), a
+     section between Projects and Models: one row per model provider, each one client's key, with this
+     month's four token kinds and spend in the Models table's columns. The page is milestone 4's approved
+     Spend (spend-budgets.md) as the live spend-view.tsx draws it, in the double-sidebar shell.
+       (default)      spend-keys: northwind-anthropic selected, its month in the panel.
+       ?theme=light   spend-keys-light.
+     Demo data: the keys sum to the month's $1,842.17, as the projects do. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · gaps · spend per key</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="gaps.css">
+<style>
+  .page { padding-top: 24px; }
+  .lede { max-width: 720px; }
+  .section { margin-top: 24px; }
+  .shead { margin-bottom: 0; }
+  .props .group h5 { justify-content: flex-start; }
+</style>
+</head>
+<body data-space="org" data-panel="org" data-active="spend">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>Acme Corp</span><i data-lucide="chevron-right" class="chev"></i><b>Spend</b>
+      <div class="right"><span class="select" style="font-weight:500"><i data-lucide="calendar"></i>November 2026<i data-lucide="chevron-down" class="chev"></i></span></div>
+    </div>
+    <div class="content wide">
+      <div class="page"><div class="inner" id="page"></div></div>
+      <aside class="props" id="props"></aside>
+    </div>
+  </section>
+</div>
+<script src="gaps.js"></script>
+<script>
+(() => {
+  const { ic, m } = G;
+  document.getElementById("page").innerHTML = `
+    <h1>Spend</h1>
+    <p class="lede">What agents spent, counted at the key proxy and priced per model. Budgets run by calendar month in UTC: at 80% admins are told, and at 100% new tasks and turns wait while running turns finish.</p>
+    <div class="sum">
+      <div class="lab">This month, Nov 1 – 22</div>
+      <div class="fig"><span class="big">$1,842.17</span><span class="of">of the organization's <span class="mono">$2,500.00</span> budget</span><span class="pc">74%</span></div>
+      <div class="bar8"><i style="width:74%"></i><span class="tick" style="left:80%"></span></div>
+      <div class="meta2"><span>186.7M tokens · resets Dec 1</span><span class="teal">Change budget</span></div>
+    </div>
+    <div class="section">
+      <div class="shead"><h3>Projects</h3><span class="n">5</span></div>
+      ${G.projectsTable()}
+      <p class="idle">13 projects spent nothing this month.</p>
+    </div>
+    <div class="section" style="margin-top:22px">
+      <div class="shead"><h3>Keys</h3><span class="n">4</span><span class="sec-note" style="color:var(--faint);margin-left:4px">one per model provider</span></div>
+      ${G.keysTable()}
+    </div>
+    <div class="warnrule">
+      <div class="h">${ic("circle-alert")}acme/sql-coder-ft has no price, so budgets can't count it.</div>
+      <p>3.4M tokens this month aren't in these figures. <span class="teal">Enter its price.</span></p>
+    </div>`;
+  document.getElementById("props").innerHTML = G.keyPanel();
+})();
+</script>
+<script src="../../m8/html/shell.js"></script>
+</body>
+</html>

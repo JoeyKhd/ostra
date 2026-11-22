@@ -1,0 +1,53 @@
+<!doctype html>
+<!-- Target 3 (github-events.md): Organization › GitHub, connected, with the organization's own App made
+     while ostra had no public address, so it has no webhook (F-006/c4). Milestone 4's approved page
+     (github-organizations.md) as the live github-orgs.tsx draws it, in the double-sidebar shell; new are
+     the section line's `Events off`, the note under the App, the panel's Events row and Turn on's result.
+       ?view=off      github-events: the App selected; Events `Off` with `Turn on →` (an address is public now).
+       ?view=once     github-events-turn-on: Turn on's result, shown once, in the 380px panel.
+       &theme=light   the light tokens.
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · gaps · GitHub events later</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="gaps.css">
+<style>
+  .page { padding-top: 26px; }
+  .lede { max-width: 720px; }
+  .appsec:first-of-type { margin-top: 22px; }
+</style>
+</head>
+<body data-space="org" data-panel="org" data-active="github">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>Acme Corp</span><i data-lucide="chevron-right" class="chev"></i><b>GitHub</b>
+      <div class="right"><span class="btn sm">Connect another App</span><span class="btn sm primary"><i data-lucide="plus"></i>Add a GitHub organization</span></div>
+    </div>
+    <div class="content" id="content">
+      <div class="page"><div class="inner" id="page"></div></div>
+      <aside class="props" id="props"></aside>
+    </div>
+  </section>
+</div>
+<script src="gaps.js"></script>
+<script>
+(() => {
+  const view = new URLSearchParams(location.search).get("view") ?? "off";
+  const once = view === "once";
+  if (once) document.getElementById("content").classList.add("wide");
+  document.getElementById("page").innerHTML = `
+    <h1>GitHub</h1>
+    <p class="lede">Each App opens pull requests as its own bot. ostra mints a token only for an installation an admin has linked, and never hands it to an agent.</p>
+    ${G.appSections({ state: once ? "waiting" : "off" })}`;
+  document.getElementById("props").innerHTML = once ? G.onceGroup({ copied: true }) : G.appPanel({ state: "off" });
+})();
+</script>
+<script src="../../m8/html/shell.js"></script>
+</body>
+</html>

@@ -1,0 +1,61 @@
+<!doctype html>
+<!-- Target 1 (prompt-tickets.md): a project's Boards page with "Make a ticket for every prompt task"
+     (F-097/c2) between Attached and Status mapping. The page is the live boards-view.tsx in the
+     approved double-sidebar shell; only the setting and the panel's Prompt tasks row are new.
+       (default)      prompt-tickets: an admin, two boards attached, the setting on, on Calculator.
+       ?theme=light   prompt-tickets-light.
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · gaps · prompt tickets on Boards</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="gaps.css">
+<style>
+  .page .section { margin-top: 26px; }
+  .page .section.first { margin-top: 22px; }
+  .shead { margin-bottom: 4px; }
+</style>
+</head>
+<body data-space="projects" data-panel="project" data-active="boards">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>calculator</span><i data-lucide="chevron-right" class="chev"></i><b>Boards</b>
+      <div class="right"><span class="btn primary" style="opacity:.45">Save mapping</span></div>
+    </div>
+    <div class="content">
+      <div class="page"><div class="inner" id="page"></div></div>
+      <aside class="props" id="props"></aside>
+    </div>
+  </section>
+</div>
+<script src="gaps.js"></script>
+<script>
+(() => {
+  document.getElementById("page").innerHTML = `
+    <h1>Boards</h1>
+    <p class="lede">Linear teams whose tickets reach this project's Inbox. Each board maps ostra's steps to the team's statuses.</p>
+    <div class="section first">
+      <div class="shead"><h3>Attached</h3><span class="n">2</span></div>
+      ${G.attachedRows()}
+      ${G.attachLine()}
+    </div>
+    <div class="section">
+      <div class="shead"><h3>Prompt tasks</h3></div>
+      ${G.promptSetting({ state: "on", many: true })}
+    </div>
+    <div class="section">
+      <div class="shead"><h3>Status mapping</h3><span class="sec-note" style="color:var(--faint)">Calculator · <span class="mono">CALC</span></span></div>
+      <p class="sec-note" style="margin-bottom:12px">Drafted from Linear's status types. Every status of the team is in each picker.</p>
+      ${G.mapping()}
+    </div>`;
+  document.getElementById("props").innerHTML = G.boardPanel();
+})();
+</script>
+<script src="../../m8/html/shell.js"></script>
+</body>
+</html>

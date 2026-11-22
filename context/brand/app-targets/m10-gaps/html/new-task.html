@@ -1,0 +1,125 @@
+<!doctype html>
+<!-- Target 1 (prompt-tickets.md, "New task"): milestone 9's approved new-task page
+     (../../m9/html/new-task-attachments.html) in a project whose setting makes a ticket for every
+     prompt task. Only two things are new: the What happens next line with `ticket-plus`, and the
+     panel's Ticket row. Everything else is milestone 9's page as approved.
+       (default)    prompt-tickets-new-task.
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · gaps · a new task that gets a ticket</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="../../m9/html/m9.css">
+<link rel="stylesheet" href="gaps.css">
+<style>
+  .content { grid-template-columns: minmax(0, 1fr) 380px; }
+  .page { padding: 26px 36px 20px; }
+  .ntbox { margin-top: 24px; min-height: 250px; display: flex; flex-direction: column; border: 1px solid var(--control-line); border-radius: 10px; background: var(--surface); padding: 14px 16px 10px; }
+  .ntbox.focus { outline: 2px solid var(--teal); outline-offset: 1px; }
+  .ntbox .text { flex: 1; min-height: 80px; font-size: 15.5px; line-height: 1.6; color: var(--text); }
+  .ntbox .text .caret { display: inline-block; width: 1.5px; height: 18px; margin: 0 0 -3px 1px; background: var(--text); }
+  .ntbox .tray { margin: 12px 0 0; }
+  .ntool { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 10px; }
+  .tog { display: inline-flex; border: 1px solid var(--line-2); border-radius: 6px; overflow: hidden; height: 28px; margin-right: 4px; }
+  .tog span { display: grid; place-items: center; padding: 0 12px; font: 500 13px var(--sans); color: var(--muted); }
+  .tog span.on { background: var(--sel); color: var(--text); }
+  .trig { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 8px; border-radius: 6px; font: 600 14px var(--sans); color: var(--text); white-space: nowrap; }
+  .trig svg.lucide { width: 15px; height: 15px; color: var(--muted); }
+  .trig .chev { width: 13px; height: 13px; color: var(--faint); }
+  .trig .faint { font-weight: 400; }
+  .ntool .go { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+  .ntool .go .k { font: 400 12px var(--mono); color: var(--faint); display: flex; align-items: center; gap: 4px; }
+  .ntool .go .k svg.lucide { width: 12px; height: 12px; }
+  .next li { display: flex; align-items: center; gap: 12px; min-height: 38px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 14.5px; list-style: none; }
+  .next li:last-child { border-bottom: 1px solid var(--line); }
+  .next li > svg.lucide { width: 15px; height: 15px; color: var(--muted); }
+  .next .mono { font-size: 14px; }
+  .props .prop .v svg.lucide { width: 15px; height: 15px; color: var(--muted); }
+  .props .group h5 { font-size: 12px; }
+</style>
+</head>
+<body data-space="projects" data-panel="project" data-active="tasks">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>calculator</span><i data-lucide="chevron-right" class="chev"></i><b>New task</b>
+    </div>
+    <div class="content" id="content"></div>
+  </section>
+</div>
+<script src="../../m8/html/app-fixture.js"></script>
+<script src="../../m9/html/m9.js"></script>
+<script>
+(() => {
+  const { ic, trayImg, trayFile } = m9;
+  document.getElementById("content").innerHTML = `
+    <div class="page">
+      <div class="key">calculator · prompt task</div>
+      <h1>New task</h1>
+      <p class="lede">Type what the agent should do. It works on its own branch and opens a pull request.</p>
+      <div class="ntbox focus">
+        <div class="text">Percent mode rounds half-cents down: 12.5% of 845 shows 105.62 where finance expects 105.63. Round half up, to the cent, on the final value only, as finance's rules say. The screenshots show the desktop and the phone builds; the cases are in the csv.<span class="caret"></span></div>
+        <div class="tray">
+          ${trayImg("wrong")}
+          ${trayImg("phone")}
+          ${trayFile("rounding-rules.docx", "DOCX · 212 KB")}
+          ${trayFile("percent-cases.csv", "CSV · 6 KB")}
+        </div>
+        <div class="tnote">${ic("image-off")}<span>DeepSeek V4.1 Flash can't see images; the agent gets them as files.</span></div>
+        <div class="ntool">
+          <span class="clip" title="Attach files. You can paste or drop them too.">${ic("paperclip")}</span>
+          <span class="tog"><span class="on">Code</span><span>Refine</span></span>
+          <span class="trig"><span class="pdot" style="background:#6FB8AA"></span>calculator<i data-lucide="chevron-down" class="chev"></i></span>
+          <span class="trig">${ic("sliders-horizontal")}Fast fixes<i data-lucide="chevron-down" class="chev"></i></span>
+          <span class="trig">${ic("server")}build-fleet <span class="faint">· pool</span><i data-lucide="chevron-down" class="chev"></i></span>
+          <span class="go"><span class="k">Ctrl ${ic("corner-down-left")}</span><span class="btn primary">${ic("arrow-up")} Start task</span></span>
+        </div>
+      </div>
+      <div class="section" style="margin-top:30px">
+        <div class="shead"><h3>What happens next</h3></div>
+        <ul class="next">
+          <li>${ic("box")}<span>A box of <span class="mono">acme/calculator-web</span> from <span class="mono">main</span>, on one of the project's pools</span></li>
+          <li>${ic("paperclip")}<span>The 4 files go into the box under <span class="mono">.ostra/attachments/1/</span>, and the text of the docx beside it</span></li>
+          <li class="new">${ic("ticket-plus")}<span>It gets a ticket on <b style="font-weight:500">Calculator</b> as it starts, linked to the task both ways.</span></li>
+          <li>${ic("git-branch")}<span>OpenCode works on its own branch.</span></li>
+          <li>${ic("git-pull-request")}<span>It opens a pull request. Steer it while it runs, and reopen it any time.</span></li>
+        </ul>
+      </div>
+    </div>
+    <aside class="props">
+      <div class="group">
+        <h5>This task</h5>
+        <div class="prop"><span class="k">Project</span><span class="v"><span class="pdot" style="background:#6FB8AA;width:8px;height:8px"></span>calculator</span></div>
+        <div class="prop"><span class="k">Repo</span><span class="v mono">acme/calculator-web</span></div>
+        <div class="prop"><span class="k">Base</span><span class="v mono">main</span></div>
+        <div class="prop"><span class="k">Branch</span><span class="v muted">made when it starts</span></div>
+        <div class="prop"><span class="k">Ticket</span><span class="v"><span class="muted">made on</span><span class="mono">CALC</span><span class="muted">when it starts</span></span></div>
+      </div>
+      <div class="group">
+        <h5>Attachments</h5>
+        <div class="prop"><span class="k">Files</span><span class="v">2 images · 2 files</span></div>
+        <div class="prop"><span class="k">Size</span><span class="v"><span class="mono">2.3 MB</span><span class="muted mono" style="margin-left:-2px">of 25 MB</span></span></div>
+      </div>
+      <div class="group">
+        <h5>Agent profile</h5>
+        <div class="prop"><span class="k">Profile</span><span class="v">${ic("sliders-horizontal")}Fast fixes</span></div>
+        <div class="prop"><span class="k">Agent</span><span class="v">${ic("square-terminal")}OpenCode</span></div>
+        <div class="prop"><span class="k">Model</span><span class="v">${ic("sparkles")}DeepSeek V4.1 Flash</span></div>
+        <div class="prop"><span class="k">Takes</span><span class="v">text only</span></div>
+      </div>
+      <div class="group">
+        <h5>Runs on</h5>
+        <div class="prop"><span class="k">Runner</span><span class="v">${ic("server")}build-fleet <span class="muted">· pool</span></span></div>
+        <div class="prop"><span class="k">Executor</span><span class="v muted">docker</span></div>
+        <div class="prop"><span class="k">Box size</span><span class="v mono">standard</span></div>
+      </div>
+    </aside>`;
+})();
+</script>
+<script src="../../m8/html/shell.js"></script>
+</body>
+</html>

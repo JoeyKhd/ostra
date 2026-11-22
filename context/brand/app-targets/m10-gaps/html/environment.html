@@ -1,0 +1,80 @@
+<!doctype html>
+<!-- Target 4 (environment-repo-draft.md): a project's Environment, Setup tab, after a repo was added to a
+     saved environment (F-112/c1, Q345 option (b)). The saved environment keeps running unchanged; the new
+     repo's draft waits above the setup script, with what detection found in the panel's Found in group,
+     as the m1 environment target draws a draft's. The page is the live environment-view.tsx (milestone 8's
+     tabs) in the double-sidebar shell; the band, the draft and the panel's new rows are new.
+       ?view=draft    environment-repo-draft: the draft, waiting on a project admin.
+       ?view=edit     environment-repo-draft-edit: after Edit first, its lines in the editor, marked, unsaved.
+       &theme=light   the light tokens.
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · gaps · a new repo's draft</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="gaps.css">
+<style>
+  .page { padding-top: 26px; }
+  .editing { display: flex; align-items: center; gap: 9px; min-height: 36px; margin-top: 12px; padding: 0 0 0 12px; border-left: 2px solid var(--teal); font-size: 14px; }
+  .editing svg.lucide { width: 15px; height: 15px; color: var(--muted); }
+  .editing .mono { font-size: 13.5px; }
+  .editing .btn { margin-left: auto; }
+</style>
+</head>
+<body data-space="projects" data-panel="project" data-active="environment">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>calculator</span><i data-lucide="chevron-right" class="chev"></i><b>Environment</b>
+      <div class="right"><span class="btn sm"><i data-lucide="flask-conical"></i>Test this environment</span><span class="btn sm primary">Save environment</span></div>
+    </div>
+    <div class="content wide">
+      <div class="page"><div class="inner" id="page"></div></div>
+      <aside class="props" id="props"></aside>
+    </div>
+  </section>
+</div>
+<script src="gaps.js"></script>
+<script>
+(() => {
+  const { ic, m } = G;
+  const view = new URLSearchParams(location.search).get("view") ?? "draft";
+  const edit = view === "edit";
+  const tabs = `
+    <div class="tabs etabs"><span class="tab on">Setup</span><span class="tab">Services and checks</span><span class="tab">App</span></div>`;
+  const draft = `
+    <div class="repobd">
+      <div class="band">${ic("git-branch-plus")}New repo, not in the setup yet <span class="n">1</span></div>
+      ${G.repoDraft({ role: "admin", kind: "case" })}
+    </div>`;
+  const editing = `
+    <div class="editing">${ic("pencil")}<span>Editing ${m("acme/calculator-engine")}'s lines, marked below. <span class="muted">Save to keep them.</span></span><span class="btn sm ghost">Cancel</span></div>`;
+  document.getElementById("page").innerHTML = `
+    <div class="eyebrow">${edit ? "Editing · not saved yet" : "Saved 2h ago"}</div>
+    <h1>Environment</h1>
+    <p class="lede">What every task of this project gets: its setup, the services beside it, and the checks after each turn.</p>
+    ${tabs}
+    ${edit ? editing : draft}
+    <div class="esec">
+      <div class="hd2"><h3>Setup script</h3><span class="sec-note">runs with bash in the task's workspace, before the agent starts</span></div>
+      ${G.scriptEditor({ withNew: edit })}
+    </div>
+    <div class="esec">
+      <div class="hd2"><h3 class="mono" style="font-family:var(--mono);font-size:14.5px">acme/calculator-web</h3><span class="n mono faint" style="font-size:13px">5</span><span class="end">Written to <span class="envin">.env</span></span></div>
+      <table class="t ent"><colgroup><col style="width:28px"><col style="width:210px"><col><col style="width:96px"><col style="width:28px"></colgroup>
+        <thead><tr><th></th><th>Name</th><th>Value</th><th style="text-align:center">During setup</th><th></th></tr></thead>
+        <tbody>
+          <tr><td>${ic("variable")}</td><td>NODE_ENV</td><td>development</td><td style="text-align:center"><span class="cbx"></span></td><td>${ic("x", "i14")}</td></tr>
+          <tr><td>${ic("key-round")}</td><td>DATABASE_URL</td><td><span class="secin">Set: type to replace it</span></td><td style="text-align:center"><span class="cbx"></span></td><td>${ic("x", "i14")}</td></tr>
+        </tbody></table>
+    </div>`;
+  document.getElementById("props").innerHTML = G.envPanel({ role: "admin" });
+})();
+</script>
+<script src="../../m8/html/shell.js"></script>
+</body>
+</html>

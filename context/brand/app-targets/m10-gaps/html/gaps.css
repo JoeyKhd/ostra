@@ -1,0 +1,302 @@
+/*
+ * The four ledger gaps' targets (../README.md): the parts each screen adds to an approved page. Loaded
+ * after milestone 8's `../../m8/html/m8.css` (the panel's tokens for both themes, its fonts, its shell)
+ * and milestone 9's `../../m9/html/m9.css` (board labels, notes). Tokens only: no new colour. Every
+ * size here is a CSS px the build copies. All data is demo data.
+ */
+
+/* ── The page column, as the live pages draw it ─────────────────────────────── */
+.content.wide { grid-template-columns: minmax(0, 1fr) 380px; }
+.page .inner { max-width: 760px; }
+.page h1 { margin-top: 0; }
+.eyebrow { font: 400 13px var(--mono); color: var(--faint); margin-bottom: 2px; }
+.icon-15 svg.lucide, svg.lucide.i15 { width: 15px; height: 15px; }
+.i13 { width: 13px !important; height: 13px !important; }
+.i14 { width: 14px !important; height: 14px !important; }
+.sec-note { font-size: 13px; color: var(--muted); font-weight: 400; }
+.shead .sec-note { margin-left: 2px; }
+.help { font-size: 13px; color: var(--faint); }
+.mut { color: var(--muted); }
+.okline { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 13.5px; color: var(--green); }
+.okline svg.lucide { width: 14px; height: 14px; stroke-width: 2; }
+.vlogo { width: 15px; height: 15px; flex: none; opacity: 0.75; filter: invert(1); }
+[data-theme="light"] .vlogo { filter: none; opacity: 0.8; }
+.psq { width: 8px; height: 8px; border-radius: 2px; flex: none; display: inline-block; }
+
+/* A select's trigger (components/ui/select.tsx): 30px, the control line, a chevron. */
+.select { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px 0 10px; border: 1px solid var(--control-line); border-radius: 6px; background: var(--surface); color: var(--text); font: 400 14px var(--sans); white-space: nowrap; flex: none; }
+.select > svg.lucide { width: 15px; height: 15px; color: var(--muted); }
+.select .chev { width: 14px !important; height: 14px !important; color: var(--faint) !important; margin-left: auto; }
+.select .mono { font-size: 13px; color: var(--muted); }
+.select.dis { opacity: 0.45; }
+.select.open { outline: 2px solid var(--teal); outline-offset: 1px; }
+.sw.dis { opacity: 0.45; }
+.sw.focus { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+/* A dropdown list under a select (SelectContent). */
+.menu { position: absolute; background: var(--raise); border: 1px solid var(--line-2); border-radius: 8px; box-shadow: var(--shadow-pop); padding: 4px; z-index: 9; }
+.menu .mi { display: flex; align-items: center; gap: 9px; height: 32px; padding: 0 8px; border-radius: 6px; font-size: 14px; white-space: nowrap; }
+.menu .mi svg.lucide { width: 15px; height: 15px; color: var(--faint); }
+.menu .mi .mono { font-size: 13px; color: var(--muted); }
+.menu .mi .ck { margin-left: auto; color: var(--text); }
+.menu .mi.on { background: var(--sel); }
+.menu .ml { font: 500 12px var(--sans); color: var(--faint); padding: 7px 8px 3px; }
+
+/* The AlertDialog (components/ui/alert-dialog.tsx): 440px, over the scrim. */
+.dlg { position: absolute; width: 440px; background: var(--raise); border: 1px solid var(--line-2); border-radius: 10px; box-shadow: var(--shadow-palette); padding: 20px 20px 16px; z-index: 9; }
+.dlg h4 { font: 600 16px/1.35 var(--sans); color: var(--text); }
+.dlg p { margin-top: 8px; font-size: 14px; line-height: 1.55; color: var(--muted); }
+.dlg p .mono { font-size: 13px; color: var(--text-2); }
+.dlg .acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.btn.danger { color: var(--red); }
+.btn.teal { color: var(--teal); }
+
+/* ── 1. Boards: the Attached rows, and "Prompt tasks" under them ──────────────── */
+.brows { border-top: 1px solid var(--line); }
+.brow { display: grid; grid-template-columns: 24px minmax(0, 1fr) 64px 140px minmax(0, 1fr) 64px; align-items: center; column-gap: 12px; min-height: 38px; padding: 0 8px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.brow > svg.lucide { width: 15px; height: 15px; color: var(--faint); }
+.brow .nm { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 8px; }
+.brow .ky { font: 400 13px var(--mono); color: var(--faint); }
+.brow .tk { font-size: 13.5px; color: var(--muted); white-space: nowrap; }
+.brow .tk .mono { font-size: 13px; }
+.brow .act { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--muted); white-space: nowrap; }
+.brow .act .mono { font-size: 13px; }
+.brow.on { background: var(--sel); border-radius: 6px; }
+.brow .end2 { display: flex; justify-content: flex-end; }
+.brow .pt { display: inline-flex; align-items: center; color: var(--faint); }
+.brow .pt svg.lucide { width: 14px; height: 14px; }
+.attachl { display: flex; align-items: center; gap: 12px; margin-top: 12px; font-size: 13.5px; color: var(--muted); }
+
+/* The setting: one hairline row, the switch, its label and the line that explains it, the board picker. */
+.pset { display: grid; grid-template-columns: 30px minmax(0, 1fr); column-gap: 14px; align-items: start; padding: 13px 8px 14px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.pset > .sw { margin-top: 2px; }
+.pset .lb { font: 500 14.5px/22px var(--sans); color: var(--text); }
+.pset .ex { margin-top: 2px; font-size: 13.5px; line-height: 1.5; color: var(--muted); max-width: 470px; }
+.pset .ex b { font-weight: 500; color: var(--text); }
+.pset .ex .mono { font-size: 13px; color: var(--text-2); }
+.pset .ex .teal { white-space: nowrap; }
+.pset .ex { max-width: 620px; }
+.pset .pick { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.pset .pick .pl { font-size: 13.5px; color: var(--muted); }
+.pset .pick .select { width: 240px; }
+.pset .pick .select > svg.lucide:first-child { color: var(--faint); }
+.pset.ro .val { font-size: 14px; color: var(--text); display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.pset.ro .val svg.lucide { width: 15px; height: 15px; color: var(--faint); }
+.pset.ro .val .mono { font-size: 13px; color: var(--muted); }
+table.t.sp.keys { table-layout: fixed; }
+.pset.dis .lb { color: var(--muted); }
+
+/* The status mapping's rows, cut by the fold (boards-view.tsx `Step`). */
+.mrows { border-top: 1px solid var(--line); }
+.mrow { display: grid; grid-template-columns: 200px minmax(0, 1fr); column-gap: 16px; align-items: center; min-height: 48px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.mrow .n { font: 500 14.5px/20px var(--sans); }
+.mrow .h { font-size: 12.5px; line-height: 16px; color: var(--faint); }
+.mrow .ctl { display: flex; align-items: center; gap: 6px; min-height: 34px; max-width: 400px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--surface); font-size: 14px; }
+.mrow .ctl svg.lucide { width: 15px; height: 15px; color: var(--muted); }
+.mrow .ctl .chev { margin-left: auto; color: var(--faint); }
+.chipst { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 4px 0 8px; border: 1px solid var(--line-2); border-radius: 5px; font-size: 13.5px; }
+.chipst .x { color: var(--muted); display: grid; place-items: center; width: 20px; height: 20px; }
+.chipst .x svg.lucide { width: 12px; height: 12px; }
+
+/* ── 2. Spend: the summary, the tables, Keys ─────────────────────────────────── */
+.sum { margin-top: 22px; }
+.sum .lab { font: 400 12.5px var(--mono); color: var(--faint); }
+.sum .fig { display: flex; align-items: baseline; gap: 10px; margin-top: 4px; }
+.sum .fig .big { font: 600 28px/1.2 var(--mono); color: var(--text); }
+.sum .fig .of { font-size: 14.5px; color: var(--muted); }
+.sum .fig .of .mono { font-size: 14px; }
+.sum .fig .pc { margin-left: auto; font: 600 18px var(--mono); }
+.bar8 { position: relative; height: 8px; border-radius: 4px; background: var(--line); margin-top: 10px; }
+.bar8 > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: #cfd8d4; }
+[data-theme="light"] .bar8 > i, [data-theme="light"] .bar6 > i { background: #9aa5a1; }
+.bar8 .tick, .bar6 .tick { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--faint); }
+.sum .meta2 { display: flex; align-items: center; gap: 12px; margin-top: 8px; font: 400 12.5px var(--mono); color: var(--faint); }
+.sum .meta2 .teal { margin-left: auto; font: 400 14px var(--sans); }
+.bar6 { position: relative; height: 6px; border-radius: 3px; background: var(--line); flex: 1; }
+.bar6 > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: #cfd8d4; }
+.bar6.red > i { background: var(--red); }
+.bar6 .tick.end { background: var(--text); top: -2px; bottom: -2px; }
+table.t.sp th { height: 30px; font-size: 12.5px; }
+table.t.sp td { height: 40px; }
+table.t.sp th.num, table.t.sp td.num { text-align: right; padding-right: 16px; }
+table.t.sp th.num:last-child, table.t.sp td.num:last-child { padding-right: 6px; }
+table.t.sp tr.on td { background: var(--sel); }
+table.t.sp tr.on td:first-child { border-radius: 6px 0 0 6px; }
+table.t.sp tr.on td:last-child { border-radius: 0 6px 6px 0; }
+table.t.sp td:first-child, table.t.sp th:first-child { padding-left: 6px; }
+.used { display: flex; align-items: center; gap: 12px; padding-right: 14px; }
+.used .s { width: 46px; text-align: right; font: 400 13.5px var(--mono); }
+.pn { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.pn .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-warn { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13.5px; }
+.st-warn svg.lucide { width: 13px; height: 13px; }
+.kname { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.kname .nm { font: 400 14px var(--mono); color: var(--text); white-space: nowrap; }
+.kname .host { font: 400 12.5px var(--mono); color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kname > svg.lucide { width: 15px; height: 15px; color: var(--muted); }
+td.zero, td .zero { color: var(--faint); }
+.unp { display: inline-flex; align-items: center; gap: 6px; }
+.unp svg.lucide { width: 13px; height: 13px; color: var(--red); }
+.idle { margin-top: 10px; font-size: 13px; color: var(--faint); }
+.warnrule { margin-top: 26px; padding: 2px 0 2px 14px; border-left: 2px solid var(--red); }
+.warnrule .h { display: flex; align-items: center; gap: 8px; font-weight: 500; font-size: 14.5px; }
+.warnrule .h svg.lucide { width: 15px; height: 15px; color: var(--red); }
+.warnrule p { margin-top: 2px; padding-left: 23px; font-size: 13.5px; color: var(--muted); }
+
+/* The panel's eyebrow and title, as Spend's forms draw them (spend-forms.tsx). */
+.eb { font: 500 12px var(--sans); color: var(--faint); }
+.ptitle { display: flex; align-items: center; gap: 9px; margin-top: 4px; font: 600 15px var(--sans); }
+.ptitle.mono { font: 600 15px var(--mono); }
+.psub { margin-top: 4px; font-size: 13.5px; color: var(--muted); }
+.psub .mono { font-size: 13px; }
+.props .prop.r .v { justify-content: flex-end; }
+.props .prop .v .faint { font-size: 13px; }
+.mline { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; min-height: 30px; font-size: 14px; }
+.mline .mono { font-size: 13.5px; }
+.mline .f { font-size: 13px; color: var(--faint); }
+.plink { display: inline-flex; align-items: center; gap: 4px; margin-top: 14px; color: var(--teal); font-size: 14px; }
+.plink svg.lucide { width: 14px; height: 14px; }
+
+/* Skeletons (components/ui/skeleton.tsx) */
+.sk { display: block; height: 12px; border-radius: 4px; background: var(--sel); }
+
+/* ── 3. GitHub: an App's section, its installations, the App's panel ─────────── */
+.appsec { margin-top: 26px; }
+.appsec .line { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 8px; border-bottom: 1px solid var(--line); white-space: nowrap; border-radius: 0; }
+.appsec .line.on { background: var(--sel); border-radius: 6px; }
+.appsec .line > svg.lucide { width: 16px; height: 16px; color: var(--text); }
+.appsec .line .slug { font: 600 15px var(--mono); }
+.appsec .line .own { font-size: 13.5px; color: var(--muted); }
+.appsec .line .own .mono { font-size: 13px; }
+.appsec .line .wst { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--muted); }
+.appsec .line .wst svg.lucide { width: 14px; height: 14px; }
+.inst { display: grid; grid-template-columns: 200px 120px minmax(0, 1fr) 170px auto; align-items: center; min-height: 42px; padding: 0 8px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.inst .acc { display: flex; align-items: center; gap: 10px; font: 400 14px var(--mono); }
+.inst .acc svg.lucide { width: 15px; height: 15px; color: var(--faint); }
+.inst .kd { font-size: 13px; color: var(--faint); }
+.inst .rp { color: var(--muted); font-size: 14px; }
+.inst .stt { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); }
+.inst .stt svg.lucide { width: 14px; height: 14px; color: var(--green); }
+.inst .ac { justify-self: end; font-size: 13.5px; color: var(--faint); }
+.strangers { display: flex; align-items: center; gap: 8px; margin-top: 16px; font-size: 13px; color: var(--faint); }
+.strangers svg.lucide { width: 13px; height: 13px; }
+.offnote { display: flex; align-items: flex-start; gap: 9px; margin-top: 10px; padding: 0 8px; font-size: 13.5px; color: var(--muted); line-height: 1.5; }
+.offnote svg.lucide { width: 14px; height: 14px; margin-top: 3px; color: var(--faint); }
+.offnote .teal { white-space: nowrap; }
+.offnote code, .evx code, .dlg code, .once code { font: 400 12.5px var(--mono); padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--text-2); }
+
+/* The App's panel: PanelLabel 12px, PropRow with a 112px key column, as github-orgs.tsx. */
+.props h6 { margin-bottom: 6px; font: 500 12px var(--sans); color: var(--faint); display: flex; align-items: center; }
+.props h6 .n { margin-left: auto; font: 500 12px var(--mono); }
+.props .hr { height: 1px; background: var(--line); margin: 14px 0; }
+.props .prop.k112 { grid-template-columns: 112px minmax(0, 1fr); min-height: 30px; }
+.props .prop .v .mono.xs { font-size: 12px; color: var(--text-2); }
+.props .prop .v svg.lucide { width: 14px; height: 14px; color: var(--muted); }
+.props .prop.ev { align-items: start; padding-top: 5px; }
+.props .prop.ev .k { line-height: 20px; }
+.props .prop .v.evv { gap: 8px; }
+.evv .teal { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; }
+.props .prop .v.evv .teal svg.lucide { width: 13px; height: 13px; color: var(--teal); }
+.evx { margin: 1px 0 6px; font-size: 12.5px; line-height: 1.5; color: var(--faint); white-space: normal; }
+.evx .teal { white-space: nowrap; }
+.perm { display: flex; justify-content: space-between; align-items: center; height: 30px; font: 400 13.5px var(--mono); }
+.perm .k2 { color: var(--muted); }
+.outl { display: inline-flex; align-items: center; gap: 4px; margin-top: 10px; color: var(--teal); font-size: 14px; }
+.outl svg.lucide { width: 13px; height: 13px; }
+
+/* "Turn on events": the result, shown once (as "Connect another App"'s shown-once group). */
+.once .psub { margin-bottom: 4px; }
+.once .step { display: grid; grid-template-columns: 22px minmax(0, 1fr); column-gap: 8px; margin-top: 14px; }
+.once .step .num { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--line-2); display: grid; place-items: center; font: 500 11.5px var(--mono); color: var(--muted); margin-top: 1px; }
+.once .step .hd { display: flex; align-items: center; gap: 8px; font: 500 14px/22px var(--sans); }
+.once .step .hd .teal { margin-left: auto; display: inline-flex; align-items: center; gap: 3px; font-weight: 400; font-size: 13.5px; }
+.once .step .hd .teal svg.lucide { width: 13px; height: 13px; }
+.once .step .d { font-size: 13px; color: var(--muted); margin-top: 1px; }
+.once .flab { margin: 10px 0 5px; font: 500 13px var(--sans); color: var(--muted); }
+.copyf { display: flex; align-items: center; gap: 8px; }
+.copyf .fv { flex: 1; min-width: 0; height: 32px; display: block; line-height: 30px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--surface); font: 400 12.5px var(--mono); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.copyf .cb { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: 6px; background: var(--surface); color: var(--muted); flex: none; }
+.copyf .cb svg.lucide { width: 15px; height: 15px; }
+.copyf .cb.done { color: var(--green); }
+.lock { display: flex; align-items: flex-start; gap: 7px; margin-top: 9px; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.lock svg.lucide { width: 13px; height: 13px; margin-top: 2px; flex: none; }
+.evlist { margin-top: 7px; border-top: 1px solid var(--line); }
+.evlist li { list-style: none; display: flex; align-items: center; gap: 8px; height: 25px; border-bottom: 1px solid var(--line); font: 400 13px var(--mono); color: var(--text); }
+.evlist li .f { margin-left: auto; font: 400 12px var(--sans); color: var(--faint); }
+.once .foot { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+.once .foot .help { font-size: 12.5px; }
+
+/* ── 4. Environment: the Setup tab and the new repo's draft ─────────────────── */
+.etabs { margin-top: 14px; }
+.repobd { margin-top: 18px; }
+.repobd .band { margin-top: 0; font-size: 14.5px; }
+.repobd .band svg.lucide { width: 15px; height: 15px; color: var(--muted); }
+.rd { padding: 12px 12px 14px 12px; border-bottom: 1px solid var(--line); }
+.rd .h { display: flex; align-items: center; gap: 10px; min-height: 30px; white-space: nowrap; }
+.rd .h .rn { font: 600 14.5px var(--mono); }
+.rd .h .by { font-size: 13px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; }
+.rd .h .acts { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.rd .why { margin-top: 2px; font-size: 13.5px; line-height: 1.5; color: var(--muted); max-width: 640px; }
+.rd .why .mono { font-size: 13px; color: var(--text-2); }
+.rd .lab { display: flex; align-items: baseline; gap: 8px; margin: 12px 0 5px; font: 500 13px var(--sans); color: var(--muted); }
+.rd .lab .f { font: 400 12.5px var(--sans); color: var(--faint); }
+.rd .lab .add { margin-left: 0; font-size: 12.5px; }
+.rd .foot { margin-top: 10px; font-size: 13px; color: var(--faint); }
+.diff { border: 1px solid var(--line-2); border-radius: 8px; background: var(--surface); padding: 5px 0; font: 400 13px/22px var(--mono); overflow: hidden; }
+.diff .l { display: grid; grid-template-columns: 26px minmax(0, 1fr); white-space: pre; padding-right: 12px; }
+.diff .l .g { text-align: center; color: var(--faint); }
+.diff .l.a { background: var(--diff-add); }
+.diff .l.a .g { color: var(--green); }
+.diff .l.d { background: var(--diff-del); }
+.diff .l.d .g { color: var(--red); }
+.diff .l.u { color: var(--faint); font-family: var(--sans); font-size: 12.5px; }
+.diff .l.u .g svg.lucide { width: 12px; height: 12px; margin-top: 5px; }
+.vrows { border-top: 1px solid var(--line); }
+.vr { display: grid; grid-template-columns: 26px 22px 210px minmax(0, 1fr) auto; align-items: center; min-height: 34px; border-bottom: 1px solid var(--line); font: 400 13.5px var(--mono); }
+.vr .g { text-align: center; color: var(--green); }
+.vr > svg.lucide { width: 14px; height: 14px; color: var(--faint); }
+.vr .v2 { color: var(--text-2); }
+.vr .v2.e { font: 400 13px var(--sans); color: var(--faint); }
+.vr .chip { height: 20px; font-size: 11.5px; }
+/* The script editor (environment-view.tsx `ScriptEditor`): a gutter of line numbers, mono 13px. */
+.esec { margin-top: 26px; }
+.esec .hd2 { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.esec .hd2 h3 { font: 600 15px var(--sans); }
+.esec .hd2 .sec-note { font-size: 13.5px; }
+.esec .hd2 .end { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--muted); }
+.ed { border: 1px solid var(--line-2); border-radius: 8px; background: var(--surface); padding: 8px 0; font: 400 13px/22px var(--mono); }
+.ed .l { display: grid; grid-template-columns: 40px minmax(0, 1fr); white-space: pre; padding-right: 14px; position: relative; }
+.ed .l .n { text-align: right; padding-right: 14px; color: var(--faint); }
+.ed .l.new::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--teal); }
+.ed .l.new { background: color-mix(in srgb, var(--teal) 7%, transparent); }
+.envin { height: 26px; width: 82px; border: 1px solid var(--control-line); border-radius: 6px; background: var(--surface); padding: 0 8px; font: 400 13px/24px var(--mono); color: var(--text); }
+table.t.ent th { height: 30px; font-size: 12.5px; }
+table.t.ent td { height: 40px; font-family: var(--mono); font-size: 13.5px; }
+table.t.ent td svg.lucide { width: 15px; height: 15px; color: var(--faint); }
+table.t.ent tr.new td:first-child { box-shadow: inset 2px 0 0 var(--teal); }
+.secin { display: inline-flex; align-items: center; width: 240px; height: 28px; padding: 0 9px; border: 1px solid var(--control-line); border-radius: 6px; background: var(--surface); font: 400 13px var(--sans); color: var(--faint); }
+.cbx { display: inline-block; width: 15px; height: 15px; border: 1px solid var(--control-line); border-radius: 4px; vertical-align: middle; }
+.reps .rep { display: flex; align-items: center; gap: 8px; min-height: 26px; font: 400 13.5px var(--mono); }
+.reps .rep .chip { height: 19px; font-size: 11.5px; font-family: var(--sans); }
+.found .it { margin-top: 7px; }
+.found .it .f { font: 400 13.5px var(--mono); color: var(--text); }
+.found .it .w { font-size: 13px; color: var(--muted); }
+.tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.tools .chip { height: 24px; font: 400 12.5px var(--mono); color: var(--text-2); }
+
+/* ── Boards of states: a piece per cell, its label over it ───────────────────── */
+.sheet { position: relative; width: 1440px; height: 956px; padding: 30px 36px; background: var(--bg); overflow: hidden; }
+.sheet .cap { font: 600 17px var(--sans); color: var(--text); }
+.sheet .cap .faint { font-weight: 400; font-size: 14px; margin-left: 8px; }
+.cell { position: absolute; }
+.cell > .lbl { display: block; margin-bottom: 10px; white-space: normal; line-height: 1.45; }
+.cell .frame { position: relative; border: 1px dashed var(--line-2); border-radius: 8px; padding: 14px 16px; background: var(--bg); }
+.cell .frame.panel { padding: 18px 18px; }
+.cell .frame.bare { border: 0; padding: 0; background: transparent; }
+.dlgbox { position: relative; border-radius: 10px; }
+.dlgbox .dlg { position: relative; }
+
+/* Board labels (as milestone 9's), defined here so these pages needn't load m9.css. */
+.lbl { font: 500 13px var(--sans); color: var(--faint); white-space: nowrap; }
+.lbl b { color: var(--muted); font-weight: 600; margin-right: 6px; }
+.props .prop .v .green svg.lucide { color: var(--green); }

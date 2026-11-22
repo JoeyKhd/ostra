@@ -1,0 +1,156 @@
+<!doctype html>
+<!-- The four gaps at phone width, 390×844, in milestone 8's phone shell (app-shell.md, "Phone"): no rail,
+     the menu button, the breadcrumb, one column; the properties panel drops under the page, and a form
+     or a shown-once result opens as a bottom sheet.
+       ?scene=prompt   prompt-tickets-phone: Boards, the setting under Attached, the board picker full width.
+       ?scene=spend    spend-keys-phone: Spend scrolled to Keys, each key a two-line row.
+       ?scene=github   github-events-phone: Turn on's result in a bottom sheet over the GitHub page.
+       ?scene=env      environment-repo-draft-phone: the new repo's draft, its buttons full width.
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ostra · gaps · phone</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="gaps.css">
+<style>
+  html, body { width: 390px; height: 844px; overflow: hidden; }
+  .ph { position: relative; width: 390px; height: 844px; display: flex; flex-direction: column; background: var(--bg); }
+  .ph .top { height: 54px; flex: none; display: flex; align-items: center; gap: 2px; padding: 0 6px; border-bottom: 1px solid var(--line); }
+  .ph .top .ib { width: 44px; height: 44px; color: var(--muted); position: relative; }
+  .ph .top .ib svg.lucide { width: 20px; height: 20px; }
+  .ph .top .menu-dot { position: absolute; top: 10px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 2px var(--bg); }
+  .ph .top .crumb { display: flex; align-items: center; gap: 6px; min-width: 0; font: 500 16px var(--sans); color: var(--muted); white-space: nowrap; }
+  .ph .top .crumb .chev { width: 15px; height: 15px; color: var(--faint); }
+  .ph .top .crumb b { color: var(--text); font-weight: 600; }
+  .ph .top .r { margin-left: auto; display: flex; padding-right: 4px; }
+  .ph .scroll { flex: 1; min-height: 0; overflow: hidden; padding: 14px 16px; }
+  .ph h1 { font-size: 23px; margin: 0 0 2px; }
+  .ph .lede { font-size: 14px; }
+  .ph .shead { margin-top: 20px; }
+  .ph .shead h3 { font-size: 15.5px; }
+  /* Boards: an attached board as two lines. */
+  .pb { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; column-gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--line); }
+  .pb svg.lucide { width: 16px; height: 16px; color: var(--faint); margin-top: 3px; }
+  .pb .t { font: 500 15px/22px var(--sans); }
+  .pb .d { grid-column: 2 / 4; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .pb .d .mono { font-size: 12.5px; }
+  .pb .k { font: 400 13px/22px var(--mono); color: var(--faint); }
+  .pb.on { background: var(--sel); border-radius: 8px; border-bottom-color: transparent; }
+  .ph .pset { grid-template-columns: 34px minmax(0, 1fr); padding: 14px 2px; }
+  .ph .pset .lb { font-size: 15px; }
+  .ph .pset .ex { font-size: 14px; }
+  .ph .pset .pick { flex-direction: column; align-items: stretch; gap: 6px; margin-top: 12px; }
+  .ph .pset .pick .select { width: 100%; height: 44px; font-size: 15px; }
+  .ph .sw { width: 34px; height: 20px; border-radius: 10px; }
+  .ph .sw::after { width: 14px; height: 14px; }
+  .ph .sw.on::after { left: 16px; }
+  /* Spend: a key as two lines, its tokens under its name. */
+  .kr { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; column-gap: 10px; align-items: center; padding: 10px 4px; border-bottom: 1px solid var(--line); }
+  .kr .nm { font: 400 15px/22px var(--mono); }
+  .kr .sp { font: 400 15px var(--mono); }
+  .kr .d { grid-column: 2 / 4; font: 400 12.5px/18px var(--mono); color: var(--faint); }
+  .kr .d .s { font-family: var(--sans); }
+  .kr.on { background: var(--sel); border-radius: 8px; border-bottom-color: transparent; }
+  .kr .unp { color: var(--text); }
+  .prow2 { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; column-gap: 10px; align-items: center; padding: 9px 4px 10px; border-bottom: 1px solid var(--line); font-size: 15px; }
+  .prow2 .s { font: 400 14px var(--mono); }
+  .prow2 .bar6 { grid-column: 2 / 4; margin-top: 8px; flex: none; }
+  /* The bottom sheet: a form or a shown-once result. */
+  .shade { position: absolute; inset: 0; background: var(--scrim); z-index: 4; }
+  .bsheet { position: absolute; left: 0; right: 0; bottom: 0; top: 64px; background: var(--raise); border-top: 1px solid var(--line-2); border-radius: 14px 14px 0 0; box-shadow: var(--shadow-pop); z-index: 5; padding: 8px 18px 18px; overflow: hidden; }
+  .bsheet .grab { width: 36px; height: 4px; border-radius: 2px; background: var(--line-3); margin: 0 auto 10px; }
+  .bsheet .x { position: absolute; top: 10px; right: 8px; width: 44px; height: 44px; display: grid; place-items: center; color: var(--muted); }
+  .bsheet .x svg.lucide { width: 18px; height: 18px; }
+  .bsheet .once .copyf .fv { height: 44px; line-height: 42px; font-size: 13px; }
+  .bsheet .once .copyf .cb { width: 44px; height: 44px; }
+  .bsheet .evlist li { height: 24px; }
+  .bsheet .once .foot .btn { height: 44px; flex: 1; font-size: 15px; }
+  .bsheet .once .foot .help { display: none; }
+  /* Environment: the draft, stacked. */
+  .ph .tabs { margin-top: 12px; gap: 18px; }
+  .ph .tab { font-size: 15px; height: 42px; }
+  .ph .repobd { margin-top: 14px; }
+  .ph .band { height: 40px; padding: 0 12px; font-size: 14.5px; }
+  .ph .rd { padding: 10px 2px 14px; }
+  .ph .rd .h .rn { font-size: 15px; }
+  .ph .rd .why { font-size: 14px; }
+  .ph .diff { font-size: 12.5px; line-height: 21px; }
+  .ph .vr { grid-template-columns: 20px 20px minmax(0, 1fr) auto; font-size: 13px; min-height: 40px; }
+  .ph .vr .v2 { display: none; }
+  .pacts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .pacts.one { grid-template-columns: 1fr; margin-top: 4px; }
+  .pacts .btn { height: 44px; font-size: 15px; }
+  .ph .rd .foot { margin-top: 8px; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="ph" id="ph"></div>
+<script src="gaps.js"></script>
+<script>
+(() => {
+  const { ic, m } = G;
+  const scene = new URLSearchParams(location.search).get("scene") ?? "prompt";
+  const top = (a, b, right = "") => `
+    <div class="top"><span class="ib">${ic("menu")}<span class="menu-dot"></span></span>
+      <span class="crumb">${a}${ic("chevron-right", "chev")}<b>${b}</b></span><span class="r">${right}</span></div>`;
+
+  const scenes = {
+    prompt: () => `${top("calculator", "Boards")}
+      <div class="scroll">
+        <h1>Boards</h1>
+        <p class="lede">Linear teams whose tickets reach this project's Inbox. Each board maps ostra's steps to the team's statuses.</p>
+        <div class="shead"><h3>Attached</h3><span class="n">2</span></div>
+        <div style="border-top:1px solid var(--line)">
+          <div class="pb on">${ic("square-kanban")}<span class="t">Calculator</span><span class="k">CALC</span><span class="d"><span><span class="mono">38</span> open</span><span class="sep">·</span><span class="dot green"></span><span>Last event <span class="mono">2m ago</span></span></span></div>
+          <div class="pb">${ic("square-kanban")}<span class="t">Web platform</span><span class="k">WEB</span><span class="d"><span><span class="mono">12</span> open</span><span class="sep">·</span><span class="dot grey"></span><span>Polled <span class="mono">40s ago</span></span></span></div>
+        </div>
+        <div class="shead"><h3>Prompt tasks</h3></div>
+        ${G.promptSetting({ state: "on", many: true })}
+        <div class="shead"><h3>Status mapping</h3><span class="sec-note" style="color:var(--faint)">Calculator · <span class="mono">CALC</span></span></div>
+        <p class="sec-note" style="font-size:14px">Drafted from Linear's status types. Every status of the team is in each picker.</p>
+      </div>`,
+
+    spend: () => `${top("Acme Corp", "Spend", `<span class="ib">${ic("calendar")}</span>`)}
+      <div class="scroll" style="padding-top:0">
+        <div class="prow2" style="padding-top:0"><span class="psq" style="background:#D9826B"></span><span>data-pipeline</span><span class="s">$70.35</span><span class="bar6"><i style="width:23%"></i></span></div>
+        <p class="idle" style="font-size:13.5px">13 projects spent nothing this month.</p>
+        <div class="shead" style="margin-top:22px"><h3>Keys</h3><span class="n">4</span></div>
+        <div style="border-top:1px solid var(--line)">
+          ${G.keys.map((k) => `<div class="kr${k.name === "northwind-anthropic" ? " on" : ""}">${G.logo(k.vendor)}<span class="nm">${k.name}</span><span class="sp${k.spent === "$0.00" ? " faint" : ""}">${k.unpriced ? `<span class="unp">${ic("circle-alert")}${k.spent}</span>` : k.spent}</span>
+            <span class="d">${k.host}${k.fresh === "–" ? ' · <span class="s">nothing this month</span>' : ` · ${{ "acme-anthropic": "128.4M", "northwind-anthropic": "46.9M", "globex-openrouter": "11.4M" }[k.name]} <span class="s">tokens</span>`}</span></div>`).join("")}
+        </div>
+        <div class="warnrule" style="margin-top:22px"><div class="h" style="font-size:15px;align-items:flex-start">${ic("circle-alert")}<span>acme/sql-coder-ft has no price, so budgets can't count it.</span></div><p style="font-size:14px">3.4M tokens this month aren't in these figures. <span class="teal">Enter its price.</span></p></div>
+        <div class="shead" style="margin-top:22px"><h3>Models</h3><span class="n">5</span></div>
+        <div style="border-top:1px solid var(--line)">
+          <div class="kr">${G.logo("anthropic")}<span style="font-size:15px">Claude Opus 5.5</span><span class="sp">$972.40</span><span class="d">129.6M <span class="s">tokens</span></span></div>
+        </div>
+      </div>`,
+
+    github: () => `${top("Acme Corp", "GitHub")}
+      <div class="scroll">
+        <h1>GitHub</h1>
+        <p class="lede">Each App opens pull requests as its own bot. ostra mints a token only for an installation an admin has linked, and never hands it to an agent.</p>
+      </div>
+      <div class="shade"></div>
+      <div class="bsheet"><div class="grab"></div><span class="x">${ic("x")}</span>${G.onceGroup({ copied: true })}</div>`,
+
+    env: () => `${top("calculator", "Environment", `<span class="ib">${ic("ellipsis")}</span>`)}
+      <div class="scroll">
+        <div class="eyebrow">Saved 2h ago</div>
+        <h1>Environment</h1>
+        <div class="tabs"><span class="tab on">Setup</span><span class="tab">Services and checks</span><span class="tab">App</span></div>
+        <div class="repobd">
+          <div class="band">${ic("git-branch-plus")}New repo, not in the setup yet <span class="n">1</span></div>
+          ${G.repoDraft({ role: "admin", kind: "case", phone: true })}
+        </div>
+      </div>`,
+  };
+  document.getElementById("ph").innerHTML = scenes[scene]();
+  window.addEventListener("load", () => { lucide.createIcons(); document.body.dataset.ready = "1"; });
+})();
+</script>
+</body>
+</html>

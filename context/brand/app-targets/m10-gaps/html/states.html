@@ -1,0 +1,181 @@
+<!doctype html>
+<!-- The four gaps' states, one board each (1440×956), every piece drawn at the build's size.
+       ?sheet=prompt   prompt-tickets-states: the setting with one board, several, none, a member's,
+                       the connection inactive, a failed save, and the Detach dialog.
+       ?sheet=spend    spend-keys-states: Keys loading, nothing spent yet, a past month's removed key,
+                       one Tokens column below 1100px, a key with unpriced tokens selected, nothing selected.
+       ?sheet=github   github-events-states: the Events row in each state, the section line's words,
+                       New webhook secret's result, and its two dialogs.
+       ?sheet=env      environment-repo-draft-states: a plain saved script, nothing found, a member's
+                       view, two new repos, dismissed, applied, and Edit first's marked rows.
+       &theme=light    the light tokens.
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · gaps · states</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="gaps.css">
+<style>
+  body { background: var(--bg); }
+  .col { position: absolute; display: flex; flex-direction: column; }
+  .cell2 > .lbl { display: block; margin-bottom: 8px; white-space: normal; line-height: 1.45; }
+  .cell2 .frame { position: relative; border: 1px dashed var(--line-2); border-radius: 8px; padding: 12px 16px; background: var(--bg); }
+  .cell2 .frame.panel { padding: 16px 18px; }
+  .cell2 .frame.bare { border: 0; padding: 0; background: transparent; }
+  .cell2 .frame .pset { border-top: 0; border-bottom: 0; padding-top: 4px; padding-bottom: 4px; }
+  .cell .frame .shead h3 { font-size: 15px; }
+  .alert { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; font-size: 13.5px; color: var(--red); }
+  .alert svg.lucide { width: 14px; height: 14px; margin-top: 3px; }
+  .status { display: flex; align-items: center; gap: 8px; min-height: 34px; font-size: 14px; }
+  .status svg.lucide { width: 14px; height: 14px; }
+  .status .teal { margin-left: 4px; }
+  .rd.compact { padding-bottom: 12px; }
+  .rd .h .chev2 { color: var(--faint); }
+  .rd .h .chev2 svg.lucide { width: 15px; height: 15px; }
+  .props-frag .prop { grid-template-columns: 112px minmax(0, 1fr); min-height: 30px; font-size: 14px; }
+  .props-frag .prop .k { color: var(--muted); }
+  .props-frag .prop .v { display: flex; align-items: center; gap: 7px; min-width: 0; white-space: nowrap; overflow: hidden; }
+  .props-frag .prop .v .mono.xs { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; }
+  .appline { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .appline > svg.lucide { width: 16px; height: 16px; }
+  .appline .slug { font: 600 15px var(--mono); }
+  .appline .wst { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--muted); }
+  .appline .wst svg.lucide { width: 14px; height: 14px; }
+</style>
+</head>
+<body>
+<div class="sheet" id="sheet"></div>
+<script src="gaps.js"></script>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
+  const { ic, m } = G;
+  const sheet = q.get("sheet") ?? "prompt";
+  // A column of pieces at x, from y down, `gap` apart: each a label over its frame.
+  const col = (x, y, w, gap, ...cells) => `<div class="col" style="left:${x}px;top:${y}px;width:${w}px;gap:${gap}px">${cells.join("")}</div>`;
+  const cell = (label, body, cls = "") => `<div class="cell2"><span class="lbl">${label}</span><div class="frame ${cls}">${body}</div></div>`;
+  const head = "";
+
+  const sheets = {
+    prompt: () => `
+      <div class="cap">Make a ticket for every prompt task <span class="faint">its states, on the Boards page (prompt-tickets.md)</span></div>
+      ${col(36, 76, 660, 20,
+      cell("<b>One board</b>a plain switch; off by default", head + G.promptSetting({ state: "off", many: false })),
+      cell("<b>One board, on</b>no picker: the sentence names the board", head + G.promptSetting({ state: "on", many: false })),
+      cell("<b>Several boards</b>the admin picks the board; it applies at once", head + G.promptSetting({ state: "on", many: true, open: true }) + G.boardMenu("left:116px;top:128px;width:250px") + '<div style="height:78px"></div>'),
+      cell("<b>No board attached</b>off and disabled, pointing at Attach", head + G.promptSetting({ state: "none", many: false })))}
+      ${col(744, 76, 660, 20,
+      cell("<b>A member</b>read-only, under the page's note", `<p class="help" style="margin:-2px 0 10px">Only the project's admins change boards.</p>${head}${G.promptSetting({ state: "ro-on", many: true })}`),
+      cell("<b>Linear's connection isn't active</b>the board keeps the setting; nothing is made until it's back", head + G.promptSetting({ state: "paused", many: true })),
+      cell("<b>A failed save</b>the switch goes back; the server's reason, in red", head + G.promptSetting({ state: "off", many: true }) + `<p class="alert" role="alert">${ic("triangle-alert")}That isn't one of this project's boards, or its tracker connection isn't active.</p>`),
+      cell("<b>Detaching the board that takes them</b>the dialog says the setting turns off", `<div class="dlg" style="position:relative;width:100%;box-shadow:none">
+          <h4>Detach Calculator?</h4>
+          <p>ostra stops polling CALC. Its tickets stay in the Inbox's history and its tasks keep their links, but no new task starts from it. Prompt tasks stop getting tickets: <b style="font-weight:500;color:var(--text)">Make a ticket for every prompt task</b> turns off.</p>
+          <div class="acts"><span class="btn">Cancel</span><span class="btn danger">Detach</span></div></div>`, "bare"))}`,
+
+    spend: () => {
+      const keysHead = (n, note = "one per model provider") => `<div class="shead"><h3>Keys</h3><span class="n">${n}</span><span class="sec-note" style="color:var(--faint);margin-left:4px">${note}</span></div>`;
+      const sk = (w) => `<span class="sk" style="width:${w}px;height:11px"></span>`;
+      const loading = `${keysHead("")}<table class="t sp keys"><colgroup><col><col style="width:92px"><col style="width:72px"><col style="width:90px"><col style="width:94px"><col style="width:104px"></colgroup>
+        <thead><tr><th>Key</th><th class="num">Fresh input</th><th class="num">Output</th><th class="num">Cache read</th><th class="num">Cache write</th><th class="num">Spent</th></tr></thead>
+        <tbody>${[170, 200, 160, 140].map((w) => `<tr><td>${sk(w)}</td><td class="num">${sk(44)}</td><td class="num">${sk(36)}</td><td class="num">${sk(44)}</td><td class="num">${sk(40)}</td><td class="num">${sk(60)}</td></tr>`).join("")}</tbody></table>`;
+      const zeroList = [...G.keys].sort((a, b) => a.name.localeCompare(b.name));
+      const nothing = `${keysHead(4)}${G.keysTable({ selected: "", list: zeroList, zero: true })}<p class="idle">Nothing spent in November yet: keys are in name order until they spend.</p>`;
+      const past = `${keysHead(3, "October 2026")}<table class="t sp keys"><colgroup><col><col style="width:92px"><col style="width:72px"><col style="width:90px"><col style="width:94px"><col style="width:104px"></colgroup>
+        <thead><tr><th>Key</th><th class="num">Fresh input</th><th class="num">Output</th><th class="num">Cache read</th><th class="num">Cache write</th><th class="num">Spent</th></tr></thead>
+        <tbody>
+          <tr><td><span class="kname">${G.logo("anthropic")}<span class="nm">acme-anthropic</span></span></td><td class="num">61.4M</td><td class="num">5.2M</td><td class="num">80.1M</td><td class="num">7.0M</td><td class="num">$1,388.20</td></tr>
+          <tr><td><span class="kname">${G.logo("openrouter")}<span class="nm">globex-openrouter</span></span></td><td class="num">6.1M</td><td class="num">1.3M</td><td class="num">3.9M</td><td class="num zero">–</td><td class="num">$241.06</td></tr>
+          <tr style="color:var(--faint)"><td><span class="kname">${ic("server")}<span class="nm" style="color:var(--faint)">initech-vllm</span><span class="chip" style="height:20px;font-size:11.5px">removed 12 Nov</span></span></td><td class="num">2.2M</td><td class="num">0.3M</td><td class="num zero">–</td><td class="num zero">–</td><td class="num">$18.40</td></tr>
+        </tbody></table>`;
+      const narrow = `${keysHead(4)}<table class="t sp"><colgroup><col><col style="width:96px"><col style="width:104px"></colgroup>
+        <thead><tr><th>Key</th><th class="num">Tokens</th><th class="num">Spent</th></tr></thead>
+        <tbody>${G.keys.map((k) => `<tr${k.name === "northwind-anthropic" ? ' class="on"' : ""}><td><span class="kname">${G.logo(k.vendor)}<span class="nm">${k.name}</span></span></td><td class="num${k.fresh === "–" ? " zero" : ""}">${{ "acme-anthropic": "128.4M", "northwind-anthropic": "46.9M", "globex-openrouter": "11.4M", "spare-openai": "–" }[k.name]}</td><td class="num${k.spent === "$0.00" ? " zero" : ""}">${k.spent}</td></tr>`).join("")}</tbody></table>`;
+      const globex = `
+        <div class="eb">Key</div>
+        <div class="ptitle mono">globex-openrouter</div>
+        <div class="psub"><span class="mono">openrouter.ai</span> · OpenAI-compatible</div>
+        <div class="group" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--line)">
+          <h5>November 2026</h5>
+          <div class="prop"><span class="k">Spent</span><span class="v mono">$258.52</span></div>
+          <div class="prop"><span class="k">Share</span><span class="v"><span class="mono">14%</span><span class="faint">of the organization's</span></span></div>
+          <div class="prop"><span class="k">Tasks</span><span class="v mono">21</span></div>
+          <div class="prop"><span class="k">Unpriced</span><span class="v"><span class="unp">${ic("circle-alert")}<span class="mono">3.4M</span> tokens</span></span></div>
+          <p class="help" style="margin-top:4px">acme/sql-coder-ft has no price, so its tokens aren't in <span class="mono">$258.52</span>. <span class="teal">Enter its price.</span></p>
+        </div>
+        <div class="group">
+          <h5>Models on this key <span class="mono" style="margin-left:6px;margin-right:auto">3</span></h5>
+          <div class="mline">${G.logo("openai")}<span>GPT-6.2 Sol</span><span class="mono">$188.60</span></div>
+          <div class="mline">${G.logo("deepseek")}<span>DeepSeek V4 Flash</span><span class="mono">$69.92</span></div>
+          <div class="mline">${ic("cpu", "i15")}<span class="mono">acme/sql-coder-ft</span><span class="red" style="font-size:13.5px">No price</span></div>
+        </div>`;
+      return `
+      <div class="cap">Spend › Keys <span class="faint">its states (spend-keys.md)</span></div>
+      ${col(36, 76, 720, 18,
+        cell("<b>Loading</b>four skeleton rows, as Projects and Models", loading),
+        cell("<b>Nothing spent yet this month</b>every key at $0.00, by name", nothing),
+        cell("<b>A past month</b>a key removed since keeps its row, faint, and opens nothing", past))}
+      ${col(800, 76, 420, 18,
+        cell("<b>A key with unpriced tokens, selected</b>", globex, "panel"),
+        cell("<b>Nothing selected</b>the panel's hint names keys too", `<p class="psub" style="margin:0">Pick a project, a key, a model or the organization's budget.</p>`, "panel"),
+        cell("<b>Below 1100px</b>one Tokens column, the four's sum; the panel lists them", narrow))}`;
+    },
+
+    github: () => {
+      const frag = (state) => `<div class="props-frag">${G.eventsRow(state)}</div>`;
+      const line = (wst) => `<div class="appline">${ic("github")}<span class="slug">ostra-acme</span><span class="own muted" style="font-size:13.5px">owned by <span class="mono" style="font-size:13px">acme</span> · public</span><span class="wst">${wst}</span></div>`;
+      return `
+      <div class="cap">GitHub › Events <span class="faint">the App panel's row in each state, the section line, and the secret's dialogs (github-events.md)</span></div>
+      ${col(36, 76, 340, 16,
+      cell("<b>No public address</b><code>webhookPossible</code> false: no action", frag("nopublic"), "panel"),
+      cell("<b>A public address</b>no webhook yet: Turn on", frag("off"), "panel"),
+      cell("<b>Secret set, events missing</b><code>missingEvents</code> not empty", frag("waiting"), "panel"),
+      cell("<b>On</b>all ten events, deliveries arriving", frag("on"), "panel"),
+      cell("<b>GitHub didn't answer</b><code>missingEvents</code> null", frag("unknown"), "panel"))}
+      ${col(420, 76, 470, 18,
+      cell("<b>The App's section line</b>the main column, by the same states", `
+        ${line('<span class="dot grey"></span>Events off')}
+        ${line(`${ic("clock")}Waiting for events`)}
+        ${line('<span class="dot green"></span>Webhook receiving')}
+        ${line(`${ic("triangle-alert")}<span style="color:var(--text)">Webhook failing</span>`)}`),
+      cell("<b>New webhook secret</b>asks first", G.replaceDialog("position:relative;width:100%;box-shadow:none"), "bare"),
+      cell("<b>Leaving the result without Done</b>", G.leaveDialog("position:relative;width:100%;box-shadow:none"), "bare"))}
+      ${col(934, 76, 470, 16, cell("<b>New webhook secret's result</b>the address and the new secret, shown once; no events step when none is missing", G.onceGroup({ replaced: true, copied: false }), "panel"))}`;
+    },
+
+    env: () => {
+      const band = (n) => `<div class="band">${ic("git-branch-plus")}New repo${n > 1 ? "s" : ""}, not in the setup yet <span class="n">${n}</span></div>`;
+      const collapsed = (repo, what) => `<div class="rd compact"><div class="h"><span class="chev2">${ic("chevron-right")}</span><span class="rn">${repo}</span><span class="by">${what}</span><span class="acts"><span class="btn sm ghost">Dismiss</span><span class="btn sm">Edit first</span><span class="btn sm">Apply</span></span></div></div>`;
+      const memberCompact = `<div class="rd"><div class="h"><span class="rn">acme/calculator-engine</span><span class="by">added by Alex Kim · 20 min ago</span></div>
+        <p class="why">Its tasks run the saved setup as it is, and its <span class="mono">case</span> has no branch for this repo, so they set up nothing. Detection drafted the lines below.</p>
+        <p class="foot" style="margin-top:6px">… the same diff and variables, read-only …</p>
+        <p class="foot">A project admin applies it, edits it first or dismisses it.</p></div>`;
+      const engineEdit = `<div class="esec" style="margin-top:0"><div class="hd2"><h3 style="font-family:var(--mono);font-size:14.5px">acme/calculator-engine</h3><span class="mono faint" style="font-size:13px">2</span><span class="end">Written to <span class="envin">.env</span></span></div>
+        <table class="t ent"><colgroup><col style="width:28px"><col style="width:200px"><col><col style="width:90px"><col style="width:28px"></colgroup>
+        <thead><tr><th></th><th>Name</th><th>Value</th><th style="text-align:center">During setup</th><th></th></tr></thead>
+        <tbody>
+          <tr class="new"><td>${ic("variable")}</td><td>ENGINE_LOG_LEVEL</td><td>info</td><td style="text-align:center"><span class="cbx"></span></td><td>${ic("x", "i14")}</td></tr>
+          <tr class="new"><td>${ic("key-round")}</td><td>ENGINE_API_KEY</td><td><span class="secin" style="width:200px">No value yet</span></td><td style="text-align:center"><span class="cbx"></span></td><td>${ic("x", "i14")}</td></tr>
+        </tbody></table></div>`;
+      return `
+      <div class="cap">Environment › a new repo's draft <span class="faint">its states (environment-repo-draft.md)</span></div>
+      ${col(36, 76, 690, 22,
+      cell("<b>The saved script is plain</b>it runs in every repo; Apply gives each its own branch", band(1) + G.repoDraft({ kind: "plain" }), "bare"),
+      cell("<b>Detection found nothing</b>only Dismiss", band(1) + G.repoDraft({ kind: "nothing" }), "bare"))}
+      ${col(760, 76, 644, 22,
+      cell("<b>A member</b>the same draft, no buttons", band(1) + memberCompact, "bare"),
+      cell("<b>Two new repos</b>each its own row, folded but the first", band(2) + collapsed("acme/calculator-engine", "Python · uv") + collapsed("acme/calculator-mobile", "Node · pnpm"), "bare"),
+      cell("<b>Dismissed</b>a status line, with Undo until the page is left", `<div class="status muted">${ic("check")}<span>Dismissed. <span class="mono" style="font-size:13.5px;color:var(--text-2)">acme/calculator-engine</span> runs the saved setup as it is.</span><span class="teal">Undo</span></div>`, "bare"),
+      cell("<b>Applied</b>the save's own status line", `<div class="status" style="color:var(--green)">${ic("check")}<span>Saved. <span class="mono" style="font-size:13.5px">acme/calculator-engine</span> has its own lines now.</span></div>`, "bare"),
+      cell("<b>Edit first</b>the new repo's rows, marked like the script's lines", engineEdit, "bare"))}`;
+    },
+  };
+  document.getElementById("sheet").innerHTML = sheets[sheet]();
+  window.addEventListener("load", () => { lucide.createIcons(); document.body.dataset.ready = "1"; });
+})();
+</script>
+</body>
+</html>
