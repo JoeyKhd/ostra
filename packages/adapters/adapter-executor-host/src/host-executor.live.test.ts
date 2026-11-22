@@ -96,7 +96,7 @@ const whereIs = async (pid: number): Promise<string> => {
 };
 
 describe.skipIf(!ready)(`a host pool's agent user, live (skipped: ${ready ? "no" : reason})`, () => {
-  it("F-015: health() passes; a shell in the agent's process is the agent's user and can't read the runner's key or a worktree the runner kept", async () => {
+  it("F-015/c5: health() passes; a shell in the agent's process is the agent's user and can't read the runner's key or a worktree the runner kept", async () => {
     const live = await pool("reach");
     try {
       expect(await live.executor.health()).toEqual({ status: "ok" });
