@@ -1054,7 +1054,20 @@
       "kept": "Kept on {key}."
     },
     "priceTitle": "Price per million tokens",
-    "editPrice": "Edit price"
+    "editPrice": "Edit price",
+    "images": {
+      "title": "Images",
+      "reads": "Reads images",
+      "switch": "{model} reads images",
+      "yes": "Yes: images go to it as images",
+      "no": "No: the agent gets images as files",
+      "catalog": "Catalog",
+      "catalogYes": "reads images",
+      "catalogNo": "text only",
+      "catalogUnknown": "doesn't say, counted as text only",
+      "setByAdmin": "Set by an admin, over the catalog.",
+      "useCatalog": "Use the catalog's"
+    }
   },
   "github": {
     "title": "GitHub",
@@ -2297,7 +2310,11 @@
       "gotFile": "a file",
       "gotFileModel": "a file: the model can't see images",
       "gotFileAgent": "a file: {agent} takes no images",
-      "unsentNote": "In your browser until it's sent. It's kept in the blob store with the message."
+      "unsentNote": "In your browser until it's sent. It's kept in the blob store with the message.",
+      "fromDescription": "the description",
+      "fromComment": "a comment",
+      "fromCommentBy": "{author}'s comment",
+      "fromAttachments": "the ticket's attachments"
     },
     "ticketContext": {
       "title": "What the agent got",
@@ -2316,10 +2333,7 @@
       "failedOne": "{n} attachment didn't load from {tracker}",
       "failed": "{n} attachments didn't load from {tracker}",
       "failedWhy": ": {why}",
-      "failedAnswered": "{tracker} answered {status} {times}{last}.",
-      "failedNoAnswer": "{tracker} didn't answer {times}{last}.",
       "failedUnknown": "{tracker} didn't give them.",
-      "lastAt": ", the last at {time}",
       "once": "once",
       "twice": "twice",
       "thrice": "three times",
@@ -2343,7 +2357,18 @@
       "attachmentsOne": "{n} attachment",
       "attachments": "{n} attachments",
       "commentsOne": "{n} comment",
-      "comments": "{n} comments"
+      "comments": "{n} comments",
+      "metaKey": "{key} from {tracker}",
+      "failedTried": "{tracker} didn't give them: ostra tried {times}, the last at {time}.",
+      "loadedOne": "{n} attachment loaded",
+      "loaded": "{n} attachments loaded",
+      "loadedNone": "The attachments didn't load again.",
+      "sendUpdates": "Send ticket updates",
+      "sendingUpdates": "Reading the ticket…",
+      "updatesReading": "Reading the ticket on {tracker}…",
+      "updatesNothingNew": "Nothing new on the ticket since the agent read it.",
+      "updatesSent": "The changes went to {agent}.",
+      "updatesUnreadable": "{tracker} didn't answer: try again in a while."
     },
     "app": {
       "starting": "{name} starting on :{port}",
@@ -2539,7 +2564,18 @@
         "drop": "Drop to attach",
         "dropReply": "They go in your reply to {agent}.",
         "dropNext": "They go with your next message to {agent}.",
-        "limits": "Up to {files} files · {each} each · {all} in all"
+        "limits": "Up to {files} files · {each} each · {all} in all",
+        "agentNoImages": "{agent} takes no images in its prompt; it gets them as files.",
+        "refused": {
+          "unauthorized": "You're signed out: sign in again, then retry.",
+          "forbidden": "You can't send files on this task.",
+          "notFound": "This project or task isn't there any more.",
+          "badRequest": "The file didn't arrive whole: retry.",
+          "empty": "The file is empty.",
+          "tooLarge": "The file is over the size a message's file can be.",
+          "tooManyUnsent": "You hold as many unsent files here as you may: send or remove some first.",
+          "unavailable": "ostra couldn't store it just now: retry."
+        }
       }
     },
     "saved": "Work saved after turn {n}",

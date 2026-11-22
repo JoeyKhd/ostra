@@ -85,7 +85,7 @@ const DetailsRow = ({ details }: { readonly details: ReactNode }) => (
 );
 
 /** The Ticket section: its status on the tracker with a link to it, what the agent got, which opens, and Details. */
-const TicketSection = ({ ticket, files, details }: { readonly ticket: NonNullable<TaskDetail["ticket"]>; readonly files: TaskDetail["contextFiles"]; readonly details: ReactNode }) => {
+const TicketSection = ({ ticket, files, details, agentGot }: { readonly ticket: NonNullable<TaskDetail["ticket"]>; readonly files: TaskDetail["contextFiles"]; readonly details: ReactNode; readonly agentGot: boolean }) => {
   const [open, setOpen] = useState(false);
   const tracker = trackerName(ticket.tracker);
   const href = safeHref(ticket.url);
@@ -103,7 +103,7 @@ const TicketSection = ({ ticket, files, details }: { readonly ticket: NonNullabl
           </a>
         )}
       </li>
-      <li className="border-b border-line">
+      {agentGot ? <li className="border-b border-line">
         <button type="button" aria-expanded={open} onClick={() => { setOpen(!open); }} className="flex min-h-11 w-full items-center gap-3 py-2 text-left text-ui" data-testid="phone-agent-got">
           <ChevronRightIcon aria-hidden className={cn("size-[15px] shrink-0 stroke-[1.75] text-muted transition-transform", open && "rotate-90")} />
           <span className="shrink-0 text-text">{t("taskPage.agentGot")}</span>
@@ -128,7 +128,7 @@ const TicketSection = ({ ticket, files, details }: { readonly ticket: NonNullabl
             )}
           </div>
         ) : null}
-      </li>
+      </li> : null}
       <DetailsRow details={details} />
     </Section>
   );
@@ -231,15 +231,17 @@ const PrSection = ({ repos }: { readonly repos: readonly Repo[] }) => (
  * `details` is the properties panel, which the `Details` row opens: the Ticket section's last row,
  * or, with no ticket, a row of its own under the sections.
  */
-export const PhoneTaskSections = ({ task, retry, details }: {
+export const PhoneTaskSections = ({ task, retry, details, agentGotInThread = false }: {
   readonly task: Pick<TaskDetail, "ticket" | "sync" | "repos" | "contextFiles" | "kind"> & { readonly canRetry: boolean };
   readonly retry: { readonly run: () => void; readonly pending: boolean };
   readonly details: ReactNode;
+  /** Milestone 9 (ticket 16): "What the agent got" is the thread's first message, so the section leaves its row out. */
+  readonly agentGotInThread?: boolean;
 }) => {
   const refine = task.kind === "refine";
   return (
     <div className="sm:hidden" data-testid="phone-task-sections">
-      {task.ticket === null ? null : <TicketSection ticket={task.ticket} files={task.contextFiles} details={details} />}
+      {task.ticket === null ? null : <TicketSection ticket={task.ticket} files={task.contextFiles} details={details} agentGot={!agentGotInThread} />}
       {task.ticket === null || refine || task.sync.length === 0 ? null : (
         <SyncSection tracker={trackerName(task.ticket.tracker)} sync={task.sync} retry={task.canRetry ? retry : null} />
       )}

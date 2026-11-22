@@ -18,6 +18,7 @@ import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
+import { ImageInputGroup } from "./model-image-input";
 import { ReasoningGroup } from "./model-reasoning";
 import type { ModelReasoning } from "./model-reasoning";
 
@@ -172,6 +173,7 @@ export const ModelEditor = ({ model, providerId, isDefault, onUseAsDefault, sett
         onUseCatalog={() => { reasoning.mutate({ modelId: model.id, reasoning: null }); }}
         initiallyConfirming={confirmCatalog}
       />
+      <ImageInputGroup modelId={model.id} modelName={model.displayName ?? model.endpointModelId} providerId={providerId} images={model.images} canEdit={canEditReasoning} />
     </div>
   );
 };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { RecordedUpload } from "@ostra/domain";
+import type { RecordedUpload } from "@ostra/domain/file-uploads";
 import { messageFileIdSchema } from "@ostra/protocol";
 
 import { sendStateOf, sendsNow } from "./attach-words";

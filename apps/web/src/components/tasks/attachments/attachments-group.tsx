@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 
+import type { PeopleFiles } from "@ostra/api";
 import type { TaskId } from "@ostra/protocol";
 
 import { PropGroup, PropRow } from "@/components/shell/page-frame";
@@ -19,15 +20,6 @@ import { peopleText } from "./file-words";
 // their size together, where they're kept, where people's files are in the box, and the PR whose
 // description shows the captures. Shown once the task holds any. And, under the task's header, the
 // line for a runner too old to run the app (F-121/c11, `tasks.attachments.app`).
-
-/** People's files in the group: how many pictures and other files, their size, and their folders in the box. */
-export type PeopleFiles = {
-  readonly images: number;
-  readonly files: number;
-  readonly bytes: number;
-  /** `.ostra/attachments/`, `.ostra/ticket/`: where they are in the box. */
-  readonly folders: readonly string[];
-};
 
 export const AttachmentsGroupView = ({ captures, people, pr }: {
   readonly captures: readonly Pick<AttachmentView, "kind" | "bytes">[];
@@ -63,11 +55,12 @@ export const AttachmentsGroupView = ({ captures, people, pr }: {
   );
 };
 
-/** The group on the task page: the captures from `tasks.attachments`; people's files once the thread's fold carries them. */
-export const TaskAttachmentsGroup = ({ taskId, pr, people = null }: { readonly taskId: TaskId; readonly pr: { readonly number: number; readonly url: string } | null; readonly people?: PeopleFiles | null }) => {
+/** The group on the task page: the captures from `tasks.attachments`, people's files from `tasks.files`. */
+export const TaskAttachmentsGroup = ({ taskId, pr }: { readonly taskId: TaskId; readonly pr: { readonly number: number; readonly url: string } | null }) => {
   const trpc = useTRPC();
   const list = useQuery(trpc.tasks.attachments.queryOptions({ taskId }));
-  return <AttachmentsGroupView captures={list.data?.attachments ?? []} people={people} pr={pr} />;
+  const files = useQuery(trpc.tasks.files.queryOptions({ taskId }));
+  return <AttachmentsGroupView captures={list.data?.attachments ?? []} people={files.data?.people ?? null} pr={pr} />;
 };
 
 /** "This task's runner runs an older ostra": its app, its pictures and its previews need minor 7. */

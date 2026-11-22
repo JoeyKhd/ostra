@@ -3,7 +3,7 @@
 import { XIcon } from "lucide-react";
 import type { KeyboardEvent } from "react";
 
-import type { RecordedUpload } from "@ostra/domain";
+import type { RecordedUpload } from "@ostra/domain/file-uploads";
 
 import { FileText, FileTile, TextMark } from "@/components/tasks/attachments/file-chip";
 import { fileMeta, typeLabel, TRAY_NAME_CHARS } from "@/components/tasks/attachments/file-words";

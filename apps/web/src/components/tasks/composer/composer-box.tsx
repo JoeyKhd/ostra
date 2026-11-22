@@ -26,8 +26,8 @@ export const ComposerBox = ({ field, tray, note, attach, hint, actions, phoneSen
   readonly hint: ReactNode;
   /** `Interrupt and send`, `Send`, `Reopen`: a desktop's buttons. */
   readonly actions: ReactNode;
-  /** The dock's 44px send. */
-  readonly phoneSend: ReactNode;
+  /** The dock's 44px send; `null` keeps the desktop's buttons in the dock (Reopen, which says what it does). */
+  readonly phoneSend: ReactNode | null;
   /** Draws the focus ring as if the field had it (a still render). */
   readonly focused?: boolean;
   readonly className?: string;
@@ -56,8 +56,8 @@ export const ComposerBox = ({ field, tray, note, attach, hint, actions, phoneSen
     <div className="order-4 mt-2 flex w-full min-w-0 items-center gap-2 max-md:contents">
       <span className="flex shrink-0 max-md:order-4">{attach}</span>
       <span className="flex min-w-0 flex-1 max-md:hidden">{hint}</span>
-      <span className="flex shrink-0 items-center gap-2 max-md:hidden">{actions}</span>
-      <span className="hidden shrink-0 max-md:order-6 max-md:flex">{phoneSend}</span>
+      <span className={cn("flex shrink-0 items-center gap-2", phoneSend === null ? "max-md:order-6" : "max-md:hidden")}>{actions}</span>
+      {phoneSend === null ? null : <span className="hidden shrink-0 max-md:order-6 max-md:flex">{phoneSend}</span>}
     </div>
   </div>
 );

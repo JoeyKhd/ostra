@@ -188,11 +188,13 @@ const syncState: Readonly<Record<SyncWrite["state"], { readonly key: MessageKey;
 /** The panel's Ticket and On Linear groups: the ticket, then one line per write with its state. */
 export type TicketSync = Pick<TaskDetail, "ticket" | "sync"> & { readonly canRetry: boolean };
 
-export const TicketProperties = ({ task, now, retry, createTicket }: {
+export const TicketProperties = ({ task, now, retry, createTicket, context = null }: {
   readonly task: TicketSync;
   readonly now: number;
   readonly retry: { readonly run: () => void; readonly pending: boolean };
   readonly createTicket: { readonly run: () => void; readonly pending: boolean; readonly error: string | null } | null;
+  /** Milestone 9 (ticket 16): the `Context` row and "Send ticket updates", after `Synced`. */
+  readonly context?: ReactNode;
 }) => (
   <>
     {task.ticket === null ? (
@@ -216,6 +218,7 @@ export const TicketProperties = ({ task, now, retry, createTicket }: {
         <PropRow label={t("taskPage.synced")}>
           <span className="font-mono">{Math.max(0, Math.round((now - task.ticket.cachedAt) / 1000)) < 60 ? t("taskPage.syncedSeconds", { n: Math.max(0, Math.round((now - task.ticket.cachedAt) / 1000)) }) : t("taskPage.syncedMinutes", { n: Math.round((now - task.ticket.cachedAt) / 60_000) })}</span>
         </PropRow>
+        {context}
       </PropGroup>
     )}
     {task.sync.length === 0 ? null : (

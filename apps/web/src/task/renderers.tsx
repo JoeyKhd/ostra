@@ -11,7 +11,6 @@ import {
   HistoryIcon,
   LayersIcon,
   LightbulbIcon,
-  PaperclipIcon,
   PauseIcon,
   PlayIcon,
   SquarePlayIcon,
@@ -30,7 +29,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import type { ReactNode } from "react";
+import type { ImgHTMLAttributes, ReactNode } from "react";
 
 import { SHOW_PREVIEW_TOOL, showPreviewInputSchema } from "@ostra/protocol";
 import type { ShowPreviewInput } from "@ostra/protocol";
@@ -41,6 +40,7 @@ import type { SubagentNode, TaskDataPart } from "@ostra/task-view";
 import { AppProcessLine, AttachmentsRow, NoBrowserLine, SkippedLine } from "@/components/tasks/attachments/attachment-strip";
 import { monthWord } from "@/components/tasks/budget-reason";
 import { RowState } from "@/components/tasks/subagent-marks";
+import { TicketFilesRow } from "@/components/tasks/attachments/thread-files";
 import { callCount, nodeDurationMs, shortDuration, stateWord, subagentLabel } from "@/components/tasks/subagent-words";
 import type { RememberResult } from "@/components/tasks/task-changes/diff-view";
 import { Button } from "@/components/ui/button";
@@ -100,10 +100,15 @@ export const AssistantText = ({ streaming }: { readonly streaming: boolean }) =>
  * F-138: an agent's text outside the thread's parts (a subagent's prompt and answer, in its
  * window), with the thread's own rules: markdown, no raw HTML, safe links, no remote image.
  */
-export const AgentMarkdown = ({ text, className }: { readonly text: string; readonly className?: string }) => (
+export const AgentMarkdown = ({ text, className, image }: {
+  readonly text: string;
+  readonly className?: string;
+  /** Milestone 9 (ticket 16): how a picture in it shows, in place of `[alt]` (a ticket's stored file opens the viewer). */
+  readonly image?: (props: ImgHTMLAttributes<HTMLImageElement>) => ReactNode;
+}) => (
   <TextMessagePartProvider text={text}>
     <div className={cn("agent-md", className)}>
-      <MarkdownTextPrimitive smooth={false} components={markdownComponents} />
+      <MarkdownTextPrimitive smooth={false} components={image === undefined ? markdownComponents : { ...markdownComponents, img: image }} />
     </div>
   </TextMessagePartProvider>
 );
@@ -655,14 +660,8 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
     case "data-pr-comment":
       return <PrCommentRow data={part.data} />;
     case "data-ticket-files":
-      return (
-        <div data-part="ticket-files">
-          <Line icon={<PaperclipIcon />} tone="muted">
-            {t("task.ticketFiles")}
-            <span className="truncate font-mono text-sm text-faint">{part.data.paths.map((path) => `.ostra/ticket/${path}`).join(", ")}</span>
-          </Line>
-        </div>
-      );
+      // Milestone 9 (ticket 16): gone once the ticket's files came as message files ("What the agent got").
+      return <TicketFilesRow paths={part.data.paths} line={(icon, children) => <Line icon={icon} tone="muted">{children}</Line>} />;
     case "data-attachments":
       return <AttachmentsRow data={part.data} />;
     case "data-attachment-skipped":

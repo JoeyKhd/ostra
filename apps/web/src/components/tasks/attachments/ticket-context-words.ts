@@ -1,55 +1,31 @@
-import type { FileLeftOutReason, TicketContextComment, TicketContextLink } from "@ostra/protocol";
+import type { TicketAttachmentView, TicketFailure, TicketRoundView } from "@ostra/api";
+import type { MessageFileId } from "@ostra/protocol";
+import type { MessageFileView } from "@ostra/task-view";
 
 import { formatClock } from "@/lib/format";
 import { plural, t } from "@/lib/messages";
 
-import type { ThreadFile } from "./file-words";
-
 // "What the agent got" (ticket-context.md; F-149, ticket 16): a ticket task's first message, from
-// the first round of `tasks.ticketContext`. Its words are here, pure, for the message, the Ticket
-// group's `Context` row and their tests.
+// the first round of `tasks.ticketContext` (`TicketRoundView`, the API's). Its words are here, pure,
+// for the message, the Ticket group's `Context` row and their tests.
 
 /**
- * One of the ticket's files as the agent got it (ticket-context.md, "Components"): given (its stored
- * file), left out by the ticket's limits with why, or failed to load. Kept in the ticket's order, so
- * a failed one keeps its place.
+ * A round's files as the thread shows them: a failed one a Retry fetched since is given, with the
+ * file it fetched (found by `fileOf`, the task's files); the rest as the round has them.
  */
-export type TicketAttachment =
-  | { readonly state: "ready"; readonly file: ThreadFile }
-  | { readonly state: "left-out"; readonly name: string; readonly size: number | null; readonly reason: Extract<FileLeftOutReason, "too-big" | "too-many" | "total-too-big"> }
-  | { readonly state: "failed"; readonly name: string };
-
-/** Why the failed ones didn't load: what the tracker answered, how often, and when last; `null` fields when unknown. */
-export type TicketFailure = { readonly status: number | null; readonly tries: number; readonly lastAt: number | null };
-
-/** What the first message shows, from the first `ticket.context_read` and the task. */
-export type TicketContextView = {
-  /** When ostra put the context together. */
-  readonly at: number;
-  readonly ticketKey: string;
-  /** The tracker's name, as the key line has it: `Linear`. */
-  readonly tracker: string;
-  /** `fetching` while the task starts; `read` once the fetch is done or gave up. */
-  readonly state: "fetching" | "read";
-  readonly description: string | null;
-  readonly attachments: readonly TicketAttachment[];
-  readonly links: readonly TicketContextLink[];
-  readonly comments: readonly TicketContextComment[];
-  readonly failure: TicketFailure | null;
-  /** The tracker declared `ticketFiles: none`: its files weren't fetched. */
-  readonly filesNotOffered: boolean;
-  /** The rendered first prompt, for `Show the prompt`; text, never HTML. */
-  readonly prompt: string | null;
-  /** The model that can't see images, when the ticket's images went as files. */
-  readonly imagesAsFilesFor: string | null;
-};
+export const shownAttachments = (round: Pick<TicketRoundView, "attachments">, fileOf: (fileId: MessageFileId) => MessageFileView | undefined): readonly TicketAttachmentView[] =>
+  round.attachments.map((one): TicketAttachmentView => {
+    if (one.state !== "failed" || one.retry?.state !== "ready") return one;
+    const file = fileOf(one.retry.fileId);
+    return file === undefined ? one : { state: "ready", file, from: one.from };
+  });
 
 /** The ticket's counts: what the agent got (files and links), all there were, and those that failed. */
-export const ticketCounts = (view: Pick<TicketContextView, "attachments" | "links" | "comments">) => {
-  const given = view.attachments.filter((one) => one.state === "ready").length + view.links.length;
-  const failed = view.attachments.filter((one) => one.state === "failed").length;
-  const leftOut = view.attachments.filter((one) => one.state === "left-out").length;
-  return { given, total: view.attachments.length + view.links.length, failed, leftOut, comments: view.comments.length };
+export const ticketCounts = (round: { readonly attachments: readonly TicketAttachmentView[] } & Pick<TicketRoundView, "links" | "comments">) => {
+  const given = round.attachments.filter((one) => one.state === "ready").length + round.links.length;
+  const failed = round.attachments.filter((one) => one.state === "failed").length;
+  const leftOut = round.attachments.filter((one) => one.state === "left-out").length;
+  return { given, total: round.attachments.length + round.links.length, failed, leftOut, comments: round.comments.length };
 };
 
 /** The Attachments label's count: `7`, or `20 of 23` when some were left out or failed. */
@@ -57,8 +33,8 @@ export const attachmentsCountText = (counts: ReturnType<typeof ticketCounts>): s
   counts.given === counts.total ? String(counts.total) : t("task.ticketContext.countOf", { n: counts.given, of: counts.total });
 
 /** The header's facts: `14:02 · CALC-170 from Linear`. */
-export const contextMetaText = (view: Pick<TicketContextView, "at" | "ticketKey" | "tracker">): string =>
-  t("task.ticketContext.meta", { time: formatClock(view.at), key: view.ticketKey, tracker: view.tracker });
+export const contextMetaText = (input: { readonly at: number | null; readonly ticketKey: string; readonly tracker: string }): string =>
+  input.at === null ? t("task.ticketContext.metaKey", { key: input.ticketKey, tracker: input.tracker }) : t("task.ticketContext.meta", { time: formatClock(input.at), key: input.ticketKey, tracker: input.tracker });
 
 /** `once`, `twice`, `three times`, `{n} times`. */
 const timesText = (n: number): string => {
@@ -78,13 +54,13 @@ const timesText = (n: number): string => {
 export const nameJoiners = (count: number): readonly string[] =>
   Array.from({ length: count }, (_, index) => (index === count - 1 ? "" : index === count - 2 ? t("task.ticketContext.and") : ", "));
 
-/** Why they didn't load: `Linear answered 503 three times, the last at 14:02.` */
+/**
+ * Why they didn't load, as far as ostra knows: how often it tried and when last (`Linear didn't give
+ * them: ostra tried three times, the last at 14:02.`). The tracker's own answer isn't recorded.
+ */
 export const failureText = (failure: TicketFailure | null, tracker: string): string => {
   if (failure === null) return t("task.ticketContext.failedUnknown", { tracker });
-  const last = failure.lastAt === null ? "" : t("task.ticketContext.lastAt", { time: formatClock(failure.lastAt) });
-  return failure.status === null
-    ? t("task.ticketContext.failedNoAnswer", { tracker, times: timesText(failure.tries), last })
-    : t("task.ticketContext.failedAnswered", { tracker, status: failure.status, times: timesText(failure.tries), last });
+  return t("task.ticketContext.failedTried", { tracker, times: timesText(failure.tries), time: formatClock(failure.lastAt) });
 };
 
 /** The Ticket group's `Context` row: `7 attachments · 3 comments`, `20 of 23 attachments`, or the failure in red. */
@@ -101,3 +77,31 @@ export const COMMENTS_SHOWN = 2;
 
 export const shownComments = <T>(comments: readonly T[], all: boolean): { readonly shown: readonly T[]; readonly hidden: number } =>
   all || comments.length <= COMMENTS_SHOWN ? { shown: comments, hidden: 0 } : { shown: comments.slice(-COMMENTS_SHOWN), hidden: comments.length - COMMENTS_SHOWN };
+
+/**
+ * "Send ticket updates"' answer: the round after the press (`afterRound` + 1). Nothing new says so;
+ * any change went to the agent as a `ticket-update` message.
+ */
+export type UpdatesAnswer = { readonly kind: "reading" } | { readonly kind: "nothing-new" } | { readonly kind: "sent" } | { readonly kind: "unreadable" };
+
+export const updatesAnswerOf = (rounds: readonly Pick<TicketRoundView, "round" | "nothingNew" | "unreadable">[], afterRound: number): UpdatesAnswer => {
+  const answer = rounds.find((round) => round.round > afterRound);
+  if (answer === undefined) return { kind: "reading" };
+  if (answer.unreadable) return { kind: "unreadable" };
+  return answer.nothingNew ? { kind: "nothing-new" } : { kind: "sent" };
+};
+
+export const updatesAnswerText = (answer: UpdatesAnswer, agent: string, tracker: string): string => {
+  switch (answer.kind) {
+    case "reading":
+      return t("task.ticketContext.updatesReading", { tracker });
+    case "nothing-new":
+      return t("task.ticketContext.updatesNothingNew");
+    case "sent":
+      return t("task.ticketContext.updatesSent", { agent });
+    case "unreadable":
+      return t("task.ticketContext.updatesUnreadable", { tracker });
+    default:
+      return answer satisfies never;
+  }
+};

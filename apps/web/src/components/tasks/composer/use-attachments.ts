@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 
-import type { RecordedUpload } from "@ostra/domain";
+import type { RecordedUpload } from "@ostra/domain/file-uploads";
 import type { FileLimits } from "@ostra/domain/file-limits";
 import type { MessageFileId } from "@ostra/protocol";
 
@@ -55,7 +55,8 @@ export type TrayAction =
   | { readonly type: "dismiss" }
   | { readonly type: "press" }
   | { readonly type: "unpress" }
-  | { readonly type: "clear" };
+  | { readonly type: "clear" }
+  | { readonly type: "restart" };
 
 const update = (items: readonly TrayItem[], key: string, change: (item: TrayItem) => TrayItem): readonly TrayItem[] => items.map((item) => (item.key === key ? change(item) : item));
 
@@ -98,6 +99,9 @@ export const trayReducer = (state: TrayState, action: TrayAction): TrayState => 
       return { ...state, pressed: true };
     case "unpress":
       return { ...state, pressed: false };
+    case "restart":
+      // The box's project changed: every file uploads again, to the new project.
+      return { ...state, pressed: false, items: state.items.map((item) => ({ ...item, upload: { state: "uploading", progress: 0 } })) };
     case "clear":
       return { ...emptyTray, announcement: state.announcement };
     default:
@@ -125,6 +129,8 @@ export type Attachments = {
   readonly dismiss: () => void;
   /** Empties the tray once its message went: its files belong to the message now. */
   readonly clear: () => void;
+  /** Uploads every file again (the new-task box's project changed: an upload belongs to its project). */
+  readonly restart: () => void;
   /** Send's state, for its label and whether it's enabled. */
   readonly sendState: (text: string) => SendState;
   /**
@@ -237,8 +243,10 @@ export const useAttachments = ({ limits, upload, discard, enabled = true, wordsR
   );
 
   const clear = useCallback(() => {
-    // The files went with the message: their previews go, their uploads stay the message's.
-    for (const item of held.current) if (item.previewUrl !== null) URL.revokeObjectURL(item.previewUrl);
+    // The files went with the message: their uploads are the message's now. Their previews draw the
+    // message until its stored files arrive, so they go a minute later.
+    const previews = held.current.flatMap((item) => (item.previewUrl === null ? [] : [item.previewUrl]));
+    if (previews.length > 0) setTimeout(() => { for (const url of previews) URL.revokeObjectURL(url); }, 60_000);
     held.current = [];
     pending.current = null;
     dispatch({ type: "clear" });
@@ -284,6 +292,16 @@ export const useAttachments = ({ limits, upload, discard, enabled = true, wordsR
     [state.items, state.pressed],
   );
 
+  const restart = useCallback(() => {
+    for (const item of held.current) {
+      controllers.current.get(item.key)?.abort();
+      controllers.current.delete(item.key);
+      if (item.upload.state === "ready") discard(item.upload.uploaded.fileId);
+    }
+    held.current = held.current.map((item) => ({ ...item, upload: { state: "uploading", progress: 0 } }));
+    dispatch({ type: "restart" });
+    for (const item of held.current) start(item);
+  }, [discard, start]);
   const dismiss = useCallback(() => { dispatch({ type: "dismiss" }); }, []);
   const cancel = useCallback(() => { dispatch({ type: "unpress" }); }, []);
   const fileIds = useMemo(() => idsOf(state.items), [state.items]);
@@ -300,6 +318,7 @@ export const useAttachments = ({ limits, upload, discard, enabled = true, wordsR
     retry,
     dismiss,
     clear,
+    restart,
     sendState: (text: string) => sendStateOf({ entries: state.items, text, pressed: state.pressed, wordsRequired }),
     press,
     cancel,

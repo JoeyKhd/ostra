@@ -63,6 +63,11 @@ export type OptimisticMessage = {
   readonly memberId: MemberId;
   readonly text: string;
   readonly delivery: MessageDelivery;
+  /**
+   * Milestone 9 (F-148, ticket 15): the files it carries while it sends, drawn from the browser's
+   * own copies (`downloadPath` a `blob:` URL), until the committed message brings the stored ones.
+   */
+  readonly files?: readonly MessageFileView[];
 };
 
 export type FoldOptions = {
@@ -1503,10 +1508,14 @@ export const foldTaskEvents = (
 
   for (const optimistic of options.optimistic ?? []) {
     if (committedClientIds.has(optimistic.clientMessageId)) continue;
+    const files = optimistic.files ?? [];
     push({
       id: `user:${optimistic.clientMessageId}`,
       role: "user",
-      slots: [{ t: "part", part: text(optimistic.text, "done") }],
+      slots: [
+        { t: "part", part: text(optimistic.text, "done") },
+        ...(files.length === 0 ? [] : [{ t: "message-files" as const, id: `files:${optimistic.clientMessageId}`, rec: { seq: 0, files: [...files], leftOut: [], imagesNotSent: null, skipped: [] } }]),
+      ],
       meta: {
         firstSeq: 0,
         lastSeq: 0,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { memberIdSchema, messageFileIdSchema, taskEventSchema } from "@ostra/protocol";
+import { clientMessageIdSchema, memberIdSchema, messageFileIdSchema, taskEventSchema } from "@ostra/protocol";
 import type { TaskEvent } from "@ostra/protocol";
 import { fixtureIds } from "@ostra/protocol/testing";
 
@@ -20,6 +20,7 @@ const spec = messageFileIdSchema.parse("0196f1a0-0000-7000-8000-0000000000b2");
 const scan = messageFileIdSchema.parse("0196f1a0-0000-7000-8000-0000000000b3");
 
 const ev = (event: Readonly<Record<string, unknown>>): TaskEvent => taskEventSchema.parse(event);
+const clientMessageIdOf = (id: string) => clientMessageIdSchema.parse(id);
 
 /** Driver's message with three files: a picture, a document core read, and one it couldn't; one left out. */
 const withFiles = (over: Readonly<Record<string, unknown>> = {}): TaskEvent =>
@@ -100,5 +101,15 @@ describe("a member's message's files in the thread (F-148, F-150)", () => {
     const agent = filesOf(foldTaskEvents(storeEvents([withFiles(), written]), []))[0];
     expect(agent?.imagesNotSent).toBe("agent");
     expect(agent?.files.find((file) => file.fileId === mock)?.asImage).toBe(false);
+  });
+
+  it("a message the driver sends shows its files at once, from the browser's copies, until the committed one brings the stored files", () => {
+    const clientMessageId = "files-optimistic";
+    const preview = { fileId: mock, name: "mock.png", kind: "image" as const, contentType: "image/png", size: 10, origin: "member" as const, asImage: false, text: "none" as const, downloadPath: "blob:http://localhost/1", textWords: null, textReason: null };
+    const sending = foldTaskEvents([], [], { optimistic: [{ clientMessageId: clientMessageIdOf(clientMessageId), memberId, text: "", delivery: "immediate", files: [preview] }] });
+    expect(filesOf(sending)[0]?.files.map((file) => file.downloadPath)).toEqual(["blob:http://localhost/1"]);
+    const committed = foldTaskEvents(storeEvents([withFiles({ clientMessageId })]), [], { optimistic: [{ clientMessageId: clientMessageIdOf(clientMessageId), memberId, text: "", delivery: "immediate", files: [preview] }] });
+    expect(filesOf(committed)).toHaveLength(1);
+    expect(filesOf(committed)[0]?.files[0]?.downloadPath).toMatch(/^\/api\/tasks\//);
   });
 });

@@ -52,7 +52,7 @@ export const AttachButton = ({ onFiles, full, max, disabled = false, layout = "c
           className={cn(
             "grid shrink-0 place-items-center text-muted hover:bg-sel hover:text-text aria-disabled:cursor-default aria-disabled:opacity-40 aria-disabled:hover:bg-transparent aria-disabled:hover:text-muted",
             layout === "composer"
-              ? "-ml-1.5 size-7 rounded-md max-md:ml-0 max-md:size-11 max-md:rounded-[10px] max-md:border max-md:border-line-2 max-md:bg-surface"
+              ? "-ml-1.5 size-7 rounded-md max-md:ml-0 max-md:size-11 max-md:rounded-[10px] max-md:border max-md:border-control-line max-md:bg-surface"
               : "-ml-1.5 size-7 rounded-md max-md:ml-0 max-md:size-9",
             className,
           )}

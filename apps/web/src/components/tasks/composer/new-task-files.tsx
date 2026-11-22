@@ -8,6 +8,7 @@ import { FILES_ROOT_DIR, MESSAGE_FILES_FOLDER } from "@ostra/protocol";
 import { bytesText } from "@/components/tasks/attachments/attachment-words";
 import { extensionOf, limitText, peopleText } from "@/components/tasks/attachments/file-words";
 import { PropGroup, PropRow } from "@/components/shell/page-frame";
+import { cn } from "@/lib/cn";
 import { t } from "@/lib/messages";
 
 import type { ImageInput, TrayEntry } from "./attach-words";
@@ -36,7 +37,7 @@ export const filesNextWords = (entries: readonly Pick<TrayEntry<{ readonly kind:
 };
 
 /** `What happens next`'s files row; on a phone, the `--faint` line under the box. */
-export const FilesNextRow = ({ entries, variant }: { readonly entries: readonly Pick<TrayEntry<{ readonly kind: string }>, "name" | "upload">[]; readonly variant: "row" | "line" }) => {
+export const FilesNextRow = ({ entries, variant, className }: { readonly entries: readonly Pick<TrayEntry<{ readonly kind: string }>, "name" | "upload">[]; readonly variant: "row" | "line"; readonly className?: string }) => {
   if (entries.length === 0) return null;
   const words = filesNextWords(entries);
   const text = (
@@ -49,14 +50,14 @@ export const FilesNextRow = ({ entries, variant }: { readonly entries: readonly 
   switch (variant) {
     case "row":
       return (
-        <li className="flex min-h-[38px] items-center gap-3 py-1.5 text-body" data-testid="next-files">
+        <li className={cn("flex min-h-[38px] items-center gap-3 py-1.5 text-body", className)} data-testid="next-files">
           <span className="flex w-[15px] shrink-0 text-muted [&_svg]:size-[15px] [&_svg]:stroke-[1.75]"><PaperclipIcon aria-hidden /></span>
           {text}
         </li>
       );
     case "line":
       return (
-        <p className="mt-2.5 flex gap-[7px] text-sm text-faint" data-testid="next-files">
+        <p className={cn("mt-2.5 flex gap-[7px] text-sm text-faint", className)} data-testid="next-files">
           <InfoIcon aria-hidden className="mt-0.5 size-[14px] shrink-0 stroke-[1.75]" />
           {text}
         </p>

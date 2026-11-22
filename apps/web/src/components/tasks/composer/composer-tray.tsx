@@ -84,10 +84,10 @@ export const ComposerTray = ({ items, announcement, onRemove, onRetry, onOpen, r
 /** The line under the tray: a file that wasn't added (red, dismissible), the runner, or the model's note (muted). */
 export const TrayNoteLine = ({ note, onDismiss, className }: { readonly note: TrayNote | null; readonly onDismiss: () => void; readonly className?: string }) => {
   if (note === null) return null;
-  const red = note.kind !== "model";
+  const red = note.kind === "refused" || note.kind === "runner";
   return (
     <p className={cn("flex items-start gap-[7px] text-sm", red ? "text-red" : "text-muted", className)} data-testid="composer-note" data-note={note.kind}>
-      {note.kind === "model" ? (
+      {!red ? (
         <ImageOffIcon aria-hidden className="mt-0.5 size-[14px] shrink-0 stroke-[1.75] text-faint" />
       ) : (
         <CircleAlertIcon aria-hidden className="mt-0.5 size-[14px] shrink-0 stroke-[1.75]" />

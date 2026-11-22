@@ -34,6 +34,7 @@ import { TaskThread } from "@/task/task-thread";
 import { useTaskLog } from "@/task/use-task-log";
 
 import { TaskAppSupportLine, TaskAttachmentsGroup } from "./attachments/attachments-group";
+import { TicketContextRows } from "./attachments/ticket-context-thread";
 import { monthWord } from "./budget-reason";
 import { PhoneTaskSections } from "./phone-task-sections";
 import { TaskPrs } from "./task-prs";
@@ -434,6 +435,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const refine = task.data?.kind === "refine";
   // Ticket 34: a refine task's draft, for its tab; a refine task opens on it while a draft exists.
   const draft = useQuery(trpc.drafts.get.queryOptions(refine ? { taskId, version: null } : skipToken));
+  const ticketContext = useQuery(trpc.tasks.ticketContext.queryOptions(task.data?.source === "ticket" ? { taskId } : skipToken));
   const hasDraft = draft.data?.draft !== null && draft.data?.draft !== undefined;
   const tab: TaskTab =
     tabParam === "changes" || tabParam === "checks" || tabParam === "events"
@@ -655,6 +657,8 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const cancelled = data.state === "stopped" ? log.state.events.findLast(({ event }) => event.kind === "task.cancelled")?.event : undefined;
   const cancelledBy = cancelled?.kind === "task.cancelled" ? ((members.data ?? []).find((member) => member.memberId === cancelled.memberId)?.name ?? null) : undefined;
   const mode = composerMode(composerInputOf(data));
+  // Milestone 9 (ticket 16): "What the agent got" is the thread's first message once the ticket's files came as message files.
+  const contextInThread = (ticketContext.data?.rounds.length ?? 0) > 0;
   // What needs you (2026-11-21): cards in the chat, never a block above the tabs.
   const needs = needsOf({
     state: data.state,
@@ -687,6 +691,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
     <TicketProperties
       task={{ ticket: data.ticket, sync: isRefine ? [] : data.sync, canRetry: data.capabilities.retrySync }}
       now={now}
+      context={data.source === "ticket" ? <TicketContextRows taskId={taskId} agent={agentName} /> : null}
       retry={{ run: () => { retrySync.mutate({ taskId }); }, pending: retrySync.isPending }}
       createTicket={
         data.source === "prompt" && firstBoard !== undefined && !isRefine
@@ -908,7 +913,8 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
       // Under 640px they don't stack under the thread: the Details row opens them (m2's `phone-task`).
       phoneProperties="sheet"
     >
-      <div className={cn("flex min-h-full flex-col", previewing ? "px-4 pb-4 pt-6 sm:px-7 sm:pt-[22px] lg:h-full" : "px-4 pb-5 pt-6 sm:px-10 sm:pt-[26px] xl:h-full")}>
+      {/* Milestone 9 (ticket 15): the chat column is where files dropped on the page go (`data-chat-column`). */}
+      <div data-chat-column className={cn("relative flex min-h-full flex-col", previewing ? "px-4 pb-4 pt-6 sm:px-7 sm:pt-[22px] lg:h-full" : "px-4 pb-5 pt-6 sm:px-10 sm:pt-[26px] xl:h-full")}>
         <div className="shrink-0">
           <div className="flex items-center gap-2.5 font-mono text-sm leading-[17px] text-faint">
             <span>{data.key} · {data.source === "prompt" ? t("taskPage.fromPrompt") : data.ticket === null ? t("taskPage.fromTicket") : t("taskPage.fromTracker", { tracker: trackerName(data.ticket.tracker) })}</span>
@@ -974,10 +980,11 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           {/* Under 640px the ticket, its sync and the PRs are sections of their own (m2's `phone-task`). */}
           <div className="max-sm:hidden">
             {data.ticket === null ? null : <TicketLine ticket={data.ticket} />}
-            {data.source === "ticket" && tab !== "draft" ? <AgentGot files={data.contextFiles} /> : null}
+            {data.source === "ticket" && tab !== "draft" && !contextInThread ? <AgentGot files={data.contextFiles} /> : null}
           </div>
           <PhoneTaskSections
             task={{ ticket: data.ticket, sync: data.sync, repos: data.repos, contextFiles: data.contextFiles, kind: data.kind, canRetry: data.capabilities.retrySync }}
+            agentGotInThread={contextInThread}
             retry={{ run: () => { retrySync.mutate({ taskId }); }, pending: retrySync.isPending }}
             details={properties}
           />
@@ -1090,6 +1097,13 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           hasEarlier={log.state.olderBefore !== null}
           loadEarlier={log.loadEarlier}
           onFold={recordFold}
+          composerFiles={{
+            projectId: data.projectId,
+            taskId,
+            agent: agentName,
+            messageFiles: data.messageFiles,
+            replying: mode.kind === "send" && replyHint(needs, agentName) !== null,
+          }}
         />
         )}
       </div>

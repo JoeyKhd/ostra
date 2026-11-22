@@ -1,85 +1,114 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import type { TicketAttachmentView, TicketContextView, TicketRoundView } from "@ostra/api";
 import { messageFileIdSchema } from "@ostra/protocol";
+import type { MessageFileView } from "@ostra/task-view";
 
-import type { ThreadFile } from "./file-words";
 import { TicketContextMessage, TicketContextRow } from "./ticket-context-message";
-import { attachmentsCountText, contextRowText, failureText, nameJoiners, shownComments, ticketCounts } from "./ticket-context-words";
-import type { TicketAttachment, TicketContextView } from "./ticket-context-words";
+import { attachmentsCountText, contextRowText, failureText, nameJoiners, shownAttachments, shownComments, ticketCounts, updatesAnswerOf, updatesAnswerText } from "./ticket-context-words";
 
 // "What the agent got" (ticket-context.md; ticket 16): a ticket task's first message, its counts,
-// what was left out or failed, and the Ticket group's Context row.
+// what was left out or failed, the Ticket group's Context row and "Send ticket updates"' answer.
 
 const MiB = 1024 * 1024;
 const limits = { maxFiles: 20, maxFileBytes: 10 * MiB, maxTotalBytes: 50 * MiB };
 const at = Date.UTC(2026, 10, 21, 13, 2);
+const from = { where: "attachment" as const, author: null };
 
 let next = 0;
-const file = (name: string, kind: ThreadFile["kind"], over: Partial<ThreadFile> = {}): TicketAttachment => {
+const fileId = () => {
   next += 1;
+  return messageFileIdSchema.parse(`0196f1a0-0000-7000-8000-${String(next).padStart(12, "0")}`);
+};
+const view = (name: string, kind: MessageFileView["kind"], over: Partial<MessageFileView> = {}): MessageFileView => {
+  const id = fileId();
   return {
-    state: "ready",
-    file: {
-      fileId: messageFileIdSchema.parse(`0196f1a0-0000-7000-8000-${String(next).padStart(12, "0")}`),
-      name,
-      kind,
-      contentType: kind === "image" ? "image/png" : "application/octet-stream",
-      size: 212 * 1024,
-      origin: "ticket",
-      asImage: kind === "image",
-      text: kind === "document" ? "ready" : "none",
-      downloadPath: `/api/tasks/t/files/${String(next)}`,
-      textWords: kind === "document" ? 1800 : null,
-      textReason: null,
-      ...over,
-    },
+    fileId: id,
+    name,
+    kind,
+    contentType: kind === "image" ? "image/png" : "application/octet-stream",
+    size: 212 * 1024,
+    origin: "ticket",
+    asImage: kind === "image",
+    text: kind === "document" ? "ready" : "none",
+    downloadPath: `/api/tasks/t/files/${id}`,
+    textWords: kind === "document" ? 1800 : null,
+    textReason: null,
+    ...over,
   };
 };
+const ready = (name: string, kind: MessageFileView["kind"]): TicketAttachmentView => ({ state: "ready", file: view(name, kind), from });
+const failed = (name: string, retry: { readonly fileId: MessageFileView["fileId"]; readonly state: "ready" | "failed" } | null = null): TicketAttachmentView => ({ state: "failed", fileId: fileId(), name, from, retry });
 
-const view = (over: Partial<TicketContextView> = {}): TicketContextView => ({
+const round = (over: Partial<TicketRoundView> = {}): TicketRoundView => ({
+  round: 1,
+  reason: "start",
+  seq: 2,
   at,
-  ticketKey: "CALC-170",
-  tracker: "Linear",
-  state: "read",
   description: "Percent mode rounds half-cents down.",
-  attachments: [file("wrong-total.png", "image"), file("rounding-rules.docx", "document"), file("percent-cases.csv", "text")],
-  links: [{ title: "Sentry · ACME-WEB-4F2", url: "https://sentry.io/acme/web/4f2" }],
+  descriptionFiles: [],
   comments: [
     { author: "Dana Ortiz", at: at - 2 * 86_400_000, body: "Keep two decimals.", edited: false },
     { author: "Marcus Lee", at: at - 86_400_000, body: "Finance confirmed: half up.", edited: false },
     { author: "Priya Shah", at: at - 20 * 3_600_000, body: "Repro on 2.14.", edited: false },
   ],
+  links: [{ title: "Sentry · ACME-WEB-4F2", url: "https://sentry.io/acme/web/4f2" }],
+  attachments: [ready("wrong-total.png", "image"), ready("rounding-rules.docx", "document"), ready("percent-cases.csv", "text")],
   failure: null,
-  filesNotOffered: false,
-  prompt: "You're working on CALC-170.",
+  filesNotFetched: false,
+  unreadable: false,
+  nothingNew: false,
+  messageSeq: 3,
+  imagesNotSent: null,
   imagesAsFilesFor: null,
   ...over,
 });
 
+const context = (first: TicketRoundView | null, over: Partial<TicketContextView> = {}): TicketContextView => ({
+  state: first === null ? "fetching" : "read",
+  ticketKey: "CALC-170",
+  tracker: "linear",
+  limits,
+  prompt: "You're working on CALC-170.",
+  model: { name: "Claude Sonnet 5.5", imageInput: "yes" },
+  isDriver: true,
+  canSendUpdates: true,
+  canRetry: false,
+  rounds: first === null ? [] : [first],
+  ...over,
+});
+
+const none = () => undefined;
 const render = (shown: TicketContextView, retry: { readonly run: () => void; readonly pending: boolean } | null = null) =>
-  renderToStaticMarkup(<TicketContextMessage view={shown} agent="OpenCode" limits={limits} now={at + 60_000} retry={retry} onOpenImage={null} />);
+  renderToStaticMarkup(<TicketContextMessage view={shown} tracker="Linear" agent="OpenCode" now={at + 60_000} retry={retry} fileOf={none} onOpenImage={null} />);
 
 describe("the ticket's counts", () => {
   it("counts files and links as attachments, and says how many of all when some didn't make it", () => {
-    expect(attachmentsCountText(ticketCounts(view()))).toBe("4");
-    const some = view({ attachments: [...view().attachments, { state: "left-out", name: "a.mp4", size: 84 * MiB, reason: "too-big" }, { state: "failed", name: "b.pdf" }] });
+    const all = round();
+    expect(attachmentsCountText(ticketCounts(all))).toBe("4");
+    const some = round({ attachments: [...all.attachments, { state: "left-out", name: "a.mp4", size: 84 * MiB, reason: "too-big", from }, failed("b.pdf")] });
     expect(attachmentsCountText(ticketCounts(some))).toBe("4 of 6");
   });
 
   it("words the Context row: all of it, some of it, or what didn't load in red", () => {
-    expect(contextRowText(ticketCounts(view()))).toEqual({ text: "4 attachments · 3 comments", failed: false });
-    expect(contextRowText(ticketCounts(view({ attachments: [file("a.png", "image"), { state: "left-out", name: "b.zip", size: null, reason: "too-many" }], links: [] })))).toEqual({ text: "1 of 2 attachments", failed: false });
-    expect(contextRowText(ticketCounts(view({ attachments: [{ state: "failed", name: "a.png" }, { state: "failed", name: "b.pdf" }] })))).toEqual({ text: "2 attachments didn't load", failed: true });
-    expect(contextRowText(ticketCounts(view({ attachments: [], links: [], comments: [] })))).toEqual({ text: "The title alone", failed: false });
+    expect(contextRowText(ticketCounts(round()))).toEqual({ text: "4 attachments · 3 comments", failed: false });
+    expect(contextRowText(ticketCounts(round({ attachments: [ready("a.png", "image"), { state: "left-out", name: "b.zip", size: null, reason: "too-many", from }], links: [] })))).toEqual({ text: "1 of 2 attachments", failed: false });
+    expect(contextRowText(ticketCounts(round({ attachments: [failed("a.png"), failed("b.pdf")] })))).toEqual({ text: "2 attachments didn't load", failed: true });
+    expect(contextRowText(ticketCounts(round({ attachments: [], links: [], comments: [] })))).toEqual({ text: "The title alone", failed: false });
   });
 
-  it("says what the tracker answered, how often and when", () => {
-    expect(failureText({ status: 503, tries: 3, lastAt: Date.UTC(2026, 10, 21, 13, 2) }, "Linear")).toMatch(/^Linear answered 503 three times, the last at \d\d:\d\d\.$/);
-    expect(failureText({ status: null, tries: 1, lastAt: null }, "Linear")).toBe("Linear didn't answer once.");
+  it("says how often ostra tried a failed file and when, the tracker's own answer not being kept", () => {
+    expect(failureText({ status: null, tries: 3, lastAt: at }, "Linear")).toMatch(/^Linear didn't give them: ostra tried three times, the last at \d\d:\d\d\.$/);
     expect(failureText(null, "Linear")).toBe("Linear didn't give them.");
     expect(nameJoiners(3)).toEqual([", ", " and ", ""]);
     expect(nameJoiners(1)).toEqual([""]);
+  });
+
+  it("shows a failed file a Retry fetched as given, with the file it fetched", () => {
+    const fetched = view("wrong-total.png", "image");
+    const shown = shownAttachments(round({ attachments: [failed("wrong-total.png", { fileId: fetched.fileId, state: "ready" }), failed("note.pdf", { fileId: fileId(), state: "failed" })] }), (id) => (id === fetched.fileId ? fetched : undefined));
+    expect(shown.map((one) => one.state)).toEqual(["ready", "failed"]);
   });
 
   it("shows the newest two comments, then all", () => {
@@ -87,15 +116,22 @@ describe("the ticket's counts", () => {
     expect(shownComments([1, 2, 3], true)).toEqual({ shown: [1, 2, 3], hidden: 0 });
     expect(shownComments([1, 2], false)).toEqual({ shown: [1, 2], hidden: 0 });
   });
+
+  it("answers Send ticket updates with the round after the press", () => {
+    const rounds = [{ round: 1, nothingNew: false, unreadable: false }];
+    expect(updatesAnswerOf(rounds, 1)).toEqual({ kind: "reading" });
+    expect(updatesAnswerOf([...rounds, { round: 2, nothingNew: true, unreadable: false }], 1)).toEqual({ kind: "nothing-new" });
+    expect(updatesAnswerOf([...rounds, { round: 2, nothingNew: false, unreadable: false }], 1)).toEqual({ kind: "sent" });
+    expect(updatesAnswerText({ kind: "nothing-new" }, "OpenCode", "Linear")).toBe("Nothing new on the ticket since the agent read it.");
+  });
 });
 
 describe("What the agent got", () => {
   it("shows the description, the files with their text, the link not fetched, the comments and where it all is", () => {
-    const html = render(view());
+    const html = render(context(round()));
     expect(html).toContain("What the agent got");
     expect(html).toContain("Percent mode rounds half-cents down.");
     expect(html).toContain('aria-label="Image wrong-total.png from CALC-170, open"');
-    expect(html).toContain("rounding-rules.docx");
     expect(html).toContain('data-part="text-extracted"');
     expect(html).toContain("Link · not fetched");
     expect(html).toContain('aria-label="Sentry · ACME-WEB-4F2, link, opens in a new tab"');
@@ -107,34 +143,34 @@ describe("What the agent got", () => {
   });
 
   it("lists what the ticket's limits left out, with why", () => {
-    const html = render(view({ attachments: [file("a.png", "image"), { state: "left-out", name: "support-call.mp4", size: 84 * MiB, reason: "too-big" }, { state: "left-out", name: "checkout-flow-7.png", size: null, reason: "too-many" }] }));
+    const html = render(context(round({ attachments: [ready("a.png", "image"), { state: "left-out", name: "support-call.mp4", size: 84 * MiB, reason: "too-big", from }, { state: "left-out", name: "checkout-flow-7.png", size: null, reason: "too-many", from }] })));
     expect(html).toContain("2 left out, and the agent was told which");
     expect(html).toContain("84 MB, over the 10 MB a file can be");
     expect(html).toContain("past the 20 attachments a ticket can give");
   });
 
   it("keeps a failed file's place, names it with why, and offers Retry to the driver only", () => {
-    const failed = view({ attachments: [{ state: "failed", name: "wrong-total.png" }, file("b.png", "image"), { state: "failed", name: "IEEE-754-note.pdf" }], failure: { status: 503, tries: 3, lastAt: at } });
-    const driver = render(failed, { run: () => undefined, pending: false });
+    const failedRound = context(round({ attachments: [failed("wrong-total.png"), ready("b.png", "image"), failed("IEEE-754-note.pdf")], failure: { status: null, tries: 3, lastAt: at } }));
+    const driver = render(failedRound, { run: () => undefined, pending: false });
     expect(driver).toContain('data-part="thumb-missing"');
     expect(driver).toContain('data-part="file-missing"');
     expect(driver).toContain("2 attachments didn&#x27;t load from Linear");
-    expect(driver).toContain("Linear answered 503 three times");
+    expect(driver).toContain("ostra tried three times");
     expect(driver).toContain('data-action="retry-ticket-files"');
     expect(driver).toContain("The agent started without them.");
-    expect(render(failed)).not.toContain('data-action="retry-ticket-files"');
-    expect(render(failed, { run: () => undefined, pending: true })).toContain("Retrying…");
+    expect(render(failedRound)).not.toContain('data-action="retry-ticket-files"');
+    expect(render(failedRound, { run: () => undefined, pending: true })).toContain("Retrying…");
   });
 
   it("says the tracker doesn't offer its files, and shows the fetch while the task starts", () => {
-    expect(render(view({ attachments: [], filesNotOffered: true }))).toContain("The ticket&#x27;s files weren&#x27;t fetched: Linear doesn&#x27;t offer them.");
-    const fetching = render(view({ state: "fetching" }));
+    expect(render(context(round({ attachments: [], links: [], filesNotFetched: true })))).toContain("The ticket&#x27;s files weren&#x27;t fetched: Linear doesn&#x27;t offer them.");
+    const fetching = render(context(null));
     expect(fetching).toContain("Fetching the ticket&#x27;s attachments and comments…");
     expect(fetching).not.toContain("Percent mode rounds");
   });
 
   it("is reached from the Ticket group's Context row", () => {
-    const html = renderToStaticMarkup(<TicketContextRow view={view()} onShow={() => undefined} />);
+    const html = renderToStaticMarkup(<TicketContextRow round={round()} fileOf={none} onShow={() => undefined} />);
     expect(html).toContain("4 attachments · 3 comments");
     expect(html).toContain('aria-label="Context: 4 attachments · 3 comments. Show what the agent got"');
   });

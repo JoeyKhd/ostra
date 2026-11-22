@@ -182,7 +182,7 @@ export const PageFrame = ({ crumbs, actions, properties, phoneProperties = "stac
           {children}
         </main>
         {pane !== undefined ? (
-          <div className={cn("relative min-h-0 min-w-0 max-lg:h-[calc(100dvh-104px)]", !pane.expanded && "lg:border-l lg:border-line", pane.narrow === "page" && "max-lg:hidden")} data-testid="side-pane">
+          <div className={cn("relative min-h-0 min-w-0 max-lg:h-[calc(100dvh-104px)]", !pane.expanded && "lg:border-l lg:border-line", pane.narrow === "page" && "max-lg:hidden")} data-testid="side-pane" data-drop-excluded>
             {pane.expanded ? null : (
               <div
                 aria-hidden

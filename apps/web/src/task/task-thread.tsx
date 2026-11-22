@@ -11,18 +11,34 @@ import {
 } from "@assistant-ui/react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
-import { ArrowUpIcon, InfoIcon, PauseIcon, RefreshCcwIcon, RotateCcwIcon, SquareTerminalIcon, UserIcon } from "lucide-react";
+import { PauseIcon, RefreshCcwIcon, RotateCcwIcon, SquareTerminalIcon, UserIcon } from "lucide-react";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 
+import type { ModelImageInput } from "@ostra/domain";
 import type { AgentMessage } from "@ostra/domain/agent-message";
+import type { FileLimits } from "@ostra/domain/file-limits";
 import { clientMessageIdSchema } from "@ostra/protocol";
-import type { TaskId } from "@ostra/protocol";
+import type { MessageFileId, TaskId } from "@ostra/protocol";
 import type { MemberId } from "@ostra/protocol";
 import { foldTaskEvents, visibleLiveText } from "@ostra/task-view";
-import type { OptimisticMessage, TaskUIMessage } from "@ostra/task-view";
+import type { MessageFileView, OptimisticMessage, TaskUIMessage } from "@ostra/task-view";
 
-import { AttachmentsProvider } from "@/components/tasks/attachments/attachments-context";
+import { AttachmentsProvider, useAttachments as useThreadAttachments } from "@/components/tasks/attachments/attachments-context";
+import { ThreadMessageFiles } from "@/components/tasks/attachments/thread-files";
+import { ThreadTicketContext } from "@/components/tasks/attachments/ticket-context-thread";
+import { FileViewer } from "@/components/tasks/attachments/file-viewer";
+import { AttachButton } from "@/components/tasks/composer/attach-button";
+import { dropToText, limitsText, trayNoteOf } from "@/components/tasks/composer/attach-words";
+import { ComposerBox, PhoneSendButton, SendFace } from "@/components/tasks/composer/composer-box";
+import { ComposerTray, TrayHintLine, TrayNoteLine } from "@/components/tasks/composer/composer-tray";
+import { DropZone } from "@/components/tasks/composer/drop-zone";
+import { projectUploader } from "@/components/tasks/composer/upload-file";
+import { useAttachments } from "@/components/tasks/composer/use-attachments";
+import type { TrayItem } from "@/components/tasks/composer/use-attachments";
+import { useDropZone } from "@/components/tasks/composer/use-drop-zone";
+import { usePasteFiles } from "@/components/tasks/composer/use-paste-files";
 import { SubagentsBadge } from "@/components/tasks/subagents-badge";
 import { SubagentsWindow } from "@/components/tasks/subagents-window";
 import type { SubagentsAt } from "@/components/tasks/subagents-window";
@@ -129,8 +145,21 @@ const MessageView = memo(({ id, fallbackRole }: { readonly id: string; readonly 
   const role = own?.role ?? fallbackRole;
   const meta = own?.metadata;
   const system = role === "system";
+  const { memberName } = useTaskContext();
+  const attachments = useThreadAttachments();
   // F-072: a message ostra wrote for the agent is drawn from what it carried, never its prompt.
   const agentMessage = useMemo(() => (own === undefined ? null : agentMessageOf(own)), [own]);
+  // Milestone 9 (ticket 16): a member's message's files, under its words.
+  const files = own?.parts.find((part) => part.type === "data-message-files");
+  // F-149: a ticket task's first message is "What the agent got", drawn from the ticket's context.
+  const ticketStart = attachments?.ticketContext?.rounds[0]?.messageSeq;
+  if (role === "user" && ticketStart !== undefined && ticketStart !== null && meta?.firstSeq === ticketStart && attachments !== null) {
+    return (
+      <div data-message-id={id} data-role="ticket-context" data-first-seq={meta.firstSeq} data-last-seq={meta.lastSeq}>
+        <ThreadTicketContext taskId={attachments.taskId} now={Date.now()} />
+      </div>
+    );
+  }
   return (
     <MessagePrimitive.Root
       data-message-id={id}
@@ -191,6 +220,7 @@ const MessageView = memo(({ id, fallbackRole }: { readonly id: string; readonly 
             }
           }}
         </MessagePrimitive.Parts>
+        {role === "user" && files?.type === "data-message-files" ? <ThreadMessageFiles data={files.data} author={meta?.author === undefined ? "" : memberName(meta.author.memberId)} /> : null}
         {/* F-084: each turn shows its own tokens once it ended, from the key proxy's counts; "≈" marks an estimate. */}
         {/* F-137: with the level it ran at, its reasoning tokens, and the clamp's line when it moved the level. */}
         {role === "assistant" && meta !== undefined && meta.turnState !== "running" ? <TurnUsage meta={meta} /> : null}
@@ -200,56 +230,184 @@ const MessageView = memo(({ id, fallbackRole }: { readonly id: string; readonly 
 });
 MessageView.displayName = "MessageView";
 
+/** What the composer needs to take files (F-148, ticket 15): where they upload, and what the task's model and runner can do with them. */
+export type ComposerFiles = {
+  readonly projectId: string;
+  readonly taskId: TaskId;
+  readonly agent: string;
+  /** `tasks.get`'s `messageFiles`: the model's image input, whether the agent takes images, and a runner too old for files. */
+  readonly messageFiles: { readonly model: { readonly name: string; readonly imageInput: ModelImageInput } | null; readonly agentTakesImages: boolean; readonly oldRunner: string | null };
+  /** A question waits on the driver: the drop zone says the files go in the reply. */
+  readonly replying: boolean;
+};
+
+/** The files a message goes with: their IDs for the API, and the browser's copies for its first frame in the thread. */
+export type SentFiles = { readonly fileIds: readonly MessageFileId[]; readonly previews: readonly MessageFileView[] };
+
+/** No limits while they're read: the tray takes nothing until they come. */
+const NO_LIMITS: FileLimits = { maxFiles: 0, maxFileBytes: 0, maxTotalBytes: 0 };
+
+/** The files a message carries while it sends, drawn from the browser's own copies. */
+const previewsOf = (items: readonly TrayItem[]): readonly MessageFileView[] =>
+  items.flatMap((item): MessageFileView[] =>
+    item.upload.state === "ready"
+      ? [
+          {
+            fileId: item.upload.uploaded.fileId,
+            name: item.upload.uploaded.name,
+            kind: item.upload.uploaded.kind,
+            contentType: item.upload.uploaded.contentType,
+            size: item.upload.uploaded.size,
+            origin: "member",
+            asImage: false,
+            text: item.upload.uploaded.text.state,
+            downloadPath: item.previewUrl,
+            textWords: item.upload.uploaded.text.words,
+            textReason: item.upload.uploaded.text.reason,
+          },
+        ]
+      : [],
+  );
+
 /**
  * The composer, pinned under the thread (task.md, "Composer"). ostra's own Send: assistant-ui's stock
  * Send never fires while a turn runs (spike 7, ADR 0036). `Interrupt and send` shows only while a turn
- * runs and the driver may interrupt it.
+ * runs and the driver may interrupt it. Milestone 9 (ticket 15): files by the paperclip, paste and a
+ * drop on the chat column, in a tray under the words; Send waits for uploads in flight, and files
+ * with no words are a message.
  */
-const Composer = ({ interrupt, onSend, reopen = false, hint = null }: { readonly interrupt: boolean; readonly onSend: (text: string, interrupt: boolean) => Promise<void>; readonly reopen?: boolean; readonly hint?: string | null }) => {
+const Composer = ({ interrupt, onSend, reopen = false, hint = null, files }: {
+  readonly interrupt: boolean;
+  readonly onSend: (text: string, interrupt: boolean, sent: SentFiles) => Promise<void>;
+  readonly reopen?: boolean;
+  readonly hint?: string | null;
+  readonly files: ComposerFiles | null;
+}) => {
   const text = useAuiState((state) => state.composer.text);
   const aui = useAui();
+  const trpc = useTRPC();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const send = (interrupt: boolean) => {
+  const [viewing, setViewing] = useState<string | null>(null);
+  const limits = useQuery(trpc.files.limits.queryOptions(undefined, { enabled: files !== null, staleTime: Number.POSITIVE_INFINITY }));
+  const { mutate: discardFile } = useMutation(trpc.files.discard.mutationOptions());
+  const discard = useCallback((fileId: MessageFileId) => { discardFile({ fileId }); }, [discardFile]);
+  const projectId = files?.projectId ?? null;
+  const taskId = files?.taskId ?? null;
+  const upload = useMemo(() => projectUploader(projectId ?? "", taskId), [projectId, taskId]);
+  const canAttach = files !== null && limits.data !== undefined;
+  const attachments = useAttachments({ limits: limits.data ?? NO_LIMITS, upload, discard, enabled: canAttach });
+  const onPaste = usePasteFiles({ enabled: canAttach && !attachments.waiting, onFiles: attachments.add });
+  const dropping = useDropZone({ enabled: canAttach && !attachments.waiting, onDrop: attachments.add });
+  const sendState = attachments.sendState(text);
+  const note = trayNoteOf({
+    refusal: attachments.refusal,
+    entries: attachments.items,
+    model: files?.messageFiles.model ?? null,
+    agentWithoutImages: files === null || files.messageFiles.agentTakesImages ? null : files.agent,
+    oldRunner: files?.messageFiles.oldRunner ?? null,
+  });
+  // A runner too old for files takes the words alone: with files in the tray, Send waits for an update or their removal.
+  const blocked = busy || sendState.kind === "empty" || sendState.kind === "blocked" || note?.kind === "runner";
+  const send = (interruptNow: boolean) => {
+    if (blocked) return;
     const value = text.trim();
-    if (value === "" || busy) return;
-    setError(null);
-    setBusy(true);
-    onSend(value, interrupt).then(
-      () => { aui.composer.setText(""); setBusy(false); },
-      (cause: unknown) => { setError(cause instanceof Error ? cause.message : t("errors.unknown")); setBusy(false); },
-    );
+    attachments.press((fileIds) => {
+      setError(null);
+      setBusy(true);
+      onSend(value, interruptNow, { fileIds, previews: previewsOf(attachments.items) }).then(
+        () => {
+          aui.composer.setText("");
+          attachments.clear();
+          setBusy(false);
+        },
+        (cause: unknown) => {
+          setError(cause instanceof Error ? cause.message : t("errors.unknown"));
+          setBusy(false);
+        },
+      );
+    });
   };
+  const column = dropping && typeof document !== "undefined" ? document.querySelector("[data-chat-column]") : null;
+  const pictures = attachments.items.flatMap((item) => (item.look === "image" && item.previewUrl !== null ? [{ key: item.key, name: item.name, src: item.previewUrl, size: item.size, asImage: null }] : []));
   return (
-    <ComposerPrimitive.Root data-part="composer" className="focus-box rounded-lg border border-control-line bg-surface px-3.5 py-3" onSubmit={(event) => { event.preventDefault(); send(false); }}>
-      <ComposerPrimitive.Input
-        onKeyDown={(event) => {
-          // Ticket 16: Escape leaves the composer (Enter sends, Shift+Enter is a new line).
-          if (event.key === "Escape") event.currentTarget.blur();
-        }}
-        aria-label={t("task.composer.label")} placeholder={reopen ? t("taskPage.composer.reopenPlaceholder") : t("task.composer.placeholder")} rows={2} className="block w-full resize-none bg-transparent text-body text-text placeholder:text-faint focus:outline-none focus-visible:outline-none" />
-      {error === null ? null : <p role="alert" className="text-sm text-red">{error}</p>}
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-faint">
-          <InfoIcon className="size-[13px] shrink-0 stroke-[1.75]" /> <span className="truncate">{hint ?? t("task.composer.hint")}</span>
-        </span>
-        {interrupt ? (
-          <Button type="button" onClick={() => { send(true); }} disabled={text.trim() === ""}>
-            <PauseIcon /> {t("task.composer.interruptAndSend")}
-          </Button>
-        ) : null}
-        {reopen ? (
-          <Button type="button" variant="primary" onClick={() => { send(false); }} disabled={text.trim() === "" || busy} data-action="reopen">
-            <RotateCcwIcon /> {busy ? t("taskPage.composer.reopening") : t("taskPage.composer.reopen")}
-          </Button>
-        ) : (
-          <Button type="button" variant="primary" onClick={() => { send(false); }} disabled={text.trim() === ""} data-action="send">
-            <ArrowUpIcon /> {t("task.composer.send")}
-          </Button>
-        )}
-      </div>
+    <ComposerPrimitive.Root onSubmit={(event) => { event.preventDefault(); send(false); }}>
+      <ComposerBox
+        data-part="composer"
+        field={
+          <ComposerPrimitive.Input
+            onKeyDown={(event) => {
+              // Ticket 16: Escape leaves the composer (Enter sends, Shift+Enter is a new line); while
+              // Send waits for uploads, it goes back to editing first.
+              if (event.key !== "Escape") return;
+              if (attachments.waiting) attachments.cancel();
+              else event.currentTarget.blur();
+            }}
+            onPaste={onPaste}
+            readOnly={attachments.waiting}
+            aria-label={t("task.composer.label")}
+            placeholder={reopen ? t("taskPage.composer.reopenPlaceholder") : t("task.composer.placeholder")}
+            rows={attachments.items.length > 0 ? 1 : 2}
+            className="block w-full resize-none bg-transparent text-body text-text placeholder:text-faint focus:outline-none focus-visible:outline-none"
+          />
+        }
+        tray={
+          <>
+            <ComposerTray
+              items={attachments.items}
+              announcement={attachments.announcement}
+              onRemove={attachments.remove}
+              onRetry={attachments.retry}
+              onOpen={(key) => { setViewing(key); }}
+              returnFocus={() => { document.querySelector<HTMLElement>("[data-part='composer'] textarea")?.focus(); }}
+            />
+            {error === null ? null : <p role="alert" className="mt-2 text-sm text-red">{error}</p>}
+          </>
+        }
+        note={<TrayNoteLine note={note} onDismiss={attachments.dismiss} />}
+        attach={files === null ? null : <AttachButton onFiles={attachments.add} full={attachments.full} max={limits.data?.maxFiles ?? 0} disabled={!canAttach || attachments.waiting} />}
+        hint={<TrayHintLine hint={attachments.hint} own={hint ?? t("task.composer.hint")} />}
+        actions={
+          <>
+            {interrupt ? (
+              <Button type="button" onClick={() => { send(true); }} disabled={blocked}>
+                <PauseIcon /> {t("task.composer.interruptAndSend")}
+              </Button>
+            ) : null}
+            {reopen ? (
+              <Button type="button" variant="primary" onClick={() => { send(false); }} disabled={blocked} data-action="reopen">
+                {sendState.kind === "waiting" ? <SendFace state={sendState} label="" /> : <><RotateCcwIcon /> {busy ? t("taskPage.composer.reopening") : t("taskPage.composer.reopen")}</>}
+              </Button>
+            ) : (
+              <Button type="button" variant="primary" onClick={() => { send(false); }} disabled={blocked} data-action="send">
+                <SendFace state={sendState} label={t("task.composer.send")} />
+              </Button>
+            )}
+          </>
+        }
+        phoneSend={reopen ? null : <PhoneSendButton state={blocked ? { kind: "empty" } : sendState} onPress={() => { send(false); }} />}
+      />
+      {column === null || files === null || limits.data === undefined
+        ? null
+        : createPortal(<DropZone variant="column" to={dropToText(files.agent, files.replying)} limits={limitsText(limits.data)} />, column)}
+      {viewing === null ? null : (
+        <FileViewer images={pictures} openKey={viewing} source={{ kind: "unsent" }} agent={files?.agent ?? ""} projectName="" link={null} onSelect={setViewing} onClose={() => { setViewing(null); }} />
+      )}
     </ComposerPrimitive.Root>
   );
+};
+
+/**
+ * "What the agent got" at the thread's start while the ticket is still being read, or for a ticket
+ * task started outside the panel, whose first read has no message of its own to take the place of.
+ */
+const TicketContextAtStart = ({ taskId }: { readonly taskId: TaskId }) => {
+  const attachments = useThreadAttachments();
+  const view = attachments?.ticketContext ?? null;
+  if (view === null) return null;
+  const first = view.rounds[0];
+  if (first !== undefined && first.messageSeq !== null) return null;
+  return <ThreadTicketContext taskId={taskId} now={Date.now()} />;
 };
 
 export type TaskThreadProps = {
@@ -289,9 +447,11 @@ export type TaskThreadProps = {
   readonly loadEarlier: () => Promise<void>;
   /** Called after the fold with how long it took, for the render budget's record. */
   readonly onFold?: (ms: number, messages: number) => void;
+  /** Milestone 9 (ticket 15): what the composer needs to take files; `null` takes none. */
+  readonly composerFiles?: ComposerFiles | null;
 };
 
-export const TaskThread = ({ taskId, projectName, ticketKey = null, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, approvalLostRace, questionCard, tail, live, notDriver, canReopen = false, composerHint = null, instead, hasEarlier, loadEarlier, onFold }: TaskThreadProps) => {
+export const TaskThread = ({ taskId, projectName, ticketKey = null, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, approvalLostRace, questionCard, tail, live, notDriver, canReopen = false, composerHint = null, instead, hasEarlier, loadEarlier, onFold, composerFiles = null }: TaskThreadProps) => {
   const trpc = useTRPC();
   const [optimistic, setOptimistic] = useState<readonly OptimisticMessage[]>([]);
   const previous = useRef<readonly TaskUIMessage[]>([]);
@@ -313,13 +473,25 @@ export const TaskThread = ({ taskId, projectName, ticketKey = null, log, memberI
   // F-121: how many pictures the log holds, so the thread reads the attachments again when one comes.
   const attachmentsAdded = useMemo(() => log.events.filter(({ event }) => event.kind === "attachment.added").length, [log.events]);
 
+  // Milestone 9 (ticket 16): the task's files, so a removed one's chip loses its link, and how many messages brought files.
+  const taskFiles = useQuery(trpc.tasks.files.queryOptions({ taskId }));
+  const removedFiles = useMemo(() => new Set((taskFiles.data?.files ?? []).flatMap((file) => (file.downloadPath === null ? [file.fileId] : []))), [taskFiles.data]);
+  const filesAdded = useMemo(() => log.events.filter(({ event }) => event.kind === "user.message" && ((event.files?.length ?? 0) > 0 || event.intent === "ticket-update")).length, [log.events]);
+  const messageOf = useCallback(
+    (seq: number) => {
+      const found = log.events.find((stored) => stored.seq === seq);
+      return found?.event.kind === "user.message" ? { memberName: memberName(found.event.memberId), at: found.at, imagesNotSent: found.event.imagesNotSent ?? null } : null;
+    },
+    [log.events, memberName],
+  );
+
   const messages = useMemo(() => {
     const started = performance.now();
-    const next = foldTaskEvents(log.events, visibleLiveText(log.live), { optimistic, previous: previous.current });
+    const next = foldTaskEvents(log.events, visibleLiveText(log.live), { optimistic, previous: previous.current, removedFiles });
     onFold?.(performance.now() - started, next.length);
     previous.current = next;
     return next;
-  }, [log.events, log.live, optimistic, onFold]);
+  }, [log.events, log.live, optimistic, onFold, removedFiles]);
 
   // F-072: a diff-comments message is drawn from the comments it carried (`diff.comments.list`), read
   // only once the thread has one. A task's notice refreshes them (`change-scopes.ts`); a message whose
@@ -348,13 +520,14 @@ export const TaskThread = ({ taskId, projectName, ticketKey = null, log, memberI
   }, [log.events]);
 
   const sendText = useCallback(
-    async (text: string, interrupt: boolean) => {
+    async (text: string, interrupt: boolean, sent: SentFiles = { fileIds: [], previews: [] }) => {
       if (memberId === null) return;
       const clientMessageId = clientMessageIdSchema.parse(crypto.randomUUID());
-      setOptimistic((list) => [...list, { clientMessageId, memberId, text, delivery: interrupt ? "after-interrupt" : running ? "queued" : "immediate" }]);
+      setOptimistic((list) => [...list, { clientMessageId, memberId, text, delivery: interrupt ? "after-interrupt" : running ? "queued" : "immediate", ...(sent.previews.length === 0 ? {} : { files: sent.previews }) }]);
+      const fileIds = sent.fileIds.length === 0 ? {} : { fileIds: [...sent.fileIds] };
       try {
-        if (canReopen && !canSend) await reopen.mutateAsync({ taskId, clientMessageId, text });
-        else await send.mutateAsync({ taskId, clientMessageId, text, delivery: interrupt ? "interrupt" : "queue" });
+        if (canReopen && !canSend) await reopen.mutateAsync({ taskId, clientMessageId, ...(text === "" ? {} : { text }), ...fileIds });
+        else await send.mutateAsync({ taskId, clientMessageId, text, delivery: interrupt ? "interrupt" : "queue", ...fileIds });
       } catch (cause) {
         setOptimistic((list) => list.filter((m) => m.clientMessageId !== clientMessageId));
         throw new Error(errorText({ message: cause instanceof Error ? cause.message : "", data: null }) ?? t("errors.unknown"));
@@ -469,7 +642,7 @@ export const TaskThread = ({ taskId, projectName, ticketKey = null, log, memberI
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <TaskContext.Provider value={context}>
-        <AttachmentsProvider taskId={taskId} added={attachmentsAdded} agentName={agentName}>
+        <AttachmentsProvider taskId={taskId} added={attachmentsAdded} filesAdded={filesAdded} agentName={agentName} messageOf={messageOf}>
         <SentDiffCommentsContext.Provider value={sentDiffComments}>
           <ThreadPrimitive.Root data-part="thread" className="flex min-h-0 flex-1 flex-col">
             {live}
@@ -481,12 +654,13 @@ export const TaskThread = ({ taskId, projectName, ticketKey = null, log, memberI
                   </Button>
                 </div>
               ) : null}
+              {hasEarlier ? null : <TicketContextAtStart taskId={taskId} />}
               <ThreadPrimitive.Messages>{({ message }) => <MessageView id={message.id} fallbackRole={message.role} />}</ThreadPrimitive.Messages>
               {tail}
             </ThreadPrimitive.Viewport>
             {canSend || canReopen ? (
               <div className="shrink-0 pt-3">
-                <Composer interrupt={canSend && running && canInterrupt} onSend={sendText} reopen={!canSend} hint={composerHint} />
+                <Composer interrupt={canSend && running && canInterrupt} onSend={sendText} reopen={!canSend} hint={composerHint} files={composerFiles} />
               </div>
             ) : instead !== undefined ? (
               instead

@@ -23,6 +23,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, SubmitEvent } from "react";
 
 import { branchSlugFor, titleFromPrompt } from "@ostra/domain/branch-name";
+import type { FileLimits } from "@ostra/domain/file-limits";
 import { projectIdSchema, runnerIdSchema } from "@ostra/protocol";
 import type { ProjectId } from "@ostra/protocol";
 
@@ -46,6 +47,15 @@ import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 
 import { BudgetReason } from "./budget-reason";
+import { AttachButton } from "./composer/attach-button";
+import { limitsText, trayNoteOf } from "./composer/attach-words";
+import type { ImageInput } from "./composer/attach-words";
+import { SendFace } from "./composer/composer-box";
+import { ComposerTray, TrayNoteLine } from "./composer/composer-tray";
+import { DropZone } from "./composer/drop-zone";
+import { FilesNextRow, NewTaskAttachmentsGroup, TakesRow } from "./composer/new-task-files";
+import type { TrayItemView } from "./composer/tray-item";
+import { useBoxFiles } from "./composer/use-box-files";
 import type { BudgetWait } from "./budget-reason";
 import { KeyRow, NoKeyNext, NoKeyReason, ProjectKeys } from "./no-key";
 import type { NoKey } from "./no-key";
@@ -177,11 +187,13 @@ const NextRow = ({ icon, children }: { readonly icon: ReactNode; readonly childr
   </li>
 );
 
-const WhatHappensNext = ({ project, agentName, runner, slug }: {
+const WhatHappensNext = ({ project, agentName, runner, slug, files }: {
   readonly project: ProjectSummary;
   readonly agentName: string;
   readonly runner: Runner | null;
   readonly slug: string | null;
+  /** Milestone 9 (ticket 15): the tray's files, whose row comes second while it holds any. */
+  readonly files: readonly TrayItemView[];
 }) => {
   const repo = project.repos[0];
   return (
@@ -194,6 +206,7 @@ const WhatHappensNext = ({ project, agentName, runner, slug }: {
               : fill(t("newTask.nextWorktree"), { repo: <Code>{repo.fullName}</Code>, base: <Code>{repo.defaultBranch}</Code>, runner: <Code>{runner.name}</Code> })}
           </NextRow>
         )}
+        <FilesNextRow entries={files} variant="row" className="max-md:hidden" />
         <NextRow icon={<GitBranchIcon aria-hidden />}>
           {slug === null ? t("newTask.nextBranchEmpty", { agent: agentName }) : (
             <>
@@ -290,8 +303,12 @@ const PanelSkeleton = () => (
   </div>
 );
 
-const Properties = ({ project, profile, runner, boxSize, noKey, servingKey }: {
+const Properties = ({ project, profile, runner, boxSize, noKey, servingKey, files, takes }: {
   readonly project: ProjectSummary;
+  /** Milestone 9 (ticket 15): the tray's files, for the `Attachments` group, against the limits. */
+  readonly files: { readonly entries: readonly TrayItemView[]; readonly limits: FileLimits | null };
+  /** What the profile's model reads (`Takes`); `null` while it's read or with no model. */
+  readonly takes: ImageInput | null;
   /** F-095: the project's default box size, which a task on a pool gets; `null` for none. */
   readonly boxSize: { readonly name: string; readonly cpuMillis: number; readonly memoryMiB: number } | null;
   /** F-135: the key that serves the profile's model in the project, from the New task check. */
@@ -315,6 +332,7 @@ const Properties = ({ project, profile, runner, boxSize, noKey, servingKey }: {
         )}
         <PropRow label={t("newTask.keyBranch")}><span className="text-muted">{t("newTask.branchLater")}</span></PropRow>
       </PropGroup>
+      {files.limits === null ? null : <NewTaskAttachmentsGroup entries={files.entries} limits={files.limits} />}
       <PropGroup title={t("newTask.agentProfile")}>
         {profile === undefined ? (
           <div className="flex h-[30px] items-center"><Skeleton className="w-[160px]" /></div>
@@ -330,6 +348,7 @@ const Properties = ({ project, profile, runner, boxSize, noKey, servingKey }: {
               )}
             </PropRow>
             {noKey !== null ? <KeyRow providerName={null} projectName={project.name} /> : servingKey === null ? null : <KeyRow providerName={servingKey} projectName={project.name} />}
+            {takes === null ? null : <TakesRow input={takes} />}
           </>
         )}
       </PropGroup>
@@ -412,6 +431,18 @@ export const NewTaskView = () => {
   const defaultSize = sizes.data?.find((size) => size.name === projectRunners.data?.defaultBoxSize) ?? null;
   const agentName = profile?.agentName ?? t("task.agent");
   const slug = prompt.trim() === "" ? null : branchSlugFor(titleFromPrompt(prompt.trim()));
+  // Milestone 9 (ticket 15): the box's files, uploaded to the project it starts the task in.
+  const files = useBoxFiles(projectId);
+  const { attachments } = files;
+  const sendState = attachments.sendState(prompt);
+  const takes: ImageInput | null = choices.data?.model?.imageInput ?? null;
+  const note = trayNoteOf({
+    refusal: attachments.refusal,
+    entries: attachments.items,
+    model: choices.data?.model ?? null,
+    agentWithoutImages: choices.data === undefined || choices.data.agentTakesImages ? null : agentName,
+    oldRunner: runner !== null && choices.data?.personal.find((one) => one.runnerId === runner.id)?.takesFiles === false && attachments.items.length > 0 ? runner.name : null,
+  });
 
   const create = useMutation(
     trpc.tasks.create.mutationOptions({
@@ -448,16 +479,19 @@ export const NewTaskView = () => {
   const repos = detail.data?.repos ?? [];
   const blocked = unsupportedRepos(repos).length > 0;
 
+  const filesBlock = sendState.kind === "empty" || sendState.kind === "blocked" || note?.kind === "runner";
   const submit = (event: SubmitEvent) => {
     event.preventDefault();
-    if (projectId === undefined || prompt.trim() === "" || starting || blocked || noKey !== null || checking) return;
-    create.mutate({
+    if (projectId === undefined || prompt.trim() === "" || starting || blocked || noKey !== null || checking || filesBlock) return;
+    const input = {
       projectId,
       prompt: prompt.trim(),
       ...(profile === undefined || profile === null ? {} : { agentProfileId: profile.profileId }),
       ...(chosen === POOLS ? {} : { runnerId: runnerIdSchema.parse(chosen) }),
       ...(kind === "refine" ? { kind } : {}),
-    });
+    };
+    // Start waits for uploads in flight, and goes with the files once the last lands.
+    attachments.press((fileIds) => { create.mutate({ ...input, ...(fileIds.length === 0 ? {} : { fileIds: [...fileIds] }) }); });
   };
 
   const crumbs = [{ label: me.data?.organization?.name ?? "" }, { label: t("newTask.title") }];
@@ -477,7 +511,7 @@ export const NewTaskView = () => {
     <PageFrame
       crumbs={crumbs}
       wideProperties
-      properties={project === undefined ? <PanelSkeleton /> : <Properties project={project} profile={profile} runner={runner} boxSize={defaultSize} noKey={noKey} servingKey={check.data?.kind === "open" && check.data.providerName !== "" ? check.data.providerName : null} />}
+      properties={project === undefined ? <PanelSkeleton /> : <Properties project={project} profile={profile} runner={runner} boxSize={defaultSize} noKey={noKey} servingKey={check.data?.kind === "open" && check.data.providerName !== "" ? check.data.providerName : null} files={{ entries: attachments.items, limits: files.limits }} takes={takes} />}
     >
       <div>
         <PageHeading
@@ -490,17 +524,23 @@ export const NewTaskView = () => {
           noValidate
           aria-label={t("newTask.title")}
           data-testid="new-task"
-          className="focus-box mt-6 flex min-h-[250px] cursor-text flex-col rounded-[10px] border border-control-line bg-surface px-4 pb-2.5 pt-3.5"
+          className="focus-box relative mt-6 flex min-h-[250px] cursor-text flex-col rounded-[10px] border border-control-line bg-surface px-4 pb-2.5 pt-3.5"
           onClick={(event) => { if (event.target === event.currentTarget) textarea.current?.focus(); }}
         >
+          {files.dropping && files.limits !== null ? <DropZone variant="box" limits={limitsText(files.limits)} /> : null}
           <label htmlFor="new-task-prompt" className="sr-only">{t("newTask.prompt")}</label>
           <textarea
             ref={textarea}
             id="new-task-prompt"
             autoFocus
-            readOnly={starting}
+            readOnly={starting || attachments.waiting}
             disabled={loading}
-            className="block max-h-[50vh] min-h-[150px] w-full flex-1 resize-none bg-transparent text-[15.5px] leading-[1.6] text-text outline-none [field-sizing:content] placeholder:text-faint focus-visible:outline-none"
+            onPaste={files.onPaste}
+            className={cn(
+              "block max-h-[50vh] w-full flex-1 resize-none bg-transparent text-[15.5px] leading-[1.6] text-text outline-none [field-sizing:content] placeholder:text-faint focus-visible:outline-none",
+              // With files, the words leave the tray room in the box's 250px (new-task-attachments.md).
+              attachments.items.length === 0 ? "min-h-[150px]" : "min-h-[80px]",
+            )}
             placeholder={t("newTask.placeholder")}
             value={prompt}
             onChange={(event) => { setPrompt(event.target.value); }}
@@ -508,7 +548,18 @@ export const NewTaskView = () => {
               if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) event.currentTarget.form?.requestSubmit();
             }}
           />
+          <ComposerTray
+            items={attachments.items}
+            announcement={attachments.announcement}
+            onRemove={attachments.remove}
+            onRetry={attachments.retry}
+            onOpen={null}
+            returnFocus={() => { textarea.current?.focus(); }}
+            className="mt-3 cursor-default max-md:-mr-4"
+          />
+          <TrayNoteLine note={note} onDismiss={attachments.dismiss} className="mt-2.5 cursor-default" />
           <div className="mt-2.5 flex cursor-default flex-wrap items-center gap-1">
+            <AttachButton onFiles={attachments.add} full={attachments.full} max={files.limits?.maxFiles ?? 0} disabled={!files.canAttach || attachments.waiting || starting} layout="new-task" className="mr-1" />
             {project === undefined || projects.data === undefined ? (
               <>
                 <Trigger disabled><Skeleton className="w-[90px]" /></Trigger>
@@ -540,12 +591,18 @@ export const NewTaskView = () => {
                 type="submit"
                 // No key: the outline button dimmed, not the primary fill (no-key-for-model.md, section 1).
                 variant={noKey === null ? "primary" : "outline"}
-                disabled={loading || starting || prompt.trim() === "" || blocked || noKey !== null || checking}
+                disabled={loading || starting || prompt.trim() === "" || blocked || noKey !== null || checking || filesBlock}
                 data-action="start-task"
                 {...(blocked && projectId !== undefined ? { "aria-describedby": repoBlockId(projectId) } : noKey !== null ? { "aria-describedby": NO_KEY_ID } : budgetWait === null ? {} : { "aria-describedby": BUDGET_WAIT_ID })}
               >
-                {starting || checking ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : <ArrowUpIcon aria-hidden />}
-                {starting ? t("newTask.starting") : t("newTask.startTask")}
+                {sendState.kind === "waiting" ? (
+                  <SendFace state={sendState} label="" />
+                ) : (
+                  <>
+                    {starting || checking ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : <ArrowUpIcon aria-hidden />}
+                    {starting ? t("newTask.starting") : t("newTask.startTask")}
+                  </>
+                )}
               </Button>
             </span>
           </div>
@@ -570,7 +627,10 @@ export const NewTaskView = () => {
         {project === undefined ? null : (
           <>
             {noKey === null ? (
-              <WhatHappensNext project={project} agentName={agentName} runner={runner} slug={slug} />
+              <>
+                <FilesNextRow entries={attachments.items} variant="line" className="md:hidden" />
+                <WhatHappensNext project={project} agentName={agentName} runner={runner} slug={slug} files={attachments.items} />
+              </>
             ) : (
               <Section title={t("newTask.nextTitle")} className="mt-8"><NoKeyNext noKey={noKey} /></Section>
             )}

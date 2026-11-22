@@ -1,3 +1,4 @@
+import type { ModelImageInput } from "@ostra/domain";
 import { checkMessageFiles } from "@ostra/domain/file-limits";
 import type { FileLimits } from "@ostra/domain/file-limits";
 import { isPromptImageContentType } from "@ostra/protocol";
@@ -136,22 +137,25 @@ export const itemName = (entry: Pick<TrayEntry<unknown>, "name" | "size" | "uplo
 // ---------- the note line and the hint ----------
 
 /** Whether the task's model sees images (`tasks.get`'s and the new task's `model.imageInput`). */
-export type ImageInput = "yes" | "no" | "unknown";
+export type ImageInput = ModelImageInput;
 
 /**
  * The note line under the tray, one at a time, newest wins (composer-attachments.md, "The box"): a
- * file that wasn't added, the runner that can't take files yet, or the model that can't see the
- * tray's images. `null`: no line.
+ * file that wasn't added, the runner that can't take files yet, or the model (or the agent) that
+ * can't take the tray's images. `null`: no line.
  */
 export type TrayNote =
   | { readonly kind: "refused"; readonly refusal: TrayRefusal }
   | { readonly kind: "runner"; readonly runner: string }
-  | { readonly kind: "model"; readonly model: string; readonly input: Exclude<ImageInput, "yes"> };
+  | { readonly kind: "model"; readonly model: string; readonly input: Exclude<ImageInput, "yes"> }
+  | { readonly kind: "agent"; readonly agent: string };
 
 export const trayNoteOf = (input: {
   readonly refusal: TrayRefusal | null;
   readonly entries: readonly Pick<TrayEntry<unknown>, "look">[];
   readonly model: { readonly name: string; readonly imageInput: ImageInput } | null;
+  /** The agent, when it takes no images in its prompt (its adapter's `promptImages`): its name. */
+  readonly agentWithoutImages?: string | null;
   /** The task's runner, when it runs a protocol too old for files (`runner-needs-upgrade`). */
   readonly oldRunner: string | null;
 }): TrayNote | null => {
@@ -161,7 +165,7 @@ export const trayNoteOf = (input: {
   if (model === null || !input.entries.some((entry) => entry.look === "image")) return null;
   switch (model.imageInput) {
     case "yes":
-      return null;
+      return input.agentWithoutImages === undefined || input.agentWithoutImages === null ? null : { kind: "agent", agent: input.agentWithoutImages };
     case "no":
     case "unknown":
       return { kind: "model", model: model.name, input: model.imageInput };
@@ -179,6 +183,8 @@ export const noteText = (note: TrayNote): string => {
       return t("task.composer.attach.oldRunner", { runner: note.runner });
     case "model":
       return note.input === "no" ? t("task.composer.attach.modelNo", { model: note.model }) : t("task.composer.attach.modelUnknown", { model: note.model });
+    case "agent":
+      return t("task.composer.attach.agentNoImages", { agent: note.agent });
     default:
       return note satisfies never;
   }
