@@ -2,7 +2,7 @@
 
 **Who answers:** 👤 = the maintainer's call · 🔬 = research informs it, then we decide together · 🔧 = a build task with a known fix: no decision is needed, and the row leaves when the fix is committed.
 
-A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q342). They are two separate ranges: Q-20 and Q20 are different questions.
+A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q343). They are two separate ranges: Q-20 and Q20 are different questions.
 
 ## Settled
 
@@ -533,6 +533,10 @@ Ticket 19 of that spec asks the maintainer to look at the lead's calls; any the 
 | Q341 What of video and audio? | ADR 0070, F-148, the lead's call: files only, within the limits; no frames and no transcripts |
 
 ## Open
+
+### Raised by the v1 audit's box lifecycle pass (2026-11-22)
+
+**Q343 👤 Does a stopped `docker` box stay on its host, and resume in place?** (F-096/c9, F-079/c2, ADR 0039, ADR 0029; found by the v1 ledger audit, 2026-11-22). ADR 0039 keeps a stopped `docker` box until its host needs the space, "so the next turn can resume in place", and F-079 releases it sooner when the host is short of disk. None of it is built. The pool runner removes a box's containers as soon as its sidecar exits (`apps/runner/src/box-dispatcher.ts`, `runBox`'s `finally`), which the idle stop makes happen, and nothing tells core. Core still records the box `stopped`, so a reopen plans `resumed` on it (`chooseReopenStep`); the fresh box that comes falls back to `rebuilt`, the rebuild template and the hidden ref without the session archive, where `restored` would have loaded the agent's own session. Keeping it is more than leaving the containers: a sidecar's lease and session are fixed when its container is made, so a reopen needs the kept box's sidecar made again over the kept task volume, and that sidecar's executor has to take up the kept workspace and agent folder; and the space check needs a release reason `disk` (the protocol's `boxReleaseReasonSchema` and the `BoxReleaseReason` enum) and a message that tells core the box went. Which do we want: (a) build ADR 0039 as written (milestone-sized, and only a Linux run with Docker shows it), or (b) amend ADR 0039 and F-096/F-079 so a `docker` box is removed at its idle stop like a `kubernetes` pod, and core plans a reopen of either as `restored`, from the archive? Until then F-096/c9 and F-079/c2 stay unproved.
 
 ### Raised by milestone 5 (2026-11-20)
 
