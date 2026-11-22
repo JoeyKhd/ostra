@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, SeededMember, TestDatabase } from "@ostra/db/testing";
 import { admitQueued, dispatchTask, ensureBoxSizes, postgresChangeNotices, postgresCommandOutbox, queueTask, systemClock } from "@ostra/domain";
@@ -5,7 +7,7 @@ import type { AdmitDeps } from "@ostra/domain";
 import { seedPool, seedQueuedTask as seedQueued, seedRunner, seedTaskStartedByNobody } from "@ostra/domain/testing";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
-import { leaseEpochSchema, memberIdSchema, sessionIdSchema } from "@ostra/protocol";
+import { leaseEpochSchema, memberIdSchema, projectIdSchema, sessionIdSchema } from "@ostra/protocol";
 import type { OrganizationId, PoolId, ProjectId, RunnerCapabilities, RunnerId, SessionId, TaskId } from "@ostra/protocol";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -33,21 +35,24 @@ const admit = (poolId: PoolId) => admitQueued(deps(), { organizationId, poolId }
 
 type Queued = { readonly taskId: TaskId; readonly sessionId: SessionId };
 
-const withSession = async (taskId: TaskId): Promise<Queued> => {
-  const session = await test.db.session.create({ data: { organizationId, projectId, taskId, agentProfileId: world.profileId, origin: "new", state: "starting" } });
+const withSession = async (taskId: TaskId, inProject: ProjectId = projectId): Promise<Queued> => {
+  const session = await test.db.session.create({ data: { organizationId, projectId: inProject, taskId, agentProfileId: world.profileId, origin: "new", state: "starting" } });
   return { taskId, sessionId: sessionIdSchema.parse(session.id) };
 };
 
-/** A member's queued task, put in the queue the way `task.dispatch` does (`queueTask`). */
-const queued = async (options: { readonly creator?: SeededMember; readonly runnerId?: RunnerId; readonly queuedAt?: Date } = {}): Promise<Queued> => {
+/** A member's queued task, put in the queue the way `task.dispatch` does (`queueTask`): in the open project unless `projectId` says another. */
+const queued = async (
+  options: { readonly creator?: SeededMember; readonly runnerId?: RunnerId; readonly queuedAt?: Date; readonly projectId?: ProjectId } = {},
+): Promise<Queued> => {
+  const inProject = options.projectId ?? projectId;
   const { taskId } = await seedQueued(test.db, {
     organizationId,
-    projectId,
+    projectId: inProject,
     creatorMemberId: memberIdSchema.parse((options.creator ?? fixture.a.member).id),
     ...(options.runnerId === undefined ? {} : { runnerId: options.runnerId }),
     ...(options.queuedAt === undefined ? {} : { queuedAt: options.queuedAt }),
   });
-  const task = await withSession(taskId);
+  const task = await withSession(taskId, inProject);
   await test.db.$transaction((tx) => queueTask({ tx, jobs, clock: systemClock }, { organizationId, taskId, keepPlace: true }));
   return task;
 };
@@ -203,8 +208,42 @@ describe("choosing a runner (F-069)", () => {
   });
 });
 
+describe("a pool's projects (F-015)", () => {
+  it("F-015/c1: every project allowed on a pool dispatches to its runners, and a project the pool doesn't allow never does", async () => {
+    const restricted = projectIdSchema.parse(fixture.a.restrictedProject.id);
+    // A third project of the organization, allowed on another pool only.
+    const made = await test.db.project.create({ data: { organizationId, name: "elsewhere", slug: `elsewhere-${randomUUID().slice(0, 8)}`, access: "open" }, select: { id: true } });
+    const elsewhere = projectIdSchema.parse(made.id);
+    const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId }, { projectId: restricted }] });
+    const other = await seedPool(test.db, { organizationId, projects: [{ projectId: elsewhere }] });
+    const inPool = await connected({ organizationId, poolId, slots: 4, capabilities: docker });
+    const open = await queued();
+    const insiders = await queued({ creator: fixture.a.insider, projectId: restricted });
+    const outside = await queued({ projectId: elsewhere });
+    // The pool's pass takes the tasks of both projects it allows, and not the third's.
+    const admitted = (await admit(poolId)).admitted.map((entry) => [entry.taskId, entry.runnerId]);
+    expect(admitted).toHaveLength(2);
+    expect(admitted).toEqual(
+      expect.arrayContaining([
+        [open.taskId, inPool],
+        [insiders.taskId, inPool],
+      ]),
+    );
+    expect([await runnerOfLease(open.taskId), await runnerOfLease(insiders.taskId)]).toEqual([inPool, inPool]);
+    // The third project's task waits for its own pool's runner, though this one has room.
+    expect((await admit(other.poolId)).admitted).toEqual([]);
+    expect(await dispatchOf(outside)).toMatchObject({ ok: false, error: "no-runner" });
+    expect(await waitOf(outside.taskId)).toEqual({ code: "no-runner-online" });
+    expect(await runnerOfLease(outside.taskId)).toBeNull();
+    // Its own pool's runner joins: it goes there, never to the first pool's.
+    const inOther = await connected({ organizationId, poolId: other.poolId, slots: 1, capabilities: docker });
+    expect((await admit(other.poolId)).admitted.map((entry) => [entry.taskId, entry.runnerId])).toEqual([[outside.taskId, inOther]]);
+    expect(await test.db.lease.count({ where: { runnerId: inPool, taskId: outside.taskId } })).toBe(0);
+  });
+});
+
 describe("who may use a personal runner (F-069)", () => {
-  it("F-069/c2: a member's personal runner takes only the tasks that member started and picked it for", async () => {
+  it("F-014/c2, F-069/c2: a member's personal runner takes only the tasks that member started and picked it for", async () => {
     const owner = fixture.a.member;
     const personal = await connected({ organizationId, ownerMemberId: memberIdSchema.parse(owner.id), executor: "host", slots: 4, capabilities: host });
     const { poolId } = await seedPool(test.db, { organizationId, projects: [{ projectId }] });

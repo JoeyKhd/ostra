@@ -565,7 +565,7 @@ describe("a workspace per task (F-016)", () => {
     expect(await upstream.treeFiles(two.fullName, `refs/heads/${spec.branchName}`)).toContain("TWO.md");
     await executor.release(box);
   });
-  it("F-016/c3: two tasks never share a workspace, a working tree or a branch, and one's release leaves the other whole", async () => {
+  it("F-016/c3, F-014/c2: two tasks never share a workspace, a working tree or a branch, and one's release leaves the other whole", async () => {
     const one = newBox();
     const two = newBox();
     const first = await prepared(one);

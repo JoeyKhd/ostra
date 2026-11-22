@@ -162,7 +162,7 @@ describe("join tokens (Q48, Q94)", () => {
 });
 
 describe("runners.list and runners.mine", () => {
-  it("show an admin every runner and a member only their own, personal ones marked not isolated", async () => {
+  it("F-014/c2: show an admin every runner and a member only their own, personal ones marked not isolated", async () => {
     const { a, b } = harness.fixture;
     await seedPersonalRunner(harness, a.member.id, "member laptop");
     await seedPersonalRunner(harness, a.admin.id, "admin laptop");

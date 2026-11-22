@@ -131,7 +131,7 @@ describe("the fleet's counts (F-092)", () => {
     ]);
   });
 
-  it("F-092/c3: each runner's capability lines: not isolated on host, direct internet access on kubernetes, same user on a host pool in development", async () => {
+  it("F-092/c3, F-015/c5: each runner's capability lines: not isolated on host, direct internet access on kubernetes, same user on a host pool in development", async () => {
     const poolId = await seedPool("lined-fleet");
     const host = await seedRunner(poolId, { name: "line-host", executor: "host", minor: 4, capabilities: capabilities("host") });
     const kube = await seedRunner(poolId, { name: "line-kube", executor: "kubernetes", minor: 4, capabilities: capabilities("kubernetes") });
@@ -150,6 +150,9 @@ describe("the fleet's counts (F-092)", () => {
       ["not-isolated"],
       ["not-isolated"],
     ]);
+    // The row's own chip reads the same fact: a host runner, in a pool or a member's, isn't isolated.
+    const isolated = new Map((await admin.runners.list()).map((row) => [row.id, row.isolated] as const));
+    expect([isolated.get(host), isolated.get(kube), isolated.get(docker), isolated.get(older), isolated.get(personal)]).toEqual([false, true, true, false, false]);
     expect((await admin.pools.list()).find((row) => row.id === poolId)?.lines).toEqual(["not-isolated", "direct-internet-access"]);
 
     // With `OSTRA_DEV_HOST_POOL_SAME_USER`, a host pool's runners say so; a personal runner doesn't.

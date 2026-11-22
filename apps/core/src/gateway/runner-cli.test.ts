@@ -45,6 +45,8 @@ const admin = { username: "ada", email: "ada@example.com", password: TEST_PASSWO
 let test: TestDatabase;
 let auth: OstraAuth;
 let organizationId: string;
+/** The member who approves every device code here: the first admin. */
+let adminMemberId: string;
 const signingKey = randomBytes(32);
 /** How far core's clock reads from the real one: a test moves it, as a clock that jumped. */
 let coreClockOffsetMs = 0;
@@ -287,6 +289,7 @@ beforeAll(async () => {
   });
   if (seeded === null) throw new Error("the first admin wasn't seeded");
   organizationId = seeded.organizationId;
+  adminMemberId = seeded.memberId;
   core = await startCore();
 });
 
@@ -302,13 +305,14 @@ afterAll(async () => {
 });
 
 describe("ostra runner against core", () => {
-  it("F-013/c1,c2,c3,c6: a personal runner signs in with a device code the member approves, connects out over a WebSocket, and reports its executor, capacity, labels and version", async () => {
+  it("F-013/c1,c2,c3,c6, F-014/c1: a member runs ostra runner on their own machine on host: a personal runner signs in with a device code the member approves, connects out over a WebSocket, and reports its executor, capacity, labels and version", async () => {
     const { runnerId } = await signInPersonal("laptop");
     const id = runnerIdSchema.parse(runnerId);
 
     await waitFor("the runner online", async () => (await runnerRow(runnerId)).state === "online");
     const row = await runnerRow(runnerId);
-    expect(row).toMatchObject({ organizationId, kind: "personal", name: "laptop", executor: "host", capacity: 2 });
+    // The member's own: personal, on `host`, owned by the member who approved its code, in no pool.
+    expect(row).toMatchObject({ organizationId, kind: "personal", name: "laptop", executor: "host", capacity: 2, ownerMemberId: adminMemberId, poolId: null });
     // Milestone 5 (F-069): its own labels, with the built-in ones core adds from what it knows.
     expect(row.labels).toEqual(["fast", "gpu", "executor:host", `os:${process.platform}`, `arch:${process.arch}`].sort());
     const pkg = z.looseObject({ version: z.string() }).parse(JSON.parse(await readFile(path.join(path.dirname(runnerMain), "..", "package.json"), "utf8")));
@@ -357,7 +361,7 @@ describe("ostra runner against core", () => {
     expect((await runnerRow(runnerId)).ackedCommandSeq).toBeGreaterThanOrEqual(sent.seq);
   });
 
-  it("F-013/c2: a pool runner joins with its pool's join token, with no device code", async () => {
+  it("F-013/c2, F-015/c1: a pool runner an admin starts joins with its pool's join token, with no device code", async () => {
     const coreData = await mkdtemp(path.join(tmpdir(), "ostra-f013-core-"));
     try {
       await ensureBootstrapJoinToken(test.db, coreData, silentLogger);
