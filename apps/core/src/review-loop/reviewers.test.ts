@@ -158,7 +158,8 @@ describe("F-102: who reviews", () => {
       { login: null, githubUserId: null, teamSlug: "backend", memberId: null, source: "team" },
       { login: null, githubUserId: null, teamSlug: "frontend", memberId: null, source: "team" },
       { login: "alice", githubUserId: "1001", teamSlug: null, memberId: h.fixture.a.admin.id, source: "requested" },
-      // `bob` owns `src/index.ts` by the last matching line, and is matched by his linked login.
+      // `bob` owns `src/index.ts` by the last matching line. CODEOWNERS names a login only: the login
+      // his link holds gives his GitHub user ID, and the member is the one whose link has that ID.
       { login: "bob", githubUserId: "1002", teamSlug: null, memberId: h.fixture.a.insider.id, source: "codeowners" },
       { login: "carol", githubUserId: "1003", teamSlug: null, memberId: null, source: "requested" },
       // `README.md` falls to `*`; `docs/` changed nothing, so `dave` isn't asked.
