@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { mapMember } from "@ostra/db";
 import type { SeededMember } from "@ostra/db/testing";
 import { saveDraft } from "@ostra/domain";
-import { APP_RECORDING_CONTENT_TYPE, draftIdSchema, previewRefusalWords, taskIdSchema } from "@ostra/protocol";
+import { APP_RECORDING_CONTENT_TYPE, clientMessageIdSchema, draftIdSchema, previewRefusalWords, taskIdSchema } from "@ostra/protocol";
 import type { OrganizationId, ProjectId, RepoId, TaskId } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -196,6 +196,69 @@ describe("a task's screenshots and recordings (F-121)", () => {
     await harness.test.db.runnerPresence.update({ where: { runnerId }, data: { minor: 7 } });
     expect((await asMember.tasks.attachments({ taskId: task.taskId })).app).toEqual({ kind: "supported" });
     await harness.test.db.appProcess.deleteMany({ where: { projectId } });
+  });
+
+  it("F-121/c5: a turn's screenshot and recording are still listed and served after its box stops, after a reload, and after a reopen on a fresh box", async () => {
+    const db = harness.test.db;
+    const task = await seedTask(harness, { ...place(), state: "running", driverMemberId: projectMember.id });
+    await seedLease(harness, task, organizationId, projectId, await seedPersonalRunner(harness, projectMember.id, label("first-box")));
+    const firstBox = await db.box.findFirstOrThrow({ where: { taskId: task.taskId }, select: { id: true } });
+    await db.session.update({ where: { id: task.sessionId }, data: { boxId: firstBox.id } });
+    const firstTurn = await seedTurn(task, 1);
+    const shotBytes = pngBytes(256);
+    const reelBytes = new Uint8Array(400).fill(7);
+    const shot = await seedAttachment(harness, { ...place(), taskId: task.taskId }, { turnId: firstTurn, bytes: shotBytes });
+    const reel = await seedAttachment(harness, { ...place(), taskId: task.taskId }, { kind: "recording", turnId: firstTurn, bytes: reelBytes });
+    const asMember = await as(projectMember);
+    const member = await harness.contextOf(projectMember);
+    /** The attachments as the task page lists them, and each one's bytes as its download serves them. */
+    const seen = async () => {
+      const listed = (await asMember.tasks.attachments({ taskId: task.taskId })).attachments;
+      const served = await Promise.all(
+        listed.map(async (attachment) => {
+          const response = await serveTaskAttachment(member, task.taskId, attachment.attachmentId);
+          return [attachment.attachmentId, response.status, Buffer.from(await response.arrayBuffer()).toString("hex")] as const;
+        }),
+      );
+      return { listed: listed.map((attachment) => [attachment.attachmentId, attachment.kind, attachment.turn?.turnId ?? null] as const), served };
+    };
+    const firstTurns = [
+      [shot.attachmentId, "screenshot", firstTurn],
+      [reel.attachmentId, "recording", firstTurn],
+    ];
+    const firstBytes = [
+      [shot.attachmentId, 200, Buffer.from(shotBytes).toString("hex")],
+      [reel.attachmentId, 200, Buffer.from(reelBytes).toString("hex")],
+    ];
+    expect(await seen()).toEqual({ listed: firstTurns, served: firstBytes });
+
+    // The box stops: its lease ends, the box is released, the session ends and the task stops.
+    await db.lease.updateMany({ where: { taskId: task.taskId, state: "active" }, data: { state: "ended", endedAt: new Date(), endReason: "released" } });
+    await db.box.update({ where: { id: firstBox.id }, data: { state: "released" } });
+    await db.session.update({ where: { id: task.sessionId }, data: { state: "ended", outcome: "with_changes", endedAt: new Date() } });
+    await db.task.update({ where: { id: task.taskId }, data: { state: "stopped", stoppedReason: "requested" } });
+    expect(await seen()).toEqual({ listed: firstTurns, served: firstBytes });
+    // A reload asks again, and gets the same.
+    expect(await seen()).toEqual({ listed: firstTurns, served: firstBytes });
+
+    // A reopen: a new session, which core places on a fresh box of another runner (the first box is gone).
+    const { sessionId } = await asMember.tasks.reopen({ taskId: task.taskId, clientMessageId: clientMessageIdSchema.parse(randomUUID()), text: "Show the settings page again" });
+    expect(sessionId).not.toBe(task.sessionId);
+    const reopened = { taskId: task.taskId, sessionId };
+    await seedLease(harness, reopened, organizationId, projectId, await seedPersonalRunner(harness, projectMember.id, label("fresh-box")), 2);
+    const freshBox = await db.box.findFirstOrThrow({ where: { taskId: task.taskId, state: "ready" }, select: { id: true } });
+    expect(freshBox.id).not.toBe(firstBox.id);
+    await db.session.update({ where: { id: sessionId }, data: { boxId: freshBox.id, origin: "restored", state: "running" } });
+    await db.task.update({ where: { id: task.taskId }, data: { state: "running", stoppedReason: null } });
+    expect(await seen()).toEqual({ listed: firstTurns, served: firstBytes });
+
+    // The fresh box's own turn adds its screenshot after them.
+    const nextTurn = await seedTurn(reopened, 2);
+    const next = await seedAttachment(harness, { ...place(), taskId: task.taskId }, { turnId: nextTurn });
+    const after = await seen();
+    expect(after.listed).toEqual([...firstTurns, [next.attachmentId, "screenshot", nextTurn]]);
+    expect(after.served.slice(0, 2)).toEqual(firstBytes);
+    expect(after.served[2]?.[1]).toBe(200);
   });
 });
 
