@@ -118,8 +118,25 @@ export type SavedWip = {
 };
 
 /**
- * Saves the checkout's working tree to the task's hidden ref, by a forced push with `--no-verify`.
- * A checkout with no commit has nothing to save: `null`.
+ * The LFS objects of a work-in-progress commit, sent before its ref (F-096, ADR 0039). `--no-verify`
+ * skips git-lfs's `pre-push` with every other hook, so an LFS-tracked file the branch's push never
+ * carried would reach the ref as a pointer whose object the code host doesn't have, and a fresh box
+ * couldn't check the work out. A checkout without git-lfs, or a commit with no LFS file, sends nothing.
+ */
+const pushLfsObjects = async (deps: WipDeps, remote: string, commit: GitSha): Promise<void> => {
+  const listed = await deps.git(["lfs", "ls-files", "--name-only", commit]);
+  if (listed.code !== 0 || listed.stdout.trim() === "") {
+    return;
+  }
+  const pushed = await deps.git(["lfs", "push", remote, commit]);
+  if (pushed.code !== 0) {
+    throw new WipFailure(`git lfs push failed (exit ${String(pushed.code)})`);
+  }
+};
+
+/**
+ * Saves the checkout's working tree to the task's hidden ref, by a forced push with `--no-verify`,
+ * after the commit's LFS objects. A checkout with no commit has nothing to save: `null`.
  */
 export const saveWorkInProgressIn = async (deps: WipDeps, input: SaveWipInput): Promise<AdapterResult<SavedWip | null>> => {
   const git = runner(deps.git);
@@ -164,6 +181,7 @@ export const saveWorkInProgressIn = async (deps: WipDeps, input: SaveWipInput): 
     const commit = shaOf(
       await git(["commit-tree", tree, "-p", head, "-p", indexCommit, "-m", `ostra: work in progress of ${input.taskId} after turn ${String(input.turnOrdinal)}`], env),
     );
+    await pushLfsObjects(deps, input.remote, commit);
     await git(["push", "--quiet", "--no-verify", input.remote, `+${commit}:${ref}`]);
     return ok({ sha: commit, baseSha: head, clean: status === "" });
   } catch (error) {

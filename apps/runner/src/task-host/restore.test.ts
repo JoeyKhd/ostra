@@ -256,6 +256,61 @@ describe("a reopen on a fresh box: restored", () => {
     // The ref was left alone until this session's own save replaced it.
     expect(hiddenBefore).not.toBeNull();
   }, 240_000);
+
+  it("F-096/c5: a forced update of the hidden ref goes through the git proxy, and an LFS-tracked file only the hidden ref holds comes back on a fresh box", async () => {
+    const first = await runner();
+    const { spec } = first.taskFor(fakeMarker("write", "one.txt"));
+    first.dispatch(spec);
+    await first.waitForKind(spec, "session.saved");
+    const hiddenRef = `refs/ostra/wip/${spec.taskId}`;
+    const firstSave = first.ofKind(spec, "session.saved")[0]?.repos[0];
+    const before = firstSave?.hiddenRefSha ?? null;
+    const head = firstSave?.headSha ?? null;
+    if (before === null || head === null) throw new Error("no first save");
+    // The next turn leaves an LFS-tracked file the agent never committed, and the branch's commit and
+    // push don't take it (the code host refused the push): only the hidden ref, saved at the stop, does.
+    first.steer(spec, fakeMarker("silent"));
+    await first.waitForKind(spec, "turn.started", 2);
+    const checkout = path.join(first.dataDir, "tasks", spec.taskId, "workspace", "test1");
+    const asset = Buffer.from(Array.from({ length: 4096 }, (_, index) => (index * 7) % 256));
+    await writeFile(path.join(checkout, ".gitattributes"), "*.bin filter=lfs diff=lfs merge=lfs -text\n");
+    await writeFile(path.join(checkout, "asset.bin"), asset);
+    first.executor.commitWork = () => Promise.resolve(adapterError("unavailable", "the code host refused the push"));
+    first.executor.commitAndPush = () => Promise.resolve(adapterError("unavailable", "the code host refused the push"));
+    const uploads = (): number => shared.upstream.requests.filter((request) => request.endpoint === "lfs-object" && request.method === "PUT" && request.authorized).length;
+    const uploadsBefore = uploads();
+    expect(await first.waitForAck(first.stop(spec), 120_000)).toMatchObject({ result: "done" });
+    await first.waitForKind(spec, "session.saved", 2);
+    const saved = first.ofKind(spec, "session.saved")[1];
+    const after = saved?.repos[0]?.hiddenRefSha ?? null;
+    if (saved === undefined || after === null) throw new Error("no second save");
+    // A forced update: the new ref doesn't descend from the old one, and the proxy took it (the
+    // upstream takes a push only with the token the proxy adds).
+    expect(await shared.upstream.refSha("ostra-test/test1", hiddenRef)).toBe(after);
+    const fastForward = await run("git", ["merge-base", "--is-ancestor", before, after], { cwd: checkout }).then(
+      () => true,
+      () => false,
+    );
+    expect(fastForward).toBe(false);
+    // The ref holds the file as an LFS pointer, and its object went up through the proxy with it.
+    expect(await shared.upstream.fileAt("ostra-test/test1", hiddenRef, "asset.bin")).toMatch(/^version https:\/\/git-lfs\.github\.com\/spec\/v1\n/);
+    expect(await shared.upstream.treeFiles("ostra-test/test1", `refs/heads/${spec.branchName}`)).not.toContain("asset.bin");
+    expect(uploads() - uploadsBefore).toBe(1);
+
+    // A fresh box restores the ref onto the branch's head, as core records the save: the agent's bytes.
+    const second = await runner();
+    const archive = archiveOf(saved);
+    copyArchive(second, first, spec, archive);
+    const repoId = saved.repos[0]?.repoId;
+    if (repoId === undefined) throw new Error("no repo");
+    const next = reopened(spec, { origin: "restored", archive, hiddenRefs: [{ repoId, sha: gitShaSchema.parse(after), baseSha: gitShaSchema.parse(head) }], pendingMessages: [pendingMessage(fakeMarker("say"))] });
+    serve(second, next, first);
+    second.dispatch(next);
+    await second.waitForKind(next, "session.saved");
+    expect(second.ofKind(next, "session.restored")[0]).toMatchObject({ origin: "restored", hiddenRef: "applied" });
+    const restored = path.join(second.dataDir, "tasks", spec.taskId, "workspace", "test1");
+    expect((await readFile(path.join(restored, "asset.bin"))).equals(asset)).toBe(true);
+  }, 240_000);
 });
 
 describe("a reopen that can't use the archive: rebuilt", () => {
