@@ -16,8 +16,11 @@ export const formatShare = (share: number): string => `${String(Math.round(share
 /** "18 Nov", in UTC. */
 export const dayMonth = (at: number): string => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(at));
 
+/** "2026-11" → "November", for copy that names the month without its year. */
+export const monthOnly = (month: string): string => MONTHS[Number(month.slice(5, 7)) - 1] ?? month;
+
 /** "2026-11" → "November 2026". */
-export const monthName = (month: string): string => `${MONTHS[Number(month.slice(5, 7)) - 1] ?? month} ${month.slice(0, 4)}`;
+export const monthName = (month: string): string => `${monthOnly(month)} ${month.slice(0, 4)}`;
 
 /** "2026-11" → "Nov 1 – 19" up to `now`'s day, the month so far. */
 export const monthSoFar = (month: string, now: number): string => {

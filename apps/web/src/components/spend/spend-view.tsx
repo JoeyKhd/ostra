@@ -26,7 +26,7 @@ import type { RouterOutputs } from "@/lib/trpc";
 
 import { BudgetForm, PriceForm } from "./spend-forms";
 import { KeyPanel, KeysSkeleton, KeysTable, keyRowsOf } from "./spend-keys";
-import { dayMonth, formatShare, formatUsd, monthName, monthSoFar, monthsBack, resetsOn } from "./spend-words";
+import { dayMonth, formatShare, formatUsd, monthName, monthOnly, monthSoFar, monthsBack, resetsOn } from "./spend-words";
 
 // Spend (spend-budgets.md, F-037): the month's spend against the organization's budget and each
 // project's, each model's tokens and money, and the forms that set a budget or a model's price. Every
@@ -598,7 +598,7 @@ export const SpendView = ({ organizationName, warnPercent }: { readonly organiza
           <Summary data={data} organization={organization} warnPercent={warnPercent} now={Date.now()} current={isCurrent} onSet={() => { select({ kind: "organization" }); }} />
           <Section title={t("spend.projects")} count={rows.length} className="mt-7">
             {rows.length === 0 ? (
-              <p className="border-y border-line py-2.5 text-ui text-muted">{t("spend.nothingSpent", { month: monthName(data.month).split(" ")[0] ?? "" })}</p>
+              <p className="border-y border-line py-2.5 text-ui text-muted">{t("spend.nothingSpent", { month: monthOnly(data.month) })}</p>
             ) : (
               <ProjectsTable rows={rows} selected={selection} onSelect={select} warnPercent={warnPercent} past={!isCurrent} />
             )}
@@ -617,14 +617,14 @@ export const SpendView = ({ organizationName, warnPercent }: { readonly organiza
               ) : (
                 <KeysTable data={data} rows={keyRows} selected={selection?.kind === "key" ? selection.providerId : null} onSelect={(providerId) => { select({ kind: "key", providerId }); }} />
               )}
-              {keysIdle ? <p className="mt-2.5 text-sm text-faint" data-testid="spend-keys-idle">{t("spend.keys.nothingYet", { month: monthName(data.month).split(" ")[0] ?? "" })}</p> : null}
+              {keysIdle ? <p className="mt-2.5 text-sm text-faint" data-testid="spend-keys-idle">{t("spend.keys.nothingYet", { month: monthOnly(data.month) })}</p> : null}
             </Section>
           )}
           <NoPriceWarning data={data} past={!isCurrent} onPrice={(modelId) => { select({ kind: "model", modelId }); }} />
           <Section title={t("spend.models")} count={data.byModel.length} className="mt-5">
             <div id="spend-models">
               {data.byModel.length === 0 ? (
-                <p className="border-y border-line py-2.5 text-ui text-muted">{t("spend.nothingSpent", { month: monthName(data.month).split(" ")[0] ?? "" })}</p>
+                <p className="border-y border-line py-2.5 text-ui text-muted">{t("spend.nothingSpent", { month: monthOnly(data.month) })}</p>
               ) : (
                 <ModelsTable lines={data.byModel} selected={selection} onSelect={select} />
               )}
