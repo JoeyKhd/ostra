@@ -214,7 +214,10 @@ export const teamTurnsCases = (mode: TeamTurnsMode) => {
       // One commit on the base, the runner's, not the agent's.
       const checkout = checkoutOf(h);
       expect(await git(checkout, "rev-list", "--count", "refs/remotes/origin/main..HEAD")).toBe("1");
-      expect(await shared().upstream.commitMessage("ostra-test/test1", branch)).toContain("Onboard the repo");
+      // F-078/c1: the runner's commit names what it holds, not the task's title.
+      const message = await shared().upstream.commitMessage("ostra-test/test1", branch);
+      expect(message?.split("\n")[0]).toBe("Add AGENTS.md");
+      expect(message).not.toContain("Onboard the repo");
       expect(await shared().upstream.commitMessage("ostra-test/test1", branch)).not.toContain("The fake agent's own commit");
       expect(h.ofKind(spec, "commit.filtered")).toEqual([{ kind: "commit.filtered", repoId: spec.repos[0]?.repoId, kept: ["AGENTS.md"], dropped: ["package.json"], droppedCount: 1 }]);
       // What the agent committed outside the allowed paths is back in the tree, uncommitted.

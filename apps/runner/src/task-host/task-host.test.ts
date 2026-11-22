@@ -231,7 +231,7 @@ const fetchOnly = async (kind: "refine" | "review"): Promise<void> => {
 };
 
 describe("the task host", () => {
-  it("F-090/c5, F-078/c2: runs a dispatch to a PR-ready branch, committing what the agent left with the bot and the trailer, and every event is stored once", async () => {
+  it("F-090/c5, F-078/c1,c2: runs a dispatch to a PR-ready branch, committing what the agent left with the bot, the trailer and a subject that names it, and every event is stored once", async () => {
     const { dataDir, dispatch } = await start();
     // One repo: the agent starts in its checkout (F-025), so a relative path lands in the repo.
     const made = taskFor("[[fake:write CONTRIBUTING.md]]", "echo setting up\n");
@@ -263,6 +263,9 @@ describe("the task host", () => {
     expect(pushes).toEqual([`refs/heads/${spec.branchName}`, `refs/ostra/wip/${spec.taskId}`]);
     expect(await upstream.treeFiles("ostra-test/test1", `refs/heads/${spec.branchName}`)).toContain("CONTRIBUTING.md");
     const message = await upstream.commitMessage("ostra-test/test1", `refs/heads/${spec.branchName}`);
+    // F-078/c1: ostra's commit of what the agent left says what it changed, not the task's title.
+    expect(message?.split("\n")[0]).toBe("Add CONTRIBUTING.md");
+    expect(message).not.toContain(spec.title);
     expect(message).toContain("Co-authored-by: Admin <admin@example.com>");
     expect(message).toContain("Co-authored-by: Bea Member <bea@example.com>");
     // The App's bot authored and committed it.

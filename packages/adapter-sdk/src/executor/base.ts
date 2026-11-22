@@ -27,6 +27,7 @@ import { adapterError } from "../common/result.ts";
 import type { AdapterResult, HealthReport } from "../common/result.ts";
 import type { AgentCommand, AgentLaunch } from "../agent/base.ts";
 import { portRefusalWords } from "./app.ts";
+import type { LeftoverCommit } from "./leftover-commit.ts";
 import type { AppPortReach, AppProcessHandle, BrowserStart, ReachAppPortInput, StartAppProcessInput, StopAppProcessInput } from "./app.ts";
 import type { ExecutorCapabilities } from "./capabilities.ts";
 import type { CheckRunResult, RunChecksInput } from "./checks.ts";
@@ -202,8 +203,11 @@ export type AgentProcess = {
 
 export type CommitAndPushInput = {
   readonly box: BoxRef;
-  /** The commit message for what the agent left uncommitted. */
-  readonly message: string;
+  /**
+   * The commit message for what the agent left uncommitted: as given, or ostra's leftover rule
+   * (F-078), which makes each repo's from what that repo's commit holds (`commitMessageFor`).
+   */
+  readonly message: string | LeftoverCommit;
   /**
    * The task's bot (F-078), the spec's top-level `gitIdentity`: it authors and commits each repo
    * whose spec entry names no `gitIdentity`. A repo that names one is committed as that bot, its

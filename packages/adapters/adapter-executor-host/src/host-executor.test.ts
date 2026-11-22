@@ -280,6 +280,47 @@ describe("the host executor", () => {
     await executor.release(box);
   });
 
+  it("F-078/c1: ostra's commit of what the agent left names what changed in each repo, never the task's title", async () => {
+    const box = newBox();
+    const spec = twoRepoSpec(box, null);
+    const created = await executor.create({ ...box, spec, proxies });
+    if (!created.ok) {
+      throw new Error(`create failed: ${created.error.message}`);
+    }
+    await executor.prepare({ box, spec, secrets: [], onSetupOutput: () => undefined });
+    const dirA = path.join(created.value.workspaceDir, "test1");
+    const dirB = path.join(created.value.workspaceDir, "test2");
+    const lastMessage = async (dir: string): Promise<string> => (await run("git", ["log", "-1", "--format=%B"], { cwd: dir })).stdout.trim();
+    // Repo A: one new file the agent didn't commit. Repo B: the README changed and two files added.
+    await writeFile(path.join(dirA, "ESSAY-lebanon.md"), "# Lebanon\n");
+    await writeFile(path.join(dirB, "README.md"), "# test2, changed\n");
+    await writeFile(path.join(dirB, "a.ts"), "export {};\n");
+    await writeFile(path.join(dirB, "b.ts"), "export {};\n");
+    const leftover = { kind: "leftover", titles: [], note: null } as const;
+    const committed = await executor.commitWork({ box, message: leftover, author: spec.gitIdentity, coAuthors: spec.coAuthors });
+    expect(committed.ok && committed.value.map((repo) => repo.changed)).toEqual([true, true]);
+    expect(await lastMessage(dirA)).toBe("Add ESSAY-lebanon.md\n\nCo-authored-by: Admin <admin@example.com>");
+    expect(await lastMessage(dirB)).toBe("Add a.ts and b.ts, update README.md\n\nCo-authored-by: Admin <admin@example.com>");
+    // A stop, with the agent's PR title for repo A: the title is the subject, the files its body.
+    await writeFile(path.join(dirA, "ESSAY-lebanon.md"), "# Lebanon\n\nIts history.\n");
+    await writeFile(path.join(dirB, "c.ts"), "export {};\n");
+    const stopped = await executor.commitAndPush({
+      box,
+      message: { kind: "leftover", titles: [{ repoId: repoA, title: "Add an essay about Lebanon" }], note: "stopped" },
+      author: spec.gitIdentity,
+      coAuthors: spec.coAuthors,
+      branchName: spec.branchName,
+      hiddenRef: `refs/ostra/wip/${box.taskId}`,
+    });
+    expect(stopped.ok).toBe(true);
+    expect(await upstream.commitMessage("ostra-test/test1", `refs/heads/${spec.branchName}`)).toContain(
+      "Add an essay about Lebanon (stopped: unfinished work)\n\nUpdate ESSAY-lebanon.md\n\nCo-authored-by: Admin <admin@example.com>",
+    );
+    expect(await lastMessage(dirB)).toBe("Add c.ts (stopped: unfinished work)\n\nCo-authored-by: Admin <admin@example.com>");
+    expect(await lastMessage(dirB)).not.toContain(spec.title);
+    await executor.release(box);
+  });
+
   it("reports a failing setup by its exit code", async () => {
     const box = newBox();
     const spec = twoRepoSpec(box, "echo failing\nexit 7\n");

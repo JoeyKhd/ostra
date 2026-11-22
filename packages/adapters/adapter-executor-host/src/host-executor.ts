@@ -6,9 +6,11 @@ import path from "node:path";
 import {
   adapterError,
   browserChannel,
+  commitMessageFor,
   ExecutorAdapter,
   identifyBrowser,
   localWipFiles,
+  nameStatusChanges,
   ok,
   openAppLog,
   restoreWorkInProgressIn,
@@ -36,6 +38,7 @@ import type {
   CreatedBox,
   ExecutorCapabilities,
   HealthReport,
+  LeftoverCommit,
   PrepareCacheInput,
   PreparedCache,
   PrepareInput,
@@ -312,6 +315,17 @@ const identitySettings = (person: GitPerson): readonly (readonly [string, string
   ["committer.name", person.name],
   ["committer.email", person.email],
 ];
+
+/** What a repo's commit message is made from: the file it's written to, the message or ostra's leftover rule, the trailers and the bot. */
+type CommitMessage = {
+  readonly file: string;
+  readonly message: string | LeftoverCommit;
+  readonly coAuthors: readonly GitPerson[];
+  readonly author: GitPerson;
+};
+
+/** A repo's commit: its message, and its bot as the environment that authors and commits it. */
+type RepoCommit = { readonly message: CommitMessage; readonly env: Readonly<Record<string, string>> };
 
 /** The commit message with its trailers, one per co-author. */
 export const commitMessageWithTrailers = (message: string, coAuthors: readonly GitPerson[]): string => {
@@ -738,7 +752,7 @@ export class HostExecutor extends ExecutorAdapter {
       return adapterError("conflict", `nothing to push from a box that is ${record?.state ?? "released"}`);
     }
     const results: RepoPushResult[] = [];
-    const commit = input.pushOnly === true ? null : await this.#commitMessage(record, input);
+    const commit = input.pushOnly === true ? null : this.#commitMessage(record, input);
     for (const repo of record.spec.repos) {
       const checkout = path.join(record.workspaceDir, repo.checkoutDir);
       let filtered: StagedCommitPaths | null = null;
@@ -783,7 +797,7 @@ export class HostExecutor extends ExecutorAdapter {
     if (record === undefined || record.state === "released" || record.state === "creating") {
       return adapterError("conflict", `nothing to commit in a box that is ${record?.state ?? "released"}`);
     }
-    const commit = await this.#commitMessage(record, input);
+    const commit = this.#commitMessage(record, input);
     const results: CommittedRepoWork[] = [];
     for (const repo of record.spec.repos) {
       const committed = await this.#commitLeft(record, repo, commit);
@@ -1576,11 +1590,24 @@ export class HostExecutor extends ExecutorAdapter {
 
   // ---------- inside ----------
 
-  /** The commit message file, with its trailers, and the task's bot, which `#commitLeft` makes each repo's own. */
-  async #commitMessage(record: BoxRecord, input: CommitWorkInput): Promise<{ readonly file: string; readonly author: GitPerson }> {
-    const file = path.join(record.root, "git", "commit-message.txt");
-    await writeFile(file, commitMessageWithTrailers(input.message, input.coAuthors));
-    return { file, author: input.author };
+  /** Where each repo's commit message is written, with what makes it, and the task's bot, which `#commitLeft` makes each repo's own. */
+  #commitMessage(record: BoxRecord, input: CommitWorkInput): CommitMessage {
+    return { file: path.join(record.root, "git", "commit-message.txt"), message: input.message, coAuthors: input.coAuthors, author: input.author };
+  }
+
+  /**
+   * One repo's commit message, with its trailers, in the message file, once what the commit holds is
+   * staged: ostra's leftover rule (F-078) names that repo's own staged files. Paths are never logged.
+   */
+  async #writeCommitMessage(record: BoxRecord, repo: TaskSpec["repos"][number], message: CommitMessage, checkout: string): Promise<void> {
+    let text: string;
+    if (typeof message.message === "string") {
+      text = message.message;
+    } else {
+      const staged = await this.#git(record, ["diff", "--cached", "--name-status", "-z", "--find-renames"], checkout);
+      text = commitMessageFor(message.message, repo.repoId, staged.code === 0 ? nameStatusChanges(staged.stdout) : []);
+    }
+    await writeFile(message.file, commitMessageWithTrailers(text, message.coAuthors));
   }
 
   /** Commits everything the turn left in one repo: changed, new and untracked files (the env files are excluded). */
@@ -1592,13 +1619,9 @@ export class HostExecutor extends ExecutorAdapter {
    * change in the tree, and only the allowed ones are committed again. Answers what was kept and left
    * out, or `null` when the spec commits everything.
    */
-  async #commitLeft(
-    record: BoxRecord,
-    repo: TaskSpec["repos"][number],
-    message: { readonly file: string; readonly author: GitPerson },
-  ): Promise<AdapterResult<StagedCommitPaths | null>> {
+  async #commitLeft(record: BoxRecord, repo: TaskSpec["repos"][number], message: CommitMessage): Promise<AdapterResult<StagedCommitPaths | null>> {
     // F-136 (ADR 0065): the repo's own App's bot authors and commits it, the task's when it has none.
-    const commit = { file: message.file, env: identityEnv(repoGitIdentity({ gitIdentity: message.author }, repo)) };
+    const commit = { message, env: identityEnv(repoGitIdentity({ gitIdentity: message.author }, repo)) };
     const commitPaths = record.spec.commitPaths ?? null;
     if (commitPaths !== null) {
       return this.#commitAllowed(record, repo, commit, commitPaths);
@@ -1607,11 +1630,7 @@ export class HostExecutor extends ExecutorAdapter {
     return committedAll.ok ? ok(null) : committedAll;
   }
 
-  async #commitAll(
-    record: BoxRecord,
-    repo: TaskSpec["repos"][number],
-    commit: { readonly file: string; readonly env: Readonly<Record<string, string>> },
-  ): Promise<AdapterResult<void>> {
+  async #commitAll(record: BoxRecord, repo: TaskSpec["repos"][number], commit: RepoCommit): Promise<AdapterResult<void>> {
     const checkout = path.join(record.workspaceDir, repo.checkoutDir);
     const status = await this.#git(record, ["status", "--porcelain"], checkout);
     if (status.code !== 0) {
@@ -1619,7 +1638,8 @@ export class HostExecutor extends ExecutorAdapter {
     }
     if (status.stdout.trim().length > 0) {
       await this.#git(record, ["add", "--all"], checkout);
-      const committed = await this.#git(record, ["commit", "--quiet", "--no-verify", "--file", commit.file], checkout, commit.env);
+      await this.#writeCommitMessage(record, repo, commit.message, checkout);
+      const committed = await this.#git(record, ["commit", "--quiet", "--no-verify", "--file", commit.message.file], checkout, commit.env);
       if (committed.code !== 0) {
         return adapterError("unavailable", `committing ${repo.fullName}'s changes failed${this.#reason(committed)}`);
       }
@@ -1628,12 +1648,7 @@ export class HostExecutor extends ExecutorAdapter {
   }
 
   /** F-113: the commit of `#commitLeft` with `commitPaths`. Paths from git only; none is ever logged. */
-  async #commitAllowed(
-    record: BoxRecord,
-    repo: TaskSpec["repos"][number],
-    commit: { readonly file: string; readonly env: Readonly<Record<string, string>> },
-    commitPaths: readonly string[],
-  ): Promise<AdapterResult<StagedCommitPaths>> {
+  async #commitAllowed(record: BoxRecord, repo: TaskSpec["repos"][number], commit: RepoCommit, commitPaths: readonly string[]): Promise<AdapterResult<StagedCommitPaths>> {
     const checkout = path.join(record.workspaceDir, repo.checkoutDir);
     const baseRef = `refs/remotes/origin/${repo.defaultBranch}`;
     const mergeBase = await this.#git(record, ["merge-base", "HEAD", baseRef], checkout);
@@ -1672,7 +1687,8 @@ export class HostExecutor extends ExecutorAdapter {
     }
     const staged = await this.#git(record, ["diff", "--cached", "--quiet"], checkout);
     if (staged.code === 1) {
-      const made = await this.#git(record, ["commit", "--quiet", "--no-verify", "--file", commit.file], checkout, commit.env);
+      await this.#writeCommitMessage(record, repo, commit.message, checkout);
+      const made = await this.#git(record, ["commit", "--quiet", "--no-verify", "--file", commit.message.file], checkout, commit.env);
       if (made.code !== 0) {
         return adapterError("unavailable", `committing ${repo.fullName}'s allowed changes failed${this.#reason(made)}`);
       }

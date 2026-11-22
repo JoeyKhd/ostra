@@ -12,6 +12,8 @@ import type {
   AppPortReach,
   HiddenRepoConfig,
   LaunchMcpServer,
+  LeftoverCommit,
+  LeftoverNote,
   LaunchSkill,
   AgentSession,
   BoxRef,
@@ -1373,7 +1375,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
 
   const pushWork = async (
     currentSpec: TaskSpec,
-    message: string,
+    message: string | LeftoverCommit,
     options: { readonly hiddenRefEvent: boolean; readonly pushOnly?: boolean } = { hiddenRefEvent: true },
   ): Promise<{ readonly ok: true; readonly repos: readonly RepoPushResult[] } | { readonly ok: false; readonly error: string }> => {
     const hiddenRef = hiddenRefFor(currentSpec.taskId);
@@ -1413,6 +1415,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
   let discardBox = false;
   /** A turn ran since the work was last saved. */
   let unsaved = false;
+  /** The PR title the agent set for each repo in this session (`pr.text_set`), for ostra's commits there (F-078). */
+  const prTitles = new Map<RepoId, string>();
   /** Each repo's head and whether it's ahead after the last push, for `session.ended`. */
   let lastPushed: readonly RepoPushResult[] = [];
 
@@ -1445,7 +1449,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
    */
   const commitAndCheck = async (
     currentSpec: TaskSpec,
-    message: string,
+    message: string | LeftoverCommit,
     ordinal: number,
   ): Promise<{
     readonly committed: boolean;
@@ -1492,11 +1496,11 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
    * from milestone 3 the commit and the turn's checks come before the branch's push (ADR 0052).
    * Only the branch's push can fail the session; its error comes back for the caller.
    */
-  const saveWork = (currentSpec: TaskSpec, message: string): Promise<{ readonly pushError: string | null }> =>
+  const saveWork = (currentSpec: TaskSpec, message: LeftoverCommit): Promise<{ readonly pushError: string | null }> =>
     // Ticket 29: the repo's own agent config is back in the tree for the commit, the checks and the hidden ref.
     withRepoConfig(currentSpec, () => saveTurnWork(currentSpec, message));
 
-  const saveTurnWork = async (currentSpec: TaskSpec, message: string): Promise<{ readonly pushError: string | null }> => {
+  const saveTurnWork = async (currentSpec: TaskSpec, message: LeftoverCommit): Promise<{ readonly pushError: string | null }> => {
     unsaved = false;
     const startedAt = now();
     const ordinal = Math.max(1, turnOrdinal);
@@ -1625,25 +1629,36 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     }
   };
 
-  /** The commit message for what a turn left, by how the session is going. */
-  const leftoverMessage = (currentSpec: TaskSpec): string => {
+  /** Why a turn's work is committed before the session ends as it should, by how it's going. */
+  const leftoverNote = (): LeftoverNote | null => {
     switch (ending?.kind) {
       case "stopped":
-        return `${currentSpec.title} (stopped: unfinished work)`;
+        return "stopped";
       case "crashed":
-        return `${currentSpec.title} (crashed: unfinished work)`;
+        return "crashed";
       case "limit":
-        return `${currentSpec.title} (spend cap reached: unfinished work)`;
+        return "spend-cap";
       case undefined:
       case "finished":
       case "idle":
       case "fenced":
       case "abandoned":
-        return currentSpec.title;
+        return null;
       default:
         return ending satisfies never;
     }
   };
+
+  /**
+   * The commit of what a turn left (F-078): each repo's message names what its commit holds, or is
+   * the agent's PR title for the repo with the files in the body; never the task's title, which for
+   * a prompt task is its first message (the maintainer's report, 2026-11-22).
+   */
+  const leftoverMessage = (note: LeftoverNote | null = leftoverNote()): LeftoverCommit => ({
+    kind: "leftover",
+    titles: [...prTitles].map(([repoId, title]) => ({ repoId, title })),
+    note,
+  });
 
   /** How the session is ending, read fresh: commands end it between awaits. */
   const endingNow = (): Ending | undefined => ending;
@@ -1734,7 +1749,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       }
       await scanOutsideRepos(taskSpec);
       // A stopped or crashed turn's work is saved too: the hidden ref holds it.
-      const saved = await saveWork(taskSpec, leftoverMessage(taskSpec));
+      const saved = await saveWork(taskSpec, leftoverMessage());
       if (saved.pushError !== null && endingNow() === undefined) {
         end({ kind: "crashed", error: saved.pushError });
       }
@@ -1764,7 +1779,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         // A stop or crash outside a turn: what the turn left was saved already, unless no turn ran.
         if (boxPrepared && unsaved) {
           await scanOutsideRepos(taskSpec);
-          await saveWork(taskSpec, leftoverMessage(taskSpec));
+          await saveWork(taskSpec, leftoverMessage());
         }
         if (how.kind === "crashed") {
           await crash(how.error);
@@ -1943,6 +1958,8 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       ...listen,
       logger: log,
       onPrText: (event) => {
+        // F-078: the agent's title for the repo is the subject of ostra's next commit there.
+        prTitles.set(event.repoId, event.title);
         void emit(event);
       },
       // Minor 5 (tickets 22 and 23): exactly the tool sets the spec names, and core's endpoints for the new ones.
@@ -2777,7 +2794,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         if (taskSpec === undefined) {
           break;
         }
-        const pushed = pushesWork(taskSpec) ? await pushWork(taskSpec, taskSpec.title) : ({ ok: true, repos: taskSpec.repos.map((repo) => ({ repoId: repo.repoId, headSha: null, ahead: false })) } as const);
+        const pushed = pushesWork(taskSpec) ? await pushWork(taskSpec, leftoverMessage(null)) : ({ ok: true, repos: taskSpec.repos.map((repo) => ({ repoId: repo.repoId, headSha: null, ahead: false })) } as const);
         if (!pushed.ok) {
           await crash(pushed.error);
           break;
@@ -2793,7 +2810,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
           await scanOutsideRepos(taskSpec);
         }
         if (taskSpec !== undefined && boxPrepared && pushesWork(taskSpec)) {
-          const pushed = await pushWork(taskSpec, `${taskSpec.title} (stopped: unfinished work)`);
+          const pushed = await pushWork(taskSpec, leftoverMessage("stopped"));
           if (!pushed.ok) {
             log.warn("pushing a stopped task's work failed", { error: pushed.error.slice(0, 200) });
           }
@@ -2803,7 +2820,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       case "crashed": {
         await endAgent();
         if (taskSpec !== undefined && boxPrepared && pushesWork(taskSpec)) {
-          const pushed = await pushWork(taskSpec, `${taskSpec.title} (crashed: unfinished work)`);
+          const pushed = await pushWork(taskSpec, leftoverMessage("crashed"));
           if (!pushed.ok) {
             log.warn("pushing a crashed task's work failed", { error: pushed.error.slice(0, 200) });
           }
