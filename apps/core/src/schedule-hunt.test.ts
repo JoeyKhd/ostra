@@ -100,7 +100,7 @@ afterAll(async () => {
 
 describe.runIf(enabled)("the schedule hunt (F-106, F-048)", () => {
   it(
-    "F-106, F-048/c2: every (automation, occurrence) pair starts exactly once with every replica but one killed at the work, and pg-boss's own cron, hunted the same way, doesn't",
+    "F-106/c4, F-048/c2: every (automation, occurrence) pair starts exactly once with every replica but one killed at the work, and pg-boss's own cron, hunted the same way, doesn't",
     async () => {
       const queue = jobs;
       if (queue === null) throw new Error("the queue");
