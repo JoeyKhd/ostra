@@ -599,6 +599,7 @@ describe("F-032, F-033: any member reopens any task, in any box, on any runner",
       const offeredThree = await dispatch(task.taskId, three);
       expect(offeredThree).toMatchObject({ ok: true, runnerId: first.runnerId });
       const rebuiltBox = await boxOf(three);
+      expect(rebuiltBox).not.toBeNull();
       expect([keptBox, freshBox]).not.toContain(rebuiltBox);
       expect(await test.db.session.findUniqueOrThrow({ where: { id: three } })).toMatchObject({ origin: "rebuilt" });
       await accept(task.taskId, offeredThree, first);
