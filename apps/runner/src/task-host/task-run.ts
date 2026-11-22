@@ -825,6 +825,10 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       ...subagentOf(request),
     });
     log.info("permission held for a person", { approvalId, ruleId: decision.rule?.ruleId ?? null, tool: subject?.tool ?? null });
+    // A turn that waits on a person follows the idle timer, as a question's does (ADR 0039: one timer
+    // governs both): when it fires, the request closes as expired, the turn is cancelled, its work
+    // saved, and the session ends. The needs-you item stays open on the server.
+    const waitingSpec = spec;
     return new Promise<PermissionAnswer>((resolve) => {
       let settled = false;
       const settle = (answer: PermissionAnswer): void => {
@@ -832,6 +836,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
           return;
         }
         settled = true;
+        disarmIdle();
         disarm();
         heldApprovals.delete(approvalId);
         resolve(answer);
@@ -842,6 +847,16 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         }
         settle({ outcome: "cancelled" });
       };
+      // Armed before the request's own wait, so at the same length the idle timer wins and the session ends.
+      const disarmIdle =
+        acrossTurns && waitingSpec !== undefined
+          ? idleAfter(idleMs(waitingSpec), () => {
+              log.info("a turn waited on a person past the idle limit: ending the session", { idleMinutes: waitingSpec.limits.idleMinutes ?? null });
+              end({ kind: "idle" });
+              close("expired");
+              void cancelTurn();
+            })
+          : () => undefined;
       const disarm = timers.after(waitMs, () => {
         close("expired");
         expire("approval");

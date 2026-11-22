@@ -2,6 +2,9 @@ import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fakeMarker } from "@ostra/adapter-sdk/testing";
+import { approvalRuleIdSchema } from "@ostra/protocol";
+import type { ApprovalRule } from "@ostra/protocol";
+import { taskSpecFixture } from "@ostra/protocol/testing";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { manualTimers, startHarness, startShared } from "../testing/task-host-harness.ts";
 import type { Harness, ManualTimers, Shared } from "../testing/task-host-harness.ts";
@@ -94,10 +97,10 @@ describe("the idle timer (F-096)", () => {
     expect(h.ofKind(spec, "session.ended")[0]).toMatchObject({ outcome: "without-changes" });
   }, 120_000);
 
-  it("cancels a turn that waits on a person, saves its work, then ends the session", async () => {
+  it("F-096/c8: cancels a turn that waits on a question at the idle time, saves its work, ends the session and stops the box", async () => {
     const h = await start();
     const { spec } = h.taskFor(fakeMarker("elicit"), { limits: { turnMaxMinutes: 600, idleMinutes: 15 } });
-    h.dispatch(spec);
+    const boxId = h.dispatch(spec);
     await h.waitForKind(spec, "question.asked");
     await waitingForTurn(h);
     const checkout = path.join(h.dataDir, "tasks", spec.taskId, "workspace", "test1");
@@ -108,8 +111,46 @@ describe("the idle timer (F-096)", () => {
     expect(order.indexOf("question.closed")).toBeGreaterThan(order.indexOf("question.asked"));
     expect(order.indexOf("turn.ended")).toBeLessThan(order.indexOf("session.saved"));
     expect(order.indexOf("session.saved")).toBeLessThan(order.indexOf("session.ended"));
+    // Expired, not cancelled: the server keeps its needs-you item open for the answer.
+    expect(h.ofKind(spec, "question.closed")[0]).toMatchObject({ reason: "expired" });
+    expect(h.ofKind(spec, "turn.ended").at(-1)).toMatchObject({ stopReason: "cancelled" });
     // The hidden ref holds the half-done work.
     expect(await shared.upstream.treeFiles("ostra-test/test1", `refs/ostra/wip/${spec.taskId}`)).toContain("half-done.txt");
+    // The box stopped, and is kept for the reopen the answer makes.
+    await h.idle();
+    expect(await h.executor.state({ taskId: spec.taskId, boxId })).toEqual({ ok: true, value: "stopped" });
+    expect(h.host.kept().map((kept) => kept.box.boxId)).toEqual([boxId]);
+  }, 120_000);
+
+  it("F-096/c8: an approval that waits on a person follows the same timer: closed as expired, the turn cancelled and saved, the box stopped", async () => {
+    const h = await start();
+    const notesRule = { ruleId: approvalRuleIdSchema.parse("rule-notes"), name: "Edit the notes", tool: "edit", match: { kind: "path-glob", glob: "notes*.txt" } } satisfies ApprovalRule;
+    const { spec } = h.taskFor(fakeMarker("ask-path", "notes.txt"), {
+      limits: { turnMaxMinutes: 600, idleMinutes: 15 },
+      agent: { ...taskSpecFixture.agent, adapter: "fake-acp-agent-rich", apiFormat: "anthropic-messages", approvalRules: [notesRule] },
+    });
+    const boxId = h.dispatch(spec);
+    await h.waitForKind(spec, "approval.requested");
+    await waitingForTurn(h);
+    const [requested] = h.ofKind(spec, "approval.requested");
+    const checkout = path.join(h.dataDir, "tasks", spec.taskId, "workspace", "test1");
+    await writeFile(path.join(checkout, "half-done.txt"), "waiting on an approval\n");
+    // Nothing a minute early.
+    timers.advance(14 * MINUTE);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(h.kinds(spec)).not.toContain("approval.closed");
+    timers.advance(MINUTE);
+    await h.waitForKind(spec, "session.ended");
+    const order = h.kinds(spec);
+    expect(h.ofKind(spec, "approval.closed")).toEqual([{ kind: "approval.closed", approvalId: requested?.approvalId, reason: "expired" }]);
+    expect(h.ofKind(spec, "turn.ended").at(-1)).toMatchObject({ stopReason: "cancelled" });
+    expect(order.indexOf("approval.closed")).toBeLessThan(order.indexOf("turn.ended"));
+    expect(order.indexOf("turn.ended")).toBeLessThan(order.indexOf("session.saved"));
+    expect(order.indexOf("session.saved")).toBeLessThan(order.indexOf("session.ended"));
+    expect(await shared.upstream.treeFiles("ostra-test/test1", `refs/ostra/wip/${spec.taskId}`)).toContain("half-done.txt");
+    await h.idle();
+    expect(await h.executor.state({ taskId: spec.taskId, boxId })).toEqual({ ok: true, value: "stopped" });
+    expect(h.host.kept().map((kept) => kept.box.boxId)).toEqual([boxId]);
   }, 120_000);
 });
 

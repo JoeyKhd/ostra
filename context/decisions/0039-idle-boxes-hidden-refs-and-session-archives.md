@@ -19,7 +19,7 @@ A box can vanish at any time, and nobody should pay for an idle one. So a task n
 - **The runner's git never searches above its workspace.** Spike 2's first run let git find the ostra checkout above its run folder and push its `main` into a stand-in remote. Every git call of the runner sets `GIT_CEILING_DIRECTORIES` (or an explicit `--git-dir`), in the runner's git helper from milestone 1.
 
 **The idle timer** (Q42, Q99). A box stays warm for 15 minutes after a turn ends *(working value)*, then it stops.
-- A turn that waits on a person follows the same timer. After 15 minutes the turn is cancelled and the box stops. The "needs you" item stays open, and answering it reopens the task with the decision.
+- A turn that waits on a person follows the same timer. After 15 minutes the turn is cancelled and the box stops. The "needs you" item stays open, and answering it reopens the task with the decision. *Amended 2026-11-22:* a held approval follows it too. Until then only a question did: an approval's own 15-minute wait cancelled the turn, and the box stopped after another 15 idle minutes.
 - **`docker`:** a stopped box is kept until its host needs the space, so the next turn can resume in place.
 - **`kubernetes`:** the pod is deleted.
 - **`host`:** the agent's process stops. The worktree stays until cleanup needs the space (F-079).
