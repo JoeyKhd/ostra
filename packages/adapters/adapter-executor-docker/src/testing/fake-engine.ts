@@ -515,6 +515,11 @@ export const startFakeEngine = async (): Promise<FakeEngine> => {
         send(response, 404, { message: "no such container" });
         return;
       }
+      // As the Engine does: a running container goes only with `force`, which kills it whatever its init does.
+      if (container.status === "running" && url.searchParams.get("force") !== "true") {
+        send(response, 409, { message: `You cannot remove a running container ${container.id}. Stop the container before attempting removal or force remove` });
+        return;
+      }
       containers.delete(container.id);
       send(response, 204);
       return;
