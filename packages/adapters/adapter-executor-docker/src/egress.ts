@@ -1,4 +1,5 @@
 import { EGRESS_BLOCKED_V4, EGRESS_BLOCKED_V6, hostCidr, isIpv6, METADATA_ADDRESS } from "@ostra/adapter-sdk";
+import { DEFAULT_BOX_SUBNET_POOL } from "@ostra/protocol";
 
 // The egress baseline on Docker (ADR 0029, ADR 0031, ADR 0060, F-116; milestone 5's ticket 24): a
 // box can't reach private address ranges, the cloud metadata address, another box or the host. The
@@ -12,7 +13,13 @@ import { EGRESS_BLOCKED_V4, EGRESS_BLOCKED_V6, hostCidr, isIpv6, METADATA_ADDRES
 //
 // - `DOCKER-USER` (traffic the host forwards): the accepts, then a reject for each range.
 // - `INPUT` (traffic to the host itself, which is how a container reaches its network's gateway and
-//   anything listening on the host): the accepts, then a reject of the rest from the egress subnet.
+//   anything listening on the host): the accepts, then a reject of the rest from the egress subnet,
+//   then a reject of everything from the box subnet pool (F-017's `OSTRA_BOX_SUBNET_POOL`), with no
+//   accept. A box network is `internal`, which Docker enforces on the traffic it forwards only; its
+//   gateway is the host's own address, so without this the agent's container would reach whatever
+//   listens on the host. The pool gets no `DOCKER-USER` rule: an agent's traffic to its sidecar and
+//   services crosses that chain on their shared bridge (Docker turns on `br_netfilter`), and a
+//   reject there would cut the box's own network.
 //
 // A rule rejects rather than drops (`icmp-admin-prohibited`), so a probe sees a block at once and a
 // timeout stays inconclusive. A host whose DNS resolver is in a private range lists it in
@@ -36,6 +43,8 @@ export type EgressInput = {
   readonly serverPort: number;
   /** `OSTRA_EGRESS_ALLOW`: addresses or CIDRs in the blocked ranges an admin allows, such as a private model endpoint. */
   readonly allow: readonly string[];
+  /** `OSTRA_BOX_SUBNET_POOL`: the IPv4 network the boxes' own networks are carved from (F-017). Default: `DEFAULT_BOX_SUBNET_POOL`. */
+  readonly boxSubnetPool?: string;
 };
 
 /** One rule: the program and its arguments, an array, never a shell line. */
@@ -69,11 +78,19 @@ const family = (program: EgressRule["program"], subnet: string, accepts: readonl
   ];
 };
 
+/** The host closed to every box network: one `INPUT` reject of the whole pool, after the egress subnet's rules. */
+const boxPoolRule = (pool: string, v4: readonly EgressRule[]): EgressRule => ({
+  program: "iptables",
+  args: ["-I", "INPUT", String(v4.filter((rule) => rule.args[1] === "INPUT").length + 1), "-s", pool, "-j", "REJECT", "--reject-with", REJECT.iptables],
+});
+
 /** Every rule of the baseline, `iptables` then `ip6tables`, in the order `deploy/egress-baseline.sh` applies them. */
 export const egressRuleSet = (input: EgressInput): readonly EgressRule[] => {
   const accepts: readonly Accept[] = [{ address: input.server, tcpPort: input.serverPort }, ...input.allow.map((address) => ({ address }))];
+  const v4 = family("iptables", input.egressSubnet, accepts.filter((accept) => !isIpv6(accept.address)), EGRESS_BLOCKED_V4);
   return [
-    ...family("iptables", input.egressSubnet, accepts.filter((accept) => !isIpv6(accept.address)), EGRESS_BLOCKED_V4),
+    ...v4,
+    boxPoolRule(input.boxSubnetPool ?? DEFAULT_BOX_SUBNET_POOL, v4),
     ...(input.egressSubnetV6 === undefined ? [] : family("ip6tables", input.egressSubnetV6, accepts.filter((accept) => isIpv6(accept.address)), EGRESS_BLOCKED_V6)),
   ];
 };

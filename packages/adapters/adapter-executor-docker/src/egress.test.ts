@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { EGRESS_BLOCKED_V4, EGRESS_BLOCKED_V6, inCidr, METADATA_ADDRESS } from "@ostra/adapter-sdk";
+import { DEFAULT_BOX_SUBNET_POOL } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { egressRules, egressRuleSet } from "./egress.ts";
 import type { EgressInput, EgressRule } from "./egress.ts";
@@ -67,7 +68,7 @@ describe("docker's egress rules (F-116)", () => {
       }
     }
     // The host itself (the network's gateway): everything from the subnet that isn't accepted is rejected.
-    expect(rules.filter((rule) => rule.program === "iptables" && chainOf(rule) === "INPUT").at(-1)?.args).toEqual([
+    expect(rules.filter((rule) => rule.program === "iptables" && chainOf(rule) === "INPUT").at(-2)?.args).toEqual([
       "-I",
       "INPUT",
       "3",
@@ -78,12 +79,38 @@ describe("docker's egress rules (F-116)", () => {
       "--reject-with",
       "icmp-admin-prohibited",
     ]);
-    // Every rule is from the egress subnet: nothing else on the host is touched.
-    expect(rules.every((rule) => rule.args[rule.args.indexOf("-s") + 1] === (rule.program === "iptables" ? input.egressSubnet : input.egressSubnetV6))).toBe(true);
+    // Every rule is from the egress subnet, but the box networks' one reject (the next case): nothing else on the host is touched.
+    const fromPool = (rule: EgressRule) => rule.args[rule.args.indexOf("-s") + 1] === DEFAULT_BOX_SUBNET_POOL;
+    expect(rules.filter(fromPool)).toHaveLength(1);
+    expect(rules.filter((rule) => !fromPool(rule)).every((rule) => rule.args[rule.args.indexOf("-s") + 1] === (rule.program === "iptables" ? input.egressSubnet : input.egressSubnetV6))).toBe(true);
     // Without an IPv6 subnet, no ip6tables rule; milestone 1's shape is the iptables rules' arguments.
     const v4Only = egressRuleSet({ egressSubnet: input.egressSubnet, server: input.server, serverPort: input.serverPort, allow: [] });
     expect(v4Only.every((rule) => rule.program === "iptables")).toBe(true);
     expect(egressRules({ egressSubnet: input.egressSubnet, server: input.server, serverPort: input.serverPort, allow: [] })).toEqual(v4Only.map((rule) => rule.args));
+  });
+
+  it("F-116/c1: the host is closed to every box's own network too: one INPUT reject of the whole box subnet pool, with no accept, and no forwarded rule that would cut a box's own bridge", () => {
+    // A box network is `internal`, which Docker enforces on forwarded traffic only: the agent's
+    // container reaches its network's gateway, the host's own address, through INPUT.
+    const poolRules = (rules: readonly EgressRule[], pool: string) => rules.filter((rule) => rule.args[rule.args.indexOf("-s") + 1] === pool);
+    const rules = egressRuleSet(input);
+    expect(poolRules(rules, DEFAULT_BOX_SUBNET_POOL)).toEqual([
+      { program: "iptables", args: ["-I", "INPUT", "4", "-s", "10.89.0.0/16", "-j", "REJECT", "--reject-with", "icmp-admin-prohibited"] },
+    ]);
+    // After the egress subnet's INPUT rules, whose positions it keeps: the accepts first, then the egress subnet's reject.
+    const input4 = rules.filter((rule) => rule.program === "iptables" && chainOf(rule) === "INPUT");
+    expect(input4.map((rule) => Number(rule.args[2]))).toEqual([1, 2, 3, 4]);
+    expect(input4.at(-1)).toEqual(poolRules(rules, DEFAULT_BOX_SUBNET_POOL)[0]);
+    // The runner's own pool when it set one, and the default one is the runner's default.
+    const own = egressRuleSet({ ...input, boxSubnetPool: "10.200.0.0/20" });
+    expect(poolRules(own, "10.200.0.0/20").map((rule) => rule.args.slice(0, 2))).toEqual([["-I", "INPUT"]]);
+    expect(poolRules(own, DEFAULT_BOX_SUBNET_POOL)).toEqual([]);
+    // Nothing else from the pool: no accept, and no DOCKER-USER rule at all (an agent's traffic to its
+    // sidecar crosses DOCKER-USER on their bridge, so a reject there would cut the box's own network).
+    expect(rules.filter((rule) => chainOf(rule) === "DOCKER-USER" && rule.args.includes(DEFAULT_BOX_SUBNET_POOL))).toEqual([]);
+    expect(rules.filter((rule) => target(rule) === "ACCEPT" && rule.args.includes(DEFAULT_BOX_SUBNET_POOL))).toEqual([]);
+    // The pool's /24s, and so each box network's gateway (its .1), are all inside the rule's source.
+    expect(inCidr("10.89.0.1", DEFAULT_BOX_SUBNET_POOL) && inCidr("10.89.255.1", DEFAULT_BOX_SUBNET_POOL)).toBe(true);
   });
 });
 
@@ -105,7 +132,8 @@ describe("deploy/egress-baseline.sh (F-116)", () => {
     new Promise((resolve) => {
       const log = path.join(dir, `calls-${String(Date.now())}-${String(Math.random()).slice(2)}.log`);
       const child = spawn("sh", [SCRIPT, ...args], {
-        env: { ...process.env, ...env, EGRESS_LOG: log, PATH: `${dir}${path.delimiter}${process.env["PATH"] ?? ""}` },
+        // The pool unset unless a case sets it: the script's own default.
+        env: { ...process.env, OSTRA_BOX_SUBNET_POOL: "", ...env, EGRESS_LOG: log, PATH: `${dir}${path.delimiter}${process.env["PATH"] ?? ""}` },
         stdio: "ignore",
         windowsHide: true,
       });
@@ -118,7 +146,7 @@ describe("deploy/egress-baseline.sh (F-116)", () => {
       });
     });
 
-  it("F-116/c1,c2: the script applies exactly the rules egressRuleSet builds, in order, and refuses anything that isn't an address or a port", async () => {
+  it("F-116/c1,c2: the script applies exactly the rules egressRuleSet builds, in order, the box subnet pool's reject included, and refuses anything that isn't an address, a port or an IPv4 pool", async () => {
     const ran = await runScript([input.egressSubnet, input.server, String(input.serverPort), ...input.allow], { EGRESS_SUBNET_V6: input.egressSubnetV6 ?? "" });
     expect(ran.code).toBe(0);
     const lines = ran.log.split("\n").filter((line) => line.trim() !== "");
@@ -143,5 +171,21 @@ describe("deploy/egress-baseline.sh (F-116)", () => {
     const noPort = await runScript([input.egressSubnet, input.server], {});
     expect(noPort.code).not.toBe(0);
     expect(noPort.log).toBe("");
+    // The box subnet pool: the runner's setting, read from the same variable, its default the runner's.
+    expect(ran.log).toContain(`iptables -I INPUT 4 -s ${DEFAULT_BOX_SUBNET_POOL} -j REJECT`);
+    const ownPool = await runScript([input.egressSubnet, input.server, String(input.serverPort), ...input.allow], {
+      EGRESS_SUBNET_V6: input.egressSubnetV6 ?? "",
+      OSTRA_BOX_SUBNET_POOL: "10.200.0.0/20",
+    });
+    expect(ownPool.code).toBe(0);
+    expect(ownPool.log.split("\n").filter((line) => line.trim() !== "")).toEqual(
+      egressRuleSet({ ...input, boxSubnetPool: "10.200.0.0/20" }).map((rule) => [rule.program, ...rule.args].join(" ")),
+    );
+    // A pool that isn't an IPv4 network of /8 to /24 is refused before any rule goes in.
+    for (const pool of ["fd00::/64", "10.89.0.0", "10.89.0.0/16;reboot", "10.89.0.0/7", "10.89.0.0/25", "10.89.256.0/16", "1.2.3.4.5/16", "10.89.0.0/16/1", "10.89..0/16", "10.89.0.0/"]) {
+      const badPool = await runScript([input.egressSubnet, input.server, String(input.serverPort)], { OSTRA_BOX_SUBNET_POOL: pool });
+      expect(badPool.code, pool).toBe(64);
+      expect(badPool.log, pool).toBe("");
+    }
   }, 120_000);
 });

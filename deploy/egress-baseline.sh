@@ -2,17 +2,22 @@
 # The egress baseline for a docker pool host (ADR 0029, ADR 0031, ADR 0060, F-116): one box's
 # sidecar can't reach private ranges, the metadata address, another box or the host itself, except
 # the ostra server's address on its TCP port and the addresses an admin allows (OSTRA_EGRESS_ALLOW,
-# on every port). Run once as root on the pool host, after Docker starts.
+# on every port). Nothing on the boxes' own networks reaches the host either. Run once as root on
+# the pool host, after Docker starts.
 #
 #   sudo ./deploy/egress-baseline.sh <egress subnet> <ostra server address> <ostra server port> [allowed address...]
 #   sudo EGRESS_SUBNET_V6=fd00:ab::/64 ./deploy/egress-baseline.sh 172.30.0.0/16 172.17.0.1 8787
+#   sudo OSTRA_BOX_SUBNET_POOL=10.200.0.0/20 ./deploy/egress-baseline.sh 172.30.0.0/16 172.17.0.1 8787
 #
 # These are exactly the rules `egressRuleSet` in
 # packages/adapters/adapter-executor-docker/src/egress.ts builds, from the baseline's one list
 # (EGRESS_BLOCKED_V4 and EGRESS_BLOCKED_V6 in packages/adapter-sdk/src/executor/egress-baseline.ts);
 # its test runs this script and checks every rule. A rule rejects rather than drops, so a probe sees
 # a block at once. A host whose DNS resolver is in a private range lists it as an allowed address.
-# The agent's containers need no rule: their network is `internal`, with no route out at all.
+# The agent's containers have no route out: their box network is `internal`. Docker enforces that
+# on forwarded traffic only, and the box network's gateway is the host's own address, so one rule
+# closes the host to every box network: an INPUT reject of the runner's subnet pool
+# (OSTRA_BOX_SUBNET_POOL, the runner's setting, 10.89.0.0/16 when unset; give it the same value).
 set -eu
 
 subnet="${1:?the egress network's subnet, such as 172.30.0.0/16}"
@@ -20,6 +25,30 @@ server="${2:?the ostra server's address, as the boxes reach it}"
 port="${3:?the ostra server's port there, such as 8787}"
 shift 3
 subnet6="${EGRESS_SUBNET_V6:-}"
+# Keep the default equal to DEFAULT_BOX_SUBNET_POOL in packages/protocol/src/runner/config.ts (the test checks it).
+pool="${OSTRA_BOX_SUBNET_POOL:-10.89.0.0/16}"
+
+# The pool: an IPv4 network of /8 to /24, such as 10.89.0.0/16, nothing else. Checked before any
+# rule goes in, so a wrong one leaves the host as it was.
+pool_is_network() {
+  case "$1" in
+    *[!0-9./]* | */*/* | *.*.*.*.*) return 1 ;;
+    [0-9]*.[0-9]*.[0-9]*.[0-9]*/[0-9]*) ;;
+    *) return 1 ;;
+  esac
+  bits="${1#*/}"
+  [ "${#bits}" -le 2 ] && [ "$bits" -ge 8 ] && [ "$bits" -le 24 ] || return 1
+  rest="${1%/*}."
+  while [ -n "$rest" ]; do
+    octet="${rest%%.*}"
+    rest="${rest#*.}"
+    [ "${#octet}" -le 3 ] && [ "$octet" -le 255 ] || return 1
+  done
+}
+if ! pool_is_network "$pool"; then
+  echo "not an IPv4 network of /8 to /24: $pool" >&2
+  exit 64
+fi
 
 # The server's port: a number from 1 to 65535, nothing else.
 case "$port" in
@@ -93,7 +122,12 @@ family() {
 }
 
 family iptables "$subnet" icmp-admin-prohibited "$blocked_v4" "$accepts_v4"
+# The boxes' own networks: nothing from them to the host, its gateway on each box network included,
+# and no accept (the sidecar reaches the server from the egress network). Only in INPUT: an agent's
+# traffic to its sidecar and services crosses DOCKER-USER on their shared bridge (Docker turns on
+# br_netfilter), and a reject there would cut it.
+iptables -I INPUT "$((position + 1))" -s "$pool" -j REJECT --reject-with icmp-admin-prohibited
 if [ -n "$subnet6" ]; then
   family ip6tables "$subnet6" icmp6-adm-prohibited "$blocked_v6" "$accepts_v6"
 fi
-echo "egress baseline applied to $subnet${subnet6:+ and $subnet6}"
+echo "egress baseline applied to $subnet${subnet6:+ and $subnet6}, and the host closed to $pool"
