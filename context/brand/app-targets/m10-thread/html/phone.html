@@ -1,0 +1,112 @@
+<!doctype html>
+<!-- Milestone 10's thread at phone width, 390×844 (s6.md): milestone 8's phone shell (no rail, the
+     menu button, Chat and Preview one at a time) with S1's thread and the composer docked under it.
+       ?scene=s1        s6-phone: the question at the end of the thread
+       ?scene=s1-open   s6-phone-open: the first run tapped open, its footer the way to the numbers
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ostra · m10 · the compact thread on a phone</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="../../m9/html/m9.css">
+<link rel="stylesheet" href="m10.css">
+<style>
+  html, body { width: 390px; height: 844px; overflow: hidden; }
+  .ph { width: 390px; height: 844px; display: flex; flex-direction: column; background: var(--bg); }
+  .ph .top { height: 54px; flex: none; display: flex; align-items: center; gap: 2px; padding: 0 6px; border-bottom: 1px solid var(--line); }
+  .ph .top .ib { width: 44px; height: 44px; color: var(--muted); position: relative; }
+  .ph .top .ib svg.lucide { width: 20px; height: 20px; }
+  .ph .top .menu-dot { position: absolute; top: 10px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 2px var(--bg); }
+  .ph .top .t2 { display: flex; flex-direction: column; min-width: 0; }
+  .ph .top .t2 .a { font: 600 15px/20px var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ph .top .t2 .b { display: flex; align-items: center; gap: 6px; font: 400 12.5px/16px var(--sans); color: var(--muted); white-space: nowrap; }
+  .ph .top .t2 .b .mono { font-size: 12px; color: var(--faint); }
+  .ph .top .r { margin-left: auto; display: flex; }
+  .segw { padding: 8px 12px; border-bottom: 1px solid var(--line); flex: none; }
+  .segw .seg { display: flex; width: 100%; }
+  .segw .seg > span { flex: 1; justify-content: center; height: 34px; font-size: 14px; }
+  .ph .chatwrap { padding: 0 16px; }
+  .ph .chat { padding: 4px 0 8px; }
+  .ph .bubble { max-width: 88%; font-size: 15px; }
+  .ph .um .atts { max-width: 100%; }
+  .ph .um .atts .fchip { max-width: 250px; }
+  .ph .prose { font-size: 15px; }
+  /* The run's line wraps on a phone; its tap target is the whole line, at least 44px. */
+  .ph .fold { display: block; min-height: 44px; padding-top: 11px; padding-bottom: 9px; font-size: 14.5px; white-space: normal; line-height: 1.45; margin-top: 0; margin-bottom: 0; }
+  .ph .fold > .tx { overflow: visible; }
+  .ph .fold .chev { display: inline-block; vertical-align: -2px; margin-left: 3px; }
+  .ph .fold .at { margin-left: 8px; }
+  .ph .steps { margin-bottom: 6px; }
+  /* On a phone the verb sits inline before its subject, and a long subject wraps under it. */
+  .ph .step { grid-template-columns: 22px auto minmax(0, 1fr); column-gap: 8px; align-items: start; min-height: 36px; padding: 6px 0 5px; line-height: 1.45; }
+  .ph .step .ic { padding-top: 3px; }
+  .ph .step .sub { flex-wrap: wrap; white-space: normal; row-gap: 0; column-gap: 8px; }
+  .ph .step.th .sub { flex-wrap: nowrap; white-space: nowrap; }
+  .ph .gfoot { flex-wrap: wrap; white-space: normal; row-gap: 2px; padding: 6px 0; line-height: 1.5; }
+  .ph .gfoot .tx { overflow: visible; }
+  .ph .gfoot .lk { margin-left: 0; min-height: 28px; }
+  .ph .gfoot .tx { white-space: normal; }
+  /* The question: 44px rows and a full-width Send answer under the choices. */
+  .ph .ny .opt { min-height: 44px; font-size: 15px; }
+  .ph .ny .acts { flex-direction: column; align-items: stretch; gap: 8px; }
+  .ph .ny .acts .btn { height: 44px; font-size: 15px; }
+  .ph .ny .acts .foot { margin-left: 0; }
+  .ph .jumpband { right: 0; }
+  /* The dock: one box under the chat, 44px targets. */
+  .dock { flex: none; padding: 8px 10px 12px; border-top: 1px solid var(--line); background: var(--bg); }
+  .dock .cbox { min-height: 50px; padding: 4px 4px 4px 2px; align-items: center; border-radius: 14px; }
+  .dock .cbox .clip { width: 44px; height: 42px; }
+  .dock .cbox .clip svg.lucide { width: 19px; height: 19px; }
+  .dock .cbox .fld { font-size: 15.5px; padding: 0 2px; }
+  .dock .cbox .sendb { width: 40px; height: 40px; border-radius: 10px; }
+  .dock .cunder { margin-top: 6px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="ph">
+  <div class="top">
+    <span class="ib" title="Open navigation, 5 need you"><i data-lucide="menu"></i><span class="menu-dot"></span></span>
+    <span class="t2"><span class="a">Add a history panel</span><span class="b"><span class="mono">CALC-192</span><span class="dot amber"></span>Needs you · question</span></span>
+    <span class="r"><span class="ib" title="More: properties, the event log, Stop"><i data-lucide="ellipsis"></i></span></span>
+  </div>
+  <div class="segw"><span class="seg"><span class="on"><i data-lucide="messages-square"></i> Chat</span><span><i data-lucide="app-window"></i> Preview</span></span></div>
+  <div class="chatwrap"><div class="chat"><div class="col" id="thread"></div></div><div id="band"></div></div>
+  <div class="dock" id="dock"></div>
+</div>
+<script src="../../m8/html/app-fixture.js"></script>
+<script src="../../m9/html/m9.js"></script>
+<script src="m10.js"></script>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
+  const { fold, prose, strip, nyQuestion, composer, pill, recovered } = m10.parts;
+  const d = m10.data;
+  const open = q.get("scene") === "s1-open";
+  document.getElementById("thread").innerHTML = `
+    ${m10.parts.um("Sam Rivera", "14:02", d.s1Ask, { atts: d.s1Atts })}
+    ${fold("Thought for 6s, read 4 files", { at: "14:02", open, id: "run1" })}
+    ${open ? d.s1Run1 : ""}
+    ${prose(d.s1Plan)}
+    ${fold("Edited 2 files, ran 2 commands, took a screenshot", { tail: recovered() })}
+    ${strip(m9.thumb("app", 110, { cap: "1280 · /history" }))}
+    ${prose("<p>The panel is in and <code>pnpm test history</code> passes. The first run failed on an empty history, so the panel now shows the mock's empty state. The screenshot is the app at 1280 wide.</p><p>One thing the mock doesn't settle:</p>")}
+    ${nyQuestion(d.s1Question)}`;
+  if (open) document.getElementById("band").outerHTML = pill("question");
+  document.getElementById("dock").innerHTML = composer({ ph: "Reply to OpenCode…", hint: "Reaches OpenCode after your answer.", model: "Sonnet 5.5" });
+  window.addEventListener("load", () => {
+    lucide.createIcons();
+    document.fonts.ready.then(() => {
+      const chat = document.querySelector(".chat");
+      chat.scrollTop = chat.scrollHeight;
+      if (open) chat.scrollTop = document.getElementById("run1").offsetTop - 150;
+      document.body.dataset.settled = "1";
+    });
+  });
+})();
+</script>
+</body>
+</html>

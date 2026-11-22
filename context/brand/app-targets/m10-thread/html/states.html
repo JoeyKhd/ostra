@@ -1,0 +1,168 @@
+<!doctype html>
+<!-- Milestone 10's thread states (states-steps.md, states-asks.md, states-messages.md): the states the
+     approved thread targets list, drawn in the compact thread's parts at the panel's scale.
+       ?sheet=steps      states-steps: the live step, a running command, failures, subagents, effort
+       ?sheet=asks       states-asks: approvals, the question for a watcher and "Something else", other needs-you
+       ?sheet=messages   states-messages: rounds, PR and diff comments, reopen and other dividers, result lines
+       &theme=light      the light tokens.
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m10 · thread states</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="../../m9/html/m9.css">
+<link rel="stylesheet" href="m10.css">
+</head>
+<body>
+<div class="sheet" id="sheet"></div>
+<script src="../../m8/html/app-fixture.js"></script>
+<script src="../../m9/html/m9.js"></script>
+<script src="m10.js"></script>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
+  const { ic } = m9;
+  const p = m10.parts;
+  const { mono, teal, faint, sep, add, del, um, prose, fold, result, live, step, steps, gfoot, out, exitOk, exitBad, failed, receipt, divider, nyQuestion, prCard } = p;
+  const cell = (n, cap, body) => `<div class="cell"><div class="cap"><b>${n}</b><span>${cap}</span></div><div class="frame">${body}</div></div>`;
+  const notice = (icon, html, link = "") => `<div class="notice">${ic(icon)}<span>${html}</span>${link ? `<span class="teal">${link}</span>` : ""}</div>`;
+  const foot = (facts) => gfoot(facts);
+  const openFold = (text, opts = {}) => fold(text, { ...opts, open: true });
+
+  const sheets = {
+    // ── The steps: live, running, failing, subagents, effort ──
+    steps: () => [
+      [
+        cell(1, "The live step, rewritten in place while a turn runs: what the agent does now, then the turn's steps, any failure and the time", `
+          ${live("Thinking", `${sep} ${mono("0:06")}`)}
+          ${live(`Running ${mono("pnpm test history")}`, `${sep} 8 steps done, 1 <span class="bad">failed</span> ${sep} ${mono("3:52")}`)}
+          ${live("Writing", `${sep} 11 steps done ${sep} ${mono("5:10")}`)}
+          ${live(`Reading ${mono(".ostra/attachments/4/history-panel-mock.png")}`, `${sep} 1 step done ${sep} ${mono("0:12")}`)}`),
+        cell(2, "A running command, its run opened: the steps so far, the command's output streaming in its block", `
+          <div class="livestep" role="button" aria-expanded="true"><span class="spin"></span><span class="now">Running ${mono("pnpm test history")}</span><span class="m">${sep} 3 steps done ${sep} ${mono("1:04")}</span><i data-lucide="chevron-down" class="chev"></i></div>
+          ${steps([
+            step({ icon: "pencil", verb: "Edited", sub: "src/history/store.ts", res: add(48), go: "diff" }),
+            step({ icon: "pencil", verb: "Edited", sub: "src/history/panel.tsx", res: add(118) + del(6), go: "diff" }),
+            step({ spin: true, verb: "Running", sub: "pnpm test history", res: `<span class="r">12 s</span>`, go: "hide output" }),
+          ])}
+          ${out(` ✓ store keeps the newest 50 (4 ms)\n ✓ store drops the oldest past 50 (2 ms)\n ❯ panel lists results newest first`)}`),
+        cell(3, "A failure the turn recovered from: one red word on its line; opened, the failed run's output", `
+          ${openFold("Edited 2 files, ran 2 commands, took a screenshot", { tail: p.recovered() })}
+          ${steps([
+            step({ icon: "terminal", verb: "Ran", sub: "pnpm test history", res: exitBad(1, "4.1 s"), go: "hide output" }),
+          ])}
+          ${out(` ✓ store keeps the newest 50\n <span class="r">✗ panel renders an empty history</span>\n   TypeError: Cannot read properties of undefined (reading 'map')\n    ❯ src/history/panel.tsx:21:18\n Tests  1 failed | 13 passed (14)`)}
+          ${steps([
+            step({ icon: "pencil", verb: "Edited", sub: "src/history/panel.tsx", res: add(12) + del(2), go: "diff" }),
+            step({ icon: "terminal", verb: "Ran", sub: "pnpm test history", res: exitOk("3.8 s"), go: "output" }),
+          ])}`),
+      ],
+      [
+        cell(4, "A failure the turn didn't recover from: its own line under its run. A failed turn and a limit say so the same way", `
+          ${fold("Edited 1 file, ran 3 commands", { at: "16:02" })}
+          ${failed("pnpm build", "Command failed", `${sep} exit 2 after 38 s`, "output")}
+          ${prose("<p>The build fails on a type error in <code>keypad.tsx</code> that this change didn't touch.</p>")}
+          ${failed("", "The turn failed", `${sep} the model's provider answered 529 Overloaded. Send a message to try again.`)}
+          ${notice("timer-off", `Stopped at the turn's 60-minute limit.`, "Keep working")}`),
+        cell(5, "Subagents: the count on the run's line, a row each when it's open. A row opens the subagents window", `
+          ${openFold("Ran 3 subagents, read 2 files", { at: "14:20", badge: `<span class="badge">${ic("layers")}4 subagents<span class="sep">·</span><span class="teal"><span class="spin"></span>1 running</span></span>` })}
+          ${steps([
+            step({ icon: "layers", verb: "Subagent", sub: `${mono("explore")} <span class="x">· Find the history store</span>`, cls: "s", res: `<span class="r">12 calls · 41 s</span><span class="r ok">${ic("check")}</span>`, go: "open" }),
+            step({ icon: "layers", verb: "Subagent", sub: `${mono("explore")} <span class="x">· Check the keypad's tests</span>`, cls: "s", res: `<span class="r">7 calls · 22 s</span><span class="r ok">${ic("check")}</span>`, go: "open" }),
+            step({ icon: "layers", verb: "Subagent", sub: `${mono("general")} <span class="x">· Write the panel tests</span>`, cls: "s", res: `<span class="r">9 calls</span><span class="r" style="color:var(--teal)">running</span>`, go: "open" }),
+            step({ icon: "file-text", verb: "Read", sub: "store.ts, panel.tsx", res: `<span class="r">2 files</span>` }),
+          ], foot(["Turn 2", "High", "running", "subagents 31.4k tokens"]))}`),
+        cell(6, "Effort: a member's change is a quiet marker between turns; the level a turn ran at, and a clamp, are on its footer", `
+          ${divider(`${ic("sliders-horizontal")}<span>Alex Kim set effort to Low, from the next turn</span>${mono("14:11")}`)}
+          ${openFold("Read 2 files, edited 1 file", { at: "14:12" })}
+          ${steps([
+            step({ icon: "file-text", verb: "Read", sub: "state.ts, keypad.tsx", res: `<span class="r">2 files</span>` }),
+            step({ icon: "pencil", verb: "Edited", sub: "src/calculator/state.ts", res: add(9) + del(2), go: "diff" }),
+          ], foot(["Turn 3", "Max, asked Extra high", "48k in", "9.1k out", "6.4k reasoning", "$0.41"]))}`),
+      ],
+    ],
+
+    // ── What waits on a person ──
+    asks: () => [
+      [
+        cell(1, "An approval waits: the asking step leaves its run and stands where the live step was, the block under it", `
+          ${fold("Read 3 files, edited 1 file", { at: "11:40" })}
+          ${live(`Wants to run ${mono("pnpm db:migrate")}`, "", { pause: true, need: "needs approval" })}
+          <div class="ny" role="group"><div class="t">${ic("hand")}Needs you · approval</div>
+            <div class="q"><b>Database changes</b> asks before OpenCode runs this command:</div>
+            <span class="chipc">pnpm db:migrate</span>
+            <div class="acts"><span class="btn sm">Deny</span><span class="btn sm amber">Approve once</span><span class="btn sm">Approve for this task</span></div>
+            <div class="pat">Approve for this task also approves commands that start with ${mono("pnpm db")}.</div>
+            <div class="foot">Any member of calculator can answer. The first answer wins.</div></div>`),
+        cell(2, "Answered: the approval folds back into its step; the answer is on the run's line and on the row", `
+          ${openFold("Read 3 files, edited 1 file, ran 2 commands", { at: "11:40", tail: `${sep} 1 approved by Sam Rivera` })}
+          ${steps([
+            step({ icon: "terminal", verb: "Ran", sub: "pnpm db:migrate", res: exitOk("2.3 s"), note: "approved once by Sam Rivera", go: "output" }),
+            step({ icon: "terminal", verb: "Ran", sub: "pnpm test", res: exitOk("9.4 s"), go: "output" }),
+          ])}
+          ${fold("Ran 1 command", { tail: `${sep} 1 <span class="bad">denied</span> by Alex Kim, with a reason` })}`),
+        cell(3, "The question for a member who isn't the driver: the choices disabled, and the way to take over", `
+          ${nyQuestion({ ...m10.data.s1Question, driver: false })}`),
+      ],
+      [
+        cell(4, "The driver picks Something else: a field opens under it, and Send answer wakes up", `
+          ${nyQuestion({ ...m10.data.s1Question, sel: 2, other: "Replace it, but keep the expression in the line above" })}`),
+        cell(5, "Any other need is one block at the end of the thread, pointing at the message above it", `
+          ${prose("<p>Should the history survive a reload? Local storage keeps it per browser; the API would need a table.</p>")}
+          <div class="ny" role="group"><div class="t">${ic("hand")}Needs you</div><div class="q">OpenCode asked you something in its message above. Reply below.</div></div>`),
+        cell(6, "A round limit, from milestone 6: the driver decides; Keep working is the one amber action", `
+          <div class="ny" role="group"><div class="t">${ic("hand")}Needs you · CI round limit</div>
+            <div class="q">CI failed after 2 rounds, so ostra stopped sending it back to OpenCode. <code>unit-tests</code> still fails on <code>panel.test.tsx</code>.</div>
+            <div class="acts"><span class="btn sm amber">Keep working</span><span class="btn sm">Open the checks</span></div>
+            <div class="foot">Keep working starts one more CI round and resets the count. You can also message OpenCode below.</div></div>
+          ${receipt(`${ic("check")}<span>Alex Kim pressed <span class="v">Keep working</span></span>${mono("11:07")}`)}`),
+      ],
+    ],
+
+    // ── Messages, dividers and results ──
+    messages: () => [
+      [
+        cell(1, "What ostra sends by itself is outlined, not filled: a CI round, with the checks it sent and their logs", `
+          ${um("ostra", "10:31", `<p><b>CI round 1 of 2</b> <span class="faint">· automatic turn 1 of 4</span></p>
+            <div class="row">${ic("x")}<span class="mono">unit-tests</span><span class="faint">failed</span><span class="teal">ci/test.log</span></div>
+            <div class="row">${ic("x")}<span class="mono">lint</span><span class="faint">failed</span><span class="teal">ci/lint.log</span></div>`, { auto: true, tag: "automatic" })}
+          ${fold("Read 2 files, edited 1 file, ran 2 commands", { at: "10:31" })}
+          ${result("git-commit-horizontal", `Pushed ${mono("9a03d1e")} ${sep} CI passed`)}`),
+        cell(2, "A round the budget held, inside its bubble; a findings round names what it sent", `
+          ${um("ostra", "10:52", `<p><b>Findings round 1 of 2</b> <span class="faint">· automatic turn 2 of 4</span></p>
+            <p class="faint" style="font-size:14px">Sent 1 blocking finding: <span style="color:var(--text)">The store keeps 51 results</span>. 1 nit listed, not required.</p>
+            <div class="held">${ic("pause-circle")}<span>Held 9 min: calculator's budget for November was reached. Released when Priya Shah raised it.</span></div>`, { auto: true, tag: "automatic" })}`),
+        cell(3, "A comment on the PR that asks ostra: from GitHub, outlined, with Remember this", `
+          ${um("sam-rivera on GitHub", "15:02", `<div class="q" style="margin-top:0"><div class="w">src/history/panel.tsx:42</div><div class="c">@ostra the Use button needs a label for screen readers.</div></div><span class="lk" style="gap:10px">Open on GitHub<span style="color:var(--teal)">Remember this</span></span>`, { auto: true, tag: "PR comment" })}`),
+      ],
+      [
+        cell(4, "Comments on the diff, sent by a member: each comment where it is, the quoted line, the words", `
+          ${um("Sam Rivera", "15:06", `<div class="q" style="margin-top:0"><div class="w">src/history/panel.tsx:18</div><div class="l">+  &lt;li className="row"&gt;{r.expr}&lt;/li&gt;</div><div class="c">Mono here, like the display.</div></div><div class="q"><div class="w">src/history/store.ts:9</div><div class="l">+  const MAX = 50;</div><div class="c">Name it HISTORY_LIMIT.</div></div>`, { tag: "2 comments on the diff" })}`),
+        cell(5, "Between turns, only what a reader needs: the day, a reopen and how the session came back, a new driver", `
+          ${divider("Yesterday", { day: true })}
+          ${divider(`${ic("history")}<span>Restored from the session archive on ${mono("alex-desktop")} · unfinished work restored</span>`)}
+          ${um("Alex Kim", "09:12", "<p>Also keep the history when the page reloads.</p>", { tag: "reopened the task" })}
+          ${divider(`${ic("user-round")}<span>Sam Rivera is driving now (Alex Kim handed it over)</span>`)}
+          ${um("Sam Rivera", "09:20", "<p>Use local storage, not the API.</p>", { tag: "queued" })}`),
+        cell(6, "Results a turn leaves, each one line with an icon after the prose", `
+          ${result("app-window", `Preview ${mono("web :5173")} ${faint(mono("/history"))}`, { chev: false, link: "Show" })}
+          ${result("file-pen-line", `Handed in draft v2 ${sep} 4 acceptance criteria, 2 sub-tickets`, { chev: false, link: "Open the draft" })}
+          ${result("lightbulb", `Proposed a memory: ${`<span style="color:var(--text-2)">Run the tests with pnpm test, not npm</span>`}`, { chev: false, link: "Review" })}
+          ${notice("pause", "Held: calculator's budget for November is reached. It starts when the budget allows.", "Open spend")}`),
+      ],
+    ],
+  };
+
+  const cols = sheets[q.get("sheet") ?? "steps"]();
+  document.getElementById("sheet").innerHTML = cols.map((c) => `<div class="colm">${c.join("")}</div>`).join("");
+  window.addEventListener("load", () => {
+    lucide.createIcons();
+    document.fonts.ready.then(() => { document.body.dataset.settled = "1"; });
+  });
+})();
+</script>
+</body>
+</html>

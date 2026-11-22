@@ -1,0 +1,39 @@
+<!doctype html>
+<!-- Milestone 10's thread targets, desktop (../README.md). The task page's Activity tab, compact.
+       ?scene=s1           S1: CALC-192 paused on OpenCode's question, mid-turn              (s1)
+       ?scene=s1-working   S1: the same turn four minutes in, the live step running        (s1-working)
+       ?scene=s2           S2: three turns later, PR #483 open, CI running on GitHub         (s2)
+       ?scene=s3           S3: an AI review task, 23 steps folded, one failure on its line  (s3)
+       ?scene=s4           S4: S1 with a run opened, the question scrolled away: the pill   (s4)
+       ?scene=s5           S5: plan first, the plan waiting on its driver                   (s5-plan)
+       ?scene=s5-approved  S5: the plan approved with edits, the build turn running         (s5-approved)
+       &theme=light        the light tokens (S7).
+     Loads milestone 8's tokens, shell and demo app and milestone 9's parts. Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m10 · the compact thread</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="../../m9/html/m9.css">
+<link rel="stylesheet" href="m10.css">
+</head>
+<body data-space="projects" data-panel="project" data-active="tasks" data-live="calc-192">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>calculator</span><i data-lucide="chevron-right" class="chev"></i><span>Tasks</span><i data-lucide="chevron-right" class="chev"></i><b id="crumb">CALC-192</b>
+      <div class="right" id="bar-right"></div>
+    </div>
+    <div class="content" id="content"></div>
+  </section>
+</div>
+<script src="../../m8/html/app-fixture.js"></script>
+<script src="../../m9/html/m9.js"></script>
+<script src="m10.js"></script>
+<script>m10.mount(new URLSearchParams(location.search).get("scene") ?? "s1");</script>
+<script src="../../m8/html/shell.js"></script>
+</body>
+</html>

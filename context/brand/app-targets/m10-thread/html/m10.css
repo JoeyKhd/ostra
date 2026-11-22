@@ -1,0 +1,281 @@
+/*
+ * Milestone 10's thread targets (../README.md): the task thread made compact, prose first, in the
+ * panel's own look. Loaded after milestone 8's `../../m8/html/m8.css` (the panel's tokens for both
+ * themes, its fonts, its shell) and milestone 9's `../../m9/html/m9.css` (the strip, the file chip,
+ * the needs-you rule). Tokens only: no new colour. Every size here is a CSS px the build copies.
+ *
+ *   A member's message      a right-aligned bubble, the name and the time over it.
+ *   ostra's own message     the same bubble, outlined instead of filled: ostra sent it by itself.
+ *   The agent               plain prose, no avatar, no header per message.
+ *   Activity                one quiet line per run of steps, between the prose; it opens in place.
+ *   While a turn runs       the run's line is the live step, rewritten in place.
+ *   Results                 a push, a PR, a posted review: one line with an icon, after the prose.
+ *   Needs you               the amber rule, flush with the prose. Amber means only that.
+ *   Bookkeeping             tokens, spend, saved work: the opened run's footer, the time's tooltip,
+ *                           the properties panel and the Event log. Never a line in the reading column.
+ */
+
+/* ── The column ─────────────────────────────────────────────────────────────── */
+.page { padding-bottom: 16px; }
+.tabs { margin-top: 12px; }
+.tab .spin { width: 11px; height: 11px; }
+.tab .ok-i svg.lucide { width: 13px; height: 13px; color: var(--green); }
+.chatwrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.chat { flex: 1; min-height: 0; overflow: hidden; padding: 6px 2px 10px 0; }
+.chat > .col, .dockcol { max-width: 720px; }
+.dot.teal { background: var(--teal); }
+.doing .st { color: var(--text); }
+
+/* ── A member's message ─────────────────────────────────────────────────────── */
+.um { display: flex; flex-direction: column; align-items: flex-end; margin: 24px 0 18px; }
+.um:first-child { margin-top: 8px; }
+.um .by { display: flex; align-items: baseline; gap: 6px; margin: 0 4px 5px; font-size: 12.5px; color: var(--faint); white-space: nowrap; }
+.um .by b { font-weight: 500; color: var(--muted); }
+.um .by .mono { font-size: 12px; }
+.um .by .tag { color: var(--faint); }
+.bubble { max-width: 82%; padding: 9px 14px 10px; border-radius: 16px; background: var(--sel); color: var(--text); font-size: 14.5px; line-height: 1.55; }
+.bubble p + p { margin-top: 6px; }
+.bubble code, .prose code, .ny code, .plist code { font: 400 13px var(--mono); padding: 1px 5px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); }
+.bubble code { background: var(--bg); }
+.um .atts { display: flex; align-items: flex-end; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; max-width: 82%; }
+.um .atts .fchip { height: 48px; background: var(--bg); }
+/* ostra's own message (a round, an AI review's prompt): outlined, not filled. */
+.bubble.auto { background: transparent; border: 1px solid var(--line-2); }
+.bubble.auto code { background: var(--surface); }
+.bubble .mt2 { margin-top: 3px; font-size: 13.5px; color: var(--faint); }
+.bubble .mt2 .mono { font-size: 12.5px; }
+.bubble .lk { display: inline-flex; align-items: center; gap: 2px; margin-top: 5px; font-size: 13.5px; color: var(--teal); }
+.bubble .lk svg.lucide { width: 13px; height: 13px; }
+.bubble .row { display: flex; align-items: baseline; gap: 8px; min-height: 24px; font-size: 14px; }
+.bubble .row > svg.lucide { width: 13px; height: 13px; align-self: center; color: var(--red); }
+.bubble .row .mono { font-size: 13px; color: var(--text); }
+.bubble .row .faint { font-size: 13.5px; }
+.bubble .row .teal { font: 400 13px var(--mono); }
+.bubble .held { display: flex; align-items: flex-start; gap: 7px; margin-top: 6px; font-size: 13px; color: var(--faint); line-height: 1.45; }
+.bubble .held svg.lucide { width: 13px; height: 13px; margin-top: 3px; flex: none; }
+/* A quoted item inside a bubble (a diff comment, a PR comment): the thread's left line, no box. */
+.bubble .q { margin-top: 7px; padding-left: 10px; border-left: 2px solid var(--line-3); }
+.bubble .q .w { font: 400 12.5px var(--mono); color: var(--faint); }
+.bubble .q .l { font: 400 12.5px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bubble .q .c { font-size: 14px; color: var(--text); }
+/* The ticket a task started from (milestone 9's "What the agent got"), as the first bubble. */
+.bubble.got { width: 82%; padding: 11px 14px; }
+.bubble.got .src { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); margin-bottom: 4px; }
+.bubble.got .src svg.lucide { width: 13px; height: 13px; color: var(--faint); }
+.bubble.got .src .mono { font-size: 12px; color: var(--text-2); }
+.bubble.got .tt { font-weight: 600; }
+.bubble.got .gmore { display: flex; align-items: center; gap: 4px; margin-top: 6px; font-size: 13px; color: var(--faint); }
+.bubble.got .gmore svg.lucide { width: 13px; height: 13px; }
+.bubble.got .gmore .teal { display: inline-flex; align-items: center; gap: 2px; }
+
+/* ── The agent: prose ───────────────────────────────────────────────────────── */
+.prose { color: var(--text); font-size: 14.5px; line-height: 1.6; margin: 4px 0 6px; }
+.prose p + p, .prose p + ul, .prose ul + p { margin-top: 10px; }
+.prose ul { padding-left: 20px; }
+.prose li { padding-left: 2px; }
+.prose li + li { margin-top: 5px; }
+.prose li::marker { color: var(--faint); }
+.prose b { font-weight: 600; }
+.prose .teal { color: var(--teal); }
+
+/* ── Activity: one line per run of steps ────────────────────────────────────── */
+/* A button: 28px, 14px `--faint`; hover fills `--hover` and lifts the words to `--muted`. */
+.fold { display: flex; align-items: center; gap: 6px; width: fit-content; max-width: 100%; min-height: 28px; margin: 6px 0 6px -6px; padding: 0 6px; border-radius: 6px; color: var(--faint); font-size: 14px; white-space: nowrap; }
+.fold > .tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.fold svg.lucide { width: 14px; height: 14px; }
+.fold .chev { color: var(--faint); flex: none; }
+.fold .mono { font-size: 13px; color: var(--muted); }
+.fold .bad { color: var(--red); }
+.fold .at { flex: none; margin-left: 4px; font: 400 12.5px var(--mono); color: var(--faint); }
+.fold .at.hover { color: var(--muted); text-decoration: underline dotted var(--line-3); text-underline-offset: 3px; }
+.fold.hover { background: var(--hover); color: var(--muted); }
+.fold.open { color: var(--muted); }
+.fold.open .chev { transform: rotate(90deg); }
+.fold.result { gap: 8px; }
+.fold.result > svg.lucide:first-child { color: var(--faint); }
+.fold.result .mono { color: var(--text-2); }
+.fold .badge { display: inline-flex; align-items: center; gap: 6px; height: 24px; margin-left: 6px; padding: 0 9px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--surface); font: 500 12.5px var(--sans); color: var(--text); flex: none; }
+.fold .badge svg.lucide { width: 13px; height: 13px; color: var(--muted); }
+.fold .badge .sep { color: var(--faint); }
+.fold .badge .teal { display: inline-flex; align-items: center; gap: 5px; }
+.fold .badge .spin { width: 10px; height: 10px; }
+
+/* The live step: what the agent does now, rewritten in place while the turn runs. */
+.livestep { display: flex; align-items: center; gap: 8px; width: fit-content; max-width: 100%; min-height: 28px; margin: 6px 0 6px -6px; padding: 0 6px; border-radius: 6px; font-size: 14px; color: var(--text-2); white-space: nowrap; }
+.livestep .spin { width: 12px; height: 12px; border-width: 1.75px; }
+.livestep .now .mono { font-size: 13.5px; color: var(--text); }
+.livestep .m { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--faint); }
+.livestep .m .mono { font: 400 12.5px var(--mono); color: var(--faint); }
+.livestep .m .bad { color: var(--red); }
+.livestep .chev { width: 14px; height: 14px; color: var(--faint); flex: none; }
+.livestep .pause { width: 14px; height: 14px; color: var(--muted); }
+.livestep .need { color: var(--amber-text); font-weight: 500; }
+
+/* The run, opened: one 28px row per step; outputs and diffs stay folded behind a text link. */
+.steps { margin: 0 0 10px 1px; padding: 2px 0 0 14px; border-left: 1px solid var(--line-2); }
+.step { display: grid; grid-template-columns: 22px 72px minmax(0, 1fr); align-items: center; min-height: 28px; font-size: 14px; }
+.step .ic { display: flex; align-items: center; }
+.step .ic svg.lucide { width: 14px; height: 14px; color: var(--faint); }
+.step .ic .spin { width: 11px; height: 11px; }
+.step .vb { color: var(--muted); }
+.step .sub { display: flex; align-items: baseline; gap: 10px; min-width: 0; white-space: nowrap; }
+.step .sub .p { font: 400 13.5px var(--mono); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.step .sub .p .d { color: var(--faint); }
+.step .sub .s { font-size: 13.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.step .sub .s .mono { font-size: 13px; color: var(--text-2); }
+.step .sub .x { font-size: 13.5px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; min-width: 0; font-style: normal; }
+.step .r { font: 400 12.5px var(--mono); color: var(--faint); flex: none; }
+.step .r.ok { color: var(--green); display: inline-flex; align-items: center; gap: 3px; }
+.step .r.ok svg.lucide { width: 12px; height: 12px; }
+.step .r.bad { color: var(--red); }
+.step .r .t { color: var(--faint); }
+.step .add, .step .del { margin: 0; font-size: 12.5px; }
+.step .del { margin-left: -4px; }
+.step .go { flex: none; display: inline-flex; align-items: center; gap: 1px; font-size: 12.5px; color: var(--teal); }
+.step .go svg.lucide { width: 12px; height: 12px; }
+.step .note { flex: none; font-size: 13px; color: var(--muted); }
+.step.th .vb, .step.th .ic svg.lucide { color: var(--faint); }
+.step.calm .vb { color: var(--faint); }
+.step .need { color: var(--amber-text); font: 500 13px var(--sans); flex: none; }
+/* An output or a diff opened under its row, at the subject's x. */
+.out { margin: 2px 0 6px 94px; padding: 8px 12px; max-height: 172px; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font: 400 12.5px/1.6 var(--mono); color: var(--muted); white-space: pre-wrap; }
+.out .r { color: var(--red); }
+.out .g { color: var(--green); }
+/* The footer: the turn's numbers, where the bookkeeping went. The touch path to the Event log. */
+.gfoot { display: flex; align-items: center; gap: 10px; min-height: 30px; margin-top: 4px; padding: 2px 0; border-top: 1px solid var(--line); font: 400 12px var(--mono); color: var(--faint); white-space: nowrap; }
+.gfoot .tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.gfoot .sg { white-space: nowrap; }
+.gfoot .tx { white-space: normal; }
+.gfoot .lk { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 2px; font: 400 12.5px var(--sans); color: var(--teal); }
+.gfoot .lk svg.lucide { width: 13px; height: 13px; }
+
+/* A failure the turn didn't recover from: its own line, under its run, red icon and word. */
+.failed { display: flex; align-items: center; gap: 8px; min-height: 28px; margin: -2px 0 8px; font-size: 14px; color: var(--muted); white-space: nowrap; }
+.failed svg.lucide { width: 14px; height: 14px; color: var(--red); flex: none; }
+.failed .p { font: 400 13px var(--mono); color: var(--text-2); }
+.failed .w { color: var(--red); }
+.failed .m { overflow: hidden; text-overflow: ellipsis; color: var(--muted); min-width: 0; }
+.failed .go { flex: none; display: inline-flex; align-items: center; gap: 1px; font-size: 13px; color: var(--teal); }
+.failed .go svg.lucide { width: 12px; height: 12px; color: var(--teal); }
+
+/* A stop that isn't an error (a time limit, a budget hold): the same line, its icon --muted. */
+.notice { display: flex; align-items: center; gap: 8px; min-height: 28px; margin: 2px 0 8px; font-size: 14px; color: var(--muted); white-space: nowrap; }
+.notice svg.lucide { width: 14px; height: 14px; color: var(--muted); flex: none; }
+.notice .m { overflow: hidden; text-overflow: ellipsis; min-width: 0; color: var(--faint); }
+.notice .teal { flex: none; }
+
+/* Pictures the agent captured: milestone 8's strip, flush with the prose. */
+.chat .strip, .cell .strip { margin: 8px 0 10px; }
+.shot .cap { font-size: 12px; color: var(--faint); max-width: none !important; overflow: visible; }
+
+/* ── Needs you: milestone 1's amber rule, flush with the prose ─────────────── */
+.chat .ny, .cell .ny { margin: 12px 0 8px; padding: 2px 0 2px 14px; }
+.ny .t { font-size: 14px; }
+.ny .q { margin-top: 5px; font-size: 14.5px; line-height: 1.55; color: var(--text); }
+.ny .q b { font-weight: 600; }
+.ny .acts { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.ny .acts .foot { margin-left: 6px; }
+.ny .foot { margin-top: 8px; font-size: 13px; color: var(--faint); }
+.ny .acts .foot { margin-top: 0; }
+.ny .pat { margin-top: 8px; font-size: 13px; color: var(--muted); }
+.ny .pat .mono { font-size: 12.5px; color: var(--text-2); }
+.ny .chipc { display: inline-block; margin-top: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); font: 400 13px var(--mono); color: var(--text); }
+.ny.quiet { border-left-color: var(--line-2); }
+.ny.quiet .t { color: var(--muted); }
+/* The question's choices: radio rows, then Send answer. Choosing never sends by itself. */
+.opts { display: flex; flex-direction: column; margin-top: 8px; }
+.opt { display: flex; align-items: center; gap: 10px; min-height: 30px; font-size: 14px; color: var(--text); }
+.opt .rd { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--control-line); flex: none; }
+.opt.on .rd { border: 5px solid var(--text); }
+.opt .hint { color: var(--faint); font-size: 13px; }
+.opt.dis { opacity: 0.5; }
+.other { display: flex; align-items: center; height: 32px; margin: 2px 0 2px 26px; max-width: 460px; padding: 0 10px; border: 1px solid var(--control-line); border-radius: 6px; background: var(--surface); font-size: 14px; color: var(--text); }
+.other .caret { display: inline-block; width: 1.5px; height: 16px; margin-left: 1px; background: var(--text); }
+.other.focus { outline: 2px solid var(--teal); outline-offset: 1px; }
+/* Send answer before a choice: the panel's disabled button, not a dimmed amber. */
+.btn.amber.dis { background: var(--surface); border-color: var(--line-2); color: var(--faint); }
+/* The plan, proposed: a numbered list right inside the rule. No box in the block. */
+.plist { list-style: none; margin-top: 6px; }
+.plist li { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: baseline; min-height: 26px; padding: 1px 0; font-size: 14.5px; line-height: 1.5; color: var(--text); }
+.plist li .n { font: 400 12.5px var(--mono); color: var(--faint); }
+.plist li .ed { margin-left: 6px; font-size: 12.5px; color: var(--faint); }
+
+/* A settled needs-you: one quiet receipt line in its place. */
+.receipt { display: flex; align-items: center; gap: 8px; min-height: 28px; margin: 4px 0 6px; font-size: 14px; color: var(--muted); white-space: nowrap; }
+.receipt svg.lucide { width: 14px; height: 14px; color: var(--faint); }
+.receipt .mono { font-size: 12.5px; color: var(--faint); }
+.receipt .v { color: var(--text-2); }
+.receipt .teal { display: inline-flex; align-items: center; gap: 2px; }
+.receipt .teal svg.lucide { color: var(--teal); width: 13px; height: 13px; }
+
+/* ── What a turn shipped: the PR, cut to its title, its size and its live CI ── */
+.pr { margin: 4px 0 10px; padding: 9px 14px 9px 12px; border: 1px solid var(--line-2); border-radius: 10px; max-width: 560px; }
+.pr .r1 { display: flex; align-items: center; gap: 9px; font-size: 14.5px; white-space: nowrap; }
+.pr .r1 > svg.lucide { width: 16px; height: 16px; color: var(--green); }
+.pr .r1 .num { font: 400 13.5px var(--mono); color: var(--teal); }
+.pr .r1 .tt { font-weight: 500; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.pr .r1 .add { margin-left: auto; font-size: 12.5px; }
+.pr .r1 .del { margin-left: 0; font-size: 12.5px; }
+.pr .r2 { display: flex; align-items: center; gap: 8px; margin: 4px 0 0 25px; font-size: 13.5px; color: var(--muted); white-space: nowrap; }
+.pr .r2 .spin { width: 11px; height: 11px; }
+.pr .r2 .mono { font: 400 12.5px var(--mono); color: var(--faint); }
+
+/* The time's tooltip: the turn's bookkeeping, a small table on hover or focus. */
+.ttip { position: absolute; z-index: 9; width: 268px; padding: 8px 11px 9px; background: var(--raise); border: 1px solid var(--line-2); border-radius: 8px; box-shadow: var(--shadow-pop); font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.ttip .h { color: var(--text); font-weight: 500; margin-bottom: 3px; }
+.ttip .k { display: grid; grid-template-columns: 74px 1fr; column-gap: 10px; }
+.ttip .k > span:first-child { color: var(--faint); }
+.ttip .k .mono { font-size: 12px; color: var(--text-2); }
+.pointer { position: absolute; z-index: 10; width: 17px; height: 22px; }
+
+/* Between turns: a change a reader should know, centred and quiet. Bookkeeping isn't one. */
+.divider { display: flex; align-items: center; gap: 10px; margin: 18px 0; font-size: 13px; color: var(--faint); white-space: nowrap; }
+.divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); min-width: 24px; }
+.divider svg.lucide { width: 14px; height: 14px; }
+.divider .mono { font-size: 12px; }
+.divider .tx { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.divider.day { font: 400 12px var(--mono); }
+
+/* ── Needs you, off screen: one pill on a solid band above the composer ────── */
+.jumpband { position: absolute; left: 0; right: 2px; bottom: 0; height: 46px; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 4; }
+.jumpband::before { content: ''; position: absolute; left: 0; right: 0; top: -18px; height: 18px; background: linear-gradient(to bottom, transparent, var(--bg)); }
+.jump { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px 0 11px; border: 1px solid var(--line-2); border-radius: 15px; background: var(--raise); box-shadow: var(--shadow-pop); color: var(--text); font: 500 13.5px var(--sans); white-space: nowrap; }
+.jump svg.lucide { width: 14px; height: 14px; color: var(--muted); }
+
+/* ── The composer: one box ─────────────────────────────────────────────────── */
+.cbox { display: flex; align-items: flex-end; gap: 4px; min-height: 52px; padding: 9px 9px 9px 7px; border: 1px solid var(--control-line); border-radius: 12px; background: var(--surface); flex: none; }
+.cbox .clip { width: 32px; height: 32px; }
+.cbox .fld { flex: 1; min-width: 0; padding: 5px 6px; font-size: 14.5px; line-height: 22px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cbox .go { display: flex; align-items: center; gap: 6px; }
+.cbox .sendb { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; background: var(--primary); color: var(--on-primary); }
+.cbox .sendb svg.lucide { width: 17px; height: 17px; stroke-width: 2; }
+.cbox .sendb.dis { opacity: 0.35; }
+.cbox .intb { height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--surface); color: var(--text); font: 500 13px var(--sans); }
+.cbox .intb svg.lucide { width: 14px; height: 14px; }
+.cbox .intb.dis { opacity: 0.45; }
+.cunder { display: flex; align-items: center; gap: 8px; margin-top: 7px; padding: 0 4px; font-size: 12.5px; color: var(--faint); white-space: nowrap; }
+.cunder > span:first-child { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cunder .r { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; color: var(--muted); flex: none; }
+.cunder .r svg.lucide { width: 13px; height: 13px; color: var(--faint); }
+.cunder .r .sep { margin: 0 2px; }
+/* The watcher's bar in the composer's place (milestone 3), one row. */
+.wbar { display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 9px 0 14px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface); font-size: 14px; }
+.wbar b { font-weight: 500; }
+.wbar .faint { font-size: 13px; }
+.wbar .btn { margin-left: auto; }
+
+/* ── The properties panel: where the bookkeeping went ──────────────────────── */
+.props .prop .v .faint { font-size: 13px; }
+.props .prop .v > .mono { overflow: hidden; text-overflow: ellipsis; }
+.props .prop .v .spin { width: 11px; height: 11px; }
+.props .prop .v .ck svg.lucide { width: 13px; height: 13px; color: var(--green); }
+.props .group h5 .n { font: 400 12px var(--sans); color: var(--faint); }
+
+/* ── State sheets: numbered cells, the thread's own parts at its own scale ─── */
+.sheet { width: 1440px; height: 956px; display: grid; grid-template-columns: 660px 660px; column-gap: 40px; align-content: start; padding: 28px 40px; overflow: hidden; }
+.sheet .colm { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.cell .cap { display: flex; gap: 6px; margin-bottom: 8px; font-size: 13px; color: var(--muted); }
+.cell .cap b { font: 500 13px var(--mono); color: var(--text); }
+.cell .frame { padding: 2px 14px 2px 14px; border-left: 1px dashed var(--line-2); }
+.cell .um { margin: 8px 0 8px; }
+.cell .prose { margin: 2px 0 4px; }
