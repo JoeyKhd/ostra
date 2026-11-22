@@ -174,7 +174,7 @@ describe("approvals on OpenCode, with the stub models (F-026)", () => {
     expect(h.ofKind(spec, "approval.auto_answered")).toHaveLength(2);
   }, 240_000);
 
-  it("F-026/c8: a deny ends OpenCode's turn before its next request, and re-prompts with the member's reason", async () => {
+  it("F-026/c8, F-019/c5: a deny ends OpenCode's turn before its next request, and re-prompts with the member's reason", async () => {
     const h = await start();
     const { spec } = taskOn(h, `${stubMarker("edit-pair")} Edit both files.`, [NOTES_RULE, README_RULE]);
     h.dispatch(spec);
