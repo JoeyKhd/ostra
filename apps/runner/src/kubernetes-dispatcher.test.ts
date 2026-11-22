@@ -13,7 +13,7 @@ import type { GitUpstream } from "@ostra/adapter-sdk/testing";
 import { startFakeOciRegistry } from "@ostra/adapter-sdk/testing/net";
 import type { FakeOciRegistry } from "@ostra/adapter-sdk/testing/net";
 import { boxIdSchema, imageDigestSchema, projectIdSchema, repoIdSchema, runnerIdSchema, sha256HexSchema, snapshotCredentialsSchema, snapshotIdSchema } from "@ostra/protocol";
-import type { CommandKind, CommandOf, TaskEvent } from "@ostra/protocol";
+import type { CommandKind, CommandOf, RunnerScopedEvent } from "@ostra/protocol";
 import { taskCredentialsFixture, taskSpecFixture } from "@ostra/protocol/testing";
 import { writeFile } from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -89,7 +89,7 @@ const dispatch = (): CommandOf<"dispatch"> => commandOf("dispatch", 1, { taskId:
 const release = (seq: number): CommandOf<"release"> => commandOf("release", seq, { taskId: spec.taskId, boxId, reason: "prs-closed" });
 const box = { taskId: spec.taskId, boxId };
 
-type Setup = { readonly cluster: FakeCluster; readonly events: TaskEvent[]; readonly make: (options?: Partial<KubernetesExecutorOptions>) => KubernetesDispatcher };
+type Setup = { readonly cluster: FakeCluster; readonly events: RunnerScopedEvent[]; readonly make: (options?: Partial<KubernetesExecutorOptions>) => KubernetesDispatcher };
 
 const setup = async (processMode: boolean, serverUrl = "https://ostra.example", extra: Partial<KubernetesDispatcherOptions> = {}, commands: Readonly<Record<string, readonly string[]>> = { ostra: [process.execPath, RUNNER_MAIN] }): Promise<Setup> => {
   const cluster = await startFakeCluster({
@@ -106,7 +106,7 @@ const setup = async (processMode: boolean, serverUrl = "https://ostra.example", 
       : {}),
   });
   clusters.push(cluster);
-  const events: TaskEvent[] = [];
+  const events: RunnerScopedEvent[] = [];
   const make = (options: Partial<KubernetesExecutorOptions> = {}): KubernetesDispatcher => {
     const executor = new KubernetesExecutor(
       { kube: cluster.kube, namespace: NS, images: { runner: "ghcr.io/ostra/runner:test", base: "ghcr.io/ostra/base:test" }, serverUrl, pollMs: 20, initCommand: [process.execPath, INIT], ...options },
@@ -135,6 +135,15 @@ const setup = async (processMode: boolean, serverUrl = "https://ostra.example", 
 const leftOf = async (cluster: FakeCluster): Promise<number> => {
   const pods = await cluster.kube.listPods(NS, boxSelector(box));
   const secrets = await cluster.kube.listSecretNames(NS, boxSelector(box));
+  if (!pods.ok || !secrets.ok) throw new Error("the fake API didn't answer");
+  return pods.value.length + secrets.value.length;
+};
+
+/** What's left in the namespace of the box `id`, by its label. */
+const leftOfBox = async (cluster: FakeCluster, id: string): Promise<number> => {
+  const ref = { taskId: spec.taskId, boxId: boxIdSchema.parse(id) };
+  const pods = await cluster.kube.listPods(NS, boxSelector(ref));
+  const secrets = await cluster.kube.listSecretNames(NS, boxSelector(ref));
   if (!pods.ok || !secrets.ok) throw new Error("the fake API didn't answer");
   return pods.value.length + secrets.value.length;
 };
@@ -244,7 +253,7 @@ describe("kubernetes boxes from the runner (ticket 20)", () => {
     const lostBench = async () => {
       const records: LogRecord[] = [];
       const bench = await setup(false, "https://ostra.example", { logger: createLogger((record) => records.push(record)) });
-      const lost = (): TaskEvent[] => bench.events.filter((event) => event.kind === "box.lost");
+      const lost = (): RunnerScopedEvent[] => bench.events.filter((event) => event.kind === "box.lost");
       const runningBox = async (on: KubernetesDispatcher, id: string): Promise<string> => {
         expect(await on.handlers.dispatch(commandOf("dispatch", 1, { taskId: spec.taskId, sessionId: spec.sessionId, boxId: boxIdSchema.parse(id), leaseEpoch: spec.leaseEpoch }))).toEqual({ result: "accepted" });
         await until(() => records.some((record) => record.message === "the box's sidecar is ready" && record.fields["boxId"] === id), `the running box ${id}`);
@@ -311,13 +320,6 @@ describe("kubernetes boxes from the runner (ticket 20)", () => {
     // time, when its sidecar exits. A pod's sidecar is the same `ostra sidecar`, restarted by the
     // kubelet instead: these waited in `prepare` for ever, and core heard nothing.
     const neverRuns = (id: string): CommandOf<"dispatch"> => commandOf("dispatch", 1, { taskId: spec.taskId, sessionId: spec.sessionId, boxId: boxIdSchema.parse(id), leaseEpoch: spec.leaseEpoch });
-    const leftOfBox = async (cluster: FakeCluster, id: string): Promise<number> => {
-      const ref = { taskId: spec.taskId, boxId: boxIdSchema.parse(id) };
-      const pods = await cluster.kube.listPods(NS, boxSelector(ref));
-      const secrets = await cluster.kube.listSecretNames(NS, boxSelector(ref));
-      if (!pods.ok || !secrets.ok) throw new Error("the fake API didn't answer");
-      return pods.value.length + secrets.value.length;
-    };
 
     it("F-047/c1: a pod whose sidecar dies before it's ready, or crash-loops, is reported lost with its exit code at once, as a docker box whose sidecar exits, and nothing of it is left", async () => {
       const { cluster, events, make } = await setup(false);
@@ -362,6 +364,132 @@ describe("kubernetes boxes from the runner (ticket 20)", () => {
       expect(await second.handlers.release(commandOf("release", 2, { taskId: spec.taskId, boxId: boxIdSchema.parse("box-k8s-released-waiting"), reason: "prs-closed" }))).toEqual({ result: "done" });
       await Promise.all(second.boxes());
       expect(waiting.events.filter((event) => event.kind === "box.lost")).toEqual([]);
+    }, 60_000);
+  });
+
+  describe("a box the cluster never places goes back to the queue (ADR 0060, F-093)", () => {
+    // A pod with no node within the node wait, one unschedulable with no scale-up under way, or one
+    // the namespace's quota refuses, isn't a lost box: the runner reported room it didn't have.
+    // These went unreported, or were reported lost, and the task sat in `preparing` or crashed.
+    const placing = (id: string, sized = false): CommandOf<"dispatch"> =>
+      commandOf("dispatch", 1, {
+        taskId: spec.taskId,
+        sessionId: spec.sessionId,
+        boxId: boxIdSchema.parse(id),
+        leaseEpoch: spec.leaseEpoch,
+        ...(sized ? { box: { size: { name: "small", cpuMillis: 2000, memoryMiB: 4096 }, image: null } } : {}),
+      });
+
+    /** A dispatcher whose status calls and runner events land in one trail, in their order, with its log. */
+    const roomBench = async (holdMs: number) => {
+      const records: LogRecord[] = [];
+      const trail: string[] = [];
+      const events: RunnerScopedEvent[] = [];
+      let current: KubernetesDispatcher | undefined;
+      const bench = await setup(false, "https://ostra.example", {
+        logger: createLogger((record) => records.push(record)),
+        link: {
+          fetchSpec: () => Promise.resolve({ ok: true, value: spec }),
+          statusChanged: () => {
+            trail.push(`slots ${String(current?.status().resources?.slots)}`);
+          },
+        },
+        reportRunnerEvent: (event) => {
+          events.push(event);
+          trail.push(event.kind);
+        },
+        roomHoldMs: holdMs,
+      });
+      const make = (options: Partial<KubernetesExecutorOptions> = {}): KubernetesDispatcher => {
+        // The autoscaler's grace, shortened: an unschedulable pod with no scale-up is no room after it.
+        current = bench.make({ scaleUpGraceMs: 300, ...options });
+        return current;
+      };
+      const holds = (): unknown[] => records.filter((record) => record.message === "the runner holds its room: the cluster had none").map((record) => record.fields["forMs"]);
+      const lifts = (): unknown[] => records.filter((record) => record.message === "the runner offers its room again").map((record) => record.fields["why"]);
+      const ready = (id: string): boolean => records.some((record) => record.message === "the box's sidecar is ready" && record.fields["boxId"] === id);
+      return { cluster: bench.cluster, make, records, trail, events, holds, lifts, ready };
+    };
+
+    it("F-093/c3: an unschedulable pod with no scale-up goes back to the queue, not lost: the runner offers no slot first, then says box.unscheduled; it refuses an offer while it holds, offers its slots again after the hold, holds twice as long the next time, and a box placed once there's room runs", async () => {
+      const { cluster, make, events, trail, holds, ready } = await roomBench(1_000);
+      const dispatcher = make();
+      // A full cluster with no autoscaler adding a node: every pod made in the next 3.5 s waits.
+      cluster.fake.holdUnschedulable(3_500, { scaleUp: false });
+      const roomBackAt = Date.now() + 3_500;
+      expect(await dispatcher.handlers.dispatch(placing("box-k8s-no-room"))).toEqual({ result: "accepted" });
+      await Promise.all(dispatcher.boxes());
+      expect(events).toEqual([{ kind: "box.unscheduled", boxId: "box-k8s-no-room", reason: "no-room" }]);
+      // The status without a slot went first, so core reads it before it requeues the task.
+      expect(trail.indexOf("slots 0")).toBeGreaterThanOrEqual(0);
+      expect(trail.indexOf("slots 0")).toBeLessThan(trail.indexOf("box.unscheduled"));
+      expect(await leftOfBox(cluster, "box-k8s-no-room")).toBe(0);
+      expect(await readdir(path.join(root, "runner", "kubernetes-boxes"))).toEqual([]);
+      expect(dispatcher.status()).toMatchObject({ capacity: 20, freeSlots: 0, resources: { slots: 0 }, running: [] });
+      // An offer core sent before it read that status is refused, not tried on the full cluster.
+      expect(await dispatcher.handlers.dispatch(placing("box-k8s-while-held"))).toEqual({ result: "rejected", reason: "no-capacity" });
+      expect(await leftOfBox(cluster, "box-k8s-while-held")).toBe(0);
+
+      // The hold ends: the runner offers its slots again, and says so.
+      await until(() => dispatcher.status().resources?.slots === 20, "the room offered again", 10_000);
+      expect(trail.at(-1)).toBe("slots 20");
+      // Still no room: the next box goes back too, and its hold is twice as long.
+      expect(await dispatcher.handlers.dispatch(placing("box-k8s-no-room-again"))).toEqual({ result: "accepted" });
+      await Promise.all(dispatcher.boxes());
+      expect(events).toEqual([
+        { kind: "box.unscheduled", boxId: "box-k8s-no-room", reason: "no-room" },
+        { kind: "box.unscheduled", boxId: "box-k8s-no-room-again", reason: "no-room" },
+      ]);
+      expect(holds()).toEqual([1_000, 2_000]);
+
+      // Room again: the next box is placed and its task runs, and the next hold starts short again.
+      await until(() => dispatcher.status().resources?.slots === 20 && Date.now() > roomBackAt, "room in the cluster again", 15_000);
+      expect(await dispatcher.handlers.dispatch(placing("box-k8s-placed"))).toEqual({ result: "accepted" });
+      await until(() => ready("box-k8s-placed"), "the placed box's sidecar");
+      cluster.fake.holdUnschedulable(10_000, { scaleUp: false });
+      expect(await dispatcher.handlers.dispatch(placing("box-k8s-full-again"))).toEqual({ result: "accepted" });
+      await until(() => holds().length === 3, "the third hold");
+      expect(holds()).toEqual([1_000, 2_000, 1_000]);
+      expect(events.filter((event) => event.kind !== "box.unscheduled")).toEqual([]);
+      expect(await dispatcher.handlers.release(commandOf("release", 2, { taskId: spec.taskId, boxId: boxIdSchema.parse("box-k8s-placed"), reason: "prs-closed" }))).toEqual({ result: "done" });
+      await Promise.all(dispatcher.boxes());
+    }, 60_000);
+
+    it("F-093/c3: a pod the namespace's quota refuses goes back to the queue as box.unscheduled no-room; a pod whose image won't pull is still lost, and holds no room", async () => {
+      const full = await roomBench(60_000);
+      const dispatcher = full.make();
+      // 1 CPU of requests in the namespace: a small box (2 CPU) and its sidecar are over it.
+      await full.cluster.applyQuota(NS, "boxes", { "requests.cpu": "1" });
+      expect(await dispatcher.handlers.dispatch(placing("box-k8s-over-quota", true))).toEqual({ result: "accepted" });
+      await Promise.all(dispatcher.boxes());
+      expect(full.events).toEqual([{ kind: "box.unscheduled", boxId: "box-k8s-over-quota", reason: "no-room" }]);
+      expect(await leftOfBox(full.cluster, "box-k8s-over-quota")).toBe(0);
+      expect(dispatcher.status()).toMatchObject({ freeSlots: 0, resources: { slots: 0 } });
+
+      // A cluster with room, where the box's image won't pull: that's no shortage, and it's lost as before.
+      const pulling = await roomBench(60_000);
+      const other = pulling.make();
+      pulling.cluster.fake.failImagePull("ghcr.io/ostra/runner");
+      expect(await other.handlers.dispatch(placing("box-k8s-no-image"))).toEqual({ result: "accepted" });
+      await Promise.all(other.boxes());
+      expect(pulling.events).toEqual([{ kind: "box.lost", boxId: "box-k8s-no-image", exitCode: null }]);
+      expect(pulling.holds()).toEqual([]);
+      expect(other.status()).toMatchObject({ freeSlots: 20, resources: { slots: 20 } });
+    }, 60_000);
+
+    it("F-093/c3: a box of the runner's own that ends lifts the hold at once: the room it freed is offered again before the hold's time", async () => {
+      const { cluster, make, lifts, ready } = await roomBench(60_000);
+      const dispatcher = make();
+      expect(await dispatcher.handlers.dispatch(placing("box-k8s-running"))).toEqual({ result: "accepted" });
+      await until(() => ready("box-k8s-running"), "the running box");
+      cluster.fake.holdUnschedulable(60_000, { scaleUp: false });
+      expect(await dispatcher.handlers.dispatch(placing("box-k8s-no-room-beside"))).toEqual({ result: "accepted" });
+      await until(() => dispatcher.status().resources?.slots === 0, "the hold");
+      // The running box's task ends: its pod goes, and with it the shortage.
+      cluster.fake.exitContainer(NS, boxNames({ taskId: spec.taskId, boxId: boxIdSchema.parse("box-k8s-running") }).pod, "sidecar", 0);
+      await until(() => dispatcher.status().resources?.slots === 20, "the room offered again");
+      expect(lifts()).toEqual(["a box ended"]);
+      await Promise.all(dispatcher.boxes());
     }, 60_000);
   });
 

@@ -27,7 +27,7 @@ import { cpuText, isDnsLabel, isDnsSubdomain, labelKeyProblem, labelValueProblem
 // under 1.29), owner references (a dependent of a missing owner is collected, a deleted owner's
 // dependents with it), labels, names, volumes and quotas. A pod is scheduled, pulls its images and
 // runs: simulated by default, or as local processes in the process mode (`process-mode.ts`).
-// Switches hold pods unschedulable with the autoscaler's `TriggeredScaleUp` event, fail an image's
+// Switches hold pods unschedulable, with the autoscaler's `TriggeredScaleUp` event or without, fail an image's
 // pull, and report a version under 1.29, here or over `POST /_fake/<switch>` from another process.
 // `/healthz`, `/livez` and `/readyz` answer anyone. Test and dev only.
 
@@ -157,8 +157,12 @@ export type FakeKubeApi = {
   /** Every object of a kind, in one namespace or all, as the API would serve it. */
   readonly list: (resource: FakeKubeResource, namespace?: string) => readonly KubeObject[];
   readonly get: (resource: FakeKubeResource, namespace: string | null, name: string) => KubeObject | undefined;
-  /** Holds every pod scheduled in the next `ms` unschedulable, with `FailedScheduling` and the autoscaler's `TriggeredScaleUp`, then schedules it. */
-  readonly holdUnschedulable: (ms: number) => void;
+  /**
+   * Holds every pod scheduled in the next `ms` unschedulable, with `FailedScheduling` and the
+   * autoscaler's `TriggeredScaleUp`, then schedules it. `scaleUp: false`: no autoscaler is adding a
+   * node, so only `FailedScheduling` (a full cluster, ADR 0060's "no room").
+   */
+  readonly holdUnschedulable: (ms: number, options?: { readonly scaleUp?: boolean }) => void;
   /** Fails the pull of every image that starts with `image`, until `clearPullFailures`. */
   readonly failImagePull: (image: string) => void;
   readonly clearPullFailures: () => void;
@@ -293,6 +297,8 @@ export const startFakeKubeApi = async (options: FakeKubeOptions = {}): Promise<F
   let minor = options.minor ?? 31;
   let resourceVersion = 1;
   let holdUntil = 0;
+  /** Whether a held pod's events say the autoscaler is adding a node. */
+  let holdScalesUp = true;
   const pullFailures = new Set<string>();
   const broken = new Map<string, BrokenContainer>();
   let deny: Parameters<FakeKubeApi["denyAccess"]>[0] = () => false;
@@ -566,7 +572,9 @@ export const startFakeKubeApi = async (options: FakeKubeOptions = {}): Promise<F
     ];
     refreshPod(runtime);
     emit(runtime.stored, "Warning", "FailedScheduling", "0/1 nodes are available: 1 Insufficient cpu, 1 Insufficient memory.", "default-scheduler");
-    emit(runtime.stored, "Normal", "TriggeredScaleUp", "pod triggered scale-up: [{fake-node-group 1->2 (max: 10)}]", "cluster-autoscaler");
+    if (holdScalesUp) {
+      emit(runtime.stored, "Normal", "TriggeredScaleUp", "pod triggered scale-up: [{fake-node-group 1->2 (max: 10)}]", "cluster-autoscaler");
+    }
     runtime.timers.push(setTimeout(go, wait));
   };
 
@@ -955,6 +963,7 @@ export const startFakeKubeApi = async (options: FakeKubeOptions = {}): Promise<F
       case "hold":
         if (control.ms === undefined) return false;
         holdUntil = Date.now() + control.ms;
+        holdScalesUp = true;
         return true;
       case "fail-pull":
         if (control.image === undefined) return false;
@@ -1176,8 +1185,9 @@ export const startFakeKubeApi = async (options: FakeKubeOptions = {}): Promise<F
       const stored = findStored(resource, namespace, name);
       return stored === undefined ? undefined : serialize(stored);
     },
-    holdUnschedulable: (ms) => {
+    holdUnschedulable: (ms, options) => {
       holdUntil = Date.now() + ms;
+      holdScalesUp = options?.scaleUp ?? true;
     },
     failImagePull: (image) => {
       pullFailures.add(image);

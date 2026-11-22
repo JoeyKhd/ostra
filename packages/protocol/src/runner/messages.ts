@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { commandIdSchema, poolIdSchema, replicaIdSchema, sessionIdSchema, taskIdSchema } from "../ids.ts";
+import { boxIdSchema, commandIdSchema, poolIdSchema, replicaIdSchema, sessionIdSchema, taskIdSchema } from "../ids.ts";
 import {
   commandSeqSchema,
   epochMsSchema,
@@ -26,6 +26,7 @@ import {
   runnerScopedEventKinds,
   taskEventSchema,
 } from "../events/agent-events.ts";
+import type { TaskEvent } from "../events/agent-events.ts";
 import { liveTextFrameSchema } from "../events/live-text.ts";
 import {
   commandResultSchema,
@@ -53,9 +54,10 @@ import type { FrameParse } from "./version.ts";
 // `hello`, the negotiation, which tolerates unknown fields. Ported from
 // spikes/runner-transport/src/protocol/messages.ts.
 //
-// Minor 9 (milestone 10, F-151) adds no frame and no field to one: its frames are minor 8's. Its
-// additions are a review answer's `already` over HTTP (`http.ts`) and three server events' optional
-// fields, which no runner sends or reads.
+// Minor 9 (milestone 10, F-151) adds no frame and no field to one. Its additions are a review
+// answer's `already` over HTTP (`http.ts`), three server events' optional fields, which no runner
+// sends or reads, and (ADR 0060, added 2026-11-22 before its release) a `kubernetes` runner's
+// `box.unscheduled` runner event, which minor 8's codec refuses.
 //
 // Minor 8 (milestone 9, ADR 0070) adds files for the agent: `files.written`, a `user.message`'s
 // files, `ticket.context_read`, `ticket-update`, and a steer's files and images. Minor 7's codec
@@ -265,29 +267,73 @@ const eventsFrameSchemaV0 = eventsFrameSchema.extend({
 });
 
 /**
+ * Why a box was never placed (ADR 0060, F-093): no node joined within the node wait (`no-node`),
+ * or the cluster has no room and isn't adding a node (`no-room`): its pod stayed unschedulable with
+ * no scale-up under way, or the namespace's quota refused it.
+ */
+export const boxUnscheduledReasonSchema = z.enum(["no-node", "no-room"]);
+export type BoxUnscheduledReason = z.infer<typeof boxUnscheduledReasonSchema>;
+
+/**
+ * A `kubernetes` runner's word on a box it accepted and the cluster never placed (ADR 0060, added
+ * 2026-11-22 before minor 9's release). Core sends its task back to its pool's queue with its
+ * place, not to a crash, and stores nothing on the task's timeline: it's the runner's word to core
+ * alone, so it's no task event, and the fold never sees it. The runner reports its offer without
+ * room first (its `status`), so core offers it nothing more until it reports room again.
+ */
+export const boxUnscheduledSchema = z.strictObject({
+  kind: z.literal("box.unscheduled"),
+  boxId: boxIdSchema,
+  reason: boxUnscheduledReasonSchema,
+});
+export type BoxUnscheduled = z.infer<typeof boxUnscheduledSchema>;
+
+/** What a `runner-event` frame carries: a runner-scoped task event, or (minor 9) a box never placed. */
+export type RunnerScopedEvent = TaskEvent | BoxUnscheduled;
+
+/** The minor that carries `box.unscheduled`. */
+export const BOX_UNSCHEDULED_MINOR = 9;
+
+/** The lowest minor that carries a runner event. */
+export const runnerScopedEventMinMinor = (event: RunnerScopedEvent): number =>
+  event.kind === "box.unscheduled" ? BOX_UNSCHEDULED_MINOR : eventKindMinMinor(event.kind);
+
+/** Whether a peer at `minor` can read a runner event: a sender checks it before it sends one. */
+export const runnerScopedEventSupportedAt = (event: RunnerScopedEvent, minor: number): boolean => runnerScopedEventMinMinor(event) <= minor;
+
+/**
  * A runner's own event, outside any task (minor 2): a snapshot build's result when no task
  * triggered it (F-051). Core applies it idempotently by `snapshotId`. The runner acks the
  * `snapshot-build` command `done` only after it sent this frame, so a connection lost in between
- * resends the command and the runner reports the result again. Minor 4 adds a box's wait, and
- * minor 8 a lost box (`box.lost`, F-047), which core applies by the box's ID.
+ * resends the command and the runner reports the result again. Minor 4 adds a box's wait, minor 8
+ * a lost box (`box.lost`, F-047), and minor 9 a box never placed (`box.unscheduled`), which core
+ * applies by the box's ID.
  */
 export const runnerEventFrameSchema = z.strictObject({
   type: z.literal("runner-event"),
   /** When the runner recorded it, in ms since the epoch, by its clock. */
   at: epochMsSchema,
-  event: taskEventSchema.refine((event) => runnerScopedEventKinds.has(event.kind), {
-    message: "only a snapshot's result, a box's wait or a lost box is a runner event",
-  }),
+  event: z.union([
+    taskEventSchema.refine((event) => runnerScopedEventKinds.has(event.kind), {
+      message: "only a snapshot's result, a box's wait, a lost box or a box never placed is a runner event",
+    }),
+    boxUnscheduledSchema,
+  ]),
 });
 export type RunnerEventFrame = z.infer<typeof runnerEventFrameSchema>;
 
+/** `runner-event` at minor 8: a box never placed is new in minor 9. */
+const runnerEventFrameSchemaV8 = runnerEventFrameSchema.refine((frame) => runnerScopedEventMinMinor(frame.event) < 9, {
+  message: "a box never placed is a runner event from minor 9",
+});
+
 /** `runner-event` from minor 4 to minor 7: a snapshot's result or a box's wait; a lost box is new in minor 8. */
-const runnerEventFrameSchemaV7 = runnerEventFrameSchema.refine((frame) => eventKindMinMinor(frame.event.kind) < 8, {
+const runnerEventFrameSchemaV7 = runnerEventFrameSchema.refine((frame) => runnerScopedEventMinMinor(frame.event) < 8, {
   message: "a lost box is a runner event from minor 8",
 });
 
 /** `runner-event` below minor 4: a snapshot's result only; a box's wait is new in minor 4. */
-const runnerEventFrameSchemaV3 = runnerEventFrameSchema.refine((frame) => eventKindMinMinor(frame.event.kind) < 4, {
+const runnerEventFrameSchemaV3 = runnerEventFrameSchema.refine((frame) => runnerScopedEventMinMinor(frame.event) < 4, {
   message: "a box's wait is a runner event from minor 4",
 });
 
@@ -361,13 +407,21 @@ export const liveTextSchema = z.strictObject({
 });
 export type LiveText = z.infer<typeof liveTextSchema>;
 
-const upFrameV8 = z.discriminatedUnion("type", [
+const upFrameV9 = z.discriminatedUnion("type", [
   helloSchema,
   eventsFrameSchema,
   commandAckSchema,
   statusSchema,
   liveTextSchema,
   runnerEventFrameSchema,
+]);
+const upFrameV8 = z.discriminatedUnion("type", [
+  helloSchema,
+  eventsFrameSchema,
+  commandAckSchema,
+  statusSchema,
+  liveTextSchema,
+  runnerEventFrameSchemaV8,
 ]);
 const upFrameV7 = z.discriminatedUnion("type", [
   helloSchema,
@@ -431,7 +485,7 @@ const upFrameV0 = z.discriminatedUnion("type", [
   statusSchemaV0,
   liveTextSchema,
 ]);
-export type UpFrame = z.infer<typeof upFrameV8>;
+export type UpFrame = z.infer<typeof upFrameV9>;
 export type UpFrameType = UpFrame["type"];
 
 // ---------- down: server to peer ----------
@@ -719,7 +773,10 @@ const encodeDownFrameFor =
     return frame;
   };
 
-/** Up frames, one codec per kept minor. Minor 9 (milestone 10) adds no frame: its frames are minor 8's. */
+/**
+ * Up frames, one codec per kept minor. Minor 9 (milestone 10) adds no frame, and one runner event:
+ * a box never placed (`box.unscheduled`), which minor 8's codec refuses.
+ */
 export const upFrameCodec = createVersionedCodec<UpFrame>([
   { minor: 0, decode: upFrameV0, encode: encodeUpFrameFor(0) },
   { minor: 1, decode: upFrameV1, encode: encodeUpFrameFor(1) },
@@ -730,7 +787,7 @@ export const upFrameCodec = createVersionedCodec<UpFrame>([
   { minor: 6, decode: upFrameV6, encode: encodeUpFrameFor(6) },
   { minor: 7, decode: upFrameV7, encode: encodeUpFrameFor(7) },
   { minor: 8, decode: upFrameV8, encode: (frame) => frame },
-  { minor: 9, decode: upFrameV8, encode: (frame) => frame },
+  { minor: 9, decode: upFrameV9, encode: (frame) => frame },
 ]);
 
 /**

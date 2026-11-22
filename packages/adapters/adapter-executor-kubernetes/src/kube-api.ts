@@ -11,10 +11,20 @@ import { cpuMillisOf, memoryMiBOf } from "./quantity.ts";
 // What it reads back is narrowed here, through Zod, to the few fields the executor uses: the
 // cluster's objects are a format Kubernetes owns, so the schemas tolerate every other field.
 
-export type KubeResult<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly status: number; readonly message: string };
+/**
+ * Why the API refused a call, when it's one the executor acts on: `exceeded-quota`, the quota
+ * admission's refusal of a pod over a ResourceQuota of its namespace (a `403` whose status says
+ * "exceeded quota"), which ADR 0060 treats as no room. Any other refusal has none.
+ */
+export type KubeRefusal = "exceeded-quota";
+
+export type KubeResult<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly status: number; readonly message: string; readonly refusal?: KubeRefusal };
 
 export const kubeOk = <T,>(value: T): KubeResult<T> => ({ ok: true, value });
-export const kubeErr = <T,>(status: number, message: string): KubeResult<T> => ({ ok: false, status, message });
+export const kubeErr = <T,>(status: number, message: string, refusal?: KubeRefusal): KubeResult<T> =>
+  refusal === undefined ? { ok: false, status, message } : { ok: false, status, message, refusal };
 
 export type ContainerView = {
   readonly name: string;
@@ -232,13 +242,36 @@ export const policyView = (raw: unknown): NetworkPolicyView | null => {
 
 // ---------- over `@kubernetes/client-node` ----------
 
-const errorStatusSchema = z.looseObject({ code: z.number().int() });
+const errorStatusSchema = z.looseObject({ code: z.number().int(), body: z.unknown().optional() });
+/** The API's `Status` object, as far as a refusal is read from it: a format Kubernetes owns. */
+const apiStatusSchema = z.looseObject({ message: z.string().nullish() });
+
+/**
+ * The refusal an `ApiException`'s body names, read and dropped there: only the refusal's kind
+ * leaves this function, never the body, which can echo what was sent. The quota admission words a
+ * refused pod as `pods "<name>" is forbidden: exceeded quota: <quota>, requested: ..., used: ...,
+ * limited: ...`, whose status `reason` is the `Forbidden` an RBAC refusal also has.
+ */
+const refusalOf = (status: number, body: unknown): KubeRefusal | undefined => {
+  if (status !== 403) return undefined;
+  let value = body;
+  if (typeof body === "string") {
+    try {
+      value = JSON.parse(body);
+    } catch {
+      return undefined;
+    }
+  }
+  const parsed = apiStatusSchema.safeParse(value);
+  return parsed.success && (parsed.data.message ?? "").includes("exceeded quota") ? "exceeded-quota" : undefined;
+};
 
 /** An `ApiException`'s status, or 0 for a call that never got an answer. Its body is never kept: it can echo what was sent. */
 const failure = <T,>(error: unknown, what: string): KubeResult<T> => {
   const parsed = errorStatusSchema.safeParse(error);
   const status = parsed.success ? parsed.data.code : 0;
-  return kubeErr(status, status === 0 ? `${what}: the cluster didn't answer` : `${what}: the cluster answered ${String(status)}`);
+  const refusal = parsed.success ? refusalOf(status, parsed.data.body) : undefined;
+  return kubeErr(status, status === 0 ? `${what}: the cluster didn't answer` : `${what}: the cluster answered ${String(status)}`, refusal);
 };
 
 const attempt = async <T,>(what: string, run: () => Promise<T>): Promise<KubeResult<T>> => {

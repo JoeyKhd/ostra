@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   encodeEventForMinor,
   eventKindMinMinor,
+  isTaskEventKind,
   QUESTION_OTHER_MAX,
   readEventSchema,
   runnerEventSchema,
@@ -48,7 +49,7 @@ import {
   reviewSavedSchemaV8,
 } from "./http.ts";
 import type { ReviewSaved } from "./http.ts";
-import { downFrameCodec, httpDownFrameCodec, upFrameCodec } from "./messages.ts";
+import { downFrameCodec, httpDownFrameCodec, runnerScopedEventSupportedAt, upFrameCodec } from "./messages.ts";
 import type { UpFrame } from "./messages.ts";
 import { minorWindow, negotiate, PROTOCOL_MAJOR, PROTOCOL_MINOR } from "./version.ts";
 
@@ -280,5 +281,30 @@ describe("unchanged at minor 9", () => {
       expect(httpDownFrameCodec.encode(command, 8), command.kind).toBe(httpDownFrameCodec.encode(command, 9));
       expect(httpDownFrameCodec.parse(httpDownFrameCodec.encode(command, 9), 8), command.kind).toEqual({ ok: true, frame: command });
     }
+  });
+});
+
+describe("a box never placed (ADR 0060, added 2026-11-22 before minor 9's release)", () => {
+  it("F-093/c3: box.unscheduled travels in a runner-event frame at minor 9, never at minor 8 nor in a session's events, and ostra owns its shape: strict, with its box and a reason", () => {
+    for (const reason of ["no-node", "no-room"] as const) {
+      const frame: UpFrame = { type: "runner-event", at: 1_900_000_000_000, event: { kind: "box.unscheduled", boxId: ids.box, reason } };
+      expect(upFrameCodec.parse(upFrameCodec.encode(frame, 9), 9)).toEqual({ ok: true, frame });
+      expect(upFrameCodec.parse(JSON.stringify(frame), 8).ok).toBe(false);
+      expect(runnerScopedEventSupportedAt(frame.event, 9)).toBe(true);
+      expect(runnerScopedEventSupportedAt(frame.event, 8)).toBe(false);
+    }
+    // Minor 8's lost box still travels at minor 8.
+    const lost: UpFrame = { type: "runner-event", at: 1, event: eventFixtures["box.lost"] };
+    expect(upFrameCodec.parse(JSON.stringify(lost), 8)).toEqual({ ok: true, frame: lost });
+    expect(runnerScopedEventSupportedAt(eventFixtures["box.lost"], 8)).toBe(true);
+    // It's the runner's word to core alone, no task event: a session's events refuse it.
+    expect(isTaskEventKind("box.unscheduled")).toBe(false);
+    expect(runnerEventSchema.safeParse({ sessionId: ids.session, sessionSeq: 1, leaseEpoch: 1, at: 1, event: { kind: "box.unscheduled", boxId: ids.box, reason: "no-room" } }).success).toBe(false);
+    // Strict: a reason it doesn't know, no box, a field it doesn't have.
+    const at9 = (event: unknown): boolean => upFrameCodec.parse(JSON.stringify({ type: "runner-event", at: 1, event }), 9).ok;
+    expect(at9({ kind: "box.unscheduled", boxId: ids.box, reason: "no-room" })).toBe(true);
+    expect(at9({ kind: "box.unscheduled", boxId: ids.box, reason: "no-image" })).toBe(false);
+    expect(at9({ kind: "box.unscheduled", reason: "no-room" })).toBe(false);
+    expect(at9({ kind: "box.unscheduled", boxId: ids.box, reason: "no-room", exitCode: 1 })).toBe(false);
   });
 });

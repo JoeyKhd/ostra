@@ -75,11 +75,12 @@ import type { BuildkitSwitches, ContextPlan } from "./snapshots.ts";
 // the contract suite, which plays the sidecar against the fake cluster's process mode.
 
 /**
- * Why a box failed before it ran (F-093): no node within the wait, or no room and no node coming,
- * which ADR 0060 sends back to the queue; its image wouldn't pull; its sidecar ended or crash-looped
- * before it was ready, or wasn't ready within `BOX_START_WITHIN_MS` of its start (amended
- * 2026-11-22). The runner reports the last three as a lost box, as `docker`'s runner reports a box
- * whose create fails or whose sidecar exits.
+ * Why a box failed before it ran (F-093): no node within the wait, or no room and no node coming
+ * (an unschedulable pod with no scale-up, or a pod the namespace's quota refused), which ADR 0060
+ * sends back to the queue and the runner reports as `box.unscheduled`; its image wouldn't pull; its
+ * sidecar ended or crash-looped before it was ready, or wasn't ready within `BOX_START_WITHIN_MS`
+ * of its start (amended 2026-11-22). The runner reports the last three as a lost box, as
+ * `docker`'s runner reports a box whose create fails or whose sidecar exits.
  */
 export type BoxWaitFailure = "no-node" | "no-room" | "image-pull" | "sidecar-ended" | "not-ready";
 
@@ -257,6 +258,8 @@ export class KubernetesExecutor extends ExecutorAdapter {
   readonly #inBox: InBox | undefined;
   readonly #boxes = new Map<string, BoxRecord>();
   readonly #released = new Set<string>();
+  /** Boxes whose pod the namespace's quota refused: `no-room`, though no record was made (ADR 0060). Until their release. */
+  readonly #refused = new Set<string>();
   #capacity: ExecutorCapacity;
 
   constructor(options: KubernetesExecutorOptions, context?: AdapterContext) {
@@ -380,9 +383,13 @@ export class KubernetesExecutor extends ExecutorAdapter {
     return this.#capacity;
   }
 
-  /** Why a box failed before it ran, when it did: `no-node` and `no-room` send its task back to the queue (ADR 0060). */
+  /**
+   * Why a box failed before it ran, when it did: `no-node` and `no-room` send its task back to the
+   * queue (ADR 0060). A pod the namespace's quota refused at its create is `no-room` too.
+   */
   failureOf(box: BoxRef): BoxWaitFailure | null {
-    return this.#boxes.get(keyOf(box))?.failure ?? null;
+    const key = keyOf(box);
+    return this.#boxes.get(key)?.failure ?? (this.#refused.has(key) ? "no-room" : null);
   }
 
   /** The sidecar's exit code, when it ended before the box was ready (`sidecar-ended`). */
@@ -421,11 +428,19 @@ export class KubernetesExecutor extends ExecutorAdapter {
       listening?.close();
       await this.#removeObjects(ref);
       const status = made.ok ? 0 : made.status;
+      // ADR 0060 (amended 2026-11-22): the quota admission refused the pod, so the namespace has
+      // no room for it now. Its task goes back to the queue, as an unschedulable pod's does.
+      if (!made.ok && made.refusal === "exceeded-quota") {
+        this.#refused.add(key);
+        log.warn("the namespace's quota has no room for the box", { status, step: what });
+        return adapterError("unavailable", "The namespace's quota has no room for the box: the task goes back to the queue.");
+      }
       log.warn("creating the box failed", { status, step: what });
       const code = status === 403 ? "forbidden" : status === 401 ? "unauthorized" : status === 409 ? "conflict" : status === 422 || status === 400 ? "invalid-input" : "unavailable";
       return adapterError(code, `${what} failed: ${made.ok ? "" : made.message}`);
     };
     this.#released.delete(key);
+    this.#refused.delete(key);
     const secret = await this.#kube.createSecret(this.#namespace, objects.secret);
     if (!secret.ok) return failed(secret, "creating the box's secret");
     if (objects.pullSecret !== null) {
@@ -899,6 +914,7 @@ export class KubernetesExecutor extends ExecutorAdapter {
     record?.closeBridge?.();
     const removed = await this.#removeObjects(box);
     this.#boxes.delete(key);
+    this.#refused.delete(key);
     this.#released.add(key);
     void this.refreshCapacity();
     if (!removed.ok) {

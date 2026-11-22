@@ -9,6 +9,7 @@ import {
   runnerHeaders,
   runnerLimits,
   runnerPaths,
+  runnerScopedEventSupportedAt,
   upFrameCodec,
   utf8ByteLength,
 } from "@ostra/protocol";
@@ -33,6 +34,7 @@ import type {
   RunnerInstall,
   RunnerLabel,
   RunnerResources,
+  RunnerScopedEvent,
   SessionId,
   TaskEvent,
   TaskId,
@@ -251,8 +253,9 @@ export type RunnerConnection = {
    * Minor 2: a runner's own event, outside any task (a snapshot build's result, F-051), sent in a
    * `runner-event` frame as soon as the connection is ready, and kept in memory for an hour to go
    * again on each new connection (a frame has no ack). Core applies it idempotently by its snapshot.
+   * Minor 9: a `kubernetes` box never placed (`box.unscheduled`), which is no task event.
    */
-  readonly sendRunnerEvent: (event: TaskEvent) => void;
+  readonly sendRunnerEvent: (event: RunnerScopedEvent) => void;
   readonly report: () => ConnectionReport;
   /** Closes the connection and the spools. The spools stay on disk for the next start. */
   readonly stop: () => Promise<void>;
@@ -404,7 +407,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
    * no ack, and a socket that died unnoticed swallows what was sent on it, so each is sent again on
    * every new connection while it's kept: core applies a snapshot's result idempotently.
    */
-  const runnerEvents: { readonly at: number; readonly event: TaskEvent; sentOn: Link | undefined }[] = [];
+  const runnerEvents: { readonly at: number; readonly event: RunnerScopedEvent; sentOn: Link | undefined }[] = [];
   const quotaWaiters: (() => void)[] = [];
 
   const persist = (): Promise<void> => store.save(state);
@@ -540,8 +543,9 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
       if (item.sentOn !== undefined && item.sentOn === link) {
         continue;
       }
-      if (!eventKindSupportedAt(item.event.kind, minor)) {
-        // A box's wait to a server below minor 4: it can't read it, and the box runs the same.
+      if (!runnerScopedEventSupportedAt(item.event, minor)) {
+        // A box's wait to a server below minor 4: it can't read it, and the box runs the same. A box
+        // never placed to one below minor 9: that server can't requeue its task, which waits as before.
         item.sentOn = link;
         continue;
       }

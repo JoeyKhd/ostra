@@ -363,6 +363,31 @@ describe("the kubernetes executor's boxes (ticket 07)", () => {
     await executor.release(box, "requested");
   });
 
+  it("F-093/c3: a pod the namespace's quota refuses fails its create as no-room, for core to queue again, and leaves nothing; a quota's other refusal isn't no-room", async () => {
+    const cluster = await startCluster();
+    const executor = executorOn(cluster);
+    // 1 CPU of requests: a box of 1.5 CPU and its sidecar's 1 CPU are over it.
+    await cluster.applyQuota(NS, "boxes", { "requests.cpu": "1" });
+    const ofBox = (ref: BoxRef): number =>
+      [...cluster.fake.list("pods", NS), ...cluster.fake.list("secrets", NS)].filter((item) => recordOf(recordOf(item["metadata"])["labels"])[LABELS.box] === ref.boxId).length;
+    const over = newBox();
+    const refused = await executor.create({ ...over, spec: taskSpecFixture, proxies, size: SIZE, taskToken: TOKEN });
+    expect(refused).toMatchObject({ ok: false, error: { code: "unavailable" } });
+    expect(refused.ok ? "" : refused.error.message).toContain("The namespace's quota has no room for the box");
+    expect(executor.failureOf(over)).toBe("no-room");
+    expect(ofBox(over)).toBe(0);
+    // Its release, the runner's next step, forgets it.
+    expect((await executor.release(over, "requested")).ok).toBe(true);
+    expect(executor.failureOf(over)).toBeNull();
+
+    // A box with no size names no limit, which the quota refuses as missing: more room would never make it fit.
+    const unsized = newBox();
+    const missing = await executor.create({ ...unsized, spec: taskSpecFixture, proxies, taskToken: TOKEN });
+    expect(missing).toMatchObject({ ok: false, error: { code: "forbidden" } });
+    expect(executor.failureOf(unsized)).toBeNull();
+    await executor.release(unsized, "requested");
+  });
+
   it("F-095/c4: capacity offers the quota's CPU and memory less the namespace's other pods, and the settings without a quota", async () => {
     const cluster = await startCluster();
     const executor = executorOn(cluster, { slots: 7, resources: { cpuMillis: 8000, memoryMiB: 16_384 } });

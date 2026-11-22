@@ -21,6 +21,8 @@ export type FakeCluster = {
   readonly createNamespace: (name: string) => Promise<void>;
   /** Applies a NetworkPolicy, as the runner chart does: the egress baseline by default (ticket 08). */
   readonly applyPolicy: (namespace: string, policy?: V1NetworkPolicy) => Promise<void>;
+  /** Makes a ResourceQuota with its hard limits, as an admin does (`requests.cpu: "1"`, `pods: "0"`). */
+  readonly applyQuota: (namespace: string, name: string, hard: Readonly<Record<string, string>>) => Promise<void>;
   readonly close: () => Promise<void>;
 };
 
@@ -53,6 +55,9 @@ const startOnce = async (options: FakeClusterOptions): Promise<FakeCluster> => {
     const body = policy ?? baselineEgressPolicy({ namespace, server: { kind: "cidr", cidr: "10.20.0.5", port: 443 }, allow: [] });
     await networking.createNamespacedNetworkPolicy({ namespace, body: { ...body, metadata: { ...body.metadata, namespace } } });
   };
+  const applyQuota = async (namespace: string, name: string, hard: Readonly<Record<string, string>>): Promise<void> => {
+    await core.createNamespacedResourceQuota({ namespace, body: { metadata: { name }, spec: { hard: { ...hard } } } });
+  };
   const createNamespace = async (name: string): Promise<void> => {
     await core.createNamespace({ body: { metadata: { name, labels: { "kubernetes.io/metadata.name": name } } } });
   };
@@ -65,5 +70,5 @@ const startOnce = async (options: FakeClusterOptions): Promise<FakeCluster> => {
     await fake.close();
     throw error;
   }
-  return { fake, kube: createKubeApi(config), kubeconfig, createNamespace, applyPolicy, close: () => fake.close() };
+  return { fake, kube: createKubeApi(config), kubeconfig, createNamespace, applyPolicy, applyQuota, close: () => fake.close() };
 };

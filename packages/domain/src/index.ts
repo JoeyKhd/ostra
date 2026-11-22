@@ -159,6 +159,8 @@ export * from "./use-cases/model-price.ts";
 export * from "./use-cases/box-wait.ts";
 // A pool runner's lost box, recorded as the session's crash (F-047).
 export * from "./use-cases/box-lost.ts";
+// A `kubernetes` box the cluster never placed, whose task goes back to the queue (ADR 0060).
+export * from "./use-cases/box-unscheduled.ts";
 
 // Milestone 7 (ticket 36): the palette's actions, setup's timeline and the theme.
 export * from "./palette/actions.ts";

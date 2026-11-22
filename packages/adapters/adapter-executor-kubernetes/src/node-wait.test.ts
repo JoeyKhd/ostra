@@ -70,6 +70,28 @@ describe("waiting for a node and an image (ticket 08)", () => {
     expect(executor.failureOf(box)).toBeNull();
   });
 
+  it("F-093/c3: a box that waited minutes for its node, then minutes for its image, still runs: neither wait counts toward its start time", async () => {
+    const { heard, prepared, executor } = await boxOn((kube, now) => {
+      if (now === 0) {
+        kube.setPod(POD, { scheduled: unschedulable });
+        kube.addEvent(POD, "TriggeredScaleUp");
+      }
+      if (now === 4 * MINUTE) {
+        kube.setPod(POD, { scheduled, initContainers: [containerStatus("sidecar", "waiting", "PodInitializing")] });
+        kube.addEvent(POD, "Pulling");
+      }
+      if (now === 8 * MINUTE) {
+        kube.addEvent(POD, "Pulled");
+        kube.setPod(POD, sidecarReady);
+      }
+    });
+    // Eight minutes, four times the box's start time: it counts from the sidecar's own start.
+    expect(8 * MINUTE).toBeGreaterThan(BOX_START_WITHIN_MS);
+    expect(prepared.ok).toBe(true);
+    expect(executor.failureOf(box)).toBeNull();
+    expect(kinds(heard)).toEqual(["waiting:node", `scheduled:${String(4 * MINUTE)}`, "waiting:image-pull", `scheduled:${String(4 * MINUTE)}`]);
+  });
+
   it("F-093/c3: past OSTRA_K8S_NODE_WAIT_MINUTES with no node the box fails as no-node, for core to queue again, and its pod is deleted", async () => {
     const { heard, prepared, executor, kube } = await boxOn((pods, now) => {
       if (now === 0) {

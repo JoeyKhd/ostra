@@ -4,7 +4,7 @@
 export { KUBERNETES_MIN_MINOR, KubernetesExecutor, NEEDED_ACCESS } from "./kubernetes-executor.ts";
 export type { BoxWaitFailure, Clock, InBox, KubernetesExecutorOptions } from "./kubernetes-executor.ts";
 export { createKubeApi, inClusterKubeConfig, kubeConfigFromString, kubeErr, kubeOk, podView, policyView } from "./kube-api.ts";
-export type { AccessAttributes, ContainerView, EventView, KubeApi, KubeResult, NetworkPolicyView, PodPhase, PodView, QuotaView } from "./kube-api.ts";
+export type { AccessAttributes, ContainerView, EventView, KubeApi, KubeRefusal, KubeResult, NetworkPolicyView, PodPhase, PodView, QuotaView } from "./kube-api.ts";
 export {
   agentImageOf,
   AGENT_UID,

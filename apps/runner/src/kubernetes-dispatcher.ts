@@ -4,7 +4,7 @@ import { BOX_ROLE, boxNames, boxSelector, LABELS } from "@ostra/adapter-executor
 import type { BoxWaitFailure, KubeApi, KubernetesExecutor, PodView } from "@ostra/adapter-executor-kubernetes";
 import type { BoxImage, BoxWaitChange, Logger, TaskProxies } from "@ostra/adapter-sdk";
 import { boxIdSchema, leaseEpochSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
-import type { BoxId, BoxReleaseReason, CommandOf, LeaseEpoch, RegistryCredential, RunnerLabel, SnapshotCredentials, SnapshotId, TaskEvent, TaskId } from "@ostra/protocol";
+import type { BoxId, BoxReleaseReason, BoxUnscheduledReason, CommandOf, LeaseEpoch, RegistryCredential, RunnerLabel, RunnerScopedEvent, SnapshotCredentials, SnapshotId, TaskId } from "@ostra/protocol";
 import { z } from "zod";
 import type { CommandHandlers, CommandOutcome, PeerStatus } from "./connection/peer.ts";
 import { reportedCapabilities } from "./reports.ts";
@@ -31,6 +31,13 @@ import type { LinkResult, ServerLink } from "./task-host/server-link.ts";
 //   the runner was away, and a box that never ran: its create failed, its image wouldn't pull, its
 //   sidecar ended or crash-looped before it was ready, or wasn't ready within the box's start time
 //   (amended 2026-11-22, as `docker`'s runner reports a box that doesn't start).
+// - **A box the cluster never placed** (ADR 0060, amended 2026-11-22): no node joined within the
+//   node wait, its pod stayed unschedulable with no scale-up under way, or the namespace's quota
+//   refused it. That isn't a lost box: the runner reported room it didn't have. It holds its room
+//   first (its status offers no slot), then says `box.unscheduled`, and core sends the task back to
+//   its pool's queue with its place. The hold ends when one of its boxes ends (room freed), or after
+//   `ROOM_HOLD_FIRST_MS`, doubled at each hold in a row up to `ROOM_HOLD_MAX_MS` until a box is
+//   placed again: core offers it nothing meanwhile, so a full cluster isn't asked again and again.
 
 /** What the runner keeps of a box it made: IDs only. Never the task token or a credential. */
 const boxRecordSchema = z.strictObject({
@@ -49,6 +56,11 @@ const IN_POD_PROXIES: TaskProxies = { gitBaseUrl: "http://127.0.0.1", modelBaseU
 
 /** How often the runner looks at a box's pod while its task runs. */
 const WATCH_MS = 2_000;
+
+/** How long the runner first offers no room after a box the cluster never placed *(working value)*. */
+export const ROOM_HOLD_FIRST_MS = 60_000;
+/** The longest hold, after holds in a row: the node wait's default *(working value)*. */
+export const ROOM_HOLD_MAX_MS = 15 * 60_000;
 
 export type KubernetesDispatcherOptions = {
   readonly executor: KubernetesExecutor;
@@ -69,8 +81,12 @@ export type KubernetesDispatcherOptions = {
   readonly labels: readonly RunnerLabel[];
   readonly logger: Logger;
   /** Sends a runner's own event up: the connection's `sendRunnerEvent`. */
-  readonly reportRunnerEvent: (event: TaskEvent) => void;
+  readonly reportRunnerEvent: (event: RunnerScopedEvent) => void;
   readonly watchMs?: number;
+  /** The first hold after a box never placed; `ROOM_HOLD_FIRST_MS` by default. Tests shorten it. */
+  readonly roomHoldMs?: number;
+  /** The longest hold; `ROOM_HOLD_MAX_MS` by default. */
+  readonly roomHoldMaxMs?: number;
 };
 
 export type KubernetesDispatcher = {
@@ -86,8 +102,11 @@ export type KubernetesDispatcher = {
   readonly detach: () => void;
 };
 
-/** A box this runner holds: its IDs, its lifetime, and the `release` that ends it early. */
-type Running = { readonly record: BoxRecord; done: Promise<void>; release: BoxReleaseReason | null; released: boolean };
+/**
+ * A box this runner holds: its IDs, its lifetime, the `release` that ends it early, and whether
+ * the cluster never placed it (`unplaced`), which frees no room when it goes.
+ */
+type Running = { readonly record: BoxRecord; done: Promise<void>; release: BoxReleaseReason | null; released: boolean; unplaced: boolean };
 
 /**
  * How the pod's sidecar ended, when it did: it's terminated, or the kubelet started it again (a
@@ -205,6 +224,55 @@ export const createKubernetesDispatcher = (options: KubernetesDispatcherOptions)
     options.reportRunnerEvent({ kind: "box.lost", boxId: entry.record.boxId, exitCode });
   };
 
+  // ---------- the room hold (ADR 0060) ----------
+
+  const firstHoldMs = options.roomHoldMs ?? ROOM_HOLD_FIRST_MS;
+  const maxHoldMs = Math.max(firstHoldMs, options.roomHoldMaxMs ?? ROOM_HOLD_MAX_MS);
+  /** While the runner offers no room: the timer that ends the hold. */
+  let roomHold: NodeJS.Timeout | null = null;
+  /** The next hold's length: doubled by each hold, back to the first once a box is placed. */
+  let nextHoldMs = firstHoldMs;
+
+  const liftHold = (why: "time" | "a box ended"): void => {
+    if (roomHold === null) {
+      return;
+    }
+    clearTimeout(roomHold);
+    roomHold = null;
+    log.info("the runner offers its room again", { why });
+    options.link.statusChanged();
+  };
+
+  /**
+   * The runner offers no room until the hold ends: its status says so at once, before the box's
+   * `box.unscheduled`, so core reads it first and offers nothing more. A hold already on stays as
+   * it is: the boxes that find no room meanwhile are the same shortage.
+   */
+  const holdRoom = (): void => {
+    if (roomHold !== null) {
+      return;
+    }
+    const forMs = nextHoldMs;
+    nextHoldMs = Math.min(nextHoldMs * 2, maxHoldMs);
+    roomHold = setTimeout(() => {
+      liftHold("time");
+    }, forMs);
+    roomHold.unref();
+    log.info("the runner holds its room: the cluster had none", { forMs });
+    options.link.statusChanged();
+  };
+
+  /** A box the cluster never placed (ADR 0060): core sends its task back to the queue, unless a `release` ended it. */
+  const reportUnscheduled = (entry: Running, reason: BoxUnscheduledReason): void => {
+    entry.unplaced = true;
+    if (entry.release !== null || isDetached()) {
+      return;
+    }
+    holdRoom();
+    log.warn("the cluster never placed the box: its task goes back to the queue", { taskId: entry.record.taskId, boxId: entry.record.boxId, reason });
+    options.reportRunnerEvent({ kind: "box.unscheduled", boxId: entry.record.boxId, reason });
+  };
+
   /** Watches the box's pod until its task is over (or the runner detaches), then releases it. */
   const watch = async (entry: Running): Promise<void> => {
     const names = boxNames(entry.record);
@@ -297,8 +365,12 @@ export const createKubernetesDispatcher = (options: KubernetesDispatcherOptions)
     });
     if (!created.ok) {
       boxLog.error("creating the box failed", { code: created.error.code });
-      // A box ID in use is another start's box, left as it is.
-      if (created.error.code !== "conflict") {
+      // The namespace's quota refused the pod: no room, so back to the queue (ADR 0060). A box ID in
+      // use is another start's box, left as it is.
+      const failure = options.executor.failureOf(box);
+      if (failure === "no-room") {
+        reportUnscheduled(entry, failure);
+      } else if (created.error.code !== "conflict") {
         reportNeverRan(entry, null, null);
       }
       await releaseOnce(entry, "requested");
@@ -311,10 +383,16 @@ export const createKubernetesDispatcher = (options: KubernetesDispatcherOptions)
     if (!prepared.ok) {
       const failure = options.executor.failureOf(box);
       boxLog.warn("the box never ran", { code: prepared.error.code, failure: failure ?? "pod" });
-      reportNeverRan(entry, failure, options.executor.sidecarExitCodeOf(box));
+      if (failure === "no-node" || failure === "no-room") {
+        reportUnscheduled(entry, failure);
+      } else {
+        reportNeverRan(entry, failure, options.executor.sidecarExitCodeOf(box));
+      }
       await releaseOnce(entry, entry.release ?? "requested");
       return;
     }
+    // Placed: the cluster has room again, so the next hold starts short.
+    nextHoldMs = firstHoldMs;
     boxLog.info("the box's sidecar is ready");
     await watch(entry);
   };
@@ -326,6 +404,10 @@ export const createKubernetesDispatcher = (options: KubernetesDispatcherOptions)
       })
       .finally(() => {
         running.delete(entry.record.boxId);
+        // A box that held a place frees room as it goes: the runner offers it again.
+        if (!entry.unplaced) {
+          liftHold("a box ended");
+        }
         options.link.statusChanged();
       });
     entry.done = lifetime;
@@ -399,10 +481,11 @@ export const createKubernetesDispatcher = (options: KubernetesDispatcherOptions)
       if (draining) {
         return done({ result: "rejected", reason: "draining" });
       }
-      if (running.size >= slots()) {
+      // During a hold too: an offer core sent before it read the runner's status without room.
+      if (running.size >= slots() || roomHold !== null) {
         return done({ result: "rejected", reason: "no-capacity" });
       }
-      const entry: Running = { record: { taskId: body.taskId, sessionId: body.sessionId, boxId: body.boxId, leaseEpoch: body.leaseEpoch }, done: Promise.resolve(), release: null, released: false };
+      const entry: Running = { record: { taskId: body.taskId, sessionId: body.sessionId, boxId: body.boxId, leaseEpoch: body.leaseEpoch }, done: Promise.resolve(), release: null, released: false, unplaced: false };
       track(entry, runBox(entry, body));
       return done({ result: "accepted" });
     },
@@ -481,10 +564,12 @@ export const createKubernetesDispatcher = (options: KubernetesDispatcherOptions)
       executor: "kubernetes",
       processContainment: "container",
       capacity: slots(),
-      freeSlots: draining ? 0 : Math.max(0, slots() - running.size),
+      freeSlots: draining || roomHold !== null ? 0 : Math.max(0, slots() - running.size),
       labels: options.labels,
       running: [...running.values()].map((entry) => entry.record.sessionId),
-      resources: options.executor.capacity(),
+      // During a hold the offer has no slot, which core reads as no room. Its CPU and memory stay,
+      // so the box's size still fits the runner, and the task waits its turn (ADR 0059).
+      resources: roomHold === null ? options.executor.capacity() : { ...options.executor.capacity(), slots: 0 },
       capabilities,
     }),
     adopt: async () => {
@@ -513,7 +598,7 @@ export const createKubernetesDispatcher = (options: KubernetesDispatcherOptions)
           continue;
         }
         const pod = live.get(boxNames(record).pod) ?? null;
-        const entry: Running = { record, done: Promise.resolve(), release: null, released: false };
+        const entry: Running = { record, done: Promise.resolve(), release: null, released: false, unplaced: false };
         // A pod whose task ended while the runner was away is released now, and core hears of one
         // lost meanwhile (F-047); a running one is watched.
         if (podIsOver(pod)) {
@@ -531,6 +616,10 @@ export const createKubernetesDispatcher = (options: KubernetesDispatcherOptions)
     builds: () => buildChain,
     detach: () => {
       detached = true;
+      if (roomHold !== null) {
+        clearTimeout(roomHold);
+        roomHold = null;
+      }
     },
   };
 };

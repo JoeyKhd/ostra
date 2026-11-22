@@ -80,6 +80,10 @@ export const PROTOCOL_MAJOR = 1;
  * gives them. A minor-8 peer still works inside the window: its sidecar, whose strict schema
  * refuses `already`, is answered `{ reviewRunId }` for a repeat hand-in, which it reads as saved,
  * and every frame it sends or reads is as it was. A minor-7 peer is outside the window.
+ * Minor 9 also carries a `kubernetes` runner's `box.unscheduled` runner event (ADR 0060, added
+ * 2026-11-22 before minor 9's release): a box the cluster never placed (no node, no room), whose
+ * task core sends back to its pool's queue. A minor-8 runner sends none, and its unplaced box waits
+ * as before; a minor-9 runner sends a minor-8 server none either (`runnerScopedEventSupportedAt`).
  */
 export const PROTOCOL_MINOR = 9;
 

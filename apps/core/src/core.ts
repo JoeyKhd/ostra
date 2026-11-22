@@ -97,6 +97,7 @@ import { checkUpdatesHandler, enqueueLibrarySourceSeeds, enqueueLibraryUpdateChe
 import { handleDraftEndpoint } from "./runner-http/draft.ts";
 import { activitySendHandler, ensureHeartbeatSchedule, heartbeatHandler } from "./linear/agent-mode/outbox.ts";
 import { applyBoxLostRunnerEvent } from "./dispatch/box-lost.ts";
+import { applyBoxUnscheduledRunnerEvent } from "./dispatch/box-unscheduled.ts";
 import { applyBoxRunnerEvent } from "./dispatch/box-waits.ts";
 import { handleSnapshotEndpoint } from "./snapshots/endpoints.ts";
 import { registryCheckHandler } from "./registry/check.ts";
@@ -301,12 +302,16 @@ export const startCore = async (
         // A view whose box refused its `preview.open` closes now, with the box's reason (ADR 0068).
         await applyPreviewOpenResultsInTx({ outbox: postgresCommandOutbox, notices, clock: systemClock, logger }, tx, runner, results);
       },
-      // A box's wait (milestone 5, ticket 20), a lost box (F-047), else a snapshot's result.
+      // A box's wait (milestone 5, ticket 20), a lost box (F-047), a box never placed (ADR 0060),
+      // else a snapshot's result.
       runnerEvent: async (runner, frame) => {
         if (await applyBoxRunnerEvent({ db, clock: systemClock, logger }, runner, frame)) {
           return;
         }
         if (await applyBoxLostRunnerEvent({ db, jobs, notices, clock: systemClock, logger, timers }, runner, frame)) {
+          return;
+        }
+        if (await applyBoxUnscheduledRunnerEvent({ db, jobs, notices, clock: systemClock, logger }, runner, frame)) {
           return;
         }
         await applySnapshotRunnerEvent(snapshotDeps, runner, frame);
