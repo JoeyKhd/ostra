@@ -4,6 +4,7 @@ import { createTestDatabase, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
 import { answerApproval, answerQuestion, moveTaskInTx, postgresAuditLog, postgresChangeNotices, postgresCommandOutbox, systemClock } from "@ostra/domain";
 import type { MemberScope, SessionTimers } from "@ostra/domain";
+import { readAgentMessage } from "@ostra/domain/agent-message";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
 import {
@@ -21,7 +22,7 @@ import {
   toolCallIdSchema,
   turnIdSchema,
 } from "@ostra/protocol";
-import type { RepoId, TaskEvent } from "@ostra/protocol";
+import type { ApprovalId, RepoId, TaskEvent } from "@ostra/protocol";
 import { mapTask } from "@ostra/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -382,29 +383,56 @@ describe("a session across turns (F-096, F-030, F-065)", () => {
     expect(await reopenText(asking)).toContain("Aurora");
     expect(await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: asking.taskId, reason: "question" } })).toMatchObject({ state: "answered" });
 
-    // An approval.
-    const holding = await waitingOnCurrent();
-    const approvalId = approvalIdSchema.parse(crypto.randomUUID());
+    // An approval, answered with each decision: the reopen's message carries the one the member chose.
     const once = optionIdSchema.parse("o-once");
-    await holding.send({
-      kind: "approval.requested",
-      turnId,
-      approvalId,
-      toolCallId: toolCallIdSchema.parse(`tool-${approvalId}`),
-      options: [
-        { optionId: once, label: "Approve once", kind: "allow-once", decision: "allow_once" },
-        { optionId: optionIdSchema.parse("o-deny"), label: "Deny", kind: "reject-once", decision: "deny" },
-      ],
-      rule: { source: "profile", ruleId: approvalRuleIdSchema.parse("rule-config"), name: "Edit files matching config/**" },
-      subject: { kind: "path", value: "config/settings.json" },
+    const deny = optionIdSchema.parse("o-deny");
+    const heldApproval = async (): Promise<{ readonly holding: DrivenTask; readonly approvalId: ApprovalId }> => {
+      const holding = await waitingOnCurrent();
+      const approvalId = approvalIdSchema.parse(crypto.randomUUID());
+      await holding.send({
+        kind: "approval.requested",
+        turnId,
+        approvalId,
+        toolCallId: toolCallIdSchema.parse(`tool-${approvalId}`),
+        options: [
+          { optionId: once, label: "Approve once", kind: "allow-once", decision: "allow_once" },
+          { optionId: deny, label: "Deny", kind: "reject-once", decision: "deny" },
+        ],
+        rule: { source: "profile", ruleId: approvalRuleIdSchema.parse("rule-config"), name: "Edit files matching config/**" },
+        subject: { kind: "path", value: "config/settings.json" },
+      });
+      await idleOut(holding, { kind: "approval.closed", approvalId, reason: "expired" });
+      expect(await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: holding.taskId, approvalId } })).toMatchObject({ state: "open" });
+      expect(await state(holding)).toMatchObject({ state: "needs_you", needsYouReason: "approval" });
+      return { holding, approvalId };
+    };
+
+    const approved = await heldApproval();
+    expect(await answerApproval(answerDeps, driver, { approvalId: approved.approvalId, optionId: once, decision: "allow_once", reason: null })).toMatchObject({ ok: true, reopened: true });
+    expect(await state(approved.holding)).toMatchObject({ state: "queued" });
+    const approvedText = await reopenText(approved.holding);
+    expect(approvedText).toContain("A member has now approved it.");
+    expect(approvedText).not.toContain("denied");
+    // As the panel reads the message: the decision and the request it answers.
+    expect(readAgentMessage({ text: approvedText, intent: undefined })).toEqual({ kind: "approval-answer", decision: "allow_once", request: "config/settings.json", reason: null });
+    expect(await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: approved.holding.taskId, approvalId: approved.approvalId } })).toMatchObject({ state: "answered" });
+
+    const denied = await heldApproval();
+    expect(await answerApproval(answerDeps, driver, { approvalId: denied.approvalId, optionId: deny, decision: "deny", reason: "Keep the settings as they are." })).toMatchObject({
+      ok: true,
+      reopened: true,
     });
-    await idleOut(holding, { kind: "approval.closed", approvalId, reason: "expired" });
-    expect(await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: holding.taskId, approvalId } })).toMatchObject({ state: "open" });
-    expect(await state(holding)).toMatchObject({ state: "needs_you", needsYouReason: "approval" });
-    expect(await answerApproval(answerDeps, driver, { approvalId, optionId: once, decision: "allow_once", reason: null })).toMatchObject({ ok: true, reopened: true });
-    expect(await state(holding)).toMatchObject({ state: "queued" });
-    expect(await reopenText(holding)).toContain("config/settings.json");
-    expect(await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: holding.taskId, approvalId } })).toMatchObject({ state: "answered" });
+    expect(await state(denied.holding)).toMatchObject({ state: "queued" });
+    const deniedText = await reopenText(denied.holding);
+    expect(deniedText).toContain("A member has now denied it.");
+    expect(deniedText).not.toContain("approved it");
+    expect(readAgentMessage({ text: deniedText, intent: undefined })).toEqual({
+      kind: "approval-answer",
+      decision: "deny",
+      request: "config/settings.json",
+      reason: "Keep the settings as they are.",
+    });
+    expect(await test.db.needsYouItem.findFirstOrThrow({ where: { taskId: denied.holding.taskId, approvalId: denied.approvalId } })).toMatchObject({ state: "answered" });
     await untouched(other);
   });
 });
