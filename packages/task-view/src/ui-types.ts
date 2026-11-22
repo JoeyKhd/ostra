@@ -17,6 +17,7 @@ import type {
   AttachmentSource,
   BlobId,
   BudgetScope,
+  DraftId,
   EffortLevel,
   FileLeftOutReason,
   FileSkipReason,
@@ -33,6 +34,7 @@ import type {
   QuestionField,
   QuestionId,
   RepoId,
+  ReviewRunId,
   SessionId,
   SessionOutcome,
   StopReason,
@@ -85,7 +87,11 @@ export const approvalMetadataSchema = z.strictObject({
 });
 export type ApprovalMetadata = z.infer<typeof approvalMetadataSchema>;
 
-/** The events the thread shows as a one-line system row. */
+/**
+ * The events the thread shows as a one-line system row. Milestone 10 (F-151): `runner.connected`
+ * and `session.config_changed` stay in the type but no fold makes their row: they're bookkeeping,
+ * kept in the Event log.
+ */
 export type SystemEvent = TaskEventOf<
   | "runner.connected"
   | "runner.lost"
@@ -124,21 +130,34 @@ export type SetupData = {
   readonly dependencyCache?: "warm" | "cold";
 };
 
-export type PushedData = {
-  readonly repoId: RepoId;
-  readonly branch: string;
-  readonly headSha: string;
-  readonly ref: string;
-  /** True for the hidden `refs/ostra/wip/<taskId>` ref that holds unfinished work. */
-  readonly hidden: boolean;
-};
-
 export type PullRequestData = {
   readonly repoId: RepoId;
   readonly url: string;
   readonly number: number;
   /** The title the agent set through the MCP tool, when it set one. */
   readonly title?: string;
+};
+
+/** Milestone 10 (F-151): ostra's checks in the box after a turn, counted. `failed` holds every one that didn't pass (timed out or errored too). */
+export type CheckCounts = { readonly passed: number; readonly failed: number; readonly total: number };
+
+export type PushedData = {
+  readonly repoId: RepoId;
+  readonly branch: string;
+  readonly headSha: string;
+  readonly ref: string;
+  /**
+   * True for the hidden `refs/ostra/wip/<taskId>` ref that holds unfinished work. Since milestone 10
+   * that push is no part (its commit is the turn's `meta.saved.hiddenRefs`), so a part reads false.
+   */
+  readonly hidden: boolean;
+  /**
+   * Milestone 10 (F-151): the turn's checks in the box, counted from its `session.saved`, which ran
+   * before this push; `null` when no check ran, or the push stands outside any turn.
+   */
+  readonly checks: CheckCounts | null;
+  /** Milestone 10 (F-151): the PR this push opened, when `pr.opened` for its repo follows it in the turn. */
+  readonly firstPr: PullRequestData | null;
 };
 
 export type PullRequestTextData = {
@@ -170,7 +189,10 @@ export type EffortChangeData = {
 /** Files the agent left outside every repo (Q133): their names, and how many more. Empty: they're gone. */
 export type FilesOutsideReposData = { readonly paths: readonly string[]; readonly more: number };
 
-/** Work saved after a turn (`session.saved`): the archive's size, and the hidden refs. */
+/**
+ * Work saved after a turn (`session.saved`): the archive's size, and the hidden refs. Milestone 10
+ * (F-151): no fold makes this part any more; the facts are the turn's `meta.saved` (`TurnSaved`).
+ */
 export type SavedData = {
   readonly turnOrdinal: number;
   /** The session archive's size in bytes, or `null` when its upload failed. */
@@ -204,6 +226,33 @@ export type PrCommentData = { readonly seq: number; readonly url: string; readon
 
 /** The ticket's files, written into the workspace for the agent (`ticket.files_ready`). */
 export type TicketFilesData = { readonly paths: readonly string[] };
+
+/** Milestone 10 (F-151): where ostra posted a review (`review.posted`): the PR and the review's address. */
+export type ReviewPostData = { readonly repoId: RepoId; readonly prNumber: number; readonly url: string };
+
+/**
+ * Milestone 10 (F-151): a review task's hand-in (`review.submitted`), in the turn that handed it in:
+ * the findings' counts and where ostra posted it. A second hand-in for a round already in is
+ * `repeat: true`, with the round's counts as first handed in and the same posts: nothing changed.
+ */
+export type ReviewData = {
+  readonly reviewRunId: ReviewRunId;
+  readonly blocking: number;
+  readonly nits: number;
+  readonly repeat: boolean;
+  readonly posted: readonly ReviewPostData[];
+};
+
+/**
+ * Milestone 10 (F-151): a refine task's draft (`draft.submitted`), in the turn that handed it in.
+ * The counts are `null` on an event written before protocol minor 9.
+ */
+export type DraftData = {
+  readonly draftId: DraftId;
+  readonly version: number;
+  readonly acceptanceCriteria: number | null;
+  readonly subTickets: number | null;
+};
 
 /**
  * Milestone 8 (F-121): one screenshot or recording, as its `attachment.added` event names it. The
@@ -324,6 +373,8 @@ export type TaskDataParts = {
   "app-process": AppProcessData;
   "no-browser": NoBrowserData;
   "message-files": MessageFilesData;
+  review: ReviewData;
+  draft: DraftData;
   system: { seq: number; event: SystemEvent };
   unsupported: { seq: number; rawKind: string; acp: boolean };
   problem: { seq: number; text: string };
@@ -442,7 +493,55 @@ export type TaskMessageMeta = {
   endedAt?: number;
   /** F-138: the subagents the turn started, as a tree. Missing when it started none. */
   subagents?: SubagentTree;
+  /**
+   * Milestone 10 (F-151): the task's turn number, from 1, in `turn.started` order across all its
+   * sessions, so a reopen's turn continues the count. Missing on a turn whose start never came.
+   */
+  ordinal?: number;
+  /** Milestone 10 (F-151): the turn's spend, as `tasks.get` priced it (`FoldOptions.turnSpend`). Missing until it's priced. */
+  spend?: TurnSpend;
+  /** Milestone 10 (F-151): the work saved after the turn (its `session.saved`). Missing until it's saved. */
+  saved?: TurnSaved;
+  /** Milestone 10 (F-151): on the session's last turn, how the session ended (`session.ended`). */
+  ended?: TurnEnded;
+  /**
+   * Milestone 10 (F-151): each step's start and end, by a tool part's `toolCallId` (the main agent's
+   * and its subagents', so the subagents' window finds theirs too) and by `thoughtTimeKey(n)` for
+   * the turn's n-th reasoning part (0-based). Missing on a turn with no step.
+   */
+  stepTimes?: Readonly<Record<string, StepTime>>;
 };
+
+/** Milestone 10 (F-151): a turn's spend in micro-USD, priced in core; `estimated` when the key proxy estimated some of its tokens. */
+export type TurnSpend = { readonly microUsd: number; readonly estimated: boolean };
+
+/** Milestone 10 (F-151): what `session.saved` says of its turn, for the footer, the tooltip and the panel. */
+export type TurnSaved = {
+  /** The session archive's size in bytes, or `null` when its upload failed. */
+  readonly archiveBytes: number | null;
+  /** The hidden ref's commit per repo that has one. */
+  readonly hiddenRefs: readonly string[];
+  /** Repos whose unfinished work wasn't saved. */
+  readonly unsaved: number;
+  /** The checks run in the box after the turn, counted; `null` when none ran. */
+  readonly checks: CheckCounts | null;
+};
+
+/** Milestone 10 (F-151): how a session ended (`session.ended`): with changes to push or without, and each repo's branch. */
+export type TurnEnded = {
+  readonly outcome: SessionOutcome;
+  readonly repos: readonly { readonly repoId: RepoId; readonly ahead: boolean }[];
+};
+
+/**
+ * Milestone 10 (F-151): when a step started and ended, in ms since the epoch (each peer's clock, as
+ * it stored the events). `endedAt` is `null` while it runs or waits on an approval; a call that was
+ * denied, closed or cancelled with its turn ends when that happened.
+ */
+export type StepTime = { readonly startedAt: number; readonly endedAt: number | null };
+
+/** The `stepTimes` key of a turn's reasoning part, by its place among the turn's reasoning parts (from 0). */
+export const thoughtTimeKey = (index: number): string => `thought:${String(index)}`;
 
 export type TaskUIMessage = UIMessage<TaskMessageMeta, TaskDataParts, TaskUITools>;
 export type TaskUIPart = TaskUIMessage["parts"][number];

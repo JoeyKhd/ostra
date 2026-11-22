@@ -21,6 +21,7 @@ import { clientMessageIdSchema, MARKED_BLOCK_TAG, memberIdSchema, sessionIdSchem
 import type { MessageIntent } from "@ostra/protocol";
 import { foldTaskEvents } from "@ostra/task-view";
 import type { TaskUIMessage } from "@ostra/task-view";
+import { calc192, review483, review483Prompt, s3, sceneWorld } from "@ostra/task-view/testing";
 
 import { agentMessageOf, agentMessageSummary, AgentMessageMark, isAutomatic, UserMessageText } from "./agent-message-view";
 
@@ -248,5 +249,22 @@ describe("a message ostra wrote for the agent, in the thread", () => {
     expect(handSet.body).toContain("Merge main into the branch");
     // A Linear follow-up is the member's own comment.
     expect(drawn("Also update the README.", "linear-follow-up").body).toContain("Also update the README.");
+  });
+});
+
+describe("the recorded scenes' messages (F-151, milestone 10)", () => {
+  it("S3's first message is the review prompt `reviewPrompt` writes, so the thread reads it as ostra's own", () => {
+    expect(review483Prompt).toBe(
+      reviewPrompt({
+        ticket: { key: review483.ticket.key, title: review483.ticket.title, description: review483.ticket.description },
+        acceptanceCriteria: review483.ticket.acceptanceCriteria,
+        pullRequests: [{ repo: sceneWorld.repo, number: calc192.pr.number, url: calc192.pr.url, branch: sceneWorld.branch, baseSha: review483.baseSha, headSha: review483.headSha, files: 3, additions: 203, deletions: 6 }],
+        round: { number: 2, of: 3 },
+      }),
+    );
+    const [first] = foldTaskEvents(s3.events, []);
+    const read = first === undefined ? null : agentMessageOf(first);
+    expect(read?.kind).toBe("ai-review");
+    expect(read === null ? false : isAutomatic(read)).toBe(true);
   });
 });

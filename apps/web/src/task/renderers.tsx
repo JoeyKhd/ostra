@@ -745,6 +745,10 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
     case "data-message-files":
       // Milestone 9 (ticket 14): a member's message's files are drawn under the message (ticket 16), never as a row.
       return null;
+    case "data-review":
+    case "data-draft":
+      // Milestone 10 (F-151): a review's and a draft's results in their turn; their lines are ticket 14's. They drew nothing before.
+      return null;
     default:
       return part satisfies never;
   }

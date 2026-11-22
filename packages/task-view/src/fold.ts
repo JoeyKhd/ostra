@@ -1,7 +1,7 @@
 import type { UIToolInvocation } from "ai";
 import type { z } from "zod";
 
-import { RECORD_APP_TOOL, TAKE_SCREENSHOT_TOOL, messageDeliveries, typedToolSchemas } from "@ostra/protocol";
+import { messageDeliveries, ostraToolOf, typedToolSchemas } from "@ostra/protocol";
 import type {
   ApprovalId,
   ApprovalOption,
@@ -15,12 +15,15 @@ import type {
   QuestionField,
   QuestionId,
   RepoId,
+  ReviewRunId,
+  SavedCheck,
   SegmentId,
   SessionId,
   StopReason,
   StoredEvent,
   SubagentId,
   SubagentStatus,
+  TaskEventOf,
   ToolCallId,
   ToolKind,
   TurnId,
@@ -28,6 +31,7 @@ import type {
 
 import type { LiveText } from "./live-text.ts";
 import { messageFileViewOf, noRemovedFiles } from "./message-files.ts";
+import { thoughtTimeKey } from "./ui-types.ts";
 import type {
   ApprovalDescriptor,
   ApprovalReceipt,
@@ -35,13 +39,16 @@ import type {
   AppProcessData,
   AttachmentItem,
   AttachmentsData,
+  CheckCounts,
   MessageFileLeftOut,
   MessageFileSkipped,
   MessageFileView,
   PullRequestData,
   QuestionStatus,
+  ReviewPostData,
   SetupData,
   SetupOutputLine,
+  StepTime,
   SubagentNode,
   SubagentState,
   SubagentTree,
@@ -50,6 +57,8 @@ import type {
   TaskUIMessage,
   TaskUIPart,
   TokenCounts,
+  TurnSaved,
+  TurnSpend,
 } from "./ui-types.ts";
 
 // The one fold from events to UIMessage[] (ADR 0036). Pure. The panel, its tests and any later
@@ -79,7 +88,35 @@ export type FoldOptions = {
    * null`), so their downloads show as removed. Every other file downloads from its route.
    */
   readonly removedFiles?: ReadonlySet<MessageFileId>;
+  /**
+   * Milestone 10 (F-151): each turn's spend, by its ID, as `tasks.get` priced it (`usage.turns`,
+   * `turnSpendOf`): prices live in core. A turn missing from it has no `meta.spend`.
+   */
+  readonly turnSpend?: ReadonlyMap<TurnId, TurnSpend>;
+  /**
+   * Milestone 10 (F-151): each turn's number in the task, by its ID (`turnOrdinalsOf`), for a page
+   * of history that starts after the task's first turn (`tasks.history` pages by turn). A turn
+   * missing from it is numbered on from the turn that started before it, from 1 at the log's start.
+   */
+  readonly turnOrdinals?: ReadonlyMap<TurnId, number>;
 };
+
+/** One turn of `tasks.get`'s `usage.turns`, as far as the fold's figures need it. */
+export type PricedTurn = {
+  readonly turnId: TurnId;
+  readonly startedAt: number;
+  /** `null` when the turn's model has no price: the turn then has no spend. */
+  readonly spentMicroUsd: number | null;
+  readonly estimated: boolean;
+};
+
+/** Milestone 10 (F-151): the fold's `turnSpend`, from `tasks.get`'s `usage.turns`. A turn with no price is left out. */
+export const turnSpendOf = (turns: readonly PricedTurn[]): ReadonlyMap<TurnId, TurnSpend> =>
+  new Map(turns.flatMap((turn) => (turn.spentMicroUsd === null ? [] : [[turn.turnId, { microUsd: turn.spentMicroUsd, estimated: turn.estimated }] as const])));
+
+/** Milestone 10 (F-151): the fold's `turnOrdinals`, from `tasks.get`'s `usage.turns`: the task's turns numbered from 1 in the order they started. */
+export const turnOrdinalsOf = (turns: readonly PricedTurn[]): ReadonlyMap<TurnId, number> =>
+  new Map([...turns].sort((a, b) => a.startedAt - b.startedAt).map((turn, i) => [turn.turnId, i + 1] as const));
 
 type ApprovalRecord = {
   approvalId: ApprovalId;
@@ -97,6 +134,9 @@ type ToolRecord = {
   cancelled: boolean;
   approval?: ApprovalRecord;
   owner: Builder;
+  /** Milestone 10 (F-151): its `tool.called`'s time, and the time of the event that settled it (`null` while it runs or waits). */
+  startedAt: number;
+  endedAt: number | null;
   /** F-138: the subagent whose call it is; missing for the main agent's. */
   subagentId?: SubagentId;
   /** F-138: it's in the thread (the main agent's, or a subagent's that asked for an approval). */
@@ -124,8 +164,27 @@ type AppProcessRecord = {
 } & { startedAt: number | null };
 
 /** Whether a call is one of ostra's app-picture tools, whatever prefix its agent names it with (`ostra_take_screenshot`). */
-const isPictureTool = (title: string): boolean =>
-  [TAKE_SCREENSHOT_TOOL, RECORD_APP_TOOL].some((name) => title === name || title.endsWith(`_${name}`) || title.endsWith(`.${name}`) || title.endsWith(`/${name}`));
+const isPictureTool = (title: string): boolean => {
+  const kind = ostraToolOf(title);
+  return kind === "take_screenshot" || kind === "record_app";
+};
+
+/** Milestone 10 (F-151): a push to a task branch, as the fold builds it: the PR it opened joins it later in the turn. */
+type PushedRecord = {
+  readonly repoId: RepoId;
+  readonly branch: string;
+  readonly headSha: string;
+  readonly ref: string;
+  firstPr: PullRequestData | null;
+};
+
+/** Milestone 10 (F-151): one review run's posts, shared by its hand-in and any repeat of it. */
+type ReviewRecord = {
+  readonly reviewRunId: ReviewRunId;
+  readonly posted: ReviewPostData[];
+  /** The turns its hand-ins are in, so a post touches them. */
+  readonly owners: Builder[];
+};
 
 /** F-138: one round of a subagent, as the fold builds it. */
 type RoundRecord = {
@@ -196,17 +255,28 @@ type Slot =
   | { t: "compaction"; id: string; status: "running" | "done"; summary?: string }
   | { t: "setup"; id: string; rec: SetupRecord }
   | { t: "attachments"; id: string; rec: AttachmentsRecord }
-  | { t: "app-process"; id: string; rec: AppProcessRecord };
+  | { t: "app-process"; id: string; rec: AppProcessRecord }
+  | { t: "pushed"; id: string; rec: PushedRecord }
+  | { t: "review"; id: string; rec: ReviewRecord; blocking: number; nits: number; repeat: boolean };
 
 type Builder = {
   id: string;
   role: "user" | "assistant" | "system";
   slots: Slot[];
+  /**
+   * Milestone 10 (F-151): what the turn made (a push, the PR's text and the PR, a review, a draft,
+   * a memory proposal), drawn after its other parts, so after its text: most come after its end.
+   */
+  results: Slot[];
   meta: TaskMessageMeta;
   planSlot?: Extract<Slot, { t: "plan" }>;
   compactionSlot?: Extract<Slot, { t: "compaction" }>;
   /** F-138: the turn's subagents, nested ones included. */
   subagents?: SubagentRecord[];
+  /** Milestone 10 (F-151): when the turn's latest event was recorded: where its next thought starts. */
+  lastAt?: number;
+  /** Milestone 10 (F-151): the turn's reasoning parts' times, in their order. */
+  thoughts: StepTime[];
 };
 
 // ---- tool parts -------------------------------------------------------------------------
@@ -391,7 +461,7 @@ const setupPart = (id: string, rec: SetupRecord): TaskUIPart => ({
   },
 });
 
-const slotToPart = (slot: Slot): TaskUIPart => {
+const slotToPart = (slot: Slot, owner: { readonly meta: TaskMessageMeta }): TaskUIPart => {
   switch (slot.t) {
     case "part":
       return slot.part;
@@ -433,10 +503,36 @@ const slotToPart = (slot: Slot): TaskUIPart => {
       const { name, port, state, exitCode, reason, logBlobId, readyAfterMs } = slot.rec;
       return { type: "data-app-process", id: slot.id, data: { name, port, state, exitCode, reason, logBlobId, readyAfterMs } };
     }
+    case "pushed": {
+      const { repoId, branch, headSha, ref, firstPr } = slot.rec;
+      // The turn's checks ran before its push (ADR 0052), and its `session.saved` counts them.
+      return { type: "data-pushed", id: slot.id, data: { repoId, branch, headSha, ref, hidden: false, checks: owner.meta.saved?.checks ?? null, firstPr } };
+    }
+    case "review":
+      return {
+        type: "data-review",
+        id: slot.id,
+        data: { reviewRunId: slot.rec.reviewRunId, blocking: slot.blocking, nits: slot.nits, repeat: slot.repeat, posted: slot.rec.posted.map((post) => ({ ...post })) },
+      };
     default:
       return slot satisfies never;
   }
 };
+
+/** Milestone 10 (F-151): a turn's checks in the box, counted from its `session.saved`; `null` when none ran. */
+const checkCountsOf = (checks: readonly SavedCheck[] | undefined): CheckCounts | null => {
+  if (checks === undefined || checks.length === 0) return null;
+  const passed = checks.filter((check) => check.status === "passed").length;
+  return { passed, failed: checks.length - passed, total: checks.length };
+};
+
+/** Milestone 10 (F-151): what `session.saved` says of its turn (it was the `data-saved` row's). */
+const savedOf = (event: TaskEventOf<"session.saved">): TurnSaved => ({
+  archiveBytes: event.archive === null ? null : event.archive.size,
+  hiddenRefs: event.repos.flatMap((repo) => (repo.hiddenRefSha === null ? [] : [repo.hiddenRefSha])),
+  unsaved: event.repos.filter((repo) => repo.hiddenRefSha === null).length,
+  checks: checkCountsOf(event.checks),
+});
 
 /** Structural equality on plain data, for keeping the identity of unchanged messages. */
 export const deepEqual = (a: unknown, b: unknown): boolean => {
@@ -578,6 +674,22 @@ const treeOf = (turn: Builder, records: readonly SubagentRecord[]): SubagentTree
   };
 };
 
+/**
+ * Milestone 10 (F-151): a turn's steps' times, by each call's ID (its subagents' calls too, so
+ * their window finds them) and by `thoughtTimeKey` for its reasoning parts; `null` with no step.
+ */
+const stepTimesOf = (builder: Builder, records: readonly SubagentRecord[]): Readonly<Record<string, StepTime>> | null => {
+  const calls = [
+    ...builder.slots.flatMap((slot) => (slot.t === "tool" ? [slot.rec] : [])),
+    ...records.flatMap((record) => record.rounds.flatMap((round) => round.calls)),
+  ];
+  if (calls.length === 0 && builder.thoughts.length === 0) return null;
+  return Object.fromEntries([
+    ...calls.map((rec) => [rec.toolCallId, { startedAt: rec.startedAt, endedAt: rec.endedAt }] as const),
+    ...builder.thoughts.map((thought, i) => [thoughtTimeKey(i), { startedAt: thought.startedAt, endedAt: thought.endedAt }] as const),
+  ]);
+};
+
 // ---- the fold ---------------------------------------------------------------------------
 
 /**
@@ -619,8 +731,13 @@ export const foldTaskEvents = (
   // finds the message it wrote them for; and the files whose blobs are gone.
   const messageFilesOf = new Map<MessageFileId, { readonly rec: MessageFilesRecord; readonly owner: Builder }>();
   const removedFiles = options.removedFiles ?? noRemovedFiles;
+  // Milestone 10 (F-151): the last turn number given, in `turn.started` order across the sessions.
+  let lastOrdinal = 0;
+  // Milestone 10 (F-151): each review run's posts, by its ID.
+  const reviews = new Map<ReviewRunId, ReviewRecord>();
 
-  const push = (builder: Builder): Builder => {
+  const push = (init: Omit<Builder, "results" | "thoughts">): Builder => {
+    const builder: Builder = { ...init, results: [], thoughts: [] };
     builders.push(builder);
     return builder;
   };
@@ -644,11 +761,15 @@ export const foldTaskEvents = (
 
   // When the event being folded was recorded: a message's time is its first event's.
   let at: number | undefined;
+  // Milestone 10 (F-151): the same, only while an event is folded (not for the viewer's partial
+  // text): a turn's latest event time, where its next thought starts.
+  let eventAt: number | undefined;
 
   const ensureTurn = (turnId: TurnId, sessionId: SessionId, seq: number): Builder => {
     const existing = turns.get(turnId);
     if (existing !== undefined) {
       existing.meta.lastSeq = Math.max(existing.meta.lastSeq, seq);
+      if (eventAt !== undefined) existing.lastAt = eventAt;
       return existing;
     }
     const builder = push({
@@ -656,6 +777,7 @@ export const foldTaskEvents = (
       role: "assistant",
       slots: [{ t: "part", part: { type: "step-start" } }],
       meta: { firstSeq: seq, lastSeq: seq, sessionId, turnId, turnState: "running", ...(at === undefined ? {} : { at }) },
+      ...(eventAt === undefined ? {} : { lastAt: eventAt }),
     });
     turns.set(turnId, builder);
     lastTurnBySession.set(sessionId, builder);
@@ -664,11 +786,29 @@ export const foldTaskEvents = (
 
   const touch = (owner: Builder, seq: number): void => {
     owner.meta.lastSeq = Math.max(owner.meta.lastSeq, seq);
+    if (eventAt !== undefined) owner.lastAt = eventAt;
   };
 
   /** A row of its own outside any turn, holding one slot that later events may update. */
   const slotRow = (id: string, seq: number, sessionId: SessionId, slot: Slot): Builder =>
     push({ id, role: "system", slots: [slot], meta: { firstSeq: seq, lastSeq: seq, sessionId } });
+
+  /**
+   * Milestone 10 (F-151): what a turn made goes in the session's last turn, after its text (a push,
+   * the PR's text and the PR, a review, a draft, a memory proposal): most come after its end. One
+   * with no turn to join (none happens today) is a row of its own.
+   */
+  const result = (seq: number, sessionId: SessionId, slot: Slot): Builder | undefined => {
+    const turn = lastTurnBySession.get(sessionId);
+    if (turn === undefined) {
+      const id = `sys:${String(seq)}`;
+      slotRow(id, seq, sessionId, slot);
+      return undefined;
+    }
+    touch(turn, seq);
+    turn.results.push(slot);
+    return turn;
+  };
 
   /** The session's turn while it runs: where the agent's app lines go. Outside a turn, `undefined`. */
   const runningTurnOf = (sessionId: SessionId): Builder | undefined => {
@@ -798,6 +938,7 @@ export const foldTaskEvents = (
   for (const stored of events) {
     const { seq, sessionId, event } = stored;
     at = stored.at;
+    eventAt = stored.at;
     switch (event.kind) {
       case "user.message": {
         committedClientIds.add(event.clientMessageId);
@@ -850,6 +991,12 @@ export const foldTaskEvents = (
       case "turn.started": {
         const started = ensureTurn(event.turnId, sessionId, seq);
         started.meta.turnState = "running";
+        // Milestone 10 (F-151): the task's turn number, across its sessions; a page of history that
+        // starts after the first turn gets its numbers from `turnOrdinals`.
+        if (started.meta.ordinal === undefined) {
+          lastOrdinal = options.turnOrdinals?.get(event.turnId) ?? lastOrdinal + 1;
+          started.meta.ordinal = lastOrdinal;
+        }
         if (event.mode === "plan") started.meta.turnMode = "plan";
         // F-137: the level the turn ran at, and the one asked for when the clamp moved it.
         if (event.effort !== undefined && event.effort !== "default") started.meta.effort = event.effort;
@@ -867,6 +1014,7 @@ export const foldTaskEvents = (
           for (const rec of [...turn.slots.flatMap((slot) => (slot.t === "tool" ? [slot.rec] : [])), ...subagentCalls]) {
             if (rec.outcome === undefined) {
               rec.cancelled = true;
+              rec.endedAt ??= stored.at;
               if (rec.approval?.status.state === "pending") {
                 rec.approval.status = { state: "closed", reason: "cancelled" };
               }
@@ -898,6 +1046,8 @@ export const foldTaskEvents = (
       }
       case "agent.thought": {
         committedSegments.add(event.segmentId);
+        // Milestone 10 (F-151): a thought starts at the turn's event before it, and ends at its own.
+        const before = turns.get(event.turnId)?.lastAt;
         const turn = ensureTurn(event.turnId, sessionId, seq);
         if (event.subagentId !== undefined) {
           // F-138: a subagent's thinking stays with it; the window shows its calls and its answer.
@@ -908,6 +1058,7 @@ export const foldTaskEvents = (
           t: "part",
           part: reasoning(event.text, "done"),
         });
+        turn.thoughts.push({ startedAt: before ?? stored.at, endedAt: stored.at });
         break;
       }
       case "agent.content": {
@@ -949,6 +1100,8 @@ export const foldTaskEvents = (
           input: event.input,
           cancelled: false,
           owner: turn,
+          startedAt: stored.at,
+          endedAt: null,
         };
         tools.set(event.toolCallId, rec);
         if (event.subagentId !== undefined) {
@@ -973,9 +1126,13 @@ export const foldTaskEvents = (
         }
         touch(rec.owner, seq);
         if (event.kind === "tool.progress") rec.progress = { value: event.output };
-        else if (event.kind === "tool.completed")
+        else if (event.kind === "tool.completed") {
           rec.outcome = { type: "done", output: event.output };
-        else rec.outcome = { type: "failed", error: event.error };
+          rec.endedAt = stored.at;
+        } else {
+          rec.outcome = { type: "failed", error: event.error };
+          rec.endedAt = stored.at;
+        }
         break;
       }
       case "approval.requested": {
@@ -1016,10 +1173,13 @@ export const foldTaskEvents = (
             optionId: event.optionId,
             by: event.memberId,
           };
+          // Milestone 10 (F-151): a denied call never runs: its step ends with the deny.
+          if (event.decision === "deny" && rec.outcome === undefined) rec.endedAt = stored.at;
         } else if (event.kind === "approval.auto_answered") {
           approval.status = { state: "auto", ruleId: event.ruleId };
         } else {
           approval.status = { state: "closed", reason: event.reason };
+          if (rec.outcome === undefined) rec.endedAt = stored.at;
         }
         break;
       }
@@ -1098,49 +1258,49 @@ export const foldTaskEvents = (
         break;
       }
       case "git.pushed": {
-        row(seq, sessionId, {
-          type: "data-pushed",
+        // Milestone 10 (F-151): the hidden ref's push is bookkeeping: its commit is the turn's
+        // `meta.saved.hiddenRefs`, and the Event log keeps the event.
+        if (event.ref.startsWith(hiddenRefPrefix)) break;
+        result(seq, sessionId, {
+          t: "pushed",
           id: `pushed:${String(seq)}`,
-          data: {
-            repoId: event.repoId,
-            branch: event.branch,
-            headSha: event.headSha,
-            ref: event.ref,
-            hidden: event.ref.startsWith(hiddenRefPrefix),
-          },
+          rec: { repoId: event.repoId, branch: event.branch, headSha: event.headSha, ref: event.ref, firstPr: null },
         });
         break;
       }
       case "pr.text_set": {
         prTitles.set(event.repoId, event.title);
-        row(seq, sessionId, {
-          type: "data-pr-text",
-          id: `pr-text:${String(seq)}`,
-          data: { repoId: event.repoId, title: event.title, body: event.body },
+        result(seq, sessionId, {
+          t: "part",
+          part: {
+            type: "data-pr-text",
+            id: `pr-text:${String(seq)}`,
+            data: { repoId: event.repoId, title: event.title, body: event.body },
+          },
         });
         break;
       }
       case "pr.opened": {
         const title = prTitles.get(event.repoId);
-        row(seq, sessionId, {
-          type: "data-pr",
-          id: `pr:${event.repoId}:${String(event.number)}`,
-          data: {
-            repoId: event.repoId,
-            url: event.url,
-            number: event.number,
-            ...(title === undefined ? {} : { title }),
-          },
-        });
+        const pr: PullRequestData = {
+          repoId: event.repoId,
+          url: event.url,
+          number: event.number,
+          ...(title === undefined ? {} : { title }),
+        };
+        const turn = result(seq, sessionId, { t: "part", part: { type: "data-pr", id: `pr:${event.repoId}:${String(event.number)}`, data: pr } });
+        // The push it opened, earlier in the turn: the PR's card goes once, under it.
+        const opened = turn?.results.findLast((slot): slot is Extract<Slot, { t: "pushed" }> => slot.t === "pushed" && slot.rec.repoId === event.repoId);
+        if (opened?.rec.firstPr === null) opened.rec.firstPr = pr;
         break;
       }
       case "session.ended": {
         stopSubagentsOf(sessionId, stored.at);
-        row(seq, sessionId, {
-          type: "data-session-end",
-          id: `session-end:${sessionId}`,
-          data: { sessionId, outcome: event.outcome, repos: event.repos },
-        });
+        // Milestone 10 (F-151): how the session ended is a fact of its last turn, not a row.
+        const turn = lastTurnBySession.get(sessionId);
+        if (turn === undefined) break;
+        touch(turn, seq);
+        turn.meta.ended = { outcome: event.outcome, repos: event.repos };
         break;
       }
       case "workspace.files_outside_repos": {
@@ -1184,17 +1344,15 @@ export const foldTaskEvents = (
         // The server holds new dispatches on the provider; the thread has nothing to show.
         break;
       case "session.saved": {
-        // Protocol minor 1 (ticket 36): the work saved after a turn.
-        row(seq, sessionId, {
-          type: "data-saved",
-          id: `saved:${String(seq)}`,
-          data: {
-            turnOrdinal: event.turnOrdinal,
-            archiveBytes: event.archive === null ? null : event.archive.size,
-            hiddenRefs: event.repos.flatMap((repo) => (repo.hiddenRefSha === null ? [] : [repo.hiddenRefSha])),
-            unsaved: event.repos.filter((repo) => repo.hiddenRefSha === null).length,
-          },
-        });
+        // Protocol minor 1 (ticket 36): the work saved after a turn. Milestone 10 (F-151): a fact of
+        // the turn it follows, not a row. The runner saves after each turn's end and before the next
+        // turn starts (ADR 0039's order), so that's the session's last turn when the save comes;
+        // `turnOrdinal` counts the session's turns, which a page of history starting mid-session
+        // can't count, so it isn't matched against the log.
+        const turn = lastTurnBySession.get(sessionId);
+        if (turn === undefined) break;
+        touch(turn, seq);
+        turn.meta.saved = savedOf(event);
         break;
       }
       case "session.limit_reached": {
@@ -1230,7 +1388,7 @@ export const foldTaskEvents = (
         break;
       }
       case "memory.proposed": {
-        row(seq, sessionId, { type: "data-memory-proposed", id: `memory-proposed:${String(seq)}`, data: { proposalId: event.proposalId, title: event.title } });
+        result(seq, sessionId, { t: "part", part: { type: "data-memory-proposed", id: `memory-proposed:${String(seq)}`, data: { proposalId: event.proposalId, title: event.title } } });
         break;
       }
       case "memory.used":
@@ -1262,17 +1420,45 @@ export const foldTaskEvents = (
       case "task.approved":
       case "task.rejected":
       case "tracker.session_event":
-      case "draft.submitted":
       case "draft.applied":
       case "ci.updated":
       case "round.started":
       case "round.capped":
-      case "review.submitted":
-      case "review.posted":
       case "reviewers.updated":
       case "environment.proposed":
         // Protocol minor 5. No row until the milestone 6 task page draws them (tickets 30 to 36).
         break;
+      case "draft.submitted": {
+        // Milestone 10 (F-151): a refine task's draft is a result of the turn that handed it in.
+        result(seq, sessionId, {
+          t: "part",
+          part: {
+            type: "data-draft",
+            id: `draft:${String(seq)}`,
+            data: { draftId: event.draftId, version: event.version, acceptanceCriteria: event.acceptanceCriteria ?? null, subTickets: event.subTickets ?? null },
+          },
+        });
+        break;
+      }
+      case "review.submitted": {
+        // Milestone 10 (F-151): a review task's hand-in is a result of the turn that handed it in; a
+        // repeat for a round already in is its own result, with the same posts.
+        const existing = reviews.get(event.reviewRunId);
+        const rec: ReviewRecord = existing ?? { reviewRunId: event.reviewRunId, posted: [], owners: [] };
+        reviews.set(event.reviewRunId, rec);
+        const turn = result(seq, sessionId, { t: "review", id: `review:${String(seq)}`, rec, blocking: event.blocking, nits: event.nits, repeat: event.repeat === true });
+        if (turn !== undefined && !rec.owners.includes(turn)) rec.owners.push(turn);
+        break;
+      }
+      case "review.posted": {
+        // Its hand-in's result gains where it was posted. The code task's copy of the event has no
+        // hand-in in its log: the Event log keeps it there.
+        const rec = reviews.get(event.reviewRunId);
+        if (rec === undefined) break;
+        rec.posted.push({ repoId: event.repoId, prNumber: event.prNumber, url: event.url });
+        for (const owner of rec.owners) touch(owner, seq);
+        break;
+      }
       case "app.process": {
         // F-140: one line per start of a process, updated in place by its later states.
         const key = `${sessionId}:${event.name}`;
@@ -1465,6 +1651,9 @@ export const foldTaskEvents = (
       }
       case "session.config_changed":
       case "runner.connected":
+        // Milestone 10 (F-151): bookkeeping, kept in the Event log; the effort divider and the plan
+        // markers say what a reader needs of a config change.
+        break;
       case "runner.lost":
       case "session.restored":
       case "session.crashed":
@@ -1498,6 +1687,7 @@ export const foldTaskEvents = (
     }
   }
 
+  eventAt = undefined;
   // Partial text: shown, never saved. A segment that already has its completed message is dropped.
   for (const live of liveText) {
     if (committedSegments.has(live.segmentId)) continue;
@@ -1507,6 +1697,9 @@ export const foldTaskEvents = (
       part:
         live.kind === "message" ? text(live.text, "streaming") : reasoning(live.text, "streaming"),
     });
+    // Milestone 10 (F-151): a thought still streaming started at the turn's latest event.
+    const startedAt = turn.lastAt ?? turn.meta.at;
+    if (live.kind === "thought" && startedAt !== undefined) turn.thoughts.push({ startedAt, endedAt: null });
   }
 
   for (const optimistic of options.optimistic ?? []) {
@@ -1534,12 +1727,20 @@ export const foldTaskEvents = (
   return builders.map((builder): TaskUIMessage => {
     // F-138: the turn's subagents, as a tree, made once every event is in.
     const records = builder.subagents ?? [];
+    const stepTimes = stepTimesOf(builder, records);
+    const spend = builder.meta.turnId === undefined ? undefined : options.turnSpend?.get(builder.meta.turnId);
     const message: TaskUIMessage = {
       id: builder.id,
       role: builder.role,
-      metadata: records.length === 0 ? builder.meta : { ...builder.meta, subagents: treeOf(builder, records) },
-      // F-121: an app-picture call whose picture came is drawn as the picture's row only.
-      parts: builder.slots.filter((slot) => !(slot.t === "tool" && slot.rec.absorbed === true)).map(slotToPart),
+      metadata: {
+        ...builder.meta,
+        ...(records.length === 0 ? {} : { subagents: treeOf(builder, records) }),
+        ...(stepTimes === null ? {} : { stepTimes }),
+        ...(spend === undefined ? {} : { spend: { microUsd: spend.microUsd, estimated: spend.estimated } }),
+      },
+      // F-121: an app-picture call whose picture came is drawn as the picture's row only. Milestone
+      // 10 (F-151): what the turn made comes after its other parts.
+      parts: [...builder.slots.filter((slot) => !(slot.t === "tool" && slot.rec.absorbed === true)), ...builder.results].map((slot) => slotToPart(slot, builder)),
     };
     const previous = previousById.get(message.id);
     return previous !== undefined && deepEqual(previous, message) ? previous : message;

@@ -11,6 +11,9 @@ import type { SessionId, StoredEvent, TaskEvent, TaskId } from "@ostra/protocol"
 import { eventFixtures, fixtureIds } from "@ostra/protocol/testing";
 
 export { recordedOpenCodeSession } from "./opencode-session.ts";
+export * from "./scene-log.ts";
+export * from "./scenes.ts";
+export * from "./state-cells.ts";
 
 // Test data for the fold and its consumers: stored events built from plain events, a coherent
 // session with every kind, and long sessions for the render budget. Ported from

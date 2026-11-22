@@ -14,11 +14,11 @@ import {
   taskEventKinds,
 } from "@ostra/protocol";
 import type { StoredEvent, TaskEvent, TaskEventKind } from "@ostra/protocol";
-import { eventFixtures, fixtureIds } from "@ostra/protocol/testing";
+import { eventFixtures, fixtureDigests, fixtureIds, minor8EventFixtures } from "@ostra/protocol/testing";
 
 import { foldCoverage } from "./coverage.ts";
 import { deriveTaskState } from "./derive-state.ts";
-import { foldTaskEvents, pullRequestsOf } from "./fold.ts";
+import { deepEqual, foldTaskEvents, pullRequestsOf } from "./fold.ts";
 import { applyLiveTextFrame, emptyLiveText, pruneLiveText, visibleLiveText } from "./live-text.ts";
 import type { LiveText } from "./live-text.ts";
 import {
@@ -61,8 +61,8 @@ const toolEdit = (messages: readonly TaskUIMessage[]) => {
   return part;
 };
 
-const lastTurnMeta = (messages: readonly TaskUIMessage[]) =>
-  messages.filter((m) => m.role === "assistant").at(-1)?.metadata;
+const lastTurn = (messages: readonly TaskUIMessage[]) => messages.filter((m) => m.role === "assistant").at(-1);
+const lastTurnMeta = (messages: readonly TaskUIMessage[]) => lastTurn(messages)?.metadata;
 
 const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
   "user.message": {
@@ -202,9 +202,10 @@ const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
     },
   },
   "session.config_changed": {
+    // Milestone 10 (F-151): bookkeeping, in the Event log only; it was a system row.
     prefix: [],
     check: (m) => {
-      expect(typesOf(m)).toContain("data-system");
+      expect(m).toEqual([]);
     },
   },
   "driver.changed": {
@@ -214,9 +215,10 @@ const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
     },
   },
   "runner.connected": {
+    // Milestone 10 (F-151): bookkeeping, in the Event log only; it was a system row.
     prefix: [],
     check: (m) => {
-      expect(typesOf(m)).toContain("data-system");
+      expect(m).toEqual([]);
     },
   },
   "runner.lost": {
@@ -238,10 +240,11 @@ const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
     },
   },
   "session.saved": {
-    prefix: [],
+    // Milestone 10 (F-151): the turn's `meta.saved`; it was a row of its own (ticket 36).
+    prefix: turnPrefix,
     check: (m) => {
-      // Ticket 36: protocol minor 1's markers have rows of their own.
-      expect(typesOf(m)).toContain("data-saved");
+      expect(lastTurnMeta(m)?.saved).toEqual({ archiveBytes: 48_213, hiddenRefs: [fixtureDigests.hiddenRefSha], unsaved: 0, checks: null });
+      expect(typesOf(m)).not.toContain("data-saved");
       expect(typesOf(m)).not.toContain("data-unsupported");
     },
   },
@@ -451,8 +454,10 @@ const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
     },
   },
   "draft.submitted": {
-    prefix: [],
+    // Milestone 10 (F-151): a result of the turn that handed it in; it drew nothing before.
+    prefix: turnPrefix,
     check: (m) => {
+      expect(lastTurn(m)?.parts.find((part) => part.type === "data-draft")).toMatchObject({ data: { draftId: fixtureIds.draft, version: 1, acceptanceCriteria: null, subTickets: null } });
       expect(typesOf(m)).not.toContain("data-system");
     },
   },
@@ -481,14 +486,18 @@ const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
     },
   },
   "review.submitted": {
-    prefix: [],
+    // Milestone 10 (F-151): a result of the turn that handed it in; it drew nothing before.
+    prefix: turnPrefix,
     check: (m) => {
+      expect(lastTurn(m)?.parts.find((part) => part.type === "data-review")).toMatchObject({ data: { reviewRunId: fixtureIds.reviewRun, blocking: 1, nits: 2, repeat: false, posted: [] } });
       expect(typesOf(m)).not.toContain("data-system");
     },
   },
   "review.posted": {
-    prefix: [],
+    // Milestone 10 (F-151): its hand-in's result says where it was posted; it drew nothing before.
+    prefix: [...turnPrefix, f["review.submitted"]],
     check: (m) => {
+      expect(lastTurn(m)?.parts.find((part) => part.type === "data-review")).toMatchObject({ data: { posted: [{ repoId: fixtureIds.repo, prNumber: 7, url: f["review.posted"].url }] } });
       expect(typesOf(m)).not.toContain("data-system");
     },
   },
@@ -661,12 +670,11 @@ const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
     },
   },
   "session.ended": {
-    prefix: [],
+    // Milestone 10 (F-151): the session's last turn's `meta.ended`; it was a row of its own.
+    prefix: turnPrefix,
     check: (m) => {
-      const part = findPart(m, "data-session-end");
-      expect(part?.type === "data-session-end" ? part.data.outcome : undefined).toBe(
-        "with-changes",
-      );
+      expect(lastTurnMeta(m)?.ended).toEqual({ outcome: "with-changes", repos: [{ repoId: fixtureIds.repo, ahead: true }] });
+      expect(typesOf(m)).not.toContain("data-session-end");
     },
   },
   "usage.recorded": {
@@ -703,6 +711,60 @@ describe("foldTaskEvents, one kind at a time", () => {
   }
 });
 
+describe("where each kind lands (F-151)", () => {
+  // The kinds whose protocol fixture takes a branch that draws nothing, with an event that draws.
+  const drawing: Partial<Record<TaskEventKind, { readonly prefix: readonly TaskEvent[]; readonly event: TaskEvent }>> = {
+    // An edit's progress doesn't fit its output; a command's does.
+    "tool.progress": {
+      prefix: [...turnPrefix, { kind: "tool.called", turnId: fixtureIds.turn, toolCallId: fixtureIds.toolCall, toolKind: "execute", title: "pnpm test", input: { command: "pnpm test" } }],
+      event: { kind: "tool.progress", toolCallId: fixtureIds.toolCall, output: { output: "running", truncated: false, exitCode: null } },
+    },
+    // A box with a browser says nothing; one without says so.
+    "app.browser": { prefix: [], event: { kind: "app.browser", browser: { available: false, reason: "not-in-image" } } },
+    // The runner's writes land on the message whose files they are: one it couldn't write is named.
+    "files.written": {
+      prefix: [minor8EventFixtures.withFiles],
+      event: { ...f["files.written"], files: [{ fileId: fixtureIds.imageFile, textWritten: false }], skipped: [{ fileId: fixtureIds.documentFile, reason: "digest-mismatch" }] },
+    },
+  };
+  const cases: Readonly<Record<TaskEventKind, KindCase>> = kindCases;
+
+  /** Why a kind isn't where `foldCoverage` places it, or `null` when it is. */
+  const misplaced = (kind: TaskEventKind): string | null => {
+    const { prefix, event } = drawing[kind] ?? { prefix: cases[kind].prefix, event: f[kind] };
+    const without = foldTaskEvents(storeEvents(prefix), []);
+    const withIt = foldTaskEvents(storeEvents([...prefix, event]), []);
+    const place = foldCoverage[kind];
+    switch (place.in) {
+      case "message": {
+        const before = new Set(without.map((message) => message.id));
+        return withIt.some((message) => message.role === place.role && !before.has(message.id)) ? null : `no new ${place.role} message`;
+      }
+      case "part": {
+        const types: readonly string[] = place.parts;
+        const fresh = partsOf(withIt).filter((each) => types.includes(each.type) && !partsOf(without).some((old) => deepEqual(old, each)));
+        return fresh.length > 0 ? null : `no new or changed ${place.parts.join(" or ")} part`;
+      }
+      case "turn": {
+        const now = lastTurnMeta(withIt)?.[place.field];
+        return now !== undefined && !deepEqual(now, lastTurnMeta(without)?.[place.field]) ? null : `the turn's ${place.field} didn't change`;
+      }
+      case "event-log":
+        return deepEqual(withIt, without) ? null : "it changed the thread";
+      default:
+        return place satisfies never;
+    }
+  };
+
+  it("F-151/c1: every event kind lands where foldCoverage places it: a message, a part, a field of its turn, or the Event log only", () => {
+    const wrong = taskEventKinds.flatMap((kind) => {
+      const why = misplaced(kind);
+      return why === null ? [] : [`${kind}: ${why}`];
+    });
+    expect(wrong).toEqual([]);
+  });
+});
+
 describe("foldTaskEvents, a session with every kind", () => {
   const messages = foldTaskEvents(storeEvents(allKindsSession()), []);
 
@@ -726,7 +788,8 @@ describe("foldTaskEvents, a session with every kind", () => {
 
   it("gives a changed message a new object and keeps the others", () => {
     const events = allKindsSession();
-    const extra: TaskEvent = { kind: "session.config_changed", key: "mode", value: "plan" };
+    // Milestone 10 (F-151): a driver change, since a config change is no row any more.
+    const extra: TaskEvent = f["driver.changed"];
     const again = foldTaskEvents(storeEvents([...events, extra]), [], { previous: messages });
     expect(again.slice(0, messages.length).every((m, i) => m === messages[i])).toBe(true);
     expect(again).toHaveLength(messages.length + 1);
@@ -761,10 +824,12 @@ describe("foldTaskEvents, the read side", () => {
     expect(typesOf(messages)).toContain("data-problem");
   });
 
-  it("marks the hidden ref push as hidden", () => {
+  it("F-151/c1: draws no part for the hidden ref's push: its commit is the turn's saved work", () => {
+    // Milestone 10: it was a `data-pushed` row marked hidden.
     const hidden: TaskEvent = { ...f["git.pushed"], ref: `refs/ostra/wip/${fixtureIds.task}` };
-    const part = findPart(foldTaskEvents(storeEvents([hidden]), []), "data-pushed");
-    expect(part?.type === "data-pushed" ? part.data.hidden : undefined).toBe(true);
+    expect(foldTaskEvents(storeEvents([hidden]), [])).toEqual([]);
+    const after = foldTaskEvents(storeEvents([f["turn.started"], f["turn.ended"], hidden]), []);
+    expect(typesOf(after)).not.toContain("data-pushed");
   });
 });
 
@@ -882,12 +947,15 @@ describe("a recorded OpenCode session", () => {
       "data-pushed",
       "data-pr",
       "data-pr-text",
-      "data-session-end",
       "data-compaction",
-      "data-system",
     ]) {
       expect(typesOf(messages)).toContain(type);
     }
+    // Milestone 10 (F-151): the session's end is its last turn's fact, and the runner's connection
+    // the Event log's; they were the `data-session-end` and `data-system` rows.
+    expect(lastTurnMeta(messages)?.ended?.outcome).toBe("with-changes");
+    expect(typesOf(messages)).not.toContain("data-session-end");
+    expect(typesOf(messages)).not.toContain("data-system");
   });
 
   it("renders a read that failed as an error, and the edit with its counts", () => {
@@ -1070,9 +1138,13 @@ describe("protocol minor 1's markers (ticket 36)", () => {
   const sha = "3be91f0aa5b6c7d8e9f00112233445566778899a";
 
   it("folds the work saved after a turn with the archive's size and the hidden refs", () => {
+    // Milestone 10 (F-151): the turn's `meta.saved`; it was a `data-saved` row with the turn's ordinal.
+    const turnId = turnIdSchema.parse("t-1");
     const messages = foldTaskEvents(
       [
-        stored(1, {
+        stored(1, { kind: "turn.started", turnId }),
+        stored(2, { kind: "turn.ended", turnId, stopReason: "end_turn" }),
+        stored(3, {
           kind: "session.saved",
           turnOrdinal: 1,
           repos: [{ repoId: repoIdSchema.parse("01900000-0000-7000-8000-0000000000a1"), headSha: sha, ahead: true, hiddenRefSha: sha }],
@@ -1081,8 +1153,8 @@ describe("protocol minor 1's markers (ticket 36)", () => {
       ],
       [],
     );
-    const part = messages.flatMap((message) => message.parts).find((each) => each.type === "data-saved");
-    expect(part?.type === "data-saved" ? part.data : undefined).toEqual({ turnOrdinal: 1, archiveBytes: 2_400_000, hiddenRefs: [sha], unsaved: 0 });
+    expect(messages.map((message) => message.role)).toEqual(["assistant"]);
+    expect(messages[0]?.metadata?.saved).toEqual({ archiveBytes: 2_400_000, hiddenRefs: [sha], unsaved: 0, checks: null });
   });
 
   it("tags a reopen's message and a replayed one", () => {
