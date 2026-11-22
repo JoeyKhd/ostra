@@ -47,12 +47,28 @@ export const utcConnectionString = (databaseUrl: string): string => {
  */
 export const TRANSACTION_MAX_WAIT_MS = 10_000;
 
+/**
+ * How long the pool keeps a connection nobody uses before it closes it. `pg`'s own default is 10 s,
+ * and the pool hands out the connection released last, so a server that's busy but not bursting
+ * keeps one connection warm and closes the rest every 10 s; its next burst then opens them again,
+ * inside each transaction's `maxWait`. Opening one is the slow part: a new Postgres backend and its
+ * SCRAM sign-in, 30 to 150 ms on an idle Windows machine and up to 0.6 s on a loaded one, measured,
+ * and longer still under a whole test run, where two answers at once outlasted Prisma's 2 s
+ * (`plans-questions.test.ts`). A minute keeps a burst's connections for the next one, within the 15
+ * a replica may hold (`docs/configuration.md`), and well under the idle limits of NATs and proxies.
+ * Idle connections don't hold the process open (`allowExitOnIdle`), so a script that ends without
+ * `$disconnect` doesn't wait out the minute.
+ */
+export const POOL_IDLE_MS = 60_000;
+
 /** A client for the database at `databaseUrl`. The URL holds credentials: never log it. */
 export const createDb = (databaseUrl: string, options: CreateDbOptions = {}): Db =>
   new PrismaClient({
     transactionOptions: { maxWait: TRANSACTION_MAX_WAIT_MS },
     adapter: new PrismaPg({
       connectionString: utcConnectionString(databaseUrl),
+      idleTimeoutMillis: POOL_IDLE_MS,
+      allowExitOnIdle: true,
       ...(options.maxConnections === undefined ? {} : { max: options.maxConnections }),
     }),
   });
