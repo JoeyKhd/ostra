@@ -131,7 +131,7 @@ const moveBranch = async (spec: TaskSpec, how: "on-top" | "unrelated"): Promise<
 };
 
 describe("a reopen on the same box: resumed", () => {
-  it("takes the box the last session kept, loads the agent's own session, and sends the pending message once", async () => {
+  it("F-033/c1: takes the box the last session kept, loads the agent's own session, and sends the pending message once", async () => {
     const h = await runner();
     const { spec, boxId } = await firstSession(h, "kiwi");
     const checkout = path.join(h.dataDir, "tasks", spec.taskId, "workspace", "test1");
@@ -171,7 +171,7 @@ describe("a reopen on the same box: resumed", () => {
 });
 
 describe("a reopen on a fresh box: restored", () => {
-  it("restores the hidden ref and the archive on another runner, from another data folder, and the agent answers about earlier turns", async () => {
+  it("F-033/c1: restores the hidden ref and the archive on another runner, from another data folder, and the agent answers about earlier turns", async () => {
     const first = await runner();
     const { spec, saved } = await firstSession(first, "plum");
     const second = await runner();
@@ -366,7 +366,7 @@ describe("a reopen that can't use the archive: rebuilt", () => {
     expect(await exists(path.join(second.dataDir, "tasks", spec.taskId, "workspace", "test1", "lime.txt"))).toBe(true);
   }, 240_000);
 
-  it("runs a rebuilt spec's template as the first turn, on a fresh box", async () => {
+  it("F-033/c1: runs a rebuilt spec's template as the first turn, on a fresh box", async () => {
     const first = await runner();
     const { spec, saved } = await firstSession(first, "date");
     const second = await runner();
