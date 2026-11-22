@@ -24,6 +24,8 @@ const repoFiles = new Map([
 let harness: ApiHarness;
 let connectionId: string;
 
+const hostRepo = (hostRepoId: string, fullName: string) => ({ hostRepoId, fullName, defaultBranch: "main", private: true, cloneUrl: `https://github.example/${fullName}.git` });
+
 beforeAll(async () => {
   harness = await createApiHarness();
   harness.fakes.codeHost.apps.set(APP_ID, {
@@ -31,9 +33,13 @@ beforeAll(async () => {
     info: { appId: APP_ID, slug: "ostra-draft-app", name: "ostra draft app", permissions: { checks: "write", actions: "read" }, events: [] },
     bot: { name: "ostra-draft-app[bot]", email: "2+ostra-draft-app[bot]@users.noreply.github.com" },
     installations: [{ installationId, accountLogin: "ostra-test", accountKind: "organization", repositorySelection: "all" }],
-    repos: new Map([[installationId, [{ hostRepoId: "31", fullName: "ostra-test/shop", defaultBranch: "main", private: true, cloneUrl: "https://github.example/ostra-test/shop.git" }]]]),
+    repos: new Map([[installationId, [hostRepo("31", "ostra-test/shop"), hostRepo("32", "ostra-test/api"), hostRepo("33", "ostra-test/notes"), hostRepo("34", "ostra-test/ml")]]]),
   });
   harness.fakes.codeHost.files.set("ostra-test/shop", repoFiles);
+  // F-112/c1's other repos: one on npm, one with nothing detection knows, one on pip.
+  harness.fakes.codeHost.files.set("ostra-test/api", new Map([["package.json", '{"name":"api"}'], ["package-lock.json", "{}"], [".env.example", "API_TOKEN=\n"]]));
+  harness.fakes.codeHost.files.set("ostra-test/notes", new Map([["README.md", "# notes\n"]]));
+  harness.fakes.codeHost.files.set("ostra-test/ml", new Map([["requirements.txt", "numpy==2.1.0\n"]]));
   const connected = await (await harness.as(harness.fixture.a.admin)).github.connectExisting({ appId: APP_ID, privateKey: PEM, webhookSecret: "whsec-0123456789" });
   connectionId = connected.connectionId;
 });
@@ -102,5 +108,97 @@ describe("environment detection", () => {
     expect(saved).toMatchObject({ status: "saved", baseImage: null, setupScript: edited.setupScript });
     expect(saved.savedAt).not.toBeNull();
     expect(saved.entries).toEqual([expect.objectContaining({ kind: "variable", name: "API_URL", value: "http://localhost:4000" })]);
+  });
+});
+
+describe("environment detection over several repos", () => {
+  const repoInput = (fullName: string) => ({ connectionId, installationId, fullName });
+  const storedDraft = async (projectId: string) => harness.test.db.environment.findFirstOrThrow({ where: { projectId }, select: { status: true, setupScript: true, baseImage: true } });
+  const noAgentNoModel = async (run: () => Promise<void>) => {
+    const tasks = await harness.test.db.task.count();
+    const sessions = await harness.test.db.session.count();
+    await run();
+    expect(await harness.test.db.task.count()).toBe(tasks);
+    expect(await harness.test.db.session.count()).toBe(sessions);
+    expect(harness.fakes.modelProvider.testedTokens).toEqual([]);
+  };
+
+  it("F-112/c1: creating a project with several repos drafts its environment from each repo's files, each repo's setup under its own name, with no agent and no model", async () => {
+    await noAgentNoModel(async () => {
+      const admin = await harness.as(harness.fixture.a.admin);
+      const created = await admin.projects.create({
+        name: "several",
+        slug: "several",
+        access: "open",
+        repo: repoInput("ostra-test/shop"),
+        moreRepos: [repoInput("ostra-test/api"), repoInput("ostra-test/notes")],
+      });
+      // The setup script runs once per repo, in its folder, with OSTRA_REPO set: each repo gets its
+      // own lines, and the repo with nothing to go on runs none.
+      expect(await storedDraft(created.projectId)).toEqual({
+        status: "draft",
+        setupScript: [
+          "set -euo pipefail",
+          'case "$OSTRA_REPO" in',
+          "  'ostra-test/shop')",
+          "    corepack enable",
+          "    pnpm install --frozen-lockfile",
+          "    pnpm run codegen",
+          "    ;;",
+          "  'ostra-test/api')",
+          "    npm ci",
+          "    ;;",
+          "esac",
+          "",
+        ].join("\n"),
+        baseImage: "mcr.microsoft.com/devcontainers/typescript-node:22",
+      });
+      // Each repo's findings are there for the review, the second repo's variables too.
+      const detected = await admin.environments.detect({ projectId: projectIdSchema.parse(created.projectId) });
+      expect(detected.map((entry) => [entry.fullName, entry.detection.setupLines])).toEqual([
+        ["ostra-test/shop", ["corepack enable", "pnpm install --frozen-lockfile", "pnpm run codegen"]],
+        ["ostra-test/api", ["npm ci"]],
+        ["ostra-test/notes", []],
+      ]);
+      expect(detected[1]?.detection.variables.map((variable) => variable.name)).toEqual(["API_TOKEN"]);
+    });
+  });
+
+  it("F-112/c1: adding a repo to a project whose environment is still a draft drafts it again from each repo's files, with no agent and no model", async () => {
+    const admin = await harness.as(harness.fixture.a.admin);
+    const created = await admin.projects.create({ name: "growing", slug: "growing", access: "open", repo: repoInput("ostra-test/shop") });
+    const projectId = projectIdSchema.parse(created.projectId);
+    expect((await storedDraft(projectId)).setupScript).toBe("set -euo pipefail\ncorepack enable\npnpm install --frozen-lockfile\npnpm run codegen\n");
+
+    await noAgentNoModel(async () => {
+      await admin.projects.addRepo({ projectId, fullName: "ostra-test/ml" });
+    });
+    expect(await storedDraft(projectId)).toEqual({
+      status: "draft",
+      setupScript: [
+        "set -euo pipefail",
+        'case "$OSTRA_REPO" in',
+        "  'ostra-test/shop')",
+        "    corepack enable",
+        "    pnpm install --frozen-lockfile",
+        "    pnpm run codegen",
+        "    ;;",
+        "  'ostra-test/ml')",
+        "    pip install -r requirements.txt",
+        "    ;;",
+        "esac",
+        "",
+      ].join("\n"),
+      baseImage: "mcr.microsoft.com/devcontainers/typescript-node:22",
+    });
+  });
+
+  it("adding a repo leaves an environment a project admin saved as they saved it", async () => {
+    const admin = await harness.as(harness.fixture.a.admin);
+    const created = await admin.projects.create({ name: "reviewed", slug: "reviewed", access: "open", repo: repoInput("ostra-test/shop") });
+    const projectId = projectIdSchema.parse(created.projectId);
+    await admin.environments.save({ projectId, environment: { baseImage: null, setupScript: "pnpm install\n", envFiles: [], entries: [] } });
+    await admin.projects.addRepo({ projectId, fullName: "ostra-test/api" });
+    expect(await storedDraft(projectId)).toEqual({ status: "saved", setupScript: "pnpm install\n", baseImage: null });
   });
 });

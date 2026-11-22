@@ -9,6 +9,7 @@ import { requireOrganizationAdmin } from "../access.ts";
 import type { MemberScope } from "../access.ts";
 import { detectEnvironment, pathsToRead } from "../environment/detect.ts";
 import type { DetectedEnvironment } from "../environment/detect.ts";
+import { draftFromRepos } from "../environment/repo-drafts.ts";
 import type { Ports } from "../ports.ts";
 import { ensureBuiltInAgentProfile } from "./agent-profiles.ts";
 import { builtInProfileOfKindInTx } from "./refine-drafts.ts";
@@ -19,7 +20,8 @@ import { appOwnerInTx, installationUsable, linkInstallationInTx, linkOwnInstalla
 
 // F-086: an admin creates a project with one repo linked through the organization's App, and its one
 // environment as a draft (F-112 fills it from the repo's files). Its default code agent profile is
-// the organization's built-in OpenCode profile. Written by ticket 32.
+// the organization's built-in OpenCode profile. Written by ticket 32. Since 2026-11-22 (F-112/c1),
+// the draft comes from each of the project's repos, not the first alone (`draftFromRepos`).
 
 /** A repo the project is created with: the App's connection, the installation and the repo. */
 const projectRepoInputSchema = z.strictObject({
@@ -55,8 +57,9 @@ export type CreateProjectResult = UseCaseResult<
     readonly repoId: RepoId;
     readonly environmentId: EnvironmentId;
     /**
-     * What detection found in the repo, with its reasons, for the panel to show while the admin
-     * reviews the draft. Additive to the first contract (ticket 32).
+     * What detection found in the first repo, with its reasons, for the panel to show while the
+     * admin reviews the draft. Additive to the first contract (ticket 32). Every repo's is in
+     * `environments.detect`, and the stored draft is made from them all (F-112).
      */
     readonly detection: DetectedEnvironment;
   },
@@ -76,18 +79,28 @@ const refuse = (error: Exclude<CreateProjectResult, { readonly ok: true }>["erro
   message,
 });
 
+/** The repo's files read and its environment detected (F-112), or why its files couldn't be read. */
+export const readRepoDetection = async (
+  codeHost: CodeHostAdapter,
+  access: RepoAccess,
+  ref: string,
+): Promise<{ readonly ok: true; readonly detection: DetectedEnvironment } | { readonly ok: false; readonly reason: string }> => {
+  const listed = await codeHost.listTree(access, ref);
+  const tree = listed.ok ? listed.value : null;
+  const read = await codeHost.readFiles(access, ref, pathsToRead(tree));
+  if (!read.ok) {
+    return { ok: false, reason: `its files could not be read: ${read.error.message}` };
+  }
+  return { ok: true, detection: detectEnvironment({ tree, files: new Map(read.value.files.map((file) => [file.path, file.content] as const)) }) };
+};
+
 /**
  * Reads the repo's files and drafts its environment (F-112). A repo whose files can't be read
  * drafts nothing, with the reason, rather than blocking the project.
  */
 export const detectRepoEnvironment = async (codeHost: CodeHostAdapter, access: RepoAccess, ref: string): Promise<DetectedEnvironment> => {
-  const listed = await codeHost.listTree(access, ref);
-  const tree = listed.ok ? listed.value : null;
-  const read = await codeHost.readFiles(access, ref, pathsToRead(tree));
-  if (!read.ok) {
-    return { ...detectEnvironment({ tree: null, files: new Map() }), reasons: [{ file: "(the repo)", finding: `its files could not be read: ${read.error.message}` }] };
-  }
-  return detectEnvironment({ tree, files: new Map(read.value.files.map((file) => [file.path, file.content] as const)) });
+  const read = await readRepoDetection(codeHost, access, ref);
+  return read.ok ? read.detection : detectionWithoutFiles(read.reason);
 };
 
 /** A draft with nothing read from the repo, and why (F-112): what detection says when it can't read it. */
@@ -188,16 +201,22 @@ export const createProject: CreateProject = async (deps, input) => {
   if (first === undefined) {
     throw new Error("a project has a first repo");
   }
-  const { app, hostRepo } = first;
+  const { hostRepo } = first;
 
   const profileId = await ensureBuiltInAgentProfile(tx, organizationId);
   const poolId = await ensureDefaultPool(tx, organizationId);
 
-  const detection = await detectRepoEnvironment(
-    deps.adapters.codeHost,
-    { app, installationId: first.installationId, repo: hostRepo.fullName },
-    hostRepo.defaultBranch,
-  );
+  // F-112: each repo's files, through its own App's installation, in the project's order.
+  const detections = [];
+  for (const entry of reached) {
+    const fullName = repoFullNameSchema.parse(entry.hostRepo.fullName);
+    detections.push({
+      fullName,
+      detection: await detectRepoEnvironment(deps.adapters.codeHost, { app: entry.app, installationId: entry.installationId, repo: fullName }, entry.hostRepo.defaultBranch),
+    });
+  }
+  const detection = detections[0]?.detection ?? detectionWithoutFiles("the project has no repo");
+  const draft = draftFromRepos(detections);
 
   const project = await tx.project.create({
     data: {
@@ -239,11 +258,12 @@ export const createProject: CreateProject = async (deps, input) => {
     throw new Error("a project has a first repo");
   }
   await tx.projectPool.create({ data: { organizationId, projectId, poolId } });
-  // The environment starts as a draft: the detected setup script and base image, to be reviewed.
-  // Variables and secrets are listed in the detection for the form; a secret has no value yet, and
-  // a row without one can't be stored (the kind's check), so nothing is saved for them here.
+  // The environment starts as a draft: the setup script and base image detected from each repo, to
+  // be reviewed. Variables and secrets are listed in the detection for the form; a secret has no
+  // value yet, and a row without one can't be stored (the kind's check), so nothing is saved for
+  // them here.
   const environment = await tx.environment.create({
-    data: { organizationId, projectId, status: "draft", setupScript: detection.setupScript, baseImage: detection.baseImage },
+    data: { organizationId, projectId, status: "draft", setupScript: draft.setupScript, baseImage: draft.baseImage },
     select: { id: true },
   });
 

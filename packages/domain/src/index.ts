@@ -91,6 +91,7 @@ export * from "./use-cases/pull-request-states.ts";
 export * from "./use-cases/cleanup.ts";
 export * from "./use-cases/repo-checks.ts";
 export * from "./environment/detect.ts";
+export * from "./environment/repo-drafts.ts";
 export * from "./environment/services.ts";
 
 // Milestone 3.

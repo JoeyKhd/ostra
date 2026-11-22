@@ -98,7 +98,7 @@ export const environmentsRouter = router({
       if (environment === null) {
         throw new TRPCError({ code: "NOT_FOUND", message: "This project has no environment" });
       }
-      const repos = await db.repo.findMany({ where: { projectId: input.projectId, organizationId }, orderBy: { createdAt: "asc" } });
+      const repos = await db.repo.findMany({ where: { projectId: input.projectId, organizationId }, orderBy: [{ position: "asc" }, { createdAt: "asc" }] });
       return {
         environmentId: environmentIdSchema.parse(environment.id),
         status: environment.status,
@@ -129,7 +129,7 @@ export const environmentsRouter = router({
       const repos = await ctx.deps.db.repo.findMany({
         where: { projectId: input.projectId, organizationId: ctx.scope.organizationId },
         include: { ...installationStateSelect },
-        orderBy: { createdAt: "asc" },
+        orderBy: [{ position: "asc" }, { createdAt: "asc" }],
       });
       const out = [];
       for (const repo of repos) {

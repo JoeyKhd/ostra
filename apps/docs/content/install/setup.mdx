@@ -43,6 +43,8 @@ Optional. **Skip for now** sets it aside, and tasks start from prompts until you
 
 **Create a project** opens New project. Pick one or more repos the App can reach. ostra reads each repo's files, its lockfiles and setup files, and drafts the project's **environment**: the setup script every task runs before the agent starts, its tools, and its entries.
 
+The setup script runs once in each repo's folder, with `OSTRA_REPO` set to that repo's name (`owner/name`). When the repos need different setups, the draft puts each repo's lines under its name in a `case "$OSTRA_REPO"`. A repo you add later, while the environment is still a draft, is read the same way and the draft is made again; once you've saved the environment, adding a repo leaves it as you saved it.
+
 Check the draft, fill in any secrets, and **Save environment**. Why: every task of the project starts from this environment, so a setup that works once works for every task. Variables, secrets and files each belong to one repo, and a secret reaches only its own repo's checkout. Use dev and test credentials here, never production ones.
 
 ## 6. Connect a runner

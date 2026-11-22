@@ -1,15 +1,18 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { Db, Tx } from "@ostra/db";
-import { organizationIdSchema, projectIdSchema, repoFullNameSchema, repoIdSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
+import { environmentIdSchema, organizationIdSchema, projectIdSchema, repoFullNameSchema, repoIdSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { OrganizationId, ProjectId, RepoFullName, RepoId, TaskId } from "@ostra/protocol";
 
 import { requireProjectAccess } from "../access.ts";
 import type { MemberScope } from "../access.ts";
 import { NOT_LINKED_MESSAGE } from "../code-host/installations.ts";
+import { draftFromRepos } from "../environment/repo-drafts.ts";
+import type { RepoDetection } from "../environment/repo-drafts.ts";
 import type { TaskStateName } from "../lifecycles/task.ts";
 import type { AuditLog, ChangeNotices, Clock, JobQueue, ServerAdapters } from "../ports.ts";
 import type { UseCaseResult } from "../use-cases/common.ts";
+import { readRepoDetection } from "../use-cases/create-project.ts";
 import type { AddProjectRepo, RemoveProjectRepo } from "../use-cases/m4-signatures.ts";
 import { repoAccessFor } from "../use-cases/repo-access.ts";
 import { appendServerEvent } from "../use-cases/server-events.ts";
@@ -141,7 +144,7 @@ export const addProjectRepo = async (
     return { ok: false, error: "not-linked", message: NOT_LINKED_MESSAGE };
   }
   const hostRepo = reach.repo;
-  return deps.db.$transaction(async (tx): Promise<AddProjectRepoResult> => {
+  const added = await deps.db.$transaction(async (tx): Promise<AddProjectRepoResult> => {
     await lockProject(tx, organizationId, project.projectId);
     // Under the lock: the count and the positions another add may have changed.
     const repos = await tx.repo.findMany({ where: { projectId: project.projectId, organizationId }, select: { fullName: true, checkoutDir: true, position: true, hostRepoId: true } });
@@ -180,6 +183,45 @@ export const addProjectRepo = async (
     });
     await deps.notices.emitInTx(tx, { organizationId, projectId: project.projectId, entity: "project", entityId: project.projectId });
     return { ok: true, repoId, checkoutDir, position };
+  });
+  if (added.ok) {
+    await redraftEnvironment(deps, organizationId, project.projectId);
+  }
+  return added;
+};
+
+/**
+ * F-112: a repo added while the project's environment is still a draft drafts it again, from each of
+ * the project's repos' files in their order, with no agent and no model. A saved environment is one
+ * a project admin reviewed, and stays as it is. When a repo's files can't be read, the draft stays
+ * as it was rather than losing that repo's lines. Read outside any transaction: the files come from
+ * the code host.
+ */
+const redraftEnvironment = async (deps: ProjectReposDeps, organizationId: OrganizationId, projectId: ProjectId): Promise<void> => {
+  const environment = await deps.db.environment.findFirst({ where: { projectId, organizationId }, select: { id: true, status: true } });
+  if (environment?.status !== "draft") {
+    return;
+  }
+  const repos = await deps.db.repo.findMany({ where: { projectId, organizationId }, orderBy: { position: "asc" }, select: { id: true, fullName: true, defaultBranch: true } });
+  const detections: RepoDetection[] = [];
+  for (const repo of repos) {
+    const access = await repoAccessFor(deps.db, deps.adapters.secretStore, organizationId, repoIdSchema.parse(repo.id));
+    if (!access.ok) {
+      return;
+    }
+    const read = await readRepoDetection(deps.adapters.codeHost, access.access, repo.defaultBranch);
+    if (!read.ok) {
+      return;
+    }
+    detections.push({ fullName: repoFullNameSchema.parse(repo.fullName), detection: read.detection });
+  }
+  const draft = draftFromRepos(detections);
+  await deps.db.$transaction(async (tx) => {
+    // Only while it's still a draft: a project admin's save in the meantime stands.
+    const updated = await tx.environment.updateMany({ where: { id: environment.id, organizationId, status: "draft" }, data: { setupScript: draft.setupScript, baseImage: draft.baseImage } });
+    if (updated.count > 0) {
+      await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "environment", entityId: environmentIdSchema.parse(environment.id) });
+    }
   });
 };
 
