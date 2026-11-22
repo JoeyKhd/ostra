@@ -94,3 +94,21 @@ export const shortAge = (at: number, now: number): string => {
 
 /** A magic line's sample: `Closes CALC-142`. */
 export const magicSample = (mapping: Mapping, key: string | null): string => `${mapping.magicWord} ${key ?? "KEY"}-142`;
+
+/**
+ * "Make a ticket for every prompt task" on the Boards page (F-097/c2, prompt-tickets.md): no board
+ * to name, off, on with the board that takes the tickets, or on but paused while the tracker's
+ * connection isn't active (the board keeps the setting; no ticket is made until it's back).
+ */
+export type PromptTicketsState =
+  | { readonly kind: "none" }
+  | { readonly kind: "off" }
+  | { readonly kind: "on"; readonly board: BoardView }
+  | { readonly kind: "paused"; readonly board: BoardView };
+
+export const promptTicketsState = (view: BoardsData): PromptTicketsState => {
+  if (view.boards.length === 0) return { kind: "none" };
+  const board = view.boards.find((item) => item.ticketsForPromptTasks);
+  if (board === undefined) return { kind: "off" };
+  return view.connection?.state === "active" ? { kind: "on", board } : { kind: "paused", board };
+};

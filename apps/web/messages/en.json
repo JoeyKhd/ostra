@@ -2841,6 +2841,13 @@
     "nextBranch": "{agent} works on its own branch,",
     "nextBranchEmpty": "{agent} works on its own branch.",
     "nextPr": "It opens a pull request. Steer it while it runs, and reopen it any time.",
+    "next": {
+      "ticket": "It gets a ticket on {board} as it starts, linked to the task both ways."
+    },
+    "panel": {
+      "ticket": "Ticket",
+      "ticketValue": "made on {key} when it starts"
+    },
     "recent": "Recent in {project}",
     "allTasks": "All tasks",
     "thisTask": "This task",
@@ -3843,6 +3850,20 @@
       "attach": "Attach",
       "attaching": "Attaching…",
       "justAttached": "Attached. The first poll is filling the Inbox."
+    },
+    "promptTickets": {
+      "title": "Prompt tasks",
+      "label": "Make a ticket for every prompt task",
+      "on": "Each task a member starts from a prompt gets a ticket on {board} as it starts. Refine tasks make theirs from their draft.",
+      "off": "Off: a prompt task makes no ticket. A member can still use {createTicket} on one.",
+      "none": "A ticket needs a board. Attach a team above, then turn it on.",
+      "paused": "On, but the Linear connection isn't active, so prompt tasks get no ticket on {board} until it is.",
+      "reconnect": "Reconnect Linear",
+      "board": "Board",
+      "boardAria": "Board for prompt tasks' tickets",
+      "panelKey": "Prompt tasks",
+      "panelHere": "Get their tickets here",
+      "detachMore": "Prompt tasks stop getting tickets: {setting} turns off."
     },
     "mapping": {
       "title": "Status mapping",

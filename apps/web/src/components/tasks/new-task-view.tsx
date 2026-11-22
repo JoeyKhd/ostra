@@ -15,6 +15,7 @@ import {
   SlidersHorizontalIcon,
   SparklesIcon,
   SquareTerminalIcon,
+  TicketPlusIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -65,6 +66,8 @@ import { doingText, taskStateText } from "./task-words";
 
 type ProjectSummary = RouterOutputs["projects"]["list"][number];
 type Runner = RouterOutputs["runners"]["mine"][number];
+/** F-097/c2: the board a code task from a prompt gets its ticket on, while the project's setting is on. */
+type TicketBoard = NonNullable<RouterOutputs["projects"]["get"]["promptTicketBoard"]>;
 
 const NO_KEY_ID = "new-task-no-key";
 const BUDGET_WAIT_ID = "new-task-budget-wait";
@@ -187,13 +190,15 @@ const NextRow = ({ icon, children }: { readonly icon: ReactNode; readonly childr
   </li>
 );
 
-const WhatHappensNext = ({ project, agentName, runner, slug, files }: {
+const WhatHappensNext = ({ project, agentName, runner, slug, files, ticketBoard }: {
   readonly project: ProjectSummary;
   readonly agentName: string;
   readonly runner: Runner | null;
   readonly slug: string | null;
   /** Milestone 9 (ticket 15): the tray's files, whose row comes second while it holds any. */
   readonly files: readonly TrayItemView[];
+  /** F-097/c2 (prompt-tickets.md): the board its ticket is made on as it starts; `null` for none. */
+  readonly ticketBoard: TicketBoard | null;
 }) => {
   const repo = project.repos[0];
   return (
@@ -207,6 +212,11 @@ const WhatHappensNext = ({ project, agentName, runner, slug, files }: {
           </NextRow>
         )}
         <FilesNextRow entries={files} variant="row" className="max-md:hidden" />
+        {ticketBoard === null ? null : (
+          <NextRow icon={<TicketPlusIcon aria-hidden />}>
+            <span data-testid="next-ticket">{fill(t("newTask.next.ticket"), { board: <b className="font-medium">{ticketBoard.name}</b> })}</span>
+          </NextRow>
+        )}
         <NextRow icon={<GitBranchIcon aria-hidden />}>
           {slug === null ? t("newTask.nextBranchEmpty", { agent: agentName }) : (
             <>
@@ -303,8 +313,10 @@ const PanelSkeleton = () => (
   </div>
 );
 
-const Properties = ({ project, profile, runner, boxSize, noKey, servingKey, files, takes }: {
+const Properties = ({ project, profile, runner, boxSize, noKey, servingKey, files, takes, ticketBoard }: {
   readonly project: ProjectSummary;
+  /** F-097/c2: the board its ticket is made on as it starts (the `Ticket` row); `null` for none. */
+  readonly ticketBoard: TicketBoard | null;
   /** Milestone 9 (ticket 15): the tray's files, for the `Attachments` group, against the limits. */
   readonly files: { readonly entries: readonly TrayItemView[]; readonly limits: FileLimits | null };
   /** What the profile's model reads (`Takes`); `null` while it's read or with no model. */
@@ -331,6 +343,18 @@ const Properties = ({ project, profile, runner, boxSize, noKey, servingKey, file
           </>
         )}
         <PropRow label={t("newTask.keyBranch")}><span className="text-muted">{t("newTask.branchLater")}</span></PropRow>
+        {ticketBoard === null ? null : (
+          <PropRow label={t("newTask.panel.ticket")}>
+            {t("newTask.panel.ticketValue")
+              .split(/(\{key\})/)
+              .filter((piece) => piece.trim() !== "")
+              .map((piece) => (piece === "{key}" ? (
+                <span key={piece} className="truncate font-mono text-ui" data-testid="ticket-board-key">{ticketBoard.key ?? ticketBoard.name}</span>
+              ) : (
+                <span key={piece} className="shrink-0 text-muted">{piece.trim()}</span>
+              )))}
+          </PropRow>
+        )}
       </PropGroup>
       {files.limits === null ? null : <NewTaskAttachmentsGroup entries={files.entries} limits={files.limits} />}
       <PropGroup title={t("newTask.agentProfile")}>
@@ -477,6 +501,9 @@ export const NewTaskView = () => {
   const admins = (members.data ?? []).filter((member) => member.role === "admin").map((member) => member.name);
   // A repo that requires signed commits stops every task in the project (F-055).
   const repos = detail.data?.repos ?? [];
+  // F-097/c2 (prompt-tickets.md): with the project's setting on, a code task gets its ticket as it
+  // starts; a refine task makes its ticket from its draft, so it says nothing of one.
+  const ticketBoard = kind === "code" ? (detail.data?.promptTicketBoard ?? null) : null;
   const blocked = unsupportedRepos(repos).length > 0;
 
   const filesBlock = sendState.kind === "empty" || sendState.kind === "blocked" || note?.kind === "runner";
@@ -511,7 +538,7 @@ export const NewTaskView = () => {
     <PageFrame
       crumbs={crumbs}
       wideProperties
-      properties={project === undefined ? <PanelSkeleton /> : <Properties project={project} profile={profile} runner={runner} boxSize={defaultSize} noKey={noKey} servingKey={check.data?.kind === "open" && check.data.providerName !== "" ? check.data.providerName : null} files={{ entries: attachments.items, limits: files.limits }} takes={takes} />}
+      properties={project === undefined ? <PanelSkeleton /> : <Properties project={project} profile={profile} runner={runner} boxSize={defaultSize} noKey={noKey} servingKey={check.data?.kind === "open" && check.data.providerName !== "" ? check.data.providerName : null} files={{ entries: attachments.items, limits: files.limits }} takes={takes} ticketBoard={ticketBoard} />}
     >
       <div>
         <PageHeading
@@ -629,7 +656,7 @@ export const NewTaskView = () => {
             {noKey === null ? (
               <>
                 <FilesNextRow entries={attachments.items} variant="line" className="md:hidden" />
-                <WhatHappensNext project={project} agentName={agentName} runner={runner} slug={slug} files={attachments.items} />
+                <WhatHappensNext project={project} agentName={agentName} runner={runner} slug={slug} files={attachments.items} ticketBoard={ticketBoard} />
               </>
             ) : (
               <Section title={t("newTask.nextTitle")} className="mt-8"><NoKeyNext noKey={noKey} /></Section>

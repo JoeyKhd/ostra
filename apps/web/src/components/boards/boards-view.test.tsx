@@ -6,7 +6,8 @@ import { boardIdSchema, connectionIdSchema } from "@ostra/protocol";
 import { t } from "@/lib/messages";
 
 import { BoardProperties, MappingForm, NextTask } from "./boards-view";
-import { groupStatuses, mappingProblems, mappingSavable, nextTaskLines, sameMapping } from "./board-words";
+import { groupStatuses, mappingProblems, mappingSavable, nextTaskLines, promptTicketsState, sameMapping } from "./board-words";
+import { PromptTickets } from "./prompt-tickets";
 import type { BoardView, BoardsData, Mapping } from "./board-words";
 
 // F-007, F-031: the boards page (project-boards.md): the drafted mapping, an edit, a status that
@@ -122,5 +123,77 @@ describe("the panel", () => {
     expect(html).toContain("acme");
     expect(html).toContain(t("boards.panel.notInstalled"));
     expect(html).toContain("Statuses in CALC");
+  });
+});
+
+describe("Prompt tasks: make a ticket for every prompt task (prompt-tickets.md)", () => {
+  const web: BoardView = { ...board, id: boardIdSchema.parse("01900000-0000-7000-8000-0000000000b2"), name: "Web platform", key: "WEB" };
+  const taking = { ...board, ticketsForPromptTasks: true };
+  const row = (data: BoardsData, { error = null, organizationAdmin = true }: { readonly error?: string | null; readonly organizationAdmin?: boolean } = {}) =>
+    renderToStaticMarkup(<PromptTickets view={data} selected={data.boards[0]} onSet={() => undefined} pending={false} error={error} organizationAdmin={organizationAdmin} />);
+  const connection = view.connection;
+  if (connection === null) throw new Error("the fixture's view has a connection");
+
+  it("F-097/c2: reads the setting's state from the boards: none, off, on, and paused while the connection isn't active", () => {
+    expect(promptTicketsState({ ...view, boards: [] })).toEqual({ kind: "none" });
+    expect(promptTicketsState({ ...view, boards: [board, web] })).toEqual({ kind: "off" });
+    expect(promptTicketsState({ ...view, boards: [web, taking] })).toEqual({ kind: "on", board: taking });
+    expect(promptTicketsState({ ...view, connection: { ...connection, state: "failed" }, boards: [taking] })).toEqual({ kind: "paused", board: taking });
+  });
+
+  it("F-097/c2: off by default: the switch is off, and the line says Create ticket still makes one", () => {
+    const html = row({ ...view, boards: [board, web] });
+    expect(html).toContain('role="switch"');
+    expect(html).toContain('aria-checked="false"');
+    expect(html).toContain("Off: a prompt task makes no ticket. A member can still use <b");
+    expect(html).not.toContain(esc(t("boards.promptTickets.boardAria")));
+  });
+
+  it("F-097/c2: on with one board, the sentence names it and there's no picker; with several, the picker names it too", () => {
+    const one = row({ ...view, boards: [taking] });
+    expect(one).toContain('aria-checked="true"');
+    expect(one).toContain(">Calculator</b> as it starts. Refine tasks make theirs from their draft.");
+    expect(one).not.toContain('role="combobox"');
+    const several = row({ ...view, boards: [taking, web] });
+    expect(several).toContain('role="combobox"');
+    expect(several).toContain(esc(t("boards.promptTickets.boardAria")));
+    expect(several).toContain("· CALC");
+  });
+
+  it("F-097/c2: with no board attached the switch is off and disabled, and says to attach a team first", () => {
+    const html = row({ ...view, boards: [] });
+    expect(html).toContain('aria-checked="false"');
+    expect(html).toContain("disabled");
+    expect(html).toContain(t("boards.promptTickets.none"));
+  });
+
+  it("F-097/c2: paused while Linear's connection isn't active: on, the picker resting, Reconnect Linear for an organization admin only", () => {
+    const paused: BoardsData = { ...view, connection: { ...connection, state: "failed" }, boards: [taking, web] };
+    const html = row(paused);
+    expect(html).toContain('aria-checked="true"');
+    expect(html).toContain(esc("On, but the Linear connection isn't active, so prompt tasks get no ticket on <b"));
+    expect(html).toContain('href="/organization/linear"');
+    expect(html).toMatch(/role="combobox"[^>]*disabled/);
+    expect(row(paused, { organizationAdmin: false })).not.toContain('href="/organization/linear"');
+  });
+
+  it("F-097/c2: a member reads it: the switch disabled, the board as plain text", () => {
+    const html = row({ ...view, canEdit: false, boards: [taking, web] });
+    expect(html).toContain('aria-checked="true"');
+    expect(html).toContain("disabled");
+    expect(html).not.toContain('role="combobox"');
+    expect(html).toContain('data-testid="prompt-tickets-board"');
+  });
+
+  it("F-097/c2: a failed save says the server's reason under the row, as an alert", () => {
+    const html = row({ ...view, boards: [board, web] }, { error: "Only a project admin changes which prompt tasks get a ticket" });
+    expect(html).toContain('role="alert"');
+    expect(html).toContain("Only a project admin changes which prompt tasks get a ticket");
+    expect(html).toContain('aria-checked="false"');
+  });
+
+  it("F-097/c2: the panel says which board gets their tickets", () => {
+    expect(renderToStaticMarkup(<BoardProperties view={view} board={taking} mapping={drafted} now={now} />)).toContain(t("boards.promptTickets.panelHere"));
+    expect(renderToStaticMarkup(<BoardProperties view={view} board={board} mapping={drafted} now={now} />)).not.toContain(t("boards.promptTickets.panelHere"));
   });
 });

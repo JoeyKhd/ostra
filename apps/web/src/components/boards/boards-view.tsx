@@ -14,6 +14,7 @@ import {
   CircleXIcon,
   ContrastIcon,
   SquareKanbanIcon,
+  TicketPlusIcon,
   TriangleAlertIcon,
   XIcon,
 } from "lucide-react";
@@ -35,6 +36,7 @@ import { Dot } from "@/components/ui/status";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
+import { tNodes } from "@/lib/message-nodes";
 import { plural, t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
@@ -54,6 +56,7 @@ import {
   statusTypeOf,
 } from "./board-words";
 import type { BoardView, BoardsData, Mapping, StatusType } from "./board-words";
+import { PromptTickets } from "./prompt-tickets";
 
 type Team = RouterOutputs["boards"]["available"][number];
 
@@ -170,7 +173,16 @@ export const AttachedRows = ({ view, selectedId, onSelect, onDetach, detaching, 
             </AlertDialogTrigger>
             <AlertDialogContent
               title={t("boards.attached.detachTitle", { name: board.name })}
-              body={t("boards.attached.detachBody", { key: board.key ?? board.name })}
+              body={
+                board.ticketsForPromptTasks ? (
+                  <>
+                    {t("boards.attached.detachBody", { key: board.key ?? board.name })}{" "}
+                    {tNodes("boards.promptTickets.detachMore", { setting: <b className="font-medium text-text">{t("boards.promptTickets.label")}</b> })}
+                  </>
+                ) : (
+                  t("boards.attached.detachBody", { key: board.key ?? board.name })
+                )
+              }
               cancel={t("common.cancel")}
               action={t("boards.attached.detach")}
               onAction={() => { onDetach(board); }}
@@ -457,6 +469,17 @@ export const BoardProperties = ({ view, board, mapping, now }: { readonly view: 
           <PropRow label={t("boards.panel.attached")}>
             <span className="font-mono">{day(board.attachedAt)}</span>
           </PropRow>
+          {/* F-097/c2: the board the project's prompt tasks get their tickets on (prompt-tickets.md). */}
+          <PropRow label={t("boards.promptTickets.panelKey")}>
+            {board.ticketsForPromptTasks ? (
+              <>
+                <TicketPlusIcon aria-hidden />
+                <span className="truncate">{t("boards.promptTickets.panelHere")}</span>
+              </>
+            ) : (
+              <span className="text-faint">–</span>
+            )}
+          </PropRow>
           <Sep />
         </>
       )}
@@ -545,6 +568,8 @@ export const BoardsView = ({ projectId, admin }: { readonly projectId: ProjectId
   );
   const detach = useMutation(trpc.boards.detach.mutationOptions({ onSuccess: refresh }));
   const startFromLinear = useMutation(trpc.linear.setBoardAgentMode.mutationOptions({ onSuccess: refresh, onError: refresh }));
+  // F-097/c2: applies at once, as "Start from Linear" does; `Save mapping` stays the mapping's.
+  const promptTickets = useMutation(trpc.projects.setPromptTickets.mutationOptions({ onSuccess: refresh, onError: refresh }));
   const save = useMutation(
     trpc.boards.saveMapping.mutationOptions({
       onSuccess: async (_, input) => {
@@ -590,6 +615,9 @@ export const BoardsView = ({ projectId, admin }: { readonly projectId: ProjectId
           <Section title={t("boards.attached.title")}>
             <LoadingRows rows={2} height="h-[38px]" />
           </Section>
+          <Section title={t("boards.promptTickets.title")}>
+            <LoadingRows rows={1} height="h-12" />
+          </Section>
           <Section title={t("boards.mapping.title")}>
             <LoadingRows rows={5} height="h-12" />
           </Section>
@@ -622,6 +650,16 @@ export const BoardsView = ({ projectId, admin }: { readonly projectId: ProjectId
               />
             ) : null}
             {justAttached ? <p className="mt-2 text-ui text-muted">{t("boards.attached.justAttached")}</p> : null}
+          </Section>
+          <Section title={t("boards.promptTickets.title")}>
+            <PromptTickets
+              view={view}
+              selected={board}
+              pending={promptTickets.isPending}
+              error={errorText(promptTickets.error)}
+              organizationAdmin={admin}
+              onSet={(boardId) => { promptTickets.mutate({ projectId, boardId }); }}
+            />
           </Section>
           {board === undefined ? null : (
             <Section
