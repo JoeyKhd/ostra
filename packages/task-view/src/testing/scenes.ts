@@ -306,17 +306,17 @@ const calc192Full = calc192Log();
 const calc192Events = calc192Full.log.events();
 
 /** S1-working: four minutes into turn 1, the second `pnpm test history` running after the first failed. */
-export const s1Working: Scene = { name: "s1-working", taskId: calc192.taskId, events: calc192Events.slice(0, calc192Full.workingEnd), liveText: [], now: calc192.workingNow };
+export const s1Working: Scene = { name: "s1-working", taskId: calc192.taskId, kind: "code", events: calc192Events.slice(0, calc192Full.workingEnd), liveText: [], now: calc192.workingNow };
 
 /** S1: the same turn, its run closed (`1 failed, then passed`), the capture, the prose and OpenCode's question. */
-export const s1: Scene = { name: "s1", taskId: calc192.taskId, events: calc192Events.slice(0, calc192Full.questionEnd), liveText: [], now: calc192.questionNow };
+export const s1: Scene = { name: "s1", taskId: calc192.taskId, kind: "code", events: calc192Events.slice(0, calc192Full.questionEnd), liveText: [], now: calc192.questionNow };
 
 /**
  * S2: four turns over two sessions (the box idled out after turn 1); turn 4 pushed after the
  * project's 3 checks passed in the box, core opened PR #483, and CI runs on GitHub. Every turn's
  * hidden ref and save, and each session's runner connection, are bookkeeping.
  */
-export const s2: Scene = { name: "s2", taskId: calc192.taskId, events: calc192Events, liveText: [], now: calc192.prNow };
+export const s2: Scene = { name: "s2", taskId: calc192.taskId, kind: "code", events: calc192Events, liveText: [], now: calc192.prNow };
 
 // ---------------------------------------------------------------------------------------------
 // S3: the AI review of PR #483, round 2 of 3, a task of kind `review`.
@@ -456,7 +456,7 @@ const review483Log = (): SceneLog => {
  * `ostra_submit_review` that core answers as already handed in. Both hand-ins are before their
  * turn's prose; their results show after it.
  */
-export const s3: Scene = { name: "s3", taskId: review483.taskId, events: review483Log().events(), liveText: [], now: review483.now };
+export const s3: Scene = { name: "s3", taskId: review483.taskId, kind: "review", events: review483Log().events(), liveText: [], now: review483.now };
 
 // ---------------------------------------------------------------------------------------------
 // S5: plan first on CALC-196 from Linear (the `Careful` profile). Alex Kim drives.
@@ -546,10 +546,10 @@ const calc196Log = (): { readonly log: SceneLog; readonly planEnd: number } => {
 const calc196Full = calc196Log();
 
 /** S5-plan: the plan turn's reads, its prose and the plan proposed; the turn waits on Alex. */
-export const s5Plan: Scene = { name: "s5-plan", taskId: calc196.taskId, events: calc196Full.log.events().slice(0, calc196Full.planEnd), liveText: [], now: calc196.planNow };
+export const s5Plan: Scene = { name: "s5-plan", taskId: calc196.taskId, kind: "code", events: calc196Full.log.events().slice(0, calc196Full.planEnd), liveText: [], now: calc196.planNow };
 
 /** S5-approved: Alex approved with an edit; the build turn reads, says what it starts with, and edits plan step 1 of 6. */
-export const s5Approved: Scene = { name: "s5-approved", taskId: calc196.taskId, events: calc196Full.log.events(), liveText: [], now: calc196.buildNow };
+export const s5Approved: Scene = { name: "s5-approved", taskId: calc196.taskId, kind: "code", events: calc196Full.log.events(), liveText: [], now: calc196.buildNow };
 
 // ---------------------------------------------------------------------------------------------
 

@@ -1042,6 +1042,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           projectName={projectName}
           ticketKey={data.ticket?.key ?? null}
           taskId={taskId}
+          taskKind={data.kind}
           log={log.state}
           memberId={me.data?.memberId ?? null}
           memberName={memberName}

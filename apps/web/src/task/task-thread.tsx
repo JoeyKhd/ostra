@@ -20,7 +20,7 @@ import type { ModelImageInput } from "@ostra/domain";
 import type { AgentMessage } from "@ostra/domain/agent-message";
 import type { FileLimits } from "@ostra/domain/file-limits";
 import { clientMessageIdSchema } from "@ostra/protocol";
-import type { MessageFileId, TaskId } from "@ostra/protocol";
+import type { MessageFileId, TaskId, TaskKind } from "@ostra/protocol";
 import type { MemberId } from "@ostra/protocol";
 import { foldTaskEvents, visibleLiveText } from "@ostra/task-view";
 import type { MessageFileView, OptimisticMessage, TaskUIMessage } from "@ostra/task-view";
@@ -412,6 +412,8 @@ const TicketContextAtStart = ({ taskId }: { readonly taskId: TaskId }) => {
 
 export type TaskThreadProps = {
   readonly taskId: TaskId;
+  /** The task's kind: only a review task's turn hands in a review (milestone 10, F-151). */
+  readonly taskKind: TaskKind;
   /** The task's project, for the budget's held row (F-037). */
   readonly projectName?: string;
   /** The task's ticket's key, for a Linear follow-up's header; `null` for a prompt task. */
@@ -451,7 +453,7 @@ export type TaskThreadProps = {
   readonly composerFiles?: ComposerFiles | null;
 };
 
-export const TaskThread = ({ taskId, projectName, ticketKey = null, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, approvalLostRace, questionCard, tail, live, notDriver, canReopen = false, composerHint = null, instead, hasEarlier, loadEarlier, onFold, composerFiles = null }: TaskThreadProps) => {
+export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, approvalLostRace, questionCard, tail, live, notDriver, canReopen = false, composerHint = null, instead, hasEarlier, loadEarlier, onFold, composerFiles = null }: TaskThreadProps) => {
   const trpc = useTRPC();
   const [optimistic, setOptimistic] = useState<readonly OptimisticMessage[]>([]);
   const previous = useRef<readonly TaskUIMessage[]>([]);
@@ -487,11 +489,11 @@ export const TaskThread = ({ taskId, projectName, ticketKey = null, log, memberI
 
   const messages = useMemo(() => {
     const started = performance.now();
-    const next = foldTaskEvents(log.events, visibleLiveText(log.live), { optimistic, previous: previous.current, removedFiles });
+    const next = foldTaskEvents(log.events, visibleLiveText(log.live), { optimistic, previous: previous.current, removedFiles, taskKind });
     onFold?.(performance.now() - started, next.length);
     previous.current = next;
     return next;
-  }, [log.events, log.live, optimistic, onFold, removedFiles]);
+  }, [log.events, log.live, optimistic, onFold, removedFiles, taskKind]);
 
   // F-072: a diff-comments message is drawn from the comments it carried (`diff.comments.list`), read
   // only once the thread has one. A task's notice refreshes them (`change-scopes.ts`); a message whose

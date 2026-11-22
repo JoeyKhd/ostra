@@ -1,5 +1,5 @@
 import { segmentIdSchema, serverOnlyKinds, storedEventSchema, toolCallIdSchema } from "@ostra/protocol";
-import type { SegmentId, SessionId, StoredEvent, TaskEvent, TaskEventOf, TaskId, ToolCallId, ToolKind, TurnId } from "@ostra/protocol";
+import type { SegmentId, SessionId, StoredEvent, TaskEvent, TaskEventOf, TaskId, TaskKind, ToolCallId, ToolKind, TurnId } from "@ostra/protocol";
 import { eventFixtures } from "@ostra/protocol/testing";
 
 import type { LiveText } from "../live-text.ts";
@@ -30,6 +30,8 @@ export const sceneId = (group: string, n: number): string => `0196f1a0-${group}-
 export type Scene = {
   readonly name: string;
   readonly taskId: TaskId;
+  /** The task's kind, as `tasks.get` gives it: the fold's `taskKind`. */
+  readonly kind: TaskKind;
   readonly events: readonly StoredEvent[];
   /** The viewer's partial text, for a scene caught mid-sentence. */
   readonly liveText: readonly LiveText[];

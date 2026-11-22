@@ -109,8 +109,8 @@ export const foldCoverage = {
   "ci.updated": eventLog("the PR's CI line reads `tasks.get` (milestone 6)"),
   "round.started": eventLog("the round's message is ostra's own (milestone 6)"),
   "round.capped": eventLog("the round limit's block reads `tasks.get` (milestone 6)"),
-  "review.submitted": part(["data-review"], "a result of the turn that handed it in (milestone 10); a repeat is its own, `repeat: true`"),
-  "review.posted": part(["data-review"], "its hand-in's `posted` (milestone 10); the code task's copy, with no hand-in in its log, is the Event log's"),
+  "review.submitted": part(["data-review"], "in a review task (`taskKind`), a result of the turn that handed it in (milestone 10); a repeat is its own, `repeat: true`; the code task's copy of the first hand-in, made by none of its turns, is the Event log's"),
+  "review.posted": part(["data-review"], "its hand-in's `posted` in a review task (milestone 10); the code task's copy, whose hand-in joined no turn, is the Event log's"),
   "reviewers.updated": eventLog("milestone 6"),
   "environment.proposed": eventLog("milestone 6"),
   // Protocol minor 6 (F-138): the turn's subagents, drawn as its badge and window.

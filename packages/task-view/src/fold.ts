@@ -24,6 +24,7 @@ import type {
   SubagentId,
   SubagentStatus,
   TaskEventOf,
+  TaskKind,
   ToolCallId,
   ToolKind,
   TurnId,
@@ -99,6 +100,14 @@ export type FoldOptions = {
    * missing from it is numbered on from the turn that started before it, from 1 at the log's start.
    */
   readonly turnOrdinals?: ReadonlyMap<TurnId, number>;
+  /**
+   * Milestone 10 (F-151): the task's kind (`tasks.get`'s `kind`). Only a review task's turn hands
+   * in a review, so only in its thread does `review.submitted` join a turn (`data-review`). Core
+   * writes the first hand-in into the code task's log too (`submitReview`), where none of its
+   * turns made it, so in any other task's thread it's the Event log's. Left out, the task is read
+   * as not a review task.
+   */
+  readonly taskKind?: TaskKind;
 };
 
 /** One turn of `tasks.get`'s `usage.turns`, as far as the fold's figures need it. */
@@ -1442,7 +1451,9 @@ export const foldTaskEvents = (
       }
       case "review.submitted": {
         // Milestone 10 (F-151): a review task's hand-in is a result of the turn that handed it in; a
-        // repeat for a round already in is its own result, with the same posts.
+        // repeat for a round already in is its own result, with the same posts. The code task's
+        // copy of the first hand-in was made by none of its turns: the Event log keeps it.
+        if (options.taskKind !== "review") break;
         const existing = reviews.get(event.reviewRunId);
         const rec: ReviewRecord = existing ?? { reviewRunId: event.reviewRunId, posted: [], owners: [] };
         reviews.set(event.reviewRunId, rec);
@@ -1451,8 +1462,8 @@ export const foldTaskEvents = (
         break;
       }
       case "review.posted": {
-        // Its hand-in's result gains where it was posted. The code task's copy of the event has no
-        // hand-in in its log: the Event log keeps it there.
+        // Its hand-in's result gains where it was posted. Core writes it in both tasks' logs; in the
+        // code task's no hand-in joined a turn, so the Event log keeps it there.
         const rec = reviews.get(event.reviewRunId);
         if (rec === undefined) break;
         rec.posted.push({ repoId: event.repoId, prNumber: event.prNumber, url: event.url });

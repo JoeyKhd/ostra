@@ -50,6 +50,8 @@ const questionPrefix: TaskEvent[] = [...turnPrefix, f["question.asked"]];
 type KindCase = {
   readonly prefix: readonly TaskEvent[];
   readonly check: (messages: TaskUIMessage[]) => void;
+  /** The fold's options, for a kind that lands only in some tasks (a review task's hand-in). */
+  readonly options?: Parameters<typeof foldTaskEvents>[2];
 };
 
 const findPart = (messages: readonly TaskUIMessage[], type: string): TaskUIPart | undefined =>
@@ -486,8 +488,9 @@ const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
     },
   },
   "review.submitted": {
-    // Milestone 10 (F-151): a result of the turn that handed it in; it drew nothing before.
+    // Milestone 10 (F-151): in a review task, a result of the turn that handed it in; it drew nothing before.
     prefix: turnPrefix,
+    options: { taskKind: "review" },
     check: (m) => {
       expect(lastTurn(m)?.parts.find((part) => part.type === "data-review")).toMatchObject({ data: { reviewRunId: fixtureIds.reviewRun, blocking: 1, nits: 2, repeat: false, posted: [] } });
       expect(typesOf(m)).not.toContain("data-system");
@@ -496,6 +499,7 @@ const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
   "review.posted": {
     // Milestone 10 (F-151): its hand-in's result says where it was posted; it drew nothing before.
     prefix: [...turnPrefix, f["review.submitted"]],
+    options: { taskKind: "review" },
     check: (m) => {
       expect(lastTurn(m)?.parts.find((part) => part.type === "data-review")).toMatchObject({ data: { posted: [{ repoId: fixtureIds.repo, prNumber: 7, url: f["review.posted"].url }] } });
       expect(typesOf(m)).not.toContain("data-system");
@@ -703,8 +707,8 @@ describe("foldTaskEvents, one kind at a time", () => {
   for (const kind of taskEventKinds) {
     it(`folds ${kind} (protocol fixture)`, () => {
       const cases: Readonly<Record<TaskEventKind, KindCase>> = kindCases;
-      const { prefix, check } = cases[kind];
-      const messages = foldTaskEvents(storeEvents([...prefix, f[kind]]), []);
+      const { prefix, check, options } = cases[kind];
+      const messages = foldTaskEvents(storeEvents([...prefix, f[kind]]), [], options);
       expect(typesOf(messages)).not.toContain("data-problem");
       check(messages);
     });
@@ -732,8 +736,9 @@ describe("where each kind lands (F-151)", () => {
   /** Why a kind isn't where `foldCoverage` places it, or `null` when it is. */
   const misplaced = (kind: TaskEventKind): string | null => {
     const { prefix, event } = drawing[kind] ?? { prefix: cases[kind].prefix, event: f[kind] };
-    const without = foldTaskEvents(storeEvents(prefix), []);
-    const withIt = foldTaskEvents(storeEvents([...prefix, event]), []);
+    const { options } = cases[kind];
+    const without = foldTaskEvents(storeEvents(prefix), [], options);
+    const withIt = foldTaskEvents(storeEvents([...prefix, event]), [], options);
     const place = foldCoverage[kind];
     switch (place.in) {
       case "message": {

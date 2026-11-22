@@ -10,7 +10,7 @@ import {
   taskIdSchema,
   turnIdSchema,
 } from "@ostra/protocol";
-import type { ApprovalId, ApprovalOption, MemberId, TaskEvent, ToolCallId, TurnId } from "@ostra/protocol";
+import type { ApprovalId, ApprovalOption, MemberId, TaskEvent, TaskKind, ToolCallId, TurnId } from "@ostra/protocol";
 import { eventFixtures } from "@ostra/protocol/testing";
 
 import type { LiveText } from "../live-text.ts";
@@ -33,11 +33,12 @@ const cellTask = (group: string) => ({
 
 type CellBuild = (log: SceneLog, task: ReturnType<typeof cellTask>) => { readonly now?: number; readonly liveText?: readonly LiveText[] } | undefined;
 
-const cell = (name: string, group: string, start: string, build: CellBuild): Scene => {
+/** A cell's task is a code task unless it says otherwise. */
+const cell = (name: string, group: string, start: string, build: CellBuild, kind: TaskKind = "code"): Scene => {
   const task = cellTask(group);
   const log = sceneLog({ taskId: task.taskId, sessionId: task.sessionId, start, prefix: name });
   const shown = build(log, task);
-  return { name, taskId: task.taskId, events: [...log.events()], liveText: shown?.liveText ?? [], now: shown?.now ?? log.now() };
+  return { name, taskId: task.taskId, kind, events: [...log.events()], liveText: shown?.liveText ?? [], now: shown?.now ?? log.now() };
 };
 
 const say = (log: SceneLog, memberId: MemberId, n: number, text: string, more: Partial<Extract<TaskEvent, { kind: "user.message" }>> = {}): void => {
@@ -423,7 +424,7 @@ const draftResult = cell("messages-6-draft", "ce37", "15:30:00", (log, task) => 
   steps.say("Draft v2 splits the export out into its own ticket.");
   endTurn(log, turnId);
   return undefined;
-});
+}, "refine");
 
 /** The states sheets' cells, by sheet and number: each a small task, or a piece of a scene. */
 export const stateCells = {

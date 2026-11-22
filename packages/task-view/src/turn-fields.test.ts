@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { StoredEvent, ToolCallId, TurnId } from "@ostra/protocol";
+import { storedEventSchema } from "@ostra/protocol";
+import type { StoredEvent, TaskEvent, ToolCallId, TurnId } from "@ostra/protocol";
 
 import { foldTaskEvents, turnOrdinalsOf, turnSpendOf } from "./fold.ts";
 import { calc192, calc192Spend, review483, review483Spend, s1, s1Working, s2, s3, s5Approved, sceneWorld, stateCells } from "./testing/index.ts";
@@ -12,7 +13,7 @@ import type { TaskUIMessage, TaskUIPart, TurnSpend } from "./ui-types.ts";
 // and each result in the turn that made it, over the targets' recorded scenes.
 
 type FoldOptions = Parameters<typeof foldTaskEvents>[2];
-const fold = (scene: Scene, options: FoldOptions = {}): TaskUIMessage[] => foldTaskEvents(scene.events, scene.liveText, options);
+const fold = (scene: Scene, options: FoldOptions = {}): TaskUIMessage[] => foldTaskEvents(scene.events, scene.liveText, { taskKind: scene.kind, ...options });
 const turnsOf = (messages: readonly TaskUIMessage[]) => messages.filter((message) => message.role === "assistant");
 const turnOf = (messages: readonly TaskUIMessage[], turnId: string): TaskUIMessage | undefined => messages.find((message) => message.metadata?.turnId === turnId);
 const partsOf = (messages: readonly TaskUIMessage[]): TaskUIPart[] => messages.flatMap((message) => message.parts);
@@ -183,6 +184,28 @@ describe("results in their turn", () => {
     // Every hand-in is drawn once, and a review task has no push or PR.
     expect(partsOf(messages).filter((part) => part.type === "data-review")).toHaveLength(2);
     expect(partsOf(messages).some((part) => part.type === "data-pushed" || part.type === "data-pr")).toBe(false);
+  });
+
+  it("F-151/c7: the code task's copy of a review's hand-in and its post join none of the code task's turns", () => {
+    // Core writes the first hand-in and each post into the code task's log too, on its latest
+    // session (`submitReview`, `postReview`). None of its turns made the review: the Event log keeps both.
+    const last = s2.events.at(-1);
+    if (last === undefined) throw new Error("S2 has no events");
+    const copies = [
+      { kind: "review.submitted", reviewRunId: review483.reviewRunId, blocking: 0, nits: 1 },
+      { kind: "review.posted", reviewRunId: review483.reviewRunId, repoId: sceneWorld.repoId, prNumber: calc192.pr.number, url: review483.reviewUrl },
+    ] as const satisfies readonly TaskEvent[];
+    const log = [...s2.events, ...copies.map((event, i) => storedEventSchema.parse({ taskId: s2.taskId, seq: last.seq + i + 1, sessionId: last.sessionId, sessionSeq: null, at: last.at + (i + 1) * 1_000, event }))];
+    const before = fold(s2);
+    const after = foldTaskEvents(log, s2.liveText, { taskKind: s2.kind, previous: before });
+    expect(partsOf(after).some((part) => part.type === "data-review")).toBe(false);
+    // Its thread is as it was, every message the same object.
+    expect(after).toHaveLength(before.length);
+    after.forEach((message, i) => {
+      expect(message).toBe(before[i]);
+    });
+    // A fold that isn't told the task's kind reads it as not a review task.
+    expect(partsOf(foldTaskEvents(log, [])).some((part) => part.type === "data-review")).toBe(false);
   });
 
   it("F-151/c7: a push and the PR it opened are parts of the turn that pushed, not rows between turns", () => {
