@@ -54,7 +54,7 @@ describe("F-007: the tracker's teams before a project exists", () => {
 });
 
 describe("F-007: attaching a board", () => {
-  it("drafts the mapping from the team's statuses and the integration check, saves the board and enqueues the first poll", async () => {
+  it("F-031/c4: drafts the mapping from the team's statuses and the integration check, saves the board and enqueues the first poll", async () => {
     harness.fakes.jobs.clear();
     const team = await teamOf();
     const attached = await (await admin()).boards.attach({ projectId, teamExternalId: team.externalId });
@@ -78,7 +78,7 @@ describe("F-007: attaching a board", () => {
     expect(audit?.data).toMatchObject({ boardId: attached.boardId, key: "CALC", doneBy: "ostra" });
   });
 
-  it("drafts doneBy integration when the tracker's GitHub integration is installed", async () => {
+  it("F-031/c3: drafts doneBy integration when the tracker's GitHub integration is installed", async () => {
     const other = createJiraSite({ projectKey: "WEB" });
     other.devPanelInstalled = true;
     harness.fakes.tracker.adapter = new JiraFakeAdapter({ site: other });
@@ -142,7 +142,7 @@ const connectionIdOfOrg = async () =>
   connectionIdSchema.parse((await harness.test.db.connection.findFirstOrThrow({ where: { organizationId: harness.fixture.a.organization.id, kind: "linear" } })).id);
 
 describe("F-007, F-031: the mapping", () => {
-  it("is saved with the magic word after each status is checked against the team", async () => {
+  it("F-031/c4: is saved with the magic word after each status is checked against the team", async () => {
     const board = (await (await member()).boards.get({ projectId })).boards[0];
     if (board === undefined || board.mapping === null) {
       throw new Error("no board");
@@ -310,22 +310,19 @@ describe("F-007: detaching a board", () => {
 describe("F-007 on Linear: the same flow on the fake Linear server", () => {
   let fake: FakeLinear;
   let linear: LinearAdapter;
-  let supported = false;
 
   beforeAll(async () => {
     fake = await createFakeLinear();
     linear = new LinearAdapter({ auth: { kind: "api-key", token: fake.adminApiKey }, apiUrl: fake.apiUrl });
-    supported = (await linear.listBoards()).ok;
   });
 
   afterAll(async () => {
     await fake.close();
   });
 
-  it("drafts Linear's mapping from its status types", async (context) => {
-    if (!supported) {
-      context.skip();
-    }
+  it("F-031/c3,c4: drafts Linear's mapping from its status types, and doneBy integration once Linear's GitHub integration is installed", async () => {
+    // The Linear adapter lists teams (ticket 07): this case runs, never skips.
+    expect((await linear.listBoards()).ok).toBe(true);
     harness.fakes.tracker.adapter = linear;
     try {
       const fresh = await seedProject(harness, world, "boards-linear");
