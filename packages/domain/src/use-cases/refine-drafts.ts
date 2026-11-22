@@ -259,7 +259,14 @@ export const saveDraft: SaveDraft = async (deps, input) => {
       taskId: input.taskId,
       sessionId: sessionIdSchema.parse(session.id),
       at: deps.clock.now(),
-      event: { kind: "draft.submitted", draftId, version },
+      // Milestone 10 (F-151): the draft's counts, for the refine task's result line. Counts only.
+      event: {
+        kind: "draft.submitted",
+        draftId,
+        version,
+        acceptanceCriteria: draft.data.acceptanceCriteria.length,
+        subTickets: draft.data.subTickets.length,
+      },
     });
   }
   await deps.notices.emitInTx(tx, {

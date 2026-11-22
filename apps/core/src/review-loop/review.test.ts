@@ -292,13 +292,15 @@ describe("F-100: findings and the posted review", () => {
     const crossed = await postJson(`${gateway.url}${runnerPaths.taskReview(review.id)}`, body, tokenOf(task.taskId, 1, task.boxId));
     expect(crossed.status).toBe(403);
     expect(await h.db.finding.count({ where: { reviewRun: { codeTaskId: task.taskId } } })).toBe(0);
-    // The review task's token: saved, then refused once the round has its review.
+    // The review task's token: saved once. Milestone 10 (F-151/c7): a second hand-in for the round
+    // changes nothing and is answered as saved (`repeat-review.test.ts` has its `already`).
     const reviewToken = tokenOf(review.id, dispatched.epoch, dispatched.boxId);
     const saved = await postJson(`${gateway.url}${runnerPaths.taskReview(review.id)}`, body, reviewToken);
     const savedRun = await h.db.reviewRun.findFirstOrThrow({ where: { reviewTaskId: review.id }, orderBy: { round: "desc" } });
     expect(reviewResponseSchema.parse(saved.body)).toEqual({ reviewRunId: savedRun.id });
     const again = await postJson(`${gateway.url}${runnerPaths.taskReview(review.id)}`, body, reviewToken);
-    expect(reviewResponseSchema.parse(again.body)).toEqual({ code: "not-in-review" });
+    expect(reviewResponseSchema.parse(again.body)).toEqual({ reviewRunId: savedRun.id });
+    expect(await h.db.finding.count({ where: { reviewRunId: savedRun.id } })).toBe(1);
     // Over the cap, and on a repo the run didn't review.
     const many = await postJson(`${gateway.url}${runnerPaths.taskReview(review.id)}`, { summary: "x", findings: Array.from({ length: 31 }, () => finding(pr.repoId)) }, reviewToken);
     expect(reviewResponseSchema.parse(many.body)).toEqual({ code: "invalid" });

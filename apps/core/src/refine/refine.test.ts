@@ -36,6 +36,7 @@ import {
   memberIdSchema,
   runnerIdSchema,
   sessionIdSchema,
+  taskEventSchema,
   ticketKeySchema,
   ticketWriteIdSchema,
 } from "@ostra/protocol";
@@ -534,6 +535,24 @@ describe("refine drafts (F-099)", () => {
     expect(await test.db.event.count({ where: { taskId, kind: "draft.submitted" } })).toBe(2);
     // Another task's token is refused.
     expect((await submit(code.taskId, token, draft())).status).toBe(403);
+  });
+
+  it("F-151/c7: a submitted draft's draft.submitted carries its counts, never its text", async () => {
+    const { taskId, token } = await refineTask();
+    expect(await submit(taskId, token, draft())).toMatchObject({ status: 200, body: { version: 1 } });
+    expect(
+      await submit(taskId, token, draft({ acceptanceCriteria: ["One", "Two", "Three", "Four"], subTickets: [] })),
+    ).toMatchObject({ status: 200, body: { version: 2 } });
+    const rows = await test.db.event.findMany({
+      where: { taskId, kind: "draft.submitted" },
+      orderBy: { seq: "asc" },
+    });
+    const drafts = await test.db.refineDraft.findMany({ where: { taskId }, orderBy: { version: "asc" } });
+    expect(rows.map((row) => taskEventSchema.parse(row.payload))).toEqual([
+      { kind: "draft.submitted", draftId: drafts[0]?.id, version: 1, acceptanceCriteria: 2, subTickets: 2 },
+      { kind: "draft.submitted", draftId: drafts[1]?.id, version: 2, acceptanceCriteria: 4, subTickets: 0 },
+    ]);
+    expect(JSON.stringify(rows.map((row) => row.payload))).not.toContain("footer");
   });
 
   it("F-036/c1, F-099/c5: a turn that handed in a draft puts the task in front of its owner; a turn without one doesn't", async () => {

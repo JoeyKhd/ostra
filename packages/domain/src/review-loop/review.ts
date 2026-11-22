@@ -297,13 +297,41 @@ const startReviewInTx = async (
 
 // ---------- POST /runner/v1/tasks/:taskId/review ----------
 
-export type SubmitReviewResult = UseCaseResult<{ readonly reviewRunId: ReviewRunId }, "wrong-kind" | "invalid" | "limit-reached" | "not-in-review">;
+export type SubmitReviewResult = UseCaseResult<
+  {
+    readonly reviewRunId: ReviewRunId;
+    /**
+     * Milestone 10 (F-151): the round's review was handed in before and its code task is still at
+     * the run's heads, so this hand-in changed nothing and the first one stands.
+     */
+    readonly already?: true;
+  },
+  "wrong-kind" | "invalid" | "limit-reached" | "not-in-review"
+>;
+
+const NOT_IN_REVIEW = { ok: false, error: "not-in-review", message: "This review round is over: nothing waits for a review now." } as const;
+
+/** Whether each of the run's PRs is still the code task's, at the head the run reviewed. */
+const atRunHeadsInTx = async (tx: Tx, codeTaskId: string, heads: readonly ReviewHead[]): Promise<boolean> => {
+  if (heads.length === 0) {
+    return false;
+  }
+  const rows = await tx.taskRepo.findMany({ where: { taskId: codeTaskId, repoId: { in: heads.map((head) => head.repoId) } }, select: { repoId: true, headSha: true, prNumber: true } });
+  return heads.every((head) => rows.some((row) => row.repoId === head.repoId && row.headSha === head.headSha && row.prNumber === head.prNumber));
+};
 
 /**
  * The `submit_review` tool's endpoint (F-100): a review task's findings, in the review task's
  * lock. A review task only, with a run that's running; the findings checked and capped
  * (`OSTRA_REVIEW_FINDINGS_MAX`), each on one of the run's repos; stored as `Finding` rows, with
  * `review.submitted` in both threads, and one `review.post` per repo.
+ *
+ * Milestone 10 (F-151, the targets' content fix 6): a hand-in for a round whose review is in (its
+ * run `submitted` or `posted`), while the code task is in review at the run's heads, is a repeat.
+ * Its findings are checked as a first hand-in's, then it changes nothing (no finding, no
+ * `review.post`, the run as it was) and answers `already`; the review task's own log says so
+ * (`review.submitted` with the round's figures and `repeat`), and the code task's doesn't. A head
+ * that moved on, or a code task out of review, is still `not-in-review`.
  */
 export const submitReview = async (
   deps: Pick<Ports, "jobs" | "notices" | "clock"> & { readonly tx: Tx; readonly findingsMax?: number; readonly logger?: Logger | undefined },
@@ -315,22 +343,52 @@ export const submitReview = async (
   if (task?.kind !== "review" || task.reviewOfTaskId === null) {
     return { ok: false, error: "wrong-kind", message: "Only a review task hands in a review." };
   }
-  const run = await tx.reviewRun.findFirst({ where: { reviewTaskId: task.id }, orderBy: { round: "desc" }, select: { id: true, state: true, heads: true, codeTaskId: true } });
+  const run = await tx.reviewRun.findFirst({
+    where: { reviewTaskId: task.id },
+    orderBy: { round: "desc" },
+    select: { id: true, state: true, heads: true, codeTaskId: true, blocking: true, nits: true },
+  });
   const code = run === null ? null : await tx.task.findUnique({ where: { id: run.codeTaskId }, select: { state: true, subState: true } });
-  if (run?.state !== "running" || code?.state !== "in_review" || code.subState !== "ai_review") {
-    return { ok: false, error: "not-in-review", message: "This review round is over: nothing waits for a review now." };
+  if (run === null || code?.state !== "in_review") {
+    return NOT_IN_REVIEW;
+  }
+  const handedIn = run.state === "submitted" || run.state === "posted";
+  if (!handedIn && (run.state !== "running" || code.subState !== "ai_review")) {
+    return NOT_IN_REVIEW;
+  }
+  const heads = reviewHeadsSchema.safeParse(run.heads);
+  if (handedIn && !(heads.success && (await atRunHeadsInTx(tx, run.codeTaskId, heads.data)))) {
+    return NOT_IN_REVIEW;
   }
   const max = Math.min(deps.findingsMax ?? REVIEW_FINDINGS_MAX, REVIEW_FINDINGS_MAX);
   if (input.review.findings.length > max) {
     return { ok: false, error: "limit-reached", message: `A review has at most ${String(max)} findings: keep the ones that matter most.` };
   }
-  const heads = reviewHeadsSchema.safeParse(run.heads);
   const repos = new Set(heads.success ? heads.data.map((head) => head.repoId) : []);
   if (input.review.findings.some((finding) => !repos.has(finding.repoId))) {
     return { ok: false, error: "invalid", message: "Each finding names one of the reviewed repositories." };
   }
   const organizationId = organizationIdSchema.parse(input.organizationId);
   const projectId = projectIdSchema.parse(task.projectId);
+  if (handedIn) {
+    // A repeat: the round's review stands as first handed in, and only the review task's log hears of it.
+    const reviewRunId = reviewRunIdSchema.parse(run.id);
+    const reviewTaskId = taskIdSchema.parse(task.id);
+    const session = await tx.session.findFirst({ where: { taskId: task.id }, orderBy: { startedAt: "desc" }, select: { id: true } });
+    if (session !== null) {
+      await appendServerEvent(tx, {
+        organizationId,
+        projectId,
+        taskId: reviewTaskId,
+        sessionId: sessionIdSchema.parse(session.id),
+        at: deps.clock.now(),
+        event: { kind: "review.submitted", reviewRunId, blocking: run.blocking, nits: run.nits, repeat: true },
+      });
+    }
+    await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: reviewTaskId });
+    deps.logger?.info("review.submitted", { reviewTaskId, reviewRunId, blocking: run.blocking, nits: run.nits, repeat: true });
+    return { ok: true, reviewRunId, already: true };
+  }
   const codeTaskId = taskIdSchema.parse(run.codeTaskId);
   const taskRepos = await tx.taskRepo.findMany({ where: { taskId: codeTaskId, repoId: { in: [...repos] } }, select: { id: true, repoId: true } });
   const repoOf = new Map(taskRepos.map((row) => [row.repoId, row.id]));

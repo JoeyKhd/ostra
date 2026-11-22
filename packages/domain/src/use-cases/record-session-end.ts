@@ -2,7 +2,7 @@ import type { Logger } from "@ostra/adapter-sdk";
 import { mapTask } from "@ostra/db";
 import type { Tx } from "@ostra/db";
 import { organizationIdSchema, projectIdSchema, runnerIdSchema, taskEventSchema } from "@ostra/protocol";
-import type { SessionId, TaskId } from "@ostra/protocol";
+import type { SessionId, TaskId, TaskKind } from "@ostra/protocol";
 import { boxIdSchema } from "@ostra/protocol";
 
 import type { JobPayload } from "../jobs.ts";
@@ -52,6 +52,23 @@ export type RecordSessionEnd = (deps: RecordSessionEndDeps, input: RecordSession
 
 /** The review rounds before a reviewer: both off until milestone 6 (spec section 4). */
 const M1_ROUNDS = { ci: false, aiReview: false } as const;
+
+/**
+ * Whether a kind's session leaves work in its repos (milestone 6, Q221): a code task's branch, yes;
+ * a refine or a review task's box is read-only, so its session never ends with changes and has no
+ * PR outcome, whatever its repos say (milestone 10, F-151, the targets' content fix 5).
+ */
+export const savesWork = (kind: TaskKind): boolean => {
+  switch (kind) {
+    case "code":
+      return true;
+    case "refine":
+    case "review":
+      return false;
+    default:
+      return kind satisfies never;
+  }
+};
 
 /** The agent's last complete message of the session: the needs-you item's summary, and a PR body's fallback. */
 export const lastAgentMessageInTx = async (tx: Tx, taskId: TaskId, sessionId: SessionId): Promise<string | null> => {
@@ -114,7 +131,8 @@ export const recordSessionEnd: RecordSessionEnd = async (deps, input) => {
   const ended = event.data;
   const session = await tx.session.findUniqueOrThrow({ where: { id: input.sessionId } });
   const moveDeps = { tx, notices: deps.notices, jobs: deps.jobs, ...(deps.logger === undefined ? {} : { logger: deps.logger }) };
-  const withChanges = ended.repos.some((repo) => repo.ahead);
+  const readOnly = !savesWork(task.kind);
+  const withChanges = !readOnly && ended.repos.some((repo) => repo.ahead);
 
   // The session: a running one ends its turn first, then the box stops with or without changes.
   if (session.state === "ended" || session.state === "crashed") {
@@ -159,8 +177,8 @@ export const recordSessionEnd: RecordSessionEnd = async (deps, input) => {
     return { ok: true, outcome: withChanges ? "with-changes" : "without-changes" };
   }
 
-  // Each repo's branch: ahead means pushed, ready for its PR.
-  for (const repo of ended.repos) {
+  // Each repo's branch: ahead means pushed, ready for its PR. A read-only kind's are never pushed.
+  for (const repo of readOnly ? [] : ended.repos) {
     const row = await tx.taskRepo.findFirst({ where: { taskId: task.id, repoId: repo.repoId } });
     if (row === null) {
       continue;
@@ -175,8 +193,10 @@ export const recordSessionEnd: RecordSessionEnd = async (deps, input) => {
 
   const organizationId = organizationIdSchema.parse(task.organizationId);
   const projectId = projectIdSchema.parse(task.projectId);
-  if (task.state === "stopped") {
-    // Stopped by a member or the grace: the work stays on the branch and the hidden ref.
+  if (task.state === "stopped" || readOnly) {
+    // Stopped by a member or the grace: the work stays on the branch and the hidden ref. A refine or
+    // review task's session end opens no PR and raises no "ended without changes" item: its draft or
+    // its review is what it hands in.
     await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: task.id });
     return { ok: true, outcome: withChanges ? "with-changes" : "without-changes" };
   }

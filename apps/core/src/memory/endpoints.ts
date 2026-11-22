@@ -14,7 +14,7 @@ import {
   sessionIdSchema,
   taskIdSchema,
 } from "@ostra/protocol";
-import type { MemoryNoteResponse, MemoryProposalResponse, MemorySearchResponse, OrganizationId, ProjectId, SessionId, TaskId } from "@ostra/protocol";
+import type { MemoryNoteResponse, MemoryProposalResponse, MemorySearchResponse, OrganizationId, ProjectId, RunnerId, SessionId, TaskId } from "@ostra/protocol";
 
 import { bearerToken, runnerIsLive } from "../gateway/access-token.ts";
 import type { AccessTokens } from "../gateway/access-token.ts";
@@ -49,6 +49,8 @@ export type TaskContext = {
   readonly projectId: ProjectId;
   readonly taskId: TaskId;
   readonly sessionId: SessionId | null;
+  /** Milestone 10 (F-151): the runner whose lease the call came under, by its task token or its own access token. */
+  readonly runnerId: RunnerId;
 };
 
 /**
@@ -59,6 +61,7 @@ export const authorizeTaskCall = async (deps: Pick<MemoryEndpointDeps, "db" | "t
   const token = bearerToken(request.headers.authorization);
   let boxId: string;
   let organizationId: OrganizationId;
+  let runnerId: RunnerId;
   if (token !== null && isTaskToken(token)) {
     const claims = deps.taskTokens.verify(token);
     if (claims === null) {
@@ -80,6 +83,7 @@ export const authorizeTaskCall = async (deps: Pick<MemoryEndpointDeps, "db" | "t
     }
     boxId = claims.boxId;
     organizationId = claims.organizationId;
+    runnerId = claims.runnerId;
   } else {
     const claims = token === null ? null : deps.tokens.verify(token, deps.clock.now());
     if (claims === null) {
@@ -111,6 +115,7 @@ export const authorizeTaskCall = async (deps: Pick<MemoryEndpointDeps, "db" | "t
     }
     boxId = lease.boxId;
     organizationId = claims.organizationId;
+    runnerId = claims.runnerId;
   }
   const task = await deps.db.task.findFirst({ where: { id: taskId, organizationId }, select: { projectId: true } });
   if (task === null) {
@@ -123,6 +128,7 @@ export const authorizeTaskCall = async (deps: Pick<MemoryEndpointDeps, "db" | "t
     projectId: projectIdSchema.parse(task.projectId),
     taskId,
     sessionId: session === null ? null : sessionIdSchema.parse(session.id),
+    runnerId,
   };
 };
 

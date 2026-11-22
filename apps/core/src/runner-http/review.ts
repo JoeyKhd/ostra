@@ -4,8 +4,8 @@ import type { Logger } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
 import { submitReview } from "@ostra/domain";
 import type { ChangeNotices, Clock, JobQueue } from "@ostra/domain";
-import { RUNNER_PATH_PREFIX, reviewRequestSchema, taskIdSchema } from "@ostra/protocol";
-import type { ReviewResponse } from "@ostra/protocol";
+import { minorFromHeader, RUNNER_PATH_PREFIX, reviewAnswerFor, reviewRequestSchema, runnerHeaders, taskIdSchema } from "@ostra/protocol";
+import type { ReviewResponse, RunnerId } from "@ostra/protocol";
 
 import type { AccessTokens } from "../gateway/access-token.ts";
 import type { TaskTokens } from "../gateway/task-token.ts";
@@ -18,6 +18,22 @@ import { authorizeTaskCall } from "../memory/endpoints.ts";
 // running while its code task waits for it; the findings checked by the protocol's schema and
 // capped. A refusal is a `200` with its code, which the tool's words turn into the agent's reply.
 // The summary and the findings' text never reach a log line: the lines name the task and count.
+//
+// Milestone 10 (F-151): a repeat hand-in for a round whose review is in answers `already`, which
+// only a minor-9 sidecar's schema reads (`reviewAnswerFor`). The answer's minor is the runner's
+// (`Runner.minor`, the lease's runner; none recorded reads as 8), and never above the one the
+// sidecar's own request names (`x-ostra-minor`): a box adopted across a runner's upgrade keeps the
+// older sidecar it started with.
+
+/** A runner that has never told its minor is read as minor 8, the last that knows no `already`. */
+const UNRECORDED_RUNNER_MINOR = 8;
+
+/** The minor the answer is written for: the runner's, capped by the calling sidecar's own. */
+const answerMinorOf = async (db: Db, request: IncomingMessage, runnerId: RunnerId): Promise<number> => {
+  const header = request.headers[runnerHeaders.minor];
+  const runner = await db.runner.findUnique({ where: { id: runnerId }, select: { minor: true } });
+  return Math.min(runner?.minor ?? UNRECORDED_RUNNER_MINOR, minorFromHeader(typeof header === "string" ? header : undefined));
+};
 
 const reviewPath = new RegExp(`^${RUNNER_PATH_PREFIX}/tasks/([^/]+)/review$`);
 
@@ -79,7 +95,8 @@ export const handleReviewEndpoint =
       sendJson(response, 200, refusal);
       return true;
     }
-    const answer: ReviewResponse = { reviewRunId: result.reviewRunId };
+    const minor = await answerMinorOf(deps.db, request, context.runnerId);
+    const answer: ReviewResponse = reviewAnswerFor(minor, { reviewRunId: result.reviewRunId, ...(result.already === true ? { already: true } : {}) });
     sendJson(response, 200, answer);
     return true;
   };

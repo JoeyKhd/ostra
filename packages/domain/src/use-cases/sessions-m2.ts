@@ -16,7 +16,7 @@ import type { UseCaseResult } from "./common.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
 import { createNeedsYouItemInTx } from "./needs-you-items.ts";
 import { retitledReposInTx } from "./pr-title.ts";
-import { lastAgentMessageInTx } from "./record-session-end.ts";
+import { lastAgentMessageInTx, savesWork } from "./record-session-end.ts";
 import { appendCoreEvent } from "./server-events.ts";
 import { enterReviewLoopInTx, reviewRoundsInTx } from "../review-loop/loop.ts";
 import type { ReviewLoopCapabilities } from "../review-loop/loop.ts";
@@ -173,9 +173,12 @@ export const recordWorkSaved: RecordWorkSaved = async (deps, input) => {
   }
   const moveDeps = { tx, notices: deps.notices, jobs: deps.jobs, ...(deps.logger === undefined ? {} : { logger: deps.logger }) };
   const at = new Date(deps.clock.now());
+  // Milestone 10 (F-151, the targets' content fix 5): a refine or review task's repos are never
+  // saved, so its save (`repos: []` from a minor-9 runner) leaves them as they are.
+  const readOnly = !savesWork(task.kind);
 
   // Each repo: its head, whether it's ahead, and the hidden ref with the head it was saved on.
-  for (const saved of input.event.repos) {
+  for (const saved of readOnly ? [] : input.event.repos) {
     const taskRepo = await tx.taskRepo.findFirst({ where: { taskId: task.id, repoId: saved.repoId } });
     if (taskRepo === null) {
       continue;
@@ -236,6 +239,12 @@ export const recordWorkSaved: RecordWorkSaved = async (deps, input) => {
     const handedIn = await handInDraftInTx(deps, tx, { taskId: task.id, savedSeq: input.eventSeq });
     await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: task.id });
     return { ok: true, outcome: handedIn ? "needs-you" : "unchanged" };
+  }
+  if (readOnly) {
+    // A review task hands in its review (`submit_review`), never a branch: its save opens no PR and
+    // raises no "ended without changes" item.
+    await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: task.id });
+    return { ok: true, outcome: "unchanged" };
   }
   if (needsPullRequest) {
     // A branch ahead with no PR: the opener, idempotent per task repo, moves the task to review.

@@ -11,6 +11,7 @@ import {
   planTextSchema,
   organizationIdSchema,
   projectIdSchema,
+  QUESTION_OTHER_MAX,
   questionFieldSchema,
   runnerIdSchema,
   runnerLimits,
@@ -339,15 +340,26 @@ export const answerPlan = async (
 
 export type AnswerQuestionResult = UseCaseResult<{ readonly reopened: boolean }, "not-found" | "not-driver" | "already-answered" | "invalid-input">;
 
-/** The answers checked against the question's fields: every field once, a select's value among its options. */
+/**
+ * The answers checked against the question's fields: every field once, a select's value among its
+ * options. Milestone 10 (F-151, the targets' choice 5): a select field named in `other` was
+ * answered in the member's own words (`Something else…`), so it takes any words within the
+ * steer limit; `other` names select fields of the question only. The checked `other` holds each
+ * once, in the question's order.
+ */
 export const checkQuestionAnswers = (
   fields: readonly QuestionField[],
   answers: Readonly<Record<string, string>>,
-): { readonly ok: true; readonly answers: Record<string, string> } | { readonly ok: false; readonly message: string } => {
+  other: readonly string[] = [],
+): { readonly ok: true; readonly answers: Record<string, string>; readonly other: string[] } | { readonly ok: false; readonly message: string } => {
   const known = new Set(fields.map((field) => field.id));
   const unknown = Object.keys(answers).filter((key) => !known.has(key));
-  if (unknown.length > 0) {
+  if (unknown.length > 0 || other.some((id) => !known.has(id))) {
     return { ok: false, message: "An answer names a field the question doesn't have" };
+  }
+  const inWords = new Set(other);
+  if (inWords.size > QUESTION_OTHER_MAX) {
+    return { ok: false, message: `At most ${String(QUESTION_OTHER_MAX)} answers in other words` };
   }
   const checked: Record<string, string> = {};
   for (const field of fields) {
@@ -358,12 +370,15 @@ export const checkQuestionAnswers = (
     if (value.length > runnerLimits.steerTextMaxChars) {
       return { ok: false, message: `The answer to "${field.label}" is too long` };
     }
-    if (field.type === "select" && !(field.options ?? []).includes(value)) {
+    if (inWords.has(field.id) && field.type !== "select") {
+      return { ok: false, message: `Only a choice takes an answer in other words, and "${field.label}" isn't one` };
+    }
+    if (field.type === "select" && !inWords.has(field.id) && !(field.options ?? []).includes(value)) {
       return { ok: false, message: `Pick one of the choices for "${field.label}"` };
     }
     checked[field.id] = value;
   }
-  return { ok: true, answers: checked };
+  return { ok: true, answers: checked, other: fields.flatMap((field) => (inWords.has(field.id) ? [field.id] : [])) };
 };
 
 const questionEventsInTx = async (tx: Tx, taskId: string, questionId: QuestionId) => {
@@ -395,11 +410,21 @@ const questionEventsInTx = async (tx: Tx, taskId: string, questionId: QuestionId
  * The driver's answer to the agent's question (F-024, Q168): checked against its fields, written as
  * `question.answered`, its item closed, and sent once as `question-answer`. A question the turn's end
  * closed keeps its item open; its answer reopens the task with the answer as the first message.
+ *
+ * Milestone 10 (F-151): `other` names the select fields answered in the member's own words. The
+ * event records them (IDs only); the command carries the words as each field's answer, as any
+ * answer, and a late answer's prompt says which answers are the member's own words.
  */
 export const answerQuestion = async (
   deps: AnswerDeps,
   scope: MemberScope,
-  input: { readonly taskId: TaskId; readonly questionId: QuestionId; readonly answers: Readonly<Record<string, string>> },
+  input: {
+    readonly taskId: TaskId;
+    readonly questionId: QuestionId;
+    readonly answers: Readonly<Record<string, string>>;
+    /** The select fields answered in words (`Something else…`); none when missing. */
+    readonly other?: readonly string[];
+  },
 ): Promise<AnswerQuestionResult> => {
   let refusal: string | null = null;
   return deps.db
@@ -417,7 +442,7 @@ export const answerQuestion = async (
         return { ok: false, error: "already-answered", message: "This question is answered already" };
       }
       const fields = z.array(questionFieldSchema).parse(asked.fields);
-      const checked = checkQuestionAnswers(fields, input.answers);
+      const checked = checkQuestionAnswers(fields, input.answers, input.other);
       if (!checked.ok) {
         return { ok: false, error: "invalid-input", message: checked.message };
       }
@@ -433,7 +458,13 @@ export const answerQuestion = async (
         taskId: task.id,
         sessionId,
         at: now,
-        event: { kind: "question.answered", questionId: input.questionId, answers: checked.answers, memberId: scope.memberId },
+        event: {
+          kind: "question.answered",
+          questionId: input.questionId,
+          answers: checked.answers,
+          memberId: scope.memberId,
+          ...(checked.other.length === 0 ? {} : { other: checked.other }),
+        },
       });
       await closeItemsInTx(deps, tx, task, { reason: "question", questionId: input.questionId }, scope.memberId, now);
       // Milestone 6 (ADR 0041): an answer is a person's action, so the automatic turns count from nothing.
@@ -441,7 +472,7 @@ export const answerQuestion = async (
 
       if (going?.session.id !== asked.sessionId) {
         // Closed by the turn's end, or the session that asked is gone: the answer starts the next turn.
-        const reopened = await reopenWithInTx(deps, tx, scope, task.id, lateQuestionAnswerPrompt({ question: asked.message, fields, answers: checked.answers }), undefined);
+        const reopened = await reopenWithInTx(deps, tx, scope, task.id, lateQuestionAnswerPrompt({ question: asked.message, fields, answers: checked.answers, other: checked.other }), undefined);
         if (!reopened.ok) {
           refusal = reopened.message;
           throw new Error(REOPEN_REFUSED);

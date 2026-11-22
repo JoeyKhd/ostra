@@ -184,18 +184,29 @@ export const expiredApprovalAnswerPrompt = (input: {
 
 // ---------- a question answered after its turn ended (F-024, Q168; ticket 18) ----------
 
+/** ostra's mark after a field's label on an answer the member gave in their own words (F-151). */
+export const OWN_WORDS_MARK = "(in their own words)";
+
 /**
  * The reopen's message when the driver answers a question whose turn already ended: the question
- * and each answer, by its field's label, as data.
+ * and each answer, by its field's label, as data. Milestone 10 (F-151): an answer the member wrote
+ * instead of picking one of the choices (`other`, by field ID) is marked so, and a line before the
+ * blocks says what the mark means.
  */
 export const lateQuestionAnswerPrompt = (input: {
   readonly question: string;
   readonly fields: readonly { readonly id: string; readonly label: string }[];
   readonly answers: Readonly<Record<string, string>>;
-}): string =>
-  [
+  readonly other?: readonly string[];
+}): string => {
+  const inWords = new Set(input.other ?? []);
+  const lineOf = (field: { readonly id: string; readonly label: string }): string =>
+    `${field.label === "" ? field.id : field.label}${inWords.has(field.id) ? ` ${OWN_WORDS_MARK}` : ""}: ${input.answers[field.id] ?? ""}`;
+  return [
     "Your last turn ended before a member answered your question. They have answered it now: carry on with their answers.",
+    ...(input.fields.some((field) => inWords.has(field.id)) ? [`An answer marked ${OWN_WORDS_MARK} is what the member wrote instead of picking one of the choices you offered.`] : []),
     DATA_LINE,
     markedBlock("question", input.question),
-    markedBlock("answers", input.fields.map((field) => `${field.label === "" ? field.id : field.label}: ${input.answers[field.id] ?? ""}`).join("\n")),
+    markedBlock("answers", input.fields.map(lineOf).join("\n")),
   ].join("\n\n");
+};

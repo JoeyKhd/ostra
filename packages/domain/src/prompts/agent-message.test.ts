@@ -125,6 +125,21 @@ describe("a message ostra wrote for the agent, read back", () => {
     expect(readAgentMessage({ text: CLOSING_TURN_PROMPT, intent: "message" })).toEqual({ kind: "closing-turn" });
   });
 
+  it("F-151/c5: a late answer in the member's own words reads as the question's answer, its words marked as theirs", () => {
+    const fields = [
+      { id: "f", label: "Format" },
+      { id: "z", label: "" },
+    ];
+    const answered = lateQuestionAnswerPrompt({ question: "Which date format?", fields, answers: { f: "Day first, then the month", z: "UTC" }, other: ["f"] });
+    expect(answered).toContain("An answer marked (in their own words) is what the member wrote instead of picking one of the choices you offered.");
+    expect(readAgentMessage({ text: answered, intent: undefined })).toEqual({ kind: "question-answer", question: "Which date format?", answers: "Format (in their own words): Day first, then the month\nz: UTC" });
+    // Nothing in words: the prompt reads as before, word for word.
+    expect(lateQuestionAnswerPrompt({ question: "Which date format?", fields, answers: { f: "ISO", z: "UTC" }, other: [] })).toBe(
+      lateQuestionAnswerPrompt({ question: "Which date format?", fields, answers: { f: "ISO", z: "UTC" } }),
+    );
+    expect(lateQuestionAnswerPrompt({ question: "Which date format?", fields, answers: { f: "ISO", z: "UTC" } })).not.toContain("own words");
+  });
+
   it("a member's own text reads as nothing, and so does a hand-set intent on plain words", () => {
     expect(readAgentMessage({ text: "Rename it back, please.", intent: undefined })).toBeNull();
     expect(readAgentMessage({ text: "Merge main into the branch", intent: "update-branch" })).toBeNull();
