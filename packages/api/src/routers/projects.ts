@@ -131,7 +131,9 @@ const projectDetailSchema = projectSummarySchema.extend({
   repoSkills: z.boolean(),
   /**
    * F-097 (Q31, 2026-11-22): "Make a ticket for every prompt task": the board each code task a
-   * member starts from a prompt gets its ticket on, or `null` while it's off (the default).
+   * member starts from a prompt gets its ticket on, or `null` while it's off (the default). It's
+   * `null` too while the board's tracker connection isn't active: the setting is kept on the board
+   * and comes back with the connection, so "off" and "on, paused" read the same here.
    */
   promptTicketBoardId: boardIdSchema.nullable(),
 });

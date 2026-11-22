@@ -24,7 +24,11 @@ export type SetPromptTicketsInput = z.infer<typeof setPromptTicketsInputSchema>;
 
 export type SetPromptTicketsResult = UseCaseResult<{ readonly boardId: BoardId | null }, "not-found" | "forbidden" | "no-such-board">;
 
-/** The board the project's prompt tasks get their tickets on, or `null` while the setting is off. */
+/**
+ * The board the project's prompt tasks get their tickets on, or `null` while the setting is off.
+ * Also `null` while that board's tracker connection isn't active: tasks then get no ticket, the
+ * board keeps `ticketsForPromptTasks`, and the setting is back once the connection is.
+ */
 export const promptTicketBoardInTx = async (tx: Pick<Tx, "board">, organizationId: string, projectId: ProjectId): Promise<BoardId | null> => {
   const board = await tx.board.findFirst({
     where: { organizationId, projectId, ticketsForPromptTasks: true, detachedAt: null, connection: { state: "active" } },
