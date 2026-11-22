@@ -183,7 +183,7 @@ describe("the tracker writer, on the Jira fake", () => {
     await write(taskId, started(taskId));
     await syncAll(b.deps(), taskId);
     const first = await addPullRequest(b, taskId, `repo-${randomUUID().slice(0, 6)}`);
-    expect((await write(taskId, { kind: "pr-opened", repoId: first.repoId, url: first.url })).map((row) => row.kind).sort()).toEqual(["comment_update", "link_pr", "move"]);
+    expect((await write(taskId, { kind: "pr-opened", repoId: first.repoId, number: 1, url: first.url })).map((row) => row.kind).sort()).toEqual(["comment_update", "link_pr", "move"]);
     await syncAll(b.deps(), taskId);
     let issue = await issueOf(ticketId);
     expect(issue?.statusId).toBe("10002");
@@ -191,7 +191,7 @@ describe("the tracker writer, on the Jira fake", () => {
     expect(JSON.stringify(issue?.comments[0]?.body)).toContain(first.url);
     // A second PR: its link and an edit, no second move.
     const second = await addPullRequest(b, taskId, `repo-${randomUUID().slice(0, 6)}`);
-    expect((await write(taskId, { kind: "pr-opened", repoId: second.repoId, url: second.url })).map((row) => row.kind).sort()).toEqual(["comment_update", "link_pr"]);
+    expect((await write(taskId, { kind: "pr-opened", repoId: second.repoId, number: 1, url: second.url })).map((row) => row.kind).sort()).toEqual(["comment_update", "link_pr"]);
     await syncAll(b.deps(), taskId);
     issue = await issueOf(ticketId);
     expect(issue?.comments).toHaveLength(1);
@@ -203,7 +203,7 @@ describe("the tracker writer, on the Jira fake", () => {
     const { taskId, ticketId } = await newTicket();
     await write(taskId, started(taskId));
     const pr = await addPullRequest(b, taskId, `repo-${randomUUID().slice(0, 6)}`);
-    await write(taskId, { kind: "pr-opened", repoId: pr.repoId, url: pr.url });
+    await write(taskId, { kind: "pr-opened", repoId: pr.repoId, number: 1, url: pr.url });
     await syncAll(b.deps(), taskId);
     const merged = await write(taskId, { kind: "pr-merged", repoId: pr.repoId, changedAt: 1 });
     expect(merged.map((row) => row.kind).sort()).toEqual(["comment_update", "move"]);
@@ -365,7 +365,7 @@ describe("the tracker writer, on the fake Linear server", () => {
     expect(fake.issueView(issueId).comments).toHaveLength(1);
     expect(fake.issueView(issueId).attachments.map((attachment) => attachment.url)).toContain(taskUrlOf(PUBLIC_URL, taskId));
     const pr = await addPullRequest(b, taskId, `repo-${randomUUID().slice(0, 6)}`);
-    await write(taskId, { kind: "pr-opened", repoId: pr.repoId, url: pr.url });
+    await write(taskId, { kind: "pr-opened", repoId: pr.repoId, number: 1, url: pr.url });
     await syncAll(b.deps(), taskId);
     await write(taskId, { kind: "pr-merged", repoId: pr.repoId, changedAt: 5 });
     await syncAll(b.deps(), taskId);

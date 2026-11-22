@@ -30,7 +30,8 @@ import { PARENT_COMMENT_MARKER, writeParentProgressInTx } from "./parent-progres
 export type TicketSyncTrigger =
   /** The task started from its ticket (ticket 29's `startTicketTask`), or a prompt task got one. */
   | { readonly kind: "task-started"; readonly taskUrl: string; readonly taskTitle: string }
-  | { readonly kind: "pr-opened"; readonly repoId: RepoId; readonly url: string }
+  /** `number`: the PR's own, so each of a repo's PRs (a new one after a merge) is linked (F-066). */
+  | { readonly kind: "pr-opened"; readonly repoId: RepoId; readonly number: number; readonly url: string }
   | { readonly kind: "pr-merged"; readonly repoId: RepoId; readonly changedAt: number }
   | { readonly kind: "pr-closed"; readonly repoId: RepoId; readonly changedAt: number }
   | { readonly kind: "pr-reopened"; readonly repoId: RepoId; readonly changedAt: number }
@@ -69,10 +70,16 @@ const plan = (trigger: TicketSyncTrigger, doneByOstra: boolean): readonly Planne
       ];
     case "pr-opened":
       return [
-        { step: { kind: "link_pr", repoId: trigger.repoId }, payload: { kind: "link_pr", repoId: trigger.repoId, url: trigger.url } },
+        {
+          step: { kind: "link_pr", repoId: trigger.repoId, prNumber: trigger.number },
+          payload: { kind: "link_pr", repoId: trigger.repoId, url: trigger.url },
+        },
         // Its key is the task's: only the first PR moves the ticket to in review.
         { step: { kind: "move", target: "in-review" }, payload: { kind: "move", target: "in-review" } },
-        { step: { kind: "comment_update", revision: `pr-opened:${trigger.repoId}` }, payload: { kind: "comment_update", markdown: summary("a PR opened") } },
+        {
+          step: { kind: "comment_update", revision: `pr-opened:${trigger.repoId}:${String(trigger.number)}` },
+          payload: { kind: "comment_update", markdown: summary("a PR opened") },
+        },
       ];
     case "pr-merged":
       return [

@@ -1,5 +1,5 @@
 import type { AdapterError, AdapterResult, IdempotencyStore, Logger, Ticket, TicketRef, TrackerAdapter } from "@ostra/adapter-sdk";
-import type { Db } from "@ostra/db";
+import type { Db, DbEnum } from "@ostra/db";
 import {
   isParentCommentWrite,
   parentChildrenOf,
@@ -91,6 +91,20 @@ const words = (error: AdapterError): string => `${error.code}: ${error.message}`
 
 const REVIEW_LOOKBACK_MS = 2 * 60_000;
 
+/** A PR's own state, as the progress comment words a repo's. */
+const repoStateOf = (state: DbEnum.PullRequestState): DbEnum.TaskRepoState => {
+  switch (state) {
+    case "open":
+      return "pr_open";
+    case "merged":
+      return "merged";
+    case "closed_unmerged":
+      return "closed_unmerged";
+    default:
+      return state satisfies never;
+  }
+};
+
 /** What a write's idempotency record holds: the ID the tracker made, if any. Storage: read loosely. */
 const recordedSchema = z.looseObject({ externalId: z.string().nullable() });
 
@@ -164,18 +178,26 @@ export const applyTicketWrite = async (
   const lookupFirst = inDoubt && deps.lookupBeforeRetry !== false;
 
   const render = async (): Promise<string> => {
+    // Every PR of the task (F-031): a repo's merged or closed PR stays beside the new one a reopen
+    // opened (F-066, ADR 0052), in the order they opened. A PR its row doesn't hold yet comes from
+    // the repo's own columns.
     const repos = await db.taskRepo.findMany({
-      where: { taskId, prUrl: { not: null } },
+      where: { taskId },
       orderBy: { createdAt: "asc" },
-      select: { prUrl: true, state: true, repo: { select: { fullName: true } } },
+      select: {
+        prUrl: true,
+        state: true,
+        repo: { select: { fullName: true } },
+        pullRequests: { orderBy: [{ openedAt: "asc" }, { number: "asc" }], select: { url: true, state: true } },
+      },
+    });
+    const pullRequests = repos.flatMap((repo) => {
+      const kept = repo.pullRequests.map((pr) => ({ repo: repo.repo.fullName, url: pr.url, state: repoStateOf(pr.state) }));
+      const current = repo.prUrl;
+      return current === null || kept.some((pr) => pr.url === current) ? kept : [...kept, { repo: repo.repo.fullName, url: current, state: repo.state }];
     });
     const task = await db.task.findUniqueOrThrow({ where: { id: taskId }, select: { state: true, stoppedReason: true } });
-    return renderProgressComment({
-      taskUrl,
-      state: task.state,
-      stoppedReason: task.stoppedReason,
-      pullRequests: repos.map((repo) => ({ repo: repo.repo.fullName, url: repo.prUrl ?? "", state: repo.state })),
-    });
+    return renderProgressComment({ taskUrl, state: task.state, stoppedReason: task.stoppedReason, pullRequests });
   };
 
   const attempt = async <T,>(call: () => Promise<AdapterResult<T>>, hedge: boolean): Promise<AdapterResult<T>> => {

@@ -1,12 +1,16 @@
 import { randomUUID } from "node:crypto";
 
-import { createLogger } from "@ostra/adapter-sdk";
+import { createLogger, silentLogger, systemClock as adapterClock } from "@ostra/adapter-sdk";
 import type { CompareResult, LogRecord } from "@ostra/adapter-sdk";
+import { createFakeLinear } from "@ostra/adapter-sdk/testing";
+import type { FakeLinear } from "@ostra/adapter-sdk/testing";
+import { LinearAdapter } from "@ostra/adapter-linear";
 import { mapTask } from "@ostra/db";
 import { createTestDatabase, seedInstallation, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
 import {
   freshBranchName,
+  isProgressComment,
   postgresAuditLog,
   postgresChangeNotices,
   postgresCommandOutbox,
@@ -14,6 +18,7 @@ import {
   reopenTask,
   requestUpdateBranch,
   systemClock,
+  writeTicketStepsInTx,
 } from "@ostra/domain";
 import type { M3Deps, MemberScope, SessionTimers } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
@@ -29,10 +34,11 @@ import {
   sessionIdSchema,
   taskEventSchema,
   taskSpecNeedsMinor3,
+  ticketWriteIdSchema,
   turnIdSchema,
   webhookDeliveryIdSchema,
 } from "@ostra/protocol";
-import type { OrganizationId, RepoId, TaskEvent } from "@ostra/protocol";
+import type { BoardId, ConnectionId, OrganizationId, RepoId, TaskEvent, TaskId } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { buildTaskSpec } from "../dispatch/task-spec.ts";
@@ -44,10 +50,13 @@ import type { Ingest } from "../ingest/ingest.ts";
 import { createLiveTextWriter } from "../ingest/live-text.ts";
 import type { LiveTextWriter } from "../ingest/live-text.ts";
 import { FakeCodeHost, FakeModelProvider, FakeSecretStore } from "../testing/fake-adapters.ts";
+import { mappingFor, seedBoard, seedTicketRow, seedTrackerConnection } from "../testing/tickets.ts";
 import { acceptedTask, jobContext, sha } from "../testing/turns.ts";
 import type { DrivenTask } from "../testing/turns.ts";
 import { INSTALLATION_ID, seedOnlineRunner, seedWorld } from "../testing/world.ts";
 import type { World } from "../testing/world.ts";
+import { createConnectionTrackers } from "../tracker/connections.ts";
+import { taskUrlOf, ticketSyncHandler } from "../tracker/writer.ts";
 import type { WebhookDeliveryContext } from "../webhooks/process.ts";
 import { openPullRequestsHandler } from "./session-end.ts";
 import type { ReactionDeps } from "./session-end.ts";
@@ -72,6 +81,11 @@ let secondRepoId: RepoId;
 let driver: MemberScope;
 let outsider: MemberScope;
 let timers: SessionTimers;
+let fake: FakeLinear;
+let linear: LinearAdapter;
+let linearConnection: ConnectionId;
+let boardId: BoardId;
+const PUBLIC_URL = "http://localhost:3000";
 const codeHost = new FakeCodeHost();
 const secretStore = new FakeSecretStore();
 const records: LogRecord[] = [];
@@ -117,9 +131,26 @@ beforeAll(async () => {
   await test.db.runnerPresence.update({ where: { runnerId: runner.runnerId }, data: { minor: 2 } });
   driver = scopeOf(fixture.a.organization.id, fixture.a.member.id);
   outsider = scopeOf(fixture.b.organization.id, fixture.b.admin.id, "admin");
+  // Organization A's Linear, on the fake Linear server: its app's token, and the project's board.
+  fake = await createFakeLinear();
+  fake.createApp({ name: "ostra", redirectUris: [`${PUBLIC_URL}/api/linear/callback`], webhookUrl: null });
+  const token = fake.mintToken("app");
+  linearConnection = await seedTrackerConnection(test.db, secretStore, world.organizationId, { token: token.accessToken, appUserId: fake.appUser()?.id ?? null });
+  linear = new LinearAdapter({ auth: { kind: "oauth", token: token.accessToken }, apiUrl: fake.apiUrl }, { logger: silentLogger, clock: adapterClock });
+  const statuses = await linear.listStatuses({ externalId: fake.team.id });
+  if (!statuses.ok) throw new Error(statuses.error.message);
+  boardId = await seedBoard(test.db, {
+    organizationId: world.organizationId,
+    projectId: world.projectId,
+    connectionId: linearConnection,
+    externalId: fake.team.id,
+    key: fake.team.key,
+    mapping: mappingFor(statuses.value, "ostra"),
+  });
 });
 
 afterAll(async () => {
+  await fake.close();
   await liveText.stop();
   await jobs.stop({ graceful: false, timeoutMs: 2_000 });
   await test.dispose();
@@ -357,5 +388,75 @@ describe("after the merge (F-066)", () => {
     expect(await test.db.taskRepo.findFirstOrThrow({ where: { taskId: task.taskId } })).toMatchObject({ branchName: `${branchName}-3`, generation: 3, state: "no_branch" });
     expect((await test.db.taskPullRequest.findMany({ where: { taskRepoId: taskRepo.id } })).map((pr) => pr.state)).toEqual(["merged", "merged"]);
     expect(freshBranchName(`${branchName}-3`, 3)).toBe(`${branchName}-4`);
+  });
+});
+
+/** Applies every pending write of the task through `ticket.sync`, as the queue would, oldest first. */
+const syncTicketWrites = async (taskId: TaskId): Promise<void> => {
+  const trackers = createConnectionTrackers({
+    db: test.db,
+    secretStore,
+    clock: systemClock,
+    logger,
+    build: (input) => new LinearAdapter({ auth: { kind: "oauth", token: input.token }, apiUrl: fake.apiUrl }, input.context),
+  });
+  const handler = ticketSyncHandler({ db: test.db, trackers, clock: systemClock, publicUrl: PUBLIC_URL, logger, attemptDeadlineMs: 1500 });
+  for (let round = 0; round < 4; round += 1) {
+    const pending = await test.db.ticketWrite.findMany({ where: { taskId, state: "pending" }, orderBy: { createdAt: "asc" } });
+    if (pending.length === 0) return;
+    for (const row of pending) {
+      await handler(jobContext("ticket.sync", { organizationId: world.organizationId, ticketWriteId: ticketWriteIdSchema.parse(row.id) }, logger)).catch(() => undefined);
+    }
+  }
+};
+
+describe("after the merge, on a ticket (F-066, F-031)", () => {
+  it("F-066/c1, F-031/c1: the reopened task's new PR is linked on the same ticket beside the merged one, and the one progress comment lists both", async () => {
+    const task = await runningTask();
+    const issue = await fake.createIssue({ title: "Add a changelog" });
+    const read = await linear.getTicket({ externalId: fake.team.id }, { externalId: issue.id });
+    if (!read.ok) throw new Error(read.error.message);
+    const ticketId = await seedTicketRow(test.db, { organizationId: world.organizationId, projectId: world.projectId, boardId, connectionId: linearConnection, ticket: read.value });
+    // The task is the ticket's, with its start's writes, as `startTicketTask` leaves it.
+    await test.db.task.update({ where: { id: task.taskId }, data: { source: "ticket", ticketId, boardId, ticketKey: issue.identifier } });
+    await test.db.$transaction((tx) =>
+      writeTicketStepsInTx({ tx }, { taskId: task.taskId, trigger: { kind: "task-started", taskUrl: taskUrlOf(PUBLIC_URL, task.taskId), taskTitle: "Add a changelog" } }),
+    );
+
+    // The first PR, merged; a reopen; the next session's push opens the repo's second PR.
+    await turn(task, 1, [{ repoId: repo(), head: "tk-1" }]);
+    const first = await test.db.taskRepo.findFirstOrThrow({ where: { taskId: task.taskId } });
+    await merge(task, repo(), "ostra-test/test1");
+    expect(await reopen(task, "Add the release date too.")).toMatchObject({ ok: true });
+    const second = await nextSession(task);
+    await turn(second, 1, [{ repoId: repo(), head: "tk-2" }]);
+    const fresh = await test.db.taskRepo.findFirstOrThrow({ where: { taskId: task.taskId } });
+    expect(fresh).toMatchObject({ state: "pr_open", branchName: `${first.branchName}-2` });
+    if (first.prUrl === null || fresh.prUrl === null || fresh.prNumber === first.prNumber) throw new Error("two PRs");
+
+    // The new PR names the same ticket, as the first did.
+    const pull = codeHost.pulls.find((each) => each.repo === "ostra-test/test1" && each.number === fresh.prNumber);
+    expect(pull?.title).toBe(`${issue.identifier}: Add a changelog`);
+    expect(pull?.body).toContain(`Closes ${issue.identifier}`);
+    expect((await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).ticketId).toBe(ticketId);
+
+    // On the ticket: both PRs linked, once each, and the one progress comment listing both.
+    await syncTicketWrites(task.taskId);
+    expect(await test.db.ticketWrite.count({ where: { taskId: task.taskId, state: { not: "done" } } })).toBe(0);
+    const view = fake.issueView(issue.id);
+    expect(view.attachments.filter((attachment) => attachment.url === first.prUrl)).toHaveLength(1);
+    expect(view.attachments.filter((attachment) => attachment.url === fresh.prUrl)).toHaveLength(1);
+    const progress = view.comments.filter((comment) => isProgressComment(comment.body));
+    expect(progress).toHaveLength(1);
+    expect(progress[0]?.body).toContain(`ostra-test/test1: ${first.prUrl} (merged)`);
+    expect(progress[0]?.body).toContain(`ostra-test/test1: ${fresh.prUrl} (open)`);
+
+    // The task's history is kept: both sessions, both PRs' events, the merged PR's row beside the new one.
+    expect(await test.db.session.count({ where: { taskId: task.taskId } })).toBe(2);
+    expect(await test.db.event.count({ where: { taskId: task.taskId, kind: "pr.opened" } })).toBe(2);
+    expect((await test.db.taskPullRequest.findMany({ where: { taskRepoId: first.id }, orderBy: { openedAt: "asc" } })).map((pr) => [pr.number, pr.state])).toEqual([
+      [first.prNumber, "merged"],
+      [fresh.prNumber, "open"],
+    ]);
   });
 });

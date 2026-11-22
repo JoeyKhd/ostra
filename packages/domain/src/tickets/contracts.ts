@@ -153,7 +153,9 @@ export const ticketWriteKey = (taskId: TaskId, step: TicketWriteStep): string =>
       // One per state the comment shows: a replay of the same state edits nothing new.
       return `ticket-write:${taskId}:comment-update:${step.revision}`;
     case "link_pr":
-      return `ticket-write:${taskId}:link-pr:${step.repoId}`;
+      // One per PR (F-031, F-066): a repo's new PR after its merge is linked too. A link written
+      // under the older `link-pr:<repoId>` key and written again links once (the adapter's contract).
+      return `ticket-write:${taskId}:link-pr:${step.repoId}:${String(step.prNumber)}`;
     case "link_task":
       return `ticket-write:${taskId}:link-task`;
     case "create":
@@ -169,7 +171,7 @@ export type TicketWriteStep =
   | { readonly kind: "comment" }
   /** `revision`: what the comment shows, such as `pr-opened:3` (the event's seq). */
   | { readonly kind: "comment_update"; readonly revision: string }
-  | { readonly kind: "link_pr"; readonly repoId: string }
+  | { readonly kind: "link_pr"; readonly repoId: string; readonly prNumber: number }
   | { readonly kind: "link_task" }
   | { readonly kind: "create" };
 

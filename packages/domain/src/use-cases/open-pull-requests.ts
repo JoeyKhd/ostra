@@ -245,7 +245,7 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
       }
       // A ticket task's ticket links the PR, moves to in review at the first one, and its
       // progress comment is edited (F-031); each write is keyed, so a rerun writes nothing new.
-      await writeTicketStepsInTx({ tx }, { taskId: task.id, trigger: { kind: "pr-opened", repoId, url: pr.url } });
+      await writeTicketStepsInTx({ tx }, { taskId: task.id, trigger: { kind: "pr-opened", repoId, number: pr.number, url: pr.url } });
       // Milestone 6 (F-012, ticket 13): a task Linear started posts the PR in its session, once per PR.
       await recordAgentSessionMomentInTx(deps, tx, {
         organizationId,
