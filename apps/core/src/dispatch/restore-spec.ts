@@ -15,7 +15,8 @@ import type { BlobRef, HiddenRefRestore, TaskSpecContextFile, TaskSpecRestore, T
 
 // The task spec's milestone 2 parts (ticket 18): a ticket task's ticket and its images, and a
 // reopen's restore section (ADR 0039). The dispatch chose the step and wrote it as the session's
-// origin; this reads it back with what the step needs: the newest archive (for `restored`), each
+// origin; this reads it back with what the step needs: the newest archive (for `restored`, and for
+// `resumed` as its fallback when the box isn't kept after all), each
 // repo's hidden ref and the head it was saved on, and the member messages no turn answered. Every
 // reopen's prompt is the rebuild template, so a runner whose resume or import fails falls back to it
 // (ticket 24); a `resumed` or `restored` session never sends it.
@@ -76,10 +77,40 @@ export const newestArchive = async (db: Pick<Db, "session" | "blob">, task: { re
   return { blobId: blobIdSchema.parse(blob.id), size: blob.size, sha256: digest.data };
 };
 
+/**
+ * `resumed`'s fallback archive: the newest, made by the agent this session runs, for the runner to
+ * restore from on a fresh box when the box it means isn't kept after all (a `host` runner that
+ * restarted since; ADR 0039, amended 2026-11-22). A runner reads it only once its resume failed, and
+ * one from before reads the archive for `restored` alone, so it changes nothing there.
+ */
+const resumeFallbackArchive = async (
+  tx: Pick<Db, "session" | "blob" | "agentProfile">,
+  task: { readonly id: string; readonly organizationId: string },
+  session: { readonly agentProfileId: string | null },
+): Promise<BlobRef | null> => {
+  const archived = await tx.session.findFirst({
+    where: { taskId: task.id, archiveBlobId: { not: null } },
+    orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+    select: { agentProfileId: true },
+  });
+  if (archived === null) {
+    return null;
+  }
+  if (archived.agentProfileId !== session.agentProfileId) {
+    const adapterOf = async (profileId: string | null): Promise<string | null> =>
+      profileId === null ? null : ((await tx.agentProfile.findFirst({ where: { id: profileId, organizationId: task.organizationId }, select: { adapter: true } }))?.adapter ?? null);
+    const [maker, current] = await Promise.all([adapterOf(archived.agentProfileId), adapterOf(session.agentProfileId)]);
+    if (maker === null || maker !== current) {
+      return null;
+    }
+  }
+  return newestArchive(tx, task);
+};
+
 export const specMilestone2Parts = async (
   db: Db,
   task: { readonly id: string; readonly organizationId: string; readonly ticketId: string | null },
-  session: { readonly origin: "new" | "resumed" | "restored" | "rebuilt" },
+  session: { readonly origin: "new" | "resumed" | "restored" | "rebuilt"; readonly agentProfileId: string | null },
 ): Promise<SpecMilestone2Parts> => {
   const taskId = taskIdSchema.parse(task.id);
   const ticketRow = task.ticketId === null ? null : await db.ticket.findUnique({ where: { id: task.ticketId }, select: { key: true, title: true, url: true } });
@@ -121,7 +152,7 @@ export const specMilestone2Parts = async (
       contextFiles,
       restore: {
         origin: session.origin,
-        archive: session.origin === "restored" ? await newestArchive(tx, task) : null,
+        archive: session.origin === "restored" ? await newestArchive(tx, task) : session.origin === "resumed" ? await resumeFallbackArchive(tx, task, session) : null,
         hiddenRefs,
         // Milestone 9 (F-148, ADR 0070): each with its files, which the spec keeps to those it carries (`files-spec.ts`).
         pendingMessages: pending.map((message) => ({ clientMessageId: message.clientMessageId, text: message.text, ...(message.files === undefined ? {} : { files: message.files }) })),

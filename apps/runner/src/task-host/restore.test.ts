@@ -168,6 +168,35 @@ describe("a reopen on the same box: resumed", () => {
     // The template first, then the pending message.
     expect(h.ofKind(next, "turn.started")).toHaveLength(2);
   }, 180_000);
+
+  it("F-096/c9: a resume of a worktree its runner lost track of in a restart restores on a fresh one from the archive the spec names, never the template", async () => {
+    const before = await runner();
+    const { spec, boxId, saved } = await firstSession(before, "fig");
+    // The idle stop: the session ends, and the worktree is kept for a resume.
+    await before.gateway.waitFor(() => timers.pending() > 0, 60_000);
+    timers.advance((spec.limits.idleMinutes ?? 15) * 60_000);
+    await before.waitForKind(spec, "session.ended");
+    await before.idle();
+    expect(before.host.kept().map((kept) => kept.box.boxId)).toEqual([boxId]);
+    // The runner restarts on its data folder: the worktree is on disk, and no box is kept in memory.
+    await before.killRunner();
+    const after = await startHarness(shared, { restartOf: before, host: { timers: manualTimers() } });
+    harnesses.push(after);
+    expect(after.host.kept()).toEqual([]);
+
+    // Core planned `resumed`, and the spec names the archive for a resume that can't happen.
+    const next = reopened(spec, { origin: "resumed", archive: archiveOf(saved), hiddenRefs: hiddenRefsOf(saved), pendingMessages: [pendingMessage(fakeMarker("recall"))] });
+    serve(after, next, before);
+    after.dispatch(next, boxId);
+    await after.waitForKind(next, "session.saved");
+    const [restored] = after.ofKind(next, "session.restored");
+    expect(restored).toMatchObject({ origin: "restored", hiddenRef: "applied" });
+    expect(restored?.replayedUpdates).toBeGreaterThan(0);
+    expect(restored).not.toHaveProperty("fallbackReason");
+    // The pending message was the one turn (no template first), and the agent remembered the first session.
+    expect(after.ofKind(next, "turn.started")).toHaveLength(1);
+    expect(agentText(after, next)).toContain("fig");
+  }, 240_000);
 });
 
 describe("a reopen on a fresh box: restored", () => {

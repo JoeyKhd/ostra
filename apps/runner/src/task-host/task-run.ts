@@ -2029,7 +2029,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
         await placeTaskFiles(taskSpec);
         return { ok: true, spec: taskSpec };
       }
-      fallBack(resumed.reason);
+      fallBackFromResume(resumed.reason, taskSpec);
     }
     const created = await deps.executor.create({ ...box, spec: taskSpec, proxies });
     if (!created.ok) {
@@ -2108,6 +2108,22 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
       restored.previousBox = undefined;
       restored.fallbackReason = reason.slice(0, 500);
     }
+  };
+
+  /**
+   * A resume that can't happen (the box isn't kept here after all: a `host` runner that restarted
+   * since): a fresh box restored from the archive the spec names for it, as `restored` would, or
+   * the template without one (ADR 0039, amended 2026-11-22). Never the template over an archive.
+   */
+  const fallBackFromResume = (reason: string, taskSpec: TaskSpec): void => {
+    if (restored === undefined || (taskSpec.restore?.archive ?? null) === null) {
+      fallBack(reason);
+      return;
+    }
+    log.warn("the resume falls back to the session archive", { reason: reason.slice(0, 300) });
+    restored.origin = "restored";
+    restored.resumeId = undefined;
+    restored.previousBox = undefined;
   };
 
   /** `resumed`: the box this runner kept takes the new session's proxies. */

@@ -312,7 +312,8 @@ describe("the three steps (ADR 0039)", () => {
     const spec = await specFor(task.taskId, first.runnerId);
     expect(spec.restore).toEqual({
       origin: "resumed",
-      archive: null,
+      // The archive too, for a runner that no longer holds the box after all (a restart): it restores from it.
+      archive: task.archive,
       hiddenRefs: [{ repoId: repo(), sha: sha("wip-1"), baseSha: sha("head-1") }],
       pendingMessages: [expect.objectContaining({ text: "Also add today's date at the top." })],
     });
@@ -368,6 +369,28 @@ describe("the three steps (ADR 0039)", () => {
     await restored.send({ kind: "session.restored", origin: "restored", replayedUpdates: 12, hiddenRef: "applied" });
     expect((await test.db.event.findFirstOrThrow({ where: { sessionId, kind: "session.restored" } })).payload).toMatchObject({ previousBox: "lost" });
     await setOnline(first, true);
+  });
+
+  it("F-033/c1: a kept box whose runner is online but full is passed over for a fresh box restored from the archive, never for the template", async () => {
+    // Another task's warm box holds a slot of the first runner, which then has none free.
+    await inReview();
+    const task = await inReview();
+    const oldSession = await test.db.session.findUniqueOrThrow({ where: { id: task.sessionId } });
+    try {
+      const sessionId = await reopened(task.taskId, "Carry on elsewhere.");
+      const held = await test.db.lease.count({ where: { runnerId: first.runnerId, state: "active" } });
+      expect(held).toBeGreaterThan(0);
+      await test.db.runner.update({ where: { id: first.runnerId }, data: { capacity: held } });
+      const offered = await dispatch(task.taskId, sessionId);
+      expect(offered.ok && offered.runnerId).toBe(second.runnerId);
+      const session = await test.db.session.findUniqueOrThrow({ where: { id: sessionId } });
+      expect(session).toMatchObject({ origin: "restored" });
+      expect(session.boxId).not.toBe(oldSession.boxId);
+      await accept(task.taskId, offered, second);
+      expect((await specFor(task.taskId, second.runnerId)).restore).toMatchObject({ origin: "restored", archive: task.archive, hiddenRefs: [{ repoId: repo(), sha: sha("wip-1"), baseSha: sha("head-1") }] });
+    } finally {
+      await test.db.runner.update({ where: { id: first.runnerId }, data: { capacity: 20 } });
+    }
   });
 
   it("rebuilds from the template when the archive is gone, or the runner can't restore", async () => {

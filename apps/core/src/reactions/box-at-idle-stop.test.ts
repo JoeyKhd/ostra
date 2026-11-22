@@ -280,7 +280,8 @@ describe("a box at its idle stop, and the reopen after it (F-096/c9, ADR 0039, Q
     const next = await reopenOn(runner, task, "Carry on in the same worktree.");
     expect(next.boxId).toBe(task.boxId);
     expect(await test.db.session.findUniqueOrThrow({ where: { id: next.sessionId } })).toMatchObject({ origin: "resumed", boxId: task.boxId });
-    expect((await specOf(next)).restore).toMatchObject({ origin: "resumed", hiddenRefs: [{ repoId: saved.repoId, sha: saved.hidden, baseSha: saved.head }] });
+    // The archive goes with it, for the runner to restore from if it no longer holds the worktree (a restart).
+    expect((await specOf(next)).restore).toMatchObject({ origin: "resumed", archive: saved.archive, hiddenRefs: [{ repoId: saved.repoId, sha: saved.hidden, baseSha: saved.head }] });
     await closeAll(runner);
   }, 120_000);
 });

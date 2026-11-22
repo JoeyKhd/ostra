@@ -118,7 +118,7 @@ const KEPT_BOX_STATES: ReadonlySet<string> = new Set(["ready", "idle", "stopped"
  * under the cap and made by the same agent, when the agent imports archives; else the template.
  * A task with no earlier session is new. Only a `host` worktree is ever kept: a `docker` or
  * `kubernetes` box went with its session, so its task reopens on a fresh box (Q343), even one an
- * older core recorded `stopped`.
+ * older core recorded `stopped`. `keptBoxes: "ignore"` chooses as if no box were kept.
  */
 export const reopenPlanInTx = async (
   tx: Tx,
@@ -127,6 +127,7 @@ export const reopenPlanInTx = async (
   adapter: string | null,
   settings: ReopenDispatchSettings | undefined,
   now: number,
+  keptBoxes: "consider" | "ignore" = "consider",
 ): Promise<DispatchPlan> => {
   const previous = await tx.session.findFirst({
     where: { taskId: task.id, id: { not: session.id } },
@@ -138,7 +139,10 @@ export const reopenPlanInTx = async (
   }
   let keptBox: Parameters<typeof chooseReopenStep>[0]["keptBox"] = null;
   let keptRunnerId: RunnerId | undefined;
-  const box = previous.boxId === null ? null : await tx.box.findUnique({ where: { id: previous.boxId }, select: { id: true, state: true, runnerId: true, executor: true } });
+  const box =
+    previous.boxId === null || keptBoxes === "ignore"
+      ? null
+      : await tx.box.findUnique({ where: { id: previous.boxId }, select: { id: true, state: true, runnerId: true, executor: true } });
   const boxRunnerId = box?.runnerId ?? null;
   if (box !== null && boxRunnerId !== null && KEPT_BOX_STATES.has(box.state) && boxOutlivesItsSession(box.executor)) {
     const runner = await tx.runner.findFirst({
@@ -182,18 +186,18 @@ export const reopenPlanInTx = async (
   return keptRunnerId === undefined ? step : { ...step, keptRunnerId };
 };
 
-/** The step when the kept box can't be used after all: the archive's, or the template's. */
-const withoutKeptBox = async (
+/**
+ * The step when the kept box can't be used after all: the archive's, or the template's. The same
+ * choice with the box taken away, so an archive is never passed over for the template.
+ */
+const withoutKeptBox = (
   tx: Tx,
   task: { readonly id: TaskId; readonly organizationId: string },
   session: { readonly id: string; readonly agentProfileId: string | null },
   adapter: string | null,
   settings: ReopenDispatchSettings | undefined,
-): Promise<DispatchPlan> => {
-  // The same choice with the box taken away: the clock doesn't matter once there's no box.
-  const plan = await reopenPlanInTx(tx, task, session, adapter, settings, Number.NEGATIVE_INFINITY);
-  return plan.step === "resumed" ? { step: "rebuilt", reason: "no-archive" } : plan;
-};
+  now: number,
+): Promise<DispatchPlan> => reopenPlanInTx(tx, task, session, adapter, settings, now, "ignore");
 
 export type DispatchTask = (deps: DispatchTaskDeps, input: DispatchTaskInput) => Promise<DispatchTaskResult>;
 
@@ -502,14 +506,14 @@ export const dispatchTask: DispatchTask = async (deps, input) => {
       select: { providerId: true },
     });
     if (kept !== null && kept.providerId !== providerId) {
-      plan = await withoutKeptBox(tx, task, session, profile.adapter, deps.reopen);
+      plan = await withoutKeptBox(tx, task, session, profile.adapter, deps.reopen, now);
     }
   }
   let runner: Chosen | null = null;
   if (plan.step === "resumed" && plan.keptRunnerId !== undefined) {
     const [kept] = await available(tx, task.organizationId, { ids: [plan.keptRunnerId] }, now, needsServices, minMinor);
     if (kept === undefined) {
-      plan = await withoutKeptBox(tx, task, session, profile.adapter, deps.reopen);
+      plan = await withoutKeptBox(tx, task, session, profile.adapter, deps.reopen, now);
     } else {
       // The kept box's runner, already chosen: the box it holds is the task's.
       runner = { id: kept.id, executor: kept.executor, poolId: null, sizes: false, pullsFromRegistry: false };
