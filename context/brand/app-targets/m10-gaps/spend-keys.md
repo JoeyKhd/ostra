@@ -5,7 +5,7 @@
 - **Route (existing):** `/organization/spend` → `components/spend/spend-view.tsx`, grown. The selection joins the URL's: `?provider=<providerId>` beside `?project=` and `?model=`.
 - **Feature:** F-135/c13 (spend shown per provider, per project and per organization), ADR 0055 "Spend per key" (from ADR 0065). Data, built: `spend.month`'s `byProvider` (each provider's four token kinds, unpriced tokens and spend, highest first).
 - **Builds on:** `../m4/spend-budgets.md` (Spend) and `../m4/models-keys.md` (a key's logo and name), as the live pages draw them, in milestone 8's shell.
-- **Status:** a proposal, 2026-11-22. Nothing is built from it until the maintainer approves.
+- **Status: approved 2026-11-22** (the maintainer: "yes to all"). Its choices are settled as `README.md` recommends.
 
 ## Purpose
 

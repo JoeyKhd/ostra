@@ -5,7 +5,7 @@
 - **Route (existing):** `/organization/github` → `components/github/github-view.tsx` and `github-orgs.tsx`, grown. The selection stays `?app=<connectionId>`; the result is a state of the App's panel, never in the URL.
 - **Feature:** F-006/c4 ("the webhook and its events are added only once a public address exists… the panel says so and offers to finish it later"). ADR 0040's note of 2026-11-22. API, built: `github.appRequest` → `webhookPossible`; `github.connections` → each App's `webhook.kind` (`none` | `receiving` | `failing`) and `missingEvents`; `github.turnOnWebhook({ connectionId })` → `webhookUrl`, `webhookSecret` (this once), `events`, `replaced`.
 - **Builds on:** `../m4/github-organizations.md` and `../m1/github.md` (point 8 asked for this row), as the live page draws them, in milestone 8's shell.
-- **Status:** a proposal, 2026-11-22. Nothing is built from it until the maintainer approves.
+- **Status: approved 2026-11-22** (the maintainer: "yes to all"). Its choices are settled as `README.md` recommends.
 
 ## Purpose
 

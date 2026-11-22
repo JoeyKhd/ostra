@@ -3,7 +3,7 @@ title: "Executors"
 description: "Where a runner runs tasks: docker, host or kubernetes, and what each isolates."
 ---
 
-A runner's **executor** is where it runs each task. A task behaves the same on every executor, and on a pool runner or a personal one, except for the four differences at the end of this page: any other difference is a bug.
+A runner's **executor** is where it runs each task. A task behaves the same on every executor, and on a pool runner or a personal one, except for the five differences at the end of this page: any other difference is a bug.
 
 ## docker
 
@@ -30,9 +30,10 @@ Every executor runs the app's processes and a Chromium-family browser beside the
 
 ## The allowed differences
 
-These four are the only ones:
+These five are the only ones:
 
 1. **No services on `host`.** The `host` executor doesn't start an environment's services, and ostra never sends it a task whose environment declares them.
 2. **No box sizes on `host`.** It counts slots only.
 3. **Weaker process containment on `host` where the machine gives no kernel unit:** always on macOS, on Linux when the runner has no cgroup of its own to write, and on Windows when the job object can't be made. A process the agent detaches may outlive its task there. The runner reports it, and the panel shows it.
 4. **On `kubernetes`, the agent's container has direct internet access.** Every container in a pod shares one network, and a NetworkPolicy selects pods, not containers. The baseline (private ranges, the metadata address, other boxes) holds on both executors, but on `kubernetes` the agent can also reach any public host without going through the sidecar. No credential is exposed, because the agent holds none, but a prompt-injected agent can send data out. The panel says so on a `kubernetes` pool: "the agent has direct internet access".
+5. **A `host` worktree is kept between sessions.** On `docker` and `kubernetes` the box goes when its session ends, and a reopen restores the task on a fresh box from its hidden ref and session archive: its tracked and untracked changes come back, its ignored files don't, and the setup script runs again. A `host` worktree stays, stopped, until the task's last PR merges or closes, or for 14 idle days, and a reopen on the runner that kept it resumes in place: ignored files such as a `.env.local` or a build's output are still there, and no setup runs. That keeps a reopen on a personal runner quick. A reopen anywhere else, or on that runner after it restarted, restores as a box does.

@@ -263,7 +263,7 @@ Only one session per task is starting, running, waiting or idle at any time. A s
 | **released** | The box is gone and its lease has ended (F-079) | Never: a box is never reused |
 | **failed** | Creating or preparing failed, or the box was lost with its host | Never. The task reopens on a fresh box (F-045, F-047) |
 
-The `host` executor has no box. Its worktree goes through the same states, so a task behaves the same on every executor. It starts no services and has no box sizes: two of the differences ADR 0029 records. Its stopped worktree stays for the task's next session, where a box goes at its stop: whether that's a difference ADR 0029 allows is Q346 (ADR 0039, amended 2026-11-22).
+The `host` executor has no box. Its worktree goes through the same states, so a task behaves the same on every executor. It starts no services, has no box sizes, and keeps its stopped worktree for the task's next session, where a box goes at its stop: three of the differences ADR 0029 records (the last since Q346, 2026-11-22; ADR 0039).
 
 ## A runner's lifecycle
 

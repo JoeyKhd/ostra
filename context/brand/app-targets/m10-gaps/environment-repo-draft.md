@@ -3,9 +3,9 @@
 - **Pictures:** `environment-repo-draft` and `environment-repo-draft-light` (the draft waiting on a project admin), `environment-repo-draft-edit` (after `Edit first`), `environment-repo-draft-states` (a plain saved script, nothing found, a member's view, two new repos, dismissed, applied, the new repo's marked rows), `environment-repo-draft-phone` (390×844). Desktop: a 2880×1912 `.png` and a 1440×956 `.webp`; the phone: 780×1688 and 390×844.
 - **Sources:** `html/environment.html?view=draft|edit`, `html/states.html?sheet=env`, `html/phone.html?scene=env`; the parts in `html/gaps.js` (`repoDraft`, `diffBlock`, `varRows`, `scriptEditor`, `envPanel`).
 - **Route (existing):** `/projects/[project-id]/environment` (the Setup tab) → `components/projects/environment-view.tsx`, grown.
-- **Feature:** F-112/c1 ("when a project is created or a repo is added to it, ostra drafts the environment… a project admin reviews and edits the draft before it's saved"), for a repo added **after** the environment was saved: Q345, option (b), which the lead recommends. The drafting is built (`packages/domain/src/environment/repo-drafts.ts`, `detect.ts`); holding a draft beside a saved environment isn't (see "Data").
+- **Feature:** F-112/c1 ("when a project is created or a repo is added to it, ostra drafts the environment… a project admin reviews and edits the draft before it's saved"), for a repo added **after** the environment was saved: Q345, option (b), which the maintainer chose on 2026-11-22. The drafting is built (`packages/domain/src/environment/repo-drafts.ts`, `detect.ts`); holding a draft beside a saved environment isn't (see "Data").
 - **Builds on:** `../m1/environment.md` (the Setup tab and a draft's `Found in` groups), `../m8/environment-app-processes.md` (the band for something found but not added), `../m6/environment-proposal.md` (diff rows), as the live page draws them, in milestone 8's shell.
-- **Status:** a proposal, 2026-11-22. Nothing is built from it until the maintainer approves, and it needs Q345 settled as (b).
+- **Status: approved 2026-11-22** (the maintainer: "yes to all"), with Q345 settled as (b). Its choices are settled as `README.md` recommends.
 
 ## Purpose
 

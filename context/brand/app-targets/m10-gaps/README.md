@@ -1,8 +1,8 @@
 # Targets for four ledger gaps
 
-Design targets for the visible part of four features whose API and domain are built, or, for the environment, whose option the lead recommends. Each keeps an approved target's layout and adds only the new part.
+Design targets for the visible part of four features whose API and domain are built, or, for the environment, whose option the maintainer chose (Q345, option (b)). Each keeps an approved target's layout and adds only the new part.
 
-**Status: a proposal, 2026-11-22.** Nothing is built from these until the maintainer approves them. The choices to settle are at the end, each with its recommendation; the pictures follow the recommendations.
+**Status: approved 2026-11-22 by the maintainer** ("yes to all"). Every choice at the end is settled as recommended, choice 15 settling Q345 as option (b); see "Approval" below. Build from these targets.
 
 | # | Gap | Feature | Builds on |
 |---|---|---|---|
@@ -62,11 +62,11 @@ The earlier milestones' rules hold (`../m1/README.md` to `../m10-thread/README.m
 - **No amber on any of the four.** None waits on a person the way "needs you" means: a setting, a figure, an admin's own settings on GitHub, and a draft beside a setup that keeps working.
 - **Settings apply where they're shown.** The prompt-tickets switch saves at once, as the Boards page's other switch does; nothing here adds a second primary button to a page.
 
-## The choices to settle
+## The choices, settled
 
-Each with the recommendation the pictures follow.
+Each settled as recommended (the maintainer, 2026-11-22: "yes to all"), and the pictures follow them.
 
-| # | Gap | Choice | Recommended | The alternative |
+| # | Gap | Choice | Settled (as recommended) | The alternative, not taken |
 |---|---|---|---|---|
 | 1 | 1 | Where the setting lives | The Boards page, a **Prompt tasks** section between Attached and Status mapping: it names one of the boards just above it, and members can read the page | Settings › Ticket template, which only admins see |
 | 2 | 1 | How it saves | At once, from the switch and the picker, as `Start from Linear` does; `Save mapping` stays the mapping's | Held until `Save mapping` |
@@ -82,7 +82,7 @@ Each with the recommendation the pictures follow.
 | 12 | 3 | Turn on's result | In the App's panel (380px), two numbered steps by GitHub page, each event on its own row, shown once with the leave dialog | One block of text to copy |
 | 13 | 3 | No public address | No button; the row names `OSTRA_CORE_PUBLIC_URL` | A disabled `Turn on` |
 | 14 | 3 | A lost secret | `New webhook secret` on the On and Waiting rows (milestone 4's settled name), asking first because deliveries fail until it's pasted | No confirm |
-| 15 | 4 | Q345 | (b): the saved environment keeps running; the new repo's draft waits for review | (a): the environment goes back to Draft with the new repo merged in |
+| 15 | 4 | Q345 (settled) | (b): the saved environment keeps running; the new repo's draft waits for review | (a): the environment goes back to Draft with the new repo merged in |
 | 16 | 4 | Where the draft shows | On the Setup tab, a band above the setup script, as the App tab's `Found in the repo, not added`; the other tabs carry a one-line pointer | The Proposal tab, as a proposal from detection |
 | 17 | 4 | What Apply does | Saves at once (scanned, audited, a new version; the snapshot rebuilds); `Edit first` is the unsaved path | Apply only fills the editors |
 | 18 | 4 | A plain saved script | Apply makes it a `case`: the old script under the repos that had it, the new lines under the new repo | Append the new lines to the plain script, for every repo |
@@ -94,4 +94,12 @@ Each with the recommendation the pictures follow.
 1. **Prompt tickets:** `boards.get` returns each board's `ticketsForPromptTasks` (choice 5); `boards.promptTickets.*` and New task's two strings in `apps/web/messages/en.json`.
 2. **Keys:** `spend.month`'s `byProvider` zero-filled (choice 8); the panel reads `providers.list` for host, format, tasks and projects; `KeyLogo` shared from `components/models/keys-sections.tsx`.
 3. **GitHub:** nothing new in the API; `github-orgs.tsx`'s `WebhookState` reads `none` as `Events off` and a missing event as `Waiting for events`; the App panel gains the Events row and the result.
-4. **Environment:** Q345 settled; the `EnvironmentRepoDraft` row, detection on `projects.addRepo` for a saved environment, and `environments.get`'s `repoDrafts`, `applyRepoDraft`, `dismissRepoDraft` (`environment-repo-draft.md`, "Data"). Until then, F-112/c1 stays unproved for a saved environment.
+4. **Environment:** Q345 is settled as (b) (`../../../open-questions.md`, settled list); the `EnvironmentRepoDraft` row, detection on `projects.addRepo` for a saved environment, and `environments.get`'s `repoDrafts`, `applyRepoDraft`, `dismissRepoDraft` (`environment-repo-draft.md`, "Data"). Until then, F-112/c1 stays unproved for a saved environment.
+
+## Approval
+
+**Approved 2026-11-22.** The maintainer, shown the four gaps' pictures and the twenty choices with their recommendations, answered "yes to all". So:
+
+- **Every choice above is settled as recommended,** and the pictures and the four build specs (`prompt-tickets.md`, `spend-keys.md`, `github-events.md`, `environment-repo-draft.md`) are the build's contract on copy, states and sizes.
+- **Choice 15 settles Q345 as option (b):** a repo added to a saved environment gets a draft held for review on the Environment page, and the saved environment keeps running as it is until an admin applies or edits the draft. The question has left the open list (`../../../open-questions.md`, "Settled on the v1 audit's questions").
+- **What the build needs beyond the pictures** (above) is the build's list: the API additions of choices 5 and 8, and the environment's `EnvironmentRepoDraft` row and procedures, without which F-112/c1 stays unproved for a saved environment.

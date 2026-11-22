@@ -5,7 +5,7 @@
 - **Route (existing):** `/projects/[project-id]/boards` → `components/boards/boards-view.tsx`, grown. New task: `components/tasks/new-task-view.tsx`.
 - **Feature:** F-097/c2 (Q31). API, built: `projects.setPromptTickets({ projectId, boardId | null })` (project admins, audited as `project.prompt-tickets-set`) and `projects.get`'s `promptTicketBoardId`.
 - **Builds on:** `../m2/project-boards.md` (approved), redrawn in milestone 8's shell as the live page draws it; `../m9/new-task-attachments.md` (approved) for New task.
-- **Status:** a proposal, 2026-11-22. Nothing is built from it until the maintainer approves.
+- **Status: approved 2026-11-22** (the maintainer: "yes to all"). Its choices are settled as `README.md` recommends.
 
 ## Purpose
 
