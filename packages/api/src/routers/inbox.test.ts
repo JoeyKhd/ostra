@@ -262,7 +262,7 @@ describe("F-010, F-097: starting a task from a ticket", () => {
     expect((await harness.test.db.auditEntry.findFirst({ where: { action: "task.created", entityId: started.taskId } }))?.data).toMatchObject({ source: "ticket" });
   });
 
-  it("refuses a second active task for the ticket and names the first, even when two members start at once", async () => {
+  it("F-007/c3: refuses a second active task for the ticket and names the first, even when two members start at once", async () => {
     const ticketId = await ticketNamed("ENG-31");
     const [first, second] = await Promise.allSettled([
       (await member()).tasks.startFromTicket({ projectId, ticketId }),
@@ -279,6 +279,55 @@ describe("F-010, F-097: starting a task from a ticket", () => {
     expect(await harness.test.db.task.count({ where: { ticketId, kind: "code" } })).toBe(1);
     // Again, later: the same refusal.
     await expect((await member()).tasks.startFromTicket({ projectId, ticketId })).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("F-007/c3: the rule is per project: the same tracker issue on another project's board gets that project's own active task, and one only", async () => {
+    const ticketId = await ticketNamed("ENG-36");
+    const here = await harness.test.db.ticket.findUniqueOrThrow({ where: { id: ticketId } });
+    // The team is a board of a second project too: the issue is cached there as that board's ticket.
+    const other = await seedProject(harness, world, "inbox-other");
+    const otherBoard = await seedBoard(harness, { projectId: other.projectId, connectionId, key: "ENG" });
+    const there = ticketIdSchema.parse(
+      (
+        await harness.test.db.ticket.create({
+          data: {
+            organizationId: here.organizationId,
+            projectId: other.projectId,
+            boardId: otherBoard,
+            connectionId: here.connectionId,
+            externalId: here.externalId,
+            key: here.key,
+            title: here.title,
+            statusId: here.statusId,
+            statusName: here.statusName,
+            statusCategory: here.statusCategory,
+            url: here.url,
+            trackerUpdatedAt: here.trackerUpdatedAt,
+          },
+          select: { id: true },
+        })
+      ).id,
+    );
+    const first = await (await member()).tasks.startFromTicket({ projectId, ticketId });
+    const second = await (await member()).tasks.startFromTicket({ projectId: other.projectId, ticketId: there });
+    expect(second.taskId).not.toBe(first.taskId);
+    expect(await harness.test.db.task.findMany({ where: { id: { in: [first.taskId, second.taskId] } }, select: { projectId: true }, orderBy: { createdAt: "asc" } })).toEqual([
+      { projectId },
+      { projectId: other.projectId },
+    ]);
+    // In each project a second start is refused, and names that project's task.
+    for (const [project, ticket, holder] of [
+      [projectId, ticketId, first.taskId],
+      [other.projectId, there, second.taskId],
+    ] as const) {
+      const refusal = await (await admin()).tasks.startFromTicket({ projectId: project, ticketId: ticket }).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      expect(refusal).toMatchObject({ code: "CONFLICT" });
+      expect(refusal instanceof Error ? refusal.message : "").toContain(holder);
+    }
+    expect(await harness.test.db.task.count({ where: { ticket: { externalId: here.externalId }, kind: "code", state: { notIn: ["stopped", "merged", "done"] } } })).toBe(2);
   });
 
   it("lets a stopped task's ticket start again, and shows the earlier task meanwhile", async () => {
