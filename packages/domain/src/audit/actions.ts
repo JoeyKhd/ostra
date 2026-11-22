@@ -122,6 +122,8 @@ export const auditActions = {
   "github.connected": "connection",
   // Q295: an admin added or replaced the own App's OAuth client secret, which members link through.
   "github.client-secret-set": "connection",
+  // F-006/c4: an admin finished the webhook of an App made without one, or replaced its secret.
+  "github.webhook-secret-set": "connection",
   "connection.added": "connection",
   "installation.linked": "connection",
   "installation.unlinked": "connection",

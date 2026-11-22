@@ -230,3 +230,70 @@ export const setGitHubClientSecret = async (deps: SetGitHubClientSecretDeps, inp
     throw error;
   }
 };
+
+// ---- F-006/c4: the webhook of an App made without one, finished later ----
+
+export const setGitHubWebhookSecretInputSchema = z.strictObject({
+  connectionId: connectionIdSchema,
+  /** The secret ostra generated, for the App's webhook settings on GitHub. Never logged; stored through the secret store. */
+  webhookSecret: z.string().min(1).max(512),
+});
+export type SetGitHubWebhookSecretInput = z.infer<typeof setGitHubWebhookSecretInputSchema>;
+
+export type SetGitHubWebhookSecretResult = UseCaseResult<
+  {
+    readonly connectionId: ConnectionId;
+    /** The secret it replaced, for the caller to delete once the transaction commits; `null` for a first one. */
+    readonly replaced: SecretRef | null;
+  },
+  "forbidden" | "not-found"
+>;
+
+const refuseWebhook = (
+  error: Exclude<SetGitHubWebhookSecretResult, { readonly ok: true }>["error"],
+  message: string,
+): SetGitHubWebhookSecretResult => ({ ok: false, error, message });
+
+/**
+ * Keeps a webhook secret for one of the organization's GitHub Apps, replacing one it had. An App made
+ * while the server had no public address has none, and takes no webhooks until it has (F-006/c4).
+ * The new secret is in the secret store before the row points at it, and is deleted again if the
+ * row's write fails; the old one is the caller's to delete after the commit.
+ */
+export const setGitHubWebhookSecret = async (deps: SetGitHubClientSecretDeps, input: SetGitHubWebhookSecretInput): Promise<SetGitHubWebhookSecretResult> => {
+  const { tx, scope } = deps;
+  const organizationId = scope.organizationId;
+  if (!requireOrganizationAdmin(scope, organizationId).ok) {
+    return refuseWebhook("forbidden", "Only an organization admin sets a GitHub App's webhook");
+  }
+  const connection = await tx.connection.findFirst({
+    where: { id: input.connectionId, organizationId, kind: "github" },
+    select: { id: true, webhookSecretSecretRef: true },
+  });
+  if (connection === null) {
+    return refuseWebhook("not-found", "No such GitHub App in this organization");
+  }
+  const put = await deps.adapters.secretStore.put({ organizationId, purpose: "github-app.webhook-secret" }, input.webhookSecret);
+  if (!put.ok) {
+    throw new Error(`the secret store did not keep the GitHub App's webhook secret: ${put.error.code}`);
+  }
+  try {
+    await tx.connection.update({ where: { id: connection.id }, data: { webhookSecretSecretRef: put.value } });
+    const connectionId = connectionIdSchema.parse(connection.id);
+    const previous = secretRefSchema.safeParse(connection.webhookSecretSecretRef);
+    await deps.audit.recordInTx(tx, {
+      organizationId,
+      projectId: null,
+      actor: { kind: "member", id: scope.memberId },
+      action: "github.webhook-secret-set",
+      entity: "connection",
+      entityId: connectionId,
+      data: { replaced: connection.webhookSecretSecretRef !== null },
+    });
+    await deps.notices.emitInTx(tx, { organizationId, projectId: null, entity: "connection", entityId: connectionId });
+    return { ok: true, connectionId, replaced: previous.success ? previous.data : null };
+  } catch (error) {
+    await deps.adapters.secretStore.delete(organizationId, put.value);
+    throw error;
+  }
+};

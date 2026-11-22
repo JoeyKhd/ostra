@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import { appPermissions, isPublicWebhookUrl } from "@ostra/adapter-github";
+import { appEvents, appPermissions, isPublicWebhookUrl } from "@ostra/adapter-github";
 import {
   appOwnerInTx,
   connectExistingApp,
@@ -11,6 +11,7 @@ import {
   seenInstallationOf,
   setGitHubClientSecret,
   setGitHubClientSecretInputSchema,
+  setGitHubWebhookSecret,
 } from "@ostra/domain";
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import { connectionIdSchema, memberIdSchema, organizationIdSchema, repoFullNameSchema } from "@ostra/protocol";
@@ -188,6 +189,46 @@ export const githubRouter = router({
         await ports.adapters.secretStore.delete(ctx.scope.organizationId, set.replaced);
       }
       return { connectionId: set.connectionId, replaced: set.replaced !== null };
+    }),
+
+  /**
+   * F-006/c4: finishes the webhook of an App made while the server had no public address, once it
+   * has one. GitHub has no call that gives such an App a webhook or subscribes it to events (its
+   * `GET /app/hook/config` answers 404 for one), so ostra generates the webhook secret, keeps it in
+   * the secret store, and answers what an admin sets in the App's settings on GitHub: the App's own
+   * webhook address, the secret, shown this once, and the events to subscribe to. Until then the
+   * inbox takes no delivery for the App. Called again, it replaces the secret, for one that was lost.
+   */
+  turnOnWebhook: adminProcedure
+    .input(z.strictObject({ connectionId: connectionIdSchema }))
+    .output(
+      z.object({
+        connectionId: connectionIdSchema,
+        webhookUrl: z.string(),
+        /** Set in the App's webhook settings with `webhookUrl`; no other output returns it. */
+        webhookSecret: z.string(),
+        /** What a manifest App made with a webhook subscribes to (`appEvents`), in its order. */
+        events: z.array(z.string()),
+        replaced: z.boolean(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { db, ports, settings } = ctx.deps;
+      const webhookUrl = webhookUrlOf(settings.corePublicUrl, input.connectionId);
+      if (!isPublicWebhookUrl(webhookUrl)) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "This server's address isn't public, so GitHub can't deliver to it. Set OSTRA_CORE_PUBLIC_URL to a public address first.",
+        });
+      }
+      const webhookSecret = randomBytes(32).toString("hex");
+      const result = await db.$transaction((tx) => setGitHubWebhookSecret({ tx, scope: ctx.scope, ...ports }, { connectionId: input.connectionId, webhookSecret }));
+      const set = unwrap(result, { forbidden: "FORBIDDEN", "not-found": "NOT_FOUND" });
+      if (set.replaced !== null) {
+        // Nothing points at it any more; a failed delete leaves an orphan, never a broken webhook.
+        await ports.adapters.secretStore.delete(ctx.scope.organizationId, set.replaced);
+      }
+      return { connectionId: set.connectionId, webhookUrl, webhookSecret, events: [...appEvents], replaced: set.replaced !== null };
     }),
 
   /**

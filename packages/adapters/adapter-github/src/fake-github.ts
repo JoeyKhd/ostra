@@ -741,7 +741,9 @@ export const createFakeGitHub = async (options: {
     }
     const conversion = /^\/app-manifests\/([^/]+)\/conversions$/.exec(path);
     if (method === "POST" && conversion !== null) {
-      if (conversion[1] !== "good-code") {
+      // `no-hook-code`: a manifest made while the server had no public address, so without
+      // `hook_attributes`; GitHub then hands back no webhook secret (F-006/c4).
+      if (conversion[1] !== "good-code" && conversion[1] !== "no-hook-code") {
         send(response, 404, { message: "Not Found" });
         return;
       }
@@ -751,7 +753,7 @@ export const createFakeGitHub = async (options: {
         name: "ostra fake",
         client_id: "Iv1.fakeclient",
         client_secret: "fake-client-secret-value",
-        webhook_secret: webhookSecret,
+        webhook_secret: conversion[1] === "good-code" ? webhookSecret : null,
         pem: pair.privateKey,
         permissions: {},
         events: [],

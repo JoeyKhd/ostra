@@ -1,3 +1,4 @@
+import { appEvents } from "@ostra/adapter-github";
 import type { Installation } from "@ostra/adapter-sdk";
 import {
   appOwnerInTx,
@@ -80,6 +81,12 @@ export const connectionsViewSchema = z.array(
     own: z.boolean(),
     webhookUrl: z.string(),
     webhook: webhookStateSchema,
+    /**
+     * F-006/c4: the events ostra uses (a manifest App's `default_events`) that the App doesn't
+     * subscribe to, as GitHub lists its events: all of them for an App made without a webhook, until
+     * an admin subscribes to them in its settings. `null` when GitHub didn't answer.
+     */
+    missingEvents: z.array(z.string()).nullable(),
     installations: z.array(installationViewSchema),
   }),
 );
@@ -146,8 +153,9 @@ const connectionView = async (ctx: Pick<Context, "deps"> & { readonly scope: Mem
   const connectionId = connectionIdSchema.parse(row.id);
   // An App whose key can't be read is still listed, with what ostra keeps of it.
   const github = await loadGitHubConnection(ctx.deps, ctx.scope, connectionId).catch(() => null);
-  const listed = github === null ? null : await ports.adapters.codeHost.listInstallations(github.credentials);
+  const [listed, read] = github === null ? [null, null] : await Promise.all([ports.adapters.codeHost.listInstallations(github.credentials), ports.adapters.codeHost.readApp(github.credentials)]);
   const seen: readonly Installation[] = listed?.ok === true ? listed.value : [];
+  const subscribed = read?.ok === true ? read.value.events : null;
   // The owner's own installations are linked as a listing shows them (ticket 49's rule).
   const owner =
     github === null
@@ -218,6 +226,7 @@ const connectionView = async (ctx: Pick<Context, "deps"> & { readonly scope: Mem
     own,
     webhookUrl: webhookUrlOf(settings.corePublicUrl, connectionId),
     webhook,
+    missingEvents: subscribed === null ? null : appEvents.filter((event) => !subscribed.includes(event)),
     installations,
   };
 };
