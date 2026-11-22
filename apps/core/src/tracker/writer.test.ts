@@ -246,7 +246,10 @@ describe("the tracker writer, on the Jira fake", () => {
     }
   });
 
-  it("F-046/c1: a status move applied and then answered 500 is retried, and the ticket's status changes once", async () => {
+  // No F-046 key: the move's own lookup is the Jira fake's (`moveTicket` writes nothing when the
+  // ticket is already there), not ostra's, so this can't show ostra's guard. Linear's case below
+  // counts the real adapter's writes.
+  it("a status move applied and then answered 500 is retried on the Jira fake, and the ticket's status changes once", async () => {
     const { taskId, ticketId } = await newTicket();
     await write(taskId, started(taskId));
     // The move alone: the comment and the link have their own cases.
