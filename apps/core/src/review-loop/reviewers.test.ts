@@ -143,7 +143,7 @@ const waitingTask = async (): Promise<LoopTask> => {
 };
 
 describe("F-102: who reviews", () => {
-  it("F-102/c3: reviewers come from the requested users and CODEOWNERS for the changed paths, matched by the link; a team is kept and not expanded; an unlinked user is listed with no member", async () => {
+  it("F-102/c3, F-119/c3: reviewers come from the requested users and CODEOWNERS for the changed paths, matched by the link; a team is kept and not expanded; an unlinked user is listed with no member", async () => {
     const task = await seedTaskInCi(h);
     const pr = firstPr(task);
     seedReviewers(pr);

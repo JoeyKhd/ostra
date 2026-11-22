@@ -141,7 +141,7 @@ const rowOf = (pr: TaskPr, head: GitSha = pr.head) => test.db.reviewCheck.findUn
 const checkEvents = (pr: TaskPr) => test.db.event.findMany({ where: { taskId: pr.taskId, kind: "review.check_updated" }, orderBy: { seq: "asc" } });
 
 describe("F-104: the independent-review check", () => {
-  it("F-104/c1,c2,c7: a new PR's check waits, and an approval by a linked member who didn't drive the task passes it, naming them", async () => {
+  it("F-104/c1,c2,c7, F-119/c3: a new PR's check waits, and an approval by a linked member who didn't drive the task passes it, naming them", async () => {
     const pr = await taskWithPr();
     expect((await evaluate(pr)).outcome).toBe("published");
     const waiting = runOf(pr.head);
@@ -163,7 +163,7 @@ describe("F-104: the independent-review check", () => {
     ]);
   });
 
-  it("F-104/c2,c4,c5: an approval by a driver, a bot, an unlinked user, another organization's or a removed member waits, saying why", async () => {
+  it("F-104/c2,c4,c5, F-119/c3: an approval by a driver, a bot, an unlinked user, another organization's or a removed member waits, saying why", async () => {
     const cases: readonly [keyof typeof GH, Parameters<typeof pendingReasonWords>[0]][] = [
       ["driver", "only-drivers-approved"],
       ["bot", "only-bots-approved"],

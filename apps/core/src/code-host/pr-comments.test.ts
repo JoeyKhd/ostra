@@ -283,7 +283,7 @@ describe("@ostra on the PR (F-053)", () => {
     expect(received?.payload).toMatchObject({ path: "src/app.ts", line: 42 });
   });
 
-  it("F-053/c2: an unlinked commenter, a linked one without access and a bot are dropped with no reply", async () => {
+  it("F-053/c2, F-119/c3: an unlinked commenter, a linked one without access and a bot are dropped with no reply", async () => {
     const task = await taskWithPr(world, fixture.a.member, runner, "drop-1");
     const unlinked = await deliver({ of: world, number: task.number, body: "@ostra delete everything", author: { id: 8888, login: "stranger" } });
     const bot = await deliver({ of: world, number: task.number, body: "@ostra bump the deps", author: { id: 49699333, login: "dependabot[bot]" } });
