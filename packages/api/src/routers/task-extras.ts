@@ -96,7 +96,7 @@ export { prStateOf };
 export const loadTaskExtras = async (deps: ApiDeps, task: TaskRow, profileModelId: string | null, runnerName: string | null) => {
   const { db, settings } = deps;
   const { organizationId } = task;
-  const [ticket, writes, sessions, boxes, restored, filesReady, model] = await Promise.all([
+  const [ticket, writes, sessions, boxes, restored, filesReady] = await Promise.all([
     task.ticketId === null
       ? Promise.resolve(null)
       : db.ticket.findFirst({ where: { id: task.ticketId, organizationId }, include: { board: { select: { name: true } }, connection: { select: { kind: true } } } }),
@@ -105,8 +105,14 @@ export const loadTaskExtras = async (deps: ApiDeps, task: TaskRow, profileModelI
     db.box.findMany({ where: { taskId: task.id, organizationId }, orderBy: { createdAt: "desc" }, take: 1 }),
     db.event.findMany({ where: { taskId: task.id, organizationId, kind: "session.restored" }, select: { sessionId: true, payload: true } }),
     db.event.findFirst({ where: { taskId: task.id, organizationId, kind: "ticket.files_ready" }, orderBy: { seq: "desc" }, select: { payload: true } }),
-    profileModelId === null ? Promise.resolve(null) : db.model.findFirst({ where: { id: profileModelId, organizationId }, select: { inputPricePerMTok: true, outputPricePerMTok: true, cacheReadPricePerMTok: true, cacheWritePricePerMTok: true } }),
   ]);
+  // The spend's unit follows the model row the newest session runs on, as ingest prices the calls
+  // and the cap and a reopen read them (F-135, ADR 0065); the profile's before a session recorded one.
+  const pricedModelId = sessions.at(-1)?.modelId ?? profileModelId;
+  const model =
+    pricedModelId === null
+      ? null
+      : await db.model.findFirst({ where: { id: pricedModelId, organizationId }, select: { inputPricePerMTok: true, outputPricePerMTok: true, cacheReadPricePerMTok: true, cacheWritePricePerMTok: true } });
 
   // The ticket's context files: the newest `ticket.files_ready` names them, the blobs say how big.
   const filesPayload = z.object({ files: z.array(z.object({ path: z.string(), blobId: z.string() })) }).safeParse(filesReady?.payload);

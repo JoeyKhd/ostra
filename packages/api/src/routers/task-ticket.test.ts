@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { appendEvent, createApiHarness, seedBoard, seedConnectionAndModel, seedLinearConnection, seedProject, seedTask, seedTicket } from "../testing/index.ts";
 import type { ApiHarness, AppCaller, SeededTask } from "../testing/index.ts";
+import { seedModelRow, seedProviderRow } from "../testing/m4-seed.ts";
 
 // Ticket 30: the task page's ticket and its sync, its sessions and box, its spend against the cap, its
 // capabilities, and reopening. `tasks.reopen` and `tasks.dismissNeedsYou` call ticket 18's use cases.
@@ -176,6 +177,27 @@ describe("F-032, F-096, F-068: sessions, box and spend", () => {
     await harness.test.db.model.update({ where: { id: world.modelId }, data: { inputPricePerMTok: null, outputPricePerMTok: null } });
     const unpriced = await (await member()).tasks.get({ taskId: task.taskId });
     expect(unpriced.spend).toEqual({ unit: "tokens", spent: 1750, cap: 10_000_000, reached: false });
+  });
+
+  it("F-084/c1: the spend is in dollars by the prices of the model row its session runs on, as ingest priced it, not by its profile's", async () => {
+    const db = harness.test.db;
+    const task = await ticketTask("ENG-13", "running");
+    await db.task.update({ where: { id: task.taskId }, data: { spentMicroUsd: 2_200_000 } });
+    await db.session.updateMany({ where: { taskId: task.taskId }, data: { inputTokens: 1000, outputTokens: 500 } });
+    // The profile's row of the model has no price; the serving provider's row of it has its own (F-135).
+    await db.model.update({ where: { id: world.modelId }, data: { inputPricePerMTok: null, outputPricePerMTok: null } });
+    const servingKey = await seedProviderRow(db, organizationId, "Serving key");
+    const serving = await seedModelRow(db, { organizationId, providerId: servingKey, endpointModelId: "world-model", inputPricePerMTok: 1, outputPricePerMTok: 5 });
+    await db.session.updateMany({ where: { taskId: task.taskId }, data: { providerId: servingKey, modelId: serving } });
+    expect((await (await member()).tasks.get({ taskId: task.taskId })).spend).toEqual({ unit: "usd", spent: 2_200_000, cap: 25_000_000, reached: false });
+    // And a priced profile row doesn't put dollars on a session that runs on an unpriced row.
+    await db.model.update({ where: { id: world.modelId }, data: { inputPricePerMTok: 3, outputPricePerMTok: 15 } });
+    await db.model.update({ where: { id: serving }, data: { inputPricePerMTok: null, outputPricePerMTok: null } });
+    try {
+      expect((await (await member()).tasks.get({ taskId: task.taskId })).spend).toEqual({ unit: "tokens", spent: 1500, cap: 10_000_000, reached: false });
+    } finally {
+      await db.model.update({ where: { id: world.modelId }, data: { inputPricePerMTok: null, outputPricePerMTok: null } });
+    }
   });
 });
 
