@@ -1,10 +1,10 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { adapterError } from "@ostra/adapter-sdk";
-import { fakeMarker } from "@ostra/adapter-sdk/testing";
+import { FakeAgentAdapter, fakeMarker } from "@ostra/adapter-sdk/testing";
 import { clientMessageIdSchema, gitShaSchema, leaseEpochSchema, sessionIdSchema } from "@ostra/protocol";
 import type { BlobRef, BoxId, TaskEventOf, TaskSpec, TaskSpecRestore } from "@ostra/protocol";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -191,7 +191,33 @@ describe("a reopen on a fresh box: restored", () => {
     expect(await exists(path.join(checkout, "plum.txt"))).toBe(true);
   }, 240_000);
 
-  it("merges a branch that moved since the save, and carries on", async () => {
+  it("F-033/c4: after the box's release took the agent's own copy of the session, a fresh box restores it from ostra's archive alone, and the agent answers about earlier turns", async () => {
+    const h = await runner();
+    const { spec, boxId, saved } = await firstSession(h, "quince");
+    // The agent's own copy of the session, in the box's agent folder.
+    const agentSessions = path.join(FakeAgentAdapter.dataDirOf(path.join(h.dataDir, "tasks", spec.taskId, "agent")), "sessions");
+    expect(await readdir(agentSessions)).not.toEqual([]);
+    const released = h.command("release", { taskId: spec.taskId, boxId, reason: "idle-expired" });
+    expect(await h.waitForAck(released)).toMatchObject({ result: "done" });
+    expect(await exists(agentSessions)).toBe(false);
+    expect(h.host.kept()).toEqual([]);
+    // What's left is ostra's: the archive in the server's blob store, and the hidden ref.
+    const archive = archiveOf(saved);
+    expect(h.server.blobs.has(archive.blobId)).toBe(true);
+    const next = reopened(spec, { origin: "restored", archive, hiddenRefs: hiddenRefsOf(saved), pendingMessages: [pendingMessage(fakeMarker("recall"))] });
+    serve(h, next, h);
+    const fresh = h.dispatch(next);
+    expect(fresh).not.toBe(boxId);
+    await h.waitForKind(next, "session.saved");
+    const [restored] = h.ofKind(next, "session.restored");
+    expect(restored).toMatchObject({ origin: "restored", hiddenRef: "applied" });
+    expect(restored).not.toHaveProperty("fallbackReason");
+    expect(restored?.replayedUpdates).toBeGreaterThan(0);
+    expect(agentText(h, next)).toContain("quince");
+    expect(await exists(path.join(h.dataDir, "tasks", spec.taskId, "workspace", "test1", "quince.txt"))).toBe(true);
+  }, 240_000);
+
+  it("F-033/c7: merges a branch that moved since the save onto the saved work, and carries on", async () => {
     const first = await runner();
     const { spec, saved } = await firstSession(first, "pear");
     await moveBranch(spec, "on-top");
@@ -235,7 +261,7 @@ describe("a reopen on a fresh box: restored", () => {
     expect(await exists(path.join(checkout, "after-push.txt"))).toBe(true);
   }, 240_000);
 
-  it("reports a conflict when the branch no longer holds the saved work, restores nothing, and carries on", async () => {
+  it("F-033/c7: reports a conflict when the branch no longer holds the saved work, restores nothing, and carries on", async () => {
     const first = await runner();
     const { spec, saved } = await firstSession(first, "fig");
     const hiddenBefore = await shared.upstream.refSha("ostra-test/test1", `refs/ostra/wip/${spec.taskId}`);
