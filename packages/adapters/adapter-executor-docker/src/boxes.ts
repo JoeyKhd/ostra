@@ -1,12 +1,12 @@
 import { randomBytes } from "node:crypto";
 import type { BoxImage, BoxSize, ExecutorCapacity, ServiceHealth } from "@ostra/adapter-sdk";
-import { DEFAULT_BOX_SUBNET_POOL } from "@ostra/protocol";
+import { DEFAULT_BOX_SUBNET_POOL, parseBoxSubnetPool } from "@ostra/protocol";
 import type { BoxId, BoxState, DispatchPurpose, LeaseEpoch, SessionId, TaskId } from "@ostra/protocol";
 import { z } from "zod";
 import { BRIDGE_FEATURES } from "./bridge/protocol.ts";
 import { emptySchema } from "./engine.ts";
 import type { Engine, EngineResult } from "./engine.ts";
-import { freeSubnet, parsePool } from "./subnet-pool.ts";
+import { freeSubnet } from "./subnet-pool.ts";
 
 // A box on Docker (ADR 0029): what the pool runner creates for a task, and removes after.
 //
@@ -468,7 +468,7 @@ export const createDockerBoxes = (engine: Engine, options: BoxOptions): DockerBo
   /** The box network, on a free /24 of the pool: Docker is told the subnet, and never picks one. */
   const carveBoxNetwork = async (network: BoxResources["network"]): Promise<EngineResult<string>> => {
     const poolText = options.subnetPool ?? DEFAULT_BOX_SUBNET_POOL;
-    const pool = parsePool(poolText);
+    const pool = parseBoxSubnetPool(poolText);
     if (pool === null) {
       return { ok: false, error: { status: 400, message: `the box subnet pool ${poolText} isn't an IPv4 network of /8 to /24` } };
     }

@@ -1,9 +1,9 @@
-import { boxIdSchema, DEFAULT_BOX_SUBNET_POOL, leaseEpochSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
+import { boxIdSchema, DEFAULT_BOX_SUBNET_POOL, leaseEpochSchema, parseBoxSubnetPool, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDockerBoxes } from "./boxes.ts";
 import type { BoxInput } from "./boxes.ts";
 import { createEngine } from "./engine.ts";
-import { freeSubnet, parsePool, subnetsOverlap } from "./subnet-pool.ts";
+import { freeSubnet, subnetsOverlap } from "./subnet-pool.ts";
 import { DOCKER_DEFAULT_SUBNETS, startFakeEngine } from "./testing/fake-engine.ts";
 import type { FakeEngine } from "./testing/fake-engine.ts";
 
@@ -91,7 +91,7 @@ describe("the docker executor's own subnets (F-017)", () => {
   });
 
   it("F-017/c5: the pool's /24s, in order, skipping every subnet a network holds, whatever its size", () => {
-    const pool = parsePool("10.89.0.0/16");
+    const pool = parseBoxSubnetPool("10.89.0.0/16");
     expect(pool).toEqual({ first: (10 * 256 + 89) * 65_536, size: 256 });
     if (pool === null) return;
     expect(freeSubnet(pool, [])).toBe("10.89.0.0/24");
@@ -100,9 +100,9 @@ describe("the docker executor's own subnets (F-017)", () => {
     expect(freeSubnet(pool, ["10.89.0.0/22", "fd00:ab::/64"])).toBe("10.89.4.0/24");
     // One that holds the whole pool leaves it full.
     expect(freeSubnet(pool, ["10.0.0.0/8"])).toBeNull();
-    expect(parsePool("10.89.0.0/24")).toEqual({ first: (10 * 256 + 89) * 65_536, size: 1 });
+    expect(parseBoxSubnetPool("10.89.0.0/24")).toEqual({ first: (10 * 256 + 89) * 65_536, size: 1 });
     for (const wrong of ["10.89.0.0/25", "10.89.0.0/7", "10.89.0.1/16", "10.89.0/16", "fd00::/64"]) {
-      expect(parsePool(wrong), wrong).toBeNull();
+      expect(parseBoxSubnetPool(wrong), wrong).toBeNull();
     }
   });
 });

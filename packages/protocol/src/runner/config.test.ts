@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseRunnerConfig, runnerConfigFields, runnerConfigKeys, runnerConfigSchema, runnerEnvNames } from "./config.ts";
+import { parseBoxSubnetPool, parseRunnerConfig, runnerConfigFields, runnerConfigKeys, runnerConfigSchema, runnerEnvNames } from "./config.ts";
 
 describe("the runner's config", () => {
   it("lists exactly the keys its fields hold", () => {
@@ -89,8 +89,11 @@ describe("the runner's config", () => {
     expect(pool("10.200.0.0/20")).toMatchObject({ ok: true, config: { boxSubnetPool: "10.200.0.0/20" } });
     expect(parseRunnerConfig({ flags: { server: "http://x", "box-subnet-pool": "10.1.2.0/24" }, env: {} })).toMatchObject({ ok: true, config: { boxSubnetPool: "10.1.2.0/24" } });
     // Not a network: host bits set, a prefix past /24 (no whole /24 in it) or under /8, a bad octet, IPv6.
-    for (const wrong of ["10.89.0.1/16", "10.89.0.0/25", "10.0.0.0/7", "10.300.0.0/16", "fd00::/64", "10.89.0.0"]) {
+    // The schema's rule is the executor's own (`parseBoxSubnetPool`, which the `docker` executor carves with).
+    for (const wrong of ["10.89.0.1/16", "10.89.0.0/25", "10.0.0.0/7", "10.300.0.0/16", "fd00::/64", "10.89.0.0", "10.89.0.0/16/1", "10.89.0/16"]) {
       expect(pool(wrong).ok, wrong).toBe(false);
+      expect(parseBoxSubnetPool(wrong), wrong).toBeNull();
     }
+    expect(parseBoxSubnetPool("10.200.0.0/20")).toEqual({ first: (10 * 256 + 200) * 65_536, size: 16 });
   });
 });

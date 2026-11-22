@@ -15,23 +15,41 @@ import { NPM_REGISTRY } from "../release.ts";
  */
 export const DEFAULT_BOX_SUBNET_POOL = "10.89.0.0/16";
 
+/** Each `docker` box's network: one /24 of the pool, room for the gateway, the agent, the sidecar and the services. */
+export const BOX_SUBNET_PREFIX = 24;
+
+/** An IPv4 address as a number, or `null`. */
+const ipv4ToNumber = (address: string): number | null => {
+  const parts = address.split(".");
+  if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part) || Number(part) > 255)) {
+    return null;
+  }
+  return parts.reduce((sum, part) => sum * 256 + Number(part), 0);
+};
+
+/** A box subnet pool: its first address, as a number, and how many /24s it holds. */
+export type BoxSubnetPool = { readonly first: number; readonly size: number };
+
+/**
+ * A box subnet pool as its first address and its number of /24s, or `null` when it isn't an IPv4
+ * network of /8 to /24 written as its own address (no host bits set). The one rule: the setting's
+ * schema below refuses what this refuses, and the `docker` executor carves the boxes' /24s from it.
+ */
+export const parseBoxSubnetPool = (pool: string): BoxSubnetPool | null => {
+  const [address = "", bits = "", ...rest] = pool.split("/");
+  const first = ipv4ToNumber(address);
+  const prefix = /^\d{1,2}$/.test(bits) ? Number(bits) : NaN;
+  if (rest.length > 0 || first === null || !Number.isInteger(prefix) || prefix < 8 || prefix > BOX_SUBNET_PREFIX) {
+    return null;
+  }
+  const span = 2 ** (32 - prefix);
+  return first % span === 0 ? { first, size: span / 2 ** (32 - BOX_SUBNET_PREFIX) } : null;
+};
+
 /** An IPv4 network of /8 to /24, written as its own address (no host bits set), such as `10.89.0.0/16`. */
 const ipv4PoolSchema = z
   .string()
-  .regex(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\/\d{1,2}$/, "an IPv4 network such as 10.89.0.0/16")
-  .refine(
-    (pool) => {
-      const [address = "", bits = ""] = pool.split("/");
-      const octets = address.split(".").map(Number);
-      const prefix = Number(bits);
-      if (octets.some((octet) => octet > 255) || prefix < 8 || prefix > 24) {
-        return false;
-      }
-      const value = octets.reduce((sum, octet) => sum * 256 + octet, 0);
-      return value % 2 ** (32 - prefix) === 0;
-    },
-    { message: "a network of /8 to /24, written as its own address (such as 10.89.0.0/16)" },
-  );
+  .refine((pool) => parseBoxSubnetPool(pool) !== null, { message: "an IPv4 network of /8 to /24, written as its own address (such as 10.89.0.0/16)" });
 
 /** Every field's key. `runnerConfigFields` must hold exactly these: the compiler refuses a missing or an extra one. */
 export const runnerConfigKeys = [
