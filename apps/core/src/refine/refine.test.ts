@@ -17,8 +17,11 @@ import {
   postgresAuditLog,
   postgresChangeNotices,
   postgresCommandOutbox,
+  recordSessionEnd,
   recordWorkSaved,
+  reopenTask,
   retryDraftApply,
+  sendMemberMessageInTx,
   startTicketTask,
   systemClock,
 } from "@ostra/domain";
@@ -28,6 +31,7 @@ import type { Jobs } from "@ostra/jobs";
 import {
   agentProfileIdSchema,
   boxIdSchema,
+  clientMessageIdSchema,
   draftIdSchema,
   ticketIdSchema,
   connectionIdSchema,
@@ -291,7 +295,7 @@ const turnEnds = async (taskId: TaskId, sessionId: string) =>
         taskId,
         seq: counter.eventSeq,
         sessionId,
-        sessionSeq: 1,
+        sessionSeq: counter.eventSeq,
         leaseEpoch: 1,
         kind: "session.saved",
         payload: event,
@@ -918,5 +922,127 @@ describe("refine drafts (F-099)", () => {
     const board = await test.db.board.findUniqueOrThrow({ where: { id: jiraBoard } });
     const readyId = parseBoardMapping(board.statusMap)?.ready;
     expect(site.statusOf(externalTicketIdSchema.parse(ready.ticket.externalId))).toBe(readyId);
+  });
+});
+
+// The stuck refine (2026-11-23, found with the stuck review, b8beac70): a refine task left
+// `running` only by a draft handed in during the turn, so a turn that handed in none kept it
+// running for good, a member's message to a refine task that's done among them: its session idled
+// out and its lease ended with the task still running. Each turn's save and its session's end now
+// settle it (hand-in-rests.ts): a draft no member took yet is in front of its owner, a draft
+// already taken rests it as done, and a session that ends before the first draft needs its driver.
+
+/** The runner's `session.ended` when the idle timer stops the box, stored as ingest stores it, then core's `task.session-ended` job. */
+const sessionEnds = async (taskId: TaskId, sessionId: string) =>
+  test.db.$transaction(async (tx) => {
+    const counter = await tx.task.update({ where: { id: taskId }, data: { eventSeq: { increment: 1 } }, select: { eventSeq: true } });
+    const event: TaskEventOf<"session.ended"> = { kind: "session.ended", outcome: "without-changes", repos: [] };
+    await tx.event.create({
+      data: { organizationId, projectId, taskId, seq: counter.eventSeq, sessionId, sessionSeq: counter.eventSeq, leaseEpoch: 1, kind: "session.ended", payload: event, occurredAt: new Date() },
+    });
+    return recordSessionEnd(
+      { tx, jobs, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock },
+      { organizationId, taskId, sessionId: sessionIdSchema.parse(sessionId), eventSeq: counter.eventSeq },
+    );
+  });
+
+/** A member's message to the task, as the composer sends it. */
+const message = (taskId: TaskId, text: string) =>
+  test.db.$transaction((tx) =>
+    sendMemberMessageInTx({ ...ports() }, tx, scopeOf(fixture.a.member), {
+      taskId,
+      clientMessageId: clientMessageIdSchema.parse(`refine-message-${randomUUID()}`),
+      text,
+      intent: "message",
+      sender: "driver",
+    }),
+  );
+
+/** A reopened session's dispatch, taken as `refineTask`'s was: a docker box on the task's next lease, the session running. */
+const takenOnABox = async (taskId: TaskId, sessionId: string): Promise<void> => {
+  const { leaseEpoch } = await test.db.task.findUniqueOrThrow({ where: { id: taskId }, select: { leaseEpoch: true } });
+  const runner = await seedOnlineRunner(test.db, organizationId, { kind: "personal", memberId: fixture.a.member.id });
+  const box = await test.db.box.create({ data: { organizationId, projectId, taskId, runnerId: runner.runnerId, executor: "docker", state: "ready" } });
+  await test.db.lease.create({ data: { organizationId, projectId, taskId, epoch: leaseEpoch + 1, runnerId: runner.runnerId, boxId: box.id, state: "active" } });
+  await test.db.task.update({ where: { id: taskId }, data: { leaseEpoch: leaseEpoch + 1, state: "running" } });
+  await test.db.session.update({ where: { id: sessionId }, data: { boxId: box.id, state: "running" } });
+};
+
+const stateOf = async (taskId: TaskId): Promise<string> => {
+  const row = await test.db.task.findUniqueOrThrow({ where: { id: taskId }, select: { state: true, needsYouReason: true } });
+  return row.needsYouReason === null ? row.state : `${row.state}/${row.needsYouReason}`;
+};
+
+const openItemsOf = async (taskId: TaskId) =>
+  (await test.db.needsYouItem.findMany({ where: { taskId, state: "open" }, select: { reason: true, audience: true } })).map((item) => `${item.reason}/${item.audience}`);
+
+describe("the stuck refine: a refine task never stays running with nothing to hand in", () => {
+  it("F-099/c6: a member's message to a refine task that's done is answered in a turn of its own, then the task rests as done", async () => {
+    const { taskId, sessionId, token } = await refineTask();
+    await submit(taskId, token, draft());
+    await turnEnds(taskId, sessionId);
+    expect(await applyDraft({ db: test.db, ...ports() }, scopeOf(fixture.a.member), { taskId, version: 1 })).toMatchObject({ ok: true });
+    expect(await stateOf(taskId)).toBe("done");
+
+    // The member asks the refine agent something: the task reopens on a session of its own.
+    const sent = await message(taskId, "Why two sub-tickets and not one?");
+    if (!sent.ok) throw new Error(sent.message);
+    expect(sent.delivery).toBe("reopen");
+    await takenOnABox(taskId, sent.sessionId);
+    // Its turn answers, and hands in no new draft: the draft already went to the ticket.
+    expect(await turnEnds(taskId, sent.sessionId)).toMatchObject({ ok: true, outcome: "unchanged" });
+    expect(await stateOf(taskId)).toBe("done");
+    expect(await openItemsOf(taskId)).toEqual([]);
+    expect(await test.db.refineDraft.count({ where: { taskId } })).toBe(1);
+
+    // The idle timer ends the session: the task stays done, nothing waits on it, its lease ends.
+    expect(await sessionEnds(taskId, sent.sessionId)).toMatchObject({ ok: true });
+    expect(await stateOf(taskId)).toBe("done");
+    expect(await openItemsOf(taskId)).toEqual([]);
+    expect(await test.db.lease.count({ where: { taskId, state: "active" } })).toBe(0);
+  });
+
+  it("F-099/c5: a member's message to a draft no member took yet, answered without a new draft, puts the draft back in front of its owner", async () => {
+    const { taskId, sessionId, token } = await refineTask();
+    await submit(taskId, token, draft());
+    await turnEnds(taskId, sessionId);
+    expect(await stateOf(taskId)).toBe("needs_you/draft_ready");
+
+    // The member's message reaches the warm box: the task runs, and the draft's item is answered.
+    const sent = await message(taskId, "Is the second criterion measurable?");
+    if (!sent.ok) throw new Error(sent.message);
+    expect(sent.delivery).toBe("steer");
+    expect(await stateOf(taskId)).toBe("running");
+    expect(await openItemsOf(taskId)).toEqual([]);
+    // Its turn answers in words and hands in no new draft: version 1 still waits for a member.
+    expect(await turnEnds(taskId, sessionId)).toMatchObject({ ok: true, outcome: "needs-you" });
+    expect(await stateOf(taskId)).toBe("needs_you/draft_ready");
+    expect(await openItemsOf(taskId)).toEqual(["draft_ready/driver"]);
+    // And a member still takes it from there.
+    expect(await applyDraft({ db: test.db, ...ports() }, scopeOf(fixture.a.member), { taskId, version: 1 })).toMatchObject({ ok: true });
+    expect(await stateOf(taskId)).toBe("done");
+  });
+
+  it("F-099/c4: a refine task whose session ends before it hands in a draft needs its driver, and one click carries it on", async () => {
+    const { taskId, sessionId } = await refineTask();
+    // A turn without a draft: the box stays warm, so a message can still reach the agent.
+    expect(await turnEnds(taskId, sessionId)).toMatchObject({ ok: true, outcome: "unchanged" });
+    expect(await stateOf(taskId)).toBe("running");
+    // The idle timer ends the session with no draft handed in.
+    expect(await sessionEnds(taskId, sessionId)).toMatchObject({ ok: true });
+    expect(await stateOf(taskId)).toBe("needs_you/stalled");
+    expect(await openItemsOf(taskId)).toEqual(["stalled/driver"]);
+    expect(await test.db.lease.count({ where: { taskId, state: "active" } })).toBe(0);
+
+    // One click: the task carries on in a fresh session, with no words of the member's.
+    const reopened = await test.db.$transaction((tx) =>
+      reopenTask(
+        { tx, scope: scopeOf(fixture.a.member), jobs, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock },
+        { taskId, clientMessageId: clientMessageIdSchema.parse(`carry-on-${randomUUID()}`) },
+      ),
+    );
+    expect(reopened).toMatchObject({ ok: true });
+    expect(await stateOf(taskId)).toBe("queued");
+    expect(await openItemsOf(taskId)).toEqual([]);
   });
 });

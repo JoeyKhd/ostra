@@ -182,6 +182,17 @@ describe("refine and review", () => {
     // A round whose session ended without its review stalls, for its driver's one click.
     expect(step(review({ state: "running" }), { type: "needs_you", reason: "stalled" })).toEqual(review({ state: "needs_you", reason: "stalled" }));
   });
+
+  it("F-099/c6: refine: a turn after its draft was taken rests it as done, and an earlier draft still untaken goes back in front of its owner", () => {
+    // A member's message to a done refine task reopens it; its turn hands in nothing new.
+    const done = step(refine({ state: "running" }), { type: "nothing_to_hand_in" });
+    expect(done).toEqual(refine({ state: "done" }));
+    expect(step(done, { type: "reopen" })).toEqual(refine({ state: "queued" }));
+    // A member's message to a draft no member took yet: the draft is in front of its owner again.
+    expect(step(refine({ state: "running" }), { type: "draft_handed_in" })).toEqual(refine({ state: "needs_you", reason: "draft_ready" }));
+    // A session that ended before its first draft stalls, for its driver's one click.
+    expect(step(refine({ state: "running" }), { type: "needs_you", reason: "stalled" })).toEqual(refine({ state: "needs_you", reason: "stalled" }));
+  });
 });
 
 describe("refused inputs: at least one per state", () => {
@@ -214,7 +225,8 @@ describe("refused inputs: at least one per state", () => {
     ["review done: nothing more to rest", review({ state: "done" }), { type: "nothing_to_hand_in" }],
     ["review needs you: its driver acts first", review({ state: "needs_you", reason: "crashed" }), { type: "nothing_to_hand_in" }],
     ["code: no review to hand in", code({ state: "running" }), { type: "nothing_to_hand_in" }],
-    ["refine: no review to hand in", refine({ state: "running" }), { type: "nothing_to_hand_in" }],
+    ["refine done: nothing more to rest", refine({ state: "done" }), { type: "nothing_to_hand_in" }],
+    ["refine: its draft waits for a member, who acts first", refine({ state: "needs_you", reason: "draft_ready" }), { type: "nothing_to_hand_in" }],
   ] satisfies readonly (readonly [string, TaskLifecycle, TaskInput])[])("%s", (_name, from, input) => {
     const next = transitionTask(from, input);
     expect(next.ok).toBe(false);

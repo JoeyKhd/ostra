@@ -209,6 +209,7 @@ export * from "./use-cases/outside-tasks.ts";
 export * from "./linear/agent-session-moments.ts";
 export * from "./use-cases/agent-mode.ts";
 export * from "./use-cases/refine-drafts.ts";
+export * from "./use-cases/hand-in-rests.ts";
 
 // Milestone 8 (ticket 06, ADR 0069): the library.
 export * from "./library/reference.ts";

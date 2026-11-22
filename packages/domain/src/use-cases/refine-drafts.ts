@@ -37,6 +37,8 @@ import type {
   SeedBuiltInProfiles,
 } from "./m6-signatures.ts";
 import type { AddAttachmentToDraft } from "./m8-preview-signatures.ts";
+import { handInMoveDeps, stallWithoutHandInInTx } from "./hand-in-rests.ts";
+import type { HandInSettled, HandInTaskRow, SettleHandInDeps } from "./hand-in-rests.ts";
 import { moveTaskInTx } from "./moves.ts";
 import { createTicketForTask } from "./tickets.ts";
 import { draftAsDescription } from "../prompts/m6.ts";
@@ -278,46 +280,78 @@ export const saveDraft: SaveDraft = async (deps, input) => {
   return { ok: true, draftId, version };
 };
 
-/**
- * At a refine task's turn's end (its `session.saved`): a draft handed in during the turn moves the
- * task to needs you (`draft_ready`) for its owner, the driver, else the project's members. `false`
- * when the turn handed in none.
- */
-export const handInDraftInTx = async (
-  deps: Pick<M6TxDeps, "notices" | "jobs" | "clock">,
-  tx: Tx,
-  input: { readonly taskId: TaskId; readonly savedSeq: number },
-): Promise<boolean> => {
+/** The words of the item a draft that never came raises. Never the agent's own words. */
+export const DRAFT_NOT_HANDED_IN = "The session ended before it handed in its draft. Carry on to finish it.";
+
+/** What ended for a refine task: a turn, by its `session.saved` (its seq), or its session. */
+export type RefineTaskEnd = { readonly ended: "turn"; readonly savedSeq: number } | { readonly ended: "session" };
+
+/** Whether the turn that `savedSeq` saved handed in a draft: a `draft.submitted` since the save before it. */
+const draftOfTurnInTx = async (tx: Tx, taskId: TaskId, savedSeq: number): Promise<boolean> => {
   const before = await tx.event.findFirst({
-    where: { taskId: input.taskId, kind: "session.saved", seq: { lt: input.savedSeq } },
+    where: { taskId, kind: "session.saved", seq: { lt: savedSeq } },
     orderBy: { seq: "desc" },
     select: { seq: true },
   });
   const submitted = await tx.event.findFirst({
-    where: {
-      taskId: input.taskId,
-      kind: "draft.submitted",
-      seq: { gt: before?.seq ?? 0, lt: input.savedSeq },
-    },
+    where: { taskId, kind: "draft.submitted", seq: { gt: before?.seq ?? 0, lt: savedSeq } },
     select: { seq: true },
   });
-  if (submitted === null) {
-    return false;
+  return submitted !== null;
+};
+
+/**
+ * Settles a running refine task after its turn's save or its session's end, in the caller's
+ * transaction and the task's lock (F-099, F-036; the stuck refine, 2026-11-23), by the rule every
+ * refine and review task follows (hand-in-rests.ts):
+ *
+ * - a draft from this turn, or an earlier one no member has taken yet (a member's message to it
+ *   answered without a new one): it's in front of its owner (`draft_ready`: the driver, else the
+ *   project's members);
+ * - its latest draft taken (Update ticket, Mark ready, Create ticket), so a member's message to the
+ *   done task was all its turn answered: nothing left to do, it rests as done;
+ * - no draft yet: after a turn it runs on, its box warm, so a member's message still reaches its
+ *   agent; once its session ends, it needs its driver (`stalled`), one click from carrying on.
+ *
+ * `null` for any other task, or one not running.
+ */
+export const settleRefineTaskInTx = async (
+  deps: SettleHandInDeps,
+  tx: Tx,
+  task: HandInTaskRow,
+  end: RefineTaskEnd,
+): Promise<HandInSettled | null> => {
+  if (task.kind !== "refine" || task.state !== "running") {
+    return null;
   }
-  const task = mapTask(await tx.task.findUniqueOrThrow({ where: { id: input.taskId } }));
-  const moved = await moveTaskInTx({ tx, notices: deps.notices, jobs: deps.jobs }, task, {
-    type: "draft_handed_in",
-  });
-  if (moved) {
-    await createNeedsYouItemInTx(deps, tx, {
-      organizationId: task.organizationId,
-      projectId: task.projectId,
-      taskId: task.id,
-      reason: "draft_ready",
-      audience: task.driverMemberId === null ? "project_members" : "driver",
-    });
+  const thisTurn = end.ended === "turn" && (await draftOfTurnInTx(tx, task.id, end.savedSeq));
+  const latest = await latestDraftInTx(tx, task.id);
+  const taken = latest !== null && (latest.appliedAt !== null || latest.readyAt !== null);
+  if (thisTurn || (latest !== null && !taken)) {
+    const moved = await moveTaskInTx(handInMoveDeps(deps, tx), task, { type: "draft_handed_in" });
+    if (moved) {
+      await createNeedsYouItemInTx(deps, tx, {
+        organizationId: task.organizationId,
+        projectId: task.projectId,
+        taskId: task.id,
+        reason: "draft_ready",
+        audience: task.driverMemberId === null ? "project_members" : "driver",
+      });
+    }
+    deps.logger?.info("refine.draft-ready", { taskId: task.id, version: latest?.version ?? null, thisTurn, ended: end.ended, moved });
+    return "needs-you";
   }
-  return moved;
+  if (taken) {
+    const moved = await moveTaskInTx(handInMoveDeps(deps, tx), task, { type: "nothing_to_hand_in" });
+    deps.logger?.info("refine.rests", { taskId: task.id, version: latest.version, ended: end.ended, moved });
+    return "done";
+  }
+  if (end.ended === "turn") {
+    return "running";
+  }
+  const moved = await stallWithoutHandInInTx(deps, tx, task, DRAFT_NOT_HANDED_IN);
+  deps.logger?.info("refine.not-handed-in", { taskId: task.id, moved });
+  return "needs-you";
 };
 
 // ---------- a member's edit and their actions ----------

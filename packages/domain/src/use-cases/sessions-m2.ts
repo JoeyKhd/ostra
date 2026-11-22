@@ -1,5 +1,5 @@
 import type { Logger } from "@ostra/adapter-sdk";
-import { handInDraftInTx } from "./refine-drafts.ts";
+import { settleRefineTaskInTx } from "./refine-drafts.ts";
 import { mapTask, sessionLimitToDb } from "@ostra/db";
 import type { Tx } from "@ostra/db";
 import { boxIdSchema, leaseEpochSchema, organizationIdSchema, projectIdSchema, runnerIdSchema, runnerLimits } from "@ostra/protocol";
@@ -235,11 +235,13 @@ export const recordWorkSaved: RecordWorkSaved = async (deps, input) => {
   const projectId = projectIdSchema.parse(task.projectId);
 
   // Milestone 6 (F-099, F-036): a refine task hands in a draft, not a branch: a draft from this turn
-  // puts it in front of its owner (`draft_ready`). It never opens a PR.
+  // puts it in front of its owner (`draft_ready`). It never opens a PR. A turn with nothing left to
+  // hand in settles it too (the stuck refine, 2026-11-23): a draft no member took yet is in front
+  // of its owner again, and a draft already taken rests it as done.
   if (task.kind === "refine") {
-    const handedIn = await handInDraftInTx(deps, tx, { taskId: task.id, savedSeq: input.eventSeq });
+    const settled = await settleRefineTaskInTx(moveDeps, tx, task, { ended: "turn", savedSeq: input.eventSeq });
     await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: task.id });
-    return { ok: true, outcome: handedIn ? "needs-you" : "unchanged" };
+    return { ok: true, outcome: settled === "needs-you" ? "needs-you" : "unchanged" };
   }
   if (readOnly) {
     // A review task hands in its review (`submit_review`), never a branch: its save opens no PR and

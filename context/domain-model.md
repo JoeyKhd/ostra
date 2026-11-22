@@ -187,6 +187,8 @@ In the two fixing sub-states a session runs in a box, and the task stays in revi
 
 A review task never stays running with nothing to hand in (2026-11-23, the stuck review). A turn that ends after its round's review posted, or after the round ended without it (a head moved under it, its code task left the AI review), rests it as done: a member's message to a posted review is answered in a turn of its own, and the review stands as posted. While its round still waits for the review, a turn's end keeps it running on its warm box, so a message still reaches its agent; once its session ends without the review, it needs its driver as stalled, and one click carries it on. A crash under it, such as a runner's restart, needs its driver as crashed, as for any task (F-047).
 
+A refine task never stays running with nothing to hand in either (2026-11-23, the stuck refine). A turn that hands in a draft puts it in front of its owner (needs you, the draft is ready). A turn that hands in none does too while an earlier draft waits for a member: a member's message to a draft that's ready is answered in a turn of its own, and the draft is back in front of them. A turn after its latest draft went to the tracker (Update ticket, Mark ready, Create ticket) rests it as done: a member's message to a done refine task is answered in a turn of its own, and nothing more is owed. Before its first draft, a turn's end keeps it running on its warm box, so a message still reaches its agent; once its session ends without a draft, it needs its driver as stalled, and one click carries it on.
+
 ### When a task needs you
 
 Each case is a needs-you item:

@@ -148,9 +148,11 @@ export type TaskInput =
   // ---- review ----
   | { readonly type: "findings_posted" }
   /**
-   * A review task's turn or session ended with nothing left to hand in: its round's review is
-   * posted (a member's message after it, or a repeat hand-in), or the round is over without it (a
-   * head moved under it, the code task left its AI review). It rests as done (the stuck review,
+   * A refine or review task's turn or session ended with nothing left to hand in. A review: its
+   * round's review is posted (a member's message after it, or a repeat hand-in), or the round is
+   * over without it (a head moved under it, the code task left its AI review). A refine: its latest
+   * draft already went to the tracker (Update ticket, Mark ready, Create ticket), and a member's
+   * message after it was answered. It rests as done (the stuck review and the stuck refine,
    * 2026-11-23).
    */
   | { readonly type: "nothing_to_hand_in" };
@@ -371,6 +373,8 @@ const transitionRefine = (status: RefineTaskState, input: TaskInput): Transition
       return from === "running" ? moveTo({ state: "needs_you", reason: "draft_ready" }) : refuse(input, from);
     case "draft_accepted":
       return status.state === "needs_you" && status.reason === "draft_ready" ? moveTo({ state: "done" }) : refuse(input, from);
+    case "nothing_to_hand_in":
+      return from === "running" ? moveTo({ state: "done" }) : refuse(input, from);
     case "reopen":
       return from === "done" ? moveTo({ state: "queued" }) : isCommon(status) ? (commonTransition(status, input) ?? refuse(input, from)) : refuse(input, from);
     case "stop":
@@ -387,7 +391,6 @@ const transitionRefine = (status: RefineTaskState, input: TaskInput): Transition
     case "all_prs_closed":
     case "pr_reopened":
     case "findings_posted":
-    case "nothing_to_hand_in":
     case "reopen_after_merge":
       return refuse(input, from);
     case "approve":
