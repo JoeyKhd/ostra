@@ -7,9 +7,10 @@ import type { ApiHarness } from "../testing/index.ts";
 import { seedModelRow, seedProviderRow, seedSpendRows } from "../testing/m4-seed.ts";
 
 // F-135/c13 (spend-keys.md, ADR 0055 "Spend per key"): Organization › Spend's Keys section reads
-// `spend.month`'s `byProvider`. The organization's month lists every key it holds, one that spent
-// nothing at zero, highest first and ties by name; each key carries its month's tasks; a project's
-// month lists only the keys it spent on; and no other organization's key is ever in either.
+// `spend.month`'s `byProvider`. An organization admin's month lists every key it holds, one that
+// spent nothing at zero, highest first and ties by name; each key carries its month's tasks; anyone
+// else's lists only the keys that spent, with the tasks of the projects they can open; a project's
+// month lists only the keys it spent on; and no other organization's key is ever in any of them.
 
 let harness: ApiHarness;
 const MONTH = budgetMonthOf(Date.now());
@@ -122,6 +123,40 @@ describe("F-135/c13: Spend per key", () => {
     // The project's month counts only its own tasks.
     const project = await caller.spend.project({ projectId: a.restrictedProject.id, month: MONTH });
     expect(project.byProvider.find((line) => line.providerId === busy)?.taskCount).toBe(1);
+  });
+
+  it("F-135/c13: a member who isn't an organization admin sees only the keys that spent, and counts only the tasks of the projects they can open", async () => {
+    const { a } = harness.fixture;
+    const db = harness.test.db;
+    const inMonth = new Date(Date.parse(`${MONTH}-02T10:00:00Z`));
+    const viewOf = async (member: typeof a.admin) => (await harness.as(member)).spend.month({ month: MONTH });
+    const countOf = (view: Awaited<ReturnType<typeof viewOf>>, providerId: ProviderId): number => view.byProvider.find((line) => line.providerId === providerId)?.taskCount ?? -1;
+    // A key on the restricted project's own list alone, named for its client, that spent nothing.
+    const hidden = await seedProviderRow(db, a.organization.id, "keys-restricted-client");
+    await db.providerListEntry.create({ data: { organizationId: a.organization.id, projectId: a.restrictedProject.id, providerId: hidden } });
+    const before = { admin: await viewOf(a.admin), member: await viewOf(a.member), insider: await viewOf(a.insider) };
+    await sessionOn(a.openProject.id, busy, inMonth);
+    await sessionOn(a.restrictedProject.id, busy, inMonth);
+    await sessionOn(a.restrictedProject.id, hidden, inMonth);
+    const after = { admin: await viewOf(a.admin), member: await viewOf(a.member), insider: await viewOf(a.insider) };
+
+    // The admin's month lists every key, the restricted project's at zero with its task.
+    expect(after.admin.byProvider.find((line) => line.providerId === hidden)).toMatchObject({ name: "keys-restricted-client", spentMicroUsd: 0, taskCount: 1 });
+    expect(countOf(after.admin, busy) - countOf(before.admin, busy)).toBe(2);
+    for (const view of [after.member, after.insider]) {
+      // Anyone else's lists the keys that spent, the ones the models' lines name, and nothing more.
+      const spent = new Set(view.byModel.map((line) => line.providerId));
+      expect(view.byProvider.map((line) => line.providerId).sort()).toEqual([...spent].sort());
+      expect(view.byProvider.every((line) => line.spentMicroUsd > 0)).toBe(true);
+      for (const name of ["keys-restricted-client", "keys-spare-openai", "keys-globex-openrouter"]) {
+        expect(JSON.stringify(view)).not.toContain(name);
+      }
+      expect(view.byProvider.reduce((total, line) => total + line.spentMicroUsd, 0)).toBe(view.total.spentMicroUsd);
+    }
+    // A member off the restricted project counts the open project's task alone; one on it counts both.
+    expect(countOf(after.member, busy) - countOf(before.member, busy)).toBe(1);
+    expect(countOf(after.insider, busy) - countOf(before.insider, busy)).toBe(2);
+    expect(countOf(after.member, busy)).toBeLessThan(countOf(after.admin, busy));
   });
 
   it("F-135/c13: a project's month lists only the keys it spent on, and another organization's month never lists ours", async () => {

@@ -4,6 +4,7 @@ import {
   budgetMonthOf,
   budgetOvershoot,
   dispatchWaitFromDb,
+  requireOrganizationAdmin,
   setBudget,
 } from "@ostra/domain";
 import type { BudgetLevel } from "@ostra/domain";
@@ -100,7 +101,11 @@ const modelLineSchema = figuresSchema.extend({
 const providerLineSchema = figuresSchema.extend({
   providerId: providerIdSchema,
   name: z.string(),
-  /** The tasks with a session on this key that started in the month (spend-keys.md, the panel's `Tasks`). */
+  /**
+   * The tasks with a session on this key that started in the month (spend-keys.md, the panel's
+   * `Tasks`), in the projects the caller can open: a restricted project's tasks count only for its
+   * members and the organization's admins.
+   */
   taskCount: z.number().int(),
 });
 
@@ -111,9 +116,10 @@ export const spendMonthViewSchema = z.object({
   byModel: z.array(modelLineSchema),
   /**
    * Spend per model provider, each one client's key (F-135, ADR 0065): the sum of its model rows,
-   * highest first and ties by name. The organization's month lists every provider it held by the
-   * month's end, one that spent nothing at zero (spend-keys.md, choice 8); a project's lists those
-   * it spent on.
+   * highest first and ties by name. For an organization admin, the organization's month lists every
+   * provider it held by the month's end, one that spent nothing at zero (spend-keys.md, choice 8).
+   * Anyone else's lists the providers that spent, as a project's month does: a key's name, often its
+   * client's, never reaches a member through a key that spent nothing.
    */
   byProvider: z.array(providerLineSchema),
   /** The models whose calls had no price this month, with their tokens. */
@@ -199,20 +205,21 @@ const loadRows = async (
 };
 
 /**
- * The tasks with a session on each key that started in the month, for the organization (`projectId`
- * null) or one project: a task counts once per key, however many sessions it had on it.
+ * The tasks with a session on each key that started in the month, in every project of the
+ * organization (`projectIds` null) or in those listed: a task counts once per key, however many
+ * sessions it had on it.
  */
 export const loadMonthTaskCounts = async (
   db: DbOrTx,
   organizationId: OrganizationId,
-  projectId: ProjectId | null,
+  projectIds: readonly ProjectId[] | null,
   month: string,
 ): Promise<ReadonlyMap<string, number>> => {
   const bounds = budgetMonthBounds(month);
   const sessions = await db.session.findMany({
     where: {
       organizationId,
-      ...(projectId === null ? {} : { projectId }),
+      ...(projectIds === null ? {} : { projectId: { in: [...projectIds] } }),
       providerId: { not: null },
       startedAt: { gte: new Date(bounds.start), lt: new Date(bounds.end) },
     },
@@ -347,13 +354,23 @@ export const loadSpendMonth = async (
     organizationRows.reduce((sum, row) => sum + row.figures.spentMicroUsd, 0),
   );
   const perProject = sumBy(organizationRows, (row) => row.projectId);
+  // The Keys section is an organization admin's (spend-keys.md). Anyone else sees the keys that
+  // spent, never one that sits only on a restricted project's list or on none, and counts the tasks
+  // of the projects they can open: an organization admin can open every project.
+  const admin = requireOrganizationAdmin(ctx.scope, organizationId).ok;
+  let countedProjects: readonly ProjectId[] | null = null;
+  if (input.projectId !== null) {
+    countedProjects = [input.projectId];
+  } else if (!admin) {
+    countedProjects = [...folding.visible.keys()];
+  }
   const [extras, catalog, taskCounts, keys] = await Promise.all([
     loadBudgetExtras(db, organizationId, input.month, budgetRows),
     ctx.deps.catalog.entries(),
-    loadMonthTaskCounts(db, organizationId, input.projectId, input.month),
-    // The organization's month lists every key it held then, one that spent nothing at zero
+    loadMonthTaskCounts(db, organizationId, countedProjects, input.month),
+    // An admin's month lists every key the organization held then, one that spent nothing at zero
     // (spend-keys.md): a key added after the month wasn't one of its keys.
-    input.projectId === null
+    input.projectId === null && admin
       ? db.modelProvider.findMany({
           where: { organizationId, createdAt: { lt: new Date(budgetMonthBounds(input.month).end) } },
           select: { id: true, name: true },
@@ -440,7 +457,10 @@ export const loadSpendMonth = async (
 };
 
 export const spendRouter = router({
-  /** The organization's month: every member sees it, with the projects they can't open folded. */
+  /**
+   * The organization's month: every member sees it, with the projects they can't open folded. Only
+   * an organization admin's lists the keys that spent nothing (`byProvider`).
+   */
   month: memberProcedure
     .input(z.strictObject({ month: budgetMonthSchema }))
     .output(spendMonthViewSchema)
