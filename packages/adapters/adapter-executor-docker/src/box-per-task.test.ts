@@ -46,9 +46,11 @@ const holdingsOf = (input: BoxInput) => {
 };
 
 describe("a box per task on docker", () => {
-  it("F-016/c3, F-017/c1: each task's box is its agent's container and its sidecar on a private network of their own, and two boxes share none of it", async () => {
-    const one = boxFor(1);
-    const two = boxFor(2);
+  it("F-016/c3, F-017/c1: each task's box is its agent's container, its sidecar and its environment's services on a private network of their own, and two boxes share none of it", async () => {
+    // Each task's environment has a service, of the same name in both: each box gets its own.
+    const services = [{ name: "postgres", image: "postgres:17", port: 5432, variables: [], healthCheck: null }];
+    const one = { ...boxFor(1), services };
+    const two = { ...boxFor(2), services };
     expect((await boxes.createBox(one)).ok).toBe(true);
     expect((await boxes.createBox(two)).ok).toBe(true);
 
@@ -57,12 +59,19 @@ describe("a box per task on docker", () => {
       [two, one],
     ] as const) {
       const held = holdingsOf(box);
-      expect(held.containers.map((container) => container.name).sort()).toEqual([`ostra-box-${box.boxId}-agent`, `ostra-box-${box.boxId}-sidecar`]);
-      expect(held.labels).toEqual([box.taskId, box.taskId]);
+      expect(held.containers.map((container) => container.name).sort()).toEqual([`ostra-box-${box.boxId}-agent`, `ostra-box-${box.boxId}-sidecar`, `ostra-box-${box.boxId}-svc-postgres`]);
+      expect(held.labels).toEqual([box.taskId, box.taskId, box.taskId]);
       // The box's own network is internal: no route out but through the sidecar.
       expect(engine.networks.get(`ostra-box-${box.boxId}`)).toMatchObject({ Internal: true });
       const agent = held.containers.find((container) => container.name.endsWith("-agent"));
       expect(agent?.networks).toEqual([`ostra-box-${box.boxId}`]);
+      // The service is on the box's network only, where the agent reaches it by its name.
+      const service = held.containers.find((container) => container.name.endsWith("-svc-postgres"));
+      expect(service?.networks).toEqual([`ostra-box-${box.boxId}`]);
+      expect(service?.body["NetworkingConfig"]).toEqual({ EndpointsConfig: { [`ostra-box-${box.boxId}`]: { Aliases: ["postgres"] } } });
+      // The sidecar is on it too, and on the shared egress network, which has no route between boxes.
+      const sidecar = held.containers.find((container) => container.name.endsWith("-sidecar"));
+      expect(sidecar?.networks).toEqual([`ostra-box-${box.boxId}`, "ostra-egress"]);
       // Nothing of the other box: its network, its volume, its task.
       const theirs = holdingsOf(other);
       expect(held.networks.filter((network) => network !== "ostra-egress").some((network) => theirs.networks.includes(network))).toBe(false);
