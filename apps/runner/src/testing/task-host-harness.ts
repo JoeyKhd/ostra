@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { HostExecutor } from "@ostra/adapter-executor-host";
@@ -8,7 +8,7 @@ import type { AdapterResult, AgentCommand, AgentLaunch, AgentProcess, BoxRef, Ex
 import { FakeAgentAdapter, startGitUpstream, startStubModelServer } from "@ostra/adapter-sdk/testing";
 import type { GitUpstream, StubBrain, StubServer } from "@ostra/adapter-sdk/testing";
 import { boxIdSchema, clientMessageIdSchema, runnerIdSchema, sessionIdSchema, taskCredentialsSchema, taskIdSchema } from "@ostra/protocol";
-import type { ApiFormat, BoxId, Command, Peer, RunnerEvent, TaskCredentials, TaskEvent, TaskEventOf, TaskSpec } from "@ostra/protocol";
+import type { ApiFormat, BoxId, Command, Peer, RunnerEvent, RunnerId, TaskCredentials, TaskEvent, TaskEventOf, TaskSpec } from "@ostra/protocol";
 import { taskSpecFixture } from "@ostra/protocol/testing";
 import { startConnection } from "../connection/peer.ts";
 import type { Carrier } from "../connection/http-carrier.ts";
@@ -16,7 +16,7 @@ import type { RunnerConnection } from "../connection/peer.ts";
 import { createAgentRegistry } from "../task-host/agents.ts";
 import type { AgentFactory, AgentRegistry } from "../task-host/agents.ts";
 import { runnerServerLink } from "../task-host/server-link.ts";
-import { createTaskHost } from "../task-host/task-host.ts";
+import { createTaskHost, reportRestoredSessions } from "../task-host/task-host.ts";
 import type { TaskHost, TaskHostOptions } from "../task-host/task-host.ts";
 import type { TaskTimers } from "../task-host/task-run.ts";
 import { makeCommand, startFakeGateway } from "./fake-gateway.ts";
@@ -118,10 +118,17 @@ export type HarnessOptions = {
     readonly kind: TaskHostOptions["executorKind"];
     readonly dispose: () => Promise<void>;
   }>;
+  /**
+   * F-047: the same runner started again after `stopRunner`, as a restarted process is: its data
+   * folder, its ID, and the server and gateway it was talking to, which stay the earlier harness's
+   * to close. Like `ostra runner`, it reports the sessions its last process left open.
+   */
+  readonly restartOf?: Harness;
 };
 
 export type Harness = {
   readonly dataDir: string;
+  readonly runnerId: RunnerId;
   readonly server: FakeServer;
   readonly gateway: FakeGateway;
   readonly host: TaskHost;
@@ -145,6 +152,12 @@ export type Harness = {
   readonly waitForKind: (spec: TaskSpec, kind: TaskEvent["kind"], count?: number, timeoutMs?: number) => Promise<void>;
   readonly everyEventOnce: () => boolean;
   readonly idle: () => Promise<void>;
+  /**
+   * The runner's process is killed (F-047): it stops talking at once and runs none of its own ending,
+   * so its data folder holds what its connection last wrote, sessions still open. The server and
+   * gateway stay, for `restartOf`.
+   */
+  readonly killRunner: () => Promise<void>;
   readonly close: () => Promise<void>;
 };
 
@@ -153,11 +166,12 @@ let counter = 0;
 export const startHarness = async (shared: Shared, options: HarnessOptions = {}): Promise<Harness> => {
   counter += 1;
   const run = counter;
-  const dataDir = options.dataDir ?? path.join(shared.root, `runner-${String(run)}`);
-  const runnerId = runnerIdSchema.parse(`runner-m2-${String(run)}`);
-  const server = await startFakeServer();
+  const earlier = options.restartOf;
+  const dataDir = earlier?.dataDir ?? options.dataDir ?? path.join(shared.root, `runner-${String(run)}`);
+  const runnerId = earlier?.runnerId ?? runnerIdSchema.parse(`runner-m2-${String(run)}`);
+  const server = earlier?.server ?? (await startFakeServer());
   server.accessTokens.set(ACCESS_TOKEN, runnerId);
-  const gateway = startFakeGateway(server, options.serverMinor === undefined ? {} : { serverMinor: options.serverMinor });
+  const gateway = earlier?.gateway ?? startFakeGateway(server, options.serverMinor === undefined ? {} : { serverMinor: options.serverMinor });
   const tokens = { get: () => Promise.resolve({ ok: true as const, token: ACCESS_TOKEN, expiresAt: Date.now() + 600_000 }), invalidate: () => undefined };
   const holder: { connection: RunnerConnection | undefined } = { connection: undefined };
   const logs: LogRecord[] = [];
@@ -215,6 +229,8 @@ export const startHarness = async (shared: Shared, options: HarnessOptions = {})
     ...(options.runnerMinor === undefined ? {} : { protocolMinor: options.runnerMinor }),
   });
   const connection = holder.connection;
+  // As `ostra runner` does once it's connected (run-runner.ts): the sessions its last process left.
+  reportRestoredSessions(host, connection);
   await gateway.waitFor(() => gateway.connected());
 
   let seq = run * 1000;
@@ -235,8 +251,36 @@ export const startHarness = async (shared: Shared, options: HarnessOptions = {})
   const ofKind = <K extends TaskEvent["kind"]>(spec: TaskSpec, kind: K): readonly TaskEventOf<K>[] =>
     eventsOf(spec).filter((event): event is TaskEventOf<K> => event.kind === kind);
 
+  let runnerStopped = false;
+  const stopRunner = async (): Promise<void> => {
+    if (runnerStopped) return;
+    runnerStopped = true;
+    await host.shutdown();
+    await connection.stop();
+  };
+  const killRunner = async (): Promise<void> => {
+    if (runnerStopped) return;
+    runnerStopped = true;
+    // The connection goes first, as with a kill. The task host's ending (its agents stopped, its
+    // sessions closed) has to run in this process to free it, but a killed process never runs it,
+    // so the data folder is put back as the connection left it.
+    await connection.stop();
+    const left = await mkdtemp(path.join(os.tmpdir(), "ostra-killed-runner-"));
+    const kept = ["state.json", "spool"];
+    for (const name of kept) {
+      await cp(path.join(dataDir, name), path.join(left, name), { recursive: true, force: true }).catch(() => undefined);
+    }
+    await host.shutdown();
+    for (const name of kept) {
+      await rm(path.join(dataDir, name), { recursive: true, force: true });
+      await cp(path.join(left, name), path.join(dataDir, name), { recursive: true, force: true }).catch(() => undefined);
+    }
+    await rm(left, { recursive: true, force: true });
+  };
+
   return {
     dataDir,
+    runnerId,
     server,
     gateway,
     host,
@@ -294,11 +338,14 @@ export const startHarness = async (shared: Shared, options: HarnessOptions = {})
     waitForKind: (spec, kind, count = 1, timeoutMs = 60_000) => gateway.waitFor(() => kinds(spec).filter((item) => item === kind).length >= count, timeoutMs),
     everyEventOnce: () => [...gateway.received.values()].every((count) => count === 1),
     idle: () => gateway.waitFor(() => host.running().length === 0, 60_000),
+    killRunner,
     close: async () => {
-      await host.shutdown();
-      await connection.stop();
-      await gateway.close();
-      await server.close();
+      await stopRunner();
+      // A restarted runner's server and gateway are the earlier harness's, closed with it.
+      if (earlier === undefined) {
+        await gateway.close();
+        await server.close();
+      }
       await made?.dispose();
     },
   };

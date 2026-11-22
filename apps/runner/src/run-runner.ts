@@ -15,7 +15,7 @@ import { createKubernetesDispatcher } from "./kubernetes-dispatcher.ts";
 import { defaultAgents } from "./task-host/agents.ts";
 import { fetchPullCredential, fetchPushCredential, fetchServiceSecrets, fetchSnapshotCredentials, fetchTaskToken, runnerServerLink } from "./task-host/server-link.ts";
 import { RUNNER_PREVIEW_SUPPORT } from "./task-host/preview-views.ts";
-import { createTaskHost } from "./task-host/task-host.ts";
+import { createTaskHost, reportRestoredSessions } from "./task-host/task-host.ts";
 import { approvalHooks, DOCKER_CAPABILITIES, withApprovalStatus } from "./pool-approval.ts";
 import { hostSlots, reportedCapabilities } from "./reports.ts";
 import { releaseImage } from "./version.ts";
@@ -139,10 +139,7 @@ export const runSignedInRunner: RunSignedIn = async ({ signedIn, config, dataDir
           },
         },
         started: (connection) => {
-          const restored = connection.restoredSessions();
-          if (restored.length > 0) {
-            void host.restored(restored);
-          }
+          reportRestoredSessions(host, connection);
         },
         shutdown: host.shutdown,
         describe: `host, not isolated, ${executor.capabilities.processContainment} containment${executor.agentUser.kind === "same-user-development" ? ", same user (development only)" : ""}`,

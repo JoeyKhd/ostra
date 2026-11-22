@@ -36,6 +36,18 @@ export type TaskHost = {
   readonly shutdown: () => Promise<void>;
 };
 
+/**
+ * What a runner does once its connection has started (F-047): each session its last process left
+ * open lost its agent with that process, and its box too when the workspace went, so the task host
+ * reports it crashed, and the server can reopen it on a fresh box.
+ */
+export const reportRestoredSessions = (host: Pick<TaskHost, "restored">, connection: { readonly restoredSessions: () => readonly SessionRef[] }): void => {
+  const restored = connection.restoredSessions();
+  if (restored.length > 0) {
+    void host.restored(restored);
+  }
+};
+
 export const createTaskHost = (options: TaskHostOptions): TaskHost => {
   const runs = new Map<SessionId, TaskRun>();
   /** Boxes kept after their session ended (ADR 0039), by box. On `host` the worktree stays until a release. */

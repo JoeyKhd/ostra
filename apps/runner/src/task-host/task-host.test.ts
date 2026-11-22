@@ -369,7 +369,7 @@ describe("the task host", () => {
     expect(await upstream.commitMessage("ostra-test/test1", hiddenRef)).toContain("(stopped: unfinished work)");
   }, 120_000);
 
-  it("pushes the hidden ref and sends session.crashed when the agent crashes mid-turn", async () => {
+  it("F-047/c1: pushes the hidden ref and sends session.crashed when the agent crashes mid-turn", async () => {
     const { dispatch } = await start();
     // The setup leaves an untracked file: work the crash must not lose.
     const { spec } = taskFor("[[fake:crash]]", "echo 'set up' > setup-output.txt\n");
