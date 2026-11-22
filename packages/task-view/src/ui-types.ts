@@ -67,6 +67,8 @@ export const approvalReceiptSchema = z.discriminatedUnion("state", [
     decision: approvalDecisionSchema,
     optionId: optionIdSchema,
     by: memberIdSchema,
+    /** Milestone 10 (F-151): a deny gave a reason (`, with a reason` on its run's line). Only that it did: the words stay in the log. */
+    withReason: z.literal(true).optional(),
   }),
   z.strictObject({ state: z.literal("auto"), ruleId: z.string() }),
   z.strictObject({ state: z.literal("closed"), reason: z.enum(["cancelled", "expired"]) }),
@@ -540,7 +542,15 @@ export type TurnEnded = {
  * cancelled or failed, or its session ended or crashed). Never before it started: an end on core's
  * clock is held at the start. A thought's start and end are both its runner's times.
  */
-export type StepTime = { readonly startedAt: number; readonly endedAt: number | null };
+export type StepTime = {
+  readonly startedAt: number;
+  readonly endedAt: number | null;
+  /**
+   * When its approval let it run (a member's answer or a rule's, on core's clock), never before its
+   * start: how long it ran leaves out the wait. Missing on a call no approval held.
+   */
+  readonly answeredAt?: number;
+};
 
 /** The `stepTimes` key of a turn's reasoning part, by its place among the turn's reasoning parts (from 0). */
 export const thoughtTimeKey = (index: number): string => `thought:${String(index)}`;

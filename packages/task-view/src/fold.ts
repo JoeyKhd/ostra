@@ -146,6 +146,8 @@ type ToolRecord = {
   /** Milestone 10 (F-151): its `tool.called`'s time, and the time of the event that settled it (`null` while it runs or waits). */
   startedAt: number;
   endedAt: number | null;
+  /** Milestone 10 (F-151): when its approval let it run (a member's or a rule's), so its duration leaves out the wait. */
+  answeredAt: number | null;
   /** F-138: the subagent whose call it is; missing for the main agent's. */
   subagentId?: SubagentId;
   /** F-138: it's in the thread (the main agent's, or a subagent's that asked for an approval). */
@@ -292,6 +294,9 @@ type Builder = {
 
 type OutputParse<O> = { ok: true; value: O } | { ok: false };
 
+/** The error text of a call its turn cancelled: the thread reads it as cancelled, never failed (F-151). */
+export const CANCELLED_TOOL_ERROR = "cancelled";
+
 const receiptOf = (approval: ApprovalRecord): ApprovalReceipt | undefined =>
   approval.status.state === "pending" ? undefined : approval.status;
 
@@ -339,7 +344,7 @@ const buildInvocation = <I, O>(
     };
   }
   if (rec.cancelled) {
-    return { ...base, state: "output-error", input, errorText: "cancelled" };
+    return { ...base, state: "output-error", input, errorText: CANCELLED_TOOL_ERROR };
   }
   if (approval !== undefined && status?.state === "answered" && status.decision === "deny") {
     return {
@@ -719,7 +724,7 @@ const stepTimesOf = (builder: Builder): Readonly<Record<string, StepTime>> | nul
   const calls = callsOf(builder);
   if (calls.length === 0 && builder.thoughts.length === 0) return null;
   return Object.fromEntries([
-    ...calls.map((rec) => [rec.toolCallId, { startedAt: rec.startedAt, endedAt: rec.endedAt }] as const),
+    ...calls.map((rec) => [rec.toolCallId, { startedAt: rec.startedAt, endedAt: rec.endedAt, ...(rec.answeredAt === null ? {} : { answeredAt: rec.answeredAt }) }] as const),
     ...builder.thoughts.map((thought, i) => [thoughtTimeKey(i), { startedAt: thought.startedAt, endedAt: thought.endedAt }] as const),
   ]);
 };
@@ -1134,6 +1139,7 @@ export const foldTaskEvents = (
           owner: turn,
           startedAt: stored.at,
           endedAt: null,
+          answeredAt: null,
         };
         tools.set(event.toolCallId, rec);
         if (event.subagentId !== undefined) {
@@ -1204,11 +1210,16 @@ export const foldTaskEvents = (
             decision: event.decision,
             optionId: event.optionId,
             by: event.memberId,
+            // Milestone 10 (F-151): whether a deny gave a reason, for the run's tail; never its words.
+            ...(event.decision === "deny" && event.reason !== undefined ? { withReason: true as const } : {}),
           };
-          // Milestone 10 (F-151): a denied call never runs: its step ends with the deny.
+          // Milestone 10 (F-151): a denied call never runs: its step ends with the deny. An approved
+          // one runs from the answer.
           if (event.decision === "deny" && rec.outcome === undefined && rec.endedAt === null) endCall(rec, stored.at);
+          if (event.decision !== "deny") rec.answeredAt = Math.max(stored.at, rec.startedAt);
         } else if (event.kind === "approval.auto_answered") {
           approval.status = { state: "auto", ruleId: event.ruleId };
+          rec.answeredAt = Math.max(stored.at, rec.startedAt);
         } else {
           approval.status = { state: "closed", reason: event.reason };
           // Closed after its turn ended (a cancel's bookkeeping), it keeps the turn's end.
