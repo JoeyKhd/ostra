@@ -310,3 +310,50 @@ describe("usage per turn and per task (F-084)", () => {
     expect((await usageOf(theirs)).totals).toMatchObject({ inputTokens: 999, outputTokens: 99 });
   });
 });
+
+describe("each call's four kinds of token (F-089, ADR 0042, Q163)", () => {
+  it("F-089/c6: stores each call's fresh input, output, cache-read and cache-write tokens apart, and prices each kind at its own price", async () => {
+    const modelId = await modelOf(world);
+    await setPrices(modelId, true);
+    try {
+      const task = await freshTask();
+      await sendAt(task, T0, turnStarted(1));
+      // One call of each kind alone, each a count of its own, so a kind priced at another kind's
+      // price shows: $3 a million fresh input, $15 output, $0.30 cache read, $3.75 cache write. The
+      // last call holds all four, and costs each one at its own price, added.
+      const calls: readonly { readonly tokens: Tokens; readonly costMicroUsd: number }[] = [
+        { tokens: { input: 1_000_000, output: 0, read: 0, write: 0 }, costMicroUsd: 3_000_000 },
+        { tokens: { input: 0, output: 100_000, read: 0, write: 0 }, costMicroUsd: 1_500_000 },
+        { tokens: { input: 0, output: 0, read: 2_000_000, write: 0 }, costMicroUsd: 600_000 },
+        { tokens: { input: 0, output: 0, read: 0, write: 200_000 }, costMicroUsd: 750_000 },
+        { tokens: { input: 1_000, output: 2_000, read: 10_000, write: 4_000 }, costMicroUsd: 3_000 + 30_000 + 3_000 + 15_000 },
+      ];
+      let spent = 0;
+      for (const [index, call] of calls.entries()) {
+        await sendAt(task, T0 + 1_000 * (index + 1), usage(world, modelId, call.tokens));
+        spent += call.costMicroUsd;
+        // What this one call added: its kinds, each at its own price.
+        const session = await test.db.session.findUniqueOrThrow({ where: { id: task.sessionId } });
+        expect(session.spentMicroUsd, `the session's spend after call ${String(index + 1)}`).toBe(spent);
+      }
+      await sendAt(task, T0 + 10_000, turnEnded(1));
+
+      // Each call is stored as its own event, with its four kinds apart.
+      const stored = (await test.db.event.findMany({ where: { taskId: task.taskId, kind: "usage.recorded" }, orderBy: { seq: "asc" } })).map((row) =>
+        z.looseObject({ inputTokens: z.number(), outputTokens: z.number(), cacheReadTokens: z.number(), cacheWriteTokens: z.number() }).parse(row.payload),
+      );
+      expect(stored.map((event) => [event.inputTokens, event.outputTokens, event.cacheReadTokens, event.cacheWriteTokens])).toEqual(
+        calls.map((call) => [call.tokens.input, call.tokens.output, call.tokens.read, call.tokens.write]),
+      );
+      // The session and the turn sum each kind on its own, and the task's spend is the calls' costs.
+      const session = await test.db.session.findUniqueOrThrow({ where: { id: task.sessionId } });
+      expect(session).toMatchObject({ inputTokens: 1_001_000, outputTokens: 102_000, cacheReadTokens: 2_010_000, cacheWriteTokens: 204_000, spentMicroUsd: 5_901_000 });
+      const read = await usageOf(task);
+      expect(read.totals).toMatchObject({ inputTokens: 1_001_000, outputTokens: 102_000, cacheReadTokens: 2_010_000, cacheWriteTokens: 204_000, spentMicroUsd: 5_901_000 });
+      expect(read.turns).toEqual([expect.objectContaining({ inputTokens: 1_001_000, outputTokens: 102_000, cacheReadTokens: 2_010_000, cacheWriteTokens: 204_000, spentMicroUsd: 5_901_000 })]);
+      expect((await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).spentMicroUsd).toBe(5_901_000);
+    } finally {
+      await setPrices(modelId, false);
+    }
+  });
+});
