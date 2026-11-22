@@ -7,8 +7,7 @@ import { appendEvent, createApiHarness, seedBoard, seedConnectionAndModel, seedL
 import type { ApiHarness, AppCaller, SeededTask } from "../testing/index.ts";
 
 // Ticket 30: the task page's ticket and its sync, its sessions and box, its spend against the cap, its
-// capabilities, and reopening. `tasks.reopen` and `tasks.dismissNeedsYou` call ticket 18's use cases;
-// their cases run once those exist and are skipped while they are still the stubs.
+// capabilities, and reopening. `tasks.reopen` and `tasks.dismissNeedsYou` call ticket 18's use cases.
 
 let harness: ApiHarness;
 let world: Awaited<ReturnType<typeof seedConnectionAndModel>>;
@@ -16,7 +15,6 @@ let projectId: ProjectId;
 let organizationId: OrganizationId;
 let connectionId: Awaited<ReturnType<typeof seedLinearConnection>>;
 let boardId: Awaited<ReturnType<typeof seedBoard>>;
-let reopenReady = false;
 
 beforeAll(async () => {
   harness = await createApiHarness();
@@ -25,14 +23,6 @@ beforeAll(async () => {
   projectId = (await seedProject(harness, world, "task-ticket")).projectId;
   connectionId = await seedLinearConnection(harness);
   boardId = await seedBoard(harness, { projectId, connectionId, key: "ENG" });
-
-  // Is ticket 18's `reopenTask` written? Ask it about a stopped task; the stub answers with a bug.
-  const probe = await seedTask(harness, { organizationId, projectId, state: "stopped", sessionState: "ended", driverMemberId: harness.fixture.a.member.id });
-  const outcome = await (await harness.as(harness.fixture.a.member)).tasks.reopen({ taskId: probe.taskId, clientMessageId: clientMessageIdSchema.parse(crypto.randomUUID()), text: "probe" }).then(
-    () => "ok",
-    (error: unknown) => (error instanceof Error ? `${error.message} ${error.cause instanceof Error ? error.cause.message : ""}` : ""),
-  );
-  reopenReady = !outcome.includes("not implemented yet");
 });
 
 afterAll(async () => {
@@ -274,17 +264,7 @@ describe("F-033, F-068: capabilities", () => {
 });
 
 describe("F-032, F-033: reopening", () => {
-  // The cases below describe the finished behavior. They run once `reopenTask` is written.
-  const run = (name: string, body: () => Promise<void>) => {
-    it(name, async (context) => {
-      if (!reopenReady) {
-        context.skip();
-      }
-      await body();
-    });
-  };
-
-  run("reopens a stopped task with the member's message, once per message ID, and makes the member the driver", async () => {
+  it("reopens a stopped task with the member's message, once per message ID, and makes the member the driver", async () => {
     const task = await ticketTask("ENG-50", "stopped");
     const clientMessageId = messageId();
     const first = await (await admin()).tasks.reopen({ taskId: task.taskId, clientMessageId, text: "Also add the date" });
@@ -298,7 +278,7 @@ describe("F-032, F-033: reopening", () => {
     expect(harness.fakes.jobs.jobs.filter((job) => job.job === "ticket.read-changes" && job.key.startsWith(`task:${task.taskId}:`))).toHaveLength(1);
   });
 
-  run("refuses a task without a message unless a limit or a crash stopped it, and then writes the carry-on text", async () => {
+  it("refuses a task without a message unless a limit or a crash stopped it, and then writes the carry-on text", async () => {
     const stopped = await ticketTask("ENG-51", "stopped");
     await expect((await member()).tasks.reopen({ taskId: stopped.taskId, clientMessageId: messageId() })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     const crashed = await ticketTask("ENG-52", "needs_you");
@@ -309,7 +289,7 @@ describe("F-032, F-033: reopening", () => {
     expect(JSON.stringify(messages.map((message) => message.payload))).toContain(reopenCarryOnText);
   });
 
-  run("F-036: a reopen answers the items of what the task needed, each with its fan-out, and leaves the ones that don't hold it", async () => {
+  it("F-036: a reopen answers the items of what the task needed, each with its fan-out, and leaves the ones that don't hold it", async () => {
     const task = await ticketTask("ENG-58", "needs_you");
     await harness.test.db.task.update({ where: { id: task.taskId }, data: { needsYouReason: "crashed" } });
     await harness.test.db.session.updateMany({ where: { taskId: task.taskId }, data: { state: "crashed" } });
@@ -323,7 +303,7 @@ describe("F-032, F-033: reopening", () => {
     expect(fanouts).not.toContain(`item:${files.id}:fanout:answered`);
   });
 
-  run("refuses a merged task, a running task and a ticket another task holds, with their reasons", async () => {
+  it("refuses a merged task, a running task and a ticket another task holds, with their reasons", async () => {
     const merged = await ticketTask("ENG-53", "in_review");
     await harness.test.db.task.update({ where: { id: merged.taskId }, data: { state: "merged", subState: null } });
     await expect((await member()).tasks.reopen({ taskId: merged.taskId, clientMessageId: messageId(), text: "again" })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
@@ -335,7 +315,7 @@ describe("F-032, F-033: reopening", () => {
     await expect((await member()).tasks.reopen({ taskId: held.taskId, clientMessageId: messageId(), text: "again" })).rejects.toMatchObject({ code: "CONFLICT" });
   });
 
-  run("lets a watcher reopen only when they can read the project", async () => {
+  it("lets a watcher reopen only when they can read the project", async () => {
     const task = await ticketTask("ENG-56", "stopped");
     await expect((await harness.as(harness.fixture.b.admin)).tasks.reopen({ taskId: task.taskId, clientMessageId: messageId(), text: "hi" })).rejects.toMatchObject({ code: "NOT_FOUND" });
     const restricted = await seedTask(harness, { organizationId, projectId: harness.fixture.a.restrictedProject.id, state: "stopped" });
@@ -344,7 +324,7 @@ describe("F-032, F-033: reopening", () => {
     await expect((await member()).tasks.reopen({ taskId: task.taskId, clientMessageId: messageId(), text: "hi" })).resolves.toBeDefined();
   });
 
-  run("dismisses a restore conflict for the driver or a project admin, and nothing else", async () => {
+  it("dismisses a restore conflict for the driver or a project admin, and nothing else", async () => {
     const task = await ticketTask("ENG-57", "running");
     const item = await harness.test.db.needsYouItem.create({ data: { organizationId, projectId, taskId: task.taskId, reason: "restore_conflict", audience: "driver", state: "open" } });
     await expect((await harness.as(harness.fixture.a.insider)).tasks.dismissNeedsYou({ taskId: task.taskId, itemId: needsYouItemIdSchema.parse(item.id) })).rejects.toBeDefined();
