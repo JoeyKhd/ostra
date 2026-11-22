@@ -174,7 +174,7 @@ describe("F-121: attachments in core", () => {
     expect(h.records.filter((record) => record.message === "ingest.attachment-refused").map((record) => record.fields["error"])).toEqual(["limit-reached"]);
   });
 
-  it("F-121/c6: the PR ostra opens says how many screenshots the task has, linking to the task, never to a blob; a later turn's count updates it", async () => {
+  it("F-121/c6, F-114/c5: the PR ostra opens says how many screenshots the task has, linking to the task, never to a blob; a later turn's count updates it", async () => {
     // A prompt task leased to the harness's runner, its PR not open yet.
     const queued = await seedQueuedTask(h.db, h.world, h.fixture.a.member, null);
     const row = await h.db.task.findUniqueOrThrow({ where: { id: queued.taskId } });

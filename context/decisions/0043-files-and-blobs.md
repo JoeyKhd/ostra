@@ -7,7 +7,7 @@ ostra stores files: a session's archive, the images a member attaches to a refin
 - **The built-in adapter keeps blobs in Postgres.** They sit in their own table, in chunks, with a size cap per blob of 64 MiB *(working value)*. A fresh install needs nothing else, and one backup still covers everything (ADR 0017).
 - **An adapter for any S3-compatible store is optional.** It's recommended above a few hundred tasks a day. It uses `@aws-sdk/client-s3` (Apache-2.0), pinned exactly. *Confirmed by the maintainer on 2026-11-19* ("yes ofcourse", Q127).
 - **Runners upload through the server.** A runner and a box's sidecar still need only one address. They use the bulk path of the runner protocol: plain HTTPS, chunked, resumable, with a digest, never on the session socket (`research/runner-transport.md` §1, ADR 0034).
-- **Copies for people go where they work.** A tracker adapter that can take attachments gets a copy, and it declares that as a capability. On GitHub, ostra links to the file. It doesn't upload it. As far as the answers know, GitHub has no API for putting an image in a PR comment. That stays to verify.
+- **Copies for people go where they work.** A tracker adapter that can take attachments gets a copy, and it declares that as a capability. On GitHub, ostra links to the file. It doesn't upload it. As far as the answers know, GitHub has no API for putting an image in a PR comment. That stays to verify. *2026-11-22: as ADR 0068 has it, the link is the PR's "Screenshots: N in ostra" line to the task's attachments, which need a sign-in; it never names a blob. A tracker without the capability gets each draft image's name with a link to the task instead (`apps/core/src/blobs/blob-storage.test.ts`, F-114/c5).*
 
 ## The adapter
 
