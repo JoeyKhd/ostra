@@ -419,7 +419,7 @@ The text core reads out of a `.docx`, `.pdf`, `.xlsx` or `.pptx` message file wh
 _Avoid_: OCR (ostra reads only a document's own text), summary, preview
 
 **Image input**:
-Whether a model can see images: models.dev's `modalities.input` for it, or an organization admin's "Reads images" for that model, which wins. Unknown counts as no, and the agent then gets images as files.
+Whether a model can see images: models.dev's `modalities.input` for it, from its serving provider's own entry (else what the endpoint's own list says, else what most of the catalog's entries for it agree on), or an organization admin's "Reads images" for that model, which wins. Unknown counts as no, and the agent then gets images as files.
 _Avoid_: vision (a vendor's word), multimodal
 
 **Ticket update**:
@@ -473,7 +473,7 @@ An endpoint an organization adds for models: an API base URL and a token. ostra 
 _Avoid_: vendor, LLM, key (alone, when you mean the provider: the key is its token)
 
 **Model name**:
-A model as ostra knows it apart from who serves it: its models.dev catalog ID, or, for a model the catalog lacks, the ID its endpoint lists it under. An agent profile names its model this way, beside its provider; a profile with no provider is served, in each project, by one provider on that project's list.
+A model as ostra knows it apart from who serves it: its models.dev catalog ID, or, for a model the catalog lacks, the ID its endpoint lists it under. The catalog ID is the serving provider's own entry where it has one (2026-11-22), so two keys of one provider share a name, and an aggregator's listing of a lab's model has a name of its own. An agent profile names its model this way, beside its provider; a profile with no provider is served, in each project, by one provider on that project's list.
 _Avoid_: model ID (that's one provider's listing of the model), model (alone, when you mean the name)
 
 **Reasoning effort**:

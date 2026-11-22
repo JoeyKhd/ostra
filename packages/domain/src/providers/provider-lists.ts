@@ -6,7 +6,7 @@ import { requireOrganizationAdmin, requireProjectAccess } from "../access.ts";
 import type { MemberScope } from "../access.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "../use-cases/common.ts";
-import { isBatchVariant, modelNameColumns, modelNameKey, modelNameOfModel } from "./model-name.ts";
+import { isBatchVariant, modelNameColumns, modelNameKey, modelNameOfModel, modelNameSchema } from "./model-name.ts";
 import type { ModelName } from "./model-name.ts";
 import { keepChoicesOnRefresh, planProviderChange, resolveProjectModel } from "./resolve.ts";
 import type { ListedModel, ModelChoiceRow, ProviderChangePlan, Resolution } from "./resolve.ts";
@@ -174,6 +174,63 @@ export const keepChoicesAfterRefreshInTx = async (
     }
   }
   return recorded;
+};
+
+/**
+ * 2026-11-22 (ADR 0033, ADR 0065), in a model refresh's transaction: a refresh that matches a row
+ * to another catalog entry (its serving provider's own, where an older release took another
+ * provider's) renames the model, and what names it by its old catalog ID follows it:
+ * - a profile on this provider, once the provider lists nothing under the old name;
+ * - once no row of the organization keeps the old name: a profile with no provider, and each
+ *   list's choice for the old name, which takes its chosen row's name now, or gives way to the
+ *   choice that list already has for that name.
+ *
+ * A name another provider still serves stays as it is, so nothing moves to another provider.
+ * `renames` maps an old catalog ID to the new one. Returns how many profiles and choices it rewrote.
+ */
+export const followRenamedModelsInTx = async (
+  tx: Tx,
+  organizationId: OrganizationId,
+  providerId: ProviderId,
+  renames: ReadonlyMap<string, string>,
+): Promise<number> => {
+  if (renames.size === 0) {
+    return 0;
+  }
+  // The rows still listed under an old name: an unlisted one serves nothing.
+  const holders = await tx.model.findMany({ where: { organizationId, listed: true, catalogId: { in: [...renames.keys()] } }, select: { providerId: true, catalogId: true } });
+  let rewritten = 0;
+  for (const [from, to] of renames) {
+    const holding = holders.filter((row) => row.catalogId === from);
+    if (!holding.some((row) => row.providerId === providerId)) {
+      rewritten += (await tx.agentProfile.updateMany({ where: { organizationId, providerId, modelCatalogId: from }, data: { modelCatalogId: to } })).count;
+    }
+    if (holding.length > 0) {
+      continue;
+    }
+    rewritten += (await tx.agentProfile.updateMany({ where: { organizationId, providerId: null, modelCatalogId: from }, data: { modelCatalogId: to } })).count;
+    const oldKey = modelNameKey(modelNameSchema.parse({ kind: "catalog", catalogId: from }));
+    const choices = await tx.modelChoice.findMany({
+      where: { organizationId, modelKey: oldKey },
+      select: { id: true, projectId: true, model: { select: { catalogId: true, endpointModelId: true } } },
+      orderBy: { id: "asc" },
+    });
+    for (const choice of choices) {
+      const name = modelNameOfModel(choice.model);
+      const key = modelNameKey(name);
+      if (key === oldKey) {
+        continue;
+      }
+      const taken = await tx.modelChoice.findFirst({ where: { organizationId, projectId: choice.projectId, modelKey: key, id: { not: choice.id } }, select: { id: true } });
+      if (taken === null) {
+        await tx.modelChoice.update({ where: { id: choice.id }, data: { modelKey: key, ...modelNameColumns(name) } });
+      } else {
+        await tx.modelChoice.delete({ where: { id: choice.id } });
+      }
+      rewritten += 1;
+    }
+  }
+  return rewritten;
 };
 
 /**

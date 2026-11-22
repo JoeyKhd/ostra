@@ -1,13 +1,13 @@
 import type { Db } from "@ostra/db";
 import { apiFormatFromDb, authSchemeFromDb, Prisma } from "@ostra/db";
 import { secretRefSchema } from "@ostra/adapter-sdk";
-import type { CatalogEntry } from "@ostra/adapter-sdk";
+import type { CatalogEntry, CatalogMatch } from "@ostra/adapter-sdk";
 import { reasoningControlsSchema } from "@ostra/protocol";
-import type { OrganizationId, ProviderId } from "@ostra/protocol";
+import type { InputModality, OrganizationId, ProviderId } from "@ostra/protocol";
 
 import type { Ports } from "../ports.ts";
-import { isBatchVariant } from "../providers/model-name.ts";
-import { keepChoicesAfterRefreshInTx, loadListedModelsInTx, moveChoicesOffBatchRowsInTx } from "../providers/provider-lists.ts";
+import { isBatchVariant, variantTagOf } from "../providers/model-name.ts";
+import { followRenamedModelsInTx, keepChoicesAfterRefreshInTx, loadListedModelsInTx, moveChoicesOffBatchRowsInTx } from "../providers/provider-lists.ts";
 import type { UseCaseResult } from "./common.ts";
 
 // F-088, ADR 0033: lists a provider's models from its endpoint, matches each to the models.dev
@@ -19,6 +19,11 @@ import type { UseCaseResult } from "./common.ts";
 // (F-148), or delete a model that agent profiles point at: one the endpoint no longer lists
 // is marked unlisted.
 //
+// 2026-11-22 (ADR 0033): each model matches its serving provider's own entry (an OpenRouter model,
+// OpenRouter's), so a refresh can move a row that an older release matched to another provider's
+// entry. It rewrites the row's catalog ID, inputs, reasoning, limits and catalog prices, and what
+// named the model by its old ID follows it (`followRenamedModelsInTx`).
+//
 // A batch variant (`x:batch`, the endpoint's asynchronous batch API) is kept unlisted too, so no
 // picker offers it beside `x`. Only this sync writes `listed` (no admin sets it), so every refresh
 // applies the rule to every row, including those an earlier version listed, and a choice on one
@@ -26,6 +31,14 @@ import type { UseCaseResult } from "./common.ts";
 
 /** Whether a model the endpoint lists is one ostra offers: all but a batch variant (F-088). */
 const offered = (endpointModelId: string): boolean => !isBatchVariant(endpointModelId);
+
+/**
+ * A custom model's inputs as its endpoint's own list says them (2026-11-22, F-148), where models.dev
+ * doesn't know the model: nothing when the list says nothing, so what was there stays. An admin's
+ * "Reads images" is another column, and wins.
+ */
+const listedInputs = (match: CatalogMatch["match"] | undefined): { readonly catalogInputModalities?: InputModality[] } =>
+  match?.kind === "custom" && match.inputModalities !== undefined ? { catalogInputModalities: [...match.inputModalities] } : {};
 
 export type SyncProviderModelsDeps = Pick<Ports, "notices" | "clock" | "adapters"> & {
   readonly db: Db;
@@ -74,7 +87,9 @@ export const syncProviderModels: SyncProviderModels = async (deps, target) => {
   if (!listed.ok) {
     return refuse("endpoint-failed", `The endpoint did not list its models: ${listed.error.message}`);
   }
-  const matches = deps.adapters.modelProvider.matchCatalog(listed.value, await deps.catalog());
+  // 2026-11-22 (ADR 0033): the base URL says which provider serves these models, so each matches
+  // that provider's own catalog entry, with its prices, limits, reasoning and inputs.
+  const matches = deps.adapters.modelProvider.matchCatalog(listed.value, await deps.catalog(), { baseUrl: provider.baseUrl });
   const byId = new Map(matches.map((match) => [match.endpointModelId, match.match] as const));
   const now = new Date(deps.clock.now());
   let matched = 0;
@@ -84,13 +99,21 @@ export const syncProviderModels: SyncProviderModels = async (deps, target) => {
     const before = await loadListedModelsInTx(tx, organizationId);
     const existing = await tx.model.findMany({ where: { providerId, organizationId } });
     const known = new Map(existing.map((row) => [row.endpointModelId, row] as const));
+    // A row this refresh matches to another entry: its old catalog ID, and its new one.
+    const renames = new Map<string, string>();
     for (const model of listed.value) {
       const match = byId.get(model.endpointModelId);
       const row = known.get(model.endpointModelId);
       if (match?.kind === "catalog") {
         matched += 1;
         const entry = match.entry;
+        const was = row?.catalogId ?? null;
+        if (was !== null && was !== entry.catalogId && (!renames.has(was) || variantTagOf(model.endpointModelId) === null)) {
+          // The plain row's new name, when `x` and `x:batch` had one name.
+          renames.set(was, entry.catalogId);
+        }
         // F-037 (ADR 0055): an admin's price comes last in the order and wins, so a refresh keeps it.
+        const priced = [entry.inputPricePerMTok, entry.outputPricePerMTok, entry.cacheReadPricePerMTok, entry.cacheWritePricePerMTok].some((price) => price !== null);
         const prices =
           row?.priceSource === "admin"
             ? {}
@@ -100,6 +123,8 @@ export const syncProviderModels: SyncProviderModels = async (deps, target) => {
                 // Q163: the cache prices when the catalog has them; unknown ones price at the input price.
                 cacheReadPricePerMTok: entry.cacheReadPricePerMTok ?? null,
                 cacheWritePricePerMTok: entry.cacheWritePricePerMTok ?? null,
+                // 2026-11-22: the prices come from models.dev (the serving provider's entry), and say so.
+                priceSource: priced ? ("catalog" as const) : null,
               };
         const values = {
           catalogId: entry.catalogId,
@@ -129,6 +154,7 @@ export const syncProviderModels: SyncProviderModels = async (deps, target) => {
             endpointModelId: model.endpointModelId,
             displayName: model.displayName,
             contextWindow: model.contextWindow,
+            ...listedInputs(match),
             listed: offered(model.endpointModelId),
           },
         });
@@ -142,6 +168,7 @@ export const syncProviderModels: SyncProviderModels = async (deps, target) => {
               ? {
                   displayName: row.displayName ?? model.displayName,
                   contextWindow: row.contextWindow ?? model.contextWindow,
+                  ...listedInputs(match),
                 }
               : {}),
           },
@@ -153,6 +180,8 @@ export const syncProviderModels: SyncProviderModels = async (deps, target) => {
     if (gone.length > 0) {
       await tx.model.updateMany({ where: { id: { in: gone } }, data: { listed: false } });
     }
+    // 2026-11-22: what names a renamed model by its old catalog ID follows it, before the keep rule.
+    await followRenamedModelsInTx(tx, organizationId, providerId, renames);
     // F-088: a choice on a batch row stays on its provider, from the plain row.
     await moveChoicesOffBatchRowsInTx(tx, organizationId, providerId);
     // A model this refresh gives a second provider on a list keeps the one serving it (ADR 0065).

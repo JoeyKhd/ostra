@@ -12,7 +12,7 @@ ostra never assumes a model provider. A **model provider** is an API base URL an
 
 **Models come from the endpoint itself:**
 - ostra calls `GET /v1/models`, which OpenAI-compatible APIs and Anthropic's API both serve. A gateway's own list works too, such as OpenRouter's, which carries prices.
-- ostra matches each ID against the models.dev catalog for its name, logo, limits and prices.
+- ostra matches each ID against the models.dev catalog for its name, logo, limits and prices. *Amended 2026-11-22* ("Matching a model to the catalog" below): the serving provider's own entry first.
 - An ID with no match, such as a self-hosted or fine-tuned model, is a **custom model** with fields the admin can edit: name, limits and price.
 - An endpoint with no model list lets the member type model IDs.
 - The list refreshes daily, as a scheduled job (ADR 0037).
@@ -55,3 +55,19 @@ Added 2026-11-19 by ADR 0065, for F-135.
 - **A provider is one key.** An organization may hold several providers that serve the same models, one per client, each with its own base URL, token, prices, cap and personal-runner switch.
 - **A project uses only the providers on its list,** the organization's default or its own, which only an organization admin edits. In each project each model is served by exactly one of them, and nothing moves it to another but an admin's save. The credentials endpoint issues a provider's token only for a task whose project allows it.
 - **A profile names its model by name:** the models.dev catalog ID this ADR already matches each listed model against, or a custom model's endpoint ID. The model rows stay per provider, with that provider's own prices, so two clients' contracts can price one model differently.
+
+## Matching a model to the catalog
+
+Added 2026-11-22, after the live instance's OpenRouter model `deepseek/deepseek-v4.1-flash-1017` was matched to `ambient/deepseek/deepseek-v4.1-flash-1017`. That entry says text only, where OpenRouter's own and nearly all of the others say it reads images. The first entry in the catalog's order took the ID (first-party providers, then by provider ID), so an aggregator's model got whichever aggregator sorted first: its inputs, prices, limits and reasoning levels.
+
+- **The serving provider is known by its base URL:** the models.dev provider whose `api` is the base URL, or holds it on the same host. Then a short table of well-known hosts, for providers whose entry has no `api` (Anthropic's, OpenAI's, Google's and others), and OpenRouter's, since the bundled copy kept no `api` before this date. The refresh script now keeps it.
+- **A model matches, in order:**
+  1. its serving provider's own entry, when that provider lists the model;
+  2. else the lab's own: the provider the ID's vendor prefix names (`deepseek/…`, with `x-ai` read as `xai` and the like), or, for a bare ID, a first-party provider's;
+  3. else the entry most of the catalog's entries for the model agree with on its inputs, by its ID with every variant stripped. Entries that say nothing don't vote, and a tie goes to the catalog's order. Never merely the first.
+- **An ID none of its variants names stays custom,** as before.
+- **The catalog ID is still the model's name** (ADR 0065). Two providers share a name when they are the same models.dev provider, such as two clients' OpenRouter keys. An OpenRouter model and the lab's own API's are two names, each with its own prices.
+- **A model's inputs**, in order: its serving provider's entry, then what the endpoint's own list says (OpenRouter's `architecture.input_modalities`), then the matched entry, then what most entries agree on. A custom model takes the list's. An admin's "Reads images" still wins over all of them (ADR 0070).
+- **Prices, limits and reasoning levels** come from the matched entry, so an OpenRouter model is priced at OpenRouter's models.dev prices, and spend is priced from the serving provider's prices (F-135). The model row says the prices came from models.dev (`priceSource: catalog`). An admin's prices still win. The endpoint's own listed prices are not read yet.
+- **Existing installs heal at the next refresh.** It rewrites a row's catalog ID, inputs, reasoning, limits and catalog prices. What names the model by its old catalog ID follows it: a profile on that provider, once the provider lists nothing under the old name. Once no row of the organization keeps the old name, a profile with no provider and each list's choice for it follow too. A name another provider still serves stays, so nothing moves to another provider.
+- **An aggregator's `vendor/model` shows its lab's logo,** when the catalog has that lab.

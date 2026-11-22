@@ -5,13 +5,15 @@ import type {
   AdapterResult,
   CatalogEntry,
   CatalogMatch,
+  CatalogMatchEndpoint,
   ConnectionTest,
   EndpointModel,
   HealthReport,
   ModelEndpoint,
   ModelProviderCapabilities,
 } from "@ostra/adapter-sdk";
-import type { ApiFormat, AuthScheme } from "@ostra/protocol";
+import { inputModalitySchema } from "@ostra/protocol";
+import type { ApiFormat, AuthScheme, InputModality } from "@ostra/protocol";
 import { z } from "zod";
 
 import { matchModelsToCatalog } from "./catalog.ts";
@@ -57,8 +59,49 @@ const modelItemSchema = z.looseObject({
   context_length: z.number().nullish(),
   max_model_len: z.number().nullish(),
   max_context_length: z.number().nullish(),
+  // 2026-11-22 (F-148): what the model takes as input, where the list says. Read loosely and
+  // parsed per model (`listedInputs`), so a strange one costs that model its inputs alone.
+  architecture: z.unknown().optional(),
+  input_modalities: z.unknown().optional(),
 });
 type ModelItem = z.infer<typeof modelItemSchema>;
+
+/** OpenRouter's `architecture`: `input_modalities`, or the older `modality` (`"text+image->text"`). */
+const architectureSchema = z.looseObject({ input_modalities: z.unknown().optional(), modality: z.unknown().optional() });
+
+/**
+ * The values ostra names, in `inputModalitySchema`'s order, each once. `undefined` for anything
+ * but a list, or a list with none of them: every model takes text, so that list says nothing.
+ */
+const inputsOf = (value: unknown): readonly InputModality[] | undefined => {
+  const words = z.array(z.unknown()).safeParse(value);
+  if (!words.success) {
+    return undefined;
+  }
+  const listed = new Set(
+    words.data.flatMap((word) => {
+      const modality = inputModalitySchema.safeParse(typeof word === "string" ? word.trim().toLowerCase() : word);
+      return modality.success ? [modality.data] : [];
+    }),
+  );
+  const inputs = inputModalitySchema.options.filter((modality) => listed.has(modality));
+  return inputs.length === 0 ? undefined : inputs;
+};
+
+/**
+ * What an endpoint's list says a model takes as input: OpenRouter's `architecture.input_modalities`,
+ * a top-level `input_modalities`, or the input side of `architecture.modality`. `undefined` when it
+ * says nothing.
+ */
+const listedInputs = (item: ModelItem): readonly InputModality[] | undefined => {
+  const architecture = architectureSchema.safeParse(item.architecture);
+  const fromList = inputsOf(architecture.success ? architecture.data.input_modalities : undefined) ?? inputsOf(item.input_modalities);
+  if (fromList !== undefined) {
+    return fromList;
+  }
+  const modality = architecture.success ? architecture.data.modality : undefined;
+  return typeof modality === "string" && modality.includes("->") ? inputsOf(modality.slice(0, modality.indexOf("->")).split("+")) : undefined;
+};
 
 const modelListSchema = z.looseObject({
   object: z.string().optional(),
@@ -73,10 +116,12 @@ const isPositive = (value: number | null | undefined): value is number =>
 const toEndpointModel = (item: ModelItem): EndpointModel => {
   const name = item.display_name ?? item.name ?? null;
   const context = [item.context_window, item.context_length, item.max_model_len, item.max_context_length].find(isPositive);
+  const inputs = listedInputs(item);
   return {
     endpointModelId: item.id,
     displayName: name !== null && name !== item.id ? name : null,
     contextWindow: context ?? null,
+    ...(inputs === undefined ? {} : { inputModalities: inputs }),
   };
 };
 
@@ -176,8 +221,8 @@ export class ModelEndpointAdapter extends ModelProviderAdapter {
     return listed.ok ? ok(listed.value.models) : listed;
   }
 
-  matchCatalog(models: readonly EndpointModel[], catalog: readonly CatalogEntry[]): readonly CatalogMatch[] {
-    return matchModelsToCatalog(models, catalog);
+  matchCatalog(models: readonly EndpointModel[], catalog: readonly CatalogEntry[], endpoint: CatalogMatchEndpoint): readonly CatalogMatch[] {
+    return matchModelsToCatalog(models, catalog, endpoint);
   }
 
   // ---------- internals ----------

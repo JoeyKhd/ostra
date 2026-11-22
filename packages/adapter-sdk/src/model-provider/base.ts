@@ -24,6 +24,12 @@ export type EndpointModel = {
   readonly endpointModelId: string;
   readonly displayName: string | null;
   readonly contextWindow: number | null;
+  /**
+   * 2026-11-22 (F-148, ADR 0070): what the model takes as input, when the endpoint's own list says
+   * (OpenRouter's `architecture.input_modalities`), in `inputModalitySchema`'s order. Left out when
+   * it says nothing.
+   */
+  readonly inputModalities?: readonly InputModality[];
 };
 
 /** What "Test connection" found (F-088). */
@@ -67,11 +73,26 @@ export type CatalogEntry = {
    * when the entry says nothing, which counts as text only.
    */
   readonly inputModalities: readonly InputModality[] | null;
+  /**
+   * 2026-11-22 (ADR 0033): the base URL models.dev gives for the entry's provider (its `api`), so a
+   * match can tell which provider serves an endpoint. Left out when models.dev gives none.
+   */
+  readonly providerApi?: string;
 };
+
+/** Where the models being matched are served from: whose catalog entries are the endpoint's own. */
+export type CatalogMatchEndpoint = Pick<ModelEndpoint, "baseUrl">;
 
 export type CatalogMatch = {
   readonly endpointModelId: string;
-  readonly match: { readonly kind: "catalog"; readonly entry: CatalogEntry } | { readonly kind: "custom" };
+  /**
+   * A catalog match carries the entry as it applies to this endpoint: its `inputModalities` are
+   * the best source's (2026-11-22, ADR 0070). A custom model carries the endpoint's own list's,
+   * when it says.
+   */
+  readonly match:
+    | { readonly kind: "catalog"; readonly entry: CatalogEntry }
+    | { readonly kind: "custom"; readonly inputModalities?: readonly InputModality[] };
 };
 
 export abstract class ModelProviderAdapter {
@@ -102,7 +123,9 @@ export abstract class ModelProviderAdapter {
   /**
    * Matches each model to a catalog entry, or marks it custom. Pure: no call. A match carries the
    * entry's four prices per million tokens (fresh input, output, cache read, cache write) as the
-   * catalog has them, each `null` where it has none (milestone 4, F-037).
+   * catalog has them, each `null` where it has none (milestone 4, F-037). 2026-11-22: `endpoint`
+   * says which provider serves the models, so its own entry for a model is the one matched, with
+   * that provider's prices, limits, reasoning and inputs (ADR 0033).
    */
-  abstract matchCatalog(models: readonly EndpointModel[], catalog: readonly CatalogEntry[]): readonly CatalogMatch[];
+  abstract matchCatalog(models: readonly EndpointModel[], catalog: readonly CatalogEntry[], endpoint: CatalogMatchEndpoint): readonly CatalogMatch[];
 }

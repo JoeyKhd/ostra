@@ -120,7 +120,7 @@ Q332 to Q341, each in `open-questions.md`'s settled list: how images reach OpenC
 
 ## Consequences
 
-- **A model's image input is known to ostra:** the catalog sync keeps models.dev's `modalities.input` on each model, and an organization admin can say a custom model reads images (ADR 0033, amended). The composer warns when it doesn't.
+- **A model's image input is known to ostra:** the catalog sync keeps models.dev's `modalities.input` on each model, and an organization admin can say a custom model reads images (ADR 0033, amended). The composer warns when it doesn't. *2026-11-22:* `modalities.input` is the serving provider's own entry's (an OpenRouter model's is OpenRouter's), then what the endpoint's own list says, then what most of the catalog's entries for the model agree on; never merely the first entry in the catalog's order (ADR 0033, "Matching a model to the catalog").
 - **F-064's images become visible** to a model that takes them, through the same catalog change, and its ticket files become F-149's.
 - **Session archives grow by each image** OpenCode keeps inline (at most 5 MiB of base64 each). An archive over `OSTRA_BLOB_MAX_MIB` falls back to the rebuild template (ADR 0043); the files themselves come back from the blobs on the fresh box.
 - **Core does more CPU work at upload,** bounded by the worker's limits and the pool's size, and the load test (F-117) gains uploads at the gate.

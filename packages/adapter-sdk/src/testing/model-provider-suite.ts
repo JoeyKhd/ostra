@@ -29,6 +29,9 @@ export type ModelProviderFixture = {
   readonly unknownModelId: string;
 };
 
+/** Where the suite's matches are served from: the fixture's first endpoint. */
+const servedFrom = (fixture: ModelProviderFixture): { readonly baseUrl: string } => ({ baseUrl: fixture.endpoints[0]?.baseUrl ?? "https://models.invalid/v1" });
+
 export const defineModelProviderContractSuite = (
   options: ContractSuiteOptions<ModelProviderAdapter, ModelProviderFixture>,
 ): void => {
@@ -80,6 +83,7 @@ export const defineModelProviderContractSuite = (
           { endpointModelId: fixture.unknownModelId, displayName: null, contextWindow: null },
         ],
         fixture.catalog,
+        servedFrom(fixture),
       );
       expect(matches.map((match) => [match.endpointModelId, match.match.kind])).toEqual([
         [fixture.knownModelId, "catalog"],
@@ -107,6 +111,7 @@ export const defineModelProviderContractSuite = (
           { endpointModelId: "ostra-suite-unpriced", displayName: null, contextWindow: null },
         ],
         [priced, unpriced],
+        servedFrom(fixture),
       );
       const prices = matches.map((match) =>
         match.match.kind === "catalog"
@@ -131,6 +136,7 @@ export const defineModelProviderContractSuite = (
           { endpointModelId: "ostra-suite-plain", displayName: null, contextWindow: null },
         ],
         [reasons, plain],
+        servedFrom(fixture),
       );
       expect(matches.map((match) => (match.match.kind === "catalog" ? [match.match.entry.reasoning, match.match.entry.reasoningPriceDiffers] : "custom"))).toEqual([
         [{ supported: true, toggle: true, effort: ["low", "high", "max"] }, true],

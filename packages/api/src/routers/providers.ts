@@ -221,7 +221,7 @@ export const providersRouter = router({
         return { ok: false as const, reason: tested.error.code, message: tested.error.message };
       }
       const catalog = await ctx.deps.catalog.entries();
-      const matches = ports.adapters.modelProvider.matchCatalog(tested.value.models, catalog);
+      const matches = ports.adapters.modelProvider.matchCatalog(tested.value.models, catalog, { baseUrl: input.baseUrl });
       const matchById = new Map(matches.map((match) => [match.endpointModelId, match.match] as const));
       return {
         ok: true as const,

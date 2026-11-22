@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 import { adapterError, ok, parseVendor, silentLogger } from "@ostra/adapter-sdk";
-import type { AdapterResult, CatalogEntry, CatalogMatch, EndpointModel, Logger } from "@ostra/adapter-sdk";
+import type { AdapterResult, CatalogEntry, CatalogMatch, CatalogMatchEndpoint, EndpointModel, Logger } from "@ostra/adapter-sdk";
 import { EFFORT_SCALE, effortScaleLevelSchema, inputModalitySchema, noReasoning, reasoningControlsSchema } from "@ostra/protocol";
 import type { EffortScaleLevel, InputModality, ReasoningControls } from "@ostra/protocol";
 import { z } from "zod";
@@ -32,6 +32,9 @@ const modelsDevProviderSchema = z.looseObject({
   id: z.string().nullish(),
   name: z.string().nullish(),
   npm: z.string().nullish(),
+  // 2026-11-22: the provider's own base URL, which tells which provider serves an endpoint. Read
+  // loosely: anything but a string is ignored, never the catalog.
+  api: z.unknown().optional(),
   models: z.record(z.string(), modelsDevModelSchema),
 });
 
@@ -66,6 +69,33 @@ const FIRST_PARTY = [
 const providerRank = (providerId: string): number => {
   const index = FIRST_PARTY.findIndex((first) => first === providerId);
   return index === -1 ? FIRST_PARTY.length : index;
+};
+
+/** The catalog's order: first-party providers first, then by provider ID. */
+const byCatalogOrder = (a: string, b: string): number => providerRank(a) - providerRank(b) || a.localeCompare(b);
+
+/**
+ * Vendor prefixes aggregators put on a lab's model IDs (`x-ai/grok-4`) that aren't the lab's
+ * models.dev provider ID (`xai`). Any other prefix is read as the provider ID itself.
+ */
+const LAB_PREFIXES: ReadonlyMap<string, string> = new Map([
+  ["x-ai", "xai"],
+  ["z-ai", "zai"],
+  ["zai-org", "zai"],
+  ["deepseek-ai", "deepseek"],
+  ["mistralai", "mistral"],
+  ["meta-llama", "meta"],
+  ["qwen", "alibaba"],
+]);
+
+/** The lab a model ID names by its vendor prefix (`deepseek/x` → `deepseek`), or `null` for a bare ID. */
+const labOf = (modelId: string): string | null => {
+  const slash = modelId.indexOf("/");
+  if (slash <= 0) {
+    return null;
+  }
+  const prefix = modelId.slice(0, slash).trim().toLowerCase();
+  return LAB_PREFIXES.get(prefix) ?? prefix;
 };
 
 /** Where ostra's server serves a provider's logo from. The vendor's own server is never linked. */
@@ -163,17 +193,34 @@ export type CatalogEntriesOptions = {
   readonly logger?: Logger;
 };
 
+/** A provider's `api` when it's an http(s) URL; anything else says nothing. */
+const providerApiOf = (api: unknown): string | null => {
+  if (typeof api !== "string") {
+    return null;
+  }
+  try {
+    const url = new URL(api);
+    return url.protocol === "https:" || url.protocol === "http:" ? api : null;
+  } catch {
+    return null;
+  }
+};
+
 /** Every model of the catalog as an entry, first-party providers first, then by provider ID. */
 export const catalogEntries = (catalog: ModelsDevCatalog, options: CatalogEntriesOptions = {}): readonly CatalogEntry[] => {
   const entries: CatalogEntry[] = [];
   let refused = 0;
-  const providerIds = Object.keys(catalog).sort((a, b) => providerRank(a) - providerRank(b) || a.localeCompare(b));
+  const providerIds = Object.keys(catalog).sort(byCatalogOrder);
   for (const providerId of providerIds) {
     const provider = catalog[providerId];
     if (provider === undefined) {
       continue;
     }
+    const api = providerApiOf(provider.api);
     for (const model of Object.values(provider.models)) {
+      // An aggregator's `vendor/model` shows its lab's logo when the catalog has that lab (2026-11-22).
+      const lab = labOf(model.id);
+      const logoProvider = lab !== null && Object.hasOwn(catalog, lab) ? lab : providerId;
       const reasoning = reasoningOf(model);
       if (reasoning === undefined) {
         refused += 1;
@@ -188,10 +235,11 @@ export const catalogEntries = (catalog: ModelsDevCatalog, options: CatalogEntrie
         outputPricePerMTok: finite(model.cost?.output),
         cacheReadPricePerMTok: finite(model.cost?.cache_read),
         cacheWritePricePerMTok: finite(model.cost?.cache_write),
-        logoPath: logoPathFor(providerId),
+        logoPath: logoPathFor(logoProvider),
         reasoning: reasoning ?? noReasoning,
         reasoningPriceDiffers: reasoningPriceDiffers(model.cost),
         inputModalities: inputModalitiesFromCatalog(model),
+        ...(api === null ? {} : { providerApi: api }),
       });
     }
   }
@@ -249,28 +297,216 @@ export const idVariants = (endpointModelId: string): readonly string[] => {
   return variants;
 };
 
-/** Matches each model to a catalog entry, or marks it custom. Pure: no call. */
+// ---------- which provider serves an endpoint (2026-11-22, ADR 0033) ----------
+
+/**
+ * API hosts of models.dev providers, by host name: the providers whose entry gives no `api`
+ * (Anthropic's, OpenAI's and the others with an SDK of their own), and the busiest of those that
+ * do, for the bundled copy, which kept no `api` before 2026-11-22. Any other host is known only by
+ * its provider's `api`.
+ */
+const KNOWN_HOSTS: ReadonlyMap<string, string> = new Map([
+  ["openrouter.ai", "openrouter"],
+  ["api.anthropic.com", "anthropic"],
+  ["api.openai.com", "openai"],
+  ["generativelanguage.googleapis.com", "google"],
+  ["api.deepseek.com", "deepseek"],
+  ["api.mistral.ai", "mistral"],
+  ["api.x.ai", "xai"],
+  ["api.moonshot.ai", "moonshotai"],
+  ["api.z.ai", "zai"],
+  ["api.groq.com", "groq"],
+  ["api.together.xyz", "togetherai"],
+  ["api.deepinfra.com", "deepinfra"],
+  ["api.fireworks.ai", "fireworks-ai"],
+  ["api.cerebras.ai", "cerebras"],
+  ["api.perplexity.ai", "perplexity"],
+  ["api.cohere.com", "cohere"],
+  ["api.cohere.ai", "cohere"],
+  ["ai-gateway.vercel.sh", "vercel"],
+]);
+
+/** A URL's host name and path as matching compares them: lowercase, no `www.`, no trailing slash. */
+const placeOf = (url: string): { readonly host: string; readonly path: string } | null => {
+  try {
+    const parsed = new URL(url);
+    return {
+      host: parsed.hostname.toLowerCase().replace(/\.$/, "").replace(/^www\./, ""),
+      path: parsed.pathname.toLowerCase().replace(/\/+$/, ""),
+    };
+  } catch {
+    return null;
+  }
+};
+
+/** Whether one path holds the other, segment by segment (`/api` holds `/api/v1`). */
+const pathsMeet = (a: string, b: string): boolean => a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+
+/** The models.dev provider an entry is listed under: its catalog ID's first segment. */
+const providerIdOf = (entry: CatalogEntry): string => {
+  const slash = entry.catalogId.indexOf("/");
+  return slash <= 0 ? "" : entry.catalogId.slice(0, slash);
+};
+
+/** The model ID an entry's provider lists it under: its catalog ID after the provider. */
+const modelIdOf = (entry: CatalogEntry): string => {
+  const providerId = providerIdOf(entry);
+  return providerId === "" ? entry.catalogId : entry.catalogId.slice(providerId.length + 1);
+};
+
+/**
+ * The models.dev providers that may be serving a base URL, most likely first: the one whose `api`
+ * is that URL, one whose `api` holds it or sits within it on the same host, the provider of a
+ * well-known host, then any other provider on the same host. Empty for a host the catalog doesn't
+ * know: a self-hosted server, a proxy, a gateway of the organization's own.
+ */
+export const servingProviders = (baseUrl: string, catalog: readonly CatalogEntry[]): readonly string[] => {
+  const endpoint = placeOf(baseUrl);
+  if (endpoint === null || endpoint.host === "") {
+    return [];
+  }
+  const tiers = new Map<string, number>();
+  const offer = (providerId: string, tier: number): void => {
+    const known = tiers.get(providerId);
+    if (providerId !== "" && (known === undefined || tier < known)) {
+      tiers.set(providerId, tier);
+    }
+  };
+  const apis = new Map<string, string>();
+  for (const entry of catalog) {
+    if (entry.providerApi !== undefined && !apis.has(providerIdOf(entry))) {
+      apis.set(providerIdOf(entry), entry.providerApi);
+    }
+  }
+  for (const [providerId, api] of apis) {
+    const place = placeOf(api);
+    if (place?.host === endpoint.host) {
+      offer(providerId, place.path === endpoint.path ? 0 : pathsMeet(place.path, endpoint.path) ? 1 : 3);
+    }
+  }
+  const known = KNOWN_HOSTS.get(endpoint.host);
+  if (known !== undefined) {
+    offer(known, 2);
+  }
+  return [...tiers.entries()].sort(([a, x], [b, y]) => x - y || byCatalogOrder(a, b)).map(([providerId]) => providerId);
+};
+
+// ---------- matching an endpoint's model IDs to the catalog ----------
+
+/**
+ * An entry one of a model's ID variants names, and how specific that variant is (0: the ID
+ * itself); or, one level past the last, an entry for the same model under another spelling.
+ */
+type Candidate = { readonly entry: CatalogEntry; readonly providerId: string; readonly level: number };
+
+/** A model ID with every variant stripped (`deepseek/x-20250101:free` → `x`): the same model, however a provider spells it. */
+const normalizedId = (modelId: string): string => idVariants(modelId).at(-1) ?? modelId.trim().toLowerCase();
+
+/** Appends to the list under a key. */
+const push = <T>(map: Map<string, T[]>, key: string, value: T): void => {
+  const listed = map.get(key);
+  if (listed === undefined) {
+    map.set(key, [value]);
+  } else {
+    listed.push(value);
+  }
+};
+
+/** The most specific variant first, then the catalog's order: first-party providers, then by provider ID. */
+const byPreference = (a: Candidate, b: Candidate): number => a.level - b.level || byCatalogOrder(a.providerId, b.providerId);
+
+/**
+ * Among candidates in preference order, the best of those whose `inputModalities` most of them
+ * agree on; a tie goes to the group holding the most preferred candidate. Entries that say nothing
+ * don't vote. `undefined` when none says.
+ */
+const agreedOf = (candidates: readonly Candidate[]): Candidate | undefined => {
+  const groups = new Map<string, Candidate[]>();
+  for (const candidate of candidates) {
+    const inputs = candidate.entry.inputModalities;
+    if (inputs !== null) {
+      const key = inputs.join("+");
+      groups.set(key, [...(groups.get(key) ?? []), candidate]);
+    }
+  }
+  // Groups are in the order of their best candidate, so a later group must outnumber to win.
+  let agreed: readonly Candidate[] = [];
+  for (const group of groups.values()) {
+    if (group.length > agreed.length) {
+      agreed = group;
+    }
+  }
+  return agreed[0];
+};
+
+/**
+ * Matches each model to a catalog entry, or marks it custom. Pure: no call. 2026-11-22 (ADR 0033):
+ * the entry is, in order,
+ * 1. the serving provider's own (`servingProviders` of the endpoint's base URL), when it lists the model;
+ * 2. else the lab's own: the provider the ID's vendor prefix names (`deepseek/…`), or, for a bare ID,
+ *    a first-party provider's;
+ * 3. else the one most of the catalog's entries for the model (by its ID with every variant
+ *    stripped) agree with on its inputs, a tie going to the catalog's order (first-party providers,
+ *    then by provider ID). Never merely the first.
+ *
+ * A model none of its ID variants names is custom, as before. The match's inputs are the serving
+ * provider's entry's, then the endpoint's own list's, then the chosen entry's, then what most
+ * entries agree on. A custom model keeps the endpoint's list's.
+ */
 export const matchModelsToCatalog = (
   models: readonly EndpointModel[],
   catalog: readonly CatalogEntry[],
+  endpoint: CatalogMatchEndpoint,
 ): readonly CatalogMatch[] => {
-  // The first entry to claim an alias keeps it: the catalog's order puts first-party providers first.
-  const byAlias = new Map<string, CatalogEntry>();
+  const byAlias = new Map<string, CatalogEntry[]>();
+  const byModel = new Map<string, CatalogEntry[]>();
   for (const entry of catalog) {
-    for (const alias of [entry.catalogId, ...entry.aliases]) {
-      const key = alias.toLowerCase();
-      if (!byAlias.has(key)) {
-        byAlias.set(key, entry);
-      }
+    for (const alias of new Set([entry.catalogId, ...entry.aliases].map((id) => id.toLowerCase()))) {
+      push(byAlias, alias, entry);
     }
+    push(byModel, normalizedId(modelIdOf(entry)), entry);
   }
+  const serving = servingProviders(endpoint.baseUrl, catalog);
   return models.map((model): CatalogMatch => {
-    for (const variant of idVariants(model.endpointModelId)) {
-      const entry = byAlias.get(variant);
-      if (entry !== undefined) {
-        return { endpointModelId: model.endpointModelId, match: { kind: "catalog", entry } };
+    const listed = model.inputModalities ?? null;
+    const seen = new Set<CatalogEntry>();
+    const candidates: Candidate[] = [];
+    const offer = (entry: CatalogEntry, level: number): void => {
+      if (!seen.has(entry)) {
+        seen.add(entry);
+        candidates.push({ entry, providerId: providerIdOf(entry), level });
       }
+    };
+    const variants = idVariants(model.endpointModelId);
+    variants.forEach((variant, level) => {
+      for (const entry of byAlias.get(variant) ?? []) {
+        offer(entry, level);
+      }
+    });
+    if (candidates.length === 0) {
+      return { endpointModelId: model.endpointModelId, match: listed === null ? { kind: "custom" } : { kind: "custom", inputModalities: listed } };
     }
-    return { endpointModelId: model.endpointModelId, match: { kind: "custom" } };
+    for (const entry of byModel.get(normalizedId(model.endpointModelId)) ?? []) {
+      offer(entry, variants.length);
+    }
+    candidates.sort(byPreference);
+    const [first] = candidates;
+    if (first === undefined) {
+      return { endpointModelId: model.endpointModelId, match: { kind: "custom" } };
+    }
+    const own = serving.map((providerId) => candidates.find((candidate) => candidate.providerId === providerId)).find((candidate) => candidate !== undefined);
+    const lab = labOf(model.endpointModelId);
+    // A bare ID's lab is a first-party provider that lists the ID itself, never another spelling's.
+    const labs =
+      lab === null
+        ? candidates.find((candidate) => candidate.level < variants.length && providerRank(candidate.providerId) < FIRST_PARTY.length)
+        : candidates.find((candidate) => candidate.providerId === lab);
+    const agreed = agreedOf(candidates);
+    const chosen = own ?? labs ?? agreed ?? first;
+    const inputs =
+      own === undefined
+        ? (listed ?? chosen.entry.inputModalities ?? agreed?.entry.inputModalities ?? null)
+        : (own.entry.inputModalities ?? listed ?? agreed?.entry.inputModalities ?? null);
+    return { endpointModelId: model.endpointModelId, match: { kind: "catalog", entry: { ...chosen.entry, inputModalities: inputs } } };
   });
 };

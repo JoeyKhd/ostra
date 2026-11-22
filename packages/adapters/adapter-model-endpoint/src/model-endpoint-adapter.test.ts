@@ -257,6 +257,7 @@ describe("the model endpoint adapter", () => {
           { endpointModelId: "not-a-real-model-xyz", displayName: null, contextWindow: null },
         ],
         entries,
+        { baseUrl: "https://api.anthropic.com/v1" },
       );
       expect(matches[0]?.match).toMatchObject({ kind: "catalog", entry: { catalogId: "anthropic/claude-haiku-4-5", logoPath: "/model-logos/anthropic.svg" } });
       expect(matches[1]?.match.kind).toBe("custom");
@@ -264,7 +265,7 @@ describe("the model endpoint adapter", () => {
 
     it("matches an aggregator's vendor prefix, a variant tag and a date suffix", () => {
       const models = ["anthropic/claude-sonnet-4-5", "claude-sonnet-4-5:free", "claude-sonnet-4-5-20250929", "Claude-Sonnet-4-5", "claude-sonnet-4-6-20991231"];
-      const kinds = matchModelsToCatalog(models.map((endpointModelId) => ({ endpointModelId, displayName: null, contextWindow: null })), catalog).map(
+      const kinds = matchModelsToCatalog(models.map((endpointModelId) => ({ endpointModelId, displayName: null, contextWindow: null })), catalog, { baseUrl: "https://gateway.example/v1" }).map(
         (match) => match.match.kind,
       );
       expect(kinds).toEqual(["catalog", "catalog", "catalog", "catalog", "custom"]);
@@ -280,7 +281,7 @@ describe("the model endpoint adapter", () => {
         zzz: { models: { "shared-model": { id: "shared-model", name: "From zzz" } } },
         anthropic: { models: { "shared-model": { id: "shared-model", name: "From anthropic" } } },
       });
-      const [match] = matchModelsToCatalog([{ endpointModelId: "shared-model", displayName: null, contextWindow: null }], entries);
+      const [match] = matchModelsToCatalog([{ endpointModelId: "shared-model", displayName: null, contextWindow: null }], entries, { baseUrl: "https://gateway.example/v1" });
       expect(match?.match).toMatchObject({ kind: "catalog", entry: { name: "From anthropic" } });
     });
 

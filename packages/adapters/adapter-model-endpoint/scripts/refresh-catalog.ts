@@ -4,7 +4,8 @@ import { z } from "zod";
 
 // Refreshes the bundled copy of the models.dev catalog: `pnpm catalog:refresh`. It keeps what
 // ostra reads (a model's ID, name, limits, prices and, since F-137, its reasoning controls and
-// reasoning price, and since F-148 its input modalities, as models.dev spells them) for the models
+// reasoning price, and since F-148 its input modalities, as models.dev spells them; and each
+// provider's `api` base URL since 2026-11-22, which says whose entry is an endpoint's own) for the models
 // that call tools, which is what an agent needs, and writes the fetch date beside them. Run by a maintainer before a
 // release; the running server fetches its own copy daily (ticket 28).
 
@@ -18,6 +19,8 @@ const raw = z.record(
     id: z.string().nullish(),
     name: z.string().nullish(),
     npm: z.string().nullish(),
+    // 2026-11-22: the provider's base URL, which tells which provider serves an endpoint.
+    api: z.string().nullish(),
     models: z.record(
       z.string(),
       z.looseObject({
@@ -77,7 +80,7 @@ for (const [providerId, provider] of Object.entries(catalog)) {
     models += 1;
   }
   if (Object.keys(kept).length > 0) {
-    providers[providerId] = { id: provider.id ?? providerId, name: provider.name ?? providerId, models: kept };
+    providers[providerId] = { id: provider.id ?? providerId, name: provider.name ?? providerId, ...(typeof provider.api === "string" ? { api: provider.api } : {}), models: kept };
   }
 }
 
