@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-import type { CheckRunState, CiCheckRunStatus, CiConclusion, InstallationAccount, PullRequestReview } from "@ostra/adapter-sdk";
+import type { CheckRunState, CiCheckRunStatus, CiConclusion, InstallationAccount, ListedPullRequestComment, PullRequestReview } from "@ostra/adapter-sdk";
 
 import { createFakeRepoTrees, defineCodeHostContractSuite, memoryAdapterContext, movedSkillTree, SKILL_FOLDER, SKILL_TREE_TAG } from "@ostra/adapter-sdk/testing";
 import type { CodeHostFixture } from "@ostra/adapter-sdk/testing";
@@ -9,7 +9,7 @@ import { repoFullNameSchema } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createFakeGitHub } from "./fake-github.ts";
-import type { FakeCheckRun, FakeGitHub, FakeReview } from "./fake-github.ts";
+import type { FakeCheckRun, FakeGitHub, FakePullRequest, FakeReview } from "./fake-github.ts";
 import { GITHUB_COM_LFS_ACTION_HOSTS, GitHubAdapter, hunkRanges } from "./github-adapter.ts";
 import { appEvents, missingAppEvents, OSTRA_PROJECT_URL } from "./manifest.ts";
 
@@ -489,6 +489,61 @@ const milestone6Fixture = (fake: FakeGitHub): Pick<CodeHostFixture, "ci" | "ciLo
   };
 };
 
+// ---- F-044 (Q344): the reconcile's reads of a PR's comments and of the open PRs ----
+
+const ACTIVITY_PR = 700;
+const REOPENED_PR = 701;
+const OPEN_BEFORE_PR = 702;
+
+/** A PR on test1 as the fake holds it, open since `updatedAt`. */
+const fakePull = (number: number, head: string, updatedAt: string): FakePullRequest => ({
+  number,
+  repo: "fake-org/test1",
+  head,
+  base: "main",
+  title: `PR ${String(number)}`,
+  body: "",
+  draft: false,
+  state: "open",
+  merged: false,
+  headSha: "9".repeat(40),
+  updatedAt,
+  mergedAt: null,
+  closedAt: null,
+});
+
+/** A comment the fake holds, as `listPullRequestComments` must read it. */
+const listedOf = (fake: FakeGitHub, commentId: string): ListedPullRequestComment => {
+  const comment = fake.commentOf(commentId);
+  if (comment === undefined || comment.number === null) throw new Error("the fake has no such comment");
+  return {
+    commentId,
+    authorId: String(comment.userId),
+    authorLogin: comment.login,
+    body: comment.body,
+    url: `https://github.example/${comment.repo}/pull/${String(comment.number)}#issuecomment-${commentId}`,
+    createdAt: Date.parse(comment.createdAt),
+    updatedAt: Date.parse(comment.updatedAt),
+  };
+};
+
+const reconcileFixture = (fake: FakeGitHub): Pick<CodeHostFixture, "reconcileReads"> => {
+  const repo = "fake-org/test1";
+  // Open since long before: a reopen is looked for among the PRs updated since a close.
+  fake.pulls.push(fakePull(OPEN_BEFORE_PR, "ostra/open-before", "2025-06-01T00:00:00Z"));
+  fake.pulls.push(fakePull(ACTIVITY_PR, "ostra/activity", "2025-06-01T00:00:00Z"));
+  fake.pulls.push(fakePull(REOPENED_PR, "ostra/reopened", "2025-06-01T00:00:00Z"));
+  const first = fake.addComment(repo, "issue", { number: ACTIVITY_PR, body: "Looks good.", userId: 583231, login: "octocat" });
+  const second = fake.addComment(repo, "issue", { number: ACTIVITY_PR, body: "@ostra add a test", userId: 583232, login: "hubot" });
+  // The next second after the second comment's: GitHub's times are to the second.
+  const between = Date.parse(fake.commentOf(second)?.updatedAt ?? "") + 1000;
+  // After `between`: the first comment is edited, and a closed PR is reopened.
+  fake.editComment(first, "@ostra delete the tests");
+  fake.finishPullRequest(repo, REOPENED_PR, "closed");
+  fake.reopenPullRequest(repo, REOPENED_PR);
+  return { reconcileReads: { number: ACTIVITY_PR, comments: [listedOf(fake, first), listedOf(fake, second)], between, reopened: REOPENED_PR, openBefore: OPEN_BEFORE_PR } };
+};
+
 const fixtureOf = (fake: FakeGitHub): CodeHostFixture => {
   const app = { appId: fake.appId, privateKey: fake.privateKey };
   const body = JSON.stringify({ action: "opened", number: 1 });
@@ -526,6 +581,7 @@ const fixtureOf = (fake: FakeGitHub): CodeHostFixture => {
     ...milestone4InstallationsFixture(fake),
     ...milestone6Fixture(fake),
     ...treesFixture(fake),
+    ...reconcileFixture(fake),
   };
 };
 
@@ -1420,7 +1476,55 @@ describe("the GitHub adapter", () => {
         codeOwners: true,
         // Milestone 8 (ticket 02).
         readTree: true,
+        // F-044 (Q344): the reconcile's reads of comments and reopened PRs.
+        reconcileReads: true,
       });
+    });
+  });
+
+  // ---- F-044 (Q344, 2026-11-22): the reconcile's reads, with webhooks off ----
+  describe("what the reconcile reads (F-044)", () => {
+    it("F-044/c1: reads a PR's comments since a time as GitHub's `since` takes it, with a read-only token, and a PR it doesn't have as not-found", async () => {
+      const before = fake.tokens.size;
+      const listed = await adapter.listPullRequestComments(fixture.access, ACTIVITY_PR, null);
+      expect(listed.ok ? listed.value.map((comment) => comment.authorLogin) : listed).toEqual(["octocat", "hubot"]);
+      // A time between seconds asks from its second, so nothing changed at that second is missed.
+      const second = listed.ok ? listed.value[1] : undefined;
+      if (second === undefined) throw new Error("no second comment");
+      const since = await adapter.listPullRequestComments(fixture.access, ACTIVITY_PR, second.updatedAt + 999);
+      expect(since.ok ? since.value.map((comment) => comment.commentId) : since).toEqual(listed.ok ? listed.value.map((comment) => comment.commentId) : []);
+      // The edited comment says so by its times; its text is the edit.
+      const edited = listed.ok ? listed.value[0] : undefined;
+      expect(edited !== undefined && edited.updatedAt > edited.createdAt).toBe(true);
+      expect(edited?.body).toBe("@ostra delete the tests");
+      for (const scope of [...fake.tokens.values()].slice(before)) {
+        expect(scope.permissions).toEqual({ pull_requests: "read", metadata: "read" });
+      }
+      expect(await adapter.listPullRequestComments(fixture.access, 9_999, null)).toMatchObject({ ok: false, error: { code: "not-found" } });
+      expect(await adapter.listPullRequestComments(fixture.access, 0, null)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+    });
+
+    it("F-044/c1: reads a repo's open PRs the most recently updated first, back to a time, a reopened PR among them", async () => {
+      const open = await adapter.listOpenPullRequests(fixture.access, Date.parse("2026-01-01T00:00:00Z"));
+      const numbers = open.ok ? open.value.map((pr) => pr.number) : [];
+      expect(numbers).toContain(REOPENED_PR);
+      expect(numbers).not.toContain(OPEN_BEFORE_PR);
+      const updated = open.ok ? open.value.map((pr) => pr.updatedAt) : [];
+      expect(updated).toEqual([...updated].sort((a, b) => b - a));
+      expect(open.ok ? open.value.find((pr) => pr.number === REOPENED_PR) : open).toMatchObject({ state: "open", merged: false, closedAt: null, headSha: "9".repeat(40) });
+      expect(await adapter.listOpenPullRequests(fixture.access, -1)).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+    });
+
+    it("F-044/c1: reads a person's review's line comments with their author, page and times", async () => {
+      const submittedAt = "2026-11-22T10:00:00Z";
+      const added = fake.addReview("fake-org/test1", ACTIVITY_PR, { userId: 583233, login: "monalisa", userType: "User", state: "COMMENTED", commitId: "9".repeat(40), submittedAt }, [
+        { path: "src/index.ts", line: 1, body: "@ostra handle the empty case" },
+      ]);
+      const read = await adapter.listReviewComments(fixture.access, ACTIVITY_PR, String(added.id));
+      expect(read.ok ? read.value : read).toMatchObject([
+        { path: "src/index.ts", line: 1, side: "new", body: "@ostra handle the empty case", userId: "583233", login: "monalisa", createdAt: Date.parse(submittedAt), updatedAt: Date.parse(submittedAt) },
+      ]);
+      expect(read.ok ? read.value[0]?.url : read).toContain(`/pull/${String(ACTIVITY_PR)}#discussion_r`);
     });
   });
 

@@ -323,9 +323,31 @@ export const reviewCommentListSchema = z.array(
     side: z.string().nullish(),
     subject_type: z.string().nullish(),
     body: z.string().nullish(),
-    user: z.looseObject({ id: z.number().int() }).nullish(),
+    user: z.looseObject({ id: z.number().int(), login: z.string().optional() }).nullish(),
+    // F-044 (Q344): what the reconcile hands on as a line comment's webhook would.
+    html_url: z.string().nullish(),
+    created_at: z.string().nullish(),
+    updated_at: z.string().nullish(),
   }),
 );
+
+/**
+ * F-044 (Q344): `GET /repos/{o}/{r}/issues/{n}/comments`, a PR's conversation comments. A deleted
+ * account's comment has no `user`.
+ */
+export const issueCommentListSchema = z.array(
+  z.looseObject({
+    id: z.number().int(),
+    body: z.string().nullish(),
+    html_url: z.string().min(1),
+    user: commentUserSchema.nullish(),
+    created_at: z.string().min(1),
+    updated_at: z.string().min(1),
+  }),
+);
+
+/** F-044 (Q344): `GET /repos/{o}/{r}/pulls?state=open`: the repo's open PRs, each as `GET /pulls/{n}` reads one. */
+export const openPullRequestListSchema = z.array(pullRequestDetailsSchema);
 
 /** `GET /repos/{o}/{r}/pulls/{n}/requested_reviewers`. */
 export const requestedReviewersSchema = z.looseObject({

@@ -108,7 +108,7 @@ export type FakeReview = {
   readonly body?: string;
 };
 
-/** Milestone 6 (F-100): a line comment of a review the App posted. */
+/** Milestone 6 (F-100): a line comment of a review the App posted (or, F-044, a person's review). */
 export type FakeReviewComment = {
   readonly id: number;
   readonly reviewId: number;
@@ -116,8 +116,31 @@ export type FakeReviewComment = {
   readonly line: number;
   /** `RIGHT` the head's side, `LEFT` the base's. */
   readonly side: "LEFT" | "RIGHT";
-  readonly body: string;
+  body: string;
+  // ---- F-044 (Q344): who wrote it and when; the App's bot, at its review's time, when not given ----
+  readonly userId?: number;
+  readonly login?: string;
+  readonly createdAt?: string;
+  updatedAt?: string;
 };
+
+/** F-044 (Q344): a person's comment, on a PR's conversation (`issue`) or on a line of its diff (`review`). */
+export type FakeComment = {
+  readonly id: string;
+  readonly repo: string;
+  readonly kind: "issue" | "review";
+  /** The PR it's on; `null` for a comment made only to be reacted to. */
+  readonly number: number | null;
+  body: string;
+  readonly userId: number;
+  readonly login: string;
+  /** ISO times, as GitHub sends them. */
+  readonly createdAt: string;
+  updatedAt: string;
+};
+
+/** F-044 (Q344): what a person's conversation comment says, and who wrote it. */
+export type FakeCommentInput = { readonly number: number; readonly body: string; readonly userId: number; readonly login: string };
 
 /** Milestone 4 (F-104): a check run, as the Checks API keeps it. */
 export type FakeCheckRun = {
@@ -225,8 +248,15 @@ export type FakeGitHub = {
   readonly webhookSecret: string;
   readonly signWebhook: (body: string) => string;
   // ---- milestone 3 ----
-  /** Adds a comment on a PR's conversation (`issue`) or on a line (`review`), as a person; its ID. */
-  readonly addComment: (repo: string, kind: "issue" | "review") => string;
+  /**
+   * Adds a comment on a PR's conversation (`issue`) or on a line (`review`), as a person; its ID.
+   * F-044: with `comment`, a conversation comment the PR's comments list, by its author.
+   */
+  readonly addComment: (repo: string, kind: "issue" | "review", comment?: FakeCommentInput) => string;
+  /** F-044: edits a conversation comment, as its author or anyone with write access does: its update time moves on. */
+  readonly editComment: (commentId: string, body: string) => void;
+  /** F-044: a comment as the fake holds it. */
+  readonly commentOf: (commentId: string) => FakeComment | undefined;
   /** Reactions made so far, as `<repo>:<kind>:<commentId>:<content>`. */
   readonly reactions: () => readonly string[];
   /** How many times a draft mutation changed a PR. */
@@ -242,8 +272,16 @@ export type FakeGitHub = {
   /** The next revocations fail, with this status (default 500). */
   readonly failRevocations: (count: number, status?: number) => void;
   // ---- milestone 4 (F-104) ----
-  /** Adds a review to a PR, after the ones it has; its ID. */
-  readonly addReview: (repo: string, number: number, review: Omit<FakeReview, "id" | "repo" | "number">) => FakeReview;
+  /**
+   * Adds a review to a PR, after the ones it has; its ID. F-044: with `comments`, the line comments
+   * a person's review posts with it, written at its time.
+   */
+  readonly addReview: (
+    repo: string,
+    number: number,
+    review: Omit<FakeReview, "id" | "repo" | "number">,
+    comments?: readonly { readonly path: string; readonly line: number; readonly side?: "LEFT" | "RIGHT"; readonly body: string }[],
+  ) => FakeReview;
   /** Dismisses a review, as a maintainer does: it stays listed, as `DISMISSED`. */
   readonly dismissReview: (reviewId: number) => FakeReview;
   /** Every check run, in the order they were made. */
@@ -419,7 +457,7 @@ export const createFakeGitHub = async (options: {
   const pullCreates: string[] = [];
   /** Answers whose real reply is replaced by an injected failure after the write (`afterWrite`). */
   const failAfterWrite = new WeakMap<ServerResponse, InjectedFailure>();
-  const comments: { readonly repo: string; readonly kind: "issue" | "review"; readonly id: string }[] = [];
+  const comments: FakeComment[] = [];
   const reactions = new Map<string, number>();
   let draftChanges = 0;
   const oauthClient = { clientId: "Iv1.fakeclient", clientSecret: "fake-client-secret-value" };
@@ -1040,10 +1078,62 @@ export const createFakeGitHub = async (options: {
         forbid();
         return;
       }
-      const head = url.searchParams.get("head") ?? "";
+      const head = url.searchParams.get("head");
+      if (head === null) {
+        // F-044: the repo's PRs by state, sorted as GitHub sorts them (by update when asked), paged.
+        const state = url.searchParams.get("state") ?? "open";
+        const byUpdate = url.searchParams.get("sort") === "updated";
+        const descending = (url.searchParams.get("direction") ?? (byUpdate ? "asc" : "desc")) === "desc";
+        const listed = pulls
+          .filter((pr) => pr.repo === `${owner}/${name}` && (state === "all" || pr.state === state))
+          .sort((a, b) => (byUpdate ? Date.parse(a.updatedAt) - Date.parse(b.updatedAt) : a.number - b.number) * (descending ? -1 : 1));
+        const perPage = Math.min(Number(url.searchParams.get("per_page") ?? "30"), 100);
+        const page = Number(url.searchParams.get("page") ?? "1");
+        send(response, 200, listed.slice((page - 1) * perPage, page * perPage).map(prJson));
+        return;
+      }
       const branch = head.slice(head.indexOf(":") + 1);
       const matching = pulls.filter((pr) => pr.repo === `${owner}/${name}` && pr.head === branch).sort((a, b) => b.number - a.number);
       send(response, 200, matching.map(prJson));
+      return;
+    }
+    const issueComments = /^\/issues\/(\d+)\/comments$/.exec(rest);
+    if (method === "GET" && issueComments?.[1] !== undefined) {
+      // F-044: a PR's conversation comments, by either permission, as GitHub takes them for a PR.
+      if (!needs("pull_requests", "read") && !needs("issues", "read")) {
+        forbid();
+        return;
+      }
+      const number = Number(issueComments[1]);
+      if (!pulls.some((pr) => pr.repo === `${owner}/${name}` && pr.number === number)) {
+        send(response, 404, { message: "Not Found" });
+        return;
+      }
+      const since = url.searchParams.get("since");
+      if (since !== null && Number.isNaN(Date.parse(since))) {
+        send(response, 422, { message: "Validation Failed" });
+        return;
+      }
+      // Ascending by ID, those last updated at or after `since`.
+      const held = comments.filter(
+        (comment) => comment.repo === `${owner}/${name}` && comment.kind === "issue" && comment.number === number && (since === null || Date.parse(comment.updatedAt) >= Date.parse(since)),
+      );
+      const perPage = Math.min(Number(url.searchParams.get("per_page") ?? "30"), 100);
+      const page = Number(url.searchParams.get("page") ?? "1");
+      send(
+        response,
+        200,
+        held.slice((page - 1) * perPage, page * perPage).map((comment) => ({
+          id: Number(comment.id),
+          node_id: `IC_fake_${comment.id}`,
+          body: comment.body,
+          html_url: `https://github.example/${comment.repo}/pull/${String(number)}#issuecomment-${comment.id}`,
+          user: { id: comment.userId, login: comment.login, type: "User" },
+          created_at: comment.createdAt,
+          updated_at: comment.updatedAt,
+          author_association: "MEMBER",
+        })),
+      );
       return;
     }
     if (method === "POST" && rest === "/pulls") {
@@ -1418,15 +1508,28 @@ export const createFakeGitHub = async (options: {
         return;
       }
       // A PR's review comments, every review's, each with its line, side and review (`GET /pulls/{n}/comments`).
-      const held = postedComments.get(`${owner}/${name}#${prCommentsRoute[1]}`) ?? [];
+      const prNumber = prCommentsRoute[1];
+      const held = postedComments.get(`${owner}/${name}#${prNumber}`) ?? [];
       const perPage = Number(url.searchParams.get("per_page") ?? "30");
       const page = Number(url.searchParams.get("page") ?? "1");
       send(
         response,
         200,
-        held
-          .slice((page - 1) * perPage, page * perPage)
-          .map((comment) => ({ id: comment.id, pull_request_review_id: comment.reviewId, path: comment.path, line: comment.line, original_line: comment.line, side: comment.side, subject_type: "line", body: comment.body, user: { id: botId, login: `${appSlug}[bot]` } })),
+        held.slice((page - 1) * perPage, page * perPage).map((comment) => ({
+          id: comment.id,
+          pull_request_review_id: comment.reviewId,
+          path: comment.path,
+          line: comment.line,
+          original_line: comment.line,
+          side: comment.side,
+          subject_type: "line",
+          body: comment.body,
+          user: { id: comment.userId ?? botId, login: comment.login ?? `${appSlug}[bot]` },
+          // F-044: its page and times, as GitHub lists them.
+          html_url: `https://github.example/${owner}/${name}/pull/${prNumber}#discussion_r${String(comment.id)}`,
+          ...(comment.createdAt === undefined ? {} : { created_at: comment.createdAt }),
+          ...(comment.updatedAt === undefined ? {} : { updated_at: comment.updatedAt }),
+        })),
       );
       return;
     }
@@ -1560,10 +1663,25 @@ export const createFakeGitHub = async (options: {
     failures,
     webhookSecret,
     signWebhook: (body) => `sha256=${createHmac("sha256", webhookSecret).update(body).digest("hex")}`,
-    addComment: (repo, kind) => {
+    addComment: (repo, kind, comment) => {
       const id = String(9_000_000 + comments.length + 1);
-      comments.push({ repo, kind, id });
+      const at = tick();
+      comments.push({ id, repo, kind, number: comment?.number ?? null, body: comment?.body ?? "", userId: comment?.userId ?? 1, login: comment?.login ?? "someone", createdAt: at, updatedAt: at });
       return id;
+    },
+    commentOf: (commentId) => comments.find((comment) => comment.id === commentId),
+    editComment: (commentId, body) => {
+      const found = comments.find((comment) => comment.id === commentId);
+      if (found === undefined) throw new Error("the fake has no such comment");
+      found.body = body;
+      found.updatedAt = tick();
+      for (const held of postedComments.values()) {
+        const line = held.find((one) => String(one.id) === commentId);
+        if (line !== undefined) {
+          line.body = body;
+          line.updatedAt = found.updatedAt;
+        }
+      }
     },
     reactions: () => [...reactions.keys()],
     draftChanges: () => draftChanges,
@@ -1579,10 +1697,20 @@ export const createFakeGitHub = async (options: {
       failRevocations += count;
       failRevocationStatus = status;
     },
-    addReview: (repo, number, review) => {
+    addReview: (repo, number, review, lineComments = []) => {
       reviewCounter += 1;
       const added: FakeReview = { ...review, id: 80_000_000 + reviewCounter, repo, number };
       reviews.push(added);
+      const key = `${repo}#${String(number)}`;
+      const held = postedComments.get(key) ?? [];
+      const at = review.submittedAt ?? tick();
+      for (const comment of lineComments) {
+        reviewCommentCounter += 1;
+        const id = 90_000_000 + reviewCommentCounter;
+        held.push({ id, reviewId: added.id, path: comment.path, line: comment.line, side: comment.side ?? "RIGHT", body: comment.body, userId: review.userId, login: review.login, createdAt: at, updatedAt: at });
+        comments.push({ id: String(id), repo, kind: "review", number, body: comment.body, userId: review.userId, login: review.login, createdAt: at, updatedAt: at });
+      }
+      postedComments.set(key, held);
       return added;
     },
     dismissReview: (reviewId) => {

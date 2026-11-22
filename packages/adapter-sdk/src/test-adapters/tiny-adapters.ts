@@ -497,6 +497,8 @@ export class TinyCodeHost extends CodeHostAdapter {
       requestedReviewers: milestone6,
       codeOwners: milestone6,
       readTree: options.trees !== undefined,
+      // F-044 (Q344): declared absent, as a host whose comments and reopens arrive only by webhook.
+      reconcileReads: false,
     };
     for (const repo of world.repos) {
       this.#refs.set(repo.fullName, new Set(repo.refs ?? []));

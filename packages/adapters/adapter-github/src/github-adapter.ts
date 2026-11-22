@@ -56,6 +56,7 @@ import type {
   InstallationRepo,
   LineRange,
   LinkedUser,
+  ListedPullRequestComment,
   OpenPullRequestInput,
   UpdatePullRequestBodyInput,
   UpdatePullRequestTitleInput,
@@ -107,7 +108,9 @@ import {
   installationRepositoriesWebhookSchema,
   installationSchema,
   installationWebhookSchema,
+  issueCommentListSchema,
   issueCommentWebhookSchema,
+  openPullRequestListSchema,
   pullRequestDetailsSchema,
   pullRequestListSchema,
   pullRequestNodeSchema,
@@ -368,6 +371,8 @@ export class GitHubAdapter extends CodeHostAdapter {
       codeOwners: true,
       // Milestone 8 (ticket 02, ADR 0069): a repo's files at a commit, through its tarball.
       readTree: true,
+      // F-044 (Q344): with webhooks off, the reconcile reads a PR's comments and finds a reopened PR.
+      reconcileReads: true,
     };
   }
 
@@ -842,31 +847,8 @@ export class GitHubAdapter extends CodeHostAdapter {
       if (!parsed.ok) {
         return parsed;
       }
-      const pr = parsed.value;
-      const updatedAt = Date.parse(pr.updated_at);
-      const mergedAt = pr.merged_at === null || pr.merged_at === undefined ? null : Date.parse(pr.merged_at);
-      const closedAt = pr.closed_at === null || pr.closed_at === undefined ? null : Date.parse(pr.closed_at);
-      if (Number.isNaN(updatedAt) || Number.isNaN(mergedAt ?? 0) || Number.isNaN(closedAt ?? 0)) {
-        return adapterError("invalid-response", "GitHub's PR has a time that could not be read");
-      }
-      const merged = pr.merged === true || mergedAt !== null;
-      return ok({
-        number: pr.number,
-        url: pr.html_url,
-        state: pr.state === "open" ? "open" : merged ? "merged" : "closed",
-        headBranch: pr.head.ref,
-        baseBranch: pr.base.ref,
-        title: pr.title,
-        merged,
-        headSha: pr.head.sha,
-        updatedAt,
-        mergedAt,
-        closedAt,
-        // Milestone 3 (F-054): a later turn edits its checks section in the description as it is now,
-        // and keeps a draft a person made. Untrusted text: never logged.
-        body: pr.body ?? null,
-        ...(pr.draft === undefined ? {} : { draft: pr.draft }),
-      } satisfies PullRequestDetails);
+      const details = toPullRequestDetails(parsed.value);
+      return details === null ? adapterError("invalid-response", "GitHub's PR has a time that could not be read") : ok(details);
     });
   }
 
@@ -1445,6 +1427,10 @@ export class GitHubAdapter extends CodeHostAdapter {
           side: comment.side === "LEFT" ? "old" : "new",
           body: comment.body ?? "",
           userId: comment.user === null || comment.user === undefined ? "" : String(comment.user.id),
+          // F-044 (Q344): what the reconcile hands on as the comment's webhook would, and when it changed.
+          ...(comment.user?.login === undefined ? {} : { login: comment.user.login }),
+          url: comment.html_url ?? null,
+          ...timesOf(comment),
         })),
       );
     });
@@ -1503,6 +1489,86 @@ export class GitHubAdapter extends CodeHostAdapter {
    * One call of the verified link's OAuth exchange, with `fetch`: the sign-in's token and the App's
    * client secret are in it, so nothing about it is logged but the operation and the status.
    */
+  // ---------- F-044 (Q344): what a missed webhook would have brought, for the reconcile ----------
+
+  override async listPullRequestComments(access: RepoAccess, number: number, since: number | null): Promise<AdapterResult<readonly ListedPullRequestComment[]>> {
+    if (!Number.isSafeInteger(number) || number < 1 || (since !== null && (!Number.isSafeInteger(since) || since < 0))) {
+      return adapterError("invalid-input", "a PR number is a positive whole number, and a time is ms since the epoch");
+    }
+    return this.#guarded("listing a PR's comments", this.#budgetKey(access), async () => {
+      // A PR's conversation comments are its issue comments; GitHub takes the PR permission for them, as for a reaction.
+      const octokit = await this.#asRepo(access, { pull_requests: "read", metadata: "read" });
+      const { owner, name } = splitRepo(access.repo);
+      const comments: ListedPullRequestComment[] = [];
+      // Ascending by ID, those changed at or after `since` ("only show results that were last updated after the given time").
+      for (let page = 1; page <= MAX_COMMENT_PAGES; page += 1) {
+        const response = await octokit.request("GET /repos/{owner}/{repo}/issues/{issue_number}/comments", {
+          owner,
+          repo: name,
+          issue_number: number,
+          per_page: 100,
+          page,
+          ...(since === null ? {} : { since: sinceParam(since) }),
+        });
+        const parsed = parseVendor(issueCommentListSchema, response.data, "GitHub's PR comments");
+        if (!parsed.ok) {
+          return parsed;
+        }
+        for (const comment of parsed.value) {
+          const createdAt = Date.parse(comment.created_at);
+          const updatedAt = Date.parse(comment.updated_at);
+          if (Number.isNaN(createdAt) || Number.isNaN(updatedAt)) {
+            return adapterError("invalid-response", "GitHub listed a comment whose time could not be read");
+          }
+          // A deleted account's comment has no author: nobody's ask.
+          if (comment.user === null || comment.user === undefined) continue;
+          comments.push({ ...toComment({ ...comment, user: comment.user }), createdAt, updatedAt });
+        }
+        if (parsed.value.length < 100) {
+          break;
+        }
+      }
+      this.plumbing.logger.debug("github.comments.listed", { repo: access.repo, number, comments: comments.length });
+      return ok(comments);
+    });
+  }
+
+  override async listOpenPullRequests(access: RepoAccess, since: number): Promise<AdapterResult<readonly PullRequestDetails[]>> {
+    if (!Number.isSafeInteger(since) || since < 0) {
+      return adapterError("invalid-input", "a time is ms since the epoch");
+    }
+    return this.#guarded("listing a repo's open PRs", this.#budgetKey(access), async () => {
+      const octokit = await this.#asRepo(access, { pull_requests: "read", metadata: "read" });
+      const { owner, name } = splitRepo(access.repo);
+      const open: PullRequestDetails[] = [];
+      // The most recently updated first, paged until one is older than `since`: a reopen updates the PR.
+      for (let page = 1; page <= MAX_OPEN_PULL_PAGES; page += 1) {
+        const response = await octokit.request("GET /repos/{owner}/{repo}/pulls", { owner, repo: name, state: "open", sort: "updated", direction: "desc", per_page: 100, page });
+        const parsed = parseVendor(openPullRequestListSchema, response.data, "GitHub's open PRs");
+        if (!parsed.ok) {
+          return parsed;
+        }
+        let older = false;
+        for (const item of parsed.value) {
+          const details = toPullRequestDetails(item);
+          if (details === null) {
+            return adapterError("invalid-response", "GitHub listed a PR whose time could not be read");
+          }
+          if (details.updatedAt < since) {
+            older = true;
+            break;
+          }
+          open.push(details);
+        }
+        if (older || parsed.value.length < 100) {
+          break;
+        }
+      }
+      this.plumbing.logger.debug("github.pulls.listed-open", { repo: access.repo, open: open.length });
+      return ok(open);
+    });
+  }
+
   async #oauthCall(
     operation: string,
     url: string,
@@ -1955,6 +2021,44 @@ export class GitHubAdapter extends CodeHostAdapter {
   }
 }
 
+/** A PR as `GET /pulls/{n}` (or the list of open PRs) reads it; `null` for a time that can't be read. */
+const toPullRequestDetails = (pr: z.infer<typeof pullRequestDetailsSchema>): PullRequestDetails | null => {
+  const updatedAt = Date.parse(pr.updated_at);
+  const mergedAt = pr.merged_at === null || pr.merged_at === undefined ? null : Date.parse(pr.merged_at);
+  const closedAt = pr.closed_at === null || pr.closed_at === undefined ? null : Date.parse(pr.closed_at);
+  if (Number.isNaN(updatedAt) || Number.isNaN(mergedAt ?? 0) || Number.isNaN(closedAt ?? 0)) {
+    return null;
+  }
+  const merged = pr.merged === true || mergedAt !== null;
+  return {
+    number: pr.number,
+    url: pr.html_url,
+    state: pr.state === "open" ? "open" : merged ? "merged" : "closed",
+    headBranch: pr.head.ref,
+    baseBranch: pr.base.ref,
+    title: pr.title,
+    merged,
+    headSha: pr.head.sha,
+    updatedAt,
+    mergedAt,
+    closedAt,
+    // Milestone 3 (F-054): a later turn edits its checks section in the description as it is now,
+    // and keeps a draft a person made. Untrusted text: never logged.
+    body: pr.body ?? null,
+    ...(pr.draft === undefined ? {} : { draft: pr.draft }),
+  };
+};
+
+/** F-044 (Q344): a time as GitHub's `since` takes it, to the second and never after it, so nothing at it is missed. */
+const sinceParam = (ms: number): string => new Date(Math.floor(ms / 1000) * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+
+/** A comment's `created_at` and `updated_at` in ms, each left out when GitHub's answer has none that reads. */
+const timesOf = (comment: { readonly created_at?: string | null | undefined; readonly updated_at?: string | null | undefined }): { readonly createdAt?: number; readonly updatedAt?: number } => {
+  const createdAt = Date.parse(comment.created_at ?? "");
+  const updatedAt = Date.parse(comment.updated_at ?? "");
+  return { ...(Number.isNaN(createdAt) ? {} : { createdAt }), ...(Number.isNaN(updatedAt) ? {} : { updatedAt }) };
+};
+
 const toPullRequest = (pr: z.infer<typeof pullRequestSchema>): PullRequest => ({
   number: pr.number,
   url: pr.html_url,
@@ -2184,6 +2288,10 @@ const parseReviewWebhook = (payload: unknown): AdapterResult<CodeHostWebhookEven
 const SHA = /^[0-9a-f]{40}$/;
 /** Pages of check runs or statuses read at most: 1,000 of each on a head. */
 const MAX_CI_PAGES = 10;
+/** F-044 (Q344): the most pages of a PR's comments one reconcile read takes: 1,000 comments changed since its last. */
+const MAX_COMMENT_PAGES = 10;
+/** F-044 (Q344): the most pages of a repo's open PRs one read takes, the most recently updated first. */
+const MAX_OPEN_PULL_PAGES = 3;
 const LOG_TIMEOUT_MS = 30_000;
 /** GitHub Actions' app slug: its check runs' logs are its jobs'. */
 const GITHUB_ACTIONS_SLUG = "github-actions";

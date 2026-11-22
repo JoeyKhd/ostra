@@ -22,6 +22,7 @@ import type {
   CompareResult,
   Reaction,
   DeleteRefResult,
+  ListedPullRequestComment,
   PullRequestDetails,
   WebhookInput,
   CatalogEntry,
@@ -106,8 +107,31 @@ export class FakeCodeHost extends CodeHostAdapter {
    * the GitHub adapter has them off until its ticket 08: a test turns it on with `reviewLoop`.
    */
   reviewLoop = false;
+  /**
+   * F-044 (Q344): the reconcile's reads of a PR's comments, its reviews and a reopened PR. Off by
+   * default, as a host whose comments arrive only by webhook: a test turns it on.
+   */
+  reconcileReads = false;
   get capabilities(): CodeHostCapabilities {
-    return { checkRuns: true, prTemplates: true, lfsActionHosts: ["lfs.example.test"], branchRules: false, compare: true, draftPullRequests: true, prComments: true, userLink: false, reviews: true, installableByOtherAccounts: false, ciResults: this.reviewLoop, ciLogs: this.reviewLoop, reviewComments: this.reviewLoop, requestedReviewers: this.reviewLoop, codeOwners: this.reviewLoop, readTree: false };
+    return {
+      checkRuns: true,
+      prTemplates: true,
+      lfsActionHosts: ["lfs.example.test"],
+      branchRules: false,
+      compare: true,
+      draftPullRequests: true,
+      prComments: true,
+      userLink: false,
+      reviews: true,
+      installableByOtherAccounts: false,
+      ciResults: this.reviewLoop,
+      ciLogs: this.reviewLoop,
+      reviewComments: this.reviewLoop,
+      requestedReviewers: this.reviewLoop,
+      codeOwners: this.reviewLoop,
+      readTree: false,
+      reconcileReads: this.reconcileReads,
+    };
   }
   /** Milestone 6: the heads' check runs and statuses from other apps, their logs, the PRs' diffs and the App's reviews. */
   readonly ci = new FakeCiHost();
@@ -322,6 +346,68 @@ export class FakeCodeHost extends CodeHostAdapter {
     if (found !== undefined) {
       this.pulls[index] = { ...found, state: state.state };
     }
+  }
+
+  // ---------- F-044 (Q344): a PR's conversation comments and the open PRs, for the reconcile ----------
+
+  /** Each PR's conversation comments, by `repo#number`, oldest first. */
+  readonly conversation = new Map<string, ListedPullRequestComment[]>();
+  /** Every `listPullRequestComments` call, with the time it asked from. */
+  readonly commentReads: { readonly repo: string; readonly number: number; readonly since: number | null }[] = [];
+  /** Every `listOpenPullRequests` call. */
+  readonly openPullReads: { readonly repo: string; readonly since: number }[] = [];
+  #nextCommentId = 5_000_000;
+
+  /** A person comments on a PR's conversation, as on the host; the comment, with its ID. */
+  addConversationComment(repo: string, number: number, input: { readonly authorId: number; readonly authorLogin: string; readonly body: string; readonly commentId?: number }): ListedPullRequestComment {
+    this.#nextCommentId += 1;
+    const commentId = String(input.commentId ?? this.#nextCommentId);
+    const at = this.now();
+    const comment: ListedPullRequestComment = {
+      commentId,
+      authorId: String(input.authorId),
+      authorLogin: input.authorLogin,
+      body: input.body,
+      url: `https://github.example/${repo}/pull/${String(number)}#issuecomment-${commentId}`,
+      createdAt: at,
+      updatedAt: at,
+    };
+    const key = `${repo}#${String(number)}`;
+    this.conversation.set(key, [...(this.conversation.get(key) ?? []), comment]);
+    return comment;
+  }
+
+  /** Someone edits a conversation comment, as its author or anyone with write access may: its update time moves on. */
+  editConversationComment(repo: string, number: number, commentId: string, body: string): void {
+    const key = `${repo}#${String(number)}`;
+    const comments = this.conversation.get(key) ?? [];
+    const index = comments.findIndex((comment) => comment.commentId === commentId);
+    const found = comments[index];
+    if (found === undefined) throw new Error("no such comment");
+    comments[index] = { ...found, body, updatedAt: Math.max(this.now(), found.updatedAt + 1_000) };
+  }
+
+  override listPullRequestComments(access: RepoAccess, number: number, since: number | null): Promise<AdapterResult<readonly ListedPullRequestComment[]>> {
+    if (!this.known(access.app)) return Promise.resolve(adapterError("unauthorized", "refused"));
+    this.commentReads.push({ repo: access.repo, number, since });
+    if (!this.pulls.some((pull) => pull.repo === access.repo && pull.number === number)) {
+      return Promise.resolve(adapterError("not-found", "no such PR"));
+    }
+    const comments = this.conversation.get(`${access.repo}#${String(number)}`) ?? [];
+    return Promise.resolve(ok(comments.filter((comment) => since === null || comment.updatedAt >= since)));
+  }
+
+  override listOpenPullRequests(access: RepoAccess, since: number): Promise<AdapterResult<readonly PullRequestDetails[]>> {
+    if (!this.known(access.app)) return Promise.resolve(adapterError("unauthorized", "refused"));
+    this.openPullReads.push({ repo: access.repo, since });
+    const open: PullRequestDetails[] = [];
+    for (const pull of this.pulls.filter((candidate) => candidate.repo === access.repo)) {
+      const state = this.#stateOf(access.repo, pull.number);
+      if (state.state === "open" && state.updatedAt >= since) {
+        open.push({ ...pull, state: "open", merged: false, headSha: state.headSha, updatedAt: state.updatedAt, mergedAt: null, closedAt: null });
+      }
+    }
+    return Promise.resolve(ok(open.sort((a, b) => b.updatedAt - a.updatedAt)));
   }
 
   // ---------- milestone 6 (tickets 16, 17): CI and comment-type reviews, from `ci` ----------

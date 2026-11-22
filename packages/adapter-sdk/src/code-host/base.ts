@@ -562,6 +562,27 @@ export type ReviewComment = {
   readonly side: DiffSide;
   readonly body: string;
   readonly userId: string;
+  // ---- F-044 (Q344): what the reconcile hands on as a `pull_request_review_comment`, when the host says ----
+  /** The commenter's login. */
+  readonly login?: string;
+  /** The comment's page on the host. */
+  readonly url?: string | null;
+  /** When it was written and last changed, in ms since the epoch by the host's clock. */
+  readonly createdAt?: number;
+  readonly updatedAt?: number;
+};
+
+// ---------- F-044 (Q344, 2026-11-22): the reconcile's reads of what a webhook would bring ----------
+
+/**
+ * A PR conversation comment as `listPullRequestComments` reads it: the webhook's comment, with when
+ * it was posted and when it last changed, so the reconcile tells an edit apart (only a webhook
+ * names who edited a comment). Its body is untrusted text: data, never logged.
+ */
+export type ListedPullRequestComment = PullRequestComment & {
+  /** In ms since the epoch, by the host's clock. */
+  readonly createdAt: number;
+  readonly updatedAt: number;
 };
 
 // ---------- milestone 8 (F-145, ADR 0069, ADR 0025 amended): a repo's files at a commit ----------
@@ -881,6 +902,29 @@ export abstract class CodeHostAdapter {
   readCodeOwners(access: RepoAccess, ref: string): Promise<AdapterResult<string | null>> {
     this.plumbing.logger.debug("readCodeOwners is not supported", { repo: access.repo, refLength: ref.length });
     return Promise.resolve(adapterError("unsupported", `${this.name} can't read CODEOWNERS`));
+  }
+
+  // ---------- F-044 (Q344): additive, so each answers `unsupported` until an adapter has it ----------
+
+  /**
+   * A PR's conversation comments that changed at or after `since` (ms since the epoch, by the
+   * host's clock; `null` for every one), in any order, at most a few pages: what the
+   * `issue_comment` webhooks would have brought, for the reconcile (F-044). A host whose times are
+   * to the second also lists what changed earlier in `since`'s second. Needs `reconcileReads`.
+   */
+  listPullRequestComments(access: RepoAccess, number: number, since: number | null): Promise<AdapterResult<readonly ListedPullRequestComment[]>> {
+    this.plumbing.logger.debug("listPullRequestComments is not supported", { repo: access.repo, number, since });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't list a PR's comments`));
+  }
+
+  /**
+   * A repo's open PRs updated at or after `since` (ms since the epoch, by the host's clock), the
+   * most recently updated first, at most a few pages: the reconcile finds a closed task PR
+   * reopened among them (F-044). Needs `reconcileReads`.
+   */
+  listOpenPullRequests(access: RepoAccess, since: number): Promise<AdapterResult<readonly PullRequestDetails[]>> {
+    this.plumbing.logger.debug("listOpenPullRequests is not supported", { repo: access.repo, since });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't list a repo's open PRs`));
   }
 
   // ---------- milestone 8: additive, so each answers `unsupported` until an adapter has it ----------

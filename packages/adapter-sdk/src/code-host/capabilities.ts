@@ -50,4 +50,12 @@ export type CodeHostCapabilities = {
    * `unsupported`, and an install from the host is refused with `readTreeRefusal`'s words.
    */
   readonly readTree: boolean;
+  // ---- F-044 (Q344, 2026-11-22): what a missed webhook would have brought, read by the reconcile ----
+  /**
+   * `listPullRequestComments` reads a PR's conversation comments changed since a time, and
+   * `listOpenPullRequests` a repo's open PRs updated since one, so with webhooks off the reconcile
+   * brings a comment and a reopened PR. A review is `listReviews`, its line comments
+   * `listReviewComments`. Without it, those arrive only by webhook.
+   */
+  readonly reconcileReads: boolean;
 };

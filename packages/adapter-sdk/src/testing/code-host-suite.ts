@@ -20,6 +20,7 @@ import type {
   CodeHostOAuthClient,
   CommentRef,
   LinkedUser,
+  ListedPullRequestComment,
   PullRequestReview,
   RepoAccess,
   WebhookInput,
@@ -177,6 +178,17 @@ export type CodeHostFixture = {
     /** Pushes `movedSkillTree` to the public repo's `branch` as a new commit, once. */
     readonly moveBranch: () => Promise<void>;
   };
+  // ---- F-044 (Q344): the reconcile's reads. Absent: skipped; without `reconcileReads`, both calls must be `unsupported` ----
+  readonly reconcileReads?: {
+    /** A PR with conversation comments, one of them edited, and what `listPullRequestComments` reads of them, in any order. */
+    readonly number: number;
+    readonly comments: readonly ListedPullRequestComment[];
+    /** A time after some of the comments last changed and before the others. */
+    readonly between: number;
+    /** A PR closed and reopened after `between`, which `listOpenPullRequests` lists; and one open since before it, which it leaves out. */
+    readonly reopened: number;
+    readonly openBefore: number;
+  };
 };
 
 /** Milestone 4 (F-136): the two installation webhooks, as the suite expects them read. */
@@ -230,6 +242,7 @@ export const defineCodeHostContractSuite = (options: ContractSuiteOptions<CodeHo
       requestedReviewers: "boolean",
       codeOwners: "boolean",
       readTree: "boolean",
+      reconcileReads: "boolean",
     });
 
     // ---- milestone 8 (ticket 02, F-145, ADR 0069): a repo's files at a commit ----
@@ -391,6 +404,36 @@ export const defineCodeHostContractSuite = (options: ContractSuiteOptions<CodeHo
       if (!moved.ok) throw new Error(moved.error.message);
       expect(decoded(moved.value, "skills/pdf/SKILL.md")).toBe(contentOf(movedSkillTree, "skills/pdf/SKILL.md"));
       expect(moved.value.files.map((file) => file.path)).toContain("skills/pdf/signing.md");
+    });
+
+    // ---- F-044 (Q344, 2026-11-22): what a missed webhook would have brought, for the reconcile ----
+
+    it("F-044/c1: lists a PR's comments changed since a time, and a repo's open PRs updated since one, a reopened PR among them; a host without reconcileReads says unsupported", async (context) => {
+      const { adapter, fixture } = subject();
+      if (!adapter.capabilities.reconcileReads) {
+        expect(await adapter.listPullRequestComments(fixture.access, fixture.reconcileReads?.number ?? 1, null)).toMatchObject({ ok: false, error: { code: "unsupported" } });
+        expect(await adapter.listOpenPullRequests(fixture.access, 0)).toMatchObject({ ok: false, error: { code: "unsupported" } });
+        return;
+      }
+      const reads = fixture.reconcileReads;
+      if (reads === undefined) {
+        context.skip();
+        return;
+      }
+      const byId = (a: ListedPullRequestComment, b: ListedPullRequestComment): number => a.commentId.localeCompare(b.commentId);
+      // The fixture must hold what the reconcile tells apart: an edit, and comments on both sides of `between`.
+      expect(reads.comments.some((comment) => comment.updatedAt > comment.createdAt)).toBe(true);
+      expect(reads.comments.some((comment) => comment.updatedAt < reads.between)).toBe(true);
+      const all = await adapter.listPullRequestComments(fixture.access, reads.number, null);
+      expect(all.ok ? [...all.value].sort(byId) : all).toEqual([...reads.comments].sort(byId));
+      const since = await adapter.listPullRequestComments(fixture.access, reads.number, reads.between);
+      expect(since.ok ? [...since.value].sort(byId) : since).toEqual(reads.comments.filter((comment) => comment.updatedAt >= reads.between).sort(byId));
+      const open = await adapter.listOpenPullRequests(fixture.access, reads.between);
+      expect(open.ok ? open.value.map((pr) => pr.number) : open).toContain(reads.reopened);
+      expect(open.ok ? open.value.map((pr) => pr.number) : open).not.toContain(reads.openBefore);
+      expect(open.ok && open.value.every((pr) => pr.state === "open" && pr.updatedAt >= reads.between)).toBe(true);
+      expect(await adapter.listPullRequestComments({ ...fixture.access, app: fixture.wrongApp }, reads.number, null)).toMatchObject({ ok: false });
+      expect(await adapter.listOpenPullRequests({ ...fixture.access, app: fixture.wrongApp }, reads.between)).toMatchObject({ ok: false });
     });
 
     // ---- milestone 6 (ticket 03, ADR 0058): CI, comment-type reviews, reviewers and CODEOWNERS ----
