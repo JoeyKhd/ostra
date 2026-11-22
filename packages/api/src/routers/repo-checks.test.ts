@@ -146,7 +146,7 @@ describe("F-055: a signed-commit repo refuses a task; unknown and unprotected ne
     expect(created.taskId).toBeTruthy();
   });
 
-  it("never refuses on unknown, or on an unprotected default branch", async () => {
+  it("F-060/c2: never refuses on unknown, or on an unprotected default branch", async () => {
     reset();
     harness.fakes.codeHost.branchRules.set(REPO, { protected: "unknown", requiresSignedCommits: "unknown", reasons: ["rules-refused"] });
     expect((await (await harness.as(harness.fixture.a.member)).tasks.create({ projectId, prompt: "unknown is fine" })).taskId).toBeTruthy();

@@ -144,7 +144,7 @@ describe("the git proxy with stock git", () => {
     expect(await upstream.refSha(repo, hiddenRef)).toBe(head);
   }, 60_000);
 
-  it("F-090/c2,c6: refuses a push to the default branch in git's words, forwarding nothing", async () => {
+  it("F-090/c2,c6, F-060/c2: refuses a push to the default branch in git's words, forwarding nothing, so an unprotected default branch is only a warning", async () => {
     const proxy = await startProxy();
     const { dir } = await clone(proxy.urlFor(repo), "to-main");
     await commitFile(dir, "sneaky.txt", "not allowed\n");
