@@ -27,8 +27,13 @@ export type RebuildInput = {
   readonly memberMessages: readonly (RebuildMessage & { readonly author: string })[];
   /** Every agent message of a finished turn, oldest first. */
   readonly agentMessages: readonly RebuildMessage[];
-  /** Set when the last turn didn't finish: what the agent wrote in it before it stopped, maybe nothing. */
-  readonly interruptedTurn: { readonly partialText: string } | null;
+  /**
+   * Set when the last turn didn't finish: what the agent wrote in it before it stopped, maybe
+   * nothing, and where the team's message it was working on is. No turn answered that message, so
+   * a reopen sends it again after this prompt as a pending message (F-047) and leaves it out of the
+   * messages above (`next`); it stays the last one above only when it can't be sent again (`above`).
+   */
+  readonly interruptedTurn: { readonly partialText: string; readonly workingOn: "above" | "next" } | null;
   /** Each repo's branch and `git log --stat` since its base. */
   readonly branches: readonly { readonly repo: string; readonly branch: string; readonly log: string }[];
   /** What the hidden ref did on the fresh box (ADR 0039, Q150). */
@@ -80,7 +85,7 @@ const assemble = (input: RebuildInput, members: RebuildInput["memberMessages"], 
     const partial = input.interruptedTurn.partialText.trim();
     parts.push(
       "## The turn that was interrupted",
-      `Your last turn was stopped before it finished, so it has no reply: it was working on the team's last message above. ${
+      `Your last turn was stopped before it finished, so it has no reply: it was working on ${workingOnLine(input.interruptedTurn.workingOn)}. ${
         partial === "" ? "You had written nothing in it yet." : `What you had written in it before it stopped:\n\n${block(partial)}`
       }`,
     );
@@ -93,6 +98,17 @@ const assemble = (input: RebuildInput, members: RebuildInput["memberMessages"], 
   );
   parts.push("## The workspace", workspaceLine(input.unfinishedWork));
   return `${parts.join("\n\n")}\n`;
+};
+
+const workingOnLine = (where: NonNullable<RebuildInput["interruptedTurn"]>["workingOn"]): string => {
+  switch (where) {
+    case "above":
+      return "the team's last message above";
+    case "next":
+      return "a message from the team that isn't above: it comes to you again right after this, as the team's next message";
+    default:
+      return where satisfies never;
+  }
 };
 
 const workspaceLine = (work: RebuildInput["unfinishedWork"]): string => {
@@ -135,7 +151,7 @@ export const buildRebuildPrompt = (input: RebuildInput, maxChars: number = REBUI
     ...input,
     ticket: input.ticket === null ? null : { ...input.ticket, description: input.ticket.description === null ? null : shorten(input.ticket.description) },
     pullRequests: input.pullRequests.map((pr) => ({ ...pr, title: shorten(pr.title), body: shorten(pr.body) })),
-    interruptedTurn: input.interruptedTurn === null ? null : { partialText: shorten(input.interruptedTurn.partialText) },
+    interruptedTurn: input.interruptedTurn === null ? null : { ...input.interruptedTurn, partialText: shorten(input.interruptedTurn.partialText) },
     branches: input.branches.map((branch) => ({ ...branch, log: shorten(branch.log) })),
   };
   const final = assemble(short, [], [], cut);

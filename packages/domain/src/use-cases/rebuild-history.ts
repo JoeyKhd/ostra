@@ -42,6 +42,8 @@ export const rebuildInputInTx = async (
   const changed = new Map<string, { added: number; removed: number }>();
   const pushes = new Map<string, string[]>();
   const seenMessages = new Set<string>();
+  // The message the interrupted turn was working on: the last one before it started.
+  let interruptedOn: string | null = null;
   for (const row of events) {
     const parsed = taskEventSchema.safeParse(row.payload);
     if (!parsed.success) {
@@ -51,6 +53,9 @@ export const rebuildInputInTx = async (
     const at = row.occurredAt.getTime();
     // The query reads only these five kinds.
     if (event.kind === "user.message") {
+      if (interruptedFrom !== null && row.seq < interruptedFrom) {
+        interruptedOn = event.clientMessageId;
+      }
       if (!options.leaveOut.has(event.clientMessageId) && !seenMessages.has(event.clientMessageId)) {
         seenMessages.add(event.clientMessageId);
         memberIds.add(event.memberId);
@@ -98,7 +103,9 @@ export const rebuildInputInTx = async (
       .map((repo) => ({ repo: repo.repo.fullName, title: repo.prTitle ?? task.title, body: repo.prBody ?? "" })),
     memberMessages: members.map((message) => ({ at: message.at, author: names.get(message.memberId) ?? "A member", text: message.text })),
     agentMessages: agents,
-    interruptedTurn: interruptedFrom === null ? null : { partialText: partial.join("\n\n") },
+    // A message the reopen sends again (left out above) comes right after the prompt instead.
+    interruptedTurn:
+      interruptedFrom === null ? null : { partialText: partial.join("\n\n"), workingOn: interruptedOn !== null && options.leaveOut.has(interruptedOn) ? "next" : "above" },
     branches: repos.map((repo) => {
       const heads = pushes.get(repo.repoId) ?? [];
       const files = filesOf(repo.repo.checkoutDir, repos.length === 1);

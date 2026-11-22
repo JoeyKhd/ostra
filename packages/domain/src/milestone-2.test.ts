@@ -318,7 +318,7 @@ const history: RebuildInput = {
     { at: 8, text: "Done: README.md updated." },
     { at: 10, text: `I'll use port ${facts.port} for the dev server.` },
   ],
-  interruptedTurn: { partialText: "I'll start with step 1." },
+  interruptedTurn: { partialText: "I'll start with step 1.", workingOn: "above" },
   branches: [{ repo: "ostra-test/test1", branch: "ostra/ost-12-0000abcd-heron", log: `commit a1\n    Add notes\n ${facts.docSlug} | 3 +++\n README.md | 2 +-` }],
   unfinishedWork: "restored",
 };
@@ -354,6 +354,13 @@ describe("the rebuild template", () => {
     expect(prompt).toContain(`${String(cutMessages)} of the oldest messages were left out`);
     const huge = buildRebuildPrompt({ ...big, ticket: { key: "OST-12", title: "Heron", description: "y".repeat(200_000) } });
     expect(huge.prompt.length).toBeLessThanOrEqual(REBUILD_TEMPLATE_MAX_CHARS);
+  });
+
+  it("points the interrupted turn at the message it was working on: the last above, or the next one sent again", () => {
+    expect(buildRebuildPrompt(history).prompt).toContain("it was working on the team's last message above.");
+    const next = buildRebuildPrompt({ ...history, interruptedTurn: { partialText: "", workingOn: "next" } }).prompt;
+    expect(next).toContain("it was working on a message from the team that isn't above: it comes to you again right after this, as the team's next message.");
+    expect(next).not.toContain("last message above");
   });
 
   it("says what became of the unfinished work", () => {

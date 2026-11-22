@@ -775,6 +775,11 @@ describe("the rebuild template on spike 2's history (ADR 0039, Q128)", () => {
       expect(at("Writing the summary now:")).toBeGreaterThan(at("## The turn that was interrupted"));
       expect(prompt.split("Writing the summary now:")).toHaveLength(2);
       expect(spec.restore?.pendingMessages.map((message) => message.text)).toEqual(["Now write a short summary.", "Carry on, please."]);
+      // So the section points at the message sent again after the prompt, not at the last one above
+      // ("Add the grey heron too.", which turn 2 answered).
+      expect(prompt).not.toContain("Now write a short summary.");
+      expect(prompt).toContain("it was working on a message from the team that isn't above: it comes to you again right after this, as the team's next message.");
+      expect(prompt).not.toContain("the team's last message above");
       // The branch's log: its pushes and the files the agent changed, by line counts.
       expect(prompt).toContain(`ostra-test/test1, branch ${branchName}:`);
       expect(prompt).toContain(`pushed: ${sha("heron-1")}`);
