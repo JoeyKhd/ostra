@@ -9,6 +9,7 @@ import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
 import { leaseEpochSchema, modelIdSchema, providerIdSchema, sessionIdSchema, stopBodySchema, taskSpecSchema, turnIdSchema } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import { buildTaskSpec } from "../dispatch/task-spec.ts";
 import type { RunnerRef } from "../gateway/context.ts";
@@ -22,7 +23,7 @@ import { acceptedTask, jobContext } from "../testing/turns.ts";
 import type { DrivenTask } from "../testing/turns.ts";
 import { seedOnlineRunner, seedWorld } from "../testing/world.ts";
 import type { World } from "../testing/world.ts";
-import { maxDurationHandler, sweepStalledSessions } from "./limits.ts";
+import { ensureStallSweepSchedule, maxDurationHandler, stallSweepHandler, sweepStalledSessions } from "./limits.ts";
 import type { LimitDeps } from "./limits.ts";
 
 // Ticket 19 (F-068): the maximum duration and the stall on the server, with a fake clock; usage
@@ -191,6 +192,32 @@ describe("the stall sweep (F-068)", () => {
     expect(await test.db.needsYouItem.count({ where: { taskId: silent.taskId } })).toBe(1);
     // Another organization's session is judged by its own events only.
     expect(await outcomeOf(theirs)).toMatchObject({ task: "running", session: "running", limit: null });
+  });
+
+  it("F-068/c3: core sweeps its own tables once a minute, so a session silent for 10 minutes stops within 10 to 11", async () => {
+    // The schedule core starts with: one tick a minute, one slot a minute however many replicas run.
+    await ensureStallSweepSchedule(jobs);
+    const schedules = z
+      .array(z.object({ key: z.string(), cron: z.string(), options: z.looseObject({ singletonSeconds: z.number() }) }))
+      .parse(await test.db.$queryRaw`SELECT key, cron, options FROM pgboss.schedule WHERE name = 'session.stall-sweep'`);
+    expect(schedules.map((row) => [row.key, row.cron, row.options.singletonSeconds])).toEqual([["every-minute", "* * * * *", 60]]);
+    // Starting again keeps the one schedule.
+    await ensureStallSweepSchedule(jobs);
+    expect(z.array(z.unknown()).parse(await test.db.$queryRaw`SELECT 1 FROM pgboss.schedule WHERE name = 'session.stall-sweep'`)).toHaveLength(1);
+
+    // The handler that tick runs reads the session's last stored event: 9.5 minutes is no stall yet.
+    const task = await runningTask();
+    await silentFor(task, STALL_MS - 30_000);
+    await stallSweepHandler(limitDeps(clockAhead(0)))(jobContext("session.stall-sweep", {}, logger));
+    expect(await outcomeOf(task)).toMatchObject({ task: "running", session: "running", limit: null });
+    // The next minute's tick finds it 10.5 minutes silent, and stops it: within 10 to 11.
+    await stallSweepHandler(limitDeps(clockAhead(60_000)))(jobContext("session.stall-sweep", {}, logger));
+    expect(await outcomeOf(task)).toEqual({ task: "needs_you", reason: "stalled", session: "stopped", limit: "stall" });
+    const reached = await test.db.event.findFirstOrThrow({ where: { taskId: task.taskId, kind: "session.limit_reached" } });
+    const observed = z.looseObject({ limit: z.literal("stall"), observed: z.number() }).parse(reached.payload).observed;
+    expect(observed).toBeGreaterThanOrEqual(10);
+    expect(observed).toBeLessThanOrEqual(11);
+    expect(await stopCommands(task)).toEqual([expect.objectContaining({ reason: "runaway", sessionId: task.sessionId })]);
   });
 });
 
