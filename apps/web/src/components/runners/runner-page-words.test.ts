@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { poolChips, poolLines } from "./fleet-words";
 import { runnerActions } from "./runner-actions";
-import { consequenceLine, fingerprintShort, ownLabels, versionFix } from "./runner-page-words";
+import { consequenceLine, executorNote, fingerprintShort, ownLabels, versionFix } from "./runner-page-words";
 
 describe("a runner's page in words", () => {
   it("F-061/c3: a runner one minor behind gets the fix its install calls for; a current one none", () => {
@@ -27,6 +28,19 @@ describe("a runner's page in words", () => {
     expect(runnerActions({ state: "revoked", awaitingApproval: false }, true)).toEqual([]);
     expect(consequenceLine("online", 3, false)).toBe("Draining lets its 3 tasks finish and takes no new ones. Revoking stops them at once.");
     expect(consequenceLine("online", 1, false)).toBe("Draining lets its running task finish and takes no new one. Revoking stops it at once.");
+  });
+
+  it("F-116/c5: a kubernetes runner's page says plainly that its agent has direct internet access, as its pool's page does, and a docker runner's says nothing of it", () => {
+    // The Executor row's muted line, from the runner's `direct-internet-access` line (`runners.get`).
+    expect(executorNote(["direct-internet-access"])).toEqual([{ chip: false, text: "the agent has direct internet access" }]);
+    expect(executorNote([])).toEqual([]);
+    // A host runner's chip stays beside it, and the internet line is only kubernetes'.
+    expect(executorNote(["not-isolated"])).toEqual([{ chip: true, text: "not isolated" }]);
+    // The pool's page says why, and what stays blocked.
+    expect(poolLines(["direct-internet-access"])).toEqual([
+      { icon: "globe", text: "The agent has direct internet access: on kubernetes it shares the pod's network. Private ranges, the metadata address and other boxes stay blocked." },
+    ]);
+    expect(poolChips(["direct-internet-access"])).toEqual(["direct internet"]);
   });
 
   it("keeps the runner's own labels apart from the built-in ones", () => {

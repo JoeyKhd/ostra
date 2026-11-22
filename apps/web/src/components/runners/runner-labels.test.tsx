@@ -19,7 +19,7 @@ describe("a runner's isolation in the panel's words", () => {
     expect(textOf(renderToStaticMarkup(<RunnerKind runner={{ kind: "pool", executor: "docker", isolated: true }} />))).toBe("pool docker");
   });
 
-  it("F-015/c5: a host pool is labelled not isolated on the Runners page and its own, and a docker pool is not", () => {
+  it("F-015/c5, F-116/c3: a host pool, whose executor enforces no egress baseline, is labelled not isolated on the Runners page and its own, and a docker pool is not", () => {
     expect(poolChips(["not-isolated"])).toEqual(["not isolated"]);
     expect(poolLines(["not-isolated"])).toEqual([{ icon: "shield", text: "Not isolated: the agent runs as its own OS user on the runner's machine, not in a container." }]);
     // Its runners' rows say it too.

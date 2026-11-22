@@ -116,7 +116,7 @@ afterAll(async () => {
 });
 
 describe("the host executor", () => {
-  it("declares ADR 0029's allowed differences", () => {
+  it("F-116/c3: declares ADR 0029's allowed differences, isolation none among them: no box, so no egress baseline it could enforce", () => {
     expect(executor.capabilities).toEqual({
       isolation: "none",
       services: false,
