@@ -327,7 +327,7 @@ describe("authorization (ADR 0026, ADR 0035)", () => {
 });
 
 describe("two web processes on one database (ADR 0035)", () => {
-  it("give both viewers the same events in the same order, woken by NOTIFY with polling nearly off", async () => {
+  it("F-117/c1: two web processes on one database give both viewers the same events in the same order, woken by NOTIFY with polling nearly off", async () => {
     const second = createStreamHub({ db: harness.test.db, databaseUrl: harness.test.url, logger: silentLogger, pollMs: 60_000 });
     await second.start();
     try {
