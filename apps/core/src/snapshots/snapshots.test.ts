@@ -222,7 +222,7 @@ afterAll(async () => {
 });
 
 describe("snapshots (F-051)", () => {
-  it("F-051/c2,c4: a docker runner builds the snapshot over the protocol: the command, its credentials, its result", async () => {
+  it("F-051/c2,c4, F-050/c7: a docker runner builds the snapshot over the protocol: the command, its credentials (the setup secrets only), its result", async () => {
     const harness = await startGateway(
       test.db,
       test.url,

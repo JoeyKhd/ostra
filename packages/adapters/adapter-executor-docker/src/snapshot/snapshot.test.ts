@@ -83,7 +83,7 @@ const credentials: SnapshotCredentials = snapshotCredentialsSchema.parse({
 });
 
 describe("the snapshot's Dockerfile (F-051)", () => {
-  it("F-051/c1,c4: a two-repo environment with setup secrets: each checkout copied, the setup once per repo, each secret mounted for its own repo's step only and in no file", () => {
+  it("F-051/c1,c4, F-050/c7: a two-repo environment with setup secrets: each checkout copied, the setup once per repo, each secret mounted for its own repo's step only and in no file", () => {
     const planned = planSnapshotBuild({ snapshotId, projectId, environment: environment(), credentials, defaultBaseImage: "ghcr.io/ostra/base:0.0.0" });
     if (!planned.ok) throw new Error(planned.detail);
     const { dockerfile, contextFiles, secrets, scanFor } = planned.plan;
