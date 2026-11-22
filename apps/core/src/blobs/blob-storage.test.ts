@@ -19,6 +19,7 @@ import type { ServerSettings } from "@ostra/domain";
 import {
   APP_SCREENSHOT_CONTENT_TYPE,
   blobIdSchema,
+  blobUploadStartResponseSchema,
   boxIdSchema,
   connectionIdSchema,
   externalTicketIdSchema,
@@ -26,10 +27,12 @@ import {
   projectIdSchema,
   runnerConfigKeys,
   runnerEnvNames,
+  runnerHttpErrorSchema,
+  runnerPaths,
   sha256HexSchema,
   taskIdSchema,
 } from "@ostra/protocol";
-import type { BlobRef, BlobUploadPurpose, BoardId, ConnectionId, ExternalTicketId, RefineDraft, TaskId } from "@ostra/protocol";
+import type { BlobRef, BlobUploadPurpose, BlobUploadStartRequest, BoardId, ConnectionId, ExternalTicketId, RefineDraft, TaskId } from "@ostra/protocol";
 import { runnerServerLink } from "@ostra/runner";
 import type { ServerLink } from "@ostra/runner";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -316,7 +319,23 @@ describe("blob storage as an install runs it (F-114)", () => {
     const over = await fresh.blobs.startUpload(owner, { purpose: "session-archive", sha256: digest, size: 64 * MiB + 1, contentType: "application/gzip" });
     expect(over).toMatchObject({ ok: false, error: "too-large" });
     expect(!over.ok && over.message).toContain("over the cap of 64 MiB (OSTRA_BLOB_MAX_MIB)");
-    // And over the bulk path the task's lease goes on: the next upload works as before.
+    // Over the bulk path, the start as the runner's client sends it: taken at the cap, refused one
+    // byte over (the protocol's own cap, the same 64 MiB), and the task's lease goes on: the next
+    // upload works as before.
+    const startOverBulk = (size: number): Promise<Response> =>
+      fetch(`${urlOf(fresh)}${runnerPaths.taskBlobs(task.taskId)}`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${runnerToken()}`, "content-type": "application/json" },
+        body: JSON.stringify({ purpose: "session-archive", sha256: digest, size, contentType: "application/gzip", leaseEpoch: task.leaseEpoch } satisfies BlobUploadStartRequest),
+      });
+    const takenAtCap = await startOverBulk(64 * MiB);
+    expect(takenAtCap.status).toBe(200);
+    expect(blobUploadStartResponseSchema.parse(await takenAtCap.json())).toMatchObject({ receivedBytes: 0 });
+    const refusedOver = await startOverBulk(64 * MiB + 1);
+    expect(refusedOver.status).toBe(400);
+    const refusal = runnerHttpErrorSchema.parse(await refusedOver.json()).error;
+    expect(refusal.code).toBe("bad-request");
+    expect(refusal.message).toContain("a size over the blob cap is refused");
     const next = randomBytes(500);
     await expectKeptIn("postgres", (await upload(linkTo(urlOf(fresh), runnerToken), task, "session-archive", "application/gzip", next)).blobId, next);
   }, 120_000);
