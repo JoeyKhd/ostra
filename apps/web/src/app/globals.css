@@ -435,3 +435,21 @@
     box-shadow: 0 0 0 2px var(--bg), var(--dot-amber);
   }
 }
+
+/*
+ * A vendor's logo (models.dev's, served at `/model-logos/`) is a black mark: the dark theme inverts
+ * it to white (`invert`), and the light theme draws it as it is, black on the page (spend-keys.md's
+ * light picture). Outside a layer, so it wins over the `invert` utility; a dark preview inside a
+ * light page inverts again.
+ */
+[data-theme="light"] img.invert {
+  --tw-invert: invert(0%);
+}
+[data-theme="light"] [data-theme="dark"] img.invert {
+  --tw-invert: invert(100%);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) img.invert {
+    --tw-invert: invert(0%);
+  }
+}
