@@ -309,6 +309,9 @@ export const createHttpCarrier = (context: GatewayContext, session: CarrierSessi
       return;
     }
     const { after } = query.data;
+    // By seq alone, and never final: a command's result comes in an up batch, maybe after this
+    // poll, or on the runner's next connection when its batch was lost (ADR 0034, amended
+    // 2026-11-22), and `command-ack` records it and acts on it on an acked command too.
     await session.ackCommands(runner, after);
     let frames = await commandsAfter(runner, after);
     if (frames.length === 0) {

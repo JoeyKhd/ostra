@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
+import http from "node:http";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -13,7 +14,7 @@ import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
 import { postgresChangeNotices, postgresCommandOutbox, systemClock } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
-import { clientMessageIdSchema, projectIdSchema, segmentIdSchema, turnIdSchema } from "@ostra/protocol";
+import { clientMessageIdSchema, projectIdSchema, runnerPaths, segmentIdSchema, turnIdSchema } from "@ostra/protocol";
 import type { CommandOf, TaskEvent } from "@ostra/protocol";
 import { startConnection } from "@ostra/runner";
 import type { Carrier, CommandHandlers, FallbackReason, NetworkOptions, RunnerConnection, Transport } from "@ostra/runner";
@@ -26,7 +27,7 @@ import { startGateway } from "../testing/harness.ts";
 import type { GatewayHarness } from "../testing/harness.ts";
 import { seedLeasedTask, seedRunner } from "../testing/seed.ts";
 import type { LeasedTask } from "../testing/seed.ts";
-import type { RunnerRef } from "./context.ts";
+import type { AckedCommand, RunnerRef } from "./context.ts";
 
 // Milestone 5's ticket 18 (F-013, ADR 0034, "Networks"): the real runner connection
 // (`apps/runner`'s `startConnection`) falling back to core's real HTTP carrier (ticket 11) by
@@ -49,6 +50,8 @@ let corporateCa: TestCa;
 let serverCert: TestCert;
 let front: TlsFront;
 const cleanups: (() => Promise<void>)[] = [];
+/** Every command result core's hooks were given, as the dispatcher's acceptance of an offer is. */
+const answered: AckedCommand[] = [];
 
 // ---------- a TLS front for core, with the WebSocket's faults ----------
 
@@ -134,6 +137,76 @@ const startTlsFront = async (cert: TestCert, corePort: number): Promise<TlsFront
   return Object.assign(state, { port: typeof address === "object" && address !== null ? address.port : 0 });
 };
 
+// ---------- a plain HTTP front for core that drops an up batch ----------
+
+type DroppingFront = {
+  readonly url: string;
+  /** The up batches it dropped: their connection cut before core saw them, as a network does. */
+  dropped: number;
+  readonly close: () => Promise<void>;
+};
+
+/**
+ * Forwards every request to core, except the first `POST /up` carrying a command's result that
+ * `dropWhen` answers `true` for: its socket is cut before core reads it, and core never hears it.
+ */
+const startDroppingFront = async (target: string, dropWhen: () => Promise<boolean>): Promise<DroppingFront> => {
+  const upstream = new URL(target);
+  const sockets = new Set<net.Socket>();
+  const state: DroppingFront = {
+    url: "",
+    dropped: 0,
+    close: async () => {
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>((resolve) => {
+        server.close(() => {
+          resolve();
+        });
+      });
+    },
+  };
+  const server = http.createServer((request, response) => {
+    const chunks: Buffer[] = [];
+    request.on("data", (chunk: Buffer) => {
+      chunks.push(chunk);
+    });
+    request.on("end", () => {
+      void (async () => {
+        const body = Buffer.concat(chunks);
+        const carriesResult = request.method === "POST" && request.url === runnerPaths.httpUp && body.toString("utf8").includes(`"type":"command-ack"`);
+        if (carriesResult && state.dropped === 0 && (await dropWhen())) {
+          state.dropped += 1;
+          request.socket.destroy();
+          return;
+        }
+        const forwarded = http.request({ host: upstream.hostname, port: upstream.port, method: request.method, path: request.url, headers: request.headers }, (answer) => {
+          response.writeHead(answer.statusCode ?? 502, answer.headers);
+          answer.pipe(response);
+        });
+        forwarded.on("error", () => {
+          response.destroy();
+        });
+        // A held poll the runner gave up on ends at core too.
+        response.on("close", () => {
+          forwarded.destroy();
+        });
+        forwarded.end(body);
+      })();
+    });
+  });
+  server.on("connection", (socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
+  });
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      resolve();
+    });
+  });
+  const address = server.address();
+  return Object.assign(state, { url: `http://127.0.0.1:${String(typeof address === "object" && address !== null ? address.port : 0)}` });
+};
+
 beforeAll(async () => {
   test = await createTestDatabase();
   fixture = await seedIsolationFixture(test.db);
@@ -142,7 +215,18 @@ beforeAll(async () => {
   const logger = createLogger(() => undefined);
   liveText = createLiveTextWriter({ db: test.db, logger, intervalMs: 50 });
   const ingest = createIngest({ db: test.db, jobs, notices: postgresChangeNotices, clock: systemClock, liveText, logger });
-  core = await startGateway(test.db, test.url, { signingKey: randomBytes(32), hooks: { ingest, liveText: liveText.write }, timers: { longPollMs: 3_000 } });
+  core = await startGateway(test.db, test.url, {
+    signingKey: randomBytes(32),
+    hooks: {
+      ingest,
+      liveText: liveText.write,
+      onCommandResultsInTx: (_tx, _runner, results) => {
+        answered.push(...results);
+        return Promise.resolve();
+      },
+    },
+    timers: { longPollMs: 3_000 },
+  });
   serverCa = await makeTestCa("ostra test server CA");
   corporateCa = await makeTestCa("Example Corp inspection CA");
   serverCert = await issueTestCert(serverCa, [HOST, "localhost", "127.0.0.1"]);
@@ -206,6 +290,8 @@ const startRunner = async (input: {
   readonly transport?: Transport;
   readonly ref?: RunnerRef;
   readonly timers?: Parameters<typeof startConnection>[0]["timers"];
+  /** Another address for core than the TLS front's (a plain HTTP front). */
+  readonly serverUrl?: string;
 }): Promise<Runner> => {
   const ref = input.ref ?? (await seedRunner(test.db, fixture.a.organization.id, fixture.a.member.id));
   const dataDir = await mkdtemp(path.join(tmpdir(), "ostra-fallback-"));
@@ -213,7 +299,7 @@ const startRunner = async (input: {
   const steers: CommandOf<"steer">[] = [];
   const startedAt = Date.now();
   const connection = await startConnection({
-    serverUrl: SERVER_URL,
+    serverUrl: input.serverUrl ?? SERVER_URL,
     peer: { kind: "runner", runnerId: ref.runnerId },
     tokens: {
       get: () => {
@@ -433,4 +519,36 @@ describe("the runner's HTTP fallback", () => {
     expect(runner.carriers.map((each) => each.carrier)).toEqual(["http"]);
     expect(runner.connection.report().fallback).toBeNull();
   }, 30_000);
+
+  it("F-013/c4: over HTTP, a command's result in an up batch that never reached core goes again on the next connection, and core takes it though its down poll had acked the command", async () => {
+    const ref = await seedRunner(test.db, fixture.a.organization.id, fixture.a.member.id);
+    const task = await seedLeasedTask(test.db, ref, projectIdSchema.parse(fixture.a.openProject.id), { state: "running" });
+    const steerRow = () => test.db.command.findFirst({ where: { runnerId: ref.runnerId, kind: "steer" }, select: { id: true, ackedAt: true, result: true } });
+    // The batch with the steer's result is cut once core has acked the steer by the next down
+    // poll's `after`, with no result: the order a lost up batch leaves.
+    const dropping = await startDroppingFront(core.url, async () => {
+      try {
+        await until("the steer acked by the down poll", async () => (await steerRow())?.ackedAt instanceof Date, 10_000);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    cleanups.push(() => dropping.close());
+    const runner = await startRunner({ network: { proxyEnv: {} }, ref, transport: "http", serverUrl: dropping.url });
+    await until("on HTTP", onHttp(runner), 15_000);
+    await steer(runner, task, "use the staging config");
+    await until("the steer", () => runner.steers.length === 1, 5_000);
+    await until("the dropped batch", () => dropping.dropped === 1, 15_000);
+    expect(await steerRow()).toMatchObject({ result: null });
+
+    // The connection went with the batch. The next one's welcome sends the kept result first, and
+    // core records it, and its hooks act on it (as on a dispatch's `accepted`), though acked already.
+    await until("the steer's result", async () => (await steerRow())?.result === "done", 15_000);
+    const row = await steerRow();
+    expect(answered.filter((each) => each.commandId === row?.id).map((each) => each.result)).toEqual(["done"]);
+    // Applied once, on a second HTTP connection.
+    expect(runner.steers).toHaveLength(1);
+    expect(runner.carriers.map((each) => each.carrier)).toEqual(["http", "http"]);
+  }, 45_000);
 });

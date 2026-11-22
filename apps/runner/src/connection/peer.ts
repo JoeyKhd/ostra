@@ -604,6 +604,22 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
     }
   };
 
+  /**
+   * The results in frames that went up on a connection that ended before the server took them: an
+   * HTTP batch with no answer, and what waited behind it. A result is the only answer to its
+   * command (on HTTP the down poll acks a command by seq alone), so they go again first on the next
+   * connection's welcome (ADR 0034, amended 2026-11-22). The server applies a result once by its
+   * command, so one that did arrive and goes again changes nothing.
+   */
+  const keepUnanswered = (frames: readonly UpFrame[]): void => {
+    const kept = frames.flatMap((frame) => (frame.type === "command-ack" ? frame.results : []));
+    if (kept.length === 0) {
+      return;
+    }
+    const ids = new Set(kept.map((item) => item.id));
+    unsentResults = [...kept, ...unsentResults.filter((item) => !ids.has(item.id))].slice(-runnerLimits.ackResultsMax);
+  };
+
   const flushLiveText = (): void => {
     if (!ready) {
       return;
@@ -1054,6 +1070,8 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
   const runHttp = async (wsRetryAt: number): Promise<End> => {
     const abort = new AbortController();
     const outbox: UpFrame[] = [];
+    /** The up batch in flight, until the server answers it with its frames. */
+    let sending: readonly UpFrame[] = [];
     let wake: (() => void) | undefined;
     const poke = (): void => {
       const resolve = wake;
@@ -1082,6 +1100,11 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
       if (link === httpLink) {
         link = undefined;
       }
+      // A batch the server never answered was dropped with this connection, and with it any
+      // command's result: kept for the next one. Its events go again from their spools, and the
+      // status and the runner's own events on every welcome, as on the WebSocket.
+      keepUnanswered([...sending, ...outbox]);
+      sending = [];
       abort.abort();
       poke();
     };
@@ -1122,8 +1145,11 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
     };
     const isEnd = (value: HttpAnswer | End): value is End => "kind" in value;
 
-    /** The answer's frames, each handled in turn; `false` once the connection ended. */
-    const take = async (answer: HttpAnswer, what: string): Promise<boolean> => {
+    /**
+     * The answer's frames, each handled in turn; `false` once the connection ended. `onTaken`: the
+     * server's own answer came, so it took the request.
+     */
+    const take = async (answer: HttpAnswer, what: string, onTaken?: () => void): Promise<boolean> => {
       lastContact = now();
       const read = readAnswer(answer, conn.welcomed ? minor : ownMinor);
       if (answer.status === 204 && read.kind === "empty") {
@@ -1133,6 +1159,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
         finish(httpEndOf(answer, read, conn.welcomed, what));
         return false;
       }
+      onTaken?.();
       for (const frame of read.frames) {
         if (conn.ended !== undefined) {
           return false;
@@ -1208,6 +1235,7 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
             });
             continue;
           }
+          const batch: UpFrame[] = [];
           const encoded: unknown[] = [];
           let bytes = 0;
           while (outbox.length > 0 && encoded.length < 512) {
@@ -1221,15 +1249,20 @@ export const startConnection = async (options: ConnectionOptions): Promise<Runne
               break;
             }
             outbox.shift();
+            batch.push(next);
             encoded.push(value);
             bytes += size;
           }
+          sending = batch;
           const answer = await call("POST", runnerPaths.httpUp, JSON.stringify({ frames: encoded }), UP_TIMEOUT_MS);
           if (isEnd(answer)) {
             finish(answer);
             return;
           }
-          if (!(await take(answer, "an up batch"))) {
+          const taken = await take(answer, "an up batch", () => {
+            sending = [];
+          });
+          if (!taken) {
             return;
           }
         }
