@@ -21,7 +21,8 @@ import { dispatchPayload, seedQueuedTask } from "./testing/world.ts";
 import type { QueuedTask, World } from "./testing/world.ts";
 
 // Ticket 38 (F-048, F-046): the failure suite's cases that need core's own processes and the fakes,
-// run by `pnpm e2e:m2:failures` (OSTRA_FAILURE_SUITE=1) and skipped otherwise, so CI stays quick.
+// run by `pnpm e2e:m2:failures` and by the Proof workflow's `failure-cases` job at the launch gate
+// (OSTRA_FAILURE_SUITE=1), and skipped otherwise, so CI stays quick.
 //
 // - **Spike 8's three kill points, with a survivor.** Two replicas of core share one database. The
 //   first holds the job and is killed with SIGKILL before the job's side effect, after it and
@@ -188,7 +189,7 @@ const oneOfEach = (issueId: IssueId, movesBefore: number): void => {
 
 describe.runIf(enabled)("spike 8's three kill points, with a survivor (F-048, F-046)", () => {
   for (const point of ["open-pull-requests.before", "open-pull-requests.answered"] as const) {
-    it(`task.open-pull-requests: a replica killed at ${point}; the survivor opens one PR`, async () => {
+    it(`F-048/c2: task.open-pull-requests: a replica killed at ${point}; the survivor opens one PR`, async () => {
       const victim = await startReplica(point);
       await runner.connect(victim.url);
       const task = await acceptedTask();
@@ -209,7 +210,7 @@ describe.runIf(enabled)("spike 8's three kill points, with a survivor (F-048, F-
     }, 300_000);
   }
 
-  it("task.open-pull-requests: a replica killed after the job completed; the survivor does nothing again", async () => {
+  it("F-048/c2: task.open-pull-requests: a replica killed after the job completed; the survivor does nothing again", async () => {
     const holder = await startReplica(null);
     await runner.connect(holder.url);
     const task = await acceptedTask();

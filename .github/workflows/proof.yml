@@ -1,7 +1,8 @@
 name: Proof
 
 # The checks CI doesn't run: apps/web's Playwright e2e suite, milestone 6's Linear rehearsal (a load
-# check), the docs' commands, and milestone 5's live jobs on Linux with Docker, on kind and on macOS
+# check), the failure suite's kill points and schedule hunt on the fakes (F-048), the docs' commands,
+# and milestone 5's live jobs on Linux with Docker, on kind and on macOS
 # (ticket 35, ADR 0061). It runs once, at the launch gate, with the security review and the load
 # test: the lead dispatches it on the maintainer's word (`gh workflow run Proof -f jobs=all`), and
 # never while building (the maintainer, 2026-11-21: "they slow things down a lot"). Never on push,
@@ -10,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       jobs:
-        description: "Which jobs: all, panel (e2e with the Linear rehearsal, docs commands) or fleet (the live Docker, kind and macOS jobs)"
+        description: "Which jobs: all, panel (e2e with the Linear rehearsal, the failure cases on the fakes, docs commands) or fleet (the live Docker, kind and macOS jobs)"
         type: choice
         default: all
         options: [all, panel, fleet]
@@ -92,6 +93,48 @@ jobs:
           path: |
             apps/web/playwright-report/
             apps/web/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # F-048/c2 (milestone 2's ticket 38, milestone 6's ticket 37): the failure suite's cases that need
+  # only core's own processes and the fakes. Spike 8's three kill points of a job, with two replicas
+  # of core on one embedded Postgres and the one holding the job killed before its side effect, after
+  # it, and after the job completed, on a fake GitHub that counts the PR creates per head branch and a
+  # fake Linear that counts its mutations, then a retry after a write committed (about 3 minutes);
+  # then F-106's schedule hunt beside pg-boss's own cron as its control (about 17 minutes). Both skip
+  # themselves in ci.yml's `pnpm test`, for their length, and run here.
+  failure-cases:
+    if: inputs.jobs != 'fleet'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - id: generate
+        run: pnpm turbo run generate
+
+      - env:
+          OSTRA_FAILURE_SUITE: "1"
+        run: set -o pipefail; pnpm --filter @ostra/core exec vitest run src/failure-suite.test.ts 2>&1 | tee failure-cases.log
+      # The hunt runs whatever the kill points did.
+      - if: ${{ !cancelled() && steps.generate.outcome == 'success' }}
+        env:
+          OSTRA_SCHEDULE_HUNT: "1"
+          OSTRA_SCHEDULE_HUNT_LOG: ${{ runner.temp }}/schedule-hunt.log
+        run: set -o pipefail; pnpm --filter @ostra/core exec vitest run src/schedule-hunt.test.ts 2>&1 | tee -a failure-cases.log
+
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: failure-cases
+          path: |
+            failure-cases.log
+            ${{ runner.temp }}/schedule-hunt.log
           retention-days: 14
           if-no-files-found: ignore
 

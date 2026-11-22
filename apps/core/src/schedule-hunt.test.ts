@@ -18,8 +18,9 @@ import { seedRestartWorld } from "./testing/restart-world.ts";
 import { runScheduleHunt } from "./testing/schedule-hunt.ts";
 import type { HuntResult } from "./testing/schedule-hunt.ts";
 
-// Ticket 37 (F-106, F-048): the schedule hunt, run by `pnpm e2e:schedule-hunt` and the failure
-// suite (OSTRA_SCHEDULE_HUNT=1) and skipped otherwise, so CI stays quick. Two things run side by
+// Ticket 37 (F-106, F-048): the schedule hunt, run by `pnpm e2e:schedule-hunt`, the failure suite
+// and the Proof workflow's `failure-cases` job at the launch gate (OSTRA_SCHEDULE_HUNT=1), and
+// skipped otherwise, so CI stays quick. Two things run side by
 // side, each on a database of its own:
 //
 // - **The hunt** (`testing/schedule-hunt.ts`): 200 automations on ostra's scheduler tick, three core
@@ -99,7 +100,7 @@ afterAll(async () => {
 
 describe.runIf(enabled)("the schedule hunt (F-106, F-048)", () => {
   it(
-    "F-106: every (automation, occurrence) pair starts exactly once with every replica but one killed at the work, and pg-boss's own cron, hunted the same way, doesn't",
+    "F-106, F-048/c2: every (automation, occurrence) pair starts exactly once with every replica but one killed at the work, and pg-boss's own cron, hunted the same way, doesn't",
     async () => {
       const queue = jobs;
       if (queue === null) throw new Error("the queue");
