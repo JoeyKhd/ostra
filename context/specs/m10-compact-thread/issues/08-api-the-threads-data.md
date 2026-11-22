@@ -43,6 +43,7 @@ What the panel's new parts read that `tasks.get` doesn't give yet. Everything el
 - **`capabilities.questionFreeText`** reads the adapter's own declaration, not a hand list in the domain as `steersMidTurn` does: OpenCode's `questionFreeText` moved to `@ostra/adapter-opencode/question-free-text` (a constant, as `prompt-images` is), which the adapter and `packages/api/src/services/agent-questions.ts` both read; an agent no adapter declares is `false`. Like `steersMidTurn`, it's the newest session's profile's agent, else the project's default.
 - **c9:** the two existing box tests in `task-ticket.test.ts` are named `F-151/c9` and kept; the released box's now also checks `releasedAt`.
 - **The web:** only `task-properties.test.tsx`'s fixture gains `review: null` and `questionFreeText: false`. Nothing draws the new fields yet (tickets 13 to 16).
+- **Commit:** `b8c4961d` (`✨ give the thread its CI jobs and review figures`).
 - **Tests:** `packages/api/src/routers/approvals-plans.test.ts` (c5: the router to the use case, the refusals, an agent without the capability, another organization and a restricted project), `thread-data.test.ts` (c6, c7, and who sees them on `tasks.get` and the board), `task-ticket.test.ts` (c9). Checks: typecheck, lint and tests of `@ostra/api`, `@ostra/web` and `@ostra/adapter-opencode`.
 
 **For later tickets:**
