@@ -6,7 +6,8 @@ import { boxNames, boxSelector, buildEgressPolicy, KubernetesExecutor } from "@o
 import type { KubernetesExecutorOptions } from "@ostra/adapter-executor-kubernetes";
 import { startFakeCluster } from "@ostra/adapter-executor-kubernetes/testing";
 import type { FakeCluster } from "@ostra/adapter-executor-kubernetes/testing";
-import { silentLogger } from "@ostra/adapter-sdk";
+import { createLogger, silentLogger } from "@ostra/adapter-sdk";
+import type { LogRecord } from "@ostra/adapter-sdk";
 import { startGitUpstream } from "@ostra/adapter-sdk/testing";
 import type { GitUpstream } from "@ostra/adapter-sdk/testing";
 import { startFakeOciRegistry } from "@ostra/adapter-sdk/testing/net";
@@ -213,53 +214,62 @@ describe("kubernetes boxes from the runner (ticket 20)", () => {
     expect(dispatcher.status().running).toEqual([]);
   }, 30_000);
 
-  it("F-047/c1: a pod lost under its task, by its sidecar killed or the pod deleted or failed by someone else, is reported lost; a sidecar that ends its task, and a release, report nothing", async () => {
-    const { cluster, events, make } = await setup(false);
-    const dispatcher = make();
-    const lost = (): TaskEvent[] => events.filter((event) => event.kind === "box.lost");
-    /** A box of its own, made and ready: its pod's name. */
-    const readyBox = async (id: string, on: KubernetesDispatcher = dispatcher): Promise<string> => {
-      expect(await on.handlers.dispatch(commandOf("dispatch", 1, { taskId: spec.taskId, sessionId: spec.sessionId, boxId: boxIdSchema.parse(id), leaseEpoch: spec.leaseEpoch }))).toEqual({ result: "accepted" });
-      const pod = boxNames({ taskId: spec.taskId, boxId: boxIdSchema.parse(id) }).pod;
-      await until(async () => {
-        const read = await cluster.kube.readPod(NS, pod);
-        return read.ok && read.value?.ready === true;
-      }, `the ready pod of ${id}`);
-      return pod;
+  describe("a pod lost under its task (F-047)", () => {
+    /**
+     * A dispatcher whose log says when its box runs, and a box of its own: once the dispatcher saw
+     * its sidecar ready, as it watches a running task's pod. A pod that ends before then is the
+     * dispatch's to fail, not a task's to lose. Answers the pod's name.
+     */
+    const lostBench = async () => {
+      const records: LogRecord[] = [];
+      const bench = await setup(false, "https://ostra.example", { logger: createLogger((record) => records.push(record)) });
+      const lost = (): TaskEvent[] => bench.events.filter((event) => event.kind === "box.lost");
+      const runningBox = async (on: KubernetesDispatcher, id: string): Promise<string> => {
+        expect(await on.handlers.dispatch(commandOf("dispatch", 1, { taskId: spec.taskId, sessionId: spec.sessionId, boxId: boxIdSchema.parse(id), leaseEpoch: spec.leaseEpoch }))).toEqual({ result: "accepted" });
+        await until(() => records.some((record) => record.message === "the box's sidecar is ready" && record.fields["boxId"] === id), `the running box ${id}`);
+        return boxNames({ taskId: spec.taskId, boxId: boxIdSchema.parse(id) }).pod;
+      };
+      return { ...bench, lost, runningBox };
     };
 
-    // The sidecar ends its own task: exit 0, and the runner says nothing.
-    cluster.fake.exitContainer(NS, await readyBox("box-k8s-ends"), "sidecar", 0);
-    await Promise.all(dispatcher.boxes());
-    expect(lost()).toEqual([]);
+    it("F-047/c1: a pod whose sidecar is killed mid-task is reported lost with its exit code; one whose sidecar ends its task reports nothing", async () => {
+      const { cluster, make, lost, runningBox } = await lostBench();
+      const dispatcher = make();
+      cluster.fake.exitContainer(NS, await runningBox(dispatcher, "box-k8s-ends"), "sidecar", 0);
+      await Promise.all(dispatcher.boxes());
+      expect(lost()).toEqual([]);
+      cluster.fake.exitContainer(NS, await runningBox(dispatcher, "box-k8s-killed"), "sidecar", 137);
+      await Promise.all(dispatcher.boxes());
+      expect(lost()).toEqual([{ kind: "box.lost", boxId: "box-k8s-killed", exitCode: 137 }]);
+      expect(await readdir(path.join(root, "runner", "kubernetes-boxes"))).toEqual([]);
+    }, 60_000);
 
-    // Its sidecar is killed mid-task: exit 137, reported lost, and the pod released.
-    cluster.fake.exitContainer(NS, await readyBox("box-k8s-killed"), "sidecar", 137);
-    await Promise.all(dispatcher.boxes());
-    expect(lost()).toEqual([{ kind: "box.lost", boxId: "box-k8s-killed", exitCode: 137 }]);
+    it("F-047/c1: a pod deleted under its task by someone else (a drained node, a person's kubectl) is reported lost with no exit code; a release reports nothing", async () => {
+      const { cluster, make, lost, runningBox } = await lostBench();
+      const dispatcher = make();
+      expect((await cluster.kube.deletePod(NS, await runningBox(dispatcher, "box-k8s-deleted"), 0)).ok).toBe(true);
+      await Promise.all(dispatcher.boxes());
+      expect(lost()).toEqual([{ kind: "box.lost", boxId: "box-k8s-deleted", exitCode: null }]);
+      // A release ends a box with nothing lost: core asked for it.
+      await runningBox(dispatcher, "box-k8s-released");
+      expect(await dispatcher.handlers.release(commandOf("release", 2, { taskId: spec.taskId, boxId: boxIdSchema.parse("box-k8s-released"), reason: "prs-closed" }))).toEqual({ result: "done" });
+      await Promise.all(dispatcher.boxes());
+      expect(lost()).toHaveLength(1);
+    }, 60_000);
 
-    // The pod is deleted under its task (a node drained, a person's kubectl): no exit code.
-    const deleted = await readyBox("box-k8s-deleted");
-    expect((await cluster.kube.deletePod(NS, deleted, 0)).ok).toBe(true);
-    await Promise.all(dispatcher.boxes());
-    expect(lost().slice(1)).toEqual([{ kind: "box.lost", boxId: "box-k8s-deleted", exitCode: null }]);
-
-    // A release ends a box with nothing lost: core asked for it.
-    await readyBox("box-k8s-released");
-    expect(await dispatcher.handlers.release(commandOf("release", 2, { taskId: spec.taskId, boxId: boxIdSchema.parse("box-k8s-released"), reason: "prs-closed" }))).toEqual({ result: "done" });
-    await Promise.all(dispatcher.boxes());
-    expect(lost()).toHaveLength(2);
-
-    // The runner is away when a pod's sidecar fails: the next start reports it as it adopts its boxes.
-    const away = await readyBox("box-k8s-away");
-    dispatcher.detach();
-    cluster.fake.exitContainer(NS, away, "sidecar", 1);
-    const next = make();
-    expect(await next.adopt()).toBe(0);
-    await Promise.all(next.boxes());
-    expect(lost().slice(2)).toEqual([{ kind: "box.lost", boxId: "box-k8s-away", exitCode: 1 }]);
-    expect(await readdir(path.join(root, "runner", "kubernetes-boxes"))).toEqual([]);
-  }, 60_000);
+    it("F-047/c1: a pod whose sidecar fails while its runner is away is reported lost by the next start, as it adopts its boxes", async () => {
+      const { cluster, make, lost, runningBox } = await lostBench();
+      const first = make();
+      const away = await runningBox(first, "box-k8s-away");
+      first.detach();
+      cluster.fake.exitContainer(NS, away, "sidecar", 1);
+      const next = make();
+      expect(await next.adopt()).toBe(0);
+      await Promise.all(next.boxes());
+      expect(lost()).toEqual([{ kind: "box.lost", boxId: "box-k8s-away", exitCode: 1 }]);
+      expect(await readdir(path.join(root, "runner", "kubernetes-boxes"))).toEqual([]);
+    }, 60_000);
+  });
 
   it("F-015/c3,c4, F-093: the box's sidecar connects on the task token from its mounted file, and stays connected while the runner restarts and adopts its pod", async () => {
     server = await startFakeServer();
