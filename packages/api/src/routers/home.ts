@@ -43,14 +43,14 @@ export const startOfMonth = (now: number): number => {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1);
 };
 
-/** A model's price for a session's tokens, in US dollars. `null` when the model has no price. */
-export const sessionCost = (
-  tokens: { readonly inputTokens: number; readonly outputTokens: number },
-  price: { readonly input: number | null; readonly output: number | null } | undefined,
-): number | null => {
-  if (price === undefined || price.input === null || price.output === null) return null;
-  return (tokens.inputTokens * price.input + tokens.outputTokens * price.output) / 1_000_000;
-};
+/**
+ * A month's spend in US dollars, from the sum of its `SpendDaily` rows: the key proxy's count of
+ * each call, priced on its four kinds at the serving provider's own model row (F-089, F-135, ADR
+ * 0055), as the Spend page and the budgets read it. `null` when nothing was counted, or only calls
+ * whose model has no price.
+ */
+export const monthSpend = (sum: { readonly spentMicroUsd: bigint; readonly unpricedTokens: bigint } | undefined): number | null =>
+  sum === undefined || (sum.spentMicroUsd === 0n && sum.unpricedTokens > 0n) ? null : Number(sum.spentMicroUsd) / 1_000_000;
 
 /** Counts per day for the last `days` UTC days, oldest first, today last. */
 export const countByDay = (times: readonly number[], now: number, days: number): { readonly day: number; readonly count: number }[] => {
@@ -85,7 +85,7 @@ export const homeRouter = router({
     const ids: ProjectId[] = visible.map((project) => project.id);
     const nameOf = new Map(visible.map(({ row }) => [row.id, row.name] as const));
 
-    const [counts, prEntries, sessions, auditRows, needsYou, mergedRows, firstPrRows, budget] = await Promise.all([
+    const [counts, prEntries, spendRows, auditRows, needsYou, mergedRows, firstPrRows, budget] = await Promise.all([
       db.task.groupBy({
         by: ["projectId", "state"],
         where: { organizationId, projectId: { in: ids }, state: { in: ["queued", "preparing", "running", "needs_you"] } },
@@ -95,9 +95,11 @@ export const homeRouter = router({
         where: { organizationId, projectId: { in: ids }, action: "pr.opened", createdAt: { gte: weekAgo } },
         select: { projectId: true, data: true, createdAt: true },
       }),
-      db.session.findMany({
-        where: { organizationId, projectId: { in: ids }, startedAt: { gte: new Date(startOfMonth(now)) } },
-        select: { projectId: true, inputTokens: true, outputTokens: true, agentProfileId: true },
+      // This month's spend per project, from the one rollup the Spend page and the budgets read (F-037).
+      db.spendDaily.groupBy({
+        by: ["projectId"],
+        where: { organizationId, projectId: { in: ids }, day: { gte: new Date(startOfMonth(now)) } },
+        _sum: { spentMicroUsd: true, unpricedTokens: true },
       }),
       db.auditEntry.findMany({
         where: { organizationId, action: { in: [...activityActions] }, OR: [{ projectId: null }, { projectId: { in: ids } }] },
@@ -125,24 +127,15 @@ export const homeRouter = router({
         .filter((row) => (projectId === null || row.projectId === projectId) && states.includes(row.state))
         .reduce((sum, row) => sum + row._count._all, 0);
 
-    // ---- spend: the key proxy's token counts at the model's catalog price (F-084, F-089) ----
-    const profileIds = [...new Set(sessions.flatMap((session) => (session.agentProfileId === null ? [] : [session.agentProfileId])))];
-    const profiles = await db.agentProfile.findMany({
-      where: { organizationId, id: { in: profileIds } },
-      select: { id: true, model: { select: { inputPricePerMTok: true, outputPricePerMTok: true } } },
-    });
-    const toPrice = (value: { toNumber: () => number } | null | undefined): number | null => (value === null || value === undefined ? null : value.toNumber());
-    const priceOf = new Map(
-      profiles.map((profile) => [profile.id, { input: toPrice(profile.model?.inputPricePerMTok), output: toPrice(profile.model?.outputPricePerMTok) }] as const),
-    );
+    // ---- spend: this month's `SpendDaily`, the key proxy's counts as ingest priced them (F-084, F-089, F-135) ----
     const spendOf = (projectId: string | null): number | null => {
-      let total: number | null = null;
-      for (const session of sessions) {
-        if (projectId !== null && session.projectId !== projectId) continue;
-        const cost = sessionCost(session, session.agentProfileId === null ? undefined : priceOf.get(session.agentProfileId));
-        if (cost !== null) total = (total ?? 0) + cost;
-      }
-      return total;
+      const rows = spendRows.filter((row) => projectId === null || row.projectId === projectId);
+      return rows.length === 0
+        ? null
+        : monthSpend({
+            spentMicroUsd: rows.reduce((sum, row) => sum + (row._sum.spentMicroUsd ?? 0n), 0n),
+            unpricedTokens: rows.reduce((sum, row) => sum + (row._sum.unpricedTokens ?? 0n), 0n),
+          });
     };
 
     // ---- PRs opened: the `pr.opened` audit entries, a reused PR not counted twice ----
