@@ -16,6 +16,8 @@ export const killPointNames = [
   "ingest.batch-committed",
   /** A `dispatch` committed to the outbox, before the runner acked it. */
   "dispatch.offered",
+  /** Inside a runner's `command-ack` transaction, its results applied, before it commits: the runner applied the command, and core never hears its answer. */
+  "command-ack.open",
   /** Inside `webhook.process`, after its handler acted and before the delivery is marked. */
   "webhook.process",
   /** Inside `ticket.sync`, before the tracker is called (ticket 38: spike 8's first kill point). */

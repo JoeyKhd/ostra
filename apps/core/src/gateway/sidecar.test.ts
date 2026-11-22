@@ -34,6 +34,7 @@ import { FakeCodeHost, FakeModelProvider, FakeSecretStore } from "../testing/fak
 import { connectPeer } from "../testing/fake-peer.ts";
 import type { FakePeer } from "../testing/fake-peer.ts";
 import { postJson, startGateway } from "../testing/harness.ts";
+import { waitFor } from "../testing/restart.ts";
 import type { GatewayHarness } from "../testing/harness.ts";
 import { runnerEvent } from "../testing/seed.ts";
 import { dispatchPayload, seedOnlineRunner, seedQueuedTask, seedWorld } from "../testing/world.ts";
@@ -304,6 +305,46 @@ describe("the task token", () => {
     expect((await credentialsOf(hosted, runnerToken(laptop.runnerId))).status).toBe(200);
     // A host lease has no sidecar, so no task token.
     expect((await postJson(`${harness.url}${runnerPaths.taskToken(hosted.taskId)}`, { leaseEpoch: 1 }, runnerToken(laptop.runnerId))).status).toBe(400);
+  });
+
+  it("F-043/c1: a command the sidecar applied whose ack never reached core is sent again at its next hello, and its answer is kept", async () => {
+    const task = await boxedTask();
+    const token = await taskTokenFor(task);
+    const first = await sidecar(task, token);
+    // An interrupt: a box's command whose answer leaves the lease as it is.
+    await test.db.$transaction((tx) =>
+      postgresCommandOutbox.enqueueInTx(tx, task.organizationId, poolRunner, {
+        kind: "interrupt",
+        body: { sessionId: task.sessionId },
+        notAfter: Date.now() + 60_000,
+        task: { taskId: task.taskId, projectId: projectIdSchema.parse(task.projectId) },
+      }),
+    );
+    const interrupt = await first.next("command");
+    expect(interrupt).toMatchObject({ kind: "interrupt", seq: 1 });
+    // The sidecar applied it, and the connection went before its ack reached core.
+    first.close();
+    await first.closed;
+    const ids = { peer: { kind: "sidecar" as const, taskId: task.taskId, boxId: task.boxId, leaseEpoch: task.leaseEpoch } };
+    const again = await connectPeer(harness.url, token, poolRunner, { ...ids, lastCommandSeq: 1 });
+    peers.push(again);
+    await again.next("welcome");
+    expect(await again.next("command")).toMatchObject({ kind: "interrupt", seq: 1, id: interrupt.id });
+    const row = () => test.db.sidecarCommand.findUniqueOrThrow({ where: { id: interrupt.id } });
+    expect(await row()).toMatchObject({ ackedAt: null, result: null });
+    // Its answer, the result the sidecar kept, is recorded as any other.
+    again.send({ type: "command-ack", upTo: 1, results: [{ id: interrupt.id, seq: 1, result: "done" }] });
+    await waitFor("the interrupt's answer", async () => (await row()).result !== null);
+    expect((await row()).ackedAt).not.toBeNull();
+
+    // Once answered, a hello from the same seq sends nothing again.
+    again.close();
+    await again.closed;
+    const third = await connectPeer(harness.url, token, poolRunner, { ...ids, lastCommandSeq: 1 });
+    peers.push(third);
+    await third.next("welcome");
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(third.frames.filter((frame) => frame.type === "command")).toEqual([]);
   });
 
   it("F-015/c3: a second connection of a box evicts the first with 4409", async () => {

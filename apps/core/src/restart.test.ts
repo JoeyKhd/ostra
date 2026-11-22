@@ -199,6 +199,42 @@ describe("a server killed mid-flight (F-043)", () => {
     }
   }, budget(150_000));
 
+  it(`F-043/c1: takes a dispatch's acceptance once when killed before the runner's answer committed, ${IN_A_ROW}`, async () => {
+    for (let run = 0; run < RUNS; run += 1) {
+      await armed("command-ack.open");
+      const task = await dispatchedTask();
+      // The runner accepts the offer, and core dies inside the answer's transaction: the runner
+      // applied the dispatch, and core never heard that it was accepted.
+      await waitFor("core to die at its kill point", () => core?.dead() ?? true, 120_000);
+      const [commandId, ...others] = await dispatchCommands(task);
+      if (commandId === undefined) {
+        throw new Error("no dispatch command");
+      }
+      expect(others).toEqual([]);
+      expect(runner.applied.get(commandId)).toBe(1);
+      expect(await test.db.command.findUniqueOrThrow({ where: { id: commandId } })).toMatchObject({ ackedAt: null, result: null });
+      // The runner says at its hello that it applied the dispatch: core sends it again, and the
+      // runner answers with the result it kept, never applying it twice.
+      await restartAfterKill();
+      await accepted(task);
+      const queue = jobs;
+      if (queue === null) {
+        throw new Error("the queue");
+      }
+      await waitFor(
+        "the dispatch job to finish",
+        async () => (await queue.find("task.dispatch", dispatchPayload(task))).some((job) => job.state === "completed"),
+        90_000,
+      );
+      expect(await test.db.command.findUniqueOrThrow({ where: { id: commandId } })).toMatchObject({ result: "accepted" });
+      expect(runner.received.get(commandId)?.times).toBe(2);
+      expect(runner.applied.get(commandId)).toBe(1);
+      expect(await dispatchCommands(task)).toEqual([commandId]);
+      expect(await test.db.lease.count({ where: { taskId: task.taskId } })).toBe(1);
+      expect((await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).leaseEpoch).toBe(1);
+    }
+  }, budget(150_000));
+
   it(`acts on a webhook once when killed inside webhook.process, ${IN_A_ROW}`, async () => {
     for (let run = 0; run < RUNS; run += 1) {
       const issue = await linear.createIssue({ title: `A ticket for run ${String(run)}` });

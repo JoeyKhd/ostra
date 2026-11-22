@@ -144,7 +144,14 @@ export const createSidecars = (context: GatewayContext): Sidecars => {
   // ---------- hello ----------
 
   type HelloOutcome =
-    | { readonly ok: true; readonly connectionEpoch: number; readonly minor: number; readonly acks: readonly Ack[] }
+    | {
+        readonly ok: true;
+        readonly connectionEpoch: number;
+        readonly minor: number;
+        readonly acks: readonly Ack[];
+        /** The seq the box's commands go on after: the sidecar's last applied, or one below the first whose answer never came. */
+        readonly sendAfter: number;
+      }
     | { readonly ok: false; readonly error: ErrorFrame; readonly close: number };
 
   const acceptHello = async (lease: SidecarLease, hello: Hello): Promise<HelloOutcome> => {
@@ -183,9 +190,17 @@ export const createSidecars = (context: GatewayContext): Sidecars => {
       const connectionEpoch = epochRowSchema.parse(epochs[0]).sidecarConnectionEpoch;
       // Every other replica closes an older connection of this box (4409).
       await notifyRunnerInTx(tx, { kind: "sidecar-connected", boxId: lease.boxId, connectionEpoch });
-      // What the sidecar says it applied is acked.
-      await tx.sidecarCommand.updateMany({
+      // What the sidecar says it applied is acked, but for a command whose ack never reached core:
+      // it and those after it are sent again, and the sidecar answers each it applied with the
+      // result it kept, as a runner does (`connections.ts`, F-043).
+      const unanswered = await tx.sidecarCommand.findFirst({
         where: { boxId: lease.boxId, organizationId: lease.organizationId, seq: { lte: hello.lastCommandSeq }, ackedAt: null },
+        orderBy: { seq: "asc" },
+        select: { seq: true },
+      });
+      const sendAfter = unanswered === null ? hello.lastCommandSeq : unanswered.seq - 1;
+      await tx.sidecarCommand.updateMany({
+        where: { boxId: lease.boxId, organizationId: lease.organizationId, seq: { lte: sendAfter }, ackedAt: null },
         data: { ackedAt: new Date(now()) },
       });
       const sessionIds = hello.sessions.map((session) => session.sessionId);
@@ -198,7 +213,7 @@ export const createSidecars = (context: GatewayContext): Sidecars => {
             });
       const acks = cursors.map((cursor): Ack => ({ type: "ack", sessionId: sessionIdSchema.parse(cursor.id), upTo: cursor.ingestedSeq }));
       await hooks.onSidecarConnectedInTx(tx, lease);
-      return { stale: false as const, connectionEpoch, acks };
+      return { stale: false as const, connectionEpoch, acks, sendAfter };
     });
     if (outcome.stale) {
       return {
@@ -212,7 +227,7 @@ export const createSidecars = (context: GatewayContext): Sidecars => {
         close: closeCodes.revoked,
       };
     }
-    return { ok: true, connectionEpoch: outcome.connectionEpoch, minor: negotiation.minor, acks: outcome.acks };
+    return { ok: true, connectionEpoch: outcome.connectionEpoch, minor: negotiation.minor, acks: outcome.acks, sendAfter: outcome.sendAfter };
   };
 
   // ---------- commands down ----------
@@ -368,7 +383,7 @@ export const createSidecars = (context: GatewayContext): Sidecars => {
           connectionEpoch: outcome.connectionEpoch,
           minor: outcome.minor,
           ws,
-          lastSent: parsed.frame.lastCommandSeq,
+          lastSent: outcome.sendAfter,
           lastFrameAt: openedAt,
           delivering: false,
           deliverAgain: false,
@@ -395,7 +410,12 @@ export const createSidecars = (context: GatewayContext): Sidecars => {
         for (const ack of outcome.acks) {
           send(opened, ack);
         }
-        logger.info("gateway.sidecar-open", { ...ids, organizationId: lease.organizationId, connectionEpoch: outcome.connectionEpoch });
+        logger.info("gateway.sidecar-open", {
+          ...ids,
+          organizationId: lease.organizationId,
+          connectionEpoch: outcome.connectionEpoch,
+          ...(outcome.sendAfter < parsed.frame.lastCommandSeq ? { resendFrom: outcome.sendAfter + 1 } : {}),
+        });
         await deliver(opened);
         return;
       }

@@ -378,6 +378,46 @@ describe("the WebSocket", () => {
     expect(commands).toEqual([next.seq]);
   });
 
+  it("F-043/c1: a command the runner applied whose ack never reached core is sent again at its next hello, and its answer is kept", async () => {
+    const own = await registerPersonal(harness, test.db, fixture.a.member);
+    const peer = track(await connect(harness, own));
+    await peer.next("welcome");
+    const first = await sendCommand(fixture.a.organization.id, own.runnerId, "0.0.5");
+    const second = await sendCommand(fixture.a.organization.id, own.runnerId, "0.0.6");
+    expect((await peer.next("command", 5_000)).seq).toBe(first.seq);
+    expect((await peer.next("command", 5_000)).seq).toBe(second.seq);
+    // The first's ack reached core; the second's went with the connection, as when core dies
+    // before the ack's transaction commits (F-043).
+    peer.send({ type: "command-ack", upTo: first.seq, results: [{ id: first.commandId, seq: first.seq, result: "done" }] });
+    await waitFor(async () => (await test.db.command.findUniqueOrThrow({ where: { id: first.commandId } })).ackedAt !== null);
+    peer.close();
+    await peer.closed;
+
+    // The runner says it applied both: the second goes again, and the first doesn't.
+    const again = track(await connect(harness, own, { lastCommandSeq: second.seq }));
+    await again.next("welcome");
+    expect(await again.next("command", 5_000)).toMatchObject({ seq: second.seq, id: second.commandId });
+    expect(await test.db.command.findUniqueOrThrow({ where: { id: second.commandId } })).toMatchObject({ ackedAt: null, result: null });
+    // Its answer, the result the runner kept, is recorded as any other.
+    again.send({ type: "command-ack", upTo: second.seq, results: [{ id: second.commandId, seq: second.seq, result: "done" }] });
+    await waitFor(async () => (await test.db.command.findUniqueOrThrow({ where: { id: second.commandId } })).ackedAt !== null);
+    expect(await test.db.command.findUniqueOrThrow({ where: { id: second.commandId } })).toMatchObject({ result: "done" });
+    expect((await test.db.runner.findUniqueOrThrow({ where: { id: own.runnerId } })).ackedCommandSeq).toBe(second.seq);
+    const next = await sendCommand(fixture.a.organization.id, own.runnerId, "0.0.7");
+    expect((await again.next("command", 5_000)).seq).toBe(next.seq);
+    expect(again.frames.flatMap((frame) => (frame.type === "command" ? [frame.seq] : []))).toEqual([second.seq, next.seq]);
+
+    // Once answered, a hello from the same seq sends nothing again.
+    again.send({ type: "command-ack", upTo: next.seq, results: [{ id: next.commandId, seq: next.seq, result: "done" }] });
+    await waitFor(async () => (await test.db.command.findUniqueOrThrow({ where: { id: next.commandId } })).ackedAt !== null);
+    again.close();
+    await again.closed;
+    const third = track(await connect(harness, own, { lastCommandSeq: next.seq }));
+    await third.next("welcome");
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(third.frames.filter((frame) => frame.type === "command")).toEqual([]);
+  });
+
   it("delivers on the sweep when no NOTIFY arrives", async () => {
     const sweepOnly = await startGateway(test.db, test.url, { listen: false, timers: { sweepMs: 2_000 } });
     try {

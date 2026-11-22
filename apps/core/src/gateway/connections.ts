@@ -33,6 +33,7 @@ import type { RawData, WebSocket } from "ws";
 import { z } from "zod";
 
 import { salvageEventsFrame } from "../ingest/ingest.ts";
+import { killPoint } from "../kill-points.ts";
 import { bearerToken, runnerIsLive } from "./access-token.ts";
 import type { AckedCommand, GatewayContext, RunnerRef } from "./context.ts";
 import { databaseErrorCodes } from "./database-error.ts";
@@ -112,6 +113,8 @@ type HelloOutcome =
       readonly acks: readonly Ack[];
       /** Minor 4 (F-091): a pool runner's pool, and whether it waits for approval; `null` for a personal runner. */
       readonly pool: WelcomePool | null;
+      /** The seq the WebSocket's commands go on after: the peer's last applied, or one below the first whose answer never came. */
+      readonly sendAfter: number;
     }
   | { readonly ok: false; readonly error: ErrorFrame; readonly close: number };
 
@@ -318,14 +321,29 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
       if (state?.state === "online") {
         await enqueueRunnerAdmissionInTx({ jobs: context.ports.jobs }, tx, runner.organizationId, runner.runnerId);
       }
-      // What the peer says it applied is acked, up to what was ever sent.
+      // What the peer says it applied is acked, up to what was ever sent. But on the WebSocket, a
+      // command it applied whose ack never reached core (the connection went with the ack, as when
+      // core died before the ack's transaction committed: F-043) is sent again, it and those after
+      // it: the peer applies each command once by its ID and answers one it applied with the result
+      // it kept (ADR 0034). Acked here, the result would be lost, and with a dispatch's `accepted`
+      // the task would wait out its offer while the runner works it. On HTTP the runner's down poll
+      // asks after its own last applied, so nothing goes again there.
       const appliedUpTo = Math.min(hello.lastCommandSeq, row.commandSeq);
+      const unanswered =
+        hello.carrier === "websocket"
+          ? await tx.command.findFirst({
+              where: { runnerId: runner.runnerId, organizationId: runner.organizationId, seq: { lte: appliedUpTo }, ackedAt: null },
+              orderBy: { seq: "asc" },
+              select: { seq: true },
+            })
+          : null;
+      const ackedUpTo = unanswered === null ? appliedUpTo : unanswered.seq - 1;
       await tx.command.updateMany({
-        where: { runnerId: runner.runnerId, organizationId: runner.organizationId, seq: { lte: appliedUpTo }, ackedAt: null },
+        where: { runnerId: runner.runnerId, organizationId: runner.organizationId, seq: { lte: ackedUpTo }, ackedAt: null },
         data: { ackedAt: new Date(now()) },
       });
       await tx.$executeRaw`
-        UPDATE "runner" SET "ackedCommandSeq" = GREATEST("ackedCommandSeq", ${appliedUpTo})
+        UPDATE "runner" SET "ackedCommandSeq" = GREATEST("ackedCommandSeq", ${ackedUpTo})
         WHERE "id" = ${runner.runnerId} AND "organizationId" = ${runner.organizationId}`;
 
       const sessionIds = hello.sessions.map((session) => session.sessionId);
@@ -352,7 +370,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
       }
       const pool: WelcomePool | null =
         current.kind === "pool" && current.pool !== null ? { poolId: poolIdSchema.parse(current.pool.id), name: current.pool.name, awaitingApproval: !accept } : null;
-      return { connectionEpoch, acks, pool };
+      return { connectionEpoch, acks, pool, sendAfter: unanswered === null ? hello.lastCommandSeq : ackedUpTo };
     }).catch((error: unknown) => {
       if (error === revokedWhileConnecting) {
         return null;
@@ -366,7 +384,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
         close: closeCodes.revoked,
       };
     }
-    return { ok: true, connectionEpoch: outcome.connectionEpoch, minor: negotiation.minor, acks: outcome.acks, pool: outcome.pool };
+    return { ok: true, connectionEpoch: outcome.connectionEpoch, minor: negotiation.minor, acks: outcome.acks, pool: outcome.pool, sendAfter: outcome.sendAfter };
   };
 
   // ---------- commands down ----------
@@ -450,6 +468,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
       if (acked.length > 0) {
         await hooks.onCommandResultsInTx(tx, runner, acked);
       }
+      killPoint("command-ack.open");
     });
   };
 
@@ -617,7 +636,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
           minor: outcome.minor,
           ws,
           openedAt,
-          lastSent: parsed.frame.lastCommandSeq,
+          lastSent: outcome.sendAfter,
           lastFrameAt: openedAt,
           delivering: false,
           deliverAgain: false,
@@ -653,6 +672,7 @@ export const createConnections = (context: GatewayContext, options: ConnectionsO
           organizationId: runner.organizationId,
           connectionEpoch: outcome.connectionEpoch,
           minor: outcome.minor,
+          ...(outcome.sendAfter < parsed.frame.lastCommandSeq ? { resendFrom: outcome.sendAfter + 1 } : {}),
         });
         await deliver(opened);
         return;
