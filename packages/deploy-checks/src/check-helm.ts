@@ -3,7 +3,9 @@
 // file in their `examples/` (one holds only the required values), the rendered manifests checked
 // (`rendered.ts`), each render compared with the one kept in context/specs/m5-the-fleet/demo/helm/
 // (a release's stamped tree at the kept renders' release, `atKeptRelease`), and the charts refused
-// on Kubernetes 1.28 and accepted on 1.29. Where it isn't, it says the render didn't run.
+// on Kubernetes 1.28 and accepted on 1.29 (`helmChecks`, which `rendered.test.ts` runs too, so CI's
+// `pnpm test` on a runner with Helm catches a chart changed without `--keep` before a release does).
+// Where it isn't, it says the render didn't run.
 //
 //   pnpm check:helm                    check
 //   pnpm check:helm --write-schemas    write each chart's values.schema.json from values.ts first
@@ -13,10 +15,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { readExamples, generatedSchema, schemaFile } from "./helm/charts.ts";
-import { atKeptRelease, helmLint, helmTemplate, helmVersion, keptRenderFile, normalizeRender, checkRender } from "./helm/renders.ts";
+import { helmChecks, helmVersion, keptRenderFile } from "./helm/renders.ts";
 import { checkChartsWithoutHelm } from "./helm/schema-checks.ts";
 import { chartNames } from "./helm/values.ts";
-import { imageNamespace, readRepoFile, releaseVersion, repoRoot } from "./repo.ts";
+import { imageNamespace, releaseVersion, repoRoot } from "./repo.ts";
 
 const out = (line: string): void => {
   process.stdout.write(`${line}\n`);
@@ -53,42 +55,16 @@ const main = async (): Promise<number> => {
   const release = { version: await releaseVersion(), namespace: await imageNamespace() };
   for (const chart of chartNames) {
     for (const example of await readExamples(chart)) {
-      const name = example.file.split("/").at(-1) ?? example.file;
-      const lint = await helmLint(chart, example.file);
-      out(`${lint.ok ? "pass" : "FAIL"} helm lint --strict ${chart} -f ${name}`);
-      if (!lint.ok) {
-        out(lint.output.trim());
-        failures += 1;
+      const { checks, render } = await helmChecks(chart, example, { release, keep });
+      for (const check of checks) {
+        out(check.line);
       }
-      const render = await helmTemplate(chart, example.file, "1.29.0");
-      if (!render.ok) {
-        out(`FAIL helm template ${chart} -f ${name}\n${render.output.trim()}`);
-        failures += 1;
-        continue;
-      }
-      const problems = await checkRender(chart, render.output, example.values);
-      for (const problem of problems) {
-        out(`FAIL ${chart} -f ${name}: ${problem.rule}: ${problem.message}`);
-      }
-      failures += problems.length;
-      out(`${problems.length === 0 ? "pass" : "FAIL"} helm template ${chart} -f ${name}: the rendered checks`);
-      // A stamped tree (release.yml's) renders its release's version and images: compared at the kept renders' release.
-      const normalized = atKeptRelease(normalizeRender(render.output), release);
-      const kept = keptRenderFile(chart, name);
-      if (keep) {
-        await writeRepoFile(kept, normalized);
+      failures += checks.filter((check) => !check.ok).length;
+      if (keep && render !== null) {
+        const kept = keptRenderFile(chart, example.file.split("/").at(-1) ?? example.file);
+        await writeRepoFile(kept, render);
         out(`kept ${kept}`);
-      } else {
-        const previous = await readRepoFile(kept).catch(() => "");
-        if (previous.replace(/\r\n/g, "\n") !== normalized) {
-          out(`FAIL ${kept} isn't this render: run pnpm check:helm --keep`);
-          failures += 1;
-        }
       }
-      const old = await helmTemplate(chart, example.file, "1.28.0");
-      const refused = !old.ok && old.output.includes("kubeVersion");
-      out(`${refused ? "pass" : "FAIL"} helm template ${chart} -f ${name} --kube-version 1.28.0 is refused: native sidecars need 1.29`);
-      failures += refused ? 0 : 1;
     }
   }
   out(failures === 0 ? "check:helm: pass" : `check:helm: ${String(failures)} failure(s)`);

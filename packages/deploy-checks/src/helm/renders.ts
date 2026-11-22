@@ -4,8 +4,9 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-import { repoRoot } from "../repo.ts";
+import { readRepoFile, repoRoot } from "../repo.ts";
 import { chartDir, mergeValues, readDefaults } from "./charts.ts";
+import type { ValuesFile } from "./charts.ts";
 import { checkRunnerRender, checkServerRender, parseRender } from "./rendered.ts";
 import type { RenderProblem } from "./rendered.ts";
 import { runnerValuesSchema, serverValuesSchema } from "./values.ts";
@@ -19,9 +20,17 @@ export const RELEASE = { name: "ostra", namespace: "ostra" } as const;
 /** Where `pnpm check:helm --keep` keeps each example's render. */
 export const keptRenderFile = (chart: ChartName, example: string): string => `context/specs/m5-the-fleet/demo/helm/${chart}/${example}`;
 
-/** A render with the generated keys' values replaced, so it reads the same on every run. */
+/**
+ * A render with the generated keys' values replaced, so it reads the same on every run, and the
+ * same from Helm 3 and Helm 4: Helm 4 leaves a blank line before each `---` between the documents
+ * of one template file, where Helm 3 leaves none (Helm 3.22.1 on GitHub's Ubuntu image failed every
+ * render kept with 4.3.2: the Release dry run 44962714535). A blank line there means nothing in YAML.
+ */
 export const normalizeRender = (text: string): string =>
-  text.replace(/\r\n/g, "\n").replace(/^(\s+)(OSTRA_SECRETS_KEY|BETTER_AUTH_SECRET|OSTRA_RUNNER_TOKEN_KEY): "[^"\n]+"$/gm, '$1$2: "PGdlbmVyYXRlZCBhdCBpbnN0YWxsPg=="');
+  text
+    .replace(/\r\n/g, "\n")
+    .replace(/\n\s*\n(?=---$)/gm, "\n")
+    .replace(/^(\s+)(OSTRA_SECRETS_KEY|BETTER_AUTH_SECRET|OSTRA_RUNNER_TOKEN_KEY): "[^"\n]+"$/gm, '$1$2: "PGdlbmVyYXRlZCBhdCBpbnN0YWxsPg=="');
 
 /** The release the kept renders are made at: a clone's, version 0.0.0 with its images under `ostra`. */
 export const KEPT_RELEASE = { version: "0.0.0", namespace: "ostra" } as const;
@@ -82,4 +91,46 @@ export const checkRender = async (chart: ChartName, render: string, exampleValue
     default:
       return chart satisfies never;
   }
+};
+
+/** A line of `pnpm check:helm`'s Helm part, and whether it's a failure. */
+export type HelmCheck = { readonly ok: boolean; readonly line: string };
+
+/**
+ * Helm's checks of one example, as `pnpm check:helm` runs them and `rendered.test.ts` in `pnpm test`
+ * (where `helm` is on the PATH): `helm lint --strict`, `helm template` and the rendered checks, the
+ * render compared with its kept one at the kept renders' release (left out with `keep`, which
+ * writes it), and the chart refused on Kubernetes 1.28. `render` is the render as it's kept, or
+ * `null` when Helm couldn't render the example.
+ */
+export const helmChecks = async (
+  chart: ChartName,
+  example: ValuesFile,
+  options: { readonly release: { readonly version: string; readonly namespace: string }; readonly keep: boolean },
+): Promise<{ readonly checks: readonly HelmCheck[]; readonly render: string | null }> => {
+  const name = example.file.split("/").at(-1) ?? example.file;
+  const checks: HelmCheck[] = [];
+  const lint = await helmLint(chart, example.file);
+  checks.push({ ok: lint.ok, line: `${lint.ok ? "pass" : "FAIL"} helm lint --strict ${chart} -f ${name}${lint.ok ? "" : `\n${lint.output.trim()}`}` });
+  const render = await helmTemplate(chart, example.file, "1.29.0");
+  if (!render.ok) {
+    checks.push({ ok: false, line: `FAIL helm template ${chart} -f ${name}\n${render.output.trim()}` });
+    return { checks, render: null };
+  }
+  const problems = await checkRender(chart, render.output, example.values);
+  checks.push(...problems.map((problem) => ({ ok: false, line: `FAIL ${chart} -f ${name}: ${problem.rule}: ${problem.message}` })));
+  checks.push({ ok: problems.length === 0, line: `${problems.length === 0 ? "pass" : "FAIL"} helm template ${chart} -f ${name}: the rendered checks` });
+  // A stamped tree (release.yml's) renders its release's version and images: compared at the kept renders' release.
+  const kept = atKeptRelease(normalizeRender(render.output), options.release);
+  if (!options.keep) {
+    const file = keptRenderFile(chart, name);
+    const previous = await readRepoFile(file).catch(() => "");
+    if (previous.replace(/\r\n/g, "\n") !== kept) {
+      checks.push({ ok: false, line: `FAIL ${file} isn't this render: run pnpm check:helm --keep` });
+    }
+  }
+  const old = await helmTemplate(chart, example.file, "1.28.0");
+  const refused = !old.ok && old.output.includes("kubeVersion");
+  checks.push({ ok: refused, line: `${refused ? "pass" : "FAIL"} helm template ${chart} -f ${name} --kube-version 1.28.0 is refused: native sidecars need 1.29` });
+  return { checks, render: kept };
 };

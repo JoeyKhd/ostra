@@ -11,7 +11,6 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: ostra
     helm.sh/chart: ostra-runner-0.0.0
-
 ---
 # Source: ostra-runner/templates/namespaces.yaml
 apiVersion: v1
@@ -25,7 +24,6 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: ostra
     helm.sh/chart: ostra-runner-0.0.0
-
 ---
 # Source: ostra-runner/templates/networkpolicies.yaml
 apiVersion: networking.k8s.io/v1
@@ -87,7 +85,6 @@ spec:
               - ::1/128
               - ff00::/8
   ingress: []
-
 ---
 # Source: ostra-runner/templates/networkpolicies.yaml
 apiVersion: networking.k8s.io/v1
@@ -132,7 +129,6 @@ spec:
         - protocol: TCP
           port: 443
   ingress: []
-
 ---
 # Source: ostra-runner/templates/rbac.yaml
 apiVersion: v1
@@ -147,7 +143,6 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: ostra
     helm.sh/chart: ostra-runner-0.0.0
-
 ---
 # Source: ostra-runner/templates/deployment.yaml
 apiVersion: v1
@@ -167,7 +162,6 @@ spec:
   resources:
     requests:
       storage: 1Gi
-
 ---
 # Source: ostra-runner/templates/rbac.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -205,7 +199,6 @@ rules:
     resources: ["namespaces"]
     resourceNames: ["ostra-boxes"]
     verbs: ["get"]
-
 ---
 # Source: ostra-runner/templates/rbac.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -243,7 +236,6 @@ rules:
     resources: ["namespaces"]
     resourceNames: ["ostra-builds"]
     verbs: ["get"]
-
 ---
 # Source: ostra-runner/templates/rbac.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -266,7 +258,6 @@ subjects:
   - kind: ServiceAccount
     name: ostra-ostra-runner
     namespace: ostra
-
 ---
 # Source: ostra-runner/templates/rbac.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -289,7 +280,6 @@ subjects:
   - kind: ServiceAccount
     name: ostra-ostra-runner
     namespace: ostra
-
 ---
 # Source: ostra-runner/templates/deployment.yaml
 apiVersion: apps/v1

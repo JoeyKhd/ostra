@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { readRepoFile } from "../repo.ts";
+import { imageNamespace, readRepoFile, releaseVersion } from "../repo.ts";
 import { readExamples } from "./charts.ts";
-import { atKeptRelease, checkRender, KEPT_RELEASE, keptRenderFile } from "./renders.ts";
+import { atKeptRelease, checkRender, helmChecks, helmVersion, KEPT_RELEASE, keptRenderFile, normalizeRender } from "./renders.ts";
 import { chartNames } from "./values.ts";
 import type { ChartName } from "./values.ts";
 
 // Milestone 5's ticket 23 (F-118): the rendered checks, on the renders `pnpm check:helm --keep`
 // kept from Helm (context/specs/m5-the-fleet/demo/helm/), so they run in CI with no Helm. Where Helm
-// is installed, `pnpm check:helm` renders again and fails when a kept render is stale.
+// is installed (GitHub's Ubuntu runners have it, so CI's `pnpm test` does), Helm's part of
+// `pnpm check:helm` runs here as well, so a chart changed without `--keep` fails before a release.
+
+/** Helm's version, or `null` where `helm` isn't on the PATH. */
+const helm = await helmVersion();
 
 const kept = async (chart: ChartName, example: string): Promise<string> => readRepoFile(keptRenderFile(chart, example));
 
@@ -69,6 +73,35 @@ describe("the kept renders", () => {
     const text = await kept("ostra-runner", "required-values.yaml");
     expect(atKeptRelease(changed(text, "cidr: 0.0.0.0/0", "cidr: 10.0.0.0/0"), release)).not.toBe(text);
     expect(atKeptRelease(changed(text, /ostra\/base:0\.0\.0/, "ghcr.io/other/base:1.0.0-rc.0"), release)).not.toBe(text);
+  });
+});
+
+describe("the charts as Helm renders them", () => {
+  it.skipIf(helm === null)("F-118/c1,c2: where Helm is installed, every example lints, passes the rendered checks, renders as its kept render and is refused on Kubernetes 1.28", async () => {
+    const release = { version: await releaseVersion(), namespace: await imageNamespace() };
+    for (const chart of chartNames) {
+      for (const example of await readExamples(chart)) {
+        const { checks } = await helmChecks(chart, example, { release, keep: false });
+        expect(checks.filter((check) => !check.ok).map((check) => check.line), `helm ${helm ?? ""}, ${example.file}`).toEqual([]);
+      }
+    }
+  });
+
+  it("F-118/c1,c2: a render reads the same from Helm 3 and Helm 4, which leaves a blank line before each separator in a template file", async () => {
+    for (const chart of chartNames) {
+      for (const example of await readExamples(chart)) {
+        const name = example.file.split("/").at(-1) ?? "";
+        const text = (await kept(chart, name)).replace(/\r\n/g, "\n");
+        // Helm 4.3.2's form of the same render: a blank line before every separator but the first line's.
+        const four = text.replace(/(?<=.)\n---$/gm, "\n\n---");
+        expect(four, `${chart} ${name}`).not.toBe(text);
+        expect(normalizeRender(four), `${chart} ${name}`).toBe(text);
+        expect(normalizeRender(text), `${chart} ${name}`).toBe(text);
+      }
+    }
+    // A blank line anywhere else is still a change.
+    const text = await kept("ostra-runner", "required-values.yaml");
+    expect(normalizeRender(changed(text, "kind: Namespace\n", "kind: Namespace\n\n"))).not.toBe(text);
   });
 });
 
