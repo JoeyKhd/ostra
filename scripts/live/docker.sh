@@ -137,6 +137,37 @@ box_browser() {
 }
 step box-browser box_browser
 
+# ---- F-140/c11 (milestone 8): a Vite frontend whose `/api` goes to a second app process answers in
+# a `host` box's screenshot and in its browser view, with this machine's own Chrome (GitHub's
+# ubuntu-24.04 has Google Chrome from its package, which sets its sandbox up; OSTRA_RUNNER_BROWSER
+# names another). CI's Linux runs these two cases with the fake box browser, which renders nothing,
+# so the page's `/api` answer is checked only here; `ostra preview` and the native preview need no
+# browser, and CI checks theirs (apps/core/src/previews/). A run in which the two cases skipped
+# themselves doesn't pass the step ----
+host_browser_api() {
+  local out="$RUNNER_TEMP_DIR/host-browser-api.out" code=0
+  OSTRA_RUNNER_BROWSER="$1" pnpm --filter @ostra/runner exec vitest run --reporter verbose -t "F-140/c11" \
+    src/browser/box-browser.host.test.ts src/task-host/preview-stream.host.test.ts >"$out" 2>&1 || code=$?
+  cat "$out"
+  grep -Eq 'Tests +2 passed' "$out" || code=1
+  rm -f "$out"
+  return "$code"
+}
+machine_browser="${OSTRA_RUNNER_BROWSER:-}"
+if [ -z "$machine_browser" ]; then
+  for candidate in /usr/bin/google-chrome-stable /usr/bin/google-chrome /opt/google/chrome/chrome /usr/bin/chromium /usr/bin/chromium-browser; do
+    if [ -x "$candidate" ]; then
+      machine_browser="$candidate"
+      break
+    fi
+  done
+fi
+if [ -n "$machine_browser" ]; then
+  step host-browser-api host_browser_api "$machine_browser"
+else
+  not_run host-browser-api "no Chrome or Chromium on this machine: install one from its package, or name it in OSTRA_RUNNER_BROWSER"
+fi
+
 # ---- F-014 and F-015: a `host` pool as the docs make it: the runner's user and the agent's, the
 # sudoers rule for the agent's user alone, and the runner as a systemd service with Delegate=yes,
 # so each task gets a cgroup of its own (scripts/live/host-pool.sh) ----

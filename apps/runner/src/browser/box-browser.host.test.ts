@@ -21,8 +21,9 @@ import { testPort } from "@ostra/adapter-sdk/testing/net";
 // of the fixture app (milestone 8's `test-web`: Vite and React, its `/api` through Vite's proxy to
 // its API), and after the task ends no profile folder is left. On a Linux CI machine without
 // OSTRA_RUNNER_BROWSER, whose browser's sandbox may need what its user lacks, the fake box browser
-// stands in over the same pipe, as the executor suite does (ticket 03); the pixels wait for the
-// Linux jobs there.
+// stands in over the same pipe, as the executor suite does (ticket 03); the pixels and the page's
+// `/api` answer (F-140/c11) wait for the `live-docker` job's `host-browser-api` step there
+// (scripts/live/docker.sh), which names the machine's Chrome.
 
 const FIXTURE = fileURLToPath(new URL("../../../../e2e/m8-previews-and-library/fixtures/test-web/", import.meta.url));
 const VITE = path.join(FIXTURE, "node_modules", "vite", "bin", "vite.js");

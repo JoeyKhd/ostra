@@ -4,8 +4,10 @@ import { previewStreamCases } from "../testing/preview-stream-cases.ts";
 
 // Milestone 8's ticket 18 (F-141) on the `host` executor, live, with the `test-web` fixture on this
 // machine's own `localhost` and its own browser (Edge here); on a Linux CI machine without
-// OSTRA_RUNNER_BROWSER, the fake box browser over the same pipe. The same cases run on every
-// executor (`preview-stream.{host,docker,kubernetes}.test.ts`).
+// OSTRA_RUNNER_BROWSER, the fake box browser over the same pipe, and the streamed page's `/api`
+// answer (F-140/c11) waits for the `live-docker` job's `host-browser-api` step
+// (scripts/live/docker.sh), which names the machine's Chrome. The same cases run on every executor
+// (`preview-stream.{host,docker,kubernetes}.test.ts`).
 
 const cases = previewStreamCases({ name: "host" });
 
