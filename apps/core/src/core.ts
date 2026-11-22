@@ -22,7 +22,7 @@ import {
   systemClock,
   warnIgnoredSettings,
 } from "@ostra/domain";
-import type { Clock, LibraryDeps, ServerAdapters, ServerSettings, SessionTimers } from "@ostra/domain";
+import type { Clock, LibraryDeps, ServerAdapters, ServerSettings } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
 import { blobIdSchema, replicaIdSchema } from "@ostra/protocol";
@@ -79,6 +79,7 @@ import { applyStopResultsInTx, openPullRequestsHandler, sessionEndedHandler } fr
 import type { ReactionDeps } from "./reactions/session-end.ts";
 import { loadSecretsKey, openSecretStore } from "./secrets.ts";
 import { createCoreServer } from "./server.ts";
+import { cleanupSettingsOf, sessionTimersOf } from "./settings-timers.ts";
 import { createReconcileSchedules, ensureBehindSchedule, githubWebhookHandler, reconcileBehindHandler, reconcileHandler } from "./code-host/pull-requests.ts";
 import { githubCommentHandler, prCommentHook } from "./code-host/pr-comments.ts";
 import { diffFetchHandler } from "./diff/diff-fetch.ts";
@@ -215,11 +216,7 @@ export const startCore = async (
   const notices = postgresChangeNotices;
   const liveText = createLiveTextWriter({ db, logger });
   // Milestone 2: the session's maximum duration and the idle box's release (tickets 19, 20).
-  const timers: SessionTimers = {
-    sessionMaxMs: options.limitsMs?.sessionMaxMs ?? settings.sessionMaxMinutes * 60_000,
-    boxReleaseIdleMs: settings.boxReleaseIdleDays * 24 * 3_600_000,
-    cancelInTx: (tx, job, payload) => jobs.cancelInTx(tx, job, payload),
-  };
+  const timers = sessionTimersOf(settings, jobs, options.limitsMs?.sessionMaxMs);
   const graceDeps: GraceDeps = {
     jobs,
     outbox: postgresCommandOutbox,
@@ -723,8 +720,7 @@ export const startCore = async (
       const deleted = await blobs.delete(organizationId, blobId);
       return deleted.ok || deleted.error === "not-found";
     },
-    retentionDays: settings.retentionDays,
-    releaseAfterIdleMs: settings.boxReleaseIdleDays * 24 * 3_600_000,
+    ...cleanupSettingsOf(settings),
   };
   await jobs.work("box.release", boxReleaseHandler(cleanupDeps), { localConcurrency: 4 });
   await jobs.work("box.release-after-idle", releaseAfterIdleHandler(cleanupDeps), { localConcurrency: 4 });

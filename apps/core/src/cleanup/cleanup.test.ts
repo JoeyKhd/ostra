@@ -27,6 +27,7 @@ import { acceptedTask, jobContext, sha } from "../testing/turns.ts";
 import type { DrivenTask } from "../testing/turns.ts";
 import { seedOnlineRunner, seedQueuedTask, seedWorld } from "../testing/world.ts";
 import type { World } from "../testing/world.ts";
+import { cleanupSettingsOf, sessionTimersOf } from "../settings-timers.ts";
 import { applyReleaseResultsInTx, boxReleaseHandler, releaseAfterIdleHandler, runRetention } from "./cleanup.ts";
 import type { CleanupDeps } from "./cleanup.ts";
 
@@ -52,9 +53,15 @@ const logger = createLogger((record) => records.push(record));
 const turnId = turnIdSchema.parse("turn-1");
 const DAY_MS = 24 * 3_600_000;
 
-/** The settings a fresh install starts with: the idle days are core's own default, as `core.ts` reads them. */
-const installDefaults = parseServerSettings({});
-const releaseIdleDays = installDefaults.ok ? installDefaults.settings.boxReleaseIdleDays : 0;
+/**
+ * The settings a fresh install starts with. The timers and the cleanup's idle days come from them
+ * through `settings-timers.ts`, the builders `startCore` uses, so a wrong conversion there fails here.
+ */
+const parsedDefaults = parseServerSettings({});
+if (!parsedDefaults.ok) {
+  throw new Error(parsedDefaults.errors.join("\n"));
+}
+const installDefaults = parsedDefaults.settings;
 
 const cleanupDeps = (overrides: Partial<CleanupDeps> = {}): CleanupDeps => ({
   db: test.db,
@@ -65,8 +72,7 @@ const cleanupDeps = (overrides: Partial<CleanupDeps> = {}): CleanupDeps => ({
   clock: systemClock,
   adapters: { codeHost, secretStore },
   logger,
-  retentionDays: null,
-  releaseAfterIdleMs: releaseIdleDays * DAY_MS,
+  ...cleanupSettingsOf(installDefaults),
   ...overrides,
 });
 
@@ -77,7 +83,7 @@ beforeAll(async () => {
   await jobs.start();
   world = await seedWorld(test.db, { codeHost, secretStore }, fixture.a.organization.id, fixture.a.openProject.id);
   otherWorld = await seedWorld(test.db, { codeHost, secretStore }, fixture.b.organization.id, fixture.b.project.id, { fullName: "ostra-test/other" });
-  timers = { sessionMaxMs: 120 * 60_000, boxReleaseIdleMs: releaseIdleDays * DAY_MS, cancelInTx: (tx, job, payload) => jobs.cancelInTx(tx, job, payload) };
+  timers = sessionTimersOf(installDefaults, jobs);
   liveText = createLiveTextWriter({ db: test.db, logger });
   ingest = createIngest({ db: test.db, jobs, notices: postgresChangeNotices, clock: systemClock, liveText, logger, timers, outbox: postgresCommandOutbox });
   runner = await seedOnlineRunner(test.db, fixture.a.organization.id, { kind: "personal", memberId: fixture.a.member.id }, 20);
@@ -263,8 +269,8 @@ describe("the idle days (F-079, F-096)", () => {
   });
 
   it("F-079/c1: a box idle 14 days by default is released, by the delayed job set 14 days out when it went idle", async () => {
-    // A fresh install's setting, which core turns into the timer.
-    expect(installDefaults.ok && installDefaults.settings.boxReleaseIdleDays).toBe(14);
+    // A fresh install's setting, which core turns into the timer and the sweep's backstop.
+    expect(installDefaults.boxReleaseIdleDays).toBe(14);
     const idle = await inReview();
     const ref = { organizationId: idle.organizationId, taskId: idle.taskId, boxId: idle.boxId };
     const job = (await jobs.find("box.release-after-idle", ref)).at(-1);
@@ -283,6 +289,26 @@ describe("the idle days (F-079, F-096)", () => {
     await releaseAfterIdleHandler(cleanupDeps())(jobContext("box.release-after-idle", ref, logger));
     expect(await test.db.box.findUniqueOrThrow({ where: { id: idle.boxId } })).toMatchObject({ state: "released", releaseReason: "idle_expired" });
     expect((await releaseCommands(idle.boxId)).map((command) => releaseBodySchema.parse(command.body))).toEqual([{ taskId: idle.taskId, boxId: idle.boxId, reason: "idle-expired" }]);
+  });
+
+  it("F-079/c1: a box whose idle timer was lost is released by the daily sweep once it has been idle 14 days by default, and not an hour before", async () => {
+    const lost = await inReview();
+    const younger = await inReview();
+    // Both timers lost (a release before ticket 20 set none); one box idle just past 14 days, one just short of it.
+    for (const task of [lost, younger]) {
+      await jobs.cancelInTx(null, "box.release-after-idle", { organizationId: task.organizationId, taskId: task.taskId, boxId: task.boxId });
+    }
+    await test.db.box.update({ where: { id: lost.boxId }, data: { idleSince: new Date(Date.now() - 14 * DAY_MS - 3_600_000) } });
+    await test.db.box.update({ where: { id: younger.boxId }, data: { idleSince: new Date(Date.now() - 14 * DAY_MS + 3_600_000) } });
+    await runRetention(cleanupDeps());
+    const lostRelease = { organizationId: lost.organizationId, taskId: lost.taskId, boxId: lost.boxId, reason: "idle-expired" as const };
+    expect((await jobs.find("box.release", lostRelease)).map((job) => job.state)).toEqual(["created"]);
+    expect(await jobs.find("box.release", { organizationId: younger.organizationId, taskId: younger.taskId, boxId: younger.boxId, reason: "idle-expired" })).toEqual([]);
+    // The queued release, run as core runs it: the box goes as idle-expired, with one command.
+    await boxReleaseHandler(cleanupDeps())(jobContext("box.release", lostRelease, logger));
+    expect(await test.db.box.findUniqueOrThrow({ where: { id: lost.boxId } })).toMatchObject({ state: "released", releaseReason: "idle_expired" });
+    expect((await releaseCommands(lost.boxId)).map((command) => releaseBodySchema.parse(command.body))).toEqual([{ taskId: lost.taskId, boxId: lost.boxId, reason: "idle-expired" }]);
+    expect(await test.db.box.findUniqueOrThrow({ where: { id: younger.boxId } })).toMatchObject({ state: "idle" });
   });
 });
 
